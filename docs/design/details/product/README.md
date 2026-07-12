@@ -1,0 +1,144 @@
+# Product Design
+
+## 产品目标
+
+Codex Pulse 不只是 quota meter，而是 Codex 本机观测工具。它应让用户快速回答：
+
+- 5 小时和周额度是否可信、还能使用多少、何时 reset；
+- 今天哪些项目、模型和 Session 消耗最多；
+- 最近 Session 是否仍有 active turn；
+- 本地索引是否完整、后台是否推进、应用最近是否健康；
+- 数据来自本地还是可选在线接口，失败时当前展示还是否可信。
+
+v0.1 先服务单机、单账号、Codex-only 场景。仅提供简体中文（`zh-CN`）UI，不提供语言切换；绝对路径可复制，不做云同步或公网访问。
+
+## 渐进披露
+
+产品使用“Tray 一眼判断、Popover 快速查看、概览分析下钻”的结构；运行诊断收敛到靠近设置的“本机状态”。
+
+### Tray
+
+默认只显示 5h 和 weekly 剩余，不显示 active session 数：
+
+```text
+fresh       5h 62% · W 71%
+stale       5h 62% · W 71%
+conflict    5h 55% · W 71%
+unknown     5h 55% · W 71%
+exhausted   5h 0% · 42m
+```
+
+百分比始终表示 remaining。界面只显示普通百分比，不使用 `≤`、`?` 或状态胶囊向用户解释不确定性。stale、conflict 和 expired_unknown 有 last-known-good 时继续显示当前选定值；从未取得数值时显示 `--`；`0%` 只表示确认耗尽。
+
+状态栏采用紧凑双行额度仪表：左侧为 Codex Pulse 单色模板图标，右侧分别展示“5 小时”和“本周”的短进度条与普通百分比。正常状态使用低饱和系统蓝 / 紫；stale 与 unknown 弱化为灰色；conflict 使用橙色；确认耗尽的对应额度使用红色。颜色只辅助扫读，百分比文字始终保留。
+
+正常时不显示来源、更新时间、索引进度、CPU、读取字节或队列。`blocked` 立即在模板图标右上增加红色健康点；`degraded` 只有持续 2 分钟，并且影响当前数据可信度或需要用户处理时，才增加橙色健康点。健康点独立于额度进度条颜色，普通 quota 网络失败不额外制造全局警告。
+
+左键打开 Popover；右键原生菜单包含刷新当前数据、打开概览、暂停/继续历史索引、设置、检查更新和退出。存在已升级的 `degraded` / `blocked` 时，菜单顶部条件显示“查看数据健康…”，并展示当前问题数。
+
+### Popover（暂定，待最终确认）
+
+Popover 不放复杂图表，也不显示来源冲突、网络失败或索引异常说明，顺序为：
+
+1. 5h / weekly quota：普通 remaining 百分比、进度条和 reset 倒计时。
+2. Reset credits：可用次数、总次数、累计剩余时间、最近到期时间和 Quota 详情入口。
+3. API 等价成本：今日金额、token 总量、统计周期、计算时间和概览详情入口。
+4. Session 摘要：active session 数、最近活动和最多 5 个 Session，只表达 active / idle。
+5. 固定操作：刷新、打开概览。
+
+打开 Popover 时，quota 上次成功超过 60 秒则异步刷新。有 last-known-good 时继续显示当前数值，不切换成空白 loading，也不增加不确定性说明。Reset credits 与 API 等价成本摘要整块可点击，分别进入配额和概览对应区域。
+
+### 概览
+
+概览是默认落地页，由原 Usage 页面升级而来，按“先看额度、再看趋势和成本”排序：
+
+- 顶部紧凑摘要：5 小时和本周额度、普通百分比、进度条与 reset 时间。
+- 时间范围：今天、7 天、30 天和自定义区间，默认 7 天。
+- 使用趋势：input、cached input、output 与 reasoning token。
+- 用量构成与 API 等价成本：保留估算口径和未定价提示。
+- 每日明细：日期、token、cached、output、API 等价成本和完整性。
+
+概览不承担完整运行诊断；只有影响当前分析时才显示轻量健康入口或局部状态，详细原因进入本机状态 / Data Health。后台刷新不驱动全局 loading，quota、趋势和当前区间数据分别定向更新。
+
+### 本机状态
+
+本机状态由原 Dashboard 收敛而来，位于设置上方，不作为默认落地页。它只回答运行与数据可靠性问题：
+
+- 数据完整性与历史补齐进度；
+- 索引新鲜度、已索引 Session 和待处理任务；
+- 本地 Session、在线配额和 Reset credits 等数据来源；
+- 后台任务、数据库与存储状态；
+- 最近运行记录和 Data Health 入口。
+
+条件 Banner 同一时间最多显示一个，按 `blocked` 红色、影响当前数据的持续 `degraded` 橙色、历史补齐或部分数据蓝色排序。普通在线 quota 失败和不影响当前视图的 warning 不占用全局 Banner。手动刷新按 quota、live queue 和当前页面数据执行，不触发历史重扫。
+
+主导航固定为“概览 / 会话 / 项目 / 配额 / 本机状态 / 设置”。不包含 Attention；Data Health 继续作为本机状态下钻页，不单列主导航。
+
+### Data Health
+
+Data Health 是由本机状态健康入口或异常 Tray 菜单打开的二级页面，不增加主导航项。页面按“影响优先”排序：
+
+1. 最高优先级影响：说明当前影响、保护措施和首要恢复动作。
+2. 数据领域：本地索引、live queue、历史补齐、在线配额、SQLite / 磁盘和更新器。
+3. 当前工作：任务、状态、进度、速率 / 延迟和 next retry。
+4. 最近事件：合并同类事件，显示影响、累计次数、last seen 和恢复时间。
+5. 最近 24 小时资源：进程级 CPU / RSS、DB / WAL 和可用磁盘。
+6. 可执行操作：重试、暂停 / 继续索引、重新授权在线能力和打开日志。
+
+Data Health 不展示原始 JSONL、凭证或完整错误堆栈；v0.1 不提供诊断导出。Quota observation 仲裁细节继续进入 Quota 页面，Data Health 只解释来源可用性和当前影响。
+
+空值语义统一：
+
+- `0%`：确认耗尽；
+- `--`：从未取得数值、不适用或尚未计算；
+- 普通百分比：包含 fresh 与 last-known-good，展示格式不区分内部可信状态；
+- “部分数据”：目标时间范围尚未索引完整；
+- “本地来源”：在线 quota 未启用，不是错误。
+
+## 概览用量与 API 等价成本
+
+概览展示“API 等价成本”，不能命名为真实花费。计算口径：
+
+```text
+api_equivalent_cost =
+  input_tokens / 1_000_000 * input_price
++ cached_input_tokens / 1_000_000 * cached_input_price
++ output_tokens / 1_000_000 * output_price
+```
+
+reasoning token 单独展示；若没有单独价格，按模型公开口径折算并明确标注。无法匹配模型时必须显示 `unpriced` 或明确 fallback，不能静默乱算。
+
+Pricing Catalog 本地版本化，每条记录包含 model、input/cached/output price、currency、effective date 和 source。历史 turn 使用当时选定的 pricing version，避免价格变化导致历史报表漂移。v0.1 不自动联网更新价格。
+
+## v0.1 交付范围
+
+- 本地只读、按 offset 增量索引 Codex JSONL 和 `session_index.jsonl`。
+- SQLite session / turn / usage / quota / source state / file cursor / job run schema，以及 project/model 日聚合。
+- 配额 last-known-good、fresh / stale / expired_unknown / suspicious 和来源时间。
+- 分数据源调度、后台限速、前台提权和失败退避。
+- 一页隐私说明、Codex home 探测、fast bootstrap、live/backfill 双队列、可续传初始索引和安全错误恢复。
+- 最近 24 小时资源与故障观测和 Data Health。
+- Tray、Popover、概览、Sessions、Projects、Quota、本机状态、Settings。
+- 本地版本化 pricing catalog。
+- 在线 quota / reset credits 作为默认开启、可随时关闭的实验性能力；始终显示来源、更新时间和失败降级状态。
+- session index repair 仅 dry-run + 显式确认。
+
+## 后续阶段
+
+1. Codex-only 本地账本和工作台。
+2. live 运行态：进程、端口、Git 状态和 PID 到 JSONL 的映射；不扩展成 Waiting/Blocked/Done Session 状态机。
+3. 配额提醒：阈值、burn rate 和可信度状态栏文案。
+4. 个人工作流：项目别名、Obsidian 摘要、高成本 Session 诊断、Tailscale 只读视图和多 agent provider。
+
+## 明确不做
+
+- 不调用 `codex app-server` 查配额或作为兜底。
+- 不把 `wham/*` 当稳定 API；v0.1 默认启用在线 quota 与 reset credits，但必须显示来源，允许用户随时关闭。
+- 不复制原始 JSONL，不保存完整对话或工具输出。
+- 不把内部 HTTP 接口当稳定 API。
+- 不用一个全局周期反复全量扫描，也不在前台刷新时重复启动扫描。
+- 不静默下载、强制安装或在 SQLite 事务未安全结束时重启。
+- v0.1 不提供 Usage JSON/CSV、诊断包或其他用户数据导出。
+- v0.1 不提供语言切换或其他语言包，但前端文案按 i18n message key 组织。
+- 不在 v0.1 做 turn 完成通知、Attention、云同步或公网访问。
+- 不复制 Codex Runway 的代码、图标或高度相似 UI。
