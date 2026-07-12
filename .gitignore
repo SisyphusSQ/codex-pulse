@@ -9,6 +9,11 @@
 *.swp
 *.swo
 
+# Logs and generated output
+*.log
+logs/
+**/output/
+
 # Environment and local configuration
 .env
 .env.*
@@ -20,14 +25,18 @@ bin/
 *.out
 coverage/
 coverage.*
+coverage.out
+coverage.html
 
 # Node, Vite and frontend tooling
 node_modules/
 frontend/node_modules/
 dist/
 frontend/dist/
+dist-ssr/
 .vite/
 frontend/.vite/
+storybook-static/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -49,3 +58,14 @@ build/bin/
 tmp/
 temp/
 *.tmp
+
+# Harness local auxiliary run surfaces
+.agents/state/*
+!.agents/state/TEMPLATE.md
+.agents/runs/*
+!.agents/runs/TEMPLATE.md
+
+# Cursor project rules are commit-safe; other Cursor files stay local by default.
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/*.mdc
