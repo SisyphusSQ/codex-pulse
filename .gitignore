@@ -32,10 +32,13 @@ coverage.html
 node_modules/
 frontend/node_modules/
 dist/
-frontend/dist/
+!frontend/dist/
+frontend/dist/*
+!frontend/dist/.gitkeep
 dist-ssr/
 .vite/
 frontend/.vite/
+frontend/*.tsbuildinfo
 storybook-static/
 npm-debug.log*
 yarn-debug.log*
@@ -43,6 +46,7 @@ yarn-error.log*
 pnpm-debug.log*
 
 # Wails build output
+.task/
 build/bin/
 
 # Local databases and runtime data

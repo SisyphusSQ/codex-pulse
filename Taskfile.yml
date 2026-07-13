@@ -1,0 +1,35 @@
+version: "3"
+
+vars:
+  APP_NAME: codex-pulse
+  BIN_DIR: bin
+  VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+
+includes:
+  common: ./build/Taskfile.yml
+  darwin: ./build/darwin/Taskfile.yml
+
+tasks:
+  generate:bindings:
+    summary: 生成前端 TypeScript bindings
+    cmds:
+      - task: common:generate:bindings
+
+  build:
+    summary: 构建 macOS arm64 应用二进制
+    cmds:
+      - task: darwin:build
+        vars:
+          ARCH: '{{.ARCH | default "arm64"}}'
+          DEV: '{{.DEV}}'
+          OUTPUT: '{{.OUTPUT}}'
+
+  run:
+    summary: 运行已构建的 macOS 开发应用
+    cmds:
+      - task: darwin:run
+
+  dev:
+    summary: 启动 Wails 开发模式
+    cmds:
+      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
