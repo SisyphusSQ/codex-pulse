@@ -36,7 +36,7 @@ Go module 已固定为 `github.com/SisyphusSQ/codex-pulse`。Wails CLI 与 Go mo
 
 - macOS 15+、Apple Silicon arm64
 - Go 1.25+
-- Node.js 22.12+、npm 10+
+- Node.js `^22.13.0 || >=24.0.0`、npm 10+；不支持 Node 23
 - Wails CLI `v3.0.0-alpha2.117`
 
 首次安装精确 Wails CLI 与前端依赖：
@@ -52,6 +52,33 @@ cd ..
 `wails3 version` 必须输出 `v3.0.0-alpha2.117`。若命中其它版本，先修正当前 shell 的 `PATH`，不要用 `latest` 覆盖项目基线。
 
 ### 开发、测试与构建
+
+完整验证当前工程基线时，先确保精确 Wails CLI 与前端 lockfile 依赖已安装，再从仓库根执行统一入口：
+
+```bash
+make verify
+```
+
+`make verify` 会按顺序执行 base harness、项目级机械约束、Go test/vet、前端 typecheck/test/build、Wails bindings/Go module 重生成漂移检查，以及 macOS 15+ arm64 package/ZIP 复验。生成一致性检查先于 package，避免 package 内部的 tidy 掩盖输入漂移；任一层失败都会保留可单独重放的 Make target 和原始命令。
+
+project-check 使用 macOS 自带 Ruby/Psych 安全解析 GitHub Actions YAML：AST 约束唯一的 permissions/contents key，safe-load 后拒绝任何实际 job permissions，并递归扫描解码后的全部 key/value 字符串，只允许当前需要的 `github.workflow`、`github.ref` expressions；不安装额外 gem。缺少 Ruby 或 workflow 无法安全解析时，`CI-001` 会直接失败。
+
+需要定位单层失败时使用：
+
+```bash
+make harness-verify
+make project-check
+make project-check-test
+make project-generated-check-test
+make verify-go
+make verify-frontend
+make verify-generated
+make verify-package
+```
+
+GitHub PR 与 `main` push CI 运行同一个 `make verify`。workflow 固定在 public repository 的 `macos-15` arm64 runner，官方 actions 使用 commit SHA；safe YAML/AST gate 要求唯一顶层权限块只有 `contents: read`，并拒绝 direct、inline、merge 后的 job override。checkout 不持久化凭证，Go/npm dependency cache 显式关闭；完成后同时检查 tracked 与非忽略 untracked 状态。workflow 不显式引用 GitHub token 或发布 secret，也不执行签名身份、notarization、发布或 Linear 写入。
+
+日常单项命令仍可直接执行：
 
 ```bash
 # 启动 Wails + Vite 开发模式
@@ -82,6 +109,8 @@ wails3 task package:verify
 # 删除 bundle、ZIP 与临时 icns（保留 bin/codex-pulse）
 wails3 task package:clean
 ```
+
+验证会生成 ignored `frontend/node_modules/`、`frontend/dist/`、`.task/`、`bin/`。可用 `wails3 task package:clean` 删除 bundle/ZIP/icon 临时产物；如需完全清理依赖和构建缓存，再显式删除其余 ignored 目录。详细复现、失败输出和缓存边界见 `docs/test/engineering-baseline/basic-ci-and-verification.md`。
 
 `wails3 package GOOS=darwin` 默认生成 `bin/Codex Pulse.app` 与 `bin/Codex Pulse.app.zip`，版本为未发布基线 `0.0.0`、build number 为 `0`。需要验证版本注入时可显式传入三段数字版本和非负整数 build number，例如：
 
