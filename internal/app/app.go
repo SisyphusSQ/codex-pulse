@@ -1,12 +1,22 @@
 package app
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"io/fs"
 
+	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 const appDescription = "Local-first Codex usage and quota desktop companion"
+
+type lifecycleStore interface {
+	Close(context.Context) error
+}
+
+type storeOpener func(context.Context) (lifecycleStore, error)
 
 func applicationOptions(assets fs.FS) application.Options {
 	return application.Options{
@@ -42,11 +52,34 @@ func mainWindowOptions() application.WebviewWindowOptions {
 	}
 }
 
+func openApplicationStore(ctx context.Context) (lifecycleStore, error) {
+	return storesqlite.Open(ctx, storesqlite.Config{})
+}
+
+func runWithStore(ctx context.Context, openStore storeOpener, runApplication func() error) (returnErr error) {
+	store, err := openStore(ctx)
+	if err != nil {
+		return fmt.Errorf("open application SQLite store: %w", err)
+	}
+	defer func() {
+		closeErr := store.Close(context.WithoutCancel(ctx))
+		if closeErr != nil {
+			closeErr = fmt.Errorf("close application SQLite store: %w", closeErr)
+		}
+		returnErr = errors.Join(returnErr, closeErr)
+	}()
+
+	return runApplication()
+}
+
 // Run composes and starts the desktop application. The call blocks until the
 // application exits and returns Wails startup or shutdown failures to main.
 func Run(assets fs.FS) error {
-	desktopApp := application.New(applicationOptions(assets))
-	desktopApp.Window.NewWithOptions(mainWindowOptions())
+	ctx := context.Background()
+	return runWithStore(ctx, openApplicationStore, func() error {
+		desktopApp := application.New(applicationOptions(assets))
+		desktopApp.Window.NewWithOptions(mainWindowOptions())
 
-	return desktopApp.Run()
+		return desktopApp.Run()
+	})
 }

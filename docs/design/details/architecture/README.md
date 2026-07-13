@@ -24,7 +24,7 @@ flowchart LR
 - `internal/codex/quota`：本地 JSONL rate limits 与默认启用、可关闭的 `wham/usage` / reset credits；不接入 app-server。
 - `internal/indexer`：识别完整 JSONL 行、生成幂等结构化事实并提交游标。
 - `internal/scheduler`：分数据源周期、失败退避、前后台优先级和扫描预算。
-- `internal/store`：SQLite facts、current projection、daily rollup、source cursor 和 job run。
+- `internal/store/sqlite`：桌面进程唯一 SQLite 连接面，负责应用数据路径、WAL/pragma 读回、有界单写队列、独立只读池和 drain/close；上层 `internal/store` repository 后续承载 facts、current projection、daily rollup、source cursor 和 job run。
 - `internal/pricing`：版本化 pricing catalog 和本地 override。
 - `internal/privacy`：路径/remote 脱敏和敏感字段过滤。
 - `internal/health`：最近 24 小时运行指标、health event 和 Data Health 查询。
@@ -96,7 +96,7 @@ flowchart LR
 - Settings：Codex home、在线 quota、隐私、价格表、刷新和更新。
 - Data Health：从本机状态下钻，不作为独立主导航项。
 
-平台 tray、更新器、签名、透明窗口和系统目录通过 adapter 隔离，避免 Vue 组件与 macOS API 直接绑定。
+平台 tray、更新器、签名、透明窗口和系统目录通过 adapter 隔离，避免 Vue 组件与 macOS API 直接绑定。`internal/app.Run` 同样是 SQLite 生命周期装配边界：进程启动只打开一个 Store，Wails 退出后先 drain 已接受写入，再关闭连接。
 
 ### Liquid Glass 实现边界
 
@@ -127,7 +127,7 @@ flowchart LR
 
 ## 本机数据目录
 
-macOS 暂定使用：
+macOS v0.1 固定使用：
 
 ```text
 ~/Library/Application Support/Codex Pulse/
@@ -137,6 +137,4 @@ macOS 暂定使用：
   backups/
 ```
 
-应用数据目录只允许当前用户访问。SQLite 不放进 `~/.codex`。onboarding 和 updater 关键偏好独立于主数据库，确保数据库损坏或 migration 失败时仍能恢复和检查更新。
-
-最终路径需要在 v0.1 平台范围确认后固化。
+应用数据目录只允许当前用户访问。`internal/store/sqlite` 通过 `os.UserConfigDir` 解析该路径，将默认 `Codex Pulse` 专用目录收紧为 `0700`、DB 文件收紧为 `0600`，并拒绝最终数据目录或 DB 文件是 symlink。显式自定义 Path 的既有父目录/文件只校验、不 chmod，避免改变调用方共享目录权限。SQLite 不放进 `~/.codex`。onboarding 和 updater 关键偏好独立于主数据库，确保数据库损坏或 migration 失败时仍能恢复和检查更新。
