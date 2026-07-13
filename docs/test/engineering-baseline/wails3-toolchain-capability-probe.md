@@ -156,7 +156,8 @@ xcrun --sdk macosx --show-sdk-version
 env GOBIN="$TOOL_ROOT/bin" \
   go install "github.com/wailsapp/wails/v3/cmd/wails3@$WAILS_VERSION"
 
-test "$(wails3 version)" = "$WAILS_VERSION"
+WAILS_VERSION_ACTUAL="$(wails3 version 2>&1)"
+test "$WAILS_VERSION_ACTUAL" = "$WAILS_VERSION"
 go version -m "$TOOL_ROOT/bin/wails3"
 wails3 doctor -json
 ```
@@ -164,6 +165,7 @@ wails3 doctor -json
 预期结果：
 
 - host、Go 和 Wails binary 均为 darwin/arm64。
+- 当前 CLI 把 `version` 文本写到 stderr；必须先通过独立赋值使用 `2>&1` 捕获文本并保留 CLI 退出状态，再比较精确版本。
 - `go version -m` 显示 CLI module 精确为 `v3.0.0-alpha2.117`。
 - doctor 的 required desktop dependencies ready，`diagnostics` 为空；Docker、full Xcode、签名身份不是本卡 desktop blocker。
 
@@ -355,6 +357,7 @@ make harness-verify
 | 失败点 | 本次最小复现 | 根因 | 恢复 / 重跑方式 |
 | --- | --- | --- | --- |
 | 首次 `go test ./...` 失败 | `pattern all:frontend/dist: no matching files found` | `main.go` 通过 `go:embed` 要求 frontend dist 已存在 | 先生成 bindings，再执行 frontend build，最后运行 Go test |
+| `$(wails3 version)` 断言为空 | CLI exit 0 且终端可见版本，但命令替换结果为空 | 当前 CLI 把版本文本写到 stderr，命令替换默认只捕获 stdout | 先独立赋值 `WAILS_VERSION_ACTUAL="$(wails3 version 2>&1)"`，保留 CLI 退出状态后再比较精确版本 |
 | 未生成 bindings 就执行 Vite build | typed events plugin 报 event bindings module not found | generator 尚未创建 `eventcreate.ts` | 先执行 `wails3 generate bindings -clean=true -ts -i` |
 | `xcodebuild -version` 不可用 | active developer directory 指向 CommandLineTools | 未安装 / 未激活 full Xcode | desktop path 使用 CLT；只有进入签名、notarization 或 iOS 范围时才升级为 blocker |
 | 上游 test linker warning | SDK 26 object 比测试的低 deployment target 新 | 上游 cgo target 与当前 SDK 的组合 warning | 保留 warning；M1-E2 统一项目 target 为 15.0 后重跑，不修改上游 module cache |
