@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 
+	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -53,7 +54,46 @@ func mainWindowOptions() application.WebviewWindowOptions {
 }
 
 func openApplicationStore(ctx context.Context) (lifecycleStore, error) {
-	return storesqlite.Open(ctx, storesqlite.Config{})
+	return openConfiguredStore(ctx, storesqlite.Config{})
+}
+
+func openConfiguredStore(ctx context.Context, config storesqlite.Config) (lifecycleStore, error) {
+	database, err := openBootstrappedStore(
+		ctx,
+		func(ctx context.Context) (*storesqlite.Store, error) {
+			return storesqlite.Open(ctx, config)
+		},
+		func(ctx context.Context, database *storesqlite.Store) error {
+			if err := factstore.NewRepository(database).EnsureCoreSchema(ctx); err != nil {
+				return fmt.Errorf("ensure application core schema: %w", err)
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return database, nil
+}
+
+func openBootstrappedStore[T lifecycleStore](
+	ctx context.Context,
+	open func(context.Context) (T, error),
+	bootstrap func(context.Context, T) error,
+) (T, error) {
+	var zero T
+	store, err := open(ctx)
+	if err != nil {
+		return zero, err
+	}
+	if err := bootstrap(ctx, store); err != nil {
+		closeErr := store.Close(context.WithoutCancel(ctx))
+		if closeErr != nil {
+			closeErr = fmt.Errorf("close application SQLite store after schema failure: %w", closeErr)
+		}
+		return zero, errors.Join(err, closeErr)
+	}
+	return store, nil
 }
 
 func runWithStore(ctx context.Context, openStore storeOpener, runApplication func() error) (returnErr error) {

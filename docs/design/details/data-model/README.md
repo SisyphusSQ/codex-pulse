@@ -28,12 +28,24 @@
 
 ## Session 与 Turn
 
-- `projects(project_id, display_name, root_path, git_remote_sanitized, created_at_ms, updated_at_ms)`
-- `sessions(session_id, provider, originator, source_kind, model_provider, initial_cwd, project_id, cli_version, created_at_ms, first_seen_at_ms, last_seen_at_ms)`
-- `session_current(session_id, thread_name, thread_name_updated_at_ms, active_turn_id, current_model, current_cwd, last_activity_at_ms, updated_at_ms)`
-- `turns(turn_id, session_id, started_at_ms, completed_at_ms, outcome, model, reasoning_effort, cwd, project_id, source_generation, start_offset, complete_offset)`
+TOO-247 固化六张 `STRICT` 核心表。所有时间为 UTC epoch milliseconds，来源 offset 和 generation 为非负整数。
 
-`sessions` 只存身份和稳定 metadata。重复 `session_meta` 使用 upsert 补充信息，不能重置 `created_at_ms`。thread name、当前模型、最后活动和 active turn 属于可变投影，放在 `session_current`。Session 完成后仍可恢复，因此不使用永久 `ended_at`。
+| 表 | 主键 / 唯一键 | 责任 |
+| --- | --- | --- |
+| `projects` | `project_id` | 保存脱敏项目维度：`display_name`、`root_path`、可选 `git_remote_sanitized` 和创建/更新时间。 |
+| `sessions` | `session_id` | 保存 provider、source kind、初始 cwd、可选项目等稳定 metadata，以及 created/first-seen/last-seen 时间。 |
+| `turns` | `turn_id`；`(session_id, source_generation, start_offset)` 唯一 | 保存 turn 生命周期、模型/推理强度、可选项目和可追溯来源位置。 |
+| `session_current` | `session_id` | 保存 thread name、active turn、当前模型/cwd 和最后活动时间等可重建投影。 |
+| `turn_usage` | `turn_id` | 保存 turn 当前 token snapshot、final 标记、`(source_generation, source_offset)` 观测位置和置信度。 |
+| `session_usage_current` | `session_id` | 保存 session 累计计数器的 epoch、当前 snapshot、`(source_generation, source_offset)` 来源位置和 counter state。 |
+
+`sessions.project_id`、`turns.project_id` 删除项目时置空；session 删除会级联清理 turn 和当前投影，turn 删除会级联清理 usage。`session_current.active_turn_id` 只能引用同一 session 的既有 turn，删除 turn 时置空。一个 `FactBatch` 只允许包含同一 Session 的对象，Usage 的 Session 归属在事务内通过关联 Turn 读回核对；不一致返回 `ErrInvalidRecord` 并整批回滚。Repository 在写入前把缺失引用、跨 session active turn 和 stable identity 冲突归一为 `ErrInvalidRecord`，不把 SQLite driver 文本当业务错误 contract。canonical SQL 同时用 CHECK 保证核心 ID、必填文本和非空 optional 文本不接受空字符串，防止绕过 typed repository 后写入另一套语义。
+
+来源文件实体由 TOO-248 的 `source_files` 建立；本卡在事实层使用 `(session_id, source_generation, start_offset)` 定位一条 turn。generation 只允许前进，同一 generation 下同一 turn 的 start offset 不可变化，且一个来源位置不能映射两个 turn。已完成 turn 只有在更高 generation 同时提供完整 completion tuple 时才切换来源位置；同一来源身份的 non-null 字段冲突返回 `ErrInvalidRecord`，provisional replay 不再改写已完成事实。这样 parser 即使重复扫描或旧 generation 乱序到达，也不会生成重复事实或回退当前来源位置。
+
+`sessions` 只存身份和稳定 metadata。重复 `session_meta` 使用 first-known-wins 补充 optional 字段：首次已提交的非空值成为权威，后续不同的非空值返回 `ErrInvalidRecord`，不会覆盖既有事实；首次提交本身仍是明确的权威来源边界。`created_at_ms` / `first_seen_at_ms` 只向更早收敛，`last_seen_at_ms` 只向更晚推进。项目 metadata 只有 `updated_at_ms` 更大时才更新；同一更新时间的冲突 payload 被拒绝，旧扫描只能补充更早的 `created_at_ms`。
+
+thread name、当前模型、最后活动和 active turn 属于可变投影，放在 `session_current`。thread name 使用自己的 `thread_name_updated_at_ms` 合并：缺失或更旧名称不清空/回退现值，同一字段时间的冲突名称返回 `ErrInvalidRecord`；其他 current 字段按整行 `updated_at_ms` 更新，同一时间的冲突 payload 同样拒绝。Session 完成后仍可恢复，因此不使用永久 `ended_at`。
 
 不持久化 Session status。查询层派生最小活动态：
 
@@ -47,8 +59,8 @@ source freshness 不可用或索引不完整 -> unknown
 
 ## Usage 与 Cost
 
-- `turn_usage(turn_id, observed_at_ms, is_final, input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, context_window, source_offset, confidence, updated_at_ms)`
-- `session_usage_current(session_id, counter_epoch, total_input_tokens, total_cached_tokens, total_output_tokens, total_reasoning_tokens, observed_at_ms, source_offset, counter_state)`
+- `turn_usage(turn_id, observed_at_ms, is_final, input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, context_window, source_generation, source_offset, confidence, updated_at_ms)`
+- `session_usage_current(session_id, counter_epoch, total_input_tokens, total_cached_tokens, total_output_tokens, total_reasoning_tokens, observed_at_ms, source_generation, source_offset, counter_state)`
 - `pricing_versions(pricing_version, effective_at_ms, source, created_at_ms)`
 - `model_prices(pricing_version, model_pattern, input_usd_micros_per_million, cached_usd_micros_per_million, output_usd_micros_per_million)`
 - `turn_costs(turn_id, pricing_version, estimated_usd_micros, pricing_status, calculated_at_ms)`
@@ -56,6 +68,8 @@ source freshness 不可用或索引不完整 -> unknown
 同一 turn 的 `last_token_usage` 会多次更新，因此只 upsert 一条 `turn_usage`。`task_started` 创建 provisional 行，token snapshot 覆盖当前值，`task_complete` 将 `is_final = 1`。历史报表和日聚合只统计 final turn；Dashboard 可单独叠加 active turn 暂估，完成后由同一行替换，不能重复计费。
 
 `session_usage_current` 只用于总量展示、单调性校验和 counter reset 检测，不参与日/周成本求和。累计值下降时开启新的 `counter_epoch`，不能生成负 delta。
+
+所有 token 字段均可为 `NULL`：`NULL` 表示 source 没有提供该值，整数 `0` 表示已观测到真实零。typed repository 以 pointer 保留这个差异。`turn_usage` 按 `(source_generation, source_offset)` 接受严格更新，同 generation 较小 offset 返回 `ErrInvalidRecord`，final snapshot 不能被 provisional snapshot 覆盖；completed Turn 只接受 `is_final = 1` 的 usage，Turn-only completion 会清除既有的同 generation provisional current usage。completion 同批携带 usage 时先保留旧 ordering evidence 完成校验/upsert，再执行 cleanup，equal 冲突或 lower offset 会让 Turn completion 一并回滚。同一 batch 的 turn/usage generation 必须相等，且 usage generation 必须精确等于事务内实际采用的 turn generation，否则整批回滚。Turn 切换到新 generation 时删除旧 generation 的 current usage，typed query 也只连接同 generation snapshot，且不会向 completed Turn 暴露 provisional row；直到新 generation final usage 到达前保持 unknown。`session_usage_current` 按 `(source_generation, counter_epoch, source_offset)` 接受严格更新，新 generation 允许文件 offset 和重建后的 counter epoch 从低值重新开始。相同排序键只允许 payload 完全一致地重放，冲突值返回 `ErrInvalidRecord`，不使用 `>=` 做 last-arrival-wins。
 
 金额统一使用整数微美元，不使用 SQLite `REAL`。Pricing Catalog 更新时由 `turn_usage` 重算 cost，不修改 token 事实；未匹配模型保留 `unpriced`。
 
@@ -106,6 +120,8 @@ turn_usage    = codex:{session_id}:turn:{turn_id}:usage
 
 任何步骤失败都 rollback，事实和 offset 一起保持旧值。文件截断、inode 异常或 parser version 升级时，在新 generation 构建并校验派生事实，原子切换 `active_generation` 后再延迟清理旧 generation。
 
+TOO-247 的 `FactBatch` 在 TOO-246 提供的唯一 writer queue 上按 `projects -> sessions -> turns -> turn_usage -> session_current -> session_usage_current` 写入；任一校验、外键或 SQL 步骤失败都会回滚整批。`Session`、`Turn` 与 `ListTurns` typed query 只从已提交事实读取，列表查询支持 session、项目、模型、来源位置和起始时间范围过滤，并与可选 usage 一次 join 返回。
+
 ## Daily 聚合
 
 - `project_usage_daily(bucket_start_ms, reporting_timezone, project_id, turn_count, input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, total_tokens, estimated_usd_micros, priced_turn_count, unpriced_turn_count, first_activity_at_ms, last_activity_at_ms, rollup_version, updated_at_ms)`
@@ -155,9 +171,17 @@ context 取消在入队前可以直接拒绝。job 一旦被队列接受，`Writ
 
 调用方取消等待不会中止已经开始的关闭。队列满、context 取消、closing/closed、SQLite busy/locked、disk full、read-only、permission、I/O 和 corrupt 都有稳定 sentinel；底层 context 与 driver error 仍保留在 error chain 中，禁止依赖 `database is locked` 等字符串分支。
 
-本基线不创建业务表。下面的事实、投影、游标、migration 和保留策略仍由 TOO-247～250 分卡落地。
+应用打开 Store 后会在同一 writer transaction 中逐对象处理 TOO-247 的六张核心表和六个命名索引：同名对象已存在时先核对 type 与 canonical SQL，缺失时才创建并立即读回。这样 malformed table、同名 view 或错误 index 不会先在后续依赖 DDL 处泄漏普通 driver error；任一不一致都返回 `ErrSchemaContract`，本轮 DDL 一并回滚，Wails 不启动。这个 bootstrap 只处理新库和完全匹配的既有库，不伪装成通用 migration：旧库升级、backup hook、版本迁移和重建流程仍由 TOO-249 落地。
 
-必要索引至少包括：`turns(session_id, completed_at_ms, started_at_ms)`、`turns(project_id, completed_at_ms)`、`turns(model, completed_at_ms)`、`session_current(last_activity_at_ms)`、`quota_observations(account_scope, window_kind, last_observed_at_ms)`、`job_runs(job_type, started_at_ms)`。
+当前核心索引为：
+
+- 唯一 `turns(session_id, source_generation, start_offset)`，用于来源去重和定位。
+- `turns(session_id, started_at_ms DESC, turn_id DESC, completed_at_ms)`，用于 session 时间列表、稳定排序和生命周期覆盖。
+- `turns(project_id, started_at_ms DESC, turn_id DESC, completed_at_ms)` 与 `turns(model, started_at_ms DESC, turn_id DESC, completed_at_ms)`，用于项目/模型时间列表并避免额外临时排序。
+- `session_current(last_activity_at_ms)`，用于最近 session 投影。
+- `turn_usage(observed_at_ms, is_final)`，用于按观测时间筛选 final usage。
+
+quota、job 和 source 运行态索引由对应后续 Execution 卡创建。核心表不包含 prompt、response、tool output、原始 JSONL、鉴权 token 或内容 hash 字段；schema contract 测试会显式扫描并拒绝这类持久化面。
 
 ## 保留策略
 
