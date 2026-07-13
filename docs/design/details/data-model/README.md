@@ -123,6 +123,40 @@ turn_usage    = codex:{session_id}:turn:{turn_id}:usage
 - 启用 `foreign_keys=ON`、WAL、`synchronous=NORMAL`、`busy_timeout=5000`。
 - 使用单写入队列与独立只读连接。
 
+### 连接与关闭基线
+
+TOO-246 已把上述约定固化在 `internal/store/sqlite`。应用启动时由 `internal/app.Run` 打开一个 Store，Store 内部持有一个物理 writer connection 和独立 read-only pool；业务 repository 不得自行打开第二条写路径。SQLite driver 固定为 `github.com/mattn/go-sqlite3 v1.14.48`，因此构建和测试要求 `CGO_ENABLED=1`。
+
+空配置的实际默认值：
+
+| 项 | 默认值 | 启动期验证 |
+| --- | --- | --- |
+| 数据库 | `~/Library/Application Support/Codex Pulse/codex-pulse.db` | 解析绝对路径；默认专用目录拒绝 symlink，权限收紧并读回为 `0700`；DB 文件为 `0600` |
+| writer | `mode=rwc`、private cache、一个 physical connection | `journal_mode=wal`、`foreign_keys=1`、`synchronous=1 (NORMAL)`、`busy_timeout=5000`、`query_only=0` |
+| readers | `mode=ro`、private cache、最多 4 个 physical connections | `journal_mode=wal`、`foreign_keys=1`、`synchronous=1 (NORMAL)`、`busy_timeout=5000`、`query_only=1` |
+| 写队列 | 容量 128 | 非阻塞 admission；满时返回可判定的 `ErrQueueFull` |
+
+writer transaction 使用 `BEGIN IMMEDIATE`，由唯一 worker 按 FIFO 创建、提交或回滚；callback 只能得到不暴露 `Commit` / `Rollback` 的 `WriteTx`。读 callback 只能得到 query surface，底层 DSN 同时使用 `mode=ro` 与 `query_only=ON`，防止把只读入口变成旁路写入。
+
+空 Path 表示 Store 自己管理上述默认专用目录，可以收紧既有默认目录和 DB 权限。显式 Path 的既有父目录与 DB 仍归调用方所有：Store 只接受已分别为 `0700` / `0600` 的路径，不会静默 chmod 共享目录或文件；若显式路径的最终目录尚不存在，Store 才创建新的私有目录。
+
+context 取消在入队前可以直接拒绝。job 一旦被队列接受，`Write` 必须等待 worker 的 authoritative result：排队取消会在开始事务前返回取消，执行中取消会 rollback；如果 Commit 已经赢得竞争并成功，则调用方收到成功而不是猜测性的取消，避免“返回已取消但事实已落盘”后重试产生重复数据。
+
+`Close` 的固定顺序是：
+
+```text
+原子切换为 closing 并拒绝新读写
+    -> 排空切换前已接受的 writer queue
+    -> 等待在途 read callback 返回
+    -> 关闭 read pool
+    -> 关闭 writer connection
+    -> 切换为 closed 并唤醒所有 Close 等待者
+```
+
+调用方取消等待不会中止已经开始的关闭。队列满、context 取消、closing/closed、SQLite busy/locked、disk full、read-only、permission、I/O 和 corrupt 都有稳定 sentinel；底层 context 与 driver error 仍保留在 error chain 中，禁止依赖 `database is locked` 等字符串分支。
+
+本基线不创建业务表。下面的事实、投影、游标、migration 和保留策略仍由 TOO-247～250 分卡落地。
+
 必要索引至少包括：`turns(session_id, completed_at_ms, started_at_ms)`、`turns(project_id, completed_at_ms)`、`turns(model, completed_at_ms)`、`session_current(last_activity_at_ms)`、`quota_observations(account_scope, window_kind, last_observed_at_ms)`、`job_runs(job_type, started_at_ms)`。
 
 ## 保留策略
