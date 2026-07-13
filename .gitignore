@@ -60,6 +60,9 @@ temp/
 *.tmp
 
 # Harness local auxiliary run surfaces
+.agents/plans/*
+!.agents/plans/TEMPLATE.md
+!.agents/plans/EXAMPLE-implementation.md
 .agents/state/*
 !.agents/state/TEMPLATE.md
 .agents/runs/*
