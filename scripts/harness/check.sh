@@ -59,7 +59,7 @@ required_skill_frontmatter=(
 for item in "${required_skill_frontmatter[@]}"; do
   path="${item%%|*}"
   pattern="${item#*|}"
-  if ! rg -Fq -- "---" "$path" || ! rg -Fq "$pattern" "$path" || ! rg -Fq "description:" "$path"; then
+  if ! grep -R -Fq -- "---" "$path" || ! grep -R -Fq "$pattern" "$path" || ! grep -R -Fq "description:" "$path"; then
     echo "Skill frontmatter is incomplete: $path" >&2
     exit 1
   fi
@@ -92,13 +92,13 @@ required_skill_patterns=(
 for item in "${required_skill_patterns[@]}"; do
   path="${item%%|*}"
   pattern="${item#*|}"
-  if ! rg -Fq -- "$pattern" "$path"; then
+  if ! grep -R -Fq -- "$pattern" "$path"; then
     echo "$path missing required skill pattern: $pattern" >&2
     exit 1
   fi
 done
 
-if rg -n "DBBridge|db_bridge_test|/Users/suqing|TEA-" .agents/skills >/dev/null; then
+if grep -R -En "DBBridge|db_bridge_test|/Users/suqing|TEA-" .agents/skills >/dev/null; then
   echo "Default harness skills must not contain DBBridge-specific constants" >&2
   exit 1
 fi
@@ -120,7 +120,7 @@ required_make_targets=(
 )
 
 for target in "${required_make_targets[@]}"; do
-  if ! rg -q "^${target}:" Makefile; then
+  if ! grep -R -q "^${target}:" Makefile; then
     echo "Makefile missing target: $target" >&2
     exit 1
   fi
@@ -144,18 +144,18 @@ required_gitignore_patterns=(
 )
 
 for pattern in "${required_gitignore_patterns[@]}"; do
-  if ! rg -Fq "$pattern" .gitignore; then
+  if ! grep -R -Fq "$pattern" .gitignore; then
     echo ".gitignore missing required pattern: $pattern" >&2
     exit 1
   fi
 done
 
-if ! rg -Fq "EXAMPLE-implementation.md" README.md AGENTS.md; then
+if ! grep -R -Fq "EXAMPLE-implementation.md" README.md AGENTS.md; then
   echo "Base harness output should point readers to EXAMPLE-implementation.md" >&2
   exit 1
 fi
 
-if rg -n "^docs/test" .gitignore >/dev/null; then
+if grep -R -n "^docs/test" .gitignore >/dev/null; then
   echo ".gitignore should not ignore docs/test runbook documents" >&2
   exit 1
 fi
@@ -180,7 +180,7 @@ if [[ -f ".cursor/rules/harness.mdc" ]]; then
   )
 
   for pattern in "${required_cursor_rule_patterns[@]}"; do
-    if ! rg -Fq "$pattern" ".cursor/rules/harness.mdc"; then
+    if ! grep -R -Fq "$pattern" ".cursor/rules/harness.mdc"; then
       echo ".cursor/rules/harness.mdc missing required pattern: $pattern" >&2
       exit 1
     fi
@@ -220,7 +220,7 @@ required_control_plane_patterns=(
 )
 
 for pattern in "${required_control_plane_patterns[@]}"; do
-  if ! rg -Fq "$pattern" docs/harness/control-plane.md; then
+  if ! grep -R -Fq "$pattern" docs/harness/control-plane.md; then
     echo "docs/harness/control-plane.md missing required pattern: $pattern" >&2
     exit 1
   fi
@@ -251,7 +251,7 @@ required_issue_workflow_patterns=(
 )
 
 for pattern in "${required_issue_workflow_patterns[@]}"; do
-  if ! rg -Fq "$pattern" docs/harness/issue-workflow.md; then
+  if ! grep -R -Fq "$pattern" docs/harness/issue-workflow.md; then
     echo "docs/harness/issue-workflow.md missing required pattern: $pattern" >&2
     exit 1
   fi
@@ -281,7 +281,7 @@ required_repo_issue_patterns=(
 )
 
 for pattern in "${required_repo_issue_patterns[@]}"; do
-  if ! rg -Fq "$pattern" docs/issues/README.md docs/issues/TEMPLATE.md; then
+  if ! grep -R -Fq "$pattern" docs/issues/README.md docs/issues/TEMPLATE.md; then
     echo "docs/issues templates missing required pattern: $pattern" >&2
     exit 1
   fi
@@ -315,7 +315,7 @@ required_project_constraints_patterns=(
 )
 
 for pattern in "${required_project_constraints_patterns[@]}"; do
-  if ! rg -Fq "$pattern" docs/harness/project-constraints.md; then
+  if ! grep -R -Fq "$pattern" docs/harness/project-constraints.md; then
     echo "docs/harness/project-constraints.md missing required pattern: $pattern" >&2
     exit 1
   fi
@@ -335,7 +335,7 @@ required_test_runbook_patterns=(
 )
 
 for pattern in "${required_test_runbook_patterns[@]}"; do
-  if ! rg -Fq "$pattern" docs/test/RUNBOOK_TEMPLATE.md; then
+  if ! grep -R -Fq "$pattern" docs/test/RUNBOOK_TEMPLATE.md; then
     echo "docs/test/RUNBOOK_TEMPLATE.md missing required pattern: $pattern" >&2
     exit 1
   fi
@@ -357,13 +357,13 @@ required_linear_profile_patterns=(
 )
 
 for pattern in "${required_linear_profile_patterns[@]}"; do
-  if ! rg -Fq "$pattern" docs/harness/linear.md; then
+  if ! grep -R -Fq "$pattern" docs/harness/linear.md; then
     echo "docs/harness/linear.md missing required pattern: $pattern" >&2
     exit 1
   fi
 done
 
-if rg -Fq "docs/harness/prompt-templates.md" .agents/PLANS.md; then
+if grep -R -Fq "docs/harness/prompt-templates.md" .agents/PLANS.md; then
   echo ".agents/PLANS.md should not reference docs/harness/prompt-templates.md anymore" >&2
   exit 1
 fi
@@ -405,14 +405,14 @@ required_plans_patterns=(
 )
 
 for pattern in "${required_plans_patterns[@]}"; do
-  if ! rg -Fq "$pattern" .agents/PLANS.md; then
+  if ! grep -R -Fq "$pattern" .agents/PLANS.md; then
     echo ".agents/PLANS.md missing required section or keyword: $pattern" >&2
     exit 1
   fi
 done
 
 for required in "issue_provider" "issue_project" "current_issue_state" "recovery_point" "next_action" "state_ref" "latest_run_ref" "master_run_ref"; do
-  if ! rg -Fq "$required" .agents/plans/TEMPLATE.md; then
+  if ! grep -R -Fq "$required" .agents/plans/TEMPLATE.md; then
     echo ".agents/plans/TEMPLATE.md missing required field: $required" >&2
     exit 1
   fi
@@ -458,7 +458,7 @@ required_plan_template_patterns=(
 )
 
 for pattern in "${required_plan_template_patterns[@]}"; do
-  if ! rg -Fq "$pattern" .agents/plans/TEMPLATE.md; then
+  if ! grep -R -Fq "$pattern" .agents/plans/TEMPLATE.md; then
     echo ".agents/plans/TEMPLATE.md missing required pattern: $pattern" >&2
     exit 1
   fi
@@ -480,7 +480,7 @@ required_example_patterns=(
 )
 
 for pattern in "${required_example_patterns[@]}"; do
-  if ! rg -Fq "$pattern" .agents/plans/EXAMPLE-implementation.md; then
+  if ! grep -R -Fq "$pattern" .agents/plans/EXAMPLE-implementation.md; then
     echo ".agents/plans/EXAMPLE-implementation.md missing required pattern: $pattern" >&2
     exit 1
   fi
@@ -502,7 +502,7 @@ required_state_run_patterns=(
 )
 
 for pattern in "${required_state_run_patterns[@]}"; do
-  if ! rg -Fq "$pattern" .agents/state/TEMPLATE.md .agents/runs/TEMPLATE.md; then
+  if ! grep -R -Fq "$pattern" .agents/state/TEMPLATE.md .agents/runs/TEMPLATE.md; then
     echo "state/run templates missing required pattern: $pattern" >&2
     exit 1
   fi
@@ -520,7 +520,7 @@ required_powershell_gate_patterns=(
 )
 
 for pattern in "${required_powershell_gate_patterns[@]}"; do
-  if ! rg -Fq "$pattern" scripts/harness/common.ps1 scripts/harness/review_gate.ps1 scripts/harness/check.ps1; then
+  if ! grep -R -Fq "$pattern" scripts/harness/common.ps1 scripts/harness/review_gate.ps1 scripts/harness/check.ps1; then
     echo "PowerShell harness gates missing required pattern: $pattern" >&2
     exit 1
   fi
@@ -566,7 +566,7 @@ if [[ "$has_optional_bundle" -eq 1 ]]; then
 
   detected_mode=""
   for path in "${optional_mode_files[@]}"; do
-    if ! rg -qx "Mode: (placeholder|full)" "$path"; then
+    if ! grep -R -Eqx "Mode: (placeholder|full)" "$path"; then
       echo "Optional harness file missing valid mode marker: $path" >&2
       exit 1
     fi
@@ -581,13 +581,13 @@ if [[ "$has_optional_bundle" -eq 1 ]]; then
   done
 
   for pattern in "orchestrator-thread.md" "issue-standard-workflow.md" "loop-codex.md" "loop-automation.md" "maintenance-loop.md"; do
-    if ! rg -Fq "$pattern" ".agents/prompts/README.md"; then
+    if ! grep -R -Fq "$pattern" ".agents/prompts/README.md"; then
       echo ".agents/prompts/README.md missing prompt reference: $pattern" >&2
       exit 1
     fi
   done
 
-  if ! rg -Fq "docs/harness/project-constraints.md" ".agents/guides/linter.md"; then
+  if ! grep -R -Fq "docs/harness/project-constraints.md" ".agents/guides/linter.md"; then
     echo ".agents/guides/linter.md should point project-level mechanical constraints back to docs/harness/project-constraints.md" >&2
     exit 1
   fi
@@ -605,7 +605,7 @@ if [[ "$has_optional_bundle" -eq 1 ]]; then
     )
 
     for pattern in "${required_orchestrator_patterns[@]}"; do
-      if ! rg -Fq "$pattern" ".agents/prompts/orchestrator-thread.md"; then
+      if ! grep -R -Fq "$pattern" ".agents/prompts/orchestrator-thread.md"; then
         echo ".agents/prompts/orchestrator-thread.md missing required pattern: $pattern" >&2
         exit 1
       fi
@@ -637,7 +637,7 @@ if [[ "$has_optional_bundle" -eq 1 ]]; then
     )
 
     for pattern in "${required_issue_workflow_patterns[@]}"; do
-      if ! rg -Fq "$pattern" ".agents/prompts/issue-standard-workflow.md"; then
+      if ! grep -R -Fq "$pattern" ".agents/prompts/issue-standard-workflow.md"; then
         echo ".agents/prompts/issue-standard-workflow.md missing required pattern: $pattern" >&2
         exit 1
       fi
@@ -659,7 +659,7 @@ if [[ "$has_optional_bundle" -eq 1 ]]; then
     )
 
     for pattern in "${required_maintenance_patterns[@]}"; do
-      if ! rg -Fq "$pattern" ".agents/prompts/maintenance-loop.md"; then
+      if ! grep -R -Fq "$pattern" ".agents/prompts/maintenance-loop.md"; then
         echo ".agents/prompts/maintenance-loop.md missing required pattern: $pattern" >&2
         exit 1
       fi

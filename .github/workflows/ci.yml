@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: macOS 15 arm64 verification
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22.13.0'
+          package-manager-cache: false
+
+      - name: Install frontend dependencies from lockfile
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install exact Wails CLI
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha2.117
+          echo "$RUNNER_TEMP/bin" >>"$GITHUB_PATH"
+
+      - name: Run unified verification
+        run: make verify
+
+      - name: Ensure repository remains clean
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+          status=$(git status --porcelain --untracked-files=all)
+          if [ -n "$status" ]; then
+            printf 'verification left repository changes:\n%s\n' "$status" >&2
+            exit 1
+          fi
