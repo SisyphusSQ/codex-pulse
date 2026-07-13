@@ -1,0 +1,37 @@
+version: "3"
+
+includes:
+  common: ../Taskfile.yml
+
+tasks:
+  build:
+    summary: 在 macOS 上构建 arm64 应用二进制
+    deps:
+      - task: common:go:mod:tidy
+      - task: common:build:frontend
+        vars:
+          DEV: '{{.DEV}}'
+    preconditions:
+      - sh: test '{{.ARCH | default "arm64"}}' = arm64
+        msg: Codex Pulse v0.1 只支持 macOS arm64
+    cmds:
+      - mkdir -p "{{.BIN_DIR}}"
+      - go build {{.BUILD_FLAGS}} -o "{{.OUTPUT}}"
+    vars:
+      BUILD_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production -trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
+      OUTPUT: '{{.OUTPUT | default (printf "%s/%s" .BIN_DIR .APP_NAME)}}'
+    env:
+      GOOS: darwin
+      GOARCH: '{{.ARCH | default "arm64"}}'
+      CGO_ENABLED: 1
+      CGO_CFLAGS: -mmacosx-version-min=15.0
+      CGO_LDFLAGS: -mmacosx-version-min=15.0
+      MACOSX_DEPLOYMENT_TARGET: "15.0"
+
+  run:
+    summary: 直接运行 macOS arm64 开发二进制
+    preconditions:
+      - sh: test -x "{{.BIN_DIR}}/{{.APP_NAME}}"
+        msg: 未找到开发二进制，请先执行 wails3 build DEV=true ARCH=arm64
+    cmds:
+      - '"{{.BIN_DIR}}/{{.APP_NAME}}"'
