@@ -1,8 +1,6 @@
 version: "3"
 
 vars:
-  APP_NAME: codex-pulse
-  BIN_DIR: bin
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
 
 includes:
@@ -22,7 +20,43 @@ tasks:
         vars:
           ARCH: '{{.ARCH | default "arm64"}}'
           DEV: '{{.DEV}}'
-          OUTPUT: '{{.OUTPUT}}'
+
+  package:
+    summary: 构建、验证并归档 macOS 15+ arm64 应用 bundle
+    preconditions:
+      - sh: test "{{OS}}" = darwin
+        msg: Codex Pulse v0.1 只支持在 macOS 上打包
+      - sh: test "$CODEX_PULSE_GOOS" = darwin
+        msg: Codex Pulse v0.1 package 只接受 GOOS=darwin
+    cmds:
+      - task: darwin:package
+        vars:
+          ARCH: '{{.ARCH | default "arm64"}}'
+          APP_VERSION: '{{.APP_VERSION | default "0.0.0"}}'
+          BUILD_NUMBER: '{{.BUILD_NUMBER | default "0"}}'
+    env:
+      CODEX_PULSE_GOOS: '{{.GOOS | default "darwin"}}'
+
+  package:verify:
+    summary: 验证 macOS arm64 bundle、ad-hoc 签名与单顶层 ZIP
+    cmds:
+      - task: darwin:package:verify
+        vars:
+          APP_VERSION: '{{.APP_VERSION | default "0.0.0"}}'
+          BUILD_NUMBER: '{{.BUILD_NUMBER | default "0"}}'
+
+  package:archive:
+    summary: 从已签名 bundle 重新生成并验证单顶层 ZIP
+    cmds:
+      - task: darwin:package:archive
+        vars:
+          APP_VERSION: '{{.APP_VERSION | default "0.0.0"}}'
+          BUILD_NUMBER: '{{.BUILD_NUMBER | default "0"}}'
+
+  package:clean:
+    summary: 删除本地 macOS bundle、ZIP 与临时图标产物
+    cmds:
+      - task: darwin:package:clean
 
   run:
     summary: 运行已构建的 macOS 开发应用
