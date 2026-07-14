@@ -125,8 +125,8 @@ func TestRunWithStorePreservesRunAndCloseFailures(t *testing.T) {
 	}
 }
 
-// 测试 openConfiguredStore 在新建和重开场景下先完成 Core Schema bootstrap。
-func TestOpenConfiguredStoreBootstrapsCoreSchemaAndReopens(t *testing.T) {
+// 测试 openConfiguredStore 在新建和重开场景下先完成 Application Schema bootstrap。
+func TestOpenConfiguredStoreBootstrapsApplicationSchemaAndReopens(t *testing.T) {
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
 		t.Fatalf("secure temp directory: %v", err)
@@ -149,15 +149,17 @@ func TestOpenConfiguredStoreBootstrapsCoreSchemaAndReopens(t *testing.T) {
 				SELECT COUNT(*) FROM sqlite_schema
 				WHERE type = 'table' AND name IN (
 					'projects', 'sessions', 'turns', 'session_current',
-					'turn_usage', 'session_usage_current'
+					'turn_usage', 'session_usage_current',
+					'source_files', 'source_state', 'source_attempts',
+					'job_runs', 'health_events', 'pricing_versions', 'model_prices'
 				)
 			`).Scan(&tables)
 		})
 		if err != nil {
 			t.Fatalf("inspect bootstrap schema: %v", err)
 		}
-		if tables != 6 {
-			t.Fatalf("core table count = %d, want 6", tables)
+		if tables != 13 {
+			t.Fatalf("application table count = %d, want 13", tables)
 		}
 		if err := lifecycle.Close(context.Background()); err != nil {
 			t.Fatalf("Close() attempt %d error = %v", attempt+1, err)
@@ -182,6 +184,40 @@ func TestOpenConfiguredStoreRejectsIncompatibleSchema(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("create incompatible schema: %v", err)
+	}
+	if err := database.Close(context.Background()); err != nil {
+		t.Fatalf("close setup database: %v", err)
+	}
+
+	lifecycle, err := openConfiguredStore(context.Background(), config)
+	if lifecycle != nil {
+		t.Fatalf("openConfiguredStore() lifecycle = %T, want nil", lifecycle)
+	}
+	if !errors.Is(err, factstore.ErrSchemaContract) {
+		t.Fatalf("openConfiguredStore() error = %v, want ErrSchemaContract", err)
+	}
+}
+
+// 测试 openConfiguredStore 在 core 已存在但 runtime contract 不兼容时拒绝启动。
+func TestOpenConfiguredStoreRejectsIncompatibleRuntimeSchema(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatalf("secure temp directory: %v", err)
+	}
+	config := storesqlite.Config{Path: filepath.Join(directory, "incompatible-runtime.db")}
+	database, err := storesqlite.Open(context.Background(), config)
+	if err != nil {
+		t.Fatalf("sqlite.Open() error = %v", err)
+	}
+	if err := factstore.NewRepository(database).EnsureCoreSchema(context.Background()); err != nil {
+		t.Fatalf("EnsureCoreSchema() error = %v", err)
+	}
+	err = database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		_, err := transaction.ExecContext(ctx, `CREATE TABLE source_files (source_file_id TEXT PRIMARY KEY) STRICT`)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("create incompatible runtime schema: %v", err)
 	}
 	if err := database.Close(context.Background()); err != nil {
 		t.Fatalf("close setup database: %v", err)

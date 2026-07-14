@@ -24,7 +24,7 @@
 | 外部事实源 | Codex 维护，Tracker 不复制 | JSONL、`session_index.jsonl` |
 | 持久事实 | 长期保留、可审计的结构化数据 | `sessions`、`turns`、`turn_usage`、`quota_observations` |
 | 当前与聚合投影 | 可重建，服务 UI 快速查询 | `session_current`、`quota_current`、daily usage |
-| 运行状态 | 游标、调度和采集健康 | `source_files`、`source_state`、`source_attempts`、`job_runs` |
+| 运行状态 | 游标、调度、采集健康与价格目录 | `source_files`、`source_state`、`source_attempts`、`job_runs`、`health_events`、`pricing_versions` |
 
 ## Session 与 Turn
 
@@ -61,8 +61,8 @@ source freshness 不可用或索引不完整 -> unknown
 
 - `turn_usage(turn_id, observed_at_ms, is_final, input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, context_window, source_generation, source_offset, confidence, updated_at_ms)`
 - `session_usage_current(session_id, counter_epoch, total_input_tokens, total_cached_tokens, total_output_tokens, total_reasoning_tokens, observed_at_ms, source_generation, source_offset, counter_state)`
-- `pricing_versions(pricing_version, effective_at_ms, source, created_at_ms)`
-- `model_prices(pricing_version, model_pattern, input_usd_micros_per_million, cached_usd_micros_per_million, output_usd_micros_per_million)`
+- `pricing_versions(pricing_version, source, currency, effective_from_ms, created_at_ms)`
+- `model_prices(pricing_version, match_kind, model_pattern, priority, input_micros_per_million, cached_input_micros_per_million, output_micros_per_million)`
 - `turn_costs(turn_id, pricing_version, estimated_usd_micros, pricing_status, calculated_at_ms)`
 
 同一 turn 的 `last_token_usage` 会多次更新，因此只 upsert 一条 `turn_usage`。`task_started` 创建 provisional 行，token snapshot 覆盖当前值，`task_complete` 将 `is_final = 1`。历史报表和日聚合只统计 final turn；Dashboard 可单独叠加 active turn 暂估，完成后由同一行替换，不能重复计费。
@@ -71,7 +71,11 @@ source freshness 不可用或索引不完整 -> unknown
 
 所有 token 字段均可为 `NULL`：`NULL` 表示 source 没有提供该值，整数 `0` 表示已观测到真实零。typed repository 以 pointer 保留这个差异。`turn_usage` 按 `(source_generation, source_offset)` 接受严格更新，同 generation 较小 offset 返回 `ErrInvalidRecord`，final snapshot 不能被 provisional snapshot 覆盖；completed Turn 只接受 `is_final = 1` 的 usage，Turn-only completion 会清除既有的同 generation provisional current usage。completion 同批携带 usage 时先保留旧 ordering evidence 完成校验/upsert，再执行 cleanup，equal 冲突或 lower offset 会让 Turn completion 一并回滚。同一 batch 的 turn/usage generation 必须相等，且 usage generation 必须精确等于事务内实际采用的 turn generation，否则整批回滚。Turn 切换到新 generation 时删除旧 generation 的 current usage，typed query 也只连接同 generation snapshot，且不会向 completed Turn 暴露 provisional row；直到新 generation final usage 到达前保持 unknown。`session_usage_current` 按 `(source_generation, counter_epoch, source_offset)` 接受严格更新，新 generation 允许文件 offset 和重建后的 counter epoch 从低值重新开始。相同排序键只允许 payload 完全一致地重放，冲突值返回 `ErrInvalidRecord`，不使用 `>=` 做 last-arrival-wins。
 
-金额统一使用整数微美元，不使用 SQLite `REAL`。Pricing Catalog 更新时由 `turn_usage` 重算 cost，不修改 token 事实；未匹配模型保留 `unpriced`。
+金额统一使用整数微币种单位，不使用 SQLite `REAL`；v0.1 内置目录的币种为 `USD`，每个值表示每百万 token 的微美元。价格字段允许 `NULL` 表示目录没有给出该类别，非空整数 `0` 才表示真实免费。
+
+Pricing Catalog 以 `(source, currency, effective_from_ms)` 形成不可变时间线。同 source/currency 的版本生效区间由相邻版本推导为 `[effective_from_ms, next_effective_from_ms)`，最后一个版本的结束时间为 `NULL`；新增版本不更新上一版本。模型规则只允许 `exact`、`prefix`、`default`，`default` pattern 固定为 `*`。匹配先按 `priority DESC`，再按 exact、prefix、default，随后按 pattern 长度和字典序稳定决胜；没有有效版本或规则时返回 `ErrNotFound`，成本层保留 `unpriced`，不能伪装为零成本。版本与全部规则在同一 writer transaction 追加；完全一致重放 no-op，同 version 或同生效边界的冲突全部回滚。
+
+Pricing Catalog 更新时由后续成本层基于 `turn_usage` 重算 cost，不修改 token 事实。
 
 ## Quota
 
@@ -84,15 +88,23 @@ v0.1 的 `account_scope` 固定为 `default`。同一来源、窗口代际、use
 
 ## 运行与增量索引
 
-- `source_files(source_file_id, provider, session_id, current_path, device_id, inode, size, mtime_ns, parsed_offset, parser_version, active_generation, state, last_scanned_at_ms, last_error)`
-- `source_state(source_instance_id, source_type, scope_key, last_attempt_at_ms, last_success_at_ms, next_due_at_ms, consecutive_failures, last_error_class, freshness_state, cursor_version)`
-- `source_attempts(request_id, source_instance_id, started_at_ms, finished_at_ms, outcome, http_status, error_class, payload_hash)`
-- `job_runs(job_id, job_type, requested_by, priority, phase, started_at_ms, finished_at_ms, outcome, total_files, files_scanned, total_bytes, bytes_read, rows_written, checkpoint_at_ms, duration_ms, cpu_user_ms, cpu_system_ms, queue_wait_ms, active_work_ms, yield_ms, peak_live_queue_depth, peak_backfill_queue_depth, oldest_wait_ms, error_class)`
+- `source_files(source_file_id, provider, session_id, current_path, device_id, inode, size_bytes, mtime_ns, parsed_offset, parser_version, active_generation, state, last_scanned_at_ms, last_error_class, updated_at_ms)`
+- `source_state(source_instance_id, source_type, scope_key, last_attempt_at_ms, last_success_at_ms, next_due_at_ms, consecutive_failures, last_error_class, freshness_state, cursor_version, updated_at_ms)`
+- `source_attempts(request_id, source_instance_id, started_at_ms, finished_at_ms, outcome, http_status, error_class, payload_sha256)`
+- `job_runs(job_id, job_type, requested_by, priority, state, phase, source_file_id, resume_of_job_id, created_at_ms, started_at_ms, finished_at_ms, progress_current, progress_total, resume_generation, resume_offset, error_class, updated_at_ms)`
 - `process_snapshots(snapshot_id, session_id, pid, cpu, rss, ports_json, child_count, captured_at_ms, valid_until_ms)`
 - `app_runtime_samples(captured_at_ms, cpu_percent, cpu_user_ms, cpu_system_ms, rss_bytes, goroutine_count, db_bytes, wal_bytes, disk_free_bytes, live_queue_depth, backfill_queue_depth)`
-- `health_events(event_id, domain, severity, code, first_seen_at_ms, last_seen_at_ms, resolved_at_ms, occurrence_count)`
+- `health_events(event_id, fingerprint, domain, severity, code, source_file_id, job_id, error_class, first_seen_at_ms, last_seen_at_ms, resolved_at_ms, occurrence_count, updated_at_ms)`
 
-`source_file_id` 与 Session 身份绑定，不依赖路径；文件移入 `archived_sessions` 时只更新 `current_path`。`payload_hash` 只用于不含正文的结构化 quota 响应，不对 prompt、response、tool output 或完整 JSONL 行做 hash。
+`source_file_id` 不依赖路径，稳定物理身份为 `(provider, device_id, inode)`；可选 `session_id` 只能引用既有 Session。文件移入 `archived_sessions` 时只更新 `current_path`。同 generation 的 `size_bytes`、`mtime_ns` 和 `parsed_offset` 不能倒退，且 offset 不得超过 size；新 generation 可以从较小 size/offset 重新开始，旧 generation 会被拒绝。本卡只约束 `source_files` 自身单调性；事实与 offset 的跨表原子推进由 TOO-249 提供。
+
+`source_state` 以 `(source_type, scope_key)` 绑定 stable identity，按 `updated_at_ms` 与 `cursor_version` 单调推进；due query 保留 `NULL next_due_at_ms` 与真实时间的差异。`source_attempts` 是 append-only 完成历史，`request_id` 完全一致时才允许幂等重放。`http_status=NULL` 表示没有 HTTP 响应，不能用 `0` 代替。`payload_sha256` 只接受固定 64 位小写十六进制 SHA-256 digest；调用方先对稳定结构化 identity 做摘要，持久层不接收 payload、prompt、response、tool output 或完整 JSONL 行。
+
+Job state 只允许 `queued`、`running`、`succeeded`、`failed`、`cancelled`、`interrupted`，phase 只允许 `discover`、`fast_bootstrap`、`history_backfill`、`reconcile`、`live`、`maintenance`。Repository 允许 `queued -> running/cancelled/interrupted` 和 `running -> running/succeeded/failed/cancelled/interrupted`；phase、progress 和 update time 不能倒退，terminal row 不可复活。应用重启时把遗留 queued/running jobs 原子标为 `interrupted`；恢复只能经 `ResumeInterruptedJob` 新建 queued job，`resume_of_job_id` 必须指向 interrupted history，新 job 完整继承 type、priority、source、phase、progress 与 typed `JobCursor{Generation, Offset}`，且 created/updated time 不早于旧 terminal ordering key。公共 `CreateJobRun` 拒绝直接写 resume lineage。
+
+Health event 用唯一 64 位小写 SHA-256 `fingerprint` 折叠同类问题，domain 只能是 `source/job/store/pricing/runtime`。code 不是开放字符串：Source 只允许 `timeout/unavailable/permission/corrupt/stale`，Job 只允许 `interrupted/failed/cancelled`，Store 只允许 `busy/disk_full/read_only/permission/io/corrupt/unavailable/unknown`，Pricing 只允许 `unavailable/invalid`，Runtime 只允许 `unknown`，实际值均带对应 domain 前缀。Repository 与 STRICT DDL 共同校验完整 domain/code pair。完全相同的 observation time/payload 重放 no-op；更晚观测增加 `occurrence_count` 并重开已解决事件；同时间冲突或更早观测会被拒绝。resolve time 不得早于 last seen，且同一生命周期的 resolve 只能完全一致重放；已解决事件只接受严格晚于 `resolved_at_ms` 的观测重开，resolve 之前迟到的 observation 不得回退 `updated_at_ms`。`source_file_id` 与 `job_id` 是可选关联，删除引用对象时置空而不删除事件。
+
+运行事实只持久化 allowlisted `error_class`：`canceled`、`busy`、`disk_full`、`read_only`、`permission`、`io`、`corrupt`、`timeout`、`unavailable`、`invalid_input`、`unknown`。typed API 和 STRICT DDL 都不提供 raw error/message/body/stack、token、cookie、Authorization 或完整内容字段；fingerprint/payload 只能由 opaque `SHA256Digest` 值对象提供，cursor 只能是两个非负整数，health domain/code 只接受上述有限组合。Source/Job 的业务 identity、路径等语义 metadata 仍会按模型原样持久化；Repository 不是任意字符串的凭据扫描器，调用方不得把密钥放入这些 metadata 字段。
 
 ## 幂等键和事务
 
@@ -171,7 +183,7 @@ context 取消在入队前可以直接拒绝。job 一旦被队列接受，`Writ
 
 调用方取消等待不会中止已经开始的关闭。队列满、context 取消、closing/closed、SQLite busy/locked、disk full、read-only、permission、I/O 和 corrupt 都有稳定 sentinel；底层 context 与 driver error 仍保留在 error chain 中，禁止依赖 `database is locked` 等字符串分支。
 
-应用打开 Store 后会在同一 writer transaction 中逐对象处理 TOO-247 的六张核心表和六个命名索引：同名对象已存在时先核对 type 与 canonical SQL，缺失时才创建并立即读回。这样 malformed table、同名 view 或错误 index 不会先在后续依赖 DDL 处泄漏普通 driver error；任一不一致都返回 `ErrSchemaContract`，本轮 DDL 一并回滚，Wails 不启动。这个 bootstrap 只处理新库和完全匹配的既有库，不伪装成通用 migration：旧库升级、backup hook、版本迁移和重建流程仍由 TOO-249 落地。
+应用打开 Store 后会在同一 writer transaction 中逐对象处理 TOO-247 的六张核心表/六个索引，以及 TOO-248 的七张 runtime 表/十三个索引：同名对象已存在时先核对 type 与 canonical SQL，缺失时才创建并立即读回。这样 malformed table、同名 view 或错误 index 不会先在后续依赖 DDL 处泄漏普通 driver error；任一不一致都返回 `ErrSchemaContract`，core 与 runtime 的本轮 DDL 一并回滚，Wails 不启动。这个 bootstrap 只处理新库、完全匹配的既有库和当前 pre-release core 库补齐 runtime objects，不伪装成通用 migration：旧库升级、backup hook、版本迁移和重建流程仍由 TOO-249 落地。
 
 当前核心索引为：
 
@@ -181,7 +193,15 @@ context 取消在入队前可以直接拒绝。job 一旦被队列接受，`Writ
 - `session_current(last_activity_at_ms)`，用于最近 session 投影。
 - `turn_usage(observed_at_ms, is_final)`，用于按观测时间筛选 final usage。
 
-quota、job 和 source 运行态索引由对应后续 Execution 卡创建。核心表不包含 prompt、response、tool output、原始 JSONL、鉴权 token 或内容 hash 字段；schema contract 测试会显式扫描并拒绝这类持久化面。
+当前 runtime 索引为：
+
+- `source_files(session_id, state, last_scanned_at_ms, source_file_id)` 与 `source_state(next_due_at_ms, source_instance_id)`，用于 session/state 扫描和 due source。
+- `source_attempts(source_instance_id, started_at_ms DESC, request_id DESC)`，用于来源尝试历史。
+- `job_runs(state, updated_at_ms, priority DESC, job_id)`、`job_runs(source_file_id, created_at_ms DESC, job_id DESC)` 与 `job_runs(updated_at_ms, priority DESC, job_id)`，用于 startup recovery、队列、source 作业历史和无 filter 列表。
+- `health_events(resolved_at_ms, last_seen_at_ms DESC, event_id, severity)`、`health_events(last_seen_at_ms DESC, event_id)`、`health_events(severity, last_seen_at_ms DESC, event_id)`、`health_events(source_file_id, last_seen_at_ms DESC, event_id)` 与 `health_events(job_id, last_seen_at_ms DESC, event_id)`，用于 active/resolved/history/severity 和 source/job 单关系追溯。
+- `pricing_versions(source, currency, effective_from_ms DESC)` 与 `model_prices(pricing_version, priority DESC, match_kind, model_pattern)`，用于 as-of 版本和模型规则匹配。
+
+上述 required query 的 SQL/query builder 由 Repository 与 `EXPLAIN QUERY PLAN` 测试共用；测试同时要求命名索引被选择且不得出现临时排序。quota、process snapshot 和 app runtime sample 索引由对应后续 Execution 卡创建。core/runtime 表不提供 prompt、response、tool output、原始 JSONL、鉴权 token 或 raw error 的专用字段；schema contract 和数据库 bytes 测试会对受控 code/digest/cursor/error 输入面使用 synthetic marker 验证拒绝与不可见性。业务 identity/path metadata 的凭据卫生仍由调用方负责。
 
 ## 保留策略
 

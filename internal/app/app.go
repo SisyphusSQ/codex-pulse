@@ -64,8 +64,8 @@ func openConfiguredStore(ctx context.Context, config storesqlite.Config) (lifecy
 			return storesqlite.Open(ctx, config)
 		},
 		func(ctx context.Context, database *storesqlite.Store) error {
-			if err := factstore.NewRepository(database).EnsureCoreSchema(ctx); err != nil {
-				return fmt.Errorf("ensure application core schema: %w", err)
+			if err := factstore.NewRepository(database).EnsureApplicationSchema(ctx); err != nil {
+				return fmt.Errorf("ensure application schema: %w", err)
 			}
 			return nil
 		},
