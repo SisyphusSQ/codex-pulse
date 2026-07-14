@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"sort"
 
 	"gorm.io/gorm"
 )
@@ -16,6 +17,10 @@ type WriteUnit struct {
 	ctx         context.Context
 	transaction *gorm.DB
 	active      bool
+
+	attributionSchemaChecked bool
+	attributionSchemaPresent bool
+	dirtyAttributionSessions map[string]struct{}
 }
 
 // WithinWriteUnit 在应用唯一 writer queue 中执行一个 typed 原子工作单元。
@@ -31,7 +36,10 @@ func (repository *Repository) WithinWriteUnit(ctx context.Context, write func(*W
 			repository: repository, ctx: ctx, transaction: transaction.WithContext(ctx), active: true,
 		}
 		defer func() { unit.active = false }()
-		return write(unit)
+		if err := write(unit); err != nil {
+			return err
+		}
+		return unit.flushAttributions()
 	})
 }
 
@@ -132,6 +140,41 @@ func (unit *WriteUnit) UpsertFacts(batch FactBatch) error {
 			return err
 		}
 		if err := upsertSessionUsageCurrent(ctx, transaction, *batch.SessionUsageCurrent); err != nil {
+			return err
+		}
+	}
+	if expectedSessionID != "" {
+		unit.markAttributionDirty(expectedSessionID)
+	}
+	return nil
+}
+
+func (unit *WriteUnit) markAttributionDirty(sessionID string) {
+	if !unit.attributionSchemaChecked {
+		unit.attributionSchemaPresent = unit.transaction.Migrator().HasTable(&sessionAttributionModel{})
+		unit.attributionSchemaChecked = true
+	}
+	if !unit.attributionSchemaPresent {
+		return
+	}
+	if unit.dirtyAttributionSessions == nil {
+		unit.dirtyAttributionSessions = make(map[string]struct{})
+	}
+	unit.dirtyAttributionSessions[sessionID] = struct{}{}
+}
+
+func (unit *WriteUnit) flushAttributions() error {
+	if len(unit.dirtyAttributionSessions) == 0 {
+		return nil
+	}
+	sessionIDs := make([]string, 0, len(unit.dirtyAttributionSessions))
+	for sessionID := range unit.dirtyAttributionSessions {
+		sessionIDs = append(sessionIDs, sessionID)
+	}
+	sort.Strings(sessionIDs)
+	writer := attributionWriter{ctx: unit.ctx, transaction: unit.transaction}
+	for _, sessionID := range sessionIDs {
+		if _, err := writer.refreshSessionAttributions(sessionID, nil); err != nil {
 			return err
 		}
 	}

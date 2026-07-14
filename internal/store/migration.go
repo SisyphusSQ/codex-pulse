@@ -18,7 +18,8 @@ const (
 	applicationSchemaV1Version = 1
 	applicationSchemaV2Version = 2
 	applicationSchemaV3Version = 3
-	applicationSchemaVersion   = applicationSchemaV3Version
+	applicationSchemaV4Version = 4
+	applicationSchemaVersion   = applicationSchemaV4Version
 )
 
 var (
@@ -86,6 +87,18 @@ var applicationMigrations = []migrationDefinition{
 				return err
 			}
 			return ensureSchemaObjects(ctx, transaction, ingestSchemaObjects)
+		},
+	},
+	{
+		version:  applicationSchemaV4Version,
+		name:     "session-project-model-attribution",
+		checksum: applicationSchemaV4Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			if err := ensureSchemaObjects(ctx, transaction, attributionSchemaObjects); err != nil {
+				return err
+			}
+			_, err := recomputeAttributionsInTransaction(ctx, transaction, nil)
+			return err
 		},
 	},
 }
@@ -438,7 +451,8 @@ func validateMigrationState(
 
 func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteTx) error {
 	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects, retentionSchemaObjects, ingestSchemaObjects,
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects, retentionSchemaObjects,
+		ingestSchemaObjects, attributionSchemaObjects,
 	} {
 		for _, object := range objects {
 			exists, err := verifySchemaObject(ctx, transaction, object)
@@ -483,6 +497,18 @@ func applicationSchemaV3Checksum() string {
 	hasher := sha256.New()
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV3Version, "incremental-ingest-checkpoints")
 	for _, object := range append([]schemaObject{currentTurnsSchemaObject()}, ingestSchemaObjects...) {
+		_, _ = fmt.Fprintln(
+			hasher, object.objectType, object.name,
+			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV4Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV4Version, "session-project-model-attribution")
+	for _, object := range attributionSchemaObjects {
 		_, _ = fmt.Fprintln(
 			hasher, object.objectType, object.name,
 			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),

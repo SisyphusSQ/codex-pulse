@@ -29,6 +29,7 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 		"pricing_versions",
 		"projects",
 		"schema_migrations",
+		"session_attributions",
 		"session_current",
 		"session_usage_current",
 		"sessions",
@@ -37,6 +38,7 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 		"source_generation_batches",
 		"source_generations",
 		"source_state",
+		"turn_attributions",
 		"turn_usage",
 		"turns",
 	}
@@ -189,7 +191,9 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 				'idx_generation_batches_replay', 'idx_parser_diagnostics_source',
 				'idx_source_generations_active', 'idx_source_generations_active_session',
 				'idx_source_generations_building',
-				'idx_source_generations_snapshot'
+				'idx_source_generations_snapshot',
+				'idx_session_attributions_model', 'idx_session_attributions_project',
+				'idx_turn_attributions_model', 'idx_turn_attributions_project'
 			  )
 			ORDER BY name
 		`)
