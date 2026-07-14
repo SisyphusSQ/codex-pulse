@@ -9,6 +9,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -152,6 +153,9 @@ func TestOpenConfiguredStoreBootstrapsApplicationSchemaAndReopens(t *testing.T) 
 					'turn_usage', 'session_usage_current',
 					'source_files', 'source_state', 'source_attempts',
 					'job_runs', 'health_events', 'pricing_versions', 'model_prices',
+					'pricing_catalog_metadata', 'cost_rollup_generations', 'turn_costs',
+					'session_usage_rollups', 'usage_daily',
+					'project_usage_daily', 'model_usage_daily',
 					'schema_migrations'
 				)
 			`).Row().Scan(&tables)
@@ -159,12 +163,63 @@ func TestOpenConfiguredStoreBootstrapsApplicationSchemaAndReopens(t *testing.T) 
 		if err != nil {
 			t.Fatalf("inspect bootstrap schema: %v", err)
 		}
-		if tables != 14 {
-			t.Fatalf("application table count = %d, want 14", tables)
+		if tables != 21 {
+			t.Fatalf("application table count = %d, want 21", tables)
+		}
+		builtin := pricing.BuiltinOpenAI20260714()
+		stored, err := factstore.NewRepository(database).PricingVersion(
+			context.Background(), builtin.PricingVersion,
+		)
+		if err != nil {
+			t.Fatalf("PricingVersion(builtin) attempt %d error = %v", attempt+1, err)
+		}
+		if stored.SourceURL != builtin.SourceURL || stored.VerifiedAtMS != builtin.VerifiedAtMS ||
+			len(stored.Models) != len(builtin.Models) {
+			t.Fatalf("builtin pricing catalog attempt %d = %#v, want %#v", attempt+1, stored, builtin)
 		}
 		if err := lifecycle.Close(context.Background()); err != nil {
 			t.Fatalf("Close() attempt %d error = %v", attempt+1, err)
 		}
+	}
+}
+
+func TestOpenConfiguredStoreRejectsConflictingBuiltinCatalogAndClosesStore(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatalf("secure temp directory: %v", err)
+	}
+	config := storesqlite.Config{Path: filepath.Join(directory, "catalog-conflict.db")}
+	database, err := storesqlite.Open(context.Background(), config)
+	if err != nil {
+		t.Fatalf("sqlite.Open() error = %v", err)
+	}
+	repository := factstore.NewRepository(database)
+	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
+		t.Fatalf("EnsureApplicationSchema() error = %v", err)
+	}
+	legacy := pricing.BuiltinOpenAI20260714()
+	legacy.SourceURL = ""
+	legacy.VerifiedAtMS = 0
+	if err := repository.AddPricingVersion(context.Background(), legacy); err != nil {
+		t.Fatalf("AddPricingVersion(legacy builtin) error = %v", err)
+	}
+	if err := database.Close(context.Background()); err != nil {
+		t.Fatalf("Close(setup) error = %v", err)
+	}
+
+	lifecycle, err := openConfiguredStore(context.Background(), config)
+	if lifecycle != nil {
+		t.Fatalf("openConfiguredStore() lifecycle = %T, want nil", lifecycle)
+	}
+	if !errors.Is(err, factstore.ErrInvalidRecord) {
+		t.Fatalf("openConfiguredStore() error = %v, want ErrInvalidRecord", err)
+	}
+	reopened, err := storesqlite.Open(context.Background(), config)
+	if err != nil {
+		t.Fatalf("sqlite.Open(after rejected bootstrap) error = %v", err)
+	}
+	if err := reopened.Close(context.Background()); err != nil {
+		t.Fatalf("Close(after rejected bootstrap) error = %v", err)
 	}
 }
 

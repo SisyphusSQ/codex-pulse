@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"net/url"
 
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -303,6 +304,16 @@ func validatePricingVersion(version PricingVersion) error {
 	}
 	if len(version.Models) == 0 {
 		return invalidRecord("pricing version requires at least one model rule")
+	}
+	if (version.SourceURL == "") != (version.VerifiedAtMS == 0) {
+		return invalidRecord("pricing catalog metadata must be fully present or absent")
+	}
+	if version.SourceURL != "" {
+		parsed, err := url.Parse(version.SourceURL)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
+			len(version.SourceURL) > 2048 || version.VerifiedAtMS <= 0 {
+			return invalidRecord("pricing catalog metadata is invalid")
+		}
 	}
 	seen := make(map[string]struct{}, len(version.Models))
 	for _, model := range version.Models {

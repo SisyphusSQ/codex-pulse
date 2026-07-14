@@ -242,6 +242,18 @@ func pricingVersionByID(
 		Currency: versionModel.Currency, EffectiveFromMS: versionModel.EffectiveFromMS,
 		CreatedAtMS: versionModel.CreatedAtMS, Models: make([]ModelPrice, 0, len(priceModels)),
 	}
+	if querier.Migrator().HasTable(&pricingCatalogMetadataModel{}) {
+		var metadata pricingCatalogMetadataModel
+		metadataQuery := querier.WithContext(ctx).
+			Where("pricing_version = ?", versionID).Limit(1).Find(&metadata)
+		if metadataQuery.Error != nil {
+			return PricingVersion{}, false, metadataQuery.Error
+		}
+		if metadataQuery.RowsAffected > 0 {
+			version.SourceURL = metadata.SourceURL
+			version.VerifiedAtMS = metadata.VerifiedAtMS
+		}
+	}
 	for _, model := range priceModels {
 		version.Models = append(version.Models, modelPriceFromModel(model))
 	}
@@ -260,7 +272,8 @@ func modelPriceFromModel(model modelPriceModel) ModelPrice {
 func pricingVersionsEquivalent(left, right PricingVersion) bool {
 	if left.PricingVersion != right.PricingVersion || left.Source != right.Source ||
 		left.Currency != right.Currency || left.EffectiveFromMS != right.EffectiveFromMS ||
-		left.CreatedAtMS != right.CreatedAtMS || len(left.Models) != len(right.Models) {
+		left.CreatedAtMS != right.CreatedAtMS || left.SourceURL != right.SourceURL ||
+		left.VerifiedAtMS != right.VerifiedAtMS || len(left.Models) != len(right.Models) {
 		return false
 	}
 	leftModels := append([]ModelPrice(nil), left.Models...)

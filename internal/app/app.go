@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -64,8 +65,12 @@ func openConfiguredStore(ctx context.Context, config storesqlite.Config) (lifecy
 			return storesqlite.Open(ctx, config)
 		},
 		func(ctx context.Context, database *storesqlite.Store) error {
-			if err := factstore.NewRepository(database).EnsureApplicationSchema(ctx); err != nil {
+			repository := factstore.NewRepository(database)
+			if err := repository.EnsureApplicationSchema(ctx); err != nil {
 				return fmt.Errorf("ensure application schema: %w", err)
+			}
+			if err := repository.AddPricingVersion(ctx, pricing.BuiltinOpenAI20260714()); err != nil {
+				return fmt.Errorf("install builtin pricing catalog: %w", err)
 			}
 			return nil
 		},

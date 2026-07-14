@@ -190,6 +190,14 @@ type pricingVersionModel struct {
 
 func (pricingVersionModel) TableName() string { return "pricing_versions" }
 
+type pricingCatalogMetadataModel struct {
+	PricingVersion string `gorm:"column:pricing_version;primaryKey"`
+	SourceURL      string `gorm:"column:source_url"`
+	VerifiedAtMS   int64  `gorm:"column:verified_at_ms"`
+}
+
+func (pricingCatalogMetadataModel) TableName() string { return "pricing_catalog_metadata" }
+
 type modelPriceModel struct {
 	PricingVersion              string `gorm:"column:pricing_version;primaryKey"`
 	MatchKind                   string `gorm:"column:match_kind;primaryKey"`
