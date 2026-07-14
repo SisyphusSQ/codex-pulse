@@ -11,11 +11,12 @@ const (
 )
 
 var (
-	ErrNotConfigured      = errors.New("preferences not configured")
-	ErrUnsafePath         = errors.New("unsafe preferences path")
-	ErrInvalidPreferences = errors.New("invalid preferences")
-	ErrAlreadyConfirmed   = errors.New("onboarding already confirmed")
-	ErrDurabilityUnknown  = errors.New("preferences published with unknown durability")
+	ErrNotConfigured       = errors.New("preferences not configured")
+	ErrUnsafePath          = errors.New("unsafe preferences path")
+	ErrInvalidPreferences  = errors.New("invalid preferences")
+	ErrAlreadyConfirmed    = errors.New("onboarding already confirmed")
+	ErrDurabilityUnknown   = errors.New("preferences published with unknown durability")
+	ErrPreferencesConflict = errors.New("preferences revision conflict")
 )
 
 type ConfirmedSource struct {
