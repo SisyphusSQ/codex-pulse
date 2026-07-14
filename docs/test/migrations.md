@@ -2,17 +2,17 @@
 
 ## 当前验证结果
 
-- 记录时间：2026-07-14 20:09 CST
-- 对应 Issue：TOO-249、TOO-250、TOO-253、TOO-254
-- 当前结论：`TOO-249/250 的 Pure Go Store 与 v2 已合并；TOO-253 的 durable ingest v3 已合并；TOO-254 attribution v4 已通过 implementation/final scope review 与 post-integration，PR/merge/post-merge 待完成`
-- 已验证：Pure Go GORM Store/Repository、fresh/legacy/v1/v2/v3/current-v4 migration、v1/v2/v3/v4 checksum freeze、history drift/newer/divergence、全 pending rollback、modernc backup/restore、目录持久化发布、typed WriteUnit、durable ingest、attribution STRICT/FK/index/tuple contract、默认应用 bootstrap、Pure Go race、全仓 test/vet/race、harness/project/version 与完整 `make verify`。
-- 待验证：TOO-254 PR merge 与 main post-merge；后续新增 migration 必须继续 append-only 并冻结各版本 checksum。
+- 记录时间：2026-07-14 23:28 CST
+- 对应 Issue：TOO-249、TOO-250、TOO-253、TOO-254、TOO-255
+- 当前结论：`PASS`；Pure Go Store、v2 retention、v3 durable ingest、v4 attribution 与 v5 pricing/cost schema 均已按 append-only migration 合并并完成 main post-merge 验证。
+- 已验证：Pure Go GORM Store/Repository、fresh/legacy/v1/v2/v3/v4/current-v5 migration、v1～v5 checksum freeze、history drift/newer/divergence、全 pending rollback、modernc backup/restore、目录持久化发布、typed WriteUnit、durable ingest、attribution 与 pricing/cost STRICT/FK/index contract、默认应用 bootstrap、Pure Go race、全仓 test/vet/race、harness/project/version 与完整 `make verify`。
+- 后续要求：新增 migration 必须继续 append-only 并冻结各版本 checksum；不得重算 v1～v5 history。
 
 ## 目标
 
 - 证明 `internal/store/sqlite` 与 `internal/store` 在 `CGO_ENABLED=0` 下只使用 libtnb + modernc 的 Pure Go SQLite 编译链。
 - 证明 GORM persistence models 与 domain types 分离，普通 CRUD/query/关联检查不依赖裸 SQL。
-- 证明 migration catalog、v1～v4 append-only checksum ledger、`PRAGMA user_version` 和 canonical schema 一致，且调用契约限定为 Store 暴露给 runtime reader/writer 前的启动期 bootstrap。
+- 证明 migration catalog、v1～v5 append-only checksum ledger、`PRAGMA user_version` 和 canonical schema 一致，且调用契约限定为 Store 暴露给 runtime reader/writer 前的启动期 bootstrap。
 - 证明已有用户 schema 在 migration 前创建可恢复 backup，fresh/current 跳过，失败不推进版本。
 - 证明 `WriteUnit` 可跨 core/runtime typed operations 原子提交，并保留 error/panic/cancel rollback。
 
@@ -105,14 +105,15 @@ make verify
 | Pure Go focused/full | PASS：`CGO_ENABLED=0` 的 SQLite/store focused、全量和 race 均通过 |
 | 实际依赖链 | PASS：`go list -deps ./internal/store` 不含 official driver/mattn；上游模块元数据差异已记录 |
 | migration/backup/restore/UoW | PASS：真实临时 SQLite、WAL backup、restore、失败注入和 rollback 矩阵通过 |
-| current v4 attribution | PASS（pre-merge）：带既有 facts 的 v3→v4 同事务 backfill、失败整体 rollback、backup/history、STRICT/FK/index、ID/display tuple 与显式重算通过；implementation/final scope review 已通过，merge/post-merge 待完成 |
+| current v4 attribution | PASS：带既有 facts 的 v3→v4 同事务 backfill、失败整体 rollback、backup/history、STRICT/FK/index、ID/display tuple 与显式重算通过；PR #15 / `1df28c3` 已完成 post-merge |
+| current v5 pricing/cost | PASS：v4→v5 append-only schema、pricing metadata、cost generation、turn/session/global/project/model rollup 与 v1～v5 checksum freeze 通过；PR #16 / `7c464af` 已完成 post-merge |
 | app/full test/vet/race | PASS：默认 macOS CGO 下 app 与全仓通过；仅有既有 deployment-target linker warning |
 | harness/project/version/diff | PASS：project constraints 通过，版本 check `findings=[]`，`git diff --check` 无输出 |
 | `make verify` | PASS：Go、vet、前端 typecheck/test/build、generated stability、arm64/minOS 15/ad-hoc app/zip 全部通过 |
 | TOO-254 独立实现 review | PASS：首轮 High backfill、Medium invalid→missing 已按 TDD 修复；同 reviewer 复核 `blocking_findings: 0` |
-| 历史 Final scope / merge | PASS：TOO-249 PR #9 合并为 `238eaa2`；TOO-250 append-only v2 随 PR #10 合并为 `090b5ee`，两次 post-merge 同口径验证通过 |
+| 历史 Final scope / merge | PASS：TOO-249 PR #9 / `238eaa2`、TOO-250 PR #10 / `090b5ee`、TOO-254 PR #15 / `1df28c3`、TOO-255 PR #16 / `7c464af` 均完成同口径 post-merge 验证 |
 | Actions | `actions_disabled_by_user`：未触发、未等待、未把 CI 作为 gate |
-| TOO-254 清理 | PENDING：post-merge 后删除本轮 `.task/`、`bin/`、`frontend/node_modules/` 与构建产物，保留 tracked `.gitkeep` |
+| closeout 清理 | PASS：post-merge 复验后的 `.task/`、`bin/`、`frontend/node_modules/` 与构建产物已清理，保留 tracked `.gitkeep` |
 
 ## 失败处理
 
@@ -130,4 +131,4 @@ make verify
 - 清理本轮生成的 ignored 前端/package/task 产物，但不得删除用户已有 ignored plan/state/run 文件。
 - 执行完成后更新本文顶部的真实命令、结果、时间与清理摘要；未执行的 gate 不得写成通过。
 - Issue closeout 记录 `actions_disabled_by_user`，不把未运行的 GitHub Actions 当成失败或通过。
-- 已合并版本保留既有结果；TOO-254 closeout 后只把 v4 review/merge/post-merge 更新为真实结果。普通维护不追加历史 release 段，也不触发版本发布。
+- 已合并版本保留既有结果；后续只追加新 migration 与真实验证结果。普通维护不追加历史 release 段，也不触发版本发布。

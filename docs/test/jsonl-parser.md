@@ -2,10 +2,10 @@
 
 ## 当前验证结果
 
-- 记录时间：2026-07-14 15:37 CST
+- 记录时间：2026-07-14 23:28 CST
 - 记录目录：仓库根目录
 - 本轮任务性质：TOO-252 rollout JSONL incremental parser / safe decoder / explicit turn lifecycle
-- 当前结论：`implementation review、唯一 Unreleased feature 条目、post-integration verify 与 different-subagent final scope review 已通过；已达到 READY_TO_COMMIT，PR、自合并与 post-merge 尚待 closeout`
+- 当前结论：`PASS`；PR #13 已合并为 `24f0aeb`，TOO-252 已完成 main post-merge verify 与 Linear Done。
 - 自动化入口：`internal/codex/logs` 的 framer、decoder、lifecycle、stream parser 与 fuzz tests
 - 对应计划 / issue：`.agents/plans/2026-07-14-too-252-jsonl-parser-turn-lifecycle.md` / TOO-252
 - 结果说明：使用 synthetic upstream-shaped fixture 验证 CRLF/UTF-8/chunk、坏行恢复、重复 key、未知类型、隐私 marker、turn lifecycle、nullable usage 和 deterministic fuzz；未读取真实 Codex rollout。
@@ -14,9 +14,9 @@
 
 - 执行时间：2026-07-14 15:25 CST
 - 执行目录：仓库根目录
-- 本次结论：`PASS（post-integration verify）`
+- 本次结论：`PASS（含 post-merge verify）`
 - 影响范围：编译并测试 Go 全仓、frontend、generated bindings 与 macOS 15 arm64 package；coverage profile 写入系统临时目录；Go/npm/Wails 使用本地缓存并生成仓库已忽略的构建产物。
-- 清理结果：coverage profile 已删除；synthetic fixture 全在测试进程内；ignored Wails/frontend 产物保留给 final review 与 post-merge 复验；无数据库、server、外部资源或用户文件需要清理。
+- 清理结果：coverage profile 已删除；synthetic fixture 全在测试进程内；post-merge 复验后的 ignored Wails/frontend/package 产物已清理并保留 tracked `.gitkeep`；无数据库、server、外部资源或用户文件需要清理。
 - 敏感信息处理：不读取真实 `~/.codex`、不写 prompt、response、tool output、base/user instructions、凭据、token、cookie、真实用户路径、原始 JSONL 或机器本地临时路径。fixture 中的 marker 只用于否定断言。
 
 ### 当前步骤状态
@@ -34,6 +34,7 @@
 | 全仓 / harness / exact Wails | PASS | 全仓 test/race/vet、harness/project/version/diff、frontend/generated、macOS 15 arm64 bundle/ZIP 与 ad-hoc codesign 均通过 |
 | CHANGELOG | PASS | 唯一 `[TOO-252]` 条目位于 `Unreleased -> feature`；classification 为 `changelog-only`，未创建版本或发布 |
 | 独立 review / final scope review | PASS / PASS | implementation reviewer 最终 `READY_FOR_CHANGELOG`；different final scope reviewer 对全部 13 个计划内文件返回 `ZERO_FINDINGS / blocking_findings: 0 / READY_TO_COMMIT` |
+| PR / merge / post-merge | PASS | PR #13 合并为 `24f0aeb`；main 必要门禁通过，Linear 已读回 Done |
 
 ## 目标
 

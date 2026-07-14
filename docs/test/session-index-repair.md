@@ -4,7 +4,7 @@
 
 - 记录时间：2026-07-14（Asia/Shanghai）
 - 对应 Issue：TOO-256
-- 当前结论：implementation review 已清零，terminal success 已改为同事务 snapshot compare + state transition，CHANGELOG 集成后的 post-integration gate 已通过；final scope review 发现 upstream-valid unsupported latest 行与本地状态文档问题，当前处于 fail-closed Rework，尚未 final scope PASS。
+- 当前结论：`PASS`；implementation review 与 final scope review 的 findings 均已按 TDD 修复并由原 reviewer 复核清零；terminal success 使用同事务 snapshot compare + state transition，上游有效但本地不支持的 latest 行整体 fail closed；PR #17 已合并为 `5176f31`，main post-merge verify 与 Linear Done 已完成。
 - Actions：`actions_disabled_by_user`；本 runbook 不启用、查询、触发或等待 GitHub Actions。
 - Release：不适用；普通 Execution Issue 不创建 tag、release 或正式发布产物。
 
@@ -119,7 +119,7 @@ make verify
 | full repo / harness / project / version / `make verify` | PASS：CHANGELOG 集成后全仓 test/race/vet、harness、project、`findings=[]`、diff、bindings stability、frontend 和 macOS arm64/minOS 15 ad-hoc app/ZIP 已完整复跑通过 |
 | version / release boundary | PASS：分类脚本因 `go.mod` 的 direct dependency 声明机械归为 `version-bump`，但未修改应用版本；普通 Execution 只写 `Unreleased`，不执行 release |
 | implementation / final scope review | PASS：implementation reviewer 与 final scope reviewer 最终均 `blocking_findings: 0`；两轮 Rework、同 reviewer 再审和完整门禁均已闭环 |
-| PR / merge / post-merge | PENDING |
+| PR / merge / post-merge | PASS：PR #17 合并为 `5176f31`；main 全仓 test/race/vet、harness/project/version/diff、go mod tidy 与 exact Wails 验证通过，临时产物已清理，Linear 已读回 Done |
 
 ## 失败处理与恢复
 

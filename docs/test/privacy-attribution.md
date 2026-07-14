@@ -4,7 +4,7 @@
 
 - 记录时间：2026-07-14 CST
 - 对应 Issue：TOO-254
-- 当前结论：focused/count=20、Pure Go race、全仓 test/vet/race、harness/project/version/diff 与三轮完整 `make verify` 均已通过；implementation 与 final scope review 的 findings 均按 TDD 修复并复核清零；PR/merge 尚未完成。
+- 当前结论：`PASS`；focused/count=20、Pure Go race、全仓 test/vet/race、harness/project/version/diff 与完整 `make verify` 均已通过；implementation 与 final scope review findings 已按 TDD 修复并复核清零；PR #15 已合并为 `1df28c3`，main post-merge verify 与 Linear Done 已完成。
 - Actions：`actions_disabled_by_user`，本 runbook 不启用、查询、触发或等待 GitHub Actions。
 - Release：不适用；普通 Execution Issue 不创建 tag、release 或签名产物。
 
@@ -111,7 +111,7 @@ make verify
 | implementation subagent review | PASS：首轮 High backfill、Medium invalid→missing 已按 RED/GREEN 修复；复核 `blocking_findings: 0` |
 | post-integration | PASS：count=20、Pure Go race/coverage、全仓 test/vet/race、依赖/Raw SQL/gofmt/diff、harness/project/version 与完整 `make verify` 全部复跑通过 |
 | final scope review | PASS：不同 subagent 首轮 Medium dirty refresh、Low 文档状态已修复；复核 `blocking_findings: 0`、READY_TO_COMMIT_PUSH_PR |
-| PR / merge / post-merge | PENDING |
+| PR / merge / post-merge | PASS：PR #15 合并为 `1df28c3`；main 必要门禁与清理通过，Linear 已读回 Done |
 
 ## 失败处理
 
