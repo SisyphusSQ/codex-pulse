@@ -167,22 +167,30 @@ func (repository *Repository) TransitionJobRun(ctx context.Context, transition J
 		return err
 	}
 	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		existing, found, err := jobRunByID(ctx, transaction, transition.JobID)
-		if err != nil {
-			return err
-		}
-		if !found {
-			return invalidRecord("job run does not exist")
-		}
-		projected, err := projectJobTransition(existing, transition)
-		if err != nil {
-			return err
-		}
-		if jobRunsEqual(existing, projected) {
-			return nil
-		}
-		return updateJobRun(ctx, transaction, projected)
+		return transitionJobRun(ctx, transaction, transition)
 	})
+}
+
+func transitionJobRun(
+	ctx context.Context,
+	transaction storesqlite.WriteTx,
+	transition JobTransition,
+) error {
+	existing, found, err := jobRunByID(ctx, transaction, transition.JobID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return invalidRecord("job run does not exist")
+	}
+	projected, err := projectJobTransition(existing, transition)
+	if err != nil {
+		return err
+	}
+	if jobRunsEqual(existing, projected) {
+		return nil
+	}
+	return updateJobRun(ctx, transaction, projected)
 }
 
 // InterruptIncompleteJobs 原子终结启动时遗留的 queued/running jobs。
