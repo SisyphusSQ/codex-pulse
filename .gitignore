@@ -12,6 +12,9 @@
 # Logs and generated output
 *.log
 logs/
+!internal/codex/logs/
+internal/codex/logs/*
+!internal/codex/logs/*.go
 **/output/
 
 # Environment and local configuration
