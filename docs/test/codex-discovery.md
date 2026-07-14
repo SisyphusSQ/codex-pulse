@@ -5,10 +5,10 @@
 - 记录时间：2026-07-14（Asia/Shanghai）
 - 记录目录：仓库根目录
 - 本轮任务性质：TOO-251 filesystem discovery / fingerprint / pure reconcile contract
-- 当前结论：`含 CHANGELOG 的 post-integration verify 与 final scope re-review 均通过；READY_TO_COMMIT`
+- 当前结论：`PASS`；PR #12 已合并为 `b36533b`，TOO-251 已完成 main post-merge verify 与 Linear Done。
 - 自动化入口：`internal/codex/logs/*_test.go`
 - 对应计划 / issue：`.agents/plans/2026-07-14-too-251-codex-file-discovery.md` / TOO-251
-- 结果说明：不同 final scope reviewer 发现的 identity-first 组合匹配、递归子目录 ENOENT 和 confirmed-home/allowlist 输入校验 3 个 blocking Medium 已完成代码与测试修复；原 implementation reviewer 复审返回 `ZERO_FINDINGS / blocking_findings: 0 / READY_FOR_CHANGELOG`。按 mandatory skills 写入唯一 `[TOO-251]` `Unreleased -> feature` 条目后，focused 20 次、race、83.0% coverage、全仓 test/race/vet、Pure Go Store guard、harness/project/version/diff、CHANGELOG/敏感扫描与 exact Wails `make verify` 全部通过；不同 final reviewer 复审返回 `ZERO_FINDINGS / blocking_findings: 0 / READY_TO_COMMIT`。
+- 结果说明：不同 final scope reviewer 发现的 identity-first 组合匹配、递归子目录 ENOENT 和 confirmed-home/allowlist 输入校验 3 个 blocking Medium 已完成代码与测试修复；原 implementation reviewer 复审返回 `ZERO_FINDINGS / blocking_findings: 0 / READY_FOR_CHANGELOG`。按 mandatory skills 写入唯一 `[TOO-251]` `Unreleased -> feature` 条目后，focused 20 次、race、83.0% coverage、全仓 test/race/vet、Pure Go Store guard、harness/project/version/diff、CHANGELOG/敏感扫描与 exact Wails `make verify` 全部通过；不同 final reviewer 复审返回 `ZERO_FINDINGS / blocking_findings: 0 / READY_TO_COMMIT`。PR #12 合并后在 main 重跑必要门禁并通过，临时产物已清理。
 
 ### 本次执行结果
 
@@ -34,7 +34,7 @@
 | implementation re-review | 通过 | 原 reviewer 返回 `ZERO_FINDINGS / blocking_findings: 0 / READY_FOR_CHANGELOG`。 |
 | post-integration verify | 通过 | 含 CHANGELOG 的完整 10 文件 diff 通过 focused/race/full/Store/harness/project/version/diff/exact Wails 权威矩阵。 |
 | final scope review | 通过 | 不同 subagent `/root/too_251_final_scope_review` 返回 `ZERO_FINDINGS / blocking_findings: 0 / READY_TO_COMMIT`；三项原 finding、scope 与 CHANGELOG gate 均关闭。 |
-| post-merge | 未执行 | 只有 Rework、复验和两层 subagent review 通过后才执行。 |
+| post-merge | 通过 | PR #12 合并为 `b36533b`；main 上必要 test/race/vet、harness/project/version/diff 与 exact Wails 验证通过，Linear 已读回 Done。 |
 | 清理 | 通过 | fixture、临时 CLI、frontend dependencies、dist 和 package 生成物均已清理；`.gitkeep` 保留，tracked module/lockfile/bindings 无漂移。 |
 
 ## 目标

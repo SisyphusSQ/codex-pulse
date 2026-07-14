@@ -4,7 +4,7 @@
 
 - 记录时间：2026-07-14 CST
 - 对应 Issue：TOO-255
-- 当前结论：implementation review 的 2 High + 1 Medium 已按 TDD 修复并由原 subagent 复审清零；CHANGELOG 与 data-model 已同步，post-integration focused/count=20、Pure Go race/coverage、全仓 test/vet/race、harness/project/version/diff 和完整 `make verify` 全部通过；不同 subagent final scope review `blocking_findings=0`，进入 PR preparation。
+- 当前结论：`PASS`；implementation review 的 2 High + 1 Medium 已按 TDD 修复并由原 subagent 复审清零；CHANGELOG 与 data-model 已同步，focused/count=20、Pure Go race/coverage、全仓 test/vet/race、harness/project/version/diff 和完整 `make verify` 全部通过；不同 subagent final scope review `blocking_findings=0`；PR #16 已合并为 `7c464af`，main post-merge verify 与 Linear Done 已完成。
 - Actions：`actions_disabled_by_user`，本 runbook 不启用、查询、触发或等待 GitHub Actions。
 - Release：不适用；普通 Execution Issue 不创建 tag、release 或签名产物。
 
@@ -147,7 +147,7 @@ make verify
 | `make verify` | PASS：post-integration 重跑 Go/vet、前端 typecheck/test/build、generated stability、thin arm64/minOS 15、ad-hoc app/ZIP 全部通过 |
 | implementation subagent review | PASS：原 2 High + 1 Medium 均 closed，`blocking_findings=0` |
 | post-integration / final scope review | PASS：不同 subagent 终审无 finding，`blocking_findings=0`，scope/changelog/version/GORM/隐私边界通过 |
-| PR / merge / post-merge | PENDING |
+| PR / merge / post-merge | PASS：PR #16 合并为 `7c464af`；main 必要门禁与清理通过，Linear 已读回 Done |
 
 ## 失败处理
 
