@@ -17,6 +17,38 @@
 
 源 JSONL 被 Codex 删除或归档后，Tracker 仍保留 session 时间、项目、模型、usage 和 quota observation，但无法还原完整对话。这是有意设计的隐私边界。
 
+### Rollout Parser Contract
+
+`internal/codex/logs.StreamParser` 的当前版本为 `codex-rollout-v1`，只接受 `session` 和 `archived_session` source；`session_index.jsonl` 的名称/repair 语义由后续独立流程处理。caller 从已提交的非负 offset 创建 parser，并按严格连续 offset feed 字节块：
+
+- `ReadOffset` 表示 parser 已接收的字节末端。
+- `CommittableOffset` 只越过 `\n` 或 `\r\n` 结束的完整行；半行即使已读入也不会推进。尚待 start 的 context/terminal 不再钉住 offset，而是进入 `NextSeed.PendingTurns` 的有界安全 checkpoint。
+- 默认单行内容上限为 16 MiB，硬上限为 64 MiB。超长行不继续保留内容，parser 丢弃到下一换行，输出一次 content-free diagnostic 后恢复。
+- gap 或 replay feed 返回稳定 sentinel，parser state 不变。持久事务失败时 caller 必须丢弃当前 parser，并使用旧 committed offset 与旧 seed 重建。
+- offset 为 0 时不接受 seed，默认由 `session_meta` 建立 lifecycle。offset 大于 0 时必须提供上一成功事务原样持久化的 `NextSeed`；如果该位置之前尚未见到 session，允许空 seed。
+- `NextSeed` 是 content-free、深拷贝、可校验的完整 parser checkpoint：完整权威 `SessionMetaFact`；最多 64 个 open turn 的 start/context/latest provisional usage；最多 1024 个 pending turn 的安全 context/terminal 与原 source position；最近 1024 个 closed turn 的 start/terminal 摘要。它不包含 raw JSONL、prompt、response、reasoning、tool output、raw type/error 或未知原文。
+
+每条完整行先做 UTF-8、完整 JSON 和全层级重复 key 检查，再只按 `timestamp/type/payload` envelope 分类。支持的结构化 family 固定为：
+
+| Rollout family | 当前消费字段 |
+| --- | --- |
+| `session_meta` | thread `id` 作为 domain session ID；legacy `session_id` 缺失时回退 `id`；created time、source kind、cwd、originator、CLI version、session source、model provider |
+| `turn_context` | optional turn ID、observed time、cwd、model、reasoning effort；当前官方值含 `ultra`，未知非空未来值只归一为 `custom`，不回显原文 |
+| `event_msg.task_started/turn_started` | turn ID、explicit/fallback started time、optional context window |
+| `event_msg.task_complete/turn_complete` | turn ID、explicit/fallback completed time、`completed` outcome |
+| `event_msg.turn_aborted` | optional turn ID、explicit/fallback completed time、四种 allowlisted abort outcome |
+| `event_msg.token_count` | session cumulative 与 last-turn nullable input/cached/output/reasoning counters、optional context window；`rate_limits` 留给 quota 模块 |
+
+`response_item`、`compacted`、`inter_agent_communication` 和已知 content-bearing `event_msg` 只计为 known ignored line。新 rollout/event type 输出无原始名称的 compatibility diagnostic；空行、坏 JSON、重复 key、非法字段、未知类型或超长行都不会阻塞后续完整行。diagnostic 只包含固定 class/code、行起止 offset 和 retryable，不包含 path、原始 JSON、原始 type、decoder error 或内容摘要。
+
+Turn lifecycle 只接受显式事件：start 建立 open turn；无 turn ID 的 context/abort 只有恰好一个 open turn 时才能关联；last-turn usage 在唯一 open turn 上形成 provisional snapshot；terminal 复制该 turn 最新 snapshot 为 final，没有 snapshot 时保持 `NULL`。带明确 turn ID 的 context/terminal 可以先于 start 暂存为安全小结构，start 到达后按 start→context→terminal 的因果顺序发出；terminal 后才出现的 context 不会被重新排序到 terminal 前。context/turn usage/terminal 早于 start time、冲突重放等情况 fail closed。内存和 checkpoint 状态固定限制为 64 个 open turn、1024 个 pending turn 和最近 1024 个 closed turn；超限输出 `state_limit_exceeded` 并丢弃不能安全保留的状态，closed replay 保证只覆盖该有界窗口。parser 不从新 turn、EOF、mtime 或文件归档猜测 interruption。
+
+因果输出顺序与 source position 是两个不同维度。terminal-before-start 在 late start 到达后按 `TurnStarted -> TurnEnded` 输出，但两条事件仍保留原始行位置，因此合法存在 `TurnEnd.Position.StartOffset < TurnStart.Position.StartOffset`。TOO-253 不得重写或排序这些 offset；Store 必须允许 `complete_offset < start_offset`，仅继续要求二者非负且 `completed_at_ms >= started_at_ms`。
+
+diagnostic 按实际 emission order 返回：当前输入中的 framing/decoder 结果按 source order 处理；pending 在后续 start 处解析产生的延迟 diagnostic 在解析时追加，不做跨 Feed 的全局 offset 重排。因此相同字节流的一次 Feed 与任意连续分块 Feed 累积结果一致。
+
+所有 token 字段继续保持 `NULL` 与真实 `0` 的差异。TOO-253 必须新增专用的 parser checkpoint persistence schema、GORM model/migration/repository，并把一次 `ParseResult` 的全部事实、diagnostic、`NextSeed` 与 `CommittableOffset` 放进同一个 writer transaction；事务成功后才能采用新 offset/seed，失败则二者都保持旧值。禁止从 `turn_usage`、`session_current` 或其他 mutable current projection 反推 seed：这些表会被后续 snapshot 覆盖，无法恢复 checkpoint 时刻的 provisional usage/pending/closed 状态。checkpoint persistence 只能保存上述 typed safe fields，不能保存原始 JSONL 或 content payload。TOO-253 还需结合持久 previous 判定 generation/counter epoch。本 parser 不写 SQLite，也不提前推进 `source_files.parsed_offset`。可复用验证入口见 [`docs/test/jsonl-parser.md`](../../../test/jsonl-parser.md)。
+
 ## 数据层次
 
 | 层级 | 含义 | 典型对象 |
@@ -42,6 +74,8 @@ TOO-247 固化六张 `STRICT` 核心表。所有时间为 UTC epoch milliseconds
 `sessions.project_id`、`turns.project_id` 删除项目时置空；session 删除会级联清理 turn 和当前投影，turn 删除会级联清理 usage。`session_current.active_turn_id` 只能引用同一 session 的既有 turn，删除 turn 时置空。一个 `FactBatch` 只允许包含同一 Session 的对象，Usage 的 Session 归属在事务内通过关联 Turn 读回核对；不一致返回 `ErrInvalidRecord` 并整批回滚。Repository 在写入前把缺失引用、跨 session active turn 和 stable identity 冲突归一为 `ErrInvalidRecord`，不把 SQLite driver 文本当业务错误 contract。canonical SQL 同时用 CHECK 保证核心 ID、必填文本和非空 optional 文本不接受空字符串，防止绕过 typed repository 后写入另一套语义。
 
 来源文件实体由 TOO-248 的 `source_files` 建立；本卡在事实层使用 `(session_id, source_generation, start_offset)` 定位一条 turn。generation 只允许前进，同一 generation 下同一 turn 的 start offset 不可变化，且一个来源位置不能映射两个 turn。已完成 turn 只有在更高 generation 同时提供完整 completion tuple 时才切换来源位置；同一来源身份的 non-null 字段冲突返回 `ErrInvalidRecord`，provisional replay 不再改写已完成事实。这样 parser 即使重复扫描或旧 generation 乱序到达，也不会生成重复事实或回退当前来源位置。
+
+当前 TOO-247 Store DDL/typed validation 仍要求 `complete_offset >= start_offset`，与上面的官方 rollout 兼容路径冲突。TOO-253 在接入 parser 前必须通过 GORM schema/migration 与 repository validation 放宽该 source-offset 顺序约束；保留 `start_offset >= 0`、`complete_offset >= 0`、completion tuple 原子性与时间顺序。验收必须包含 parser 产生 terminal-before-start 事件、转换为 FactBatch、同一 writer transaction 写事实/checkpoint/offset、重启读回和幂等 replay；在该集成测试通过前不能宣称 parser/store handoff 已闭环。
 
 `sessions` 只存身份和稳定 metadata。重复 `session_meta` 使用 first-known-wins 补充 optional 字段：首次已提交的非空值成为权威，后续不同的非空值返回 `ErrInvalidRecord`，不会覆盖既有事实；首次提交本身仍是明确的权威来源边界。`created_at_ms` / `first_seen_at_ms` 只向更早收敛，`last_seen_at_ms` 只向更晚推进。项目 metadata 只有 `updated_at_ms` 更大时才更新；同一更新时间的冲突 payload 被拒绝，旧扫描只能补充更早的 `created_at_ms`。
 
