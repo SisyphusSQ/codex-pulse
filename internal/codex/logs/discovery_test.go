@@ -459,7 +459,7 @@ func TestOSScanRootProbeRejectsIntermediateSymlink(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(home, "sessions", "raced")); err != nil {
 		t.Fatalf("os.Symlink() error = %v", err)
 	}
-	root, err := (osFileSystem{}).OpenRoot(home)
+	root, err := (osFileSystem{}).OpenRoot(home, true)
 	if err != nil {
 		t.Fatalf("OpenRoot() error = %v", err)
 	}
@@ -494,8 +494,8 @@ type faultFileSystem struct {
 	probeErrors map[string]error
 }
 
-func (filesystem faultFileSystem) OpenRoot(path string) (scanRoot, error) {
-	root, err := filesystem.fileSystem.OpenRoot(path)
+func (filesystem faultFileSystem) OpenRoot(path string, resolveAncestors bool) (scanRoot, error) {
+	root, err := filesystem.fileSystem.OpenRoot(path, resolveAncestors)
 	if err != nil {
 		return nil, err
 	}
@@ -521,8 +521,8 @@ type directoryRaceFileSystem struct {
 	outside string
 }
 
-func (filesystem *directoryRaceFileSystem) OpenRoot(path string) (scanRoot, error) {
-	root, err := filesystem.fileSystem.OpenRoot(path)
+func (filesystem *directoryRaceFileSystem) OpenRoot(path string, resolveAncestors bool) (scanRoot, error) {
+	root, err := filesystem.fileSystem.OpenRoot(path, resolveAncestors)
 	if err != nil {
 		return nil, err
 	}
@@ -545,8 +545,8 @@ type directoryDisappearFileSystem struct {
 	home string
 }
 
-func (filesystem *directoryDisappearFileSystem) OpenRoot(path string) (scanRoot, error) {
-	root, err := filesystem.fileSystem.OpenRoot(path)
+func (filesystem *directoryDisappearFileSystem) OpenRoot(path string, resolveAncestors bool) (scanRoot, error) {
+	root, err := filesystem.fileSystem.OpenRoot(path, resolveAncestors)
 	if err != nil {
 		return nil, err
 	}
