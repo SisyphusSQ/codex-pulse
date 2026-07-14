@@ -1,0 +1,638 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
+)
+
+func TestEnsureApplicationSchemaRecordsVersionedFreshMigration(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	repository := NewRepository(database)
+	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
+		t.Fatalf("EnsureApplicationSchema() error = %v", err)
+	}
+	assertMigrationVersionAndHistory(t, database, 1, 1)
+
+	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
+		t.Fatalf("EnsureApplicationSchema(replay) error = %v", err)
+	}
+	assertMigrationVersionAndHistory(t, database, 1, 1)
+}
+
+func TestMigrationRunnerAppliesAllPendingVersionsInOrder(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	runner := migrationRunner{
+		repository: NewRepository(database),
+		catalog: []migrationDefinition{
+			{
+				version: 1, name: "one", checksum: strings.Repeat("1", 64),
+				apply: func(ctx context.Context, transaction storesqlite.WriteTx) error {
+					return transaction.WithContext(ctx).Exec(`CREATE TABLE migration_one (id INTEGER) STRICT`).Error
+				},
+			},
+			{
+				version: 2, name: "two", checksum: strings.Repeat("2", 64),
+				apply: func(ctx context.Context, transaction storesqlite.WriteTx) error {
+					return transaction.WithContext(ctx).Exec(`CREATE TABLE migration_two (id INTEGER) STRICT`).Error
+				},
+			},
+		},
+		now: func() time.Time { return time.UnixMilli(123) },
+	}
+	report, err := runner.run(context.Background())
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if got, want := report.AppliedVersions, []int{1, 2}; !equalInts(got, want) {
+		t.Fatalf("AppliedVersions = %v, want %v", got, want)
+	}
+	assertMigrationVersionAndHistory(t, database, 2, 2)
+
+	replay, err := runner.run(context.Background())
+	if err != nil {
+		t.Fatalf("run(replay) error = %v", err)
+	}
+	if len(replay.AppliedVersions) != 0 {
+		t.Fatalf("run(replay) AppliedVersions = %v, want empty", replay.AppliedVersions)
+	}
+}
+
+func TestMigrationRunnerRollsBackAllPendingVersionsOnLaterFailure(t *testing.T) {
+	t.Parallel()
+
+	errInjected := errors.New("injected migration failure")
+	database := openTestDatabase(t)
+	runner := migrationRunner{
+		repository: NewRepository(database),
+		catalog: []migrationDefinition{
+			{
+				version: 1, name: "one", checksum: strings.Repeat("1", 64),
+				apply: func(ctx context.Context, transaction storesqlite.WriteTx) error {
+					return transaction.WithContext(ctx).Exec(`CREATE TABLE migration_one (id INTEGER) STRICT`).Error
+				},
+			},
+			{
+				version: 2, name: "two", checksum: strings.Repeat("2", 64),
+				apply: func(ctx context.Context, transaction storesqlite.WriteTx) error {
+					if err := transaction.WithContext(ctx).Exec(`CREATE TABLE migration_two (id INTEGER) STRICT`).Error; err != nil {
+						return err
+					}
+					return errInjected
+				},
+			},
+		},
+	}
+	report, err := runner.run(context.Background())
+	if !errors.Is(err, errInjected) {
+		t.Fatalf("run() error = %v, want injected failure", err)
+	}
+	if len(report.AppliedVersions) != 0 {
+		t.Fatalf("AppliedVersions = %v, want empty after rollback", report.AppliedVersions)
+	}
+	err = database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+		var version int
+		if err := rawQueryRow(ctx, connection, `PRAGMA user_version`).Scan(&version); err != nil {
+			return err
+		}
+		if version != 0 {
+			t.Errorf("PRAGMA user_version = %d, want 0", version)
+		}
+		for _, table := range []string{"schema_migrations", "migration_one", "migration_two"} {
+			if connection.Migrator().HasTable(table) {
+				t.Errorf("table %q must roll back", table)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect rollback: %v", err)
+	}
+}
+
+func TestMigrationRunnerBacksUpLegacyDatabaseBeforeApplying(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	seedLegacyApplicationSchema(t, database)
+	var events []string
+	runner := applicationMigrationRunnerForTest(database)
+	runner.spaceCheck = func(context.Context, string, int64) error {
+		events = append(events, "space")
+		return nil
+	}
+	runner.backup = func(
+		context.Context,
+		int,
+		int,
+		func(storesqlite.BackupProgress),
+	) (string, error) {
+		events = append(events, "backup")
+		return "/tmp/legacy-before-v1.db", nil
+	}
+	report, err := runner.run(context.Background())
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if got, want := strings.Join(events, ","), "space,backup"; got != want {
+		t.Fatalf("events = %q, want %q", got, want)
+	}
+	if report.BackupPath != "/tmp/legacy-before-v1.db" {
+		t.Fatalf("BackupPath = %q", report.BackupPath)
+	}
+	assertMigrationVersionAndHistory(t, database, 1, 1)
+}
+
+func TestApplicationMigrationCreatesRestorablePreMigrationBackupForLegacyDatabase(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	seedLegacyApplicationSchema(t, database)
+	report, err := NewRepository(database).MigrateApplicationSchema(context.Background())
+	if err != nil {
+		t.Fatalf("MigrateApplicationSchema() error = %v", err)
+	}
+	if report.BackupPath == "" {
+		t.Fatal("MigrateApplicationSchema() returned no backup path for legacy database")
+	}
+	backupDatabase, err := sql.Open("sqlite", report.BackupPath)
+	if err != nil {
+		t.Fatalf("open migration backup: %v", err)
+	}
+	defer backupDatabase.Close()
+	var version int
+	if err := backupDatabase.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatalf("read backup user_version: %v", err)
+	}
+	if version != 0 {
+		t.Fatalf("backup user_version = %d, want legacy 0", version)
+	}
+	var projectTableCount int
+	if err := backupDatabase.QueryRow(
+		`SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'projects'`,
+	).Scan(&projectTableCount); err != nil {
+		t.Fatalf("read backup schema: %v", err)
+	}
+	if projectTableCount != 1 {
+		t.Fatalf("backup projects table count = %d, want 1", projectTableCount)
+	}
+	var ledgerCount int
+	if err := backupDatabase.QueryRow(
+		`SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'schema_migrations'`,
+	).Scan(&ledgerCount); err != nil {
+		t.Fatalf("read backup ledger state: %v", err)
+	}
+	if ledgerCount != 0 {
+		t.Fatalf("backup ledger table count = %d, want 0", ledgerCount)
+	}
+	assertMigrationVersionAndHistory(t, database, 1, 1)
+}
+
+func TestApplicationMigrationUpgradesCoreOnlyLegacyDatabaseAndPreservesDataInBackup(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	repository := NewRepository(database)
+	if err := repository.EnsureCoreSchema(context.Background()); err != nil {
+		t.Fatalf("EnsureCoreSchema() error = %v", err)
+	}
+	project := Project{
+		ProjectID: "legacy-project", DisplayName: "Legacy", RootPath: "/synthetic/legacy",
+		CreatedAtMS: 1, UpdatedAtMS: 1,
+	}
+	if err := repository.UpsertFacts(context.Background(), FactBatch{Project: &project}); err != nil {
+		t.Fatalf("UpsertFacts() error = %v", err)
+	}
+	report, err := repository.MigrateApplicationSchema(context.Background())
+	if err != nil {
+		t.Fatalf("MigrateApplicationSchema() error = %v", err)
+	}
+	if report.BackupPath == "" {
+		t.Fatal("MigrateApplicationSchema() returned no backup path")
+	}
+	if _, err := repository.SourceFile(context.Background(), "missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("SourceFile() error = %v, want ErrNotFound from created runtime schema", err)
+	}
+	backupDatabase, err := sql.Open("sqlite", report.BackupPath)
+	if err != nil {
+		t.Fatalf("open migration backup: %v", err)
+	}
+	defer backupDatabase.Close()
+	var displayName string
+	if err := backupDatabase.QueryRow(
+		`SELECT display_name FROM projects WHERE project_id = ?`, project.ProjectID,
+	).Scan(&displayName); err != nil {
+		t.Fatalf("read legacy project from backup: %v", err)
+	}
+	if displayName != project.DisplayName {
+		t.Fatalf("backup display_name = %q, want %q", displayName, project.DisplayName)
+	}
+	var runtimeTables int
+	if err := backupDatabase.QueryRow(
+		`SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'source_files'`,
+	).Scan(&runtimeTables); err != nil {
+		t.Fatalf("read legacy runtime state: %v", err)
+	}
+	if runtimeTables != 0 {
+		t.Fatalf("backup runtime table count = %d, want pre-migration 0", runtimeTables)
+	}
+}
+
+func TestMigrationRunnerSkipsBackupForFreshAndCurrentDatabase(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	runner := applicationMigrationRunnerForTest(database)
+	runner.spaceCheck = func(context.Context, string, int64) error {
+		return errors.New("space check must be skipped")
+	}
+	runner.backup = func(
+		context.Context,
+		int,
+		int,
+		func(storesqlite.BackupProgress),
+	) (string, error) {
+		return "", errors.New("backup must be skipped")
+	}
+	if _, err := runner.run(context.Background()); err != nil {
+		t.Fatalf("run(fresh) error = %v", err)
+	}
+	if _, err := runner.run(context.Background()); err != nil {
+		t.Fatalf("run(current) error = %v", err)
+	}
+}
+
+func TestMigrationRunnerStopsBeforeApplyWhenSpaceOrBackupFails(t *testing.T) {
+	t.Parallel()
+
+	for _, testCase := range []struct {
+		name        string
+		spaceError  error
+		backupError error
+	}{
+		{name: "space", spaceError: storesqlite.ErrDiskFull},
+		{name: "backup", backupError: storesqlite.ErrIO},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			database := openTestDatabase(t)
+			seedLegacyApplicationSchema(t, database)
+			backupCalled := false
+			runner := applicationMigrationRunnerForTest(database)
+			runner.spaceCheck = func(context.Context, string, int64) error { return testCase.spaceError }
+			runner.backup = func(
+				context.Context,
+				int,
+				int,
+				func(storesqlite.BackupProgress),
+			) (string, error) {
+				backupCalled = true
+				return "", testCase.backupError
+			}
+			_, err := runner.run(context.Background())
+			want := testCase.spaceError
+			if want == nil {
+				want = testCase.backupError
+			}
+			if !errors.Is(err, want) {
+				t.Fatalf("run() error = %v, want %v", err, want)
+			}
+			if testCase.spaceError != nil && backupCalled {
+				t.Fatal("backup called after failed space check")
+			}
+			assertLegacyMigrationState(t, database)
+		})
+	}
+}
+
+func TestMigrationFailureExposesStableStageCodeAndVersionContext(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	seedLegacyApplicationSchema(t, database)
+	errBackup := errors.New("driver detail must remain wrapped")
+	runner := applicationMigrationRunnerForTest(database)
+	runner.spaceCheck = func(context.Context, string, int64) error { return nil }
+	runner.backup = func(
+		context.Context,
+		int,
+		int,
+		func(storesqlite.BackupProgress),
+	) (string, error) {
+		return "/tmp/partial-before-v1.db", errBackup
+	}
+	_, err := runner.run(context.Background())
+	var failure *MigrationFailure
+	if !errors.As(err, &failure) {
+		t.Fatalf("run() error = %v, want MigrationFailure", err)
+	}
+	if failure.Stage != MigrationStageBackup || failure.Code != MigrationCodeBackupFailed ||
+		failure.CurrentVersion != 0 || failure.TargetVersion != 1 || failure.FailedVersion != 0 ||
+		failure.BackupPath != "" || !errors.Is(failure, errBackup) {
+		t.Fatalf("MigrationFailure = %#v", failure)
+	}
+}
+
+func TestMigrationProgressReportsStableStagesAndBackupPages(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	seedLegacyApplicationSchema(t, database)
+	var progress []MigrationProgress
+	runner := applicationMigrationRunnerForTest(database)
+	runner.observe = func(update MigrationProgress) { progress = append(progress, update) }
+	runner.spaceCheck = func(context.Context, string, int64) error { return nil }
+	runner.backup = func(
+		_ context.Context,
+		_ int,
+		_ int,
+		observe func(storesqlite.BackupProgress),
+	) (string, error) {
+		observe(storesqlite.BackupProgress{CopiedPages: 3, RemainingPages: 2, TotalPages: 5})
+		observe(storesqlite.BackupProgress{CopiedPages: 5, RemainingPages: 0, TotalPages: 5})
+		return "/tmp/legacy-before-v1.db", nil
+	}
+	if _, err := runner.run(context.Background()); err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	var stages []string
+	var backupUpdates []MigrationProgress
+	for _, update := range progress {
+		stages = append(stages, string(update.Stage))
+		if update.Stage == MigrationStageBackup && update.TotalPages > 0 {
+			backupUpdates = append(backupUpdates, update)
+		}
+	}
+	if got, want := strings.Join(stages, ","), "inspect,space,backup,backup,backup,apply,verify,complete"; got != want {
+		t.Fatalf("progress stages = %q, want %q", got, want)
+	}
+	if len(backupUpdates) != 2 || backupUpdates[0].CopiedPages != 3 || backupUpdates[1].RemainingPages != 0 {
+		t.Fatalf("backup progress = %#v", backupUpdates)
+	}
+}
+
+func applicationMigrationRunnerForTest(database *storesqlite.Store) migrationRunner {
+	return migrationRunner{
+		repository: NewRepository(database), catalog: applicationMigrations,
+		now: func() time.Time { return time.UnixMilli(123) },
+		verifyCurrent: func(ctx context.Context, transaction storesqlite.WriteTx) error {
+			return verifyApplicationSchema(ctx, transaction)
+		},
+	}
+}
+
+func seedLegacyApplicationSchema(t *testing.T, database *storesqlite.Store) {
+	t.Helper()
+	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		if err := ensureSchemaObjects(ctx, transaction, coreSchemaObjects); err != nil {
+			return err
+		}
+		return ensureSchemaObjects(ctx, transaction, runtimeSchemaObjects)
+	})
+	if err != nil {
+		t.Fatalf("seed legacy application schema: %v", err)
+	}
+}
+
+func assertLegacyMigrationState(t *testing.T, database *storesqlite.Store) {
+	t.Helper()
+	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+		var version int
+		if err := rawQueryRow(ctx, connection, `PRAGMA user_version`).Scan(&version); err != nil {
+			return err
+		}
+		if version != 0 {
+			t.Errorf("PRAGMA user_version = %d, want 0", version)
+		}
+		if connection.Migrator().HasTable(&schemaMigrationModel{}) {
+			t.Error("schema_migrations must not exist")
+		}
+		if !connection.Migrator().HasTable(&projectModel{}) {
+			t.Error("legacy projects table must remain")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect legacy migration state: %v", err)
+	}
+}
+
+func equalInts(left, right []int) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestMigrationRejectsChecksumDrift(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	repository := NewRepository(database)
+	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
+		t.Fatalf("EnsureApplicationSchema() error = %v", err)
+	}
+	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		return transaction.WithContext(ctx).Model(&schemaMigrationModel{}).
+			Where("version = ?", 1).Update("checksum", "0000000000000000000000000000000000000000000000000000000000000000").Error
+	})
+	if err != nil {
+		t.Fatalf("corrupt checksum: %v", err)
+	}
+	if err := repository.EnsureApplicationSchema(context.Background()); !errors.Is(err, ErrMigrationContract) {
+		t.Fatalf("EnsureApplicationSchema() error = %v, want ErrMigrationContract", err)
+	}
+}
+
+func TestMigrationRejectsVersionHistoryDivergenceAndNewerSchema(t *testing.T) {
+	t.Parallel()
+
+	t.Run("version without ledger", func(t *testing.T) {
+		database := openTestDatabase(t)
+		if err := setMigrationUserVersion(database, 1); err != nil {
+			t.Fatalf("set user_version: %v", err)
+		}
+		if err := NewRepository(database).EnsureApplicationSchema(context.Background()); !errors.Is(err, ErrMigrationContract) {
+			t.Fatalf("EnsureApplicationSchema() error = %v, want ErrMigrationContract", err)
+		}
+	})
+
+	t.Run("newer version", func(t *testing.T) {
+		database := openTestDatabase(t)
+		if err := setMigrationUserVersion(database, applicationSchemaVersion+1); err != nil {
+			t.Fatalf("set user_version: %v", err)
+		}
+		if err := NewRepository(database).EnsureApplicationSchema(context.Background()); !errors.Is(err, ErrMigrationNewer) {
+			t.Fatalf("EnsureApplicationSchema() error = %v, want ErrMigrationNewer", err)
+		}
+	})
+
+	t.Run("newer history", func(t *testing.T) {
+		database := openTestDatabase(t)
+		repository := NewRepository(database)
+		if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
+			t.Fatalf("EnsureApplicationSchema() error = %v", err)
+		}
+		err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+			return transaction.WithContext(ctx).Create(&schemaMigrationModel{
+				Version: 2, Name: "future", Checksum: strings.Repeat("2", 64), AppliedAtMS: 2,
+			}).Error
+		})
+		if err != nil {
+			t.Fatalf("append future history: %v", err)
+		}
+		if err := repository.EnsureApplicationSchema(context.Background()); !errors.Is(err, ErrMigrationNewer) {
+			t.Fatalf("EnsureApplicationSchema() error = %v, want ErrMigrationNewer", err)
+		}
+	})
+}
+
+func TestMigrationRunnerRejectsInvalidCatalogBeforeWriting(t *testing.T) {
+	t.Parallel()
+
+	validApply := func(context.Context, storesqlite.WriteTx) error { return nil }
+	for _, testCase := range []struct {
+		name    string
+		catalog []migrationDefinition
+	}{
+		{name: "empty"},
+		{
+			name: "gap",
+			catalog: []migrationDefinition{{
+				version: 2, name: "two", checksum: strings.Repeat("2", 64), apply: validApply,
+			}},
+		},
+		{
+			name: "empty name",
+			catalog: []migrationDefinition{{
+				version: 1, checksum: strings.Repeat("1", 64), apply: validApply,
+			}},
+		},
+		{
+			name:    "invalid checksum",
+			catalog: []migrationDefinition{{version: 1, name: "one", checksum: "not-sha256", apply: validApply}},
+		},
+		{
+			name:    "nil apply",
+			catalog: []migrationDefinition{{version: 1, name: "one", checksum: strings.Repeat("1", 64)}},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			database := openTestDatabase(t)
+			runner := migrationRunner{repository: NewRepository(database), catalog: testCase.catalog}
+			_, err := runner.run(context.Background())
+			if !errors.Is(err, ErrMigrationContract) {
+				t.Fatalf("run() error = %v, want ErrMigrationContract", err)
+			}
+			var failure *MigrationFailure
+			if !errors.As(err, &failure) || failure.Stage != MigrationStageCatalog ||
+				failure.Code != MigrationCodeCatalogInvalid {
+				t.Fatalf("run() failure = %#v", failure)
+			}
+			assertLegacyMigrationStateWithoutSchema(t, database)
+		})
+	}
+}
+
+func assertLegacyMigrationStateWithoutSchema(t *testing.T, database *storesqlite.Store) {
+	t.Helper()
+	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+		var version int
+		if err := rawQueryRow(ctx, connection, `PRAGMA user_version`).Scan(&version); err != nil {
+			return err
+		}
+		if version != 0 || connection.Migrator().HasTable(&schemaMigrationModel{}) {
+			t.Errorf("migration state changed: version=%d ledger=%v", version, connection.Migrator().HasTable(&schemaMigrationModel{}))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect untouched database: %v", err)
+	}
+}
+
+func TestMigrationApplyFailureRollsBackVersionHistoryAndPendingObjects(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		return transaction.WithContext(ctx).
+			Exec(`CREATE TABLE source_files (source_file_id TEXT PRIMARY KEY) STRICT`).Error
+	})
+	if err != nil {
+		t.Fatalf("create incompatible source_files: %v", err)
+	}
+
+	err = NewRepository(database).EnsureApplicationSchema(context.Background())
+	if !errors.Is(err, ErrSchemaContract) {
+		t.Fatalf("EnsureApplicationSchema() error = %v, want ErrSchemaContract", err)
+	}
+	err = database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+		var version int
+		if err := rawQueryRow(ctx, connection, `PRAGMA user_version`).Scan(&version); err != nil {
+			return err
+		}
+		if version != 0 {
+			t.Errorf("PRAGMA user_version = %d, want 0", version)
+		}
+		if connection.Migrator().HasTable(&schemaMigrationModel{}) {
+			t.Error("schema_migrations must roll back")
+		}
+		if connection.Migrator().HasTable(&projectModel{}) {
+			t.Error("projects must roll back")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect rollback: %v", err)
+	}
+}
+
+func setMigrationUserVersion(database *storesqlite.Store, version int) error {
+	return database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		return transaction.WithContext(ctx).Exec("PRAGMA user_version = " + strconv.Itoa(version)).Error
+	})
+}
+
+func assertMigrationVersionAndHistory(
+	t *testing.T,
+	database *storesqlite.Store,
+	wantVersion int,
+	wantHistory int64,
+) {
+	t.Helper()
+	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+		var version int
+		if err := rawQueryRow(ctx, connection, `PRAGMA user_version`).Scan(&version); err != nil {
+			return err
+		}
+		if version != wantVersion {
+			t.Errorf("PRAGMA user_version = %d, want %d", version, wantVersion)
+		}
+		var history int64
+		if err := connection.WithContext(ctx).Table("schema_migrations").Count(&history).Error; err != nil {
+			return err
+		}
+		if history != wantHistory {
+			t.Errorf("schema_migrations count = %d, want %d", history, wantHistory)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect migration state: %v", err)
+	}
+}

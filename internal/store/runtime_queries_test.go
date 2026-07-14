@@ -1,5 +1,8 @@
 package store
 
+// 本文件只保存 EXPLAIN QUERY PLAN 的代表查询，用于验证 schema 索引契约。
+// 生产 CRUD/query 由 GORM model 构造，不复用这些 raw SQL。
+
 const listSourceFilesBySessionStateQuery = `
 	SELECT source_file_id, provider, session_id, current_path, device_id, inode,
 		size_bytes, mtime_ns, parsed_offset, parser_version, active_generation,

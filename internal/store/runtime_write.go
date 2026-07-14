@@ -2,75 +2,14 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 // UpsertSourceFile 只允许稳定物理身份下 generation/offset 单调推进。
 func (repository *Repository) UpsertSourceFile(ctx context.Context, file SourceFile) error {
-	if repository == nil || repository.database == nil {
-		return ErrInvalidRepository
-	}
-	if err := validateSourceFile(file); err != nil {
-		return err
-	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		if file.SessionID != nil {
-			if err := requireSession(ctx, transaction, *file.SessionID); err != nil {
-				return err
-			}
-		}
-		existing, found, err := sourceFileByID(ctx, transaction, file.SourceFileID)
-		if err != nil {
-			return err
-		}
-		if found {
-			if err := validateSourceFileProgression(existing, file); err != nil {
-				return err
-			}
-			if sourceFilesEqual(existing, file) {
-				return nil
-			}
-		} else {
-			var otherID string
-			err := transaction.QueryRowContext(ctx, `
-				SELECT source_file_id FROM source_files
-				WHERE provider = ? AND device_id = ? AND inode = ?
-			`, file.Provider, file.DeviceID, file.Inode).Scan(&otherID)
-			if err == nil {
-				return invalidRecord("source physical identity belongs to another source file")
-			}
-			if !errors.Is(err, sql.ErrNoRows) {
-				return err
-			}
-		}
-		_, err = transaction.ExecContext(ctx, `
-			INSERT INTO source_files (
-				source_file_id, provider, session_id, current_path, device_id, inode,
-				size_bytes, mtime_ns, parsed_offset, parser_version, active_generation,
-				state, last_scanned_at_ms, last_error_class, updated_at_ms
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(source_file_id) DO UPDATE SET
-				session_id = excluded.session_id,
-				current_path = excluded.current_path,
-				size_bytes = excluded.size_bytes,
-				mtime_ns = excluded.mtime_ns,
-				parsed_offset = excluded.parsed_offset,
-				parser_version = excluded.parser_version,
-				active_generation = excluded.active_generation,
-				state = excluded.state,
-				last_scanned_at_ms = excluded.last_scanned_at_ms,
-				last_error_class = excluded.last_error_class,
-				updated_at_ms = excluded.updated_at_ms
-		`,
-			file.SourceFileID, file.Provider, nullableString(file.SessionID), file.CurrentPath,
-			file.DeviceID, file.Inode, file.SizeBytes, file.MTimeNS, file.ParsedOffset,
-			file.ParserVersion, file.ActiveGeneration, string(file.State),
-			nullableInt64(file.LastScannedAtMS), nullableRuntimeErrorClass(file.LastErrorClass), file.UpdatedAtMS,
-		)
-		return err
+	return repository.WithinWriteUnit(ctx, func(unit *WriteUnit) error {
+		return unit.UpsertSourceFile(file)
 	})
 }
 
@@ -108,40 +47,23 @@ func (repository *Repository) UpsertSourceState(ctx context.Context, state Sourc
 				return invalidRecord("source state observation timestamp regresses")
 			}
 		} else {
-			var otherID string
-			err := transaction.QueryRowContext(ctx, `
-				SELECT source_instance_id FROM source_state WHERE source_type = ? AND scope_key = ?
-			`, state.SourceType, state.ScopeKey).Scan(&otherID)
-			if err == nil {
-				return invalidRecord("source state scope belongs to another identity")
-			}
-			if !errors.Is(err, sql.ErrNoRows) {
+			var count int64
+			err := transaction.WithContext(ctx).Model(&sourceStateModel{}).
+				Where("source_type = ? AND scope_key = ?", state.SourceType, state.ScopeKey).
+				Count(&count).Error
+			if err != nil {
 				return err
 			}
+			if count > 0 {
+				return invalidRecord("source state scope belongs to another identity")
+			}
 		}
-		_, err = transaction.ExecContext(ctx, `
-			INSERT INTO source_state (
-				source_instance_id, source_type, scope_key, last_attempt_at_ms,
-				last_success_at_ms, next_due_at_ms, consecutive_failures,
-				last_error_class, freshness_state, cursor_version, updated_at_ms
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(source_instance_id) DO UPDATE SET
-				last_attempt_at_ms = excluded.last_attempt_at_ms,
-				last_success_at_ms = excluded.last_success_at_ms,
-				next_due_at_ms = excluded.next_due_at_ms,
-				consecutive_failures = excluded.consecutive_failures,
-				last_error_class = excluded.last_error_class,
-				freshness_state = excluded.freshness_state,
-				cursor_version = excluded.cursor_version,
-				updated_at_ms = excluded.updated_at_ms
-		`,
-			state.SourceInstanceID, state.SourceType, state.ScopeKey,
-			nullableInt64(state.LastAttemptAtMS), nullableInt64(state.LastSuccessAtMS),
-			nullableInt64(state.NextDueAtMS), state.ConsecutiveFailures,
-			nullableRuntimeErrorClass(state.LastErrorClass), string(state.FreshnessState),
-			state.CursorVersion, state.UpdatedAtMS,
-		)
-		return err
+		model := sourceStateModelFromDomain(state)
+		if !found {
+			return transaction.WithContext(ctx).Create(&model).Error
+		}
+		return transaction.WithContext(ctx).Model(&sourceStateModel{}).
+			Where("source_instance_id = ?", state.SourceInstanceID).Updates(sourceStateUpdates(model)).Error
 	})
 }
 
@@ -155,7 +77,7 @@ func (repository *Repository) AppendSourceAttempt(ctx context.Context, attempt S
 	}
 	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
 		if err := requireStoredReference(
-			ctx, transaction, `SELECT 1 FROM source_state WHERE source_instance_id = ?`,
+			ctx, transaction, &sourceStateModel{}, "source_instance_id = ?",
 			attempt.SourceInstanceID, "source state",
 		); err != nil {
 			return err
@@ -170,17 +92,8 @@ func (repository *Repository) AppendSourceAttempt(ctx context.Context, attempt S
 			}
 			return invalidRecord("source attempt conflicts with append-only history")
 		}
-		_, err = transaction.ExecContext(ctx, `
-			INSERT INTO source_attempts (
-				request_id, source_instance_id, started_at_ms, finished_at_ms,
-				outcome, http_status, error_class, payload_sha256
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`,
-			attempt.RequestID, attempt.SourceInstanceID, attempt.StartedAtMS, attempt.FinishedAtMS,
-			string(attempt.Outcome), nullableInt64(attempt.HTTPStatus),
-			nullableRuntimeErrorClass(attempt.ErrorClass), nullableSHA256Digest(attempt.PayloadSHA256),
-		)
-		return err
+		model := sourceAttemptModelFromDomain(attempt)
+		return transaction.WithContext(ctx).Create(&model).Error
 	})
 }
 
@@ -281,26 +194,23 @@ func (repository *Repository) InterruptIncompleteJobs(ctx context.Context, atMS 
 	}
 	var interrupted int64
 	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		var newer int
-		if err := transaction.QueryRowContext(ctx, `
-			SELECT COUNT(*) FROM job_runs
-			WHERE state IN ('queued', 'running') AND updated_at_ms > ?
-		`, atMS).Scan(&newer); err != nil {
+		var newer int64
+		if err := transaction.WithContext(ctx).Model(&jobRunModel{}).
+			Where("state IN ? AND updated_at_ms > ?", []string{string(JobQueued), string(JobRunning)}, atMS).
+			Count(&newer).Error; err != nil {
 			return err
 		}
 		if newer > 0 {
 			return invalidRecord("job interruption timestamp precedes an incomplete job update")
 		}
-		result, err := transaction.ExecContext(ctx, `
-			UPDATE job_runs
-			SET state = 'interrupted', finished_at_ms = ?, error_class = NULL, updated_at_ms = ?
-			WHERE state IN ('queued', 'running')
-		`, atMS, atMS)
-		if err != nil {
-			return err
-		}
-		interrupted, err = result.RowsAffected()
-		return err
+		result := transaction.WithContext(ctx).Model(&jobRunModel{}).
+			Where("state IN ?", []string{string(JobQueued), string(JobRunning)}).
+			Updates(map[string]any{
+				"state": string(JobInterrupted), "finished_at_ms": atMS,
+				"error_class": nil, "updated_at_ms": atMS,
+			})
+		interrupted = result.RowsAffected
+		return result.Error
 	})
 	return interrupted, err
 }
@@ -342,14 +252,14 @@ func (repository *Repository) ResumeInterruptedJob(ctx context.Context, oldJobID
 func createJobRun(ctx context.Context, transaction storesqlite.WriteTx, job JobRun) error {
 	if job.SourceFileID != nil {
 		if err := requireStoredReference(
-			ctx, transaction, `SELECT 1 FROM source_files WHERE source_file_id = ?`, *job.SourceFileID, "source file",
+			ctx, transaction, &sourceFileModel{}, "source_file_id = ?", *job.SourceFileID, "source file",
 		); err != nil {
 			return err
 		}
 	}
 	if job.ResumeOfJobID != nil {
 		if err := requireStoredReference(
-			ctx, transaction, `SELECT 1 FROM job_runs WHERE job_id = ?`, *job.ResumeOfJobID, "resume job",
+			ctx, transaction, &jobRunModel{}, "job_id = ?", *job.ResumeOfJobID, "resume job",
 		); err != nil {
 			return err
 		}
@@ -364,21 +274,8 @@ func createJobRun(ctx context.Context, transaction storesqlite.WriteTx, job JobR
 		}
 		return invalidRecord("job run conflicts with stable identity")
 	}
-	_, err = transaction.ExecContext(ctx, `
-		INSERT INTO job_runs (
-			job_id, job_type, requested_by, priority, state, phase, source_file_id,
-			resume_of_job_id, created_at_ms, started_at_ms, finished_at_ms,
-			progress_current, progress_total, resume_generation, resume_offset,
-			error_class, updated_at_ms
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		job.JobID, job.JobType, job.RequestedBy, job.Priority, string(job.State), string(job.Phase),
-		nullableString(job.SourceFileID), nullableString(job.ResumeOfJobID), job.CreatedAtMS,
-		nullableInt64(job.StartedAtMS), nullableInt64(job.FinishedAtMS),
-		nullableInt64(job.ProgressCurrent), nullableInt64(job.ProgressTotal), jobCursorGeneration(job.ResumeCursor),
-		jobCursorOffset(job.ResumeCursor), nullableRuntimeErrorClass(job.ErrorClass), job.UpdatedAtMS,
-	)
-	return err
+	model := jobRunModelFromDomain(job)
+	return transaction.WithContext(ctx).Create(&model).Error
 }
 
 func projectJobTransition(existing JobRun, transition JobTransition) (JobRun, error) {
@@ -446,18 +343,14 @@ func isTerminalJobState(state JobState) bool {
 }
 
 func updateJobRun(ctx context.Context, transaction storesqlite.WriteTx, job JobRun) error {
-	_, err := transaction.ExecContext(ctx, `
-		UPDATE job_runs SET
-			state = ?, phase = ?, started_at_ms = ?, finished_at_ms = ?,
-			progress_current = ?, progress_total = ?, resume_generation = ?, resume_offset = ?,
-			error_class = ?, updated_at_ms = ?
-		WHERE job_id = ?
-	`,
-		string(job.State), string(job.Phase), nullableInt64(job.StartedAtMS), nullableInt64(job.FinishedAtMS),
-		nullableInt64(job.ProgressCurrent), nullableInt64(job.ProgressTotal), jobCursorGeneration(job.ResumeCursor),
-		jobCursorOffset(job.ResumeCursor), nullableRuntimeErrorClass(job.ErrorClass), job.UpdatedAtMS, job.JobID,
-	)
-	return err
+	model := jobRunModelFromDomain(job)
+	return transaction.WithContext(ctx).Model(&jobRunModel{}).Where("job_id = ?", job.JobID).Updates(map[string]any{
+		"state": model.State, "phase": model.Phase, "started_at_ms": model.StartedAtMS,
+		"finished_at_ms": model.FinishedAtMS, "progress_current": model.ProgressCurrent,
+		"progress_total": model.ProgressTotal, "resume_generation": model.ResumeGeneration,
+		"resume_offset": model.ResumeOffset, "error_class": model.ErrorClass,
+		"updated_at_ms": model.UpdatedAtMS,
+	}).Error
 }
 
 func jobCursorGeneration(cursor *JobCursor) any {
@@ -472,4 +365,88 @@ func jobCursorOffset(cursor *JobCursor) any {
 		return nil
 	}
 	return cursor.Offset
+}
+
+func sourceFileModelFromDomain(file SourceFile) sourceFileModel {
+	return sourceFileModel{
+		SourceFileID: file.SourceFileID, Provider: file.Provider, SessionID: file.SessionID,
+		CurrentPath: file.CurrentPath, DeviceID: file.DeviceID, Inode: file.Inode,
+		SizeBytes: file.SizeBytes, MTimeNS: file.MTimeNS, ParsedOffset: file.ParsedOffset,
+		ParserVersion: file.ParserVersion, ActiveGeneration: file.ActiveGeneration,
+		State: string(file.State), LastScannedAtMS: file.LastScannedAtMS,
+		LastErrorClass: runtimeErrorStringPointer(file.LastErrorClass), UpdatedAtMS: file.UpdatedAtMS,
+	}
+}
+
+func sourceFileUpdates(model sourceFileModel) map[string]any {
+	return map[string]any{
+		"session_id": model.SessionID, "current_path": model.CurrentPath,
+		"size_bytes": model.SizeBytes, "mtime_ns": model.MTimeNS,
+		"parsed_offset": model.ParsedOffset, "parser_version": model.ParserVersion,
+		"active_generation": model.ActiveGeneration, "state": model.State,
+		"last_scanned_at_ms": model.LastScannedAtMS, "last_error_class": model.LastErrorClass,
+		"updated_at_ms": model.UpdatedAtMS,
+	}
+}
+
+func sourceStateModelFromDomain(state SourceState) sourceStateModel {
+	return sourceStateModel{
+		SourceInstanceID: state.SourceInstanceID, SourceType: state.SourceType, ScopeKey: state.ScopeKey,
+		LastAttemptAtMS: state.LastAttemptAtMS, LastSuccessAtMS: state.LastSuccessAtMS,
+		NextDueAtMS: state.NextDueAtMS, ConsecutiveFailures: state.ConsecutiveFailures,
+		LastErrorClass: runtimeErrorStringPointer(state.LastErrorClass),
+		FreshnessState: string(state.FreshnessState), CursorVersion: state.CursorVersion,
+		UpdatedAtMS: state.UpdatedAtMS,
+	}
+}
+
+func sourceStateUpdates(model sourceStateModel) map[string]any {
+	return map[string]any{
+		"last_attempt_at_ms": model.LastAttemptAtMS, "last_success_at_ms": model.LastSuccessAtMS,
+		"next_due_at_ms": model.NextDueAtMS, "consecutive_failures": model.ConsecutiveFailures,
+		"last_error_class": model.LastErrorClass, "freshness_state": model.FreshnessState,
+		"cursor_version": model.CursorVersion, "updated_at_ms": model.UpdatedAtMS,
+	}
+}
+
+func sourceAttemptModelFromDomain(attempt SourceAttempt) sourceAttemptModel {
+	return sourceAttemptModel{
+		RequestID: attempt.RequestID, SourceInstanceID: attempt.SourceInstanceID,
+		StartedAtMS: attempt.StartedAtMS, FinishedAtMS: attempt.FinishedAtMS,
+		Outcome: string(attempt.Outcome), HTTPStatus: attempt.HTTPStatus,
+		ErrorClass:    runtimeErrorStringPointer(attempt.ErrorClass),
+		PayloadSHA256: digestStringPointer(attempt.PayloadSHA256),
+	}
+}
+
+func jobRunModelFromDomain(job JobRun) jobRunModel {
+	model := jobRunModel{
+		JobID: job.JobID, JobType: job.JobType, RequestedBy: job.RequestedBy,
+		Priority: job.Priority, State: string(job.State), Phase: string(job.Phase),
+		SourceFileID: job.SourceFileID, ResumeOfJobID: job.ResumeOfJobID,
+		CreatedAtMS: job.CreatedAtMS, StartedAtMS: job.StartedAtMS, FinishedAtMS: job.FinishedAtMS,
+		ProgressCurrent: job.ProgressCurrent, ProgressTotal: job.ProgressTotal,
+		ErrorClass: runtimeErrorStringPointer(job.ErrorClass), UpdatedAtMS: job.UpdatedAtMS,
+	}
+	if job.ResumeCursor != nil {
+		model.ResumeGeneration = &job.ResumeCursor.Generation
+		model.ResumeOffset = &job.ResumeCursor.Offset
+	}
+	return model
+}
+
+func runtimeErrorStringPointer(value *RuntimeErrorClass) *string {
+	if value == nil {
+		return nil
+	}
+	converted := string(*value)
+	return &converted
+}
+
+func digestStringPointer(value *SHA256Digest) *string {
+	if value == nil {
+		return nil
+	}
+	converted := value.String()
+	return &converted
 }

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	driverName                = "sqlite3"
+	driverName                = "sqlite"
 	applicationDirectoryName  = "Codex Pulse"
 	databaseFilename          = "codex-pulse.db"
 	defaultWriteQueueCapacity = 128
@@ -163,27 +163,39 @@ func secureDatabaseFile(path string, repairPermissions bool) error {
 
 func writerDSN(config Config) string {
 	values := url.Values{
-		"cache":         {"private"},
-		"mode":          {"rwc"},
-		"_busy_timeout": {strconv.FormatInt(config.BusyTimeout.Milliseconds(), 10)},
-		"_foreign_keys": {"on"},
-		"_journal_mode": {"WAL"},
-		"_synchronous":  {"NORMAL"},
-		"_txlock":       {"immediate"},
+		"cache":   {"private"},
+		"mode":    {"rwc"},
+		"_pragma": writerPragmas(config),
+		"_txlock": {"immediate"},
 	}
 	return databaseURI(config.Path, values)
 }
 
 func readerDSN(config Config) string {
 	values := url.Values{
-		"cache":         {"private"},
-		"mode":          {"ro"},
-		"_busy_timeout": {strconv.FormatInt(config.BusyTimeout.Milliseconds(), 10)},
-		"_foreign_keys": {"on"},
-		"_query_only":   {"on"},
-		"_synchronous":  {"NORMAL"},
+		"cache":   {"private"},
+		"mode":    {"ro"},
+		"_pragma": readerPragmas(config),
 	}
 	return databaseURI(config.Path, values)
+}
+
+func writerPragmas(config Config) []string {
+	return []string{
+		"busy_timeout(" + strconv.FormatInt(config.BusyTimeout.Milliseconds(), 10) + ")",
+		"foreign_keys(1)",
+		"journal_mode(WAL)",
+		"synchronous(NORMAL)",
+	}
+}
+
+func readerPragmas(config Config) []string {
+	return []string{
+		"busy_timeout(" + strconv.FormatInt(config.BusyTimeout.Milliseconds(), 10) + ")",
+		"foreign_keys(1)",
+		"query_only(1)",
+		"synchronous(NORMAL)",
+	}
 }
 
 func databaseURI(path string, values url.Values) string {

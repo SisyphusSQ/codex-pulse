@@ -2,15 +2,12 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"errors"
+
+	"gorm.io/gorm"
 
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
-
-type runtimeRowScanner interface {
-	Scan(destinations ...any) error
-}
 
 // SourceFile 返回当前 source file snapshot。
 func (repository *Repository) SourceFile(ctx context.Context, sourceFileID string) (SourceFile, error) {
@@ -52,21 +49,18 @@ func (repository *Repository) ListSourceFilesBySessionState(
 	}
 	var files []SourceFile
 	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
-		rows, err := connection.QueryContext(
-			ctx, listSourceFilesBySessionStateQuery, sessionID, string(state), validatedLimit,
-		)
-		if err != nil {
+		var models []sourceFileModel
+		if err := connection.WithContext(ctx).
+			Where("session_id = ? AND state = ?", sessionID, string(state)).
+			Order("last_scanned_at_ms").Order("source_file_id").Limit(validatedLimit).
+			Find(&models).Error; err != nil {
 			return err
 		}
-		defer rows.Close()
-		for rows.Next() {
-			file, err := scanSourceFile(rows)
-			if err != nil {
-				return err
-			}
-			files = append(files, file)
+		files = make([]SourceFile, 0, len(models))
+		for _, model := range models {
+			files = append(files, sourceFileFromModel(model))
 		}
-		return rows.Err()
+		return nil
 	})
 	return files, err
 }
@@ -106,19 +100,17 @@ func (repository *Repository) ListDueSources(ctx context.Context, nowMS int64, l
 	}
 	var states []SourceState
 	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
-		rows, err := connection.QueryContext(ctx, listDueSourcesQuery, nowMS, validatedLimit)
-		if err != nil {
+		var models []sourceStateModel
+		if err := connection.WithContext(ctx).Where("next_due_at_ms <= ?", nowMS).
+			Order("next_due_at_ms").Order("source_instance_id").Limit(validatedLimit).
+			Find(&models).Error; err != nil {
 			return err
 		}
-		defer rows.Close()
-		for rows.Next() {
-			state, err := scanSourceState(rows)
-			if err != nil {
-				return err
-			}
-			states = append(states, state)
+		states = make([]SourceState, 0, len(models))
+		for _, model := range models {
+			states = append(states, sourceStateFromModel(model))
 		}
-		return rows.Err()
+		return nil
 	})
 	return states, err
 }
@@ -137,137 +129,108 @@ func (repository *Repository) ListSourceAttempts(ctx context.Context, sourceInst
 	}
 	var attempts []SourceAttempt
 	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
-		rows, err := connection.QueryContext(ctx, listSourceAttemptsQuery, sourceInstanceID, validatedLimit)
-		if err != nil {
+		var models []sourceAttemptModel
+		if err := connection.WithContext(ctx).Where("source_instance_id = ?", sourceInstanceID).
+			Order("started_at_ms DESC").Order("request_id DESC").Limit(validatedLimit).
+			Find(&models).Error; err != nil {
 			return err
 		}
-		defer rows.Close()
-		for rows.Next() {
-			attempt, err := scanSourceAttempt(rows)
+		attempts = make([]SourceAttempt, 0, len(models))
+		for _, model := range models {
+			attempt, err := sourceAttemptFromModel(model)
 			if err != nil {
 				return err
 			}
 			attempts = append(attempts, attempt)
 		}
-		return rows.Err()
+		return nil
 	})
 	return attempts, err
 }
 
-func sourceFileByID(ctx context.Context, querier interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}, sourceFileID string) (SourceFile, bool, error) {
-	file, err := scanSourceFile(querier.QueryRowContext(ctx, `
-		SELECT source_file_id, provider, session_id, current_path, device_id, inode,
-			size_bytes, mtime_ns, parsed_offset, parser_version, active_generation,
-			state, last_scanned_at_ms, last_error_class, updated_at_ms
-		FROM source_files WHERE source_file_id = ?
-	`, sourceFileID))
-	if errors.Is(err, sql.ErrNoRows) {
+func sourceFileByID(ctx context.Context, querier *gorm.DB, sourceFileID string) (SourceFile, bool, error) {
+	var model sourceFileModel
+	err := querier.WithContext(ctx).Take(&model, "source_file_id = ?", sourceFileID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return SourceFile{}, false, nil
 	}
-	return file, err == nil, err
+	return sourceFileFromModel(model), err == nil, err
 }
 
-func sourceStateByID(ctx context.Context, querier interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}, sourceInstanceID string) (SourceState, bool, error) {
-	state, err := scanSourceState(querier.QueryRowContext(ctx, `
-		SELECT source_instance_id, source_type, scope_key, last_attempt_at_ms,
-			last_success_at_ms, next_due_at_ms, consecutive_failures,
-			last_error_class, freshness_state, cursor_version, updated_at_ms
-		FROM source_state WHERE source_instance_id = ?
-	`, sourceInstanceID))
-	if errors.Is(err, sql.ErrNoRows) {
+func sourceStateByID(ctx context.Context, querier *gorm.DB, sourceInstanceID string) (SourceState, bool, error) {
+	var model sourceStateModel
+	err := querier.WithContext(ctx).Take(&model, "source_instance_id = ?", sourceInstanceID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return SourceState{}, false, nil
 	}
-	return state, err == nil, err
+	return sourceStateFromModel(model), err == nil, err
 }
 
-func sourceAttemptByID(ctx context.Context, querier interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}, requestID string) (SourceAttempt, bool, error) {
-	attempt, err := scanSourceAttempt(querier.QueryRowContext(ctx, `
-		SELECT request_id, source_instance_id, started_at_ms, finished_at_ms,
-			outcome, http_status, error_class, payload_sha256
-		FROM source_attempts WHERE request_id = ?
-	`, requestID))
-	if errors.Is(err, sql.ErrNoRows) {
+func sourceAttemptByID(ctx context.Context, querier *gorm.DB, requestID string) (SourceAttempt, bool, error) {
+	var model sourceAttemptModel
+	err := querier.WithContext(ctx).Take(&model, "request_id = ?", requestID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return SourceAttempt{}, false, nil
 	}
+	if err != nil {
+		return SourceAttempt{}, false, err
+	}
+	attempt, err := sourceAttemptFromModel(model)
 	return attempt, err == nil, err
 }
 
-func scanSourceFile(scanner runtimeRowScanner) (SourceFile, error) {
-	var file SourceFile
-	var sessionID, errorClass sql.NullString
-	var lastScannedAt sql.NullInt64
-	var state string
-	err := scanner.Scan(
-		&file.SourceFileID, &file.Provider, &sessionID, &file.CurrentPath, &file.DeviceID,
-		&file.Inode, &file.SizeBytes, &file.MTimeNS, &file.ParsedOffset, &file.ParserVersion,
-		&file.ActiveGeneration, &state, &lastScannedAt, &errorClass, &file.UpdatedAtMS,
-	)
-	if err != nil {
-		return SourceFile{}, err
+func sourceFileFromModel(model sourceFileModel) SourceFile {
+	return SourceFile{
+		SourceFileID: model.SourceFileID, Provider: model.Provider, SessionID: model.SessionID,
+		CurrentPath: model.CurrentPath, DeviceID: model.DeviceID, Inode: model.Inode,
+		SizeBytes: model.SizeBytes, MTimeNS: model.MTimeNS, ParsedOffset: model.ParsedOffset,
+		ParserVersion: model.ParserVersion, ActiveGeneration: model.ActiveGeneration,
+		State: SourceFileState(model.State), LastScannedAtMS: model.LastScannedAtMS,
+		LastErrorClass: runtimeErrorClassFromString(model.LastErrorClass), UpdatedAtMS: model.UpdatedAtMS,
 	}
-	file.SessionID = stringPointer(sessionID)
-	file.State = SourceFileState(state)
-	file.LastScannedAtMS = int64Pointer(lastScannedAt)
-	file.LastErrorClass = runtimeErrorClassPointer(errorClass)
-	return file, nil
 }
 
-func scanSourceState(scanner runtimeRowScanner) (SourceState, error) {
-	var state SourceState
-	var lastAttempt, lastSuccess, nextDue sql.NullInt64
-	var errorClass sql.NullString
-	var freshness string
-	err := scanner.Scan(
-		&state.SourceInstanceID, &state.SourceType, &state.ScopeKey,
-		&lastAttempt, &lastSuccess, &nextDue, &state.ConsecutiveFailures,
-		&errorClass, &freshness, &state.CursorVersion, &state.UpdatedAtMS,
-	)
-	if err != nil {
-		return SourceState{}, err
+func sourceStateFromModel(model sourceStateModel) SourceState {
+	return SourceState{
+		SourceInstanceID: model.SourceInstanceID, SourceType: model.SourceType, ScopeKey: model.ScopeKey,
+		LastAttemptAtMS: model.LastAttemptAtMS, LastSuccessAtMS: model.LastSuccessAtMS,
+		NextDueAtMS: model.NextDueAtMS, ConsecutiveFailures: model.ConsecutiveFailures,
+		LastErrorClass: runtimeErrorClassFromString(model.LastErrorClass),
+		FreshnessState: SourceFreshness(model.FreshnessState), CursorVersion: model.CursorVersion,
+		UpdatedAtMS: model.UpdatedAtMS,
 	}
-	state.LastAttemptAtMS = int64Pointer(lastAttempt)
-	state.LastSuccessAtMS = int64Pointer(lastSuccess)
-	state.NextDueAtMS = int64Pointer(nextDue)
-	state.LastErrorClass = runtimeErrorClassPointer(errorClass)
-	state.FreshnessState = SourceFreshness(freshness)
-	return state, nil
 }
 
-func scanSourceAttempt(scanner runtimeRowScanner) (SourceAttempt, error) {
-	var attempt SourceAttempt
-	var outcome string
-	var httpStatus sql.NullInt64
-	var errorClass, payloadSHA256 sql.NullString
-	err := scanner.Scan(
-		&attempt.RequestID, &attempt.SourceInstanceID, &attempt.StartedAtMS,
-		&attempt.FinishedAtMS, &outcome, &httpStatus, &errorClass, &payloadSHA256,
-	)
+func sourceAttemptFromModel(model sourceAttemptModel) (SourceAttempt, error) {
+	digest, err := sha256DigestFromString(model.PayloadSHA256)
 	if err != nil {
 		return SourceAttempt{}, err
 	}
-	attempt.Outcome = SourceAttemptOutcome(outcome)
-	attempt.HTTPStatus = int64Pointer(httpStatus)
-	attempt.ErrorClass = runtimeErrorClassPointer(errorClass)
-	parsedPayloadSHA256, err := sha256DigestPointer(payloadSHA256)
-	if err != nil {
-		return SourceAttempt{}, err
-	}
-	attempt.PayloadSHA256 = parsedPayloadSHA256
-	return attempt, nil
+	return SourceAttempt{
+		RequestID: model.RequestID, SourceInstanceID: model.SourceInstanceID,
+		StartedAtMS: model.StartedAtMS, FinishedAtMS: model.FinishedAtMS,
+		Outcome: SourceAttemptOutcome(model.Outcome), HTTPStatus: model.HTTPStatus,
+		ErrorClass: runtimeErrorClassFromString(model.ErrorClass), PayloadSHA256: digest,
+	}, nil
 }
 
-func runtimeErrorClassPointer(value sql.NullString) *RuntimeErrorClass {
-	if !value.Valid {
+func runtimeErrorClassFromString(value *string) *RuntimeErrorClass {
+	if value == nil {
 		return nil
 	}
-	converted := RuntimeErrorClass(value.String)
+	converted := RuntimeErrorClass(*value)
 	return &converted
+}
+
+func sha256DigestFromString(value *string) (*SHA256Digest, error) {
+	if value == nil {
+		return nil, nil
+	}
+	converted, ok := parseSHA256Digest(*value)
+	if !ok {
+		return nil, invalidRecord("stored source payload SHA-256 is invalid")
+	}
+	return &converted, nil
 }
 
 func sourceFilesEqual(left, right SourceFile) bool {
@@ -297,17 +260,6 @@ func sourceAttemptsEqual(left, right SourceAttempt) bool {
 		left.Outcome == right.Outcome && equalInt64Pointer(left.HTTPStatus, right.HTTPStatus) &&
 		equalRuntimeErrorClassPointer(left.ErrorClass, right.ErrorClass) &&
 		equalSHA256DigestPointer(left.PayloadSHA256, right.PayloadSHA256)
-}
-
-func sha256DigestPointer(value sql.NullString) (*SHA256Digest, error) {
-	if !value.Valid {
-		return nil, nil
-	}
-	converted, ok := parseSHA256Digest(value.String)
-	if !ok {
-		return nil, invalidRecord("stored source payload SHA-256 is invalid")
-	}
-	return &converted, nil
 }
 
 func equalSHA256DigestPointer(left, right *SHA256Digest) bool {
@@ -360,71 +312,66 @@ func (repository *Repository) ListJobRuns(ctx context.Context, filter JobRunFilt
 	if filter.SourceFileID != nil && *filter.SourceFileID == "" {
 		return nil, invalidRecord("job filter source file ID must not be empty")
 	}
-	query, arguments := buildJobRunsQuery(filter, limit)
 
 	var jobs []JobRun
 	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
-		rows, err := connection.QueryContext(ctx, query, arguments...)
-		if err != nil {
+		query := connection.WithContext(ctx).Model(&jobRunModel{})
+		if filter.State != nil {
+			query = query.Where("state = ?", string(*filter.State))
+		}
+		if filter.SourceFileID != nil {
+			query = query.Where("source_file_id = ?", *filter.SourceFileID)
+		}
+		if filter.State == nil && filter.SourceFileID != nil {
+			query = query.Order("created_at_ms DESC").Order("job_id DESC")
+		} else {
+			query = query.Order("updated_at_ms").Order("priority DESC").Order("job_id")
+		}
+		var models []jobRunModel
+		if err := query.Limit(limit).Find(&models).Error; err != nil {
 			return err
 		}
-		defer rows.Close()
-		for rows.Next() {
-			job, err := scanJobRun(rows)
+		jobs = make([]JobRun, 0, len(models))
+		for _, model := range models {
+			job, err := jobRunFromModel(model)
 			if err != nil {
 				return err
 			}
 			jobs = append(jobs, job)
 		}
-		return rows.Err()
+		return nil
 	})
 	return jobs, err
 }
 
-func jobRunByID(ctx context.Context, querier interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}, jobID string) (JobRun, bool, error) {
-	job, err := scanJobRun(querier.QueryRowContext(ctx, `
-		SELECT job_id, job_type, requested_by, priority, state, phase, source_file_id,
-			resume_of_job_id, created_at_ms, started_at_ms, finished_at_ms,
-			progress_current, progress_total, resume_generation, resume_offset,
-			error_class, updated_at_ms
-		FROM job_runs WHERE job_id = ?
-	`, jobID))
-	if errors.Is(err, sql.ErrNoRows) {
+func jobRunByID(ctx context.Context, querier *gorm.DB, jobID string) (JobRun, bool, error) {
+	var model jobRunModel
+	err := querier.WithContext(ctx).Take(&model, "job_id = ?", jobID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return JobRun{}, false, nil
 	}
+	if err != nil {
+		return JobRun{}, false, err
+	}
+	job, err := jobRunFromModel(model)
 	return job, err == nil, err
 }
 
-func scanJobRun(scanner runtimeRowScanner) (JobRun, error) {
-	var job JobRun
-	var state, phase string
-	var sourceFileID, resumeOfJobID, errorClass sql.NullString
-	var startedAt, finishedAt, progressCurrent, progressTotal, resumeGeneration, resumeOffset sql.NullInt64
-	err := scanner.Scan(
-		&job.JobID, &job.JobType, &job.RequestedBy, &job.Priority, &state, &phase,
-		&sourceFileID, &resumeOfJobID, &job.CreatedAtMS, &startedAt, &finishedAt,
-		&progressCurrent, &progressTotal, &resumeGeneration, &resumeOffset, &errorClass, &job.UpdatedAtMS,
-	)
-	if err != nil {
-		return JobRun{}, err
+func jobRunFromModel(model jobRunModel) (JobRun, error) {
+	job := JobRun{
+		JobID: model.JobID, JobType: model.JobType, RequestedBy: model.RequestedBy,
+		Priority: model.Priority, State: JobState(model.State), Phase: JobPhase(model.Phase),
+		SourceFileID: model.SourceFileID, ResumeOfJobID: model.ResumeOfJobID,
+		CreatedAtMS: model.CreatedAtMS, StartedAtMS: model.StartedAtMS, FinishedAtMS: model.FinishedAtMS,
+		ProgressCurrent: model.ProgressCurrent, ProgressTotal: model.ProgressTotal,
+		ErrorClass: runtimeErrorClassFromString(model.ErrorClass), UpdatedAtMS: model.UpdatedAtMS,
 	}
-	job.State = JobState(state)
-	job.Phase = JobPhase(phase)
-	job.SourceFileID = stringPointer(sourceFileID)
-	job.ResumeOfJobID = stringPointer(resumeOfJobID)
-	job.StartedAtMS = int64Pointer(startedAt)
-	job.FinishedAtMS = int64Pointer(finishedAt)
-	job.ProgressCurrent = int64Pointer(progressCurrent)
-	job.ProgressTotal = int64Pointer(progressTotal)
-	if resumeGeneration.Valid != resumeOffset.Valid {
+	if (model.ResumeGeneration == nil) != (model.ResumeOffset == nil) {
 		return JobRun{}, invalidRecord("stored job cursor columns are inconsistent")
 	}
-	if resumeGeneration.Valid {
-		job.ResumeCursor = &JobCursor{Generation: resumeGeneration.Int64, Offset: resumeOffset.Int64}
+	if model.ResumeGeneration != nil {
+		job.ResumeCursor = &JobCursor{Generation: *model.ResumeGeneration, Offset: *model.ResumeOffset}
 	}
-	job.ErrorClass = runtimeErrorClassPointer(errorClass)
 	return job, nil
 }
 
@@ -447,5 +394,3 @@ func equalJobCursorPointer(left, right *JobCursor) bool {
 	}
 	return *left == *right
 }
-
-// HealthEvent 返回 fingerprint 聚合后的完整生命周期。

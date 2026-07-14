@@ -2,285 +2,257 @@ package store
 
 import (
 	"context"
+	"errors"
+
+	"gorm.io/gorm"
 
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 func upsertProject(ctx context.Context, transaction storesqlite.WriteTx, project Project) error {
-	_, err := transaction.ExecContext(ctx, `
-		INSERT INTO projects (
-			project_id, display_name, root_path, git_remote_sanitized,
-			created_at_ms, updated_at_ms
-		) VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(project_id) DO UPDATE SET
-			display_name = CASE
-				WHEN excluded.updated_at_ms > projects.updated_at_ms THEN excluded.display_name
-				ELSE projects.display_name
-			END,
-			root_path = CASE
-				WHEN excluded.updated_at_ms > projects.updated_at_ms THEN excluded.root_path
-				ELSE projects.root_path
-			END,
-			git_remote_sanitized = CASE
-				WHEN excluded.updated_at_ms > projects.updated_at_ms
-					THEN COALESCE(excluded.git_remote_sanitized, projects.git_remote_sanitized)
-				ELSE projects.git_remote_sanitized
-			END,
-			created_at_ms = MIN(projects.created_at_ms, excluded.created_at_ms),
-			updated_at_ms = MAX(projects.updated_at_ms, excluded.updated_at_ms)
-	`,
-		project.ProjectID,
-		project.DisplayName,
-		project.RootPath,
-		nullableString(project.GitRemoteSanitized),
-		project.CreatedAtMS,
-		project.UpdatedAtMS,
-	)
-	return err
+	database := transaction.WithContext(ctx)
+	var existing projectModel
+	err := database.Take(&existing, "project_id = ?", project.ProjectID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return database.Create(&projectModel{
+			ProjectID: project.ProjectID, DisplayName: project.DisplayName,
+			RootPath: project.RootPath, GitRemoteSanitized: project.GitRemoteSanitized,
+			CreatedAtMS: project.CreatedAtMS, UpdatedAtMS: project.UpdatedAtMS,
+		}).Error
+	}
+	if err != nil {
+		return err
+	}
+	updates := map[string]any{"created_at_ms": min(existing.CreatedAtMS, project.CreatedAtMS)}
+	if project.UpdatedAtMS > existing.UpdatedAtMS {
+		updates["display_name"] = project.DisplayName
+		updates["root_path"] = project.RootPath
+		updates["updated_at_ms"] = project.UpdatedAtMS
+		if project.GitRemoteSanitized != nil {
+			updates["git_remote_sanitized"] = *project.GitRemoteSanitized
+		}
+	}
+	return database.Model(&projectModel{}).Where("project_id = ?", project.ProjectID).Updates(updates).Error
 }
 
 func upsertSession(ctx context.Context, transaction storesqlite.WriteTx, session Session) error {
-	_, err := transaction.ExecContext(ctx, `
-		INSERT INTO sessions (
-			session_id, provider, originator, source_kind, model_provider,
-			initial_cwd, project_id, cli_version, created_at_ms,
-			first_seen_at_ms, last_seen_at_ms
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(session_id) DO UPDATE SET
-			originator = COALESCE(sessions.originator, excluded.originator),
-			model_provider = COALESCE(sessions.model_provider, excluded.model_provider),
-			initial_cwd = COALESCE(sessions.initial_cwd, excluded.initial_cwd),
-			project_id = COALESCE(sessions.project_id, excluded.project_id),
-			cli_version = COALESCE(sessions.cli_version, excluded.cli_version),
-			created_at_ms = MIN(sessions.created_at_ms, excluded.created_at_ms),
-			first_seen_at_ms = MIN(sessions.first_seen_at_ms, excluded.first_seen_at_ms),
-			last_seen_at_ms = MAX(sessions.last_seen_at_ms, excluded.last_seen_at_ms)
-	`,
-		session.SessionID,
-		session.Provider,
-		nullableString(session.Originator),
-		session.SourceKind,
-		nullableString(session.ModelProvider),
-		nullableString(session.InitialCWD),
-		nullableString(session.ProjectID),
-		nullableString(session.CLIVersion),
-		session.CreatedAtMS,
-		session.FirstSeenAtMS,
-		session.LastSeenAtMS,
-	)
-	return err
+	database := transaction.WithContext(ctx)
+	var existing sessionModel
+	err := database.Take(&existing, "session_id = ?", session.SessionID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return database.Create(&sessionModel{
+			SessionID: session.SessionID, Provider: session.Provider, Originator: session.Originator,
+			SourceKind: session.SourceKind, ModelProvider: session.ModelProvider,
+			InitialCWD: session.InitialCWD, ProjectID: session.ProjectID, CLIVersion: session.CLIVersion,
+			CreatedAtMS: session.CreatedAtMS, FirstSeenAtMS: session.FirstSeenAtMS,
+			LastSeenAtMS: session.LastSeenAtMS,
+		}).Error
+	}
+	if err != nil {
+		return err
+	}
+	updates := map[string]any{
+		"created_at_ms":    min(existing.CreatedAtMS, session.CreatedAtMS),
+		"first_seen_at_ms": min(existing.FirstSeenAtMS, session.FirstSeenAtMS),
+		"last_seen_at_ms":  max(existing.LastSeenAtMS, session.LastSeenAtMS),
+	}
+	fillMissingString(updates, "originator", existing.Originator, session.Originator)
+	fillMissingString(updates, "model_provider", existing.ModelProvider, session.ModelProvider)
+	fillMissingString(updates, "initial_cwd", existing.InitialCWD, session.InitialCWD)
+	fillMissingString(updates, "project_id", existing.ProjectID, session.ProjectID)
+	fillMissingString(updates, "cli_version", existing.CLIVersion, session.CLIVersion)
+	return database.Model(&sessionModel{}).Where("session_id = ?", session.SessionID).Updates(updates).Error
 }
 
 func upsertTurn(ctx context.Context, transaction storesqlite.WriteTx, turn Turn) error {
-	_, err := transaction.ExecContext(ctx, `
-		INSERT INTO turns (
-			turn_id, session_id, started_at_ms, completed_at_ms, outcome,
-			model, reasoning_effort, cwd, project_id, source_generation,
-			start_offset, complete_offset
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(turn_id) DO UPDATE SET
-			started_at_ms = MIN(turns.started_at_ms, excluded.started_at_ms),
-			completed_at_ms = COALESCE(excluded.completed_at_ms, turns.completed_at_ms),
-			outcome = COALESCE(excluded.outcome, turns.outcome),
-			model = COALESCE(excluded.model, turns.model),
-			reasoning_effort = COALESCE(excluded.reasoning_effort, turns.reasoning_effort),
-			cwd = COALESCE(excluded.cwd, turns.cwd),
-			project_id = COALESCE(excluded.project_id, turns.project_id),
-			source_generation = excluded.source_generation,
-			start_offset = excluded.start_offset,
-			complete_offset = COALESCE(excluded.complete_offset, turns.complete_offset)
-		WHERE (
-				excluded.source_generation > turns.source_generation
-				AND (turns.completed_at_ms IS NULL OR excluded.completed_at_ms IS NOT NULL)
-			)
-			OR (
-				excluded.source_generation = turns.source_generation
-				AND excluded.start_offset = turns.start_offset
-				AND (turns.completed_at_ms IS NULL OR excluded.completed_at_ms IS NOT NULL)
-			)
-	`,
-		turn.TurnID,
-		turn.SessionID,
-		turn.StartedAtMS,
-		nullableInt64(turn.CompletedAtMS),
-		nullableString(turn.Outcome),
-		nullableString(turn.Model),
-		nullableString(turn.ReasoningEffort),
-		nullableString(turn.CWD),
-		nullableString(turn.ProjectID),
-		turn.SourceGeneration,
-		turn.StartOffset,
-		nullableInt64(turn.CompleteOffset),
-	)
-	return err
+	database := transaction.WithContext(ctx)
+	var existing turnModel
+	err := database.Take(&existing, "turn_id = ?", turn.TurnID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return database.Create(turnModelFromDomain(turn)).Error
+	}
+	if err != nil {
+		return err
+	}
+	shouldUpdate := (turn.SourceGeneration > existing.SourceGeneration &&
+		(existing.CompletedAtMS == nil || turn.CompletedAtMS != nil)) ||
+		(turn.SourceGeneration == existing.SourceGeneration && turn.StartOffset == existing.StartOffset &&
+			(existing.CompletedAtMS == nil || turn.CompletedAtMS != nil))
+	if !shouldUpdate {
+		return nil
+	}
+	updates := map[string]any{
+		"started_at_ms":     min(existing.StartedAtMS, turn.StartedAtMS),
+		"source_generation": turn.SourceGeneration,
+		"start_offset":      turn.StartOffset,
+		"completed_at_ms":   coalesceInt64(turn.CompletedAtMS, existing.CompletedAtMS),
+		"outcome":           coalesceString(turn.Outcome, existing.Outcome),
+		"model":             coalesceString(turn.Model, existing.Model),
+		"reasoning_effort":  coalesceString(turn.ReasoningEffort, existing.ReasoningEffort),
+		"cwd":               coalesceString(turn.CWD, existing.CWD),
+		"project_id":        coalesceString(turn.ProjectID, existing.ProjectID),
+		"complete_offset":   coalesceInt64(turn.CompleteOffset, existing.CompleteOffset),
+	}
+	return database.Model(&turnModel{}).Where("turn_id = ?", turn.TurnID).Updates(updates).Error
 }
 
 func upsertTurnUsage(ctx context.Context, transaction storesqlite.WriteTx, usage TurnUsage) error {
-	_, err := transaction.ExecContext(ctx, `
-		INSERT INTO turn_usage (
-			turn_id, observed_at_ms, is_final, input_tokens, cached_input_tokens,
-			output_tokens, reasoning_tokens, context_window, source_generation, source_offset,
-			confidence, updated_at_ms
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(turn_id) DO UPDATE SET
-			observed_at_ms = excluded.observed_at_ms,
-			is_final = excluded.is_final,
-			input_tokens = excluded.input_tokens,
-			cached_input_tokens = excluded.cached_input_tokens,
-			output_tokens = excluded.output_tokens,
-			reasoning_tokens = excluded.reasoning_tokens,
-			context_window = excluded.context_window,
-			source_generation = excluded.source_generation,
-			source_offset = excluded.source_offset,
-			confidence = excluded.confidence,
-			updated_at_ms = excluded.updated_at_ms
-		WHERE (
-				excluded.source_generation > turn_usage.source_generation
-				OR (
-					excluded.source_generation = turn_usage.source_generation
-					AND excluded.source_offset > turn_usage.source_offset
-				)
-			)
-			AND (turn_usage.is_final = 0 OR excluded.is_final = 1)
-	`,
-		usage.TurnID,
-		usage.ObservedAtMS,
-		boolInteger(usage.IsFinal),
-		nullableInt64(usage.InputTokens),
-		nullableInt64(usage.CachedInputTokens),
-		nullableInt64(usage.OutputTokens),
-		nullableInt64(usage.ReasoningTokens),
-		nullableInt64(usage.ContextWindow),
-		usage.SourceGeneration,
-		usage.SourceOffset,
-		usage.Confidence,
-		usage.UpdatedAtMS,
-	)
-	return err
+	database := transaction.WithContext(ctx)
+	var existing turnUsageModel
+	err := database.Take(&existing, "turn_id = ?", usage.TurnID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return database.Create(turnUsageModelFromDomain(usage)).Error
+	}
+	if err != nil {
+		return err
+	}
+	newerPosition := usage.SourceGeneration > existing.SourceGeneration ||
+		(usage.SourceGeneration == existing.SourceGeneration && usage.SourceOffset > existing.SourceOffset)
+	if !newerPosition || (existing.IsFinal && !usage.IsFinal) {
+		return nil
+	}
+	return database.Model(&turnUsageModel{}).Where("turn_id = ?", usage.TurnID).Updates(map[string]any{
+		"observed_at_ms": usage.ObservedAtMS, "is_final": usage.IsFinal,
+		"input_tokens": usage.InputTokens, "cached_input_tokens": usage.CachedInputTokens,
+		"output_tokens": usage.OutputTokens, "reasoning_tokens": usage.ReasoningTokens,
+		"context_window": usage.ContextWindow, "source_generation": usage.SourceGeneration,
+		"source_offset": usage.SourceOffset, "confidence": usage.Confidence,
+		"updated_at_ms": usage.UpdatedAtMS,
+	}).Error
 }
 
 func removeInvalidTurnUsage(ctx context.Context, transaction storesqlite.WriteTx, turnID string) error {
-	_, err := transaction.ExecContext(ctx, `
-		DELETE FROM turn_usage
-		WHERE turn_id = ?
-		  AND (
-			source_generation <> (
-				SELECT source_generation FROM turns WHERE turn_id = ?
-			)
-			OR (
-				is_final = 0
-				AND EXISTS (
-					SELECT 1 FROM turns
-					WHERE turn_id = ? AND completed_at_ms IS NOT NULL
-				)
-			)
-		  )
-	`, turnID, turnID, turnID)
-	return err
+	database := transaction.WithContext(ctx)
+	var turn turnModel
+	if err := database.Select("turn_id", "source_generation", "completed_at_ms").Take(&turn, "turn_id = ?", turnID).Error; err != nil {
+		return err
+	}
+	var usage turnUsageModel
+	err := database.Select("turn_id", "source_generation", "is_final").Take(&usage, "turn_id = ?", turnID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if usage.SourceGeneration == turn.SourceGeneration && (usage.IsFinal || turn.CompletedAtMS == nil) {
+		return nil
+	}
+	return database.Delete(&turnUsageModel{}, "turn_id = ?", turnID).Error
 }
 
-func upsertSessionCurrent(
-	ctx context.Context,
-	transaction storesqlite.WriteTx,
-	current SessionCurrent,
-) error {
-	_, err := transaction.ExecContext(ctx, `
-		INSERT INTO session_current (
-			session_id, thread_name, thread_name_updated_at_ms, active_turn_id,
-			current_model, current_cwd, last_activity_at_ms, updated_at_ms
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(session_id) DO UPDATE SET
-			thread_name = CASE
-				WHEN excluded.thread_name_updated_at_ms IS NOT NULL
-					AND (
-						session_current.thread_name_updated_at_ms IS NULL
-						OR excluded.thread_name_updated_at_ms > session_current.thread_name_updated_at_ms
-					) THEN excluded.thread_name
-				ELSE session_current.thread_name
-			END,
-			thread_name_updated_at_ms = CASE
-				WHEN excluded.thread_name_updated_at_ms IS NOT NULL
-					AND (
-						session_current.thread_name_updated_at_ms IS NULL
-						OR excluded.thread_name_updated_at_ms > session_current.thread_name_updated_at_ms
-					) THEN excluded.thread_name_updated_at_ms
-				ELSE session_current.thread_name_updated_at_ms
-			END,
-			active_turn_id = CASE
-				WHEN excluded.updated_at_ms > session_current.updated_at_ms THEN excluded.active_turn_id
-				ELSE session_current.active_turn_id
-			END,
-			current_model = CASE
-				WHEN excluded.updated_at_ms > session_current.updated_at_ms THEN excluded.current_model
-				ELSE session_current.current_model
-			END,
-			current_cwd = CASE
-				WHEN excluded.updated_at_ms > session_current.updated_at_ms THEN excluded.current_cwd
-				ELSE session_current.current_cwd
-			END,
-			last_activity_at_ms = CASE
-				WHEN excluded.updated_at_ms > session_current.updated_at_ms THEN excluded.last_activity_at_ms
-				ELSE session_current.last_activity_at_ms
-			END,
-			updated_at_ms = MAX(session_current.updated_at_ms, excluded.updated_at_ms)
-	`,
-		current.SessionID,
-		nullableString(current.ThreadName),
-		nullableInt64(current.ThreadNameUpdatedAtMS),
-		nullableString(current.ActiveTurnID),
-		nullableString(current.CurrentModel),
-		nullableString(current.CurrentCWD),
-		nullableInt64(current.LastActivityAtMS),
-		current.UpdatedAtMS,
-	)
-	return err
+func upsertSessionCurrent(ctx context.Context, transaction storesqlite.WriteTx, current SessionCurrent) error {
+	database := transaction.WithContext(ctx)
+	var existing sessionCurrentModel
+	err := database.Take(&existing, "session_id = ?", current.SessionID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return database.Create(sessionCurrentModelFromDomain(current)).Error
+	}
+	if err != nil {
+		return err
+	}
+	updates := make(map[string]any)
+	if current.ThreadNameUpdatedAtMS != nil &&
+		(existing.ThreadNameUpdatedAtMS == nil || *current.ThreadNameUpdatedAtMS > *existing.ThreadNameUpdatedAtMS) {
+		updates["thread_name"] = current.ThreadName
+		updates["thread_name_updated_at_ms"] = current.ThreadNameUpdatedAtMS
+	}
+	if current.UpdatedAtMS > existing.UpdatedAtMS {
+		updates["active_turn_id"] = current.ActiveTurnID
+		updates["current_model"] = current.CurrentModel
+		updates["current_cwd"] = current.CurrentCWD
+		updates["last_activity_at_ms"] = current.LastActivityAtMS
+		updates["updated_at_ms"] = current.UpdatedAtMS
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	return database.Model(&sessionCurrentModel{}).Where("session_id = ?", current.SessionID).Updates(updates).Error
 }
 
-func upsertSessionUsageCurrent(
-	ctx context.Context,
-	transaction storesqlite.WriteTx,
-	usage SessionUsageCurrent,
-) error {
-	_, err := transaction.ExecContext(ctx, `
-		INSERT INTO session_usage_current (
-			session_id, counter_epoch, total_input_tokens, total_cached_tokens,
-			total_output_tokens, total_reasoning_tokens, observed_at_ms,
-			source_generation, source_offset, counter_state
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(session_id) DO UPDATE SET
-			counter_epoch = excluded.counter_epoch,
-			total_input_tokens = excluded.total_input_tokens,
-			total_cached_tokens = excluded.total_cached_tokens,
-			total_output_tokens = excluded.total_output_tokens,
-			total_reasoning_tokens = excluded.total_reasoning_tokens,
-			observed_at_ms = excluded.observed_at_ms,
-			source_generation = excluded.source_generation,
-			source_offset = excluded.source_offset,
-			counter_state = excluded.counter_state
-		WHERE excluded.source_generation > session_usage_current.source_generation
-			OR (
-				excluded.source_generation = session_usage_current.source_generation
-				AND (
-					excluded.counter_epoch > session_usage_current.counter_epoch
-					OR (
-						excluded.counter_epoch = session_usage_current.counter_epoch
-						AND excluded.source_offset > session_usage_current.source_offset
-					)
-				)
-			)
-	`,
-		usage.SessionID,
-		usage.CounterEpoch,
-		nullableInt64(usage.TotalInputTokens),
-		nullableInt64(usage.TotalCachedTokens),
-		nullableInt64(usage.TotalOutputTokens),
-		nullableInt64(usage.TotalReasoningTokens),
-		usage.ObservedAtMS,
-		usage.SourceGeneration,
-		usage.SourceOffset,
-		usage.CounterState,
-	)
-	return err
+func upsertSessionUsageCurrent(ctx context.Context, transaction storesqlite.WriteTx, usage SessionUsageCurrent) error {
+	database := transaction.WithContext(ctx)
+	var existing sessionUsageCurrentModel
+	err := database.Take(&existing, "session_id = ?", usage.SessionID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return database.Create(sessionUsageCurrentModelFromDomain(usage)).Error
+	}
+	if err != nil {
+		return err
+	}
+	newer := usage.SourceGeneration > existing.SourceGeneration ||
+		(usage.SourceGeneration == existing.SourceGeneration &&
+			(usage.CounterEpoch > existing.CounterEpoch ||
+				(usage.CounterEpoch == existing.CounterEpoch && usage.SourceOffset > existing.SourceOffset)))
+	if !newer {
+		return nil
+	}
+	return database.Model(&sessionUsageCurrentModel{}).Where("session_id = ?", usage.SessionID).Updates(map[string]any{
+		"counter_epoch": usage.CounterEpoch, "total_input_tokens": usage.TotalInputTokens,
+		"total_cached_tokens": usage.TotalCachedTokens, "total_output_tokens": usage.TotalOutputTokens,
+		"total_reasoning_tokens": usage.TotalReasoningTokens, "observed_at_ms": usage.ObservedAtMS,
+		"source_generation": usage.SourceGeneration, "source_offset": usage.SourceOffset,
+		"counter_state": usage.CounterState,
+	}).Error
+}
+
+func turnModelFromDomain(turn Turn) *turnModel {
+	return &turnModel{
+		TurnID: turn.TurnID, SessionID: turn.SessionID, StartedAtMS: turn.StartedAtMS,
+		CompletedAtMS: turn.CompletedAtMS, Outcome: turn.Outcome, Model: turn.Model,
+		ReasoningEffort: turn.ReasoningEffort, CWD: turn.CWD, ProjectID: turn.ProjectID,
+		SourceGeneration: turn.SourceGeneration, StartOffset: turn.StartOffset,
+		CompleteOffset: turn.CompleteOffset,
+	}
+}
+
+func turnUsageModelFromDomain(usage TurnUsage) *turnUsageModel {
+	return &turnUsageModel{
+		TurnID: usage.TurnID, ObservedAtMS: usage.ObservedAtMS, IsFinal: usage.IsFinal,
+		InputTokens: usage.InputTokens, CachedInputTokens: usage.CachedInputTokens,
+		OutputTokens: usage.OutputTokens, ReasoningTokens: usage.ReasoningTokens,
+		ContextWindow: usage.ContextWindow, SourceGeneration: usage.SourceGeneration,
+		SourceOffset: usage.SourceOffset, Confidence: usage.Confidence, UpdatedAtMS: usage.UpdatedAtMS,
+	}
+}
+
+func sessionCurrentModelFromDomain(current SessionCurrent) *sessionCurrentModel {
+	return &sessionCurrentModel{
+		SessionID: current.SessionID, ThreadName: current.ThreadName,
+		ThreadNameUpdatedAtMS: current.ThreadNameUpdatedAtMS, ActiveTurnID: current.ActiveTurnID,
+		CurrentModel: current.CurrentModel, CurrentCWD: current.CurrentCWD,
+		LastActivityAtMS: current.LastActivityAtMS, UpdatedAtMS: current.UpdatedAtMS,
+	}
+}
+
+func sessionUsageCurrentModelFromDomain(usage SessionUsageCurrent) *sessionUsageCurrentModel {
+	return &sessionUsageCurrentModel{
+		SessionID: usage.SessionID, CounterEpoch: usage.CounterEpoch,
+		TotalInputTokens: usage.TotalInputTokens, TotalCachedTokens: usage.TotalCachedTokens,
+		TotalOutputTokens: usage.TotalOutputTokens, TotalReasoningTokens: usage.TotalReasoningTokens,
+		ObservedAtMS: usage.ObservedAtMS, SourceGeneration: usage.SourceGeneration,
+		SourceOffset: usage.SourceOffset, CounterState: usage.CounterState,
+	}
+}
+
+func fillMissingString(updates map[string]any, column string, existing, incoming *string) {
+	if existing == nil && incoming != nil {
+		updates[column] = *incoming
+	}
+}
+
+func coalesceString(preferred, fallback *string) *string {
+	if preferred != nil {
+		return preferred
+	}
+	return fallback
+}
+
+func coalesceInt64(preferred, fallback *int64) *int64 {
+	if preferred != nil {
+		return preferred
+	}
+	return fallback
 }
 
 func nullableString(value *string) any {

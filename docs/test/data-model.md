@@ -48,7 +48,7 @@
 
 1. 当前工作目录：Codex Pulse 仓库根目录。
 2. 当前分支或版本：待验证的 TOO-247 专用分支或其集成 commit。
-3. 必需命令：`go`、`make`、`git`；SQLite driver 构建要求 `CGO_ENABLED=1`。
+3. 必需命令：`go`、`make`、`git`；SQLite store/repository 使用 Pure Go driver，必须额外通过 `CGO_ENABLED=0`；Wails app 与全仓 macOS 验证使用默认 CGO。
 4. 必需配置：无真实凭据或外部服务配置。
 5. 必需测试环境：macOS arm64；仓库依赖已可由 Go module cache 解析。
 
@@ -65,12 +65,13 @@ go env GOOS GOARCH CGO_ENABLED
 预期结果：
 
 - 位于目标分支，只有当前 Issue 预期改动。
-- `GOOS=darwin`、`GOARCH=arm64`，测试命令显式启用 CGO。
+- `GOOS=darwin`、`GOARCH=arm64`；SQLite 门禁显式关闭 CGO，Wails app 门禁使用 macOS 默认 CGO。
 
 ### 2. Schema 与 repository 聚焦验证
 
 ```bash
-CGO_ENABLED=1 go test ./internal/store ./internal/store/sqlite ./internal/app -count=1
+CGO_ENABLED=0 go test ./internal/store/sqlite ./internal/store -count=1
+go test ./internal/app -count=1
 ```
 
 预期结果：
@@ -81,10 +82,11 @@ CGO_ENABLED=1 go test ./internal/store ./internal/store/sqlite ./internal/app -c
 ### 3. 重放压力与 race 验证
 
 ```bash
-CGO_ENABLED=1 go test ./internal/store \
+CGO_ENABLED=0 go test ./internal/store \
   -run 'TestRepository(UpsertFactsIsIdempotent|UpsertFactsRollsBackEntireBatch|CompletedTurnAdvancesOnlyWithFullHigherGeneration|CompletedTurnRejectsOrIgnoresProvisionalFieldReplay|CompletedTurnRequiresFinalUsageAcrossGenerations|TurnOnlyCompletionRemovesProvisionalUsage|CompletionUsageOrderingIsAtomic|UsageSourceGenerationSupersedesLowerOffsets|RejectsUsageAheadOfStoredTurnGeneration|TurnGenerationReplacesCurrentUsage|RejectsCrossSessionBatchAtomically|SessionCurrentPreservesThreadNameByFieldTimestamp|RejectsConflictingPayloadAtSameOrderingKey|StableMetadataRejectsRegressionAndConflicts)' \
   -count=50
-CGO_ENABLED=1 go test -race ./internal/store ./internal/store/sqlite ./internal/app -count=10
+CGO_ENABLED=0 go test -race ./internal/store ./internal/store/sqlite -count=10
+go test -race ./internal/app -count=10
 ```
 
 预期结果：
@@ -95,9 +97,9 @@ CGO_ENABLED=1 go test -race ./internal/store ./internal/store/sqlite ./internal/
 ### 4. 全仓与 base harness gate
 
 ```bash
-CGO_ENABLED=1 go test ./... -count=1
-CGO_ENABLED=1 go vet ./...
-CGO_ENABLED=1 go test -race ./...
+go test ./... -count=1
+go vet ./...
+go test -race ./...
 make harness-verify
 PATH="/tmp/codex-pulse-tools/bin:$PATH" make project-check
 git diff --check
@@ -107,7 +109,7 @@ git diff --check
 
 - 全部 Go package、vet、race、harness、项目机械约束和 diff whitespace gate 通过。
 - 当前本机 Wails CLI 位于受控临时工具目录，`project-check` 必须显式补入该 PATH；未补 PATH 时 gate 会在执行前以 `TOOLCHAIN-001` 停止，补齐后通过。
-- CGO 链接输出已知的 macOS SDK deployment target warning，但所有相关命令退出码均为 0，未发现 schema/repository 失败或 race。
+- Wails macOS CGO 链接输出可能包含 SDK deployment target warning，但所有相关命令必须退出码为 0；SQLite `CGO_ENABLED=0` 命令不得依赖该链路。
 
 ### 5. CHANGELOG 后完整集成验证
 

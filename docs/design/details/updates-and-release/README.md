@@ -31,9 +31,11 @@
 
 ## 数据库 migration
 
-- 使用 `PRAGMA user_version` 管理 schema。
-- migration 在事务中执行。
-- 重大 migration 前使用 SQLite Backup API 创建临时备份。
+- 使用 `PRAGMA user_version` 与 append-only version/name/checksum ledger 管理 schema；缺号、drift、状态分叉和 newer schema 都 fail closed。
+- `MigrateApplicationSchema` 只在 Store 打开后、暴露给 runtime reader/writer 前的 bootstrap 阶段执行；未来运行期 maintenance migration 必须先实现任务排空与 Store 独占。
+- 所有 pending migration 在一个 single-writer GORM transaction 中执行，完整成功后才推进版本；不使用无版本 `AutoMigrate` 代替 migration。
+- 有 pending 且已有用户 schema 时，先做空间检查，再使用 modernc Pure Go SQLite Backup API 创建包含 committed WAL 的私有备份；fresh/current 数据库跳过。
+- 恢复使用独立 `NewRestore` 文件原语生成新数据库，验证后再由上层安全重启流程决定切换；不得运行中覆盖当前 Store。
 - migration 失败进入只读安全模式，保留检查更新、查看错误和恢复备份。
 - 二进制回滚不能自动解决 schema 回滚；迁移和恢复路径必须独立验证。
 

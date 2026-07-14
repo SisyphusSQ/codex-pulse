@@ -207,8 +207,7 @@ func TestStoreWriteIsFIFOAndRollsBackCallbackFailures(t *testing.T) {
 		results <- store.Write(context.Background(), func(ctx context.Context, tx WriteTx) error {
 			close(firstStarted)
 			<-releaseFirst
-			_, err := tx.ExecContext(ctx, `INSERT INTO events(value) VALUES ('first')`)
-			return err
+			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "first"}).Error
 		})
 	}()
 	<-firstStarted
@@ -236,7 +235,7 @@ func TestStoreWriteIsFIFOAndRollsBackCallbackFailures(t *testing.T) {
 
 	errBoom := errors.New("callback failed")
 	err := store.Write(context.Background(), func(ctx context.Context, tx WriteTx) error {
-		if _, execErr := tx.ExecContext(ctx, `INSERT INTO events(value) VALUES ('rollback')`); execErr != nil {
+		if execErr := tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "rollback"}).Error; execErr != nil {
 			return execErr
 		}
 		return errBoom
@@ -270,8 +269,7 @@ func TestStoreReturnsQueueFullAndSkipsCanceledQueuedWrite(t *testing.T) {
 		firstResult <- store.Write(context.Background(), func(ctx context.Context, tx WriteTx) error {
 			close(firstStarted)
 			<-releaseFirst
-			_, err := tx.ExecContext(ctx, `INSERT INTO events(value) VALUES ('first')`)
-			return err
+			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "first"}).Error
 		})
 	}()
 	<-firstStarted
@@ -315,8 +313,7 @@ func TestStoreWriteWaitsForAuthoritativeResultAfterAdmission(t *testing.T) {
 		result <- store.Write(ctx, func(_ context.Context, tx WriteTx) error {
 			close(callbackStarted)
 			<-releaseCallback
-			_, err := tx.ExecContext(context.Background(), `INSERT INTO events(value) VALUES ('must-rollback')`)
-			return err
+			return tx.WithContext(context.Background()).Table("events").Create(map[string]any{"value": "must-rollback"}).Error
 		})
 	}()
 	<-callbackStarted
@@ -339,50 +336,33 @@ func TestStoreWriteWaitsForAuthoritativeResultAfterAdmission(t *testing.T) {
 	}
 }
 
-func TestCallbackSurfacesDoNotExposeConnectionLifecycle(t *testing.T) {
+func TestCallbackSessionsAreBoundToQueueOwnedPools(t *testing.T) {
 	store := openTestStore(t, Config{})
 
 	err := store.Write(context.Background(), func(_ context.Context, tx WriteTx) error {
-		if _, ok := tx.(interface{ Commit() error }); ok {
-			return errors.New("WriteTx exposes Commit through its dynamic type")
+		if tx == store.writer {
+			return errors.New("write callback received the shared root GORM session")
 		}
-		if _, ok := tx.(interface{ Rollback() error }); ok {
-			return errors.New("WriteTx exposes Rollback through its dynamic type")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("write callback surface: %v", err)
-	}
-
-	err = store.View(context.Background(), func(context.Context, ReadConn) error {
-		if _, ok := any(store.reader).(interface{ Close() error }); !ok {
-			return errors.New("test precondition: raw sql.DB does not expose Close")
-		}
-		if _, ok := any(store.reader).(interface {
-			ExecContext(context.Context, string, ...any) (sql.Result, error)
-		}); !ok {
-			return errors.New("test precondition: raw sql.DB does not expose ExecContext")
+		if tx.Statement == nil || tx.Statement.ConnPool == store.writerSQL {
+			return errors.New("write callback is not bound to the queue-owned transaction")
 		}
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("read callback precondition: %v", err)
+		t.Fatalf("write callback binding: %v", err)
 	}
 
 	err = store.View(context.Background(), func(_ context.Context, reader ReadConn) error {
-		if _, ok := reader.(interface{ Close() error }); ok {
-			return errors.New("ReadConn exposes Close through its dynamic type")
+		if reader == store.reader {
+			return errors.New("read callback received the shared root GORM session")
 		}
-		if _, ok := reader.(interface {
-			ExecContext(context.Context, string, ...any) (sql.Result, error)
-		}); ok {
-			return errors.New("ReadConn exposes ExecContext through its dynamic type")
+		if reader.Statement == nil || reader.Statement.ConnPool != store.readerSQL {
+			return errors.New("read callback is not bound to the read-only pool")
 		}
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("read callback surface: %v", err)
+		t.Fatalf("read callback binding: %v", err)
 	}
 }
 
@@ -416,8 +396,8 @@ func TestStoreSupportsConcurrentWALReadsAndQueuedWrites(t *testing.T) {
 			<-start
 			for range 20 {
 				err := store.View(context.Background(), func(ctx context.Context, db ReadConn) error {
-					var count int
-					return db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events`).Scan(&count)
+					var count int64
+					return db.WithContext(ctx).Table("events").Count(&count).Error
 				})
 				if err != nil {
 					errorsFound <- err
@@ -444,14 +424,7 @@ func TestStoreViewEnforcesReadOnlyConnection(t *testing.T) {
 	createEventsTable(t, store)
 
 	err := store.View(context.Background(), func(ctx context.Context, db ReadConn) error {
-		rows, queryErr := db.QueryContext(ctx, `INSERT INTO events(value) VALUES ('forbidden') RETURNING sequence`)
-		if queryErr != nil {
-			return queryErr
-		}
-		defer rows.Close()
-		for rows.Next() {
-		}
-		return rows.Err()
+		return db.WithContext(ctx).Table("events").Create(map[string]any{"value": "forbidden"}).Error
 	})
 	if !errors.Is(err, ErrReadOnly) {
 		t.Fatalf("View write error = %v, want ErrReadOnly", err)
@@ -505,8 +478,7 @@ func TestStoreCloseDrainsAcceptedWritesRejectsNewWorkAndIsIdempotent(t *testing.
 		firstResult <- store.Write(context.Background(), func(ctx context.Context, tx WriteTx) error {
 			close(firstStarted)
 			<-releaseFirst
-			_, err := tx.ExecContext(ctx, `INSERT INTO events(value) VALUES ('first')`)
-			return err
+			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "first"}).Error
 		})
 	}()
 	<-firstStarted
@@ -625,13 +597,12 @@ func openTestStoreWithoutCleanup(t *testing.T, config Config) *Store {
 func createEventsTable(t *testing.T, store *Store) {
 	t.Helper()
 	err := store.Write(context.Background(), func(ctx context.Context, tx WriteTx) error {
-		_, err := tx.ExecContext(ctx, `
+		return tx.WithContext(ctx).Exec(`
 			CREATE TABLE IF NOT EXISTS events (
 				sequence INTEGER PRIMARY KEY AUTOINCREMENT,
 				value TEXT NOT NULL
 			) STRICT
-		`)
-		return err
+		`).Error
 	})
 	if err != nil {
 		t.Fatalf("create test table: %v", err)
@@ -640,8 +611,7 @@ func createEventsTable(t *testing.T, store *Store) {
 
 func insertEvent(store *Store, ctx context.Context, value string) error {
 	return store.Write(ctx, func(ctx context.Context, tx WriteTx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO events(value) VALUES (?)`, value)
-		return err
+		return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": value}).Error
 	})
 }
 
@@ -649,19 +619,7 @@ func readEventValues(t *testing.T, store *Store) []string {
 	t.Helper()
 	var values []string
 	err := store.View(context.Background(), func(ctx context.Context, db ReadConn) error {
-		rows, err := db.QueryContext(ctx, `SELECT value FROM events ORDER BY sequence`)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var value string
-			if err := rows.Scan(&value); err != nil {
-				return err
-			}
-			values = append(values, value)
-		}
-		return rows.Err()
+		return db.WithContext(ctx).Table("events").Order("sequence").Pluck("value", &values).Error
 	})
 	if err != nil {
 		t.Fatalf("read event values: %v", err)
