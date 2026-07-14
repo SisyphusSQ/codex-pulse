@@ -41,28 +41,7 @@ var coreSchemaObjects = []schemaObject{
 		first_seen_at_ms INTEGER NOT NULL CHECK (first_seen_at_ms >= 0),
 		last_seen_at_ms INTEGER NOT NULL CHECK (last_seen_at_ms >= first_seen_at_ms)
 	) STRICT`},
-	{objectType: "table", name: "turns", statement: `CREATE TABLE IF NOT EXISTS turns (
-		turn_id TEXT PRIMARY KEY CHECK (length(turn_id) > 0),
-		session_id TEXT NOT NULL CHECK (length(session_id) > 0) REFERENCES sessions(session_id) ON DELETE CASCADE,
-		started_at_ms INTEGER NOT NULL CHECK (started_at_ms >= 0),
-		completed_at_ms INTEGER,
-		outcome TEXT,
-		model TEXT CHECK (model IS NULL OR length(model) > 0),
-		reasoning_effort TEXT CHECK (reasoning_effort IS NULL OR length(reasoning_effort) > 0),
-		cwd TEXT CHECK (cwd IS NULL OR length(cwd) > 0),
-		project_id TEXT CHECK (project_id IS NULL OR length(project_id) > 0) REFERENCES projects(project_id) ON DELETE SET NULL,
-		source_generation INTEGER NOT NULL CHECK (source_generation >= 0),
-		start_offset INTEGER NOT NULL CHECK (start_offset >= 0),
-		complete_offset INTEGER,
-		CHECK (
-			(completed_at_ms IS NULL AND outcome IS NULL AND complete_offset IS NULL)
-			OR (
-				completed_at_ms >= started_at_ms
-				AND outcome IS NOT NULL AND length(outcome) > 0
-				AND complete_offset >= start_offset
-			)
-		)
-	) STRICT`},
+	{objectType: "table", name: "turns", statement: turnsSchemaCurrentStatement},
 	{objectType: "table", name: "session_current", statement: `CREATE TABLE IF NOT EXISTS session_current (
 		session_id TEXT PRIMARY KEY CHECK (length(session_id) > 0) REFERENCES sessions(session_id) ON DELETE CASCADE,
 		thread_name TEXT CHECK (thread_name IS NULL OR length(thread_name) > 0),

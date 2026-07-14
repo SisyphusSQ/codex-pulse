@@ -26,6 +26,13 @@ func TestApplicationSchemaV2ChecksumIsFrozen(t *testing.T) {
 	}
 }
 
+func TestApplicationSchemaV3ChecksumIsFrozen(t *testing.T) {
+	const want = "390fa8d40b543eb51ec72417462d3a6aa7d641ed9cb6b8ea7a5bd5a165274b92"
+	if got := applicationSchemaV3Checksum(); got != want {
+		t.Fatalf("applicationSchemaV3Checksum() = %q, want frozen %q", got, want)
+	}
+}
+
 func TestEnsureApplicationSchemaRecordsVersionedFreshMigration(t *testing.T) {
 	t.Parallel()
 
@@ -34,12 +41,70 @@ func TestEnsureApplicationSchemaRecordsVersionedFreshMigration(t *testing.T) {
 	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 2, 2)
+	assertMigrationVersionAndHistory(t, database, 3, 3)
 
 	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema(replay) error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 2, 2)
+	assertMigrationVersionAndHistory(t, database, 3, 3)
+}
+
+func TestApplicationMigrationAppendsIngestSchemaToFrozenV2(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	seedApplicationSchemaV2(t, database)
+	var backupVersions [2]int
+	runner := applicationMigrationRunnerForTest(database)
+	runner.spaceCheck = func(context.Context, string, int64) error { return nil }
+	runner.backup = func(
+		_ context.Context,
+		fromVersion int,
+		targetVersion int,
+		_ func(storesqlite.BackupProgress),
+	) (string, error) {
+		backupVersions = [2]int{fromVersion, targetVersion}
+		return "/tmp/application-v2-before-v3.db", nil
+	}
+	report, err := runner.run(context.Background())
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if report.FromVersion != 2 || report.TargetVersion != 3 ||
+		!equalInts(report.AppliedVersions, []int{3}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v2 to v3 with backup", report)
+	}
+	if backupVersions != [2]int{2, 3} {
+		t.Fatalf("backup versions = %v, want [2 3]", backupVersions)
+	}
+	assertMigrationVersionAndHistory(t, database, 3, 3)
+
+	err = database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+		for _, table := range []string{
+			"source_generations", "parser_checkpoints", "source_generation_batches", "parser_diagnostics",
+		} {
+			if !connection.Migrator().HasTable(table) {
+				t.Errorf("v3 table %q missing", table)
+			}
+		}
+		var turnDDL string
+		if err := connection.WithContext(ctx).Raw(
+			`SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'turns'`,
+		).Scan(&turnDDL).Error; err != nil {
+			return err
+		}
+		normalized := normalizeSchemaSQL(turnDDL)
+		if strings.Contains(normalized, "complete_offset >= start_offset") {
+			t.Errorf("turns DDL still orders terminal offset after start: %s", turnDDL)
+		}
+		if !strings.Contains(normalized, "complete_offset >= 0") {
+			t.Errorf("turns DDL lost non-negative complete offset check: %s", turnDDL)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect v3 migration: %v", err)
+	}
 }
 
 func TestApplicationMigrationAppendsRetentionIndexesToFrozenV1(t *testing.T) {
@@ -63,14 +128,14 @@ func TestApplicationMigrationAppendsRetentionIndexesToFrozenV1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
-	if report.FromVersion != 1 || report.TargetVersion != 2 ||
-		!equalInts(report.AppliedVersions, []int{2}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v1 to v2 with backup", report)
+	if report.FromVersion != 1 || report.TargetVersion != 3 ||
+		!equalInts(report.AppliedVersions, []int{2, 3}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v1 to v3 with backup", report)
 	}
-	if backupVersions != [2]int{1, 2} {
-		t.Fatalf("backup versions = %v, want [1 2]", backupVersions)
+	if backupVersions != [2]int{1, 3} {
+		t.Fatalf("backup versions = %v, want [1 3]", backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 2, 2)
+	assertMigrationVersionAndHistory(t, database, 3, 3)
 
 	err = database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
 		var checksum string
@@ -220,7 +285,7 @@ func TestMigrationRunnerBacksUpLegacyDatabaseBeforeApplying(t *testing.T) {
 	if report.BackupPath != "/tmp/legacy-before-v2.db" {
 		t.Fatalf("BackupPath = %q", report.BackupPath)
 	}
-	assertMigrationVersionAndHistory(t, database, 2, 2)
+	assertMigrationVersionAndHistory(t, database, 3, 3)
 }
 
 func TestApplicationMigrationCreatesRestorablePreMigrationBackupForLegacyDatabase(t *testing.T) {
@@ -265,7 +330,7 @@ func TestApplicationMigrationCreatesRestorablePreMigrationBackupForLegacyDatabas
 	if ledgerCount != 0 {
 		t.Fatalf("backup ledger table count = %d, want 0", ledgerCount)
 	}
-	assertMigrationVersionAndHistory(t, database, 2, 2)
+	assertMigrationVersionAndHistory(t, database, 3, 3)
 }
 
 func TestApplicationMigrationUpgradesCoreOnlyLegacyDatabaseAndPreservesDataInBackup(t *testing.T) {
@@ -443,7 +508,7 @@ func TestMigrationFailureExposesStableStageCodeAndVersionContext(t *testing.T) {
 		t.Fatalf("run() error = %v, want MigrationFailure", err)
 	}
 	if failure.Stage != MigrationStageBackup || failure.Code != MigrationCodeBackupFailed ||
-		failure.CurrentVersion != 0 || failure.TargetVersion != 2 || failure.FailedVersion != 0 ||
+		failure.CurrentVersion != 0 || failure.TargetVersion != 3 || failure.FailedVersion != 0 ||
 		failure.BackupPath != "" || !errors.Is(failure, errBackup) {
 		t.Fatalf("MigrationFailure = %#v", failure)
 	}
@@ -479,7 +544,7 @@ func TestMigrationProgressReportsStableStagesAndBackupPages(t *testing.T) {
 			backupUpdates = append(backupUpdates, update)
 		}
 	}
-	if got, want := strings.Join(stages, ","), "inspect,space,backup,backup,backup,apply,apply,verify,complete"; got != want {
+	if got, want := strings.Join(stages, ","), "inspect,space,backup,backup,backup,apply,apply,apply,verify,complete"; got != want {
 		t.Fatalf("progress stages = %q, want %q", got, want)
 	}
 	if len(backupUpdates) != 2 || backupUpdates[0].CopiedPages != 3 || backupUpdates[1].RemainingPages != 0 {
@@ -500,7 +565,7 @@ func applicationMigrationRunnerForTest(database *storesqlite.Store) migrationRun
 func seedLegacyApplicationSchema(t *testing.T, database *storesqlite.Store) {
 	t.Helper()
 	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		if err := ensureSchemaObjects(ctx, transaction, coreSchemaObjects); err != nil {
+		if err := ensureSchemaObjects(ctx, transaction, applicationSchemaV1CoreObjects()); err != nil {
 			return err
 		}
 		return ensureSchemaObjects(ctx, transaction, runtimeSchemaObjects)
@@ -529,6 +594,30 @@ func seedApplicationSchemaV1(t *testing.T, database *storesqlite.Store) {
 	})
 	if err != nil {
 		t.Fatalf("seed application schema v1: %v", err)
+	}
+}
+
+func seedApplicationSchemaV2(t *testing.T, database *storesqlite.Store) {
+	t.Helper()
+	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		if err := ensureSchemaObjects(ctx, transaction, migrationSchemaObjects); err != nil {
+			return err
+		}
+		for _, migration := range applicationMigrations[:2] {
+			if err := migration.apply(ctx, transaction); err != nil {
+				return err
+			}
+			if err := transaction.WithContext(ctx).Create(&schemaMigrationModel{
+				Version: migration.version, Name: migration.name,
+				Checksum: migration.checksum, AppliedAtMS: int64(migration.version),
+			}).Error; err != nil {
+				return err
+			}
+		}
+		return transaction.WithContext(ctx).Exec("PRAGMA user_version = 2").Error
+	})
+	if err != nil {
+		t.Fatalf("seed application schema v2: %v", err)
 	}
 }
 
@@ -618,7 +707,7 @@ func TestMigrationRejectsVersionHistoryDivergenceAndNewerSchema(t *testing.T) {
 		}
 		err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
 			return transaction.WithContext(ctx).Create(&schemaMigrationModel{
-				Version: 3, Name: "future", Checksum: strings.Repeat("3", 64), AppliedAtMS: 2,
+				Version: applicationSchemaVersion + 1, Name: "future", Checksum: strings.Repeat("3", 64), AppliedAtMS: 2,
 			}).Error
 		})
 		if err != nil {

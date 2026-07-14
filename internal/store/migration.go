@@ -17,7 +17,8 @@ import (
 const (
 	applicationSchemaV1Version = 1
 	applicationSchemaV2Version = 2
-	applicationSchemaVersion   = applicationSchemaV2Version
+	applicationSchemaV3Version = 3
+	applicationSchemaVersion   = applicationSchemaV3Version
 )
 
 var (
@@ -62,7 +63,7 @@ var applicationMigrations = []migrationDefinition{
 		name:     "initial-application-schema",
 		checksum: applicationSchemaV1Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
-			if err := ensureSchemaObjects(ctx, transaction, coreSchemaObjects); err != nil {
+			if err := ensureApplicationSchemaV1(ctx, transaction); err != nil {
 				return err
 			}
 			return ensureSchemaObjects(ctx, transaction, runtimeSchemaObjects)
@@ -74,6 +75,17 @@ var applicationMigrations = []migrationDefinition{
 		checksum: applicationSchemaV2Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
 			return ensureSchemaObjects(ctx, transaction, retentionSchemaObjects)
+		},
+	},
+	{
+		version:  applicationSchemaV3Version,
+		name:     "incremental-ingest-checkpoints",
+		checksum: applicationSchemaV3Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			if err := rebuildTurnTablesForV3(ctx, transaction); err != nil {
+				return err
+			}
+			return ensureSchemaObjects(ctx, transaction, ingestSchemaObjects)
 		},
 	},
 }
@@ -426,7 +438,7 @@ func validateMigrationState(
 
 func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteTx) error {
 	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects, retentionSchemaObjects,
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects, retentionSchemaObjects, ingestSchemaObjects,
 	} {
 		for _, object := range objects {
 			exists, err := verifySchemaObject(ctx, transaction, object)
@@ -444,7 +456,7 @@ func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteT
 func applicationSchemaV1Checksum() string {
 	hasher := sha256.New()
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV1Version, "initial-application-schema")
-	for _, objects := range [][]schemaObject{migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects} {
+	for _, objects := range [][]schemaObject{migrationSchemaObjects, applicationSchemaV1CoreObjects(), runtimeSchemaObjects} {
 		for _, object := range objects {
 			_, _ = fmt.Fprintln(
 				hasher, object.objectType, object.name,
@@ -465,4 +477,140 @@ func applicationSchemaV2Checksum() string {
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV3Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV3Version, "incremental-ingest-checkpoints")
+	for _, object := range append([]schemaObject{currentTurnsSchemaObject()}, ingestSchemaObjects...) {
+		_, _ = fmt.Fprintln(
+			hasher, object.objectType, object.name,
+			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV1CoreObjects() []schemaObject {
+	objects := append([]schemaObject(nil), coreSchemaObjects...)
+	for index := range objects {
+		if objects[index].objectType == "table" && objects[index].name == "turns" {
+			objects[index].statement = turnsSchemaV1Statement
+			break
+		}
+	}
+	return objects
+}
+
+func ensureApplicationSchemaV1(ctx context.Context, transaction *gorm.DB) error {
+	objects := applicationSchemaV1CoreObjects()
+	for _, object := range objects {
+		if object.objectType != "table" || object.name != "turns" {
+			if err := ensureSchemaObjects(ctx, transaction, []schemaObject{object}); err != nil {
+				return err
+			}
+			continue
+		}
+		if !transaction.Migrator().HasTable("turns") {
+			if err := ensureSchemaObjects(ctx, transaction, []schemaObject{object}); err != nil {
+				return err
+			}
+			continue
+		}
+		validHistorical, historicalErr := verifySchemaObject(ctx, transaction, object)
+		if validHistorical {
+			continue
+		}
+		validCurrent, currentErr := verifySchemaObject(ctx, transaction, currentTurnsSchemaObject())
+		if validCurrent {
+			continue
+		}
+		if historicalErr != nil {
+			return historicalErr
+		}
+		if currentErr != nil {
+			return currentErr
+		}
+		if !validCurrent {
+			return fmt.Errorf("%w: table %q differs from canonical definition", ErrSchemaContract, "turns")
+		}
+	}
+	return nil
+}
+
+func currentTurnsSchemaObject() schemaObject {
+	return schemaObject{objectType: "table", name: "turns", statement: turnsSchemaCurrentStatement}
+}
+
+// rebuildTurnTablesForV3 是 v3 唯一的 table-rebuild raw SQL bridge。SQLite 不支持
+// ALTER TABLE DROP CHECK；同时 turns 被 session_current/turn_usage 引用，所以三张表
+// 必须在同一 migration transaction 内一起重建，避免 rename 后子表外键指向旧表。
+func rebuildTurnTablesForV3(ctx context.Context, transaction *gorm.DB) error {
+	for _, index := range []string{
+		"idx_turns_source_position", "idx_turns_session_lifecycle", "idx_turns_project_time",
+		"idx_turns_model_time", "idx_session_current_activity", "idx_turn_usage_observed_final",
+	} {
+		if err := transaction.WithContext(ctx).Exec("DROP INDEX IF EXISTS " + index).Error; err != nil {
+			return fmt.Errorf("drop v2 index %q: %w", index, err)
+		}
+	}
+	for _, rename := range []string{
+		"ALTER TABLE session_current RENAME TO session_current_v2",
+		"ALTER TABLE turn_usage RENAME TO turn_usage_v2",
+		"ALTER TABLE turns RENAME TO turns_v2",
+	} {
+		if err := transaction.WithContext(ctx).Exec(rename).Error; err != nil {
+			return fmt.Errorf("prepare v3 turn rebuild: %w", err)
+		}
+	}
+
+	var tables, indexes []schemaObject
+	for _, object := range coreSchemaObjects {
+		switch {
+		case object.objectType == "table" &&
+			(object.name == "turns" || object.name == "session_current" || object.name == "turn_usage"):
+			tables = append(tables, object)
+		case object.objectType == "index" &&
+			(object.name == "idx_turns_source_position" || object.name == "idx_turns_session_lifecycle" ||
+				object.name == "idx_turns_project_time" || object.name == "idx_turns_model_time" ||
+				object.name == "idx_session_current_activity" || object.name == "idx_turn_usage_observed_final"):
+			indexes = append(indexes, object)
+		}
+	}
+	if err := ensureSchemaObjects(ctx, transaction, tables); err != nil {
+		return err
+	}
+	for _, copyStatement := range []string{
+		`INSERT INTO turns (
+			turn_id, session_id, started_at_ms, completed_at_ms, outcome, model,
+			reasoning_effort, cwd, project_id, source_generation, start_offset, complete_offset
+		) SELECT
+			turn_id, session_id, started_at_ms, completed_at_ms, outcome, model,
+			reasoning_effort, cwd, project_id, source_generation, start_offset, complete_offset
+		FROM turns_v2`,
+		`INSERT INTO turn_usage (
+			turn_id, observed_at_ms, is_final, input_tokens, cached_input_tokens, output_tokens,
+			reasoning_tokens, context_window, source_generation, source_offset, confidence, updated_at_ms
+		) SELECT
+			turn_id, observed_at_ms, is_final, input_tokens, cached_input_tokens, output_tokens,
+			reasoning_tokens, context_window, source_generation, source_offset, confidence, updated_at_ms
+		FROM turn_usage_v2`,
+		`INSERT INTO session_current (
+			session_id, thread_name, thread_name_updated_at_ms, active_turn_id,
+			current_model, current_cwd, last_activity_at_ms, updated_at_ms
+		) SELECT
+			session_id, thread_name, thread_name_updated_at_ms, active_turn_id,
+			current_model, current_cwd, last_activity_at_ms, updated_at_ms
+		FROM session_current_v2`,
+	} {
+		if err := transaction.WithContext(ctx).Exec(copyStatement).Error; err != nil {
+			return fmt.Errorf("copy v2 turn data: %w", err)
+		}
+	}
+	for _, table := range []string{"session_current_v2", "turn_usage_v2", "turns_v2"} {
+		if err := transaction.WithContext(ctx).Exec("DROP TABLE " + table).Error; err != nil {
+			return fmt.Errorf("drop rebuilt v2 table %q: %w", table, err)
+		}
+	}
+	return ensureSchemaObjects(ctx, transaction, indexes)
 }
