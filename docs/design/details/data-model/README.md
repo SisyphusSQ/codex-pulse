@@ -122,6 +122,18 @@ source freshness 不可用或索引不完整 -> unknown
 
 `Done` 是 turn outcome；`Stale` 是来源 freshness。v0.1 不推断 Waiting、Blocked 或 Error。
 
+### Session Index Repair
+
+`session_index.jsonl` 是 Codex 自己维护的根级 append-only 索引，不进入 rollout parser、source generation 或事实表。Codex Pulse 只把 `session_current.thread_name + thread_name_updated_at_ms` 两字段均完整且 Session 外键存在的行作为 expected projection，并通过 GORM reader 按 `session_id` 排序读取。dry-run 把该完整 projection 的 canonical SHA-256、index 的 exists/device/inode/size/mtime/full SHA-256 和分析时间一起固化进 immutable plan；确认后在 preflight 已存在的 Store projection 或 index 物理版本漂移，必须在 audit、备份和文件写入前 fail closed，执行期间新发生的漂移则按下述写后 proof、reconcile 与 terminal transaction 协议失败收口。
+
+repair 遵循 Codex 官方 append-order/latest-valid-row-wins 语义：缺失 ID 可以追加 expected entry；名称不同且 Store 字段时间严格更新时可以追加 stale correction；index 时间更新、相等或不可比较时只报告冲突。同 ID 多个有效行是正常 rename history，不执行 compaction、全文件重写或原行删除。官方 `SessionIndexEntry.updated_at` 是普通字符串，格式化失败时允许写入 `unknown`；因此该行仍参与 latest view，但不可用于证明 Store 更新，只能在同名时视为已对齐、异名时进入 conflict。parser 对文件、单行、UTF-8、JSON duplicate key、UUID 和必填字符串做有界校验：malformed、duplicate key、invalid UUID 或缺失/null 必填字符串属于上游也无效的行，只形成 content-free diagnostic 并跳过；空白或超过 4096 bytes 的名称、超过 1 MiB 的完整行仍可能被上游 `String` schema 接受，本地不得把它伪装成坏行后继续 repair，而必须让整个 Analyze fail closed。不可解析但存在的 `updated_at` 仍保留 latest entry 并记录 diagnostic；高密度空行使用增量切片，避免总文件限制内的行切片放大。
+
+执行必须精确确认同一 plan ID，并复用现有 `job_runs` 记录 `maintenance` 阶段、进度、terminal state 和 error class，不新增 schema。Analyze 与 Verify 会先把 correction 编码为 canonical JSONL，并按现有 size 加最坏一个分隔换行验证 64 MiB 最终容量；不可执行 plan 不得进入 audit/backup。真正 append 前依次完成 Codex Pulse Pure Go SQLite online backup 与 index byte-for-byte `0600` backup；index 原本缺失时写空的 absence marker。备份位置固定为 `<db-dir>/backups/session-index/<job-id>/`，每层新目录、backup 发布和新建 index 都同步父目录，只有掉电后可恢复的目录项才报告成功。
+
+写入只通过确认根目录 FD 对根级文件执行 no-follow、`O_APPEND`、canonical JSONL 和 `fsync`；缺失末尾换行时只追加分隔换行，不修改历史 bytes。Store projection 在 audit 前、双备份后、append 后和 reconcile 后重复核对同一 digest；最终确认 snapshot 的逐项精确比较与 `JobRunning -> JobSucceeded` 状态迁移必须位于同一 GORM writer transaction，succeeded replay 也必须先核对当前 projection。index append 以确认 bytes 加实际 payload 计算 expected final size/full SHA-256；写后任一外部 append、截断或内容漂移都会返回 `ErrPlanDrift` 并把 job 置为 failed，不能只因旧 plan 名称暂时成为 latest 而静默成功。跨进程 Codex writer 不共享锁，因此已发生的并发 append/correction 都按 append-only 保留，恢复入口仍是刷新 Store 后重新 dry-run，不做破坏性回滚。
+
+同一 succeeded plan replay 只读 audit 并重新 reconcile，不重复追加。append 后进程中断时，启动恢复沿用现有 job interruption 语义；默认恢复入口是重新 dry-run，新 plan 必须基于当前 Store projection 和 index version。repair 不读取 Codex `state_*.sqlite`，不遍历或修改 `sessions/`、`archived_sessions/` 原始 JSONL。可复用验证入口见 [`docs/test/session-index-repair.md`](../../../test/session-index-repair.md)。
+
 ### Session、Project 与 Model 派生归因
 
 application schema v4 在 canonical Session/Turn 事实之外新增两张可重算 `STRICT` 派生表：
