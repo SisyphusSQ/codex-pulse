@@ -16,6 +16,7 @@
 
 - macOS 15+、arm64。
 - Go toolchain 满足 `go.mod`；SQLite store/repository 必须通过 `CGO_ENABLED=0`，Wails app 使用 macOS 默认 CGO。
+- 仓库固定版本的 `wails3` 必须已在当前 shell 的 `PATH`；提交版命令不记录机器本地安装目录。
 - 仓库工作目录为 Codex Pulse 根目录。
 - 不需要网络、账号、token、真实 Codex Home 或默认应用数据库。
 
@@ -69,7 +70,7 @@ make project-check
 git diff --check
 python3 .agents/skills/project-version-release/scripts/project_version_release.py \
   check --repo "$PWD" --json
-PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify
+make verify
 ```
 
 ## 预期结果
@@ -105,7 +106,7 @@ PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify
 
 | 项目 | 结果 |
 | --- | --- |
-| 执行状态 | 独立 re-review、CHANGELOG 后 post-integration verify 与不同 subagent final scope review 均通过；准备 commit/PR |
+| 执行状态 | TOO-248 已由 PR #8 合并为 `917c57b` 并完成 post-merge verify；Linear Done |
 | focused schema/bootstrap | PASS：七表/十三索引/13 表应用 bootstrap、不兼容 core/runtime fail-closed |
 | focused repository | PASS：有限 HealthCode、domain/code pair、opaque SHA-256 与 DDL 旁路已复现 RED 并修复 GREEN；19 个允许组合逐一通过 Repository + DDL |
 | replay/conflict `-count=50` | PASS（Rework #2 重跑） |
@@ -115,7 +116,8 @@ PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify
 | final `make verify` | PASS（Rework #2 重跑）：Go、vet、frontend typecheck/test/build、generated stability 与 Wails package；arm64/macOS 15.0/ad-hoc bundle 与 zip verify PASS |
 | privacy audit | PASS：opaque SHA-256、有限 domain/code、typed cursor、DDL constraint、main/WAL/SHM bytes marker 与 50x/10x stability |
 | live E2E | PASS（本卡范围）：真实临时 SQLite repository integration；未读取真实用户数据、未访问网络服务 |
+| M2 aggregate | PASS：后续 TOO-249 migration/backup 与 TOO-250 retention/v2 index 已合并；`main@090b5ee` 完整 M2 post-merge gate 通过 |
 
-执行说明：Wails CLI 通过固定版本 `v3.0.0-alpha2.117` 的 `/tmp/codex-pulse-tools/bin` 提供；frontend 使用 `npm --prefix frontend ci` 恢复 199 个锁定依赖，audit 0 vulnerabilities。Rework #2 和 CHANGELOG 集成后分别执行完整门禁，不沿用前序 PASS；post-integration version classification 为 `changelog-only`、check 为 `findings=[]`。验证结束已执行 package clean，并删除本轮 `frontend/node_modules/`、`frontend/dist/` 构建文件、`.task/` 与 `bin/`，保留 tracked `frontend/dist/.gitkeep`；`go.mod`、`go.sum` 与 generated bindings 无漂移。
+执行说明：Wails CLI 使用仓库固定版本 `v3.0.0-alpha2.117`，并在执行前补齐当前 shell 的 PATH；frontend 使用 `npm --prefix frontend ci` 恢复 199 个锁定依赖，audit 0 vulnerabilities。Rework #2、CHANGELOG 集成后与 post-merge 均执行完整门禁，不沿用前序 PASS；version classification 为 `changelog-only`、check 为 `findings=[]`。验证结束已执行 package clean，并删除本轮 `frontend/node_modules/`、`frontend/dist/` 构建文件、`.task/` 与 `bin/`，保留 tracked `frontend/dist/.gitkeep`；`go.mod`、`go.sum` 与 generated bindings 无漂移。
 
 已知非阻塞环境输出：macOS CGO 链接阶段持续提示 SDK deployment target warning，但全部相关命令退出码均为 0；这与既有 SQLite 测试环境一致。锁定依赖中的 `glob@10.5.0` 输出 deprecated warning，但 `npm audit` 为 0，本卡不顺手升级依赖。

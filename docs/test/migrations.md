@@ -2,11 +2,11 @@
 
 ## 当前验证结果
 
-- 记录时间：2026-07-14 10:50 CST
+- 记录时间：2026-07-14 12:05 CST
 - 对应 Issue：TOO-249
-- 当前结论：`本地完整验证与独立实现 review 通过，最终 scope review 与 post-merge verify 待执行`
-- 已验证：Pure Go GORM Store/Repository、fresh/legacy/current migration、history drift/newer/divergence、全 pending rollback、modernc backup/restore、目录持久化发布、typed WriteUnit commit/rollback、默认应用 bootstrap、受影响包 Pure Go race、全仓 test/vet/race、harness/project/version 与完整 `make verify`；独立 review 的 2 个 Medium 已修复并复核关闭。
-- 待验证：含 CHANGELOG 的最终 scope review、PR 合并后同口径 verify。
+- 当前结论：`TOO-249 已合并且 post-merge verify 通过；TOO-250 已追加 v2 retention migration 并完成 M2 聚合复验`
+- 已验证：Pure Go GORM Store/Repository、fresh/legacy/v1/current-v2 migration、v1/v2 checksum freeze、history drift/newer/divergence、全 pending rollback、modernc backup/restore、目录持久化发布、typed WriteUnit commit/rollback、默认应用 bootstrap、受影响包 Pure Go race、全仓 test/vet/race、harness/project/version 与完整 `make verify`；TOO-249 implementation/final scope review 和 TOO-250 v2 migration review 均已关闭 findings。
+- 待验证：无；后续新增 migration 必须继续 append-only 并冻结各版本 checksum。
 
 ## 目标
 
@@ -29,6 +29,7 @@
 2. Go toolchain 满足 `go.mod`；全仓 Wails 验证要求 macOS 15+ arm64 与默认 CGO。
 3. SQLite Pure Go门禁只覆盖 `internal/store/sqlite`、`internal/store` 及其实际编译依赖；Wails macOS adapter 自身需要 CGO。
 4. 固定版本 `gorm.io/gorm v1.31.2` 上游 `go.mod` 带有 official SQLite driver/mattn 间接元数据；验收看 `go list -deps` 的实际编译链，不把上游元数据误报成运行依赖。
+5. 仓库固定版本的 `wails3` 必须已在当前 shell 的 `PATH`；提交版命令不记录机器本地安装目录。
 
 ## 验证命令
 
@@ -53,8 +54,9 @@ CGO_ENABLED=0 go test ./internal/store \
 
 成功判据：
 
-- fresh v0→v1 写入一条稳定 history，重复启动 no-op；
-- legacy v0 先 backup，再应用 v1；current v1 不 backup；
+- fresh v0→v2 在同一事务写入 v1/v2 两条稳定 history，重复启动 no-op；
+- legacy v0 先 backup，再应用 v1/v2；已有 v1 先 backup 再只追加 v2；current v2 不 backup；
+- v1/v2 checksum 各自由独立版本常量与固定值测试冻结，未来 v3 不得重算既有 history；
 - catalog 缺号/空名/无 apply/非法 checksum、history checksum drift、ledger/user_version 分叉和 newer schema 都 fail closed；
 - 后续 pending apply 失败时，先前 pending objects、ledger 与 `user_version` 全部 rollback；
 - `MigrationFailure` 提供稳定 stage/code/current/target/failed version/backup path，并保留 wrapped cause。
@@ -91,7 +93,7 @@ make project-check
 git diff --check
 python3 .agents/skills/project-version-release/scripts/project_version_release.py \
   check --repo "$PWD" --json
-PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify
+make verify
 ```
 
 成功判据：所有命令退出码为 0；Wails 链接可出现既有 macOS SDK deployment target warning，但不得有 test/vet/race/gate 失败；Actions 已按用户要求停用，本 runbook 不等待或触发 CI。
@@ -107,6 +109,7 @@ PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify
 | harness/project/version/diff | PASS：project constraints 通过，版本 check `findings=[]`，`git diff --check` 无输出 |
 | `make verify` | PASS：Go、vet、前端 typecheck/test/build、generated stability、arm64/minOS 15/ad-hoc app/zip 全部通过 |
 | 独立实现 review | PASS：首轮 2 个 Medium 已按 TDD 修复；复核确认关闭且无新增 findings |
+| Final scope / merge | PASS：TOO-249 PR #9 合并为 `238eaa2`；TOO-250 append-only v2 随 PR #10 合并为 `090b5ee`，两次 post-merge 同口径验证通过 |
 | Actions | `actions_disabled_by_user`：未触发、未等待、未把 CI 作为 gate |
 | 清理 | PASS：删除本轮 `.task/`、`bin/`、`frontend/node_modules/` 与构建产物，保留 tracked `.gitkeep` |
 
@@ -126,3 +129,4 @@ PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify
 - 清理本轮生成的 ignored 前端/package/task 产物，但不得删除用户已有 ignored plan/state/run 文件。
 - 执行完成后更新本文顶部的真实命令、结果、时间与清理摘要；未执行的 gate 不得写成通过。
 - Issue closeout 记录 `actions_disabled_by_user`，不把未运行的 GitHub Actions 当成失败或通过。
+- 本 runbook 对应实现已合并；普通维护不追加历史 release 段，也不触发版本发布。

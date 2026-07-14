@@ -2,11 +2,11 @@
 
 ## 当前验证结果
 
-- 记录时间：2026-07-14 11:49 CST
+- 记录时间：2026-07-14 12:05 CST
 - 对应 Issue：TOO-250
-- 当前结论：`原 implementation reviewer 已确认 3 个 Medium 全部关闭；CHANGELOG 集成后完整本地验证通过，待 final scope review`
+- 当前结论：`TOO-250 已合并且 post-merge verify 通过；implementation/final scope findings 全部关闭`
 - 已验证：append-only v1→v2 retention index migration 与冻结 v1 checksum；实际 GORM candidate SQL 命中专用索引且无临时排序；terminal resume lineage 逐层释放时 `More` 不提前结束；legacy upgrade 后真实 CRUD/cleanup；subprocess 绕过 `Store.Close` 后重开、interruption 与 cleanup。
-- 待验证：不同 subagent 的最终 scope review、PR 合并与 post-merge verify。
+- 待验证：无；scheduler/bootstrap/UI 接线仍按后续 Execution 范围推进。
 
 ## 目标
 
@@ -130,6 +130,7 @@ make verify
 | app/full test/vet | PASS：全仓 test、`go vet ./...` 与 race；仅保留既有 macOS deployment-target warning |
 | harness/project/version/diff/make verify | PASS：fixed Wails PATH、199 个 lockfile 依赖、generated stability、arm64/minOS 15/ad-hoc app/zip；version `findings=[]` |
 | 独立 review / final scope review | implementation re-review：ZERO_FINDINGS；final scope 的 1 Medium（机器本地 Wails PATH）已关闭，最终 ZERO_FINDINGS / READY_TO_COMMIT |
+| PR / post-merge | PASS：PR #10 合并为 `090b5ee`；`main` 上 Pure Go/full/race/harness/version/diff/完整 `make verify` 同口径通过 |
 | Actions | `actions_disabled_by_user`：不触发、不等待、不作为 gate |
 
 执行说明：首次直接运行 `make project-check` 因固定 Wails CLI 不在当前 shell 的 `PATH` 以 `TOOLCHAIN-001` 正确停止；补齐当前 shell 的 Wails CLI PATH 后通过。首次 `make verify` 在 `vue-tsc` 前因 `frontend/node_modules` 未恢复停止；按 lockfile 执行 `npm --prefix frontend ci` 后从完整 verify 重跑通过，199 个依赖 audit 为 0。`glob@10.5.0` 输出既有 deprecated warning，本卡不顺手升级依赖。验证完成后已删除本轮 `frontend/node_modules`、`.task`、`bin` 与 dist 构建文件，保留 tracked `.gitkeep`；go.mod/go.sum/bindings 无漂移。Wails 链接阶段仍有既有 macOS SDK deployment-target warning，相关命令退出码均为 0。
