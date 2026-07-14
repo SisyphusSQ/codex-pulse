@@ -101,7 +101,8 @@ func validateSourceFileProgression(existing, incoming SourceFile) error {
 	if existing.Provider != incoming.Provider || existing.DeviceID != incoming.DeviceID || existing.Inode != incoming.Inode {
 		return invalidRecord("source file stable identity conflicts")
 	}
-	if existing.SessionID != nil && incoming.SessionID != nil && *existing.SessionID != *incoming.SessionID {
+	if existing.SessionID != nil && !equalStringPointer(existing.SessionID, incoming.SessionID) &&
+		incoming.ActiveGeneration <= existing.ActiveGeneration {
 		return invalidRecord("source file session identity conflicts")
 	}
 	if incoming.UpdatedAtMS < existing.UpdatedAtMS {

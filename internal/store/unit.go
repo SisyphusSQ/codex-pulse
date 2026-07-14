@@ -183,3 +183,28 @@ func (unit *WriteUnit) UpsertSourceFile(file SourceFile) error {
 	return transaction.WithContext(ctx).Model(&sourceFileModel{}).
 		Where("source_file_id = ?", file.SourceFileID).Updates(sourceFileUpdates(model)).Error
 }
+
+// TransitionJobRun 在当前工作单元中推进 job/progress/cursor，不新开 transaction。
+func (unit *WriteUnit) TransitionJobRun(transition JobTransition) error {
+	if err := unit.requireActive(); err != nil {
+		return err
+	}
+	if err := validateJobTransition(transition); err != nil {
+		return err
+	}
+	existing, found, err := jobRunByID(unit.ctx, unit.transaction, transition.JobID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return invalidRecord("job run does not exist")
+	}
+	projected, err := projectJobTransition(existing, transition)
+	if err != nil {
+		return err
+	}
+	if jobRunsEqual(existing, projected) {
+		return nil
+	}
+	return updateJobRun(unit.ctx, unit.transaction, projected)
+}

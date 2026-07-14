@@ -10,6 +10,7 @@
 7. [TOO-250] 新增固定 24 小时运行数据保留、低优先级有界 maintenance 写入、append-only v2 查询索引与异常退出恢复集成矩阵，保证 GORM Pure Go Store 可分批清理并保留长期事实和恢复血缘
 8. [TOO-251] 新增基于 confirmed root FD 的 Codex JSONL 文件发现、有限前缀 fingerprint 与 confirmed-home 范围内的两阶段来源对账，安全识别新增、增长、截断、移动、替换、删除和不可读状态
 9. [TOO-252] 实现有界增量 JSONL Parser 与显式 Turn lifecycle，输出 allowlisted session/turn/nullable usage、content-free diagnostics 和完整恢复 checkpoint，支持坏行续读、乱序事件及跨重启确定性恢复
+10. [TOO-253] 实现增量索引的原子 checkpoint、generation 重建与幂等事实提交，支持 append、retry、truncate、replace 和 crash 恢复，并保证 GORM Pure Go SQLite 下 offset 不越前、旧快照原子切换及跨 Session usage 隔离
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

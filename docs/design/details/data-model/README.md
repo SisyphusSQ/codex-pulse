@@ -43,11 +43,42 @@
 
 Turn lifecycle 只接受显式事件：start 建立 open turn；无 turn ID 的 context/abort 只有恰好一个 open turn 时才能关联；last-turn usage 在唯一 open turn 上形成 provisional snapshot；terminal 复制该 turn 最新 snapshot 为 final，没有 snapshot 时保持 `NULL`。带明确 turn ID 的 context/terminal 可以先于 start 暂存为安全小结构，start 到达后按 start→context→terminal 的因果顺序发出；terminal 后才出现的 context 不会被重新排序到 terminal 前。context/turn usage/terminal 早于 start time、冲突重放等情况 fail closed。内存和 checkpoint 状态固定限制为 64 个 open turn、1024 个 pending turn 和最近 1024 个 closed turn；超限输出 `state_limit_exceeded` 并丢弃不能安全保留的状态，closed replay 保证只覆盖该有界窗口。parser 不从新 turn、EOF、mtime 或文件归档猜测 interruption。
 
-因果输出顺序与 source position 是两个不同维度。terminal-before-start 在 late start 到达后按 `TurnStarted -> TurnEnded` 输出，但两条事件仍保留原始行位置，因此合法存在 `TurnEnd.Position.StartOffset < TurnStart.Position.StartOffset`。TOO-253 不得重写或排序这些 offset；Store 必须允许 `complete_offset < start_offset`，仅继续要求二者非负且 `completed_at_ms >= started_at_ms`。
+因果输出顺序与 source position 是两个不同维度。terminal-before-start 在 late start 到达后按 `TurnStarted -> TurnEnded` 输出，但两条事件仍保留原始行位置，因此合法存在 `TurnEnd.Position.StartOffset < TurnStart.Position.StartOffset`。Store v3 保留这些原始 offset，不做重写或排序；`complete_offset < start_offset` 是合法状态，只继续要求二者非负且 `completed_at_ms >= started_at_ms`。
 
 diagnostic 按实际 emission order 返回：当前输入中的 framing/decoder 结果按 source order 处理；pending 在后续 start 处解析产生的延迟 diagnostic 在解析时追加，不做跨 Feed 的全局 offset 重排。因此相同字节流的一次 Feed 与任意连续分块 Feed 累积结果一致。
 
-所有 token 字段继续保持 `NULL` 与真实 `0` 的差异。TOO-253 必须新增专用的 parser checkpoint persistence schema、GORM model/migration/repository，并把一次 `ParseResult` 的全部事实、diagnostic、`NextSeed` 与 `CommittableOffset` 放进同一个 writer transaction；事务成功后才能采用新 offset/seed，失败则二者都保持旧值。禁止从 `turn_usage`、`session_current` 或其他 mutable current projection 反推 seed：这些表会被后续 snapshot 覆盖，无法恢复 checkpoint 时刻的 provisional usage/pending/closed 状态。checkpoint persistence 只能保存上述 typed safe fields，不能保存原始 JSONL 或 content payload。TOO-253 还需结合持久 previous 判定 generation/counter epoch。本 parser 不写 SQLite，也不提前推进 `source_files.parsed_offset`。可复用验证入口见 [`docs/test/jsonl-parser.md`](../../../test/jsonl-parser.md)。
+所有 token 字段继续保持 `NULL` 与真实 `0` 的差异。Store v3 已提供专用 parser checkpoint、generation、staging 和 diagnostic 表；`internal/indexer` 把一次 `ParseResult` 的全部事实、diagnostic、完整 `NextSeed`、projector state 与 `CommittableOffset` 交给同一个 writer transaction。事务成功后才采用新 offset/seed，失败时 stream 立即失效，调用方只能从旧 durable checkpoint 重新 `Open`。禁止从 `turn_usage`、`session_current` 或其他 mutable current projection 反推 seed：这些表会被后续 snapshot 覆盖，无法恢复 checkpoint 时刻的 provisional usage/pending/closed 状态。checkpoint persistence 只保存 typed safe fields，不保存原始 JSONL 或 content payload。parser 本身仍不写 SQLite，也不提前推进 `source_files.parsed_offset`。可复用验证入口见 [`docs/test/jsonl-parser.md`](../../../test/jsonl-parser.md) 与 [`docs/test/incremental-index.md`](../../../test/incremental-index.md)。
+
+### 持久 Checkpoint 与 Generation
+
+SQLite application schema v3 增加四张 `STRICT` 表：
+
+| 表 | 责任 |
+| --- | --- |
+| `source_generations` | 保存 `(source_file_id, generation)`、`building/active/superseded`、完整 fingerprint、parser version、committed offset、session、active base token 和被 supersede building token。 |
+| `parser_checkpoints` | 保存 versioned typed parser seed 与 projector state；二者均为 content-free BLOB，由 GORM 读写并在解码后重新校验。 |
+| `source_generation_batches` | 暂存 building generation 的有序 typed `FactBatch`；batch identity 包含完整 target snapshot 与严格单调 commit epoch，同 offset 的 metadata move 或 A→B→A target 往返不冲突。 |
+| `parser_diagnostics` | 按 batch end offset、目标 fingerprint 与 ordinal 保存 allowlisted class/code/offset/retryable，不保存 raw error、type 或 source bytes。 |
+
+projector checkpoint 除 `session_current` 与 session counter previous 外，还保存 canonical Session source kind，以及最多 64 个 open turn 的安全投影：turn/session ID、start time、generation、start offset、model、cwd 和 reasoning effort。parser seed 的 source kind 表示当前物理文件位于 `sessions` 还是 `archived_sessions`，canonical Session source kind 则保持首次权威事实；二者分离后，archive move、move 后增长与 parser rebuild 不会制造稳定身份冲突。parser seed 本身不含 start source offset；没有独立 open-turn 状态，building generation 在进程重启后无法用稳定 key 完成 open turn。Store 会逐项核对 parser seed 与 projector open state，并要求所有 session-scoped facts 匹配 checkpoint Session；ingest 中携带 `TurnUsage` 的每个 `FactBatch` 还必须同时提供可解析的 Session 上下文，不能用 Usage-only batch 绕过该绑定。Session ID 与 canonical source kind 一旦在 generation 内建立就不得漂移，任何 ID、start time、context 或 generation 漂移都 fail closed。
+
+状态机固定为：
+
+```text
+absent -> building(0, offset=0) -> active(0, offset=N)
+active(G, N) + append -> active(G, N')
+active(G, N) + truncate/replace/parser upgrade
+    -> building(G+1, 0..N')
+    -> active(G+1, EOF) + superseded(G)
+building(G, N) + target/parser drift
+    -> CAS superseded(G) + building(G+1, offset=0)
+```
+
+active append 以旧 fingerprint 与旧 committed offset 做 CAS，facts、diagnostics、parser/projector checkpoint、generation fingerprint、`source_files` offset 和可选 job cursor 原子推进。distinct commit 的 `AtMS` 必须严格前进；完全一致 replay 使用原 batch identity。building generation 分批持久化安全 staging，但查询继续读取旧 active facts；文件继续增长、再次替换或 parser version 再变化时，Indexer 从全部 durable building cursor 中按 source/path/base lineage 恢复 `(source_file_id, generation, fingerprint, parser version)` token。恢复时 exact source identity 优先于较弱的 path/base lineage，使 crash 后并存的 sibling 能选中自身完成 EOF，并在同一事务清理 competitor。building CAS fingerprint 与 active base 分开：Store 只允许精确 `RowsAffected=1` 的 CAS supersede，然后创建新 generation 从 offset 0 重放；旧 stream 随即失效，stale token 不能覆盖新 building。即使没有 active snapshot，已提交到非零 offset 的 building 也能重启，并用空 chunk EOF 完成激活。
+
+每个 rebuild building 同时固化 Prepare 时观察到的 active base `(source_file_id, generation, fingerprint)`，并独立保存物理 replacement predecessor。A(active)→B(building)→C 时，C 继承 authoritative base A、记录 immediate predecessor B；EOF 沿整条 predecessor chain 校验并把 A/B source 都置为 unavailable，而 active CAS 始终只针对 A。EOF transaction 必须先证明 base 仍为 active，再删除旧 Session aggregate（外键级联清理 turn/current/usage，并把 source/session cursor 置空）、按顺序应用全部 staging、CAS supersede 精确 base、激活新 generation。Session metadata 因此是 generation-authoritative replacement，允许 LastSeen 缩短、稳定字段改变或 A→B；空/全坏行快照也会激活并清除旧 Session，不会因 offset 仍为 0 被误当 replay。active generation 的非空 session ownership唯一，防止清理一个 Session 时误伤另一条 active source。任一阶段失败都整体回滚；旧 active facts 与旧 cursor 保持可见，building 从上一次成功 checkpoint 继续。两个 replacement 即使都基于同一个旧快照，只有第一个能完成 base CAS，后一个在 EOF fail closed。
+
+session 累计计数器的 previous 只取自同一 checkpoint 的 projector state。同 generation 中任一双方已知的 counter 下降会开启 `counter_epoch + 1`；`NULL` 不伪造下降。新 generation 从 epoch 0 以 `rebuilt` 状态开始。
 
 ## 数据层次
 
@@ -71,11 +102,11 @@ TOO-247 固化六张 `STRICT` 核心表。所有时间为 UTC epoch milliseconds
 | `turn_usage` | `turn_id` | 保存 turn 当前 token snapshot、final 标记、`(source_generation, source_offset)` 观测位置和置信度。 |
 | `session_usage_current` | `session_id` | 保存 session 累计计数器的 epoch、当前 snapshot、`(source_generation, source_offset)` 来源位置和 counter state。 |
 
-`sessions.project_id`、`turns.project_id` 删除项目时置空；session 删除会级联清理 turn 和当前投影，turn 删除会级联清理 usage。`session_current.active_turn_id` 只能引用同一 session 的既有 turn，删除 turn 时置空。一个 `FactBatch` 只允许包含同一 Session 的对象，Usage 的 Session 归属在事务内通过关联 Turn 读回核对；不一致返回 `ErrInvalidRecord` 并整批回滚。Repository 在写入前把缺失引用、跨 session active turn 和 stable identity 冲突归一为 `ErrInvalidRecord`，不把 SQLite driver 文本当业务错误 contract。canonical SQL 同时用 CHECK 保证核心 ID、必填文本和非空 optional 文本不接受空字符串，防止绕过 typed repository 后写入另一套语义。
+`sessions.project_id`、`turns.project_id` 删除项目时置空；session 删除会级联清理 turn 和当前投影，turn 删除会级联清理 usage。`session_current.active_turn_id` 只能引用同一 session 的既有 turn，删除 turn 时置空。一个 `FactBatch` 只允许包含同一 Session 的对象，Usage 的 Session 归属在事务内通过关联 Turn 读回核对；不一致返回 `ErrInvalidRecord` 并整批回滚。直接 typed Repository 更新 Usage-only fact 时只存在 stored turn 这一项归属；进入 source ingest transaction 后还必须由同一 `FactBatch` 的 Session、Turn 或 current projection 显式给出 Session，才能再与 checkpoint Session 核对。Repository 在写入前把缺失引用、跨 session active turn 和 stable identity 冲突归一为 `ErrInvalidRecord`，不把 SQLite driver 文本当业务错误 contract。canonical SQL 同时用 CHECK 保证核心 ID、必填文本和非空 optional 文本不接受空字符串，防止绕过 typed repository 后写入另一套语义。
 
 来源文件实体由 TOO-248 的 `source_files` 建立；本卡在事实层使用 `(session_id, source_generation, start_offset)` 定位一条 turn。generation 只允许前进，同一 generation 下同一 turn 的 start offset 不可变化，且一个来源位置不能映射两个 turn。已完成 turn 只有在更高 generation 同时提供完整 completion tuple 时才切换来源位置；同一来源身份的 non-null 字段冲突返回 `ErrInvalidRecord`，provisional replay 不再改写已完成事实。这样 parser 即使重复扫描或旧 generation 乱序到达，也不会生成重复事实或回退当前来源位置。
 
-当前 TOO-247 Store DDL/typed validation 仍要求 `complete_offset >= start_offset`，与上面的官方 rollout 兼容路径冲突。TOO-253 在接入 parser 前必须通过 GORM schema/migration 与 repository validation 放宽该 source-offset 顺序约束；保留 `start_offset >= 0`、`complete_offset >= 0`、completion tuple 原子性与时间顺序。验收必须包含 parser 产生 terminal-before-start 事件、转换为 FactBatch、同一 writer transaction 写事实/checkpoint/offset、重启读回和幂等 replay；在该集成测试通过前不能宣称 parser/store handoff 已闭环。
+application schema v3 已通过 append-only migration 重建 `turns`、`turn_usage` 与 `session_current` 的外键闭包，移除旧的 `complete_offset >= start_offset` CHECK；`start_offset >= 0`、`complete_offset >= 0`、completion tuple 原子性与时间顺序保持不变。migration v1/v2 的对象集合与 checksum 独立冻结，fresh、v1、v2 数据库都按版本顺序升级并保留 backup/rollback contract。terminal-before-start 已由 parser → projector → GORM transaction → restart/readback 集成测试覆盖。
 
 `sessions` 只存身份和稳定 metadata。重复 `session_meta` 使用 first-known-wins 补充 optional 字段：首次已提交的非空值成为权威，后续不同的非空值返回 `ErrInvalidRecord`，不会覆盖既有事实；首次提交本身仍是明确的权威来源边界。`created_at_ms` / `first_seen_at_ms` 只向更早收敛，`last_seen_at_ms` 只向更晚推进。项目 metadata 只有 `updated_at_ms` 更大时才更新；同一更新时间的冲突 payload 被拒绝，旧扫描只能补充更早的 `created_at_ms`。
 
@@ -130,7 +161,7 @@ v0.1 的 `account_scope` 固定为 `default`。同一来源、窗口代际、use
 - `app_runtime_samples(captured_at_ms, cpu_percent, cpu_user_ms, cpu_system_ms, rss_bytes, goroutine_count, db_bytes, wal_bytes, disk_free_bytes, live_queue_depth, backfill_queue_depth)`
 - `health_events(event_id, fingerprint, domain, severity, code, source_file_id, job_id, error_class, first_seen_at_ms, last_seen_at_ms, resolved_at_ms, occurrence_count, updated_at_ms)`
 
-`source_file_id` 不依赖路径，稳定物理身份为 `(provider, device_id, inode)`；可选 `session_id` 只能引用既有 Session。文件移入 `archived_sessions` 时只更新 `current_path`。同 generation 的 `size_bytes`、`mtime_ns` 和 `parsed_offset` 不能倒退，且 offset 不得超过 size；新 generation 可以从较小 size/offset 重新开始，旧 generation 会被拒绝。本卡只约束 `source_files` 自身单调性；事实与 offset 的跨表原子推进由 TOO-249 提供。
+`source_file_id` 不依赖路径，稳定物理身份为 `(provider, device_id, inode)`；可选 `session_id` 只能引用既有 Session。文件移入 `archived_sessions` 时通过 metadata-only append commit 更新 generation path/source kind 与 parser seed，不重放 facts；canonical Session source kind 由 projector checkpoint 独立保留，后续增长或 rebuild 仍使用原始 Session 身份。相同 generation 的 `size_bytes`、`mtime_ns` 和 `parsed_offset` 不能倒退，且 offset 不得超过 size；新 generation 可以从较小 size/offset 重新开始，旧 generation 会被拒绝。TOO-249 提供唯一 writer queue/typed write unit，v3 ingest repository 在该边界内原子推进 facts、checkpoint、source 和 job cursor。
 
 `source_state` 以 `(source_type, scope_key)` 绑定 stable identity，按 `updated_at_ms` 与 `cursor_version` 单调推进；due query 保留 `NULL next_due_at_ms` 与真实时间的差异。`source_attempts` 是 append-only 完成历史，`request_id` 完全一致时才允许幂等重放。`http_status=NULL` 表示没有 HTTP 响应，不能用 `0` 代替。`payload_sha256` 只接受固定 64 位小写十六进制 SHA-256 digest；调用方先对稳定结构化 identity 做摘要，持久层不接收 payload、prompt、response、tool output 或完整 JSONL 行。
 
@@ -157,14 +188,15 @@ turn_usage    = codex:{session_id}:turn:{turn_id}:usage
 ```text
 读取完整行并识别结构化字段
     -> BEGIN IMMEDIATE
-    -> UPSERT sessions / turns / usage
-    -> 压缩写入 quota observations
-    -> 更新 current projections
-    -> 更新 parsed_offset
+    -> 写入安全 diagnostics / replay receipt
+    -> UPSERT sessions / turns / usage / current projections
+    -> 写入完整 parser seed 与 projector checkpoint
+    -> 更新 generation fingerprint / committed offset
+    -> 更新 source_files parsed_offset 与可选 job cursor
     -> COMMIT
 ```
 
-任何步骤失败都 rollback，事实和 offset 一起保持旧值。文件截断、inode 异常或 parser version 升级时，在新 generation 构建并校验派生事实，原子切换 `active_generation` 后再延迟清理旧 generation。
+任何步骤失败都 rollback，事实、diagnostic、checkpoint、source offset 和 job cursor 一起保持旧值。文件截断、same-inode replace、new-identity replace 或 parser version 升级时，在持久 building generation 中分批构建派生事实；target/parser 再漂移必须用显式 building CAS token 开启下一 generation。EOF 时按持久 base token 原子替换 authoritative Session aggregate 并切换 `active_generation`；旧 generation 随精确 CAS 标记为 `superseded`。
 
 TOO-247 的 `FactBatch` 在 TOO-246 提供的唯一 writer queue 上按 `projects -> sessions -> turns -> turn_usage -> session_current -> session_usage_current` 写入；任一校验、外键或 SQL 步骤失败都会回滚整批。`Session`、`Turn` 与 `ListTurns` typed query 只从已提交事实读取，列表查询支持 session、项目、模型、来源位置和起始时间范围过滤，并与可选 usage 一次 join 返回。
 

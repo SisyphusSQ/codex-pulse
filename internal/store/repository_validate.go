@@ -95,8 +95,8 @@ func (repository *Repository) validateBatch(batch FactBatch) error {
 		if completed && (turn.CompletedAtMS == nil || turn.Outcome == nil || *turn.Outcome == "" || turn.CompleteOffset == nil) {
 			return invalidRecord("turn completion fields must be provided together")
 		}
-		if turn.CompletedAtMS != nil && (*turn.CompletedAtMS < turn.StartedAtMS || *turn.CompleteOffset < turn.StartOffset) {
-			return invalidRecord("turn completion precedes start")
+		if turn.CompletedAtMS != nil && (*turn.CompletedAtMS < turn.StartedAtMS || *turn.CompleteOffset < 0) {
+			return invalidRecord("turn completion time or source offset is invalid")
 		}
 		if err := validateOptionalStrings(turn.Outcome, turn.Model, turn.ReasoningEffort, turn.CWD, turn.ProjectID); err != nil {
 			return err

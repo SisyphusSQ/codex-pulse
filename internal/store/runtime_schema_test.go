@@ -24,6 +24,8 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 		"health_events",
 		"job_runs",
 		"model_prices",
+		"parser_checkpoints",
+		"parser_diagnostics",
 		"pricing_versions",
 		"projects",
 		"schema_migrations",
@@ -32,6 +34,8 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 		"sessions",
 		"source_attempts",
 		"source_files",
+		"source_generation_batches",
+		"source_generations",
 		"source_state",
 		"turn_usage",
 		"turns",
@@ -181,7 +185,11 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 			  AND name NOT IN (
 				'idx_turns_source_position', 'idx_turns_session_lifecycle',
 				'idx_turns_project_time', 'idx_turns_model_time',
-				'idx_session_current_activity', 'idx_turn_usage_observed_final'
+				'idx_session_current_activity', 'idx_turn_usage_observed_final',
+				'idx_generation_batches_replay', 'idx_parser_diagnostics_source',
+				'idx_source_generations_active', 'idx_source_generations_active_session',
+				'idx_source_generations_building',
+				'idx_source_generations_snapshot'
 			  )
 			ORDER BY name
 		`)
