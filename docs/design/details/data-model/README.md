@@ -165,8 +165,9 @@ TOO-249 已把连接与 Repository 收敛为 GORM-first Pure Go adapter。依赖
 | writer | `mode=rwc`、private cache、一个 physical connection | `journal_mode=wal`、`foreign_keys=1`、`synchronous=1 (NORMAL)`、`busy_timeout=5000`、`query_only=0` |
 | readers | `mode=ro`、private cache、最多 4 个 physical connections | `journal_mode=wal`、`foreign_keys=1`、`synchronous=1 (NORMAL)`、`busy_timeout=5000`、`query_only=1` |
 | 写队列 | 容量 128 | 非阻塞 admission；满时返回可判定的 `ErrQueueFull` |
+| maintenance 队列 | 固定容量 1 | 只在没有普通写等待时执行；满时返回 `ErrQueueFull`，不扩展为第二个 writer |
 
-writer transaction 使用 `BEGIN IMMEDIATE`，由唯一 worker 按 FIFO 创建、提交或回滚；底层 callback 得到绑定当前 `database/sql.Tx` 的 `*gorm.DB`，不能自行 `Commit` / `Rollback`。跨 core/runtime 写入使用 `Repository.WithinWriteUnit`，其 `WriteUnit` 只暴露 typed operations，callback 返回后立即失效；现有单操作 Repository 方法复用同一事务体。读 callback 得到绑定 read-only pool 的 GORM session，底层 DSN 同时使用 `mode=ro` 与 `query_only=ON`，防止把只读入口变成旁路写入。
+writer transaction 使用 `BEGIN IMMEDIATE`，由唯一 worker 创建、提交或回滚；普通 `Write` 在容量 128 的 FIFO lane 中保持顺序，`WriteMaintenance` 使用独立的单槽 lane。worker 在 maintenance transaction 开始前优先处理已经排队的普通写，持续普通流量允许 maintenance 饥饿；maintenance 一旦开始则和普通写一样拥有一个有界事务，不存在并行的第二个 writer。底层 callback 得到绑定当前 `database/sql.Tx` 的 `*gorm.DB`，不能自行 `Commit` / `Rollback`。跨 core/runtime 写入使用 `Repository.WithinWriteUnit`，其 `WriteUnit` 只暴露 typed operations，callback 返回后立即失效；现有单操作 Repository 方法复用同一事务体。读 callback 得到绑定 read-only pool 的 GORM session，底层 DSN 同时使用 `mode=ro` 与 `query_only=ON`，防止把只读入口变成旁路写入。
 
 空 Path 表示 Store 自己管理上述默认专用目录，可以收紧既有默认目录和 DB 权限。显式 Path 的既有父目录与 DB 仍归调用方所有：Store 只接受已分别为 `0700` / `0600` 的路径，不会静默 chmod 共享目录或文件；若显式路径的最终目录尚不存在，Store 才创建新的私有目录。
 
@@ -176,7 +177,7 @@ context 取消在入队前可以直接拒绝。job 一旦被队列接受，`Writ
 
 ```text
 原子切换为 closing 并拒绝新读写
-    -> 排空切换前已接受的 writer queue
+    -> 先普通写、后 maintenance 地排空切换前已接受的两个 queue
     -> 等待在途 read callback 返回
     -> 关闭 read pool
     -> 关闭 writer connection
@@ -185,7 +186,7 @@ context 取消在入队前可以直接拒绝。job 一旦被队列接受，`Writ
 
 调用方取消等待不会中止已经开始的关闭。队列满、context 取消、closing/closed、SQLite busy/locked、disk full、read-only、permission、I/O 和 corrupt 都有稳定 sentinel；底层 context 与 driver error 仍保留在 error chain 中，禁止依赖 `database is locked` 等字符串分支。
 
-应用打开 Store 后、将其暴露给任何 runtime reader/writer 之前，由显式 migration catalog 管理 `PRAGMA user_version` 与 `schema_migrations(version, name, checksum, applied_at_ms)` append-only ledger。`MigrateApplicationSchema` 只属于该启动期 bootstrap 契约；若未来需要运行期 maintenance migration，必须先由上层实现任务排空和 Store 独占，不得直接复用启动调用。catalog 必须从 1 连续、名称和 SHA-256 checksum 稳定；history 缺号、checksum drift、ledger/user_version 分叉或数据库版本高于二进制都会 fail closed。所有 pending migration 在同一个 writer transaction 中顺序执行，只有全部 schema readback 和 ledger 写入成功后才推进 `user_version`，任一步失败会连同本轮所有 pending objects 一起回滚。
+应用打开 Store 后、将其暴露给任何 runtime reader/writer 之前，由显式 migration catalog 管理 `PRAGMA user_version` 与 `schema_migrations(version, name, checksum, applied_at_ms)` append-only ledger。`MigrateApplicationSchema` 只属于该启动期 bootstrap 契约；若未来需要运行期 maintenance migration，必须先由上层实现任务排空和 Store 独占，不得直接复用启动调用。catalog 必须从 1 连续、名称和 SHA-256 checksum 稳定；history 缺号、checksum drift、ledger/user_version 分叉或数据库版本高于二进制都会 fail closed。所有 pending migration 在同一个 writer transaction 中顺序执行，只有全部 schema readback 和 ledger 写入成功后才推进 `user_version`，任一步失败会连同本轮所有 pending objects 一起回滚。当前 v1 固定为初始 core/runtime schema，v2 只追加 retention query indexes；v1 checksum 有冻结测试，新增 migration 不得重算或改写既有 history。
 
 fresh 空库不做无意义备份。已有用户 schema 且存在 pending migration 时，runner 先只读检查状态和可用空间，再通过 modernc `NewBackup` / `Step` / `Remaining` / `PageCount` 创建包含 committed WAL 页的 `0600` 快照，成功发布后才进入 migration transaction；失败或取消只清理 `.partial-*`。文件级恢复原语使用 `NewRestore`，只恢复到尚不存在的新文件，不在运行中覆盖当前 Store。`STRICT`、复杂 `CHECK`、特殊 index、连接 PRAGMA、`sqlite_schema` canonical readback 和 `EXPLAIN QUERY PLAN` 是隔离的 raw SQL 例外；普通 CRUD、filter、关联检查和事务编排使用 GORM。
 
@@ -204,13 +205,33 @@ fresh 空库不做无意义备份。已有用户 schema 且存在 pending migrat
 - `job_runs(state, updated_at_ms, priority DESC, job_id)`、`job_runs(source_file_id, created_at_ms DESC, job_id DESC)` 与 `job_runs(updated_at_ms, priority DESC, job_id)`，用于 startup recovery、队列、source 作业历史和无 filter 列表。
 - `health_events(resolved_at_ms, last_seen_at_ms DESC, event_id, severity)`、`health_events(last_seen_at_ms DESC, event_id)`、`health_events(severity, last_seen_at_ms DESC, event_id)`、`health_events(source_file_id, last_seen_at_ms DESC, event_id)` 与 `health_events(job_id, last_seen_at_ms DESC, event_id)`，用于 active/resolved/history/severity 和 source/job 单关系追溯。
 - `pricing_versions(source, currency, effective_from_ms DESC)` 与 `model_prices(pricing_version, priority DESC, match_kind, model_pattern)`，用于 as-of 版本和模型规则匹配。
+- v2 retention 专用索引为 `health_events(resolved_at_ms, event_id)`、`job_runs(state, finished_at_ms, job_id)`、`job_runs(resume_of_job_id, job_id)` 与 `source_attempts(finished_at_ms, request_id)`；terminal job 按固定 state 顺序逐段选择，以同时保持有界、确定排序和索引命中。
 
 上述 required query 由 GORM model/scopes 构造；测试文件维护等价的代表查询用于 `EXPLAIN QUERY PLAN`，要求命名索引被选择且不得出现临时排序。quota、process snapshot 和 app runtime sample 索引由对应后续 Execution 卡创建。core/runtime 表不提供 prompt、response、tool output、原始 JSONL、鉴权 token 或 raw error 的专用字段；schema contract 和数据库 bytes 测试会对受控 code/digest/cursor/error 输入面使用 synthetic marker 验证拒绝与不可见性。业务 identity/path metadata 的凭据卫生仍由调用方负责。
 
 ## 保留策略
 
-session、turn、final usage、turn cost、quota observation 和 daily rollup 长期保留。
+v0.1 的窗口固定为 24 小时，不提供用户可配置天数。cutoff 是 `now - 24h` 的 UTC epoch milliseconds；只有时间严格小于 cutoff 的行可删除，恰好等于 cutoff 的行仍保留。
 
-资源与故障明细只服务“最近是否正常”：`source_attempts`、已完成 `job_runs`、`process_snapshots`、`app_runtime_samples` 和已解决 `health_events` 滚动保留 24 小时。未解决 event 和 active/resumable job 不受清理影响，解决或完成后再开始计时。
+| 数据 | v0.1 策略 | 开始计时字段 / 条件 |
+| --- | --- | --- |
+| session、turn、final usage、turn cost、quota observation、daily rollup | 长期保留 | cleanup 不触碰 |
+| `source_attempts` | 滚动 24 小时 | `finished_at_ms < cutoff` |
+| `job_runs` | 仅 `succeeded` / `failed` / `cancelled` 滚动 24 小时 | `finished_at_ms < cutoff`，并且没有剩余 health event 或 resume lineage 引用 |
+| `health_events` | 仅已解决事件滚动 24 小时 | `resolved_at_ms IS NOT NULL AND resolved_at_ms < cutoff` |
+| `process_snapshots`、`app_runtime_samples` | 设计上滚动 24 小时 | 当前 schema 尚未创建，TOO-250 不提前落表或伪造 cleanup |
+| current projection | 可重建 | 由各投影自己的后续实现管理，本轮不删除 |
 
-current projection 随时可重建。任何清理都不能删除 Codex 原始 JSONL，Tracker 本来也不拥有这些文件。
+`queued`、`running` 与 `interrupted` job 都不清理；`interrupted` 是可恢复终态，不能因已有 `finished_at_ms` 被误当成普通已完成历史。未解决 health event 永久越过当前 cleanup；已解决但仍在窗口内的 event 继续阻止关联 job 删除。任一 resume child 仍引用 parent 时，parent 也保留，不能依赖 `ON DELETE SET NULL` 抹掉解释和恢复血缘。
+
+`Repository.CleanupRetentionBatch` 通过低优先级 maintenance lane 在一个 GORM transaction 中最多删除 `BatchSize` 行；默认 100、硬上限 1000，batch size 只控制事务工作量，不改变 24 小时产品语义。总 budget 按以下顺序消费：
+
+```text
+eligible resolved health_events
+    -> eligible terminal and now-unreferenced job_runs
+    -> eligible source_attempts
+```
+
+候选通过 GORM condition/subquery、稳定时间与主键排序、`Limit` 和 `Pluck` 选择，再由 GORM `Delete` 删除；production retention 不使用 `Raw` / `Exec`。实际 GORM DryRun SQL 由真实 `EXPLAIN QUERY PLAN` 验证专用索引、health/job 引用索引和 resume lineage 索引均命中，且候选排序不使用临时 B-tree。每批独立提交，只有 commit 成功后才对外累加计数；任一批删除后都重新查询 `More`，因为删除 terminal resume leaf 会在同一事务中释放 parent，即使 batch budget 尚有剩余也必须继续下一批。`CleanupRetention` 在批间调用 observer；context 取消会返回稳定的 SQLite cancel error 和已提交 report，下次调用重新按条件计算，不保存游标，也不会回滚先前已经成功提交的批次。当前卡只交付 Store/service contract；启动与小时级 scheduler 接线留给对应调度 Execution。
+
+任何清理都不能删除 Codex 原始 JSONL，Tracker 本来也不拥有这些文件。完整 fixture、取消、rollback、close/reopen 与 Pure Go验证入口见 [`docs/test/store-integration.md`](../../../test/store-integration.md)。
