@@ -45,6 +45,11 @@ func TestIngesterRestartsFromCommittedOffsetAndReplaysHalfLineOnce(t *testing.T)
 	if err != nil {
 		t.Fatalf("Open(initial) error = %v", err)
 	}
+	openedCursor, err := stream.Cursor()
+	if err != nil || openedCursor.SourceFileID != initialPlan.Actions[0].Current.SourceFileID ||
+		openedCursor.CommittedOffset != 0 {
+		t.Fatalf("Cursor(opened) = %#v, %v", openedCursor, err)
+	}
 	first, err := stream.Feed(ctx, initialContent, true, 20)
 	if err != nil {
 		t.Fatalf("Feed(initial) error = %v", err)
@@ -52,6 +57,11 @@ func TestIngesterRestartsFromCommittedOffsetAndReplaysHalfLineOnce(t *testing.T)
 	wantOffset := int64(len(meta) + 1)
 	if !first.Committed || first.CommittableOffset != wantOffset || first.BufferedBytes != split {
 		t.Fatalf("Feed(initial) = %#v, want committed offset %d with %d buffered", first, wantOffset, split)
+	}
+	committedCursor, err := stream.Cursor()
+	if err != nil || committedCursor.CommittedOffset != wantOffset ||
+		committedCursor.Generation != first.Cursor.Generation {
+		t.Fatalf("Cursor(committed) = %#v, %v", committedCursor, err)
 	}
 	file, err := repository.SourceFile(ctx, initialPlan.Actions[0].Current.SourceFileID)
 	if err != nil || file.ParsedOffset != wantOffset {

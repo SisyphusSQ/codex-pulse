@@ -18,10 +18,29 @@ type Discoverer struct {
 }
 
 func NewDiscoverer(home string) (*Discoverer, error) {
-	return newDiscoverer(home, osFileSystem{})
+	return newDiscovererWithIdentity(home, osFileSystem{}, nil)
 }
 
 func newDiscoverer(home string, filesystem fileSystem) (*Discoverer, error) {
+	return newDiscovererWithIdentity(home, filesystem, nil)
+}
+
+// NewConfirmedDiscoverer binds discovery to a previously confirmed physical
+// Codex Home identity instead of trusting whichever directory currently owns
+// the path.
+func NewConfirmedDiscoverer(home, deviceID string, inode int64) (*Discoverer, error) {
+	if deviceID == "" || inode <= 0 {
+		return nil, ErrInvalidHome
+	}
+	expected := rootIdentity{deviceID: deviceID, inode: inode}
+	return newDiscovererWithIdentity(home, osFileSystem{}, &expected)
+}
+
+func newDiscovererWithIdentity(
+	home string,
+	filesystem fileSystem,
+	expected *rootIdentity,
+) (*Discoverer, error) {
 	if filesystem == nil || !filepath.IsAbs(home) {
 		return nil, ErrInvalidHome
 	}
@@ -29,6 +48,9 @@ func newDiscoverer(home string, filesystem fileSystem) (*Discoverer, error) {
 	identity, err := filesystem.ConfirmRoot(home, true)
 	if err != nil {
 		return nil, err
+	}
+	if expected != nil && identity != *expected {
+		return nil, ErrHomeChanged
 	}
 	return &Discoverer{home: home, rootIdentity: identity, filesystem: filesystem}, nil
 }
