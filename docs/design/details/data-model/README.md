@@ -86,7 +86,7 @@ session 累计计数器的 previous 只取自同一 checkpoint 的 projector sta
 | --- | --- | --- |
 | 外部事实源 | Codex 维护，Tracker 不复制 | JSONL、`session_index.jsonl` |
 | 持久事实 | 长期保留、可审计的结构化数据 | `sessions`、`turns`、`turn_usage`、`quota_observations` |
-| 当前与聚合投影 | 可重建，服务 UI 快速查询 | `session_current`、`quota_current`、daily usage |
+| 当前与聚合投影 | 可重建，服务 UI 快速查询 | `session_current`、`session_attributions`、`turn_attributions`、`quota_current`、daily usage |
 | 运行状态 | 游标、调度、采集健康与价格目录 | `source_files`、`source_state`、`source_attempts`、`job_runs`、`health_events`、`pricing_versions` |
 
 ## Session 与 Turn
@@ -122,6 +122,32 @@ source freshness 不可用或索引不完整 -> unknown
 
 `Done` 是 turn outcome；`Stale` 是来源 freshness。v0.1 不推断 Waiting、Blocked 或 Error。
 
+### Session、Project 与 Model 派生归因
+
+application schema v4 在 canonical Session/Turn 事实之外新增两张可重算 `STRICT` 派生表：
+
+| 表 | 主键 | 责任 |
+| --- | --- | --- |
+| `session_attributions` | `session_id` | opaque display title、可选 project/model identity 与 display、各维度 confidence/source/reason、rule version 和更新时间。 |
+| `turn_attributions` | `turn_id` | 单个 turn 的可选 project/model identity 与 display、confidence/source/reason、rule version 和更新时间。 |
+
+原始 `sessions.initial_cwd`、`turns.cwd/model` 与 `session_current.current_cwd/current_model` 仍是 parser 观察到的本机事实，不会因规则变化被改写。安全 attribution projection 只暴露 stable ID、受限 display、固定 confidence/source/reason 和 rule version；它没有 `root_path`、`initial_cwd`、`cwd`、`current_cwd` 或 raw model 字段。后续 M6 query/Wails 层只能消费该安全 projection，不能直接 JSON 序列化 core Store record。需要展示原始路径时必须另设受控、本机、显式 reveal capability，不得扩张 attribution DTO。
+
+Session title 当前只使用 `session_id_fallback`：对 Session ID 做版本化 SHA-256 后显示 `Session <opaque-short-id>`，不读取 prompt、response、reasoning、tool output 或 thread 内容。Project identity 的规则为：
+
+1. 只接受规范化绝对 cwd；相对路径或非法路径返回 `unknown/invalid_path`。
+2. Store transaction 内读取 `projects.root_path`，通过 `filepath.Rel` 做 segment-aware 最长 root 匹配；唯一命中为 `high/registered_root`，同长度不同 identity 为 `low/conflict`。
+3. 没有登记 root 时使用 `local-path-v1:<sha256(normalized-absolute-path)>` 建立 `medium/cwd_path_digest` 本机 identity；basename 仅作为受限 display，绝不作为唯一键。自动生成的 path-digest Project 不升级为跨 Session registered root；它只在当前 Session 内让 initial cwd 与其 nested turn/current 对齐，避免归因受 Session 写入顺序影响。
+4. 路径移动会生成新的本机 identity；v0.1 不读取 `.git`、remote 或仓库内容，也不猜测跨路径、跨机器项目合并。
+
+Model 只接受最长 128 bytes 的小写字母数字、`.`、`_`、`-` token，归一化已知 `openai/`、`openai:`、`codex/`、`codex:` prefix 和大小写 alias。安全但未知的未来 token 可作为 normalized key/display；路径形、内容形、超长或非法字符输入返回 `unknown/invalid_model`，不会回显原文。Session current 与最新 started turn 是同等级候选；project 或 model 不一致时 fail closed 为 nil identity 加 `low/conflict`，不会用 last-write-wins 隐藏冲突。高等级 project 都缺失时才使用 `session.initial_cwd` fallback；`model_provider` 不冒充具体模型。
+
+`session_attributions.session_id` 与 `turn_attributions.turn_id` 分别对 canonical Session/Turn 使用 `ON DELETE CASCADE`。Project identity/display 是一对原子派生快照，不对 `projects` 建单列外键：单列 `ON DELETE SET NULL` 会留下半个 tuple；当前 Project 没有删除业务入口，规则或登记 root 变化必须调用 typed `RecomputeAttributions`，在一个 writer transaction 中先清除派生行、清理未被 canonical facts 引用的 path-derived Project，再重建全部归因。任一步失败都会回滚，canonical Session/Turn/Usage/model/cwd 不变。
+
+v4 为 session/turn attribution 分别建立 `(project_id, entity_id)` 与 `(model_key, entity_id)` 索引。`project_id/project_display_name` 和 `model_key/model_display_name` 必须同时为 `NULL` 或同时为非空字符串；SQLite `CHECK` 显式要求两边 `IS NOT NULL`，避免三值逻辑把单边 `NULL` 当作通过。归因 CRUD、查询和重算使用 GORM；raw SQL 仍只限 append-only migration 的 `STRICT/CHECK/index` 与测试 schema introspection。可复用隐私、冲突、重算、rollback 和 synthetic indexer 验证见 [`docs/test/privacy-attribution.md`](../../../test/privacy-attribution.md)。
+
+v3→v4 migration 在创建 attribution schema 后，使用同一个 GORM writer transaction 从既有 canonical Session/Turn facts 全量回填 rule v1 归因；只有 DDL、全部派生行、migration ledger 与 `user_version` 一起成功才提交。backfill 任一步失败会整体回滚到 v3，不能留下“schema 已是 v4、历史归因为空”的状态。后续正常 FactBatch 只在 `WriteUnit` 内登记 dirty Session；callback 全部成功后、commit 前按 Session ID 排序，每个 Session 最多刷新一次，避免 Indexer 逐 Fact 激活时重复扫描历史 Turns。显式全量重算仍用于规则/登记 root 变化后的维护。
+
 ## Usage 与 Cost
 
 - `turn_usage(turn_id, observed_at_ms, is_final, input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, context_window, source_generation, source_offset, confidence, updated_at_ms)`
@@ -141,6 +167,8 @@ source freshness 不可用或索引不完整 -> unknown
 Pricing Catalog 以 `(source, currency, effective_from_ms)` 形成不可变时间线。同 source/currency 的版本生效区间由相邻版本推导为 `[effective_from_ms, next_effective_from_ms)`，最后一个版本的结束时间为 `NULL`；新增版本不更新上一版本。模型规则只允许 `exact`、`prefix`、`default`，`default` pattern 固定为 `*`。匹配先按 `priority DESC`，再按 exact、prefix、default，随后按 pattern 长度和字典序稳定决胜；没有有效版本或规则时返回 `ErrNotFound`，成本层保留 `unpriced`，不能伪装为零成本。版本与全部规则在同一 writer transaction 追加；完全一致重放 no-op，同 version 或同生效边界的冲突全部回滚。
 
 Pricing Catalog 更新时由后续成本层基于 `turn_usage` 重算 cost，不修改 token 事实。
+
+TOO-255 及后续 daily rollup 必须以 `turn_attributions.project_id/model_key` 作为归一化维度入口，并保留 unknown/conflict 的未归因语义；不得直接把 `turns.cwd`、`turns.model` 或 basename 当作聚合键。Pricing 的 exact/prefix/default 规则匹配 normalized `model_key`，raw model 仅留在本机事实层用于审计与规则重算。
 
 ## Quota
 
@@ -252,7 +280,7 @@ context 取消在入队前可以直接拒绝。job 一旦被队列接受，`Writ
 
 调用方取消等待不会中止已经开始的关闭。队列满、context 取消、closing/closed、SQLite busy/locked、disk full、read-only、permission、I/O 和 corrupt 都有稳定 sentinel；底层 context 与 driver error 仍保留在 error chain 中，禁止依赖 `database is locked` 等字符串分支。
 
-应用打开 Store 后、将其暴露给任何 runtime reader/writer 之前，由显式 migration catalog 管理 `PRAGMA user_version` 与 `schema_migrations(version, name, checksum, applied_at_ms)` append-only ledger。`MigrateApplicationSchema` 只属于该启动期 bootstrap 契约；若未来需要运行期 maintenance migration，必须先由上层实现任务排空和 Store 独占，不得直接复用启动调用。catalog 必须从 1 连续、名称和 SHA-256 checksum 稳定；history 缺号、checksum drift、ledger/user_version 分叉或数据库版本高于二进制都会 fail closed。所有 pending migration 在同一个 writer transaction 中顺序执行，只有全部 schema readback 和 ledger 写入成功后才推进 `user_version`，任一步失败会连同本轮所有 pending objects 一起回滚。当前 v1 固定为初始 core/runtime schema，v2 只追加 retention query indexes；v1 checksum 有冻结测试，新增 migration 不得重算或改写既有 history。
+应用打开 Store 后、将其暴露给任何 runtime reader/writer 之前，由显式 migration catalog 管理 `PRAGMA user_version` 与 `schema_migrations(version, name, checksum, applied_at_ms)` append-only ledger。`MigrateApplicationSchema` 只属于该启动期 bootstrap 契约；若未来需要运行期 maintenance migration，必须先由上层实现任务排空和 Store 独占，不得直接复用启动调用。catalog 必须从 1 连续、名称和 SHA-256 checksum 稳定；history 缺号、checksum drift、ledger/user_version 分叉或数据库版本高于二进制都会 fail closed。所有 pending migration 在同一个 writer transaction 中顺序执行，只有全部 schema readback 和 ledger 写入成功后才推进 `user_version`，任一步失败会连同本轮所有 pending objects 一起回滚。当前 v1 固定为初始 core/runtime schema，v2 只追加 retention query indexes，v3 增加 durable incremental-ingest checkpoint/generation 并重建 turn 外键闭包，v4 增加 Session/Turn project/model attribution；v1/v2/v3/v4 checksum 均由各自冻结测试保护，新增 migration 不得重算或改写既有 history。
 
 fresh 空库不做无意义备份。已有用户 schema 且存在 pending migration 时，runner 先只读检查状态和可用空间，再通过 modernc `NewBackup` / `Step` / `Remaining` / `PageCount` 创建包含 committed WAL 页的 `0600` 快照，成功发布后才进入 migration transaction；失败或取消只清理 `.partial-*`。文件级恢复原语使用 `NewRestore`，只恢复到尚不存在的新文件，不在运行中覆盖当前 Store。`STRICT`、复杂 `CHECK`、特殊 index、连接 PRAGMA、`sqlite_schema` canonical readback 和 `EXPLAIN QUERY PLAN` 是隔离的 raw SQL 例外；普通 CRUD、filter、关联检查和事务编排使用 GORM。
 
@@ -263,6 +291,8 @@ fresh 空库不做无意义备份。已有用户 schema 且存在 pending migrat
 - `turns(project_id, started_at_ms DESC, turn_id DESC, completed_at_ms)` 与 `turns(model, started_at_ms DESC, turn_id DESC, completed_at_ms)`，用于项目/模型时间列表并避免额外临时排序。
 - `session_current(last_activity_at_ms)`，用于最近 session 投影。
 - `turn_usage(observed_at_ms, is_final)`，用于按观测时间筛选 final usage。
+- `session_attributions(project_id, session_id)` 与 `session_attributions(model_key, session_id)`，用于安全 Session project/model 维度查询。
+- `turn_attributions(project_id, turn_id)` 与 `turn_attributions(model_key, turn_id)`，用于后续 cost/rollup 消费 normalized 维度。
 
 当前 runtime 索引为：
 
