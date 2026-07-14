@@ -26,6 +26,7 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 		"model_prices",
 		"pricing_versions",
 		"projects",
+		"schema_migrations",
 		"session_current",
 		"session_usage_current",
 		"sessions",
@@ -124,7 +125,7 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 	columnTypes := make(map[string]string)
 	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
 		for table := range wantColumns {
-			rows, err := connection.QueryContext(ctx, `
+			rows, err := rawQueryRows(ctx, connection, `
 				SELECT name, type FROM pragma_table_info(?) ORDER BY cid
 			`, table)
 			if err != nil {
@@ -146,7 +147,7 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 				return err
 			}
 
-			foreignRows, err := connection.QueryContext(ctx, `
+			foreignRows, err := rawQueryRows(ctx, connection, `
 				SELECT "from", "table", "to", on_delete FROM pragma_foreign_key_list(?)
 			`, table)
 			if err != nil {
@@ -170,7 +171,7 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 			}
 		}
 
-		rows, err := connection.QueryContext(ctx, `
+		rows, err := rawQueryRows(ctx, connection, `
 			SELECT name FROM sqlite_schema
 			WHERE type = 'index' AND name LIKE 'idx_%'
 			  AND name NOT IN (
@@ -270,7 +271,7 @@ func TestRuntimeSchemaRequiredIndexesServeQueries(t *testing.T) {
 
 	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
 		for _, query := range queries {
-			rows, err := connection.QueryContext(ctx, "EXPLAIN QUERY PLAN "+query.statement, query.arguments...)
+			rows, err := rawQueryRows(ctx, connection, "EXPLAIN QUERY PLAN "+query.statement, query.arguments...)
 			if err != nil {
 				return err
 			}
@@ -315,7 +316,7 @@ func TestRuntimeSchemaExcludesSensitiveContentColumns(t *testing.T) {
 		"stack", "prompt", "response", "tool_output", "jsonl", "payload_body",
 	}
 	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
-		rows, err := connection.QueryContext(ctx, `
+		rows, err := rawQueryRows(ctx, connection, `
 			SELECT m.name, p.name
 			FROM sqlite_schema AS m
 			JOIN pragma_table_info(m.name) AS p
@@ -355,14 +356,14 @@ func TestRuntimeSchemaRejectsInvalidClassesAndPriceTypesWithoutRepository(t *tes
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
 	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		if _, err := transaction.ExecContext(ctx, `
+		if _, err := rawExec(ctx, transaction, `
 			INSERT INTO source_state VALUES (
 				'source-valid', 'quota', 'default', NULL, NULL, NULL, 0, NULL, 'unknown', 0, 0
 			)
 		`); err != nil {
 			return err
 		}
-		_, err := transaction.ExecContext(ctx, `
+		_, err := rawExec(ctx, transaction, `
 			INSERT INTO pricing_versions VALUES ('pricing-valid', 'builtin', 'USD', 0, 0)
 		`)
 		return err
@@ -451,7 +452,7 @@ func TestRuntimeSchemaRejectsInvalidClassesAndPriceTypesWithoutRepository(t *tes
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
-				_, err := transaction.ExecContext(ctx, testCase.statement)
+				_, err := rawExec(ctx, transaction, testCase.statement)
 				return err
 			})
 			if err == nil {
@@ -467,7 +468,7 @@ func TestEnsureApplicationSchemaRejectsIncompatibleRuntimeTableAtomically(t *tes
 
 	database := openTestDatabase(t)
 	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		_, err := transaction.ExecContext(ctx, `CREATE TABLE source_files (source_file_id TEXT PRIMARY KEY) STRICT`)
+		_, err := rawExec(ctx, transaction, `CREATE TABLE source_files (source_file_id TEXT PRIMARY KEY) STRICT`)
 		return err
 	})
 	if err != nil {
@@ -495,7 +496,7 @@ func applicationTableContract(
 	var tables []string
 	strictByTable := make(map[string]bool)
 	err := database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
-		rows, err := connection.QueryContext(ctx, `
+		rows, err := rawQueryRows(ctx, connection, `
 			SELECT name, strict
 			FROM pragma_table_list
 			WHERE schema = 'main' AND type = 'table' AND name NOT LIKE 'sqlite_%'

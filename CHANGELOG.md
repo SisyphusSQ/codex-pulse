@@ -6,6 +6,7 @@
 3. [TOO-246] 新增 SQLite WAL 连接面、有界单写队列、独立只读池与应用 drain/close 生命周期，固定私有路径权限、authoritative cancellation 和可判定错误语义
 4. [TOO-247] 建立 Session、Turn、Usage 六表 STRICT 事实与投影 Schema、原子 bootstrap 和 typed repository，固定来源 generation/offset 幂等、finality 与 unknown/null/真实零语义
 5. [TOO-248] 建立 Source、Job、Health 与 Pricing 七表 STRICT 运行事实 Schema、原子 bootstrap 和 typed repository，固定 interrupted-only 恢复、健康生命周期与有限分类、不可变价格版本及敏感内容持久化边界
+6. [TOO-249] 重构 SQLite 持久层为 Pure Go GORM adapter，新增版本化 migration、WAL 一致性备份与恢复、目录持久化发布及跨 core/runtime typed WriteUnit 原子事务
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

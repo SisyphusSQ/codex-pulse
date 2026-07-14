@@ -272,7 +272,7 @@ func TestHealthPersistenceDoesNotContainRawSensitiveErrorText(t *testing.T) {
 
 	var databasePath string
 	err = repository.database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
-		rows, err := connection.QueryContext(ctx, `PRAGMA database_list`)
+		rows, err := rawQueryRows(ctx, connection, `PRAGMA database_list`)
 		if err != nil {
 			return err
 		}

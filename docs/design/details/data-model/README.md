@@ -153,7 +153,9 @@ TOO-247 的 `FactBatch` 在 TOO-246 提供的唯一 writer queue 上按 `project
 
 ### 连接与关闭基线
 
-TOO-246 已把上述约定固化在 `internal/store/sqlite`。应用启动时由 `internal/app.Run` 打开一个 Store，Store 内部持有一个物理 writer connection 和独立 read-only pool；业务 repository 不得自行打开第二条写路径。SQLite driver 固定为 `github.com/mattn/go-sqlite3 v1.14.48`，因此构建和测试要求 `CGO_ENABLED=1`。
+TOO-249 已把连接与 Repository 收敛为 GORM-first Pure Go adapter。依赖固定为 `gorm.io/gorm v1.31.2`、`github.com/libtnb/sqlite v1.2.0` 和 `modernc.org/sqlite v1.53.0`；生产 SQLite 编译链不使用 `gorm.io/driver/sqlite` 或 `github.com/mattn/go-sqlite3`，`internal/store/sqlite` 与 `internal/store` 必须在 `CGO_ENABLED=0` 下构建和测试。固定版本 GORM 的上游 `go.mod` 自带 official SQLite driver/mattn 间接元数据，但 `CGO_ENABLED=0 go list -deps ./internal/store` 的实际编译依赖不得包含二者。Wails macOS adapter 自身仍需要 CGO，因此 `internal/app` 和全仓 Wails 验证使用 macOS 默认 CGO；这与 SQLite Pure Go门禁是两个独立事实。
+
+应用启动时由 `internal/app.Run` 打开一个 Store，Store 内部持有一个物理 writer connection 和独立 read-only pool；业务 repository 不得自行打开第二条写路径。GORM models 只存在于 persistence adapter，显式映射到 `Project`、`Session`、`Turn`、`SourceFile`、`JobRun`、`HealthEvent`、`PricingVersion` 等 domain types，不向 UI 或业务层泄漏。
 
 空配置的实际默认值：
 
@@ -164,7 +166,7 @@ TOO-246 已把上述约定固化在 `internal/store/sqlite`。应用启动时由
 | readers | `mode=ro`、private cache、最多 4 个 physical connections | `journal_mode=wal`、`foreign_keys=1`、`synchronous=1 (NORMAL)`、`busy_timeout=5000`、`query_only=1` |
 | 写队列 | 容量 128 | 非阻塞 admission；满时返回可判定的 `ErrQueueFull` |
 
-writer transaction 使用 `BEGIN IMMEDIATE`，由唯一 worker 按 FIFO 创建、提交或回滚；callback 只能得到不暴露 `Commit` / `Rollback` 的 `WriteTx`。读 callback 只能得到 query surface，底层 DSN 同时使用 `mode=ro` 与 `query_only=ON`，防止把只读入口变成旁路写入。
+writer transaction 使用 `BEGIN IMMEDIATE`，由唯一 worker 按 FIFO 创建、提交或回滚；底层 callback 得到绑定当前 `database/sql.Tx` 的 `*gorm.DB`，不能自行 `Commit` / `Rollback`。跨 core/runtime 写入使用 `Repository.WithinWriteUnit`，其 `WriteUnit` 只暴露 typed operations，callback 返回后立即失效；现有单操作 Repository 方法复用同一事务体。读 callback 得到绑定 read-only pool 的 GORM session，底层 DSN 同时使用 `mode=ro` 与 `query_only=ON`，防止把只读入口变成旁路写入。
 
 空 Path 表示 Store 自己管理上述默认专用目录，可以收紧既有默认目录和 DB 权限。显式 Path 的既有父目录与 DB 仍归调用方所有：Store 只接受已分别为 `0700` / `0600` 的路径，不会静默 chmod 共享目录或文件；若显式路径的最终目录尚不存在，Store 才创建新的私有目录。
 
@@ -183,7 +185,9 @@ context 取消在入队前可以直接拒绝。job 一旦被队列接受，`Writ
 
 调用方取消等待不会中止已经开始的关闭。队列满、context 取消、closing/closed、SQLite busy/locked、disk full、read-only、permission、I/O 和 corrupt 都有稳定 sentinel；底层 context 与 driver error 仍保留在 error chain 中，禁止依赖 `database is locked` 等字符串分支。
 
-应用打开 Store 后会在同一 writer transaction 中逐对象处理 TOO-247 的六张核心表/六个索引，以及 TOO-248 的七张 runtime 表/十三个索引：同名对象已存在时先核对 type 与 canonical SQL，缺失时才创建并立即读回。这样 malformed table、同名 view 或错误 index 不会先在后续依赖 DDL 处泄漏普通 driver error；任一不一致都返回 `ErrSchemaContract`，core 与 runtime 的本轮 DDL 一并回滚，Wails 不启动。这个 bootstrap 只处理新库、完全匹配的既有库和当前 pre-release core 库补齐 runtime objects，不伪装成通用 migration：旧库升级、backup hook、版本迁移和重建流程仍由 TOO-249 落地。
+应用打开 Store 后、将其暴露给任何 runtime reader/writer 之前，由显式 migration catalog 管理 `PRAGMA user_version` 与 `schema_migrations(version, name, checksum, applied_at_ms)` append-only ledger。`MigrateApplicationSchema` 只属于该启动期 bootstrap 契约；若未来需要运行期 maintenance migration，必须先由上层实现任务排空和 Store 独占，不得直接复用启动调用。catalog 必须从 1 连续、名称和 SHA-256 checksum 稳定；history 缺号、checksum drift、ledger/user_version 分叉或数据库版本高于二进制都会 fail closed。所有 pending migration 在同一个 writer transaction 中顺序执行，只有全部 schema readback 和 ledger 写入成功后才推进 `user_version`，任一步失败会连同本轮所有 pending objects 一起回滚。
+
+fresh 空库不做无意义备份。已有用户 schema 且存在 pending migration 时，runner 先只读检查状态和可用空间，再通过 modernc `NewBackup` / `Step` / `Remaining` / `PageCount` 创建包含 committed WAL 页的 `0600` 快照，成功发布后才进入 migration transaction；失败或取消只清理 `.partial-*`。文件级恢复原语使用 `NewRestore`，只恢复到尚不存在的新文件，不在运行中覆盖当前 Store。`STRICT`、复杂 `CHECK`、特殊 index、连接 PRAGMA、`sqlite_schema` canonical readback 和 `EXPLAIN QUERY PLAN` 是隔离的 raw SQL 例外；普通 CRUD、filter、关联检查和事务编排使用 GORM。
 
 当前核心索引为：
 
@@ -201,7 +205,7 @@ context 取消在入队前可以直接拒绝。job 一旦被队列接受，`Writ
 - `health_events(resolved_at_ms, last_seen_at_ms DESC, event_id, severity)`、`health_events(last_seen_at_ms DESC, event_id)`、`health_events(severity, last_seen_at_ms DESC, event_id)`、`health_events(source_file_id, last_seen_at_ms DESC, event_id)` 与 `health_events(job_id, last_seen_at_ms DESC, event_id)`，用于 active/resolved/history/severity 和 source/job 单关系追溯。
 - `pricing_versions(source, currency, effective_from_ms DESC)` 与 `model_prices(pricing_version, priority DESC, match_kind, model_pattern)`，用于 as-of 版本和模型规则匹配。
 
-上述 required query 的 SQL/query builder 由 Repository 与 `EXPLAIN QUERY PLAN` 测试共用；测试同时要求命名索引被选择且不得出现临时排序。quota、process snapshot 和 app runtime sample 索引由对应后续 Execution 卡创建。core/runtime 表不提供 prompt、response、tool output、原始 JSONL、鉴权 token 或 raw error 的专用字段；schema contract 和数据库 bytes 测试会对受控 code/digest/cursor/error 输入面使用 synthetic marker 验证拒绝与不可见性。业务 identity/path metadata 的凭据卫生仍由调用方负责。
+上述 required query 由 GORM model/scopes 构造；测试文件维护等价的代表查询用于 `EXPLAIN QUERY PLAN`，要求命名索引被选择且不得出现临时排序。quota、process snapshot 和 app runtime sample 索引由对应后续 Execution 卡创建。core/runtime 表不提供 prompt、response、tool output、原始 JSONL、鉴权 token 或 raw error 的专用字段；schema contract 和数据库 bytes 测试会对受控 code/digest/cursor/error 输入面使用 synthetic marker 验证拒绝与不可见性。业务 identity/path metadata 的凭据卫生仍由调用方负责。
 
 ## 保留策略
 

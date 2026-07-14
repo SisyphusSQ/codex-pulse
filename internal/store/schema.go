@@ -134,15 +134,8 @@ func (repository *Repository) EnsureCoreSchema(ctx context.Context) error {
 
 // EnsureApplicationSchema 在单一 writer transaction 中确保核心与运行事实 schema。
 func (repository *Repository) EnsureApplicationSchema(ctx context.Context) error {
-	if repository == nil || repository.database == nil {
-		return ErrInvalidRepository
-	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		if err := ensureSchemaObjects(ctx, transaction, coreSchemaObjects); err != nil {
-			return err
-		}
-		return ensureSchemaObjects(ctx, transaction, runtimeSchemaObjects)
-	})
+	_, err := repository.MigrateApplicationSchema(ctx)
+	return err
 }
 
 func ensureSchemaObjects(
@@ -170,7 +163,7 @@ func ensureSchemaObject(
 	if exists {
 		return nil
 	}
-	if _, err := transaction.ExecContext(ctx, object.statement); err != nil {
+	if err := transaction.WithContext(ctx).Exec(object.statement).Error; err != nil {
 		return err
 	}
 	exists, err = verifySchemaObject(ctx, transaction, object)
@@ -190,11 +183,11 @@ func verifySchemaObject(
 ) (bool, error) {
 	var actualType string
 	var actualSQL sql.NullString
-	err := transaction.QueryRowContext(
-		ctx,
-		`SELECT type, sql FROM sqlite_schema WHERE name = ?`,
-		object.name,
-	).Scan(&actualType, &actualSQL)
+	// STRICT、CHECK 与特殊索引的 canonical DDL 无法由 GORM Migrator 完整表达，
+	// 因此这里只读取 sqlite_schema 做精确契约校验。
+	err := transaction.WithContext(ctx).
+		Raw(`SELECT type, sql FROM sqlite_schema WHERE name = ?`, object.name).
+		Row().Scan(&actualType, &actualSQL)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}

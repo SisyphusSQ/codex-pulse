@@ -2,8 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -23,7 +21,7 @@ func (repository *Repository) ObserveHealthEvent(
 	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
 		if observation.SourceFileID != nil {
 			if err := requireStoredReference(
-				ctx, transaction, `SELECT 1 FROM source_files WHERE source_file_id = ?`,
+				ctx, transaction, &sourceFileModel{}, "source_file_id = ?",
 				*observation.SourceFileID, "source file",
 			); err != nil {
 				return err
@@ -31,7 +29,7 @@ func (repository *Repository) ObserveHealthEvent(
 		}
 		if observation.JobID != nil {
 			if err := requireStoredReference(
-				ctx, transaction, `SELECT 1 FROM job_runs WHERE job_id = ?`,
+				ctx, transaction, &jobRunModel{}, "job_id = ?",
 				*observation.JobID, "job run",
 			); err != nil {
 				return err
@@ -57,19 +55,8 @@ func (repository *Repository) ObserveHealthEvent(
 				ErrorClass: observation.ErrorClass, FirstSeenAtMS: observation.ObservedAtMS,
 				LastSeenAtMS: observation.ObservedAtMS, OccurrenceCount: 1, UpdatedAtMS: observation.ObservedAtMS,
 			}
-			_, err = transaction.ExecContext(ctx, `
-				INSERT INTO health_events (
-					event_id, fingerprint, domain, severity, code, source_file_id, job_id,
-					error_class, first_seen_at_ms, last_seen_at_ms, resolved_at_ms,
-					occurrence_count, updated_at_ms
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, ?)
-			`,
-				result.EventID, result.Fingerprint.String(), string(result.Domain), string(result.Severity), string(result.Code),
-				nullableString(result.SourceFileID), nullableString(result.JobID),
-				nullableRuntimeErrorClass(result.ErrorClass), result.FirstSeenAtMS,
-				result.LastSeenAtMS, result.UpdatedAtMS,
-			)
-			return err
+			model := healthEventModelFromDomain(result)
+			return transaction.WithContext(ctx).Create(&model).Error
 		}
 
 		if existing.EventID != observation.EventID || existing.Domain != observation.Domain ||
@@ -103,16 +90,12 @@ func (repository *Repository) ObserveHealthEvent(
 		result.ResolvedAtMS = nil
 		result.OccurrenceCount++
 		result.UpdatedAtMS = observation.ObservedAtMS
-		_, err = transaction.ExecContext(ctx, `
-			UPDATE health_events SET
-				severity = ?, error_class = ?, last_seen_at_ms = ?, resolved_at_ms = NULL,
-				occurrence_count = ?, updated_at_ms = ?
-			WHERE event_id = ?
-		`,
-			string(result.Severity), nullableRuntimeErrorClass(result.ErrorClass), result.LastSeenAtMS,
-			result.OccurrenceCount, result.UpdatedAtMS, result.EventID,
-		)
-		return err
+		return transaction.WithContext(ctx).Model(&healthEventModel{}).
+			Where("event_id = ?", result.EventID).Updates(map[string]any{
+			"severity": string(result.Severity), "error_class": runtimeErrorStringPointer(result.ErrorClass),
+			"last_seen_at_ms": result.LastSeenAtMS, "resolved_at_ms": nil,
+			"occurrence_count": result.OccurrenceCount, "updated_at_ms": result.UpdatedAtMS,
+		}).Error
 	})
 	return result, err
 }
@@ -142,10 +125,9 @@ func (repository *Repository) ResolveHealthEvent(ctx context.Context, eventID st
 			}
 			return invalidRecord("health resolution conflicts with existing lifecycle")
 		}
-		_, err = transaction.ExecContext(ctx, `
-			UPDATE health_events SET resolved_at_ms = ?, updated_at_ms = ? WHERE event_id = ?
-		`, resolvedAtMS, resolvedAtMS, eventID)
-		return err
+		return transaction.WithContext(ctx).Model(&healthEventModel{}).
+			Where("event_id = ?", eventID).
+			Updates(map[string]any{"resolved_at_ms": resolvedAtMS, "updated_at_ms": resolvedAtMS}).Error
 	})
 }
 
@@ -168,43 +150,44 @@ func (repository *Repository) AddPricingVersion(ctx context.Context, version Pri
 			}
 			return invalidRecord("pricing version conflicts with immutable history")
 		}
-		var boundaryVersion string
-		err = transaction.QueryRowContext(ctx, `
-			SELECT pricing_version FROM pricing_versions
-			WHERE source = ? AND currency = ? AND effective_from_ms = ?
-		`, version.Source, version.Currency, version.EffectiveFromMS).Scan(&boundaryVersion)
-		if err == nil {
+		var boundaryCount int64
+		err = transaction.WithContext(ctx).Model(&pricingVersionModel{}).
+			Where("source = ? AND currency = ? AND effective_from_ms = ?", version.Source, version.Currency, version.EffectiveFromMS).
+			Count(&boundaryCount).Error
+		if err != nil {
+			return err
+		}
+		if boundaryCount > 0 {
 			return invalidRecord("pricing effective boundary already belongs to another version")
 		}
-		if !errors.Is(err, sql.ErrNoRows) {
+		versionModel := pricingVersionModel{
+			PricingVersion: version.PricingVersion, Source: version.Source, Currency: version.Currency,
+			EffectiveFromMS: version.EffectiveFromMS, CreatedAtMS: version.CreatedAtMS,
+		}
+		if err := transaction.WithContext(ctx).Create(&versionModel).Error; err != nil {
 			return err
 		}
-		if _, err := transaction.ExecContext(ctx, `
-			INSERT INTO pricing_versions (
-				pricing_version, source, currency, effective_from_ms, created_at_ms
-			) VALUES (?, ?, ?, ?, ?)
-		`,
-			version.PricingVersion, version.Source, version.Currency,
-			version.EffectiveFromMS, version.CreatedAtMS,
-		); err != nil {
-			return err
-		}
+		models := make([]modelPriceModel, 0, len(version.Models))
 		for _, model := range version.Models {
-			if _, err := transaction.ExecContext(ctx, `
-				INSERT INTO model_prices (
-					pricing_version, match_kind, model_pattern, priority,
-					input_micros_per_million, cached_input_micros_per_million,
-					output_micros_per_million
-				) VALUES (?, ?, ?, ?, ?, ?, ?)
-			`,
-				version.PricingVersion, string(model.MatchKind), model.ModelPattern, model.Priority,
-				nullableInt64(model.InputMicrosPerMillion),
-				nullableInt64(model.CachedInputMicrosPerMillion),
-				nullableInt64(model.OutputMicrosPerMillion),
-			); err != nil {
-				return err
-			}
+			models = append(models, modelPriceModel{
+				PricingVersion: version.PricingVersion, MatchKind: string(model.MatchKind),
+				ModelPattern: model.ModelPattern, Priority: model.Priority,
+				InputMicrosPerMillion:       model.InputMicrosPerMillion,
+				CachedInputMicrosPerMillion: model.CachedInputMicrosPerMillion,
+				OutputMicrosPerMillion:      model.OutputMicrosPerMillion,
+			})
 		}
-		return nil
+		return transaction.WithContext(ctx).Create(&models).Error
 	})
+}
+
+func healthEventModelFromDomain(event HealthEvent) healthEventModel {
+	return healthEventModel{
+		EventID: event.EventID, Fingerprint: event.Fingerprint.String(), Domain: string(event.Domain),
+		Severity: string(event.Severity), Code: string(event.Code), SourceFileID: event.SourceFileID,
+		JobID: event.JobID, ErrorClass: runtimeErrorStringPointer(event.ErrorClass),
+		FirstSeenAtMS: event.FirstSeenAtMS, LastSeenAtMS: event.LastSeenAtMS,
+		ResolvedAtMS: event.ResolvedAtMS, OccurrenceCount: event.OccurrenceCount,
+		UpdatedAtMS: event.UpdatedAtMS,
+	}
 }

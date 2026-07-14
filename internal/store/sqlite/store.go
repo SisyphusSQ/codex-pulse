@@ -7,67 +7,23 @@ import (
 	"fmt"
 	"sync"
 
-	_ "github.com/mattn/go-sqlite3"
+	libtnbsqlite "github.com/libtnb/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
-// WriteTx exposes SQL operations inside a queue-owned transaction without
-// exposing Commit or Rollback to the callback.
-type WriteTx interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
-}
-
-// ReadConn exposes query-only operations backed by the read-only connection pool.
-type ReadConn interface {
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
-}
-
 // WriteFunc performs one atomic transaction owned by the writer queue.
-type WriteFunc func(context.Context, WriteTx) error
+type WriteFunc func(context.Context, *gorm.DB) error
 
 // ViewFunc performs queries during one lifecycle admission. All result sets and
 // statements must be consumed or closed before the callback returns.
-type ViewFunc func(context.Context, ReadConn) error
+type ViewFunc func(context.Context, *gorm.DB) error
 
-type writeTxView struct {
-	transaction *sql.Tx
-}
+// WriteTx 是迁移期兼容别名；新代码直接使用 *gorm.DB。
+type WriteTx = *gorm.DB
 
-func (view writeTxView) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return view.transaction.ExecContext(ctx, query, args...)
-}
-
-func (view writeTxView) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return view.transaction.QueryContext(ctx, query, args...)
-}
-
-func (view writeTxView) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	return view.transaction.QueryRowContext(ctx, query, args...)
-}
-
-func (view writeTxView) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
-	return view.transaction.PrepareContext(ctx, query)
-}
-
-type readConnView struct {
-	database *sql.DB
-}
-
-func (view readConnView) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return view.database.QueryContext(ctx, query, args...)
-}
-
-func (view readConnView) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	return view.database.QueryRowContext(ctx, query, args...)
-}
-
-func (view readConnView) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
-	return view.database.PrepareContext(ctx, query)
-}
+// ReadConn 是迁移期兼容别名；新代码直接使用 *gorm.DB。
+type ReadConn = *gorm.DB
 
 type lifecycleState uint8
 
@@ -85,10 +41,12 @@ type writeJob struct {
 
 // Store owns the process-local SQLite writer, read pool, and close lifecycle.
 type Store struct {
-	config  Config
-	pragmas PragmaSnapshot
-	writer  *sql.DB
-	reader  *sql.DB
+	config    Config
+	pragmas   PragmaSnapshot
+	writerSQL *sql.DB
+	readerSQL *sql.DB
+	writer    *gorm.DB
+	reader    *gorm.DB
 
 	writeQueue chan writeJob
 	shutdown   chan struct{}
@@ -116,33 +74,33 @@ func Open(ctx context.Context, input Config) (_ *Store, returnErr error) {
 		return nil, err
 	}
 
-	var writer *sql.DB
-	var reader *sql.DB
+	var writerSQL *sql.DB
+	var readerSQL *sql.DB
 	defer func() {
 		if returnErr == nil {
 			return
 		}
-		if reader != nil {
-			_ = reader.Close()
+		if readerSQL != nil {
+			_ = readerSQL.Close()
 		}
-		if writer != nil {
-			_ = writer.Close()
+		if writerSQL != nil {
+			_ = writerSQL.Close()
 		}
 	}()
 
-	writer, err = sql.Open(driverName, writerDSN(config))
+	writerSQL, err = sql.Open(driverName, writerDSN(config))
 	if err != nil {
 		return nil, classifyError("open writer", err)
 	}
-	writer.SetMaxOpenConns(1)
-	writer.SetMaxIdleConns(1)
-	if err := writer.PingContext(ctx); err != nil {
+	writerSQL.SetMaxOpenConns(1)
+	writerSQL.SetMaxIdleConns(1)
+	if err := writerSQL.PingContext(ctx); err != nil {
 		return nil, classifyError("ping writer", err)
 	}
 	if err := secureDatabaseFile(config.Path, repairExistingPermissions || !databaseExisted); err != nil {
 		return nil, err
 	}
-	writerPragmas, err := readPragmas(ctx, writer)
+	writerPragmas, err := readPragmas(ctx, writerSQL)
 	if err != nil {
 		return nil, err
 	}
@@ -150,16 +108,16 @@ func Open(ctx context.Context, input Config) (_ *Store, returnErr error) {
 		return nil, err
 	}
 
-	reader, err = sql.Open(driverName, readerDSN(config))
+	readerSQL, err = sql.Open(driverName, readerDSN(config))
 	if err != nil {
 		return nil, classifyError("open reader", err)
 	}
-	reader.SetMaxOpenConns(config.MaxReadConnections)
-	reader.SetMaxIdleConns(config.MaxReadConnections)
-	if err := reader.PingContext(ctx); err != nil {
+	readerSQL.SetMaxOpenConns(config.MaxReadConnections)
+	readerSQL.SetMaxIdleConns(config.MaxReadConnections)
+	if err := readerSQL.PingContext(ctx); err != nil {
 		return nil, classifyError("ping reader", err)
 	}
-	readerPragmas, err := readPragmas(ctx, reader)
+	readerPragmas, err := readPragmas(ctx, readerSQL)
 	if err != nil {
 		return nil, err
 	}
@@ -167,9 +125,20 @@ func Open(ctx context.Context, input Config) (_ *Store, returnErr error) {
 		return nil, err
 	}
 
+	writer, err := openGORM(writerSQL)
+	if err != nil {
+		return nil, classifyError("open GORM writer", err)
+	}
+	reader, err := openGORM(readerSQL)
+	if err != nil {
+		return nil, classifyError("open GORM reader", err)
+	}
+
 	store := &Store{
 		config:     config,
 		pragmas:    PragmaSnapshot{Writer: writerPragmas, Reader: readerPragmas},
+		writerSQL:  writerSQL,
+		readerSQL:  readerSQL,
 		writer:     writer,
 		reader:     reader,
 		writeQueue: make(chan writeJob, config.WriteQueueCapacity),
@@ -257,7 +226,8 @@ func (store *Store) View(ctx context.Context, view ViewFunc) error {
 	}
 	defer store.reads.Done()
 
-	return classifyError("view", view(ctx, readConnView{database: store.reader}))
+	reader := store.reader.Session(&gorm.Session{NewDB: true, Context: ctx})
+	return classifyError("view", view(ctx, reader))
 }
 
 // Close rejects new work, drains admitted writes, waits for reads, and closes
@@ -300,7 +270,7 @@ func (store *Store) drainAndClose() {
 			job.result <- store.executeWrite(job)
 		default:
 			store.reads.Wait()
-			closeErr := errors.Join(store.reader.Close(), store.writer.Close())
+			closeErr := errors.Join(store.readerSQL.Close(), store.writerSQL.Close())
 			store.stateMu.Lock()
 			store.closeErr = classifyError("close connections", closeErr)
 			store.state = stateClosed
@@ -316,7 +286,7 @@ func (store *Store) executeWrite(job writeJob) (returnErr error) {
 		return classifyError("begin write", err)
 	}
 
-	transaction, err := store.writer.BeginTx(job.ctx, nil)
+	transaction, err := store.writerSQL.BeginTx(job.ctx, nil)
 	if err != nil {
 		return classifyError("begin write", err)
 	}
@@ -327,7 +297,12 @@ func (store *Store) executeWrite(job writeJob) (returnErr error) {
 		}
 	}()
 
-	if err := job.write(job.ctx, writeTxView{transaction: transaction}); err != nil {
+	gormTransaction, err := openGORM(transaction)
+	if err != nil {
+		_ = transaction.Rollback()
+		return classifyError("bind GORM transaction", err)
+	}
+	if err := job.write(job.ctx, gormTransaction.WithContext(job.ctx)); err != nil {
 		if contextErr := job.ctx.Err(); contextErr != nil {
 			err = errors.Join(contextErr, err)
 		}
@@ -348,4 +323,12 @@ func (store *Store) executeWrite(job writeJob) (returnErr error) {
 		return classifyError("commit write", err)
 	}
 	return nil
+}
+
+func openGORM(connection gorm.ConnPool) (*gorm.DB, error) {
+	return gorm.Open(libtnbsqlite.New(libtnbsqlite.Config{Conn: connection}), &gorm.Config{
+		DisableAutomaticPing:   true,
+		SkipDefaultTransaction: true,
+		Logger:                 logger.Default.LogMode(logger.Silent),
+	})
 }

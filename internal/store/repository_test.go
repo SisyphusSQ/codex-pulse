@@ -1644,7 +1644,7 @@ func assertStoredProject(
 	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
 		var gotDisplayName, gotRootPath, gotRemote string
 		var gotCreatedAt, gotUpdatedAt int64
-		if err := connection.QueryRowContext(ctx, `
+		if err := rawQueryRow(ctx, connection, `
 			SELECT display_name, root_path, git_remote_sanitized, created_at_ms, updated_at_ms
 			FROM projects WHERE project_id = 'project-a'
 		`).Scan(&gotDisplayName, &gotRootPath, &gotRemote, &gotCreatedAt, &gotUpdatedAt); err != nil {
@@ -1671,7 +1671,7 @@ func tableCounts(ctx context.Context, database *storesqlite.Store, tables []stri
 		for _, table := range tables {
 			var count int
 			query := "SELECT COUNT(*) FROM " + table
-			if err := connection.QueryRowContext(ctx, query).Scan(&count); err != nil {
+			if err := rawQueryRow(ctx, connection, query).Scan(&count); err != nil {
 				return err
 			}
 			counts[table] = count

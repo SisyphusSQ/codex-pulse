@@ -145,21 +145,22 @@ func TestOpenConfiguredStoreBootstrapsApplicationSchemaAndReopens(t *testing.T) 
 
 		var tables int
 		err = database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
-			return connection.QueryRowContext(ctx, `
+			return connection.WithContext(ctx).Raw(`
 				SELECT COUNT(*) FROM sqlite_schema
 				WHERE type = 'table' AND name IN (
 					'projects', 'sessions', 'turns', 'session_current',
 					'turn_usage', 'session_usage_current',
 					'source_files', 'source_state', 'source_attempts',
-					'job_runs', 'health_events', 'pricing_versions', 'model_prices'
+					'job_runs', 'health_events', 'pricing_versions', 'model_prices',
+					'schema_migrations'
 				)
-			`).Scan(&tables)
+			`).Row().Scan(&tables)
 		})
 		if err != nil {
 			t.Fatalf("inspect bootstrap schema: %v", err)
 		}
-		if tables != 13 {
-			t.Fatalf("application table count = %d, want 13", tables)
+		if tables != 14 {
+			t.Fatalf("application table count = %d, want 14", tables)
 		}
 		if err := lifecycle.Close(context.Background()); err != nil {
 			t.Fatalf("Close() attempt %d error = %v", attempt+1, err)
@@ -179,8 +180,8 @@ func TestOpenConfiguredStoreRejectsIncompatibleSchema(t *testing.T) {
 		t.Fatalf("sqlite.Open() error = %v", err)
 	}
 	err = database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		_, err := transaction.ExecContext(ctx, `CREATE TABLE sessions (session_id TEXT PRIMARY KEY) STRICT`)
-		return err
+		return transaction.WithContext(ctx).
+			Exec(`CREATE TABLE sessions (session_id TEXT PRIMARY KEY) STRICT`).Error
 	})
 	if err != nil {
 		t.Fatalf("create incompatible schema: %v", err)
@@ -213,8 +214,8 @@ func TestOpenConfiguredStoreRejectsIncompatibleRuntimeSchema(t *testing.T) {
 		t.Fatalf("EnsureCoreSchema() error = %v", err)
 	}
 	err = database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		_, err := transaction.ExecContext(ctx, `CREATE TABLE source_files (source_file_id TEXT PRIMARY KEY) STRICT`)
-		return err
+		return transaction.WithContext(ctx).
+			Exec(`CREATE TABLE source_files (source_file_id TEXT PRIMARY KEY) STRICT`).Error
 	})
 	if err != nil {
 		t.Fatalf("create incompatible runtime schema: %v", err)

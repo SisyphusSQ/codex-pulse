@@ -2,18 +2,14 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"sort"
 	"strings"
 
+	"gorm.io/gorm"
+
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
-
-type runtimeQuerier interface {
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}
 
 // HealthEvent 返回 fingerprint 聚合后的完整生命周期。
 func (repository *Repository) HealthEvent(ctx context.Context, eventID string) (HealthEvent, error) {
@@ -54,80 +50,82 @@ func (repository *Repository) ListHealthEvents(
 	if err := validateOptionalStrings(filter.SourceFileID, filter.JobID); err != nil {
 		return nil, err
 	}
-	query, arguments := buildHealthEventsQuery(filter, limit)
 
 	var events []HealthEvent
 	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
-		rows, err := connection.QueryContext(ctx, query, arguments...)
-		if err != nil {
+		query := connection.WithContext(ctx).Model(&healthEventModel{})
+		if filter.Active != nil {
+			if *filter.Active {
+				query = query.Where("resolved_at_ms IS NULL")
+			} else {
+				query = query.Where("resolved_at_ms IS NOT NULL")
+			}
+		}
+		if filter.Severity != nil {
+			query = query.Where("severity = ?", string(*filter.Severity))
+		}
+		if filter.SourceFileID != nil {
+			query = query.Where("source_file_id = ?", *filter.SourceFileID)
+		}
+		if filter.JobID != nil {
+			query = query.Where("job_id = ?", *filter.JobID)
+		}
+		var models []healthEventModel
+		if err := query.Order("last_seen_at_ms DESC").Order("event_id").Limit(limit).Find(&models).Error; err != nil {
 			return err
 		}
-		defer rows.Close()
-		for rows.Next() {
-			event, err := scanHealthEvent(rows)
+		events = make([]HealthEvent, 0, len(models))
+		for _, model := range models {
+			event, err := healthEventFromModel(model)
 			if err != nil {
 				return err
 			}
 			events = append(events, event)
 		}
-		return rows.Err()
+		return nil
 	})
 	return events, err
 }
 
-func healthEventByID(ctx context.Context, querier interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}, eventID string) (HealthEvent, bool, error) {
-	return healthEventByColumn(ctx, querier, "event_id", eventID)
+func healthEventByID(ctx context.Context, querier *gorm.DB, eventID string) (HealthEvent, bool, error) {
+	return healthEventByWhere(ctx, querier, "event_id = ?", eventID)
 }
 
-func healthEventByFingerprint(ctx context.Context, querier interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}, fingerprint string) (HealthEvent, bool, error) {
-	return healthEventByColumn(ctx, querier, "fingerprint", fingerprint)
+func healthEventByFingerprint(ctx context.Context, querier *gorm.DB, fingerprint string) (HealthEvent, bool, error) {
+	return healthEventByWhere(ctx, querier, "fingerprint = ?", fingerprint)
 }
 
-func healthEventByColumn(ctx context.Context, querier interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}, column, value string) (HealthEvent, bool, error) {
-	query := `
-		SELECT event_id, fingerprint, domain, severity, code, source_file_id, job_id,
-			error_class, first_seen_at_ms, last_seen_at_ms, resolved_at_ms,
-			occurrence_count, updated_at_ms
-		FROM health_events WHERE ` + column + ` = ?`
-	event, err := scanHealthEvent(querier.QueryRowContext(ctx, query, value))
-	if errors.Is(err, sql.ErrNoRows) {
+func healthEventByWhere(
+	ctx context.Context,
+	querier *gorm.DB,
+	condition string,
+	value string,
+) (HealthEvent, bool, error) {
+	var model healthEventModel
+	err := querier.WithContext(ctx).Where(condition, value).Take(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return HealthEvent{}, false, nil
 	}
+	if err != nil {
+		return HealthEvent{}, false, err
+	}
+	event, err := healthEventFromModel(model)
 	return event, err == nil, err
 }
 
-func scanHealthEvent(scanner runtimeRowScanner) (HealthEvent, error) {
-	var event HealthEvent
-	var fingerprint, domain, severity, code string
-	var sourceFileID, jobID, errorClass sql.NullString
-	var resolvedAt sql.NullInt64
-	err := scanner.Scan(
-		&event.EventID, &fingerprint, &domain, &severity, &code,
-		&sourceFileID, &jobID, &errorClass, &event.FirstSeenAtMS, &event.LastSeenAtMS,
-		&resolvedAt, &event.OccurrenceCount, &event.UpdatedAtMS,
-	)
-	if err != nil {
-		return HealthEvent{}, err
-	}
-	parsedFingerprint, ok := parseSHA256Digest(fingerprint)
+func healthEventFromModel(model healthEventModel) (HealthEvent, error) {
+	fingerprint, ok := parseSHA256Digest(model.Fingerprint)
 	if !ok {
 		return HealthEvent{}, invalidRecord("stored health fingerprint is invalid")
 	}
-	event.Fingerprint = parsedFingerprint
-	event.Domain = HealthDomain(domain)
-	event.Severity = HealthSeverity(severity)
-	event.Code = HealthCode(code)
-	event.SourceFileID = stringPointer(sourceFileID)
-	event.JobID = stringPointer(jobID)
-	event.ErrorClass = runtimeErrorClassPointer(errorClass)
-	event.ResolvedAtMS = int64Pointer(resolvedAt)
-	return event, nil
+	return HealthEvent{
+		EventID: model.EventID, Fingerprint: fingerprint, Domain: HealthDomain(model.Domain),
+		Severity: HealthSeverity(model.Severity), Code: HealthCode(model.Code),
+		SourceFileID: model.SourceFileID, JobID: model.JobID,
+		ErrorClass: runtimeErrorClassFromString(model.ErrorClass), FirstSeenAtMS: model.FirstSeenAtMS,
+		LastSeenAtMS: model.LastSeenAtMS, ResolvedAtMS: model.ResolvedAtMS,
+		OccurrenceCount: model.OccurrenceCount, UpdatedAtMS: model.UpdatedAtMS,
+	}, nil
 }
 
 // PricingVersion 返回不可变 catalog 及其完整规则集合。
@@ -167,18 +165,17 @@ func (repository *Repository) PricingForModelAt(
 	}
 	var effective EffectivePricing
 	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
-		var versionID string
-		var effectiveTo sql.NullInt64
-		err := connection.QueryRowContext(
-			ctx, effectivePricingVersionQuery, source, currency, atMS,
-		).Scan(&versionID, &effectiveTo)
-		if errors.Is(err, sql.ErrNoRows) {
+		var current pricingVersionModel
+		err := connection.WithContext(ctx).
+			Where("source = ? AND currency = ? AND effective_from_ms <= ?", source, currency, atMS).
+			Order("effective_from_ms DESC").Take(&current).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrNotFound
 		}
 		if err != nil {
 			return err
 		}
-		version, found, err := pricingVersionByID(ctx, connection, versionID)
+		version, found, err := pricingVersionByID(ctx, connection, current.PricingVersion)
 		if err != nil {
 			return err
 		}
@@ -197,9 +194,22 @@ func (repository *Repository) PricingForModelAt(
 		sort.Slice(candidates, func(left, right int) bool {
 			return modelPriceLess(candidates[left], candidates[right])
 		})
+
+		var next pricingVersionModel
+		nextQuery := connection.WithContext(ctx).
+			Select("effective_from_ms").
+			Where("source = ? AND currency = ? AND effective_from_ms > ?", source, currency, current.EffectiveFromMS).
+			Order("effective_from_ms").Limit(1).Find(&next)
+		if nextQuery.Error != nil {
+			return nextQuery.Error
+		}
+		var effectiveToMS *int64
+		if nextQuery.RowsAffected > 0 {
+			effectiveToMS = &next.EffectiveFromMS
+		}
 		effective = EffectivePricing{
 			PricingVersion: version,
-			EffectiveToMS:  int64Pointer(effectiveTo),
+			EffectiveToMS:  effectiveToMS,
 			Matched:        candidates[0],
 		}
 		return nil
@@ -209,56 +219,42 @@ func (repository *Repository) PricingForModelAt(
 
 func pricingVersionByID(
 	ctx context.Context,
-	querier runtimeQuerier,
+	querier *gorm.DB,
 	versionID string,
 ) (PricingVersion, bool, error) {
-	var version PricingVersion
-	err := querier.QueryRowContext(ctx, `
-		SELECT pricing_version, source, currency, effective_from_ms, created_at_ms
-		FROM pricing_versions WHERE pricing_version = ?
-	`, versionID).Scan(
-		&version.PricingVersion, &version.Source, &version.Currency,
-		&version.EffectiveFromMS, &version.CreatedAtMS,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	var versionModel pricingVersionModel
+	err := querier.WithContext(ctx).Where("pricing_version = ?", versionID).Take(&versionModel).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return PricingVersion{}, false, nil
 	}
 	if err != nil {
 		return PricingVersion{}, false, err
 	}
-	rows, err := querier.QueryContext(ctx, pricingVersionModelsQuery, versionID)
-	if err != nil {
+	var priceModels []modelPriceModel
+	if err := querier.WithContext(ctx).
+		Where("pricing_version = ?", versionID).
+		Order("priority DESC").Order("match_kind").Order("model_pattern").
+		Find(&priceModels).Error; err != nil {
 		return PricingVersion{}, false, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		model, err := scanModelPrice(rows)
-		if err != nil {
-			return PricingVersion{}, false, err
-		}
-		version.Models = append(version.Models, model)
+	version := PricingVersion{
+		PricingVersion: versionModel.PricingVersion, Source: versionModel.Source,
+		Currency: versionModel.Currency, EffectiveFromMS: versionModel.EffectiveFromMS,
+		CreatedAtMS: versionModel.CreatedAtMS, Models: make([]ModelPrice, 0, len(priceModels)),
 	}
-	if err := rows.Err(); err != nil {
-		return PricingVersion{}, false, err
+	for _, model := range priceModels {
+		version.Models = append(version.Models, modelPriceFromModel(model))
 	}
 	return version, true, nil
 }
 
-func scanModelPrice(scanner runtimeRowScanner) (ModelPrice, error) {
-	var model ModelPrice
-	var matchKind string
-	var input, cachedInput, output sql.NullInt64
-	err := scanner.Scan(
-		&matchKind, &model.ModelPattern, &model.Priority, &input, &cachedInput, &output,
-	)
-	if err != nil {
-		return ModelPrice{}, err
+func modelPriceFromModel(model modelPriceModel) ModelPrice {
+	return ModelPrice{
+		MatchKind: ModelMatchKind(model.MatchKind), ModelPattern: model.ModelPattern,
+		Priority: model.Priority, InputMicrosPerMillion: model.InputMicrosPerMillion,
+		CachedInputMicrosPerMillion: model.CachedInputMicrosPerMillion,
+		OutputMicrosPerMillion:      model.OutputMicrosPerMillion,
 	}
-	model.MatchKind = ModelMatchKind(matchKind)
-	model.InputMicrosPerMillion = int64Pointer(input)
-	model.CachedInputMicrosPerMillion = int64Pointer(cachedInput)
-	model.OutputMicrosPerMillion = int64Pointer(output)
-	return model, nil
 }
 
 func pricingVersionsEquivalent(left, right PricingVersion) bool {

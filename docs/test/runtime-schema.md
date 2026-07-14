@@ -15,7 +15,7 @@
 ## 前置条件
 
 - macOS 15+、arm64。
-- Go toolchain 满足 `go.mod`，且 `CGO_ENABLED=1`。
+- Go toolchain 满足 `go.mod`；SQLite store/repository 必须通过 `CGO_ENABLED=0`，Wails app 使用 macOS 默认 CGO。
 - 仓库工作目录为 Codex Pulse 根目录。
 - 不需要网络、账号、token、真实 Codex Home 或默认应用数据库。
 
@@ -32,29 +32,30 @@
 ### 1. Schema 与应用 bootstrap
 
 ```bash
-CGO_ENABLED=1 go test ./internal/store ./internal/app \
-  -run 'RuntimeSchema|ApplicationSchema' -count=1
+CGO_ENABLED=0 go test ./internal/store \
+  -run 'RuntimeSchema|ApplicationSchema|Migration' -count=1
+go test ./internal/app -run 'ApplicationSchema|ConfiguredStore' -count=1
 ```
 
 ### 2. Runtime repository 行为
 
 ```bash
-CGO_ENABLED=1 go test ./internal/store \
+CGO_ENABLED=0 go test ./internal/store \
   -run 'Source|Job|Health|Pricing|RuntimeError' -count=1
 ```
 
 ### 3. 幂等、冲突与恢复重复矩阵
 
 ```bash
-CGO_ENABLED=1 go test ./internal/store \
+CGO_ENABLED=0 go test ./internal/store \
   -run 'Source|Job|Health|Pricing|RuntimeError' -count=50
 ```
 
 ### 4. 受影响包 race 矩阵
 
 ```bash
-CGO_ENABLED=1 go test -race \
-  ./internal/store ./internal/store/sqlite ./internal/app -count=10
+CGO_ENABLED=0 go test -race ./internal/store ./internal/store/sqlite -count=10
+go test -race ./internal/app -count=10
 ```
 
 ### 5. 全仓回归与机械门禁
@@ -98,7 +99,7 @@ PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify
 - focused tests 的临时 DB 由 `t.TempDir()` 自动删除；失败后若测试进程异常退出，只删除对应测试临时目录，不触碰默认应用数据库。
 - 仓库内生成物按项目既有 clean-state 规则清理；不得删除用户已有 ignored 计划、state/run 文件。
 - 本卡回滚单元为 runtime schema、typed repository、application bootstrap 与同步文档；pricing 历史不得通过回滚脚本静默覆盖。
-- 真实旧库 migration/backup/restore 不属于本 runbook；在 TOO-249 前遇到不兼容数据库应 fail closed。
+- 真实旧库 migration/backup/restore 使用 `docs/test/migrations.md`；本 runbook 仍要求不兼容 schema fail closed。
 
 ## 本次执行摘要
 

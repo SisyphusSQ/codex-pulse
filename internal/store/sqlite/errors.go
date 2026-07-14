@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	sqlite3 "github.com/mattn/go-sqlite3"
+	modernsqlite "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // Stable errors let callers branch on operational failures without matching
@@ -60,23 +61,23 @@ func classifyError(op string, err error) error {
 		return newClassifiedError(op, ErrCanceled, err)
 	}
 
-	var driverError sqlite3.Error
+	var driverError *modernsqlite.Error
 	if errors.As(err, &driverError) {
 		var kind error
-		switch driverError.Code {
-		case sqlite3.ErrBusy, sqlite3.ErrLocked:
+		switch driverError.Code() & 0xff {
+		case sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED:
 			kind = ErrBusy
-		case sqlite3.ErrFull:
+		case sqlite3.SQLITE_FULL:
 			kind = ErrDiskFull
-		case sqlite3.ErrReadonly:
+		case sqlite3.SQLITE_READONLY:
 			kind = ErrReadOnly
-		case sqlite3.ErrPerm, sqlite3.ErrCantOpen:
+		case sqlite3.SQLITE_PERM, sqlite3.SQLITE_CANTOPEN:
 			kind = ErrPermission
-		case sqlite3.ErrIoErr:
+		case sqlite3.SQLITE_IOERR:
 			kind = ErrIO
-		case sqlite3.ErrCorrupt, sqlite3.ErrNotADB:
+		case sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB:
 			kind = ErrCorrupt
-		case sqlite3.ErrInterrupt:
+		case sqlite3.SQLITE_INTERRUPT:
 			kind = ErrCanceled
 		}
 		if kind != nil {

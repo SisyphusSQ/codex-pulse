@@ -2,9 +2,10 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
+
+	"gorm.io/gorm"
 
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -206,70 +207,60 @@ func batchSessionID(batch FactBatch) (string, error) {
 }
 
 func requireProject(ctx context.Context, transaction storesqlite.WriteTx, projectID string) error {
-	return requireStoredReference(ctx, transaction, `SELECT 1 FROM projects WHERE project_id = ?`, projectID, "project")
+	return requireStoredReference(ctx, transaction, &projectModel{}, "project_id = ?", projectID, "project")
 }
 
 func validateProjectReplay(ctx context.Context, transaction storesqlite.WriteTx, project Project) error {
-	var displayName, rootPath string
-	var remote sql.NullString
-	var updatedAt int64
-	err := transaction.QueryRowContext(ctx, `
-		SELECT display_name, root_path, git_remote_sanitized, updated_at_ms
-		FROM projects WHERE project_id = ?
-	`, project.ProjectID).Scan(&displayName, &rootPath, &remote, &updatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
+	var existing projectModel
+	err := transaction.WithContext(ctx).Take(&existing, "project_id = ?", project.ProjectID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if project.UpdatedAtMS == updatedAt &&
-		(displayName != project.DisplayName || rootPath != project.RootPath ||
-			!equalStringPointer(stringPointer(remote), project.GitRemoteSanitized)) {
+	if project.UpdatedAtMS == existing.UpdatedAtMS &&
+		(existing.DisplayName != project.DisplayName || existing.RootPath != project.RootPath ||
+			!equalStringPointer(existing.GitRemoteSanitized, project.GitRemoteSanitized)) {
 		return invalidRecord("project metadata conflicts at the same update time")
 	}
 	return nil
 }
 
 func requireSession(ctx context.Context, transaction storesqlite.WriteTx, sessionID string) error {
-	return requireStoredReference(ctx, transaction, `SELECT 1 FROM sessions WHERE session_id = ?`, sessionID, "session")
+	return requireStoredReference(ctx, transaction, &sessionModel{}, "session_id = ?", sessionID, "session")
 }
 
 func requireTurn(ctx context.Context, transaction storesqlite.WriteTx, turnID string) error {
-	return requireStoredReference(ctx, transaction, `SELECT 1 FROM turns WHERE turn_id = ?`, turnID, "turn")
+	return requireStoredReference(ctx, transaction, &turnModel{}, "turn_id = ?", turnID, "turn")
 }
 
 func requireStoredReference(
 	ctx context.Context,
 	transaction storesqlite.WriteTx,
+	model any,
 	query string,
 	identifier string,
 	recordKind string,
 ) error {
-	var exists int
-	err := transaction.QueryRowContext(ctx, query, identifier).Scan(&exists)
-	if errors.Is(err, sql.ErrNoRows) {
+	var count int64
+	err := transaction.WithContext(ctx).Model(model).Where(query, identifier).Count(&count).Error
+	if err == nil && count == 0 {
 		return invalidRecord(recordKind + " reference does not exist")
 	}
 	return err
 }
 
 func validateSessionIdentity(ctx context.Context, transaction storesqlite.WriteTx, session Session) error {
-	var provider, sourceKind string
-	var originator, modelProvider, initialCWD, projectID, cliVersion sql.NullString
-	err := transaction.QueryRowContext(
-		ctx,
-		`SELECT provider, source_kind, originator, model_provider, initial_cwd, project_id, cli_version
-		 FROM sessions WHERE session_id = ?`,
-		session.SessionID,
-	).Scan(&provider, &sourceKind, &originator, &modelProvider, &initialCWD, &projectID, &cliVersion)
-	if errors.Is(err, sql.ErrNoRows) {
+	var existing sessionModel
+	err := transaction.WithContext(ctx).Take(&existing, "session_id = ?", session.SessionID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if provider != session.Provider || sourceKind != session.SourceKind {
+	if existing.Provider != session.Provider || existing.SourceKind != session.SourceKind {
 		return invalidRecord("session provider or source kind conflicts with stable identity")
 	}
 	stableFields := []struct {
@@ -277,11 +268,11 @@ func validateSessionIdentity(ctx context.Context, transaction storesqlite.WriteT
 		existing *string
 		incoming *string
 	}{
-		{name: "originator", existing: stringPointer(originator), incoming: session.Originator},
-		{name: "model provider", existing: stringPointer(modelProvider), incoming: session.ModelProvider},
-		{name: "initial cwd", existing: stringPointer(initialCWD), incoming: session.InitialCWD},
-		{name: "project", existing: stringPointer(projectID), incoming: session.ProjectID},
-		{name: "CLI version", existing: stringPointer(cliVersion), incoming: session.CLIVersion},
+		{name: "originator", existing: existing.Originator, incoming: session.Originator},
+		{name: "model provider", existing: existing.ModelProvider, incoming: session.ModelProvider},
+		{name: "initial cwd", existing: existing.InitialCWD, incoming: session.InitialCWD},
+		{name: "project", existing: existing.ProjectID, incoming: session.ProjectID},
+		{name: "CLI version", existing: existing.CLIVersion, incoming: session.CLIVersion},
 	}
 	for _, field := range stableFields {
 		if field.existing != nil && field.incoming != nil && *field.existing != *field.incoming {
@@ -292,63 +283,43 @@ func validateSessionIdentity(ctx context.Context, transaction storesqlite.WriteT
 }
 
 func validateTurnIdentity(ctx context.Context, transaction storesqlite.WriteTx, turn Turn) error {
-	var existingSessionID string
-	var existingStartedAt, existingGeneration, existingOffset int64
-	var existingCompletedAt, existingCompleteOffset sql.NullInt64
-	var existingOutcome, existingModel, existingReasoning, existingCWD, existingProjectID sql.NullString
-	err := transaction.QueryRowContext(
-		ctx,
-		`SELECT session_id, started_at_ms, completed_at_ms, outcome, model, reasoning_effort,
-		        cwd, project_id, source_generation, start_offset, complete_offset
-		 FROM turns WHERE turn_id = ?`,
-		turn.TurnID,
-	).Scan(
-		&existingSessionID,
-		&existingStartedAt,
-		&existingCompletedAt,
-		&existingOutcome,
-		&existingModel,
-		&existingReasoning,
-		&existingCWD,
-		&existingProjectID,
-		&existingGeneration,
-		&existingOffset,
-		&existingCompleteOffset,
-	)
+	var existing turnModel
+	err := transaction.WithContext(ctx).Take(&existing, "turn_id = ?", turn.TurnID).Error
 	switch {
-	case errors.Is(err, sql.ErrNoRows):
+	case errors.Is(err, gorm.ErrRecordNotFound):
 	case err != nil:
 		return err
-	case existingSessionID != turn.SessionID:
+	case existing.SessionID != turn.SessionID:
 		return invalidRecord("turn belongs to another session")
-	case turn.SourceGeneration == existingGeneration && turn.StartOffset != existingOffset:
+	case turn.SourceGeneration == existing.SourceGeneration && turn.StartOffset != existing.StartOffset:
 		return invalidRecord("turn source offset conflicts within the same generation")
-	case turn.SourceGeneration == existingGeneration && turn.StartOffset == existingOffset &&
-		(existingStartedAt != turn.StartedAtMS ||
-			optionalStringConflicts(existingModel, turn.Model) ||
-			optionalStringConflicts(existingReasoning, turn.ReasoningEffort) ||
-			optionalStringConflicts(existingCWD, turn.CWD) ||
-			optionalStringConflicts(existingProjectID, turn.ProjectID)):
+	case turn.SourceGeneration == existing.SourceGeneration && turn.StartOffset == existing.StartOffset &&
+		(existing.StartedAtMS != turn.StartedAtMS ||
+			optionalStringConflicts(existing.Model, turn.Model) ||
+			optionalStringConflicts(existing.ReasoningEffort, turn.ReasoningEffort) ||
+			optionalStringConflicts(existing.CWD, turn.CWD) ||
+			optionalStringConflicts(existing.ProjectID, turn.ProjectID)):
 		return invalidRecord("turn facts conflict at the same source identity")
-	case turn.SourceGeneration == existingGeneration && existingCompletedAt.Valid && turn.CompletedAtMS != nil &&
-		(!equalInt64Pointer(int64Pointer(existingCompletedAt), turn.CompletedAtMS) ||
-			!equalStringPointer(stringPointer(existingOutcome), turn.Outcome) ||
-			!equalInt64Pointer(int64Pointer(existingCompleteOffset), turn.CompleteOffset)):
+	case turn.SourceGeneration == existing.SourceGeneration && existing.CompletedAtMS != nil && turn.CompletedAtMS != nil &&
+		(!equalInt64Pointer(existing.CompletedAtMS, turn.CompletedAtMS) ||
+			!equalStringPointer(existing.Outcome, turn.Outcome) ||
+			!equalInt64Pointer(existing.CompleteOffset, turn.CompleteOffset)):
 		return invalidRecord("turn completion conflicts at the same source identity")
 	}
 
-	var existingTurnID string
-	err = transaction.QueryRowContext(ctx, `
-		SELECT turn_id FROM turns
-		WHERE session_id = ? AND source_generation = ? AND start_offset = ?
-	`, turn.SessionID, turn.SourceGeneration, turn.StartOffset).Scan(&existingTurnID)
-	if errors.Is(err, sql.ErrNoRows) {
+	var positioned turnModel
+	err = transaction.WithContext(ctx).Select("turn_id").Take(
+		&positioned,
+		"session_id = ? AND source_generation = ? AND start_offset = ?",
+		turn.SessionID, turn.SourceGeneration, turn.StartOffset,
+	).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if existingTurnID != turn.TurnID {
+	if positioned.TurnID != turn.TurnID {
 		return invalidRecord("source position already belongs to another turn")
 	}
 	return nil
@@ -358,15 +329,15 @@ func validateActiveTurnReference(ctx context.Context, transaction storesqlite.Wr
 	if current.ActiveTurnID == nil {
 		return nil
 	}
-	var sessionID string
-	err := transaction.QueryRowContext(ctx, `SELECT session_id FROM turns WHERE turn_id = ?`, *current.ActiveTurnID).Scan(&sessionID)
-	if errors.Is(err, sql.ErrNoRows) {
+	var turn turnModel
+	err := transaction.WithContext(ctx).Select("turn_id", "session_id").Take(&turn, "turn_id = ?", *current.ActiveTurnID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return invalidRecord("active turn does not exist")
 	}
 	if err != nil {
 		return err
 	}
-	if sessionID != current.SessionID {
+	if turn.SessionID != current.SessionID {
 		return invalidRecord("active turn belongs to another session")
 	}
 	return nil
@@ -378,64 +349,41 @@ func validateTurnUsageReplay(
 	usage TurnUsage,
 	expectedSessionID string,
 ) error {
-	var turnSessionID string
-	var turnGeneration int64
-	var turnCompletedAt sql.NullInt64
-	err := transaction.QueryRowContext(
-		ctx,
-		`SELECT session_id, source_generation, completed_at_ms FROM turns WHERE turn_id = ?`,
-		usage.TurnID,
-	).Scan(&turnSessionID, &turnGeneration, &turnCompletedAt)
-	if errors.Is(err, sql.ErrNoRows) {
+	var turn turnModel
+	err := transaction.WithContext(ctx).Select("turn_id", "session_id", "source_generation", "completed_at_ms").Take(
+		&turn, "turn_id = ?", usage.TurnID,
+	).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return invalidRecord("turn reference does not exist")
 	}
 	if err != nil {
 		return err
 	}
-	if expectedSessionID != "" && turnSessionID != expectedSessionID {
+	if expectedSessionID != "" && turn.SessionID != expectedSessionID {
 		return invalidRecord("turn usage belongs to another session")
 	}
-	if usage.SourceGeneration != turnGeneration {
+	if usage.SourceGeneration != turn.SourceGeneration {
 		return invalidRecord("turn usage generation does not match stored turn")
 	}
-	if turnCompletedAt.Valid && !usage.IsFinal {
+	if turn.CompletedAtMS != nil && !usage.IsFinal {
 		return invalidRecord("completed turn requires final usage")
 	}
 
-	var existing TurnUsage
-	var isFinal int
-	var input, cached, output, reasoning, contextWindow sql.NullInt64
-	err = transaction.QueryRowContext(ctx, `
-		SELECT turn_id, observed_at_ms, is_final, input_tokens, cached_input_tokens,
-		       output_tokens, reasoning_tokens, context_window, source_generation, source_offset,
-		       confidence, updated_at_ms
-		FROM turn_usage WHERE turn_id = ?
-	`, usage.TurnID).Scan(
-		&existing.TurnID,
-		&existing.ObservedAtMS,
-		&isFinal,
-		&input,
-		&cached,
-		&output,
-		&reasoning,
-		&contextWindow,
-		&existing.SourceGeneration,
-		&existing.SourceOffset,
-		&existing.Confidence,
-		&existing.UpdatedAtMS,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	var stored turnUsageModel
+	err = transaction.WithContext(ctx).Take(&stored, "turn_id = ?", usage.TurnID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	existing.IsFinal = isFinal == 1
-	existing.InputTokens = int64Pointer(input)
-	existing.CachedInputTokens = int64Pointer(cached)
-	existing.OutputTokens = int64Pointer(output)
-	existing.ReasoningTokens = int64Pointer(reasoning)
-	existing.ContextWindow = int64Pointer(contextWindow)
+	existing := TurnUsage{
+		TurnID: stored.TurnID, ObservedAtMS: stored.ObservedAtMS, IsFinal: stored.IsFinal,
+		InputTokens: stored.InputTokens, CachedInputTokens: stored.CachedInputTokens,
+		OutputTokens: stored.OutputTokens, ReasoningTokens: stored.ReasoningTokens,
+		ContextWindow: stored.ContextWindow, SourceGeneration: stored.SourceGeneration,
+		SourceOffset: stored.SourceOffset, Confidence: stored.Confidence, UpdatedAtMS: stored.UpdatedAtMS,
+	}
 	if usage.SourceGeneration == existing.SourceGeneration && usage.SourceOffset < existing.SourceOffset {
 		return invalidRecord("turn usage source position regresses within the same generation")
 	}
@@ -451,35 +399,15 @@ func validateSessionCurrentReplay(
 	transaction storesqlite.WriteTx,
 	current SessionCurrent,
 ) error {
-	var existing SessionCurrent
-	var threadName, activeTurnID, currentModel, currentCWD sql.NullString
-	var threadNameUpdatedAt, lastActivityAt sql.NullInt64
-	err := transaction.QueryRowContext(ctx, `
-		SELECT session_id, thread_name, thread_name_updated_at_ms, active_turn_id,
-		       current_model, current_cwd, last_activity_at_ms, updated_at_ms
-		FROM session_current WHERE session_id = ?
-	`, current.SessionID).Scan(
-		&existing.SessionID,
-		&threadName,
-		&threadNameUpdatedAt,
-		&activeTurnID,
-		&currentModel,
-		&currentCWD,
-		&lastActivityAt,
-		&existing.UpdatedAtMS,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	var stored sessionCurrentModel
+	err := transaction.WithContext(ctx).Take(&stored, "session_id = ?", current.SessionID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	existing.ThreadName = stringPointer(threadName)
-	existing.ThreadNameUpdatedAtMS = int64Pointer(threadNameUpdatedAt)
-	existing.ActiveTurnID = stringPointer(activeTurnID)
-	existing.CurrentModel = stringPointer(currentModel)
-	existing.CurrentCWD = stringPointer(currentCWD)
-	existing.LastActivityAtMS = int64Pointer(lastActivityAt)
+	existing := sessionCurrentFromModel(stored)
 
 	if current.ThreadNameUpdatedAtMS != nil && existing.ThreadNameUpdatedAtMS != nil &&
 		*current.ThreadNameUpdatedAtMS == *existing.ThreadNameUpdatedAtMS &&
@@ -497,35 +425,15 @@ func validateSessionUsageReplay(
 	transaction storesqlite.WriteTx,
 	usage SessionUsageCurrent,
 ) error {
-	var existing SessionUsageCurrent
-	var input, cached, output, reasoning sql.NullInt64
-	err := transaction.QueryRowContext(ctx, `
-		SELECT session_id, counter_epoch, total_input_tokens, total_cached_tokens,
-		       total_output_tokens, total_reasoning_tokens, observed_at_ms,
-		       source_generation, source_offset, counter_state
-		FROM session_usage_current WHERE session_id = ?
-	`, usage.SessionID).Scan(
-		&existing.SessionID,
-		&existing.CounterEpoch,
-		&input,
-		&cached,
-		&output,
-		&reasoning,
-		&existing.ObservedAtMS,
-		&existing.SourceGeneration,
-		&existing.SourceOffset,
-		&existing.CounterState,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	var stored sessionUsageCurrentModel
+	err := transaction.WithContext(ctx).Take(&stored, "session_id = ?", usage.SessionID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	existing.TotalInputTokens = int64Pointer(input)
-	existing.TotalCachedTokens = int64Pointer(cached)
-	existing.TotalOutputTokens = int64Pointer(output)
-	existing.TotalReasoningTokens = int64Pointer(reasoning)
+	existing := sessionUsageCurrentFromModel(stored)
 	if usage.SourceGeneration == existing.SourceGeneration && usage.CounterEpoch == existing.CounterEpoch &&
 		usage.SourceOffset == existing.SourceOffset &&
 		!equalSessionUsage(existing, usage) {
@@ -573,8 +481,8 @@ func equalStringPointer(left, right *string) bool {
 	return *left == *right
 }
 
-func optionalStringConflicts(existing sql.NullString, incoming *string) bool {
-	return existing.Valid && incoming != nil && existing.String != *incoming
+func optionalStringConflicts(existing, incoming *string) bool {
+	return existing != nil && incoming != nil && *existing != *incoming
 }
 
 func equalInt64Pointer(left, right *int64) bool {
