@@ -14,6 +14,7 @@
 11. [TOO-254] 新增可解释、可重算的 Session、Project、Model 隐私归因与 schema v4 历史回填，固定路径摘要身份、模型别名、冲突/非法语义和不含绝对路径的安全查询投影
 12. [TOO-255] 新增有来源的版本化 exact-only API 价格目录、整数微美元 Turn 成本和可原子重算的 Session/全局/Project/Model 日聚合，固定 unknown/partial、时区日界、持久化后严格对账与旧 generation 回滚语义
 13. [TOO-256] 新增 append-only Session Index Repair 的零写入 dry-run、精确确认、数据库与索引双备份、受控 correction 和写后对账，固定 Store/index 漂移与本地不支持行的 fail-closed、原子 terminal success、审计失败及重新 dry-run 恢复语义
+14. [TOO-257] 新增确认前 metadata-only Codex Home 探测与版本化私有 Onboarding preferences，固定三来源路径规范化、physical identity 与结构竞态 fail-closed、显式隐私确认、并发取消、重启及 durability-unknown 恢复语义
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

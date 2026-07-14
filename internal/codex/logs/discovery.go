@@ -26,7 +26,7 @@ func newDiscoverer(home string, filesystem fileSystem) (*Discoverer, error) {
 		return nil, ErrInvalidHome
 	}
 	home = filepath.Clean(home)
-	identity, err := filesystem.ConfirmRoot(home)
+	identity, err := filesystem.ConfirmRoot(home, true)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (discoverer *Discoverer) discover(
 	if err := ctx.Err(); err != nil {
 		return DiscoveryResult{}, err
 	}
-	root, err := discoverer.filesystem.OpenRoot(discoverer.home)
+	root, err := discoverer.filesystem.OpenRoot(discoverer.home, true)
 	if err != nil {
 		return DiscoveryResult{}, fmt.Errorf("%w: %v", ErrHomeChanged, err)
 	}
