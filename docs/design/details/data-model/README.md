@@ -154,7 +154,10 @@ v3→v4 migration 在创建 attribution schema 后，使用同一个 GORM writer
 - `session_usage_current(session_id, counter_epoch, total_input_tokens, total_cached_tokens, total_output_tokens, total_reasoning_tokens, observed_at_ms, source_generation, source_offset, counter_state)`
 - `pricing_versions(pricing_version, source, currency, effective_from_ms, created_at_ms)`
 - `model_prices(pricing_version, match_kind, model_pattern, priority, input_micros_per_million, cached_input_micros_per_million, output_micros_per_million)`
-- `turn_costs(turn_id, pricing_version, estimated_usd_micros, pricing_status, calculated_at_ms)`
+- `pricing_catalog_metadata(pricing_version, source_url, verified_at_ms)`
+- `cost_rollup_generations(generation_id, reporting_timezone, pricing_source, currency, rollup_version, state, created_at_ms, completed_at_ms, updated_at_ms)`
+- `turn_costs(generation_id, turn_id, pricing_version, estimated_usd_micros, pricing_status, pricing_reason, calculated_at_ms)`
+- `session_usage_rollups(generation_id, session_id, turn_count, input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, total_tokens, estimated_usd_micros, priced_turn_count, unpriced_turn_count, first_activity_at_ms, last_activity_at_ms, updated_at_ms)`
 
 同一 turn 的 `last_token_usage` 会多次更新，因此只 upsert 一条 `turn_usage`。`task_started` 创建 provisional 行，token snapshot 覆盖当前值，`task_complete` 将 `is_final = 1`。历史报表和日聚合只统计 final turn；Dashboard 可单独叠加 active turn 暂估，完成后由同一行替换，不能重复计费。
 
@@ -164,11 +167,17 @@ v3→v4 migration 在创建 attribution schema 后，使用同一个 GORM writer
 
 金额统一使用整数微币种单位，不使用 SQLite `REAL`；v0.1 内置目录的币种为 `USD`，每个值表示每百万 token 的微美元。价格字段允许 `NULL` 表示目录没有给出该类别，非空整数 `0` 才表示真实免费。
 
-Pricing Catalog 以 `(source, currency, effective_from_ms)` 形成不可变时间线。同 source/currency 的版本生效区间由相邻版本推导为 `[effective_from_ms, next_effective_from_ms)`，最后一个版本的结束时间为 `NULL`；新增版本不更新上一版本。模型规则只允许 `exact`、`prefix`、`default`，`default` pattern 固定为 `*`。匹配先按 `priority DESC`，再按 exact、prefix、default，随后按 pattern 长度和字典序稳定决胜；没有有效版本或规则时返回 `ErrNotFound`，成本层保留 `unpriced`，不能伪装为零成本。版本与全部规则在同一 writer transaction 追加；完全一致重放 no-op，同 version 或同生效边界的冲突全部回滚。
+Pricing Catalog 以 `(source, currency, effective_from_ms)` 形成不可变时间线。同 source/currency 的版本生效区间由相邻版本推导为 `[effective_from_ms, next_effective_from_ms)`，最后一个版本的结束时间为 `NULL`；新增版本不更新上一版本。通用查询允许 `exact`、`prefix`、`default`，但成本重建只接受 normalized model key 的 `exact` 规则，不能用相似名称或 fallback 猜价。没有生效版本记为 `unpriced/catalog_not_effective`；版本存在但没有 exact rule 记为 `unpriced/model_not_listed`。版本、全部规则和可选来源 metadata 在同一 writer transaction 追加；完全一致重放 no-op，同 version、metadata 或生效边界冲突全部回滚。
 
-Pricing Catalog 更新时由后续成本层基于 `turn_usage` 重算 cost，不修改 token 事实。
+应用启动在 schema v5 完成后幂等安装 `openai-api-2026-07-14`：`USD`、`effective_from_ms=0`、verified time `1783987200000`，来源为 [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing)。该 snapshot 只包含已有官方逐模型页面证据的 exact key；运行时不联网刷新。`gpt-5.2-codex-max`、`gpt-5.3-codex-spark`、Pro、日期 snapshot、长上下文和 Batch/Flex/Priority 倍率没有当前完整事实输入时保持 unpriced。金额是 API 等价估算，不是真实账单或 Codex 订阅额度。
 
-TOO-255 及后续 daily rollup 必须以 `turn_attributions.project_id/model_key` 作为归一化维度入口，并保留 unknown/conflict 的未归因语义；不得直接把 `turns.cwd`、`turns.model` 或 basename 当作聚合键。Pricing 的 exact/prefix/default 规则匹配 normalized `model_key`，raw model 仅留在本机事实层用于审计与规则重算。
+单 turn 公式为：先精确求和 `input_tokens × input_rate + cached_input_tokens × cached_rate + (output_tokens + reasoning_tokens) × output_rate`，再统一除以 `1_000_000` 并只做一次 round-half-up；全程使用整数和 `math/big`，不使用 float。Codex JSONL 的 reasoning 是 output 之外的独立计数，因此两者都使用公开 output rate且不能重复包含。任一 token 为 `NULL` 时记为 `unpriced/missing_token`；某个正 token 类别缺少 rate 时记为 `unpriced/missing_price_component`；全零 token 可以得到真实的 priced `0`。模型归因缺失、冲突或非法分别保留 `missing_model`、`conflict_model`、`invalid_model`，完整 reason 集合由 STRICT CHECK 固定。
+
+`RebuildCostLedger` 只读取 `turn_usage.is_final=1`，并在一个 `WriteMaintenance` transaction 中构建 shadow generation：写 turn cost 和四类 rollup、精确校验 generation/batch/state transition 的 `RowsAffected`，再用 GORM 从 shadow generation 逐表读回完整行并重新核对 turn/token/priced/unpriced/cost，之后才把旧 active 标为 superseded、把新 generation 切到 active。generation ID 与 request metadata 完全一致的重放 no-op；冲突重放、context 取消、SQLite 静默跳过/写后缺行、cost/token overflow 或对账失败都会整体 rollback，旧 active generation 保持可读。Pricing Catalog 更新后通过新的 generation 重算 cost，不修改 token 或 attribution 事实。
+
+完整价格证据、公式、fixture、rollback、restart 与本地门禁见 [`docs/test/cost-ledger.md`](../../../test/cost-ledger.md)。
+
+成本与 daily rollup 只以 `turn_attributions.project_id/model_key` 作为归一化维度入口，并保留 unknown/conflict/invalid 的未归因语义；不得直接把 `turns.cwd`、`turns.model` 或 basename 当作聚合键。known identity 使用 stable ID/key：同一日内 provenance 演进不拆分 identity，confidence 取最保守值，source/reason 不一致标记为 `mixed`，display 不一致则回退 stable identity；该合并与输入顺序无关。unknown dimension key 只由固定 confidence/source/reason 组成。raw model 仅留在本机事实层用于审计与规则重算，不进入 cost typed readback。
 
 ## Quota
 
@@ -230,12 +239,13 @@ TOO-247 的 `FactBatch` 在 TOO-246 提供的唯一 writer queue 上按 `project
 
 ## Daily 聚合
 
-- `project_usage_daily(bucket_start_ms, reporting_timezone, project_id, turn_count, input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, total_tokens, estimated_usd_micros, priced_turn_count, unpriced_turn_count, first_activity_at_ms, last_activity_at_ms, rollup_version, updated_at_ms)`
-- `model_usage_daily(bucket_start_ms, reporting_timezone, model, turn_count, input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, total_tokens, estimated_usd_micros, priced_turn_count, unpriced_turn_count, first_activity_at_ms, last_activity_at_ms, rollup_version, updated_at_ms)`
+- `usage_daily(generation_id, bucket_start_ms, reporting_timezone, ...rollup totals)`
+- `project_usage_daily(generation_id, bucket_start_ms, reporting_timezone, dimension_key, project_id, project_display_name, attribution_confidence, attribution_source, attribution_reason, ...rollup totals)`
+- `model_usage_daily(generation_id, bucket_start_ms, reporting_timezone, dimension_key, model_key, model_display_name, attribution_confidence, attribution_source, attribution_reason, ...rollup totals)`
 
-主键分别为 `(bucket_start_ms, reporting_timezone, project_id)` 和 `(bucket_start_ms, reporting_timezone, model)`。默认 reporting timezone 为系统时区，当前使用 `Asia/Shanghai`。turn 归属日期使用 final `turn_usage.observed_at_ms`。
+所有 daily 行绑定同一个 `generation_id`；主键分别为 `(generation_id, bucket_start_ms)` 和 `(generation_id, bucket_start_ms, dimension_key)`。request 必须显式传入 IANA reporting timezone；当前默认调用口径为 `Asia/Shanghai`。turn 归属日期使用 final `turn_usage.observed_at_ms` 在该时区的本地日，持久化的 `bucket_start_ms` 是本地午夜对应的 UTC epoch milliseconds，因此 DST 重复或跳过小时不会用固定 offset 猜算。
 
-周、月、年从 daily 表 `SUM`，不维护 weekly/monthly 表。修正 parser、项目归属、模型或价格时，必须先从旧 bucket 减去旧贡献，再向新 bucket 加入；大规模重建使用 shadow generation，校验后原子切换。
+每个 token component 只要任一成员为 `NULL`，该 rollup component 与 `total_tokens` 就保持 `NULL`；其他完整 component 仍可独立求和。至少一个 priced turn 时 `estimated_usd_micros` 保存 priced subtotal，并同时保留 unpriced count；完全没有 priced turn 时金额为 `NULL` 而非零。周、月、年从 active generation 的 daily 表 `SUM`，不维护 weekly/monthly 表。修正 parser、项目归属、模型或价格时直接创建新的 shadow generation，不在 active 行上原地做减加。
 
 ## SQLite 约定
 
@@ -280,7 +290,7 @@ context 取消在入队前可以直接拒绝。job 一旦被队列接受，`Writ
 
 调用方取消等待不会中止已经开始的关闭。队列满、context 取消、closing/closed、SQLite busy/locked、disk full、read-only、permission、I/O 和 corrupt 都有稳定 sentinel；底层 context 与 driver error 仍保留在 error chain 中，禁止依赖 `database is locked` 等字符串分支。
 
-应用打开 Store 后、将其暴露给任何 runtime reader/writer 之前，由显式 migration catalog 管理 `PRAGMA user_version` 与 `schema_migrations(version, name, checksum, applied_at_ms)` append-only ledger。`MigrateApplicationSchema` 只属于该启动期 bootstrap 契约；若未来需要运行期 maintenance migration，必须先由上层实现任务排空和 Store 独占，不得直接复用启动调用。catalog 必须从 1 连续、名称和 SHA-256 checksum 稳定；history 缺号、checksum drift、ledger/user_version 分叉或数据库版本高于二进制都会 fail closed。所有 pending migration 在同一个 writer transaction 中顺序执行，只有全部 schema readback 和 ledger 写入成功后才推进 `user_version`，任一步失败会连同本轮所有 pending objects 一起回滚。当前 v1 固定为初始 core/runtime schema，v2 只追加 retention query indexes，v3 增加 durable incremental-ingest checkpoint/generation 并重建 turn 外键闭包，v4 增加 Session/Turn project/model attribution；v1/v2/v3/v4 checksum 均由各自冻结测试保护，新增 migration 不得重算或改写既有 history。
+应用打开 Store 后、将其暴露给任何 runtime reader/writer 之前，由显式 migration catalog 管理 `PRAGMA user_version` 与 `schema_migrations(version, name, checksum, applied_at_ms)` append-only ledger。`MigrateApplicationSchema` 只属于该启动期 bootstrap 契约；若未来需要运行期 maintenance migration，必须先由上层实现任务排空和 Store 独占，不得直接复用启动调用。catalog 必须从 1 连续、名称和 SHA-256 checksum 稳定；history 缺号、checksum drift、ledger/user_version 分叉或数据库版本高于二进制都会 fail closed。所有 pending migration 在同一个 writer transaction 中顺序执行，只有全部 schema readback 和 ledger 写入成功后才推进 `user_version`，任一步失败会连同本轮所有 pending objects 一起回滚。当前 v1 固定为初始 core/runtime schema，v2 只追加 retention query indexes，v3 增加 durable incremental-ingest checkpoint/generation 并重建 turn 外键闭包，v4 增加 Session/Turn project/model attribution，v5 增加 pricing metadata、cost generation、turn cost 与 session/global/project/model rollup；v1-v5 checksum 均由各自冻结测试保护，新增 migration 不得重算或改写既有 history。
 
 fresh 空库不做无意义备份。已有用户 schema 且存在 pending migration 时，runner 先只读检查状态和可用空间，再通过 modernc `NewBackup` / `Step` / `Remaining` / `PageCount` 创建包含 committed WAL 页的 `0600` 快照，成功发布后才进入 migration transaction；失败或取消只清理 `.partial-*`。文件级恢复原语使用 `NewRestore`，只恢复到尚不存在的新文件，不在运行中覆盖当前 Store。`STRICT`、复杂 `CHECK`、特殊 index、连接 PRAGMA、`sqlite_schema` canonical readback 和 `EXPLAIN QUERY PLAN` 是隔离的 raw SQL 例外；普通 CRUD、filter、关联检查和事务编排使用 GORM。
 
@@ -301,6 +311,7 @@ fresh 空库不做无意义备份。已有用户 schema 且存在 pending migrat
 - `job_runs(state, updated_at_ms, priority DESC, job_id)`、`job_runs(source_file_id, created_at_ms DESC, job_id DESC)` 与 `job_runs(updated_at_ms, priority DESC, job_id)`，用于 startup recovery、队列、source 作业历史和无 filter 列表。
 - `health_events(resolved_at_ms, last_seen_at_ms DESC, event_id, severity)`、`health_events(last_seen_at_ms DESC, event_id)`、`health_events(severity, last_seen_at_ms DESC, event_id)`、`health_events(source_file_id, last_seen_at_ms DESC, event_id)` 与 `health_events(job_id, last_seen_at_ms DESC, event_id)`，用于 active/resolved/history/severity 和 source/job 单关系追溯。
 - `pricing_versions(source, currency, effective_from_ms DESC)` 与 `model_prices(pricing_version, priority DESC, match_kind, model_pattern)`，用于 as-of 版本和模型规则匹配。
+- `cost_rollup_generations(reporting_timezone) WHERE state='active'` 保证每个时区至多一个 active；turn/session/global/project/model cost 索引分别支持按实体、日期与安全 dimension 读取同一 generation。
 - v2 retention 专用索引为 `health_events(resolved_at_ms, event_id)`、`job_runs(state, finished_at_ms, job_id)`、`job_runs(resume_of_job_id, job_id)` 与 `source_attempts(finished_at_ms, request_id)`；terminal job 按固定 state 顺序逐段选择，以同时保持有界、确定排序和索引命中。
 
 上述 required query 由 GORM model/scopes 构造；测试文件维护等价的代表查询用于 `EXPLAIN QUERY PLAN`，要求命名索引被选择且不得出现临时排序。quota、process snapshot 和 app runtime sample 索引由对应后续 Execution 卡创建。core/runtime 表不提供 prompt、response、tool output、原始 JSONL、鉴权 token 或 raw error 的专用字段；schema contract 和数据库 bytes 测试会对受控 code/digest/cursor/error 输入面使用 synthetic marker 验证拒绝与不可见性。业务 identity/path metadata 的凭据卫生仍由调用方负责。

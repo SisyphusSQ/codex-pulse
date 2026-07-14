@@ -3,6 +3,8 @@ package store
 import (
 	"crypto/sha256"
 	"encoding/hex"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 )
 
 // SHA256Digest 是 opaque SHA-256 值；私有状态阻止调用方把任意 string 伪装成摘要。
@@ -287,33 +289,18 @@ type HealthEventFilter struct {
 	Limit        int
 }
 
-type ModelMatchKind string
+type ModelMatchKind = pricing.ModelMatchKind
 
 const (
-	ModelMatchExact   ModelMatchKind = "exact"
-	ModelMatchPrefix  ModelMatchKind = "prefix"
-	ModelMatchDefault ModelMatchKind = "default"
+	ModelMatchExact   = pricing.ModelMatchExact
+	ModelMatchPrefix  = pricing.ModelMatchPrefix
+	ModelMatchDefault = pricing.ModelMatchDefault
 )
 
-// ModelPrice 使用整数微美元/百万 token；nil 与真实零保持不同语义。
-type ModelPrice struct {
-	MatchKind                   ModelMatchKind
-	ModelPattern                string
-	Priority                    int64
-	InputMicrosPerMillion       *int64
-	CachedInputMicrosPerMillion *int64
-	OutputMicrosPerMillion      *int64
-}
+type ModelPrice = pricing.ModelPrice
 
 // PricingVersion 是 source/currency 时间线上的不可变 catalog snapshot。
-type PricingVersion struct {
-	PricingVersion  string
-	Source          string
-	Currency        string
-	EffectiveFromMS int64
-	CreatedAtMS     int64
-	Models          []ModelPrice
-}
+type PricingVersion = pricing.CatalogVersion
 
 // EffectivePricing 返回版本的推导半开区间和唯一匹配规则。
 type EffectivePricing struct {

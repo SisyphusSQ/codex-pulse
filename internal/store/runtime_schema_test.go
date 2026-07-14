@@ -21,17 +21,22 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 	}
 
 	wantTables := []string{
+		"cost_rollup_generations",
 		"health_events",
 		"job_runs",
 		"model_prices",
+		"model_usage_daily",
 		"parser_checkpoints",
 		"parser_diagnostics",
+		"pricing_catalog_metadata",
 		"pricing_versions",
+		"project_usage_daily",
 		"projects",
 		"schema_migrations",
 		"session_attributions",
 		"session_current",
 		"session_usage_current",
+		"session_usage_rollups",
 		"sessions",
 		"source_attempts",
 		"source_files",
@@ -39,8 +44,10 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 		"source_generations",
 		"source_state",
 		"turn_attributions",
+		"turn_costs",
 		"turn_usage",
 		"turns",
+		"usage_daily",
 	}
 	gotTables, strictByTable, err := applicationTableContract(context.Background(), database)
 	if err != nil {
@@ -193,7 +200,10 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 				'idx_source_generations_building',
 				'idx_source_generations_snapshot',
 				'idx_session_attributions_model', 'idx_session_attributions_project',
-				'idx_turn_attributions_model', 'idx_turn_attributions_project'
+				'idx_turn_attributions_model', 'idx_turn_attributions_project',
+				'idx_cost_rollup_generations_active', 'idx_turn_costs_turn',
+				'idx_session_usage_rollups_session', 'idx_usage_daily_bucket',
+				'idx_project_usage_daily_dimension', 'idx_model_usage_daily_dimension'
 			  )
 			ORDER BY name
 		`)

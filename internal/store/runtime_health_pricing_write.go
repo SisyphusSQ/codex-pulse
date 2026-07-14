@@ -177,7 +177,17 @@ func (repository *Repository) AddPricingVersion(ctx context.Context, version Pri
 				OutputMicrosPerMillion:      model.OutputMicrosPerMillion,
 			})
 		}
-		return transaction.WithContext(ctx).Create(&models).Error
+		if err := transaction.WithContext(ctx).Create(&models).Error; err != nil {
+			return err
+		}
+		if version.SourceURL == "" {
+			return nil
+		}
+		return transaction.WithContext(ctx).Create(&pricingCatalogMetadataModel{
+			PricingVersion: version.PricingVersion,
+			SourceURL:      version.SourceURL,
+			VerifiedAtMS:   version.VerifiedAtMS,
+		}).Error
 	})
 }
 

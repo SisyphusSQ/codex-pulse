@@ -19,7 +19,8 @@ const (
 	applicationSchemaV2Version = 2
 	applicationSchemaV3Version = 3
 	applicationSchemaV4Version = 4
-	applicationSchemaVersion   = applicationSchemaV4Version
+	applicationSchemaV5Version = 5
+	applicationSchemaVersion   = applicationSchemaV5Version
 )
 
 var (
@@ -99,6 +100,14 @@ var applicationMigrations = []migrationDefinition{
 			}
 			_, err := recomputeAttributionsInTransaction(ctx, transaction, nil)
 			return err
+		},
+	},
+	{
+		version:  applicationSchemaV5Version,
+		name:     "pricing-cost-daily-rollup",
+		checksum: applicationSchemaV5Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			return ensureSchemaObjects(ctx, transaction, costSchemaObjects)
 		},
 	},
 }
@@ -452,7 +461,7 @@ func validateMigrationState(
 func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteTx) error {
 	for _, objects := range [][]schemaObject{
 		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects, retentionSchemaObjects,
-		ingestSchemaObjects, attributionSchemaObjects,
+		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects,
 	} {
 		for _, object := range objects {
 			exists, err := verifySchemaObject(ctx, transaction, object)
@@ -509,6 +518,18 @@ func applicationSchemaV4Checksum() string {
 	hasher := sha256.New()
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV4Version, "session-project-model-attribution")
 	for _, object := range attributionSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.objectType, object.name,
+			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV5Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV5Version, "pricing-cost-daily-rollup")
+	for _, object := range costSchemaObjects {
 		_, _ = fmt.Fprintln(
 			hasher, object.objectType, object.name,
 			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
