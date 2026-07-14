@@ -128,13 +128,34 @@ func (repository *Repository) EnsureCoreSchema(ctx context.Context) error {
 		return ErrInvalidRepository
 	}
 	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		for _, object := range coreSchemaObjects {
-			if err := ensureSchemaObject(ctx, transaction, object); err != nil {
-				return err
-			}
-		}
-		return nil
+		return ensureSchemaObjects(ctx, transaction, coreSchemaObjects)
 	})
+}
+
+// EnsureApplicationSchema 在单一 writer transaction 中确保核心与运行事实 schema。
+func (repository *Repository) EnsureApplicationSchema(ctx context.Context) error {
+	if repository == nil || repository.database == nil {
+		return ErrInvalidRepository
+	}
+	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		if err := ensureSchemaObjects(ctx, transaction, coreSchemaObjects); err != nil {
+			return err
+		}
+		return ensureSchemaObjects(ctx, transaction, runtimeSchemaObjects)
+	})
+}
+
+func ensureSchemaObjects(
+	ctx context.Context,
+	transaction storesqlite.WriteTx,
+	objects []schemaObject,
+) error {
+	for _, object := range objects {
+		if err := ensureSchemaObject(ctx, transaction, object); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ensureSchemaObject(
