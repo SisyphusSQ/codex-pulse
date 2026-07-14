@@ -21,6 +21,8 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 	}
 
 	wantTables := []string{
+		"bootstrap_jobs",
+		"bootstrap_plan_items",
 		"cost_rollup_generations",
 		"health_events",
 		"job_runs",
@@ -73,6 +75,24 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 	}
 
 	wantColumns := map[string][]string{
+		"bootstrap_jobs": {
+			"job_id", "switch_id", "home_generation", "home_path", "home_device_id", "home_inode",
+			"data_store_key", "strategy", "plan_state", "plan_sha256", "phase_progress_current",
+			"phase_progress_total", "eta_state", "eta_remaining_ms", "pause_reason",
+			"first_screen_ready_at_ms", "reconcile_pass", "reconcile_plan_at_ms",
+			"full_history_ready_at_ms", "reconciled_at_ms",
+			"reconcile_change_count", "reconcile_issue_count", "updated_at_ms",
+		},
+		"bootstrap_plan_items": {
+			"job_id", "ordinal", "pass", "lane", "tier", "action_kind",
+			"previous_source_file_id", "previous_source_kind", "previous_path", "previous_device_id",
+			"previous_inode", "previous_size_bytes", "previous_mtime_ns", "previous_prefix_bytes",
+			"previous_prefix_sha256", "previous_fingerprint_sha256", "current_source_file_id",
+			"current_source_kind", "current_path", "current_device_id", "current_inode",
+			"current_size_bytes", "current_mtime_ns", "current_prefix_bytes", "current_prefix_sha256",
+			"current_fingerprint_sha256", "state", "source_generation", "progress_current",
+			"progress_total", "updated_at_ms",
+		},
 		"source_files": {
 			"source_file_id", "provider", "session_id", "current_path", "device_id",
 			"inode", "size_bytes", "mtime_ns", "parsed_offset", "parser_version",
@@ -108,6 +128,8 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		},
 	}
 	wantForeignKeys := []string{
+		"bootstrap_jobs.job_id->job_runs.job_id/CASCADE",
+		"bootstrap_plan_items.job_id->bootstrap_jobs.job_id/CASCADE",
 		"health_events.job_id->job_runs.job_id/SET NULL",
 		"health_events.source_file_id->source_files.source_file_id/SET NULL",
 		"job_runs.resume_of_job_id->job_runs.job_id/SET NULL",
@@ -117,6 +139,8 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"source_files.session_id->sessions.session_id/SET NULL",
 	}
 	wantIndexes := []string{
+		"idx_bootstrap_jobs_generation_status",
+		"idx_bootstrap_plan_items_pending",
 		"idx_health_events_active",
 		"idx_health_events_history",
 		"idx_health_events_job",

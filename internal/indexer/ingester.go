@@ -36,6 +36,15 @@ type CommitResult struct {
 	Committed         bool
 }
 
+// StreamCursor is the narrow, immutable bootstrap readback surface. The
+// parser/projector checkpoint remains owned by Store and is never exposed.
+type StreamCursor struct {
+	SourceFileID    string
+	Generation      int64
+	State           store.GenerationState
+	CommittedOffset int64
+}
+
 type Stream struct {
 	mu sync.Mutex
 
@@ -54,6 +63,20 @@ type streamJob struct {
 	jobID string
 	state store.JobState
 	phase store.JobPhase
+}
+
+// Cursor returns the source generation and authoritative committed offset
+// currently observed by this stream.
+func (stream *Stream) Cursor() (StreamCursor, error) {
+	if stream == nil {
+		return StreamCursor{}, ErrInvalidIngester
+	}
+	stream.mu.Lock()
+	defer stream.mu.Unlock()
+	return StreamCursor{
+		SourceFileID: stream.cursor.SourceFileID, Generation: stream.cursor.Generation,
+		State: stream.cursor.State, CommittedOffset: stream.cursor.Checkpoint.CommittedOffset,
+	}, nil
 }
 
 func New(repository *store.Repository) (*Ingester, error) {

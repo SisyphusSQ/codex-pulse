@@ -51,12 +51,30 @@ type IndexBackupReport struct {
 
 // OpenIndexFile 确认绝对、非 symlink Codex Home 的物理身份。
 func OpenIndexFile(home string) (*IndexFile, error) {
+	return openIndexFile(home, nil)
+}
+
+// OpenConfirmedIndexFile binds the optional recency-hint reader to the
+// physical Home identity already confirmed by the user.
+func OpenConfirmedIndexFile(home, deviceID string, inode int64) (*IndexFile, error) {
+	if deviceID == "" || inode <= 0 {
+		return nil, ErrInvalidHome
+	}
+	expected := rootVersion{deviceID: deviceID, inode: uint64(inode)}
+	return openIndexFile(home, &expected)
+}
+
+func openIndexFile(home string, expected *rootVersion) (*IndexFile, error) {
 	if !filepath.IsAbs(home) || filepath.Clean(home) != home {
 		return nil, ErrInvalidHome
 	}
 	file, version, err := openRoot(home)
 	if err != nil {
 		return nil, err
+	}
+	if expected != nil && version != *expected {
+		_ = file.Close()
+		return nil, ErrHomeChanged
 	}
 	if err := file.Close(); err != nil {
 		return nil, fmt.Errorf("close confirmed Codex home: %w", err)
