@@ -301,6 +301,88 @@ func TestStoreReturnsQueueFullAndSkipsCanceledQueuedWrite(t *testing.T) {
 	}
 }
 
+func TestStorePrioritizesNormalWritesOverQueuedMaintenance(t *testing.T) {
+	store := openTestStore(t, Config{WriteQueueCapacity: 2})
+	createEventsTable(t, store)
+
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	results := make(chan error, 3)
+	go func() {
+		results <- store.Write(context.Background(), func(ctx context.Context, tx WriteTx) error {
+			close(firstStarted)
+			<-releaseFirst
+			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "first"}).Error
+		})
+	}()
+	<-firstStarted
+
+	go func() {
+		results <- store.WriteMaintenance(context.Background(), func(ctx context.Context, tx WriteTx) error {
+			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "maintenance"}).Error
+		})
+	}()
+	waitForMaintenanceQueueDepth(t, store, 1)
+
+	go func() {
+		results <- insertEvent(store, context.Background(), "normal")
+	}()
+	waitForQueueDepth(t, store, 1)
+	close(releaseFirst)
+
+	for range 3 {
+		if err := <-results; err != nil {
+			t.Fatalf("queued write: %v", err)
+		}
+	}
+	if got, want := strings.Join(readEventValues(t, store), ","), "first,normal,maintenance"; got != want {
+		t.Fatalf("write order = %q, want %q", got, want)
+	}
+}
+
+func TestStoreMaintenanceQueueIsBoundedAndSkipsCanceledWork(t *testing.T) {
+	store := openTestStore(t, Config{})
+	createEventsTable(t, store)
+
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	firstResult := make(chan error, 1)
+	go func() {
+		firstResult <- store.Write(context.Background(), func(context.Context, WriteTx) error {
+			close(firstStarted)
+			<-releaseFirst
+			return nil
+		})
+	}()
+	<-firstStarted
+
+	queuedContext, cancelQueued := context.WithCancel(context.Background())
+	queuedResult := make(chan error, 1)
+	go func() {
+		queuedResult <- store.WriteMaintenance(queuedContext, func(ctx context.Context, tx WriteTx) error {
+			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "canceled"}).Error
+		})
+	}()
+	waitForMaintenanceQueueDepth(t, store, 1)
+
+	err := store.WriteMaintenance(context.Background(), func(context.Context, WriteTx) error { return nil })
+	if !errors.Is(err, ErrQueueFull) {
+		t.Fatalf("maintenance overflow error = %v, want ErrQueueFull", err)
+	}
+
+	cancelQueued()
+	close(releaseFirst)
+	if err := <-firstResult; err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+	if err := <-queuedResult; !errors.Is(err, ErrCanceled) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled maintenance error = %v, want ErrCanceled and context.Canceled", err)
+	}
+	if values := readEventValues(t, store); len(values) != 0 {
+		t.Fatalf("canceled maintenance persisted values: %v", values)
+	}
+}
+
 func TestStoreWriteWaitsForAuthoritativeResultAfterAdmission(t *testing.T) {
 	store := openTestStore(t, Config{})
 	createEventsTable(t, store)
@@ -533,6 +615,61 @@ func TestStoreCloseDrainsAcceptedWritesRejectsNewWorkAndIsIdempotent(t *testing.
 	}
 }
 
+func TestStoreCloseDrainsAcceptedMaintenanceAndRejectsNewMaintenance(t *testing.T) {
+	store := openTestStoreWithoutCleanup(t, Config{})
+	createEventsTable(t, store)
+
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	firstResult := make(chan error, 1)
+	go func() {
+		firstResult <- store.Write(context.Background(), func(ctx context.Context, tx WriteTx) error {
+			close(firstStarted)
+			<-releaseFirst
+			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "first"}).Error
+		})
+	}()
+	<-firstStarted
+
+	maintenanceResult := make(chan error, 1)
+	go func() {
+		maintenanceResult <- store.WriteMaintenance(context.Background(), func(ctx context.Context, tx WriteTx) error {
+			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "maintenance"}).Error
+		})
+	}()
+	waitForMaintenanceQueueDepth(t, store, 1)
+
+	closeResult := make(chan error, 1)
+	go func() { closeResult <- store.Close(context.Background()) }()
+	waitForState(t, store, stateClosing)
+
+	if err := store.WriteMaintenance(context.Background(), func(context.Context, WriteTx) error { return nil }); !errors.Is(err, ErrClosing) {
+		t.Fatalf("maintenance during close error = %v, want ErrClosing", err)
+	}
+	close(releaseFirst)
+	if err := <-firstResult; err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+	if err := <-maintenanceResult; err != nil {
+		t.Fatalf("maintenance write: %v", err)
+	}
+	if err := <-closeResult; err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if err := store.WriteMaintenance(context.Background(), func(context.Context, WriteTx) error { return nil }); !errors.Is(err, ErrClosed) {
+		t.Fatalf("maintenance after close error = %v, want ErrClosed", err)
+	}
+
+	reopened, err := Open(context.Background(), Config{Path: store.Config().Path})
+	if err != nil {
+		t.Fatalf("reopen store: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close(context.Background()) })
+	if got, want := strings.Join(readEventValues(t, reopened), ","), "first,maintenance"; got != want {
+		t.Fatalf("drained values = %q, want %q", got, want)
+	}
+}
+
 func TestStoreCloseWaitsForInflightReadAndCanceledWaitDoesNotAbortClose(t *testing.T) {
 	store := openTestStoreWithoutCleanup(t, Config{})
 	readStarted := make(chan struct{})
@@ -637,6 +774,18 @@ func waitForQueueDepth(t *testing.T, store *Store, want int) {
 		runtime.Gosched()
 	}
 	t.Fatalf("write queue depth = %d, want %d", len(store.writeQueue), want)
+}
+
+func waitForMaintenanceQueueDepth(t *testing.T, store *Store, want int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(store.maintenanceQueue) == want {
+			return
+		}
+		runtime.Gosched()
+	}
+	t.Fatalf("maintenance queue depth = %d, want %d", len(store.maintenanceQueue), want)
 }
 
 func waitForState(t *testing.T, store *Store, want lifecycleState) {

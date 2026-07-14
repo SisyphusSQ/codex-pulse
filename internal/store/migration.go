@@ -14,7 +14,11 @@ import (
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
-const applicationSchemaVersion = 1
+const (
+	applicationSchemaV1Version = 1
+	applicationSchemaV2Version = 2
+	applicationSchemaVersion   = applicationSchemaV2Version
+)
 
 var (
 	// ErrMigrationContract 表示本地 migration history、checksum 或版本状态不自洽。
@@ -54,7 +58,7 @@ type migrationDefinition struct {
 
 var applicationMigrations = []migrationDefinition{
 	{
-		version:  applicationSchemaVersion,
+		version:  applicationSchemaV1Version,
 		name:     "initial-application-schema",
 		checksum: applicationSchemaV1Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
@@ -62,6 +66,14 @@ var applicationMigrations = []migrationDefinition{
 				return err
 			}
 			return ensureSchemaObjects(ctx, transaction, runtimeSchemaObjects)
+		},
+	},
+	{
+		version:  applicationSchemaV2Version,
+		name:     "retention-query-indexes",
+		checksum: applicationSchemaV2Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			return ensureSchemaObjects(ctx, transaction, retentionSchemaObjects)
 		},
 	},
 }
@@ -413,7 +425,9 @@ func validateMigrationState(
 }
 
 func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteTx) error {
-	for _, objects := range [][]schemaObject{migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects} {
+	for _, objects := range [][]schemaObject{
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects, retentionSchemaObjects,
+	} {
 		for _, object := range objects {
 			exists, err := verifySchemaObject(ctx, transaction, object)
 			if err != nil {
@@ -429,7 +443,7 @@ func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteT
 
 func applicationSchemaV1Checksum() string {
 	hasher := sha256.New()
-	_, _ = fmt.Fprintln(hasher, applicationSchemaVersion, "initial-application-schema")
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV1Version, "initial-application-schema")
 	for _, objects := range [][]schemaObject{migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects} {
 		for _, object := range objects {
 			_, _ = fmt.Fprintln(
@@ -437,6 +451,18 @@ func applicationSchemaV1Checksum() string {
 				strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
 			)
 		}
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV2Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV2Version, "retention-query-indexes")
+	for _, object := range retentionSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.objectType, object.name,
+			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }

@@ -39,6 +39,8 @@ type writeJob struct {
 	result chan error
 }
 
+const maintenanceQueueCapacity = 1
+
 // Store owns the process-local SQLite writer, read pool, and close lifecycle.
 type Store struct {
 	config    Config
@@ -48,10 +50,11 @@ type Store struct {
 	writer    *gorm.DB
 	reader    *gorm.DB
 
-	writeQueue chan writeJob
-	shutdown   chan struct{}
-	done       chan struct{}
-	closeOnce  sync.Once
+	writeQueue       chan writeJob
+	maintenanceQueue chan writeJob
+	shutdown         chan struct{}
+	done             chan struct{}
+	closeOnce        sync.Once
 
 	stateMu  sync.Mutex
 	state    lifecycleState
@@ -135,16 +138,17 @@ func Open(ctx context.Context, input Config) (_ *Store, returnErr error) {
 	}
 
 	store := &Store{
-		config:     config,
-		pragmas:    PragmaSnapshot{Writer: writerPragmas, Reader: readerPragmas},
-		writerSQL:  writerSQL,
-		readerSQL:  readerSQL,
-		writer:     writer,
-		reader:     reader,
-		writeQueue: make(chan writeJob, config.WriteQueueCapacity),
-		shutdown:   make(chan struct{}),
-		done:       make(chan struct{}),
-		state:      stateOpen,
+		config:           config,
+		pragmas:          PragmaSnapshot{Writer: writerPragmas, Reader: readerPragmas},
+		writerSQL:        writerSQL,
+		readerSQL:        readerSQL,
+		writer:           writer,
+		reader:           reader,
+		writeQueue:       make(chan writeJob, config.WriteQueueCapacity),
+		maintenanceQueue: make(chan writeJob, maintenanceQueueCapacity),
+		shutdown:         make(chan struct{}),
+		done:             make(chan struct{}),
+		state:            stateOpen,
 	}
 	go store.runWriter()
 
@@ -165,11 +169,22 @@ func (store *Store) Pragmas() PragmaSnapshot {
 // it waits for the worker's authoritative commit or rollback result even when
 // the context is canceled.
 func (store *Store) Write(ctx context.Context, write WriteFunc) error {
+	return store.enqueueWrite(ctx, write, store.writeQueue, "enqueue write")
+}
+
+// WriteMaintenance admits one transaction to a separate bounded queue that is
+// only serviced when no normal write is waiting. It otherwise has the same
+// authoritative commit, rollback, cancellation, and close semantics as Write.
+func (store *Store) WriteMaintenance(ctx context.Context, write WriteFunc) error {
+	return store.enqueueWrite(ctx, write, store.maintenanceQueue, "enqueue maintenance write")
+}
+
+func (store *Store) enqueueWrite(ctx context.Context, write WriteFunc, queue chan<- writeJob, operation string) error {
 	if write == nil {
-		return newClassifiedError("write", ErrInvalidConfig, fmt.Errorf("write callback is nil"))
+		return newClassifiedError(operation, ErrInvalidConfig, fmt.Errorf("write callback is nil"))
 	}
 	if err := ctx.Err(); err != nil {
-		return classifyError("enqueue write", err)
+		return classifyError(operation, err)
 	}
 
 	job := writeJob{
@@ -181,18 +196,18 @@ func (store *Store) Write(ctx context.Context, write WriteFunc) error {
 	var admissionErr error
 	switch store.state {
 	case stateClosing:
-		admissionErr = newClassifiedError("enqueue write", ErrClosing, nil)
+		admissionErr = newClassifiedError(operation, ErrClosing, nil)
 	case stateClosed:
-		admissionErr = newClassifiedError("enqueue write", ErrClosed, nil)
+		admissionErr = newClassifiedError(operation, ErrClosed, nil)
 	default:
 		select {
 		case <-ctx.Done():
-			admissionErr = classifyError("enqueue write", ctx.Err())
-		case store.writeQueue <- job:
+			admissionErr = classifyError(operation, ctx.Err())
+		case queue <- job:
 		case <-store.shutdown:
-			admissionErr = newClassifiedError("enqueue write", ErrClosing, nil)
+			admissionErr = newClassifiedError(operation, ErrClosing, nil)
 		default:
-			admissionErr = newClassifiedError("enqueue write", ErrQueueFull, nil)
+			admissionErr = newClassifiedError(operation, ErrQueueFull, nil)
 		}
 	}
 	store.stateMu.Unlock()
@@ -252,23 +267,64 @@ func (store *Store) Close(ctx context.Context) error {
 }
 
 func (store *Store) runWriter() {
+	var pendingMaintenance *writeJob
 	for {
+		if pendingMaintenance != nil {
+			// Admission also holds stateMu. Keeping it across the empty check
+			// establishes the exact point after which a new normal write waits
+			// behind the maintenance transaction that is about to start.
+			store.stateMu.Lock()
+			select {
+			case job := <-store.writeQueue:
+				store.stateMu.Unlock()
+				job.result <- store.executeWrite(job)
+				continue
+			default:
+				job := *pendingMaintenance
+				pendingMaintenance = nil
+				store.stateMu.Unlock()
+				job.result <- store.executeWrite(job)
+				continue
+			}
+		}
+
 		select {
 		case job := <-store.writeQueue:
 			job.result <- store.executeWrite(job)
+			continue
+		default:
+		}
+
+		select {
+		case job := <-store.writeQueue:
+			job.result <- store.executeWrite(job)
+		case job := <-store.maintenanceQueue:
+			pendingMaintenance = &job
 		case <-store.shutdown:
-			store.drainAndClose()
+			store.drainAndClose(pendingMaintenance)
 			return
 		}
 	}
 }
 
-func (store *Store) drainAndClose() {
+func (store *Store) drainAndClose(pendingMaintenance *writeJob) {
 	for {
 		select {
 		case job := <-store.writeQueue:
 			job.result <- store.executeWrite(job)
 		default:
+			if pendingMaintenance != nil {
+				job := *pendingMaintenance
+				pendingMaintenance = nil
+				job.result <- store.executeWrite(job)
+				continue
+			}
+			select {
+			case job := <-store.maintenanceQueue:
+				job.result <- store.executeWrite(job)
+				continue
+			default:
+			}
 			store.reads.Wait()
 			closeErr := errors.Join(store.readerSQL.Close(), store.writerSQL.Close())
 			store.stateMu.Lock()
