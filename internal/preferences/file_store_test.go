@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestFileStoreConfirmLoadPermissionsAndIdempotence(t *testing.T) {
@@ -448,6 +449,389 @@ func TestFileStoreHonorsCanceledContext(t *testing.T) {
 	}
 	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("os.Lstat(after cancel) error = %v, want not exist", err)
+	}
+}
+
+func TestReplacePrivateFileFaultStagesPreserveWholeSnapshot(t *testing.T) {
+	t.Parallel()
+
+	injected := errors.New("injected replace interruption")
+	stages := []struct {
+		stage     publishStage
+		committed bool
+	}{
+		{publishStageTemporaryCreated, false},
+		{publishStageContentWritten, false},
+		{publishStageFileSynced, false},
+		{publishStageTargetReplaced, true},
+		{publishStageBeforeDirectorySync, true},
+	}
+	for _, test := range stages {
+		test := test
+		t.Run(string(test.stage), func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), "private", "preferences.json")
+			store, err := NewFileStore(path)
+			if err != nil {
+				t.Fatalf("NewFileStore() error = %v", err)
+			}
+			if err := store.Confirm(context.Background(), validSnapshot(filepath.Join(t.TempDir(), "home"))); err != nil {
+				t.Fatalf("Confirm() error = %v", err)
+			}
+			before, err := store.LoadPreferences(context.Background())
+			if err != nil {
+				t.Fatalf("LoadPreferences(before) error = %v", err)
+			}
+			next := before
+			next.Revision++
+			next.Online.QuotaEnabled = !next.Online.QuotaEnabled
+			content, err := marshalPreferences(next)
+			if err != nil {
+				t.Fatalf("marshalPreferences() error = %v", err)
+			}
+			err = replacePrivateFileWithHook(path, content, func(stage publishStage) error {
+				if stage == test.stage {
+					return injected
+				}
+				return nil
+			})
+			if test.committed {
+				if !errors.Is(err, ErrDurabilityUnknown) {
+					t.Fatalf("replace error = %v, want ErrDurabilityUnknown", err)
+				}
+			} else if !errors.Is(err, injected) {
+				t.Fatalf("replace error = %v, want injected error", err)
+			}
+			got, loadErr := store.LoadPreferences(context.Background())
+			want := before
+			if test.committed {
+				want = next
+			}
+			if loadErr != nil || !reflect.DeepEqual(got, want) {
+				t.Fatalf("LoadPreferences() = %#v, %v, want %#v", got, loadErr, want)
+			}
+			entries, readErr := os.ReadDir(filepath.Dir(path))
+			if readErr != nil {
+				t.Fatalf("os.ReadDir() error = %v", readErr)
+			}
+			for _, entry := range entries {
+				if strings.Contains(entry.Name(), ".partial-") {
+					t.Fatalf("partial remains after %s: %s", test.stage, entry.Name())
+				}
+			}
+		})
+	}
+}
+
+func TestFileStoreConcurrentCompareAndSwapHasSingleWinner(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "private", "preferences.json")
+	stores := make([]*FileStore, 2)
+	for index := range stores {
+		store, err := NewFileStore(path)
+		if err != nil {
+			t.Fatalf("NewFileStore(%d) error = %v", index, err)
+		}
+		stores[index] = store
+	}
+	if err := stores[0].Confirm(context.Background(), validSnapshot(filepath.Join(t.TempDir(), "home"))); err != nil {
+		t.Fatalf("Confirm() error = %v", err)
+	}
+	base, err := stores[0].LoadPreferences(context.Background())
+	if err != nil {
+		t.Fatalf("LoadPreferences() error = %v", err)
+	}
+	candidates := []Snapshot{base, base}
+	for index := range candidates {
+		candidates[index].Revision++
+	}
+	candidates[0].Online.QuotaEnabled = false
+	candidates[1].UI.OverviewRange = OverviewRangeThirtyDays
+
+	start := make(chan struct{})
+	errs := make([]error, 2)
+	var wait sync.WaitGroup
+	for index := range stores {
+		index := index
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			errs[index] = stores[index].CompareAndSwap(context.Background(), base.Revision, candidates[index])
+		}()
+	}
+	close(start)
+	wait.Wait()
+	winners, conflicts := 0, 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			winners++
+		case errors.Is(err, ErrPreferencesConflict):
+			conflicts++
+		default:
+			t.Fatalf("CompareAndSwap() unexpected error = %v", err)
+		}
+	}
+	if winners != 1 || conflicts != 1 {
+		t.Fatalf("winners/conflicts = %d/%d, want 1/1", winners, conflicts)
+	}
+	got, err := stores[0].LoadPreferences(context.Background())
+	if err != nil || got.Revision != base.Revision+1 ||
+		(!reflect.DeepEqual(got, candidates[0]) && !reflect.DeepEqual(got, candidates[1])) {
+		t.Fatalf("LoadPreferences(winner) = %#v, %v", got, err)
+	}
+}
+
+func TestFileStoreMigrationFailurePreservesLegacyBytes(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatalf("os.Chmod(root) error = %v", err)
+	}
+	path := filepath.Join(root, "preferences.json")
+	legacyContent, err := marshalSnapshot(validSnapshot(filepath.Join(t.TempDir(), "home")))
+	if err != nil {
+		t.Fatalf("marshalSnapshot() error = %v", err)
+	}
+	if err := os.WriteFile(path, legacyContent, 0o600); err != nil {
+		t.Fatalf("os.WriteFile() error = %v", err)
+	}
+	injected := errors.New("replace failed")
+	store, err := newFileStoreWithReplace(path, publishPrivateFile, func(string, []byte) error { return injected })
+	if err != nil {
+		t.Fatalf("newFileStoreWithReplace() error = %v", err)
+	}
+	if _, err := store.LoadPreferences(context.Background()); !errors.Is(err, injected) {
+		t.Fatalf("LoadPreferences() error = %v, want injected", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("os.ReadFile() error = %v", err)
+	}
+	if string(got) != string(legacyContent) {
+		t.Fatal("failed migration changed legacy bytes")
+	}
+}
+
+func TestFileStoreMigrationReadsBackCommittedDurabilityUnknown(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatalf("os.Chmod(root) error = %v", err)
+	}
+	path := filepath.Join(root, "preferences.json")
+	legacy := validSnapshot(filepath.Join(t.TempDir(), "home"))
+	legacyContent, err := marshalSnapshot(legacy)
+	if err != nil {
+		t.Fatalf("marshalSnapshot() error = %v", err)
+	}
+	if err := os.WriteFile(path, legacyContent, 0o600); err != nil {
+		t.Fatalf("os.WriteFile() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	injected := errors.New("directory sync response lost")
+	store, err := newFileStoreWithReplace(path, publishPrivateFile, func(path string, content []byte) error {
+		return replacePrivateFileWithHook(path, content, func(stage publishStage) error {
+			if stage == publishStageTargetReplaced {
+				cancel()
+				return injected
+			}
+			return nil
+		})
+	})
+	if err != nil {
+		t.Fatalf("newFileStoreWithReplace() error = %v", err)
+	}
+	got, err := store.LoadPreferences(ctx)
+	if err != nil {
+		t.Fatalf("LoadPreferences(committed migration) error = %v", err)
+	}
+	want, err := preferencesFromOnboarding(legacy)
+	if err != nil {
+		t.Fatalf("preferencesFromOnboarding() error = %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("LoadPreferences(committed migration) = %#v, want %#v", got, want)
+	}
+}
+
+func TestFileStoreCompareAndSwapCancellationWhileLockIsHeld(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "private", "preferences.json")
+	store, err := NewFileStore(path)
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+	if err := store.Confirm(context.Background(), validSnapshot(filepath.Join(t.TempDir(), "home"))); err != nil {
+		t.Fatalf("Confirm() error = %v", err)
+	}
+	base, err := store.LoadPreferences(context.Background())
+	if err != nil {
+		t.Fatalf("LoadPreferences() error = %v", err)
+	}
+	lock, err := acquirePreferencesLock(context.Background(), path)
+	if err != nil {
+		t.Fatalf("acquirePreferencesLock() error = %v", err)
+	}
+	defer lock.Release()
+	next := base
+	next.Revision++
+	next.Online.QuotaEnabled = !next.Online.QuotaEnabled
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	if err := store.CompareAndSwap(ctx, base.Revision, next); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("CompareAndSwap(blocked) error = %v, want context deadline", err)
+	}
+	got, err := store.LoadPreferences(context.Background())
+	if err != nil || !reflect.DeepEqual(got, base) {
+		t.Fatalf("LoadPreferences(after cancellation) = %#v, %v, want %#v", got, err, base)
+	}
+}
+
+func TestFileStoreCompareAndSwapRejectsUnsafeLockFile(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		setup func(*testing.T, string)
+	}{
+		{
+			name: "symlink",
+			setup: func(t *testing.T, lockPath string) {
+				t.Helper()
+				target := filepath.Join(t.TempDir(), "lock-target")
+				if err := os.WriteFile(target, nil, 0o600); err != nil {
+					t.Fatalf("os.WriteFile(lock target) error = %v", err)
+				}
+				if err := os.Symlink(target, lockPath); err != nil {
+					t.Fatalf("os.Symlink(lock) error = %v", err)
+				}
+			},
+		},
+		{
+			name: "broad mode",
+			setup: func(t *testing.T, lockPath string) {
+				t.Helper()
+				if err := os.WriteFile(lockPath, nil, 0o644); err != nil {
+					t.Fatalf("os.WriteFile(lock) error = %v", err)
+				}
+			},
+		},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), "private", "preferences.json")
+			store, err := NewFileStore(path)
+			if err != nil {
+				t.Fatalf("NewFileStore() error = %v", err)
+			}
+			if err := store.Confirm(context.Background(), validSnapshot(filepath.Join(t.TempDir(), "home"))); err != nil {
+				t.Fatalf("Confirm() error = %v", err)
+			}
+			base, err := store.LoadPreferences(context.Background())
+			if err != nil {
+				t.Fatalf("LoadPreferences() error = %v", err)
+			}
+			test.setup(t, filepath.Join(filepath.Dir(path), ".preferences.lock"))
+			next := base
+			next.Revision++
+			next.Online.QuotaEnabled = !next.Online.QuotaEnabled
+			if err := store.CompareAndSwap(context.Background(), base.Revision, next); !errors.Is(err, ErrUnsafePath) {
+				t.Fatalf("CompareAndSwap(unsafe lock) error = %v, want ErrUnsafePath", err)
+			}
+			got, err := store.LoadPreferences(context.Background())
+			if err != nil || !reflect.DeepEqual(got, base) {
+				t.Fatalf("LoadPreferences(after unsafe lock) = %#v, %v, want %#v", got, err, base)
+			}
+		})
+	}
+}
+
+func TestFileStoreSwitchExecutionLeaseSerializesAcrossInstances(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "private", "preferences.json")
+	first, err := NewFileStore(path)
+	if err != nil {
+		t.Fatalf("NewFileStore(first) error = %v", err)
+	}
+	second, err := NewFileStore(path)
+	if err != nil {
+		t.Fatalf("NewFileStore(second) error = %v", err)
+	}
+	if err := first.Confirm(context.Background(), validSnapshot(filepath.Join(t.TempDir(), "home"))); err != nil {
+		t.Fatalf("Confirm() error = %v", err)
+	}
+	firstLease, err := first.AcquireSwitchLease(context.Background())
+	if err != nil {
+		t.Fatalf("AcquireSwitchLease(first) error = %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	if lease, err := second.AcquireSwitchLease(ctx); !errors.Is(err, context.DeadlineExceeded) || lease != nil {
+		t.Fatalf("AcquireSwitchLease(blocked) = %#v, %v, want context deadline", lease, err)
+	}
+	firstLease.Release()
+	secondLease, err := second.AcquireSwitchLease(context.Background())
+	if err != nil {
+		t.Fatalf("AcquireSwitchLease(after release) error = %v", err)
+	}
+	secondLease.Release()
+}
+
+func TestFileStoreSwitchExecutionLeaseRejectsUnsafeLockFile(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		setup func(*testing.T, string)
+	}{
+		{
+			name: "symlink",
+			setup: func(t *testing.T, lockPath string) {
+				t.Helper()
+				target := filepath.Join(t.TempDir(), "lock-target")
+				if err := os.WriteFile(target, nil, 0o600); err != nil {
+					t.Fatalf("os.WriteFile(lock target) error = %v", err)
+				}
+				if err := os.Symlink(target, lockPath); err != nil {
+					t.Fatalf("os.Symlink(lock) error = %v", err)
+				}
+			},
+		},
+		{
+			name: "broad mode",
+			setup: func(t *testing.T, lockPath string) {
+				t.Helper()
+				if err := os.WriteFile(lockPath, nil, 0o644); err != nil {
+					t.Fatalf("os.WriteFile(lock) error = %v", err)
+				}
+			},
+		},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), "private", "preferences.json")
+			store, err := NewFileStore(path)
+			if err != nil {
+				t.Fatalf("NewFileStore() error = %v", err)
+			}
+			if err := store.Confirm(context.Background(), validSnapshot(filepath.Join(t.TempDir(), "home"))); err != nil {
+				t.Fatalf("Confirm() error = %v", err)
+			}
+			test.setup(t, filepath.Join(filepath.Dir(path), ".preferences.switch.lock"))
+			if lease, err := store.AcquireSwitchLease(context.Background()); !errors.Is(err, ErrUnsafePath) || lease != nil {
+				t.Fatalf("AcquireSwitchLease(unsafe lock) = %#v, %v, want ErrUnsafePath", lease, err)
+			}
+		})
 	}
 }
 
