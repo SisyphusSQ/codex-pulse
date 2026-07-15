@@ -19,14 +19,14 @@ func TestApplicationSchemaV10ChecksumIsFrozen(t *testing.T) {
 func TestApplicationSchemaV10AddsTypedSourceFailureMetrics(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != 10 {
-		t.Fatalf("applicationSchemaVersion = %d, want 10", applicationSchemaVersion)
+	if applicationSchemaVersion != 11 {
+		t.Fatalf("applicationSchemaVersion = %d, want 11", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	if err := NewRepository(database).EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 10, 10)
+	assertMigrationVersionAndHistory(t, database, 11, 11)
 	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
 		for _, field := range []struct {
 			model any
@@ -81,6 +81,8 @@ func TestApplicationMigrationUpgradesV9ToV10AndEnforcesFailureAllowlist(t *testi
 	}
 
 	runner := applicationMigrationRunnerForTest(database)
+	runner.catalog = applicationMigrations[:10]
+	runner.verifyCurrent = verifyApplicationSchemaV10
 	runner.spaceCheck = func(context.Context, string, int64) error { return nil }
 	runner.backup = func(context.Context, int, int, func(storesqlite.BackupProgress)) (string, error) {
 		return "/tmp/application-v9-before-v10.db", nil

@@ -16,7 +16,7 @@ func TestApplicationSchemaV5CreatesStrictCostLedgerContract(t *testing.T) {
 	if err := NewRepository(database).EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 10, 10)
+	assertMigrationVersionAndHistory(t, database, 11, 11)
 
 	wantTables := []string{
 		"cost_rollup_generations",
@@ -75,14 +75,14 @@ func TestApplicationMigrationAppendsCostLedgerToFrozenV4(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
-	if report.FromVersion != 4 || report.TargetVersion != 10 ||
-		!equalInts(report.AppliedVersions, []int{5, 6, 7, 8, 9, 10}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v4 to v10", report)
+	if report.FromVersion != 4 || report.TargetVersion != 11 ||
+		!equalInts(report.AppliedVersions, []int{5, 6, 7, 8, 9, 10, 11}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v4 to v11", report)
 	}
-	if backupVersions != [2]int{4, 10} {
-		t.Fatalf("backup versions = %v, want [4 10]", backupVersions)
+	if backupVersions != [2]int{4, 11} {
+		t.Fatalf("backup versions = %v, want [4 11]", backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 10, 10)
+	assertMigrationVersionAndHistory(t, database, 11, 11)
 }
 
 func TestPricingCatalogMetadataIsImmutableAndLegacyMetadataRemainsOptional(t *testing.T) {

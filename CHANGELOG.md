@@ -22,6 +22,7 @@
 19. [TOO-305] 重构 scheduler 周期唤醒为 robfig/cron v3.0.1 每秒 trigger，固定重叠跳过、首错 fence、panic 脱敏、Stop drain 与持久调度状态边界
 20. [TOO-262] 新增本地 Codex JSONL quota observation 的严格解析、物理 source provenance、GORM Pure Go schema v9 持久化与 coalesced replay receipt，固定 partial window、schema drift、文件替换、checkpoint rollback 和隐私边界
 21. [TOO-263] 新增受控 Wham quota 客户端、内存凭证租约与 GORM Pure Go schema v10 原子记录，固定 exact-key/null/partial 校验、禁止 redirect、七类失败、短重试和 last-known-good 语义
+22. [TOO-264] 建立可重建的 quota 窗口代际校验与 Local/Wham 可信仲裁投影，隔离异常、旧代际和冲突 observation，保留 last-known-good 与完整 evidence 解释
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

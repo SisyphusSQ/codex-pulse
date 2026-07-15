@@ -35,6 +35,8 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 		"pricing_versions",
 		"project_usage_daily",
 		"projects",
+		"quota_arbitration_evidence",
+		"quota_current",
 		"quota_observation_receipts",
 		"quota_observations",
 		"scheduler_cycles",
@@ -174,6 +176,16 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"quota_observation_receipts": {
 			"observation_id", "segment_observation_id", "sample_sha256",
 		},
+		"quota_current": {
+			"account_scope", "window_kind", "limit_id", "observation_id", "effective_used_percent",
+			"window_minutes", "resets_at_ms", "window_generation", "selected_source", "freshness_state",
+			"conflict_state", "fresh_until_ms", "last_success_at_ms", "last_attempt_at_ms",
+			"rule_version", "explanation_code", "evaluated_at_ms",
+		},
+		"quota_arbitration_evidence": {
+			"account_scope", "window_kind", "limit_id", "observation_id", "window_generation",
+			"disposition", "reason", "explanation_code",
+		},
 	}
 	wantForeignKeys := []string{
 		"bootstrap_jobs.job_id->job_runs.job_id/CASCADE",
@@ -184,6 +196,11 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"job_runs.source_file_id->source_files.source_file_id/SET NULL",
 		"live_scan_jobs.job_id->job_runs.job_id/CASCADE",
 		"model_prices.pricing_version->pricing_versions.pricing_version/CASCADE",
+		"quota_arbitration_evidence.account_scope->quota_current.account_scope/CASCADE",
+		"quota_arbitration_evidence.limit_id->quota_current.limit_id/CASCADE",
+		"quota_arbitration_evidence.observation_id->quota_observations.observation_id/RESTRICT",
+		"quota_arbitration_evidence.window_kind->quota_current.window_kind/CASCADE",
+		"quota_current.observation_id->quota_observations.observation_id/RESTRICT",
 		"quota_observation_receipts.segment_observation_id->quota_observations.observation_id/CASCADE",
 		"quota_observations.session_id->sessions.session_id/SET NULL",
 		"quota_observations.source_file_id->source_files.source_file_id/RESTRICT",
@@ -210,6 +227,8 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"idx_live_scan_jobs_generation",
 		"idx_model_prices_match",
 		"idx_pricing_versions_effective",
+		"idx_quota_arbitration_evidence_observation",
+		"idx_quota_current_freshness",
 		"idx_quota_observation_receipts_segment",
 		"idx_quota_observations_current",
 		"idx_quota_observations_source_position",
