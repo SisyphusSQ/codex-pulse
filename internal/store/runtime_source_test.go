@@ -229,6 +229,7 @@ func TestSourceStateDueQueryAndAppendOnlyAttempts(t *testing.T) {
 		Outcome:          SourceAttemptSucceeded,
 		HTTPStatus:       pointerTo(int64(200)),
 		PayloadSHA256:    pointerTo(SHA256DigestOf([]byte("synthetic payload"))),
+		AttemptCount:     1,
 	}
 	if err := repository.AppendSourceAttempt(context.Background(), attempt); err != nil {
 		t.Fatalf("AppendSourceAttempt() error = %v", err)

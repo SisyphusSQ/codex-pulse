@@ -404,8 +404,9 @@ func sourceStateModelFromDomain(state SourceState) sourceStateModel {
 		SourceInstanceID: state.SourceInstanceID, SourceType: state.SourceType, ScopeKey: state.ScopeKey,
 		LastAttemptAtMS: state.LastAttemptAtMS, LastSuccessAtMS: state.LastSuccessAtMS,
 		NextDueAtMS: state.NextDueAtMS, ConsecutiveFailures: state.ConsecutiveFailures,
-		LastErrorClass: runtimeErrorStringPointer(state.LastErrorClass),
-		FreshnessState: string(state.FreshnessState), CursorVersion: state.CursorVersion,
+		LastErrorClass:  runtimeErrorStringPointer(state.LastErrorClass),
+		LastFailureCode: sourceFailureStringPointer(state.LastFailureCode),
+		FreshnessState:  string(state.FreshnessState), CursorVersion: state.CursorVersion,
 		UpdatedAtMS: state.UpdatedAtMS,
 	}
 }
@@ -414,8 +415,9 @@ func sourceStateUpdates(model sourceStateModel) map[string]any {
 	return map[string]any{
 		"last_attempt_at_ms": model.LastAttemptAtMS, "last_success_at_ms": model.LastSuccessAtMS,
 		"next_due_at_ms": model.NextDueAtMS, "consecutive_failures": model.ConsecutiveFailures,
-		"last_error_class": model.LastErrorClass, "freshness_state": model.FreshnessState,
-		"cursor_version": model.CursorVersion, "updated_at_ms": model.UpdatedAtMS,
+		"last_error_class": model.LastErrorClass, "last_failure_code": model.LastFailureCode,
+		"freshness_state": model.FreshnessState,
+		"cursor_version":  model.CursorVersion, "updated_at_ms": model.UpdatedAtMS,
 	}
 }
 
@@ -425,7 +427,10 @@ func sourceAttemptModelFromDomain(attempt SourceAttempt) sourceAttemptModel {
 		StartedAtMS: attempt.StartedAtMS, FinishedAtMS: attempt.FinishedAtMS,
 		Outcome: string(attempt.Outcome), HTTPStatus: attempt.HTTPStatus,
 		ErrorClass:    runtimeErrorStringPointer(attempt.ErrorClass),
+		FailureCode:   sourceFailureStringPointer(attempt.FailureCode),
 		PayloadSHA256: digestStringPointer(attempt.PayloadSHA256),
+		AttemptCount:  attempt.AttemptCount, ResponseBytes: attempt.ResponseBytes,
+		RetryAtMS: attempt.RetryAtMS,
 	}
 }
 
@@ -446,6 +451,14 @@ func jobRunModelFromDomain(job JobRun) jobRunModel {
 }
 
 func runtimeErrorStringPointer(value *RuntimeErrorClass) *string {
+	if value == nil {
+		return nil
+	}
+	converted := string(*value)
+	return &converted
+}
+
+func sourceFailureStringPointer(value *SourceFailureCode) *string {
 	if value == nil {
 		return nil
 	}

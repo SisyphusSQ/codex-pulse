@@ -101,6 +101,7 @@ func seedStoreBeforeAbnormalExit(path string) error {
 	if err := repository.AppendSourceAttempt(ctx, SourceAttempt{
 		RequestID: "abnormal-attempt", SourceInstanceID: state.SourceInstanceID,
 		StartedAtMS: cutoffMS - 2, FinishedAtMS: cutoffMS - 1, Outcome: SourceAttemptSucceeded,
+		AttemptCount: 1,
 	}); err != nil {
 		return fmt.Errorf("write abnormal-exit source attempt: %w", err)
 	}
@@ -153,6 +154,7 @@ func TestStoreIntegrationFreshReplayCleanupInterruptedAndReopen(t *testing.T) {
 	attempt := SourceAttempt{
 		RequestID: "integration-attempt", SourceInstanceID: state.SourceInstanceID,
 		StartedAtMS: cutoff - 2, FinishedAtMS: cutoff - 1, Outcome: SourceAttemptSucceeded,
+		AttemptCount: 1,
 	}
 	for range 2 {
 		if err := repository.AppendSourceAttempt(context.Background(), attempt); err != nil {

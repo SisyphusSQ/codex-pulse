@@ -112,9 +112,9 @@ func TestCleanupRetentionAppliesFixedWindowAndReferenceRules(t *testing.T) {
 			UpdatedAtMS: cutoff + 1,
 		}},
 		sourceAttempts: []sourceAttemptModel{
-			{RequestID: "attempt-old", SourceInstanceID: "source-a", StartedAtMS: cutoff - 2, FinishedAtMS: cutoff - 1, Outcome: string(SourceAttemptSucceeded)},
-			{RequestID: "attempt-boundary", SourceInstanceID: "source-a", StartedAtMS: cutoff - 1, FinishedAtMS: cutoff, Outcome: string(SourceAttemptSucceeded)},
-			{RequestID: "attempt-recent", SourceInstanceID: "source-a", StartedAtMS: cutoff, FinishedAtMS: cutoff + 1, Outcome: string(SourceAttemptSucceeded)},
+			{RequestID: "attempt-old", SourceInstanceID: "source-a", StartedAtMS: cutoff - 2, FinishedAtMS: cutoff - 1, Outcome: string(SourceAttemptSucceeded), AttemptCount: 1},
+			{RequestID: "attempt-boundary", SourceInstanceID: "source-a", StartedAtMS: cutoff - 1, FinishedAtMS: cutoff, Outcome: string(SourceAttemptSucceeded), AttemptCount: 1},
+			{RequestID: "attempt-recent", SourceInstanceID: "source-a", StartedAtMS: cutoff, FinishedAtMS: cutoff + 1, Outcome: string(SourceAttemptSucceeded), AttemptCount: 1},
 		},
 		jobs: []jobRunModel{
 			retentionTerminalJob("job-old", cutoff-10, cutoff-1),
@@ -183,7 +183,7 @@ func TestCleanupRetentionCancelsBetweenCommittedBatchesAndRetriesWithoutCursor(t
 		attempts = append(attempts, sourceAttemptModel{
 			RequestID: "attempt-" + string(rune('a'+index)), SourceInstanceID: "source-a",
 			StartedAtMS: cutoff - 10 + int64(index), FinishedAtMS: cutoff - 5 + int64(index),
-			Outcome: string(SourceAttemptSucceeded),
+			Outcome: string(SourceAttemptSucceeded), AttemptCount: 1,
 		})
 	}
 	seedRetentionModels(t, repository, retentionFixture{
@@ -265,7 +265,7 @@ func TestCleanupRetentionRollsBackFailedBatchAndCanRetry(t *testing.T) {
 		}},
 		sourceAttempts: []sourceAttemptModel{{
 			RequestID: "attempt-old", SourceInstanceID: "source-a", StartedAtMS: cutoff - 2,
-			FinishedAtMS: cutoff - 1, Outcome: string(SourceAttemptSucceeded),
+			FinishedAtMS: cutoff - 1, Outcome: string(SourceAttemptSucceeded), AttemptCount: 1,
 		}},
 		jobs: []jobRunModel{retentionTerminalJob("job-old", cutoff-10, cutoff-1)},
 		health: []healthEventModel{

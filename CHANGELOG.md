@@ -21,6 +21,7 @@
 18. [TOO-261] 实现持久暂停续传、休眠唤醒、来源对账与故障恢复状态机，固定 Home generation fence、可取消有界退避、typed 用户动作、应用事件串行化及 target/cycle 原子恢复语义
 19. [TOO-305] 重构 scheduler 周期唤醒为 robfig/cron v3.0.1 每秒 trigger，固定重叠跳过、首错 fence、panic 脱敏、Stop drain 与持久调度状态边界
 20. [TOO-262] 新增本地 Codex JSONL quota observation 的严格解析、物理 source provenance、GORM Pure Go schema v9 持久化与 coalesced replay receipt，固定 partial window、schema drift、文件替换、checkpoint rollback 和隐私边界
+21. [TOO-263] 新增受控 Wham quota 客户端、内存凭证租约与 GORM Pure Go schema v10 原子记录，固定 exact-key/null/partial 校验、禁止 redirect、七类失败、短重试和 last-known-good 语义
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

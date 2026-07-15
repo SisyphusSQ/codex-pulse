@@ -138,11 +138,12 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"source_state": {
 			"source_instance_id", "source_type", "scope_key", "last_attempt_at_ms",
 			"last_success_at_ms", "next_due_at_ms", "consecutive_failures",
-			"last_error_class", "freshness_state", "cursor_version", "updated_at_ms",
+			"last_error_class", "freshness_state", "cursor_version", "updated_at_ms", "last_failure_code",
 		},
 		"source_attempts": {
 			"request_id", "source_instance_id", "started_at_ms", "finished_at_ms",
-			"outcome", "http_status", "error_class", "payload_sha256",
+			"outcome", "http_status", "error_class", "payload_sha256", "failure_code",
+			"attempt_count", "response_bytes", "retry_at_ms",
 		},
 		"job_runs": {
 			"job_id", "job_type", "requested_by", "priority", "state", "phase",
@@ -426,7 +427,7 @@ func TestRuntimeSchemaExcludesSensitiveContentColumns(t *testing.T) {
 
 	forbiddenFragments := []string{
 		"token", "cookie", "authorization", "raw_error", "error_message", "error_detail",
-		"stack", "prompt", "response", "tool_output", "jsonl", "payload_body",
+		"stack", "prompt", "response_body", "tool_output", "jsonl", "payload_body",
 	}
 	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
 		rows, err := rawQueryRows(ctx, connection, `
@@ -470,7 +471,11 @@ func TestRuntimeSchemaRejectsInvalidClassesAndPriceTypesWithoutRepository(t *tes
 	}
 	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
 		if _, err := rawExec(ctx, transaction, `
-			INSERT INTO source_state VALUES (
+			INSERT INTO source_state (
+				source_instance_id, source_type, scope_key, last_attempt_at_ms, last_success_at_ms,
+				next_due_at_ms, consecutive_failures, last_error_class, freshness_state,
+				cursor_version, updated_at_ms
+			) VALUES (
 				'source-valid', 'quota', 'default', NULL, NULL, NULL, 0, NULL, 'unknown', 0, 0
 			)
 		`); err != nil {
@@ -498,21 +503,31 @@ func TestRuntimeSchemaRejectsInvalidClassesAndPriceTypesWithoutRepository(t *tes
 		},
 		{
 			name: "source state raw error class",
-			statement: `INSERT INTO source_state VALUES (
+			statement: `INSERT INTO source_state (
+				source_instance_id, source_type, scope_key, last_attempt_at_ms, last_success_at_ms,
+				next_due_at_ms, consecutive_failures, last_error_class, freshness_state,
+				cursor_version, updated_at_ms
+			) VALUES (
 				'source-invalid', 'quota', 'invalid', NULL, NULL, NULL, 1,
 				'raw-sensitive-text', 'stale', 0, 0
 			)`,
 		},
 		{
 			name: "source attempt raw error class",
-			statement: `INSERT INTO source_attempts VALUES (
+			statement: `INSERT INTO source_attempts (
+				request_id, source_instance_id, started_at_ms, finished_at_ms,
+				outcome, http_status, error_class, payload_sha256
+			) VALUES (
 				'attempt-invalid', 'source-valid', 0, 1, 'failed', NULL,
 				'raw-sensitive-text', NULL
 			)`,
 		},
 		{
 			name: "source attempt non-digest payload",
-			statement: `INSERT INTO source_attempts VALUES (
+			statement: `INSERT INTO source_attempts (
+				request_id, source_instance_id, started_at_ms, finished_at_ms,
+				outcome, http_status, error_class, payload_sha256
+			) VALUES (
 				'attempt-payload-invalid', 'source-valid', 0, 1, 'succeeded', NULL,
 				NULL, 'sk-proj-ABC123'
 			)`,

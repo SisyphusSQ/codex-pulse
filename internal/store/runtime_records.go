@@ -65,6 +65,26 @@ const (
 	RuntimeErrorUnknown     RuntimeErrorClass = "unknown"
 )
 
+// SourceFailureCode keeps a source-specific, content-free failure reason next
+// to the cross-domain RuntimeErrorClass. It is safe for persistence and UI
+// routing because it cannot carry an upstream error or response body.
+type SourceFailureCode string
+
+const (
+	SourceFailureNetworkUnavailable SourceFailureCode = "network_unavailable"
+	SourceFailureTimeout            SourceFailureCode = "timeout"
+	SourceFailureAuthRequired       SourceFailureCode = "auth_required"
+	SourceFailureHTTP429            SourceFailureCode = "http_429"
+	SourceFailureServerError        SourceFailureCode = "server_error"
+	SourceFailureSchemaIncompatible SourceFailureCode = "schema_incompatible"
+	SourceFailureCancelled          SourceFailureCode = "cancelled"
+)
+
+const (
+	QuotaSourceInstanceWhamDefault = "quota:wham:default"
+	QuotaSourceTypeWham            = "wham_quota"
+)
+
 type SourceFileState string
 
 const (
@@ -121,6 +141,7 @@ type SourceState struct {
 	NextDueAtMS         *int64
 	ConsecutiveFailures int64
 	LastErrorClass      *RuntimeErrorClass
+	LastFailureCode     *SourceFailureCode
 	FreshnessState      SourceFreshness
 	CursorVersion       int64
 	UpdatedAtMS         int64
@@ -135,7 +156,21 @@ type SourceAttempt struct {
 	Outcome          SourceAttemptOutcome
 	HTTPStatus       *int64
 	ErrorClass       *RuntimeErrorClass
+	FailureCode      *SourceFailureCode
 	PayloadSHA256    *SHA256Digest
+	AttemptCount     int64
+	ResponseBytes    int64
+	RetryAtMS        *int64
+}
+
+// QuotaFetchRecord is the atomic persistence unit for one online quota fetch.
+// Observations and attempt metrics contain no response text or credentials.
+type QuotaFetchRecord struct {
+	SourceInstanceID string
+	SourceType       string
+	ScopeKey         string
+	Attempt          SourceAttempt
+	Observations     []QuotaObservationSample
 }
 
 type JobState string

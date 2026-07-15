@@ -196,8 +196,9 @@ func sourceStateFromModel(model sourceStateModel) SourceState {
 		SourceInstanceID: model.SourceInstanceID, SourceType: model.SourceType, ScopeKey: model.ScopeKey,
 		LastAttemptAtMS: model.LastAttemptAtMS, LastSuccessAtMS: model.LastSuccessAtMS,
 		NextDueAtMS: model.NextDueAtMS, ConsecutiveFailures: model.ConsecutiveFailures,
-		LastErrorClass: runtimeErrorClassFromString(model.LastErrorClass),
-		FreshnessState: SourceFreshness(model.FreshnessState), CursorVersion: model.CursorVersion,
+		LastErrorClass:  runtimeErrorClassFromString(model.LastErrorClass),
+		LastFailureCode: sourceFailureCodeFromString(model.LastFailureCode),
+		FreshnessState:  SourceFreshness(model.FreshnessState), CursorVersion: model.CursorVersion,
 		UpdatedAtMS: model.UpdatedAtMS,
 	}
 }
@@ -211,7 +212,9 @@ func sourceAttemptFromModel(model sourceAttemptModel) (SourceAttempt, error) {
 		RequestID: model.RequestID, SourceInstanceID: model.SourceInstanceID,
 		StartedAtMS: model.StartedAtMS, FinishedAtMS: model.FinishedAtMS,
 		Outcome: SourceAttemptOutcome(model.Outcome), HTTPStatus: model.HTTPStatus,
-		ErrorClass: runtimeErrorClassFromString(model.ErrorClass), PayloadSHA256: digest,
+		ErrorClass:  runtimeErrorClassFromString(model.ErrorClass),
+		FailureCode: sourceFailureCodeFromString(model.FailureCode), PayloadSHA256: digest,
+		AttemptCount: model.AttemptCount, ResponseBytes: model.ResponseBytes, RetryAtMS: model.RetryAtMS,
 	}, nil
 }
 
@@ -220,6 +223,14 @@ func runtimeErrorClassFromString(value *string) *RuntimeErrorClass {
 		return nil
 	}
 	converted := RuntimeErrorClass(*value)
+	return &converted
+}
+
+func sourceFailureCodeFromString(value *string) *SourceFailureCode {
+	if value == nil {
+		return nil
+	}
+	converted := SourceFailureCode(*value)
 	return &converted
 }
 
@@ -251,6 +262,7 @@ func sourceStatesEqual(left, right SourceState) bool {
 		equalInt64Pointer(left.NextDueAtMS, right.NextDueAtMS) &&
 		left.ConsecutiveFailures == right.ConsecutiveFailures &&
 		equalRuntimeErrorClassPointer(left.LastErrorClass, right.LastErrorClass) &&
+		equalSourceFailureCodePointer(left.LastFailureCode, right.LastFailureCode) &&
 		left.FreshnessState == right.FreshnessState && left.CursorVersion == right.CursorVersion &&
 		left.UpdatedAtMS == right.UpdatedAtMS
 }
@@ -260,7 +272,10 @@ func sourceAttemptsEqual(left, right SourceAttempt) bool {
 		left.StartedAtMS == right.StartedAtMS && left.FinishedAtMS == right.FinishedAtMS &&
 		left.Outcome == right.Outcome && equalInt64Pointer(left.HTTPStatus, right.HTTPStatus) &&
 		equalRuntimeErrorClassPointer(left.ErrorClass, right.ErrorClass) &&
-		equalSHA256DigestPointer(left.PayloadSHA256, right.PayloadSHA256)
+		equalSourceFailureCodePointer(left.FailureCode, right.FailureCode) &&
+		equalSHA256DigestPointer(left.PayloadSHA256, right.PayloadSHA256) &&
+		left.AttemptCount == right.AttemptCount && left.ResponseBytes == right.ResponseBytes &&
+		equalInt64Pointer(left.RetryAtMS, right.RetryAtMS)
 }
 
 func equalSHA256DigestPointer(left, right *SHA256Digest) bool {
@@ -271,6 +286,13 @@ func equalSHA256DigestPointer(left, right *SHA256Digest) bool {
 }
 
 func equalRuntimeErrorClassPointer(left, right *RuntimeErrorClass) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
+}
+
+func equalSourceFailureCodePointer(left, right *SourceFailureCode) bool {
 	if left == nil || right == nil {
 		return left == nil && right == nil
 	}

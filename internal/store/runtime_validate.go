@@ -77,7 +77,10 @@ func validateSourceState(state SourceState) error {
 	if !validSourceFreshness(state.FreshnessState) {
 		return invalidRecord("source freshness state is invalid")
 	}
-	return validateRuntimeErrorClass(state.LastErrorClass)
+	if err := validateRuntimeErrorClass(state.LastErrorClass); err != nil {
+		return err
+	}
+	return validateSourceFailureCode(state.LastFailureCode)
 }
 
 func validateSourceAttempt(attempt SourceAttempt) error {
@@ -98,14 +101,29 @@ func validateSourceAttempt(attempt SourceAttempt) error {
 			return err
 		}
 	}
+	if attempt.AttemptCount < 0 || attempt.AttemptCount > 3 || attempt.ResponseBytes < 0 ||
+		attempt.RetryAtMS != nil && *attempt.RetryAtMS < attempt.FinishedAtMS {
+		return invalidRecord("source attempt metrics are invalid")
+	}
 	if err := validateRuntimeErrorClass(attempt.ErrorClass); err != nil {
 		return err
 	}
-	if attempt.Outcome == SourceAttemptSucceeded && attempt.ErrorClass != nil {
-		return invalidRecord("successful source attempt must not have an error class")
+	if err := validateSourceFailureCode(attempt.FailureCode); err != nil {
+		return err
 	}
-	if attempt.Outcome == SourceAttemptFailed && attempt.ErrorClass == nil {
-		return invalidRecord("failed source attempt requires an error class")
+	if attempt.Outcome == SourceAttemptSucceeded && (attempt.ErrorClass != nil || attempt.FailureCode != nil || attempt.RetryAtMS != nil) {
+		return invalidRecord("successful source attempt must not have failure state")
+	}
+	if attempt.Outcome == SourceAttemptFailed && (attempt.ErrorClass == nil || attempt.FailureCode == nil) {
+		return invalidRecord("failed source attempt requires typed failure state")
+	}
+	if attempt.Outcome == SourceAttemptCancelled &&
+		(attempt.ErrorClass == nil || *attempt.ErrorClass != RuntimeErrorCanceled ||
+			attempt.FailureCode == nil || *attempt.FailureCode != SourceFailureCancelled || attempt.RetryAtMS != nil) {
+		return invalidRecord("cancelled source attempt has invalid failure state")
+	}
+	if attempt.RetryAtMS != nil && (attempt.FailureCode == nil || *attempt.FailureCode != SourceFailureHTTP429) {
+		return invalidRecord("only rate-limit failure may carry retry time")
 	}
 	return nil
 }
@@ -125,6 +143,24 @@ func validateRuntimeErrorClass(value *RuntimeErrorClass) error {
 		return invalidRecord("runtime error class is invalid")
 	}
 	return nil
+}
+
+func validateSourceFailureCode(value *SourceFailureCode) error {
+	if value != nil && !validSourceFailureCode(*value) {
+		return invalidRecord("source failure code is invalid")
+	}
+	return nil
+}
+
+func validSourceFailureCode(value SourceFailureCode) bool {
+	switch value {
+	case SourceFailureNetworkUnavailable, SourceFailureTimeout, SourceFailureAuthRequired,
+		SourceFailureHTTP429, SourceFailureServerError, SourceFailureSchemaIncompatible,
+		SourceFailureCancelled:
+		return true
+	default:
+		return false
+	}
 }
 
 func validRuntimeErrorClass(value RuntimeErrorClass) bool {
