@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"time"
+
+	"github.com/robfig/cron/v3"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -17,9 +20,10 @@ type CycleResult struct {
 	YieldFor time.Duration
 }
 
-// Run 先接管遗留task，再以单owner循环执行一个有界cycle并进行可取消等待。
+// Run 先接管遗留task并立即推进一次，再由robfig cron周期触发后续有界cycle。
 func (service *Service) Run(ctx context.Context) error {
-	if service == nil || service.repository == nil || service.systemProbe == nil {
+	if ctx == nil || service == nil || service.repository == nil || service.systemProbe == nil ||
+		service.newCronRunner == nil {
 		return ErrInvalidService
 	}
 	service.runMu.Lock()
@@ -35,47 +39,69 @@ func (service *Service) Run(ctx context.Context) error {
 		service.runMu.Unlock()
 	}()
 
-	ownerLease, err := service.repository.AcquireSchedulerOwner(ctx)
+	jobCtx, cancelJobs := context.WithCancel(ctx)
+	defer cancelJobs()
+	fatalErrors := make(chan error, 1)
+	var fatalOnce sync.Once
+	reportFatal := func(err error) {
+		if err == nil {
+			return
+		}
+		fatalOnce.Do(func() {
+			cancelJobs()
+			fatalErrors <- err
+		})
+	}
+	job := cron.FuncJob(func() {
+		defer func() {
+			if recover() != nil {
+				reportFatal(ErrSchedulerCronPanic)
+			}
+		}()
+		reportFatal(service.runScheduledCycle(jobCtx))
+	})
+	runner, err := service.newCronRunner(job)
+	if err != nil {
+		return err
+	}
+	ownerLease, err := service.repository.AcquireSchedulerOwner(jobCtx)
 	if err != nil {
 		return err
 	}
 	defer ownerLease.Release()
-	if _, err := service.recoverActiveTasksSerialized(ctx); err != nil {
+	if _, err := service.recoverActiveTasksSerialized(jobCtx); err != nil {
 		return err
 	}
-	for {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		system, err := service.systemProbe.Snapshot(ctx)
-		if err != nil {
-			return err
-		}
-		result, err := service.runCycleSerialized(ctx, system)
-		if errors.Is(err, ErrQueueEmpty) {
-			if err := waitForContext(ctx, service.idleDelay); err != nil {
-				return err
-			}
-			continue
-		}
-		if errors.Is(err, ErrSchedulerRetry) {
-			if err := waitForContext(ctx, service.idleDelay); err != nil {
-				return err
-			}
-			continue
-		}
-		if err != nil {
-			if result.Cycle.Outcome == store.SchedulerCycleFailed {
-				continue
-			}
-			return err
-		}
-		if result.YieldFor > 0 {
-			if err := waitForContext(ctx, result.YieldFor); err != nil {
-				return err
-			}
-		}
+	if err := service.runScheduledCycle(jobCtx); err != nil {
+		return err
 	}
+	runner.Start()
+	var cause error
+	select {
+	case <-ctx.Done():
+		cause = ctx.Err()
+	case cause = <-fatalErrors:
+	}
+	<-runner.Stop().Done()
+	return cause
+}
+
+func (service *Service) runScheduledCycle(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	system, err := service.systemProbe.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	result, err := service.runCycleSerialized(ctx, system)
+	if errors.Is(err, ErrQueueEmpty) || errors.Is(err, ErrSchedulerRetry) {
+		return nil
+	}
+	if err != nil && result.Cycle.Outcome == store.SchedulerCycleFailed {
+		return nil
+	}
+	return err
 }
 
 // RecoverActiveTasks 接管上次进程遗留的running/interrupted target，并把新attempt移到队尾。
@@ -849,20 +875,6 @@ func durationMillisecondsCeil(value time.Duration) int64 {
 
 func pointerToErrorClass(value store.RuntimeErrorClass) *store.RuntimeErrorClass {
 	return &value
-}
-
-func waitForContext(ctx context.Context, duration time.Duration) error {
-	if duration <= 0 {
-		return ctx.Err()
-	}
-	timer := time.NewTimer(duration)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
 }
 
 func (result SliceResult) String() string {
