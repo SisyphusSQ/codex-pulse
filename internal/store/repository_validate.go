@@ -50,7 +50,7 @@ func (repository *Repository) validateBatch(batch FactBatch) error {
 		return ErrInvalidRepository
 	}
 	if batch.Project == nil && batch.Session == nil && batch.Turn == nil && batch.Usage == nil &&
-		batch.SessionCurrent == nil && batch.SessionUsageCurrent == nil {
+		batch.SessionCurrent == nil && batch.SessionUsageCurrent == nil && batch.QuotaObservation == nil {
 		return invalidRecord("fact batch is empty")
 	}
 	if batch.Project != nil {
@@ -176,12 +176,21 @@ func (repository *Repository) validateBatch(batch FactBatch) error {
 			return invalidRecord("session usage current does not match batch session")
 		}
 	}
+	if batch.QuotaObservation != nil {
+		if err := validateQuotaObservationSample(*batch.QuotaObservation); err != nil {
+			return err
+		}
+		if batch.Session != nil && batch.QuotaObservation.SessionID != nil &&
+			*batch.QuotaObservation.SessionID != batch.Session.SessionID {
+			return invalidRecord("quota observation does not match batch session")
+		}
+	}
 	_, err := batchSessionID(batch)
 	return err
 }
 
 func batchSessionID(batch FactBatch) (string, error) {
-	identifiers := make([]string, 0, 4)
+	identifiers := make([]string, 0, 5)
 	if batch.Session != nil {
 		identifiers = append(identifiers, batch.Session.SessionID)
 	}
@@ -193,6 +202,9 @@ func batchSessionID(batch FactBatch) (string, error) {
 	}
 	if batch.SessionUsageCurrent != nil {
 		identifiers = append(identifiers, batch.SessionUsageCurrent.SessionID)
+	}
+	if batch.QuotaObservation != nil && batch.QuotaObservation.SessionID != nil {
+		identifiers = append(identifiers, *batch.QuotaObservation.SessionID)
 	}
 	if len(identifiers) == 0 {
 		return "", nil

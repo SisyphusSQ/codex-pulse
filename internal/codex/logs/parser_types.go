@@ -29,21 +29,23 @@ const (
 type DiagnosticCode string
 
 const (
-	DiagnosticEmptyLine          DiagnosticCode = "empty_line"
-	DiagnosticInvalidUTF8        DiagnosticCode = "invalid_utf8"
-	DiagnosticLineTooLong        DiagnosticCode = "line_too_long"
-	DiagnosticBadJSON            DiagnosticCode = "bad_json"
-	DiagnosticDuplicateJSONKey   DiagnosticCode = "duplicate_json_key"
-	DiagnosticInvalidTimestamp   DiagnosticCode = "invalid_timestamp"
-	DiagnosticInvalidField       DiagnosticCode = "invalid_field"
-	DiagnosticUnknownRolloutType DiagnosticCode = "unknown_rollout_type"
-	DiagnosticUnknownEventType   DiagnosticCode = "unknown_event_type"
-	DiagnosticMissingSessionMeta DiagnosticCode = "missing_session_meta"
-	DiagnosticMissingTurnStart   DiagnosticCode = "missing_turn_start"
-	DiagnosticAmbiguousTurn      DiagnosticCode = "ambiguous_turn"
-	DiagnosticInvalidTransition  DiagnosticCode = "invalid_transition"
-	DiagnosticOrphanTurnUsage    DiagnosticCode = "orphan_turn_usage"
-	DiagnosticStateLimitExceeded DiagnosticCode = "state_limit_exceeded"
+	DiagnosticEmptyLine            DiagnosticCode = "empty_line"
+	DiagnosticInvalidUTF8          DiagnosticCode = "invalid_utf8"
+	DiagnosticLineTooLong          DiagnosticCode = "line_too_long"
+	DiagnosticBadJSON              DiagnosticCode = "bad_json"
+	DiagnosticDuplicateJSONKey     DiagnosticCode = "duplicate_json_key"
+	DiagnosticInvalidTimestamp     DiagnosticCode = "invalid_timestamp"
+	DiagnosticInvalidField         DiagnosticCode = "invalid_field"
+	DiagnosticUnknownRolloutType   DiagnosticCode = "unknown_rollout_type"
+	DiagnosticUnknownEventType     DiagnosticCode = "unknown_event_type"
+	DiagnosticMissingSessionMeta   DiagnosticCode = "missing_session_meta"
+	DiagnosticMissingTurnStart     DiagnosticCode = "missing_turn_start"
+	DiagnosticAmbiguousTurn        DiagnosticCode = "ambiguous_turn"
+	DiagnosticInvalidTransition    DiagnosticCode = "invalid_transition"
+	DiagnosticOrphanTurnUsage      DiagnosticCode = "orphan_turn_usage"
+	DiagnosticStateLimitExceeded   DiagnosticCode = "state_limit_exceeded"
+	DiagnosticInvalidQuotaWindow   DiagnosticCode = "invalid_quota_window"
+	DiagnosticInvalidQuotaSnapshot DiagnosticCode = "invalid_quota_snapshot"
 )
 
 // ParserDiagnostic locates a safely skipped source line. It deliberately omits
@@ -78,13 +80,47 @@ const (
 type EventKind string
 
 const (
-	EventSessionMeta  EventKind = "session_meta"
-	EventTurnStarted  EventKind = "turn_started"
-	EventTurnContext  EventKind = "turn_context"
-	EventTurnUsage    EventKind = "turn_usage"
-	EventSessionUsage EventKind = "session_usage"
-	EventTurnEnded    EventKind = "turn_ended"
+	EventSessionMeta      EventKind = "session_meta"
+	EventTurnStarted      EventKind = "turn_started"
+	EventTurnContext      EventKind = "turn_context"
+	EventTurnUsage        EventKind = "turn_usage"
+	EventSessionUsage     EventKind = "session_usage"
+	EventTurnEnded        EventKind = "turn_ended"
+	EventQuotaObservation EventKind = "quota_observation"
 )
+
+type QuotaSource string
+
+const (
+	QuotaAccountScopeDefault             = "default"
+	QuotaSourceLocalJSONL    QuotaSource = "local_jsonl"
+)
+
+type QuotaWindowKind string
+
+const (
+	QuotaWindowPrimary   QuotaWindowKind = "primary"
+	QuotaWindowSecondary QuotaWindowKind = "secondary"
+)
+
+type QuotaValidity string
+
+const (
+	QuotaValidityAccepted   QuotaValidity = "accepted"
+	QuotaValiditySuspicious QuotaValidity = "suspicious"
+	QuotaValidityRejected   QuotaValidity = "rejected"
+)
+
+type QuotaRejectionReason string
+
+const (
+	QuotaReasonMissingLimitID       QuotaRejectionReason = "missing_limit_id"
+	QuotaReasonMissingPrimaryWindow QuotaRejectionReason = "missing_primary_window"
+	QuotaReasonResetNotFuture       QuotaRejectionReason = "reset_not_future"
+	QuotaReasonUnknownPlanType      QuotaRejectionReason = "unknown_plan_type"
+)
+
+const QuotaPlanUnknown = "unknown"
 
 type SourcePosition struct {
 	StartOffset int64
@@ -144,16 +180,35 @@ type TurnEndFact struct {
 	FinalUsage    *TurnUsageFact
 }
 
+// QuotaObservationFact contains only the allowlisted local rate-limit fields.
+// Source units are percent, minutes, and Unix seconds normalized to epoch
+// milliseconds. Remaining percent is deliberately derived downstream.
+type QuotaObservationFact struct {
+	SessionID       string
+	AccountScope    string
+	Source          QuotaSource
+	LimitID         *string
+	WindowKind      QuotaWindowKind
+	UsedPercent     float64
+	WindowMinutes   int64
+	ResetsAtMS      int64
+	PlanType        *string
+	ObservedAtMS    int64
+	Validity        QuotaValidity
+	RejectionReason *QuotaRejectionReason
+}
+
 // ParsedEvent is a tagged union. Exactly the payload matching Kind is set.
 type ParsedEvent struct {
-	Kind         EventKind
-	Position     SourcePosition
-	SessionMeta  *SessionMetaFact
-	TurnStart    *TurnStartFact
-	TurnContext  *TurnContextFact
-	TurnUsage    *TurnUsageFact
-	SessionUsage *SessionUsageFact
-	TurnEnd      *TurnEndFact
+	Kind             EventKind
+	Position         SourcePosition
+	SessionMeta      *SessionMetaFact
+	TurnStart        *TurnStartFact
+	TurnContext      *TurnContextFact
+	TurnUsage        *TurnUsageFact
+	SessionUsage     *SessionUsageFact
+	TurnEnd          *TurnEndFact
+	QuotaObservation *QuotaObservationFact
 }
 
 type ParserConfig struct {

@@ -170,7 +170,7 @@ func (normalizer *lifecycleNormalizer) Apply(position SourcePosition, record *de
 	case decodedTurnContext:
 		return normalizer.applyTurnContext(position, record.ObservedAtMS, record.TurnContext)
 	case decodedTokenUsage:
-		return normalizer.applyTokenUsage(position, record.TokenUsage)
+		return normalizer.applyTokenCount(position, record)
 	case decodedTurnTerminal:
 		return normalizer.applyTurnTerminal(position, record.TurnTerminal, true)
 	default:
@@ -319,13 +319,40 @@ func (normalizer *lifecycleNormalizer) applyKnownTurnContext(
 	}}}
 }
 
+func (normalizer *lifecycleNormalizer) applyTokenCount(
+	position SourcePosition,
+	record *decodedLine,
+) lifecycleResult {
+	if record == nil || (record.TokenUsage == nil && len(record.QuotaObservations) == 0 && len(record.Diagnostics) == 0) {
+		return lifecycleDiagnostic(position, DiagnosticInvalidTransition)
+	}
+	result := lifecycleResult{}
+	if record.TokenUsage != nil {
+		result = normalizer.applyTokenUsage(position, record.TokenUsage)
+	}
+	for _, code := range record.Diagnostics {
+		result.Diagnostics = append(result.Diagnostics, newLifecycleDiagnostic(position, code))
+	}
+	for _, decoded := range record.QuotaObservations {
+		observation := decoded
+		observation.SessionID = normalizer.session.SessionID
+		observation.LimitID = cloneString(decoded.LimitID)
+		observation.PlanType = cloneString(decoded.PlanType)
+		if decoded.RejectionReason != nil {
+			reason := *decoded.RejectionReason
+			observation.RejectionReason = &reason
+		}
+		result.Events = append(result.Events, ParsedEvent{
+			Kind: EventQuotaObservation, Position: position, QuotaObservation: &observation,
+		})
+	}
+	return result
+}
+
 func (normalizer *lifecycleNormalizer) applyTokenUsage(
 	position SourcePosition,
 	record *decodedTokenUsageRecord,
 ) lifecycleResult {
-	if record == nil {
-		return lifecycleDiagnostic(position, DiagnosticInvalidTransition)
-	}
 	result := lifecycleResult{Events: []ParsedEvent{{
 		Kind: EventSessionUsage, Position: position,
 		SessionUsage: &SessionUsageFact{
