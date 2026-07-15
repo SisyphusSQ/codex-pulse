@@ -22,7 +22,8 @@ const (
 	applicationSchemaV5Version = 5
 	applicationSchemaV6Version = 6
 	applicationSchemaV7Version = 7
-	applicationSchemaVersion   = applicationSchemaV7Version
+	applicationSchemaV8Version = 8
+	applicationSchemaVersion   = applicationSchemaV8Version
 )
 
 var (
@@ -126,6 +127,14 @@ var applicationMigrations = []migrationDefinition{
 		checksum: applicationSchemaV7Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
 			return ensureSchemaObjects(ctx, transaction, schedulerSchemaObjects)
+		},
+	},
+	{
+		version:  applicationSchemaV8Version,
+		name:     "scheduler-lifecycle-and-retry",
+		checksum: applicationSchemaV8Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			return ensureSchemaObjects(ctx, transaction, lifecycleSchemaObjects)
 		},
 	},
 }
@@ -480,7 +489,7 @@ func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteT
 	for _, objects := range [][]schemaObject{
 		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects, retentionSchemaObjects,
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
-		schedulerSchemaObjects,
+		schedulerSchemaObjects, lifecycleSchemaObjects,
 	} {
 		for _, object := range objects {
 			exists, err := verifySchemaObject(ctx, transaction, object)
@@ -573,6 +582,18 @@ func applicationSchemaV7Checksum() string {
 	hasher := sha256.New()
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV7Version, "live-backfill-scheduler")
 	for _, object := range schedulerSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.objectType, object.name,
+			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV8Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV8Version, "scheduler-lifecycle-and-retry")
+	for _, object := range lifecycleSchemaObjects {
 		_, _ = fmt.Fprintln(
 			hasher, object.objectType, object.name,
 			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),

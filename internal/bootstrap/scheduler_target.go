@@ -2,7 +2,9 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -55,6 +57,10 @@ func (runtime *Runtime) Recover(ctx context.Context, jobID string) (store.JobRun
 	if facts.HomeGeneration < 0 {
 		return store.JobRun{}, ErrInvalidRuntime
 	}
+	resumedAtMS, ok := runtimeclock.Successor(job.UpdatedAtMS)
+	if !ok || resumedAtMS > runtimeclock.MaxContinuableTimestampMS {
+		return job, nil
+	}
 	if err := runtime.Resume(ctx, uint64(facts.HomeGeneration)); err != nil {
 		return store.JobRun{}, err
 	}
@@ -69,6 +75,42 @@ func (runtime *Runtime) Recover(ctx context.Context, jobID string) (store.JobRun
 		return store.JobRun{}, ErrInvalidRuntime
 	}
 	if *resumed.ResumeOfJobID != jobID {
+		return store.JobRun{}, ErrInvalidRuntime
+	}
+	return resumed, nil
+}
+
+// Retry 为scheduler failed task稳定创建同generation的新attempt。它与Recover分离，
+// 避免启动恢复把尚未到期或已经blocked的失败误当成可立即恢复。
+func (runtime *Runtime) Retry(ctx context.Context, jobID string) (store.JobRun, error) {
+	if runtime == nil || runtime.repository == nil || jobID == "" {
+		return store.JobRun{}, ErrInvalidRuntime
+	}
+	job, facts, err := runtime.repository.BootstrapRun(ctx, jobID)
+	if err != nil {
+		return store.JobRun{}, err
+	}
+	resumedID := stableResumeJobID(jobID)
+	if resumed, _, readErr := runtime.repository.BootstrapRun(ctx, resumedID); readErr == nil {
+		if resumed.ResumeOfJobID == nil || *resumed.ResumeOfJobID != jobID || resumed.State != store.JobQueued {
+			return store.JobRun{}, ErrInvalidRuntime
+		}
+		return resumed, nil
+	} else if !errors.Is(readErr, store.ErrNotFound) {
+		return store.JobRun{}, readErr
+	}
+	if job.State != store.JobFailed || facts.HomeGeneration < 0 {
+		return store.JobRun{}, ErrSourceUnavailable
+	}
+	if err := runtime.Resume(ctx, uint64(facts.HomeGeneration)); err != nil {
+		return store.JobRun{}, err
+	}
+	resumed, resumedFacts, err := runtime.repository.BootstrapRun(ctx, resumedID)
+	if err != nil {
+		return store.JobRun{}, err
+	}
+	if resumed.State != store.JobQueued || resumed.ResumeOfJobID == nil ||
+		*resumed.ResumeOfJobID != jobID || resumedFacts.SwitchID != facts.SwitchID {
 		return store.JobRun{}, ErrInvalidRuntime
 	}
 	return resumed, nil

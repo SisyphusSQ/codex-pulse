@@ -15,6 +15,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/index"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -560,12 +561,10 @@ func (runtime *Runtime) isDraining(generation int64) bool {
 func (runtime *Runtime) nowAfter(minimum int64) int64 {
 	runtime.timeMu.Lock()
 	defer runtime.timeMu.Unlock()
-	value := runtime.clock().UnixMilli()
-	if value <= minimum {
-		value = minimum + 1
-	}
-	if value <= runtime.lastMS {
-		value = runtime.lastMS + 1
+	minimum = maxInt64(minimum, runtime.lastMS)
+	value, ok := runtimeclock.After(runtime.clock().UnixMilli(), minimum, runtimeclock.MaxTimestampMS)
+	if !ok {
+		value = runtimeclock.MaxTimestampMS
 	}
 	runtime.lastMS = value
 	return value

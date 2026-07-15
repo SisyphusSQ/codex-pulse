@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -100,6 +102,10 @@ func (service *Service) recoverActiveTasksSerialized(ctx context.Context) ([]sto
 
 func (service *Service) recoverActiveTasksOwned(ctx context.Context) ([]store.SchedulerTask, error) {
 	recovered := make([]store.SchedulerTask, 0)
+	lifecycle, err := service.repository.SchedulerLifecycle(ctx)
+	if err != nil {
+		return recovered, err
+	}
 	var cursor *store.SchedulerTaskCursor
 	for {
 		tasks, next, err := service.repository.ListRecoverableSchedulerTasks(
@@ -114,6 +120,9 @@ func (service *Service) recoverActiveTasksOwned(ctx context.Context) ([]store.Sc
 		for _, task := range tasks {
 			if err := ctx.Err(); err != nil {
 				return recovered, err
+			}
+			if !schedulerLifecyclePermits(lifecycle, task) {
+				continue
 			}
 			executor := service.executors[task.TargetKind]
 			if executor == nil {
@@ -133,17 +142,23 @@ func (service *Service) recoverActiveTasksOwned(ctx context.Context) ([]store.Sc
 				if err != nil {
 					return recovered, err
 				}
-				atMS := service.afterMS(maxInt64(
+				atMS, err := service.afterMS(maxInt64(
 					task.UpdatedAtMS,
 					maxInt64(task.QueueOrderMS, snapshot.MaxQueueOrderMS),
-				))
-				value, err = service.repository.RecoverSchedulerTask(
-					ctx, task.TaskID, task.TargetID, target.JobID, atMS, atMS,
-				)
+				), store.MaxSchedulerQueuedTimestampMS)
 				if err != nil {
 					return recovered, err
 				}
-			case store.JobSucceeded, store.JobFailed, store.JobCancelled:
+				value, err = service.repository.RecoverSchedulerTask(
+					ctx, task.TaskID, task.TargetID, target.JobID, atMS, atMS,
+				)
+				if errors.Is(err, store.ErrSchedulerPaused) {
+					continue
+				}
+				if err != nil {
+					return recovered, err
+				}
+			case store.JobSucceeded, store.JobFailed, store.JobCancelled, store.JobInterrupted:
 				value, err = service.reconcileTerminalTarget(ctx, task, target)
 				if err != nil {
 					return recovered, err
@@ -194,7 +209,16 @@ func (service *Service) runCycleOwned(
 	ctx context.Context,
 	system SystemSnapshot,
 ) (CycleResult, error) {
-	queueSnapshot, err := service.repository.SchedulerQueueSnapshot(ctx)
+	// Recovery is cycle-local, not startup-only: a process may restart while a
+	// durable pause masks running/interrupted tasks, then resume without another
+	// restart. Rechecking here makes the first permitted cycle adopt them.
+	if _, err := service.recoverActiveTasksOwned(ctx); err != nil {
+		return CycleResult{}, err
+	}
+	if _, err := service.resumeDueRetryOwned(ctx); err != nil {
+		return CycleResult{}, err
+	}
+	queueSnapshot, err := service.repository.SchedulerRunnableQueueSnapshot(ctx)
 	if err != nil {
 		return CycleResult{}, err
 	}
@@ -225,7 +249,12 @@ func (service *Service) runCycleOwned(
 		return CycleResult{}, err
 	}
 
-	startedAtMS := service.afterMS(selection.Task.UpdatedAtMS)
+	startedAtMS, err := service.afterMS(selection.Task.UpdatedAtMS, store.MaxSchedulerRunningTimestampMS)
+	if err != nil {
+		return CycleResult{}, err
+	}
+	service.setActivity(&selection.Task)
+	defer service.setActivity(nil)
 	claimed, err := service.repository.ClaimSchedulerTask(ctx, selection.Task.TaskID, startedAtMS)
 	if err != nil {
 		if errors.Is(err, store.ErrSchedulerBusy) || errors.Is(err, store.ErrSchedulerTransition) {
@@ -236,12 +265,14 @@ func (service *Service) runCycleOwned(
 	result := SliceResult{StopReason: store.SchedulerStopSystemPressure}
 	var executeErr error
 	panicked := false
-	if !budget.Blocked {
+	persistenceExhausted := !sliceHasQueuedCommitHeadroom(startedAtMS, budget) ||
+		!taskHasSliceCommitHeadroom(claimed, budget)
+	if !budget.Blocked && !persistenceExhausted {
 		result, executeErr, panicked = executeSliceSafely(ctx, executor, claimed, budget)
 	}
 	commitSnapshot := queueSnapshot
 	if ctx.Err() == nil {
-		postSnapshot, listErr := service.repository.SchedulerQueueSnapshot(ctx)
+		postSnapshot, listErr := service.repository.SchedulerRunnableQueueSnapshot(ctx)
 		if listErr != nil {
 			return CycleResult{}, listErr
 		}
@@ -254,18 +285,44 @@ func (service *Service) runCycleOwned(
 		}
 	}
 
-	transition, err := service.cycleTransition(ctx, executor, claimed, budget, result, executeErr, panicked)
-	if err != nil {
-		return CycleResult{}, err
+	transition := failedTransition(store.RuntimeErrorInvalid)
+	requiresInterrupt := persistenceExhausted
+	if !persistenceExhausted {
+		transition, err = service.cycleTransition(ctx, executor, claimed, budget, result, executeErr, panicked)
+		if err != nil {
+			return CycleResult{}, err
+		}
 	}
 	if err := validateSliceConsumption(result, budget, budget.Blocked); err != nil {
 		transition = failedTransition(store.ClassifyRuntimeError(err))
 		result.FilesProcessed = 0
 		result.BytesProcessed = 0
+		result.Active = 0
+		requiresInterrupt = true
+	}
+	if requiresInterrupt {
+		interruptCtx, cancel := context.WithTimeout(context.Background(), service.interruptTimeout)
+		interruptErr := executor.Interrupt(interruptCtx, claimed, store.RuntimeErrorInvalid)
+		cancel()
+		if interruptErr != nil {
+			transition.returnErr = errors.Join(transition.returnErr, interruptErr)
+		}
 	}
 	activeMS := durationMillisecondsCeil(result.Active)
-	finishedAtMS := service.afterMS(startedAtMS + activeMS - 1)
-	commitAtMS := service.afterMS(maxInt64(commitSnapshot.MaxQueueOrderMS, finishedAtMS))
+	finishedBaseMS, err := finishedTimestampBase(startedAtMS, activeMS)
+	if err != nil {
+		return CycleResult{}, err
+	}
+	finishedAtMS, err := service.afterMS(finishedBaseMS, store.MaxSchedulerRunningTimestampMS)
+	if err != nil {
+		return CycleResult{}, err
+	}
+	commitAtMS, err := service.afterMS(
+		maxInt64(commitSnapshot.MaxQueueOrderMS, finishedAtMS), store.MaxSchedulerTimestampMS,
+	)
+	if err != nil {
+		return CycleResult{}, err
+	}
 	cycle := store.SchedulerCycle{
 		CycleID: cycleID, TaskID: claimed.TaskID, Lane: claimed.Lane,
 		SelectionReason: selection.Reason, StopReason: transition.stopReason,
@@ -283,16 +340,170 @@ func (service *Service) runCycleOwned(
 		BytesDelta: result.BytesProcessed, ErrorClass: transition.errorClass,
 		AtMS: commitAtMS, Cycle: cycle,
 	}
-	commitCtx := ctx
-	commitCancel := func() {}
-	if ctx.Err() != nil || transition.outcome == store.SchedulerCycleInterrupted {
-		commitCtx, commitCancel = context.WithTimeout(context.Background(), service.interruptTimeout)
+	if transition.outcome == store.SchedulerCycleFailed && transition.errorClass != nil {
+		retry, err := service.retryMutation(ctx, claimed.TaskID, *transition.errorClass, commitAtMS)
+		if err != nil {
+			return CycleResult{}, err
+		}
+		commit.Retry = &retry
 	}
+	// Once the target has run, its cycle checkpoint must outlive a parent
+	// cancellation that races with BeginTx/GORM binding. The bounded detached
+	// context preserves values but never lets a cancellation tear the target
+	// side effect away from its durable scheduler fact.
+	commitCtx, commitCancel := context.WithTimeout(
+		context.WithoutCancel(ctx), service.interruptTimeout,
+	)
 	defer commitCancel()
 	if err := service.commitCycleWithReadback(commitCtx, commit); err != nil {
 		return CycleResult{}, err
 	}
 	return CycleResult{Cycle: cycle, YieldFor: transition.yieldFor(budget)}, transition.returnErr
+}
+
+func (service *Service) resumeDueRetryOwned(ctx context.Context) (bool, error) {
+	lifecycle, err := service.repository.SchedulerLifecycle(ctx)
+	if err != nil {
+		return false, err
+	}
+	nowMS := service.clock().UnixMilli()
+	var cursor *store.SchedulerRetryCursor
+	for {
+		states, next, err := service.repository.ListDueSchedulerRetries(
+			ctx, lifecycle.HomeGeneration, nowMS, cursor, service.recoveryPageSize,
+		)
+		if err != nil {
+			return false, err
+		}
+		for _, retryState := range states {
+			task, err := service.repository.SchedulerTask(ctx, retryState.TaskID)
+			if err != nil {
+				return false, err
+			}
+			if !schedulerLifecyclePermits(lifecycle, task) {
+				continue
+			}
+			executor := service.executors[task.TargetKind]
+			if executor == nil {
+				return false, ErrExecutorMissing
+			}
+			target, err := executor.Retry(ctx, task)
+			if err != nil {
+				return false, err
+			}
+			if target.JobID == "" || target.State != store.JobQueued {
+				return false, ErrInvalidService
+			}
+			snapshot, err := service.repository.SchedulerQueueSnapshot(ctx)
+			if err != nil {
+				return false, err
+			}
+			atMS, err := service.afterMS(maxInt64(
+				maxInt64(task.UpdatedAtMS, retryState.UpdatedAtMS),
+				maxInt64(snapshot.MaxQueueOrderMS, target.UpdatedAtMS),
+			), store.MaxSchedulerQueuedTimestampMS)
+			if err != nil {
+				return false, err
+			}
+			if _, err := service.repository.RequeueFailedSchedulerTask(
+				ctx, task.TaskID, task.TargetID, target.JobID, retryState.Revision, atMS, atMS,
+			); err != nil {
+				if errors.Is(err, store.ErrSchedulerPaused) {
+					return false, nil
+				}
+				return false, err
+			}
+			return true, nil
+		}
+		cursor = next
+		if cursor == nil {
+			return false, nil
+		}
+	}
+}
+
+func schedulerLifecyclePermits(lifecycle store.SchedulerLifecycle, task store.SchedulerTask) bool {
+	if lifecycle.HomeGeneration != task.HomeGeneration || lifecycle.SystemState != store.LifecycleSystemAwake ||
+		lifecycle.Transition != store.LifecycleTransitionSteady ||
+		lifecycle.SourceState != store.LifecycleSourceAvailable ||
+		lifecycle.UserPauseScope == store.LifecyclePauseAll {
+		return false
+	}
+	return task.Lane == store.SchedulerLaneLive ||
+		task.Lane == store.SchedulerLaneBackfill && lifecycle.UserPauseScope != store.LifecyclePauseBackfill
+}
+
+func (service *Service) retryMutation(
+	ctx context.Context,
+	taskID string,
+	class store.RuntimeErrorClass,
+	atMS int64,
+) (store.SchedulerRetryMutation, error) {
+	mutation := store.SchedulerRetryMutation{
+		Disposition: store.SchedulerRetryBlocked, FailureCount: 1,
+		LastErrorClass: class, RecoveryAction: recoveryActionFor(class, false),
+	}
+	current, err := service.repository.SchedulerRetryState(ctx, taskID)
+	if err == nil {
+		if current.Revision == math.MaxInt64 || current.FailureCount == math.MaxInt64 {
+			return store.SchedulerRetryMutation{}, ErrInvalidService
+		}
+		mutation.ExpectedRevision = current.Revision
+		mutation.FailureCount = current.FailureCount + 1
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return store.SchedulerRetryMutation{}, err
+	}
+	if !transientRuntimeError(class) {
+		return mutation, nil
+	}
+	delay, retry, err := service.retryPolicy.Delay(int(mutation.FailureCount))
+	if err != nil {
+		return store.SchedulerRetryMutation{}, err
+	}
+	if !retry {
+		mutation.RecoveryAction = recoveryActionFor(class, true)
+		return mutation, nil
+	}
+	delayMS := durationMillisecondsCeil(delay)
+	nextRetryAt, ok := runtimeclock.Add(atMS, delayMS)
+	if delayMS <= 0 || !ok || nextRetryAt > store.MaxSchedulerRetryDueTimestampMS {
+		mutation.RecoveryAction = recoveryActionFor(class, true)
+		return mutation, nil
+	}
+	mutation.Disposition = store.SchedulerRetryWaiting
+	mutation.NextRetryAtMS = &nextRetryAt
+	mutation.RecoveryAction = store.SchedulerRecoveryNone
+	return mutation, nil
+}
+
+func transientRuntimeError(class store.RuntimeErrorClass) bool {
+	switch class {
+	case store.RuntimeErrorBusy, store.RuntimeErrorTimeout, store.RuntimeErrorIO,
+		store.RuntimeErrorUnavailable, store.RuntimeErrorUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+func recoveryActionFor(class store.RuntimeErrorClass, exhausted bool) store.SchedulerRecoveryAction {
+	switch class {
+	case store.RuntimeErrorDiskFull:
+		return store.SchedulerRecoveryFreeSpace
+	case store.RuntimeErrorReadOnly, store.RuntimeErrorPermission:
+		return store.SchedulerRecoveryGrantPermission
+	case store.RuntimeErrorCorrupt:
+		return store.SchedulerRecoveryRepairStore
+	case store.RuntimeErrorInvalid:
+		return store.SchedulerRecoveryChooseHome
+	case store.RuntimeErrorUnavailable:
+		if exhausted {
+			return store.SchedulerRecoveryCheckSource
+		}
+		return store.SchedulerRecoveryRetry
+	default:
+		return store.SchedulerRecoveryRetry
+	}
 }
 
 func (service *Service) reconcileTerminalTarget(
@@ -303,7 +514,7 @@ func (service *Service) reconcileTerminalTarget(
 	if task.State != store.SchedulerTaskRunning || task.LastStartedAtMS == nil || target.JobID != task.TargetID {
 		return store.SchedulerTask{}, store.ErrSchedulerTransition
 	}
-	queueSnapshot, err := service.repository.SchedulerQueueSnapshot(ctx)
+	queueSnapshot, err := service.repository.SchedulerRunnableQueueSnapshot(ctx)
 	if err != nil {
 		return store.SchedulerTask{}, err
 	}
@@ -314,8 +525,16 @@ func (service *Service) reconcileTerminalTarget(
 		}
 		return store.SchedulerTask{}, err
 	}
-	finishedAtMS := service.afterMS(maxInt64(*task.LastStartedAtMS, target.UpdatedAtMS))
-	commitAtMS := service.afterMS(maxInt64(queueSnapshot.MaxQueueOrderMS, finishedAtMS))
+	commitAtMS, err := service.afterMS(
+		maxInt64(task.UpdatedAtMS, queueSnapshot.MaxQueueOrderMS), store.MaxSchedulerTimestampMS,
+	)
+	if err != nil {
+		return store.SchedulerTask{}, err
+	}
+	if target.UpdatedAtMS > commitAtMS {
+		commitAtMS = target.UpdatedAtMS
+	}
+	finishedAtMS := commitAtMS
 	outcome := store.SchedulerCycleCompleted
 	stopReason := store.SchedulerStopCompleted
 	state := store.SchedulerTaskSucceeded
@@ -349,6 +568,13 @@ func (service *Service) reconcileTerminalTarget(
 		TaskID: task.TaskID, ExpectedState: store.SchedulerTaskRunning, State: state,
 		QueueOrderMS: commitAtMS, ErrorClass: errorClass, AtMS: commitAtMS, Cycle: cycle,
 	}
+	if state == store.SchedulerTaskFailed && errorClass != nil {
+		retry, err := service.retryMutation(ctx, task.TaskID, *errorClass, commitAtMS)
+		if err != nil {
+			return store.SchedulerTask{}, err
+		}
+		commit.Retry = &retry
+	}
 	if err := service.commitCycleWithReadback(ctx, commit); err != nil {
 		return store.SchedulerTask{}, err
 	}
@@ -369,16 +595,31 @@ func (service *Service) commitCycleWithReadback(
 	if !errors.Is(err, store.ErrSchedulerTransition) {
 		return err
 	}
-	task, readErr := service.repository.SchedulerTask(context.WithoutCancel(ctx), commit.TaskID)
+	task, readErr := service.repository.SchedulerTask(ctx, commit.TaskID)
 	if readErr != nil || task.State != store.SchedulerTaskRunning || task.LastStartedAtMS == nil ||
 		*task.LastStartedAtMS != commit.Cycle.StartedAtMS {
 		return errors.Join(err, readErr)
 	}
-	snapshot, readErr := service.repository.SchedulerQueueSnapshot(context.WithoutCancel(ctx))
+	snapshot, readErr := service.repository.SchedulerQueueSnapshot(ctx)
 	if readErr != nil {
 		return errors.Join(err, readErr)
 	}
-	commit.AtMS = service.afterMS(maxInt64(task.UpdatedAtMS, snapshot.MaxQueueOrderMS))
+	maximum := store.MaxSchedulerTimestampMS
+	if commit.State == store.SchedulerTaskQueued {
+		maximum = store.MaxSchedulerQueuedTimestampMS
+	} else if commit.State == store.SchedulerTaskInterrupted {
+		maximum = store.MaxSchedulerRunningTimestampMS
+	}
+	rebasedAtMS, readErr := service.afterMS(
+		maxInt64(task.UpdatedAtMS, snapshot.MaxQueueOrderMS), maximum,
+	)
+	if readErr != nil {
+		return errors.Join(err, readErr)
+	}
+	if readErr = rebaseRetryDue(commit.Retry, commit.AtMS, rebasedAtMS); readErr != nil {
+		return errors.Join(err, readErr)
+	}
+	commit.AtMS = rebasedAtMS
 	commit.QueueOrderMS = commit.AtMS
 	err = service.commitCycle(ctx, commit)
 	if err == nil || service.committedCycleExact(ctx, commit.Cycle) {
@@ -387,10 +628,29 @@ func (service *Service) commitCycleWithReadback(
 	return err
 }
 
+func rebaseRetryDue(mutation *store.SchedulerRetryMutation, previousAtMS, rebasedAtMS int64) error {
+	if mutation == nil || mutation.Disposition != store.SchedulerRetryWaiting ||
+		previousAtMS == rebasedAtMS {
+		return nil
+	}
+	if mutation.NextRetryAtMS == nil || *mutation.NextRetryAtMS <= previousAtMS ||
+		rebasedAtMS < previousAtMS {
+		return ErrInvalidService
+	}
+	delayMS := *mutation.NextRetryAtMS - previousAtMS
+	nextRetryAtMS, ok := runtimeclock.Add(rebasedAtMS, delayMS)
+	if !ok || nextRetryAtMS > store.MaxSchedulerRetryDueTimestampMS {
+		mutation.Disposition = store.SchedulerRetryBlocked
+		mutation.NextRetryAtMS = nil
+		mutation.RecoveryAction = recoveryActionFor(mutation.LastErrorClass, true)
+		return nil
+	}
+	mutation.NextRetryAtMS = &nextRetryAtMS
+	return nil
+}
+
 func (service *Service) committedCycleExact(ctx context.Context, expected store.SchedulerCycle) bool {
-	readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), service.interruptTimeout)
-	defer cancel()
-	cycle, err := service.repository.SchedulerCycle(readCtx, expected.CycleID)
+	cycle, err := service.repository.SchedulerCycle(ctx, expected.CycleID)
 	return err == nil && cycle == expected
 }
 
@@ -486,7 +746,8 @@ func validateSliceConsumption(result SliceResult, budget ScanBudget, blocked boo
 		}
 		return nil
 	}
-	if result.FilesProcessed > budget.MaxFiles || result.BytesProcessed > budget.MaxBytes {
+	if result.FilesProcessed > budget.MaxFiles || result.BytesProcessed > budget.MaxBytes ||
+		result.Active > budget.MaxActive {
 		return ErrInvalidSliceResult
 	}
 	return nil
@@ -519,12 +780,46 @@ func (service *Service) logicalQueueSnapshotMS(snapshot store.SchedulerQueueSnap
 	return value
 }
 
-func (service *Service) afterMS(value int64) int64 {
-	now := service.clock().UnixMilli()
-	if now <= value {
-		return value + 1
+func (service *Service) afterMS(value int64, maximum int64) (int64, error) {
+	result, ok := runtimeclock.After(service.clock().UnixMilli(), value, maximum)
+	if !ok {
+		return 0, ErrInvalidService
 	}
-	return now
+	return result, nil
+}
+
+func sliceHasQueuedCommitHeadroom(startedAtMS int64, budget ScanBudget) bool {
+	activeMS := durationMillisecondsCeil(budget.MaxActive)
+	if budget.Blocked {
+		activeMS = 0
+	}
+	finishedAtMS, ok := runtimeclock.Add(startedAtMS, activeMS)
+	if !ok {
+		return false
+	}
+	commitAtMS, ok := runtimeclock.Successor(finishedAtMS)
+	return ok && commitAtMS <= store.MaxSchedulerQueuedTimestampMS
+}
+
+func taskHasSliceCommitHeadroom(task store.SchedulerTask, budget ScanBudget) bool {
+	if task.SliceCount >= math.MaxInt64-1 {
+		return false
+	}
+	return task.FilesProcessed <= math.MaxInt64-budget.MaxFiles &&
+		task.BytesProcessed <= math.MaxInt64-budget.MaxBytes
+}
+
+func finishedTimestampBase(startedAtMS int64, activeMS int64) (int64, error) {
+	if startedAtMS < 0 || activeMS < 0 {
+		return 0, ErrInvalidService
+	}
+	if activeMS == 0 {
+		return startedAtMS - 1, nil
+	}
+	if startedAtMS > store.MaxSchedulerTimestampMS-activeMS+1 {
+		return 0, ErrInvalidService
+	}
+	return startedAtMS + activeMS - 1, nil
 }
 
 func maxInt64(left int64, right int64) int64 {
@@ -545,7 +840,11 @@ func durationMillisecondsCeil(value time.Duration) int64 {
 	if value <= 0 {
 		return 0
 	}
-	return int64((value + time.Millisecond - 1) / time.Millisecond)
+	milliseconds := int64(value / time.Millisecond)
+	if value%time.Millisecond != 0 {
+		milliseconds++
+	}
+	return milliseconds
 }
 
 func pointerToErrorClass(value store.RuntimeErrorClass) *store.RuntimeErrorClass {

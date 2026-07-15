@@ -95,5 +95,6 @@ func validScanBudget(budget ScanBudget) bool {
 	if budget.Blocked {
 		return budget.MaxFiles == 0 && budget.MaxBytes == 0 && budget.MaxActive == 0
 	}
-	return budget.MaxFiles > 0 && budget.MaxBytes > 0 && budget.MaxActive > 0
+	return budget.MaxFiles > 0 && budget.MaxBytes > 0 && budget.MaxActive > 0 &&
+		budget.MaxActive <= time.Duration(store.MaxSchedulerSliceActiveMS)*time.Millisecond
 }

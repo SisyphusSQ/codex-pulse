@@ -1,5 +1,19 @@
 package store
 
+import "github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
+
+const (
+	// Scheduler timestamps share one civil-time boundary with all persisted
+	// runtime state. State-specific limits reserve the successors required to
+	// claim, finish, requeue, or terminally fail without stranding a task.
+	MaxSchedulerTimestampMS          int64 = runtimeclock.MaxTimestampMS
+	MaxSchedulerSliceActiveMS              = int64(86_400_000)
+	MaxSchedulerQueuedTimestampMS          = runtimeclock.MaxContinuableTimestampMS
+	MaxSchedulerRunningTimestampMS         = runtimeclock.MaxInProgressTimestampMS
+	MaxSchedulerRetryDueTimestampMS        = MaxSchedulerTimestampMS - MaxSchedulerSliceActiveMS - 4
+	MaxSchedulerAdmissionTimestampMS       = MaxSchedulerRetryDueTimestampMS
+)
+
 type SchedulerTargetKind string
 
 const (
@@ -171,6 +185,7 @@ type SchedulerCycleCommit struct {
 	ErrorClass    *RuntimeErrorClass
 	AtMS          int64
 	Cycle         SchedulerCycle
+	Retry         *SchedulerRetryMutation
 }
 
 func validSchedulerTargetKind(value SchedulerTargetKind) bool {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
 	"github.com/SisyphusSQ/codex-pulse/internal/indexer"
+	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -313,9 +314,39 @@ func (runtime *Runtime) Recover(ctx context.Context, jobID string) (store.JobRun
 	if job.State != store.JobInterrupted {
 		return store.JobRun{}, ErrSourceUnavailable
 	}
-	resumedID := stableID(liveResumePrefix, jobID)
-	requestID := stableID("resume-request-", jobID)
-	atMS := job.UpdatedAtMS + 1
+	resumedAtMS, ok := runtimeclock.Successor(job.UpdatedAtMS)
+	if !ok || resumedAtMS > runtimeclock.MaxContinuableTimestampMS {
+		return job, nil
+	}
+	return runtime.resumeTerminal(ctx, job, facts)
+}
+
+// Retry 只恢复failed attempt；到期判断和永久错误停止由scheduler durable retry fact负责。
+func (runtime *Runtime) Retry(ctx context.Context, jobID string) (store.JobRun, error) {
+	if runtime == nil || runtime.repository == nil || jobID == "" {
+		return store.JobRun{}, ErrInvalidRuntime
+	}
+	job, facts, err := runtime.repository.LiveScanRun(ctx, jobID)
+	if err != nil {
+		return store.JobRun{}, err
+	}
+	if job.State != store.JobFailed {
+		return store.JobRun{}, ErrSourceUnavailable
+	}
+	return runtime.resumeTerminal(ctx, job, facts)
+}
+
+func (runtime *Runtime) resumeTerminal(
+	ctx context.Context,
+	job store.JobRun,
+	facts store.LiveScanJob,
+) (store.JobRun, error) {
+	resumedID := stableID(liveResumePrefix, job.JobID)
+	requestID := stableID("resume-request-", job.JobID)
+	atMS, ok := runtimeclock.Successor(job.UpdatedAtMS)
+	if !ok || atMS > runtimeclock.MaxContinuableTimestampMS {
+		return store.JobRun{}, ErrInvalidRuntime
+	}
 	oldID := job.JobID
 	resumed := store.JobRun{
 		JobID: resumedID, JobType: job.JobType, RequestedBy: job.RequestedBy, Priority: job.Priority,
@@ -327,7 +358,7 @@ func (runtime *Runtime) Recover(ctx context.Context, jobID string) (store.JobRun
 	facts.JobID = resumedID
 	facts.RequestID = requestID
 	facts.UpdatedAtMS = atMS
-	if err := runtime.repository.ResumeLiveScanJob(ctx, jobID, resumed, facts); err != nil {
+	if err := runtime.repository.ResumeLiveScanJob(ctx, job.JobID, resumed, facts); err != nil {
 		return store.JobRun{}, err
 	}
 	return resumed, nil
@@ -580,12 +611,12 @@ func (runtime *Runtime) release(jobID string) {
 func (runtime *Runtime) nowAfter(minimum int64) int64 {
 	runtime.timeMu.Lock()
 	defer runtime.timeMu.Unlock()
-	value := runtime.clock().UnixMilli()
-	if value <= minimum {
-		value = minimum + 1
+	if runtime.lastMS > minimum {
+		minimum = runtime.lastMS
 	}
-	if value <= runtime.lastMS {
-		value = runtime.lastMS + 1
+	value, ok := runtimeclock.After(runtime.clock().UnixMilli(), minimum, runtimeclock.MaxTimestampMS)
+	if !ok {
+		value = runtimeclock.MaxTimestampMS
 	}
 	runtime.lastMS = value
 	return value

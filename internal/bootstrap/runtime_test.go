@@ -330,6 +330,41 @@ func TestRuntimeSchedulerTargetInterruptAndRecoverAreIdempotent(t *testing.T) {
 	}
 }
 
+func TestRuntimeRecoverReturnsInterruptedTerminalWhenResumeTimeIsExhausted(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	repository := openBootstrapRepository(t)
+	home := t.TempDir()
+	writeBootstrapRollout(t, filepath.Join(home, "sessions", "recover-time-boundary.jsonl"),
+		completeBootstrapRollout("session-bootstrap-recover-boundary", "turn-bootstrap-recover-boundary"),
+		time.Now())
+	request := bootstrapRequest(t, home, "switch-recover-time-boundary", 106)
+	runtime := newTestRuntime(t, repository, RuntimeConfig{}, runtimeHooks{})
+	if err := runtime.StartBootstrap(ctx, request); err != nil {
+		t.Fatalf("StartBootstrap() error = %v", err)
+	}
+	job, _, err := repository.BootstrapRunByIdentity(ctx, request.SwitchID, 106)
+	if err != nil {
+		t.Fatalf("BootstrapRunByIdentity() error = %v", err)
+	}
+	if err := repository.TransitionJobRun(ctx, store.JobTransition{
+		JobID: job.JobID, ExpectedState: job.State, State: store.JobRunning,
+		Phase: job.Phase, AtMS: store.MaxSchedulerRunningTimestampMS,
+	}); err != nil {
+		t.Fatalf("TransitionJobRun(running) error = %v", err)
+	}
+	recovered, err := runtime.Recover(ctx, job.JobID)
+	if err != nil || recovered.State != store.JobInterrupted ||
+		recovered.UpdatedAtMS != store.MaxSchedulerTimestampMS {
+		t.Fatalf("Recover(exhausted resume time) = %#v, %v", recovered, err)
+	}
+	if replay, err := runtime.Recover(ctx, job.JobID); err != nil || replay.JobID != recovered.JobID ||
+		replay.State != recovered.State || replay.UpdatedAtMS != recovered.UpdatedAtMS {
+		t.Fatalf("Recover(exhausted replay) = %#v, %v, want %#v", replay, err, recovered)
+	}
+}
+
 func TestRuntimeCompletesEmptyHomeWithDistinctReadinessFacts(t *testing.T) {
 	t.Parallel()
 
@@ -1221,10 +1256,15 @@ func TestRuntimeFailsAfterPlanWhenSourceDependencyBecomesUnsafe(t *testing.T) {
 		*facts.PauseReason != store.BootstrapPauseSourceUnavailable {
 		t.Fatalf("unsafe failed run = %#v %#v, %v", job, facts, err)
 	}
-	if err := runtime.Resume(context.Background(), 6); err != nil {
-		t.Fatalf("Resume(failed plan-ready run) error = %v", err)
+	resumed, err := runtime.Retry(context.Background(), job.JobID)
+	if err != nil {
+		t.Fatalf("Retry(failed plan-ready run) error = %v", err)
 	}
-	resumed, _, err := repository.BootstrapRunByIdentity(context.Background(), request.SwitchID, 6)
+	if replay, replayErr := runtime.Retry(context.Background(), job.JobID); replayErr != nil ||
+		replay.JobID != resumed.JobID {
+		t.Fatalf("Retry(failed replay) = %#v, %v", replay, replayErr)
+	}
+	resumed, _, err = repository.BootstrapRunByIdentity(context.Background(), request.SwitchID, 6)
 	if err != nil || resumed.JobID == job.JobID || resumed.ResumeOfJobID == nil ||
 		*resumed.ResumeOfJobID != job.JobID || resumed.State != store.JobQueued {
 		t.Fatalf("resumed failed run = %#v, %v", resumed, err)

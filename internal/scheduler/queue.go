@@ -50,5 +50,9 @@ func (service *Service) Promote(
 	if service == nil || service.repository == nil || dedupeKey == "" {
 		return store.SchedulerTask{}, ErrInvalidService
 	}
-	return service.repository.PromoteSchedulerTask(ctx, dedupeKey, service.afterMS(0))
+	atMS, err := service.afterMS(0, store.MaxSchedulerTimestampMS)
+	if err != nil {
+		return store.SchedulerTask{}, err
+	}
+	return service.repository.PromoteSchedulerTask(ctx, dedupeKey, atMS)
 }

@@ -89,6 +89,25 @@ func TestSchedulerRepositoryEnqueuesClaimsAndYieldsWithCycleFacts(t *testing.T) 
 	}
 }
 
+func TestSchedulerCycleRejectsActiveTimeAboveBudget(t *testing.T) {
+	t.Parallel()
+
+	commit := SchedulerCycleCommit{
+		TaskID: "task-active-over-budget", ExpectedState: SchedulerTaskRunning,
+		State: SchedulerTaskQueued, QueueOrderMS: 4, AtMS: 4,
+		Cycle: SchedulerCycle{
+			CycleID: "cycle-active-over-budget", TaskID: "task-active-over-budget",
+			Lane: SchedulerLaneLive, SelectionReason: SchedulerSelectionLiveOnly,
+			StopReason: SchedulerStopTimeBudget, Outcome: SchedulerCycleYielded,
+			BudgetFiles: 1, BudgetBytes: 1, BudgetActiveMS: 1,
+			ActiveMS: 2, StartedAtMS: 2, FinishedAtMS: 3,
+		},
+	}
+	if err := validateSchedulerCycleCommit(commit); !errors.Is(err, ErrSchedulerTransition) {
+		t.Fatalf("validateSchedulerCycleCommit(active over budget) error = %v, want ErrSchedulerTransition", err)
+	}
+}
+
 func TestSchedulerRepositoryExactReplayUsesImmutableAdmissionPayload(t *testing.T) {
 	t.Parallel()
 

@@ -11,6 +11,17 @@ type BootstrapTarget interface {
 	RunSlice(context.Context, string, bootstrap.SliceBudget) (bootstrap.SliceReport, error)
 	Interrupt(context.Context, string, store.RuntimeErrorClass) error
 	Recover(context.Context, string) (store.JobRun, error)
+	Retry(context.Context, string) (store.JobRun, error)
+}
+
+func (executor *bootstrapExecutor) Retry(
+	ctx context.Context,
+	task store.SchedulerTask,
+) (store.JobRun, error) {
+	if executor == nil || executor.target == nil || task.TargetKind != store.SchedulerTargetBootstrap {
+		return store.JobRun{}, ErrExecutorMissing
+	}
+	return executor.target.Retry(ctx, task.TargetID)
 }
 
 type bootstrapExecutor struct {
@@ -37,7 +48,8 @@ func (executor *bootstrapExecutor) ExecuteSlice(
 	})
 	return SliceResult{
 		FilesProcessed: report.FilesProcessed, BytesProcessed: report.BytesRead,
-		Active: report.Active, StopReason: bootstrapStopReason(report.ExhaustedBy),
+		Active:     boundedCooperativeActive(report.Active, budget.MaxActive),
+		StopReason: bootstrapStopReason(report.ExhaustedBy),
 	}, err
 }
 

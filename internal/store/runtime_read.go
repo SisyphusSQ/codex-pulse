@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	"gorm.io/gorm"
 
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
@@ -372,7 +373,21 @@ func jobRunFromModel(model jobRunModel) (JobRun, error) {
 	if model.ResumeGeneration != nil {
 		job.ResumeCursor = &JobCursor{Generation: *model.ResumeGeneration, Offset: *model.ResumeOffset}
 	}
+	if job.CreatedAtMS < 0 || job.UpdatedAtMS < job.CreatedAtMS ||
+		job.CreatedAtMS > runtimeclock.MaxTimestampMS || job.UpdatedAtMS > runtimeclock.MaxTimestampMS ||
+		timestampPointerOutsideJobHistory(job.StartedAtMS, job.CreatedAtMS, job.UpdatedAtMS) ||
+		timestampPointerOutsideJobHistory(job.FinishedAtMS, job.CreatedAtMS, job.UpdatedAtMS) {
+		return JobRun{}, invalidRecord("stored job timestamps are outside the runtime boundary")
+	}
+	if job.State == JobQueued && job.UpdatedAtMS > runtimeclock.MaxContinuableTimestampMS ||
+		job.State == JobRunning && job.UpdatedAtMS > runtimeclock.MaxInProgressTimestampMS {
+		return JobRun{}, invalidRecord("stored job state has no logical-time headroom")
+	}
 	return job, nil
+}
+
+func timestampPointerOutsideJobHistory(value *int64, createdAtMS int64, updatedAtMS int64) bool {
+	return value != nil && (*value < createdAtMS || *value > updatedAtMS || *value > runtimeclock.MaxTimestampMS)
 }
 
 func jobRunsEqual(left, right JobRun) bool {

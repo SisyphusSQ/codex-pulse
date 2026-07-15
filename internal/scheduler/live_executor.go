@@ -11,6 +11,17 @@ type LiveTarget interface {
 	RunSlice(context.Context, string, liveindex.SliceBudget) (liveindex.SliceReport, error)
 	Interrupt(context.Context, string, store.RuntimeErrorClass) error
 	Recover(context.Context, string) (store.JobRun, error)
+	Retry(context.Context, string) (store.JobRun, error)
+}
+
+func (executor *liveExecutor) Retry(
+	ctx context.Context,
+	task store.SchedulerTask,
+) (store.JobRun, error) {
+	if executor == nil || executor.target == nil || task.TargetKind != store.SchedulerTargetLiveScan {
+		return store.JobRun{}, ErrExecutorMissing
+	}
+	return executor.target.Retry(ctx, task.TargetID)
 }
 
 type liveExecutor struct {
@@ -37,7 +48,8 @@ func (executor *liveExecutor) ExecuteSlice(
 	})
 	return SliceResult{
 		FilesProcessed: report.FilesProcessed, BytesProcessed: report.BytesRead,
-		Active: report.Active, StopReason: liveStopReason(report.ExhaustedBy),
+		Active:     boundedCooperativeActive(report.Active, budget.MaxActive),
+		StopReason: liveStopReason(report.ExhaustedBy),
 	}, err
 }
 
