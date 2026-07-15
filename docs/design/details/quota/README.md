@@ -68,13 +68,17 @@ application schema v10 通过 GORM Migrator 为 `source_state` 和 `source_attem
 
 可复用的 synthetic-only 验证入口见 [`docs/test/wham.md`](../../../test/wham.md)。
 
-窗口代际使用 `(window_kind, limit_id, window_minutes, resets_at_ms)` 识别。同一代际内 used 正常只能保持或上升；进入新代际后才允许从低值重新开始。
+### 窗口代际、校验与可信仲裁（TOO-264）
+
+窗口 identity 使用 `(window_kind, limit_id, window_minutes, resets_at_ms)`；逻辑 current key 使用 `(account_scope, window_kind, limit_id)`。通过校验的 `resets_at_ms` 同时作为稳定 `window_generation`：projection 从完整 observation history 重算时不会因输入顺序或补入旧历史而重编号。同一代际内同一来源的 used 只能保持或上升；进入可解释的新代际后才允许从低值重新开始。
+
+application schema v11 新增 `quota_current` 与 `quota_arbitration_evidence`。`quota_observations` 继续是不可变来源事实，parser 的 `validity/rejection_reason` 不会被 arbiter 改写；连续性、时钟、旧代际、来源冲突等派生判断写入 evidence。Local ingest、Wham fetch，以及对 exact quota Wham state 的通用 `UpsertSourceState`，都会在同一个 GORM writer transaction 内重算受影响窗口，写后完整读回 current/evidence；任一步失败连同 observation/attempt/source state 一起 rollback。Local ingest、`RecordQuotaFetch`、exact quota Wham state 更新和 maintenance rebuild 都使用 repository 单次注入的可信 wall clock，v10→v11 migration 使用 migration runner 同一次注入的应用时钟；observation/attempt 时间只作为待校验事实，不能自行抬高或降低 `evaluated_at_ms`，也不能绕过 future-clock 校验。migration backfill 与 evidence 写入按固定安全批次执行，4096 条以上 history 不会越过 SQLite bind-variable 上限；无 observation 时保持空表，原 observation 与 receipt 不删。
 
 逐 window 校验：
 
 - `used_percent` 必须在 `0..100`；
 - window duration 和 reset 时间必须合理；
-- primary 必须存在，字段类型和 observation 时间不能明显倒退；
+- primary 必须存在，字段类型和 observation 时间不能明显倒退；默认允许的系统时钟偏差为 2 分钟，规则版本为 `quota-arbiter-v1`；
 - secondary 暂时缺失不能删除上一条 weekly；
 - partial response 只更新通过校验的 window。
 
@@ -97,19 +101,19 @@ never_loaded
     -> fresh                 确认新窗口或取得可信观测
 ```
 
-刷新失败只写 `source_attempts`，不新增伪造 observation，也不覆盖 `quota_current`。一个窗口未知不能把其他窗口一起清空。
+刷新失败只写 `source_attempts`，不新增伪造 observation；随后从原 observation 和 source state 重算 current。选中 Wham 的窗口在较新请求失败后进入 stale 并保留 last-known-good；Local 仍提供更新可信值时不被 Wham 故障连带降级。一个窗口未知或 partial 缺失不能把其他窗口一起清空。
 
-freshness 与 conflict 分开：current 可以同时是 `fresh + conflict` 或 `stale + conflict`。初始规则为：accepted observation 在 10 分钟内且 reset 未到是 fresh；超过 10 分钟但仍在同一窗口是 stale；reset 已过且没有可信新代际是 expired_unknown；从未取得 accepted observation 是 never_loaded。
+freshness 与 conflict 分开：current 可以同时是 `fresh + conflict` 或 `stale + conflict`。accepted observation 在 10 分钟内且 reset 未到是 fresh；超过 10 分钟但仍在同一窗口是 stale；reset 已过且没有可信新代际是 expired_unknown；较新异常 observation 被隔离时保留 last-known-good 并标记 suspicious；从未取得 accepted observation 是 never_loaded。typed reader 每次按调用方提供的 evaluation time、`fresh_until_ms` 与 `resets_at_ms` 只做单向降级，因此即使没有周期写入也不会让落盘的 fresh 永久有效。读回会在显式 GORM read transaction 的同一 SQLite snapshot 中加载该逻辑窗口的完整 raw candidates 与 Wham source state，按 stored rule/evaluation 重新仲裁，再逐字段对账 current 与完整 evidence 集合；并发 writer commit 只能让 reader 看到完整旧版或新版。组合自洽的 freshness/explanation 或 disposition/reason/explanation 篡改、evidence 缺行/多行、逻辑键、来源、used、duration、reset、generation、validity 任一漂移都 fail closed，不能作为官方 current/evidence 返回。
 
 ## 仲裁规则
 
 不采用“wham 永远覆盖本地”的固定优先级：
 
-1. 同一代际内，新 used 相同或上升才接受；下降则 suspicious，不覆盖 current。
+1. 同一代际内，按来源分别检查 used 单调性；相同或上升才参与 current，下降写 `suspicious/used_regression` evidence，不覆盖 current。
 2. 同代际有多个 accepted 来源时，取最大的 `used_percent`，即采用最保守的 remaining。
-3. reset 向后推进且时间关系合理时接受为新 generation，允许 used 重新从低值开始。
+3. reset 向后推进、observation 已越过上一 reset（允许 2 分钟 clock skew）、新 reset 晚于 observation 且不超过 `window_minutes + skew` 时接受为新 generation，允许 used 重新从低值开始；中间未观测到的窗口可以跳过。generation 先做基础有效性分类，再做代际排序；若新代际零值被更晚 Local 旧窗口否定，会隔离该零值并重新分类旧窗口候选，确保首次观测也不会暴露 false-zero，已有历史时选更新的 Local last-known-good 而不是更旧值。
 4. reset 向过去移动、跨度异常或来源代际无法解释时保留 last-known-good；旧 reset 到期后进入 expired_unknown。
-5. 本地 JSONL 到来只重新仲裁，不触发在线请求；较新的本地高值可以更新旧 wham，较新的 wham 低值不能覆盖同代际本地高值。
+5. 本地 JSONL 到来只重新仲裁，不触发在线请求；较新的本地高值可以更新旧 wham，较新的 wham 低值不能覆盖同代际本地高值。旧 generation 晚到只保留 `reset_regression` evidence，不能回退 current。
 
 例：同一 reset 下本地已用 45%、在线已用 41%，current 采用 45%，UI 显示“剩余最多 55%”；41% 保留为 conflict evidence。之后在线返回 47% 时，47% 成为 current。
 
@@ -120,6 +124,8 @@ freshness 与 conflict 分开：current 可以同时是 `fresh + conflict` 或 `
 - `resets_at` 已推进到可解释的新窗口；
 - 当前时间越过上一窗口 reset，窗口长度合理且结构完整；
 - 没有更晚的本地 rate-limit 快照与其冲突。
+
+若新零值 generation 已通过基本时间校验，但随后出现仍指向上一 reset 的更新 Local snapshot，零值以 `default_fallback` evidence 隔离并回退上一代 last-known-good；不会用到达顺序把 100% 强行设为 current。
 
 以下响应标为 suspicious，保留上一条 accepted observation：
 
@@ -154,7 +160,7 @@ expired_unknown: 5h 剩余 62%
 conflict:        5h 剩余 55%
 ```
 
-Tray 和 Popover 始终使用普通百分比，不用 `≤`、`?`、状态胶囊或说明文案向用户区分 fresh、stale、expired_unknown 与 conflict。存在 last-known-good 时继续显示当前选定值；从未取得 accepted observation 时才显示 `--`。Quota 详情页仍可展示各来源 observation、时间、generation 和 validity，供诊断 current 的选择依据。
+Tray 和 Popover 始终使用普通百分比，不用 `≤`、`?`、状态胶囊或说明文案向用户区分 fresh、stale、expired_unknown 与 conflict。存在 last-known-good 时继续显示当前选定值；从未取得 accepted observation 时才显示 `--`。Quota 详情页仍可展示各来源 observation、时间、generation、原始 validity 与派生 disposition/reason/explanation，供诊断 current 的选择依据。`trusted`、`stale`、`expired_unknown`、`suspicious_candidate`、`source_conflict`、`unavailable` 是固定、无上游正文的 explanation code；UI 文案在后续卡映射，不读取数据库外的日志文本。
 
 ## 验收场景
 
@@ -167,3 +173,5 @@ Tray 和 Popover 始终使用普通百分比，不用 `≤`、`?`、状态胶囊
 - partial response 不删除 weekly。
 - JSON 解析失败不产生 observation。
 - 手动刷新绕过退避但不绕过校验。
+
+可复用的 synthetic-only 验证入口见 [`docs/test/window-generation-observation.md`](../../../test/window-generation-observation.md)。

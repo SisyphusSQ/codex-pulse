@@ -39,6 +39,10 @@ func (repository *Repository) RecordQuotaFetch(ctx context.Context, record Quota
 			}
 			return nil
 		}
+		evaluatedAtMS, err := repository.quotaEvaluationTimeMS()
+		if err != nil {
+			return err
+		}
 
 		existingState, found, err := sourceStateByID(ctx, database, record.SourceInstanceID)
 		if err != nil {
@@ -78,7 +82,9 @@ func (repository *Repository) RecordQuotaFetch(ctx context.Context, record Quota
 				return invalidRecord("quota source state changed during writer transaction")
 			}
 		}
-		return nil
+		return repository.rebuildQuotaScopeProjectionInTransaction(
+			ctx, database, record.ScopeKey, evaluatedAtMS, defaultQuotaArbitrationRule(),
+		)
 	})
 }
 

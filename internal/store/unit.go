@@ -91,6 +91,25 @@ func (unit *WriteUnit) UpsertFacts(batch FactBatch) error {
 		if err := upsertQuotaObservation(ctx, transaction, *batch.QuotaObservation); err != nil {
 			return err
 		}
+		if batch.QuotaObservation.LimitID != nil {
+			evaluatedAtMS, err := unit.repository.quotaEvaluationTimeMS()
+			if err != nil {
+				return err
+			}
+			if err := unit.repository.rebuildQuotaWindowProjectionInTransaction(
+				ctx,
+				transaction,
+				quotaProjectionKey{
+					accountScope: batch.QuotaObservation.AccountScope,
+					windowKind:   batch.QuotaObservation.WindowKind,
+					limitID:      *batch.QuotaObservation.LimitID,
+				},
+				evaluatedAtMS,
+				defaultQuotaArbitrationRule(),
+			); err != nil {
+				return err
+			}
+		}
 	}
 	if batch.Turn != nil {
 		if err := requireSession(ctx, transaction, batch.Turn.SessionID); err != nil {

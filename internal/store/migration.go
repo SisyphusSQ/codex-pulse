@@ -25,7 +25,8 @@ const (
 	applicationSchemaV8Version  = 8
 	applicationSchemaV9Version  = 9
 	applicationSchemaV10Version = 10
-	applicationSchemaVersion    = applicationSchemaV10Version
+	applicationSchemaV11Version = 11
+	applicationSchemaVersion    = applicationSchemaV11Version
 )
 
 var (
@@ -155,6 +156,17 @@ var applicationMigrations = []migrationDefinition{
 			return addSourceFailureColumns(ctx, transaction, len(sourceFailureMigrationColumns))
 		},
 	},
+	{
+		version:  applicationSchemaV11Version,
+		name:     "quota-window-arbitration-projection",
+		checksum: applicationSchemaV11Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			if err := ensureSchemaObjects(ctx, transaction, quotaProjectionSchemaObjects); err != nil {
+				return err
+			}
+			return rebuildQuotaProjectionDuringMigration(ctx, transaction)
+		},
+	},
 }
 
 type sourceFailureMigrationColumn struct {
@@ -237,6 +249,9 @@ type migrationRunner struct {
 // 上层建立可证明的排空与独占协议。
 func (repository *Repository) MigrateApplicationSchema(ctx context.Context) (MigrationReport, error) {
 	now := time.Now
+	if repository != nil && repository.quotaNow != nil {
+		now = repository.quotaNow
+	}
 	runner := migrationRunner{
 		repository: repository,
 		catalog:    applicationMigrations,
@@ -360,6 +375,7 @@ func (runner migrationRunner) run(ctx context.Context) (MigrationReport, error) 
 			return fmt.Errorf("%w: create migration ledger: %v", ErrMigrationContract, err)
 		}
 		appliedAtMS := runner.now().UnixMilli()
+		migrationContext := context.WithValue(ctx, quotaMigrationEvaluationTimeKey{}, appliedAtMS)
 		for _, migration := range runner.catalog[state.version:] {
 			failedStage = MigrationStageApply
 			failedVersion = migration.version
@@ -367,7 +383,7 @@ func (runner migrationRunner) run(ctx context.Context) (MigrationReport, error) 
 				Stage: MigrationStageApply, CurrentVersion: state.version,
 				TargetVersion: targetVersion, Version: migration.version,
 			})
-			if err := migration.apply(ctx, transaction); err != nil {
+			if err := migration.apply(migrationContext, transaction); err != nil {
 				return fmt.Errorf("apply migration %d %q: %w", migration.version, migration.name, err)
 			}
 			history := schemaMigrationModel{
@@ -564,7 +580,7 @@ func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteT
 		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
-		quotaSchemaObjects,
+		quotaSchemaObjects, quotaProjectionSchemaObjects,
 	} {
 		for _, object := range objects {
 			exists, err := verifySchemaObject(ctx, transaction, object)
@@ -726,6 +742,18 @@ func applicationSchemaV10Checksum() string {
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV10Version, "online-source-failure-metrics")
 	for _, column := range sourceFailureMigrationColumns {
 		_, _ = fmt.Fprintln(hasher, column.table, column.column, column.definition)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV11Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV11Version, "quota-window-arbitration-projection")
+	for _, object := range quotaProjectionSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.objectType, object.name,
+			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }

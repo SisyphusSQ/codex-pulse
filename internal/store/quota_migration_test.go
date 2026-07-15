@@ -19,14 +19,14 @@ func TestApplicationSchemaV9ChecksumIsFrozen(t *testing.T) {
 func TestApplicationSchemaV9CreatesQuotaObservationFacts(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != 10 {
-		t.Fatalf("applicationSchemaVersion = %d, want 10", applicationSchemaVersion)
+	if applicationSchemaVersion != 11 {
+		t.Fatalf("applicationSchemaVersion = %d, want 11", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	if err := NewRepository(database).EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 10, 10)
+	assertMigrationVersionAndHistory(t, database, 11, 11)
 	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
 		for _, object := range quotaSchemaObjects {
 			if object.objectType == "table" && !connection.Migrator().HasTable(object.name) {

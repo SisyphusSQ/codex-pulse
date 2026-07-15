@@ -61,10 +61,24 @@ func (repository *Repository) UpsertSourceState(ctx context.Context, state Sourc
 		}
 		model := sourceStateModelFromDomain(state)
 		if !found {
-			return transaction.WithContext(ctx).Create(&model).Error
+			if err := transaction.WithContext(ctx).Create(&model).Error; err != nil {
+				return err
+			}
+		} else if err := transaction.WithContext(ctx).Model(&sourceStateModel{}).
+			Where("source_instance_id = ?", state.SourceInstanceID).Updates(sourceStateUpdates(model)).Error; err != nil {
+			return err
 		}
-		return transaction.WithContext(ctx).Model(&sourceStateModel{}).
-			Where("source_instance_id = ?", state.SourceInstanceID).Updates(sourceStateUpdates(model)).Error
+		if state.SourceInstanceID != QuotaSourceInstanceWhamDefault || state.SourceType != QuotaSourceTypeWham ||
+			state.ScopeKey != QuotaAccountScopeDefault || !transaction.Migrator().HasTable(&quotaCurrentModel{}) {
+			return nil
+		}
+		evaluatedAtMS, err := repository.quotaEvaluationTimeMS()
+		if err != nil {
+			return err
+		}
+		return repository.rebuildQuotaScopeProjectionInTransaction(
+			ctx, transaction.WithContext(ctx), state.ScopeKey, evaluatedAtMS, defaultQuotaArbitrationRule(),
+		)
 	})
 }
 

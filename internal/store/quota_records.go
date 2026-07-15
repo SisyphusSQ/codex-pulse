@@ -99,3 +99,84 @@ type QuotaObservationFilter struct {
 	SourceFileID *string
 	Limit        int
 }
+
+type QuotaCurrentFreshness string
+
+const (
+	QuotaCurrentNeverLoaded    QuotaCurrentFreshness = "never_loaded"
+	QuotaCurrentFresh          QuotaCurrentFreshness = "fresh"
+	QuotaCurrentStale          QuotaCurrentFreshness = "stale"
+	QuotaCurrentExpiredUnknown QuotaCurrentFreshness = "expired_unknown"
+	QuotaCurrentSuspicious     QuotaCurrentFreshness = "suspicious"
+)
+
+type QuotaConflictState string
+
+const (
+	QuotaConflictNone    QuotaConflictState = "none"
+	QuotaConflictPresent QuotaConflictState = "conflict"
+)
+
+type QuotaExplanationCode string
+
+const (
+	QuotaExplanationTrusted        QuotaExplanationCode = "trusted"
+	QuotaExplanationStale          QuotaExplanationCode = "stale"
+	QuotaExplanationExpired        QuotaExplanationCode = "expired_unknown"
+	QuotaExplanationSuspicious     QuotaExplanationCode = "suspicious_candidate"
+	QuotaExplanationSourceConflict QuotaExplanationCode = "source_conflict"
+	QuotaExplanationUnavailable    QuotaExplanationCode = "unavailable"
+)
+
+type QuotaEvidenceDisposition string
+
+const (
+	QuotaEvidenceSelected   QuotaEvidenceDisposition = "selected"
+	QuotaEvidenceEligible   QuotaEvidenceDisposition = "eligible"
+	QuotaEvidenceSuperseded QuotaEvidenceDisposition = "superseded"
+	QuotaEvidenceSuspicious QuotaEvidenceDisposition = "suspicious"
+	QuotaEvidenceRejected   QuotaEvidenceDisposition = "rejected"
+)
+
+// QuotaArbitrationRule versions the recomputable projection contract. It does
+// not alter raw observations.
+type QuotaArbitrationRule struct {
+	Version        string
+	FreshForMS     int64
+	MaxClockSkewMS int64
+}
+
+// QuotaCurrent is one logical window projection. Nullable selected fields
+// preserve never-loaded independently from a real observed zero.
+type QuotaCurrent struct {
+	AccountScope         string
+	WindowKind           QuotaWindowKind
+	LimitID              string
+	ObservationID        *string
+	EffectiveUsedPercent *float64
+	WindowMinutes        *int64
+	ResetsAtMS           *int64
+	WindowGeneration     *int64
+	SelectedSource       *QuotaSource
+	FreshnessState       QuotaCurrentFreshness
+	ConflictState        QuotaConflictState
+	FreshUntilMS         *int64
+	LastSuccessAtMS      *int64
+	LastAttemptAtMS      *int64
+	RuleVersion          string
+	ExplanationCode      QuotaExplanationCode
+	EvaluatedAtMS        int64
+}
+
+// QuotaArbitrationEvidence explains how one immutable observation participated
+// in the current projection.
+type QuotaArbitrationEvidence struct {
+	AccountScope     string
+	WindowKind       QuotaWindowKind
+	LimitID          string
+	ObservationID    string
+	WindowGeneration *int64
+	Disposition      QuotaEvidenceDisposition
+	Reason           *QuotaRejectionReason
+	ExplanationCode  QuotaExplanationCode
+}
