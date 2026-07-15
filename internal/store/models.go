@@ -120,6 +120,7 @@ type sourceStateModel struct {
 	NextDueAtMS         *int64  `gorm:"column:next_due_at_ms"`
 	ConsecutiveFailures int64   `gorm:"column:consecutive_failures"`
 	LastErrorClass      *string `gorm:"column:last_error_class"`
+	LastFailureCode     *string `gorm:"column:last_failure_code;type:TEXT CHECK (last_failure_code IS NULL OR last_failure_code IN ('network_unavailable','timeout','auth_required','http_429','server_error','schema_incompatible','cancelled'))"`
 	FreshnessState      string  `gorm:"column:freshness_state"`
 	CursorVersion       int64   `gorm:"column:cursor_version"`
 	UpdatedAtMS         int64   `gorm:"column:updated_at_ms"`
@@ -135,7 +136,11 @@ type sourceAttemptModel struct {
 	Outcome          string  `gorm:"column:outcome"`
 	HTTPStatus       *int64  `gorm:"column:http_status"`
 	ErrorClass       *string `gorm:"column:error_class"`
+	FailureCode      *string `gorm:"column:failure_code;type:TEXT CHECK (failure_code IS NULL OR failure_code IN ('network_unavailable','timeout','auth_required','http_429','server_error','schema_incompatible','cancelled'))"`
 	PayloadSHA256    *string `gorm:"column:payload_sha256"`
+	AttemptCount     int64   `gorm:"column:attempt_count;type:INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count BETWEEN 0 AND 3)"`
+	ResponseBytes    int64   `gorm:"column:response_bytes;type:INTEGER NOT NULL DEFAULT 0 CHECK (response_bytes >= 0)"`
+	RetryAtMS        *int64  `gorm:"column:retry_at_ms;type:INTEGER CHECK (retry_at_ms IS NULL OR retry_at_ms >= finished_at_ms)"`
 }
 
 func (sourceAttemptModel) TableName() string { return "source_attempts" }

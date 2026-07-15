@@ -56,6 +56,18 @@ Indexer 使用 `(source_file_id, session_id, source_generation, line_start_offse
 
 可复用的 synthetic-only 验证入口见 [`docs/test/local-jsonl-quota.md`](../../../test/local-jsonl-quota.md)。
 
+### 在线 Wham 观测边界（TOO-263）
+
+TOO-263 交付 `CredentialProvider -> Wham client -> validated observation / typed failure -> atomic recorder`，但不读取真实 `auth.json`，不实现 refresh token、app-server、周期调度、窗口仲裁、`quota_current`、Reset Credits 或 UI。调用方只能把当前 access token 注入 `MemoryCredentialProvider`；provider 在 callback 期间提供独立副本，并在 callback、Replace 或 Close 后清零可写 buffer。客户端只向固定 Wham HTTPS endpoint 发 GET，请求完成后删除临时 Authorization header；token、header、response body 和底层 error text 都不得进入 Result、SQLite、日志或文档。
+
+每次 HTTP attempt 使用独立 timeout context，response body 有硬上限并始终关闭。401/403、429 和 schema failure 不做请求内重试；网络、timeout 与 5xx 使用 `internal/retry.Policy` 做最多三次短退避。429 不占用调用 goroutine 等待服务端窗口，只把合法 `Retry-After` 秒值、HTTP-date 或 `X-RateLimit-Reset` 安全转换为 `retry_at_ms`，供后续 durable scheduler 使用。取消优先于网络错误；在请求前已经取消或缺少凭证时 `attempt_count = 0`，仍记录一条无内容的 typed attempt。
+
+Wham decoder 先在有界内存中递归拒绝任意层级 duplicate JSON key，再读取 `plan_type` 与 `rate_limit.primary_window/secondary_window`。未知附加字段忽略；未知但类型正确的未来 plan 归一为 `unknown + suspicious/unknown_plan_type`，不会误报 schema failure或生成零值。primary 必须合法，secondary 可以缺失；secondary 损坏时保留合法 primary 并同时返回 `schema_incompatible`，primary 缺失但 secondary 合法时保留 secondary 为 `suspicious/missing_primary_window`。window 字段继续遵守 `used_percent=0..100`、最大 525600 分钟、epoch overflow 和 reset 可信度规则。
+
+application schema v10 通过 GORM Migrator 为 `source_state` 和 `source_attempts` 追加 exact failure code、attempt count、response byte count 与 retry time；v1～v9 的 schema/checksum 保持冻结。`RecordQuotaFetch` 在现有单 writer transaction 中同时写 observation、append-only attempt 和 source freshness：成功清空失败状态；partial/failure 保留 last-known-good 并进入 stale/unavailable；cancelled 不累计连续失败；较旧请求晚到只补历史，不回退较新的 source state。exact request replay 是 no-op，同 request 不同结构整笔 fail closed。
+
+可复用的 synthetic-only 验证入口见 [`docs/test/wham.md`](../../../test/wham.md)。
+
 窗口代际使用 `(window_kind, limit_id, window_minutes, resets_at_ms)` 识别。同一代际内 used 正常只能保持或上升；进入新代际后才允许从低值重新开始。
 
 逐 window 校验：

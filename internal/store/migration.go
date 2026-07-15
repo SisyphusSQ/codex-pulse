@@ -15,16 +15,17 @@ import (
 )
 
 const (
-	applicationSchemaV1Version = 1
-	applicationSchemaV2Version = 2
-	applicationSchemaV3Version = 3
-	applicationSchemaV4Version = 4
-	applicationSchemaV5Version = 5
-	applicationSchemaV6Version = 6
-	applicationSchemaV7Version = 7
-	applicationSchemaV8Version = 8
-	applicationSchemaV9Version = 9
-	applicationSchemaVersion   = applicationSchemaV9Version
+	applicationSchemaV1Version  = 1
+	applicationSchemaV2Version  = 2
+	applicationSchemaV3Version  = 3
+	applicationSchemaV4Version  = 4
+	applicationSchemaV5Version  = 5
+	applicationSchemaV6Version  = 6
+	applicationSchemaV7Version  = 7
+	applicationSchemaV8Version  = 8
+	applicationSchemaV9Version  = 9
+	applicationSchemaV10Version = 10
+	applicationSchemaVersion    = applicationSchemaV10Version
 )
 
 var (
@@ -146,6 +147,70 @@ var applicationMigrations = []migrationDefinition{
 			return ensureSchemaObjects(ctx, transaction, quotaSchemaObjects)
 		},
 	},
+	{
+		version:  applicationSchemaV10Version,
+		name:     "online-source-failure-metrics",
+		checksum: applicationSchemaV10Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			return addSourceFailureColumns(ctx, transaction, len(sourceFailureMigrationColumns))
+		},
+	},
+}
+
+type sourceFailureMigrationColumn struct {
+	model      any
+	field      string
+	table      string
+	column     string
+	definition string
+}
+
+var sourceFailureMigrationColumns = []sourceFailureMigrationColumn{
+	{
+		model: &sourceStateModel{}, field: "LastFailureCode", table: "source_state", column: "last_failure_code",
+		definition: "TEXT CHECK nullable allowlisted source failure code",
+	},
+	{
+		model: &sourceAttemptModel{}, field: "FailureCode", table: "source_attempts", column: "failure_code",
+		definition: "TEXT CHECK nullable allowlisted source failure code",
+	},
+	{
+		model: &sourceAttemptModel{}, field: "AttemptCount", table: "source_attempts", column: "attempt_count",
+		definition: "INTEGER NOT NULL DEFAULT 1 CHECK 0..3",
+	},
+	{
+		model: &sourceAttemptModel{}, field: "ResponseBytes", table: "source_attempts", column: "response_bytes",
+		definition: "INTEGER NOT NULL DEFAULT 0 CHECK >=0",
+	},
+	{
+		model: &sourceAttemptModel{}, field: "RetryAtMS", table: "source_attempts", column: "retry_at_ms",
+		definition: "INTEGER CHECK nullable or >= finished_at_ms",
+	},
+}
+
+func addSourceFailureColumns(ctx context.Context, transaction *gorm.DB, limit int) error {
+	if transaction == nil || limit < 0 || limit > len(sourceFailureMigrationColumns) {
+		return fmt.Errorf("%w: invalid source failure migration boundary", ErrMigrationContract)
+	}
+	database := transaction.WithContext(ctx)
+	for _, column := range sourceFailureMigrationColumns[:limit] {
+		if database.Migrator().HasColumn(column.model, column.column) {
+			continue
+		}
+		if err := database.Migrator().AddColumn(column.model, column.field); err != nil {
+			return fmt.Errorf("%w: add %s.%s: %v", ErrMigrationContract, column.table, column.column, err)
+		}
+	}
+	return nil
+}
+
+func verifySourceFailureColumns(transaction *gorm.DB) error {
+	for _, column := range sourceFailureMigrationColumns {
+		if !transaction.Migrator().HasColumn(column.model, column.column) {
+			return fmt.Errorf("%w: missing column %s.%s", ErrSchemaContract, column.table, column.column)
+		}
+	}
+	return nil
 }
 
 // MigrationReport 描述本次启动观察到并应用的版本事实。
@@ -496,7 +561,7 @@ func validateMigrationState(
 
 func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteTx) error {
 	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects, retentionSchemaObjects,
+		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
 		quotaSchemaObjects,
@@ -511,7 +576,39 @@ func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteT
 			}
 		}
 	}
-	return nil
+	return verifySourceFailureColumns(transaction)
+}
+
+func currentRuntimeSchemaObjects() []schemaObject {
+	objects := append([]schemaObject(nil), runtimeSchemaObjects...)
+	for index := range objects {
+		switch objects[index].name {
+		case "source_state":
+			objects[index].statement = appendSQLiteMigratedColumns(
+				objects[index].statement,
+				"\n\t\tCHECK (last_success_at_ms",
+				"`last_failure_code` TEXT CHECK (last_failure_code IS NULL OR last_failure_code IN ('network_unavailable','timeout','auth_required','http_429','server_error','schema_incompatible','cancelled'))",
+			)
+		case "source_attempts":
+			objects[index].statement = appendSQLiteMigratedColumns(
+				objects[index].statement,
+				"\n\t\tCHECK ((outcome",
+				"`failure_code` TEXT CHECK (failure_code IS NULL OR failure_code IN ('network_unavailable','timeout','auth_required','http_429','server_error','schema_incompatible','cancelled'))",
+				"`attempt_count` INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count BETWEEN 0 AND 3)",
+				"`response_bytes` INTEGER NOT NULL DEFAULT 0 CHECK (response_bytes >= 0)",
+				"`retry_at_ms` INTEGER CHECK (retry_at_ms IS NULL OR retry_at_ms >= finished_at_ms)",
+			)
+		}
+	}
+	return objects
+}
+
+func appendSQLiteMigratedColumns(statement, before string, columns ...string) string {
+	boundary := strings.Index(statement, before)
+	if boundary < 0 {
+		return statement
+	}
+	return statement[:boundary] + " " + strings.Join(columns, ", ") + "," + statement[boundary:]
 }
 
 func applicationSchemaV1Checksum() string {
@@ -620,6 +717,15 @@ func applicationSchemaV9Checksum() string {
 			hasher, object.objectType, object.name,
 			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
 		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV10Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV10Version, "online-source-failure-metrics")
+	for _, column := range sourceFailureMigrationColumns {
+		_, _ = fmt.Fprintln(hasher, column.table, column.column, column.definition)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }

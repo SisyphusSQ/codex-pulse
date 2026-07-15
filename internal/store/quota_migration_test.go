@@ -19,14 +19,14 @@ func TestApplicationSchemaV9ChecksumIsFrozen(t *testing.T) {
 func TestApplicationSchemaV9CreatesQuotaObservationFacts(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != 9 {
-		t.Fatalf("applicationSchemaVersion = %d, want 9", applicationSchemaVersion)
+	if applicationSchemaVersion != 10 {
+		t.Fatalf("applicationSchemaVersion = %d, want 10", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	if err := NewRepository(database).EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 9, 9)
+	assertMigrationVersionAndHistory(t, database, 10, 10)
 	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
 		for _, object := range quotaSchemaObjects {
 			if object.objectType == "table" && !connection.Migrator().HasTable(object.name) {
@@ -62,6 +62,8 @@ func TestApplicationMigrationUpgradesV8ToV9WithoutLosingFacts(t *testing.T) {
 
 	var backupVersions [2]int
 	runner := applicationMigrationRunnerForTest(database)
+	runner.catalog = applicationMigrations[:9]
+	runner.verifyCurrent = verifyApplicationSchemaV9
 	runner.spaceCheck = func(context.Context, string, int64) error { return nil }
 	runner.backup = func(_ context.Context, from, target int, _ func(storesqlite.BackupProgress)) (string, error) {
 		backupVersions = [2]int{from, target}
