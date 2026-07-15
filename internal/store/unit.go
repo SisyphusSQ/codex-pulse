@@ -82,6 +82,16 @@ func (unit *WriteUnit) UpsertFacts(batch FactBatch) error {
 			return err
 		}
 	}
+	if batch.QuotaObservation != nil {
+		if batch.QuotaObservation.SessionID != nil {
+			if err := requireSession(ctx, transaction, *batch.QuotaObservation.SessionID); err != nil {
+				return err
+			}
+		}
+		if err := upsertQuotaObservation(ctx, transaction, *batch.QuotaObservation); err != nil {
+			return err
+		}
+	}
 	if batch.Turn != nil {
 		if err := requireSession(ctx, transaction, batch.Turn.SessionID); err != nil {
 			return err

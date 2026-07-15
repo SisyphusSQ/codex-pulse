@@ -90,16 +90,25 @@ func (repository *Repository) validateIngestBatch(batch IngestBatch) error {
 			facts.Session.SourceKind != canonicalSessionSourceKind {
 			return invalidRecord("ingest session fact conflicts with canonical source kind")
 		}
+		if facts.QuotaObservation != nil &&
+			(facts.QuotaObservation.Source != QuotaSourceLocalJSONL ||
+				facts.QuotaObservation.SourceFileID == nil ||
+				*facts.QuotaObservation.SourceFileID != batch.SourceFileID) {
+			return invalidRecord("ingest quota observation does not match source file")
+		}
 		if facts.Turn != nil && facts.Turn.SourceGeneration != batch.Generation ||
 			facts.Usage != nil && facts.Usage.SourceGeneration != batch.Generation ||
-			facts.SessionUsageCurrent != nil && facts.SessionUsageCurrent.SourceGeneration != batch.Generation {
+			facts.SessionUsageCurrent != nil && facts.SessionUsageCurrent.SourceGeneration != batch.Generation ||
+			facts.QuotaObservation != nil && facts.QuotaObservation.SourceGeneration != batch.Generation {
 			return invalidRecord("ingest fact generation does not match batch")
 		}
 		if facts.Turn != nil && (facts.Turn.StartOffset > batch.Checkpoint.CommittedOffset ||
 			(facts.Turn.CompleteOffset != nil && *facts.Turn.CompleteOffset > batch.Checkpoint.CommittedOffset)) ||
 			facts.Usage != nil && facts.Usage.SourceOffset > batch.Checkpoint.CommittedOffset ||
 			facts.SessionUsageCurrent != nil &&
-				facts.SessionUsageCurrent.SourceOffset > batch.Checkpoint.CommittedOffset {
+				facts.SessionUsageCurrent.SourceOffset > batch.Checkpoint.CommittedOffset ||
+			facts.QuotaObservation != nil &&
+				facts.QuotaObservation.SourceOffset > batch.Checkpoint.CommittedOffset {
 			return invalidRecord("ingest fact source position exceeds checkpoint")
 		}
 	}

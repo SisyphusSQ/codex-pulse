@@ -12,7 +12,7 @@ import (
 func TestProjectorMapsLifecycleEventsToOrderedFacts(t *testing.T) {
 	t.Parallel()
 
-	projector, err := newProjector(3, store.GenerationModeRebuild, nil, store.ProjectorCheckpoint{})
+	projector, err := newProjector("source-projector", 3, store.GenerationModeRebuild, nil, store.ProjectorCheckpoint{})
 	if err != nil {
 		t.Fatalf("newProjector() error = %v", err)
 	}
@@ -107,7 +107,7 @@ func TestProjectorCounterEpochUsesOnlyKnownDecreases(t *testing.T) {
 	t.Parallel()
 
 	previousInput, previousOutput := int64(100), int64(50)
-	projector, err := newProjector(2, store.GenerationModeAppend, nil, store.ProjectorCheckpoint{
+	projector, err := newProjector("source-projector", 2, store.GenerationModeAppend, nil, store.ProjectorCheckpoint{
 		SessionUsage: &store.SessionUsageCurrent{
 			SessionID: "session-a", CounterEpoch: 7, TotalInputTokens: &previousInput,
 			TotalOutputTokens: &previousOutput, ObservedAtMS: 100, SourceGeneration: 2,
@@ -180,7 +180,7 @@ func TestProjectorRestoresOpenTurnSourcePosition(t *testing.T) {
 		}},
 		Current: &store.SessionCurrent{SessionID: "session-a", ActiveTurnID: &active, UpdatedAtMS: 10},
 	}
-	projector, err := newProjector(4, store.GenerationModeAppend, seed, checkpoint)
+	projector, err := newProjector("source-projector", 4, store.GenerationModeAppend, seed, checkpoint)
 	if err != nil {
 		t.Fatalf("newProjector() error = %v", err)
 	}
@@ -204,7 +204,7 @@ func TestProjectorRestoresOpenTurnSourcePosition(t *testing.T) {
 
 	bad := checkpoint
 	bad.OpenTurns[0].TurnID = "other"
-	if _, err := newProjector(4, store.GenerationModeAppend, seed, bad); !errors.Is(err, ErrInvalidProjection) {
+	if _, err := newProjector("source-projector", 4, store.GenerationModeAppend, seed, bad); !errors.Is(err, ErrInvalidProjection) {
 		t.Fatalf("newProjector(mismatched open state) error = %v, want ErrInvalidProjection", err)
 	}
 }

@@ -1,8 +1,10 @@
 package indexer
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
@@ -12,6 +14,7 @@ import (
 var ErrInvalidProjection = errors.New("invalid rollout fact projection")
 
 type projector struct {
+	sourceFileID      string
 	generation        int64
 	firstCounterState string
 	sessionID         string
@@ -23,16 +26,18 @@ type projector struct {
 }
 
 func newProjector(
+	sourceFileID string,
 	generation int64,
 	mode store.GenerationMode,
 	seed *logs.ParserSeed,
 	checkpoint store.ProjectorCheckpoint,
 ) (*projector, error) {
-	if generation < 0 || (mode != store.GenerationModeAppend && mode != store.GenerationModeRebuild) {
+	if sourceFileID == "" || generation < 0 ||
+		(mode != store.GenerationModeAppend && mode != store.GenerationModeRebuild) {
 		return nil, invalidProjection("generation or mode is invalid")
 	}
 	result := &projector{
-		generation: generation, firstCounterState: "live",
+		sourceFileID: sourceFileID, generation: generation, firstCounterState: "live",
 		openTurns: make(map[string]store.ProjectedOpenTurnCheckpoint, len(checkpoint.OpenTurns)),
 	}
 	if checkpoint.SessionSourceKind != "" {
@@ -132,10 +137,119 @@ func (projector *projector) projectEvent(event logs.ParsedEvent) (store.FactBatc
 		return projector.projectTurnUsage(event)
 	case logs.EventSessionUsage:
 		return projector.projectSessionUsage(event)
+	case logs.EventQuotaObservation:
+		return projector.projectQuotaObservation(event)
 	case logs.EventTurnEnded:
 		return projector.projectTurnEnd(event)
 	default:
 		return store.FactBatch{}, invalidProjection("event kind is unsupported")
+	}
+}
+
+func (projector *projector) projectQuotaObservation(event logs.ParsedEvent) (store.FactBatch, error) {
+	observation := event.QuotaObservation
+	if observation == nil || projector.session == nil || observation.SessionID != projector.sessionID ||
+		observation.AccountScope != logs.QuotaAccountScopeDefault ||
+		observation.Source != logs.QuotaSourceLocalJSONL ||
+		(observation.WindowKind != logs.QuotaWindowPrimary && observation.WindowKind != logs.QuotaWindowSecondary) ||
+		math.IsNaN(observation.UsedPercent) || math.IsInf(observation.UsedPercent, 0) ||
+		observation.UsedPercent < 0 || observation.UsedPercent > 100 || observation.WindowMinutes <= 0 ||
+		observation.ResetsAtMS < 0 || observation.ObservedAtMS < 0 || !validQuotaPlanType(observation.PlanType) {
+		return store.FactBatch{}, invalidProjection("quota observation event is invalid")
+	}
+	validity, reason, err := quotaValidityFromEvent(observation.Validity, observation.RejectionReason)
+	if err != nil {
+		return store.FactBatch{}, err
+	}
+	sessionID := observation.SessionID
+	sourceFileID := projector.sourceFileID
+	projected := &store.QuotaObservationSample{
+		ObservationID: quotaObservationID(
+			projector.sourceFileID, observation.SessionID, projector.generation,
+			event.Position.StartOffset, observation.WindowKind,
+		),
+		AccountScope:     store.QuotaAccountScopeDefault,
+		Source:           store.QuotaSourceLocalJSONL,
+		LimitID:          cloneString(observation.LimitID),
+		WindowKind:       store.QuotaWindowKind(observation.WindowKind),
+		UsedPercent:      observation.UsedPercent,
+		WindowMinutes:    observation.WindowMinutes,
+		ResetsAtMS:       observation.ResetsAtMS,
+		PlanType:         cloneString(observation.PlanType),
+		ObservedAtMS:     observation.ObservedAtMS,
+		Validity:         validity,
+		RejectionReason:  reason,
+		SessionID:        &sessionID,
+		SourceFileID:     &sourceFileID,
+		SourceGeneration: projector.generation,
+		SourceOffset:     event.Position.StartOffset,
+	}
+	lastSeenAtMS := observation.ObservedAtMS
+	if lastSeenAtMS < projector.session.ObservedAtMS {
+		lastSeenAtMS = projector.session.ObservedAtMS
+	}
+	return store.FactBatch{
+		Session: projector.sessionFactAt(lastSeenAtMS), QuotaObservation: projected,
+	}, nil
+}
+
+func quotaObservationID(
+	sourceFileID string,
+	sessionID string,
+	generation int64,
+	offset int64,
+	window logs.QuotaWindowKind,
+) string {
+	digest := sha256.Sum256([]byte(fmt.Sprintf(
+		"%q\n%q\n%d\n%d\n%s", sourceFileID, sessionID, generation, offset, window,
+	)))
+	return fmt.Sprintf("quota-local-jsonl-%x", digest)
+}
+
+func quotaValidityFromEvent(
+	validity logs.QuotaValidity,
+	reason *logs.QuotaRejectionReason,
+) (store.QuotaValidity, *store.QuotaRejectionReason, error) {
+	var projectedValidity store.QuotaValidity
+	switch validity {
+	case logs.QuotaValidityAccepted:
+		projectedValidity = store.QuotaValidityAccepted
+	case logs.QuotaValiditySuspicious:
+		projectedValidity = store.QuotaValiditySuspicious
+	case logs.QuotaValidityRejected:
+		projectedValidity = store.QuotaValidityRejected
+	default:
+		return "", nil, invalidProjection("quota validity is invalid")
+	}
+	if projectedValidity == store.QuotaValidityAccepted {
+		if reason != nil {
+			return "", nil, invalidProjection("accepted quota observation has a reason")
+		}
+		return projectedValidity, nil, nil
+	}
+	if reason == nil {
+		return "", nil, invalidProjection("non-accepted quota observation has no reason")
+	}
+	projectedReason := store.QuotaRejectionReason(*reason)
+	switch projectedReason {
+	case store.QuotaReasonMissingLimitID, store.QuotaReasonMissingPrimaryWindow,
+		store.QuotaReasonResetNotFuture, store.QuotaReasonUnknownPlanType:
+		return projectedValidity, &projectedReason, nil
+	default:
+		return "", nil, invalidProjection("quota observation reason is invalid")
+	}
+}
+
+func validQuotaPlanType(planType *string) bool {
+	if planType == nil {
+		return true
+	}
+	switch *planType {
+	case "free", "go", "plus", "pro", "prolite", "team", "self_serve_business_usage_based",
+		"business", "enterprise_cbp_usage_based", "enterprise", "edu", "unknown":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -332,7 +446,8 @@ func (projector *projector) checkpoint() store.ProjectorCheckpoint {
 
 func (value *projector) clone() *projector {
 	copy := &projector{
-		generation: value.generation, firstCounterState: value.firstCounterState,
+		sourceFileID: value.sourceFileID,
+		generation:   value.generation, firstCounterState: value.firstCounterState,
 		sessionID: value.sessionID, sessionSourceKind: value.sessionSourceKind,
 		session:   cloneParserSession(value.session),
 		openTurns: make(map[string]store.ProjectedOpenTurnCheckpoint, len(value.openTurns)),

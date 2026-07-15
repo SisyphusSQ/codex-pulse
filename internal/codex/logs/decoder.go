@@ -73,13 +73,15 @@ type tokenUsagePayload struct {
 }
 
 type decodedLine struct {
-	Kind         decodedLineKind
-	ObservedAtMS int64
-	SessionMeta  *decodedSessionMetaRecord
-	TurnContext  *decodedTurnContextRecord
-	TurnStart    *decodedTurnStartRecord
-	TokenUsage   *decodedTokenUsageRecord
-	TurnTerminal *decodedTurnTerminalRecord
+	Kind              decodedLineKind
+	ObservedAtMS      int64
+	SessionMeta       *decodedSessionMetaRecord
+	TurnContext       *decodedTurnContextRecord
+	TurnStart         *decodedTurnStartRecord
+	TokenUsage        *decodedTokenUsageRecord
+	TurnTerminal      *decodedTurnTerminalRecord
+	QuotaObservations []QuotaObservationFact
+	Diagnostics       []DiagnosticCode
 }
 
 type decodeResult struct {
@@ -312,30 +314,180 @@ func decodeTurnAborted(frame lineFrame, observedAtMS int64, payload json.RawMess
 
 func decodeTokenCount(frame lineFrame, observedAtMS int64, payload json.RawMessage) decodeResult {
 	var value struct {
-		Info *struct {
-			Total              *tokenUsagePayload `json:"total_token_usage"`
-			Last               *tokenUsagePayload `json:"last_token_usage"`
-			ModelContextWindow *int64             `json:"model_context_window"`
-		} `json:"info"`
+		Info       json.RawMessage `json:"info"`
+		RateLimits json.RawMessage `json:"rate_limits"`
 	}
 	if err := json.Unmarshal(payload, &value); err != nil {
 		return decodeDiagnostic(frame, DiagnosticClassSyntax, DiagnosticInvalidField)
 	}
-	if value.Info == nil {
-		return decodeResult{KnownIgnored: true}
+
+	var usage *decodedTokenUsageRecord
+	infoInvalid := false
+	if len(value.Info) != 0 && string(value.Info) != "null" {
+		var info struct {
+			Total              *tokenUsagePayload `json:"total_token_usage"`
+			Last               *tokenUsagePayload `json:"last_token_usage"`
+			ModelContextWindow *int64             `json:"model_context_window"`
+		}
+		if err := json.Unmarshal(value.Info, &info); err != nil ||
+			!validNonNegative(info.ModelContextWindow) ||
+			!validTokenPayload(info.Total) || !validTokenPayload(info.Last) {
+			infoInvalid = true
+		} else {
+			usage = &decodedTokenUsageRecord{
+				ObservedAtMS: observedAtMS,
+				Total:        tokenCounters(info.Total), Last: tokenCounters(info.Last),
+				ContextWindow: cloneInt64(info.ModelContextWindow),
+			}
+		}
 	}
-	if !validNonNegative(value.Info.ModelContextWindow) ||
-		!validTokenPayload(value.Info.Total) || !validTokenPayload(value.Info.Last) {
-		return decodeDiagnostic(frame, DiagnosticClassSyntax, DiagnosticInvalidField)
+
+	observations, diagnostics := decodeRateLimitSnapshot(value.RateLimits, observedAtMS)
+	if infoInvalid {
+		if len(observations) == 0 && len(diagnostics) == 0 {
+			return decodeDiagnostic(frame, DiagnosticClassSyntax, DiagnosticInvalidField)
+		}
+		diagnostics = append([]DiagnosticCode{DiagnosticInvalidField}, diagnostics...)
+	}
+	if usage == nil && len(observations) == 0 && len(diagnostics) == 0 {
+		return decodeResult{KnownIgnored: true}
 	}
 	return decodeResult{Record: &decodedLine{
 		Kind: decodedTokenUsage, ObservedAtMS: observedAtMS,
-		TokenUsage: &decodedTokenUsageRecord{
-			ObservedAtMS: observedAtMS,
-			Total:        tokenCounters(value.Info.Total), Last: tokenCounters(value.Info.Last),
-			ContextWindow: cloneInt64(value.Info.ModelContextWindow),
-		},
+		TokenUsage: usage, QuotaObservations: observations, Diagnostics: diagnostics,
 	}}
+}
+
+const maxQuotaWindowMinutes int64 = 525600
+
+type rateLimitWindowPayload struct {
+	UsedPercent   *float64 `json:"used_percent"`
+	WindowMinutes *int64   `json:"window_minutes"`
+	ResetsAt      *int64   `json:"resets_at"`
+}
+
+func decodeRateLimitSnapshot(raw json.RawMessage, observedAtMS int64) ([]QuotaObservationFact, []DiagnosticCode) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var snapshot struct {
+		LimitID   json.RawMessage `json:"limit_id"`
+		Primary   json.RawMessage `json:"primary"`
+		Secondary json.RawMessage `json:"secondary"`
+		PlanType  json.RawMessage `json:"plan_type"`
+	}
+	if err := json.Unmarshal(raw, &snapshot); err != nil {
+		return nil, []DiagnosticCode{DiagnosticInvalidQuotaSnapshot}
+	}
+	limitID, ok := decodeOptionalString(snapshot.LimitID, maxIdentifierBytes)
+	if !ok {
+		return nil, []DiagnosticCode{DiagnosticInvalidQuotaSnapshot}
+	}
+	planType, unknownPlan, planValid := decodeQuotaPlanType(snapshot.PlanType)
+	if !planValid {
+		return nil, []DiagnosticCode{DiagnosticInvalidQuotaSnapshot}
+	}
+
+	primary, primaryPresent, primaryValid := decodeRateLimitWindow(snapshot.Primary)
+	secondary, secondaryPresent, secondaryValid := decodeRateLimitWindow(snapshot.Secondary)
+	diagnostics := make([]DiagnosticCode, 0, 2)
+	if primaryPresent && !primaryValid {
+		diagnostics = append(diagnostics, DiagnosticInvalidQuotaWindow)
+	}
+	if secondaryPresent && !secondaryValid {
+		diagnostics = append(diagnostics, DiagnosticInvalidQuotaWindow)
+	}
+	if !primaryValid && !secondaryValid {
+		if len(diagnostics) == 0 {
+			diagnostics = append(diagnostics, DiagnosticInvalidQuotaSnapshot)
+		}
+		return nil, diagnostics
+	}
+
+	result := make([]QuotaObservationFact, 0, 2)
+	if primaryValid {
+		result = append(result, quotaObservationFromWindow(
+			QuotaWindowPrimary, primary, limitID, planType, unknownPlan, true, observedAtMS,
+		))
+	}
+	if secondaryValid {
+		result = append(result, quotaObservationFromWindow(
+			QuotaWindowSecondary, secondary, limitID, planType, unknownPlan, primaryValid, observedAtMS,
+		))
+	}
+	return result, diagnostics
+}
+
+func decodeRateLimitWindow(raw json.RawMessage) (rateLimitWindowPayload, bool, bool) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return rateLimitWindowPayload{}, false, false
+	}
+	var window rateLimitWindowPayload
+	if err := json.Unmarshal(raw, &window); err != nil {
+		return rateLimitWindowPayload{}, true, false
+	}
+	if window.UsedPercent == nil || math.IsNaN(*window.UsedPercent) || math.IsInf(*window.UsedPercent, 0) ||
+		*window.UsedPercent < 0 || *window.UsedPercent > 100 ||
+		window.WindowMinutes == nil || *window.WindowMinutes <= 0 ||
+		*window.WindowMinutes > maxQuotaWindowMinutes || window.ResetsAt == nil {
+		return rateLimitWindowPayload{}, true, false
+	}
+	if _, ok := secondsToMilliseconds(*window.ResetsAt); !ok {
+		return rateLimitWindowPayload{}, true, false
+	}
+	return window, true, true
+}
+
+func quotaObservationFromWindow(
+	kind QuotaWindowKind,
+	window rateLimitWindowPayload,
+	limitID *string,
+	planType *string,
+	unknownPlan bool,
+	primaryValid bool,
+	observedAtMS int64,
+) QuotaObservationFact {
+	resetsAtMS, _ := secondsToMilliseconds(*window.ResetsAt)
+	observation := QuotaObservationFact{
+		AccountScope: QuotaAccountScopeDefault, Source: QuotaSourceLocalJSONL,
+		LimitID: cloneString(limitID), WindowKind: kind, UsedPercent: *window.UsedPercent,
+		WindowMinutes: *window.WindowMinutes, ResetsAtMS: resetsAtMS,
+		PlanType: cloneString(planType), ObservedAtMS: observedAtMS, Validity: QuotaValidityAccepted,
+	}
+	var reason QuotaRejectionReason
+	switch {
+	case limitID == nil:
+		reason = QuotaReasonMissingLimitID
+	case kind == QuotaWindowSecondary && !primaryValid:
+		reason = QuotaReasonMissingPrimaryWindow
+	case unknownPlan:
+		reason = QuotaReasonUnknownPlanType
+	case resetsAtMS <= observedAtMS:
+		reason = QuotaReasonResetNotFuture
+	}
+	if reason != "" {
+		observation.Validity = QuotaValiditySuspicious
+		observation.RejectionReason = &reason
+	}
+	return observation
+}
+
+func decodeQuotaPlanType(raw json.RawMessage) (*string, bool, bool) {
+	value, ok := decodeOptionalString(raw, maxIdentifierBytes)
+	if !ok {
+		return nil, false, false
+	}
+	if value == nil {
+		return nil, false, true
+	}
+	switch *value {
+	case "free", "go", "plus", "pro", "prolite", "team",
+		"self_serve_business_usage_based", "business", "enterprise_cbp_usage_based",
+		"enterprise", "edu", QuotaPlanUnknown:
+		return value, *value == QuotaPlanUnknown, true
+	default:
+		return stringPointer(QuotaPlanUnknown), true, true
+	}
 }
 
 func validateJSON(content []byte) error {

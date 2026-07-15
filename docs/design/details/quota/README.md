@@ -33,6 +33,29 @@ validity                accepted / suspicious / rejected
 rejection_reason
 ```
 
+### 本地 JSONL 观测边界（TOO-262）
+
+TOO-262 只交付 `local_jsonl` 的结构化观测与持久化，不提前实现 `wham` 请求、跨来源仲裁、`quota_current`、刷新调度或 UI。`event_msg.token_count.info` 与 `rate_limits` 是两个彼此独立的输入：`info=null` 仍可生成配额 observation，`rate_limits` 缺失也不影响既有 token usage。解析器只消费：
+
+- snapshot：`limit_id`、`primary`、`secondary`、`plan_type`；
+- window：`used_percent`、`window_minutes`、`resets_at`；
+- envelope：记录时间与 JSONL 行的 source offset。
+
+`limit_name`、credits、future fields 和其它未知字段全部忽略，不进入 parser event、diagnostic、checkpoint 或数据库。`remaining_percent` 不持久化，也不从 token 用量猜测；它只能由后续展示层从 `100 - used_percent` 派生。
+
+本地窗口逐项处理：
+
+- `used_percent` 必须在 `0..100`，`window_minutes` 必须在 `1..525600`，`resets_at` 必须是可安全转换为 epoch milliseconds 的非负 Unix seconds；`0` 表示 Unix epoch，可保留为 `suspicious/reset_not_future`，负数或溢出才是非法 window；
+- primary / secondary 独立解析。一个 window 非法时只产生 content-free `invalid_quota_window` diagnostic，另一个合法 window 仍可落 observation；两个 window 均缺失或不可用时产生 `invalid_quota_snapshot`，不写伪造 observation；
+- 缺失 `limit_id`、secondary 缺失合法 primary、未知字符串枚举 `plan_type`、或 reset 不晚于观测时间时保留结构化值，但标为 `suspicious`，reason 分别固定为 `missing_limit_id`、`missing_primary_window`、`unknown_plan_type`、`reset_not_future`；未知 plan 字符串只归一为 `unknown`，不保留原字符串；对象、数组、数字、布尔值或超长字符串 plan 属于结构漂移，只产生 `invalid_quota_snapshot`；
+- schema/type/range 不合法时 fail closed：只记录固定 diagnostic，不写 `used_percent=0`，也不沿用默认值冒充新观测。
+
+Indexer 使用 `(source_file_id, session_id, source_generation, line_start_offset, window_kind)` 生成稳定、不含路径或内容的 SHA-256 observation ID；物理文件替换即使从 generation 0 和相同行位置重新开始，也不会复用旧 ID。parser events、diagnostics、完整 checkpoint、quota facts 与 committed offset 进入现有同一个 `CommitIngestBatch` writer transaction；ingest 还会校验 observation 的 `source_file_id` 与 batch source 一致，事务失败不得推进 offset。application schema v9 以 `STRICT` `quota_observations` 表保存 physical source、first/last observed time、sample count、first/current generation 与 offset，并以 `quota_observation_receipts` 保存每个原始 sample ID、所属 segment 和 content-free SHA-256；普通访问均使用 GORM typed CRUD/query，raw SQL 只用于 `STRICT/CHECK/index` migration 与 schema 验证。
+
+同一 physical source、Session、generation、limit、window、值、reset、plan、validity/reason 的后续连续 sample 只推进末次时间/offset 与 `sample_count`；语义变化、新 generation 或新 physical source 创建新 segment。每个被折叠 sample 仍写入 replay receipt，因此经过 `A→B→A` 分段后重放旧 A sample 也是可验证的 no-op；同 ID 不同 digest、位置倒退、同位置冲突、时间倒退或跨 source/generation/checkpoint 的 ingest fact 整批失败。Session aggregate 因 rebuild 删除时，历史 observation 的 `session_id` 通过 `ON DELETE SET NULL` 保留，durable `source_file_id` 与 receipt 继续提供审计 lineage；不删除 observation history。
+
+可复用的 synthetic-only 验证入口见 [`docs/test/local-jsonl-quota.md`](../../../test/local-jsonl-quota.md)。
+
 窗口代际使用 `(window_kind, limit_id, window_minutes, resets_at_ms)` 识别。同一代际内 used 正常只能保持或上升；进入新代际后才允许从低值重新开始。
 
 逐 window 校验：

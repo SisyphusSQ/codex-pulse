@@ -23,7 +23,8 @@ const (
 	applicationSchemaV6Version = 6
 	applicationSchemaV7Version = 7
 	applicationSchemaV8Version = 8
-	applicationSchemaVersion   = applicationSchemaV8Version
+	applicationSchemaV9Version = 9
+	applicationSchemaVersion   = applicationSchemaV9Version
 )
 
 var (
@@ -135,6 +136,14 @@ var applicationMigrations = []migrationDefinition{
 		checksum: applicationSchemaV8Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
 			return ensureSchemaObjects(ctx, transaction, lifecycleSchemaObjects)
+		},
+	},
+	{
+		version:  applicationSchemaV9Version,
+		name:     "local-jsonl-quota-observations",
+		checksum: applicationSchemaV9Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			return ensureSchemaObjects(ctx, transaction, quotaSchemaObjects)
 		},
 	},
 }
@@ -490,6 +499,7 @@ func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteT
 		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects, retentionSchemaObjects,
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
+		quotaSchemaObjects,
 	} {
 		for _, object := range objects {
 			exists, err := verifySchemaObject(ctx, transaction, object)
@@ -594,6 +604,18 @@ func applicationSchemaV8Checksum() string {
 	hasher := sha256.New()
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV8Version, "scheduler-lifecycle-and-retry")
 	for _, object := range lifecycleSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.objectType, object.name,
+			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV9Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV9Version, "local-jsonl-quota-observations")
+	for _, object := range quotaSchemaObjects {
 		_, _ = fmt.Fprintln(
 			hasher, object.objectType, object.name,
 			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),

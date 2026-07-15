@@ -165,7 +165,7 @@ func (ingester *Ingester) Open(ctx context.Context, request OpenRequest) (*Strea
 	if err != nil {
 		return nil, err
 	}
-	projector, err := newProjector(cursor.Generation, mode, seed, projectorCheckpoint)
+	projector, err := newProjector(cursor.SourceFileID, cursor.Generation, mode, seed, projectorCheckpoint)
 	if err != nil {
 		return nil, err
 	}

@@ -102,6 +102,7 @@ type FactBatch struct {
 	Usage               *TurnUsage
 	SessionCurrent      *SessionCurrent
 	SessionUsageCurrent *SessionUsageCurrent
+	QuotaObservation    *QuotaObservationSample
 }
 
 // SessionSnapshot 是 Session typed query 的当前返回形状。
