@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -198,7 +199,7 @@ func (repository *Repository) InterruptIncompleteJobs(ctx context.Context, atMS 
 	if repository == nil || repository.database == nil {
 		return 0, ErrInvalidRepository
 	}
-	if atMS < 0 {
+	if atMS < 0 || atMS > runtimeclock.MaxTimestampMS {
 		return 0, invalidRecord("job interruption timestamp must not be negative")
 	}
 	var interrupted int64

@@ -21,6 +21,8 @@
 
 schema v7 的 `scheduler_cycles` 是 queue/slice 观测的提交版事实。每行记录 `selection_reason`、`stop_reason`、`outcome`、budget/consumed files/bytes/active ms、选择时的 live/backfill depth、两个 lane 的 oldest wait，以及 started/finished time；`scheduler_tasks` 提供当前 state、service class、queue order、累计 files/bytes/slice count 和有限 error class。bytes consumed 使用 snapshot reader 的真实文件 IO，包含每个 slice 的 prefix identity proof；内容游标推进仍由 source checkpoint 单独表达，不能拿两者相减推断丢失或重复。Data Health 后续直接聚合这些 typed facts，不从日志正文、channel 长度或进程内 counter 猜测调度状态。
 
+schema v8 的 `scheduler_lifecycle` 与 `scheduler_retry_states` 补齐控制和恢复事实。Data Health 读取正交的用户 pause、system sleep、transition、source availability、Home generation 和 lifecycle revision；不能从“队列暂时不动”猜测暂停，也不能把 wake 当成 resume。每个失败 task 的 `waiting/blocked/resolved`、failure count、next retry 与 typed recovery action 都可直接读回；由于 retry mutation 与 failed cycle 原子提交，不会出现 UI 显示失败但没有恢复语义的 crash gap。旧 Home generation 与 paused lane 不进入 runnable queue depth/oldest wait，避免把被 fence 保护的工作误报为 live 堵塞。
+
 固定 reason 包括 live priority、live-only、backfill-only、8-cycle fairness，以及 completed、file/byte/time budget、system pressure、live preempted、cancelled、dependency error、worker panic。原始 executor error、panic 正文、JSONL 内容和绝对 Home 路径不进入 cycle；路径只存在于既有 source/live typed identity 表，不复制到调度观测表。
 
 Go 难以准确获得单 goroutine CPU 时间，因此 job CPU 使用进程级 user/system CPU delta 近似。后台只有一个重型 worker 时可以近似归因，但 UI 和诊断必须标注 process-level estimate，不能称为精确任务 CPU。
@@ -43,6 +45,8 @@ Go 难以准确获得单 goroutine CPU 时间，因此 job CPU 使用进程级 u
 应用健康分为 `healthy`、`busy`、`paused`、`degraded`、`blocked`，与 Session 活动态无关。
 
 local index、live queue、history backfill、online quota、SQLite、disk 和 updater 分别判断。online quota degraded 不能把整个 local-first 应用显示成故障；busy 和用户主动 paused 也不是异常。
+
+`paused` 只来自 durable `user_pause_scope` 或 system sleeping，不由零吞吐推断；system wake 后仍保留用户 pause。`reconciling` 是短暂 busy，只有 reconcile 失败、confirmed Home generation/identity 漂移或 retry disposition 为 blocked 时才升级为 `blocked`/`degraded`。恢复动作必须使用持久 typed action，不能把原始文件系统或 SQLite 错误直接透传到界面。
 
 初始可调阈值：
 

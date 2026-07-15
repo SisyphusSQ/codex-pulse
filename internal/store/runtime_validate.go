@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -168,7 +169,9 @@ func validateNewJobRun(job JobRun) error {
 	if job.JobID == "" || job.JobType == "" || job.RequestedBy == "" {
 		return invalidRecord("job identity is incomplete")
 	}
-	if job.Priority < 0 || job.CreatedAtMS < 0 || job.UpdatedAtMS < job.CreatedAtMS {
+	if job.Priority < 0 || job.CreatedAtMS < 0 || job.UpdatedAtMS < job.CreatedAtMS ||
+		job.CreatedAtMS > runtimeclock.MaxContinuableTimestampMS ||
+		job.UpdatedAtMS > runtimeclock.MaxContinuableTimestampMS {
 		return invalidRecord("job priority or timestamps are invalid")
 	}
 	if job.State != JobQueued || job.StartedAtMS != nil || job.FinishedAtMS != nil || job.ErrorClass != nil {
@@ -187,7 +190,8 @@ func validateNewJobRun(job JobRun) error {
 }
 
 func validateJobTransition(transition JobTransition) error {
-	if transition.JobID == "" || transition.AtMS < 0 || !validJobState(transition.ExpectedState) ||
+	if transition.JobID == "" || transition.AtMS < 0 || transition.AtMS > runtimeclock.MaxTimestampMS ||
+		!validJobState(transition.ExpectedState) ||
 		!validJobState(transition.State) || !validJobPhase(transition.Phase) {
 		return invalidRecord("job transition identity, state, phase, or time is invalid")
 	}
@@ -199,6 +203,9 @@ func validateJobTransition(transition JobTransition) error {
 	}
 	if err := validateRuntimeErrorClass(transition.ErrorClass); err != nil {
 		return err
+	}
+	if transition.State == JobRunning && transition.AtMS > runtimeclock.MaxInProgressTimestampMS {
+		return invalidRecord("running job timestamp has no terminal successor")
 	}
 	switch transition.State {
 	case JobRunning, JobSucceeded:

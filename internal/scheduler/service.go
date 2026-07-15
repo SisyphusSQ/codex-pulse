@@ -3,11 +3,13 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"math/rand/v2"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
+	retrypolicy "github.com/SisyphusSQ/codex-pulse/internal/retry"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -28,11 +30,26 @@ type SliceResult struct {
 	StopReason     store.SchedulerStopReason
 }
 
+// boundedCooperativeActive keeps scheduler accounting inside the admission
+// token even when a target reaches its next cooperative checkpoint after the
+// wall-clock boundary. Negative reports remain invalid for worker validation.
+func boundedCooperativeActive(actual, maximum time.Duration) time.Duration {
+	if actual > maximum {
+		return maximum
+	}
+	return actual
+}
+
 // Executor 把scheduler task映射到持有业务游标的target runtime。
 type Executor interface {
 	ExecuteSlice(context.Context, store.SchedulerTask, ScanBudget) (SliceResult, error)
 	Interrupt(context.Context, store.SchedulerTask, store.RuntimeErrorClass) error
 	Recover(context.Context, store.SchedulerTask) (store.JobRun, error)
+	Retry(context.Context, store.SchedulerTask) (store.JobRun, error)
+}
+
+type RetryPolicy interface {
+	Delay(int) (time.Duration, bool, error)
 }
 
 type SystemProbe interface {
@@ -61,6 +78,7 @@ type ServiceConfig struct {
 	SystemProbe      SystemProbe
 	IdleDelay        time.Duration
 	RecoveryPageSize int
+	RetryPolicy      RetryPolicy
 }
 
 type Service struct {
@@ -74,11 +92,16 @@ type Service struct {
 	systemProbe      SystemProbe
 	idleDelay        time.Duration
 	recoveryPageSize int
+	retryPolicy      RetryPolicy
 	commitCycle      func(context.Context, store.SchedulerCycleCommit) error
 
 	runMu   sync.Mutex
 	cycleMu sync.Mutex
 	running bool
+
+	activityMu      sync.Mutex
+	activityTask    *store.SchedulerTask
+	activityChanged chan struct{}
 }
 
 func NewService(config ServiceConfig) (*Service, error) {
@@ -112,6 +135,16 @@ func NewService(config ServiceConfig) (*Service, error) {
 	if config.RecoveryPageSize == 0 {
 		config.RecoveryPageSize = 500
 	}
+	if config.RetryPolicy == nil {
+		policy, err := retrypolicy.NewPolicy(retrypolicy.Config{
+			BaseDelay: time.Second, MaxDelay: 30 * time.Second, MaxAttempts: 5,
+			Jitter: rand.Float64,
+		})
+		if err != nil {
+			return nil, ErrInvalidService
+		}
+		config.RetryPolicy = policy
+	}
 	executors := make(map[store.SchedulerTargetKind]Executor, len(config.Executors))
 	for kind, executor := range config.Executors {
 		executors[kind] = executor
@@ -121,9 +154,48 @@ func NewService(config ServiceConfig) (*Service, error) {
 		maxLiveBurst: config.MaxLiveBurst, clock: config.Clock, newCycleID: config.NewCycleID,
 		interruptTimeout: config.InterruptTimeout, systemProbe: config.SystemProbe,
 		idleDelay: config.IdleDelay, recoveryPageSize: config.RecoveryPageSize,
+		retryPolicy:     config.RetryPolicy,
+		activityChanged: make(chan struct{}),
 	}
 	service.commitCycle = service.repository.CommitSchedulerCycle
 	return service, nil
+}
+
+// Drain 等待在intent落盘前已进入选择/claim窗口的受影响slice退出。新的claim由
+// Store lifecycle CAS阻断；PauseBackfill不会等待或阻塞live slice。
+func (service *Service) Drain(ctx context.Context, scope store.LifecyclePauseScope) error {
+	if service == nil || ctx == nil ||
+		(scope != store.LifecyclePauseBackfill && scope != store.LifecyclePauseAll) {
+		return ErrInvalidService
+	}
+	for {
+		service.activityMu.Lock()
+		task := service.activityTask
+		changed := service.activityChanged
+		blocked := task != nil && (scope == store.LifecyclePauseAll || task.Lane == store.SchedulerLaneBackfill)
+		service.activityMu.Unlock()
+		if !blocked {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-changed:
+		}
+	}
+}
+
+func (service *Service) setActivity(task *store.SchedulerTask) {
+	service.activityMu.Lock()
+	close(service.activityChanged)
+	service.activityChanged = make(chan struct{})
+	if task == nil {
+		service.activityTask = nil
+	} else {
+		copy := *task
+		service.activityTask = &copy
+	}
+	service.activityMu.Unlock()
 }
 
 func randomCycleID() (string, error) {

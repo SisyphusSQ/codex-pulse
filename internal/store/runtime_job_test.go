@@ -124,6 +124,44 @@ func TestJobRunStateMachineRejectsIllegalAndStaleTransitions(t *testing.T) {
 	}
 }
 
+func TestJobRunStateMachineRejectsTimestampsPastRuntimeBoundary(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	repository := openRuntimeRepository(t)
+	pastBoundary := JobRun{
+		JobID: "job-past-runtime-boundary", JobType: "history_scan", RequestedBy: "test",
+		State: JobQueued, Phase: JobPhaseDiscover,
+		CreatedAtMS: MaxSchedulerTimestampMS + 1, UpdatedAtMS: MaxSchedulerTimestampMS + 1,
+	}
+	if err := repository.CreateJobRun(ctx, pastBoundary); !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("CreateJobRun(past boundary) error = %v, want ErrInvalidRecord", err)
+	}
+	withoutHeadroom := pastBoundary
+	withoutHeadroom.JobID = "job-without-runtime-headroom"
+	withoutHeadroom.CreatedAtMS = MaxSchedulerRunningTimestampMS
+	withoutHeadroom.UpdatedAtMS = MaxSchedulerRunningTimestampMS
+	if err := repository.CreateJobRun(ctx, withoutHeadroom); !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("CreateJobRun(without headroom) error = %v, want ErrInvalidRecord", err)
+	}
+	job := pastBoundary
+	job.JobID = "job-runtime-boundary"
+	job.CreatedAtMS = MaxSchedulerQueuedTimestampMS
+	job.UpdatedAtMS = MaxSchedulerQueuedTimestampMS
+	if err := repository.CreateJobRun(ctx, job); err != nil {
+		t.Fatalf("CreateJobRun(boundary) error = %v", err)
+	}
+	if err := repository.TransitionJobRun(ctx, JobTransition{
+		JobID: job.JobID, ExpectedState: JobQueued, State: JobRunning,
+		Phase: JobPhaseDiscover, AtMS: MaxSchedulerTimestampMS + 1,
+	}); !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("TransitionJobRun(past boundary) error = %v, want ErrInvalidRecord", err)
+	}
+	if _, err := repository.InterruptIncompleteJobs(ctx, MaxSchedulerTimestampMS+1); !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("InterruptIncompleteJobs(past boundary) error = %v, want ErrInvalidRecord", err)
+	}
+}
+
 // 测试 startup interruption 与新 Job resume 保留旧历史、进度和 cursor 血缘。
 func TestInterruptAndResumeJobRunsPreserveHistoryAndCursor(t *testing.T) {
 	t.Parallel()

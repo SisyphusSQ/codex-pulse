@@ -87,7 +87,7 @@ func (repository *Repository) LiveScanRun(
 	return job, facts, err
 }
 
-// ResumeLiveScanJob 原子克隆interrupted live action到新的公共job attempt。
+// ResumeLiveScanJob 原子克隆interrupted/failed live action到新的公共job attempt。
 func (repository *Repository) ResumeLiveScanJob(
 	ctx context.Context,
 	oldJobID string,
@@ -124,7 +124,7 @@ func (repository *Repository) ResumeLiveScanJob(
 		if err != nil {
 			return err
 		}
-		if !found || !factsFound || oldJob.State != JobInterrupted ||
+		if !found || !factsFound || (oldJob.State != JobInterrupted && oldJob.State != JobFailed) ||
 			resumed.JobType != oldJob.JobType || resumed.RequestedBy != oldJob.RequestedBy ||
 			resumed.Priority != oldJob.Priority || resumed.Phase != oldJob.Phase ||
 			resumed.CreatedAtMS < oldJob.UpdatedAtMS ||

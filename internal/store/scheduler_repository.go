@@ -16,6 +16,7 @@ var (
 	ErrSchedulerQueueFull  = errors.New("scheduler lane is full")
 	ErrSchedulerTransition = errors.New("scheduler task transition is invalid")
 	ErrSchedulerBusy       = errors.New("scheduler already has a running task")
+	ErrSchedulerPaused     = errors.New("scheduler lifecycle does not permit the task")
 )
 
 // EnqueueSchedulerTask 在唯一writer事务中完成exact replay、lane容量检查和插入。
@@ -34,6 +35,9 @@ func (repository *Repository) EnqueueSchedulerTask(
 		return err
 	}
 	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		if err := ensureSchedulerLifecycleForAdmission(ctx, transaction, task); err != nil {
+			return err
+		}
 		existing, found, err := schedulerTaskModelByID(ctx, transaction, task.TaskID)
 		if err != nil {
 			return err
@@ -191,6 +195,74 @@ func (repository *Repository) SchedulerQueueSnapshot(ctx context.Context) (Sched
 	return snapshot, err
 }
 
+// SchedulerRunnableQueueSnapshot 只暴露 active generation 且被持久 lifecycle
+// permit 允许的queued task。SchedulerQueueSnapshot仍供审计读取全量队列。
+func (repository *Repository) SchedulerRunnableQueueSnapshot(ctx context.Context) (SchedulerQueueSnapshot, error) {
+	if repository == nil || repository.database == nil {
+		return SchedulerQueueSnapshot{}, ErrInvalidRepository
+	}
+	var snapshot SchedulerQueueSnapshot
+	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
+			lifecycle, found, err := schedulerLifecycleIn(ctx, transaction)
+			if err != nil {
+				return err
+			}
+			if !found {
+				return ErrSchedulerPaused
+			}
+			permittedLanes := make([]string, 0, 2)
+			for _, lane := range []SchedulerLane{SchedulerLaneLive, SchedulerLaneBackfill} {
+				if !lifecyclePermitsTask(lifecycle, lifecycle.HomeGeneration, lane) {
+					continue
+				}
+				permittedLanes = append(permittedLanes, string(lane))
+				query := transaction.WithContext(ctx).Model(&schedulerTaskModel{}).
+					Where("state = ? AND lane = ? AND home_generation = ?", string(SchedulerTaskQueued), string(lane), lifecycle.HomeGeneration)
+				var depth int64
+				if err := query.Count(&depth).Error; err != nil {
+					return err
+				}
+				var model schedulerTaskModel
+				result := query.Order("queue_order_ms, task_id").Take(&model)
+				if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+					return result.Error
+				}
+				var candidate *SchedulerTask
+				if result.Error == nil {
+					task, err := schedulerTaskFromModel(model)
+					if err != nil {
+						return err
+					}
+					candidate = &task
+				}
+				if lane == SchedulerLaneLive {
+					snapshot.LiveDepth, snapshot.LiveCandidate = depth, candidate
+				} else {
+					snapshot.BackfillDepth, snapshot.BackfillCandidate = depth, candidate
+				}
+			}
+			if len(permittedLanes) == 0 {
+				return nil
+			}
+			var tail schedulerTaskModel
+			result := transaction.WithContext(ctx).Model(&schedulerTaskModel{}).
+				Where("state IN ? AND home_generation = ? AND lane IN ?",
+					schedulerActiveStateStrings(), lifecycle.HomeGeneration, permittedLanes).
+				Order("queue_order_ms DESC, task_id DESC").Take(&tail)
+			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			if result.Error != nil {
+				return result.Error
+			}
+			snapshot.MaxQueueOrderMS = tail.QueueOrderMS
+			return nil
+		})
+	})
+	return snapshot, err
+}
+
 // ListRecoverableSchedulerTasks 按稳定keyset分页读取全部running/interrupted task。
 func (repository *Repository) ListRecoverableSchedulerTasks(
 	ctx context.Context,
@@ -271,11 +343,18 @@ func (repository *Repository) PromoteSchedulerTask(
 			(task.State != SchedulerTaskQueued && task.State != SchedulerTaskRunning) {
 			return ErrSchedulerTransition
 		}
+		maximum := MaxSchedulerRunningTimestampMS
+		if task.State == SchedulerTaskQueued {
+			maximum = MaxSchedulerQueuedTimestampMS
+		}
 		if atMS <= task.UpdatedAtMS {
-			if task.UpdatedAtMS == math.MaxInt64 {
+			if task.UpdatedAtMS >= maximum {
 				return ErrSchedulerTransition
 			}
 			atMS = task.UpdatedAtMS + 1
+		}
+		if atMS > maximum {
+			return ErrSchedulerTransition
 		}
 		task.ServiceClass = SchedulerServiceInteractive
 		task.UpdatedAtMS = atMS
@@ -328,6 +407,13 @@ func (repository *Repository) RecoverSchedulerTask(
 			atMS <= task.UpdatedAtMS || queueOrderMS <= task.QueueOrderMS || queueOrderMS > atMS {
 			return ErrSchedulerTransition
 		}
+		lifecycle, lifecycleFound, err := schedulerLifecycleIn(ctx, transaction)
+		if err != nil {
+			return err
+		}
+		if !lifecycleFound || !lifecyclePermitsTask(lifecycle, task.HomeGeneration, task.Lane) {
+			return ErrSchedulerPaused
+		}
 		job, found, err := jobRunByID(ctx, transaction, resumedTargetID)
 		if err != nil {
 			return err
@@ -356,6 +442,94 @@ func (repository *Repository) RecoverSchedulerTask(
 	return recovered, err
 }
 
+// RequeueFailedSchedulerTask 将稳定创建的新target绑定到failed task，并在同一事务
+// 把waiting retry fact改为resolved，关闭target-create/task-rebind crash gap。
+func (repository *Repository) RequeueFailedSchedulerTask(
+	ctx context.Context,
+	taskID string,
+	expectedTargetID string,
+	resumedTargetID string,
+	expectedRetryRevision int64,
+	queueOrderMS int64,
+	atMS int64,
+) (SchedulerTask, error) {
+	if repository == nil || repository.database == nil || taskID == "" ||
+		expectedTargetID == "" || resumedTargetID == "" || expectedRetryRevision < 1 ||
+		expectedRetryRevision == math.MaxInt64 {
+		return SchedulerTask{}, ErrInvalidRepository
+	}
+	var requeued SchedulerTask
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		task, found, err := schedulerTaskByID(ctx, transaction, taskID)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return ErrNotFound
+		}
+		retryState, retryFound, err := schedulerRetryStateIn(ctx, transaction, taskID)
+		if err != nil {
+			return err
+		}
+		if task.State == SchedulerTaskQueued && task.TargetID == resumedTargetID && retryFound &&
+			retryState.Disposition == SchedulerRetryResolved && retryState.Revision == expectedRetryRevision+1 {
+			requeued = task
+			return nil
+		}
+		if task.State != SchedulerTaskFailed || task.TargetID != expectedTargetID || !retryFound ||
+			retryState.Disposition != SchedulerRetryWaiting || retryState.Revision != expectedRetryRevision ||
+			retryState.NextRetryAtMS == nil || atMS < *retryState.NextRetryAtMS ||
+			queueOrderMS <= task.QueueOrderMS || queueOrderMS > atMS || atMS <= task.UpdatedAtMS ||
+			atMS <= retryState.UpdatedAtMS {
+			return ErrSchedulerRetryTransition
+		}
+		lifecycle, lifecycleFound, err := schedulerLifecycleIn(ctx, transaction)
+		if err != nil {
+			return err
+		}
+		if !lifecycleFound || !lifecyclePermitsTask(lifecycle, task.HomeGeneration, task.Lane) {
+			return ErrSchedulerPaused
+		}
+		job, jobFound, err := jobRunByID(ctx, transaction, resumedTargetID)
+		if err != nil {
+			return err
+		}
+		candidate := task
+		candidate.TargetID = resumedTargetID
+		if !jobFound || !schedulerTargetMatchesJob(candidate, job) {
+			return fmt.Errorf("%w: resumed target job is missing or incompatible", ErrSchedulerConflict)
+		}
+		task.TargetID = resumedTargetID
+		task.State = SchedulerTaskQueued
+		task.QueueOrderMS = queueOrderMS
+		task.FinishedAtMS = nil
+		task.LastErrorClass = nil
+		task.UpdatedAtMS = atMS
+		if err := validateSchedulerTask(task); err != nil {
+			return err
+		}
+		if err := updateSchedulerTaskCAS(ctx, transaction, task, SchedulerTaskFailed); err != nil {
+			return err
+		}
+		result := transaction.WithContext(ctx).Model(&schedulerRetryStateModel{}).
+			Where("task_id = ? AND revision = ? AND disposition = ?", taskID, expectedRetryRevision, string(SchedulerRetryWaiting)).
+			Updates(map[string]any{
+				"disposition": string(SchedulerRetryResolved), "next_retry_at_ms": nil,
+				"recovery_action": string(SchedulerRecoveryNone), "revision": expectedRetryRevision + 1,
+				"updated_at_ms": atMS,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrSchedulerRetryTransition
+		}
+		requeued = task
+		return nil
+	})
+	return requeued, err
+}
+
 func (repository *Repository) ClaimSchedulerTask(
 	ctx context.Context,
 	taskID string,
@@ -370,8 +544,16 @@ func (repository *Repository) ClaimSchedulerTask(
 		if err != nil {
 			return err
 		}
-		if !found || task.State != SchedulerTaskQueued || atMS <= task.UpdatedAtMS {
+		if !found || task.State != SchedulerTaskQueued || atMS <= task.UpdatedAtMS ||
+			atMS > MaxSchedulerRunningTimestampMS {
 			return ErrSchedulerTransition
+		}
+		lifecycle, lifecycleFound, err := schedulerLifecycleIn(ctx, transaction)
+		if err != nil {
+			return err
+		}
+		if !lifecycleFound || !lifecyclePermitsTask(lifecycle, task.HomeGeneration, task.Lane) {
+			return ErrSchedulerPaused
 		}
 		var running int64
 		result := transaction.WithContext(ctx).Model(&schedulerTaskModel{}).
@@ -441,6 +623,11 @@ func (repository *Repository) CommitSchedulerCycle(
 		}
 		if err := updateSchedulerTaskCAS(ctx, transaction, task, commit.ExpectedState); err != nil {
 			return err
+		}
+		if commit.Retry != nil {
+			if err := applySchedulerRetryMutation(ctx, transaction, task.TaskID, commit.AtMS, *commit.Retry); err != nil {
+				return err
+			}
 		}
 		model := schedulerCycleModelFromDomain(commit.Cycle)
 		return transaction.WithContext(ctx).Create(&model).Error
@@ -514,7 +701,24 @@ func validateSchedulerTask(task SchedulerTask) error {
 		!validSchedulerServiceClass(task.ServiceClass) || !validSchedulerTaskState(task.State) ||
 		task.HomeGeneration < 0 || task.QueueOrderMS < 0 || task.EnqueuedAtMS < 0 ||
 		task.QueueOrderMS < task.EnqueuedAtMS || task.FilesProcessed < 0 || task.BytesProcessed < 0 ||
-		task.SliceCount < 0 || task.UpdatedAtMS < task.EnqueuedAtMS {
+		task.SliceCount < 0 || task.UpdatedAtMS < task.EnqueuedAtMS ||
+		task.QueueOrderMS > MaxSchedulerTimestampMS || task.EnqueuedAtMS > MaxSchedulerTimestampMS ||
+		task.UpdatedAtMS > MaxSchedulerTimestampMS ||
+		timestampPointerAfter(task.FirstStartedAtMS, MaxSchedulerTimestampMS) ||
+		timestampPointerAfter(task.LastStartedAtMS, MaxSchedulerTimestampMS) ||
+		timestampPointerAfter(task.FinishedAtMS, MaxSchedulerTimestampMS) {
+		return ErrSchedulerTransition
+	}
+	if task.State == SchedulerTaskQueued &&
+		(task.QueueOrderMS > MaxSchedulerQueuedTimestampMS || task.UpdatedAtMS > MaxSchedulerQueuedTimestampMS) {
+		return ErrSchedulerTransition
+	}
+	if (task.State == SchedulerTaskRunning || task.State == SchedulerTaskInterrupted) &&
+		task.UpdatedAtMS > MaxSchedulerRunningTimestampMS {
+		return ErrSchedulerTransition
+	}
+	if (task.State == SchedulerTaskQueued || task.State == SchedulerTaskRunning ||
+		task.State == SchedulerTaskInterrupted) && task.SliceCount == math.MaxInt64 {
 		return ErrSchedulerTransition
 	}
 	if err := validateRuntimeErrorClass(task.LastErrorClass); err != nil {
@@ -560,7 +764,8 @@ func validateSchedulerAdmissionTask(task SchedulerTask) error {
 	if err := validateSchedulerTask(task); err != nil {
 		return err
 	}
-	if task.State != SchedulerTaskQueued || task.QueueOrderMS != task.EnqueuedAtMS ||
+	if task.State != SchedulerTaskQueued || task.EnqueuedAtMS > MaxSchedulerAdmissionTimestampMS ||
+		task.QueueOrderMS != task.EnqueuedAtMS ||
 		task.UpdatedAtMS != task.EnqueuedAtMS || task.FirstStartedAtMS != nil ||
 		task.LastStartedAtMS != nil || task.FinishedAtMS != nil || task.FilesProcessed != 0 ||
 		task.BytesProcessed != 0 || task.SliceCount != 0 || task.LastErrorClass != nil {
@@ -572,7 +777,8 @@ func validateSchedulerAdmissionTask(task SchedulerTask) error {
 func validateSchedulerCycleCommit(commit SchedulerCycleCommit) error {
 	cycle := commit.Cycle
 	if commit.TaskID == "" || commit.TaskID != cycle.TaskID || commit.FilesDelta < 0 ||
-		commit.BytesDelta < 0 || commit.AtMS < 0 || commit.QueueOrderMS < 0 ||
+		commit.BytesDelta < 0 || commit.AtMS < 0 || commit.AtMS > MaxSchedulerTimestampMS ||
+		commit.QueueOrderMS < 0 || commit.QueueOrderMS > MaxSchedulerTimestampMS ||
 		!validSchedulerTaskState(commit.ExpectedState) || !validSchedulerTaskState(commit.State) ||
 		cycle.CycleID == "" || !validSchedulerLane(cycle.Lane) ||
 		!validSchedulerSelectionReason(cycle.SelectionReason) ||
@@ -580,8 +786,10 @@ func validateSchedulerCycleCommit(commit SchedulerCycleCommit) error {
 		cycle.BudgetFiles < 0 || cycle.BudgetBytes < 0 || cycle.BudgetActiveMS < 0 ||
 		cycle.ConsumedFiles < 0 || cycle.ConsumedFiles > cycle.BudgetFiles ||
 		cycle.ConsumedBytes < 0 || cycle.ConsumedBytes > cycle.BudgetBytes || cycle.ActiveMS < 0 ||
+		cycle.ActiveMS > cycle.BudgetActiveMS ||
 		cycle.LiveDepth < 0 || cycle.BackfillDepth < 0 || cycle.OldestLiveWaitMS < 0 ||
 		cycle.OldestBackfillWaitMS < 0 || cycle.StartedAtMS < 0 ||
+		cycle.StartedAtMS > MaxSchedulerTimestampMS || cycle.FinishedAtMS > MaxSchedulerTimestampMS ||
 		cycle.FinishedAtMS < cycle.StartedAtMS || cycle.FinishedAtMS > commit.AtMS ||
 		cycle.ConsumedFiles != commit.FilesDelta || cycle.ConsumedBytes != commit.BytesDelta {
 		return ErrSchedulerTransition
@@ -593,7 +801,83 @@ func validateSchedulerCycleCommit(commit SchedulerCycleCommit) error {
 		(commit.State == SchedulerTaskQueued || commit.State == SchedulerTaskSucceeded) && commit.ErrorClass != nil {
 		return ErrSchedulerTransition
 	}
+	if commit.State == SchedulerTaskFailed {
+		if commit.Retry == nil || commit.ErrorClass == nil ||
+			commit.Retry.LastErrorClass != *commit.ErrorClass ||
+			(commit.Retry.Disposition != SchedulerRetryWaiting &&
+				commit.Retry.Disposition != SchedulerRetryBlocked) ||
+			commit.Retry.ExpectedRevision < 0 || commit.Retry.ExpectedRevision == math.MaxInt64 {
+			return ErrSchedulerRetryTransition
+		}
+		candidate := SchedulerRetryState{
+			TaskID: commit.TaskID, Disposition: commit.Retry.Disposition,
+			FailureCount: commit.Retry.FailureCount, LastErrorClass: commit.Retry.LastErrorClass,
+			NextRetryAtMS: commit.Retry.NextRetryAtMS, RecoveryAction: commit.Retry.RecoveryAction,
+			Revision: commit.Retry.ExpectedRevision + 1, UpdatedAtMS: commit.AtMS,
+		}
+		if err := validateSchedulerRetryState(candidate); err != nil {
+			return err
+		}
+	} else if commit.Retry != nil {
+		return ErrSchedulerRetryTransition
+	}
 	return validateRuntimeErrorClass(commit.ErrorClass)
+}
+
+func timestampPointerAfter(value *int64, maximum int64) bool {
+	return value != nil && *value > maximum
+}
+
+func applySchedulerRetryMutation(
+	ctx context.Context,
+	database *gorm.DB,
+	taskID string,
+	atMS int64,
+	mutation SchedulerRetryMutation,
+) error {
+	if mutation.ExpectedRevision == math.MaxInt64 || mutation.FailureCount == math.MaxInt64 {
+		return ErrSchedulerRetryTransition
+	}
+	current, found, err := schedulerRetryStateIn(ctx, database, taskID)
+	if err != nil {
+		return err
+	}
+	next := SchedulerRetryState{
+		TaskID: taskID, Disposition: mutation.Disposition, FailureCount: mutation.FailureCount,
+		LastErrorClass: mutation.LastErrorClass, NextRetryAtMS: mutation.NextRetryAtMS,
+		RecoveryAction: mutation.RecoveryAction, Revision: mutation.ExpectedRevision + 1, UpdatedAtMS: atMS,
+	}
+	if err := validateSchedulerRetryState(next); err != nil {
+		return err
+	}
+	if !found {
+		if mutation.ExpectedRevision != 0 || mutation.FailureCount != 1 {
+			return ErrSchedulerRetryTransition
+		}
+		model := schedulerRetryStateModelFromDomain(next)
+		return database.WithContext(ctx).Create(&model).Error
+	}
+	if current.Revision == math.MaxInt64 || current.FailureCount == math.MaxInt64 ||
+		current.Revision != mutation.ExpectedRevision || mutation.FailureCount != current.FailureCount+1 ||
+		atMS <= current.UpdatedAtMS {
+		return ErrSchedulerRetryTransition
+	}
+	model := schedulerRetryStateModelFromDomain(next)
+	result := database.WithContext(ctx).Model(&schedulerRetryStateModel{}).
+		Where("task_id = ? AND revision = ?", taskID, mutation.ExpectedRevision).
+		Updates(map[string]any{
+			"disposition": model.Disposition, "failure_count": model.FailureCount,
+			"last_error_class": model.LastErrorClass, "next_retry_at_ms": model.NextRetryAtMS,
+			"recovery_action": model.RecoveryAction, "revision": model.Revision,
+			"updated_at_ms": model.UpdatedAtMS,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrSchedulerRetryTransition
+	}
+	return nil
 }
 
 func schedulerCycleMatchesTaskState(cycle SchedulerCycle, state SchedulerTaskState) bool {
@@ -658,6 +942,43 @@ func schedulerTargetMatchesJob(task SchedulerTask, job JobRun) bool {
 		task.TargetKind == SchedulerTargetBootstrap && task.Lane == SchedulerLaneBackfill &&
 			(job.Phase == JobPhaseDiscover || job.Phase == JobPhaseFastBootstrap ||
 				job.Phase == JobPhaseHistoryBackfill || job.Phase == JobPhaseReconcile)
+}
+
+func ensureSchedulerLifecycleForAdmission(
+	ctx context.Context,
+	database *gorm.DB,
+	task SchedulerTask,
+) error {
+	_, found, err := schedulerLifecycleIn(ctx, database)
+	if err != nil || found {
+		return err
+	}
+	initial := SchedulerLifecycle{
+		HomeGeneration: task.HomeGeneration, UserPauseScope: LifecyclePauseNone,
+		SystemState: LifecycleSystemAwake, Transition: LifecycleTransitionSteady,
+		SourceState: LifecycleSourceAvailable,
+		LastEventID: "scheduler-admission",
+		Revision:    1, UpdatedAtMS: task.EnqueuedAtMS,
+	}
+	if err := validateInitialSchedulerLifecycle(initial); err != nil {
+		return err
+	}
+	model := schedulerLifecycleModelFromDomain(initial)
+	return database.WithContext(ctx).Create(&model).Error
+}
+
+func lifecyclePermitsTask(
+	lifecycle SchedulerLifecycle,
+	homeGeneration int64,
+	lane SchedulerLane,
+) bool {
+	if lifecycle.HomeGeneration != homeGeneration || lifecycle.SystemState != LifecycleSystemAwake ||
+		lifecycle.Transition != LifecycleTransitionSteady ||
+		lifecycle.SourceState != LifecycleSourceAvailable || lifecycle.UserPauseScope == LifecyclePauseAll {
+		return false
+	}
+	return lane == SchedulerLaneLive ||
+		lane == SchedulerLaneBackfill && lifecycle.UserPauseScope != LifecyclePauseBackfill
 }
 
 func schedulerActiveStateStrings() []string {

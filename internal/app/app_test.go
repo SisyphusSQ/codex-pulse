@@ -8,11 +8,16 @@ import (
 	"reflect"
 	"testing"
 	"testing/fstest"
+	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	"github.com/SisyphusSQ/codex-pulse/internal/liveindex"
+	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 func TestApplicationOptions(t *testing.T) {
@@ -72,7 +77,10 @@ func TestRunWithStoreOwnsOpenRunCloseLifecycle(t *testing.T) {
 			events = append(events, "open")
 			return store, nil
 		},
-		func() error {
+		func(got lifecycleStore) error {
+			if got != store {
+				t.Fatalf("run store = %T, want owned store", got)
+			}
 			events = append(events, "run")
 			return nil
 		},
@@ -92,7 +100,7 @@ func TestRunWithStoreDoesNotRunApplicationWhenOpenFails(t *testing.T) {
 	err := runWithStore(
 		context.Background(),
 		func(context.Context) (lifecycleStore, error) { return nil, errOpen },
-		func() error {
+		func(lifecycleStore) error {
 			runCalled = true
 			return nil
 		},
@@ -113,7 +121,7 @@ func TestRunWithStorePreservesRunAndCloseFailures(t *testing.T) {
 	err := runWithStore(
 		context.Background(),
 		func(context.Context) (lifecycleStore, error) { return store, nil },
-		func() error { return errRun },
+		func(lifecycleStore) error { return errRun },
 	)
 	if !errors.Is(err, errRun) {
 		t.Fatalf("runWithStore() error = %v, want run error", err)
@@ -123,6 +131,239 @@ func TestRunWithStorePreservesRunAndCloseFailures(t *testing.T) {
 	}
 	if store.closeCalls != 1 {
 		t.Fatalf("close calls = %d, want 1", store.closeCalls)
+	}
+}
+
+func TestApplicationLifecycleRuntimeComposesConfiguredHomeAndReleasesWorker(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	for _, directory := range []string{"sessions", "archived_sessions"} {
+		if err := os.MkdirAll(filepath.Join(home, directory), 0o700); err != nil {
+			t.Fatalf("create %s: %v", directory, err)
+		}
+	}
+	rolloutPath := filepath.Join(home, "sessions", "runtime-composition.jsonl")
+	rollout := []byte(
+		`{"timestamp":"2026-07-14T01:00:00Z","type":"session_meta","payload":{"id":"session-app-runtime","timestamp":"2026-07-14T01:00:00Z","cwd":"/tmp/project","originator":"codex_cli_rs","cli_version":"0.142.3","source":"cli","model_provider":"openai"}}` + "\n" +
+			`{"timestamp":"2026-07-14T01:00:01Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-app-runtime","started_at":1783990801,"model_context_window":258000}}` + "\n" +
+			`{"timestamp":"2026-07-14T01:00:02Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-app-runtime","completed_at":1783990802}}` + "\n",
+	)
+	if err := os.WriteFile(rolloutPath, rollout, 0o600); err != nil {
+		t.Fatalf("write rollout: %v", err)
+	}
+	metadata, err := logs.NewHomeProbe().Probe(ctx, home)
+	if err != nil {
+		t.Fatalf("Probe(home) error = %v", err)
+	}
+	preferenceStore, err := preferences.NewFileStore(filepath.Join(t.TempDir(), "private", "preferences.json"))
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+	if err := preferenceStore.Confirm(ctx, preferences.OnboardingSnapshot{
+		SchemaVersion: preferences.CurrentSchemaVersion, OnboardingVersion: preferences.CurrentOnboardingVersion,
+		OnboardingCompleted: true,
+		CodexHome: preferences.ConfirmedSource{
+			Path: metadata.Path, DeviceID: metadata.DeviceID, Inode: metadata.Inode,
+			ConfirmedAtMS: time.Now().UnixMilli(),
+		},
+	}); err != nil {
+		t.Fatalf("Confirm() error = %v", err)
+	}
+	databaseDirectory := t.TempDir()
+	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
+		t.Fatalf("secure database directory: %v", err)
+	}
+	databasePath := filepath.Join(databaseDirectory, "app.db")
+	lifecycleStore, err := openConfiguredStore(ctx, storesqlite.Config{Path: databasePath})
+	if err != nil {
+		t.Fatalf("openConfiguredStore() error = %v", err)
+	}
+	database := lifecycleStore.(*storesqlite.Store)
+	t.Cleanup(func() { _ = database.Close(context.Background()) })
+	registrar := &fakeLifecycleRegistrar{callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent))}
+	runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
+		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		EventTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatalf("startApplicationLifecycleRuntime() error = %v", err)
+	}
+	if runtime == nil {
+		t.Fatal("configured Home must compose application lifecycle runtime")
+	}
+	repository := factstore.NewRepository(database)
+	state, err := repository.SchedulerLifecycle(ctx)
+	if err != nil || state.HomeGeneration != 1 || state.SystemState != factstore.LifecycleSystemAwake ||
+		state.SourceState != factstore.LifecycleSourceAvailable ||
+		state.Transition != factstore.LifecycleTransitionSteady {
+		t.Fatalf("SchedulerLifecycle() = %#v, %v", state, err)
+	}
+	waitForAppCondition(t, func() bool {
+		lease, leaseErr := repository.TryAcquireSchedulerOwner(ctx)
+		if leaseErr == nil {
+			lease.Release()
+		}
+		return errors.Is(leaseErr, factstore.ErrSchedulerOwnerBusy)
+	}, "scheduler worker did not acquire owner lease")
+	waitForAppCondition(t, func() bool {
+		tasks, listErr := repository.ListSchedulerTasks(ctx, factstore.SchedulerTaskFilter{Limit: 10})
+		return listErr == nil && len(tasks) == 1 && tasks[0].TargetKind == factstore.SchedulerTargetLiveScan &&
+			tasks[0].State == factstore.SchedulerTaskSucceeded
+	}, "startup reconcile live task did not complete")
+	initialRevision := state.Revision
+	registrar.trigger(events.Mac.ApplicationDidBecomeActive)
+	waitForAppCondition(t, func() bool {
+		current, readErr := repository.SchedulerLifecycle(ctx)
+		return readErr == nil && current.Revision > initialRevision &&
+			current.SourceState == factstore.LifecycleSourceAvailable
+	}, "foreground source check did not reconcile")
+	if err := runtime.Close(context.Background()); err != nil {
+		t.Fatalf("runtime.Close() error = %v", err)
+	}
+	if registrar.cancelCalls != 3 {
+		t.Fatalf("cancel calls = %d, want 3", registrar.cancelCalls)
+	}
+	lease, err := repository.TryAcquireSchedulerOwner(ctx)
+	if err != nil {
+		t.Fatalf("TryAcquireSchedulerOwner(after close) error = %v", err)
+	}
+	lease.Release()
+}
+
+func TestApplicationLifecycleRuntimeValidatesPhysicalHomeBeforeRecoveringTargets(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	for _, directory := range []string{"sessions", "archived_sessions"} {
+		if err := os.MkdirAll(filepath.Join(home, directory), 0o700); err != nil {
+			t.Fatalf("create %s: %v", directory, err)
+		}
+	}
+	rolloutPath := filepath.Join(home, "sessions", "startup-recovery.jsonl")
+	rollout := []byte(
+		`{"timestamp":"2026-07-14T01:00:00Z","type":"session_meta","payload":{"id":"session-startup-recovery","timestamp":"2026-07-14T01:00:00Z","cwd":"/tmp/project","originator":"codex_cli_rs","cli_version":"0.142.3","source":"cli","model_provider":"openai"}}` + "\n",
+	)
+	if err := os.WriteFile(rolloutPath, rollout, 0o600); err != nil {
+		t.Fatalf("write rollout: %v", err)
+	}
+	metadata, err := logs.NewHomeProbe().Probe(ctx, home)
+	if err != nil {
+		t.Fatalf("Probe(home) error = %v", err)
+	}
+	preferenceStore, err := preferences.NewFileStore(filepath.Join(t.TempDir(), "private", "preferences.json"))
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+	if err := preferenceStore.Confirm(ctx, preferences.OnboardingSnapshot{
+		SchemaVersion: preferences.CurrentSchemaVersion, OnboardingVersion: preferences.CurrentOnboardingVersion,
+		OnboardingCompleted: true,
+		CodexHome: preferences.ConfirmedSource{
+			Path: metadata.Path, DeviceID: metadata.DeviceID, Inode: metadata.Inode,
+			ConfirmedAtMS: time.Now().UnixMilli(),
+		},
+	}); err != nil {
+		t.Fatalf("Confirm() error = %v", err)
+	}
+	databaseDirectory := t.TempDir()
+	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
+		t.Fatalf("secure database directory: %v", err)
+	}
+	lifecycleStore, err := openConfiguredStore(ctx, storesqlite.Config{
+		Path: filepath.Join(databaseDirectory, "startup-recovery.db"),
+	})
+	if err != nil {
+		t.Fatalf("openConfiguredStore() error = %v", err)
+	}
+	database := lifecycleStore.(*storesqlite.Store)
+	t.Cleanup(func() { _ = database.Close(context.Background()) })
+	repository := factstore.NewRepository(database)
+	discoverer, err := logs.NewConfirmedDiscoverer(metadata.Path, metadata.DeviceID, metadata.Inode)
+	if err != nil {
+		t.Fatalf("NewConfirmedDiscoverer() error = %v", err)
+	}
+	discovery, err := discoverer.Discover(ctx)
+	if err != nil || len(discovery.Snapshots) != 1 {
+		t.Fatalf("Discover() = %#v, %v", discovery, err)
+	}
+	plan, err := logs.PlanReconcile(metadata.Path, nil, discovery)
+	if err != nil || len(plan.Actions) != 1 {
+		t.Fatalf("PlanReconcile() = %#v, %v", plan, err)
+	}
+	liveRuntime, err := liveindex.New(liveindex.Config{Repository: repository})
+	if err != nil {
+		t.Fatalf("liveindex.New() error = %v", err)
+	}
+	requestedAtMS := time.Now().UnixMilli()
+	job, err := liveRuntime.Start(ctx, liveindex.LiveRequest{
+		RequestID: "startup-recovery-before-home-validation", HomeGeneration: 1,
+		HomePath: metadata.Path, HomeDeviceID: metadata.DeviceID, HomeInode: metadata.Inode,
+		Action: plan.Actions[0], RequestedAtMS: requestedAtMS,
+	})
+	if err != nil {
+		t.Fatalf("liveRuntime.Start() error = %v", err)
+	}
+	task := factstore.SchedulerTask{
+		TaskID: "task-startup-recovery", DedupeKey: "live:startup-recovery",
+		TargetKind: factstore.SchedulerTargetLiveScan, TargetID: job.JobID,
+		HomeGeneration: 1, Lane: factstore.SchedulerLaneLive,
+		ServiceClass: factstore.SchedulerServiceBackground, State: factstore.SchedulerTaskQueued,
+		QueueOrderMS: requestedAtMS, EnqueuedAtMS: requestedAtMS, UpdatedAtMS: requestedAtMS,
+	}
+	if err := repository.EnqueueSchedulerTask(ctx, task, 8); err != nil {
+		t.Fatalf("EnqueueSchedulerTask() error = %v", err)
+	}
+	if _, err := repository.ClaimSchedulerTask(ctx, task.TaskID, requestedAtMS+1); err != nil {
+		t.Fatalf("ClaimSchedulerTask() error = %v", err)
+	}
+
+	staleHome := home + "-stale"
+	if err := os.Rename(home, staleHome); err != nil {
+		t.Fatalf("rename confirmed Home: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(staleHome) })
+	for _, directory := range []string{"sessions", "archived_sessions"} {
+		if err := os.MkdirAll(filepath.Join(home, directory), 0o700); err != nil {
+			t.Fatalf("create replacement %s: %v", directory, err)
+		}
+	}
+	registrar := &fakeLifecycleRegistrar{callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent))}
+	runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
+		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		EventTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatalf("startApplicationLifecycleRuntime() error = %v", err)
+	}
+	if runtime == nil {
+		t.Fatal("configured Home must compose application lifecycle runtime")
+	}
+	defer func() {
+		if err := runtime.Close(context.Background()); err != nil {
+			t.Errorf("runtime.Close() error = %v", err)
+		}
+	}()
+	state, err := repository.SchedulerLifecycle(ctx)
+	if err != nil || state.SourceState != factstore.LifecycleSourceUnavailable ||
+		state.Transition != factstore.LifecycleTransitionBlocked {
+		t.Fatalf("SchedulerLifecycle() = %#v, %v", state, err)
+	}
+	storedTask, err := repository.SchedulerTask(ctx, task.TaskID)
+	if err != nil || storedTask.State != factstore.SchedulerTaskRunning || storedTask.TargetID != job.JobID {
+		t.Fatalf("SchedulerTask() = %#v, %v; startup must not recover before Home validation", storedTask, err)
+	}
+	storedJob, _, err := repository.LiveScanRun(ctx, job.JobID)
+	if err != nil || storedJob.State != factstore.JobQueued {
+		t.Fatalf("LiveScanRun() = %#v, %v; startup must not interrupt target before Home validation", storedJob, err)
+	}
+}
+
+func waitForAppCondition(t *testing.T, condition func() bool, message string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for !condition() {
+		if time.Now().After(deadline) {
+			t.Fatal(message)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 

@@ -143,6 +143,36 @@ func TestRuntimeInterruptsAndRecoversLiveJobFromAuthoritativeCheckpoint(t *testi
 	}
 }
 
+func TestRuntimeRecoverReturnsInterruptedTerminalWhenResumeTimeIsExhausted(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	repository := openLiveRepository(t)
+	home := t.TempDir()
+	writeLiveFile(t, filepath.Join(home, "sessions", "recover-time-boundary.jsonl"),
+		liveRollout("session-live-recover-time-boundary", "turn-live-recover-time-boundary"))
+	runtime := newLiveRuntime(t, repository, Config{})
+	job, err := runtime.Start(ctx, liveRequest(t, home, "request-live-recover-time-boundary", 13))
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if err := repository.TransitionJobRun(ctx, store.JobTransition{
+		JobID: job.JobID, ExpectedState: store.JobQueued, State: store.JobRunning,
+		Phase: store.JobPhaseLive, AtMS: store.MaxSchedulerRunningTimestampMS,
+	}); err != nil {
+		t.Fatalf("TransitionJobRun(running) error = %v", err)
+	}
+	recovered, err := runtime.Recover(ctx, job.JobID)
+	if err != nil || recovered.State != store.JobInterrupted ||
+		recovered.UpdatedAtMS != store.MaxSchedulerTimestampMS {
+		t.Fatalf("Recover(exhausted resume time) = %#v, %v", recovered, err)
+	}
+	if replay, err := runtime.Recover(ctx, job.JobID); err != nil || replay.JobID != recovered.JobID ||
+		replay.State != recovered.State || replay.UpdatedAtMS != recovered.UpdatedAtMS {
+		t.Fatalf("Recover(exhausted replay) = %#v, %v, want %#v", replay, err, recovered)
+	}
+}
+
 func TestRuntimeFailsLiveJobWhenSnapshotDriftsBeforeRead(t *testing.T) {
 	t.Parallel()
 
@@ -174,6 +204,48 @@ func TestRuntimeFailsLiveJobWhenSnapshotDriftsBeforeRead(t *testing.T) {
 	if err != nil || failed.State != store.JobFailed || failed.ErrorClass == nil ||
 		*failed.ErrorClass != store.RuntimeErrorUnavailable {
 		t.Fatalf("LiveScanRun(failed) = %#v, %v", failed, err)
+	}
+	resumed, err := runtime.Retry(context.Background(), job.JobID)
+	if err != nil || resumed.State != store.JobQueued || resumed.ResumeOfJobID == nil ||
+		*resumed.ResumeOfJobID != job.JobID {
+		t.Fatalf("Retry(failed) = %#v, %v", resumed, err)
+	}
+	if replay, err := runtime.Retry(context.Background(), job.JobID); err != nil || replay.JobID != resumed.JobID {
+		t.Fatalf("Retry(failed replay) = %#v, %v, want %q", replay, err, resumed.JobID)
+	}
+}
+
+func TestRuntimeRetryRejectsTimestampSuccessorPastRuntimeBoundary(t *testing.T) {
+	t.Parallel()
+
+	repository := openLiveRepository(t)
+	home := t.TempDir()
+	writeLiveFile(t, filepath.Join(home, "sessions", "retry-boundary.jsonl"),
+		liveRollout("session-live-retry-boundary", "turn-live-retry-boundary"))
+	runtime := newLiveRuntime(t, repository, Config{})
+	job, err := runtime.Start(context.Background(), liveRequest(t, home, "request-live-retry-boundary", 12))
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if err := repository.TransitionJobRun(context.Background(), store.JobTransition{
+		JobID: job.JobID, ExpectedState: store.JobQueued, State: store.JobRunning,
+		Phase: store.JobPhaseLive, AtMS: store.MaxSchedulerTimestampMS - 1,
+	}); err != nil {
+		t.Fatalf("TransitionJobRun(running) error = %v", err)
+	}
+	class := store.RuntimeErrorTimeout
+	if err := repository.TransitionJobRun(context.Background(), store.JobTransition{
+		JobID: job.JobID, ExpectedState: store.JobRunning, State: store.JobFailed,
+		Phase: store.JobPhaseLive, ErrorClass: &class, AtMS: store.MaxSchedulerTimestampMS,
+	}); err != nil {
+		t.Fatalf("TransitionJobRun(failed) error = %v", err)
+	}
+	if _, err := runtime.Retry(context.Background(), job.JobID); !errors.Is(err, ErrInvalidRuntime) {
+		t.Fatalf("Retry(runtime timestamp exhausted) error = %v, want ErrInvalidRuntime", err)
+	}
+	stored, _, err := repository.LiveScanRun(context.Background(), job.JobID)
+	if err != nil || stored.State != store.JobFailed || stored.UpdatedAtMS != store.MaxSchedulerTimestampMS {
+		t.Fatalf("LiveScanRun() = %#v, %v", stored, err)
 	}
 }
 

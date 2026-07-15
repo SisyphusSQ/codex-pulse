@@ -3,6 +3,8 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"math"
+	"strconv"
 	"testing"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -47,5 +49,35 @@ func TestServiceEnqueueAndPromoteUseExactDurableTaskIdentity(t *testing.T) {
 	conflict.ServiceClass = store.SchedulerServiceInteractive
 	if _, err := service.Enqueue(context.Background(), conflict); !errors.Is(err, store.ErrSchedulerConflict) {
 		t.Fatalf("Enqueue(conflicting admission class) error = %v, want ErrSchedulerConflict", err)
+	}
+}
+
+func TestServiceEnqueueRejectsTimestampsWithoutLogicalHeadroom(t *testing.T) {
+	t.Parallel()
+
+	repository := openSchedulerRepository(t)
+	job := store.JobRun{
+		JobID: "job-service-enqueue-overflow", JobType: "scheduler-test", RequestedBy: "test", Priority: 1,
+		State: store.JobQueued, Phase: store.JobPhaseLive, CreatedAtMS: 10, UpdatedAtMS: 10,
+	}
+	if err := repository.CreateJobRun(context.Background(), job); err != nil {
+		t.Fatalf("CreateJobRun() error = %v", err)
+	}
+	service := newSchedulerTestService(t, repository, &recordingExecutor{})
+	for _, requestedAtMS := range []int64{math.MaxInt64 - 1, math.MaxInt64} {
+		identity := strconv.FormatInt(requestedAtMS, 10)
+		request := EnqueueRequest{
+			TaskID:     "task-service-enqueue-overflow-" + identity,
+			DedupeKey:  "live:service-enqueue-overflow-" + identity,
+			TargetKind: store.SchedulerTargetLiveScan, TargetID: job.JobID, HomeGeneration: 1,
+			Lane: store.SchedulerLaneLive, ServiceClass: store.SchedulerServiceBackground,
+			RequestedAtMS: requestedAtMS, LaneCapacity: 8,
+		}
+		if _, err := service.Enqueue(context.Background(), request); !errors.Is(err, store.ErrSchedulerTransition) {
+			t.Fatalf("Enqueue(RequestedAtMS=%d) error = %v, want ErrSchedulerTransition", requestedAtMS, err)
+		}
+	}
+	if _, err := service.afterMS(math.MaxInt64, store.MaxSchedulerTimestampMS); !errors.Is(err, ErrInvalidService) {
+		t.Fatalf("afterMS(math.MaxInt64) error = %v, want ErrInvalidService", err)
 	}
 }

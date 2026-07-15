@@ -81,13 +81,15 @@ func TestSchedulerIntegrationRunsLiveBeforeBackfillAndStillAdvancesHistory(t *te
 	if err != nil {
 		t.Fatalf("NewLiveExecutor() error = %v", err)
 	}
+	policy := DefaultBudgetPolicy()
+	policy.BackgroundNormal.MaxActive = 24 * time.Hour
 	service, err := NewService(ServiceConfig{
 		Repository: repository,
 		Executors: map[store.SchedulerTargetKind]Executor{
 			store.SchedulerTargetBootstrap: bootstrapExecutor,
 			store.SchedulerTargetLiveScan:  liveExecutor,
 		},
-		BudgetPolicy: DefaultBudgetPolicy(), MaxLiveBurst: 8,
+		BudgetPolicy: policy, MaxLiveBurst: 8,
 	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
@@ -321,7 +323,7 @@ func schedulerLiveRequest(t *testing.T, home string) liveindex.LiveRequest {
 		t.Fatalf("PlanReconcile() = %#v, want session action", plan)
 	}
 	return liveindex.LiveRequest{
-		RequestID: "request-scheduler-integration", HomeGeneration: 202,
+		RequestID: "request-scheduler-integration", HomeGeneration: 201,
 		HomePath: metadata.Path, HomeDeviceID: metadata.DeviceID, HomeInode: metadata.Inode,
 		Action: *liveAction, RequestedAtMS: time.Now().UnixMilli(),
 	}

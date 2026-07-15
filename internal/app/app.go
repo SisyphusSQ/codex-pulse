@@ -101,7 +101,11 @@ func openBootstrappedStore[T lifecycleStore](
 	return store, nil
 }
 
-func runWithStore(ctx context.Context, openStore storeOpener, runApplication func() error) (returnErr error) {
+func runWithStore(
+	ctx context.Context,
+	openStore storeOpener,
+	runApplication func(lifecycleStore) error,
+) (returnErr error) {
 	store, err := openStore(ctx)
 	if err != nil {
 		return fmt.Errorf("open application SQLite store: %w", err)
@@ -114,16 +118,31 @@ func runWithStore(ctx context.Context, openStore storeOpener, runApplication fun
 		returnErr = errors.Join(returnErr, closeErr)
 	}()
 
-	return runApplication()
+	return runApplication(store)
 }
 
 // Run composes and starts the desktop application. The call blocks until the
 // application exits and returns Wails startup or shutdown failures to main.
 func Run(assets fs.FS) error {
 	ctx := context.Background()
-	return runWithStore(ctx, openApplicationStore, func() error {
+	return runWithStore(ctx, openApplicationStore, func(owned lifecycleStore) (returnErr error) {
+		database, ok := owned.(*storesqlite.Store)
+		if !ok {
+			return ErrApplicationLifecycleRuntime
+		}
 		desktopApp := application.New(applicationOptions(assets))
 		desktopApp.Window.NewWithOptions(mainWindowOptions())
+		runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
+			Database: database, Registrar: desktopApp.Event,
+		})
+		if err != nil {
+			return err
+		}
+		if runtime != nil {
+			defer func() {
+				returnErr = errors.Join(returnErr, runtime.Close(context.Background()))
+			}()
+		}
 
 		return desktopApp.Run()
 	})
