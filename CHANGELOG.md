@@ -17,6 +17,7 @@
 14. [TOO-257] 新增确认前 metadata-only Codex Home 探测与版本化私有 Onboarding preferences，固定三来源路径规范化、physical identity 与结构竞态 fail-closed、显式隐私确认、并发取消、重启及 durability-unknown 恢复语义
 15. [TOO-258] 新增版本化 typed Preferences、v1 原子迁移与单 Codex Home 切换协议，固定 private CAS/execution lease、显式数据策略、Home generation fence、并发 owner、bootstrap journal 与取消/崩溃恢复语义
 16. [TOO-259] 新增 Discover、Fast Bootstrap、History Backfill 与多 pass Reconcile 四阶段可恢复首次索引，固定 schema v6 typed plan、confirmed Home 读取、权威 source checkpoint、generation admission/Drain 和 fresh reconcile 闭合语义
+17. [TOO-260] 实现持久 Live/Backfill 双队列与协作式 ScanBudget，固定实时优先与历史公平、单重型 owner lease、真实 IO 预算、可观测 cycle 及跨崩溃 target 恢复语义
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

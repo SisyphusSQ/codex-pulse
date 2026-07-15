@@ -28,9 +28,18 @@ Quota 网络失败使用 5、10、20、30 分钟带 jitter 退避；手动刷新
 - `background`：日常采集，单 worker、限制读取和事务批次，在工作切片间主动 yield。
 - `maintenance`：目录对账、索引重建、SQLite checkpoint/vacuum，只在空闲或显式触发时执行。
 
-后台初始预算：单 worker、2～4 MiB/s、每批 4～8 个文件、工作 50 ms 后 yield 100～200 ms、每事务 100～250 行。前台可以使用 2 个 worker、取消主动读限速、每事务 500～1000 行。
+Go 侧固定一个重型 worker，使用协作式 `ScanBudget`，不动态修改整个进程的 `GOMAXPROCS` 或 nice，避免连 UI 和 SQLite 查询一起降速。默认预算由 service class 和系统压力共同决定：
 
-Go 侧使用协作式 `ScanBudget` 和 worker pool，不动态修改整个进程的 `GOMAXPROCS` 或 nice，避免连 UI 和 SQLite 查询一起降速。
+| class / system | files | bytes | active | yield |
+| --- | ---: | ---: | ---: | ---: |
+| background normal | 8 | 4 MiB | 50 ms | 150 ms |
+| background low power | 4 | 2 MiB | 25 ms | 250 ms |
+| background CPU / memory pressure | 1 | 256 KiB | 10 ms | 500 ms |
+| interactive normal | 16 | 16 MiB | 200 ms | 0 |
+| interactive CPU / memory pressure | 4 | 4 MiB | 50 ms | 50 ms |
+| Store pressure | 0 | 0 | 0 | 500 ms |
+
+Store pressure 仍写入零消耗 `system_pressure` cycle，但不调用 target executor。其它 budget 只在文件、chunk 或 phase 边界协作停止；当前 backfill slice 执行中出现 live task 时不异步取消 SQLite/解析事务，而在本 slice 边界记录 `live_preempted`，下一 cycle 优先选择 live。
 
 同类后台任务已经运行时，交互操作提升现有任务到 interactive、放宽预算并沿用当前 offset，不启动第二份扫描。全量重建是独立的显式操作。
 
@@ -100,16 +109,23 @@ TOO-259 将首次索引冻结为可恢复的四阶段同步状态机；后续调
 
 `first_screen_ready_at_ms` 与 `full_history_ready_at_ms` 是不同事实：第一份可用 fast source 完成，或确认 fast 结果为空时写 first-ready；只有 final reconcile pass 全部应用且没有 blocking issue 时，才同时写 full-ready、reconciled 与 succeeded。不能用 backfill 结束冒充全历史完成，也不能给全历史承诺固定秒数；样本不足时 ETA 保持 `unknown`，成功后才进入 `complete`。
 
-schema v6 使用 `job_runs` 表达公共 lifecycle/aggregate progress，`bootstrap_jobs` 表达 Home generation、switch identity、plan/ETA/pause/readiness、`reconcile_pass` 与 reconcile facts，`bootstrap_plan_items` 表达不可重排的 action snapshot、lane/tier、source generation 和 committed progress。所有 CRUD/filter/transaction 编排使用 GORM；canonical DDL、PRAGMA、schema readback 和 query-plan gate 仍是 raw SQL 例外。生产 SQLite 依赖固定为 GORM + Pure Go driver，不引入 `gorm.io/driver/sqlite` 或 `mattn/go-sqlite3`。
+schema v7 在 v6 bootstrap facts 之上追加 `scheduler_tasks`、`scheduler_cycles` 与 `live_scan_jobs`。`scheduler_tasks` 保存 immutable admission target/service class、当前 target/service class、lane、queue order 和累计消费，不复制 source cursor；同一 admission 在 promotion、yield、terminal 或 recovery 换绑后重放仍返回当前 durable task，改变原始 payload 才冲突。`scheduler_cycles` 追加 SQLite 全局自增 `commit_order`、每次选择、预算、实际消费、queue depth、oldest wait 与停止原因；`live_scan_jobs` 以 typed columns 保存 confirmed Home、action kind 和 previous/current fingerprint，不保存 opaque JSON 或文件正文。所有 CRUD/filter/transaction 编排使用 GORM；canonical DDL、PRAGMA、schema readback 和 query-plan gate 仍是 raw SQL 例外。生产 SQLite 依赖固定为 GORM + `github.com/libtnb/sqlite` / `modernc.org/sqlite` Pure Go driver，不引入 `gorm.io/driver/sqlite` 或 `mattn/go-sqlite3`。
 
-`StartBootstrap` 对精确 `(switch_id, home_generation)` 使用稳定 initial job identity，负责创建 discover job 并冻结 initial plan；Resume lineage 中最新 attempt ID 可以变化，但 immutable request facts 相同的 `StartBootstrap` 仍是 exact no-op，改变 Home identity/data-store/strategy 才冲突。ready/terminal attempt 的 exact Start 可在 admission 冲突前只读核对 durable facts，因此执行中 Run 不会把幂等 readback 误报为冲突；pending attempt 的并发同 identity Start 与并发 Resume loser 等待同 operation owner 结束后再读权威状态，不执行第二份副作用。`Run(job_id)` 是有界同步执行入口，不在本卡启动长期 scheduler goroutine。直接取消或 `Drain` 将进行中 attempt 标记 interrupted，plan-ready 的 failed/cancelled/interrupted attempt 都由 `Resume` 克隆为新 queued attempt；固定 initial plan/facts 被复制，逐 source generation/checkpoint 不复制。Start、Run、Resume 在任何 Store/文件系统 side effect 前统一登记 generation operation；不同 operation 仍按 generation 互斥，`Drain` 先关闭 admission，取消并等待这些在途 operation，再终止持久 queued/running attempt并返回无 writer 状态，执行中的 Drain 未完成时 Resume 不得重开 admission。
+`StartBootstrap` 对精确 `(switch_id, home_generation)` 使用稳定 initial job identity，负责创建 discover job 并冻结 initial plan；Resume lineage 中最新 attempt ID 可以变化，但 immutable request facts 相同的 `StartBootstrap` 仍是 exact no-op，改变 Home identity/data-store/strategy 才冲突。ready/terminal attempt 的 exact Start 可在 admission 冲突前只读核对 durable facts，因此执行中 Run 不会把幂等 readback 误报为冲突；pending attempt 的并发同 identity Start 与并发 Resume loser等待同 operation owner 结束后再读权威状态，不执行第二份副作用。`Run(job_id)` 与 `RunSlice(job_id, budget)` 复用同一四阶段状态机；前者保持完整同步语义，后者按权威 checkpoint 做协作式 slice，budget yield 不伪装成 terminal。直接取消或 `Drain` 将进行中 attempt 标记 interrupted，plan-ready 的 failed/cancelled/interrupted attempt 都由 `Resume` 克隆为新 queued attempt；固定 initial plan/facts 被复制，逐 source generation/checkpoint 不复制。Start、Run、RunSlice、Resume 在任何 Store/文件系统 side effect 前统一登记 generation operation；不同 operation 仍按 generation 互斥，`Drain` 先关闭 admission，取消并等待这些在途 operation，再终止持久 queued/running attempt并返回无 writer 状态，执行中的 Drain 未完成时 Resume 不得重开 admission。
 
-Discover 为每个文件记录初始 size，初始 plan 分母不会因扫描期间 append 改写。读取使用绑定 confirmed Home physical identity 的 no-follow snapshot reader，按 chunk 读取并在前后复核 identity、size、mtime 和 prefix digest；发现 drift 时保留已经提交的 source offset，把 item 标记 drifted，交给 final reconcile 生成新 action，不清库、不跳过未证明的字节。
+Discover 为每个文件记录初始 size，初始 plan 分母不会因扫描期间 append 改写。读取使用绑定 confirmed Home physical identity 的 no-follow snapshot reader，按 chunk 读取并在前后复核 identity、size、mtime 和 prefix digest；发现 drift 时保留已经提交的 source offset，把 item 标记 drifted，交给 final reconcile 生成新 action，不清库、不跳过未证明的字节。limited read 的 byte budget 统计真实文件 IO：每个 slice 的 prefix proof 与正文读取都计入 `BytesRead`，内容游标推进量另记为 `ContentBytes`；预算小于 4096 字节 proof 下限时在打开正文前拒绝，固定 ScanBudget 均高于该下限。time budget 只能通过 reader 的受控 stop contract 在当前 chunk 后协作式停止，reader 仍先完成 after-stat；若停止窗口发生 drift，`changed_during_scan` 优先于普通 time yield。
 
-TOO-260 的调度器将在这些持久原语之上维护：
+调度器在这些持久原语之上维护两个 bounded lane：
 
-- `live queue`：活跃文件的新 append，始终优先；
-- `backfill queue`：未完成历史文件，按 background ScanBudget 限速。
+- `live queue`：typed reconcile action 对应的增量 attempt；两个 lane 都有任务时优先 live；
+- `backfill queue`：未完成 bootstrap attempt，按 background ScanBudget 限速；
+- lane 内按持久 `queue_order_ms` 轮转；yield 后移到本 lane 队尾；
+- recent history 按 SQLite 在 cycle 提交事务中分配的全局自增 `commit_order` 读回，不按可能重复的 `finished_at_ms` 或随机 UUID 猜顺序；最近 8 个持久 cycle 都选择 live 且 backfill 仍有任务时，第 9 个 cycle 强制选择 backfill，进程重启不会重置或重排公平计数；
+- queue 选择由 Store 在同一只读事务快照中对全部 queued task 分 lane 聚合 depth、最老候选和全局 tail，不从最多 500 条的通用列表推断，因此并发入队不会产生“旧 depth + 新 candidate”的撕裂读，合法的 10000/lane 容量也不会截断 live priority、oldest wait 或恢复集合；
+- 每个数据库旁固定保留一个 `0600`、拒绝 symlink 的 scheduler owner lock。长生命周期 `Run` 从恢复前到最后一个 cycle 持有 OS advisory lease，直接 `RunCycle` 只做非阻塞竞争；只有 owner 正常释放或进程退出后 OS 自动释放，另一 Service 才能恢复/执行。进程内 cycle mutex 与 Store“已有任意 running task 时拒绝第二个 claim”继续作为同 Service 串行和持久状态防线；promotion 与 commit 竞争只重试未执行的 claim或同一 cycle commit，不重复调用 target；
+- scheduler owner 取得 lease 后分页接管全部遗留 running/interrupted task。target 仍可续跑时创建新 attempt并通过 recovery CAS 原地换绑，恢复时间戳同时晚于旧 queue order、`updated_at_ms` 与全局 tail；target 已 succeeded/failed/cancelled 时原子补齐 terminal scheduler cycle，覆盖 target 先提交、scheduler commit 前进程退出的 crash gap；活跃 owner 持 lease 时其它 Service 不得恢复，queued task也不重复恢复。
+
+live runtime 只接受 added/unchanged/grown/truncated/moved/replaced typed action。stable request 的 exact replay先读 durable facts，因此 Home 后续迁移也不会把已完成请求误报为新任务；deleted/unreadable 仍由目录 reconcile/bootstrap 处理。live 与 bootstrap 都通过 confirmed snapshot reader、同一个 indexer 和 Store 单写队列提交 source checkpoint，不存在第二份 SQLite writer。
 
 用户暂停/继续 backfill、暂停所有采集、sleep/wake 与长期故障退避由 TOO-261 负责；这些语义不能由本卡的 `application_draining` recovery 接缝冒充。低电量模式可降低 backfill 速度，v0.1 不要求自动完全暂停。
 

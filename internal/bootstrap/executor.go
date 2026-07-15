@@ -54,76 +54,102 @@ func (runtime *Runtime) Run(ctx context.Context, jobID string) (RunReport, error
 }
 
 func (runtime *Runtime) execute(ctx context.Context, jobID string) error {
-	job, facts, err := runtime.repository.BootstrapRun(ctx, jobID)
+	complete, err := runtime.executeSlice(ctx, jobID, nil)
 	if err != nil {
 		return err
 	}
-	if facts.PlanState != store.BootstrapPlanReady {
+	if !complete {
 		return ErrInvalidRuntime
+	}
+	return nil
+}
+
+// executeSlice 推进尽可能多的完整状态机步骤；只有真实scan work受tracker约束。
+func (runtime *Runtime) executeSlice(
+	ctx context.Context,
+	jobID string,
+	tracker *sliceTracker,
+) (bool, error) {
+	job, facts, err := runtime.repository.BootstrapRun(ctx, jobID)
+	if err != nil {
+		return false, err
+	}
+	if facts.PlanState != store.BootstrapPlanReady {
+		return false, ErrInvalidRuntime
 	}
 	if job.State == store.JobQueued {
 		if err := runtime.promoteQueuedAttempt(ctx, job, facts); err != nil {
-			return err
+			return false, err
 		}
 		job.State = store.JobRunning
 	}
 	if job.Phase == store.JobPhaseDiscover {
 		if err := runtime.transitionPhase(ctx, jobID, store.JobPhaseFastBootstrap, store.BootstrapLaneFast); err != nil {
-			return err
+			return false, err
 		}
 		job.Phase = store.JobPhaseFastBootstrap
 	}
 	if job.Phase == store.JobPhaseFastBootstrap {
-		if err := runtime.processLane(ctx, jobID, store.BootstrapLaneFast, nil); err != nil {
-			return err
+		laneComplete, err := runtime.processLaneSlice(ctx, jobID, store.BootstrapLaneFast, nil, tracker)
+		if err != nil || !laneComplete {
+			return false, err
 		}
 		if err := runtime.ensureFirstScreenReady(ctx, jobID); err != nil {
-			return err
+			return false, err
 		}
 		if err := runtime.transitionPhase(
 			ctx, jobID, store.JobPhaseHistoryBackfill, store.BootstrapLaneBackfill,
 		); err != nil {
-			return err
+			return false, err
 		}
 		job.Phase = store.JobPhaseHistoryBackfill
 	}
 	if job.Phase == store.JobPhaseHistoryBackfill {
-		if err := runtime.processLane(ctx, jobID, store.BootstrapLaneBackfill, nil); err != nil {
-			return err
+		laneComplete, err := runtime.processLaneSlice(ctx, jobID, store.BootstrapLaneBackfill, nil, tracker)
+		if err != nil || !laneComplete {
+			return false, err
 		}
-		if err := runtime.transitionPhase(ctx, jobID, store.JobPhaseReconcile, store.BootstrapLaneReconcile); err != nil {
-			return err
+		if err := runtime.transitionPhase(
+			ctx, jobID, store.JobPhaseReconcile, store.BootstrapLaneReconcile,
+		); err != nil {
+			return false, err
 		}
 		job.Phase = store.JobPhaseReconcile
 	}
 	if job.Phase != store.JobPhaseReconcile {
-		return ErrInvalidRuntime
+		return false, ErrInvalidRuntime
 	}
 	if err := runtime.freezeFinalReconcile(ctx, jobID); err != nil {
-		return err
+		return false, err
 	}
 	_, facts, err = runtime.repository.BootstrapRun(ctx, jobID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	pass := facts.ReconcilePass
 	if pass < 1 {
-		return ErrInvalidRuntime
+		return false, ErrInvalidRuntime
 	}
-	if err := runtime.processLane(ctx, jobID, store.BootstrapLaneReconcile, &pass); err != nil {
-		return err
+	laneComplete, err := runtime.processLaneSlice(
+		ctx, jobID, store.BootstrapLaneReconcile, &pass, tracker,
+	)
+	if err != nil || !laneComplete {
+		return false, err
 	}
 	_, facts, err = runtime.repository.BootstrapRun(ctx, jobID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if facts.ReconcileIssueCount > 0 {
-		return ErrDiscoveryIncomplete
+		return false, ErrDiscoveryIncomplete
 	}
 	if err := runtime.requireReconcilePassClosed(ctx, jobID, pass); err != nil {
-		return err
+		return false, err
 	}
-	return runtime.succeed(ctx, jobID)
+	if err := runtime.succeed(ctx, jobID); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (runtime *Runtime) promoteQueuedAttempt(
@@ -143,44 +169,50 @@ func (runtime *Runtime) promoteQueuedAttempt(
 	})
 }
 
-func (runtime *Runtime) processLane(
+func (runtime *Runtime) processLaneSlice(
 	ctx context.Context,
 	jobID string,
 	lane store.BootstrapLane,
 	pass *int64,
-) error {
+	tracker *sliceTracker,
+) (bool, error) {
 	items, err := runtime.repository.ListBootstrapPlanItems(ctx, store.BootstrapPlanItemFilter{
 		JobID: jobID, Lane: &lane,
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	for _, item := range items {
 		if pass != nil && item.Pass != *pass {
 			continue
 		}
 		if err := ctx.Err(); err != nil {
-			return err
+			return false, err
 		}
 		switch item.State {
 		case store.BootstrapItemSucceeded, store.BootstrapItemDrifted:
 			continue
 		case store.BootstrapItemFailed:
-			return ErrSourceUnavailable
-		case store.BootstrapItemQueued:
+			return false, ErrSourceUnavailable
+		case store.BootstrapItemQueued, store.BootstrapItemRunning:
+		default:
+			return false, ErrInvalidRuntime
+		}
+		if tracker != nil && !tracker.beginItem(runtime.clock()) {
+			return false, nil
+		}
+		if item.State == store.BootstrapItemQueued {
 			if err := runtime.markItemRunning(ctx, item); err != nil {
-				return err
+				return false, err
 			}
 			item.State = store.BootstrapItemRunning
-		case store.BootstrapItemRunning:
-		default:
-			return ErrInvalidRuntime
 		}
-		if err := runtime.applyItem(ctx, item); err != nil {
-			return err
+		itemComplete, err := runtime.applyItemSlice(ctx, item, tracker)
+		if err != nil || !itemComplete {
+			return false, err
 		}
 	}
-	return nil
+	return true, nil
 }
 
 func (runtime *Runtime) requireReconcilePassClosed(
@@ -203,44 +235,44 @@ func (runtime *Runtime) requireReconcilePassClosed(
 	return nil
 }
 
-func (runtime *Runtime) applyItem(ctx context.Context, item store.BootstrapPlanItem) error {
+func (runtime *Runtime) applyItemSlice(
+	ctx context.Context,
+	item store.BootstrapPlanItem,
+	tracker *sliceTracker,
+) (bool, error) {
 	switch item.ActionKind {
 	case store.BootstrapActionUnreadable:
-		// Initial discovery is only a fixed scheduling snapshot. Deferring an
-		// unreadable pass-0 source as drift lets the mandatory final discovery
-		// prove whether it recovered; reconcile-pass unreadable items still
-		// block full-ready and require Resume to create a fresh pass.
 		if item.Pass == 0 {
-			return runtime.finishItem(ctx, item, store.BootstrapItemDrifted, nil, 0, false)
+			return true, runtime.finishItem(ctx, item, store.BootstrapItemDrifted, nil, 0, false)
 		}
-		return ErrSourceUnavailable
+		return false, ErrSourceUnavailable
 	case store.BootstrapActionDeleted:
 		if item.Previous == nil {
-			return ErrInvalidRuntime
+			return false, ErrInvalidRuntime
 		}
 		atMS := runtime.nowAfter(item.UpdatedAtMS)
 		if err := runtime.repository.MarkBootstrapSourceUnavailable(ctx, *item.Previous, atMS); err != nil {
-			return err
+			return false, err
 		}
-		return runtime.finishItem(ctx, item, store.BootstrapItemSucceeded, nil, 0, false)
+		return true, runtime.finishItem(ctx, item, store.BootstrapItemSucceeded, nil, 0, false)
 	}
 	if item.Current == nil {
-		return ErrInvalidRuntime
+		return false, ErrInvalidRuntime
 	}
 	var action logs.ReconcileAction
 	if cursor, usable, found, err := runtime.authoritativeItemCursor(ctx, item); err != nil {
-		return err
+		return false, err
 	} else if found {
 		if cursor.Checkpoint.CommittedOffset == item.Current.SizeBytes {
 			generation := cursor.Generation
-			return runtime.finishItem(
+			return true, runtime.finishItem(
 				ctx, item, store.BootstrapItemSucceeded, &generation,
 				cursor.Checkpoint.CommittedOffset, usable,
 			)
 		}
 		if cursor.Checkpoint.CommittedOffset < 0 ||
 			cursor.Checkpoint.CommittedOffset > item.Current.SizeBytes {
-			return ErrInvalidRuntime
+			return false, ErrInvalidRuntime
 		}
 		current := snapshotFromFingerprint(*item.Current)
 		previous := current
@@ -252,19 +284,22 @@ func (runtime *Runtime) applyItem(ctx context.Context, item store.BootstrapPlanI
 	}
 	ingesterService, err := indexer.New(runtime.repository)
 	if err != nil {
-		return err
+		return false, err
 	}
 	stream, err := ingesterService.Open(ctx, indexer.OpenRequest{
 		Action: action, AtMS: runtime.nowAfter(item.UpdatedAtMS),
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	cursor, err := stream.Cursor()
 	if err != nil {
-		return err
+		return false, err
 	}
-	return runtime.readItem(ctx, item, stream, cursor)
+	if tracker == nil {
+		return true, runtime.readItem(ctx, item, stream, cursor)
+	}
+	return runtime.readItemSlice(ctx, item, stream, cursor, tracker)
 }
 
 // authoritativeItemCursor closes the crash window where source facts and its
@@ -344,6 +379,77 @@ func (runtime *Runtime) readItem(
 		return readErr
 	}
 	return runtime.finishItem(
+		ctx, item, store.BootstrapItemSucceeded, &generation, latest.CommittedOffset, usable,
+	)
+}
+
+func (runtime *Runtime) readItemSlice(
+	ctx context.Context,
+	item store.BootstrapPlanItem,
+	stream *indexer.Stream,
+	cursor indexer.StreamCursor,
+	tracker *sliceTracker,
+) (bool, error) {
+	_, facts, err := runtime.repository.BootstrapRun(ctx, item.JobID)
+	if err != nil {
+		return false, err
+	}
+	reader, err := logs.NewConfirmedSnapshotReader(
+		facts.HomePath, facts.HomeDeviceID, facts.HomeInode, runtime.readChunkBytes,
+	)
+	if err != nil {
+		return false, err
+	}
+	snapshot := snapshotFromFingerprint(*item.Current)
+	remainingBytes := tracker.remainingBytes()
+	if remainingBytes <= 0 {
+		tracker.stopForPartialRead()
+		return false, nil
+	}
+	readResult, readErr := reader.ReadLimited(
+		ctx, snapshot, cursor.CommittedOffset, remainingBytes,
+		func(chunk []byte, eof bool) error {
+			result, feedErr := stream.Feed(ctx, chunk, eof, runtime.nowAfter(item.UpdatedAtMS))
+			if feedErr != nil {
+				return feedErr
+			}
+			if runtime.hooks.afterChunk != nil {
+				runtime.hooks.afterChunk(item, result.ReadOffset)
+			}
+			if !eof && tracker.stopForTime(runtime.clock()) {
+				return logs.StopSnapshotRead(errSliceTimeBudget)
+			}
+			return nil
+		},
+	)
+	tracker.addBytes(readResult.BytesRead)
+	latest, cursorErr := stream.Cursor()
+	if cursorErr != nil {
+		return false, cursorErr
+	}
+	generation := latest.Generation
+	usable := false
+	if file, fileErr := runtime.repository.SourceFile(ctx, latest.SourceFileID); fileErr == nil {
+		usable = file.SessionID != nil
+	} else if !errors.Is(fileErr, store.ErrNotFound) {
+		return false, fileErr
+	}
+	if errors.Is(readErr, logs.ErrChangedDuringScan) {
+		return true, runtime.finishItem(
+			ctx, item, store.BootstrapItemDrifted, &generation, latest.CommittedOffset, usable,
+		)
+	}
+	if errors.Is(readErr, errSliceTimeBudget) {
+		return false, nil
+	}
+	if readErr != nil {
+		return false, readErr
+	}
+	if !readResult.EOF {
+		tracker.stopForPartialRead()
+		return false, nil
+	}
+	return true, runtime.finishItem(
 		ctx, item, store.BootstrapItemSucceeded, &generation, latest.CommittedOffset, usable,
 	)
 }

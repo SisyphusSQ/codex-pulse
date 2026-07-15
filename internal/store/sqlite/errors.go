@@ -13,19 +13,20 @@ import (
 // driver-specific strings. Wrapped context and driver errors remain available
 // through errors.Is and errors.As.
 var (
-	ErrInvalidConfig = errors.New("invalid sqlite store configuration")
-	ErrInvalidPath   = errors.New("invalid sqlite store path")
-	ErrQueueFull     = errors.New("sqlite write queue is full")
-	ErrClosing       = errors.New("sqlite store is closing")
-	ErrClosed        = errors.New("sqlite store is closed")
-	ErrCanceled      = errors.New("sqlite operation canceled")
-	ErrBusy          = errors.New("sqlite database is busy")
-	ErrDiskFull      = errors.New("sqlite database disk is full")
-	ErrReadOnly      = errors.New("sqlite database is read-only")
-	ErrPermission    = errors.New("sqlite database permission denied")
-	ErrIO            = errors.New("sqlite database I/O failure")
-	ErrCorrupt       = errors.New("sqlite database is corrupt")
-	ErrCallbackPanic = errors.New("sqlite write callback panicked")
+	ErrInvalidConfig  = errors.New("invalid sqlite store configuration")
+	ErrInvalidPath    = errors.New("invalid sqlite store path")
+	ErrQueueFull      = errors.New("sqlite write queue is full")
+	ErrClosing        = errors.New("sqlite store is closing")
+	ErrClosed         = errors.New("sqlite store is closed")
+	ErrCanceled       = errors.New("sqlite operation canceled")
+	ErrBusy           = errors.New("sqlite database is busy")
+	ErrOwnerLeaseBusy = errors.New("sqlite scheduler owner lease is busy")
+	ErrDiskFull       = errors.New("sqlite database disk is full")
+	ErrReadOnly       = errors.New("sqlite database is read-only")
+	ErrPermission     = errors.New("sqlite database permission denied")
+	ErrIO             = errors.New("sqlite database I/O failure")
+	ErrCorrupt        = errors.New("sqlite database is corrupt")
+	ErrCallbackPanic  = errors.New("sqlite write callback panicked")
 )
 
 type classifiedError struct {

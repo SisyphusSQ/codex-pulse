@@ -24,6 +24,15 @@ type SnapshotReader struct {
 	home         string
 	rootIdentity rootIdentity
 	chunkBytes   int
+	readAt       func(*os.File, []byte, int64) (int, error)
+}
+
+// SnapshotReadResult 区分实际磁盘IO、交给consumer的内容推进量与真实snapshot EOF。
+type SnapshotReadResult struct {
+	Offset       int64
+	BytesRead    int64
+	ContentBytes int64
+	EOF          bool
 }
 
 func NewSnapshotReader(home string, chunkBytes int) (*SnapshotReader, error) {
@@ -57,7 +66,12 @@ func newSnapshotReader(home string, expected *rootIdentity, chunkBytes int) (*Sn
 	if expected != nil && identity != *expected {
 		return nil, ErrHomeChanged
 	}
-	return &SnapshotReader{home: home, rootIdentity: identity, chunkBytes: chunkBytes}, nil
+	return &SnapshotReader{
+		home: home, rootIdentity: identity, chunkBytes: chunkBytes,
+		readAt: func(file *os.File, buffer []byte, offset int64) (int, error) {
+			return file.ReadAt(buffer, offset)
+		},
+	}, nil
 }
 
 // Read starts at a previously committed offset and invokes consume
@@ -68,89 +82,161 @@ func (reader *SnapshotReader) Read(
 	startOffset int64,
 	consume func(chunk []byte, eof bool) error,
 ) (int64, error) {
-	if reader == nil || reader.chunkBytes <= 0 || consume == nil {
-		return startOffset, ErrInvalidSnapshot
+	result, err := reader.read(ctx, snapshot, startOffset, nil, consume)
+	return result.Offset, err
+}
+
+// ReadLimited 把prefix proof与正文读取都计入maxBytes；budget停止时不会发送伪EOF。
+func (reader *SnapshotReader) ReadLimited(
+	ctx context.Context,
+	snapshot Snapshot,
+	startOffset int64,
+	maxBytes int64,
+	consume func(chunk []byte, eof bool) error,
+) (SnapshotReadResult, error) {
+	if maxBytes <= 0 {
+		return SnapshotReadResult{Offset: startOffset}, ErrInvalidSnapshot
+	}
+	return reader.read(ctx, snapshot, startOffset, &maxBytes, consume)
+}
+
+func (reader *SnapshotReader) read(
+	ctx context.Context,
+	snapshot Snapshot,
+	startOffset int64,
+	maxBytes *int64,
+	consume func(chunk []byte, eof bool) error,
+) (SnapshotReadResult, error) {
+	result := SnapshotReadResult{Offset: startOffset}
+	if reader == nil || reader.chunkBytes <= 0 || reader.readAt == nil || consume == nil {
+		return result, ErrInvalidSnapshot
 	}
 	if err := ctx.Err(); err != nil {
-		return startOffset, err
+		return result, err
 	}
 	if err := validateSnapshotForHome(reader.home, snapshot); err != nil ||
 		snapshot.Kind == SourceKindSessionIndex || startOffset < 0 ||
 		startOffset > snapshot.Fingerprint.SizeBytes {
-		return startOffset, ErrInvalidSnapshot
+		return result, ErrInvalidSnapshot
+	}
+	if maxBytes != nil && *maxBytes < snapshot.Fingerprint.PrefixBytes {
+		return result, ErrSnapshotBudgetTooSmall
 	}
 	root, err := openConfirmedSnapshotRoot(reader.home)
 	if err != nil {
-		return startOffset, err
+		return result, err
 	}
 	defer func() { _ = root.Close() }()
 	if root.Identity() != reader.rootIdentity {
-		return startOffset, ErrHomeChanged
+		return result, ErrHomeChanged
 	}
 	relativePath, err := filepath.Rel(reader.home, snapshot.Path)
 	if err != nil || filepath.IsAbs(relativePath) {
-		return startOffset, ErrUnsafeSource
+		return result, ErrUnsafeSource
 	}
 	fileDescriptor, err := openAtNoFollow(int(root.file.Fd()), relativePath, false)
 	if err != nil {
-		return startOffset, classifySourceOpenError(err)
+		return result, classifySourceOpenError(err)
 	}
 	file := os.NewFile(uintptr(fileDescriptor), relativePath)
 	if file == nil {
 		_ = unix.Close(fileDescriptor)
-		return startOffset, ErrUnsupportedFile
+		return result, ErrUnsupportedFile
 	}
 	defer func() { _ = file.Close() }()
 
 	var before unix.Stat_t
 	if err := unix.Fstat(fileDescriptor, &before); err != nil {
-		return startOffset, err
+		return result, err
 	}
 	if !snapshotMatchesStat(snapshot, before) {
-		return startOffset, ErrChangedDuringScan
+		return result, ErrChangedDuringScan
 	}
-	if err := verifySnapshotPrefix(file, snapshot); err != nil {
-		return startOffset, err
+	prefix, proofBytes, proofErr := reader.readAndVerifySnapshotPrefix(file, snapshot)
+	result.BytesRead = proofBytes
+	if proofErr != nil {
+		clear(prefix)
+		return result, proofErr
 	}
+	defer clear(prefix)
 
 	offset := startOffset
+	var controlledStop error
 	if offset == snapshot.Fingerprint.SizeBytes {
+		result.EOF = true
 		if err := consume(nil, true); err != nil {
-			return offset, err
+			return result, err
 		}
 	}
 	for offset < snapshot.Fingerprint.SizeBytes {
 		if err := ctx.Err(); err != nil {
-			return offset, err
+			result.Offset = offset
+			result.ContentBytes = offset - startOffset
+			return result, err
 		}
 		remaining := snapshot.Fingerprint.SizeBytes - offset
 		chunkSize := int64(reader.chunkBytes)
 		if remaining < chunkSize {
 			chunkSize = remaining
 		}
-		chunk := make([]byte, int(chunkSize))
-		readBytes, readErr := file.ReadAt(chunk, offset)
-		if int64(readBytes) != chunkSize || readErr != nil && !errors.Is(readErr, io.EOF) {
-			clear(chunk)
-			return offset, ErrChangedDuringScan
+		cached := offset < int64(len(prefix))
+		if cached {
+			prefixRemaining := int64(len(prefix)) - offset
+			if prefixRemaining < chunkSize {
+				chunkSize = prefixRemaining
+			}
+		} else if maxBytes != nil {
+			budgetRemaining := *maxBytes - result.BytesRead
+			if budgetRemaining == 0 {
+				break
+			}
+			if budgetRemaining < chunkSize {
+				chunkSize = budgetRemaining
+			}
 		}
-		offset += int64(readBytes)
+		chunk := make([]byte, int(chunkSize))
+		if cached {
+			copy(chunk, prefix[offset:offset+chunkSize])
+		} else {
+			readBytes, readErr := reader.readAt(file, chunk, offset)
+			result.BytesRead += int64(readBytes)
+			if int64(readBytes) != chunkSize || readErr != nil && !errors.Is(readErr, io.EOF) {
+				clear(chunk)
+				result.Offset = offset
+				result.ContentBytes = offset - startOffset
+				return result, ErrChangedDuringScan
+			}
+		}
+		offset += chunkSize
 		eof := offset == snapshot.Fingerprint.SizeBytes
+		result.Offset = offset
+		result.ContentBytes = offset - startOffset
+		result.EOF = eof
 		consumeErr := consume(chunk, eof)
 		clear(chunk)
 		if consumeErr != nil {
-			return offset, consumeErr
+			if errors.Is(consumeErr, errSnapshotReadStopped) {
+				controlledStop = consumeErr
+				break
+			}
+			return result, consumeErr
 		}
 	}
 
 	var after unix.Stat_t
 	if err := unix.Fstat(fileDescriptor, &after); err != nil {
-		return offset, err
+		return result, err
 	}
 	if !sameFileStat(before, after) || !snapshotMatchesStat(snapshot, after) {
-		return offset, ErrChangedDuringScan
+		return result, ErrChangedDuringScan
 	}
-	return offset, nil
+	result.Offset = offset
+	result.ContentBytes = offset - startOffset
+	result.EOF = offset == snapshot.Fingerprint.SizeBytes
+	if controlledStop != nil {
+		return result, controlledStop
+	}
+	return result, nil
 }
 
 func openConfirmedSnapshotRoot(home string) (*osScanRoot, error) {
@@ -175,17 +261,18 @@ func snapshotMatchesStat(snapshot Snapshot, stat unix.Stat_t) bool {
 		snapshot.Fingerprint.MTimeNS == mtimeNS
 }
 
-func verifySnapshotPrefix(file *os.File, snapshot Snapshot) error {
+func (reader *SnapshotReader) readAndVerifySnapshotPrefix(
+	file *os.File,
+	snapshot Snapshot,
+) ([]byte, int64, error) {
 	prefix := make([]byte, int(snapshot.Fingerprint.PrefixBytes))
-	readBytes, err := file.ReadAt(prefix, 0)
+	readBytes, err := reader.readAt(file, prefix, 0)
 	if int64(readBytes) != snapshot.Fingerprint.PrefixBytes || err != nil && !errors.Is(err, io.EOF) {
-		clear(prefix)
-		return ErrChangedDuringScan
+		return prefix, int64(readBytes), ErrChangedDuringScan
 	}
 	digest := sha256.Sum256(prefix)
-	clear(prefix)
 	if hex.EncodeToString(digest[:]) != snapshot.Fingerprint.PrefixSHA256 {
-		return ErrChangedDuringScan
+		return prefix, int64(readBytes), ErrChangedDuringScan
 	}
-	return nil
+	return prefix, int64(readBytes), nil
 }
