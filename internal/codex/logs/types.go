@@ -17,14 +17,24 @@ const (
 )
 
 var (
-	ErrInvalidHome       = errors.New("invalid Codex home")
-	ErrUnsafeHome        = errors.New("unsafe Codex home")
-	ErrHomeChanged       = errors.New("confirmed Codex home changed")
-	ErrUnsafeSource      = errors.New("unsafe source path")
-	ErrChangedDuringScan = errors.New("source changed during scan")
-	ErrUnsupportedFile   = errors.New("unsupported source file")
-	ErrInvalidSnapshot   = errors.New("invalid source snapshot")
+	ErrInvalidHome            = errors.New("invalid Codex home")
+	ErrUnsafeHome             = errors.New("unsafe Codex home")
+	ErrHomeChanged            = errors.New("confirmed Codex home changed")
+	ErrUnsafeSource           = errors.New("unsafe source path")
+	ErrChangedDuringScan      = errors.New("source changed during scan")
+	ErrUnsupportedFile        = errors.New("unsupported source file")
+	ErrInvalidSnapshot        = errors.New("invalid source snapshot")
+	ErrSnapshotBudgetTooSmall = errors.New("snapshot read budget is smaller than required proof")
+	errSnapshotReadStopped    = errors.New("snapshot read stopped by consumer")
 )
+
+// StopSnapshotRead 请求在当前chunk提交后协作式停止；reader仍会完成读后identity校验。
+func StopSnapshotRead(cause error) error {
+	if cause == nil {
+		return errSnapshotReadStopped
+	}
+	return errors.Join(errSnapshotReadStopped, cause)
+}
 
 type SourceKind string
 

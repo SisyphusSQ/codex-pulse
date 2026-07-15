@@ -62,12 +62,12 @@ func TestEnsureApplicationSchemaRecordsVersionedFreshMigration(t *testing.T) {
 	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 6, 6)
+	assertMigrationVersionAndHistory(t, database, 7, 7)
 
 	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema(replay) error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 6, 6)
+	assertMigrationVersionAndHistory(t, database, 7, 7)
 }
 
 func TestApplicationMigrationAppendsIngestSchemaToFrozenV2(t *testing.T) {
@@ -91,14 +91,14 @@ func TestApplicationMigrationAppendsIngestSchemaToFrozenV2(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
-	if report.FromVersion != 2 || report.TargetVersion != 6 ||
-		!equalInts(report.AppliedVersions, []int{3, 4, 5, 6}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v2 to v6 with backup", report)
+	if report.FromVersion != 2 || report.TargetVersion != 7 ||
+		!equalInts(report.AppliedVersions, []int{3, 4, 5, 6, 7}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v2 to v7 with backup", report)
 	}
-	if backupVersions != [2]int{2, 6} {
-		t.Fatalf("backup versions = %v, want [2 6]", backupVersions)
+	if backupVersions != [2]int{2, 7} {
+		t.Fatalf("backup versions = %v, want [2 7]", backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 6, 6)
+	assertMigrationVersionAndHistory(t, database, 7, 7)
 
 	err = database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
 		for _, table := range []string{
@@ -149,14 +149,14 @@ func TestApplicationMigrationAppendsRetentionIndexesToFrozenV1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
-	if report.FromVersion != 1 || report.TargetVersion != 6 ||
-		!equalInts(report.AppliedVersions, []int{2, 3, 4, 5, 6}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v1 to v6 with backup", report)
+	if report.FromVersion != 1 || report.TargetVersion != 7 ||
+		!equalInts(report.AppliedVersions, []int{2, 3, 4, 5, 6, 7}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v1 to v7 with backup", report)
 	}
-	if backupVersions != [2]int{1, 6} {
-		t.Fatalf("backup versions = %v, want [1 6]", backupVersions)
+	if backupVersions != [2]int{1, 7} {
+		t.Fatalf("backup versions = %v, want [1 7]", backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 6, 6)
+	assertMigrationVersionAndHistory(t, database, 7, 7)
 
 	err = database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
 		var checksum string
@@ -306,7 +306,7 @@ func TestMigrationRunnerBacksUpLegacyDatabaseBeforeApplying(t *testing.T) {
 	if report.BackupPath != "/tmp/legacy-before-v2.db" {
 		t.Fatalf("BackupPath = %q", report.BackupPath)
 	}
-	assertMigrationVersionAndHistory(t, database, 6, 6)
+	assertMigrationVersionAndHistory(t, database, 7, 7)
 }
 
 func TestApplicationMigrationCreatesRestorablePreMigrationBackupForLegacyDatabase(t *testing.T) {
@@ -351,7 +351,7 @@ func TestApplicationMigrationCreatesRestorablePreMigrationBackupForLegacyDatabas
 	if ledgerCount != 0 {
 		t.Fatalf("backup ledger table count = %d, want 0", ledgerCount)
 	}
-	assertMigrationVersionAndHistory(t, database, 6, 6)
+	assertMigrationVersionAndHistory(t, database, 7, 7)
 }
 
 func TestApplicationMigrationUpgradesCoreOnlyLegacyDatabaseAndPreservesDataInBackup(t *testing.T) {
@@ -529,7 +529,7 @@ func TestMigrationFailureExposesStableStageCodeAndVersionContext(t *testing.T) {
 		t.Fatalf("run() error = %v, want MigrationFailure", err)
 	}
 	if failure.Stage != MigrationStageBackup || failure.Code != MigrationCodeBackupFailed ||
-		failure.CurrentVersion != 0 || failure.TargetVersion != 6 || failure.FailedVersion != 0 ||
+		failure.CurrentVersion != 0 || failure.TargetVersion != 7 || failure.FailedVersion != 0 ||
 		failure.BackupPath != "" || !errors.Is(failure, errBackup) {
 		t.Fatalf("MigrationFailure = %#v", failure)
 	}
@@ -565,7 +565,7 @@ func TestMigrationProgressReportsStableStagesAndBackupPages(t *testing.T) {
 			backupUpdates = append(backupUpdates, update)
 		}
 	}
-	if got, want := strings.Join(stages, ","), "inspect,space,backup,backup,backup,apply,apply,apply,apply,apply,apply,verify,complete"; got != want {
+	if got, want := strings.Join(stages, ","), "inspect,space,backup,backup,backup,apply,apply,apply,apply,apply,apply,apply,verify,complete"; got != want {
 		t.Fatalf("progress stages = %q, want %q", got, want)
 	}
 	if len(backupUpdates) != 2 || backupUpdates[0].CopiedPages != 3 || backupUpdates[1].RemainingPages != 0 {

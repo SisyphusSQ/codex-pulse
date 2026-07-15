@@ -52,14 +52,14 @@ func TestApplicationMigrationAppendsAttributionSchemaToFrozenV3(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
-	if report.FromVersion != 3 || report.TargetVersion != 6 ||
-		!equalInts(report.AppliedVersions, []int{4, 5, 6}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v3 to v6 with backup", report)
+	if report.FromVersion != 3 || report.TargetVersion != 7 ||
+		!equalInts(report.AppliedVersions, []int{4, 5, 6, 7}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v3 to v7 with backup", report)
 	}
-	if backupVersions != [2]int{3, 6} {
-		t.Fatalf("backup versions = %v, want [3 6]", backupVersions)
+	if backupVersions != [2]int{3, 7} {
+		t.Fatalf("backup versions = %v, want [3 7]", backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 6, 6)
+	assertMigrationVersionAndHistory(t, database, 7, 7)
 
 	err = database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
 		for _, table := range []string{"session_attributions", "turn_attributions"} {

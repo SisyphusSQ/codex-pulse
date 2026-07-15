@@ -3,8 +3,10 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -82,6 +84,249 @@ func TestRuntimeRunsFourStagesAndReplaysCompletedBootstrap(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(movedHome) })
 	if err := runtime.StartBootstrap(context.Background(), request); err != nil {
 		t.Fatalf("StartBootstrap(completed replay) error = %v", err)
+	}
+}
+
+func TestRuntimeRunSliceYieldsAtByteBudgetAndResumesFromCommittedOffset(t *testing.T) {
+	t.Parallel()
+
+	repository := openBootstrapRepository(t)
+	home := t.TempDir()
+	content := largeBootstrapRollout("session-slice-byte", "turn-slice-byte")
+	path := filepath.Join(home, "sessions", "slice-byte.jsonl")
+	writeBootstrapRollout(t, path, content, time.Now().Add(-time.Hour))
+	request := bootstrapRequest(t, home, "switch-slice-byte", 101)
+	runtime := newTestRuntime(t, repository, RuntimeConfig{ReadChunkBytes: 32}, runtimeHooks{})
+	if err := runtime.StartBootstrap(context.Background(), request); err != nil {
+		t.Fatalf("StartBootstrap() error = %v", err)
+	}
+	job, _, _ := repository.BootstrapRunByIdentity(context.Background(), request.SwitchID, 101)
+	first, err := runtime.RunSlice(context.Background(), job.JobID, SliceBudget{
+		MaxFiles: 1, MaxBytes: logs.PrefixLimitBytes, MaxActive: time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("RunSlice(first) error = %v", err)
+	}
+	if first.Complete || first.ExhaustedBy != SliceStopByteBudget || first.FilesProcessed != 1 ||
+		first.BytesRead != logs.PrefixLimitBytes || first.State != store.JobRunning {
+		t.Fatalf("RunSlice(first) = %#v", first)
+	}
+	items, err := repository.ListBootstrapPlanItems(context.Background(), store.BootstrapPlanItemFilter{
+		JobID: job.JobID,
+	})
+	if err != nil || len(items) != 1 || items[0].State != store.BootstrapItemRunning {
+		t.Fatalf("plan items after first slice = %#v, %v", items, err)
+	}
+	file, err := repository.SourceFile(context.Background(), items[0].Current.SourceFileID)
+	if err != nil {
+		t.Fatalf("SourceFile() = %#v, %v", file, err)
+	}
+	cursor, err := repository.BuildingGenerationCursor(context.Background(), file.SourceFileID)
+	if err != nil || cursor.Checkpoint.CommittedOffset <= 0 ||
+		cursor.Checkpoint.CommittedOffset >= logs.PrefixLimitBytes {
+		t.Fatalf("BuildingGenerationCursor() = %#v, %v, want committed offset within prefix", cursor, err)
+	}
+	committedOffset := cursor.Checkpoint.CommittedOffset
+
+	secondBudget := logs.PrefixLimitBytes + int64(len(content)) - committedOffset
+	second, err := runtime.RunSlice(context.Background(), job.JobID, SliceBudget{
+		MaxFiles: 1, MaxBytes: secondBudget,
+		MaxActive: time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("RunSlice(second) error = %v", err)
+	}
+	if !second.Complete || second.ExhaustedBy != SliceStopCompleted ||
+		second.FilesProcessed != 1 || second.BytesRead <= logs.PrefixLimitBytes ||
+		second.BytesRead > secondBudget ||
+		second.State != store.JobSucceeded {
+		t.Fatalf("RunSlice(second) = %#v", second)
+	}
+	if _, err := repository.Session(context.Background(), "session-slice-byte"); err != nil {
+		t.Fatalf("Session() error = %v", err)
+	}
+}
+
+func TestRuntimeRunSliceTimeBudgetStillMarksSnapshotDrift(t *testing.T) {
+	t.Parallel()
+
+	repository := openBootstrapRepository(t)
+	home := t.TempDir()
+	path := filepath.Join(home, "sessions", "slice-time-drift.jsonl")
+	writeBootstrapRollout(t, path,
+		largeBootstrapRollout("session-slice-time-drift", "turn-slice-time-drift"), time.Now())
+	request := bootstrapRequest(t, home, "switch-slice-time-drift", 110)
+	base := time.Now().Add(time.Minute)
+	var clockMu sync.Mutex
+	advanced := false
+	clock := func() time.Time {
+		clockMu.Lock()
+		defer clockMu.Unlock()
+		if advanced {
+			return base.Add(time.Second)
+		}
+		return base
+	}
+	var driftOnce sync.Once
+	runtime, err := newRuntime(RuntimeConfig{
+		Repository: repository, ReadChunkBytes: 32, Clock: clock,
+	}, runtimeHooks{afterChunk: func(store.BootstrapPlanItem, int64) {
+		driftOnce.Do(func() {
+			file, openErr := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+			if openErr != nil {
+				t.Fatalf("OpenFile(drift) error = %v", openErr)
+			}
+			_, writeErr := file.WriteString("drift\n")
+			closeErr := file.Close()
+			if err := errors.Join(writeErr, closeErr); err != nil {
+				t.Fatalf("append drift error = %v", err)
+			}
+			clockMu.Lock()
+			advanced = true
+			clockMu.Unlock()
+		})
+	}})
+	if err != nil {
+		t.Fatalf("newRuntime() error = %v", err)
+	}
+	if err := runtime.StartBootstrap(context.Background(), request); err != nil {
+		t.Fatalf("StartBootstrap() error = %v", err)
+	}
+	job, _, _ := repository.BootstrapRunByIdentity(context.Background(), request.SwitchID, 110)
+	report, err := runtime.RunSlice(context.Background(), job.JobID, SliceBudget{
+		MaxFiles: 1, MaxBytes: 1 << 20, MaxActive: 500 * time.Millisecond,
+	})
+	if err != nil || report.ExhaustedBy != SliceStopTimeBudget {
+		t.Fatalf("RunSlice() = %#v, %v, want time budget", report, err)
+	}
+	items, err := repository.ListBootstrapPlanItems(
+		context.Background(), store.BootstrapPlanItemFilter{JobID: job.JobID},
+	)
+	if err != nil || len(items) < 1 || items[0].State != store.BootstrapItemDrifted {
+		t.Fatalf("plan items after time+drift = %#v, %v, want drifted", items, err)
+	}
+}
+
+func TestRuntimeRunSliceHonorsFileBudgetAndExactCompletionBoundary(t *testing.T) {
+	t.Parallel()
+
+	t.Run("file budget", func(t *testing.T) {
+		t.Parallel()
+		repository := openBootstrapRepository(t)
+		home := t.TempDir()
+		for index := 1; index <= 2; index++ {
+			content := completeBootstrapRollout(
+				fmt.Sprintf("session-slice-file-%d", index), fmt.Sprintf("turn-slice-file-%d", index),
+			)
+			writeBootstrapRollout(t, filepath.Join(home, "sessions", fmt.Sprintf("%d.jsonl", index)),
+				content, time.Now().Add(-time.Duration(index)*time.Hour))
+		}
+		request := bootstrapRequest(t, home, "switch-slice-files", 102)
+		runtime := newTestRuntime(t, repository, RuntimeConfig{
+			FastMaxFiles: 2, FastMaxBytes: 1 << 20, ReadChunkBytes: 64,
+		}, runtimeHooks{})
+		if err := runtime.StartBootstrap(context.Background(), request); err != nil {
+			t.Fatalf("StartBootstrap() error = %v", err)
+		}
+		job, _, _ := repository.BootstrapRunByIdentity(context.Background(), request.SwitchID, 102)
+
+		first, err := runtime.RunSlice(context.Background(), job.JobID, SliceBudget{
+			MaxFiles: 1, MaxBytes: 1 << 20, MaxActive: time.Minute,
+		})
+		if err != nil || first.Complete || first.ExhaustedBy != SliceStopFileBudget ||
+			first.FilesProcessed != 1 {
+			t.Fatalf("RunSlice(first) = %#v, %v", first, err)
+		}
+		second, err := runtime.RunSlice(context.Background(), job.JobID, SliceBudget{
+			MaxFiles: 1, MaxBytes: 1 << 20, MaxActive: time.Minute,
+		})
+		if err != nil || !second.Complete || second.ExhaustedBy != SliceStopCompleted ||
+			second.FilesProcessed != 1 {
+			t.Fatalf("RunSlice(second) = %#v, %v", second, err)
+		}
+	})
+
+	t.Run("exact EOF", func(t *testing.T) {
+		t.Parallel()
+		repository := openBootstrapRepository(t)
+		home := t.TempDir()
+		content := completeBootstrapRollout("session-slice-exact", "turn-slice-exact")
+		writeBootstrapRollout(t, filepath.Join(home, "sessions", "exact.jsonl"), content, time.Now())
+		request := bootstrapRequest(t, home, "switch-slice-exact", 103)
+		runtime := newTestRuntime(t, repository, RuntimeConfig{ReadChunkBytes: 64}, runtimeHooks{})
+		if err := runtime.StartBootstrap(context.Background(), request); err != nil {
+			t.Fatalf("StartBootstrap() error = %v", err)
+		}
+		job, _, _ := repository.BootstrapRunByIdentity(context.Background(), request.SwitchID, 103)
+		report, err := runtime.RunSlice(context.Background(), job.JobID, SliceBudget{
+			MaxFiles: 1, MaxBytes: logs.PrefixLimitBytes, MaxActive: time.Minute,
+		})
+		if err != nil || !report.Complete || report.ExhaustedBy != SliceStopCompleted ||
+			report.BytesRead != int64(len(content)) {
+			t.Fatalf("RunSlice(exact EOF) = %#v, %v", report, err)
+		}
+	})
+}
+
+func TestRuntimeRunSliceRejectsInvalidBudgetWithoutChangingJob(t *testing.T) {
+	t.Parallel()
+
+	repository := openBootstrapRepository(t)
+	home := t.TempDir()
+	writeBootstrapRollout(t, filepath.Join(home, "sessions", "invalid.jsonl"),
+		completeBootstrapRollout("session-slice-invalid", "turn-slice-invalid"), time.Now())
+	request := bootstrapRequest(t, home, "switch-slice-invalid", 104)
+	runtime := newTestRuntime(t, repository, RuntimeConfig{}, runtimeHooks{})
+	if err := runtime.StartBootstrap(context.Background(), request); err != nil {
+		t.Fatalf("StartBootstrap() error = %v", err)
+	}
+	job, _, _ := repository.BootstrapRunByIdentity(context.Background(), request.SwitchID, 104)
+	for _, budget := range []SliceBudget{
+		{},
+		{MaxFiles: -1, MaxBytes: 1, MaxActive: time.Second},
+		{MaxFiles: 1, MaxBytes: -1, MaxActive: time.Second},
+		{MaxFiles: 1, MaxBytes: 1, MaxActive: -1},
+	} {
+		if _, err := runtime.RunSlice(context.Background(), job.JobID, budget); !errors.Is(err, ErrInvalidSliceBudget) {
+			t.Fatalf("RunSlice(%#v) error = %v, want ErrInvalidSliceBudget", budget, err)
+		}
+	}
+	stored, _, err := repository.BootstrapRun(context.Background(), job.JobID)
+	if err != nil || stored.State != store.JobRunning || stored.Phase != store.JobPhaseDiscover {
+		t.Fatalf("BootstrapRun() = %#v, %v", stored, err)
+	}
+}
+
+func TestRuntimeSchedulerTargetInterruptAndRecoverAreIdempotent(t *testing.T) {
+	t.Parallel()
+
+	repository := openBootstrapRepository(t)
+	home := t.TempDir()
+	writeBootstrapRollout(t, filepath.Join(home, "sessions", "target-recover.jsonl"),
+		completeBootstrapRollout("session-target-recover", "turn-target-recover"), time.Now())
+	request := bootstrapRequest(t, home, "switch-target-recover", 105)
+	runtime := newTestRuntime(t, repository, RuntimeConfig{}, runtimeHooks{})
+	if err := runtime.StartBootstrap(context.Background(), request); err != nil {
+		t.Fatalf("StartBootstrap() error = %v", err)
+	}
+	job, _, _ := repository.BootstrapRunByIdentity(context.Background(), request.SwitchID, 105)
+	if err := runtime.Interrupt(context.Background(), job.JobID, store.RuntimeErrorUnknown); err != nil {
+		t.Fatalf("Interrupt() error = %v", err)
+	}
+	if err := runtime.Interrupt(context.Background(), job.JobID, store.RuntimeErrorUnknown); err != nil {
+		t.Fatalf("Interrupt(replay) error = %v", err)
+	}
+	resumedJob, err := runtime.Recover(context.Background(), job.JobID)
+	if err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	if replay, err := runtime.Recover(context.Background(), job.JobID); err != nil || replay.JobID != resumedJob.JobID {
+		t.Fatalf("Recover(replay) = %#v, %v, want %q", replay, err, resumedJob.JobID)
+	}
+	resumed, _, err := repository.BootstrapRun(context.Background(), resumedJob.JobID)
+	if err != nil || resumed.State != store.JobQueued || resumed.ResumeOfJobID == nil ||
+		*resumed.ResumeOfJobID != job.JobID {
+		t.Fatalf("BootstrapRun(resumed) = %#v, %v", resumed, err)
 	}
 }
 
@@ -1547,6 +1792,13 @@ func ingestBootstrapCurrentSource(
 func completeBootstrapRollout(sessionID, turnID string) []byte {
 	return []byte(bootstrapSessionMetaLine(sessionID) + "\n" + bootstrapTurnStartLine(turnID) + "\n" +
 		bootstrapTurnEndLine(turnID) + "\n")
+}
+
+func largeBootstrapRollout(sessionID, turnID string) []byte {
+	return append(completeBootstrapRollout(sessionID, turnID), []byte(
+		`{"timestamp":"2026-07-14T01:00:03Z","type":"response_item","payload":{"type":"message","content":[{"type":"output_text","text":"`+
+			strings.Repeat("x", int(logs.PrefixLimitBytes))+`"}]}}`+"\n",
+	)...)
 }
 
 func bootstrapSessionMetaLine(sessionID string) string {

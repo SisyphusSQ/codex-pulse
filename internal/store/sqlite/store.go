@@ -242,7 +242,11 @@ func (store *Store) View(ctx context.Context, view ViewFunc) error {
 	defer store.reads.Done()
 
 	reader := store.reader.Session(&gorm.Session{NewDB: true, Context: ctx})
-	return classifyError("view", view(ctx, reader))
+	err := view(ctx, reader)
+	if contextErr := ctx.Err(); err != nil && contextErr != nil {
+		err = errors.Join(contextErr, err)
+	}
+	return classifyError("view", err)
 }
 
 // Close rejects new work, drains admitted writes, waits for reads, and closes

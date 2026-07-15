@@ -8,7 +8,8 @@ import (
 
 // Repository 通过应用唯一 SQLite Store 持久化和查询结构化事实。
 type Repository struct {
-	database *storesqlite.Store
+	database                   *storesqlite.Store
+	schedulerQueueSnapshotHook func(SchedulerLane) error
 }
 
 // NewRepository 使用已有 Store 构造事实仓储，不取得连接生命周期所有权。
