@@ -19,6 +19,7 @@
 16. [TOO-259] 新增 Discover、Fast Bootstrap、History Backfill 与多 pass Reconcile 四阶段可恢复首次索引，固定 schema v6 typed plan、confirmed Home 读取、权威 source checkpoint、generation admission/Drain 和 fresh reconcile 闭合语义
 17. [TOO-260] 实现持久 Live/Backfill 双队列与协作式 ScanBudget，固定实时优先与历史公平、单重型 owner lease、真实 IO 预算、可观测 cycle 及跨崩溃 target 恢复语义
 18. [TOO-261] 实现持久暂停续传、休眠唤醒、来源对账与故障恢复状态机，固定 Home generation fence、可取消有界退避、typed 用户动作、应用事件串行化及 target/cycle 原子恢复语义
+19. [TOO-305] 重构 scheduler 周期唤醒为 robfig/cron v3.0.1 每秒 trigger，固定重叠跳过、首错 fence、panic 脱敏、Stop drain 与持久调度状态边界
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

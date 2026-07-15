@@ -20,6 +20,7 @@ var (
 	ErrExecutorPanic      = errors.New("scheduler executor panicked")
 	ErrRunAlreadyActive   = errors.New("scheduler run is already active")
 	ErrSchedulerRetry     = errors.New("scheduler cycle must retry from durable queue")
+	ErrSchedulerCronPanic = errors.New("scheduler cron job panicked")
 )
 
 // SliceResult 只报告已由target持久化的消费量与协作式停止原因。
@@ -76,7 +77,6 @@ type ServiceConfig struct {
 	NewCycleID       func() (string, error)
 	InterruptTimeout time.Duration
 	SystemProbe      SystemProbe
-	IdleDelay        time.Duration
 	RecoveryPageSize int
 	RetryPolicy      RetryPolicy
 }
@@ -90,10 +90,10 @@ type Service struct {
 	newCycleID       func() (string, error)
 	interruptTimeout time.Duration
 	systemProbe      SystemProbe
-	idleDelay        time.Duration
 	recoveryPageSize int
 	retryPolicy      RetryPolicy
 	commitCycle      func(context.Context, store.SchedulerCycleCommit) error
+	newCronRunner    cronRunnerFactory
 
 	runMu   sync.Mutex
 	cycleMu sync.Mutex
@@ -106,7 +106,7 @@ type Service struct {
 
 func NewService(config ServiceConfig) (*Service, error) {
 	if config.Repository == nil || config.MaxLiveBurst < 1 || config.MaxLiveBurst > 500 ||
-		config.InterruptTimeout < 0 || config.IdleDelay < 0 || config.RecoveryPageSize < 0 ||
+		config.InterruptTimeout < 0 || config.RecoveryPageSize < 0 ||
 		config.RecoveryPageSize > 500 {
 		return nil, ErrInvalidService
 	}
@@ -129,9 +129,6 @@ func NewService(config ServiceConfig) (*Service, error) {
 	if config.SystemProbe == nil {
 		config.SystemProbe = StaticSystemProbe{}
 	}
-	if config.IdleDelay == 0 {
-		config.IdleDelay = 250 * time.Millisecond
-	}
 	if config.RecoveryPageSize == 0 {
 		config.RecoveryPageSize = 500
 	}
@@ -153,8 +150,8 @@ func NewService(config ServiceConfig) (*Service, error) {
 		repository: config.Repository, executors: executors, budgetPolicy: config.BudgetPolicy,
 		maxLiveBurst: config.MaxLiveBurst, clock: config.Clock, newCycleID: config.NewCycleID,
 		interruptTimeout: config.InterruptTimeout, systemProbe: config.SystemProbe,
-		idleDelay: config.IdleDelay, recoveryPageSize: config.RecoveryPageSize,
-		retryPolicy:     config.RetryPolicy,
+		recoveryPageSize: config.RecoveryPageSize, retryPolicy: config.RetryPolicy,
+		newCronRunner:   defaultCronRunnerFactory,
 		activityChanged: make(chan struct{}),
 	}
 	service.commitCycle = service.repository.CommitSchedulerCycle
