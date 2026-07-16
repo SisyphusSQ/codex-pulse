@@ -17,6 +17,7 @@ const (
 	NumericTokens       NumericUnit = "tokens"
 	NumericMicroUSD     NumericUnit = "micro_usd"
 	NumericCount        NumericUnit = "count"
+	NumericBytes        NumericUnit = "bytes"
 	NumericMilliseconds NumericUnit = "milliseconds"
 )
 
@@ -120,7 +121,7 @@ func parseLocalDate(value string, location *time.Location) (time.Time, error) {
 
 func validNumericUnit(value NumericUnit) bool {
 	switch value {
-	case NumericTokens, NumericMicroUSD, NumericCount, NumericMilliseconds:
+	case NumericTokens, NumericMicroUSD, NumericCount, NumericBytes, NumericMilliseconds:
 		return true
 	default:
 		return false

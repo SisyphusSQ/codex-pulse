@@ -112,6 +112,16 @@ func TestNumericValueDistinguishesUnknownAndRealZero(t *testing.T) {
 	}
 }
 
+func TestNumericValueSupportsByteUnit(t *testing.T) {
+	value, err := KnownNumeric(1024, NumericBytes)
+	if err != nil {
+		t.Fatalf("KnownNumeric(bytes) error = %v", err)
+	}
+	if value.Unit != NumericBytes || value.Value == nil || *value.Value != 1024 {
+		t.Fatalf("byte value = %#v", value)
+	}
+}
+
 func TestNumericValueRejectsUnsafeOrInconsistentState(t *testing.T) {
 	if value, err := KnownNumeric(JavaScriptMaxSafeInteger, NumericMicroUSD); err != nil || value.Value == nil {
 		t.Fatalf("KnownNumeric(max safe) = %#v, %v", value, err)

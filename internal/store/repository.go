@@ -9,11 +9,13 @@ import (
 
 // Repository 通过应用唯一 SQLite Store 持久化和查询结构化事实。
 type Repository struct {
-	database                   *storesqlite.Store
-	schedulerQueueSnapshotHook func(SchedulerLane) error
-	quotaProjectionHook        func(string) error
-	quotaProjectionReadHook    func(string) error
-	quotaNow                   func() time.Time
+	database                       *storesqlite.Store
+	schedulerQueueSnapshotHook     func(SchedulerLane) error
+	quotaProjectionHook            func(string) error
+	quotaProjectionReadHook        func(string) error
+	runtimeQueryReadHook           func(string) error
+	runtimeHealthAggregateRowsHook func(int) error
+	quotaNow                       func() time.Time
 }
 
 // NewRepository 使用已有 Store 构造事实仓储，不取得连接生命周期所有权。
