@@ -102,8 +102,40 @@ type SessionListResponse struct {
 }
 
 type SessionDetailRequest struct {
-	SessionID         string  `json:"sessionId"`
-	ReportingTimezone *string `json:"reportingTimezone"`
+	SessionID         string                `json:"sessionId"`
+	ReportingTimezone *string               `json:"reportingTimezone"`
+	TurnPage          basequery.PageRequest `json:"turnPage"`
+}
+
+// SessionTurnState 只表达安全的turn lifecycle，不推导业务状态机。
+type SessionTurnState string
+
+const (
+	SessionTurnActive   SessionTurnState = "active"
+	SessionTurnComplete SessionTurnState = "complete"
+)
+
+// SessionTurnPricingStatus 区分尚不可定价、已定价和明确未定价。
+type SessionTurnPricingStatus string
+
+const (
+	SessionTurnPricingUnknown  SessionTurnPricingStatus = "unknown"
+	SessionTurnPricingPriced   SessionTurnPricingStatus = "priced"
+	SessionTurnPricingUnpriced SessionTurnPricingStatus = "unpriced"
+)
+
+// SessionTurnItem 是content-free turn usage/cost时间线条目。
+type SessionTurnItem struct {
+	TimelineKey    string                   `json:"timelineKey"`
+	State          SessionTurnState         `json:"state"`
+	Model          AttributionValue         `json:"model"`
+	StartedAt      basequery.NumericValue   `json:"startedAtMs"`
+	CompletedAt    basequery.NumericValue   `json:"completedAtMs"`
+	ObservedAt     basequery.NumericValue   `json:"observedAtMs"`
+	Totals         UsageTotals              `json:"totals"`
+	PricingStatus  SessionTurnPricingStatus `json:"pricingStatus"`
+	PricingVersion *string                  `json:"pricingVersion"`
+	UnpricedReason *pricing.CostReason      `json:"unpricedReason"`
 }
 
 type SessionDetailResponse struct {
@@ -113,6 +145,8 @@ type SessionDetailResponse struct {
 	PricingVersions []string               `json:"pricingVersions"`
 	UnpricedReasons []ReasonCount          `json:"unpricedReasons"`
 	Item            SessionItem            `json:"item"`
+	TurnPage        basequery.PageInfo     `json:"turnPage"`
+	Turns           []SessionTurnItem      `json:"turns"`
 	DegradedReason  *DegradedReason        `json:"degradedReason"`
 }
 

@@ -9,6 +9,8 @@ import type {
 import {
   ErrorCode,
   type ErrorEnvelope,
+  type PageInfo,
+  type PageRequest,
   type Request,
 } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/query/models";
 import type {
@@ -24,15 +26,18 @@ import type {
   SourceDetailResponse,
   SourceListResponse,
 } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo/models";
-import type {
-  ProjectDetailRequest,
-  ProjectDetailResponse,
-  ProjectListResponse,
-  SessionDetailRequest,
-  SessionDetailResponse,
-  SessionListResponse,
-  UsageCostRequest,
-  UsageCostResponse,
+import {
+  SessionTurnPricingStatus,
+  SessionTurnState,
+  type ProjectDetailRequest,
+  type ProjectDetailResponse,
+  type ProjectListResponse,
+  type SessionDetailRequest,
+  type SessionDetailResponse,
+  type SessionListResponse,
+  type SessionTurnItem,
+  type UsageCostRequest,
+  type UsageCostResponse,
 } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/query/usagecost/models";
 
 describe("generated Wails binding contract", () => {
@@ -84,6 +89,11 @@ describe("generated Wails binding contract", () => {
     >();
     expectTypeOf<ReturnType<typeof Service.SessionDetail>>().toEqualTypeOf<
       CancellablePromise<SessionDetailResponse>
+    >();
+    expectTypeOf<SessionDetailRequest["turnPage"]>().toEqualTypeOf<PageRequest>();
+    expectTypeOf<SessionDetailResponse["turnPage"]>().toEqualTypeOf<PageInfo>();
+    expectTypeOf<SessionDetailResponse["turns"]>().toEqualTypeOf<
+      SessionTurnItem[] | null
     >();
     expectTypeOf<Parameters<typeof Service.ListProjects>>().toEqualTypeOf<
       [Request]
@@ -154,5 +164,17 @@ describe("generated Wails binding contract", () => {
       },
     };
     expect(envelope.error.code).toBe("internal");
+  });
+
+  it("keeps the content-free Session turn state and pricing enums finite", () => {
+    expect(Object.values(SessionTurnState).filter(Boolean).sort()).toEqual([
+      "active",
+      "complete",
+    ]);
+    expect(Object.values(SessionTurnPricingStatus).filter(Boolean).sort()).toEqual([
+      "priced",
+      "unknown",
+      "unpriced",
+    ]);
   });
 });

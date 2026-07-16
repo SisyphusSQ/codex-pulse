@@ -1,13 +1,16 @@
 package usagecost
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -290,7 +293,8 @@ func TestSessionDetailRejectsInconsistentPricingEvidence(t *testing.T) {
 				GenerationID: "generation", ReportingTimezone: "UTC",
 				PricingSource: "test", Currency: "USD", RollupVersion: 1,
 			},
-			Record: record, PricingVersions: []string{"pricing-v1"},
+			Record: record, Turns: make([]store.SessionTurnAnalyticsRecord, 0),
+			PricingVersions: []string{"pricing-v1"},
 			UnpricedReasons: make([]store.CostReasonCount, 0),
 		}
 	}
@@ -393,6 +397,7 @@ func TestSessionDetailMapsNotFoundAndContentFreeFailure(t *testing.T) {
 			return store.SessionAnalyticsSnapshot{
 				Mode:            store.AnalyticsReadDetailFallback,
 				Record:          safeFallbackSessionRecord(filter.SessionID, "Safe detail"),
+				Turns:           make([]store.SessionTurnAnalyticsRecord, 0),
 				PricingVersions: make([]string, 0), UnpricedReasons: make([]store.CostReasonCount, 0),
 			}, nil
 		}
@@ -414,6 +419,491 @@ func TestSessionDetailMapsNotFoundAndContentFreeFailure(t *testing.T) {
 	}
 	if _, err := service.SessionDetail(context.Background(), SessionDetailRequest{SessionID: ""}); !errors.Is(err, basequery.ErrValidation) {
 		t.Fatalf("SessionDetail(empty) error = %v", err)
+	}
+}
+
+func TestSessionDetailExposesBoundedTurnRequestResponseContract(t *testing.T) {
+	t.Parallel()
+
+	request := reflect.TypeOf(SessionDetailRequest{})
+	if _, found := request.FieldByName("TurnPage"); !found {
+		t.Fatal("SessionDetailRequest missing TurnPage")
+	}
+	response := reflect.TypeOf(SessionDetailResponse{})
+	for _, field := range []string{"TurnPage", "Turns"} {
+		if _, found := response.FieldByName(field); !found {
+			t.Fatalf("SessionDetailResponse missing %s", field)
+		}
+	}
+}
+
+func TestSessionDetailMapsBoundedTurnPageAndRoundTripsOpaqueCursor(t *testing.T) {
+	t.Parallel()
+
+	zero, input, cost := int64(0), int64(30), int64(100)
+	completedAt := int64(120)
+	turn := store.SessionTurnAnalyticsRecord{
+		TurnID: "private-turn-id", StartedAtMS: 100, CompletedAtMS: &completedAt,
+		Model: store.ModelAttribution{
+			ModelKey: pointerToString("model-safe"), DisplayName: pointerToString("Model Safe"),
+			Confidence: store.AttributionConfidenceHigh,
+			Source:     store.AttributionSourceModelCanonical, Reason: store.AttributionReasonObserved,
+		},
+		Usage: &store.SessionTurnUsageAnalytics{
+			ObservedAtMS: 120, IsFinal: true, InputTokens: &input,
+			CachedInputTokens: &zero, OutputTokens: &zero, ReasoningTokens: &zero,
+		},
+		Cost: &store.SessionTurnCostAnalytics{
+			PricingVersion: pointerToString("pricing-v1"), EstimatedUSDMicros: &cost,
+			Status: pricing.CostStatusPriced, Reason: pricing.CostReasonPriced,
+		},
+	}
+	record := safeFallbackSessionRecord("session-safe", "Safe detail")
+	record.Rollup = &store.RollupTotals{
+		TurnCount: 1, InputTokens: &input, CachedInputTokens: &zero,
+		OutputTokens: &zero, ReasoningTokens: &zero, TotalTokens: &input,
+		EstimatedUSDMicros: &cost, PricedTurnCount: 1,
+		FirstActivityAtMS: 120, LastActivityAtMS: 120, UpdatedAtMS: 120,
+	}
+	var filters []store.SessionAnalyticsDetailFilter
+	reader := &sessionReaderStub{detail: func(
+		_ context.Context,
+		filter store.SessionAnalyticsDetailFilter,
+	) (store.SessionAnalyticsSnapshot, error) {
+		filters = append(filters, filter)
+		return store.SessionAnalyticsSnapshot{
+			Mode: store.AnalyticsReadActiveRollup,
+			Generation: &store.CostRollupGeneration{
+				GenerationID: "generation-v1", ReportingTimezone: "UTC",
+				PricingSource: "test", Currency: "USD", RollupVersion: 1,
+			},
+			Record: record,
+			Turns:  []store.SessionTurnAnalyticsRecord{turn},
+			NextTurnCursor: &store.SessionTurnAnalyticsCursor{
+				SessionID: filter.SessionID, TurnID: turn.TurnID, StartedAtMS: turn.StartedAtMS,
+			},
+			PricingVersions: []string{"pricing-v1"},
+			UnpricedReasons: make([]store.CostReasonCount, 0),
+		}, nil
+	}}
+	service := newUsageService(t, reader)
+	first, err := service.SessionDetail(context.Background(), SessionDetailRequest{
+		SessionID: "session-safe", ReportingTimezone: pointerToString("UTC"),
+		TurnPage: basequery.PageRequest{Limit: 1},
+	})
+	if err != nil {
+		t.Fatalf("SessionDetail(first turn page) error = %v", err)
+	}
+	if len(filters) != 1 || filters[0].TurnLimit != 1 || filters[0].TurnCursor != nil ||
+		len(first.Turns) != 1 || !first.TurnPage.HasMore || first.TurnPage.NextCursor == nil {
+		t.Fatalf("first SessionDetail() = %#v, filters=%#v", first, filters)
+	}
+	mapped := first.Turns[0]
+	if mapped.TimelineKey == "" || strings.Contains(mapped.TimelineKey, turn.TurnID) ||
+		mapped.State != SessionTurnComplete || mapped.Model.DisplayName == nil ||
+		*mapped.Model.DisplayName != "Model Safe" || mapped.PricingStatus != SessionTurnPricingPriced ||
+		mapped.PricingVersion == nil || *mapped.PricingVersion != "pricing-v1" {
+		t.Fatalf("mapped turn = %#v", mapped)
+	}
+	assertKnownNumeric(t, mapped.Totals.TurnCount, 1, basequery.NumericCount)
+	assertKnownNumeric(t, mapped.Totals.TotalTokens, 30, basequery.NumericTokens)
+	assertKnownNumeric(t, mapped.Totals.EstimatedUSDMicros, 100, basequery.NumericMicroUSD)
+	encoded, err := json.Marshal(first)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if strings.Contains(string(encoded), turn.TurnID) {
+		t.Fatalf("SessionDetail leaked raw turn identity: %s", encoded)
+	}
+
+	_, err = service.SessionDetail(context.Background(), SessionDetailRequest{
+		SessionID: "session-safe", ReportingTimezone: pointerToString("UTC"),
+		TurnPage: basequery.PageRequest{Limit: 1, Cursor: first.TurnPage.NextCursor},
+	})
+	if err != nil {
+		t.Fatalf("SessionDetail(second turn page) error = %v", err)
+	}
+	if len(filters) != 2 || filters[1].TurnCursor == nil ||
+		filters[1].TurnCursor.SessionID != "session-safe" ||
+		filters[1].TurnCursor.TurnID != turn.TurnID ||
+		filters[1].TurnCursor.StartedAtMS != turn.StartedAtMS {
+		t.Fatalf("decoded turn cursor filters = %#v", filters)
+	}
+}
+
+func TestSessionTurnCursorHidesIdentityAndRejectsClientResigning(t *testing.T) {
+	t.Parallel()
+
+	cursor := &store.SessionTurnAnalyticsCursor{
+		SessionID: "private-session-id", TurnID: "private-turn-id", StartedAtMS: 100,
+	}
+	key := testSessionTurnCursorKey()
+	encoded, err := encodeSessionTurnCursor(key, cursor)
+	if err != nil || encoded == nil {
+		t.Fatalf("encodeSessionTurnCursor() = %v, %v", encoded, err)
+	}
+	wire, err := base64.RawURLEncoding.DecodeString(*encoded)
+	if err != nil {
+		t.Fatalf("decode cursor wire: %v", err)
+	}
+	for _, marker := range [][]byte{[]byte(cursor.SessionID), []byte(cursor.TurnID)} {
+		if bytes.Contains(wire, marker) {
+			t.Fatalf("cursor wire leaked raw identity %q: %s", marker, wire)
+		}
+	}
+
+	startedAt := int64(99)
+	sessionID := cursor.SessionID
+	resigned, err := encodeCursorUnsigned(cursorUnsigned{
+		Version: basequery.ContractVersion, Endpoint: sessionTurnCursorEndpoint,
+		SortField: "startedAt", Direction: basequery.SortDescending,
+		Value: &startedAt, TextValue: &sessionID, Identity: "attacker-selected-turn",
+	})
+	if err != nil || resigned == nil {
+		t.Fatalf("encode attacker cursor = %v, %v", resigned, err)
+	}
+	if _, err := decodeSessionTurnCursor(key, *resigned, sessionID); !errors.Is(err, basequery.ErrValidation) {
+		t.Fatalf("decodeSessionTurnCursor(resigned) error = %v, want validation", err)
+	}
+}
+
+func TestSessionDetailRejectsTurnPageAggregateDrift(t *testing.T) {
+	t.Parallel()
+
+	zero, input, cost := int64(0), int64(30), int64(100)
+	completedAt := int64(120)
+	turn := store.SessionTurnAnalyticsRecord{
+		TurnID: "turn-drift", StartedAtMS: 100, CompletedAtMS: &completedAt,
+		Model: store.ModelAttribution{
+			Confidence: store.AttributionConfidenceUnknown,
+			Source:     store.AttributionSourceMissing, Reason: store.AttributionReasonMissing,
+		},
+		Usage: &store.SessionTurnUsageAnalytics{
+			ObservedAtMS: 120, IsFinal: true, InputTokens: &input,
+			CachedInputTokens: &zero, OutputTokens: &zero, ReasoningTokens: &zero,
+		},
+		Cost: &store.SessionTurnCostAnalytics{
+			PricingVersion: pointerToString("pricing-v1"), EstimatedUSDMicros: &cost,
+			Status: pricing.CostStatusPriced, Reason: pricing.CostReasonPriced,
+		},
+	}
+	for name, mutate := range map[string]func(*store.SessionAnalyticsSnapshot){
+		"complete first page exact drift": func(storeSnapshot *store.SessionAnalyticsSnapshot) {},
+		"truncated page lower bound drift": func(storeSnapshot *store.SessionAnalyticsSnapshot) {
+			storeSnapshot.NextTurnCursor = &store.SessionTurnAnalyticsCursor{
+				SessionID: storeSnapshot.Record.SessionID,
+				TurnID:    turn.TurnID, StartedAtMS: turn.StartedAtMS,
+			}
+		},
+		"page pricing version absent from aggregate evidence": func(storeSnapshot *store.SessionAnalyticsSnapshot) {
+			storeSnapshot.Record.Rollup = &store.RollupTotals{
+				TurnCount: 1, InputTokens: &input, CachedInputTokens: &zero,
+				OutputTokens: &zero, ReasoningTokens: &zero, TotalTokens: &input,
+				EstimatedUSDMicros: &cost, PricedTurnCount: 1,
+				FirstActivityAtMS: 120, LastActivityAtMS: 120, UpdatedAtMS: 120,
+			}
+			storeSnapshot.PricingVersions = []string{"pricing-other"}
+		},
+		"complete page missing aggregate pricing version": func(storeSnapshot *store.SessionAnalyticsSnapshot) {
+			storeSnapshot.Record.Rollup = &store.RollupTotals{
+				TurnCount: 1, InputTokens: &input, CachedInputTokens: &zero,
+				OutputTokens: &zero, ReasoningTokens: &zero, TotalTokens: &input,
+				EstimatedUSDMicros: &cost, PricedTurnCount: 1,
+				FirstActivityAtMS: 120, LastActivityAtMS: 120, UpdatedAtMS: 120,
+			}
+			storeSnapshot.PricingVersions = []string{"pricing-v1", "ghost-version"}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			record := safeFallbackSessionRecord("session-drift", "Safe detail")
+			record.Rollup = &store.RollupTotals{
+				InputTokens: &zero, CachedInputTokens: &zero, OutputTokens: &zero,
+				ReasoningTokens: &zero, TotalTokens: &zero, EstimatedUSDMicros: &zero,
+			}
+			snapshot := store.SessionAnalyticsSnapshot{
+				Mode: store.AnalyticsReadActiveRollup,
+				Generation: &store.CostRollupGeneration{
+					GenerationID: "generation", ReportingTimezone: "UTC",
+					PricingSource: "test", Currency: "USD", RollupVersion: 1,
+				},
+				Record: record, Turns: []store.SessionTurnAnalyticsRecord{turn},
+				PricingVersions: []string{"pricing-v1"},
+				UnpricedReasons: make([]store.CostReasonCount, 0),
+			}
+			mutate(&snapshot)
+			service := newUsageService(t, &sessionReaderStub{detail: func(
+				context.Context,
+				store.SessionAnalyticsDetailFilter,
+			) (store.SessionAnalyticsSnapshot, error) {
+				return snapshot, nil
+			}})
+			_, err := service.SessionDetail(context.Background(), SessionDetailRequest{
+				SessionID: "session-drift", TurnPage: basequery.PageRequest{Limit: 1},
+			})
+			if !errors.Is(err, basequery.ErrUnavailable) {
+				t.Fatalf("SessionDetail(turn aggregate drift) error = %v, want unavailable", err)
+			}
+		})
+	}
+}
+
+func TestSessionDetailRejectsTurnUsageObservedBeforeStart(t *testing.T) {
+	t.Parallel()
+
+	zero := int64(0)
+	snapshot := store.SessionAnalyticsSnapshot{
+		Mode:   store.AnalyticsReadDetailFallback,
+		Record: safeFallbackSessionRecord("session-invalid-turn", "Safe detail"),
+		Turns: []store.SessionTurnAnalyticsRecord{{
+			TurnID: "turn-invalid", StartedAtMS: 100,
+			Model: store.ModelAttribution{
+				Confidence: store.AttributionConfidenceUnknown,
+				Source:     store.AttributionSourceMissing, Reason: store.AttributionReasonMissing,
+			},
+			Usage: &store.SessionTurnUsageAnalytics{
+				ObservedAtMS: 99, InputTokens: &zero, CachedInputTokens: &zero,
+				OutputTokens: &zero, ReasoningTokens: &zero,
+			},
+		}},
+		PricingVersions: make([]string, 0),
+		UnpricedReasons: make([]store.CostReasonCount, 0),
+	}
+	service := newUsageService(t, &sessionReaderStub{detail: func(
+		context.Context,
+		store.SessionAnalyticsDetailFilter,
+	) (store.SessionAnalyticsSnapshot, error) {
+		return snapshot, nil
+	}})
+	_, err := service.SessionDetail(context.Background(), SessionDetailRequest{
+		SessionID: "session-invalid-turn", TurnPage: basequery.PageRequest{Limit: 20},
+	})
+	if !errors.Is(err, basequery.ErrUnavailable) {
+		t.Fatalf("SessionDetail(invalid turn usage time) error = %v, want unavailable", err)
+	}
+}
+
+func TestSessionDetailPreservesFallbackTurnZeroAndUnavailableCost(t *testing.T) {
+	t.Parallel()
+
+	zero := int64(0)
+	snapshot := store.SessionAnalyticsSnapshot{
+		Mode:   store.AnalyticsReadDetailFallback,
+		Record: safeFallbackSessionRecord("session-fallback-turn", "Safe detail"),
+		Turns: []store.SessionTurnAnalyticsRecord{{
+			TurnID: "turn-fallback-active", StartedAtMS: 100,
+			Model: store.ModelAttribution{
+				Confidence: store.AttributionConfidenceUnknown,
+				Source:     store.AttributionSourceMissing, Reason: store.AttributionReasonMissing,
+			},
+			Usage: &store.SessionTurnUsageAnalytics{
+				ObservedAtMS: 110, InputTokens: &zero, CachedInputTokens: &zero,
+				OutputTokens: &zero, ReasoningTokens: &zero,
+			},
+		}},
+		PricingVersions: make([]string, 0),
+		UnpricedReasons: make([]store.CostReasonCount, 0),
+	}
+	service := newUsageService(t, &sessionReaderStub{detail: func(
+		context.Context,
+		store.SessionAnalyticsDetailFilter,
+	) (store.SessionAnalyticsSnapshot, error) {
+		return snapshot, nil
+	}})
+	response, err := service.SessionDetail(context.Background(), SessionDetailRequest{
+		SessionID: "session-fallback-turn",
+	})
+	if err != nil {
+		t.Fatalf("SessionDetail(fallback turn) error = %v", err)
+	}
+	if response.Meta.Status != basequery.ResponsePartial || response.TurnPage.Limit != 20 ||
+		response.TurnPage.HasMore || response.TurnPage.NextCursor != nil || len(response.Turns) != 1 ||
+		response.Turns[0].State != SessionTurnActive ||
+		response.Turns[0].PricingStatus != SessionTurnPricingUnknown {
+		t.Fatalf("fallback turn response = %#v", response)
+	}
+	assertKnownNumeric(t, response.Turns[0].Totals.TotalTokens, 0, basequery.NumericTokens)
+	assertUnknownNumeric(
+		t, response.Turns[0].Totals.EstimatedUSDMicros, basequery.UnknownUnavailable,
+	)
+	assertUnknownNumeric(t, response.Turns[0].CompletedAt, basequery.UnknownNotApplicable)
+}
+
+func TestSessionDetailPreservesUnpricedTurnEvidence(t *testing.T) {
+	t.Parallel()
+
+	zero := int64(0)
+	completedAt := int64(120)
+	record := safeFallbackSessionRecord("session-unpriced-turn", "Safe detail")
+	record.Rollup = &store.RollupTotals{
+		TurnCount: 1, InputTokens: &zero, CachedInputTokens: &zero,
+		OutputTokens: &zero, ReasoningTokens: &zero, TotalTokens: &zero,
+		UnpricedTurnCount: 1, FirstActivityAtMS: 120, LastActivityAtMS: 120,
+		UpdatedAtMS: 120,
+	}
+	snapshot := store.SessionAnalyticsSnapshot{
+		Mode: store.AnalyticsReadActiveRollup,
+		Generation: &store.CostRollupGeneration{
+			GenerationID: "generation", ReportingTimezone: "UTC",
+			PricingSource: "test", Currency: "USD", RollupVersion: 1,
+		},
+		Record: record,
+		Turns: []store.SessionTurnAnalyticsRecord{{
+			TurnID: "turn-unpriced", StartedAtMS: 100, CompletedAtMS: &completedAt,
+			Model: store.ModelAttribution{
+				Confidence: store.AttributionConfidenceUnknown,
+				Source:     store.AttributionSourceMissing, Reason: store.AttributionReasonMissing,
+			},
+			Usage: &store.SessionTurnUsageAnalytics{
+				ObservedAtMS: 120, IsFinal: true, InputTokens: &zero,
+				CachedInputTokens: &zero, OutputTokens: &zero, ReasoningTokens: &zero,
+			},
+			Cost: &store.SessionTurnCostAnalytics{
+				Status: pricing.CostStatusUnpriced, Reason: pricing.CostReasonModelNotListed,
+			},
+		}},
+		PricingVersions: make([]string, 0),
+		UnpricedReasons: []store.CostReasonCount{{
+			Reason: pricing.CostReasonModelNotListed, Count: 1,
+		}},
+	}
+	service := newUsageService(t, &sessionReaderStub{detail: func(
+		context.Context,
+		store.SessionAnalyticsDetailFilter,
+	) (store.SessionAnalyticsSnapshot, error) {
+		return snapshot, nil
+	}})
+	response, err := service.SessionDetail(context.Background(), SessionDetailRequest{
+		SessionID: "session-unpriced-turn",
+	})
+	if err != nil {
+		t.Fatalf("SessionDetail(unpriced turn) error = %v", err)
+	}
+	turn := response.Turns[0]
+	if response.Meta.Status != basequery.ResponsePartial ||
+		turn.PricingStatus != SessionTurnPricingUnpriced || turn.PricingVersion != nil ||
+		turn.UnpricedReason == nil || *turn.UnpricedReason != pricing.CostReasonModelNotListed {
+		t.Fatalf("unpriced turn response = %#v", response)
+	}
+	assertUnknownNumeric(t, turn.Totals.EstimatedUSDMicros, basequery.UnknownNotComputed)
+	assertKnownNumeric(t, turn.Totals.PricedTurnCount, 0, basequery.NumericCount)
+	assertKnownNumeric(t, turn.Totals.UnpricedTurnCount, 1, basequery.NumericCount)
+}
+
+func TestSessionDetailRejectsMalformedTurnPricingEvidence(t *testing.T) {
+	t.Parallel()
+
+	zero := int64(0)
+	completedAt := int64(120)
+	baseRecord := safeFallbackSessionRecord("session-malformed-pricing", "Safe detail")
+	baseTurn := store.SessionTurnAnalyticsRecord{
+		TurnID: "turn-malformed-pricing", StartedAtMS: 100, CompletedAtMS: &completedAt,
+		Model: store.ModelAttribution{
+			Confidence: store.AttributionConfidenceUnknown,
+			Source:     store.AttributionSourceMissing, Reason: store.AttributionReasonMissing,
+		},
+		Usage: &store.SessionTurnUsageAnalytics{
+			ObservedAtMS: 120, IsFinal: true, InputTokens: &zero,
+			CachedInputTokens: &zero, OutputTokens: &zero, ReasoningTokens: &zero,
+		},
+	}
+	for name, mutate := range map[string]func(*store.SessionAnalyticsSnapshot){
+		"unknown unpriced reason": func(snapshot *store.SessionAnalyticsSnapshot) {
+			snapshot.Record.Rollup = &store.RollupTotals{
+				TurnCount: 1, InputTokens: &zero, CachedInputTokens: &zero,
+				OutputTokens: &zero, ReasoningTokens: &zero, TotalTokens: &zero,
+				UnpricedTurnCount: 1, FirstActivityAtMS: 120, LastActivityAtMS: 120,
+				UpdatedAtMS: 120,
+			}
+			snapshot.Turns[0].Cost = &store.SessionTurnCostAnalytics{
+				Status: pricing.CostStatusUnpriced, Reason: pricing.CostReason("private_reason"),
+			}
+			snapshot.UnpricedReasons = []store.CostReasonCount{{
+				Reason: pricing.CostReasonModelNotListed, Count: 1,
+			}}
+		},
+		"empty priced version": func(snapshot *store.SessionAnalyticsSnapshot) {
+			snapshot.Record.Rollup = &store.RollupTotals{
+				TurnCount: 1, InputTokens: &zero, CachedInputTokens: &zero,
+				OutputTokens: &zero, ReasoningTokens: &zero, TotalTokens: &zero,
+				EstimatedUSDMicros: &zero, PricedTurnCount: 1,
+				FirstActivityAtMS: 120, LastActivityAtMS: 120, UpdatedAtMS: 120,
+			}
+			snapshot.Turns[0].Cost = &store.SessionTurnCostAnalytics{
+				PricingVersion: pointerToString(""), EstimatedUSDMicros: &zero,
+				Status: pricing.CostStatusPriced, Reason: pricing.CostReasonPriced,
+			}
+			snapshot.PricingVersions = []string{"pricing-v1"}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			snapshot := store.SessionAnalyticsSnapshot{
+				Mode: store.AnalyticsReadActiveRollup,
+				Generation: &store.CostRollupGeneration{
+					GenerationID: "generation", ReportingTimezone: "UTC",
+					PricingSource: "test", Currency: "USD", RollupVersion: 1,
+				},
+				Record:          baseRecord,
+				Turns:           []store.SessionTurnAnalyticsRecord{baseTurn},
+				PricingVersions: make([]string, 0),
+				UnpricedReasons: make([]store.CostReasonCount, 0),
+			}
+			mutate(&snapshot)
+			service := newUsageService(t, &sessionReaderStub{detail: func(
+				context.Context,
+				store.SessionAnalyticsDetailFilter,
+			) (store.SessionAnalyticsSnapshot, error) {
+				return snapshot, nil
+			}})
+			_, err := service.SessionDetail(context.Background(), SessionDetailRequest{
+				SessionID: "session-malformed-pricing",
+			})
+			if !errors.Is(err, basequery.ErrUnavailable) {
+				t.Fatalf("SessionDetail(malformed pricing) error = %v, want unavailable", err)
+			}
+		})
+	}
+}
+
+func TestSessionDetailRejectsInvalidLimitTamperedAndCrossSessionTurnCursor(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	service := newUsageService(t, &sessionReaderStub{detail: func(
+		context.Context,
+		store.SessionAnalyticsDetailFilter,
+	) (store.SessionAnalyticsSnapshot, error) {
+		calls++
+		return store.SessionAnalyticsSnapshot{}, nil
+	}})
+	validCursor, err := encodeSessionTurnCursor(
+		service.sessionTurnCursorKey,
+		&store.SessionTurnAnalyticsCursor{
+			SessionID: "session-a", TurnID: "turn-a", StartedAtMS: 100,
+		},
+	)
+	if err != nil || validCursor == nil {
+		t.Fatalf("encodeSessionTurnCursor() = %v, %v", validCursor, err)
+	}
+	tamperedBytes := []byte(*validCursor)
+	if tamperedBytes[0] == 'A' {
+		tamperedBytes[0] = 'B'
+	} else {
+		tamperedBytes[0] = 'A'
+	}
+	tampered := string(tamperedBytes)
+	invalid := []SessionDetailRequest{
+		{SessionID: "session-a", TurnPage: basequery.PageRequest{Limit: -1}},
+		{SessionID: "session-a", TurnPage: basequery.PageRequest{Limit: 51}},
+		{SessionID: "session-a", TurnPage: basequery.PageRequest{Limit: 1, Cursor: &tampered}},
+		{SessionID: "session-b", TurnPage: basequery.PageRequest{Limit: 1, Cursor: validCursor}},
+	}
+	for _, request := range invalid {
+		if _, err := service.SessionDetail(context.Background(), request); !errors.Is(err, basequery.ErrValidation) {
+			t.Fatalf("SessionDetail(%#v) error = %v, want validation", request, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("invalid turn requests reached reader %d times", calls)
 	}
 }
 
@@ -450,6 +940,15 @@ func (reader *sessionReaderStub) SessionAnalytics(
 }
 
 func pointerToString(value string) *string { return &value }
+
+func testSessionTurnCursorKey() sessionTurnCursorKey {
+	return sessionTurnCursorKey{
+		0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+		0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+		0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27,
+		0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
+	}
+}
 
 func safeFallbackSessionRecord(sessionID, title string) store.SessionAnalyticsRecord {
 	return store.SessionAnalyticsRecord{

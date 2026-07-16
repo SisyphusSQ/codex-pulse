@@ -3,6 +3,8 @@
 
 export {
     DegradedReason,
+    SessionTurnPricingStatus,
+    SessionTurnState,
     TrendGranularity
 } from "./models.js";
 
@@ -18,6 +20,7 @@ export type {
     SessionDetailResponse,
     SessionItem,
     SessionListResponse,
+    SessionTurnItem,
     TrendPoint,
     UsageCostRequest,
     UsageCostResponse,

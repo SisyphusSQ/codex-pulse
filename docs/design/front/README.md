@@ -69,6 +69,7 @@
 - Go 返回的 message key 只用于 Vue I18n 查找 `zh-CN` 文案；业务 service 和组件都不得把用户路径、凭证、原始响应或 driver 错误塞入 message key/field。
 - 概览只消费 Go 已聚合的 day/week/month trend、pricing evidence 和 totals；Vue 不从 daily rows 再算周/月、cost 或 priced subtotal。`rollup_missing` 时保留可用 token 并局部显示部分数据，不自行补价格。
 - Sessions 组件只消费安全 title/project/model、`ACTIVE / IDLE`、last activity 与 Go totals；不得读取或推导 cwd/root path/raw model，也不得用 offset、数组下标或 Session ID 猜下一页。
+- Session 详情 Turn 区只消费 generated `turnPage/turns`：按服务端顺序展示 active/complete、时间、safe model、usage 与 pricing evidence；lifecycle 不提供不可达的 unknown，数值 unknown 继续显示 `--`。`timelineKey` 只作稳定渲染 key，AEAD cursor 只原样回传且进程重启后不得复用。不得从页面 aggregate 重算 Turn cost，不得展示或推导 raw Session/Turn ID、正文事件、tool、路径、offset 或 generation；fallback cost unknown 与明确 unpriced 必须分开展示。
 - Session 的 `rollup_missing` 与 `rollup_ambiguous` 都展示局部 partial，不把 unknown totals 渲染成 `0`；后者表示调用未指定 reporting timezone 且 Go 发现多个 active generation，前端不得自行选择 timezone 或 ledger 重试。
 - Projects 组件必须保留 unknown/conflict/invalid dimension 行，分别展示 global/matched/page totals；confidence filter 使用 Go 返回的 range-level confidence。详情 daily 只用于下钻展示，前端不得重算并覆盖 list totals 或绕过 reconciliation failure。
 - active Project rollup 不可用是 fatal unavailable，不渲染“0 个项目”；active rollup 下的真实空 range 才渲染 known-empty。Session 缺 rollup 则是 partial，两条路径不得共用同一个空态。
@@ -123,6 +124,8 @@ TOO-273 已把 `/overview` 映射为真实 query-v1 页面：顶部两个紧凑 
 概览范围固定为今天、近 7 天、近 30 天和自定义本地日半开区间；UTC 归一化仍由 Go 负责。页面只消费 generated Usage/Quota/Session/Project/Source/Health DTO，保留 unknown、真实 0、partial、stale、known empty 与 fatal unavailable，不从 daily rows 重算总量或成本。`echarts@6.1.0` 通过模块化 core/charts/components/CanvasRenderer 接入，注册 Aria/decal 并服从 Reduce Motion；TanStack Query 继续是唯一 cache/cancel/invalidation owner。
 
 TOO-273 的 1440×1024 normal-state 视觉 QA 使用不进入产品路径的隔离 typed DTO cache，source 与 implementation 以同 viewport 合并比较；QA 夹具在验证后删除，只保留 ignored screenshot/comparison。本次可复现步骤和脱敏结果见 `docs/test/m7-e2.md`，逐项结论见根目录 `design-qa.md`。
+
+TOO-307 已为 TOO-274 提供 content-free Session Turn usage/cost provider contract：沿用现有 `SessionDetail` 方法、TanStack cancel/cache/invalidation owner 与 15 秒 active refetch，只新增 bounded generated page。可复现的 synthetic Store/query/generated 验证见 `docs/test/session-turn-timeline.md`；Sessions 页面不得绕开该 provider 读取 SQLite 或构造演示事件。
 
 ## 后续评审重点
 

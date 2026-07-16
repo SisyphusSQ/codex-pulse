@@ -85,6 +85,45 @@ type SessionAnalyticsFilter struct {
 type SessionAnalyticsDetailFilter struct {
 	SessionID         string
 	ReportingTimezone *string
+	TurnLimit         int
+	TurnCursor        *SessionTurnAnalyticsCursor
+}
+
+// SessionTurnAnalyticsCursor 是 Session detail turn 时间线的typed keyset。
+// TurnID只在Store与opaque cursor codec之间流转，不进入跨端DTO。
+type SessionTurnAnalyticsCursor struct {
+	SessionID   string
+	TurnID      string
+	StartedAtMS int64
+}
+
+// SessionTurnUsageAnalytics 保留turn当前usage的unknown与真实零事实，
+// 不暴露source generation、offset或其它parser内部位置。
+type SessionTurnUsageAnalytics struct {
+	ObservedAtMS      int64
+	IsFinal           bool
+	InputTokens       *int64
+	CachedInputTokens *int64
+	OutputTokens      *int64
+	ReasoningTokens   *int64
+}
+
+// SessionTurnCostAnalytics 只携带active generation的安全pricing evidence。
+type SessionTurnCostAnalytics struct {
+	PricingVersion     *string
+	EstimatedUSDMicros *int64
+	Status             pricing.CostStatus
+	Reason             pricing.CostReason
+}
+
+// SessionTurnAnalyticsRecord 是content-free turn timeline read model。
+type SessionTurnAnalyticsRecord struct {
+	TurnID        string
+	Model         ModelAttribution
+	StartedAtMS   int64
+	CompletedAtMS *int64
+	Usage         *SessionTurnUsageAnalytics
+	Cost          *SessionTurnCostAnalytics
 }
 
 // SessionAnalyticsRecord 只包含安全 attribution 和聚合数字；canonical cwd、
@@ -116,6 +155,8 @@ type SessionAnalyticsSnapshot struct {
 	Mode            AnalyticsReadMode
 	Generation      *CostRollupGeneration
 	Record          SessionAnalyticsRecord
+	Turns           []SessionTurnAnalyticsRecord
+	NextTurnCursor  *SessionTurnAnalyticsCursor
 	PricingVersions []string
 	UnpricedReasons []CostReasonCount
 }
