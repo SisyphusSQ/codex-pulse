@@ -5,7 +5,9 @@
 - 记录时间：2026-07-16（Asia/Shanghai）
 - 记录目录：仓库根目录
 - 本轮任务性质：TOO-268 usage/cost trend、Session/Project bounded query、opaque cursor、safe attribution 与 reconciliation
-- 当前结论：`IMPLEMENTATION REVIEW PASS；CHANGELOG 已集成；POST-INTEGRATION FULL LOCAL GATES PASS；FINAL SCOPE REVIEW PASS；PRE-PR GATE PASS`
+- 当前结论：`DONE`；TOO-268 已由 PR #33 self-merge 为 `c8b6daabd2e9e31e03bf8764e7502a461b633671`，post-merge verify 与 Linear Done 已完成；当前作为 TOO-236 Master closeout 的集成证据。
+- M6 Master 集成验证（2026-07-17）：`query/... + store + app + scheduler` focused count10 全部通过（Store 102.690s、app 19.047s、scheduler 34.816s），race count3 全部通过（Store 218.458s、app 41.893s、scheduler 78.954s）；完整 `make verify`、全仓 race（Store 82.855s）、vet/tidy/diff、harness/project/version、frontend 5 files/16 tests、generated 319 packages/1 service/15 methods/32 enums/65 models/1 event、arm64/minOS 15 app/ZIP 全部通过。release classification=`issue-only`、version `findings=[]`，最终 diff 仅含 M6 五份 runbook。
+- M6 Master final review：独立 subagent 首轮发现本地 ignored Master plan skeleton Medium，补齐后又发现并关闭 `internal/app/service.go` / `Service` 命名真相 Low；最终 Critical/High/Medium/Low 均为 none，`remaining_findings=0`、`blocking_findings=0`、`MASTER_FINAL_REVIEW_PASS:YES`。
 - 自动化入口：`internal/store/analytics_query_*_test.go`、`internal/query/usagecost/*_test.go`
 - 对应计划 / issue：`.agents/plans/2026-07-16-too-268-usage-cost-session-project.md` / TOO-268
 - 结果说明：全部业务 fixture 使用 `testing.T.TempDir()` 中的 Pure-Go SQLite 或进程内 typed reader；不读取真实 Codex Home、JSONL、auth、prompt/response/tool content，也不访问业务网络。Actions 按用户策略保持停用。

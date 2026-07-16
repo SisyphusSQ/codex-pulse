@@ -5,7 +5,9 @@
 - 记录时间：2026-07-16（Asia/Shanghai）
 - 记录目录：仓库根目录
 - 本轮任务性质：TOO-269 五类只读 query contract、GORM-first runtime snapshot、敏感字段裁剪与 typed recovery action
-- 当前结论：`PASS（两层独立 review 与 post-integration verify 完成）`；implementation closure 2 与不同 subagent final scope review 均无 finding，`CHANGELOG.md -> Unreleased` 已写入；包含最终文档与 changelog 的 focused/full/race、harness、version、frontend、generated、arm64 package 与完整 `make verify` 均通过，已具备 commit/PR 条件。
+- 当前结论：`DONE`；TOO-269 已由 PR #34 self-merge 为 `0df96508386979015dc6363d490f5e89dca0f350`，post-merge verify 与 Linear Done 已完成。implementation closure 2 与不同 subagent final scope review 均无 finding，`CHANGELOG.md -> Unreleased` 已写入；当前作为 TOO-236 Master closeout 的集成证据。
+- M6 Master 集成验证（2026-07-17）：`query/... + store + app + scheduler` focused count10 全部通过（Store 102.690s、app 19.047s、scheduler 34.816s），race count3 全部通过（Store 218.458s、app 41.893s、scheduler 78.954s）；完整 `make verify`、全仓 race（Store 82.855s）、vet/tidy/diff、harness/project/version、frontend 5 files/16 tests、generated 319 packages/1 service/15 methods/32 enums/65 models/1 event、arm64/minOS 15 app/ZIP 全部通过。release classification=`issue-only`、version `findings=[]`，最终 diff 仅含 M6 五份 runbook。
+- M6 Master final review：独立 subagent 首轮发现本地 ignored Master plan skeleton Medium，补齐后又发现并关闭 `internal/app/service.go` / `Service` 命名真相 Low；最终 Critical/High/Medium/Low 均为 none，`remaining_findings=0`、`blocking_findings=0`、`MASTER_FINAL_REVIEW_PASS:YES`。
 - 自动化入口：`internal/query/runtimeinfo/*_test.go`、`internal/store/runtime_query_test.go`、`internal/query/value_test.go`
 - 对应计划 / issue：`.agents/plans/2026-07-16-too-269-runtime-settings-queries.md` / TOO-269
 - 结果说明：当前全部使用 synthetic typed facts 和 `testing.T.TempDir()` Pure-Go SQLite；未读取真实 Codex Home/Preferences、用户数据库或 credential，未请求 Wham，未注册 Wails binding，未触发 Actions 或 release。
