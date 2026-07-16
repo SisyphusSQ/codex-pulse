@@ -11,7 +11,7 @@
 | 数据 | 后台刷新 | 前台打开或手动刷新 |
 | --- | --- | --- |
 | 5h / weekly quota | 正常 5 分钟；低于 20% 或临近 reset 时 2 分钟 | 上次成功超过 60 秒则立即获取 |
-| reset credits | 30 分钟 | 打开对应页面时立即获取 |
+| reset credits | 30 分钟 | 打开对应页面或手动刷新时，距上次同类请求已满 60 秒才立即获取 |
 | JSONL 增量索引 | 文件变化后 debounce 3～5 秒 | 立即追平新增字节 |
 | Session 完整目录对账 | 30 分钟 | 仅显式重建索引时满速 |
 | 进程 / 端口状态 | 30～60 秒 | 前台 5～10 秒 |
@@ -20,7 +20,7 @@
 | 应用更新 | 默认每小时、最低优先级 | 设置页或菜单手动检查 |
 | Session index repair | 不自动 | 仅显式 dry-run |
 
-Quota 网络失败使用 5、10、20、30 分钟带 jitter 退避；手动刷新绕过退避但不绕过校验。系统从休眠恢复后，只立即刷新 stale 来源。reset 到达后在 `reset + 3 秒`尝试一次，失败继续退避，不推断已经重置。
+Quota 网络失败使用 5、10、20、30 分钟带 jitter 退避；手动刷新绕过普通退避但不绕过 60 秒 durable 最小间隔、未来 Retry-After 或结果校验。服务端 Retry-After 作为独立 fence 保存在 source state 中，即使更长的本地退避让 schedule reason 显示为 `network_backoff`，manual 也必须等 server fence 到期；foreground 与 wake 不越过仍生效的普通错误退避。startup、crash recovery 与 Settings reconcile 恢复已持久的错误 due，不以当前重启时钟重新计算并向后推；原 due 已过才立即抓取，schedule 与 source-state 两个 Retry-After fence 始终取较晚者。系统从休眠恢复后，只立即刷新 stale 来源。reset 到达后在 `reset + 3 秒`尝试一次，失败继续退避，不推断已经重置。
 
 ## 任务优先级和预算
 
@@ -118,6 +118,10 @@ schema v8 在该事实面上追加单行 `scheduler_lifecycle` 和逐 task `sche
 所有周期性和日历型任务固定使用 `github.com/robfig/cron/v3 v3.0.1`；生产代码不再用自写 `for + time.NewTimer/time.Ticker/time.Sleep` 或复制 cron parser 驱动周期任务。当前 scheduler worker 使用 SDK 的 `@every 1s` 作为唯一周期 trigger：v3.0.1 对 interval 的最低精度是 1 秒，因此不额外造 sub-second timer 恢复旧 250 ms idle delay。`ScanBudget.YieldFor` 仍作为持久 cycle 的协作预算与审计事实，但下一个周期的实际唤醒由 cron tick 统一安排；到期 retry 只可能在持久 `next_retry_at_ms` 之后最多一个 tick 被重新检查，绝不因 cron 内存提前执行。
 
 `Service.Run` 仍从 startup recovery 到最后一个 cycle 持有同一 OS scheduler owner lease。它在启动 cron 前立即恢复遗留 task 并推进一次 cycle；后续 job 每次都重新读取 lifecycle permit、Home generation、due retry、runnable queue、ScanBudget 和 checkpoint，再进入既有串行 cycle/Store transaction。cron Entry 的 `Prev/Next`、进程内 job 状态和 trigger 是否被 skip 都不是业务真相，进程重启后直接丢弃并从 SQLite 恢复。
+
+在线 quota/reset credits 使用独立的轻量 `QuotaRefreshCoordinator`，但遵守同一个 cron 边界。coordinator 从 typed Preferences 读取两个独立开关与周期，为 `quota:wham:default`、`reset_credits:wham:default` 分别维护 `source_refresh_schedules` 和 append-only `source_refresh_claims` generation fence；启动先恢复到期 claim、重新校验 wall clock/preferences/current state 并立即跑一次 due cycle，随后复用 `@every 1s` cron factory。每个普通 cycle 也先检查本 tick 前新到期的遗留 claim，因此“启动时尚未到期、启动后才到期”的 crash lease 不会永久阻塞。
+
+一次 refresh 固定为 `list due -> revision CAS claim + active fence -> typed service adapter -> attempt/facts transaction -> policy re-evaluate -> claim CAS complete + completed fence`。cron 内存 entry、HTTP goroutine 或 UI loading 都不是 due truth。manual/foreground/wake 先由 policy 生成可审计 reason，再写入同一 durable schedule 并领取；Store 仍二次校验 due、revision、claim overlap 与 manual 60 秒间隔。调用方取消后，quota service 已用 detached bounded context 记录 cancelled attempt，coordinator 同样在 detached bounded completion context 中释放 claim；若 recorder 返回 durability unknown，则不猜测成功，保留 claim 到 lease recovery。恢复按 claim/request ID 检查 attempt：已记录就按 current state 完成原 claim，未记录才把 fence 标为 `abandoned` 并释放；release 之后到达的旧 attempt 会被同一 SQLite writer 序列拒绝。正常 CAS loser 返回可恢复 conflict 并在下一 tick 重读，事实 contract、权限/只读、磁盘满或损坏才停止 runner。Settings 成功提交后调用 `ReconcilePreferences`，关闭来源立即清空 next due 但不删 history，重新开启 never-loaded 来源进入 startup due。
 
 同一 cron entry 使用 `SkipIfStillRunning` 阻止重叠 trigger并以 `Recover` 保护 wrapper；panic 后必须释放 overlap token，使后续 tick 仍能进入。通过 `cycleMu`、跨进程 owner lease、Store running-task/claim/CAS 继续提供分层防线。queue empty、未到期 durable retry 和已经原子持久化的 failed cycle 等待下一 tick；system probe、cron registration 或其它非持久化 fatal error必须让 `Run` 可观察地退出。首个 fatal 先取消共享 job context再发布错误，确保已经排队但尚未进入业务读取的 trigger 被 fence；context 取消或 fatal 随后都调用 `cron.Stop()` 阻止新 trigger，并等待其返回的 context，确认在途 job 到协作边界后才释放 owner lease。应用关闭顺序仍为 event adapter、scheduler worker、coordinator、SQLite。
 

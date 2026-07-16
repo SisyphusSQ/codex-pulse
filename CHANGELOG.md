@@ -23,6 +23,7 @@
 20. [TOO-262] 新增本地 Codex JSONL quota observation 的严格解析、物理 source provenance、GORM Pure Go schema v9 持久化与 coalesced replay receipt，固定 partial window、schema drift、文件替换、checkpoint rollback 和隐私边界
 21. [TOO-263] 新增受控 Wham quota 客户端、内存凭证租约与 GORM Pure Go schema v10 原子记录，固定 exact-key/null/partial 校验、禁止 redirect、七类失败、短重试和 last-known-good 语义
 22. [TOO-264] 建立可重建的 quota 窗口代际校验与 Local/Wham 可信仲裁投影，隔离异常、旧代际和冲突 observation，保留 last-known-good 与完整 evidence 解释
+23. [TOO-265] 新增只读 Reset Credits 事实与动态汇总、可信 quota reset 计算和 robfig cron 驱动的持久刷新退避，固定 Retry-After、60 秒手动节流、claim generation fence、崩溃恢复与迟到 attempt 隔离语义
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

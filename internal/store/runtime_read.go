@@ -180,6 +180,29 @@ func sourceAttemptByID(ctx context.Context, querier *gorm.DB, requestID string) 
 	return attempt, err == nil, err
 }
 
+// SourceAttempt returns one content-free durable attempt by request identity.
+// Scheduler claim IDs intentionally equal request IDs, allowing crash recovery
+// to distinguish an unrecorded request from a recorded result without replaying
+// either credentials or response content.
+func (repository *Repository) SourceAttempt(ctx context.Context, requestID string) (SourceAttempt, error) {
+	if repository == nil || repository.database == nil || requestID == "" || len(requestID) > 512 {
+		return SourceAttempt{}, ErrInvalidRepository
+	}
+	var attempt SourceAttempt
+	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+		value, found, err := sourceAttemptByID(ctx, connection, requestID)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return ErrNotFound
+		}
+		attempt = value
+		return nil
+	})
+	return attempt, err
+}
+
 func sourceFileFromModel(model sourceFileModel) SourceFile {
 	return SourceFile{
 		SourceFileID: model.SourceFileID, Provider: model.Provider, SessionID: model.SessionID,

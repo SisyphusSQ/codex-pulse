@@ -205,6 +205,49 @@ func (repository *Repository) QuotaCurrent(
 	return current, err
 }
 
+// ListQuotaCurrent verifies and reads every current window from one explicit
+// SQLite snapshot. Scheduler policy must not combine independently committed
+// per-window reads when calculating the next reset.
+func (repository *Repository) ListQuotaCurrent(
+	ctx context.Context,
+	accountScope string,
+	evaluatedAtMS int64,
+) ([]QuotaCurrent, error) {
+	if repository == nil || repository.database == nil {
+		return nil, ErrInvalidRepository
+	}
+	if accountScope != QuotaAccountScopeDefault || evaluatedAtMS < 0 {
+		return nil, invalidRecord("quota current list input is invalid")
+	}
+	var currents []QuotaCurrent
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
+		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
+			var models []quotaProjectionKeyModel
+			if err := transaction.WithContext(ctx).Model(&quotaCurrentModel{}).
+				Select("account_scope", "window_kind", "limit_id").
+				Where("account_scope = ?", accountScope).
+				Order("window_kind").Order("limit_id").Find(&models).Error; err != nil {
+				return err
+			}
+			currents = make([]QuotaCurrent, 0, len(models))
+			for _, model := range models {
+				key := quotaProjectionKey{
+					accountScope: model.AccountScope,
+					windowKind:   QuotaWindowKind(model.WindowKind),
+					limitID:      model.LimitID,
+				}
+				projection, err := repository.readAndVerifyQuotaProjection(ctx, transaction, key)
+				if err != nil {
+					return err
+				}
+				currents = append(currents, dynamicallyDegradeQuotaCurrent(projection.Current, evaluatedAtMS))
+			}
+			return nil
+		})
+	})
+	return currents, err
+}
+
 func (repository *Repository) ListQuotaArbitrationEvidence(
 	ctx context.Context,
 	accountScope string,

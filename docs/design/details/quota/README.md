@@ -151,6 +151,18 @@ freshness 与 conflict 分开：current 可以同时是 `fresh + conflict` 或 `
 
 网络、timeout、5xx 保留 last-known-good；401/403 停止自动请求；429 使用 `Retry-After` 或退避；schema 不兼容时停止接受在线响应。本地来源继续可用，任何失败都不能生成 `used_percent = 0`。
 
+### Reset Credits 与持久刷新计划（TOO-265）
+
+Reset Credits inventory 来自独立的只读 `GET /backend-api/wham/rate-limit-reset-credits`，不能从 quota 百分比或 reset 时间猜测。客户端与 `wham/usage` 共用内存 credential lease、固定 HTTPS endpoint、redirect 禁止、逐 attempt timeout、response body 上限、duplicate JSON key 拒绝和 typed failure 分类；不调用 consume endpoint。响应只接受有界 `available_count + credits[]`，credit 的 `id` 进入 Store 前转成 SHA-256，`title`、`description`、`profile_user_id`、未知字段、token、header、body 和 raw error 全部丢弃。status 只接受 `available/redeemed/expired/used`，reset type 归一为 `codex_rate_limits/unknown`，时间必须是合法且自洽的 RFC3339；available count 与 items 不一致时整次响应按 `schema_incompatible` fail closed。
+
+application schema v12 新增 `reset_credit_snapshots`、`reset_credits`、`source_refresh_schedules` 和 append-only `source_refresh_claims`。一次成功 Reset Credits 请求把 append-only source attempt、snapshot 与 hashed items 放在同一个 GORM writer transaction；失败/取消只写 attempt/source state，不生成 snapshot。exact request replay 是 no-op，同 request 不同事实拒绝；summary 在调用方 evaluation time 重新计算实际可用数、总数、已兑换数、所有未过期 available credit 的累计剩余毫秒和最近到期时间，因此未加载、真实 0 与已自然过期不会混淆。reader 在同一 SQLite read snapshot 内对账 item、server count 与 source attempt provenance，篡改或跨来源 request 引用 fail closed。已有 last-known-good 在网络失败后保留。
+
+`CalculateQuotaResetSummary` 从所有 `quota_current` 窗口计算最近可信 reset、剩余毫秒和可信窗口数；只有带 selected observation 且 freshness 为 `fresh/stale`、reset 仍在未来的窗口参与。Reset Credits inventory 与 quota reset summary 是两个独立事实，后续 query/UI 只组合，不互相推导。
+
+quota 与 reset credits 各有一行 durable refresh schedule，保存 `next_due_at_ms`、固定 reason、last manual time、claim lease、revision 和更新时间；每次领取同时追加一行 claim fence，完成标记 `completed`，确认没有 durable attempt 的过期 claim 标记 `abandoned`。cron 只扫描 due row；领取、完成和过期恢复都使用 Store CAS，陈旧 completion 不能覆盖新 revision。attempt 写入与 claim finalize 共用串行 writer：attempt 先提交时恢复按成功/失败事实计算正常周期或 Retry-After；release 先提交时，迟到 attempt 被 fence 拒绝，不能更新 source state 或越过服务端限流。正常 quota 使用 preference 周期；remaining 不高于 20% 或 reset 不超过 10 分钟时使用 2 分钟，若 `reset + 3 秒` 更早则精确选它。reset credits 使用独立 preference 周期。网络/timeout/5xx 跨请求按 5/10/20/30 分钟 capped exponential 加 jitter；429 取本地退避与合法 Retry-After 中更晚者；401/403 与 schema incompatible 的 next due 为空。manual 可以越过普通退避，但 Store 与 policy 双层保证 60 秒最小间隔，且不能越过未来 Retry-After；foreground 只在上次成功超过 60 秒时立即刷新，wake 只刷新 stale 来源。cancelled 不增加 failure count，coordinator 使用 detached bounded context 释放 claim 并写下一计划；durability unknown 则保留 claim，待 lease 到期后重新校验当前时钟与事实。
+
+settings commit 调用 `ReconcilePreferences`：关闭能力立即把 next due 置空并保留历史，重新开启 never-loaded 来源会安排启动请求。进程启动与每个 cron cycle 都回收已经到期的遗留 claim；即使 claim 在启动检查之后才到期，也不会永久卡住。周期 trigger 固定复用 `github.com/robfig/cron/v3 v3.0.1` 的 `@every 1s`、`SkipIfStillRunning` 和 `Recover`，生产代码不新增 ticker/timer/sleep loop。可复用 synthetic-only 验证入口见 [`docs/test/reset-credits-quota.md`](../../../test/reset-credits-quota.md)。
+
 ## UI 语义
 
 ```text
@@ -173,5 +185,7 @@ Tray 和 Popover 始终使用普通百分比，不用 `≤`、`?`、状态胶囊
 - partial response 不删除 weekly。
 - JSON 解析失败不产生 observation。
 - 手动刷新绕过退避但不绕过校验。
+- Reset Credits 原始 ID/文案不落库，动态汇总在自然到期后不保留伪 available。
+- 进程退出、请求取消或 claim 过期后都能从 durable schedule 恢复，且不会产生重叠请求。
 
 可复用的 synthetic-only 验证入口见 [`docs/test/window-generation-observation.md`](../../../test/window-generation-observation.md)。

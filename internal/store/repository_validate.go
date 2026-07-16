@@ -508,6 +508,10 @@ func invalidRecord(message string) error {
 	return fmt.Errorf("%w: %s", ErrInvalidRecord, message)
 }
 
+func sourceRefreshConflict(message string) error {
+	return fmt.Errorf("%w: %s", ErrSourceRefreshConflict, message)
+}
+
 func validateOptionalStrings(values ...*string) error {
 	for _, value := range values {
 		if value != nil && *value == "" {

@@ -39,6 +39,8 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 		"quota_current",
 		"quota_observation_receipts",
 		"quota_observations",
+		"reset_credit_snapshots",
+		"reset_credits",
 		"scheduler_cycles",
 		"scheduler_lifecycle",
 		"scheduler_retry_states",
@@ -53,6 +55,8 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 		"source_files",
 		"source_generation_batches",
 		"source_generations",
+		"source_refresh_claims",
+		"source_refresh_schedules",
 		"source_state",
 		"turn_attributions",
 		"turn_costs",
@@ -186,6 +190,22 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 			"account_scope", "window_kind", "limit_id", "observation_id", "window_generation",
 			"disposition", "reason", "explanation_code",
 		},
+		"reset_credit_snapshots": {
+			"snapshot_id", "request_id", "account_scope", "available_count", "observed_at_ms",
+		},
+		"reset_credits": {
+			"snapshot_id", "credit_id_hash", "status", "reset_type", "granted_at_ms",
+			"expires_at_ms", "redeemed_at_ms",
+		},
+		"source_refresh_schedules": {
+			"source_instance_id", "source_type", "scope_key", "next_due_at_ms", "reason",
+			"last_manual_at_ms", "active_claim_id", "active_trigger", "claim_started_at_ms",
+			"claim_expires_at_ms", "revision", "updated_at_ms",
+		},
+		"source_refresh_claims": {
+			"claim_id", "source_instance_id", "schedule_revision", "trigger", "started_at_ms",
+			"expires_at_ms", "state", "finalized_at_ms",
+		},
 	}
 	wantForeignKeys := []string{
 		"bootstrap_jobs.job_id->job_runs.job_id/CASCADE",
@@ -204,11 +224,14 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"quota_observation_receipts.segment_observation_id->quota_observations.observation_id/CASCADE",
 		"quota_observations.session_id->sessions.session_id/SET NULL",
 		"quota_observations.source_file_id->source_files.source_file_id/RESTRICT",
+		"reset_credit_snapshots.request_id->source_attempts.request_id/RESTRICT",
+		"reset_credits.snapshot_id->reset_credit_snapshots.snapshot_id/CASCADE",
 		"scheduler_cycles.task_id->scheduler_tasks.task_id/CASCADE",
 		"scheduler_retry_states.task_id->scheduler_tasks.task_id/CASCADE",
 		"scheduler_tasks.target_id->job_runs.job_id/CASCADE",
 		"source_attempts.source_instance_id->source_state.source_instance_id/CASCADE",
 		"source_files.session_id->sessions.session_id/SET NULL",
+		"source_refresh_claims.source_instance_id->source_refresh_schedules.source_instance_id/CASCADE",
 	}
 	wantIndexes := []string{
 		"idx_bootstrap_jobs_generation_status",
@@ -232,6 +255,8 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"idx_quota_observation_receipts_segment",
 		"idx_quota_observations_current",
 		"idx_quota_observations_source_position",
+		"idx_reset_credit_snapshots_current",
+		"idx_reset_credits_expiry",
 		"idx_scheduler_cycles_recent",
 		"idx_scheduler_cycles_task",
 		"idx_scheduler_retry_due",
@@ -240,6 +265,9 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"idx_source_attempts_history",
 		"idx_source_attempts_retention",
 		"idx_source_files_session_state",
+		"idx_source_refresh_claims_source",
+		"idx_source_refresh_schedules_claim",
+		"idx_source_refresh_schedules_due",
 		"idx_source_state_due",
 	}
 
