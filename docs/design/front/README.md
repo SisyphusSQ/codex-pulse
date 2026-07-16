@@ -68,6 +68,12 @@
 - Session 的 `rollup_missing` 与 `rollup_ambiguous` 都展示局部 partial，不把 unknown totals 渲染成 `0`；后者表示调用未指定 reporting timezone 且 Go 发现多个 active generation，前端不得自行选择 timezone 或 ledger 重试。
 - Projects 组件必须保留 unknown/conflict/invalid dimension 行，分别展示 global/matched/page totals；confidence filter 使用 Go 返回的 range-level confidence。详情 daily 只用于下钻展示，前端不得重算并覆盖 list totals 或绕过 reconciliation failure。
 - active Project rollup 不可用是 fatal unavailable，不渲染“0 个项目”；active rollup 下的真实空 range 才渲染 known-empty。Session 缺 rollup 则是 partial，两条路径不得共用同一个空态。
+- Quota 直接消费既有 `quota-current-v1`，外层统一使用 `query-v1` meta；Source、Job、Health 与 Settings 消费 `runtime-info-v1` typed DTO。前端不得读取 `source_files`、`source_state`、`job_runs`、`health_events`、scheduler 或 Preferences persistence model。
+- Source 列表把本机文件与在线来源分别映射为 `local_file:<opaque-id>`、`online:<opaque-id>`，按 `updatedAt + sourceKey` 稳定分页；只展示 provider/source type、state/freshness、字节进度、last attempt/success、next due、有限 error/failure code 和恢复动作，不返回当前路径、device/inode、scope、request/payload identity。任一来源种类读取失败时保留另一种的可用结果，并通过 `partial + unavailableKinds` 显式说明；调用方所选种类全部失败时才返回 fatal unavailable。
+- Job 只展示稳定 job identity、state/phase、进度、时间、失败计数、next retry 和 typed recovery action；resume cursor、scheduler task ID 与内部 dedupe key 不进入 DTO。Health 只展示 event/domain/severity/code、active/resolved、occurrence、last seen 和安全关联，不返回 fingerprint 或底层 error text。
+- Health 当前级别只聚合 active events：resolved critical 仍保留历史计数，但不能让当前状态永久 `blocked`。`paused` 只来自 durable user pause 或 system sleeping；`blocked/degraded/busy` 再按 lifecycle 与 active critical/error/warning 映射。
+- Settings 将 revision/Home generation 作为十进制字符串返回，并把 snooze/last-check 映射为 JS-safe numeric value；Home path、data store key、device/inode、detached Home、switch/attempt ID 永不进入响应。可编辑字段由 Go 返回固定 type/min/max/options metadata，固定 `zh-CN`、stable channel 与关闭 auto-download 明确标记为只读。
+- recovery action 只允许 `none/retry/check_source/grant_permission/free_space/choose_home/repair_store`，且非 `none` 必须引用 Go contract 中的固定 command key；typed error、failure 与 health code 先按完整有限矩阵决定动作，state/attention 仅作为没有 code 的 fallback。query service 只返回引用，不执行 command、不写设置、不修库。
 
 ## 图标规范
 
