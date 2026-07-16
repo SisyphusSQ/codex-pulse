@@ -1,0 +1,180 @@
+package usagecost
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"io"
+
+	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
+	"github.com/SisyphusSQ/codex-pulse/internal/store"
+)
+
+const (
+	sessionCursorEndpoint = "sessions"
+	projectCursorEndpoint = "projects"
+)
+
+type cursorUnsigned struct {
+	Version   string                  `json:"version"`
+	Endpoint  string                  `json:"endpoint"`
+	SortField string                  `json:"sortField"`
+	Direction basequery.SortDirection `json:"direction"`
+	Null      bool                    `json:"null"`
+	Value     *int64                  `json:"value"`
+	TextValue *string                 `json:"textValue"`
+	Identity  string                  `json:"identity"`
+}
+
+type cursorPayload struct {
+	cursorUnsigned
+	Checksum string `json:"checksum"`
+}
+
+func encodeSessionCursor(
+	cursor *store.SessionAnalyticsCursor,
+	sortField string,
+	direction basequery.SortDirection,
+) (*string, error) {
+	if cursor == nil {
+		return nil, nil
+	}
+	if cursor.SessionID == "" || cursor.Null == (cursor.Value != nil) ||
+		(cursor.Value != nil && *cursor.Value < 0) {
+		return nil, errors.New("store session cursor is invalid")
+	}
+	unsigned := cursorUnsigned{
+		Version: basequery.ContractVersion, Endpoint: sessionCursorEndpoint,
+		SortField: sortField, Direction: direction, Null: cursor.Null,
+		Value: cloneInt64(cursor.Value), Identity: cursor.SessionID,
+	}
+	return encodeCursorUnsigned(unsigned)
+}
+
+func decodeSessionCursor(
+	encoded string,
+	sortField string,
+	direction basequery.SortDirection,
+) (*store.SessionAnalyticsCursor, error) {
+	payload, err := decodeCursorPayload(encoded)
+	if err != nil {
+		return nil, err
+	}
+	if payload.Version != basequery.ContractVersion || payload.Endpoint != sessionCursorEndpoint ||
+		payload.SortField != sortField || payload.Direction != direction ||
+		payload.Identity == "" || payload.Null == (payload.Value != nil) ||
+		payload.TextValue != nil || (payload.Value != nil && *payload.Value < 0) {
+		return nil, basequery.NewValidationFailure("page.cursor", nil)
+	}
+	return &store.SessionAnalyticsCursor{
+		SessionID: payload.Identity, Null: payload.Null, Value: cloneInt64(payload.Value),
+	}, nil
+}
+
+func encodeProjectCursor(
+	cursor *store.ProjectAnalyticsCursor,
+	sortField string,
+	direction basequery.SortDirection,
+) (*string, error) {
+	if cursor == nil {
+		return nil, nil
+	}
+	if cursor.DimensionKey == "" || !validProjectCursorValue(cursor, sortField) {
+		return nil, errors.New("store project cursor is invalid")
+	}
+	return encodeCursorUnsigned(cursorUnsigned{
+		Version: basequery.ContractVersion, Endpoint: projectCursorEndpoint,
+		SortField: sortField, Direction: direction, Null: cursor.Null,
+		Value: cloneInt64(cursor.NumericValue), TextValue: cloneStringPointer(cursor.TextValue),
+		Identity: cursor.DimensionKey,
+	})
+}
+
+func decodeProjectCursor(
+	encoded string,
+	sortField string,
+	direction basequery.SortDirection,
+) (*store.ProjectAnalyticsCursor, error) {
+	payload, err := decodeCursorPayload(encoded)
+	if err != nil {
+		return nil, err
+	}
+	cursor := &store.ProjectAnalyticsCursor{
+		DimensionKey: payload.Identity, Null: payload.Null,
+		NumericValue: cloneInt64(payload.Value), TextValue: cloneStringPointer(payload.TextValue),
+	}
+	if payload.Version != basequery.ContractVersion || payload.Endpoint != projectCursorEndpoint ||
+		payload.SortField != sortField || payload.Direction != direction ||
+		payload.Identity == "" || !validProjectCursorValue(cursor, sortField) {
+		return nil, basequery.NewValidationFailure("page.cursor", nil)
+	}
+	return cursor, nil
+}
+
+func validProjectCursorValue(cursor *store.ProjectAnalyticsCursor, sortField string) bool {
+	if cursor.Null {
+		return cursor.NumericValue == nil && cursor.TextValue == nil
+	}
+	if sortField == "displayName" {
+		return cursor.NumericValue == nil && cursor.TextValue != nil && *cursor.TextValue != ""
+	}
+	return cursor.NumericValue != nil && *cursor.NumericValue >= 0 && cursor.TextValue == nil
+}
+
+func encodeCursorUnsigned(unsigned cursorUnsigned) (*string, error) {
+	canonical, err := json.Marshal(unsigned)
+	if err != nil {
+		return nil, err
+	}
+	digest := sha256.Sum256(canonical)
+	payload, err := json.Marshal(cursorPayload{
+		cursorUnsigned: unsigned, Checksum: hex.EncodeToString(digest[:]),
+	})
+	if err != nil {
+		return nil, err
+	}
+	encoded := base64.RawURLEncoding.EncodeToString(payload)
+	return &encoded, nil
+}
+
+func decodeCursorPayload(encoded string) (cursorPayload, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || len(raw) == 0 || len(raw) > 4096 {
+		return cursorPayload{}, basequery.NewValidationFailure("page.cursor", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var payload cursorPayload
+	if err := decoder.Decode(&payload); err != nil {
+		return cursorPayload{}, basequery.NewValidationFailure("page.cursor", err)
+	}
+	if err := ensureCursorJSONEnd(decoder); err != nil {
+		return cursorPayload{}, basequery.NewValidationFailure("page.cursor", err)
+	}
+	canonical, err := json.Marshal(payload.cursorUnsigned)
+	if err != nil {
+		return cursorPayload{}, basequery.NewValidationFailure("page.cursor", err)
+	}
+	expected := sha256.Sum256(canonical)
+	actual, err := hex.DecodeString(payload.Checksum)
+	if err != nil || len(actual) != sha256.Size ||
+		subtle.ConstantTimeCompare(actual, expected[:]) != 1 {
+		return cursorPayload{}, basequery.NewValidationFailure("page.cursor", err)
+	}
+	return payload, nil
+}
+
+func ensureCursorJSONEnd(decoder *json.Decoder) error {
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("cursor contains trailing JSON")
+		}
+		return err
+	}
+	return nil
+}

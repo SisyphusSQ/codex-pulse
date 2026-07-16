@@ -181,7 +181,8 @@ func validFailureField(value string) bool {
 		"timeRange", "timeRange.timeZone", "timeRange.startDate", "timeRange.endDateExclusive",
 		"numeric.unit", "numeric.value", "numeric.unknownReason",
 		"response.status", "response.issues",
-		"response.page.limit", "response.page.hasMore", "response.page.nextCursor":
+		"response.page.limit", "response.page.hasMore", "response.page.nextCursor",
+		"sessionId", "reportingTimezone", "projectKey":
 		return true
 	default:
 		return false
