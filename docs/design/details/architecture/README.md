@@ -43,6 +43,16 @@ flowchart LR
 
 fatal failure 只映射稳定 code、i18n message key、allowlisted field 和 retryable，不把 repository/driver cause 暴露到 JSON、日志或页面。内部仍保留 `errors.Is` / `errors.As` chain，便于 Go service 做正确分类和恢复。
 
+### Wails Binding Contract
+
+`internal/app.Service` 是唯一注册给 Wails 的业务 façade。它用真实 `store.Repository`、Quota Current reader 和共享的 Preferences `FileStore` 装配 M6 query service，但所有依赖字段保持私有；Repository、GORM、SQLite handle、文件、shell、网络和 credential primitive 都不能进入生成面。应用生命周期与查询 façade 复用同一个 Preferences loader，避免同一进程读取两份不同配置快照。
+
+`wails-bindings-v1` 当前只允许以下只读方法：`Bootstrap`、`Contracts`、`UsageCost`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail`、`QuotaCurrent`、`ListSources`、`Source`、`ListJobs`、`Job`、`ListHealth`、`Health`、`Settings`。`Contracts` 返回 binding/query/业务 contract 版本、完整 query allowlist、显式空 command allowlist 和一个 typed error exemplar。新增 exported method 必须先让 exact allowlist contract test 失败，再通过独立 Issue 和 review；现有 Preferences、Schedule 与 Codex Home lifecycle mutator 在没有稳定 public command DTO 前保持不可绑定。
+
+13 个业务数据 query 的 `context.Context` 位于首参数，Wails 生成的 TypeScript client 返回 `CancellablePromise<T>`，前端取消会传播到 Store/query；同步元数据方法 `Bootstrap` / `Contracts` 不承诺 Go 侧可取消。业务方法返回 error 或其依赖 panic 时，façade 会统一生成 `RuntimeError`：`CallError.message` 固定为 `binding query failed`，`cause` 只包含 `query.ErrorEnvelope`。Wails 在参数数量或 JSON 类型错误时生成的 `TypeError.message` 属于 framework transport detail，前端不得展示；其 `cause` 仍通过 content-free marshaler。内部 error chain 保留取消、deadline 和分类语义，但底层路径、请求值、panic value、repository/driver cause 不进入业务 RuntimeError JSON。
+
+`frontend/bindings` 是 Go method signature 生成并提交的唯一跨端类型真相。正常生成必须通过稳定 diff gate；失败注入会对 tracked 与尚未跟踪的 generated files 做 SHA-256 前后读回，任何旧 bindings 被覆盖或部分更新都以 `BINDING-001` fail closed。Vue 层不得手写同名 request/response/enum/error shadow type。
+
 未来如恢复多 agent，provider 抽象可沿用：
 
 ```go

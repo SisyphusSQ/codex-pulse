@@ -47,4 +47,5 @@ verify-package:
 	wails3 task package:verify
 
 verify-generated:
+	bash scripts/project-checks/check_binding_generation_failure.sh
 	bash scripts/project-checks/check_generated.sh

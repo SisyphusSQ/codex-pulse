@@ -6,6 +6,12 @@ export {
     Service
 };
 
+export {
+    BindingMethodKind
+} from "./models.js";
+
 export type {
+    BindingContractInfo,
+    BindingMethodInfo,
     BootstrapInfo
 } from "./models.js";

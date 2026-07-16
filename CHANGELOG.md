@@ -29,6 +29,7 @@
 26. [TOO-267] 建立版本化 `query-v1` 公共查询契约，统一有界分页、allowlist 排序筛选、IANA/DST 本地日转 UTC、JavaScript 安全整数、unknown/真实零及 content-free 错误与 partial/unavailable 语义
 27. [TOO-268] 新增 active 成本账本驱动的日周月 Usage/Cost 趋势与 Session/Project 有界查询，固定安全归因、opaque cursor、unknown/真实零、partial 降级及 pricing evidence 对账语义
 28. [TOO-269] 新增 Quota、Source、Job、Health 与 Settings 只读查询，固定 GORM 单快照分页、敏感字段裁剪、来源单侧 partial、有限 recovery action 与 JavaScript 安全数值语义
+29. [TOO-270] 新增唯一 allowlist Wails 查询 façade 与生成式 TypeScript DTO/枚举/错误契约，装配真实 Usage、Quota、Runtime 与共享 Preferences 查询，固定可取消调用、panic 脱敏和失败生成不覆盖既有 bindings 的门禁
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

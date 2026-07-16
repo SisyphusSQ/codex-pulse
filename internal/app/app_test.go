@@ -26,7 +26,8 @@ func TestApplicationOptions(t *testing.T) {
 	assets := fstest.MapFS{
 		"index.html": {Data: []byte("<!doctype html><title>Codex Pulse</title>")},
 	}
-	got := applicationOptions(assets)
+	service := newBindingTestService(t, &usageCostBindingStub{}, &runtimeInfoBindingStub{})
+	got := applicationOptions(assets, service)
 
 	if got.Name != appName {
 		t.Fatalf("Name = %q, want %q", got.Name, appName)
@@ -36,6 +37,9 @@ func TestApplicationOptions(t *testing.T) {
 	}
 	if len(got.Services) != 1 {
 		t.Fatalf("len(Services) = %d, want 1", len(got.Services))
+	}
+	if got.Services[0].Instance() != service {
+		t.Fatalf("registered service = %T, want binding facade", got.Services[0].Instance())
 	}
 	if got.Assets.Handler == nil {
 		t.Fatal("Assets.Handler must be configured")
