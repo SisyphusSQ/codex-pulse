@@ -50,7 +50,7 @@ func mainWindowOptions() application.WebviewWindowOptions {
 			InvisibleTitleBarHeight: 52,
 			TitleBar:                application.MacTitleBarHiddenInset,
 		},
-		BackgroundColour: application.NewRGB(15, 23, 42),
+		BackgroundColour: application.NewRGB(242, 245, 249),
 	}
 }
 

@@ -63,10 +63,13 @@ func TestMainWindowOptions(t *testing.T) {
 	if got.URL != "/" {
 		t.Fatalf("URL = %q, want /", got.URL)
 	}
-	if got.Width < 900 || got.Height < 600 {
-		t.Fatalf("window size = %dx%d, want at least 900x600", got.Width, got.Height)
+	if got.Width != 1120 || got.Height != 720 || got.MinWidth != 900 || got.MinHeight != 600 {
+		t.Fatalf(
+			"window size = %dx%d min %dx%d, want 1120x720 min 900x600",
+			got.Width, got.Height, got.MinWidth, got.MinHeight,
+		)
 	}
-	if got.BackgroundColour != application.NewRGB(15, 23, 42) {
+	if got.BackgroundColour != application.NewRGB(242, 245, 249) {
 		t.Fatalf("BackgroundColour = %#v", got.BackgroundColour)
 	}
 }

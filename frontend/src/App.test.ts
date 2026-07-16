@@ -26,7 +26,7 @@ async function renderApp() {
   await dependencies.router.isReady();
   mountedApps.push(app);
 
-  return host;
+  return { dependencies, host };
 }
 
 describe("Codex Pulse application shell", () => {
@@ -44,9 +44,10 @@ describe("Codex Pulse application shell", () => {
   it("shows a loading state while the Go binding is pending", async () => {
     bootstrapMock.mockReturnValue(new Promise(() => undefined) as ReturnType<typeof Bootstrap>);
 
-    const host = await renderApp();
+    const { host } = await renderApp();
 
     expect(host.querySelector("[data-testid='service-loading']")?.textContent).toContain("正在连接");
+    expect(host.querySelectorAll("[aria-live], [role='status'], [role='alert']")).toHaveLength(1);
   });
 
   it("renders the typed metadata returned by the Go binding", async () => {
@@ -56,7 +57,7 @@ describe("Codex Pulse application shell", () => {
       platform: "darwin",
     });
 
-    const host = await renderApp();
+    const { host } = await renderApp();
     await flushPromises();
 
     expect(host.querySelector("[data-testid='service-ready']")?.textContent).toContain("本机服务已连接");
@@ -69,15 +70,35 @@ describe("Codex Pulse application shell", () => {
       .mockRejectedValueOnce(new Error("binding unavailable"))
       .mockResolvedValueOnce({ name: "Codex Pulse", locale: "zh-CN", platform: "darwin" });
 
-    const host = await renderApp();
+    const { host } = await renderApp();
     await flushPromises();
 
     expect(host.querySelector("[data-testid='service-error']")?.textContent).toContain("暂不可用");
+    expect(host.querySelectorAll("[aria-live], [role='status'], [role='alert']")).toHaveLength(1);
     (host.querySelector("[data-testid='retry-binding']") as HTMLButtonElement).click();
     await flushPromises();
 
     expect(bootstrapMock).toHaveBeenCalledTimes(2);
     expect(host.querySelector("[data-testid='service-ready']")).not.toBeNull();
+  });
+
+  it("renders the six-route application shell and follows router selection", async () => {
+    bootstrapMock.mockResolvedValue({ name: "Codex Pulse", locale: "zh-CN", platform: "darwin" });
+
+    const { dependencies, host } = await renderApp();
+    await flushPromises();
+
+    expect(host.querySelector("[data-testid='app-shell']")).not.toBeNull();
+    const navigation = host.querySelector("[data-testid='primary-navigation']");
+    expect(navigation?.querySelectorAll("a")).toHaveLength(6);
+    expect(navigation?.querySelector("a[aria-current='page']")?.getAttribute("href")).toBe("/overview");
+    expect(host.querySelector("img")?.getAttribute("alt")).toBe("");
+    expect(host.querySelector("img")?.getAttribute("aria-hidden")).toBe("true");
+
+    await dependencies.router.push("/settings");
+    await flushPromises();
+
+    expect(navigation?.querySelector("a[aria-current='page']")?.getAttribute("href")).toBe("/settings");
   });
 
   it("releases every Wails event subscription when the app unmounts", async () => {
