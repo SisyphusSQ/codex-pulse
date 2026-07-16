@@ -100,6 +100,7 @@ type Service struct {
 	running bool
 
 	activityMu      sync.Mutex
+	preflightActive bool
 	activityTask    *store.SchedulerTask
 	activityChanged chan struct{}
 }
@@ -158,8 +159,9 @@ func NewService(config ServiceConfig) (*Service, error) {
 	return service, nil
 }
 
-// Drain 等待在intent落盘前已进入选择/claim窗口的受影响slice退出。新的claim由
-// Store lifecycle CAS阻断；PauseBackfill不会等待或阻塞live slice。
+// Drain 等待在intent落盘前已进入recovery/retry preflight或选择/claim窗口的
+// 受影响writer退出。preflight可能触达任一lane，因此两种scope都等待；进入普通
+// slice后PauseBackfill仍不会等待或阻塞live slice。新的claim由Store lifecycle CAS阻断。
 func (service *Service) Drain(ctx context.Context, scope store.LifecyclePauseScope) error {
 	if service == nil || ctx == nil ||
 		(scope != store.LifecyclePauseBackfill && scope != store.LifecyclePauseAll) {
@@ -167,9 +169,11 @@ func (service *Service) Drain(ctx context.Context, scope store.LifecyclePauseSco
 	}
 	for {
 		service.activityMu.Lock()
+		preflightActive := service.preflightActive
 		task := service.activityTask
 		changed := service.activityChanged
-		blocked := task != nil && (scope == store.LifecyclePauseAll || task.Lane == store.SchedulerLaneBackfill)
+		blocked := preflightActive || task != nil &&
+			(scope == store.LifecyclePauseAll || task.Lane == store.SchedulerLaneBackfill)
 		service.activityMu.Unlock()
 		if !blocked {
 			return nil
@@ -180,6 +184,14 @@ func (service *Service) Drain(ctx context.Context, scope store.LifecyclePauseSco
 		case <-changed:
 		}
 	}
+}
+
+func (service *Service) setPreflightActivity(active bool) {
+	service.activityMu.Lock()
+	close(service.activityChanged)
+	service.activityChanged = make(chan struct{})
+	service.preflightActive = active
+	service.activityMu.Unlock()
 }
 
 func (service *Service) setActivity(task *store.SchedulerTask) {

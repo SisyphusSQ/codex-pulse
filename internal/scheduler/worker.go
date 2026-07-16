@@ -123,6 +123,8 @@ func (service *Service) RecoverActiveTasks(ctx context.Context) ([]store.Schedul
 func (service *Service) recoverActiveTasksSerialized(ctx context.Context) ([]store.SchedulerTask, error) {
 	service.cycleMu.Lock()
 	defer service.cycleMu.Unlock()
+	service.setPreflightActivity(true)
+	defer service.setPreflightActivity(false)
 	return service.recoverActiveTasksOwned(ctx)
 }
 
@@ -235,6 +237,13 @@ func (service *Service) runCycleOwned(
 	ctx context.Context,
 	system SystemSnapshot,
 ) (CycleResult, error) {
+	preflightActive := true
+	service.setPreflightActivity(true)
+	defer func() {
+		if preflightActive {
+			service.setPreflightActivity(false)
+		}
+	}()
 	// Recovery is cycle-local, not startup-only: a process may restart while a
 	// durable pause masks running/interrupted tasks, then resume without another
 	// restart. Rechecking here makes the first permitted cycle adopt them.
@@ -244,6 +253,8 @@ func (service *Service) runCycleOwned(
 	if _, err := service.resumeDueRetryOwned(ctx); err != nil {
 		return CycleResult{}, err
 	}
+	service.setPreflightActivity(false)
+	preflightActive = false
 	queueSnapshot, err := service.repository.SchedulerRunnableQueueSnapshot(ctx)
 	if err != nil {
 		return CycleResult{}, err

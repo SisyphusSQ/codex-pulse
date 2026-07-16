@@ -60,6 +60,7 @@ const (
 	commandWake
 	commandSourceChanged
 	commandRecover
+	commandHomeChanged
 )
 
 type command struct {
@@ -159,6 +160,18 @@ func (coordinator *Coordinator) Recover(
 	return coordinator.submit(command{ctx: ctx, kind: commandRecover, eventID: eventID})
 }
 
+// HomeChanged 在同一个 durable lifecycle state machine 中先 fence/drain
+// 旧 generation，再切换 generation 并按当前 pause/sleep 语义恢复来源。
+func (coordinator *Coordinator) HomeChanged(
+	ctx context.Context,
+	eventID string,
+	generation int64,
+) (store.SchedulerLifecycle, error) {
+	return coordinator.submit(command{
+		ctx: ctx, kind: commandHomeChanged, eventID: eventID, generation: generation,
+	})
+}
+
 func (coordinator *Coordinator) Close(ctx context.Context) error {
 	if coordinator == nil || ctx == nil {
 		return ErrInvalidCoordinator
@@ -239,9 +252,62 @@ func (coordinator *Coordinator) execute(value command) (store.SchedulerLifecycle
 		return coordinator.sourceChanged(value.ctx, current, value.eventID, value.available)
 	case commandRecover:
 		return coordinator.recover(value.ctx, current, value.eventID)
+	case commandHomeChanged:
+		return coordinator.homeChanged(value.ctx, current, value.eventID, value.generation)
 	default:
 		return store.SchedulerLifecycle{}, ErrInvalidCoordinator
 	}
+}
+
+func (coordinator *Coordinator) homeChanged(
+	ctx context.Context,
+	current store.SchedulerLifecycle,
+	eventID string,
+	generation int64,
+) (store.SchedulerLifecycle, error) {
+	if generation < 0 {
+		return current, ErrInvalidCoordinator
+	}
+	if current.HomeGeneration == generation {
+		if current.SystemState == store.LifecycleSystemSleeping &&
+			current.Transition == store.LifecycleTransitionSteady {
+			return current, nil
+		}
+		if current.Transition == store.LifecycleTransitionSteady &&
+			current.SourceState == store.LifecycleSourceAvailable {
+			return current, nil
+		}
+		return coordinator.reconcile(
+			ctx, current, eventID+":reconcile", ReconcileSourceChange, false,
+		)
+	}
+	intent, err := coordinator.update(ctx, current, eventID+":drain-intent", func(next *store.SchedulerLifecycle) {
+		next.SourceState = store.LifecycleSourceUnknown
+		next.Transition = store.LifecycleTransitionDraining
+	})
+	if err != nil {
+		return current, err
+	}
+	if err := coordinator.scheduler.Drain(ctx, store.LifecyclePauseAll); err != nil {
+		return intent, err
+	}
+	rebound, err := coordinator.update(ctx, intent, eventID+":generation", func(next *store.SchedulerLifecycle) {
+		next.HomeGeneration = generation
+		next.SourceState = store.LifecycleSourceUnknown
+		next.Transition = store.LifecycleTransitionSteady
+	})
+	if err != nil {
+		return intent, err
+	}
+	if rebound.SystemState == store.LifecycleSystemSleeping {
+		return coordinator.update(ctx, rebound, eventID+":deferred", func(next *store.SchedulerLifecycle) {
+			next.SourceState = store.LifecycleSourceUnknown
+			next.Transition = store.LifecycleTransitionSteady
+		})
+	}
+	return coordinator.reconcile(
+		ctx, rebound, eventID+":reconcile", ReconcileSourceChange, false,
+	)
 }
 
 func (coordinator *Coordinator) pause(
