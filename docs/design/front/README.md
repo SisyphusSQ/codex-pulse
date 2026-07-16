@@ -55,6 +55,15 @@
 - 本机状态同一时间最多显示一个条件 Banner；历史补齐使用蓝色信息级，持续 degraded 使用橙色，blocked 使用红色。
 - Data Health 是本机状态下钻的二级页面，不增加独立主导航项；页面先解释影响和保护措施，再展示领域、任务、事件、资源和恢复动作。
 
+## Query DTO 消费边界
+
+- 后续 Wails bindings 只暴露 Go `query-v1` 与各业务 query service 组合出的非泛型 DTO；组件不接收 GORM model、SQLite row、SQL 字段或任意 map。
+- request 的 page/sort/filter/time range 必须先经 Go endpoint specification allowlist。前端把 cursor 当 opaque token；不得解析 cursor、猜测数据库 offset 或请求无限列表。
+- token、count 与 API 等价成本使用 Go 校验后的整数 DTO；微美元只在 locale formatter 转成展示金额，不在 Vue 中重新计算或用浮点累计。超出 JavaScript safe integer 的事实由 Go fail closed，不能静默舍入。
+- 本地日期选择传递 `YYYY-MM-DD`、exclusive end 和 IANA timezone；UTC 边界由 Go 计算，前端不得用固定 24 小时或固定 offset 猜测 DST 日期。
+- 已知空集合固定为 `[]`；真实数值 `0` 保留为 `0`；unknown 使用 `null + unknownReason` 并展示 `--`。partial 保留可用数据并局部提示，不切换全局 loading；unavailable 使用稳定 error code/message key，不显示底层 error text。
+- Go 返回的 message key 只用于 Vue I18n 查找 `zh-CN` 文案；业务 service 和组件都不得把用户路径、凭证、原始响应或 driver 错误塞入 message key/field。
+
 ## 图标规范
 
 - 正式方向：03“深空控制台”。
