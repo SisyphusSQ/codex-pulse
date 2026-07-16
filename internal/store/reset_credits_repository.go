@@ -113,54 +113,76 @@ func (repository *Repository) ResetCreditsSummary(
 		AccountScope: accountScope, FreshnessState: SourceFreshnessUnknown, EvaluationAtMS: evaluationAtMS,
 	}
 	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
-		database := connection.WithContext(ctx)
-		state, found, err := sourceStateByID(ctx, database, ResetCreditsSourceInstanceWhamDefault)
-		if err != nil {
+		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
+			var err error
+			summary, err = resetCreditsSummaryFromDatabase(ctx, transaction, accountScope, evaluationAtMS)
 			return err
-		}
-		if found {
-			if state.SourceType != ResetCreditsSourceTypeWham || state.ScopeKey != accountScope {
-				return invalidRecord("reset credits source state identity is invalid")
-			}
-			summary.LastSuccessAtMS = cloneQuotaInt64Pointer(state.LastSuccessAtMS)
-			summary.LastAttemptAtMS = cloneQuotaInt64Pointer(state.LastAttemptAtMS)
-			summary.LastFailureCode = cloneSourceFailureCode(state.LastFailureCode)
-			summary.FreshnessState = state.FreshnessState
-		}
-		var snapshotModel resetCreditsSnapshotModel
-		err = database.Where("account_scope = ?", accountScope).
-			Order("observed_at_ms DESC").Order("snapshot_id DESC").Take(&snapshotModel).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		var creditModels []resetCreditModel
-		if err := database.Where("snapshot_id = ?", snapshotModel.SnapshotID).
-			Order("credit_id_hash").Find(&creditModels).Error; err != nil {
-			return err
-		}
-		snapshot, err := resetCreditsSnapshotFromModels(snapshotModel, creditModels)
-		if err != nil {
-			return err
-		}
-		attempt, found, err := sourceAttemptByID(ctx, database, snapshot.RequestID)
-		if err != nil {
-			return err
-		}
-		if !found || attempt.SourceInstanceID != ResetCreditsSourceInstanceWhamDefault ||
-			attempt.Outcome != SourceAttemptSucceeded || snapshot.ObservedAtMS < attempt.StartedAtMS ||
-			snapshot.ObservedAtMS > attempt.FinishedAtMS {
-			return invalidRecord("reset credits snapshot attempt provenance is invalid")
-		}
-		if err := validateResetCreditsSnapshot(snapshot); err != nil {
-			return err
-		}
-		populateResetCreditsSummary(&summary, snapshot, evaluationAtMS)
-		return nil
+		})
 	})
 	return summary, err
+}
+
+func resetCreditsSummaryFromDatabase(
+	ctx context.Context,
+	database *gorm.DB,
+	accountScope string,
+	evaluationAtMS int64,
+) (ResetCreditsSummary, error) {
+	summary := ResetCreditsSummary{
+		AccountScope: accountScope, FreshnessState: SourceFreshnessUnknown, EvaluationAtMS: evaluationAtMS,
+	}
+	if accountScope != QuotaAccountScopeDefault || evaluationAtMS < 0 ||
+		evaluationAtMS > runtimeclock.MaxTimestampMS {
+		return ResetCreditsSummary{}, invalidRecord("reset credits summary input is invalid")
+	}
+	state, found, err := sourceStateByID(ctx, database, ResetCreditsSourceInstanceWhamDefault)
+	if err != nil {
+		return ResetCreditsSummary{}, err
+	}
+	if found {
+		if state.SourceType != ResetCreditsSourceTypeWham || state.ScopeKey != accountScope {
+			return ResetCreditsSummary{}, invalidRecord("reset credits source state identity is invalid")
+		}
+		if err := validateSourceState(state); err != nil {
+			return ResetCreditsSummary{}, invalidRecord("stored reset credits source state is invalid")
+		}
+		summary.LastSuccessAtMS = cloneQuotaInt64Pointer(state.LastSuccessAtMS)
+		summary.LastAttemptAtMS = cloneQuotaInt64Pointer(state.LastAttemptAtMS)
+		summary.LastFailureCode = cloneSourceFailureCode(state.LastFailureCode)
+		summary.FreshnessState = state.FreshnessState
+	}
+	var snapshotModel resetCreditsSnapshotModel
+	err = database.Where("account_scope = ?", accountScope).
+		Order("observed_at_ms DESC").Order("snapshot_id DESC").Take(&snapshotModel).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return summary, nil
+	}
+	if err != nil {
+		return ResetCreditsSummary{}, err
+	}
+	var creditModels []resetCreditModel
+	if err := database.Where("snapshot_id = ?", snapshotModel.SnapshotID).
+		Order("credit_id_hash").Find(&creditModels).Error; err != nil {
+		return ResetCreditsSummary{}, err
+	}
+	snapshot, err := resetCreditsSnapshotFromModels(snapshotModel, creditModels)
+	if err != nil {
+		return ResetCreditsSummary{}, err
+	}
+	attempt, found, err := sourceAttemptByID(ctx, database, snapshot.RequestID)
+	if err != nil {
+		return ResetCreditsSummary{}, err
+	}
+	if !found || attempt.SourceInstanceID != ResetCreditsSourceInstanceWhamDefault ||
+		attempt.Outcome != SourceAttemptSucceeded || snapshot.ObservedAtMS < attempt.StartedAtMS ||
+		snapshot.ObservedAtMS > attempt.FinishedAtMS {
+		return ResetCreditsSummary{}, invalidRecord("reset credits snapshot attempt provenance is invalid")
+	}
+	if err := validateResetCreditsSnapshot(snapshot); err != nil {
+		return ResetCreditsSummary{}, err
+	}
+	populateResetCreditsSummary(&summary, snapshot, evaluationAtMS)
+	return summary, nil
 }
 
 func validateResetCreditsFetchRecord(record ResetCreditsFetchRecord) error {
