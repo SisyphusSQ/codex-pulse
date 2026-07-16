@@ -26,7 +26,8 @@ const (
 	applicationSchemaV9Version  = 9
 	applicationSchemaV10Version = 10
 	applicationSchemaV11Version = 11
-	applicationSchemaVersion    = applicationSchemaV11Version
+	applicationSchemaV12Version = 12
+	applicationSchemaVersion    = applicationSchemaV12Version
 )
 
 var (
@@ -165,6 +166,14 @@ var applicationMigrations = []migrationDefinition{
 				return err
 			}
 			return rebuildQuotaProjectionDuringMigration(ctx, transaction)
+		},
+	},
+	{
+		version:  applicationSchemaV12Version,
+		name:     "reset-credits-and-quota-scheduling",
+		checksum: applicationSchemaV12Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			return ensureSchemaObjects(ctx, transaction, quotaScheduleSchemaObjects)
 		},
 	},
 }
@@ -580,7 +589,7 @@ func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteT
 		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
-		quotaSchemaObjects, quotaProjectionSchemaObjects,
+		quotaSchemaObjects, quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
 	} {
 		for _, object := range objects {
 			exists, err := verifySchemaObject(ctx, transaction, object)
@@ -750,6 +759,18 @@ func applicationSchemaV11Checksum() string {
 	hasher := sha256.New()
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV11Version, "quota-window-arbitration-projection")
 	for _, object := range quotaProjectionSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.objectType, object.name,
+			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV12Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV12Version, "reset-credits-and-quota-scheduling")
+	for _, object := range quotaScheduleSchemaObjects {
 		_, _ = fmt.Fprintln(
 			hasher, object.objectType, object.name,
 			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),

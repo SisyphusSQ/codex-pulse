@@ -39,6 +39,11 @@ func (repository *Repository) RecordQuotaFetch(ctx context.Context, record Quota
 			}
 			return nil
 		}
+		if err := validateSourceRefreshClaimAttempt(
+			ctx, database, record.Attempt.RequestID, record.SourceInstanceID,
+		); err != nil {
+			return err
+		}
 		evaluatedAtMS, err := repository.quotaEvaluationTimeMS()
 		if err != nil {
 			return err
@@ -183,29 +188,44 @@ func projectQuotaSourceState(
 	found bool,
 	record QuotaFetchRecord,
 ) (SourceState, bool, error) {
-	if found && existing.LastAttemptAtMS != nil && record.Attempt.FinishedAtMS < *existing.LastAttemptAtMS {
+	return projectOnlineSourceState(
+		existing, found, record.SourceInstanceID, record.SourceType, record.ScopeKey,
+		record.Attempt, quotaFetchHasAcceptedObservation(record.Observations),
+	)
+}
+
+func projectOnlineSourceState(
+	existing SourceState,
+	found bool,
+	sourceInstanceID string,
+	sourceType string,
+	scopeKey string,
+	attempt SourceAttempt,
+	hasAcceptedFacts bool,
+) (SourceState, bool, error) {
+	if found && existing.LastAttemptAtMS != nil && attempt.FinishedAtMS < *existing.LastAttemptAtMS {
 		return existing, false, nil
 	}
 	state := existing
 	if !found {
 		state = SourceState{
-			SourceInstanceID: record.SourceInstanceID, SourceType: record.SourceType,
-			ScopeKey: record.ScopeKey, FreshnessState: SourceFreshnessUnknown,
+			SourceInstanceID: sourceInstanceID, SourceType: sourceType,
+			ScopeKey: scopeKey, FreshnessState: SourceFreshnessUnknown,
 		}
 	}
-	updatedAtMS := record.Attempt.FinishedAtMS
+	updatedAtMS := attempt.FinishedAtMS
 	if found && updatedAtMS <= existing.UpdatedAtMS {
 		if existing.UpdatedAtMS == math.MaxInt64 {
 			return SourceState{}, false, invalidRecord("quota source update timestamp is exhausted")
 		}
 		updatedAtMS = existing.UpdatedAtMS + 1
 	}
-	finishedAtMS := record.Attempt.FinishedAtMS
+	finishedAtMS := attempt.FinishedAtMS
 	state.LastAttemptAtMS = &finishedAtMS
 	state.UpdatedAtMS = updatedAtMS
 	state.CursorVersion++
 	state.NextDueAtMS = nil
-	switch record.Attempt.Outcome {
+	switch attempt.Outcome {
 	case SourceAttemptSucceeded:
 		state.LastSuccessAtMS = &finishedAtMS
 		state.ConsecutiveFailures = 0
@@ -213,21 +233,21 @@ func projectQuotaSourceState(
 		state.LastFailureCode = nil
 		state.FreshnessState = SourceFreshnessCurrent
 	case SourceAttemptFailed:
-		if quotaFetchHasAcceptedObservation(record.Observations) {
+		if hasAcceptedFacts {
 			state.LastSuccessAtMS = &finishedAtMS
 		}
 		state.ConsecutiveFailures++
-		state.LastErrorClass = cloneRuntimeErrorClass(record.Attempt.ErrorClass)
-		state.LastFailureCode = cloneSourceFailureCode(record.Attempt.FailureCode)
-		state.NextDueAtMS = cloneQuotaInt64Pointer(record.Attempt.RetryAtMS)
+		state.LastErrorClass = cloneRuntimeErrorClass(attempt.ErrorClass)
+		state.LastFailureCode = cloneSourceFailureCode(attempt.FailureCode)
+		state.NextDueAtMS = cloneQuotaInt64Pointer(attempt.RetryAtMS)
 		if state.LastSuccessAtMS == nil {
 			state.FreshnessState = SourceFreshnessUnavailable
 		} else {
 			state.FreshnessState = SourceFreshnessStale
 		}
 	case SourceAttemptCancelled:
-		state.LastErrorClass = cloneRuntimeErrorClass(record.Attempt.ErrorClass)
-		state.LastFailureCode = cloneSourceFailureCode(record.Attempt.FailureCode)
+		state.LastErrorClass = cloneRuntimeErrorClass(attempt.ErrorClass)
+		state.LastFailureCode = cloneSourceFailureCode(attempt.FailureCode)
 	}
 	return state, true, validateSourceState(state)
 }

@@ -19,14 +19,14 @@ func TestApplicationSchemaV10ChecksumIsFrozen(t *testing.T) {
 func TestApplicationSchemaV10AddsTypedSourceFailureMetrics(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != 11 {
-		t.Fatalf("applicationSchemaVersion = %d, want 11", applicationSchemaVersion)
+	if applicationSchemaVersion != 12 {
+		t.Fatalf("applicationSchemaVersion = %d, want 12", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	if err := NewRepository(database).EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 11, 11)
+	assertMigrationVersionAndHistory(t, database, 12, 12)
 	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
 		for _, field := range []struct {
 			model any

@@ -9,6 +9,9 @@ var (
 	ErrInvalidRecord = errors.New("invalid fact record")
 	// ErrNotFound 表示 typed query 没有找到目标事实。
 	ErrNotFound = errors.New("fact record not found")
+	// ErrSourceRefreshConflict 表示 refresh claim 的 revision/identity 已由
+	// 另一个合法执行推进；调用方应重读 durable schedule，而不是把它当成损坏。
+	ErrSourceRefreshConflict = errors.New("source refresh claim conflicts with durable state")
 )
 
 // Project 是 Session 和 Turn 引用的最小稳定项目维度。

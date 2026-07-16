@@ -13,8 +13,8 @@ import (
 func TestApplicationSchemaV11CreatesQuotaProjection(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != 11 {
-		t.Fatalf("applicationSchemaVersion = %d, want 11", applicationSchemaVersion)
+	if applicationSchemaVersion != 12 {
+		t.Fatalf("applicationSchemaVersion = %d, want 12", applicationSchemaVersion)
 	}
 	const wantChecksum = "838ab8173f637ae8f702b3f4e2139bf1d6810941b0a83d1c258743183d914475"
 	if got := applicationSchemaV11Checksum(); got != wantChecksum {
@@ -24,7 +24,7 @@ func TestApplicationSchemaV11CreatesQuotaProjection(t *testing.T) {
 	if err := NewRepository(database).EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 11, 11)
+	assertMigrationVersionAndHistory(t, database, 12, 12)
 	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
 		for _, object := range quotaProjectionSchemaObjects {
 			if object.objectType == "table" && !connection.Migrator().HasTable(object.name) {
@@ -47,7 +47,7 @@ func TestApplicationSchemaV11CreatesQuotaProjection(t *testing.T) {
 	}
 }
 
-func TestApplicationMigrationUpgradesV10ToV11WithoutChangingRawObservations(t *testing.T) {
+func TestApplicationMigrationUpgradesV10ThroughCurrentWithoutChangingRawObservations(t *testing.T) {
 	t.Parallel()
 
 	database := openTestDatabase(t)
@@ -71,10 +71,10 @@ func TestApplicationMigrationUpgradesV10ToV11WithoutChangingRawObservations(t *t
 	if err != nil {
 		t.Fatalf("run(v10->v11) error = %v", err)
 	}
-	if report.FromVersion != 10 || report.TargetVersion != 11 || !equalInts(report.AppliedVersions, []int{11}) {
+	if report.FromVersion != 10 || report.TargetVersion != 12 || !equalInts(report.AppliedVersions, []int{11, 12}) {
 		t.Fatalf("migration report = %#v", report)
 	}
-	assertMigrationVersionAndHistory(t, database, 11, 11)
+	assertMigrationVersionAndHistory(t, database, 12, 12)
 	repository := NewRepository(database)
 	current, err := repository.QuotaCurrent(
 		context.Background(), QuotaAccountScopeDefault, QuotaWindowPrimary, "codex", 1_000_000+quotaTestMinuteMS,
