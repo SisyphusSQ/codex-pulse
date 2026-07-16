@@ -5,7 +5,9 @@
 - 记录时间：2026-07-16（Asia/Shanghai）
 - 记录目录：仓库根目录
 - 本轮任务性质：TOO-271 typed Wails invalidation event、post-commit通知、Vue Query key/cache/recovery契约
-- 当前结论：`IMPLEMENTATION REVIEW PASS；CHANGELOG/POST-INTEGRATION FULL LOCAL GATES PASS；FINAL SCOPE REVIEW PASS`
+- 当前结论：`DONE`；TOO-271 已由 PR #36 self-merge 为 `a2d8d62e81549c6c85d8fc2670418309c9a31da2`，post-merge verify 与 Linear Done 已完成；当前作为 TOO-236 Master closeout 的集成证据。
+- M6 Master 集成验证（2026-07-17）：`query/... + store + app + scheduler` focused count10 全部通过（Store 102.690s、app 19.047s、scheduler 34.816s），race count3 全部通过（Store 218.458s、app 41.893s、scheduler 78.954s）；完整 `make verify`、全仓 race（Store 82.855s）、vet/tidy/diff、harness/project/version、frontend 5 files/16 tests、generated 319 packages/1 service/15 methods/32 enums/65 models/1 event、arm64/minOS 15 app/ZIP 全部通过。release classification=`issue-only`、version `findings=[]`，最终 diff 仅含 M6 五份 runbook。
+- M6 Master final review：独立 subagent 首轮发现本地 ignored Master plan skeleton Medium，补齐后又发现并关闭 `internal/app/service.go` / `Service` 命名真相 Low；最终 Critical/High/Medium/Low 均为 none，`remaining_findings=0`、`blocking_findings=0`、`MASTER_FINAL_REVIEW_PASS:YES`。
 - 自动化入口：`internal/app/query_invalidation_test.go`、`internal/scheduler/*_test.go`、`frontend/src/queries/business.test.ts`、`frontend/src/events/queryInvalidation.test.ts`、`frontend/src/App.test.ts`
 - 对应计划 / issue：`.agents/plans/2026-07-16-too-271-wails-events-vue-query-cache.md` / TOO-271
 - 结果说明：仅使用内存 fake、synthetic HTTP payload、`testing.T.TempDir()` Preferences/Pure-Go SQLite 和 generated bindings；未读取真实 Codex Home/auth/session，未启动 Wails 窗口，未查询或触发 GitHub Actions，未发布。
@@ -20,6 +22,7 @@
 - Control/package：harness、project及其负向contract、generated success/failure preservation、version `findings=[]` 均通过；arm64/minOS 15 ad-hoc app 与ZIP验证通过。implementation review两个Medium（malformed runtime guard、lost-event active periodic refetch）均完成RED/GREEN，最终Critical/High/Medium/Low为0、`IMPLEMENTATION_REVIEW_PASS:YES`。
 - Post-integration：`[TOO-271]`在`Unreleased -> feature`唯一；focused20（app 2.644s / scheduler 3.093s）、focused race10（app 11.318s / scheduler 18.055s）、full test（Store 15.129s）、full race（Store 77.433s）、tidy/diff/version/plan gate与完整`make verify`全部退出0；frontend为5 files / 16 tests，generated为32 enums/65 models/1 event，package仍为arm64/minOS15。
 - Final scope review：不同subagent独立核对typed payload、commit顺序、failure health、generated防漂移、13 query/timing/cancel、storm/lost/malformed/recovery/unmount、CHANGELOG唯一性与scope guard；Critical/High/Medium/Low均为0，`remaining_findings=0`、`blocking_findings=0`、`FINAL_SCOPE_REVIEW_PASS:YES`。
+- Post-merge：`main@a2d8d62` 的完整 `make verify`、`go test -race ./... -count=1`（Store 79.548s）、`go mod tidy -diff` 与 `git diff --check` 全部通过；首次顶层 verify 仅因当前 PATH 缺锁定 Wails CLI 而在前置门禁停止，读回 `/tmp/codex-pulse-tools/bin/wails3` 精确为 `v3.0.0-alpha2.117` 后显式注入 PATH，从顶层完整重跑通过且无工作树漂移。
 - 清理状态：测试临时目录自动清理；closeout 前已将 ignored `.task`、`bin`、`frontend/node_modules` 与 frontend build output 移入系统废纸篓，仅保留 tracked `frontend/dist/.gitkeep`。
 - 敏感信息处理：只记录固定 event/query key、稳定错误分类和脱敏计数；不记录真实路径、token、Preferences值、SQLite row、request/response正文或临时目录。
 

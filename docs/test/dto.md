@@ -5,7 +5,9 @@
 - 记录时间：2026-07-16（Asia/Shanghai）
 - 记录目录：仓库根目录
 - 本轮任务性质：TOO-267 `query-v1` request/response、分页/排序/筛选、时间、数值、空值和错误 contract
-- 当前结论：`ALL PRE-PR GATES PASS；commit/PR/self-merge/post-merge 待执行`
+- 当前结论：`DONE`；TOO-267 已由 PR #32 self-merge 为 `d6976c9db107c25dc523bc4a2bd261611e942811`，post-merge verify 与 Linear Done 已完成；当前作为 TOO-236 Master closeout 的集成证据。
+- M6 Master 集成验证（2026-07-17）：`query/... + store + app + scheduler` focused count10 全部通过（Store 102.690s、app 19.047s、scheduler 34.816s），race count3 全部通过（Store 218.458s、app 41.893s、scheduler 78.954s）；完整 `make verify`、全仓 race（Store 82.855s）、vet/tidy/diff、harness/project/version、frontend 5 files/16 tests、generated 319 packages/1 service/15 methods/32 enums/65 models/1 event、arm64/minOS 15 app/ZIP 全部通过。release classification=`issue-only`、version `findings=[]`，最终 diff 仅含 M6 五份 runbook。
+- M6 Master final review：独立 subagent 首轮发现本地 ignored Master plan skeleton Medium，补齐后又发现并关闭 `internal/app/service.go` / `Service` 命名真相 Low；最终 Critical/High/Medium/Low 均为 none，`remaining_findings=0`、`blocking_findings=0`、`MASTER_FINAL_REVIEW_PASS:YES`。
 - 自动化入口：`internal/query/*_test.go`
 - 对应计划 / issue：`.agents/plans/2026-07-16-too-267-query-contracts.md` / TOO-267
 - 结果说明：测试只构造 synthetic query request、日期、数值和错误，不读取 Store、Codex Home、auth、SQLite 或外部服务。三轮有效 RED 均由目标 contract 缺失或 response invariant 缺口触发；focused repeat/race、全仓 test/race/vet/tidy、control/version 与完整 build/package gate 均已通过。
@@ -35,7 +37,7 @@
 | implementation review | PASS | 首轮 3 个 Medium 均按有效 RED/GREEN 修复；原 reviewer 复核 `blocking_findings=0` |
 | changelog/integration verify | PASS | 唯一 `[TOO-267]` Unreleased feature；随后完整 `make verify` PASS，ignored 产物 scoped clean |
 | final scope review | PASS | 首轮 1 个 runbook Medium 已修复；不同 reviewer closure `blocking_findings=0` |
-| closeout | 待执行 | commit/PR/self-merge/post-merge/Linear Done |
+| closeout | PASS | PR #32 merged；`main@d6976c9` post-merge PASS；Linear TOO-267 Done |
 | GitHub Actions | 不执行 | `actions_disabled_by_user`，不查询、不触发、不等待 |
 | release | 不执行 | 普通 Execution 不发布 |
 
