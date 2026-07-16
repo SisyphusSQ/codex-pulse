@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -271,15 +272,222 @@ func TestCoordinatorRecoverDoesNotBypassDurablePause(t *testing.T) {
 	}
 }
 
+func TestCoordinatorHomeChangedDrainsAndRebindsGeneration(t *testing.T) {
+	t.Parallel()
+
+	repository := openLifecycleRepository(t)
+	scheduler := &fakeSchedulerControl{}
+	reconciler := &fakeReconciler{result: ReconcileResult{
+		HomeGeneration: 2, SourceState: store.LifecycleSourceAvailable,
+	}}
+	coordinator := newLifecycleCoordinator(t, repository, scheduler, reconciler)
+	if _, err := coordinator.Initialize(context.Background(), 1, "startup:1"); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	if _, err := coordinator.Pause(
+		context.Background(), "pause:backfill", store.LifecyclePauseBackfill,
+	); err != nil {
+		t.Fatalf("Pause(backfill) error = %v", err)
+	}
+	scheduler.drains = nil
+	changed, err := coordinator.HomeChanged(context.Background(), "home:2", 2)
+	if err != nil || changed.HomeGeneration != 2 ||
+		changed.UserPauseScope != store.LifecyclePauseBackfill ||
+		changed.SystemState != store.LifecycleSystemAwake ||
+		changed.SourceState != store.LifecycleSourceAvailable ||
+		changed.Transition != store.LifecycleTransitionSteady {
+		t.Fatalf("HomeChanged() = %#v, %v", changed, err)
+	}
+	if !reflect.DeepEqual(scheduler.drains, []store.LifecyclePauseScope{store.LifecyclePauseAll}) {
+		t.Fatalf("HomeChanged drain scopes = %v", scheduler.drains)
+	}
+	if len(reconciler.reasons) != 1 || reconciler.reasons[0] != ReconcileSourceChange ||
+		len(reconciler.observed) != 1 || reconciler.observed[0].HomeGeneration != 2 ||
+		reconciler.observed[0].Transition != store.LifecycleTransitionReconciling {
+		t.Fatalf("HomeChanged reconcile = reasons:%v observed:%#v", reconciler.reasons, reconciler.observed)
+	}
+	revision := changed.Revision
+	changed, err = coordinator.HomeChanged(context.Background(), "home:2", 2)
+	if err != nil || changed.Revision != revision || len(scheduler.drains) != 1 ||
+		len(reconciler.reasons) != 1 {
+		t.Fatalf("HomeChanged(replay) = %#v, %v", changed, err)
+	}
+}
+
+func TestCoordinatorHomeChangedWaitsForOldWriterBeforeGenerationCAS(t *testing.T) {
+	t.Parallel()
+
+	repository := openLifecycleRepository(t)
+	drainStarted := make(chan struct{})
+	releaseDrain := make(chan struct{})
+	scheduler := &fakeSchedulerControl{
+		drainStarted: drainStarted,
+		releaseDrain: releaseDrain,
+	}
+	reconciler := &fakeReconciler{result: ReconcileResult{
+		HomeGeneration: 2, SourceState: store.LifecycleSourceAvailable,
+	}}
+	coordinator := newLifecycleCoordinator(t, repository, scheduler, reconciler)
+	if _, err := coordinator.Initialize(context.Background(), 1, "startup:1"); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	changed := make(chan commandResult, 1)
+	go func() {
+		state, err := coordinator.HomeChanged(context.Background(), "home:barrier:2", 2)
+		changed <- commandResult{state: state, err: err}
+	}()
+	select {
+	case <-drainStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("HomeChanged did not reach scheduler drain")
+	}
+	intent, err := repository.SchedulerLifecycle(context.Background())
+	if err != nil || intent.HomeGeneration != 1 ||
+		intent.Transition != store.LifecycleTransitionDraining ||
+		intent.SourceState != store.LifecycleSourceUnknown {
+		t.Fatalf("HomeChanged drain intent = %#v, %v", intent, err)
+	}
+	select {
+	case result := <-changed:
+		t.Fatalf("HomeChanged returned before old writer drained: %#v", result)
+	default:
+	}
+	close(releaseDrain)
+	select {
+	case result := <-changed:
+		if result.err != nil || result.state.HomeGeneration != 2 {
+			t.Fatalf("HomeChanged(after drain) = %#v", result)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("HomeChanged did not finish after old writer drained")
+	}
+}
+
+func TestCoordinatorHomeChangedPreservesSleepAndPauseUntilWake(t *testing.T) {
+	t.Parallel()
+
+	repository := openLifecycleRepository(t)
+	scheduler := &fakeSchedulerControl{}
+	reconciler := &fakeReconciler{result: ReconcileResult{
+		HomeGeneration: 2, SourceState: store.LifecycleSourceAvailable,
+	}}
+	coordinator := newLifecycleCoordinator(t, repository, scheduler, reconciler)
+	if _, err := coordinator.Initialize(context.Background(), 1, "startup:1"); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	if _, err := coordinator.Pause(
+		context.Background(), "pause:all", store.LifecyclePauseAll,
+	); err != nil {
+		t.Fatalf("Pause(all) error = %v", err)
+	}
+	if _, err := coordinator.SystemWillSleep(context.Background(), "sleep:home-change"); err != nil {
+		t.Fatalf("SystemWillSleep() error = %v", err)
+	}
+	scheduler.drains = nil
+	changed, err := coordinator.HomeChanged(context.Background(), "home:sleeping:2", 2)
+	if err != nil || changed.HomeGeneration != 2 ||
+		changed.UserPauseScope != store.LifecyclePauseAll ||
+		changed.SystemState != store.LifecycleSystemSleeping ||
+		changed.SourceState != store.LifecycleSourceUnknown ||
+		changed.Transition != store.LifecycleTransitionSteady || len(reconciler.reasons) != 0 {
+		t.Fatalf("HomeChanged(sleeping) = %#v, %v; reasons=%v", changed, err, reconciler.reasons)
+	}
+	if !reflect.DeepEqual(scheduler.drains, []store.LifecyclePauseScope{store.LifecyclePauseAll}) {
+		t.Fatalf("HomeChanged(sleeping) drains = %v", scheduler.drains)
+	}
+	woke, err := coordinator.SystemDidWake(context.Background(), "wake:home-change")
+	if err != nil || woke.HomeGeneration != 2 ||
+		woke.UserPauseScope != store.LifecyclePauseAll ||
+		woke.SourceState != store.LifecycleSourceAvailable || len(reconciler.reasons) != 1 {
+		t.Fatalf("SystemDidWake(after HomeChanged) = %#v, %v", woke, err)
+	}
+}
+
+func TestCoordinatorHomeChangedFencesOldQueueAndOpensNewGeneration(t *testing.T) {
+	t.Parallel()
+
+	repository := openLifecycleRepository(t)
+	scheduler := &fakeSchedulerControl{}
+	reconciler := &fakeReconciler{result: ReconcileResult{
+		HomeGeneration: 2, SourceState: store.LifecycleSourceAvailable,
+	}}
+	coordinator := newLifecycleCoordinator(t, repository, scheduler, reconciler)
+	if _, err := coordinator.Initialize(context.Background(), 1, "startup:1"); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	oldJob := store.JobRun{
+		JobID: "home-change-old-job", JobType: "lifecycle-test", RequestedBy: "test",
+		Priority: 1, State: store.JobQueued, Phase: store.JobPhaseLive,
+		CreatedAtMS: 10, UpdatedAtMS: 10,
+	}
+	if err := repository.CreateJobRun(context.Background(), oldJob); err != nil {
+		t.Fatalf("CreateJobRun(old) error = %v", err)
+	}
+	oldTask := store.SchedulerTask{
+		TaskID: "home-change-old-task", DedupeKey: "home-change:old",
+		TargetKind: store.SchedulerTargetLiveScan, TargetID: oldJob.JobID,
+		HomeGeneration: 1, Lane: store.SchedulerLaneLive,
+		ServiceClass: store.SchedulerServiceBackground, State: store.SchedulerTaskQueued,
+		QueueOrderMS: 10, EnqueuedAtMS: 10, UpdatedAtMS: 10,
+	}
+	if err := repository.EnqueueSchedulerTask(context.Background(), oldTask, 8); err != nil {
+		t.Fatalf("EnqueueSchedulerTask(old) error = %v", err)
+	}
+	before, err := repository.SchedulerRunnableQueueSnapshot(context.Background())
+	if err != nil || before.LiveDepth != 1 || before.LiveCandidate == nil ||
+		before.LiveCandidate.TaskID != oldTask.TaskID {
+		t.Fatalf("SchedulerRunnableQueueSnapshot(before) = %#v, %v", before, err)
+	}
+	if _, err := coordinator.HomeChanged(context.Background(), "home:queue:2", 2); err != nil {
+		t.Fatalf("HomeChanged() error = %v", err)
+	}
+	after, err := repository.SchedulerRunnableQueueSnapshot(context.Background())
+	if err != nil || after.LiveDepth != 0 || after.LiveCandidate != nil {
+		t.Fatalf("SchedulerRunnableQueueSnapshot(old fenced) = %#v, %v", after, err)
+	}
+	newJob := store.JobRun{
+		JobID: "home-change-new-job", JobType: "lifecycle-test", RequestedBy: "test",
+		Priority: 1, State: store.JobQueued, Phase: store.JobPhaseLive,
+		CreatedAtMS: 20, UpdatedAtMS: 20,
+	}
+	if err := repository.CreateJobRun(context.Background(), newJob); err != nil {
+		t.Fatalf("CreateJobRun(new) error = %v", err)
+	}
+	newTask := store.SchedulerTask{
+		TaskID: "home-change-new-task", DedupeKey: "home-change:new",
+		TargetKind: store.SchedulerTargetLiveScan, TargetID: newJob.JobID,
+		HomeGeneration: 2, Lane: store.SchedulerLaneLive,
+		ServiceClass: store.SchedulerServiceBackground, State: store.SchedulerTaskQueued,
+		QueueOrderMS: 20, EnqueuedAtMS: 20, UpdatedAtMS: 20,
+	}
+	if err := repository.EnqueueSchedulerTask(context.Background(), newTask, 8); err != nil {
+		t.Fatalf("EnqueueSchedulerTask(new) error = %v", err)
+	}
+	after, err = repository.SchedulerRunnableQueueSnapshot(context.Background())
+	if err != nil || after.LiveDepth != 1 || after.LiveCandidate == nil ||
+		after.LiveCandidate.TaskID != newTask.TaskID {
+		t.Fatalf("SchedulerRunnableQueueSnapshot(new active) = %#v, %v", after, err)
+	}
+}
+
 type fakeSchedulerControl struct {
 	drains       []store.LifecyclePauseScope
 	drainErr     error
 	recoverCalls int
 	recoverErr   error
+	drainStarted chan struct{}
+	releaseDrain chan struct{}
+	drainOnce    sync.Once
 }
 
 func (scheduler *fakeSchedulerControl) Drain(_ context.Context, scope store.LifecyclePauseScope) error {
 	scheduler.drains = append(scheduler.drains, scope)
+	if scheduler.drainStarted != nil {
+		scheduler.drainOnce.Do(func() { close(scheduler.drainStarted) })
+	}
+	if scheduler.releaseDrain != nil {
+		<-scheduler.releaseDrain
+	}
 	return scheduler.drainErr
 }
 

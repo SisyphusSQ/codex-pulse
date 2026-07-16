@@ -846,6 +846,171 @@ func TestServiceRecoverActiveTasksRebindsLostOwnerAndIsIdempotent(t *testing.T) 
 	}
 }
 
+func TestServiceDrainWaitsForRecoverTargetWriter(t *testing.T) {
+	t.Parallel()
+
+	repository := openSchedulerRepository(t)
+	task := createSchedulerFixture(t, repository, "drain-recover-writer", store.SchedulerLaneLive, 10)
+	if _, err := repository.ClaimSchedulerTask(context.Background(), task.TaskID, 15); err != nil {
+		t.Fatalf("ClaimSchedulerTask() error = %v", err)
+	}
+	recoverStarted := make(chan struct{})
+	releaseRecover := make(chan struct{})
+	executor := &recordingExecutor{recover: func(
+		_ context.Context,
+		lost store.SchedulerTask,
+	) (store.JobRun, error) {
+		close(recoverStarted)
+		<-releaseRecover
+		job := store.JobRun{
+			JobID: lost.TargetID + "-resume", JobType: "scheduler-test", RequestedBy: "test",
+			Priority: 1, State: store.JobQueued, Phase: store.JobPhaseLive,
+			CreatedAtMS: 16, UpdatedAtMS: 16,
+		}
+		if err := repository.CreateJobRun(context.Background(), job); err != nil {
+			return store.JobRun{}, err
+		}
+		return job, nil
+	}}
+	service := newSchedulerTestService(t, repository, executor)
+	recoverDone := make(chan error, 1)
+	go func() {
+		_, recoverErr := service.RecoverActiveTasks(context.Background())
+		recoverDone <- recoverErr
+	}()
+	select {
+	case <-recoverStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("RecoverActiveTasks did not reach target writer")
+	}
+	blockSchedulerLifecycleForDrain(t, repository, "test:home-drain:recover")
+	drainDone := make(chan error, 1)
+	go func() { drainDone <- service.Drain(context.Background(), store.LifecyclePauseAll) }()
+	select {
+	case err := <-drainDone:
+		close(releaseRecover)
+		<-recoverDone
+		t.Fatalf("Drain returned before Recover target writer exited: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(releaseRecover)
+	if err := <-recoverDone; err != nil {
+		t.Fatalf("RecoverActiveTasks() error = %v", err)
+	}
+	if err := <-drainDone; err != nil {
+		t.Fatalf("Drain() error = %v", err)
+	}
+}
+
+func TestServiceDrainWaitsForRetryTargetWriter(t *testing.T) {
+	t.Parallel()
+
+	repository := openSchedulerRepository(t)
+	task := createSchedulerFixture(t, repository, "drain-retry-writer", store.SchedulerLaneLive, 10)
+	nowMS := int64(100)
+	retryStarted := make(chan struct{})
+	releaseRetry := make(chan struct{})
+	executor := &recordingExecutor{}
+	executor.execute = func(
+		_ context.Context,
+		_ store.SchedulerTask,
+		_ ScanBudget,
+	) (SliceResult, error) {
+		return SliceResult{}, errors.New("synthetic retry dependency")
+	}
+	executor.retry = func(
+		_ context.Context,
+		failed store.SchedulerTask,
+	) (store.JobRun, error) {
+		close(retryStarted)
+		<-releaseRetry
+		job := store.JobRun{
+			JobID: failed.TargetID + "-retry", JobType: "scheduler-test", RequestedBy: "test",
+			Priority: 1, State: store.JobQueued, Phase: store.JobPhaseLive,
+			CreatedAtMS: nowMS, UpdatedAtMS: nowMS,
+		}
+		if err := repository.CreateJobRun(context.Background(), job); err != nil {
+			return store.JobRun{}, err
+		}
+		return job, nil
+	}
+	cycle := 0
+	service, err := NewService(ServiceConfig{
+		Repository: repository,
+		Executors: map[store.SchedulerTargetKind]Executor{
+			store.SchedulerTargetLiveScan: executor, store.SchedulerTargetBootstrap: executor,
+		},
+		BudgetPolicy: DefaultBudgetPolicy(), MaxLiveBurst: 8,
+		Clock: func() time.Time { return time.UnixMilli(nowMS) },
+		NewCycleID: func() (string, error) {
+			cycle++
+			return fmt.Sprintf("drain-retry-cycle-%d", cycle), nil
+		},
+		RetryPolicy: fixedRetryPolicy{delay: time.Second},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	first, err := service.RunCycle(context.Background(), SystemSnapshot{})
+	if err == nil || first.Cycle.Outcome != store.SchedulerCycleFailed {
+		t.Fatalf("RunCycle(failure) = %#v, %v", first, err)
+	}
+	retryState, err := repository.SchedulerRetryState(context.Background(), task.TaskID)
+	if err != nil || retryState.NextRetryAtMS == nil {
+		t.Fatalf("SchedulerRetryState() = %#v, %v", retryState, err)
+	}
+	nowMS = *retryState.NextRetryAtMS
+	retryDone := make(chan error, 1)
+	go func() {
+		_, retryErr := service.RunCycle(context.Background(), SystemSnapshot{})
+		retryDone <- retryErr
+	}()
+	select {
+	case <-retryStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunCycle did not reach Retry target writer")
+	}
+	blockSchedulerLifecycleForDrain(t, repository, "test:home-drain:retry")
+	drainDone := make(chan error, 1)
+	go func() { drainDone <- service.Drain(context.Background(), store.LifecyclePauseAll) }()
+	select {
+	case err := <-drainDone:
+		close(releaseRetry)
+		<-retryDone
+		t.Fatalf("Drain returned before Retry target writer exited: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(releaseRetry)
+	if err := <-retryDone; !errors.Is(err, ErrQueueEmpty) {
+		t.Fatalf("RunCycle(retry after fence) error = %v, want ErrQueueEmpty", err)
+	}
+	if err := <-drainDone; err != nil {
+		t.Fatalf("Drain() error = %v", err)
+	}
+}
+
+func blockSchedulerLifecycleForDrain(
+	t testing.TB,
+	repository *store.Repository,
+	eventID string,
+) {
+	t.Helper()
+	lifecycle, err := repository.SchedulerLifecycle(context.Background())
+	if err != nil {
+		t.Fatalf("SchedulerLifecycle() error = %v", err)
+	}
+	lifecycle.SourceState = store.LifecycleSourceUnknown
+	lifecycle.Transition = store.LifecycleTransitionDraining
+	lifecycle.LastEventID = eventID
+	lifecycle.Revision++
+	lifecycle.UpdatedAtMS++
+	if _, err := repository.CompareAndSwapSchedulerLifecycle(
+		context.Background(), lifecycle.Revision-1, lifecycle,
+	); err != nil {
+		t.Fatalf("CompareAndSwapSchedulerLifecycle() error = %v", err)
+	}
+}
+
 func TestServiceRunOwnsSingleLoopAndStopsCancellably(t *testing.T) {
 	t.Parallel()
 
