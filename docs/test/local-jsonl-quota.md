@@ -5,7 +5,7 @@
 - 记录时间：2026-07-15 14:25 CST
 - 记录目录：仓库根目录
 - 本轮任务性质：TOO-262 本地 Codex JSONL quota observation 解析、投影与 GORM 持久化
-- 当前结论：`PASS（pre-commit gate）`；独立实现评审三项 finding 与最终 scope review 的 zero-reset finding 均已修复并复审清零，修复后完整本地门禁通过，`READY_TO_COMMIT: YES`；PR 与 post-merge verify 待执行。
+- 当前结论：`PASS（已合并并完成 post-merge verify）`；独立实现评审三项 finding 与最终 scope review 的 zero-reset finding 均已修复并复审清零；PR #25 已合并为 `91841c7`，main focused/race/full/Wails 门禁通过，Linear TOO-262 已读回 Done。
 - 自动化入口：`internal/codex/logs`、`internal/indexer`、`internal/store`
 - 对应计划 / issue：TOO-262 / `.agents/plans/2026-07-15-too-262-local-jsonl-quota-observation.md`
 - 结果说明：全部 fixture 为 synthetic upstream-shaped JSONL，SQLite 仅位于测试临时目录；三项评审回归重复 20 次、3,160,033 次 parser fuzz、受影响包与全仓 test/race/vet、Pure Go 依赖、harness/project/version/diff 与完整 `make verify` 均通过；未读取真实 Codex Home 或默认应用数据库。
@@ -14,7 +14,7 @@
 
 - 执行时间：2026-07-15 14:25 CST
 - 执行目录：仓库根目录
-- 本次结论：`PASS（pre-commit gate）`
+- 本次结论：`PASS（含 main post-merge verify）`
 - 影响范围：Go 编译/测试缓存，以及 `testing.T.TempDir` 下的 synthetic Codex Home 与 Pure Go SQLite/WAL/SHM。
 - 清理结果：测试临时文件已由 Go 自动清理；本轮生成的 app/ZIP/binary/frontend dist/`.task` 产物已删除并保留 tracked `.gitkeep`；既有 frontend dependency cache 未改动。
 - 敏感信息处理：不读取真实 `~/.codex`，不保存原始 JSONL、prompt、response、reasoning、tool output、limit name、credits、未知字段、token、cookie、Authorization 或本机临时路径。
@@ -31,7 +31,7 @@
 | 完整 race / vet / harness / Wails | PASS | zero-reset 修复后全仓 race 明确退出码 0；version findings 为空；arm64/macOS 15 ad-hoc app/ZIP 验证通过 |
 | implementation review / CHANGELOG | PASS | 三项 finding 修复后 `blocking_findings: 0`、`READY_FOR_CHANGELOG: YES`；Unreleased feature 已写入 |
 | final scope review | PASS | zero-reset finding 修复后 `blocking_findings: 0`、`READY_TO_COMMIT: YES` |
-| PR / merge / post-merge | 未执行 | commit、中文 PR、自合并后执行本地 post-merge verify |
+| PR / merge / post-merge | PASS | PR #25 已合并为 `91841c7`；main focused/race/full/Wails 门禁通过，Linear TOO-262 已读回 Done |
 
 ## 目标
 

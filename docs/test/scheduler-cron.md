@@ -5,7 +5,7 @@
 - 记录时间：2026-07-15
 - 执行目录：Codex Pulse 仓库根目录
 - 对应 Issue：TOO-305
-- 当前结论：`implementation 与 final scope review 均 ZERO，全部提交前门禁通过，可以 commit/PR`
+- 当前结论：`PASS（已合并并完成 post-merge verify）`；implementation 与 final scope review 均 `ZERO_FINDINGS`；PR #24 已合并为 `5adf42d`，main 完整门禁通过，Linear TOO-305 已读回 Done。
 - 依赖版本：`github.com/robfig/cron/v3 v3.0.1`
 - 分支：`suqing/too-305-robfig-cron-scheduler`
 - 基线：`d6234b13b3f102ed5b6cf55e93468bbe51d898e7`
@@ -31,7 +31,7 @@
 | package 门禁 | 通过 | harness/project/version、前端 typecheck/test/build、bindings 稳定性、macOS arm64 app/zip minOS 15 与 ad-hoc 签名读回通过 |
 | implementation review | 通过 | Dewey 完整审查 working tree 与独立定向复验，`blocking_findings: 0`、`READY_FOR_CHANGELOG: YES` |
 | final scope review | 通过 | Schrodinger 覆盖最终 tracked/untracked delta，`blocking_findings: 0`、`READY_TO_COMMIT: YES` |
-| post-merge | 待执行 | PR merge commit 与权威 main 读回后验证 |
+| PR / merge / post-merge | 通过 | PR #24 已合并为 `5adf42d`；main full test/race/vet/tidy/source/harness/project/version/完整 `make verify` 通过，Linear TOO-305 已读回 Done |
 
 ## 验证目标
 

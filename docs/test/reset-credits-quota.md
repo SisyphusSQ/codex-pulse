@@ -5,7 +5,7 @@
 - 记录时间：2026-07-16（Asia/Shanghai）
 - 记录目录：仓库根目录
 - 本轮任务性质：TOO-265 Reset Credits read-only provider、动态汇总、quota/reset-credits durable refresh schedule、退避与 robfig cron runner
-- 当前结论：`PASS；两项 final scope P1 均已按 TDD 修复并复审关闭，blocking=0，全部本地门禁通过`
+- 当前结论：`PASS（已合并并完成 post-merge verify）`；两项 final scope P1 均已按 TDD 修复并复审关闭，`blocking_findings=0`；PR #28 已合并为 `f953f74`，main post-merge 门禁通过，Linear TOO-265 已读回 Done。
 - 自动化入口：`internal/codex/quota/reset_credits_*_test.go`、`internal/codex/quota/schedule_test.go`、`internal/store/reset_credits_test.go`、`internal/store/source_refresh_schedule_test.go`、`internal/store/quota_schedule_migration_test.go`、`internal/scheduler/quota_refresh_test.go`
 - 对应计划 / issue：`.agents/plans/2026-07-15-too-265-reset-credits-quota-schedule.md` / TOO-265
 - 结果说明：Reset Credits payload、quota current、source attempt/state、durable schedule/claim fence 与 cron lifecycle 都使用 synthetic fixture。已证明固定只读 endpoint、content-free facts、动态到期、v11→v12、exact replay、last-known-good、cadence、5/10/20/30 分钟退避、独立且取较晚值的 Retry-After fence、60 秒 manual throttle、foreground/wake 错误退避、startup/recovery/reconcile 保留 durable due、取消、preferences disable、启动后 lease 到期恢复、attempt-first/release-first crash gap 与迟到 attempt 隔离；未读取真实 auth，未发真实网络请求。
@@ -14,7 +14,7 @@
 
 - 执行时间：2026-07-16
 - 执行目录：仓库根目录
-- 本次结论：`PASS；CHANGELOG 集成后的 focused repeat/race、全仓 race、静态/版本守卫与完整 make verify 均退出 0`
+- 本次结论：`PASS（含 main post-merge verify）`；CHANGELOG 集成后的 focused repeat/race、全仓 race、静态/版本守卫与完整 `make verify` 均退出 0。
 - 影响范围：Go build/test cache、`testing.T.TempDir()` 下的 Pure-Go SQLite/WAL/SHM，以及完整验证生成的 ignored frontend dependencies/dist、`.task/`、`bin/` package 产物。
 - 清理结果：测试临时数据库由 Go 自动清理；本轮 ignored `frontend/node_modules`、dist build、`.task/` 与 `bin/` 已删除，tracked `.gitkeep` 保留；未生成用户数据库、网络抓包、auth 副本或 response transcript。
 - 敏感信息处理：测试只注入 synthetic token/credit/request/source 值；client 结果和 SQLite 只保留 credit ID SHA-256，不保存 token、Authorization、Cookie、原始 response body、title、description、profile user 或本机临时路径。
@@ -36,6 +36,7 @@
 | durable restart rework | PASS | startup/recovery/reconcile 不 rebasing 尚未到期的 network/retry-after due，过期 recovery 立即 fetch，两个 Retry-After fence 取较晚者；focused20：2.929s/12.459s/12.619s，race10：11.180s/48.055s/42.346s，全仓 test/race PASS |
 | final scope re-review | PASS | 两个 P1 均 CLOSED；无 P0-P3 findings，`blocking_findings=0`，`FINAL_SCOPE_PASS:YES`；reviewer 精确回归 quota 0.639s / scheduler 0.647s |
 | harness / make verify | PASS | final scope rework 后重新执行；classification `changelog-only`、version findings 空；harness/project、Go、前端 5 tests/build、generated、arm64 minOS 15 app/ZIP 全部通过 |
+| PR / merge / post-merge | PASS | PR #28 已合并为 `f953f74`；main focused20/race10、全仓 test/race、Pure-Go/GORM/cron、harness/version 与完整 `make verify` 通过，Linear TOO-265 已读回 Done |
 | GitHub Actions | 不执行 | `actions_disabled_by_user`，不查询、不触发、不等待 |
 | release | 不执行 | 普通 Execution 不发布 |
 
