@@ -106,11 +106,18 @@
 ## 前端实现映射
 
 - 实现栈固定为 Vue 3 + TypeScript + Vite，运行于 Wails3；Tailwind CSS v4 承载颜色、圆角、间距、玻璃表面和状态 token。
+- TOO-272 已把 `surface-base/content/glass`、文字层级、状态色、同心圆角、阴影、focus ring 与 motion 收敛为 `frontend/src/styles.css` 的语义 token；`AppShell` 组合 240px 侧栏、标题区与内容面，`/` 和未知地址均归一到 `/overview`。
+- 主导航固定为六个可键盘访问的 router link；应用图标直接复用 `assets/icons/codex-pulse-app-icon-64.png`。普通线性图标锁定 `@lucide/vue@1.23.0`；已弃用的 `lucide-vue-next` 不再作为实现依赖。
+- `UiButton`、`UiCard`、`UiTable`、`StateEmpty`、`StateError`、`StateSkeleton` 是 M7 页面共享基础组件；表格由调用方提供稳定 `rowKey`，loading/error/empty 都保留明确语义和辅助技术状态。
+- v0.1 仅启用 `zh-CN`，所有生产可见中文集中在 `frontend/src/i18n/messages/zh-CN.ts`；number/dateTime/relativeTime 使用同一 locale formatter，测试会拒绝生产 Vue/TS 中新增中文硬编码。
+- 共享壳只读取真实 Wails `Bootstrap` 元数据。浏览器脱离 Wails 时展示可重试 error state；打包版连接成功后展示 `darwin` 与 `zh-CN`，不得为后续页面伪造 quota、usage 或 health 数值。
 - shadcn-vue / Reka UI 只用于菜单、弹窗、Popover、Tooltip、Switch 等基础交互与可访问性行为，组件外观必须按本设计稿重做，不能直接使用默认主题替代设计。
 - Apache ECharts 实现概览、Projects 和模型分布等数据可视化；图表 tooltip、legend、空数据和部分数据状态使用统一中文文案。
 - Wails 原生窗口与平台 adapter 负责透明窗口、系统托盘和系统行为；Vue 组件不得直接依赖 macOS API。
 - Reduce Transparency 下将玻璃替换为高不透明内容表面；Increase Contrast 下加强边界与文字对比；Reduce Motion 下取消非必要位移和缩放动画。
 
+TOO-272 的视觉 QA 以 `00-design-system.png`、`04-overview.png` 与 `01-local-status.png` 为 source truth，在 900×600、1120×720、1280×770 与 1440×1024 检查窗口、侧栏和内容层级。浏览器比较证据保存在本地 ignored run 目录；可复现步骤和通过摘要见 `docs/test/m7-e1.md`，逐项比较结论见仓库根目录 `design-qa.md`。
+
 ## 后续评审重点
 
-本轮是高保真静态设计，尚未实现真实交互。图标方向和健康信息层级已经冻结；进入 Wails3 / AppKit 实现前，继续确认 Reduce Transparency 下的替代表面和 macOS-only 发布范围。
+TOO-272 已实现共享应用壳、路由、基础状态交互和 Wails Bootstrap ready/error/retry；概览、Sessions、Projects、Quota、本机状态与 Settings 的业务数据交互仍由后续卡完成。图标方向和健康信息层级继续冻结；后续页面必须复用当前 token、辅助模式降级与 macOS-only 边界。
