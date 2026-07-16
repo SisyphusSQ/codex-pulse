@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -106,6 +107,53 @@ func TestServiceRunCycleCompletesTask(t *testing.T) {
 	stored, err := repository.SchedulerTask(context.Background(), task.TaskID)
 	if err != nil || stored.State != store.SchedulerTaskSucceeded || stored.FinishedAtMS == nil {
 		t.Fatalf("SchedulerTask() = %#v, %v", stored, err)
+	}
+}
+
+func TestServiceCycleCommittedNotifiesOnlyAfterSchedulerCycleCommit(t *testing.T) {
+	t.Parallel()
+
+	repository := openSchedulerRepository(t)
+	createSchedulerFixture(t, repository, "notify", store.SchedulerLaneLive, 10)
+	executor := &recordingExecutor{result: SliceResult{
+		FilesProcessed: 1, BytesProcessed: 256, Active: time.Millisecond,
+		StopReason: store.SchedulerStopCompleted,
+	}}
+	service := newSchedulerTestService(t, repository, executor)
+	var committed []store.SchedulerCycle
+	service.cycleCommitted = func(_ context.Context, cycle store.SchedulerCycle) {
+		committed = append(committed, cycle)
+	}
+
+	result, err := service.RunCycle(context.Background(), SystemSnapshot{})
+	if err != nil {
+		t.Fatalf("RunCycle() error = %v", err)
+	}
+	if !reflect.DeepEqual(committed, []store.SchedulerCycle{result.Cycle}) {
+		t.Fatalf("cycle notifications = %#v, want %#v", committed, result.Cycle)
+	}
+}
+
+func TestServiceCycleCommittedDoesNotNotifyWhenSchedulerCycleCommitFails(t *testing.T) {
+	t.Parallel()
+
+	repository := openSchedulerRepository(t)
+	createSchedulerFixture(t, repository, "no-notify", store.SchedulerLaneLive, 10)
+	executor := &recordingExecutor{result: SliceResult{
+		FilesProcessed: 1, BytesProcessed: 256, Active: time.Millisecond,
+		StopReason: store.SchedulerStopCompleted,
+	}}
+	service := newSchedulerTestService(t, repository, executor)
+	commitErr := errors.New("synthetic commit failure")
+	service.commitCycle = func(context.Context, store.SchedulerCycleCommit) error { return commitErr }
+	notifications := 0
+	service.cycleCommitted = func(context.Context, store.SchedulerCycle) { notifications++ }
+
+	if _, err := service.RunCycle(context.Background(), SystemSnapshot{}); !errors.Is(err, commitErr) {
+		t.Fatalf("RunCycle() error = %v, want commit failure", err)
+	}
+	if notifications != 0 {
+		t.Fatalf("notifications = %d, want 0", notifications)
 	}
 }
 

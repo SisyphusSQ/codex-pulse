@@ -85,6 +85,7 @@ type QuotaRefreshCoordinatorConfig struct {
 	ClaimLease          time.Duration
 	CompletionTimeout   time.Duration
 	DueLimit            int
+	RefreshCommitted    func(context.Context, quotaonline.RefreshSource)
 }
 
 type QuotaRefreshCoordinator struct {
@@ -98,6 +99,7 @@ type QuotaRefreshCoordinator struct {
 	claimLeaseMS        int64
 	completionTimeout   time.Duration
 	dueLimit            int
+	refreshCommitted    func(context.Context, quotaonline.RefreshSource)
 
 	cycleMu sync.Mutex
 }
@@ -188,7 +190,7 @@ func NewQuotaRefreshCoordinator(config QuotaRefreshCoordinatorConfig) (*QuotaRef
 		quotaFetcher: config.QuotaFetcher, resetCreditsFetcher: config.ResetCreditsFetcher,
 		policy: *policy, clock: config.Clock, newRequestID: config.NewRequestID,
 		claimLeaseMS: config.ClaimLease.Milliseconds(), completionTimeout: config.CompletionTimeout,
-		dueLimit: config.DueLimit,
+		dueLimit: config.DueLimit, refreshCommitted: config.RefreshCommitted,
 	}, nil
 }
 
@@ -477,11 +479,27 @@ func (coordinator *QuotaRefreshCoordinator) completeRecordedClaim(
 	if err != nil {
 		return claimed, err
 	}
-	return coordinator.repository.CompleteSourceRefresh(completionCtx, store.SourceRefreshCompletion{
+	completed, err := coordinator.repository.CompleteSourceRefresh(completionCtx, store.SourceRefreshCompletion{
 		SourceInstanceID: descriptor.sourceInstanceID, ClaimID: requestID,
 		ExpectedRevision: claimed.Revision, NextDueAtMS: decision.NextDueAtMS,
 		Reason: decision.Reason, AtMS: nowMS,
 	})
+	if err != nil {
+		return claimed, err
+	}
+	coordinator.notifyRefreshCommitted(completionCtx, descriptor.source)
+	return completed, nil
+}
+
+func (coordinator *QuotaRefreshCoordinator) notifyRefreshCommitted(
+	ctx context.Context,
+	source quotaonline.RefreshSource,
+) {
+	if coordinator == nil || coordinator.refreshCommitted == nil || ctx == nil {
+		return
+	}
+	defer func() { _ = recover() }()
+	coordinator.refreshCommitted(ctx, source)
 }
 
 func isPermanentQuotaRefreshCycleError(err error) bool {

@@ -17,12 +17,13 @@ const quotaRuntimeRecordTimeout = 5 * time.Second
 var ErrApplicationQuotaRuntime = errors.New("application quota runtime is unavailable")
 
 type ApplicationQuotaRuntimeConfig struct {
-	Repository  *store.Repository
-	Preferences confirmedPreferencesLoader
-	Transport   http.RoundTripper
-	Clock       func() time.Time
-	suspended   bool
-	hooks       quotaRuntimeHooks
+	Repository   *store.Repository
+	Preferences  confirmedPreferencesLoader
+	Transport    http.RoundTripper
+	Clock        func() time.Time
+	suspended    bool
+	hooks        quotaRuntimeHooks
+	invalidation queryInvalidationNotifier
 }
 
 type quotaRuntimeHooks struct {
@@ -118,6 +119,9 @@ func startApplicationQuotaRuntime(
 		QuotaFetcher:        scheduler.AdaptQuotaFetchService(quotaService),
 		ResetCreditsFetcher: scheduler.AdaptResetCreditsFetchService(resetCreditsService),
 		Clock:               config.Clock,
+		RefreshCommitted: func(ctx context.Context, _ quotaonline.RefreshSource) {
+			notifyQueryInvalidation(config.invalidation, ctx, QueryInvalidationQuota)
+		},
 	})
 	if err != nil {
 		return nil, applicationQuotaDependencyError(ctx, err)

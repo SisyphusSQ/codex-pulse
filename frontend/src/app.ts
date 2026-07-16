@@ -3,6 +3,11 @@ import { createApp, type App as VueApp } from "vue";
 import type { Router, RouterHistory } from "vue-router";
 
 import App from "./App.vue";
+import {
+  createRuntimeQueryInvalidationEventSource,
+  installQueryInvalidationBridge,
+  type QueryInvalidationEventSource,
+} from "./events/queryInvalidation";
 import { createAppI18n, type AppI18nOptions } from "./i18n";
 import { createAppRouter } from "./router";
 
@@ -10,11 +15,13 @@ export interface AppDependencies {
   router: Router;
   i18n: ReturnType<typeof createAppI18n>;
   queryClient: QueryClient;
+  eventSource: QueryInvalidationEventSource;
 }
 
 export interface CreateAppDependenciesOptions extends AppI18nOptions {
   history?: RouterHistory;
   queryClient?: QueryClient;
+  eventSource?: QueryInvalidationEventSource;
 }
 
 export function createAppQueryClient() {
@@ -33,6 +40,7 @@ export function createAppDependencies(options: CreateAppDependenciesOptions = {}
     router: createAppRouter(options.history),
     i18n: createAppI18n({ onMissing: options.onMissing }),
     queryClient: options.queryClient ?? createAppQueryClient(),
+    eventSource: options.eventSource ?? createRuntimeQueryInvalidationEventSource(),
   };
 }
 
@@ -44,6 +52,12 @@ export function createCodexPulseApp(
   app.use(dependencies.router);
   app.use(dependencies.i18n);
   app.use(VueQueryPlugin, { queryClient: dependencies.queryClient });
+
+  const cleanupInvalidation = installQueryInvalidationBridge(
+    dependencies.queryClient,
+    dependencies.eventSource,
+  );
+  app.onUnmount(cleanupInvalidation);
 
   return app;
 }

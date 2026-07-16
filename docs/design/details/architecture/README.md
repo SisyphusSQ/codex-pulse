@@ -53,6 +53,16 @@ fatal failure 只映射稳定 code、i18n message key、allowlisted field 和 re
 
 `frontend/bindings` 是 Go method signature 生成并提交的唯一跨端类型真相。正常生成必须通过稳定 diff gate；失败注入会对 tracked 与尚未跟踪的 generated files 做 SHA-256 前后读回，任何旧 bindings 被覆盖或部分更新都以 `BINDING-001` fail closed。Vue 层不得手写同名 request/response/enum/error shadow type。
 
+### Wails Event 与 Query Cache Contract
+
+后台变化只通过一个 custom event `codex-pulse:query-invalidated` 通知前端。Go 在 `init` 中直接注册 `QueryInvalidationEvent`，由 Wails generator 生成 TypeScript `CustomEvents`；payload 固定为 `query-invalidation-v1` 与有限 `index/quota/health/settings` domain，只表示“相关 query 可能过期”。事件禁止携带 session、quota window、health item、settings snapshot、cursor、path、credential、错误正文或其它业务事实。
+
+index scheduler cycle、quota refresh 和 Preferences settings 分别在 durable commit 成功后通知；提交失败不发事件。settings 一旦提交即通知 `settings` 与 `quota`，后续 reconcile 失败不会隐藏已提交真相。emit 前先验证并序列化固定 DTO；序列化或 emitter panic 不污染前端 cache，而是用 content-free `runtime.unknown` health observation 记录。事件本身是 best-effort hint，不参与提交结果，也不成为重放日志。
+
+Vue Query 的 key factory 覆盖 13 个业务 binding，业务 request 的 page/sort/filter/range/detail identity 都完整进入 key。Quota current 使用稳定 singleton key，每次 queryFn 才读取当前 evaluation clock，避免周期刷新沿用首次时刻。每个 queryFn 都把 TanStack `AbortSignal` 绑定到 generated `CancellablePromise.cancelOn`，observer卸载或查询替换会把取消传播到Go。usage/index stale time 与 active refetch interval 为 15 秒，quota/source/job/health 为 5 秒，settings 为 60 秒；background interval关闭，进程静态 `bootstrap` 保持永久新鲜且不进入业务失效集合。domain 只映射到固定 query root，50ms 批次内用集合去重，并以 `invalidateQueries({ exact: false, refetchType: "active" })` 触发 active query 重取；禁止事件 handler 调用 `setQueryData` 或把 payload 当事实写入 cache。
+
+事件允许丢失、重复和爆发。持续前台的 active query 按上述 interval 有界重取；inactive query 再次观察时按 stale 状态重取。`SystemDidWake`、`WindowRuntimeReady` 与 macOS foreground 统一失效全部业务 root，作为断连/睡眠/进程版本偏差的恢复入口；malformed/未知 event version/domain 同样 fail closed 到全业务失效。Vue app 卸载时必须执行四个 unsubscribe、清空 pending roots 并取消 batch timer，observer卸载后不得继续周期重取。
+
 未来如恢复多 agent，provider 抽象可沿用：
 
 ```go
@@ -82,7 +92,7 @@ v0.1 不为了抽象完整性提前实现 Claude/OpenCode provider。
 | 基础交互 | shadcn-vue + Reka UI | 选择性引入并持有组件源码；用于按钮、菜单、弹窗、Popover、Tooltip、Switch 等可访问性基础交互，不作为整套后台主题。 |
 | 图表 | Apache ECharts | 用量趋势、模型/项目分布和成本分析；图表配置封装为业务组件，页面不直接堆叠 option。 |
 | 表格 | `@tanstack/vue-table` | Sessions、Projects 等高密度列表的排序、筛选、列定义和后续虚拟化。 |
-| 异步数据 | `@tanstack/vue-query` | 包装 Wails Promise 查询、缓存、失效和刷新状态；实时增量仍由 Wails events 推送并定向更新缓存。 |
+| 异步数据 | `@tanstack/vue-query` | 包装 Wails Promise 查询、缓存、失效和刷新状态；Wails events 只定向失效并重取，不把 payload 写成业务事实。 |
 | 客户端状态 | Vue Composition API；必要时 Pinia | 页面局部状态优先使用 `ref` / `computed` / composable；只有跨页面 UI 偏好、会话级状态确有需要时才引入 Pinia。业务事实不在前端复制一份长期 store。 |
 | i18n | Vue I18n | v0.1 只打包 `zh-CN`，所有可见文案仍通过稳定 message key 访问。 |
 | 图标 | `lucide-vue-next` | 普通功能图标；应用图标、状态栏模板图标和品牌资产单独维护，不直接用 Lucide 代替。 |
@@ -98,13 +108,13 @@ flowchart LR
     B --> C["Generated Wails bindings"]
     C --> D["Go query layer"]
     D --> E["SQLite projections"]
-    F["Wails incremental events"] --> G["Targeted cache update or invalidation"]
+    F["Wails invalidation events"] --> G["Batch and invalidate query roots"]
     G --> B
 ```
 
 - Go / SQLite 是业务事实与聚合口径的唯一权威来源；Vue 不重新实现配额仲裁、成本计算或 Session 状态推导。
 - 页面首次进入时通过生成的 Wails bindings 查询；刷新按 query key 精确失效，不设置全局 loading。
-- quota、live append、backfill 和 health 等后台变化通过 Wails events 推送；前端只更新受影响的缓存和组件。
+- quota、live append、backfill、health 和 settings 等后台变化只发布有限 invalidation event；前端失效受影响的 query root 并从 Go 重取，不从 event payload 更新业务事实。
 - 组件不得直接读取 `~/.codex`、SQLite 或凭证文件。
 
 ### 页面范围

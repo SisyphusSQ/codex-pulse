@@ -395,6 +395,7 @@ func (service *Service) runCycleOwned(
 	if err := service.commitCycleWithReadback(commitCtx, commit); err != nil {
 		return CycleResult{}, err
 	}
+	service.notifyCycleCommitted(commitCtx, cycle)
 	return CycleResult{Cycle: cycle, YieldFor: transition.yieldFor(budget)}, transition.returnErr
 }
 
@@ -615,7 +616,16 @@ func (service *Service) reconcileTerminalTarget(
 	if err := service.commitCycleWithReadback(ctx, commit); err != nil {
 		return store.SchedulerTask{}, err
 	}
+	service.notifyCycleCommitted(ctx, cycle)
 	return service.repository.SchedulerTask(ctx, task.TaskID)
+}
+
+func (service *Service) notifyCycleCommitted(ctx context.Context, cycle store.SchedulerCycle) {
+	if service == nil || service.cycleCommitted == nil || ctx == nil {
+		return
+	}
+	defer func() { _ = recover() }()
+	service.cycleCommitted(ctx, cycle)
 }
 
 func (service *Service) commitCycleWithReadback(

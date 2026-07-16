@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Bootstrap } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service";
 
 import { createAppDependencies, createCodexPulseApp } from "./app";
+import type { QueryInvalidationEventSource } from "./events/queryInvalidation";
 
 vi.mock("@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service", () => ({
   Bootstrap: vi.fn(),
@@ -77,5 +78,30 @@ describe("Codex Pulse application shell", () => {
 
     expect(bootstrapMock).toHaveBeenCalledTimes(2);
     expect(host.querySelector("[data-testid='service-ready']")).not.toBeNull();
+  });
+
+  it("releases every Wails event subscription when the app unmounts", async () => {
+    bootstrapMock.mockResolvedValue({ name: "Codex Pulse", locale: "zh-CN", platform: "darwin" });
+    let unsubscribeCalls = 0;
+    const subscribe = () => () => { unsubscribeCalls++; };
+    const eventSource: QueryInvalidationEventSource = {
+      onInvalidation: subscribe,
+      onWake: subscribe,
+      onRuntimeReady: subscribe,
+      onForeground: subscribe,
+    };
+    const dependencies = createAppDependencies({
+      history: createMemoryHistory(),
+      eventSource,
+    });
+    await dependencies.router.push("/");
+    const app = createCodexPulseApp(dependencies);
+    const host = document.createElement("div");
+    document.body.append(host);
+    app.mount(host);
+
+    app.unmount();
+
+    expect(unsubscribeCalls).toBe(4);
   });
 });

@@ -7,11 +7,14 @@ export {
 };
 
 export {
-    BindingMethodKind
+    BindingMethodKind,
+    QueryInvalidationDomain,
+    QueryInvalidationVersion
 } from "./models.js";
 
 export type {
     BindingContractInfo,
     BindingMethodInfo,
-    BootstrapInfo
+    BootstrapInfo,
+    QueryInvalidationEvent
 } from "./models.js";

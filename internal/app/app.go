@@ -140,8 +140,16 @@ func Run(assets fs.FS) error {
 		}
 		desktopApp := application.New(applicationOptions(assets, bindingService))
 		desktopApp.Window.NewWithOptions(mainWindowOptions())
+		invalidation, err := newQueryInvalidationPublisher(QueryInvalidationPublisherConfig{
+			Emitter: desktopApp.Event,
+			Health:  factstore.NewRepository(database),
+		})
+		if err != nil {
+			return err
+		}
 		runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
 			Database: database, Registrar: desktopApp.Event, Preferences: preferenceStore,
+			Invalidation: invalidation,
 		})
 		if err != nil {
 			return err

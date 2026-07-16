@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -97,6 +98,88 @@ func TestQuotaRefreshCoordinatorPersistsStartupPlanAndManualThrottle(t *testing.
 	)
 	if err != nil || fetchCalls != 2 || throttled.Revision != manual.Revision {
 		t.Fatalf("throttled refresh = %#v, calls=%d, error=%v", throttled, fetchCalls, err)
+	}
+}
+
+func TestQuotaRefreshCommittedNotifiesOnlyAfterRefreshCommit(t *testing.T) {
+	t.Parallel()
+
+	const nowMS = int64(1_784_000_100_000)
+	repository := newQuotaRefreshTestRepository(t)
+	policy, err := quotaonline.NewRefreshPolicy(func() float64 { return 0 })
+	if err != nil {
+		t.Fatalf("NewRefreshPolicy() error = %v", err)
+	}
+	coordinator, err := NewQuotaRefreshCoordinator(QuotaRefreshCoordinatorConfig{
+		Repository: repository,
+		Preferences: staticRefreshPreferences{snapshot: preferences.Snapshot{
+			Online: preferences.OnlinePreferences{ResetCreditsEnabled: true},
+			Refresh: preferences.RefreshPreferences{
+				QuotaIntervalSeconds: 300, ResetCreditsIntervalSeconds: 1_800,
+			},
+		}},
+		Policy:       &policy,
+		QuotaFetcher: SourceRefreshFunc(func(context.Context, string) error { return nil }),
+		ResetCreditsFetcher: SourceRefreshFunc(func(ctx context.Context, requestID string) error {
+			status := int64(200)
+			return repository.RecordResetCreditsFetch(ctx, store.ResetCreditsFetchRecord{
+				SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
+				SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+				Attempt: store.SourceAttempt{
+					RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
+					StartedAtMS: nowMS, FinishedAtMS: nowMS, Outcome: store.SourceAttemptSucceeded,
+					HTTPStatus: &status, AttemptCount: 1,
+				},
+				Snapshot: &store.ResetCreditsSnapshot{
+					SnapshotID: "notify-" + requestID, RequestID: requestID,
+					AccountScope: store.QuotaAccountScopeDefault, ObservedAtMS: nowMS,
+				},
+			})
+		}),
+		Clock:        func() time.Time { return time.UnixMilli(nowMS) },
+		NewRequestID: func(quotaonline.RefreshSource) (string, error) { return "notify-request", nil },
+	})
+	if err != nil {
+		t.Fatalf("NewQuotaRefreshCoordinator() error = %v", err)
+	}
+	var notifications []quotaonline.RefreshSource
+	coordinator.refreshCommitted = func(_ context.Context, source quotaonline.RefreshSource) {
+		notifications = append(notifications, source)
+	}
+	if err := coordinator.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	if !reflect.DeepEqual(notifications, []quotaonline.RefreshSource{quotaonline.RefreshSourceResetCredits}) {
+		t.Fatalf("notifications = %#v", notifications)
+	}
+
+	failingRepository := newQuotaRefreshTestRepository(t)
+	failing, err := NewQuotaRefreshCoordinator(QuotaRefreshCoordinatorConfig{
+		Repository: failingRepository,
+		Preferences: staticRefreshPreferences{snapshot: preferences.Snapshot{
+			Online: preferences.OnlinePreferences{ResetCreditsEnabled: true},
+			Refresh: preferences.RefreshPreferences{
+				QuotaIntervalSeconds: 300, ResetCreditsIntervalSeconds: 1_800,
+			},
+		}},
+		Policy:       &policy,
+		QuotaFetcher: SourceRefreshFunc(func(context.Context, string) error { return nil }),
+		ResetCreditsFetcher: SourceRefreshFunc(func(context.Context, string) error {
+			return errors.New("synthetic fetch failure")
+		}),
+		Clock:        func() time.Time { return time.UnixMilli(nowMS) },
+		NewRequestID: func(quotaonline.RefreshSource) (string, error) { return "failed-request", nil },
+	})
+	if err != nil {
+		t.Fatalf("NewQuotaRefreshCoordinator(failing) error = %v", err)
+	}
+	failedNotifications := 0
+	failing.refreshCommitted = func(context.Context, quotaonline.RefreshSource) { failedNotifications++ }
+	if err := failing.Initialize(context.Background()); err == nil {
+		t.Fatal("Initialize(failing) error = nil")
+	}
+	if failedNotifications != 0 {
+		t.Fatalf("failed notifications = %d, want 0", failedNotifications)
 	}
 }
 
