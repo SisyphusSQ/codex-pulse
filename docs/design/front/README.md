@@ -57,6 +57,10 @@
 
 ## Query DTO 消费边界
 
+- 前端业务查询只能导入 `frontend/bindings` 中由 Go 签名生成的 `internal/app/service` 与 reachable models；禁止手写同名 request/response/enum/error shadow type，也禁止绕过 façade 调用 Repository、SQLite、文件、shell、网络或 credential primitive。
+- `wails-bindings-v1` 当前固定为 15 个只读方法：Bootstrap、Contracts、Usage/Session/Project、Quota、Source、Job、Health 与 Settings 查询；`commandMethods` 必须是显式空数组。Preferences、Schedule、Codex Home 切换和 recovery executor 在后续独立 command contract 完成前不得从组件调用。
+- 13 个业务数据 query 返回 `CancellablePromise<T>` 且首个 Go 参数为 context。页面卸载、query 被替代或用户取消时应调用生成 client 的取消能力，不另造不可取消 Promise wrapper；Go 侧的 cancel/deadline 继续映射为 typed error code。`Bootstrap` / `Contracts` 是同步元数据方法，不依赖其取消来释放后端工作。
+- 业务 error 与 recovered panic 的 Wails `RuntimeError.message` 固定为 `binding query failed`；页面只从 `cause` 解码 `query.ErrorEnvelope` 并以有限 `messageKey` 渲染。参数/JSON 错误由 Wails 标记为 `TypeError`，其 framework message 同样不得展示。无法识别的 kind/version/code 必须按 internal fail closed，不能显示底层 message、路径、请求参数、panic value 或 driver cause。
 - 后续 Wails bindings 只暴露 Go `query-v1` 与各业务 query service 组合出的非泛型 DTO；组件不接收 GORM model、SQLite row、SQL 字段或任意 map。
 - request 的 page/sort/filter/time range 必须先经 Go endpoint specification allowlist。前端把 cursor 当 opaque token；不得解析 cursor、猜测数据库 offset 或请求无限列表。
 - token、count 与 API 等价成本使用 Go 校验后的整数 DTO；微美元只在 locale formatter 转成展示金额，不在 Vue 中重新计算或用浮点累计。超出 JavaScript safe integer 的事实由 Go fail closed，不能静默舍入。

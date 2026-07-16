@@ -9,7 +9,7 @@ import (
 func TestServiceBootstrap(t *testing.T) {
 	t.Parallel()
 
-	got := NewService().Bootstrap()
+	got := newBindingTestService(t, &usageCostBindingStub{}, &runtimeInfoBindingStub{}).Bootstrap()
 	want := BootstrapInfo{
 		Name:     "Codex Pulse",
 		Locale:   "zh-CN",

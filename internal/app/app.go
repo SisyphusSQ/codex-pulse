@@ -20,12 +20,12 @@ type lifecycleStore interface {
 
 type storeOpener func(context.Context) (lifecycleStore, error)
 
-func applicationOptions(assets fs.FS) application.Options {
+func applicationOptions(assets fs.FS, service *Service) application.Options {
 	return application.Options{
 		Name:        appName,
 		Description: appDescription,
 		Services: []application.Service{
-			application.NewService(NewService()),
+			wailsBindingService(service),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -130,10 +130,18 @@ func Run(assets fs.FS) error {
 		if !ok {
 			return ErrApplicationLifecycleRuntime
 		}
-		desktopApp := application.New(applicationOptions(assets))
+		preferenceStore, err := openApplicationPreferences()
+		if err != nil {
+			return err
+		}
+		bindingService, err := composeBindingService(database, preferenceStore)
+		if err != nil {
+			return err
+		}
+		desktopApp := application.New(applicationOptions(assets, bindingService))
 		desktopApp.Window.NewWithOptions(mainWindowOptions())
 		runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
-			Database: database, Registrar: desktopApp.Event,
+			Database: database, Registrar: desktopApp.Event, Preferences: preferenceStore,
 		})
 		if err != nil {
 			return err
