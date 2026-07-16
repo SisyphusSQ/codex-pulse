@@ -27,6 +27,7 @@
 24. [TOO-266] 新增单 SQLite snapshot 的 Quota Current 只读查询合同，稳定组合窗口、来源、可信 reset、Reset Credits 与刷新状态，固定 null/真实零、last-known-good、冲突解释、投影恢复和敏感 identity 隔离语义
 25. [TOO-306] 装配在线 Quota 与 Reset Credits 应用运行时，新增 confirmed Home 调用期凭证租约、崩溃 journal 恢复、local/quota generation drain 与 lifecycle、settings、manual、shutdown 闭环
 26. [TOO-267] 建立版本化 `query-v1` 公共查询契约，统一有界分页、allowlist 排序筛选、IANA/DST 本地日转 UTC、JavaScript 安全整数、unknown/真实零及 content-free 错误与 partial/unavailable 语义
+27. [TOO-268] 新增 active 成本账本驱动的日周月 Usage/Cost 趋势与 Session/Project 有界查询，固定安全归因、opaque cursor、unknown/真实零、partial 降级及 pricing evidence 对账语义
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

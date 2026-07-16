@@ -21,7 +21,7 @@
 | Tray | fresh / stale / conflict / unknown / exhausted 如何一眼区分 | [03-tray-states.png](previews/03-tray-states.png) |
 | 概览 | 5 小时 / 本周额度、7 天 token、缓存、输出和 API 等价成本如何一起判断 | [04-overview.png](previews/04-overview.png) |
 | Sessions | Session 列表与 active turn 元数据如何同时查看 | [05-sessions.png](previews/05-sessions.png) |
-| Projects | 如何按本地项目路径归因 token、成本和 Session | [06-projects.png](previews/06-projects.png) |
+| Projects | 如何按安全项目归因查看 token、API 等价成本和 Session | [06-projects.png](previews/06-projects.png) |
 | Quota | remaining、reset、来源、last-known-good 和实验能力如何解释 | [07-quota.png](previews/07-quota.png) |
 | Settings | Codex home、索引、隐私、在线能力和更新如何配置 | [08-settings.png](previews/08-settings.png) |
 | Data Health | 当前问题影响什么、系统如何保护数据、用户如何恢复 | [10-data-health.png](previews/10-data-health.png) |
@@ -63,6 +63,11 @@
 - 本地日期选择传递 `YYYY-MM-DD`、exclusive end 和 IANA timezone；UTC 边界由 Go 计算，前端不得用固定 24 小时或固定 offset 猜测 DST 日期。
 - 已知空集合固定为 `[]`；真实数值 `0` 保留为 `0`；unknown 使用 `null + unknownReason` 并展示 `--`。partial 保留可用数据并局部提示，不切换全局 loading；unavailable 使用稳定 error code/message key，不显示底层 error text。
 - Go 返回的 message key 只用于 Vue I18n 查找 `zh-CN` 文案；业务 service 和组件都不得把用户路径、凭证、原始响应或 driver 错误塞入 message key/field。
+- 概览只消费 Go 已聚合的 day/week/month trend、pricing evidence 和 totals；Vue 不从 daily rows 再算周/月、cost 或 priced subtotal。`rollup_missing` 时保留可用 token 并局部显示部分数据，不自行补价格。
+- Sessions 组件只消费安全 title/project/model、`ACTIVE / IDLE`、last activity 与 Go totals；不得读取或推导 cwd/root path/raw model，也不得用 offset、数组下标或 Session ID 猜下一页。
+- Session 的 `rollup_missing` 与 `rollup_ambiguous` 都展示局部 partial，不把 unknown totals 渲染成 `0`；后者表示调用未指定 reporting timezone 且 Go 发现多个 active generation，前端不得自行选择 timezone 或 ledger 重试。
+- Projects 组件必须保留 unknown/conflict/invalid dimension 行，分别展示 global/matched/page totals；confidence filter 使用 Go 返回的 range-level confidence。详情 daily 只用于下钻展示，前端不得重算并覆盖 list totals 或绕过 reconciliation failure。
+- active Project rollup 不可用是 fatal unavailable，不渲染“0 个项目”；active rollup 下的真实空 range 才渲染 known-empty。Session 缺 rollup 则是 partial，两条路径不得共用同一个空态。
 
 ## 图标规范
 
