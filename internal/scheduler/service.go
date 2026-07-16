@@ -79,6 +79,7 @@ type ServiceConfig struct {
 	SystemProbe      SystemProbe
 	RecoveryPageSize int
 	RetryPolicy      RetryPolicy
+	CycleCommitted   func(context.Context, store.SchedulerCycle)
 }
 
 type Service struct {
@@ -92,6 +93,7 @@ type Service struct {
 	systemProbe      SystemProbe
 	recoveryPageSize int
 	retryPolicy      RetryPolicy
+	cycleCommitted   func(context.Context, store.SchedulerCycle)
 	commitCycle      func(context.Context, store.SchedulerCycleCommit) error
 	newCronRunner    cronRunnerFactory
 
@@ -152,6 +154,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 		maxLiveBurst: config.MaxLiveBurst, clock: config.Clock, newCycleID: config.NewCycleID,
 		interruptTimeout: config.InterruptTimeout, systemProbe: config.SystemProbe,
 		recoveryPageSize: config.RecoveryPageSize, retryPolicy: config.RetryPolicy,
+		cycleCommitted:  config.CycleCommitted,
 		newCronRunner:   defaultCronRunnerFactory,
 		activityChanged: make(chan struct{}),
 	}

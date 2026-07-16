@@ -79,6 +79,15 @@
 - Settings 将 revision/Home generation 作为十进制字符串返回，并把 snooze/last-check 映射为 JS-safe numeric value；Home path、data store key、device/inode、detached Home、switch/attempt ID 永不进入响应。可编辑字段由 Go 返回固定 type/min/max/options metadata，固定 `zh-CN`、stable channel 与关闭 auto-download 明确标记为只读。
 - recovery action 只允许 `none/retry/check_source/grant_permission/free_space/choose_home/repair_store`，且非 `none` 必须引用 Go contract 中的固定 command key；typed error、failure 与 health code 先按完整有限矩阵决定动作，state/attention 仅作为没有 code 的 fallback。query service 只返回引用，不执行 command、不写设置、不修库。
 
+## Wails Event 与 Query Cache 边界
+
+- custom event 只有 `codex-pulse:query-invalidated`，typed payload 只含 `query-invalidation-v1` 和 `index/quota/health/settings`；组件不得从事件读取 session、quota、health 或 settings 事实。
+- 13 个业务 query 使用共享 key factory。业务 request 必须完整进入 key；Quota current 使用稳定singleton key且每次fetch重新读取当前时刻。每个queryFn必须以`cancelOn(signal)`连接TanStack AbortSignal与generated CancellablePromise，observer卸载或查询替换时取消Go查询。usage/session/project 的 stale time与active refetch interval为15秒，quota/source/job/health为5秒，settings为60秒；background interval关闭。Bootstrap是进程静态元数据，保持永久新鲜且不参与业务invalidation。
+- `index` 失效 usage/sessions/projects/sources/jobs/health；`quota` 失效 quota/sources/health；`health` 只失效 health；`settings` 失效 settings/quota/sources。失效只按这些 root 执行，不扫描或解释任意 payload 字段。
+- event storm 与重复事件在 50ms 内合并，同一 root 每批最多失效一次；使用 `refetchType: active`，只让当前可见查询主动重取，inactive cache 只标记 stale。
+- event handler 禁止 `setQueryData`、optimistic copy 或自行合并业务对象。Go query/SQLite/Preferences 始终是唯一事实源。
+- event 丢失或断连不影响正确性：持续前台active query按interval有界重取，inactive query重新观察时按stale状态重取；system wake、window runtime ready、macOS foreground与malformed/未知event都触发全业务root invalidate。应用卸载必须释放全部Wails subscription、取消pending timer，observer卸载后停止周期刷新。
+
 ## 图标规范
 
 - 正式方向：03“深空控制台”。

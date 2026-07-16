@@ -53,19 +53,21 @@ type ApplicationLifecycleRuntimeConfig struct {
 	EventTimeout   time.Duration
 	QuotaTransport http.RoundTripper
 	QuotaClock     func() time.Time
+	Invalidation   queryInvalidationNotifier
 	quotaHooks     quotaRuntimeHooks
 	homeRuntime    preferences.HomeRuntime
 }
 
 type applicationLifecycleRuntime struct {
-	adapter     *LifecycleEventAdapter
-	coordinator *appLifecycle.Coordinator
-	quota       *applicationQuotaRuntime
-	preferences *preferences.Service
-	cancel      context.CancelFunc
-	workerDone  chan error
-	controlCtx  context.Context
-	controlStop context.CancelFunc
+	adapter      *LifecycleEventAdapter
+	coordinator  *appLifecycle.Coordinator
+	quota        *applicationQuotaRuntime
+	preferences  *preferences.Service
+	invalidation queryInvalidationNotifier
+	cancel       context.CancelFunc
+	workerDone   chan error
+	controlCtx   context.Context
+	controlStop  context.CancelFunc
 
 	controlMu        sync.Mutex
 	controlAccepting bool
@@ -116,6 +118,7 @@ func startApplicationLifecycleRuntime(
 		Repository: repository, Preferences: loader,
 		Transport: config.QuotaTransport, Clock: config.QuotaClock,
 		suspended: hasPreferencesStore, hooks: config.quotaHooks,
+		invalidation: config.Invalidation,
 	})
 	if err != nil {
 		return nil, applicationLifecycleDependencyError(ctx, err)
@@ -166,6 +169,9 @@ func startApplicationLifecycleRuntime(
 			store.SchedulerTargetLiveScan:  liveExecutor,
 		},
 		BudgetPolicy: scheduler.DefaultBudgetPolicy(), MaxLiveBurst: 8,
+		CycleCommitted: func(ctx context.Context, _ store.SchedulerCycle) {
+			notifyQueryInvalidation(config.Invalidation, ctx, QueryInvalidationIndex)
+		},
 	})
 	if err != nil {
 		closeQuotaRuntime()
@@ -253,7 +259,7 @@ func startApplicationLifecycleRuntime(
 	controlCtx, controlStop := context.WithCancel(ctx)
 	runtime := &applicationLifecycleRuntime{
 		adapter: adapter, coordinator: coordinator, quota: quotaRuntime,
-		preferences: preferencesService, cancel: cancel,
+		preferences: preferencesService, invalidation: config.Invalidation, cancel: cancel,
 		workerDone: make(chan error, 1), controlCtx: controlCtx, controlStop: controlStop,
 		controlAccepting: true, controlDone: closedApplicationLifecycleSignal(),
 		closeDone: make(chan struct{}),
@@ -278,6 +284,8 @@ func (runtime *applicationLifecycleRuntime) UpdateQuotaSettings(
 	if err != nil {
 		return committed, err
 	}
+	notifyQueryInvalidation(runtime.invalidation, controlContext, QueryInvalidationSettings)
+	notifyQueryInvalidation(runtime.invalidation, controlContext, QueryInvalidationQuota)
 	if err := runtime.quota.ReconcilePreferences(controlContext); err != nil {
 		return committed, &ApplicationPreferencesPostCommitError{Committed: committed, Cause: err}
 	}

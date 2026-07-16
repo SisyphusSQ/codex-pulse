@@ -39,3 +39,33 @@ export interface BootstrapInfo {
     "locale": string;
     "platform": string;
 }
+
+export enum QueryInvalidationDomain {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    QueryInvalidationIndex = "index",
+    QueryInvalidationQuota = "quota",
+    QueryInvalidationHealth = "health",
+    QueryInvalidationSettings = "settings",
+};
+
+/**
+ * QueryInvalidationEvent is a best-effort cache hint. It deliberately carries
+ * no business fact; the frontend must refetch the authoritative Go query.
+ */
+export interface QueryInvalidationEvent {
+    "version": QueryInvalidationVersion;
+    "domain": QueryInvalidationDomain;
+}
+
+export enum QueryInvalidationVersion {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    QueryInvalidationContractVersion = "query-invalidation-v1",
+};

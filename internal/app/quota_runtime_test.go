@@ -730,8 +730,10 @@ func TestApplicationLifecycleRuntimeCommitsSettingsBeforeQuotaReconcile(t *testi
 	registrar := &fakeLifecycleRegistrar{
 		callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent)),
 	}
+	invalidation := &recordingQueryInvalidationNotifier{}
 	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
 		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Invalidation: invalidation,
 		EventTimeout: time.Second,
 		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
 			requests <- request.URL.String()
@@ -758,6 +760,7 @@ func TestApplicationLifecycleRuntimeCommitsSettingsBeforeQuotaReconcile(t *testi
 	if err != nil {
 		t.Fatalf("LoadPreferences(before settings) error = %v", err)
 	}
+	invalidation.reset()
 	committed, err := runtime.UpdateQuotaSettings(context.Background(), preferences.SettingsUpdate{
 		ExpectedRevision: current.Revision,
 		Online:           preferences.OnlinePreferences{},
@@ -770,6 +773,14 @@ func TestApplicationLifecycleRuntimeCommitsSettingsBeforeQuotaReconcile(t *testi
 	}
 	if committed.Revision != current.Revision+1 || committed.Online != (preferences.OnlinePreferences{}) {
 		t.Fatalf("committed settings = %#v", committed)
+	}
+	if invalidation.count(QueryInvalidationSettings) != 1 ||
+		invalidation.count(QueryInvalidationQuota) != 1 {
+		t.Fatalf(
+			"settings invalidation counts = settings:%d quota:%d",
+			invalidation.count(QueryInvalidationSettings),
+			invalidation.count(QueryInvalidationQuota),
+		)
 	}
 	readback, err := preferenceStore.LoadPreferences(context.Background())
 	if err != nil || readback.Revision != committed.Revision || readback.Online != committed.Online {
@@ -809,8 +820,10 @@ func TestApplicationLifecycleRuntimeReturnsCommittedSettingsOnReconcileFailure(t
 	registrar := &fakeLifecycleRegistrar{
 		callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent)),
 	}
+	invalidation := &recordingQueryInvalidationNotifier{}
 	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
 		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Invalidation: invalidation,
 		EventTimeout: time.Second,
 		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
 			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
@@ -834,6 +847,7 @@ func TestApplicationLifecycleRuntimeReturnsCommittedSettingsOnReconcileFailure(t
 	}
 	reconcileFailure := errors.New("synthetic reconcile failure")
 	runtime.quota.reconcilePreferences = func(context.Context) error { return reconcileFailure }
+	invalidation.reset()
 	committed, err := runtime.UpdateQuotaSettings(context.Background(), preferences.SettingsUpdate{
 		ExpectedRevision: current.Revision,
 		Online: preferences.OnlinePreferences{
@@ -849,6 +863,14 @@ func TestApplicationLifecycleRuntimeReturnsCommittedSettingsOnReconcileFailure(t
 	var postCommitError *ApplicationPreferencesPostCommitError
 	if !errors.As(err, &postCommitError) || postCommitError.Committed.Revision != committed.Revision {
 		t.Fatalf("post-commit error = %#v, committed = %#v", postCommitError, committed)
+	}
+	if invalidation.count(QueryInvalidationSettings) != 1 ||
+		invalidation.count(QueryInvalidationQuota) != 1 {
+		t.Fatalf(
+			"post-commit invalidation counts = settings:%d quota:%d",
+			invalidation.count(QueryInvalidationSettings),
+			invalidation.count(QueryInvalidationQuota),
+		)
 	}
 	readback, err := preferenceStore.LoadPreferences(context.Background())
 	if err != nil || readback.Revision != current.Revision+1 || !readback.Online.QuotaEnabled {
