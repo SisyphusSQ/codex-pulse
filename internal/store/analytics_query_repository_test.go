@@ -372,7 +372,7 @@ func TestSessionAnalyticsDetailMatchesListAndMissingRollupDegrades(t *testing.T)
 		t.Fatalf("ListSessionAnalytics() error = %v", err)
 	}
 	detail, err := repository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
-		SessionID: "session-alpha", ReportingTimezone: pointerTo("UTC"),
+		SessionID: "session-alpha", ReportingTimezone: pointerTo("UTC"), TurnLimit: 20,
 	})
 	if err != nil {
 		t.Fatalf("SessionAnalytics() error = %v", err)
@@ -382,7 +382,7 @@ func TestSessionAnalyticsDetailMatchesListAndMissingRollupDegrades(t *testing.T)
 		t.Fatalf("detail/list mismatch:\ndetail=%#v\nlist=%#v", detail, page.Records[0])
 	}
 	if _, err := repository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
-		SessionID: "missing", ReportingTimezone: pointerTo("UTC"),
+		SessionID: "missing", ReportingTimezone: pointerTo("UTC"), TurnLimit: 20,
 	}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("SessionAnalytics(missing) error = %v, want ErrNotFound", err)
 	}
@@ -404,6 +404,125 @@ func TestSessionAnalyticsDetailMatchesListAndMissingRollupDegrades(t *testing.T)
 		if record.Rollup != nil {
 			t.Fatalf("fallback invented rollup: %#v", record)
 		}
+	}
+}
+
+func TestSessionAnalyticsDetailExposesBoundedTurnContract(t *testing.T) {
+	t.Parallel()
+
+	detailFilter := reflect.TypeOf(SessionAnalyticsDetailFilter{})
+	for _, field := range []string{"TurnLimit", "TurnCursor"} {
+		if _, found := detailFilter.FieldByName(field); !found {
+			t.Fatalf("SessionAnalyticsDetailFilter missing %s", field)
+		}
+	}
+	snapshot := reflect.TypeOf(SessionAnalyticsSnapshot{})
+	for _, field := range []string{"Turns", "NextTurnCursor"} {
+		if _, found := snapshot.FieldByName(field); !found {
+			t.Fatalf("SessionAnalyticsSnapshot missing %s", field)
+		}
+	}
+}
+
+func TestSessionAnalyticsDetailReadsBoundedContentFreeTurnTimeline(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	seedSessionTurnTimelineFixture(t, repository, true)
+	first, err := repository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
+		SessionID: "session-timeline", ReportingTimezone: pointerTo("UTC"), TurnLimit: 1,
+	})
+	if err != nil {
+		t.Fatalf("SessionAnalytics(first turn page) error = %v", err)
+	}
+	if first.Mode != AnalyticsReadActiveRollup || len(first.Turns) != 1 ||
+		first.NextTurnCursor == nil {
+		t.Fatalf("first turn page = %#v", first)
+	}
+	active := first.Turns[0]
+	if active.TurnID != "turn-timeline-active" || active.StartedAtMS != 200 ||
+		active.CompletedAtMS != nil || active.Usage == nil || active.Usage.IsFinal ||
+		active.Usage.InputTokens == nil || *active.Usage.InputTokens != 0 || active.Cost != nil ||
+		active.Model.DisplayName == nil || *active.Model.DisplayName != "Model Safe" {
+		t.Fatalf("active turn = %#v", active)
+	}
+	if first.NextTurnCursor.SessionID != "session-timeline" ||
+		first.NextTurnCursor.TurnID != active.TurnID ||
+		first.NextTurnCursor.StartedAtMS != active.StartedAtMS {
+		t.Fatalf("first turn cursor = %#v, active = %#v", first.NextTurnCursor, active)
+	}
+
+	second, err := repository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
+		SessionID: "session-timeline", ReportingTimezone: pointerTo("UTC"), TurnLimit: 1,
+		TurnCursor: first.NextTurnCursor,
+	})
+	if err != nil {
+		t.Fatalf("SessionAnalytics(second turn page) error = %v", err)
+	}
+	if len(second.Turns) != 1 || second.NextTurnCursor != nil {
+		t.Fatalf("second turn page = %#v", second)
+	}
+	completed := second.Turns[0]
+	if completed.TurnID != "turn-timeline-complete" || completed.StartedAtMS != 100 ||
+		completed.CompletedAtMS == nil || *completed.CompletedAtMS != 120 ||
+		completed.Usage == nil || !completed.Usage.IsFinal || completed.Cost == nil ||
+		completed.Cost.Status != pricing.CostStatusPriced ||
+		completed.Cost.PricingVersion == nil ||
+		*completed.Cost.PricingVersion != "openai-api-2026-07-14" ||
+		completed.Cost.EstimatedUSDMicros == nil || *completed.Cost.EstimatedUSDMicros != 100 {
+		t.Fatalf("completed turn = %#v", completed)
+	}
+
+	fallbackRepository := openRuntimeRepository(t)
+	seedSessionTurnTimelineFixture(t, fallbackRepository, false)
+	fallback, err := fallbackRepository.SessionAnalytics(
+		context.Background(),
+		SessionAnalyticsDetailFilter{SessionID: "session-timeline", TurnLimit: 20},
+	)
+	if err != nil {
+		t.Fatalf("SessionAnalytics(fallback turn page) error = %v", err)
+	}
+	if fallback.Mode != AnalyticsReadDetailFallback || len(fallback.Turns) != 2 {
+		t.Fatalf("fallback turn page = %#v", fallback)
+	}
+	for _, turn := range fallback.Turns {
+		if turn.Usage == nil || turn.Cost != nil {
+			t.Fatalf("fallback invented or lost turn evidence: %#v", turn)
+		}
+	}
+}
+
+func TestSessionAnalyticsDetailReturnsKnownEmptyAndRejectsMissingTurnAttribution(t *testing.T) {
+	t.Parallel()
+
+	emptyRepository := openRuntimeRepository(t)
+	seedSessionAnalyticsFixture(t, emptyRepository, true)
+	empty, err := emptyRepository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
+		SessionID: "session-beta", ReportingTimezone: pointerTo("UTC"), TurnLimit: 20,
+	})
+	if err != nil {
+		t.Fatalf("SessionAnalytics(known empty) error = %v", err)
+	}
+	if empty.Turns == nil || len(empty.Turns) != 0 || empty.NextTurnCursor != nil {
+		t.Fatalf("known-empty turn page = %#v", empty)
+	}
+
+	missingRepository := openRuntimeRepository(t)
+	seedSessionAnalyticsFixture(t, missingRepository, true)
+	if err := missingRepository.database.Write(context.Background(), func(
+		ctx context.Context,
+		transaction storesqlite.WriteTx,
+	) error {
+		return transaction.WithContext(ctx).Where("turn_id = ?", "turn-session-alpha").
+			Delete(&turnAttributionModel{}).Error
+	}); err != nil {
+		t.Fatalf("delete turn attribution: %v", err)
+	}
+	_, err = missingRepository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
+		SessionID: "session-alpha", ReportingTimezone: pointerTo("UTC"), TurnLimit: 20,
+	})
+	if !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("SessionAnalytics(missing turn attribution) error = %v, want ErrInvalidRecord", err)
 	}
 }
 
@@ -432,6 +551,26 @@ func TestSessionAnalyticsRejectsInvalidFiltersAndHonorsCancellation(t *testing.T
 	})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("ListSessionAnalytics(cancelled) error = %v", err)
+	}
+	for _, filter := range []SessionAnalyticsDetailFilter{
+		{SessionID: "session-a", TurnLimit: 0},
+		{SessionID: "session-a", TurnLimit: 51},
+		{SessionID: "session-a", TurnLimit: 1, TurnCursor: &SessionTurnAnalyticsCursor{
+			SessionID: "session-b", TurnID: "turn-a", StartedAtMS: 1,
+		}},
+		{SessionID: "session-a", TurnLimit: 1, TurnCursor: &SessionTurnAnalyticsCursor{
+			SessionID: "session-a", TurnID: "", StartedAtMS: 1,
+		}},
+	} {
+		if _, err := repository.SessionAnalytics(context.Background(), filter); !errors.Is(err, ErrInvalidRecord) {
+			t.Fatalf("SessionAnalytics(%#v) error = %v, want ErrInvalidRecord", filter, err)
+		}
+	}
+	_, err = repository.SessionAnalytics(ctx, SessionAnalyticsDetailFilter{
+		SessionID: "session-a", TurnLimit: 20,
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("SessionAnalytics(cancelled) error = %v", err)
 	}
 }
 
@@ -484,6 +623,58 @@ func TestSessionAnalyticsSurvivesStoreRestart(t *testing.T) {
 	}
 }
 
+func TestSessionTurnAnalyticsCursorSurvivesStoreRestart(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatalf("Chmod(temp dir) error = %v", err)
+	}
+	databasePath := filepath.Join(directory, "session-turn-analytics-restart.db")
+	open := func() (*storesqlite.Store, *Repository) {
+		database, err := storesqlite.Open(context.Background(), storesqlite.Config{Path: databasePath})
+		if err != nil {
+			t.Fatalf("sqlite.Open() error = %v", err)
+		}
+		repository := NewRepository(database)
+		if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
+			t.Fatalf("EnsureApplicationSchema() error = %v", err)
+		}
+		return database, repository
+	}
+
+	database, repository := open()
+	seedSessionTurnTimelineFixture(t, repository, true)
+	first, err := repository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
+		SessionID: "session-timeline", ReportingTimezone: pointerTo("UTC"), TurnLimit: 1,
+	})
+	if err != nil || len(first.Turns) != 1 || first.NextTurnCursor == nil {
+		t.Fatalf("SessionAnalytics(first before restart) = %#v, %v", first, err)
+	}
+	if err := database.Close(context.Background()); err != nil {
+		t.Fatalf("Close(before restart) error = %v", err)
+	}
+
+	reopened, reopenedRepository := open()
+	t.Cleanup(func() {
+		if err := reopened.Close(context.Background()); err != nil {
+			t.Errorf("Close(reopened) error = %v", err)
+		}
+	})
+	second, err := reopenedRepository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
+		SessionID: "session-timeline", ReportingTimezone: pointerTo("UTC"), TurnLimit: 1,
+		TurnCursor: first.NextTurnCursor,
+	})
+	if err != nil {
+		t.Fatalf("SessionAnalytics(second after restart) error = %v", err)
+	}
+	if len(second.Turns) != 1 || second.NextTurnCursor != nil ||
+		second.Turns[0].TurnID != "turn-timeline-complete" ||
+		second.Turns[0].Cost == nil || second.Turns[0].Usage == nil {
+		t.Fatalf("SessionAnalytics(second after restart) = %#v", second)
+	}
+}
+
 func TestSessionAnalyticsAmbiguousGenerationFallsBackWithoutTimezone(t *testing.T) {
 	t.Parallel()
 
@@ -529,7 +720,7 @@ func TestSessionAnalyticsAmbiguousGenerationFallsBackWithoutTimezone(t *testing.
 		t.Fatalf("ListSessionAnalytics(explicit timezone) = %#v, %v", explicit, err)
 	}
 	detail, err := repository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
-		SessionID: "session-alpha",
+		SessionID: "session-alpha", TurnLimit: 20,
 	})
 	if err != nil || detail.Mode != AnalyticsReadAmbiguousFallback || detail.Generation != nil ||
 		detail.Record.Rollup != nil {
@@ -879,6 +1070,21 @@ func seedSessionAnalyticsFixture(t *testing.T, repository *Repository, withLedge
 			if err := database.Create(&attribution).Error; err != nil {
 				return err
 			}
+			if value.active {
+				turnAttribution := turnAttributionModel{
+					TurnID:    "turn-" + value.id,
+					ProjectID: value.projectID, ProjectDisplay: value.projectDisplay,
+					ProjectConfidence: attribution.ProjectConfidence,
+					ProjectSource:     attribution.ProjectSource, ProjectReason: attribution.ProjectReason,
+					ModelKey: value.modelKey, ModelDisplay: value.modelDisplay,
+					ModelConfidence: attribution.ModelConfidence,
+					ModelSource:     attribution.ModelSource, ModelReason: attribution.ModelReason,
+					RuleVersion: 1, UpdatedAtMS: 400,
+				}
+				if err := database.Create(&turnAttribution).Error; err != nil {
+					return err
+				}
+			}
 			if withLedger && value.rollup != nil {
 				rollup := sessionUsageRollupModel{
 					GenerationID: "session-analytics-v1", SessionID: value.id, Totals: *value.rollup,
@@ -892,5 +1098,134 @@ func seedSessionAnalyticsFixture(t *testing.T, repository *Repository, withLedge
 	})
 	if err != nil {
 		t.Fatalf("seed session analytics fixture: %v", err)
+	}
+}
+
+func seedSessionTurnTimelineFixture(t *testing.T, repository *Repository, withLedger bool) {
+	t.Helper()
+	pricingVersion := pricing.BuiltinOpenAI20260714()
+	if withLedger {
+		if err := repository.AddPricingVersion(context.Background(), pricingVersion); err != nil {
+			t.Fatalf("AddPricingVersion() error = %v", err)
+		}
+	}
+	zero, input, cost := int64(0), int64(30), int64(100)
+	completedAt := int64(120)
+	err := repository.database.Write(context.Background(), func(
+		ctx context.Context,
+		transaction storesqlite.WriteTx,
+	) error {
+		database := transaction.WithContext(ctx)
+		if err := database.Create(&sessionModel{
+			SessionID: "session-timeline", Provider: "codex", SourceKind: "session",
+			CreatedAtMS: 1, FirstSeenAtMS: 1, LastSeenAtMS: 220,
+		}).Error; err != nil {
+			return err
+		}
+		if err := database.Create(&sessionCurrentModel{
+			SessionID: "session-timeline", LastActivityAtMS: pointerTo(int64(220)), UpdatedAtMS: 220,
+		}).Error; err != nil {
+			return err
+		}
+		sessionAttribution := sessionAttributionModel{
+			SessionID: "session-timeline", DisplayTitle: "Timeline safe title",
+			TitleConfidence:   string(AttributionConfidenceHigh),
+			TitleSource:       string(AttributionSourceSessionIDFallback),
+			TitleReason:       string(AttributionReasonStableIdentity),
+			ProjectConfidence: string(AttributionConfidenceUnknown),
+			ProjectSource:     string(AttributionSourceMissing),
+			ProjectReason:     string(AttributionReasonMissing),
+			ModelKey:          pointerTo("model-safe"), ModelDisplay: pointerTo("Model Safe"),
+			ModelConfidence: string(AttributionConfidenceHigh),
+			ModelSource:     string(AttributionSourceModelCanonical),
+			ModelReason:     string(AttributionReasonObserved), RuleVersion: 1, UpdatedAtMS: 220,
+		}
+		if err := database.Create(&sessionAttribution).Error; err != nil {
+			return err
+		}
+		turns := []turnModel{
+			{
+				TurnID: "turn-timeline-complete", SessionID: "session-timeline", StartedAtMS: 100,
+				CompletedAtMS: &completedAt, Outcome: pointerTo("completed"),
+				Model: pointerTo("raw-private-model"), SourceGeneration: 0,
+				StartOffset: 10, CompleteOffset: pointerTo(int64(20)),
+			},
+			{
+				TurnID: "turn-timeline-active", SessionID: "session-timeline", StartedAtMS: 200,
+				Model: pointerTo("raw-private-model"), SourceGeneration: 0, StartOffset: 30,
+			},
+		}
+		if err := database.Create(&turns).Error; err != nil {
+			return err
+		}
+		usages := []turnUsageModel{
+			{
+				TurnID: "turn-timeline-complete", ObservedAtMS: 120, IsFinal: true,
+				InputTokens: &input, CachedInputTokens: &zero, OutputTokens: &zero,
+				ReasoningTokens: &zero, SourceGeneration: 0, SourceOffset: 20,
+				Confidence: "exact", UpdatedAtMS: 120,
+			},
+			{
+				TurnID: "turn-timeline-active", ObservedAtMS: 220, IsFinal: false,
+				InputTokens: &zero, CachedInputTokens: &zero, OutputTokens: &zero,
+				ReasoningTokens: &zero, SourceGeneration: 0, SourceOffset: 40,
+				Confidence: "exact", UpdatedAtMS: 220,
+			},
+		}
+		if err := database.Create(&usages).Error; err != nil {
+			return err
+		}
+		attributions := []turnAttributionModel{
+			{TurnID: "turn-timeline-complete"},
+			{TurnID: "turn-timeline-active"},
+		}
+		for index := range attributions {
+			attributions[index].ProjectConfidence = string(AttributionConfidenceUnknown)
+			attributions[index].ProjectSource = string(AttributionSourceMissing)
+			attributions[index].ProjectReason = string(AttributionReasonMissing)
+			attributions[index].ModelKey = pointerTo("model-safe")
+			attributions[index].ModelDisplay = pointerTo("Model Safe")
+			attributions[index].ModelConfidence = string(AttributionConfidenceHigh)
+			attributions[index].ModelSource = string(AttributionSourceModelCanonical)
+			attributions[index].ModelReason = string(AttributionReasonObserved)
+			attributions[index].RuleVersion = 1
+			attributions[index].UpdatedAtMS = 220
+		}
+		if err := database.Create(&attributions).Error; err != nil {
+			return err
+		}
+		if !withLedger {
+			return nil
+		}
+		generation := costRollupGenerationModel{
+			GenerationID: "session-turn-timeline-v1", ReportingTimezone: "UTC",
+			PricingSource: "test", Currency: "USD", RollupVersion: 1,
+			State: string(CostRollupGenerationActive), CreatedAtMS: 300,
+			CompletedAtMS: pointerTo(int64(300)), UpdatedAtMS: 300,
+		}
+		if err := database.Create(&generation).Error; err != nil {
+			return err
+		}
+		rollup := sessionUsageRollupModel{
+			GenerationID: generation.GenerationID, SessionID: "session-timeline",
+			Totals: rollupTotalsModel{
+				TurnCount: 1, InputTokens: &input, CachedInputTokens: &zero,
+				OutputTokens: &zero, ReasoningTokens: &zero, TotalTokens: &input,
+				EstimatedUSDMicros: &cost, PricedTurnCount: 1,
+				FirstActivityAtMS: 120, LastActivityAtMS: 120, UpdatedAtMS: 300,
+			},
+		}
+		if err := database.Create(&rollup).Error; err != nil {
+			return err
+		}
+		return database.Create(&turnCostModel{
+			GenerationID: generation.GenerationID, TurnID: "turn-timeline-complete",
+			PricingVersion: &pricingVersion.PricingVersion, EstimatedUSDMicros: &cost,
+			PricingStatus: string(pricing.CostStatusPriced),
+			PricingReason: string(pricing.CostReasonPriced), CalculatedAtMS: 300,
+		}).Error
+	})
+	if err != nil {
+		t.Fatalf("seed session turn timeline fixture: %v", err)
 	}
 }

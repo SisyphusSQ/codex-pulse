@@ -69,6 +69,31 @@ const sessionAnalyticsTotalsSelect = `
 	MAX(rollup.last_activity_at_ms) AS last_activity_at_ms,
 	COALESCE(MAX(rollup.updated_at_ms), 0) AS updated_at_ms`
 
+const sessionTurnAnalyticsProjectionSelect = `
+	turn_record.turn_id AS turn_id,
+	turn_record.started_at_ms AS started_at_ms,
+	turn_record.completed_at_ms AS completed_at_ms,
+	attribution.turn_id AS attribution_turn_id,
+	attribution.model_key AS model_key,
+	attribution.model_display_name AS model_display_name,
+	attribution.model_confidence AS model_confidence,
+	attribution.model_source AS model_source,
+	attribution.model_reason AS model_reason,
+	attribution.rule_version AS rule_version,
+	attribution.updated_at_ms AS attribution_updated_at_ms,
+	usage.turn_id AS usage_turn_id,
+	usage.observed_at_ms AS usage_observed_at_ms,
+	usage.is_final AS usage_is_final,
+	usage.input_tokens AS input_tokens,
+	usage.cached_input_tokens AS cached_input_tokens,
+	usage.output_tokens AS output_tokens,
+	usage.reasoning_tokens AS reasoning_tokens,
+	cost.turn_id AS cost_turn_id,
+	cost.pricing_version AS pricing_version,
+	cost.estimated_usd_micros AS estimated_usd_micros,
+	cost.pricing_status AS pricing_status,
+	cost.pricing_reason AS pricing_reason`
+
 type sessionAnalyticsProjection struct {
 	SessionID              string  `gorm:"column:session_id"`
 	DisplayTitle           string  `gorm:"column:display_title"`
@@ -123,6 +148,32 @@ type sessionAnalyticsTotalsProjection struct {
 	FirstActivityAtMS  *int64 `gorm:"column:first_activity_at_ms"`
 	LastActivityAtMS   *int64 `gorm:"column:last_activity_at_ms"`
 	UpdatedAtMS        int64  `gorm:"column:updated_at_ms"`
+}
+
+type sessionTurnAnalyticsProjection struct {
+	TurnID                 string  `gorm:"column:turn_id"`
+	StartedAtMS            int64   `gorm:"column:started_at_ms"`
+	CompletedAtMS          *int64  `gorm:"column:completed_at_ms"`
+	AttributionTurnID      *string `gorm:"column:attribution_turn_id"`
+	ModelKey               *string `gorm:"column:model_key"`
+	ModelDisplay           *string `gorm:"column:model_display_name"`
+	ModelConfidence        *string `gorm:"column:model_confidence"`
+	ModelSource            *string `gorm:"column:model_source"`
+	ModelReason            *string `gorm:"column:model_reason"`
+	RuleVersion            *int    `gorm:"column:rule_version"`
+	AttributionUpdatedAtMS *int64  `gorm:"column:attribution_updated_at_ms"`
+	UsageTurnID            *string `gorm:"column:usage_turn_id"`
+	UsageObservedAtMS      *int64  `gorm:"column:usage_observed_at_ms"`
+	UsageIsFinal           *bool   `gorm:"column:usage_is_final"`
+	InputTokens            *int64  `gorm:"column:input_tokens"`
+	CachedInputTokens      *int64  `gorm:"column:cached_input_tokens"`
+	OutputTokens           *int64  `gorm:"column:output_tokens"`
+	ReasoningTokens        *int64  `gorm:"column:reasoning_tokens"`
+	CostTurnID             *string `gorm:"column:cost_turn_id"`
+	PricingVersion         *string `gorm:"column:pricing_version"`
+	EstimatedUSDMicros     *int64  `gorm:"column:estimated_usd_micros"`
+	PricingStatus          *string `gorm:"column:pricing_status"`
+	PricingReason          *string `gorm:"column:pricing_reason"`
 }
 
 func (repository *Repository) ListSessionAnalytics(
@@ -261,6 +312,12 @@ func (repository *Repository) SessionAnalytics(
 		if err != nil {
 			return err
 		}
+		result.Turns, result.NextTurnCursor, err = loadSessionTurnAnalytics(
+			database, filter, generation,
+		)
+		if err != nil {
+			return err
+		}
 		if generation == nil {
 			return nil
 		}
@@ -292,6 +349,148 @@ func (repository *Repository) SessionAnalytics(
 		return nil
 	})
 	return result, err
+}
+
+// loadSessionTurnAnalytics 在Session detail所属的同一Store.View中读取bounded turn page。
+func loadSessionTurnAnalytics(
+	database *gorm.DB,
+	filter SessionAnalyticsDetailFilter,
+	generation *costRollupGenerationModel,
+) ([]SessionTurnAnalyticsRecord, *SessionTurnAnalyticsCursor, error) {
+	query := database.Table("turns AS turn_record").
+		Joins("LEFT JOIN turn_attributions AS attribution ON attribution.turn_id = turn_record.turn_id").
+		Joins(`LEFT JOIN turn_usage AS usage ON usage.turn_id = turn_record.turn_id
+			AND usage.source_generation = turn_record.source_generation`).
+		Where("turn_record.session_id = ?", filter.SessionID)
+	if generation == nil {
+		query = query.Joins("LEFT JOIN turn_costs AS cost ON 1 = 0")
+	} else {
+		query = query.Joins(
+			`LEFT JOIN turn_costs AS cost ON cost.turn_id = turn_record.turn_id
+				AND cost.generation_id = ?`,
+			generation.GenerationID,
+		)
+	}
+	if filter.TurnCursor != nil {
+		query = query.Where(
+			`turn_record.started_at_ms < ? OR
+				(turn_record.started_at_ms = ? AND turn_record.turn_id < ?)`,
+			filter.TurnCursor.StartedAtMS,
+			filter.TurnCursor.StartedAtMS,
+			filter.TurnCursor.TurnID,
+		)
+	}
+	var projections []sessionTurnAnalyticsProjection
+	if err := query.Select(sessionTurnAnalyticsProjectionSelect).
+		Order("turn_record.started_at_ms DESC").
+		Order("turn_record.turn_id DESC").
+		Limit(filter.TurnLimit + 1).
+		Scan(&projections).Error; err != nil {
+		return nil, nil, err
+	}
+	hasMore := len(projections) > filter.TurnLimit
+	if hasMore {
+		projections = projections[:filter.TurnLimit]
+	}
+	records := make([]SessionTurnAnalyticsRecord, 0, len(projections))
+	for _, projection := range projections {
+		record, err := sessionTurnRecordFromProjection(projection)
+		if err != nil {
+			return nil, nil, err
+		}
+		records = append(records, record)
+	}
+	if !hasMore {
+		return records, nil, nil
+	}
+	last := records[len(records)-1]
+	return records, &SessionTurnAnalyticsCursor{
+		SessionID: filter.SessionID, TurnID: last.TurnID, StartedAtMS: last.StartedAtMS,
+	}, nil
+}
+
+func sessionTurnRecordFromProjection(
+	projection sessionTurnAnalyticsProjection,
+) (SessionTurnAnalyticsRecord, error) {
+	if projection.TurnID == "" || projection.StartedAtMS < 0 ||
+		(projection.CompletedAtMS != nil && *projection.CompletedAtMS < projection.StartedAtMS) ||
+		projection.AttributionTurnID == nil || *projection.AttributionTurnID != projection.TurnID ||
+		projection.ModelConfidence == nil || projection.ModelSource == nil ||
+		projection.ModelReason == nil || projection.RuleVersion == nil ||
+		projection.AttributionUpdatedAtMS == nil {
+		return SessionTurnAnalyticsRecord{}, invalidRecord("stored session turn attribution is invalid")
+	}
+	if (projection.ModelKey == nil) != (projection.ModelDisplay == nil) {
+		return SessionTurnAnalyticsRecord{}, invalidRecord("stored session turn model attribution is invalid")
+	}
+	record := SessionTurnAnalyticsRecord{
+		TurnID: projection.TurnID, StartedAtMS: projection.StartedAtMS,
+		CompletedAtMS: cloneInt64Pointer(projection.CompletedAtMS),
+		Model: ModelAttribution{
+			ModelKey:    cloneAttributionString(projection.ModelKey),
+			DisplayName: cloneAttributionString(projection.ModelDisplay),
+			Confidence:  AttributionConfidence(*projection.ModelConfidence),
+			Source:      AttributionSource(*projection.ModelSource),
+			Reason:      AttributionReason(*projection.ModelReason),
+		},
+	}
+	if projection.UsageTurnID != nil {
+		if *projection.UsageTurnID != projection.TurnID || projection.UsageObservedAtMS == nil ||
+			projection.UsageIsFinal == nil || *projection.UsageObservedAtMS < 0 ||
+			*projection.UsageObservedAtMS < projection.StartedAtMS ||
+			(*projection.UsageIsFinal != (projection.CompletedAtMS != nil)) ||
+			invalidOptionalAnalyticsNumber(projection.InputTokens) ||
+			invalidOptionalAnalyticsNumber(projection.CachedInputTokens) ||
+			invalidOptionalAnalyticsNumber(projection.OutputTokens) ||
+			invalidOptionalAnalyticsNumber(projection.ReasoningTokens) {
+			return SessionTurnAnalyticsRecord{}, invalidRecord("stored session turn usage is invalid")
+		}
+		record.Usage = &SessionTurnUsageAnalytics{
+			ObservedAtMS: *projection.UsageObservedAtMS, IsFinal: *projection.UsageIsFinal,
+			InputTokens:       cloneInt64Pointer(projection.InputTokens),
+			CachedInputTokens: cloneInt64Pointer(projection.CachedInputTokens),
+			OutputTokens:      cloneInt64Pointer(projection.OutputTokens),
+			ReasoningTokens:   cloneInt64Pointer(projection.ReasoningTokens),
+		}
+	} else if projection.UsageObservedAtMS != nil || projection.UsageIsFinal != nil ||
+		projection.InputTokens != nil || projection.CachedInputTokens != nil ||
+		projection.OutputTokens != nil || projection.ReasoningTokens != nil {
+		return SessionTurnAnalyticsRecord{}, invalidRecord("stored absent session turn usage is invalid")
+	}
+	if projection.CostTurnID == nil {
+		if projection.PricingVersion != nil || projection.EstimatedUSDMicros != nil ||
+			projection.PricingStatus != nil || projection.PricingReason != nil {
+			return SessionTurnAnalyticsRecord{}, invalidRecord("stored absent session turn cost is invalid")
+		}
+		return record, nil
+	}
+	if *projection.CostTurnID != projection.TurnID || projection.PricingStatus == nil ||
+		projection.PricingReason == nil {
+		return SessionTurnAnalyticsRecord{}, invalidRecord("stored session turn cost is invalid")
+	}
+	status := pricing.CostStatus(*projection.PricingStatus)
+	reason := pricing.CostReason(*projection.PricingReason)
+	if (status == pricing.CostStatusPriced &&
+		(reason != pricing.CostReasonPriced || projection.PricingVersion == nil ||
+			*projection.PricingVersion == "" ||
+			projection.EstimatedUSDMicros == nil)) ||
+		(status == pricing.CostStatusUnpriced &&
+			(!validStoredCostReason(reason) || projection.PricingVersion != nil ||
+				projection.EstimatedUSDMicros != nil)) ||
+		(status != pricing.CostStatusPriced && status != pricing.CostStatusUnpriced) ||
+		invalidOptionalAnalyticsNumber(projection.EstimatedUSDMicros) {
+		return SessionTurnAnalyticsRecord{}, invalidRecord("stored session turn pricing evidence is invalid")
+	}
+	record.Cost = &SessionTurnCostAnalytics{
+		PricingVersion:     cloneAttributionString(projection.PricingVersion),
+		EstimatedUSDMicros: cloneInt64Pointer(projection.EstimatedUSDMicros),
+		Status:             status, Reason: reason,
+	}
+	return record, nil
+}
+
+func invalidOptionalAnalyticsNumber(value *int64) bool {
+	return value != nil && *value < 0
 }
 
 func ensureSessionAttributionsPresent(database *gorm.DB) error {
@@ -724,8 +923,14 @@ func validateSessionAnalyticsFilter(filter SessionAnalyticsFilter) error {
 }
 
 func validateSessionAnalyticsDetailFilter(filter SessionAnalyticsDetailFilter) error {
-	if filter.SessionID == "" || len(filter.SessionID) > 512 {
+	if filter.SessionID == "" || len(filter.SessionID) > 512 ||
+		filter.TurnLimit < 1 || filter.TurnLimit > 50 {
 		return invalidRecord("session analytics detail identity is invalid")
+	}
+	if filter.TurnCursor != nil &&
+		(filter.TurnCursor.SessionID != filter.SessionID || filter.TurnCursor.TurnID == "" ||
+			len(filter.TurnCursor.TurnID) > 512 || filter.TurnCursor.StartedAtMS < 0) {
+		return invalidRecord("session analytics detail turn cursor is invalid")
 	}
 	return validateAnalyticsTimezone(filter.ReportingTimezone)
 }

@@ -80,6 +80,7 @@ export interface ReasonCount {
 export interface SessionDetailRequest {
     "sessionId": string;
     "reportingTimezone": string | null;
+    "turnPage": query$0.PageRequest;
 }
 
 export interface SessionDetailResponse {
@@ -89,6 +90,8 @@ export interface SessionDetailResponse {
     "pricingVersions": string[] | null;
     "unpricedReasons": ReasonCount[] | null;
     "item": SessionItem;
+    "turnPage": query$0.PageInfo;
+    "turns": SessionTurnItem[] | null;
     "degradedReason": DegradedReason | null;
 }
 
@@ -115,6 +118,49 @@ export interface SessionListResponse {
     "pageTotals": UsageTotals;
     "degradedReason": DegradedReason | null;
 }
+
+/**
+ * SessionTurnItem 是content-free turn usage/cost时间线条目。
+ */
+export interface SessionTurnItem {
+    "timelineKey": string;
+    "state": SessionTurnState;
+    "model": AttributionValue;
+    "startedAtMs": query$0.NumericValue;
+    "completedAtMs": query$0.NumericValue;
+    "observedAtMs": query$0.NumericValue;
+    "totals": UsageTotals;
+    "pricingStatus": SessionTurnPricingStatus;
+    "pricingVersion": string | null;
+    "unpricedReason": pricing$0.CostReason | null;
+}
+
+/**
+ * SessionTurnPricingStatus 区分尚不可定价、已定价和明确未定价。
+ */
+export enum SessionTurnPricingStatus {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    SessionTurnPricingUnknown = "unknown",
+    SessionTurnPricingPriced = "priced",
+    SessionTurnPricingUnpriced = "unpriced",
+};
+
+/**
+ * SessionTurnState 只表达安全的turn lifecycle，不推导业务状态机。
+ */
+export enum SessionTurnState {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    SessionTurnActive = "active",
+    SessionTurnComplete = "complete",
+};
 
 export enum TrendGranularity {
     /**

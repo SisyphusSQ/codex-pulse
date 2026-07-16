@@ -106,6 +106,7 @@ describe("business Vue Query contract", () => {
     const sessionRequest: SessionDetailRequest = {
       sessionId: "session-1",
       reportingTimezone: "Asia/Shanghai",
+      turnPage: { cursor: null, limit: 20 },
     };
     const projectRequest: ProjectDetailRequest = {
       dimensionKey: "project-1",

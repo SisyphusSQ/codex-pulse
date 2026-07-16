@@ -37,7 +37,9 @@ flowchart LR
 
 `internal/query` 固定 `query-v1` 非泛型 DTO，供 M6 的 usage/session/project 与 quota/source/job/health/settings query service 组合。每个 endpoint 先构造 immutable `Specification`，声明允许的 sort/filter 字段、operator、默认 limit、最大 limit、日期范围和稳定 tie-breaker；客户端字符串只有通过 allowlist 和 arity 校验后才能进入业务 service。公共层只返回 `ValidatedRequest`，不拼接 SQL、不访问 SQLite，也不把 GORM model、数据库 row 或内部主键暴露给 Wails。
 
-分页 cursor 对前端保持有界 opaque token，具体 keyset payload 和 endpoint scope 由对应业务 query 拥有，不依赖进程内状态。业务列表必须组合稳定 tie-breaker 且 limit 不超过公共 hard cap，已知空列表返回 `[]`；v0.1 不提供无限制全表导出。
+分页 cursor 对前端保持有界 opaque token，具体 keyset payload 和 endpoint scope 由对应业务 query 拥有，不依赖进程内 page lookup 状态。敏感 Session Turn cursor 使用 process-lifetime 随机 AEAD key 认证加密，app process 重启时前端 cache 与旧 cursor 一起失效；Store typed cursor 仍可跨同一 SQLite reopen 继续分页。业务列表必须组合稳定 tie-breaker 且 limit 不超过公共 hard cap，已知空列表返回 `[]`；v0.1 不提供无限制全表导出。
+
+`SessionDetail` 在既有方法内接受 bounded `turnPage`，并在同一次 `Store.View` snapshot 返回 Session aggregate 与 content-free Turn usage/cost page。Store 通过固定 GORM projection 按 `started_at_ms DESC, turn_id DESC` 读取安全 attribution、lifecycle、同 generation usage 与可选 active cost；query 层负责 AEAD cursor、Session 绑定、不可逆 timeline key、unknown/zero/priced/unpriced 映射，以及完整首屏精确/截断页下界与 pricing membership 对账。该扩展不增加 schema、index、Wails method 或 event domain，也不把 raw identity、正文、tool、路径、offset、generation、SQL 或 driver cause 带到 generated DTO。
 
 用户日期范围以本地 `YYYY-MM-DD`、exclusive end 和显式 IANA timezone 输入，由 Go 在 DST-aware 本地午夜换算成 `[start,end)` UTC epoch milliseconds。token、count 和微美元继续使用非负整数；跨 Wails 的数值不得超过 JavaScript safe integer。`value != nil && value == 0` 表示真实零，`value == nil` 必须同时带有限 `unknownReason`；partial 与 unavailable 通过 response status / typed issue 表达，不能用空数组、零或任意错误文本代替。
 
@@ -48,6 +50,8 @@ fatal failure 只映射稳定 code、i18n message key、allowlisted field 和 re
 `internal/app.Service` 是唯一注册给 Wails 的业务 façade。它用真实 `store.Repository`、Quota Current reader 和共享的 Preferences `FileStore` 装配 M6 query service，但所有依赖字段保持私有；Repository、GORM、SQLite handle、文件、shell、网络和 credential primitive 都不能进入生成面。应用生命周期与查询 façade 复用同一个 Preferences loader，避免同一进程读取两份不同配置快照。
 
 `wails-bindings-v1` 当前只允许以下只读方法：`Bootstrap`、`Contracts`、`UsageCost`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail`、`QuotaCurrent`、`ListSources`、`Source`、`ListJobs`、`Job`、`ListHealth`、`Health`、`Settings`。`Contracts` 返回 binding/query/业务 contract 版本、完整 query allowlist、显式空 command allowlist 和一个 typed error exemplar。新增 exported method 必须先让 exact allowlist contract test 失败，再通过独立 Issue 和 review；现有 Preferences、Schedule 与 Codex Home lifecycle mutator 在没有稳定 public command DTO 前保持不可绑定。
+
+TOO-307 只扩展既有 `SessionDetailRequest/Response` 的 reachable model：request 增加 `turnPage`，response 增加 non-nil `turns` 与 `turnPage`；生成结果保持 15 methods、13 个业务 query 和 1 个 event。前端 fixture 与 query key 必须携带完整 page request，generated bindings 仍是唯一 TypeScript 类型真相。
 
 13 个业务数据 query 的 `context.Context` 位于首参数，Wails 生成的 TypeScript client 返回 `CancellablePromise<T>`，前端取消会传播到 Store/query；同步元数据方法 `Bootstrap` / `Contracts` 不承诺 Go 侧可取消。业务方法返回 error 或其依赖 panic 时，façade 会统一生成 `RuntimeError`：`CallError.message` 固定为 `binding query failed`，`cause` 只包含 `query.ErrorEnvelope`。Wails 在参数数量或 JSON 类型错误时生成的 `TypeError.message` 属于 framework transport detail，前端不得展示；其 `cause` 仍通过 content-free marshaler。内部 error chain 保留取消、deadline 和分类语义，但底层路径、请求值、panic value、repository/driver cause 不进入业务 RuntimeError JSON。
 

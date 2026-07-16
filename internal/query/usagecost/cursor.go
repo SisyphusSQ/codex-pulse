@@ -2,6 +2,9 @@ package usagecost
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -15,9 +18,22 @@ import (
 )
 
 const (
-	sessionCursorEndpoint = "sessions"
-	projectCursorEndpoint = "projects"
+	sessionCursorEndpoint     = "sessions"
+	sessionTurnCursorEndpoint = "session-turns"
+	projectCursorEndpoint     = "projects"
 )
+
+var sessionTurnCursorAssociatedData = []byte("query-v1/session-turns/aead-v1")
+
+type sessionTurnCursorKey [32]byte
+
+type sessionTurnCursorPayload struct {
+	Version     string `json:"version"`
+	Endpoint    string `json:"endpoint"`
+	SessionID   string `json:"sessionId"`
+	TurnID      string `json:"turnId"`
+	StartedAtMS int64  `json:"startedAtMs"`
+}
 
 type cursorUnsigned struct {
 	Version   string                  `json:"version"`
@@ -72,6 +88,89 @@ func decodeSessionCursor(
 	}
 	return &store.SessionAnalyticsCursor{
 		SessionID: payload.Identity, Null: payload.Null, Value: cloneInt64(payload.Value),
+	}, nil
+}
+
+func newSessionTurnCursorKey() (sessionTurnCursorKey, error) {
+	var key sessionTurnCursorKey
+	_, err := io.ReadFull(cryptorand.Reader, key[:])
+	return key, err
+}
+
+func sessionTurnCursorAEAD(key sessionTurnCursorKey) (cipher.AEAD, error) {
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return nil, err
+	}
+	return cipher.NewGCM(block)
+}
+
+func encodeSessionTurnCursor(
+	key sessionTurnCursorKey,
+	cursor *store.SessionTurnAnalyticsCursor,
+) (*string, error) {
+	if cursor == nil {
+		return nil, nil
+	}
+	if cursor.SessionID == "" || cursor.TurnID == "" || cursor.StartedAtMS < 0 {
+		return nil, errors.New("store session turn cursor is invalid")
+	}
+	plaintext, err := json.Marshal(sessionTurnCursorPayload{
+		Version: basequery.ContractVersion, Endpoint: sessionTurnCursorEndpoint,
+		SessionID: cursor.SessionID, TurnID: cursor.TurnID, StartedAtMS: cursor.StartedAtMS,
+	})
+	if err != nil {
+		return nil, err
+	}
+	aead, err := sessionTurnCursorAEAD(key)
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := io.ReadFull(cryptorand.Reader, nonce); err != nil {
+		return nil, err
+	}
+	wire := aead.Seal(nonce, nonce, plaintext, sessionTurnCursorAssociatedData)
+	encoded := base64.RawURLEncoding.EncodeToString(wire)
+	return &encoded, nil
+}
+
+func decodeSessionTurnCursor(
+	key sessionTurnCursorKey,
+	encoded string,
+	sessionID string,
+) (*store.SessionTurnAnalyticsCursor, error) {
+	wire, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || len(wire) == 0 || len(wire) > 4096 {
+		return nil, basequery.NewValidationFailure("turnPage.cursor", err)
+	}
+	aead, err := sessionTurnCursorAEAD(key)
+	if err != nil || len(wire) < aead.NonceSize()+aead.Overhead() {
+		return nil, basequery.NewValidationFailure("turnPage.cursor", err)
+	}
+	nonce := wire[:aead.NonceSize()]
+	plaintext, err := aead.Open(
+		nil, nonce, wire[aead.NonceSize():], sessionTurnCursorAssociatedData,
+	)
+	if err != nil || len(plaintext) == 0 || len(plaintext) > 2048 {
+		return nil, basequery.NewValidationFailure("turnPage.cursor", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(plaintext))
+	decoder.DisallowUnknownFields()
+	var payload sessionTurnCursorPayload
+	if err := decoder.Decode(&payload); err != nil {
+		return nil, basequery.NewValidationFailure("turnPage.cursor", err)
+	}
+	if err := ensureCursorJSONEnd(decoder); err != nil {
+		return nil, basequery.NewValidationFailure("turnPage.cursor", err)
+	}
+	if payload.Version != basequery.ContractVersion ||
+		payload.Endpoint != sessionTurnCursorEndpoint || payload.SessionID != sessionID ||
+		payload.TurnID == "" || payload.StartedAtMS < 0 {
+		return nil, basequery.NewValidationFailure("turnPage.cursor", nil)
+	}
+	return &store.SessionTurnAnalyticsCursor{
+		SessionID: sessionID, TurnID: payload.TurnID, StartedAtMS: payload.StartedAtMS,
 	}, nil
 }
 
