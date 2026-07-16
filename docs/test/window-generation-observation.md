@@ -5,7 +5,7 @@
 - 记录时间：2026-07-15（Asia/Shanghai）
 - 记录目录：仓库根目录
 - 本轮任务性质：TOO-264 窗口代际、连续性/时钟校验、Local/Wham 仲裁和可重建 current/evidence
-- 当前结论：`FINAL SCOPE REVIEW PASS；READY TO COMMIT`。`RecordQuotaFetch` 已在非 replay writer transaction 内只读取一次 repository 可信 wall clock，future/late attempt 不能再抬高或降低 projection evaluation clock；非法可信时钟会在任何 fetch 事实落盘前失败。implementation 与 final scope 两层 reviewer 均返回 `ZERO_FINDINGS`、`blocking_findings=0`，旧 P1/P2 均 CLOSED，`CHANGELOG_AUDIT=PASS`、`FINAL_SCOPE_READY_TO_COMMIT=YES`；含 CHANGELOG 的第二轮完整门禁也全部通过。
+- 当前结论：`PASS（已合并并完成 post-merge verify）`。`RecordQuotaFetch` 已在非 replay writer transaction 内只读取一次 repository 可信 wall clock，future/late attempt 不能再抬高或降低 projection evaluation clock；非法可信时钟会在任何 fetch 事实落盘前失败。implementation 与 final scope 两层 reviewer 均返回 `ZERO_FINDINGS`、`blocking_findings=0`，旧 P1/P2 均 CLOSED；PR #27 已合并为 `1bd7fb5`，main post-merge 门禁通过，Linear TOO-264 已读回 Done。
 - 自动化入口：`internal/store/quota_arbiter_test.go`、`internal/store/quota_projection_test.go`、`internal/store/quota_projection_migration_test.go`
 - 对应计划 / issue：`.agents/plans/2026-07-15-too-264-window-generation-observation.md` / TOO-264
 - 结果说明：此前评审发现的 first-seen false-zero、observation 自抬 evaluation clock、4096 evidence bind overflow、typed readback 完整性与多次 SELECT 混合快照均已修复。两阶段 generation 重分类会选更新 Local last-known-good；Local、Wham fetch、通用 exact quota Wham state、maintenance 和 migration 分别使用其受信应用时钟；evidence 以 256 行分批写入。current/evidence reader 在显式 GORM read transaction 的同一 SQLite snapshot 内加载完整 raw candidates 与 Wham source state，按 stored rule/evaluation 重算并精确对账完整 projection。最新 final-scope P1 已通过 future/late/invalid-clock 回归修复；focused50、race10、Pure-Go Store20、全仓 test/race/vet/tidy、控制面与完整打包门禁均通过。未读取真实 Codex Home/auth，未发真实 Wham 请求。
@@ -14,7 +14,7 @@
 
 - 执行时间：2026-07-15
 - 执行目录：仓库根目录
-- 本次结论：`final scope 返工闭环通过；commit / PR / self-merge 待执行`
+- 本次结论：`PASS（含 main post-merge verify）`
 - 影响范围：Go build/test cache，以及 `testing.T.TempDir()` 下的 synthetic Pure-Go SQLite/WAL/SHM。
 - 清理结果：测试临时数据库由 Go 自动清理；为完整验证按 lockfile 临时安装的 `frontend/node_modules` 及 frontend dist、`.task`、`bin` app/ZIP 已清理，tracked `.gitkeep` 保留；未生成用户数据库、网络抓包或 response fixture。
 - 敏感信息处理：只使用 synthetic account/limit/request/source ID；未写入真实 credential、Authorization、Cookie、response body、用户内容、机器本地路径或临时目录。
@@ -31,6 +31,7 @@
 | full test / race / vet / tidy | PASS | post-integration 全仓 test 15.76s；race Store 65.584s / SQLite 4.827s；vet/tidy 退出 0；仅有既有 macOS deployment linker warning |
 | harness / project / version / make verify | PASS | post-integration harness、RUNTIME/TOOLCHAIN/VERIFY/CI、version findings=[]、Wails arm64/minOS 15 ad-hoc app/ZIP；`make verify` 34.72s |
 | implementation / final scope review | PASS / PASS | implementation ZERO；final ZERO、blocking=0、P1/P2 CLOSED、CHANGELOG_AUDIT=PASS、FINAL_SCOPE_READY_TO_COMMIT=YES |
+| PR / merge / post-merge | PASS | PR #27 已合并为 `1bd7fb5`；targeted20、Pure-Go Store、全仓 race、guards、控制面与完整 `make verify` 通过，Linear TOO-264 已读回 Done |
 | GitHub Actions | 不执行 | `actions_disabled_by_user`，不查询、不触发、不等待 |
 | release | 不执行 | 普通 Execution 不发布 |
 

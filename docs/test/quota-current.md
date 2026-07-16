@@ -5,7 +5,7 @@
 - 记录时间：2026-07-16（Asia/Shanghai）
 - 记录目录：仓库根目录
 - 本轮任务性质：TOO-266 Quota Current 单 snapshot 只读查询、稳定 domain DTO 与可信场景矩阵
-- 当前结论：`PASS；两轮独立 review blocking=0，提交前最终集成门禁全部通过`
+- 当前结论：`PASS（已合并并完成 post-merge verify）`；两轮独立 review `blocking_findings=0`；PR #29 已合并为 `4fc76ce`，main post-merge 门禁通过，Linear TOO-266 已读回 Done。
 - 自动化入口：`internal/codex/quota/current_query_test.go`、`internal/store/quota_query_snapshot_test.go`
 - 对应计划 / issue：`.agents/plans/2026-07-16-too-266-quota-current-query.md` / TOO-266
 - 结果说明：全部使用 synthetic observation/source state/schedule/Reset Credits 和 `testing.T.TempDir()` Pure-Go SQLite；未读取真实 Codex Home/auth，未请求 Wham，未注册 Wails service，未触发 Actions 或 release。
@@ -13,7 +13,7 @@
 ### 本次执行结果
 
 - 执行时间：2026-07-16
-- 当前结论：`PASS；final focused repeat/race、全仓 test/race/vet、harness、版本与完整 make verify 均退出 0`
+- 当前结论：`PASS（含 main post-merge verify）`；final focused repeat/race、全仓 test/race/vet、harness、版本与完整 `make verify` 均退出 0。
 - final focused repeat：`-count=20`，`internal/codex/quota 9.918s`；`internal/store 4.008s`
 - final focused race：`-race -count=10`，`internal/codex/quota 65.956s`；`internal/store 15.475s`
 - 副作用：Go build/test cache，以及临时目录中的 synthetic SQLite/WAL/SHM；完整 verify 恢复 lockfile 前端依赖并生成 dist/app/ZIP。
@@ -34,6 +34,7 @@
 | complete make verify | PASS | project/negative/generated、Go、前端 5 tests/build、bindings、arm64 minOS 15 app/ZIP 全部通过 |
 | implementation review | PASS | 首轮 3 blocking findings 修复后复审关闭；closure20/race3、完整 focused/race 与 guards 通过 |
 | final scope review | PASS | 不同 subagent 独立审查，`FINAL_SCOPE_PASS:YES`、`blocking_findings=0` |
+| PR / merge / post-merge | PASS | PR #29 已合并为 `4fc76ce`；main focused20/race10、全仓 test/race/vet、harness/version 与完整 `make verify` 通过，Linear TOO-266 已读回 Done |
 | GitHub Actions | 不执行 | `actions_disabled_by_user`，不查询、不触发、不等待 |
 | release | 不执行 | 普通 Execution 不发布 |
 

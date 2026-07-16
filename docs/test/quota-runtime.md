@@ -5,16 +5,16 @@
 - 记录时间：2026-07-16（Asia/Shanghai）
 - 记录目录：仓库根目录
 - 本轮任务性质：TOO-306 production quota composition、confirmed Home credential lease、lifecycle/settings/manual/shutdown 闭环
-- 当前结论：`FINAL SCOPE REVIEW PASS；implementation/final reviewers 均 blocking_findings=0；CHANGELOG 与完整门禁通过；可进入 pre-PR closeout`
+- 当前结论：`PASS（已合并并完成 post-merge verify）`；implementation/final reviewers 均 `blocking_findings=0`；PR #30 已合并为 `35df243`，main post-merge 全部门禁通过，Linear TOO-306 已读回 Done。
 - 自动化入口：`internal/app/quota_credentials_test.go`、`internal/app/quota_runtime_test.go`、`internal/app/app_test.go`
 - 对应计划 / issue：`.agents/plans/2026-07-16-too-306-quota-runtime.md` / TOO-306
-- 结果说明：全部 HTTP、auth 和 Preferences 输入均为 synthetic fixture；SQLite 位于 `testing.T.TempDir()`。证据证明 local scheduler 在 target Preferences CAS 前持久化 fence，Drain 同时等待普通 slice 与 Recover/Retry preflight target writer；最终 generation CAS 保留 pause/sleep，旧 queued task 不再 runnable、新 generation task可进入，same-process 与 restart 均收敛。第五次同 reviewer 已确认全部 implementation findings 关闭，完整 focused/full/race/harness/package 门禁均通过。未读取真实 Codex Home，未访问真实 Wham；Actions 保持停用。
+- 结果说明：全部 HTTP、auth 和 Preferences 输入均为 synthetic fixture；SQLite 位于 `testing.T.TempDir()`。证据证明 local scheduler 在 target Preferences CAS 前持久化 fence，Drain 同时等待普通 slice 与 Recover/Retry preflight target writer；最终 generation CAS 保留 pause/sleep，旧 queued task 不再 runnable、新 generation task可进入，same-process 与 restart 均收敛。第五次同 reviewer 已确认全部 implementation findings 关闭；分支与 main post-merge 的 focused/full/race/harness/package 门禁均通过。未读取真实 Codex Home，未访问真实 Wham；Actions 保持停用。
 
 ### 本次执行结果
 
 - 执行时间：2026-07-16
 - 执行目录：仓库根目录
-- 本次结论：`第五次 implementation review PASS；post-integration focused/full/race/harness/package 全部 PASS`
+- 本次结论：`PASS（含 main post-merge verify）`
 - 影响范围：Go/npm build/test cache、测试临时目录中的权限受控 auth fixture 与 Pure-Go SQLite/WAL/SHM；完整验证生成 ignored frontend、task 和 package 产物。
 - 清理结果：临时测试文件由 Go test 自动清理；锁定 Wails CLI 仅保留在临时工具目录。已通过 scoped ignored clean 删除 frontend dependencies/dist、task 和 package 产物，保留 tracked `.gitkeep`；lockfiles、Go modules 与 generated bindings 无漂移。
 - 敏感信息处理：只使用固定 synthetic marker；提交版不记录真实 token、Authorization/Cookie、auth 内容、原始 response、临时路径或 SQLite 内部行 ID。
@@ -37,6 +37,7 @@
 | harness/project/version | PASS | harness、project contract、generated contract 通过；精确 Wails `v3.0.0-alpha2.117`；version `findings=[]` |
 | 完整 `make verify` | PASS | 恢复 lockfile 冻结的 ignored npm dependencies 后通过 Go、前端 5 tests/build、bindings stability、arm64/minOS 15 app/ZIP；产物已 scoped clean |
 | final scope review | PASS | 不同 subagent P0-P3 均 none，`blocking_findings=0`；独立 gofmt/diff、focused repeat/race、CHANGELOG/privacy/dependency guards PASS |
+| PR / merge / post-merge | PASS | PR #30 已合并为 `35df243`；main 全仓 test/race、harness/project/version/CHANGELOG truth 与完整 `make verify` 通过，Linear TOO-306 已读回 Done |
 | GitHub Actions | 不执行 | `actions_disabled_by_user`，不查询、不触发、不等待 |
 | release | 不执行 | 普通 Execution 不发布 |
 
