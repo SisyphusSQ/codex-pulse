@@ -163,6 +163,16 @@ quota 与 reset credits 各有一行 durable refresh schedule，保存 `next_due
 
 settings commit 调用 `ReconcilePreferences`：关闭能力立即把 next due 置空并保留历史，重新开启 never-loaded 来源会安排启动请求。进程启动与每个 cron cycle 都回收已经到期的遗留 claim；即使 claim 在启动检查之后才到期，也不会永久卡住。周期 trigger 固定复用 `github.com/robfig/cron/v3 v3.0.1` 的 `@every 1s`、`SkipIfStillRunning` 和 `Recover`，生产代码不新增 ticker/timer/sleep loop。可复用 synthetic-only 验证入口见 [`docs/test/reset-credits-quota.md`](../../../test/reset-credits-quota.md)。
 
+### Quota Current 只读查询合同（TOO-266）
+
+`quota-current-v1` 是 M5 的只读 domain contract，不是 Wails binding 或 M6 通用查询 envelope。调用方提供 evaluation time，query 固定查询 `account_scope = default`，返回 `version/accountScope/evaluatedAtMs`、按 primary、secondary 稳定排序的 windows、固定顺序的 Local/Wham source summaries、nearest trusted reset、Reset Credits 动态汇总，以及 quota/reset-credits refresh status。`remainingPercent` 只从选中事实的 `100 - usedPercent` 派生；真实 `usedPercent = 0` 返回真实 `remainingPercent = 100`，从未加载才返回 null 和固定 `never_loaded` reason。过期、stale、suspicious 或 conflict 仍保留 last-known-good 普通百分比；只有 freshness 为 fresh/stale 且 reset 晚于 evaluation time 时才返回 `resetRemainingMs` 或参与 nearest reset，suspicious/expired reset 只保留事实时间，不暴露可信倒计时。
+
+Repository 在一个显式 GORM read transaction、同一个 SQLite snapshot 内读取全部 `quota_current` logical keys、对应 raw observations、完整 arbitration evidence、Wham source state、两个 durable refresh schedule 与 Reset Credits summary。并发 writer 只能让整份 response 看到完整旧版本或完整新版本，不能混出跨表时序。observation/current/evidence logical key 集必须完全一致；projection 缺行、多行、identity/provenance/shape 漂移时 fail closed，query 返回可恢复的 projection unavailable，不在查询路径写库。恢复只能由已有的显式 maintenance `RebuildQuotaProjection` 执行，调用方不得把查询失败当作 rebuild 授权。
+
+每个 window 同时返回选中事实和按 observation ID 稳定排序的 explanation；explanation 只包含结构化 source、used/remaining、window/reset/generation、observed time、validity、disposition、reason 与固定 explanation code。source summary 只暴露 freshness、last success/attempt、固定 failure code 与 selected/conflict window count；Local freshness 只由 accepted observation 计算，在 10 分钟 freshness/reset 边界内为 current，之后为 stale，只有 suspicious/rejected observation 时仍是 unknown。refresh status 可以暴露 state、due/reason、manual/claim 时间和 trigger，但不暴露 claim ID/revision；Reset Credits 只暴露动态 count/duration/freshness，不暴露 snapshot ID、credit hash；任何 response 都不包含 token、Authorization/Cookie、原始 HTTP body、raw error、JSONL path、request ID 或用户文案。
+
+Local-only、Wham-only、双源一致、双源冲突、expired last-known-good、429 backoff、primary/secondary 跨窗口、Reset Credits 真实零/自然到期、空仓库与并发 snapshot 都使用 synthetic fixture 验证。可复用入口见 [`docs/test/quota-current.md`](../../../test/quota-current.md)。
+
 ## UI 语义
 
 ```text
