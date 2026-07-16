@@ -19,6 +19,7 @@
     "@lucide/vue": "1.23.0",
     "@tanstack/vue-query": "5.101.2",
     "@wailsio/runtime": "3.0.0-alpha.97",
+    "echarts": "6.1.0",
     "vue": "3.5.39",
     "vue-i18n": "11.4.6",
     "vue-router": "4.6.4"
