@@ -15,9 +15,9 @@ vi.mock("@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service", () =
 const bootstrapMock = vi.mocked(Bootstrap);
 const mountedApps: VueApp[] = [];
 
-async function renderApp() {
+async function renderApp(initialPath = "/settings") {
   const dependencies = createAppDependencies({ history: createMemoryHistory() });
-  await dependencies.router.push("/");
+  await dependencies.router.push(initialPath);
 
   const app = createCodexPulseApp(dependencies);
   const host = document.createElement("div");
@@ -91,14 +91,14 @@ describe("Codex Pulse application shell", () => {
     expect(host.querySelector("[data-testid='app-shell']")).not.toBeNull();
     const navigation = host.querySelector("[data-testid='primary-navigation']");
     expect(navigation?.querySelectorAll("a")).toHaveLength(6);
-    expect(navigation?.querySelector("a[aria-current='page']")?.getAttribute("href")).toBe("/overview");
+    expect(navigation?.querySelector("a[aria-current='page']")?.getAttribute("href")).toBe("/settings");
     expect(host.querySelector("img")?.getAttribute("alt")).toBe("");
     expect(host.querySelector("img")?.getAttribute("aria-hidden")).toBe("true");
 
-    await dependencies.router.push("/settings");
+    await dependencies.router.push("/sessions");
     await flushPromises();
 
-    expect(navigation?.querySelector("a[aria-current='page']")?.getAttribute("href")).toBe("/settings");
+    expect(navigation?.querySelector("a[aria-current='page']")?.getAttribute("href")).toBe("/sessions");
   });
 
   it("releases every Wails event subscription when the app unmounts", async () => {

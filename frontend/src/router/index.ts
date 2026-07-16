@@ -2,6 +2,7 @@ import type { RouterHistory, RouteRecordRaw } from "vue-router";
 import { createRouter, createWebHistory } from "vue-router";
 
 import AppShell from "@/components/shell/AppShell.vue";
+import OverviewView from "@/views/OverviewView.vue";
 import ShellView from "@/views/ShellView.vue";
 
 export type AppNavigationName =
@@ -32,7 +33,7 @@ export const appNavigation = [
 const childRoutes = appNavigation.map((item) => ({
   path: item.path.slice(1),
   name: item.name,
-  component: ShellView,
+  component: item.name === "overview" ? OverviewView : ShellView,
   meta: {
     descriptionKey: item.descriptionKey,
     titleKey: item.titleKey,

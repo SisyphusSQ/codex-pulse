@@ -118,6 +118,12 @@
 
 TOO-272 的视觉 QA 以 `00-design-system.png`、`04-overview.png` 与 `01-local-status.png` 为 source truth，在 900×600、1120×720、1280×770 与 1440×1024 检查窗口、侧栏和内容层级。浏览器比较证据保存在本地 ignored run 目录；可复现步骤和通过摘要见 `docs/test/m7-e1.md`，逐项比较结论见仓库根目录 `design-qa.md`。
 
+TOO-273 已把 `/overview` 映射为真实 query-v1 页面：顶部两个紧凑 quota remaining 卡直接显示 reset/source/freshness 与 Reset credits；趋势、范围选择、Token 构成、API 等价成本和每日明细严格沿用 `04-overview.png` 首屏顺序。最近 Session/Project 与索引/健康属于 Linear 追加验收，位于每日明细之后的下方滚动区，不改变冻结首屏。
+
+概览范围固定为今天、近 7 天、近 30 天和自定义本地日半开区间；UTC 归一化仍由 Go 负责。页面只消费 generated Usage/Quota/Session/Project/Source/Health DTO，保留 unknown、真实 0、partial、stale、known empty 与 fatal unavailable，不从 daily rows 重算总量或成本。`echarts@6.1.0` 通过模块化 core/charts/components/CanvasRenderer 接入，注册 Aria/decal 并服从 Reduce Motion；TanStack Query 继续是唯一 cache/cancel/invalidation owner。
+
+TOO-273 的 1440×1024 normal-state 视觉 QA 使用不进入产品路径的隔离 typed DTO cache，source 与 implementation 以同 viewport 合并比较；QA 夹具在验证后删除，只保留 ignored screenshot/comparison。本次可复现步骤和脱敏结果见 `docs/test/m7-e2.md`，逐项结论见根目录 `design-qa.md`。
+
 ## 后续评审重点
 
-TOO-272 已实现共享应用壳、路由、基础状态交互和 Wails Bootstrap ready/error/retry；概览、Sessions、Projects、Quota、本机状态与 Settings 的业务数据交互仍由后续卡完成。图标方向和健康信息层级继续冻结；后续页面必须复用当前 token、辅助模式降级与 macOS-only 边界。
+TOO-272 已实现共享应用壳、路由、基础状态交互和 Wails Bootstrap ready/error/retry；TOO-273 已实现概览的只读业务数据交互。Sessions、Projects、Quota、本机状态与 Settings 的独立页面仍由后续卡完成。图标方向和健康信息层级继续冻结；后续页面必须复用当前 token、query-state、辅助模式降级与 macOS-only 边界。

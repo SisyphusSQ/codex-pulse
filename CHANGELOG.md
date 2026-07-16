@@ -32,6 +32,7 @@
 29. [TOO-270] 新增唯一 allowlist Wails 查询 façade 与生成式 TypeScript DTO/枚举/错误契约，装配真实 Usage、Quota、Runtime 与共享 Preferences 查询，固定可取消调用、panic 脱敏和失败生成不覆盖既有 bindings 的门禁
 30. [TOO-271] 新增版本化 typed Wails 失效事件与 13 项 Vue Query 缓存契约，固定 durable commit 后通知、有限无事实 payload、事件风暴合并、丢失事件有界重取、唤醒全量恢复及卸载清理语义
 31. [TOO-272] 建立 Liquid Glass 语义 token、可拖拽 Wails 应用壳、六项导航与 zh-CN i18n 基础，新增 Button/Card/Table/Empty/Error/Skeleton 共享组件及材质、对比度、动效和辅助技术降级语义
+32. [TOO-273] 新增真实概览页面与异步 ECharts 趋势图，支持本地日范围、额度与 Reset Credits 新鲜度、Token 构成、API 等价成本、每日明细、近期活动及索引健康的独立 loading/empty/partial/stale/error 语义
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

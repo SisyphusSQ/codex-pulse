@@ -24,4 +24,16 @@ describe("application navigation", () => {
     await router.push("/not-a-route");
     expect(router.currentRoute.value.fullPath).toBe("/overview");
   });
+
+  it("mounts the business overview view only on the overview route", async () => {
+    const router = createAppRouter(createMemoryHistory());
+
+    await router.push("/overview");
+    const overviewRecord = router.currentRoute.value.matched.at(-1);
+    expect(overviewRecord?.components?.default).toMatchObject({ name: "OverviewView" });
+
+    await router.push("/sessions");
+    const sessionsRecord = router.currentRoute.value.matched.at(-1);
+    expect(sessionsRecord?.components?.default).not.toMatchObject({ name: "OverviewView" });
+  });
 });

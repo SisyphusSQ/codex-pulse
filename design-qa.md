@@ -55,3 +55,47 @@
 - 剩余差异：应用图标和品牌副标题按现有正式资产/文案保留，属于已冻结产品语义；无未关闭 P0/P1/P2 视觉 finding。
 
 final result: passed
+
+---
+
+# TOO-273 Overview Design QA
+
+## Source truth and evidence
+
+- Source：`docs/design/front/previews/04-overview.png`，固定 1440×1024。
+- Implementation：ignored `.agents/runs/TOO-273-overview-qa.png`。
+- Combined comparison：ignored `.agents/runs/TOO-273-overview-comparison.png`，source 在左、implementation 在右，同为 1440×1024 后横向合并。
+- Minimum fallback：ignored `.agents/runs/TOO-273-min-900x600.png`。
+- Native packaged：ignored `.agents/runs/TOO-273-native-1120x720.png`，nominal 1120×720 Wails window 的截屏像素为1119×719。
+- Normal-state 数据来自临时隔离 typed DTO cache；夹具不进入 production route、产品 runtime 或提交范围，验证后已删除。
+
+## Fidelity assessment
+
+| 验证面 | 结果 | 结论 |
+| --- | --- | --- |
+| 首屏顺序 | PASS | 配额 → Token 趋势/范围 → Token 构成/API 等价成本 → 每日明细与 source 一致 |
+| quota | PASS | 双卡、remaining 百分比、蓝/紫进度、reset/source/freshness保持 source 比例；Reset credits 作为冻结新增事实压缩进次级卡标题 |
+| range/trend | PASS | 默认近 7 天；范围控件位于趋势卡右上；四个 series 使用 ECharts canvas、legend、Aria/decal，未用 div/SVG 手绘图表 |
+| composition/cost | PASS | 两列同高内容卡；构成色点与金额层级一致；pricing source/version 与未定价事实直接来自 DTO |
+| daily | PASS | 1440×1024 首屏可见表头和首行；review 后改回 source 的 Cached 列，并使用服务端 start/timezone 本地化日期；DTO 无 completeness事实，因此不伪造该列 |
+| typography/material | PASS | 系统字栈、near-white content surface、soft border/shadow、selected blue、同心圆角与 TOO-272 token 一致 |
+| privacy/truth | PASS | 未显示 session/dimension/source opaque ID、路径、原始错误或用户内容；API 等价成本保留估算说明 |
+
+## Interaction and accessibility
+
+- “近 30 天”点击后读回 `aria-pressed=true`；“自定义”点击后出现具名“开始日期”和“结束日期（不含）”输入。
+- ECharts 注册 AriaComponent 与 decal，Reduce Motion 关闭动画；独立组件测试覆盖 canvas init/setOption/dispose。
+- generic query region 与 Overview 集成共同覆盖 loading/empty/partial/stale/error/retry；同一 Usage query 只有主趋势区拥有 live status，派生构成/成本/每日视图不重复播报。fatal Usage 不遮蔽 quota，底层 error cause 不进入 DOM。
+- in-app Browser error log 为 0；只出现 Wails 浏览器环境自身的预期开发提示，不属于页面实现错误。
+- source 与 implementation 已放入同一个 comparison 输入复核；当前无未关闭 P0/P1/P2 视觉 finding。
+
+## Iteration history
+
+1. 首轮 implementation 把 range 放在独立顶部面板、quota 包入大外卡、趋势落到首屏下方，和 source 顺序/密度偏差明显。改为 bare 双 quota 卡，并把范围移入趋势卡。
+2. 第二轮趋势卡与成本卡过高，导致每日明细完全落出 1024px 首屏。将 chart 从 256px 收敛到 208px、压缩 quota metadata，并把 pricing source/version 移到金额右侧，重新生成 combined comparison。
+3. 最终首屏已显示 daily 表头/首行；Linear 额外要求的 recent/index/health留在下方滚动区。范围切换、自定义输入与 console 复验通过。
+4. implementation review 发现 freshness enum、unknown/0、partial-empty、重复 live status、日期/tooltip i18n 与缺少最小/native证据六个 P2。全部先形成6项失败断言再修复；额外把 daily列改回 Cached，并异步加载ECharts。
+5. 900×600 浏览器降级态没有水平溢出或 console error；nominal 1120×720 packaged Wails在隔离HOME下同屏显示quota empty、Usage/Session partial-empty、Project fatal error、Source/Health ready，且empty Usage仍保留range controls。
+6. review rework后重新生成1440×1024 implementation与combined comparison；当前画面已显示Cached列、本地化日期和中文未定价原因，Browser snapshot精确读回这些事实且console error=0，旧画面不再作为最终证据。
+
+final result: passed
