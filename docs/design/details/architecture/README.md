@@ -27,10 +27,21 @@ flowchart LR
 - `internal/store/sqlite`：桌面进程唯一 SQLite 连接面，负责应用数据路径、WAL/pragma 读回、有界单写队列、独立只读池和 drain/close；上层 `internal/store` repository 后续承载 facts、current projection、daily rollup、source cursor 和 job run。
 - `internal/pricing`：版本化 pricing catalog 和本地 override。
 - `internal/privacy`：路径/remote 脱敏和敏感字段过滤。
+- `internal/query`：Wails 前的版本化公共查询 contract；统一有界分页、allowlist 排序/筛选、本地日到 UTC、跨端安全整数、unknown/null/真实零和 typed error，不依赖 Store model 或具体页面。
 - `internal/health`：最近 24 小时运行指标、health event 和 Data Health 查询。
 - `internal/updater`：更新状态机、安全重启屏障和平台 adapter。
 - `internal/tray`：状态栏摘要、Popover 和原生菜单。
 - `internal/app`：Wails bindings、query、refresh 和增量事件。
+
+### 公共 Query Contract
+
+`internal/query` 固定 `query-v1` 非泛型 DTO，供 M6 的 usage/session/project 与 quota/source/job/health/settings query service 组合。每个 endpoint 先构造 immutable `Specification`，声明允许的 sort/filter 字段、operator、默认 limit、最大 limit、日期范围和稳定 tie-breaker；客户端字符串只有通过 allowlist 和 arity 校验后才能进入业务 service。公共层只返回 `ValidatedRequest`，不拼接 SQL、不访问 SQLite，也不把 GORM model、数据库 row 或内部主键暴露给 Wails。
+
+分页 cursor 对前端保持有界 opaque token，具体 keyset payload 和 endpoint scope 由对应业务 query 拥有，不依赖进程内状态。业务列表必须组合稳定 tie-breaker 且 limit 不超过公共 hard cap，已知空列表返回 `[]`；v0.1 不提供无限制全表导出。
+
+用户日期范围以本地 `YYYY-MM-DD`、exclusive end 和显式 IANA timezone 输入，由 Go 在 DST-aware 本地午夜换算成 `[start,end)` UTC epoch milliseconds。token、count 和微美元继续使用非负整数；跨 Wails 的数值不得超过 JavaScript safe integer。`value != nil && value == 0` 表示真实零，`value == nil` 必须同时带有限 `unknownReason`；partial 与 unavailable 通过 response status / typed issue 表达，不能用空数组、零或任意错误文本代替。
+
+fatal failure 只映射稳定 code、i18n message key、allowlisted field 和 retryable，不把 repository/driver cause 暴露到 JSON、日志或页面。内部仍保留 `errors.Is` / `errors.As` chain，便于 Go service 做正确分类和恢复。
 
 未来如恢复多 agent，provider 抽象可沿用：
 

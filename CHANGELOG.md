@@ -26,6 +26,7 @@
 23. [TOO-265] 新增只读 Reset Credits 事实与动态汇总、可信 quota reset 计算和 robfig cron 驱动的持久刷新退避，固定 Retry-After、60 秒手动节流、claim generation fence、崩溃恢复与迟到 attempt 隔离语义
 24. [TOO-266] 新增单 SQLite snapshot 的 Quota Current 只读查询合同，稳定组合窗口、来源、可信 reset、Reset Credits 与刷新状态，固定 null/真实零、last-known-good、冲突解释、投影恢复和敏感 identity 隔离语义
 25. [TOO-306] 装配在线 Quota 与 Reset Credits 应用运行时，新增 confirmed Home 调用期凭证租约、崩溃 journal 恢复、local/quota generation drain 与 lifecycle、settings、manual、shutdown 闭环
+26. [TOO-267] 建立版本化 `query-v1` 公共查询契约，统一有界分页、allowlist 排序筛选、IANA/DST 本地日转 UTC、JavaScript 安全整数、unknown/真实零及 content-free 错误与 partial/unavailable 语义
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功
