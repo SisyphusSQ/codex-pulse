@@ -80,20 +80,22 @@ type SourceFailureCodeMetric struct {
 
 // SchedulerMetrics 汇总窗口内已提交 scheduler cycle 的有限数值事实。
 type SchedulerMetrics struct {
-	CycleCount        int64
-	CompletedCycles   int64
-	YieldedCycles     int64
-	FailedCycles      int64
-	InterruptedCycles int64
-	FilesScanned      int64
-	BytesRead         int64
-	ActiveMS          int64
-	MaxCycleActiveMS  int64
-	TaskStates        []SchedulerTaskStateMetric
-	Lanes             []SchedulerLaneMetric
-	ServiceClasses    []SchedulerServiceClassMetric
-	StopReasons       []SchedulerStopReasonMetric
-	RetryDispositions []SchedulerRetryDispositionMetric
+	CycleCount               int64
+	CompletedCycles          int64
+	YieldedCycles            int64
+	FailedCycles             int64
+	InterruptedCycles        int64
+	FilesScanned             int64
+	BytesRead                int64
+	ActiveMS                 int64
+	MaxCycleActiveMS         int64
+	TaskStates               []SchedulerTaskStateMetric
+	Lanes                    []SchedulerLaneMetric
+	ServiceClasses           []SchedulerServiceClassMetric
+	StopReasons              []SchedulerStopReasonMetric
+	RetryDispositions        []SchedulerRetryDispositionMetric
+	LastProgressAtMS         *int64
+	LastBackfillProgressAtMS *int64
 }
 
 // JobMetrics 分离当前可运行/可恢复状态与窗口内 terminal 结果。
@@ -140,4 +142,18 @@ type MetricsSnapshot struct {
 	Scheduler      SchedulerMetrics
 	Jobs           JobMetrics
 	Sources        SourceMetrics
+}
+
+// HealthEvaluationSnapshot 在一个只读事务中固定健康评估所需的全部事实。
+type HealthEvaluationSnapshot struct {
+	Metrics      MetricsSnapshot
+	Lifecycle    *SchedulerLifecycle
+	ActiveHealth []HealthEventMetric
+}
+
+type HealthEventMetric struct {
+	Domain   HealthDomain
+	Severity HealthSeverity
+	Code     HealthCode
+	Count    int64
 }

@@ -254,15 +254,19 @@ const (
 type HealthCode string
 
 const (
-	HealthCodeSourceTimeout     HealthCode = "source.timeout"
-	HealthCodeSourceUnavailable HealthCode = "source.unavailable"
-	HealthCodeSourcePermission  HealthCode = "source.permission"
-	HealthCodeSourceCorrupt     HealthCode = "source.corrupt"
-	HealthCodeSourceStale       HealthCode = "source.stale"
+	HealthCodeSourceTimeout       HealthCode = "source.timeout"
+	HealthCodeSourceUnavailable   HealthCode = "source.unavailable"
+	HealthCodeSourcePermission    HealthCode = "source.permission"
+	HealthCodeSourceCorrupt       HealthCode = "source.corrupt"
+	HealthCodeSourceStale         HealthCode = "source.stale"
+	HealthCodeSourceAuthRequired  HealthCode = "source.auth_required"
+	HealthCodeSourceFailureStreak HealthCode = "source.failure_streak"
 
-	HealthCodeJobInterrupted HealthCode = "job.interrupted"
-	HealthCodeJobFailed      HealthCode = "job.failed"
-	HealthCodeJobCancelled   HealthCode = "job.cancelled"
+	HealthCodeJobInterrupted      HealthCode = "job.interrupted"
+	HealthCodeJobFailed           HealthCode = "job.failed"
+	HealthCodeJobCancelled        HealthCode = "job.cancelled"
+	HealthCodeJobLiveQueueStalled HealthCode = "job.live_queue_stalled"
+	HealthCodeJobBackfillStalled  HealthCode = "job.backfill_stalled"
 
 	HealthCodeStoreBusy        HealthCode = "store.busy"
 	HealthCodeStoreDiskFull    HealthCode = "store.disk_full"
@@ -272,10 +276,17 @@ const (
 	HealthCodeStoreCorrupt     HealthCode = "store.corrupt"
 	HealthCodeStoreUnavailable HealthCode = "store.unavailable"
 	HealthCodeStoreUnknown     HealthCode = "store.unknown"
+	HealthCodeStoreDiskLow     HealthCode = "store.disk_low"
+	HealthCodeStoreWALPressure HealthCode = "store.wal_pressure"
 
-	HealthCodePricingUnavailable HealthCode = "pricing.unavailable"
-	HealthCodePricingInvalid     HealthCode = "pricing.invalid"
-	HealthCodeRuntimeUnknown     HealthCode = "runtime.unknown"
+	HealthCodePricingUnavailable        HealthCode = "pricing.unavailable"
+	HealthCodePricingInvalid            HealthCode = "pricing.invalid"
+	HealthCodeRuntimeUnknown            HealthCode = "runtime.unknown"
+	HealthCodeRuntimeCPUPressure        HealthCode = "runtime.cpu_pressure"
+	HealthCodeRuntimeMemoryPressure     HealthCode = "runtime.memory_pressure"
+	HealthCodeRuntimeMetricsStale       HealthCode = "runtime.metrics_stale"
+	HealthCodeRuntimeUpdaterUnavailable HealthCode = "runtime.updater_unavailable"
+	HealthCodeRuntimeUpdaterUnknown     HealthCode = "runtime.updater_unknown"
 )
 
 type HealthSeverity string
@@ -298,6 +309,21 @@ type HealthObservation struct {
 	JobID        *string
 	ErrorClass   *RuntimeErrorClass
 	ObservedAtMS int64
+}
+
+// HealthManagedEvent 是 evaluator 对一个受管事件的完整、可校验所有权描述。
+type HealthManagedEvent struct {
+	EventID     string
+	Fingerprint SHA256Digest
+	Domain      HealthDomain
+	Code        HealthCode
+}
+
+// HealthEvaluationBatch 是一次评估要原子应用的活跃观测与受管事件全集。
+type HealthEvaluationBatch struct {
+	Observations  []HealthObservation
+	ManagedEvents []HealthManagedEvent
+	EvaluatedAtMS int64
 }
 
 // HealthEvent 保存同一 fingerprint 的聚合生命周期。

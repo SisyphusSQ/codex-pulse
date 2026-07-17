@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 
+	"gorm.io/gorm"
+
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -19,84 +21,94 @@ func (repository *Repository) ObserveHealthEvent(
 	}
 	var result HealthEvent
 	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		if observation.SourceFileID != nil {
-			if err := requireStoredReference(
-				ctx, transaction, &sourceFileModel{}, "source_file_id = ?",
-				*observation.SourceFileID, "source file",
-			); err != nil {
-				return err
-			}
-		}
-		if observation.JobID != nil {
-			if err := requireStoredReference(
-				ctx, transaction, &jobRunModel{}, "job_id = ?",
-				*observation.JobID, "job run",
-			); err != nil {
-				return err
-			}
-		}
-
-		existing, found, err := healthEventByFingerprint(ctx, transaction, observation.Fingerprint.String())
-		if err != nil {
-			return err
-		}
-		if !found {
-			_, idFound, err := healthEventByID(ctx, transaction, observation.EventID)
-			if err != nil {
-				return err
-			}
-			if idFound {
-				return invalidRecord("health event ID belongs to another fingerprint")
-			}
-			result = HealthEvent{
-				EventID: observation.EventID, Fingerprint: observation.Fingerprint,
-				Domain: observation.Domain, Severity: observation.Severity, Code: observation.Code,
-				SourceFileID: observation.SourceFileID, JobID: observation.JobID,
-				ErrorClass: observation.ErrorClass, FirstSeenAtMS: observation.ObservedAtMS,
-				LastSeenAtMS: observation.ObservedAtMS, OccurrenceCount: 1, UpdatedAtMS: observation.ObservedAtMS,
-			}
-			model := healthEventModelFromDomain(result)
-			return transaction.WithContext(ctx).Create(&model).Error
-		}
-
-		if existing.EventID != observation.EventID || existing.Domain != observation.Domain ||
-			existing.Code != observation.Code ||
-			!equalStringPointer(existing.SourceFileID, observation.SourceFileID) ||
-			!equalStringPointer(existing.JobID, observation.JobID) {
-			return invalidRecord("health fingerprint stable identity conflicts")
-		}
-		if observation.ObservedAtMS == existing.LastSeenAtMS {
-			if existing.Severity == observation.Severity &&
-				equalRuntimeErrorClassPointer(existing.ErrorClass, observation.ErrorClass) {
-				result = existing
-				return nil
-			}
-			return invalidRecord("health observation conflicts at the same time")
-		}
-		if existing.ResolvedAtMS != nil && observation.ObservedAtMS <= *existing.ResolvedAtMS {
-			return invalidRecord("health observation does not advance resolved lifecycle")
-		}
-		if observation.ObservedAtMS < existing.UpdatedAtMS {
-			return invalidRecord("health observation time regresses lifecycle ordering")
-		}
-		if observation.ObservedAtMS < existing.LastSeenAtMS {
-			return invalidRecord("health observation time regresses")
-		}
-
-		result = existing
-		result.Severity = observation.Severity
-		result.ErrorClass = observation.ErrorClass
-		result.LastSeenAtMS = observation.ObservedAtMS
-		result.ResolvedAtMS = nil
-		result.OccurrenceCount++
-		result.UpdatedAtMS = observation.ObservedAtMS
-		return transaction.WithContext(ctx).Model(&healthEventModel{}).
-			Where("event_id = ?", result.EventID).Updates(map[string]any{
-			"severity": string(result.Severity), "error_class": runtimeErrorStringPointer(result.ErrorClass),
-			"last_seen_at_ms": result.LastSeenAtMS, "resolved_at_ms": nil,
-			"occurrence_count": result.OccurrenceCount, "updated_at_ms": result.UpdatedAtMS,
-		}).Error
+		var err error
+		result, err = observeHealthEventIn(ctx, transaction, observation)
+		return err
 	})
+	return result, err
+}
+
+func observeHealthEventIn(
+	ctx context.Context,
+	transaction *gorm.DB,
+	observation HealthObservation,
+) (HealthEvent, error) {
+	if observation.SourceFileID != nil {
+		if err := requireStoredReference(
+			ctx, transaction, &sourceFileModel{}, "source_file_id = ?",
+			*observation.SourceFileID, "source file",
+		); err != nil {
+			return HealthEvent{}, err
+		}
+	}
+	if observation.JobID != nil {
+		if err := requireStoredReference(
+			ctx, transaction, &jobRunModel{}, "job_id = ?",
+			*observation.JobID, "job run",
+		); err != nil {
+			return HealthEvent{}, err
+		}
+	}
+
+	existing, found, err := healthEventByFingerprint(ctx, transaction, observation.Fingerprint.String())
+	if err != nil {
+		return HealthEvent{}, err
+	}
+	if !found {
+		_, idFound, err := healthEventByID(ctx, transaction, observation.EventID)
+		if err != nil {
+			return HealthEvent{}, err
+		}
+		if idFound {
+			return HealthEvent{}, invalidRecord("health event ID belongs to another fingerprint")
+		}
+		result := HealthEvent{
+			EventID: observation.EventID, Fingerprint: observation.Fingerprint,
+			Domain: observation.Domain, Severity: observation.Severity, Code: observation.Code,
+			SourceFileID: observation.SourceFileID, JobID: observation.JobID,
+			ErrorClass: observation.ErrorClass, FirstSeenAtMS: observation.ObservedAtMS,
+			LastSeenAtMS: observation.ObservedAtMS, OccurrenceCount: 1, UpdatedAtMS: observation.ObservedAtMS,
+		}
+		model := healthEventModelFromDomain(result)
+		return result, transaction.WithContext(ctx).Create(&model).Error
+	}
+
+	if existing.EventID != observation.EventID || existing.Domain != observation.Domain ||
+		existing.Code != observation.Code ||
+		!equalStringPointer(existing.SourceFileID, observation.SourceFileID) ||
+		!equalStringPointer(existing.JobID, observation.JobID) {
+		return HealthEvent{}, invalidRecord("health fingerprint stable identity conflicts")
+	}
+	if observation.ObservedAtMS == existing.LastSeenAtMS {
+		if existing.Severity == observation.Severity &&
+			equalRuntimeErrorClassPointer(existing.ErrorClass, observation.ErrorClass) {
+			return existing, nil
+		}
+		return HealthEvent{}, invalidRecord("health observation conflicts at the same time")
+	}
+	if existing.ResolvedAtMS != nil && observation.ObservedAtMS <= *existing.ResolvedAtMS {
+		return HealthEvent{}, invalidRecord("health observation does not advance resolved lifecycle")
+	}
+	if observation.ObservedAtMS < existing.UpdatedAtMS {
+		return HealthEvent{}, invalidRecord("health observation time regresses lifecycle ordering")
+	}
+	if observation.ObservedAtMS < existing.LastSeenAtMS {
+		return HealthEvent{}, invalidRecord("health observation time regresses")
+	}
+
+	result := existing
+	result.Severity = observation.Severity
+	result.ErrorClass = observation.ErrorClass
+	result.LastSeenAtMS = observation.ObservedAtMS
+	result.ResolvedAtMS = nil
+	result.OccurrenceCount++
+	result.UpdatedAtMS = observation.ObservedAtMS
+	err = transaction.WithContext(ctx).Model(&healthEventModel{}).
+		Where("event_id = ?", result.EventID).Updates(map[string]any{
+		"severity": string(result.Severity), "error_class": runtimeErrorStringPointer(result.ErrorClass),
+		"last_seen_at_ms": result.LastSeenAtMS, "resolved_at_ms": nil,
+		"occurrence_count": result.OccurrenceCount, "updated_at_ms": result.UpdatedAtMS,
+	}).Error
 	return result, err
 }
 
@@ -109,26 +121,42 @@ func (repository *Repository) ResolveHealthEvent(ctx context.Context, eventID st
 		return invalidRecord("health resolution identity or timestamp is invalid")
 	}
 	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		event, found, err := healthEventByID(ctx, transaction, eventID)
-		if err != nil {
-			return err
-		}
-		if !found {
-			return ErrNotFound
-		}
-		if resolvedAtMS < event.LastSeenAtMS {
-			return invalidRecord("health resolution precedes the last observation")
-		}
-		if event.ResolvedAtMS != nil {
-			if *event.ResolvedAtMS == resolvedAtMS {
-				return nil
-			}
-			return invalidRecord("health resolution conflicts with existing lifecycle")
-		}
-		return transaction.WithContext(ctx).Model(&healthEventModel{}).
-			Where("event_id = ?", eventID).
-			Updates(map[string]any{"resolved_at_ms": resolvedAtMS, "updated_at_ms": resolvedAtMS}).Error
+		return resolveHealthEventIn(ctx, transaction, eventID, resolvedAtMS, false)
 	})
+}
+
+func resolveHealthEventIn(
+	ctx context.Context,
+	transaction *gorm.DB,
+	eventID string,
+	resolvedAtMS int64,
+	missingAllowed bool,
+) error {
+	event, found, err := healthEventByID(ctx, transaction, eventID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		if missingAllowed {
+			return nil
+		}
+		return ErrNotFound
+	}
+	if resolvedAtMS < event.LastSeenAtMS {
+		return invalidRecord("health resolution precedes the last observation")
+	}
+	if event.ResolvedAtMS != nil {
+		if missingAllowed && resolvedAtMS >= *event.ResolvedAtMS {
+			return nil
+		}
+		if *event.ResolvedAtMS == resolvedAtMS {
+			return nil
+		}
+		return invalidRecord("health resolution conflicts with existing lifecycle")
+	}
+	return transaction.WithContext(ctx).Model(&healthEventModel{}).
+		Where("event_id = ?", eventID).
+		Updates(map[string]any{"resolved_at_ms": resolvedAtMS, "updated_at_ms": resolvedAtMS}).Error
 }
 
 // AddPricingVersion 原子追加不可变版本和完整模型规则集合。

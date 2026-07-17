@@ -4,6 +4,23 @@ import type { App as VueApp } from "vue";
 import { createMemoryHistory } from "vue-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// The real Wails runtime starts a DOM polling interval as a module side effect.
+// App tests inject or observe only its public seams, so use deterministic stubs
+// instead of carrying the desktop runtime lifecycle into jsdom.
+vi.mock("@wailsio/runtime", () => ({
+  Call: { ByID: vi.fn() },
+  Events: {
+    On: vi.fn(() => () => undefined),
+    Types: {
+      Common: {
+        SystemDidWake: "common:system-did-wake",
+        WindowRuntimeReady: "common:window-runtime-ready",
+      },
+      Mac: { ApplicationDidBecomeActive: "mac:application-did-become-active" },
+    },
+  },
+}));
+
 import { ListHealth, Settings } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service";
 
 import { createAppDependencies, createCodexPulseApp } from "./app";

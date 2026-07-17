@@ -11,15 +11,17 @@ import (
 )
 
 type schedulerMetricsRow struct {
-	CycleCount        int64 `gorm:"column:cycle_count"`
-	CompletedCycles   int64 `gorm:"column:completed_cycles"`
-	YieldedCycles     int64 `gorm:"column:yielded_cycles"`
-	FailedCycles      int64 `gorm:"column:failed_cycles"`
-	InterruptedCycles int64 `gorm:"column:interrupted_cycles"`
-	FilesScanned      int64 `gorm:"column:files_scanned"`
-	BytesRead         int64 `gorm:"column:bytes_read"`
-	ActiveMS          int64 `gorm:"column:active_ms"`
-	MaxCycleActiveMS  int64 `gorm:"column:max_cycle_active_ms"`
+	CycleCount               int64         `gorm:"column:cycle_count"`
+	CompletedCycles          int64         `gorm:"column:completed_cycles"`
+	YieldedCycles            int64         `gorm:"column:yielded_cycles"`
+	FailedCycles             int64         `gorm:"column:failed_cycles"`
+	InterruptedCycles        int64         `gorm:"column:interrupted_cycles"`
+	FilesScanned             int64         `gorm:"column:files_scanned"`
+	BytesRead                int64         `gorm:"column:bytes_read"`
+	ActiveMS                 int64         `gorm:"column:active_ms"`
+	MaxCycleActiveMS         int64         `gorm:"column:max_cycle_active_ms"`
+	LastProgressAtMS         sql.NullInt64 `gorm:"column:last_progress_at_ms"`
+	LastBackfillProgressAtMS sql.NullInt64 `gorm:"column:last_backfill_progress_at_ms"`
 }
 
 type activeJobMetricsRow struct {
@@ -77,24 +79,33 @@ func (repository *Repository) MetricsSnapshot(
 	snapshot := MetricsSnapshot{FromMS: filter.FromMS, UntilMS: filter.UntilMS}
 	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
 		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
-			if err := readRuntimeSamples(ctx, transaction, filter, &snapshot); err != nil {
-				return err
-			}
-			if repository.metricsSnapshotReadHook != nil {
-				if err := repository.metricsSnapshotReadHook("runtime"); err != nil {
-					return err
-				}
-			}
-			if err := readSchedulerMetrics(ctx, transaction, filter, &snapshot); err != nil {
-				return err
-			}
-			if err := readJobMetrics(ctx, transaction, filter, &snapshot); err != nil {
-				return err
-			}
-			return readSourceMetrics(ctx, transaction, filter, &snapshot)
+			return repository.readMetricsSnapshotIn(ctx, transaction, filter, &snapshot)
 		})
 	})
 	return snapshot, err
+}
+
+func (repository *Repository) readMetricsSnapshotIn(
+	ctx context.Context,
+	transaction *gorm.DB,
+	filter MetricsSnapshotFilter,
+	snapshot *MetricsSnapshot,
+) error {
+	if err := readRuntimeSamples(ctx, transaction, filter, snapshot); err != nil {
+		return err
+	}
+	if repository.metricsSnapshotReadHook != nil {
+		if err := repository.metricsSnapshotReadHook("runtime"); err != nil {
+			return err
+		}
+	}
+	if err := readSchedulerMetrics(ctx, transaction, filter, snapshot); err != nil {
+		return err
+	}
+	if err := readJobMetrics(ctx, transaction, filter, snapshot); err != nil {
+		return err
+	}
+	return readSourceMetrics(ctx, transaction, filter, snapshot)
 }
 
 func readRuntimeSamples(
@@ -139,7 +150,9 @@ func readSchedulerMetrics(
 			COALESCE(SUM(consumed_files), 0) AS files_scanned,
 			COALESCE(SUM(consumed_bytes), 0) AS bytes_read,
 			COALESCE(SUM(active_ms), 0) AS active_ms,
-			COALESCE(MAX(active_ms), 0) AS max_cycle_active_ms`).
+			COALESCE(MAX(active_ms), 0) AS max_cycle_active_ms,
+			MAX(CASE WHEN consumed_files > 0 OR consumed_bytes > 0 THEN finished_at_ms END) AS last_progress_at_ms,
+			MAX(CASE WHEN lane = 'backfill' AND (consumed_files > 0 OR consumed_bytes > 0) THEN finished_at_ms END) AS last_backfill_progress_at_ms`).
 		Where("finished_at_ms >= ? AND finished_at_ms < ?", filter.FromMS, filter.UntilMS).
 		Scan(&row).Error
 	if err != nil {
@@ -150,6 +163,12 @@ func readSchedulerMetrics(
 		YieldedCycles: row.YieldedCycles, FailedCycles: row.FailedCycles,
 		InterruptedCycles: row.InterruptedCycles, FilesScanned: row.FilesScanned,
 		BytesRead: row.BytesRead, ActiveMS: row.ActiveMS, MaxCycleActiveMS: row.MaxCycleActiveMS,
+	}
+	if row.LastProgressAtMS.Valid {
+		snapshot.Scheduler.LastProgressAtMS = &row.LastProgressAtMS.Int64
+	}
+	if row.LastBackfillProgressAtMS.Valid {
+		snapshot.Scheduler.LastBackfillProgressAtMS = &row.LastBackfillProgressAtMS.Int64
 	}
 	activeStates := []string{
 		string(SchedulerTaskQueued), string(SchedulerTaskRunning), string(SchedulerTaskInterrupted),
@@ -371,6 +390,8 @@ func validateSchedulerMetrics(value SchedulerMetrics) error {
 	if value.CycleCount < 0 || value.CompletedCycles < 0 || value.YieldedCycles < 0 ||
 		value.FailedCycles < 0 || value.InterruptedCycles < 0 || value.FilesScanned < 0 ||
 		value.BytesRead < 0 || value.ActiveMS < 0 || value.MaxCycleActiveMS < 0 ||
+		!validMetricTimestamp(value.LastProgressAtMS) ||
+		!validMetricTimestamp(value.LastBackfillProgressAtMS) ||
 		value.CompletedCycles+value.YieldedCycles+value.FailedCycles+value.InterruptedCycles != value.CycleCount {
 		return invalidRecord("stored scheduler metrics are invalid")
 	}

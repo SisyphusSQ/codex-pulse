@@ -41,6 +41,7 @@
 38. [TOO-277] 实现本机状态与 Settings 页面，新增有限运行控制、Home 两阶段切换和 Session Index Analyze-only 检查，固定局部 unavailable/stale、危险操作确认、权威缓存失效、并发 latest-plan 与敏感路径隔离语义
 39. [TOO-278] 统一六页面的有限全局状态、route 错误恢复、缓存事件恢复与键盘焦点语义，补齐局部 partial/live region、危险操作 modal 隔离、平台辅助功能降级和可审计视觉回归证据
 40. [TOO-279] 新增 Pure Go GORM runtime metrics 采集与单快照 Job、Scheduler、Source 低基数事实，使用 gopsutil 和 robfig cron 提供 30 秒/5 秒采样、24 小时完整序列、查询延迟与 dropped 恢复语义，并以持久 resume-consumed 标记防止 interrupted Job 在 retention 后错误复活
+41. [TOO-280] 新增 typed Health Evaluator、schema v14 有限健康事件与 robfig cron 周期评估，固定持续窗口、暂停/休眠 lane 抑制、唯一优先级、精确事件所有权、原子 observe/resolve/reopen 和 stale projection 语义
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

@@ -42,6 +42,10 @@ export interface HealthItem {
     "domain": string;
     "severity": string;
     "code": string;
+    "component": string;
+    "rule": string;
+    "impact": string;
+    "protection": string;
     "sourceKey": string | null;
     "jobId": string | null;
     "errorClass": string | null;
