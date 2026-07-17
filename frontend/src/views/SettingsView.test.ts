@@ -126,4 +126,10 @@ describe("SettingsView", () => {
     const wrapper = mount(SettingsView, { global: { plugins: [createAppI18n()] } });
     expect(wrapper.get("[data-testid='settings-save-result']").attributes("role")).toBe("status");
   });
+
+  it("gives the Home target and strategy explicit accessible labels", () => {
+    const wrapper = mount(SettingsView, { global: { plugins: [createAppI18n()] } });
+    expect(wrapper.get("[data-testid='home-target-path']").attributes("aria-label")).toBe("新的 Codex Home 路径");
+    expect(wrapper.get("[data-testid='home-strategy']").attributes("aria-label")).toBe("切换策略");
+  });
 });

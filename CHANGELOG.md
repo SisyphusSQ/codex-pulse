@@ -39,6 +39,7 @@
 36. [TOO-275] 实现 Projects 聚合、置信度筛选、稳定分页与详情下钻，支持本地日范围、日级趋势及 Session/Model 贡献，并固定跨日 cursor 隔离、安全错误恢复和不暴露项目路径的隐私边界
 37. [TOO-276] 实现 Quota 来源、仲裁与 Reset Credits 页面，展示可信窗口、Local/Wham evidence、冲突与失败状态，新增受节流的双来源手动刷新，并固定 unknown/真实零、不可信重置倒计时及敏感 identity 隔离语义
 38. [TOO-277] 实现本机状态与 Settings 页面，新增有限运行控制、Home 两阶段切换和 Session Index Analyze-only 检查，固定局部 unavailable/stale、危险操作确认、权威缓存失效、并发 latest-plan 与敏感路径隔离语义
+39. [TOO-278] 统一六页面的有限全局状态、route 错误恢复、缓存事件恢复与键盘焦点语义，补齐局部 partial/live region、危险操作 modal 隔离、平台辅助功能降级和可审计视觉回归证据
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

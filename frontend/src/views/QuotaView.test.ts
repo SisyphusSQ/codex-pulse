@@ -228,6 +228,10 @@ describe("QuotaView", () => {
     expect(wrapper.text()).not.toContain("private-suspicious-observation-id");
     expect(wrapper.text()).not.toContain("private-limit-id");
     expect(wrapper.text()).not.toContain("private-account-scope");
+    for (const status of wrapper.findAll("[data-testid='quota-refresh-status']")) {
+      expect(status.attributes("role")).toBe("status");
+      expect(status.attributes("aria-live")).toBe("polite");
+    }
 
     state.quota.data.value!.current.sources![0].failureCode =
       SourceFailureCode.SourceFailureNetworkUnavailable;
@@ -240,7 +244,7 @@ describe("QuotaView", () => {
   it("renders explicit loading and known-empty states", () => {
     quotaHarness.page = page(undefined);
     const loading = renderQuota();
-    expect(loading.get("[role='status']").text()).toContain("正在读取配额数据");
+    expect(loading.get("[data-testid='quota-loading']").text()).toContain("正在读取配额数据");
     loading.unmount();
 
     const emptyResponse = quotaResponse() as QuotaCurrentResponse;
@@ -250,7 +254,7 @@ describe("QuotaView", () => {
     emptyResponse.current.resetCredits.totalCount = null;
     quotaHarness.page = page(emptyResponse);
     const empty = renderQuota();
-    expect(empty.get("[role='status']").text()).toContain("尚无配额事实");
+    expect(empty.get("[data-testid='quota-empty']").text()).toContain("尚无配额事实");
     empty.unmount();
   });
 
@@ -283,6 +287,8 @@ describe("QuotaView", () => {
 
     expect(wrapper.find("[data-testid='quota-stale']").exists()).toBe(true);
     expect(wrapper.find("[data-testid='quota-partial']").exists()).toBe(true);
+    expect(wrapper.get("[data-testid='quota-query-status']").attributes("role")).toBe("status");
+    expect(wrapper.get("[data-testid='quota-query-status']").attributes("aria-live")).toBe("polite");
     expect(wrapper.find("[data-testid='quota-refresh-error']").exists()).toBe(true);
     expect(wrapper.findAll("[data-testid='quota-window']")).toHaveLength(2);
     expect(wrapper.text()).not.toContain("private-query-cause");

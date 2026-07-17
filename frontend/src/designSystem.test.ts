@@ -39,6 +39,7 @@ describe("Liquid Glass design foundations", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain("@media (prefers-contrast: more)");
     expect(css).toContain("@media (prefers-reduced-transparency: reduce)");
+    expect(css).toContain("@media (forced-colors: active)");
     expect(css).toContain('[data-transparency="reduce"]');
     expect(css).toContain(".sidebar-secondary-copy");
     expect(css).toContain("--wails-draggable: drag");

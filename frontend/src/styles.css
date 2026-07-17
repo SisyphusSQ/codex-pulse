@@ -140,6 +140,19 @@ a {
   }
 }
 
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid CanvasText;
+  }
+
+  .glass-surface,
+  .content-surface {
+    border: 1px solid CanvasText;
+    box-shadow: none;
+    forced-color-adjust: auto;
+  }
+}
+
 @media (max-width: 1040px) {
   .app-shell-grid {
     grid-template-columns: 12.5rem minmax(0, 1fr);

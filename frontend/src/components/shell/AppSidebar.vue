@@ -24,6 +24,24 @@ const navigationIcons: Record<AppNavigationName, Component> = {
   sessions: MessagesSquare,
   settings: Settings,
 };
+
+function moveNavigationFocus(event: KeyboardEvent) {
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  const current = event.currentTarget as HTMLElement;
+  const links = Array.from(current.closest("nav")?.querySelectorAll<HTMLElement>("a") ?? []);
+  const currentIndex = links.indexOf(current);
+  if (currentIndex < 0 || links.length === 0) return;
+
+  event.preventDefault();
+  const nextIndex = event.key === "Home"
+    ? 0
+    : event.key === "End"
+      ? links.length - 1
+      : event.key === "ArrowDown"
+        ? (currentIndex + 1) % links.length
+        : (currentIndex - 1 + links.length) % links.length;
+  links[nextIndex]?.focus();
+}
 </script>
 
 <template>
@@ -47,6 +65,7 @@ const navigationIcons: Record<AppNavigationName, Component> = {
         :to="item.path"
         class="group flex min-h-11 items-center gap-3 rounded-control px-3 text-sm font-medium text-ink-muted transition-colors hover:bg-white/70 hover:text-ink"
         active-class="bg-surface-selected text-ink"
+        @keydown="moveNavigationFocus"
       >
         <component
           :is="navigationIcons[item.name]"

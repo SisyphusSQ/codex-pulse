@@ -191,7 +191,7 @@ function refreshState(status: CurrentRefreshStatus) {
 <template>
   <section data-testid="quota-view" class="w-full space-y-4 py-1">
     <div class="flex flex-wrap items-start justify-between gap-4">
-      <div class="flex min-h-10 items-center gap-2 text-xs font-semibold text-ink-muted">
+      <div data-testid="quota-query-status" role="status" aria-live="polite" class="flex min-h-10 items-center gap-2 text-xs font-semibold text-ink-muted">
         <span v-if="partial" data-testid="quota-partial" class="rounded-full bg-amber-100 px-3 py-1 text-amber-800">
           {{ t("quotaPage.state.partial") }}
         </span>
@@ -219,7 +219,7 @@ function refreshState(status: CurrentRefreshStatus) {
       {{ t("quotaPage.state.refreshError") }}
     </p>
 
-    <StateSkeleton v-if="initialPending" :label="t('quotaPage.state.loading')" :rows="5" />
+    <StateSkeleton v-if="initialPending" data-testid="quota-loading" :label="t('quotaPage.state.loading')" :rows="5" />
     <StateError
       v-else-if="fatal"
       data-testid="quota-fatal-error"
@@ -231,6 +231,7 @@ function refreshState(status: CurrentRefreshStatus) {
     />
     <StateEmpty
       v-else-if="empty"
+      data-testid="quota-empty"
       :title="t('quotaPage.state.emptyTitle')"
       :description="t('quotaPage.state.emptyDescription')"
     />
@@ -347,6 +348,8 @@ function refreshState(status: CurrentRefreshStatus) {
             ]"
             :key="item.key"
             data-testid="quota-refresh-status"
+            role="status"
+            aria-live="polite"
             class="rounded-control border border-line bg-white/60 p-4"
           >
             <div class="flex justify-between gap-4 text-sm"><strong class="text-ink">{{ item.label }}</strong><span class="text-ink-muted">{{ refreshState(item.status) }}</span></div>

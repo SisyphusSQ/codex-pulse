@@ -62,7 +62,7 @@ export function useLocalStatusPage() {
     health,
     jobs,
     repair,
-    runAction: (value: RuntimeAction) => action.mutate(value),
+    runAction: (value: RuntimeAction, options?: Parameters<typeof action.mutate>[1]) => action.mutate(value, options),
     sources,
   };
 }
