@@ -180,6 +180,15 @@ func Run(assets fs.FS) error {
 		defer func() {
 			returnErr = errors.Join(returnErr, healthRuntime.Close(context.Background()))
 		}()
+		retentionRuntime, err := startApplicationRetentionRuntime(ctx, database)
+		if err != nil {
+			return err
+		}
+		// Retention starts last and therefore closes first, before health,
+		// lifecycle, metrics, and the SQLite owner are torn down.
+		defer func() {
+			returnErr = errors.Join(returnErr, retentionRuntime.Close(context.Background()))
+		}()
 
 		return desktopApp.Run()
 	})

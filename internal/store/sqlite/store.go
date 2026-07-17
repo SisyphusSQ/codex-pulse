@@ -34,9 +34,10 @@ const (
 )
 
 type writeJob struct {
-	ctx    context.Context
-	write  WriteFunc
-	result chan error
+	ctx       context.Context
+	write     WriteFunc
+	operation func(context.Context) error
+	result    chan error
 }
 
 const maintenanceQueueCapacity = 1
@@ -183,15 +184,28 @@ func (store *Store) enqueueWrite(ctx context.Context, write WriteFunc, queue cha
 	if write == nil {
 		return newClassifiedError(operation, ErrInvalidConfig, fmt.Errorf("write callback is nil"))
 	}
+	return store.enqueueJob(ctx, writeJob{write: write}, queue, operation)
+}
+
+func (store *Store) enqueueOperation(
+	ctx context.Context,
+	operationFunc func(context.Context) error,
+	queue chan<- writeJob,
+	operation string,
+) error {
+	if operationFunc == nil {
+		return newClassifiedError(operation, ErrInvalidConfig, fmt.Errorf("operation callback is nil"))
+	}
+	return store.enqueueJob(ctx, writeJob{operation: operationFunc}, queue, operation)
+}
+
+func (store *Store) enqueueJob(ctx context.Context, job writeJob, queue chan<- writeJob, operation string) error {
 	if err := ctx.Err(); err != nil {
 		return classifyError(operation, err)
 	}
 
-	job := writeJob{
-		ctx:    ctx,
-		write:  write,
-		result: make(chan error, 1),
-	}
+	job.ctx = ctx
+	job.result = make(chan error, 1)
 	store.stateMu.Lock()
 	var admissionErr error
 	switch store.state {
@@ -281,27 +295,27 @@ func (store *Store) runWriter() {
 			select {
 			case job := <-store.writeQueue:
 				store.stateMu.Unlock()
-				job.result <- store.executeWrite(job)
+				job.result <- store.executeJob(job)
 				continue
 			default:
 				job := *pendingMaintenance
 				pendingMaintenance = nil
 				store.stateMu.Unlock()
-				job.result <- store.executeWrite(job)
+				job.result <- store.executeJob(job)
 				continue
 			}
 		}
 
 		select {
 		case job := <-store.writeQueue:
-			job.result <- store.executeWrite(job)
+			job.result <- store.executeJob(job)
 			continue
 		default:
 		}
 
 		select {
 		case job := <-store.writeQueue:
-			job.result <- store.executeWrite(job)
+			job.result <- store.executeJob(job)
 		case job := <-store.maintenanceQueue:
 			pendingMaintenance = &job
 		case <-store.shutdown:
@@ -315,17 +329,17 @@ func (store *Store) drainAndClose(pendingMaintenance *writeJob) {
 	for {
 		select {
 		case job := <-store.writeQueue:
-			job.result <- store.executeWrite(job)
+			job.result <- store.executeJob(job)
 		default:
 			if pendingMaintenance != nil {
 				job := *pendingMaintenance
 				pendingMaintenance = nil
-				job.result <- store.executeWrite(job)
+				job.result <- store.executeJob(job)
 				continue
 			}
 			select {
 			case job := <-store.maintenanceQueue:
-				job.result <- store.executeWrite(job)
+				job.result <- store.executeJob(job)
 				continue
 			default:
 			}
@@ -339,6 +353,25 @@ func (store *Store) drainAndClose(pendingMaintenance *writeJob) {
 			return
 		}
 	}
+}
+
+func (store *Store) executeJob(job writeJob) error {
+	if job.write != nil {
+		return store.executeWrite(job)
+	}
+	return store.executeOperation(job)
+}
+
+func (store *Store) executeOperation(job writeJob) (returnErr error) {
+	if err := job.ctx.Err(); err != nil {
+		return classifyError("begin maintenance operation", err)
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			returnErr = newClassifiedError("maintenance operation", ErrCallbackPanic, fmt.Errorf("%v", recovered))
+		}
+	}()
+	return classifyError("maintenance operation", job.operation(job.ctx))
 }
 
 func (store *Store) executeWrite(job writeJob) (returnErr error) {
