@@ -437,25 +437,32 @@ func validHealthCode(domain HealthDomain, code HealthCode) bool {
 	case HealthDomainSource:
 		switch code {
 		case HealthCodeSourceTimeout, HealthCodeSourceUnavailable, HealthCodeSourcePermission,
-			HealthCodeSourceCorrupt, HealthCodeSourceStale:
+			HealthCodeSourceCorrupt, HealthCodeSourceStale, HealthCodeSourceAuthRequired,
+			HealthCodeSourceFailureStreak:
 			return true
 		}
 	case HealthDomainJob:
 		switch code {
-		case HealthCodeJobInterrupted, HealthCodeJobFailed, HealthCodeJobCancelled:
+		case HealthCodeJobInterrupted, HealthCodeJobFailed, HealthCodeJobCancelled,
+			HealthCodeJobLiveQueueStalled, HealthCodeJobBackfillStalled:
 			return true
 		}
 	case HealthDomainStore:
 		switch code {
 		case HealthCodeStoreBusy, HealthCodeStoreDiskFull, HealthCodeStoreReadOnly,
 			HealthCodeStorePermission, HealthCodeStoreIO, HealthCodeStoreCorrupt,
-			HealthCodeStoreUnavailable, HealthCodeStoreUnknown:
+			HealthCodeStoreUnavailable, HealthCodeStoreUnknown, HealthCodeStoreDiskLow,
+			HealthCodeStoreWALPressure:
 			return true
 		}
 	case HealthDomainPricing:
 		return code == HealthCodePricingUnavailable || code == HealthCodePricingInvalid
 	case HealthDomainRuntime:
-		return code == HealthCodeRuntimeUnknown
+		switch code {
+		case HealthCodeRuntimeUnknown, HealthCodeRuntimeCPUPressure, HealthCodeRuntimeMemoryPressure,
+			HealthCodeRuntimeMetricsStale, HealthCodeRuntimeUpdaterUnavailable, HealthCodeRuntimeUpdaterUnknown:
+			return true
+		}
 	}
 	return false
 }

@@ -14,16 +14,16 @@ import (
 func TestApplicationSchemaV13CreatesAppRuntimeMetrics(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != 13 {
-		t.Fatalf("applicationSchemaVersion = %d, want 13", applicationSchemaVersion)
-	}
 	const wantChecksum = "08e62ab635873e100445bafd527a9f13ee55626cdb9c839eab476797cb540a5d"
 	if got := applicationSchemaV13Checksum(); got != wantChecksum {
 		t.Fatalf("applicationSchemaV13Checksum() = %q, want frozen %q", got, wantChecksum)
 	}
 	database := openTestDatabase(t)
-	if err := NewRepository(database).EnsureApplicationSchema(t.Context()); err != nil {
-		t.Fatalf("EnsureApplicationSchema() error = %v", err)
+	runner := applicationMigrationRunnerForTest(database)
+	runner.catalog = applicationMigrations[:13]
+	runner.verifyCurrent = verifyApplicationSchemaV13
+	if _, err := runner.run(t.Context()); err != nil {
+		t.Fatalf("run(v13) error = %v", err)
 	}
 	assertMigrationVersionAndHistory(t, database, 13, 13)
 	if err := database.View(t.Context(), func(ctx context.Context, connection storesqlite.ReadConn) error {
@@ -76,6 +76,8 @@ func TestApplicationMigrationUpgradesV12ToV13WithoutChangingExistingSchema(t *te
 	}
 	var backupVersions [2]int
 	runner := applicationMigrationRunnerForTest(database)
+	runner.catalog = applicationMigrations[:13]
+	runner.verifyCurrent = verifyApplicationSchemaV13
 	runner.spaceCheck = func(context.Context, string, int64) error { return nil }
 	runner.backup = func(
 		_ context.Context,

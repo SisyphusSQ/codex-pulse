@@ -4,6 +4,7 @@ import (
 	"strings"
 	"unicode"
 
+	healthmodel "github.com/SisyphusSQ/codex-pulse/internal/health"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -97,32 +98,25 @@ func healthRecovery(event store.HealthEvent) RecoveryAction {
 	if event.ResolvedAtMS != nil {
 		return noRecovery()
 	}
-	switch event.Code {
-	case store.HealthCodeSourceTimeout:
-		return recovery(RecoveryRetry, CommandRetryHealth)
-	case store.HealthCodeSourceUnavailable, store.HealthCodeSourceStale:
-		return recovery(RecoveryCheckSource, CommandCheckSource)
-	case store.HealthCodeSourcePermission:
-		return recovery(RecoveryGrantPermission, CommandGrantPermission)
-	case store.HealthCodeSourceCorrupt:
-		return recovery(RecoveryRepairStore, CommandRepairStore)
-	case store.HealthCodeJobInterrupted, store.HealthCodeJobFailed:
-		return recovery(RecoveryRetry, CommandRetryHealth)
-	case store.HealthCodeJobCancelled:
-		return noRecovery()
-	case store.HealthCodeStoreBusy, store.HealthCodeStoreIO,
-		store.HealthCodeStoreUnavailable, store.HealthCodeStoreUnknown:
-		return recovery(RecoveryRetry, CommandRetryHealth)
-	case store.HealthCodeStoreDiskFull:
-		return recovery(RecoveryFreeSpace, CommandFreeSpace)
-	case store.HealthCodeStoreReadOnly, store.HealthCodeStorePermission:
-		return recovery(RecoveryGrantPermission, CommandGrantPermission)
-	case store.HealthCodeStoreCorrupt, store.HealthCodePricingInvalid:
-		return recovery(RecoveryRepairStore, CommandRepairStore)
-	case store.HealthCodePricingUnavailable, store.HealthCodeRuntimeUnknown:
-		return recovery(RecoveryRetry, CommandRetryHealth)
+	descriptor, ok := healthmodel.DescribeEvent(event.Domain, event.Code)
+	if !ok {
+		return recoveryForError(event.ErrorClass, CommandRetryHealth)
 	}
-	return recoveryForError(event.ErrorClass, CommandRetryHealth)
+	switch descriptor.RecoveryAction {
+	case healthmodel.RecoveryRetry:
+		return recovery(RecoveryRetry, CommandRetryHealth)
+	case healthmodel.RecoveryCheckSource:
+		return recovery(RecoveryCheckSource, CommandCheckSource)
+	case healthmodel.RecoveryGrantPermission:
+		return recovery(RecoveryGrantPermission, CommandGrantPermission)
+	case healthmodel.RecoveryRepairStore:
+		return recovery(RecoveryRepairStore, CommandRepairStore)
+	case healthmodel.RecoveryFreeSpace:
+		return recovery(RecoveryFreeSpace, CommandFreeSpace)
+	case healthmodel.RecoveryNone:
+		return noRecovery()
+	}
+	return noRecovery()
 }
 
 func recoveryForStoredAction(

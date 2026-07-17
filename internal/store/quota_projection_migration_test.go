@@ -13,8 +13,8 @@ import (
 func TestApplicationSchemaV11CreatesQuotaProjection(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV13Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 13", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV14Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 14", applicationSchemaVersion)
 	}
 	const wantChecksum = "838ab8173f637ae8f702b3f4e2139bf1d6810941b0a83d1c258743183d914475"
 	if got := applicationSchemaV11Checksum(); got != wantChecksum {
@@ -72,7 +72,7 @@ func TestApplicationMigrationUpgradesV10ThroughCurrentWithoutChangingRawObservat
 		t.Fatalf("run(v10->v11) error = %v", err)
 	}
 	if report.FromVersion != 10 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{11, 12, 13}) {
+		!equalInts(report.AppliedVersions, []int{11, 12, 13, 14}) {
 		t.Fatalf("migration report = %#v", report)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))

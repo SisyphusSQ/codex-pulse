@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 
+	healthmodel "github.com/SisyphusSQ/codex-pulse/internal/health"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -194,9 +195,15 @@ func mapHealthItem(event store.HealthEvent) (HealthItem, error) {
 	if err != nil {
 		return HealthItem{}, err
 	}
+	descriptor, ok := healthmodel.DescribeEvent(event.Domain, event.Code)
+	if !ok {
+		return HealthItem{}, errors.New("health event descriptor is unavailable")
+	}
 	item := HealthItem{
 		EventID: event.EventID, Domain: string(event.Domain), Severity: string(event.Severity),
-		Code: string(event.Code), ErrorClass: runtimeErrorString(event.ErrorClass),
+		Code: string(event.Code), Component: string(descriptor.Component), Rule: string(descriptor.Rule),
+		Impact: string(descriptor.Impact), Protection: string(descriptor.Protection),
+		ErrorClass:    runtimeErrorString(event.ErrorClass),
 		FirstSeenAtMS: firstSeen, LastSeenAtMS: lastSeen, ResolvedAtMS: resolved,
 		OccurrenceCount: occurrences, Active: event.ResolvedAtMS == nil,
 		RecoveryAction: healthRecovery(event),
@@ -254,7 +261,9 @@ func healthLevel(summary store.RuntimeHealthSummary, lifecycle *store.SchedulerL
 		lifecycle.SystemState == store.LifecycleSystemSleeping) {
 		return HealthPaused
 	}
-	if summary.ActiveErrors > 0 || lifecycle != nil && lifecycle.SourceState == store.LifecycleSourceUnavailable {
+	if summary.ActiveErrors > 0 || lifecycle == nil ||
+		lifecycle.SourceState == store.LifecycleSourceUnknown ||
+		lifecycle.SourceState == store.LifecycleSourceUnavailable {
 		return HealthDegraded
 	}
 	if summary.ActiveWarnings > 0 || lifecycle != nil &&
@@ -281,29 +290,6 @@ func validHealthDomain(value store.HealthDomain) bool {
 }
 
 func validHealthCode(domain store.HealthDomain, value store.HealthCode) bool {
-	switch domain {
-	case store.HealthDomainSource:
-		return value == store.HealthCodeSourceTimeout || value == store.HealthCodeSourceUnavailable ||
-			value == store.HealthCodeSourcePermission || value == store.HealthCodeSourceCorrupt ||
-			value == store.HealthCodeSourceStale
-	case store.HealthDomainJob:
-		return value == store.HealthCodeJobInterrupted || value == store.HealthCodeJobFailed ||
-			value == store.HealthCodeJobCancelled
-	case store.HealthDomainStore:
-		switch value {
-		case store.HealthCodeStoreBusy, store.HealthCodeStoreDiskFull,
-			store.HealthCodeStoreReadOnly, store.HealthCodeStorePermission,
-			store.HealthCodeStoreIO, store.HealthCodeStoreCorrupt,
-			store.HealthCodeStoreUnavailable, store.HealthCodeStoreUnknown:
-			return true
-		default:
-			return false
-		}
-	case store.HealthDomainPricing:
-		return value == store.HealthCodePricingUnavailable || value == store.HealthCodePricingInvalid
-	case store.HealthDomainRuntime:
-		return value == store.HealthCodeRuntimeUnknown
-	default:
-		return false
-	}
+	_, ok := healthmodel.DescribeEvent(domain, value)
+	return ok
 }

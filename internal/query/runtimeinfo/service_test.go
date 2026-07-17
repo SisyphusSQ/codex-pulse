@@ -213,6 +213,8 @@ func TestJobAndHealthQueriesMapProgressLevelsAndRegisteredActions(t *testing.T) 
 		t.Fatalf("ListHealth() error = %v", err)
 	}
 	if len(health.Items) != 1 || health.Summary.Level != HealthBlocked ||
+		health.Items[0].Component != "storage" || health.Items[0].Rule != "store_disk_full" ||
+		health.Items[0].Impact != "storage_at_risk" || health.Items[0].Protection != "writes_stopped" ||
 		health.Items[0].RecoveryAction.Kind != RecoveryFreeSpace ||
 		health.Items[0].RecoveryAction.CommandKey == nil ||
 		*health.Items[0].RecoveryAction.CommandKey != CommandFreeSpace {
@@ -271,7 +273,12 @@ func TestHealthLevelUsesOnlyActiveEventsAndHonorsLifecyclePause(t *testing.T) {
 	resolvedCritical := store.RuntimeHealthSummary{
 		Total: 1, Resolved: 1, Critical: 1,
 	}
-	healthy, err := mapHealthSummary(resolvedCritical, nil)
+	healthy, err := mapHealthSummary(resolvedCritical, &store.SchedulerLifecycle{
+		UserPauseScope: store.LifecyclePauseNone,
+		SystemState:    store.LifecycleSystemAwake,
+		Transition:     store.LifecycleTransitionSteady,
+		SourceState:    store.LifecycleSourceAvailable,
+	})
 	if err != nil || healthy.Level != HealthHealthy {
 		t.Fatalf("mapHealthSummary(resolved critical) = %#v, %v", healthy, err)
 	}
@@ -283,6 +290,22 @@ func TestHealthLevelUsesOnlyActiveEventsAndHonorsLifecyclePause(t *testing.T) {
 	})
 	if err != nil || paused.Level != HealthPaused {
 		t.Fatalf("mapHealthSummary(paused) = %#v, %v", paused, err)
+	}
+	for name, lifecycle := range map[string]*store.SchedulerLifecycle{
+		"missing": nil,
+		"source unknown": {
+			UserPauseScope: store.LifecyclePauseNone, SystemState: store.LifecycleSystemAwake,
+			Transition: store.LifecycleTransitionSteady, SourceState: store.LifecycleSourceUnknown,
+		},
+		"source unavailable": {
+			UserPauseScope: store.LifecyclePauseNone, SystemState: store.LifecycleSystemAwake,
+			Transition: store.LifecycleTransitionSteady, SourceState: store.LifecycleSourceUnavailable,
+		},
+	} {
+		mapped, err := mapHealthSummary(store.RuntimeHealthSummary{}, lifecycle)
+		if err != nil || mapped.Level != HealthDegraded {
+			t.Fatalf("mapHealthSummary(%s) = %#v, %v", name, mapped, err)
+		}
 	}
 }
 
@@ -512,6 +535,17 @@ func TestRecoveryActionMatricesCoverTypedFailuresAndRegisteredCommands(t *testin
 		{name: "pricing unavailable", domain: store.HealthDomainPricing, code: store.HealthCodePricingUnavailable, want: RecoveryRetry},
 		{name: "pricing invalid", domain: store.HealthDomainPricing, code: store.HealthCodePricingInvalid, want: RecoveryRepairStore},
 		{name: "runtime unknown", domain: store.HealthDomainRuntime, code: store.HealthCodeRuntimeUnknown, want: RecoveryRetry},
+		{name: "source auth required", domain: store.HealthDomainSource, code: store.HealthCodeSourceAuthRequired, want: RecoveryGrantPermission},
+		{name: "source failure streak", domain: store.HealthDomainSource, code: store.HealthCodeSourceFailureStreak, want: RecoveryRetry},
+		{name: "live queue stalled", domain: store.HealthDomainJob, code: store.HealthCodeJobLiveQueueStalled, want: RecoveryRetry},
+		{name: "backfill stalled", domain: store.HealthDomainJob, code: store.HealthCodeJobBackfillStalled, want: RecoveryRetry},
+		{name: "store disk low", domain: store.HealthDomainStore, code: store.HealthCodeStoreDiskLow, want: RecoveryFreeSpace},
+		{name: "store wal pressure", domain: store.HealthDomainStore, code: store.HealthCodeStoreWALPressure, want: RecoveryRetry},
+		{name: "runtime cpu pressure", domain: store.HealthDomainRuntime, code: store.HealthCodeRuntimeCPUPressure, want: RecoveryRetry},
+		{name: "runtime memory pressure", domain: store.HealthDomainRuntime, code: store.HealthCodeRuntimeMemoryPressure, want: RecoveryRetry},
+		{name: "runtime metrics stale", domain: store.HealthDomainRuntime, code: store.HealthCodeRuntimeMetricsStale, want: RecoveryRetry},
+		{name: "updater unavailable", domain: store.HealthDomainRuntime, code: store.HealthCodeRuntimeUpdaterUnavailable, want: RecoveryRetry},
+		{name: "updater unknown", domain: store.HealthDomainRuntime, code: store.HealthCodeRuntimeUpdaterUnknown, want: RecoveryRetry},
 	}
 	for _, testCase := range healthCases {
 		t.Run("health "+testCase.name, func(t *testing.T) {

@@ -173,6 +173,13 @@ func Run(assets fs.FS) error {
 				returnErr = errors.Join(returnErr, runtime.Close(context.Background()))
 			}()
 		}
+		healthRuntime, err := startApplicationHealthRuntime(ctx, database)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			returnErr = errors.Join(returnErr, healthRuntime.Close(context.Background()))
+		}()
 
 		return desktopApp.Run()
 	})

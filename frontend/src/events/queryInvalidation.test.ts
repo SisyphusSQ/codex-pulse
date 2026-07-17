@@ -1,6 +1,22 @@
 import { QueryClient } from "@tanstack/vue-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// The real Wails runtime starts a DOM polling interval as a module side effect.
+// Unit tests exercise the injected event source, so keep the desktop runtime
+// outside jsdom and make accidental calls fail through an inert subscription.
+vi.mock("@wailsio/runtime", () => ({
+  Events: {
+    On: vi.fn(() => () => undefined),
+    Types: {
+      Common: {
+        SystemDidWake: "common:system-did-wake",
+        WindowRuntimeReady: "common:window-runtime-ready",
+      },
+      Mac: { ApplicationDidBecomeActive: "mac:application-did-become-active" },
+    },
+  },
+}));
+
 import {
   QueryInvalidationDomain,
   QueryInvalidationVersion,

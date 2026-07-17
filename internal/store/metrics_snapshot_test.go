@@ -150,6 +150,8 @@ func TestMetricsSnapshotAggregatesRuntimeSchedulerJobAndSourceFacts(t *testing.T
 		snapshot.Scheduler.FailedCycles != 1 ||
 		snapshot.Scheduler.FilesScanned != 2 || snapshot.Scheduler.BytesRead != 2_048 ||
 		snapshot.Scheduler.ActiveMS != 75 || snapshot.Scheduler.MaxCycleActiveMS != 75 ||
+		snapshot.Scheduler.LastProgressAtMS == nil || *snapshot.Scheduler.LastProgressAtMS != 1_200 ||
+		snapshot.Scheduler.LastBackfillProgressAtMS != nil ||
 		len(snapshot.Scheduler.TaskStates) != 1 ||
 		snapshot.Scheduler.TaskStates[0] != (SchedulerTaskStateMetric{State: SchedulerTaskQueued, Count: 1}) ||
 		len(snapshot.Scheduler.Lanes) != 1 ||

@@ -155,6 +155,10 @@ type HealthItem struct {
 	Domain          string                 `json:"domain"`
 	Severity        string                 `json:"severity"`
 	Code            string                 `json:"code"`
+	Component       string                 `json:"component"`
+	Rule            string                 `json:"rule"`
+	Impact          string                 `json:"impact"`
+	Protection      string                 `json:"protection"`
 	SourceKey       *string                `json:"sourceKey"`
 	JobID           *string                `json:"jobId"`
 	ErrorClass      *string                `json:"errorClass"`

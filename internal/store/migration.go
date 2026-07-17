@@ -28,7 +28,8 @@ const (
 	applicationSchemaV11Version = 11
 	applicationSchemaV12Version = 12
 	applicationSchemaV13Version = 13
-	applicationSchemaVersion    = applicationSchemaV13Version
+	applicationSchemaV14Version = 14
+	applicationSchemaVersion    = applicationSchemaV14Version
 )
 
 var (
@@ -190,6 +191,12 @@ var applicationMigrations = []migrationDefinition{
 			}
 			return ensureSchemaObjects(ctx, transaction, metricsSchemaObjects)
 		},
+	},
+	{
+		version:  applicationSchemaV14Version,
+		name:     "health-evaluator-events",
+		checksum: applicationSchemaV14Checksum(),
+		apply:    rebuildHealthEventsForV14,
 	},
 }
 
@@ -701,6 +708,16 @@ func runtimeSchemaObjectsThroughV12() []schemaObject {
 }
 
 func currentRuntimeSchemaObjects() []schemaObject {
+	objects := runtimeSchemaObjectsThroughV13()
+	for index := range objects {
+		if objects[index].name == "health_events" {
+			objects[index] = healthEventsSchemaObjectV14(objects[index])
+		}
+	}
+	return objects
+}
+
+func runtimeSchemaObjectsThroughV13() []schemaObject {
 	objects := runtimeSchemaObjectsThroughV12()
 	for index := range objects {
 		if objects[index].name == "job_runs" {
@@ -712,6 +729,24 @@ func currentRuntimeSchemaObjects() []schemaObject {
 		}
 	}
 	return objects
+}
+
+func healthEventsSchemaObjectV14(object schemaObject) schemaObject {
+	statement := object.statement
+	statement = strings.Replace(statement,
+		"'source.timeout', 'source.unavailable', 'source.permission', 'source.corrupt', 'source.stale'",
+		"'source.timeout', 'source.unavailable', 'source.permission', 'source.corrupt', 'source.stale', 'source.auth_required', 'source.failure_streak'", 1)
+	statement = strings.Replace(statement,
+		"'job.interrupted', 'job.failed', 'job.cancelled'",
+		"'job.interrupted', 'job.failed', 'job.cancelled', 'job.live_queue_stalled', 'job.backfill_stalled'", 1)
+	statement = strings.Replace(statement,
+		"'store.io', 'store.corrupt', 'store.unavailable', 'store.unknown'",
+		"'store.io', 'store.corrupt', 'store.unavailable', 'store.unknown', 'store.disk_low', 'store.wal_pressure'", 1)
+	statement = strings.Replace(statement,
+		"(domain = 'runtime' AND code = 'runtime.unknown')",
+		"(domain = 'runtime' AND code IN ('runtime.unknown', 'runtime.cpu_pressure', 'runtime.memory_pressure', 'runtime.metrics_stale', 'runtime.updater_unavailable', 'runtime.updater_unknown'))", 1)
+	object.statement = statement
+	return object
 }
 
 func appendSQLiteMigratedColumns(statement, before string, columns ...string) string {
@@ -879,6 +914,81 @@ func applicationSchemaV13Checksum() string {
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV14Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV14Version, "health-evaluator-events")
+	var object schemaObject
+	for _, candidate := range currentRuntimeSchemaObjects() {
+		if candidate.objectType == "table" && candidate.name == "health_events" {
+			object = candidate
+			break
+		}
+	}
+	_, _ = fmt.Fprintln(
+		hasher, object.objectType, object.name,
+		strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+	)
+	_, _ = fmt.Fprintln(hasher, "rebuild", "gorm-read-write", "isolated-sqlite-ddl")
+	_, _ = fmt.Fprintln(hasher, "write-batch-size", healthEventMigrationBatchSize)
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+const healthEventMigrationBatchSize = 100
+
+// rebuildHealthEventsForV14 只用 SQLite 必需 DDL 重建 CHECK；数据搬运保持 GORM 强类型边界。
+func rebuildHealthEventsForV14(ctx context.Context, transaction *gorm.DB) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: invalid health event migration database", ErrMigrationContract)
+	}
+	var models []healthEventModel
+	if err := transaction.WithContext(ctx).Order("event_id").Find(&models).Error; err != nil {
+		return fmt.Errorf("%w: read v13 health events: %v", ErrMigrationContract, err)
+	}
+	indexNames := []string{
+		"idx_health_events_active", "idx_health_events_history", "idx_health_events_severity",
+		"idx_health_events_relation", "idx_health_events_job", "idx_health_events_retention",
+	}
+	for _, indexName := range indexNames {
+		if err := transaction.WithContext(ctx).Exec("DROP INDEX IF EXISTS " + indexName).Error; err != nil {
+			return fmt.Errorf("%w: drop health event index %s: %v", ErrMigrationContract, indexName, err)
+		}
+	}
+	if err := transaction.WithContext(ctx).Exec("ALTER TABLE health_events RENAME TO health_events_v13").Error; err != nil {
+		return fmt.Errorf("%w: rename v13 health events: %v", ErrMigrationContract, err)
+	}
+	var table schemaObject
+	var indexes []schemaObject
+	for _, object := range currentRuntimeSchemaObjects() {
+		switch {
+		case object.objectType == "table" && object.name == "health_events":
+			table = object
+		case object.objectType == "index" && strings.HasPrefix(object.name, "idx_health_events_"):
+			indexes = append(indexes, object)
+		}
+	}
+	for _, object := range retentionSchemaObjects {
+		if object.objectType == "index" && object.name == "idx_health_events_retention" {
+			indexes = append(indexes, object)
+		}
+	}
+	if table.name == "" {
+		return fmt.Errorf("%w: v14 health event table is missing", ErrMigrationContract)
+	}
+	if err := ensureSchemaObjects(ctx, transaction, []schemaObject{table}); err != nil {
+		return err
+	}
+	if len(models) > 0 {
+		if err := transaction.WithContext(ctx).
+			CreateInBatches(&models, healthEventMigrationBatchSize).Error; err != nil {
+			return fmt.Errorf("%w: restore v14 health events: %v", ErrMigrationContract, err)
+		}
+	}
+	if err := transaction.WithContext(ctx).Exec("DROP TABLE health_events_v13").Error; err != nil {
+		return fmt.Errorf("%w: drop v13 health events: %v", ErrMigrationContract, err)
+	}
+	return ensureSchemaObjects(ctx, transaction, indexes)
 }
 
 func applicationSchemaV1CoreObjects() []schemaObject {

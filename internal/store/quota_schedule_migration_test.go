@@ -12,8 +12,8 @@ import (
 func TestApplicationSchemaV12CreatesResetCreditsAndRefreshScheduling(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV13Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 13", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV14Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 14", applicationSchemaVersion)
 	}
 	const wantChecksum = "9ab44dccdb1467d2ad8bdca4cf3703158e09c80b23506247e66735c099912bd0"
 	if got := applicationSchemaV12Checksum(); got != wantChecksum {
@@ -63,7 +63,7 @@ func TestApplicationMigrationUpgradesV11ThroughCurrentWithoutChangingQuotaFacts(
 		t.Fatalf("run(v11->v12) error = %v", err)
 	}
 	if report.FromVersion != 11 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{12, 13}) || backupVersions != [2]int{11, 13} {
+		!equalInts(report.AppliedVersions, []int{12, 13, 14}) || backupVersions != [2]int{11, 14} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
