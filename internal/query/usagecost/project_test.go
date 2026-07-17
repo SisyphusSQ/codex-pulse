@@ -17,6 +17,7 @@ func TestListProjectsValidatesMapsAndRoundTripsOpaqueCursor(t *testing.T) {
 
 	thirty := int64(30)
 	record := safeProjectRecord("project-a", pointerToString("project-a"), pointerToString("Project A"), 30, 100)
+	record.Trend[0].GenerationID = "private-project-generation"
 	page := store.ProjectAnalyticsPage{
 		Generation: store.CostRollupGeneration{
 			GenerationID: "private-project-generation", ReportingTimezone: "UTC",
@@ -93,6 +94,9 @@ func TestListProjectsPreservesUnknownDimensionAndPartialCost(t *testing.T) {
 	unknown.AttributionConfidence = "unknown"
 	unknown.AttributionSource = "missing"
 	unknown.AttributionReason = "missing"
+	unknown.Trend[0].AttributionConfidence = "unknown"
+	unknown.Trend[0].AttributionSource = "missing"
+	unknown.Trend[0].AttributionReason = "missing"
 	reader := &projectReaderStub{list: func(
 		context.Context, store.ProjectAnalyticsFilter,
 	) (store.ProjectAnalyticsPage, error) {
@@ -192,6 +196,37 @@ func TestListProjectsMixedPricedAndUnpricedTurnsIsPartial(t *testing.T) {
 	}
 }
 
+func TestListProjectsRejectsTrendIdentityDrift(t *testing.T) {
+	t.Parallel()
+
+	record := safeProjectRecord(
+		"project-a", pointerToString("project-a"), pointerToString("Project A"), 7, 11,
+	)
+	record.Trend[0].ProjectID = pointerToString("project-b")
+	record.Trend[0].ProjectDisplayName = pointerToString("Project B")
+	service := newUsageService(t, &projectReaderStub{list: func(
+		context.Context, store.ProjectAnalyticsFilter,
+	) (store.ProjectAnalyticsPage, error) {
+		return store.ProjectAnalyticsPage{
+			Generation: store.CostRollupGeneration{
+				GenerationID: "generation", ReportingTimezone: "UTC",
+				PricingSource: "test", Currency: "USD", RollupVersion: 1,
+			},
+			Records: []store.ProjectAnalyticsRecord{record}, MatchedCount: 1,
+			GlobalTotals: record.Totals, MatchedTotals: record.Totals,
+			PageTotals: record.Totals, PricingVersions: []string{"pricing-v1"},
+		}, nil
+	}})
+	_, err := service.ListProjects(context.Background(), basequery.Request{
+		TimeRange: &basequery.LocalDateRange{
+			StartDate: "1970-01-01", EndDateExclusive: "1970-01-02", TimeZone: "UTC",
+		},
+	})
+	if !errors.Is(err, basequery.ErrUnavailable) {
+		t.Fatalf("ListProjects(trend identity drift) error = %v, want unavailable", err)
+	}
+}
+
 func TestListProjectsRejectsMissingRangeInvalidFiltersAndCursorReplay(t *testing.T) {
 	t.Parallel()
 
@@ -265,6 +300,8 @@ func TestProjectDetailMapsDailyNotFoundAndUnavailable(t *testing.T) {
 	t.Parallel()
 
 	record := safeProjectRecord("project-a", pointerToString("project-a"), pointerToString("Project A"), 10, 20)
+	record.SessionCount = 1
+	record.Trend[0].GenerationID = "private-detail-generation"
 	privateCause := errors.New("private-project-driver-cause")
 	reader := &projectReaderStub{detail: func(
 		_ context.Context, filter store.ProjectAnalyticsDetailFilter,
@@ -290,7 +327,21 @@ func TestProjectDetailMapsDailyNotFoundAndUnavailable(t *testing.T) {
 					AttributionConfidence: "high", AttributionSource: "registered_root",
 					AttributionReason: "root_matched", RollupTotals: record.Totals,
 				}},
-				PricingVersions: []string{"pricing-v1"},
+				Sessions: []store.ProjectSessionAnalyticsRecord{{
+					SessionID: "session-a", DisplayTitle: "Safe title",
+					TitleConfidence: store.AttributionConfidenceHigh,
+					TitleSource:     store.AttributionSourceSessionIDFallback,
+					TitleReason:     store.AttributionReasonStableIdentity,
+					Model: store.ModelAttribution{
+						ModelKey: pointerToString("model-a"), DisplayName: pointerToString("Model A"),
+						Confidence: store.AttributionConfidenceHigh,
+						Source:     store.AttributionSourceModelCanonical,
+						Reason:     store.AttributionReasonObserved,
+					},
+					Activity: store.SessionActivityIdle, LastActivityAtMS: 10,
+					Totals: safeProjectContributionTotals(10, 20, 10),
+				}},
+				Models: make([]store.ProjectModelAnalyticsRecord, 0), PricingVersions: []string{"pricing-v1"},
 			}, nil
 		}
 	}}
@@ -321,6 +372,331 @@ func TestProjectDetailMapsDailyNotFoundAndUnavailable(t *testing.T) {
 			strings.Contains(err.Error(), category.Error())) {
 			t.Fatalf("ProjectDetail(%s) error = %q, want content-free unavailable", dimension, err)
 		}
+	}
+}
+
+func TestProjectDetailNormalizesPageLimitsAndRejectsInvalidPagesBeforeReader(t *testing.T) {
+	t.Parallel()
+
+	var filters []store.ProjectAnalyticsDetailFilter
+	reader := &projectReaderStub{detail: func(
+		_ context.Context, filter store.ProjectAnalyticsDetailFilter,
+	) (store.ProjectAnalyticsSnapshot, error) {
+		filters = append(filters, filter)
+		return safeProjectDetailSnapshot(), nil
+	}}
+	service := newUsageService(t, reader)
+	request := ProjectDetailRequest{
+		DimensionKey: "project-a",
+		Range: basequery.LocalDateRange{
+			StartDate: "1970-01-01", EndDateExclusive: "1970-01-02", TimeZone: "UTC",
+		},
+	}
+	response, err := service.ProjectDetail(context.Background(), request)
+	if err != nil {
+		t.Fatalf("ProjectDetail(default pages) error = %v", err)
+	}
+	if len(filters) != 1 || filters[0].SessionLimit != 20 || filters[0].ModelLimit != 20 ||
+		response.SessionPage.Limit != 20 || response.ModelPage.Limit != 20 {
+		t.Fatalf("ProjectDetail(default pages) response/filters = %#v / %#v", response, filters)
+	}
+
+	emptyCursor := ""
+	for name, pages := range map[string]struct {
+		session basequery.PageRequest
+		model   basequery.PageRequest
+	}{
+		"negative session limit":  {session: basequery.PageRequest{Limit: -1}},
+		"oversized session limit": {session: basequery.PageRequest{Limit: 51}},
+		"empty session cursor": {
+			session: basequery.PageRequest{Limit: 1, Cursor: &emptyCursor},
+		},
+		"negative model limit":  {model: basequery.PageRequest{Limit: -1}},
+		"oversized model limit": {model: basequery.PageRequest{Limit: 51}},
+		"empty model cursor": {
+			model: basequery.PageRequest{Limit: 1, Cursor: &emptyCursor},
+		},
+	} {
+		invalid := request
+		invalid.SessionPage = pages.session
+		invalid.ModelPage = pages.model
+		if _, err := service.ProjectDetail(context.Background(), invalid); !errors.Is(err, basequery.ErrValidation) {
+			t.Fatalf("ProjectDetail(%s) error = %v, want validation", name, err)
+		}
+	}
+	if len(filters) != 1 {
+		t.Fatalf("invalid Project detail pages reached reader: %#v", filters)
+	}
+}
+
+func TestProjectDetailMapsContributionPagesAndRoundTripsBoundCursors(t *testing.T) {
+	t.Parallel()
+
+	record := safeProjectRecord(
+		"project-a", pointerToString("project-a"), pointerToString("Project A"), 30, 300,
+	)
+	record.SessionCount = 2
+	record.Trend = []store.ProjectUsageDaily{{
+		GenerationID: "private-detail-generation", BucketStartMS: 0, ReportingTimezone: "UTC",
+		DimensionKey: "project-a", ProjectID: pointerToString("project-a"),
+		ProjectDisplayName: pointerToString("Project A"), AttributionConfidence: "high",
+		AttributionSource: "registered_root", AttributionReason: "root_matched",
+		RollupTotals: record.Totals,
+	}}
+	twenty, ten := int64(20), int64(10)
+	sessionCursor := &store.ProjectSessionAnalyticsCursor{
+		GenerationID: "private-detail-generation", DimensionKey: "project-a",
+		SessionID: "session-beta", LastActivityAtMS: 20,
+	}
+	modelCursor := &store.ProjectModelAnalyticsCursor{
+		GenerationID: "private-detail-generation", DimensionKey: "project-a",
+		ModelDimensionKey: "model-b", TotalTokens: &twenty,
+	}
+	var filters []store.ProjectAnalyticsDetailFilter
+	reader := &projectReaderStub{detail: func(
+		_ context.Context, filter store.ProjectAnalyticsDetailFilter,
+	) (store.ProjectAnalyticsSnapshot, error) {
+		filters = append(filters, filter)
+		snapshot := store.ProjectAnalyticsSnapshot{
+			Generation: store.CostRollupGeneration{
+				GenerationID: "private-detail-generation", ReportingTimezone: "UTC",
+				PricingSource: "test", Currency: "USD", RollupVersion: 1,
+			},
+			Record: record, GlobalTotals: record.Totals, Daily: append([]store.ProjectUsageDaily(nil), record.Trend...),
+			PricingVersions: []string{"pricing-v1"},
+		}
+		if filter.SessionCursor == nil {
+			snapshot.Sessions = []store.ProjectSessionAnalyticsRecord{{
+				SessionID: "session-beta", DisplayTitle: "Beta safe title",
+				TitleConfidence: store.AttributionConfidenceHigh,
+				TitleSource:     store.AttributionSourceSessionIDFallback,
+				TitleReason:     store.AttributionReasonStableIdentity,
+				Model: store.ModelAttribution{
+					ModelKey: pointerToString("model-b"), DisplayName: pointerToString("Model B"),
+					Confidence: store.AttributionConfidenceHigh,
+					Source:     store.AttributionSourceModelCanonical, Reason: store.AttributionReasonObserved,
+				},
+				Activity: store.SessionActivityIdle, LastActivityAtMS: 20,
+				Totals: safeProjectContributionTotals(twenty, 200, 20),
+			}}
+			snapshot.NextSessionCursor = sessionCursor
+			snapshot.Models = []store.ProjectModelAnalyticsRecord{{
+				DimensionKey: "model-b", Model: store.ModelAttribution{
+					ModelKey: pointerToString("model-b"), DisplayName: pointerToString("Model B"),
+					Confidence: store.AttributionConfidenceHigh,
+					Source:     store.AttributionSourceModelCanonical, Reason: store.AttributionReasonObserved,
+				},
+				Totals: safeProjectRecord("ignored", nil, nil, twenty, 200).Totals,
+			}}
+			snapshot.NextModelCursor = modelCursor
+			return snapshot, nil
+		}
+		snapshot.Sessions = []store.ProjectSessionAnalyticsRecord{{
+			SessionID: "session-alpha", DisplayTitle: "Alpha safe title",
+			TitleConfidence: store.AttributionConfidenceHigh,
+			TitleSource:     store.AttributionSourceSessionIDFallback,
+			TitleReason:     store.AttributionReasonStableIdentity,
+			Model: store.ModelAttribution{
+				ModelKey: pointerToString("model-a"), DisplayName: pointerToString("Model A"),
+				Confidence: store.AttributionConfidenceHigh,
+				Source:     store.AttributionSourceModelCanonical, Reason: store.AttributionReasonObserved,
+			},
+			Activity: store.SessionActivityIdle, LastActivityAtMS: 10,
+			Totals: safeProjectContributionTotals(ten, 100, 10),
+		}}
+		snapshot.Models = []store.ProjectModelAnalyticsRecord{{
+			DimensionKey: "model-a", Model: store.ModelAttribution{
+				ModelKey: pointerToString("model-a"), DisplayName: pointerToString("Model A"),
+				Confidence: store.AttributionConfidenceHigh,
+				Source:     store.AttributionSourceModelCanonical, Reason: store.AttributionReasonObserved,
+			},
+			Totals: safeProjectRecord("ignored", nil, nil, ten, 100).Totals,
+		}}
+		return snapshot, nil
+	}}
+	service := newUsageService(t, reader)
+	rangeValue := basequery.LocalDateRange{
+		StartDate: "1970-01-01", EndDateExclusive: "1970-01-02", TimeZone: "UTC",
+	}
+	first, err := service.ProjectDetail(context.Background(), ProjectDetailRequest{
+		DimensionKey: "project-a", Range: rangeValue,
+		SessionPage: basequery.PageRequest{Limit: 1}, ModelPage: basequery.PageRequest{Limit: 1},
+	})
+	if err != nil {
+		t.Fatalf("ProjectDetail(first) error = %v", err)
+	}
+	if len(filters) != 1 || filters[0].SessionLimit != 1 || filters[0].ModelLimit != 1 ||
+		len(first.Sessions) != 1 || len(first.Models) != 1 ||
+		first.SessionPage.NextCursor == nil || first.ModelPage.NextCursor == nil ||
+		first.Item.SessionCount.Value == nil || *first.Item.SessionCount.Value != 2 ||
+		len(first.Item.Trend) != 1 {
+		t.Fatalf("ProjectDetail(first) = %#v; filters=%#v", first, filters)
+	}
+	if first.Sessions[0].DisplayTitle != "Beta safe title" ||
+		first.Sessions[0].Totals.TotalTokens.Value == nil ||
+		*first.Sessions[0].Totals.TotalTokens.Value != 20 ||
+		first.Models[0].DimensionKey != "model-b" {
+		t.Fatalf("ProjectDetail(first items) = %#v / %#v", first.Sessions, first.Models)
+	}
+
+	second, err := service.ProjectDetail(context.Background(), ProjectDetailRequest{
+		DimensionKey: "project-a", Range: rangeValue,
+		SessionPage: basequery.PageRequest{Limit: 1, Cursor: first.SessionPage.NextCursor},
+		ModelPage:   basequery.PageRequest{Limit: 1, Cursor: first.ModelPage.NextCursor},
+	})
+	if err != nil {
+		t.Fatalf("ProjectDetail(second) error = %v", err)
+	}
+	if len(filters) != 2 || !reflect.DeepEqual(filters[1].SessionCursor, sessionCursor) ||
+		!reflect.DeepEqual(filters[1].ModelCursor, modelCursor) || len(second.Sessions) != 1 ||
+		second.Sessions[0].DisplayTitle != "Alpha safe title" ||
+		second.SessionPage.NextCursor != nil || second.ModelPage.NextCursor != nil {
+		t.Fatalf("ProjectDetail(second) = %#v; filters=%#v", second, filters)
+	}
+	tamperedCursorBytes := []byte(*first.SessionPage.NextCursor)
+	if tamperedCursorBytes[0] == 'A' {
+		tamperedCursorBytes[0] = 'B'
+	} else {
+		tamperedCursorBytes[0] = 'A'
+	}
+	tamperedCursor := string(tamperedCursorBytes)
+
+	for name, request := range map[string]ProjectDetailRequest{
+		"tampered": {
+			DimensionKey: "project-a", Range: rangeValue,
+			SessionPage: basequery.PageRequest{Limit: 1, Cursor: &tamperedCursor},
+			ModelPage:   basequery.PageRequest{Limit: 1},
+		},
+		"cross endpoint": {
+			DimensionKey: "project-a", Range: rangeValue,
+			SessionPage: basequery.PageRequest{Limit: 1, Cursor: first.ModelPage.NextCursor},
+			ModelPage:   basequery.PageRequest{Limit: 1},
+		},
+		"cross project": {
+			DimensionKey: "project-b", Range: rangeValue,
+			SessionPage: basequery.PageRequest{Limit: 1, Cursor: first.SessionPage.NextCursor},
+			ModelPage:   basequery.PageRequest{Limit: 1},
+		},
+		"cross range": {
+			DimensionKey: "project-a",
+			Range: basequery.LocalDateRange{
+				StartDate: "1970-01-02", EndDateExclusive: "1970-01-03", TimeZone: "UTC",
+			},
+			SessionPage: basequery.PageRequest{Limit: 1, Cursor: first.SessionPage.NextCursor},
+			ModelPage:   basequery.PageRequest{Limit: 1},
+		},
+	} {
+		if _, err := service.ProjectDetail(context.Background(), request); !errors.Is(err, basequery.ErrValidation) {
+			t.Fatalf("ProjectDetail(%s) error = %v, want validation", name, err)
+		}
+	}
+	restartedService := newUsageService(t, reader)
+	if _, err := restartedService.ProjectDetail(context.Background(), ProjectDetailRequest{
+		DimensionKey: "project-a", Range: rangeValue,
+		SessionPage: basequery.PageRequest{Limit: 1, Cursor: first.SessionPage.NextCursor},
+		ModelPage:   basequery.PageRequest{Limit: 1},
+	}); !errors.Is(err, basequery.ErrValidation) {
+		t.Fatalf("ProjectDetail(old process cursor) error = %v, want validation", err)
+	}
+	if len(filters) != 2 {
+		t.Fatalf("invalid detail cursors reached reader: %#v", filters)
+	}
+}
+
+func TestProjectDetailRejectsOutOfOrderSessionPage(t *testing.T) {
+	t.Parallel()
+
+	record := safeProjectRecord(
+		"project-a", pointerToString("project-a"), pointerToString("Project A"), 30, 300,
+	)
+	record.SessionCount = 2
+	record.Trend[0].GenerationID = "private-detail-generation"
+	makeSession := func(id string, atMS int64) store.ProjectSessionAnalyticsRecord {
+		return store.ProjectSessionAnalyticsRecord{
+			SessionID: id, DisplayTitle: "Safe title",
+			TitleConfidence: store.AttributionConfidenceHigh,
+			TitleSource:     store.AttributionSourceSessionIDFallback,
+			TitleReason:     store.AttributionReasonStableIdentity,
+			Model: store.ModelAttribution{
+				ModelKey: pointerToString("model-a"), DisplayName: pointerToString("Model A"),
+				Confidence: store.AttributionConfidenceHigh,
+				Source:     store.AttributionSourceModelCanonical, Reason: store.AttributionReasonObserved,
+			},
+			Activity: store.SessionActivityIdle, LastActivityAtMS: atMS,
+			Totals: safeProjectContributionTotals(15, 150, atMS),
+		}
+	}
+	snapshot := store.ProjectAnalyticsSnapshot{
+		Generation: store.CostRollupGeneration{
+			GenerationID: "private-detail-generation", ReportingTimezone: "UTC",
+			PricingSource: "test", Currency: "USD", RollupVersion: 1,
+		},
+		Record: record, Daily: append([]store.ProjectUsageDaily(nil), record.Trend...),
+		Sessions: []store.ProjectSessionAnalyticsRecord{
+			makeSession("session-older", 10), makeSession("session-newer", 20),
+		},
+		Models:       make([]store.ProjectModelAnalyticsRecord, 0),
+		GlobalTotals: record.Totals, PricingVersions: []string{"pricing-v1"},
+	}
+	rangeValue := basequery.UTCTimeRange{StartAtMS: 0, EndAtMS: 86_400_000, TimeZone: "UTC"}
+	if err := validateProjectSnapshotShape(snapshot, rangeValue, "project-a", 2, true, 2); err == nil {
+		t.Fatal("validateProjectSnapshotShape(out-of-order sessions) error = nil")
+	}
+	snapshot.Sessions = make([]store.ProjectSessionAnalyticsRecord, 0)
+	makeModel := func(key string, tokens int64) store.ProjectModelAnalyticsRecord {
+		return store.ProjectModelAnalyticsRecord{
+			DimensionKey: key,
+			Model: store.ModelAttribution{
+				ModelKey: pointerToString(key), DisplayName: pointerToString(key),
+				Confidence: store.AttributionConfidenceHigh,
+				Source:     store.AttributionSourceModelCanonical,
+				Reason:     store.AttributionReasonObserved,
+			},
+			Totals: safeProjectRecord("ignored", nil, nil, tokens, tokens*10).Totals,
+		}
+	}
+	snapshot.Models = []store.ProjectModelAnalyticsRecord{
+		makeModel("model-low", 10), makeModel("model-high", 20),
+	}
+	if err := validateProjectSnapshotShape(snapshot, rangeValue, "project-a", 2, true, 2); err == nil {
+		t.Fatal("validateProjectSnapshotShape(out-of-order models) error = nil")
+	}
+}
+
+func TestProjectDetailRejectsTruncatedFirstSessionPageWithoutCursor(t *testing.T) {
+	t.Parallel()
+
+	record := safeProjectRecord(
+		"project-a", pointerToString("project-a"), pointerToString("Project A"), 30, 300,
+	)
+	record.SessionCount = 2
+	record.Trend[0].GenerationID = "private-detail-generation"
+	snapshot := store.ProjectAnalyticsSnapshot{
+		Generation: store.CostRollupGeneration{
+			GenerationID: "private-detail-generation", ReportingTimezone: "UTC",
+			PricingSource: "test", Currency: "USD", RollupVersion: 1,
+		},
+		Record: record, Daily: append([]store.ProjectUsageDaily(nil), record.Trend...),
+		Sessions: []store.ProjectSessionAnalyticsRecord{{
+			SessionID: "session-only", DisplayTitle: "Safe title",
+			TitleConfidence: store.AttributionConfidenceHigh,
+			TitleSource:     store.AttributionSourceSessionIDFallback,
+			TitleReason:     store.AttributionReasonStableIdentity,
+			Model: store.ModelAttribution{
+				ModelKey: pointerToString("model-a"), DisplayName: pointerToString("Model A"),
+				Confidence: store.AttributionConfidenceHigh,
+				Source:     store.AttributionSourceModelCanonical,
+				Reason:     store.AttributionReasonObserved,
+			},
+			Activity: store.SessionActivityIdle, LastActivityAtMS: 10,
+			Totals: safeProjectContributionTotals(30, 300, 10),
+		}},
+		Models:       make([]store.ProjectModelAnalyticsRecord, 0),
+		GlobalTotals: record.Totals, PricingVersions: []string{"pricing-v1"},
+	}
+	rangeValue := basequery.UTCTimeRange{StartAtMS: 0, EndAtMS: 86_400_000, TimeZone: "UTC"}
+	if err := validateProjectSnapshotShape(snapshot, rangeValue, "project-a", 2, true, 2); err == nil {
+		t.Fatal("validateProjectSnapshotShape(truncated first session page) error = nil")
 	}
 }
 
@@ -397,7 +773,60 @@ func safeProjectRecord(
 	return store.ProjectAnalyticsRecord{
 		DimensionKey: dimensionKey, ProjectID: projectID, ProjectDisplayName: display,
 		AttributionConfidence: "high", AttributionSource: "registered_root",
-		AttributionReason: "root_matched", Totals: totals,
+		AttributionReason: "root_matched", SessionCount: 1,
+		Trend: []store.ProjectUsageDaily{{
+			GenerationID: "generation", BucketStartMS: 0, ReportingTimezone: "UTC",
+			DimensionKey: dimensionKey, ProjectID: projectID, ProjectDisplayName: display,
+			AttributionConfidence: "high", AttributionSource: "registered_root",
+			AttributionReason: "root_matched", RollupTotals: totals,
+		}},
+		Totals: totals,
+	}
+}
+
+func safeProjectContributionTotals(tokens int64, cost int64, atMS int64) store.RollupTotals {
+	totals := safeProjectRecord("ignored", nil, nil, tokens, cost).Totals
+	totals.FirstActivityAtMS = atMS
+	totals.LastActivityAtMS = atMS
+	totals.UpdatedAtMS = atMS
+	return totals
+}
+
+func safeProjectDetailSnapshot() store.ProjectAnalyticsSnapshot {
+	record := safeProjectRecord(
+		"project-a", pointerToString("project-a"), pointerToString("Project A"), 10, 20,
+	)
+	return store.ProjectAnalyticsSnapshot{
+		Generation: store.CostRollupGeneration{
+			GenerationID: "generation", ReportingTimezone: "UTC",
+			PricingSource: "test", Currency: "USD", RollupVersion: 1,
+		},
+		Record: record, Daily: append([]store.ProjectUsageDaily(nil), record.Trend...),
+		Sessions: []store.ProjectSessionAnalyticsRecord{{
+			SessionID: "session-a", DisplayTitle: "Safe title",
+			TitleConfidence: store.AttributionConfidenceHigh,
+			TitleSource:     store.AttributionSourceSessionIDFallback,
+			TitleReason:     store.AttributionReasonStableIdentity,
+			Model: store.ModelAttribution{
+				ModelKey: pointerToString("model-a"), DisplayName: pointerToString("Model A"),
+				Confidence: store.AttributionConfidenceHigh,
+				Source:     store.AttributionSourceModelCanonical,
+				Reason:     store.AttributionReasonObserved,
+			},
+			Activity: store.SessionActivityIdle, LastActivityAtMS: 1,
+			Totals: safeProjectContributionTotals(10, 20, 1),
+		}},
+		Models: []store.ProjectModelAnalyticsRecord{{
+			DimensionKey: "model-a",
+			Model: store.ModelAttribution{
+				ModelKey: pointerToString("model-a"), DisplayName: pointerToString("Model A"),
+				Confidence: store.AttributionConfidenceHigh,
+				Source:     store.AttributionSourceModelCanonical,
+				Reason:     store.AttributionReasonObserved,
+			},
+			Totals: safeProjectContributionTotals(10, 20, 1),
+		}},
+		GlobalTotals: record.Totals, PricingVersions: []string{"pricing-v1"},
 	}
 }
 

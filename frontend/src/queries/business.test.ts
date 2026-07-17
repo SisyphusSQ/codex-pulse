@@ -111,6 +111,8 @@ describe("business Vue Query contract", () => {
     const projectRequest: ProjectDetailRequest = {
       dimensionKey: "project-1",
       range: dateRange,
+      sessionPage: { cursor: null, limit: 20 },
+      modelPage: { cursor: null, limit: 20 },
     };
     const sourceRequest: SourceDetailRequest = { sourceKey: "source-1" };
     const jobRequest: JobDetailRequest = { jobId: "job-1" };

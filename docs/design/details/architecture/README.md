@@ -41,6 +41,8 @@ flowchart LR
 
 `SessionDetail` 在既有方法内接受 bounded `turnPage`，并在同一次 `Store.View` snapshot 返回 Session aggregate 与 content-free Turn usage/cost page。Store 通过固定 GORM projection 按 `started_at_ms DESC, turn_id DESC` 读取安全 attribution、lifecycle、同 generation usage 与可选 active cost；query 层负责 AEAD cursor、Session 绑定、不可逆 timeline key、unknown/zero/priced/unpriced 映射，以及完整首屏精确/截断页下界与 pricing membership 对账。该扩展不增加 schema、index、Wails method 或 event domain，也不把 raw identity、正文、tool、路径、offset、generation、SQL 或 driver cause 带到 generated DTO。
 
+`ProjectDetail` 也在既有方法内扩展 `sessionPage/modelPage`。Store 于同一 `Repository.database.View` 中锁定 active cost generation，以 GORM `Table/Select/Joins/Where/Group/Having/Order/Limit/Scan` 从 final `turn_usage`、同 generation `turn_costs`、`turn_attributions`、`session_attributions` 组装 Project contribution；全量 Session groups 与 Model groups 各自作为 grouped subquery，再由 NULL-preserving 外层 aggregate 只扫描一行并对账 Project item，翻页只读取 limit+1。Session keyset 固定为 `lastActivityAtMs DESC, sessionId DESC`，Model keyset 固定为 `totalTokens DESC NULLS LAST, modelDimensionKey DESC`。Query 层的双 AEAD cursor 绑定 endpoint、Project dimension、timezone/range、active generation 与 sort identity；process 重启或同进程 generation rollover 后旧 cursor 均失效，调用方从首页恢复。
+
 用户日期范围以本地 `YYYY-MM-DD`、exclusive end 和显式 IANA timezone 输入，由 Go 在 DST-aware 本地午夜换算成 `[start,end)` UTC epoch milliseconds。token、count 和微美元继续使用非负整数；跨 Wails 的数值不得超过 JavaScript safe integer。`value != nil && value == 0` 表示真实零，`value == nil` 必须同时带有限 `unknownReason`；partial 与 unavailable 通过 response status / typed issue 表达，不能用空数组、零或任意错误文本代替。
 
 fatal failure 只映射稳定 code、i18n message key、allowlisted field 和 retryable，不把 repository/driver cause 暴露到 JSON、日志或页面。内部仍保留 `errors.Is` / `errors.As` chain，便于 Go service 做正确分类和恢复。
@@ -52,6 +54,8 @@ fatal failure 只映射稳定 code、i18n message key、allowlisted field 和 re
 `wails-bindings-v1` 当前只允许以下只读方法：`Bootstrap`、`Contracts`、`UsageCost`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail`、`QuotaCurrent`、`ListSources`、`Source`、`ListJobs`、`Job`、`ListHealth`、`Health`、`Settings`。`Contracts` 返回 binding/query/业务 contract 版本、完整 query allowlist、显式空 command allowlist 和一个 typed error exemplar。新增 exported method 必须先让 exact allowlist contract test 失败，再通过独立 Issue 和 review；现有 Preferences、Schedule 与 Codex Home lifecycle mutator 在没有稳定 public command DTO 前保持不可绑定。
 
 TOO-307 只扩展既有 `SessionDetailRequest/Response` 的 reachable model：request 增加 `turnPage`，response 增加 non-nil `turns` 与 `turnPage`；生成结果保持 15 methods、13 个业务 query 和 1 个 event。前端 fixture 与 query key 必须携带完整 page request，generated bindings 仍是唯一 TypeScript 类型真相。
+
+TOO-308 只扩展既有 `ListProjects` item 与 `ProjectDetailRequest/Response` reachable model：list item 增加 exact `sessionCount` 和末尾最多 30 个日点的 `trend`，detail 增加双 bounded page 与安全 Session/Model contribution item。生成结果仍保持 1 service / 15 methods / 1 event；前端必须把完整双 page request 纳入 query key/cancellation，不得另增业务入口或手写 shadow type。
 
 13 个业务数据 query 的 `context.Context` 位于首参数，Wails 生成的 TypeScript client 返回 `CancellablePromise<T>`，前端取消会传播到 Store/query；同步元数据方法 `Bootstrap` / `Contracts` 不承诺 Go 侧可取消。业务方法返回 error 或其依赖 panic 时，façade 会统一生成 `RuntimeError`：`CallError.message` 固定为 `binding query failed`，`cause` 只包含 `query.ErrorEnvelope`。Wails 在参数数量或 JSON 类型错误时生成的 `TypeError.message` 属于 framework transport detail，前端不得展示；其 `cause` 仍通过 content-free marshaler。内部 error chain 保留取消、deadline 和分类语义，但底层路径、请求值、panic value、repository/driver cause 不进入业务 RuntimeError JSON。
 

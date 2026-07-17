@@ -177,6 +177,8 @@ func validFailureField(value string) bool {
 	switch value {
 	case "page.limit", "page.cursor",
 		"turnPage.limit", "turnPage.cursor",
+		"sessionPage.limit", "sessionPage.cursor",
+		"modelPage.limit", "modelPage.cursor",
 		"sort", "sort.field", "sort.direction",
 		"filters", "filters.field", "filters.operator", "filters.values",
 		"timeRange", "timeRange.timeZone", "timeRange.startDate", "timeRange.endDateExclusive",

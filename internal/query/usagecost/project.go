@@ -71,21 +71,76 @@ func (service *Service) ProjectDetail(
 	if validated.TimeRange == nil {
 		return ProjectDetailResponse{}, basequery.NewValidationFailure("timeRange", nil)
 	}
+	sessionPage, err := normalizeProjectDetailPage(request.SessionPage, "sessionPage")
+	if err != nil {
+		return ProjectDetailResponse{}, err
+	}
+	modelPage, err := normalizeProjectDetailPage(request.ModelPage, "modelPage")
+	if err != nil {
+		return ProjectDetailResponse{}, err
+	}
+	var sessionCursor *store.ProjectSessionAnalyticsCursor
+	if sessionPage.Cursor != nil {
+		sessionCursor, err = decodeProjectSessionCursor(
+			service.projectDetailCursorKey, *sessionPage.Cursor,
+			request.DimensionKey, *validated.TimeRange,
+		)
+		if err != nil {
+			return ProjectDetailResponse{}, err
+		}
+	}
+	var modelCursor *store.ProjectModelAnalyticsCursor
+	if modelPage.Cursor != nil {
+		modelCursor, err = decodeProjectModelCursor(
+			service.projectDetailCursorKey, *modelPage.Cursor,
+			request.DimensionKey, *validated.TimeRange,
+		)
+		if err != nil {
+			return ProjectDetailResponse{}, err
+		}
+	}
 	snapshot, err := service.projectReader.ProjectAnalytics(ctx, store.ProjectAnalyticsDetailFilter{
 		Range: store.AnalyticsRange{
 			ReportingTimezone: validated.TimeRange.TimeZone,
 			StartAtMS:         validated.TimeRange.StartAtMS, EndAtMS: validated.TimeRange.EndAtMS,
 		},
-		DimensionKey: request.DimensionKey,
+		DimensionKey: request.DimensionKey, SessionLimit: sessionPage.Limit,
+		SessionCursor: sessionCursor, ModelLimit: modelPage.Limit, ModelCursor: modelCursor,
 	})
 	if err != nil {
 		return ProjectDetailResponse{}, mapProjectReaderError(err)
 	}
-	response, err := mapProjectDetailResponse(snapshot, *validated.TimeRange, request.DimensionKey)
+	response, err := mapProjectDetailResponse(
+		snapshot, *validated.TimeRange, request.DimensionKey,
+		sessionPage.Limit, sessionPage.Cursor == nil, modelPage.Limit,
+		service.projectDetailCursorKey,
+	)
 	if err != nil {
 		return ProjectDetailResponse{}, basequery.NewUnavailableFailure(err)
 	}
 	return response, nil
+}
+
+func normalizeProjectDetailPage(
+	page basequery.PageRequest,
+	field string,
+) (basequery.PageRequest, error) {
+	limit := page.Limit
+	if limit == 0 {
+		limit = 20
+	}
+	if limit < 1 || limit > 50 {
+		return basequery.PageRequest{}, basequery.NewValidationFailure(field+".limit", nil)
+	}
+	normalized := basequery.PageRequest{Limit: limit}
+	if page.Cursor != nil {
+		cursor := *page.Cursor
+		if cursor == "" {
+			return basequery.PageRequest{}, basequery.NewValidationFailure(field+".cursor", nil)
+		}
+		normalized.Cursor = &cursor
+	}
+	return normalized, nil
 }
 
 func projectStoreFilter(
@@ -236,8 +291,14 @@ func mapProjectDetailResponse(
 	snapshot store.ProjectAnalyticsSnapshot,
 	rangeValue basequery.UTCTimeRange,
 	dimensionKey string,
+	sessionLimit int,
+	sessionFirstPage bool,
+	modelLimit int,
+	cursorKey projectDetailCursorKey,
 ) (ProjectDetailResponse, error) {
-	if err := validateProjectSnapshotShape(snapshot, rangeValue, dimensionKey); err != nil {
+	if err := validateProjectSnapshotShape(
+		snapshot, rangeValue, dimensionKey, sessionLimit, sessionFirstPage, modelLimit,
+	); err != nil {
 		return ProjectDetailResponse{}, err
 	}
 	item, err := mapProjectItem(snapshot.Record)
@@ -251,21 +312,48 @@ func mapProjectDetailResponse(
 	daily := make([]ProjectDailyPoint, 0, len(snapshot.Daily))
 	partial := usageTotalsArePartial(item.Totals) || usageTotalsArePartial(globalTotals)
 	for _, row := range snapshot.Daily {
-		bucket, err := basequery.KnownNumeric(row.BucketStartMS, basequery.NumericMilliseconds)
+		point, err := mapProjectDailyPoint(row)
 		if err != nil {
 			return ProjectDetailResponse{}, err
 		}
-		totals, err := mapUsageTotals(row.RollupTotals, store.AnalyticsReadActiveRollup)
-		if err != nil {
-			return ProjectDetailResponse{}, err
-		}
-		if usageTotalsArePartial(totals) {
+		if usageTotalsArePartial(point.Totals) {
 			partial = true
 		}
-		daily = append(daily, ProjectDailyPoint{
-			BucketStartAt: bucket, Confidence: row.AttributionConfidence,
-			Source: row.AttributionSource, Reason: row.AttributionReason, Totals: totals,
-		})
+		daily = append(daily, point)
+	}
+	sessions := make([]ProjectSessionItem, 0, len(snapshot.Sessions))
+	for _, record := range snapshot.Sessions {
+		mapped, err := mapProjectSessionItem(record)
+		if err != nil {
+			return ProjectDetailResponse{}, err
+		}
+		if usageTotalsArePartial(mapped.Totals) {
+			partial = true
+		}
+		sessions = append(sessions, mapped)
+	}
+	models := make([]ProjectModelItem, 0, len(snapshot.Models))
+	for _, record := range snapshot.Models {
+		mapped, err := mapProjectModelItem(record)
+		if err != nil {
+			return ProjectDetailResponse{}, err
+		}
+		if usageTotalsArePartial(mapped.Totals) {
+			partial = true
+		}
+		models = append(models, mapped)
+	}
+	nextSessionCursor, err := encodeProjectSessionCursor(
+		cursorKey, snapshot.NextSessionCursor, rangeValue,
+	)
+	if err != nil {
+		return ProjectDetailResponse{}, err
+	}
+	nextModelCursor, err := encodeProjectModelCursor(
+		cursorKey, snapshot.NextModelCursor, rangeValue,
+	)
+	if err != nil {
+		return ProjectDetailResponse{}, err
 	}
 	versions, err := normalizedPricingVersions(snapshot.PricingVersions)
 	if err != nil {
@@ -285,7 +373,96 @@ func mapProjectDetailResponse(
 		Meta: meta, Range: rangeValue, ReportingTimeZone: rangeValue.TimeZone,
 		PricingSource: cloneString(snapshot.Generation.PricingSource),
 		Currency:      cloneString(snapshot.Generation.Currency), PricingVersions: versions,
-		Item: item, Daily: daily, GlobalTotals: globalTotals,
+		Item: item, Daily: daily,
+		SessionPage: basequery.PageInfo{
+			Limit: sessionLimit, HasMore: nextSessionCursor != nil, NextCursor: nextSessionCursor,
+		},
+		Sessions: sessions,
+		ModelPage: basequery.PageInfo{
+			Limit: modelLimit, HasMore: nextModelCursor != nil, NextCursor: nextModelCursor,
+		},
+		Models: models, GlobalTotals: globalTotals,
+	}, nil
+}
+
+func mapProjectDailyPoint(row store.ProjectUsageDaily) (ProjectDailyPoint, error) {
+	bucket, err := basequery.KnownNumeric(row.BucketStartMS, basequery.NumericMilliseconds)
+	if err != nil {
+		return ProjectDailyPoint{}, err
+	}
+	totals, err := mapUsageTotals(row.RollupTotals, store.AnalyticsReadActiveRollup)
+	if err != nil {
+		return ProjectDailyPoint{}, err
+	}
+	return ProjectDailyPoint{
+		BucketStartAt: bucket, Confidence: row.AttributionConfidence,
+		Source: row.AttributionSource, Reason: row.AttributionReason, Totals: totals,
+	}, nil
+}
+
+func mapProjectSessionItem(
+	record store.ProjectSessionAnalyticsRecord,
+) (ProjectSessionItem, error) {
+	if !validOpaqueIdentity(record.SessionID) || record.DisplayTitle == "" ||
+		!validProjectAttributionDTO(
+			string(record.TitleConfidence), string(record.TitleSource), string(record.TitleReason),
+		) || !validAttributionTuple(record.Model.ModelKey, record.Model.DisplayName) ||
+		!validProjectAttributionDTO(
+			string(record.Model.Confidence), string(record.Model.Source), string(record.Model.Reason),
+		) || (record.Activity != store.SessionActivityActive && record.Activity != store.SessionActivityIdle) ||
+		record.LastActivityAtMS < 0 || record.LastActivityAtMS != record.Totals.LastActivityAtMS {
+		return ProjectSessionItem{}, errors.New("stored project session item is invalid")
+	}
+	lastActivity, err := basequery.KnownNumeric(
+		record.LastActivityAtMS, basequery.NumericMilliseconds,
+	)
+	if err != nil {
+		return ProjectSessionItem{}, err
+	}
+	totals, err := mapUsageTotals(record.Totals, store.AnalyticsReadActiveRollup)
+	if err != nil {
+		return ProjectSessionItem{}, err
+	}
+	return ProjectSessionItem{
+		SessionID: record.SessionID, DisplayTitle: record.DisplayTitle,
+		TitleConfidence: string(record.TitleConfidence), TitleSource: string(record.TitleSource),
+		TitleReason: string(record.TitleReason),
+		Model: AttributionValue{
+			ID:          cloneStringPointer(record.Model.ModelKey),
+			DisplayName: cloneStringPointer(record.Model.DisplayName),
+			Confidence:  string(record.Model.Confidence), Source: string(record.Model.Source),
+			Reason: string(record.Model.Reason),
+		},
+		Activity: string(record.Activity), LastActivityAt: lastActivity, Totals: totals,
+	}, nil
+}
+
+func mapProjectModelItem(
+	record store.ProjectModelAnalyticsRecord,
+) (ProjectModelItem, error) {
+	if !validOpaqueIdentity(record.DimensionKey) ||
+		!validAttributionTuple(record.Model.ModelKey, record.Model.DisplayName) ||
+		!validProjectAttributionDTO(
+			string(record.Model.Confidence), string(record.Model.Source), string(record.Model.Reason),
+		) || (record.Model.ModelKey != nil && *record.Model.ModelKey != record.DimensionKey) ||
+		(record.Model.ModelKey == nil && record.DimensionKey != "unknown|"+
+			string(record.Model.Confidence)+"|"+string(record.Model.Source)+"|"+
+			string(record.Model.Reason)) {
+		return ProjectModelItem{}, errors.New("stored project model item is invalid")
+	}
+	totals, err := mapUsageTotals(record.Totals, store.AnalyticsReadActiveRollup)
+	if err != nil {
+		return ProjectModelItem{}, err
+	}
+	return ProjectModelItem{
+		DimensionKey: record.DimensionKey,
+		Model: AttributionValue{
+			ID:          cloneStringPointer(record.Model.ModelKey),
+			DisplayName: cloneStringPointer(record.Model.DisplayName),
+			Confidence:  string(record.Model.Confidence), Source: string(record.Model.Source),
+			Reason: string(record.Model.Reason),
+		},
+		Totals: totals,
 	}, nil
 }
 
@@ -306,6 +483,11 @@ func validateProjectPageShape(
 	if page.GlobalTotals.PricedTurnCount > 0 && len(page.PricingVersions) == 0 {
 		return errors.New("stored project pricing evidence is incomplete")
 	}
+	for _, record := range page.Records {
+		if err := validateProjectRecordDecorations(record, page.Generation, rangeValue); err != nil {
+			return err
+		}
+	}
 	if page.NextCursor != nil {
 		if len(page.Records) != limit || len(page.Records) == 0 {
 			return errors.New("stored project next cursor cardinality is invalid")
@@ -322,16 +504,30 @@ func validateProjectSnapshotShape(
 	snapshot store.ProjectAnalyticsSnapshot,
 	rangeValue basequery.UTCTimeRange,
 	dimensionKey string,
+	sessionLimit int,
+	sessionFirstPage bool,
+	modelLimit int,
 ) error {
 	if err := validateSessionGeneration(snapshot.Generation); err != nil {
 		return err
 	}
 	if snapshot.Generation.ReportingTimezone != rangeValue.TimeZone || snapshot.Daily == nil ||
-		snapshot.PricingVersions == nil || snapshot.Record.DimensionKey != dimensionKey {
+		snapshot.Sessions == nil || snapshot.Models == nil || snapshot.PricingVersions == nil ||
+		snapshot.Record.DimensionKey != dimensionKey || len(snapshot.Sessions) > sessionLimit ||
+		len(snapshot.Models) > modelLimit || snapshot.Record.SessionCount < int64(len(snapshot.Sessions)) {
 		return errors.New("stored project detail shape is invalid")
+	}
+	if err := validateProjectRecordDecorations(snapshot.Record, snapshot.Generation, rangeValue); err != nil {
+		return err
 	}
 	if snapshot.Record.Totals.TurnCount > 0 && len(snapshot.Daily) == 0 {
 		return errors.New("stored project detail daily rows are missing")
+	}
+	if sessionFirstPage && ((snapshot.NextSessionCursor == nil &&
+		snapshot.Record.SessionCount != int64(len(snapshot.Sessions))) ||
+		(snapshot.NextSessionCursor != nil &&
+			snapshot.Record.SessionCount <= int64(len(snapshot.Sessions)))) {
+		return errors.New("stored project first session page cardinality is inconsistent")
 	}
 	if snapshot.GlobalTotals.PricedTurnCount > 0 && len(snapshot.PricingVersions) == 0 {
 		return errors.New("stored project detail pricing evidence is incomplete")
@@ -353,6 +549,99 @@ func validateProjectSnapshotShape(
 		}
 		previousBucket = row.BucketStartMS
 	}
+	for index, record := range snapshot.Sessions {
+		if _, err := mapProjectSessionItem(record); err != nil {
+			return err
+		}
+		if index > 0 {
+			previous := snapshot.Sessions[index-1]
+			if previous.LastActivityAtMS < record.LastActivityAtMS ||
+				(previous.LastActivityAtMS == record.LastActivityAtMS &&
+					previous.SessionID <= record.SessionID) {
+				return errors.New("stored project session page order is invalid")
+			}
+		}
+	}
+	for index, record := range snapshot.Models {
+		if _, err := mapProjectModelItem(record); err != nil {
+			return err
+		}
+		if index > 0 && !projectModelRecordComesBefore(snapshot.Models[index-1], record) {
+			return errors.New("stored project model page order is invalid")
+		}
+	}
+	if snapshot.NextSessionCursor != nil {
+		if len(snapshot.Sessions) != sessionLimit || len(snapshot.Sessions) == 0 {
+			return errors.New("stored project session next cursor cardinality is invalid")
+		}
+		last := snapshot.Sessions[len(snapshot.Sessions)-1]
+		if snapshot.NextSessionCursor.DimensionKey != dimensionKey ||
+			snapshot.NextSessionCursor.GenerationID != snapshot.Generation.GenerationID ||
+			snapshot.NextSessionCursor.SessionID != last.SessionID ||
+			snapshot.NextSessionCursor.LastActivityAtMS != last.LastActivityAtMS {
+			return errors.New("stored project session next cursor is inconsistent")
+		}
+	}
+	if snapshot.NextModelCursor != nil {
+		if len(snapshot.Models) != modelLimit || len(snapshot.Models) == 0 {
+			return errors.New("stored project model next cursor cardinality is invalid")
+		}
+		last := snapshot.Models[len(snapshot.Models)-1]
+		if snapshot.NextModelCursor.DimensionKey != dimensionKey ||
+			snapshot.NextModelCursor.GenerationID != snapshot.Generation.GenerationID ||
+			snapshot.NextModelCursor.ModelDimensionKey != last.DimensionKey ||
+			snapshot.NextModelCursor.Null != (last.Totals.TotalTokens == nil) ||
+			!equalInt64Pointers(snapshot.NextModelCursor.TotalTokens, last.Totals.TotalTokens) {
+			return errors.New("stored project model next cursor is inconsistent")
+		}
+	}
+	return nil
+}
+
+func projectModelRecordComesBefore(
+	left store.ProjectModelAnalyticsRecord,
+	right store.ProjectModelAnalyticsRecord,
+) bool {
+	leftTokens, rightTokens := left.Totals.TotalTokens, right.Totals.TotalTokens
+	if leftTokens == nil {
+		return rightTokens == nil && left.DimensionKey > right.DimensionKey
+	}
+	if rightTokens == nil {
+		return true
+	}
+	if *leftTokens != *rightTokens {
+		return *leftTokens > *rightTokens
+	}
+	return left.DimensionKey > right.DimensionKey
+}
+
+func validateProjectRecordDecorations(
+	record store.ProjectAnalyticsRecord,
+	generation store.CostRollupGeneration,
+	rangeValue basequery.UTCTimeRange,
+) error {
+	if record.SessionCount <= 0 || record.Trend == nil || len(record.Trend) == 0 ||
+		len(record.Trend) > 30 {
+		return errors.New("stored project decorations are invalid")
+	}
+	previousBucket := int64(-1)
+	for _, row := range record.Trend {
+		if row.GenerationID != generation.GenerationID ||
+			row.ReportingTimezone != rangeValue.TimeZone || row.DimensionKey != record.DimensionKey ||
+			row.BucketStartMS < rangeValue.StartAtMS || row.BucketStartMS >= rangeValue.EndAtMS ||
+			row.BucketStartMS <= previousBucket ||
+			!validProjectAttributionDTO(
+				row.AttributionConfidence, row.AttributionSource, row.AttributionReason,
+			) || !validAttributionTuple(row.ProjectID, row.ProjectDisplayName) {
+			return errors.New("stored project trend is invalid")
+		}
+		if (row.ProjectID != nil && *row.ProjectID != record.DimensionKey) ||
+			(row.ProjectID == nil && record.DimensionKey != "unknown|"+
+				row.AttributionConfidence+"|"+row.AttributionSource+"|"+row.AttributionReason) {
+			return errors.New("stored project trend identity is inconsistent")
+		}
+		previousBucket = row.BucketStartMS
+	}
 	return nil
 }
 
@@ -371,6 +660,18 @@ func mapProjectItem(record store.ProjectAnalyticsRecord) (ProjectItem, error) {
 	if record.ProjectID != nil && *record.ProjectID != record.DimensionKey {
 		return ProjectItem{}, errors.New("stored project identity is inconsistent")
 	}
+	sessionCount, err := basequery.KnownNumeric(record.SessionCount, basequery.NumericCount)
+	if err != nil {
+		return ProjectItem{}, err
+	}
+	trend := make([]ProjectDailyPoint, 0, len(record.Trend))
+	for _, row := range record.Trend {
+		point, err := mapProjectDailyPoint(row)
+		if err != nil {
+			return ProjectItem{}, err
+		}
+		trend = append(trend, point)
+	}
 	totals, err := mapUsageTotals(record.Totals, store.AnalyticsReadActiveRollup)
 	if err != nil {
 		return ProjectItem{}, err
@@ -382,7 +683,7 @@ func mapProjectItem(record store.ProjectAnalyticsRecord) (ProjectItem, error) {
 			Confidence: record.AttributionConfidence, Source: record.AttributionSource,
 			Reason: record.AttributionReason,
 		},
-		Totals: totals,
+		SessionCount: sessionCount, Trend: trend, Totals: totals,
 	}, nil
 }
 

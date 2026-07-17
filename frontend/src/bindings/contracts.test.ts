@@ -29,9 +29,13 @@ import type {
 import {
   SessionTurnPricingStatus,
   SessionTurnState,
+  type ProjectDailyPoint,
   type ProjectDetailRequest,
   type ProjectDetailResponse,
+  type ProjectItem,
   type ProjectListResponse,
+  type ProjectModelItem,
+  type ProjectSessionItem,
   type SessionDetailRequest,
   type SessionDetailResponse,
   type SessionListResponse,
@@ -107,6 +111,22 @@ describe("generated Wails binding contract", () => {
     expectTypeOf<ReturnType<typeof Service.ProjectDetail>>().toEqualTypeOf<
       CancellablePromise<ProjectDetailResponse>
     >();
+    expectTypeOf<ProjectDetailRequest["sessionPage"]>().toEqualTypeOf<PageRequest>();
+    expectTypeOf<ProjectDetailRequest["modelPage"]>().toEqualTypeOf<PageRequest>();
+    expectTypeOf<ProjectDetailResponse["sessionPage"]>().toEqualTypeOf<PageInfo>();
+    expectTypeOf<ProjectDetailResponse["sessions"]>().toEqualTypeOf<
+      ProjectSessionItem[] | null
+    >();
+    expectTypeOf<ProjectDetailResponse["modelPage"]>().toEqualTypeOf<PageInfo>();
+    expectTypeOf<ProjectDetailResponse["models"]>().toEqualTypeOf<
+      ProjectModelItem[] | null
+    >();
+    expectTypeOf<ProjectItem["sessionCount"]>().toMatchTypeOf<{
+      value: number | null;
+      unit: string;
+      unknownReason: string | null;
+    }>();
+    expectTypeOf<ProjectItem["trend"]>().toEqualTypeOf<ProjectDailyPoint[] | null>();
     expectTypeOf<Parameters<typeof Service.QuotaCurrent>>().toEqualTypeOf<
       [number]
     >();

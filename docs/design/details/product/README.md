@@ -121,6 +121,9 @@ Pricing Catalog 本地版本化，每条记录包含 model、input/cached/output
 - Session cost generation 缺失时仍可展示安全 Session 身份与 active/idle；token/cost 显式 unknown 并局部标记 `partial / rollup_missing`，不伪造累计值。未指定 reporting timezone 且同时存在多个合法 active generation 时不得任取一份 ledger，必须返回同样的安全身份事实与 unknown totals，并标记 `partial / rollup_ambiguous`。详情与列表 item 使用同一 mapper，pricing evidence 只来自同一 active generation。
 - Projects 必须从所选 range 的 active `project_usage_daily` 查询；known project 与 unknown/conflict/invalid 维度都参与全局对账。range 聚合后的最保守 confidence 决定筛选结果，不能先按 daily confidence 截断后再汇总。
 - Project list/detail 同时返回 global、matched、page totals；无筛选全局 Project totals 必须与同 range `usage_daily` 一致，detail daily 合计必须与 list item 一致。任一对账漂移或 active generation 缺失都返回 unavailable，不能伪装成空项目。
+- Project list item 返回所选 range 内贡献 Turn 的精确 distinct Session 数，以及该 range 末尾最多 30 个已有日 bucket 的升序 trend。trend 只用于趋势展示，不是 full-range totals；前端不得用当前页 Session 或 daily 重算 count/totals。
+- Project detail 沿用既有方法返回 Project contribution 的两组独立 keyset page：Session 按 `lastActivityAt DESC, session identity DESC`，Model 按 `totalTokens DESC NULLS LAST, model dimension DESC`；两者均默认 20、最大 50。Session 页只复用安全 title/current-model attribution，totals 仅统计当前 Project dimension 在 range 内的贡献，不得用 `ListSessions(projectId)` 的整 Session rollup 替代。两类 opaque cursor 同时绑定当前 active generation；同进程 generation rollover、Project/range变化或进程重启后必须从首页恢复。
+- Store 必须在同一 active generation/read snapshot 中，分别把全量 Session groups 和全量 Model groups 的 NULL-preserving totals 对账到 Project item；unknown/conflict/invalid Project/Model dimension 不丢弃。任一分组对账失败都 fail closed 为 unavailable，不返回局部伪造页。
 - 所有 count/token/微美元保持整数和 unknown reason；只要存在未定价 Turn，即使已定价小计非空，相关 Session/Project 响应也必须是 partial。priced turn 必须至少关联一个 pricing version，未定价原因计数之和必须严格等于 unpriced turn count，否则 fail closed 为 unavailable。金额仍是 API 等价估算，不接入或对账云账单。
 
 ## Settings 与 Codex Home

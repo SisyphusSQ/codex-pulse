@@ -151,9 +151,11 @@ type SessionDetailResponse struct {
 }
 
 type ProjectItem struct {
-	DimensionKey string           `json:"dimensionKey"`
-	Project      AttributionValue `json:"project"`
-	Totals       UsageTotals      `json:"totals"`
+	DimensionKey string                 `json:"dimensionKey"`
+	Project      AttributionValue       `json:"project"`
+	SessionCount basequery.NumericValue `json:"sessionCount"`
+	Trend        []ProjectDailyPoint    `json:"trend"`
+	Totals       UsageTotals            `json:"totals"`
 }
 
 type ProjectDailyPoint struct {
@@ -181,6 +183,26 @@ type ProjectListResponse struct {
 type ProjectDetailRequest struct {
 	DimensionKey string                   `json:"dimensionKey"`
 	Range        basequery.LocalDateRange `json:"range"`
+	SessionPage  basequery.PageRequest    `json:"sessionPage"`
+	ModelPage    basequery.PageRequest    `json:"modelPage"`
+}
+
+type ProjectSessionItem struct {
+	SessionID       string                 `json:"sessionId"`
+	DisplayTitle    string                 `json:"displayTitle"`
+	TitleConfidence string                 `json:"titleConfidence"`
+	TitleSource     string                 `json:"titleSource"`
+	TitleReason     string                 `json:"titleReason"`
+	Model           AttributionValue       `json:"model"`
+	Activity        string                 `json:"activity"`
+	LastActivityAt  basequery.NumericValue `json:"lastActivityAtMs"`
+	Totals          UsageTotals            `json:"totals"`
+}
+
+type ProjectModelItem struct {
+	DimensionKey string           `json:"dimensionKey"`
+	Model        AttributionValue `json:"model"`
+	Totals       UsageTotals      `json:"totals"`
 }
 
 type ProjectDetailResponse struct {
@@ -192,5 +214,9 @@ type ProjectDetailResponse struct {
 	PricingVersions   []string               `json:"pricingVersions"`
 	Item              ProjectItem            `json:"item"`
 	Daily             []ProjectDailyPoint    `json:"daily"`
+	SessionPage       basequery.PageInfo     `json:"sessionPage"`
+	Sessions          []ProjectSessionItem   `json:"sessions"`
+	ModelPage         basequery.PageInfo     `json:"modelPage"`
+	Models            []ProjectModelItem     `json:"models"`
 	GlobalTotals      UsageTotals            `json:"globalTotals"`
 }
