@@ -58,7 +58,7 @@
 ## Query DTO 消费边界
 
 - 前端业务查询只能导入 `frontend/bindings` 中由 Go 签名生成的 `internal/app/service` 与 reachable models；禁止手写同名 request/response/enum/error shadow type，也禁止绕过 façade 调用 Repository、SQLite、文件、shell、网络或 credential primitive。
-- `wails-bindings-v1` 当前固定为 16 个方法：15 个 Bootstrap、Contracts、Usage/Session/Project、Quota、Source、Job、Health 与 Settings 查询，以及唯一 command `RequestQuotaRefresh`；`commandMethods` 必须精确为该单元素数组。该 command 只接收有限 `quota/reset_credits` source 并返回脱敏 receipt；Preferences、Schedule、Codex Home 切换和 recovery executor 仍不得从组件调用。
+- `wails-bindings-v1` 当前固定为 22 个方法：原有 15 个 Bootstrap、Contracts、Usage/Session/Project、Quota、Source、Job、Health 与 Settings 查询，加上 `RequestQuotaRefresh`、`UpdateSettings`、`PlanHomeSwitch`、`ConfirmHomeSwitch`、`RecoverHomeSwitch`、`RunRuntimeAction` 与 `AnalyzeSessionIndexRepair` 7 个有限 command；`commandMethods` 必须精确匹配该集合。新增 command 只接收 typed enum/DTO 并返回脱敏 receipt；Schedule、任意 shell/SQL/filesystem primitive、repair Execute、Preferences persistence model 和 Home path/plan ID 仍不得进入生成绑定。
 - 13 个业务数据 query 返回 `CancellablePromise<T>` 且首个 Go 参数为 context。页面卸载、query 被替代或用户取消时应调用生成 client 的取消能力，不另造不可取消 Promise wrapper；Go 侧的 cancel/deadline 继续映射为 typed error code。`Bootstrap` / `Contracts` 是同步元数据方法，不依赖其取消来释放后端工作。
 - 业务 error 与 recovered panic 的 Wails `RuntimeError.message` 固定为 `binding query failed`；页面只从 `cause` 解码 `query.ErrorEnvelope` 并以有限 `messageKey` 渲染。参数/JSON 错误由 Wails 标记为 `TypeError`，其 framework message 同样不得展示。无法识别的 kind/version/code 必须按 internal fail closed，不能显示底层 message、路径、请求参数、panic value 或 driver cause。
 - 后续 Wails bindings 只暴露 Go `query-v1` 与各业务 query service 组合出的非泛型 DTO；组件不接收 GORM model、SQLite row、SQL 字段或任意 map。
@@ -79,6 +79,8 @@
 - Job 只展示稳定 job identity、state/phase、进度、时间、失败计数、next retry 和 typed recovery action；resume cursor、scheduler task ID 与内部 dedupe key 不进入 DTO。Health 只展示 event/domain/severity/code、active/resolved、occurrence、last seen 和安全关联，不返回 fingerprint 或底层 error text。
 - Health 当前级别只聚合 active events：resolved critical 仍保留历史计数，但不能让当前状态永久 `blocked`。`paused` 只来自 durable user pause 或 system sleeping；`blocked/degraded/busy` 再按 lifecycle 与 active critical/error/warning 映射。
 - Settings 将 revision/Home generation 作为十进制字符串返回，并把 snooze/last-check 映射为 JS-safe numeric value；Home path、data store key、device/inode、detached Home、switch/attempt ID 永不进入响应。可编辑字段由 Go 返回固定 type/min/max/options metadata，固定 `zh-CN`、stable channel 与关闭 auto-download 明确标记为只读。
+- Settings 保存只提交 metadata 声明为 editable 的字段并携带当前 revision；只读 updates/UI 字段由 Go 从权威快照合并保留。Home 切换使用私有 latest-plan ID 的 plan/confirm 两步流程，页面只显示 generation、strategy 与 preserve/clear 影响摘要，plan 成功后立即清空路径输入并把焦点移到影响确认区；confirm/recover 成功后消费该摘要。服务端只 compare-and-clear 本次消费的 plan，保留并发产生的更新 plan；Home commit、rollback 或 recovery-required 都发布 index/settings 权威失效。若持久提交后的本机 reconcile 失败，回执明确为 `recovery_required` 或 `applied_reconcile_required`，页面随后重新查询权威状态。
+- 本机状态复用 Source/Job/Health typed query，仅用不透明 ID 作为 Vue key，不渲染 source/job/event identity 或 raw code/cause。页面以单一 health banner 显示 healthy/busy/paused/degraded/blocked，并展示来源 parsed/total bytes、最近尝试/成功时间和任务 current/total progress、开始/重试时间；unknown 保留为 `—`。首次局部失败显示 unavailable 而非 empty，cached refetch failure/stale 明示“上次可信数据”。运行控制固定为 `pause_backfill/pause_all/resume/reconcile`，其中 `pause_all` 必须二次确认；mutation 结果使用 live region。Session index 维护入口只调用 Analyze 并显示 action/conflict 计数，不暴露 Execute、plan ID、session ID、备份路径或任意修复写入口。
 - recovery action 只允许 `none/retry/check_source/grant_permission/free_space/choose_home/repair_store`，且非 `none` 必须引用 Go contract 中的固定 command key；typed error、failure 与 health code 先按完整有限矩阵决定动作，state/attention 仅作为没有 code 的 fallback。query service 只返回引用，不执行 command、不写设置、不修库。
 
 ## Wails Event 与 Query Cache 边界
@@ -144,4 +146,4 @@ Project detail 只使用 generated `ProjectDetail`：aggregate、daily、pricing
 
 ## 后续评审重点
 
-TOO-272 已实现共享应用壳、路由、基础状态交互和 Wails Bootstrap ready/error/retry；TOO-273 已实现概览，TOO-274 已实现 Sessions 列表与详情，TOO-275 已实现 Projects 列表与详情，TOO-276 已实现 Quota 窗口、来源/仲裁、Reset credits、刷新状态与手动刷新 command。本机状态与 Settings 的独立页面仍由后续卡完成。图标方向和健康信息层级继续冻结；后续页面必须复用当前 token、query-state、辅助模式降级与 macOS-only 边界。
+TOO-272 已实现共享应用壳、路由、基础状态交互和 Wails Bootstrap ready/error/retry；TOO-273 已实现概览，TOO-274 已实现 Sessions 列表与详情，TOO-275 已实现 Projects 列表与详情，TOO-276 已实现 Quota 窗口、来源/仲裁、Reset credits、刷新状态与手动刷新 command；TOO-277 已实现本机状态、Settings、有限运行控制、Home 两步切换和 Session index Analyze-only dry-run。图标方向和健康信息层级继续冻结；后续页面必须复用当前 token、query-state、辅助模式降级与 macOS-only 边界。

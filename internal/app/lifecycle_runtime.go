@@ -59,20 +59,25 @@ type ApplicationLifecycleRuntimeConfig struct {
 }
 
 type applicationLifecycleRuntime struct {
-	adapter      *LifecycleEventAdapter
-	coordinator  *appLifecycle.Coordinator
-	quota        *applicationQuotaRuntime
-	preferences  *preferences.Service
-	invalidation queryInvalidationNotifier
-	cancel       context.CancelFunc
-	workerDone   chan error
-	controlCtx   context.Context
-	controlStop  context.CancelFunc
+	adapter        *LifecycleEventAdapter
+	coordinator    *appLifecycle.Coordinator
+	quota          *applicationQuotaRuntime
+	preferences    *preferences.Service
+	settingsLoader confirmedPreferencesLoader
+	database       *storesqlite.Store
+	invalidation   queryInvalidationNotifier
+	cancel         context.CancelFunc
+	workerDone     chan error
+	controlCtx     context.Context
+	controlStop    context.CancelFunc
 
 	controlMu        sync.Mutex
 	controlAccepting bool
 	controlInflight  int
 	controlDone      chan struct{}
+
+	homePlanMu sync.Mutex
+	homePlanID string
 
 	closeOnce sync.Once
 	closeDone chan struct{}
@@ -259,7 +264,8 @@ func startApplicationLifecycleRuntime(
 	controlCtx, controlStop := context.WithCancel(ctx)
 	runtime := &applicationLifecycleRuntime{
 		adapter: adapter, coordinator: coordinator, quota: quotaRuntime,
-		preferences: preferencesService, invalidation: config.Invalidation, cancel: cancel,
+		preferences: preferencesService, settingsLoader: loader, database: config.Database,
+		invalidation: config.Invalidation, cancel: cancel,
 		workerDone: make(chan error, 1), controlCtx: controlCtx, controlStop: controlStop,
 		controlAccepting: true, controlDone: closedApplicationLifecycleSignal(),
 		closeDone: make(chan struct{}),

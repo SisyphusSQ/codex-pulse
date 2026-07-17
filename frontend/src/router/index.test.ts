@@ -25,7 +25,7 @@ describe("application navigation", () => {
     expect(router.currentRoute.value.fullPath).toBe("/overview");
   });
 
-  it("mounts the real Overview, Sessions, Projects, and Quota views on their owned routes", async () => {
+  it("mounts every real business view on its owned route", async () => {
     const router = createAppRouter(createMemoryHistory());
 
     await router.push("/overview");
@@ -43,5 +43,13 @@ describe("application navigation", () => {
     await router.push("/quota");
     const quotaRecord = router.currentRoute.value.matched.at(-1);
     expect(quotaRecord?.components?.default).toMatchObject({ name: "QuotaView" });
+
+    await router.push("/local-status");
+    const localStatusRecord = router.currentRoute.value.matched.at(-1);
+    expect(localStatusRecord?.components?.default).toMatchObject({ name: "LocalStatusView" });
+
+    await router.push("/settings");
+    const settingsRecord = router.currentRoute.value.matched.at(-1);
+    expect(settingsRecord?.components?.default).toMatchObject({ name: "SettingsView" });
   });
 });

@@ -30,9 +30,15 @@ func TestBindingServiceExposesExactAllowlistAndContract(t *testing.T) {
 		gotMethods = append(gotMethods, reflect.TypeOf(service).Method(index).Name)
 	}
 	wantMethods := []string{
-		"Bootstrap", "Contracts", "Health", "Job", "ListHealth", "ListJobs",
-		"ListProjects", "ListSessions", "ListSources", "ProjectDetail", "QuotaCurrent",
-		"RequestQuotaRefresh", "SessionDetail", "Settings", "Source", "UsageCost",
+		"AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "Health",
+		"Job", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
+		"PlanHomeSwitch", "ProjectDetail", "QuotaCurrent", "RecoverHomeSwitch",
+		"RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings", "Source",
+		"UpdateSettings", "UsageCost",
+	}
+	wantCommandMethods := []string{
+		"RequestQuotaRefresh", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
+		"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
 	}
 	slices.Sort(wantMethods)
 	if !slices.Equal(gotMethods, wantMethods) {
@@ -45,14 +51,14 @@ func TestBindingServiceExposesExactAllowlistAndContract(t *testing.T) {
 		contract.RuntimeInfoVersion != runtimeinfo.ContractVersion ||
 		contract.ErrorExample.Version != basequery.ContractVersion ||
 		contract.ErrorExample.Error.Code != basequery.ErrorInternal ||
-		!slices.Equal(contract.CommandMethods, []string{"RequestQuotaRefresh"}) ||
+		!slices.Equal(contract.CommandMethods, wantCommandMethods) ||
 		len(contract.Methods) != len(wantMethods) {
 		t.Fatalf("binding contract = %#v", contract)
 	}
 	contractNames := make([]string, len(contract.Methods))
 	for index, method := range contract.Methods {
 		wantKind := BindingMethodQuery
-		if method.Name == "RequestQuotaRefresh" {
+		if slices.Contains(wantCommandMethods, method.Name) {
 			wantKind = BindingMethodCommand
 		}
 		if method.Kind != wantKind {
@@ -164,6 +170,105 @@ func TestBindingServiceBindsQuotaRefreshExactlyOnceBeforeUse(t *testing.T) {
 	if _, err := service.RequestQuotaRefresh(context.Background(), quotaonline.RefreshSourceQuota); err != nil ||
 		command.source != quotaonline.RefreshSourceQuota {
 		t.Fatalf("RequestQuotaRefresh() source=%q, error=%v", command.source, err)
+	}
+}
+
+func TestBindingServiceDelegatesFiniteRuntimeControlsWithRedactedReceipts(t *testing.T) {
+	command := &runtimeControlBindingStub{
+		settingsReceipt: SettingsUpdateReceipt{Revision: "8", Result: SettingsUpdateApplied},
+		planReceipt: HomeSwitchPlanReceipt{
+			Strategy: HomeSwitchIndependentDatabase, TargetGeneration: "3", PreservesOldFacts: true,
+		},
+		homeReceipt: HomeSwitchReceipt{Revision: "9", Generation: "3", Result: HomeSwitchCompletedResult},
+		actionReceipt: RuntimeActionReceipt{
+			Action: RuntimeActionReconcile, PauseScope: "none", SourceState: "available", Transition: "steady",
+		},
+		repairReceipt: RepairDryRunReceipt{AnalyzedAtMS: 1, ActionCount: 2, ConflictCount: 1},
+	}
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageCostBindingStub{}, RuntimeInfo: &runtimeInfoBindingStub{}, RuntimeControls: command,
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	settingsRequest := validBindingSettingsUpdateRequest()
+	planRequest := HomeSwitchPlanRequest{
+		TargetPath: filepath.Join(string(filepath.Separator), "synthetic", "next-home"),
+		Strategy:   HomeSwitchIndependentDatabase,
+	}
+	settings, err := service.UpdateSettings(context.Background(), settingsRequest)
+	if err != nil || settings != command.settingsReceipt || command.settingsRequest != settingsRequest {
+		t.Fatalf("UpdateSettings() = %#v, request=%#v, error=%v", settings, command.settingsRequest, err)
+	}
+	plan, err := service.PlanHomeSwitch(context.Background(), planRequest)
+	if err != nil || plan != command.planReceipt || command.planRequest != planRequest {
+		t.Fatalf("PlanHomeSwitch() = %#v, request=%#v, error=%v", plan, command.planRequest, err)
+	}
+	confirmed, confirmErr := service.ConfirmHomeSwitch(context.Background())
+	recovered, recoverErr := service.RecoverHomeSwitch(context.Background())
+	action, actionErr := service.RunRuntimeAction(context.Background(), RuntimeActionReconcile)
+	repair, repairErr := service.AnalyzeSessionIndexRepair(context.Background())
+	if confirmErr != nil || recoverErr != nil || actionErr != nil || repairErr != nil ||
+		confirmed != command.homeReceipt || recovered != command.homeReceipt ||
+		action != command.actionReceipt || repair != command.repairReceipt ||
+		command.action != RuntimeActionReconcile || command.confirmCalls != 1 ||
+		command.recoverCalls != 1 || command.repairCalls != 1 {
+		t.Fatalf("runtime receipts confirm=%#v recover=%#v action=%#v repair=%#v errors=%v/%v/%v/%v stub=%#v",
+			confirmed, recovered, action, repair, confirmErr, recoverErr, actionErr, repairErr, command)
+	}
+	content, err := json.Marshal([]any{settings, plan, confirmed, recovered, action, repair})
+	if err != nil || strings.Contains(string(content), "next-home") ||
+		strings.Contains(string(content), "plan") || strings.Contains(string(content), "path") ||
+		strings.Contains(string(content), "session") {
+		t.Fatalf("runtime control receipts leaked private fields: %s, %v", content, err)
+	}
+}
+
+func TestBindingServiceRejectsInvalidRuntimeControlInputsBeforeDelegation(t *testing.T) {
+	command := &runtimeControlBindingStub{}
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageCostBindingStub{}, RuntimeInfo: &runtimeInfoBindingStub{}, RuntimeControls: command,
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	invalidSettings := validBindingSettingsUpdateRequest()
+	invalidSettings.ExpectedRevision = "private-revision"
+	_, settingsErr := service.UpdateSettings(context.Background(), invalidSettings)
+	assertBindingFailure(t, settingsErr, basequery.ErrorValidation, "settings", "private-revision")
+	_, pathErr := service.PlanHomeSwitch(context.Background(), HomeSwitchPlanRequest{
+		TargetPath: "relative/private-home", Strategy: HomeSwitchIndependentDatabase,
+	})
+	assertBindingFailure(t, pathErr, basequery.ErrorValidation, "targetPath", "private-home")
+	_, strategyErr := service.PlanHomeSwitch(context.Background(), HomeSwitchPlanRequest{
+		TargetPath: filepath.Join(string(filepath.Separator), "synthetic", "home"),
+		Strategy:   HomeSwitchStrategy("private-strategy"),
+	})
+	assertBindingFailure(t, strategyErr, basequery.ErrorValidation, "strategy", "private-strategy")
+	_, actionErr := service.RunRuntimeAction(context.Background(), RuntimeAction("private-action"))
+	assertBindingFailure(t, actionErr, basequery.ErrorValidation, "action", "private-action")
+	if command.settingsRequest.ExpectedRevision != "" || command.planRequest.TargetPath != "" || command.action != "" {
+		t.Fatalf("invalid commands reached dependency: %#v", command)
+	}
+}
+
+func TestBindingServiceBindsRuntimeControlsExactlyOnce(t *testing.T) {
+	service := newBindingTestService(t, &usageCostBindingStub{}, &runtimeInfoBindingStub{})
+	if _, err := service.AnalyzeSessionIndexRepair(context.Background()); err == nil {
+		t.Fatal("AnalyzeSessionIndexRepair() before bind unexpectedly succeeded")
+	}
+	command := &runtimeControlBindingStub{}
+	if err := service.bindRuntimeControls(command); err != nil {
+		t.Fatalf("bindRuntimeControls() error = %v", err)
+	}
+	if err := service.bindRuntimeControls(&runtimeControlBindingStub{}); !errors.Is(err, ErrBindingService) {
+		t.Fatalf("bindRuntimeControls(duplicate) error = %v, want ErrBindingService", err)
+	}
+	if err := service.bindRuntimeControls(nil); !errors.Is(err, ErrBindingService) {
+		t.Fatalf("bindRuntimeControls(nil) error = %v, want ErrBindingService", err)
+	}
+	if _, err := service.AnalyzeSessionIndexRepair(context.Background()); err != nil || command.repairCalls != 1 {
+		t.Fatalf("AnalyzeSessionIndexRepair() repairCalls=%d, error=%v", command.repairCalls, err)
 	}
 }
 
@@ -500,6 +605,73 @@ type quotaRefreshBindingStub struct {
 	schedule factstore.SourceRefreshSchedule
 	source   quotaonline.RefreshSource
 	err      error
+}
+
+type runtimeControlBindingStub struct {
+	settingsRequest SettingsUpdateRequest
+	planRequest     HomeSwitchPlanRequest
+	action          RuntimeAction
+	confirmCalls    int
+	recoverCalls    int
+	repairCalls     int
+	settingsReceipt SettingsUpdateReceipt
+	planReceipt     HomeSwitchPlanReceipt
+	homeReceipt     HomeSwitchReceipt
+	actionReceipt   RuntimeActionReceipt
+	repairReceipt   RepairDryRunReceipt
+	err             error
+}
+
+func (stub *runtimeControlBindingStub) UpdateSettings(
+	_ context.Context,
+	request SettingsUpdateRequest,
+) (SettingsUpdateReceipt, error) {
+	stub.settingsRequest = request
+	return stub.settingsReceipt, stub.err
+}
+
+func (stub *runtimeControlBindingStub) PlanHomeSwitch(
+	_ context.Context,
+	request HomeSwitchPlanRequest,
+) (HomeSwitchPlanReceipt, error) {
+	stub.planRequest = request
+	return stub.planReceipt, stub.err
+}
+
+func (stub *runtimeControlBindingStub) ConfirmHomeSwitch(context.Context) (HomeSwitchReceipt, error) {
+	stub.confirmCalls++
+	return stub.homeReceipt, stub.err
+}
+
+func (stub *runtimeControlBindingStub) RecoverHomeSwitch(context.Context) (HomeSwitchReceipt, error) {
+	stub.recoverCalls++
+	return stub.homeReceipt, stub.err
+}
+
+func (stub *runtimeControlBindingStub) RunRuntimeAction(
+	_ context.Context,
+	action RuntimeAction,
+) (RuntimeActionReceipt, error) {
+	stub.action = action
+	return stub.actionReceipt, stub.err
+}
+
+func (stub *runtimeControlBindingStub) AnalyzeSessionIndexRepair(context.Context) (RepairDryRunReceipt, error) {
+	stub.repairCalls++
+	return stub.repairReceipt, stub.err
+}
+
+func validBindingSettingsUpdateRequest() SettingsUpdateRequest {
+	return SettingsUpdateRequest{
+		ExpectedRevision: "7",
+		Online:           SettingsOnlineUpdate{QuotaEnabled: true, ResetCreditsEnabled: false},
+		Refresh: SettingsRefreshUpdate{
+			QuotaIntervalSeconds: 300, ResetCreditsIntervalSeconds: 1800,
+			ReconcileIntervalSeconds: 1800, JSONLDebounceMilliseconds: 4000,
+		},
+		Updates: SettingsUpdatesUpdate{AutoCheckEnabled: true, CheckIntervalSeconds: 3600},
+		UI:      SettingsUIUpdate{LaunchBehavior: "tray", OverviewRange: "seven_days"},
+	}
 }
 
 func (stub *quotaRefreshBindingStub) RequestQuotaRefresh(

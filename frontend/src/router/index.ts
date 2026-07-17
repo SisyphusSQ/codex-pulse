@@ -5,8 +5,9 @@ import AppShell from "@/components/shell/AppShell.vue";
 import OverviewView from "@/views/OverviewView.vue";
 import ProjectsView from "@/views/ProjectsView.vue";
 import QuotaView from "@/views/QuotaView.vue";
+import LocalStatusView from "@/views/LocalStatusView.vue";
+import SettingsView from "@/views/SettingsView.vue";
 import SessionsView from "@/views/SessionsView.vue";
-import ShellView from "@/views/ShellView.vue";
 
 export type AppNavigationName =
   | "overview"
@@ -44,7 +45,9 @@ const childRoutes = appNavigation.map((item) => ({
         ? ProjectsView
         : item.name === "quota"
           ? QuotaView
-          : ShellView,
+          : item.name === "local-status"
+            ? LocalStatusView
+            : SettingsView,
   meta: {
     descriptionKey: item.descriptionKey,
     titleKey: item.titleKey,

@@ -5,7 +5,20 @@ import * as Service from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/a
 import type {
   BindingContractInfo,
   BootstrapInfo,
+  HomeSwitchPlanRequest,
+  HomeSwitchPlanReceipt,
+  HomeSwitchReceipt,
   QuotaRefreshReceipt,
+  RepairDryRunReceipt,
+  RuntimeActionReceipt,
+  SettingsUpdateReceipt,
+  SettingsUpdateRequest,
+} from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/models";
+import {
+  HomeSwitchResult,
+  HomeSwitchStrategy,
+  RuntimeAction,
+  SettingsUpdateResult,
 } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/models";
 import { RefreshSource } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/codex/quota/models";
 import {
@@ -50,7 +63,9 @@ describe("generated Wails binding contract", () => {
   it("exposes only the frozen method allowlist", () => {
     expect(Object.keys(Service).sort()).toEqual(
       [
+        "AnalyzeSessionIndexRepair",
         "Bootstrap",
+        "ConfirmHomeSwitch",
         "Contracts",
         "Health",
         "Job",
@@ -59,12 +74,16 @@ describe("generated Wails binding contract", () => {
         "ListProjects",
         "ListSessions",
         "ListSources",
+        "PlanHomeSwitch",
         "ProjectDetail",
         "QuotaCurrent",
+        "RecoverHomeSwitch",
         "RequestQuotaRefresh",
+        "RunRuntimeAction",
         "SessionDetail",
         "Settings",
         "Source",
+        "UpdateSettings",
         "UsageCost",
       ].sort(),
     );
@@ -182,6 +201,33 @@ describe("generated Wails binding contract", () => {
     expectTypeOf<ReturnType<typeof Service.Settings>>().toEqualTypeOf<
       CancellablePromise<SettingsResponse>
     >();
+    expectTypeOf<Parameters<typeof Service.UpdateSettings>>().toEqualTypeOf<
+      [SettingsUpdateRequest]
+    >();
+    expectTypeOf<ReturnType<typeof Service.UpdateSettings>>().toEqualTypeOf<
+      CancellablePromise<SettingsUpdateReceipt>
+    >();
+    expectTypeOf<Parameters<typeof Service.PlanHomeSwitch>>().toEqualTypeOf<
+      [HomeSwitchPlanRequest]
+    >();
+    expectTypeOf<ReturnType<typeof Service.PlanHomeSwitch>>().toEqualTypeOf<
+      CancellablePromise<HomeSwitchPlanReceipt>
+    >();
+    expectTypeOf<ReturnType<typeof Service.ConfirmHomeSwitch>>().toEqualTypeOf<
+      CancellablePromise<HomeSwitchReceipt>
+    >();
+    expectTypeOf<ReturnType<typeof Service.RecoverHomeSwitch>>().toEqualTypeOf<
+      CancellablePromise<HomeSwitchReceipt>
+    >();
+    expectTypeOf<Parameters<typeof Service.RunRuntimeAction>>().toEqualTypeOf<
+      [RuntimeAction]
+    >();
+    expectTypeOf<ReturnType<typeof Service.RunRuntimeAction>>().toEqualTypeOf<
+      CancellablePromise<RuntimeActionReceipt>
+    >();
+    expectTypeOf<ReturnType<typeof Service.AnalyzeSessionIndexRepair>>().toEqualTypeOf<
+      CancellablePromise<RepairDryRunReceipt>
+    >();
 
     const envelope: ErrorEnvelope = {
       version: "query-v1",
@@ -211,6 +257,28 @@ describe("generated Wails binding contract", () => {
     expect(Object.values(RefreshSource).filter(Boolean).sort()).toEqual([
       "quota",
       "reset_credits",
+    ]);
+  });
+
+  it("keeps settings, Home switch, lifecycle and repair commands finite", () => {
+    expect(Object.values(SettingsUpdateResult).filter(Boolean).sort()).toEqual([
+      "applied",
+      "applied_reconcile_required",
+    ]);
+    expect(Object.values(HomeSwitchStrategy).filter(Boolean).sort()).toEqual([
+      "clear_and_rebuild",
+      "independent_database",
+    ]);
+    expect(Object.values(HomeSwitchResult).filter(Boolean).sort()).toEqual([
+      "completed",
+      "recovery_required",
+      "rolled_back",
+    ]);
+    expect(Object.values(RuntimeAction).filter(Boolean).sort()).toEqual([
+      "pause_all",
+      "pause_backfill",
+      "reconcile",
+      "resume",
     ]);
   });
 });
