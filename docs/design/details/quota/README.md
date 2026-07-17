@@ -187,6 +187,12 @@ Repository 在一个显式 GORM read transaction、同一个 SQLite snapshot 内
 
 Local-only、Wham-only、双源一致、双源冲突、expired last-known-good、429 backoff、primary/secondary 跨窗口、Reset Credits 真实零/自然到期、空仓库与并发 snapshot 都使用 synthetic fixture 验证。可复用入口见 [`docs/test/quota-current.md`](../../../test/quota-current.md)。
 
+### Wails 手动刷新与详情页合同（TOO-276）
+
+`RequestQuotaRefresh` 是 `wails-bindings-v1` 唯一 command，只接受有限 `quota` / `reset_credits` source。Wails façade 在应用进入 event loop 前把既有 `applicationLifecycleRuntime` 单次绑定到私有 command slot；command 不重写 coordinator，不绕过 60 秒 durable 手动间隔、Retry-After、active claim、generation fence 或调用期 credential provider。返回 receipt 只包含 source、next due、固定 reason 与 last manual time，不暴露 source instance、scope、claim ID、revision、token 或底层 cause；非法 source 与依赖失败继续映射为 content-free `query-v1` error envelope。
+
+`/quota` 只消费 generated `QuotaCurrentResponse` 和该 command。页面按 DTO 原样展示真实 windows、Local/Wham source summary、固定 explanation/failure code、Reset Credits 和两类 refresh status；observation ID 仅作 vnode key，limit/account/schedule identity 不进入 DOM。unknown 使用 `--`，真实 `0` 保留数值与 progress semantics；query 或 command 失败时继续显示 last-known-good，不用空态或伪 100% 覆盖。1 秒 clock 只更新可见倒计时且在组件卸载时释放，不能触发网络、参与仲裁或成为 scheduler。手动动作同时请求两个有限 source，任一失败时显示固定文案，并在 settle 后仅失效 authoritative quota query；后续 durable commit event 仍负责再次通知可见 query。
+
 ## UI 语义
 
 ```text

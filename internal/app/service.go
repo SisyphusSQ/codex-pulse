@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"runtime"
+	"sync"
 
+	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
+	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
 const (
@@ -40,24 +43,48 @@ type runtimeInfoBindingQuery interface {
 	Settings(context.Context) (runtimeinfo.SettingsResponse, error)
 }
 
+type quotaRefreshBindingCommand interface {
+	RequestQuotaRefresh(context.Context, quotaonline.RefreshSource) (store.SourceRefreshSchedule, error)
+}
+
 type ServiceConfig struct {
-	UsageCost   usageCostBindingQuery
-	RuntimeInfo runtimeInfoBindingQuery
+	UsageCost    usageCostBindingQuery
+	RuntimeInfo  runtimeInfoBindingQuery
+	QuotaRefresh quotaRefreshBindingCommand
 }
 
 // Service is the only business service registered with Wails. Its unexported
 // dependencies keep Store, Preferences, filesystem and credential primitives
 // outside the generated frontend surface.
 type Service struct {
-	usageCost   usageCostBindingQuery
-	runtimeInfo runtimeInfoBindingQuery
+	usageCost    usageCostBindingQuery
+	runtimeInfo  runtimeInfoBindingQuery
+	quotaMu      sync.RWMutex
+	quotaRefresh quotaRefreshBindingCommand
 }
 
 func NewService(config ServiceConfig) (*Service, error) {
 	if config.UsageCost == nil || config.RuntimeInfo == nil {
 		return nil, ErrBindingService
 	}
-	return &Service{usageCost: config.UsageCost, runtimeInfo: config.RuntimeInfo}, nil
+	return &Service{
+		usageCost:    config.UsageCost,
+		runtimeInfo:  config.RuntimeInfo,
+		quotaRefresh: config.QuotaRefresh,
+	}, nil
+}
+
+func (service *Service) bindQuotaRefresh(command quotaRefreshBindingCommand) error {
+	if service == nil || command == nil {
+		return ErrBindingService
+	}
+	service.quotaMu.Lock()
+	defer service.quotaMu.Unlock()
+	if service.quotaRefresh != nil {
+		return ErrBindingService
+	}
+	service.quotaRefresh = command
+	return nil
 }
 
 // BootstrapInfo contains the non-sensitive metadata needed to render the
@@ -103,6 +130,7 @@ var bindingMethodAllowlist = []BindingMethodInfo{
 	{Name: "ListProjects", Kind: BindingMethodQuery},
 	{Name: "ProjectDetail", Kind: BindingMethodQuery},
 	{Name: "QuotaCurrent", Kind: BindingMethodQuery},
+	{Name: "RequestQuotaRefresh", Kind: BindingMethodCommand},
 	{Name: "ListSources", Kind: BindingMethodQuery},
 	{Name: "Source", Kind: BindingMethodQuery},
 	{Name: "ListJobs", Kind: BindingMethodQuery},
@@ -118,8 +146,53 @@ func (*Service) Contracts() BindingContractInfo {
 		Version: BindingContractVersion, QueryVersion: basequery.ContractVersion,
 		UsageCostVersion: usagecost.ContractVersion, RuntimeInfoVersion: runtimeinfo.ContractVersion,
 		Methods:        append([]BindingMethodInfo(nil), bindingMethodAllowlist...),
-		CommandMethods: make([]string, 0), ErrorExample: errorExample,
+		CommandMethods: []string{"RequestQuotaRefresh"}, ErrorExample: errorExample,
 	}
+}
+
+type QuotaRefreshReceipt struct {
+	Source         quotaonline.RefreshSource `json:"source"`
+	NextDueAtMS    *int64                    `json:"nextDueAtMs"`
+	Reason         store.SourceRefreshReason `json:"reason"`
+	LastManualAtMS *int64                    `json:"lastManualAtMs"`
+}
+
+func (service *Service) RequestQuotaRefresh(
+	ctx context.Context,
+	source quotaonline.RefreshSource,
+) (QuotaRefreshReceipt, error) {
+	if service == nil {
+		return QuotaRefreshReceipt{}, newBindingFailure(ErrBindingService)
+	}
+	service.quotaMu.RLock()
+	command := service.quotaRefresh
+	service.quotaMu.RUnlock()
+	if command == nil {
+		return QuotaRefreshReceipt{}, newBindingFailure(ErrBindingService)
+	}
+	if source != quotaonline.RefreshSourceQuota && source != quotaonline.RefreshSourceResetCredits {
+		return QuotaRefreshReceipt{}, newBindingFailure(
+			basequery.NewValidationFailure("source", nil),
+		)
+	}
+	return bindingCall(func() (QuotaRefreshReceipt, error) {
+		schedule, err := command.RequestQuotaRefresh(ctx, source)
+		if err != nil {
+			return QuotaRefreshReceipt{}, err
+		}
+		return QuotaRefreshReceipt{
+			Source: source, NextDueAtMS: cloneBindingInt64(schedule.NextDueAtMS),
+			Reason: schedule.Reason, LastManualAtMS: cloneBindingInt64(schedule.LastManualAtMS),
+		}, nil
+	})
+}
+
+func cloneBindingInt64(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func (service *Service) UsageCost(

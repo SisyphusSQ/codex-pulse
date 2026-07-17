@@ -5,7 +5,9 @@ import * as Service from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/a
 import type {
   BindingContractInfo,
   BootstrapInfo,
+  QuotaRefreshReceipt,
 } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/models";
+import { RefreshSource } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/codex/quota/models";
 import {
   ErrorCode,
   type ErrorEnvelope,
@@ -59,6 +61,7 @@ describe("generated Wails binding contract", () => {
         "ListSources",
         "ProjectDetail",
         "QuotaCurrent",
+        "RequestQuotaRefresh",
         "SessionDetail",
         "Settings",
         "Source",
@@ -133,6 +136,12 @@ describe("generated Wails binding contract", () => {
     expectTypeOf<ReturnType<typeof Service.QuotaCurrent>>().toEqualTypeOf<
       CancellablePromise<QuotaCurrentResponse>
     >();
+    expectTypeOf<Parameters<typeof Service.RequestQuotaRefresh>>().toEqualTypeOf<
+      [RefreshSource]
+    >();
+    expectTypeOf<ReturnType<typeof Service.RequestQuotaRefresh>>().toEqualTypeOf<
+      CancellablePromise<QuotaRefreshReceipt>
+    >();
     expectTypeOf<Parameters<typeof Service.ListSources>>().toEqualTypeOf<
       [Request]
     >();
@@ -195,6 +204,13 @@ describe("generated Wails binding contract", () => {
       "priced",
       "unknown",
       "unpriced",
+    ]);
+  });
+
+  it("keeps manual Quota refresh sources finite", () => {
+    expect(Object.values(RefreshSource).filter(Boolean).sort()).toEqual([
+      "quota",
+      "reset_credits",
     ]);
   });
 });

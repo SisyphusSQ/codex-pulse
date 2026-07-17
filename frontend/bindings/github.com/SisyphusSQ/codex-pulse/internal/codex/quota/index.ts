@@ -4,7 +4,8 @@
 export {
     CurrentRefreshState,
     CurrentSourceKind,
-    CurrentUnknownReason
+    CurrentUnknownReason,
+    RefreshSource
 } from "./models.js";
 
 export type {

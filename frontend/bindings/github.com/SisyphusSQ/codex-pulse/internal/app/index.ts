@@ -16,5 +16,6 @@ export type {
     BindingContractInfo,
     BindingMethodInfo,
     BootstrapInfo,
-    QueryInvalidationEvent
+    QueryInvalidationEvent,
+    QuotaRefreshReceipt
 } from "./models.js";

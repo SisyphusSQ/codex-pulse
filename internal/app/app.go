@@ -155,6 +155,9 @@ func Run(assets fs.FS) error {
 			return err
 		}
 		if runtime != nil {
+			if err := bindingService.bindQuotaRefresh(runtime); err != nil {
+				return err
+			}
 			defer func() {
 				returnErr = errors.Join(returnErr, runtime.Close(context.Background()))
 			}()
