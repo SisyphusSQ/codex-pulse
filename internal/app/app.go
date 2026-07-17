@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/metrics"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
@@ -130,11 +131,18 @@ func Run(assets fs.FS) error {
 		if !ok {
 			return ErrApplicationLifecycleRuntime
 		}
+		metricsRuntime, err := startApplicationMetricsRuntime(ctx, database, metrics.SamplingModeNormal)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			returnErr = errors.Join(returnErr, metricsRuntime.Close(context.Background()))
+		}()
 		preferenceStore, err := openApplicationPreferences()
 		if err != nil {
 			return err
 		}
-		bindingService, err := composeBindingService(database, preferenceStore)
+		bindingService, err := composeBindingService(database, preferenceStore, metricsRuntime.Observer())
 		if err != nil {
 			return err
 		}

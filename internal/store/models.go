@@ -146,23 +146,24 @@ type sourceAttemptModel struct {
 func (sourceAttemptModel) TableName() string { return "source_attempts" }
 
 type jobRunModel struct {
-	JobID            string  `gorm:"column:job_id;primaryKey"`
-	JobType          string  `gorm:"column:job_type"`
-	RequestedBy      string  `gorm:"column:requested_by"`
-	Priority         int64   `gorm:"column:priority"`
-	State            string  `gorm:"column:state"`
-	Phase            string  `gorm:"column:phase"`
-	SourceFileID     *string `gorm:"column:source_file_id"`
-	ResumeOfJobID    *string `gorm:"column:resume_of_job_id"`
-	CreatedAtMS      int64   `gorm:"column:created_at_ms"`
-	StartedAtMS      *int64  `gorm:"column:started_at_ms"`
-	FinishedAtMS     *int64  `gorm:"column:finished_at_ms"`
-	ProgressCurrent  *int64  `gorm:"column:progress_current"`
-	ProgressTotal    *int64  `gorm:"column:progress_total"`
-	ResumeGeneration *int64  `gorm:"column:resume_generation"`
-	ResumeOffset     *int64  `gorm:"column:resume_offset"`
-	ErrorClass       *string `gorm:"column:error_class"`
-	UpdatedAtMS      int64   `gorm:"column:updated_at_ms"`
+	JobID                 string  `gorm:"column:job_id;primaryKey"`
+	JobType               string  `gorm:"column:job_type"`
+	RequestedBy           string  `gorm:"column:requested_by"`
+	Priority              int64   `gorm:"column:priority"`
+	State                 string  `gorm:"column:state"`
+	Phase                 string  `gorm:"column:phase"`
+	SourceFileID          *string `gorm:"column:source_file_id"`
+	ResumeOfJobID         *string `gorm:"column:resume_of_job_id"`
+	ResumeConsumedByJobID *string `gorm:"column:resume_consumed_by_job_id;type:TEXT CHECK (resume_consumed_by_job_id IS NULL OR (state = 'interrupted' AND length(resume_consumed_by_job_id) > 0 AND resume_consumed_by_job_id != job_id))"`
+	CreatedAtMS           int64   `gorm:"column:created_at_ms"`
+	StartedAtMS           *int64  `gorm:"column:started_at_ms"`
+	FinishedAtMS          *int64  `gorm:"column:finished_at_ms"`
+	ProgressCurrent       *int64  `gorm:"column:progress_current"`
+	ProgressTotal         *int64  `gorm:"column:progress_total"`
+	ResumeGeneration      *int64  `gorm:"column:resume_generation"`
+	ResumeOffset          *int64  `gorm:"column:resume_offset"`
+	ErrorClass            *string `gorm:"column:error_class"`
+	UpdatedAtMS           int64   `gorm:"column:updated_at_ms"`
 }
 
 func (jobRunModel) TableName() string { return "job_runs" }

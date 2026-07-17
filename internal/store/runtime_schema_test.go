@@ -21,6 +21,7 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 	}
 
 	wantTables := []string{
+		"app_runtime_samples",
 		"bootstrap_jobs",
 		"bootstrap_plan_items",
 		"cost_rollup_generations",
@@ -88,6 +89,13 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 	}
 
 	wantColumns := map[string][]string{
+		"app_runtime_samples": {
+			"captured_at_ms", "cpu_percent", "cpu_user_ms", "cpu_system_ms", "rss_bytes",
+			"peak_rss_bytes", "goroutine_count", "db_bytes", "wal_bytes", "disk_free_bytes",
+			"live_queue_depth", "backfill_queue_depth", "oldest_live_wait_ms",
+			"oldest_backfill_wait_ms", "query_count", "query_total_micros", "query_max_micros",
+			"collector_duration_micros", "dropped_samples",
+		},
 		"bootstrap_jobs": {
 			"job_id", "switch_id", "home_generation", "home_path", "home_device_id", "home_inode",
 			"data_store_key", "strategy", "plan_state", "plan_sha256", "phase_progress_current",
@@ -155,7 +163,7 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 			"job_id", "job_type", "requested_by", "priority", "state", "phase",
 			"source_file_id", "resume_of_job_id", "created_at_ms", "started_at_ms",
 			"finished_at_ms", "progress_current", "progress_total", "resume_generation", "resume_offset",
-			"error_class", "updated_at_ms",
+			"error_class", "updated_at_ms", "resume_consumed_by_job_id",
 		},
 		"health_events": {
 			"event_id", "fingerprint", "domain", "severity", "code", "source_file_id",
@@ -234,6 +242,7 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"source_refresh_claims.source_instance_id->source_refresh_schedules.source_instance_id/CASCADE",
 	}
 	wantIndexes := []string{
+		"idx_app_runtime_samples_retention",
 		"idx_bootstrap_jobs_generation_status",
 		"idx_bootstrap_plan_items_pending",
 		"idx_health_events_active",

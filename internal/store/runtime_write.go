@@ -269,8 +269,62 @@ func (repository *Repository) ResumeInterruptedJob(ctx context.Context, oldJobID
 			!equalJobCursorPointer(resumed.ResumeCursor, old.ResumeCursor) {
 			return invalidRecord("resumed job does not preserve interrupted cursor and lineage")
 		}
-		return createJobRun(ctx, transaction, resumed)
+		replay, err := interruptedResumeConsumption(old, resumed)
+		if err != nil {
+			return err
+		}
+		if replay {
+			existing, found, readErr := jobRunByID(ctx, transaction, resumed.JobID)
+			if readErr != nil || !found {
+				return readErr
+			}
+			if !jobRunsEqual(existing, resumed) {
+				return invalidRecord("resumed job conflicts with consumed stable identity")
+			}
+			return nil
+		}
+		if err := createJobRun(ctx, transaction, resumed); err != nil {
+			return err
+		}
+		return markInterruptedResumeConsumed(ctx, transaction, old, resumed)
 	})
+}
+
+func interruptedResumeConsumption(old JobRun, resumed JobRun) (bool, error) {
+	if old.State != JobInterrupted || old.ResumeConsumedByJobID == nil {
+		return false, nil
+	}
+	if *old.ResumeConsumedByJobID == resumed.JobID {
+		return true, nil
+	}
+	return false, invalidRecord("interrupted job resume was already consumed")
+}
+
+func markInterruptedResumeConsumed(
+	ctx context.Context,
+	transaction storesqlite.WriteTx,
+	old JobRun,
+	resumed JobRun,
+) error {
+	if old.State != JobInterrupted {
+		return nil
+	}
+	if old.ResumeConsumedByJobID != nil {
+		if *old.ResumeConsumedByJobID == resumed.JobID {
+			return nil
+		}
+		return invalidRecord("interrupted job resume was already consumed")
+	}
+	result := transaction.WithContext(ctx).Model(&jobRunModel{}).
+		Where("job_id = ? AND state = ? AND resume_consumed_by_job_id IS NULL", old.JobID, JobInterrupted).
+		UpdateColumn("resume_consumed_by_job_id", resumed.JobID)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return invalidRecord("interrupted job resume consumption conflicted")
+	}
+	return nil
 }
 
 func createJobRun(ctx context.Context, transaction storesqlite.WriteTx, job JobRun) error {
@@ -453,7 +507,8 @@ func jobRunModelFromDomain(job JobRun) jobRunModel {
 		JobID: job.JobID, JobType: job.JobType, RequestedBy: job.RequestedBy,
 		Priority: job.Priority, State: string(job.State), Phase: string(job.Phase),
 		SourceFileID: job.SourceFileID, ResumeOfJobID: job.ResumeOfJobID,
-		CreatedAtMS: job.CreatedAtMS, StartedAtMS: job.StartedAtMS, FinishedAtMS: job.FinishedAtMS,
+		ResumeConsumedByJobID: job.ResumeConsumedByJobID,
+		CreatedAtMS:           job.CreatedAtMS, StartedAtMS: job.StartedAtMS, FinishedAtMS: job.FinishedAtMS,
 		ProgressCurrent: job.ProgressCurrent, ProgressTotal: job.ProgressTotal,
 		ErrorClass: runtimeErrorStringPointer(job.ErrorClass), UpdatedAtMS: job.UpdatedAtMS,
 	}

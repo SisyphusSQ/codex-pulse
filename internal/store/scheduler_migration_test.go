@@ -19,15 +19,15 @@ func TestApplicationSchemaV7ChecksumIsFrozen(t *testing.T) {
 func TestApplicationSchemaV7CreatesSchedulerAndLiveJobTables(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != 12 {
-		t.Fatalf("applicationSchemaVersion = %d, want 12", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV13Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 13", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	repository := NewRepository(database)
 	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 12, 12)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 
 	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
 		for _, table := range []string{"scheduler_tasks", "scheduler_cycles", "live_scan_jobs"} {

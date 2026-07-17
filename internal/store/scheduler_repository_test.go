@@ -420,6 +420,22 @@ func TestLiveScanRepositoryCreatesReplaysAndResumesTypedAction(t *testing.T) {
 	if err != nil || !jobRunsEqual(resumedRead, resumedJob) || !liveScanJobsEqual(factsRead, resumedFacts) {
 		t.Fatalf("LiveScanRun(resumed) = %#v, %#v, %v", resumedRead, factsRead, err)
 	}
+	consumedParent, err := repository.JobRun(ctx, oldID)
+	if err != nil || consumedParent.ResumeConsumedByJobID == nil ||
+		*consumedParent.ResumeConsumedByJobID != resumedJob.JobID {
+		t.Fatalf("live resume consumption = %#v, %v", consumedParent.ResumeConsumedByJobID, err)
+	}
+	secondJob := resumedJob
+	secondJob.JobID = "live-scan-resume-2"
+	secondJob.CreatedAtMS = 32
+	secondJob.UpdatedAtMS = 32
+	secondFacts := resumedFacts
+	secondFacts.JobID = secondJob.JobID
+	secondFacts.RequestID = "live-request-resume-2"
+	secondFacts.UpdatedAtMS = 32
+	if err := repository.ResumeLiveScanJob(ctx, oldID, secondJob, secondFacts); !errors.Is(err, ErrLiveScanConflict) {
+		t.Fatalf("ResumeLiveScanJob(second consumer) error = %v, want ErrLiveScanConflict", err)
+	}
 }
 
 // 测试 queue snapshot 直接聚合每个lane，而不是从一个全局截断列表推断深度和候选。

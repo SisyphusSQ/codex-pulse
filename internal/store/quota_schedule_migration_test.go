@@ -12,8 +12,8 @@ import (
 func TestApplicationSchemaV12CreatesResetCreditsAndRefreshScheduling(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != 12 {
-		t.Fatalf("applicationSchemaVersion = %d, want 12", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV13Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 13", applicationSchemaVersion)
 	}
 	const wantChecksum = "9ab44dccdb1467d2ad8bdca4cf3703158e09c80b23506247e66735c099912bd0"
 	if got := applicationSchemaV12Checksum(); got != wantChecksum {
@@ -23,7 +23,7 @@ func TestApplicationSchemaV12CreatesResetCreditsAndRefreshScheduling(t *testing.
 	if err := NewRepository(database).EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 12, 12)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
 		for _, object := range quotaScheduleSchemaObjects {
 			exists, err := verifySchemaObject(ctx, connection, object)
@@ -41,7 +41,7 @@ func TestApplicationSchemaV12CreatesResetCreditsAndRefreshScheduling(t *testing.
 	}
 }
 
-func TestApplicationMigrationUpgradesV11ToV12WithoutChangingQuotaFacts(t *testing.T) {
+func TestApplicationMigrationUpgradesV11ThroughCurrentWithoutChangingQuotaFacts(t *testing.T) {
 	t.Parallel()
 
 	database := openTestDatabase(t)
@@ -62,11 +62,11 @@ func TestApplicationMigrationUpgradesV11ToV12WithoutChangingQuotaFacts(t *testin
 	if err != nil {
 		t.Fatalf("run(v11->v12) error = %v", err)
 	}
-	if report.FromVersion != 11 || report.TargetVersion != 12 ||
-		!equalInts(report.AppliedVersions, []int{12}) || backupVersions != [2]int{11, 12} {
+	if report.FromVersion != 11 || report.TargetVersion != applicationSchemaVersion ||
+		!equalInts(report.AppliedVersions, []int{12, 13}) || backupVersions != [2]int{11, 13} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 12, 12)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 	if values, err := NewRepository(database).ListQuotaCurrent(
 		context.Background(), QuotaAccountScopeDefault, 1,
 	); err != nil || len(values) != 0 {
@@ -123,7 +123,7 @@ func seedApplicationSchemaV11(t *testing.T, database *storesqlite.Store) {
 
 func verifyApplicationSchemaV11(ctx context.Context, transaction storesqlite.WriteTx) error {
 	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV12(), retentionSchemaObjects,
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects, quotaSchemaObjects, quotaProjectionSchemaObjects,
 	} {

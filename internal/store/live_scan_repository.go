@@ -104,18 +104,6 @@ func (repository *Repository) ResumeLiveScanJob(
 		return ErrLiveScanConflict
 	}
 	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		if existingJob, found, err := jobRunByID(ctx, transaction, resumed.JobID); err != nil {
-			return err
-		} else if found {
-			existingFacts, factsFound, readErr := liveScanJobByID(ctx, transaction, resumed.JobID)
-			if readErr != nil {
-				return readErr
-			}
-			if factsFound && jobRunsEqual(existingJob, resumed) && liveScanJobsEqual(existingFacts, facts) {
-				return nil
-			}
-			return ErrLiveScanConflict
-		}
 		oldJob, found, err := jobRunByID(ctx, transaction, oldJobID)
 		if err != nil {
 			return err
@@ -134,11 +122,33 @@ func (repository *Repository) ResumeLiveScanJob(
 			!equalSourceFingerprintPointer(facts.Previous, oldFacts.Previous) || facts.Current != oldFacts.Current {
 			return ErrLiveScanConflict
 		}
+		consumedReplay, err := interruptedResumeConsumption(oldJob, resumed)
+		if err != nil {
+			return ErrLiveScanConflict
+		}
+		if existingJob, existingFound, readErr := jobRunByID(ctx, transaction, resumed.JobID); readErr != nil {
+			return readErr
+		} else if existingFound {
+			existingFacts, factsFound, factsErr := liveScanJobByID(ctx, transaction, resumed.JobID)
+			if factsErr != nil {
+				return factsErr
+			}
+			if factsFound && jobRunsEqual(existingJob, resumed) && liveScanJobsEqual(existingFacts, facts) {
+				return markInterruptedResumeConsumed(ctx, transaction, oldJob, resumed)
+			}
+			return ErrLiveScanConflict
+		}
+		if consumedReplay {
+			return nil
+		}
 		if err := createJobRun(ctx, transaction, resumed); err != nil {
 			return err
 		}
 		model := liveScanJobModelFromDomain(facts)
-		return transaction.WithContext(ctx).Create(&model).Error
+		if err := transaction.WithContext(ctx).Create(&model).Error; err != nil {
+			return err
+		}
+		return markInterruptedResumeConsumed(ctx, transaction, oldJob, resumed)
 	})
 }
 

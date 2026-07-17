@@ -210,7 +210,8 @@ func validateNewJobRun(job JobRun) error {
 		job.UpdatedAtMS > runtimeclock.MaxContinuableTimestampMS {
 		return invalidRecord("job priority or timestamps are invalid")
 	}
-	if job.State != JobQueued || job.StartedAtMS != nil || job.FinishedAtMS != nil || job.ErrorClass != nil {
+	if job.State != JobQueued || job.StartedAtMS != nil || job.FinishedAtMS != nil || job.ErrorClass != nil ||
+		job.ResumeConsumedByJobID != nil {
 		return invalidRecord("new job must be a non-started queued job")
 	}
 	if !validJobPhase(job.Phase) {

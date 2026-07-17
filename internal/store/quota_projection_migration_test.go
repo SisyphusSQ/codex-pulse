@@ -13,8 +13,8 @@ import (
 func TestApplicationSchemaV11CreatesQuotaProjection(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != 12 {
-		t.Fatalf("applicationSchemaVersion = %d, want 12", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV13Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 13", applicationSchemaVersion)
 	}
 	const wantChecksum = "838ab8173f637ae8f702b3f4e2139bf1d6810941b0a83d1c258743183d914475"
 	if got := applicationSchemaV11Checksum(); got != wantChecksum {
@@ -24,7 +24,7 @@ func TestApplicationSchemaV11CreatesQuotaProjection(t *testing.T) {
 	if err := NewRepository(database).EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 12, 12)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
 		for _, object := range quotaProjectionSchemaObjects {
 			if object.objectType == "table" && !connection.Migrator().HasTable(object.name) {
@@ -71,10 +71,11 @@ func TestApplicationMigrationUpgradesV10ThroughCurrentWithoutChangingRawObservat
 	if err != nil {
 		t.Fatalf("run(v10->v11) error = %v", err)
 	}
-	if report.FromVersion != 10 || report.TargetVersion != 12 || !equalInts(report.AppliedVersions, []int{11, 12}) {
+	if report.FromVersion != 10 || report.TargetVersion != applicationSchemaVersion ||
+		!equalInts(report.AppliedVersions, []int{11, 12, 13}) {
 		t.Fatalf("migration report = %#v", report)
 	}
-	assertMigrationVersionAndHistory(t, database, 12, 12)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 	repository := NewRepository(database)
 	current, err := repository.QuotaCurrent(
 		context.Background(), QuotaAccountScopeDefault, QuotaWindowPrimary, "codex", 1_000_000+quotaTestMinuteMS,
@@ -211,7 +212,7 @@ func seedApplicationSchemaV10(t *testing.T, database *storesqlite.Store) {
 
 func verifyApplicationSchemaV10(ctx context.Context, transaction storesqlite.WriteTx) error {
 	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV12(), retentionSchemaObjects,
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects, quotaSchemaObjects,
 	} {
