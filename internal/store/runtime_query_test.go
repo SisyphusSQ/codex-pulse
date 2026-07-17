@@ -195,6 +195,50 @@ func TestRuntimeJobAndHealthQueriesFilterPageAndReopenFacts(t *testing.T) {
 	}
 }
 
+func TestRuntimeJobCurrentQueryExcludesConsumedInterruptedHistory(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	ctx := context.Background()
+	parent := JobRun{
+		JobID: "runtime-current-parent", JobType: "scan", RequestedBy: "test", Priority: 1,
+		State: JobQueued, Phase: JobPhaseLive, CreatedAtMS: 10, UpdatedAtMS: 10,
+	}
+	if err := repository.CreateJobRun(ctx, parent); err != nil {
+		t.Fatalf("CreateJobRun(parent) error = %v", err)
+	}
+	if err := repository.TransitionJobRun(ctx, JobTransition{
+		JobID: parent.JobID, ExpectedState: JobQueued, State: JobRunning, Phase: parent.Phase, AtMS: 11,
+	}); err != nil {
+		t.Fatalf("TransitionJobRun(running) error = %v", err)
+	}
+	if err := repository.TransitionJobRun(ctx, JobTransition{
+		JobID: parent.JobID, ExpectedState: JobRunning, State: JobInterrupted, Phase: parent.Phase, AtMS: 12,
+	}); err != nil {
+		t.Fatalf("TransitionJobRun(interrupted) error = %v", err)
+	}
+	before, err := repository.RuntimeJobPage(ctx, RuntimeJobQuery{
+		CurrentOnly: true, Limit: 10, Direction: RuntimeQueryDescending,
+	})
+	if err != nil || len(before.Records) != 1 || before.Records[0].Job.JobID != parent.JobID {
+		t.Fatalf("RuntimeJobPage(current before resume) = %#v, %v", before, err)
+	}
+	resumed := JobRun{
+		JobID: "runtime-current-child", JobType: parent.JobType, RequestedBy: "recovery", Priority: parent.Priority,
+		State: JobQueued, Phase: parent.Phase, ResumeOfJobID: &parent.JobID, CreatedAtMS: 13, UpdatedAtMS: 13,
+	}
+	if err := repository.ResumeInterruptedJob(ctx, parent.JobID, resumed); err != nil {
+		t.Fatalf("ResumeInterruptedJob() error = %v", err)
+	}
+	after, err := repository.RuntimeJobPage(ctx, RuntimeJobQuery{
+		CurrentOnly: true, Limit: 10, Direction: RuntimeQueryDescending,
+	})
+	if err != nil || len(after.Records) != 1 || after.Records[0].Job.JobID != resumed.JobID ||
+		after.Summary.Queued != 1 || after.Summary.Interrupted != 0 {
+		t.Fatalf("RuntimeJobPage(current after resume) = %#v, %v", after, err)
+	}
+}
+
 func TestRuntimeQueriesRejectInvalidInputAndCanceledContext(t *testing.T) {
 	t.Parallel()
 
@@ -206,6 +250,11 @@ func TestRuntimeQueriesRejectInvalidInputAndCanceledContext(t *testing.T) {
 		States: []JobState{"private-state"}, Limit: 1, Direction: RuntimeQueryDescending,
 	}); !errors.Is(err, ErrInvalidRecord) {
 		t.Fatalf("RuntimeJobPage(invalid) error = %v, want ErrInvalidRecord", err)
+	}
+	if _, err := repository.RuntimeJobPage(context.Background(), RuntimeJobQuery{
+		CurrentOnly: true, States: []JobState{JobRunning}, Limit: 1, Direction: RuntimeQueryDescending,
+	}); !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("RuntimeJobPage(conflicting current filter) error = %v, want ErrInvalidRecord", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

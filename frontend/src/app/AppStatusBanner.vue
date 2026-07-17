@@ -44,7 +44,7 @@ const detail = computed(() => {
 async function openDetails() {
   actionFailed.value = false;
   try {
-    await router.push({ name: "local-status", hash: "#data-health" });
+    await router.push({ name: "data-health" });
   } catch {
     actionFailed.value = true;
   }

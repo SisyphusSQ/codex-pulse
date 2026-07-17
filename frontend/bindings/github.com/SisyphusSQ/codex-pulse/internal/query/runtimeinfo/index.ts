@@ -10,6 +10,12 @@ export {
 } from "./models.js";
 
 export type {
+    DataHealthJobs,
+    DataHealthResponse,
+    DataHealthRuntimePoint,
+    DataHealthScheduler,
+    DataHealthSources,
+    DataHealthWindow,
     EditableField,
     HealthDetailRequest,
     HealthDetailResponse,

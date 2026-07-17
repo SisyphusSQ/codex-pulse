@@ -18,6 +18,7 @@ type QuotaReader interface {
 }
 
 type RuntimeReader interface {
+	MetricsSnapshot(context.Context, store.MetricsSnapshotFilter) (store.MetricsSnapshot, error)
 	RuntimeSourcePage(context.Context, store.RuntimeSourceQuery) (store.RuntimeSourcePage, error)
 	RuntimeSource(context.Context, string) (store.RuntimeSourceRecord, error)
 	RuntimeJobPage(context.Context, store.RuntimeJobQuery) (store.RuntimeJobPage, error)

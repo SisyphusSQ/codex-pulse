@@ -2,6 +2,7 @@ import { QueryClient, QueryObserver } from "@tanstack/vue-query";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  DataHealth,
   Health,
   HealthProjection,
   Job,
@@ -34,6 +35,7 @@ import {
 import {
   BUSINESS_QUERY_STALE_MS,
   businessQueryRoots,
+  dataHealthQueryOptions,
   healthDetailQueryOptions,
   healthListQueryOptions,
   healthProjectionQueryOptions,
@@ -65,6 +67,7 @@ const bindingHarness = vi.hoisted(() => {
 });
 
 vi.mock("@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service", () => ({
+  DataHealth: vi.fn(() => bindingHarness.result()),
   Health: vi.fn(() => bindingHarness.result()),
   HealthProjection: vi.fn(() => bindingHarness.result()),
   Job: vi.fn(() => bindingHarness.result()),
@@ -100,7 +103,7 @@ async function runQuery(options: { queryFn?: unknown }) {
 }
 
 describe("business Vue Query contract", () => {
-  it("uses the complete request in stable keys and delegates all 14 bindings", async () => {
+  it("uses the complete request in stable keys and delegates all 15 bindings", async () => {
     bindingHarness.cancelOn.mockClear();
     const usageRequest: UsageCostRequest = {
       range: dateRange,
@@ -136,6 +139,7 @@ describe("business Vue Query contract", () => {
       [healthListQueryOptions(pageRequest), [...businessQueryRoots.health, "list", pageRequest], ListHealth, pageRequest],
       [healthDetailQueryOptions(healthRequest), [...businessQueryRoots.health, "detail", healthRequest], Health, healthRequest],
       [healthProjectionQueryOptions(), [...businessQueryRoots.health, "projection"], HealthProjection, undefined],
+      [dataHealthQueryOptions(quotaClock), [...businessQueryRoots.health, "data-health"], DataHealth, 1_784_100_000_000],
       [settingsQueryOptions(), [...businessQueryRoots.settings, "current"], Settings, undefined],
     ] as const;
 
@@ -150,8 +154,8 @@ describe("business Vue Query contract", () => {
         expect(binding).toHaveBeenCalledWith(argument);
       }
     }
-    expect(quotaClock).toHaveBeenCalledOnce();
-    expect(bindingHarness.cancelOn).toHaveBeenCalledTimes(14);
+    expect(quotaClock).toHaveBeenCalledTimes(2);
+    expect(bindingHarness.cancelOn).toHaveBeenCalledTimes(15);
   });
 
   it("uses bounded domain stale times without changing bootstrap policy", () => {

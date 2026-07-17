@@ -2,6 +2,7 @@ import type { RouterHistory, RouteRecordRaw } from "vue-router";
 import { createRouter, createWebHistory } from "vue-router";
 
 import AppShell from "@/components/shell/AppShell.vue";
+import DataHealthView from "@/views/DataHealthView.vue";
 import OverviewView from "@/views/OverviewView.vue";
 import ProjectsView from "@/views/ProjectsView.vue";
 import QuotaView from "@/views/QuotaView.vue";
@@ -60,6 +61,15 @@ const routes = [
     component: AppShell,
     children: [
       { path: "", redirect: { name: "overview" } },
+      {
+        path: "local-status/data-health",
+        name: "data-health",
+        component: DataHealthView,
+        meta: {
+          descriptionKey: "routes.dataHealth.description",
+          titleKey: "routes.dataHealth.title",
+        },
+      },
       ...childRoutes,
     ],
   },

@@ -42,6 +42,7 @@ type runtimeInfoBindingQuery interface {
 	Job(context.Context, runtimeinfo.JobDetailRequest) (runtimeinfo.JobDetailResponse, error)
 	ListHealth(context.Context, basequery.Request) (runtimeinfo.HealthListResponse, error)
 	Health(context.Context, runtimeinfo.HealthDetailRequest) (runtimeinfo.HealthDetailResponse, error)
+	DataHealth(context.Context, int64) (runtimeinfo.DataHealthResponse, error)
 	Settings(context.Context) (runtimeinfo.SettingsResponse, error)
 }
 
@@ -191,6 +192,7 @@ var bindingMethodAllowlist = []BindingMethodInfo{
 	{Name: "ListHealth", Kind: BindingMethodQuery},
 	{Name: "Health", Kind: BindingMethodQuery},
 	{Name: "HealthProjection", Kind: BindingMethodQuery},
+	{Name: "DataHealth", Kind: BindingMethodQuery},
 	{Name: "Settings", Kind: BindingMethodQuery},
 }
 
@@ -416,6 +418,15 @@ func (service *Service) HealthProjection(ctx context.Context) (HealthProjectionR
 			return HealthProjectionResponse{}, err
 		}
 		return mapHealthProjection(query.Projection())
+	})
+}
+
+func (service *Service) DataHealth(ctx context.Context, evaluatedAtMS int64) (runtimeinfo.DataHealthResponse, error) {
+	if service == nil || service.runtimeInfo == nil {
+		return runtimeinfo.DataHealthResponse{}, newBindingFailure(ErrBindingService)
+	}
+	return bindingQueryCall(service, func() (runtimeinfo.DataHealthResponse, error) {
+		return service.runtimeInfo.DataHealth(ctx, evaluatedAtMS)
 	})
 }
 

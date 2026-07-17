@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { RouterLink } from "vue-router";
 
 import { RuntimeAction } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/models";
 import type { NumericValue } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/query/models";
@@ -200,6 +201,9 @@ function keepDialogFocus(event: KeyboardEvent) {
           </div>
           <StateEmpty v-else :title="t('localStatus.health.empty')" :description="t('localStatus.health.emptyDescription')" />
           </template>
+          <RouterLink data-testid="open-data-health" :to="{ name: 'data-health' }" class="mt-4 inline-flex min-h-10 items-center rounded-control px-3 text-sm font-semibold text-accent hover:bg-blue-50">
+            {{ t("localStatus.health.openDetails") }}
+          </RouterLink>
         </UiCard>
       </div>
 
