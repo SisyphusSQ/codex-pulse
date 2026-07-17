@@ -30,6 +30,7 @@ type RetentionCleanupOptions struct {
 
 // RetentionDeletedCounts reports committed deletions by runtime table.
 type RetentionDeletedCounts struct {
+	RuntimeSamples int64
 	HealthEvents   int64
 	JobRuns        int64
 	SourceAttempts int64
@@ -37,10 +38,11 @@ type RetentionDeletedCounts struct {
 
 // Total returns the number of committed rows represented by the counts.
 func (counts RetentionDeletedCounts) Total() int64 {
-	return counts.HealthEvents + counts.JobRuns + counts.SourceAttempts
+	return counts.RuntimeSamples + counts.HealthEvents + counts.JobRuns + counts.SourceAttempts
 }
 
 func (counts *RetentionDeletedCounts) add(other RetentionDeletedCounts) {
+	counts.RuntimeSamples += other.RuntimeSamples
 	counts.HealthEvents += other.HealthEvents
 	counts.JobRuns += other.JobRuns
 	counts.SourceAttempts += other.SourceAttempts
@@ -141,6 +143,12 @@ func (repository *Repository) cleanupRetentionBatch(
 	err := repository.database.WriteMaintenance(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
 		remaining := options.BatchSize
 		var err error
+		candidate.RuntimeSamples, err = deleteExpiredRuntimeSamples(ctx, transaction, cutoffMS, remaining)
+		if err != nil {
+			return err
+		}
+		remaining -= int(candidate.RuntimeSamples)
+
 		candidate.HealthEvents, err = deleteExpiredHealthEvents(ctx, transaction, cutoffMS, remaining)
 		if err != nil {
 			return err
@@ -175,6 +183,25 @@ func (repository *Repository) cleanupRetentionBatch(
 	report.Deleted = candidate
 	report.More = more
 	return report, nil
+}
+
+func deleteExpiredRuntimeSamples(
+	ctx context.Context,
+	transaction *gorm.DB,
+	cutoffMS int64,
+	limit int,
+) (int64, error) {
+	if limit == 0 {
+		return 0, nil
+	}
+	var timestamps []int64
+	err := expiredRuntimeSamples(transaction.WithContext(ctx), cutoffMS).
+		Order("captured_at_ms").Limit(limit).Pluck("captured_at_ms", &timestamps).Error
+	if err != nil || len(timestamps) == 0 {
+		return 0, err
+	}
+	result := transaction.WithContext(ctx).Where("captured_at_ms IN ?", timestamps).Delete(&appRuntimeSampleModel{})
+	return requireDeletedRows("runtime samples", result, len(timestamps))
 }
 
 func normalizeRetentionOptions(options RetentionCleanupOptions) (RetentionCleanupOptions, int64, error) {
@@ -267,6 +294,10 @@ func expiredHealthEvents(database *gorm.DB, cutoffMS int64) *gorm.DB {
 		Where("resolved_at_ms IS NOT NULL AND resolved_at_ms < ?", cutoffMS)
 }
 
+func expiredRuntimeSamples(database *gorm.DB, cutoffMS int64) *gorm.DB {
+	return database.Model(&appRuntimeSampleModel{}).Where("captured_at_ms < ?", cutoffMS)
+}
+
 func expiredJobRuns(database *gorm.DB, cutoffMS int64) *gorm.DB {
 	return expiredJobRunsBase(database, cutoffMS).
 		Where("state IN ?", []string{string(JobSucceeded), string(JobFailed), string(JobCancelled)})
@@ -296,6 +327,7 @@ func hasExpiredRuntimeRows(ctx context.Context, transaction *gorm.DB, cutoffMS i
 		column string
 		query  *gorm.DB
 	}{
+		{column: "captured_at_ms", query: expiredRuntimeSamples(transaction.WithContext(ctx), cutoffMS)},
 		{column: "event_id", query: expiredHealthEvents(transaction.WithContext(ctx), cutoffMS)},
 		{column: "job_id", query: expiredJobRuns(transaction.WithContext(ctx), cutoffMS)},
 		{column: "request_id", query: expiredSourceAttempts(transaction.WithContext(ctx), cutoffMS)},

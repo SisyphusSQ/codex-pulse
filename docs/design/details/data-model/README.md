@@ -356,7 +356,7 @@ v0.1 的窗口固定为 24 小时，不提供用户可配置天数。cutoff 是 
 | `source_attempts` | 滚动 24 小时 | `finished_at_ms < cutoff` |
 | `job_runs` | 仅 `succeeded` / `failed` / `cancelled` 滚动 24 小时 | `finished_at_ms < cutoff`，并且没有剩余 health event 或 resume lineage 引用 |
 | `health_events` | 仅已解决事件滚动 24 小时 | `resolved_at_ms IS NOT NULL AND resolved_at_ms < cutoff` |
-| `app_runtime_samples` | 设计上滚动 24 小时 | schema v13 已创建；cleanup 由 TOO-281 接入，TOO-279 不提前删除 |
+| `app_runtime_samples` | 滚动 24 小时 | `captured_at_ms < cutoff` |
 | `process_snapshots` | 设计上滚动 24 小时 | 当前 schema 尚未创建；缺少可信 session→PID 映射时不落表或伪造 cleanup |
 | current projection | 可重建 | 由各投影自己的后续实现管理，本轮不删除 |
 
@@ -365,11 +365,14 @@ v0.1 的窗口固定为 24 小时，不提供用户可配置天数。cutoff 是 
 `Repository.CleanupRetentionBatch` 通过低优先级 maintenance lane 在一个 GORM transaction 中最多删除 `BatchSize` 行；默认 100、硬上限 1000，batch size 只控制事务工作量，不改变 24 小时产品语义。总 budget 按以下顺序消费：
 
 ```text
-eligible resolved health_events
+eligible app_runtime_samples
+    -> eligible resolved health_events
     -> eligible terminal and now-unreferenced job_runs
     -> eligible source_attempts
 ```
 
-候选通过 GORM condition/subquery、稳定时间与主键排序、`Limit` 和 `Pluck` 选择，再由 GORM `Delete` 删除；production retention 不使用 `Raw` / `Exec`。实际 GORM DryRun SQL 由真实 `EXPLAIN QUERY PLAN` 验证专用索引、health/job 引用索引和 resume lineage 索引均命中，且候选排序不使用临时 B-tree。每批独立提交，只有 commit 成功后才对外累加计数；任一批删除后都重新查询 `More`，因为删除 terminal resume leaf 会在同一事务中释放 parent，即使 batch budget 尚有剩余也必须继续下一批。`CleanupRetention` 在批间调用 observer；context 取消会返回稳定的 SQLite cancel error 和已提交 report，下次调用重新按条件计算，不保存游标，也不会回滚先前已经成功提交的批次。当前卡只交付 Store/service contract；启动与小时级 scheduler 接线留给对应调度 Execution。
+候选通过 GORM condition/subquery、稳定时间与主键排序、`Limit` 和 `Pluck` 选择，再由 GORM `Delete` 删除；production retention 不使用 `Raw` / `Exec`。实际 GORM DryRun SQL 由真实 `EXPLAIN QUERY PLAN` 验证 runtime、health/job、source attempt 与 resume lineage 索引均命中，且候选排序不使用临时 B-tree。每批独立提交，只有 commit 成功后才对外累加计数；任一批删除后都重新查询 `More`，因为删除 terminal resume leaf 会在同一事务中释放 parent，即使 batch budget 尚有剩余也必须继续下一批。`CleanupRetention` 在批间调用 observer；context 取消会返回稳定的 SQLite cancel error 和已提交 report，下次调用重新按条件计算，不保存游标，也不会回滚先前已经成功提交的批次。
+
+每次完整 cleanup 后，Store 通过同一个单写 worker 的低优先级 maintenance lane 执行固定 `PRAGMA wal_checkpoint(PASSIVE)`。checkpoint 不在 GORM transaction 内运行，因为 SQLite 禁止在事务内执行该连接控制命令；这是封闭的 raw SQL 例外，调用方不能传入 SQL 或切换到 `FULL`、`RESTART`、`TRUNCATE`。结果只返回 `busy` 标志、WAL log frame 与已 checkpoint frame；active reader 可以导致部分 checkpoint，但不会被强制中断，也不会触发 vacuum。
 
 任何清理都不能删除 Codex 原始 JSONL，Tracker 本来也不拥有这些文件。完整 fixture、取消、rollback、close/reopen 与 Pure Go验证入口见 [`docs/test/store-integration.md`](../../../test/store-integration.md)。

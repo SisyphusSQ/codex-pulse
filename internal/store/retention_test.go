@@ -23,6 +23,15 @@ func TestRetentionCandidateQueriesUseDedicatedIndexes(t *testing.T) {
 		indexes []string
 	}{
 		{
+			name: "runtime samples",
+			query: func(database *gorm.DB) *gorm.DB {
+				var timestamps []int64
+				return expiredRuntimeSamples(database, cutoffMS).
+					Order("captured_at_ms").Limit(100).Pluck("captured_at_ms", &timestamps)
+			},
+			indexes: []string{"idx_app_runtime_samples_retention"},
+		},
+		{
 			name: "health events",
 			query: func(database *gorm.DB) *gorm.DB {
 				var ids []string
@@ -102,6 +111,11 @@ func TestCleanupRetentionAppliesFixedWindowAndReferenceRules(t *testing.T) {
 	cutoff := now.Add(-RetentionWindow).UnixMilli()
 
 	seedRetentionModels(t, repository, retentionFixture{
+		runtimeSamples: []appRuntimeSampleModel{
+			retentionRuntimeSample(cutoff - 1),
+			retentionRuntimeSample(cutoff),
+			retentionRuntimeSample(cutoff + 1),
+		},
 		projects: []projectModel{{
 			ProjectID: "long-lived", DisplayName: "Long lived", RootPath: "/synthetic",
 			CreatedAtMS: 1, UpdatedAtMS: 1,
@@ -148,12 +162,15 @@ func TestCleanupRetentionAppliesFixedWindowAndReferenceRules(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CleanupRetentionBatch() error = %v", err)
 	}
-	wantDeleted := RetentionDeletedCounts{HealthEvents: 2, JobRuns: 2, SourceAttempts: 1}
+	wantDeleted := RetentionDeletedCounts{RuntimeSamples: 1, HealthEvents: 2, JobRuns: 2, SourceAttempts: 1}
 	if report.CutoffMS != cutoff || report.Deleted != wantDeleted || report.More {
 		t.Fatalf("CleanupRetentionBatch() = %#v, want cutoff=%d deleted=%#v more=false", report, cutoff, wantDeleted)
 	}
 	if len(progress) != 1 || progress[0].Batch != 1 || progress[0].Deleted != wantDeleted || progress[0].Total != wantDeleted || progress[0].More {
 		t.Fatalf("CleanupRetentionBatch() progress = %#v, want one committed update", progress)
+	}
+	if got, want := retentionInt64Values(t, repository, &appRuntimeSampleModel{}, "captured_at_ms"), []int64{cutoff, cutoff + 1}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("runtime sample timestamps = %v, want %v", got, want)
 	}
 
 	if got, want := retentionIDs(t, repository, &healthEventModel{}, "event_id"), []string{"health-active", "health-boundary", "health-recent-job"}; !reflect.DeepEqual(got, want) {
@@ -169,6 +186,36 @@ func TestCleanupRetentionAppliesFixedWindowAndReferenceRules(t *testing.T) {
 	}
 	if got := retentionIDs(t, repository, &projectModel{}, "project_id"); !reflect.DeepEqual(got, []string{"long-lived"}) {
 		t.Fatalf("long-lived project IDs = %v, want untouched", got)
+	}
+}
+
+func TestCleanupRetentionBatchUsesOneBudgetAcrossRuntimeTables(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	now := time.UnixMilli(200_000_000).UTC()
+	cutoff := now.Add(-RetentionWindow).UnixMilli()
+	seedRetentionModels(t, repository, retentionFixture{
+		runtimeSamples: []appRuntimeSampleModel{retentionRuntimeSample(cutoff - 3), retentionRuntimeSample(cutoff - 2)},
+		health: []healthEventModel{
+			retentionHealthEvent("health-a", nil, cutoff-3, pointerTo(cutoff-2)),
+			retentionHealthEvent("health-b", nil, cutoff-2, pointerTo(cutoff-1)),
+		},
+	})
+
+	first, err := repository.CleanupRetentionBatch(context.Background(), RetentionCleanupOptions{Now: now, BatchSize: 3})
+	if err != nil {
+		t.Fatalf("CleanupRetentionBatch() error = %v", err)
+	}
+	if first.Deleted.Total() != 3 || first.Deleted.RuntimeSamples != 2 || first.Deleted.HealthEvents != 1 || !first.More {
+		t.Fatalf("first batch = %#v, want one shared three-row budget and more=true", first)
+	}
+	second, err := repository.CleanupRetentionBatch(context.Background(), RetentionCleanupOptions{Now: now, BatchSize: 3})
+	if err != nil {
+		t.Fatalf("CleanupRetentionBatch(second) error = %v", err)
+	}
+	if second.Deleted != (RetentionDeletedCounts{HealthEvents: 1}) || second.More {
+		t.Fatalf("second batch = %#v, want final health event", second)
 	}
 }
 
@@ -333,6 +380,7 @@ func TestCleanupRetentionRejectsInvalidOptions(t *testing.T) {
 }
 
 type retentionFixture struct {
+	runtimeSamples []appRuntimeSampleModel
 	projects       []projectModel
 	sourceStates   []sourceStateModel
 	sourceAttempts []sourceAttemptModel
@@ -343,8 +391,14 @@ type retentionFixture struct {
 func seedRetentionModels(t *testing.T, repository *Repository, fixture retentionFixture) {
 	t.Helper()
 	err := repository.database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		for _, models := range []any{fixture.projects, fixture.sourceStates, fixture.sourceAttempts, fixture.jobs, fixture.health} {
+		for _, models := range []any{fixture.runtimeSamples, fixture.projects, fixture.sourceStates, fixture.sourceAttempts, fixture.jobs, fixture.health} {
 			switch rows := models.(type) {
+			case []appRuntimeSampleModel:
+				if len(rows) > 0 {
+					if err := transaction.WithContext(ctx).Create(&rows).Error; err != nil {
+						return err
+					}
+				}
 			case []projectModel:
 				if len(rows) > 0 {
 					if err := transaction.WithContext(ctx).Create(&rows).Error; err != nil {
@@ -393,6 +447,10 @@ func retentionTerminalJob(jobID string, createdAtMS, finishedAtMS int64) jobRunM
 	}
 }
 
+func retentionRuntimeSample(capturedAtMS int64) appRuntimeSampleModel {
+	return appRuntimeSampleModel{CapturedAtMS: capturedAtMS, GoroutineCount: 1}
+}
+
 func retentionHealthEvent(eventID string, jobID *string, lastSeenAtMS int64, resolvedAtMS *int64) healthEventModel {
 	return healthEventModel{
 		EventID: eventID, Fingerprint: SHA256DigestOf([]byte(eventID)).String(), Domain: string(HealthDomainJob),
@@ -417,4 +475,16 @@ func retentionIDs(t *testing.T, repository *Repository, model any, column string
 		t.Fatalf("read %s IDs: %v", column, err)
 	}
 	return identifiers
+}
+
+func retentionInt64Values(t *testing.T, repository *Repository, model any, column string) []int64 {
+	t.Helper()
+	var values []int64
+	err := repository.database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+		return connection.WithContext(ctx).Model(model).Order(column).Pluck(column, &values).Error
+	})
+	if err != nil {
+		t.Fatalf("read %s values: %v", column, err)
+	}
+	return values
 }
