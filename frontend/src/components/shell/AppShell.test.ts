@@ -1,10 +1,17 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createAppI18n } from "@/i18n";
 
 import AppShell from "./AppShell.vue";
+
+vi.mock("@/features/runtime/useHealthProjection", () => ({
+  useHealthProjection: () => ({
+    data: { value: { hasValue: true, stale: false, level: "healthy", components: Array.from({ length: 7 }, () => ({ level: "healthy" })) } },
+    isPending: { value: false }, isError: { value: false },
+  }),
+}));
 
 function testRouter() {
   const component = { template: "<p>content</p>" };

@@ -43,6 +43,10 @@ TOO-280 新增 `internal/health` 确定性 evaluator。`HealthEvaluationSnapshot
 
 health service 只用 `github.com/robfig/cron/v3 v3.0.1` 的 `@every 30s` entry，并在启动时立即评估。共享 atomic gate 跳过 overlap；snapshot/evaluator/sink failure 或 dependency panic 都保留最后成功 projection 并标记有限 stale failure stage，不保存 panic/error 正文。关闭先 cancel，再等待 `cron.Stop()` drain 在途 evaluation；单次 health failure 不改变 query/index/quota 业务生命周期。
 
+TOO-282 将上述进程内 projection 通过只读 `HealthProjection` Wails query 接入统一 health query cache。DTO 只包含 `hasValue/stale/failure/evaluatedAt/level/primary/components` 以及七组件的有限 evidence/reason/impact/protection/recovery action；缺失 reader、非法组件数、重复 component、非法 enum 或 primary/level 不一致均 fail closed 为标准 binding error，不回退到持久事件数量、日志或前端推断。health invalidation、wake、runtime ready 与 foreground 只使 cache 失效并重取；5 秒 active polling 覆盖 evaluator 周期投影更新，event payload 不携带业务状态。
+
+主导航的“本机状态”项消费同一 projection：可信 healthy 显示七项正常，异常显示需关注组件数，unknown/query error/stale 有独立颜色和文案，stale 明确标注“上次可信”。全局 shell 同一时刻只渲染一个 Banner：优先保留权威 primary 的 blocked、影响数据的 degraded，再处理 query unavailable、offline、unknown/stale、paused/busy/loading；Banner 展示影响、原因、评估时间和有限恢复入口。`retry` 只重新读取 projection，其余已登记 action 进入 `/local-status#data-health`；当前锚点落到健康事件区，完整 Data Health 动作面仍由 TOO-283 承接。healthy 不占用 live region，动作失败就地提示且详情导航保留。
+
 retention service 同样只用 `github.com/robfig/cron/v3 v3.0.1`：启动立即补跑，`@every 1m` 只唤醒 due-check，成功后下一次真实 cleanup 为 1 小时，连续失败按 5/10/20/40/60 分钟退避并在 60 分钟封顶。cleanup、checkpoint 与 panic 只映射到有限 failure stage；projection 记录本次起止/耗时、各表 committed deletion、checkpoint frame、连续失败、next due 与最后成功结果，不保存 raw error 或 panic。atomic gate 跳过 overlap，关闭先 cancel 再等待 cron/in-flight operation。应用装配顺序为 metrics、lifecycle、health、retention，退出按 retention、health、lifecycle、metrics、Store 逆序关闭。
 
 ## 低开销采集

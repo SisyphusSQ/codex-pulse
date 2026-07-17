@@ -32,7 +32,7 @@ func TestBindingServiceExposesExactAllowlistAndContract(t *testing.T) {
 	}
 	wantMethods := []string{
 		"AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "Health",
-		"Job", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
+		"HealthProjection", "Job", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
 		"PlanHomeSwitch", "ProjectDetail", "QuotaCurrent", "RecoverHomeSwitch",
 		"RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings", "Source",
 		"UpdateSettings", "UsageCost",

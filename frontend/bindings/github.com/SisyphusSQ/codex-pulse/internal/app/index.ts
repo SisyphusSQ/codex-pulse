@@ -8,6 +8,8 @@ export {
 
 export {
     BindingMethodKind,
+    HealthProjectionFailure,
+    HealthProjectionLevel,
     HomeSwitchResult,
     HomeSwitchStrategy,
     QueryInvalidationDomain,
@@ -20,6 +22,8 @@ export type {
     BindingContractInfo,
     BindingMethodInfo,
     BootstrapInfo,
+    HealthComponentStatus,
+    HealthProjectionResponse,
     HomeSwitchPlanReceipt,
     HomeSwitchPlanRequest,
     HomeSwitchReceipt,

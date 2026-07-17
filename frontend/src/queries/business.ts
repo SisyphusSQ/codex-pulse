@@ -2,6 +2,7 @@ import { queryOptions } from "@tanstack/vue-query";
 
 import {
   Health,
+  HealthProjection,
   Job,
   ListHealth,
   ListJobs,
@@ -155,6 +156,14 @@ export function healthListQueryOptions(request: Request) {
   return queryOptions({
     queryKey: [...businessQueryRoots.health, "list", request] as const,
     queryFn: ({ signal }) => ListHealth(request).cancelOn(signal),
+    ...runtimeQueryTiming,
+  });
+}
+
+export function healthProjectionQueryOptions() {
+  return queryOptions({
+    queryKey: [...businessQueryRoots.health, "projection"] as const,
+    queryFn: ({ signal }) => HealthProjection().cancelOn(signal),
     ...runtimeQueryTiming,
   });
 }

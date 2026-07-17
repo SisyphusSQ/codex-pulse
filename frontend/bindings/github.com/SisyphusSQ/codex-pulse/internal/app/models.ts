@@ -46,6 +46,52 @@ export interface BootstrapInfo {
     "platform": string;
 }
 
+export interface HealthComponentStatus {
+    "component": string;
+    "level": HealthProjectionLevel;
+    "evidence": string;
+    "reason": string;
+    "impact": string;
+    "protection": string;
+    "recoveryAction": string;
+}
+
+export enum HealthProjectionFailure {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    HealthProjectionFailureNone = "none",
+    HealthProjectionFailureSnapshot = "snapshot",
+    HealthProjectionFailureEvaluate = "evaluate",
+    HealthProjectionFailurePersist = "persist",
+    HealthProjectionFailurePanic = "panic",
+};
+
+export enum HealthProjectionLevel {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    HealthProjectionHealthy = "healthy",
+    HealthProjectionBusy = "busy",
+    HealthProjectionPaused = "paused",
+    HealthProjectionDegraded = "degraded",
+    HealthProjectionBlocked = "blocked",
+};
+
+export interface HealthProjectionResponse {
+    "hasValue": boolean;
+    "stale": boolean;
+    "failure": HealthProjectionFailure;
+    "evaluatedAtMs": query$0.NumericValue;
+    "level": HealthProjectionLevel | null;
+    "primary": HealthComponentStatus | null;
+    "components": HealthComponentStatus[] | null;
+}
+
 export interface HomeSwitchPlanReceipt {
     "strategy": HomeSwitchStrategy;
     "targetGeneration": string;

@@ -68,6 +68,7 @@ describe("generated Wails binding contract", () => {
         "ConfirmHomeSwitch",
         "Contracts",
         "Health",
+        "HealthProjection",
         "Job",
         "ListHealth",
         "ListJobs",

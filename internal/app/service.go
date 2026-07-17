@@ -8,6 +8,7 @@ import (
 	"time"
 
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	healthmodel "github.com/SisyphusSQ/codex-pulse/internal/health"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
@@ -48,6 +49,10 @@ type quotaRefreshBindingCommand interface {
 	RequestQuotaRefresh(context.Context, quotaonline.RefreshSource) (store.SourceRefreshSchedule, error)
 }
 
+type healthProjectionBindingQuery interface {
+	Projection() healthmodel.Projection
+}
+
 type QueryObserver interface {
 	Observe(time.Duration)
 }
@@ -64,13 +69,15 @@ type ServiceConfig struct {
 // dependencies keep Store, Preferences, filesystem and credential primitives
 // outside the generated frontend surface.
 type Service struct {
-	usageCost       usageCostBindingQuery
-	runtimeInfo     runtimeInfoBindingQuery
-	quotaMu         sync.RWMutex
-	quotaRefresh    quotaRefreshBindingCommand
-	runtimeMu       sync.RWMutex
-	runtimeControls runtimeControlBindingCommand
-	queryObserver   QueryObserver
+	usageCost        usageCostBindingQuery
+	runtimeInfo      runtimeInfoBindingQuery
+	quotaMu          sync.RWMutex
+	quotaRefresh     quotaRefreshBindingCommand
+	runtimeMu        sync.RWMutex
+	runtimeControls  runtimeControlBindingCommand
+	healthMu         sync.RWMutex
+	healthProjection healthProjectionBindingQuery
+	queryObserver    QueryObserver
 }
 
 func NewService(config ServiceConfig) (*Service, error) {
@@ -109,6 +116,19 @@ func (service *Service) bindQuotaRefresh(command quotaRefreshBindingCommand) err
 		return ErrBindingService
 	}
 	service.quotaRefresh = command
+	return nil
+}
+
+func (service *Service) bindHealthProjection(query healthProjectionBindingQuery) error {
+	if service == nil || query == nil {
+		return ErrBindingService
+	}
+	service.healthMu.Lock()
+	defer service.healthMu.Unlock()
+	if service.healthProjection != nil {
+		return ErrBindingService
+	}
+	service.healthProjection = query
 	return nil
 }
 
@@ -170,6 +190,7 @@ var bindingMethodAllowlist = []BindingMethodInfo{
 	{Name: "Job", Kind: BindingMethodQuery},
 	{Name: "ListHealth", Kind: BindingMethodQuery},
 	{Name: "Health", Kind: BindingMethodQuery},
+	{Name: "HealthProjection", Kind: BindingMethodQuery},
 	{Name: "Settings", Kind: BindingMethodQuery},
 }
 
@@ -374,6 +395,27 @@ func (service *Service) Health(
 	}
 	return bindingQueryCall(service, func() (runtimeinfo.HealthDetailResponse, error) {
 		return service.runtimeInfo.Health(ctx, request)
+	})
+}
+
+func (service *Service) HealthProjection(ctx context.Context) (HealthProjectionResponse, error) {
+	if service == nil {
+		return HealthProjectionResponse{}, newBindingFailure(ErrBindingService)
+	}
+	service.healthMu.RLock()
+	query := service.healthProjection
+	service.healthMu.RUnlock()
+	if query == nil {
+		return HealthProjectionResponse{}, newBindingFailure(ErrBindingService)
+	}
+	return bindingQueryCall(service, func() (HealthProjectionResponse, error) {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		if err := ctx.Err(); err != nil {
+			return HealthProjectionResponse{}, err
+		}
+		return mapHealthProjection(query.Projection())
 	})
 }
 

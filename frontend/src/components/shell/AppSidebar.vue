@@ -7,14 +7,28 @@ import {
   MonitorCog,
   Settings,
 } from "@lucide/vue";
-import type { Component } from "vue";
+import { computed, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
 
 import appIconUrl from "../../../../docs/design/front/assets/icons/codex-pulse-app-icon-64.png";
 import { appNavigation, type AppNavigationName } from "@/router";
+import { useHealthProjection } from "@/features/runtime/useHealthProjection";
 
 const { t } = useI18n();
+const health = useHealthProjection();
+const healthEntry = computed(() => {
+  const data = health.data.value;
+  if (data === undefined && health.isPending.value) return { kind: "loading", summary: t("health.entry.loading") };
+  if (data === undefined) return { kind: "error", summary: t("health.entry.unavailable") };
+  if (!data.hasValue) return { kind: "unknown", summary: t("health.entry.unknown") };
+  if (data.components?.length !== 7) return { kind: "unknown", summary: t("health.entry.unknown") };
+  const attention = data.components.filter((item) => item.level !== "healthy").length;
+  const summary = attention === 0 ? t("health.entry.healthy") : t("health.entry.attention", { count: attention });
+  const lastTrusted = data.stale || health.isError.value;
+  const kind = lastTrusted && data.level !== "blocked" && data.level !== "degraded" ? "stale" : data.level;
+  return { kind, summary: lastTrusted ? t("health.entry.stale", { summary }) : summary };
+});
 
 const navigationIcons: Record<AppNavigationName, Component> = {
   "local-status": MonitorCog,
@@ -75,6 +89,20 @@ function moveNavigationFocus(event: KeyboardEvent) {
           class="shrink-0 text-ink-subtle transition-colors group-[.router-link-active]:text-accent"
         />
         <span>{{ t(item.labelKey) }}</span>
+        <span
+          v-if="item.name === 'local-status'"
+          data-testid="local-health-entry"
+          class="ml-auto flex items-center gap-1.5 text-[10px] text-ink-subtle"
+          :title="healthEntry.summary"
+        >
+          <span class="size-2 rounded-full" :class="{
+            'bg-healthy': healthEntry.kind === 'healthy',
+            'bg-critical': healthEntry.kind === 'blocked' || healthEntry.kind === 'error',
+            'bg-amber-500': healthEntry.kind === 'degraded' || healthEntry.kind === 'stale' || healthEntry.kind === 'unknown',
+            'bg-accent': healthEntry.kind === 'busy' || healthEntry.kind === 'paused' || healthEntry.kind === 'loading',
+          }" aria-hidden="true" />
+          <span data-testid="local-health-summary">{{ healthEntry.summary }}</span>
+        </span>
       </RouterLink>
     </nav>
 

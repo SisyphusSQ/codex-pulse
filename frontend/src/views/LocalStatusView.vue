@@ -186,7 +186,7 @@ function keepDialogFocus(event: KeyboardEvent) {
           </template>
         </UiCard>
 
-        <UiCard :title="t('localStatus.health.title')" :description="t('localStatus.health.description')">
+        <UiCard id="data-health" :title="t('localStatus.health.title')" :description="t('localStatus.health.description')">
           <StateSkeleton v-if="page.health.data.value === undefined && page.health.isPending.value" :label="t('localStatus.health.loading')" :rows="3" />
           <div v-else-if="page.health.data.value === undefined && page.health.isError.value" data-testid="health-unavailable"><StateError :title="t('localStatus.health.unavailable')" :description="t('localStatus.health.unavailableDescription')" :action-label="t('localStatus.state.retry')" @retry="page.health.refetch()" /></div>
           <div v-else-if="page.health.data.value?.meta.status === 'unavailable'" data-testid="health-unavailable"><StateError :title="t('localStatus.health.unavailable')" :description="t('localStatus.health.unavailableDescription')" :action-label="t('localStatus.state.retry')" @retry="page.health.refetch()" /></div>
