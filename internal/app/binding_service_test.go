@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
@@ -31,7 +32,7 @@ func TestBindingServiceExposesExactAllowlistAndContract(t *testing.T) {
 	wantMethods := []string{
 		"Bootstrap", "Contracts", "Health", "Job", "ListHealth", "ListJobs",
 		"ListProjects", "ListSessions", "ListSources", "ProjectDetail", "QuotaCurrent",
-		"SessionDetail", "Settings", "Source", "UsageCost",
+		"RequestQuotaRefresh", "SessionDetail", "Settings", "Source", "UsageCost",
 	}
 	slices.Sort(wantMethods)
 	if !slices.Equal(gotMethods, wantMethods) {
@@ -44,14 +45,18 @@ func TestBindingServiceExposesExactAllowlistAndContract(t *testing.T) {
 		contract.RuntimeInfoVersion != runtimeinfo.ContractVersion ||
 		contract.ErrorExample.Version != basequery.ContractVersion ||
 		contract.ErrorExample.Error.Code != basequery.ErrorInternal ||
-		contract.CommandMethods == nil || len(contract.CommandMethods) != 0 ||
+		!slices.Equal(contract.CommandMethods, []string{"RequestQuotaRefresh"}) ||
 		len(contract.Methods) != len(wantMethods) {
 		t.Fatalf("binding contract = %#v", contract)
 	}
 	contractNames := make([]string, len(contract.Methods))
 	for index, method := range contract.Methods {
-		if method.Kind != BindingMethodQuery {
-			t.Fatalf("binding method %q kind = %q, want query", method.Name, method.Kind)
+		wantKind := BindingMethodQuery
+		if method.Name == "RequestQuotaRefresh" {
+			wantKind = BindingMethodCommand
+		}
+		if method.Kind != wantKind {
+			t.Fatalf("binding method %q kind = %q, want %q", method.Name, method.Kind, wantKind)
 		}
 		contractNames[index] = method.Name
 	}
@@ -96,6 +101,72 @@ func TestBindingServiceDelegatesEveryQuery(t *testing.T) {
 	}
 }
 
+func TestBindingServiceDelegatesRedactedQuotaRefreshCommand(t *testing.T) {
+	nextDueAtMS := int64(1_784_100_060_000)
+	lastManualAtMS := int64(1_784_100_000_000)
+	claimID := "synthetic-claim-must-not-cross-binding"
+	command := &quotaRefreshBindingStub{schedule: factstore.SourceRefreshSchedule{
+		SourceInstanceID: "synthetic-source-instance", SourceType: "wham",
+		ScopeKey: "synthetic-scope", NextDueAtMS: &nextDueAtMS,
+		Reason: factstore.RefreshReasonNormalInterval, LastManualAtMS: &lastManualAtMS,
+		ActiveClaimID: &claimID, Revision: 17,
+	}}
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageCostBindingStub{}, RuntimeInfo: &runtimeInfoBindingStub{},
+		QuotaRefresh: command,
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	receipt, err := service.RequestQuotaRefresh(context.Background(), quotaonline.RefreshSourceQuota)
+	if err != nil || command.source != quotaonline.RefreshSourceQuota ||
+		receipt.Source != quotaonline.RefreshSourceQuota ||
+		receipt.NextDueAtMS == nil || *receipt.NextDueAtMS != nextDueAtMS ||
+		receipt.LastManualAtMS == nil || *receipt.LastManualAtMS != lastManualAtMS ||
+		receipt.Reason != factstore.RefreshReasonNormalInterval {
+		t.Fatalf("RequestQuotaRefresh() = %#v, source=%q, error=%v", receipt, command.source, err)
+	}
+	content, err := json.Marshal(receipt)
+	if err != nil || strings.Contains(string(content), "synthetic-") ||
+		strings.Contains(string(content), "claim") || strings.Contains(string(content), "revision") {
+		t.Fatalf("receipt leaked internal schedule fields: %s, %v", content, err)
+	}
+}
+
+func TestBindingServiceRejectsInvalidQuotaRefreshSource(t *testing.T) {
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageCostBindingStub{}, RuntimeInfo: &runtimeInfoBindingStub{},
+		QuotaRefresh: &quotaRefreshBindingStub{},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	_, err = service.RequestQuotaRefresh(context.Background(), quotaonline.RefreshSource("invalid"))
+	assertBindingFailure(t, err, basequery.ErrorValidation, "source", "invalid")
+}
+
+func TestBindingServiceBindsQuotaRefreshExactlyOnceBeforeUse(t *testing.T) {
+	service := newBindingTestService(t, &usageCostBindingStub{}, &runtimeInfoBindingStub{})
+	_, err := service.RequestQuotaRefresh(context.Background(), quotaonline.RefreshSourceQuota)
+	assertBindingFailure(t, err, basequery.ErrorInternal, "", "synthetic-marker-not-present")
+
+	command := &quotaRefreshBindingStub{}
+	if err := service.bindQuotaRefresh(command); err != nil {
+		t.Fatalf("bindQuotaRefresh() error = %v", err)
+	}
+	if err := service.bindQuotaRefresh(&quotaRefreshBindingStub{}); !errors.Is(err, ErrBindingService) {
+		t.Fatalf("bindQuotaRefresh(duplicate) error = %v, want ErrBindingService", err)
+	}
+	if err := service.bindQuotaRefresh(nil); !errors.Is(err, ErrBindingService) {
+		t.Fatalf("bindQuotaRefresh(nil) error = %v, want ErrBindingService", err)
+	}
+	if _, err := service.RequestQuotaRefresh(context.Background(), quotaonline.RefreshSourceQuota); err != nil ||
+		command.source != quotaonline.RefreshSourceQuota {
+		t.Fatalf("RequestQuotaRefresh() source=%q, error=%v", command.source, err)
+	}
+}
+
 func TestBindingServiceErrorsAreTypedContentFreeAndCancellable(t *testing.T) {
 	const secretMarker = "synthetic-secret-binding-marker"
 
@@ -112,6 +183,18 @@ func TestBindingServiceErrorsAreTypedContentFreeAndCancellable(t *testing.T) {
 		usage := &usageCostBindingStub{err: errors.New(secretMarker)}
 		service := newBindingTestService(t, usage, &runtimeInfoBindingStub{})
 		_, err := service.ListSessions(context.Background(), basequery.Request{})
+		assertBindingFailure(t, err, basequery.ErrorInternal, "", secretMarker)
+	})
+
+	t.Run("command internal", func(t *testing.T) {
+		service, err := NewService(ServiceConfig{
+			UsageCost: &usageCostBindingStub{}, RuntimeInfo: &runtimeInfoBindingStub{},
+			QuotaRefresh: &quotaRefreshBindingStub{err: errors.New(secretMarker)},
+		})
+		if err != nil {
+			t.Fatalf("NewService() error = %v", err)
+		}
+		_, err = service.RequestQuotaRefresh(context.Background(), quotaonline.RefreshSourceQuota)
 		assertBindingFailure(t, err, basequery.ErrorInternal, "", secretMarker)
 	})
 
@@ -411,6 +494,20 @@ type runtimeInfoBindingStub struct {
 	err             error
 	evaluatedAtMS   int64
 	useContextError bool
+}
+
+type quotaRefreshBindingStub struct {
+	schedule factstore.SourceRefreshSchedule
+	source   quotaonline.RefreshSource
+	err      error
+}
+
+func (stub *quotaRefreshBindingStub) RequestQuotaRefresh(
+	_ context.Context,
+	source quotaonline.RefreshSource,
+) (factstore.SourceRefreshSchedule, error) {
+	stub.source = source
+	return stub.schedule, stub.err
 }
 
 func (stub *runtimeInfoBindingStub) call(ctx context.Context, name string) error {

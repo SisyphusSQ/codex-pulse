@@ -37,6 +37,7 @@
 34. [TOO-274] 实现 Sessions 的可恢复筛选与稳定分页、generated DTO 列表/详情及无正文 Turn 用量成本时间线，补齐安全错误恢复、隐私、键盘焦点、跨日查询和 macOS 原生视觉验证
 35. [TOO-308] 新增 Project 精确 Session 数、30 日趋势及 Session/Model 贡献双页查询，固定 GORM 单快照对账、active generation 绑定 AEAD cursor、unknown/NULL 稳定分页与内容无关隐私边界
 36. [TOO-275] 实现 Projects 聚合、置信度筛选、稳定分页与详情下钻，支持本地日范围、日级趋势及 Session/Model 贡献，并固定跨日 cursor 隔离、安全错误恢复和不暴露项目路径的隐私边界
+37. [TOO-276] 实现 Quota 来源、仲裁与 Reset Credits 页面，展示可信窗口、Local/Wham evidence、冲突与失败状态，新增受节流的双来源手动刷新，并固定 unknown/真实零、不可信重置倒计时及敏感 identity 隔离语义
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

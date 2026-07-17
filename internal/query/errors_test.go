@@ -20,6 +20,7 @@ func TestErrorEnvelopeFromMapsStableFailureClasses(t *testing.T) {
 		retryable  bool
 	}{
 		{name: "validation", err: NewValidationFailure("page.limit", secretCause), code: ErrorValidation, messageKey: "query.error.validation", field: "page.limit"},
+		{name: "command source validation", err: NewValidationFailure("source", secretCause), code: ErrorValidation, messageKey: "query.error.validation", field: "source"},
 		{name: "not found", err: NewNotFoundFailure(secretCause), code: ErrorNotFound, messageKey: "query.error.notFound"},
 		{name: "partial", err: NewPartialFailure(secretCause), code: ErrorPartial, messageKey: "query.error.partial", retryable: true},
 		{name: "unavailable", err: NewUnavailableFailure(secretCause), code: ErrorUnavailable, messageKey: "query.error.unavailable", retryable: true},

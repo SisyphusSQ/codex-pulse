@@ -132,3 +132,13 @@ export interface CurrentWindow {
     "lastAttemptAtMs": number | null;
     "explanations": CurrentExplanation[] | null;
 }
+
+export enum RefreshSource {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    RefreshSourceQuota = "quota",
+    RefreshSourceResetCredits = "reset_credits",
+};

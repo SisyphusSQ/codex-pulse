@@ -25,7 +25,7 @@ describe("application navigation", () => {
     expect(router.currentRoute.value.fullPath).toBe("/overview");
   });
 
-  it("mounts the real Overview, Sessions, and Projects views on their owned routes", async () => {
+  it("mounts the real Overview, Sessions, Projects, and Quota views on their owned routes", async () => {
     const router = createAppRouter(createMemoryHistory());
 
     await router.push("/overview");
@@ -39,5 +39,9 @@ describe("application navigation", () => {
     await router.push("/projects");
     const projectsRecord = router.currentRoute.value.matched.at(-1);
     expect(projectsRecord?.components?.default).toMatchObject({ name: "ProjectsView" });
+
+    await router.push("/quota");
+    const quotaRecord = router.currentRoute.value.matched.at(-1);
+    expect(quotaRecord?.components?.default).toMatchObject({ name: "QuotaView" });
   });
 });

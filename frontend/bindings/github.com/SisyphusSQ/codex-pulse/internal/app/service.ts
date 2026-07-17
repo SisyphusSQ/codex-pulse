@@ -14,6 +14,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as quota$0 from "../codex/quota/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as query$0 from "../query/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -68,6 +71,10 @@ export function ProjectDetail(request: usagecost$0.ProjectDetailRequest): $Cance
 
 export function QuotaCurrent(evaluatedAtMS: number): $CancellablePromise<runtimeinfo$0.QuotaCurrentResponse> {
     return $Call.ByID(2925790970, evaluatedAtMS);
+}
+
+export function RequestQuotaRefresh(source: quota$0.RefreshSource): $CancellablePromise<$models.QuotaRefreshReceipt> {
+    return $Call.ByID(92566339, source);
 }
 
 export function SessionDetail(request: usagecost$0.SessionDetailRequest): $CancellablePromise<usagecost$0.SessionDetailResponse> {

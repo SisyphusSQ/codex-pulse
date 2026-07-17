@@ -3,7 +3,13 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as quota$0 from "../codex/quota/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as query$0 from "../query/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as store$0 from "../store/models.js";
 
 export interface BindingContractInfo {
     "version": string;
@@ -69,3 +75,10 @@ export enum QueryInvalidationVersion {
 
     QueryInvalidationContractVersion = "query-invalidation-v1",
 };
+
+export interface QuotaRefreshReceipt {
+    "source": quota$0.RefreshSource;
+    "nextDueAtMs": number | null;
+    "reason": store$0.SourceRefreshReason;
+    "lastManualAtMs": number | null;
+}

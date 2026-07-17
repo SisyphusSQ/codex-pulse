@@ -58,7 +58,7 @@
 ## Query DTO 消费边界
 
 - 前端业务查询只能导入 `frontend/bindings` 中由 Go 签名生成的 `internal/app/service` 与 reachable models；禁止手写同名 request/response/enum/error shadow type，也禁止绕过 façade 调用 Repository、SQLite、文件、shell、网络或 credential primitive。
-- `wails-bindings-v1` 当前固定为 15 个只读方法：Bootstrap、Contracts、Usage/Session/Project、Quota、Source、Job、Health 与 Settings 查询；`commandMethods` 必须是显式空数组。Preferences、Schedule、Codex Home 切换和 recovery executor 在后续独立 command contract 完成前不得从组件调用。
+- `wails-bindings-v1` 当前固定为 16 个方法：15 个 Bootstrap、Contracts、Usage/Session/Project、Quota、Source、Job、Health 与 Settings 查询，以及唯一 command `RequestQuotaRefresh`；`commandMethods` 必须精确为该单元素数组。该 command 只接收有限 `quota/reset_credits` source 并返回脱敏 receipt；Preferences、Schedule、Codex Home 切换和 recovery executor 仍不得从组件调用。
 - 13 个业务数据 query 返回 `CancellablePromise<T>` 且首个 Go 参数为 context。页面卸载、query 被替代或用户取消时应调用生成 client 的取消能力，不另造不可取消 Promise wrapper；Go 侧的 cancel/deadline 继续映射为 typed error code。`Bootstrap` / `Contracts` 是同步元数据方法，不依赖其取消来释放后端工作。
 - 业务 error 与 recovered panic 的 Wails `RuntimeError.message` 固定为 `binding query failed`；页面只从 `cause` 解码 `query.ErrorEnvelope` 并以有限 `messageKey` 渲染。参数/JSON 错误由 Wails 标记为 `TypeError`，其 framework message 同样不得展示。无法识别的 kind/version/code 必须按 internal fail closed，不能显示底层 message、路径、请求参数、panic value 或 driver cause。
 - 后续 Wails bindings 只暴露 Go `query-v1` 与各业务 query service 组合出的非泛型 DTO；组件不接收 GORM model、SQLite row、SQL 字段或任意 map。
@@ -74,7 +74,7 @@
 - Projects 组件必须保留 unknown/conflict/invalid dimension 行，分别展示 global/matched/page totals；confidence filter 使用 Go 返回的 range-level confidence。详情 daily 只用于下钻展示，前端不得重算并覆盖 list totals 或绕过 reconciliation failure。
 - Projects 列表直接消费 generated `sessionCount/trend`；trend 是所选 range 末尾最多 30 个已有日 bucket，不补零、不延伸、不代替 full totals。Project 详情的 `sessionPage/sessions` 与 `modelPage/models` 各自保持服务端顺序和 opaque cursor；两类 process-key cursor 不解析、不持久化，并绑定 active generation，Project/range 变化、同进程 generation rollover 或进程重启后均从首页恢复。页面不得复用 `ListSessions(projectId)` 冒充 Project contribution，也不得用当前页重算 Session/Model 总量。
 - active Project rollup 不可用是 fatal unavailable，不渲染“0 个项目”；active rollup 下的真实空 range 才渲染 known-empty。Session 缺 rollup 则是 partial，两条路径不得共用同一个空态。
-- Quota 直接消费既有 `quota-current-v1`，外层统一使用 `query-v1` meta；Source、Job、Health 与 Settings 消费 `runtime-info-v1` typed DTO。前端不得读取 `source_files`、`source_state`、`job_runs`、`health_events`、scheduler 或 Preferences persistence model。
+- Quota 直接消费既有 `quota-current-v1`，外层统一使用 `query-v1` meta；手动刷新只调用 generated `RequestQuotaRefresh`，后端继续作为 60 秒 durable throttle、Retry-After、claim 与 credential 生命周期的唯一权威，并在 mutation settle 后失效 quota query。Source、Job、Health 与 Settings 消费 `runtime-info-v1` typed DTO。前端不得读取 `source_files`、`source_state`、`source_refresh_schedules`、`job_runs`、`health_events`、scheduler 或 Preferences persistence model。
 - Source 列表把本机文件与在线来源分别映射为 `local_file:<opaque-id>`、`online:<opaque-id>`，按 `updatedAt + sourceKey` 稳定分页；只展示 provider/source type、state/freshness、字节进度、last attempt/success、next due、有限 error/failure code 和恢复动作，不返回当前路径、device/inode、scope、request/payload identity。任一来源种类读取失败时保留另一种的可用结果，并通过 `partial + unavailableKinds` 显式说明；调用方所选种类全部失败时才返回 fatal unavailable。
 - Job 只展示稳定 job identity、state/phase、进度、时间、失败计数、next retry 和 typed recovery action；resume cursor、scheduler task ID 与内部 dedupe key 不进入 DTO。Health 只展示 event/domain/severity/code、active/resolved、occurrence、last seen 和安全关联，不返回 fingerprint 或底层 error text。
 - Health 当前级别只聚合 active events：resolved critical 仍保留历史计数，但不能让当前状态永久 `blocked`。`paused` 只来自 durable user pause 或 system sleeping；`blocked/degraded/busy` 再按 lifecycle 与 active critical/error/warning 映射。
@@ -144,4 +144,4 @@ Project detail 只使用 generated `ProjectDetail`：aggregate、daily、pricing
 
 ## 后续评审重点
 
-TOO-272 已实现共享应用壳、路由、基础状态交互和 Wails Bootstrap ready/error/retry；TOO-273 已实现概览，TOO-274 已实现 Sessions 列表与详情，TOO-275 已实现 Projects 列表与详情并进入视觉/review/集成门禁。Quota、本机状态与 Settings 的独立页面仍由后续卡完成。图标方向和健康信息层级继续冻结；后续页面必须复用当前 token、query-state、辅助模式降级与 macOS-only 边界。
+TOO-272 已实现共享应用壳、路由、基础状态交互和 Wails Bootstrap ready/error/retry；TOO-273 已实现概览，TOO-274 已实现 Sessions 列表与详情，TOO-275 已实现 Projects 列表与详情，TOO-276 已实现 Quota 窗口、来源/仲裁、Reset credits、刷新状态与手动刷新 command。本机状态与 Settings 的独立页面仍由后续卡完成。图标方向和健康信息层级继续冻结；后续页面必须复用当前 token、query-state、辅助模式降级与 macOS-only 边界。
