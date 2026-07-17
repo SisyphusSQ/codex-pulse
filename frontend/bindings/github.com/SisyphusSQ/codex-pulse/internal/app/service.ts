@@ -29,8 +29,16 @@ import * as usagecost$0 from "../query/usagecost/models.js";
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+export function AnalyzeSessionIndexRepair(): $CancellablePromise<$models.RepairDryRunReceipt> {
+    return $Call.ByID(2801159080);
+}
+
 export function Bootstrap(): $CancellablePromise<$models.BootstrapInfo> {
     return $Call.ByID(1557176803);
+}
+
+export function ConfirmHomeSwitch(): $CancellablePromise<$models.HomeSwitchReceipt> {
+    return $Call.ByID(853820626);
 }
 
 export function Contracts(): $CancellablePromise<$models.BindingContractInfo> {
@@ -65,6 +73,10 @@ export function ListSources(request: query$0.Request): $CancellablePromise<runti
     return $Call.ByID(3661465571, request);
 }
 
+export function PlanHomeSwitch(request: $models.HomeSwitchPlanRequest): $CancellablePromise<$models.HomeSwitchPlanReceipt> {
+    return $Call.ByID(3604705039, request);
+}
+
 export function ProjectDetail(request: usagecost$0.ProjectDetailRequest): $CancellablePromise<usagecost$0.ProjectDetailResponse> {
     return $Call.ByID(728158813, request);
 }
@@ -73,8 +85,16 @@ export function QuotaCurrent(evaluatedAtMS: number): $CancellablePromise<runtime
     return $Call.ByID(2925790970, evaluatedAtMS);
 }
 
+export function RecoverHomeSwitch(): $CancellablePromise<$models.HomeSwitchReceipt> {
+    return $Call.ByID(3014210070);
+}
+
 export function RequestQuotaRefresh(source: quota$0.RefreshSource): $CancellablePromise<$models.QuotaRefreshReceipt> {
     return $Call.ByID(92566339, source);
+}
+
+export function RunRuntimeAction(action: $models.RuntimeAction): $CancellablePromise<$models.RuntimeActionReceipt> {
+    return $Call.ByID(2851045070, action);
 }
 
 export function SessionDetail(request: usagecost$0.SessionDetailRequest): $CancellablePromise<usagecost$0.SessionDetailResponse> {
@@ -87,6 +107,10 @@ export function Settings(): $CancellablePromise<runtimeinfo$0.SettingsResponse> 
 
 export function Source(request: runtimeinfo$0.SourceDetailRequest): $CancellablePromise<runtimeinfo$0.SourceDetailResponse> {
     return $Call.ByID(89156586, request);
+}
+
+export function UpdateSettings(request: $models.SettingsUpdateRequest): $CancellablePromise<$models.SettingsUpdateReceipt> {
+    return $Call.ByID(4235621163, request);
 }
 
 export function UsageCost(request: usagecost$0.UsageCostRequest): $CancellablePromise<usagecost$0.UsageCostResponse> {

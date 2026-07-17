@@ -8,14 +8,29 @@ export {
 
 export {
     BindingMethodKind,
+    HomeSwitchResult,
+    HomeSwitchStrategy,
     QueryInvalidationDomain,
-    QueryInvalidationVersion
+    QueryInvalidationVersion,
+    RuntimeAction,
+    SettingsUpdateResult
 } from "./models.js";
 
 export type {
     BindingContractInfo,
     BindingMethodInfo,
     BootstrapInfo,
+    HomeSwitchPlanReceipt,
+    HomeSwitchPlanRequest,
+    HomeSwitchReceipt,
     QueryInvalidationEvent,
-    QuotaRefreshReceipt
+    QuotaRefreshReceipt,
+    RepairDryRunReceipt,
+    RuntimeActionReceipt,
+    SettingsOnlineUpdate,
+    SettingsRefreshUpdate,
+    SettingsUIUpdate,
+    SettingsUpdateReceipt,
+    SettingsUpdateRequest,
+    SettingsUpdatesUpdate
 } from "./models.js";

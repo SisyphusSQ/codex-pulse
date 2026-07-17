@@ -48,19 +48,22 @@ type quotaRefreshBindingCommand interface {
 }
 
 type ServiceConfig struct {
-	UsageCost    usageCostBindingQuery
-	RuntimeInfo  runtimeInfoBindingQuery
-	QuotaRefresh quotaRefreshBindingCommand
+	UsageCost       usageCostBindingQuery
+	RuntimeInfo     runtimeInfoBindingQuery
+	QuotaRefresh    quotaRefreshBindingCommand
+	RuntimeControls runtimeControlBindingCommand
 }
 
 // Service is the only business service registered with Wails. Its unexported
 // dependencies keep Store, Preferences, filesystem and credential primitives
 // outside the generated frontend surface.
 type Service struct {
-	usageCost    usageCostBindingQuery
-	runtimeInfo  runtimeInfoBindingQuery
-	quotaMu      sync.RWMutex
-	quotaRefresh quotaRefreshBindingCommand
+	usageCost       usageCostBindingQuery
+	runtimeInfo     runtimeInfoBindingQuery
+	quotaMu         sync.RWMutex
+	quotaRefresh    quotaRefreshBindingCommand
+	runtimeMu       sync.RWMutex
+	runtimeControls runtimeControlBindingCommand
 }
 
 func NewService(config ServiceConfig) (*Service, error) {
@@ -68,10 +71,24 @@ func NewService(config ServiceConfig) (*Service, error) {
 		return nil, ErrBindingService
 	}
 	return &Service{
-		usageCost:    config.UsageCost,
-		runtimeInfo:  config.RuntimeInfo,
-		quotaRefresh: config.QuotaRefresh,
+		usageCost:       config.UsageCost,
+		runtimeInfo:     config.RuntimeInfo,
+		quotaRefresh:    config.QuotaRefresh,
+		runtimeControls: config.RuntimeControls,
 	}, nil
+}
+
+func (service *Service) bindRuntimeControls(command runtimeControlBindingCommand) error {
+	if service == nil || command == nil {
+		return ErrBindingService
+	}
+	service.runtimeMu.Lock()
+	defer service.runtimeMu.Unlock()
+	if service.runtimeControls != nil {
+		return ErrBindingService
+	}
+	service.runtimeControls = command
+	return nil
 }
 
 func (service *Service) bindQuotaRefresh(command quotaRefreshBindingCommand) error {
@@ -131,6 +148,12 @@ var bindingMethodAllowlist = []BindingMethodInfo{
 	{Name: "ProjectDetail", Kind: BindingMethodQuery},
 	{Name: "QuotaCurrent", Kind: BindingMethodQuery},
 	{Name: "RequestQuotaRefresh", Kind: BindingMethodCommand},
+	{Name: "UpdateSettings", Kind: BindingMethodCommand},
+	{Name: "PlanHomeSwitch", Kind: BindingMethodCommand},
+	{Name: "ConfirmHomeSwitch", Kind: BindingMethodCommand},
+	{Name: "RecoverHomeSwitch", Kind: BindingMethodCommand},
+	{Name: "RunRuntimeAction", Kind: BindingMethodCommand},
+	{Name: "AnalyzeSessionIndexRepair", Kind: BindingMethodCommand},
 	{Name: "ListSources", Kind: BindingMethodQuery},
 	{Name: "Source", Kind: BindingMethodQuery},
 	{Name: "ListJobs", Kind: BindingMethodQuery},
@@ -145,8 +168,11 @@ func (*Service) Contracts() BindingContractInfo {
 	return BindingContractInfo{
 		Version: BindingContractVersion, QueryVersion: basequery.ContractVersion,
 		UsageCostVersion: usagecost.ContractVersion, RuntimeInfoVersion: runtimeinfo.ContractVersion,
-		Methods:        append([]BindingMethodInfo(nil), bindingMethodAllowlist...),
-		CommandMethods: []string{"RequestQuotaRefresh"}, ErrorExample: errorExample,
+		Methods: append([]BindingMethodInfo(nil), bindingMethodAllowlist...),
+		CommandMethods: []string{
+			"RequestQuotaRefresh", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
+			"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
+		}, ErrorExample: errorExample,
 	}
 }
 

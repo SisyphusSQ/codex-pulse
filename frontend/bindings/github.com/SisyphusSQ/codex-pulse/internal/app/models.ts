@@ -46,6 +46,45 @@ export interface BootstrapInfo {
     "platform": string;
 }
 
+export interface HomeSwitchPlanReceipt {
+    "strategy": HomeSwitchStrategy;
+    "targetGeneration": string;
+    "preservesOldFacts": boolean;
+    "clearsDerivedFacts": boolean;
+}
+
+export interface HomeSwitchPlanRequest {
+    "targetPath": string;
+    "strategy": HomeSwitchStrategy;
+}
+
+export interface HomeSwitchReceipt {
+    "revision": string;
+    "generation": string;
+    "result": HomeSwitchResult;
+}
+
+export enum HomeSwitchResult {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    HomeSwitchCompletedResult = "completed",
+    HomeSwitchRolledBackResult = "rolled_back",
+    HomeSwitchRecoveryRequired = "recovery_required",
+};
+
+export enum HomeSwitchStrategy {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    HomeSwitchIndependentDatabase = "independent_database",
+    HomeSwitchClearAndRebuild = "clear_and_rebuild",
+};
+
 export enum QueryInvalidationDomain {
     /**
      * The Go zero value for the underlying type of the enum.
@@ -81,4 +120,77 @@ export interface QuotaRefreshReceipt {
     "nextDueAtMs": number | null;
     "reason": store$0.SourceRefreshReason;
     "lastManualAtMs": number | null;
+}
+
+export interface RepairDryRunReceipt {
+    "analyzedAtMs": number;
+    "actionCount": number;
+    "conflictCount": number;
+    "historyCount": number;
+    "diagnosticCount": number;
+    "noop": boolean;
+}
+
+export enum RuntimeAction {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    RuntimeActionPauseBackfill = "pause_backfill",
+    RuntimeActionPauseAll = "pause_all",
+    RuntimeActionResume = "resume",
+    RuntimeActionReconcile = "reconcile",
+};
+
+export interface RuntimeActionReceipt {
+    "action": RuntimeAction;
+    "pauseScope": string;
+    "sourceState": string;
+    "transition": string;
+}
+
+export interface SettingsOnlineUpdate {
+    "quotaEnabled": boolean;
+    "resetCreditsEnabled": boolean;
+}
+
+export interface SettingsRefreshUpdate {
+    "quotaIntervalSeconds": number;
+    "resetCreditsIntervalSeconds": number;
+    "reconcileIntervalSeconds": number;
+    "jsonlDebounceMilliseconds": number;
+}
+
+export interface SettingsUIUpdate {
+    "launchBehavior": string;
+    "overviewRange": string;
+}
+
+export interface SettingsUpdateReceipt {
+    "revision": string;
+    "result": SettingsUpdateResult;
+}
+
+export interface SettingsUpdateRequest {
+    "expectedRevision": string;
+    "online": SettingsOnlineUpdate;
+    "refresh": SettingsRefreshUpdate;
+    "updates": SettingsUpdatesUpdate;
+    "ui": SettingsUIUpdate;
+}
+
+export enum SettingsUpdateResult {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    SettingsUpdateApplied = "applied",
+    SettingsUpdateReconcileRequired = "applied_reconcile_required",
+};
+
+export interface SettingsUpdatesUpdate {
+    "autoCheckEnabled": boolean;
+    "checkIntervalSeconds": number;
 }
