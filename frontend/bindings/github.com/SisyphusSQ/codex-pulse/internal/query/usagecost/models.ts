@@ -38,6 +38,8 @@ export interface ProjectDailyPoint {
 export interface ProjectDetailRequest {
     "dimensionKey": string;
     "range": query$0.LocalDateRange;
+    "sessionPage": query$0.PageRequest;
+    "modelPage": query$0.PageRequest;
 }
 
 export interface ProjectDetailResponse {
@@ -49,12 +51,18 @@ export interface ProjectDetailResponse {
     "pricingVersions": string[] | null;
     "item": ProjectItem;
     "daily": ProjectDailyPoint[] | null;
+    "sessionPage": query$0.PageInfo;
+    "sessions": ProjectSessionItem[] | null;
+    "modelPage": query$0.PageInfo;
+    "models": ProjectModelItem[] | null;
     "globalTotals": UsageTotals;
 }
 
 export interface ProjectItem {
     "dimensionKey": string;
     "project": AttributionValue;
+    "sessionCount": query$0.NumericValue;
+    "trend": ProjectDailyPoint[] | null;
     "totals": UsageTotals;
 }
 
@@ -70,6 +78,24 @@ export interface ProjectListResponse {
     "globalTotals": UsageTotals;
     "matchedTotals": UsageTotals;
     "pageTotals": UsageTotals;
+}
+
+export interface ProjectModelItem {
+    "dimensionKey": string;
+    "model": AttributionValue;
+    "totals": UsageTotals;
+}
+
+export interface ProjectSessionItem {
+    "sessionId": string;
+    "displayTitle": string;
+    "titleConfidence": string;
+    "titleSource": string;
+    "titleReason": string;
+    "model": AttributionValue;
+    "activity": string;
+    "lastActivityAtMs": query$0.NumericValue;
+    "totals": UsageTotals;
 }
 
 export interface ReasonCount {

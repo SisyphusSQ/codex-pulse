@@ -45,6 +45,90 @@ const projectAnalyticsGroupSelect = `
 	MAX(project.last_activity_at_ms) AS last_activity_at_ms,
 	COALESCE(MAX(project.updated_at_ms), 0) AS updated_at_ms`
 
+const projectContributionDimensionExpression = `CASE
+	WHEN attribution.project_id IS NOT NULL
+		AND attribution.project_display_name IS NOT NULL
+		THEN attribution.project_id
+	ELSE 'unknown|' || COALESCE(attribution.project_confidence, 'unknown') || '|'
+		|| COALESCE(attribution.project_source, 'missing') || '|'
+		|| COALESCE(attribution.project_reason, 'missing')
+	END`
+
+const projectModelContributionDimensionExpression = `CASE
+	WHEN attribution.model_key IS NOT NULL
+		AND attribution.model_display_name IS NOT NULL
+		THEN attribution.model_key
+	ELSE 'unknown|' || COALESCE(attribution.model_confidence, 'unknown') || '|'
+		|| COALESCE(attribution.model_source, 'missing') || '|'
+		|| COALESCE(attribution.model_reason, 'missing')
+	END`
+
+const projectContributionTotalTokensExpression = `CASE
+	WHEN SUM(CASE WHEN usage.input_tokens IS NULL
+		OR usage.cached_input_tokens IS NULL
+		OR usage.output_tokens IS NULL
+		OR usage.reasoning_tokens IS NULL THEN 1 ELSE 0 END) > 0 THEN NULL
+	ELSE SUM(usage.input_tokens + usage.cached_input_tokens
+		+ usage.output_tokens + usage.reasoning_tokens)
+	END`
+
+const projectContributionTotalsSelect = `
+	COUNT(*) AS rollup_rows,
+	COUNT(*) AS turn_count,
+	SUM(usage.input_tokens) AS input_tokens,
+	SUM(CASE WHEN usage.input_tokens IS NULL THEN 1 ELSE 0 END) AS input_nulls,
+	SUM(usage.cached_input_tokens) AS cached_input_tokens,
+	SUM(CASE WHEN usage.cached_input_tokens IS NULL THEN 1 ELSE 0 END) AS cached_nulls,
+	SUM(usage.output_tokens) AS output_tokens,
+	SUM(CASE WHEN usage.output_tokens IS NULL THEN 1 ELSE 0 END) AS output_nulls,
+	SUM(usage.reasoning_tokens) AS reasoning_tokens,
+	SUM(CASE WHEN usage.reasoning_tokens IS NULL THEN 1 ELSE 0 END) AS reasoning_nulls,
+	SUM(usage.input_tokens + usage.cached_input_tokens
+		+ usage.output_tokens + usage.reasoning_tokens) AS total_tokens,
+	SUM(CASE WHEN usage.input_tokens IS NULL
+		OR usage.cached_input_tokens IS NULL
+		OR usage.output_tokens IS NULL
+		OR usage.reasoning_tokens IS NULL THEN 1 ELSE 0 END) AS total_nulls,
+	SUM(cost.estimated_usd_micros) AS estimated_usd_micros,
+	SUM(CASE WHEN cost.pricing_status = 'priced' THEN 1 ELSE 0 END) AS priced_turn_count,
+	SUM(CASE WHEN cost.pricing_status = 'unpriced' THEN 1 ELSE 0 END) AS unpriced_turn_count,
+	MIN(usage.observed_at_ms) AS first_activity_at_ms,
+	MAX(usage.observed_at_ms) AS last_activity_at_ms,
+	MAX(cost.calculated_at_ms) AS updated_at_ms`
+
+const projectSessionContributionSelect = `
+	turn_record.session_id AS session_id,
+	MIN(session_attribution.display_title) AS display_title,
+	MIN(session_attribution.title_confidence) AS title_confidence,
+	MIN(session_attribution.title_source) AS title_source,
+	MIN(session_attribution.title_reason) AS title_reason,
+	MIN(session_attribution.model_key) AS model_key,
+	MIN(session_attribution.model_display_name) AS model_display_name,
+	MIN(session_attribution.model_confidence) AS model_confidence,
+	MIN(session_attribution.model_source) AS model_source,
+	MIN(session_attribution.model_reason) AS model_reason,
+	CASE WHEN EXISTS (
+		SELECT 1 FROM turns AS active_turn
+		WHERE active_turn.session_id = turn_record.session_id
+			AND active_turn.completed_at_ms IS NULL
+	) THEN 1 ELSE 0 END AS active,
+	` + projectContributionTotalsSelect
+
+const projectModelContributionSelect = `
+	` + projectModelContributionDimensionExpression + ` AS dimension_key,
+	MIN(attribution.model_key) AS model_key_min,
+	MAX(attribution.model_key) AS model_key_max,
+	MIN(attribution.model_display_name) AS model_display_name_min,
+	MAX(attribution.model_display_name) AS model_display_name_max,
+	MIN(CASE COALESCE(attribution.model_confidence, 'unknown')
+		WHEN 'unknown' THEN 0 WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3
+		ELSE -1 END) AS confidence_rank,
+	MIN(COALESCE(attribution.model_source, 'missing')) AS source_min,
+	MAX(COALESCE(attribution.model_source, 'missing')) AS source_max,
+	MIN(COALESCE(attribution.model_reason, 'missing')) AS reason_min,
+	MAX(COALESCE(attribution.model_reason, 'missing')) AS reason_max,
+	` + projectContributionTotalsSelect
+
 const analyticsNormalizedAggregateSelect = `
 	COUNT(*) AS rollup_rows,
 	COALESCE(SUM(rollup.turn_count), 0) AS turn_count,
@@ -120,6 +204,35 @@ type projectAnalyticsProjection struct {
 	Totals             sessionAnalyticsTotalsProjection `gorm:"embedded"`
 }
 
+type projectSessionContributionProjection struct {
+	SessionID       string                           `gorm:"column:session_id"`
+	DisplayTitle    string                           `gorm:"column:display_title"`
+	TitleConfidence string                           `gorm:"column:title_confidence"`
+	TitleSource     string                           `gorm:"column:title_source"`
+	TitleReason     string                           `gorm:"column:title_reason"`
+	ModelKey        *string                          `gorm:"column:model_key"`
+	ModelDisplay    *string                          `gorm:"column:model_display_name"`
+	ModelConfidence string                           `gorm:"column:model_confidence"`
+	ModelSource     string                           `gorm:"column:model_source"`
+	ModelReason     string                           `gorm:"column:model_reason"`
+	Active          int64                            `gorm:"column:active"`
+	Totals          sessionAnalyticsTotalsProjection `gorm:"embedded"`
+}
+
+type projectModelContributionProjection struct {
+	DimensionKey    string                           `gorm:"column:dimension_key"`
+	ModelKeyMin     *string                          `gorm:"column:model_key_min"`
+	ModelKeyMax     *string                          `gorm:"column:model_key_max"`
+	ModelDisplayMin *string                          `gorm:"column:model_display_name_min"`
+	ModelDisplayMax *string                          `gorm:"column:model_display_name_max"`
+	ConfidenceRank  int                              `gorm:"column:confidence_rank"`
+	SourceMin       string                           `gorm:"column:source_min"`
+	SourceMax       string                           `gorm:"column:source_max"`
+	ReasonMin       string                           `gorm:"column:reason_min"`
+	ReasonMax       string                           `gorm:"column:reason_max"`
+	Totals          sessionAnalyticsTotalsProjection `gorm:"embedded"`
+}
+
 func (repository *Repository) ListProjectAnalytics(
 	ctx context.Context,
 	filter ProjectAnalyticsFilter,
@@ -179,6 +292,11 @@ func (repository *Repository) ListProjectAnalytics(
 			}
 			page.Records = append(page.Records, record)
 		}
+		if err := decorateProjectAnalyticsRecords(
+			database, filter.Range, generation, page.Records,
+		); err != nil {
+			return err
+		}
 		page.PageTotals, err = aggregateProjectPageTotals(page.Records)
 		if err != nil {
 			return err
@@ -190,6 +308,101 @@ func (repository *Repository) ListProjectAnalytics(
 		return err
 	})
 	return page, err
+}
+
+type projectSessionCountProjection struct {
+	DimensionKey string                           `gorm:"column:dimension_key"`
+	SessionCount int64                            `gorm:"column:session_count"`
+	Totals       sessionAnalyticsTotalsProjection `gorm:"embedded"`
+}
+
+func decorateProjectAnalyticsRecords(
+	database *gorm.DB,
+	filter AnalyticsRange,
+	generation costRollupGenerationModel,
+	records []ProjectAnalyticsRecord,
+) error {
+	if len(records) == 0 {
+		return nil
+	}
+	if err := ensureProjectContributionAttributionsPresent(database, filter, generation); err != nil {
+		return err
+	}
+	dimensionKeys := make([]string, 0, len(records))
+	recordIndex := make(map[string]int, len(records))
+	for index := range records {
+		dimensionKeys = append(dimensionKeys, records[index].DimensionKey)
+		recordIndex[records[index].DimensionKey] = index
+		records[index].Trend = make([]ProjectUsageDaily, 0)
+	}
+
+	var counts []projectSessionCountProjection
+	if err := database.Table("turn_usage AS usage").
+		Select(projectContributionDimensionExpression+
+			" AS dimension_key, COUNT(DISTINCT turn_record.session_id) AS session_count, "+
+			projectContributionTotalsSelect).
+		Joins("JOIN turns AS turn_record ON turn_record.turn_id = usage.turn_id AND turn_record.source_generation = usage.source_generation").
+		Joins("LEFT JOIN turn_attributions AS attribution ON attribution.turn_id = usage.turn_id").
+		Joins("JOIN turn_costs AS cost ON cost.turn_id = usage.turn_id AND cost.generation_id = ?", generation.GenerationID).
+		Where("usage.is_final = ? AND usage.observed_at_ms >= ? AND usage.observed_at_ms < ?",
+			true, filter.StartAtMS, filter.EndAtMS).
+		Where(projectContributionDimensionExpression+" IN ?", dimensionKeys).
+		Group(projectContributionDimensionExpression).
+		Scan(&counts).Error; err != nil {
+		return err
+	}
+	for _, count := range counts {
+		index, found := recordIndex[count.DimensionKey]
+		if !found || count.SessionCount <= 0 || records[index].SessionCount != 0 {
+			return invalidRecord("stored project session count is invalid")
+		}
+		contributionTotals, err := sessionTotalsFromProjection(count.Totals)
+		if err != nil {
+			return err
+		}
+		if !equalAnalyticsTotals(contributionTotals, records[index].Totals) {
+			return invalidRecord("project list contribution reconciliation failed")
+		}
+		records[index].SessionCount = count.SessionCount
+	}
+	for index := range records {
+		if records[index].SessionCount <= 0 {
+			return invalidRecord("stored project session count is missing")
+		}
+	}
+
+	var models []projectUsageDailyModel
+	if err := database.Where(
+		"generation_id = ? AND reporting_timezone = ? AND dimension_key IN ? AND bucket_start_ms >= ? AND bucket_start_ms < ?",
+		generation.GenerationID, filter.ReportingTimezone, dimensionKeys,
+		filter.StartAtMS, filter.EndAtMS,
+	).Order("dimension_key, bucket_start_ms").Find(&models).Error; err != nil {
+		return err
+	}
+	for _, model := range models {
+		index, found := recordIndex[model.DimensionKey]
+		if !found {
+			return invalidRecord("stored project trend dimension is invalid")
+		}
+		daily, err := projectDailyFromModel(model, filter, generation.GenerationID)
+		if err != nil {
+			return err
+		}
+		appendProjectTrend(&records[index], daily)
+	}
+	for index := range records {
+		if len(records[index].Trend) == 0 {
+			return invalidRecord("stored project trend is missing")
+		}
+	}
+	return nil
+}
+
+func appendProjectTrend(record *ProjectAnalyticsRecord, daily ProjectUsageDaily) {
+	record.Trend = append(record.Trend, daily)
+	if len(record.Trend) > 30 {
+		record.Trend = record.Trend[len(record.Trend)-30:]
+	}
 }
 
 func (repository *Repository) ProjectAnalytics(
@@ -208,11 +421,21 @@ func (repository *Repository) ProjectAnalytics(
 	if _, err := validateAnalyticsRange(filter.Range); err != nil {
 		return ProjectAnalyticsSnapshot{}, err
 	}
+	if filter.SessionLimit == 0 {
+		filter.SessionLimit = 20
+	}
+	if filter.ModelLimit == 0 {
+		filter.ModelLimit = 20
+	}
 	if filter.DimensionKey == "" || len(filter.DimensionKey) > 512 {
 		return ProjectAnalyticsSnapshot{}, invalidRecord("project analytics detail identity is invalid")
 	}
+	if err := validateProjectAnalyticsDetailPages(filter); err != nil {
+		return ProjectAnalyticsSnapshot{}, err
+	}
 	result := ProjectAnalyticsSnapshot{
-		Daily: make([]ProjectUsageDaily, 0), PricingVersions: make([]string, 0),
+		Daily: make([]ProjectUsageDaily, 0), Sessions: make([]ProjectSessionAnalyticsRecord, 0),
+		Models: make([]ProjectModelAnalyticsRecord, 0), PricingVersions: make([]string, 0),
 	}
 	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
 		database := connection.WithContext(ctx)
@@ -221,6 +444,12 @@ func (repository *Repository) ProjectAnalytics(
 			return err
 		}
 		result.Generation = generationFromModel(generation)
+		if (filter.SessionCursor != nil &&
+			filter.SessionCursor.GenerationID != generation.GenerationID) ||
+			(filter.ModelCursor != nil &&
+				filter.ModelCursor.GenerationID != generation.GenerationID) {
+			return invalidRecord("project contribution cursor generation is stale")
+		}
 		result.GlobalTotals, err = reconcileProjectAnalyticsRange(database, filter.Range, generation)
 		if err != nil {
 			return err
@@ -243,6 +472,11 @@ func (repository *Repository) ProjectAnalytics(
 		if err != nil {
 			return err
 		}
+		decorated := []ProjectAnalyticsRecord{result.Record}
+		if err := decorateProjectAnalyticsRecords(database, filter.Range, generation, decorated); err != nil {
+			return err
+		}
+		result.Record = decorated[0]
 		var models []projectUsageDailyModel
 		if err := database.Where(
 			"generation_id = ? AND reporting_timezone = ? AND dimension_key = ? AND bucket_start_ms >= ? AND bucket_start_ms < ?",
@@ -265,10 +499,300 @@ func (repository *Repository) ProjectAnalytics(
 		if !equalAnalyticsTotals(dailyTotals, result.Record.Totals) {
 			return invalidRecord("project detail daily reconciliation failed")
 		}
+		if err := loadProjectContributionPages(database, filter, generation, &result); err != nil {
+			return err
+		}
 		result.PricingVersions, err = loadAnalyticsPricingVersions(database, filter.Range, generation.GenerationID)
 		return err
 	})
 	return result, err
+}
+
+func validateProjectAnalyticsDetailPages(filter ProjectAnalyticsDetailFilter) error {
+	if filter.SessionLimit < 1 || filter.SessionLimit > 50 ||
+		filter.ModelLimit < 1 || filter.ModelLimit > 50 {
+		return invalidRecord("project analytics detail page limit is invalid")
+	}
+	if cursor := filter.SessionCursor; cursor != nil {
+		if cursor.GenerationID == "" || len(cursor.GenerationID) > 512 ||
+			cursor.DimensionKey != filter.DimensionKey || cursor.SessionID == "" ||
+			len(cursor.SessionID) > 512 || cursor.LastActivityAtMS < 0 {
+			return invalidRecord("project session cursor is invalid")
+		}
+	}
+	if cursor := filter.ModelCursor; cursor != nil {
+		if cursor.GenerationID == "" || len(cursor.GenerationID) > 512 ||
+			cursor.DimensionKey != filter.DimensionKey || cursor.ModelDimensionKey == "" ||
+			len(cursor.ModelDimensionKey) > 512 || cursor.Null == (cursor.TotalTokens != nil) ||
+			(cursor.TotalTokens != nil && *cursor.TotalTokens < 0) {
+			return invalidRecord("project model cursor is invalid")
+		}
+	}
+	return nil
+}
+
+func buildProjectContributionQuery(
+	database *gorm.DB,
+	filter AnalyticsRange,
+	generation costRollupGenerationModel,
+	dimensionKey string,
+) *gorm.DB {
+	return database.Table("turn_usage AS usage").
+		Joins("JOIN turns AS turn_record ON turn_record.turn_id = usage.turn_id AND turn_record.source_generation = usage.source_generation").
+		Joins("LEFT JOIN turn_attributions AS attribution ON attribution.turn_id = usage.turn_id").
+		Joins("JOIN turn_costs AS cost ON cost.turn_id = usage.turn_id AND cost.generation_id = ?", generation.GenerationID).
+		Where("usage.is_final = ? AND usage.observed_at_ms >= ? AND usage.observed_at_ms < ?",
+			true, filter.StartAtMS, filter.EndAtMS).
+		Where(projectContributionDimensionExpression+" = ?", dimensionKey)
+}
+
+func loadProjectContributionPages(
+	database *gorm.DB,
+	filter ProjectAnalyticsDetailFilter,
+	generation costRollupGenerationModel,
+	result *ProjectAnalyticsSnapshot,
+) error {
+	if err := ensureSessionAttributionsPresent(database); err != nil {
+		return err
+	}
+	var aggregate sessionAnalyticsTotalsProjection
+	if err := buildProjectContributionQuery(database, filter.Range, generation, filter.DimensionKey).
+		Select(projectContributionTotalsSelect).Scan(&aggregate).Error; err != nil {
+		return err
+	}
+	contributionTotals, err := sessionTotalsFromProjection(aggregate)
+	if err != nil {
+		return err
+	}
+	if !equalAnalyticsTotals(contributionTotals, result.Record.Totals) {
+		return invalidRecord("project contribution reconciliation failed")
+	}
+	if err := reconcileProjectContributionGroups(
+		database, filter.Range, generation, filter.DimensionKey, result.Record.Totals,
+	); err != nil {
+		return err
+	}
+
+	sessionQuery := buildProjectContributionQuery(
+		database, filter.Range, generation, filter.DimensionKey,
+	).Joins(
+		"JOIN session_attributions AS session_attribution ON session_attribution.session_id = turn_record.session_id",
+	).Group("turn_record.session_id")
+	if cursor := filter.SessionCursor; cursor != nil {
+		sessionQuery = sessionQuery.Having(
+			"MAX(usage.observed_at_ms) < ? OR (MAX(usage.observed_at_ms) = ? AND turn_record.session_id < ?)",
+			cursor.LastActivityAtMS, cursor.LastActivityAtMS, cursor.SessionID,
+		)
+	}
+	var sessionProjections []projectSessionContributionProjection
+	if err := sessionQuery.Select(projectSessionContributionSelect).
+		Order("MAX(usage.observed_at_ms) DESC").Order("turn_record.session_id DESC").
+		Limit(filter.SessionLimit + 1).Scan(&sessionProjections).Error; err != nil {
+		return err
+	}
+	hasMoreSessions := len(sessionProjections) > filter.SessionLimit
+	if hasMoreSessions {
+		sessionProjections = sessionProjections[:filter.SessionLimit]
+	}
+	for _, projection := range sessionProjections {
+		record, err := projectSessionRecordFromProjection(projection)
+		if err != nil {
+			return err
+		}
+		result.Sessions = append(result.Sessions, record)
+	}
+	if hasMoreSessions && len(result.Sessions) > 0 {
+		last := result.Sessions[len(result.Sessions)-1]
+		result.NextSessionCursor = &ProjectSessionAnalyticsCursor{
+			GenerationID: generation.GenerationID, DimensionKey: filter.DimensionKey,
+			SessionID:        last.SessionID,
+			LastActivityAtMS: last.LastActivityAtMS,
+		}
+	}
+
+	modelQuery := buildProjectContributionQuery(
+		database, filter.Range, generation, filter.DimensionKey,
+	).Group(projectModelContributionDimensionExpression)
+	if cursor := filter.ModelCursor; cursor != nil {
+		if cursor.Null {
+			modelQuery = modelQuery.Having(
+				projectContributionTotalTokensExpression+" IS NULL AND "+
+					projectModelContributionDimensionExpression+" < ?",
+				cursor.ModelDimensionKey,
+			)
+		} else {
+			modelQuery = modelQuery.Having(
+				"(("+projectContributionTotalTokensExpression+" IS NOT NULL AND ("+
+					projectContributionTotalTokensExpression+" < ? OR ("+
+					projectContributionTotalTokensExpression+" = ? AND "+
+					projectModelContributionDimensionExpression+" < ?))) OR "+
+					projectContributionTotalTokensExpression+" IS NULL)",
+				*cursor.TotalTokens, *cursor.TotalTokens, cursor.ModelDimensionKey,
+			)
+		}
+	}
+	var modelProjections []projectModelContributionProjection
+	if err := modelQuery.Select(projectModelContributionSelect).
+		Order(projectContributionTotalTokensExpression + " IS NULL").
+		Order(projectContributionTotalTokensExpression + " DESC").
+		Order(projectModelContributionDimensionExpression + " DESC").
+		Limit(filter.ModelLimit + 1).Scan(&modelProjections).Error; err != nil {
+		return err
+	}
+	hasMoreModels := len(modelProjections) > filter.ModelLimit
+	if hasMoreModels {
+		modelProjections = modelProjections[:filter.ModelLimit]
+	}
+	for _, projection := range modelProjections {
+		record, err := projectModelRecordFromProjection(projection)
+		if err != nil {
+			return err
+		}
+		result.Models = append(result.Models, record)
+	}
+	if hasMoreModels && len(result.Models) > 0 {
+		last := result.Models[len(result.Models)-1]
+		result.NextModelCursor = &ProjectModelAnalyticsCursor{
+			GenerationID: generation.GenerationID, DimensionKey: filter.DimensionKey,
+			ModelDimensionKey: last.DimensionKey,
+			Null:              last.Totals.TotalTokens == nil,
+			TotalTokens:       cloneInt64Pointer(last.Totals.TotalTokens),
+		}
+	}
+	return nil
+}
+
+func ensureProjectContributionAttributionsPresent(
+	database *gorm.DB,
+	filter AnalyticsRange,
+	generation costRollupGenerationModel,
+) error {
+	var missing int64
+	if err := database.Table("turn_usage AS usage").
+		Joins("JOIN turns AS turn_record ON turn_record.turn_id = usage.turn_id AND turn_record.source_generation = usage.source_generation").
+		Joins("LEFT JOIN turn_attributions AS attribution ON attribution.turn_id = usage.turn_id").
+		Joins("JOIN turn_costs AS cost ON cost.turn_id = usage.turn_id AND cost.generation_id = ?", generation.GenerationID).
+		Where("usage.is_final = ? AND usage.observed_at_ms >= ? AND usage.observed_at_ms < ?",
+			true, filter.StartAtMS, filter.EndAtMS).
+		Where("attribution.turn_id IS NULL").Count(&missing).Error; err != nil {
+		return err
+	}
+	if missing != 0 {
+		return invalidRecord("project contribution turn attribution is incomplete")
+	}
+	return nil
+}
+
+func reconcileProjectContributionGroups(
+	database *gorm.DB,
+	filter AnalyticsRange,
+	generation costRollupGenerationModel,
+	dimensionKey string,
+	want RollupTotals,
+) error {
+	sessionGroups := buildProjectContributionQuery(database, filter, generation, dimensionKey).
+		Joins("JOIN session_attributions AS session_attribution ON session_attribution.session_id = turn_record.session_id").
+		Select(projectContributionTotalsSelect).Group("turn_record.session_id")
+	sessionTotals, err := aggregateNormalizedAnalyticsTotals(database, sessionGroups)
+	if err != nil {
+		return err
+	}
+	if !equalAnalyticsTotals(sessionTotals, want) {
+		return invalidRecord("project session contribution reconciliation failed")
+	}
+
+	modelGroups := buildProjectContributionQuery(database, filter, generation, dimensionKey).
+		Select(projectContributionTotalsSelect).Group(projectModelContributionDimensionExpression)
+	modelTotals, err := aggregateNormalizedAnalyticsTotals(database, modelGroups)
+	if err != nil {
+		return err
+	}
+	if !equalAnalyticsTotals(modelTotals, want) {
+		return invalidRecord("project model contribution reconciliation failed")
+	}
+	return nil
+}
+
+func projectSessionRecordFromProjection(
+	projection projectSessionContributionProjection,
+) (ProjectSessionAnalyticsRecord, error) {
+	if projection.SessionID == "" || projection.DisplayTitle == "" ||
+		(projection.Active != 0 && projection.Active != 1) ||
+		!validProjectConfidence(projection.TitleConfidence) ||
+		!validProjectAttributionSource(projection.TitleSource) ||
+		!validProjectAttributionReason(projection.TitleReason) ||
+		!validProjectConfidence(projection.ModelConfidence) ||
+		!validProjectAttributionSource(projection.ModelSource) ||
+		!validProjectAttributionReason(projection.ModelReason) ||
+		(projection.ModelKey == nil) != (projection.ModelDisplay == nil) {
+		return ProjectSessionAnalyticsRecord{}, invalidRecord("stored project session attribution is invalid")
+	}
+	totals, err := sessionTotalsFromProjection(projection.Totals)
+	if err != nil {
+		return ProjectSessionAnalyticsRecord{}, err
+	}
+	activity := SessionActivityIdle
+	if projection.Active == 1 {
+		activity = SessionActivityActive
+	}
+	return ProjectSessionAnalyticsRecord{
+		SessionID: projection.SessionID, DisplayTitle: projection.DisplayTitle,
+		TitleConfidence: AttributionConfidence(projection.TitleConfidence),
+		TitleSource:     AttributionSource(projection.TitleSource),
+		TitleReason:     AttributionReason(projection.TitleReason),
+		Model: ModelAttribution{
+			ModelKey:    cloneAttributionString(projection.ModelKey),
+			DisplayName: cloneAttributionString(projection.ModelDisplay),
+			Confidence:  AttributionConfidence(projection.ModelConfidence),
+			Source:      AttributionSource(projection.ModelSource),
+			Reason:      AttributionReason(projection.ModelReason),
+		},
+		Activity: activity, LastActivityAtMS: totals.LastActivityAtMS, Totals: totals,
+	}, nil
+}
+
+func projectModelRecordFromProjection(
+	projection projectModelContributionProjection,
+) (ProjectModelAnalyticsRecord, error) {
+	if projection.DimensionKey == "" || projection.Totals.RollupRows <= 0 ||
+		!validProjectAttributionSource(projection.SourceMin) ||
+		!validProjectAttributionSource(projection.SourceMax) ||
+		!validProjectAttributionReason(projection.ReasonMin) ||
+		!validProjectAttributionReason(projection.ReasonMax) {
+		return ProjectModelAnalyticsRecord{}, invalidRecord("stored project model attribution is invalid")
+	}
+	confidence := projectConfidenceFromRank(projection.ConfidenceRank)
+	source := mergedProjectAttributionValue(projection.SourceMin, projection.SourceMax)
+	reason := mergedProjectAttributionValue(projection.ReasonMin, projection.ReasonMax)
+	if confidence == "" || !validProjectAttributionSource(source) ||
+		!validProjectAttributionReason(reason) {
+		return ProjectModelAnalyticsRecord{}, invalidRecord("stored project model attribution is invalid")
+	}
+	model := ModelAttribution{
+		Confidence: AttributionConfidence(confidence), Source: AttributionSource(source),
+		Reason: AttributionReason(reason),
+	}
+	switch {
+	case projection.ModelKeyMin == nil && projection.ModelKeyMax == nil &&
+		projection.ModelDisplayMin == nil && projection.ModelDisplayMax == nil:
+		if projection.DimensionKey != "unknown|"+confidence+"|"+source+"|"+reason {
+			return ProjectModelAnalyticsRecord{}, invalidRecord("stored unknown project model is inconsistent")
+		}
+	case projection.ModelKeyMin != nil && projection.ModelKeyMax != nil &&
+		projection.ModelDisplayMin != nil && projection.ModelDisplayMax != nil &&
+		*projection.ModelKeyMin == *projection.ModelKeyMax &&
+		*projection.ModelDisplayMin == *projection.ModelDisplayMax &&
+		*projection.ModelKeyMin == projection.DimensionKey && *projection.ModelDisplayMin != "":
+		model.ModelKey = cloneAttributionString(projection.ModelKeyMin)
+		model.DisplayName = cloneAttributionString(projection.ModelDisplayMin)
+	default:
+		return ProjectModelAnalyticsRecord{}, invalidRecord("stored project model identity tuple is inconsistent")
+	}
+	totals, err := sessionTotalsFromProjection(projection.Totals)
+	if err != nil {
+		return ProjectModelAnalyticsRecord{}, err
+	}
+	return ProjectModelAnalyticsRecord{DimensionKey: projection.DimensionKey, Model: model, Totals: totals}, nil
 }
 
 func validateProjectAnalyticsFilter(filter ProjectAnalyticsFilter) error {

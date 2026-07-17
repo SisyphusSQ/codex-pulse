@@ -15,6 +15,8 @@ export type {
     ProjectDetailResponse,
     ProjectItem,
     ProjectListResponse,
+    ProjectModelItem,
+    ProjectSessionItem,
     ReasonCount,
     SessionDetailRequest,
     SessionDetailResponse,

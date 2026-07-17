@@ -868,6 +868,371 @@ func TestProjectAnalyticsDetailMatchesListAndReconcilesGlobalTotals(t *testing.T
 	}
 }
 
+func TestListProjectAnalyticsDecoratesExactSessionCountsAndBoundedTrend(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	seedProjectAnalyticsFixture(t, repository, false)
+	page, err := repository.ListProjectAnalytics(context.Background(), ProjectAnalyticsFilter{
+		Range: AnalyticsRange{
+			ReportingTimezone: "UTC", StartAtMS: 0, EndAtMS: 2 * 86_400_000,
+		},
+		Limit: 10, SortField: ProjectAnalyticsSortTotalTokens,
+		SortDirection: AnalyticsSortDescending,
+	})
+	if err != nil {
+		t.Fatalf("ListProjectAnalytics() error = %v", err)
+	}
+	if len(page.Records) != 3 {
+		t.Fatalf("project records = %#v", page.Records)
+	}
+	wantCounts := map[string]int64{
+		"project-a": 2, "project-b": 1, "unknown|unknown|missing|missing": 1,
+	}
+	for _, record := range page.Records {
+		if record.SessionCount != wantCounts[record.DimensionKey] {
+			t.Fatalf("project %q session count = %d, want %d", record.DimensionKey,
+				record.SessionCount, wantCounts[record.DimensionKey])
+		}
+		if len(record.Trend) == 0 || len(record.Trend) > 30 {
+			t.Fatalf("project %q trend length = %d", record.DimensionKey, len(record.Trend))
+		}
+		for index, point := range record.Trend {
+			if point.DimensionKey != record.DimensionKey ||
+				(index > 0 && record.Trend[index-1].BucketStartMS >= point.BucketStartMS) {
+				t.Fatalf("project %q trend = %#v", record.DimensionKey, record.Trend)
+			}
+		}
+	}
+	if got := []int64{
+		page.Records[0].Trend[0].BucketStartMS,
+		page.Records[0].Trend[1].BucketStartMS,
+	}; !reflect.DeepEqual(got, []int64{0, 86_400_000}) {
+		t.Fatalf("project-a trend buckets = %#v", got)
+	}
+}
+
+func TestAppendProjectTrendKeepsLatestThirtyBuckets(t *testing.T) {
+	t.Parallel()
+
+	record := ProjectAnalyticsRecord{DimensionKey: "project-a", Trend: make([]ProjectUsageDaily, 0)}
+	for bucket := int64(0); bucket < 31; bucket++ {
+		appendProjectTrend(&record, ProjectUsageDaily{
+			DimensionKey: "project-a", BucketStartMS: bucket,
+		})
+	}
+	if len(record.Trend) != 30 || record.Trend[0].BucketStartMS != 1 ||
+		record.Trend[29].BucketStartMS != 30 {
+		t.Fatalf("bounded project trend = %#v", record.Trend)
+	}
+}
+
+func TestProjectAnalyticsPagesProjectContributionSessionsAndModels(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	seedProjectAnalyticsFixture(t, repository, false)
+	rangeFilter := AnalyticsRange{
+		ReportingTimezone: "UTC", StartAtMS: 0, EndAtMS: 2 * 86_400_000,
+	}
+	first, err := repository.ProjectAnalytics(context.Background(), ProjectAnalyticsDetailFilter{
+		Range: rangeFilter, DimensionKey: "project-a", SessionLimit: 1, ModelLimit: 1,
+	})
+	if err != nil {
+		t.Fatalf("ProjectAnalytics(first) error = %v", err)
+	}
+	if first.Record.SessionCount != 2 || len(first.Sessions) != 1 ||
+		first.NextSessionCursor == nil || len(first.Models) != 1 || first.NextModelCursor == nil {
+		t.Fatalf("first project detail pages = %#v", first)
+	}
+	if first.Sessions[0].SessionID != "project-session-beta" ||
+		first.Sessions[0].DisplayTitle != "Beta safe title" ||
+		first.Sessions[0].Model.ModelKey == nil || *first.Sessions[0].Model.ModelKey != "model-b" ||
+		first.Sessions[0].Totals.TotalTokens == nil || *first.Sessions[0].Totals.TotalTokens != 20 ||
+		first.Sessions[0].Activity != SessionActivityIdle {
+		t.Fatalf("first project session = %#v", first.Sessions[0])
+	}
+	if first.Models[0].DimensionKey != "model-b" || first.Models[0].Model.ModelKey == nil ||
+		*first.Models[0].Model.ModelKey != "model-b" || first.Models[0].Totals.TotalTokens == nil ||
+		*first.Models[0].Totals.TotalTokens != 20 {
+		t.Fatalf("first project model = %#v", first.Models[0])
+	}
+
+	second, err := repository.ProjectAnalytics(context.Background(), ProjectAnalyticsDetailFilter{
+		Range: rangeFilter, DimensionKey: "project-a", SessionLimit: 1,
+		SessionCursor: first.NextSessionCursor, ModelLimit: 1, ModelCursor: first.NextModelCursor,
+	})
+	if err != nil {
+		t.Fatalf("ProjectAnalytics(second) error = %v", err)
+	}
+	if len(second.Sessions) != 1 || second.Sessions[0].SessionID != "project-session-alpha" ||
+		second.NextSessionCursor != nil || len(second.Models) != 1 ||
+		second.Models[0].DimensionKey != "model-a" || second.NextModelCursor != nil {
+		t.Fatalf("second project detail pages = %#v", second)
+	}
+
+	unknown, err := repository.ProjectAnalytics(context.Background(), ProjectAnalyticsDetailFilter{
+		Range: rangeFilter, DimensionKey: "unknown|unknown|missing|missing",
+		SessionLimit: 10, ModelLimit: 10,
+	})
+	if err != nil {
+		t.Fatalf("ProjectAnalytics(unknown) error = %v", err)
+	}
+	if unknown.Record.SessionCount != 1 || len(unknown.Sessions) != 1 ||
+		unknown.Sessions[0].SessionID != "project-session-gamma" || len(unknown.Models) != 1 ||
+		unknown.Models[0].DimensionKey != "unknown|unknown|missing|missing" ||
+		unknown.Models[0].Model.ModelKey != nil || unknown.Models[0].Totals.TotalTokens == nil ||
+		*unknown.Models[0].Totals.TotalTokens != 7 {
+		t.Fatalf("unknown project detail = %#v", unknown)
+	}
+}
+
+func TestProjectAnalyticsContributionKeysetsCoverEqualNullAndUnknownEdges(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	seedProjectAnalyticsFixture(t, repository, false)
+	seedProjectContributionPaginationEdges(t, repository)
+	filter := ProjectAnalyticsDetailFilter{
+		Range: AnalyticsRange{
+			ReportingTimezone: "UTC", StartAtMS: 0, EndAtMS: 2 * 86_400_000,
+		},
+		DimensionKey: "project-a", SessionLimit: 1, ModelLimit: 1,
+	}
+	wantSessions := []string{
+		"project-session-omega", "project-session-beta", "project-session-alpha",
+	}
+	wantModels := []string{
+		"model-b", "model-a", "unknown|unknown|missing|missing",
+		"unknown|low|invalid_model|invalid",
+	}
+	var sessions []string
+	for pageNumber := 0; pageNumber < 4; pageNumber++ {
+		page, err := repository.ProjectAnalytics(context.Background(), filter)
+		if err != nil {
+			t.Fatalf("ProjectAnalytics(session edge page %d) error = %v", pageNumber, err)
+		}
+		if page.Record.SessionCount != 3 || len(page.Sessions) != 1 || len(page.Models) != 1 {
+			t.Fatalf("ProjectAnalytics(session edge page %d) = %#v", pageNumber, page)
+		}
+		sessions = append(sessions, page.Sessions[0].SessionID)
+		filter.SessionCursor = page.NextSessionCursor
+		if page.NextSessionCursor == nil {
+			if pageNumber != 2 {
+				t.Fatalf("session edge page %d cursor shape = %#v", pageNumber,
+					page.NextSessionCursor)
+			}
+			break
+		}
+	}
+	if !reflect.DeepEqual(sessions, wantSessions) {
+		t.Fatalf("edge Session keyset traversal = %#v, want %#v", sessions, wantSessions)
+	}
+
+	filter.SessionLimit = 50
+	filter.SessionCursor = nil
+	filter.ModelCursor = nil
+	var models []string
+	for pageNumber := 0; pageNumber < 5; pageNumber++ {
+		page, err := repository.ProjectAnalytics(context.Background(), filter)
+		if err != nil {
+			t.Fatalf("ProjectAnalytics(model edge page %d) error = %v", pageNumber, err)
+		}
+		if page.Record.SessionCount != 3 || len(page.Sessions) != 3 || len(page.Models) != 1 {
+			t.Fatalf("ProjectAnalytics(model edge page %d) = %#v", pageNumber, page)
+		}
+		models = append(models, page.Models[0].DimensionKey)
+		filter.ModelCursor = page.NextModelCursor
+		if pageNumber == 2 && (page.NextModelCursor == nil || !page.NextModelCursor.Null ||
+			page.NextModelCursor.TotalTokens != nil) {
+			t.Fatalf("model edge page %d NULL cursor = %#v", pageNumber, page.NextModelCursor)
+		}
+		if page.NextModelCursor == nil {
+			if pageNumber != 3 {
+				t.Fatalf("model edge page %d cursor shape = %#v", pageNumber,
+					page.NextModelCursor)
+			}
+			break
+		}
+	}
+	if !reflect.DeepEqual(models, wantModels) {
+		t.Fatalf("edge Model keyset traversal = %#v, want %#v", models, wantModels)
+	}
+	for _, values := range [][]string{sessions, models} {
+		seen := make(map[string]struct{}, len(values))
+		for _, value := range values {
+			if _, found := seen[value]; found {
+				t.Fatalf("edge keyset duplicated %q in %#v", value, values)
+			}
+			seen[value] = struct{}{}
+		}
+	}
+}
+
+func TestProjectAnalyticsContributionCursorsSurviveStoreRestart(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatalf("Chmod(temp dir) error = %v", err)
+	}
+	databasePath := filepath.Join(directory, "project-contribution-restart.db")
+	open := func() (*storesqlite.Store, *Repository) {
+		database, err := storesqlite.Open(context.Background(), storesqlite.Config{Path: databasePath})
+		if err != nil {
+			t.Fatalf("sqlite.Open() error = %v", err)
+		}
+		repository := NewRepository(database)
+		if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
+			t.Fatalf("EnsureApplicationSchema() error = %v", err)
+		}
+		return database, repository
+	}
+
+	database, repository := open()
+	seedProjectAnalyticsFixture(t, repository, false)
+	rangeFilter := AnalyticsRange{
+		ReportingTimezone: "UTC", StartAtMS: 0, EndAtMS: 2 * 86_400_000,
+	}
+	first, err := repository.ProjectAnalytics(context.Background(), ProjectAnalyticsDetailFilter{
+		Range: rangeFilter, DimensionKey: "project-a", SessionLimit: 1, ModelLimit: 1,
+	})
+	if err != nil || first.NextSessionCursor == nil || first.NextModelCursor == nil {
+		t.Fatalf("ProjectAnalytics(first) = %#v, %v", first, err)
+	}
+	if first.NextSessionCursor.GenerationID != "project-analytics-v1" ||
+		first.NextModelCursor.GenerationID != "project-analytics-v1" {
+		t.Fatalf("ProjectAnalytics(first cursor generation) = %#v / %#v",
+			first.NextSessionCursor, first.NextModelCursor)
+	}
+	if err := database.Close(context.Background()); err != nil {
+		t.Fatalf("Close(before restart) error = %v", err)
+	}
+
+	reopened, reopenedRepository := open()
+	t.Cleanup(func() {
+		if err := reopened.Close(context.Background()); err != nil {
+			t.Errorf("Close(reopened) error = %v", err)
+		}
+	})
+	second, err := reopenedRepository.ProjectAnalytics(
+		context.Background(), ProjectAnalyticsDetailFilter{
+			Range: rangeFilter, DimensionKey: "project-a", SessionLimit: 1,
+			SessionCursor: first.NextSessionCursor, ModelLimit: 1, ModelCursor: first.NextModelCursor,
+		},
+	)
+	if err != nil || len(second.Sessions) != 1 || len(second.Models) != 1 ||
+		second.Sessions[0].SessionID != "project-session-alpha" ||
+		second.Models[0].DimensionKey != "model-a" {
+		t.Fatalf("ProjectAnalytics(after restart) = %#v, %v", second, err)
+	}
+}
+
+func TestProjectAnalyticsRejectsContributionCursorAfterGenerationRollover(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	seedProjectAnalyticsFixture(t, repository, false)
+	rangeFilter := AnalyticsRange{
+		ReportingTimezone: "UTC", StartAtMS: 0, EndAtMS: 2 * 86_400_000,
+	}
+	first, err := repository.ProjectAnalytics(context.Background(), ProjectAnalyticsDetailFilter{
+		Range: rangeFilter, DimensionKey: "project-a", SessionLimit: 1, ModelLimit: 1,
+	})
+	if err != nil || first.NextSessionCursor == nil || first.NextModelCursor == nil {
+		t.Fatalf("ProjectAnalytics(first) = %#v, %v", first, err)
+	}
+	if err := repository.database.Write(context.Background(), func(
+		ctx context.Context,
+		transaction storesqlite.WriteTx,
+	) error {
+		database := transaction.WithContext(ctx)
+		if err := database.Model(&costRollupGenerationModel{}).
+			Where("generation_id = ?", "project-analytics-v1").
+			Update("state", string(CostRollupGenerationSuperseded)).Error; err != nil {
+			return err
+		}
+		return database.Create(&costRollupGenerationModel{
+			GenerationID: "project-analytics-v2", ReportingTimezone: "UTC",
+			PricingSource: "test", Currency: "USD", RollupVersion: 1,
+			State: string(CostRollupGenerationActive), CreatedAtMS: 300_000_000,
+			CompletedAtMS: pointerTo(int64(300_000_000)), UpdatedAtMS: 300_000_000,
+		}).Error
+	}); err != nil {
+		t.Fatalf("roll active generation: %v", err)
+	}
+	for name, filter := range map[string]ProjectAnalyticsDetailFilter{
+		"session": {
+			Range: rangeFilter, DimensionKey: "project-a", SessionLimit: 1,
+			SessionCursor: first.NextSessionCursor, ModelLimit: 1,
+		},
+		"model": {
+			Range: rangeFilter, DimensionKey: "project-a", SessionLimit: 1,
+			ModelLimit: 1, ModelCursor: first.NextModelCursor,
+		},
+	} {
+		if _, err := repository.ProjectAnalytics(context.Background(), filter); !errors.Is(err, ErrInvalidRecord) {
+			t.Fatalf("ProjectAnalytics(%s cursor after rollover) error = %v, want ErrInvalidRecord", name, err)
+		}
+	}
+}
+
+func TestListProjectAnalyticsRejectsProjectContributionDrift(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	seedProjectAnalyticsFixture(t, repository, false)
+	if err := repository.database.Write(context.Background(), func(
+		ctx context.Context,
+		transaction storesqlite.WriteTx,
+	) error {
+		return transaction.WithContext(ctx).Model(&turnAttributionModel{}).
+			Where("turn_id = ?", "project-turn-alpha").
+			Updates(map[string]any{
+				"project_id": "project-b", "project_display_name": "Project B",
+			}).Error
+	}); err != nil {
+		t.Fatalf("drift project contribution fixture: %v", err)
+	}
+	_, err := repository.ListProjectAnalytics(context.Background(), ProjectAnalyticsFilter{
+		Range: AnalyticsRange{
+			ReportingTimezone: "UTC", StartAtMS: 0, EndAtMS: 2 * 86_400_000,
+		},
+		Limit: 10, SortField: ProjectAnalyticsSortTotalTokens,
+		SortDirection: AnalyticsSortDescending,
+	})
+	if !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("ListProjectAnalytics(contribution drift) error = %v, want ErrInvalidRecord", err)
+	}
+}
+
+func TestProjectAnalyticsRejectsMissingTurnAttributionForUnknownContribution(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	seedProjectAnalyticsFixture(t, repository, false)
+	if err := repository.database.Write(context.Background(), func(
+		ctx context.Context,
+		transaction storesqlite.WriteTx,
+	) error {
+		return transaction.WithContext(ctx).Where(
+			"turn_id = ?", "project-turn-gamma",
+		).Delete(&turnAttributionModel{}).Error
+	}); err != nil {
+		t.Fatalf("delete unknown turn attribution fixture: %v", err)
+	}
+	_, err := repository.ProjectAnalytics(context.Background(), ProjectAnalyticsDetailFilter{
+		Range: AnalyticsRange{
+			ReportingTimezone: "UTC", StartAtMS: 0, EndAtMS: 2 * 86_400_000,
+		},
+		DimensionKey: "unknown|unknown|missing|missing",
+		SessionLimit: 10, ModelLimit: 10,
+	})
+	if !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("ProjectAnalytics(missing turn attribution) error = %v, want ErrInvalidRecord", err)
+	}
+}
+
 func TestProjectAnalyticsRequiresActiveGenerationAndValidRange(t *testing.T) {
 	t.Parallel()
 
@@ -879,6 +1244,11 @@ func TestProjectAnalyticsRequiresActiveGenerationAndValidRange(t *testing.T) {
 	}
 	if _, err := repository.ListProjectAnalytics(context.Background(), filter); !errors.Is(err, ErrAnalyticsUnavailable) {
 		t.Fatalf("ListProjectAnalytics(no generation) error = %v, want unavailable", err)
+	}
+	if _, err := repository.ProjectAnalytics(context.Background(), ProjectAnalyticsDetailFilter{
+		Range: filter.Range, DimensionKey: "project-a",
+	}); !errors.Is(err, ErrAnalyticsUnavailable) {
+		t.Fatalf("ProjectAnalytics(no generation) error = %v, want unavailable", err)
 	}
 	seedProjectAnalyticsFixture(t, repository, false)
 	for _, invalid := range []ProjectAnalyticsFilter{
@@ -904,6 +1274,28 @@ func TestProjectAnalyticsRequiresActiveGenerationAndValidRange(t *testing.T) {
 	cancel()
 	if _, err := repository.ListProjectAnalytics(ctx, filter); !errors.Is(err, context.Canceled) {
 		t.Fatalf("ListProjectAnalytics(cancelled) error = %v", err)
+	}
+	one := int64(1)
+	for _, invalid := range []ProjectAnalyticsDetailFilter{
+		{Range: filter.Range, DimensionKey: "project-a", SessionLimit: 51, ModelLimit: 1},
+		{Range: filter.Range, DimensionKey: "project-a", SessionLimit: 1, ModelLimit: 51},
+		{Range: filter.Range, DimensionKey: "project-a", SessionLimit: 1, ModelLimit: 1,
+			SessionCursor: &ProjectSessionAnalyticsCursor{
+				DimensionKey: "project-b", SessionID: "session", LastActivityAtMS: 1,
+			}},
+		{Range: filter.Range, DimensionKey: "project-a", SessionLimit: 1, ModelLimit: 1,
+			ModelCursor: &ProjectModelAnalyticsCursor{
+				DimensionKey: "project-a", ModelDimensionKey: "model", Null: true, TotalTokens: &one,
+			}},
+	} {
+		if _, err := repository.ProjectAnalytics(context.Background(), invalid); !errors.Is(err, ErrInvalidRecord) {
+			t.Fatalf("ProjectAnalytics(%#v) error = %v, want ErrInvalidRecord", invalid, err)
+		}
+	}
+	if _, err := repository.ProjectAnalytics(ctx, ProjectAnalyticsDetailFilter{
+		Range: filter.Range, DimensionKey: "project-a",
+	}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ProjectAnalytics(cancelled) error = %v", err)
 	}
 }
 
@@ -968,6 +1360,301 @@ func seedProjectAnalyticsFixture(t *testing.T, repository *Repository, driftGlob
 	})
 	if err != nil {
 		t.Fatalf("seed project analytics fixture: %v", err)
+	}
+	seedProjectContributionFacts(t, repository)
+}
+
+func seedProjectContributionFacts(t *testing.T, repository *Repository) {
+	t.Helper()
+	pricingVersion := pricing.BuiltinOpenAI20260714()
+	if err := repository.AddPricingVersion(context.Background(), pricingVersion); err != nil {
+		t.Fatalf("AddPricingVersion() error = %v", err)
+	}
+	zero := int64(0)
+	type contributionFixture struct {
+		sessionID, title, turnID  string
+		observedAtMS              int64
+		tokens                    *int64
+		cost                      *int64
+		projectID, projectDisplay *string
+		projectConfidence         string
+		projectSource             string
+		projectReason             string
+		modelKey, modelDisplay    *string
+		modelConfidence           string
+		modelSource               string
+		modelReason               string
+	}
+	fixtures := []contributionFixture{
+		{
+			sessionID: "project-session-alpha", title: "Alpha safe title", turnID: "project-turn-alpha",
+			observedAtMS: 10, tokens: pointerTo(int64(10)), cost: pointerTo(int64(100)),
+			projectID: pointerTo("project-a"), projectDisplay: pointerTo("Project A"),
+			projectConfidence: "high", projectSource: "registered_root", projectReason: "root_matched",
+			modelKey: pointerTo("model-a"), modelDisplay: pointerTo("Model A"),
+			modelConfidence: "high", modelSource: "model_canonical", modelReason: "observed",
+		},
+		{
+			sessionID: "project-session-beta", title: "Beta safe title", turnID: "project-turn-beta",
+			observedAtMS: 86_400_010, tokens: pointerTo(int64(20)), cost: pointerTo(int64(200)),
+			projectID: pointerTo("project-a"), projectDisplay: pointerTo("Project A"),
+			projectConfidence: "medium", projectSource: "cwd_path_digest", projectReason: "path_derived",
+			modelKey: pointerTo("model-b"), modelDisplay: pointerTo("Model B"),
+			modelConfidence: "high", modelSource: "model_canonical", modelReason: "observed",
+		},
+		{
+			sessionID: "project-session-delta", title: "Delta safe title", turnID: "project-turn-delta",
+			observedAtMS: 20, tokens: pointerTo(int64(5)), cost: pointerTo(int64(0)),
+			projectID: pointerTo("project-b"), projectDisplay: pointerTo("Project B"),
+			projectConfidence: "high", projectSource: "registered_root", projectReason: "root_matched",
+			modelKey: pointerTo("model-a"), modelDisplay: pointerTo("Model A"),
+			modelConfidence: "high", modelSource: "model_canonical", modelReason: "observed",
+		},
+		{
+			sessionID: "project-session-gamma", title: "Gamma safe title", turnID: "project-turn-gamma",
+			observedAtMS: 30, tokens: pointerTo(int64(7)), cost: nil,
+			projectConfidence: "unknown", projectSource: "missing", projectReason: "missing",
+			modelConfidence: "unknown", modelSource: "missing", modelReason: "missing",
+		},
+	}
+	err := repository.database.Write(context.Background(), func(
+		ctx context.Context,
+		transaction storesqlite.WriteTx,
+	) error {
+		database := transaction.WithContext(ctx)
+		for _, value := range fixtures {
+			completedAt := value.observedAtMS
+			if err := database.Create(&sessionModel{
+				SessionID: value.sessionID, Provider: "codex", SourceKind: "session",
+				CreatedAtMS: 1, FirstSeenAtMS: 1, LastSeenAtMS: value.observedAtMS,
+			}).Error; err != nil {
+				return err
+			}
+			if err := database.Create(&sessionCurrentModel{
+				SessionID: value.sessionID, LastActivityAtMS: pointerTo(value.observedAtMS),
+				UpdatedAtMS: value.observedAtMS,
+			}).Error; err != nil {
+				return err
+			}
+			if err := database.Create(&sessionAttributionModel{
+				SessionID: value.sessionID, DisplayTitle: value.title,
+				TitleConfidence: "high", TitleSource: "session_id_fallback", TitleReason: "stable_identity",
+				ProjectID: value.projectID, ProjectDisplay: value.projectDisplay,
+				ProjectConfidence: value.projectConfidence, ProjectSource: value.projectSource,
+				ProjectReason: value.projectReason, ModelKey: value.modelKey, ModelDisplay: value.modelDisplay,
+				ModelConfidence: value.modelConfidence, ModelSource: value.modelSource,
+				ModelReason: value.modelReason, RuleVersion: 1, UpdatedAtMS: value.observedAtMS,
+			}).Error; err != nil {
+				return err
+			}
+			if err := database.Create(&turnModel{
+				TurnID: value.turnID, SessionID: value.sessionID,
+				StartedAtMS: value.observedAtMS, CompletedAtMS: &completedAt, Outcome: pointerTo("completed"),
+				SourceGeneration: 1, StartOffset: 1, CompleteOffset: pointerTo(int64(2)),
+			}).Error; err != nil {
+				return err
+			}
+			if err := database.Create(&turnUsageModel{
+				TurnID: value.turnID, ObservedAtMS: value.observedAtMS, IsFinal: true,
+				InputTokens: value.tokens, CachedInputTokens: &zero, OutputTokens: &zero,
+				ReasoningTokens: &zero, SourceGeneration: 1, SourceOffset: 2,
+				Confidence: "high", UpdatedAtMS: value.observedAtMS,
+			}).Error; err != nil {
+				return err
+			}
+			if err := database.Create(&turnAttributionModel{
+				TurnID: value.turnID, ProjectID: value.projectID, ProjectDisplay: value.projectDisplay,
+				ProjectConfidence: value.projectConfidence, ProjectSource: value.projectSource,
+				ProjectReason: value.projectReason, ModelKey: value.modelKey, ModelDisplay: value.modelDisplay,
+				ModelConfidence: value.modelConfidence, ModelSource: value.modelSource,
+				ModelReason: value.modelReason, RuleVersion: 1, UpdatedAtMS: value.observedAtMS,
+			}).Error; err != nil {
+				return err
+			}
+			cost := turnCostModel{
+				GenerationID: "project-analytics-v1", TurnID: value.turnID,
+				CalculatedAtMS: 200_000_000,
+			}
+			if value.cost == nil {
+				cost.PricingStatus = string(pricing.CostStatusUnpriced)
+				cost.PricingReason = string(pricing.CostReasonModelNotListed)
+			} else {
+				cost.PricingVersion = pointerTo(pricingVersion.PricingVersion)
+				cost.EstimatedUSDMicros = value.cost
+				cost.PricingStatus = string(pricing.CostStatusPriced)
+				cost.PricingReason = string(pricing.CostReasonPriced)
+			}
+			if err := database.Create(&cost).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed project contribution facts: %v", err)
+	}
+}
+
+func seedProjectContributionPaginationEdges(t *testing.T, repository *Repository) {
+	t.Helper()
+
+	zero, atMS, updatedAtMS := int64(0), int64(86_400_010), int64(200_000_000)
+	projectID, projectDisplay := "project-a", "Project A"
+	pricingVersion := pricing.BuiltinOpenAI20260714().PricingVersion
+	err := repository.database.Write(context.Background(), func(
+		ctx context.Context,
+		transaction storesqlite.WriteTx,
+	) error {
+		database := transaction.WithContext(ctx)
+		if err := database.Model(&turnUsageModel{}).Where("turn_id = ?", "project-turn-alpha").
+			Updates(map[string]any{
+				"observed_at_ms": atMS, "input_tokens": int64(20), "updated_at_ms": atMS,
+			}).Error; err != nil {
+			return err
+		}
+		if err := database.Model(&turnModel{}).Where("turn_id = ?", "project-turn-alpha").
+			Updates(map[string]any{
+				"started_at_ms": atMS, "completed_at_ms": atMS,
+			}).Error; err != nil {
+			return err
+		}
+		if err := database.Model(&sessionCurrentModel{}).
+			Where("session_id = ?", "project-session-alpha").
+			Updates(map[string]any{
+				"last_activity_at_ms": atMS, "updated_at_ms": atMS,
+			}).Error; err != nil {
+			return err
+		}
+		if err := database.Model(&sessionModel{}).
+			Where("session_id = ?", "project-session-alpha").
+			Update("last_seen_at_ms", atMS).Error; err != nil {
+			return err
+		}
+
+		if err := database.Create(&sessionModel{
+			SessionID: "project-session-omega", Provider: "codex", SourceKind: "session",
+			CreatedAtMS: 1, FirstSeenAtMS: 1, LastSeenAtMS: atMS,
+		}).Error; err != nil {
+			return err
+		}
+		if err := database.Create(&sessionCurrentModel{
+			SessionID: "project-session-omega", LastActivityAtMS: &atMS, UpdatedAtMS: atMS,
+		}).Error; err != nil {
+			return err
+		}
+		if err := database.Create(&sessionAttributionModel{
+			SessionID: "project-session-omega", DisplayTitle: "Omega safe title",
+			TitleConfidence: "high", TitleSource: "session_id_fallback",
+			TitleReason: "stable_identity", ProjectID: &projectID,
+			ProjectDisplay: &projectDisplay, ProjectConfidence: "high",
+			ProjectSource: "registered_root", ProjectReason: "root_matched",
+			ModelConfidence: "unknown", ModelSource: "missing", ModelReason: "missing",
+			RuleVersion: 1, UpdatedAtMS: atMS,
+		}).Error; err != nil {
+			return err
+		}
+		if err := database.Create(&turnModel{
+			TurnID: "project-turn-omega", SessionID: "project-session-omega",
+			StartedAtMS: atMS, CompletedAtMS: &atMS, Outcome: pointerTo("completed"),
+			SourceGeneration: 1, StartOffset: 1, CompleteOffset: pointerTo(int64(2)),
+		}).Error; err != nil {
+			return err
+		}
+		if err := database.Create(&turnUsageModel{
+			TurnID: "project-turn-omega", ObservedAtMS: atMS, IsFinal: true,
+			CachedInputTokens: &zero, OutputTokens: &zero, ReasoningTokens: &zero,
+			SourceGeneration: 1, SourceOffset: 2, Confidence: "high", UpdatedAtMS: atMS,
+		}).Error; err != nil {
+			return err
+		}
+		if err := database.Create(&turnAttributionModel{
+			TurnID: "project-turn-omega", ProjectID: &projectID, ProjectDisplay: &projectDisplay,
+			ProjectConfidence: "high", ProjectSource: "registered_root", ProjectReason: "root_matched",
+			ModelConfidence: "unknown", ModelSource: "missing", ModelReason: "missing",
+			RuleVersion: 1, UpdatedAtMS: atMS,
+		}).Error; err != nil {
+			return err
+		}
+		if err := database.Create(&turnCostModel{
+			GenerationID: "project-analytics-v1", TurnID: "project-turn-omega",
+			PricingStatus: string(pricing.CostStatusUnpriced),
+			PricingReason: string(pricing.CostReasonModelNotListed), CalculatedAtMS: updatedAtMS,
+		}).Error; err != nil {
+			return err
+		}
+		if err := database.Create(&turnModel{
+			TurnID: "project-turn-omega-invalid", SessionID: "project-session-omega",
+			StartedAtMS: atMS, CompletedAtMS: &atMS, Outcome: pointerTo("completed"),
+			SourceGeneration: 1, StartOffset: 3, CompleteOffset: pointerTo(int64(4)),
+		}).Error; err != nil {
+			return err
+		}
+		if err := database.Create(&turnUsageModel{
+			TurnID: "project-turn-omega-invalid", ObservedAtMS: atMS, IsFinal: true,
+			CachedInputTokens: &zero, OutputTokens: &zero, ReasoningTokens: &zero,
+			SourceGeneration: 1, SourceOffset: 4, Confidence: "high", UpdatedAtMS: atMS,
+		}).Error; err != nil {
+			return err
+		}
+		if err := database.Create(&turnAttributionModel{
+			TurnID: "project-turn-omega-invalid", ProjectID: &projectID,
+			ProjectDisplay: &projectDisplay, ProjectConfidence: "high",
+			ProjectSource: "registered_root", ProjectReason: "root_matched",
+			ModelConfidence: "low", ModelSource: "invalid_model", ModelReason: "invalid",
+			RuleVersion: 1, UpdatedAtMS: atMS,
+		}).Error; err != nil {
+			return err
+		}
+		if err := database.Create(&turnCostModel{
+			GenerationID: "project-analytics-v1", TurnID: "project-turn-omega-invalid",
+			PricingStatus: string(pricing.CostStatusUnpriced),
+			PricingReason: string(pricing.CostReasonInvalidModel), CalculatedAtMS: updatedAtMS,
+		}).Error; err != nil {
+			return err
+		}
+
+		if err := database.Where(
+			"generation_id = ? AND bucket_start_ms = ? AND dimension_key = ?",
+			"project-analytics-v1", int64(0), "project-a",
+		).Delete(&projectUsageDailyModel{}).Error; err != nil {
+			return err
+		}
+		if err := database.Model(&projectUsageDailyModel{}).Where(
+			"generation_id = ? AND bucket_start_ms = ? AND dimension_key = ?",
+			"project-analytics-v1", int64(86_400_000), "project-a",
+		).Updates(map[string]any{
+			"turn_count": 4, "input_tokens": nil, "cached_input_tokens": zero,
+			"output_tokens": zero, "reasoning_tokens": zero, "total_tokens": nil,
+			"estimated_usd_micros": int64(300), "priced_turn_count": 2,
+			"unpriced_turn_count": 2, "first_activity_at_ms": atMS,
+			"last_activity_at_ms": atMS, "updated_at_ms": updatedAtMS,
+		}).Error; err != nil {
+			return err
+		}
+		if err := database.Model(&usageDailyModel{}).Where(
+			"generation_id = ? AND bucket_start_ms = ?", "project-analytics-v1", int64(0),
+		).Updates(map[string]any{
+			"turn_count": 2, "input_tokens": int64(12), "cached_input_tokens": zero,
+			"output_tokens": zero, "reasoning_tokens": zero, "total_tokens": int64(12),
+			"estimated_usd_micros": zero, "priced_turn_count": 1, "unpriced_turn_count": 1,
+			"first_activity_at_ms": int64(20), "last_activity_at_ms": int64(30),
+			"updated_at_ms": updatedAtMS,
+		}).Error; err != nil {
+			return err
+		}
+		return database.Model(&usageDailyModel{}).Where(
+			"generation_id = ? AND bucket_start_ms = ?",
+			"project-analytics-v1", int64(86_400_000),
+		).Updates(map[string]any{
+			"turn_count": 4, "input_tokens": nil, "cached_input_tokens": zero,
+			"output_tokens": zero, "reasoning_tokens": zero, "total_tokens": nil,
+			"estimated_usd_micros": int64(300), "priced_turn_count": 2,
+			"unpriced_turn_count": 2, "first_activity_at_ms": atMS,
+			"last_activity_at_ms": atMS, "updated_at_ms": updatedAtMS,
+		}).Error
+	})
+	if err != nil {
+		t.Fatalf("seed project contribution pagination edges (pricing=%s): %v", pricingVersion, err)
 	}
 }
 

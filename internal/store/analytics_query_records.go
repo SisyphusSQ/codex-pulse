@@ -188,8 +188,27 @@ type ProjectAnalyticsFilter struct {
 }
 
 type ProjectAnalyticsDetailFilter struct {
-	Range        AnalyticsRange
-	DimensionKey string
+	Range         AnalyticsRange
+	DimensionKey  string
+	SessionLimit  int
+	SessionCursor *ProjectSessionAnalyticsCursor
+	ModelLimit    int
+	ModelCursor   *ProjectModelAnalyticsCursor
+}
+
+type ProjectSessionAnalyticsCursor struct {
+	GenerationID     string
+	DimensionKey     string
+	SessionID        string
+	LastActivityAtMS int64
+}
+
+type ProjectModelAnalyticsCursor struct {
+	GenerationID      string
+	DimensionKey      string
+	ModelDimensionKey string
+	Null              bool
+	TotalTokens       *int64
 }
 
 type ProjectAnalyticsRecord struct {
@@ -199,6 +218,8 @@ type ProjectAnalyticsRecord struct {
 	AttributionConfidence string
 	AttributionSource     string
 	AttributionReason     string
+	SessionCount          int64
+	Trend                 []ProjectUsageDaily
 	Totals                RollupTotals
 }
 
@@ -213,10 +234,32 @@ type ProjectAnalyticsPage struct {
 	NextCursor      *ProjectAnalyticsCursor
 }
 
+type ProjectSessionAnalyticsRecord struct {
+	SessionID        string
+	DisplayTitle     string
+	TitleConfidence  AttributionConfidence
+	TitleSource      AttributionSource
+	TitleReason      AttributionReason
+	Model            ModelAttribution
+	Activity         SessionActivity
+	LastActivityAtMS int64
+	Totals           RollupTotals
+}
+
+type ProjectModelAnalyticsRecord struct {
+	DimensionKey string
+	Model        ModelAttribution
+	Totals       RollupTotals
+}
+
 type ProjectAnalyticsSnapshot struct {
-	Generation      CostRollupGeneration
-	Record          ProjectAnalyticsRecord
-	Daily           []ProjectUsageDaily
-	GlobalTotals    RollupTotals
-	PricingVersions []string
+	Generation        CostRollupGeneration
+	Record            ProjectAnalyticsRecord
+	Daily             []ProjectUsageDaily
+	Sessions          []ProjectSessionAnalyticsRecord
+	NextSessionCursor *ProjectSessionAnalyticsCursor
+	Models            []ProjectModelAnalyticsRecord
+	NextModelCursor   *ProjectModelAnalyticsCursor
+	GlobalTotals      RollupTotals
+	PricingVersions   []string
 }

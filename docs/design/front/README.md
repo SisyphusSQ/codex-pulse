@@ -72,6 +72,7 @@
 - Session 详情 Turn 区只消费 generated `turnPage/turns`：按服务端顺序展示 active/complete、时间、safe model、usage 与 pricing evidence；lifecycle 不提供不可达的 unknown，数值 unknown 继续显示 `--`。`timelineKey` 只作稳定渲染 key，AEAD cursor 只原样回传且进程重启后不得复用。不得从页面 aggregate 重算 Turn cost，不得展示或推导 raw Session/Turn ID、正文事件、tool、路径、offset 或 generation；fallback cost unknown 与明确 unpriced 必须分开展示。
 - Session 的 `rollup_missing` 与 `rollup_ambiguous` 都展示局部 partial，不把 unknown totals 渲染成 `0`；后者表示调用未指定 reporting timezone 且 Go 发现多个 active generation，前端不得自行选择 timezone 或 ledger 重试。
 - Projects 组件必须保留 unknown/conflict/invalid dimension 行，分别展示 global/matched/page totals；confidence filter 使用 Go 返回的 range-level confidence。详情 daily 只用于下钻展示，前端不得重算并覆盖 list totals 或绕过 reconciliation failure。
+- Projects 列表直接消费 generated `sessionCount/trend`；trend 是所选 range 末尾最多 30 个已有日 bucket，不补零、不延伸、不代替 full totals。Project 详情的 `sessionPage/sessions` 与 `modelPage/models` 各自保持服务端顺序和 opaque cursor；两类 process-key cursor 不解析、不持久化，并绑定 active generation，Project/range 变化、同进程 generation rollover 或进程重启后均从首页恢复。页面不得复用 `ListSessions(projectId)` 冒充 Project contribution，也不得用当前页重算 Session/Model 总量。
 - active Project rollup 不可用是 fatal unavailable，不渲染“0 个项目”；active rollup 下的真实空 range 才渲染 known-empty。Session 缺 rollup 则是 partial，两条路径不得共用同一个空态。
 - Quota 直接消费既有 `quota-current-v1`，外层统一使用 `query-v1` meta；Source、Job、Health 与 Settings 消费 `runtime-info-v1` typed DTO。前端不得读取 `source_files`、`source_state`、`job_runs`、`health_events`、scheduler 或 Preferences persistence model。
 - Source 列表把本机文件与在线来源分别映射为 `local_file:<opaque-id>`、`online:<opaque-id>`，按 `updatedAt + sourceKey` 稳定分页；只展示 provider/source type、state/freshness、字节进度、last attempt/success、next due、有限 error/failure code 和恢复动作，不返回当前路径、device/inode、scope、request/payload identity。任一来源种类读取失败时保留另一种的可用结果，并通过 `partial + unavailableKinds` 显式说明；调用方所选种类全部失败时才返回 fatal unavailable。
@@ -126,6 +127,8 @@ TOO-273 已把 `/overview` 映射为真实 query-v1 页面：顶部两个紧凑 
 TOO-273 的 1440×1024 normal-state 视觉 QA 使用不进入产品路径的隔离 typed DTO cache，source 与 implementation 以同 viewport 合并比较；QA 夹具在验证后删除，只保留 ignored screenshot/comparison。本次可复现步骤和脱敏结果见 `docs/test/m7-e2.md`，逐项结论见根目录 `design-qa.md`。
 
 TOO-307 已为 TOO-274 提供 content-free Session Turn usage/cost provider contract：沿用现有 `SessionDetail` 方法、TanStack cancel/cache/invalidation owner 与 15 秒 active refetch，只新增 bounded generated page。可复现的 synthetic Store/query/generated 验证见 `docs/test/session-turn-timeline.md`；Sessions 页面不得绕开该 provider 读取 SQLite 或构造演示事件。
+
+TOO-308 已为 TOO-275 冻结 Project Session/Model drill-down provider contract：沿用 `ListProjects/ProjectDetail`，提供 exact SessionCount、30-bucket trend suffix、双 bounded contribution page 与 range/generation-bound AEAD cursor，不增加 Wails method。可复现的 synthetic GORM/Store/query/generated 验证见 `docs/test/project-session-model-drilldown.md`；Projects 页面不得绕开该 provider 读取 SQLite 或在浏览器聚合业务事实。
 
 TOO-274 已把 `/sessions` 映射为真实 query-v1 页面：activity、时间、project、model 与排序都是具名有限控件；列表保持服务端稳定顺序和 opaque keyset cursor，筛选或排序变化清空 cursor 与 selection。当前 provider 没有全文搜索 contract，因此不实现设计稿中的伪本地搜索；选项只来自当前安全结果与 URL 已选值，不声称覆盖全库。
 

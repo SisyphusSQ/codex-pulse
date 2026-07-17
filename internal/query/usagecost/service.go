@@ -30,13 +30,14 @@ type ProjectReader interface {
 }
 
 type Service struct {
-	reader               UsageReader
-	sessionReader        SessionReader
-	projectReader        ProjectReader
-	rangeSpec            basequery.Specification
-	sessionSpec          basequery.Specification
-	projectSpec          basequery.Specification
-	sessionTurnCursorKey sessionTurnCursorKey
+	reader                 UsageReader
+	sessionReader          SessionReader
+	projectReader          ProjectReader
+	rangeSpec              basequery.Specification
+	sessionSpec            basequery.Specification
+	projectSpec            basequery.Specification
+	sessionTurnCursorKey   sessionTurnCursorKey
+	projectDetailCursorKey projectDetailCursorKey
 }
 
 func NewService(reader UsageReader) (*Service, error) {
@@ -83,12 +84,17 @@ func NewService(reader UsageReader) (*Service, error) {
 	if err != nil {
 		return nil, ErrInvalidService
 	}
+	projectDetailKey, err := newProjectDetailCursorKey()
+	if err != nil {
+		return nil, ErrInvalidService
+	}
 	sessionReader, _ := reader.(SessionReader)
 	projectReader, _ := reader.(ProjectReader)
 	return &Service{
 		reader: reader, sessionReader: sessionReader, projectReader: projectReader,
 		rangeSpec: specification, sessionSpec: sessionSpecification, projectSpec: projectSpecification,
-		sessionTurnCursorKey: sessionTurnKey,
+		sessionTurnCursorKey:   sessionTurnKey,
+		projectDetailCursorKey: projectDetailKey,
 	}, nil
 }
 

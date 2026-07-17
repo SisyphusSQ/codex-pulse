@@ -18,14 +18,18 @@ import (
 )
 
 const (
-	sessionCursorEndpoint     = "sessions"
-	sessionTurnCursorEndpoint = "session-turns"
-	projectCursorEndpoint     = "projects"
+	sessionCursorEndpoint        = "sessions"
+	sessionTurnCursorEndpoint    = "session-turns"
+	projectCursorEndpoint        = "projects"
+	projectSessionCursorEndpoint = "project-sessions"
+	projectModelCursorEndpoint   = "project-models"
 )
 
 var sessionTurnCursorAssociatedData = []byte("query-v1/session-turns/aead-v1")
 
 type sessionTurnCursorKey [32]byte
+
+type projectDetailCursorKey [32]byte
 
 type sessionTurnCursorPayload struct {
 	Version     string `json:"version"`
@@ -33,6 +37,19 @@ type sessionTurnCursorPayload struct {
 	SessionID   string `json:"sessionId"`
 	TurnID      string `json:"turnId"`
 	StartedAtMS int64  `json:"startedAtMs"`
+}
+
+type projectDetailCursorPayload struct {
+	Version      string `json:"version"`
+	Endpoint     string `json:"endpoint"`
+	GenerationID string `json:"generationId"`
+	DimensionKey string `json:"dimensionKey"`
+	TimeZone     string `json:"timeZone"`
+	StartAtMS    int64  `json:"startAtMs"`
+	EndAtMS      int64  `json:"endAtMs"`
+	Identity     string `json:"identity"`
+	Null         bool   `json:"null"`
+	NumericValue *int64 `json:"numericValue"`
 }
 
 type cursorUnsigned struct {
@@ -103,6 +120,183 @@ func sessionTurnCursorAEAD(key sessionTurnCursorKey) (cipher.AEAD, error) {
 		return nil, err
 	}
 	return cipher.NewGCM(block)
+}
+
+func newProjectDetailCursorKey() (projectDetailCursorKey, error) {
+	var key projectDetailCursorKey
+	_, err := io.ReadFull(cryptorand.Reader, key[:])
+	return key, err
+}
+
+func projectDetailCursorAEAD(key projectDetailCursorKey) (cipher.AEAD, error) {
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return nil, err
+	}
+	return cipher.NewGCM(block)
+}
+
+func encodeProjectSessionCursor(
+	key projectDetailCursorKey,
+	cursor *store.ProjectSessionAnalyticsCursor,
+	rangeValue basequery.UTCTimeRange,
+) (*string, error) {
+	if cursor == nil {
+		return nil, nil
+	}
+	if cursor.GenerationID == "" || cursor.DimensionKey == "" ||
+		cursor.SessionID == "" || cursor.LastActivityAtMS < 0 {
+		return nil, errors.New("store project session cursor is invalid")
+	}
+	value := cursor.LastActivityAtMS
+	return encodeProjectDetailCursor(key, projectDetailCursorPayload{
+		Version: basequery.ContractVersion, Endpoint: projectSessionCursorEndpoint,
+		GenerationID: cursor.GenerationID, DimensionKey: cursor.DimensionKey,
+		TimeZone:  rangeValue.TimeZone,
+		StartAtMS: rangeValue.StartAtMS, EndAtMS: rangeValue.EndAtMS,
+		Identity: cursor.SessionID, NumericValue: &value,
+	})
+}
+
+func decodeProjectSessionCursor(
+	key projectDetailCursorKey,
+	encoded string,
+	dimensionKey string,
+	rangeValue basequery.UTCTimeRange,
+) (*store.ProjectSessionAnalyticsCursor, error) {
+	payload, err := decodeProjectDetailCursor(
+		key, encoded, projectSessionCursorEndpoint, "sessionPage.cursor",
+	)
+	if err != nil {
+		return nil, err
+	}
+	if payload.GenerationID == "" ||
+		!validProjectDetailCursorScope(payload, dimensionKey, rangeValue) || payload.Null ||
+		payload.Identity == "" || payload.NumericValue == nil || *payload.NumericValue < 0 {
+		return nil, basequery.NewValidationFailure("sessionPage.cursor", nil)
+	}
+	return &store.ProjectSessionAnalyticsCursor{
+		GenerationID: payload.GenerationID, DimensionKey: dimensionKey,
+		SessionID:        payload.Identity,
+		LastActivityAtMS: *payload.NumericValue,
+	}, nil
+}
+
+func encodeProjectModelCursor(
+	key projectDetailCursorKey,
+	cursor *store.ProjectModelAnalyticsCursor,
+	rangeValue basequery.UTCTimeRange,
+) (*string, error) {
+	if cursor == nil {
+		return nil, nil
+	}
+	if cursor.GenerationID == "" || cursor.DimensionKey == "" ||
+		cursor.ModelDimensionKey == "" ||
+		cursor.Null == (cursor.TotalTokens != nil) ||
+		(cursor.TotalTokens != nil && *cursor.TotalTokens < 0) {
+		return nil, errors.New("store project model cursor is invalid")
+	}
+	return encodeProjectDetailCursor(key, projectDetailCursorPayload{
+		Version: basequery.ContractVersion, Endpoint: projectModelCursorEndpoint,
+		GenerationID: cursor.GenerationID, DimensionKey: cursor.DimensionKey,
+		TimeZone:  rangeValue.TimeZone,
+		StartAtMS: rangeValue.StartAtMS, EndAtMS: rangeValue.EndAtMS,
+		Identity: cursor.ModelDimensionKey, Null: cursor.Null,
+		NumericValue: cloneInt64(cursor.TotalTokens),
+	})
+}
+
+func decodeProjectModelCursor(
+	key projectDetailCursorKey,
+	encoded string,
+	dimensionKey string,
+	rangeValue basequery.UTCTimeRange,
+) (*store.ProjectModelAnalyticsCursor, error) {
+	payload, err := decodeProjectDetailCursor(
+		key, encoded, projectModelCursorEndpoint, "modelPage.cursor",
+	)
+	if err != nil {
+		return nil, err
+	}
+	if payload.GenerationID == "" ||
+		!validProjectDetailCursorScope(payload, dimensionKey, rangeValue) ||
+		payload.Identity == "" || payload.Null == (payload.NumericValue != nil) ||
+		(payload.NumericValue != nil && *payload.NumericValue < 0) {
+		return nil, basequery.NewValidationFailure("modelPage.cursor", nil)
+	}
+	return &store.ProjectModelAnalyticsCursor{
+		GenerationID: payload.GenerationID, DimensionKey: dimensionKey,
+		ModelDimensionKey: payload.Identity,
+		Null:              payload.Null, TotalTokens: cloneInt64(payload.NumericValue),
+	}, nil
+}
+
+func encodeProjectDetailCursor(
+	key projectDetailCursorKey,
+	payload projectDetailCursorPayload,
+) (*string, error) {
+	plaintext, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	aead, err := projectDetailCursorAEAD(key)
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := io.ReadFull(cryptorand.Reader, nonce); err != nil {
+		return nil, err
+	}
+	wire := aead.Seal(nonce, nonce, plaintext, projectDetailCursorAssociatedData(payload.Endpoint))
+	encoded := base64.RawURLEncoding.EncodeToString(wire)
+	return &encoded, nil
+}
+
+func decodeProjectDetailCursor(
+	key projectDetailCursorKey,
+	encoded string,
+	endpoint string,
+	field string,
+) (projectDetailCursorPayload, error) {
+	wire, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || len(wire) == 0 || len(wire) > 4096 {
+		return projectDetailCursorPayload{}, basequery.NewValidationFailure(field, err)
+	}
+	aead, err := projectDetailCursorAEAD(key)
+	if err != nil || len(wire) < aead.NonceSize()+aead.Overhead() {
+		return projectDetailCursorPayload{}, basequery.NewValidationFailure(field, err)
+	}
+	nonce := wire[:aead.NonceSize()]
+	plaintext, err := aead.Open(
+		nil, nonce, wire[aead.NonceSize():], projectDetailCursorAssociatedData(endpoint),
+	)
+	if err != nil || len(plaintext) == 0 || len(plaintext) > 2048 {
+		return projectDetailCursorPayload{}, basequery.NewValidationFailure(field, err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(plaintext))
+	decoder.DisallowUnknownFields()
+	var payload projectDetailCursorPayload
+	if err := decoder.Decode(&payload); err != nil {
+		return projectDetailCursorPayload{}, basequery.NewValidationFailure(field, err)
+	}
+	if err := ensureCursorJSONEnd(decoder); err != nil ||
+		payload.Version != basequery.ContractVersion || payload.Endpoint != endpoint {
+		return projectDetailCursorPayload{}, basequery.NewValidationFailure(field, err)
+	}
+	return payload, nil
+}
+
+func projectDetailCursorAssociatedData(endpoint string) []byte {
+	return []byte("query-v1/" + endpoint + "/aead-v1")
+}
+
+func validProjectDetailCursorScope(
+	payload projectDetailCursorPayload,
+	dimensionKey string,
+	rangeValue basequery.UTCTimeRange,
+) bool {
+	return payload.DimensionKey == dimensionKey && payload.TimeZone == rangeValue.TimeZone &&
+		payload.StartAtMS == rangeValue.StartAtMS && payload.EndAtMS == rangeValue.EndAtMS
 }
 
 func encodeSessionTurnCursor(
