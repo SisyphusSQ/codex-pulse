@@ -5,7 +5,7 @@
 - Issue：TOO-307
 - 分支：`suqing/too-307-session-turn-timeline-contract`
 - 本轮任务性质：生成 + 执行 + 回写。
-- 当前结论：实现、pre-review、4项 implementation review rework/closure、CHANGELOG、post-integration full gate与different-subagent final scope review全部通过；PR与post-merge尚未执行。
+- 当前结论：实现、两层 review、CHANGELOG、PR #40、自合并与 `main` post-merge verify 均已完成；TOO-307 已回写 Linear Done，merge commit 为 `4448b8716d1a0c2ca3ae542630301ed8bd41b760`。
 - GitHub Actions：`actions_disabled_by_user`，不查询、不触发、不等待 CI。
 - Release：普通 Execution Issue，不创建 tag、GitHub Release、appcast 或正式发布产物。
 
@@ -146,3 +146,8 @@ git diff --check
 ## 结果回写
 
 完成后只写真实命令、数量、时长和脱敏结论；不得预写 review、PR、merge 或 post-merge 为通过。保留本文已写验证事实，不删回空模板。Actions 始终保持 `actions_disabled_by_user`，普通 Execution 不发布。
+
+## 最终 closeout
+
+- PR #40 已由 Codex 自行创建并 squash merge，`main` merge commit 为 `4448b8716d1a0c2ca3ae542630301ed8bd41b760`。
+- post-merge 验证与协作结果回写均完成，TOO-307 已置为 Done；GitHub Actions 保持停用，未执行正式发布。
