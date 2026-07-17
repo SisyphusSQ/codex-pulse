@@ -1,26 +1,48 @@
 import { flushPromises } from "@vue/test-utils";
+import type { CancellablePromise } from "@wailsio/runtime";
 import type { App as VueApp } from "vue";
 import { createMemoryHistory } from "vue-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Settings } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service";
+import { ListHealth, Settings } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service";
 
 import { createAppDependencies, createCodexPulseApp } from "./app";
 import type { QueryInvalidationEventSource } from "./events/queryInvalidation";
 
 vi.mock("@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service", async (importOriginal) => ({
   ...await importOriginal<typeof import("@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service")>(),
+  ListHealth: vi.fn(),
   Settings: vi.fn(),
 }));
 
+const healthMock = vi.mocked(ListHealth);
 const settingsMock = vi.mocked(Settings);
 const mountedApps: VueApp[] = [];
 
-function cancellable<T>(promise: Promise<T>): ReturnType<typeof Settings> {
+function cancellable<T>(promise: Promise<T>): CancellablePromise<T> {
   return Object.assign(promise, {
     cancel: vi.fn(),
     cancelOn() { return this; },
-  }) as unknown as ReturnType<typeof Settings>;
+  }) as unknown as CancellablePromise<T>;
+}
+
+function healthResponse(level = "healthy") {
+  const numeric = { value: 0, unit: "count", unknownReason: null };
+  return {
+    meta: { issues: null, page: null, status: "complete", version: "query-v1" },
+    items: null,
+    matchedCount: numeric,
+    summary: {
+      level,
+      total: numeric,
+      active: numeric,
+      resolved: numeric,
+      info: numeric,
+      warnings: numeric,
+      errors: numeric,
+      critical: numeric,
+    },
+  } as Awaited<ReturnType<typeof ListHealth>>;
 }
 
 function settingsResponse() {
@@ -59,6 +81,8 @@ async function renderApp(initialPath = "/settings") {
 
 describe("Codex Pulse application shell", () => {
   beforeEach(() => {
+    healthMock.mockReset();
+    healthMock.mockReturnValue(cancellable(Promise.resolve(healthResponse())));
     settingsMock.mockReset();
   });
 
@@ -75,7 +99,8 @@ describe("Codex Pulse application shell", () => {
     const { host } = await renderApp();
 
     expect(host.querySelector("[data-testid='settings-loading']")?.textContent).toContain("正在读取设置");
-    expect(host.querySelectorAll("[aria-live], [role='status'], [role='alert']")).toHaveLength(1);
+    expect(host.querySelector("[data-testid='app-status-banner']")?.textContent).toContain("正在读取本机运行状态");
+    expect(host.querySelectorAll("[aria-live], [role='status'], [role='alert']")).toHaveLength(2);
   });
 
   it("renders the typed Settings snapshot returned by the Go binding", async () => {
@@ -123,6 +148,17 @@ describe("Codex Pulse application shell", () => {
     await flushPromises();
 
     expect(navigation?.querySelector("a[aria-current='page']")?.getAttribute("href")).toBe("/sessions");
+  });
+
+  it("shows only one global high-priority banner across a business route", async () => {
+    healthMock.mockReturnValue(cancellable(Promise.resolve(healthResponse("blocked"))));
+    settingsMock.mockReturnValue(cancellable(Promise.resolve(settingsResponse())));
+
+    const { host } = await renderApp();
+    await flushPromises();
+
+    expect(host.querySelectorAll("[data-testid='app-status-banner']")).toHaveLength(1);
+    expect(host.querySelector("[data-testid='app-status-banner']")?.textContent).toContain("阻塞");
   });
 
   it("releases every Wails event subscription when the app unmounts", async () => {

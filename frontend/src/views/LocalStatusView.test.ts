@@ -52,7 +52,7 @@ describe("LocalStatusView", () => {
     expect(wrapper.findAll("[data-testid='runtime-health']")).toHaveLength(1);
     expect(wrapper.text()).toContain("本机会话日志");
     expect(wrapper.text()).toContain("历史回填");
-    expect(wrapper.get("[data-testid='local-status-banner']").text()).toContain("阻塞");
+    expect(wrapper.find("[data-testid='local-status-banner']").exists()).toBe(false);
     expect(wrapper.get("[data-testid='runtime-source']").text()).toContain("1 KB / 2 KB");
     expect(wrapper.get("[data-testid='runtime-job']").text()).toContain("4 / 10");
     expect(wrapper.get("[data-testid='runtime-source']").text()).toContain("最近成功");
@@ -70,12 +70,23 @@ describe("LocalStatusView", () => {
     expect(page.runAction).toHaveBeenCalledTimes(1);
     const dialog = wrapper.get("[data-testid='pause-all-dialog']");
     expect(dialog.attributes("role")).toBe("dialog");
+    expect(wrapper.get("[data-testid='local-status-content']").attributes()).toHaveProperty("inert");
+    expect(wrapper.find("[data-testid='pause-all-modal-layer']").exists()).toBe(true);
     await nextTick();
+    expect(document.activeElement).toBe(wrapper.get("[data-testid='pause-all-confirm']").element);
+    await dialog.trigger("keydown", { key: "Tab" });
+    expect(document.activeElement).toBe(wrapper.get("[data-testid='pause-all-cancel']").element);
+    await dialog.trigger("keydown", { key: "Tab", shiftKey: true });
     expect(document.activeElement).toBe(wrapper.get("[data-testid='pause-all-confirm']").element);
     await dialog.trigger("keydown", { key: "Escape" });
     expect(page.runAction).toHaveBeenCalledTimes(1);
     await wrapper.get("[data-testid='runtime-pause-all']").trigger("click");
     await wrapper.get("[data-testid='pause-all-confirm']").trigger("click");
+    const pauseAllOptions = page.runAction.mock.calls[1]?.[1];
+    expect(pauseAllOptions?.onSettled).toBeTypeOf("function");
+    pauseAllOptions?.onSettled();
+    await nextTick();
+    expect(document.activeElement).toBe(wrapper.get("[data-testid='runtime-pause-all']").element);
     await wrapper.get("[data-testid='runtime-resume']").trigger("click");
     await wrapper.get("[data-testid='runtime-reconcile']").trigger("click");
     expect(page.runAction.mock.calls.map(([action]) => action)).toEqual([
@@ -86,6 +97,19 @@ describe("LocalStatusView", () => {
     ]);
     await wrapper.get("[data-testid='runtime-repair-analyze']").trigger("click");
     expect(page.analyzeRepair).toHaveBeenCalledOnce();
+  });
+
+  it("keeps Source and Job partial truth local while Health remains authoritative globally", async () => {
+    const page = readyPage();
+    (page.sources.data.value as { meta: { status: string } }).meta.status = "partial";
+    (page.jobs.data.value as { meta: { status: string } }).meta.status = "partial";
+    harness.page = page;
+    const wrapper = mount(LocalStatusView, { global: { plugins: [createAppI18n()] } });
+    await nextTick();
+
+    expect(wrapper.get("[data-testid='source-partial']").attributes("role")).toBe("status");
+    expect(wrapper.get("[data-testid='job-partial']").attributes("aria-live")).toBe("polite");
+    expect(wrapper.find("[data-testid='local-status-banner']").exists()).toBe(false);
   });
 
   it("separates unavailable from empty and marks cached stale facts as last trusted data", async () => {

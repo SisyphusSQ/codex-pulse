@@ -386,7 +386,7 @@ const detailRecoveryLabel = computed(() => {
             {{ t("projects.summary.matched", { count: listData ? formatCount(listData.matchedCount) : "--" }) }}
             <span class="ml-1 text-ink-subtle">· {{ t("projects.summary.estimate") }}</span>
           </p>
-          <div class="flex items-center gap-2 text-[11px]">
+          <div data-testid="projects-list-status" role="status" aria-live="polite" class="flex items-center gap-2 text-[11px]">
             <span v-if="listPartial" class="rounded-full bg-amber-50 px-2 py-1 font-semibold text-amber-800">
               {{ t("projects.state.partial") }}
             </span>
@@ -474,6 +474,8 @@ const detailRecoveryLabel = computed(() => {
           <div
             v-if="detailStale"
             data-testid="projects-detail-stale"
+            role="status"
+            aria-live="polite"
             class="flex items-center justify-between gap-2 rounded-control bg-amber-50 px-3 py-2 text-xs text-amber-900"
           >
             <span>{{ t("projects.state.stale") }}</span>

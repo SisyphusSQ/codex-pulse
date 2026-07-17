@@ -52,7 +52,7 @@
 - 主侧栏统一使用“概览 / 会话 / 项目 / 配额 / 本机状态 / 设置”。概览为默认落地页，本机状态位于设置上方。v0.1 只交付 `zh-CN`，不展示语言切换；实现仍使用 i18n message key 和集中语言目录。
 - 原始对话和工具输出不进入页面；绝对路径可复制，但设计中的路径与数据均为演示值。
 - Tray 健康点与额度颜色分离：blocked 立即显示红点；degraded 持续 2 分钟且影响可信度或需要处理时显示橙点。
-- 本机状态同一时间最多显示一个条件 Banner；历史补齐使用蓝色信息级，持续 degraded 使用橙色，blocked 使用红色。
+- AppShell 同一时间最多显示一个全局高优先级 Banner；本机状态页不再叠加第二个总览 Banner。历史补齐使用蓝色信息级，持续 degraded 使用橙色，blocked 使用红色。
 - Data Health 是本机状态下钻的二级页面，不增加独立主导航项；页面先解释影响和保护措施，再展示领域、任务、事件、资源和恢复动作。
 
 ## Query DTO 消费边界
@@ -80,7 +80,7 @@
 - Health 当前级别只聚合 active events：resolved critical 仍保留历史计数，但不能让当前状态永久 `blocked`。`paused` 只来自 durable user pause 或 system sleeping；`blocked/degraded/busy` 再按 lifecycle 与 active critical/error/warning 映射。
 - Settings 将 revision/Home generation 作为十进制字符串返回，并把 snooze/last-check 映射为 JS-safe numeric value；Home path、data store key、device/inode、detached Home、switch/attempt ID 永不进入响应。可编辑字段由 Go 返回固定 type/min/max/options metadata，固定 `zh-CN`、stable channel 与关闭 auto-download 明确标记为只读。
 - Settings 保存只提交 metadata 声明为 editable 的字段并携带当前 revision；只读 updates/UI 字段由 Go 从权威快照合并保留。Home 切换使用私有 latest-plan ID 的 plan/confirm 两步流程，页面只显示 generation、strategy 与 preserve/clear 影响摘要，plan 成功后立即清空路径输入并把焦点移到影响确认区；confirm/recover 成功后消费该摘要。服务端只 compare-and-clear 本次消费的 plan，保留并发产生的更新 plan；Home commit、rollback 或 recovery-required 都发布 index/settings 权威失效。若持久提交后的本机 reconcile 失败，回执明确为 `recovery_required` 或 `applied_reconcile_required`，页面随后重新查询权威状态。
-- 本机状态复用 Source/Job/Health typed query，仅用不透明 ID 作为 Vue key，不渲染 source/job/event identity 或 raw code/cause。页面以单一 health banner 显示 healthy/busy/paused/degraded/blocked，并展示来源 parsed/total bytes、最近尝试/成功时间和任务 current/total progress、开始/重试时间；unknown 保留为 `—`。首次局部失败显示 unavailable 而非 empty，cached refetch failure/stale 明示“上次可信数据”。运行控制固定为 `pause_backfill/pause_all/resume/reconcile`，其中 `pause_all` 必须二次确认；mutation 结果使用 live region。Session index 维护入口只调用 Analyze 并显示 action/conflict 计数，不暴露 Execute、plan ID、session ID、备份路径或任意修复写入口。
+- 本机状态复用 Source/Job/Health typed query，仅用不透明 ID 作为 Vue key，不渲染 source/job/event identity 或 raw code/cause。Health 总览由 AppShell 复用同一个 Vue Query cache，并以有限优先级在全局显示 unavailable/blocked/offline/degraded/partial/stale/paused/busy/loading；healthy 不占用 live region，任意页面都最多一个全局 Banner。本机状态页只展示来源、任务与健康明细：parsed/total bytes、最近尝试/成功时间、current/total progress、开始/重试时间；unknown 保留为 `—`。首次局部失败显示 unavailable 而非 empty，cached refetch failure/stale 明示“上次可信数据”。运行控制固定为 `pause_backfill/pause_all/resume/reconcile`，其中 `pause_all` 必须二次确认并把 Tab/Shift+Tab 保持在 dialog；mutation 结果使用 live region。Session index 维护入口只调用 Analyze 并显示 action/conflict 计数，不暴露 Execute、plan ID、session ID、备份路径或任意修复写入口。
 - recovery action 只允许 `none/retry/check_source/grant_permission/free_space/choose_home/repair_store`，且非 `none` 必须引用 Go contract 中的固定 command key；typed error、failure 与 health code 先按完整有限矩阵决定动作，state/attention 仅作为没有 code 的 fallback。query service 只返回引用，不执行 command、不写设置、不修库。
 
 ## Wails Event 与 Query Cache 边界
@@ -91,6 +91,7 @@
 - event storm 与重复事件在 50ms 内合并，同一 root 每批最多失效一次；使用 `refetchType: active`，只让当前可见查询主动重取，inactive cache 只标记 stale。
 - event handler 禁止 `setQueryData`、optimistic copy 或自行合并业务对象。Go query/SQLite/Preferences 始终是唯一事实源。
 - event 丢失或断连不影响正确性：持续前台active query按interval有界重取，inactive query重新观察时按stale状态重取；system wake、window runtime ready、macOS foreground与malformed/未知event都触发全业务root invalidate。应用卸载必须释放全部Wails subscription、取消pending timer，observer卸载后停止周期刷新。
+- route component 由共享 error boundary 隔离；fallback 只显示有限中文说明并允许重挂载当前 route，不渲染 raw cause、不执行业务 command。切换 route 会清除旧 boundary 状态、重置主内容滚动并把程序焦点移到新页面标题。skip link 直接聚焦主内容，主导航支持 ArrowUp/ArrowDown/Home/End。
 
 ## 图标规范
 
@@ -119,6 +120,7 @@
 - Apache ECharts 实现概览、Projects 和模型分布等数据可视化；图表 tooltip、legend、空数据和部分数据状态使用统一中文文案。
 - Wails 原生窗口与平台 adapter 负责透明窗口、系统托盘和系统行为；Vue 组件不得直接依赖 macOS API。
 - Reduce Transparency 下将玻璃替换为高不透明内容表面；Increase Contrast 下加强边界与文字对比；Reduce Motion 下取消非必要位移和缩放动画。
+- forced-colors 模式使用系统 `CanvasText` 保持焦点环与表面边界；Settings Home input/select 使用显式 accessible label，Projects stale 与 Quota refresh status 使用 polite live semantics。
 
 TOO-272 的视觉 QA 以 `00-design-system.png`、`04-overview.png` 与 `01-local-status.png` 为 source truth，在 900×600、1120×720、1280×770 与 1440×1024 检查窗口、侧栏和内容层级。浏览器比较证据保存在本地 ignored run 目录；可复现步骤和通过摘要见 `docs/test/m7-e1.md`，逐项比较结论见仓库根目录 `design-qa.md`。
 
@@ -144,6 +146,8 @@ Project detail 只使用 generated `ProjectDetail`：aggregate、daily、pricing
 
 `06-projects.png` 仍是视觉 source。当前实现保留其 summary → 左侧项目列表 → 右侧详情/模型/近期会话层级；provider 不提供安全 path、Finder/reveal 或全文搜索 contract，因此这些演示控件不伪接。1440×1024 combined comparison、900×600 minimum 与 isolated packaged 1120×720 的最终证据只在真实完成后写入 `design-qa.md` 与 `docs/test/m7-e4.md`。
 
+TOO-278 已完成六个真实页面的跨页面回归：AppShell 全局状态复用 generated Health query 与共享 cache，blocked 等并发条件经纯有限优先级收敛为单一 Banner；healthy 不显示 Banner。route error boundary、skip/focus/scroll recovery、sidebar keyboard、dialog focus loop、显式 labels、forced-colors 与 reduced-motion 均有自动化证据。deterministic synthetic binding fixture 在验证后删除；24 张 1440×1024/900×600 normal+blocked 截图只保存在 ignored runs，提交版哈希、overflow、privacy 与 console/page-error 结论见 `docs/test/m7-e7.md`。
+
 ## 后续评审重点
 
-TOO-272 已实现共享应用壳、路由、基础状态交互和 Wails Bootstrap ready/error/retry；TOO-273 已实现概览，TOO-274 已实现 Sessions 列表与详情，TOO-275 已实现 Projects 列表与详情，TOO-276 已实现 Quota 窗口、来源/仲裁、Reset credits、刷新状态与手动刷新 command；TOO-277 已实现本机状态、Settings、有限运行控制、Home 两步切换和 Session index Analyze-only dry-run。图标方向和健康信息层级继续冻结；后续页面必须复用当前 token、query-state、辅助模式降级与 macOS-only 边界。
+TOO-272 已实现共享应用壳、路由、基础状态交互和 Wails Bootstrap ready/error/retry；TOO-273 已实现概览，TOO-274 已实现 Sessions 列表与详情，TOO-275 已实现 Projects 列表与详情，TOO-276 已实现 Quota 窗口、来源/仲裁、Reset credits、刷新状态与手动刷新 command；TOO-277 已实现本机状态、Settings、有限运行控制、Home 两步切换和 Session index Analyze-only dry-run；TOO-278 已统一全局状态、route recovery、keyboard/focus、辅助语义和六页面视觉基线。图标方向和健康信息层级继续冻结；后续页面必须复用当前 token、query-state、辅助模式降级与 macOS-only 边界。

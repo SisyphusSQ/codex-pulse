@@ -242,6 +242,8 @@ describe("ProjectsView", () => {
     expect(wrapper.get("[data-testid='projects-normalized']").text()).toContain("恢复为默认值");
     expect(wrapper.get("[data-testid='projects-list-empty']").text()).toContain("暂无项目");
     expect(wrapper.text()).toContain("部分数据");
+    expect(wrapper.get("[data-testid='projects-list-status']").attributes("role")).toBe("status");
+    expect(wrapper.get("[data-testid='projects-list-status']").attributes("aria-live")).toBe("polite");
     expect(wrapper.text()).not.toContain("secret");
   });
 
@@ -286,6 +288,7 @@ describe("ProjectsView", () => {
     const { router, wrapper } = await renderProjects();
 
     expect(wrapper.get("[data-testid='projects-detail-stale']").text()).toContain("上次可信数据");
+    expect(wrapper.get("[data-testid='projects-detail-stale']").attributes("role")).toBe("status");
     expect(wrapper.text()).toContain("模型贡献");
     expect(wrapper.text()).not.toContain("binding query failed");
     await wrapper.get("[data-testid='projects-detail-stale-retry']").trigger("click");

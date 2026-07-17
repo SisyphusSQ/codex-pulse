@@ -32,6 +32,24 @@ export const zhCNMessages = {
     settings: { title: "设置", description: "本机数据、隐私与应用偏好" },
   },
   shell: {
+    skipToContent: "跳到主要内容",
+    status: {
+      unavailable: "本机运行状态暂不可用",
+      blocked: "本机数据处理已阻塞",
+      offline: "网络已离线；本机事实仍可使用，在线来源将等待恢复",
+      degraded: "本机数据状态降级",
+      partial: "部分运行事实暂不可用",
+      stale: "正在显示上次可信运行事实",
+      paused: "本机任务已暂停",
+      busy: "后台任务进行中",
+      loading: "正在读取本机运行状态",
+      retry: "重新读取",
+    },
+    routeError: {
+      title: "当前页面暂时无法显示",
+      description: "页面错误已被隔离，其他导航仍可使用。可以重试当前页面。",
+      retry: "重试当前页面",
+    },
     foundation: {
       title: "应用基础已就绪",
       description: "共享布局正在读取真实 Wails Bootstrap 元数据；业务数据由对应页面通过生成绑定接入。",
@@ -574,6 +592,7 @@ export const zhCNMessages = {
     action: { save: "保存设置" },
     home: {
       title: "切换 Codex Home", description: "路径只用于本机计划与确认，不会出现在查询响应或影响摘要中。",
+      targetLabel: "新的 Codex Home 路径", strategyLabel: "切换策略",
       placeholder: "输入新的绝对路径", clear: "清除派生事实并重建", independent: "使用独立数据库",
       plan: "分析影响", impactClear: "确认后会清除旧 Home 的派生事实并重新建立索引。",
       impactPreserve: "确认后会保留旧事实，并为新 Home 使用独立数据空间。", confirm: "确认切换", recover: "恢复未完成的切换",
