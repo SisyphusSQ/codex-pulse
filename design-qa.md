@@ -58,6 +58,50 @@ final result: passed
 
 ---
 
+# TOO-274 Sessions Design QA
+
+## Source truth and evidence
+
+- Source：`docs/design/front/previews/05-sessions.png`，固定 1440×1024。
+- Implementation：ignored `.agents/runs/too-274-sessions-qa/implementation-final-1440x1024.png`。
+- Combined comparison：ignored `.agents/runs/too-274-sessions-qa/comparison-final-2880x1024.jpg`，source在左、implementation在右，同为1440×1024后横向合并。
+- Minimum fallback：ignored `.agents/runs/too-274-sessions-qa/minimum-900x600.jpg`。
+- Native packaged：ignored `.agents/runs/too-274-sessions-qa/native-1120x720.jpg`；nominal 1120×720 Wails window 的截屏像素为1119×719。
+- Normal-state 数据来自临时隔离 typed DTO cache；夹具不进入 production route、产品 runtime 或提交范围，验证后已删除。
+
+## Fidelity assessment
+
+| 验证面 | 结果 | 结论 |
+| --- | --- | --- |
+| 页面层级 | PASS | 复用冻结侧栏与标题区，保持 source 的紧凑筛选 → 高密度列表 → 右侧详情三层结构 |
+| filters | PASS | activity/time/project/model/sort 都是具名控件；provider 无全文搜索，因此未伪造 source 的本地 search |
+| list | PASS | title/project/model confidence、active/idle、last activity、token、API等价成本来自 DTO；unknown 与真实0分离，选中行有明确状态 |
+| detail | PASS | safe metadata、aggregate、pricing versions、带计数的未定价原因与 Turn usage/cost timeline可读；没有演示正文事件 |
+| density / overflow | PASS | 1440详情使用内部有界滚动，不推动整个页面；900×600自然堆叠，无页面级水平溢出 |
+| typography / material | PASS | 系统字栈、content surface、soft border/shadow、selected blue、同心圆角与 TOO-272 token一致 |
+| privacy / truth | PASS | 未显示 Session/Turn ID、timeline key、cursor、prompt/response/tool/path/raw error；未本地重算排序、aggregate或pricing |
+| native packaged | PASS | 隔离HOME/TMP下真实Wails打开`/sessions`；1119×719截图无裁切，empty/partial与隐私提示可读，activity/direction交互写入可恢复URL |
+
+## Interaction and accessibility
+
+- Idle 点击后读回 `aria-pressed=true`，URL规范化为 `activity=idle`；筛选变化清空 list cursor 和 selection。
+- table row 支持鼠标、Enter 与 Space，使用语义 table 和 `aria-selected`；初始 URL 详情恢复不抢焦点，用户选择后聚焦详情标题。
+- list 与 detail 分别表达 loading、empty、partial/stale、fatal、not-found/cursor recovery；底层 error cause 不进入 DOM。
+- 1440×1024 与 900×600 Browser console error均为0；脱离Wails runtime的开发提示不属于页面实现错误。
+- source与implementation已放入同一comparison输入审查；browser范围当前无未关闭P0/P1/P2视觉finding。
+- packaged native Accessibility读回具名筛选、空态与原生窗口控制；Active与排序升序分别规范化为`activity=active`和`direction=asc`，没有读取真实Codex Home。
+
+## Iteration history
+
+1. source中的全文搜索没有对应 provider contract，改为真实 project/model精确筛选；演示“最近事件”改为content-free Turn usage/cost timeline。
+2. adversarial检查发现 placeholder page可能复用旧cursor、外部scope变化可能泄漏cursor history，均补失败断言后修复。
+3. 补齐 project/model confidence、Turn count、observed/completed time与未定价原因计数，保留unknown和真实0。
+4. 初始URL恢复曾可能抢焦点，改为只在用户重新选择时聚焦详情；宽屏长详情改为面板内部滚动后，1440页面不再整体溢出。
+
+current result: passed
+
+---
+
 # TOO-273 Overview Design QA
 
 ## Source truth and evidence
