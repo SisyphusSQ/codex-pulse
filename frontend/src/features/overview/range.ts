@@ -22,7 +22,10 @@ function calendarDayValue(localDate: string) {
     throw new Error("invalid overview range");
   }
   const [year, month, day] = localDate.split("-").map(Number);
-  const value = Date.UTC(year, month - 1, day);
+  const date = new Date(0);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCFullYear(year, month - 1, day);
+  const value = date.getTime();
   if (new Date(value).toISOString().slice(0, 10) !== localDate) {
     throw new Error("invalid overview range");
   }

@@ -124,6 +124,7 @@ Pricing Catalog 本地版本化，每条记录包含 model、input/cached/output
 - Project list item 返回所选 range 内贡献 Turn 的精确 distinct Session 数，以及该 range 末尾最多 30 个已有日 bucket 的升序 trend。trend 只用于趋势展示，不是 full-range totals；前端不得用当前页 Session 或 daily 重算 count/totals。
 - Project detail 沿用既有方法返回 Project contribution 的两组独立 keyset page：Session 按 `lastActivityAt DESC, session identity DESC`，Model 按 `totalTokens DESC NULLS LAST, model dimension DESC`；两者均默认 20、最大 50。Session 页只复用安全 title/current-model attribution，totals 仅统计当前 Project dimension 在 range 内的贡献，不得用 `ListSessions(projectId)` 的整 Session rollup 替代。两类 opaque cursor 同时绑定当前 active generation；同进程 generation rollover、Project/range变化或进程重启后必须从首页恢复。
 - Store 必须在同一 active generation/read snapshot 中，分别把全量 Session groups 和全量 Model groups 的 NULL-preserving totals 对账到 Project item；unknown/conflict/invalid Project/Model dimension 不丢弃。任一分组对账失败都 fail closed 为 unavailable，不返回局部伪造页。
+- `/projects` 产品交互固定为默认近 7 天，并支持今日、近 30 天、自定义本地日半开区间、range-level confidence、服务端排序与稳定分页。列表选中 Project 后在同页下钻 daily、Model contribution 与 Session contribution；list cursor可进入URL，两类detail cursor不进入URL或持久状态。Project/range变化清空两类detail page，单类cursor validation只恢复对应page；not-found关闭旧detail并保留列表。页面不提供没有provider contract的path、Finder/reveal或全文搜索，也不显示opaque identity。
 - 所有 count/token/微美元保持整数和 unknown reason；只要存在未定价 Turn，即使已定价小计非空，相关 Session/Project 响应也必须是 partial。priced turn 必须至少关联一个 pricing version，未定价原因计数之和必须严格等于 unpriced turn count，否则 fail closed 为 unavailable。金额仍是 API 等价估算，不接入或对账云账单。
 
 ## Settings 与 Codex Home

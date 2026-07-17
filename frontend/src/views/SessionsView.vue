@@ -14,7 +14,7 @@ import SessionsFilters, {
   type SessionsFilterOption,
 } from "@/features/sessions/SessionsFilters.vue";
 import SessionsTable from "@/features/sessions/SessionsTable.vue";
-import { useLocalDateClock } from "@/features/sessions/localDateClock";
+import { useLocalDateClock } from "@/features/shared/localDateClock";
 import { classifySessionsQueryError } from "@/features/sessions/queryError";
 import {
   parseSessionsRouteState,
