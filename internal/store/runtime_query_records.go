@@ -56,11 +56,12 @@ type RuntimeJobCursor struct {
 }
 
 type RuntimeJobQuery struct {
-	States    []JobState
-	Phases    []JobPhase
-	After     *RuntimeJobCursor
-	Limit     int
-	Direction RuntimeQueryDirection
+	CurrentOnly bool
+	States      []JobState
+	Phases      []JobPhase
+	After       *RuntimeJobCursor
+	Limit       int
+	Direction   RuntimeQueryDirection
 }
 
 type RuntimeJobRecord struct {

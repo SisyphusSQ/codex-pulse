@@ -1,6 +1,7 @@
 import { queryOptions } from "@tanstack/vue-query";
 
 import {
+  DataHealth,
   Health,
   HealthProjection,
   Job,
@@ -164,6 +165,14 @@ export function healthProjectionQueryOptions() {
   return queryOptions({
     queryKey: [...businessQueryRoots.health, "projection"] as const,
     queryFn: ({ signal }) => HealthProjection().cancelOn(signal),
+    ...runtimeQueryTiming,
+  });
+}
+
+export function dataHealthQueryOptions(now: () => number = Date.now) {
+  return queryOptions({
+    queryKey: [...businessQueryRoots.health, "data-health"] as const,
+    queryFn: ({ signal }) => DataHealth(now()).cancelOn(signal),
     ...runtimeQueryTiming,
   });
 }

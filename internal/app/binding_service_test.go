@@ -31,7 +31,7 @@ func TestBindingServiceExposesExactAllowlistAndContract(t *testing.T) {
 		gotMethods = append(gotMethods, reflect.TypeOf(service).Method(index).Name)
 	}
 	wantMethods := []string{
-		"AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "Health",
+		"AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DataHealth", "Health",
 		"HealthProjection", "Job", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
 		"PlanHomeSwitch", "ProjectDetail", "QuotaCurrent", "RecoverHomeSwitch",
 		"RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings", "Source",
@@ -96,14 +96,15 @@ func TestBindingServiceDelegatesEveryQuery(t *testing.T) {
 	_, _ = service.Job(ctx, runtimeinfo.JobDetailRequest{})
 	_, _ = service.ListHealth(ctx, basequery.Request{})
 	_, _ = service.Health(ctx, runtimeinfo.HealthDetailRequest{})
+	_, _ = service.DataHealth(ctx, 456)
 	_, _ = service.Settings(ctx)
 
 	wantUsage := []string{"UsageCost", "ListSessions", "SessionDetail", "ListProjects", "ProjectDetail"}
 	wantRuntime := []string{
-		"QuotaCurrent", "ListSources", "Source", "ListJobs", "Job", "ListHealth", "Health", "Settings",
+		"QuotaCurrent", "ListSources", "Source", "ListJobs", "Job", "ListHealth", "Health", "DataHealth", "Settings",
 	}
 	if !slices.Equal(usage.calls, wantUsage) || !slices.Equal(runtime.calls, wantRuntime) ||
-		runtime.evaluatedAtMS != 123 {
+		runtime.evaluatedAtMS != 123 || runtime.dataHealthAtMS != 456 {
 		t.Fatalf("delegated calls usage=%v runtime=%v evaluatedAt=%d", usage.calls, runtime.calls, runtime.evaluatedAtMS)
 	}
 }
@@ -657,6 +658,7 @@ type runtimeInfoBindingStub struct {
 	calls           []string
 	err             error
 	evaluatedAtMS   int64
+	dataHealthAtMS  int64
 	useContextError bool
 }
 
@@ -797,6 +799,14 @@ func (stub *runtimeInfoBindingStub) Health(
 	_ runtimeinfo.HealthDetailRequest,
 ) (runtimeinfo.HealthDetailResponse, error) {
 	return runtimeinfo.HealthDetailResponse{}, stub.call(ctx, "Health")
+}
+
+func (stub *runtimeInfoBindingStub) DataHealth(
+	ctx context.Context,
+	evaluatedAtMS int64,
+) (runtimeinfo.DataHealthResponse, error) {
+	stub.dataHealthAtMS = evaluatedAtMS
+	return runtimeinfo.DataHealthResponse{}, stub.call(ctx, "DataHealth")
 }
 
 func (stub *runtimeInfoBindingStub) Settings(

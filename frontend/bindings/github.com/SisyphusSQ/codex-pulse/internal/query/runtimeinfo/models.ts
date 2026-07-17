@@ -8,6 +8,85 @@ import * as quota$0 from "../../codex/quota/models.js";
 // @ts-ignore: Unused imports
 import * as query$0 from "../models.js";
 
+export interface DataHealthJobs {
+    "queued": query$0.NumericValue;
+    "running": query$0.NumericValue;
+    "interrupted": query$0.NumericValue;
+    "succeeded": query$0.NumericValue;
+    "failed": query$0.NumericValue;
+    "cancelled": query$0.NumericValue;
+    "durationCount": query$0.NumericValue;
+    "durationTotalMs": query$0.NumericValue;
+    "durationMaxMs": query$0.NumericValue;
+}
+
+export interface DataHealthResponse {
+    "meta": query$0.ResponseMeta;
+    "evaluatedAtMs": query$0.NumericValue;
+    "window": DataHealthWindow;
+    "runtime": DataHealthRuntimePoint[] | null;
+    "latest": DataHealthRuntimePoint | null;
+    "scheduler": DataHealthScheduler;
+    "jobs": DataHealthJobs;
+    "sources": DataHealthSources;
+    "currentJobs": JobItem[] | null;
+    "recentJobs": JobItem[] | null;
+    "openEvents": HealthItem[] | null;
+    "recentEvents": HealthItem[] | null;
+}
+
+export interface DataHealthRuntimePoint {
+    "capturedAtMs": query$0.NumericValue;
+    "cpuPercent": number;
+    "rssBytes": query$0.NumericValue;
+    "peakRssBytes": query$0.NumericValue;
+    "dbBytes": query$0.NumericValue;
+    "walBytes": query$0.NumericValue;
+    "diskFreeBytes": query$0.NumericValue;
+    "liveQueueDepth": query$0.NumericValue;
+    "backfillQueueDepth": query$0.NumericValue;
+    "oldestLiveWaitMs": query$0.NumericValue;
+    "oldestBackfillWaitMs": query$0.NumericValue;
+    "droppedSamples": query$0.NumericValue;
+}
+
+export interface DataHealthScheduler {
+    "cycleCount": query$0.NumericValue;
+    "completedCycles": query$0.NumericValue;
+    "yieldedCycles": query$0.NumericValue;
+    "failedCycles": query$0.NumericValue;
+    "interruptedCycles": query$0.NumericValue;
+    "filesScanned": query$0.NumericValue;
+    "bytesRead": query$0.NumericValue;
+    "activeMs": query$0.NumericValue;
+    "maxCycleActiveMs": query$0.NumericValue;
+    "lastProgressAtMs": query$0.NumericValue;
+    "lastBackfillProgressAtMs": query$0.NumericValue;
+}
+
+export interface DataHealthSources {
+    "total": query$0.NumericValue;
+    "unknown": query$0.NumericValue;
+    "current": query$0.NumericValue;
+    "stale": query$0.NumericValue;
+    "unavailable": query$0.NumericValue;
+    "consecutiveFailures": query$0.NumericValue;
+    "maxConsecutiveFailures": query$0.NumericValue;
+    "attempts": query$0.NumericValue;
+    "succeededAttempts": query$0.NumericValue;
+    "failedAttempts": query$0.NumericValue;
+    "cancelledAttempts": query$0.NumericValue;
+    "responseBytes": query$0.NumericValue;
+    "lastAttemptAtMs": query$0.NumericValue;
+    "lastSuccessAtMs": query$0.NumericValue;
+    "nextRetryAtMs": query$0.NumericValue;
+}
+
+export interface DataHealthWindow {
+    "fromMs": query$0.NumericValue;
+    "untilMs": query$0.NumericValue;
+}
+
 export interface EditableField {
     "key": string;
     "type": EditableValueType;

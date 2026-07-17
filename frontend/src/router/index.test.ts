@@ -52,4 +52,14 @@ describe("application navigation", () => {
     const settingsRecord = router.currentRoute.value.matched.at(-1);
     expect(settingsRecord?.components?.default).toMatchObject({ name: "SettingsView" });
   });
+
+  it("mounts Data Health as a secondary local-status route without adding navigation", async () => {
+    const router = createAppRouter(createMemoryHistory());
+
+    expect(appNavigation.map((item) => item.name)).not.toContain("data-health");
+    await router.push("/local-status/data-health");
+
+    expect(router.currentRoute.value.name).toBe("data-health");
+    expect(router.currentRoute.value.matched.at(-1)?.components?.default).toMatchObject({ name: "DataHealthView" });
+  });
 });

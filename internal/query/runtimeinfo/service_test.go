@@ -626,12 +626,20 @@ func (stub *preferencesStub) LoadPreferences(ctx context.Context) (preferences.S
 }
 
 type runtimeStub struct {
+	metrics    func(context.Context, store.MetricsSnapshotFilter) (store.MetricsSnapshot, error)
 	sourcePage func(context.Context, store.RuntimeSourceQuery) (store.RuntimeSourcePage, error)
 	source     func(context.Context, string) (store.RuntimeSourceRecord, error)
 	jobPage    func(context.Context, store.RuntimeJobQuery) (store.RuntimeJobPage, error)
 	job        func(context.Context, string) (store.RuntimeJobRecord, error)
 	healthPage func(context.Context, store.RuntimeHealthQuery) (store.RuntimeHealthPage, error)
 	health     func(context.Context, string) (store.HealthEvent, error)
+}
+
+func (stub *runtimeStub) MetricsSnapshot(ctx context.Context, filter store.MetricsSnapshotFilter) (store.MetricsSnapshot, error) {
+	if stub != nil && stub.metrics != nil {
+		return stub.metrics(ctx, filter)
+	}
+	return store.MetricsSnapshot{FromMS: filter.FromMS, UntilMS: filter.UntilMS, RuntimeSamples: []store.AppRuntimeSample{}}, nil
 }
 
 func (stub *runtimeStub) RuntimeSourcePage(ctx context.Context, filter store.RuntimeSourceQuery) (store.RuntimeSourcePage, error) {

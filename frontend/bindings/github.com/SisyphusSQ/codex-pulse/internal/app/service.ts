@@ -45,6 +45,10 @@ export function Contracts(): $CancellablePromise<$models.BindingContractInfo> {
     return $Call.ByID(3089117070);
 }
 
+export function DataHealth(evaluatedAtMS: number): $CancellablePromise<runtimeinfo$0.DataHealthResponse> {
+    return $Call.ByID(3278814177, evaluatedAtMS);
+}
+
 export function Health(request: runtimeinfo$0.HealthDetailRequest): $CancellablePromise<runtimeinfo$0.HealthDetailResponse> {
     return $Call.ByID(1359498569, request);
 }

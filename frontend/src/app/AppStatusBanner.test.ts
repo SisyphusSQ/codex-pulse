@@ -14,6 +14,7 @@ function router() {
   return createRouter({ history: createMemoryHistory(), routes: [
     { path: "/overview", name: "overview", component: { template: "<p />" } },
     { path: "/local-status", name: "local-status", component: { template: "<p />" } },
+    { path: "/local-status/data-health", name: "data-health", component: { template: "<p />" } },
   ] });
 }
 
@@ -38,7 +39,7 @@ describe("AppStatusBanner", () => {
     expect(wrapper.text()).toContain("释放空间");
     await wrapper.get("[data-testid='app-status-recovery']").trigger("click");
     await flushPromises();
-    expect(appRouter.currentRoute.value.fullPath).toBe("/local-status#data-health");
+    expect(appRouter.currentRoute.value.fullPath).toBe("/local-status/data-health");
   });
 
   it("uses retry for stale query recovery and keeps detail navigation", async () => {
@@ -51,7 +52,7 @@ describe("AppStatusBanner", () => {
     expect(harness.value.retry).toHaveBeenCalledOnce();
     await wrapper.get("[data-testid='app-status-details']").trigger("click");
     await flushPromises();
-    expect(appRouter.currentRoute.value.hash).toBe("#data-health");
+    expect(appRouter.currentRoute.value.fullPath).toBe("/local-status/data-health");
   });
 
   it("reports a failed recovery inline without removing detail navigation", async () => {

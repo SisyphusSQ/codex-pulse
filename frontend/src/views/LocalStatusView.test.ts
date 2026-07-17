@@ -1,9 +1,11 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { nextTick, ref } from "vue";
+import { createMemoryHistory } from "vue-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RuntimeAction } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/models";
 import { createAppI18n } from "@/i18n";
+import { createAppRouter } from "@/router";
 
 import LocalStatusView from "./LocalStatusView.vue";
 
@@ -41,18 +43,32 @@ function readyPage() {
   };
 }
 
+async function mountView(attachTo?: HTMLElement) {
+  const router = createAppRouter(createMemoryHistory());
+  await router.push("/local-status");
+  await router.isReady();
+  const wrapper = mount(LocalStatusView, {
+    attachTo,
+    global: { plugins: [createAppI18n(), router] },
+  });
+  return { router, wrapper };
+}
+
 describe("LocalStatusView", () => {
   beforeEach(() => { harness.page = readyPage(); });
   afterEach(() => { document.body.replaceChildren(); });
 
-  it("renders finite summaries without private source, job or event identities", () => {
-    const wrapper = mount(LocalStatusView, { attachTo: document.body, global: { plugins: [createAppI18n()] } });
+  it("renders finite summaries without private source, job or event identities", async () => {
+    const { router, wrapper } = await mountView(document.body);
     expect(wrapper.findAll("[data-testid='runtime-source']")).toHaveLength(1);
     expect(wrapper.findAll("[data-testid='runtime-job']")).toHaveLength(1);
     expect(wrapper.findAll("[data-testid='runtime-health']")).toHaveLength(1);
     expect(wrapper.text()).toContain("本机会话日志");
     expect(wrapper.text()).toContain("历史回填");
     expect(wrapper.find("[data-testid='local-status-banner']").exists()).toBe(false);
+    await wrapper.get("[data-testid='open-data-health']").trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe("data-health");
     expect(wrapper.get("[data-testid='runtime-source']").text()).toContain("1 KB / 2 KB");
     expect(wrapper.get("[data-testid='runtime-job']").text()).toContain("4 / 10");
     expect(wrapper.get("[data-testid='runtime-source']").text()).toContain("最近成功");
@@ -64,7 +80,7 @@ describe("LocalStatusView", () => {
 
   it("requires keyboard-safe confirmation for pause_all and dispatches only finite actions plus Analyze", async () => {
     const page = harness.page as ReturnType<typeof readyPage>;
-    const wrapper = mount(LocalStatusView, { attachTo: document.body, global: { plugins: [createAppI18n()] } });
+    const { wrapper } = await mountView(document.body);
     await wrapper.get("[data-testid='runtime-pause-backfill']").trigger("click");
     await wrapper.get("[data-testid='runtime-pause-all']").trigger("click");
     expect(page.runAction).toHaveBeenCalledTimes(1);
@@ -104,7 +120,7 @@ describe("LocalStatusView", () => {
     (page.sources.data.value as { meta: { status: string } }).meta.status = "partial";
     (page.jobs.data.value as { meta: { status: string } }).meta.status = "partial";
     harness.page = page;
-    const wrapper = mount(LocalStatusView, { global: { plugins: [createAppI18n()] } });
+    const { wrapper } = await mountView();
     await nextTick();
 
     expect(wrapper.get("[data-testid='source-partial']").attributes("role")).toBe("status");
@@ -117,7 +133,7 @@ describe("LocalStatusView", () => {
     page.sources.data.value = undefined;
     page.sources.isError.value = true;
     harness.page = page;
-    const wrapper = mount(LocalStatusView, { global: { plugins: [createAppI18n()] } });
+    const { wrapper } = await mountView();
     expect(wrapper.find("[data-testid='source-unavailable']").exists()).toBe(true);
     expect(wrapper.text()).not.toContain("暂无来源");
 
@@ -133,7 +149,7 @@ describe("LocalStatusView", () => {
     page.action.data.value = { action: "resume" };
     page.repair.data.value = { actionCount: 2, conflictCount: 1 };
     harness.page = page;
-    const wrapper = mount(LocalStatusView, { global: { plugins: [createAppI18n()] } });
+    const { wrapper } = await mountView();
     await flushPromises();
     expect(wrapper.get("[data-testid='runtime-action-result']").attributes("role")).toBe("status");
     expect(wrapper.get("[data-testid='repair-result']").attributes("aria-live")).toBe("polite");

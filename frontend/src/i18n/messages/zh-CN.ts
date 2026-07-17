@@ -29,6 +29,7 @@ export const zhCNMessages = {
     projects: { title: "项目", description: "按安全归因查看项目使用情况" },
     quota: { title: "配额", description: "当前窗口、来源与 Reset credits" },
     localStatus: { title: "本机状态", description: "数据采集、索引与后台任务" },
+    dataHealth: { title: "数据健康", description: "最近 24 小时健康证据与安全恢复" },
     settings: { title: "设置", description: "本机数据、隐私与应用偏好" },
   },
   shell: {
@@ -106,6 +107,10 @@ export const zhCNMessages = {
       store_unavailable: "本机存储暂不可用", store_unknown: "无法判断本机存储状态", wal_pressure: "本机数据库日志压力偏高",
       pricing_unavailable: "定价信息暂不可用", pricing_invalid: "定价信息无效", runtime_unknown: "无法判断后台运行状态",
       lifecycle_unknown: "无法判断索引生命周期", source_unknown: "无法判断数据来源状态", source_failure_streak: "数据来源连续失败",
+    },
+    protection: {
+      none: "无需额外保护", writes_stopped: "写入已安全停止", auto_retry_stopped: "自动重试已停止",
+      user_pause_retained: "保留用户暂停意图", retry_backoff: "使用持久退避避免重复失败", observation_only: "仅观测，不改变业务状态",
     },
   },
   overview: {
@@ -615,11 +620,74 @@ export const zhCNMessages = {
       info: "运行提示", warning: "需要关注", error: "运行异常", critical: "严重异常", unknown: "健康状态未知",
       empty: "没有健康事件", emptyDescription: "当前未记录需要展示的健康事件。",
       loading: "正在读取健康事件…", unavailable: "健康状态暂不可用", unavailableDescription: "当前无法判断是否存在健康事件，请重试。",
+      openDetails: "查看数据健康",
     },
     repair: {
       title: "Session 索引检查", description: "只读分析，不执行修复、不创建备份、不改写文件。", analyze: "仅分析",
       result: "分析完成：{actions} 个候选操作，{conflicts} 个冲突。",
     },
+  },
+  dataHealth: {
+    title: "数据健康",
+    subtitle: "最近 24 小时 · 最后检查 {time}",
+    state: {
+      loading: "正在读取最近 24 小时健康事实…",
+      unavailable: "数据健康暂不可用",
+      unavailableDescription: "当前没有可展示的可信资源快照，请稍后重试。",
+      lastTrusted: "正在显示上次可信数据；后台刷新暂不可用。",
+      partial: "资源与活动快照可用，但健康投影暂不可用。",
+    },
+    impact: { title: "{component}需要关注", protection: "保护措施：{value}" },
+    domain: {
+      title: "数据领域", description: "状态直接来自健康投影，不从日志或单一指标猜测",
+      evaluatedAt: "健康投影评估于 {time}；资源与活动快照可能有独立读取时差。",
+      loading: "正在读取健康投影…", unavailable: "健康投影暂不可用",
+      unavailableDescription: "当前无法判断组件状态；资源与活动快照仍可独立查看。",
+      empty: "尚无组件结论", emptyDescription: "健康评估完成后会显示七个稳定组件。",
+    },
+    component: {
+      local_index: "本地索引", live_queue: "Live queue", history_backfill: "历史补齐",
+      online_quota: "在线配额", storage: "SQLite / 磁盘", runtime: "运行资源", updater: "更新器", unknown: "未知组件",
+    },
+    level: { healthy: "正常", busy: "运行中", paused: "已暂停", degraded: "需关注", blocked: "已阻塞", unknown: "未知" },
+    evidence: { known: "可信证据", unknown: "证据未知", not_configured: "当前未配置" },
+    metric: {
+      sources: "{total} 个来源 · {current} 个当前 · {unavailable} 个不可用 · 连续失败 {failures}",
+      scheduler: "{cycles} 个调度周期 · 扫描 {files} 个文件 · 最近进展 {progress}",
+    },
+    work: {
+      title: "当前工作", description: "当前任务优先；剩余位置只展示最近 24 小时终态任务",
+      current: "当前任务", recent: "最近完成", empty: "当前没有任务", emptyDescription: "没有当前任务或最近 24 小时终态任务。",
+    },
+    job: {
+      discover: "发现来源", fast_bootstrap: "快速启动", history_backfill: "历史补齐",
+      reconcile: "状态核对", live: "增量索引", maintenance: "维护任务", unknown: "未知任务",
+    },
+    event: {
+      title: "最近事件", description: "最近 24 小时事件；同类问题合并并累计次数",
+      open: "仍需处理", recent: "最近恢复", occurrences: "{count} 次", active: "仍需处理", resolved: "已恢复",
+      empty: "没有最近事件", emptyDescription: "没有 open 事件或最近 24 小时已恢复事件。",
+    },
+    resource: {
+      title: "资源与存储", description: "进程级估算与本机存储事实", cpu: "CPU", rss: "RSS",
+      database: "DB / WAL", disk: "可用磁盘", queue: "Live / Backfill 队列", trendAria: "最近 24 小时进程 CPU 趋势",
+      empty: "最近 24 小时暂无资源采样", emptyDescription: "采集器产生可信样本后会显示资源趋势。",
+    },
+    action: {
+      title: "可执行操作", description: "只显示已注册的安全恢复动作", back: "返回本机状态", refresh: "重新读取",
+      reconcile: "重新核对来源", repair: "Session 索引检查（仅分析）", settings: "打开设置",
+      progress: "操作正在执行；完成后会重新读取权威状态。",
+      reconcileResult: "重新核对完成：{transition}。页面正在验证最新权威状态。",
+      repairResult: "只读分析完成：{actions} 个候选操作，{conflicts} 个冲突。",
+      error: "操作未完成；原健康事件保持打开，请根据最新状态重试。",
+    },
+    preview: {
+      title: "确认安全操作", reconcile: "将重新核对已确认的 Codex Home 与来源事实，不会清库或修改文件权限。",
+      repair_dry_run: "只分析 Session index 候选操作和冲突，不执行修复、不创建备份、不改写文件。",
+      cancel: "取消", confirm: "确认执行",
+    },
+    transition: { steady: "状态稳定", draining: "正在安全停止", reconciling: "正在核对", blocked: "仍被阻塞", unknown: "状态未知" },
+    privacy: "不显示原始 JSONL、凭证、完整路径或底层错误；v0.1 不提供诊断导出。",
   },
   settingsPage: {
     state: {

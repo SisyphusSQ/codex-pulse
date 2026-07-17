@@ -169,3 +169,28 @@ current result: passed
 6. review rework后重新生成1440×1024 implementation与combined comparison；当前画面已显示Cached列、本地化日期和中文未定价原因，Browser snapshot精确读回这些事实且console error=0，旧画面不再作为最终证据。
 
 final result: passed
+# TOO-283 Data Health Design QA
+
+## Source truth and implementation mapping
+
+- Source：`docs/design/front/previews/10-data-health.png`，固定 1440×1024。
+- Route：`/local-status/data-health`，作为“本机状态”二级页面，不进入六项主导航。
+- 页面顺序：影响/保护 → 七组件领域 → 当前工作/最近事件 → 资源与存储 → 当前 projection 声明的安全恢复动作。
+- 自动化已覆盖：七组件、known/unknown/not-configured evidence、Source/scheduler 聚合、current/open 优先与 24 小时历史裁剪、真实 Job phase、open/recent event occurrence/impact、CPU/RSS 双趋势、DB/WAL/磁盘/queue、DataHealth/Projection 独立评估时间、known empty/partial/unavailable/last-trusted、动作预览/pending/receipt/error、unknown recovery fail-closed、opaque identity 不进入 DOM。
+
+## Source adaptation freeze
+
+| source 区域 | 实现映射 | 当前状态 |
+| --- | --- | --- |
+| 顶部影响提示 | 权威 Health Projection primary 的 impact/protection；AppShell 仍保持全局唯一 Banner | PASS |
+| 数据领域 | 七个稳定 evaluator component，而非设计演示中的六个合并领域 | PASS，遵循后端 contract |
+| 当前工作/事件 | typed Job 与 Health event query；同类事件 occurrence 合并展示 | PASS |
+| 资源与存储 | 最新 CPU/RSS、DB/WAL、磁盘、queue；最近 24 小时 CPU/RSS 双趋势 | PASS |
+| 可执行操作 | 只显示 projection 注册的 retry/reconcile/repair dry-run/Settings 映射 | PASS；不实现通用命令或 repair execute |
+| 隐私 | 不显示路径、opaque source/job/event identity、fingerprint、raw error、JSONL 或凭据 | PASS |
+
+当前实现复用 M7 Liquid Glass token、900px minimum responsive grid、forced-colors/reduced-motion 基础约束；最终本卡证据以自动化 DOM/contract、同 source 人工结构复核与 packaged gate 为准，不把 synthetic 视觉数据写入产品 runtime。
+
+current result: passed
+
+---

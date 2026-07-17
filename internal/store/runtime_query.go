@@ -414,6 +414,9 @@ func validRuntimeJobFilter(filter RuntimeJobQuery) bool {
 	if filter.After != nil && (filter.After.UpdatedAtMS < 0 || filter.After.JobID == "") {
 		return false
 	}
+	if filter.CurrentOnly && len(filter.States) > 0 {
+		return false
+	}
 	seenStates := make(map[JobState]struct{}, len(filter.States))
 	for _, state := range filter.States {
 		if !validJobState(state) {
@@ -613,7 +616,10 @@ func parseRuntimeSourceKey(value string) (RuntimeSourceKind, string, bool) {
 
 func runtimeJobQuery(database *gorm.DB, filter RuntimeJobQuery) *gorm.DB {
 	query := database.Model(&jobRunModel{})
-	if len(filter.States) > 0 {
+	if filter.CurrentOnly {
+		query = query.Where("state IN ? OR (state = ? AND resume_consumed_by_job_id IS NULL)",
+			[]string{string(JobQueued), string(JobRunning)}, string(JobInterrupted))
+	} else if len(filter.States) > 0 {
 		query = query.Where("state IN ?", runtimeJobStateStrings(filter.States))
 	}
 	if len(filter.Phases) > 0 {

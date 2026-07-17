@@ -197,6 +197,85 @@ type HealthDetailResponse struct {
 	Item HealthItem             `json:"item"`
 }
 
+type DataHealthWindow struct {
+	FromMS  basequery.NumericValue `json:"fromMs"`
+	UntilMS basequery.NumericValue `json:"untilMs"`
+}
+
+type DataHealthRuntimePoint struct {
+	CapturedAtMS         basequery.NumericValue `json:"capturedAtMs"`
+	CPUPercent           float64                `json:"cpuPercent"`
+	RSSBytes             basequery.NumericValue `json:"rssBytes"`
+	PeakRSSBytes         basequery.NumericValue `json:"peakRssBytes"`
+	DBBytes              basequery.NumericValue `json:"dbBytes"`
+	WALBytes             basequery.NumericValue `json:"walBytes"`
+	DiskFreeBytes        basequery.NumericValue `json:"diskFreeBytes"`
+	LiveQueueDepth       basequery.NumericValue `json:"liveQueueDepth"`
+	BackfillQueueDepth   basequery.NumericValue `json:"backfillQueueDepth"`
+	OldestLiveWaitMS     basequery.NumericValue `json:"oldestLiveWaitMs"`
+	OldestBackfillWaitMS basequery.NumericValue `json:"oldestBackfillWaitMs"`
+	DroppedSamples       basequery.NumericValue `json:"droppedSamples"`
+}
+
+type DataHealthScheduler struct {
+	CycleCount               basequery.NumericValue `json:"cycleCount"`
+	CompletedCycles          basequery.NumericValue `json:"completedCycles"`
+	YieldedCycles            basequery.NumericValue `json:"yieldedCycles"`
+	FailedCycles             basequery.NumericValue `json:"failedCycles"`
+	InterruptedCycles        basequery.NumericValue `json:"interruptedCycles"`
+	FilesScanned             basequery.NumericValue `json:"filesScanned"`
+	BytesRead                basequery.NumericValue `json:"bytesRead"`
+	ActiveMS                 basequery.NumericValue `json:"activeMs"`
+	MaxCycleActiveMS         basequery.NumericValue `json:"maxCycleActiveMs"`
+	LastProgressAtMS         basequery.NumericValue `json:"lastProgressAtMs"`
+	LastBackfillProgressAtMS basequery.NumericValue `json:"lastBackfillProgressAtMs"`
+}
+
+type DataHealthJobs struct {
+	Queued          basequery.NumericValue `json:"queued"`
+	Running         basequery.NumericValue `json:"running"`
+	Interrupted     basequery.NumericValue `json:"interrupted"`
+	Succeeded       basequery.NumericValue `json:"succeeded"`
+	Failed          basequery.NumericValue `json:"failed"`
+	Cancelled       basequery.NumericValue `json:"cancelled"`
+	DurationCount   basequery.NumericValue `json:"durationCount"`
+	DurationTotalMS basequery.NumericValue `json:"durationTotalMs"`
+	DurationMaxMS   basequery.NumericValue `json:"durationMaxMs"`
+}
+
+type DataHealthSources struct {
+	Total                  basequery.NumericValue `json:"total"`
+	Unknown                basequery.NumericValue `json:"unknown"`
+	Current                basequery.NumericValue `json:"current"`
+	Stale                  basequery.NumericValue `json:"stale"`
+	Unavailable            basequery.NumericValue `json:"unavailable"`
+	ConsecutiveFailures    basequery.NumericValue `json:"consecutiveFailures"`
+	MaxConsecutiveFailures basequery.NumericValue `json:"maxConsecutiveFailures"`
+	Attempts               basequery.NumericValue `json:"attempts"`
+	SucceededAttempts      basequery.NumericValue `json:"succeededAttempts"`
+	FailedAttempts         basequery.NumericValue `json:"failedAttempts"`
+	CancelledAttempts      basequery.NumericValue `json:"cancelledAttempts"`
+	ResponseBytes          basequery.NumericValue `json:"responseBytes"`
+	LastAttemptAtMS        basequery.NumericValue `json:"lastAttemptAtMs"`
+	LastSuccessAtMS        basequery.NumericValue `json:"lastSuccessAtMs"`
+	NextRetryAtMS          basequery.NumericValue `json:"nextRetryAtMs"`
+}
+
+type DataHealthResponse struct {
+	Meta          basequery.ResponseMeta   `json:"meta"`
+	EvaluatedAtMS basequery.NumericValue   `json:"evaluatedAtMs"`
+	Window        DataHealthWindow         `json:"window"`
+	Runtime       []DataHealthRuntimePoint `json:"runtime"`
+	Latest        *DataHealthRuntimePoint  `json:"latest"`
+	Scheduler     DataHealthScheduler      `json:"scheduler"`
+	Jobs          DataHealthJobs           `json:"jobs"`
+	Sources       DataHealthSources        `json:"sources"`
+	CurrentJobs   []JobItem                `json:"currentJobs"`
+	RecentJobs    []JobItem                `json:"recentJobs"`
+	OpenEvents    []HealthItem             `json:"openEvents"`
+	RecentEvents  []HealthItem             `json:"recentEvents"`
+}
+
 type HomeSwitchStatus string
 
 const (
