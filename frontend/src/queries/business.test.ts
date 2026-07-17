@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   Health,
+  HealthProjection,
   Job,
   ListHealth,
   ListJobs,
@@ -35,6 +36,7 @@ import {
   businessQueryRoots,
   healthDetailQueryOptions,
   healthListQueryOptions,
+  healthProjectionQueryOptions,
   jobDetailQueryOptions,
   jobListQueryOptions,
   projectDetailQueryOptions,
@@ -64,6 +66,7 @@ const bindingHarness = vi.hoisted(() => {
 
 vi.mock("@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service", () => ({
   Health: vi.fn(() => bindingHarness.result()),
+  HealthProjection: vi.fn(() => bindingHarness.result()),
   Job: vi.fn(() => bindingHarness.result()),
   ListHealth: vi.fn(() => bindingHarness.result()),
   ListJobs: vi.fn(() => bindingHarness.result()),
@@ -97,7 +100,7 @@ async function runQuery(options: { queryFn?: unknown }) {
 }
 
 describe("business Vue Query contract", () => {
-  it("uses the complete request in stable keys and delegates all 13 bindings", async () => {
+  it("uses the complete request in stable keys and delegates all 14 bindings", async () => {
     bindingHarness.cancelOn.mockClear();
     const usageRequest: UsageCostRequest = {
       range: dateRange,
@@ -132,6 +135,7 @@ describe("business Vue Query contract", () => {
       [jobDetailQueryOptions(jobRequest), [...businessQueryRoots.jobs, "detail", jobRequest], Job, jobRequest],
       [healthListQueryOptions(pageRequest), [...businessQueryRoots.health, "list", pageRequest], ListHealth, pageRequest],
       [healthDetailQueryOptions(healthRequest), [...businessQueryRoots.health, "detail", healthRequest], Health, healthRequest],
+      [healthProjectionQueryOptions(), [...businessQueryRoots.health, "projection"], HealthProjection, undefined],
       [settingsQueryOptions(), [...businessQueryRoots.settings, "current"], Settings, undefined],
     ] as const;
 
@@ -147,7 +151,7 @@ describe("business Vue Query contract", () => {
       }
     }
     expect(quotaClock).toHaveBeenCalledOnce();
-    expect(bindingHarness.cancelOn).toHaveBeenCalledTimes(13);
+    expect(bindingHarness.cancelOn).toHaveBeenCalledTimes(14);
   });
 
   it("uses bounded domain stale times without changing bootstrap policy", () => {

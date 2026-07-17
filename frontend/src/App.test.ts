@@ -21,18 +21,18 @@ vi.mock("@wailsio/runtime", () => ({
   },
 }));
 
-import { ListHealth, Settings } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service";
+import { HealthProjection, Settings } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service";
 
 import { createAppDependencies, createCodexPulseApp } from "./app";
 import type { QueryInvalidationEventSource } from "./events/queryInvalidation";
 
 vi.mock("@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service", async (importOriginal) => ({
   ...await importOriginal<typeof import("@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service")>(),
-  ListHealth: vi.fn(),
+  HealthProjection: vi.fn(),
   Settings: vi.fn(),
 }));
 
-const healthMock = vi.mocked(ListHealth);
+const healthMock = vi.mocked(HealthProjection);
 const settingsMock = vi.mocked(Settings);
 const mountedApps: VueApp[] = [];
 
@@ -44,22 +44,18 @@ function cancellable<T>(promise: Promise<T>): CancellablePromise<T> {
 }
 
 function healthResponse(level = "healthy") {
-  const numeric = { value: 0, unit: "count", unknownReason: null };
+  const components = ["local_index", "live_queue", "history_backfill", "online_quota", "storage", "runtime", "updater"].map((component) => ({
+    component, level: "healthy", evidence: "known", reason: "healthy", impact: "none", protection: "none", recoveryAction: "none",
+  }));
+  const primary = level === "blocked" ? {
+    component: "storage", level: "blocked", evidence: "known", reason: "store_disk_full",
+    impact: "storage_at_risk", protection: "writes_stopped", recoveryAction: "free_space",
+  } : null;
   return {
-    meta: { issues: null, page: null, status: "complete", version: "query-v1" },
-    items: null,
-    matchedCount: numeric,
-    summary: {
-      level,
-      total: numeric,
-      active: numeric,
-      resolved: numeric,
-      info: numeric,
-      warnings: numeric,
-      errors: numeric,
-      critical: numeric,
-    },
-  } as Awaited<ReturnType<typeof ListHealth>>;
+    hasValue: true, stale: false, failure: "none", level, primary,
+    evaluatedAtMs: { value: 1_784_100_000_000, unit: "milliseconds", unknownReason: null },
+    components: primary === null ? components : components.map((item) => item.component === "storage" ? primary : item),
+  } as Awaited<ReturnType<typeof HealthProjection>>;
 }
 
 function settingsResponse() {

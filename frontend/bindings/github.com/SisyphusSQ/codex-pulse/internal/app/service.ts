@@ -49,6 +49,10 @@ export function Health(request: runtimeinfo$0.HealthDetailRequest): $Cancellable
     return $Call.ByID(1359498569, request);
 }
 
+export function HealthProjection(): $CancellablePromise<$models.HealthProjectionResponse> {
+    return $Call.ByID(2606310108);
+}
+
 export function Job(request: runtimeinfo$0.JobDetailRequest): $CancellablePromise<runtimeinfo$0.JobDetailResponse> {
     return $Call.ByID(3305728438, request);
 }

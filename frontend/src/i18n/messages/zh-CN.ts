@@ -35,6 +35,7 @@ export const zhCNMessages = {
     skipToContent: "跳到主要内容",
     status: {
       unavailable: "本机运行状态暂不可用",
+      unknown: "本机健康状态尚无可信结论",
       blocked: "本机数据处理已阻塞",
       offline: "网络已离线；本机事实仍可使用，在线来源将等待恢复",
       degraded: "本机数据状态降级",
@@ -44,6 +45,8 @@ export const zhCNMessages = {
       busy: "后台任务进行中",
       loading: "正在读取本机运行状态",
       retry: "重新读取",
+      details: "查看详情",
+      actionFailed: "操作未完成；仍可进入本机状态查看详情。",
     },
     routeError: {
       title: "当前页面暂时无法显示",
@@ -57,6 +60,52 @@ export const zhCNMessages = {
     localOnly: {
       title: "本机数据",
       description: "Codex only · 不上传原始内容",
+    },
+  },
+  health: {
+    entry: {
+      loading: "读取中", unavailable: "不可用", unknown: "状态未知", healthy: "7 项正常",
+      attention: "{count} 项需关注", stale: "上次可信 · {summary}",
+    },
+    time: { evaluated: "评估于 {time}", unknown: "时间未知", lastTrusted: "上次可信状态" },
+    failure: {
+      none: "当前没有失败记录", snapshot: "本机健康事实暂不可读取", evaluate: "本机健康判断暂未完成",
+      persist: "本机健康结果暂未保存", panic: "本机健康检查已安全中止",
+    },
+    statusImpact: {
+      unavailable: "当前无法判断本机数据可信度", unknown: "当前尚无可信健康结论", blocked: "本机数据处理已阻塞",
+      offline: "在线来源将等待网络恢复", degraded: "部分本机数据可信度受影响", stale: "当前显示上次可信健康状态",
+      paused: "索引进度暂时停止", busy: "后台处理正在推进", loading: "健康状态仍在读取",
+    },
+    statusReason: {
+      unavailable: "健康查询暂不可用", unknown: "健康检查尚未完成", blocked: "存在阻塞组件",
+      offline: "当前网络离线", degraded: "存在降级组件", stale: "健康事实正在重新读取",
+      paused: "任务已被明确暂停", busy: "后台任务正在运行", loading: "首次健康查询进行中",
+    },
+    action: {
+      none: "查看恢复方式", retry: "重新读取", check_source: "检查来源",
+      grant_permission: "恢复授权", free_space: "释放空间", repair_store: "检查存储",
+    },
+    impact: {
+      none: "当前数据不受影响", indexing_stopped: "本机索引已停止", indexing_paused: "本机索引已暂停",
+      live_data_delayed: "最新数据会延迟", history_incomplete: "历史数据暂不完整",
+      online_quota_unavailable: "在线配额暂不可用", storage_at_risk: "本机存储存在风险",
+      runtime_at_risk: "后台处理稳定性受影响", update_checks_unavailable: "更新检查暂不可用",
+    },
+    reason: {
+      healthy: "运行正常", not_configured: "当前版本未配置", index_paused: "用户已暂停索引",
+      index_draining: "正在安全停止任务", index_reconciling: "正在核对本机状态", system_sleeping: "系统处于休眠状态",
+      backfill_paused: "历史回填已暂停", live_queue_stalled: "最新任务等待过久", backfill_stalled: "历史回填长时间未推进",
+      auth_required: "在线能力需要重新授权", disk_low: "可用磁盘空间不足", cpu_pressure: "后台 CPU 持续偏高",
+      memory_pressure: "后台内存持续偏高", updater_unavailable: "更新服务暂不可用", updater_unknown: "无法判断更新状态",
+      metrics_stale: "运行指标已过期", source_timeout: "数据来源响应超时", source_unavailable: "数据来源暂不可用",
+      source_permission: "数据来源权限不足", source_corrupt: "数据来源无法安全读取", source_stale: "数据来源长时间未更新",
+      job_interrupted: "后台任务被中断", job_failed: "后台任务失败", job_cancelled: "后台任务已取消",
+      store_busy: "本机存储繁忙", store_disk_full: "本机磁盘已满", store_read_only: "本机存储为只读",
+      store_permission: "本机存储权限不足", store_io: "本机存储读写异常", store_corrupt: "本机存储需要检查",
+      store_unavailable: "本机存储暂不可用", store_unknown: "无法判断本机存储状态", wal_pressure: "本机数据库日志压力偏高",
+      pricing_unavailable: "定价信息暂不可用", pricing_invalid: "定价信息无效", runtime_unknown: "无法判断后台运行状态",
+      lifecycle_unknown: "无法判断索引生命周期", source_unknown: "无法判断数据来源状态", source_failure_streak: "数据来源连续失败",
     },
   },
   overview: {

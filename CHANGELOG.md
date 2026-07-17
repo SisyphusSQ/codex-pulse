@@ -43,6 +43,7 @@
 40. [TOO-279] 新增 Pure Go GORM runtime metrics 采集与单快照 Job、Scheduler、Source 低基数事实，使用 gopsutil 和 robfig cron 提供 30 秒/5 秒采样、24 小时完整序列、查询延迟与 dropped 恢复语义，并以持久 resume-consumed 标记防止 interrupted Job 在 retention 后错误复活
 41. [TOO-280] 新增 typed Health Evaluator、schema v14 有限健康事件与 robfig cron 周期评估，固定持续窗口、暂停/休眠 lane 抑制、唯一优先级、精确事件所有权、原子 observe/resolve/reopen 和 stale projection 语义
 42. [TOO-281] 实现 runtime、已解决健康事件、已完成 Job 与来源尝试的固定 24 小时 GORM 分批清理，新增低优先级 PASSIVE WAL checkpoint 和 robfig cron 启动补跑、小时周期、有限退避及运行投影，保证引用保护、取消重算、实时读写优先和应用关闭隔离
+43. [TOO-282] 接入七组件 Health Projection 只读查询、主导航健康摘要与唯一全局 Banner，固定权威优先级、影响原因时间、有限恢复入口、缓存失效重取、上次可信和查询失败语义
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

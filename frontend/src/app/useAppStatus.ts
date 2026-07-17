@@ -1,15 +1,14 @@
-import { useQuery } from "@tanstack/vue-query";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 
-import { createRuntimeRequests } from "@/features/runtime/requests";
-import { healthListQueryOptions } from "@/queries/business";
+import type { HealthComponentStatus, HealthProjectionResponse } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/models";
+import { useHealthProjection } from "@/features/runtime/useHealthProjection";
 
 export type AppStatusKind =
   | "unavailable"
+  | "unknown"
   | "blocked"
   | "offline"
   | "degraded"
-  | "partial"
   | "stale"
   | "paused"
   | "busy"
@@ -17,64 +16,47 @@ export type AppStatusKind =
 
 export interface AppStatus {
   kind: AppStatusKind;
+  evaluatedAtMs: number | null;
+  primary: HealthComponentStatus | null;
   retryable: boolean;
+  lastTrusted: boolean;
+  failure: string;
 }
 
 export interface AppStatusInput {
   online: boolean;
   health: {
-    data: {
-      level: string;
-      metaStatus: string;
-    } | undefined;
+    data: HealthProjectionResponse | undefined;
     isError: boolean;
     isPending: boolean;
-    isStale: boolean;
   };
 }
 
-const priorities: Record<AppStatusKind, number> = {
-  unavailable: 100,
-  blocked: 90,
-  offline: 80,
-  degraded: 70,
-  partial: 60,
-  stale: 50,
-  paused: 40,
-  busy: 30,
-  loading: 20,
-};
-
-const retryable = new Set<AppStatusKind>([
-  "unavailable",
-  "blocked",
-  "degraded",
-  "partial",
-  "stale",
-]);
-
 export function selectAppStatus(input: AppStatusInput): AppStatus | null {
-  const candidates = new Set<AppStatusKind>();
   const { data } = input.health;
+  const evaluatedAtMs = data?.evaluatedAtMs.value ?? null;
+  const primary = data?.primary ?? null;
+  const status = (kind: AppStatusKind, retryable = false): AppStatus => ({
+    kind, evaluatedAtMs, primary, retryable,
+    lastTrusted: data !== undefined && (data.stale || input.health.isError),
+    failure: data?.failure ?? "none",
+  });
 
-  if (data === undefined && input.health.isError) candidates.add("unavailable");
-  if (data?.metaStatus === "unavailable") candidates.add("unavailable");
-  if (data?.level === "blocked") candidates.add("blocked");
-  if (!input.online) candidates.add("offline");
-  if (data?.level === "degraded") candidates.add("degraded");
-  if (data?.metaStatus === "partial") candidates.add("partial");
-  if (data !== undefined && (input.health.isError || input.health.isStale)) candidates.add("stale");
-  if (data?.level === "paused") candidates.add("paused");
-  if (data?.level === "busy") candidates.add("busy");
-  if (data === undefined && input.health.isPending) candidates.add("loading");
-
-  const kind = Array.from(candidates).sort((left, right) => priorities[right] - priorities[left])[0];
-  return kind === undefined ? null : { kind, retryable: retryable.has(kind) };
+  if (data?.hasValue && data.level === "blocked") return status("blocked", true);
+  if (data?.hasValue && data.level === "degraded" && primary?.impact !== "none") return status("degraded", true);
+  if (data === undefined && input.health.isError) return status("unavailable", true);
+  if (!input.online) return status("offline");
+  if (data === undefined && input.health.isPending) return status("loading");
+  if (data !== undefined && !data.hasValue) return status("unknown", true);
+  if (data?.stale || input.health.isError) return status("stale", true);
+  if (data?.level === "paused") return status("paused");
+  if (data?.level === "busy") return status("busy");
+  return null;
 }
 
 export function useAppStatus() {
   const online = ref(typeof navigator === "undefined" ? true : navigator.onLine);
-  const health = useQuery(healthListQueryOptions(createRuntimeRequests().health));
+  const health = useHealthProjection();
 
   function updateOnlineState() {
     online.value = navigator.onLine;
@@ -92,20 +74,14 @@ export function useAppStatus() {
   const status = computed(() => selectAppStatus({
     online: online.value,
     health: {
-      data: health.data.value === undefined
-        ? undefined
-        : {
-            level: health.data.value.summary.level,
-            metaStatus: health.data.value.meta.status,
-          },
+      data: health.data.value,
       isError: health.isError.value,
       isPending: health.isPending.value,
-      isStale: health.isStale.value,
     },
   }));
 
   return {
-    retry: () => health.refetch(),
+    retry: () => health.refetch({ throwOnError: true }),
     status,
   };
 }

@@ -177,6 +177,9 @@ func Run(assets fs.FS) error {
 		if err != nil {
 			return err
 		}
+		if err := bindingService.bindHealthProjection(healthRuntime); err != nil {
+			return err
+		}
 		defer func() {
 			returnErr = errors.Join(returnErr, healthRuntime.Close(context.Background()))
 		}()
