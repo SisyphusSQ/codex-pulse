@@ -95,11 +95,11 @@ v0.1 不为了抽象完整性提前实现 Claude/OpenCode provider。
 | 样式系统 | Tailwind CSS v4 | 设计 token、响应式布局、状态样式和 Liquid Glass 表面实现。 |
 | 基础交互 | shadcn-vue + Reka UI | 选择性引入并持有组件源码；用于按钮、菜单、弹窗、Popover、Tooltip、Switch 等可访问性基础交互，不作为整套后台主题。 |
 | 图表 | Apache ECharts | 用量趋势、模型/项目分布和成本分析；图表配置封装为业务组件，页面不直接堆叠 option。 |
-| 表格 | `@tanstack/vue-table` | Sessions、Projects 等高密度列表的排序、筛选、列定义和后续虚拟化。 |
+| 表格 | 语义原生 table；按证据再引入 `@tanstack/vue-table` | Sessions v0.1 的排序、筛选与稳定分页全部由后端 query contract负责，前端用语义原生 table 保留服务端顺序；只有后续出现共享列定义或虚拟化证据时才引入额外依赖。 |
 | 异步数据 | `@tanstack/vue-query` | 包装 Wails Promise 查询、缓存、失效和刷新状态；Wails events 只定向失效并重取，不把 payload 写成业务事实。 |
 | 客户端状态 | Vue Composition API；必要时 Pinia | 页面局部状态优先使用 `ref` / `computed` / composable；只有跨页面 UI 偏好、会话级状态确有需要时才引入 Pinia。业务事实不在前端复制一份长期 store。 |
 | i18n | Vue I18n | v0.1 只打包 `zh-CN`，所有可见文案仍通过稳定 message key 访问。 |
-| 图标 | `lucide-vue-next` | 普通功能图标；应用图标、状态栏模板图标和品牌资产单独维护，不直接用 Lucide 代替。 |
+| 图标 | `@lucide/vue` | 普通功能图标；应用图标、状态栏模板图标和品牌资产单独维护，不直接用 Lucide 代替。 |
 | 测试 | Vitest + Vue Test Utils | composable、组件状态和关键交互测试；对可访问性、键盘操作和数据空值语义建立回归用例。 |
 
 版本号在正式代码仓库初始化时统一锁定，并提交 lockfile。首版不额外引入通用大组件库，也不同时混用多套基础组件体系。
@@ -120,11 +120,12 @@ flowchart LR
 - 页面首次进入时通过生成的 Wails bindings 查询；刷新按 query key 精确失效，不设置全局 loading。
 - quota、live append、backfill、health 和 settings 等后台变化只发布有限 invalidation event；前端失效受影响的 query root 并从 Go 重取，不从 event payload 更新业务事实。
 - 组件不得直接读取 `~/.codex`、SQLite 或凭证文件。
+- `/sessions` 由 Router query 的纯 parse/normalize/serialize、generated Request assembler、TanStack list/detail queries 与展示组件组成。URL保存有限筛选、list cursor和selection；Turn cursor仅存在于 composable/page `ref`，两类 cursor 都不解析。该页面不新增 binding、Pinia、第二 cache 或本地业务聚合。
 
 ### 页面范围
 
 - 概览：默认落地页；显示 5 小时 / 本周 quota 摘要、今日 / 7 天 / 30 天 / 自定义区间、token 构成、API 等价成本和每日明细。
-- Sessions：thread、项目、模型、active turn、最后活动、token 和 API 等价成本。
+- Sessions：thread、项目、模型、active turn、最后活动、token 和 API 等价成本；列表使用后端 stable keyset page，详情下钻到 content-free Turn usage/cost timeline，URL恢复与两级 cursor生命周期按 query contract隔离。
 - Projects：按 workspace/repo 聚合使用量和最近 Session。
 - Quota：本地/在线来源、窗口代际、刷新记录、reset credits 和冲突解释。
 - 本机状态：数据完整性、索引新鲜度、来源、后台任务、存储和最近运行记录。
