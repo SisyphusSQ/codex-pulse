@@ -232,6 +232,18 @@ func TestBootstrapRepositoryResumesInterruptedAttemptWithClonedPlan(t *testing.T
 		gotItems[0].JobID != resumed.JobID || gotItems[0].UpdatedAtMS != 50 {
 		t.Fatalf("resumed run = %#v %#v %#v", gotJob, gotFacts, gotItems)
 	}
+	consumedParent, err := repository.JobRun(context.Background(), oldID)
+	if err != nil || consumedParent.ResumeConsumedByJobID == nil ||
+		*consumedParent.ResumeConsumedByJobID != resumed.JobID {
+		t.Fatalf("bootstrap resume consumption = %#v, %v", consumedParent.ResumeConsumedByJobID, err)
+	}
+	second := resumed
+	second.JobID = "bootstrap-resume-attempt-3"
+	second.CreatedAtMS = 51
+	second.UpdatedAtMS = 51
+	if err := repository.ResumeBootstrapJob(context.Background(), oldID, second); !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("ResumeBootstrapJob(second consumer) error = %v, want ErrInvalidRecord", err)
+	}
 }
 
 func TestBootstrapRepositoryReadsLatestAttemptByIdentityAndGeneration(t *testing.T) {

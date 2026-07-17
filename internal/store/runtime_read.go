@@ -408,7 +408,8 @@ func jobRunFromModel(model jobRunModel) (JobRun, error) {
 		JobID: model.JobID, JobType: model.JobType, RequestedBy: model.RequestedBy,
 		Priority: model.Priority, State: JobState(model.State), Phase: JobPhase(model.Phase),
 		SourceFileID: model.SourceFileID, ResumeOfJobID: model.ResumeOfJobID,
-		CreatedAtMS: model.CreatedAtMS, StartedAtMS: model.StartedAtMS, FinishedAtMS: model.FinishedAtMS,
+		ResumeConsumedByJobID: model.ResumeConsumedByJobID,
+		CreatedAtMS:           model.CreatedAtMS, StartedAtMS: model.StartedAtMS, FinishedAtMS: model.FinishedAtMS,
 		ProgressCurrent: model.ProgressCurrent, ProgressTotal: model.ProgressTotal,
 		ErrorClass: runtimeErrorClassFromString(model.ErrorClass), UpdatedAtMS: model.UpdatedAtMS,
 	}
@@ -428,6 +429,11 @@ func jobRunFromModel(model jobRunModel) (JobRun, error) {
 		job.State == JobRunning && job.UpdatedAtMS > runtimeclock.MaxInProgressTimestampMS {
 		return JobRun{}, invalidRecord("stored job state has no logical-time headroom")
 	}
+	if job.ResumeConsumedByJobID != nil &&
+		(job.State != JobInterrupted || *job.ResumeConsumedByJobID == "" ||
+			*job.ResumeConsumedByJobID == job.JobID || job.FinishedAtMS == nil) {
+		return JobRun{}, invalidRecord("stored job resume-consumed marker is invalid")
+	}
 	return job, nil
 }
 
@@ -439,7 +445,9 @@ func jobRunsEqual(left, right JobRun) bool {
 	return left.JobID == right.JobID && left.JobType == right.JobType && left.RequestedBy == right.RequestedBy &&
 		left.Priority == right.Priority && left.State == right.State && left.Phase == right.Phase &&
 		equalStringPointer(left.SourceFileID, right.SourceFileID) &&
-		equalStringPointer(left.ResumeOfJobID, right.ResumeOfJobID) && left.CreatedAtMS == right.CreatedAtMS &&
+		equalStringPointer(left.ResumeOfJobID, right.ResumeOfJobID) &&
+		equalStringPointer(left.ResumeConsumedByJobID, right.ResumeConsumedByJobID) &&
+		left.CreatedAtMS == right.CreatedAtMS &&
 		equalInt64Pointer(left.StartedAtMS, right.StartedAtMS) &&
 		equalInt64Pointer(left.FinishedAtMS, right.FinishedAtMS) &&
 		equalInt64Pointer(left.ProgressCurrent, right.ProgressCurrent) &&

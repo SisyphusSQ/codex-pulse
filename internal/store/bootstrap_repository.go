@@ -514,6 +514,10 @@ func (repository *Repository) ResumeBootstrapJob(
 			!equalJobCursorPointer(resumed.ResumeCursor, old.ResumeCursor) {
 			return invalidRecord("resumed bootstrap job does not preserve interrupted lineage")
 		}
+		consumedReplay, err := interruptedResumeConsumption(old, resumed)
+		if err != nil {
+			return err
+		}
 		oldFacts, found, err := bootstrapJobByID(ctx, transaction, oldJobID)
 		if err != nil || !found {
 			if err != nil {
@@ -549,6 +553,9 @@ func (repository *Repository) ResumeBootstrapJob(
 			if !bootstrapJobFactsEqual(facts, resumedFacts) || !bootstrapPlanItemsEqual(items, resumedItems) {
 				return invalidRecord("resumed bootstrap payload conflicts with stable identity")
 			}
+			return markInterruptedResumeConsumed(ctx, transaction, old, resumed)
+		}
+		if consumedReplay {
 			return nil
 		}
 		if err := createJobRun(ctx, transaction, resumed); err != nil {
@@ -567,7 +574,7 @@ func (repository *Repository) ResumeBootstrapJob(
 				return err
 			}
 		}
-		return nil
+		return markInterruptedResumeConsumed(ctx, transaction, old, resumed)
 	})
 }
 

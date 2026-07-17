@@ -37,6 +37,12 @@ func TestJobRunStateMachineRejectsIllegalAndStaleTransitions(t *testing.T) {
 	if err := repository.CreateJobRun(context.Background(), rawCursor); !errors.Is(err, ErrInvalidRecord) {
 		t.Fatalf("CreateJobRun(raw cursor) error = %v, want ErrInvalidRecord", err)
 	}
+	forgedConsumption := queued
+	forgedConsumption.JobID = "job-forged-resume-consumption"
+	forgedConsumption.ResumeConsumedByJobID = pointerTo("forged-child")
+	if err := repository.CreateJobRun(context.Background(), forgedConsumption); !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("CreateJobRun(forged resume consumption) error = %v, want ErrInvalidRecord", err)
+	}
 	got, err := repository.JobRun(context.Background(), queued.JobID)
 	if err != nil {
 		t.Fatalf("JobRun() error = %v", err)
@@ -306,8 +312,10 @@ func TestInterruptAndResumeJobRunsPreserveHistoryAndCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("JobRun(old after resume) error = %v", err)
 	}
-	if !reflect.DeepEqual(oldAfter, old) {
-		t.Fatalf("old job changed after resume: got %#v, want %#v", oldAfter, old)
+	wantOldAfter := old
+	wantOldAfter.ResumeConsumedByJobID = pointerTo(resumed.JobID)
+	if !reflect.DeepEqual(oldAfter, wantOldAfter) {
+		t.Fatalf("old job resume consumption = %#v, want %#v", oldAfter, wantOldAfter)
 	}
 
 	jobs, err := repository.ListJobRuns(context.Background(), JobRunFilter{State: pointerTo(JobInterrupted), Limit: 10})

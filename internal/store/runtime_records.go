@@ -203,22 +203,23 @@ type JobCursor struct {
 
 // JobRun 保存一次独立作业尝试；terminal 行不会被恢复为运行态。
 type JobRun struct {
-	JobID           string
-	JobType         string
-	RequestedBy     string
-	Priority        int64
-	State           JobState
-	Phase           JobPhase
-	SourceFileID    *string
-	ResumeOfJobID   *string
-	CreatedAtMS     int64
-	StartedAtMS     *int64
-	FinishedAtMS    *int64
-	ProgressCurrent *int64
-	ProgressTotal   *int64
-	ResumeCursor    *JobCursor
-	ErrorClass      *RuntimeErrorClass
-	UpdatedAtMS     int64
+	JobID                 string
+	JobType               string
+	RequestedBy           string
+	Priority              int64
+	State                 JobState
+	Phase                 JobPhase
+	SourceFileID          *string
+	ResumeOfJobID         *string
+	ResumeConsumedByJobID *string
+	CreatedAtMS           int64
+	StartedAtMS           *int64
+	FinishedAtMS          *int64
+	ProgressCurrent       *int64
+	ProgressTotal         *int64
+	ResumeCursor          *JobCursor
+	ErrorClass            *RuntimeErrorClass
+	UpdatedAtMS           int64
 }
 
 // JobTransition 使用 ExpectedState 防止陈旧调用覆盖已推进状态。

@@ -23,8 +23,14 @@ func TestApplicationMigrationUpgradesV7ThroughCurrentWithoutLosingSchedulerFacts
 	seedApplicationSchemaV7(t, database)
 	repository := NewRepository(database)
 	job := schedulerTargetJob("v7-preserved-job", JobPhaseLive, 10)
-	if err := repository.CreateJobRun(context.Background(), job); err != nil {
-		t.Fatalf("CreateJobRun() error = %v", err)
+	if err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		return transaction.WithContext(ctx).Table("job_runs").Create(map[string]any{
+			"job_id": job.JobID, "job_type": job.JobType, "requested_by": job.RequestedBy,
+			"priority": job.Priority, "state": string(job.State), "phase": string(job.Phase),
+			"created_at_ms": job.CreatedAtMS, "updated_at_ms": job.UpdatedAtMS,
+		}).Error
+	}); err != nil {
+		t.Fatalf("seed v7 job run error = %v", err)
 	}
 	task := SchedulerTask{
 		TaskID: "v7-preserved-task", DedupeKey: "v7:preserved",
@@ -56,11 +62,11 @@ func TestApplicationMigrationUpgradesV7ThroughCurrentWithoutLosingSchedulerFacts
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
-	if report.FromVersion != 7 || report.TargetVersion != 12 ||
-		!equalInts(report.AppliedVersions, []int{8, 9, 10, 11, 12}) || backupVersions != [2]int{7, 12} {
-		t.Fatalf("run() report = %#v backup=%v, want v7 to v12", report, backupVersions)
+	if report.FromVersion != 7 || report.TargetVersion != applicationSchemaVersion ||
+		!equalInts(report.AppliedVersions, []int{8, 9, 10, 11, 12, 13}) || backupVersions != [2]int{7, 13} {
+		t.Fatalf("run() report = %#v backup=%v, want v7 to v13", report, backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 12, 12)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 	stored, err := repository.SchedulerTask(context.Background(), task.TaskID)
 	if err != nil || stored != task {
 		t.Fatalf("SchedulerTask(preserved) = %#v, %v", stored, err)
@@ -135,15 +141,15 @@ func verifyApplicationSchemaV7(ctx context.Context, transaction storesqlite.Writ
 func TestCurrentApplicationSchemaIncludesV8LifecycleAndRetryFacts(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != 12 {
-		t.Fatalf("applicationSchemaVersion = %d, want 12", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV13Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 13", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	repository := NewRepository(database)
 	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 12, 12)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 
 	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
 		for _, table := range []string{"scheduler_lifecycle", "scheduler_retry_states"} {

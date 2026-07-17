@@ -15,6 +15,7 @@ type Repository struct {
 	quotaProjectionReadHook        func(string) error
 	runtimeQueryReadHook           func(string) error
 	runtimeHealthAggregateRowsHook func(int) error
+	metricsSnapshotReadHook        func(string) error
 	quotaNow                       func() time.Time
 }
 

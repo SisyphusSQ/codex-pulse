@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
@@ -104,6 +105,52 @@ func TestBindingServiceDelegatesEveryQuery(t *testing.T) {
 	if !slices.Equal(usage.calls, wantUsage) || !slices.Equal(runtime.calls, wantRuntime) ||
 		runtime.evaluatedAtMS != 123 {
 		t.Fatalf("delegated calls usage=%v runtime=%v evaluatedAt=%d", usage.calls, runtime.calls, runtime.evaluatedAtMS)
+	}
+}
+
+func TestBindingServiceObservesQueriesButNotCommands(t *testing.T) {
+	t.Parallel()
+
+	observer := &queryObserverStub{}
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageCostBindingStub{}, RuntimeInfo: &runtimeInfoBindingStub{},
+		QuotaRefresh: &quotaRefreshBindingStub{}, QueryObserver: observer,
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	_ = service.Bootstrap()
+	_ = service.Contracts()
+	if _, err := service.UsageCost(t.Context(), usagecost.UsageCostRequest{}); err != nil {
+		t.Fatalf("UsageCost() error = %v", err)
+	}
+	if observer.calls != 3 {
+		t.Fatalf("query observations = %d, want 3", observer.calls)
+	}
+	if _, err := service.RequestQuotaRefresh(t.Context(), quotaonline.RefreshSourceQuota); err != nil {
+		t.Fatalf("RequestQuotaRefresh() error = %v", err)
+	}
+	if observer.calls != 3 {
+		t.Fatalf("observations after command = %d, want 3", observer.calls)
+	}
+}
+
+func TestBindingServiceIgnoresQueryObserverPanic(t *testing.T) {
+	t.Parallel()
+
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageCostBindingStub{}, RuntimeInfo: &runtimeInfoBindingStub{},
+		QueryObserver: &queryObserverStub{panicOnObserve: true},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	response, err := service.UsageCost(t.Context(), usagecost.UsageCostRequest{})
+	if err != nil {
+		t.Fatalf("UsageCost() error = %v", err)
+	}
+	if !reflect.DeepEqual(response, usagecost.UsageCostResponse{}) {
+		t.Fatalf("UsageCost() response = %#v", response)
 	}
 }
 
@@ -429,7 +476,7 @@ func TestBindingServiceComposesRealStoreQueries(t *testing.T) {
 		t.Fatalf("NewFileStore() error = %v", err)
 	}
 
-	service, err := composeBindingService(database, preferenceStore)
+	service, err := composeBindingService(database, preferenceStore, nil)
 	if err != nil {
 		t.Fatalf("composeBindingService() error = %v", err)
 	}
@@ -538,6 +585,18 @@ func assertBindingFailure(
 		}
 	} else if envelope.Error.Field == nil || *envelope.Error.Field != wantField {
 		t.Fatalf("binding field = %v, want %q", envelope.Error.Field, wantField)
+	}
+}
+
+type queryObserverStub struct {
+	calls          int
+	panicOnObserve bool
+}
+
+func (observer *queryObserverStub) Observe(time.Duration) {
+	observer.calls++
+	if observer.panicOnObserve {
+		panic("observer panic must be isolated")
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 func composeBindingService(
 	database *storesqlite.Store,
 	preferenceStore *preferences.FileStore,
+	queryObserver QueryObserver,
 ) (*Service, error) {
 	if database == nil || preferenceStore == nil {
 		return nil, ErrBindingService
@@ -34,7 +35,9 @@ func composeBindingService(
 	if err != nil {
 		return nil, errors.Join(ErrBindingService, err)
 	}
-	return NewService(ServiceConfig{UsageCost: usageService, RuntimeInfo: runtimeService})
+	return NewService(ServiceConfig{
+		UsageCost: usageService, RuntimeInfo: runtimeService, QueryObserver: queryObserver,
+	})
 }
 
 func openApplicationPreferences() (*preferences.FileStore, error) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"runtime"
 	"sync"
+	"time"
 
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
@@ -47,11 +48,16 @@ type quotaRefreshBindingCommand interface {
 	RequestQuotaRefresh(context.Context, quotaonline.RefreshSource) (store.SourceRefreshSchedule, error)
 }
 
+type QueryObserver interface {
+	Observe(time.Duration)
+}
+
 type ServiceConfig struct {
 	UsageCost       usageCostBindingQuery
 	RuntimeInfo     runtimeInfoBindingQuery
 	QuotaRefresh    quotaRefreshBindingCommand
 	RuntimeControls runtimeControlBindingCommand
+	QueryObserver   QueryObserver
 }
 
 // Service is the only business service registered with Wails. Its unexported
@@ -64,6 +70,7 @@ type Service struct {
 	quotaRefresh    quotaRefreshBindingCommand
 	runtimeMu       sync.RWMutex
 	runtimeControls runtimeControlBindingCommand
+	queryObserver   QueryObserver
 }
 
 func NewService(config ServiceConfig) (*Service, error) {
@@ -75,6 +82,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 		runtimeInfo:     config.RuntimeInfo,
 		quotaRefresh:    config.QuotaRefresh,
 		runtimeControls: config.RuntimeControls,
+		queryObserver:   config.QueryObserver,
 	}, nil
 }
 
@@ -112,8 +120,10 @@ type BootstrapInfo struct {
 	Platform string `json:"platform"`
 }
 
-func (*Service) Bootstrap() BootstrapInfo {
-	return BootstrapInfo{Name: appName, Locale: defaultLocale, Platform: runtime.GOOS}
+func (service *Service) Bootstrap() BootstrapInfo {
+	return bindingQueryValue(service, func() BootstrapInfo {
+		return BootstrapInfo{Name: appName, Locale: defaultLocale, Platform: runtime.GOOS}
+	})
 }
 
 type BindingMethodKind string
@@ -163,17 +173,19 @@ var bindingMethodAllowlist = []BindingMethodInfo{
 	{Name: "Settings", Kind: BindingMethodQuery},
 }
 
-func (*Service) Contracts() BindingContractInfo {
-	errorExample, _ := basequery.ErrorEnvelopeFrom(ErrBindingService)
-	return BindingContractInfo{
-		Version: BindingContractVersion, QueryVersion: basequery.ContractVersion,
-		UsageCostVersion: usagecost.ContractVersion, RuntimeInfoVersion: runtimeinfo.ContractVersion,
-		Methods: append([]BindingMethodInfo(nil), bindingMethodAllowlist...),
-		CommandMethods: []string{
-			"RequestQuotaRefresh", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
-			"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
-		}, ErrorExample: errorExample,
-	}
+func (service *Service) Contracts() BindingContractInfo {
+	return bindingQueryValue(service, func() BindingContractInfo {
+		errorExample, _ := basequery.ErrorEnvelopeFrom(ErrBindingService)
+		return BindingContractInfo{
+			Version: BindingContractVersion, QueryVersion: basequery.ContractVersion,
+			UsageCostVersion: usagecost.ContractVersion, RuntimeInfoVersion: runtimeinfo.ContractVersion,
+			Methods: append([]BindingMethodInfo(nil), bindingMethodAllowlist...),
+			CommandMethods: []string{
+				"RequestQuotaRefresh", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
+				"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
+			}, ErrorExample: errorExample,
+		}
+	})
 }
 
 type QuotaRefreshReceipt struct {
@@ -228,7 +240,7 @@ func (service *Service) UsageCost(
 	if service == nil || service.usageCost == nil {
 		return usagecost.UsageCostResponse{}, newBindingFailure(ErrBindingService)
 	}
-	return bindingCall(func() (usagecost.UsageCostResponse, error) {
+	return bindingQueryCall(service, func() (usagecost.UsageCostResponse, error) {
 		return service.usageCost.UsageCost(ctx, request)
 	})
 }
@@ -240,7 +252,7 @@ func (service *Service) ListSessions(
 	if service == nil || service.usageCost == nil {
 		return usagecost.SessionListResponse{}, newBindingFailure(ErrBindingService)
 	}
-	return bindingCall(func() (usagecost.SessionListResponse, error) {
+	return bindingQueryCall(service, func() (usagecost.SessionListResponse, error) {
 		return service.usageCost.ListSessions(ctx, request)
 	})
 }
@@ -252,7 +264,7 @@ func (service *Service) SessionDetail(
 	if service == nil || service.usageCost == nil {
 		return usagecost.SessionDetailResponse{}, newBindingFailure(ErrBindingService)
 	}
-	return bindingCall(func() (usagecost.SessionDetailResponse, error) {
+	return bindingQueryCall(service, func() (usagecost.SessionDetailResponse, error) {
 		return service.usageCost.SessionDetail(ctx, request)
 	})
 }
@@ -264,7 +276,7 @@ func (service *Service) ListProjects(
 	if service == nil || service.usageCost == nil {
 		return usagecost.ProjectListResponse{}, newBindingFailure(ErrBindingService)
 	}
-	return bindingCall(func() (usagecost.ProjectListResponse, error) {
+	return bindingQueryCall(service, func() (usagecost.ProjectListResponse, error) {
 		return service.usageCost.ListProjects(ctx, request)
 	})
 }
@@ -276,7 +288,7 @@ func (service *Service) ProjectDetail(
 	if service == nil || service.usageCost == nil {
 		return usagecost.ProjectDetailResponse{}, newBindingFailure(ErrBindingService)
 	}
-	return bindingCall(func() (usagecost.ProjectDetailResponse, error) {
+	return bindingQueryCall(service, func() (usagecost.ProjectDetailResponse, error) {
 		return service.usageCost.ProjectDetail(ctx, request)
 	})
 }
@@ -288,7 +300,7 @@ func (service *Service) QuotaCurrent(
 	if service == nil || service.runtimeInfo == nil {
 		return runtimeinfo.QuotaCurrentResponse{}, newBindingFailure(ErrBindingService)
 	}
-	return bindingCall(func() (runtimeinfo.QuotaCurrentResponse, error) {
+	return bindingQueryCall(service, func() (runtimeinfo.QuotaCurrentResponse, error) {
 		return service.runtimeInfo.QuotaCurrent(ctx, evaluatedAtMS)
 	})
 }
@@ -300,7 +312,7 @@ func (service *Service) ListSources(
 	if service == nil || service.runtimeInfo == nil {
 		return runtimeinfo.SourceListResponse{}, newBindingFailure(ErrBindingService)
 	}
-	return bindingCall(func() (runtimeinfo.SourceListResponse, error) {
+	return bindingQueryCall(service, func() (runtimeinfo.SourceListResponse, error) {
 		return service.runtimeInfo.ListSources(ctx, request)
 	})
 }
@@ -312,7 +324,7 @@ func (service *Service) Source(
 	if service == nil || service.runtimeInfo == nil {
 		return runtimeinfo.SourceDetailResponse{}, newBindingFailure(ErrBindingService)
 	}
-	return bindingCall(func() (runtimeinfo.SourceDetailResponse, error) {
+	return bindingQueryCall(service, func() (runtimeinfo.SourceDetailResponse, error) {
 		return service.runtimeInfo.Source(ctx, request)
 	})
 }
@@ -324,7 +336,7 @@ func (service *Service) ListJobs(
 	if service == nil || service.runtimeInfo == nil {
 		return runtimeinfo.JobListResponse{}, newBindingFailure(ErrBindingService)
 	}
-	return bindingCall(func() (runtimeinfo.JobListResponse, error) {
+	return bindingQueryCall(service, func() (runtimeinfo.JobListResponse, error) {
 		return service.runtimeInfo.ListJobs(ctx, request)
 	})
 }
@@ -336,7 +348,7 @@ func (service *Service) Job(
 	if service == nil || service.runtimeInfo == nil {
 		return runtimeinfo.JobDetailResponse{}, newBindingFailure(ErrBindingService)
 	}
-	return bindingCall(func() (runtimeinfo.JobDetailResponse, error) {
+	return bindingQueryCall(service, func() (runtimeinfo.JobDetailResponse, error) {
 		return service.runtimeInfo.Job(ctx, request)
 	})
 }
@@ -348,7 +360,7 @@ func (service *Service) ListHealth(
 	if service == nil || service.runtimeInfo == nil {
 		return runtimeinfo.HealthListResponse{}, newBindingFailure(ErrBindingService)
 	}
-	return bindingCall(func() (runtimeinfo.HealthListResponse, error) {
+	return bindingQueryCall(service, func() (runtimeinfo.HealthListResponse, error) {
 		return service.runtimeInfo.ListHealth(ctx, request)
 	})
 }
@@ -360,7 +372,7 @@ func (service *Service) Health(
 	if service == nil || service.runtimeInfo == nil {
 		return runtimeinfo.HealthDetailResponse{}, newBindingFailure(ErrBindingService)
 	}
-	return bindingCall(func() (runtimeinfo.HealthDetailResponse, error) {
+	return bindingQueryCall(service, func() (runtimeinfo.HealthDetailResponse, error) {
 		return service.runtimeInfo.Health(ctx, request)
 	})
 }
@@ -369,7 +381,7 @@ func (service *Service) Settings(ctx context.Context) (runtimeinfo.SettingsRespo
 	if service == nil || service.runtimeInfo == nil {
 		return runtimeinfo.SettingsResponse{}, newBindingFailure(ErrBindingService)
 	}
-	return bindingCall(func() (runtimeinfo.SettingsResponse, error) {
+	return bindingQueryCall(service, func() (runtimeinfo.SettingsResponse, error) {
 		return service.runtimeInfo.Settings(ctx)
 	})
 }
@@ -387,4 +399,26 @@ func bindingCall[T any](call func() (T, error)) (value T, returnErr error) {
 		returnErr = newBindingFailure(returnErr)
 	}
 	return value, returnErr
+}
+
+func bindingQueryCall[T any](service *Service, call func() (T, error)) (T, error) {
+	startedAt := time.Now()
+	value, err := bindingCall(call)
+	observeBindingQuery(service, time.Since(startedAt))
+	return value, err
+}
+
+func bindingQueryValue[T any](service *Service, call func() T) T {
+	startedAt := time.Now()
+	value := call()
+	observeBindingQuery(service, time.Since(startedAt))
+	return value
+}
+
+func observeBindingQuery(service *Service, duration time.Duration) {
+	if service == nil || service.queryObserver == nil {
+		return
+	}
+	defer func() { _ = recover() }()
+	service.queryObserver.Observe(duration)
 }

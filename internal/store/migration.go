@@ -27,7 +27,8 @@ const (
 	applicationSchemaV10Version = 10
 	applicationSchemaV11Version = 11
 	applicationSchemaV12Version = 12
-	applicationSchemaVersion    = applicationSchemaV12Version
+	applicationSchemaV13Version = 13
+	applicationSchemaVersion    = applicationSchemaV13Version
 )
 
 var (
@@ -176,6 +177,20 @@ var applicationMigrations = []migrationDefinition{
 			return ensureSchemaObjects(ctx, transaction, quotaScheduleSchemaObjects)
 		},
 	},
+	{
+		version:  applicationSchemaV13Version,
+		name:     "app-runtime-metrics",
+		checksum: applicationSchemaV13Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			if err := addMetricsMigrationColumns(ctx, transaction); err != nil {
+				return err
+			}
+			if err := backfillInterruptedResumeConsumption(ctx, transaction); err != nil {
+				return err
+			}
+			return ensureSchemaObjects(ctx, transaction, metricsSchemaObjects)
+		},
+	},
 }
 
 type sourceFailureMigrationColumn struct {
@@ -227,6 +242,59 @@ func addSourceFailureColumns(ctx context.Context, transaction *gorm.DB, limit in
 
 func verifySourceFailureColumns(transaction *gorm.DB) error {
 	for _, column := range sourceFailureMigrationColumns {
+		if !transaction.Migrator().HasColumn(column.model, column.column) {
+			return fmt.Errorf("%w: missing column %s.%s", ErrSchemaContract, column.table, column.column)
+		}
+	}
+	return nil
+}
+
+type metricsMigrationColumn struct {
+	model      any
+	field      string
+	table      string
+	column     string
+	definition string
+}
+
+var metricsMigrationColumns = []metricsMigrationColumn{{
+	model: &jobRunModel{}, field: "ResumeConsumedByJobID", table: "job_runs",
+	column:     "resume_consumed_by_job_id",
+	definition: "TEXT CHECK nullable or interrupted parent consumed by one distinct job ID",
+}}
+
+func addMetricsMigrationColumns(ctx context.Context, transaction *gorm.DB) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: invalid metrics migration database", ErrMigrationContract)
+	}
+	database := transaction.WithContext(ctx)
+	for _, column := range metricsMigrationColumns {
+		if database.Migrator().HasColumn(column.model, column.column) {
+			continue
+		}
+		if err := database.Migrator().AddColumn(column.model, column.field); err != nil {
+			return fmt.Errorf("%w: add %s.%s: %v", ErrMigrationContract, column.table, column.column, err)
+		}
+	}
+	return nil
+}
+
+func backfillInterruptedResumeConsumption(ctx context.Context, transaction *gorm.DB) error {
+	resumedJobID := transaction.Session(&gorm.Session{NewDB: true}).Table("job_runs AS resumed_jobs").
+		Select("MIN(resumed_jobs.job_id)").Where("resumed_jobs.resume_of_job_id = job_runs.job_id")
+	resumedJobReference := transaction.Session(&gorm.Session{NewDB: true}).Table("job_runs AS resumed_jobs").
+		Select("1").Where("resumed_jobs.resume_of_job_id = job_runs.job_id")
+	result := transaction.WithContext(ctx).Model(&jobRunModel{}).
+		Where("state = ? AND resume_consumed_by_job_id IS NULL AND EXISTS (?)", JobInterrupted, resumedJobReference).
+		UpdateColumn("resume_consumed_by_job_id", resumedJobID)
+	if result.Error != nil {
+		return fmt.Errorf("%w: backfill interrupted resume consumption: %v", ErrMigrationContract, result.Error)
+	}
+	return nil
+}
+
+func verifyMetricsMigrationColumns(transaction *gorm.DB) error {
+	for _, column := range metricsMigrationColumns {
 		if !transaction.Migrator().HasColumn(column.model, column.column) {
 			return fmt.Errorf("%w: missing column %s.%s", ErrSchemaContract, column.table, column.column)
 		}
@@ -590,6 +658,7 @@ func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteT
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
 		quotaSchemaObjects, quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
+		metricsSchemaObjects,
 	} {
 		for _, object := range objects {
 			exists, err := verifySchemaObject(ctx, transaction, object)
@@ -601,10 +670,13 @@ func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteT
 			}
 		}
 	}
-	return verifySourceFailureColumns(transaction)
+	if err := verifySourceFailureColumns(transaction); err != nil {
+		return err
+	}
+	return verifyMetricsMigrationColumns(transaction)
 }
 
-func currentRuntimeSchemaObjects() []schemaObject {
+func runtimeSchemaObjectsThroughV12() []schemaObject {
 	objects := append([]schemaObject(nil), runtimeSchemaObjects...)
 	for index := range objects {
 		switch objects[index].name {
@@ -622,6 +694,20 @@ func currentRuntimeSchemaObjects() []schemaObject {
 				"`attempt_count` INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count BETWEEN 0 AND 3)",
 				"`response_bytes` INTEGER NOT NULL DEFAULT 0 CHECK (response_bytes >= 0)",
 				"`retry_at_ms` INTEGER CHECK (retry_at_ms IS NULL OR retry_at_ms >= finished_at_ms)",
+			)
+		}
+	}
+	return objects
+}
+
+func currentRuntimeSchemaObjects() []schemaObject {
+	objects := runtimeSchemaObjectsThroughV12()
+	for index := range objects {
+		if objects[index].name == "job_runs" {
+			objects[index].statement = appendSQLiteMigratedColumns(
+				objects[index].statement,
+				"\n\t\tCHECK (progress_current",
+				"`resume_consumed_by_job_id` TEXT CHECK (resume_consumed_by_job_id IS NULL OR (state = 'interrupted' AND length(resume_consumed_by_job_id) > 0 AND resume_consumed_by_job_id != job_id))",
 			)
 		}
 	}
@@ -771,6 +857,22 @@ func applicationSchemaV12Checksum() string {
 	hasher := sha256.New()
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV12Version, "reset-credits-and-quota-scheduling")
 	for _, object := range quotaScheduleSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.objectType, object.name,
+			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV13Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV13Version, "app-runtime-metrics")
+	for _, column := range metricsMigrationColumns {
+		_, _ = fmt.Fprintln(hasher, column.table, column.column, column.definition)
+	}
+	_, _ = fmt.Fprintln(hasher, "backfill", "interrupted-resume-consumption", "minimum-existing-resume-child-id")
+	for _, object := range metricsSchemaObjects {
 		_, _ = fmt.Fprintln(
 			hasher, object.objectType, object.name,
 			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),

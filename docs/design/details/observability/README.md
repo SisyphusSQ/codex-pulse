@@ -31,10 +31,16 @@ TOO-269 冻结只读查询边界：`runtimeinfo.Service` 通过 GORM-first Store
 
 Go 难以准确获得单 goroutine CPU 时间，因此 job CPU 使用进程级 user/system CPU delta 近似。后台只有一个重型 worker 时可以近似归因，但 UI 和诊断必须标注 process-level estimate，不能称为精确任务 CPU。
 
+TOO-279 交付 schema v13 的 `app_runtime_samples` 与统一 `MetricsSnapshot`。runtime sample 只包含进程累计 user/system CPU 毫秒、相邻成功样本计算的 CPU percent、RSS/进程内 peak RSS、goroutine 数、DB/WAL/磁盘 free bytes、runnable live/backfill depth 与 oldest wait、Wails query count/total/max latency、collector duration 和累计 dropped samples。CPU percent 使用“单核 100%”口径，因此多核并行可以超过 100%；第一次成功采样或失败后尚无已提交基线时为 0。进程探针固定使用 `github.com/shirou/gopsutil/v4 v4.26.6`，Store 文件/队列探针分别读取 SQLite 文件元数据、磁盘空间和 `SchedulerRunnableQueueSnapshot`；尚未建立 scheduler lifecycle 时队列按空态处理，旧 generation 与 paused lane 不混入 runnable 指标。
+
+所有 Wails read binding（包括 Bootstrap/Contracts 和 Usage/Session/Project/Quota/Source/Job/Health/Settings 查询）在既有 response/error/panic 规范化完成后只累加 content-free latency；command 不计入。collector 只有在进程、文件/队列和查询聚合全部成功后才通过 `WriteMaintenance` 写一个 sample；显式错误或 dependency panic 都会恢复已 drain 的 query aggregate，panic payload 不进入 error/Store。sink 失败不推进已提交 CPU/RSS baseline；wall clock、CPU counter 回退或 delta overflow 会丢弃当前点并清除 CPU baseline，下一次有效采样以 CPU 0 重建，避免持续失采。probe、sink、observer 故障或 overlap skip 不改变业务查询、索引、quota 或应用关闭，均只增加 saturating `dropped_samples`；该值是进程生命周期内的累计缺口，不是持久 error log。
+
+`MetricsSnapshot` 在一个显式 GORM read transaction 中读取 runtime series，并聚合既有 `scheduler_cycles/scheduler_tasks/scheduler_retry_states`、`job_runs`、`source_state/source_attempts` 权威事实；除 cycle outcome/吞吐外，还返回当前 active task state、lane、service class、waiting/blocked retry、窗口内 stop reason，以及 source current/attempt 的 allowlisted error class/failure code 分桶。窗口固定为 24 小时半开区间 `[from_ms, until_ms)`；Detailed 5 秒 cadence 的 17,280 个点完整返回，多于该容量会显式 fail closed，不静默截断。interrupted job 只有 `resume_consumed_by_job_id IS NULL` 才计为当前可恢复工作；该 v13 持久事实由全部 typed resume API 原子写入并回填既有 lineage，不会因 terminal child 被 retention 删除而复活。不从日志、channel 长度或开放字符串推断状态。`process_snapshots` 仍未创建：当前没有可信的 session→PID 映射，不能把 Codex 外部进程资源伪装成已归因事实。health evaluator、24 小时 cleanup 与 Data Health UI 分别由后续 M8 Execution 承接。
+
 ## 低开销采集
 
 - 扫描器在内存累加 bytes/lines/rows，job 完成或每 30～60 秒批量 flush。
-- 进程 CPU/RSS 正常每 30 秒采样；打开 Data Health 时临时提高到 5 秒。
+- 进程 CPU/RSS 正常每 30 秒采样；Detailed 模式为 5 秒。两种周期都由 `github.com/robfig/cron/v3 v3.0.1` 驱动，启动时立即采样一次；service 共享 atomic gate 覆盖 mode 切换时的跨 entry overlap 并计 dropped，cron/collector 双层 panic recovery 保证 scheduler 与 query batch 可继续，不存在自造 ticker/timer loop。
 - 默认不开 pprof；metrics 使用最低优先级写入。
 - 目标：观测额外 CPU 平均低于 0.5%，观测失败不能影响索引或 quota。
 
