@@ -57,6 +57,8 @@ TOO-307 只扩展既有 `SessionDetailRequest/Response` 的 reachable model：re
 
 TOO-308 只扩展既有 `ListProjects` item 与 `ProjectDetailRequest/Response` reachable model：list item 增加 exact `sessionCount` 和末尾最多 30 个日点的 `trend`，detail 增加双 bounded page 与安全 Session/Model contribution item。生成结果仍保持 1 service / 15 methods / 1 event；前端必须把完整双 page request 纳入 query key/cancellation，不得另增业务入口或手写 shadow type。
 
+TOO-275 的 Vue adapter 直接消费上述 generated model。`ProjectsRouteState` 只持有限 range/confidence/sort/direction、opaque list cursor 与 selected Project；纯 request composer 生成 `Request` / `ProjectDetailRequest`，TanStack Query 继续是唯一 cache/cancel owner。list cursor 可由 URL 恢复，Session/Model AEAD cursor 只保存在组件 scope 并拥有独立 history/transition guard；Project、range、generation validation 或进程变化不允许复用旧 detail page。跨本地午夜只由共享 lifecycle-owned one-shot local-date clock 推进 request/query key，不新增业务 scheduler 或周期事实源。
+
 13 个业务数据 query 的 `context.Context` 位于首参数，Wails 生成的 TypeScript client 返回 `CancellablePromise<T>`，前端取消会传播到 Store/query；同步元数据方法 `Bootstrap` / `Contracts` 不承诺 Go 侧可取消。业务方法返回 error 或其依赖 panic 时，façade 会统一生成 `RuntimeError`：`CallError.message` 固定为 `binding query failed`，`cause` 只包含 `query.ErrorEnvelope`。Wails 在参数数量或 JSON 类型错误时生成的 `TypeError.message` 属于 framework transport detail，前端不得展示；其 `cause` 仍通过 content-free marshaler。内部 error chain 保留取消、deadline 和分类语义，但底层路径、请求值、panic value、repository/driver cause 不进入业务 RuntimeError JSON。
 
 `frontend/bindings` 是 Go method signature 生成并提交的唯一跨端类型真相。正常生成必须通过稳定 diff gate；失败注入会对 tracked 与尚未跟踪的 generated files 做 SHA-256 前后读回，任何旧 bindings 被覆盖或部分更新都以 `BINDING-001` fail closed。Vue 层不得手写同名 request/response/enum/error shadow type。

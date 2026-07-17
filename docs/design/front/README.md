@@ -136,6 +136,12 @@ Session 详情只展示 safe attribution、activity、aggregate、pricing eviden
 
 TOO-274 的 browser visual QA 以 `05-sessions.png` 为 source truth：1440×1024 normal-state 与 source 已在一个横向 comparison 输入中复核，900×600 堆叠态无页面级水平溢出且 console error=0；临时 typed DTO 夹具验证后删除，仅保留 ignored evidence。可复现步骤与当前门禁状态见 `docs/test/m7-e3.md`，逐项结论见根目录 `design-qa.md`；packaged 1120×720 结论必须在原生隔离验证完成后回写。
 
+TOO-275 已把 `/projects` 映射为真实 query-v1 页面：默认近 7 天，支持今日、近 30 天、自定义本地日半开区间、range-level confidence、四种后端排序和 list keyset pagination。列表直接展示 generated safe project identity、exact distinct SessionCount、Token、API 等价成本、last activity 和最多 30 个已有 bucket 的异步 ECharts trend；顶部 global/matched/page context 只读取 response totals，不从 items 汇总。
+
+Project detail 只使用 generated `ProjectDetail`：aggregate、daily、pricing evidence、Model contribution 与 Session contribution 保持服务端顺序。list cursor 可进入 URL；两类 generation-bound detail cursor 只存在当前页面生命周期，并在 Project/range/process 变化或对应 validation failure 时独立回首页。URL 只保存有限 range/confidence/sort/list cursor 与 selected opaque identity；unknown key、非法日期、超 366 天范围和冗余默认值会规范化。页面不展示 opaque identity/cursor/generation、路径、正文或底层 cause，也不复用整 Session rollup冒充 Project contribution。
+
+`06-projects.png` 仍是视觉 source。当前实现保留其 summary → 左侧项目列表 → 右侧详情/模型/近期会话层级；provider 不提供安全 path、Finder/reveal 或全文搜索 contract，因此这些演示控件不伪接。1440×1024 combined comparison、900×600 minimum 与 isolated packaged 1120×720 的最终证据只在真实完成后写入 `design-qa.md` 与 `docs/test/m7-e4.md`。
+
 ## 后续评审重点
 
-TOO-272 已实现共享应用壳、路由、基础状态交互和 Wails Bootstrap ready/error/retry；TOO-273 已实现概览，TOO-274 已实现 Sessions 列表与详情并进入独立 review/集成门禁。Projects、Quota、本机状态与 Settings 的独立页面仍由后续卡完成。图标方向和健康信息层级继续冻结；后续页面必须复用当前 token、query-state、辅助模式降级与 macOS-only 边界。
+TOO-272 已实现共享应用壳、路由、基础状态交互和 Wails Bootstrap ready/error/retry；TOO-273 已实现概览，TOO-274 已实现 Sessions 列表与详情，TOO-275 已实现 Projects 列表与详情并进入视觉/review/集成门禁。Quota、本机状态与 Settings 的独立页面仍由后续卡完成。图标方向和健康信息层级继续冻结；后续页面必须复用当前 token、query-state、辅助模式降级与 macOS-only 边界。

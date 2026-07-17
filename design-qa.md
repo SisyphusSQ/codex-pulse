@@ -102,6 +102,32 @@ current result: passed
 
 ---
 
+# TOO-275 Projects Design QA
+
+## Source truth and current evidence
+
+- Source：`docs/design/front/previews/06-projects.png`，固定 1440×1024。
+- Implementation：ignored `.agents/runs/too-275-projects-qa/implementation-final-1440x1024.png`。
+- Combined comparison：ignored `.agents/runs/too-275-projects-qa/comparison-final-2880x1024.png`，source在左、implementation在右，二者同为1440×1024。
+- Minimum / native：ignored `minimum-900x600.png`、`native-normal-1120x720.png`与`native-isolated-empty-1120x720.png`。
+- 自动化已覆盖：有限range/confidence/sort、list/Session/Model三套pagination、unknown/真实0、partial/stale/fatal/not-found、键盘选择、focus return、ECharts reduce-motion/lifecycle和opaque identity不进DOM。
+
+## Source adaptation freeze
+
+| source区域 | 实现映射 | 当前状态 |
+| --- | --- | --- |
+| 顶部summary | generated matched count与global/matched/page Token+cost context | 1440/900通过 |
+| 左侧project list | safe display name、confidence/reason、exact SessionCount、Token/cost/last active和ECharts trend | 1440/900通过 |
+| 右侧detail | aggregate、pricing、Model contribution、Session contribution、daily ECharts和独立pagination | 1440同viewport比较通过；按source把Model/Session置于daily之前 |
+| path / Finder / search | provider无安全contract，不渲染、不做page-local伪搜索 | scope已冻结 |
+| privacy | 不显示path、opaque identity/cursor/generation/content/raw cause | 自动化、DOM/source scan与native状态通过 |
+
+视觉对照首轮发现daily图先于source冻结的Model/Session层级，且WebKit原生`progress`呈系统绿色；RED/GREEN后改为Model → Session → daily顺序，并使用设计系统`--color-accent`。900×600无横向溢出；1120×720 normal fixture与隔离真实fatal状态均保持可读、可恢复且不泄露底层cause。临时fixture、进程与isolated HOME/TMP均已清理。
+
+current result: passed
+
+---
+
 # TOO-273 Overview Design QA
 
 ## Source truth and evidence

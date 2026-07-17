@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from "vue-router";
 
 import AppShell from "@/components/shell/AppShell.vue";
 import OverviewView from "@/views/OverviewView.vue";
+import ProjectsView from "@/views/ProjectsView.vue";
 import SessionsView from "@/views/SessionsView.vue";
 import ShellView from "@/views/ShellView.vue";
 
@@ -38,7 +39,9 @@ const childRoutes = appNavigation.map((item) => ({
     ? OverviewView
     : item.name === "sessions"
       ? SessionsView
-      : ShellView,
+      : item.name === "projects"
+        ? ProjectsView
+        : ShellView,
   meta: {
     descriptionKey: item.descriptionKey,
     titleKey: item.titleKey,
