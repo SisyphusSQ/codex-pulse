@@ -49,6 +49,7 @@
 46. [TOO-288] 新增 420×760 冻结版 Popover，复用主线程安全的原生状态项 click/anchor 动态展示真实额度窗口、Reset Credits、今日 API 等价成本和最近会话，固定局部查询降级、隐藏取消、缓存保留、持久主窗口跳转及缺失 5 小时窗口不显示占位的语义
 47. [TOO-289] 新增 AppKit 原生右键菜单与 typed 窗口命令，支持隐藏/最小化主窗口激活、有限页面深链、双来源权威刷新、原生 About 及 fail-closed shutdown/drain，并固定 `Cmd-W` cancel+hide 生命周期
 48. [TOO-290] 新增 AppKit display/Space/wake/appearance typed observer 与有界 Popover 恢复，完善原生状态项实时辅助标签、键盘焦点、Escape 关闭、跨屏 point 坐标 clamp 和 observer/callback 释放，并提供隔离平台事件与 packaged accessibility 回放
+49. [TOO-291] 新增 Sparkle 2.9.4 原生 Adapter、typed 更新状态机与应用生命周期装配，固定主线程回调、取消/进度/错误语义、受审 framework 供应链 pin，以及 arm64 Bundle/ZIP 的内嵌、rpath、版本与签名验证
 
 #### optimization:
 1. [TOO-285] 完善 AppIcon、ICNS 与 Tray Template 资产闭环，新增冻结源校验、严格灰阶 1x/2x 派生、macOS bundle/ZIP 资源读回及可重复导出与 live smoke 证据

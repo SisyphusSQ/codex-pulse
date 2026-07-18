@@ -1,5 +1,16 @@
 # Data Model and Indexing
 
+## Transient Update State
+
+Sparkle update session state是进程内 transient state，不直接写入主 SQLite。`internal/updater.Snapshot` 只包含 allowlisted phase、版本/display version、包大小、arm64 platform identity、appcast signing status、download/extraction progress、ready-to-install、cancel capability 和 content-free typed fault。
+
+- phase 固定为 `idle/checking/available/downloading/installing/error`；`readyToInstall` 是 `available` 的正交标记，防止下载完成被误报为已进入安装。
+- `checking` 与 `downloading` 期间 `canCancel=true`；检查取消归约回干净的 `idle`，下载取消保留当前 `available` update，native 主动取消的尾随 abort 不得覆盖取消终态。
+- `NULL/unknown` 与真实 `0` 保持不同语义：expected content length 未知时 total 为 0 且不计算 fraction；真实 0 bytes/0% 不能被占位符覆盖。
+- appcast signing status 只允许 `skipped/succeeded/failed`；归档 EdDSA 失败使用 fault `invalid_signature`，两者不是同一字段。
+- Snapshot 对调用方做 defensive copy；native callback 在同一 generation 内串行归约，Close 使 generation 失效并清空 update/progress/fault。
+- 自动检查开关、channel、skip/snooze 和 last check 属于独立 preferences；attempt/result 审计若后续持久化，必须由对应 Execution 定义 schema，不从 transient Snapshot 反推历史。
+
 ## JSONL 增量索引边界
 
 “增量导入”的准确含义是增量索引 / 增量解析。Codex 已经把 JSONL 写入 `~/.codex/sessions` 和 `~/.codex/archived_sessions`；Codex Pulse 不复制、不归档这些文件，只从 `source_files.parsed_offset` 继续读取新增字节。

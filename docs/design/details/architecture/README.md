@@ -29,7 +29,7 @@ flowchart LR
 - `internal/privacy`：路径/remote 脱敏和敏感字段过滤。
 - `internal/query`：Wails 前的版本化公共查询 contract；统一有界分页、allowlist 排序/筛选、本地日到 UTC、跨端安全整数、unknown/null/真实零和 typed error，不依赖 Store model 或具体页面。
 - `internal/health`：最近 24 小时运行指标、health event 和 Data Health 查询。
-- `internal/updater`：更新状态机、安全重启屏障和平台 adapter。
+- `internal/updater`：纯 Go typed update reducer/controller 与 Sparkle 2.9.4 平台 adapter；安全重启屏障在后续 lifecycle coordinator 组合，不进入 Objective-C bridge。
 - `internal/tray`：状态栏摘要、Popover 和原生菜单。
 - `internal/app`：Wails bindings、query、refresh 和增量事件。
 
@@ -140,7 +140,7 @@ flowchart LR
 - Settings：Codex home、在线 quota、隐私、价格表、刷新和更新。
 - Data Health：从本机状态下钻，不作为独立主导航项。
 
-平台 tray、更新器、签名、透明窗口和系统目录通过 adapter 隔离，避免 Vue 组件与 macOS API 直接绑定。`internal/app.Run` 同样是 SQLite 生命周期装配边界：进程启动只打开一个 Store，Wails 退出后先 drain 已接受写入，再关闭连接。
+平台 tray、更新器、签名、透明窗口和系统目录通过 adapter 隔离，避免 Vue 组件与 macOS API 直接绑定。updater 的 Go controller 只接收 primitive typed event；Darwin bridge 使用 `SPUUpdater + SPUUserDriver`，所有 Sparkle/AppKit 对象在 main queue 生命周期内持有，callback registry 在关闭前失效。`internal/app.Run` 同时是 updater 与 SQLite 生命周期装配边界：Sparkle startup configuration failure 保持为可观察状态而不阻断本地应用；Wails shutdown 时先在 AppKit loop 内释放 updater callbacks/observers，后续 safe-drain Execution 再统一编排 scheduler、writer、Store 与安装 reply 的关闭次序。
 
 ### Liquid Glass 实现边界
 

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 <binary> <icon.icns> <prepared-tray-dir> <Info.plist> <bundle.app> <version> <build-number>" >&2
+    echo "usage: $0 <binary> <icon.icns> <prepared-tray-dir> <Info.plist> <Sparkle.framework> <bundle.app> <version> <build-number>" >&2
     exit 64
 }
 
@@ -12,15 +12,16 @@ fail() {
     exit 1
 }
 
-[[ $# -eq 7 ]] || usage
+[[ $# -eq 8 ]] || usage
 
 binary_path=$1
 icon_path=$2
 prepared_tray_dir=$3
 plist_template=$4
-bundle_path=$5
-app_version=$6
-build_number=$7
+sparkle_framework=$5
+bundle_path=$6
+app_version=$7
+build_number=$8
 tray_icon="$prepared_tray_dir/codex-pulse-tray-template.png"
 tray_icon_2x="$prepared_tray_dir/codex-pulse-tray-template@2x.png"
 
@@ -35,6 +36,8 @@ tray_icon_2x="$prepared_tray_dir/codex-pulse-tray-template@2x.png"
 for path in "$binary_path" "$icon_path" "$tray_icon" "$tray_icon_2x" "$plist_template"; do
     [[ -f "$path" ]] || fail "required input does not exist: $path"
 done
+[[ -d "$sparkle_framework" ]] || fail "Sparkle.framework does not exist: $sparkle_framework"
+[[ -x "$sparkle_framework/Versions/B/Sparkle" ]] || fail "Sparkle.framework binary is missing"
 [[ -x "$binary_path" ]] || fail "application binary is not executable: $binary_path"
 plutil -lint "$plist_template" >/dev/null || fail "invalid Info.plist template"
 
@@ -42,7 +45,7 @@ bundle_parent=$(dirname "$bundle_path")
 staging_path="${bundle_path}.staging.$$"
 trap 'rm -rf "$staging_path"' EXIT
 rm -rf "$staging_path"
-mkdir -p "$staging_path/Contents/MacOS" "$staging_path/Contents/Resources" "$bundle_parent"
+mkdir -p "$staging_path/Contents/MacOS" "$staging_path/Contents/Resources" "$staging_path/Contents/Frameworks" "$bundle_parent"
 
 cp "$plist_template" "$staging_path/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$app_version" "$staging_path/Contents/Info.plist"
@@ -61,6 +64,7 @@ chmod 0755 "$staging_path/Contents/MacOS/$executable_name"
 cp "$icon_path" "$staging_path/Contents/Resources/$icon_name"
 cp "$tray_icon" "$staging_path/Contents/Resources/codex-pulse-tray-template.png"
 cp "$tray_icon_2x" "$staging_path/Contents/Resources/codex-pulse-tray-template@2x.png"
+ditto "$sparkle_framework" "$staging_path/Contents/Frameworks/Sparkle.framework"
 
 if command -v xattr >/dev/null 2>&1; then
     xattr -cr "$staging_path"

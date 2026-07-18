@@ -62,6 +62,7 @@ build/bin/
 *.sqlite-wal
 
 # Temporary files
+.cache/
 tmp/
 temp/
 *.tmp

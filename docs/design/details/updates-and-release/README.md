@@ -13,6 +13,19 @@
 
 自动检查开关、通道、跳过版本、稍后时间和最后检查时间保存到独立 preferences，不能只依赖主 SQLite。更新 attempt/result 可以写入 SQLite。
 
+## Sparkle 2 Adapter Contract
+
+v0.1 macOS arm64 更新平台固定为 Sparkle 2.9.4。`internal/updater` 以 `SPUUpdater` 和自定义 `SPUUserDriver` 为唯一 native adapter，不使用 Sparkle 2 已废弃的 `SUUpdater`，也不把 Objective-C 类型暴露给 Wails/Vue。
+
+- Go transient state 固定为 `idle/checking/available/downloading/installing/error`；下载完成但尚未允许重启时仍是 `available + readyToInstall`，不能提前进入 installing。
+- `SPUUpdaterDelegate` 提供 valid update、no update、cancel、install 和 typed error；自定义 `SPUUserDriver` 提供真实 download bytes、expected length、extraction progress，以及 Sparkle 交付的 cancel/reply block。
+- 检查、下载和最终安装是三个独立命令。检查和下载都具有显式可取消生命周期：check cancel 回到 `idle`，download cancel 回到保留 update 的 `available`；`Download` 只在 valid update 可用时调用 Sparkle 的用户选择 block，adapter 不暴露绕过安全重启屏障的立即安装入口。
+- appcast version/OS/hardware selection、appcast signing status 和归档 EdDSA 校验以 Sparkle 为唯一平台真相。Go 只映射 Sparkle 结果：`SUSignatureError` / `SUValidationError` 归一为 `invalid_signature`，不再实现第二套验签器。
+- updater、delegate、user driver 和 reply block 只在 AppKit main queue 创建/调用/释放。native holder 强持有 Sparkle 的 weak delegate；Go callback 使用 generation/closed guard，`Close` 后迟到回调不再进入状态机。
+- `internal/app.Run` 在 application composition root 启动并持有 updater runtime，在 Wails shutdown 且 AppKit loop 仍存活时先关闭，defer 再做幂等错误读回。缺少 `SUFeedURL` / `SUPublicEDKey` 是可观察 configuration error，但不阻止本地账本应用启动。
+
+Sparkle.framework 不提交到仓库。构建固定从官方 2.9.4 release 获取公开归档并校验 SHA-256，放入 ignored repo-local cache；Darwin package 将 framework 内嵌到 `Contents/Frameworks`，注入 `@executable_path/../Frameworks` rpath，并验证版本、arm64 slice、Mach-O dependency、深度 ad-hoc 签名和 ZIP 解包一致性。
+
 ## 安全重启屏障
 
 ```text
@@ -53,11 +66,10 @@
 
 更新签名私钥只放 CI secrets，缺失时发布必须失败；客户端不保存私钥。更新包签名不能代替平台代码签名和 notarization。正式 macOS 分发应同时具备 Developer ID 签名、Apple notarization 和更新包签名。
 
-## 尚未决定
+## 当前交付边界
 
-当前只确定统一 updater 状态机、安全重启、migration 和可信发布链，未决定具体 adapter：
-
-- 如果 v0.1 macOS-only，可评估 Sparkle 与 Wails3 打包集成。
-- 如果首版需要跨平台，保留统一状态机，分别接入平台安装器。
-
-v0.1 是否只发布 macOS、跨平台进入哪个阶段，后续单独确认。
+- TOO-291 已冻结并验证 Sparkle 2.9.4 adapter、typed state、main-thread lifecycle、pinned framework 与本地 bundle/package 链。
+- TOO-292 负责自动检查偏好、每小时调度、Wails/Vue 状态与用户动作，不在 adapter 内重复保存偏好。
+- TOO-293 负责 `SUFeedURL` / `SUPublicEDKey`、外部私钥注入、appcast/ZIP 签名与离线验证；仓库和客户端永不保存私钥。
+- TOO-294 负责 safe drain 后才调用最终安装 reply；TOO-296 才能把真实 N-1 下载、签名拒绝、安装、重启和 migration 作为升级 E2E 证据。
+- Developer ID、notarization、正式 tag/release、真实 appcast 与外部分发继续受独立发布门禁约束，不能由普通 Execution closeout 自动触发。
