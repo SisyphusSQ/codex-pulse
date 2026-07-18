@@ -30,17 +30,18 @@ func TestUpdateControlsExposeFiniteStateAndDelegateActions(t *testing.T) {
 	}
 	trigger, triggerErr := service.CheckForUpdates(t.Context())
 	download, downloadErr := service.DownloadUpdate(t.Context())
+	install, installErr := service.InstallUpdate(t.Context())
 	cancel, cancelErr := service.CancelUpdate(t.Context())
 	skip, skipErr := service.SkipUpdate(t.Context(), version)
 	snooze, snoozeErr := service.SnoozeUpdate(t.Context(), 3600)
-	if triggerErr != nil || downloadErr != nil || cancelErr != nil || skipErr != nil || snoozeErr != nil ||
+	if triggerErr != nil || downloadErr != nil || installErr != nil || cancelErr != nil || skipErr != nil || snoozeErr != nil ||
 		!trigger.Accepted || trigger.Reason != string(updater.TriggerReasonManual) ||
-		download.Result != "download_requested" || cancel.Result != "cancel_requested" ||
+		download.Result != "download_requested" || install.Result != "install_requested" || cancel.Result != "cancel_requested" ||
 		skip.Result != "skipped" || snooze.Result != "snoozed" ||
-		command.trigger != updater.TriggerManual || command.downloadCalls != 1 || command.cancelCalls != 1 ||
+		command.trigger != updater.TriggerManual || command.downloadCalls != 1 || command.installCalls != 1 || command.cancelCalls != 1 ||
 		command.skippedVersion != version || command.snooze != time.Hour {
-		t.Fatalf("receipts=%#v/%#v/%#v/%#v/%#v errors=%v/%v/%v/%v/%v command=%#v",
-			trigger, download, cancel, skip, snooze, triggerErr, downloadErr, cancelErr, skipErr, snoozeErr, command)
+		t.Fatalf("receipts=%#v/%#v/%#v/%#v/%#v/%#v errors=%v/%v/%v/%v/%v/%v command=%#v",
+			trigger, download, install, cancel, skip, snooze, triggerErr, downloadErr, installErr, cancelErr, skipErr, snoozeErr, command)
 	}
 }
 
@@ -89,6 +90,7 @@ type updateBindingStub struct {
 	view           updater.View
 	trigger        updater.Trigger
 	downloadCalls  int
+	installCalls   int
 	cancelCalls    int
 	skippedVersion string
 	snooze         time.Duration
@@ -103,7 +105,11 @@ func (stub *updateBindingStub) Trigger(_ context.Context, trigger updater.Trigge
 	return updater.TriggerReceipt{Accepted: true, Reason: updater.TriggerReasonManual}, stub.err
 }
 func (stub *updateBindingStub) Download(context.Context) error { stub.downloadCalls++; return stub.err }
-func (stub *updateBindingStub) Cancel(context.Context) error   { stub.cancelCalls++; return stub.err }
+func (stub *updateBindingStub) Install(context.Context) error  { stub.installCalls++; return stub.err }
+func (stub *updateBindingStub) InstallState() shutdownSnapshot {
+	return shutdownSnapshot{Phase: shutdownPhaseRunning}
+}
+func (stub *updateBindingStub) Cancel(context.Context) error { stub.cancelCalls++; return stub.err }
 func (stub *updateBindingStub) Skip(_ context.Context, version string) error {
 	stub.skippedVersion = version
 	return stub.err

@@ -14,6 +14,11 @@ type DownloadAdapter interface {
 	Download() error
 }
 
+type InstallAdapter interface {
+	Adapter
+	Install() error
+}
+
 type UpdateChoice uint8
 
 const (

@@ -71,6 +71,7 @@ describe("generated Wails binding contract", () => {
         "Contracts",
         "DataHealth",
         "DownloadUpdate",
+        "InstallUpdate",
         "Health",
         "HealthProjection",
         "Job",

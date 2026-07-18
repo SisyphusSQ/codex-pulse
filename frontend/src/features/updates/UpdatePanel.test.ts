@@ -18,6 +18,7 @@ function updateState(overrides: Record<string, unknown> = {}) {
     releaseNotes: "安全更新", contentLength: "4096", signatureStatus: "succeeded",
     progressStage: "", progressReceived: "0", progressTotal: "0", progressFraction: 0,
     faultCode: "", canCancel: false, readyToInstall: false, autoCheckEnabled: true,
+    shutdownPhase: "running", shutdownStage: "", shutdownFailedStage: "",
     checkIntervalSeconds: 3600, skippedVersion: null, snoozeUntilMs: null, lastCheckAtMs: null,
     promptVisible: true, ...overrides,
   };
@@ -26,7 +27,7 @@ function updateState(overrides: Record<string, unknown> = {}) {
 function readyPanel(overrides: Record<string, unknown> = {}) {
   return {
     state: { data: ref(updateState(overrides)), isPending: ref(false), isError: ref(false), refetch: vi.fn() },
-    check: mutation(), download: mutation(), cancel: mutation(), skip: mutation(), snooze: mutation(),
+    check: mutation(), download: mutation(), install: mutation(), cancel: mutation(), skip: mutation(), snooze: mutation(),
   };
 }
 
@@ -56,7 +57,7 @@ describe("UpdatePanel", () => {
     expect(document.activeElement).toBe(wrapper.get("[data-testid='update-status']").element);
   });
 
-  it("exposes skip and snooze but never a fake install action", async () => {
+  it("exposes skip and snooze before an update is ready", async () => {
     const panel = harness.panel as ReturnType<typeof readyPanel>;
     const wrapper = mount(UpdatePanel, { global: { plugins: [createAppI18n()] } });
     await wrapper.get("[data-testid='update-snooze']").trigger("click");
@@ -67,11 +68,31 @@ describe("UpdatePanel", () => {
     expect(wrapper.find("[data-testid='update-install']").exists()).toBe(false);
   });
 
-  it("shows the safe-install boundary after download completes", () => {
+  it("requires confirmation before safe install and reports draining", async () => {
     harness.panel = readyPanel({ readyToInstall: true });
-    const wrapper = mount(UpdatePanel, { global: { plugins: [createAppI18n()] } });
+    const panel = harness.panel as ReturnType<typeof readyPanel>;
+    const wrapper = mount(UpdatePanel, { attachTo: document.body, global: { plugins: [createAppI18n()] } });
     expect(wrapper.get("[data-testid='update-ready']").attributes("role")).toBe("status");
-    expect(wrapper.text()).toContain("安全停止任务与安装动作将在后续安装能力中完成");
+    expect(wrapper.text()).toContain("安全结束后台任务后安装并重启");
     expect(wrapper.find("[data-testid='update-download']").exists()).toBe(false);
+    await wrapper.get("[data-testid='update-install']").trigger("click");
+    expect(wrapper.get("[data-testid='update-install-dialog']").attributes("role")).toBe("dialog");
+    await wrapper.get("[data-testid='update-install-confirm']").trigger("click");
+    expect(panel.install.mutate).toHaveBeenCalledWith(undefined, expect.any(Object));
+    panel.state.data.value = updateState({ readyToInstall: true, shutdownPhase: "draining", shutdownStage: "sqlite" });
+    await nextTick();
+    expect(wrapper.text()).toContain("正在安全结束后台索引");
+    expect(wrapper.text()).toContain("sqlite");
+    expect(wrapper.find("[data-testid='update-install']").exists()).toBe(false);
+
+    panel.state.data.value = updateState({
+      readyToInstall: true,
+      shutdownPhase: "closed",
+      shutdownStage: "closed",
+      shutdownFailedStage: "sqlite",
+    });
+    await nextTick();
+    expect(wrapper.text()).toContain("安全关闭在“sqlite”阶段失败");
+    expect(wrapper.find("[data-testid='update-install']").exists()).toBe(false);
   });
 });

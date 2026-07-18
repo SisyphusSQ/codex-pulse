@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/updater"
@@ -11,6 +12,35 @@ type applicationUpdaterRuntime struct {
 	controller  *updater.Controller
 	coordinator *updater.Coordinator
 	startupErr  error
+	shutdownMu  sync.RWMutex
+	shutdown    *applicationShutdownCoordinator
+	installGate *nativeQuitPreflight
+}
+
+func (runtime *applicationUpdaterRuntime) bindShutdown(shutdown *applicationShutdownCoordinator) error {
+	if runtime == nil || shutdown == nil {
+		return updater.ErrInvalidCoordinator
+	}
+	runtime.shutdownMu.Lock()
+	defer runtime.shutdownMu.Unlock()
+	if runtime.shutdown != nil {
+		return updater.ErrInvalidCoordinator
+	}
+	runtime.shutdown = shutdown
+	return nil
+}
+
+func (runtime *applicationUpdaterRuntime) bindInstallGate(gate *nativeQuitPreflight) error {
+	if runtime == nil || gate == nil {
+		return updater.ErrInvalidCoordinator
+	}
+	runtime.shutdownMu.Lock()
+	defer runtime.shutdownMu.Unlock()
+	if runtime.installGate != nil {
+		return updater.ErrInvalidCoordinator
+	}
+	runtime.installGate = gate
+	return nil
 }
 
 func startApplicationUpdater(
@@ -89,6 +119,69 @@ func (runtime *applicationUpdaterRuntime) Download(ctx context.Context) error {
 		return updater.ErrNotStarted
 	}
 	return runtime.coordinator.Download(ctx)
+}
+
+func (runtime *applicationUpdaterRuntime) Install(ctx context.Context) error {
+	if runtime == nil || runtime.coordinator == nil || ctx == nil {
+		return updater.ErrNotStarted
+	}
+	runtime.shutdownMu.RLock()
+	shutdown := runtime.shutdown
+	installGate := runtime.installGate
+	runtime.shutdownMu.RUnlock()
+	if shutdown == nil {
+		return updater.ErrCannotInstall
+	}
+	if snapshot := runtime.controller.Snapshot(); snapshot.Phase != updater.PhaseAvailable || !snapshot.ReadyToInstall {
+		return updater.ErrCannotInstall
+	}
+	if installGate != nil {
+		if err := installGate.BeginInstall(); err != nil {
+			return updater.ErrCannotInstall
+		}
+		accepted := false
+		defer func() {
+			if !accepted {
+				installGate.AbortInstall()
+			}
+		}()
+		shutdownCtx, cancel := context.WithTimeout(ctx, desktopShutdownTimeout)
+		defer cancel()
+		if err := shutdown.Close(shutdownCtx); err != nil {
+			return err
+		}
+		if err := runtime.coordinator.Install(ctx); err != nil {
+			return err
+		}
+		accepted = true
+		return nil
+	}
+	shutdownCtx, cancel := context.WithTimeout(ctx, desktopShutdownTimeout)
+	defer cancel()
+	if err := shutdown.Close(shutdownCtx); err != nil {
+		return err
+	}
+	return runtime.coordinator.Install(ctx)
+}
+
+func (runtime *applicationUpdaterRuntime) InstallState() shutdownSnapshot {
+	if runtime == nil {
+		return shutdownSnapshot{}
+	}
+	runtime.shutdownMu.RLock()
+	shutdown := runtime.shutdown
+	runtime.shutdownMu.RUnlock()
+	if shutdown == nil {
+		return shutdownSnapshot{Phase: shutdownPhaseRunning}
+	}
+	return shutdown.Snapshot()
+}
+
+func (runtime *applicationUpdaterRuntime) Suspend() error {
+	if runtime == nil || runtime.coordinator == nil {
+		return updater.ErrNotStarted
+	}
+	return runtime.coordinator.Suspend()
 }
 
 func (runtime *applicationUpdaterRuntime) Cancel(ctx context.Context) error {

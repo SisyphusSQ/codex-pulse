@@ -69,6 +69,7 @@ type desktopCommandCoordinatorConfig struct {
 	Invalidation    queryInvalidationNotifier
 	Drain           desktopRuntimeDrainer
 	Quit            func()
+	Termination     *nativeQuitPreflight
 	ShutdownTimeout time.Duration
 	Recorder        desktopCommandErrorRecorder
 }
@@ -82,6 +83,7 @@ type desktopCommandCoordinator struct {
 	invalidation    queryInvalidationNotifier
 	drain           desktopRuntimeDrainer
 	quit            func()
+	termination     *nativeQuitPreflight
 	shutdownTimeout time.Duration
 	recorder        desktopCommandErrorRecorder
 	quitting        bool
@@ -101,7 +103,7 @@ func newDesktopCommandCoordinator(config desktopCommandCoordinatorConfig) (*desk
 	return &desktopCommandCoordinator{
 		window: config.Window, emitter: config.Emitter, about: config.About,
 		refresh: config.Refresh, invalidation: config.Invalidation, drain: config.Drain,
-		quit:            config.Quit,
+		quit: config.Quit, termination: config.Termination,
 		shutdownTimeout: config.ShutdownTimeout, recorder: config.Recorder,
 	}, nil
 }
@@ -118,7 +120,7 @@ func (coordinator *desktopCommandCoordinator) Execute(action platformtray.MenuAc
 	}
 	coordinator.mu.Lock()
 	defer coordinator.mu.Unlock()
-	if coordinator.quitting {
+	if coordinator.quitting && action != platformtray.MenuActionQuit {
 		return ErrDesktopShuttingDown
 	}
 
@@ -135,12 +137,13 @@ func (coordinator *desktopCommandCoordinator) Execute(action platformtray.MenuAc
 		coordinator.about.ShowAbout()
 		return nil
 	case platformtray.MenuActionQuit:
-		coordinator.quitting = true
-		err := coordinator.shutdown()
-		if err != nil {
-			coordinator.quitting = false
+		if coordinator.termination != nil {
+			if err := coordinator.termination.BeginQuit(); err != nil {
+				return err
+			}
 		}
-		return err
+		coordinator.quitting = true
+		return coordinator.shutdown()
 	default:
 		return ErrDesktopCommand
 	}
@@ -178,9 +181,9 @@ func (coordinator *desktopCommandCoordinator) shutdown() error {
 	if coordinator.drain != nil {
 		drainErr = coordinator.drain.Close(ctx)
 	}
-	if drainErr != nil {
+	if drainErr != nil && ctx.Err() != nil {
 		return drainErr
 	}
 	coordinator.quit()
-	return nil
+	return drainErr
 }

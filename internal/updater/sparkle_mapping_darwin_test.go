@@ -84,6 +84,13 @@ func TestSparkleErrorMapping(t *testing.T) {
 	}
 }
 
+func TestSparkleAsyncInstallFailureMapping(t *testing.T) {
+	event := nativeEvent(nativeEventInstallFailed, "", "", "", 0, 0, 0, 0, 0, 3, "reply missing")
+	if event.Kind != EventFailed || event.Fault == nil || event.Fault.Code != FaultInstall || event.Fault.Message != "reply missing" {
+		t.Fatalf("event=%#v, want typed install failure", event)
+	}
+}
+
 func TestBoundedReleaseNotesPreservesUTF8(t *testing.T) {
 	value := string(make([]byte, maximumReleaseNotesBytes-1)) + "安全"
 	got := boundedReleaseNotes(value)

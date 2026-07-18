@@ -13,12 +13,16 @@ const panel = useUpdatePanel();
 const root = ref<HTMLElement>();
 const dialog = ref<HTMLElement>();
 const confirmationOpen = ref(false);
+const installConfirmationOpen = ref(false);
+const modalOpen = computed(() => confirmationOpen.value || installConfirmationOpen.value);
 const state = computed(() => panel.state.data.value);
+const draining = computed(() => panel.install.isPending.value || state.value?.shutdownPhase === "draining");
+const shutdownFailed = computed(() => state.value?.shutdownPhase === "closed" && Boolean(state.value.shutdownFailedStage));
 const working = computed(() => panel.check.isPending.value || panel.download.isPending.value ||
-  panel.cancel.isPending.value || panel.skip.isPending.value || panel.snooze.isPending.value);
+	  panel.install.isPending.value || panel.cancel.isPending.value || panel.skip.isPending.value || panel.snooze.isPending.value);
 const progress = computed(() => Math.max(0, Math.min(100, (state.value?.progressFraction ?? 0) * 100)));
 const hasActionError = computed(() => panel.check.isError.value || panel.download.isError.value ||
-  panel.cancel.isError.value || panel.skip.isError.value || panel.snooze.isError.value);
+	  panel.install.isError.value || panel.cancel.isError.value || panel.skip.isError.value || panel.snooze.isError.value);
 
 async function focus(testId: string) {
   await nextTick();
@@ -38,6 +42,21 @@ function closeDownloadConfirmation() {
 function confirmDownload() {
   confirmationOpen.value = false;
   panel.download.mutate(undefined, { onSettled: () => void focus("update-status") });
+}
+
+function openInstallConfirmation() {
+  installConfirmationOpen.value = true;
+  void focus("update-install-confirm");
+}
+
+function closeInstallConfirmation() {
+  installConfirmationOpen.value = false;
+  void focus("update-install");
+}
+
+function confirmInstall() {
+  installConfirmationOpen.value = false;
+  panel.install.mutate(undefined, { onSettled: () => void focus("update-status") });
 }
 
 function keepDialogFocus(event: KeyboardEvent) {
@@ -62,7 +81,7 @@ function skipCurrentVersion() {
 
 <template>
   <section ref="root" data-testid="update-panel">
-    <div :inert="confirmationOpen || undefined" :aria-hidden="confirmationOpen || undefined">
+    <div :inert="modalOpen || undefined" :aria-hidden="modalOpen || undefined">
       <UiCard :title="t('settingsPage.updates.title')" :description="t('settingsPage.updates.description')">
         <p v-if="panel.state.isPending.value && state === undefined" role="status" class="text-sm text-ink-muted">{{ t("settingsPage.updates.loading") }}</p>
         <div v-else-if="panel.state.isError.value && state === undefined" role="alert" class="space-y-3">
@@ -100,7 +119,12 @@ function skipCurrentVersion() {
             <UiButton data-testid="update-skip" :disabled="working" @click="skipCurrentVersion">{{ t("settingsPage.updates.skip") }}</UiButton>
           </div>
           <p v-else-if="state.phase === 'available' && !state.readyToInstall" class="text-sm text-ink-muted">{{ t("settingsPage.updates.suppressed") }}</p>
-          <p v-if="state.readyToInstall" data-testid="update-ready" role="status" class="rounded-control border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{{ t("settingsPage.updates.readyBoundary") }}</p>
+          <div v-if="state.readyToInstall" data-testid="update-ready" role="status" class="space-y-3 rounded-control border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+            <p v-if="draining">{{ t("settingsPage.updates.draining", { stage: state.shutdownStage || "-" }) }}</p>
+            <p v-else-if="shutdownFailed" role="alert" class="text-critical">{{ t("settingsPage.updates.shutdownFailed", { stage: state.shutdownFailedStage }) }}</p>
+            <p v-else>{{ t("settingsPage.updates.readyBoundary") }}</p>
+            <UiButton v-if="!draining && !shutdownFailed" data-testid="update-install" variant="primary" :disabled="working" @click="openInstallConfirmation">{{ t("settingsPage.updates.install") }}</UiButton>
+          </div>
           <p v-if="state.phase === 'error'" role="alert" class="text-sm text-critical">{{ t(`settingsPage.updates.fault.${state.faultCode || 'native'}`) }}</p>
           <p v-if="hasActionError" role="alert" class="text-sm text-critical">{{ t("settingsPage.updates.actionError") }}</p>
         </div>
@@ -114,6 +138,17 @@ function skipCurrentVersion() {
         <div class="mt-5 flex justify-end gap-2">
           <UiButton data-testid="update-download-cancel" @click="closeDownloadConfirmation">{{ t("settingsPage.updates.cancel") }}</UiButton>
           <UiButton data-testid="update-download-confirm" variant="primary" @click="confirmDownload">{{ t("settingsPage.updates.confirmDownload") }}</UiButton>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="installConfirmationOpen" class="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4">
+      <div ref="dialog" data-testid="update-install-dialog" role="dialog" aria-modal="true" :aria-label="t('settingsPage.updates.installConfirmTitle')" class="w-full max-w-lg rounded-content border border-line bg-white p-5 shadow-xl" @keydown.esc.prevent="closeInstallConfirmation" @keydown="keepDialogFocus">
+        <h2 class="text-lg font-semibold">{{ t("settingsPage.updates.installConfirmTitle") }}</h2>
+        <p class="mt-2 text-sm text-ink-muted">{{ t("settingsPage.updates.installConfirmDescription") }}</p>
+        <div class="mt-5 flex justify-end gap-2">
+          <UiButton data-testid="update-install-cancel" @click="closeInstallConfirmation">{{ t("settingsPage.updates.cancel") }}</UiButton>
+          <UiButton data-testid="update-install-confirm" variant="primary" @click="confirmInstall">{{ t("settingsPage.updates.installConfirm") }}</UiButton>
         </div>
       </div>
     </div>

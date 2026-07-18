@@ -36,6 +36,7 @@ const (
 	nativeEventFailed
 	nativeEventCheckCancelled
 	nativeEventReleaseNotes
+	nativeEventInstallFailed
 )
 
 type NativeError struct {
@@ -145,6 +146,19 @@ func (adapter *SparkleAdapter) Download() error {
 	}
 	var rawMessage *C.char
 	if C.cp_sparkle_download(adapter.handle, &rawMessage) == 0 {
+		return errors.New(takeCString(rawMessage))
+	}
+	return nil
+}
+
+func (adapter *SparkleAdapter) Install() error {
+	adapter.mu.Lock()
+	defer adapter.mu.Unlock()
+	if err := adapter.ready(); err != nil {
+		return err
+	}
+	var rawMessage *C.char
+	if C.cp_sparkle_install(adapter.handle, &rawMessage) == 0 {
 		return errors.New(takeCString(rawMessage))
 	}
 	return nil
@@ -283,6 +297,11 @@ func nativeEvent(kind int, version, displayVersion, releaseNotes string, content
 		return Event{Kind: EventReadyToInstall}
 	case nativeEventInstallStarted:
 		return Event{Kind: EventInstallStarted}
+	case nativeEventInstallFailed:
+		if errorMessage == "" {
+			errorMessage = "Sparkle install reply is unavailable"
+		}
+		return Event{Kind: EventFailed, Fault: &Fault{Code: FaultInstall, Message: errorMessage}}
 	case nativeEventDownloadCancelled:
 		return Event{Kind: EventDownloadCancelled}
 	case nativeEventCycleFinished:

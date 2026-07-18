@@ -8,6 +8,7 @@ int cp_sparkle_should_ignore_abort(long error_code, const char *error_domain);
 void *cp_sparkle_create(uintptr_t callback_id, int *error_code, char **error_message);
 int cp_sparkle_check(void *handle, char **error_message);
 int cp_sparkle_download(void *handle, char **error_message);
+int cp_sparkle_install(void *handle, char **error_message);
 int cp_sparkle_choose(void *handle, int choice, char **error_message);
 int cp_sparkle_cancel(void *handle, char **error_message);
 void cp_sparkle_close(void *handle);

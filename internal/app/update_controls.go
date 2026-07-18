@@ -34,6 +34,9 @@ type UpdateStateResponse struct {
 	FaultCode            string  `json:"faultCode"`
 	CanCancel            bool    `json:"canCancel"`
 	ReadyToInstall       bool    `json:"readyToInstall"`
+	ShutdownPhase        string  `json:"shutdownPhase"`
+	ShutdownStage        string  `json:"shutdownStage"`
+	ShutdownFailedStage  string  `json:"shutdownFailedStage"`
 	AutoCheckEnabled     bool    `json:"autoCheckEnabled"`
 	CheckIntervalSeconds int64   `json:"checkIntervalSeconds"`
 	SkippedVersion       *string `json:"skippedVersion"`
@@ -62,7 +65,7 @@ func (service *Service) UpdateState(ctx context.Context) (UpdateStateResponse, e
 		if err != nil {
 			return UpdateStateResponse{}, err
 		}
-		return updateStateResponse(view), nil
+		return updateStateResponse(view, command.InstallState()), nil
 	})
 }
 
@@ -83,6 +86,12 @@ func (service *Service) CheckForUpdates(ctx context.Context) (UpdateTriggerRecei
 func (service *Service) DownloadUpdate(ctx context.Context) (UpdateActionReceipt, error) {
 	return service.runUpdateAction(ctx, "download_requested", func(command updateBindingCommand) error {
 		return command.Download(ctx)
+	})
+}
+
+func (service *Service) InstallUpdate(ctx context.Context) (UpdateActionReceipt, error) {
+	return service.runUpdateAction(ctx, "install_requested", func(command updateBindingCommand) error {
+		return command.Install(ctx)
 	})
 }
 
@@ -136,7 +145,7 @@ func (service *Service) updateControlsCommand() updateBindingCommand {
 	return service.updateControls
 }
 
-func updateStateResponse(view updater.View) UpdateStateResponse {
+func updateStateResponse(view updater.View, shutdown shutdownSnapshot) UpdateStateResponse {
 	response := UpdateStateResponse{
 		Phase: string(view.Snapshot.Phase), CurrentVersion: applicationVersion,
 		ProgressStage:    string(view.Snapshot.Progress.Stage),
@@ -147,6 +156,8 @@ func updateStateResponse(view updater.View) UpdateStateResponse {
 		AutoCheckEnabled: view.AutoCheckEnabled, CheckIntervalSeconds: view.CheckIntervalSeconds,
 		SkippedVersion: cloneBindingString(view.SkippedVersion), SnoozeUntilMS: cloneBindingInt64(view.SnoozeUntilMS),
 		LastCheckAtMS: cloneBindingInt64(view.LastCheckAtMS), PromptVisible: view.PromptVisible,
+		ShutdownPhase: string(shutdown.Phase), ShutdownStage: shutdown.Stage,
+		ShutdownFailedStage: shutdown.FailedStage,
 	}
 	if view.Snapshot.Update != nil {
 		response.Version = view.Snapshot.Update.Version
