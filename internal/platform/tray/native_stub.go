@@ -16,7 +16,10 @@ func NewNativeStatusItem() (*NativeStatusItem, error)  { return nil, ErrNativeSt
 func (*NativeStatusItem) Update(StatusViewModel) error { return ErrNativeStatusItem }
 func (*NativeStatusItem) Close() error                 { return nil }
 func (*NativeStatusItem) CapturePNG(string) error      { return ErrNativeStatusItem }
-func (*NativeStatusItem) SetClickHandler(float64, float64, func(PopoverOrigin, bool)) error {
+func (*NativeStatusItem) SetClickHandler(float64, float64, float64, func(PopoverOrigin, bool)) error {
 	return ErrNativeStatusItem
 }
 func (*NativeStatusItem) SetMenuHandler(func(MenuAction)) error { return ErrNativeStatusItem }
+func (*NativeStatusItem) SetPlatformChangeHandler(func(PlatformChange)) error {
+	return ErrNativeStatusItem
+}

@@ -25,7 +25,7 @@ type popoverWindow interface {
 }
 
 type popoverStatusItem interface {
-	SetClickHandler(float64, float64, func(platformtray.PopoverOrigin, bool)) error
+	SetClickHandler(float64, float64, float64, func(platformtray.PopoverOrigin, bool)) error
 }
 
 type popoverController struct {
@@ -48,7 +48,7 @@ func (controller *popoverController) configureStatusItem(item popoverStatusItem)
 	if controller == nil || item == nil {
 		return ErrPopoverRuntime
 	}
-	return item.SetClickHandler(popoverWidth, popoverOffset, controller.Toggle)
+	return item.SetClickHandler(popoverWidth, popoverHeight, popoverOffset, controller.Toggle)
 }
 
 func (controller *popoverController) Toggle(origin platformtray.PopoverOrigin, originValid bool) {
@@ -61,9 +61,10 @@ func (controller *popoverController) Toggle(origin platformtray.PopoverOrigin, o
 		controller.window.Hide()
 		return
 	}
-	if originValid {
-		controller.window.SetPosition(origin.X, origin.Y)
+	if !originValid {
+		return
 	}
+	controller.window.SetPosition(origin.X, origin.Y)
 	controller.window.Show()
 	controller.window.Focus()
 }

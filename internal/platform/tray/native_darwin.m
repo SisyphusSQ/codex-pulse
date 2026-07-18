@@ -3,8 +3,22 @@
 
 extern void cpTrayHandleClick(uintptr_t callbackID, double x, double y, int valid);
 extern void cpTrayHandleMenu(uintptr_t callbackID, int action);
+extern void cpTrayHandlePlatform(uintptr_t callbackID, int change);
 
 static const CGFloat CPStatusWidth = 126.0;
+
+int cp_tray_calculate_popover_origin(double anchorMidX, double anchorMinY,
+                                     double screenMinX, double screenMaxX, double screenVisibleHeight,
+                                     double primaryHeight, double popoverWidth, double popoverHeight,
+                                     double offset, double *x, double *y) {
+    if (x == NULL || y == NULL || popoverWidth <= 0 || popoverHeight <= 0 || primaryHeight <= 0 ||
+        screenMaxX - screenMinX < popoverWidth || screenVisibleHeight < popoverHeight + offset) return 0;
+    *x = MIN(MAX(anchorMidX - popoverWidth / 2.0, screenMinX), screenMaxX - popoverWidth);
+    // Wails SetPosition uses global Y-down coordinates relative to the top of
+    // the first (primary) NSScreen, while AppKit returns global Cocoa Y-up.
+    *y = primaryHeight - anchorMinY + offset;
+    return 1;
+}
 
 @interface CPStatusView : NSView
 @property(nonatomic, copy) NSString *state;
@@ -13,18 +27,19 @@ static const CGFloat CPStatusWidth = 126.0;
 @property(nonatomic, copy) NSArray<NSDictionary *> *rows;
 @property(nonatomic, copy) void (^onPress)(void);
 @property(nonatomic, copy) void (^onShowMenu)(void);
+@property(nonatomic, copy) void (^onAppearanceChange)(void);
 @end
 
 @implementation CPStatusView
 
 - (BOOL)isFlipped { return YES; }
 - (void)rightMouseDown:(NSEvent *)event { if (self.onShowMenu != nil) self.onShowMenu(); }
-- (BOOL)isAccessibilityElement { return YES; }
-- (NSString *)accessibilityRole { return NSAccessibilityButtonRole; }
-- (NSString *)accessibilityLabel { return self.accessibilityText ?: @"Codex Pulse 额度状态"; }
-- (NSArray<NSAccessibilityActionName> *)accessibilityActionNames { return @[NSAccessibilityPressAction, NSAccessibilityShowMenuAction]; }
-- (BOOL)accessibilityPerformPress { if (self.onPress == nil) return NO; self.onPress(); return YES; }
-- (BOOL)accessibilityPerformShowMenu { if (self.onShowMenu == nil) return NO; self.onShowMenu(); return YES; }
+- (BOOL)isAccessibilityElement { return NO; }
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    [self setNeedsDisplay:YES];
+    if (self.onAppearanceChange != nil) self.onAppearanceChange();
+}
 
 - (NSColor *)barColorForKind:(NSString *)kind progress:(CGFloat)progress {
     if ([self.state isEqualToString:@"conflict"]) return NSColor.systemOrangeColor;
@@ -92,10 +107,17 @@ static const CGFloat CPStatusWidth = 126.0;
 @property(nonatomic, strong) CPStatusView *view;
 @property(nonatomic, assign) uintptr_t callbackID;
 @property(nonatomic, assign) CGFloat popoverWidth;
+@property(nonatomic, assign) CGFloat popoverHeight;
 @property(nonatomic, assign) CGFloat popoverOffset;
 @property(nonatomic, strong) NSMenu *menu;
 @property(nonatomic, assign) uintptr_t menuCallbackID;
+@property(nonatomic, assign) uintptr_t platformCallbackID;
+@property(nonatomic, assign) NSRect lastAccessibilityFrame;
+@property(nonatomic, copy) NSArray *applicationObserverTokens;
+@property(nonatomic, copy) NSArray *workspaceObserverTokens;
 - (void)showMenu;
+- (void)handlePlatformChange:(int)change;
+- (void)removePlatformObservers;
 @end
 @implementation CPStatusItemHolder
 - (void)handleClick:(id)sender {
@@ -108,21 +130,51 @@ static const CGFloat CPStatusWidth = 126.0;
     NSStatusBarButton *button = self.statusItem.button;
     NSWindow *window = button.window;
     NSScreen *screen = window.screen;
-    if (window == nil || screen == nil || self.popoverWidth <= 0) {
+    NSScreen *primaryScreen = NSScreen.screens.firstObject;
+    if (window == nil || screen == nil || primaryScreen == nil || self.popoverWidth <= 0 || self.popoverHeight <= 0) {
         cpTrayHandleClick(self.callbackID, 0, 0, 0);
         return;
     }
     NSRect local = [button convertRect:button.bounds toView:nil];
     NSRect anchor = [window convertRectToScreen:local];
-    CGFloat minX = NSMinX(screen.visibleFrame);
-    CGFloat maxX = NSMaxX(screen.visibleFrame) - self.popoverWidth;
-    CGFloat x = MIN(MAX(NSMidX(anchor) - self.popoverWidth / 2.0, minX), maxX);
-    CGFloat y = NSMaxY(screen.frame) - NSMinY(anchor) + self.popoverOffset;
+    double x = 0;
+    double y = 0;
+    int valid = cp_tray_calculate_popover_origin(
+        NSMidX(anchor), NSMinY(anchor), NSMinX(screen.visibleFrame), NSMaxX(screen.visibleFrame),
+        NSHeight(screen.visibleFrame), NSHeight(primaryScreen.frame), self.popoverWidth,
+        self.popoverHeight, self.popoverOffset, &x, &y
+    );
+    if (valid == 0) {
+        cpTrayHandleClick(self.callbackID, 0, 0, 0);
+        return;
+    }
     cpTrayHandleClick(self.callbackID, x, y, 1);
 }
 - (void)showMenu {
     if (self.menu == nil || self.menuCallbackID == 0) return;
     [self.menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(0, NSHeight(self.statusItem.button.bounds)) inView:self.statusItem.button];
+}
+- (void)handlePlatformChange:(int)change {
+    if (self.platformCallbackID == 0) return;
+    NSStatusBarButton *button = self.statusItem.button;
+    if (button != nil && self.view != nil) {
+        self.view.frame = NSMakeRect(0, 0, CPStatusWidth, NSHeight(button.bounds));
+        [self.view setNeedsDisplay:YES];
+        NSRect accessibilityFrame = button.accessibilityFrame;
+        if (!NSEqualRects(accessibilityFrame, self.lastAccessibilityFrame)) {
+            self.lastAccessibilityFrame = accessibilityFrame;
+            NSAccessibilityPostNotification(button, NSAccessibilityLayoutChangedNotification);
+        }
+    }
+    cpTrayHandlePlatform(self.platformCallbackID, change);
+}
+- (void)removePlatformObservers {
+    NSNotificationCenter *applicationCenter = NSNotificationCenter.defaultCenter;
+    for (id token in self.applicationObserverTokens) [applicationCenter removeObserver:token];
+    NSNotificationCenter *workspaceCenter = NSWorkspace.sharedWorkspace.notificationCenter;
+    for (id token in self.workspaceObserverTokens) [workspaceCenter removeObserver:token];
+    self.applicationObserverTokens = @[];
+    self.workspaceObserverTokens = @[];
 }
 - (void)handleOpenOverview:(id)sender { if (self.menuCallbackID != 0) cpTrayHandleMenu(self.menuCallbackID, 0); }
 - (void)handleRefresh:(id)sender { if (self.menuCallbackID != 0) cpTrayHandleMenu(self.menuCallbackID, 1); }
@@ -155,10 +207,14 @@ void *cp_tray_create(void) {
         __weak CPStatusItemHolder *weakHolder = holder;
         holder.view.onPress = ^{ [weakHolder handleClick:nil]; };
         holder.view.onShowMenu = ^{ [weakHolder showMenu]; };
+        holder.view.onAppearanceChange = ^{ [weakHolder handlePlatformChange:3]; };
         holder.view.autoresizingMask = NSViewHeightSizable;
         button.image = nil;
+        button.accessibilityLabel = @"Codex Pulse 额度状态";
+        button.accessibilityTitle = @"Codex Pulse 额度状态";
+        button.accessibilityHelp = @"左键打开额度概览，右键打开应用菜单";
         [button addSubview:holder.view];
-        button.accessibilityElement = NO;
+        holder.lastAccessibilityFrame = button.accessibilityFrame;
     });
     return holder == nil ? NULL : (__bridge_retained void *)holder;
 }
@@ -179,11 +235,25 @@ void cp_tray_update(void *raw, const char *state, const char *health, const char
     if (rowCount > 0) [rows addObject:@{@"kind": cp_string(kind0), @"label": cp_string(label0), @"value": cp_string(value0), @"progress": @(progress0), @"known": @(known0)}];
     if (rowCount > 1) [rows addObject:@{@"kind": cp_string(kind1), @"label": cp_string(label1), @"value": cp_string(value1), @"progress": @(progress1), @"known": @(known1)}];
     cp_on_main_async(^{
+        BOOL accessibilityChanged = ![holder.view.accessibilityText isEqualToString:accessibilityValue];
         holder.view.state = stateValue;
         holder.view.health = healthValue;
         holder.view.accessibilityText = accessibilityValue;
         holder.view.rows = rows;
         [holder.view setNeedsDisplay:YES];
+        if (accessibilityChanged) {
+            holder.statusItem.button.accessibilityLabel = accessibilityValue;
+            holder.statusItem.button.accessibilityTitle = accessibilityValue;
+            NSAccessibilityPostNotification(holder.statusItem.button, NSAccessibilityTitleChangedNotification);
+            NSAccessibilityPostNotificationWithUserInfo(
+                NSApp,
+                NSAccessibilityAnnouncementRequestedNotification,
+                @{
+                    NSAccessibilityAnnouncementKey: accessibilityValue,
+                    NSAccessibilityPriorityKey: @(NSAccessibilityPriorityMedium),
+                }
+            );
+        }
     });
 }
 
@@ -191,6 +261,11 @@ void cp_tray_close(void *raw) {
     if (raw == NULL) return;
     CPStatusItemHolder *holder = (__bridge_transfer CPStatusItemHolder *)raw;
     cp_on_main_sync(^{
+        [holder removePlatformObservers];
+        holder.platformCallbackID = 0;
+        holder.view.onAppearanceChange = nil;
+        holder.view.onPress = nil;
+        holder.view.onShowMenu = nil;
         [[NSStatusBar systemStatusBar] removeStatusItem:holder.statusItem];
         holder.view = nil;
         holder.statusItem = nil;
@@ -213,7 +288,7 @@ int cp_tray_capture_png(void *raw, const char *rawPath) {
     return success ? 1 : 0;
 }
 
-void cp_tray_set_click_handler(void *raw, uintptr_t callbackID, double width, double offset) {
+void cp_tray_set_click_handler(void *raw, uintptr_t callbackID, double width, double height, double offset) {
     if (raw == NULL) return;
     CPStatusItemHolder *holder = (__bridge CPStatusItemHolder *)raw;
     // The Go caller may hold its item mutex. Never make that mutex wait for
@@ -221,6 +296,7 @@ void cp_tray_set_click_handler(void *raw, uintptr_t callbackID, double width, do
     cp_on_main_async(^{
         holder.callbackID = callbackID;
         holder.popoverWidth = width;
+        holder.popoverHeight = height;
         holder.popoverOffset = offset;
     });
 }
@@ -251,5 +327,29 @@ void cp_tray_set_menu_handler(void *raw, uintptr_t callbackID) {
             [menu addItem:item];
         }
         holder.menu = menu;
+    });
+}
+
+void cp_tray_set_platform_handler(void *raw, uintptr_t callbackID) {
+    if (raw == NULL) return;
+    CPStatusItemHolder *holder = (__bridge CPStatusItemHolder *)raw;
+    cp_on_main_async(^{
+        [holder removePlatformObservers];
+        holder.platformCallbackID = callbackID;
+        if (callbackID == 0) return;
+        __weak CPStatusItemHolder *weakHolder = holder;
+        NSNotificationCenter *applicationCenter = NSNotificationCenter.defaultCenter;
+        id displayToken = [applicationCenter addObserverForName:NSApplicationDidChangeScreenParametersNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+            [weakHolder handlePlatformChange:0];
+        }];
+        NSNotificationCenter *workspaceCenter = NSWorkspace.sharedWorkspace.notificationCenter;
+        id spaceToken = [workspaceCenter addObserverForName:NSWorkspaceActiveSpaceDidChangeNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+            [weakHolder handlePlatformChange:1];
+        }];
+        id wakeToken = [workspaceCenter addObserverForName:NSWorkspaceDidWakeNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+            [weakHolder handlePlatformChange:2];
+        }];
+        holder.applicationObserverTokens = @[displayToken];
+        holder.workspaceObserverTokens = @[spaceToken, wakeToken];
     });
 }

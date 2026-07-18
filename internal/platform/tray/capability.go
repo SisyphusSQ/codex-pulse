@@ -33,8 +33,10 @@ func LockedCapabilities() []Capability {
 		{ID: "right-click-menu", Status: StatusSupported, API: "(*application.SystemTray).OnRightClick(func()) + OpenMenu()", Evidence: "public callback and native menu tracking are available", Fallback: "single-click menu"},
 		{ID: "attached-window", Status: StatusSupported, API: "AttachWindow(Window).WindowOffset(int)", Evidence: "public Popover-like window toggle and native positioning", Fallback: "open the regular main window"},
 		{ID: "window-activation", Status: StatusSupported, API: "Show().Focus() + ActivationPolicyAccessory", Evidence: "public window lifecycle and macOS accessory policy", Fallback: "activate regular main window"},
-		{ID: "multi-display-anchor", Status: StatusAdapterRequired, API: "PositionWindow(Window, int) + Window geometry readback", Evidence: "single-screen horizontal centering works; Retina offset and screen identity require adapter validation", Fallback: "zero offset or center the regular main window"},
-		{ID: "native-status-item-custom-view", Status: StatusAdapterRequired, API: "none", Evidence: "Wails keeps NSStatusItem and bounds/screen readback private", Fallback: "isolated AppKit adapter or pre-rendered template image"},
+		{ID: "multi-display-anchor", Status: StatusSupported, API: "isolated AppKit status-item adapter", Evidence: "each click reads the current status-item window NSScreen and clamps the attached window to that screen visibleFrame", Fallback: "hide the attached window and keep the regular main window available"},
+		{ID: "native-status-item-custom-view", Status: StatusSupported, API: "isolated AppKit status-item adapter", Evidence: "owned NSStatusItem custom view has finite update/click/menu contracts and main-queue create/update/close", Fallback: "regular main window"},
+		{ID: "status-item-accessibility", Status: StatusSupported, API: "NSAccessibility public protocol", Evidence: "native menu-bar-item role, finite label/help/press contract and value/layout change notifications", Fallback: "regular main window with semantic HTML"},
+		{ID: "platform-change-recovery", Status: StatusSupported, API: "NSNotificationCenter + NSWorkspace notificationCenter", Evidence: "display, active Space and wake observers close a visible attached window; effective appearance redraws dynamic system colors", Fallback: "next activation recomputes the anchor while the regular main window remains available"},
 		{ID: "native-nspopover", Status: StatusAdapterRequired, API: "none", Evidence: "AttachWindow provides a Wails WebView window, not NSPopover", Fallback: "frozen frameless attached window"},
 	}
 }
@@ -58,7 +60,7 @@ func ValidateCapabilities(capabilities []Capability) error {
 		}
 		seen[capability.ID] = struct{}{}
 	}
-	for _, required := range []string{"template-icon", "left-click", "right-click-menu", "attached-window", "window-activation", "multi-display-anchor", "native-status-item-custom-view", "native-nspopover"} {
+	for _, required := range []string{"template-icon", "left-click", "right-click-menu", "attached-window", "window-activation", "multi-display-anchor", "native-status-item-custom-view", "status-item-accessibility", "platform-change-recovery", "native-nspopover"} {
 		if !slices.ContainsFunc(capabilities, func(capability Capability) bool { return capability.ID == required }) {
 			return fmt.Errorf("%w: missing capability %q", ErrCapabilityContract, required)
 		}

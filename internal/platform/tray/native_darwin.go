@@ -20,11 +20,13 @@ import (
 var ErrNativeStatusItem = errors.New("native status item is unavailable")
 
 type NativeStatusItem struct {
-	mu             sync.Mutex
-	handle         unsafe.Pointer
-	closed         bool
-	callbackID     uintptr
-	menuCallbackID uintptr
+	mu                 sync.Mutex
+	handle             unsafe.Pointer
+	closed             bool
+	callbackID         uintptr
+	menuCallbackID     uintptr
+	platformCallbackID uintptr
+	platformCallback   *platformCallbackRegistration
 }
 
 type PopoverOrigin struct {
@@ -32,9 +34,44 @@ type PopoverOrigin struct {
 	Y int
 }
 
+func calculatePopoverOrigin(anchorMidX, anchorMinY, screenMinX, screenMaxX, screenVisibleHeight, primaryHeight, width, height, offset float64) (PopoverOrigin, bool) {
+	var x, y C.double
+	valid := C.cp_tray_calculate_popover_origin(
+		C.double(anchorMidX), C.double(anchorMinY), C.double(screenMinX), C.double(screenMaxX),
+		C.double(screenVisibleHeight), C.double(primaryHeight), C.double(width), C.double(height), C.double(offset), &x, &y,
+	)
+	return PopoverOrigin{X: int(x), Y: int(y)}, valid != 0
+}
+
 var nativeClickCallbacks sync.Map
 var nativeMenuCallbacks sync.Map
+var nativePlatformCallbacks sync.Map
 var nativeClickSequence atomic.Uint64
+
+type platformCallbackRegistration struct {
+	mu       sync.Mutex
+	closed   bool
+	callback func(PlatformChange)
+}
+
+func (registration *platformCallbackRegistration) dispatch(change PlatformChange) {
+	registration.mu.Lock()
+	if registration.closed {
+		registration.mu.Unlock()
+		return
+	}
+	registration.mu.Unlock()
+	// AppKit invokes platform notifications on its main queue. The application
+	// callback is restricted to a non-blocking event emit; Wails window APIs are
+	// intentionally handled later by the frontend event route.
+	registration.callback(change)
+}
+
+func (registration *platformCallbackRegistration) close() {
+	registration.mu.Lock()
+	registration.closed = true
+	registration.mu.Unlock()
+}
 
 //export cpTrayHandleClick
 func cpTrayHandleClick(callbackID C.uintptr_t, x C.double, y C.double, valid C.int) {
@@ -64,6 +101,25 @@ func cpTrayHandleMenu(callbackID C.uintptr_t, rawAction C.int) {
 		return
 	}
 	go callback.(func(MenuAction))(actions[index])
+}
+
+//export cpTrayHandlePlatform
+func cpTrayHandlePlatform(callbackID C.uintptr_t, rawChange C.int) {
+	callback, ok := nativePlatformCallbacks.Load(uintptr(callbackID))
+	if !ok {
+		return
+	}
+	changes := [...]PlatformChange{
+		PlatformChangeDisplay,
+		PlatformChangeSpace,
+		PlatformChangeWake,
+		PlatformChangeAppearance,
+	}
+	index := int(rawChange)
+	if index < 0 || index >= len(changes) {
+		return
+	}
+	callback.(*platformCallbackRegistration).dispatch(changes[index])
 }
 
 func NewNativeStatusItem() (*NativeStatusItem, error) {
@@ -127,25 +183,58 @@ func (item *NativeStatusItem) Close() error {
 		return nil
 	}
 	item.mu.Lock()
-	defer item.mu.Unlock()
 	if item.closed {
+		item.mu.Unlock()
 		return nil
 	}
 	item.closed = true
+	handle := item.handle
+	platformCallback := item.platformCallback
 	if item.callbackID != 0 {
-		C.cp_tray_set_click_handler(item.handle, 0, 0, 0)
+		C.cp_tray_set_click_handler(handle, 0, 0, 0, 0)
 		nativeClickCallbacks.Delete(item.callbackID)
 		item.callbackID = 0
 	}
 	if item.menuCallbackID != 0 {
-		C.cp_tray_set_menu_handler(item.handle, 0)
+		C.cp_tray_set_menu_handler(handle, 0)
 		nativeMenuCallbacks.Delete(item.menuCallbackID)
 		item.menuCallbackID = 0
 	}
-	if item.handle != nil {
-		C.cp_tray_close(item.handle)
-		item.handle = nil
+	if item.platformCallbackID != 0 {
+		C.cp_tray_set_platform_handler(handle, 0)
+		nativePlatformCallbacks.Delete(item.platformCallbackID)
+		item.platformCallbackID = 0
+		item.platformCallback = nil
 	}
+	item.handle = nil
+	item.mu.Unlock()
+	// Mark the registration closed before the AppKit barrier. Platform callbacks
+	// are synchronous on the main queue, so cp_tray_close either runs after the
+	// current callback or dispatch_sync waits for it from a background caller.
+	if platformCallback != nil {
+		platformCallback.close()
+	}
+	if handle != nil {
+		C.cp_tray_close(handle)
+	}
+	return nil
+}
+
+func (item *NativeStatusItem) SetPlatformChangeHandler(callback func(PlatformChange)) error {
+	if item == nil || callback == nil {
+		return ErrNativeStatusItem
+	}
+	item.mu.Lock()
+	defer item.mu.Unlock()
+	if item.closed || item.handle == nil || item.platformCallbackID != 0 {
+		return ErrNativeStatusItem
+	}
+	id := uintptr(nativeClickSequence.Add(1))
+	registration := &platformCallbackRegistration{callback: callback}
+	nativePlatformCallbacks.Store(id, registration)
+	item.platformCallbackID = id
+	item.platformCallback = registration
+	C.cp_tray_set_platform_handler(item.handle, C.uintptr_t(id))
 	return nil
 }
 
@@ -165,8 +254,8 @@ func (item *NativeStatusItem) SetMenuHandler(callback func(MenuAction)) error {
 	return nil
 }
 
-func (item *NativeStatusItem) SetClickHandler(width, offset float64, callback func(PopoverOrigin, bool)) error {
-	if item == nil || width <= 0 || offset < 0 || callback == nil {
+func (item *NativeStatusItem) SetClickHandler(width, height, offset float64, callback func(PopoverOrigin, bool)) error {
+	if item == nil || width <= 0 || height <= 0 || offset < 0 || callback == nil {
 		return ErrNativeStatusItem
 	}
 	item.mu.Lock()
@@ -177,7 +266,7 @@ func (item *NativeStatusItem) SetClickHandler(width, offset float64, callback fu
 	id := uintptr(nativeClickSequence.Add(1))
 	nativeClickCallbacks.Store(id, callback)
 	item.callbackID = id
-	C.cp_tray_set_click_handler(item.handle, C.uintptr_t(id), C.double(width), C.double(offset))
+	C.cp_tray_set_click_handler(item.handle, C.uintptr_t(id), C.double(width), C.double(height), C.double(offset))
 	return nil
 }
 

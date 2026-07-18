@@ -9,6 +9,24 @@ import (
 
 type MenuAction string
 
+type PlatformChange string
+
+const (
+	PlatformChangeDisplay    PlatformChange = "display"
+	PlatformChangeSpace      PlatformChange = "space"
+	PlatformChangeWake       PlatformChange = "wake"
+	PlatformChangeAppearance PlatformChange = "appearance"
+)
+
+func validPlatformChange(change PlatformChange) bool {
+	switch change {
+	case PlatformChangeDisplay, PlatformChangeSpace, PlatformChangeWake, PlatformChangeAppearance:
+		return true
+	default:
+		return false
+	}
+}
+
 const (
 	MenuActionOpenOverview MenuAction = "open_overview"
 	MenuActionRefresh      MenuAction = "refresh"

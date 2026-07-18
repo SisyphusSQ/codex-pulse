@@ -32,13 +32,15 @@ type popoverStatusItemStub struct {
 	callback func(platformtray.PopoverOrigin, bool)
 	origin   platformtray.PopoverOrigin
 	width    float64
+	height   float64
 	offset   float64
 	err      error
 }
 
-func (stub *popoverStatusItemStub) SetClickHandler(width float64, offset float64, callback func(platformtray.PopoverOrigin, bool)) error {
+func (stub *popoverStatusItemStub) SetClickHandler(width float64, height float64, offset float64, callback func(platformtray.PopoverOrigin, bool)) error {
 	stub.callback = callback
 	stub.width = width
+	stub.height = height
 	stub.offset = offset
 	return stub.err
 }
@@ -54,8 +56,8 @@ func TestPopoverControllerTogglesAtStatusItemAnchor(t *testing.T) {
 	if err := controller.configureStatusItem(item); err != nil {
 		t.Fatal(err)
 	}
-	if item.width != popoverWidth || item.offset != popoverOffset {
-		t.Fatalf("anchor contract = %.0fx%.0f", item.width, item.offset)
+	if item.width != popoverWidth || item.height != popoverHeight || item.offset != popoverOffset {
+		t.Fatalf("anchor contract = %.0fx%.0f+%.0f", item.width, item.height, item.offset)
 	}
 	item.callback(item.origin, true)
 	if !window.visible || window.shown != 1 || window.focused != 1 || window.x != 900 || window.y != 31 {
@@ -67,13 +69,13 @@ func TestPopoverControllerTogglesAtStatusItemAnchor(t *testing.T) {
 	}
 }
 
-func TestPopoverControllerUsesSafePositionFallback(t *testing.T) {
+func TestPopoverControllerFailsClosedForInvalidAnchor(t *testing.T) {
 	t.Parallel()
 	window := &popoverWindowStub{x: 50, y: 50}
 	controller, _ := newPopoverController(window)
 	controller.Toggle(platformtray.PopoverOrigin{}, false)
-	if window.x != 50 || window.y != 50 || !window.visible {
-		t.Fatalf("fallback state = %#v", window)
+	if window.x != 50 || window.y != 50 || window.visible || window.shown != 0 || window.focused != 0 {
+		t.Fatalf("fail-closed state = %#v", window)
 	}
 }
 

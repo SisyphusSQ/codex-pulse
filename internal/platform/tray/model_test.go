@@ -6,6 +6,18 @@ import (
 	"testing"
 )
 
+func TestPlatformChangesRemainFinite(t *testing.T) {
+	t.Parallel()
+	for _, change := range []PlatformChange{PlatformChangeDisplay, PlatformChangeSpace, PlatformChangeWake, PlatformChangeAppearance} {
+		if !validPlatformChange(change) {
+			t.Fatalf("platform change %q rejected", change)
+		}
+	}
+	if validPlatformChange("unknown") {
+		t.Fatal("unknown platform change accepted")
+	}
+}
+
 func TestMenuActionAllowlist(t *testing.T) {
 	t.Parallel()
 	for _, action := range []MenuAction{
