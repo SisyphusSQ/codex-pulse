@@ -5,8 +5,10 @@ import (
 	"errors"
 	"math"
 	"reflect"
+	"sort"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const quotaEvidenceWriteBatchSize = 256
@@ -125,26 +127,63 @@ func (repository *Repository) rebuildQuotaWindowProjectionInTransaction(
 		return err
 	}
 
+	var storedEvidence []quotaArbitrationEvidenceModel
 	if err := database.WithContext(ctx).Where(
 		"account_scope = ? AND window_kind = ? AND limit_id = ?",
 		key.accountScope, string(key.windowKind), key.limitID,
-	).Delete(&quotaArbitrationEvidenceModel{}).Error; err != nil {
+	).Find(&storedEvidence).Error; err != nil {
 		return err
 	}
-	if err := database.WithContext(ctx).Where(
-		"account_scope = ? AND window_kind = ? AND limit_id = ?",
-		key.accountScope, string(key.windowKind), key.limitID,
-	).Delete(&quotaCurrentModel{}).Error; err != nil {
-		return err
+	storedByObservation := make(map[string]quotaArbitrationEvidenceModel, len(storedEvidence))
+	for _, model := range storedEvidence {
+		storedByObservation[model.ObservationID] = model
+	}
+	desiredByObservation := make(map[string]quotaArbitrationEvidenceModel, len(evidenceModels))
+	changedEvidence := make([]quotaArbitrationEvidenceModel, 0, len(evidenceModels))
+	for _, model := range evidenceModels {
+		desiredByObservation[model.ObservationID] = model
+		if stored, found := storedByObservation[model.ObservationID]; !found || !reflect.DeepEqual(stored, model) {
+			changedEvidence = append(changedEvidence, model)
+		}
+	}
+	staleObservationIDs := make([]string, 0)
+	for observationID := range storedByObservation {
+		if _, found := desiredByObservation[observationID]; !found {
+			staleObservationIDs = append(staleObservationIDs, observationID)
+		}
+	}
+	sort.Strings(staleObservationIDs)
+	if len(staleObservationIDs) > 0 {
+		if err := database.WithContext(ctx).Where(
+			"account_scope = ? AND window_kind = ? AND limit_id = ? AND observation_id IN ?",
+			key.accountScope, string(key.windowKind), key.limitID, staleObservationIDs,
+		).Delete(&quotaArbitrationEvidenceModel{}).Error; err != nil {
+			return err
+		}
 	}
 	if err := repository.callQuotaProjectionHook("after_delete"); err != nil {
 		return err
 	}
-	if err := database.WithContext(ctx).Create(&currentModel).Error; err != nil {
+	if err := database.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "account_scope"}, {Name: "window_kind"}, {Name: "limit_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"observation_id", "effective_used_percent", "window_minutes", "resets_at_ms",
+			"window_generation", "selected_source", "freshness_state", "conflict_state",
+			"fresh_until_ms", "last_success_at_ms", "last_attempt_at_ms", "rule_version",
+			"explanation_code", "evaluated_at_ms",
+		}),
+	}).Create(&currentModel).Error; err != nil {
 		return err
 	}
-	if len(evidenceModels) > 0 {
-		if err := database.WithContext(ctx).CreateInBatches(&evidenceModels, quotaEvidenceWriteBatchSize).Error; err != nil {
+	if len(changedEvidence) > 0 {
+		if err := database.WithContext(ctx).Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "account_scope"}, {Name: "window_kind"}, {Name: "limit_id"}, {Name: "observation_id"},
+			},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"window_generation", "disposition", "reason", "explanation_code",
+			}),
+		}).CreateInBatches(&changedEvidence, quotaEvidenceWriteBatchSize).Error; err != nil {
 			return err
 		}
 	}
@@ -532,19 +571,48 @@ func quotaArbitrationRuleByVersion(version string) (QuotaArbitrationRule, bool) 
 	return rule, true
 }
 
+// verifyQuotaProjectionReadback checks the exact rows written by the current
+// transaction without repeating arbitration over the immutable observations.
+// Every public projection reader still calls readAndVerifyQuotaProjection and
+// recomputes from raw observations, so a later mismatch remains fail closed.
 func (repository *Repository) verifyQuotaProjectionReadback(
 	ctx context.Context,
 	database *gorm.DB,
 	want quotaWindowProjection,
 ) error {
-	stored, err := repository.readAndVerifyQuotaProjection(ctx, database, quotaProjectionKey{
+	key := quotaProjectionKey{
 		accountScope: want.Current.AccountScope, windowKind: want.Current.WindowKind, limitID: want.Current.LimitID,
-	})
+	}
+	var currentModel quotaCurrentModel
+	if err := database.WithContext(ctx).Take(
+		&currentModel,
+		"account_scope = ? AND window_kind = ? AND limit_id = ?",
+		key.accountScope, string(key.windowKind), key.limitID,
+	).Error; err != nil {
+		return err
+	}
+	current, err := quotaCurrentFromModel(currentModel)
 	if err != nil {
 		return err
 	}
+	var evidenceModels []quotaArbitrationEvidenceModel
+	if err := database.WithContext(ctx).Where(
+		"account_scope = ? AND window_kind = ? AND limit_id = ?",
+		key.accountScope, string(key.windowKind), key.limitID,
+	).Order("observation_id").Find(&evidenceModels).Error; err != nil {
+		return err
+	}
+	evidence := make([]QuotaArbitrationEvidence, 0, len(evidenceModels))
+	for _, model := range evidenceModels {
+		mapped, err := quotaEvidenceFromModel(model)
+		if err != nil {
+			return err
+		}
+		evidence = append(evidence, mapped)
+	}
+	stored := quotaWindowProjection{Current: current, Evidence: evidence}
 	if !reflect.DeepEqual(stored, want) {
-		return invalidRecord("quota projection readback differs from arbitration result")
+		return invalidRecord("stored quota projection differs from arbitration write result")
 	}
 	return nil
 }

@@ -22,9 +22,10 @@ type Ingester struct {
 }
 
 type OpenRequest struct {
-	Action logs.ReconcileAction
-	JobID  string
-	AtMS   int64
+	Action               logs.ReconcileAction
+	JobID                string
+	AtMS                 int64
+	DeferQuotaProjection bool
 }
 
 type CommitResult struct {
@@ -48,15 +49,16 @@ type StreamCursor struct {
 type Stream struct {
 	mu sync.Mutex
 
-	repository          *store.Repository
-	parser              *logs.StreamParser
-	projector           *projector
-	cursor              store.GenerationCursor
-	readOffset          int64
-	previousFingerprint *store.SourceFingerprint
-	pendingFingerprint  bool
-	job                 *streamJob
-	poisoned            bool
+	repository           *store.Repository
+	parser               *logs.StreamParser
+	projector            *projector
+	cursor               store.GenerationCursor
+	readOffset           int64
+	previousFingerprint  *store.SourceFingerprint
+	pendingFingerprint   bool
+	job                  *streamJob
+	deferQuotaProjection bool
+	poisoned             bool
 }
 
 type streamJob struct {
@@ -172,6 +174,7 @@ func (ingester *Ingester) Open(ctx context.Context, request OpenRequest) (*Strea
 	stream := &Stream{
 		repository: ingester.repository, parser: parser, projector: projector,
 		cursor: cursor, readOffset: cursor.Checkpoint.CommittedOffset, job: jobState,
+		deferQuotaProjection: request.DeferQuotaProjection,
 	}
 	// PreviousFingerprint is the active append CAS token. Rebuild lineage is
 	// persisted by PrepareGeneration and must not be compared as the new source's
@@ -334,7 +337,7 @@ func (stream *Stream) Feed(
 		PreviousFingerprint:     cloneSourceFingerprint(stream.previousFingerprint),
 		Fingerprint:             stream.cursor.Fingerprint, Facts: facts,
 		Diagnostics: diagnosticsToStore(result.Diagnostics), Checkpoint: checkpoint,
-		EOF: eof, AtMS: atMS,
+		EOF: eof, DeferQuotaProjection: stream.deferQuotaProjection, AtMS: atMS,
 	}
 	if stream.job != nil {
 		progress, total := result.CommittableOffset, stream.cursor.Fingerprint.SizeBytes

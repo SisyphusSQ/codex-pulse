@@ -29,6 +29,7 @@ func (repository *Repository) CommitIngestBatch(
 	}
 	var cursor GenerationCursor
 	err = repository.WithinWriteUnit(ctx, func(unit *WriteUnit) error {
+		unit.deferQuotaProjections = batch.DeferQuotaProjection
 		var err error
 		cursor, err = unit.commitIngestBatch(batch, facts, seed, projector)
 		return err
@@ -909,7 +910,7 @@ func validIngestDiagnostic(value IngestDiagnostic, committedOffset int64) bool {
 	case "empty_line", "invalid_utf8", "line_too_long", "bad_json", "duplicate_json_key",
 		"invalid_timestamp", "invalid_field", "unknown_rollout_type", "unknown_event_type",
 		"missing_session_meta", "missing_turn_start", "ambiguous_turn", "invalid_transition",
-		"orphan_turn_usage", "state_limit_exceeded":
+		"orphan_turn_usage", "state_limit_exceeded", "invalid_quota_window", "invalid_quota_snapshot":
 		return true
 	default:
 		return false

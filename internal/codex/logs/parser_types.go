@@ -3,7 +3,7 @@ package logs
 import "errors"
 
 const (
-	ParserVersion         = "codex-rollout-v1"
+	ParserVersion         = "codex-rollout-v2"
 	DefaultMaxLineBytes   = 16 << 20
 	MaxSupportedLineBytes = 64 << 20
 )

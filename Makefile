@@ -1,5 +1,5 @@
 .PHONY: harness-check harness-verify harness-review-gate m8-resource-fault \
-	m10-release-e2e m11-acceptance-matrix m11-acceptance-matrix-test \
+	m10-release-e2e m11-acceptance-matrix m11-acceptance-matrix-test m11-real-home \
 	project-check project-check-test project-generated-check-test verify verify-project verify-go \
 	verify-frontend verify-package verify-generated
 
@@ -64,3 +64,6 @@ m11-acceptance-matrix:
 
 m11-acceptance-matrix-test: m11-acceptance-matrix
 	bash scripts/validation/m11-acceptance-matrix-test.sh
+
+m11-real-home:
+	bash scripts/validation/m11-real-home.sh

@@ -94,6 +94,13 @@ func (runtime *Runtime) executeSlice(
 		if err != nil || !laneComplete {
 			return false, err
 		}
+		// Deferred projection removes per-observation rebuilds from the hot path,
+		// but first-screen readiness must still publish a queryable quota view.
+		if err := runtime.repository.RebuildQuotaProjection(
+			ctx, store.DefaultQuotaArbitrationRule(),
+		); err != nil {
+			return false, err
+		}
 		if err := runtime.ensureFirstScreenReady(ctx, jobID); err != nil {
 			return false, err
 		}
@@ -144,6 +151,11 @@ func (runtime *Runtime) executeSlice(
 		return false, ErrDiscoveryIncomplete
 	}
 	if err := runtime.requireReconcilePassClosed(ctx, jobID, pass); err != nil {
+		return false, err
+	}
+	if err := runtime.repository.RebuildQuotaProjection(
+		ctx, store.DefaultQuotaArbitrationRule(),
+	); err != nil {
 		return false, err
 	}
 	if err := runtime.succeed(ctx, jobID); err != nil {
@@ -288,6 +300,10 @@ func (runtime *Runtime) applyItemSlice(
 	}
 	stream, err := ingesterService.Open(ctx, indexer.OpenRequest{
 		Action: action, AtMS: runtime.nowAfter(item.UpdatedAtMS),
+		// Only the pre-readiness fast lane may defer projection. Once the first
+		// screen is published, every committed backfill/reconcile chunk must keep
+		// the fail-closed QuotaCurrent evidence set queryable.
+		DeferQuotaProjection: item.Lane == store.BootstrapLaneFast,
 	})
 	if err != nil {
 		return false, err

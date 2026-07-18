@@ -96,6 +96,57 @@ func TestQuotaObservationRepositoryCoalescesOnlyContinuousLocalSamples(t *testin
 	}
 }
 
+func TestQuotaObservationRepositorySegmentsOutOfOrderEventTime(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	repository := NewRepository(database)
+	ctx := context.Background()
+	if err := repository.EnsureApplicationSchema(ctx); err != nil {
+		t.Fatalf("EnsureApplicationSchema() error = %v", err)
+	}
+	session := quotaTestSession("session-quota-out-of-order")
+	sourceFileID := prepareQuotaTestSource(t, repository, ctx, "source-quota-out-of-order", 105)
+	if err := repository.UpsertFacts(ctx, FactBatch{Session: &session}); err != nil {
+		t.Fatalf("UpsertFacts(session) error = %v", err)
+	}
+	limitID, sessionID := "codex", session.SessionID
+	first := QuotaObservationSample{
+		ObservationID: "quota-out-of-order-first", AccountScope: QuotaAccountScopeDefault,
+		Source: QuotaSourceLocalJSONL, LimitID: &limitID, WindowKind: QuotaWindowPrimary,
+		UsedPercent: 38, WindowMinutes: 300, ResetsAtMS: 5_000, ObservedAtMS: 2_000,
+		Validity: QuotaValidityAccepted, SessionID: &sessionID, SourceFileID: &sourceFileID,
+		SourceGeneration: 0, SourceOffset: 100,
+	}
+	late := first
+	late.ObservationID = "quota-out-of-order-late"
+	late.ObservedAtMS = 1_500
+	late.SourceOffset = 200
+	if err := repository.WithinWriteUnit(ctx, func(unit *WriteUnit) error {
+		if err := unit.UpsertFacts(FactBatch{QuotaObservation: &first}); err != nil {
+			return err
+		}
+		return unit.UpsertFacts(FactBatch{QuotaObservation: &late})
+	}); err != nil {
+		t.Fatalf("WithinWriteUnit(out-of-order time) error = %v", err)
+	}
+	observations, err := repository.ListQuotaObservations(ctx, QuotaObservationFilter{
+		SessionID: &sessionID, Limit: 10,
+	})
+	if err != nil || len(observations) != 2 {
+		t.Fatalf("ListQuotaObservations() = %#v, %v", observations, err)
+	}
+	byID := make(map[string]QuotaObservation, len(observations))
+	for _, observation := range observations {
+		byID[observation.ObservationID] = observation
+	}
+	if byID[first.ObservationID].SourceOffset != first.SourceOffset ||
+		byID[late.ObservationID].SourceOffset != late.SourceOffset ||
+		byID[late.ObservationID].LastObservedAtMS != late.ObservedAtMS {
+		t.Fatalf("out-of-order observations = %#v", observations)
+	}
+}
+
 func TestQuotaObservationRepositoryRejectsConflictsAndRollsBackFactBatch(t *testing.T) {
 	t.Parallel()
 

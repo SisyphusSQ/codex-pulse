@@ -25,7 +25,8 @@ const (
 	bootstrapPriority     = int64(10)
 	defaultFastMaxFiles   = 8
 	defaultFastMaxBytes   = int64(16 << 20)
-	defaultReadChunkBytes = 256 << 10
+	defaultReadChunkBytes = 1 << 20
+	maxReadChunkBytes     = 4 << 20
 	bootstrapJobIDPrefix  = "bootstrap-"
 	bootstrapResumePrefix = "bootstrap-resume-"
 )
@@ -114,7 +115,8 @@ func newRuntime(config RuntimeConfig, hooks runtimeHooks) (*Runtime, error) {
 	if config.ReadChunkBytes == 0 {
 		config.ReadChunkBytes = defaultReadChunkBytes
 	}
-	if config.FastMaxFiles < 0 || config.FastMaxBytes < 0 || config.ReadChunkBytes < 0 {
+	if config.FastMaxFiles < 0 || config.FastMaxBytes < 0 || config.ReadChunkBytes < 0 ||
+		config.ReadChunkBytes > maxReadChunkBytes {
 		return nil, ErrInvalidRuntime
 	}
 	return &Runtime{

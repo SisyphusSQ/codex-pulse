@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -47,6 +49,128 @@ func TestQuotaProjectionIntegratesWhamAndLocalAtomically(t *testing.T) {
 	if err != nil || len(evidence) != 2 {
 		t.Fatalf("ListQuotaArbitrationEvidence() = %#v, %v", evidence, err)
 	}
+}
+
+func TestWriteUnitRebuildsEachDirtyQuotaWindowOnce(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	repository := NewRepository(database)
+	ctx := context.Background()
+	if err := repository.EnsureApplicationSchema(ctx); err != nil {
+		t.Fatalf("EnsureApplicationSchema() error = %v", err)
+	}
+	observed := int64(55 * quotaTestHourMS)
+	reset := observed + 5*quotaTestHourMS
+	repository.quotaNow = func() time.Time { return time.UnixMilli(observed + 1) }
+	first := quotaProjectionLocalFixture(t, repository, ctx, observed, reset, 41)
+	second := first
+	second.ObservationID = "projection-local-second"
+	second.UsedPercent = 42
+	second.ObservedAtMS++
+	second.SourceOffset++
+
+	rebuilds := 0
+	repository.quotaProjectionHook = func(stage string) error {
+		if stage == "after_write" {
+			rebuilds++
+		}
+		return nil
+	}
+	if err := repository.WithinWriteUnit(ctx, func(unit *WriteUnit) error {
+		if err := unit.UpsertFacts(FactBatch{QuotaObservation: &first}); err != nil {
+			return err
+		}
+		return unit.UpsertFacts(FactBatch{QuotaObservation: &second})
+	}); err != nil {
+		t.Fatalf("WithinWriteUnit() error = %v", err)
+	}
+	if rebuilds != 1 {
+		t.Fatalf("quota projection rebuilds = %d, want 1", rebuilds)
+	}
+	assertQuotaCurrentValue(t, repository, observed+1, 42, QuotaCurrentFresh, QuotaConflictNone)
+}
+
+func TestQuotaProjectionDeltaDoesNotRewriteUnchangedEvidence(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	repository := NewRepository(database)
+	ctx := context.Background()
+	if err := repository.EnsureApplicationSchema(ctx); err != nil {
+		t.Fatalf("EnsureApplicationSchema() error = %v", err)
+	}
+	observed := int64(56 * quotaTestHourMS)
+	reset := observed + 5*quotaTestHourMS
+	repository.quotaNow = func() time.Time { return time.UnixMilli(observed + 3) }
+	first := quotaProjectionLocalFixture(t, repository, ctx, observed, reset, 41)
+	if err := repository.UpsertFacts(ctx, FactBatch{QuotaObservation: &first}); err != nil {
+		t.Fatalf("UpsertFacts(first) error = %v", err)
+	}
+	second := first
+	second.ObservationID = "projection-local-second"
+	second.UsedPercent = 42
+	second.ObservedAtMS++
+	second.SourceOffset++
+	if err := repository.UpsertFacts(ctx, FactBatch{QuotaObservation: &second}); err != nil {
+		t.Fatalf("UpsertFacts(second) error = %v", err)
+	}
+	if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+		if err := transaction.WithContext(ctx).Exec(`CREATE TRIGGER reject_unchanged_evidence_update
+			BEFORE UPDATE ON quota_arbitration_evidence
+			WHEN OLD.observation_id = 'projection-local'
+			BEGIN SELECT RAISE(FAIL, 'unchanged evidence updated'); END`).Error; err != nil {
+			return err
+		}
+		return transaction.WithContext(ctx).Exec(`CREATE TRIGGER reject_unchanged_evidence_delete
+			BEFORE DELETE ON quota_arbitration_evidence
+			WHEN OLD.observation_id = 'projection-local'
+			BEGIN SELECT RAISE(FAIL, 'unchanged evidence deleted'); END`).Error
+	}); err != nil {
+		t.Fatalf("create evidence guards error = %v", err)
+	}
+	third := second
+	third.ObservationID = "projection-local-third"
+	third.UsedPercent = 43
+	third.ObservedAtMS++
+	third.SourceOffset++
+	if err := repository.UpsertFacts(ctx, FactBatch{QuotaObservation: &third}); err != nil {
+		t.Fatalf("UpsertFacts(third) rewrote unchanged evidence: %v", err)
+	}
+	assertQuotaCurrentValue(t, repository, observed+3, 43, QuotaCurrentFresh, QuotaConflictNone)
+}
+
+func TestWriteUnitDefersQuotaProjectionUntilExplicitRebuild(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	repository := NewRepository(database)
+	ctx := context.Background()
+	if err := repository.EnsureApplicationSchema(ctx); err != nil {
+		t.Fatalf("EnsureApplicationSchema() error = %v", err)
+	}
+	observed := int64(58 * quotaTestHourMS)
+	reset := observed + 5*quotaTestHourMS
+	repository.quotaNow = func() time.Time { return time.UnixMilli(observed) }
+	observation := quotaProjectionLocalFixture(t, repository, ctx, observed, reset, 43)
+	if err := repository.WithinWriteUnit(ctx, func(unit *WriteUnit) error {
+		unit.deferQuotaProjections = true
+		return unit.UpsertFacts(FactBatch{QuotaObservation: &observation})
+	}); err != nil {
+		t.Fatalf("WithinWriteUnit(deferred projection) error = %v", err)
+	}
+	if _, err := repository.QuotaObservation(ctx, observation.ObservationID); err != nil {
+		t.Fatalf("QuotaObservation(raw fact) error = %v", err)
+	}
+	if _, err := repository.QuotaCurrent(
+		ctx, QuotaAccountScopeDefault, QuotaWindowPrimary, "codex", observed,
+	); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("QuotaCurrent(before rebuild) error = %v, want ErrNotFound", err)
+	}
+	if err := repository.RebuildQuotaProjection(ctx, DefaultQuotaArbitrationRule()); err != nil {
+		t.Fatalf("RebuildQuotaProjection() error = %v", err)
+	}
+	assertQuotaCurrentValue(t, repository, observed, 43, QuotaCurrentFresh, QuotaConflictNone)
 }
 
 func TestQuotaProjectionLocalUsesTrustedClockAndMaintenanceRepairsFutureEvaluation(t *testing.T) {

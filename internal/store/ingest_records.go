@@ -94,8 +94,12 @@ type IngestBatch struct {
 	Diagnostics             []IngestDiagnostic
 	Checkpoint              ParserCheckpoint
 	EOF                     bool
-	JobTransition           *JobTransition
-	AtMS                    int64
+	// DeferQuotaProjection lets a bounded full-history bootstrap stage raw
+	// quota facts without rebuilding the global projection for every source.
+	// The caller must rebuild the projection before publishing readiness.
+	DeferQuotaProjection bool
+	JobTransition        *JobTransition
+	AtMS                 int64
 }
 
 type CheckpointSourcePosition struct {

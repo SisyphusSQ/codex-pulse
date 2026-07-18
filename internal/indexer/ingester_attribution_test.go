@@ -56,7 +56,7 @@ func TestIngesterPersistsRestartSafePrivacyAttribution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SessionAttribution() error = %v", err)
 	}
-	wantTurn, err := repository.TurnAttribution(ctx, "turn-attribution")
+	wantTurn, err := repository.TurnAttribution(ctx, CanonicalTurnID("session-attribution", "turn-attribution"))
 	if err != nil {
 		t.Fatalf("TurnAttribution() error = %v", err)
 	}
@@ -78,7 +78,7 @@ func TestIngesterPersistsRestartSafePrivacyAttribution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SessionAttribution(reopen) error = %v", err)
 	}
-	gotTurn, err := reopenedRepository.TurnAttribution(ctx, "turn-attribution")
+	gotTurn, err := reopenedRepository.TurnAttribution(ctx, CanonicalTurnID("session-attribution", "turn-attribution"))
 	if err != nil {
 		t.Fatalf("TurnAttribution(reopen) error = %v", err)
 	}

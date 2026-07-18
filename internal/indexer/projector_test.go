@@ -77,7 +77,7 @@ func TestProjectorMapsLifecycleEventsToOrderedFacts(t *testing.T) {
 	}
 	if facts[1].Turn == nil || facts[1].Turn.StartOffset != 10 || facts[1].Turn.SourceGeneration != 3 ||
 		facts[1].SessionCurrent == nil || facts[1].SessionCurrent.ActiveTurnID == nil ||
-		*facts[1].SessionCurrent.ActiveTurnID != "turn-a" {
+		*facts[1].SessionCurrent.ActiveTurnID != CanonicalTurnID("session-a", "turn-a") {
 		t.Fatalf("start fact = %#v", facts[1])
 	}
 	if facts[2].Turn == nil || facts[2].Turn.Model == nil || *facts[2].Turn.Model != "gpt-5" ||
@@ -100,6 +100,68 @@ func TestProjectorMapsLifecycleEventsToOrderedFacts(t *testing.T) {
 	}
 	if facts[4].Session == nil || facts[4].Session.LastSeenAtMS != 150 {
 		t.Fatalf("terminal session fact = %#v, want last seen 150", facts[4].Session)
+	}
+}
+
+func TestCanonicalTurnIDSeparatesSessionLocalTurnIDs(t *testing.T) {
+	t.Parallel()
+
+	first := CanonicalTurnID("session-a", "turn-1")
+	second := CanonicalTurnID("session-b", "turn-1")
+	if first == second || first != CanonicalTurnID("session-a", "turn-1") {
+		t.Fatalf("canonical turn IDs are not stable and session-scoped: first=%q second=%q", first, second)
+	}
+}
+
+func TestProjectorKeepsOverlappingInactiveTurnFactsOutOfSessionCurrent(t *testing.T) {
+	t.Parallel()
+
+	projector, err := newProjector("source-overlap", 1, store.GenerationModeRebuild, nil, store.ProjectorCheckpoint{})
+	if err != nil {
+		t.Fatalf("newProjector() error = %v", err)
+	}
+	events := []logs.ParsedEvent{
+		{
+			Kind: logs.EventSessionMeta, Position: logs.SourcePosition{StartOffset: 0, EndOffset: 10},
+			SessionMeta: &logs.SessionMetaFact{
+				SessionID: "session-overlap", RootSessionID: "session-overlap", SourceKind: logs.SourceKindSession,
+				CreatedAtMS: 100, ObservedAtMS: 100,
+			},
+		},
+		{
+			Kind: logs.EventTurnStarted, Position: logs.SourcePosition{StartOffset: 10, EndOffset: 20},
+			TurnStart: &logs.TurnStartFact{SessionID: "session-overlap", TurnID: "turn-a", StartedAtMS: 110},
+		},
+		{
+			Kind: logs.EventTurnStarted, Position: logs.SourcePosition{StartOffset: 20, EndOffset: 30},
+			TurnStart: &logs.TurnStartFact{SessionID: "session-overlap", TurnID: "turn-b", StartedAtMS: 120},
+		},
+		{
+			Kind: logs.EventTurnContext, Position: logs.SourcePosition{StartOffset: 30, EndOffset: 40},
+			TurnContext: &logs.TurnContextFact{
+				SessionID: "session-overlap", TurnID: "turn-a", ObservedAtMS: 130, Model: "gpt-a",
+			},
+		},
+		{
+			Kind: logs.EventTurnEnded, Position: logs.SourcePosition{StartOffset: 40, EndOffset: 50},
+			TurnEnd: &logs.TurnEndFact{
+				SessionID: "session-overlap", TurnID: "turn-a", CompletedAtMS: 140,
+				Outcome: logs.TurnOutcomeCompleted,
+			},
+		},
+	}
+	facts, checkpoint, err := projector.Project(events)
+	if err != nil {
+		t.Fatalf("Project(overlap) error = %v", err)
+	}
+	if len(facts) != len(events) || facts[3].Turn == nil || facts[3].SessionCurrent != nil ||
+		facts[4].Turn == nil || facts[4].SessionCurrent != nil {
+		t.Fatalf("inactive overlap facts = %#v", facts)
+	}
+	if checkpoint.Current == nil || checkpoint.Current.ActiveTurnID == nil ||
+		*checkpoint.Current.ActiveTurnID != "turn-b" || len(checkpoint.OpenTurns) != 1 ||
+		checkpoint.OpenTurns[0].TurnID != "turn-b" {
+		t.Fatalf("overlap checkpoint = %#v", checkpoint)
 	}
 }
 
@@ -158,6 +220,42 @@ func TestProjectorCounterEpochUsesOnlyKnownDecreases(t *testing.T) {
 	if checkpoint.SessionUsage == nil || checkpoint.SessionUsage.TotalInputTokens != nil ||
 		checkpoint.SessionUsage.CounterEpoch != 8 {
 		t.Fatalf("checkpoint usage = %#v, want nullable input without fabricated epoch", checkpoint.SessionUsage)
+	}
+}
+
+func TestProjectorClampsOutOfOrderEventToSessionObservation(t *testing.T) {
+	t.Parallel()
+
+	projector, err := newProjector("source-projector", 1, store.GenerationModeRebuild, nil, store.ProjectorCheckpoint{})
+	if err != nil {
+		t.Fatalf("newProjector() error = %v", err)
+	}
+	events := []logs.ParsedEvent{
+		{
+			Kind: logs.EventSessionMeta, Position: logs.SourcePosition{StartOffset: 0, EndOffset: 10},
+			SessionMeta: &logs.SessionMetaFact{
+				SessionID: "session-a", RootSessionID: "session-a", SourceKind: logs.SourceKindSession,
+				CreatedAtMS: 100, ObservedAtMS: 110, InitialCWD: "/synthetic", Originator: "cli",
+			},
+		},
+		{
+			Kind: logs.EventTurnStarted, Position: logs.SourcePosition{StartOffset: 10, EndOffset: 20},
+			TurnStart: &logs.TurnStartFact{
+				SessionID: "session-a", TurnID: "turn-a", StartedAtMS: 105,
+			},
+		},
+	}
+
+	facts, _, err := projector.Project(events)
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if len(facts) != 2 || facts[1].Session == nil || facts[1].Session.FirstSeenAtMS != 110 ||
+		facts[1].Session.LastSeenAtMS != 110 {
+		t.Fatalf("out-of-order session fact = %#v, want monotonic interval at 110", facts)
+	}
+	if facts[1].Turn == nil || facts[1].Turn.StartedAtMS != 105 {
+		t.Fatalf("turn fact = %#v, want original event timestamp preserved", facts[1].Turn)
 	}
 }
 
