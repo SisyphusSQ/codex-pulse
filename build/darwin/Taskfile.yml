@@ -18,7 +18,7 @@ tasks:
     cmds:
       - mkdir -p "bin"
       - go build {{.BUILD_FLAGS}} -o "bin/codex-pulse"
-      - install_name_tool -add_rpath '@executable_path/../Frameworks' "bin/codex-pulse"
+      - build/darwin/ensure_rpath.sh "bin/codex-pulse" '@executable_path/../Frameworks'
     vars:
       BUILD_FLAGS: '{{if eq .DEV "true"}}-tags sparkle -buildvcs=false -gcflags=all="-l" -ldflags="-X github.com/SisyphusSQ/codex-pulse/internal/app.applicationVersion={{.APP_VERSION | default "0.0.0"}}"{{else}}-tags "production sparkle" -trimpath -buildvcs=false -ldflags="-w -s -X github.com/SisyphusSQ/codex-pulse/internal/app.applicationVersion={{.APP_VERSION | default "0.0.0"}}"{{end}}'
     env:
@@ -66,6 +66,8 @@ tasks:
         vars:
           APP_VERSION: '{{.APP_VERSION | default "0.0.0"}}'
           BUILD_NUMBER: '{{.BUILD_NUMBER | default "0"}}'
+          FEED_URL: '{{.FEED_URL}}'
+          PUBLIC_KEY: '{{.PUBLIC_KEY}}'
       - task: package:sign
       - task: package:verify:bundle
         vars:
@@ -85,10 +87,14 @@ tasks:
         "$CODEX_PULSE_ARCH"
         "$CODEX_PULSE_APP_VERSION"
         "$CODEX_PULSE_BUILD_NUMBER"
+        "$CODEX_PULSE_FEED_URL"
+        "$CODEX_PULSE_PUBLIC_KEY"
     env:
       CODEX_PULSE_ARCH: '{{.ARCH | default "arm64"}}'
       CODEX_PULSE_APP_VERSION: '{{.APP_VERSION | default "0.0.0"}}'
       CODEX_PULSE_BUILD_NUMBER: '{{.BUILD_NUMBER | default "0"}}'
+      CODEX_PULSE_FEED_URL: '{{.FEED_URL}}'
+      CODEX_PULSE_PUBLIC_KEY: '{{.PUBLIC_KEY}}'
 
   package:icon:
     summary: 校验冻结的正式 PNG 资产并生成 macOS icns
@@ -119,11 +125,15 @@ tasks:
         "bin/Codex Pulse.app"
         "$CODEX_PULSE_APP_VERSION"
         "$CODEX_PULSE_BUILD_NUMBER"
+        "$CODEX_PULSE_FEED_URL"
+        "$CODEX_PULSE_PUBLIC_KEY"
     vars:
       SPARKLE_FRAMEWORK: '.cache/sparkle/2.9.4/framework/Sparkle.framework'
     env:
       CODEX_PULSE_APP_VERSION: '{{.APP_VERSION | default "0.0.0"}}'
       CODEX_PULSE_BUILD_NUMBER: '{{.BUILD_NUMBER | default "0"}}'
+      CODEX_PULSE_FEED_URL: '{{.FEED_URL}}'
+      CODEX_PULSE_PUBLIC_KEY: '{{.PUBLIC_KEY}}'
 
   package:sign:
     summary: 对 app bundle 执行 ad-hoc 签名

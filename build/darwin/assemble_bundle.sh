@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 <binary> <icon.icns> <prepared-tray-dir> <Info.plist> <Sparkle.framework> <bundle.app> <version> <build-number>" >&2
+    echo "usage: $0 <binary> <icon.icns> <prepared-tray-dir> <Info.plist> <Sparkle.framework> <bundle.app> <version> <build-number> [feed-url public-key]" >&2
     exit 64
 }
 
@@ -12,7 +12,7 @@ fail() {
     exit 1
 }
 
-[[ $# -eq 8 ]] || usage
+[[ $# -eq 8 || $# -eq 10 ]] || usage
 
 binary_path=$1
 icon_path=$2
@@ -22,6 +22,8 @@ sparkle_framework=$5
 bundle_path=$6
 app_version=$7
 build_number=$8
+feed_url=${9:-}
+public_key=${10:-}
 tray_icon="$prepared_tray_dir/codex-pulse-tray-template.png"
 tray_icon_2x="$prepared_tray_dir/codex-pulse-tray-template@2x.png"
 
@@ -31,6 +33,12 @@ tray_icon_2x="$prepared_tray_dir/codex-pulse-tray-template@2x.png"
     || fail "APP_VERSION must contain exactly three numeric components"
 [[ "$build_number" =~ ^[0-9]+$ ]] \
     || fail "BUILD_NUMBER must be a non-negative integer"
+if [[ -n "$feed_url" || -n "$public_key" ]]; then
+    [[ "$feed_url" =~ ^https://[^[:space:]@]+$ ]] || fail "SUFeedURL must be an HTTPS URL without userinfo"
+    [[ "$public_key" != *[[:space:]]* ]] || fail "SUPublicEDKey must not contain whitespace"
+    [[ $(printf '%s' "$public_key" | base64 -D 2>/dev/null | wc -c | tr -d ' ') -eq 32 ]] \
+        || fail "SUPublicEDKey must decode to 32 bytes"
+fi
 [[ "$(uname -s)" == Darwin ]] || fail "bundle assembly requires macOS"
 
 for path in "$binary_path" "$icon_path" "$tray_icon" "$tray_icon_2x" "$plist_template"; do
@@ -50,6 +58,10 @@ mkdir -p "$staging_path/Contents/MacOS" "$staging_path/Contents/Resources" "$sta
 cp "$plist_template" "$staging_path/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$app_version" "$staging_path/Contents/Info.plist"
 plutil -replace CFBundleVersion -string "$build_number" "$staging_path/Contents/Info.plist"
+if [[ -n "$feed_url" ]]; then
+    plutil -insert SUFeedURL -string "$feed_url" "$staging_path/Contents/Info.plist"
+    plutil -insert SUPublicEDKey -string "$public_key" "$staging_path/Contents/Info.plist"
+fi
 
 executable_name=$(plutil -extract CFBundleExecutable raw -o - "$staging_path/Contents/Info.plist")
 icon_name=$(plutil -extract CFBundleIconFile raw -o - "$staging_path/Contents/Info.plist")

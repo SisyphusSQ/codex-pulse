@@ -35,6 +35,8 @@ tasks:
           ARCH: '{{.ARCH | default "arm64"}}'
           APP_VERSION: '{{.APP_VERSION | default "0.0.0"}}'
           BUILD_NUMBER: '{{.BUILD_NUMBER | default "0"}}'
+          FEED_URL: '{{.FEED_URL}}'
+          PUBLIC_KEY: '{{.PUBLIC_KEY}}'
     env:
       CODEX_PULSE_GOOS: '{{.GOOS | default "darwin"}}'
 
@@ -58,6 +60,46 @@ tasks:
     summary: 删除本地 macOS bundle、ZIP 与临时图标产物
     cmds:
       - task: darwin:package:clean
+
+  release:local:
+    summary: 从 stdin 私钥构建并离线验证本地 Sparkle release 目录（不发布）
+    preconditions:
+      - sh: test "{{OS}}" = darwin
+        msg: Sparkle release 仅支持在 macOS 上构建
+    cmds:
+      - >-
+        scripts/sparkle/release.sh
+        "$CODEX_PULSE_APP_VERSION"
+        "$CODEX_PULSE_BUILD_NUMBER"
+        "$CODEX_PULSE_FEED_URL"
+        "$CODEX_PULSE_DOWNLOAD_URL_PREFIX"
+        "$CODEX_PULSE_PUBLIC_KEY"
+        "$CODEX_PULSE_RELEASE_NOTES_FILE"
+    env:
+      CODEX_PULSE_APP_VERSION: '{{.APP_VERSION}}'
+      CODEX_PULSE_BUILD_NUMBER: '{{.BUILD_NUMBER}}'
+      CODEX_PULSE_FEED_URL: '{{.FEED_URL}}'
+      CODEX_PULSE_DOWNLOAD_URL_PREFIX: '{{.DOWNLOAD_URL_PREFIX}}'
+      CODEX_PULSE_PUBLIC_KEY: '{{.PUBLIC_KEY}}'
+      CODEX_PULSE_RELEASE_NOTES_FILE: '{{.RELEASE_NOTES_FILE}}'
+
+  release:verify:
+    summary: 仅使用公钥离线复验本地 Sparkle release 目录
+    cmds:
+      - >-
+        scripts/sparkle/verify_release.sh
+        dist/update
+        "$CODEX_PULSE_APP_VERSION"
+        "$CODEX_PULSE_BUILD_NUMBER"
+        "$CODEX_PULSE_FEED_URL"
+        "$CODEX_PULSE_DOWNLOAD_URL_PREFIX"
+        "$CODEX_PULSE_PUBLIC_KEY"
+    env:
+      CODEX_PULSE_APP_VERSION: '{{.APP_VERSION}}'
+      CODEX_PULSE_BUILD_NUMBER: '{{.BUILD_NUMBER}}'
+      CODEX_PULSE_FEED_URL: '{{.FEED_URL}}'
+      CODEX_PULSE_DOWNLOAD_URL_PREFIX: '{{.DOWNLOAD_URL_PREFIX}}'
+      CODEX_PULSE_PUBLIC_KEY: '{{.PUBLIC_KEY}}'
 
   run:
     summary: 运行已构建的 macOS 开发应用
