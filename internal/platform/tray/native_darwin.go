@@ -13,15 +13,35 @@ import "C"
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 )
 
 var ErrNativeStatusItem = errors.New("native status item is unavailable")
 
 type NativeStatusItem struct {
-	mu     sync.Mutex
-	handle unsafe.Pointer
-	closed bool
+	mu         sync.Mutex
+	handle     unsafe.Pointer
+	closed     bool
+	callbackID uintptr
+}
+
+type PopoverOrigin struct {
+	X int
+	Y int
+}
+
+var nativeClickCallbacks sync.Map
+var nativeClickSequence atomic.Uint64
+
+//export cpTrayHandleClick
+func cpTrayHandleClick(callbackID C.uintptr_t, x C.double, y C.double, valid C.int) {
+	callback, ok := nativeClickCallbacks.Load(uintptr(callbackID))
+	if !ok {
+		return
+	}
+	origin := PopoverOrigin{X: int(x), Y: int(y)}
+	go callback.(func(PopoverOrigin, bool))(origin, valid != 0)
 }
 
 func NewNativeStatusItem() (*NativeStatusItem, error) {
@@ -90,10 +110,31 @@ func (item *NativeStatusItem) Close() error {
 		return nil
 	}
 	item.closed = true
+	if item.callbackID != 0 {
+		C.cp_tray_set_click_handler(item.handle, 0, 0, 0)
+		nativeClickCallbacks.Delete(item.callbackID)
+		item.callbackID = 0
+	}
 	if item.handle != nil {
 		C.cp_tray_close(item.handle)
 		item.handle = nil
 	}
+	return nil
+}
+
+func (item *NativeStatusItem) SetClickHandler(width, offset float64, callback func(PopoverOrigin, bool)) error {
+	if item == nil || width <= 0 || offset < 0 || callback == nil {
+		return ErrNativeStatusItem
+	}
+	item.mu.Lock()
+	defer item.mu.Unlock()
+	if item.closed || item.handle == nil || item.callbackID != 0 {
+		return ErrNativeStatusItem
+	}
+	id := uintptr(nativeClickSequence.Add(1))
+	nativeClickCallbacks.Store(id, callback)
+	item.callbackID = id
+	C.cp_tray_set_click_handler(item.handle, C.uintptr_t(id), C.double(width), C.double(offset))
 	return nil
 }
 

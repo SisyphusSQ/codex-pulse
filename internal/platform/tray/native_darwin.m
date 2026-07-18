@@ -1,6 +1,8 @@
 #import <Cocoa/Cocoa.h>
 #import "native_darwin.h"
 
+extern void cpTrayHandleClick(uintptr_t callbackID, double x, double y, int valid);
+
 static const CGFloat CPStatusWidth = 126.0;
 
 @interface CPStatusView : NSView
@@ -8,6 +10,7 @@ static const CGFloat CPStatusWidth = 126.0;
 @property(nonatomic, copy) NSString *health;
 @property(nonatomic, copy) NSString *accessibilityText;
 @property(nonatomic, copy) NSArray<NSDictionary *> *rows;
+@property(nonatomic, copy) void (^onPress)(void);
 @end
 
 @implementation CPStatusView
@@ -16,6 +19,7 @@ static const CGFloat CPStatusWidth = 126.0;
 - (BOOL)isAccessibilityElement { return YES; }
 - (NSString *)accessibilityRole { return NSAccessibilityButtonRole; }
 - (NSString *)accessibilityLabel { return self.accessibilityText ?: @"Codex Pulse 额度状态"; }
+- (BOOL)accessibilityPerformPress { if (self.onPress == nil) return NO; self.onPress(); return YES; }
 
 - (NSColor *)barColorForKind:(NSString *)kind progress:(CGFloat)progress {
     if ([self.state isEqualToString:@"conflict"]) return NSColor.systemOrangeColor;
@@ -81,8 +85,29 @@ static const CGFloat CPStatusWidth = 126.0;
 @interface CPStatusItemHolder : NSObject
 @property(nonatomic, strong) NSStatusItem *statusItem;
 @property(nonatomic, strong) CPStatusView *view;
+@property(nonatomic, assign) uintptr_t callbackID;
+@property(nonatomic, assign) CGFloat popoverWidth;
+@property(nonatomic, assign) CGFloat popoverOffset;
 @end
-@implementation CPStatusItemHolder @end
+@implementation CPStatusItemHolder
+- (void)handleClick:(id)sender {
+    if (self.callbackID == 0) return;
+    NSStatusBarButton *button = self.statusItem.button;
+    NSWindow *window = button.window;
+    NSScreen *screen = window.screen;
+    if (window == nil || screen == nil || self.popoverWidth <= 0) {
+        cpTrayHandleClick(self.callbackID, 0, 0, 0);
+        return;
+    }
+    NSRect local = [button convertRect:button.bounds toView:nil];
+    NSRect anchor = [window convertRectToScreen:local];
+    CGFloat minX = NSMinX(screen.visibleFrame);
+    CGFloat maxX = NSMaxX(screen.visibleFrame) - self.popoverWidth;
+    CGFloat x = MIN(MAX(NSMidX(anchor) - self.popoverWidth / 2.0, minX), maxX);
+    CGFloat y = NSMaxY(screen.frame) - NSMinY(anchor) + self.popoverOffset;
+    cpTrayHandleClick(self.callbackID, x, y, 1);
+}
+@end
 
 static void cp_on_main_sync(dispatch_block_t block) {
     if ([NSThread isMainThread]) block();
@@ -101,7 +126,12 @@ void *cp_tray_create(void) {
         holder.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:CPStatusWidth];
         NSStatusBarButton *button = holder.statusItem.button;
         if (button == nil) { holder = nil; return; }
+        button.target = holder;
+        button.action = @selector(handleClick:);
+        [button sendActionOn:NSEventMaskLeftMouseUp];
         holder.view = [[CPStatusView alloc] initWithFrame:NSMakeRect(0, 0, CPStatusWidth, NSHeight(button.bounds))];
+        __weak CPStatusItemHolder *weakHolder = holder;
+        holder.view.onPress = ^{ [weakHolder handleClick:nil]; };
         holder.view.autoresizingMask = NSViewHeightSizable;
         button.image = nil;
         [button addSubview:holder.view];
@@ -158,4 +188,16 @@ int cp_tray_capture_png(void *raw, const char *rawPath) {
         success = png != nil && [png writeToFile:path options:NSDataWritingAtomic error:nil];
     });
     return success ? 1 : 0;
+}
+
+void cp_tray_set_click_handler(void *raw, uintptr_t callbackID, double width, double offset) {
+    if (raw == NULL) return;
+    CPStatusItemHolder *holder = (__bridge CPStatusItemHolder *)raw;
+    // The Go caller may hold its item mutex. Never make that mutex wait for
+    // the AppKit main queue: the block retains holder until it is applied.
+    cp_on_main_async(^{
+        holder.callbackID = callbackID;
+        holder.popoverWidth = width;
+        holder.popoverOffset = offset;
+    });
 }

@@ -87,23 +87,24 @@ type trayLaunchRegistrar interface {
 }
 
 type trayRuntimeHost struct {
-	mu       sync.Mutex
-	query    trayProjectionQuery
-	runtime  *platformtray.Runtime
-	pending  bool
-	startErr error
-	starting bool
-	cancel   func()
-	quit     func()
-	closed   bool
-	closeErr error
+	mu        sync.Mutex
+	query     trayProjectionQuery
+	runtime   *platformtray.Runtime
+	pending   bool
+	startErr  error
+	starting  bool
+	cancel    func()
+	quit      func()
+	configure func(*platformtray.NativeStatusItem) error
+	closed    bool
+	closeErr  error
 }
 
-func newTrayRuntimeHost(registrar trayLaunchRegistrar, query trayProjectionQuery, quit func()) (*trayRuntimeHost, error) {
-	if registrar == nil || query == nil || quit == nil {
+func newTrayRuntimeHost(registrar trayLaunchRegistrar, query trayProjectionQuery, quit func(), configure func(*platformtray.NativeStatusItem) error) (*trayRuntimeHost, error) {
+	if registrar == nil || query == nil || quit == nil || configure == nil {
 		return nil, platformtray.ErrTrayRuntime
 	}
-	host := &trayRuntimeHost{query: query, quit: quit}
+	host := &trayRuntimeHost{query: query, quit: quit, configure: configure}
 	host.cancel = registrar.OnApplicationEvent(events.Mac.ApplicationDidFinishLaunching, func(*application.ApplicationEvent) {
 		host.start()
 	})
@@ -122,6 +123,9 @@ func (host *trayRuntimeHost) start() {
 	host.starting = true
 	host.mu.Unlock()
 	renderer, err := platformtray.NewNativeStatusItem()
+	if err == nil {
+		err = host.configure(renderer)
+	}
 	if err == nil {
 		var runtime *platformtray.Runtime
 		runtime, err = platformtray.StartRuntime(context.Background(), platformtray.RuntimeConfig{
@@ -145,6 +149,8 @@ func (host *trayRuntimeHost) start() {
 			}
 			return
 		}
+	}
+	if renderer != nil {
 		_ = renderer.Close()
 	}
 	host.mu.Lock()

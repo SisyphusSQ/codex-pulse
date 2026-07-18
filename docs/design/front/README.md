@@ -42,7 +42,7 @@
 - 百分比始终表示 `remaining`。
 - 所有额度只显示普通百分比，不使用 `≤`、`?` 或状态胶囊解释不确定性；存在 last-known-good 时继续显示当前选定值，从未取得数值时显示 `--`。
 - 状态栏使用 Codex Pulse 单色模板图标 + 动态额度仪表；响应同时存在 primary 与 secondary 时显示“5 小时 / 本周”双行，当前只有 secondary 时只显示“本周”，不为已不存在的 5 小时额度保留 `--` 占位；未来 primary 恢复后自动扩展为双行。各行保留短进度条与百分比，并提供浅色、深色和异常状态适配。
-- Popover 删除来源冲突、网络失败和索引异常说明区，使用数值与进度条直接表达 remaining。
+- Popover 删除来源冲突、网络失败和索引异常说明区，使用数值与进度条直接表达 remaining；窗口同样按 authoritative response 动态渲染，primary 缺失时不显示“5 小时”或 `--` 占位，未来恢复后自动出现。
 - Popover 增加 Reset credits 摘要，展示可用次数、总次数、累计剩余时间和最近到期时间。
 - Popover 增加今日 API 等价成本摘要，展示金额、token、周期和计算时间；最近会话扩展到 5 条。
 - `API 等价成本` 始终带估算说明，不写成真实花费。
@@ -164,6 +164,8 @@ Project detail 只使用 generated `ProjectDetail`：aggregate、daily、pricing
 
 TOO-278 已完成六个真实页面的跨页面回归：AppShell 全局状态复用 generated Health query 与共享 cache，blocked 等并发条件经纯有限优先级收敛为单一 Banner；healthy 不显示 Banner。route error boundary、skip/focus/scroll recovery、sidebar keyboard、dialog focus loop、显式 labels、forced-colors 与 reduced-motion 均有自动化证据。deterministic synthetic binding fixture 在验证后删除；24 张 1440×1024/900×600 normal+blocked 截图只保存在 ignored runs，提交版哈希、overflow、privacy 与 console/page-error 结论见 `docs/test/m7-e7.md`。
 
+TOO-288 使用自有 `NSStatusItem` 的有限 click/anchor adapter 驱动独立 frameless Wails `/popover` window，不创建第二个 tray item，也不把 AppKit 类型泄漏到 Vue。anchor 在 AppKit click action 所在主线程直接计算并随 callback 传递，避免 Go mutex 与 main queue 在 shutdown 锁反转。Popover 复用真实 Quota、今日 UsageCost 与最近 5 Sessions binding；三个查询 region 独立降级，隐藏窗口会取消在途请求但保留 authoritative cache，再次显示时重取。主窗口隐藏原生 close button，`Cmd-W` 固定为 hide，应用不会因全部窗口隐藏而退出，确保名为 `main` 的窗口始终可被 Popover 导航重新显示。420×760 synthetic visual 证明 secondary-only 不出现“5 小时”占位，primary 数据恢复后会动态补回该行。
+
 ## 后续评审重点
 
-TOO-272 已实现共享应用壳、路由、基础状态交互和 Wails Bootstrap ready/error/retry；TOO-273 已实现概览，TOO-274 已实现 Sessions 列表与详情，TOO-275 已实现 Projects 列表与详情，TOO-276 已实现 Quota 窗口、来源/仲裁、Reset credits、刷新状态与手动刷新 command；TOO-277 已实现本机状态、Settings、有限运行控制、Home 两步切换和 Session index Analyze-only dry-run；TOO-278 已统一全局状态、route recovery、keyboard/focus、辅助语义和六页面视觉基线。图标方向和健康信息层级继续冻结；后续页面必须复用当前 token、query-state、辅助模式降级与 macOS-only 边界。
+TOO-272 已实现共享应用壳、路由、基础状态交互和 Wails Bootstrap ready/error/retry；TOO-273 已实现概览，TOO-274 已实现 Sessions 列表与详情，TOO-275 已实现 Projects 列表与详情，TOO-276 已实现 Quota 窗口、来源/仲裁、Reset credits、刷新状态与手动刷新 command；TOO-277 已实现本机状态、Settings、有限运行控制、Home 两步切换和 Session index Analyze-only dry-run；TOO-278 已统一全局状态、route recovery、keyboard/focus、辅助语义和六页面视觉基线；TOO-287/288 已交付动态原生状态项和冻结 Popover。图标方向和健康信息层级继续冻结；后续平台卡必须复用当前 token、query-state、辅助模式降级与 macOS-only 边界。

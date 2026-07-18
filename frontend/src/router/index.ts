@@ -9,6 +9,7 @@ import QuotaView from "@/views/QuotaView.vue";
 import LocalStatusView from "@/views/LocalStatusView.vue";
 import SettingsView from "@/views/SettingsView.vue";
 import SessionsView from "@/views/SessionsView.vue";
+import PopoverView from "@/views/PopoverView.vue";
 
 export type AppNavigationName =
   | "overview"
@@ -56,6 +57,11 @@ const childRoutes = appNavigation.map((item) => ({
 })) satisfies RouteRecordRaw[];
 
 const routes = [
+  {
+    path: "/popover",
+    name: "popover",
+    component: PopoverView,
+  },
   {
     path: "/",
     component: AppShell,

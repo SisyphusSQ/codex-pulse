@@ -238,6 +238,29 @@ export const zhCNMessages = {
       unknown: "--",
     },
   },
+  popover: {
+    updated: "更新于 {value}",
+    common: { unknown: "--" },
+    state: {
+      loading: "正在读取…", unavailable: "暂不可用", stale: "刷新失败，保留上次可信数据", emptyQuota: "尚无额度事实", emptySessions: "暂无最近会话",
+      retryQuota: "重新读取额度", retryCost: "重新计算成本", retrySessions: "重新读取会话",
+    },
+    quota: {
+      title: "额度余量", primary: "5 小时", secondary: "本周",
+      resetMinutes: "{value} 分钟后重置", resetHours: "{value} 小时后重置",
+    },
+    reset: {
+      title: "重置次数", count: "{available} 可用 / {total} 总数", remaining: "累计剩余 {value}", expiresAt: "最近到期 {value}",
+      durationDays: "{days} 天 {hours} 小时", durationHours: "{hours} 小时",
+    },
+    cost: {
+      title: "API 等价成本", tokens: "今日 · {value} tokens",
+      disclaimer: "依据公开 API 定价估算，不代表实际账单。",
+    },
+    sessions: { title: "最近会话", unknownProject: "未归因项目", unknownModel: "未知模型" },
+    time: { now: "刚刚", minutes: "{value} 分钟前", hours: "{value} 小时前" },
+    actions: { refresh: "刷新当前数据", openOverview: "打开概览" },
+  },
   quotaPage: {
     action: {
       refresh: "刷新配额与 Reset credits",
