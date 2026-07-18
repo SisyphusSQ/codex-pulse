@@ -4,7 +4,8 @@
 #include <string.h>
 
 extern void cpSparkleHandleEvent(uintptr_t callbackID, int kind, char *version, char *displayVersion,
-                                 char *releaseNotes, uint64_t contentLength, int signatureStatus, uint64_t received,
+                                 char *releaseNotes, char *informationURL, uint64_t contentLength,
+                                 int signatureStatus, int updateStage, int informationOnly, uint64_t received,
                                  uint64_t total, double fraction, long errorCode, char *errorMessage);
 
 static char *cp_sparkle_copy_string(NSString *value) {
@@ -34,6 +35,7 @@ enum {
     CPEventCheckCancelled = 11,
     CPEventReleaseNotes = 12,
     CPEventInstallFailed = 13,
+    CPEventResumableUpdateFound = 14,
 };
 
 static NSString *cp_sparkle_plain_text(NSString *value, BOOL html) {
@@ -45,7 +47,7 @@ static NSString *cp_sparkle_plain_text(NSString *value, BOOL html) {
 
 static void cp_sparkle_emit_release_notes(uintptr_t callbackID, NSString *releaseNotes) {
     cpSparkleHandleEvent(callbackID, CPEventReleaseNotes, "", "", (char *)(releaseNotes ?: @"").UTF8String,
-                         0, 0, 0, 0, 0, 0, "");
+	                         "", 0, 0, 0, 0, 0, 0, 0, 0, "");
 }
 
 static void cp_sparkle_emit(uintptr_t callbackID, int kind, SUAppcastItem *item,
@@ -53,14 +55,41 @@ static void cp_sparkle_emit(uintptr_t callbackID, int kind, SUAppcastItem *item,
     NSString *version = item == nil ? @"" : item.versionString;
     NSString *displayVersion = item == nil ? @"" : item.displayVersionString;
     NSString *releaseNotes = item == nil ? @"" : item.itemDescription;
+    NSString *informationURL = item == nil ? @"" : item.infoURL.absoluteString;
     releaseNotes = cp_sparkle_plain_text(releaseNotes, ![item.itemDescriptionFormat isEqualToString:@"plain-text"]);
     uint64_t contentLength = item == nil ? 0 : item.contentLength;
     NSInteger signatureStatus = item == nil ? 0 : item.signingValidationStatus;
     NSString *message = error == nil ? @"" : error.localizedDescription;
     cpSparkleHandleEvent(callbackID, kind, (char *)version.UTF8String, (char *)displayVersion.UTF8String,
-                         (char *)releaseNotes.UTF8String,
-                         contentLength, (int)signatureStatus, received, total, fraction,
+                         (char *)releaseNotes.UTF8String, (char *)(informationURL ?: @"").UTF8String,
+                         contentLength, (int)signatureStatus, 0, item != nil && item.informationOnlyUpdate,
+                         received, total, fraction,
                          error == nil ? 0 : error.code, (char *)message.UTF8String);
+}
+
+static void cp_sparkle_emit_update_found(uintptr_t callbackID, SUAppcastItem *item, SPUUserUpdateState *state) {
+    int kind = state.stage == SPUUserUpdateStageNotDownloaded ? CPEventUpdateFound : CPEventResumableUpdateFound;
+    NSString *releaseNotes = cp_sparkle_plain_text(item.itemDescription,
+        ![item.itemDescriptionFormat isEqualToString:@"plain-text"]);
+    cpSparkleHandleEvent(callbackID, kind, (char *)item.versionString.UTF8String,
+                         (char *)item.displayVersionString.UTF8String, (char *)releaseNotes.UTF8String,
+                         (char *)(item.infoURL.absoluteString ?: @"").UTF8String, item.contentLength,
+                         (int)item.signingValidationStatus, (int)state.stage, item.informationOnlyUpdate,
+                         0, 0, 0, 0, "");
+}
+
+static NSError *cp_sparkle_classification_error(NSError *error) {
+    NSError *current = error;
+    for (NSUInteger depth = 0; current != nil && depth < 8; depth++) {
+        if ([current.domain isEqualToString:SUSparkleErrorDomain] &&
+            (current.code == SUSignatureError || current.code == SUValidationError)) {
+            return current;
+        }
+        NSError *underlying = current.userInfo[NSUnderlyingErrorKey];
+        if (![underlying isKindOfClass:NSError.class] || underlying == current) break;
+        current = underlying;
+    }
+    return error;
 }
 
 @interface CPUpdaterUserDriver : NSObject <SPUUserDriver>
@@ -69,6 +98,8 @@ static void cp_sparkle_emit(uintptr_t callbackID, int kind, SUAppcastItem *item,
 @property(nonatomic, copy) void (^downloadCancellation)(void);
 @property(nonatomic, copy) void (^updateChoiceReply)(SPUUserUpdateChoice);
 @property(nonatomic, copy) void (^installChoiceReply)(SPUUserUpdateChoice);
+@property(nonatomic, assign) BOOL informationOnlyUpdate;
+@property(nonatomic, assign) BOOL resumableUpdate;
 @property(nonatomic, assign) uint64_t expectedLength;
 @property(nonatomic, assign) uint64_t receivedLength;
 - (void)clearCallbacks;
@@ -83,11 +114,13 @@ static void cp_sparkle_emit(uintptr_t callbackID, int kind, SUAppcastItem *item,
     self.checkCancellation = cancellation;
 }
 - (void)showUpdateFoundWithAppcastItem:(SUAppcastItem *)appcastItem state:(SPUUserUpdateState *)state reply:(void (^)(SPUUserUpdateChoice))reply {
-    (void)appcastItem;
     self.updateChoiceReply = reply;
-    if (state.stage == SPUUserUpdateStageInstalling) {
-        cp_sparkle_emit(self.callbackID, CPEventInstallStarted, nil, 0, 0, 0, nil);
-    }
+    self.informationOnlyUpdate = appcastItem.informationOnlyUpdate;
+    self.resumableUpdate = state.stage != SPUUserUpdateStageNotDownloaded;
+    // Publish only after retaining the reply. Downloaded/installing recovery
+    // states are exposed atomically as ready-to-install so the shared safe
+    // drain runs before Go replies Install to Sparkle.
+    cp_sparkle_emit_update_found(self.callbackID, appcastItem, state);
 }
 - (void)showUpdateReleaseNotesWithDownloadData:(SPUDownloadData *)downloadData {
     NSString *releaseNotes = [[NSString alloc] initWithData:downloadData.data encoding:NSUTF8StringEncoding];
@@ -101,7 +134,7 @@ static void cp_sparkle_emit(uintptr_t callbackID, int kind, SUAppcastItem *item,
     acknowledgement();
 }
 - (void)showUpdaterError:(NSError *)error acknowledgement:(void (^)(void))acknowledgement {
-    cp_sparkle_emit(self.callbackID, CPEventFailed, nil, 0, 0, 0, error);
+    cp_sparkle_emit(self.callbackID, CPEventFailed, nil, 0, 0, 0, cp_sparkle_classification_error(error));
     acknowledgement();
 }
 - (void)showDownloadInitiatedWithCancellation:(void (^)(void))cancellation {
@@ -146,6 +179,8 @@ static void cp_sparkle_emit(uintptr_t callbackID, int kind, SUAppcastItem *item,
     self.downloadCancellation = nil;
     self.updateChoiceReply = nil;
     self.installChoiceReply = nil;
+    self.informationOnlyUpdate = NO;
+    self.resumableUpdate = NO;
 }
 @end
 
@@ -157,7 +192,7 @@ static void cp_sparkle_emit(uintptr_t callbackID, int kind, SUAppcastItem *item,
 @implementation CPUpdaterDelegate
 - (void)updater:(SPUUpdater *)updater didFindValidUpdate:(SUAppcastItem *)item {
     (void)updater;
-    cp_sparkle_emit(self.callbackID, CPEventUpdateFound, item, 0, 0, 0, nil);
+    (void)item;
 }
 - (void)updaterDidNotFindUpdate:(SPUUpdater *)updater error:(NSError *)error {
     (void)updater;
@@ -184,7 +219,7 @@ static void cp_sparkle_emit(uintptr_t callbackID, int kind, SUAppcastItem *item,
     // SUInstallationCanceledError remains a typed installation failure; a
     // duplicate EventFailed is state-machine idempotent and retains that truth.
     if (cp_sparkle_should_ignore_abort(error.code, error.domain.UTF8String)) return;
-    cp_sparkle_emit(self.callbackID, CPEventFailed, nil, 0, 0, 0, error);
+    cp_sparkle_emit(self.callbackID, CPEventFailed, nil, 0, 0, 0, cp_sparkle_classification_error(error));
 }
 @end
 
@@ -249,7 +284,10 @@ int cp_sparkle_check(void *raw, char **errorMessage) {
     CPUpdaterHolder *holder = (__bridge CPUpdaterHolder *)raw;
     cp_on_main_sync(^{
         holder.delegate.ignoreNextAbort = NO;
-        [holder.updater checkForUpdateInformation];
+        // The custom user driver owns download/install confirmation. The
+        // information-only API reports delegate metadata but never establishes
+        // the SPUUserUpdateChoice reply consumed by Download.
+        [holder.updater checkForUpdates];
     });
     return 1;
 }
@@ -261,11 +299,24 @@ int cp_sparkle_download(void *raw, char **errorMessage) {
     }
     CPUpdaterHolder *holder = (__bridge CPUpdaterHolder *)raw;
     __block void (^reply)(SPUUserUpdateChoice) = nil;
+    __block BOOL informationOnly = NO;
+    __block BOOL resumable = NO;
     cp_on_main_sync(^{
+        informationOnly = holder.userDriver.informationOnlyUpdate;
+        resumable = holder.userDriver.resumableUpdate;
+        if (informationOnly || resumable) return;
         reply = holder.userDriver.updateChoiceReply;
         holder.userDriver.updateChoiceReply = nil;
         if (reply != nil) reply(SPUUserUpdateChoiceInstall);
     });
+    if (informationOnly) {
+        cp_sparkle_set_error(errorMessage, @"Information-only updates cannot be downloaded");
+        return 0;
+    }
+    if (resumable) {
+        cp_sparkle_set_error(errorMessage, @"Resumable updates are already ready to install");
+        return 0;
+    }
     if (reply == nil) {
         cp_sparkle_set_error(errorMessage, @"No Sparkle update is awaiting download confirmation");
         return 0;
@@ -284,6 +335,11 @@ int cp_sparkle_install(void *raw, char **errorMessage) {
     dispatch_async(dispatch_get_main_queue(), ^{
         void (^reply)(SPUUserUpdateChoice) = holder.userDriver.installChoiceReply;
         holder.userDriver.installChoiceReply = nil;
+        if (reply == nil && holder.userDriver.resumableUpdate) {
+            reply = holder.userDriver.updateChoiceReply;
+            holder.userDriver.updateChoiceReply = nil;
+            holder.userDriver.resumableUpdate = NO;
+        }
         if (reply == nil) {
             NSError *error = [NSError errorWithDomain:@"CodexPulseSparkle" code:3 userInfo:@{
                 NSLocalizedDescriptionKey: @"No Sparkle update is ready to install"
@@ -311,6 +367,7 @@ int cp_sparkle_choose(void *raw, int choice, char **errorMessage) {
     cp_on_main_sync(^{
         reply = holder.userDriver.updateChoiceReply;
         holder.userDriver.updateChoiceReply = nil;
+        holder.userDriver.resumableUpdate = NO;
         if (reply != nil) reply(choice == 1 ? SPUUserUpdateChoiceSkip : SPUUserUpdateChoiceDismiss);
     });
     if (reply == nil) {

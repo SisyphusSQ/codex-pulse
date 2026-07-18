@@ -8,6 +8,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/metrics"
 	platformtray "github.com/SisyphusSQ/codex-pulse/internal/platform/tray"
+	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	"github.com/SisyphusSQ/codex-pulse/internal/singleinstance"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -161,9 +162,16 @@ func runWithStore(
 // application exits and returns Wails startup or shutdown failures to main.
 func Run(assets fs.FS) error {
 	ctx := context.Background()
-	instanceConfig, err := singleinstance.DefaultConfig()
+	overrides, e2eEnabled, err := loadUpgradeE2EOverrides()
 	if err != nil {
 		return err
+	}
+	instanceConfig := overrides.Instance
+	if !e2eEnabled {
+		instanceConfig, err = singleinstance.DefaultConfig()
+		if err != nil {
+			return err
+		}
 	}
 	instanceLease, owner, err := singleinstance.Acquire(ctx, instanceConfig)
 	if err != nil {
@@ -173,7 +181,7 @@ func Run(assets fs.FS) error {
 		return nil
 	}
 	defer instanceLease.Close()
-	database, recovery, err := openApplicationStartup(ctx, storesqlite.Config{})
+	database, recovery, err := openApplicationStartup(ctx, overrides.Store)
 	if err != nil {
 		return fmt.Errorf("open application SQLite store: %w", err)
 	}
@@ -192,8 +200,20 @@ func Run(assets fs.FS) error {
 		defer func() {
 			returnErr = errors.Join(returnErr, metricsRuntime.Close(context.Background()))
 		}()
-		preferenceStore, err := openApplicationPreferences()
+		var preferenceStorePath string
+		if e2eEnabled {
+			preferenceStorePath = overrides.PreferencesPath
+		}
+		var preferenceStore *preferences.FileStore
+		if preferenceStorePath == "" {
+			preferenceStore, err = openApplicationPreferences()
+		} else {
+			preferenceStore, err = openApplicationPreferencesAt(preferenceStorePath)
+		}
 		if err != nil {
+			return err
+		}
+		if err := prepareUpgradeE2EPreferences(ctx, preferenceStore); err != nil {
 			return err
 		}
 		bindingService, err := composeBindingService(database, preferenceStore, metricsRuntime.Observer())
@@ -349,6 +369,9 @@ func Run(assets fs.FS) error {
 		if err := updateRuntime.bindInstallGate(nativeQuit); err != nil {
 			return err
 		}
+		if err := startUpgradeE2EAutomation(ctx, database, updateRuntime, desktopApp.Quit); err != nil {
+			return err
+		}
 		desktopCommands, err = newDesktopCommandCoordinator(desktopCommandCoordinatorConfig{
 			Window: mainWindow, Emitter: desktopApp.Event, About: desktopApp.Menu,
 			Refresh: bindingService, Invalidation: invalidation, Drain: shutdown,
@@ -394,6 +417,9 @@ func runMigrationRecoveryApplication(
 		event.Cancel()
 	})
 	if err := recovery.bindExit(desktopApp.Quit); err != nil {
+		return err
+	}
+	if err := finishUpgradeE2ERecovery(recovery, desktopApp.Quit); err != nil {
 		return err
 	}
 	desktopApp.OnShutdown(func() {

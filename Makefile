@@ -1,4 +1,5 @@
 .PHONY: harness-check harness-verify harness-review-gate m8-resource-fault \
+	m10-release-e2e \
 	project-check project-check-test project-generated-check-test verify verify-project verify-go \
 	verify-frontend verify-package verify-generated
 
@@ -54,3 +55,6 @@ verify-generated:
 
 m8-resource-fault:
 	bash scripts/validation/m8-resource-fault.sh
+
+m10-release-e2e:
+	bash scripts/sparkle/local_release_pipeline.sh

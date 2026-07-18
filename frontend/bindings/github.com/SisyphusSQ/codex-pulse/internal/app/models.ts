@@ -321,6 +321,8 @@ export interface UpdateStateResponse {
     "releaseNotes": string;
     "contentLength": string;
     "signatureStatus": string;
+    "informationOnly": boolean;
+    "informationUrl": string;
     "progressStage": string;
     "progressReceived": string;
     "progressTotal": string;

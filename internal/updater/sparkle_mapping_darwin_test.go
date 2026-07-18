@@ -10,7 +10,7 @@ import (
 func TestNativeUpdateFoundMapping(t *testing.T) {
 	t.Parallel()
 
-	event := nativeEvent(nativeEventUpdateFound, "42", "0.2.0", "安全更新", 128, 1, 0, 0, 0, 0, "")
+	event := nativeEvent(nativeEventUpdateFound, "42", "0.2.0", "安全更新", "", 128, 1, 0, false, 0, 0, 0, 0, "")
 	if event.Kind != EventUpdateFound || event.Update == nil {
 		t.Fatalf("event=%#v, want update found", event)
 	}
@@ -43,18 +43,18 @@ func TestNativeProgressAndLifecycleMapping(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			event := nativeEvent(test.kind, "", "", "", 0, 0, 12, 48, 0.25, 0, "")
+			event := nativeEvent(test.kind, "", "", "", "", 0, 0, 0, false, 12, 48, 0.25, 0, "")
 			if event.Kind != test.want {
 				t.Fatalf("kind=%q, want %q", event.Kind, test.want)
 			}
 		})
 	}
 
-	download := nativeEvent(nativeEventDownloadProgress, "", "", "", 0, 0, 12, 48, 0, 0, "")
+	download := nativeEvent(nativeEventDownloadProgress, "", "", "", "", 0, 0, 0, false, 12, 48, 0, 0, "")
 	if download.Received != 12 || download.Total != 48 {
 		t.Fatalf("download=%#v, want 12/48", download)
 	}
-	extraction := nativeEvent(nativeEventExtractionProgress, "", "", "", 0, 0, 0, 0, 0.25, 0, "")
+	extraction := nativeEvent(nativeEventExtractionProgress, "", "", "", "", 0, 0, 0, false, 0, 0, 0.25, 0, "")
 	if extraction.Fraction != 0.25 {
 		t.Fatalf("extraction=%#v, want 0.25", extraction)
 	}
@@ -77,7 +77,7 @@ func TestSparkleErrorMapping(t *testing.T) {
 		{code: 9999, want: FaultNative},
 	}
 	for _, test := range tests {
-		event := nativeEvent(nativeEventFailed, "", "", "", 0, 0, 0, 0, 0, test.code, "boom")
+		event := nativeEvent(nativeEventFailed, "", "", "", "", 0, 0, 0, false, 0, 0, 0, test.code, "boom")
 		if event.Fault == nil || event.Fault.Code != test.want || event.Fault.Message != "boom" {
 			t.Fatalf("code %d event=%#v, want %q boom", test.code, event, test.want)
 		}
@@ -85,7 +85,7 @@ func TestSparkleErrorMapping(t *testing.T) {
 }
 
 func TestSparkleAsyncInstallFailureMapping(t *testing.T) {
-	event := nativeEvent(nativeEventInstallFailed, "", "", "", 0, 0, 0, 0, 0, 3, "reply missing")
+	event := nativeEvent(nativeEventInstallFailed, "", "", "", "", 0, 0, 0, false, 0, 0, 0, 3, "reply missing")
 	if event.Kind != EventFailed || event.Fault == nil || event.Fault.Code != FaultInstall || event.Fault.Message != "reply missing" {
 		t.Fatalf("event=%#v, want typed install failure", event)
 	}
@@ -100,8 +100,19 @@ func TestBoundedReleaseNotesPreservesUTF8(t *testing.T) {
 }
 
 func TestNativeReleaseNotesRefreshMapping(t *testing.T) {
-	event := nativeEvent(nativeEventReleaseNotes, "", "", "外链安全更新", 0, 0, 0, 0, 0, 0, "")
+	event := nativeEvent(nativeEventReleaseNotes, "", "", "外链安全更新", "", 0, 0, 0, false, 0, 0, 0, 0, "")
 	if event.Kind != EventReleaseNotes || event.Update == nil || event.Update.ReleaseNotes != "外链安全更新" {
 		t.Fatalf("event=%#v, want release notes refresh", event)
+	}
+}
+
+func TestNativeResumableAndInformationOnlyMapping(t *testing.T) {
+	resumable := nativeEvent(nativeEventResumableUpdateFound, "42", "0.2.0", "", "", 128, 1, 2, false, 0, 0, 0, 0, "")
+	if resumable.Kind != EventResumableUpdateFound || resumable.Update == nil || resumable.Update.InformationOnly {
+		t.Fatalf("unexpected resumable event: %#v", resumable)
+	}
+	information := nativeEvent(nativeEventUpdateFound, "43", "0.3.0", "fallback", "https://example.com/update", 0, 1, 0, true, 0, 0, 0, 0, "")
+	if information.Kind != EventUpdateFound || information.Update == nil || !information.Update.InformationOnly || information.Update.InformationURL != "https://example.com/update" {
+		t.Fatalf("unexpected information-only event: %#v", information)
 	}
 }

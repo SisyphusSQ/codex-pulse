@@ -27,6 +27,8 @@ type UpdateStateResponse struct {
 	ReleaseNotes         string  `json:"releaseNotes"`
 	ContentLength        string  `json:"contentLength"`
 	SignatureStatus      string  `json:"signatureStatus"`
+	InformationOnly      bool    `json:"informationOnly"`
+	InformationURL       string  `json:"informationUrl"`
 	ProgressStage        string  `json:"progressStage"`
 	ProgressReceived     string  `json:"progressReceived"`
 	ProgressTotal        string  `json:"progressTotal"`
@@ -166,6 +168,8 @@ func updateStateResponse(view updater.View, shutdown shutdownSnapshot) UpdateSta
 		response.ReleaseNotes = view.Snapshot.Update.ReleaseNotes
 		response.ContentLength = strconv.FormatUint(view.Snapshot.Update.ContentLength, 10)
 		response.SignatureStatus = string(view.Snapshot.Update.FeedSignatureStatus)
+		response.InformationOnly = view.Snapshot.Update.InformationOnly
+		response.InformationURL = view.Snapshot.Update.InformationURL
 	}
 	if view.Snapshot.Fault != nil {
 		response.FaultCode = string(view.Snapshot.Fault.Code)

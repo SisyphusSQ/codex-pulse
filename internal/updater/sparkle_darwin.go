@@ -37,6 +37,7 @@ const (
 	nativeEventCheckCancelled
 	nativeEventReleaseNotes
 	nativeEventInstallFailed
+	nativeEventResumableUpdateFound
 )
 
 type NativeError struct {
@@ -249,7 +250,7 @@ func (registration *sparkleCallbackRegistration) close() {
 }
 
 //export cpSparkleHandleEvent
-func cpSparkleHandleEvent(callbackID C.uintptr_t, rawKind C.int, version, displayVersion, releaseNotes *C.char, contentLength C.uint64_t, rawSignature C.int, received, total C.uint64_t, fraction C.double, rawErrorCode C.long, errorMessage *C.char) {
+func cpSparkleHandleEvent(callbackID C.uintptr_t, rawKind C.int, version, displayVersion, releaseNotes, informationURL *C.char, contentLength C.uint64_t, rawSignature, rawUpdateStage, rawInformationOnly C.int, received, total C.uint64_t, fraction C.double, rawErrorCode C.long, errorMessage *C.char) {
 	value, ok := sparkleCallbacks.Load(uintptr(callbackID))
 	if !ok {
 		return
@@ -259,8 +260,11 @@ func cpSparkleHandleEvent(callbackID C.uintptr_t, rawKind C.int, version, displa
 		C.GoString(version),
 		C.GoString(displayVersion),
 		boundedReleaseNotes(C.GoString(releaseNotes)),
+		C.GoString(informationURL),
 		uint64(contentLength),
 		int(rawSignature),
+		int(rawUpdateStage),
+		rawInformationOnly != 0,
 		uint64(received),
 		uint64(total),
 		float64(fraction),
@@ -270,16 +274,22 @@ func cpSparkleHandleEvent(callbackID C.uintptr_t, rawKind C.int, version, displa
 	value.(*sparkleCallbackRegistration).dispatch(event)
 }
 
-func nativeEvent(kind int, version, displayVersion, releaseNotes string, contentLength uint64, rawSignature int, received, total uint64, fraction float64, rawErrorCode int64, errorMessage string) Event {
+func nativeEvent(kind int, version, displayVersion, releaseNotes, informationURL string, contentLength uint64, rawSignature, rawUpdateStage int, informationOnly bool, received, total uint64, fraction float64, rawErrorCode int64, errorMessage string) Event {
 	switch kind {
-	case nativeEventUpdateFound:
-		return Event{Kind: EventUpdateFound, Update: &Update{
+	case nativeEventUpdateFound, nativeEventResumableUpdateFound:
+		eventKind := EventUpdateFound
+		if kind == nativeEventResumableUpdateFound || rawUpdateStage > 0 {
+			eventKind = EventResumableUpdateFound
+		}
+		return Event{Kind: eventKind, Update: &Update{
 			Version:             version,
 			DisplayVersion:      displayVersion,
 			ReleaseNotes:        boundedReleaseNotes(releaseNotes),
 			ContentLength:       contentLength,
 			Architecture:        "arm64",
 			FeedSignatureStatus: signatureStatus(rawSignature),
+			InformationOnly:     informationOnly,
+			InformationURL:      informationURL,
 		}}
 	case nativeEventNoUpdate:
 		return Event{Kind: EventNoUpdate}

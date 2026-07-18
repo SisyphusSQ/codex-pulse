@@ -337,13 +337,11 @@ func (repository *Repository) MigrateApplicationSchema(ctx context.Context) (Mig
 		now = repository.quotaNow
 	}
 	runner := migrationRunner{
-		repository: repository,
-		catalog:    applicationMigrations,
-		now:        now,
-		verifyCurrent: func(ctx context.Context, transaction *gorm.DB) error {
-			return verifyApplicationSchema(ctx, transaction)
-		},
-		spaceCheck: ensureMigrationBackupSpace,
+		repository:    repository,
+		catalog:       applicationMigrationCatalog(),
+		now:           now,
+		verifyCurrent: applicationMigrationVerifier(),
+		spaceCheck:    ensureMigrationBackupSpace,
 		backup: func(
 			ctx context.Context,
 			_ int,

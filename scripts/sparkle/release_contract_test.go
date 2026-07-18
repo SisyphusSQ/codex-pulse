@@ -50,3 +50,24 @@ func TestReleaseTaskArgumentsCannotExecuteShellSubstitutions(t *testing.T) {
 		t.Fatal("Task template executed command substitution")
 	}
 }
+
+func TestLocalReleasePipelineIsExplicitAndActionsIndependent(t *testing.T) {
+	data, err := os.ReadFile("local_release_pipeline.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(data)
+	for _, required := range []string{
+		"CODEX_PULSE_RUN_RELEASE_PIPELINE", "make verify", "TestSyntheticReleaseEndToEnd",
+		"CODEX_PULSE_RUN_UPGRADE_E2E=1", "./scripts/sparkle/upgradee2e", "stage complete",
+	} {
+		if !strings.Contains(script, required) {
+			t.Errorf("local release pipeline missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{"gh workflow", "workflow_dispatch", "github.com", "generate_keys"} {
+		if strings.Contains(script, forbidden) {
+			t.Errorf("local release pipeline contains forbidden external action %q", forbidden)
+		}
+	}
+}
