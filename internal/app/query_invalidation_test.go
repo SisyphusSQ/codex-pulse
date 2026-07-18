@@ -16,9 +16,11 @@ func TestQueryInvalidationPublisherEmitsOnlyFiniteContentFreePayload(t *testing.
 	t.Parallel()
 
 	emitter := &recordingQueryInvalidationEmitter{}
+	var afterNotify []QueryInvalidationDomain
 	publisher, err := newQueryInvalidationPublisher(QueryInvalidationPublisherConfig{
-		Emitter: emitter,
-		Clock:   func() time.Time { return time.UnixMilli(1_784_100_000_000) },
+		Emitter:     emitter,
+		Clock:       func() time.Time { return time.UnixMilli(1_784_100_000_000) },
+		AfterNotify: func(domain QueryInvalidationDomain) { afterNotify = append(afterNotify, domain) },
 	})
 	if err != nil {
 		t.Fatalf("newQueryInvalidationPublisher() error = %v", err)
@@ -35,6 +37,11 @@ func TestQueryInvalidationPublisherEmitsOnlyFiniteContentFreePayload(t *testing.
 	}
 	if len(emitter.events) != 4 {
 		t.Fatalf("emitted events = %#v", emitter.events)
+	}
+	if !reflect.DeepEqual(afterNotify, []QueryInvalidationDomain{
+		QueryInvalidationIndex, QueryInvalidationQuota, QueryInvalidationHealth, QueryInvalidationSettings,
+	}) {
+		t.Fatalf("afterNotify domains = %#v", afterNotify)
 	}
 	for index, emitted := range emitter.events {
 		if emitted.name != QueryInvalidationEventName || len(emitted.data) != 1 {

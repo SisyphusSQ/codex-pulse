@@ -62,17 +62,19 @@ type queryInvalidationNotifier interface {
 }
 
 type QueryInvalidationPublisherConfig struct {
-	Emitter queryInvalidationEmitter
-	Health  queryInvalidationHealthWriter
-	Clock   func() time.Time
-	Marshal func(any) ([]byte, error)
+	Emitter     queryInvalidationEmitter
+	Health      queryInvalidationHealthWriter
+	AfterNotify func(QueryInvalidationDomain)
+	Clock       func() time.Time
+	Marshal     func(any) ([]byte, error)
 }
 
 type queryInvalidationPublisher struct {
-	emitter queryInvalidationEmitter
-	health  queryInvalidationHealthWriter
-	clock   func() time.Time
-	marshal func(any) ([]byte, error)
+	emitter     queryInvalidationEmitter
+	health      queryInvalidationHealthWriter
+	clock       func() time.Time
+	marshal     func(any) ([]byte, error)
+	afterNotify func(QueryInvalidationDomain)
 }
 
 func newQueryInvalidationPublisher(
@@ -88,10 +90,11 @@ func newQueryInvalidationPublisher(
 		config.Marshal = json.Marshal
 	}
 	return &queryInvalidationPublisher{
-		emitter: config.Emitter,
-		health:  config.Health,
-		clock:   config.Clock,
-		marshal: config.Marshal,
+		emitter:     config.Emitter,
+		health:      config.Health,
+		clock:       config.Clock,
+		marshal:     config.Marshal,
+		afterNotify: config.AfterNotify,
 	}, nil
 }
 
@@ -120,6 +123,9 @@ func (publisher *queryInvalidationPublisher) Notify(
 	if err := emitQueryInvalidation(publisher.emitter, event); err != nil {
 		healthErr := publisher.recordFailureHealth(ctx, QueryInvalidationEmissionHealthEventID)
 		return errors.Join(err, healthErr)
+	}
+	if publisher.afterNotify != nil {
+		publisher.afterNotify(domain)
 	}
 	return nil
 }

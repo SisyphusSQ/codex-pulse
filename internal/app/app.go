@@ -148,9 +148,22 @@ func Run(assets fs.FS) error {
 		}
 		desktopApp := application.New(applicationOptions(assets, bindingService))
 		desktopApp.Window.NewWithOptions(mainWindowOptions())
+		trayHost, err := newTrayRuntimeHost(desktopApp.Event, bindingService, desktopApp.Quit)
+		if err != nil {
+			return err
+		}
+		desktopApp.OnShutdown(func() {
+			// Stop refresh and remove NSStatusItem while the AppKit event loop is
+			// still alive. The defer below performs idempotent error readback.
+			_ = trayHost.Close(context.Background())
+		})
+		defer func() {
+			returnErr = errors.Join(returnErr, trayHost.Close(context.Background()))
+		}()
 		invalidation, err := newQueryInvalidationPublisher(QueryInvalidationPublisherConfig{
-			Emitter: desktopApp.Event,
-			Health:  factstore.NewRepository(database),
+			Emitter:     desktopApp.Event,
+			Health:      factstore.NewRepository(database),
+			AfterNotify: trayHost.Invalidate,
 		})
 		if err != nil {
 			return err
