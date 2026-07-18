@@ -14,6 +14,7 @@ const popoverHarness = vi.hoisted(() => ({
   events: new Map<string, () => void>(),
   mainFocus: vi.fn(),
   mainShow: vi.fn(),
+  mainUnMinimise: vi.fn(),
   popoverHide: vi.fn(),
   queries: {} as Record<string, unknown>,
   requestClock: undefined as Ref<number> | undefined,
@@ -36,7 +37,11 @@ vi.mock("@wailsio/runtime", () => ({
     Types: { Common: { WindowHide: "common:WindowHide", WindowShow: "common:WindowShow" } },
   },
   Window: {
-    Get: vi.fn(() => ({ Focus: popoverHarness.mainFocus, Show: popoverHarness.mainShow })),
+    Get: vi.fn(() => ({
+      Focus: popoverHarness.mainFocus,
+      Show: popoverHarness.mainShow,
+      UnMinimise: popoverHarness.mainUnMinimise,
+    })),
     Hide: popoverHarness.popoverHide,
   },
 }));
@@ -99,6 +104,7 @@ describe("PopoverView", () => {
     popoverHarness.events.clear();
     popoverHarness.mainFocus.mockClear();
     popoverHarness.mainShow.mockClear();
+    popoverHarness.mainUnMinimise.mockClear();
     popoverHarness.popoverHide.mockClear();
     vi.mocked(Events.Emit).mockClear();
     vi.mocked(Window.Get).mockClear();
@@ -172,6 +178,7 @@ describe("PopoverView", () => {
 
     expect(Events.Emit).toHaveBeenCalledWith("codex-pulse:navigate", { path: "/overview" });
     expect(Window.Get).toHaveBeenCalledWith("main");
+    expect(popoverHarness.mainUnMinimise).toHaveBeenCalledOnce();
     expect(popoverHarness.mainShow).toHaveBeenCalledOnce();
     expect(popoverHarness.mainFocus).toHaveBeenCalledOnce();
     expect(popoverHarness.popoverHide).toHaveBeenCalledOnce();

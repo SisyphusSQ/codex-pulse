@@ -6,6 +6,21 @@ import (
 	"testing"
 )
 
+func TestMenuActionAllowlist(t *testing.T) {
+	t.Parallel()
+	for _, action := range []MenuAction{
+		MenuActionOpenOverview, MenuActionRefresh, MenuActionOpenSettings,
+		MenuActionAbout, MenuActionQuit,
+	} {
+		if !validMenuAction(action) {
+			t.Fatalf("valid action %q was rejected", action)
+		}
+	}
+	if validMenuAction(MenuAction("diagnostics")) {
+		t.Fatal("unfrozen menu action was accepted")
+	}
+}
+
 func float64Pointer(value float64) *float64 { return &value }
 
 func trustedSnapshot(primary, secondary float64) Snapshot {

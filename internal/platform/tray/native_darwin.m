@@ -2,6 +2,7 @@
 #import "native_darwin.h"
 
 extern void cpTrayHandleClick(uintptr_t callbackID, double x, double y, int valid);
+extern void cpTrayHandleMenu(uintptr_t callbackID, int action);
 
 static const CGFloat CPStatusWidth = 126.0;
 
@@ -11,15 +12,19 @@ static const CGFloat CPStatusWidth = 126.0;
 @property(nonatomic, copy) NSString *accessibilityText;
 @property(nonatomic, copy) NSArray<NSDictionary *> *rows;
 @property(nonatomic, copy) void (^onPress)(void);
+@property(nonatomic, copy) void (^onShowMenu)(void);
 @end
 
 @implementation CPStatusView
 
 - (BOOL)isFlipped { return YES; }
+- (void)rightMouseDown:(NSEvent *)event { if (self.onShowMenu != nil) self.onShowMenu(); }
 - (BOOL)isAccessibilityElement { return YES; }
 - (NSString *)accessibilityRole { return NSAccessibilityButtonRole; }
 - (NSString *)accessibilityLabel { return self.accessibilityText ?: @"Codex Pulse 额度状态"; }
+- (NSArray<NSAccessibilityActionName> *)accessibilityActionNames { return @[NSAccessibilityPressAction, NSAccessibilityShowMenuAction]; }
 - (BOOL)accessibilityPerformPress { if (self.onPress == nil) return NO; self.onPress(); return YES; }
+- (BOOL)accessibilityPerformShowMenu { if (self.onShowMenu == nil) return NO; self.onShowMenu(); return YES; }
 
 - (NSColor *)barColorForKind:(NSString *)kind progress:(CGFloat)progress {
     if ([self.state isEqualToString:@"conflict"]) return NSColor.systemOrangeColor;
@@ -88,9 +93,17 @@ static const CGFloat CPStatusWidth = 126.0;
 @property(nonatomic, assign) uintptr_t callbackID;
 @property(nonatomic, assign) CGFloat popoverWidth;
 @property(nonatomic, assign) CGFloat popoverOffset;
+@property(nonatomic, strong) NSMenu *menu;
+@property(nonatomic, assign) uintptr_t menuCallbackID;
+- (void)showMenu;
 @end
 @implementation CPStatusItemHolder
 - (void)handleClick:(id)sender {
+    NSEvent *event = NSApp.currentEvent;
+    if (event.type == NSEventTypeRightMouseUp && self.menu != nil && self.menuCallbackID != 0) {
+        [self showMenu];
+        return;
+    }
     if (self.callbackID == 0) return;
     NSStatusBarButton *button = self.statusItem.button;
     NSWindow *window = button.window;
@@ -107,6 +120,15 @@ static const CGFloat CPStatusWidth = 126.0;
     CGFloat y = NSMaxY(screen.frame) - NSMinY(anchor) + self.popoverOffset;
     cpTrayHandleClick(self.callbackID, x, y, 1);
 }
+- (void)showMenu {
+    if (self.menu == nil || self.menuCallbackID == 0) return;
+    [self.menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(0, NSHeight(self.statusItem.button.bounds)) inView:self.statusItem.button];
+}
+- (void)handleOpenOverview:(id)sender { if (self.menuCallbackID != 0) cpTrayHandleMenu(self.menuCallbackID, 0); }
+- (void)handleRefresh:(id)sender { if (self.menuCallbackID != 0) cpTrayHandleMenu(self.menuCallbackID, 1); }
+- (void)handleOpenSettings:(id)sender { if (self.menuCallbackID != 0) cpTrayHandleMenu(self.menuCallbackID, 2); }
+- (void)handleAbout:(id)sender { if (self.menuCallbackID != 0) cpTrayHandleMenu(self.menuCallbackID, 3); }
+- (void)handleQuit:(id)sender { if (self.menuCallbackID != 0) cpTrayHandleMenu(self.menuCallbackID, 4); }
 @end
 
 static void cp_on_main_sync(dispatch_block_t block) {
@@ -128,10 +150,11 @@ void *cp_tray_create(void) {
         if (button == nil) { holder = nil; return; }
         button.target = holder;
         button.action = @selector(handleClick:);
-        [button sendActionOn:NSEventMaskLeftMouseUp];
+        [button sendActionOn:NSEventMaskLeftMouseUp | NSEventMaskRightMouseUp];
         holder.view = [[CPStatusView alloc] initWithFrame:NSMakeRect(0, 0, CPStatusWidth, NSHeight(button.bounds))];
         __weak CPStatusItemHolder *weakHolder = holder;
         holder.view.onPress = ^{ [weakHolder handleClick:nil]; };
+        holder.view.onShowMenu = ^{ [weakHolder showMenu]; };
         holder.view.autoresizingMask = NSViewHeightSizable;
         button.image = nil;
         [button addSubview:holder.view];
@@ -199,5 +222,34 @@ void cp_tray_set_click_handler(void *raw, uintptr_t callbackID, double width, do
         holder.callbackID = callbackID;
         holder.popoverWidth = width;
         holder.popoverOffset = offset;
+    });
+}
+
+void cp_tray_set_menu_handler(void *raw, uintptr_t callbackID) {
+    if (raw == NULL) return;
+    CPStatusItemHolder *holder = (__bridge CPStatusItemHolder *)raw;
+    cp_on_main_async(^{
+        holder.menuCallbackID = callbackID;
+        if (callbackID == 0) {
+            holder.menu = nil;
+            return;
+        }
+        NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Codex Pulse"];
+        NSArray<NSDictionary *> *items = @[
+            @{@"title": @"打开概览", @"selector": NSStringFromSelector(@selector(handleOpenOverview:))},
+            @{@"title": @"刷新", @"selector": NSStringFromSelector(@selector(handleRefresh:))},
+            @{@"title": @"设置…", @"selector": NSStringFromSelector(@selector(handleOpenSettings:))},
+            @{@"title": @"关于 Codex Pulse", @"selector": NSStringFromSelector(@selector(handleAbout:))},
+            @{@"title": @"退出 Codex Pulse", @"selector": NSStringFromSelector(@selector(handleQuit:))},
+        ];
+        for (NSUInteger index = 0; index < items.count; index++) {
+            if (index == 2 || index == 4) [menu addItem:NSMenuItem.separatorItem];
+            NSDictionary *definition = items[index];
+            SEL selector = NSSelectorFromString(definition[@"selector"]);
+            NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:definition[@"title"] action:selector keyEquivalent:@""];
+            item.target = holder;
+            [menu addItem:item];
+        }
+        holder.menu = menu;
     });
 }

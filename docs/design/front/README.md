@@ -166,6 +166,8 @@ TOO-278 已完成六个真实页面的跨页面回归：AppShell 全局状态复
 
 TOO-288 使用自有 `NSStatusItem` 的有限 click/anchor adapter 驱动独立 frameless Wails `/popover` window，不创建第二个 tray item，也不把 AppKit 类型泄漏到 Vue。anchor 在 AppKit click action 所在主线程直接计算并随 callback 传递，避免 Go mutex 与 main queue 在 shutdown 锁反转。Popover 复用真实 Quota、今日 UsageCost 与最近 5 Sessions binding；三个查询 region 独立降级，隐藏窗口会取消在途请求但保留 authoritative cache，再次显示时重取。主窗口隐藏原生 close button，`Cmd-W` 固定为 hide，应用不会因全部窗口隐藏而退出，确保名为 `main` 的窗口始终可被 Popover 导航重新显示。420×760 synthetic visual 证明 secondary-only 不出现“5 小时”占位，primary 数据恢复后会动态补回该行。
 
+TOO-289 在同一 AppKit status item 上增加有限原生右键菜单，并把五个菜单项映射为 typed app command：概览/设置通过 durable `main` 的 UnMinimise、Show、Focus 与有限 route event 激活，刷新只请求 quota/reset credits durable command 并发布 query invalidation，About 复用 Wails 原生面板。主窗口的 `WindowClosing` 固定 cancel+hide，避免系统 `Cmd-W` 销毁 Wails window；退出先等待 lifecycle control admission、quota、scheduler 与 coordinator drain，15 秒超时保留应用并记录有限错误，只有 drain 完成才调用 Quit。Popover route 同样通过 finite path allowlist，外部、未知和 `/popover` 深链 fail closed 到 `/overview`。
+
 ## 后续评审重点
 
 TOO-272 已实现共享应用壳、路由、基础状态交互和 Wails Bootstrap ready/error/retry；TOO-273 已实现概览，TOO-274 已实现 Sessions 列表与详情，TOO-275 已实现 Projects 列表与详情，TOO-276 已实现 Quota 窗口、来源/仲裁、Reset credits、刷新状态与手动刷新 command；TOO-277 已实现本机状态、Settings、有限运行控制、Home 两步切换和 Session index Analyze-only dry-run；TOO-278 已统一全局状态、route recovery、keyboard/focus、辅助语义和六页面视觉基线；TOO-287/288 已交付动态原生状态项和冻结 Popover。图标方向和健康信息层级继续冻结；后续平台卡必须复用当前 token、query-state、辅助模式降级与 macOS-only 边界。

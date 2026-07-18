@@ -1,7 +1,7 @@
 import { createMemoryHistory } from "vue-router";
 import { describe, expect, it } from "vitest";
 
-import { appNavigation, createAppRouter } from "./index";
+import { appNavigation, createAppRouter, normalizeDesktopNavigationPath } from "./index";
 
 describe("application navigation", () => {
   it("keeps the six frozen zh-CN routes in product order", () => {
@@ -61,5 +61,14 @@ describe("application navigation", () => {
 
     expect(router.currentRoute.value.name).toBe("data-health");
     expect(router.currentRoute.value.matched.at(-1)?.components?.default).toMatchObject({ name: "DataHealthView" });
+  });
+
+  it("accepts only finite desktop deep links and preserves opaque session selection", () => {
+    expect(normalizeDesktopNavigationPath("/sessions?session=opaque%20id")).toBe("/sessions?session=opaque%20id");
+    expect(normalizeDesktopNavigationPath("/local-status/data-health")).toBe("/local-status/data-health");
+    expect(normalizeDesktopNavigationPath("/popover")).toBe("/overview");
+    expect(normalizeDesktopNavigationPath("//example.com/settings")).toBe("/overview");
+    expect(normalizeDesktopNavigationPath("https://example.com/settings")).toBe("/overview");
+    expect(normalizeDesktopNavigationPath({ path: "/settings" })).toBe("/overview");
   });
 });

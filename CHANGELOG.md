@@ -47,6 +47,7 @@
 44. [TOO-283] 新增最近 24 小时 Data Health 二级页面与只读查询，展示七组件健康、current/open 优先的任务事件、CPU/RSS/DB/WAL/磁盘/队列趋势，并固定有限安全恢复、独立评估时间、键盘焦点和敏感信息隔离语义
 45. [TOO-287] 新增 macOS AppKit 原生动态额度状态项，按真实 Quota window 自动显示本周单行或 5 小时/本周双行，固定可信、陈旧、冲突、不可用、真实零与独立健康升级语义，并提供主线程安全更新、事件合并、最后可信降级和完整辅助功能标签
 46. [TOO-288] 新增 420×760 冻结版 Popover，复用主线程安全的原生状态项 click/anchor 动态展示真实额度窗口、Reset Credits、今日 API 等价成本和最近会话，固定局部查询降级、隐藏取消、缓存保留、持久主窗口跳转及缺失 5 小时窗口不显示占位的语义
+47. [TOO-289] 新增 AppKit 原生右键菜单与 typed 窗口命令，支持隐藏/最小化主窗口激活、有限页面深链、双来源权威刷新、原生 About 及 fail-closed shutdown/drain，并固定 `Cmd-W` cancel+hide 生命周期
 
 #### optimization:
 1. [TOO-285] 完善 AppIcon、ICNS 与 Tray Template 资产闭环，新增冻结源校验、严格灰阶 1x/2x 派生、macOS bundle/ZIP 资源读回及可重复导出与 live smoke 证据

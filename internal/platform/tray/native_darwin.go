@@ -20,10 +20,11 @@ import (
 var ErrNativeStatusItem = errors.New("native status item is unavailable")
 
 type NativeStatusItem struct {
-	mu         sync.Mutex
-	handle     unsafe.Pointer
-	closed     bool
-	callbackID uintptr
+	mu             sync.Mutex
+	handle         unsafe.Pointer
+	closed         bool
+	callbackID     uintptr
+	menuCallbackID uintptr
 }
 
 type PopoverOrigin struct {
@@ -32,6 +33,7 @@ type PopoverOrigin struct {
 }
 
 var nativeClickCallbacks sync.Map
+var nativeMenuCallbacks sync.Map
 var nativeClickSequence atomic.Uint64
 
 //export cpTrayHandleClick
@@ -42,6 +44,26 @@ func cpTrayHandleClick(callbackID C.uintptr_t, x C.double, y C.double, valid C.i
 	}
 	origin := PopoverOrigin{X: int(x), Y: int(y)}
 	go callback.(func(PopoverOrigin, bool))(origin, valid != 0)
+}
+
+//export cpTrayHandleMenu
+func cpTrayHandleMenu(callbackID C.uintptr_t, rawAction C.int) {
+	callback, ok := nativeMenuCallbacks.Load(uintptr(callbackID))
+	if !ok {
+		return
+	}
+	actions := [...]MenuAction{
+		MenuActionOpenOverview,
+		MenuActionRefresh,
+		MenuActionOpenSettings,
+		MenuActionAbout,
+		MenuActionQuit,
+	}
+	index := int(rawAction)
+	if index < 0 || index >= len(actions) {
+		return
+	}
+	go callback.(func(MenuAction))(actions[index])
 }
 
 func NewNativeStatusItem() (*NativeStatusItem, error) {
@@ -115,10 +137,31 @@ func (item *NativeStatusItem) Close() error {
 		nativeClickCallbacks.Delete(item.callbackID)
 		item.callbackID = 0
 	}
+	if item.menuCallbackID != 0 {
+		C.cp_tray_set_menu_handler(item.handle, 0)
+		nativeMenuCallbacks.Delete(item.menuCallbackID)
+		item.menuCallbackID = 0
+	}
 	if item.handle != nil {
 		C.cp_tray_close(item.handle)
 		item.handle = nil
 	}
+	return nil
+}
+
+func (item *NativeStatusItem) SetMenuHandler(callback func(MenuAction)) error {
+	if item == nil || callback == nil {
+		return ErrNativeStatusItem
+	}
+	item.mu.Lock()
+	defer item.mu.Unlock()
+	if item.closed || item.handle == nil || item.menuCallbackID != 0 {
+		return ErrNativeStatusItem
+	}
+	id := uintptr(nativeClickSequence.Add(1))
+	nativeMenuCallbacks.Store(id, callback)
+	item.menuCallbackID = id
+	C.cp_tray_set_menu_handler(item.handle, C.uintptr_t(id))
 	return nil
 }
 

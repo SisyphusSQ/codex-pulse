@@ -7,6 +7,26 @@ import (
 	"sync"
 )
 
+type MenuAction string
+
+const (
+	MenuActionOpenOverview MenuAction = "open_overview"
+	MenuActionRefresh      MenuAction = "refresh"
+	MenuActionOpenSettings MenuAction = "open_settings"
+	MenuActionAbout        MenuAction = "about"
+	MenuActionQuit         MenuAction = "quit"
+)
+
+func validMenuAction(action MenuAction) bool {
+	switch action {
+	case MenuActionOpenOverview, MenuActionRefresh, MenuActionOpenSettings,
+		MenuActionAbout, MenuActionQuit:
+		return true
+	default:
+		return false
+	}
+}
+
 const (
 	StatusItemWidth  = 252
 	StatusItemHeight = 54

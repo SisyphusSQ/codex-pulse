@@ -22,6 +22,7 @@ export type {
     BindingContractInfo,
     BindingMethodInfo,
     BootstrapInfo,
+    DesktopNavigationEvent,
     HealthComponentStatus,
     HealthProjectionResponse,
     HomeSwitchPlanReceipt,
