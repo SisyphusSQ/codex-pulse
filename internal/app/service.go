@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"runtime"
 	"sync"
 	"time"
 
@@ -165,16 +164,19 @@ func (service *Service) bindHealthProjection(query healthProjectionBindingQuery)
 // BootstrapInfo contains the non-sensitive metadata needed to render the
 // application shell.
 type BootstrapInfo struct {
-	Name     string `json:"name"`
-	Locale   string `json:"locale"`
-	Platform string `json:"platform"`
+	Name     string                     `json:"name"`
+	Locale   string                     `json:"locale"`
+	Platform string                     `json:"platform"`
+	Mode     ApplicationMode            `json:"mode"`
+	Recovery *MigrationRecoverySnapshot `json:"recovery"`
 }
 
-func (service *Service) Bootstrap() BootstrapInfo {
-	return bindingQueryValue(service, func() BootstrapInfo {
-		return BootstrapInfo{Name: appName, Locale: defaultLocale, Platform: runtime.GOOS}
-	})
-}
+type ApplicationMode string
+
+const (
+	ApplicationModeNormal   ApplicationMode = "normal"
+	ApplicationModeRecovery ApplicationMode = "recovery"
+)
 
 type BindingMethodKind string
 
@@ -199,7 +201,6 @@ type BindingContractInfo struct {
 }
 
 var bindingMethodAllowlist = []BindingMethodInfo{
-	{Name: "Bootstrap", Kind: BindingMethodQuery},
 	{Name: "Contracts", Kind: BindingMethodQuery},
 	{Name: "UsageCost", Kind: BindingMethodQuery},
 	{Name: "ListSessions", Kind: BindingMethodQuery},

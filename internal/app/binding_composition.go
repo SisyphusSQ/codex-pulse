@@ -57,3 +57,15 @@ func wailsBindingService(service *Service) application.Service {
 		Name: "QueryService", MarshalError: marshalBindingError,
 	})
 }
+
+func wailsStartupService(service *StartupService) application.Service {
+	return application.NewServiceWithOptions(service, application.ServiceOptions{
+		Name: "StartupService", MarshalError: marshalBindingError,
+	})
+}
+
+func wailsMigrationRecoveryService(service *MigrationRecoveryService) application.Service {
+	return application.NewServiceWithOptions(service, application.ServiceOptions{
+		Name: "MigrationRecoveryService", MarshalError: marshalBindingError,
+	})
+}

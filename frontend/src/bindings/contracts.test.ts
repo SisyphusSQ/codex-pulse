@@ -2,6 +2,8 @@ import type { CancellablePromise } from "@wailsio/runtime";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import * as Service from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service";
+import * as MigrationRecoveryService from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/migrationrecoveryservice";
+import * as StartupService from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/startupservice";
 import type {
   BindingContractInfo,
   BootstrapInfo,
@@ -64,7 +66,6 @@ describe("generated Wails binding contract", () => {
     expect(Object.keys(Service).sort()).toEqual(
       [
         "AnalyzeSessionIndexRepair",
-        "Bootstrap",
         "CancelUpdate",
         "CheckForUpdates",
         "ConfirmHomeSwitch",
@@ -98,9 +99,14 @@ describe("generated Wails binding contract", () => {
     );
   });
 
+  it("keeps startup and recovery capabilities on exact isolated services", () => {
+    expect(Object.keys(StartupService)).toEqual(["Bootstrap"]);
+    expect(Object.keys(MigrationRecoveryService).sort()).toEqual(["Cancel", "Confirm", "Exit", "Prepare", "Retry", "State"]);
+  });
+
   it("keeps generated requests, responses and errors strongly typed", () => {
-    expectTypeOf<Parameters<typeof Service.Bootstrap>>().toEqualTypeOf<[]>();
-    expectTypeOf<ReturnType<typeof Service.Bootstrap>>().toEqualTypeOf<
+    expectTypeOf<Parameters<typeof StartupService.Bootstrap>>().toEqualTypeOf<[]>();
+    expectTypeOf<ReturnType<typeof StartupService.Bootstrap>>().toEqualTypeOf<
       CancellablePromise<BootstrapInfo>
     >();
     expectTypeOf<Parameters<typeof Service.Contracts>>().toEqualTypeOf<[]>();

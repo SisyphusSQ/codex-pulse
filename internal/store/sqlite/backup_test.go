@@ -259,6 +259,20 @@ func TestRestoreRebuildsPrivateDatabaseFromBackup(t *testing.T) {
 	}
 }
 
+func TestVerifyBackupFileRejectsCorruptBytes(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatalf("secure directory: %v", err)
+	}
+	path := filepath.Join(directory, "corrupt.db")
+	if err := os.WriteFile(path, []byte("not a sqlite database"), 0o600); err != nil {
+		t.Fatalf("write corrupt backup: %v", err)
+	}
+	if err := verifyBackupFile(context.Background(), path); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("verifyBackupFile() error = %v, want ErrCorrupt", err)
+	}
+}
+
 func seedBackupRecords(t *testing.T, store *Store, count int) {
 	t.Helper()
 	err := store.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {

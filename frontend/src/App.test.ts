@@ -22,6 +22,8 @@ vi.mock("@wailsio/runtime", () => ({
 }));
 
 import { HealthProjection, Settings } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service";
+import { Bootstrap } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/startupservice";
+import { ApplicationMode } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/models";
 
 import { createAppDependencies, createCodexPulseApp } from "./app";
 import type { QueryInvalidationEventSource } from "./events/queryInvalidation";
@@ -31,7 +33,9 @@ vi.mock("@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service", asyn
   HealthProjection: vi.fn(),
   Settings: vi.fn(),
 }));
+vi.mock("@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/startupservice", () => ({ Bootstrap: vi.fn() }));
 
+const bootstrapMock = vi.mocked(Bootstrap);
 const healthMock = vi.mocked(HealthProjection);
 const settingsMock = vi.mocked(Settings);
 const mountedApps: VueApp[] = [];
@@ -87,6 +91,7 @@ async function renderApp(initialPath = "/settings") {
   document.body.append(host);
   app.mount(host);
   await dependencies.router.isReady();
+  await flushPromises();
   mountedApps.push(app);
 
   return { dependencies, host };
@@ -94,6 +99,10 @@ async function renderApp(initialPath = "/settings") {
 
 describe("Codex Pulse application shell", () => {
   beforeEach(() => {
+    bootstrapMock.mockReset();
+    bootstrapMock.mockResolvedValue({
+      name: "Codex Pulse", locale: "zh-CN", platform: "darwin", mode: ApplicationMode.ApplicationModeNormal, recovery: null,
+    });
     healthMock.mockReset();
     healthMock.mockReturnValue(cancellable(Promise.resolve(healthResponse())));
     settingsMock.mockReset();
@@ -110,10 +119,11 @@ describe("Codex Pulse application shell", () => {
     settingsMock.mockReturnValue(cancellable(new Promise(() => undefined)));
 
     const { host } = await renderApp();
+    await flushPromises();
 
     expect(host.querySelector("[data-testid='settings-loading']")?.textContent).toContain("正在读取设置");
-    expect(host.querySelector("[data-testid='app-status-banner']")?.textContent).toContain("正在读取本机运行状态");
-    expect(host.querySelectorAll("[aria-live], [role='status'], [role='alert']")).toHaveLength(2);
+    expect(host.querySelector("[data-testid='app-status-banner']")).toBeNull();
+    expect(host.querySelectorAll("[aria-live], [role='status'], [role='alert']")).toHaveLength(1);
   });
 
   it("renders the typed Settings snapshot returned by the Go binding", async () => {

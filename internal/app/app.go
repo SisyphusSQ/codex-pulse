@@ -25,13 +25,11 @@ type lifecycleStore interface {
 
 type storeOpener func(context.Context) (lifecycleStore, error)
 
-func applicationOptions(assets fs.FS, service *Service) application.Options {
+func applicationOptions(assets fs.FS, services ...application.Service) application.Options {
 	return application.Options{
 		Name:        appName,
 		Description: appDescription,
-		Services: []application.Service{
-			wailsBindingService(service),
-		},
+		Services:    services,
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
@@ -65,6 +63,35 @@ func mainWindowOptions() application.WebviewWindowOptions {
 
 func openApplicationStore(ctx context.Context) (lifecycleStore, error) {
 	return openConfiguredStore(ctx, storesqlite.Config{})
+}
+
+func openApplicationStartup(
+	ctx context.Context,
+	config storesqlite.Config,
+) (*storesqlite.Store, *migrationRecoveryController, error) {
+	database, err := storesqlite.Open(ctx, config)
+	if err != nil {
+		return nil, nil, err
+	}
+	repository := factstore.NewRepository(database)
+	if _, err := repository.MigrateApplicationSchema(ctx); err != nil {
+		normalized := database.Config()
+		closeErr := database.Close(context.WithoutCancel(ctx))
+		failure := migrationFailureFrom(err)
+		if failure == nil {
+			return nil, nil, errors.Join(err, closeErr)
+		}
+		recovery, recoveryErr := newMigrationRecoveryController(normalized, failure)
+		if recoveryErr != nil {
+			return nil, nil, errors.Join(err, closeErr, recoveryErr)
+		}
+		return nil, recovery, closeErr
+	}
+	if err := repository.AddPricingVersion(ctx, pricing.BuiltinOpenAI20260714()); err != nil {
+		closeErr := database.Close(context.WithoutCancel(ctx))
+		return nil, nil, errors.Join(err, closeErr)
+	}
+	return database, nil, nil
 }
 
 func openConfiguredStore(ctx context.Context, config storesqlite.Config) (lifecycleStore, error) {
@@ -146,7 +173,14 @@ func Run(assets fs.FS) error {
 		return nil
 	}
 	defer instanceLease.Close()
-	return runWithStore(ctx, openApplicationStore, func(owned lifecycleStore) (returnErr error) {
+	database, recovery, err := openApplicationStartup(ctx, storesqlite.Config{})
+	if err != nil {
+		return fmt.Errorf("open application SQLite store: %w", err)
+	}
+	if recovery != nil {
+		return runMigrationRecoveryApplication(ctx, assets, recovery, instanceLease)
+	}
+	return runWithStore(ctx, func(context.Context) (lifecycleStore, error) { return database, nil }, func(owned lifecycleStore) (returnErr error) {
 		database, ok := owned.(*storesqlite.Store)
 		if !ok {
 			return ErrApplicationLifecycleRuntime
@@ -167,7 +201,7 @@ func Run(assets fs.FS) error {
 			return err
 		}
 		nativeQuit := &nativeQuitPreflight{}
-		options := applicationOptions(assets, bindingService)
+		options := applicationOptions(assets, wailsStartupService(newStartupService(nil)), wailsBindingService(bindingService))
 		options.ShouldQuit = nativeQuit.ShouldQuit
 		desktopApp := application.New(options)
 		// This is the earliest shutdown hook and is intentionally non-blocking:
@@ -336,4 +370,45 @@ func Run(assets fs.FS) error {
 
 		return desktopApp.Run()
 	})
+}
+
+func runMigrationRecoveryApplication(
+	_ context.Context,
+	assets fs.FS,
+	recovery *migrationRecoveryController,
+	instanceLease *singleinstance.Lease,
+) error {
+	if recovery == nil || instanceLease == nil {
+		return ErrApplicationLifecycleRuntime
+	}
+	recoveryService, err := newMigrationRecoveryService(recovery)
+	if err != nil {
+		return err
+	}
+	desktopApp := application.New(applicationOptions(
+		assets, wailsStartupService(newStartupService(recovery)), wailsMigrationRecoveryService(recoveryService),
+	))
+	mainWindow := desktopApp.Window.NewWithOptions(mainWindowOptions())
+	mainWindow.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		mainWindow.Hide()
+		event.Cancel()
+	})
+	if err := recovery.bindExit(desktopApp.Quit); err != nil {
+		return err
+	}
+	desktopApp.OnShutdown(func() {
+		instanceLease.StopAcceptingWakes()
+	})
+	go func() {
+		for {
+			select {
+			case <-instanceLease.Done():
+				return
+			case <-instanceLease.Wake():
+				mainWindow.Show()
+				mainWindow.Focus()
+			}
+		}
+	}()
+	return desktopApp.Run()
 }

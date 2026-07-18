@@ -69,9 +69,13 @@ Install mutation 未结束期间，Settings 以 250ms 有界刷新读取 shared 
 - 使用 `PRAGMA user_version` 与 append-only version/name/checksum ledger 管理 schema；缺号、drift、状态分叉和 newer schema 都 fail closed。
 - `MigrateApplicationSchema` 只在 Store 打开后、暴露给 runtime reader/writer 前的 bootstrap 阶段执行；未来运行期 maintenance migration 必须先实现任务排空与 Store 独占。
 - 所有 pending migration 在一个 single-writer GORM transaction 中执行，完整成功后才推进版本；不使用无版本 `AutoMigrate` 代替 migration。
-- 有 pending 且已有用户 schema 时，先做空间检查，再使用 modernc Pure Go SQLite Backup API 创建包含 committed WAL 的私有备份；fresh/current 数据库跳过。
+- 有 pending 且已有用户 schema 时，先做空间检查，再使用 modernc Pure Go SQLite Backup API 创建包含 committed WAL 的私有备份；备份临时文件通过只读 `PRAGMA quick_check`、fsync 和原子发布后才允许运行 migration，fresh/current 数据库跳过。
 - 恢复使用独立 `NewRestore` 文件原语生成新数据库，验证后再由上层安全重启流程决定切换；不得运行中覆盖当前 Store。
-- migration 失败进入只读安全模式，保留检查更新、查看错误和恢复备份。
+- migration 失败进入只读安全模式，只保留稳定诊断、恢复备份和退出；安全模式不检查更新。
+- `internal/app.Run` 在注册业务 Wails service、scheduler、metrics、health、updater 与 retention 前执行 startup migration gate。成功才装配 normal graph；typed `MigrationFailure` 会先关闭 Store，再装配互斥的 recovery graph。recovery graph 不创建 preferences/updater，也不注册普通 query、settings mutation、quota、index 或 SQLite writer command。
+- recovery contract 只暴露稳定 stage/code/version、备份 basename/size/mtime 与 `failed/running/awaiting_confirmation/restart_required`；底层 cause、SQL、数据库内容、路径正文和凭据不跨 Wails。重试成功只进入 `restart_required`，不在已运行进程内热装配 normal graph。
+- 恢复必须先从私有 `0700` backup 目录选择非 symlink 的 regular `0600` SQLite 文件，经 `O_NOFOLLOW` 打开并冻结 SHA-256；确认时再次从独立 descriptor 复制、比对摘要，抵御同尺寸/同时间戳替换。冻结副本先 restore 到 working DB，执行 migration、schema readback 和 builtin pricing 验证，再通过 SQLite backup 固化为无 WAL 依赖的 ready DB。切换前用 SQLite Online Backup 把当前失败库及已提交 WAL 页保存为独立 `0600` 备份；Darwin 使用 `RENAME_SWAP` 原子交换 ready/canonical，目录同步失败会原子换回，因此 canonical path 始终存在，且不会覆盖唯一副本。
+- retry/prepare/cancel/confirm/exit 写入私有 `0600` content-free JSONL audit，只记录时间、动作、结果、stage/code 与备份 basename；audit path 使用 `O_NOFOLLOW`，拒绝 symlink 或宽权限目录。测试只使用 synthetic `t.TempDir()` 数据库。
 - 二进制回滚不能自动解决 schema 回滚；迁移和恢复路径必须独立验证。
 
 ## 发布可信链

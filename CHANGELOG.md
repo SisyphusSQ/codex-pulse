@@ -52,6 +52,7 @@
 49. [TOO-291] 新增 Sparkle 2.9.4 原生 Adapter、typed 更新状态机与应用生命周期装配，固定主线程回调、取消/进度/错误语义、受审 framework 供应链 pin，以及 arm64 Bundle/ZIP 的内嵌、rpath、版本与签名验证
 50. [TOO-292] 实现默认每小时的 robfig cron 更新检查、连续失败有界退避与 Settings 更新交互，支持真实版本摘要、签名、进度、下载确认、取消、跳过和稍后，并固定 Sparkle choice、wake、事件合并及等待安全安装的边界
 51. [TOO-294] 实现 Quit 与 Sparkle Install 共用的安全关闭状态机、scheduler/Wails admission fence、SQLite 有序关闭和单实例 wake/takeover，固定 timeout 后后台 drain、失败阶段可观察、final reply 恰好一次及崩溃锁回收语义
+52. [TOO-295] 实现 migration startup gate 与只读恢复服务图，新增私有备份摘要冻结、可取消重试和二次确认恢复、content-free 审计告警及 SQLite 在线保全与原子文件交换，固定失败不推进版本、canonical path 不缺失和唯一副本不覆盖语义
 
 #### optimization:
 1. [TOO-285] 完善 AppIcon、ICNS 与 Tray Template 资产闭环，新增冻结源校验、严格灰阶 1x/2x 派生、macOS bundle/ZIP 资源读回及可重复导出与 live smoke 证据

@@ -27,7 +27,7 @@ func TestApplicationOptions(t *testing.T) {
 		"index.html": {Data: []byte("<!doctype html><title>Codex Pulse</title>")},
 	}
 	service := newBindingTestService(t, &usageCostBindingStub{}, &runtimeInfoBindingStub{})
-	got := applicationOptions(assets, service)
+	got := applicationOptions(assets, wailsBindingService(service))
 
 	if got.Name != appName {
 		t.Fatalf("Name = %q, want %q", got.Name, appName)
@@ -502,6 +502,39 @@ func TestOpenConfiguredStoreRejectsIncompatibleSchema(t *testing.T) {
 	}
 	if !errors.Is(err, factstore.ErrSchemaContract) {
 		t.Fatalf("openConfiguredStore() error = %v, want ErrSchemaContract", err)
+	}
+}
+
+func TestOpenApplicationStartupReturnsRecoveryGraphForMigrationFailure(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatalf("secure temp directory: %v", err)
+	}
+	config := storesqlite.Config{Path: filepath.Join(directory, "newer.db")}
+	if failure, err := runMigrationStartupGate(context.Background(), config); err != nil {
+		t.Fatalf("seed application schema failure=%#v error=%v", failure, err)
+	}
+	database, err := storesqlite.Open(context.Background(), config)
+	if err != nil {
+		t.Fatalf("sqlite.Open() error = %v", err)
+	}
+	if err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		return transaction.WithContext(ctx).Exec("PRAGMA user_version = 99").Error
+	}); err != nil {
+		t.Fatalf("set newer user_version: %v", err)
+	}
+	if err := database.Close(context.Background()); err != nil {
+		t.Fatalf("close newer database: %v", err)
+	}
+
+	opened, recovery, err := openApplicationStartup(context.Background(), config)
+	if err != nil || opened != nil || recovery == nil {
+		t.Fatalf("openApplicationStartup() = database=%T recovery=%T error=%v", opened, recovery, err)
+	}
+	snapshot := recovery.Snapshot()
+	if snapshot.Phase != MigrationRecoveryFailed || snapshot.Stage != factstore.MigrationStageInspect ||
+		snapshot.Code != factstore.MigrationCodeNewerSchema || snapshot.CurrentVersion != 99 {
+		t.Fatalf("recovery snapshot = %#v", snapshot)
 	}
 }
 
