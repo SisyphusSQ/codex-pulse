@@ -7,6 +7,7 @@ import {
   CancelUpdate,
   CheckForUpdates,
   DownloadUpdate,
+  InstallUpdate,
   SkipUpdate,
   SnoozeUpdate,
 } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service";
@@ -21,6 +22,7 @@ export function useUpdatePanel() {
   let invalidationTimer: ReturnType<typeof setTimeout> | undefined;
   let invalidationInFlight = false;
   let trailingInvalidation = false;
+  let shutdownPollTimer: ReturnType<typeof setInterval> | undefined;
   let disposed = false;
 
   async function track<T>(call: CancellablePromiseLike<T>) {
@@ -56,8 +58,28 @@ export function useUpdatePanel() {
     }, 100);
   }
 
+  function startShutdownPolling() {
+    if (disposed || shutdownPollTimer !== undefined) return;
+    scheduleEventInvalidation();
+    shutdownPollTimer = setInterval(scheduleEventInvalidation, 250);
+  }
+
+  function stopShutdownPolling() {
+    if (shutdownPollTimer === undefined) return;
+    clearInterval(shutdownPollTimer);
+    shutdownPollTimer = undefined;
+  }
+
   const check = useMutation({ mutationFn: () => track(CheckForUpdates()), onSettled: invalidate });
   const download = useMutation({ mutationFn: () => track(DownloadUpdate()), onSettled: invalidate });
+  const install = useMutation({
+    mutationFn: () => track(InstallUpdate()),
+    onMutate: startShutdownPolling,
+    onSettled: async () => {
+      stopShutdownPolling();
+      await invalidate();
+    },
+  });
   const cancel = useMutation({ mutationFn: () => track(CancelUpdate()), onSettled: invalidate });
   const skip = useMutation({ mutationFn: (version: string) => track(SkipUpdate(version)), onSettled: invalidate });
   const snooze = useMutation({ mutationFn: (seconds: number) => track(SnoozeUpdate(seconds)), onSettled: invalidate });
@@ -68,6 +90,7 @@ export function useUpdatePanel() {
     onScopeDispose(() => {
       disposed = true;
       trailingInvalidation = false;
+      stopShutdownPolling();
       offEvent?.();
       if (invalidationTimer !== undefined) clearTimeout(invalidationTimer);
       const calls = Array.from(activeCalls);
@@ -76,5 +99,5 @@ export function useUpdatePanel() {
     });
   }
 
-  return { cancel, check, download, skip, snooze, state };
+  return { cancel, check, download, install, skip, snooze, state };
 }

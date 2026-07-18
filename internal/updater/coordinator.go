@@ -75,6 +75,7 @@ type CoordinatorController interface {
 	Snapshot() Snapshot
 	Check() error
 	Download() error
+	Install() error
 	Cancel() error
 	Choose(UpdateChoice) error
 	Close() error
@@ -105,6 +106,7 @@ type Coordinator struct {
 	runner              UpdateCronRunner
 	started             bool
 	closed              bool
+	suspended           bool
 	closeDone           chan struct{}
 	closeErr            error
 	lastTriggerError    error
@@ -167,7 +169,7 @@ func (coordinator *Coordinator) Trigger(ctx context.Context, trigger Trigger) (T
 	}
 	coordinator.opMu.Lock()
 	defer coordinator.opMu.Unlock()
-	if coordinator.isClosed() {
+	if coordinator.isClosedOrSuspended() {
 		return TriggerReceipt{}, ErrCoordinatorClosed
 	}
 	controllerSnapshot := coordinator.controller.Snapshot()
@@ -213,6 +215,34 @@ func (coordinator *Coordinator) Wake(ctx context.Context) (TriggerReceipt, error
 	return coordinator.Trigger(ctx, TriggerWake)
 }
 
+// Suspend stops periodic checks and rejects every new update action except the
+// final Install reply. It is idempotent and keeps the native controller alive
+// until Sparkle has been allowed to relaunch the application.
+func (coordinator *Coordinator) Suspend() error {
+	if coordinator == nil {
+		return ErrInvalidCoordinator
+	}
+	coordinator.mu.Lock()
+	if coordinator.closed {
+		coordinator.mu.Unlock()
+		return ErrCoordinatorClosed
+	}
+	if coordinator.suspended {
+		coordinator.mu.Unlock()
+		return nil
+	}
+	coordinator.suspended = true
+	runner := coordinator.runner
+	coordinator.runner = nil
+	coordinator.mu.Unlock()
+	if runner != nil {
+		<-runner.Stop().Done()
+	}
+	coordinator.opMu.Lock()
+	coordinator.opMu.Unlock()
+	return nil
+}
+
 func (coordinator *Coordinator) View(ctx context.Context) (View, error) {
 	if coordinator == nil || ctx == nil {
 		return View{}, ErrInvalidCoordinator
@@ -234,6 +264,17 @@ func (coordinator *Coordinator) View(ctx context.Context) (View, error) {
 }
 
 func (coordinator *Coordinator) Download(ctx context.Context) error {
+	if coordinator == nil || ctx == nil {
+		return ErrInvalidCoordinator
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	coordinator.opMu.Lock()
+	defer coordinator.opMu.Unlock()
+	if coordinator.isClosedOrSuspended() {
+		return ErrCoordinatorClosed
+	}
 	view, err := coordinator.View(ctx)
 	if err != nil {
 		return err
@@ -244,6 +285,21 @@ func (coordinator *Coordinator) Download(ctx context.Context) error {
 	return coordinator.controller.Download()
 }
 
+func (coordinator *Coordinator) Install(ctx context.Context) error {
+	if coordinator == nil || ctx == nil {
+		return ErrInvalidCoordinator
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	coordinator.opMu.Lock()
+	defer coordinator.opMu.Unlock()
+	if coordinator.isClosed() {
+		return ErrCoordinatorClosed
+	}
+	return coordinator.controller.Install()
+}
+
 func (coordinator *Coordinator) Cancel(ctx context.Context) error {
 	if coordinator == nil || ctx == nil {
 		return ErrInvalidCoordinator
@@ -251,7 +307,9 @@ func (coordinator *Coordinator) Cancel(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if coordinator.isClosed() {
+	coordinator.opMu.Lock()
+	defer coordinator.opMu.Unlock()
+	if coordinator.isClosedOrSuspended() {
 		return ErrCoordinatorClosed
 	}
 	return coordinator.controller.Cancel()
@@ -264,7 +322,9 @@ func (coordinator *Coordinator) Skip(ctx context.Context, version string) error 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if coordinator.isClosed() {
+	coordinator.opMu.Lock()
+	defer coordinator.opMu.Unlock()
+	if coordinator.isClosedOrSuspended() {
 		return ErrCoordinatorClosed
 	}
 	snapshot := coordinator.controller.Snapshot()
@@ -274,7 +334,7 @@ func (coordinator *Coordinator) Skip(ctx context.Context, version string) error 
 	if err := coordinator.controller.Choose(UpdateChoiceSkip); err != nil {
 		return err
 	}
-	return coordinator.updatePreferences(ctx, func(updates *preferences.UpdatePreferences) {
+	return coordinator.updatePreferencesLocked(ctx, func(updates *preferences.UpdatePreferences) {
 		updates.SkippedVersion = cloneString(&version)
 		updates.SnoozeUntilMS = nil
 	})
@@ -287,7 +347,9 @@ func (coordinator *Coordinator) Snooze(ctx context.Context, duration time.Durati
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if coordinator.isClosed() {
+	coordinator.opMu.Lock()
+	defer coordinator.opMu.Unlock()
+	if coordinator.isClosedOrSuspended() {
 		return ErrCoordinatorClosed
 	}
 	if duration < minimumSnooze || duration > maximumSnooze {
@@ -300,7 +362,7 @@ func (coordinator *Coordinator) Snooze(ctx context.Context, duration time.Durati
 	if err := coordinator.controller.Choose(UpdateChoiceDismiss); err != nil {
 		return err
 	}
-	return coordinator.updatePreferences(ctx, func(updates *preferences.UpdatePreferences) {
+	return coordinator.updatePreferencesLocked(ctx, func(updates *preferences.UpdatePreferences) {
 		updates.SnoozeUntilMS = &until
 	})
 }
@@ -328,6 +390,12 @@ func (coordinator *Coordinator) failureCount() uint8 {
 	coordinator.mu.Lock()
 	defer coordinator.mu.Unlock()
 	return coordinator.consecutiveFailures
+}
+
+func (coordinator *Coordinator) isClosedOrSuspended() bool {
+	coordinator.mu.Lock()
+	defer coordinator.mu.Unlock()
+	return coordinator.closed || coordinator.suspended
 }
 
 func (coordinator *Coordinator) Close() error {
@@ -361,14 +429,9 @@ func (coordinator *Coordinator) Close() error {
 	return err
 }
 
-func (coordinator *Coordinator) updatePreferences(ctx context.Context, mutate func(*preferences.UpdatePreferences)) error {
+func (coordinator *Coordinator) updatePreferencesLocked(ctx context.Context, mutate func(*preferences.UpdatePreferences)) error {
 	if coordinator == nil || ctx == nil || mutate == nil {
 		return ErrInvalidCoordinator
-	}
-	coordinator.opMu.Lock()
-	defer coordinator.opMu.Unlock()
-	if coordinator.isClosed() {
-		return ErrCoordinatorClosed
 	}
 	for attempt := 0; attempt < preferenceRetries; attempt++ {
 		current, err := coordinator.store.LoadPreferences(ctx)

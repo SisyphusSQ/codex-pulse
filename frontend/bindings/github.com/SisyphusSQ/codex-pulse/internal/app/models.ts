@@ -273,6 +273,9 @@ export interface UpdateStateResponse {
     "faultCode": string;
     "canCancel": boolean;
     "readyToInstall": boolean;
+    "shutdownPhase": string;
+    "shutdownStage": string;
+    "shutdownFailedStage": string;
     "autoCheckEnabled": boolean;
     "checkIntervalSeconds": number;
     "skippedVersion": string | null;

@@ -12,9 +12,44 @@ var (
 	ErrAlreadyStarted  = errors.New("updater is already started")
 	ErrCannotCancel    = errors.New("updater operation cannot be cancelled")
 	ErrCannotDownload  = errors.New("updater download cannot be started")
+	ErrCannotInstall   = errors.New("updater install cannot be started")
 	ErrCannotChoose    = errors.New("updater update choice cannot be submitted")
 	ErrClosed          = errors.New("updater is closed")
 )
+
+func (controller *Controller) Install() error {
+	controller.mu.Lock()
+	if controller.closed {
+		controller.mu.Unlock()
+		return ErrClosed
+	}
+	started := controller.started
+	snapshot := cloneSnapshot(controller.snapshot)
+	if !started || snapshot.Phase != PhaseAvailable || snapshot.Update == nil ||
+		!snapshot.ReadyToInstall || controller.installPending {
+		controller.mu.Unlock()
+		if !started {
+			return ErrNotStarted
+		}
+		return ErrCannotInstall
+	}
+	controller.installPending = true
+	controller.mu.Unlock()
+	if !started {
+		return ErrNotStarted
+	}
+	installer, ok := controller.adapter.(InstallAdapter)
+	if !ok {
+		controller.clearInstallPending()
+		return ErrCannotInstall
+	}
+	if err := installer.Install(); err != nil {
+		controller.clearInstallPending()
+		controller.recordFailure(FaultInstall, err)
+		return fmt.Errorf("install update: %w", err)
+	}
+	return nil
+}
 
 type Controller struct {
 	mu              sync.RWMutex
@@ -24,6 +59,7 @@ type Controller struct {
 	started         bool
 	closed          bool
 	downloadPending bool
+	installPending  bool
 	generation      uint64
 }
 
@@ -198,6 +234,7 @@ func (controller *Controller) Close() error {
 	controller.closed = true
 	controller.started = false
 	controller.downloadPending = false
+	controller.installPending = false
 	controller.generation++
 	controller.snapshot, _ = Reduce(controller.snapshot, Event{Kind: EventClosed})
 	closedSnapshot := cloneSnapshot(controller.snapshot)
@@ -226,6 +263,9 @@ func (controller *Controller) handle(generation uint64, event Event) {
 		event.Kind == EventDownloadCancelled || event.Kind == EventFailed || event.Kind == EventClosed {
 		controller.downloadPending = false
 	}
+	if event.Kind == EventInstallStarted || event.Kind == EventFailed || event.Kind == EventClosed {
+		controller.installPending = false
+	}
 	next, err := Reduce(controller.snapshot, event)
 	if err != nil {
 		controller.snapshot = failureSnapshot(FaultNative, err)
@@ -247,6 +287,12 @@ func (controller *Controller) handleCurrent(event Event) {
 func (controller *Controller) clearDownloadPending() {
 	controller.mu.Lock()
 	controller.downloadPending = false
+	controller.mu.Unlock()
+}
+
+func (controller *Controller) clearInstallPending() {
+	controller.mu.Lock()
+	controller.installPending = false
 	controller.mu.Unlock()
 }
 

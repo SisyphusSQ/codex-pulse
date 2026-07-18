@@ -17,5 +17,6 @@ func (*SparkleAdapter) Start(EventSink) error {
 }
 func (*SparkleAdapter) Check() error    { return ErrNotStarted }
 func (*SparkleAdapter) Download() error { return ErrCannotDownload }
+func (*SparkleAdapter) Install() error  { return ErrCannotInstall }
 func (*SparkleAdapter) Cancel() error   { return ErrCannotCancel }
 func (*SparkleAdapter) Close() error    { return nil }

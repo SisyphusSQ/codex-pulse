@@ -80,6 +80,50 @@ func TestControllerDownloadRequiresAvailableUpdate(t *testing.T) {
 	}
 }
 
+func TestControllerInstallRequiresReadySnapshotAndMapsFailure(t *testing.T) {
+	t.Parallel()
+
+	installErr := errors.New("native install reply missing")
+	adapter := &fakeInstallAdapter{}
+	controller, err := NewController(adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.Install(); !errors.Is(err, ErrCannotInstall) {
+		t.Fatalf("Install idle=%v", err)
+	}
+	if err := controller.Check(); err != nil {
+		t.Fatal(err)
+	}
+	adapter.emit(Event{Kind: EventUpdateFound, Update: &Update{Version: "42", Architecture: "arm64"}})
+	adapter.emit(Event{Kind: EventDownloadStarted})
+	adapter.emit(Event{Kind: EventReadyToInstall})
+	if err := controller.Install(); err != nil || adapter.installCalls != 1 {
+		t.Fatalf("Install ready calls=%d err=%v", adapter.installCalls, err)
+	}
+	if err := controller.Install(); !errors.Is(err, ErrCannotInstall) || adapter.installCalls != 1 {
+		t.Fatalf("duplicate Install calls=%d err=%v", adapter.installCalls, err)
+	}
+	adapter.emit(Event{Kind: EventInstallStarted})
+	adapter.emit(Event{Kind: EventCycleFinished})
+	if err := controller.Check(); err != nil {
+		t.Fatal(err)
+	}
+	adapter.emit(Event{Kind: EventUpdateFound, Update: &Update{Version: "43", Architecture: "arm64"}})
+	adapter.emit(Event{Kind: EventDownloadStarted})
+	adapter.emit(Event{Kind: EventReadyToInstall})
+	adapter.installErr = installErr
+	if err := controller.Install(); !errors.Is(err, installErr) {
+		t.Fatalf("Install failure=%v", err)
+	}
+	if snapshot := controller.Snapshot(); snapshot.Phase != PhaseError || snapshot.Fault == nil || snapshot.Fault.Code != FaultInstall {
+		t.Fatalf("snapshot=%#v", snapshot)
+	}
+}
+
 func TestControllerCancelsActiveCheck(t *testing.T) {
 	t.Parallel()
 
@@ -346,6 +390,17 @@ type fakeDownloadAdapter struct {
 type fakeChoiceAdapter struct {
 	fakeAdapter
 	choices []UpdateChoice
+}
+
+type fakeInstallAdapter struct {
+	fakeAdapter
+	installCalls int
+	installErr   error
+}
+
+func (adapter *fakeInstallAdapter) Install() error {
+	adapter.installCalls++
+	return adapter.installErr
 }
 
 func (adapter *fakeChoiceAdapter) Choose(choice UpdateChoice) error {

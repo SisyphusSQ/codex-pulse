@@ -9,6 +9,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/metrics"
 	platformtray "github.com/SisyphusSQ/codex-pulse/internal/platform/tray"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
+	"github.com/SisyphusSQ/codex-pulse/internal/singleinstance"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"github.com/SisyphusSQ/codex-pulse/internal/updater"
@@ -133,6 +134,18 @@ func runWithStore(
 // application exits and returns Wails startup or shutdown failures to main.
 func Run(assets fs.FS) error {
 	ctx := context.Background()
+	instanceConfig, err := singleinstance.DefaultConfig()
+	if err != nil {
+		return err
+	}
+	instanceLease, owner, err := singleinstance.Acquire(ctx, instanceConfig)
+	if err != nil {
+		return err
+	}
+	if !owner {
+		return nil
+	}
+	defer instanceLease.Close()
 	return runWithStore(ctx, openApplicationStore, func(owned lifecycleStore) (returnErr error) {
 		database, ok := owned.(*storesqlite.Store)
 		if !ok {
@@ -153,8 +166,20 @@ func Run(assets fs.FS) error {
 		if err != nil {
 			return err
 		}
-		desktopApp := application.New(applicationOptions(assets, bindingService))
-		updateRuntime, err := startApplicationUpdater(ctx, updater.NewSparkleAdapter(), preferenceStore, func(updater.Snapshot) {
+		nativeQuit := &nativeQuitPreflight{}
+		options := applicationOptions(assets, bindingService)
+		options.ShouldQuit = nativeQuit.ShouldQuit
+		desktopApp := application.New(options)
+		// This is the earliest shutdown hook and is intentionally non-blocking:
+		// platform terminate paths that bypass ShouldQuit must never ACK a second
+		// instance while the current owner is already exiting.
+		desktopApp.OnShutdown(instanceLease.StopAcceptingWakes)
+		updateRuntime, err := startApplicationUpdater(ctx, updater.NewSparkleAdapter(), preferenceStore, func(snapshot updater.Snapshot) {
+			if snapshot.Phase == updater.PhaseInstalling {
+				nativeQuit.MarkInstallReady()
+			} else if snapshot.Phase == updater.PhaseError {
+				nativeQuit.AbortInstall()
+			}
 			desktopApp.Event.Emit(UpdateStateChangedEventName, UpdateStateChangedEvent{Version: UpdateStateChangedContractVersion})
 		})
 		if err != nil {
@@ -237,18 +262,6 @@ func Run(assets fs.FS) error {
 				returnErr = errors.Join(returnErr, runtime.Close(context.Background()))
 			}()
 		}
-		var desktopDrainer desktopRuntimeDrainer
-		if runtime != nil {
-			desktopDrainer = runtime
-		}
-		desktopCommands, err = newDesktopCommandCoordinator(desktopCommandCoordinatorConfig{
-			Window: mainWindow, Emitter: desktopApp.Event, About: desktopApp.Menu,
-			Refresh: bindingService, Invalidation: invalidation, Drain: desktopDrainer,
-			Quit: desktopApp.Quit,
-		})
-		if err != nil {
-			return err
-		}
 		healthRuntime, err := startApplicationHealthRuntime(ctx, database)
 		if err != nil {
 			return err
@@ -267,6 +280,58 @@ func Run(assets fs.FS) error {
 		// lifecycle, metrics, and the SQLite owner are torn down.
 		defer func() {
 			returnErr = errors.Join(returnErr, retentionRuntime.Close(context.Background()))
+		}()
+
+		components := []shutdownComponent{
+			{Name: "instance-wake-admission", Close: func(context.Context) error { instanceLease.StopAcceptingWakes(); return nil }},
+			{Name: "updater-scheduler", Close: func(context.Context) error { return updateRuntime.Suspend() }},
+		}
+		if runtime != nil {
+			components = append(components, shutdownComponent{Name: "scheduler-admission", Close: runtime.BeginDrain})
+		}
+		components = append(components,
+			shutdownComponent{Name: "tray", Close: trayHost.Close},
+			shutdownComponent{Name: "retention", Close: retentionRuntime.Close},
+			shutdownComponent{Name: "health", Close: healthRuntime.Close},
+		)
+		if runtime != nil {
+			components = append(components, shutdownComponent{Name: "scheduler", Close: runtime.Close})
+		}
+		components = append(components,
+			shutdownComponent{Name: "metrics", Close: metricsRuntime.Close},
+			shutdownComponent{Name: "sqlite", Close: database.Close},
+			shutdownComponent{Name: "instance-lock", Close: func(context.Context) error { return instanceLease.Close() }},
+		)
+		shutdown, err := newApplicationShutdownCoordinator(components...)
+		if err != nil {
+			return err
+		}
+		if err := nativeQuit.Bind(shutdown, desktopApp.Quit); err != nil {
+			return err
+		}
+		if err := updateRuntime.bindShutdown(shutdown); err != nil {
+			return err
+		}
+		if err := updateRuntime.bindInstallGate(nativeQuit); err != nil {
+			return err
+		}
+		desktopCommands, err = newDesktopCommandCoordinator(desktopCommandCoordinatorConfig{
+			Window: mainWindow, Emitter: desktopApp.Event, About: desktopApp.Menu,
+			Refresh: bindingService, Invalidation: invalidation, Drain: shutdown,
+			Quit: desktopApp.Quit, Termination: nativeQuit,
+		})
+		if err != nil {
+			return err
+		}
+		go func() {
+			for {
+				select {
+				case <-instanceLease.Done():
+					return
+				case <-instanceLease.Wake():
+					_ = desktopCommands.Execute(platformtray.MenuActionOpenOverview)
+				}
+			}
 		}()
 
 		return desktopApp.Run()

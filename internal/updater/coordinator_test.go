@@ -61,6 +61,34 @@ func TestCoordinatorMergesBusyTriggers(t *testing.T) {
 	}
 }
 
+func TestCoordinatorSuspendWaitsForAdmittedDownloadAndRejectsNewActions(t *testing.T) {
+	t.Parallel()
+
+	controller := &blockingDownloadController{started: make(chan struct{}), release: make(chan struct{})}
+	store := &fakeUpdatePreferenceStore{snapshot: updatePreferenceSnapshot(true, 0)}
+	coordinator := mustCoordinator(t, CoordinatorConfig{Store: store, Controller: controller})
+	downloadDone := make(chan error, 1)
+	go func() { downloadDone <- coordinator.Download(context.Background()) }()
+	<-controller.started
+	suspendDone := make(chan error, 1)
+	go func() { suspendDone <- coordinator.Suspend() }()
+	select {
+	case err := <-suspendDone:
+		t.Fatalf("Suspend returned before admitted download: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(controller.release)
+	if err := <-downloadDone; err != nil {
+		t.Fatalf("Download=%v", err)
+	}
+	if err := <-suspendDone; err != nil {
+		t.Fatalf("Suspend=%v", err)
+	}
+	if err := coordinator.Cancel(t.Context()); !errors.Is(err, ErrCoordinatorClosed) {
+		t.Fatalf("Cancel after suspend=%v", err)
+	}
+}
+
 func TestCoordinatorAllowsRecheckWhenUpdateIsAvailable(t *testing.T) {
 	t.Parallel()
 
@@ -337,6 +365,7 @@ type fakeUpdateController struct {
 	snapshot      Snapshot
 	checkCalls    int
 	downloadCalls int
+	installCalls  int
 	chooseCalls   []UpdateChoice
 	chooseErr     error
 	cancelCalls   int
@@ -355,7 +384,8 @@ func (controller *fakeUpdateController) Download() error {
 	controller.downloadCalls++
 	return nil
 }
-func (controller *fakeUpdateController) Cancel() error { controller.cancelCalls++; return nil }
+func (controller *fakeUpdateController) Install() error { controller.installCalls++; return nil }
+func (controller *fakeUpdateController) Cancel() error  { controller.cancelCalls++; return nil }
 func (controller *fakeUpdateController) Choose(choice UpdateChoice) error {
 	controller.chooseCalls = append(controller.chooseCalls, choice)
 	if controller.chooseErr != nil {
@@ -379,6 +409,25 @@ type blockingUpdateController struct {
 	closeCalls atomic.Int64
 }
 
+type blockingDownloadController struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (*blockingDownloadController) Snapshot() Snapshot {
+	return Snapshot{Phase: PhaseAvailable, Update: &Update{Version: "42"}}
+}
+func (*blockingDownloadController) Check() error { return nil }
+func (controller *blockingDownloadController) Download() error {
+	close(controller.started)
+	<-controller.release
+	return nil
+}
+func (*blockingDownloadController) Install() error            { return nil }
+func (*blockingDownloadController) Cancel() error             { return nil }
+func (*blockingDownloadController) Choose(UpdateChoice) error { return nil }
+func (*blockingDownloadController) Close() error              { return nil }
+
 func (*blockingUpdateController) Snapshot() Snapshot { return Snapshot{Phase: PhaseIdle} }
 func (controller *blockingUpdateController) Check() error {
 	close(controller.started)
@@ -386,6 +435,7 @@ func (controller *blockingUpdateController) Check() error {
 	return nil
 }
 func (*blockingUpdateController) Download() error           { return nil }
+func (*blockingUpdateController) Install() error            { return nil }
 func (*blockingUpdateController) Cancel() error             { return nil }
 func (*blockingUpdateController) Choose(UpdateChoice) error { return nil }
 func (controller *blockingUpdateController) Close() error {

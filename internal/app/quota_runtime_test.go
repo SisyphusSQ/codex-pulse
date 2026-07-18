@@ -887,7 +887,7 @@ func TestApplicationLifecycleRuntimeReturnsCommittedSettingsOnReconcileFailure(t
 	}
 }
 
-func TestApplicationLifecycleRuntimeCloseDrainsAdmittedSettingsUpdate(t *testing.T) {
+func TestApplicationLifecycleRuntimeBeginDrainSealsAdmissionAndDrainsSettingsUpdate(t *testing.T) {
 	t.Parallel()
 
 	database, _ := openQuotaRuntimeStore(t)
@@ -941,16 +941,16 @@ func TestApplicationLifecycleRuntimeCloseDrainsAdmittedSettingsUpdate(t *testing
 	case <-time.After(2 * time.Second):
 		t.Fatal("settings update did not reach reconcile barrier")
 	}
-	closeDone := make(chan error, 1)
-	go func() { closeDone <- runtime.Close(context.Background()) }()
+	drainDone := make(chan error, 1)
+	go func() { drainDone <- runtime.BeginDrain(context.Background()) }()
 	select {
 	case <-runtime.controlCtx.Done():
 	case <-time.After(2 * time.Second):
-		t.Fatal("Close did not seal application control admission")
+		t.Fatal("BeginDrain did not seal application control admission")
 	}
 	select {
-	case err := <-closeDone:
-		t.Fatalf("Close returned before settings update drained: %v", err)
+	case err := <-drainDone:
+		t.Fatalf("BeginDrain returned before settings update drained: %v", err)
 	default:
 	}
 	if _, err := runtime.UpdateQuotaSettings(context.Background(), preferences.SettingsUpdate{}); !errors.Is(
@@ -969,12 +969,15 @@ func TestApplicationLifecycleRuntimeCloseDrainsAdmittedSettingsUpdate(t *testing
 		t.Fatal("settings update did not drain")
 	}
 	select {
-	case err := <-closeDone:
+	case err := <-drainDone:
 		if err != nil {
-			t.Fatalf("Close() error = %v", err)
+			t.Fatalf("BeginDrain() error = %v", err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("Close did not return after settings update drained")
+		t.Fatal("BeginDrain did not return after settings update drained")
+	}
+	if err := runtime.Close(context.Background()); err != nil {
+		t.Fatalf("Close() error = %v", err)
 	}
 	if err := database.Close(context.Background()); err != nil {
 		t.Fatalf("database.Close() error = %v", err)

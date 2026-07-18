@@ -69,6 +69,10 @@ export function HealthProjection(): $CancellablePromise<$models.HealthProjection
     return $Call.ByID(2606310108);
 }
 
+export function InstallUpdate(): $CancellablePromise<$models.UpdateActionReceipt> {
+    return $Call.ByID(1370610399);
+}
+
 export function Job(request: runtimeinfo$0.JobDetailRequest): $CancellablePromise<runtimeinfo$0.JobDetailResponse> {
     return $Call.ByID(3305728438, request);
 }

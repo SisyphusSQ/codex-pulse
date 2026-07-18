@@ -224,3 +224,20 @@ func TestDesktopCommandCoordinatorRecordsBoundedShutdownTimeoutAndKeepsAppAlive(
 		t.Fatalf("retry quit calls = %d", quit)
 	}
 }
+
+func TestDesktopCommandCoordinatorQuitsAfterTerminalDrainFailure(t *testing.T) {
+	t.Parallel()
+
+	want := errors.New("sqlite close failed")
+	quit := 0
+	coordinator, _, _, _, _, _ := newDesktopCommandTestCoordinator(t, func(config *desktopCommandCoordinatorConfig) {
+		config.Drain = &desktopDrainStub{err: want}
+		config.Quit = func() { quit++ }
+	})
+	if err := coordinator.Execute(platformtray.MenuActionQuit); !errors.Is(err, want) {
+		t.Fatalf("Quit error=%v", err)
+	}
+	if quit != 1 {
+		t.Fatalf("quit calls=%d", quit)
+	}
+}

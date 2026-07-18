@@ -33,6 +33,7 @@ enum {
     CPEventFailed = 10,
     CPEventCheckCancelled = 11,
     CPEventReleaseNotes = 12,
+    CPEventInstallFailed = 13,
 };
 
 static NSString *cp_sparkle_plain_text(NSString *value, BOOL html) {
@@ -272,6 +273,30 @@ int cp_sparkle_download(void *raw, char **errorMessage) {
     return 1;
 }
 
+int cp_sparkle_install(void *raw, char **errorMessage) {
+    if (raw == NULL) {
+        cp_sparkle_set_error(errorMessage, @"Sparkle adapter is not started");
+        return 0;
+    }
+    CPUpdaterHolder *holder = (__bridge CPUpdaterHolder *)raw;
+    // Never synchronously wait for AppKit while Go holds coordinator/adapter
+    // locks. A concurrent Wails OnShutdown may be waiting for those same locks.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        void (^reply)(SPUUserUpdateChoice) = holder.userDriver.installChoiceReply;
+        holder.userDriver.installChoiceReply = nil;
+        if (reply == nil) {
+            NSError *error = [NSError errorWithDomain:@"CodexPulseSparkle" code:3 userInfo:@{
+                NSLocalizedDescriptionKey: @"No Sparkle update is ready to install"
+            }];
+            cp_sparkle_emit(holder.userDriver.callbackID, CPEventInstallFailed, nil, 0, 0, 0, error);
+            return;
+        }
+        cp_sparkle_emit(holder.userDriver.callbackID, CPEventInstallStarted, nil, 0, 0, 0, nil);
+        reply(SPUUserUpdateChoiceInstall);
+    });
+    return 1;
+}
+
 int cp_sparkle_choose(void *raw, int choice, char **errorMessage) {
     if (raw == NULL) {
         cp_sparkle_set_error(errorMessage, @"Sparkle adapter is not started");
@@ -364,6 +389,11 @@ int cp_sparkle_check(void *handle, char **errorMessage) {
     return 0;
 }
 int cp_sparkle_download(void *handle, char **errorMessage) {
+    (void)handle;
+    cp_sparkle_set_error(errorMessage, @"Sparkle support was not compiled");
+    return 0;
+}
+int cp_sparkle_install(void *handle, char **errorMessage) {
     (void)handle;
     cp_sparkle_set_error(errorMessage, @"Sparkle support was not compiled");
     return 0;

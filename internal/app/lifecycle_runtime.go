@@ -79,6 +79,9 @@ type applicationLifecycleRuntime struct {
 
 	homePlanMu sync.Mutex
 	homePlanID string
+	drainOnce  sync.Once
+	drainDone  chan struct{}
+	drainErr   error
 
 	closeOnce sync.Once
 	closeDone chan struct{}
@@ -270,6 +273,7 @@ func startApplicationLifecycleRuntime(
 		invalidation: config.Invalidation, cancel: cancel,
 		workerDone: make(chan error, 1), controlCtx: controlCtx, controlStop: controlStop,
 		controlAccepting: true, controlDone: closedApplicationLifecycleSignal(),
+		drainDone: make(chan struct{}),
 		closeDone: make(chan struct{}),
 	}
 	go func() { runtime.workerDone <- schedulerService.Run(workerCtx) }()
@@ -417,18 +421,42 @@ func (runtime *applicationLifecycleRuntime) Close(ctx context.Context) error {
 	}
 }
 
-func (runtime *applicationLifecycleRuntime) shutdown() {
+// BeginDrain is the irreversible admission fence shared by Quit and Install.
+// It rejects new Wails controls, unregisters lifecycle events, and cancels the
+// scheduler worker so an active slice reaches its cooperative checkpoint. Close
+// later waits for the worker and tears down quota/coordinator resources.
+func (runtime *applicationLifecycleRuntime) BeginDrain(ctx context.Context) error {
+	if runtime == nil || ctx == nil {
+		return ErrApplicationLifecycleRuntime
+	}
+	runtime.drainOnce.Do(func() { go runtime.beginDrain() })
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-runtime.drainDone:
+		return runtime.drainErr
+	}
+}
+
+func (runtime *applicationLifecycleRuntime) beginDrain() {
 	adapterErr := runtime.adapter.Close(context.Background())
 	controlDone := runtime.sealControlAdmission()
-	<-controlDone
-	quotaErr := runtime.quota.Close(context.Background())
 	runtime.cancel()
+	<-controlDone
+	runtime.drainErr = adapterErr
+	close(runtime.drainDone)
+}
+
+func (runtime *applicationLifecycleRuntime) shutdown() {
+	runtime.drainOnce.Do(func() { go runtime.beginDrain() })
+	<-runtime.drainDone
+	quotaErr := runtime.quota.Close(context.Background())
 	workerErr := <-runtime.workerDone
 	if errors.Is(workerErr, context.Canceled) {
 		workerErr = nil
 	}
 	coordinatorErr := runtime.coordinator.Close(context.Background())
-	runtime.closeErr = errors.Join(adapterErr, quotaErr, workerErr, coordinatorErr)
+	runtime.closeErr = errors.Join(runtime.drainErr, quotaErr, workerErr, coordinatorErr)
 	close(runtime.closeDone)
 }
 

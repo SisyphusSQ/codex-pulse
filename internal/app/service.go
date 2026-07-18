@@ -55,6 +55,8 @@ type updateBindingCommand interface {
 	View(context.Context) (updater.View, error)
 	Trigger(context.Context, updater.Trigger) (updater.TriggerReceipt, error)
 	Download(context.Context) error
+	Install(context.Context) error
+	InstallState() shutdownSnapshot
 	Cancel(context.Context) error
 	Skip(context.Context, string) error
 	Snooze(context.Context, time.Duration) error
@@ -224,6 +226,7 @@ var bindingMethodAllowlist = []BindingMethodInfo{
 	{Name: "UpdateState", Kind: BindingMethodQuery},
 	{Name: "CheckForUpdates", Kind: BindingMethodCommand},
 	{Name: "DownloadUpdate", Kind: BindingMethodCommand},
+	{Name: "InstallUpdate", Kind: BindingMethodCommand},
 	{Name: "CancelUpdate", Kind: BindingMethodCommand},
 	{Name: "SkipUpdate", Kind: BindingMethodCommand},
 	{Name: "SnoozeUpdate", Kind: BindingMethodCommand},
@@ -239,7 +242,7 @@ func (service *Service) Contracts() BindingContractInfo {
 			CommandMethods: []string{
 				"RequestQuotaRefresh", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
 				"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
-				"CheckForUpdates", "DownloadUpdate", "CancelUpdate", "SkipUpdate", "SnoozeUpdate",
+				"CheckForUpdates", "DownloadUpdate", "InstallUpdate", "CancelUpdate", "SkipUpdate", "SnoozeUpdate",
 			}, ErrorExample: errorExample,
 		}
 	})
