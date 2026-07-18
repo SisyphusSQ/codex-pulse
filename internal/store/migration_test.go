@@ -475,6 +475,7 @@ func TestMigrationRunnerStopsBeforeApplyWhenSpaceOrBackupFails(t *testing.T) {
 		backupError error
 	}{
 		{name: "space", spaceError: storesqlite.ErrDiskFull},
+		{name: "read-only", spaceError: storesqlite.ErrReadOnly},
 		{name: "backup", backupError: storesqlite.ErrIO},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -504,6 +505,26 @@ func TestMigrationRunnerStopsBeforeApplyWhenSpaceOrBackupFails(t *testing.T) {
 				t.Fatal("backup called after failed space check")
 			}
 			assertLegacyMigrationState(t, database)
+
+			recoveryRunner := applicationMigrationRunnerForTest(database)
+			recoveryRunner.spaceCheck = ensureMigrationBackupSpace
+			recoveryRunner.backup = func(
+				ctx context.Context,
+				_ int,
+				targetVersion int,
+				observe func(storesqlite.BackupProgress),
+			) (string, error) {
+				return defaultMigrationBackup(
+					ctx, database, targetVersion, time.UnixMilli(123), observe,
+				)
+			}
+			if _, err := recoveryRunner.run(context.Background()); err != nil {
+				t.Fatalf("run(recovered) error = %v", err)
+			}
+			assertMigrationVersionAndHistory(
+				t, database, applicationMigrations[len(applicationMigrations)-1].version,
+				int64(len(applicationMigrations)),
+			)
 		})
 	}
 }

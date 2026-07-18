@@ -60,6 +60,10 @@ retention service 同样只用 `github.com/robfig/cron/v3 v3.0.1`：启动立即
 - 默认不开 pprof；metrics 使用最低优先级写入。
 - 目标：观测额外 CPU 平均低于 0.5%，观测失败不能影响索引或 quota。
 
+TOO-284 将该目标收敛为可重复的 macOS arm64 validation harness：真实 application collector 每轮同时执行 gopsutil process probe、SQLite/WAL/磁盘与 runnable queue probe、24 小时 MetricsSnapshot query 和 maintenance writer，并按 Detailed 5 秒 cadence 报告 `duty_pct`。机械门槛固定为 duty `<0.5%`、query `<50ms`、RSS `<512MiB`、WAL `<256MiB`；每轮 100 次、重复 5 次，任一缺少 metric 或越界都 fail closed。idle/live/backfill/query/cleanup 另以 BSD time 记录阶段 process envelope，但该 envelope 包含 Go test runner，不能冒充产品常驻 RSS；产品数值只使用 collector 持久的 typed sample。
+
+同一 harness 只在临时目录、fake transport/adapter 与专用 child process 注入 permission、disk full/read-only、SQLite lock、malformed row、network、sleep/wake 和 process interruption。它不修改真实 Home、应用数据库、权限、磁盘、网络或系统睡眠。提交版结果见 [`docs/test/m8-e6.md`](../../../test/m8-e6.md)；原始命令与 time 输出只保存在忽略的 `.agents/runs`。当前实测固定 macOS 15.0 deployment target，但运行 OS 必须单独记录，不能用较新系统的通过结果冒充实际 macOS 15 runtime。
+
 不建设小时或长期汇总表。每小时低优先级清理一次，启动时补清理：
 
 - runtime samples、已完成 job、source attempts、已解决 event：滚动 24 小时；`process_snapshots` 尚未创建，不参与当前 cleanup；
