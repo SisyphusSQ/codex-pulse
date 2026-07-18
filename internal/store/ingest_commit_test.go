@@ -125,6 +125,19 @@ func TestCommitIngestBatchExactReplayTreatsNilDiagnosticsAsEmpty(t *testing.T) {
 	}
 }
 
+func TestValidIngestDiagnosticAcceptsQuotaCompatibilityCodes(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range []string{"invalid_quota_window", "invalid_quota_snapshot"} {
+		diagnostic := IngestDiagnostic{
+			Class: "compatibility", Code: code, StartOffset: 10, EndOffset: 20,
+		}
+		if !validIngestDiagnostic(diagnostic, 20) {
+			t.Fatalf("validIngestDiagnostic(%q) = false, want true", code)
+		}
+	}
+}
+
 func TestCommitIngestBatchKeepsOldFactsVisibleUntilRebuildActivation(t *testing.T) {
 	t.Parallel()
 

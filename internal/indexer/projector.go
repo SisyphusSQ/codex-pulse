@@ -275,7 +275,7 @@ func (projector *projector) projectSessionMeta(event logs.ParsedEvent) (store.Fa
 	projector.current = current
 	return store.FactBatch{
 		Session:        projector.sessionFactAt(meta.ObservedAtMS),
-		SessionCurrent: cloneSessionCurrent(current),
+		SessionCurrent: projectedSessionCurrent(current),
 	}, nil
 }
 
@@ -299,7 +299,7 @@ func (projector *projector) projectTurnStart(event logs.ParsedEvent) (store.Fact
 	return store.FactBatch{
 		Session:        projector.sessionFactAt(start.StartedAtMS),
 		Turn:           turnFromCheckpoint(turn),
-		SessionCurrent: cloneSessionCurrent(current),
+		SessionCurrent: projectedSessionCurrent(current),
 	}, nil
 }
 
@@ -316,15 +316,18 @@ func (projector *projector) projectTurnContext(event logs.ParsedEvent) (store.Fa
 	turn.ReasoningEffort = cloneString(context.Effort)
 	turn.CWD = optionalString(context.CWD)
 	projector.openTurns[context.TurnID] = turn
-	current := projector.currentAt(context.ObservedAtMS)
-	current.CurrentModel = cloneString(turn.Model)
-	current.CurrentCWD = cloneString(turn.CWD)
-	projector.current = current
-	return store.FactBatch{
-		Session:        projector.sessionFactAt(context.ObservedAtMS),
-		Turn:           turnFromCheckpoint(turn),
-		SessionCurrent: cloneSessionCurrent(current),
-	}, nil
+	fact := store.FactBatch{
+		Session: projector.sessionFactAt(context.ObservedAtMS), Turn: turnFromCheckpoint(turn),
+	}
+	if projector.current != nil && projector.current.ActiveTurnID != nil &&
+		*projector.current.ActiveTurnID == context.TurnID {
+		current := projector.currentAt(context.ObservedAtMS)
+		current.CurrentModel = cloneString(turn.Model)
+		current.CurrentCWD = cloneString(turn.CWD)
+		projector.current = current
+		fact.SessionCurrent = projectedSessionCurrent(current)
+	}
+	return fact, nil
 }
 
 func (projector *projector) projectTurnUsage(event logs.ParsedEvent) (store.FactBatch, error) {
@@ -392,12 +395,13 @@ func (projector *projector) projectTurnEnd(event logs.ParsedEvent) (store.FactBa
 		fact.Usage.IsFinal = true
 	}
 	delete(projector.openTurns, end.TurnID)
-	current := projector.currentAt(end.CompletedAtMS)
-	if current.ActiveTurnID != nil && *current.ActiveTurnID == end.TurnID {
+	if projector.current != nil && projector.current.ActiveTurnID != nil &&
+		*projector.current.ActiveTurnID == end.TurnID {
+		current := projector.currentAt(end.CompletedAtMS)
 		current.ActiveTurnID = nil
+		projector.current = current
+		fact.SessionCurrent = projectedSessionCurrent(current)
 	}
-	projector.current = current
-	fact.SessionCurrent = cloneSessionCurrent(current)
 	return fact, nil
 }
 
@@ -464,6 +468,12 @@ func (projector *projector) sessionFactAt(lastSeenAtMS int64) *store.Session {
 	if meta == nil {
 		return nil
 	}
+	// Rollout records are ordered by file position, but timestamps from different
+	// producers can arrive slightly out of order. Preserve the Store contract by
+	// keeping the session observation interval monotonic from session_meta onward.
+	if lastSeenAtMS < meta.ObservedAtMS {
+		lastSeenAtMS = meta.ObservedAtMS
+	}
 	return &store.Session{
 		SessionID: meta.SessionID, Provider: logs.ProviderCodex,
 		Originator: optionalString(meta.Originator), SourceKind: string(meta.SourceKind),
@@ -502,7 +512,7 @@ func cloneProjectedOpenTurn(value store.ProjectedOpenTurnCheckpoint) store.Proje
 
 func turnFromCheckpoint(value store.ProjectedOpenTurnCheckpoint) *store.Turn {
 	return &store.Turn{
-		TurnID: value.TurnID, SessionID: value.SessionID, StartedAtMS: value.StartedAtMS,
+		TurnID: CanonicalTurnID(value.SessionID, value.TurnID), SessionID: value.SessionID, StartedAtMS: value.StartedAtMS,
 		Model: cloneString(value.Model), ReasoningEffort: cloneString(value.ReasoningEffort),
 		CWD: cloneString(value.CWD), SourceGeneration: value.SourceGeneration,
 		StartOffset: value.StartOffset,
@@ -511,7 +521,7 @@ func turnFromCheckpoint(value store.ProjectedOpenTurnCheckpoint) *store.Turn {
 
 func turnUsageFromEvent(value *logs.TurnUsageFact, generation, offset int64) *store.TurnUsage {
 	return &store.TurnUsage{
-		TurnID: value.TurnID, ObservedAtMS: value.ObservedAtMS, IsFinal: value.IsFinal,
+		TurnID: CanonicalTurnID(value.SessionID, value.TurnID), ObservedAtMS: value.ObservedAtMS, IsFinal: value.IsFinal,
 		InputTokens:       cloneInt64(value.Usage.InputTokens),
 		CachedInputTokens: cloneInt64(value.Usage.CachedInputTokens),
 		OutputTokens:      cloneInt64(value.Usage.OutputTokens),
@@ -519,6 +529,22 @@ func turnUsageFromEvent(value *logs.TurnUsageFact, generation, offset int64) *st
 		ContextWindow:     cloneInt64(value.ContextWindow), SourceGeneration: generation,
 		SourceOffset: offset, Confidence: "observed", UpdatedAtMS: value.ObservedAtMS,
 	}
+}
+
+func projectedSessionCurrent(value *store.SessionCurrent) *store.SessionCurrent {
+	clone := cloneSessionCurrent(value)
+	if clone != nil && clone.ActiveTurnID != nil {
+		canonical := CanonicalTurnID(clone.SessionID, *clone.ActiveTurnID)
+		clone.ActiveTurnID = &canonical
+	}
+	return clone
+}
+
+// CanonicalTurnID promotes a session-local source turn identity into the
+// globally unique opaque identity used by the Store and public query layers.
+func CanonicalTurnID(sessionID, sourceTurnID string) string {
+	digest := sha256.Sum256([]byte(sessionID + "\x00" + sourceTurnID))
+	return fmt.Sprintf("codex-turn-%x", digest[:])
 }
 
 func countersDecrease(previous *store.SessionUsageCurrent, current logs.TokenCounters) bool {

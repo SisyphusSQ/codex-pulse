@@ -13,6 +13,11 @@ import (
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
+// bootstrapPlanInsertBatchSize keeps the widest 31-column plan-item insert
+// below SQLite's conservative 999-variable limit (31 * 25 = 775). All batches
+// remain inside the caller's single writer transaction.
+const bootstrapPlanInsertBatchSize = 25
+
 func (repository *Repository) CreateBootstrapJob(
 	ctx context.Context,
 	job JobRun,
@@ -115,7 +120,7 @@ func (repository *Repository) FreezeBootstrapPlan(
 			models[index] = bootstrapPlanItemModelFromDomain(item)
 		}
 		if len(models) > 0 {
-			if err := transaction.WithContext(ctx).Create(&models).Error; err != nil {
+			if err := createBootstrapPlanItemModels(ctx, transaction, models); err != nil {
 				return err
 			}
 		}
@@ -422,7 +427,7 @@ func (repository *Repository) AppendBootstrapReconcilePlan(
 			for index, item := range validated {
 				models[index] = bootstrapPlanItemModelFromDomain(item)
 			}
-			if err := transaction.WithContext(ctx).Create(&models).Error; err != nil {
+			if err := createBootstrapPlanItemModels(ctx, transaction, models); err != nil {
 				return err
 			}
 		}
@@ -570,12 +575,24 @@ func (repository *Repository) ResumeBootstrapJob(
 			for index, item := range resumedItems {
 				models[index] = bootstrapPlanItemModelFromDomain(item)
 			}
-			if err := transaction.WithContext(ctx).Create(&models).Error; err != nil {
+			if err := createBootstrapPlanItemModels(ctx, transaction, models); err != nil {
 				return err
 			}
 		}
 		return markInterruptedResumeConsumed(ctx, transaction, old, resumed)
 	})
+}
+
+func createBootstrapPlanItemModels(
+	ctx context.Context,
+	transaction storesqlite.WriteTx,
+	models []bootstrapPlanItemModel,
+) error {
+	if len(models) == 0 {
+		return nil
+	}
+	return transaction.WithContext(ctx).
+		CreateInBatches(&models, bootstrapPlanInsertBatchSize).Error
 }
 
 func validateBootstrapFactsAdvance(

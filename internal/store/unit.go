@@ -21,6 +21,8 @@ type WriteUnit struct {
 	attributionSchemaChecked bool
 	attributionSchemaPresent bool
 	dirtyAttributionSessions map[string]struct{}
+	dirtyQuotaProjections    map[quotaProjectionKey]struct{}
+	deferQuotaProjections    bool
 }
 
 // WithinWriteUnit 在应用唯一 writer queue 中执行一个 typed 原子工作单元。
@@ -37,6 +39,9 @@ func (repository *Repository) WithinWriteUnit(ctx context.Context, write func(*W
 		}
 		defer func() { unit.active = false }()
 		if err := write(unit); err != nil {
+			return err
+		}
+		if err := unit.flushQuotaProjections(); err != nil {
 			return err
 		}
 		return unit.flushAttributions()
@@ -92,23 +97,11 @@ func (unit *WriteUnit) UpsertFacts(batch FactBatch) error {
 			return err
 		}
 		if batch.QuotaObservation.LimitID != nil {
-			evaluatedAtMS, err := unit.repository.quotaEvaluationTimeMS()
-			if err != nil {
-				return err
-			}
-			if err := unit.repository.rebuildQuotaWindowProjectionInTransaction(
-				ctx,
-				transaction,
-				quotaProjectionKey{
-					accountScope: batch.QuotaObservation.AccountScope,
-					windowKind:   batch.QuotaObservation.WindowKind,
-					limitID:      *batch.QuotaObservation.LimitID,
-				},
-				evaluatedAtMS,
-				defaultQuotaArbitrationRule(),
-			); err != nil {
-				return err
-			}
+			unit.markQuotaProjectionDirty(quotaProjectionKey{
+				accountScope: batch.QuotaObservation.AccountScope,
+				windowKind:   batch.QuotaObservation.WindowKind,
+				limitID:      *batch.QuotaObservation.LimitID,
+			})
 		}
 	}
 	if batch.Turn != nil {
@@ -174,6 +167,48 @@ func (unit *WriteUnit) UpsertFacts(batch FactBatch) error {
 	}
 	if expectedSessionID != "" {
 		unit.markAttributionDirty(expectedSessionID)
+	}
+	return nil
+}
+
+func (unit *WriteUnit) markQuotaProjectionDirty(key quotaProjectionKey) {
+	if unit.dirtyQuotaProjections == nil {
+		unit.dirtyQuotaProjections = make(map[quotaProjectionKey]struct{})
+	}
+	unit.dirtyQuotaProjections[key] = struct{}{}
+}
+
+func (unit *WriteUnit) flushQuotaProjections() error {
+	if unit.deferQuotaProjections || len(unit.dirtyQuotaProjections) == 0 {
+		return nil
+	}
+	keys := make([]quotaProjectionKey, 0, len(unit.dirtyQuotaProjections))
+	for key := range unit.dirtyQuotaProjections {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(left, right int) bool {
+		if keys[left].accountScope != keys[right].accountScope {
+			return keys[left].accountScope < keys[right].accountScope
+		}
+		if keys[left].windowKind != keys[right].windowKind {
+			return keys[left].windowKind < keys[right].windowKind
+		}
+		return keys[left].limitID < keys[right].limitID
+	})
+	evaluatedAtMS, err := unit.repository.quotaEvaluationTimeMS()
+	if err != nil {
+		return err
+	}
+	for _, key := range keys {
+		if err := unit.repository.rebuildQuotaWindowProjectionInTransaction(
+			unit.ctx,
+			unit.transaction,
+			key,
+			evaluatedAtMS,
+			defaultQuotaArbitrationRule(),
+		); err != nil {
+			return err
+		}
 	}
 	return nil
 }

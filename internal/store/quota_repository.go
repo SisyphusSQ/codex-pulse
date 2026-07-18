@@ -185,10 +185,7 @@ func upsertQuotaObservation(ctx context.Context, transaction *gorm.DB, sample Qu
 			}
 			return invalidRecord("quota observation source position does not advance")
 		}
-		if sample.ObservedAtMS < latest.LastObservedAtMS {
-			return invalidRecord("quota observation time regresses")
-		}
-		if quotaObservationSemanticMatches(latest, sample) {
+		if sample.ObservedAtMS >= latest.LastObservedAtMS && quotaObservationSemanticMatches(latest, sample) {
 			if err := database.Model(&quotaObservationModel{}).
 				Where("observation_id = ? AND source_generation = ? AND source_offset = ?", latest.ObservationID, latest.SourceGeneration, latest.SourceOffset).
 				Updates(map[string]any{

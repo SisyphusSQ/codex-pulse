@@ -25,9 +25,11 @@ func TestRuntimeRunsFourStagesAndReplaysCompletedBootstrap(t *testing.T) {
 	home := t.TempDir()
 	recentPath := filepath.Join(home, "sessions", "2026", "07", "recent.jsonl")
 	oldPath := filepath.Join(home, "archived_sessions", "old.jsonl")
-	writeBootstrapRollout(t, recentPath, completeBootstrapRollout("session-recent", "turn-recent"), time.Now().Add(-time.Hour))
-	writeBootstrapRollout(t, oldPath, completeBootstrapRollout("session-old", "turn-old"), time.Now().Add(-60*24*time.Hour))
-	request := bootstrapRequest(t, home, "switch-normal", 2)
+	olderPath := filepath.Join(home, "archived_sessions", "older.jsonl")
+	writeBootstrapRollout(t, recentPath, completeBootstrapRolloutWithQuota("session-recent", "turn-recent"), time.Now().Add(-time.Hour))
+	writeBootstrapRollout(t, oldPath, completeBootstrapRolloutWithQuota("session-old", "turn-old"), time.Now().Add(-60*24*time.Hour))
+	writeBootstrapRollout(t, olderPath, completeBootstrapRollout("session-older", "turn-older"), time.Now().Add(-90*24*time.Hour))
+	request := bootstrapRequest(t, home, "switch-normal", 3)
 	runtime := newTestRuntime(t, repository, RuntimeConfig{
 		FastMaxFiles: 1, FastMaxBytes: 1 << 20, ReadChunkBytes: 64,
 	}, runtimeHooks{})
@@ -51,9 +53,36 @@ func TestRuntimeRunsFourStagesAndReplaysCompletedBootstrap(t *testing.T) {
 	items, err := repository.ListBootstrapPlanItems(
 		context.Background(), store.BootstrapPlanItemFilter{JobID: job.JobID},
 	)
-	if err != nil || len(items) != 2 || items[0].Lane != store.BootstrapLaneFast ||
-		items[1].Lane != store.BootstrapLaneBackfill {
+	if err != nil || len(items) != 3 || items[0].Lane != store.BootstrapLaneFast ||
+		items[1].Lane != store.BootstrapLaneBackfill || items[2].Lane != store.BootstrapLaneBackfill {
 		t.Fatalf("initial plan = %#v, %v", items, err)
+	}
+
+	firstScreen, err := runtime.RunSlice(context.Background(), job.JobID, SliceBudget{
+		MaxFiles: 1, MaxBytes: 1 << 20, MaxActive: time.Minute,
+	})
+	if err != nil || firstScreen.Complete || !firstScreen.FirstScreenReady ||
+		firstScreen.FullHistoryReady || firstScreen.Phase != store.JobPhaseHistoryBackfill {
+		t.Fatalf("RunSlice(first screen) = %#v, %v", firstScreen, err)
+	}
+	if _, err := repository.QuotaCurrent(
+		context.Background(), store.QuotaAccountScopeDefault, store.QuotaWindowPrimary,
+		"codex", time.Now().UnixMilli(),
+	); err != nil {
+		t.Fatalf("QuotaCurrent(first screen readiness) error = %v", err)
+	}
+	backfill, err := runtime.RunSlice(context.Background(), job.JobID, SliceBudget{
+		MaxFiles: 1, MaxBytes: 1 << 20, MaxActive: time.Minute,
+	})
+	if err != nil || backfill.Complete || !backfill.FirstScreenReady ||
+		backfill.FullHistoryReady || backfill.Phase != store.JobPhaseHistoryBackfill {
+		t.Fatalf("RunSlice(backfill) = %#v, %v", backfill, err)
+	}
+	if _, err := repository.QuotaCurrent(
+		context.Background(), store.QuotaAccountScopeDefault, store.QuotaWindowPrimary,
+		"codex", time.Now().UnixMilli(),
+	); err != nil {
+		t.Fatalf("QuotaCurrent(after backfill quota commit) error = %v", err)
 	}
 
 	report, err := runtime.Run(context.Background(), job.JobID)
@@ -69,10 +98,16 @@ func TestRuntimeRunsFourStagesAndReplaysCompletedBootstrap(t *testing.T) {
 		facts.ReconciledAtMS == nil || *facts.FirstScreenReadyAtMS >= *facts.FullHistoryReadyAtMS {
 		t.Fatalf("completed run = %#v %#v, %v", job, facts, err)
 	}
-	for _, sessionID := range []string{"session-recent", "session-old"} {
+	for _, sessionID := range []string{"session-recent", "session-old", "session-older"} {
 		if _, err := repository.Session(context.Background(), sessionID); err != nil {
 			t.Fatalf("Session(%s) error = %v", sessionID, err)
 		}
+	}
+	if _, err := repository.QuotaCurrent(
+		context.Background(), store.QuotaAccountScopeDefault, store.QuotaWindowPrimary,
+		"codex", time.Now().UnixMilli(),
+	); err != nil {
+		t.Fatalf("QuotaCurrent(after bootstrap readiness) error = %v", err)
 	}
 	if _, err := runtime.Run(context.Background(), job.JobID); err != nil {
 		t.Fatalf("Run(completed replay) error = %v", err)
@@ -294,6 +329,15 @@ func TestRuntimeRunSliceRejectsInvalidBudgetWithoutChangingJob(t *testing.T) {
 	stored, _, err := repository.BootstrapRun(context.Background(), job.JobID)
 	if err != nil || stored.State != store.JobRunning || stored.Phase != store.JobPhaseDiscover {
 		t.Fatalf("BootstrapRun() = %#v, %v", stored, err)
+	}
+}
+
+func TestNewRuntimeRejectsOversizedReadChunk(t *testing.T) {
+	repository := openBootstrapRepository(t)
+	if _, err := NewRuntime(RuntimeConfig{
+		Repository: repository, ReadChunkBytes: maxReadChunkBytes + 1,
+	}); !errors.Is(err, ErrInvalidRuntime) {
+		t.Fatalf("NewRuntime(oversized read chunk) error = %v, want ErrInvalidRuntime", err)
 	}
 }
 
@@ -558,7 +602,7 @@ func TestRuntimeResumesIncompleteActiveAppendInsteadOfTrustingFingerprintAlone(t
 		t.Fatalf("Run(resumed partial append) error = %v", err)
 	}
 	assertCompletedBootstrapTurnAndCursor(
-		t, repository, "turn-active-append", items[0].Current.SourceFileID, int64(len(grown)),
+		t, repository, "session-active-append", "turn-active-append", items[0].Current.SourceFileID, int64(len(grown)),
 	)
 }
 
@@ -619,7 +663,7 @@ func TestRuntimeInitialPlanIncludesIncompleteUnchangedActiveSource(t *testing.T)
 		t.Fatalf("Run(cold recovery) error = %v", err)
 	}
 	assertCompletedBootstrapTurnAndCursor(
-		t, repository, "turn-cold-incomplete", items[0].Current.SourceFileID, int64(len(grown)),
+		t, repository, "session-cold-incomplete", "turn-cold-incomplete", items[0].Current.SourceFileID, int64(len(grown)),
 	)
 }
 
@@ -785,7 +829,7 @@ func TestRuntimeFinalReconcileAppliesGrownDeletedAndUnreadableActions(t *testing
 		if _, err := runtime.Run(context.Background(), job.JobID); err != nil {
 			t.Fatalf("Run() error = %v", err)
 		}
-		if _, err := repository.Turn(context.Background(), "turn-grown"); err != nil {
+		if _, err := repository.Turn(context.Background(), indexer.CanonicalTurnID("session-grown", "turn-grown")); err != nil {
 			t.Fatalf("Turn(grown) error = %v", err)
 		}
 		items, _ := repository.ListBootstrapPlanItems(
@@ -936,7 +980,7 @@ func TestRuntimeFinalReconcileDriftRequiresFreshPassBeforeFullReady(t *testing.T
 		t.Fatalf("Run(fresh final pass) error = %v", err)
 	}
 	assertCompletedBootstrapTurnAndCursor(
-		t, repository, "turn-final-drift-late",
+		t, repository, "session-final-drift-late", "turn-final-drift-late",
 		originalItems[len(originalItems)-1].Current.SourceFileID, int64(len(lateGrown)),
 	)
 	resumedItems, _ := repository.ListBootstrapPlanItems(
@@ -1737,12 +1781,13 @@ func replaceBootstrapHomeWithHardlinks(t *testing.T, home string, relativePaths 
 func assertCompletedBootstrapTurnAndCursor(
 	t *testing.T,
 	repository *store.Repository,
+	sessionID string,
 	turnID string,
 	sourceFileID string,
 	wantOffset int64,
 ) {
 	t.Helper()
-	turn, err := repository.Turn(context.Background(), turnID)
+	turn, err := repository.Turn(context.Background(), indexer.CanonicalTurnID(sessionID, turnID))
 	if err != nil || turn.CompletedAtMS == nil || turn.Outcome == nil || *turn.Outcome != "completed" {
 		t.Fatalf("Turn(%s) = %#v, %v, want completed", turnID, turn, err)
 	}
@@ -1832,6 +1877,12 @@ func ingestBootstrapCurrentSource(
 func completeBootstrapRollout(sessionID, turnID string) []byte {
 	return []byte(bootstrapSessionMetaLine(sessionID) + "\n" + bootstrapTurnStartLine(turnID) + "\n" +
 		bootstrapTurnEndLine(turnID) + "\n")
+}
+
+func completeBootstrapRolloutWithQuota(sessionID, turnID string) []byte {
+	quota := `{"timestamp":"2026-07-14T01:00:01Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex","primary":{"used_percent":38,"window_minutes":300,"resets_at":1784008800},"plan_type":"pro"}}}`
+	return []byte(bootstrapSessionMetaLine(sessionID) + "\n" + quota + "\n" +
+		bootstrapTurnStartLine(turnID) + "\n" + bootstrapTurnEndLine(turnID) + "\n")
 }
 
 func largeBootstrapRollout(sessionID, turnID string) []byte {

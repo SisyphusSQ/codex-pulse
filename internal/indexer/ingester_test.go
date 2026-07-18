@@ -91,7 +91,7 @@ func TestIngesterRestartsFromCommittedOffsetAndReplaysHalfLineOnce(t *testing.T)
 		t.Fatalf("Feed(grown) = %#v, want full committed file", second)
 	}
 	turns, err := repository.ListTurns(ctx, store.TurnFilter{SessionID: stringPointer("session-a")})
-	if err != nil || len(turns) != 1 || turns[0].TurnID != "turn-a" ||
+	if err != nil || len(turns) != 1 || turns[0].TurnID != CanonicalTurnID("session-a", "turn-a") ||
 		turns[0].StartOffset != wantOffset {
 		t.Fatalf("ListTurns() = %#v, %v, want one replayed half-line turn", turns, err)
 	}
@@ -150,7 +150,7 @@ func TestIngesterSupersedesGrowingBuildingAndRejectsStaleStream(t *testing.T) {
 	if err != nil || !result.Committed || result.Cursor.State != store.GenerationActive {
 		t.Fatalf("Feed(restarted building) = %#v, %v, want active", result, err)
 	}
-	if turn, err := repository.Turn(ctx, "turn-a"); err != nil || turn.SourceGeneration != 1 {
+	if turn, err := repository.Turn(ctx, CanonicalTurnID("session-a", "turn-a")); err != nil || turn.SourceGeneration != 1 {
 		t.Fatalf("Turn(restarted building) = %#v, %v, want generation 1", turn, err)
 	}
 }
@@ -383,7 +383,7 @@ func TestIngesterKeepsOldFactsVisibleUntilReplacementEOF(t *testing.T) {
 	if _, err := oldStream.Feed(ctx, oldContent, true, 20); err != nil {
 		t.Fatalf("Feed(old) error = %v", err)
 	}
-	if _, err := repository.Turn(ctx, "turn-old"); err != nil {
+	if _, err := repository.Turn(ctx, CanonicalTurnID("session-a", "turn-old")); err != nil {
 		t.Fatalf("Turn(old) error = %v", err)
 	}
 
@@ -410,20 +410,20 @@ func TestIngesterKeepsOldFactsVisibleUntilReplacementEOF(t *testing.T) {
 	if err != nil || !first.Committed || first.Cursor.State != store.GenerationBuilding {
 		t.Fatalf("Feed(replacement staging) = %#v, %v, want committed building batch", first, err)
 	}
-	if _, err := repository.Turn(ctx, "turn-old"); err != nil {
+	if _, err := repository.Turn(ctx, CanonicalTurnID("session-a", "turn-old")); err != nil {
 		t.Fatalf("old turn disappeared before EOF: %v", err)
 	}
-	if _, err := repository.Turn(ctx, "turn-new"); !errors.Is(err, store.ErrNotFound) {
+	if _, err := repository.Turn(ctx, CanonicalTurnID("session-a", "turn-new")); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("new turn visible before EOF: %v", err)
 	}
 	final, err := newStream.Feed(ctx, newContent[firstLineEnd:], true, 50)
 	if err != nil || !final.Committed || final.Cursor.State != store.GenerationActive {
 		t.Fatalf("Feed(replacement EOF) = %#v, %v, want active generation", final, err)
 	}
-	if _, err := repository.Turn(ctx, "turn-old"); !errors.Is(err, store.ErrNotFound) {
+	if _, err := repository.Turn(ctx, CanonicalTurnID("session-a", "turn-old")); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("old turn after activation error = %v, want ErrNotFound", err)
 	}
-	if turn, err := repository.Turn(ctx, "turn-new"); err != nil || turn.SourceGeneration != 1 {
+	if turn, err := repository.Turn(ctx, CanonicalTurnID("session-a", "turn-new")); err != nil || turn.SourceGeneration != 1 {
 		t.Fatalf("Turn(new) = %#v, %v, want generation 1", turn, err)
 	}
 }
@@ -474,10 +474,10 @@ func TestIngesterReplacesNewPhysicalIdentityEndToEnd(t *testing.T) {
 	if err != nil || !result.Committed || result.Cursor.State != store.GenerationActive {
 		t.Fatalf("Feed(new identity) = %#v, %v, want active replacement", result, err)
 	}
-	if _, err := repository.Turn(ctx, "turn-old"); !errors.Is(err, store.ErrNotFound) {
+	if _, err := repository.Turn(ctx, CanonicalTurnID("session-a", "turn-old")); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("Turn(old) error = %v, want ErrNotFound", err)
 	}
-	if turn, err := repository.Turn(ctx, "turn-new"); err != nil || turn.SourceGeneration != 0 {
+	if turn, err := repository.Turn(ctx, CanonicalTurnID("session-a", "turn-new")); err != nil || turn.SourceGeneration != 0 {
 		t.Fatalf("Turn(new) = %#v, %v, want replacement generation 0", turn, err)
 	}
 	oldFile, err := repository.SourceFile(ctx, newPlan.Actions[0].Previous.SourceFileID)
@@ -567,7 +567,7 @@ func TestIngesterPersistsTerminalBeforeStartWithoutReorderingOffsets(t *testing.
 	if _, err := stream.Feed(ctx, content, true, 20); err != nil {
 		t.Fatalf("Feed() error = %v", err)
 	}
-	turn, err := repository.Turn(ctx, "turn-late")
+	turn, err := repository.Turn(ctx, CanonicalTurnID("session-a", "turn-late"))
 	if err != nil {
 		t.Fatalf("Turn() error = %v", err)
 	}
@@ -662,7 +662,7 @@ func TestIngesterRestoresOpenTurnProjectionAcrossRestart(t *testing.T) {
 	if _, err := stream.Feed(ctx, initialContent, true, 20); err != nil {
 		t.Fatalf("Feed(initial) error = %v", err)
 	}
-	started, err := repository.Turn(ctx, "turn-a")
+	started, err := repository.Turn(ctx, CanonicalTurnID("session-a", "turn-a"))
 	if err != nil || started.CompletedAtMS != nil || started.Model == nil || *started.Model != "gpt-5" {
 		t.Fatalf("Turn(open) = %#v, %v", started, err)
 	}
@@ -679,7 +679,7 @@ func TestIngesterRestoresOpenTurnProjectionAcrossRestart(t *testing.T) {
 	if _, err := restarted.Feed(ctx, []byte(terminal), true, 40); err != nil {
 		t.Fatalf("Feed(restart terminal) error = %v", err)
 	}
-	completed, err := repository.Turn(ctx, "turn-a")
+	completed, err := repository.Turn(ctx, CanonicalTurnID("session-a", "turn-a"))
 	wantStart := int64(len(meta) + 1)
 	if err != nil || completed.CompletedAtMS == nil || completed.StartOffset != wantStart ||
 		completed.Model == nil || *completed.Model != "gpt-5" ||
@@ -809,7 +809,7 @@ func TestIngesterCommitsMetadataOnlyMoveWithoutReplayingFacts(t *testing.T) {
 	if session, err := repository.Session(ctx, "session-a"); err != nil || session.SourceKind != "session" {
 		t.Fatalf("Session(grown archive) = %#v, %v, want canonical source kind session", session, err)
 	}
-	if _, err := repository.Turn(ctx, "turn-after-move"); err != nil {
+	if _, err := repository.Turn(ctx, CanonicalTurnID("session-a", "turn-after-move")); err != nil {
 		t.Fatalf("Turn(after archive move) error = %v", err)
 	}
 

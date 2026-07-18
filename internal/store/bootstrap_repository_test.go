@@ -3,8 +3,11 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
+
+	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 func TestBootstrapRepositoryCreatesFreezesAndReadsTypedPlan(t *testing.T) {
@@ -69,6 +72,101 @@ func TestBootstrapRepositoryCreatesFreezesAndReadsTypedPlan(t *testing.T) {
 	if !reflect.DeepEqual(gotItems, items) {
 		t.Fatalf("ListBootstrapPlanItems() = %#v, want %#v", gotItems, items)
 	}
+}
+
+func TestBootstrapRepositoryFreezesLargePlanInBoundedBatches(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	job, facts := largeBootstrapJob("bootstrap-large-plan")
+	if err := repository.CreateBootstrapJob(context.Background(), job, facts); err != nil {
+		t.Fatalf("CreateBootstrapJob() error = %v", err)
+	}
+	items := largeBootstrapPlan(job.JobID, 80)
+	if err := repository.FreezeBootstrapPlan(context.Background(), job.JobID, items, 20); err != nil {
+		t.Fatalf("FreezeBootstrapPlan(large) error = %v", err)
+	}
+	stored, err := repository.ListBootstrapPlanItems(
+		context.Background(), BootstrapPlanItemFilter{JobID: job.JobID},
+	)
+	if err != nil || !reflect.DeepEqual(stored, items) {
+		t.Fatalf("ListBootstrapPlanItems(large) count = %d, error = %v", len(stored), err)
+	}
+}
+
+func TestBootstrapRepositoryLargePlanBatchFailureRollsBackAtomically(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	job, facts := largeBootstrapJob("bootstrap-large-plan-rollback")
+	if err := repository.CreateBootstrapJob(context.Background(), job, facts); err != nil {
+		t.Fatalf("CreateBootstrapJob() error = %v", err)
+	}
+	if err := repository.database.Write(context.Background(), func(
+		ctx context.Context,
+		transaction storesqlite.WriteTx,
+	) error {
+		return transaction.WithContext(ctx).Exec(`
+			CREATE TRIGGER fail_large_bootstrap_plan
+			BEFORE INSERT ON bootstrap_plan_items
+			WHEN NEW.ordinal = 30
+			BEGIN SELECT RAISE(ABORT, 'synthetic batch fault'); END
+		`).Error
+	}); err != nil {
+		t.Fatalf("install test-only fault trigger: %v", err)
+	}
+	if err := repository.FreezeBootstrapPlan(
+		context.Background(), job.JobID, largeBootstrapPlan(job.JobID, 80), 20,
+	); err == nil {
+		t.Fatal("FreezeBootstrapPlan(large fault) unexpectedly succeeded")
+	}
+	stored, err := repository.ListBootstrapPlanItems(
+		context.Background(), BootstrapPlanItemFilter{JobID: job.JobID},
+	)
+	if err != nil || len(stored) != 0 {
+		t.Fatalf("partial plan survived rollback: count = %d, error = %v", len(stored), err)
+	}
+	_, storedFacts, err := repository.BootstrapRun(context.Background(), job.JobID)
+	if err != nil || storedFacts.PlanState != BootstrapPlanPending {
+		t.Fatalf("facts after rollback = %#v, error = %v", storedFacts, err)
+	}
+}
+
+func largeBootstrapJob(jobID string) (JobRun, BootstrapJobFacts) {
+	job := JobRun{
+		JobID: jobID, JobType: "codex_home_bootstrap", RequestedBy: "home-switch",
+		Priority: 10, State: JobQueued, Phase: JobPhaseDiscover, CreatedAtMS: 10, UpdatedAtMS: 10,
+	}
+	facts := BootstrapJobFacts{
+		JobID: jobID, SwitchID: "home-switch:" + jobID, HomeGeneration: 2,
+		HomePath: "/tmp/" + jobID, HomeDeviceID: "device-home", HomeInode: 9,
+		DataStoreKey: jobID, Strategy: "independent_database",
+		PlanState: BootstrapPlanPending, ETAState: BootstrapETAUnknown, UpdatedAtMS: 10,
+	}
+	return job, facts
+}
+
+func largeBootstrapPlan(jobID string, count int) []BootstrapPlanItem {
+	items := make([]BootstrapPlanItem, count)
+	for index := range items {
+		snapshot := testSourceFingerprint(
+			fmt.Sprintf("source-%03d", index),
+			fmt.Sprintf("/tmp/%s/sessions/%03d.jsonl", jobID, index),
+			int64(100+index), 40, int64(100+index),
+		)
+		lane := BootstrapLaneBackfill
+		tier := BootstrapTierRecent30Days
+		if index < 8 {
+			lane = BootstrapLaneFast
+			tier = BootstrapTierToday
+		}
+		items[index] = BootstrapPlanItem{
+			JobID: jobID, Ordinal: int64(index), Pass: 0, Lane: lane, Tier: tier,
+			ActionKind: BootstrapActionAdded, Current: &snapshot,
+			State: BootstrapItemQueued, ProgressCurrent: 0, ProgressTotal: 40, UpdatedAtMS: 20,
+		}
+	}
+	return items
 }
 
 func TestBootstrapRepositoryRejectsConflictingPlanReplayAndInvalidFacts(t *testing.T) {
