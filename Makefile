@@ -1,6 +1,8 @@
-.PHONY: harness-check harness-verify harness-review-gate \
+.PHONY: harness-check harness-verify harness-review-gate m8-resource-fault \
 	project-check project-check-test project-generated-check-test verify verify-project verify-go \
 	verify-frontend verify-package verify-generated
+
+export RUN_ID
 
 harness-check:
 	bash scripts/harness/check.sh
@@ -49,3 +51,6 @@ verify-package:
 verify-generated:
 	bash scripts/project-checks/check_binding_generation_failure.sh
 	bash scripts/project-checks/check_generated.sh
+
+m8-resource-fault:
+	bash scripts/validation/m8-resource-fault.sh

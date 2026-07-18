@@ -445,6 +445,18 @@ func TestDiscovererReportsProbeFailuresWithoutPartialSnapshot(t *testing.T) {
 	}
 	assertIssueCount(t, result.Issues, DiscoveryIssuePermission, 1)
 	assertIssueCount(t, result.Issues, DiscoveryIssueChangedDuringScan, 1)
+
+	recovered, err := NewDiscoverer(home)
+	if err != nil {
+		t.Fatalf("NewDiscoverer(recovered) error = %v", err)
+	}
+	recoveredResult, err := recovered.Discover(context.Background())
+	if err != nil {
+		t.Fatalf("Discover(recovered) error = %v", err)
+	}
+	if len(recoveredResult.Issues) != 0 || len(recoveredResult.Snapshots) != 2 {
+		t.Fatalf("Discover(recovered) = %#v, want two healthy snapshots", recoveredResult)
+	}
 }
 
 func TestOSScanRootProbeRejectsIntermediateSymlink(t *testing.T) {
