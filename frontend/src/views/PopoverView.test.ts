@@ -58,7 +58,7 @@ function query(data: unknown) {
   };
 }
 
-function quotaWindow(windowKind: QuotaWindowKind, remainingPercent: number) {
+function quotaWindow(windowKind: QuotaWindowKind, remainingPercent: number | null) {
   return {
     windowKind,
     remainingPercent,
@@ -130,6 +130,42 @@ describe("PopoverView", () => {
 
     expect(wrapper.text()).toContain("5 小时");
     expect(wrapper.text()).not.toContain("5 小时 --");
+  });
+
+  it("hides the complete 5-hour row while primary quota has no displayable value and preserves real zero", async () => {
+    popoverHarness.queries = readyQueries([
+      quotaWindow(QuotaWindowKind.QuotaWindowPrimary, null),
+      quotaWindow(QuotaWindowKind.QuotaWindowSecondary, 0),
+    ]);
+    const { wrapper } = renderPopover();
+
+    expect(wrapper.text()).not.toContain("5 小时");
+    expect(wrapper.text()).not.toContain("5 小时 --");
+    expect(wrapper.text()).toContain("本周");
+    expect(wrapper.text()).toContain("0%");
+
+    const quota = (popoverHarness.queries as ReturnType<typeof readyQueries>).quota;
+    quota.data.value = quotaResponse([
+      quotaWindow(QuotaWindowKind.QuotaWindowPrimary, 42),
+      quotaWindow(QuotaWindowKind.QuotaWindowSecondary, 0),
+    ]);
+    await nextTick();
+
+    expect(wrapper.text()).toContain("5 小时");
+    expect(wrapper.text()).toContain("42%");
+  });
+
+  it("keeps a real zero primary quota row visible", () => {
+    popoverHarness.queries = readyQueries([
+      quotaWindow(QuotaWindowKind.QuotaWindowPrimary, 0),
+      quotaWindow(QuotaWindowKind.QuotaWindowSecondary, 64),
+    ]);
+    const { wrapper } = renderPopover();
+
+    const primaryRow = wrapper.findAll(".popover__quota-row")[0];
+    expect(primaryRow.text()).toContain("5 小时");
+    expect(primaryRow.text()).toContain("0%");
+    expect(primaryRow.text()).not.toContain("--");
   });
 
   it("keeps authoritative quota visible after a refresh error", async () => {
