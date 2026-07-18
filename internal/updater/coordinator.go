@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"reflect"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ const (
 	maximumSnooze       = 7 * 24 * time.Hour
 	maximumCheckBackoff = 24 * time.Hour
 	preferenceRetries   = 2
+	choiceRecoveryLimit = 2 * time.Second
 )
 
 var (
@@ -247,11 +249,21 @@ func (coordinator *Coordinator) View(ctx context.Context) (View, error) {
 	if coordinator == nil || ctx == nil {
 		return View{}, ErrInvalidCoordinator
 	}
+	coordinator.opMu.Lock()
+	defer coordinator.opMu.Unlock()
+	return coordinator.viewLocked(ctx)
+}
+
+func (coordinator *Coordinator) viewLocked(ctx context.Context) (View, error) {
 	current, err := coordinator.store.LoadPreferences(ctx)
 	if err != nil {
 		return View{}, err
 	}
 	snapshot := coordinator.controller.Snapshot()
+	snapshot, err = coordinator.reconcileSuppressedChoiceLocked(current.Updates, snapshot)
+	if err != nil {
+		return View{}, err
+	}
 	view := View{
 		Snapshot: snapshot, AutoCheckEnabled: current.Updates.AutoCheckEnabled,
 		CheckIntervalSeconds: current.Updates.CheckIntervalSeconds,
@@ -275,7 +287,7 @@ func (coordinator *Coordinator) Download(ctx context.Context) error {
 	if coordinator.isClosedOrSuspended() {
 		return ErrCoordinatorClosed
 	}
-	view, err := coordinator.View(ctx)
+	view, err := coordinator.viewLocked(ctx)
 	if err != nil {
 		return err
 	}
@@ -331,10 +343,7 @@ func (coordinator *Coordinator) Skip(ctx context.Context, version string) error 
 	if snapshot.Update == nil || snapshot.Update.Version == "" || snapshot.Update.Version != version {
 		return ErrUpdateUnavailable
 	}
-	if err := coordinator.controller.Choose(UpdateChoiceSkip); err != nil {
-		return err
-	}
-	return coordinator.updatePreferencesLocked(ctx, func(updates *preferences.UpdatePreferences) {
+	return coordinator.commitChoiceLocked(ctx, UpdateChoiceSkip, func(updates *preferences.UpdatePreferences) {
 		updates.SkippedVersion = cloneString(&version)
 		updates.SnoozeUntilMS = nil
 	})
@@ -355,14 +364,12 @@ func (coordinator *Coordinator) Snooze(ctx context.Context, duration time.Durati
 	if duration < minimumSnooze || duration > maximumSnooze {
 		return ErrInvalidSnooze
 	}
-	if coordinator.controller.Snapshot().Update == nil {
+	snapshot := coordinator.controller.Snapshot()
+	if snapshot.Update == nil || snapshot.Update.Version == "" {
 		return ErrUpdateUnavailable
 	}
 	until := coordinator.clock().Add(duration).UnixMilli()
-	if err := coordinator.controller.Choose(UpdateChoiceDismiss); err != nil {
-		return err
-	}
-	return coordinator.updatePreferencesLocked(ctx, func(updates *preferences.UpdatePreferences) {
+	return coordinator.commitChoiceLocked(ctx, UpdateChoiceDismiss, func(updates *preferences.UpdatePreferences) {
 		updates.SnoozeUntilMS = &until
 	})
 }
@@ -375,7 +382,6 @@ func (coordinator *Coordinator) ObserveSnapshot(snapshot Snapshot) {
 		return
 	}
 	coordinator.mu.Lock()
-	defer coordinator.mu.Unlock()
 	if transientCheckFailure(snapshot) && coordinator.lastObservedPhase != PhaseError {
 		if coordinator.consecutiveFailures < 31 {
 			coordinator.consecutiveFailures++
@@ -384,6 +390,25 @@ func (coordinator *Coordinator) ObserveSnapshot(snapshot Snapshot) {
 		coordinator.consecutiveFailures = 0
 	}
 	coordinator.lastObservedPhase = snapshot.Phase
+	coordinator.mu.Unlock()
+	if snapshot.Phase == PhaseAvailable && snapshot.Update != nil {
+		go coordinator.reconcileAvailableSnapshot()
+	}
+}
+
+func (coordinator *Coordinator) reconcileAvailableSnapshot() {
+	ctx, cancel := context.WithTimeout(context.Background(), choiceRecoveryLimit)
+	defer cancel()
+	coordinator.opMu.Lock()
+	defer coordinator.opMu.Unlock()
+	if coordinator.isClosedOrSuspended() {
+		return
+	}
+	current, err := coordinator.store.LoadPreferences(ctx)
+	if err == nil {
+		_, err = coordinator.reconcileSuppressedChoiceLocked(current.Updates, coordinator.controller.Snapshot())
+	}
+	coordinator.recordTriggerError(err)
 }
 
 func (coordinator *Coordinator) failureCount() uint8 {
@@ -448,11 +473,72 @@ func (coordinator *Coordinator) updatePreferencesLocked(ctx context.Context, mut
 			if errors.Is(err, preferences.ErrPreferencesConflict) {
 				continue
 			}
+			if errors.Is(err, preferences.ErrDurabilityUnknown) {
+				readbackCtx, cancel := coordinator.choiceRecoveryContext(ctx)
+				readback, readbackErr := coordinator.store.LoadPreferences(readbackCtx)
+				cancel()
+				if readbackErr == nil && reflect.DeepEqual(readback, next) {
+					return nil
+				}
+				return errors.Join(err, readbackErr)
+			}
 			return err
 		}
 		return nil
 	}
 	return preferences.ErrPreferencesConflict
+}
+
+// commitChoiceLocked stores the final user preference before invoking the
+// one-shot native choice. skipped_version and snooze_until are themselves the
+// durable intent: every future available snapshot reconciles them again, so a
+// crash or native failure cannot lose recovery responsibility.
+func (coordinator *Coordinator) commitChoiceLocked(
+	ctx context.Context,
+	choice UpdateChoice,
+	mutate func(*preferences.UpdatePreferences),
+) error {
+	if choice != UpdateChoiceSkip && choice != UpdateChoiceDismiss {
+		return ErrInvalidCoordinator
+	}
+	err := coordinator.updatePreferencesLocked(ctx, func(updates *preferences.UpdatePreferences) {
+		mutate(updates)
+	})
+	if err != nil {
+		return err
+	}
+	return coordinator.controller.Choose(choice)
+}
+
+func (coordinator *Coordinator) reconcileSuppressedChoiceLocked(
+	updates preferences.UpdatePreferences,
+	snapshot Snapshot,
+) (Snapshot, error) {
+	if snapshot.Phase != PhaseAvailable || snapshot.Update == nil {
+		return snapshot, nil
+	}
+	choice, shouldChoose := updateChoiceFromPreferences(updates, snapshot, coordinator.clock())
+	if !shouldChoose {
+		return snapshot, nil
+	}
+	if err := coordinator.controller.Choose(choice); err != nil {
+		return Snapshot{}, err
+	}
+	return coordinator.controller.Snapshot(), nil
+}
+
+func (coordinator *Coordinator) choiceRecoveryContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), choiceRecoveryLimit)
+}
+
+func updateChoiceFromPreferences(updates preferences.UpdatePreferences, snapshot Snapshot, now time.Time) (UpdateChoice, bool) {
+	if updates.SkippedVersion != nil && snapshot.Update.Version == *updates.SkippedVersion {
+		return UpdateChoiceSkip, true
+	}
+	if updates.SnoozeUntilMS != nil && now.UnixMilli() < *updates.SnoozeUntilMS {
+		return UpdateChoiceDismiss, true
+	}
+	return 0, false
 }
 
 func (coordinator *Coordinator) isClosed() bool {

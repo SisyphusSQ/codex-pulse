@@ -231,9 +231,192 @@ func TestCoordinatorChoiceFailureDoesNotSuppressPrompt(t *testing.T) {
 	if err := coordinator.Skip(t.Context(), "42"); err == nil {
 		t.Fatal("Skip error=nil, want native choice failure")
 	}
+	if store.snapshot.Updates.SkippedVersion == nil || *store.snapshot.Updates.SkippedVersion != "42" {
+		t.Fatalf("updates=%#v, want durable skip intent", store.snapshot.Updates)
+	}
+	controller.chooseErr = nil
 	view, err := coordinator.View(t.Context())
-	if err != nil || !view.PromptVisible || view.SkippedVersion != nil || store.compareCalls != 0 {
-		t.Fatalf("view=%#v compares=%d err=%v, want visible retry without persisted suppression", view, store.compareCalls, err)
+	if err != nil || view.PromptVisible || view.SkippedVersion == nil || *view.SkippedVersion != "42" ||
+		store.compareCalls != 1 || len(controller.chooseCalls) != 2 {
+		t.Fatalf("view=%#v updates=%#v compares=%d choices=%v err=%v, want reconciled durable intent",
+			view, store.snapshot.Updates, store.compareCalls, controller.chooseCalls, err)
+	}
+}
+
+func TestCoordinatorPreferenceFailureDoesNotConsumeNativeChoice(t *testing.T) {
+	tests := []struct {
+		name  string
+		store *fakeUpdatePreferenceStore
+		act   func(*Coordinator) error
+	}{
+		{
+			name:  "skip load",
+			store: &fakeUpdatePreferenceStore{snapshot: updatePreferenceSnapshot(true, 0), loadErr: errors.New("load failed")},
+			act:   func(coordinator *Coordinator) error { return coordinator.Skip(t.Context(), "42") },
+		},
+		{
+			name:  "skip compare",
+			store: &fakeUpdatePreferenceStore{snapshot: updatePreferenceSnapshot(true, 0), compareErr: errors.New("compare failed")},
+			act:   func(coordinator *Coordinator) error { return coordinator.Skip(t.Context(), "42") },
+		},
+		{
+			name:  "snooze load",
+			store: &fakeUpdatePreferenceStore{snapshot: updatePreferenceSnapshot(true, 0), loadErr: errors.New("load failed")},
+			act:   func(coordinator *Coordinator) error { return coordinator.Snooze(t.Context(), time.Hour) },
+		},
+		{
+			name:  "snooze compare",
+			store: &fakeUpdatePreferenceStore{snapshot: updatePreferenceSnapshot(true, 0), compareErr: errors.New("compare failed")},
+			act:   func(coordinator *Coordinator) error { return coordinator.Snooze(t.Context(), time.Hour) },
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			controller := &fakeUpdateController{snapshot: Snapshot{Phase: PhaseAvailable, Update: &Update{Version: "42", Architecture: "arm64"}}}
+			coordinator := mustCoordinator(t, CoordinatorConfig{Store: test.store, Controller: controller})
+			if err := test.act(coordinator); err == nil {
+				t.Fatal("action error=nil, want preference failure")
+			}
+			if len(controller.chooseCalls) != 0 || controller.snapshot.Update == nil {
+				t.Fatalf("choices=%v snapshot=%#v, native update must remain retryable", controller.chooseCalls, controller.snapshot)
+			}
+		})
+	}
+}
+
+func TestCoordinatorSnoozeChoiceFailureRetainsIntentAndPreservesSkippedVersion(t *testing.T) {
+	store := &fakeUpdatePreferenceStore{snapshot: updatePreferenceSnapshot(true, 0)}
+	previousSkip := "41"
+	store.snapshot.Updates.SkippedVersion = &previousSkip
+	controller := &fakeUpdateController{
+		snapshot:  Snapshot{Phase: PhaseAvailable, Update: &Update{Version: "42", Architecture: "arm64"}},
+		chooseErr: errors.New("native choice failed"),
+	}
+	coordinator := mustCoordinator(t, CoordinatorConfig{Store: store, Controller: controller})
+	if err := coordinator.Snooze(t.Context(), time.Hour); err == nil {
+		t.Fatal("Snooze error=nil, want native choice failure")
+	}
+	if store.snapshot.Updates.SnoozeUntilMS == nil || store.snapshot.Updates.SkippedVersion == nil ||
+		*store.snapshot.Updates.SkippedVersion != previousSkip ||
+		store.compareCalls != 1 {
+		t.Fatalf("updates=%#v compares=%d, want durable snooze intent preserving skipped version", store.snapshot.Updates, store.compareCalls)
+	}
+	controller.chooseErr = nil
+	view, err := coordinator.View(t.Context())
+	if err != nil || len(controller.chooseCalls) != 2 || controller.chooseCalls[1] != UpdateChoiceDismiss ||
+		view.SnoozeUntilMS == nil || view.SkippedVersion == nil || *view.SkippedVersion != previousSkip {
+		t.Fatalf("view=%#v choices=%v err=%v, want snooze reconcile preserving skipped version", view, controller.chooseCalls, err)
+	}
+}
+
+func TestCoordinatorReconcilesCommittedDurabilityUnknown(t *testing.T) {
+	store := &fakeUpdatePreferenceStore{
+		snapshot:     updatePreferenceSnapshot(true, 0),
+		compareSteps: []fakePreferenceCompareStep{{publish: true, err: preferences.ErrDurabilityUnknown}},
+	}
+	controller := &fakeUpdateController{snapshot: Snapshot{Phase: PhaseAvailable, Update: &Update{Version: "42", Architecture: "arm64"}}}
+	coordinator := mustCoordinator(t, CoordinatorConfig{Store: store, Controller: controller})
+	if err := coordinator.Skip(t.Context(), "42"); err != nil {
+		t.Fatalf("Skip committed durability unknown: %v", err)
+	}
+	if len(controller.chooseCalls) != 1 || store.compareCalls != 1 {
+		t.Fatalf("choices=%v updates=%#v compares=%d", controller.chooseCalls, store.snapshot.Updates, store.compareCalls)
+	}
+}
+
+func TestCoordinatorRecoversCommittedUnknownAfterReadbackFailure(t *testing.T) {
+	store := &fakeUpdatePreferenceStore{
+		snapshot:     updatePreferenceSnapshot(true, 0),
+		loadSteps:    []fakePreferenceLoadStep{{}, {err: errors.New("readback failed")}},
+		compareSteps: []fakePreferenceCompareStep{{publish: true, err: preferences.ErrDurabilityUnknown}},
+	}
+	controller := &fakeUpdateController{snapshot: Snapshot{Phase: PhaseAvailable, Update: &Update{Version: "42", Architecture: "arm64"}}}
+	coordinator := mustCoordinator(t, CoordinatorConfig{Store: store, Controller: controller})
+	if err := coordinator.Skip(t.Context(), "42"); err == nil {
+		t.Fatal("Skip error=nil, want unconfirmed durability error")
+	}
+	if len(controller.chooseCalls) != 0 || store.snapshot.Updates.SkippedVersion == nil {
+		t.Fatalf("choices=%v updates=%#v, persisted intent must remain recoverable", controller.chooseCalls, store.snapshot.Updates)
+	}
+	view, err := coordinator.View(t.Context())
+	if err != nil || len(controller.chooseCalls) != 1 || view.SkippedVersion == nil || *view.SkippedVersion != "42" {
+		t.Fatalf("view=%#v choices=%v err=%v, want later readback reconcile", view, controller.chooseCalls, err)
+	}
+}
+
+func TestCoordinatorPersistsIntentBeforeNativeChoice(t *testing.T) {
+	store := &fakeUpdatePreferenceStore{snapshot: updatePreferenceSnapshot(true, 0)}
+	observed := false
+	controller := &fakeUpdateController{
+		snapshot: Snapshot{Phase: PhaseAvailable, Update: &Update{Version: "42", Architecture: "arm64"}},
+		chooseHook: func() {
+			store.mu.Lock()
+			defer store.mu.Unlock()
+			observed = store.snapshot.Updates.SkippedVersion != nil && *store.snapshot.Updates.SkippedVersion == "42"
+		},
+	}
+	coordinator := mustCoordinator(t, CoordinatorConfig{Store: store, Controller: controller})
+	if err := coordinator.Skip(t.Context(), "42"); err != nil || !observed {
+		t.Fatalf("Skip err=%v observedDurableIntent=%t", err, observed)
+	}
+}
+
+func TestCoordinatorIntentSurvivesRequestCancellationDuringNativeChoice(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	store := &fakeUpdatePreferenceStore{snapshot: updatePreferenceSnapshot(true, 0)}
+	controller := &fakeUpdateController{
+		snapshot:   Snapshot{Phase: PhaseAvailable, Update: &Update{Version: "42", Architecture: "arm64"}},
+		chooseHook: cancel,
+	}
+	coordinator := mustCoordinator(t, CoordinatorConfig{Store: store, Controller: controller})
+	if err := coordinator.Skip(ctx, "42"); err != nil {
+		t.Fatalf("Skip cleanup after cancellation: %v", err)
+	}
+	if store.snapshot.Updates.SkippedVersion == nil || *store.snapshot.Updates.SkippedVersion != "42" || store.compareCalls != 1 {
+		t.Fatalf("updates=%#v compares=%d, durable intent must survive cancellation", store.snapshot.Updates, store.compareCalls)
+	}
+}
+
+func TestCoordinatorRestartReconcilesPendingNativeChoice(t *testing.T) {
+	store := &fakeUpdatePreferenceStore{snapshot: updatePreferenceSnapshot(true, 0)}
+	firstController := &fakeUpdateController{
+		snapshot:  Snapshot{Phase: PhaseAvailable, Update: &Update{Version: "42", Architecture: "arm64"}},
+		chooseErr: errors.New("native choice failed"),
+	}
+	first := mustCoordinator(t, CoordinatorConfig{Store: store, Controller: firstController})
+	if err := first.Skip(t.Context(), "42"); err == nil {
+		t.Fatal("first Skip error=nil")
+	}
+	secondController := &fakeUpdateController{snapshot: Snapshot{Phase: PhaseAvailable, Update: &Update{Version: "42", Architecture: "arm64"}}}
+	second := mustCoordinator(t, CoordinatorConfig{Store: store, Controller: secondController})
+	view, err := second.View(t.Context())
+	if err != nil || len(secondController.chooseCalls) != 1 || secondController.chooseCalls[0] != UpdateChoiceSkip ||
+		view.SkippedVersion == nil || *view.SkippedVersion != "42" {
+		t.Fatalf("view=%#v choices=%v updates=%#v err=%v", view, secondController.chooseCalls, store.snapshot.Updates, err)
+	}
+}
+
+func TestCoordinatorAvailableObserverReconcilesSuppressedIntent(t *testing.T) {
+	store := &fakeUpdatePreferenceStore{snapshot: updatePreferenceSnapshot(true, 0)}
+	skipped := "42"
+	store.snapshot.Updates.SkippedVersion = &skipped
+	chosen := make(chan struct{})
+	controller := &fakeUpdateController{
+		snapshot: Snapshot{Phase: PhaseAvailable, Update: &Update{Version: skipped, Architecture: "arm64"}},
+		chooseHook: func() {
+			select {
+			case <-chosen:
+			default:
+				close(chosen)
+			}
+		},
+	}
+	coordinator := mustCoordinator(t, CoordinatorConfig{Store: store, Controller: controller})
+	coordinator.ObserveSnapshot(controller.snapshot)
+	select {
+	case <-chosen:
+	case <-time.After(time.Second):
+		t.Fatal("available observer did not reconcile pending choice")
 	}
 }
 
@@ -325,11 +508,34 @@ type fakeUpdatePreferenceStore struct {
 	mu           sync.Mutex
 	snapshot     preferences.Snapshot
 	compareCalls int
+	loadErr      error
+	compareErr   error
+	loadSteps    []fakePreferenceLoadStep
+	compareSteps []fakePreferenceCompareStep
+}
+
+type fakePreferenceLoadStep struct {
+	err error
+}
+
+type fakePreferenceCompareStep struct {
+	publish bool
+	err     error
 }
 
 func (store *fakeUpdatePreferenceStore) LoadPreferences(context.Context) (preferences.Snapshot, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	if len(store.loadSteps) > 0 {
+		step := store.loadSteps[0]
+		store.loadSteps = store.loadSteps[1:]
+		if step.err != nil {
+			return preferences.Snapshot{}, step.err
+		}
+	}
+	if store.loadErr != nil {
+		return preferences.Snapshot{}, store.loadErr
+	}
 	return clonePreferencesForUpdaterTest(store.snapshot), nil
 }
 
@@ -337,6 +543,17 @@ func (store *fakeUpdatePreferenceStore) CompareAndSwap(_ context.Context, expect
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	store.compareCalls++
+	if len(store.compareSteps) > 0 {
+		step := store.compareSteps[0]
+		store.compareSteps = store.compareSteps[1:]
+		if step.publish {
+			store.snapshot = clonePreferencesForUpdaterTest(next)
+		}
+		return step.err
+	}
+	if store.compareErr != nil {
+		return store.compareErr
+	}
 	if store.snapshot.Revision != expected {
 		return preferences.ErrPreferencesConflict
 	}
@@ -368,6 +585,7 @@ type fakeUpdateController struct {
 	installCalls  int
 	chooseCalls   []UpdateChoice
 	chooseErr     error
+	chooseHook    func()
 	cancelCalls   int
 	closeCalls    int
 }
@@ -388,6 +606,9 @@ func (controller *fakeUpdateController) Install() error { controller.installCall
 func (controller *fakeUpdateController) Cancel() error  { controller.cancelCalls++; return nil }
 func (controller *fakeUpdateController) Choose(choice UpdateChoice) error {
 	controller.chooseCalls = append(controller.chooseCalls, choice)
+	if controller.chooseHook != nil {
+		controller.chooseHook()
+	}
 	if controller.chooseErr != nil {
 		return controller.chooseErr
 	}
