@@ -46,6 +46,9 @@
 43. [TOO-282] 接入七组件 Health Projection 只读查询、主导航健康摘要与唯一全局 Banner，固定权威优先级、影响原因时间、有限恢复入口、缓存失效重取、上次可信和查询失败语义
 44. [TOO-283] 新增最近 24 小时 Data Health 二级页面与只读查询，展示七组件健康、current/open 优先的任务事件、CPU/RSS/DB/WAL/磁盘/队列趋势，并固定有限安全恢复、独立评估时间、键盘焦点和敏感信息隔离语义
 
+#### optimization:
+1. [TOO-285] 完善 AppIcon、ICNS 与 Tray Template 资产闭环，新增冻结源校验、严格灰阶 1x/2x 派生、macOS bundle/ZIP 资源读回及可重复导出与 live smoke 证据
+
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功
 

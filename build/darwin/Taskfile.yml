@@ -82,14 +82,19 @@ tasks:
       CODEX_PULSE_BUILD_NUMBER: '{{.BUILD_NUMBER | default "0"}}'
 
   package:icon:
-    summary: 从冻结的正式 PNG 资产生成 macOS icns
+    summary: 校验冻结的正式 PNG 资产并生成 macOS icns
     internal: true
     cmds:
       - mkdir -p "bin/.packaging"
+      - go run ./build/darwin source docs/design/front/assets/icons
       - >-
         build/darwin/generate_icns.sh
         docs/design/front/assets/icons
         "bin/.packaging/icons.icns"
+      - >-
+        go run ./build/darwin render
+        docs/design/front/assets/icons
+        "bin/.packaging/tray"
 
   package:assemble:
     summary: 装配 macOS app bundle 并注入版本元数据
@@ -99,6 +104,7 @@ tasks:
         build/darwin/assemble_bundle.sh
         "bin/codex-pulse"
         "bin/.packaging/icons.icns"
+        "bin/.packaging/tray"
         build/darwin/Info.plist
         "bin/Codex Pulse.app"
         "$CODEX_PULSE_APP_VERSION"

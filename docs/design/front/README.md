@@ -99,7 +99,7 @@
 - 正式方向：03“深空控制台”。
 - 应用图标：深色光学镜片、蓝紫轨道、`>_` 终端光标和右上运行信标。
 - 64 / 32 / 16px：保留深空配色与终端光标，减少轨道、反射和景深细节。
-- 状态栏：使用 19px 单色 `>_` 终端模板；正常、stale、conflict、unknown 和 exhausted 只改变系统模板色与额度语义，不更换品牌轮廓。
+- 状态栏：使用 19px 单色 `>_` 终端模板；冻结 Pencil 导出在 package 时确定性归一为保留 alpha 的严格灰阶 1x/2x bundle 资源，正常、stale、conflict、unknown 和 exhausted 只改变系统模板色与额度语义，不更换品牌轮廓。
 - PNG 仅作为设计与实现交接资产；正式 macOS AppIcon / `.icns` 在代码仓库中从 Pencil 源稿生成并按 Apple 安全区复核。
 
 ## Apple 设计依据
