@@ -45,6 +45,10 @@ func openApplicationPreferences() (*preferences.FileStore, error) {
 	if err != nil {
 		return nil, errors.Join(ErrBindingService, err)
 	}
+	return openApplicationPreferencesAt(path)
+}
+
+func openApplicationPreferencesAt(path string) (*preferences.FileStore, error) {
 	store, err := preferences.NewFileStore(path)
 	if err != nil {
 		return nil, errors.Join(ErrBindingService, err)

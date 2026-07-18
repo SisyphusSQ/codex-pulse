@@ -78,11 +78,12 @@ func (controller *Controller) Download() error {
 	if !started {
 		return ErrNotStarted
 	}
-	if snapshot.Phase != PhaseAvailable || snapshot.Update == nil || snapshot.ReadyToInstall || pending {
+	if snapshot.Phase != PhaseAvailable || snapshot.Update == nil || snapshot.Update.InformationOnly || snapshot.ReadyToInstall || pending {
 		return ErrCannotDownload
 	}
 	controller.mu.Lock()
-	if controller.closed || controller.downloadPending || controller.snapshot.Phase != PhaseAvailable || controller.snapshot.ReadyToInstall {
+	if controller.closed || controller.downloadPending || controller.snapshot.Phase != PhaseAvailable ||
+		controller.snapshot.Update == nil || controller.snapshot.Update.InformationOnly || controller.snapshot.ReadyToInstall {
 		controller.mu.Unlock()
 		return ErrCannotDownload
 	}
@@ -259,6 +260,7 @@ func (controller *Controller) handle(generation uint64, event Event) {
 		controller.mu.Unlock()
 		return
 	}
+	event = contextualizeFailure(controller.snapshot, event)
 	if event.Kind == EventDownloadStarted || event.Kind == EventReadyToInstall ||
 		event.Kind == EventDownloadCancelled || event.Kind == EventFailed || event.Kind == EventClosed {
 		controller.downloadPending = false
@@ -275,6 +277,18 @@ func (controller *Controller) handle(generation uint64, event Event) {
 	snapshot := cloneSnapshot(controller.snapshot)
 	controller.mu.Unlock()
 	controller.notify(snapshot)
+}
+
+func contextualizeFailure(before Snapshot, event Event) Event {
+	if event.Kind != EventFailed || event.Fault == nil {
+		return event
+	}
+	if before.Phase == PhaseChecking && event.Fault.Code == FaultDownload {
+		fault := *event.Fault
+		fault.Code = FaultCheck
+		event.Fault = &fault
+	}
+	return event
 }
 
 func (controller *Controller) handleCurrent(event Event) {

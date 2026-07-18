@@ -9,9 +9,11 @@ const harness = vi.hoisted(() => ({
   off: vi.fn(),
   invalidates: vi.fn(),
   mutations: [] as Array<{ mutationFn: (value?: never) => Promise<unknown>; onMutate?: () => unknown; onSettled?: () => unknown }>,
+  openURL: vi.fn(),
 }));
 
 vi.mock("@wailsio/runtime", () => ({
+  Browser: { OpenURL: harness.openURL },
   Events: { On: vi.fn((_name: string, callback: () => void) => { harness.event = callback; return harness.off; }) },
 }));
 vi.mock("@tanstack/vue-query", () => ({
@@ -36,6 +38,7 @@ function pending(cancel: ReturnType<typeof vi.fn>) {
 describe("useUpdatePanel", () => {
   beforeEach(() => {
     harness.event = undefined; harness.off.mockReset(); harness.invalidates.mockReset(); harness.mutations = [];
+    harness.openURL.mockReset();
     for (const mock of [CancelUpdate, CheckForUpdates, DownloadUpdate, InstallUpdate, SkipUpdate, SnoozeUpdate]) vi.mocked(mock).mockReset();
   });
 
@@ -49,7 +52,7 @@ describe("useUpdatePanel", () => {
       await vi.runAllTimersAsync();
       expect(harness.invalidates).toHaveBeenCalledWith({ queryKey: ["updates"] });
       for (const mutation of harness.mutations) await mutation.onSettled?.();
-    expect(harness.invalidates).toHaveBeenCalledTimes(7);
+      expect(harness.invalidates).toHaveBeenCalledTimes(8);
       scope.stop();
       expect(harness.off).toHaveBeenCalledOnce();
     } finally {
@@ -58,12 +61,16 @@ describe("useUpdatePanel", () => {
   });
 
   it("cancels every overlapping update action on disposal", async () => {
-    const cancels = Array.from({ length: 6 }, () => vi.fn());
-    const bindings = [CheckForUpdates, DownloadUpdate, InstallUpdate, CancelUpdate, SkipUpdate, SnoozeUpdate];
+    const cancels = Array.from({ length: 7 }, () => vi.fn());
+    const bindings = [CheckForUpdates, DownloadUpdate, InstallUpdate, CancelUpdate, SkipUpdate];
     bindings.forEach((binding, index) => vi.mocked(binding).mockReturnValue(pending(cancels[index]!) as never));
+    vi.mocked(SnoozeUpdate)
+      .mockReturnValueOnce(pending(cancels[5]!) as never)
+      .mockReturnValueOnce(pending(cancels[6]!) as never);
+    harness.openURL.mockResolvedValue(undefined);
     const scope = effectScope();
     scope.run(() => useUpdatePanel());
-    harness.mutations.forEach((mutation, index) => { void mutation.mutationFn((index === 4 ? "42" : index === 5 ? 3600 : undefined) as never); });
+    harness.mutations.forEach((mutation, index) => { void mutation.mutationFn((index === 4 ? "42" : index === 5 ? 3600 : index === 6 ? "https://example.com/fallback" : undefined) as never); });
     await Promise.resolve();
     scope.stop();
     for (const cancel of cancels) expect(cancel).toHaveBeenCalledOnce();
@@ -85,6 +92,23 @@ describe("useUpdatePanel", () => {
     } finally {
       scope.stop();
       vi.useRealTimers();
+    }
+  });
+
+  it("opens only HTTPS information updates and then dismisses them", async () => {
+    harness.openURL.mockResolvedValue(undefined);
+    vi.mocked(SnoozeUpdate).mockResolvedValue({} as never);
+    const scope = effectScope();
+    try {
+      scope.run(() => useUpdatePanel());
+      const information = harness.mutations[6]!;
+      await information.mutationFn("https://example.com/fallback" as never);
+      expect(harness.openURL).toHaveBeenCalledOnce();
+      expect(SnoozeUpdate).toHaveBeenCalledWith(3600);
+      await expect(information.mutationFn("file:///tmp/unsafe" as never)).rejects.toThrow("unsafe information URL");
+      expect(harness.openURL).toHaveBeenCalledOnce();
+    } finally {
+      scope.stop();
     }
   });
 

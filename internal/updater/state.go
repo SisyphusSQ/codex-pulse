@@ -3,6 +3,7 @@ package updater
 import (
 	"errors"
 	"fmt"
+	"net/url"
 )
 
 type Phase string
@@ -50,6 +51,8 @@ type Update struct {
 	Architecture        string
 	ReleaseNotes        string
 	FeedSignatureStatus SignatureStatus
+	InformationOnly     bool
+	InformationURL      string
 }
 
 type Progress struct {
@@ -77,21 +80,22 @@ type Snapshot struct {
 type EventKind string
 
 const (
-	EventCheckStarted       EventKind = "check_started"
-	EventUpdateFound        EventKind = "update_found"
-	EventReleaseNotes       EventKind = "release_notes"
-	EventNoUpdate           EventKind = "no_update"
-	EventCheckCancelled     EventKind = "check_cancelled"
-	EventUpdateDismissed    EventKind = "update_dismissed"
-	EventDownloadStarted    EventKind = "download_started"
-	EventDownloadProgress   EventKind = "download_progress"
-	EventExtractionProgress EventKind = "extraction_progress"
-	EventDownloadCancelled  EventKind = "download_cancelled"
-	EventReadyToInstall     EventKind = "ready_to_install"
-	EventInstallStarted     EventKind = "install_started"
-	EventCycleFinished      EventKind = "cycle_finished"
-	EventFailed             EventKind = "failed"
-	EventClosed             EventKind = "closed"
+	EventCheckStarted         EventKind = "check_started"
+	EventUpdateFound          EventKind = "update_found"
+	EventResumableUpdateFound EventKind = "resumable_update_found"
+	EventReleaseNotes         EventKind = "release_notes"
+	EventNoUpdate             EventKind = "no_update"
+	EventCheckCancelled       EventKind = "check_cancelled"
+	EventUpdateDismissed      EventKind = "update_dismissed"
+	EventDownloadStarted      EventKind = "download_started"
+	EventDownloadProgress     EventKind = "download_progress"
+	EventExtractionProgress   EventKind = "extraction_progress"
+	EventDownloadCancelled    EventKind = "download_cancelled"
+	EventReadyToInstall       EventKind = "ready_to_install"
+	EventInstallStarted       EventKind = "install_started"
+	EventCycleFinished        EventKind = "cycle_finished"
+	EventFailed               EventKind = "failed"
+	EventClosed               EventKind = "closed"
 )
 
 type Event struct {
@@ -132,6 +136,15 @@ func Reduce(before Snapshot, event Event) (Snapshot, error) {
 		}
 		update := *event.Update
 		after = Snapshot{Phase: PhaseAvailable, Update: &update}
+	case EventResumableUpdateFound:
+		if before.Phase != PhaseChecking {
+			return before, transitionError(before.Phase, event.Kind)
+		}
+		if !validUpdate(event.Update) || event.Update.InformationOnly {
+			return before, eventError(event.Kind)
+		}
+		update := *event.Update
+		after = Snapshot{Phase: PhaseAvailable, Update: &update, ReadyToInstall: true}
 	case EventReleaseNotes:
 		if event.Update == nil {
 			return before, eventError(event.Kind)
@@ -222,8 +235,7 @@ func Reduce(before Snapshot, event Event) (Snapshot, error) {
 		if event.Fault == nil || event.Fault.Code == "" || event.Fault.Message == "" {
 			return before, eventError(event.Kind)
 		}
-		if before.Phase == PhaseError && before.Fault != nil &&
-			before.Fault.Code == event.Fault.Code && before.Fault.Message == event.Fault.Message {
+		if before.Phase == PhaseError && before.Fault != nil {
 			return before, nil
 		}
 		fault := *event.Fault
@@ -235,7 +247,14 @@ func Reduce(before Snapshot, event Event) (Snapshot, error) {
 }
 
 func validUpdate(update *Update) bool {
-	return update != nil && update.Version != "" && update.Architecture == "arm64"
+	if update == nil || update.Version == "" || update.Architecture != "arm64" {
+		return false
+	}
+	if !update.InformationOnly {
+		return true
+	}
+	parsed, err := url.Parse(update.InformationURL)
+	return err == nil && parsed.Scheme == "https" && parsed.Host != ""
 }
 
 func eventError(kind EventKind) error {

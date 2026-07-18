@@ -760,7 +760,7 @@ export const zhCNMessages = {
     updates: {
       title: "应用更新", description: "自动检查默认每小时执行；下载始终需要你明确确认，不会静默安装。",
       loading: "正在读取更新状态…", queryError: "更新状态暂不可用。", retry: "重新读取", check: "检查更新", cancel: "取消",
-      download: "立即下载", confirmTitle: "确认下载更新", confirmDescription: "将开始下载并校验更新包；下载完成后不会在本卡中直接安装。",
+      download: "立即下载", information: "了解更新详情", confirmTitle: "确认下载更新", confirmDescription: "将开始下载并校验更新包；下载完成后不会在本卡中直接安装。",
       confirmDownload: "确认下载", snooze: "1 小时后提醒", skip: "跳过此版本", suppressed: "此版本已被跳过或稍后提醒；你仍可手动重新检查。",
       readyBoundary: "更新包已下载并通过校验，可以在安全结束后台任务后安装并重启。",
       install: "安装并重启", installConfirmTitle: "确认安装并重启", installConfirmDescription: "应用将停止接收新任务，等待当前写入完成并关闭本地数据库；完成前不会提交安装动作。", installConfirm: "安全安装", draining: "正在安全结束后台索引（阶段：{stage}），完成后安装并重启。", shutdownFailed: "安全关闭在“{stage}”阶段失败，已停止安装；请退出应用后重新启动再试。",

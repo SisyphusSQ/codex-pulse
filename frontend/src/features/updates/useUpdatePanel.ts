@@ -1,5 +1,5 @@
 import type { CancellablePromiseLike } from "@wailsio/runtime";
-import { Events } from "@wailsio/runtime";
+import { Browser, Events } from "@wailsio/runtime";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { getCurrentScope, onScopeDispose } from "vue";
 
@@ -83,6 +83,15 @@ export function useUpdatePanel() {
   const cancel = useMutation({ mutationFn: () => track(CancelUpdate()), onSettled: invalidate });
   const skip = useMutation({ mutationFn: (version: string) => track(SkipUpdate(version)), onSettled: invalidate });
   const snooze = useMutation({ mutationFn: (seconds: number) => track(SnoozeUpdate(seconds)), onSettled: invalidate });
+  const information = useMutation({
+    mutationFn: async (url: string) => {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:") throw new Error("unsafe information URL");
+      await Browser.OpenURL(parsed);
+      await track(SnoozeUpdate(3600));
+    },
+    onSettled: invalidate,
+  });
 
   let offEvent: (() => void) | undefined;
   if (getCurrentScope() !== undefined) {
@@ -99,5 +108,5 @@ export function useUpdatePanel() {
     });
   }
 
-  return { cancel, check, download, install, skip, snooze, state };
+  return { cancel, check, download, information, install, skip, snooze, state };
 }

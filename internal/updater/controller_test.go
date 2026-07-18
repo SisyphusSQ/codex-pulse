@@ -9,7 +9,7 @@ import (
 func TestControllerDrivesAdapterAndReducesCallbacks(t *testing.T) {
 	t.Parallel()
 
-	adapter := &fakeAdapter{}
+	adapter := &fakeDownloadAdapter{}
 	controller, err := NewController(adapter)
 	if err != nil {
 		t.Fatalf("NewController: %v", err)
@@ -77,6 +77,30 @@ func TestControllerDownloadRequiresAvailableUpdate(t *testing.T) {
 	adapter.emit(Event{Kind: EventDownloadStarted})
 	if err := controller.Download(); !errors.Is(err, ErrCannotDownload) {
 		t.Fatalf("second Download error=%v, want ErrCannotDownload", err)
+	}
+}
+
+func TestControllerRejectsInformationOnlyDownload(t *testing.T) {
+	adapter := &fakeDownloadAdapter{}
+	controller, err := NewController(adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.Check(); err != nil {
+		t.Fatal(err)
+	}
+	adapter.emit(Event{Kind: EventUpdateFound, Update: &Update{
+		Version: "42", Architecture: "arm64", InformationOnly: true,
+		InformationURL: "https://example.com/fallback",
+	}})
+	if err := controller.Download(); !errors.Is(err, ErrCannotDownload) {
+		t.Fatalf("Download information-only error = %v", err)
+	}
+	if adapter.downloadCalls != 0 {
+		t.Fatalf("native download calls = %d", adapter.downloadCalls)
 	}
 }
 
@@ -368,6 +392,25 @@ func TestControllerSubmitsUpdateChoiceAndReturnsIdle(t *testing.T) {
 	}
 	if snapshot := controller.Snapshot(); snapshot.Phase != PhaseIdle || snapshot.Update != nil {
 		t.Fatalf("snapshot=%#v, want idle", snapshot)
+	}
+}
+
+func TestControllerClassifiesFeedNetworkFailureAsCheckFault(t *testing.T) {
+	adapter := &fakeAdapter{}
+	controller, err := NewController(adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.Check(); err != nil {
+		t.Fatal(err)
+	}
+	adapter.emit(Event{Kind: EventFailed, Fault: &Fault{Code: FaultDownload, Message: "network unavailable"}})
+	snapshot := controller.Snapshot()
+	if snapshot.Phase != PhaseError || snapshot.Fault == nil || snapshot.Fault.Code != FaultCheck {
+		t.Fatalf("checking network failure = %#v", snapshot)
 	}
 }
 

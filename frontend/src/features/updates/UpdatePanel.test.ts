@@ -15,7 +15,7 @@ function mutation() {
 function updateState(overrides: Record<string, unknown> = {}) {
   return {
     phase: "available", currentVersion: "0.1.0", version: "42", displayVersion: "0.2.0", architecture: "arm64",
-    releaseNotes: "安全更新", contentLength: "4096", signatureStatus: "succeeded",
+    releaseNotes: "安全更新", contentLength: "4096", signatureStatus: "succeeded", informationOnly: false, informationUrl: "",
     progressStage: "", progressReceived: "0", progressTotal: "0", progressFraction: 0,
     faultCode: "", canCancel: false, readyToInstall: false, autoCheckEnabled: true,
     shutdownPhase: "running", shutdownStage: "", shutdownFailedStage: "",
@@ -27,7 +27,7 @@ function updateState(overrides: Record<string, unknown> = {}) {
 function readyPanel(overrides: Record<string, unknown> = {}) {
   return {
     state: { data: ref(updateState(overrides)), isPending: ref(false), isError: ref(false), refetch: vi.fn() },
-    check: mutation(), download: mutation(), install: mutation(), cancel: mutation(), skip: mutation(), snooze: mutation(),
+    check: mutation(), download: mutation(), information: mutation(), install: mutation(), cancel: mutation(), skip: mutation(), snooze: mutation(),
   };
 }
 
@@ -66,6 +66,15 @@ describe("UpdatePanel", () => {
     expect(panel.skip.mutate).toHaveBeenCalledWith("42");
     expect(wrapper.text()).toContain("安全更新");
     expect(wrapper.find("[data-testid='update-install']").exists()).toBe(false);
+  });
+
+  it("opens information-only updates without offering a download", async () => {
+    harness.panel = readyPanel({ informationOnly: true, informationUrl: "https://example.com/fallback" });
+    const panel = harness.panel as ReturnType<typeof readyPanel>;
+    const wrapper = mount(UpdatePanel, { global: { plugins: [createAppI18n()] } });
+    expect(wrapper.find("[data-testid='update-download']").exists()).toBe(false);
+    await wrapper.get("[data-testid='update-information']").trigger("click");
+    expect(panel.information.mutate).toHaveBeenCalledWith("https://example.com/fallback");
   });
 
   it("requires confirmation before safe install and reports draining", async () => {

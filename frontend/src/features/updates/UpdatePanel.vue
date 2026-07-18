@@ -19,10 +19,10 @@ const state = computed(() => panel.state.data.value);
 const draining = computed(() => panel.install.isPending.value || state.value?.shutdownPhase === "draining");
 const shutdownFailed = computed(() => state.value?.shutdownPhase === "closed" && Boolean(state.value.shutdownFailedStage));
 const working = computed(() => panel.check.isPending.value || panel.download.isPending.value ||
-	  panel.install.isPending.value || panel.cancel.isPending.value || panel.skip.isPending.value || panel.snooze.isPending.value);
+	  panel.information.isPending.value || panel.install.isPending.value || panel.cancel.isPending.value || panel.skip.isPending.value || panel.snooze.isPending.value);
 const progress = computed(() => Math.max(0, Math.min(100, (state.value?.progressFraction ?? 0) * 100)));
 const hasActionError = computed(() => panel.check.isError.value || panel.download.isError.value ||
-	  panel.install.isError.value || panel.cancel.isError.value || panel.skip.isError.value || panel.snooze.isError.value);
+	  panel.information.isError.value || panel.install.isError.value || panel.cancel.isError.value || panel.skip.isError.value || panel.snooze.isError.value);
 
 async function focus(testId: string) {
   await nextTick();
@@ -77,6 +77,10 @@ function keepDialogFocus(event: KeyboardEvent) {
 function skipCurrentVersion() {
   if (state.value?.version) panel.skip.mutate(state.value.version);
 }
+
+function openInformationUpdate() {
+  if (state.value?.informationUrl) panel.information.mutate(state.value.informationUrl);
+}
 </script>
 
 <template>
@@ -114,7 +118,8 @@ function skipCurrentVersion() {
           </div>
 
           <div v-if="state.promptVisible && !state.readyToInstall" class="flex flex-wrap gap-2">
-            <UiButton data-testid="update-download" variant="primary" :disabled="working" @click="openDownloadConfirmation">{{ t("settingsPage.updates.download") }}</UiButton>
+            <UiButton v-if="state.informationOnly" data-testid="update-information" variant="primary" :disabled="working" @click="openInformationUpdate">{{ t("settingsPage.updates.information") }}</UiButton>
+            <UiButton v-else data-testid="update-download" variant="primary" :disabled="working" @click="openDownloadConfirmation">{{ t("settingsPage.updates.download") }}</UiButton>
             <UiButton data-testid="update-snooze" :disabled="working" @click="panel.snooze.mutate(3600)">{{ t("settingsPage.updates.snooze") }}</UiButton>
             <UiButton data-testid="update-skip" :disabled="working" @click="skipCurrentVersion">{{ t("settingsPage.updates.skip") }}</UiButton>
           </div>

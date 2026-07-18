@@ -68,6 +68,28 @@ func TestReduceHandlesLateReleaseNotesWithoutCorruptingLifecycle(t *testing.T) {
 	}
 }
 
+func TestReduceResumableUpdateBecomesReadyWithoutInstallTransition(t *testing.T) {
+	checking := mustReduce(t, Snapshot{Phase: PhaseIdle}, Event{Kind: EventCheckStarted})
+	update := &Update{Version: "42", Architecture: "arm64"}
+	ready := mustReduce(t, checking, Event{Kind: EventResumableUpdateFound, Update: update})
+	if ready.Phase != PhaseAvailable || !ready.ReadyToInstall || ready.Update == nil {
+		t.Fatalf("unexpected resumable state: %#v", ready)
+	}
+}
+
+func TestReduceInformationOnlyRequiresHTTPSURL(t *testing.T) {
+	checking := mustReduce(t, Snapshot{Phase: PhaseIdle}, Event{Kind: EventCheckStarted})
+	valid := &Update{Version: "42", Architecture: "arm64", InformationOnly: true, InformationURL: "https://example.com/fallback"}
+	if after := mustReduce(t, checking, Event{Kind: EventUpdateFound, Update: valid}); after.Update == nil || !after.Update.InformationOnly {
+		t.Fatalf("unexpected information-only state: %#v", after)
+	}
+	invalid := *valid
+	invalid.InformationURL = "file:///tmp/unsafe"
+	if _, err := Reduce(checking, Event{Kind: EventUpdateFound, Update: &invalid}); !errors.Is(err, ErrInvalidEvent) {
+		t.Fatalf("unsafe information URL error = %v", err)
+	}
+}
+
 func TestReduceCheckCancellationReturnsIdle(t *testing.T) {
 	t.Parallel()
 
@@ -117,6 +139,10 @@ func TestReduceTypedFailureAndRecovery(t *testing.T) {
 	again := mustReduce(t, snapshot, Event{Kind: EventFailed, Fault: fault})
 	if again != snapshot {
 		t.Fatalf("duplicate failure mutated snapshot: before=%#v after=%#v", snapshot, again)
+	}
+	late := mustReduce(t, snapshot, Event{Kind: EventFailed, Fault: &Fault{Code: FaultDownload, Message: "late wrapper"}})
+	if late != snapshot {
+		t.Fatalf("late failure overwrote first terminal fault: before=%#v after=%#v", snapshot, late)
 	}
 
 	snapshot = mustReduce(t, snapshot, Event{Kind: EventCheckStarted})

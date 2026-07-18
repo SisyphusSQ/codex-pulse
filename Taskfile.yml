@@ -101,6 +101,14 @@ tasks:
       CODEX_PULSE_DOWNLOAD_URL_PREFIX: '{{.DOWNLOAD_URL_PREFIX}}'
       CODEX_PULSE_PUBLIC_KEY: '{{.PUBLIC_KEY}}'
 
+  release:e2e:
+    summary: 显式运行本地 synthetic release 与 N-1 真实升级矩阵（不发布、不触发 Actions）
+    preconditions:
+      - sh: test "$CODEX_PULSE_RUN_RELEASE_PIPELINE" = 1
+        msg: 请显式设置 CODEX_PULSE_RUN_RELEASE_PIPELINE=1
+    cmds:
+      - bash scripts/sparkle/local_release_pipeline.sh
+
   run:
     summary: 运行已构建的 macOS 开发应用
     cmds:
