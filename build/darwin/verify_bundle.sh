@@ -56,8 +56,10 @@ assert_equal LSMinimumSystemVersion "$(plist_value LSMinimumSystemVersion)" "$ex
 
 executable_path="$bundle_path/Contents/MacOS/$executable_name"
 icon_path="$bundle_path/Contents/Resources/${icon_name%.icns}.icns"
+resources_path="$bundle_path/Contents/Resources"
 [[ -x "$executable_path" ]] || fail "bundle executable is missing or not executable"
 [[ -s "$icon_path" ]] || fail "bundle icon is missing or empty"
+go run ./build/darwin bundle "$resources_path"
 
 file "$executable_path" | grep -Eq 'Mach-O .* arm64' \
     || fail "bundle executable is not a Mach-O arm64 binary"

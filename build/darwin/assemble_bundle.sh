@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: $0 <binary> <icon.icns> <Info.plist> <bundle.app> <version> <build-number>" >&2
+    echo "usage: $0 <binary> <icon.icns> <prepared-tray-dir> <Info.plist> <bundle.app> <version> <build-number>" >&2
     exit 64
 }
 
@@ -12,14 +12,17 @@ fail() {
     exit 1
 }
 
-[[ $# -eq 6 ]] || usage
+[[ $# -eq 7 ]] || usage
 
 binary_path=$1
 icon_path=$2
-plist_template=$3
-bundle_path=$4
-app_version=$5
-build_number=$6
+prepared_tray_dir=$3
+plist_template=$4
+bundle_path=$5
+app_version=$6
+build_number=$7
+tray_icon="$prepared_tray_dir/codex-pulse-tray-template.png"
+tray_icon_2x="$prepared_tray_dir/codex-pulse-tray-template@2x.png"
 
 [[ "$bundle_path" == "bin/Codex Pulse.app" ]] \
     || fail "bundle output is fixed to bin/Codex Pulse.app"
@@ -29,7 +32,7 @@ build_number=$6
     || fail "BUILD_NUMBER must be a non-negative integer"
 [[ "$(uname -s)" == Darwin ]] || fail "bundle assembly requires macOS"
 
-for path in "$binary_path" "$icon_path" "$plist_template"; do
+for path in "$binary_path" "$icon_path" "$tray_icon" "$tray_icon_2x" "$plist_template"; do
     [[ -f "$path" ]] || fail "required input does not exist: $path"
 done
 [[ -x "$binary_path" ]] || fail "application binary is not executable: $binary_path"
@@ -56,6 +59,8 @@ icon_name=${icon_name%.icns}.icns
 cp "$binary_path" "$staging_path/Contents/MacOS/$executable_name"
 chmod 0755 "$staging_path/Contents/MacOS/$executable_name"
 cp "$icon_path" "$staging_path/Contents/Resources/$icon_name"
+cp "$tray_icon" "$staging_path/Contents/Resources/codex-pulse-tray-template.png"
+cp "$tray_icon_2x" "$staging_path/Contents/Resources/codex-pulse-tray-template@2x.png"
 
 if command -v xattr >/dev/null 2>&1; then
     xattr -cr "$staging_path"
