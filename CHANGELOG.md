@@ -65,6 +65,7 @@
 
 #### note:
 1. [TOO-242] 固定 Wails3 `v3.0.0-alpha2.117` 与 macOS arm64 工具链能力基线，补充可复现 runbook、平台 adapter 边界和依赖升级准入规则
+2. [TOO-297] 冻结 v0.1 全链路验收矩阵、证据责任与失败重测规则，并新增逐场景完整性 gate 和六类负向回归
 
 #### script:
 1. [TOO-245] 新增本地与 GitHub PR CI 共用的统一验证入口、项目约束负向检查和 macOS 15 arm64 clean-state gate

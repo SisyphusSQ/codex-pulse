@@ -148,6 +148,12 @@ Codex Home 更换是独立的两步确认，不属于普通设置保存：先 me
 - 在线 quota / reset credits 作为默认开启、可随时关闭的实验性能力；始终显示来源、更新时间和失败降级状态。
 - session index repair 仅 dry-run + 显式确认。
 
+### M11 最终验收入口
+
+v0.1 的最终集成验收以 [`docs/test/m11-e1.md`](../../../test/m11-e1.md) 为统一 runbook。该矩阵使用稳定场景 ID，把 Onboarding、索引、账本、Quota、UI、Tray、Health、更新、性能、隐私、辅助功能和发布就绪分别映射到 TOO-298～303；已有子 runbook 只作为实现证据入口，不替代当前主干上的 required live E2E。未执行、失败或缺少清理证据的 required 场景保持 blocking，不能用演示 fixture 或历史结果标记 M11 完成。
+
+GitHub Actions 当前按用户要求停用；最终验收使用本地 gate 并如实记录 `actions_disabled_by_user`。正式发布、tag/release、真实 appcast/密钥和外部分发仍需用户另行明确授权；未授权时发布卡只能收口到可复验的 release-readiness。
+
 ## 后续阶段
 
 1. Codex-only 本地账本和工作台。

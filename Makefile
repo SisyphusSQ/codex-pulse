@@ -1,5 +1,5 @@
 .PHONY: harness-check harness-verify harness-review-gate m8-resource-fault \
-	m10-release-e2e \
+	m10-release-e2e m11-acceptance-matrix m11-acceptance-matrix-test \
 	project-check project-check-test project-generated-check-test verify verify-project verify-go \
 	verify-frontend verify-package verify-generated
 
@@ -58,3 +58,9 @@ m8-resource-fault:
 
 m10-release-e2e:
 	bash scripts/sparkle/local_release_pipeline.sh
+
+m11-acceptance-matrix:
+	bash scripts/validation/m11-acceptance-matrix.sh
+
+m11-acceptance-matrix-test: m11-acceptance-matrix
+	bash scripts/validation/m11-acceptance-matrix-test.sh
