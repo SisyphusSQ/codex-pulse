@@ -45,6 +45,7 @@
 42. [TOO-281] 实现 runtime、已解决健康事件、已完成 Job 与来源尝试的固定 24 小时 GORM 分批清理，新增低优先级 PASSIVE WAL checkpoint 和 robfig cron 启动补跑、小时周期、有限退避及运行投影，保证引用保护、取消重算、实时读写优先和应用关闭隔离
 43. [TOO-282] 接入七组件 Health Projection 只读查询、主导航健康摘要与唯一全局 Banner，固定权威优先级、影响原因时间、有限恢复入口、缓存失效重取、上次可信和查询失败语义
 44. [TOO-283] 新增最近 24 小时 Data Health 二级页面与只读查询，展示七组件健康、current/open 优先的任务事件、CPU/RSS/DB/WAL/磁盘/队列趋势，并固定有限安全恢复、独立评估时间、键盘焦点和敏感信息隔离语义
+45. [TOO-287] 新增 macOS AppKit 原生动态额度状态项，按真实 Quota window 自动显示本周单行或 5 小时/本周双行，固定可信、陈旧、冲突、不可用、真实零与独立健康升级语义，并提供主线程安全更新、事件合并、最后可信降级和完整辅助功能标签
 
 #### optimization:
 1. [TOO-285] 完善 AppIcon、ICNS 与 Tray Template 资产闭环，新增冻结源校验、严格灰阶 1x/2x 派生、macOS bundle/ZIP 资源读回及可重复导出与 live smoke 证据

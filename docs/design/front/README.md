@@ -41,7 +41,7 @@
 
 - 百分比始终表示 `remaining`。
 - 所有额度只显示普通百分比，不使用 `≤`、`?` 或状态胶囊解释不确定性；存在 last-known-good 时继续显示当前选定值，从未取得数值时显示 `--`。
-- 状态栏使用 Codex Pulse 单色模板图标 + 双行额度仪表；“5 小时”和“本周”各自保留短进度条与百分比，并提供浅色、深色和异常状态适配。
+- 状态栏使用 Codex Pulse 单色模板图标 + 动态额度仪表；响应同时存在 primary 与 secondary 时显示“5 小时 / 本周”双行，当前只有 secondary 时只显示“本周”，不为已不存在的 5 小时额度保留 `--` 占位；未来 primary 恢复后自动扩展为双行。各行保留短进度条与百分比，并提供浅色、深色和异常状态适配。
 - Popover 删除来源冲突、网络失败和索引异常说明区，使用数值与进度条直接表达 remaining。
 - Popover 增加 Reset credits 摘要，展示可用次数、总次数、累计剩余时间和最近到期时间。
 - Popover 增加今日 API 等价成本摘要，展示金额、token、周期和计算时间；最近会话扩展到 5 条。
@@ -112,6 +112,7 @@
 - 多显示器锚点是 `adapter-required`：底层使用公开 `PositionWindow`，锁定版本的 darwin 实现以 live `NSStatusItem` window 定位，但 `Bounds/GetScreen` 没有公开 SystemTray wrapper；生产层不得用反射、`unsafe` 或私有字段读取屏幕/handle。`PositionWindow` 的 nil error 只代表 native call 完成，必须再用公开 window geometry 与外部 AX status-item bounds 验证实际位置。
 - 锁定 alpha 的 `PositionWindow` 会 `orderFrontRegardless`，定位本身带显示副作用；其 darwin 实现还把 offset 乘以 `backingScaleFactor` 后写入 AppKit point 坐标，Retina 下存在重复缩放风险。adapter 必须把这两项作为已知缺陷，并在几何漂移时回退到零 offset 或 regular main window。
 - Wails 公开 `SystemTray` 只支持 icon/label/menu/attached window，没有 `NSStatusItem` handle 或 custom view。双行额度状态项由后续独立 AppKit adapter 承担；若 adapter 能力验证失败，fallback 为预渲染 template image 或只显示品牌 template icon，业务层与 Vue 不感知 AppKit 类型。
+- TOO-287 已落地隔离的 AppKit custom-view adapter：冻结稿 252×54 Retina 像素网格映射为 126pt 状态栏宽度，AppKit 创建/更新/销毁均回到 main queue；Quota Current 的实际 window 集合决定一行或双行，未知值不会伪装为 0，读取失败仅保留上一次实际存在的可信行。健康点与额度状态独立，完整语义同时写入 accessibility label。
 - native `NSPopover` 不是 v0.1 必需能力；只有 frozen attached window 不能满足 VoiceOver、焦点、锚点或失焦关闭门禁时，才允许在平台 adapter 内升级，不把原生对象泄漏给业务层。
 
 仓库内 `cmd/trayprobe` 是只用于验证的 bounded probe，能力矩阵和原子 evidence writer 位于 `internal/platform/tray`。它不进入生产 app composition、不读取真实 Home/数据库/凭据，验证与清理入口见 `docs/test/m9-e2.md`。
