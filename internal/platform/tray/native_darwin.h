@@ -1,5 +1,6 @@
 #ifndef CODEX_PULSE_TRAY_NATIVE_DARWIN_H
 #define CODEX_PULSE_TRAY_NATIVE_DARWIN_H
+#include <stdint.h>
 
 void *cp_tray_create(void);
 void cp_tray_update(
@@ -21,5 +22,6 @@ void cp_tray_update(
 );
 void cp_tray_close(void *handle);
 int cp_tray_capture_png(void *handle, const char *path);
+void cp_tray_set_click_handler(void *handle, uintptr_t callback_id, double width, double offset);
 
 #endif

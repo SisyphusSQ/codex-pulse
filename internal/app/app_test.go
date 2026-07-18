@@ -44,8 +44,8 @@ func TestApplicationOptions(t *testing.T) {
 	if got.Assets.Handler == nil {
 		t.Fatal("Assets.Handler must be configured")
 	}
-	if !got.Mac.ApplicationShouldTerminateAfterLastWindowClosed {
-		t.Fatal("application must terminate after the last window closes")
+	if got.Mac.ApplicationShouldTerminateAfterLastWindowClosed {
+		t.Fatal("tray application must remain alive when all windows are hidden")
 	}
 }
 
@@ -71,6 +71,9 @@ func TestMainWindowOptions(t *testing.T) {
 	}
 	if got.BackgroundColour != application.NewRGB(242, 245, 249) {
 		t.Fatalf("BackgroundColour = %#v", got.BackgroundColour)
+	}
+	if got.CloseButtonState != application.ButtonHidden || got.KeyBindings["cmd+w"] == nil {
+		t.Fatalf("durable main window controls = close:%v cmd+w:%v", got.CloseButtonState, got.KeyBindings["cmd+w"] != nil)
 	}
 }
 

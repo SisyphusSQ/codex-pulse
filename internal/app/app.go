@@ -32,20 +32,24 @@ func applicationOptions(assets fs.FS, service *Service) application.Options {
 			Handler: application.AssetFileServerFS(assets),
 		},
 		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 	}
 }
 
 func mainWindowOptions() application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
-		Name:      "main",
-		Title:     appName,
-		Width:     1120,
-		Height:    720,
-		MinWidth:  900,
-		MinHeight: 600,
-		URL:       "/",
+		Name:             "main",
+		Title:            appName,
+		Width:            1120,
+		Height:           720,
+		MinWidth:         900,
+		MinHeight:        600,
+		URL:              "/",
+		CloseButtonState: application.ButtonHidden,
+		KeyBindings: map[string]func(application.Window){
+			"cmd+w": func(window application.Window) { window.Hide() },
+		},
 		Mac: application.MacWindow{
 			Backdrop:                application.MacBackdropTranslucent,
 			InvisibleTitleBarHeight: 52,
@@ -148,7 +152,12 @@ func Run(assets fs.FS) error {
 		}
 		desktopApp := application.New(applicationOptions(assets, bindingService))
 		desktopApp.Window.NewWithOptions(mainWindowOptions())
-		trayHost, err := newTrayRuntimeHost(desktopApp.Event, bindingService, desktopApp.Quit)
+		popoverWindow := desktopApp.Window.NewWithOptions(popoverWindowOptions())
+		popover, err := newPopoverController(popoverWindow)
+		if err != nil {
+			return err
+		}
+		trayHost, err := newTrayRuntimeHost(desktopApp.Event, bindingService, desktopApp.Quit, popover.ConfigureStatusItem)
 		if err != nil {
 			return err
 		}
