@@ -19,3 +19,4 @@ func (*NativeStatusItem) CapturePNG(string) error      { return ErrNativeStatusI
 func (*NativeStatusItem) SetClickHandler(float64, float64, func(PopoverOrigin, bool)) error {
 	return ErrNativeStatusItem
 }
+func (*NativeStatusItem) SetMenuHandler(func(MenuAction)) error { return ErrNativeStatusItem }

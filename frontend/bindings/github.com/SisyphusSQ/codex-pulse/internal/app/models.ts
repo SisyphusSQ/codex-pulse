@@ -46,6 +46,10 @@ export interface BootstrapInfo {
     "platform": string;
 }
 
+export interface DesktopNavigationEvent {
+    "path": string;
+}
+
 export interface HealthComponentStatus {
     "component": string;
     "level": HealthProjectionLevel;

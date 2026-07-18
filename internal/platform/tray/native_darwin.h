@@ -23,5 +23,6 @@ void cp_tray_update(
 void cp_tray_close(void *handle);
 int cp_tray_capture_png(void *handle, const char *path);
 void cp_tray_set_click_handler(void *handle, uintptr_t callback_id, double width, double offset);
+void cp_tray_set_menu_handler(void *handle, uintptr_t callback_id);
 
 #endif

@@ -10,6 +10,7 @@ import type { SessionItem } from "@bindings/github.com/SisyphusSQ/codex-pulse/in
 import { formatCompactTokens, formatMicroUSD, formatPercent, numericValue } from "@/features/overview/format";
 import { businessQueryRoots } from "@/queries/business";
 import { usePopoverQueries } from "@/features/popover/usePopoverQueries";
+import { normalizeDesktopNavigationPath } from "@/router";
 
 defineOptions({ name: "PopoverView" });
 
@@ -107,8 +108,9 @@ async function refresh() {
 }
 
 async function openMain(path: string) {
-  await Events.Emit("codex-pulse:navigate", { path });
+  await Events.Emit("codex-pulse:navigate", { path: normalizeDesktopNavigationPath(path) });
   const main = Window.Get("main");
+  await main.UnMinimise();
   await main.Show();
   await main.Focus();
   await Window.Hide();

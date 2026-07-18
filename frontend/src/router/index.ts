@@ -36,6 +36,26 @@ export const appNavigation = [
   { name: "settings", path: "/settings", labelKey: "nav.settings", titleKey: "routes.settings.title", descriptionKey: "routes.settings.description" },
 ] as const satisfies readonly AppNavigationItem[];
 
+const desktopNavigationPaths = new Set([
+  ...appNavigation.map((item) => item.path),
+  "/local-status/data-health",
+]);
+
+export function normalizeDesktopNavigationPath(candidate: unknown): string {
+  if (typeof candidate !== "string" || !candidate.startsWith("/") || candidate.startsWith("//")) {
+    return "/overview";
+  }
+  try {
+    const parsed = new URL(candidate, "https://codex-pulse.local");
+    if (parsed.origin !== "https://codex-pulse.local" || !desktopNavigationPaths.has(parsed.pathname)) {
+      return "/overview";
+    }
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return "/overview";
+  }
+}
+
 const childRoutes = appNavigation.map((item) => ({
   path: item.path.slice(1),
   name: item.name,

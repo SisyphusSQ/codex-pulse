@@ -7,10 +7,12 @@ import (
 	"io/fs"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/metrics"
+	platformtray "github.com/SisyphusSQ/codex-pulse/internal/platform/tray"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 const appDescription = "Local-first Codex usage and quota desktop companion"
@@ -151,13 +153,26 @@ func Run(assets fs.FS) error {
 			return err
 		}
 		desktopApp := application.New(applicationOptions(assets, bindingService))
-		desktopApp.Window.NewWithOptions(mainWindowOptions())
+		mainWindow := desktopApp.Window.NewWithOptions(mainWindowOptions())
+		mainWindow.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+			mainWindow.Hide()
+			event.Cancel()
+		})
 		popoverWindow := desktopApp.Window.NewWithOptions(popoverWindowOptions())
 		popover, err := newPopoverController(popoverWindow)
 		if err != nil {
 			return err
 		}
-		trayHost, err := newTrayRuntimeHost(desktopApp.Event, bindingService, desktopApp.Quit, popover.ConfigureStatusItem)
+		var desktopCommands *desktopCommandCoordinator
+		trayHost, err := newTrayRuntimeHost(desktopApp.Event, bindingService, desktopApp.Quit, func(item *platformtray.NativeStatusItem) error {
+			if desktopCommands == nil {
+				return ErrDesktopCommand
+			}
+			if err := popover.ConfigureStatusItem(item); err != nil {
+				return err
+			}
+			return item.SetMenuHandler(desktopCommands.Handle)
+		})
 		if err != nil {
 			return err
 		}
@@ -194,6 +209,18 @@ func Run(assets fs.FS) error {
 			defer func() {
 				returnErr = errors.Join(returnErr, runtime.Close(context.Background()))
 			}()
+		}
+		var desktopDrainer desktopRuntimeDrainer
+		if runtime != nil {
+			desktopDrainer = runtime
+		}
+		desktopCommands, err = newDesktopCommandCoordinator(desktopCommandCoordinatorConfig{
+			Window: mainWindow, Emitter: desktopApp.Event, About: desktopApp.Menu,
+			Refresh: bindingService, Invalidation: invalidation, Drain: desktopDrainer,
+			Quit: desktopApp.Quit,
+		})
+		if err != nil {
+			return err
 		}
 		healthRuntime, err := startApplicationHealthRuntime(ctx, database)
 		if err != nil {

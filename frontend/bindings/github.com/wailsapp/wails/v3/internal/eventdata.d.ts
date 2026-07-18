@@ -12,6 +12,7 @@ import type * as app$0 from "../../../../SisyphusSQ/codex-pulse/internal/app/mod
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "codex-pulse:navigate": app$0.DesktopNavigationEvent;
             "codex-pulse:query-invalidated": app$0.QueryInvalidationEvent;
         }
     }
