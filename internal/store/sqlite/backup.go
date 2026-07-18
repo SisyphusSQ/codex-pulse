@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -106,6 +107,9 @@ func (store *Store) Backup(ctx context.Context, options BackupOptions) (BackupRe
 	if err != nil {
 		return BackupReport{}, classifyError("backup snapshot", err)
 	}
+	if err := verifyBackupFile(ctx, temporaryPath); err != nil {
+		return BackupReport{}, err
+	}
 	if err := secureAndSyncBackup(temporaryPath); err != nil {
 		return BackupReport{}, err
 	}
@@ -116,6 +120,30 @@ func (store *Store) Backup(ctx context.Context, options BackupOptions) (BackupRe
 	return BackupReport{
 		Path: destination, CopiedPages: progress.CopiedPages, TotalPages: progress.TotalPages,
 	}, nil
+}
+
+func verifyBackupFile(ctx context.Context, path string) error {
+	if err := secureDatabaseFile(path, false); err != nil {
+		return classifyError("verify completed backup", err)
+	}
+	config, err := normalizeConfig(Config{Path: path, MaxReadConnections: 1})
+	if err != nil {
+		return classifyError("verify completed backup", err)
+	}
+	database, err := sql.Open(driverName, readerDSN(config))
+	if err != nil {
+		return classifyError("verify completed backup", err)
+	}
+	database.SetMaxOpenConns(1)
+	defer database.Close()
+	var result string
+	if err := database.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&result); err != nil {
+		return classifyError("verify completed backup", err)
+	}
+	if result != "ok" {
+		return newClassifiedError("verify completed backup", ErrCorrupt, fmt.Errorf("SQLite quick_check did not pass"))
+	}
+	return nil
 }
 
 func stepBackup(

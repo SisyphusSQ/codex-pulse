@@ -11,6 +11,16 @@ import * as query$0 from "../query/models.js";
 // @ts-ignore: Unused imports
 import * as store$0 from "../store/models.js";
 
+export enum ApplicationMode {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    ApplicationModeNormal = "normal",
+    ApplicationModeRecovery = "recovery",
+};
+
 export interface BindingContractInfo {
     "version": string;
     "queryVersion": string;
@@ -44,6 +54,8 @@ export interface BootstrapInfo {
     "name": string;
     "locale": string;
     "platform": string;
+    "mode": ApplicationMode;
+    "recovery": MigrationRecoverySnapshot | null;
 }
 
 export interface DesktopNavigationEvent {
@@ -134,6 +146,49 @@ export enum HomeSwitchStrategy {
     HomeSwitchIndependentDatabase = "independent_database",
     HomeSwitchClearAndRebuild = "clear_and_rebuild",
 };
+
+export interface MigrationBackupInfo {
+    "name": string;
+    "sizeBytes": number;
+    "modifiedAtMs": number;
+}
+
+export enum MigrationRecoveryPhase {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    MigrationRecoveryFailed = "failed",
+    MigrationRecoveryRunning = "running",
+    MigrationRecoveryAwaitingConfirmation = "awaiting_confirmation",
+    MigrationRecoveryRestartRequired = "restart_required",
+};
+
+export interface MigrationRecoveryReceipt {
+    "phase": MigrationRecoveryPhase;
+    "restartRequired": boolean;
+    "auditWarning": boolean;
+}
+
+export interface MigrationRecoverySnapshot {
+    "version": string;
+    "phase": MigrationRecoveryPhase;
+    "stage": store$0.MigrationStage;
+    "code": string;
+    "currentVersion": number;
+    "targetVersion": number;
+    "failedVersion": number;
+    "canRetry": boolean;
+    "canExit": boolean;
+    "backups": MigrationBackupInfo[] | null;
+    "auditWarning": boolean;
+}
+
+export interface MigrationRestoreConfirmation {
+    "token": string;
+    "backup": MigrationBackupInfo;
+}
 
 export enum QueryInvalidationDomain {
     /**

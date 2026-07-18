@@ -33,10 +33,6 @@ export function AnalyzeSessionIndexRepair(): $CancellablePromise<$models.RepairD
     return $Call.ByID(2801159080);
 }
 
-export function Bootstrap(): $CancellablePromise<$models.BootstrapInfo> {
-    return $Call.ByID(1557176803);
-}
-
 export function CancelUpdate(): $CancellablePromise<$models.UpdateActionReceipt> {
     return $Call.ByID(2687146184);
 }

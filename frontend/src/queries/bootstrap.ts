@@ -1,6 +1,6 @@
 import { queryOptions } from "@tanstack/vue-query";
 
-import { Bootstrap } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service";
+import { Bootstrap } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/startupservice";
 
 export const bootstrapQueryKey = ["application", "bootstrap"] as const;
 

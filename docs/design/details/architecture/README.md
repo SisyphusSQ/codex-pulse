@@ -33,6 +33,12 @@ flowchart LR
 - `internal/tray`：状态栏摘要、Popover 和原生菜单。
 - `internal/app`：Wails bindings、query、refresh 和增量事件。
 
+### Migration Startup Gate 与恢复服务图
+
+`internal/app.Run` 在 composition root 将启动拆成互斥的 normal graph 与 recovery graph。SQLite 打开后先执行 append-only migration、空间检查、backup、transaction apply 和 schema verify；成功后才安装 builtin pricing 并开放业务 service/runtime。typed migration 失败会关闭 Store，normal repository、scheduler、metrics、health、retention 与普通 mutation 都不装配。
+
+recovery graph 只注册独立 `StartupService.Bootstrap` 与 `MigrationRecoveryService` 的 `State/Retry/Prepare/Confirm/Cancel/Exit`，不注册普通业务 façade、preferences、updater 或任何后台 runtime。Bootstrap 明确返回 `mode=normal|recovery`；Vue 在 recovery 时不挂载 RouterView/AppShell，只显示诊断、备份、retry、二次确认 restore 和 exit。调用取消后前端持续读回直至 controller 离开 `running`；审计完成失败由 receipt 与 snapshot 的 `auditWarning` 独立表达，不得误报数据库操作失败。恢复成功只要求退出并由下一进程重新经过 startup gate，禁止在半初始化进程内热切换服务图。
+
 ### 公共 Query Contract
 
 `internal/query` 固定 `query-v1` 非泛型 DTO，供 M6 的 usage/session/project 与 quota/source/job/health/settings query service 组合。每个 endpoint 先构造 immutable `Specification`，声明允许的 sort/filter 字段、operator、默认 limit、最大 limit、日期范围和稳定 tie-breaker；客户端字符串只有通过 allowlist 和 arity 校验后才能进入业务 service。公共层只返回 `ValidatedRequest`，不拼接 SQL、不访问 SQLite，也不把 GORM model、数据库 row 或内部主键暴露给 Wails。

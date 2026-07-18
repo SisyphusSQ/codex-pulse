@@ -31,7 +31,7 @@ func TestBindingServiceExposesExactAllowlistAndContract(t *testing.T) {
 		gotMethods = append(gotMethods, reflect.TypeOf(service).Method(index).Name)
 	}
 	wantMethods := []string{
-		"AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DataHealth", "Health",
+		"AnalyzeSessionIndexRepair", "ConfirmHomeSwitch", "Contracts", "DataHealth", "Health",
 		"HealthProjection", "Job", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
 		"PlanHomeSwitch", "ProjectDetail", "QuotaCurrent", "RecoverHomeSwitch",
 		"RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings", "Source",
@@ -122,19 +122,18 @@ func TestBindingServiceObservesQueriesButNotCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
-	_ = service.Bootstrap()
 	_ = service.Contracts()
 	if _, err := service.UsageCost(t.Context(), usagecost.UsageCostRequest{}); err != nil {
 		t.Fatalf("UsageCost() error = %v", err)
 	}
-	if observer.calls != 3 {
-		t.Fatalf("query observations = %d, want 3", observer.calls)
+	if observer.calls != 2 {
+		t.Fatalf("query observations = %d, want 2", observer.calls)
 	}
 	if _, err := service.RequestQuotaRefresh(t.Context(), quotaonline.RefreshSourceQuota); err != nil {
 		t.Fatalf("RequestQuotaRefresh() error = %v", err)
 	}
-	if observer.calls != 3 {
-		t.Fatalf("observations after command = %d, want 3", observer.calls)
+	if observer.calls != 2 {
+		t.Fatalf("observations after command = %d, want 2", observer.calls)
 	}
 }
 
