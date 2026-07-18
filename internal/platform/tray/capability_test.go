@@ -19,13 +19,16 @@ func TestLockedCapabilities(t *testing.T) {
 	for _, capability := range capabilities {
 		status[capability.ID] = capability.Status
 	}
-	if status["multi-display-anchor"] != StatusAdapterRequired {
+	if status["multi-display-anchor"] != StatusSupported {
 		t.Fatalf("multi-display anchor = %q", status["multi-display-anchor"])
 	}
-	for _, id := range []string{"native-status-item-custom-view", "native-nspopover"} {
-		if status[id] != StatusAdapterRequired {
+	for _, id := range []string{"native-status-item-custom-view", "status-item-accessibility", "platform-change-recovery"} {
+		if status[id] != StatusSupported {
 			t.Fatalf("%s = %q", id, status[id])
 		}
+	}
+	if status["native-nspopover"] != StatusAdapterRequired {
+		t.Fatalf("native-nspopover = %q", status["native-nspopover"])
 	}
 }
 

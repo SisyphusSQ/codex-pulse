@@ -168,6 +168,8 @@ TOO-288 使用自有 `NSStatusItem` 的有限 click/anchor adapter 驱动独立 
 
 TOO-289 在同一 AppKit status item 上增加有限原生右键菜单，并把五个菜单项映射为 typed app command：概览/设置通过 durable `main` 的 UnMinimise、Show、Focus 与有限 route event 激活，刷新只请求 quota/reset credits durable command 并发布 query invalidation，About 复用 Wails 原生面板。主窗口的 `WindowClosing` 固定 cancel+hide，避免系统 `Cmd-W` 销毁 Wails window；退出先等待 lifecycle control admission、quota、scheduler 与 coordinator drain，15 秒超时保留应用并记录有限错误，只有 drain 完成才调用 Quit。Popover route 同样通过 finite path allowlist，外部、未知和 `/popover` 深链 fail closed 到 `/overview`。
 
+TOO-290 把最终平台 fallback 固定在同一最薄 AppKit adapter 内：每次点击都从 status-item window 的当前 `NSScreen` 读取，X 按该屏 `visibleFrame` clamp，Y 按主屏顶部全局坐标转换，屏幕容不下固定 Popover 时 fail closed。display、active Space、wake 或 effective appearance 变化只发非阻塞 typed custom event，由前端异步隐藏已显示 Popover；下次激活重新取锚点，不复制任何 quota/session 业务逻辑。状态项公开有限 role/label/help/action，并仅在 label 或真实 accessibility frame 变化时发布匹配通知；Popover WindowShow 后先聚焦再异步刷新，Escape 同时由 WebView 与 native window option 处理。Close 关闭 callback registration 后以 AppKit main-queue barrier 注销 observer 和 view block，不等待会反向进入 Wails main queue 的调用，主窗口始终是 fallback。
+
 ## 后续评审重点
 
 TOO-272 已实现共享应用壳、路由、基础状态交互和 Wails Bootstrap ready/error/retry；TOO-273 已实现概览，TOO-274 已实现 Sessions 列表与详情，TOO-275 已实现 Projects 列表与详情，TOO-276 已实现 Quota 窗口、来源/仲裁、Reset credits、刷新状态与手动刷新 command；TOO-277 已实现本机状态、Settings、有限运行控制、Home 两步切换和 Session index Analyze-only dry-run；TOO-278 已统一全局状态、route recovery、keyboard/focus、辅助语义和六页面视觉基线；TOO-287/288 已交付动态原生状态项和冻结 Popover。图标方向和健康信息层级继续冻结；后续平台卡必须复用当前 token、query-state、辅助模式降级与 macOS-only 边界。

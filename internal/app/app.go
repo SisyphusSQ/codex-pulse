@@ -171,6 +171,11 @@ func Run(assets fs.FS) error {
 			if err := popover.ConfigureStatusItem(item); err != nil {
 				return err
 			}
+			if err := item.SetPlatformChangeHandler(func(change platformtray.PlatformChange) {
+				desktopApp.Event.Emit(PlatformChangedEventName, change)
+			}); err != nil {
+				return err
+			}
 			return item.SetMenuHandler(desktopCommands.Handle)
 		})
 		if err != nil {

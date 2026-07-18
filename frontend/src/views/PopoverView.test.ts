@@ -159,15 +159,43 @@ describe("PopoverView", () => {
 
   it("updates the local-day request clock whenever the window shows", async () => {
     const now = vi.spyOn(Date, "now").mockReturnValue(100);
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
     renderPopover();
     expect(popoverHarness.requestClock?.value).toBe(100);
 
     now.mockReturnValue(200);
     popoverHarness.events.get("common:WindowShow")?.();
     await nextTick();
+    await flushPromises();
 
     expect(popoverHarness.requestClock?.value).toBe(200);
+    expect(focus).toHaveBeenCalledOnce();
+    focus.mockRestore();
     now.mockRestore();
+  });
+
+  it("focuses immediately even while the show refresh is pending", async () => {
+    const { queryClient } = renderPopover();
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    vi.spyOn(queryClient, "invalidateQueries").mockImplementation(() => new Promise(() => {}));
+
+    popoverHarness.events.get("common:WindowShow")?.();
+    await nextTick();
+
+    expect(focus).toHaveBeenCalledOnce();
+    focus.mockRestore();
+  });
+
+  it("hides on Escape without depending only on the native window option", async () => {
+    const { wrapper } = renderPopover();
+    await wrapper.get("main").trigger("keydown", { key: "Escape" });
+    expect(popoverHarness.popoverHide).toHaveBeenCalledOnce();
+  });
+
+  it("hides through the asynchronous frontend route after a native platform change", async () => {
+    renderPopover();
+    popoverHarness.events.get("codex-pulse:platform-changed")?.();
+    expect(popoverHarness.popoverHide).toHaveBeenCalledOnce();
   });
 
   it("navigates through the durable named main window and then hides the popover", async () => {

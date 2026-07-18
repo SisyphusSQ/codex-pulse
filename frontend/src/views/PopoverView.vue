@@ -14,6 +14,8 @@ import { normalizeDesktopNavigationPath } from "@/router";
 
 defineOptions({ name: "PopoverView" });
 
+const PLATFORM_CHANGED_EVENT_NAME = "codex-pulse:platform-changed" satisfies keyof Events.CustomEvents;
+
 const { t } = useI18n();
 const queryClient = useQueryClient();
 const requestClock = ref(Date.now());
@@ -35,6 +37,7 @@ const latestUpdatedAt = computed(() => Math.max(
 ));
 
 let disposeWindowEvents = () => {};
+const popoverRoot = ref<HTMLElement | null>(null);
 
 onMounted(() => {
   const offHide = Events.On(Events.Types.Common.WindowHide, () => {
@@ -46,11 +49,18 @@ onMounted(() => {
   });
   const offShow = Events.On(Events.Types.Common.WindowShow, () => {
     requestClock.value = Date.now();
-    void nextTick(refresh);
+    void nextTick(() => {
+      popoverRoot.value?.querySelector<HTMLElement>("button:not([disabled]), [href], [tabindex]:not([tabindex='-1'])")?.focus();
+      void refresh();
+    });
+  });
+  const offPlatform = Events.On(PLATFORM_CHANGED_EVENT_NAME, () => {
+    void Window.Hide();
   });
   disposeWindowEvents = () => {
     offHide();
     offShow();
+    offPlatform();
   };
 });
 
@@ -119,10 +129,16 @@ async function openMain(path: string) {
 function openSession(session: SessionItem) {
   void openMain(`/sessions?session=${encodeURIComponent(session.sessionId)}`);
 }
+
+function hideOnEscape(event: KeyboardEvent) {
+  if (event.key !== "Escape") return;
+  event.preventDefault();
+  void Window.Hide();
+}
 </script>
 
 <template>
-  <main class="popover" aria-labelledby="popover-title">
+  <main ref="popoverRoot" class="popover" aria-labelledby="popover-title" @keydown="hideOnEscape">
     <header class="popover__header">
       <div><span class="popover__mark" aria-hidden="true">&gt;_</span><strong id="popover-title">{{ t("app.name") }}</strong></div>
       <span class="popover__updated" aria-live="polite">{{ t("popover.updated", { value: formatDateTime(latestUpdatedAt) }) }}</span>
