@@ -58,3 +58,4 @@
 #### script:
 1. [TOO-245] 新增本地与 GitHub PR CI 共用的统一验证入口、项目约束负向检查和 macOS 15 arm64 clean-state gate
 2. [TOO-284] 新增 macOS arm64 资源开销与 synthetic 故障注入 harness，机械校验 application collector duty、查询延迟、RSS、WAL 及权限、磁盘、锁、坏行、网络、休眠和进程中断恢复矩阵
+3. [TOO-286] 新增锁定 Wails3 版本的 Tray、附着窗口与 NSStatusItem 能力探针，真实验证 template、左/右键菜单、窗口生命周期及几何读回，并冻结 AppKit adapter 缺口与 fallback

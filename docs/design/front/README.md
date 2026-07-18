@@ -102,6 +102,20 @@
 - 状态栏：使用 19px 单色 `>_` 终端模板；冻结 Pencil 导出在 package 时确定性归一为保留 alpha 的严格灰阶 1x/2x bundle 资源，正常、stale、conflict、unknown 和 exhausted 只改变系统模板色与额度语义，不更换品牌轮廓。
 - PNG 仅作为设计与实现交接资产；正式 macOS AppIcon / `.icns` 在代码仓库中从 Pencil 源稿生成并按 Apple 安全区复核。
 
+## Tray / Popover 平台能力边界
+
+当前平台基线精确锁定为 `github.com/wailsapp/wails/v3@v3.0.0-alpha2.117`、macOS 15+ arm64：
+
+- template icon 使用公开 `SystemTray.SetTemplateIcon`；左键、右键与菜单分别使用 `OnClick`、`OnRightClick` 和 `OpenMenu`。
+- 冻结版 Popover 使用 `AttachWindow(...).WindowOffset(...)` 连接 frameless、always-on-top、失焦隐藏的 Wails WebView window。这是 Popover-like 行为，不等价于原生 `NSPopover`。
+- attached window 的显示、隐藏与激活使用 `ShowWindow`、`HideWindow` 和 Wails 内部的 `Show().Focus()`；macOS app 使用 `ActivationPolicyAccessory`，避免 Tray companion 无条件占用 Dock。
+- 多显示器锚点是 `adapter-required`：底层使用公开 `PositionWindow`，锁定版本的 darwin 实现以 live `NSStatusItem` window 定位，但 `Bounds/GetScreen` 没有公开 SystemTray wrapper；生产层不得用反射、`unsafe` 或私有字段读取屏幕/handle。`PositionWindow` 的 nil error 只代表 native call 完成，必须再用公开 window geometry 与外部 AX status-item bounds 验证实际位置。
+- 锁定 alpha 的 `PositionWindow` 会 `orderFrontRegardless`，定位本身带显示副作用；其 darwin 实现还把 offset 乘以 `backingScaleFactor` 后写入 AppKit point 坐标，Retina 下存在重复缩放风险。adapter 必须把这两项作为已知缺陷，并在几何漂移时回退到零 offset 或 regular main window。
+- Wails 公开 `SystemTray` 只支持 icon/label/menu/attached window，没有 `NSStatusItem` handle 或 custom view。双行额度状态项由后续独立 AppKit adapter 承担；若 adapter 能力验证失败，fallback 为预渲染 template image 或只显示品牌 template icon，业务层与 Vue 不感知 AppKit 类型。
+- native `NSPopover` 不是 v0.1 必需能力；只有 frozen attached window 不能满足 VoiceOver、焦点、锚点或失焦关闭门禁时，才允许在平台 adapter 内升级，不把原生对象泄漏给业务层。
+
+仓库内 `cmd/trayprobe` 是只用于验证的 bounded probe，能力矩阵和原子 evidence writer 位于 `internal/platform/tray`。它不进入生产 app composition、不读取真实 Home/数据库/凭据，验证与清理入口见 `docs/test/m9-e2.md`。
+
 ## Apple 设计依据
 
 - [Meet Liquid Glass](https://developer.apple.com/videos/play/wwdc2025/219/)
