@@ -84,11 +84,24 @@ func TestProjectorNeverConvertsUnknownToZero(t *testing.T) {
 		{Kind: WindowPrimary, Freshness: FreshnessNeverLoaded},
 		{Kind: WindowSecondary, RemainingPercent: float64Pointer(0), Freshness: FreshnessFresh},
 	}})
-	if model.Rows[0].Value != "--" || model.Rows[0].Known || model.Rows[0].Progress != 0 {
-		t.Fatalf("unknown primary was misrepresented: %#v", model.Rows[0])
-	}
-	if model.Rows[1].Value != "0%" || !model.Rows[1].Known || model.State != DisplayUnavailable {
+	if len(model.Rows) != 1 || model.Rows[0].Kind != WindowSecondary || model.Rows[0].Value != "0%" ||
+		!model.Rows[0].Known || model.Rows[0].Progress != 0 || model.State != DisplayUnavailable ||
+		strings.Contains(model.AccessibilityLabel, "5 小时") {
 		t.Fatalf("known zero or aggregate state is wrong: %#v", model)
+	}
+}
+
+func TestProjectorKeepsRealPrimaryZeroVisible(t *testing.T) {
+	t.Parallel()
+
+	model := NewProjector().Project(Snapshot{Windows: []WindowSnapshot{
+		{Kind: WindowPrimary, RemainingPercent: float64Pointer(0), Freshness: FreshnessFresh},
+		{Kind: WindowSecondary, RemainingPercent: float64Pointer(70), Freshness: FreshnessFresh},
+	}})
+	if len(model.Rows) != 2 || model.Rows[0].Kind != WindowPrimary || model.Rows[0].Value != "0%" ||
+		!model.Rows[0].Known || model.Rows[0].Progress != 0 ||
+		!strings.Contains(model.AccessibilityLabel, "5 小时剩余 0%") {
+		t.Fatalf("real primary zero was hidden or misrepresented: %#v", model)
 	}
 }
 
@@ -123,6 +136,23 @@ func TestProjectorDoesNotResurrectRetiredPrimaryAfterLaterReadFailure(t *testing
 	if failed.State != DisplayStale || len(failed.Rows) != 1 ||
 		failed.Rows[0].Kind != WindowSecondary || failed.Rows[0].Value != "70%" {
 		t.Fatalf("retired primary was resurrected: %#v", failed)
+	}
+}
+
+func TestProjectorDoesNotResurrectNullPrimaryAfterLaterReadFailure(t *testing.T) {
+	t.Parallel()
+
+	projector := NewProjector()
+	_ = projector.Project(trustedSnapshot(62, 71))
+	_ = projector.Project(Snapshot{Windows: []WindowSnapshot{
+		{Kind: WindowPrimary, Freshness: FreshnessNeverLoaded},
+		{Kind: WindowSecondary, RemainingPercent: float64Pointer(70), Freshness: FreshnessFresh},
+	}})
+	failed := projector.Project(Snapshot{ReadError: errors.New("transport failed")})
+	if failed.State != DisplayStale || len(failed.Rows) != 1 ||
+		failed.Rows[0].Kind != WindowSecondary || failed.Rows[0].Value != "70%" ||
+		strings.Contains(failed.AccessibilityLabel, "5 小时") {
+		t.Fatalf("null primary was resurrected: %#v", failed)
 	}
 }
 

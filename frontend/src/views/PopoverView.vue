@@ -22,6 +22,9 @@ const requestClock = ref(Date.now());
 const queries = usePopoverQueries(requestClock);
 const quota = computed(() => queries.quota.data.value?.current);
 const windows = computed(() => quota.value?.windows ?? []);
+const visibleWindows = computed(() => windows.value.filter(
+  (window) => window.windowKind !== "primary" || window.remainingPercent !== null,
+));
 const sessions = computed(() => queries.sessions.data.value?.items ?? []);
 const usage = computed(() => queries.usage.data.value);
 const quotaFatal = computed(() => queries.quota.isError.value && quota.value === undefined);
@@ -147,8 +150,8 @@ function hideOnEscape(event: KeyboardEvent) {
     <section class="popover__quota" :aria-label="t('popover.quota.title')">
       <p v-if="queries.quota.isPending.value && quota === undefined" class="popover__state">{{ t("popover.state.loading") }}</p>
       <button v-else-if="quotaFatal" class="popover__state popover__retry" @click="queries.quota.refetch()">{{ t("popover.state.retryQuota") }}</button>
-      <p v-else-if="windows.length === 0" class="popover__state">{{ t("popover.state.emptyQuota") }}</p>
-      <article v-for="window in windows" :key="window.windowKind" class="popover__quota-row">
+      <p v-else-if="visibleWindows.length === 0" class="popover__state">{{ t("popover.state.emptyQuota") }}</p>
+      <article v-for="window in visibleWindows" :key="window.windowKind" class="popover__quota-row">
         <div><strong>{{ windowLabel(window) }}</strong><small>{{ resetLabel(window.resetRemainingMs) }}</small></div>
         <div class="popover__quota-value">
           <strong>{{ formatPercent(window.remainingPercent) }}</strong>

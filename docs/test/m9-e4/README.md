@@ -12,7 +12,7 @@
 
 | 检查 | 结果 | 证据 |
 | --- | --- | --- |
-| 动态额度窗口 | PASS | secondary-only 时 DOM 与截图均无“5 小时”及 `5 小时 --`；primary 恢复后自动出现 5 小时行 |
+| 动态额度窗口 | PASS | primary 缺席或 `remainingPercent = null` 时 DOM 均无“5 小时”及 `5 小时 --`；真实 `0%` 保留，primary 恢复有效值后自动出现 5 小时行 |
 | 三个查询 region | PASS | Quota、UsageCost、Sessions 独立 query；失败仅降级对应 region；存在缓存时保留上次可信数据 |
 | 关闭与恢复 | PASS | Wails `WindowHide` 取消三个 query root 的在途 binding；`WindowShow` 更新本地日 request 时钟并重新 invalidate，跨午夜不会沿用昨日范围，Vue Query cache 不清空 |
 | 内容与隐私 | PASS | Reset Credits、估算声明、最多 5 个 safe Session item；无 path、正文、credential 或 opaque cursor 展示 |

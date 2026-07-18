@@ -150,7 +150,8 @@ func (projector *Projector) Project(snapshot Snapshot) StatusViewModel {
 	// currently exist. Remove an absent window so a later transport failure
 	// cannot resurrect a retired quota row from an older plan.
 	for _, kind := range []WindowKind{WindowPrimary, WindowSecondary} {
-		if _, exists := windows[kind]; !exists {
+		window, exists := windows[kind]
+		if !exists || (kind == WindowPrimary && window.RemainingPercent == nil) {
 			delete(projector.lastTrusted, kind)
 		}
 	}
@@ -236,7 +237,8 @@ func buildModel(windows map[WindowKind]WindowSnapshot, state DisplayState, healt
 		kind  WindowKind
 		label string
 	}{{WindowPrimary, "5 小时"}, {WindowSecondary, "本周"}} {
-		if _, exists := windows[definition.kind]; exists {
+		window, exists := windows[definition.kind]
+		if exists && (definition.kind != WindowPrimary || window.RemainingPercent != nil) {
 			model.Rows = append(model.Rows, buildRow(definition.kind, definition.label, windows))
 		}
 	}
