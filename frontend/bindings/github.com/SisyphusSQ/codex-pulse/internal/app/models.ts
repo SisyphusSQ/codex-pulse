@@ -244,3 +244,45 @@ export interface SettingsUpdatesUpdate {
     "autoCheckEnabled": boolean;
     "checkIntervalSeconds": number;
 }
+
+export interface UpdateActionReceipt {
+    "result": string;
+}
+
+/**
+ * UpdateStateChangedEvent is only an invalidation hint. Update metadata is
+ * loaded through the allowlisted UpdateState query instead of being broadcast.
+ */
+export interface UpdateStateChangedEvent {
+    "version": string;
+}
+
+export interface UpdateStateResponse {
+    "phase": string;
+    "currentVersion": string;
+    "version": string;
+    "displayVersion": string;
+    "architecture": string;
+    "releaseNotes": string;
+    "contentLength": string;
+    "signatureStatus": string;
+    "progressStage": string;
+    "progressReceived": string;
+    "progressTotal": string;
+    "progressFraction": number;
+    "faultCode": string;
+    "canCancel": boolean;
+    "readyToInstall": boolean;
+    "autoCheckEnabled": boolean;
+    "checkIntervalSeconds": number;
+    "skippedVersion": string | null;
+    "snoozeUntilMs": number | null;
+    "lastCheckAtMs": number | null;
+    "promptVisible": boolean;
+}
+
+export interface UpdateTriggerReceipt {
+    "accepted": boolean;
+    "reason": string;
+    "checkedAtMs": number | null;
+}

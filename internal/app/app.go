@@ -154,8 +154,13 @@ func Run(assets fs.FS) error {
 			return err
 		}
 		desktopApp := application.New(applicationOptions(assets, bindingService))
-		updateRuntime, err := startApplicationUpdater(updater.NewSparkleAdapter())
+		updateRuntime, err := startApplicationUpdater(ctx, updater.NewSparkleAdapter(), preferenceStore, func(updater.Snapshot) {
+			desktopApp.Event.Emit(UpdateStateChangedEventName, UpdateStateChangedEvent{Version: UpdateStateChangedContractVersion})
+		})
 		if err != nil {
+			return err
+		}
+		if err := bindingService.bindUpdateControls(updateRuntime); err != nil {
 			return err
 		}
 		desktopApp.OnShutdown(func() {
@@ -213,6 +218,10 @@ func Run(assets fs.FS) error {
 		runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
 			Database: database, Registrar: desktopApp.Event, Preferences: preferenceStore,
 			Invalidation: invalidation,
+			UpdateWake: func(ctx context.Context) error {
+				_, wakeErr := updateRuntime.Wake(ctx)
+				return wakeErr
+			},
 		})
 		if err != nil {
 			return err

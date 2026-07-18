@@ -2,17 +2,23 @@
 
 package updater
 
-import "testing"
+import (
+	"testing"
+	"unicode/utf8"
+)
 
 func TestNativeUpdateFoundMapping(t *testing.T) {
 	t.Parallel()
 
-	event := nativeEvent(nativeEventUpdateFound, "42", "0.2.0", 128, 1, 0, 0, 0, 0, "")
+	event := nativeEvent(nativeEventUpdateFound, "42", "0.2.0", "安全更新", 128, 1, 0, 0, 0, 0, "")
 	if event.Kind != EventUpdateFound || event.Update == nil {
 		t.Fatalf("event=%#v, want update found", event)
 	}
 	if event.Update.Version != "42" || event.Update.DisplayVersion != "0.2.0" || event.Update.ContentLength != 128 {
 		t.Fatalf("update=%#v, want native metadata", event.Update)
+	}
+	if event.Update.ReleaseNotes != "安全更新" {
+		t.Fatalf("release notes=%q, want bounded plain text", event.Update.ReleaseNotes)
 	}
 	if event.Update.Architecture != "arm64" || event.Update.FeedSignatureStatus != SignatureSucceeded {
 		t.Fatalf("update=%#v, want arm64 and succeeded feed signature", event.Update)
@@ -37,18 +43,18 @@ func TestNativeProgressAndLifecycleMapping(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			event := nativeEvent(test.kind, "", "", 0, 0, 12, 48, 0.25, 0, "")
+			event := nativeEvent(test.kind, "", "", "", 0, 0, 12, 48, 0.25, 0, "")
 			if event.Kind != test.want {
 				t.Fatalf("kind=%q, want %q", event.Kind, test.want)
 			}
 		})
 	}
 
-	download := nativeEvent(nativeEventDownloadProgress, "", "", 0, 0, 12, 48, 0, 0, "")
+	download := nativeEvent(nativeEventDownloadProgress, "", "", "", 0, 0, 12, 48, 0, 0, "")
 	if download.Received != 12 || download.Total != 48 {
 		t.Fatalf("download=%#v, want 12/48", download)
 	}
-	extraction := nativeEvent(nativeEventExtractionProgress, "", "", 0, 0, 0, 0, 0.25, 0, "")
+	extraction := nativeEvent(nativeEventExtractionProgress, "", "", "", 0, 0, 0, 0, 0.25, 0, "")
 	if extraction.Fraction != 0.25 {
 		t.Fatalf("extraction=%#v, want 0.25", extraction)
 	}
@@ -71,9 +77,24 @@ func TestSparkleErrorMapping(t *testing.T) {
 		{code: 9999, want: FaultNative},
 	}
 	for _, test := range tests {
-		event := nativeEvent(nativeEventFailed, "", "", 0, 0, 0, 0, 0, test.code, "boom")
+		event := nativeEvent(nativeEventFailed, "", "", "", 0, 0, 0, 0, 0, test.code, "boom")
 		if event.Fault == nil || event.Fault.Code != test.want || event.Fault.Message != "boom" {
 			t.Fatalf("code %d event=%#v, want %q boom", test.code, event, test.want)
 		}
+	}
+}
+
+func TestBoundedReleaseNotesPreservesUTF8(t *testing.T) {
+	value := string(make([]byte, maximumReleaseNotesBytes-1)) + "安全"
+	got := boundedReleaseNotes(value)
+	if len(got) > maximumReleaseNotesBytes || !utf8.ValidString(got) {
+		t.Fatalf("bounded release notes len=%d valid=%t", len(got), utf8.ValidString(got))
+	}
+}
+
+func TestNativeReleaseNotesRefreshMapping(t *testing.T) {
+	event := nativeEvent(nativeEventReleaseNotes, "", "", "外链安全更新", 0, 0, 0, 0, 0, 0, "")
+	if event.Kind != EventReleaseNotes || event.Update == nil || event.Update.ReleaseNotes != "外链安全更新" {
+		t.Fatalf("event=%#v, want release notes refresh", event)
 	}
 }

@@ -44,6 +44,30 @@ func TestReduceCheckFindDownloadCancel(t *testing.T) {
 	}
 }
 
+func TestReduceRefreshesReleaseNotesWithoutChangingUpdate(t *testing.T) {
+	t.Parallel()
+
+	before := availableSnapshot()
+	after := mustReduce(t, before, Event{Kind: EventReleaseNotes, Update: &Update{ReleaseNotes: "安全更新"}})
+	if after.Update == nil || after.Update.Version != before.Update.Version || after.Update.ReleaseNotes != "安全更新" {
+		t.Fatalf("after=%#v, want existing update with refreshed notes", after)
+	}
+}
+
+func TestReduceHandlesLateReleaseNotesWithoutCorruptingLifecycle(t *testing.T) {
+	t.Parallel()
+
+	downloading := mustReduce(t, availableSnapshot(), Event{Kind: EventDownloadStarted})
+	downloading = mustReduce(t, downloading, Event{Kind: EventReleaseNotes, Update: &Update{ReleaseNotes: "迟到摘要"}})
+	if downloading.Phase != PhaseDownloading || downloading.Update == nil || downloading.Update.ReleaseNotes != "迟到摘要" {
+		t.Fatalf("downloading=%#v, want lifecycle preserved with notes", downloading)
+	}
+	idle := Snapshot{Phase: PhaseIdle}
+	if after := mustReduce(t, idle, Event{Kind: EventReleaseNotes, Update: &Update{ReleaseNotes: "迟到摘要"}}); after != idle {
+		t.Fatalf("idle after late notes=%#v, want no-op", after)
+	}
+}
+
 func TestReduceCheckCancellationReturnsIdle(t *testing.T) {
 	t.Parallel()
 

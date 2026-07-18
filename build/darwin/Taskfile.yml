@@ -20,7 +20,7 @@ tasks:
       - go build {{.BUILD_FLAGS}} -o "bin/codex-pulse"
       - install_name_tool -add_rpath '@executable_path/../Frameworks' "bin/codex-pulse"
     vars:
-      BUILD_FLAGS: '{{if eq .DEV "true"}}-tags sparkle -buildvcs=false -gcflags=all="-l"{{else}}-tags "production sparkle" -trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
+      BUILD_FLAGS: '{{if eq .DEV "true"}}-tags sparkle -buildvcs=false -gcflags=all="-l" -ldflags="-X github.com/SisyphusSQ/codex-pulse/internal/app.applicationVersion={{.APP_VERSION | default "0.0.0"}}"{{else}}-tags "production sparkle" -trimpath -buildvcs=false -ldflags="-w -s -X github.com/SisyphusSQ/codex-pulse/internal/app.applicationVersion={{.APP_VERSION | default "0.0.0"}}"{{end}}'
     env:
       GOOS: darwin
       GOARCH: '{{.ARCH | default "arm64"}}'
@@ -60,6 +60,7 @@ tasks:
         vars:
           ARCH: arm64
           DEV: "false"
+          APP_VERSION: '{{.APP_VERSION | default "0.0.0"}}'
       - task: package:icon
       - task: package:assemble
         vars:

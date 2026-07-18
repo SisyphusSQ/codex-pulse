@@ -15,6 +15,7 @@ import {
   SessionDetail,
   Settings,
   Source,
+  UpdateState,
   UsageCost,
 } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service";
 import type { Request } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/query/models";
@@ -33,6 +34,7 @@ export const BUSINESS_QUERY_STALE_MS = Object.freeze({
   index: 15_000,
   runtime: 5_000,
   settings: 60_000,
+	updates: 60_000,
 });
 
 const indexQueryTiming = Object.freeze({
@@ -50,6 +52,14 @@ const settingsQueryTiming = Object.freeze({
   refetchInterval: BUSINESS_QUERY_STALE_MS.settings,
   refetchIntervalInBackground: false,
 });
+const updateQueryTiming = Object.freeze({
+  staleTime: BUSINESS_QUERY_STALE_MS.updates,
+  refetchInterval: (query: { state: { data?: { phase?: string } } }) => {
+    const phase = query.state.data?.phase;
+    return phase === "checking" || phase === "downloading" ? 1_000 : false;
+  },
+  refetchIntervalInBackground: false,
+});
 
 export const businessQueryRoots = Object.freeze({
   usage: ["business", "usage"] as const,
@@ -60,6 +70,7 @@ export const businessQueryRoots = Object.freeze({
   jobs: ["business", "jobs"] as const,
   health: ["business", "health"] as const,
   settings: ["business", "settings"] as const,
+  updates: ["business", "updates"] as const,
 });
 
 export const businessQueryRootList = Object.freeze([
@@ -71,6 +82,7 @@ export const businessQueryRootList = Object.freeze([
   businessQueryRoots.jobs,
   businessQueryRoots.health,
   businessQueryRoots.settings,
+  businessQueryRoots.updates,
 ]);
 
 export function usageCostQueryOptions(request: UsageCostRequest) {
@@ -190,5 +202,13 @@ export function settingsQueryOptions() {
     queryKey: [...businessQueryRoots.settings, "current"] as const,
     queryFn: ({ signal }) => Settings().cancelOn(signal),
     ...settingsQueryTiming,
+  });
+}
+
+export function updateStateQueryOptions() {
+  return queryOptions({
+    queryKey: [...businessQueryRoots.updates, "state"] as const,
+    queryFn: ({ signal }) => UpdateState().cancelOn(signal),
+    ...updateQueryTiming,
   });
 }

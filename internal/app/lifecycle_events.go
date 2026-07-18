@@ -30,6 +30,7 @@ type LifecycleEventAdapterConfig struct {
 	Coordinator  systemLifecycleCoordinator
 	EventTimeout time.Duration
 	NewEventID   func(string) string
+	DidWake      func(context.Context) error
 }
 
 type systemLifecycleEvent uint8
@@ -46,6 +47,7 @@ type LifecycleEventAdapter struct {
 	coordinator  systemLifecycleCoordinator
 	eventTimeout time.Duration
 	newEventID   func(string) string
+	didWake      func(context.Context) error
 
 	mu        sync.Mutex
 	queue     []systemLifecycleEvent
@@ -73,7 +75,7 @@ func NewLifecycleEventAdapter(config LifecycleEventAdapterConfig) (*LifecycleEve
 	}
 	adapter := &LifecycleEventAdapter{
 		coordinator: config.Coordinator, eventTimeout: config.EventTimeout,
-		newEventID: config.NewEventID, accepting: true,
+		newEventID: config.NewEventID, didWake: config.DidWake, accepting: true,
 		signal: make(chan struct{}, 1), done: make(chan struct{}), errors: make(chan error, 16),
 	}
 	adapter.cancels = []func(){
@@ -173,18 +175,24 @@ func (adapter *LifecycleEventAdapter) run() {
 
 func (adapter *LifecycleEventAdapter) handle(event systemLifecycleEvent) {
 	ctx, cancel := context.WithTimeout(context.Background(), adapter.eventTimeout)
-	defer cancel()
 	var err error
 	switch event {
 	case systemWillSleep:
 		_, err = adapter.coordinator.SystemWillSleep(ctx, adapter.newEventID("system-sleep"))
 	case systemDidWake:
 		_, err = adapter.coordinator.SystemDidWake(ctx, adapter.newEventID("system-wake"))
+		cancel()
+		if adapter.didWake != nil {
+			updateCtx, updateCancel := context.WithTimeout(context.Background(), adapter.eventTimeout)
+			err = errors.Join(err, adapter.didWake(updateCtx))
+			updateCancel()
+		}
 	case sourceAvailabilityCheck:
 		_, err = adapter.coordinator.SourceChanged(ctx, adapter.newEventID("source-check"), true)
 	default:
 		err = ErrInvalidLifecycleEventAdapter
 	}
+	cancel()
 	if err == nil {
 		return
 	}

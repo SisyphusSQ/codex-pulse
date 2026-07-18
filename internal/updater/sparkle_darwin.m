@@ -4,7 +4,7 @@
 #include <string.h>
 
 extern void cpSparkleHandleEvent(uintptr_t callbackID, int kind, char *version, char *displayVersion,
-                                 uint64_t contentLength, int signatureStatus, uint64_t received,
+                                 char *releaseNotes, uint64_t contentLength, int signatureStatus, uint64_t received,
                                  uint64_t total, double fraction, long errorCode, char *errorMessage);
 
 static char *cp_sparkle_copy_string(NSString *value) {
@@ -32,16 +32,32 @@ enum {
     CPEventCycleFinished = 9,
     CPEventFailed = 10,
     CPEventCheckCancelled = 11,
+    CPEventReleaseNotes = 12,
 };
+
+static NSString *cp_sparkle_plain_text(NSString *value, BOOL html) {
+    if (value.length == 0 || !html) return value ?: @"";
+    NSData *data = [value dataUsingEncoding:NSUTF8StringEncoding];
+    NSAttributedString *plain = data == nil ? nil : [[NSAttributedString alloc] initWithHTML:data documentAttributes:nil];
+    return plain == nil ? value : plain.string;
+}
+
+static void cp_sparkle_emit_release_notes(uintptr_t callbackID, NSString *releaseNotes) {
+    cpSparkleHandleEvent(callbackID, CPEventReleaseNotes, "", "", (char *)(releaseNotes ?: @"").UTF8String,
+                         0, 0, 0, 0, 0, 0, "");
+}
 
 static void cp_sparkle_emit(uintptr_t callbackID, int kind, SUAppcastItem *item,
                             uint64_t received, uint64_t total, double fraction, NSError *error) {
     NSString *version = item == nil ? @"" : item.versionString;
     NSString *displayVersion = item == nil ? @"" : item.displayVersionString;
+    NSString *releaseNotes = item == nil ? @"" : item.itemDescription;
+    releaseNotes = cp_sparkle_plain_text(releaseNotes, ![item.itemDescriptionFormat isEqualToString:@"plain-text"]);
     uint64_t contentLength = item == nil ? 0 : item.contentLength;
     NSInteger signatureStatus = item == nil ? 0 : item.signingValidationStatus;
     NSString *message = error == nil ? @"" : error.localizedDescription;
     cpSparkleHandleEvent(callbackID, kind, (char *)version.UTF8String, (char *)displayVersion.UTF8String,
+                         (char *)releaseNotes.UTF8String,
                          contentLength, (int)signatureStatus, received, total, fraction,
                          error == nil ? 0 : error.code, (char *)message.UTF8String);
 }
@@ -72,7 +88,12 @@ static void cp_sparkle_emit(uintptr_t callbackID, int kind, SUAppcastItem *item,
         cp_sparkle_emit(self.callbackID, CPEventInstallStarted, nil, 0, 0, 0, nil);
     }
 }
-- (void)showUpdateReleaseNotesWithDownloadData:(SPUDownloadData *)downloadData { (void)downloadData; }
+- (void)showUpdateReleaseNotesWithDownloadData:(SPUDownloadData *)downloadData {
+    NSString *releaseNotes = [[NSString alloc] initWithData:downloadData.data encoding:NSUTF8StringEncoding];
+    if (releaseNotes == nil) releaseNotes = [[NSString alloc] initWithData:downloadData.data encoding:NSISOLatin1StringEncoding];
+    BOOL html = [downloadData.MIMEType localizedCaseInsensitiveContainsString:@"html"];
+    cp_sparkle_emit_release_notes(self.callbackID, cp_sparkle_plain_text(releaseNotes, html));
+}
 - (void)showUpdateReleaseNotesFailedToDownloadWithError:(NSError *)error { (void)error; }
 - (void)showUpdateNotFoundWithError:(NSError *)error acknowledgement:(void (^)(void))acknowledgement {
     (void)error;
@@ -251,6 +272,29 @@ int cp_sparkle_download(void *raw, char **errorMessage) {
     return 1;
 }
 
+int cp_sparkle_choose(void *raw, int choice, char **errorMessage) {
+    if (raw == NULL) {
+        cp_sparkle_set_error(errorMessage, @"Sparkle adapter is not started");
+        return 0;
+    }
+    if (choice != 1 && choice != 2) {
+        cp_sparkle_set_error(errorMessage, @"Invalid Sparkle update choice");
+        return 0;
+    }
+    CPUpdaterHolder *holder = (__bridge CPUpdaterHolder *)raw;
+    __block void (^reply)(SPUUserUpdateChoice) = nil;
+    cp_on_main_sync(^{
+        reply = holder.userDriver.updateChoiceReply;
+        holder.userDriver.updateChoiceReply = nil;
+        if (reply != nil) reply(choice == 1 ? SPUUserUpdateChoiceSkip : SPUUserUpdateChoiceDismiss);
+    });
+    if (reply == nil) {
+        cp_sparkle_set_error(errorMessage, @"No Sparkle update is awaiting a choice");
+        return 0;
+    }
+    return 1;
+}
+
 int cp_sparkle_cancel(void *raw, char **errorMessage) {
     if (raw == NULL) {
         cp_sparkle_set_error(errorMessage, @"Sparkle adapter is not started");
@@ -307,6 +351,12 @@ void *cp_sparkle_create(uintptr_t callbackID, int *errorCode, char **errorMessag
     if (errorCode != NULL) *errorCode = 1;
     cp_sparkle_set_error(errorMessage, @"Sparkle support was not compiled");
     return NULL;
+}
+int cp_sparkle_choose(void *raw, int choice, char **errorMessage) {
+    (void)raw;
+    (void)choice;
+    cp_sparkle_set_error(errorMessage, @"Sparkle support was not compiled");
+    return 0;
 }
 int cp_sparkle_check(void *handle, char **errorMessage) {
     (void)handle;

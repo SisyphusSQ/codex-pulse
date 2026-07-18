@@ -13,3 +13,15 @@ type DownloadAdapter interface {
 	Adapter
 	Download() error
 }
+
+type UpdateChoice uint8
+
+const (
+	UpdateChoiceSkip UpdateChoice = iota + 1
+	UpdateChoiceDismiss
+)
+
+type ChoiceAdapter interface {
+	Adapter
+	Choose(UpdateChoice) error
+}

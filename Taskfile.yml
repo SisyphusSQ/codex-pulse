@@ -20,6 +20,7 @@ tasks:
         vars:
           ARCH: '{{.ARCH | default "arm64"}}'
           DEV: '{{.DEV}}'
+          APP_VERSION: '{{.APP_VERSION | default "0.0.0"}}'
 
   package:
     summary: 构建、验证并归档 macOS 15+ arm64 应用 bundle

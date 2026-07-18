@@ -13,6 +13,15 @@
 
 自动检查开关、通道、跳过版本、稍后时间和最后检查时间保存到独立 preferences，不能只依赖主 SQLite。更新 attempt/result 可以写入 SQLite。
 
+### 检查编排与交互边界
+
+- `internal/updater.Coordinator` 是启动、robfig cron 定时、系统唤醒和手动检查的唯一合并点；cron 每分钟只做到期判定，默认偏好仍是每 3600 秒检查一次，不创建第二套 timer loop。
+- 同一时刻只允许一个 check/download/install 操作；checking/downloading/installing 会合并重复触发，可用更新仍允许用户手动复查。
+- 离线、HTTP 429 或 appcast 解析失败进入 content-free typed fault；自动重试间隔加倍并封顶 24 小时，手动检查不受该退避限制。缺少 feed/key 或平台 adapter 不可用时 fail closed，且不写入虚假的最后检查时间。
+- 检查成功发出的 native 状态变化只广播无内容 invalidation event，Vue 再从 allowlisted `UpdateState` 查询读取版本、摘要、大小、签名和进度；event payload 不承载更新事实。
+- Settings 提供检查、取消、下载确认、跳过和稍后提醒。下载必须经过键盘可操作的确认对话框；release notes 作为纯文本渲染，不解释为 HTML。
+- `readyToInstall` 只展示“更新包已准备”状态，不提供安装按钮。最终 install reply、safe drain、SQLite/单实例锁关闭仍由 TOO-294 负责。
+
 ## Sparkle 2 Adapter Contract
 
 v0.1 macOS arm64 更新平台固定为 Sparkle 2.9.4。`internal/updater` 以 `SPUUpdater` 和自定义 `SPUUserDriver` 为唯一 native adapter，不使用 Sparkle 2 已废弃的 `SUUpdater`，也不把 Objective-C 类型暴露给 Wails/Vue。
