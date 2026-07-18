@@ -13,7 +13,7 @@ func TestPackageBuildIncludesPinnedSparkle(t *testing.T) {
 	for _, required := range []string{
 		"scripts/sparkle/prepare_framework.sh",
 		"-tags \"production sparkle\"",
-		"install_name_tool -add_rpath '@executable_path/../Frameworks'",
+		"build/darwin/ensure_rpath.sh",
 		"SPARKLE_FRAMEWORK:",
 	} {
 		if !strings.Contains(taskfile, required) {
@@ -48,6 +48,17 @@ func TestBundleAssemblyAndVerificationRequireSparkleFramework(t *testing.T) {
 	} {
 		if !strings.Contains(verify, required) {
 			t.Errorf("verify_bundle.sh missing %q", required)
+		}
+	}
+}
+
+func TestBundleAssemblySupportsValidatedPublicUpdateMetadata(t *testing.T) {
+	t.Parallel()
+
+	assemble := readContractFile(t, "assemble_bundle.sh")
+	for _, required := range []string{"SUFeedURL", "SUPublicEDKey", "must decode to 32 bytes", "^https://"} {
+		if !strings.Contains(assemble, required) {
+			t.Errorf("assemble_bundle.sh missing %q", required)
 		}
 	}
 }
