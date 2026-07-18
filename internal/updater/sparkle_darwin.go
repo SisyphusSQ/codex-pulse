@@ -17,8 +17,11 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"unicode/utf8"
 	"unsafe"
 )
+
+const maximumReleaseNotesBytes = 16 * 1024
 
 const (
 	nativeEventUpdateFound = iota + 1
@@ -32,6 +35,7 @@ const (
 	nativeEventCycleFinished
 	nativeEventFailed
 	nativeEventCheckCancelled
+	nativeEventReleaseNotes
 )
 
 type NativeError struct {
@@ -146,6 +150,22 @@ func (adapter *SparkleAdapter) Download() error {
 	return nil
 }
 
+func (adapter *SparkleAdapter) Choose(choice UpdateChoice) error {
+	adapter.mu.Lock()
+	defer adapter.mu.Unlock()
+	if err := adapter.ready(); err != nil {
+		return err
+	}
+	if choice != UpdateChoiceSkip && choice != UpdateChoiceDismiss {
+		return ErrCannotChoose
+	}
+	var rawMessage *C.char
+	if C.cp_sparkle_choose(adapter.handle, C.int(choice), &rawMessage) == 0 {
+		return errors.New(takeCString(rawMessage))
+	}
+	return nil
+}
+
 func (adapter *SparkleAdapter) Cancel() error {
 	adapter.mu.Lock()
 	defer adapter.mu.Unlock()
@@ -215,7 +235,7 @@ func (registration *sparkleCallbackRegistration) close() {
 }
 
 //export cpSparkleHandleEvent
-func cpSparkleHandleEvent(callbackID C.uintptr_t, rawKind C.int, version, displayVersion *C.char, contentLength C.uint64_t, rawSignature C.int, received, total C.uint64_t, fraction C.double, rawErrorCode C.long, errorMessage *C.char) {
+func cpSparkleHandleEvent(callbackID C.uintptr_t, rawKind C.int, version, displayVersion, releaseNotes *C.char, contentLength C.uint64_t, rawSignature C.int, received, total C.uint64_t, fraction C.double, rawErrorCode C.long, errorMessage *C.char) {
 	value, ok := sparkleCallbacks.Load(uintptr(callbackID))
 	if !ok {
 		return
@@ -224,6 +244,7 @@ func cpSparkleHandleEvent(callbackID C.uintptr_t, rawKind C.int, version, displa
 		int(rawKind),
 		C.GoString(version),
 		C.GoString(displayVersion),
+		boundedReleaseNotes(C.GoString(releaseNotes)),
 		uint64(contentLength),
 		int(rawSignature),
 		uint64(received),
@@ -235,18 +256,21 @@ func cpSparkleHandleEvent(callbackID C.uintptr_t, rawKind C.int, version, displa
 	value.(*sparkleCallbackRegistration).dispatch(event)
 }
 
-func nativeEvent(kind int, version, displayVersion string, contentLength uint64, rawSignature int, received, total uint64, fraction float64, rawErrorCode int64, errorMessage string) Event {
+func nativeEvent(kind int, version, displayVersion, releaseNotes string, contentLength uint64, rawSignature int, received, total uint64, fraction float64, rawErrorCode int64, errorMessage string) Event {
 	switch kind {
 	case nativeEventUpdateFound:
 		return Event{Kind: EventUpdateFound, Update: &Update{
 			Version:             version,
 			DisplayVersion:      displayVersion,
+			ReleaseNotes:        boundedReleaseNotes(releaseNotes),
 			ContentLength:       contentLength,
 			Architecture:        "arm64",
 			FeedSignatureStatus: signatureStatus(rawSignature),
 		}}
 	case nativeEventNoUpdate:
 		return Event{Kind: EventNoUpdate}
+	case nativeEventReleaseNotes:
+		return Event{Kind: EventReleaseNotes, Update: &Update{ReleaseNotes: boundedReleaseNotes(releaseNotes)}}
 	case nativeEventCheckCancelled:
 		return Event{Kind: EventCheckCancelled}
 	case nativeEventDownloadStarted:
@@ -269,6 +293,17 @@ func nativeEvent(kind int, version, displayVersion string, contentLength uint64,
 		}
 		return Event{Kind: EventFailed, Fault: &Fault{Code: faultCodeForSparkleError(rawErrorCode), Message: errorMessage}}
 	}
+}
+
+func boundedReleaseNotes(value string) string {
+	if len(value) <= maximumReleaseNotesBytes {
+		return value
+	}
+	value = value[:maximumReleaseNotesBytes]
+	for !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return value
 }
 
 func signatureStatus(raw int) SignatureStatus {

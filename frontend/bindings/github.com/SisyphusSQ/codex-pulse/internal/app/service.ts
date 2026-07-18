@@ -37,6 +37,14 @@ export function Bootstrap(): $CancellablePromise<$models.BootstrapInfo> {
     return $Call.ByID(1557176803);
 }
 
+export function CancelUpdate(): $CancellablePromise<$models.UpdateActionReceipt> {
+    return $Call.ByID(2687146184);
+}
+
+export function CheckForUpdates(): $CancellablePromise<$models.UpdateTriggerReceipt> {
+    return $Call.ByID(3322628226);
+}
+
 export function ConfirmHomeSwitch(): $CancellablePromise<$models.HomeSwitchReceipt> {
     return $Call.ByID(853820626);
 }
@@ -47,6 +55,10 @@ export function Contracts(): $CancellablePromise<$models.BindingContractInfo> {
 
 export function DataHealth(evaluatedAtMS: number): $CancellablePromise<runtimeinfo$0.DataHealthResponse> {
     return $Call.ByID(3278814177, evaluatedAtMS);
+}
+
+export function DownloadUpdate(): $CancellablePromise<$models.UpdateActionReceipt> {
+    return $Call.ByID(3553712314);
 }
 
 export function Health(request: runtimeinfo$0.HealthDetailRequest): $CancellablePromise<runtimeinfo$0.HealthDetailResponse> {
@@ -113,12 +125,24 @@ export function Settings(): $CancellablePromise<runtimeinfo$0.SettingsResponse> 
     return $Call.ByID(202944386);
 }
 
+export function SkipUpdate(version: string): $CancellablePromise<$models.UpdateActionReceipt> {
+    return $Call.ByID(1076401141, version);
+}
+
+export function SnoozeUpdate(seconds: number): $CancellablePromise<$models.UpdateActionReceipt> {
+    return $Call.ByID(2703867884, seconds);
+}
+
 export function Source(request: runtimeinfo$0.SourceDetailRequest): $CancellablePromise<runtimeinfo$0.SourceDetailResponse> {
     return $Call.ByID(89156586, request);
 }
 
 export function UpdateSettings(request: $models.SettingsUpdateRequest): $CancellablePromise<$models.SettingsUpdateReceipt> {
     return $Call.ByID(4235621163, request);
+}
+
+export function UpdateState(): $CancellablePromise<$models.UpdateStateResponse> {
+    return $Call.ByID(3406509219);
 }
 
 export function UsageCost(request: usagecost$0.UsageCostRequest): $CancellablePromise<usagecost$0.UsageCostResponse> {

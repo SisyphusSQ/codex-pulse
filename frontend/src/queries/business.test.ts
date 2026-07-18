@@ -17,6 +17,7 @@ import {
   Settings,
   Source,
   UsageCost,
+  UpdateState,
 } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service";
 import type { Request } from "@bindings/github.com/SisyphusSQ/codex-pulse/internal/query/models";
 import type {
@@ -50,6 +51,7 @@ import {
   sourceDetailQueryOptions,
   sourceListQueryOptions,
   usageCostQueryOptions,
+  updateStateQueryOptions,
 } from "./business";
 
 const bindingHarness = vi.hoisted(() => {
@@ -82,6 +84,7 @@ vi.mock("@bindings/github.com/SisyphusSQ/codex-pulse/internal/app/service", () =
   Settings: vi.fn(() => bindingHarness.result()),
   Source: vi.fn(() => bindingHarness.result()),
   UsageCost: vi.fn(() => bindingHarness.result()),
+  UpdateState: vi.fn(() => bindingHarness.result()),
 }));
 
 const pageRequest: Request = {
@@ -103,7 +106,7 @@ async function runQuery(options: { queryFn?: unknown }) {
 }
 
 describe("business Vue Query contract", () => {
-  it("uses the complete request in stable keys and delegates all 15 bindings", async () => {
+  it("uses the complete request in stable keys and delegates all 16 bindings", async () => {
     bindingHarness.cancelOn.mockClear();
     const usageRequest: UsageCostRequest = {
       range: dateRange,
@@ -154,8 +157,14 @@ describe("business Vue Query contract", () => {
         expect(binding).toHaveBeenCalledWith(argument);
       }
     }
+	const updateOptions = updateStateQueryOptions();
+	expect(updateOptions.queryKey).toEqual([...businessQueryRoots.updates, "state"]);
+	expect(updateOptions.refetchIntervalInBackground).toBe(false);
+	expect(typeof updateOptions.refetchInterval).toBe("function");
+	await runQuery(updateOptions);
+	expect(UpdateState).toHaveBeenCalledWith();
     expect(quotaClock).toHaveBeenCalledTimes(2);
-    expect(bindingHarness.cancelOn).toHaveBeenCalledTimes(15);
+    expect(bindingHarness.cancelOn).toHaveBeenCalledTimes(16);
   });
 
   it("uses bounded domain stale times without changing bootstrap policy", () => {
@@ -166,6 +175,7 @@ describe("business Vue Query contract", () => {
     expect(quotaCurrentQueryOptions(() => 1).staleTime).toBe(BUSINESS_QUERY_STALE_MS.runtime);
     expect(healthListQueryOptions(pageRequest).staleTime).toBe(BUSINESS_QUERY_STALE_MS.runtime);
     expect(settingsQueryOptions().staleTime).toBe(BUSINESS_QUERY_STALE_MS.settings);
+	expect(updateStateQueryOptions().staleTime).toBe(BUSINESS_QUERY_STALE_MS.updates);
     expect(usageCostQueryOptions({
       range: dateRange,
       granularity: TrendGranularity.TrendDay,

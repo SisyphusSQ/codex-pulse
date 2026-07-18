@@ -79,8 +79,10 @@ type EventKind string
 const (
 	EventCheckStarted       EventKind = "check_started"
 	EventUpdateFound        EventKind = "update_found"
+	EventReleaseNotes       EventKind = "release_notes"
 	EventNoUpdate           EventKind = "no_update"
 	EventCheckCancelled     EventKind = "check_cancelled"
+	EventUpdateDismissed    EventKind = "update_dismissed"
 	EventDownloadStarted    EventKind = "download_started"
 	EventDownloadProgress   EventKind = "download_progress"
 	EventExtractionProgress EventKind = "extraction_progress"
@@ -130,6 +132,16 @@ func Reduce(before Snapshot, event Event) (Snapshot, error) {
 		}
 		update := *event.Update
 		after = Snapshot{Phase: PhaseAvailable, Update: &update}
+	case EventReleaseNotes:
+		if event.Update == nil {
+			return before, eventError(event.Kind)
+		}
+		if before.Update == nil {
+			return before, nil
+		}
+		update := *before.Update
+		update.ReleaseNotes = event.Update.ReleaseNotes
+		after.Update = &update
 	case EventNoUpdate:
 		if before.Phase != PhaseChecking {
 			return before, transitionError(before.Phase, event.Kind)
@@ -137,6 +149,14 @@ func Reduce(before Snapshot, event Event) (Snapshot, error) {
 		after = Snapshot{Phase: PhaseIdle}
 	case EventCheckCancelled:
 		if before.Phase != PhaseChecking {
+			return before, transitionError(before.Phase, event.Kind)
+		}
+		after = Snapshot{Phase: PhaseIdle}
+	case EventUpdateDismissed:
+		if before.Phase == PhaseIdle {
+			return before, nil
+		}
+		if before.Phase != PhaseAvailable || before.Update == nil || before.ReadyToInstall {
 			return before, transitionError(before.Phase, event.Kind)
 		}
 		after = Snapshot{Phase: PhaseIdle}
@@ -195,7 +215,7 @@ func Reduce(before Snapshot, event Event) (Snapshot, error) {
 		after.ReadyToInstall = false
 	case EventCycleFinished:
 		if before.Phase == PhaseIdle {
-			return before, transitionError(before.Phase, event.Kind)
+			return before, nil
 		}
 		after = Snapshot{Phase: PhaseIdle}
 	case EventFailed:

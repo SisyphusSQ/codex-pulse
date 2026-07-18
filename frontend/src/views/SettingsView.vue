@@ -11,6 +11,7 @@ import StateSkeleton from "@/components/ui/StateSkeleton.vue";
 import UiButton from "@/components/ui/UiButton.vue";
 import UiCard from "@/components/ui/UiCard.vue";
 import { useSettingsPage } from "@/features/settings/useSettingsPage";
+import UpdatePanel from "@/features/updates/UpdatePanel.vue";
 
 defineOptions({ name: "SettingsView" });
 
@@ -150,6 +151,8 @@ function recoverHomeSwitch() {
       <UiCard :title="t('settingsPage.readOnly.title')" :description="t('settingsPage.readOnly.description')">
         <dl class="grid gap-3 sm:grid-cols-3"><div><dt class="text-xs text-ink-muted">{{ t("settingsPage.field.locale") }}</dt><dd>{{ page.settings.data.value.snapshot.ui.locale }}</dd></div><div><dt class="text-xs text-ink-muted">{{ t("settingsPage.field.channel") }}</dt><dd>{{ page.settings.data.value.snapshot.updates.channel }}</dd></div><div><dt class="text-xs text-ink-muted">{{ t("settingsPage.field.homeGeneration") }}</dt><dd>{{ page.settings.data.value.snapshot.home.generation }}</dd></div></dl>
       </UiCard>
+
+      <UpdatePanel />
 
       <UiCard :title="t('settingsPage.home.title')" :description="t('settingsPage.home.description')">
         <div class="grid gap-3 md:grid-cols-[1fr_16rem_auto]"><input ref="homeInput" v-model="homePath" data-testid="home-target-path" type="text" autocomplete="off" :aria-label="t('settingsPage.home.targetLabel')" :disabled="page.confirm.isPending.value || page.recover.isPending.value" :placeholder="t('settingsPage.home.placeholder')" class="rounded-control border border-line bg-white px-3 py-2"><select v-model="homeStrategy" data-testid="home-strategy" :aria-label="t('settingsPage.home.strategyLabel')" :disabled="page.confirm.isPending.value || page.recover.isPending.value" class="rounded-control border border-line bg-white px-3 py-2"><option :value="HomeSwitchStrategy.HomeSwitchClearAndRebuild">{{ t("settingsPage.home.clear") }}</option><option :value="HomeSwitchStrategy.HomeSwitchIndependentDatabase">{{ t("settingsPage.home.independent") }}</option></select><UiButton data-testid="home-plan" :disabled="page.confirm.isPending.value || page.recover.isPending.value" :loading="page.plan.isPending.value" @click="planHomeSwitch">{{ t("settingsPage.home.plan") }}</UiButton></div>

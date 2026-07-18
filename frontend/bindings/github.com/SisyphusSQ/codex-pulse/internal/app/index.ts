@@ -37,5 +37,9 @@ export type {
     SettingsUIUpdate,
     SettingsUpdateReceipt,
     SettingsUpdateRequest,
-    SettingsUpdatesUpdate
+    SettingsUpdatesUpdate,
+    UpdateActionReceipt,
+    UpdateStateChangedEvent,
+    UpdateStateResponse,
+    UpdateTriggerReceipt
 } from "./models.js";

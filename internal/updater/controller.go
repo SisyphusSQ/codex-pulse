@@ -12,18 +12,22 @@ var (
 	ErrAlreadyStarted  = errors.New("updater is already started")
 	ErrCannotCancel    = errors.New("updater operation cannot be cancelled")
 	ErrCannotDownload  = errors.New("updater download cannot be started")
+	ErrCannotChoose    = errors.New("updater update choice cannot be submitted")
 	ErrClosed          = errors.New("updater is closed")
 )
 
 type Controller struct {
 	mu              sync.RWMutex
 	adapter         Adapter
+	observer        SnapshotObserver
 	snapshot        Snapshot
 	started         bool
 	closed          bool
 	downloadPending bool
 	generation      uint64
 }
+
+type SnapshotObserver func(Snapshot)
 
 func (controller *Controller) Download() error {
 	controller.mu.RLock()
@@ -61,11 +65,42 @@ func (controller *Controller) Download() error {
 	return nil
 }
 
+func (controller *Controller) Choose(choice UpdateChoice) error {
+	controller.mu.RLock()
+	if controller.closed {
+		controller.mu.RUnlock()
+		return ErrClosed
+	}
+	started := controller.started
+	snapshot := cloneSnapshot(controller.snapshot)
+	controller.mu.RUnlock()
+	if !started {
+		return ErrNotStarted
+	}
+	if (choice != UpdateChoiceSkip && choice != UpdateChoiceDismiss) || snapshot.Phase != PhaseAvailable ||
+		snapshot.Update == nil || snapshot.ReadyToInstall {
+		return ErrCannotChoose
+	}
+	chooser, ok := controller.adapter.(ChoiceAdapter)
+	if !ok {
+		return ErrCannotChoose
+	}
+	if err := chooser.Choose(choice); err != nil {
+		return fmt.Errorf("submit updater choice: %w", err)
+	}
+	controller.handleCurrent(Event{Kind: EventUpdateDismissed})
+	return nil
+}
+
 func NewController(adapter Adapter) (*Controller, error) {
+	return NewControllerWithObserver(adapter, nil)
+}
+
+func NewControllerWithObserver(adapter Adapter, observer SnapshotObserver) (*Controller, error) {
 	if adapter == nil {
 		return nil, ErrAdapterRequired
 	}
-	return &Controller{adapter: adapter, snapshot: Snapshot{Phase: PhaseIdle}}, nil
+	return &Controller{adapter: adapter, observer: observer, snapshot: Snapshot{Phase: PhaseIdle}}, nil
 }
 
 func (controller *Controller) Start() error {
@@ -91,12 +126,15 @@ func (controller *Controller) Start() error {
 	}
 
 	controller.mu.Lock()
+	var failed Snapshot
 	if !controller.closed && controller.generation == generation {
 		controller.started = false
 		controller.generation++
 		controller.snapshot = failureSnapshot(faultCodeFromError(err, FaultNative), err)
+		failed = cloneSnapshot(controller.snapshot)
 	}
 	controller.mu.Unlock()
+	controller.notify(failed)
 	return fmt.Errorf("start updater adapter: %w", err)
 }
 
@@ -121,6 +159,7 @@ func (controller *Controller) Check() error {
 	}
 	controller.snapshot = next
 	controller.mu.Unlock()
+	controller.notify(next)
 
 	if err := controller.adapter.Check(); err != nil {
 		controller.recordFailure(FaultCheck, err)
@@ -161,7 +200,9 @@ func (controller *Controller) Close() error {
 	controller.downloadPending = false
 	controller.generation++
 	controller.snapshot, _ = Reduce(controller.snapshot, Event{Kind: EventClosed})
+	closedSnapshot := cloneSnapshot(controller.snapshot)
 	controller.mu.Unlock()
+	controller.notify(closedSnapshot)
 
 	if err := controller.adapter.Close(); err != nil {
 		return fmt.Errorf("close updater adapter: %w", err)
@@ -177,8 +218,8 @@ func (controller *Controller) Snapshot() Snapshot {
 
 func (controller *Controller) handle(generation uint64, event Event) {
 	controller.mu.Lock()
-	defer controller.mu.Unlock()
 	if controller.closed || controller.generation != generation {
+		controller.mu.Unlock()
 		return
 	}
 	if event.Kind == EventDownloadStarted || event.Kind == EventReadyToInstall ||
@@ -188,9 +229,19 @@ func (controller *Controller) handle(generation uint64, event Event) {
 	next, err := Reduce(controller.snapshot, event)
 	if err != nil {
 		controller.snapshot = failureSnapshot(FaultNative, err)
-		return
+	} else {
+		controller.snapshot = next
 	}
-	controller.snapshot = next
+	snapshot := cloneSnapshot(controller.snapshot)
+	controller.mu.Unlock()
+	controller.notify(snapshot)
+}
+
+func (controller *Controller) handleCurrent(event Event) {
+	controller.mu.RLock()
+	generation := controller.generation
+	controller.mu.RUnlock()
+	controller.handle(generation, event)
 }
 
 func (controller *Controller) clearDownloadPending() {
@@ -201,11 +252,22 @@ func (controller *Controller) clearDownloadPending() {
 
 func (controller *Controller) recordFailure(code FaultCode, err error) {
 	controller.mu.Lock()
-	defer controller.mu.Unlock()
 	if controller.closed {
+		controller.mu.Unlock()
 		return
 	}
 	controller.snapshot = failureSnapshot(code, err)
+	snapshot := cloneSnapshot(controller.snapshot)
+	controller.mu.Unlock()
+	controller.notify(snapshot)
+}
+
+func (controller *Controller) notify(snapshot Snapshot) {
+	if controller == nil || controller.observer == nil || snapshot.Phase == "" {
+		return
+	}
+	defer func() { _ = recover() }()
+	controller.observer(cloneSnapshot(snapshot))
 }
 
 func failureSnapshot(code FaultCode, err error) Snapshot {

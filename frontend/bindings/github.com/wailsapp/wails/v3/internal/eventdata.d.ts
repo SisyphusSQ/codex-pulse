@@ -18,6 +18,7 @@ declare module "@wailsio/runtime" {
             "codex-pulse:navigate": app$0.DesktopNavigationEvent;
             "codex-pulse:platform-changed": tray$0.PlatformChange;
             "codex-pulse:query-invalidated": app$0.QueryInvalidationEvent;
+            "codex-pulse:update-state-changed": app$0.UpdateStateChangedEvent;
         }
     }
 }

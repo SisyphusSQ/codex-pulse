@@ -2,6 +2,7 @@ package updater
 
 import (
 	"errors"
+	"sync"
 	"testing"
 )
 
@@ -221,6 +222,111 @@ func TestControllerSnapshotIsDefensiveCopy(t *testing.T) {
 	}
 }
 
+func TestControllerObserverReceivesDefensiveStateChanges(t *testing.T) {
+	t.Parallel()
+
+	adapter := &fakeAdapter{}
+	var mu sync.Mutex
+	var observed []Snapshot
+	controller, err := NewControllerWithObserver(adapter, func(snapshot Snapshot) {
+		mu.Lock()
+		observed = append(observed, snapshot)
+		if snapshot.Update != nil {
+			snapshot.Update.Version = "observer-mutated"
+		}
+		mu.Unlock()
+	})
+	if err != nil {
+		t.Fatalf("NewControllerWithObserver: %v", err)
+	}
+	if err := controller.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := controller.Check(); err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	adapter.emit(Event{Kind: EventUpdateFound, Update: &Update{Version: "42", Architecture: "arm64"}})
+	if err := controller.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(observed) != 3 || observed[0].Phase != PhaseChecking || observed[1].Phase != PhaseAvailable || !observed[2].Closed {
+		t.Fatalf("observed=%#v, want checking, available, closed", observed)
+	}
+	if observed[1].Update == nil || observed[1].Update.Version != "observer-mutated" {
+		t.Fatalf("observer did not receive mutable copy: %#v", observed[1])
+	}
+	if snapshot := controller.Snapshot(); snapshot.Update != nil {
+		t.Fatalf("closed controller retained update after observer mutation: %#v", snapshot)
+	}
+}
+
+func TestControllerObserverReceivesSynchronousFailures(t *testing.T) {
+	t.Parallel()
+
+	adapter := &fakeAdapter{checkErr: errors.New("offline")}
+	var observed []Snapshot
+	controller, err := NewControllerWithObserver(adapter, func(snapshot Snapshot) { observed = append(observed, snapshot) })
+	if err != nil {
+		t.Fatalf("NewControllerWithObserver: %v", err)
+	}
+	if err := controller.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := controller.Check(); err == nil {
+		t.Fatal("Check succeeded")
+	}
+	if len(observed) != 2 || observed[0].Phase != PhaseChecking || observed[1].Phase != PhaseError {
+		t.Fatalf("observed=%#v, want checking then error", observed)
+	}
+}
+
+func TestControllerContainsObserverPanic(t *testing.T) {
+	t.Parallel()
+
+	controller, err := NewControllerWithObserver(&fakeAdapter{}, func(Snapshot) { panic("observer failure") })
+	if err != nil {
+		t.Fatalf("NewControllerWithObserver: %v", err)
+	}
+	if err := controller.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := controller.Check(); err != nil {
+		t.Fatalf("Check after observer panic: %v", err)
+	}
+	if controller.Snapshot().Phase != PhaseChecking {
+		t.Fatalf("snapshot=%#v, want checking", controller.Snapshot())
+	}
+}
+
+func TestControllerSubmitsUpdateChoiceAndReturnsIdle(t *testing.T) {
+	t.Parallel()
+
+	adapter := &fakeChoiceAdapter{}
+	controller, err := NewController(adapter)
+	if err != nil {
+		t.Fatalf("NewController: %v", err)
+	}
+	if err := controller.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := controller.Check(); err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	adapter.emit(Event{Kind: EventUpdateFound, Update: &Update{Version: "42", Architecture: "arm64"}})
+	if err := controller.Choose(UpdateChoiceDismiss); err != nil {
+		t.Fatalf("Choose: %v", err)
+	}
+	if len(adapter.choices) != 1 || adapter.choices[0] != UpdateChoiceDismiss {
+		t.Fatalf("choices=%v, want dismiss", adapter.choices)
+	}
+	if snapshot := controller.Snapshot(); snapshot.Phase != PhaseIdle || snapshot.Update != nil {
+		t.Fatalf("snapshot=%#v, want idle", snapshot)
+	}
+}
+
 type fakeAdapter struct {
 	sink        EventSink
 	startErr    error
@@ -235,6 +341,16 @@ type fakeAdapter struct {
 type fakeDownloadAdapter struct {
 	fakeAdapter
 	downloadCalls int
+}
+
+type fakeChoiceAdapter struct {
+	fakeAdapter
+	choices []UpdateChoice
+}
+
+func (adapter *fakeChoiceAdapter) Choose(choice UpdateChoice) error {
+	adapter.choices = append(adapter.choices, choice)
+	return nil
 }
 
 func (adapter *fakeDownloadAdapter) Download() error {

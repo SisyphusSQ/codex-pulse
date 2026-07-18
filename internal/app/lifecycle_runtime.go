@@ -54,6 +54,7 @@ type ApplicationLifecycleRuntimeConfig struct {
 	QuotaTransport http.RoundTripper
 	QuotaClock     func() time.Time
 	Invalidation   queryInvalidationNotifier
+	UpdateWake     func(context.Context) error
 	quotaHooks     quotaRuntimeHooks
 	homeRuntime    preferences.HomeRuntime
 }
@@ -254,6 +255,7 @@ func startApplicationLifecycleRuntime(
 			local: coordinator, quota: quotaRuntime,
 		},
 		EventTimeout: config.EventTimeout,
+		DidWake:      config.UpdateWake,
 	})
 	if err != nil {
 		closeQuotaRuntime()

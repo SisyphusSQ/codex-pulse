@@ -13,6 +13,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
+	"github.com/SisyphusSQ/codex-pulse/internal/updater"
 )
 
 const (
@@ -50,6 +51,15 @@ type quotaRefreshBindingCommand interface {
 	RequestQuotaRefresh(context.Context, quotaonline.RefreshSource) (store.SourceRefreshSchedule, error)
 }
 
+type updateBindingCommand interface {
+	View(context.Context) (updater.View, error)
+	Trigger(context.Context, updater.Trigger) (updater.TriggerReceipt, error)
+	Download(context.Context) error
+	Cancel(context.Context) error
+	Skip(context.Context, string) error
+	Snooze(context.Context, time.Duration) error
+}
+
 type healthProjectionBindingQuery interface {
 	Projection() healthmodel.Projection
 }
@@ -63,6 +73,7 @@ type ServiceConfig struct {
 	RuntimeInfo     runtimeInfoBindingQuery
 	QuotaRefresh    quotaRefreshBindingCommand
 	RuntimeControls runtimeControlBindingCommand
+	UpdateControls  updateBindingCommand
 	QueryObserver   QueryObserver
 }
 
@@ -76,6 +87,8 @@ type Service struct {
 	quotaRefresh     quotaRefreshBindingCommand
 	runtimeMu        sync.RWMutex
 	runtimeControls  runtimeControlBindingCommand
+	updateMu         sync.RWMutex
+	updateControls   updateBindingCommand
 	healthMu         sync.RWMutex
 	healthProjection healthProjectionBindingQuery
 	queryObserver    QueryObserver
@@ -90,8 +103,22 @@ func NewService(config ServiceConfig) (*Service, error) {
 		runtimeInfo:     config.RuntimeInfo,
 		quotaRefresh:    config.QuotaRefresh,
 		runtimeControls: config.RuntimeControls,
+		updateControls:  config.UpdateControls,
 		queryObserver:   config.QueryObserver,
 	}, nil
+}
+
+func (service *Service) bindUpdateControls(command updateBindingCommand) error {
+	if service == nil || command == nil {
+		return ErrBindingService
+	}
+	service.updateMu.Lock()
+	defer service.updateMu.Unlock()
+	if service.updateControls != nil {
+		return ErrBindingService
+	}
+	service.updateControls = command
+	return nil
 }
 
 func (service *Service) bindRuntimeControls(command runtimeControlBindingCommand) error {
@@ -194,6 +221,12 @@ var bindingMethodAllowlist = []BindingMethodInfo{
 	{Name: "HealthProjection", Kind: BindingMethodQuery},
 	{Name: "DataHealth", Kind: BindingMethodQuery},
 	{Name: "Settings", Kind: BindingMethodQuery},
+	{Name: "UpdateState", Kind: BindingMethodQuery},
+	{Name: "CheckForUpdates", Kind: BindingMethodCommand},
+	{Name: "DownloadUpdate", Kind: BindingMethodCommand},
+	{Name: "CancelUpdate", Kind: BindingMethodCommand},
+	{Name: "SkipUpdate", Kind: BindingMethodCommand},
+	{Name: "SnoozeUpdate", Kind: BindingMethodCommand},
 }
 
 func (service *Service) Contracts() BindingContractInfo {
@@ -206,6 +239,7 @@ func (service *Service) Contracts() BindingContractInfo {
 			CommandMethods: []string{
 				"RequestQuotaRefresh", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
 				"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
+				"CheckForUpdates", "DownloadUpdate", "CancelUpdate", "SkipUpdate", "SnoozeUpdate",
 			}, ErrorExample: errorExample,
 		}
 	})

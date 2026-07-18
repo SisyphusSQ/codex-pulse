@@ -16,6 +16,7 @@ import (
 func TestLifecycleEventAdapterQueuesCallbacksAndClosesRegistrations(t *testing.T) {
 	registrar := &fakeLifecycleRegistrar{callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent))}
 	coordinator := &fakeSystemLifecycleCoordinator{release: make(chan struct{})}
+	wakeObserved := make(chan struct{}, 1)
 	sequence := int64(0)
 	adapter, err := NewLifecycleEventAdapter(LifecycleEventAdapterConfig{
 		Registrar: registrar, Coordinator: coordinator, EventTimeout: time.Second,
@@ -23,11 +24,11 @@ func TestLifecycleEventAdapterQueuesCallbacksAndClosesRegistrations(t *testing.T
 			sequence++
 			return kind + ":test:" + string(rune('0'+sequence))
 		},
+		DidWake: func(context.Context) error { wakeObserved <- struct{}{}; return nil },
 	})
 	if err != nil {
 		t.Fatalf("NewLifecycleEventAdapter() error = %v", err)
 	}
-
 	sleepCallback := registrar.callbacks[events.Common.SystemWillSleep]
 	wakeCallback := registrar.callbacks[events.Common.SystemDidWake]
 	sourceCallback := registrar.callbacks[events.Mac.ApplicationDidBecomeActive]
@@ -63,6 +64,11 @@ func TestLifecycleEventAdapterQueuesCallbacksAndClosesRegistrations(t *testing.T
 			t.Fatalf("coordinator calls = %v, want sleep,wake,source", calls)
 		}
 		time.Sleep(time.Millisecond)
+	}
+	select {
+	case <-wakeObserved:
+	case <-time.After(time.Second):
+		t.Fatal("update wake observer was not called")
 	}
 	if err := adapter.Close(context.Background()); err != nil {
 		t.Fatalf("Close() error = %v", err)
@@ -102,6 +108,32 @@ func TestLifecycleEventAdapterReportsCoordinatorFailure(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("adapter did not report coordinator failure")
+	}
+}
+
+func TestLifecycleEventAdapterGivesUpdaterWakeAnIndependentTimeout(t *testing.T) {
+	registrar := &fakeLifecycleRegistrar{callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent))}
+	coordinator := &fakeSystemLifecycleCoordinator{release: make(chan struct{})}
+	wakeContextLive := make(chan bool, 1)
+	adapter, err := NewLifecycleEventAdapter(LifecycleEventAdapterConfig{
+		Registrar: registrar, Coordinator: coordinator, EventTimeout: 10 * time.Millisecond,
+		DidWake: func(ctx context.Context) error {
+			wakeContextLive <- ctx.Err() == nil
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewLifecycleEventAdapter() error = %v", err)
+	}
+	t.Cleanup(func() { _ = adapter.Close(context.Background()) })
+	registrar.trigger(events.Common.SystemDidWake)
+	select {
+	case live := <-wakeContextLive:
+		if !live {
+			t.Fatal("updater wake inherited an expired lifecycle context")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("updater wake was not called after lifecycle timeout")
 	}
 }
 

@@ -9,6 +9,7 @@ import SettingsView from "./SettingsView.vue";
 
 const harness = vi.hoisted(() => ({ page: {} as Record<string, unknown> }));
 vi.mock("@/features/settings/useSettingsPage", () => ({ useSettingsPage: () => harness.page }));
+vi.mock("@/features/updates/UpdatePanel.vue", () => ({ default: { template: "<div data-testid='update-panel-stub' />" } }));
 
 function mutation() {
   return { data: ref<unknown>(undefined), isError: ref(false), isPending: ref(false), mutate: vi.fn(), reset: vi.fn() };
