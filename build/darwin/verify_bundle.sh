@@ -22,7 +22,7 @@ expected_min_os=$5
 archive_path=${6:-}
 plist_path="$bundle_path/Contents/Info.plist"
 
-for tool in codesign ditto file iconutil lipo plutil sips unzip vtool; do
+for tool in codesign ditto file iconutil lipo otool plutil sips unzip vtool; do
     command -v "$tool" >/dev/null 2>&1 || fail "missing required tool: $tool"
 done
 
@@ -57,13 +57,33 @@ assert_equal LSMinimumSystemVersion "$(plist_value LSMinimumSystemVersion)" "$ex
 executable_path="$bundle_path/Contents/MacOS/$executable_name"
 icon_path="$bundle_path/Contents/Resources/${icon_name%.icns}.icns"
 resources_path="$bundle_path/Contents/Resources"
+sparkle_framework="$bundle_path/Contents/Frameworks/Sparkle.framework"
+sparkle_binary="$sparkle_framework/Versions/B/Sparkle"
+sparkle_plist="$sparkle_framework/Versions/B/Resources/Info.plist"
 [[ -x "$executable_path" ]] || fail "bundle executable is missing or not executable"
 [[ -s "$icon_path" ]] || fail "bundle icon is missing or empty"
+[[ -x "$sparkle_binary" ]] || fail "Sparkle.framework binary is missing or not executable"
+[[ -f "$sparkle_plist" ]] || fail "Sparkle.framework Info.plist is missing"
 go run ./build/darwin bundle "$resources_path"
 
 file "$executable_path" | grep -Eq 'Mach-O .* arm64' \
     || fail "bundle executable is not a Mach-O arm64 binary"
 assert_equal "Mach-O architectures" "$(lipo -archs "$executable_path")" arm64
+sparkle_architectures=$(lipo -archs "$sparkle_binary")
+printf '%s\n' "$sparkle_architectures" | tr ' ' '\n' | grep -Fxq arm64 \
+    || fail "Sparkle.framework does not contain arm64: $sparkle_architectures"
+assert_equal "Sparkle.framework version" \
+    "$(plutil -extract CFBundleShortVersionString raw -o - "$sparkle_plist")" \
+    "2.9.4"
+
+otool -L "$executable_path" | grep -Fq '@rpath/Sparkle.framework/Versions/B/Sparkle' \
+    || fail "bundle executable is not linked to the embedded Sparkle.framework"
+otool -l "$executable_path" | awk '
+    $1 == "cmd" && $2 == "LC_RPATH" { in_rpath=1; next }
+    in_rpath && $1 == "path" && $2 == "@executable_path/../Frameworks" { found=1 }
+    in_rpath && $1 == "cmd" { in_rpath=0 }
+    END { exit !found }
+' || fail "bundle executable is missing @executable_path/../Frameworks rpath"
 
 build_info=$(vtool -show-build "$executable_path")
 echo "$build_info" | awk '$1 == "platform" && $2 == "MACOS" { found=1 } END { exit !found }' \

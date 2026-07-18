@@ -11,6 +11,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
+	"github.com/SisyphusSQ/codex-pulse/internal/updater"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -153,6 +154,18 @@ func Run(assets fs.FS) error {
 			return err
 		}
 		desktopApp := application.New(applicationOptions(assets, bindingService))
+		updateRuntime, err := startApplicationUpdater(updater.NewSparkleAdapter())
+		if err != nil {
+			return err
+		}
+		desktopApp.OnShutdown(func() {
+			// Sparkle owns main-queue objects and reply blocks. Release them while
+			// the AppKit loop is alive; the defer below performs error readback.
+			_ = updateRuntime.Close()
+		})
+		defer func() {
+			returnErr = errors.Join(returnErr, updateRuntime.Close())
+		}()
 		mainWindow := desktopApp.Window.NewWithOptions(mainWindowOptions())
 		mainWindow.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
 			mainWindow.Hide()

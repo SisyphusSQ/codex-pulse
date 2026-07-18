@@ -11,14 +11,16 @@ tasks:
       - task: common:build:frontend
         vars:
           DEV: '{{.DEV}}'
+      - task: sparkle:prepare
     preconditions:
       - sh: test "$CODEX_PULSE_ARCH" = arm64
         msg: Codex Pulse v0.1 只支持 macOS arm64
     cmds:
       - mkdir -p "bin"
       - go build {{.BUILD_FLAGS}} -o "bin/codex-pulse"
+      - install_name_tool -add_rpath '@executable_path/../Frameworks' "bin/codex-pulse"
     vars:
-      BUILD_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production -trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
+      BUILD_FLAGS: '{{if eq .DEV "true"}}-tags sparkle -buildvcs=false -gcflags=all="-l"{{else}}-tags "production sparkle" -trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
     env:
       GOOS: darwin
       GOARCH: '{{.ARCH | default "arm64"}}'
@@ -27,6 +29,12 @@ tasks:
       CGO_LDFLAGS: -mmacosx-version-min=15.0
       MACOSX_DEPLOYMENT_TARGET: "15.0"
       CODEX_PULSE_ARCH: '{{.ARCH | default "arm64"}}'
+
+  sparkle:prepare:
+    summary: 获取并校验固定版本的公开 Sparkle framework 到 repo-local cache
+    internal: true
+    cmds:
+      - scripts/sparkle/prepare_framework.sh .cache/sparkle
 
   run:
     summary: 直接运行 macOS arm64 开发二进制
@@ -106,9 +114,12 @@ tasks:
         "bin/.packaging/icons.icns"
         "bin/.packaging/tray"
         build/darwin/Info.plist
+        "{{.SPARKLE_FRAMEWORK}}"
         "bin/Codex Pulse.app"
         "$CODEX_PULSE_APP_VERSION"
         "$CODEX_PULSE_BUILD_NUMBER"
+    vars:
+      SPARKLE_FRAMEWORK: '.cache/sparkle/2.9.4/framework/Sparkle.framework'
     env:
       CODEX_PULSE_APP_VERSION: '{{.APP_VERSION | default "0.0.0"}}'
       CODEX_PULSE_BUILD_NUMBER: '{{.BUILD_NUMBER | default "0"}}'
