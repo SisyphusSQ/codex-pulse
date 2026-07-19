@@ -20,7 +20,9 @@ type CycleResult struct {
 	YieldFor time.Duration
 }
 
-// Run 先接管遗留task并立即推进一次，再由robfig cron周期触发后续有界cycle。
+// Run 先接管遗留task并立即推进一个有界burst，再由robfig cron周期触发后续
+// burst。每个cycle仍重新选择队列和读取pressure；只有durable YieldFor为零时
+// 才在同一次cron唤醒内继续，避免interactive首次索引被一秒cron精度限速。
 func (service *Service) Run(ctx context.Context) error {
 	if ctx == nil || service == nil || service.repository == nil || service.systemProbe == nil ||
 		service.newCronRunner == nil {
@@ -58,7 +60,7 @@ func (service *Service) Run(ctx context.Context) error {
 				reportFatal(ErrSchedulerCronPanic)
 			}
 		}()
-		reportFatal(service.runScheduledCycle(jobCtx))
+		reportFatal(service.runScheduledBurstSafely(jobCtx))
 	})
 	runner, err := service.newCronRunner(job)
 	if err != nil {
@@ -72,7 +74,7 @@ func (service *Service) Run(ctx context.Context) error {
 	if _, err := service.recoverActiveTasksSerialized(jobCtx); err != nil {
 		return err
 	}
-	if err := service.runScheduledCycle(jobCtx); err != nil {
+	if err := service.runScheduledBurstSafely(jobCtx); err != nil {
 		return err
 	}
 	runner.Start()
@@ -86,22 +88,38 @@ func (service *Service) Run(ctx context.Context) error {
 	return cause
 }
 
-func (service *Service) runScheduledCycle(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
+func (service *Service) runScheduledBurstSafely(ctx context.Context) (returnErr error) {
+	defer func() {
+		if recover() != nil {
+			returnErr = ErrSchedulerCronPanic
+		}
+	}()
+	return service.runScheduledBurst(ctx)
+}
+
+func (service *Service) runScheduledBurst(ctx context.Context) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		system, err := service.systemProbe.Snapshot(ctx)
+		if err != nil {
+			return err
+		}
+		result, err := service.runCycleSerialized(ctx, system)
+		if errors.Is(err, ErrQueueEmpty) || errors.Is(err, ErrSchedulerRetry) {
+			return nil
+		}
+		if err != nil && result.Cycle.Outcome == store.SchedulerCycleFailed {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if result.YieldFor > 0 {
+			return nil
+		}
 	}
-	system, err := service.systemProbe.Snapshot(ctx)
-	if err != nil {
-		return err
-	}
-	result, err := service.runCycleSerialized(ctx, system)
-	if errors.Is(err, ErrQueueEmpty) || errors.Is(err, ErrSchedulerRetry) {
-		return nil
-	}
-	if err != nil && result.Cycle.Outcome == store.SchedulerCycleFailed {
-		return nil
-	}
-	return err
 }
 
 // RecoverActiveTasks 接管上次进程遗留的running/interrupted target，并把新attempt移到队尾。
@@ -777,7 +795,8 @@ func failedTransition(class store.RuntimeErrorClass) cycleTransition {
 }
 
 func (transition cycleTransition) yieldFor(budget ScanBudget) time.Duration {
-	if transition.outcome == store.SchedulerCycleYielded {
+	if transition.outcome == store.SchedulerCycleYielded ||
+		transition.outcome == store.SchedulerCycleCompleted {
 		return budget.YieldFor
 	}
 	return 0

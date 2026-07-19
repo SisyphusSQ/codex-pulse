@@ -670,7 +670,7 @@ func TestCoreSchemaEnforcesConstraintsWithoutRepository(t *testing.T) {
 	}
 }
 
-func openTestDatabase(t *testing.T) *storesqlite.Store {
+func openTestDatabase(t testing.TB) *storesqlite.Store {
 	t.Helper()
 
 	directory := t.TempDir()

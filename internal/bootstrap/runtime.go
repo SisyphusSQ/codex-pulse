@@ -25,7 +25,7 @@ const (
 	bootstrapPriority     = int64(10)
 	defaultFastMaxFiles   = 8
 	defaultFastMaxBytes   = int64(16 << 20)
-	defaultReadChunkBytes = 1 << 20
+	defaultReadChunkBytes = 4 << 20
 	maxReadChunkBytes     = 4 << 20
 	bootstrapJobIDPrefix  = "bootstrap-"
 	bootstrapResumePrefix = "bootstrap-resume-"

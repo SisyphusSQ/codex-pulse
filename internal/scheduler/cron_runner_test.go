@@ -146,6 +146,52 @@ func TestServiceRunUsesCronTriggerAfterImmediateEmptyCycle(t *testing.T) {
 	}
 }
 
+func TestServiceScheduledBurstContinuesInteractiveAndRechecksLivePriority(t *testing.T) {
+	t.Parallel()
+
+	repository := openSchedulerRepository(t)
+	backfill := createSchedulerFixture(t, repository, "burst-backfill", store.SchedulerLaneBackfill, 10)
+	if _, err := repository.PromoteSchedulerTask(context.Background(), backfill.DedupeKey, 11); err != nil {
+		t.Fatalf("PromoteSchedulerTask() error = %v", err)
+	}
+	var live store.SchedulerTask
+	executor := &recordingExecutor{}
+	executor.execute = func(
+		_ context.Context,
+		task store.SchedulerTask,
+		_ ScanBudget,
+	) (SliceResult, error) {
+		switch len(executor.calls) {
+		case 1:
+			if task.TaskID != backfill.TaskID {
+				t.Fatalf("first burst task = %s, want backfill", task.TaskID)
+			}
+			live = createSchedulerFixture(t, repository, "burst-live", store.SchedulerLaneLive, 12)
+			return SliceResult{BytesProcessed: 1, StopReason: store.SchedulerStopByteBudget}, nil
+		case 2:
+			if task.TaskID != live.TaskID {
+				t.Fatalf("second burst task = %s, want newly queued live %s", task.TaskID, live.TaskID)
+			}
+			return SliceResult{StopReason: store.SchedulerStopCompleted}, nil
+		default:
+			t.Fatalf("unexpected executor call %d", len(executor.calls))
+			return SliceResult{}, ErrInvalidSliceResult
+		}
+	}
+	service := newSchedulerTestService(t, repository, executor)
+	if err := service.runScheduledBurst(context.Background()); err != nil {
+		t.Fatalf("runScheduledBurst() error = %v", err)
+	}
+	if len(executor.calls) != 2 || executor.budgets[0].YieldFor != 0 ||
+		executor.budgets[1].YieldFor != DefaultBudgetPolicy().BackgroundNormal.YieldFor {
+		t.Fatalf("burst calls = %#v budgets = %#v", executor.calls, executor.budgets)
+	}
+	storedBackfill, err := repository.SchedulerTask(context.Background(), backfill.TaskID)
+	if err != nil || storedBackfill.State != store.SchedulerTaskQueued {
+		t.Fatalf("backfill after live cooldown = %#v, %v", storedBackfill, err)
+	}
+}
+
 func TestServiceRunCronTriggerResumesDurableDueRetry(t *testing.T) {
 	t.Parallel()
 
@@ -317,6 +363,33 @@ func TestServiceRunReturnsTypedCronPanicWithoutLeakingPayload(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("Run() did not return typed cron panic")
+	}
+}
+
+func TestServiceRunReturnsTypedPanicFromImmediateZeroYieldBurst(t *testing.T) {
+	t.Parallel()
+
+	repository := openSchedulerRepository(t)
+	initializeCronLifecycle(t, repository)
+	task := createSchedulerFixture(t, repository, "immediate-burst-panic", store.SchedulerLaneBackfill, 10)
+	if _, err := repository.PromoteSchedulerTask(context.Background(), task.DedupeKey, 11); err != nil {
+		t.Fatalf("PromoteSchedulerTask() error = %v", err)
+	}
+	executor := &recordingExecutor{result: SliceResult{
+		BytesProcessed: 1, StopReason: store.SchedulerStopByteBudget,
+	}}
+	service := newSchedulerTestService(t, repository, executor)
+	service.systemProbe = &panicAfterFirstSystemProbe{}
+	runner := newFakeCronRunner()
+	service.newCronRunner = runner.factory
+
+	if err := service.Run(context.Background()); !errors.Is(err, ErrSchedulerCronPanic) || err.Error() != ErrSchedulerCronPanic.Error() {
+		t.Fatalf("Run() error = %v, want typed sanitized immediate burst panic", err)
+	}
+	select {
+	case <-runner.started:
+		t.Fatal("cron runner started after immediate burst panic")
+	default:
 	}
 }
 

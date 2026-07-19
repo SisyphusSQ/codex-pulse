@@ -10,10 +10,12 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/bootstrap"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
 	"github.com/SisyphusSQ/codex-pulse/internal/liveindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
+	"github.com/SisyphusSQ/codex-pulse/internal/scheduler"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -363,6 +365,132 @@ func TestApplicationLifecycleRuntimeValidatesPhysicalHomeBeforeRecoveringTargets
 	storedJob, _, err := repository.LiveScanRun(ctx, job.JobID)
 	if err != nil || storedJob.State != factstore.JobQueued {
 		t.Fatalf("LiveScanRun() = %#v, %v; startup must not interrupt target before Home validation", storedJob, err)
+	}
+}
+
+func TestApplicationBootstrapIsDurablyEnqueuedWithInteractiveBudget(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, "sessions"), 0o700); err != nil {
+		t.Fatalf("create sessions: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, "archived_sessions"), 0o700); err != nil {
+		t.Fatalf("create archived sessions: %v", err)
+	}
+	rollout := []byte(`{"timestamp":"2026-07-14T01:00:00Z","type":"session_meta","payload":{"id":"session-bootstrap-enqueue","timestamp":"2026-07-14T01:00:00Z","cwd":"/tmp/project","originator":"codex_cli_rs","cli_version":"0.142.3","source":"cli","model_provider":"openai"}}` + "\n")
+	if err := os.WriteFile(filepath.Join(home, "sessions", "enqueue.jsonl"), rollout, 0o600); err != nil {
+		t.Fatalf("write rollout: %v", err)
+	}
+	metadata, err := logs.NewHomeProbe().Probe(ctx, home)
+	if err != nil {
+		t.Fatalf("Probe(home) error = %v", err)
+	}
+	databaseDirectory := t.TempDir()
+	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
+		t.Fatalf("secure database directory: %v", err)
+	}
+	configured, err := openConfiguredStore(ctx, storesqlite.Config{
+		Path: filepath.Join(databaseDirectory, "bootstrap-enqueue.db"),
+	})
+	if err != nil {
+		t.Fatalf("openConfiguredStore() error = %v", err)
+	}
+	database := configured.(*storesqlite.Store)
+	t.Cleanup(func() { _ = database.Close(context.Background()) })
+	repository := factstore.NewRepository(database)
+	bootstrapRuntime, err := bootstrap.NewRuntime(bootstrap.RuntimeConfig{Repository: repository})
+	if err != nil {
+		t.Fatalf("bootstrap.NewRuntime() error = %v", err)
+	}
+	request := preferences.BootstrapRequest{
+		SwitchID: "switch-bootstrap-enqueue", Generation: 1,
+		Source: preferences.ConfirmedSource{
+			Path: metadata.Path, DeviceID: metadata.DeviceID, Inode: metadata.Inode,
+			ConfirmedAtMS: time.Now().UnixMilli(),
+		},
+		DataStoreKey: "bootstrap-enqueue-store", Strategy: preferences.HomeSwitchIndependentDatabase,
+	}
+	if err := bootstrapRuntime.StartBootstrap(ctx, request); err != nil {
+		t.Fatalf("StartBootstrap() error = %v", err)
+	}
+	liveRuntime, err := liveindex.New(liveindex.Config{Repository: repository})
+	if err != nil {
+		t.Fatalf("liveindex.New() error = %v", err)
+	}
+	bootstrapExecutor, err := scheduler.NewBootstrapExecutor(bootstrapRuntime)
+	if err != nil {
+		t.Fatalf("NewBootstrapExecutor() error = %v", err)
+	}
+	liveExecutor, err := scheduler.NewLiveExecutor(liveRuntime)
+	if err != nil {
+		t.Fatalf("NewLiveExecutor() error = %v", err)
+	}
+	queue, err := scheduler.NewService(scheduler.ServiceConfig{
+		Repository: repository,
+		Executors: map[factstore.SchedulerTargetKind]scheduler.Executor{
+			factstore.SchedulerTargetBootstrap: bootstrapExecutor,
+			factstore.SchedulerTargetLiveScan:  liveExecutor,
+		},
+		BudgetPolicy: scheduler.DefaultBudgetPolicy(), MaxLiveBurst: 8,
+	})
+	if err != nil {
+		t.Fatalf("scheduler.NewService() error = %v", err)
+	}
+	if err := enqueueLatestApplicationBootstrap(ctx, repository, queue, 1); err != nil {
+		t.Fatalf("enqueueLatestApplicationBootstrap() error = %v", err)
+	}
+	if err := enqueueLatestApplicationBootstrap(ctx, repository, queue, 1); err != nil {
+		t.Fatalf("enqueueLatestApplicationBootstrap(replay) error = %v", err)
+	}
+	job, _, err := repository.LatestBootstrapRunByGeneration(ctx, 1)
+	if err != nil {
+		t.Fatalf("LatestBootstrapRunByGeneration() error = %v", err)
+	}
+	task, err := repository.SchedulerTask(ctx, "task-"+job.JobID)
+	if err != nil {
+		t.Fatalf("SchedulerTask() error = %v", err)
+	}
+	if task.TargetID != job.JobID || task.Lane != factstore.SchedulerLaneBackfill ||
+		task.ServiceClass != factstore.SchedulerServiceInteractive {
+		t.Fatalf("bootstrap scheduler task = %#v", task)
+	}
+	if _, err := repository.ClaimSchedulerTask(ctx, task.TaskID, task.UpdatedAtMS+1); err != nil {
+		t.Fatalf("ClaimSchedulerTask() error = %v", err)
+	}
+	recovered, err := queue.RecoverActiveTasks(ctx)
+	if err != nil || len(recovered) != 1 || recovered[0].TaskID != task.TaskID ||
+		recovered[0].TargetID == job.JobID || recovered[0].State != factstore.SchedulerTaskQueued {
+		t.Fatalf("RecoverActiveTasks() = %#v, %v", recovered, err)
+	}
+	if err := enqueueLatestApplicationBootstrap(ctx, repository, queue, 1); err != nil {
+		t.Fatalf("enqueueLatestApplicationBootstrap(rebound replay) error = %v", err)
+	}
+	tasks, err := repository.ListSchedulerTasks(ctx, factstore.SchedulerTaskFilter{Limit: 10})
+	if err != nil || len(tasks) != 1 || tasks[0].TaskID != task.TaskID ||
+		tasks[0].TargetID != recovered[0].TargetID {
+		t.Fatalf("scheduler tasks after rebound replay = %#v, %v", tasks, err)
+	}
+	terminalTask, err := repository.ClaimSchedulerTask(ctx, task.TaskID, tasks[0].UpdatedAtMS+1)
+	if err != nil {
+		t.Fatalf("ClaimSchedulerTask(rebound) error = %v", err)
+	}
+	finishedAtMS := terminalTask.UpdatedAtMS + 1
+	if err := repository.CommitSchedulerCycle(ctx, factstore.SchedulerCycleCommit{
+		TaskID: terminalTask.TaskID, ExpectedState: factstore.SchedulerTaskRunning,
+		State: factstore.SchedulerTaskSucceeded, AtMS: finishedAtMS,
+		Cycle: factstore.SchedulerCycle{
+			CycleID: "cycle-bootstrap-terminal-replay", TaskID: terminalTask.TaskID,
+			Lane: terminalTask.Lane, SelectionReason: factstore.SchedulerSelectionBackfillOnly,
+			StopReason: factstore.SchedulerStopCompleted, Outcome: factstore.SchedulerCycleCompleted,
+			BudgetFiles: 1, BudgetBytes: 1, BudgetActiveMS: 1,
+			BackfillDepth: 1, StartedAtMS: terminalTask.UpdatedAtMS,
+			FinishedAtMS: finishedAtMS,
+		},
+	}); err != nil {
+		t.Fatalf("CommitSchedulerCycle(terminal replay fixture) error = %v", err)
+	}
+	if err := enqueueLatestApplicationBootstrap(ctx, repository, queue, 1); err != nil {
+		t.Fatalf("enqueueLatestApplicationBootstrap(terminal replay) error = %v", err)
 	}
 }
 

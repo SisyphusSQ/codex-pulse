@@ -633,6 +633,44 @@ func TestQuotaProjectionBatchesEvidenceBeyondSQLiteVariableLimit(t *testing.T) {
 	}
 }
 
+// BenchmarkQuotaProjectionRebuild4096 guards the visible-window arbitration
+// path that runs during bootstrap commits. It keeps a fixed 4096-observation
+// history so benchmark iterations remain comparable instead of growing input.
+func BenchmarkQuotaProjectionRebuild4096(b *testing.B) {
+	database := openTestDatabase(b)
+	repository := NewRepository(database)
+	ctx := context.Background()
+	if err := repository.EnsureApplicationSchema(ctx); err != nil {
+		b.Fatalf("EnsureApplicationSchema() error = %v", err)
+	}
+	base := int64(150 * quotaTestHourMS)
+	reset := base + 5*quotaTestHourMS
+	const historySize = 4096
+	if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		models := make([]*quotaObservationModel, 0, historySize)
+		for index := 0; index < historySize; index++ {
+			sample := quotaProjectionWhamSample(
+				"benchmark-history-"+formatQuotaTestIndex(index), 40, base+int64(index), reset,
+			)
+			models = append(models, quotaObservationModelFromSample(sample))
+		}
+		return transaction.WithContext(ctx).CreateInBatches(&models, 256).Error
+	}); err != nil {
+		b.Fatalf("seed observations: %v", err)
+	}
+	repository.quotaNow = func() time.Time { return time.UnixMilli(base + historySize) }
+	if err := repository.RebuildQuotaProjection(ctx, defaultQuotaArbitrationRule()); err != nil {
+		b.Fatalf("initial RebuildQuotaProjection() error = %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for iteration := 0; iteration < b.N; iteration++ {
+		if err := repository.RebuildQuotaProjection(ctx, defaultQuotaArbitrationRule()); err != nil {
+			b.Fatalf("RebuildQuotaProjection(%d) error = %v", iteration, err)
+		}
+	}
+}
+
 func TestQuotaProjectionReadersFailClosedOnTypedTampering(t *testing.T) {
 	t.Parallel()
 

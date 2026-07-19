@@ -67,6 +67,20 @@ func TestSnapshotReaderRejectsSymlinkAndReportsMidReadDrift(t *testing.T) {
 		}
 	})
 
+	t.Run("removed before open", func(t *testing.T) {
+		home, snapshot, _ := snapshotReaderFixture(t)
+		if err := os.Remove(snapshot.Path); err != nil {
+			t.Fatalf("Remove(source) error = %v", err)
+		}
+		reader, err := NewSnapshotReader(home, 4)
+		if err != nil {
+			t.Fatalf("NewSnapshotReader() error = %v", err)
+		}
+		if _, err := reader.Read(context.Background(), snapshot, 0, func([]byte, bool) error { return nil }); !errors.Is(err, ErrChangedDuringScan) {
+			t.Fatalf("Read(removed) error = %v, want ErrChangedDuringScan", err)
+		}
+	})
+
 	t.Run("append during read", func(t *testing.T) {
 		home, snapshot, _ := snapshotReaderFixture(t)
 		reader, err := NewSnapshotReader(home, 4)

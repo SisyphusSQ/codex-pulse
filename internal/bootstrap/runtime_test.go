@@ -341,6 +341,20 @@ func TestNewRuntimeRejectsOversizedReadChunk(t *testing.T) {
 	}
 }
 
+func TestNewRuntimeDefaultsBootstrapReadChunkToMaximum(t *testing.T) {
+	repository := openBootstrapRepository(t)
+	runtime, err := NewRuntime(RuntimeConfig{Repository: repository})
+	if err != nil {
+		t.Fatalf("NewRuntime() error = %v", err)
+	}
+	if runtime.readChunkBytes != maxReadChunkBytes || defaultReadChunkBytes != maxReadChunkBytes {
+		t.Fatalf(
+			"default read chunk = %d runtime=%d, want max %d",
+			defaultReadChunkBytes, runtime.readChunkBytes, maxReadChunkBytes,
+		)
+	}
+}
+
 func TestRuntimeSchedulerTargetInterruptAndRecoverAreIdempotent(t *testing.T) {
 	t.Parallel()
 
@@ -701,6 +715,41 @@ func TestRuntimeFinalReconcileCapturesDirectoryDrift(t *testing.T) {
 	}
 	if _, err := repository.Session(context.Background(), "session-late"); err != nil {
 		t.Fatalf("Session(late) error = %v", err)
+	}
+}
+
+func TestRuntimeFinalReconcileRecoversSourceRemovedAfterInitialDiscovery(t *testing.T) {
+	t.Parallel()
+
+	repository := openBootstrapRepository(t)
+	home := t.TempDir()
+	path := filepath.Join(home, "sessions", "archived-during-bootstrap.jsonl")
+	writeBootstrapRollout(t, path,
+		completeBootstrapRollout("session-archived", "turn-archived"), time.Now().Add(-time.Hour))
+	request := bootstrapRequest(t, home, "switch-removed-after-discovery", 111)
+	var removeOnce sync.Once
+	runtime := newTestRuntime(t, repository, RuntimeConfig{}, runtimeHooks{
+		afterInitialDiscovery: func(context.Context) {
+			removeOnce.Do(func() {
+				if err := os.Remove(path); err != nil {
+					t.Fatalf("Remove(source after discovery) error = %v", err)
+				}
+			})
+		},
+	})
+	if err := runtime.StartBootstrap(context.Background(), request); err != nil {
+		t.Fatalf("StartBootstrap() error = %v", err)
+	}
+	job, _, _ := repository.BootstrapRunByIdentity(context.Background(), request.SwitchID, 111)
+	report, err := runtime.Run(context.Background(), job.JobID)
+	if err != nil || !report.FullHistoryReady || report.State != store.JobSucceeded {
+		t.Fatalf("Run(removed after discovery) = %#v, %v", report, err)
+	}
+	items, err := repository.ListBootstrapPlanItems(
+		context.Background(), store.BootstrapPlanItemFilter{JobID: job.JobID},
+	)
+	if err != nil || len(items) != 1 || items[0].State != store.BootstrapItemDrifted {
+		t.Fatalf("removed source plan items = %#v, %v, want one drifted initial item", items, err)
 	}
 }
 

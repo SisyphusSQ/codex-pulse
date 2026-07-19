@@ -89,3 +89,25 @@ func TestPopoverControllerValidatesDependencies(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+// BenchmarkPopoverControllerOpen measures the synchronous native-adapter dispatch
+// before WebView rendering. The M11 runbook reports it separately from backend
+// query readiness so neither value is presented as end-to-end paint latency.
+func BenchmarkPopoverControllerOpen(b *testing.B) {
+	window := &popoverWindowStub{}
+	controller, err := newPopoverController(window)
+	if err != nil {
+		b.Fatal(err)
+	}
+	origin := platformtray.PopoverOrigin{X: 900, Y: 31}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		window.visible = false
+		controller.Toggle(origin, true)
+	}
+	b.StopTimer()
+	if window.shown != b.N || window.focused != b.N {
+		b.Fatalf("popover dispatch counts = shown %d focused %d, want %d", window.shown, window.focused, b.N)
+	}
+}

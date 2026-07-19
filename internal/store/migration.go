@@ -29,7 +29,8 @@ const (
 	applicationSchemaV12Version = 12
 	applicationSchemaV13Version = 13
 	applicationSchemaV14Version = 14
-	applicationSchemaVersion    = applicationSchemaV14Version
+	applicationSchemaV15Version = 15
+	applicationSchemaVersion    = applicationSchemaV15Version
 )
 
 var (
@@ -197,6 +198,14 @@ var applicationMigrations = []migrationDefinition{
 		name:     "health-evaluator-events",
 		checksum: applicationSchemaV14Checksum(),
 		apply:    rebuildHealthEventsForV14,
+	},
+	{
+		version:  applicationSchemaV15Version,
+		name:     "quota-projection-performance-index",
+		checksum: applicationSchemaV15Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			return ensureSchemaObjects(ctx, transaction, quotaPerformanceSchemaObjects)
+		},
 	},
 }
 
@@ -663,7 +672,7 @@ func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteT
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
 		quotaSchemaObjects, quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
-		metricsSchemaObjects,
+		metricsSchemaObjects, quotaPerformanceSchemaObjects,
 	} {
 		for _, object := range objects {
 			exists, err := verifySchemaObject(ctx, transaction, object)
@@ -930,6 +939,18 @@ func applicationSchemaV14Checksum() string {
 	)
 	_, _ = fmt.Fprintln(hasher, "rebuild", "gorm-read-write", "isolated-sqlite-ddl")
 	_, _ = fmt.Fprintln(hasher, "write-batch-size", healthEventMigrationBatchSize)
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV15Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV15Version, "quota-projection-performance-index")
+	for _, object := range quotaPerformanceSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.objectType, object.name,
+			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+		)
+	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 

@@ -58,6 +58,7 @@
 #### optimization:
 1. [TOO-285] 完善 AppIcon、ICNS 与 Tray Template 资产闭环，新增冻结源校验、严格灰阶 1x/2x 派生、macOS bundle/ZIP 资源读回及可重复导出与 live smoke 证据
 2. [TOO-298] 优化首次全量索引的 GORM 有界批量冻结、1MiB 读取与分阶段 quota 投影，使用增量 evidence 写入保持首屏后 quota 持续可查询；单次约 6.55GB 真实 Home 样本首屏约 36.4 秒、full bootstrap 约 18.08 分钟，正式阈值与后半程 arbitration 读放大优化留给 TOO-299
+3. [TOO-299] 优化首次初始化为生产幂等入队、4MiB 读取、schema v15 quota 过滤与排序索引及增量投影读回，并在 robfig cron 的零 yield cycle 间连续推进且保留 live 抢占和 mutable Home final reconcile；约 6.56GB 真实只读 Home 三轮首屏 p95 约 38.4 秒、full bootstrap p95 约 15.3 分钟，资源、查询、隐私和清理门禁均通过
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

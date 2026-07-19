@@ -1229,6 +1229,18 @@ func TestApplicationLifecycleRuntimeFinalizesPendingSwitchBeforeQuotaStart(t *te
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
 	}
+	job, _, err := repository.LatestBootstrapRunByGeneration(context.Background(), 2)
+	if err != nil {
+		t.Fatalf("LatestBootstrapRunByGeneration() error = %v", err)
+	}
+	task, err := repository.SchedulerTask(context.Background(), "task-"+job.JobID)
+	if err != nil {
+		t.Fatalf("SchedulerTask(application bootstrap) error = %v", err)
+	}
+	if task.TargetID != job.JobID || task.Lane != store.SchedulerLaneBackfill ||
+		task.ServiceClass != store.SchedulerServiceInteractive {
+		t.Fatalf("application bootstrap scheduler task = %#v", task)
+	}
 	readback, err := preferenceStore.LoadPreferences(context.Background())
 	if err != nil || readback.PendingResume != nil || readback.PendingSwitch != nil ||
 		readback.CodexHome.Generation != 2 || readback.LastSwitch == nil ||

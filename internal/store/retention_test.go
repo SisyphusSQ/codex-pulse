@@ -388,7 +388,7 @@ type retentionFixture struct {
 	health         []healthEventModel
 }
 
-func seedRetentionModels(t *testing.T, repository *Repository, fixture retentionFixture) {
+func seedRetentionModels(t testing.TB, repository *Repository, fixture retentionFixture) {
 	t.Helper()
 	err := repository.database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
 		for _, models := range []any{fixture.runtimeSamples, fixture.projects, fixture.sourceStates, fixture.sourceAttempts, fixture.jobs, fixture.health} {
@@ -436,6 +436,31 @@ func seedRetentionModels(t *testing.T, repository *Repository, fixture retention
 	if err != nil {
 		t.Fatalf("seed retention fixture: %v", err)
 	}
+}
+
+func BenchmarkCleanupRetentionBatch1000(b *testing.B) {
+	repository := openRuntimeRepository(b)
+	now := time.UnixMilli(200_000_000).UTC()
+	cutoff := now.Add(-RetentionWindow).UnixMilli()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for iteration := 0; iteration < b.N; iteration++ {
+		b.StopTimer()
+		samples := make([]appRuntimeSampleModel, 1_000)
+		base := cutoff - 1 - int64(iteration+1)*1_000
+		for index := range samples {
+			samples[index] = retentionRuntimeSample(base - int64(index))
+		}
+		seedRetentionModels(b, repository, retentionFixture{runtimeSamples: samples})
+		b.StartTimer()
+		report, err := repository.CleanupRetentionBatch(context.Background(), RetentionCleanupOptions{
+			Now: now, BatchSize: 1_000,
+		})
+		if err != nil || report.Deleted.RuntimeSamples != 1_000 {
+			b.Fatalf("CleanupRetentionBatch() = %#v, %v", report, err)
+		}
+	}
+	b.ReportMetric(float64(1_000*b.N)/b.Elapsed().Seconds(), "rows/s")
 }
 
 func retentionTerminalJob(jobID string, createdAtMS, finishedAtMS int64) jobRunModel {

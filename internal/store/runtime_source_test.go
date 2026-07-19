@@ -266,7 +266,7 @@ func TestSourceStateDueQueryAndAppendOnlyAttempts(t *testing.T) {
 	}
 }
 
-func openRuntimeRepository(t *testing.T) *Repository {
+func openRuntimeRepository(t testing.TB) *Repository {
 	t.Helper()
 	database := openTestDatabase(t)
 	repository := NewRepository(database)
