@@ -14,12 +14,14 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/bootstrap"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/metrics"
 	platformtray "github.com/SisyphusSQ/codex-pulse/internal/platform/tray"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
@@ -36,6 +38,7 @@ const (
 	isolationMarker    = "codex-pulse-m11-real-home-v1\n"
 	bootstrapSliceTime = 30 * time.Second
 	bootstrapSliceSize = int64(512 << 20)
+	warmQuerySamples   = 30
 )
 
 var safeIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -64,6 +67,23 @@ type summary struct {
 	FirstScreenMS         int64  `json:"firstScreenMs"`
 	BootstrapMS           int64  `json:"bootstrapMs"`
 	BootstrapBytes        int64  `json:"bootstrapBytes"`
+	BootstrapBytesPerSec  int64  `json:"bootstrapBytesPerSec"`
+	PeakRSSBytes          int64  `json:"peakRssBytes"`
+	AverageCPUPercent     int64  `json:"averageCpuPercent"`
+	DatabaseBytes         int64  `json:"databaseBytes"`
+	WALBytes              int64  `json:"walBytes"`
+	ResourceProbeRetries  int64  `json:"resourceProbeRetries"`
+	WarmQuerySamples      int    `json:"warmQuerySamples"`
+	SessionP50Micros      int64  `json:"sessionP50Micros"`
+	SessionP95Micros      int64  `json:"sessionP95Micros"`
+	ProjectP50Micros      int64  `json:"projectP50Micros"`
+	ProjectP95Micros      int64  `json:"projectP95Micros"`
+	UsageP50Micros        int64  `json:"usageP50Micros"`
+	UsageP95Micros        int64  `json:"usageP95Micros"`
+	QuotaP50Micros        int64  `json:"quotaP50Micros"`
+	QuotaP95Micros        int64  `json:"quotaP95Micros"`
+	PopoverP50Micros      int64  `json:"popoverP50Micros"`
+	PopoverP95Micros      int64  `json:"popoverP95Micros"`
 	SessionMatched        int64  `json:"sessionMatched"`
 	SessionPageItems      int    `json:"sessionPageItems"`
 	ProjectMatched        int64  `json:"projectMatched"`
@@ -90,6 +110,29 @@ type summary struct {
 type runArtifacts struct {
 	root     string
 	database *storesqlite.Store
+}
+
+type processSampler struct {
+	probe   *metrics.GopsutilProcessProbe
+	started time.Time
+	first   metrics.ProcessMeasurement
+	cancel  context.CancelFunc
+	done    chan struct{}
+
+	mu      sync.Mutex
+	latest  metrics.ProcessMeasurement
+	peakRSS int64
+	err     error
+	retries int64
+}
+
+type warmQueryMetrics struct {
+	samples                int
+	sessionP50, sessionP95 int64
+	projectP50, projectP95 int64
+	usageP50, usageP95     int64
+	quotaP50, quotaP95     int64
+	popoverP50, popoverP95 int64
 }
 
 func main() {
@@ -155,6 +198,16 @@ func execute(ctx context.Context, input config) (summary, error) {
 	if err := repository.AddPricingVersion(ctx, catalog); err != nil {
 		return summary{}, errors.Join(errStageIsolatedStore, err)
 	}
+	resourceSampler, err := startProcessSampler(ctx)
+	if err != nil {
+		return summary{}, errors.Join(errStageIsolatedStore, err)
+	}
+	resourceStopped := false
+	defer func() {
+		if !resourceStopped {
+			_, _, _, _ = resourceSampler.stop(context.Background())
+		}
+	}()
 	runtime, err := bootstrap.NewRuntime(bootstrap.RuntimeConfig{Repository: repository})
 	if err != nil {
 		return summary{}, errors.Join(errStageBootstrap, err)
@@ -189,6 +242,9 @@ func execute(ctx context.Context, input config) (summary, error) {
 		BootstrapState: string(report.State), BootstrapPhase: string(report.Phase),
 		FullHistoryReady: report.FullHistoryReady, FirstScreenMS: report.FirstScreenMS,
 		BootstrapMS: report.BootstrapMS, BootstrapBytes: report.BytesRead, SourceReadOnlyPassed: true,
+	}
+	if report.BootstrapMS > 0 {
+		result.BootstrapBytesPerSec = report.BytesRead * 1_000 / report.BootstrapMS
 	}
 	if !report.FullHistoryReady {
 		return summary{}, errBootstrapIncomplete
@@ -285,6 +341,31 @@ func execute(ctx context.Context, input config) (summary, error) {
 		})
 	}
 	result.TrayRows = len(platformtray.NewProjector().Project(traySnapshot).Rows)
+	warmMetrics, err := measureWarmQueries(ctx, usageService, quotaService, rangeRequest)
+	if err != nil {
+		return summary{}, errors.Join(errStageSessionQuery, err)
+	}
+	result.WarmQuerySamples = warmMetrics.samples
+	result.SessionP50Micros, result.SessionP95Micros = warmMetrics.sessionP50, warmMetrics.sessionP95
+	result.ProjectP50Micros, result.ProjectP95Micros = warmMetrics.projectP50, warmMetrics.projectP95
+	result.UsageP50Micros, result.UsageP95Micros = warmMetrics.usageP50, warmMetrics.usageP95
+	result.QuotaP50Micros, result.QuotaP95Micros = warmMetrics.quotaP50, warmMetrics.quotaP95
+	result.PopoverP50Micros, result.PopoverP95Micros = warmMetrics.popoverP50, warmMetrics.popoverP95
+	peakRSS, averageCPU, probeRetries, err := resourceSampler.stop(ctx)
+	resourceStopped = true
+	if err != nil {
+		return summary{}, errors.Join(errStageIsolatedStore, err)
+	}
+	result.PeakRSSBytes, result.AverageCPUPercent = peakRSS, averageCPU
+	result.ResourceProbeRetries = probeRetries
+	result.DatabaseBytes, err = regularFileSize(artifacts.database.Config().Path, false)
+	if err != nil {
+		return summary{}, errors.Join(errStageIsolatedStore, err)
+	}
+	result.WALBytes, err = regularFileSize(artifacts.database.Config().Path+"-wal", true)
+	if err != nil {
+		return summary{}, errors.Join(errStageIsolatedStore, err)
+	}
 
 	privacy, err := scanDatabasePrivacy(ctx, artifacts.database)
 	if err != nil {
@@ -308,6 +389,167 @@ func execute(ctx context.Context, input config) (summary, error) {
 	removed = true
 	result.IsolatedRootRemoved = true
 	return result, nil
+}
+
+func startProcessSampler(ctx context.Context) (*processSampler, error) {
+	probe, err := metrics.NewGopsutilProcessProbe(os.Getpid())
+	if err != nil {
+		return nil, err
+	}
+	first, err := probe.Measure(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sampleContext, cancel := context.WithCancel(ctx)
+	sampler := &processSampler{
+		probe: probe, started: time.Now(), first: first, latest: first,
+		peakRSS: first.RSSBytes, cancel: cancel, done: make(chan struct{}),
+	}
+	go func() {
+		defer close(sampler.done)
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		consecutiveFailures := 0
+		for {
+			select {
+			case <-sampleContext.Done():
+				return
+			case <-ticker.C:
+				measurement, measureErr := probe.Measure(sampleContext)
+				sampler.mu.Lock()
+				if measureErr != nil {
+					if errors.Is(measureErr, context.Canceled) {
+						sampler.mu.Unlock()
+						return
+					}
+					sampler.retries++
+					consecutiveFailures++
+					if consecutiveFailures > 10 {
+						sampler.err = measureErr
+						sampler.mu.Unlock()
+						return
+					}
+					sampler.mu.Unlock()
+					continue
+				}
+				consecutiveFailures = 0
+				sampler.latest = measurement
+				sampler.peakRSS = max(sampler.peakRSS, measurement.RSSBytes)
+				sampler.mu.Unlock()
+			}
+		}
+	}()
+	return sampler, nil
+}
+
+func (sampler *processSampler) stop(ctx context.Context) (int64, int64, int64, error) {
+	if sampler == nil || sampler.cancel == nil {
+		return 0, 0, 0, errInvalidConfig
+	}
+	var final metrics.ProcessMeasurement
+	var finalErr error
+	for attempt := 0; attempt <= 10; attempt++ {
+		final, finalErr = sampler.probe.Measure(ctx)
+		if finalErr == nil {
+			break
+		}
+		sampler.mu.Lock()
+		sampler.retries++
+		sampler.mu.Unlock()
+	}
+	sampler.cancel()
+	<-sampler.done
+	sampler.mu.Lock()
+	defer sampler.mu.Unlock()
+	if sampler.err != nil {
+		return 0, 0, sampler.retries, sampler.err
+	}
+	if finalErr != nil {
+		return 0, 0, sampler.retries, finalErr
+	}
+	sampler.latest = final
+	sampler.peakRSS = max(sampler.peakRSS, final.RSSBytes)
+	elapsedMS := time.Since(sampler.started).Milliseconds()
+	cpuDelta := final.CPUUserMS + final.CPUSystemMS - sampler.first.CPUUserMS - sampler.first.CPUSystemMS
+	if elapsedMS <= 0 || cpuDelta < 0 {
+		return 0, 0, sampler.retries, errInvalidConfig
+	}
+	return sampler.peakRSS, cpuDelta * 100 / elapsedMS, sampler.retries, nil
+}
+
+func measureWarmQueries(
+	ctx context.Context,
+	usageService *usagecost.Service,
+	quotaService *quotaquery.CurrentQueryService,
+	rangeRequest basequery.LocalDateRange,
+) (warmQueryMetrics, error) {
+	if ctx == nil || usageService == nil || quotaService == nil {
+		return warmQueryMetrics{}, errInvalidConfig
+	}
+	sessionDurations := make([]int64, 0, warmQuerySamples)
+	projectDurations := make([]int64, 0, warmQuerySamples)
+	usageDurations := make([]int64, 0, warmQuerySamples)
+	quotaDurations := make([]int64, 0, warmQuerySamples)
+	popoverDurations := make([]int64, 0, warmQuerySamples)
+	for sample := 0; sample < warmQuerySamples; sample++ {
+		popoverStarted := time.Now()
+		started := time.Now()
+		if _, err := usageService.ListSessions(ctx, basequery.Request{Page: basequery.PageRequest{Limit: 100}}); err != nil {
+			return warmQueryMetrics{}, err
+		}
+		sessionDurations = append(sessionDurations, max(1, time.Since(started).Microseconds()))
+		started = time.Now()
+		if _, err := usageService.ListProjects(ctx, basequery.Request{
+			Page: basequery.PageRequest{Limit: 100}, TimeRange: &rangeRequest,
+		}); err != nil {
+			return warmQueryMetrics{}, err
+		}
+		projectDurations = append(projectDurations, max(1, time.Since(started).Microseconds()))
+		started = time.Now()
+		if _, err := usageService.UsageCost(ctx, usagecost.UsageCostRequest{
+			Range: rangeRequest, Granularity: usagecost.TrendDay,
+		}); err != nil {
+			return warmQueryMetrics{}, err
+		}
+		usageDurations = append(usageDurations, max(1, time.Since(started).Microseconds()))
+		started = time.Now()
+		if _, err := quotaService.Query(ctx, time.Now().UnixMilli()); err != nil {
+			return warmQueryMetrics{}, err
+		}
+		quotaDurations = append(quotaDurations, max(1, time.Since(started).Microseconds()))
+		popoverDurations = append(popoverDurations, max(1, time.Since(popoverStarted).Microseconds()))
+	}
+	result := warmQueryMetrics{samples: warmQuerySamples}
+	result.sessionP50, result.sessionP95 = percentiles(sessionDurations)
+	result.projectP50, result.projectP95 = percentiles(projectDurations)
+	result.usageP50, result.usageP95 = percentiles(usageDurations)
+	result.quotaP50, result.quotaP95 = percentiles(quotaDurations)
+	result.popoverP50, result.popoverP95 = percentiles(popoverDurations)
+	return result, nil
+}
+
+func percentiles(values []int64) (int64, int64) {
+	ordered := append([]int64(nil), values...)
+	sort.Slice(ordered, func(left, right int) bool { return ordered[left] < ordered[right] })
+	if len(ordered) == 0 {
+		return 0, 0
+	}
+	return ordered[nearestRankIndex(len(ordered), 50)], ordered[nearestRankIndex(len(ordered), 95)]
+}
+
+func nearestRankIndex(count, percentile int) int {
+	return (count*percentile+99)/100 - 1
+}
+
+func regularFileSize(path string, missingAllowed bool) (int64, error) {
+	info, err := os.Stat(path)
+	if missingAllowed && errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil || !info.Mode().IsRegular() || info.Size() < 0 {
+		return 0, errInvalidConfig
+	}
+	return info.Size(), nil
 }
 
 type bootstrapSliceRunner interface {

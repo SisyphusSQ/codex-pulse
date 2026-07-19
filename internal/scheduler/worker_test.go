@@ -101,7 +101,7 @@ func TestServiceRunCycleCompletesTask(t *testing.T) {
 		t.Fatalf("RunCycle() error = %v", err)
 	}
 	if result.Cycle.TaskID != task.TaskID || result.Cycle.Outcome != store.SchedulerCycleCompleted ||
-		result.YieldFor != 0 {
+		result.YieldFor != DefaultBudgetPolicy().BackgroundNormal.YieldFor {
 		t.Fatalf("RunCycle() = %#v", result)
 	}
 	stored, err := repository.SchedulerTask(context.Background(), task.TaskID)

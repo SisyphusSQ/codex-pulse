@@ -62,6 +62,8 @@ type ApplicationLifecycleRuntimeConfig struct {
 type applicationLifecycleRuntime struct {
 	adapter        *LifecycleEventAdapter
 	coordinator    *appLifecycle.Coordinator
+	scheduler      *scheduler.Service
+	repository     *store.Repository
 	quota          *applicationQuotaRuntime
 	preferences    *preferences.Service
 	settingsLoader confirmedPreferencesLoader
@@ -243,6 +245,11 @@ func startApplicationLifecycleRuntime(
 			return nil, applicationLifecycleDependencyError(ctx, handoffErr)
 		}
 	}
+	if err := enqueueLatestApplicationBootstrap(ctx, repository, schedulerService, homeGeneration); err != nil {
+		closeCoordinator()
+		closeQuotaRuntime()
+		return nil, applicationLifecycleDependencyError(ctx, err)
+	}
 	if quotaHomeRuntime != nil {
 		quotaHomeRuntime.lifecycle = coordinator
 		quotaHomeRuntime.resumeQuota = true
@@ -268,7 +275,8 @@ func startApplicationLifecycleRuntime(
 	workerCtx, cancel := context.WithCancel(ctx)
 	controlCtx, controlStop := context.WithCancel(ctx)
 	runtime := &applicationLifecycleRuntime{
-		adapter: adapter, coordinator: coordinator, quota: quotaRuntime,
+		adapter: adapter, coordinator: coordinator, scheduler: schedulerService,
+		repository: repository, quota: quotaRuntime,
 		preferences: preferencesService, settingsLoader: loader, database: config.Database,
 		invalidation: config.Invalidation, cancel: cancel,
 		workerDone: make(chan error, 1), controlCtx: controlCtx, controlStop: controlStop,
@@ -391,6 +399,15 @@ func (runtime *applicationLifecycleRuntime) resumeCommittedQuotaGeneration(
 		ctx,
 		startupEventID("home-generation-resume"),
 		int64(committed.CodexHome.Generation),
+	); err != nil {
+		postCommitErr := &ApplicationPreferencesPostCommitError{
+			Committed: committed,
+			Cause:     err,
+		}
+		return committed, errors.Join(original, postCommitErr)
+	}
+	if err := enqueueLatestApplicationBootstrap(
+		ctx, runtime.repository, runtime.scheduler, int64(committed.CodexHome.Generation),
 	); err != nil {
 		postCommitErr := &ApplicationPreferencesPostCommitError{
 			Committed: committed,
@@ -601,6 +618,56 @@ func (provider fileConfirmedHomeProvider) CurrentHome(ctx context.Context) (appL
 
 func startupEventID(kind string) string {
 	return "startup-" + kind + ":" + uuid.NewString()
+}
+
+const applicationBootstrapLaneCapacity = 1024
+
+func enqueueLatestApplicationBootstrap(
+	ctx context.Context,
+	repository *store.Repository,
+	queue *scheduler.Service,
+	homeGeneration int64,
+) error {
+	if ctx == nil || repository == nil || queue == nil || homeGeneration < 0 {
+		return ErrApplicationLifecycleRuntime
+	}
+	job, facts, err := repository.LatestBootstrapRunByGeneration(ctx, homeGeneration)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if facts.PlanState != store.BootstrapPlanReady {
+		return ErrApplicationLifecycleRuntime
+	}
+	if job.State != store.JobQueued && job.State != store.JobRunning {
+		return nil
+	}
+	existing, err := repository.SchedulerTaskByTarget(ctx, job.JobID)
+	if err == nil {
+		if existing.TargetKind != store.SchedulerTargetBootstrap ||
+			existing.HomeGeneration != homeGeneration || existing.Lane != store.SchedulerLaneBackfill ||
+			existing.ServiceClass != store.SchedulerServiceInteractive {
+			return ErrApplicationLifecycleRuntime
+		}
+		// target admission 已经持久化即可视为幂等成功。这里不能限定 active
+		// state：worker 可能在读 job 与读 task 之间把 task 推进到 terminal。
+		return nil
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
+	_, err = queue.Enqueue(ctx, scheduler.EnqueueRequest{
+		TaskID: "task-" + job.JobID, DedupeKey: "bootstrap:" + job.JobID,
+		TargetKind: store.SchedulerTargetBootstrap, TargetID: job.JobID,
+		HomeGeneration: homeGeneration, Lane: store.SchedulerLaneBackfill,
+		// 首次索引在无系统压力时使用 interactive budget 连续推进；lane
+		// 仍是 backfill，因此 live task、用户 pause、sleep 与 pressure 会优先。
+		ServiceClass:  store.SchedulerServiceInteractive,
+		RequestedAtMS: job.CreatedAtMS, LaneCapacity: applicationBootstrapLaneCapacity,
+	})
+	return err
 }
 
 func nonFatalSourceStateError(err error) bool {

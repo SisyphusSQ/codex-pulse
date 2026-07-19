@@ -3,6 +3,7 @@ package liveindex
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	"github.com/SisyphusSQ/codex-pulse/internal/indexer"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -314,7 +316,7 @@ func TestRuntimeTimeBudgetStillFailsWhenSnapshotDriftsAfterChunk(t *testing.T) {
 	}
 }
 
-func openLiveRepository(t *testing.T) *store.Repository {
+func openLiveRepository(t testing.TB) *store.Repository {
 	t.Helper()
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
@@ -334,7 +336,7 @@ func openLiveRepository(t *testing.T) *store.Repository {
 	return repository
 }
 
-func newLiveRuntime(t *testing.T, repository *store.Repository, config Config) *Runtime {
+func newLiveRuntime(t testing.TB, repository *store.Repository, config Config) *Runtime {
 	t.Helper()
 	config.Repository = repository
 	var mu sync.Mutex
@@ -352,7 +354,7 @@ func newLiveRuntime(t *testing.T, repository *store.Repository, config Config) *
 	return runtime
 }
 
-func liveRequest(t *testing.T, home, requestID string, generation int64) LiveRequest {
+func liveRequest(t testing.TB, home, requestID string, generation int64) LiveRequest {
 	t.Helper()
 	metadata, err := logs.NewHomeProbe().Probe(context.Background(), home)
 	if err != nil {
@@ -377,13 +379,108 @@ func liveRequest(t *testing.T, home, requestID string, generation int64) LiveReq
 	}
 }
 
-func writeLiveFile(t *testing.T, path string, content []byte) {
+func writeLiveFile(t testing.TB, path string, content []byte) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
+	}
+}
+
+func BenchmarkRuntimeIncrementalAppend(b *testing.B) {
+	ctx := context.Background()
+	repository := openLiveRepository(b)
+	runtime := newLiveRuntime(b, repository, Config{})
+	root := b.TempDir()
+	requests := make([]LiveRequest, b.N)
+	appendPayloads := make([][]byte, b.N)
+	appendTurnIDs := make([]string, b.N)
+	for iteration := 0; iteration < b.N; iteration++ {
+		home := filepath.Join(root, fmt.Sprintf("home-%d", iteration))
+		path := filepath.Join(home, "sessions", "append.jsonl")
+		appendTurnIDs[iteration] = fmt.Sprintf("append-turn-%d", iteration)
+		appendPayloads[iteration] = []byte(fmt.Sprintf(
+			`{"timestamp":"2026-07-14T01:00:05Z","type":"event_msg","payload":{"type":"task_complete","turn_id":%q,"completed_at":1783990805}}`+"\n",
+			appendTurnIDs[iteration],
+		))
+		base := largeOpenLiveRollout(
+			fmt.Sprintf("append-session-%d", iteration),
+			appendTurnIDs[iteration],
+		)
+		writeLiveFile(b, path, base)
+		initial := liveRequest(b, home, fmt.Sprintf("append-initial-%d", iteration), 1)
+		job, err := runtime.Start(ctx, initial)
+		if err != nil {
+			b.Fatalf("Start(initial) error = %v", err)
+		}
+		if report, err := runtime.RunSlice(ctx, job.JobID, SliceBudget{
+			MaxFiles: 1, MaxBytes: 1 << 20, MaxActive: time.Minute,
+		}); err != nil || !report.Complete {
+			b.Fatalf("RunSlice(initial) = %#v, %v", report, err)
+		}
+		metadata, err := logs.NewHomeProbe().Probe(ctx, home)
+		if err != nil {
+			b.Fatalf("Probe() error = %v", err)
+		}
+		discoverer, err := logs.NewConfirmedDiscoverer(metadata.Path, metadata.DeviceID, metadata.Inode)
+		if err != nil {
+			b.Fatalf("NewConfirmedDiscoverer() error = %v", err)
+		}
+		before, err := discoverer.Discover(ctx)
+		if err != nil {
+			b.Fatalf("Discover(before) error = %v", err)
+		}
+		file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			b.Fatalf("OpenFile() error = %v", err)
+		}
+		if _, err := file.Write(appendPayloads[iteration]); err != nil {
+			_ = file.Close()
+			b.Fatalf("append rollout: %v", err)
+		}
+		if err := file.Close(); err != nil {
+			b.Fatalf("close rollout: %v", err)
+		}
+		after, err := discoverer.Discover(ctx)
+		if err != nil {
+			b.Fatalf("Discover(after) error = %v", err)
+		}
+		plan, err := logs.PlanReconcile(metadata.Path, before.Snapshots, after)
+		if err != nil || len(plan.Actions) != 1 || plan.Actions[0].Kind != logs.ChangeGrown {
+			b.Fatalf("PlanReconcile() = %#v, %v", plan, err)
+		}
+		requests[iteration] = LiveRequest{
+			RequestID: fmt.Sprintf("append-grown-%d", iteration), HomeGeneration: 1,
+			HomePath: metadata.Path, HomeDeviceID: metadata.DeviceID, HomeInode: metadata.Inode,
+			Action: plan.Actions[0], RequestedAtMS: time.Now().UnixMilli(),
+		}
+	}
+	b.ReportAllocs()
+	if b.N > 0 {
+		b.SetBytes(int64(len(appendPayloads[0])))
+	}
+	b.ResetTimer()
+	for iteration := 0; iteration < b.N; iteration++ {
+		job, err := runtime.Start(ctx, requests[iteration])
+		if err != nil {
+			b.Fatalf("Start(grown) error = %v", err)
+		}
+		report, err := runtime.RunSlice(ctx, job.JobID, SliceBudget{
+			MaxFiles: 1, MaxBytes: 1 << 20, MaxActive: time.Minute,
+		})
+		if err != nil || !report.Complete || report.BytesRead <= 0 {
+			b.Fatalf("RunSlice(grown) = %#v, %v", report, err)
+		}
+	}
+	b.StopTimer()
+	for iteration, sourceTurnID := range appendTurnIDs {
+		turnID := indexer.CanonicalTurnID(fmt.Sprintf("append-session-%d", iteration), sourceTurnID)
+		turn, err := repository.Turn(ctx, turnID)
+		if err != nil || turn.CompletedAtMS == nil || *turn.CompletedAtMS != 1_783_990_805_000 {
+			b.Fatalf("Turn(%d) = %#v, %v, want completed appended fact", iteration, turn, err)
+		}
 	}
 }
 
@@ -400,6 +497,14 @@ func largeLiveRollout(sessionID, turnID string) []byte {
 		`{"timestamp":"2026-07-14T01:00:03Z","type":"response_item","payload":{"type":"message","content":[{"type":"output_text","text":"`+
 			strings.Repeat("x", int(logs.PrefixLimitBytes))+`"}]}}`+"\n",
 	)...)
+}
+
+func largeOpenLiveRollout(sessionID, turnID string) []byte {
+	return []byte(liveSessionMetaLine(sessionID) + "\n" +
+		`{"timestamp":"2026-07-14T01:00:01Z","type":"event_msg","payload":{"type":"task_started","turn_id":"` + turnID +
+		`","started_at":1783990801,"model_context_window":258000}}` + "\n" +
+		`{"timestamp":"2026-07-14T01:00:03Z","type":"response_item","payload":{"type":"message","content":[{"type":"output_text","text":"` +
+		strings.Repeat("x", int(logs.PrefixLimitBytes)) + `"}]}}` + "\n")
 }
 
 func liveSessionMetaLine(sessionID string) string {

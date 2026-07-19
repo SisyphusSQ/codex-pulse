@@ -152,6 +152,8 @@ Codex Home 更换是独立的两步确认，不属于普通设置保存：先 me
 
 v0.1 的最终集成验收以 [`docs/test/m11-e1.md`](../../../test/m11-e1.md) 为统一 runbook。该矩阵使用稳定场景 ID，把 Onboarding、索引、账本、Quota、UI、Tray、Health、更新、性能、隐私、辅助功能和发布就绪分别映射到 TOO-298～303；已有子 runbook 只作为实现证据入口，不替代当前主干上的 required live E2E。未执行、失败或缺少清理证据的 required 场景保持 blocking，不能用演示 fixture 或历史结果标记 M11 完成。
 
+TOO-299 的性能验收见 [`docs/test/m11-e3.md`](../../../test/m11-e3.md)：首次初始化在无 pause、sleep、Home fence 或 pressure 时使用 interactive budget 连续推进，同时保持 backfill lane 与 live 抢占。约 6.56GB 真实只读 Home 的三轮 core bootstrap 均通过冻结门槛；该 runner 不经过 production scheduler，也不等同 packaged app 启动或视觉渲染，产品端到端 wall time 仍不得用该数值替代。
+
 GitHub Actions 当前按用户要求停用；最终验收使用本地 gate 并如实记录 `actions_disabled_by_user`。正式发布、tag/release、真实 appcast/密钥和外部分发仍需用户另行明确授权；未授权时发布卡只能收口到可复验的 release-readiness。
 
 ## 后续阶段

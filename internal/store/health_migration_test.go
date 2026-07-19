@@ -13,8 +13,8 @@ import (
 
 func TestApplicationSchemaV14CreatesHealthEvaluatorEventAllowlist(t *testing.T) {
 	t.Parallel()
-	if applicationSchemaVersion != applicationSchemaV14Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 14", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV15Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 15", applicationSchemaVersion)
 	}
 	const wantChecksum = "684650b2128c1aeb7db65433d6f6e3349111fff714804e694dfa98c097ed11af"
 	if got := applicationSchemaV14Checksum(); got != wantChecksum {
@@ -60,6 +60,8 @@ func TestApplicationMigrationV13ToV14PreservesHealthLifecycle(t *testing.T) {
 
 	var backupVersions [2]int
 	runner := applicationMigrationRunnerForTest(database)
+	runner.catalog = applicationMigrations[:14]
+	runner.verifyCurrent = verifyApplicationSchemaV14
 	runner.spaceCheck = func(context.Context, string, int64) error { return nil }
 	runner.backup = func(_ context.Context, fromVersion, targetVersion int, _ func(storesqlite.BackupProgress)) (string, error) {
 		backupVersions = [2]int{fromVersion, targetVersion}
@@ -187,6 +189,29 @@ func seedApplicationSchemaV13(t *testing.T, database *storesqlite.Store) {
 func verifyApplicationSchemaV13(ctx context.Context, transaction storesqlite.WriteTx) error {
 	for _, objects := range [][]schemaObject{
 		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV13(), retentionSchemaObjects,
+		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
+		schedulerSchemaObjects, lifecycleSchemaObjects, quotaSchemaObjects, quotaProjectionSchemaObjects,
+		quotaScheduleSchemaObjects, metricsSchemaObjects,
+	} {
+		for _, object := range objects {
+			exists, err := verifySchemaObject(ctx, transaction, object)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				return ErrSchemaContract
+			}
+		}
+	}
+	if err := verifySourceFailureColumns(transaction); err != nil {
+		return err
+	}
+	return verifyMetricsMigrationColumns(transaction)
+}
+
+func verifyApplicationSchemaV14(ctx context.Context, transaction storesqlite.WriteTx) error {
+	for _, objects := range [][]schemaObject{
+		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects, quotaSchemaObjects, quotaProjectionSchemaObjects,
 		quotaScheduleSchemaObjects, metricsSchemaObjects,

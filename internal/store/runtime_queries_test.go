@@ -21,6 +21,12 @@ const listDueSourcesQuery = `
 	ORDER BY next_due_at_ms, source_instance_id
 	LIMIT ?`
 
+const quotaProjectionObservationsQuery = `
+	SELECT *
+	FROM quota_observations
+	WHERE account_scope = ? AND window_kind = ? AND limit_id = ?
+	ORDER BY last_observed_at_ms, observation_id`
+
 const listSourceAttemptsQuery = `
 	SELECT request_id, source_instance_id, started_at_ms, finished_at_ms,
 		outcome, http_status, error_class, payload_sha256

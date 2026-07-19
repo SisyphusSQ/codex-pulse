@@ -153,10 +153,11 @@ func (repository *Repository) rebuildQuotaWindowProjectionInTransaction(
 		}
 	}
 	sort.Strings(staleObservationIDs)
-	if len(staleObservationIDs) > 0 {
+	for start := 0; start < len(staleObservationIDs); start += quotaEvidenceWriteBatchSize {
+		end := min(start+quotaEvidenceWriteBatchSize, len(staleObservationIDs))
 		if err := database.WithContext(ctx).Where(
 			"account_scope = ? AND window_kind = ? AND limit_id = ? AND observation_id IN ?",
-			key.accountScope, string(key.windowKind), key.limitID, staleObservationIDs,
+			key.accountScope, string(key.windowKind), key.limitID, staleObservationIDs[start:end],
 		).Delete(&quotaArbitrationEvidenceModel{}).Error; err != nil {
 			return err
 		}
@@ -190,7 +191,9 @@ func (repository *Repository) rebuildQuotaWindowProjectionInTransaction(
 	if err := repository.callQuotaProjectionHook("after_write"); err != nil {
 		return err
 	}
-	return repository.verifyQuotaProjectionReadback(ctx, database, projection)
+	return repository.verifyQuotaProjectionReadback(
+		ctx, database, projection, changedEvidence, staleObservationIDs,
+	)
 }
 
 func (repository *Repository) callQuotaProjectionHook(stage string) error {
@@ -579,6 +582,8 @@ func (repository *Repository) verifyQuotaProjectionReadback(
 	ctx context.Context,
 	database *gorm.DB,
 	want quotaWindowProjection,
+	changedEvidence []quotaArbitrationEvidenceModel,
+	staleObservationIDs []string,
 ) error {
 	key := quotaProjectionKey{
 		accountScope: want.Current.AccountScope, windowKind: want.Current.WindowKind, limitID: want.Current.LimitID,
@@ -595,24 +600,57 @@ func (repository *Repository) verifyQuotaProjectionReadback(
 	if err != nil {
 		return err
 	}
-	var evidenceModels []quotaArbitrationEvidenceModel
-	if err := database.WithContext(ctx).Where(
+	if !reflect.DeepEqual(current, want.Current) {
+		return invalidRecord("stored quota projection differs from arbitration write result")
+	}
+	var evidenceCount int64
+	if err := database.WithContext(ctx).Model(&quotaArbitrationEvidenceModel{}).Where(
 		"account_scope = ? AND window_kind = ? AND limit_id = ?",
 		key.accountScope, string(key.windowKind), key.limitID,
-	).Order("observation_id").Find(&evidenceModels).Error; err != nil {
+	).Count(&evidenceCount).Error; err != nil {
 		return err
 	}
-	evidence := make([]QuotaArbitrationEvidence, 0, len(evidenceModels))
-	for _, model := range evidenceModels {
-		mapped, err := quotaEvidenceFromModel(model)
-		if err != nil {
+	if evidenceCount != int64(len(want.Evidence)) {
+		return invalidRecord("stored quota projection differs from arbitration write result")
+	}
+	for start := 0; start < len(changedEvidence); start += quotaEvidenceWriteBatchSize {
+		end := min(start+quotaEvidenceWriteBatchSize, len(changedEvidence))
+		chunk := changedEvidence[start:end]
+		observationIDs := make([]string, len(chunk))
+		expected := make(map[string]quotaArbitrationEvidenceModel, len(chunk))
+		for index, model := range chunk {
+			observationIDs[index] = model.ObservationID
+			expected[model.ObservationID] = model
+		}
+		var stored []quotaArbitrationEvidenceModel
+		if err := database.WithContext(ctx).Where(
+			"account_scope = ? AND window_kind = ? AND limit_id = ? AND observation_id IN ?",
+			key.accountScope, string(key.windowKind), key.limitID, observationIDs,
+		).Find(&stored).Error; err != nil {
 			return err
 		}
-		evidence = append(evidence, mapped)
+		if len(stored) != len(chunk) {
+			return invalidRecord("stored quota projection differs from arbitration write result")
+		}
+		for _, model := range stored {
+			if expectedModel, found := expected[model.ObservationID]; !found ||
+				!reflect.DeepEqual(model, expectedModel) {
+				return invalidRecord("stored quota projection differs from arbitration write result")
+			}
+		}
 	}
-	stored := quotaWindowProjection{Current: current, Evidence: evidence}
-	if !reflect.DeepEqual(stored, want) {
-		return invalidRecord("stored quota projection differs from arbitration write result")
+	for start := 0; start < len(staleObservationIDs); start += quotaEvidenceWriteBatchSize {
+		end := min(start+quotaEvidenceWriteBatchSize, len(staleObservationIDs))
+		var staleCount int64
+		if err := database.WithContext(ctx).Model(&quotaArbitrationEvidenceModel{}).Where(
+			"account_scope = ? AND window_kind = ? AND limit_id = ? AND observation_id IN ?",
+			key.accountScope, string(key.windowKind), key.limitID, staleObservationIDs[start:end],
+		).Count(&staleCount).Error; err != nil {
+			return err
+		}
+		if staleCount != 0 {
+			return invalidRecord("stored quota projection differs from arbitration write result")
+		}
 	}
 	return nil
 }

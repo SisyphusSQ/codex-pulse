@@ -249,3 +249,32 @@ func TestRunBootstrapWithProgressReportsBoundedSlices(t *testing.T) {
 		t.Fatalf("runBootstrapWithProgress(nil) error = %v, want invalid config", err)
 	}
 }
+
+func TestPercentilesUseDeterministicNearestRank(t *testing.T) {
+	t.Parallel()
+	values := make([]int64, 30)
+	for index := range values {
+		values[index] = int64(index + 1)
+	}
+	p50, p95 := percentiles(values)
+	if p50 != 15 || p95 != 29 {
+		t.Fatalf("percentiles() = %d/%d, want 15/29", p50, p95)
+	}
+	if emptyP50, emptyP95 := percentiles(nil); emptyP50 != 0 || emptyP95 != 0 {
+		t.Fatalf("percentiles(nil) = %d/%d, want zero", emptyP50, emptyP95)
+	}
+}
+
+func TestRegularFileSizeHandlesOptionalWAL(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "database")
+	if err := os.WriteFile(path, []byte("facts"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if size, err := regularFileSize(path, false); err != nil || size != 5 {
+		t.Fatalf("regularFileSize() = %d, %v", size, err)
+	}
+	if size, err := regularFileSize(path+"-wal", true); err != nil || size != 0 {
+		t.Fatalf("regularFileSize(optional) = %d, %v", size, err)
+	}
+}

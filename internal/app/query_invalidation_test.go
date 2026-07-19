@@ -72,6 +72,24 @@ func TestQueryInvalidationPublisherEmitsOnlyFiniteContentFreePayload(t *testing.
 	}
 }
 
+func BenchmarkQueryInvalidationPublisherNotify(b *testing.B) {
+	publisher, err := newQueryInvalidationPublisher(QueryInvalidationPublisherConfig{
+		Emitter: benchmarkQueryInvalidationEmitter{},
+		Clock:   func() time.Time { return time.UnixMilli(1_784_100_000_000) },
+	})
+	if err != nil {
+		b.Fatalf("newQueryInvalidationPublisher() error = %v", err)
+	}
+	ctx := context.Background()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for iteration := 0; iteration < b.N; iteration++ {
+		if err := publisher.Notify(ctx, QueryInvalidationIndex); err != nil {
+			b.Fatalf("Notify() error = %v", err)
+		}
+	}
+}
+
 func TestQueryInvalidationPublisherRecordsSerializationFailureWithoutEmit(t *testing.T) {
 	t.Parallel()
 
@@ -146,6 +164,10 @@ type emittedQueryInvalidation struct {
 type recordingQueryInvalidationEmitter struct {
 	events []emittedQueryInvalidation
 }
+
+type benchmarkQueryInvalidationEmitter struct{}
+
+func (benchmarkQueryInvalidationEmitter) Emit(string, ...any) bool { return true }
 
 type panickingQueryInvalidationEmitter struct{}
 

@@ -93,6 +93,36 @@ func (repository *Repository) SchedulerTask(ctx context.Context, taskID string) 
 	return task, err
 }
 
+// SchedulerTaskByTarget 通过唯一 current target identity 读回 admission。
+// scheduler recovery 会保留 TaskID/DedupeKey 并把 TargetID rebind 到 resume job，
+// producer 用此读回避免为同一个恢复 attempt 创建第二份 durable task。
+func (repository *Repository) SchedulerTaskByTarget(
+	ctx context.Context,
+	targetID string,
+) (SchedulerTask, error) {
+	if repository == nil || repository.database == nil || targetID == "" {
+		return SchedulerTask{}, ErrInvalidRepository
+	}
+	var task SchedulerTask
+	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+		var model schedulerTaskModel
+		result := connection.WithContext(ctx).Where("target_id = ?", targetID).Take(&model)
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return ErrNotFound
+		}
+		if result.Error != nil {
+			return result.Error
+		}
+		value, err := schedulerTaskFromModel(model)
+		if err != nil {
+			return err
+		}
+		task = value
+		return nil
+	})
+	return task, err
+}
+
 func (repository *Repository) ListSchedulerTasks(
 	ctx context.Context,
 	filter SchedulerTaskFilter,

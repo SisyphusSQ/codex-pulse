@@ -136,6 +136,12 @@ func (reader *SnapshotReader) read(
 	}
 	fileDescriptor, err := openAtNoFollow(int(root.file.Fd()), relativePath, false)
 	if err != nil {
+		// Discovery already froze this exact source path. A later ENOENT means
+		// the source was archived, renamed, or removed before this slice could
+		// open it, which is recoverable through bootstrap final reconcile.
+		if errors.Is(err, unix.ENOENT) {
+			return result, ErrChangedDuringScan
+		}
 		return result, classifySourceOpenError(err)
 	}
 	file := os.NewFile(uintptr(fileDescriptor), relativePath)
