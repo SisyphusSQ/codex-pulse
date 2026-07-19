@@ -142,6 +142,46 @@ func TestIngesterCommitsLocalQuotaObservationsWithCheckpoint(t *testing.T) {
 	}
 }
 
+func TestIngesterDeepSessionModeSkipsQuotaFacts(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	repository, _ := openIndexerRepository(t)
+	ingester, err := New(repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, path := newSyntheticCodexHome(t)
+	meta := rolloutSessionMetaLine("session-deep")
+	quota := `{"timestamp":"2026-07-14T01:00:01Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex","primary":{"used_percent":38,"window_minutes":300,"resets_at":1784008800},"plan_type":"pro"}}}`
+	content := []byte(meta + "\n" + quota + "\n")
+	writeSyntheticRollout(t, path, content, time.Unix(10, 0))
+	discovery, err := logs.NewDiscoverer(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed, err := discovery.Discover(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := logs.PlanReconcile(home, nil, observed)
+	if err != nil || len(plan.Actions) != 1 {
+		t.Fatalf("PlanReconcile() = %#v, %v", plan, err)
+	}
+	stream, err := ingester.Open(ctx, OpenRequest{Action: plan.Actions[0], AtMS: 10, SkipQuotaFacts: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.Feed(ctx, content, true, 20); err != nil {
+		t.Fatal(err)
+	}
+	sessionID := "session-deep"
+	observations, err := repository.ListQuotaObservations(ctx, store.QuotaObservationFilter{SessionID: &sessionID, Limit: 10})
+	if err != nil || len(observations) != 0 {
+		t.Fatalf("quota observations = %#v, %v", observations, err)
+	}
+}
+
 func TestIngesterCommitsZeroResetAsSuspiciousQuota(t *testing.T) {
 	t.Parallel()
 

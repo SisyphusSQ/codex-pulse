@@ -26,6 +26,7 @@ type OpenRequest struct {
 	JobID                string
 	AtMS                 int64
 	DeferQuotaProjection bool
+	SkipQuotaFacts       bool
 }
 
 type CommitResult struct {
@@ -171,6 +172,7 @@ func (ingester *Ingester) Open(ctx context.Context, request OpenRequest) (*Strea
 	if err != nil {
 		return nil, err
 	}
+	projector.skipQuotaFacts = request.SkipQuotaFacts
 	stream := &Stream{
 		repository: ingester.repository, parser: parser, projector: projector,
 		cursor: cursor, readOffset: cursor.Checkpoint.CommittedOffset, job: jobState,

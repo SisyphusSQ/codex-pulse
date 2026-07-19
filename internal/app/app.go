@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/metrics"
 	platformtray "github.com/SisyphusSQ/codex-pulse/internal/platform/tray"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
@@ -296,7 +297,8 @@ func Run(assets fs.FS) error {
 		}
 		runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
 			Database: database, Registrar: desktopApp.Event, Preferences: preferenceStore,
-			Invalidation: invalidation,
+			LightMetadata: lightindex.LocalMetadataProvider{},
+			Invalidation:  invalidation,
 			UpdateWake: func(ctx context.Context) error {
 				_, wakeErr := updateRuntime.Wake(ctx)
 				return wakeErr
@@ -310,6 +312,9 @@ func Run(assets fs.FS) error {
 				return err
 			}
 			if err := bindingService.bindRuntimeControls(runtime); err != nil {
+				return err
+			}
+			if err := bindingService.bindSessionDeepIndex(runtime); err != nil {
 				return err
 			}
 			defer func() {

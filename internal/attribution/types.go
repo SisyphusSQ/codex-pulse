@@ -17,6 +17,7 @@ type Source string
 
 const (
 	SourceSessionIDFallback Source = "session_id_fallback"
+	SourceAppServerName     Source = "app_server_name"
 	SourceRegisteredRoot    Source = "registered_root"
 	SourceCWDPathDigest     Source = "cwd_path_digest"
 	SourceModelCanonical    Source = "model_canonical"

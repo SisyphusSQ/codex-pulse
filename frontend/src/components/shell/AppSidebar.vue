@@ -59,7 +59,7 @@ function moveNavigationFocus(event: KeyboardEvent) {
 </script>
 
 <template>
-  <aside class="glass-surface flex min-h-0 flex-col rounded-window px-4 pb-5 pt-6">
+  <aside class="glass-surface flex min-h-0 flex-col rounded-window px-4 pb-5 pt-10">
     <div class="flex items-center gap-3 px-2">
       <img :src="appIconUrl" alt="" aria-hidden="true" class="size-10 rounded-[12px] shadow-md" />
       <div class="min-w-0">

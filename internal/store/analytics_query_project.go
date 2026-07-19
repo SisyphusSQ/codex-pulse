@@ -254,10 +254,19 @@ func (repository *Repository) ListProjectAnalytics(
 	}
 	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
 		database := connection.WithContext(ctx)
+		lightPage, handled, err := listLightProjectAnalytics(database, filter)
+		if err != nil {
+			return err
+		}
+		if handled {
+			page = lightPage
+			return nil
+		}
 		generation, err := loadProjectAnalyticsGeneration(database, filter.Range.ReportingTimezone)
 		if err != nil {
 			return err
 		}
+		page.Mode = AnalyticsReadActiveRollup
 		page.Generation = generationFromModel(generation)
 		global, err := reconcileProjectAnalyticsRange(database, filter.Range, generation)
 		if err != nil {
@@ -439,10 +448,19 @@ func (repository *Repository) ProjectAnalytics(
 	}
 	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
 		database := connection.WithContext(ctx)
+		lightSnapshot, handled, err := lightProjectAnalytics(database, filter)
+		if err != nil {
+			return err
+		}
+		if handled {
+			result = lightSnapshot
+			return nil
+		}
 		generation, err := loadProjectAnalyticsGeneration(database, filter.Range.ReportingTimezone)
 		if err != nil {
 			return err
 		}
+		result.Mode = AnalyticsReadActiveRollup
 		result.Generation = generationFromModel(generation)
 		if (filter.SessionCursor != nil &&
 			filter.SessionCursor.GenerationID != generation.GenerationID) ||
@@ -953,7 +971,8 @@ func validateProjectAnalyticsRows(
 		string(AttributionConfidenceLow), string(AttributionConfidenceUnknown),
 	}
 	sources := []string{
-		string(AttributionSourceSessionIDFallback), string(AttributionSourceRegisteredRoot),
+		string(AttributionSourceSessionIDFallback), string(AttributionSourceAppServerName),
+		string(AttributionSourceRegisteredRoot),
 		string(AttributionSourceCWDPathDigest), string(AttributionSourceModelCanonical),
 		string(AttributionSourceModelAlias), string(AttributionSourceConflict),
 		string(AttributionSourceMissing), string(AttributionSourceInvalidPath),
@@ -1243,6 +1262,7 @@ func validProjectConfidence(value string) bool {
 
 func validProjectAttributionSource(value string) bool {
 	return value == string(AttributionSourceSessionIDFallback) ||
+		value == string(AttributionSourceAppServerName) ||
 		value == string(AttributionSourceRegisteredRoot) ||
 		value == string(AttributionSourceCWDPathDigest) ||
 		value == string(AttributionSourceModelCanonical) ||

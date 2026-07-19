@@ -47,6 +47,7 @@ type fileMetadata struct {
 	deviceID  string
 	inode     int64
 	sizeBytes int64
+	mtimeNS   int64
 	regular   bool
 	directory bool
 	symlink   bool
@@ -200,10 +201,15 @@ func metadataAt(parentDescriptor int, baseName string) (fileMetadata, error) {
 		return fileMetadata{}, ErrUnsupportedFile
 	}
 	fileType := stat.Mode & unix.S_IFMT
+	mtimeNS := stat.Mtim.Sec*1_000_000_000 + stat.Mtim.Nsec
+	if mtimeNS < 0 {
+		return fileMetadata{}, ErrUnsupportedFile
+	}
 	return fileMetadata{
 		deviceID:  strconv.FormatUint(uint64(uint32(stat.Dev)), 10),
 		inode:     int64(stat.Ino),
 		sizeBytes: stat.Size,
+		mtimeNS:   mtimeNS,
 		regular:   fileType == unix.S_IFREG,
 		directory: fileType == unix.S_IFDIR,
 		symlink:   fileType == unix.S_IFLNK,

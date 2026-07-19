@@ -19,6 +19,14 @@ describe("Liquid Glass design foundations", () => {
       join(process.cwd(), "src", "components", "shell", "AppTitlebar.vue"),
       "utf8",
     );
+    const shell = readFileSync(
+      join(process.cwd(), "src", "components", "shell", "AppShell.vue"),
+      "utf8",
+    );
+    const sidebar = readFileSync(
+      join(process.cwd(), "src", "components", "shell", "AppSidebar.vue"),
+      "utf8",
+    );
 
     for (const token of [
       "--color-surface-base",
@@ -45,6 +53,10 @@ describe("Liquid Glass design foundations", () => {
     expect(css).toContain("--wails-draggable: drag");
     expect(css).toContain("--wails-draggable: no-drag");
     expect(titlebar).toContain("wails-drag-region");
+    expect(shell).toContain("px-6 pb-6 pt-2");
+    expect(shell).toContain("flex min-h-0 min-w-0 flex-col pt-4");
+    expect(sidebar).toContain("px-4 pb-5 pt-10");
+    expect(css).toContain("padding: 0.5rem 1rem 1rem");
   });
 
   it("provides accessible button, card, table, empty, error, and skeleton primitives", async () => {

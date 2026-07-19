@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 type Discoverer struct {
@@ -57,6 +58,105 @@ func newDiscovererWithIdentity(
 
 func (discoverer *Discoverer) Discover(ctx context.Context) (DiscoveryResult, error) {
 	return discoverer.discover(ctx, nil)
+}
+
+// Inspect snapshots one App Server-selected rollout without walking sibling
+// directories. The same confirmed-root fd and O_NOFOLLOW probe used by full
+// discovery protects the exact path. A prior snapshot is optional and only
+// contributes an append-prefix comparison proof.
+func (discoverer *Discoverer) Inspect(
+	ctx context.Context,
+	absolutePath string,
+	previous *Snapshot,
+) (Snapshot, error) {
+	if discoverer == nil || discoverer.filesystem == nil || ctx == nil {
+		return Snapshot{}, ErrInvalidHome
+	}
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
+	absolutePath = filepath.Clean(absolutePath)
+	if !filepath.IsAbs(absolutePath) || filepath.Ext(absolutePath) != ".jsonl" ||
+		!pathWithin(discoverer.home, absolutePath) {
+		return Snapshot{}, ErrUnsafeSource
+	}
+	relativePath, err := filepath.Rel(discoverer.home, absolutePath)
+	if err != nil || filepath.IsAbs(relativePath) {
+		return Snapshot{}, ErrUnsafeSource
+	}
+	var kind SourceKind
+	switch {
+	case relativePath == "sessions" || strings.HasPrefix(relativePath, "sessions"+string(filepath.Separator)):
+		kind = SourceKindSession
+	case relativePath == "archived_sessions" || strings.HasPrefix(relativePath, "archived_sessions"+string(filepath.Separator)):
+		kind = SourceKindArchivedSession
+	default:
+		return Snapshot{}, ErrUnsafeSource
+	}
+
+	root, err := discoverer.filesystem.OpenRoot(discoverer.home, true)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("%w: %v", ErrHomeChanged, err)
+	}
+	defer func() { _ = root.Close() }()
+	if root.Identity() != discoverer.rootIdentity {
+		return Snapshot{}, ErrHomeChanged
+	}
+	previousByID := make(map[string]Snapshot)
+	if previous != nil {
+		if err := validateSnapshotForHome(discoverer.home, *previous); err != nil || previous.Path != absolutePath {
+			return Snapshot{}, ErrInvalidSnapshot
+		}
+		previousByID[previous.SourceFileID] = *previous
+	}
+	result := DiscoveryResult{}
+	if err := discoverer.probePath(root, relativePath, absolutePath, kind, previousByID, &result); err != nil {
+		return Snapshot{}, err
+	}
+	if len(result.Snapshots) != 1 {
+		return Snapshot{}, ErrChangedDuringScan
+	}
+	return result.Snapshots[0], nil
+}
+
+// Unchanged performs a metadata-only identity check for the zero-content-read
+// refresh fast path. Any metadata difference returns false so callers can fall
+// back to Inspect and its bounded prefix proof.
+func (discoverer *Discoverer) Unchanged(
+	ctx context.Context,
+	absolutePath string,
+	previous Snapshot,
+) (bool, error) {
+	if discoverer == nil || discoverer.filesystem == nil || ctx == nil {
+		return false, ErrInvalidHome
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	absolutePath = filepath.Clean(absolutePath)
+	if err := validateSnapshotForHome(discoverer.home, previous); err != nil ||
+		previous.Path != absolutePath || !pathWithin(discoverer.home, absolutePath) {
+		return false, ErrInvalidSnapshot
+	}
+	relativePath, err := filepath.Rel(discoverer.home, absolutePath)
+	if err != nil || filepath.IsAbs(relativePath) {
+		return false, ErrUnsafeSource
+	}
+	root, err := discoverer.filesystem.OpenRoot(discoverer.home, true)
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", ErrHomeChanged, err)
+	}
+	defer func() { _ = root.Close() }()
+	if root.Identity() != discoverer.rootIdentity {
+		return false, ErrHomeChanged
+	}
+	metadata, err := root.Metadata(relativePath)
+	if err != nil {
+		return false, err
+	}
+	fingerprint := previous.Fingerprint
+	return metadata.regular && metadata.deviceID == fingerprint.DeviceID && metadata.inode == fingerprint.Inode &&
+		metadata.sizeBytes == fingerprint.SizeBytes && metadata.mtimeNS == fingerprint.MTimeNS, nil
 }
 
 // DiscoverAgainst additionally proves the current prefix at each prior

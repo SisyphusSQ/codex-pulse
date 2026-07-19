@@ -146,11 +146,12 @@ func mapUsageCostResponse(
 	snapshot store.UsageCostRangeSnapshot,
 ) (UsageCostResponse, error) {
 	mode := snapshot.Mode
-	if mode != store.AnalyticsReadActiveRollup && mode != store.AnalyticsReadDetailFallback {
+	if mode != store.AnalyticsReadActiveRollup && mode != store.AnalyticsReadDetailFallback &&
+		mode != store.AnalyticsReadLightIndex {
 		return UsageCostResponse{}, errors.New("stored analytics mode is invalid")
 	}
 	if (mode == store.AnalyticsReadActiveRollup && snapshot.Generation == nil) ||
-		(mode == store.AnalyticsReadDetailFallback && snapshot.Generation != nil) {
+		(mode != store.AnalyticsReadActiveRollup && snapshot.Generation != nil) {
 		return UsageCostResponse{}, errors.New("stored analytics generation shape is invalid")
 	}
 	if snapshot.Generation != nil {
@@ -166,7 +167,7 @@ func mapUsageCostResponse(
 	if err := validateAndSortDaily(rows, rangeValue, snapshot.Generation); err != nil {
 		return UsageCostResponse{}, err
 	}
-	overall, err := aggregateDaily(rows)
+	overall, err := aggregateDaily(rows, mode)
 	if err != nil {
 		return UsageCostResponse{}, err
 	}
@@ -191,7 +192,7 @@ func mapUsageCostResponse(
 	if err != nil {
 		return UsageCostResponse{}, err
 	}
-	partial := mode == store.AnalyticsReadDetailFallback || overall.UnpricedTurnCount > 0 ||
+	partial := mode != store.AnalyticsReadActiveRollup || overall.UnpricedTurnCount > 0 ||
 		overall.InputTokens == nil || overall.CachedInputTokens == nil ||
 		overall.OutputTokens == nil || overall.ReasoningTokens == nil
 	status := basequery.ResponseComplete

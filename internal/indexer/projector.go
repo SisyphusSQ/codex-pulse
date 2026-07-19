@@ -23,6 +23,7 @@ type projector struct {
 	openTurns         map[string]store.ProjectedOpenTurnCheckpoint
 	current           *store.SessionCurrent
 	sessionUsage      *store.SessionUsageCurrent
+	skipQuotaFacts    bool
 }
 
 func newProjector(
@@ -112,6 +113,9 @@ func (projector *projector) Project(events []logs.ParsedEvent) ([]store.FactBatc
 	working := projector.clone()
 	facts := make([]store.FactBatch, 0, len(events))
 	for _, event := range events {
+		if event.Kind == logs.EventQuotaObservation && working.skipQuotaFacts {
+			continue
+		}
 		fact, err := working.projectEvent(event)
 		if err != nil {
 			return nil, store.ProjectorCheckpoint{}, err
@@ -456,6 +460,7 @@ func (value *projector) clone() *projector {
 		session:   cloneParserSession(value.session),
 		openTurns: make(map[string]store.ProjectedOpenTurnCheckpoint, len(value.openTurns)),
 		current:   cloneSessionCurrent(value.current), sessionUsage: cloneSessionUsage(value.sessionUsage),
+		skipQuotaFacts: value.skipQuotaFacts,
 	}
 	for turnID, turn := range value.openTurns {
 		copy.openTurns[turnID] = cloneProjectedOpenTurn(turn)

@@ -223,13 +223,17 @@ func mapProjectListResponse(
 	limit int,
 	primarySort basequery.SortTerm,
 ) (ProjectListResponse, error) {
+	mode := page.Mode
+	if mode == "" {
+		mode = store.AnalyticsReadActiveRollup
+	}
 	if err := validateProjectPageShape(page, rangeValue, limit, primarySort.Field); err != nil {
 		return ProjectListResponse{}, err
 	}
 	items := make([]ProjectItem, 0, len(page.Records))
 	partial := false
 	for _, record := range page.Records {
-		item, err := mapProjectItem(record)
+		item, err := mapProjectItem(record, mode)
 		if err != nil {
 			return ProjectListResponse{}, err
 		}
@@ -242,15 +246,15 @@ func mapProjectListResponse(
 	if err != nil {
 		return ProjectListResponse{}, err
 	}
-	globalTotals, err := mapProjectTotals(page.GlobalTotals)
+	globalTotals, err := mapProjectTotals(page.GlobalTotals, mode)
 	if err != nil {
 		return ProjectListResponse{}, err
 	}
-	matchedTotals, err := mapProjectTotals(page.MatchedTotals)
+	matchedTotals, err := mapProjectTotals(page.MatchedTotals, mode)
 	if err != nil {
 		return ProjectListResponse{}, err
 	}
-	pageTotals, err := mapProjectTotals(page.PageTotals)
+	pageTotals, err := mapProjectTotals(page.PageTotals, mode)
 	if err != nil {
 		return ProjectListResponse{}, err
 	}
@@ -266,6 +270,9 @@ func mapProjectListResponse(
 	if err != nil {
 		return ProjectListResponse{}, err
 	}
+	if mode == store.AnalyticsReadLightIndex {
+		partial = true
+	}
 	status := basequery.ResponseComplete
 	var issues []basequery.ErrorCode
 	if partial {
@@ -278,13 +285,17 @@ func mapProjectListResponse(
 	if err != nil {
 		return ProjectListResponse{}, err
 	}
-	return ProjectListResponse{
+	response := ProjectListResponse{
 		Meta: meta, Range: rangeValue, ReportingTimeZone: rangeValue.TimeZone,
-		PricingSource: cloneString(page.Generation.PricingSource),
-		Currency:      cloneString(page.Generation.Currency), PricingVersions: versions,
-		Items: items, MatchedCount: matchedCount, GlobalTotals: globalTotals,
+		PricingVersions: versions,
+		Items:           items, MatchedCount: matchedCount, GlobalTotals: globalTotals,
 		MatchedTotals: matchedTotals, PageTotals: pageTotals,
-	}, nil
+	}
+	if mode == store.AnalyticsReadActiveRollup {
+		response.PricingSource = cloneString(page.Generation.PricingSource)
+		response.Currency = cloneString(page.Generation.Currency)
+	}
+	return response, nil
 }
 
 func mapProjectDetailResponse(
@@ -296,23 +307,27 @@ func mapProjectDetailResponse(
 	modelLimit int,
 	cursorKey projectDetailCursorKey,
 ) (ProjectDetailResponse, error) {
+	mode := snapshot.Mode
+	if mode == "" {
+		mode = store.AnalyticsReadActiveRollup
+	}
 	if err := validateProjectSnapshotShape(
 		snapshot, rangeValue, dimensionKey, sessionLimit, sessionFirstPage, modelLimit,
 	); err != nil {
 		return ProjectDetailResponse{}, err
 	}
-	item, err := mapProjectItem(snapshot.Record)
+	item, err := mapProjectItem(snapshot.Record, mode)
 	if err != nil {
 		return ProjectDetailResponse{}, err
 	}
-	globalTotals, err := mapProjectTotals(snapshot.GlobalTotals)
+	globalTotals, err := mapProjectTotals(snapshot.GlobalTotals, mode)
 	if err != nil {
 		return ProjectDetailResponse{}, err
 	}
 	daily := make([]ProjectDailyPoint, 0, len(snapshot.Daily))
 	partial := usageTotalsArePartial(item.Totals) || usageTotalsArePartial(globalTotals)
 	for _, row := range snapshot.Daily {
-		point, err := mapProjectDailyPoint(row)
+		point, err := mapProjectDailyPoint(row, mode)
 		if err != nil {
 			return ProjectDetailResponse{}, err
 		}
@@ -323,7 +338,7 @@ func mapProjectDetailResponse(
 	}
 	sessions := make([]ProjectSessionItem, 0, len(snapshot.Sessions))
 	for _, record := range snapshot.Sessions {
-		mapped, err := mapProjectSessionItem(record)
+		mapped, err := mapProjectSessionItem(record, mode)
 		if err != nil {
 			return ProjectDetailResponse{}, err
 		}
@@ -359,6 +374,9 @@ func mapProjectDetailResponse(
 	if err != nil {
 		return ProjectDetailResponse{}, err
 	}
+	if mode == store.AnalyticsReadLightIndex {
+		partial = true
+	}
 	status := basequery.ResponseComplete
 	var issues []basequery.ErrorCode
 	if partial {
@@ -369,11 +387,10 @@ func mapProjectDetailResponse(
 	if err != nil {
 		return ProjectDetailResponse{}, err
 	}
-	return ProjectDetailResponse{
+	response := ProjectDetailResponse{
 		Meta: meta, Range: rangeValue, ReportingTimeZone: rangeValue.TimeZone,
-		PricingSource: cloneString(snapshot.Generation.PricingSource),
-		Currency:      cloneString(snapshot.Generation.Currency), PricingVersions: versions,
-		Item: item, Daily: daily,
+		PricingVersions: versions,
+		Item:            item, Daily: daily,
 		SessionPage: basequery.PageInfo{
 			Limit: sessionLimit, HasMore: nextSessionCursor != nil, NextCursor: nextSessionCursor,
 		},
@@ -382,15 +399,20 @@ func mapProjectDetailResponse(
 			Limit: modelLimit, HasMore: nextModelCursor != nil, NextCursor: nextModelCursor,
 		},
 		Models: models, GlobalTotals: globalTotals,
-	}, nil
+	}
+	if mode == store.AnalyticsReadActiveRollup {
+		response.PricingSource = cloneString(snapshot.Generation.PricingSource)
+		response.Currency = cloneString(snapshot.Generation.Currency)
+	}
+	return response, nil
 }
 
-func mapProjectDailyPoint(row store.ProjectUsageDaily) (ProjectDailyPoint, error) {
+func mapProjectDailyPoint(row store.ProjectUsageDaily, mode store.AnalyticsReadMode) (ProjectDailyPoint, error) {
 	bucket, err := basequery.KnownNumeric(row.BucketStartMS, basequery.NumericMilliseconds)
 	if err != nil {
 		return ProjectDailyPoint{}, err
 	}
-	totals, err := mapUsageTotals(row.RollupTotals, store.AnalyticsReadActiveRollup)
+	totals, err := mapUsageTotals(row.RollupTotals, mode)
 	if err != nil {
 		return ProjectDailyPoint{}, err
 	}
@@ -402,6 +424,7 @@ func mapProjectDailyPoint(row store.ProjectUsageDaily) (ProjectDailyPoint, error
 
 func mapProjectSessionItem(
 	record store.ProjectSessionAnalyticsRecord,
+	mode store.AnalyticsReadMode,
 ) (ProjectSessionItem, error) {
 	if !validOpaqueIdentity(record.SessionID) || record.DisplayTitle == "" ||
 		!validProjectAttributionDTO(
@@ -419,7 +442,7 @@ func mapProjectSessionItem(
 	if err != nil {
 		return ProjectSessionItem{}, err
 	}
-	totals, err := mapUsageTotals(record.Totals, store.AnalyticsReadActiveRollup)
+	totals, err := mapUsageTotals(record.Totals, mode)
 	if err != nil {
 		return ProjectSessionItem{}, err
 	}
@@ -472,19 +495,30 @@ func validateProjectPageShape(
 	limit int,
 	sortField string,
 ) error {
-	if err := validateSessionGeneration(page.Generation); err != nil {
-		return err
+	mode := page.Mode
+	if mode == "" {
+		mode = store.AnalyticsReadActiveRollup
 	}
-	if page.Generation.ReportingTimezone != rangeValue.TimeZone || page.Records == nil ||
+	if mode != store.AnalyticsReadActiveRollup && mode != store.AnalyticsReadLightIndex {
+		return errors.New("stored project mode is invalid")
+	}
+	if mode == store.AnalyticsReadActiveRollup {
+		if err := validateSessionGeneration(page.Generation); err != nil {
+			return err
+		}
+	} else if page.Generation != (store.CostRollupGeneration{}) {
+		return errors.New("light project generation must be absent")
+	}
+	if (mode == store.AnalyticsReadActiveRollup && page.Generation.ReportingTimezone != rangeValue.TimeZone) || page.Records == nil ||
 		page.PricingVersions == nil || page.MatchedCount < 0 || len(page.Records) > limit ||
 		int64(len(page.Records)) > page.MatchedCount {
 		return errors.New("stored project page shape is invalid")
 	}
-	if page.GlobalTotals.PricedTurnCount > 0 && len(page.PricingVersions) == 0 {
+	if mode == store.AnalyticsReadActiveRollup && page.GlobalTotals.PricedTurnCount > 0 && len(page.PricingVersions) == 0 {
 		return errors.New("stored project pricing evidence is incomplete")
 	}
 	for _, record := range page.Records {
-		if err := validateProjectRecordDecorations(record, page.Generation, rangeValue); err != nil {
+		if err := validateProjectRecordDecorations(record, page.Generation, rangeValue, mode); err != nil {
 			return err
 		}
 	}
@@ -508,16 +542,29 @@ func validateProjectSnapshotShape(
 	sessionFirstPage bool,
 	modelLimit int,
 ) error {
-	if err := validateSessionGeneration(snapshot.Generation); err != nil {
-		return err
+	mode := snapshot.Mode
+	if mode == "" {
+		mode = store.AnalyticsReadActiveRollup
 	}
-	if snapshot.Generation.ReportingTimezone != rangeValue.TimeZone || snapshot.Daily == nil ||
+	if mode != store.AnalyticsReadActiveRollup && mode != store.AnalyticsReadLightIndex {
+		return errors.New("stored project detail mode is invalid")
+	}
+	if mode == store.AnalyticsReadActiveRollup {
+		if err := validateSessionGeneration(snapshot.Generation); err != nil {
+			return err
+		}
+	} else if snapshot.Generation != (store.CostRollupGeneration{}) {
+		return errors.New("light project detail generation must be absent")
+	}
+	if (mode == store.AnalyticsReadActiveRollup && snapshot.Generation.ReportingTimezone != rangeValue.TimeZone) || snapshot.Daily == nil ||
 		snapshot.Sessions == nil || snapshot.Models == nil || snapshot.PricingVersions == nil ||
 		snapshot.Record.DimensionKey != dimensionKey || len(snapshot.Sessions) > sessionLimit ||
 		len(snapshot.Models) > modelLimit || snapshot.Record.SessionCount < int64(len(snapshot.Sessions)) {
 		return errors.New("stored project detail shape is invalid")
 	}
-	if err := validateProjectRecordDecorations(snapshot.Record, snapshot.Generation, rangeValue); err != nil {
+	if err := validateProjectRecordDecorations(
+		snapshot.Record, snapshot.Generation, rangeValue, mode,
+	); err != nil {
 		return err
 	}
 	if snapshot.Record.Totals.TurnCount > 0 && len(snapshot.Daily) == 0 {
@@ -529,12 +576,16 @@ func validateProjectSnapshotShape(
 			snapshot.Record.SessionCount <= int64(len(snapshot.Sessions)))) {
 		return errors.New("stored project first session page cardinality is inconsistent")
 	}
-	if snapshot.GlobalTotals.PricedTurnCount > 0 && len(snapshot.PricingVersions) == 0 {
+	if mode == store.AnalyticsReadActiveRollup && snapshot.GlobalTotals.PricedTurnCount > 0 && len(snapshot.PricingVersions) == 0 {
 		return errors.New("stored project detail pricing evidence is incomplete")
 	}
 	previousBucket := int64(-1)
 	for _, row := range snapshot.Daily {
-		if row.GenerationID != snapshot.Generation.GenerationID ||
+		expectedGeneration := snapshot.Generation.GenerationID
+		if mode == store.AnalyticsReadLightIndex {
+			expectedGeneration = ""
+		}
+		if row.GenerationID != expectedGeneration ||
 			row.ReportingTimezone != rangeValue.TimeZone || row.DimensionKey != dimensionKey ||
 			row.BucketStartMS < rangeValue.StartAtMS || row.BucketStartMS >= rangeValue.EndAtMS ||
 			row.BucketStartMS <= previousBucket ||
@@ -550,7 +601,7 @@ func validateProjectSnapshotShape(
 		previousBucket = row.BucketStartMS
 	}
 	for index, record := range snapshot.Sessions {
-		if _, err := mapProjectSessionItem(record); err != nil {
+		if _, err := mapProjectSessionItem(record, mode); err != nil {
 			return err
 		}
 		if index > 0 {
@@ -575,8 +626,12 @@ func validateProjectSnapshotShape(
 			return errors.New("stored project session next cursor cardinality is invalid")
 		}
 		last := snapshot.Sessions[len(snapshot.Sessions)-1]
+		expectedGeneration := snapshot.Generation.GenerationID
+		if mode == store.AnalyticsReadLightIndex {
+			expectedGeneration = ""
+		}
 		if snapshot.NextSessionCursor.DimensionKey != dimensionKey ||
-			snapshot.NextSessionCursor.GenerationID != snapshot.Generation.GenerationID ||
+			snapshot.NextSessionCursor.GenerationID != expectedGeneration ||
 			snapshot.NextSessionCursor.SessionID != last.SessionID ||
 			snapshot.NextSessionCursor.LastActivityAtMS != last.LastActivityAtMS {
 			return errors.New("stored project session next cursor is inconsistent")
@@ -619,6 +674,7 @@ func validateProjectRecordDecorations(
 	record store.ProjectAnalyticsRecord,
 	generation store.CostRollupGeneration,
 	rangeValue basequery.UTCTimeRange,
+	mode store.AnalyticsReadMode,
 ) error {
 	if record.SessionCount <= 0 || record.Trend == nil || len(record.Trend) == 0 ||
 		len(record.Trend) > 30 {
@@ -626,7 +682,11 @@ func validateProjectRecordDecorations(
 	}
 	previousBucket := int64(-1)
 	for _, row := range record.Trend {
-		if row.GenerationID != generation.GenerationID ||
+		expectedGeneration := generation.GenerationID
+		if mode == store.AnalyticsReadLightIndex {
+			expectedGeneration = ""
+		}
+		if row.GenerationID != expectedGeneration ||
 			row.ReportingTimezone != rangeValue.TimeZone || row.DimensionKey != record.DimensionKey ||
 			row.BucketStartMS < rangeValue.StartAtMS || row.BucketStartMS >= rangeValue.EndAtMS ||
 			row.BucketStartMS <= previousBucket ||
@@ -645,7 +705,7 @@ func validateProjectRecordDecorations(
 	return nil
 }
 
-func mapProjectItem(record store.ProjectAnalyticsRecord) (ProjectItem, error) {
+func mapProjectItem(record store.ProjectAnalyticsRecord, mode store.AnalyticsReadMode) (ProjectItem, error) {
 	if !validOpaqueIdentity(record.DimensionKey) ||
 		!validAttributionTuple(record.ProjectID, record.ProjectDisplayName) ||
 		!validProjectAttributionDTO(
@@ -666,13 +726,13 @@ func mapProjectItem(record store.ProjectAnalyticsRecord) (ProjectItem, error) {
 	}
 	trend := make([]ProjectDailyPoint, 0, len(record.Trend))
 	for _, row := range record.Trend {
-		point, err := mapProjectDailyPoint(row)
+		point, err := mapProjectDailyPoint(row, mode)
 		if err != nil {
 			return ProjectItem{}, err
 		}
 		trend = append(trend, point)
 	}
-	totals, err := mapUsageTotals(record.Totals, store.AnalyticsReadActiveRollup)
+	totals, err := mapUsageTotals(record.Totals, mode)
 	if err != nil {
 		return ProjectItem{}, err
 	}
@@ -687,7 +747,10 @@ func mapProjectItem(record store.ProjectAnalyticsRecord) (ProjectItem, error) {
 	}, nil
 }
 
-func mapProjectTotals(value store.RollupTotals) (UsageTotals, error) {
+func mapProjectTotals(value store.RollupTotals, mode store.AnalyticsReadMode) (UsageTotals, error) {
+	if mode == store.AnalyticsReadLightIndex {
+		return mapUsageTotals(value, mode)
+	}
 	if value.TurnCount == 0 {
 		return knownZeroUsageTotals()
 	}
@@ -731,6 +794,7 @@ func equalStringPointers(left, right *string) bool {
 
 func validProjectAttributionDTO(confidence, source, reason string) bool {
 	validSource := source == string(store.AttributionSourceSessionIDFallback) ||
+		source == string(store.AttributionSourceAppServerName) ||
 		source == string(store.AttributionSourceRegisteredRoot) ||
 		source == string(store.AttributionSourceCWDPathDigest) ||
 		source == string(store.AttributionSourceModelCanonical) ||

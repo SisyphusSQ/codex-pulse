@@ -734,6 +734,12 @@ func validateSessionPageShape(page store.SessionAnalyticsPage, limit int, sortFi
 		}
 		return validateSessionGeneration(*page.Generation)
 	}
+	if page.Mode == store.AnalyticsReadLightIndex {
+		if page.Generation != nil || page.MatchedTotals == nil || page.PageTotals == nil {
+			return errors.New("stored light session page shape is invalid")
+		}
+		return nil
+	}
 	if (page.Mode != store.AnalyticsReadDetailFallback &&
 		page.Mode != store.AnalyticsReadAmbiguousFallback) || page.Generation != nil ||
 		page.MatchedTotals != nil || page.PageTotals != nil {
@@ -773,6 +779,12 @@ func validateSessionSnapshotShape(snapshot store.SessionAnalyticsSnapshot, turnL
 			return errors.New("stored active session detail shape is invalid")
 		}
 		return validateSessionGeneration(*snapshot.Generation)
+	}
+	if snapshot.Mode == store.AnalyticsReadLightIndex {
+		if snapshot.Generation != nil || len(snapshot.PricingVersions) != 0 || len(snapshot.UnpricedReasons) != 0 {
+			return errors.New("stored light session detail shape is invalid")
+		}
+		return nil
 	}
 	if (snapshot.Mode != store.AnalyticsReadDetailFallback &&
 		snapshot.Mode != store.AnalyticsReadAmbiguousFallback) || snapshot.Generation != nil ||
@@ -837,6 +849,9 @@ func mapSessionTotals(
 	value *store.RollupTotals,
 	mode store.AnalyticsReadMode,
 ) (UsageTotals, error) {
+	if mode == store.AnalyticsReadLightIndex {
+		return mapLightIndexSessionTotals(value)
+	}
 	if mode != store.AnalyticsReadActiveRollup {
 		if value != nil {
 			return UsageTotals{}, errors.New("fallback session totals must be absent")
@@ -847,6 +862,52 @@ func mapSessionTotals(
 		return knownZeroUsageTotals()
 	}
 	return mapUsageTotals(*value, mode)
+}
+
+func mapLightIndexSessionTotals(value *store.RollupTotals) (UsageTotals, error) {
+	if value == nil {
+		return unknownUsageTotals()
+	}
+	result := UsageTotals{}
+	var err error
+	result.InputTokens, err = numericOrUnknown(value.InputTokens, basequery.NumericTokens, basequery.UnknownNeverLoaded)
+	if err != nil {
+		return UsageTotals{}, err
+	}
+	result.CachedInputTokens, err = numericOrUnknown(value.CachedInputTokens, basequery.NumericTokens, basequery.UnknownNeverLoaded)
+	if err != nil {
+		return UsageTotals{}, err
+	}
+	result.OutputTokens, err = numericOrUnknown(value.OutputTokens, basequery.NumericTokens, basequery.UnknownNeverLoaded)
+	if err != nil {
+		return UsageTotals{}, err
+	}
+	result.ReasoningTokens, err = numericOrUnknown(value.ReasoningTokens, basequery.NumericTokens, basequery.UnknownNeverLoaded)
+	if err != nil {
+		return UsageTotals{}, err
+	}
+	result.TotalTokens, err = numericOrUnknown(value.TotalTokens, basequery.NumericTokens, basequery.UnknownNeverLoaded)
+	if err != nil {
+		return UsageTotals{}, err
+	}
+	for _, target := range []struct {
+		value  *basequery.NumericValue
+		unit   basequery.NumericUnit
+		reason basequery.UnknownReason
+	}{
+		{&result.TurnCount, basequery.NumericCount, basequery.UnknownUnavailable},
+		{&result.EstimatedUSDMicros, basequery.NumericMicroUSD, basequery.UnknownNotComputed},
+		{&result.PricedTurnCount, basequery.NumericCount, basequery.UnknownNotComputed},
+		{&result.UnpricedTurnCount, basequery.NumericCount, basequery.UnknownNotComputed},
+		{&result.FirstActivityAtMS, basequery.NumericMilliseconds, basequery.UnknownUnavailable},
+		{&result.LastActivityAtMS, basequery.NumericMilliseconds, basequery.UnknownUnavailable},
+	} {
+		*target.value, err = basequery.UnknownNumeric(target.unit, target.reason)
+		if err != nil {
+			return UsageTotals{}, err
+		}
+	}
+	return result, nil
 }
 
 func sessionDegradedReason(mode store.AnalyticsReadMode) DegradedReason {
@@ -937,6 +998,7 @@ func validAttributionEvidence(
 		confidence == store.AttributionConfidenceLow ||
 		confidence == store.AttributionConfidenceUnknown
 	validSource := source == store.AttributionSourceSessionIDFallback ||
+		source == store.AttributionSourceAppServerName ||
 		source == store.AttributionSourceRegisteredRoot ||
 		source == store.AttributionSourceCWDPathDigest ||
 		source == store.AttributionSourceModelCanonical ||

@@ -157,7 +157,7 @@ a {
   .app-shell-grid {
     grid-template-columns: 12.5rem minmax(0, 1fr);
     gap: 1rem;
-    padding: 1rem;
+    padding: 0.5rem 1rem 1rem;
   }
 
   .sidebar-secondary-copy {

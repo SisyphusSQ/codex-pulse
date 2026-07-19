@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"math"
 	"sort"
 	"time"
 
@@ -11,6 +12,13 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
+
+func checkedAdd(left, right int64) (int64, error) {
+	if right > 0 && left > math.MaxInt64-right {
+		return 0, invalidRecord("light analytics token overflow")
+	}
+	return left + right, nil
+}
 
 const analyticsHardMaxRangeDays = 366
 
@@ -42,8 +50,15 @@ func (repository *Repository) UsageCostRange(
 	var snapshot UsageCostRangeSnapshot
 	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
 		database := connection.WithContext(ctx)
+		handled, err := loadLightUsageCostRange(ctx, database, filter, location, &snapshot)
+		if err != nil {
+			return err
+		}
+		if handled {
+			return nil
+		}
 		var generation costRollupGenerationModel
-		err := database.Where(
+		err = database.Where(
 			"reporting_timezone = ? AND state = ?",
 			filter.ReportingTimezone, CostRollupGenerationActive,
 		).Take(&generation).Error
@@ -57,6 +72,91 @@ func (repository *Repository) UsageCostRange(
 		}
 	})
 	return snapshot, err
+}
+
+type lightTimedRangeProjection struct {
+	ObservedAtMS      int64 `gorm:"column:observed_at_ms"`
+	InputTokens       int64 `gorm:"column:input_tokens"`
+	CachedInputTokens int64 `gorm:"column:cached_input_tokens"`
+	OutputTokens      int64 `gorm:"column:output_tokens"`
+	ReasoningTokens   int64 `gorm:"column:reasoning_tokens"`
+}
+
+func loadLightUsageCostRange(
+	ctx context.Context,
+	database *gorm.DB,
+	filter AnalyticsRange,
+	location *time.Location,
+	snapshot *UsageCostRangeSnapshot,
+) (bool, error) {
+	var sessionCount int64
+	if err := database.Model(&lightSessionModel{}).Count(&sessionCount).Error; err != nil {
+		return false, err
+	}
+	if sessionCount == 0 {
+		return false, nil
+	}
+	var rows []lightTimedRangeProjection
+	if err := database.Table("light_token_timed AS timed").
+		Select("timed.observed_at_ms, timed.input_tokens, timed.cached_input_tokens, timed.output_tokens, timed.reasoning_tokens").
+		Joins("JOIN light_sessions AS session ON session.session_id = timed.session_id AND session.active_token_generation = timed.generation").
+		Where("timed.observed_at_ms >= ? AND timed.observed_at_ms < ?", filter.StartAtMS, filter.EndAtMS).
+		Order("timed.observed_at_ms, timed.session_id, timed.source_offset").Find(&rows).Error; err != nil {
+		return false, err
+	}
+	type bucketTotals struct {
+		input, cached, output, reasoning int64
+	}
+	byDay := make(map[int64]bucketTotals)
+	for _, row := range rows {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		bucket := localDayBucketStart(row.ObservedAtMS, location)
+		value := byDay[bucket]
+		var err error
+		if value.input, err = checkedAdd(value.input, row.InputTokens); err != nil {
+			return false, err
+		}
+		if value.cached, err = checkedAdd(value.cached, row.CachedInputTokens); err != nil {
+			return false, err
+		}
+		if value.output, err = checkedAdd(value.output, row.OutputTokens); err != nil {
+			return false, err
+		}
+		if value.reasoning, err = checkedAdd(value.reasoning, row.ReasoningTokens); err != nil {
+			return false, err
+		}
+		byDay[bucket] = value
+	}
+	keys := make([]int64, 0, len(byDay))
+	for key := range byDay {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(left, right int) bool { return keys[left] < keys[right] })
+	snapshot.Mode = AnalyticsReadLightIndex
+	snapshot.Daily = make([]UsageDaily, 0, len(keys))
+	snapshot.PricingVersions = make([]string, 0)
+	snapshot.UnpricedReasons = make([]CostReasonCount, 0)
+	for _, key := range keys {
+		value := byDay[key]
+		total, err := checkedAdd(value.input, value.output)
+		if err == nil {
+			total, err = checkedAdd(total, value.reasoning)
+		}
+		if err != nil {
+			return false, err
+		}
+		input, cached, output, reasoning := value.input, value.cached, value.output, value.reasoning
+		snapshot.Daily = append(snapshot.Daily, UsageDaily{
+			BucketStartMS: key, ReportingTimezone: filter.ReportingTimezone,
+			RollupTotals: RollupTotals{
+				InputTokens: &input, CachedInputTokens: &cached, OutputTokens: &output,
+				ReasoningTokens: &reasoning, TotalTokens: &total,
+			},
+		})
+	}
+	return true, nil
 }
 
 func validateAnalyticsRange(filter AnalyticsRange) (*time.Location, error) {

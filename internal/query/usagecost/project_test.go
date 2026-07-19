@@ -127,6 +127,78 @@ func TestListProjectsPreservesUnknownDimensionAndPartialCost(t *testing.T) {
 	assertUnknownNumeric(t, response.Items[0].Totals.EstimatedUSDMicros, basequery.UnknownNotComputed)
 }
 
+func TestListProjectsLightIndexKeepsProjectTokensWithoutPricing(t *testing.T) {
+	t.Parallel()
+
+	input, cached, output, reasoning, total := int64(100), int64(20), int64(10), int64(2), int64(112)
+	record := safeProjectRecord("project-light", pointerToString("project-light"), pointerToString("Project Light"), 0, -1)
+	record.AttributionConfidence = "medium"
+	record.AttributionSource = "cwd_path_digest"
+	record.AttributionReason = "path_derived"
+	record.Totals = store.RollupTotals{
+		InputTokens: &input, CachedInputTokens: &cached, OutputTokens: &output,
+		ReasoningTokens: &reasoning, TotalTokens: &total,
+		FirstActivityAtMS: 1, LastActivityAtMS: 1, UpdatedAtMS: 1,
+	}
+	record.Trend[0].GenerationID = ""
+	record.Trend[0].AttributionConfidence = record.AttributionConfidence
+	record.Trend[0].AttributionSource = record.AttributionSource
+	record.Trend[0].AttributionReason = record.AttributionReason
+	record.Trend[0].RollupTotals = record.Totals
+	reader := &projectReaderStub{
+		list: func(context.Context, store.ProjectAnalyticsFilter) (store.ProjectAnalyticsPage, error) {
+			return store.ProjectAnalyticsPage{
+				Mode: store.AnalyticsReadLightIndex, Records: []store.ProjectAnalyticsRecord{record}, MatchedCount: 1,
+				GlobalTotals: record.Totals, MatchedTotals: record.Totals, PageTotals: record.Totals,
+				PricingVersions: make([]string, 0),
+			}, nil
+		},
+		detail: func(context.Context, store.ProjectAnalyticsDetailFilter) (store.ProjectAnalyticsSnapshot, error) {
+			return store.ProjectAnalyticsSnapshot{
+				Mode: store.AnalyticsReadLightIndex, Record: record,
+				Daily: append([]store.ProjectUsageDaily(nil), record.Trend...),
+				Sessions: []store.ProjectSessionAnalyticsRecord{{
+					SessionID: "session-light", DisplayTitle: "真实标题",
+					TitleConfidence: store.AttributionConfidenceHigh,
+					TitleSource:     store.AttributionSourceSessionIDFallback,
+					TitleReason:     store.AttributionReasonObserved,
+					Model: store.ModelAttribution{
+						Confidence: store.AttributionConfidenceUnknown,
+						Source:     store.AttributionSourceMissing, Reason: store.AttributionReasonMissing,
+					},
+					Activity: store.SessionActivityIdle, LastActivityAtMS: 1, Totals: record.Totals,
+				}},
+				Models: make([]store.ProjectModelAnalyticsRecord, 0), GlobalTotals: record.Totals,
+				PricingVersions: make([]string, 0),
+			}, nil
+		},
+	}
+	service := newUsageService(t, reader)
+	response, err := service.ListProjects(context.Background(), basequery.Request{
+		TimeRange: &basequery.LocalDateRange{StartDate: "1970-01-01", EndDateExclusive: "1970-01-02", TimeZone: "UTC"},
+	})
+	if err != nil {
+		t.Fatalf("ListProjects(light) error = %v", err)
+	}
+	if response.Meta.Status != basequery.ResponsePartial || len(response.Items) != 1 ||
+		response.PricingSource != nil || response.Currency != nil {
+		t.Fatalf("response = %#v", response)
+	}
+	assertKnownNumeric(t, response.Items[0].Totals.TotalTokens, total, basequery.NumericTokens)
+	assertUnknownNumeric(t, response.Items[0].Totals.TurnCount, basequery.UnknownUnavailable)
+	assertUnknownNumeric(t, response.Items[0].Totals.EstimatedUSDMicros, basequery.UnknownNotComputed)
+	detail, err := service.ProjectDetail(context.Background(), ProjectDetailRequest{
+		DimensionKey: "project-light",
+		Range:        basequery.LocalDateRange{StartDate: "1970-01-01", EndDateExclusive: "1970-01-02", TimeZone: "UTC"},
+	})
+	if err != nil {
+		t.Fatalf("ProjectDetail(light) error = %v", err)
+	}
+	if detail.Meta.Status != basequery.ResponsePartial || len(detail.Sessions) != 1 || detail.PricingSource != nil {
+		t.Fatalf("detail = %#v", detail)
+	}
+}
+
 func TestListProjectsKnownEmptyIsComplete(t *testing.T) {
 	t.Parallel()
 

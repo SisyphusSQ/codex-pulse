@@ -15,6 +15,7 @@ type AttributionSource = attribution.Source
 
 const (
 	AttributionSourceSessionIDFallback = attribution.SourceSessionIDFallback
+	AttributionSourceAppServerName     = attribution.SourceAppServerName
 	AttributionSourceRegisteredRoot    = attribution.SourceRegisteredRoot
 	AttributionSourceCWDPathDigest     = attribution.SourceCWDPathDigest
 	AttributionSourceModelCanonical    = attribution.SourceModelCanonical

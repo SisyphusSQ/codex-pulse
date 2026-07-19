@@ -15,6 +15,7 @@ const (
 	AnalyticsReadActiveRollup      AnalyticsReadMode = "active_rollup"
 	AnalyticsReadDetailFallback    AnalyticsReadMode = "detail_fallback"
 	AnalyticsReadAmbiguousFallback AnalyticsReadMode = "ambiguous_fallback"
+	AnalyticsReadLightIndex        AnalyticsReadMode = "light_index"
 )
 
 // AnalyticsRange 是已由业务 query 归一化的 IANA 本地日 UTC 半开区间。
@@ -224,6 +225,7 @@ type ProjectAnalyticsRecord struct {
 }
 
 type ProjectAnalyticsPage struct {
+	Mode            AnalyticsReadMode
 	Generation      CostRollupGeneration
 	Records         []ProjectAnalyticsRecord
 	MatchedCount    int64
@@ -253,6 +255,7 @@ type ProjectModelAnalyticsRecord struct {
 }
 
 type ProjectAnalyticsSnapshot struct {
+	Mode              AnalyticsReadMode
 	Generation        CostRollupGeneration
 	Record            ProjectAnalyticsRecord
 	Daily             []ProjectUsageDaily

@@ -12,8 +12,8 @@ import (
 
 func TestApplicationSchemaV15AddsQuotaProjectionPerformanceIndex(t *testing.T) {
 	t.Parallel()
-	if applicationSchemaVersion != applicationSchemaV15Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 15", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV16Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 16", applicationSchemaVersion)
 	}
 	const wantChecksum = "e0d74e9fea57fd72ee4a96e45f60ebb60db2d1dd291168fd7b2fcf74021e10f2"
 	if got := applicationSchemaV15Checksum(); got != wantChecksum {
@@ -24,6 +24,8 @@ func TestApplicationSchemaV15AddsQuotaProjectionPerformanceIndex(t *testing.T) {
 	seedApplicationSchemaV14(t, database)
 	var backupVersions [2]int
 	runner := applicationMigrationRunnerForTest(database)
+	runner.catalog = applicationMigrations[:15]
+	runner.verifyCurrent = verifyApplicationSchemaV15
 	runner.spaceCheck = func(context.Context, string, int64) error { return nil }
 	runner.backup = func(
 		_ context.Context,
@@ -67,6 +69,8 @@ func TestApplicationSchemaV15IndexMigrationRollsBackAtomically(t *testing.T) {
 	}
 	runner := applicationMigrationRunnerForTest(database)
 	runner.catalog = catalog
+	runner.catalog = runner.catalog[:15]
+	runner.verifyCurrent = verifyApplicationSchemaV15
 	runner.spaceCheck = func(context.Context, string, int64) error { return nil }
 	runner.backup = func(context.Context, int, int, func(storesqlite.BackupProgress)) (string, error) {
 		return "/tmp/application-v14-before-failed-v15.db", nil

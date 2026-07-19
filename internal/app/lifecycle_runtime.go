@@ -14,6 +14,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	appLifecycle "github.com/SisyphusSQ/codex-pulse/internal/lifecycle"
+	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/liveindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/scheduler"
@@ -55,6 +56,7 @@ type ApplicationLifecycleRuntimeConfig struct {
 	QuotaClock     func() time.Time
 	Invalidation   queryInvalidationNotifier
 	UpdateWake     func(context.Context) error
+	LightMetadata  lightindex.MetadataProvider
 	quotaHooks     quotaRuntimeHooks
 	homeRuntime    preferences.HomeRuntime
 }
@@ -71,6 +73,9 @@ type applicationLifecycleRuntime struct {
 	invalidation   queryInvalidationNotifier
 	cancel         context.CancelFunc
 	workerDone     chan error
+	lightRuntime   *lightindex.Runtime
+	lightRun       *lightindex.Run
+	lightMu        sync.Mutex
 	controlCtx     context.Context
 	controlStop    context.CancelFunc
 
@@ -120,7 +125,11 @@ func startApplicationLifecycleRuntime(
 	if err != nil {
 		return nil, applicationLifecycleDependencyError(ctx, err)
 	}
+	useLightIndex := config.LightMetadata != nil
 	localHomeRuntime := preferences.HomeRuntime(bootstrapRuntime)
+	if useLightIndex && config.homeRuntime == nil {
+		localHomeRuntime = applicationLightHomeRuntime{}
+	}
 	if config.homeRuntime != nil {
 		localHomeRuntime = config.homeRuntime
 	}
@@ -157,6 +166,29 @@ func startApplicationLifecycleRuntime(
 			return nil, applicationLifecycleDependencyError(ctx, err)
 		}
 	}
+	var lightRuntime *lightindex.Runtime
+	var lightRun *lightindex.Run
+	if useLightIndex {
+		lightRuntime, err = lightindex.NewRuntime(lightindex.RuntimeConfig{
+			Repository: repository, Metadata: config.LightMetadata,
+			BatchCommitted: func(store.LightTokenScan) {
+				notifyQueryInvalidation(config.Invalidation, context.Background(), QueryInvalidationIndex)
+			},
+		})
+		if err == nil {
+			lightRun, err = lightRuntime.Start(ctx, store.LightHomeIdentity{
+				Path: snapshot.CodexHome.Source.Path, DeviceID: snapshot.CodexHome.Source.DeviceID,
+				Inode: snapshot.CodexHome.Source.Inode,
+			})
+		}
+		if err != nil {
+			closeQuotaRuntime()
+			return nil, applicationLifecycleDependencyError(ctx, err)
+		}
+	} else if err := ensureApplicationBootstrap(ctx, repository, bootstrapRuntime, snapshot.CodexHome); err != nil {
+		closeQuotaRuntime()
+		return nil, applicationLifecycleDependencyError(ctx, err)
+	}
 	homeGeneration := int64(snapshot.CodexHome.Generation)
 	liveRuntime, err := liveindex.New(liveindex.Config{Repository: repository})
 	if err != nil {
@@ -188,12 +220,18 @@ func startApplicationLifecycleRuntime(
 		closeQuotaRuntime()
 		return nil, applicationLifecycleDependencyError(ctx, err)
 	}
-	runner, err := appLifecycle.NewQueueReconcileRunner(appLifecycle.QueueReconcileRunnerConfig{
+	queueRunner, err := appLifecycle.NewQueueReconcileRunner(appLifecycle.QueueReconcileRunnerConfig{
 		Repository: repository, Live: liveRuntime, Queue: schedulerService,
 	})
 	if err != nil {
 		closeQuotaRuntime()
 		return nil, applicationLifecycleDependencyError(ctx, err)
+	}
+	var runner appLifecycle.ReconcileRunner = &applicationBootstrapAwareReconcileRunner{
+		repository: repository, delegate: queueRunner,
+	}
+	if useLightIndex {
+		runner = applicationLightIndexReconcileRunner{}
 	}
 	reconciler, err := appLifecycle.NewConfirmedHomeReconciler(appLifecycle.ConfirmedHomeReconcilerConfig{
 		HomeProvider: fileConfirmedHomeProvider{loader: loader}, Runner: runner,
@@ -245,10 +283,12 @@ func startApplicationLifecycleRuntime(
 			return nil, applicationLifecycleDependencyError(ctx, handoffErr)
 		}
 	}
-	if err := enqueueLatestApplicationBootstrap(ctx, repository, schedulerService, homeGeneration); err != nil {
-		closeCoordinator()
-		closeQuotaRuntime()
-		return nil, applicationLifecycleDependencyError(ctx, err)
+	if !useLightIndex {
+		if err := enqueueLatestApplicationBootstrap(ctx, repository, schedulerService, homeGeneration); err != nil {
+			closeCoordinator()
+			closeQuotaRuntime()
+			return nil, applicationLifecycleDependencyError(ctx, err)
+		}
 	}
 	if quotaHomeRuntime != nil {
 		quotaHomeRuntime.lifecycle = coordinator
@@ -279,13 +319,94 @@ func startApplicationLifecycleRuntime(
 		repository: repository, quota: quotaRuntime,
 		preferences: preferencesService, settingsLoader: loader, database: config.Database,
 		invalidation: config.Invalidation, cancel: cancel,
-		workerDone: make(chan error, 1), controlCtx: controlCtx, controlStop: controlStop,
+		workerDone: make(chan error, 1), lightRuntime: lightRuntime, lightRun: lightRun,
+		controlCtx: controlCtx, controlStop: controlStop,
 		controlAccepting: true, controlDone: closedApplicationLifecycleSignal(),
 		drainDone: make(chan struct{}),
 		closeDone: make(chan struct{}),
 	}
-	go func() { runtime.workerDone <- schedulerService.Run(workerCtx) }()
+	if useLightIndex {
+		runtime.workerDone <- nil
+	} else {
+		go func() { runtime.workerDone <- schedulerService.Run(workerCtx) }()
+	}
 	return runtime, nil
+}
+
+const initialApplicationBootstrapSwitchID = "initial-onboarding-bootstrap"
+
+func ensureApplicationBootstrap(
+	ctx context.Context,
+	repository *store.Repository,
+	runtime *bootstrap.Runtime,
+	home preferences.CodexHomePreferences,
+) error {
+	if ctx == nil || repository == nil || runtime == nil || home.Generation == 0 ||
+		home.Generation > math.MaxInt64 {
+		return ErrApplicationLifecycleRuntime
+	}
+	_, facts, err := repository.LatestBootstrapRunByGeneration(ctx, int64(home.Generation))
+	if err == nil {
+		if facts.HomeGeneration != int64(home.Generation) || facts.HomePath != home.Source.Path ||
+			facts.HomeDeviceID != home.Source.DeviceID || facts.HomeInode != home.Source.Inode ||
+			facts.DataStoreKey != home.DataStoreKey {
+			return ErrApplicationLifecycleRuntime
+		}
+		return nil
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
+	err = runtime.StartBootstrap(ctx, preferences.BootstrapRequest{
+		SwitchID:     initialApplicationBootstrapSwitchID,
+		Generation:   home.Generation,
+		Source:       home.Source,
+		DataStoreKey: home.DataStoreKey,
+		Strategy:     preferences.HomeSwitchClearAndRebuild,
+	})
+	if errors.Is(err, logs.ErrInvalidHome) || errors.Is(err, logs.ErrUnsafeHome) ||
+		errors.Is(err, logs.ErrHomeChanged) || errors.Is(err, logs.ErrUnsafeSource) ||
+		errors.Is(err, logs.ErrChangedDuringScan) || errors.Is(err, logs.ErrUnsupportedFile) ||
+		errors.Is(err, bootstrap.ErrDiscoveryIncomplete) || errors.Is(err, bootstrap.ErrInvalidRequest) {
+		return nil
+	}
+	return err
+}
+
+type applicationBootstrapAwareReconcileRunner struct {
+	repository *store.Repository
+	delegate   appLifecycle.ReconcileRunner
+}
+
+type applicationLightIndexReconcileRunner struct{}
+
+func (applicationLightIndexReconcileRunner) RunReconcile(
+	ctx context.Context,
+	_ appLifecycle.ConfirmedHome,
+	_ appLifecycle.ReconcileReason,
+) error {
+	return ctx.Err()
+}
+
+func (runner *applicationBootstrapAwareReconcileRunner) RunReconcile(
+	ctx context.Context,
+	home appLifecycle.ConfirmedHome,
+	reason appLifecycle.ReconcileReason,
+) error {
+	if runner == nil || runner.repository == nil || runner.delegate == nil || ctx == nil {
+		return ErrApplicationLifecycleRuntime
+	}
+	_, facts, err := runner.repository.LatestBootstrapRunByGeneration(ctx, home.Generation)
+	switch {
+	case err == nil && facts.FullHistoryReadyAtMS == nil:
+		return nil
+	case errors.Is(err, store.ErrNotFound):
+		return runner.delegate.RunReconcile(ctx, home, reason)
+	case err != nil:
+		return err
+	default:
+		return runner.delegate.RunReconcile(ctx, home, reason)
+	}
 }
 
 func (runtime *applicationLifecycleRuntime) UpdateQuotaSettings(
@@ -406,12 +527,18 @@ func (runtime *applicationLifecycleRuntime) resumeCommittedQuotaGeneration(
 		}
 		return committed, errors.Join(original, postCommitErr)
 	}
-	if err := enqueueLatestApplicationBootstrap(
-		ctx, runtime.repository, runtime.scheduler, int64(committed.CodexHome.Generation),
-	); err != nil {
+	var indexErr error
+	if runtime.lightRuntime != nil {
+		indexErr = runtime.restartLightIndex(committed)
+	} else {
+		indexErr = enqueueLatestApplicationBootstrap(
+			ctx, runtime.repository, runtime.scheduler, int64(committed.CodexHome.Generation),
+		)
+	}
+	if indexErr != nil {
 		postCommitErr := &ApplicationPreferencesPostCommitError{
 			Committed: committed,
-			Cause:     err,
+			Cause:     indexErr,
 		}
 		return committed, errors.Join(original, postCommitErr)
 	}
@@ -423,6 +550,55 @@ func (runtime *applicationLifecycleRuntime) resumeCommittedQuotaGeneration(
 		return committed, errors.Join(original, postCommitErr)
 	}
 	return committed, original
+}
+
+func (runtime *applicationLifecycleRuntime) restartLightIndex(committed preferences.Snapshot) error {
+	if runtime == nil || runtime.lightRuntime == nil || runtime.repository == nil {
+		return ErrApplicationLifecycleRuntime
+	}
+	runtime.lightMu.Lock()
+	defer runtime.lightMu.Unlock()
+	state, err := runtime.repository.LightIndexState(runtime.controlCtx)
+	if err != nil {
+		return err
+	}
+	if runtime.lightRun != nil {
+		runtime.lightRun.Cancel()
+		_ = runtime.lightRun.Wait(context.Background())
+	}
+	next := store.LightHomeIdentity{
+		Path: committed.CodexHome.Source.Path, DeviceID: committed.CodexHome.Source.DeviceID,
+		Inode: committed.CodexHome.Source.Inode,
+	}
+	run, err := runtime.lightRuntime.StartHomeSwitch(runtime.controlCtx, state.Home, next)
+	if err != nil {
+		return err
+	}
+	runtime.lightRun = run
+	notifyQueryInvalidation(runtime.invalidation, context.Background(), QueryInvalidationIndex)
+	return nil
+}
+
+// DeepIndexSession admits the on-demand strict parser through the same drain
+// fence as every other lifecycle control. Shutdown therefore waits for a
+// cooperative checkpoint instead of closing SQLite beneath an active parser.
+func (runtime *applicationLifecycleRuntime) DeepIndexSession(
+	ctx context.Context,
+	sessionID string,
+) (lightindex.DeepIndexResult, error) {
+	if runtime == nil || runtime.lightRuntime == nil || ctx == nil {
+		return lightindex.DeepIndexResult{}, ErrApplicationLifecycleRuntime
+	}
+	operationContext, finish, err := runtime.beginControlAdmission(ctx)
+	if err != nil {
+		return lightindex.DeepIndexResult{}, err
+	}
+	defer finish()
+	result, err := runtime.lightRuntime.DeepIndexSession(operationContext, sessionID)
+	if err == nil {
+		notifyQueryInvalidation(runtime.invalidation, operationContext, QueryInvalidationIndex)
+	}
+	return result, err
 }
 
 func (runtime *applicationLifecycleRuntime) Close(ctx context.Context) error {
@@ -460,6 +636,11 @@ func (runtime *applicationLifecycleRuntime) beginDrain() {
 	controlDone := runtime.sealControlAdmission()
 	runtime.cancel()
 	<-controlDone
+	runtime.lightMu.Lock()
+	if runtime.lightRun != nil {
+		runtime.lightRun.Cancel()
+	}
+	runtime.lightMu.Unlock()
 	runtime.drainErr = adapterErr
 	close(runtime.drainDone)
 }
@@ -472,8 +653,17 @@ func (runtime *applicationLifecycleRuntime) shutdown() {
 	if errors.Is(workerErr, context.Canceled) {
 		workerErr = nil
 	}
+	var lightErr error
+	runtime.lightMu.Lock()
+	if runtime.lightRun != nil {
+		lightErr = runtime.lightRun.Wait(context.Background())
+		if errors.Is(lightErr, context.Canceled) {
+			lightErr = nil
+		}
+	}
+	runtime.lightMu.Unlock()
 	coordinatorErr := runtime.coordinator.Close(context.Background())
-	runtime.closeErr = errors.Join(runtime.drainErr, quotaErr, workerErr, coordinatorErr)
+	runtime.closeErr = errors.Join(runtime.drainErr, quotaErr, workerErr, lightErr, coordinatorErr)
 	close(runtime.closeDone)
 }
 
@@ -538,6 +728,30 @@ type applicationQuotaHomeRuntime struct {
 	lifecycle   *appLifecycle.Coordinator
 	resumeQuota bool
 }
+
+// applicationLightHomeRuntime preserves the preferences switch journal without
+// scheduling the legacy deep bootstrap. The committed Home is synchronously
+// published by restartLightIndex after the preference transaction completes.
+type applicationLightHomeRuntime struct{}
+
+func (applicationLightHomeRuntime) Drain(context.Context, uint64) error { return nil }
+
+func (applicationLightHomeRuntime) StartBootstrap(
+	context.Context,
+	preferences.BootstrapRequest,
+) error {
+	return nil
+}
+
+func (applicationLightHomeRuntime) BootstrapStatus(
+	context.Context,
+	string,
+	uint64,
+) (preferences.BootstrapStatus, error) {
+	return preferences.BootstrapStatusQueued, nil
+}
+
+func (applicationLightHomeRuntime) Resume(context.Context, uint64) error { return nil }
 
 func (runtime applicationQuotaHomeRuntime) Drain(ctx context.Context, generation uint64) error {
 	if runtime.local == nil || runtime.quota == nil || ctx == nil {

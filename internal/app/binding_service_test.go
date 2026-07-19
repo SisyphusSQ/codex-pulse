@@ -14,6 +14,7 @@ import (
 	"time"
 
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
@@ -321,6 +322,24 @@ func TestBindingServiceBindsRuntimeControlsExactlyOnce(t *testing.T) {
 	}
 }
 
+func TestSessionDetailTriggersBoundDeepIndexOnceThenReloads(t *testing.T) {
+	t.Parallel()
+
+	usage := &usageCostBindingStub{detailResponses: []usagecost.SessionDetailResponse{
+		{Turns: make([]usagecost.SessionTurnItem, 0)},
+		{Turns: []usagecost.SessionTurnItem{{TimelineKey: "safe-turn"}}},
+	}}
+	service := newBindingTestService(t, usage, &runtimeInfoBindingStub{})
+	deep := &sessionDeepIndexStub{}
+	if err := service.bindSessionDeepIndex(deep); err != nil {
+		t.Fatal(err)
+	}
+	response, err := service.SessionDetail(context.Background(), usagecost.SessionDetailRequest{SessionID: "session-deep"})
+	if err != nil || len(response.Turns) != 1 || deep.calls != 1 || deep.sessionID != "session-deep" || usage.detailCalls != 2 {
+		t.Fatalf("SessionDetail() = %#v, %v; deep=%#v detailCalls=%d", response, err, deep, usage.detailCalls)
+	}
+}
+
 func TestBindingServiceErrorsAreTypedContentFreeAndCancellable(t *testing.T) {
 	const secretMarker = "synthetic-secret-binding-marker"
 
@@ -607,6 +626,8 @@ type usageCostBindingStub struct {
 	err             error
 	panicValue      any
 	useContextError bool
+	detailResponses []usagecost.SessionDetailResponse
+	detailCalls     int
 }
 
 func (stub *usageCostBindingStub) call(ctx context.Context, name string) error {
@@ -638,7 +659,27 @@ func (stub *usageCostBindingStub) SessionDetail(
 	ctx context.Context,
 	_ usagecost.SessionDetailRequest,
 ) (usagecost.SessionDetailResponse, error) {
-	return usagecost.SessionDetailResponse{}, stub.call(ctx, "SessionDetail")
+	err := stub.call(ctx, "SessionDetail")
+	index := stub.detailCalls
+	stub.detailCalls++
+	if err != nil || index >= len(stub.detailResponses) {
+		return usagecost.SessionDetailResponse{}, err
+	}
+	return stub.detailResponses[index], nil
+}
+
+type sessionDeepIndexStub struct {
+	calls     int
+	sessionID string
+}
+
+func (stub *sessionDeepIndexStub) DeepIndexSession(
+	_ context.Context,
+	sessionID string,
+) (lightindex.DeepIndexResult, error) {
+	stub.calls++
+	stub.sessionID = sessionID
+	return lightindex.DeepIndexResult{SessionID: sessionID, LoadedTurnCount: 1}, nil
 }
 
 func (stub *usageCostBindingStub) ListProjects(

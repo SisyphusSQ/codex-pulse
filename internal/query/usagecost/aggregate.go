@@ -32,11 +32,15 @@ func newTotalsAccumulator() *totalsAccumulator {
 }
 
 func (accumulator *totalsAccumulator) add(value store.RollupTotals) error {
+	return accumulator.addMode(value, store.AnalyticsReadActiveRollup)
+}
+
+func (accumulator *totalsAccumulator) addMode(value store.RollupTotals, mode store.AnalyticsReadMode) error {
 	if value.TurnCount < 0 || value.PricedTurnCount < 0 || value.UnpricedTurnCount < 0 ||
 		value.PricedTurnCount+value.UnpricedTurnCount != value.TurnCount {
 		return errors.New("stored rollup counts are invalid")
 	}
-	if err := validateStoredTokenTotal(value); err != nil {
+	if err := validateStoredTokenTotal(value, mode); err != nil {
 		return err
 	}
 	var err error
@@ -91,12 +95,15 @@ func (accumulator *totalsAccumulator) add(value store.RollupTotals) error {
 	return nil
 }
 
-func validateStoredTokenTotal(value store.RollupTotals) error {
-	components := []*int64{
-		value.InputTokens,
-		value.CachedInputTokens,
-		value.OutputTokens,
-		value.ReasoningTokens,
+func validateStoredTokenTotal(value store.RollupTotals, mode store.AnalyticsReadMode) error {
+	components := []*int64{value.InputTokens, value.OutputTokens, value.ReasoningTokens}
+	if mode != store.AnalyticsReadLightIndex {
+		components = []*int64{value.InputTokens, value.CachedInputTokens, value.OutputTokens, value.ReasoningTokens}
+	} else if value.CachedInputTokens == nil {
+		if value.TotalTokens != nil {
+			return errors.New("stored token total shape is invalid")
+		}
+		return nil
 	}
 	for _, component := range components {
 		if component == nil {
@@ -121,6 +128,10 @@ func validateStoredTokenTotal(value store.RollupTotals) error {
 }
 
 func (accumulator *totalsAccumulator) totals() (store.RollupTotals, error) {
+	return accumulator.totalsMode(store.AnalyticsReadActiveRollup)
+}
+
+func (accumulator *totalsAccumulator) totalsMode(mode store.AnalyticsReadMode) (store.RollupTotals, error) {
 	if accumulator.rows == 0 {
 		zero := int64(0)
 		return store.RollupTotals{
@@ -137,7 +148,11 @@ func (accumulator *totalsAccumulator) totals() (store.RollupTotals, error) {
 	if input != nil && cached != nil && output != nil && reasoning != nil {
 		value := int64(0)
 		var err error
-		for _, component := range []int64{*input, *cached, *output, *reasoning} {
+		components := []int64{*input, *output, *reasoning}
+		if mode != store.AnalyticsReadLightIndex {
+			components = []int64{*input, *cached, *output, *reasoning}
+		}
+		for _, component := range components {
 			value, err = checkedAdd(value, component)
 			if err != nil {
 				return store.RollupTotals{}, err
@@ -189,17 +204,20 @@ func checkedAdd(left, right int64) (int64, error) {
 	return left + right, nil
 }
 
-func aggregateDaily(rows []store.UsageDaily) (store.RollupTotals, error) {
+func aggregateDaily(rows []store.UsageDaily, mode store.AnalyticsReadMode) (store.RollupTotals, error) {
 	accumulator := newTotalsAccumulator()
 	for _, row := range rows {
-		if err := accumulator.add(row.RollupTotals); err != nil {
+		if err := accumulator.addMode(row.RollupTotals, mode); err != nil {
 			return store.RollupTotals{}, err
 		}
 	}
-	return accumulator.totals()
+	return accumulator.totalsMode(mode)
 }
 
 func mapUsageTotals(value store.RollupTotals, mode store.AnalyticsReadMode) (UsageTotals, error) {
+	if mode == store.AnalyticsReadLightIndex {
+		return mapLightIndexSessionTotals(&value)
+	}
 	turnCount, err := basequery.KnownNumeric(value.TurnCount, basequery.NumericCount)
 	if err != nil {
 		return UsageTotals{}, err
@@ -307,7 +325,7 @@ func groupTrend(
 		if nextDay > group.endAtMS {
 			group.endAtMS = nextDay
 		}
-		if err := group.accumulator.add(row.RollupTotals); err != nil {
+		if err := group.accumulator.addMode(row.RollupTotals, mode); err != nil {
 			return nil, err
 		}
 	}
@@ -319,7 +337,7 @@ func groupTrend(
 	result := make([]TrendPoint, 0, len(keys))
 	for _, key := range keys {
 		group := groups[key]
-		storedTotals, err := group.accumulator.totals()
+		storedTotals, err := group.accumulator.totalsMode(mode)
 		if err != nil {
 			return nil, err
 		}

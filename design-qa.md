@@ -58,6 +58,43 @@ final result: passed
 
 ---
 
+# 2026-07-19 macOS 侧栏顶栏对齐 Design QA
+
+## Source truth and evidence
+
+- Pencil source：`docs/design/front/codex-pulse-liquid-glass.pen` 的 Overview 节点 `qipkO`；同一修正同步到七个主页面侧栏。
+- Source preview：`docs/design/front/previews/04-overview.png`。
+- Native implementation：`/Users/suqing/.codex/visualizations/2026/07/19/019f7a4d-5d42-7d40-bca2-0e6119f67593/implementation-1120x720.png`。
+- Focused comparison：`/Users/suqing/.codex/visualizations/2026/07/19/019f7a4d-5d42-7d40-bca2-0e6119f67593/sidebar-comparison.png`，Pencil source 与 native implementation 并排复核。
+- Minimum native window：`/Users/suqing/.codex/visualizations/2026/07/19/019f7a4d-5d42-7d40-bca2-0e6119f67593/implementation-900x600.jpeg`。
+
+## Fidelity assessment
+
+| 验证面 | 结果 | 结论 |
+| --- | --- | --- |
+| 原生窗口按钮 | PASS | 保留 AppKit 最小化/缩放按钮及原生交互；没有用网页元素复刻系统按钮，既有隐藏关闭按钮语义未改变 |
+| 侧栏玻璃背景 | PASS | 背景由 24px 下移改为 8px 起始，完整承接黄色/绿色按钮，不再出现按钮跨越圆角边界的问题 |
+| 品牌区 | PASS | 品牌内容继续从约 40px 顶部内边距开始，与原生按钮区分层；没有横向挤压或文字截断 |
+| 主内容基线 | PASS | 主内容仍保持 24px 顶部起始，只拆分外壳 padding，没有让 Overview 标题随侧栏一起上移 |
+| 材质与 token | PASS | 继续复用现有 Liquid Glass、圆角、阴影、颜色和字体 token，没有引入新的视觉语言 |
+| 最小窗口 | PASS | 900×600 原生窗口无横向溢出，导航、状态条、趋势卡和日期范围控件保持可读 |
+
+## Interaction and accessibility
+
+- 原生可访问性树仍暴露最小化按钮和可执行缩放的全屏幕按钮；六项主导航及 Overview 内容保持可访问。
+- 900×600 窗口下导航与主内容同时存在，未发生侧栏遮挡或横向滚动。
+- 浏览器降级态仅验证到无横向溢出；完整布局与原生窗口按钮必须以 packaged Wails 原生窗口为准。
+- 当前无未关闭 P0/P1/P2 视觉 finding。
+
+## Iteration history
+
+1. 初始截图显示侧栏从 24px 开始，原生黄/绿按钮位于玻璃背景之外并压住圆角边界。
+2. Pencil 先把七个主页面侧栏统一改为 8px 起始，在内部显式保留原生窗口控制区，并下移品牌内容。
+3. 实现将 AppShell 的侧栏与主内容顶距拆分：侧栏 8px、主内容 24px；AppSidebar 顶部内容 padding 调整为 40px。
+4. 1120×720 source/implementation 合并对照通过；随后用 packaged Wails 在 900×600 原生窗口复核，无布局回退。
+
+final result: passed
+
 # TOO-274 Sessions Design QA
 
 ## Source truth and evidence

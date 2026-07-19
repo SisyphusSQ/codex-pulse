@@ -30,7 +30,8 @@ const (
 	applicationSchemaV13Version = 13
 	applicationSchemaV14Version = 14
 	applicationSchemaV15Version = 15
-	applicationSchemaVersion    = applicationSchemaV15Version
+	applicationSchemaV16Version = 16
+	applicationSchemaVersion    = applicationSchemaV16Version
 )
 
 var (
@@ -205,6 +206,14 @@ var applicationMigrations = []migrationDefinition{
 		checksum: applicationSchemaV15Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
 			return ensureSchemaObjects(ctx, transaction, quotaPerformanceSchemaObjects)
+		},
+	},
+	{
+		version:  applicationSchemaV16Version,
+		name:     "lightweight-session-token-index",
+		checksum: applicationSchemaV16Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			return ensureSchemaObjects(ctx, transaction, lightIndexSchemaObjects)
 		},
 	},
 }
@@ -673,6 +682,31 @@ func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteT
 		schedulerSchemaObjects, lifecycleSchemaObjects,
 		quotaSchemaObjects, quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
 		metricsSchemaObjects, quotaPerformanceSchemaObjects,
+		lightIndexSchemaObjects,
+	} {
+		for _, object := range objects {
+			exists, err := verifySchemaObject(ctx, transaction, object)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				return fmt.Errorf("%w: missing %s %q", ErrSchemaContract, object.objectType, object.name)
+			}
+		}
+	}
+	if err := verifySourceFailureColumns(transaction); err != nil {
+		return err
+	}
+	return verifyMetricsMigrationColumns(transaction)
+}
+
+func verifyApplicationSchemaV15(ctx context.Context, transaction storesqlite.WriteTx) error {
+	for _, objects := range [][]schemaObject{
+		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
+		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
+		schedulerSchemaObjects, lifecycleSchemaObjects,
+		quotaSchemaObjects, quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
+		metricsSchemaObjects, quotaPerformanceSchemaObjects,
 	} {
 		for _, object := range objects {
 			exists, err := verifySchemaObject(ctx, transaction, object)
@@ -946,6 +980,18 @@ func applicationSchemaV15Checksum() string {
 	hasher := sha256.New()
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV15Version, "quota-projection-performance-index")
 	for _, object := range quotaPerformanceSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.objectType, object.name,
+			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV16Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV16Version, "lightweight-session-token-index")
+	for _, object := range lightIndexSchemaObjects {
 		_, _ = fmt.Fprintln(
 			hasher, object.objectType, object.name,
 			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),

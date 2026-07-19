@@ -8,6 +8,7 @@ import (
 
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	healthmodel "github.com/SisyphusSQ/codex-pulse/internal/health"
+	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
@@ -50,6 +51,10 @@ type quotaRefreshBindingCommand interface {
 	RequestQuotaRefresh(context.Context, quotaonline.RefreshSource) (store.SourceRefreshSchedule, error)
 }
 
+type sessionDeepIndexCommand interface {
+	DeepIndexSession(context.Context, string) (lightindex.DeepIndexResult, error)
+}
+
 type updateBindingCommand interface {
 	View(context.Context) (updater.View, error)
 	Trigger(context.Context, updater.Trigger) (updater.TriggerReceipt, error)
@@ -70,12 +75,13 @@ type QueryObserver interface {
 }
 
 type ServiceConfig struct {
-	UsageCost       usageCostBindingQuery
-	RuntimeInfo     runtimeInfoBindingQuery
-	QuotaRefresh    quotaRefreshBindingCommand
-	RuntimeControls runtimeControlBindingCommand
-	UpdateControls  updateBindingCommand
-	QueryObserver   QueryObserver
+	UsageCost        usageCostBindingQuery
+	RuntimeInfo      runtimeInfoBindingQuery
+	QuotaRefresh     quotaRefreshBindingCommand
+	RuntimeControls  runtimeControlBindingCommand
+	UpdateControls   updateBindingCommand
+	QueryObserver    QueryObserver
+	SessionDeepIndex sessionDeepIndexCommand
 }
 
 // Service is the only business service registered with Wails. Its unexported
@@ -88,6 +94,8 @@ type Service struct {
 	quotaRefresh     quotaRefreshBindingCommand
 	runtimeMu        sync.RWMutex
 	runtimeControls  runtimeControlBindingCommand
+	deepMu           sync.RWMutex
+	sessionDeepIndex sessionDeepIndexCommand
 	updateMu         sync.RWMutex
 	updateControls   updateBindingCommand
 	healthMu         sync.RWMutex
@@ -100,13 +108,27 @@ func NewService(config ServiceConfig) (*Service, error) {
 		return nil, ErrBindingService
 	}
 	return &Service{
-		usageCost:       config.UsageCost,
-		runtimeInfo:     config.RuntimeInfo,
-		quotaRefresh:    config.QuotaRefresh,
-		runtimeControls: config.RuntimeControls,
-		updateControls:  config.UpdateControls,
-		queryObserver:   config.QueryObserver,
+		usageCost:        config.UsageCost,
+		runtimeInfo:      config.RuntimeInfo,
+		quotaRefresh:     config.QuotaRefresh,
+		runtimeControls:  config.RuntimeControls,
+		sessionDeepIndex: config.SessionDeepIndex,
+		updateControls:   config.UpdateControls,
+		queryObserver:    config.QueryObserver,
 	}, nil
+}
+
+func (service *Service) bindSessionDeepIndex(command sessionDeepIndexCommand) error {
+	if service == nil || command == nil {
+		return ErrBindingService
+	}
+	service.deepMu.Lock()
+	defer service.deepMu.Unlock()
+	if service.sessionDeepIndex != nil {
+		return ErrBindingService
+	}
+	service.sessionDeepIndex = command
+	return nil
 }
 
 func (service *Service) bindUpdateControls(command updateBindingCommand) error {
@@ -326,6 +348,22 @@ func (service *Service) SessionDetail(
 		return usagecost.SessionDetailResponse{}, newBindingFailure(ErrBindingService)
 	}
 	return bindingQueryCall(service, func() (usagecost.SessionDetailResponse, error) {
+		response, err := service.usageCost.SessionDetail(ctx, request)
+		if err != nil || len(response.Turns) != 0 {
+			return response, err
+		}
+		service.deepMu.RLock()
+		command := service.sessionDeepIndex
+		service.deepMu.RUnlock()
+		if command == nil {
+			return response, nil
+		}
+		if _, deepErr := command.DeepIndexSession(ctx, request.SessionID); deepErr != nil {
+			if errors.Is(deepErr, context.Canceled) || errors.Is(deepErr, context.DeadlineExceeded) {
+				return usagecost.SessionDetailResponse{}, deepErr
+			}
+			return response, nil
+		}
 		return service.usageCost.SessionDetail(ctx, request)
 	})
 }

@@ -195,6 +195,14 @@ func (repository *Repository) ListSessionAnalytics(
 	page := SessionAnalyticsPage{Records: make([]SessionAnalyticsRecord, 0)}
 	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
 		database := connection.WithContext(ctx)
+		lightPage, handled, err := listLightSessionAnalytics(database, filter)
+		if err != nil {
+			return err
+		}
+		if handled {
+			page = lightPage
+			return nil
+		}
 		if err := ensureSessionAttributionsPresent(database); err != nil {
 			return err
 		}
@@ -281,6 +289,14 @@ func (repository *Repository) SessionAnalytics(
 	}
 	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
 		database := connection.WithContext(ctx)
+		lightSnapshot, handled, err := lightSessionAnalytics(database, filter)
+		if err != nil {
+			return err
+		}
+		if handled {
+			result = lightSnapshot
+			return nil
+		}
 		if err := ensureSessionAttributionsPresent(database); err != nil {
 			return err
 		}

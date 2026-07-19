@@ -151,6 +151,39 @@ func TestUsageCostFallbackIsPartialAndDoesNotInventUnknownOrZero(t *testing.T) {
 	assertUnknownNumeric(t, first.Totals.EstimatedUSDMicros, basequery.UnknownUnavailable)
 }
 
+func TestUsageCostLightIndexReturnsKnownTokensAndUnknownTurnCost(t *testing.T) {
+	t.Parallel()
+
+	input, cached, output, reasoning, total := int64(100), int64(20), int64(10), int64(2), int64(112)
+	reader := usageReaderFunc(func(context.Context, store.AnalyticsRange) (store.UsageCostRangeSnapshot, error) {
+		return store.UsageCostRangeSnapshot{
+			Mode: store.AnalyticsReadLightIndex,
+			Daily: []store.UsageDaily{{
+				BucketStartMS: 1_721_347_200_000, ReportingTimezone: "UTC",
+				RollupTotals: store.RollupTotals{
+					InputTokens: &input, CachedInputTokens: &cached, OutputTokens: &output,
+					ReasoningTokens: &reasoning, TotalTokens: &total,
+				},
+			}},
+			PricingVersions: []string{}, UnpricedReasons: []store.CostReasonCount{},
+		}, nil
+	})
+	service := newUsageService(t, reader)
+	response, err := service.UsageCost(context.Background(), UsageCostRequest{
+		Range:       basequery.LocalDateRange{StartDate: "2024-07-19", EndDateExclusive: "2024-07-20", TimeZone: "UTC"},
+		Granularity: TrendDay,
+	})
+	if err != nil {
+		t.Fatalf("UsageCost(light) error = %v", err)
+	}
+	if response.Meta.Status != basequery.ResponsePartial {
+		t.Fatalf("response = %#v", response)
+	}
+	assertKnownNumeric(t, response.Totals.TotalTokens, total, basequery.NumericTokens)
+	assertUnknownNumeric(t, response.Totals.TurnCount, basequery.UnknownUnavailable)
+	assertUnknownNumeric(t, response.Totals.EstimatedUSDMicros, basequery.UnknownNotComputed)
+}
+
 func TestUsageCostEmptyFallbackKeepsCostUnknown(t *testing.T) {
 	t.Parallel()
 

@@ -1100,10 +1100,10 @@
           "type": "frame",
           "id": "tiJbw",
           "x": 24,
-          "y": 24,
+          "y": 8,
           "name": "Liquid Glass Sidebar",
           "width": 236,
-          "height": 976,
+          "height": 992,
           "fill": "#FFFFFFA6",
           "cornerRadius": 30,
           "stroke": "$glass-stroke",
@@ -1128,10 +1128,38 @@
           "layout": "vertical",
           "gap": 18,
           "padding": [
+            10,
+            16,
             20,
             16
           ],
           "children": [
+            {
+              "type": "frame",
+              "id": "ExaCx",
+              "name": "Native Window Controls",
+              "height": 12,
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "ellipse",
+                  "id": "L47Nj",
+                  "name": "Native Minimise Button",
+                  "fill": "$orange",
+                  "width": 12,
+                  "height": 12
+                },
+                {
+                  "type": "ellipse",
+                  "id": "alMKn",
+                  "name": "Native Zoom Button",
+                  "fill": "$green",
+                  "width": 12,
+                  "height": 12
+                }
+              ]
+            },
             {
               "type": "frame",
               "id": "qHUxm",
@@ -5755,10 +5783,10 @@
           "type": "frame",
           "id": "aESTG",
           "x": 24,
-          "y": 24,
+          "y": 8,
           "name": "Usage Glass Sidebar",
           "width": 236,
-          "height": 976,
+          "height": 992,
           "fill": "#FFFFFFA6",
           "cornerRadius": 30,
           "stroke": "$glass-stroke",
@@ -5783,10 +5811,38 @@
           "layout": "vertical",
           "gap": 18,
           "padding": [
+            10,
+            16,
             20,
             16
           ],
           "children": [
+            {
+              "type": "frame",
+              "id": "fSwRh",
+              "name": "Native Window Controls",
+              "height": 12,
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "ellipse",
+                  "id": "B2KEc1",
+                  "name": "Native Minimise Button",
+                  "fill": "$orange",
+                  "width": 12,
+                  "height": 12
+                },
+                {
+                  "type": "ellipse",
+                  "id": "KV14h",
+                  "name": "Native Zoom Button",
+                  "fill": "$green",
+                  "width": 12,
+                  "height": 12
+                }
+              ]
+            },
             {
               "type": "frame",
               "id": "pulNO",
@@ -8295,10 +8351,10 @@
           "type": "frame",
           "id": "s7Y1T",
           "x": 24,
-          "y": 24,
+          "y": 8,
           "name": "Sessions Glass Sidebar",
           "width": 236,
-          "height": 976,
+          "height": 992,
           "fill": "#FFFFFFA6",
           "cornerRadius": 30,
           "stroke": "$glass-stroke",
@@ -8323,10 +8379,38 @@
           "layout": "vertical",
           "gap": 18,
           "padding": [
+            10,
+            16,
             20,
             16
           ],
           "children": [
+            {
+              "type": "frame",
+              "id": "QrZsY",
+              "name": "Native Window Controls",
+              "height": 12,
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "ellipse",
+                  "id": "BnZKv",
+                  "name": "Native Minimise Button",
+                  "fill": "$orange",
+                  "width": 12,
+                  "height": 12
+                },
+                {
+                  "type": "ellipse",
+                  "id": "lBumN",
+                  "name": "Native Zoom Button",
+                  "fill": "$green",
+                  "width": 12,
+                  "height": 12
+                }
+              ]
+            },
             {
               "type": "frame",
               "id": "fsd1v",
@@ -10591,10 +10675,10 @@
           "type": "frame",
           "id": "d8gbBv",
           "x": 24,
-          "y": 24,
+          "y": 8,
           "name": "Quota Glass Sidebar",
           "width": 236,
-          "height": 976,
+          "height": 992,
           "fill": "#FFFFFFA6",
           "cornerRadius": 30,
           "stroke": "$glass-stroke",
@@ -10619,10 +10703,38 @@
           "layout": "vertical",
           "gap": 18,
           "padding": [
+            10,
+            16,
             20,
             16
           ],
           "children": [
+            {
+              "type": "frame",
+              "id": "iJkZP",
+              "name": "Native Window Controls",
+              "height": 12,
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "ellipse",
+                  "id": "nwoct",
+                  "name": "Native Minimise Button",
+                  "fill": "$orange",
+                  "width": 12,
+                  "height": 12
+                },
+                {
+                  "type": "ellipse",
+                  "id": "VSaFX",
+                  "name": "Native Zoom Button",
+                  "fill": "$green",
+                  "width": 12,
+                  "height": 12
+                }
+              ]
+            },
             {
               "type": "frame",
               "id": "owOHt",
@@ -12105,10 +12217,10 @@
           "type": "frame",
           "id": "LxGnv",
           "x": 24,
-          "y": 24,
+          "y": 8,
           "name": "Settings Glass Sidebar",
           "width": 236,
-          "height": 976,
+          "height": 992,
           "fill": "#FFFFFFA6",
           "cornerRadius": 30,
           "stroke": "$glass-stroke",
@@ -12133,10 +12245,38 @@
           "layout": "vertical",
           "gap": 18,
           "padding": [
+            10,
+            16,
             20,
             16
           ],
           "children": [
+            {
+              "type": "frame",
+              "id": "jY0z4",
+              "name": "Native Window Controls",
+              "height": 12,
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "ellipse",
+                  "id": "HpqQw",
+                  "name": "Native Minimise Button",
+                  "fill": "$orange",
+                  "width": 12,
+                  "height": 12
+                },
+                {
+                  "type": "ellipse",
+                  "id": "bkfMu",
+                  "name": "Native Zoom Button",
+                  "fill": "$green",
+                  "width": 12,
+                  "height": 12
+                }
+              ]
+            },
             {
               "type": "frame",
               "id": "H4vPY",
@@ -13689,10 +13829,10 @@
           "type": "frame",
           "id": "ORXFK",
           "x": 24,
-          "y": 24,
+          "y": 8,
           "name": "Projects Glass Sidebar",
           "width": 236,
-          "height": 976,
+          "height": 992,
           "fill": "#FFFFFFA6",
           "cornerRadius": 30,
           "stroke": "$glass-stroke",
@@ -13717,10 +13857,38 @@
           "layout": "vertical",
           "gap": 18,
           "padding": [
+            10,
+            16,
             20,
             16
           ],
           "children": [
+            {
+              "type": "frame",
+              "id": "r87f7k",
+              "name": "Native Window Controls",
+              "height": 12,
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "ellipse",
+                  "id": "Mg2pz",
+                  "name": "Native Minimise Button",
+                  "fill": "$orange",
+                  "width": 12,
+                  "height": 12
+                },
+                {
+                  "type": "ellipse",
+                  "id": "LMxJE",
+                  "name": "Native Zoom Button",
+                  "fill": "$green",
+                  "width": 12,
+                  "height": 12
+                }
+              ]
+            },
             {
               "type": "frame",
               "id": "vSH8l",
@@ -19344,10 +19512,10 @@
           "type": "frame",
           "id": "e5BBDa",
           "x": 24,
-          "y": 24,
+          "y": 8,
           "name": "Liquid Glass Sidebar",
           "width": 236,
-          "height": 976,
+          "height": 992,
           "fill": "#FFFFFFA6",
           "cornerRadius": 30,
           "stroke": "$glass-stroke",
@@ -19372,10 +19540,38 @@
           "layout": "vertical",
           "gap": 18,
           "padding": [
+            10,
+            16,
             20,
             16
           ],
           "children": [
+            {
+              "type": "frame",
+              "id": "FU6Ww",
+              "name": "Native Window Controls",
+              "height": 12,
+              "gap": 8,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "ellipse",
+                  "id": "YQAHe",
+                  "name": "Native Minimise Button",
+                  "fill": "$orange",
+                  "width": 12,
+                  "height": 12
+                },
+                {
+                  "type": "ellipse",
+                  "id": "YitEw",
+                  "name": "Native Zoom Button",
+                  "fill": "$green",
+                  "width": 12,
+                  "height": 12
+                }
+              ]
+            },
             {
               "type": "frame",
               "id": "FNQR7",

@@ -40,9 +40,9 @@ watch(routeIdentity, async (_current, previous) => {
     >
       {{ t("shell.skipToContent") }}
     </a>
-    <div class="app-shell-grid grid h-screen min-h-[600px] grid-cols-[14.75rem_minmax(0,1fr)] gap-5 p-6">
+    <div class="app-shell-grid grid h-screen min-h-[600px] grid-cols-[14.75rem_minmax(0,1fr)] gap-5 px-6 pb-6 pt-2">
       <AppSidebar />
-      <section class="flex min-h-0 min-w-0 flex-col">
+      <section class="flex min-h-0 min-w-0 flex-col pt-4">
         <AppTitlebar ref="titlebar" />
         <AppStatusBanner />
         <main id="app-content" ref="content" data-testid="app-content" tabindex="-1" class="min-h-0 flex-1 overflow-auto pb-1 pr-1">

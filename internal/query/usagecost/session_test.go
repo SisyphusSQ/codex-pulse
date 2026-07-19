@@ -214,6 +214,37 @@ func TestListSessionsMissingLedgerReturnsPartialUnknownTotals(t *testing.T) {
 	assertUnknownNumeric(t, response.Items[0].Totals.EstimatedUSDMicros, basequery.UnknownUnavailable)
 }
 
+func TestListSessionsLightIndexReturnsKnownTokensAndUnknownTurnCost(t *testing.T) {
+	t.Parallel()
+
+	input, cached, output, reasoning, total := int64(100), int64(20), int64(10), int64(2), int64(112)
+	record := safeFallbackSessionRecord("session-light", "真实标题")
+	record.Rollup = &store.RollupTotals{
+		InputTokens: &input, CachedInputTokens: &cached, OutputTokens: &output,
+		ReasoningTokens: &reasoning, TotalTokens: &total,
+	}
+	reader := &sessionReaderStub{list: func(
+		context.Context, store.SessionAnalyticsFilter,
+	) (store.SessionAnalyticsPage, error) {
+		return store.SessionAnalyticsPage{
+			Mode: store.AnalyticsReadLightIndex, Records: []store.SessionAnalyticsRecord{record},
+			MatchedCount: 1, MatchedTotals: record.Rollup, PageTotals: record.Rollup,
+		}, nil
+	}}
+	service := newUsageService(t, reader)
+	response, err := service.ListSessions(context.Background(), basequery.Request{})
+	if err != nil {
+		t.Fatalf("ListSessions(light) error = %v", err)
+	}
+	if response.Meta.Status != basequery.ResponsePartial || len(response.Items) != 1 {
+		t.Fatalf("response = %#v", response)
+	}
+	assertKnownNumeric(t, response.Items[0].Totals.InputTokens, input, basequery.NumericTokens)
+	assertKnownNumeric(t, response.Items[0].Totals.TotalTokens, total, basequery.NumericTokens)
+	assertUnknownNumeric(t, response.Items[0].Totals.TurnCount, basequery.UnknownUnavailable)
+	assertUnknownNumeric(t, response.Items[0].Totals.EstimatedUSDMicros, basequery.UnknownNotComputed)
+}
+
 func TestListSessionsAmbiguousLedgerReturnsSafePartial(t *testing.T) {
 	t.Parallel()
 
