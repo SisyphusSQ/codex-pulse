@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -25,11 +24,11 @@ import (
 	platformtray "github.com/SisyphusSQ/codex-pulse/internal/platform/tray"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
+	privacyaudit "github.com/SisyphusSQ/codex-pulse/internal/privacy"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
-	"gorm.io/gorm"
 )
 
 const (
@@ -40,8 +39,6 @@ const (
 	bootstrapSliceSize = int64(512 << 20)
 	warmQuerySamples   = 30
 )
-
-var safeIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type config struct {
 	home          string
@@ -784,6 +781,8 @@ type privacyRows interface {
 	Close() error
 }
 
+// scanPrivacyRows remains as a narrow row-lifecycle seam for the runner's
+// failure tests; the sensitive-envelope policy itself is centralized.
 func scanPrivacyRows(rows privacyRows, result *privacyResult) error {
 	for rows.Next() {
 		var value sql.NullString
@@ -793,7 +792,7 @@ func scanPrivacyRows(rows privacyRows, result *privacyResult) error {
 		}
 		if value.Valid {
 			result.strings++
-			if containsSensitiveEnvelope(value.String) {
+			if privacyaudit.ContainsSensitiveEnvelope(value.String) {
 				_ = rows.Close()
 				return errPrivacyContract
 			}
@@ -808,112 +807,25 @@ func scanPrivacyRows(rows privacyRows, result *privacyResult) error {
 }
 
 func scanDatabasePrivacy(ctx context.Context, database *storesqlite.Store) (privacyResult, error) {
-	result := privacyResult{}
-	forbiddenColumns := map[string]struct{}{
-		"prompt": {}, "response": {}, "content": {}, "tool_output": {}, "raw_json": {},
-		"authorization": {}, "cookie": {}, "access_token": {}, "refresh_token": {},
+	report, err := privacyaudit.InspectDatabase(ctx, database)
+	if err != nil {
+		return privacyResult{}, errors.Join(errPrivacyContract, err)
 	}
-	err := database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
-		tables, err := connection.WithContext(ctx).Migrator().GetTables()
-		if err != nil {
-			return err
-		}
-		sort.Strings(tables)
-		for _, table := range tables {
-			if !safeIdentifier.MatchString(table) {
-				return errPrivacyContract
-			}
-			result.tables++
-			columns, err := connection.WithContext(ctx).Migrator().ColumnTypes(table)
-			if err != nil {
-				return err
-			}
-			for _, column := range columns {
-				name := strings.ToLower(column.Name())
-				if _, forbidden := forbiddenColumns[name]; forbidden {
-					return errPrivacyContract
-				}
-				if !safeIdentifier.MatchString(column.Name()) || !isTextColumn(column.DatabaseTypeName()) {
-					continue
-				}
-				rows, err := connection.WithContext(ctx).Table(table).Select(column.Name()).Rows()
-				if err != nil {
-					return err
-				}
-				if err := scanPrivacyRows(rows, &result); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	})
-	return result, err
-}
-
-func isTextColumn(databaseType string) bool {
-	typeName := strings.ToUpper(databaseType)
-	return strings.Contains(typeName, "CHAR") || strings.Contains(typeName, "CLOB") || strings.Contains(typeName, "TEXT")
+	return privacyResult{tables: report.Tables, strings: report.Strings}, nil
 }
 
 func containsSensitiveEnvelope(value string) bool {
-	lower := strings.ToLower(value)
-	if strings.Contains(lower, "authorization: bearer ") || strings.Contains(lower, "cookie:") {
-		return true
-	}
-	compact := strings.Map(func(value rune) rune {
-		switch value {
-		case ' ', '\t', '\r', '\n':
-			return -1
-		default:
-			return value
-		}
-	}, lower)
-	for _, forbidden := range []string{
-		"\"authorization\":", "\"cookie\":",
-		"\"access_token\":", "\"refresh_token\":", "\"auth\":", "\"prompt\":",
-		"\"response\":", "\"role\":\"user\"", "\"type\":\"response_item\"", "\"tool_output\":",
-	} {
-		if strings.Contains(compact, forbidden) {
-			return true
-		}
-	}
-	return false
+	return privacyaudit.ContainsSensitiveEnvelope(value)
 }
 
 func scanDTOs(home string, values ...any) error {
 	for _, value := range values {
-		encoded, err := json.Marshal(value)
-		if err != nil {
-			return err
-		}
-		text := string(encoded)
-		var decoded any
-		if json.Unmarshal(encoded, &decoded) != nil || containsAbsolutePath(decoded) ||
-			strings.Contains(text, home) || containsSensitiveEnvelope(text) {
-			return errPrivacyContract
+		if err := privacyaudit.InspectPublicValue(value); err != nil {
+			return errors.Join(errPrivacyContract, err)
 		}
 	}
+	_ = home // kept in the call shape for the read-only runner contract.
 	return nil
-}
-
-func containsAbsolutePath(value any) bool {
-	switch typed := value.(type) {
-	case string:
-		return filepath.IsAbs(strings.TrimSpace(typed))
-	case []any:
-		for _, item := range typed {
-			if containsAbsolutePath(item) {
-				return true
-			}
-		}
-	case map[string]any:
-		for _, item := range typed {
-			if containsAbsolutePath(item) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func stableFailure(err error) string {

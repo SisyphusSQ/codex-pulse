@@ -94,6 +94,8 @@ Install mutation 未结束期间，Settings 以 250ms 有界刷新读取 shared 
 
 ### 本地发布工具链
 
+M11 privacy audit只对临时 ad-hoc App/ZIP做release-readiness隐私扫描：package内regular files不得出现本轮 synthetic body/token canary、credential envelope、仓库或 Home绝对路径，symlink必须解析后仍在 App根内；签名、arm64、minOS 15.0与ZIP一致性仍由既有bundle gate证明。已有 package输出会被原样保留并让审计 fail closed，只有带本轮 lease/marker的产物可清理。该扫描不读取真实私钥、不生成appcast、不上传artifact，也不把本地package验证解释为正式发布。
+
 - `scripts/sparkle/prepare_release_tools.sh` 只从 SHA-256 固定的 Sparkle 2.9.4 官方 archive 提取 `generate_appcast`、`sign_update` 与 `generate_keys`，校验 Mach-O 与 arm64 slice；正常构建不执行 `generate_keys`。
 - `task release:local` 只从 stdin 读取一行 Sparkle Ed25519 private seed，并通过官方 `generate_appcast --ed-key-file -` 签名。private seed 不允许进入 argv、环境、日志、manifest、release notes 或最终 `dist/update`。
 - release bundle 在打包时注入公开的 `SUFeedURL` / `SUPublicEDKey`；公钥必须 base64 解码为 32 bytes，feed 和 download URL 必须是无 userinfo 的 HTTPS URL。
