@@ -54,6 +54,7 @@
 51. [TOO-294] 实现 Quit 与 Sparkle Install 共用的安全关闭状态机、scheduler/Wails admission fence、SQLite 有序关闭和单实例 wake/takeover，固定 timeout 后后台 drain、失败阶段可观察、final reply 恰好一次及崩溃锁回收语义
 52. [TOO-295] 实现 migration startup gate 与只读恢复服务图，新增私有备份摘要冻结、可取消重试和二次确认恢复、content-free 审计告警及 SQLite 在线保全与原子文件交换，固定失败不推进版本、canonical path 不缺失和唯一副本不覆盖语义
 53. [TOO-296] 建立显式本地发布流水线与真实 Sparkle N-1 升级矩阵，覆盖 Ed25519 签名、替换重启、schema 迁移、坏签名、离线、information-only、migration failure 回滚、恢复态安全安装及 HOME/PID 零残留门禁
+54. [TOO-300] 建立统一隐私与敏感字段审计合同，以 synthetic canary 验证 parser、GORM Pure Go SQLite TEXT/BLOB、备份与公共投影，冻结 generated DTO、进程内缓存、启动日志、可编辑设计源、视觉证据和 packaged App regular/symlink 边界，并以独占 lease 保证只清理本轮产物
 
 #### optimization:
 1. [TOO-285] 完善 AppIcon、ICNS 与 Tray Template 资产闭环，新增冻结源校验、严格灰阶 1x/2x 派生、macOS bundle/ZIP 资源读回及可重复导出与 live smoke 证据

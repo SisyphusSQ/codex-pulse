@@ -3450,7 +3450,7 @@
                       "id": "kgWi2",
                       "name": "设计 Codex Pulse Popover Project",
                       "fill": "$text-tertiary",
-                      "content": "agent-memory",
+                      "content": "atlas-demo",
                       "fontFamily": "$font-data",
                       "fontSize": 8.5,
                       "fontWeight": "normal"
@@ -3495,7 +3495,7 @@
               "layoutPosition": "absolute",
               "x": 20,
               "y": 77,
-              "name": "导入财务归档 Popover Session",
+              "name": "导入示例归档 Popover Session",
               "width": 380,
               "height": 32,
               "justifyContent": "space_between",
@@ -3504,16 +3504,16 @@
                 {
                   "type": "frame",
                   "id": "e2wXq",
-                  "name": "导入财务归档 Popover Copy",
+                  "name": "导入示例归档 Popover Copy",
                   "layout": "vertical",
                   "gap": 2,
                   "children": [
                     {
                       "type": "text",
                       "id": "GnFGb",
-                      "name": "导入财务归档 Popover Title",
+                      "name": "导入示例归档 Popover Title",
                       "fill": "$text-primary",
-                      "content": "导入财务归档",
+                      "content": "导入示例归档",
                       "fontFamily": "$font-ui",
                       "fontSize": 10.5,
                       "fontWeight": "600"
@@ -3521,9 +3521,9 @@
                     {
                       "type": "text",
                       "id": "J8Psa",
-                      "name": "导入财务归档 Popover Project",
+                      "name": "导入示例归档 Popover Project",
                       "fill": "$text-tertiary",
-                      "content": "family-system",
+                      "content": "nebula-demo",
                       "fontFamily": "$font-data",
                       "fontSize": 8.5,
                       "fontWeight": "normal"
@@ -3533,7 +3533,7 @@
                 {
                   "type": "frame",
                   "id": "s09CH8",
-                  "name": "导入财务归档 Popover Meta",
+                  "name": "导入示例归档 Popover Meta",
                   "layout": "vertical",
                   "gap": 2,
                   "alignItems": "end",
@@ -3541,7 +3541,7 @@
                     {
                       "type": "text",
                       "id": "c0aaMz",
-                      "name": "导入财务归档 Popover Status",
+                      "name": "导入示例归档 Popover Status",
                       "fill": "$text-tertiary",
                       "content": "IDLE",
                       "fontFamily": "$font-data",
@@ -3551,7 +3551,7 @@
                     {
                       "type": "text",
                       "id": "UIFEp",
-                      "name": "导入财务归档 Popover Time",
+                      "name": "导入示例归档 Popover Time",
                       "fill": "$text-tertiary",
                       "content": "18 分钟前",
                       "fontFamily": "$font-ui",
@@ -3596,7 +3596,7 @@
                       "id": "O0uYM",
                       "name": "修复视频工作流 Popover Project",
                       "fill": "$text-tertiary",
-                      "content": "ai_video",
+                      "content": "media-demo",
                       "fontFamily": "$font-data",
                       "fontSize": 8.5,
                       "fontWeight": "normal"
@@ -3669,7 +3669,7 @@
                       "id": "p7nYw",
                       "name": "研究 Codex Runway Popover Project",
                       "fill": "$text-tertiary",
-                      "content": "agent-memory",
+                      "content": "atlas-demo",
                       "fontFamily": "$font-data",
                       "fontSize": 8.5,
                       "fontWeight": "normal"
@@ -3742,7 +3742,7 @@
                       "id": "X0IgQ",
                       "name": "更新家庭账单 Popover Project",
                       "fill": "$text-tertiary",
-                      "content": "family-system",
+                      "content": "nebula-demo",
                       "fontFamily": "$font-data",
                       "fontSize": 8.5,
                       "fontWeight": "normal"
@@ -8539,7 +8539,7 @@
                   "id": "P7UgWt",
                   "name": "Sidebar Active Detail",
                   "fill": "$text-secondary",
-                  "content": "设计 Agent Tracker\n刚刚有新事件",
+                  "content": "设计示例仪表板\n刚刚有新事件",
                   "lineHeight": 1.45,
                   "fontFamily": "$font-ui",
                   "fontSize": 9.5,
@@ -8995,7 +8995,7 @@
                           "textGrowth": "fixed-width-height",
                           "width": 140,
                           "height": 15,
-                          "content": "agent-memory",
+                          "content": "atlas-demo",
                           "fontFamily": "$font-data",
                           "fontSize": 8.8,
                           "fontWeight": "normal"
@@ -9069,7 +9069,7 @@
                     {
                       "type": "frame",
                       "id": "RxtCf",
-                      "name": "A 股收盘报告 Sessions Table Row",
+                      "name": "月度示例报告 Sessions Table Row",
                       "width": "fill_container",
                       "height": "fill_container",
                       "fill": "#FFFFFF00",
@@ -9087,7 +9087,7 @@
                         {
                           "type": "frame",
                           "id": "U27BG",
-                          "name": "A 股收盘报告 Session Cell",
+                          "name": "月度示例报告 Session Cell",
                           "width": "fill_container",
                           "gap": 9,
                           "alignItems": "center",
@@ -9095,7 +9095,7 @@
                             {
                               "type": "ellipse",
                               "id": "OKUgK",
-                              "name": "A 股收盘报告 Selection Dot",
+                              "name": "月度示例报告 Selection Dot",
                               "fill": "#17191C10",
                               "width": 6,
                               "height": 6
@@ -9103,9 +9103,9 @@
                             {
                               "type": "text",
                               "id": "PkaCV",
-                              "name": "A 股收盘报告 Session Title",
+                              "name": "月度示例报告 Session Title",
                               "fill": "$text-primary",
-                              "content": "A 股收盘报告",
+                              "content": "月度示例报告",
                               "fontFamily": "$font-ui",
                               "fontSize": 10.5,
                               "fontWeight": "550"
@@ -9115,12 +9115,12 @@
                         {
                           "type": "text",
                           "id": "cN7pc",
-                          "name": "A 股收盘报告 Session Project",
+                          "name": "月度示例报告 Session Project",
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width-height",
                           "width": 140,
                           "height": 15,
-                          "content": "agent-memory",
+                          "content": "atlas-demo",
                           "fontFamily": "$font-data",
                           "fontSize": 8.8,
                           "fontWeight": "normal"
@@ -9128,7 +9128,7 @@
                         {
                           "type": "text",
                           "id": "UKr5I",
-                          "name": "A 股收盘报告 Session Model",
+                          "name": "月度示例报告 Session Model",
                           "fill": "$text-tertiary",
                           "textGrowth": "fixed-width-height",
                           "width": 132,
@@ -9141,7 +9141,7 @@
                         {
                           "type": "frame",
                           "id": "wI0JT",
-                          "name": "A 股收盘报告 Session Status Chip",
+                          "name": "月度示例报告 Session Status Chip",
                           "width": 68,
                           "height": 24,
                           "fill": "#17191C09",
@@ -9152,7 +9152,7 @@
                             {
                               "type": "text",
                               "id": "cqAg6",
-                              "name": "A 股收盘报告 Session Status",
+                              "name": "月度示例报告 Session Status",
                               "fill": "$text-tertiary",
                               "content": "IDLE",
                               "fontFamily": "$font-data",
@@ -9164,7 +9164,7 @@
                         {
                           "type": "text",
                           "id": "eFUh4",
-                          "name": "A 股收盘报告 Session Last",
+                          "name": "月度示例报告 Session Last",
                           "fill": "$text-tertiary",
                           "textGrowth": "fixed-width-height",
                           "width": 82,
@@ -9178,7 +9178,7 @@
                         {
                           "type": "text",
                           "id": "l6qCw",
-                          "name": "A 股收盘报告 Session Tokens",
+                          "name": "月度示例报告 Session Tokens",
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width-height",
                           "width": 64,
@@ -9194,7 +9194,7 @@
                     {
                       "type": "frame",
                       "id": "mpoQG",
-                      "name": "导入财务归档 Sessions Table Row",
+                      "name": "导入示例归档 Sessions Table Row",
                       "width": "fill_container",
                       "height": "fill_container",
                       "fill": "#FFFFFF00",
@@ -9212,7 +9212,7 @@
                         {
                           "type": "frame",
                           "id": "zrMaP",
-                          "name": "导入财务归档 Session Cell",
+                          "name": "导入示例归档 Session Cell",
                           "width": "fill_container",
                           "gap": 9,
                           "alignItems": "center",
@@ -9220,7 +9220,7 @@
                             {
                               "type": "ellipse",
                               "id": "ryKxb",
-                              "name": "导入财务归档 Selection Dot",
+                              "name": "导入示例归档 Selection Dot",
                               "fill": "#17191C10",
                               "width": 6,
                               "height": 6
@@ -9228,9 +9228,9 @@
                             {
                               "type": "text",
                               "id": "LSJg5",
-                              "name": "导入财务归档 Session Title",
+                              "name": "导入示例归档 Session Title",
                               "fill": "$text-primary",
-                              "content": "导入财务归档",
+                              "content": "导入示例归档",
                               "fontFamily": "$font-ui",
                               "fontSize": 10.5,
                               "fontWeight": "550"
@@ -9240,12 +9240,12 @@
                         {
                           "type": "text",
                           "id": "jrjhp",
-                          "name": "导入财务归档 Session Project",
+                          "name": "导入示例归档 Session Project",
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width-height",
                           "width": 140,
                           "height": 15,
-                          "content": "family-system",
+                          "content": "nebula-demo",
                           "fontFamily": "$font-data",
                           "fontSize": 8.8,
                           "fontWeight": "normal"
@@ -9253,7 +9253,7 @@
                         {
                           "type": "text",
                           "id": "MFk2Y",
-                          "name": "导入财务归档 Session Model",
+                          "name": "导入示例归档 Session Model",
                           "fill": "$text-tertiary",
                           "textGrowth": "fixed-width-height",
                           "width": 132,
@@ -9266,7 +9266,7 @@
                         {
                           "type": "frame",
                           "id": "RqSMV",
-                          "name": "导入财务归档 Session Status Chip",
+                          "name": "导入示例归档 Session Status Chip",
                           "width": 68,
                           "height": 24,
                           "fill": "#17191C09",
@@ -9277,7 +9277,7 @@
                             {
                               "type": "text",
                               "id": "Pnb7U",
-                              "name": "导入财务归档 Session Status",
+                              "name": "导入示例归档 Session Status",
                               "fill": "$text-tertiary",
                               "content": "IDLE",
                               "fontFamily": "$font-data",
@@ -9289,7 +9289,7 @@
                         {
                           "type": "text",
                           "id": "ocNww",
-                          "name": "导入财务归档 Session Last",
+                          "name": "导入示例归档 Session Last",
                           "fill": "$text-tertiary",
                           "textGrowth": "fixed-width-height",
                           "width": 82,
@@ -9303,7 +9303,7 @@
                         {
                           "type": "text",
                           "id": "JsC8S",
-                          "name": "导入财务归档 Session Tokens",
+                          "name": "导入示例归档 Session Tokens",
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width-height",
                           "width": 64,
@@ -9370,7 +9370,7 @@
                           "textGrowth": "fixed-width-height",
                           "width": 140,
                           "height": 15,
-                          "content": "ai_video",
+                          "content": "media-demo",
                           "fontFamily": "$font-data",
                           "fontSize": 8.8,
                           "fontWeight": "normal"
@@ -9444,7 +9444,7 @@
                     {
                       "type": "frame",
                       "id": "p71abS",
-                      "name": "Gitea 健康巡检 Sessions Table Row",
+                      "name": "服务健康检查 Sessions Table Row",
                       "width": "fill_container",
                       "height": "fill_container",
                       "fill": "#FFFFFF00",
@@ -9462,7 +9462,7 @@
                         {
                           "type": "frame",
                           "id": "UAUkC",
-                          "name": "Gitea 健康巡检 Session Cell",
+                          "name": "服务健康检查 Session Cell",
                           "width": "fill_container",
                           "gap": 9,
                           "alignItems": "center",
@@ -9470,7 +9470,7 @@
                             {
                               "type": "ellipse",
                               "id": "JFsOq",
-                              "name": "Gitea 健康巡检 Selection Dot",
+                              "name": "服务健康检查 Selection Dot",
                               "fill": "#17191C10",
                               "width": 6,
                               "height": 6
@@ -9478,9 +9478,9 @@
                             {
                               "type": "text",
                               "id": "WncAj",
-                              "name": "Gitea 健康巡检 Session Title",
+                              "name": "服务健康检查 Session Title",
                               "fill": "$text-primary",
-                              "content": "Gitea 健康巡检",
+                              "content": "服务健康检查",
                               "fontFamily": "$font-ui",
                               "fontSize": 10.5,
                               "fontWeight": "550"
@@ -9490,12 +9490,12 @@
                         {
                           "type": "text",
                           "id": "FAVSv",
-                          "name": "Gitea 健康巡检 Session Project",
+                          "name": "服务健康检查 Session Project",
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width-height",
                           "width": 140,
                           "height": 15,
-                          "content": "agent-memory",
+                          "content": "atlas-demo",
                           "fontFamily": "$font-data",
                           "fontSize": 8.8,
                           "fontWeight": "normal"
@@ -9503,7 +9503,7 @@
                         {
                           "type": "text",
                           "id": "qguBj",
-                          "name": "Gitea 健康巡检 Session Model",
+                          "name": "服务健康检查 Session Model",
                           "fill": "$text-tertiary",
                           "textGrowth": "fixed-width-height",
                           "width": 132,
@@ -9516,7 +9516,7 @@
                         {
                           "type": "frame",
                           "id": "AuFnd",
-                          "name": "Gitea 健康巡检 Session Status Chip",
+                          "name": "服务健康检查 Session Status Chip",
                           "width": 68,
                           "height": 24,
                           "fill": "#17191C09",
@@ -9527,7 +9527,7 @@
                             {
                               "type": "text",
                               "id": "uhjy5",
-                              "name": "Gitea 健康巡检 Session Status",
+                              "name": "服务健康检查 Session Status",
                               "fill": "$text-tertiary",
                               "content": "IDLE",
                               "fontFamily": "$font-data",
@@ -9539,7 +9539,7 @@
                         {
                           "type": "text",
                           "id": "OOLoy",
-                          "name": "Gitea 健康巡检 Session Last",
+                          "name": "服务健康检查 Session Last",
                           "fill": "$text-tertiary",
                           "textGrowth": "fixed-width-height",
                           "width": 82,
@@ -9553,7 +9553,7 @@
                         {
                           "type": "text",
                           "id": "O0vyQ4",
-                          "name": "Gitea 健康巡检 Session Tokens",
+                          "name": "服务健康检查 Session Tokens",
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width-height",
                           "width": 64,
@@ -9569,7 +9569,7 @@
                     {
                       "type": "frame",
                       "id": "H472UP",
-                      "name": "WireGuard 复核 Sessions Table Row",
+                      "name": "网络配置复核 Sessions Table Row",
                       "width": "fill_container",
                       "height": "fill_container",
                       "fill": "#FFFFFF00",
@@ -9587,7 +9587,7 @@
                         {
                           "type": "frame",
                           "id": "tNWUr",
-                          "name": "WireGuard 复核 Session Cell",
+                          "name": "网络配置复核 Session Cell",
                           "width": "fill_container",
                           "gap": 9,
                           "alignItems": "center",
@@ -9595,7 +9595,7 @@
                             {
                               "type": "ellipse",
                               "id": "baDHa",
-                              "name": "WireGuard 复核 Selection Dot",
+                              "name": "网络配置复核 Selection Dot",
                               "fill": "#17191C10",
                               "width": 6,
                               "height": 6
@@ -9603,9 +9603,9 @@
                             {
                               "type": "text",
                               "id": "Q0TJd",
-                              "name": "WireGuard 复核 Session Title",
+                              "name": "网络配置复核 Session Title",
                               "fill": "$text-primary",
-                              "content": "WireGuard 复核",
+                              "content": "网络配置复核",
                               "fontFamily": "$font-ui",
                               "fontSize": 10.5,
                               "fontWeight": "550"
@@ -9615,12 +9615,12 @@
                         {
                           "type": "text",
                           "id": "y5p2vK",
-                          "name": "WireGuard 复核 Session Project",
+                          "name": "网络配置复核 Session Project",
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width-height",
                           "width": 140,
                           "height": 15,
-                          "content": "agent-memory",
+                          "content": "atlas-demo",
                           "fontFamily": "$font-data",
                           "fontSize": 8.8,
                           "fontWeight": "normal"
@@ -9628,7 +9628,7 @@
                         {
                           "type": "text",
                           "id": "AqalI",
-                          "name": "WireGuard 复核 Session Model",
+                          "name": "网络配置复核 Session Model",
                           "fill": "$text-tertiary",
                           "textGrowth": "fixed-width-height",
                           "width": 132,
@@ -9641,7 +9641,7 @@
                         {
                           "type": "frame",
                           "id": "MeBj7",
-                          "name": "WireGuard 复核 Session Status Chip",
+                          "name": "网络配置复核 Session Status Chip",
                           "width": 68,
                           "height": 24,
                           "fill": "#17191C09",
@@ -9652,7 +9652,7 @@
                             {
                               "type": "text",
                               "id": "XvpUW",
-                              "name": "WireGuard 复核 Session Status",
+                              "name": "网络配置复核 Session Status",
                               "fill": "$text-tertiary",
                               "content": "IDLE",
                               "fontFamily": "$font-data",
@@ -9664,7 +9664,7 @@
                         {
                           "type": "text",
                           "id": "vMn30",
-                          "name": "WireGuard 复核 Session Last",
+                          "name": "网络配置复核 Session Last",
                           "fill": "$text-tertiary",
                           "textGrowth": "fixed-width-height",
                           "width": 82,
@@ -9678,7 +9678,7 @@
                         {
                           "type": "text",
                           "id": "S9m2h",
-                          "name": "WireGuard 复核 Session Tokens",
+                          "name": "网络配置复核 Session Tokens",
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width-height",
                           "width": 64,
@@ -9745,7 +9745,7 @@
                           "textGrowth": "fixed-width-height",
                           "width": 140,
                           "height": 15,
-                          "content": "agent-memory",
+                          "content": "atlas-demo",
                           "fontFamily": "$font-data",
                           "fontSize": 8.8,
                           "fontWeight": "normal"
@@ -9819,7 +9819,7 @@
                     {
                       "type": "frame",
                       "id": "f14BwF",
-                      "name": "Family System release Sessions Table Row",
+                      "name": "示例版本整理 Sessions Table Row",
                       "width": "fill_container",
                       "height": "fill_container",
                       "fill": "#FFFFFF00",
@@ -9837,7 +9837,7 @@
                         {
                           "type": "frame",
                           "id": "ZZSzp",
-                          "name": "Family System release Session Cell",
+                          "name": "示例版本整理 Session Cell",
                           "width": "fill_container",
                           "gap": 9,
                           "alignItems": "center",
@@ -9845,7 +9845,7 @@
                             {
                               "type": "ellipse",
                               "id": "G7Xp7S",
-                              "name": "Family System release Selection Dot",
+                              "name": "示例版本整理 Selection Dot",
                               "fill": "#17191C10",
                               "width": 6,
                               "height": 6
@@ -9853,9 +9853,9 @@
                             {
                               "type": "text",
                               "id": "ua4Vm",
-                              "name": "Family System release Session Title",
+                              "name": "示例版本整理 Session Title",
                               "fill": "$text-primary",
-                              "content": "Family System release",
+                              "content": "示例版本整理",
                               "fontFamily": "$font-ui",
                               "fontSize": 10.5,
                               "fontWeight": "550"
@@ -9865,12 +9865,12 @@
                         {
                           "type": "text",
                           "id": "JcBU3",
-                          "name": "Family System release Session Project",
+                          "name": "示例版本整理 Session Project",
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width-height",
                           "width": 140,
                           "height": 15,
-                          "content": "family-system",
+                          "content": "nebula-demo",
                           "fontFamily": "$font-data",
                           "fontSize": 8.8,
                           "fontWeight": "normal"
@@ -9878,7 +9878,7 @@
                         {
                           "type": "text",
                           "id": "l67uMa",
-                          "name": "Family System release Session Model",
+                          "name": "示例版本整理 Session Model",
                           "fill": "$text-tertiary",
                           "textGrowth": "fixed-width-height",
                           "width": 132,
@@ -9891,7 +9891,7 @@
                         {
                           "type": "frame",
                           "id": "IFAWa",
-                          "name": "Family System release Session Status Chip",
+                          "name": "示例版本整理 Session Status Chip",
                           "width": 68,
                           "height": 24,
                           "fill": "#17191C09",
@@ -9902,7 +9902,7 @@
                             {
                               "type": "text",
                               "id": "SgNDQ",
-                              "name": "Family System release Session Status",
+                              "name": "示例版本整理 Session Status",
                               "fill": "$text-tertiary",
                               "content": "IDLE",
                               "fontFamily": "$font-data",
@@ -9914,7 +9914,7 @@
                         {
                           "type": "text",
                           "id": "D8CPyn",
-                          "name": "Family System release Session Last",
+                          "name": "示例版本整理 Session Last",
                           "fill": "$text-tertiary",
                           "textGrowth": "fixed-width-height",
                           "width": 82,
@@ -9928,7 +9928,7 @@
                         {
                           "type": "text",
                           "id": "coSUX",
-                          "name": "Family System release Session Tokens",
+                          "name": "示例版本整理 Session Tokens",
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width-height",
                           "width": 64,
@@ -10040,7 +10040,7 @@
                           "id": "sgj8V",
                           "name": "Inspector Title",
                           "fill": "$text-primary",
-                          "content": "设计 Agent Tracker",
+                          "content": "设计示例仪表板",
                           "fontFamily": "$font-ui",
                           "fontSize": 19,
                           "fontWeight": "700"
@@ -10069,7 +10069,7 @@
                               "textGrowth": "fixed-width-height",
                               "width": "fill_container",
                               "height": 15,
-                              "content": "…/projects/personal/agent-tracker",
+                              "content": "safe attribution: atlas-demo",
                               "fontFamily": "$font-data",
                               "fontSize": 8.6,
                               "fontWeight": "normal"
@@ -10232,14 +10232,14 @@
                         {
                           "type": "frame",
                           "id": "YIgLT",
-                          "name": "Pencil design updated Timeline Event",
+                          "name": "Synthetic design updated Timeline Event",
                           "width": "fill_container",
                           "gap": 10,
                           "children": [
                             {
                               "type": "ellipse",
                               "id": "WjlY8",
-                              "name": "Pencil design updated Timeline Dot",
+                              "name": "Synthetic design updated Timeline Dot",
                               "fill": "$green",
                               "width": 7,
                               "height": 7
@@ -10247,7 +10247,7 @@
                             {
                               "type": "frame",
                               "id": "B2y91A",
-                              "name": "Pencil design updated Timeline Copy",
+                              "name": "Synthetic design updated Timeline Copy",
                               "width": "fill_container",
                               "layout": "vertical",
                               "gap": 3,
@@ -10255,16 +10255,16 @@
                                 {
                                   "type": "frame",
                                   "id": "Yo0Xp",
-                                  "name": "Pencil design updated Timeline Header",
+                                  "name": "Synthetic design updated Timeline Header",
                                   "width": "fill_container",
                                   "justifyContent": "space_between",
                                   "children": [
                                     {
                                       "type": "text",
                                       "id": "LuIUd",
-                                      "name": "Pencil design updated Timeline Title",
+                                      "name": "Synthetic design updated Timeline Title",
                                       "fill": "$text-primary",
-                                      "content": "Pencil design updated",
+                                      "content": "Synthetic design updated",
                                       "fontFamily": "$font-ui",
                                       "fontSize": 9.5,
                                       "fontWeight": "600"
@@ -10272,7 +10272,7 @@
                                     {
                                       "type": "text",
                                       "id": "piiPd",
-                                      "name": "Pencil design updated Timeline Time",
+                                      "name": "Synthetic design updated Timeline Time",
                                       "fill": "$text-tertiary",
                                       "content": "11:46:18",
                                       "fontFamily": "$font-data",
@@ -10284,9 +10284,9 @@
                                 {
                                   "type": "text",
                                   "id": "uJbBD",
-                                  "name": "Pencil design updated Timeline Detail",
+                                  "name": "Synthetic design updated Timeline Detail",
                                   "fill": "$text-tertiary",
-                                  "content": "Dashboard frame completed",
+                                  "content": "Synthetic frame completed",
                                   "fontFamily": "$font-ui",
                                   "fontSize": 8.5,
                                   "fontWeight": "normal"
@@ -10352,7 +10352,7 @@
                                   "id": "moF52",
                                   "name": "Tool call Timeline Detail",
                                   "fill": "$text-tertiary",
-                                  "content": "batch_design · 128 nodes",
+                                  "content": "synthetic batch · 128 nodes",
                                   "fontFamily": "$font-ui",
                                   "fontSize": 8.5,
                                   "fontWeight": "normal"
@@ -10418,7 +10418,7 @@
                                   "id": "Nv3Mj",
                                   "name": "Assistant working Timeline Detail",
                                   "fill": "$text-tertiary",
-                                  "content": "Liquid Glass design system",
+                                  "content": "Synthetic design system",
                                   "fontFamily": "$font-ui",
                                   "fontSize": 8.5,
                                   "fontWeight": "normal"
@@ -10484,7 +10484,7 @@
                                   "id": "B2e5LY",
                                   "name": "Turn started Timeline Detail",
                                   "fill": "$text-tertiary",
-                                  "content": "User requested product design",
+                                  "content": "Synthetic request created",
                                   "fontFamily": "$font-ui",
                                   "fontSize": 8.5,
                                   "fontWeight": "normal"
@@ -12320,7 +12320,7 @@
                   "id": "Y4IiPq",
                   "name": "Settings Version Label",
                   "fill": "$text-secondary",
-                  "content": "Agent Tracker v0.1",
+                  "content": "示例仪表板 v0.1",
                   "fontFamily": "$font-ui",
                   "fontSize": 10.5,
                   "fontWeight": "650"
@@ -12839,7 +12839,7 @@
                               "id": "Wc2dH",
                               "name": "Codex Home Path",
                               "fill": "$text-secondary",
-                              "content": "/Users/suqing/.codex",
+                              "content": "~/.codex",
                               "fontFamily": "$font-data",
                               "fontSize": 9.5,
                               "fontWeight": "normal"
@@ -14310,7 +14310,7 @@
                     {
                       "type": "frame",
                       "id": "IYloY",
-                      "name": "agent-memory Project List Row",
+                      "name": "atlas-demo Project List Row",
                       "width": "fill_container",
                       "height": "fill_container",
                       "fill": "#0A84FF0D",
@@ -14328,7 +14328,7 @@
                         {
                           "type": "frame",
                           "id": "uAWTa",
-                          "name": "agent-memory Project Icon",
+                          "name": "atlas-demo Project Icon",
                           "width": 32,
                           "height": 32,
                           "fill": "$accent-soft",
@@ -14339,7 +14339,7 @@
                             {
                               "type": "icon",
                               "id": "PjH1M",
-                              "name": "agent-memory Project Folder",
+                              "name": "atlas-demo Project Folder",
                               "width": 15,
                               "height": 15,
                               "icon": "folder",
@@ -14351,7 +14351,7 @@
                         {
                           "type": "frame",
                           "id": "MgFks",
-                          "name": "agent-memory Project Copy",
+                          "name": "atlas-demo Project Copy",
                           "width": "fill_container",
                           "layout": "vertical",
                           "gap": 3,
@@ -14359,9 +14359,9 @@
                             {
                               "type": "text",
                               "id": "osPMQ",
-                              "name": "agent-memory Project Name",
+                              "name": "atlas-demo Project Name",
                               "fill": "$text-primary",
-                              "content": "agent-memory",
+                              "content": "atlas-demo",
                               "fontFamily": "$font-data",
                               "fontSize": 9.8,
                               "fontWeight": "650"
@@ -14369,7 +14369,7 @@
                             {
                               "type": "text",
                               "id": "nsoop",
-                              "name": "agent-memory Project Sessions",
+                              "name": "atlas-demo Project Sessions",
                               "fill": "$text-tertiary",
                               "content": "5 sessions",
                               "fontFamily": "$font-ui",
@@ -14381,7 +14381,7 @@
                         {
                           "type": "frame",
                           "id": "j2enbp",
-                          "name": "agent-memory Project Usage",
+                          "name": "atlas-demo Project Usage",
                           "layout": "vertical",
                           "gap": 3,
                           "alignItems": "end",
@@ -14389,7 +14389,7 @@
                             {
                               "type": "text",
                               "id": "q38nUS",
-                              "name": "agent-memory Project Tokens",
+                              "name": "atlas-demo Project Tokens",
                               "fill": "$text-secondary",
                               "content": "7.8M",
                               "fontFamily": "$font-data",
@@ -14399,7 +14399,7 @@
                             {
                               "type": "text",
                               "id": "oF5mc",
-                              "name": "agent-memory Project Percent",
+                              "name": "atlas-demo Project Percent",
                               "fill": "$text-tertiary",
                               "content": "42%",
                               "fontFamily": "$font-data",
@@ -14413,7 +14413,7 @@
                     {
                       "type": "frame",
                       "id": "wCfEm",
-                      "name": "family-system Project List Row",
+                      "name": "nebula-demo Project List Row",
                       "width": "fill_container",
                       "height": "fill_container",
                       "fill": "#FFFFFF00",
@@ -14431,7 +14431,7 @@
                         {
                           "type": "frame",
                           "id": "Gdxbu",
-                          "name": "family-system Project Icon",
+                          "name": "nebula-demo Project Icon",
                           "width": 32,
                           "height": 32,
                           "fill": "#17191C08",
@@ -14442,7 +14442,7 @@
                             {
                               "type": "icon",
                               "id": "t3rIRv",
-                              "name": "family-system Project Folder",
+                              "name": "nebula-demo Project Folder",
                               "width": 15,
                               "height": 15,
                               "icon": "folder",
@@ -14454,7 +14454,7 @@
                         {
                           "type": "frame",
                           "id": "JUzf8",
-                          "name": "family-system Project Copy",
+                          "name": "nebula-demo Project Copy",
                           "width": "fill_container",
                           "layout": "vertical",
                           "gap": 3,
@@ -14462,9 +14462,9 @@
                             {
                               "type": "text",
                               "id": "n6MWbZ",
-                              "name": "family-system Project Name",
+                              "name": "nebula-demo Project Name",
                               "fill": "$text-primary",
-                              "content": "family-system",
+                              "content": "nebula-demo",
                               "fontFamily": "$font-data",
                               "fontSize": 9.8,
                               "fontWeight": "550"
@@ -14472,7 +14472,7 @@
                             {
                               "type": "text",
                               "id": "A1bH1",
-                              "name": "family-system Project Sessions",
+                              "name": "nebula-demo Project Sessions",
                               "fill": "$text-tertiary",
                               "content": "3 sessions",
                               "fontFamily": "$font-ui",
@@ -14484,7 +14484,7 @@
                         {
                           "type": "frame",
                           "id": "NWMJA",
-                          "name": "family-system Project Usage",
+                          "name": "nebula-demo Project Usage",
                           "layout": "vertical",
                           "gap": 3,
                           "alignItems": "end",
@@ -14492,7 +14492,7 @@
                             {
                               "type": "text",
                               "id": "mDscx",
-                              "name": "family-system Project Tokens",
+                              "name": "nebula-demo Project Tokens",
                               "fill": "$text-secondary",
                               "content": "4.1M",
                               "fontFamily": "$font-data",
@@ -14502,7 +14502,7 @@
                             {
                               "type": "text",
                               "id": "u6JczM",
-                              "name": "family-system Project Percent",
+                              "name": "nebula-demo Project Percent",
                               "fill": "$text-tertiary",
                               "content": "22%",
                               "fontFamily": "$font-data",
@@ -14516,7 +14516,7 @@
                     {
                       "type": "frame",
                       "id": "SVpxI",
-                      "name": "ai_video Project List Row",
+                      "name": "media-demo Project List Row",
                       "width": "fill_container",
                       "height": "fill_container",
                       "fill": "#FFFFFF00",
@@ -14534,7 +14534,7 @@
                         {
                           "type": "frame",
                           "id": "GLwR7",
-                          "name": "ai_video Project Icon",
+                          "name": "media-demo Project Icon",
                           "width": 32,
                           "height": 32,
                           "fill": "#17191C08",
@@ -14545,7 +14545,7 @@
                             {
                               "type": "icon",
                               "id": "zgTuB",
-                              "name": "ai_video Project Folder",
+                              "name": "media-demo Project Folder",
                               "width": 15,
                               "height": 15,
                               "icon": "folder",
@@ -14557,7 +14557,7 @@
                         {
                           "type": "frame",
                           "id": "MX0jT",
-                          "name": "ai_video Project Copy",
+                          "name": "media-demo Project Copy",
                           "width": "fill_container",
                           "layout": "vertical",
                           "gap": 3,
@@ -14565,9 +14565,9 @@
                             {
                               "type": "text",
                               "id": "IrxyM",
-                              "name": "ai_video Project Name",
+                              "name": "media-demo Project Name",
                               "fill": "$text-primary",
-                              "content": "ai_video",
+                              "content": "media-demo",
                               "fontFamily": "$font-data",
                               "fontSize": 9.8,
                               "fontWeight": "550"
@@ -14575,7 +14575,7 @@
                             {
                               "type": "text",
                               "id": "ThjCF",
-                              "name": "ai_video Project Sessions",
+                              "name": "media-demo Project Sessions",
                               "fill": "$text-tertiary",
                               "content": "2 sessions",
                               "fontFamily": "$font-ui",
@@ -14587,7 +14587,7 @@
                         {
                           "type": "frame",
                           "id": "zGKdP",
-                          "name": "ai_video Project Usage",
+                          "name": "media-demo Project Usage",
                           "layout": "vertical",
                           "gap": 3,
                           "alignItems": "end",
@@ -14595,7 +14595,7 @@
                             {
                               "type": "text",
                               "id": "J3Is1",
-                              "name": "ai_video Project Tokens",
+                              "name": "media-demo Project Tokens",
                               "fill": "$text-secondary",
                               "content": "2.7M",
                               "fontFamily": "$font-data",
@@ -14605,7 +14605,7 @@
                             {
                               "type": "text",
                               "id": "ysR7V",
-                              "name": "ai_video Project Percent",
+                              "name": "media-demo Project Percent",
                               "fill": "$text-tertiary",
                               "content": "15%",
                               "fontFamily": "$font-data",
@@ -14619,7 +14619,7 @@
                     {
                       "type": "frame",
                       "id": "jNN00",
-                      "name": "quant-platform Project List Row",
+                      "name": "metrics-demo Project List Row",
                       "width": "fill_container",
                       "height": "fill_container",
                       "fill": "#FFFFFF00",
@@ -14637,7 +14637,7 @@
                         {
                           "type": "frame",
                           "id": "VBxSC",
-                          "name": "quant-platform Project Icon",
+                          "name": "metrics-demo Project Icon",
                           "width": 32,
                           "height": 32,
                           "fill": "#17191C08",
@@ -14648,7 +14648,7 @@
                             {
                               "type": "icon",
                               "id": "dfL0a",
-                              "name": "quant-platform Project Folder",
+                              "name": "metrics-demo Project Folder",
                               "width": 15,
                               "height": 15,
                               "icon": "folder",
@@ -14660,7 +14660,7 @@
                         {
                           "type": "frame",
                           "id": "a9Aq4",
-                          "name": "quant-platform Project Copy",
+                          "name": "metrics-demo Project Copy",
                           "width": "fill_container",
                           "layout": "vertical",
                           "gap": 3,
@@ -14668,9 +14668,9 @@
                             {
                               "type": "text",
                               "id": "z6o3N",
-                              "name": "quant-platform Project Name",
+                              "name": "metrics-demo Project Name",
                               "fill": "$text-primary",
-                              "content": "quant-platform",
+                              "content": "metrics-demo",
                               "fontFamily": "$font-data",
                               "fontSize": 9.8,
                               "fontWeight": "550"
@@ -14678,7 +14678,7 @@
                             {
                               "type": "text",
                               "id": "orHM5",
-                              "name": "quant-platform Project Sessions",
+                              "name": "metrics-demo Project Sessions",
                               "fill": "$text-tertiary",
                               "content": "1 session",
                               "fontFamily": "$font-ui",
@@ -14690,7 +14690,7 @@
                         {
                           "type": "frame",
                           "id": "ID2FH",
-                          "name": "quant-platform Project Usage",
+                          "name": "metrics-demo Project Usage",
                           "layout": "vertical",
                           "gap": 3,
                           "alignItems": "end",
@@ -14698,7 +14698,7 @@
                             {
                               "type": "text",
                               "id": "dTPSX",
-                              "name": "quant-platform Project Tokens",
+                              "name": "metrics-demo Project Tokens",
                               "fill": "$text-secondary",
                               "content": "1.8M",
                               "fontFamily": "$font-data",
@@ -14708,7 +14708,7 @@
                             {
                               "type": "text",
                               "id": "rvKG8",
-                              "name": "quant-platform Project Percent",
+                              "name": "metrics-demo Project Percent",
                               "fill": "$text-tertiary",
                               "content": "10%",
                               "fontFamily": "$font-data",
@@ -14977,7 +14977,7 @@
                               "id": "z0QjP",
                               "name": "Project Detail Title",
                               "fill": "$text-primary",
-                              "content": "agent-memory",
+                              "content": "atlas-demo",
                               "fontFamily": "$font-data",
                               "fontSize": 19,
                               "fontWeight": "650"
@@ -14994,7 +14994,7 @@
                                   "id": "OzxQR",
                                   "name": "Project Detail Path Value",
                                   "fill": "$text-tertiary",
-                                  "content": "/Users/suqing/Documents/agent-memory",
+                                  "content": "project-atlas",
                                   "fontFamily": "$font-data",
                                   "fontSize": 8.8,
                                   "fontWeight": "normal"
@@ -15546,7 +15546,7 @@
                         {
                           "type": "frame",
                           "id": "N5mah",
-                          "name": "A 股收盘报告 Project Session",
+                          "name": "月度示例报告 Project Session",
                           "width": "fill_container",
                           "height": "fill_container",
                           "stroke": "$divider",
@@ -15563,12 +15563,12 @@
                             {
                               "type": "text",
                               "id": "wuYm0",
-                              "name": "A 股收盘报告 Project Session Title",
+                              "name": "月度示例报告 Project Session Title",
                               "fill": "$text-primary",
                               "textGrowth": "fixed-width-height",
                               "width": "fill_container",
                               "height": 15,
-                              "content": "A 股收盘报告",
+                              "content": "月度示例报告",
                               "fontFamily": "$font-ui",
                               "fontSize": 9.5,
                               "fontWeight": "600"
@@ -15576,7 +15576,7 @@
                             {
                               "type": "text",
                               "id": "WpV9L",
-                              "name": "A 股收盘报告 Project Session Status",
+                              "name": "月度示例报告 Project Session Status",
                               "fill": "$text-tertiary",
                               "textGrowth": "fixed-width-height",
                               "width": 54,
@@ -15590,7 +15590,7 @@
                             {
                               "type": "text",
                               "id": "WwWSS",
-                              "name": "A 股收盘报告 Project Session Time",
+                              "name": "月度示例报告 Project Session Time",
                               "fill": "$text-tertiary",
                               "textGrowth": "fixed-width-height",
                               "width": 82,
@@ -15604,7 +15604,7 @@
                             {
                               "type": "text",
                               "id": "i1Oksa",
-                              "name": "A 股收盘报告 Project Session Tokens",
+                              "name": "月度示例报告 Project Session Tokens",
                               "fill": "$text-secondary",
                               "textGrowth": "fixed-width-height",
                               "width": 58,
@@ -15620,7 +15620,7 @@
                         {
                           "type": "frame",
                           "id": "B2jX1o",
-                          "name": "Gitea 健康巡检 Project Session",
+                          "name": "服务健康检查 Project Session",
                           "width": "fill_container",
                           "height": "fill_container",
                           "stroke": "$divider",
@@ -15637,12 +15637,12 @@
                             {
                               "type": "text",
                               "id": "H8vMr",
-                              "name": "Gitea 健康巡检 Project Session Title",
+                              "name": "服务健康检查 Project Session Title",
                               "fill": "$text-primary",
                               "textGrowth": "fixed-width-height",
                               "width": "fill_container",
                               "height": 15,
-                              "content": "Gitea 健康巡检",
+                              "content": "服务健康检查",
                               "fontFamily": "$font-ui",
                               "fontSize": 9.5,
                               "fontWeight": "600"
@@ -15650,7 +15650,7 @@
                             {
                               "type": "text",
                               "id": "Bemh5",
-                              "name": "Gitea 健康巡检 Project Session Status",
+                              "name": "服务健康检查 Project Session Status",
                               "fill": "$text-tertiary",
                               "textGrowth": "fixed-width-height",
                               "width": 54,
@@ -15664,7 +15664,7 @@
                             {
                               "type": "text",
                               "id": "cDvyY",
-                              "name": "Gitea 健康巡检 Project Session Time",
+                              "name": "服务健康检查 Project Session Time",
                               "fill": "$text-tertiary",
                               "textGrowth": "fixed-width-height",
                               "width": 82,
@@ -15678,7 +15678,7 @@
                             {
                               "type": "text",
                               "id": "W9hWx2",
-                              "name": "Gitea 健康巡检 Project Session Tokens",
+                              "name": "服务健康检查 Project Session Tokens",
                               "fill": "$text-secondary",
                               "textGrowth": "fixed-width-height",
                               "width": 58,

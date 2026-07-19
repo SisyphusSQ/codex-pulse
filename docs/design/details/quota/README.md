@@ -206,6 +206,8 @@ Tray 和 Popover 始终使用普通百分比，不用 `≤`、`?`、状态胶囊
 
 ## 验收场景
 
+Wham credential仍只由 memory credential provider在单次 request lease中提供；HTTP request完成、失败或取消后立即删除 `Authorization` header，provider关闭时清零持有字节。response body只产生 allowlisted observation/digest与固定 failure code，401/403/429/network/schema错误不会把 body、token、header或raw error带入Store、DTO或日志。M11 privacy runner复用这些 focused tests，不发真实网络请求。
+
 - 网络失败不把 38% 变成 0%。
 - 同 reset 下 used 降低不覆盖 current。
 - reset 推进后的低 used 能进入新 generation。

@@ -166,6 +166,10 @@ flowchart LR
 
 ## 隐私与安全
 
+M11 使用 `internal/privacy` 的 `m11-privacy-v1` 作为可执行审计 contract。字段检查按敏感 token 序列识别 compound/plural 正文、凭据与 raw error，并以窄 allowlist 保留 `responseBytes`、`contentLength`、`promptTokens`、confirmation `promptVisible` 等安全 aggregate/state；公共值递归拒绝绝对路径和 credential/body envelope。该 contract 同时被 synthetic parser→Store→backup runner、真实 Home runner、generated binding/source scanner 与 packaged artifact scanner复用，finding 只返回固定分类，不回显原值。
+
+应用启动失败不再把 `app.Run` 的底层 error chain直接交给 `log.Fatal`；日志只输出固定 `startup_failed`。底层 path/native cause仍留在进程内错误链供受控调试，不进入公共日志、Wails DTO或health projection。
+
 - 默认 local-first，只读本机文件，不上传数据。
 - SQLite 不保存完整提问、回复、工具输出或原始 JSONL 行。
 - `auth.json` 只在在线 quota 或 reset credits 开启时读取；两项新安装默认开启，关闭后停止对应在线请求，access token 始终只进入内存。

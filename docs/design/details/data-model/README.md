@@ -223,6 +223,8 @@ v11 的 current 主键是 `(account_scope, window_kind, limit_id)`；nullable se
 
 所有普通 insert/update/filter/readback、receipt、projection replace 与关联检查使用 GORM。DDL 的 `STRICT`、有限枚举/CHECK、复合 FK 和特殊 index 是 raw SQL 例外。`quota_observations`、receipt、current 与 evidence 没有 JSON payload、limit name、credits、prompt、response、tool output、raw error 或未知字段列；receipt digest 只覆盖 typed allowlisted sample，evidence reason/explanation 只接受固定枚举。
 
+M11 的 application-wide schema/value审计由 `internal/privacy.InspectDatabase` 通过 GORM Migrator与 typed TEXT/BLOB reads执行：schema 字段拒绝正文、凭据和 raw error专用列，文本与 checkpoint BLOB 值拒绝 credential/body envelope；source/project路径属于 private Store必要事实，不在数据库层被误删。相同 synthetic canary入库后再通过 modernc Online Backup生成并扫描私有备份，证明禁止内容不会因 WAL/backup路径重新出现。公共 DTO另行执行绝对路径禁令。
+
 完整可信和仲裁规则见 [配额设计](../quota/README.md)。
 
 ## 运行与增量索引
