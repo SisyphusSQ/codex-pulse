@@ -259,21 +259,15 @@ func runUpgradeE2EAutomation(
 		fail("source_version", errors.New("source version or schema mismatch"))
 		return
 	}
-	marker := factstore.Session{
-		SessionID: control.MarkerSession, Provider: "codex", SourceKind: "session",
-		CreatedAtMS: 1, FirstSeenAtMS: 1, LastSeenAtMS: 1,
-	}
-	if err := repository.UpsertFacts(ctx, factstore.FactBatch{Session: &marker}); err != nil {
-		fail("source_seed", err)
-		return
-	}
+	markerPresent, err := prepareUpgradeE2ESourceMarker(
+		ctx, repository, control.MarkerSession, control.Action != "verify_rollback",
+	)
 	if control.Action == "verify_rollback" {
-		stored, err := repository.Session(ctx, control.MarkerSession)
 		evidence := upgradeE2EEvidence{
 			Stage: "rollback_verified", Phase: "succeeded", SchemaVersion: schemaVersion,
-			MarkerPresent: err == nil && stored.SessionID == control.MarkerSession,
+			MarkerPresent: markerPresent,
 		}
-		if !evidence.MarkerPresent {
+		if err != nil || !evidence.MarkerPresent {
 			fail("rollback_verify", err)
 			return
 		}
@@ -282,8 +276,16 @@ func runUpgradeE2EAutomation(
 		scheduleUpgradeE2EQuit(quit)
 		return
 	}
+	if err != nil {
+		fail("source_seed", err)
+		return
+	}
+	if !markerPresent {
+		fail("source_seed_readback", errors.New("source marker is missing after seed"))
+		return
+	}
 	_ = appendUpgradeE2EEvidence(control, upgradeE2EEvidence{
-		Stage: "source_ready", Phase: "succeeded", SchemaVersion: schemaVersion, MarkerPresent: true,
+		Stage: "source_ready", Phase: "succeeded", SchemaVersion: schemaVersion, MarkerPresent: markerPresent,
 	})
 	time.Sleep(250 * time.Millisecond)
 	if err := runtime.StartupError(); err != nil {
@@ -308,7 +310,12 @@ func runUpgradeE2EAutomation(
 			}
 			expected := control.Scenario == "offline" && code == string(updater.FaultCheck) ||
 				control.Scenario == "bad_signature" && code == string(updater.FaultInvalidSignature)
-			evidence := upgradeE2EEvidence{Stage: "expected_failure", Phase: "error", FaultCode: code, SchemaVersion: schemaVersion, MarkerPresent: true}
+			markerPresent, markerErr := upgradeE2EMarkerPresent(ctx, repository, control.MarkerSession)
+			if markerErr != nil || !markerPresent {
+				fail("failure_marker_readback", markerErr)
+				return
+			}
+			evidence := upgradeE2EEvidence{Stage: "expected_failure", Phase: "error", FaultCode: code, SchemaVersion: schemaVersion, MarkerPresent: markerPresent}
 			_ = appendUpgradeE2EEvidence(control, evidence)
 			if expected {
 				_ = writeUpgradeE2EResult(control, evidence)
@@ -324,7 +331,12 @@ func runUpgradeE2EAutomation(
 					fail("information_only_download", err)
 					return
 				}
-				evidence := upgradeE2EEvidence{Stage: "information_only_verified", Phase: "available", SchemaVersion: schemaVersion, MarkerPresent: true}
+				markerPresent, markerErr := upgradeE2EMarkerPresent(ctx, repository, control.MarkerSession)
+				if markerErr != nil || !markerPresent {
+					fail("information_marker_readback", markerErr)
+					return
+				}
+				evidence := upgradeE2EEvidence{Stage: "information_only_verified", Phase: "available", SchemaVersion: schemaVersion, MarkerPresent: markerPresent}
 				_ = appendUpgradeE2EEvidence(control, evidence)
 				_ = writeUpgradeE2EResult(control, evidence)
 				scheduleUpgradeE2EQuit(quit)
@@ -347,6 +359,40 @@ func runUpgradeE2EAutomation(
 		time.Sleep(50 * time.Millisecond)
 	}
 	fail("timeout", errors.New("upgrade E2E timed out"))
+}
+
+func upgradeE2EMarkerPresent(
+	ctx context.Context,
+	repository *factstore.Repository,
+	markerSession string,
+) (bool, error) {
+	if repository == nil || markerSession == "" {
+		return false, errors.New("upgrade E2E marker readback is invalid")
+	}
+	stored, err := repository.Session(ctx, markerSession)
+	if err != nil {
+		return false, err
+	}
+	return stored.SessionID == markerSession, nil
+}
+
+func prepareUpgradeE2ESourceMarker(
+	ctx context.Context,
+	repository *factstore.Repository,
+	markerSession string,
+	allowSeed bool,
+) (bool, error) {
+	if !allowSeed {
+		return upgradeE2EMarkerPresent(ctx, repository, markerSession)
+	}
+	marker := factstore.Session{
+		SessionID: markerSession, Provider: "codex", SourceKind: "session",
+		CreatedAtMS: 1, FirstSeenAtMS: 1, LastSeenAtMS: 1,
+	}
+	if err := repository.UpsertFacts(ctx, factstore.FactBatch{Session: &marker}); err != nil {
+		return false, err
+	}
+	return upgradeE2EMarkerPresent(ctx, repository, markerSession)
 }
 
 func finishUpgradeE2ERecovery(recovery *migrationRecoveryController, quit func()) error {

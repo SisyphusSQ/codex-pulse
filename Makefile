@@ -1,5 +1,6 @@
 .PHONY: harness-check harness-verify harness-review-gate m8-resource-fault \
 	m10-release-e2e m11-acceptance-matrix m11-acceptance-matrix-test m11-real-home m11-performance m11-performance-support m11-privacy-audit \
+	m11-upgrade-recovery m11-upgrade-recovery-test \
 	project-check project-check-test project-generated-check-test verify verify-project verify-go \
 	verify-frontend verify-package verify-generated
 
@@ -78,3 +79,9 @@ m11-performance-support:
 
 m11-privacy-audit:
 	@bash scripts/validation/m11-privacy-audit.sh
+
+m11-upgrade-recovery:
+	@bash scripts/validation/m11-upgrade-recovery.sh
+
+m11-upgrade-recovery-test:
+	@bash scripts/validation/m11-upgrade-recovery-test.sh
