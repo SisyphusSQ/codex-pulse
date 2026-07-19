@@ -30,8 +30,14 @@ expect_failure wrong-owner "$tmp_dir/wrong-owner.md"
 sed '/^| UPD-01 |/s/| 关闭 updater\/loopback，清 synthetic state |/|  |/' "$canonical" >"$tmp_dir/empty-cleanup.md"
 expect_failure empty-cleanup "$tmp_dir/empty-cleanup.md"
 
-sed '/^| UPD-03 |/s/| 未执行 |$/| 通过 |/' "$canonical" >"$tmp_dir/false-pass.md"
+sed '/^| UPD-03 |/s/| PASS（.*） |$/| 通过 |/' "$canonical" >"$tmp_dir/false-pass.md"
 expect_failure false-pass "$tmp_dir/false-pass.md"
+
+sed '/^| ONB-01 |/s/| PASS（.*） |$/| EXCLUDED（无有效取消依据） |/' "$canonical" >"$tmp_dir/wrong-result-class.md"
+expect_failure wrong-result-class "$tmp_dir/wrong-result-class.md"
+
+sed '/^| UPD-03 |/s#docs/test/m11-e6.md#docs/test/does-not-exist.md#' "$canonical" >"$tmp_dir/fake-evidence.md"
+expect_failure fake-evidence "$tmp_dir/fake-evidence.md"
 
 sed '/^| ONB-01 |/s/| 真实数据 + 自动化 |/| 自动化 |/' "$canonical" >"$tmp_dir/downgraded-live.md"
 expect_failure downgraded-live "$tmp_dir/downgraded-live.md"

@@ -107,10 +107,10 @@ M11 privacy audit只对临时 ad-hoc App/ZIP做release-readiness隐私扫描：p
 ### Local Release Pipeline 与 N-1 真实升级
 
 - GitHub Actions 按用户门禁保持 disabled；当前 release pipeline 只由 `CODEX_PULSE_RUN_RELEASE_PIPELINE=1 make m10-release-e2e` 或 `task release:e2e` 显式本地执行，不修改、dispatch 或等待 `.github/workflows`。阶段固定为 build/test/package、synthetic sign/appcast/public verify、N-1 upgrade matrix 和 complete marker。
-- N-1 matrix 使用只在 `upgradee2e` build tag 中存在的 fixture seam。source app 为 `0.1.0/100 + schema v13`，candidate 为 `0.2.0/200 + schema v14`；普通 production binary 不读取控制文件、不改变 migration catalog、不自动确认用户动作，也不包含 failure injection。
+- N-1 matrix 使用只在 `upgradee2e` build tag 中存在的 fixture seam。当前 source app 为 `0.1.0/100 + schema v14`，candidate 为 `0.2.0/200 + 当前 schema v15`；普通 production binary 不读取控制文件、不改变 migration catalog、不自动确认用户动作，也不包含 failure injection。fixture 的版本号只用于 synthetic 严格递增，不是正式发布版本。
 - 每个场景使用私有系统临时 root、独立 database/preferences/runtime、LaunchServices app 启动和随机 loopback feed。HTTP ATS 例外只注入 fixture plist；production feed/download URL 继续强制 HTTPS。
-- success 必须由真实 `SPUUpdater` 完成 check、user-driver download reply、EdDSA verification、extract、ready reply、shared safe drain、bundle replacement、relaunch 与 startup migration；target 只读回 schema 14、v14 前 backup 和 source marker 后才成功。
-- bad-signature 在 appcast 已签名后篡改 archive bytes，必须由 Sparkle 拒绝并归一为 `invalid_signature`。offline 必须在 checking phase 归一为 `check`。signed information-only item 必须保留 HTTPS info URL、拒绝 Download 并只提供详情确认。migration-failure candidate 只在 tagged v14 GORM transaction 中注入失败，recovery graph 必须为 `apply_failed`，恢复保存的 N-1 bundle 后 schema 13 与 marker 仍可读。
+- success 必须由真实 `SPUUpdater` 完成 check、user-driver download reply、EdDSA verification、extract、ready reply、shared safe drain、bundle replacement、relaunch 与 startup migration；target 只读回 schema 15、v15 前 backup 和 source marker 后才成功。
+- bad-signature 在 appcast 已签名后篡改 archive bytes，必须由 Sparkle 拒绝并归一为 `invalid_signature`。offline 必须在 checking phase 归一为 `check`。signed information-only item 必须保留 HTTPS info URL、拒绝 Download 并只提供详情确认。migration-failure candidate 只在 tagged v15 GORM transaction 中注入失败，recovery graph 必须为 `apply_failed`，恢复保存的 N-1 bundle 后 schema 14 与 marker 仍可读。
 - Sparkle bridge 使用 `checkForUpdates` 建立自定义 user-driver reply；`update_found` 只在 reply 已保存后发布。Downloaded/Installing 恢复态先原子进入 ready-to-install，shared safe drain 完成后才回复 Install。underlying `SUSignatureError/SUValidationError` 优先于外层 installation wrapper，且同一 cycle 首个 terminal fault 不被迟到重复回调覆盖。
 - synthetic seed 只存在于 orchestrator 内存并通过 stdin 进入官方 `generate_appcast`；content-free evidence 不记录 URL、路径、SQL、用户内容或 secret。每次运行使用唯一 synthetic bundle id，并对真实 HOME 的 synthetic defaults/cache 与本轮新增 appcast cache 做稳定清理和前后快照 gate；所有退出路径按真实 executable 核验 PID 后清理。成功删除隔离 root，失败保留并只打印复现路径。
 

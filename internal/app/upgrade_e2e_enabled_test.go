@@ -43,3 +43,30 @@ func TestUpgradeE2EControlRejectsEscapingAndBroadPaths(t *testing.T) {
 }
 
 func controlVersionForTest() string { return "upgrade-e2e-v1" }
+
+func TestUpgradeE2ERollbackMarkerReadbackNeverSeedsMissingFact(t *testing.T) {
+	database, repository := openQuotaRuntimeStore(t)
+	defer func() { _ = database.Close(t.Context()) }()
+
+	const marker = "upgrade-e2e-existing-marker"
+	present, err := prepareUpgradeE2ESourceMarker(t.Context(), repository, marker, false)
+	if err == nil || present {
+		t.Fatalf("missing rollback marker = present:%v err:%v", present, err)
+	}
+	if _, readErr := repository.Session(t.Context(), marker); readErr == nil {
+		t.Fatal("rollback readback wrote a missing marker")
+	}
+
+	present, err = prepareUpgradeE2ESourceMarker(t.Context(), repository, marker, true)
+	if err != nil || !present {
+		t.Fatalf("initial source marker = present:%v err:%v", present, err)
+	}
+	present, err = prepareUpgradeE2ESourceMarker(t.Context(), repository, marker, false)
+	if err != nil || !present {
+		t.Fatalf("existing rollback marker = present:%v err:%v", present, err)
+	}
+	stored, err := repository.Session(t.Context(), marker)
+	if err != nil || stored.SessionID != marker {
+		t.Fatalf("stored marker = %#v err:%v", stored, err)
+	}
+}

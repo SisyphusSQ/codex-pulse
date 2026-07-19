@@ -32,7 +32,8 @@ const (
 	targetVersion  = "0.2.0"
 	sourceBuild    = "100"
 	targetBuild    = "200"
-	targetSchema   = 14
+	targetSchema   = 15
+	sourceSchema   = targetSchema - 1
 	markerSession  = "upgrade-e2e-preserved-session"
 )
 
@@ -79,6 +80,8 @@ type binaries struct {
 
 type fixtureProcess struct {
 	helper     *os.Process
+	helperDone chan struct{}
+	helperErr  error
 	appPID     int
 	executable string
 }
@@ -103,7 +106,7 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, configured options) error {
+func run(ctx context.Context, configured options) (runErr error) {
 	if err := requireUpgradeE2EOptIn(); err != nil {
 		return err
 	}
@@ -114,7 +117,7 @@ func run(ctx context.Context, configured options) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = userState.cleanup() }()
+	defer func() { runErr = errors.Join(runErr, userState.cleanup()) }()
 	repository, err := resolveRepository(configured.repository)
 	if err != nil {
 		return err
@@ -133,7 +136,7 @@ func run(ctx context.Context, configured options) error {
 	completed := false
 	defer func() {
 		if completed && !configured.keep {
-			_ = os.RemoveAll(root)
+			runErr = errors.Join(runErr, os.RemoveAll(root))
 		} else {
 			fmt.Fprintln(os.Stderr, "upgradee2e evidence retained:", root)
 		}
@@ -375,13 +378,13 @@ func compileFixtures(ctx context.Context, repository, root string) (binaries, er
 		source: filepath.Join(output, "source"), target: filepath.Join(output, "target"),
 		failingTarget: filepath.Join(output, "target-migration-failure"),
 	}
-	if err := buildBinary(ctx, repository, values.source, sourceVersion, "13", ""); err != nil {
+	if err := buildBinary(ctx, repository, values.source, sourceVersion, strconv.Itoa(sourceSchema), ""); err != nil {
 		return binaries{}, err
 	}
 	if err := buildBinary(ctx, repository, values.target, targetVersion, "", ""); err != nil {
 		return binaries{}, err
 	}
-	if err := buildBinary(ctx, repository, values.failingTarget, targetVersion, "", "14"); err != nil {
+	if err := buildBinary(ctx, repository, values.failingTarget, targetVersion, "", strconv.Itoa(targetSchema)); err != nil {
 		return binaries{}, err
 	}
 	return values, nil
@@ -405,7 +408,7 @@ func buildBinary(ctx context.Context, repository, output, version, schemaLimit, 
 	return command(ctx, repository, nil, filepath.Join(repository, "build/darwin/ensure_rpath.sh"), output, "@executable_path/../Frameworks")
 }
 
-func runScenario(ctx context.Context, repository, root, scenario, publicKey, seed string, compiled binaries) error {
+func runScenario(ctx context.Context, repository, root, scenario, publicKey, seed string, compiled binaries) (runErr error) {
 	scenarioRoot := filepath.Join(root, scenario)
 	for _, path := range []string{"data", "runtime", "feed", "install", "saved", "assets", "home"} {
 		if err := os.MkdirAll(filepath.Join(scenarioRoot, path), 0o700); err != nil {
@@ -493,12 +496,14 @@ func runScenario(ctx context.Context, repository, root, scenario, publicKey, see
 	if err != nil {
 		return err
 	}
-	defer process.cleanup(configuration.Evidence)
+	defer func() { runErr = errors.Join(runErr, process.cleanup(configuration.Evidence)) }()
 	first, err := awaitResult(configuration.Result, 150*time.Second)
 	if err != nil {
 		return err
 	}
-	_ = waitProcess(process, configuration.Evidence, 10*time.Second)
+	if err := waitProcess(process, configuration.Evidence, 10*time.Second); err != nil {
+		return err
+	}
 	if scenario != "migration_failure" {
 		if err := waitPIDExit(first.PID, process.executable, 10*time.Second); err != nil {
 			return err
@@ -528,12 +533,14 @@ func runScenario(ctx context.Context, repository, root, scenario, publicKey, see
 	if err != nil {
 		return err
 	}
-	defer rollback.cleanup(configuration.Evidence)
+	defer func() { runErr = errors.Join(runErr, rollback.cleanup(configuration.Evidence)) }()
 	final, err := awaitResult(configuration.Result, 60*time.Second)
 	if err != nil {
 		return err
 	}
-	_ = waitProcess(rollback, configuration.Evidence, 10*time.Second)
+	if err := waitProcess(rollback, configuration.Evidence, 10*time.Second); err != nil {
+		return err
+	}
 	if final.Stage != "rollback_verified" || final.Application != sourceVersion || final.SchemaVersion != targetSchema-1 || !final.MarkerPresent {
 		return fmt.Errorf("unexpected rollback result: %#v", final)
 	}
@@ -624,17 +631,28 @@ func launchFixture(bundle, logPath string) (*fixtureProcess, error) {
 	if err := command.Start(); err != nil {
 		return nil, err
 	}
+	process := trackFixtureHelper(command)
+
 	executable, err := filepath.EvalSymlinks(filepath.Join(bundle, "Contents", "MacOS", "Codex Pulse"))
 	if err != nil {
-		terminateProcess(command.Process)
-		return nil, err
+		return nil, errors.Join(err, process.cleanup(""))
 	}
+	process.executable = executable
 	pid, err := awaitExecutablePID(executable, 10*time.Second)
 	if err != nil {
-		terminateProcess(command.Process)
-		return nil, err
+		return nil, errors.Join(err, process.cleanup(""))
 	}
-	return &fixtureProcess{helper: command.Process, appPID: pid, executable: executable}, nil
+	process.appPID = pid
+	return process, nil
+}
+
+func trackFixtureHelper(command *exec.Cmd) *fixtureProcess {
+	process := &fixtureProcess{helper: command.Process, helperDone: make(chan struct{})}
+	go func() {
+		process.helperErr = command.Wait()
+		close(process.helperDone)
+	}()
+	return process
 }
 
 func awaitExecutablePID(executable string, timeout time.Duration) (int, error) {
@@ -723,32 +741,41 @@ func closedLoopbackURL() (string, error) {
 }
 
 func waitProcess(process *fixtureProcess, evidencePath string, timeout time.Duration) error {
-	if process == nil || process.helper == nil {
-		return nil
+	if process == nil || process.helper == nil || process.helperDone == nil {
+		return errors.New("application helper is unavailable")
 	}
-	done := make(chan error, 1)
-	go func() {
-		_, err := process.helper.Wait()
-		done <- err
-	}()
 	select {
-	case <-done:
+	case <-process.helperDone:
+		if process.helperErr != nil {
+			return fmt.Errorf("application helper exited unsuccessfully: %w", process.helperErr)
+		}
 		return nil
 	case <-time.After(timeout):
-		process.cleanup(evidencePath)
-		return errors.New("application did not exit")
+		return errors.Join(errors.New("application helper did not exit"), process.cleanup(evidencePath))
 	}
 }
 
-func (process *fixtureProcess) cleanup(evidencePath string) {
+func (process *fixtureProcess) cleanup(evidencePath string) error {
 	if process == nil {
-		return
+		return nil
 	}
+	var cleanupErr error
 	if pid := latestEvidencePID(evidencePath); pid > 0 {
-		terminatePID(pid, process.executable)
+		cleanupErr = errors.Join(cleanupErr, terminatePID(pid, process.executable))
 	}
-	terminatePID(process.appPID, process.executable)
-	terminateProcess(process.helper)
+	cleanupErr = errors.Join(cleanupErr, terminatePID(process.appPID, process.executable))
+	cleanupErr = errors.Join(cleanupErr, terminateProcess(process.helper))
+	if process.helperDone != nil {
+		select {
+		case <-process.helperDone:
+		case <-time.After(5 * time.Second):
+			cleanupErr = errors.Join(cleanupErr, errors.New("application helper remained alive after cleanup"))
+		}
+	}
+	if processMatches(process.appPID, process.executable) {
+		cleanupErr = errors.Join(cleanupErr, errors.New("identity-checked application remained alive after cleanup"))
+	}
+	return cleanupErr
 }
 
 func latestEvidencePID(path string) int {
@@ -766,13 +793,34 @@ func latestEvidencePID(path string) int {
 	return 0
 }
 
-func terminatePID(pid int, executable string) {
+func terminatePID(pid int, executable string) error {
 	if pid <= 0 || !processMatches(pid, executable) {
-		return
+		return nil
 	}
-	_ = syscall.Kill(pid, syscall.SIGTERM)
-	time.Sleep(250 * time.Millisecond)
-	_ = syscall.Kill(pid, syscall.SIGKILL)
+	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
+	if waitForProcessMismatch(pid, executable, time.Second) {
+		return nil
+	}
+	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil && !errors.Is(err, os.ErrProcessDone) && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
+	if !waitForProcessMismatch(pid, executable, 2*time.Second) {
+		return errors.New("identity-checked application resisted termination")
+	}
+	return nil
+}
+
+func waitForProcessMismatch(pid int, executable string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if !processMatches(pid, executable) {
+			return true
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return !processMatches(pid, executable)
 }
 
 func processMatches(pid int, executable string) bool {
@@ -783,12 +831,16 @@ func processMatches(pid int, executable string) bool {
 	return err == nil && strings.TrimSpace(string(output)) == executable
 }
 
-func terminateProcess(process *os.Process) {
+func terminateProcess(process *os.Process) error {
 	if process != nil {
-		_ = process.Signal(syscall.SIGTERM)
-		time.Sleep(250 * time.Millisecond)
-		_ = process.Kill()
+		if err := process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return err
+		}
+		if err := process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return err
+		}
 	}
+	return nil
 }
 
 func waitPIDExit(pid int, executable string, timeout time.Duration) error {
@@ -802,7 +854,7 @@ func waitPIDExit(pid int, executable string, timeout time.Duration) error {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	terminatePID(pid, executable)
+	_ = terminatePID(pid, executable)
 	return errors.New("relaunched application did not exit")
 }
 

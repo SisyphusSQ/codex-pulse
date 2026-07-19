@@ -12,6 +12,13 @@ func TestUpgradeE2EMigrationCatalogIsFailClosed(t *testing.T) {
 	if got := applicationMigrationCatalog(); len(got) != 13 || got[len(got)-1].version != 13 {
 		t.Fatalf("limited catalog = %#v", got)
 	}
+	upgradeE2ESchemaLimit = "14"
+	if got := applicationMigrationCatalog(); len(got) != 14 || got[len(got)-1].version != 14 {
+		t.Fatalf("v14 limited catalog = %#v", got)
+	}
+	if verifier := applicationMigrationVerifier(); verifier == nil {
+		t.Fatal("v14 schema verifier is nil")
+	}
 	upgradeE2ESchemaLimit = "invalid"
 	if got := applicationMigrationCatalog(); got != nil {
 		t.Fatalf("invalid limit returned %d migrations", len(got))

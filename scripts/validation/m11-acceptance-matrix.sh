@@ -41,29 +41,29 @@ for token in "${required_tokens[@]}"; do
   fi
 done
 
-# spec format: scenario ID|required responsibility|exact execution type cell
+# spec format: scenario ID|required responsibility|exact execution type|required result class|required evidence token
 matrix_specs=(
-  'ONB-01|TOO-298|真实数据 + 自动化'
-  'IDX-01|TOO-298|真实数据 + 自动化'
-  'IDX-02|TOO-298|真实数据 + 自动化'
-  'IDX-03|TOO-298|自动化 + 真实数据'
-  'LED-01|TOO-298|真实数据 + 自动化'
-  'QUO-01|TOO-298|真实数据 + 自动化'
-  'QUO-02|TOO-298|自动化 + 真实数据'
-  'QUO-03|TOO-298 + TOO-301|自动化 + 人工 macOS'
-  'UI-01|TOO-298 + TOO-301|自动化 + 人工 macOS'
-  'UI-02|TOO-298 + TOO-301|真实数据 + 自动化 + 人工 macOS'
-  'TRY-01|TOO-301|人工 macOS + 真实数据'
-  'TRY-02|TOO-301|人工 macOS'
-  'HLT-01|TOO-298 + TOO-301|自动化 + 人工 macOS'
-  'HLT-02|TOO-299|自动化'
-  'UPD-01|TOO-302|自动化 + 人工 macOS'
-  'UPD-02|TOO-302|自动化 + 发布 E2E'
-  'UPD-03|TOO-302|发布 E2E'
-  'PER-01|TOO-299|自动化 + 真实数据'
-  'PRV-01|TOO-300|自动化 + 真实数据 + 发布 E2E'
-  'A11-01|TOO-301|人工 macOS + 自动化'
-  'REL-01|TOO-303|自动化 + 发布 E2E'
+  'ONB-01|TOO-298|真实数据 + 自动化|PASS|docs/test/m11-e2.md'
+  'IDX-01|TOO-298|真实数据 + 自动化|PASS|docs/test/m11-e2.md'
+  'IDX-02|TOO-298|真实数据 + 自动化|PASS|docs/test/m11-e2.md'
+  'IDX-03|TOO-298|自动化 + 真实数据|PASS|docs/test/m11-e2.md'
+  'LED-01|TOO-298|真实数据 + 自动化|PASS|docs/test/m11-e2.md'
+  'QUO-01|TOO-298|真实数据 + 自动化|PASS|docs/test/m11-e2.md'
+  'QUO-02|TOO-298|自动化 + 真实数据|PASS|docs/test/m11-e2.md'
+  'QUO-03|TOO-298 + TOO-301|自动化 + 人工 macOS|PARTIAL PASS|docs/test/m11-e2.md'
+  'UI-01|TOO-298 + TOO-301|自动化 + 人工 macOS|PARTIAL PASS|docs/test/m11-e2.md'
+  'UI-02|TOO-298 + TOO-301|真实数据 + 自动化 + 人工 macOS|PARTIAL PASS|docs/test/m11-e2.md'
+  'TRY-01|TOO-301|人工 macOS + 真实数据|EXCLUDED|TOO-301 用户取消'
+  'TRY-02|TOO-301|人工 macOS|EXCLUDED|TOO-301 用户取消'
+  'HLT-01|TOO-298 + TOO-301|自动化 + 人工 macOS|PARTIAL PASS|docs/test/m11-e2.md'
+  'HLT-02|TOO-299|自动化|PASS|docs/test/m11-e3.md'
+  'UPD-01|TOO-302|自动化 + 人工 macOS|PASS|docs/test/m11-e6.md'
+  'UPD-02|TOO-302|自动化 + 发布 E2E|PASS|docs/test/m11-e6.md'
+  'UPD-03|TOO-302|发布 E2E|PASS|docs/test/m11-e6.md'
+  'PER-01|TOO-299|自动化 + 真实数据|PASS|docs/test/m11-e3.md'
+  'PRV-01|TOO-300|自动化 + 真实数据 + 发布 E2E|PASS|docs/test/m11-e4.md'
+  'A11-01|TOO-301|人工 macOS + 自动化|EXCLUDED|TOO-301 用户取消'
+  'REL-01|TOO-303|自动化 + 发布 E2E|EXCLUDED|TOO-303 用户取消'
 )
 
 matrix_rows=$(awk '
@@ -89,7 +89,7 @@ cell() {
 }
 
 for spec in "${matrix_specs[@]}"; do
-  IFS='|' read -r scenario expected_responsibility expected_execution <<EOF
+  IFS='|' read -r scenario expected_responsibility expected_execution expected_result_class expected_evidence <<EOF
 $spec
 EOF
 
@@ -131,8 +131,17 @@ EOF
     echo "M11-009: required scenario $scenario must remain blocking" >&2
     failed=1
   fi
-  if [[ "$result" != "未执行" ]]; then
-    echo "M11-010: E1 must leave downstream scenario $scenario as 未执行; got '$result'" >&2
+  if [[ ! "$result" =~ ^(未执行|PASS（.+）|PARTIAL[[:space:]]PASS（.+）|EXCLUDED（.+）)$ ]]; then
+    echo "M11-010: scenario $scenario has an unsupported or evidence-free result: '$result'" >&2
+    failed=1
+  elif [[ "$result" != "$expected_result_class"'（'* ]]; then
+    echo "M11-013: scenario $scenario result class mismatch: expected '$expected_result_class', got '$result'" >&2
+    failed=1
+  elif [[ "$result" != *"$expected_evidence"* ]]; then
+    echo "M11-014: scenario $scenario result does not cite its required evidence: '$expected_evidence'" >&2
+    failed=1
+  elif [[ "$expected_evidence" == docs/test/* && ! -f "$expected_evidence" ]]; then
+    echo "M11-015: scenario $scenario evidence file is missing: '$expected_evidence'" >&2
     failed=1
   fi
 done
@@ -146,6 +155,10 @@ required_references=(
   docs/test/m8-e6.md
   docs/test/m9-e6/README.md
   docs/test/m10-e6.md
+  docs/test/m11-e2.md
+  docs/test/m11-e3.md
+  docs/test/m11-e4.md
+  docs/test/m11-e6.md
 )
 
 for reference in "${required_references[@]}"; do

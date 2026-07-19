@@ -49,17 +49,49 @@ func applicationMigrationVerifier() func(context.Context, storesqlite.WriteTx) e
 		return verifyApplicationSchema
 	}
 	limit, err := strconv.Atoi(upgradeE2ESchemaLimit)
-	if err != nil || limit != applicationSchemaV13Version {
+	if err != nil {
 		return func(context.Context, storesqlite.WriteTx) error {
 			return fmt.Errorf("%w: invalid upgrade E2E schema verifier", ErrMigrationContract)
 		}
 	}
-	return verifyApplicationSchemaV13ForUpgradeE2E
+	switch limit {
+	case applicationSchemaV13Version:
+		return verifyApplicationSchemaV13ForUpgradeE2E
+	case applicationSchemaV14Version:
+		return verifyApplicationSchemaV14ForUpgradeE2E
+	default:
+		return func(context.Context, storesqlite.WriteTx) error {
+			return fmt.Errorf("%w: unsupported upgrade E2E schema verifier", ErrMigrationContract)
+		}
+	}
 }
 
 func verifyApplicationSchemaV13ForUpgradeE2E(ctx context.Context, transaction storesqlite.WriteTx) error {
 	for _, objects := range [][]schemaObject{
 		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV13(), retentionSchemaObjects,
+		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
+		schedulerSchemaObjects, lifecycleSchemaObjects, quotaSchemaObjects, quotaProjectionSchemaObjects,
+		quotaScheduleSchemaObjects, metricsSchemaObjects,
+	} {
+		for _, object := range objects {
+			exists, err := verifySchemaObject(ctx, transaction, object)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				return fmt.Errorf("%w: missing %s %q", ErrSchemaContract, object.objectType, object.name)
+			}
+		}
+	}
+	if err := verifySourceFailureColumns(transaction); err != nil {
+		return err
+	}
+	return verifyMetricsMigrationColumns(transaction)
+}
+
+func verifyApplicationSchemaV14ForUpgradeE2E(ctx context.Context, transaction storesqlite.WriteTx) error {
+	for _, objects := range [][]schemaObject{
+		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects, quotaSchemaObjects, quotaProjectionSchemaObjects,
 		quotaScheduleSchemaObjects, metricsSchemaObjects,

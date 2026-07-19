@@ -66,6 +66,7 @@
 2. [TOO-309] 修复 Tray 与 Popover 在 5 小时额度无有效值时仍显示占位行的问题，隐藏 null primary 且保留真实 `0%` 与后续动态恢复
 3. [TOO-310] 修复更新跳过与稍后操作先消费 Sparkle choice、后写偏好造成的半成功窗口，以既有 skip/snooze 偏好承载 durable intent，新增不确定写入读回与启动/available 自动 reconcile，保证存储失败不丢失当前更新且 native failure 可跨重启恢复
 4. [TOO-298] 修复真实 rollout 的 session-local turn ID、quota 事件时间回退与重叠 active turn 兼容性，保持 source offset、事实引用和 SessionCurrent 的严格一致性
+5. [TOO-302] 修复真实 N-1 升级 fixture 停留在旧 schema v13→v14、rollback marker 可被重建和 helper/进程清理失败被忽略的问题，改为当前 v14→v15 migration、权威事实读回与可传播的 identity-checked cleanup
 
 #### note:
 1. [TOO-242] 固定 Wails3 `v3.0.0-alpha2.117` 与 macOS arm64 工具链能力基线，补充可复现 runbook、平台 adapter 边界和依赖升级准入规则
@@ -77,3 +78,4 @@
 3. [TOO-286] 新增锁定 Wails3 版本的 Tray、附着窗口与 NSStatusItem 能力探针，真实验证 template、左/右键菜单、窗口生命周期及几何读回，并冻结 AppKit adapter 缺口与 fallback
 4. [TOO-293] 新增 Sparkle 2.9.4 EdDSA 本地发布工具链，支持 stdin 私钥签名 arm64 ZIP、纯文本 release notes、appcast 与审计 manifest，并通过内核独占锁、原子目录交换、先验签后解压及失败注入固定秘密隔离和旧产物保留语义
 5. [TOO-298] 新增显式 opt-in 的真实 Codex Home 只读验证器，使用隔离 Pure Go GORM SQLite 闭环验证 bootstrap、UTC 成本账本、公共查询、quota、Tray、隐私扫描与安全清理
+6. [TOO-302] 新增显式 opt-in 的 M11 更新恢复验证入口，聚合更新选择、安全 drain、单实例接管、磁盘/只读/备份故障、全相关包 race 与真实 Sparkle 五场景，并绑定逐场景提交版证据
