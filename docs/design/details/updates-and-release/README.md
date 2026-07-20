@@ -1,135 +1,72 @@
-# Updates and Release
+# Updates and Release Boundary
 
-## 产品原则
+## 当前状态
 
-借鉴 Codex Runway 的交互：启动后后台检查，此后默认每小时检查；只自动检查，不自动下载或安装。发现版本后由用户选择“立即更新”“稍后”或“跳过此版本”。
+当前仓库只交付 Go Helper，不交付可独立运行的 macOS `.app`、更新器或发布包。旧桌面运行时、平台更新 adapter、bundle/package 脚本和本地更新流水线已经删除；历史实现不能继续作为当前设计真相。
 
-- 自动检查默认开启，设置页可关闭，并提供“立即检查”。
-- 自动下载默认关闭；应用不在用户不知情时退出或重启。
-- 提示展示当前/新版本、包大小、更新摘要，以及是否包含数据库 migration 或索引重建。
-- 持久化 `skipped_version` 和 `snooze_until`，避免重复打扰。
-- 下载、签名验证、解压、安全排空、安装、重启和结果分别展示状态。
-- 更新检查是最低优先级网络任务，不与 quota 前台刷新争抢，也不影响业务数据 freshness。
+后续 Swift native client 负责：
 
-自动检查开关、通道、跳过版本、稍后时间和最后检查时间保存到独立 preferences，不能只依赖主 SQLite。更新 attempt/result 可以写入 SQLite。
+- 窗口、菜单栏、应用激活与退出交互；
+- Helper 进程创建、一次性 token pipe、UDS 目录和崩溃重启策略；
+- 更新检查、下载、平台签名验证、安装、重启和用户提示；
+- `.app` bundle、Helper 嵌入位置、Developer ID、notarization 和正式分发。
 
-### 检查编排与交互边界
+Go Helper 只负责：
 
-- `internal/updater.Coordinator` 是启动、robfig cron 定时、系统唤醒和手动检查的唯一合并点；cron 每分钟只做到期判定，默认偏好仍是每 3600 秒检查一次，不创建第二套 timer loop。
-- 同一时刻只允许一个 check/download/install 操作；checking/downloading/installing 会合并重复触发，可用更新仍允许用户手动复查。
-- 离线、HTTP 429 或 appcast 解析失败进入 content-free typed fault；自动重试间隔加倍并封顶 24 小时，手动检查不受该退避限制。缺少 feed/key 或平台 adapter 不可用时 fail closed，且不写入虚假的最后检查时间。
-- 检查成功发出的 native 状态变化只广播无内容 invalidation event，Vue 再从 allowlisted `UpdateState` 查询读取版本、摘要、大小、签名和进度；event payload 不承载更新事实。
-- Settings 提供检查、取消、下载确认、跳过和稍后提醒。下载必须经过键盘可操作的确认对话框；release notes 作为纯文本渲染，不解释为 HTML。
-- `readyToInstall` 展示“更新包已准备”并提供独立的键盘可操作安装确认。确认后先进入 shared safe drain；只有 lifecycle/SQLite/observer/instance lease 全部关闭成功，Go 才提交 Sparkle 最终 install reply。
+- Core RPC、业务运行时、SQLite ownership 和 migration recovery；
+- 接收有限 lifecycle 枚举；
+- 在 `Shutdown` RPC、signal 或父 pipe EOF 后停止 RPC admission 并 drain 已接纳业务；
+- 返回 content-free typed error，不接收更新包、签名材料或平台安装命令。
 
-## Sparkle 2 Adapter Contract
+Updater、Window、Tray 和 Popover 不属于 `codexpulse.core.v1.CoreService`。未来客户端不得通过扩张 Core RPC 把平台职责重新塞回 Go。
 
-v0.1 macOS arm64 更新平台固定为 Sparkle 2.9.4。`internal/updater` 以 `SPUUpdater` 和自定义 `SPUUserDriver` 为唯一 native adapter，不使用 Sparkle 2 已废弃的 `SUUpdater`，也不把 Objective-C 类型暴露给 Wails/Vue。
+## 安全退出与更新衔接
 
-- Go transient state 固定为 `idle/checking/available/downloading/installing/error`；下载完成但尚未允许重启时仍是 `available + readyToInstall`，不能提前进入 installing。
-- `SPUUpdaterDelegate` 提供 valid update、no update、cancel、install 和 typed error；自定义 `SPUUserDriver` 提供真实 download bytes、expected length、extraction progress，以及 Sparkle 交付的 cancel/reply block。
-- 检查、下载和最终安装是三个独立命令。检查和下载都具有显式可取消生命周期：check cancel 回到 `idle`，download cancel 回到保留 update 的 `available`；`Download` 只在 valid update 可用时调用 Sparkle 的下载选择 block，`Install` 只消费 `showReadyToInstallAndRelaunch` 的最终 reply，且 application runtime 在调用前强制通过安全重启屏障。
-- appcast version/OS/hardware selection、appcast signing status 和归档 EdDSA 校验以 Sparkle 为唯一平台真相。Go 只映射 Sparkle 结果：`SUSignatureError` / `SUValidationError` 归一为 `invalid_signature`，不再实现第二套验签器。
-- updater、delegate、user driver 和 reply block 只在 AppKit main queue 创建/调用/释放。native holder 强持有 Sparkle 的 weak delegate；Go callback 使用 generation/closed guard，`Close` 后迟到回调不再进入状态机。
-- `internal/app.Run` 在 application composition root 启动并持有 updater runtime，在 Wails shutdown 且 AppKit loop 仍存活时先关闭，defer 再做幂等错误读回。缺少 `SUFeedURL` / `SUPublicEDKey` 是可观察 configuration error，但不阻止本地账本应用启动。
-
-Sparkle.framework 不提交到仓库。构建固定从官方 2.9.4 release 获取公开归档并校验 SHA-256，放入 ignored repo-local cache；Darwin package 将 framework 内嵌到 `Contents/Frameworks`，注入 `@executable_path/../Frameworks` rpath，并验证版本、arm64 slice、Mach-O dependency、深度 ad-hoc 签名和 ZIP 解包一致性。
-
-## 安全重启屏障
+客户端准备退出或安装更新时，应先调用：
 
 ```text
-用户确认安装并重启
-    -> updater 请求 Scheduler 进入 draining
-    -> 停止接收新的后台任务
-    -> 当前增量解析在安全边界完成或取消
-    -> 提交结构化事实和 parsed_offset
-    -> 关闭 SQLite 和单实例锁
-    -> 安装并重启
-    -> 执行 migration / 健康检查
-    -> 恢复后台调度
+Shutdown(reason = client_exit | client_restart)
+    -> Helper 停止接收新的 RPC
+    -> 等待已接纳 RPC 返回
+    -> scheduler admission fence
+    -> invalidation / retention / health / lifecycle / metrics drain
+    -> SQLite close
+    -> UDS cleanup
+    -> Helper process exit
 ```
 
-等待期间显示“正在安全结束后台索引，完成后安装并重启”。超时任务可以在不推进游标的前提下取消；不能直接终止尚未提交的事务。选择“稍后”后允许下载包保持 ready，下一次安全点再安装。
+客户端只有在 Helper 已确认退出后才能替换应用或 Helper 二进制。若超过客户端定义的等待上限，客户端必须把结果视为不确定并向用户报告；不能在 SQLite 仍可能提交时把更新伪装成成功。父 pipe EOF 是异常托管收口路径，不替代正常 `Shutdown` handshake。
 
-Install mutation 未结束期间，Settings 以 250ms 有界刷新读取 shared shutdown snapshot，展示真实 stage；settled 或组件卸载立即停止刷新。该刷新只读状态，不推进 shutdown，也不依赖 GitHub Actions。
+当前 Helper 不提供热更新、运行中二进制替换或 schema downgrade。migration failure 会进入 recovery-only RPC；成功恢复后返回 `restart_required`，由客户端显式重启 Helper，不在当前进程热装配 normal graph。
 
-### Shutdown 与单实例契约
+## Migration 与回滚边界
 
-- `internal/app.applicationShutdownCoordinator` 固定为 `running -> draining -> closed` 单向状态机。首次 Quit/Install 启动后台关闭；并发和重试调用只等待同一个结果，不会重复关闭组件。
-- 关闭顺序固定为 instance wake admission、updater cron/admission、scheduler/Wails admission、Tray observer、retention、health、scheduler/lifecycle drain、metrics、SQLite writer/pool、instance lease。前置 admission fence 先拒绝新的 wake、更新操作、后台 job 和 Wails control；后续 drain 再等待已准入任务完成协作式 checkpoint。组件错误记录首个失败阶段，但仍继续关闭后续资源；任何错误都会阻止最终 install reply。
-- caller timeout 只终止本次等待并报告当前 stage；后台关闭继续，状态不会从 draining 回到 running。这样不会在 Store 已开始 flush/close 后错误恢复 job admission，也不会把 context cancel 注入正在提交的事务。
-- Tray Quit、Cmd+Q 和平台 terminate 的 `ShouldQuit` preflight 都进入同一个异步 coordinator；AppKit 主线程只取消本次原生 terminate 请求，不等待 closer。最早的 `OnShutdown` hook 还会同步封闭 instance wake admission，覆盖信号等绕过 preflight 的退出路径，随后由 defer 有序释放 SQLite 与 flock。
-- Sparkle native controller 和 `installChoiceReply` 在 safe close 期间保持存活；updater cron 已暂停。safe close 成功后，整个 reply 提取与提交都异步排入 AppKit main queue，不在持有 Go coordinator/adapter lock 时同步等待 main；Wails shutdown hook 再幂等释放 Sparkle 对象。
-- Install 在进入 shared drain 前独占 terminal intent；Tray Quit 与 Cmd+Q 在 native main-queue block 发出 `install_started` 前都被拒绝。该事件同步回写 intent readiness 后才提交 final reply 并允许 AppKit terminate，避免 updater Close 清空一个已接受但尚未消费的 reply。
-- `internal/singleinstance` 使用私有目录中的永久 lock inode 与 non-blocking `flock`，并通过短路径 Unix socket 接收固定 wake frame。第二实例只在收到完整 ACK 后退出；owner 进入 shutdown fence 后不再 ACK，contender 会在覆盖 15 秒桌面关闭窗口的 20 秒期限内重试并接管。owner 关闭时先停止 socket、再解锁，进程崩溃则由内核自动释放。lock 文件不删除，避免 unlink/inode 竞态形成双 owner。
-- 重启发现 interrupted scheduler job 时仍沿用既有 durable recovery/reconcile；本卡不新增第二套进程内 checkpoint。
+- `MigrateApplicationSchema` 只在 Store 暴露给 runtime reader/writer 前执行。
+- 所有 pending migration 在 single-writer transaction 中完成并读回校验，成功后才推进版本。
+- migration failure 不启动普通业务图，只暴露 Bootstrap、recovery 和退出能力。
+- 恢复流程只暴露稳定 stage/code/version 与安全备份摘要；底层 SQL、数据库正文、绝对路径和凭据不跨 RPC。
+- 二进制回滚不等于 schema 回滚。后续发布矩阵必须显式验证 N-1、migration failure、恢复、重启和数据兼容性。
 
-## 数据库 migration
+## 后续发布门禁
 
-- 使用 `PRAGMA user_version` 与 append-only version/name/checksum ledger 管理 schema；缺号、drift、状态分叉和 newer schema 都 fail closed。
-- `MigrateApplicationSchema` 只在 Store 打开后、暴露给 runtime reader/writer 前的 bootstrap 阶段执行；未来运行期 maintenance migration 必须先实现任务排空与 Store 独占。
-- 所有 pending migration 在一个 single-writer GORM transaction 中执行，完整成功后才推进版本；不使用无版本 `AutoMigrate` 代替 migration。
-- 有 pending 且已有用户 schema 时，先做空间检查，再使用 modernc Pure Go SQLite Backup API 创建包含 committed WAL 的私有备份；备份临时文件通过只读 `PRAGMA quick_check`、fsync 和原子发布后才允许运行 migration，fresh/current 数据库跳过。
-- 恢复使用独立 `NewRestore` 文件原语生成新数据库，验证后再由上层安全重启流程决定切换；不得运行中覆盖当前 Store。
-- migration 失败进入只读安全模式，只保留稳定诊断、恢复备份和退出；安全模式不检查更新。
-- `internal/app.Run` 在注册业务 Wails service、scheduler、metrics、health、updater 与 retention 前执行 startup migration gate。成功才装配 normal graph；typed `MigrationFailure` 会先关闭 Store，再装配互斥的 recovery graph。recovery graph 不创建 preferences/updater，也不注册普通 query、settings mutation、quota、index 或 SQLite writer command。
-- recovery contract 只暴露稳定 stage/code/version、备份 basename/size/mtime 与 `failed/running/awaiting_confirmation/restart_required`；底层 cause、SQL、数据库内容、路径正文和凭据不跨 Wails。重试成功只进入 `restart_required`，不在已运行进程内热装配 normal graph。
-- 恢复必须先从私有 `0700` backup 目录选择非 symlink 的 regular `0600` SQLite 文件，经 `O_NOFOLLOW` 打开并冻结 SHA-256；确认时再次从独立 descriptor 复制、比对摘要，抵御同尺寸/同时间戳替换。冻结副本先 restore 到 working DB，执行 migration、schema readback 和 builtin pricing 验证，再通过 SQLite backup 固化为无 WAL 依赖的 ready DB。切换前用 SQLite Online Backup 把当前失败库及已提交 WAL 页保存为独立 `0600` 备份；Darwin 使用 `RENAME_SWAP` 原子交换 ready/canonical，目录同步失败会原子换回，因此 canonical path 始终存在，且不会覆盖唯一副本。
-- retry/prepare/cancel/confirm/exit 写入私有 `0600` content-free JSONL audit，只记录时间、动作、结果、stage/code 与备份 basename；audit path 使用 `O_NOFOLLOW`，拒绝 symlink 或宽权限目录。测试只使用 synthetic `t.TempDir()` 数据库。
-- 二进制回滚不能自动解决 schema 回滚；迁移和恢复路径必须独立验证。
+Swift 客户端实现前，以下项目均保持 `planned`，不得引用旧本地脚本或历史测试结果冒充当前通过：
 
-## 发布可信链
+1. gRPC Swift client 生成与 contract drift。
+2. Helper 在 `.app` 内的嵌入、权限、架构和签名读回。
+3. UDS/token pipe 的真实父子进程 E2E、Helper 崩溃恢复和版本握手。
+4. Developer ID、hardened runtime、notarization 与发布产物校验。
+5. 更新检查、下载、签名验证、safe shutdown、替换和重启矩阵。
+6. migration recovery 与 N-1 兼容矩阵。
+7. 正式密钥、上传、tag、release 和外部分发授权。
 
-```text
-版本 tag
-    -> CI 测试
-    -> 目标平台 / 架构构建
-    -> 平台代码签名与 notarization
-    -> 独立更新私钥签名产物并生成 manifest
-    -> 发布 Release
-    -> 客户端以内置公钥验证后安装
+正式发布必须继续遵守：密钥不进入 argv、环境、日志、manifest 或仓库；缺少签名/notarization/读回证据时 fail closed；本地 ad-hoc build 不能冒充正式发布。
+
+## 当前验证入口
+
+Go Helper 当前只验证：
+
+```bash
+make verify
 ```
 
-更新签名私钥只放 CI secrets，缺失时发布必须失败；客户端不保存私钥。更新包签名不能代替平台代码签名和 notarization。正式 macOS 分发应同时具备 Developer ID 签名、Apple notarization 和更新包签名。
-
-### 本地发布工具链
-
-M11 privacy audit只对临时 ad-hoc App/ZIP做release-readiness隐私扫描：package内regular files不得出现本轮 synthetic body/token canary、credential envelope、仓库或 Home绝对路径，symlink必须解析后仍在 App根内；签名、arm64、minOS 15.0与ZIP一致性仍由既有bundle gate证明。已有 package输出会被原样保留并让审计 fail closed，只有带本轮 lease/marker的产物可清理。该扫描不读取真实私钥、不生成appcast、不上传artifact，也不把本地package验证解释为正式发布。
-
-- `scripts/sparkle/prepare_release_tools.sh` 只从 SHA-256 固定的 Sparkle 2.9.4 官方 archive 提取 `generate_appcast`、`sign_update` 与 `generate_keys`，校验 Mach-O 与 arm64 slice；正常构建不执行 `generate_keys`。
-- `task release:local` 只从 stdin 读取一行 Sparkle Ed25519 private seed，并通过官方 `generate_appcast --ed-key-file -` 签名。private seed 不允许进入 argv、环境、日志、manifest、release notes 或最终 `dist/update`。
-- release bundle 在打包时注入公开的 `SUFeedURL` / `SUPublicEDKey`；公钥必须 base64 解码为 32 bytes，feed 和 download URL 必须是无 userinfo 的 HTTPS URL。
-- 完整 release 通过 `/usr/bin/lockf` 在常驻 FD 上持有 `dist/.update.lock` 的内核独占锁；并发者立即失败，进程退出或崩溃由内核释放，不使用 PID/stale-owner 清理。所有产物先写 `dist/.update.staging.*`，通过后使用 macOS `renameatx_np(RENAME_SWAP)` 原子替换 ignored `dist/update`；失败或进程终止前不会产生目标目录缺口，commit point 后的旧目录清理不再反转成功结论。
-- 签名生成以 Sparkle 官方工具为真相；`releaseverify` 只持公钥，先用 Go 标准库 Ed25519 对 archive bytes 独立验签，再检查唯一顶层 app、ZIP 路径/大小/大小写冲突与不越界的 framework 相对 symlink，最后才允许 `ditto` 解压。
-- verifier 限定 release 目录只能包含 ZIP、同 basename 纯文本 release notes、appcast 与 manifest；release notes 必须与 appcast 内嵌内容逐字一致，并重新计算 ZIP/plist/appcast/notes/manifest 元数据，避免 verifier 再访问 private key 或 Keychain。
-- `task release:verify` 是只读离线复验入口。它不会上传、创建 tag/GitHub Release、更新真实 appcast，也不会触发 Actions。
-
-### Local Release Pipeline 与 N-1 真实升级
-
-- GitHub Actions 按用户门禁保持 disabled；当前 release pipeline 只由 `CODEX_PULSE_RUN_RELEASE_PIPELINE=1 make m10-release-e2e` 或 `task release:e2e` 显式本地执行，不修改、dispatch 或等待 `.github/workflows`。阶段固定为 build/test/package、synthetic sign/appcast/public verify、N-1 upgrade matrix 和 complete marker。
-- N-1 matrix 使用只在 `upgradee2e` build tag 中存在的 fixture seam。当前 source app 为 `0.1.0/100 + schema v14`，candidate 为 `0.2.0/200 + 当前 schema v15`；普通 production binary 不读取控制文件、不改变 migration catalog、不自动确认用户动作，也不包含 failure injection。fixture 的版本号只用于 synthetic 严格递增，不是正式发布版本。
-- 每个场景使用私有系统临时 root、独立 database/preferences/runtime、LaunchServices app 启动和随机 loopback feed。HTTP ATS 例外只注入 fixture plist；production feed/download URL 继续强制 HTTPS。
-- success 必须由真实 `SPUUpdater` 完成 check、user-driver download reply、EdDSA verification、extract、ready reply、shared safe drain、bundle replacement、relaunch 与 startup migration；target 只读回 schema 15、v15 前 backup 和 source marker 后才成功。
-- bad-signature 在 appcast 已签名后篡改 archive bytes，必须由 Sparkle 拒绝并归一为 `invalid_signature`。offline 必须在 checking phase 归一为 `check`。signed information-only item 必须保留 HTTPS info URL、拒绝 Download 并只提供详情确认。migration-failure candidate 只在 tagged v15 GORM transaction 中注入失败，recovery graph 必须为 `apply_failed`，恢复保存的 N-1 bundle 后 schema 14 与 marker 仍可读。
-- Sparkle bridge 使用 `checkForUpdates` 建立自定义 user-driver reply；`update_found` 只在 reply 已保存后发布。Downloaded/Installing 恢复态先原子进入 ready-to-install，shared safe drain 完成后才回复 Install。underlying `SUSignatureError/SUValidationError` 优先于外层 installation wrapper，且同一 cycle 首个 terminal fault 不被迟到重复回调覆盖。
-- synthetic seed 只存在于 orchestrator 内存并通过 stdin 进入官方 `generate_appcast`；content-free evidence 不记录 URL、路径、SQL、用户内容或 secret。每次运行使用唯一 synthetic bundle id，并对真实 HOME 的 synthetic defaults/cache 与本轮新增 appcast cache 做稳定清理和前后快照 gate；所有退出路径按真实 executable 核验 PID 后清理。成功删除隔离 root，失败保留并只打印复现路径。
-
-### Key 生成与导入边界
-
-Sparkle 官方 `generate_keys` 会读写登录 Keychain。只有在 release Issue 范围内且用户另行明确授权后，人工 operator 才可按 Sparkle 2.9.4 官方说明执行：
-
-```text
-.cache/sparkle/2.9.4/tools/generate_keys --account <approved-account>
-.cache/sparkle/2.9.4/tools/generate_keys --account <approved-account> -x <private-file>
-.cache/sparkle/2.9.4/tools/generate_keys --account <approved-account> -f <private-file>
-```
-
-本仓库不提供自动执行上述命令的 Task，不接收 private file path，也不把 private seed 写入 `.env`。批准后的本机/CI 流程应由受控 secret manager 直接向 `task release:local` stdin 提供 secret；本轮 TOO-293 只用 `generate_keys --help` 核对官方参数，并只运行进程内合成临时测试 key，未执行 key 生成/导入/导出、未访问 Keychain，也未生成或使用正式更新 key。
-
-## 当前交付边界
-
-- TOO-291 已冻结并验证 Sparkle 2.9.4 adapter、typed state、main-thread lifecycle、pinned framework 与本地 bundle/package 链。
-- TOO-292 负责自动检查偏好、每小时调度、Wails/Vue 状态与用户动作，不在 adapter 内重复保存偏好。
-- TOO-293 负责 `SUFeedURL` / `SUPublicEDKey`、外部私钥注入、appcast/ZIP 签名与离线验证；仓库和客户端永不保存私钥。
-- TOO-294 负责 safe drain 后才调用最终安装 reply；TOO-296 才能把真实 N-1 下载、签名拒绝、安装、重启和 migration 作为升级 E2E 证据。
-- Developer ID、notarization、正式 tag/release、真实 appcast 与外部分发继续受独立发布门禁约束，不能由普通 Execution closeout 自动触发。
+该入口覆盖 harness、project negative rules、Proto drift、全仓 race、vet 和 Helper build。Swift、`.app`、签名、公证、更新安装与 live E2E 明确不在当前结果内。
