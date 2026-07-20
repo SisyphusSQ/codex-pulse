@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
-	"testing/fstest"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/bootstrap"
@@ -20,8 +19,6 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/scheduler"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
-	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 type applicationLightMetadataFunc func(context.Context, string) (appserver.ThreadList, error)
@@ -34,35 +31,6 @@ func (function applicationLightMetadataFunc) List(
 }
 
 var _ lightindex.MetadataProvider = applicationLightMetadataFunc(nil)
-
-func TestApplicationOptions(t *testing.T) {
-	t.Parallel()
-
-	assets := fstest.MapFS{
-		"index.html": {Data: []byte("<!doctype html><title>Codex Pulse</title>")},
-	}
-	service := newBindingTestService(t, &usageCostBindingStub{}, &runtimeInfoBindingStub{})
-	got := applicationOptions(assets, wailsBindingService(service))
-
-	if got.Name != appName {
-		t.Fatalf("Name = %q, want %q", got.Name, appName)
-	}
-	if got.Description == "" {
-		t.Fatal("Description must not be empty")
-	}
-	if len(got.Services) != 1 {
-		t.Fatalf("len(Services) = %d, want 1", len(got.Services))
-	}
-	if got.Services[0].Instance() != service {
-		t.Fatalf("registered service = %T, want binding facade", got.Services[0].Instance())
-	}
-	if got.Assets.Handler == nil {
-		t.Fatal("Assets.Handler must be configured")
-	}
-	if got.Mac.ApplicationShouldTerminateAfterLastWindowClosed {
-		t.Fatal("tray application must remain alive when all windows are hidden")
-	}
-}
 
 func TestApplicationLightIndexDoesNotRunLegacySchedulerWorker(t *testing.T) {
 	t.Parallel()
@@ -103,9 +71,8 @@ func TestApplicationLightIndexDoesNotRunLegacySchedulerWorker(t *testing.T) {
 	}
 	defer func() { _ = database.Close(context.Background()) }()
 	repository := factstore.NewRepository(database.(*storesqlite.Store))
-	registrar := &fakeLifecycleRegistrar{callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent))}
 	runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
-		Database: database.(*storesqlite.Store), Registrar: registrar, Preferences: preferenceStore,
+		Database: database.(*storesqlite.Store), Preferences: preferenceStore,
 		EventTimeout: time.Second,
 		LightMetadata: applicationLightMetadataFunc(func(context.Context, string) (appserver.ThreadList, error) {
 			return appserver.ThreadList{Threads: []appserver.ThreadMetadata{}}, nil
@@ -177,9 +144,8 @@ func TestApplicationLightIndexHomeSwitchRestartsMetadataWithoutLegacyBootstrap(t
 			SessionID: sessionID, CWD: "/workspace/" + sessionID, CreatedAtMS: 100, UpdatedAtMS: 200,
 		}}}, nil
 	})
-	registrar := &fakeLifecycleRegistrar{callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent))}
 	runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second, LightMetadata: provider,
 	})
 	if err != nil || runtime == nil {
@@ -205,34 +171,6 @@ func TestApplicationLightIndexHomeSwitchRestartsMetadataWithoutLegacyBootstrap(t
 	tasks, err := repository.ListSchedulerTasks(ctx, factstore.SchedulerTaskFilter{Limit: 10})
 	if err != nil || len(tasks) != 0 {
 		t.Fatalf("legacy bootstrap tasks = %#v, %v", tasks, err)
-	}
-}
-
-func TestMainWindowOptions(t *testing.T) {
-	t.Parallel()
-
-	got := mainWindowOptions()
-
-	if got.Name != "main" {
-		t.Fatalf("Name = %q, want main", got.Name)
-	}
-	if got.Title != appName {
-		t.Fatalf("Title = %q, want %q", got.Title, appName)
-	}
-	if got.URL != "/" {
-		t.Fatalf("URL = %q, want /", got.URL)
-	}
-	if got.Width != 1120 || got.Height != 720 || got.MinWidth != 900 || got.MinHeight != 600 {
-		t.Fatalf(
-			"window size = %dx%d min %dx%d, want 1120x720 min 900x600",
-			got.Width, got.Height, got.MinWidth, got.MinHeight,
-		)
-	}
-	if got.BackgroundColour != application.NewRGB(242, 245, 249) {
-		t.Fatalf("BackgroundColour = %#v", got.BackgroundColour)
-	}
-	if got.CloseButtonState != application.ButtonHidden || got.KeyBindings["cmd+w"] == nil {
-		t.Fatalf("durable main window controls = close:%v cmd+w:%v", got.CloseButtonState, got.KeyBindings["cmd+w"] != nil)
 	}
 }
 
@@ -349,9 +287,8 @@ func TestApplicationLifecycleRuntimeComposesConfiguredHomeAndReleasesWorker(t *t
 	}
 	database := lifecycleStore.(*storesqlite.Store)
 	t.Cleanup(func() { _ = database.Close(context.Background()) })
-	registrar := &fakeLifecycleRegistrar{callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent))}
 	runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second,
 	})
 	if err != nil {
@@ -383,7 +320,9 @@ func TestApplicationLifecycleRuntimeComposesConfiguredHomeAndReleasesWorker(t *t
 		t.Fatalf("LatestBootstrapRunByGeneration() error = %v", err)
 	}
 	initialRevision := state.Revision
-	registrar.trigger(events.Mac.ApplicationDidBecomeActive)
+	if err := runtime.adapter.NotifyLifecycle(ctx, "application_did_become_active"); err != nil {
+		t.Fatalf("NotifyLifecycle() error = %v", err)
+	}
 	waitForAppCondition(t, func() bool {
 		current, readErr := repository.SchedulerLifecycle(ctx)
 		return readErr == nil && current.Revision > initialRevision &&
@@ -391,9 +330,6 @@ func TestApplicationLifecycleRuntimeComposesConfiguredHomeAndReleasesWorker(t *t
 	}, "foreground source check did not reconcile")
 	if err := runtime.Close(context.Background()); err != nil {
 		t.Fatalf("runtime.Close() error = %v", err)
-	}
-	if registrar.cancelCalls != 3 {
-		t.Fatalf("cancel calls = %d, want 3", registrar.cancelCalls)
 	}
 	lease, err := repository.TryAcquireSchedulerOwner(ctx)
 	if err != nil {
@@ -497,9 +433,8 @@ func TestApplicationLifecycleRuntimeValidatesPhysicalHomeBeforeRecoveringTargets
 			t.Fatalf("create replacement %s: %v", directory, err)
 		}
 	}
-	registrar := &fakeLifecycleRegistrar{callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent))}
 	runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second,
 	})
 	if err != nil {

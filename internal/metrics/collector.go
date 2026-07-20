@@ -24,7 +24,7 @@ type QueryAggregate struct {
 	MaxMicros   int64
 }
 
-// QueryAccumulator 允许 Wails 查询和采集任务并发写入/提取聚合结果。
+// QueryAccumulator 允许 RPC 查询和采集任务并发写入/提取聚合结果。
 type QueryAccumulator struct {
 	mu        sync.Mutex
 	aggregate QueryAggregate

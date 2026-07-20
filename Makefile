@@ -1,8 +1,5 @@
-.PHONY: harness-check harness-verify harness-review-gate m8-resource-fault \
-	m10-release-e2e m11-acceptance-matrix m11-acceptance-matrix-test m11-real-home m11-performance m11-performance-support m11-privacy-audit \
-	m11-upgrade-recovery m11-upgrade-recovery-test \
-	project-check project-check-test project-generated-check-test verify verify-project verify-go \
-	verify-frontend verify-package verify-generated
+.PHONY: harness-check harness-verify harness-review-gate project-check project-check-test \
+	verify verify-project verify-proto generate-proto verify-go verify-helper
 
 export RUN_ID
 
@@ -21,67 +18,27 @@ project-check:
 project-check-test:
 	bash scripts/project-checks/check_test.sh
 
-project-generated-check-test:
-	bash scripts/project-checks/check_generated_test.sh
+verify-project:
+	$(MAKE) project-check
+	$(MAKE) project-check-test
+
+verify-proto:
+	bash scripts/proto/generate.sh --check
+
+generate-proto:
+	bash scripts/proto/generate.sh --write
+
+verify-go:
+	go test -race ./...
+	go vet ./...
+
+verify-helper:
+	mkdir -p bin
+	go build -trimpath -ldflags '-X main.applicationVersion=dev' -o bin/codex-pulse .
 
 verify:
 	$(MAKE) harness-verify
 	$(MAKE) verify-project
+	$(MAKE) verify-proto
 	$(MAKE) verify-go
-	$(MAKE) verify-frontend
-	$(MAKE) verify-generated
-	$(MAKE) verify-package
-
-verify-project:
-	$(MAKE) project-check
-	$(MAKE) project-check-test
-	$(MAKE) project-generated-check-test
-
-verify-go:
-	go test ./...
-	go vet ./...
-
-verify-frontend:
-	npm --prefix frontend run typecheck
-	npm --prefix frontend test
-	npm --prefix frontend run build
-
-verify-package:
-	wails3 package GOOS=darwin
-	wails3 task package:verify
-
-verify-generated:
-	bash scripts/project-checks/check_binding_generation_failure.sh
-	bash scripts/project-checks/check_generated.sh
-
-m8-resource-fault:
-	bash scripts/validation/m8-resource-fault.sh
-
-m10-release-e2e:
-	bash scripts/sparkle/local_release_pipeline.sh
-
-m11-acceptance-matrix:
-	bash scripts/validation/m11-acceptance-matrix.sh
-
-m11-acceptance-matrix-test: m11-acceptance-matrix
-	bash scripts/validation/m11-acceptance-matrix-test.sh
-
-m11-real-home:
-	@bash scripts/validation/m11-real-home.sh
-
-m11-performance:
-	@bash scripts/validation/m11-performance.sh
-
-m11-performance-support:
-	@set -e; trap 'wails3 task darwin:package:clean >/dev/null 2>&1 || true' EXIT; \
-		$(MAKE) verify-package; \
-		bash scripts/validation/m11-performance-support.sh
-
-m11-privacy-audit:
-	@bash scripts/validation/m11-privacy-audit.sh
-
-m11-upgrade-recovery:
-	@bash scripts/validation/m11-upgrade-recovery.sh
-
-m11-upgrade-recovery-test:
-	@bash scripts/validation/m11-upgrade-recovery-test.sh
+	$(MAKE) verify-helper

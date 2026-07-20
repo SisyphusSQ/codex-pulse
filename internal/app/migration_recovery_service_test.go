@@ -6,11 +6,7 @@ import (
 	"testing"
 )
 
-func TestRecoveryWailsServicesExposeExactSurfaces(t *testing.T) {
-	startupMethods := exportedMethodNames(newStartupService(nil))
-	if !slices.Equal(startupMethods, []string{"Bootstrap"}) {
-		t.Fatalf("startup methods = %v", startupMethods)
-	}
+func TestRecoveryServiceExposesExactCoreSurface(t *testing.T) {
 	controller := migrationRecoveryTestController(t, migrationRecoveryTestConfig(t))
 	recovery, err := newMigrationRecoveryService(controller)
 	if err != nil {

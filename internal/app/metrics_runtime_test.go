@@ -32,12 +32,12 @@ func TestApplicationMetricsRuntimeComposesPersistsAndCloses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileStore() error = %v", err)
 	}
-	bindingService, err := composeBindingService(database, preferenceStore, runtime.Observer())
+	coreService, err := composeCoreService(database, preferenceStore, runtime.Observer())
 	if err != nil {
-		t.Fatalf("composeBindingService() error = %v", err)
+		t.Fatalf("composeCoreService() error = %v", err)
 	}
-	if bindingService.queryObserver != runtime.Observer() {
-		t.Fatal("binding service did not receive the runtime query observer")
+	if coreService == nil {
+		t.Fatal("composeCoreService() returned nil")
 	}
 
 	time.Sleep(2 * time.Millisecond)

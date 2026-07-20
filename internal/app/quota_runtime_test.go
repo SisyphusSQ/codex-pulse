@@ -19,8 +19,6 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
-	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 const quotaRuntimeNowMS = int64(1_784_000_000_000)
@@ -634,13 +632,10 @@ func TestApplicationLifecycleRuntimeComposesQuotaControlHooksAndForeground(t *te
 		}
 		return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
 	})
-	registrar := &fakeLifecycleRegistrar{
-		callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent)),
-	}
 	var nowMS atomic.Int64
 	nowMS.Store(quotaRuntimeNowMS)
 	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: loader,
+		Database: database, Preferences: loader,
 		EventTimeout: time.Second, QuotaTransport: transport,
 		QuotaClock: func() time.Time { return time.UnixMilli(nowMS.Load()).UTC() },
 	})
@@ -662,8 +657,18 @@ func TestApplicationLifecycleRuntimeComposesQuotaControlHooksAndForeground(t *te
 	})
 
 	nowMS.Store(quotaRuntimeNowMS + 2*time.Minute.Milliseconds())
-	registrar.trigger(events.Mac.ApplicationDidBecomeActive)
+	if err := runtime.adapter.NotifyLifecycle(t.Context(), "application_did_become_active"); err != nil {
+		t.Fatalf("NotifyLifecycle() error = %v", err)
+	}
 	waitForQuotaRuntimeRequests(t, requests, 2)
+	for _, sourceInstanceID := range []string{
+		store.QuotaSourceInstanceWhamDefault,
+		store.ResetCreditsSourceInstanceWhamDefault,
+	} {
+		waitForQuotaRuntimeState(t, repository, sourceInstanceID, func(state store.SourceState) bool {
+			return state.LastSuccessAtMS != nil && *state.LastSuccessAtMS == nowMS.Load() && state.LastFailureCode == nil
+		})
+	}
 
 	disabled := initialPreferences
 	disabled.Revision++
@@ -707,9 +712,6 @@ func TestApplicationLifecycleRuntimeComposesQuotaControlHooksAndForeground(t *te
 	if err := runtime.Close(closeContext); err != nil {
 		t.Fatalf("runtime.Close() error = %v", err)
 	}
-	if registrar.cancelCalls != 3 {
-		t.Fatalf("registrar cancel calls = %d, want 3", registrar.cancelCalls)
-	}
 	if err := database.Close(closeContext); err != nil {
 		t.Fatalf("database.Close() error = %v", err)
 	}
@@ -727,12 +729,9 @@ func TestApplicationLifecycleRuntimeCommitsSettingsBeforeQuotaReconcile(t *testi
 	}
 	preferenceStore := confirmedQuotaRuntimeFileStore(t, home, true, true)
 	requests := make(chan string, 2)
-	registrar := &fakeLifecycleRegistrar{
-		callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent)),
-	}
 	invalidation := &recordingQueryInvalidationNotifier{}
 	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		Invalidation: invalidation,
 		EventTimeout: time.Second,
 		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
@@ -817,12 +816,9 @@ func TestApplicationLifecycleRuntimeReturnsCommittedSettingsOnReconcileFailure(t
 		}
 	}
 	preferenceStore := confirmedQuotaRuntimeFileStore(t, home, false, false)
-	registrar := &fakeLifecycleRegistrar{
-		callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent)),
-	}
 	invalidation := &recordingQueryInvalidationNotifier{}
 	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		Invalidation: invalidation,
 		EventTimeout: time.Second,
 		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
@@ -898,11 +894,8 @@ func TestApplicationLifecycleRuntimeBeginDrainSealsAdmissionAndDrainsSettingsUpd
 		}
 	}
 	preferenceStore := confirmedQuotaRuntimeFileStore(t, home, false, false)
-	registrar := &fakeLifecycleRegistrar{
-		callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent)),
-	}
 	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second,
 		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
 			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
@@ -1001,11 +994,8 @@ func TestApplicationLifecycleRuntimeSettingsAndHomeConfirmDoNotDeadlock(t *testi
 	settingsAdmitted := make(chan struct{})
 	releaseSettings := make(chan struct{})
 	var admissionOnce sync.Once
-	registrar := &fakeLifecycleRegistrar{
-		callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent)),
-	}
 	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second,
 		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
 			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
@@ -1094,11 +1084,8 @@ func TestApplicationLifecycleRuntimeRecoversPendingResumeBeforeQuotaStart(t *tes
 	preferenceStore := confirmedQuotaRuntimeFileStore(t, home, true, false)
 	installQuotaRuntimePendingResume(t, preferenceStore)
 	requests := make(chan quotaHomeRequestEvent, 2)
-	registrar := &fakeLifecycleRegistrar{
-		callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent)),
-	}
 	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second,
 		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
 			requests <- quotaHomeRequestEvent{
@@ -1147,11 +1134,8 @@ func TestApplicationLifecycleRuntimeRollsBackPendingSwitchBeforeQuotaStart(t *te
 	preferenceStore := confirmedQuotaRuntimeFileStore(t, homeA, true, false)
 	installQuotaRuntimePendingSwitch(t, preferenceStore, homeB)
 	requests := make(chan quotaHomeRequestEvent, 2)
-	registrar := &fakeLifecycleRegistrar{
-		callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent)),
-	}
 	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second,
 		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
 			requests <- quotaHomeRequestEvent{
@@ -1211,11 +1195,8 @@ func TestApplicationLifecycleRuntimeFinalizesPendingSwitchBeforeQuotaStart(t *te
 		t.Fatalf("StartBootstrap(pending target) error = %v", err)
 	}
 	requests := make(chan quotaHomeRequestEvent, 2)
-	registrar := &fakeLifecycleRegistrar{
-		callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent)),
-	}
 	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second,
 		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
 			requests <- quotaHomeRequestEvent{
@@ -1277,11 +1258,8 @@ func TestApplicationLifecycleRuntimeKeepsUnknownPendingSwitchSuspended(t *testin
 	pending := installQuotaRuntimePendingSwitch(t, preferenceStore, homeB)
 	statusFailure := errors.New("synthetic bootstrap status unavailable")
 	transportCalls := make(chan struct{}, 1)
-	registrar := &fakeLifecycleRegistrar{
-		callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent)),
-	}
 	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second,
 		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
 			transportCalls <- struct{}{}
@@ -1342,11 +1320,8 @@ func TestApplicationLifecycleRuntimeDrainsQuotaBeforeHomeSwitch(t *testing.T) {
 		}
 		return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
 	})
-	registrar := &fakeLifecycleRegistrar{
-		callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent)),
-	}
 	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second, QuotaTransport: transport,
 		QuotaClock: func() time.Time { return time.UnixMilli(nowMS.Load()).UTC() },
 	})
@@ -1462,11 +1437,8 @@ func TestApplicationLifecycleRuntimeDrainsQuotaBeforeHomeSwitch(t *testing.T) {
 	if err := runtime.Close(closeContext); err != nil {
 		t.Fatalf("runtime.Close() error = %v", err)
 	}
-	restartedRegistrar := &fakeLifecycleRegistrar{
-		callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent)),
-	}
 	restarted, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: restartedRegistrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second, QuotaTransport: transport,
 		QuotaClock: func() time.Time { return time.UnixMilli(nowMS.Load()).UTC() },
 	})

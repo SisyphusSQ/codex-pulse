@@ -78,7 +78,7 @@ func containsBodyToken(tokens []string) bool {
 	return false
 }
 
-// InspectPublicValue recursively checks a value that can cross a Wails, log,
+// InspectPublicValue recursively checks a value that can cross an RPC, log,
 // health, cache or evidence boundary. It never includes the rejected value in
 // the returned error.
 func InspectPublicValue(value any) error {

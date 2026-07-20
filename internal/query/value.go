@@ -5,7 +5,7 @@ import (
 )
 
 const (
-	// JavaScriptMaxSafeInteger 是 Wails/TypeScript number 可精确表示的最大整数。
+	// JavaScriptMaxSafeInteger 是 JSON/JavaScript number 可精确表示的最大整数。
 	JavaScriptMaxSafeInteger int64 = 9_007_199_254_740_991
 	dateLayout                     = "2006-01-02"
 )

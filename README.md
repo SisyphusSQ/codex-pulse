@@ -1,142 +1,71 @@
 # Codex Pulse
 
-> A local-first macOS observability companion for Codex usage, quotas, sessions, and data health.
+Codex Pulse 是一个 local-first 的 Codex 使用量、额度、Session、项目归因与数据健康核心。当前仓库交付的是供后续 Swift 原生应用托管的 Go Helper；Go 负责数据、索引、调度和业务口径，原生客户端负责窗口、菜单栏、更新与 UI。
 
-Codex Pulse 是一个 Codex-only、本机优先的 macOS 菜单栏应用。它计划从 Codex 在本机维护的数据中提取有限的结构化事实，帮助用户查看额度、Token 用量、Session、项目归因、索引进度和数据健康状态。
+## 当前边界
 
-## 当前状态
+- 唯一跨进程 contract：`api/codexpulse/core/v1/core.proto`
+- Transport：`grpc-go` over Unix Domain Socket，不监听 TCP
+- UDS 父目录/文件权限：`0700` / `0600`
+- 鉴权：父进程通过继承 pipe 写入一次性 Bearer token；Helper 只保留 SHA-256 摘要
+- 生命周期：shutdown RPC、`SIGINT`、`SIGTERM` 或父 pipe EOF 均进入同一幂等 drain
+- 数据：SQLite 与 Go query 层是业务事实和聚合口径的唯一真相
 
-项目已完成 M1 工程基线并进入 M2 数据层阶段。当前仓库包含可启动的 Go + Wails3 + Vue 3 空应用壳、generated bindings、前后端测试、macOS 15+ arm64 package/signing/CI，以及 SQLite WAL 连接、单写队列、独立只读池和应用关闭生命周期基线；业务 schema、Codex 索引、quota、Tray、Popover、Updater 和正式页面仍由后续 Execution Issue 实现。
+Wails、Vue、Go AppKit tray/popover/window 与 Sparkle adapter 已不属于本仓库当前运行时。SwiftUI/AppKit client、`.app` bundle、签名、公证和 live E2E 在后续 Swift 任务中实现。
 
-## 设计文档
+## 启动协议
 
-版本化设计资料以 [docs/design](docs/design/README.md) 为唯一入口：模块设计按职责归档在 `details/`，Pencil 源稿、页面预览和图标资产归档在 `front/`。
-
-## v0.1 方向
-
-- 仅支持 macOS，优先完成菜单栏、Popover 和本机工作台体验。
-- 只读增量索引 Codex 本地 JSONL，不复制原始对话，不保存完整 prompt、response 或工具输出。
-- 使用本地 SQLite 保存支持统计、可信状态和恢复所需的结构化数据。
-- 展示 5 小时 / 本周额度、Token 用量、API 等价成本、Session、项目和数据健康。
-- 在线 quota 与 reset credits 作为可关闭的可选能力，凭证只在内存中使用。
-- 首版只提供简体中文界面，不提供用户数据导出。
-
-## 当前工程栈
-
-- Go + Wails3
-- SQLite（GORM + `github.com/libtnb/sqlite` + `modernc.org/sqlite`，Pure Go）
-- Vue 3 + TypeScript + Vite
-- Tailwind CSS v4
-- Vue Router
-- Vue I18n
-- TanStack Vue Query
-
-Go module 已固定为 `github.com/SisyphusSQ/codex-pulse`。Wails CLI 与 Go module 精确使用 `v3.0.0-alpha2.117`，前端 runtime 精确使用 `3.0.0-alpha.97`；Go 和 npm lockfile 均已提交，不使用浮动的 `latest`。
-
-## 开发环境
-
-- macOS 15+、Apple Silicon arm64
-- Go 1.25+
-- Node.js `^22.13.0 || >=24.0.0`、npm 10+；不支持 Node 23
-- Wails CLI `v3.0.0-alpha2.117`
-
-首次安装精确 Wails CLI 与前端依赖：
-
-```bash
-go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha2.117
-wails3 version
-cd frontend
-npm ci
-cd ..
+```text
+codex-pulse --socket <absolute-uds-path> --auth-fd <inherited-fd>
 ```
 
-`wails3 version` 必须输出 `v3.0.0-alpha2.117`。若命中其它版本，先修正当前 shell 的 `PATH`，不要用 `latest` 覆盖项目基线。
+父进程必须：
 
-### 开发、测试与构建
-
-完整验证当前工程基线时，先确保精确 Wails CLI 与前端 lockfile 依赖已安装，再从仓库根执行统一入口：
-
-```bash
-make verify
-```
-
-`make verify` 会按顺序执行 base harness、项目级机械约束、Go test/vet、前端 typecheck/test/build、Wails bindings/Go module 重生成漂移检查，以及 macOS 15+ arm64 package/ZIP 复验。生成一致性检查先于 package，避免 package 内部的 tidy 掩盖输入漂移；任一层失败都会保留可单独重放的 Make target 和原始命令。
-
-project-check 使用 macOS 自带 Ruby/Psych 安全解析 GitHub Actions YAML：AST 约束唯一的 permissions/contents key，safe-load 后拒绝任何实际 job permissions，并递归扫描解码后的全部 key/value 字符串，只允许当前需要的 `github.workflow`、`github.ref` expressions；不安装额外 gem。缺少 Ruby 或 workflow 无法安全解析时，`CI-001` 会直接失败。
-
-需要定位单层失败时使用：
-
-```bash
-make harness-verify
-make project-check
-make project-check-test
-make project-generated-check-test
-make verify-go
-make verify-frontend
-make verify-generated
-make verify-package
-```
-
-GitHub PR 与 `main` push CI 运行同一个 `make verify`。workflow 固定在 public repository 的 `macos-15` arm64 runner，官方 actions 使用 commit SHA；safe YAML/AST gate 要求唯一顶层权限块只有 `contents: read`，并拒绝 direct、inline、merge 后的 job override。checkout 不持久化凭证，Go/npm dependency cache 显式关闭；完成后同时检查 tracked 与非忽略 untracked 状态。workflow 不显式引用 GitHub token 或发布 secret，也不执行签名身份、notarization、发布或 Linear 写入。
-
-日常单项命令仍可直接执行：
-
-```bash
-# 启动 Wails + Vite 开发模式
-wails3 task dev
-
-# Go 测试
-go test ./...
-
-# 前端检查（从 frontend/ 执行）
-cd frontend
-npm run typecheck
-npm test
-npm run build
-cd ..
-
-# 运行 base harness
-make harness-verify
-
-# 构建 macOS 15 arm64 二进制到 bin/codex-pulse
-wails3 task build ARCH=arm64
-
-# 从 clean package output 构建、ad-hoc 签名并验证 bundle 与 ZIP
-wails3 package GOOS=darwin
-
-# 复验现有 bundle 与 ZIP
-wails3 task package:verify
-
-# 删除 bundle、ZIP 与临时 icns（保留 bin/codex-pulse）
-wails3 task package:clean
-```
-
-验证会生成 ignored `frontend/node_modules/`、`frontend/dist/`、`.task/`、`bin/`。可用 `wails3 task package:clean` 删除 bundle/ZIP/icon 临时产物；如需完全清理依赖和构建缓存，再显式删除其余 ignored 目录。详细复现、失败输出和缓存边界见 `docs/test/engineering-baseline/basic-ci-and-verification.md`。
-
-`wails3 package GOOS=darwin` 默认生成 `bin/Codex Pulse.app` 与 `bin/Codex Pulse.app.zip`，版本为未发布基线 `0.0.0`、build number 为 `0`。需要验证版本注入时可显式传入三段数字版本和非负整数 build number，例如：
-
-```bash
-wails3 package GOOS=darwin APP_VERSION=1.2.3 BUILD_NUMBER=42
-wails3 task package:verify APP_VERSION=1.2.3 BUILD_NUMBER=42
-```
-
-package 只接受 macOS/arm64 目标；图标从 `docs/design/front/assets/icons/` 的冻结资产生成，生成物全部位于 ignored `bin/`。当前签名是 `Signature=adhoc`，只用于本机开发和受控自用：它没有 Developer ID、没有 notarization，`spctl --assess` 拒绝是已知且预期的 Gatekeeper 边界。普通开发卡不会触发 tag、GitHub Release 或其它正式发布动作。
+1. 创建当前用户拥有、权限为 `0700` 的短临时目录。
+2. 创建 pipe，将读端作为 `--auth-fd` 继承给 Helper。
+3. 向写端写入至少 32 字节的 URL-safe token 和换行，并在客户端生命周期内持有写端。
+4. 使用 `authorization: Bearer <token>` metadata 发起每个 unary/stream RPC。
+5. 退出时优先调用 `Shutdown`，并关闭 pipe；Helper 会停止 RPC admission 后逆序关闭后台组件和 SQLite。
 
 ## 工程目录
 
 | 路径 | 职责 |
 | --- | --- |
-| `main.go` | 嵌入 `frontend/dist` 并启动桌面应用 |
-| `internal/app/` | Wails application composition、窗口生命周期与最小 `Bootstrap` binding |
-| `internal/store/sqlite/` | macOS 应用数据路径、SQLite WAL/pragma、单写队列、只读查询和 drain/close |
-| `frontend/src/` | Vue app assembly、Router、I18n、TanStack Query 与空应用壳 |
-| `frontend/bindings/` | Wails CLI 生成的 Go/TypeScript contract，不手工修改 |
-| `build/` | Wails dev/build/package task、应用 metadata 与 macOS 15+ arm64 bundle/signing 约束 |
+| `main.go` | Helper CLI 参数、signal context 和稳定错误日志 |
+| `api/codexpulse/core/v1/` | Protobuf contract truth 与生成的 Go stub |
+| `internal/helper/` | UDS、pipe token、gRPC interceptor/adapter、serve 与 shutdown |
+| `internal/core/` | transport-neutral 业务 facade、typed mapping、失效通知 broker |
+| `internal/app/` | SQLite、quota、lifecycle、health、metrics、retention 的运行时装配 |
+| `internal/query/` / `internal/store/` | 查询、聚合与持久化真相 |
 | `docs/` | 设计、harness、runbook 与提交版执行真相 |
+
+## 开发与验证
+
+要求 macOS 15+ / Apple Silicon、Go 1.25 和 `protoc 34.1`。Proto gate 会在临时目录安装精确版本的 Go generators：
+
+- `protoc-gen-go v1.36.11`
+- `protoc-gen-go-grpc v1.6.2`
+
+```bash
+# 完整验证：harness、project contract、Proto drift、race、vet、Helper build
+make verify
+
+# 单项入口
+make harness-verify
+make verify-project
+make verify-proto
+make verify-go
+make verify-helper
+
+# contract 修改后显式重生成
+make generate-proto
+```
+
+`make verify-helper` 生成 ignored 文件 `bin/codex-pulse`。本轮没有可独立运行的桌面 `.app`；需要由符合上述协议的父进程提供 UDS 目录和 token pipe。
 
 ## 隐私原则
 
-Codex Pulse 只保存产品功能所需的结构化 metadata 和统计结果。原始 JSONL 继续由 Codex 管理；应用不复制对话正文，不持久化 access token、refresh token、Authorization header、Cookie 或其他凭证。
+Helper 只保存产品功能所需的结构化 metadata 和统计结果。原始 JSONL 继续由 Codex 管理；应用不复制对话正文，不持久化 access token、refresh token、Authorization header、Cookie、RPC token 或其他凭证。公开错误、日志和 invalidation stream 只包含有限分类，不包含路径、原始 payload 或底层错误文本。
 
 ## License
 

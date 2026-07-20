@@ -23,14 +23,11 @@ func TestMigrationRecoveryServiceExposesOnlyRecoverySnapshot(t *testing.T) {
 		t.Fatalf("newMigrationRecoveryService() error = %v", err)
 	}
 
-	bootstrap := newStartupService(controller).Bootstrap()
-	if bootstrap.Mode != ApplicationModeRecovery || bootstrap.Recovery == nil || bootstrap.Recovery.Code != factstore.MigrationCodeApplyFailed {
-		t.Fatalf("Bootstrap() = %#v", bootstrap)
-	}
-	if _, err := service.State(context.Background()); err != nil {
+	snapshot, err := service.State(context.Background())
+	if err != nil || snapshot.Code != string(factstore.MigrationCodeApplyFailed) {
 		t.Fatalf("State() error = %v", err)
 	}
-	encoded, err := json.Marshal(bootstrap)
+	encoded, err := json.Marshal(snapshot)
 	if err != nil {
 		t.Fatalf("marshal Bootstrap: %v", err)
 	}

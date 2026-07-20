@@ -9,161 +9,76 @@ import (
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
-	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
-func TestLifecycleEventAdapterQueuesCallbacksAndClosesRegistrations(t *testing.T) {
-	registrar := &fakeLifecycleRegistrar{callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent))}
+func TestLifecycleEventAdapterQueuesFiniteNotificationsAndCloses(t *testing.T) {
 	coordinator := &fakeSystemLifecycleCoordinator{release: make(chan struct{})}
 	wakeObserved := make(chan struct{}, 1)
-	sequence := int64(0)
 	adapter, err := NewLifecycleEventAdapter(LifecycleEventAdapterConfig{
-		Registrar: registrar, Coordinator: coordinator, EventTimeout: time.Second,
-		NewEventID: func(kind string) string {
-			sequence++
-			return kind + ":test:" + string(rune('0'+sequence))
-		},
+		Coordinator: coordinator, EventTimeout: time.Second,
 		DidWake: func(context.Context) error { wakeObserved <- struct{}{}; return nil },
 	})
 	if err != nil {
-		t.Fatalf("NewLifecycleEventAdapter() error = %v", err)
+		t.Fatal(err)
 	}
-	sleepCallback := registrar.callbacks[events.Common.SystemWillSleep]
-	wakeCallback := registrar.callbacks[events.Common.SystemDidWake]
-	sourceCallback := registrar.callbacks[events.Mac.ApplicationDidBecomeActive]
-	if sleepCallback == nil || wakeCallback == nil || sourceCallback == nil {
-		t.Fatalf("registered callbacks = %#v", registrar.callbacks)
+	for _, event := range []string{"system_will_sleep", "system_did_wake", "application_did_become_active"} {
+		if err := adapter.NotifyLifecycle(t.Context(), event); err != nil {
+			t.Fatalf("NotifyLifecycle(%q) error = %v", event, err)
+		}
 	}
-	returned := make(chan struct{})
-	go func() {
-		sleepCallback(&application.ApplicationEvent{})
-		close(returned)
-	}()
-	select {
-	case <-returned:
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("Wails sleep callback blocked on coordinator work")
-	}
-	wakeCallback(&application.ApplicationEvent{})
-	sourceCallback(&application.ApplicationEvent{})
 	close(coordinator.release)
-
-	deadline := time.Now().Add(time.Second)
-	for {
+	eventually(t, func() bool {
 		coordinator.mu.Lock()
-		calls := append([]string(nil), coordinator.calls...)
-		coordinator.mu.Unlock()
-		if len(calls) == 3 {
-			if !reflect.DeepEqual(calls, []string{"sleep", "wake", "source"}) {
-				t.Fatalf("coordinator calls = %v", calls)
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("coordinator calls = %v, want sleep,wake,source", calls)
-		}
-		time.Sleep(time.Millisecond)
-	}
+		defer coordinator.mu.Unlock()
+		return reflect.DeepEqual(coordinator.calls, []string{"sleep", "wake", "source"})
+	})
 	select {
 	case <-wakeObserved:
 	case <-time.After(time.Second):
-		t.Fatal("update wake observer was not called")
+		t.Fatal("wake callback was not invoked")
 	}
-	if err := adapter.Close(context.Background()); err != nil {
-		t.Fatalf("Close() error = %v", err)
+	if err := adapter.NotifyLifecycle(t.Context(), "private-event"); !errors.Is(err, ErrInvalidLifecycleEventAdapter) {
+		t.Fatalf("invalid event error = %v", err)
 	}
-	if registrar.cancelCalls != 3 {
-		t.Fatalf("cancel calls = %d, want 3", registrar.cancelCalls)
+	if err := adapter.Close(t.Context()); err != nil {
+		t.Fatal(err)
 	}
-	if err := adapter.Close(context.Background()); err != nil {
-		t.Fatalf("Close(exact replay) error = %v", err)
-	}
-	registrar.trigger(events.Common.SystemWillSleep)
-	time.Sleep(10 * time.Millisecond)
-	coordinator.mu.Lock()
-	defer coordinator.mu.Unlock()
-	if len(coordinator.calls) != 3 {
-		t.Fatalf("calls after Close = %v", coordinator.calls)
+	if err := adapter.NotifyLifecycle(t.Context(), "system_will_sleep"); !errors.Is(err, ErrInvalidLifecycleEventAdapter) {
+		t.Fatalf("notification after close error = %v", err)
 	}
 }
 
 func TestLifecycleEventAdapterReportsCoordinatorFailure(t *testing.T) {
-	registrar := &fakeLifecycleRegistrar{callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent))}
 	want := errors.New("wake reconcile failed")
 	coordinator := &fakeSystemLifecycleCoordinator{err: want}
 	adapter, err := NewLifecycleEventAdapter(LifecycleEventAdapterConfig{
-		Registrar: registrar, Coordinator: coordinator, EventTimeout: time.Second,
-		NewEventID: func(kind string) string { return kind + ":failure" },
+		Coordinator: coordinator, EventTimeout: time.Second,
 	})
 	if err != nil {
-		t.Fatalf("NewLifecycleEventAdapter() error = %v", err)
+		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = adapter.Close(context.Background()) })
-	registrar.trigger(events.Common.SystemDidWake)
+	if err := adapter.NotifyLifecycle(t.Context(), "system_did_wake"); err != nil {
+		t.Fatal(err)
+	}
 	select {
-	case err := <-adapter.Errors():
-		if !errors.Is(err, want) {
-			t.Fatalf("Errors() = %v, want %v", err, want)
+	case got := <-adapter.Errors():
+		if !errors.Is(got, want) {
+			t.Fatalf("Errors() = %v, want %v", got, want)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("adapter did not report coordinator failure")
 	}
 }
 
-func TestLifecycleEventAdapterGivesUpdaterWakeAnIndependentTimeout(t *testing.T) {
-	registrar := &fakeLifecycleRegistrar{callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent))}
-	coordinator := &fakeSystemLifecycleCoordinator{release: make(chan struct{})}
-	wakeContextLive := make(chan bool, 1)
-	adapter, err := NewLifecycleEventAdapter(LifecycleEventAdapterConfig{
-		Registrar: registrar, Coordinator: coordinator, EventTimeout: 10 * time.Millisecond,
-		DidWake: func(ctx context.Context) error {
-			wakeContextLive <- ctx.Err() == nil
-			return nil
-		},
-	})
-	if err != nil {
-		t.Fatalf("NewLifecycleEventAdapter() error = %v", err)
-	}
-	t.Cleanup(func() { _ = adapter.Close(context.Background()) })
-	registrar.trigger(events.Common.SystemDidWake)
-	select {
-	case live := <-wakeContextLive:
-		if !live {
-			t.Fatal("updater wake inherited an expired lifecycle context")
+func eventually(t testing.TB, condition func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for !condition() {
+		if time.Now().After(deadline) {
+			t.Fatal("condition was not satisfied")
 		}
-	case <-time.After(time.Second):
-		t.Fatal("updater wake was not called after lifecycle timeout")
-	}
-}
-
-type fakeLifecycleRegistrar struct {
-	callbacks   map[events.ApplicationEventType]func(*application.ApplicationEvent)
-	cancelCalls int
-	mu          sync.Mutex
-}
-
-func (registrar *fakeLifecycleRegistrar) OnApplicationEvent(
-	eventType events.ApplicationEventType,
-	callback func(*application.ApplicationEvent),
-) func() {
-	registrar.mu.Lock()
-	registrar.callbacks[eventType] = callback
-	registrar.mu.Unlock()
-	return func() {
-		registrar.mu.Lock()
-		delete(registrar.callbacks, eventType)
-		registrar.cancelCalls++
-		registrar.mu.Unlock()
-	}
-}
-
-func (registrar *fakeLifecycleRegistrar) trigger(eventType events.ApplicationEventType) {
-	registrar.mu.Lock()
-	callback := registrar.callbacks[eventType]
-	registrar.mu.Unlock()
-	if callback != nil {
-		callback(&application.ApplicationEvent{})
+		time.Sleep(time.Millisecond)
 	}
 }
 
@@ -172,6 +87,42 @@ type fakeSystemLifecycleCoordinator struct {
 	calls   []string
 	release chan struct{}
 	err     error
+}
+
+type recordingQueryInvalidationNotifier struct {
+	mu      sync.Mutex
+	domains []QueryInvalidationDomain
+}
+
+func (notifier *recordingQueryInvalidationNotifier) Notify(
+	ctx context.Context,
+	domain QueryInvalidationDomain,
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	notifier.mu.Lock()
+	notifier.domains = append(notifier.domains, domain)
+	notifier.mu.Unlock()
+	return nil
+}
+
+func (notifier *recordingQueryInvalidationNotifier) count(domain QueryInvalidationDomain) int {
+	notifier.mu.Lock()
+	defer notifier.mu.Unlock()
+	count := 0
+	for _, got := range notifier.domains {
+		if got == domain {
+			count++
+		}
+	}
+	return count
+}
+
+func (notifier *recordingQueryInvalidationNotifier) reset() {
+	notifier.mu.Lock()
+	notifier.domains = nil
+	notifier.mu.Unlock()
 }
 
 func (coordinator *fakeSystemLifecycleCoordinator) SystemWillSleep(

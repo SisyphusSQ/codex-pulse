@@ -49,7 +49,6 @@ type confirmedPreferencesLoader interface {
 
 type ApplicationLifecycleRuntimeConfig struct {
 	Database       *storesqlite.Store
-	Registrar      lifecycleEventRegistrar
 	Preferences    confirmedPreferencesLoader
 	EventTimeout   time.Duration
 	QuotaTransport http.RoundTripper
@@ -99,7 +98,7 @@ func startApplicationLifecycleRuntime(
 	ctx context.Context,
 	config ApplicationLifecycleRuntimeConfig,
 ) (*applicationLifecycleRuntime, error) {
-	if ctx == nil || config.Database == nil || config.Registrar == nil || config.EventTimeout < 0 {
+	if ctx == nil || config.Database == nil || config.EventTimeout < 0 {
 		return nil, ErrApplicationLifecycleRuntime
 	}
 	loader := config.Preferences
@@ -300,7 +299,6 @@ func startApplicationLifecycleRuntime(
 		}
 	}
 	adapter, err := NewLifecycleEventAdapter(LifecycleEventAdapterConfig{
-		Registrar: config.Registrar,
 		Coordinator: applicationQuotaLifecycleCoordinator{
 			local: coordinator, quota: quotaRuntime,
 		},
@@ -615,7 +613,7 @@ func (runtime *applicationLifecycleRuntime) Close(ctx context.Context) error {
 }
 
 // BeginDrain is the irreversible admission fence shared by Quit and Install.
-// It rejects new Wails controls, unregisters lifecycle events, and cancels the
+// It rejects new RPC controls, closes lifecycle admission, and cancels the
 // scheduler worker so an active slice reaches its cooperative checkpoint. Close
 // later waits for the worker and tears down quota/coordinator resources.
 func (runtime *applicationLifecycleRuntime) BeginDrain(ctx context.Context) error {

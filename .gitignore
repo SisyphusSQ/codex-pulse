@@ -31,24 +31,16 @@ coverage.*
 coverage.out
 coverage.html
 
-# Node, Vite and frontend tooling
+# Local generated/tooling artifacts. These paths are not product source and may
+# remain after migration from the legacy desktop stack.
 node_modules/
-frontend/node_modules/
 dist/
-!frontend/dist/
-frontend/dist/*
-!frontend/dist/.gitkeep
-dist-ssr/
 .vite/
-frontend/.vite/
-frontend/*.tsbuildinfo
-storybook-static/
+*.tsbuildinfo
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-
-# Wails build output
 .task/
 build/bin/
 

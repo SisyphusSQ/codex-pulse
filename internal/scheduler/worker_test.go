@@ -600,6 +600,35 @@ func TestServiceRunCycleHonorsDurablePauseBeforeClaim(t *testing.T) {
 	}
 }
 
+func TestServiceRunCycleRetriesWhenPauseRacesWithClaim(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	repository := openSchedulerRepository(t)
+	createSchedulerFixture(t, repository, "pause-races-claim", store.SchedulerLaneLive, 10)
+	service := newSchedulerTestService(t, repository, &recordingExecutor{})
+	service.newCycleID = func() (string, error) {
+		lifecycle, err := repository.SchedulerLifecycle(ctx)
+		if err != nil {
+			return "", err
+		}
+		lifecycle.UserPauseScope = store.LifecyclePauseAll
+		lifecycle.LastEventID = "test:pause-races-claim"
+		lifecycle.Revision++
+		lifecycle.UpdatedAtMS++
+		if _, err := repository.CompareAndSwapSchedulerLifecycle(
+			ctx, lifecycle.Revision-1, lifecycle,
+		); err != nil {
+			return "", err
+		}
+		return "cycle-pause-races-claim", nil
+	}
+
+	if _, err := service.RunCycle(ctx, SystemSnapshot{}); !errors.Is(err, ErrSchedulerRetry) {
+		t.Fatalf("RunCycle(pause races claim) error = %v, want ErrSchedulerRetry", err)
+	}
+}
+
 func TestServiceRunCycleRecoversRestartedTaskAfterDurablePauseResumes(t *testing.T) {
 	t.Parallel()
 

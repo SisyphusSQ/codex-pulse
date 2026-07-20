@@ -1,0 +1,885 @@
+syntax = "proto3";
+
+package codexpulse.core.v1;
+
+option go_package = "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1;corev1";
+
+// CoreService 是 Swift 原生应用与 Go Helper 之间唯一的跨进程业务边界。
+service CoreService {
+  rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
+  rpc Bootstrap(BootstrapRequest) returns (BootstrapResponse);
+  rpc Contracts(ContractsRequest) returns (ContractsResponse);
+  rpc UsageCost(UsageCostRequest) returns (UsageCostResponse);
+  rpc ListSessions(ListSessionsRequest) returns (SessionListResponse);
+  rpc SessionDetail(SessionDetailRequest) returns (SessionDetailResponse);
+  rpc ListProjects(ListProjectsRequest) returns (ProjectListResponse);
+  rpc ProjectDetail(ProjectDetailRequest) returns (ProjectDetailResponse);
+  rpc QuotaCurrent(QuotaCurrentRequest) returns (QuotaCurrentResponse);
+  rpc RequestQuotaRefresh(QuotaRefreshRequest) returns (QuotaRefreshReceipt);
+  rpc ListSources(ListSourcesRequest) returns (SourceListResponse);
+  rpc Source(SourceRequest) returns (SourceDetailResponse);
+  rpc ListJobs(ListJobsRequest) returns (JobListResponse);
+  rpc Job(JobRequest) returns (JobDetailResponse);
+  rpc ListHealth(ListHealthRequest) returns (HealthListResponse);
+  rpc Health(HealthRequest) returns (HealthDetailResponse);
+  rpc HealthProjection(HealthProjectionRequest) returns (HealthProjectionResponse);
+  rpc DataHealth(DataHealthRequest) returns (DataHealthResponse);
+  rpc Settings(SettingsRequest) returns (SettingsResponse);
+  rpc UpdateSettings(UpdateSettingsRequest) returns (SettingsUpdateReceipt);
+  rpc PlanHomeSwitch(PlanHomeSwitchRequest) returns (HomeSwitchPlanReceipt);
+  rpc ConfirmHomeSwitch(ConfirmHomeSwitchRequest) returns (HomeSwitchReceipt);
+  rpc RecoverHomeSwitch(RecoverHomeSwitchRequest) returns (HomeSwitchReceipt);
+  rpc RunRuntimeAction(RuntimeActionRequest) returns (RuntimeActionReceipt);
+  rpc AnalyzeSessionIndexRepair(AnalyzeSessionIndexRepairRequest) returns (RepairDryRunReceipt);
+  rpc NotifyLifecycle(LifecycleNotificationRequest) returns (LifecycleNotificationReceipt);
+  rpc MigrationRecoveryState(MigrationRecoveryStateRequest) returns (MigrationRecoverySnapshot);
+  rpc MigrationRecoveryRetry(MigrationRecoveryRetryRequest) returns (MigrationRecoveryReceipt);
+  rpc MigrationRecoveryPrepare(MigrationRecoveryPrepareRequest) returns (MigrationRestoreConfirmation);
+  rpc MigrationRecoveryConfirm(MigrationRecoveryConfirmRequest) returns (MigrationRecoveryReceipt);
+  rpc MigrationRecoveryCancel(MigrationRecoveryCancelRequest) returns (Empty);
+  rpc MigrationRecoveryExit(MigrationRecoveryExitRequest) returns (Empty);
+  rpc SubscribeInvalidations(SubscribeInvalidationsRequest) returns (stream QueryInvalidationEvent);
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+}
+
+message Empty {}
+
+message HandshakeRequest {
+  string client_name = 1;
+  string client_version = 2;
+  string contract_version = 3;
+}
+
+message HandshakeResponse {
+  string helper_version = 1;
+  string contract_version = 2;
+  string query_version = 3;
+  string transport = 4;
+}
+
+message BootstrapRequest {}
+
+message BootstrapResponse {
+  string name = 1;
+  string locale = 2;
+  string platform = 3;
+  string mode = 4;
+  optional MigrationRecoverySnapshot recovery = 5;
+}
+
+message ContractsRequest {}
+
+message MethodInfo {
+  string name = 1;
+  string kind = 2;
+}
+
+message ContractsResponse {
+  string version = 1;
+  string query_version = 2;
+  string usage_cost_version = 3;
+  string runtime_info_version = 4;
+  repeated MethodInfo methods = 5;
+  repeated string command_methods = 6;
+  ErrorDetail error_example = 7;
+}
+
+// ErrorDetail 只承载稳定分类，不允许泄漏底层错误或请求值。
+message ErrorDetail {
+  string code = 1;
+  string message_key = 2;
+  optional string field = 3;
+  bool retryable = 4;
+}
+
+message Issue {
+  string code = 1;
+  string message_key = 2;
+  bool retryable = 3;
+}
+
+message NumericValue {
+  optional int64 value = 1;
+  string unit = 2;
+  optional string unknown_reason = 3;
+}
+
+message PageInfo {
+  int32 limit = 1;
+  bool has_more = 2;
+  optional string next_cursor = 3;
+}
+
+message ResponseMeta {
+  string version = 1;
+  string status = 2;
+  optional PageInfo page = 3;
+  repeated Issue issues = 4;
+}
+
+message PageRequest {
+  optional string cursor = 1;
+  int32 limit = 2;
+}
+
+message SortTerm {
+  string field = 1;
+  string direction = 2;
+}
+
+message FilterTerm {
+  string field = 1;
+  string operator = 2;
+  repeated string values = 3;
+}
+
+message LocalDateRange {
+  string start_date = 1;
+  string end_date_exclusive = 2;
+  string time_zone = 3;
+}
+
+message UTCTimeRange {
+  int64 start_at_ms = 1;
+  int64 end_at_ms = 2;
+  string time_zone = 3;
+}
+
+message QueryRequest {
+  PageRequest page = 1;
+  repeated SortTerm sort = 2;
+  repeated FilterTerm filters = 3;
+  optional LocalDateRange time_range = 4;
+}
+
+message UsageCostRequest {
+  LocalDateRange range = 1;
+  string granularity = 2;
+}
+
+message ListSessionsRequest { QueryRequest query = 1; }
+
+message SessionDetailRequest {
+  string session_id = 1;
+  optional string reporting_timezone = 2;
+  PageRequest turn_page = 3;
+}
+
+message ListProjectsRequest { QueryRequest query = 1; }
+
+message ProjectDetailRequest {
+  string dimension_key = 1;
+  LocalDateRange range = 2;
+  PageRequest session_page = 3;
+  PageRequest model_page = 4;
+}
+
+message AttributionValue {
+  optional string id = 1;
+  optional string display_name = 2;
+  string confidence = 3;
+  string source = 4;
+  string reason = 5;
+}
+
+message UsageTotals {
+  NumericValue turn_count = 1;
+  NumericValue input_tokens = 2;
+  NumericValue cached_input_tokens = 3;
+  NumericValue output_tokens = 4;
+  NumericValue reasoning_tokens = 5;
+  NumericValue total_tokens = 6;
+  NumericValue estimated_usd_micros = 7;
+  NumericValue priced_turn_count = 8;
+  NumericValue unpriced_turn_count = 9;
+  NumericValue first_activity_at_ms = 10;
+  NumericValue last_activity_at_ms = 11;
+}
+
+message ReasonCount {
+  string reason = 1;
+  NumericValue count = 2;
+}
+
+message TrendPoint {
+  string key = 1;
+  NumericValue start_at_ms = 2;
+  NumericValue end_at_ms = 3;
+  UsageTotals totals = 4;
+}
+
+message UsageCostResponse {
+  ResponseMeta meta = 1;
+  UTCTimeRange range = 2;
+  string reporting_time_zone = 3;
+  optional string pricing_source = 4;
+  optional string currency = 5;
+  repeated string pricing_versions = 6;
+  UsageTotals totals = 7;
+  repeated TrendPoint trend = 8;
+  repeated ReasonCount unpriced_reasons = 9;
+  optional string degraded_reason = 10;
+}
+
+message SessionItem {
+  string session_id = 1;
+  string display_title = 2;
+  string title_confidence = 3;
+  string title_source = 4;
+  string title_reason = 5;
+  AttributionValue project = 6;
+  AttributionValue model = 7;
+  string activity = 8;
+  NumericValue last_activity_at_ms = 9;
+  UsageTotals totals = 10;
+}
+
+message SessionListResponse {
+  ResponseMeta meta = 1;
+  optional string pricing_source = 2;
+  optional string currency = 3;
+  repeated SessionItem items = 4;
+  NumericValue matched_count = 5;
+  UsageTotals matched_totals = 6;
+  UsageTotals page_totals = 7;
+  optional string degraded_reason = 8;
+}
+
+message SessionTurnItem {
+  string timeline_key = 1;
+  string state = 2;
+  AttributionValue model = 3;
+  NumericValue started_at_ms = 4;
+  NumericValue completed_at_ms = 5;
+  NumericValue observed_at_ms = 6;
+  UsageTotals totals = 7;
+  string pricing_status = 8;
+  optional string pricing_version = 9;
+  optional string unpriced_reason = 10;
+}
+
+message SessionDetailResponse {
+  ResponseMeta meta = 1;
+  optional string pricing_source = 2;
+  optional string currency = 3;
+  repeated string pricing_versions = 4;
+  repeated ReasonCount unpriced_reasons = 5;
+  SessionItem item = 6;
+  PageInfo turn_page = 7;
+  repeated SessionTurnItem turns = 8;
+  optional string degraded_reason = 9;
+}
+
+message ProjectDailyPoint {
+  NumericValue bucket_start_at_ms = 1;
+  string confidence = 2;
+  string source = 3;
+  string reason = 4;
+  UsageTotals totals = 5;
+}
+
+message ProjectItem {
+  string dimension_key = 1;
+  AttributionValue project = 2;
+  NumericValue session_count = 3;
+  repeated ProjectDailyPoint trend = 4;
+  UsageTotals totals = 5;
+}
+
+message ProjectSessionItem {
+  string session_id = 1;
+  string display_title = 2;
+  string title_confidence = 3;
+  string title_source = 4;
+  string title_reason = 5;
+  AttributionValue model = 6;
+  string activity = 7;
+  NumericValue last_activity_at_ms = 8;
+  UsageTotals totals = 9;
+}
+
+message ProjectModelItem {
+  string dimension_key = 1;
+  AttributionValue model = 2;
+  UsageTotals totals = 3;
+}
+
+message ProjectListResponse {
+  ResponseMeta meta = 1;
+  UTCTimeRange range = 2;
+  string reporting_time_zone = 3;
+  optional string pricing_source = 4;
+  optional string currency = 5;
+  repeated string pricing_versions = 6;
+  repeated ProjectItem items = 7;
+  NumericValue matched_count = 8;
+  UsageTotals global_totals = 9;
+  UsageTotals matched_totals = 10;
+  UsageTotals page_totals = 11;
+}
+
+message ProjectDetailResponse {
+  ResponseMeta meta = 1;
+  UTCTimeRange range = 2;
+  string reporting_time_zone = 3;
+  optional string pricing_source = 4;
+  optional string currency = 5;
+  repeated string pricing_versions = 6;
+  ProjectItem item = 7;
+  repeated ProjectDailyPoint daily = 8;
+  PageInfo session_page = 9;
+  repeated ProjectSessionItem sessions = 10;
+  PageInfo model_page = 11;
+  repeated ProjectModelItem models = 12;
+  UsageTotals global_totals = 13;
+}
+
+message QuotaCurrentRequest { int64 evaluated_at_ms = 1; }
+
+message CurrentExplanation {
+  string observation_id = 1;
+  string source = 2;
+  optional double used_percent = 3;
+  optional double remaining_percent = 4;
+  optional int64 window_minutes = 5;
+  optional int64 resets_at_ms = 6;
+  optional int64 window_generation = 7;
+  int64 observed_at_ms = 8;
+  string validity = 9;
+  string disposition = 10;
+  optional string reason = 11;
+  string explanation_code = 12;
+}
+
+message CurrentWindow {
+  string window_kind = 1;
+  string limit_id = 2;
+  optional double used_percent = 3;
+  optional double remaining_percent = 4;
+  optional int64 window_minutes = 5;
+  optional int64 resets_at_ms = 6;
+  optional int64 reset_remaining_ms = 7;
+  optional int64 window_generation = 8;
+  optional string selected_source = 9;
+  string freshness = 10;
+  string conflict = 11;
+  string explanation_code = 12;
+  optional string unknown_reason = 13;
+  optional int64 last_success_at_ms = 14;
+  optional int64 last_attempt_at_ms = 15;
+  repeated CurrentExplanation explanations = 16;
+}
+
+message CurrentSource {
+  string source = 1;
+  optional int64 last_observed_at_ms = 2;
+  optional int64 last_success_at_ms = 3;
+  optional int64 last_attempt_at_ms = 4;
+  string freshness = 5;
+  optional string failure_code = 6;
+  int64 selected_window_count = 7;
+  int64 conflict_window_count = 8;
+  optional string unknown_reason = 9;
+}
+
+message CurrentNextReset {
+  optional int64 at_ms = 1;
+  optional int64 remaining_ms = 2;
+  int64 trusted_window_count = 3;
+  optional string unknown_reason = 4;
+}
+
+message CurrentResetCredits {
+  optional int64 available_count = 1;
+  optional int64 total_count = 2;
+  optional int64 redeemed_count = 3;
+  optional int64 cumulative_remaining_ms = 4;
+  optional int64 next_expires_at_ms = 5;
+  optional int64 last_success_at_ms = 6;
+  optional int64 last_attempt_at_ms = 7;
+  string freshness = 8;
+  optional string failure_code = 9;
+  optional string unknown_reason = 10;
+}
+
+message CurrentRefreshStatus {
+  string state = 1;
+  optional int64 next_due_at_ms = 2;
+  optional string reason = 3;
+  optional int64 last_manual_at_ms = 4;
+  optional string active_trigger = 5;
+  optional int64 claim_started_at_ms = 6;
+  optional int64 claim_expires_at_ms = 7;
+  optional string unknown_reason = 8;
+}
+
+message CurrentRefresh {
+  CurrentRefreshStatus quota = 1;
+  CurrentRefreshStatus reset_credits = 2;
+}
+
+message CurrentQuota {
+  string version = 1;
+  string account_scope = 2;
+  int64 evaluated_at_ms = 3;
+  repeated CurrentWindow windows = 4;
+  repeated CurrentSource sources = 5;
+  CurrentNextReset next_reset = 6;
+  CurrentResetCredits reset_credits = 7;
+  CurrentRefresh refresh = 8;
+}
+
+message QuotaCurrentResponse {
+  ResponseMeta meta = 1;
+  CurrentQuota current = 2;
+}
+
+message QuotaRefreshRequest { string source = 1; }
+
+message QuotaRefreshReceipt {
+  string source = 1;
+  optional int64 next_due_at_ms = 2;
+  string reason = 3;
+  optional int64 last_manual_at_ms = 4;
+}
+
+message ListSourcesRequest { QueryRequest query = 1; }
+message SourceRequest { string source_key = 1; }
+message ListJobsRequest { QueryRequest query = 1; }
+message JobRequest { string job_id = 1; }
+message ListHealthRequest { QueryRequest query = 1; }
+message HealthRequest { string event_id = 1; }
+message HealthProjectionRequest {}
+message DataHealthRequest { int64 evaluated_at_ms = 1; }
+message SettingsRequest {}
+
+message RecoveryAction {
+  string kind = 1;
+  optional string command_key = 2;
+}
+
+message SourceItem {
+  string source_key = 1;
+  string kind = 2;
+  optional string provider = 3;
+  optional string source_type = 4;
+  string state = 5;
+  NumericValue size_bytes = 6;
+  NumericValue parsed_bytes = 7;
+  NumericValue last_scanned_at_ms = 8;
+  NumericValue last_attempt_at_ms = 9;
+  NumericValue last_success_at_ms = 10;
+  NumericValue next_due_at_ms = 11;
+  NumericValue consecutive_failures = 12;
+  optional string error_class = 13;
+  optional string failure_code = 14;
+  NumericValue updated_at_ms = 15;
+  RecoveryAction recovery_action = 16;
+}
+
+message SourceSummary {
+  NumericValue total = 1;
+  NumericValue local_files = 2;
+  NumericValue online_sources = 3;
+  NumericValue attention = 4;
+}
+
+message SourceListResponse {
+  ResponseMeta meta = 1;
+  repeated SourceItem items = 2;
+  NumericValue matched_count = 3;
+  SourceSummary summary = 4;
+  repeated string unavailable_kinds = 5;
+}
+
+message SourceDetailResponse {
+  ResponseMeta meta = 1;
+  SourceItem item = 2;
+}
+
+message JobProgress {
+  NumericValue current = 1;
+  NumericValue total = 2;
+}
+
+message JobItem {
+  string job_id = 1;
+  string job_type = 2;
+  string requested_by = 3;
+  string state = 4;
+  string phase = 5;
+  optional string source_key = 6;
+  NumericValue created_at_ms = 7;
+  NumericValue started_at_ms = 8;
+  NumericValue finished_at_ms = 9;
+  NumericValue last_success_at_ms = 10;
+  JobProgress progress = 11;
+  NumericValue failure_count = 12;
+  NumericValue next_retry_at_ms = 13;
+  optional string error_class = 14;
+  NumericValue updated_at_ms = 15;
+  RecoveryAction recovery_action = 16;
+}
+
+message JobSummary {
+  NumericValue total = 1;
+  NumericValue queued = 2;
+  NumericValue running = 3;
+  NumericValue succeeded = 4;
+  NumericValue failed = 5;
+  NumericValue cancelled = 6;
+  NumericValue interrupted = 7;
+}
+
+message JobListResponse {
+  ResponseMeta meta = 1;
+  repeated JobItem items = 2;
+  NumericValue matched_count = 3;
+  JobSummary summary = 4;
+}
+
+message JobDetailResponse {
+  ResponseMeta meta = 1;
+  JobItem item = 2;
+}
+
+message HealthItem {
+  string event_id = 1;
+  string domain = 2;
+  string severity = 3;
+  string code = 4;
+  string component = 5;
+  string rule = 6;
+  string impact = 7;
+  string protection = 8;
+  optional string source_key = 9;
+  optional string job_id = 10;
+  optional string error_class = 11;
+  NumericValue first_seen_at_ms = 12;
+  NumericValue last_seen_at_ms = 13;
+  NumericValue resolved_at_ms = 14;
+  NumericValue occurrence_count = 15;
+  bool active = 16;
+  RecoveryAction recovery_action = 17;
+}
+
+message HealthSummary {
+  string level = 1;
+  NumericValue total = 2;
+  NumericValue active = 3;
+  NumericValue resolved = 4;
+  NumericValue info = 5;
+  NumericValue warnings = 6;
+  NumericValue errors = 7;
+  NumericValue critical = 8;
+}
+
+message HealthListResponse {
+  ResponseMeta meta = 1;
+  repeated HealthItem items = 2;
+  NumericValue matched_count = 3;
+  HealthSummary summary = 4;
+}
+
+message HealthDetailResponse {
+  ResponseMeta meta = 1;
+  HealthItem item = 2;
+}
+
+message HealthComponentStatus {
+  string component = 1;
+  string level = 2;
+  string evidence = 3;
+  string reason = 4;
+  string impact = 5;
+  string protection = 6;
+  string recovery_action = 7;
+}
+
+message HealthProjectionResponse {
+  bool has_value = 1;
+  bool stale = 2;
+  string failure = 3;
+  NumericValue evaluated_at_ms = 4;
+  optional string level = 5;
+  optional HealthComponentStatus primary = 6;
+  repeated HealthComponentStatus components = 7;
+}
+
+message DataHealthWindow {
+  NumericValue from_ms = 1;
+  NumericValue until_ms = 2;
+}
+
+message DataHealthRuntimePoint {
+  NumericValue captured_at_ms = 1;
+  double cpu_percent = 2;
+  NumericValue rss_bytes = 3;
+  NumericValue peak_rss_bytes = 4;
+  NumericValue db_bytes = 5;
+  NumericValue wal_bytes = 6;
+  NumericValue disk_free_bytes = 7;
+  NumericValue live_queue_depth = 8;
+  NumericValue backfill_queue_depth = 9;
+  NumericValue oldest_live_wait_ms = 10;
+  NumericValue oldest_backfill_wait_ms = 11;
+  NumericValue dropped_samples = 12;
+}
+
+message DataHealthScheduler {
+  NumericValue cycle_count = 1;
+  NumericValue completed_cycles = 2;
+  NumericValue yielded_cycles = 3;
+  NumericValue failed_cycles = 4;
+  NumericValue interrupted_cycles = 5;
+  NumericValue files_scanned = 6;
+  NumericValue bytes_read = 7;
+  NumericValue active_ms = 8;
+  NumericValue max_cycle_active_ms = 9;
+  NumericValue last_progress_at_ms = 10;
+  NumericValue last_backfill_progress_at_ms = 11;
+}
+
+message DataHealthJobs {
+  NumericValue queued = 1;
+  NumericValue running = 2;
+  NumericValue interrupted = 3;
+  NumericValue succeeded = 4;
+  NumericValue failed = 5;
+  NumericValue cancelled = 6;
+  NumericValue duration_count = 7;
+  NumericValue duration_total_ms = 8;
+  NumericValue duration_max_ms = 9;
+}
+
+message DataHealthSources {
+  NumericValue total = 1;
+  NumericValue unknown = 2;
+  NumericValue current = 3;
+  NumericValue stale = 4;
+  NumericValue unavailable = 5;
+  NumericValue consecutive_failures = 6;
+  NumericValue max_consecutive_failures = 7;
+  NumericValue attempts = 8;
+  NumericValue succeeded_attempts = 9;
+  NumericValue failed_attempts = 10;
+  NumericValue cancelled_attempts = 11;
+  NumericValue response_bytes = 12;
+  NumericValue last_attempt_at_ms = 13;
+  NumericValue last_success_at_ms = 14;
+  NumericValue next_retry_at_ms = 15;
+}
+
+message DataHealthResponse {
+  ResponseMeta meta = 1;
+  NumericValue evaluated_at_ms = 2;
+  DataHealthWindow window = 3;
+  repeated DataHealthRuntimePoint runtime = 4;
+  optional DataHealthRuntimePoint latest = 5;
+  DataHealthScheduler scheduler = 6;
+  DataHealthJobs jobs = 7;
+  DataHealthSources sources = 8;
+  repeated JobItem current_jobs = 9;
+  repeated JobItem recent_jobs = 10;
+  repeated HealthItem open_events = 11;
+  repeated HealthItem recent_events = 12;
+}
+
+message EditableField {
+  string key = 1;
+  string type = 2;
+  bool editable = 3;
+  optional int64 minimum = 4;
+  optional int64 maximum = 5;
+  repeated string options = 6;
+}
+
+message SettingsHomeSnapshot {
+  bool configured = 1;
+  string generation = 2;
+  string switch_status = 3;
+  optional string last_switch_outcome = 4;
+}
+
+message SettingsOnlineSnapshot {
+  bool quota_enabled = 1;
+  bool reset_credits_enabled = 2;
+}
+
+message SettingsRefreshSnapshot {
+  int64 quota_interval_seconds = 1;
+  int64 reset_credits_interval_seconds = 2;
+  int64 reconcile_interval_seconds = 3;
+  int64 jsonl_debounce_milliseconds = 4;
+}
+
+message SettingsUpdateSnapshot {
+  bool auto_check_enabled = 1;
+  bool auto_download_enabled = 2;
+  string channel = 3;
+  int64 check_interval_seconds = 4;
+  optional string skipped_version = 5;
+  NumericValue snooze_until_ms = 6;
+  NumericValue last_check_at_ms = 7;
+}
+
+message SettingsUISnapshot {
+  string locale = 1;
+  string launch_behavior = 2;
+  string overview_range = 3;
+}
+
+message SettingsSnapshot {
+  int32 schema_version = 1;
+  string revision = 2;
+  bool onboarding_completed = 3;
+  SettingsHomeSnapshot home = 4;
+  SettingsOnlineSnapshot online = 5;
+  SettingsRefreshSnapshot refresh = 6;
+  SettingsUpdateSnapshot updates = 7;
+  SettingsUISnapshot ui = 8;
+}
+
+message SettingsResponse {
+  ResponseMeta meta = 1;
+  SettingsSnapshot snapshot = 2;
+  repeated EditableField editable_fields = 3;
+}
+
+message SettingsOnlineUpdate {
+  bool quota_enabled = 1;
+  bool reset_credits_enabled = 2;
+}
+
+message SettingsRefreshUpdate {
+  int64 quota_interval_seconds = 1;
+  int64 reset_credits_interval_seconds = 2;
+  int64 reconcile_interval_seconds = 3;
+  int64 jsonl_debounce_milliseconds = 4;
+}
+
+message SettingsUpdatesUpdate {
+  bool auto_check_enabled = 1;
+  int64 check_interval_seconds = 2;
+}
+
+message SettingsUIUpdate {
+  string launch_behavior = 1;
+  string overview_range = 2;
+}
+
+message UpdateSettingsRequest {
+  string expected_revision = 1;
+  SettingsOnlineUpdate online = 2;
+  SettingsRefreshUpdate refresh = 3;
+  SettingsUpdatesUpdate updates = 4;
+  SettingsUIUpdate ui = 5;
+}
+
+message SettingsUpdateReceipt {
+  string revision = 1;
+  string result = 2;
+}
+
+message PlanHomeSwitchRequest {
+  string target_path = 1;
+  string strategy = 2;
+}
+
+message HomeSwitchPlanReceipt {
+  string strategy = 1;
+  string target_generation = 2;
+  bool preserves_old_facts = 3;
+  bool clears_derived_facts = 4;
+}
+
+message ConfirmHomeSwitchRequest {}
+message RecoverHomeSwitchRequest {}
+
+message HomeSwitchReceipt {
+  string revision = 1;
+  string generation = 2;
+  string result = 3;
+}
+
+message RuntimeActionRequest { string action = 1; }
+
+message RuntimeActionReceipt {
+  string action = 1;
+  string pause_scope = 2;
+  string source_state = 3;
+  string transition = 4;
+}
+
+message AnalyzeSessionIndexRepairRequest {}
+
+message RepairDryRunReceipt {
+  int64 analyzed_at_ms = 1;
+  int64 action_count = 2;
+  int64 conflict_count = 3;
+  int64 history_count = 4;
+  int64 diagnostic_count = 5;
+  bool noop = 6;
+}
+
+message LifecycleNotificationRequest { string event = 1; }
+
+message LifecycleNotificationReceipt {
+  string event = 1;
+  bool accepted = 2;
+}
+
+message MigrationRecoveryStateRequest {}
+message MigrationRecoveryRetryRequest {}
+message MigrationRecoveryCancelRequest {}
+message MigrationRecoveryExitRequest {}
+
+message MigrationRecoveryPrepareRequest { string backup_name = 1; }
+
+message MigrationRecoveryConfirmRequest { string confirmation_token = 1; }
+
+message MigrationBackupInfo {
+  string name = 1;
+  int64 size_bytes = 2;
+  int64 modified_at_ms = 3;
+}
+
+message MigrationRecoverySnapshot {
+  string version = 1;
+  string phase = 2;
+  string stage = 3;
+  string code = 4;
+  int32 current_version = 5;
+  int32 target_version = 6;
+  int32 failed_version = 7;
+  bool can_retry = 8;
+  bool can_exit = 9;
+  repeated MigrationBackupInfo backups = 10;
+  bool audit_warning = 11;
+}
+
+message MigrationRecoveryReceipt {
+  string phase = 1;
+  bool restart_required = 2;
+  bool audit_warning = 3;
+}
+
+message MigrationRestoreConfirmation {
+  string confirmation_token = 1;
+  MigrationBackupInfo backup = 2;
+}
+
+message SubscribeInvalidationsRequest {
+  repeated string domains = 1;
+  uint64 after_sequence = 2;
+}
+
+message QueryInvalidationEvent {
+  string version = 1;
+  string domain = 2;
+  uint64 sequence = 3;
+}
+
+message ShutdownRequest { string reason = 1; }
+
+message ShutdownResponse { bool accepted = 1; }

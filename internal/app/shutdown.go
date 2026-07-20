@@ -7,6 +7,8 @@ import (
 	"sync"
 )
 
+var ErrApplicationShutdown = errors.New("application shutdown is unavailable")
+
 type shutdownPhase string
 
 const (
@@ -39,11 +41,11 @@ type applicationShutdownCoordinator struct {
 
 func newApplicationShutdownCoordinator(components ...shutdownComponent) (*applicationShutdownCoordinator, error) {
 	if len(components) == 0 {
-		return nil, ErrDesktopCommand
+		return nil, ErrApplicationShutdown
 	}
 	for _, component := range components {
 		if component.Name == "" || component.Close == nil {
-			return nil, ErrDesktopCommand
+			return nil, ErrApplicationShutdown
 		}
 	}
 	return &applicationShutdownCoordinator{
@@ -54,7 +56,7 @@ func newApplicationShutdownCoordinator(components ...shutdownComponent) (*applic
 
 func (coordinator *applicationShutdownCoordinator) Close(ctx context.Context) error {
 	if coordinator == nil || ctx == nil {
-		return ErrDesktopCommand
+		return ErrApplicationShutdown
 	}
 	coordinator.closeOnce.Do(func() {
 		coordinator.mu.Lock()
