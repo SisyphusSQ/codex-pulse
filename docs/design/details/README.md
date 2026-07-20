@@ -4,6 +4,7 @@
 
 - [Product](product/README.md)
 - [Architecture](architecture/README.md)
+- [Native macOS Client and Go Helper Refactor](native-macos-client/README.md)
 - [Data Model and Indexing](data-model/README.md)
 - [Quota](quota/README.md)
 - [Scheduling and Bootstrap](scheduling-and-bootstrap/README.md)
