@@ -27,6 +27,16 @@ require_file api/codexpulse/core/v1/core.pb.go RPC-001 api/codexpulse/core/v1/co
 require_file api/codexpulse/core/v1/core_grpc.pb.go RPC-001 api/codexpulse/core/v1/core.proto
 require_file internal/helper/runtime.go RPC-002 docs/design/details/architecture/README.md
 require_file scripts/proto/generate.sh VERIFY-003 Makefile
+require_file scripts/proto/generate-swift.sh SWIFT-001 docs/design/details/native-macos-client/README.md
+require_file app/macos/Package.swift SWIFT-001 docs/design/details/native-macos-client/README.md
+require_file app/macos/Package.resolved SWIFT-001 app/macos/Package.swift
+require_file app/macos/Sources/CodexPulseProtocolGenerated/core.pb.swift SWIFT-001 api/codexpulse/core/v1/core.proto
+require_file app/macos/Sources/CodexPulseProtocolGenerated/core.grpc.swift SWIFT-001 api/codexpulse/core/v1/core.proto
+require_file app/macos/Sources/CodexPulseCoreClient/CoreClient.swift SWIFT-001 docs/design/details/native-macos-client/README.md
+require_file app/macos/Sources/CodexPulseCoreClient/HelperSupervisor.swift SWIFT-001 docs/design/details/native-macos-client/README.md
+require_file app/macos/Sources/CodexPulseCoreClient/InvalidationStreamController.swift SWIFT-001 docs/design/details/native-macos-client/README.md
+require_file app/macos/Sources/CodexPulseCoreClient/ReadRetryPolicy.swift SWIFT-001 docs/design/details/native-macos-client/README.md
+require_file scripts/swift-cancel-probe/main.go SWIFT-001 docs/test/swift-transport-spike.md
 require_file .github/workflows/ci.yml CI-001 docs/test/engineering-baseline/basic-ci-and-verification.md
 
 go_version=$(awk '$1 == "go" { print $2; exit }' "$REPO_ROOT/go.mod")
@@ -50,12 +60,25 @@ fi
 require_pattern Makefile '^verify-proto:' VERIFY-003 Makefile
 require_pattern Makefile '^verify-helper:' VERIFY-003 Makefile
 require_pattern Makefile '^verify-go:' VERIFY-003 Makefile
+require_pattern Makefile '^verify-swift-transport:' SWIFT-001 Makefile
 require_pattern main.go 'parseRuntimeConfig' RPC-002 main.go
 require_pattern main.go 'signal.NotifyContext' RPC-002 main.go
 require_pattern internal/helper/runtime.go 'ListenUnix' RPC-002 internal/helper/runtime.go
 require_pattern internal/helper/runtime.go 'readAuthPipe' RPC-002 internal/helper/runtime.go
 require_pattern internal/helper/server.go 'ChainUnaryInterceptor' RPC-002 internal/helper/server.go
 require_pattern internal/helper/server.go 'ChainStreamInterceptor' RPC-002 internal/helper/server.go
+
+grep -Fq 'exact: "2.4.2"' "$REPO_ROOT/app/macos/Package.swift" || fail SWIFT-001 app/macos/Package.swift "grpc-swift-2 must be pinned to 2.4.2"
+grep -Fq 'exact: "2.9.0"' "$REPO_ROOT/app/macos/Package.swift" || fail SWIFT-001 app/macos/Package.swift "grpc-swift-nio-transport must be pinned to 2.9.0"
+grep -Fq 'exact: "2.4.1"' "$REPO_ROOT/app/macos/Package.swift" || fail SWIFT-001 app/macos/Package.swift "grpc-swift-protobuf must be pinned to 2.4.1"
+grep -Fq 'exact: "1.38.1"' "$REPO_ROOT/app/macos/Package.swift" || fail SWIFT-001 app/macos/Package.swift "swift-protobuf must be pinned to 1.38.1"
+require_pattern app/macos/Sources/CodexPulseCoreClient/CoreClient.swift 'unixDomainSocket' SWIFT-001 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseCoreClient/HelperSupervisor.swift 'posix_spawn' SWIFT-001 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseCoreClient/HelperSupervisor.swift 'POSIX_SPAWN_CLOEXEC_DEFAULT' SWIFT-001 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseCoreClient/HelperSupervisor.swift 'validatedSocketIdentity' SWIFT-001 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseCoreClient/InvalidationStreamController.swift 'streamGeneration' SWIFT-001 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseCoreClient/ReadRetryPolicy.swift 'error.code == .unavailable' SWIFT-001 docs/design/details/native-macos-client/README.md
+require_pattern Makefile 'CODEX_PULSE_CANCEL_PROBE' SWIFT-001 docs/test/swift-transport-spike.md
 
 WORKFLOW="$REPO_ROOT/.github/workflows/ci.yml"
 grep -Eq '^  contents: read$' "$WORKFLOW" || fail CI-001 "$WORKFLOW" "workflow must be read-only"
@@ -65,4 +88,4 @@ if grep -Ein 'setup-node|npm |wails|sparkle|notarytool|gh release|git tag|conten
   fail CI-001 "$WORKFLOW" "workflow contains removed UI tooling or privileged/publishing behavior"
 fi
 
-printf 'project checks passed (ARCH-001, RPC-001, RPC-002, TOOLCHAIN-001, VERIFY-003, CI-001)\n'
+printf 'project checks passed (ARCH-001, RPC-001, RPC-002, SWIFT-001, TOOLCHAIN-001, VERIFY-003, CI-001)\n'

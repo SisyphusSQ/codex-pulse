@@ -51,4 +51,31 @@ sed 's/contents: read/contents: write/' "$TMP_ROOT/repo/.github/workflows/ci.yml
 mv "$TMP_ROOT/ci.yml" "$TMP_ROOT/repo/.github/workflows/ci.yml"
 assert_failure CI-001
 
+copy_fixture
+sed 's/exact: "2.4.2"/exact: "2.4.0"/' \
+  "$TMP_ROOT/repo/app/macos/Package.swift" >"$TMP_ROOT/Package.swift"
+mv "$TMP_ROOT/Package.swift" "$TMP_ROOT/repo/app/macos/Package.swift"
+assert_failure SWIFT-001
+
+copy_fixture
+sed 's/POSIX_SPAWN_CLOEXEC_DEFAULT/POSIX_SPAWN_USEVFORK/' \
+  "$TMP_ROOT/repo/app/macos/Sources/CodexPulseCoreClient/HelperSupervisor.swift" >"$TMP_ROOT/HelperSupervisor.swift"
+mv "$TMP_ROOT/HelperSupervisor.swift" \
+  "$TMP_ROOT/repo/app/macos/Sources/CodexPulseCoreClient/HelperSupervisor.swift"
+assert_failure SWIFT-001
+
+copy_fixture
+sed 's/streamGeneration/staleGeneration/g' \
+  "$TMP_ROOT/repo/app/macos/Sources/CodexPulseCoreClient/InvalidationStreamController.swift" >"$TMP_ROOT/InvalidationStreamController.swift"
+mv "$TMP_ROOT/InvalidationStreamController.swift" \
+  "$TMP_ROOT/repo/app/macos/Sources/CodexPulseCoreClient/InvalidationStreamController.swift"
+assert_failure SWIFT-001
+
+copy_fixture
+sed 's/error.code == \.unavailable/error.code == .invalidArgument/' \
+  "$TMP_ROOT/repo/app/macos/Sources/CodexPulseCoreClient/ReadRetryPolicy.swift" >"$TMP_ROOT/ReadRetryPolicy.swift"
+mv "$TMP_ROOT/ReadRetryPolicy.swift" \
+  "$TMP_ROOT/repo/app/macos/Sources/CodexPulseCoreClient/ReadRetryPolicy.swift"
+assert_failure SWIFT-001
+
 printf 'project-check contract tests passed\n'

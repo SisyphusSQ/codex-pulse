@@ -11,6 +11,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/app"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
+	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"google.golang.org/grpc"
 )
 
@@ -30,6 +31,8 @@ type RuntimeConfig struct {
 	AuthFD          uintptr
 	HelperVersion   string
 	ShutdownTimeout time.Duration
+	DatabasePath    string
+	PreferencesPath string
 }
 
 // Run starts the authenticated UDS server and blocks until shutdown RPC,
@@ -55,7 +58,7 @@ func Run(ctx context.Context, config RuntimeConfig) error {
 	if err != nil {
 		return errors.Join(ErrRuntime, err)
 	}
-	application, err := app.Open(ctx, app.Config{Broker: broker})
+	application, err := app.Open(ctx, applicationConfig(config, broker))
 	if err != nil {
 		broker.Close()
 		return errors.Join(ErrRuntime, err)
@@ -104,6 +107,14 @@ func Run(ctx context.Context, config RuntimeConfig) error {
 		stopCause = nil
 	}
 	return errors.Join(stopCause, closeErr)
+}
+
+func applicationConfig(config RuntimeConfig, broker *core.InvalidationBroker) app.Config {
+	return app.Config{
+		Broker:          broker,
+		Store:           storesqlite.Config{Path: config.DatabasePath},
+		PreferencesPath: config.PreferencesPath,
+	}
 }
 
 func readAuthPipe(pipe *os.File) (*Authenticator, <-chan struct{}, error) {

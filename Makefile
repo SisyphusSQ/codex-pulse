@@ -1,5 +1,6 @@
 .PHONY: harness-check harness-verify harness-review-gate project-check project-check-test \
-	verify verify-project verify-proto generate-proto verify-go verify-helper
+	verify verify-project verify-proto generate-proto verify-go verify-helper \
+	verify-swift-proto verify-swift-client verify-swift-transport
 
 export RUN_ID
 
@@ -36,9 +37,21 @@ verify-helper:
 	mkdir -p bin
 	go build -trimpath -ldflags '-X main.applicationVersion=dev' -o bin/codex-pulse .
 
+verify-swift-proto:
+	bash scripts/proto/generate-swift.sh --check
+
+verify-swift-client:
+	mkdir -p bin
+	go build -trimpath -o bin/codex-pulse-cancel-probe ./scripts/swift-cancel-probe
+	CODEX_PULSE_CANCEL_PROBE="$(CURDIR)/bin/codex-pulse-cancel-probe" \
+		swift run --package-path app/macos codex-pulse-core-client-tests
+
+verify-swift-transport: verify-helper verify-swift-proto verify-swift-client
+	swift run --package-path app/macos codex-pulse-transport-spike --helper "$(CURDIR)/bin/codex-pulse"
+
 verify:
 	$(MAKE) harness-verify
 	$(MAKE) verify-project
 	$(MAKE) verify-proto
 	$(MAKE) verify-go
-	$(MAKE) verify-helper
+	$(MAKE) verify-swift-transport

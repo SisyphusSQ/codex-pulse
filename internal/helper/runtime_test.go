@@ -3,12 +3,103 @@ package helper
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/core"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/metadata"
 )
+
+func TestApplicationConfigPreservesDefaultAndExplicitPaths(t *testing.T) {
+	broker, err := core.NewInvalidationBroker(1)
+	if err != nil {
+		t.Fatalf("NewInvalidationBroker() error = %v", err)
+	}
+	t.Cleanup(func() { broker.Close() })
+
+	defaultConfig := applicationConfig(RuntimeConfig{}, broker)
+	if defaultConfig.Store.Path != "" || defaultConfig.PreferencesPath != "" {
+		t.Fatalf("default application config = %#v, want empty path overrides", defaultConfig)
+	}
+	if defaultConfig.Broker != broker {
+		t.Fatal("default application config lost broker")
+	}
+
+	explicit := applicationConfig(RuntimeConfig{
+		DatabasePath:    "/private/tmp/cp/data/codex-pulse.db",
+		PreferencesPath: "/private/tmp/cp/preferences.json",
+	}, broker)
+	if explicit.Store.Path != "/private/tmp/cp/data/codex-pulse.db" ||
+		explicit.PreferencesPath != "/private/tmp/cp/preferences.json" {
+		t.Fatalf("explicit application config = %#v", explicit)
+	}
+}
+
+func TestRunStartsWithExplicitIsolatedPaths(t *testing.T) {
+	root, err := os.MkdirTemp("/private/tmp", "cp-helper-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dataDirectory := filepath.Join(root, "data")
+	if err := os.Mkdir(dataDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	defer writer.Close()
+	authFD, err := unix.Dup(int(reader.Fd()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(ctx, RuntimeConfig{
+			SocketPath:      filepath.Join(root, "core.sock"),
+			AuthFD:          uintptr(authFD),
+			HelperVersion:   "test",
+			DatabasePath:    filepath.Join(dataDirectory, "codex-pulse.db"),
+			PreferencesPath: filepath.Join(root, "preferences.json"),
+		})
+	}()
+	if _, err := writer.WriteString("abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-token\n"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(filepath.Join(root, "core.sock")); err == nil {
+			break
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("Run() exited before socket was ready: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Run() did not create socket")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run() did not stop after cancellation")
+	}
+}
 
 func TestReadAuthPipeConsumesTokenAndSignalsOnlyParentEOF(t *testing.T) {
 	reader, writer, err := os.Pipe()
