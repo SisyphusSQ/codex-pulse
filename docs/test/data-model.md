@@ -26,7 +26,7 @@
 | 前置检查 | 通过 | Go 1.26.2，darwin/arm64，CGO 已启用；当前为 TOO-247 专用分支。 |
 | Schema / repository 主路径 | 通过 | 第六轮 Rework 的 completion/usage greater/equal/lower 原子合并已完成 RED→GREEN；受影响包全集通过。 |
 | 重放与 race 验证 | 通过 | 包含 completion/usage ordering 原子性的幂等、回滚、generation replacement、跨 Session、completed fact、字段级投影与冲突语义重复 50 轮通过；受影响包 race 重复 10 轮通过。 |
-| 全仓与 harness gate | 通过 | 全仓 test/vet/race、`harness-verify`、显式临时 Wails PATH 的 `project-check` 和 `diff --check` 均通过。 |
+| 全仓与架构 gate | 通过 | 全仓 test/vet/race、显式临时 Wails PATH 下的架构检查和 `diff --check` 均通过。 |
 | CHANGELOG 与完整集成验证 | 通过 | `[TOO-247]` 唯一条目位于 `Unreleased -> feature`；Node/Wails 精确工具链下 `make verify` 的 Go、前端、generated 与 macOS arm64 package gate 全部通过。 |
 | 清理 | 通过 | 仅保留 TOO-247 预期源码、设计文档、验证摘要与 CHANGELOG；没有新增生成物。 |
 
@@ -100,15 +100,15 @@ go test -race ./internal/app -count=10
 go test ./... -count=1
 go vet ./...
 go test -race ./...
-make harness-verify
-PATH="/tmp/codex-pulse-tools/bin:$PATH" make project-check
+make verify-architecture
+PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify-architecture
 git diff --check
 ```
 
 预期结果：
 
 - 全部 Go package、vet、race、harness、项目机械约束和 diff whitespace gate 通过。
-- 当前本机 Wails CLI 位于受控临时工具目录，`project-check` 必须显式补入该 PATH；未补 PATH 时 gate 会在执行前以 `TOOLCHAIN-001` 停止，补齐后通过。
+- 当时本机 Wails CLI 位于受控临时工具目录，架构检查必须显式补入该 PATH；未补 PATH 时 gate 会在执行前以 `TOOLCHAIN-001` 停止，补齐后通过。
 - Wails macOS CGO 链接输出可能包含 SDK deployment target warning，但所有相关命令必须退出码为 0；SQLite `CGO_ENABLED=0` 命令不得依赖该链路。
 
 ### 5. CHANGELOG 后完整集成验证

@@ -208,6 +208,12 @@ message TrendPoint {
   UsageTotals totals = 4;
 }
 
+message UsageModelItem {
+  string dimension_key = 1;
+  AttributionValue model = 2;
+  UsageTotals totals = 3;
+}
+
 message UsageCostResponse {
   ResponseMeta meta = 1;
   UTCTimeRange range = 2;
@@ -219,6 +225,7 @@ message UsageCostResponse {
   repeated TrendPoint trend = 8;
   repeated ReasonCount unpriced_reasons = 9;
   optional string degraded_reason = 10;
+  repeated UsageModelItem models = 11;
 }
 
 message SessionItem {

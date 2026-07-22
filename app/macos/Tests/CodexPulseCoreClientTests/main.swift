@@ -228,12 +228,14 @@ private func testStreamGenerationIsolation() async throws {
 
 private func testReconnectBudget() async throws {
     let harness = ImmediateEOFHarness()
+    let terminalFailure = ReadyFlag()
     let controller = InvalidationStreamController(
         domains: ["quota"],
         maximumReconnectAttempts: 2,
         consumeInvalidations: { _, _, onReady, _ in
             await harness.consume(onReady: onReady)
         },
+        onTerminalFailure: { await terminalFailure.markReady() },
         onEvent: { _ in }
     )
     await controller.start()
@@ -242,9 +244,14 @@ private func testReconnectBudget() async throws {
         return state == .failed
     }
     try expect(await harness.callCount(), 3, "initial stream plus bounded reconnect attempts")
+    try expect(await terminalFailure.isReady(), true, "terminal reconnect failure must notify owner")
 }
 
-private func makeProbeScript(at path: String, startupDelay: Double = 0) throws {
+private func makeProbeScript(
+    at path: String,
+    startupDelay: Double = 0,
+    socketPermissionDelay: Double = 0
+) throws {
     let script = """
     #!/usr/bin/python3
     import os, socket, sys, time
@@ -266,6 +273,7 @@ private func makeProbeScript(at path: String, startupDelay: Double = 0) throws {
     socket_path = value("--socket")
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(socket_path)
+    time.sleep(\(socketPermissionDelay))
     os.chmod(socket_path, 0o600)
     server.listen(1)
     while os.read(auth_fd, 1):
@@ -351,6 +359,18 @@ private func testSupervisorSecurityAndCancellation() async throws {
         throw TestFailure.mismatch("validated probe socket was not observed")
     }
     await supervisor.stop(mode: .kill)
+
+    let permissionProbePath = root + "/permission-probe.py"
+    try makeProbeScript(at: permissionProbePath, socketPermissionDelay: 0.15)
+    let permissionSupervisor = HelperSupervisor(configuration: .init(
+        executablePath: permissionProbePath,
+        runtimeDirectory: root + "/permission-runtime"
+    ))
+    let permissionHelper = try await permissionSupervisor.start()
+    guard try HelperSupervisor.validatedSocketIdentity(permissionHelper.socketPath) != nil else {
+        throw TestFailure.mismatch("supervisor accepted a socket before the 0600 readback")
+    }
+    await permissionSupervisor.stop(mode: .kill)
 
     let delayedProbePath = root + "/delayed-probe.py"
     try makeProbeScript(at: delayedProbePath, startupDelay: 5)

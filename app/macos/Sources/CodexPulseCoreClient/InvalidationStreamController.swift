@@ -28,18 +28,20 @@ public struct InvalidationStreamMetrics: Equatable, Sendable {
 
 public actor InvalidationStreamController {
     public typealias EventHandler = @Sendable (Codexpulse_Core_V1_QueryInvalidationEvent) async -> Void
-    typealias StreamConsumer = @Sendable (
+    public typealias StreamConsumer = @Sendable (
         _ domains: [String],
         _ afterSequence: UInt64,
         _ onReady: @Sendable @escaping () async -> Void,
         _ onEvent: @Sendable @escaping (Codexpulse_Core_V1_QueryInvalidationEvent) async throws -> Void
     ) async throws -> Void
-    typealias LifecycleNotifier = @Sendable (_ event: LifecycleEvent) async throws -> Void
+    public typealias LifecycleNotifier = @Sendable (_ event: LifecycleEvent) async throws -> Void
+    public typealias TerminalFailureHandler = @Sendable () async -> Void
 
     private let domains: [String]
     private let eventHandler: EventHandler
     private let streamConsumer: StreamConsumer
     private let lifecycleNotifier: LifecycleNotifier
+    private let terminalFailureHandler: TerminalFailureHandler
     private let maximumReconnectAttempts: Int
     private var streamTask: Task<Void, Never>?
     private var streamGeneration: UInt64 = 0
@@ -54,11 +56,13 @@ public actor InvalidationStreamController {
         client: CoreClient,
         domains: [String],
         maximumReconnectAttempts: Int = 3,
+        onTerminalFailure: @escaping TerminalFailureHandler = {},
         onEvent: @escaping EventHandler
     ) {
         self.domains = domains
         self.maximumReconnectAttempts = max(0, maximumReconnectAttempts)
         self.eventHandler = onEvent
+        self.terminalFailureHandler = onTerminalFailure
         self.streamConsumer = { domains, afterSequence, onReady, onEvent in
             try await client.consumeInvalidations(
                 domains: domains,
@@ -72,11 +76,12 @@ public actor InvalidationStreamController {
         }
     }
 
-    init(
+    public init(
         domains: [String],
         maximumReconnectAttempts: Int = 3,
         consumeInvalidations: @escaping StreamConsumer,
         notifyLifecycle: @escaping LifecycleNotifier = { _ in },
+        onTerminalFailure: @escaping TerminalFailureHandler = {},
         onEvent: @escaping EventHandler
     ) {
         self.domains = domains
@@ -84,6 +89,7 @@ public actor InvalidationStreamController {
         self.eventHandler = onEvent
         self.streamConsumer = consumeInvalidations
         self.lifecycleNotifier = notifyLifecycle
+        self.terminalFailureHandler = onTerminalFailure
     }
 
     public func start() {
@@ -222,11 +228,13 @@ public actor InvalidationStreamController {
         if error is InvalidationStreamError {
             desiredRunning = false
             state = .failed
+            await terminalFailureHandler()
             return
         }
         guard reconnectAttempts < maximumReconnectAttempts else {
             desiredRunning = false
             state = .failed
+            await terminalFailureHandler()
             return
         }
         reconnectAttempts += 1

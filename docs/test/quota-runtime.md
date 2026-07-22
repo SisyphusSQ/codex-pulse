@@ -7,7 +7,7 @@
 - 本轮任务性质：TOO-306 production quota composition、confirmed Home credential lease、lifecycle/settings/manual/shutdown 闭环
 - 当前结论：`PASS（已合并并完成 post-merge verify）`；implementation/final reviewers 均 `blocking_findings=0`；PR #30 已合并为 `35df243`，main post-merge 全部门禁通过，Linear TOO-306 已读回 Done。
 - 自动化入口：`internal/app/quota_credentials_test.go`、`internal/app/quota_runtime_test.go`、`internal/app/app_test.go`
-- 对应计划 / issue：`.agents/plans/2026-07-16-too-306-quota-runtime.md` / TOO-306
+- 对应 issue：TOO-306
 - 结果说明：全部 HTTP、auth 和 Preferences 输入均为 synthetic fixture；SQLite 位于 `testing.T.TempDir()`。证据证明 local scheduler 在 target Preferences CAS 前持久化 fence，Drain 同时等待普通 slice 与 Recover/Retry preflight target writer；最终 generation CAS 保留 pause/sleep，旧 queued task 不再 runnable、新 generation task可进入，same-process 与 restart 均收敛。第五次同 reviewer 已确认全部 implementation findings 关闭；分支与 main post-merge 的 focused/full/race/harness/package 门禁均通过。未读取真实 Codex Home，未访问真实 Wham；Actions 保持停用。
 
 ### 本次执行结果
@@ -150,16 +150,14 @@ go test -race ./... -count=1
 go vet ./...
 go mod tidy -diff
 git diff --check
-make harness-verify
-PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify-project
-python3 .agents/skills/project-version-release/scripts/project_version_release.py \
-  check --repo "$PWD" --json
+make verify-architecture
+PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify-architecture
 PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify
 ```
 
 预期结果：全部退出 0；允许记录既有 macOS deployment linker warning，但不得掩盖新 error。若精确 Wails CLI 不在本机，先按仓库 gate 恢复到临时工具目录，不用未锁定版本替代。Actions 仍不是验证入口。
 
-本次执行说明：首次 `verify-project` 因当前 PATH 缺少 Wails CLI，以 `TOOLCHAIN-001` 在构建前正确停止；随后将仓库精确锁定的 `v3.0.0-alpha2.117` 恢复到临时工具目录，并通过版本输出与 binary module metadata 双重读回。`frontend/node_modules` 缺失时按 lockfile 执行 `npm ci`，199 packages、audit 0；既有 `glob@10.5.0` deprecated warning 与 macOS SDK deployment warning 不作为新增失败，也不在本卡升级依赖。完整验证后已清理所有 ignored 构建产物。
+本次执行说明：首次架构检查因当前 PATH 缺少 Wails CLI，以 `TOOLCHAIN-001` 在构建前正确停止；随后将仓库精确锁定的 `v3.0.0-alpha2.117` 恢复到临时工具目录，并通过版本输出与 binary module metadata 双重读回。`frontend/node_modules` 缺失时按 lockfile 执行 `npm ci`，199 packages、audit 0；既有 `glob@10.5.0` deprecated warning 与 macOS SDK deployment warning 不作为新增失败，也不在本卡升级依赖。完整验证后已清理所有 ignored 构建产物。
 
 ## 失败处理
 

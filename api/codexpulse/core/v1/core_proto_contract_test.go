@@ -53,6 +53,8 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		`(?s)message ErrorDetail\s*\{.*string code\s*=.*string message_key\s*=.*optional string field\s*=.*bool retryable\s*=`,
 		`(?s)message HandshakeResponse\s*\{.*string contract_version\s*=.*string transport\s*=`,
 		`(?s)message QueryInvalidationEvent\s*\{.*string version\s*=.*string domain\s*=.*uint64 sequence\s*=`,
+		`(?s)message UsageModelItem\s*\{.*string dimension_key\s*=.*AttributionValue model\s*=.*UsageTotals totals\s*=`,
+		`(?s)message UsageCostResponse\s*\{.*repeated UsageModelItem models\s*=\s*11\s*;`,
 	} {
 		if !regexp.MustCompile(pattern).MatchString(content) {
 			t.Fatalf("core.proto does not satisfy contract pattern %q", pattern)

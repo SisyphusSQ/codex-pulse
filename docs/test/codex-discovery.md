@@ -7,7 +7,7 @@
 - 本轮任务性质：TOO-251 filesystem discovery / fingerprint / pure reconcile contract
 - 当前结论：`PASS`；PR #12 已合并为 `b36533b`，TOO-251 已完成 main post-merge verify 与 Linear Done。
 - 自动化入口：`internal/codex/logs/*_test.go`
-- 对应计划 / issue：`.agents/plans/2026-07-14-too-251-codex-file-discovery.md` / TOO-251
+- 对应 issue：TOO-251
 - 结果说明：不同 final scope reviewer 发现的 identity-first 组合匹配、递归子目录 ENOENT 和 confirmed-home/allowlist 输入校验 3 个 blocking Medium 已完成代码与测试修复；原 implementation reviewer 复审返回 `ZERO_FINDINGS / blocking_findings: 0 / READY_FOR_CHANGELOG`。按 mandatory skills 写入唯一 `[TOO-251]` `Unreleased -> feature` 条目后，focused 20 次、race、83.0% coverage、全仓 test/race/vet、Pure Go Store guard、harness/project/version/diff、CHANGELOG/敏感扫描与 exact Wails `make verify` 全部通过；不同 final reviewer 复审返回 `ZERO_FINDINGS / blocking_findings: 0 / READY_TO_COMMIT`。PR #12 合并后在 main 重跑必要门禁并通过，临时产物已清理。
 
 ### 本次执行结果
@@ -111,10 +111,8 @@ go vet ./...
 ### 3. Harness 与 diff gate
 
 ```bash
-make harness-verify
-make project-check
+make verify-architecture
 git diff --check
-python3 .agents/skills/project-version-release/scripts/project_version_release.py check --repo "$PWD" --json
 ```
 
 预期结果：

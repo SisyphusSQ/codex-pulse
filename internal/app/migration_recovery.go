@@ -18,7 +18,6 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -463,7 +462,7 @@ func (controller *migrationRecoveryController) restore(ctx context.Context, inte
 	}
 	repository := factstore.NewRepository(database)
 	if _, err = repository.MigrateApplicationSchema(ctx); err == nil {
-		err = repository.AddPricingVersion(ctx, pricing.BuiltinOpenAI20260714())
+		err = installBuiltinPricingCatalog(ctx, repository)
 	}
 	if err == nil {
 		_, err = database.Backup(ctx, storesqlite.BackupOptions{Destination: ready})
@@ -610,7 +609,7 @@ func runMigrationStartupGate(ctx context.Context, config storesqlite.Config) (*f
 	repository := factstore.NewRepository(database)
 	_, gateErr := repository.MigrateApplicationSchema(ctx)
 	if gateErr == nil {
-		gateErr = repository.AddPricingVersion(ctx, pricing.BuiltinOpenAI20260714())
+		gateErr = installBuiltinPricingCatalog(ctx, repository)
 	}
 	closeErr := database.Close(context.WithoutCancel(ctx))
 	if gateErr == nil {

@@ -7,7 +7,7 @@
 - 本轮任务性质：TOO-263 内存凭证、受控 Wham 客户端、typed failure 与原子持久化
 - 当前结论：`PASS（已合并并完成 post-merge verify）`；implementation review 与 final scope review findings 均已按 TDD 修复并复审 `ZERO_FINDINGS`；PR #26 已合并为 `d507de6`，main post-merge 全部门禁通过，Linear TOO-263 已读回 Done。
 - 自动化入口：`internal/codex/quota/*_test.go`、`internal/store/quota_fetch_test.go`、`internal/store/quota_failure_migration_test.go`
-- 对应计划 / issue：`.agents/plans/2026-07-15-too-263-wham-quota-client.md` / TOO-263
+- 对应 issue：TOO-263
 - 结果说明：fake HTTP transport 覆盖成功、partial、结构漂移、失败分类、重试、取消、redirect 禁止和凭证释放；临时 Pure-Go SQLite 覆盖 schema v9→v10、migration rollback、原子 replay/conflict/rollback、last-known-good、suspicious-only、乱序结果和零次 HTTP 取消落库。implementation review 的四项 blocking 已修复并复审 `ZERO_FINDINGS`。不同 final reviewer 随后发现 response header 后过早 cancel、混合重试残留 HTTP status、推进时钟下 429 hint 早于 finished 三项 High；均已补 context-aware body/body I/O retry、Service→Repository 混合失败和 `Retry-After: 0` 边界 RED，并完成修复。rework 后 Pure-Go count=20、targeted race count=5、全仓 test/vet/race、tidy、harness/project/version/diff、依赖/raw-SQL guards 与 exact Wails `make verify` 通过，生成物已清理且 module/lock/bindings 无漂移；同一 final reviewer 复审 `ZERO_FINDINGS / READY_TO_COMMIT: YES`。未读取真实 Codex Home/auth，未发真实 Wham 请求。
 
 ### 本次执行结果
@@ -135,10 +135,7 @@ go mod tidy -diff
 ### 4. Harness、版本与完整项目验证
 
 ```bash
-make harness-verify
-make project-check
-python3 .agents/skills/project-version-release/scripts/project_version_release.py \
-  check --repo "$PWD" --json
+make verify-architecture
 git diff --check
 make verify
 ```
@@ -174,6 +171,6 @@ git status --short --branch
 ## 结果回写
 
 - 每轮执行后更新本文顶部“当前验证结果”和步骤状态；未执行步骤不得写成通过。
-- 只提交脱敏摘要；原始输出留在 `.agents/runs` 或 Linear comment。
+- 只提交脱敏摘要；原始输出留在 `.artifacts/runs` 或 Linear comment。
 - GitHub Actions 处于 `actions_disabled_by_user`：不查询、不触发、不等待，也不把空检查伪装成 CI 通过。
 - 普通 Execution 不发布；TOO-263 只在 implementation review 通过后更新 `CHANGELOG.md -> Unreleased`。

@@ -7,7 +7,7 @@
 - 本轮任务性质：TOO-260 实现验证
 - 当前结论：`第五轮 implementation review 与第二次 final scope/freeze review 均零阻断；pre-commit 本地门禁通过，准备原子提交与 PR self-merge`
 - 自动化入口：Go package tests、race、repository harness
-- 对应计划 / issue：TOO-260 / `.agents/plans/2026-07-14-too-260-live-backfill-scanbudget.md`
+- 对应 issue：TOO-260
 - 结果说明：schema v7、Pure-Go GORM repository、精确 lane 聚合、单重型 owner、真实 IO ScanBudget、bootstrap/live slice、crash-gap recovery 和同 Home 集成路径已通过当前本地回归；GitHub Actions 按 Root Goal 明确停用。
 
 ### 本次执行结果
@@ -30,7 +30,7 @@
 | race | 通过 | 全仓 `go test -race ./... -count=1`；取消/owner focused race `count=20` |
 | 核心重复验证 | 通过 | Store SQLite、store、scheduler、logs、bootstrap、liveindex CGO=0 `count=20`；取消/owner focused CGO=0 `count=100` |
 | coverage | 通过 | scheduler 76.6%、liveindex 69.1%、bootstrap 78.9%、logs 83.5%、indexer 85.2%、store 78.1% |
-| repository harness | 通过 | `make harness-verify` |
+| repository harness | 通过 | `make verify-architecture` |
 | 独立 implementation review | 通过 | 第五轮确认 cancellation finding 与此前 10 项阻断全部 CLOSED；`blocking_findings: 0`、`READY_FOR_CHANGELOG: YES` |
 | CHANGELOG closeout | 通过待 final freeze | 按 changelog-style 在 Unreleased feature 恢复唯一 `[TOO-260]` 已完成事实条目；diff、harness、version gate 通过 |
 | 最终 scope review / post-merge | review 通过 / post-merge 待执行 | 第二次复审 `FINDINGS: 0`、delta/freeze/pre-commit 全 YES；待 merge 后在 main 权威 commit 重跑 |
@@ -115,7 +115,7 @@ CGO_ENABLED=0 go test ./internal/scheduler -run \
 go test -race ./internal/scheduler ./internal/liveindex ./internal/bootstrap \
   ./internal/codex/logs ./internal/indexer ./internal/store -count=1
 go test ./... -count=1
-make harness-verify
+make verify-architecture
 ```
 
 预期结果：race、全量 Go test 与仓库 harness 全部通过。Wails linker 可输出既有 deployment target warning，但命令必须成功退出。

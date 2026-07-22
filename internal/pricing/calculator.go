@@ -19,14 +19,18 @@ func Calculate(usage Usage, rates Rates) (Calculation, error) {
 		usage.OutputTokens == nil || usage.ReasoningTokens == nil {
 		return Calculation{Status: CostStatusUnpriced, Reason: CostReasonMissingToken}, nil
 	}
-	if (*usage.InputTokens > 0 && rates.InputMicrosPerMillion == nil) ||
+	if *usage.CachedInputTokens > *usage.InputTokens {
+		return Calculation{}, ErrInvalidCalculation
+	}
+	uncachedInputTokens := *usage.InputTokens - *usage.CachedInputTokens
+	if (uncachedInputTokens > 0 && rates.InputMicrosPerMillion == nil) ||
 		(*usage.CachedInputTokens > 0 && rates.CachedInputMicrosPerMillion == nil) ||
 		((*usage.OutputTokens > 0 || *usage.ReasoningTokens > 0) && rates.OutputMicrosPerMillion == nil) {
 		return Calculation{Status: CostStatusUnpriced, Reason: CostReasonMissingPriceComponent}, nil
 	}
 
 	numerator := new(big.Int)
-	addCostNumerator(numerator, *usage.InputTokens, rates.InputMicrosPerMillion)
+	addCostNumerator(numerator, uncachedInputTokens, rates.InputMicrosPerMillion)
 	addCostNumerator(numerator, *usage.CachedInputTokens, rates.CachedInputMicrosPerMillion)
 	addCostNumerator(numerator, *usage.OutputTokens, rates.OutputMicrosPerMillion)
 	addCostNumerator(numerator, *usage.ReasoningTokens, rates.OutputMicrosPerMillion)

@@ -9,7 +9,7 @@
 
 ## Implementation evidence
 
-所有截图与 comparison 都位于 ignored `.agents/runs/too-272-visual-qa/`，不作为发布资产提交：
+所有截图与 comparison 都位于 ignored `.artifacts/runs/too-272-visual-qa/`，不作为发布资产提交：
 
 - `implementation-final-1280x770.png` / `comparison-final.png`
 - `implementation-final-1440x1024.png` / `shell-comparison-final.png`
@@ -100,10 +100,10 @@ final result: passed
 ## Source truth and evidence
 
 - Source：`docs/design/front/previews/05-sessions.png`，固定 1440×1024。
-- Implementation：ignored `.agents/runs/too-274-sessions-qa/implementation-final-1440x1024.png`。
-- Combined comparison：ignored `.agents/runs/too-274-sessions-qa/comparison-final-2880x1024.jpg`，source在左、implementation在右，同为1440×1024后横向合并。
-- Minimum fallback：ignored `.agents/runs/too-274-sessions-qa/minimum-900x600.jpg`。
-- Native packaged：ignored `.agents/runs/too-274-sessions-qa/native-1120x720.jpg`；nominal 1120×720 Wails window 的截屏像素为1119×719。
+- Implementation：ignored `.artifacts/runs/too-274-sessions-qa/implementation-final-1440x1024.png`。
+- Combined comparison：ignored `.artifacts/runs/too-274-sessions-qa/comparison-final-2880x1024.jpg`，source在左、implementation在右，同为1440×1024后横向合并。
+- Minimum fallback：ignored `.artifacts/runs/too-274-sessions-qa/minimum-900x600.jpg`。
+- Native packaged：ignored `.artifacts/runs/too-274-sessions-qa/native-1120x720.jpg`；nominal 1120×720 Wails window 的截屏像素为1119×719。
 - Normal-state 数据来自临时隔离 typed DTO cache；夹具不进入 production route、产品 runtime 或提交范围，验证后已删除。
 
 ## Fidelity assessment
@@ -144,8 +144,8 @@ current result: passed
 ## Source truth and current evidence
 
 - Source：`docs/design/front/previews/06-projects.png`，固定 1440×1024。
-- Implementation：ignored `.agents/runs/too-275-projects-qa/implementation-final-1440x1024.png`。
-- Combined comparison：ignored `.agents/runs/too-275-projects-qa/comparison-final-2880x1024.png`，source在左、implementation在右，二者同为1440×1024。
+- Implementation：ignored `.artifacts/runs/too-275-projects-qa/implementation-final-1440x1024.png`。
+- Combined comparison：ignored `.artifacts/runs/too-275-projects-qa/comparison-final-2880x1024.png`，source在左、implementation在右，二者同为1440×1024。
 - Minimum / native：ignored `minimum-900x600.png`、`native-normal-1120x720.png`与`native-isolated-empty-1120x720.png`。
 - 自动化已覆盖：有限range/confidence/sort、list/Session/Model三套pagination、unknown/真实0、partial/stale/fatal/not-found、键盘选择、focus return、ECharts reduce-motion/lifecycle和opaque identity不进DOM。
 
@@ -170,10 +170,10 @@ current result: passed
 ## Source truth and evidence
 
 - Source：`docs/design/front/previews/04-overview.png`，固定 1440×1024。
-- Implementation：ignored `.agents/runs/TOO-273-overview-qa.png`。
-- Combined comparison：ignored `.agents/runs/TOO-273-overview-comparison.png`，source 在左、implementation 在右，同为 1440×1024 后横向合并。
-- Minimum fallback：ignored `.agents/runs/TOO-273-min-900x600.png`。
-- Native packaged：ignored `.agents/runs/TOO-273-native-1120x720.png`，nominal 1120×720 Wails window 的截屏像素为1119×719。
+- Implementation：ignored `.artifacts/runs/TOO-273-overview-qa.png`。
+- Combined comparison：ignored `.artifacts/runs/TOO-273-overview-comparison.png`，source 在左、implementation 在右，同为 1440×1024 后横向合并。
+- Minimum fallback：ignored `.artifacts/runs/TOO-273-min-900x600.png`。
+- Native packaged：ignored `.artifacts/runs/TOO-273-native-1120x720.png`，nominal 1120×720 Wails window 的截屏像素为1119×719。
 - Normal-state 数据来自临时隔离 typed DTO cache；夹具不进入 production route、产品 runtime 或提交范围，验证后已删除。
 
 ## Fidelity assessment

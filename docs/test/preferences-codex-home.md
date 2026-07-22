@@ -98,11 +98,8 @@ go mod tidy -diff
 go test ./... -count=1
 go test -race ./... -count=1
 go vet ./...
-make harness-verify
-make project-check
+make verify-architecture
 git diff --check
-python3 .agents/skills/project-version-release/scripts/project_version_release.py \
-  check --repo "$PWD" --json
 make verify
 ```
 
@@ -136,5 +133,5 @@ make verify
 ## 结果回写
 
 - 每轮执行后更新“当前验证结果”和“当前实测证据”，保留已完成的脱敏摘要，不删回空模板。
-- 原始长输出只保留在本地 `.agents/runs/TOO-258-preferences-home-switch.md`；提交版不记录机器绝对 temp path、原始 JSONL/auth、凭据或 raw filesystem error。
+- 原始长输出只保留在本地 `.artifacts/runs/TOO-258-preferences-home-switch.md`；提交版不记录机器绝对 temp path、原始 JSONL/auth、凭据或 raw filesystem error。
 - 已按 `changelog-style` 写入唯一 `[TOO-258]` `Unreleased -> feature` 条目；post-integration 与不同 subagent final scope review 通过后才 commit/PR/merge。

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
-run_dir="$repo_root/.agents/runs/too-290-platform-$(date +%s)"
+run_dir="$repo_root/.artifacts/runs/too-290-platform-$(date +%s)"
 probe_dir="$run_dir/probe"
 app_binary="$repo_root/bin/Codex Pulse.app/Contents/MacOS/Codex Pulse"
 export PATH="$repo_root/.task/bin:$PATH"

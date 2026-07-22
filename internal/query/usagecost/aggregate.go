@@ -17,6 +17,7 @@ type nullableAccumulator struct {
 
 type totalsAccumulator struct {
 	rows                                  int
+	costRows                              int
 	turnCount, pricedCount, unpricedCount int64
 	input, cached, output, reasoning      nullableAccumulator
 	cost                                  nullableAccumulator
@@ -69,13 +70,25 @@ func (accumulator *totalsAccumulator) addMode(value store.RollupTotals, mode sto
 			return err
 		}
 	}
-	if (value.PricedTurnCount > 0 && value.EstimatedUSDMicros == nil) ||
-		(value.PricedTurnCount == 0 && value.EstimatedUSDMicros != nil) {
-		return errors.New("stored rollup cost shape is invalid")
-	}
-	if value.EstimatedUSDMicros != nil {
-		if err := accumulator.cost.add(value.EstimatedUSDMicros); err != nil {
-			return err
+	if mode == store.AnalyticsReadLightIndex {
+		if value.EstimatedUSDMicros != nil {
+			if *value.EstimatedUSDMicros < 0 {
+				return errors.New("stored light rollup cost is invalid")
+			}
+			if err := accumulator.cost.add(value.EstimatedUSDMicros); err != nil {
+				return err
+			}
+			accumulator.costRows++
+		}
+	} else {
+		if (value.PricedTurnCount > 0 && value.EstimatedUSDMicros == nil) ||
+			(value.PricedTurnCount == 0 && value.EstimatedUSDMicros != nil) {
+			return errors.New("stored rollup cost shape is invalid")
+		}
+		if value.EstimatedUSDMicros != nil {
+			if err := accumulator.cost.add(value.EstimatedUSDMicros); err != nil {
+				return err
+			}
 		}
 	}
 	if value.TurnCount > 0 {
@@ -134,10 +147,14 @@ func (accumulator *totalsAccumulator) totals() (store.RollupTotals, error) {
 func (accumulator *totalsAccumulator) totalsMode(mode store.AnalyticsReadMode) (store.RollupTotals, error) {
 	if accumulator.rows == 0 {
 		zero := int64(0)
+		var cost *int64
+		if mode != store.AnalyticsReadLightIndex {
+			cost = cloneInt64(&zero)
+		}
 		return store.RollupTotals{
 			InputTokens: &zero, CachedInputTokens: cloneInt64(&zero),
 			OutputTokens: cloneInt64(&zero), ReasoningTokens: cloneInt64(&zero),
-			TotalTokens: cloneInt64(&zero), EstimatedUSDMicros: cloneInt64(&zero),
+			TotalTokens: cloneInt64(&zero), EstimatedUSDMicros: cost,
 		}, nil
 	}
 	input := accumulator.input.pointer()
@@ -161,7 +178,7 @@ func (accumulator *totalsAccumulator) totalsMode(mode store.AnalyticsReadMode) (
 		total = &value
 	}
 	var cost *int64
-	if accumulator.pricedCount > 0 {
+	if accumulator.pricedCount > 0 || mode == store.AnalyticsReadLightIndex && accumulator.costRows > 0 {
 		cost = accumulator.cost.pointer()
 		if cost == nil {
 			return store.RollupTotals{}, errors.New("aggregated priced cost is unavailable")

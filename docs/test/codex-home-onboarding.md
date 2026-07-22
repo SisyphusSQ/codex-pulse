@@ -7,7 +7,7 @@
 - 本轮任务性质：TOO-257 metadata-only Home probe / private preferences / onboarding state machine
 - 当前结论：implementation review 与不同 subagent final scope review 均 `ZERO_FINDINGS`；CHANGELOG verdict `PASS`，`READY_TO_COMMIT=true`，包含 CHANGELOG 的 post-integration full verify 已通过。
 - 自动化入口：`internal/codex/logs/home_probe_test.go`、`internal/preferences/file_store_test.go`、`internal/onboarding/service_test.go`
-- 对应计划 / issue：`.agents/plans/2026-07-14-too-257-codex-home-onboarding.md` / TOO-257
+- 对应 issue：TOO-257
 - 结果说明：确认前只枚举 allowlisted 目录和 stat metadata；mode `000` synthetic JSONL/auth fixture 仍可完成结构探测且 size/mode/mtime 不变。confirmation ID 不绑定动态 count/bytes，Confirm 重探测 physical identity；私有 snapshot 以 `0700/0600` 原子发布，支持幂等、并发首次确认、冲突保护和 durability-unknown 读回。未读取真实 Codex Home，未启动 indexing、SQLite、网络、Actions 或 release。
 
 ### 本次执行结果
@@ -127,11 +127,8 @@ CGO_ENABLED=0 go test ./internal/store/... -count=1
 ### 4. Harness、版本与完整项目验证
 
 ```bash
-make harness-verify
-make project-check
+make verify-architecture
 git diff --check
-python3 .agents/skills/project-version-release/scripts/project_version_release.py \
-  check --repo "$PWD" --json
 make verify
 ```
 

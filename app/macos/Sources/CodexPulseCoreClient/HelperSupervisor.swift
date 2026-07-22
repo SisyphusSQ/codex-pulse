@@ -21,6 +21,20 @@ public struct RunningHelper: Sendable {
     public let databasePath: String
     public let preferencesPath: String
     public let bearerToken: String
+
+    public init(
+        processID: Int32,
+        socketPath: String,
+        databasePath: String,
+        preferencesPath: String,
+        bearerToken: String
+    ) {
+        self.processID = processID
+        self.socketPath = socketPath
+        self.databasePath = databasePath
+        self.preferencesPath = preferencesPath
+        self.bearerToken = bearerToken
+    }
 }
 
 public enum HelperStopMode: Sendable {
@@ -331,8 +345,14 @@ public actor HelperSupervisor {
             guard launchGeneration == expectedGeneration, processID == expectedProcessID else {
                 throw HelperSupervisorError.launchCancelled
             }
-            if let identity = try Self.validatedSocketIdentity(path), identity != previousIdentity {
-                return
+            do {
+                if let identity = try Self.validatedSocketIdentity(path), identity != previousIdentity {
+                    return
+                }
+            } catch HelperSupervisorError.runtimeDirectory("unsafe_socket") {
+                // bind(2) makes the UDS visible before the supervised Helper can chmod it to 0600.
+                // Never accept that transient identity; keep waiting for the same private runtime path
+                // to become an owned 0600 socket or for the child/timeout checks below to fail closed.
             }
             var status: Int32 = 0
             let result = Darwin.waitpid(expectedProcessID, &status, WNOHANG)

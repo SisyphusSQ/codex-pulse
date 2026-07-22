@@ -41,8 +41,8 @@
 | 跨语言取消 | `make verify-swift-client` | PASS；Swift 取消 gRPC stream 后，认证 grpc-go probe 在 stream context 取消时写入隔离 0600 marker；Go broker context/unsubscribe 测试随 `make verify-go` 执行 |
 | Swift Proto drift | `scripts/proto/generate-swift.sh --check` | PASS；临时重新生成与 checked-in `core.pb.swift`/`core.grpc.swift` 一致 |
 | 真实 transport E2E | `swift run --package-path app/macos codex-pulse-transport-spike --helper "$PWD/bin/codex-pulse"` | PASS；见下方 live 证据 |
-| project mechanical gate | `make verify-project` | PASS；含 `SWIFT-001` 正向检查与依赖漂移负向 fixture |
-| 完整仓库 gate | `make verify` | PASS；harness、project 正/负 gate、Go Proto、race、vet、Swift Proto/contract/live E2E 全部通过 |
+| architecture gate | `make verify-architecture` | PASS；含 `SWIFT-001`、工具链和依赖固定检查 |
+| 完整仓库 gate | `make verify` | PASS；架构约束、Go/Swift Proto、race、vet、Swift contract/transport E2E 全部通过 |
 
 ## Live E2E 证据
 
