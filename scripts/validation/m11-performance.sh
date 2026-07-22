@@ -44,9 +44,9 @@ case "$MACOSX_DEPLOYMENT_TARGET" in
     ;;
 esac
 
-run_dir="$repo_root/.agents/runs/$run_id"
+run_dir="$repo_root/.artifacts/runs/$run_id"
 if [[ -e "$run_dir" ]]; then
-  printf 'run directory already exists: .agents/runs/%s\n' "$run_id" >&2
+  printf 'run directory already exists: .artifacts/runs/%s\n' "$run_id" >&2
   exit 1
 fi
 mkdir -p "$run_dir"
@@ -91,5 +91,5 @@ joined=$(IFS=,; printf '%s' "${summary_paths[*]}")
 go run ./scripts/m11perf --summaries "$joined" >"$run_dir/aggregate.json"
 printf 'completed_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$run_dir/environment.txt"
 printf 'completed\tPASS\n' >>"$run_dir/manifest.tsv"
-printf 'M11 performance matrix passed; evidence: .agents/runs/%s\n' "$run_id"
+printf 'M11 performance matrix passed; evidence: .artifacts/runs/%s\n' "$run_id"
 sed -n '1p' "$run_dir/aggregate.json"

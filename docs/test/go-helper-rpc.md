@@ -37,8 +37,7 @@ make verify
 该入口依次执行：
 
 ```text
-make harness-verify
-make verify-project
+make verify-architecture
 make verify-proto
 go test -race ./...
 go vet ./...

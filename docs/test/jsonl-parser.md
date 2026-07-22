@@ -7,7 +7,7 @@
 - 本轮任务性质：TOO-252 rollout JSONL incremental parser / safe decoder / explicit turn lifecycle
 - 当前结论：`PASS`；PR #13 已合并为 `24f0aeb`，TOO-252 已完成 main post-merge verify 与 Linear Done。
 - 自动化入口：`internal/codex/logs` 的 framer、decoder、lifecycle、stream parser 与 fuzz tests
-- 对应计划 / issue：`.agents/plans/2026-07-14-too-252-jsonl-parser-turn-lifecycle.md` / TOO-252
+- 对应 issue：TOO-252
 - 结果说明：使用 synthetic upstream-shaped fixture 验证 CRLF/UTF-8/chunk、坏行恢复、重复 key、未知类型、隐私 marker、turn lifecycle、nullable usage 和 deterministic fuzz；未读取真实 Codex rollout。
 
 ### 本次执行结果
@@ -122,11 +122,8 @@ if CGO_ENABLED=0 go list -deps ./internal/store | \
   rg '^(gorm.io/driver/sqlite|github.com/mattn/go-sqlite3)$'; then
   exit 1
 fi
-make harness-verify
-make project-check
+make verify-architecture
 git diff --check
-python3 .agents/skills/project-version-release/scripts/project_version_release.py \
-  check --repo "$PWD" --json
 make verify
 ```
 

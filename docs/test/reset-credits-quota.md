@@ -7,7 +7,7 @@
 - 本轮任务性质：TOO-265 Reset Credits read-only provider、动态汇总、quota/reset-credits durable refresh schedule、退避与 robfig cron runner
 - 当前结论：`PASS（已合并并完成 post-merge verify）`；两项 final scope P1 均已按 TDD 修复并复审关闭，`blocking_findings=0`；PR #28 已合并为 `f953f74`，main post-merge 门禁通过，Linear TOO-265 已读回 Done。
 - 自动化入口：`internal/codex/quota/reset_credits_*_test.go`、`internal/codex/quota/schedule_test.go`、`internal/store/reset_credits_test.go`、`internal/store/source_refresh_schedule_test.go`、`internal/store/quota_schedule_migration_test.go`、`internal/scheduler/quota_refresh_test.go`
-- 对应计划 / issue：`.agents/plans/2026-07-15-too-265-reset-credits-quota-schedule.md` / TOO-265
+- 对应 issue：TOO-265
 - 结果说明：Reset Credits payload、quota current、source attempt/state、durable schedule/claim fence 与 cron lifecycle 都使用 synthetic fixture。已证明固定只读 endpoint、content-free facts、动态到期、v11→v12、exact replay、last-known-good、cadence、5/10/20/30 分钟退避、独立且取较晚值的 Retry-After fence、60 秒 manual throttle、foreground/wake 错误退避、startup/recovery/reconcile 保留 durable due、取消、preferences disable、启动后 lease 到期恢复、attempt-first/release-first crash gap 与迟到 attempt 隔离；未读取真实 auth，未发真实网络请求。
 
 ### 2026-07-22 原生 App 真实 Home follow-up
@@ -160,8 +160,7 @@ go test -race ./...
 go vet ./...
 go mod tidy -diff
 git diff --check
-make harness-verify
-python3 .agents/skills/project-version-release/scripts/project_version_release.py check --repo "$PWD" --json
+make verify-architecture
 make verify
 ```
 

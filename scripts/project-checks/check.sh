@@ -9,7 +9,7 @@ fail() {
   local rule=$1
   local source=$2
   shift 2
-  printf '[%s] %s\nsource: %s\ncommand: make project-check\n' "$rule" "$*" "$source" >&2
+  printf '[%s] %s\nsource: %s\ncommand: make verify-architecture\n' "$rule" "$*" "$source" >&2
   exit 1
 }
 
@@ -62,19 +62,20 @@ go_version=$(awk '$1 == "go" { print $2; exit }' "$REPO_ROOT/go.mod")
 grep -Fq 'google.golang.org/grpc v1.82.1' "$REPO_ROOT/go.mod" || fail TOOLCHAIN-001 go.mod "grpc-go must be v1.82.1"
 grep -Fq 'google.golang.org/protobuf v1.36.11' "$REPO_ROOT/go.mod" || fail TOOLCHAIN-001 go.mod "protobuf-go must be v1.36.11"
 
-[ ! -e "$REPO_ROOT/frontend/package.json" ] || fail ARCH-001 docs/harness/project-constraints.md "frontend manifest returned"
+[ ! -e "$REPO_ROOT/frontend/package.json" ] || fail ARCH-001 AGENTS.md "frontend manifest returned"
 for removed in internal/updater internal/platform/tray internal/singleinstance scripts/sparkle build cmd/trayprobe cmd/traystatusprobe; do
   if [ -d "$REPO_ROOT/$removed" ] && find "$REPO_ROOT/$removed" -type f \( -name '*.go' -o -name '*.sh' -o -name '*.yml' -o -name '*.yaml' \) -print -quit | grep -q .; then
-    fail ARCH-001 docs/harness/project-constraints.md "removed desktop source returned: $removed"
+    fail ARCH-001 AGENTS.md "removed desktop source returned: $removed"
   fi
 done
 
 if grep -R -E 'github.com/wailsapp|@wailsio|Sparkle|sparkle|AppKit' \
   "$REPO_ROOT/go.mod" "$REPO_ROOT/main.go" "$REPO_ROOT/internal" \
   --include='*.go' --include='*.sh' >/dev/null 2>&1; then
-  fail ARCH-001 docs/harness/project-constraints.md "Wails/AppKit/Sparkle dependency returned to Helper source"
+  fail ARCH-001 AGENTS.md "Wails/AppKit/Sparkle dependency returned to Helper source"
 fi
 
+require_pattern Makefile '^verify-architecture:' VERIFY-003 Makefile
 require_pattern Makefile '^verify-proto:' VERIFY-003 Makefile
 require_pattern Makefile '^verify-helper:' VERIFY-003 Makefile
 require_pattern Makefile '^verify-go:' VERIFY-003 Makefile
@@ -128,14 +129,14 @@ require_pattern scripts/macos/run-app-live-smoke.sh 'standard_housekeeping=allow
 require_pattern scripts/macos/run-app-live-smoke.sh 'primary_pages=loaded' SWIFT-004 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'unavailable=none ui_pages=7' SWIFT-004 docs/test/native-primary-pages.md
 if grep -Eq 'mktemp -d' "$REPO_ROOT/scripts/macos/run-app-live-smoke.sh"; then
-  fail SWIFT-004 docs/harness/project-constraints.md "real Home live smoke must reuse an existing runtime"
+  fail SWIFT-004 AGENTS.md "real Home live smoke must reuse an existing runtime"
 fi
 
 if grep -R -E 'sqlite3_open|SQLite\.open|\.jsonl(["'"'"']|$)|127\.0\.0\.1|localhost|NWListener|ServerBootstrap' \
   "$REPO_ROOT/app/macos/Sources/CodexPulseApp" \
   "$REPO_ROOT/app/macos/Sources/CodexPulseAppSupport" \
   --include='*.swift' >/dev/null 2>&1; then
-  fail SWIFT-002 docs/harness/project-constraints.md "Swift App introduced direct data access or TCP listener"
+  fail SWIFT-002 AGENTS.md "Swift App introduced direct data access or TCP listener"
 fi
 
 WORKFLOW="$REPO_ROOT/.github/workflows/ci.yml"
@@ -146,4 +147,4 @@ if grep -Ein 'setup-node|npm |wails|sparkle|notarytool|gh release|git tag|conten
   fail CI-001 "$WORKFLOW" "workflow contains removed UI tooling or privileged/publishing behavior"
 fi
 
-printf 'project checks passed (ARCH-001, RPC-001, RPC-002, DATA-001, SWIFT-001, SWIFT-002, SWIFT-003, SWIFT-004, TOOLCHAIN-001, VERIFY-003, CI-001)\n'
+printf 'architecture checks passed (ARCH-001, RPC-001, RPC-002, DATA-001, SWIFT-001, SWIFT-002, SWIFT-003, SWIFT-004, TOOLCHAIN-001, VERIFY-003, CI-001)\n'

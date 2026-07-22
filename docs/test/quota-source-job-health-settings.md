@@ -9,7 +9,7 @@
 - M6 Master 集成验证（2026-07-17）：`query/... + store + app + scheduler` focused count10 全部通过（Store 102.690s、app 19.047s、scheduler 34.816s），race count3 全部通过（Store 218.458s、app 41.893s、scheduler 78.954s）；完整 `make verify`、全仓 race（Store 82.855s）、vet/tidy/diff、harness/project/version、frontend 5 files/16 tests、generated 319 packages/1 service/15 methods/32 enums/65 models/1 event、arm64/minOS 15 app/ZIP 全部通过。release classification=`issue-only`、version `findings=[]`，最终 diff 仅含 M6 五份 runbook。
 - M6 Master final review：独立 subagent 首轮发现本地 ignored Master plan skeleton Medium，补齐后又发现并关闭 `internal/app/service.go` / `Service` 命名真相 Low；最终 Critical/High/Medium/Low 均为 none，`remaining_findings=0`、`blocking_findings=0`、`MASTER_FINAL_REVIEW_PASS:YES`。
 - 自动化入口：`internal/query/runtimeinfo/*_test.go`、`internal/store/runtime_query_test.go`、`internal/query/value_test.go`
-- 对应计划 / issue：`.agents/plans/2026-07-16-too-269-runtime-settings-queries.md` / TOO-269
+- 对应 issue：TOO-269
 - 结果说明：当前全部使用 synthetic typed facts 和 `testing.T.TempDir()` Pure-Go SQLite；未读取真实 Codex Home/Preferences、用户数据库或 credential，未请求 Wham，未注册 Wails binding，未触发 Actions 或 release。
 
 ### 本次执行结果
@@ -146,8 +146,7 @@ go test -race ./...
 go vet ./...
 go mod tidy -diff
 git diff --check
-make harness-verify
-python3 .agents/skills/project-version-release/scripts/project_version_release.py check --repo "$PWD" --json
+make verify-architecture
 make verify
 ```
 

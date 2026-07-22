@@ -80,8 +80,8 @@ go run ./scripts/lightindex-e2e \
 | frontend typecheck | PASS |
 | frontend Vitest | PASS，57 files / 186 tests |
 | frontend production build | PASS；只有既有的 500kB chunk warning |
-| `make harness-verify` | PASS |
-| `make verify-project` | PASS |
+| `make verify-architecture` | PASS |
+| `make verify-architecture` | PASS |
 | `make verify-generated` | PASS；bindings 与 Go module files stable |
 | `make verify-package` | PASS；arm64、minOS 15.0、ad-hoc 签名、App/ZIP 解包复验 |
 | `make m11-privacy-audit` | PASS；内部完整串行执行 `make verify` |

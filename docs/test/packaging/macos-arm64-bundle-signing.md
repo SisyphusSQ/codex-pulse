@@ -183,9 +183,8 @@ test -z "$(lsof -nP -iTCP:9245 -sTCP:LISTEN || true)"
 go test ./...
 go vet ./...
 (cd frontend && npm run typecheck && npm test && npm run build)
-make harness-verify
+make verify-architecture
 git diff --check
-python3 .agents/skills/project-version-release/scripts/project_version_release.py check --repo "$PWD" --json
 ```
 
 Expected:

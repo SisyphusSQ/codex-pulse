@@ -130,11 +130,8 @@ fi
 go test ./... -count=1
 go vet ./...
 go test -race ./...
-make harness-verify
-make project-check
+make verify-architecture
 git diff --check
-python3 .agents/skills/project-version-release/scripts/project_version_release.py \
-  check --repo "$PWD" --json
 make verify
 ```
 
@@ -153,7 +150,7 @@ make verify
 | 实际依赖链 | PASS：`CGO_ENABLED=0 go list -deps` 未命中 official driver/mattn |
 | count=20 / Pure Go race / coverage | PASS：cost/rollup focused 与 pricing 各 20 次；Pure Go race 通过；pricing 100%、store 80.0% statement coverage |
 | full repo test/vet/race | PASS：全仓全部通过；仅出现已登记的 macOS deployment-target linker warning |
-| harness/project/version/diff | PASS：`harness-verify`、精确 Wails `v3.0.0-alpha2.117` 下的 `project-check`、`findings=[]` 与 diff check 通过 |
+| architecture/version/diff | PASS：当时的架构检查、精确 Wails `v3.0.0-alpha2.117`、`findings=[]` 与 diff check 通过 |
 | `make verify` | PASS：post-integration 重跑 Go/vet、前端 typecheck/test/build、generated stability、thin arm64/minOS 15、ad-hoc app/ZIP 全部通过 |
 | implementation subagent review | PASS：原 2 High + 1 Medium 均 closed，`blocking_findings=0` |
 | post-integration / final scope review | PASS：不同 subagent 终审无 finding，`blocking_findings=0`，scope/changelog/version/GORM/隐私边界通过 |
@@ -173,6 +170,6 @@ make verify
 
 ## 清理与回写
 
-- 只清理本轮产生的 ignored build/package artifacts，不删除用户已有 `.agents/state/`、`.agents/runs/`、`.agents/plans/` 或其他未跟踪内容。
+- 只清理本轮产生的 ignored build/package artifacts，不删除仓库外本地归档、已有 `.artifacts/runs/` 或其他未跟踪内容。
 - closeout 前把 PENDING 更新为真实结果；未执行的 gate 不得写成 PASS。
 - Issue/PR 记录 `actions_disabled_by_user`，普通 Execution Issue 不触发 release。

@@ -7,7 +7,7 @@
 - 本轮任务性质：TOO-261 实现验证
 - 当前结论：`通过：最终 scope review 的 2 个 P1 已关闭，第六轮 implementation review、CHANGELOG 集成门禁与不同 subagent 第二轮 final scope review 均通过，pre_commit_ready=YES`
 - 自动化入口：Go package tests、race、repository harness
-- 对应计划 / issue：TOO-261 / `.agents/plans/2026-07-15-too-261-pause-sleep-recovery.md`
+- 对应 issue：TOO-261
 - 结果说明：schema v8 lifecycle/retry、generation fence、暂停 drain、wake/source reconcile、持久退避、Wails event adapter 与真实 app runtime 装配已通过 focused/count/race 与全仓回归；第四轮补齐 Interrupt->Resume 时间余量、active/counter executor 前后双层边界、确定性 integration，并关闭内建 executor active 记账越界和 cycle commit 取消竞态；GitHub Actions 按 Root Goal 明确停用。
 
 ### 本次执行结果
@@ -49,7 +49,7 @@
 
 - Go test 会写入本机 Go build/test cache。
 - 测试在私有临时目录创建合成 confirmed Home 与 SQLite/WAL 文件，结束后自动清理。
-- `make harness-verify` 与 `make project-check` 只读取仓库并可能写入忽略的本地构建缓存。
+- `make verify-architecture` 与 `make verify-architecture` 只读取仓库并可能写入忽略的本地构建缓存。
 - 不访问真实 Codex Home、Linear、GitHub Actions 或其它外部系统；不执行 release。
 
 ## 前置条件
@@ -109,8 +109,7 @@ go test ./... -count=1
 go test -race ./... -count=1
 go vet ./...
 go mod tidy -diff
-make harness-verify
-make project-check
+make verify-architecture
 ```
 
 预期结果：全部成功退出；`go mod tidy -diff` 无输出。Wails linker 只允许既有 deployment target warning，不得出现新的构建失败。

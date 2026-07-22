@@ -34,9 +34,9 @@ for command_name in go git uname sw_vers sysctl awk sed grep shasum; do
     exit 1
   }
 done
-run_dir="$repo_root/.agents/runs/$run_id"
+run_dir="$repo_root/.artifacts/runs/$run_id"
 if [[ -e "$run_dir" ]]; then
-  printf 'run directory already exists: .agents/runs/%s\n' "$run_id" >&2
+  printf 'run directory already exists: .artifacts/runs/%s\n' "$run_id" >&2
   exit 1
 fi
 mkdir -p "$run_dir"
@@ -132,5 +132,5 @@ awk 'NR > 1 { if ($2 > cpu) cpu=$2; if ($3 > rss) rss=$3; if ($4 > db) db=$4; if
   "$run_dir/idle.tsv" >"$run_dir/idle-summary.txt"
 printf 'tray-idle\tPASS\ncompleted\tPASS\n' >>"$run_dir/manifest.tsv"
 printf 'completed_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$run_dir/environment.txt"
-printf 'M11 support performance matrix passed; evidence: .agents/runs/%s\n' "$run_id"
+printf 'M11 support performance matrix passed; evidence: .artifacts/runs/%s\n' "$run_id"
 cat "$run_dir/synthetic-summary.txt" "$run_dir/idle-summary.txt"

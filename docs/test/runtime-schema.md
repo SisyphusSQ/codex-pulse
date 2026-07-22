@@ -65,11 +65,8 @@ go test -race ./internal/app -count=10
 go test ./... -count=1
 go vet ./...
 go test -race ./...
-make harness-verify
-make project-check
+make verify-architecture
 git diff --check
-python3 .agents/skills/project-version-release/scripts/project_version_release.py \
-  check --repo "$PWD" --json
 make verify
 ```
 

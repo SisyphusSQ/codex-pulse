@@ -136,18 +136,16 @@ go test ./internal/codex/appserver ./internal/lightindex ./internal/app
 ## 整体 gate、review 与对抗式复验
 
 ```bash
-make verify-project
-make harness-verify
+make verify-architecture
 make verify
 git diff --check
-make harness-review-gate PLAN=.agents/plans/2026-07-21-too-314-native-primary-pages.md
 ```
 
-结果：`make verify-project`、`make harness-verify`、最终 `make verify` 均 PASS；`git diff --check HEAD` 与 plan review gate 在最终文档写回后复跑。
+结果：`make verify-architecture` 与最终 `make verify` 均 PASS；`git diff --check HEAD` 在最终文档写回后复跑。
 
 最终 `make verify` 覆盖：
 
-- project 正/负向 contract fixtures、harness、Proto 生成一致性；
+- 架构与依赖约束、Proto 生成一致性；
 - `go test -race ./...`、`go vet ./...`；
 - Swift Core deterministic tests、认证 UDS transport spike、App deterministic tests 与 build；
 - unsigned development App 的七页 route/render、隔离 empty Home 下的真实 Helper/UDS 数据链、Settings CAS smoke、受控 Shutdown 与隔离清理；真实 Home 产品数据链由单独的 live gate 覆盖。

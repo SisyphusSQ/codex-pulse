@@ -30,7 +30,7 @@
 | 真实 Home 多页面 live E2E | PASS / 有界恢复 | 非零 Sessions/Projects/Usage、四类详情、七页 render、`unavailable=none`；Home-switch post-commit light-index 不一致需先恢复 |
 | 真实 system lifecycle | 未执行 | 隔离空白配置不建立 production lifecycle runtime；不得冒充通过 |
 | `xcodebuild` / XCTest / UI automation | blocker | 当前仅有 Command Line Tools，且本卡无权安装/切换 Xcode |
-| project/harness/full verify | PASS | project 正/负向 fixture、harness、Proto、Go race/vet、Swift transport 与 App smoke 均通过 |
+| architecture/full verify | PASS | 架构约束、Proto、Go race/vet、Swift transport 与 App smoke 均通过 |
 | 独立 review | PASS | blocking findings 修复后复审为 0；残余风险保持未执行边界 |
 
 ## 2026-07-22 真实 Home live E2E
@@ -179,21 +179,19 @@ NSApplication executable
 
 空白隔离数据的业务读回为 quota window `0` 条、session `0` 条；这些是权威空结果/不可用状态的界面输入，不是静态 fixture 页面。`TOO-314` 已将同一个 smoke 扩展到所有主要页面和安全 Settings mutation，细节见 [`native-primary-pages.md`](native-primary-pages.md)。
 
-### 4. Project / harness / full repository gate
+### 4. Architecture / full repository gate
 
 ```bash
-make verify-project
-make harness-verify
+make verify-architecture
 make verify
 git diff --check
 ```
 
 当前结果：PASS。
 
-- `make verify-project`：PASS，含 `SWIFT-002` 正向规则和 direct SQLite/JSONL/TCP、缺失 native App 入口的负向 fixture。
-- `make harness-verify`：PASS。
+- `make verify-architecture`：PASS，覆盖 `SWIFT-002`、direct SQLite/JSONL/TCP 禁止项和关键工具链约束。
 - `make verify`：PASS，覆盖 Proto drift、`go test -race ./...`、`go vet ./...`、Swift transport 真实 Helper E2E、App deterministic tests、unsigned development App 组装与 native UI smoke。
-- `git diff --check`：PASS（最终文档和 plan gate 后仍须复跑）。
+- `git diff --check`：PASS（最终文档写回后仍须复跑）。
 
 ### 独立 review 与对抗式审查
 
@@ -201,19 +199,6 @@ git diff --check
 - review 期间发现并已修复：startup active 越过 Bootstrap、旧 refresh generation 覆盖、Helper/stream terminal 未呈现、stale 无恢复入口、Shutdown 无内部 deadline、非 Gregorian 日期、startup sleep/wake 与 active-before-wake 丢事件。
 - 主线程对抗式审查另行修复：并发 start、smoke 无外层 timeout、开发 Bundle 任意删除目标、smoke forced shutdown 误报 PASS、`/private/tmp` 存在状态引发的 canonicalization 误拒绝。
 - 残余风险：真实 Helper crash/stream exhaustion 尚未做进程故障注入 live E2E；Handshake/Bootstrap/Overview RPC 尚无显式逐调用 deadline；当前仍是 unsigned development bundle。
-
-### 5. Plan review gate
-
-```bash
-make harness-review-gate PLAN=.agents/plans/2026-07-21-too-313-native-app-shell-overview.md
-```
-
-当前结果：PASS。
-
-```text
-result=pass
-blocking_findings=none
-```
 
 ## 失败处理
 

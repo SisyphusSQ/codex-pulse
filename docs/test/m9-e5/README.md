@@ -27,12 +27,12 @@ go test -race ./internal/platform/tray ./internal/app
 (cd frontend && npm test && npm run build)
 go test ./...
 go vet ./...
-make harness-verify
+make verify-architecture
 git diff --check
 bash docs/test/m9-e5/replay-native.sh
 ```
 
-runbook 会重新 package macOS 15 arm64 ad-hoc `.app`，验证有限菜单构造、`Cmd-W` hide、原有 Popover 主动作保持、精确 PID 存活及无 native crash；typed 菜单映射、设置/概览路由、最小化恢复、双源 refresh、About 与 fail-closed drain 由聚焦 Go/前端测试覆盖。当前机器的状态项位于 camera notch 后方，因此脚本不会把不可达坐标右击伪装成真实菜单回放。AX/应用日志只写入 ignored `.agents/runs/too-289-native-*`。
+runbook 会重新 package macOS 15 arm64 ad-hoc `.app`，验证有限菜单构造、`Cmd-W` hide、原有 Popover 主动作保持、精确 PID 存活及无 native crash；typed 菜单映射、设置/概览路由、最小化恢复、双源 refresh、About 与 fail-closed drain 由聚焦 Go/前端测试覆盖。当前机器的状态项位于 camera notch 后方，因此脚本不会把不可达坐标右击伪装成真实菜单回放。AX/应用日志只写入 ignored `.artifacts/runs/too-289-native-*`。
 
 ## 当前结果
 

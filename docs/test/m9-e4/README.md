@@ -27,11 +27,11 @@ go test -race ./internal/platform/tray ./internal/app
 (cd frontend && npm test && npm run build)
 go test ./...
 go vet ./...
-make harness-verify
+make verify-architecture
 git diff --check
 ```
 
-浏览器视觉验证使用 ignored `.agents/runs/too-288-popover-qa/capture.mjs`，短暂启动只监听 `127.0.0.1:9245` 的 Vite server，并把固定 420×760 结果写入：
+浏览器视觉验证使用 ignored `.artifacts/runs/too-288-popover-qa/capture.mjs`，短暂启动只监听 `127.0.0.1:9245` 的 Vite server，并把固定 420×760 结果写入：
 
 - [secondary-only.png](evidence/secondary-only.png)
 - [primary-restored.png](evidence/primary-restored.png)

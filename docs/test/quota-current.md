@@ -7,7 +7,7 @@
 - 本轮任务性质：TOO-266 Quota Current 单 snapshot 只读查询、稳定 domain DTO 与可信场景矩阵
 - 当前结论：`PASS（已合并并完成 post-merge verify）`；两轮独立 review `blocking_findings=0`；PR #29 已合并为 `4fc76ce`，main post-merge 门禁通过，Linear TOO-266 已读回 Done。
 - 自动化入口：`internal/codex/quota/current_query_test.go`、`internal/store/quota_query_snapshot_test.go`
-- 对应计划 / issue：`.agents/plans/2026-07-16-too-266-quota-current-query.md` / TOO-266
+- 对应 issue：TOO-266
 - 结果说明：全部使用 synthetic observation/source state/schedule/Reset Credits 和 `testing.T.TempDir()` Pure-Go SQLite；未读取真实 Codex Home/auth，未请求 Wham，未注册 Wails service，未触发 Actions 或 release。
 
 ### 本次执行结果
@@ -153,8 +153,7 @@ go test -race ./...
 go vet ./...
 go mod tidy -diff
 git diff --check
-make harness-verify
-python3 .agents/skills/project-version-release/scripts/project_version_release.py check --repo "$PWD" --json
+make verify-architecture
 make verify
 ```
 
