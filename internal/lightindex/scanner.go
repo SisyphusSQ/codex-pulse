@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 )
 
 const (
@@ -15,7 +17,10 @@ const (
 	DefaultTokenScanMaxLine    = 64 << 20
 )
 
-var tokenCountNeedle = []byte(`"token_count"`)
+var (
+	tokenCountNeedle  = []byte(`"token_count"`)
+	turnContextNeedle = []byte(`"turn_context"`)
+)
 
 type TokenTotals struct {
 	Input       int64
@@ -32,6 +37,8 @@ type DailyTokenDelta struct {
 type TimedTokenDelta struct {
 	SourceOffset int64
 	ObservedAtMS int64
+	ModelKey     *string
+	ModelSource  attribution.Source
 	Tokens       TokenTotals
 }
 
@@ -42,8 +49,10 @@ type ScanDiagnostic struct {
 }
 
 type ScanState struct {
-	DurableOffset int64
-	HighWater     TokenTotals
+	DurableOffset      int64
+	HighWater          TokenTotals
+	CurrentModelKey    *string
+	CurrentModelSource attribution.Source
 }
 
 type ScanResult struct {
@@ -83,6 +92,9 @@ func NewTokenScanner(options TokenScannerOptions) *TokenScanner {
 }
 
 func (scanner *TokenScanner) Scan(ctx context.Context, reader io.Reader, seed ScanState) (ScanResult, error) {
+	if seed.CurrentModelSource == "" {
+		seed.CurrentModelSource = attribution.SourceMissing
+	}
 	result := ScanResult{State: seed, DurableOffset: seed.DurableOffset}
 	if scanner == nil || scanner.chunkBytes <= 0 || scanner.maxLine <= 0 || reader == nil || seed.DurableOffset < 0 {
 		return result, errors.New("invalid token scanner input")
@@ -148,7 +160,7 @@ func (scanner *TokenScanner) processLine(
 	dailyIndexes map[string]int,
 	result *ScanResult,
 ) {
-	if !bytes.Contains(line, tokenCountNeedle) {
+	if !bytes.Contains(line, tokenCountNeedle) && !bytes.Contains(line, turnContextNeedle) {
 		return
 	}
 	result.CandidateLines++
@@ -163,6 +175,21 @@ func (scanner *TokenScanner) processLine(
 		result.Diagnostics = append(result.Diagnostics, ScanDiagnostic{
 			Code: "candidate_bad_json", StartOffset: startOffset, EndOffset: endOffset,
 		})
+		return
+	}
+	if envelope.Type == "turn_context" {
+		var payload struct {
+			Model string `json:"model"`
+		}
+		if err := json.Unmarshal(envelope.Payload, &payload); err != nil {
+			result.Diagnostics = append(result.Diagnostics, ScanDiagnostic{
+				Code: "candidate_invalid_payload", StartOffset: startOffset, EndOffset: endOffset,
+			})
+			return
+		}
+		decision := attribution.NormalizeModel(payload.Model)
+		result.State.CurrentModelKey = optionalString(decision.Key)
+		result.State.CurrentModelSource = decision.Source
 		return
 	}
 	if envelope.Type != "event_msg" {
@@ -218,7 +245,9 @@ func (scanner *TokenScanner) processLine(
 		return
 	}
 	result.TokenDeltas = append(result.TokenDeltas, TimedTokenDelta{
-		SourceOffset: endOffset, ObservedAtMS: observedAt.UnixMilli(), Tokens: delta,
+		SourceOffset: endOffset, ObservedAtMS: observedAt.UnixMilli(),
+		ModelKey: cloneString(result.State.CurrentModelKey), ModelSource: result.State.CurrentModelSource,
+		Tokens: delta,
 	})
 	day := observedAt.UTC().Format("2006-01-02")
 	if index, ok := dailyIndexes[day]; ok {
@@ -227,6 +256,21 @@ func (scanner *TokenScanner) processLine(
 	}
 	dailyIndexes[day] = len(result.DailyDeltas)
 	result.DailyDeltas = append(result.DailyDeltas, DailyTokenDelta{Day: day, Tokens: delta})
+}
+
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func cloneString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func positiveDelta(previous, current TokenTotals) TokenTotals {

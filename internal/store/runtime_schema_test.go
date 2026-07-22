@@ -135,6 +135,7 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 			"prefix_sha256", "fingerprint_sha256", "parser_version", "durable_offset", "complete", "input_tokens",
 			"cached_input_tokens", "output_tokens", "reasoning_tokens", "latest_event_at_ms",
 			"physical_bytes_read", "lines_seen", "candidate_lines", "json_decoded", "state", "updated_at_ms",
+			"current_model_key", "current_model_source",
 		},
 		"light_token_daily": {
 			"session_id", "generation", "day_start_ms", "input_tokens", "cached_input_tokens",
@@ -142,7 +143,7 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		},
 		"light_token_timed": {
 			"session_id", "generation", "source_offset", "observed_at_ms", "input_tokens",
-			"cached_input_tokens", "output_tokens", "reasoning_tokens",
+			"cached_input_tokens", "output_tokens", "reasoning_tokens", "model_key", "model_source",
 		},
 		"live_scan_jobs": {
 			"job_id", "request_id", "home_generation", "home_path", "home_device_id", "home_inode",

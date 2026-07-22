@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Go Helper verification
+    name: Product verification
     runs-on: macos-15
     timeout-minutes: 30
 

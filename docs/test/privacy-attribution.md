@@ -83,11 +83,8 @@ fi
 go test ./... -count=1
 go vet ./...
 go test -race ./...
-make harness-verify
-make project-check
+make verify-architecture
 git diff --check
-python3 .agents/skills/project-version-release/scripts/project_version_release.py \
-  check --repo "$PWD" --json
 make verify
 ```
 
@@ -125,6 +122,6 @@ make verify
 
 ## 清理与回写
 
-- 只清理本轮产生的 ignored build/package artifacts，不删除用户已有 `.agents/state/`、`.agents/runs/`、`.agents/plans/` 或其他未跟踪内容。
+- 只清理本轮产生的 ignored build/package artifacts，不删除仓库外本地归档、已有 `.artifacts/runs/` 或其他未跟踪内容。
 - closeout 前把本节 PENDING 更新为真实结果；未执行的 gate 不得写成 PASS。
 - Issue/PR 记录 `actions_disabled_by_user`，普通 Execution Issue 不触发 release。

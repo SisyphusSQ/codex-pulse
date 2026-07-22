@@ -14,7 +14,7 @@ usage() {
 usage: scripts/validation/m8-resource-fault.sh [--check] [--run-id SAFE_ID]
 
 Runs the macOS arm64 M8 resource and synthetic fault validation matrix.
-Raw, machine-local evidence is written below .agents/runs/ and is not committed.
+Raw, machine-local evidence is written below .artifacts/runs/ and is not committed.
 EOF
 }
 
@@ -102,13 +102,13 @@ case "$MACOSX_DEPLOYMENT_TARGET" in
 esac
 
 if [ "$mode" = "check" ]; then
-  printf '%s\n' 'M8 resource/fault harness preflight passed'
+  printf '%s\n' 'M8 resource/fault matrix preflight passed'
   exit 0
 fi
 
-run_dir="$repo_root/.agents/runs/$run_id"
+run_dir="$repo_root/.artifacts/runs/$run_id"
 if [ -e "$run_dir" ]; then
-  printf 'run directory already exists: .agents/runs/%s\n' "$run_id" >&2
+  printf 'run directory already exists: .artifacts/runs/%s\n' "$run_id" >&2
   exit 1
 fi
 mkdir -p "$run_dir"
@@ -182,7 +182,7 @@ run_timed() {
   fi
 
   printf '%s\t%s\tFAIL\n' "$category" "$phase" >>"$run_dir/manifest.tsv"
-  printf 'phase failed: %s; inspect .agents/runs/%s/%s.stderr\n' "$phase" "$run_id" "$phase" >&2
+  printf 'phase failed: %s; inspect .artifacts/runs/%s/%s.stderr\n' "$phase" "$run_id" "$phase" >&2
   return 1
 }
 
@@ -334,4 +334,4 @@ run_timed fault process-interruption '=== RUN   TestStoreIntegrationReopensAfter
   go test -v ./internal/store ./internal/bootstrap -run '^(TestStoreIntegrationReopensAfterAbnormalExit|TestRuntimeInterruptsAndResumesFromDurableSourceCheckpointAfterRestart|TestRuntimeDrainInterruptsAdmissionAndResumeCreatesOneNewAttempt)$' -count=10 -timeout=10m
 
 printf 'completed_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$run_dir/environment.txt"
-printf 'M8 resource/fault matrix passed; evidence: .agents/runs/%s\n' "$run_id"
+printf 'M8 resource/fault matrix passed; evidence: .artifacts/runs/%s\n' "$run_id"

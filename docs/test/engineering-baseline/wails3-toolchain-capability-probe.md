@@ -6,14 +6,14 @@
 - 记录目录：仓库根目录、隔离的本地工具目录与临时 spike 目录
 - 本轮任务性质：`TOO-242` 工程基线与平台能力探针
 - 当前结论：`通过，带 adapter-required 与版本锁定约束`
-- 自动化入口：本 runbook 的“主路径”和 `make harness-verify`
-- 对应计划 / issue：`TOO-242` / `.agents/plans/2026-07-13-too-242-wails3-toolchain-probe.md`
+- 自动化入口：本 runbook 的“主路径”和 `make verify-architecture`
+- 对应计划 / issue：`TOO-242` / `TOO-242`
 - 结果说明：Wails3 `v3.0.0-alpha2.117` 已在 macOS arm64 上完成精确版本读回、bindings、开发模式、darwin/arm64 build、ad-hoc package、production bundle 启动、系统托盘示例和 Wails AppCast digest-signature 测试。基础 tray 与附着窗口可直接使用；双行自定义状态项、Sparkle 2 签名互操作和原生 framework 仍需后续 adapter / interoperability 验证。
 
 ### 本次执行结果
 
 - 执行时间：2026-07-13
-- 执行目录：仓库根目录；临时工程位于已忽略的 `tmp/`；CLI 位于已忽略的 `.agents/runs/`
+- 执行目录：仓库根目录；临时工程位于已忽略的 `tmp/`；CLI 位于已忽略的 `.artifacts/runs/`
 - 本次结论：`通过`
 - 影响范围：下载并编译隔离的 Wails3 CLI，写入 Go/npm 构建缓存，创建临时 vanilla spike，短暂打开 setup 浏览器页、Vite 端口和 macOS 应用 / tray 进程
 - 清理结果：所有开发、production bundle 与 tray 进程已退出，9245 端口已释放；临时工程与隔离 CLI 保留在忽略目录供当前 Issue 复核，均不进入提交
@@ -47,7 +47,7 @@
 
 ## 执行副作用
 
-- 写入 `.agents/runs/too-242-wails3-toolchain-probe/` 下的隔离 CLI。
+- 写入 `.artifacts/runs/too-242-wails3-toolchain-probe/` 下的隔离 CLI。
 - 写入 `tmp/too-242-wails3-probe/` 下的临时工程与 build 产物。
 - 更新 Go module/build cache 与 npm cache，并在临时工程安装 `node_modules`。
 - `wails3 setup` 会打开随机 loopback 地址的浏览器页面；`wails3 task dev` 会监听本机 9245 端口并打开应用窗口；tray 示例会创建一个系统托盘项。
@@ -109,7 +109,7 @@
 2. 目标主机为 macOS arm64，且只验证 desktop 路径。
 3. 已安装 Go、Node.js/npm 和 Xcode Command Line Tools。
 4. 不需要 Developer ID、notarization credential、Sparkle private key 或 Codex 用户数据。
-5. 执行前确认 `.agents/runs/` 与 `tmp/` 仍被 Git 忽略。
+5. 执行前确认 `.artifacts/runs/` 与 `tmp/` 仍被 Git 忽略。
 
 ## 测试变量 / 初始化
 
@@ -119,7 +119,7 @@ set -euo pipefail
 REPO_ROOT="${REPO_ROOT:-$(pwd)}"
 WAILS_VERSION="v3.0.0-alpha2.117"
 WAILS_RUNTIME_VERSION="3.0.0-alpha.97"
-TOOL_ROOT="$REPO_ROOT/.agents/runs/too-242-wails3-toolchain-probe"
+TOOL_ROOT="$REPO_ROOT/.artifacts/runs/too-242-wails3-toolchain-probe"
 SPIKE_ROOT="$REPO_ROOT/tmp/too-242-wails3-probe"
 SPIKE_PROJECT="$SPIKE_ROOT/TOO242Probe"
 DEV_HOST="${DEV_HOST:-127.0.0.1}"
@@ -130,7 +130,7 @@ export PATH="$TOOL_ROOT/bin:$PATH"
 
 cd "$REPO_ROOT"
 git check-ignore \
-  .agents/runs/too-242-wails3-toolchain-probe/bin \
+  .artifacts/runs/too-242-wails3-toolchain-probe/bin \
   tmp/too-242-wails3-probe
 ```
 
@@ -345,7 +345,7 @@ go test ./pkg/updater/providers/appcast \
 
 ```bash
 cd "$REPO_ROOT"
-make harness-verify
+make verify-architecture
 ```
 
 预期结果：
@@ -376,7 +376,7 @@ make harness-verify
 3. 同一 PR 精确更新 Wails CLI、Go module、frontend runtime 与 lockfiles。
 4. 重跑本 runbook 的 doctor/setup、bindings、tests、dev、darwin/arm64 package、production launch、codesign、tray 与 Wails AppCast focused test。
 5. 对 system tray、window/events、Updater/Sparkle adapter 做 findings-first 独立 review。
-6. 更新 capability matrix、已知失败和 `docs/harness/project-constraints.md`；任一 required 能力回退则不准入。
+6. 更新 capability matrix、已知失败和根级 `AGENTS.md`；任一 required 能力回退则不准入。
 7. 升级验证不等于正式发布；release 仍只能在对应 release Issue 与用户明确授权下执行。
 
 ## 清理
@@ -388,7 +388,7 @@ set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-$(pwd)}"
 SPIKE_ROOT="$REPO_ROOT/tmp/too-242-wails3-probe"
-TOOL_ROOT="$REPO_ROOT/.agents/runs/too-242-wails3-toolchain-probe"
+TOOL_ROOT="$REPO_ROOT/.artifacts/runs/too-242-wails3-toolchain-probe"
 DEV_PORT="${DEV_PORT:-9245}"
 
 cd "$REPO_ROOT"

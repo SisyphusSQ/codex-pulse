@@ -26,12 +26,12 @@ go test -race ./internal/platform/tray ./internal/app
 (cd frontend && npm test && npm run build)
 go test ./...
 go vet ./...
-make harness-verify
+make verify-architecture
 git diff --check
 bash docs/test/m9-e6/replay-platform.sh
 ```
 
-脚本使用隔离 `HOME/TMPDIR`，输出到 ignored `.agents/runs/too-290-platform-*`。它不会切换真实系统主题、Space、休眠或显示器配置；platform probe 仅在自己的 AppKit 进程内发布同名公共通知并切换自己的 `NSApp.appearance`。真实硬件屏幕数量、frame、visibleFrame 与 scale 只做脱敏 inventory；仅有一块可达屏幕时，不声称完成物理拖屏操作。
+脚本使用隔离 `HOME/TMPDIR`，输出到 ignored `.artifacts/runs/too-290-platform-*`。它不会切换真实系统主题、Space、休眠或显示器配置；platform probe 仅在自己的 AppKit 进程内发布同名公共通知并切换自己的 `NSApp.appearance`。真实硬件屏幕数量、frame、visibleFrame 与 scale 只做脱敏 inventory；仅有一块可达屏幕时，不声称完成物理拖屏操作。
 
 ## 当前结果
 

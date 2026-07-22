@@ -59,14 +59,8 @@ tmp/
 temp/
 *.tmp
 
-# Harness local auxiliary run surfaces
-.agents/plans/*
-!.agents/plans/TEMPLATE.md
-!.agents/plans/EXAMPLE-implementation.md
-.agents/state/*
-!.agents/state/TEMPLATE.md
-.agents/runs/*
-!.agents/runs/TEMPLATE.md
+# Machine-local validation evidence
+.artifacts/
 
 # Cursor project rules are commit-safe; other Cursor files stay local by default.
 .cursor/*

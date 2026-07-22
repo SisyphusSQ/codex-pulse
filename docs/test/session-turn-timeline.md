@@ -116,9 +116,8 @@ go test ./... -count=1
 go test -race ./... -count=1
 go vet ./...
 go mod tidy -diff
-make harness-verify
-PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify-project
-python3 .agents/skills/project-version-release/scripts/project_version_release.py check --repo "$PWD" --json
+make verify-architecture
+PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify-architecture
 PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify
 git diff --check
 ```

@@ -7,7 +7,7 @@
 - 本轮任务性质：TOO-264 窗口代际、连续性/时钟校验、Local/Wham 仲裁和可重建 current/evidence
 - 当前结论：`PASS（已合并并完成 post-merge verify）`。`RecordQuotaFetch` 已在非 replay writer transaction 内只读取一次 repository 可信 wall clock，future/late attempt 不能再抬高或降低 projection evaluation clock；非法可信时钟会在任何 fetch 事实落盘前失败。implementation 与 final scope 两层 reviewer 均返回 `ZERO_FINDINGS`、`blocking_findings=0`，旧 P1/P2 均 CLOSED；PR #27 已合并为 `1bd7fb5`，main post-merge 门禁通过，Linear TOO-264 已读回 Done。
 - 自动化入口：`internal/store/quota_arbiter_test.go`、`internal/store/quota_projection_test.go`、`internal/store/quota_projection_migration_test.go`
-- 对应计划 / issue：`.agents/plans/2026-07-15-too-264-window-generation-observation.md` / TOO-264
+- 对应 issue：TOO-264
 - 结果说明：此前评审发现的 first-seen false-zero、observation 自抬 evaluation clock、4096 evidence bind overflow、typed readback 完整性与多次 SELECT 混合快照均已修复。两阶段 generation 重分类会选更新 Local last-known-good；Local、Wham fetch、通用 exact quota Wham state、maintenance 和 migration 分别使用其受信应用时钟；evidence 以 256 行分批写入。current/evidence reader 在显式 GORM read transaction 的同一 SQLite snapshot 内加载完整 raw candidates 与 Wham source state，按 stored rule/evaluation 重算并精确对账完整 projection。最新 final-scope P1 已通过 future/late/invalid-clock 回归修复；focused50、race10、Pure-Go Store20、全仓 test/race/vet/tidy、控制面与完整打包门禁均通过。未读取真实 Codex Home/auth，未发真实 Wham 请求。
 
 ### 本次执行结果
@@ -134,10 +134,8 @@ go test -race ./... -count=1
 go vet ./...
 go mod tidy -diff
 git diff --check
-make harness-verify
-PATH="/tmp/codex-pulse-tools/bin:$PATH" make project-check
-python3 .agents/skills/project-version-release/scripts/project_version_release.py \
-  check --repo "$PWD" --json
+make verify-architecture
+PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify-architecture
 PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify
 ```
 
@@ -166,6 +164,6 @@ git status --short --branch
 ## 结果回写
 
 - 每轮执行后更新本文顶部真实结论和步骤状态；未执行步骤不得写成通过。
-- 长输出和本机路径只留在 `.agents/runs`，提交版只保留脱敏摘要。
+- 长输出和本机路径只留在 `.artifacts/runs`，提交版只保留脱敏摘要。
 - GitHub Actions 保持 `actions_disabled_by_user`：不查询、不触发、不等待，也不把未运行写成 CI 通过。
 - 普通 Execution 不发布；本卡只在 review 通过后更新 `CHANGELOG.md -> Unreleased`。

@@ -547,6 +547,13 @@ func (runtime *applicationLifecycleRuntime) resumeCommittedQuotaGeneration(
 		}
 		return committed, errors.Join(original, postCommitErr)
 	}
+	if err := runtime.quota.RearmAfterHomeChange(ctx); err != nil {
+		postCommitErr := &ApplicationPreferencesPostCommitError{
+			Committed: committed,
+			Cause:     err,
+		}
+		return committed, errors.Join(original, postCommitErr)
+	}
 	return committed, original
 }
 

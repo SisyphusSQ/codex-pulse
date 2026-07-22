@@ -7,7 +7,7 @@
 - 本轮任务性质：Project provider 查询契约扩展
 - 当前结论：`通过`
 - 自动化入口：Go focused/full tests、frontend contract tests、harness/project/version gates、`make verify`
-- 对应计划 / issue：TOO-308 / `.agents/plans/2026-07-17-too-308-project-session-model-drilldown.md`
+- 对应 issue：TOO-308
 - 结果说明：独立 review 返工后，Store/Query/app/frontend focused 与全量回归、race、CGO-off、GORM/privacy/dependency 扫描、harness/project/version、generated stability 和 macOS arm64 package gate 已全部重跑并通过。GitHub Actions 依用户要求停用，本轮未查询、触发或等待 CI。
 
 ### 本次执行结果
@@ -26,7 +26,7 @@
 - review 返工后的 `go test -race ./... -count=1` 通过；macOS linker 仍输出已知 object min-version warning，未影响退出码或 package 的 minOS=15 读回。
 - frontend 25 个 test files / 70 个 tests、typecheck 与 production build 通过；只有已知 ECharts chunk 大于 500 kB 的非阻断 warning。
 - GORM 扫描确认 `internal/store/analytics_query_project.go` 无 `.Raw`/`.Exec`；Project DTO/mapping 无 path/remote/source-generation/offset 禁止字段。
-- `make harness-verify`、`make verify-project`、project-version-release check 和 `make verify` 通过。Wails 生成稳定读回为 319 packages / 1 service / 15 methods / 34 enums / 68 models / 1 event。
+- `make verify-architecture`、`make verify-architecture`、project-version-release check 和 `make verify` 通过。Wails 生成稳定读回为 319 packages / 1 service / 15 methods / 34 enums / 68 models / 1 event。
 - macOS package/ZIP 读回为 thin arm64、minOS 15.0.0、ad-hoc 签名有效；这不表示 Developer ID、notarization 或正式发布通过。
 
 ### 当前步骤状态
@@ -155,7 +155,7 @@ go mod tidy -diff
 CGO_ENABLED=0 go test ./internal/store ./internal/query/usagecost -count=1
 go test -race ./... -count=1
 
-make harness-verify
+make verify-architecture
 make verify
 ```
 

@@ -8,8 +8,8 @@ make verify
 
 执行顺序：
 
-1. `make harness-verify`
-2. `make verify-project`
+1. `make verify-architecture`
+2. `make verify-architecture`
 3. `make verify-proto`
 4. `make verify-go`（`go test -race ./...` + `go vet ./...`）
 5. `make verify-helper`（输出 `bin/codex-pulse`）

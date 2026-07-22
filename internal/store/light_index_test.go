@@ -5,6 +5,9 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 )
 
 func TestReplaceLightMetadataPublishesOneGenerationAndRemovesStaleSessions(t *testing.T) {
@@ -341,6 +344,67 @@ func TestUsageCostRangeBucketsLightTimedDeltasInRequestedTimezone(t *testing.T) 
 	if row.BucketStartMS != start || row.ReportingTimezone != "Asia/Shanghai" ||
 		row.InputTokens == nil || *row.InputTokens != 100 || row.TotalTokens == nil || *row.TotalTokens != 100 {
 		t.Fatalf("daily row = %#v", row)
+	}
+}
+
+func TestUsageCostRangePricesAndGroupsLightTimedDeltasByModel(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	for _, catalog := range pricing.BuiltinOpenAICatalog() {
+		if err := repository.AddPricingVersion(context.Background(), catalog); err != nil {
+			t.Fatalf("AddPricingVersion(%s) error = %v", catalog.PricingVersion, err)
+		}
+	}
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(context.Background(), "one", identity, "parser-v2", 2_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := "gpt-5.4-mini"
+	observedAtMS := time.Date(2026, 7, 19, 1, 0, 0, 0, time.UTC).UnixMilli()
+	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: observedAtMS + 1, Activate: true,
+		Checkpoint: LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes, Complete: true,
+			InputTokens: 1_000_000, CachedInputTokens: 200_000,
+			OutputTokens: 100_000, ReasoningTokens: 50_000,
+			CurrentModelKey: &model, CurrentModelSource: attribution.SourceModelCanonical,
+		},
+		TimedDeltas: []LightTokenTimedDelta{{
+			SourceOffset: 4_000, ObservedAtMS: observedAtMS,
+			ModelKey: &model, ModelSource: attribution.SourceModelCanonical,
+			InputTokens: 1_000_000, CachedInputTokens: 200_000,
+			OutputTokens: 100_000, ReasoningTokens: 50_000,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	active, err := repository.ActiveLightTokenScan(context.Background(), "one")
+	if err != nil || active.Checkpoint.CurrentModelKey == nil ||
+		*active.Checkpoint.CurrentModelKey != model || active.Checkpoint.CurrentModelSource != attribution.SourceModelCanonical {
+		t.Fatalf("active model checkpoint = %#v, %v", active.Checkpoint, err)
+	}
+	snapshot, err := repository.UsageCostRange(context.Background(), AnalyticsRange{
+		ReportingTimezone: "UTC",
+		StartAtMS:         time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC).UnixMilli(),
+		EndAtMS:           time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC).UnixMilli(),
+	})
+	if err != nil {
+		t.Fatalf("UsageCostRange(light priced) error = %v", err)
+	}
+	if snapshot.PricingSource != "openai-api" || snapshot.Currency != "USD" ||
+		len(snapshot.PricingVersions) != 1 || snapshot.PricingVersions[0] != "openai-api-2026-07-22" ||
+		len(snapshot.Daily) != 1 || snapshot.Daily[0].EstimatedUSDMicros == nil ||
+		*snapshot.Daily[0].EstimatedUSDMicros != 1_290_000 || len(snapshot.Models) != 1 {
+		t.Fatalf("priced light snapshot = %#v", snapshot)
+	}
+	modelRow := snapshot.Models[0]
+	if modelRow.DimensionKey != model || modelRow.ModelKey == nil || *modelRow.ModelKey != model ||
+		modelRow.ModelDisplayName == nil || *modelRow.ModelDisplayName != "GPT-5.4 Mini" ||
+		modelRow.TotalTokens == nil || *modelRow.TotalTokens != 1_150_000 ||
+		modelRow.EstimatedUSDMicros == nil || *modelRow.EstimatedUSDMicros != 1_290_000 {
+		t.Fatalf("light model row = %#v", modelRow)
 	}
 }
 

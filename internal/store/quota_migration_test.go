@@ -19,8 +19,8 @@ func TestApplicationSchemaV9ChecksumIsFrozen(t *testing.T) {
 func TestApplicationSchemaV9CreatesQuotaObservationFacts(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV16Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 16", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV17Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 17", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	if err := NewRepository(database).EnsureApplicationSchema(context.Background()); err != nil {

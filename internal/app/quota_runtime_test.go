@@ -1457,6 +1457,169 @@ func TestApplicationLifecycleRuntimeDrainsQuotaBeforeHomeSwitch(t *testing.T) {
 	}
 }
 
+func TestApplicationLifecycleRuntimeHomeSwitchRearmsCredentialPausedQuotaSources(t *testing.T) {
+	database, repository := openQuotaRuntimeStore(t)
+	homeWithoutCredentials := t.TempDir()
+	homeWithCredentials := writeSyntheticAuthHome(t, "synthetic-home-switch-recovery-token")
+	for _, home := range []string{homeWithoutCredentials, homeWithCredentials} {
+		for _, directory := range []string{"sessions", "archived_sessions"} {
+			if err := os.Mkdir(filepath.Join(home, directory), 0o700); err != nil {
+				t.Fatalf("os.Mkdir(%s) error = %v", directory, err)
+			}
+		}
+	}
+	preferenceStore := confirmedQuotaRuntimeFileStore(
+		t, homeWithoutCredentials, true, true,
+	)
+	requests := make(chan quotaHomeRequestEvent, 2)
+	transport := quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
+		requests <- quotaHomeRequestEvent{
+			authorization: request.Header.Get("Authorization"),
+			request:       request,
+		}
+		if request.URL.String() == quotaonline.WhamResetCreditsEndpoint {
+			return quotaRuntimeJSONResponse(validQuotaRuntimeResetCreditsPayload()), nil
+		}
+		return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
+	})
+	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+		Database: database, Preferences: preferenceStore,
+		EventTimeout: time.Second, QuotaTransport: transport,
+		QuotaClock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+	})
+	if err != nil || runtime == nil {
+		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
+	}
+	for _, sourceInstanceID := range []string{
+		store.QuotaSourceInstanceWhamDefault,
+		store.ResetCreditsSourceInstanceWhamDefault,
+	} {
+		waitForQuotaRuntimeState(t, repository, sourceInstanceID, func(state store.SourceState) bool {
+			return state.LastFailureCode != nil &&
+				*state.LastFailureCode == store.SourceFailureAuthRequired
+		})
+		waitForQuotaRuntimeSchedule(t, repository, sourceInstanceID, func(schedule store.SourceRefreshSchedule) bool {
+			return schedule.NextDueAtMS == nil && schedule.ActiveClaimID == nil &&
+				schedule.Reason == store.RefreshReasonAuthRequired
+		})
+	}
+
+	plan, err := runtime.PlanQuotaHomeSwitch(
+		context.Background(), homeWithCredentials, preferences.HomeSwitchClearAndRebuild,
+	)
+	if err != nil {
+		t.Fatalf("PlanQuotaHomeSwitch() error = %v", err)
+	}
+	if _, err := runtime.ConfirmQuotaHomeSwitch(context.Background(), plan.ID); err != nil {
+		t.Fatalf("ConfirmQuotaHomeSwitch() error = %v", err)
+	}
+
+	seen := make(map[string]bool, 2)
+	for len(seen) < 2 {
+		request := waitForQuotaHomeRequest(t, requests)
+		if request.authorization != "Bearer synthetic-home-switch-recovery-token" {
+			t.Fatalf("Home switch Authorization = %q", request.authorization)
+		}
+		seen[request.request.URL.String()] = true
+	}
+	if !seen[quotaonline.WhamUsageEndpoint] || !seen[quotaonline.WhamResetCreditsEndpoint] {
+		t.Fatalf("Home switch requests = %#v", seen)
+	}
+	for _, sourceInstanceID := range []string{
+		store.QuotaSourceInstanceWhamDefault,
+		store.ResetCreditsSourceInstanceWhamDefault,
+	} {
+		waitForQuotaRuntimeState(t, repository, sourceInstanceID, func(state store.SourceState) bool {
+			return state.LastSuccessAtMS != nil && state.LastFailureCode == nil
+		})
+		waitForQuotaRuntimeSchedule(t, repository, sourceInstanceID, func(schedule store.SourceRefreshSchedule) bool {
+			return schedule.NextDueAtMS != nil && schedule.ActiveClaimID == nil
+		})
+	}
+
+	closeContext, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := runtime.Close(closeContext); err != nil {
+		t.Fatalf("runtime.Close() error = %v", err)
+	}
+	if err := database.Close(closeContext); err != nil {
+		t.Fatalf("database.Close() error = %v", err)
+	}
+}
+
+func TestApplicationLifecycleRuntimeHomeSwitchRollbackRearmsQuotaOnce(t *testing.T) {
+	database, repository := openQuotaRuntimeStore(t)
+	homeA := writeSyntheticAuthHome(t, "synthetic-home-switch-rollback-a-token")
+	homeB := writeSyntheticAuthHome(t, "synthetic-home-switch-rollback-b-token")
+	for _, home := range []string{homeA, homeB} {
+		for _, directory := range []string{"sessions", "archived_sessions"} {
+			if err := os.Mkdir(filepath.Join(home, directory), 0o700); err != nil {
+				t.Fatalf("os.Mkdir(%s) error = %v", directory, err)
+			}
+		}
+	}
+	preferenceStore := confirmedQuotaRuntimeFileStore(t, homeA, true, false)
+	requests := make(chan quotaHomeRequestEvent, 4)
+	transport := quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
+		requests <- quotaHomeRequestEvent{
+			authorization: request.Header.Get("Authorization"),
+			request:       request,
+		}
+		return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
+	})
+	startFailure := errors.New("synthetic Home bootstrap did not start")
+	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+		Database: database, Preferences: preferenceStore,
+		EventTimeout: time.Second, QuotaTransport: transport,
+		QuotaClock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+		homeRuntime: &quotaStartupHomeRuntime{
+			status:   preferences.BootstrapStatusNotStarted,
+			startErr: startFailure,
+		},
+	})
+	if err != nil || runtime == nil {
+		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
+	}
+	initialRequest := waitForQuotaHomeRequest(t, requests)
+	if initialRequest.authorization != "Bearer synthetic-home-switch-rollback-a-token" {
+		t.Fatalf("initial Authorization = %q", initialRequest.authorization)
+	}
+	waitForQuotaRuntimeSchedule(t, repository, store.QuotaSourceInstanceWhamDefault, func(schedule store.SourceRefreshSchedule) bool {
+		return schedule.NextDueAtMS != nil && schedule.ActiveClaimID == nil
+	})
+
+	plan, err := runtime.PlanQuotaHomeSwitch(
+		context.Background(), homeB, preferences.HomeSwitchClearAndRebuild,
+	)
+	if err != nil {
+		t.Fatalf("PlanQuotaHomeSwitch() error = %v", err)
+	}
+	rolledBack, err := runtime.ConfirmQuotaHomeSwitch(context.Background(), plan.ID)
+	if !errors.Is(err, startFailure) {
+		t.Fatalf("ConfirmQuotaHomeSwitch() error = %v, want start failure", err)
+	}
+	if rolledBack.CodexHome.Generation != 1 || rolledBack.LastSwitch == nil ||
+		rolledBack.LastSwitch.Outcome != preferences.HomeSwitchRolledBack {
+		t.Fatalf("rolled-back preferences = %#v", rolledBack)
+	}
+	recoveryRequest := waitForQuotaHomeRequest(t, requests)
+	if recoveryRequest.authorization != "Bearer synthetic-home-switch-rollback-a-token" {
+		t.Fatalf("rollback Authorization = %q", recoveryRequest.authorization)
+	}
+	select {
+	case duplicate := <-requests:
+		t.Fatalf("rollback issued duplicate recovery request to %q", duplicate.request.URL.String())
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	if err := runtime.Close(context.Background()); err != nil {
+		t.Fatalf("runtime.Close() error = %v", err)
+	}
+	if err := database.Close(context.Background()); err != nil {
+		t.Fatalf("database.Close() error = %v", err)
+	}
+}
+
 type quotaRuntimeRoundTripper func(*http.Request) (*http.Response, error)
 
 type quotaHomeRequestEvent struct {
@@ -1465,8 +1628,9 @@ type quotaHomeRequestEvent struct {
 }
 
 type quotaStartupHomeRuntime struct {
-	status preferences.BootstrapStatus
-	err    error
+	status   preferences.BootstrapStatus
+	startErr error
+	err      error
 }
 
 func (runtime *quotaStartupHomeRuntime) Drain(context.Context, uint64) error {
@@ -1477,7 +1641,7 @@ func (runtime *quotaStartupHomeRuntime) StartBootstrap(
 	context.Context,
 	preferences.BootstrapRequest,
 ) error {
-	return nil
+	return runtime.startErr
 }
 
 func (runtime *quotaStartupHomeRuntime) BootstrapStatus(

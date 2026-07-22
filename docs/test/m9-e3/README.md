@@ -16,7 +16,7 @@ go test ./internal/platform/tray ./internal/app ./cmd/traystatusprobe
 go test -race ./internal/platform/tray ./internal/app
 go test ./...
 go vet ./...
-make harness-verify
+make verify-architecture
 ```
 
 ## macOS 合成 live probe

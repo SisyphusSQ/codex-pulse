@@ -24,7 +24,7 @@ func TestCalculateUsesExactMicroUSDAndPricesReasoningAsOutput(t *testing.T) {
 		t.Fatalf("Calculate() error = %v", err)
 	}
 	if calculation.Status != CostStatusPriced || calculation.Reason != CostReasonPriced ||
-		calculation.EstimatedUSDMicros == nil || *calculation.EstimatedUSDMicros != 21_375_000 {
+		calculation.EstimatedUSDMicros == nil || *calculation.EstimatedUSDMicros != 20_125_000 {
 		t.Fatalf("Calculate() = %#v", calculation)
 	}
 }
@@ -34,7 +34,7 @@ func TestCalculateRoundsCombinedNumeratorHalfUpOnce(t *testing.T) {
 
 	calculation, err := Calculate(
 		Usage{
-			InputTokens: pointer(int64(1)), CachedInputTokens: pointer(int64(1)),
+			InputTokens: pointer(int64(2)), CachedInputTokens: pointer(int64(1)),
 			OutputTokens: pointer(int64(0)), ReasoningTokens: pointer(int64(0)),
 		},
 		Rates{
@@ -132,6 +132,11 @@ func TestCalculateRejectsNegativeValuesAndOverflow(t *testing.T) {
 	missingAndNegative.InputTokens = nil
 	if _, err := Calculate(missingAndNegative, negativeRates); !errors.Is(err, ErrInvalidCalculation) {
 		t.Fatalf("Calculate(missing token with negative rate) error = %v, want ErrInvalidCalculation", err)
+	}
+	cachedExceedsInput := validUsage
+	cachedExceedsInput.CachedInputTokens = pointer(int64(1))
+	if _, err := Calculate(cachedExceedsInput, validRates); !errors.Is(err, ErrInvalidCalculation) {
+		t.Fatalf("Calculate(cached input greater than input) error = %v, want ErrInvalidCalculation", err)
 	}
 
 	overflowUsage := Usage{

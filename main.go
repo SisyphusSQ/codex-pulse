@@ -33,10 +33,13 @@ func parseRuntimeConfig(arguments []string) (helper.RuntimeConfig, error) {
 	flags.SetOutput(os.Stderr)
 	socketPath := flags.String("socket", "", "absolute Unix Domain Socket path")
 	authFD := flags.Int("auth-fd", -1, "inherited authentication pipe descriptor")
+	databasePath := flags.String("database-path", "", "optional isolated SQLite database path")
+	preferencesPath := flags.String("preferences-path", "", "optional isolated preferences file path")
 	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || *socketPath == "" || *authFD < 3 {
 		return helper.RuntimeConfig{}, fmt.Errorf("invalid helper arguments")
 	}
 	return helper.RuntimeConfig{
 		SocketPath: *socketPath, AuthFD: uintptr(*authFD), HelperVersion: applicationVersion,
+		DatabasePath: *databasePath, PreferencesPath: *preferencesPath,
 	}, nil
 }

@@ -163,6 +163,10 @@ func mapUsageCostResponse(
 			return UsageCostResponse{}, errors.New("stored analytics timezone is inconsistent")
 		}
 	}
+	pricingSource, currency, err := usagePricingEvidence(snapshot)
+	if err != nil {
+		return UsageCostResponse{}, err
+	}
 	rows := append([]store.UsageDaily(nil), snapshot.Daily...)
 	if err := validateAndSortDaily(rows, rangeValue, snapshot.Generation); err != nil {
 		return UsageCostResponse{}, err
@@ -172,7 +176,7 @@ func mapUsageCostResponse(
 		return UsageCostResponse{}, err
 	}
 	if err := validatePricingEvidence(
-		mode, overall, snapshot.PricingVersions, snapshot.UnpricedReasons,
+		mode, overall, pricingSource, currency, snapshot.PricingVersions, snapshot.UnpricedReasons,
 	); err != nil {
 		return UsageCostResponse{}, err
 	}
@@ -192,6 +196,10 @@ func mapUsageCostResponse(
 	if err != nil {
 		return UsageCostResponse{}, err
 	}
+	models, err := mapUsageModels(snapshot.Models, mode, rangeValue, snapshot.Generation)
+	if err != nil {
+		return UsageCostResponse{}, err
+	}
 	partial := mode != store.AnalyticsReadActiveRollup || overall.UnpricedTurnCount > 0 ||
 		overall.InputTokens == nil || overall.CachedInputTokens == nil ||
 		overall.OutputTokens == nil || overall.ReasoningTokens == nil
@@ -208,11 +216,13 @@ func mapUsageCostResponse(
 	response := UsageCostResponse{
 		Meta: meta, Range: rangeValue, ReportingTimeZone: rangeValue.TimeZone,
 		PricingVersions: versions, Totals: totals, Trend: trend, UnpricedReasons: reasons,
+		Models: models,
 	}
-	if snapshot.Generation != nil {
-		response.PricingSource = cloneString(snapshot.Generation.PricingSource)
-		response.Currency = cloneString(snapshot.Generation.Currency)
-	} else {
+	if pricingSource != "" {
+		response.PricingSource = cloneString(pricingSource)
+		response.Currency = cloneString(currency)
+	}
+	if snapshot.Generation == nil {
 		reason := DegradedRollupMissing
 		response.DegradedReason = &reason
 	}
@@ -282,12 +292,21 @@ func normalizedReasonCounts(input []store.CostReasonCount) ([]ReasonCount, error
 func validatePricingEvidence(
 	mode store.AnalyticsReadMode,
 	totals store.RollupTotals,
+	pricingSource string,
+	currency string,
 	versions []string,
 	reasons []store.CostReasonCount,
 ) error {
-	if mode != store.AnalyticsReadActiveRollup {
+	if mode == store.AnalyticsReadDetailFallback {
 		if len(versions) != 0 || len(reasons) != 0 {
 			return errors.New("fallback pricing evidence must be absent")
+		}
+		return nil
+	}
+	if mode == store.AnalyticsReadLightIndex {
+		if len(reasons) != 0 || (pricingSource == "") != (currency == "") ||
+			(totals.EstimatedUSDMicros != nil || len(versions) > 0) && pricingSource == "" {
+			return errors.New("light pricing evidence is incomplete")
 		}
 		return nil
 	}
@@ -305,6 +324,107 @@ func validatePricingEvidence(
 		return errors.New("stored unpriced reason evidence is inconsistent")
 	}
 	return nil
+}
+
+func usagePricingEvidence(snapshot store.UsageCostRangeSnapshot) (string, string, error) {
+	source, currency := snapshot.PricingSource, snapshot.Currency
+	if snapshot.Generation != nil {
+		if source == "" {
+			source = snapshot.Generation.PricingSource
+		}
+		if currency == "" {
+			currency = snapshot.Generation.Currency
+		}
+		if source != snapshot.Generation.PricingSource || currency != snapshot.Generation.Currency {
+			return "", "", errors.New("stored analytics pricing evidence conflicts with generation")
+		}
+	} else if snapshot.Mode == store.AnalyticsReadDetailFallback && (source != "" || currency != "") {
+		return "", "", errors.New("fallback pricing evidence must be absent")
+	}
+	if (source == "") != (currency == "") {
+		return "", "", errors.New("stored analytics pricing evidence is incomplete")
+	}
+	return source, currency, nil
+}
+
+func mapUsageModels(
+	rows []store.ModelUsageDaily,
+	mode store.AnalyticsReadMode,
+	rangeValue basequery.UTCTimeRange,
+	generation *store.CostRollupGeneration,
+) ([]UsageModelItem, error) {
+	type modelGroup struct {
+		record store.ModelUsageDaily
+		totals *totalsAccumulator
+	}
+	groups := make(map[string]*modelGroup)
+	for _, row := range rows {
+		if !validOpaqueIdentity(row.DimensionKey) || row.ReportingTimezone != rangeValue.TimeZone ||
+			row.BucketStartMS < rangeValue.StartAtMS || row.BucketStartMS >= rangeValue.EndAtMS ||
+			!validAttributionTuple(row.ModelKey, row.ModelDisplayName) ||
+			!validProjectAttributionDTO(row.AttributionConfidence, row.AttributionSource, row.AttributionReason) ||
+			(row.ModelKey != nil && *row.ModelKey != row.DimensionKey) ||
+			(row.ModelKey == nil && row.DimensionKey != "unknown|"+row.AttributionConfidence+"|"+row.AttributionSource+"|"+row.AttributionReason) ||
+			(generation != nil && row.GenerationID != generation.GenerationID) ||
+			(generation == nil && row.GenerationID != "") {
+			return nil, errors.New("stored usage model row is invalid")
+		}
+		group := groups[row.DimensionKey]
+		if group == nil {
+			group = &modelGroup{record: row, totals: newTotalsAccumulator()}
+			groups[row.DimensionKey] = group
+		} else if !equalStringPointers(group.record.ModelKey, row.ModelKey) ||
+			!equalStringPointers(group.record.ModelDisplayName, row.ModelDisplayName) ||
+			group.record.AttributionConfidence != row.AttributionConfidence ||
+			group.record.AttributionSource != row.AttributionSource ||
+			group.record.AttributionReason != row.AttributionReason {
+			return nil, errors.New("stored usage model attribution is inconsistent")
+		}
+		if err := group.totals.addMode(row.RollupTotals, mode); err != nil {
+			return nil, err
+		}
+	}
+	type mappedModel struct {
+		item  UsageModelItem
+		total *int64
+	}
+	mapped := make([]mappedModel, 0, len(groups))
+	for _, group := range groups {
+		totals, err := group.totals.totalsMode(mode)
+		if err != nil {
+			return nil, err
+		}
+		mappedTotals, err := mapUsageTotals(totals, mode)
+		if err != nil {
+			return nil, err
+		}
+		mapped = append(mapped, mappedModel{
+			item: UsageModelItem{
+				DimensionKey: group.record.DimensionKey,
+				Model: AttributionValue{
+					ID: cloneStringPointer(group.record.ModelKey), DisplayName: cloneStringPointer(group.record.ModelDisplayName),
+					Confidence: group.record.AttributionConfidence, Source: group.record.AttributionSource,
+					Reason: group.record.AttributionReason,
+				},
+				Totals: mappedTotals,
+			},
+			total: totals.TotalTokens,
+		})
+	}
+	sort.Slice(mapped, func(left, right int) bool {
+		if mapped[left].total != nil && mapped[right].total != nil && *mapped[left].total != *mapped[right].total {
+			return *mapped[left].total > *mapped[right].total
+		}
+		if (mapped[left].total == nil) != (mapped[right].total == nil) {
+			return mapped[left].total != nil
+		}
+		return mapped[left].item.DimensionKey < mapped[right].item.DimensionKey
+	})
+	result := make([]UsageModelItem, 0, len(mapped))
+	for _, value := range mapped {
+		result = append(result, value.item)
+	}
+	return result, nil
 }
 
 func validUnpricedReason(reason pricing.CostReason) bool {

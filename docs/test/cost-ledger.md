@@ -8,6 +8,12 @@
 - Actions：`actions_disabled_by_user`，本 runbook 不启用、查询、触发或等待 GitHub Actions。
 - Release：不适用；普通 Execution Issue 不创建 tag、release 或签名产物。
 
+### 2026-07-22 原生轻量索引 follow-up
+
+- 当前未提交 follow-up 结果：`PASS`。light parser v2、Schema v17、追加式 pricing catalog、轻量 UsageCost 聚合、generated Go/Swift contract 与原生按模型统计已完成；focused tests、`go test ./... -count=1`、完整 `make verify` 和真实 Home live gate 均通过。
+- 真实 live 输出只保留 `usage_models=5`、`usage_cost=known` 等脱敏状态；SQLite 只读聚合为 Schema v17、`quick_check=ok`、pricing version `2`。同一 development App 常驻后，当前 `933/933` 条 scan 全部升级到 parser v2、active/complete。不记录真实路径、会话名称、原始 JSONL/payload 或日志。
+- 完整 `make verify` 的 empty Home smoke 返回 `usage_models=0 usage_cost=unknown`；unit/contract/CI smoke 不依赖真实用户数据。
+
 ## 目标
 
 - 证明内置 price catalog 是有来源、带日期、不可变、exact-only 的整数快照。
@@ -21,11 +27,11 @@
 
 - Go tests 只在 `testing.T.TempDir()` 下创建 synthetic SQLite、WAL/SHM 与 migration backup，正常结束由测试清理。
 - 命令会使用本机 Go/npm/Wails 缓存；`make verify` 可能生成 ignored 的 `frontend/node_modules/`、`frontend/dist/`、`.task/` 和 `bin/`，closeout 只清理本轮产物。
-- 不读取真实 `~/.codex`、真实应用数据库、真实项目路径内容或凭据，不访问价格 API。
+- 确定性 gate 不读取真实 Codex Home、真实应用数据库、真实项目路径内容或凭据，也不联网抓取价格；2026-07-22 本机 live gate 经用户明确授权复用既有私有 runtime 和真实 Codex Home，仅写正常派生索引/housekeeping，并只提交脱敏聚合。
 
 ## 价格快照与免责声明
 
-内置版本固定为 `openai-api-2026-07-14`，币种 `USD`，价格单位 `microUSD / 1,000,000 tokens`，`effective_from_ms=0`，`verified_at_ms=1783987200000`。运行时只安装本地快照，不联网抓价。
+内置价格历史包含不可变的 `openai-api-2026-07-14`（`effective_from_ms=0`）与 `openai-api-2026-07-22`（自 `2026-03-17T00:00:00Z` 生效）；币种 `USD`，价格单位 `microUSD / 1,000,000 tokens`。后一版本增补 `gpt-5.4-mini`，运行时按时间顺序安装本地快照，不联网抓价，也不修改旧版本。
 
 | exact model key | input | cached input | output | 官方证据 |
 | --- | ---: | ---: | ---: | --- |
@@ -35,19 +41,20 @@
 | `gpt-5.2-codex` | 1,750,000 | 175,000 | 14,000,000 | [GPT-5.2 Codex](https://developers.openai.com/api/docs/models/gpt-5.2-codex) |
 | `gpt-5.3-codex` | 1,750,000 | 175,000 | 14,000,000 | [GPT-5.3 Codex](https://developers.openai.com/api/docs/models/gpt-5.3-codex) |
 | `gpt-5.4` | 2,500,000 | 250,000 | 15,000,000 | [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4) |
+| `gpt-5.4-mini` | 750,000 | 75,000 | 4,500,000 | [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini) |
 | `gpt-5.5` | 5,000,000 | 500,000 | 30,000,000 | [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5) |
 | `gpt-5.6` / `gpt-5.6-sol` | 5,000,000 | 500,000 | 30,000,000 | [GPT-5.6 Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol) |
 | `gpt-5.6-terra` | 2,500,000 | 250,000 | 15,000,000 | [GPT-5.6 Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra) |
 | `gpt-5.6-luna` | 1,000,000 | 100,000 | 6,000,000 | [GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) |
 
-目录 source URL 固定为 [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing)。`gpt-5.2-codex-max`、`gpt-5.3-codex-spark`、Pro、日期 snapshot 和其它未逐项确认的 key 保持 `unpriced/model_not_listed`；不借 prefix/default 或相似名字猜价。长上下文、regional、cache-write、Batch/Flex/Priority 倍率不在当前 JSONL 事实 contract 中，也不参与估算。
+旧目录 source URL 为 [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing)，增补版本对 `gpt-5.4-mini` 使用其官方 model page。`gpt-5.2-codex-max`、`gpt-5.3-codex-spark`、Pro、日期 snapshot 和其它未逐项确认的 key 保持 `unpriced/model_not_listed`；不借 prefix/default 或相似名字猜价。长上下文、regional、cache-write、Batch/Flex/Priority 倍率不在当前 JSONL 事实 contract 中，也不参与估算。
 
 所有金额只是公开 API 单价下的本地等价估算，不代表 OpenAI/Codex 实际账单、订阅配额或应付款。
 
 ## 固定公式与 unknown 语义
 
 ```text
-numerator = input_tokens × input_rate
+numerator = (input_tokens - cached_input_tokens) × input_rate
           + cached_input_tokens × cached_rate
           + output_tokens × output_rate
           + reasoning_tokens × output_rate
@@ -55,7 +62,7 @@ numerator = input_tokens × input_rate
 estimated_usd_micros = round_half_up(numerator / 1_000_000)
 ```
 
-所有 component numerator 先精确求和，最后只 round 一次。Codex JSONL 的 reasoning 是独立于 output 的计数，两者使用同一个公开 output rate，不重复包含。
+所有 component numerator 先精确求和，最后只 round 一次。cached input 是 input 的子集，先从 input 扣除；`cached_input_tokens > input_tokens` 拒绝计算。Codex JSONL 的 reasoning 是独立于 output 的计数，两者使用同一个公开 output rate，不重复包含。
 
 | 场景 | 结果 |
 | --- | --- |
@@ -71,7 +78,7 @@ rollup 中任一成员缺失某 token component 时，该 component 与 `total_t
 
 ## Synthetic Fixture Matrix
 
-1. 1M input + 1M cached + 1M output + 1M reasoning 的 `gpt-5.2-codex`，手算结果 `29,925,000 microUSD`。
+1. 1M input（其中 1M cached）+ 1M output + 1M reasoning 的 `gpt-5.2-codex`，手算结果 `28,175,000 microUSD`。
 2. all-zero、missing token、缺失 rate、negative 和 `int64` overflow；合并 numerator 的 half-up 边界。
 3. provisional usage 排除；final 的 missing、conflict、invalid、future safe model 分别保留固定 reason。
 4. catalog 生效前、v1 边界、v2 边界与只命中 prefix 的 model，证明 `[from,to)` 和 cost exact-only。
@@ -123,11 +130,8 @@ fi
 go test ./... -count=1
 go vet ./...
 go test -race ./...
-make harness-verify
-make project-check
+make verify-architecture
 git diff --check
-python3 .agents/skills/project-version-release/scripts/project_version_release.py \
-  check --repo "$PWD" --json
 make verify
 ```
 
@@ -138,12 +142,15 @@ make verify
 | Gate | 当前结果 |
 | --- | --- |
 | pricing/store focused | PASS：catalog、calculator、schema v5、rebuild/rollup/rollback/restart，以及 safe provenance merge/静默 persistence fault 测试通过 |
+| 2026-07-22 light parser / Schema v17 | PASS：模型 checkpoint、跨 batch model 继承、parser bump rebuild、v16→v17 append-only migration 与旧 checksum 冻结通过 |
+| 2026-07-22 light Usage cost / model | PASS：cached 子集手算 `$1.29`、unknown/unpriced partial、全局模型排序/对账和 Proto/Swift contract 通过 |
+| 2026-07-22 real Home live | PASS：`usage_models=5`、`usage_cost=known`、Schema v17、`quick_check=ok`、当前 `933/933` 条 scan 为 parser v2 active/complete；只保留脱敏计数/状态 |
 | SQLite nullable CHECK | PASS：missing component + forged total、complete components + missing total 均被拒绝；同 timezone 第二个 active 被拒绝 |
 | production GORM boundary | PASS：`internal/pricing` 与 production `internal/store/cost_*.go` 没有 `Raw`/`Exec` |
 | 实际依赖链 | PASS：`CGO_ENABLED=0 go list -deps` 未命中 official driver/mattn |
 | count=20 / Pure Go race / coverage | PASS：cost/rollup focused 与 pricing 各 20 次；Pure Go race 通过；pricing 100%、store 80.0% statement coverage |
 | full repo test/vet/race | PASS：全仓全部通过；仅出现已登记的 macOS deployment-target linker warning |
-| harness/project/version/diff | PASS：`harness-verify`、精确 Wails `v3.0.0-alpha2.117` 下的 `project-check`、`findings=[]` 与 diff check 通过 |
+| architecture/version/diff | PASS：当时的架构检查、精确 Wails `v3.0.0-alpha2.117`、`findings=[]` 与 diff check 通过 |
 | `make verify` | PASS：post-integration 重跑 Go/vet、前端 typecheck/test/build、generated stability、thin arm64/minOS 15、ad-hoc app/ZIP 全部通过 |
 | implementation subagent review | PASS：原 2 High + 1 Medium 均 closed，`blocking_findings=0` |
 | post-integration / final scope review | PASS：不同 subagent 终审无 finding，`blocking_findings=0`，scope/changelog/version/GORM/隐私边界通过 |
@@ -163,6 +170,6 @@ make verify
 
 ## 清理与回写
 
-- 只清理本轮产生的 ignored build/package artifacts，不删除用户已有 `.agents/state/`、`.agents/runs/`、`.agents/plans/` 或其他未跟踪内容。
+- 只清理本轮产生的 ignored build/package artifacts，不删除仓库外本地归档、已有 `.artifacts/runs/` 或其他未跟踪内容。
 - closeout 前把 PENDING 更新为真实结果；未执行的 gate 不得写成 PASS。
 - Issue/PR 记录 `actions_disabled_by_user`，普通 Execution Issue 不触发 release。
