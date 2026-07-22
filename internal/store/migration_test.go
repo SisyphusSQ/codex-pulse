@@ -92,11 +92,11 @@ func TestApplicationMigrationAppendsIngestSchemaToFrozenV2(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 	if report.FromVersion != 2 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v2 to v16 with backup", report)
+		!equalInts(report.AppliedVersions, []int{3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v2 to v17 with backup", report)
 	}
-	if backupVersions != [2]int{2, 16} {
-		t.Fatalf("backup versions = %v, want [2 16]", backupVersions)
+	if backupVersions != [2]int{2, 17} {
+		t.Fatalf("backup versions = %v, want [2 17]", backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 
@@ -150,11 +150,11 @@ func TestApplicationMigrationAppendsRetentionIndexesToFrozenV1(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 	if report.FromVersion != 1 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v1 to v16 with backup", report)
+		!equalInts(report.AppliedVersions, []int{2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v1 to v17 with backup", report)
 	}
-	if backupVersions != [2]int{1, 16} {
-		t.Fatalf("backup versions = %v, want [1 16]", backupVersions)
+	if backupVersions != [2]int{1, 17} {
+		t.Fatalf("backup versions = %v, want [1 17]", backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 

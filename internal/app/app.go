@@ -273,7 +273,7 @@ func openApplicationStartup(
 		}
 		return nil, recovery, closeErr
 	}
-	if err := repository.AddPricingVersion(ctx, pricing.BuiltinOpenAI20260714()); err != nil {
+	if err := installBuiltinPricingCatalog(ctx, repository); err != nil {
 		closeErr := database.Close(context.WithoutCancel(ctx))
 		return nil, nil, errors.Join(err, closeErr)
 	}
@@ -289,7 +289,7 @@ func openConfiguredStore(ctx context.Context, config storesqlite.Config) (lifecy
 			if err := repository.EnsureApplicationSchema(ctx); err != nil {
 				return fmt.Errorf("ensure application schema: %w", err)
 			}
-			if err := repository.AddPricingVersion(ctx, pricing.BuiltinOpenAI20260714()); err != nil {
+			if err := installBuiltinPricingCatalog(ctx, repository); err != nil {
 				return fmt.Errorf("install builtin pricing catalog: %w", err)
 			}
 			return nil
@@ -299,6 +299,15 @@ func openConfiguredStore(ctx context.Context, config storesqlite.Config) (lifecy
 		return nil, err
 	}
 	return database, nil
+}
+
+func installBuiltinPricingCatalog(ctx context.Context, repository *factstore.Repository) error {
+	for _, catalog := range pricing.BuiltinOpenAICatalog() {
+		if err := repository.AddPricingVersion(ctx, catalog); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func openBootstrappedStore[T lifecycleStore](

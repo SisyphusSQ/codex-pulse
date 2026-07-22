@@ -276,8 +276,13 @@ func mapSessionDetailResponse(
 	if snapshot.Record.Rollup != nil {
 		evidenceTotals = *snapshot.Record.Rollup
 	}
+	pricingSource, currency := "", ""
+	if snapshot.Generation != nil {
+		pricingSource, currency = snapshot.Generation.PricingSource, snapshot.Generation.Currency
+	}
 	if err := validatePricingEvidence(
-		snapshot.Mode, evidenceTotals, snapshot.PricingVersions, snapshot.UnpricedReasons,
+		snapshot.Mode, evidenceTotals, pricingSource, currency,
+		snapshot.PricingVersions, snapshot.UnpricedReasons,
 	); err != nil {
 		return SessionDetailResponse{}, err
 	}
@@ -890,13 +895,18 @@ func mapLightIndexSessionTotals(value *store.RollupTotals) (UsageTotals, error) 
 	if err != nil {
 		return UsageTotals{}, err
 	}
+	result.EstimatedUSDMicros, err = numericOrUnknown(
+		value.EstimatedUSDMicros, basequery.NumericMicroUSD, basequery.UnknownNotComputed,
+	)
+	if err != nil {
+		return UsageTotals{}, err
+	}
 	for _, target := range []struct {
 		value  *basequery.NumericValue
 		unit   basequery.NumericUnit
 		reason basequery.UnknownReason
 	}{
 		{&result.TurnCount, basequery.NumericCount, basequery.UnknownUnavailable},
-		{&result.EstimatedUSDMicros, basequery.NumericMicroUSD, basequery.UnknownNotComputed},
 		{&result.PricedTurnCount, basequery.NumericCount, basequery.UnknownNotComputed},
 		{&result.UnpricedTurnCount, basequery.NumericCount, basequery.UnknownNotComputed},
 		{&result.FirstActivityAtMS, basequery.NumericMilliseconds, basequery.UnknownUnavailable},

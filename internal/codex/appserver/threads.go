@@ -83,13 +83,9 @@ func (lister *ThreadLister) List(ctx context.Context, confirmedHome string) (Thr
 	if lister == nil || lister.rpc == nil || lister.pageSize <= 0 {
 		return ThreadList{}, errors.New("invalid thread lister")
 	}
-	canonicalHome, err := filepath.EvalSymlinks(confirmedHome)
+	canonicalHome, err := canonicalConfirmedHome(confirmedHome)
 	if err != nil {
-		return ThreadList{}, fmt.Errorf("confirm Codex Home: %w", err)
-	}
-	canonicalHome, err = filepath.Abs(canonicalHome)
-	if err != nil {
-		return ThreadList{}, fmt.Errorf("canonicalize Codex Home: %w", err)
+		return ThreadList{}, err
 	}
 
 	var output ThreadList
@@ -123,6 +119,18 @@ func (lister *ThreadLister) List(ctx context.Context, confirmedHome string) (Thr
 		seenCursors[*response.NextCursor] = struct{}{}
 		cursor = *response.NextCursor
 	}
+}
+
+func canonicalConfirmedHome(confirmedHome string) (string, error) {
+	canonicalHome, err := filepath.EvalSymlinks(confirmedHome)
+	if err != nil {
+		return "", fmt.Errorf("confirm Codex Home: %w", err)
+	}
+	canonicalHome, err = filepath.Abs(canonicalHome)
+	if err != nil {
+		return "", fmt.Errorf("canonicalize Codex Home: %w", err)
+	}
+	return canonicalHome, nil
 }
 
 func normalizeThread(thread threadRecord, canonicalHome string, ordinal int) (ThreadMetadata, []MetadataDiagnostic, bool) {

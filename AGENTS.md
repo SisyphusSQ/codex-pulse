@@ -74,6 +74,8 @@
 - 模板配置可提交
 - 若需要环境配置，可按项目约定提交 `.env.example`、`settings.example.yaml` 这类示例文件
 - `docs/test/*` 默认提交可复用 runbook 与当前 / 本次验证结果摘要
+- 本机 development App 的人工 / live E2E 默认复用已配置的私有 runtime，直接使用当前真实 Codex Home；允许 `codex app-server` 产生正常状态库、WAL、锁和日志，只提交脱敏计数与状态，不提交用户内容、真实路径或原始日志
+- CI、单元测试、contract test 与确定性 smoke 继续使用隔离 synthetic / empty Home；这些 gate 不能冒充真实 Home 产品验收，`make verify` 也不得隐式依赖用户数据
 - `docs/issues/*` 默认提交工具中立 issue 与 writeback log
 - 已写入 `docs/test/*` 的验证结果摘要是提交版测试真相，后续同步或 closeout 不得删成空模板
 - `.agents/state/*` 与 `.agents/runs/*` 的真实运行文件默认不提交

@@ -654,7 +654,7 @@ func TestRebuildCostLedgerPricesFinalTurnsAndPreservesUnknownReasons(t *testing.
 			t.Errorf("turn %q reason = %q, want %q", cost.TurnID, cost.Reason, wantReasons[cost.TurnID])
 		}
 		if cost.TurnID == "turn-known" {
-			const wantCost = int64(29_925_000)
+			const wantCost = int64(28_175_000)
 			if cost.EstimatedUSDMicros == nil || *cost.EstimatedUSDMicros != wantCost {
 				t.Errorf("known estimated cost = %v, want %d", cost.EstimatedUSDMicros, wantCost)
 			}
@@ -668,7 +668,7 @@ func TestRebuildCostLedgerPricesFinalTurnsAndPreservesUnknownReasons(t *testing.
 	daily := snapshot.DailyRollups[0]
 	if daily.TurnCount != 6 || daily.PricedTurnCount != 1 || daily.UnpricedTurnCount != 5 ||
 		daily.CachedInputTokens != nil || daily.TotalTokens != nil ||
-		daily.EstimatedUSDMicros == nil || *daily.EstimatedUSDMicros != 29_925_000 {
+		daily.EstimatedUSDMicros == nil || *daily.EstimatedUSDMicros != 28_175_000 {
 		t.Fatalf("partial daily rollup = %#v", daily)
 	}
 	modelTurns := int64(0)

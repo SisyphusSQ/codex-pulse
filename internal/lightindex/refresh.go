@@ -1,6 +1,6 @@
 package lightindex
 
-const TokenParserVersion = "codex-token-count-v1"
+const TokenParserVersion = "codex-token-count-model-v2"
 
 type HomeIdentity struct {
 	Path     string

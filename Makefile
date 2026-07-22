@@ -1,6 +1,8 @@
 .PHONY: harness-check harness-verify harness-review-gate project-check project-check-test \
 	verify verify-project verify-proto generate-proto verify-go verify-helper \
-	verify-swift-proto verify-swift-client verify-swift-transport
+	verify-swift-proto verify-swift-client verify-swift-transport \
+	verify-swift-app verify-swift-app-smoke-isolated verify-swift-app-live \
+	verify-swift-app-smoke verify-swift-primary-pages
 
 export RUN_ID
 
@@ -49,9 +51,24 @@ verify-swift-client:
 verify-swift-transport: verify-helper verify-swift-proto verify-swift-client
 	swift run --package-path app/macos codex-pulse-transport-spike --helper "$(CURDIR)/bin/codex-pulse"
 
+verify-swift-app:
+	swift run --package-path app/macos codex-pulse-app-tests
+	swift build --package-path app/macos --product codex-pulse-app
+
+verify-swift-app-smoke-isolated: verify-helper verify-swift-app
+	bash scripts/macos/run-app-smoke.sh
+
+verify-swift-app-live: verify-helper verify-swift-app
+	bash scripts/macos/run-app-live-smoke.sh
+
+verify-swift-app-smoke: verify-swift-app-live
+
+verify-swift-primary-pages: verify-swift-app-live
+
 verify:
 	$(MAKE) harness-verify
 	$(MAKE) verify-project
 	$(MAKE) verify-proto
 	$(MAKE) verify-go
 	$(MAKE) verify-swift-transport
+	$(MAKE) verify-swift-app-smoke-isolated

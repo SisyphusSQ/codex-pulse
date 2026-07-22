@@ -107,6 +107,88 @@ func TestRuntimePublishesMetadataBeforeBackgroundTokenScan(t *testing.T) {
 	assertLightRuntimeDidNotWriteDeepFacts(t, database)
 }
 
+func TestRuntimeRebuildsUnchangedRolloutAfterParserVersionBump(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	homePath := t.TempDir()
+	rollout := filepath.Join(homePath, "sessions", "parser-bump.jsonl")
+	if err := os.MkdirAll(filepath.Dir(rollout), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := strings.Join([]string{
+		`{"timestamp":"2026-07-19T01:00:00Z","type":"turn_context","payload":{"model":"gpt-5.4-mini"}}`,
+		tokenLine("2026-07-19T01:00:01Z", 100, 20, 10, 2),
+	}, "\n") + "\n"
+	if err := os.WriteFile(rollout, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	homeMetadata, err := logs.NewHomeProbe().Probe(ctx, homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalRollout, err := filepath.EvalSymlinks(rollout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	database, repository := openLightRuntimeRepository(t)
+	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
+			SessionID: "parser-bump", CWD: "/workspace", RolloutPath: &canonicalRollout,
+			CreatedAtMS: 100, UpdatedAtMS: 200,
+		}}}, nil
+	})
+	runtime, err := NewRuntime(RuntimeConfig{Repository: repository, Metadata: provider})
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := store.LightHomeIdentity{Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode}
+	first, err := runtime.Start(ctx, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+	initial, err := repository.ActiveLightTokenScan(ctx, "parser-bump")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		if err := transaction.WithContext(ctx).Table("light_token_scans").
+			Where("session_id = ? AND generation = ?", "parser-bump", initial.Generation).
+			Updates(map[string]any{
+				"parser_version": "codex-token-count-v1", "current_model_key": nil,
+				"current_model_source": "missing",
+			}).Error; err != nil {
+			return err
+		}
+		return transaction.WithContext(ctx).Table("light_token_timed").
+			Where("session_id = ? AND generation = ?", "parser-bump", initial.Generation).
+			Updates(map[string]any{"model_key": nil, "model_source": "missing"}).Error
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := runtime.Start(ctx, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+	active, err := repository.ActiveLightTokenScan(ctx, "parser-bump")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active.Generation <= initial.Generation || active.ParserVersion != TokenParserVersion ||
+		active.Checkpoint.CurrentModelKey == nil || *active.Checkpoint.CurrentModelKey != "gpt-5.4-mini" {
+		t.Fatalf("parser bump did not rebuild unchanged rollout: initial=%#v active=%#v", initial, active)
+	}
+}
+
 func TestRuntimeCancellationLeavesMetadataReady(t *testing.T) {
 	t.Parallel()
 

@@ -10,6 +10,14 @@
 - 对应计划 / issue：`.agents/plans/2026-07-15-too-265-reset-credits-quota-schedule.md` / TOO-265
 - 结果说明：Reset Credits payload、quota current、source attempt/state、durable schedule/claim fence 与 cron lifecycle 都使用 synthetic fixture。已证明固定只读 endpoint、content-free facts、动态到期、v11→v12、exact replay、last-known-good、cadence、5/10/20/30 分钟退避、独立且取较晚值的 Retry-After fence、60 秒 manual throttle、foreground/wake 错误退避、startup/recovery/reconcile 保留 durable due、取消、preferences disable、启动后 lease 到期恢复、attempt-first/release-first crash gap 与迟到 attempt 隔离；未读取真实 auth，未发真实网络请求。
 
+### 2026-07-22 原生 App 真实 Home follow-up
+
+- 用户已明确授权本机 development App 复用既有私有 runtime 与真实 Codex Home，并允许 quota/reset credits 只读请求及标准运行状态写入；该授权不改变本 runbook 的 CI/单元测试主路径，后者继续只用 synthetic fixture。
+- 真实 App 初始状态为两类来源 `auth_required` 且无 next due；失败发生在旧隔离 Home 阶段。生产 credential provider 对当前 confirmed Home 的只读结构探针通过，未输出或复制 token。
+- App 内手动 quota 与 reset credits 刷新均成功；脱敏结果为 quota current `1`、reset snapshot `1`、available/total `3/3`，两类来源均恢复 `current`、failure code cleared、next due present。
+- 新增 Home-switch regressions 证明：旧 Home credential failure 后切换到有效 Home，会以既有 `recovery` 语义自动探测两个已启用来源；失败回滚只重探一次；禁用来源不探测。两条测试在 race 下重复 `20` 次通过；最终真实 Home live smoke 与完整 `make verify` 通过。确定性测试仍使用临时 synthetic Home 和 fake transport，不读真实用户数据。
+- 提交版仅保留计数、稳定状态与测试名；不包含真实 Home 路径、Authorization、token、response body、credit ID、用户内容或原始日志。
+
 ### 本次执行结果
 
 - 执行时间：2026-07-16
@@ -47,15 +55,15 @@
 - 证明所有可信 quota 窗口共同计算 nearest reset/remaining，suspicious/expired/never-loaded 不参与。
 - 证明 quota/reset-credits cadence、429、network、auth、schema、manual、foreground、wake、cancel、disable 和 restart 都产生持久 next due/reason，且 CAS claim 阻止重叠请求。
 - 证明周期唤醒只使用 `github.com/robfig/cron/v3 v3.0.1`，不新增生产 timer/ticker/sleep loop。
-- 本 runbook 只验证 synthetic contract，不是 live Wham/auth E2E。
+- 本 runbook 的自动化主路径只验证 synthetic contract；真实 Wham/auth 产品验收仅使用上方已授权、脱敏记录的 development App follow-up，不进入 CI 或 `make verify`。
 
 ## 执行副作用
 
 - 可能写入的本地文件：Go build/test cache；完整 `make verify` 可能生成仓库已忽略的 frontend/build/package 产物。
 - 可能访问的服务 / 数据库 / 外部系统：功能测试不访问外部服务，HTTP 使用内存 fake transport、SQLite 位于测试临时目录；若本机缺少 lockfile dependencies，完整 `make verify` 的 `npm ci` 可能访问 npm registry。
 - 可能创建的临时数据：synthetic Reset Credits snapshot/items、quota observations/current、source attempt/state、refresh schedule/claim、v11/v12 migration 与 backup fixture。
-- 明确不会触达的范围：真实 Codex Home、`auth.json`、Wham 网络、用户 SQLite、consume endpoint、GitHub Actions、release/tag。
-- 如果测试被改为真实 endpoint、真实 auth 路径或默认应用数据库，立即停止并重新确认范围。
+- 自动化主路径明确不会触达：真实 Codex Home、真实 `auth.json`、Wham 网络、用户 SQLite、consume endpoint、GitHub Actions、release/tag。
+- 本机 development App 的人工/live E2E 是单独授权的产品验收路径：只复用既有私有 runtime 与 confirmed 真实 Home，允许 App Server 和 quota provider 的标准状态写入；不创建新的验证 runtime，不读取/复制原始 JSONL，不输出 credential 或原始响应。
 
 ## 前置条件
 

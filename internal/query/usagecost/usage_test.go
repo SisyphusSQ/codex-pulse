@@ -184,6 +184,52 @@ func TestUsageCostLightIndexReturnsKnownTokensAndUnknownTurnCost(t *testing.T) {
 	assertUnknownNumeric(t, response.Totals.EstimatedUSDMicros, basequery.UnknownNotComputed)
 }
 
+func TestUsageCostLightIndexReturnsKnownCostAndModelBreakdown(t *testing.T) {
+	t.Parallel()
+
+	input, cached, output, reasoning, total, cost := int64(1_000_000), int64(200_000), int64(100_000), int64(50_000), int64(1_150_000), int64(1_290_000)
+	model := "gpt-5.4-mini"
+	display := "GPT-5.4 Mini"
+	reader := usageReaderFunc(func(context.Context, store.AnalyticsRange) (store.UsageCostRangeSnapshot, error) {
+		return store.UsageCostRangeSnapshot{
+			Mode: store.AnalyticsReadLightIndex, PricingSource: "openai-api", Currency: "USD",
+			Daily: []store.UsageDaily{{
+				BucketStartMS: 1_784_419_200_000, ReportingTimezone: "UTC",
+				RollupTotals: store.RollupTotals{
+					InputTokens: &input, CachedInputTokens: &cached, OutputTokens: &output,
+					ReasoningTokens: &reasoning, TotalTokens: &total, EstimatedUSDMicros: &cost,
+				},
+			}},
+			Models: []store.ModelUsageDaily{{
+				BucketStartMS: 1_784_419_200_000, ReportingTimezone: "UTC", DimensionKey: model,
+				ModelKey: &model, ModelDisplayName: &display,
+				AttributionConfidence: "high", AttributionSource: "model_canonical", AttributionReason: "observed",
+				RollupTotals: store.RollupTotals{
+					InputTokens: &input, CachedInputTokens: &cached, OutputTokens: &output,
+					ReasoningTokens: &reasoning, TotalTokens: &total, EstimatedUSDMicros: &cost,
+				},
+			}},
+			PricingVersions: []string{"openai-api-2026-07-22"}, UnpricedReasons: []store.CostReasonCount{},
+		}, nil
+	})
+	service := newUsageService(t, reader)
+	response, err := service.UsageCost(context.Background(), UsageCostRequest{
+		Range:       basequery.LocalDateRange{StartDate: "2026-07-19", EndDateExclusive: "2026-07-20", TimeZone: "UTC"},
+		Granularity: TrendDay,
+	})
+	if err != nil {
+		t.Fatalf("UsageCost(light priced) error = %v", err)
+	}
+	if response.PricingSource == nil || *response.PricingSource != "openai-api" ||
+		response.Currency == nil || *response.Currency != "USD" || len(response.Models) != 1 ||
+		response.Models[0].DimensionKey != model {
+		t.Fatalf("priced light response = %#v", response)
+	}
+	assertKnownNumeric(t, response.Totals.EstimatedUSDMicros, cost, basequery.NumericMicroUSD)
+	assertKnownNumeric(t, response.Models[0].Totals.TotalTokens, total, basequery.NumericTokens)
+	assertKnownNumeric(t, response.Models[0].Totals.EstimatedUSDMicros, cost, basequery.NumericMicroUSD)
+}
+
 func TestUsageCostEmptyFallbackKeepsCostUnknown(t *testing.T) {
 	t.Parallel()
 

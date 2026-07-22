@@ -764,6 +764,39 @@ public nonisolated struct Codexpulse_Core_V1_TrendPoint: Sendable {
   fileprivate var _totals: Codexpulse_Core_V1_UsageTotals? = nil
 }
 
+public nonisolated struct Codexpulse_Core_V1_UsageModelItem: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var dimensionKey: String = String()
+
+  public var model: Codexpulse_Core_V1_AttributionValue {
+    get {_model ?? Codexpulse_Core_V1_AttributionValue()}
+    set {_model = newValue}
+  }
+  /// Returns true if `model` has been explicitly set.
+  public var hasModel: Bool {self._model != nil}
+  /// Clears the value of `model`. Subsequent reads from it will return its default value.
+  public mutating func clearModel() {self._model = nil}
+
+  public var totals: Codexpulse_Core_V1_UsageTotals {
+    get {_totals ?? Codexpulse_Core_V1_UsageTotals()}
+    set {_totals = newValue}
+  }
+  /// Returns true if `totals` has been explicitly set.
+  public var hasTotals: Bool {self._totals != nil}
+  /// Clears the value of `totals`. Subsequent reads from it will return its default value.
+  public mutating func clearTotals() {self._totals = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _model: Codexpulse_Core_V1_AttributionValue? = nil
+  fileprivate var _totals: Codexpulse_Core_V1_UsageTotals? = nil
+}
+
 public nonisolated struct Codexpulse_Core_V1_UsageCostResponse: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -842,6 +875,11 @@ public nonisolated struct Codexpulse_Core_V1_UsageCostResponse: @unchecked Senda
   public var hasDegradedReason: Bool {_storage._degradedReason != nil}
   /// Clears the value of `degradedReason`. Subsequent reads from it will return its default value.
   public mutating func clearDegradedReason() {_uniqueStorage()._degradedReason = nil}
+
+  public var models: [Codexpulse_Core_V1_UsageModelItem] {
+    get {_storage._models}
+    set {_uniqueStorage()._models = newValue}
+  }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -5948,9 +5986,53 @@ nonisolated extension Codexpulse_Core_V1_TrendPoint: SwiftProtobuf.Message, Swif
   }
 }
 
+nonisolated extension Codexpulse_Core_V1_UsageModelItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".UsageModelItem"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}dimension_key\0\u{1}model\0\u{1}totals\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.dimensionKey) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._model) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._totals) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.dimensionKey.isEmpty {
+      try visitor.visitSingularStringField(value: self.dimensionKey, fieldNumber: 1)
+    }
+    try { if let v = self._model {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._totals {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_UsageModelItem, rhs: Codexpulse_Core_V1_UsageModelItem) -> Bool {
+    if lhs.dimensionKey != rhs.dimensionKey {return false}
+    if lhs._model != rhs._model {return false}
+    if lhs._totals != rhs._totals {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".UsageCostResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}range\0\u{3}reporting_time_zone\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{1}totals\0\u{1}trend\0\u{3}unpriced_reasons\0\u{3}degraded_reason\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}range\0\u{3}reporting_time_zone\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{1}totals\0\u{1}trend\0\u{3}unpriced_reasons\0\u{3}degraded_reason\0\u{1}models\0")
 
   fileprivate class _StorageClass {
     var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
@@ -5963,6 +6045,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
     var _trend: [Codexpulse_Core_V1_TrendPoint] = []
     var _unpricedReasons: [Codexpulse_Core_V1_ReasonCount] = []
     var _degradedReason: String? = nil
+    var _models: [Codexpulse_Core_V1_UsageModelItem] = []
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -5983,6 +6066,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
       _trend = source._trend
       _unpricedReasons = source._unpricedReasons
       _degradedReason = source._degradedReason
+      _models = source._models
     }
   }
 
@@ -6011,6 +6095,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
         case 8: try { try decoder.decodeRepeatedMessageField(value: &_storage._trend) }()
         case 9: try { try decoder.decodeRepeatedMessageField(value: &_storage._unpricedReasons) }()
         case 10: try { try decoder.decodeSingularStringField(value: &_storage._degradedReason) }()
+        case 11: try { try decoder.decodeRepeatedMessageField(value: &_storage._models) }()
         default: break
         }
       }
@@ -6053,6 +6138,9 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
       try { if let v = _storage._degradedReason {
         try visitor.visitSingularStringField(value: v, fieldNumber: 10)
       } }()
+      if !_storage._models.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._models, fieldNumber: 11)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -6072,6 +6160,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
         if _storage._trend != rhs_storage._trend {return false}
         if _storage._unpricedReasons != rhs_storage._unpricedReasons {return false}
         if _storage._degradedReason != rhs_storage._degradedReason {return false}
+        if _storage._models != rhs_storage._models {return false}
         return true
       }
       if !storagesAreEqual {return false}

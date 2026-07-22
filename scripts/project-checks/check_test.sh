@@ -78,4 +78,34 @@ mv "$TMP_ROOT/ReadRetryPolicy.swift" \
   "$TMP_ROOT/repo/app/macos/Sources/CodexPulseCoreClient/ReadRetryPolicy.swift"
 assert_failure SWIFT-001
 
+copy_fixture
+sed 's/NSApplication\.shared/NSApplication()/' \
+  "$TMP_ROOT/repo/app/macos/Sources/CodexPulseApp/AppMain.swift" >"$TMP_ROOT/AppMain.swift"
+mv "$TMP_ROOT/AppMain.swift" "$TMP_ROOT/repo/app/macos/Sources/CodexPulseApp/AppMain.swift"
+assert_failure SWIFT-002
+
+copy_fixture
+printf '\n// sqlite3_open must never enter Swift App source\n' \
+  >>"$TMP_ROOT/repo/app/macos/Sources/CodexPulseAppSupport/AppRuntime.swift"
+assert_failure SWIFT-002
+
+copy_fixture
+sed 's/RuntimeControlAction/UnsafeRuntimeControlAction/g' \
+  "$TMP_ROOT/repo/app/macos/Sources/CodexPulseAppSupport/FeatureModels.swift" >"$TMP_ROOT/FeatureModels.swift"
+mv "$TMP_ROOT/FeatureModels.swift" \
+  "$TMP_ROOT/repo/app/macos/Sources/CodexPulseAppSupport/FeatureModels.swift"
+assert_failure SWIFT-003
+
+copy_fixture
+sed 's/standard_housekeeping=allowed/standard_housekeeping=blocked/' \
+  "$TMP_ROOT/repo/scripts/macos/run-app-live-smoke.sh" >"$TMP_ROOT/run-app-live-smoke.sh"
+mv "$TMP_ROOT/run-app-live-smoke.sh" "$TMP_ROOT/repo/scripts/macos/run-app-live-smoke.sh"
+assert_failure SWIFT-004
+
+copy_fixture
+sed 's/command.Env = isolatedCodexEnvironment(os.Environ(), canonicalHome)/command.Env = os.Environ()/' \
+  "$TMP_ROOT/repo/internal/codex/appserver/process.go" >"$TMP_ROOT/process.go"
+mv "$TMP_ROOT/process.go" "$TMP_ROOT/repo/internal/codex/appserver/process.go"
+assert_failure DATA-001
+
 printf 'project-check contract tests passed\n'

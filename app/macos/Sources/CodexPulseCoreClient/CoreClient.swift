@@ -73,6 +73,190 @@ public actor CoreClient {
         }
     }
 
+    public func usageCost(
+        _ request: Codexpulse_Core_V1_UsageCostRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_UsageCostResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.usageCost(request, metadata: metadata)
+        }
+    }
+
+    public func quotaCurrent(
+        _ request: Codexpulse_Core_V1_QuotaCurrentRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_QuotaCurrentResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.quotaCurrent(request, metadata: metadata)
+        }
+    }
+
+    public func requestQuotaRefresh(
+        _ request: Codexpulse_Core_V1_QuotaRefreshRequest
+    ) async throws -> Codexpulse_Core_V1_QuotaRefreshReceipt {
+        try await service.requestQuotaRefresh(request, metadata: metadata)
+    }
+
+    public func runRuntimeAction(
+        _ request: Codexpulse_Core_V1_RuntimeActionRequest
+    ) async throws -> Codexpulse_Core_V1_RuntimeActionReceipt {
+        try await service.runRuntimeAction(request, metadata: metadata)
+    }
+
+    public func listSessions(
+        _ request: Codexpulse_Core_V1_ListSessionsRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_SessionListResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.listSessions(request, metadata: metadata)
+        }
+    }
+
+    public func sessionDetail(
+        _ request: Codexpulse_Core_V1_SessionDetailRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_SessionDetailResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.sessionDetail(request, metadata: metadata)
+        }
+    }
+
+    public func listProjects(
+        _ request: Codexpulse_Core_V1_ListProjectsRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_ProjectListResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.listProjects(request, metadata: metadata)
+        }
+    }
+
+    public func projectDetail(
+        _ request: Codexpulse_Core_V1_ProjectDetailRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_ProjectDetailResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.projectDetail(request, metadata: metadata)
+        }
+    }
+
+    public func listSources(
+        _ request: Codexpulse_Core_V1_ListSourcesRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_SourceListResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.listSources(request, metadata: metadata)
+        }
+    }
+
+    public func source(
+        _ request: Codexpulse_Core_V1_SourceRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_SourceDetailResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.source(request, metadata: metadata)
+        }
+    }
+
+    public func listJobs(
+        _ request: Codexpulse_Core_V1_ListJobsRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_JobListResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.listJobs(request, metadata: metadata)
+        }
+    }
+
+    public func job(
+        _ request: Codexpulse_Core_V1_JobRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_JobDetailResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.job(request, metadata: metadata)
+        }
+    }
+
+    public func listHealth(
+        _ request: Codexpulse_Core_V1_ListHealthRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_HealthListResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.listHealth(request, metadata: metadata)
+        }
+    }
+
+    public func health(
+        _ request: Codexpulse_Core_V1_HealthRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_HealthDetailResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.health(request, metadata: metadata)
+        }
+    }
+
+    public func healthProjection(
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_HealthProjectionResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.healthProjection(
+                Codexpulse_Core_V1_HealthProjectionRequest(),
+                metadata: metadata
+            )
+        }
+    }
+
+    public func dataHealth(
+        _ request: Codexpulse_Core_V1_DataHealthRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_DataHealthResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.dataHealth(request, metadata: metadata)
+        }
+    }
+
+    public func settings(
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_SettingsResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.settings(Codexpulse_Core_V1_SettingsRequest(), metadata: metadata)
+        }
+    }
+
+    public func updateSettings(
+        _ request: Codexpulse_Core_V1_UpdateSettingsRequest
+    ) async throws -> Codexpulse_Core_V1_SettingsUpdateReceipt {
+        try await service.updateSettings(request, metadata: metadata)
+    }
+
     public func notifyLifecycle(
         _ event: LifecycleEvent
     ) async throws -> Codexpulse_Core_V1_LifecycleNotificationReceipt {
@@ -122,7 +306,9 @@ public actor CoreClient {
     public func shutdown(reason: String = "client_exit") async throws {
         var request = Codexpulse_Core_V1_ShutdownRequest()
         request.reason = reason
-        let response = try await service.shutdown(request, metadata: metadata)
+        var options = CallOptions.defaults
+        options.timeout = .seconds(5)
+        let response = try await service.shutdown(request, metadata: metadata, options: options)
         guard response.accepted else { throw CoreClientError.shutdownRejected }
         grpcClient.beginGracefulShutdown()
         if let connectionTask {

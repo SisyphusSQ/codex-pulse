@@ -9,6 +9,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -75,11 +76,35 @@ func (repository *Repository) UsageCostRange(
 }
 
 type lightTimedRangeProjection struct {
-	ObservedAtMS      int64 `gorm:"column:observed_at_ms"`
-	InputTokens       int64 `gorm:"column:input_tokens"`
-	CachedInputTokens int64 `gorm:"column:cached_input_tokens"`
-	OutputTokens      int64 `gorm:"column:output_tokens"`
-	ReasoningTokens   int64 `gorm:"column:reasoning_tokens"`
+	ObservedAtMS      int64   `gorm:"column:observed_at_ms"`
+	ModelKey          *string `gorm:"column:model_key"`
+	ModelSource       string  `gorm:"column:model_source"`
+	InputTokens       int64   `gorm:"column:input_tokens"`
+	CachedInputTokens int64   `gorm:"column:cached_input_tokens"`
+	OutputTokens      int64   `gorm:"column:output_tokens"`
+	ReasoningTokens   int64   `gorm:"column:reasoning_tokens"`
+}
+
+type lightPricingCatalog struct {
+	version pricingVersionModel
+	models  map[string]modelPriceModel
+}
+
+type lightCostGroupKey struct {
+	bucketStartMS  int64
+	dimensionKey   string
+	pricingVersion string
+}
+
+type lightCostGroup struct {
+	dimension                        safeDimension
+	input, cached, output, reasoning int64
+}
+
+type lightRollupAccumulator struct {
+	input, cached, output, reasoning, total int64
+	estimatedUSDMicros                      int64
+	hasPricedCost                           bool
 }
 
 func loadLightUsageCostRange(
@@ -98,36 +123,76 @@ func loadLightUsageCostRange(
 	}
 	var rows []lightTimedRangeProjection
 	if err := database.Table("light_token_timed AS timed").
-		Select("timed.observed_at_ms, timed.input_tokens, timed.cached_input_tokens, timed.output_tokens, timed.reasoning_tokens").
+		Select("timed.observed_at_ms, timed.model_key, timed.model_source, timed.input_tokens, timed.cached_input_tokens, timed.output_tokens, timed.reasoning_tokens").
 		Joins("JOIN light_sessions AS session ON session.session_id = timed.session_id AND session.active_token_generation = timed.generation").
 		Where("timed.observed_at_ms >= ? AND timed.observed_at_ms < ?", filter.StartAtMS, filter.EndAtMS).
 		Order("timed.observed_at_ms, timed.session_id, timed.source_offset").Find(&rows).Error; err != nil {
 		return false, err
 	}
-	type bucketTotals struct {
-		input, cached, output, reasoning int64
+	catalogs, err := loadLightPricingCatalogs(database, filter.EndAtMS)
+	if err != nil {
+		return false, err
 	}
-	byDay := make(map[int64]bucketTotals)
+	catalogByVersion := make(map[string]lightPricingCatalog, len(catalogs))
+	for _, catalog := range catalogs {
+		catalogByVersion[catalog.version.PricingVersion] = catalog
+	}
+	groups := make(map[lightCostGroupKey]*lightCostGroup)
+	usedVersions := make(map[string]struct{})
 	for _, row := range rows {
 		if err := ctx.Err(); err != nil {
 			return false, err
 		}
 		bucket := localDayBucketStart(row.ObservedAtMS, location)
-		value := byDay[bucket]
-		var err error
-		if value.input, err = checkedAdd(value.input, row.InputTokens); err != nil {
+		dimension := lightModelDimension(row.ModelKey, row.ModelSource)
+		catalog := effectiveLightPricingCatalog(catalogs, row.ObservedAtMS)
+		version := ""
+		if catalog != nil {
+			version = catalog.version.PricingVersion
+			usedVersions[version] = struct{}{}
+		}
+		key := lightCostGroupKey{bucketStartMS: bucket, dimensionKey: dimension.key, pricingVersion: version}
+		group := groups[key]
+		if group == nil {
+			group = &lightCostGroup{dimension: dimension}
+			groups[key] = group
+		}
+		if err := addLightTokens(group, row.InputTokens, row.CachedInputTokens, row.OutputTokens, row.ReasoningTokens); err != nil {
 			return false, err
 		}
-		if value.cached, err = checkedAdd(value.cached, row.CachedInputTokens); err != nil {
+	}
+	byDay := make(map[int64]*lightRollupAccumulator)
+	byModel := make(map[dimensionBucketKey]*lightRollupAccumulator)
+	modelDimensions := make(map[dimensionBucketKey]safeDimension)
+	for key, group := range groups {
+		var estimated *int64
+		if key.pricingVersion != "" && group.dimension.identity != nil {
+			catalog := catalogByVersion[key.pricingVersion]
+			if model, ok := catalog.models[*group.dimension.identity]; ok {
+				calculation, err := pricing.Calculate(pricing.Usage{
+					InputTokens: &group.input, CachedInputTokens: &group.cached,
+					OutputTokens: &group.output, ReasoningTokens: &group.reasoning,
+				}, pricing.Rates{
+					InputMicrosPerMillion:       model.InputMicrosPerMillion,
+					CachedInputMicrosPerMillion: model.CachedInputMicrosPerMillion,
+					OutputMicrosPerMillion:      model.OutputMicrosPerMillion,
+				})
+				if err != nil {
+					return false, err
+				}
+				estimated = calculation.EstimatedUSDMicros
+			}
+		}
+		if err := accumulatorForLight(byDay, key.bucketStartMS).add(group, estimated); err != nil {
 			return false, err
 		}
-		if value.output, err = checkedAdd(value.output, row.OutputTokens); err != nil {
+		modelKey := dimensionBucketKey{bucketStartMS: key.bucketStartMS, dimensionKey: key.dimensionKey}
+		if err := recordCostDimension(modelDimensions, modelKey, group.dimension); err != nil {
 			return false, err
 		}
-		if value.reasoning, err = checkedAdd(value.reasoning, row.ReasoningTokens); err != nil {
+		if err := accumulatorForLight(byModel, modelKey).add(group, estimated); err != nil {
 			return false, err
 		}
-		byDay[bucket] = value
 	}
 	keys := make([]int64, 0, len(byDay))
 	for key := range byDay {
@@ -136,27 +201,166 @@ func loadLightUsageCostRange(
 	sort.Slice(keys, func(left, right int) bool { return keys[left] < keys[right] })
 	snapshot.Mode = AnalyticsReadLightIndex
 	snapshot.Daily = make([]UsageDaily, 0, len(keys))
-	snapshot.PricingVersions = make([]string, 0)
+	snapshot.Models = make([]ModelUsageDaily, 0, len(byModel))
+	snapshot.PricingVersions = make([]string, 0, len(usedVersions))
 	snapshot.UnpricedReasons = make([]CostReasonCount, 0)
+	if len(rows) > 0 && len(catalogs) > 0 {
+		snapshot.PricingSource = "openai-api"
+		snapshot.Currency = "USD"
+	}
+	for version := range usedVersions {
+		snapshot.PricingVersions = append(snapshot.PricingVersions, version)
+	}
+	sort.Strings(snapshot.PricingVersions)
 	for _, key := range keys {
-		value := byDay[key]
-		total, err := checkedAdd(value.input, value.output)
-		if err == nil {
-			total, err = checkedAdd(total, value.reasoning)
-		}
-		if err != nil {
-			return false, err
-		}
-		input, cached, output, reasoning := value.input, value.cached, value.output, value.reasoning
 		snapshot.Daily = append(snapshot.Daily, UsageDaily{
 			BucketStartMS: key, ReportingTimezone: filter.ReportingTimezone,
-			RollupTotals: RollupTotals{
-				InputTokens: &input, CachedInputTokens: &cached, OutputTokens: &output,
-				ReasoningTokens: &reasoning, TotalTokens: &total,
-			},
+			RollupTotals: byDay[key].totals(),
+		})
+	}
+	modelKeys := make([]dimensionBucketKey, 0, len(byModel))
+	for key := range byModel {
+		modelKeys = append(modelKeys, key)
+	}
+	sort.Slice(modelKeys, func(left, right int) bool {
+		if modelKeys[left].bucketStartMS != modelKeys[right].bucketStartMS {
+			return modelKeys[left].bucketStartMS < modelKeys[right].bucketStartMS
+		}
+		return modelKeys[left].dimensionKey < modelKeys[right].dimensionKey
+	})
+	for _, key := range modelKeys {
+		dimension := modelDimensions[key]
+		snapshot.Models = append(snapshot.Models, ModelUsageDaily{
+			BucketStartMS: key.bucketStartMS, ReportingTimezone: filter.ReportingTimezone,
+			DimensionKey: key.dimensionKey, ModelKey: cloneLightString(dimension.identity),
+			ModelDisplayName:      cloneLightString(dimension.display),
+			AttributionConfidence: dimension.confidence, AttributionSource: dimension.source,
+			AttributionReason: dimension.reason, RollupTotals: byModel[key].totals(),
 		})
 	}
 	return true, nil
+}
+
+func loadLightPricingCatalogs(database *gorm.DB, endAtMS int64) ([]lightPricingCatalog, error) {
+	var versions []pricingVersionModel
+	if err := database.Where("source = ? AND currency = ? AND effective_from_ms < ?", "openai-api", "USD", endAtMS).
+		Order("effective_from_ms, pricing_version").Find(&versions).Error; err != nil {
+		return nil, err
+	}
+	output := make([]lightPricingCatalog, 0, len(versions))
+	for _, version := range versions {
+		var models []modelPriceModel
+		if err := database.Where("pricing_version = ? AND match_kind = ?", version.PricingVersion, ModelMatchExact).
+			Order("model_pattern").Find(&models).Error; err != nil {
+			return nil, err
+		}
+		catalog := lightPricingCatalog{version: version, models: make(map[string]modelPriceModel, len(models))}
+		for _, model := range models {
+			catalog.models[model.ModelPattern] = model
+		}
+		output = append(output, catalog)
+	}
+	return output, nil
+}
+
+func effectiveLightPricingCatalog(catalogs []lightPricingCatalog, observedAtMS int64) *lightPricingCatalog {
+	for index := len(catalogs) - 1; index >= 0; index-- {
+		if catalogs[index].version.EffectiveFromMS <= observedAtMS {
+			return &catalogs[index]
+		}
+	}
+	return nil
+}
+
+func lightModelDimension(modelKey *string, source string) safeDimension {
+	decision := attribution.NormalizeModel("")
+	if modelKey != nil {
+		decision = attribution.NormalizeModel(*modelKey)
+	}
+	if decision.Key != "" && (source == string(attribution.SourceModelCanonical) || source == string(attribution.SourceModelAlias)) {
+		identity, display := decision.Key, decision.DisplayName
+		return safeDimension{
+			key: identity, identity: &identity, display: &display,
+			confidence: string(attribution.ConfidenceHigh), source: source, reason: string(attribution.ReasonObserved),
+		}
+	}
+	unknownSource := string(attribution.SourceMissing)
+	unknownReason := string(attribution.ReasonMissing)
+	if source == string(attribution.SourceInvalidModel) {
+		unknownSource = source
+		unknownReason = string(attribution.ReasonInvalid)
+	}
+	return safeDimension{
+		key:        "unknown|" + string(attribution.ConfidenceUnknown) + "|" + unknownSource + "|" + unknownReason,
+		confidence: string(attribution.ConfidenceUnknown), source: unknownSource, reason: unknownReason,
+	}
+}
+
+func addLightTokens(group *lightCostGroup, input, cached, output, reasoning int64) error {
+	var err error
+	if group.input, err = checkedAdd(group.input, input); err != nil {
+		return err
+	}
+	if group.cached, err = checkedAdd(group.cached, cached); err != nil {
+		return err
+	}
+	if group.output, err = checkedAdd(group.output, output); err != nil {
+		return err
+	}
+	group.reasoning, err = checkedAdd(group.reasoning, reasoning)
+	return err
+}
+
+func accumulatorForLight[K comparable](groups map[K]*lightRollupAccumulator, key K) *lightRollupAccumulator {
+	if groups[key] == nil {
+		groups[key] = &lightRollupAccumulator{}
+	}
+	return groups[key]
+}
+
+func (aggregate *lightRollupAccumulator) add(group *lightCostGroup, estimated *int64) error {
+	var err error
+	if aggregate.input, err = checkedAdd(aggregate.input, group.input); err != nil {
+		return err
+	}
+	if aggregate.cached, err = checkedAdd(aggregate.cached, group.cached); err != nil {
+		return err
+	}
+	if aggregate.output, err = checkedAdd(aggregate.output, group.output); err != nil {
+		return err
+	}
+	if aggregate.reasoning, err = checkedAdd(aggregate.reasoning, group.reasoning); err != nil {
+		return err
+	}
+	groupTotal, err := checkedAdd(group.input, group.output)
+	if err == nil {
+		groupTotal, err = checkedAdd(groupTotal, group.reasoning)
+	}
+	if err != nil {
+		return err
+	}
+	if aggregate.total, err = checkedAdd(aggregate.total, groupTotal); err != nil {
+		return err
+	}
+	if estimated != nil {
+		aggregate.estimatedUSDMicros, err = checkedAdd(aggregate.estimatedUSDMicros, *estimated)
+		aggregate.hasPricedCost = err == nil
+	}
+	return err
+}
+
+func (aggregate *lightRollupAccumulator) totals() RollupTotals {
+	input, cached, output, reasoning := aggregate.input, aggregate.cached, aggregate.output, aggregate.reasoning
+	total := aggregate.total
+	var estimated *int64
+	if aggregate.hasPricedCost {
+		value := aggregate.estimatedUSDMicros
+		estimated = &value
+	}
+	return RollupTotals{
+		InputTokens: &input, CachedInputTokens: &cached, OutputTokens: &output,
+		ReasoningTokens: &reasoning, TotalTokens: &total, EstimatedUSDMicros: estimated,
+	}
 }
 
 func validateAnalyticsRange(filter AnalyticsRange) (*time.Location, error) {
@@ -193,7 +397,10 @@ func loadActiveUsageCostRange(
 	record := generationFromModel(generation)
 	snapshot.Mode = AnalyticsReadActiveRollup
 	snapshot.Generation = &record
+	snapshot.PricingSource = record.PricingSource
+	snapshot.Currency = record.Currency
 	snapshot.Daily = make([]UsageDaily, 0)
+	snapshot.Models = make([]ModelUsageDaily, 0)
 	snapshot.PricingVersions = make([]string, 0)
 	snapshot.UnpricedReasons = make([]CostReasonCount, 0)
 
@@ -211,6 +418,22 @@ func loadActiveUsageCostRange(
 		snapshot.Daily = append(snapshot.Daily, UsageDaily{
 			GenerationID: model.GenerationID, BucketStartMS: model.BucketStartMS,
 			ReportingTimezone: model.ReportingTimezone, RollupTotals: totalsFromModel(model.Totals),
+		})
+	}
+	var models []modelUsageDailyModel
+	if err := database.Where(
+		"generation_id = ? AND bucket_start_ms >= ? AND bucket_start_ms < ?",
+		generation.GenerationID, filter.StartAtMS, filter.EndAtMS,
+	).Order("bucket_start_ms, dimension_key").Find(&models).Error; err != nil {
+		return err
+	}
+	for _, model := range models {
+		snapshot.Models = append(snapshot.Models, ModelUsageDaily{
+			GenerationID: model.GenerationID, BucketStartMS: model.BucketStartMS,
+			ReportingTimezone: model.ReportingTimezone, DimensionKey: model.DimensionKey,
+			ModelKey: model.ModelKey, ModelDisplayName: model.ModelDisplayName,
+			AttributionConfidence: model.AttributionConfidence, AttributionSource: model.AttributionSource,
+			AttributionReason: model.AttributionReason, RollupTotals: totalsFromModel(model.Totals),
 		})
 	}
 
@@ -260,6 +483,7 @@ func loadUsageCostDetailFallback(
 	}
 	snapshot.Mode = AnalyticsReadDetailFallback
 	snapshot.Daily = make([]UsageDaily, 0)
+	snapshot.Models = make([]ModelUsageDaily, 0)
 	snapshot.PricingVersions = make([]string, 0)
 	snapshot.UnpricedReasons = make([]CostReasonCount, 0)
 	byDay := make(map[int64]*aggregateAccumulator)

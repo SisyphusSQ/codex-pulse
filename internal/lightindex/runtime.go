@@ -227,12 +227,14 @@ func (runtime *Runtime) scanSession(
 	if activeErr == nil {
 		value := snapshotFromStoredScan(active)
 		previous = &value
-		unchanged, err := discoverer.Unchanged(ctx, *session.RolloutPath, value)
-		if err != nil {
-			return err
-		}
-		if unchanged {
-			return nil
+		if active.ParserVersion == TokenParserVersion {
+			unchanged, err := discoverer.Unchanged(ctx, *session.RolloutPath, value)
+			if err != nil {
+				return err
+			}
+			if unchanged {
+				return nil
+			}
 		}
 	} else if !errors.Is(activeErr, store.ErrNotFound) {
 		return activeErr
@@ -303,10 +305,12 @@ func (runtime *Runtime) scanPending(
 			Complete:      readResult.EOF && scanResult.Complete,
 			InputTokens:   scanResult.State.HighWater.Input, CachedInputTokens: scanResult.State.HighWater.CachedInput,
 			OutputTokens: scanResult.State.HighWater.Output, ReasoningTokens: scanResult.State.HighWater.Reasoning,
-			PhysicalBytesRead: pending.Checkpoint.PhysicalBytesRead + readResult.BytesRead,
-			LinesSeen:         pending.Checkpoint.LinesSeen + scanResult.LinesSeen,
-			CandidateLines:    pending.Checkpoint.CandidateLines + scanResult.CandidateLines,
-			JSONDecoded:       pending.Checkpoint.JSONDecoded + scanResult.JSONDecoded,
+			CurrentModelKey:    scanResult.State.CurrentModelKey,
+			CurrentModelSource: scanResult.State.CurrentModelSource,
+			PhysicalBytesRead:  pending.Checkpoint.PhysicalBytesRead + readResult.BytesRead,
+			LinesSeen:          pending.Checkpoint.LinesSeen + scanResult.LinesSeen,
+			CandidateLines:     pending.Checkpoint.CandidateLines + scanResult.CandidateLines,
+			JSONDecoded:        pending.Checkpoint.JSONDecoded + scanResult.JSONDecoded,
 		}
 		batch := store.LightTokenBatch{
 			SessionID: pending.SessionID, Generation: pending.Generation, Checkpoint: checkpoint,
@@ -371,7 +375,9 @@ func scanSnapshotBatch(
 		readDone <- readOutcome{result: result, err: err}
 	}()
 	seed := ScanState{
-		DurableOffset: pending.Checkpoint.DurableOffset,
+		DurableOffset:      pending.Checkpoint.DurableOffset,
+		CurrentModelKey:    pending.Checkpoint.CurrentModelKey,
+		CurrentModelSource: pending.Checkpoint.CurrentModelSource,
 		HighWater: TokenTotals{
 			Input: pending.Checkpoint.InputTokens, CachedInput: pending.Checkpoint.CachedInputTokens,
 			Output: pending.Checkpoint.OutputTokens, Reasoning: pending.Checkpoint.ReasoningTokens,
@@ -466,6 +472,7 @@ func timedDeltasToStore(values []TimedTokenDelta) []store.LightTokenTimedDelta {
 	for _, value := range values {
 		output = append(output, store.LightTokenTimedDelta{
 			SourceOffset: value.SourceOffset, ObservedAtMS: value.ObservedAtMS,
+			ModelKey: value.ModelKey, ModelSource: value.ModelSource,
 			InputTokens: value.Tokens.Input, CachedInputTokens: value.Tokens.CachedInput,
 			OutputTokens: value.Tokens.Output, ReasoningTokens: value.Tokens.Reasoning,
 		})

@@ -7,8 +7,11 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .library(name: "CodexPulseCoreClient", targets: ["CodexPulseCoreClient"]),
+        .library(name: "CodexPulseAppSupport", targets: ["CodexPulseAppSupport"]),
+        .executable(name: "codex-pulse-app", targets: ["CodexPulseApp"]),
         .executable(name: "codex-pulse-transport-spike", targets: ["CodexPulseTransportSpike"]),
         .executable(name: "codex-pulse-core-client-tests", targets: ["CodexPulseCoreClientTests"]),
+        .executable(name: "codex-pulse-app-tests", targets: ["CodexPulseAppTests"]),
     ],
     dependencies: [
         .package(url: "https://github.com/grpc/grpc-swift-2.git", exact: "2.4.2"),
@@ -35,6 +38,17 @@ let package = Package(
                 .product(name: "GRPCProtobuf", package: "grpc-swift-protobuf"),
             ]
         ),
+        .target(
+            name: "CodexPulseAppSupport",
+            dependencies: [
+                "CodexPulseCoreClient",
+                "CodexPulseProtocolGenerated",
+            ]
+        ),
+        .executableTarget(
+            name: "CodexPulseApp",
+            dependencies: ["CodexPulseAppSupport"]
+        ),
         .executableTarget(
             name: "CodexPulseTransportSpike",
             dependencies: ["CodexPulseCoreClient"]
@@ -49,6 +63,15 @@ let package = Package(
                 .product(name: "SwiftProtobuf", package: "swift-protobuf"),
             ],
             path: "Tests/CodexPulseCoreClientTests"
+        ),
+        .executableTarget(
+            name: "CodexPulseAppTests",
+            dependencies: [
+                "CodexPulseAppSupport",
+                "CodexPulseCoreClient",
+                "CodexPulseProtocolGenerated",
+            ],
+            path: "Tests/CodexPulseAppTests"
         ),
     ],
     swiftLanguageModes: [.v6]

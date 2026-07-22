@@ -56,6 +56,12 @@ type ReasonCount struct {
 	Count  basequery.NumericValue `json:"count"`
 }
 
+type UsageModelItem struct {
+	DimensionKey string           `json:"dimensionKey"`
+	Model        AttributionValue `json:"model"`
+	Totals       UsageTotals      `json:"totals"`
+}
+
 type UsageCostResponse struct {
 	Meta              basequery.ResponseMeta `json:"meta"`
 	Range             basequery.UTCTimeRange `json:"range"`
@@ -67,6 +73,7 @@ type UsageCostResponse struct {
 	Trend             []TrendPoint           `json:"trend"`
 	UnpricedReasons   []ReasonCount          `json:"unpricedReasons"`
 	DegradedReason    *DegradedReason        `json:"degradedReason"`
+	Models            []UsageModelItem       `json:"models"`
 }
 
 type AttributionValue struct {

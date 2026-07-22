@@ -101,18 +101,18 @@ Data Health 不展示原始 JSONL、凭证或完整错误堆栈；v0.1 不提供
 
 ```text
 api_equivalent_cost =
-  input_tokens / 1_000_000 * input_price
+  (input_tokens - cached_input_tokens) / 1_000_000 * input_price
 + cached_input_tokens / 1_000_000 * cached_input_price
-+ output_tokens / 1_000_000 * output_price
++ (output_tokens + reasoning_tokens) / 1_000_000 * output_price
 ```
 
-reasoning token 单独展示；若没有单独价格，按模型公开口径折算并明确标注。无法匹配模型时必须显示 `unpriced` 或明确 fallback，不能静默乱算。
+Codex JSONL 的 cached input 是 input 的子集，必须先从 input 扣除，不能按完整 input 价格重复计费；`cached_input_tokens > input_tokens` 视为非法事实并 fail closed。reasoning token 单独展示，并按模型公开 output 价格折算。无法匹配模型时必须显示 `unpriced` 或明确 fallback，不能静默乱算。
 
 Pricing Catalog 本地版本化，每条记录包含 model、input/cached/output price、currency、effective date 和 source。历史 turn 使用当时选定的 pricing version，避免价格变化导致历史报表漂移。v0.1 不自动联网更新价格。
 
 ### 查询、下钻与降级语义
 
-- 概览按用户选择的 IANA timezone 和本地日半开区间查询，日趋势直接读取 active daily rollup；周、月只合并 daily rows，不维护第二套持久聚合。响应同时保留 pricing source/currency、range 内 pricing versions、未定价原因与 priced/unpriced turn count。
+- 概览按用户选择的 IANA timezone 和本地日半开区间查询，日趋势直接读取 active daily rollup；轻量启动模式则从带安全模型归因的 timed token delta 在同一 read snapshot 中聚合。周、月只合并 daily rows，不维护第二套持久聚合。响应同时返回全局 totals、按模型统计、pricing source/currency、range 内 pricing versions，以及能够确定的未定价语义。
 - active cost generation 暂不可见时，概览只从 final usage 做有界 token fallback：cost/pricing 保持 unknown，响应标记 `partial / rollup_missing`；查询路径不得触发 ledger rebuild。无事实但 active generation 正常存在时是 known-empty complete，真实 `0` 不显示成 `--`。
 - Sessions 列表和详情只展示安全 `session_attributions` 的 title/project/model，active/idle 由是否存在未完成 Turn 判断；不返回 cwd、raw model、root path 或对话内容。列表支持最近活动、token、API 等价成本排序以及 project/model/activity/time filter，cursor 是不可解析的 keyset token。
 - Session 详情还返回按 `startedAt + turn identity` 稳定倒序、默认 20 / 最大 50 条的 content-free Turn usage/cost 时间线。每项只包含不可逆 timeline key、active/complete、安全 model attribution、时间、整数 usage、pricing status/version/reason；`completed_at_ms IS NULL` 已明确定义 active，unknown 只用于 usage/cost/time 数值，不伪造不可达的 lifecycle 状态。不得返回 raw Session/Turn ID、正文事件、tool、路径、offset 或 generation。下一页 cursor 由 process-key AEAD 认证加密并绑定当前 Session，native client 只可原样回传；完整首屏必须与 Session aggregate 精确对账，截断/后续页必须满足 aggregate 下界和 pricing evidence membership，page totals 不得覆盖整段 Session aggregate。

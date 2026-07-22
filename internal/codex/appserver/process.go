@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
+	"strings"
 )
 
 type ProcessOptions struct {
@@ -15,6 +17,10 @@ type ProcessOptions struct {
 }
 
 func ListLocalThreads(ctx context.Context, confirmedHome string, options ProcessOptions) (ThreadList, error) {
+	canonicalHome, err := canonicalConfirmedHome(confirmedHome)
+	if err != nil {
+		return ThreadList{}, err
+	}
 	binary := options.CodexBinary
 	if binary == "" {
 		binary = "codex"
@@ -31,6 +37,7 @@ func ListLocalThreads(ctx context.Context, confirmedHome string, options Process
 	processContext, cancelProcess := context.WithCancel(ctx)
 	defer cancelProcess()
 	command := exec.CommandContext(processContext, binary, "app-server", "--listen", "stdio://")
+	command.Env = isolatedCodexEnvironment(os.Environ(), canonicalHome)
 	stdin, err := command.StdinPipe()
 	if err != nil {
 		return ThreadList{}, errors.New("open App Server stdin")
@@ -69,5 +76,16 @@ func ListLocalThreads(ctx context.Context, confirmedHome string, options Process
 	if err := rpc.Notify(ctx, "initialized", struct{}{}); err != nil {
 		return ThreadList{}, err
 	}
-	return NewThreadLister(rpc, ThreadListerOptions{PageSize: options.PageSize}).List(ctx, confirmedHome)
+	return NewThreadLister(rpc, ThreadListerOptions{PageSize: options.PageSize}).List(ctx, canonicalHome)
+}
+
+func isolatedCodexEnvironment(environment []string, confirmedHome string) []string {
+	result := make([]string, 0, len(environment)+1)
+	for _, entry := range environment {
+		if strings.HasPrefix(entry, "CODEX_HOME=") {
+			continue
+		}
+		result = append(result, entry)
+	}
+	return append(result, "CODEX_HOME="+confirmedHome)
 }

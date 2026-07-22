@@ -180,6 +180,15 @@ func (runtime *applicationQuotaRuntime) ReconcilePreferences(ctx context.Context
 	return runtime.reconcileAdmitted(operationContext)
 }
 
+func (runtime *applicationQuotaRuntime) RearmAfterHomeChange(ctx context.Context) error {
+	operationContext, finish, err := runtime.beginAdmission(ctx)
+	if err != nil {
+		return err
+	}
+	defer finish()
+	return runtime.coordinator.RearmAfterHomeChange(operationContext)
+}
+
 func (runtime *applicationQuotaRuntime) RequestRefresh(
 	ctx context.Context,
 	source quotaonline.RefreshSource,

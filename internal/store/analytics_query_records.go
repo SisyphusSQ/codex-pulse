@@ -35,7 +35,10 @@ type CostReasonCount struct {
 type UsageCostRangeSnapshot struct {
 	Mode            AnalyticsReadMode
 	Generation      *CostRollupGeneration
+	PricingSource   string
+	Currency        string
 	Daily           []UsageDaily
+	Models          []ModelUsageDaily
 	PricingVersions []string
 	UnpricedReasons []CostReasonCount
 }
