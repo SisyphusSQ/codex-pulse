@@ -845,31 +845,60 @@ public actor AppRuntime {
                 : OverviewRequestSet.weeklyUsageRequest(quota: quotaResponse)
             let weeklyProjectRequest = OverviewRequestSet.weeklyProjectRanking(
                 range: weeklyProjectRange)
-            async let usageResult = captureOverviewSection {
-                try await client.usageCost(content.usage, retryPolicy: .transportDefault)
+            // Keep these as explicitly cancelled Tasks. Swift release builds targeting
+            // macOS 15 can deallocate async-let task storage out of order:
+            // https://github.com/swiftlang/swift/issues/81771
+            let usageTask = Task {
+                await captureOverviewSection {
+                    try await client.usageCost(content.usage, retryPolicy: .transportDefault)
+                }
             }
-            async let sessionResult = captureOverviewSection {
-                try await client.listSessions(content.sessions, retryPolicy: .transportDefault)
+            let sessionTask = Task {
+                await captureOverviewSection {
+                    try await client.listSessions(content.sessions, retryPolicy: .transportDefault)
+                }
             }
-            async let projectResult = captureOverviewSection {
-                try await client.listProjects(content.projects, retryPolicy: .transportDefault)
+            let projectTask = Task {
+                await captureOverviewSection {
+                    try await client.listProjects(content.projects, retryPolicy: .transportDefault)
+                }
             }
-            async let weeklyProjectResult = captureOverviewSection {
-                guard let weeklyProjectRequest else { return unavailableProjects() }
-                return try await client.listProjects(
-                    weeklyProjectRequest, retryPolicy: .transportDefault)
+            let weeklyProjectTask = Task {
+                await captureOverviewSection {
+                    guard let weeklyProjectRequest else { return unavailableProjects() }
+                    return try await client.listProjects(
+                        weeklyProjectRequest, retryPolicy: .transportDefault)
+                }
             }
-            async let weeklyUsageResult = captureOverviewSection {
-                guard let weeklyUsageRequest else { return unavailableUsage() }
-                return try await client.usageCost(
-                    weeklyUsageRequest, retryPolicy: .transportDefault)
+            let weeklyUsageTask = Task {
+                await captureOverviewSection {
+                    guard let weeklyUsageRequest else { return unavailableUsage() }
+                    return try await client.usageCost(
+                        weeklyUsageRequest, retryPolicy: .transportDefault)
+                }
             }
-            async let healthResult = captureOverviewSection {
-                try await client.healthProjection(retryPolicy: .transportDefault)
+            let healthTask = Task {
+                await captureOverviewSection {
+                    try await client.healthProjection(retryPolicy: .transportDefault)
+                }
             }
-            let sectionResults = await (
-                usageResult, sessionResult, projectResult, weeklyProjectResult,
-                weeklyUsageResult, healthResult)
+            let sectionResults = await withTaskCancellationHandler {
+                await (
+                    usageTask.value,
+                    sessionTask.value,
+                    projectTask.value,
+                    weeklyProjectTask.value,
+                    weeklyUsageTask.value,
+                    healthTask.value
+                )
+            } onCancel: {
+                usageTask.cancel()
+                sessionTask.cancel()
+                projectTask.cancel()
+                weeklyProjectTask.cancel()
+                weeklyUsageTask.cancel()
+                healthTask.cancel()
+            }
             let mandatoryNotices = [
                 quotaResult.notice,
                 sectionResults.0.notice,

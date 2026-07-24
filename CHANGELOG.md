@@ -80,6 +80,7 @@
 9. 修复 7 天滑动额度在旧 reset 尚未到期时已重置、但更晚 `reset_at` 被误判为 `reset_regression` 的问题；以 `quota-arbiter-v2` 接受通过时长与时钟校验的新代际，继续隔离同 reset 的 used 回落和向过去移动的 reset
 10. 修复原生 macOS preview 发行包只保留可执行文件 linker ad-hoc 签名、导致整个 App bundle 严格验签失败且 Gatekeeper 不提供“仍要打开”的问题；改为 inside-out ad-hoc 签名，并在打包前和 ZIP 解压后读回完整签名
 11. 修复首次安装缺少 runtime preferences 时 Helper 不会绑定任何数据源、界面持续显示空数据的问题；默认 `${CODEX_HOME:-$HOME/.codex}` 现在经过 metadata-only probe 与 path/device/inode 二次校验后自动持久化，额度与重置额度采集默认开启，已有或自定义 Home 仍保持不覆盖与显式切换确认
+12. 修复 Swift 优化构建在并发读取 Overview 时触发 task-stack 逆序释放并以 `freed pointer was not the last allocation` 终止的问题；以显式可取消 Tasks 保留并发读取和父任务取消传播，并新增禁止回退到 `async let` 的 release 回归约束
 
 #### note:
 1. [TOO-242] 固定 Wails3 `v3.0.0-alpha2.117` 与 macOS arm64 工具链能力基线，补充可复现 runbook、平台 adapter 边界和依赖升级准入规则
