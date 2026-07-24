@@ -50,7 +50,7 @@ done
 [ "$(uname -s)" = "Darwin" ] || fail "release build requires macOS"
 [ "$(uname -m)" = "arm64" ] || fail "release build requires an Apple Silicon host"
 
-for tool in swift go plutil iconutil lipo vtool codesign ditto unzip shasum strings; do
+for tool in swift go plutil iconutil lipo vtool strip codesign ditto unzip shasum strings; do
   command -v "$tool" >/dev/null 2>&1 || fail "required tool is unavailable: $tool"
 done
 
@@ -75,18 +75,24 @@ APP_DIR="$BUILD_ROOT/Codex Pulse.app"
 EXTRACT_DIR="$BUILD_ROOT/extracted"
 HELPER_EXECUTABLE="$BUILD_ROOT/codex-pulse"
 
-swift build \
-  --package-path "$REPO_ROOT/app/macos" \
-  --scratch-path "$BUILD_ROOT/swift-build" \
-  --configuration release \
-  --product codex-pulse-app \
-  -Xswiftc -gnone \
-  -Xcc "-ffile-prefix-map=$REPO_ROOT=." \
+SWIFT_RELEASE_ARGUMENTS=(
+  --package-path "$REPO_ROOT/app/macos"
+  --scratch-path "$BUILD_ROOT/swift-build"
+  --configuration release
+  -Xswiftc -gline-tables-only
+  -Xcc "-ffile-prefix-map=$REPO_ROOT=."
   -Xcc "-fmacro-prefix-map=$REPO_ROOT=."
+)
+
+swift run \
+  "${SWIFT_RELEASE_ARGUMENTS[@]}" \
+  codex-pulse-app-tests
+swift build \
+  "${SWIFT_RELEASE_ARGUMENTS[@]}" \
+  --product codex-pulse-app
+
 SWIFT_BIN_DIR=$(swift build \
-  --package-path "$REPO_ROOT/app/macos" \
-  --scratch-path "$BUILD_ROOT/swift-build" \
-  --configuration release \
+  "${SWIFT_RELEASE_ARGUMENTS[@]}" \
   --show-bin-path)
 APP_EXECUTABLE="$SWIFT_BIN_DIR/codex-pulse-app"
 [ -x "$APP_EXECUTABLE" ] || fail "Swift release executable is missing"
@@ -114,6 +120,7 @@ plutil -replace CodexPulseProductVersion \
   -string "$VERSION" "$APP_DIR/Contents/Info.plist"
 cp "$APP_EXECUTABLE" "$APP_DIR/Contents/MacOS/Codex Pulse"
 cp "$HELPER_EXECUTABLE" "$APP_DIR/Contents/Helpers/codex-pulse"
+strip -S "$APP_DIR/Contents/MacOS/Codex Pulse"
 iconutil \
   -c icns \
   "$REPO_ROOT/app/macos/Resources/AppIcon/CodexPulse.iconset" \

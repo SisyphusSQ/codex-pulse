@@ -201,28 +201,6 @@ private func testOverviewUsesOneNavigationAndARealTrendChart() throws {
         "overview rankings must navigate to their details")
 }
 
-private func testOverviewParallelReadsAvoidAsyncLetReleaseCrash() throws {
-    let source = try String(
-        contentsOf: URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent(
-                "Sources/CodexPulseAppSupport/AppRuntime.swift",
-                isDirectory: false
-            ),
-        encoding: .utf8
-    )
-    try expect(
-        !source.contains("async let"),
-        "release overview reads must avoid the Swift task-stack deallocation crash")
-    try expect(
-        source.contains("withTaskCancellationHandler")
-            && source.contains("let usageTask = Task")
-            && source.contains("usageTask.cancel()"),
-        "parallel overview reads must preserve explicit cancellation")
-}
-
 private func testUsageChartStacksModelsWithLocalizedHoverDetails() throws {
     let source = try mainWindowSource("QuotaHealthViews.swift")
     try expect(
@@ -2736,7 +2714,6 @@ struct CodexPulseAppTestMain {
         try testOverviewMergesAllOtherProjectUsage()
         try testWeeklyProjectRankingFailureStaysLocal()
         try testOverviewUsesOneNavigationAndARealTrendChart()
-        try testOverviewParallelReadsAvoidAsyncLetReleaseCrash()
         try testUsageChartStacksModelsWithLocalizedHoverDetails()
         try testSessionAndProjectDailyTrendsShowSelectionRuleAndDateDetail()
         try testEveryTokenChartUsesLocalizedAxisAndAccessibilityUnits()

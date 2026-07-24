@@ -109,10 +109,13 @@ require_pattern app/macos/Sources/CodexPulseCoreClient/HelperSupervisor.swift 'v
 require_pattern scripts/macos/build-release-app.sh 'CFBundleShortVersionString' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern scripts/macos/build-release-app.sh 'main.applicationVersion=' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern scripts/macos/build-release-app.sh 'Codex-Pulse-.*-macos-arm64.zip' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
-require_pattern scripts/macos/build-release-app.sh '-gnone' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
+reject_pattern scripts/macos/build-release-app.sh '(^|[[:space:]])-gnone([[:space:]]|$)' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern scripts/macos/build-release-app.sh '--scratch-path' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
+require_pattern scripts/macos/build-release-app.sh 'gline-tables-only' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern scripts/macos/build-release-app.sh 'ffile-prefix-map' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern scripts/macos/build-release-app.sh 'fmacro-prefix-map' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
+require_pattern scripts/macos/build-release-app.sh 'codex-pulse-app-tests' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
+require_pattern scripts/macos/build-release-app.sh 'strip -S' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern scripts/macos/build-release-app.sh 'release binaries contain a local absolute path' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern scripts/macos/build-release-app.sh 'codesign --force --sign -' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern scripts/macos/build-release-app.sh 'codesign --verify --deep --strict' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
