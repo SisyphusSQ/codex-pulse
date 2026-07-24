@@ -90,3 +90,4 @@
 4. [TOO-293] 新增 Sparkle 2.9.4 EdDSA 本地发布工具链，支持 stdin 私钥签名 arm64 ZIP、纯文本 release notes、appcast 与审计 manifest，并通过内核独占锁、原子目录交换、先验签后解压及失败注入固定秘密隔离和旧产物保留语义
 5. [TOO-298] 新增显式 opt-in 的真实 Codex Home 只读验证器，使用隔离 Pure Go GORM SQLite 闭环验证 bootstrap、UTC 成本账本、公共查询、quota、Tray、隐私扫描与安全清理
 6. [TOO-302] 新增显式 opt-in 的 M11 更新恢复验证入口，聚合更新选择、安全 drain、单实例接管、磁盘/只读/备份故障、全相关包 race 与真实 Sparkle 五场景，并绑定逐场景提交版证据
+7. 新增原生 macOS arm64 preview 发行构建入口，注入统一 App/Helper 产品版本，校验 production Bundle 元数据、macOS 15 最低版本、ZIP 单顶层结构与 SHA-256；普通 App 启动改用用户级私有持久 runtime，development smoke 继续显式使用隔离临时目录

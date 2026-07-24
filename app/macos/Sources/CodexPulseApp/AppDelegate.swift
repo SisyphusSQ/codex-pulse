@@ -253,13 +253,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func renderPrimaryPagesForSmoke() async -> Int {
         guard configuration.nativeSurfaceSmoke else { return 0 }
-        for feature in AppFeature.allCases {
+        let renderOrder = AppFeature.allCases.filter { $0 != .overview } + [.overview]
+        for feature in renderOrder {
             model.navigate(to: feature)
             for _ in 0..<50 where !model.renderedFeatures.contains(feature) {
                 try? await Task.sleep(for: .milliseconds(10))
             }
         }
-        model.navigate(to: .overview)
         return model.renderedFeatures.count
     }
 

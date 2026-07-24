@@ -20,7 +20,7 @@ public struct AppLaunchConfiguration: Sendable {
     public init(
         helperExecutablePath: String,
         runtimeDirectory: String,
-        clientVersion: String = "dev",
+        clientVersion: String = AppLaunchConfiguration.productVersion(),
         smokeMode: Bool = false,
         nativeSurfaceSmoke: Bool = false,
         sendLifecycleToHelper: Bool = true
@@ -32,10 +32,14 @@ public struct AppLaunchConfiguration: Sendable {
             separator: "/",
             omittingEmptySubsequences: false
         )
+        let persistentRuntime = Self.defaultRuntimeDirectory()
+        let isPrivateTemporaryRuntime =
+            runtimeDirectory.hasPrefix("/private/tmp/cp-") ||
+            runtimeDirectory.hasPrefix("/tmp/cp-")
         guard !runtimeComponents.contains("."),
               !runtimeComponents.contains(".."),
               !runtimeDirectory.contains("//"),
-              runtimeDirectory.hasPrefix("/private/tmp/cp-") || runtimeDirectory.hasPrefix("/tmp/cp-")
+              isPrivateTemporaryRuntime || runtimeDirectory == persistentRuntime
         else {
             throw AppLaunchConfigurationError.runtimeDirectoryUnavailable
         }
@@ -53,7 +57,7 @@ public struct AppLaunchConfiguration: Sendable {
     ) throws -> Self {
         var helperPath: String?
         var runtimeDirectory: String?
-        var clientVersion = "dev"
+        var clientVersion = productVersion()
         var smokeMode = false
         var nativeSurfaceSmoke = false
         var sendLifecycle = true
@@ -104,7 +108,28 @@ public struct AppLaunchConfiguration: Sendable {
         )
     }
 
+    public static func productVersion(
+        bundle: Bundle = .main
+    ) -> String {
+        guard let value = bundle.object(
+            forInfoDictionaryKey: "CodexPulseProductVersion"
+        ) as? String,
+              !value.isEmpty
+        else {
+            return "0.0.0-local"
+        }
+        return value
+    }
+
     private static func defaultRuntimeDirectory() -> String {
-        "/private/tmp/cp-app-\(getuid())-\(UUID().uuidString.prefix(12))"
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent(
+                "Application Support",
+                isDirectory: true
+            )
+            .appendingPathComponent("Codex Pulse", isDirectory: true)
+            .appendingPathComponent("runtime", isDirectory: true)
+            .path
     }
 }

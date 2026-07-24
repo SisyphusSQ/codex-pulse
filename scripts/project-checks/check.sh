@@ -55,6 +55,7 @@ require_file app/macos/Sources/CodexPulseApp/QuotaHealthViews.swift SWIFT-003 do
 require_file app/macos/Sources/CodexPulseApp/SourcesJobsSettingsViews.swift SWIFT-003 docs/design/details/native-macos-client/README.md
 require_file internal/codex/appserver/process.go DATA-001 docs/design/details/native-macos-client/README.md
 require_file scripts/macos/build-dev-app.sh SWIFT-002 docs/test/native-app-shell-overview.md
+require_file scripts/macos/build-release-app.sh RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_file scripts/macos/run-app-smoke.sh SWIFT-002 docs/test/native-app-shell-overview.md
 require_file scripts/macos/run-app-live-smoke.sh SWIFT-004 docs/test/native-primary-pages.md
 require_file scripts/macos/smoke-seed/main.go DATA-001 docs/test/native-app-shell-overview.md
@@ -82,6 +83,7 @@ fi
 require_pattern Makefile '^verify-architecture:' VERIFY-003 Makefile
 require_pattern Makefile '^verify-proto:' VERIFY-003 Makefile
 require_pattern Makefile '^verify-helper:' VERIFY-003 Makefile
+require_pattern Makefile 'APP_VERSION[[:space:]]*[?]?=' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern Makefile '^verify-go:' VERIFY-003 Makefile
 require_pattern Makefile '^verify-swift-transport:' SWIFT-001 Makefile
 require_pattern Makefile '^verify-swift-app:' SWIFT-002 Makefile
@@ -104,6 +106,14 @@ require_pattern app/macos/Sources/CodexPulseCoreClient/CoreClient.swift 'unixDom
 require_pattern app/macos/Sources/CodexPulseCoreClient/HelperSupervisor.swift 'posix_spawn' SWIFT-001 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseCoreClient/HelperSupervisor.swift 'POSIX_SPAWN_CLOEXEC_DEFAULT' SWIFT-001 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseCoreClient/HelperSupervisor.swift 'validatedSocketIdentity' SWIFT-001 docs/design/details/native-macos-client/README.md
+require_pattern scripts/macos/build-release-app.sh 'CFBundleShortVersionString' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
+require_pattern scripts/macos/build-release-app.sh 'main.applicationVersion=' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
+require_pattern scripts/macos/build-release-app.sh 'Codex-Pulse-.*-macos-arm64.zip' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
+require_pattern scripts/macos/build-release-app.sh '-gnone' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
+require_pattern scripts/macos/build-release-app.sh '--scratch-path' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
+require_pattern scripts/macos/build-release-app.sh 'ffile-prefix-map' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
+require_pattern scripts/macos/build-release-app.sh 'fmacro-prefix-map' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
+require_pattern scripts/macos/build-release-app.sh 'release binaries contain a local absolute path' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern app/macos/Sources/CodexPulseCoreClient/InvalidationStreamController.swift 'streamGeneration' SWIFT-001 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseCoreClient/ReadRetryPolicy.swift 'error.code == .unavailable' SWIFT-001 docs/design/details/native-macos-client/README.md
 require_pattern Makefile 'CODEX_PULSE_CANCEL_PROBE' SWIFT-001 docs/test/swift-transport-spike.md

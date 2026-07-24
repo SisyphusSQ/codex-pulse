@@ -546,6 +546,20 @@ private func testInitialWindowUsesScreenAwarePreferredLayout() throws {
     )
 }
 
+private func testNativeSmokeForcesOverviewTransitionLast() throws {
+    let source = try mainWindowSource("AppDelegate.swift")
+    try expect(
+        source.contains(
+            "let renderOrder = AppFeature.allCases.filter { $0 != .overview } + [.overview]"
+        ),
+        "native smoke must finish with a real overview route transition"
+    )
+    try expect(
+        source.contains("for feature in renderOrder"),
+        "native smoke must render every route in the transition-safe order"
+    )
+}
+
 private func testPopoverUsesWeeklyProjectTokenRanking() throws {
     let source = try mainWindowSource("StatusItemController.swift")
     try expect(
@@ -2261,6 +2275,32 @@ private func testLaunchConfigurationBoundaries() throws {
         parsed.helperExecutablePath == "/usr/bin/true", "LaunchServices argument must be ignored")
 }
 
+private func testLaunchConfigurationUsesPersistentProductDefaults() throws {
+    let expectedRuntime = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library", isDirectory: true)
+        .appendingPathComponent("Application Support", isDirectory: true)
+        .appendingPathComponent("Codex Pulse", isDirectory: true)
+        .appendingPathComponent("runtime", isDirectory: true)
+        .path
+    let parsed = try AppLaunchConfiguration.parse(
+        arguments: [
+            "codex-pulse-app",
+            "--helper", "/usr/bin/true",
+        ]
+    )
+
+    try expect(
+        parsed.runtimeDirectory == expectedRuntime,
+        "ordinary App launch must reuse the private persistent runtime")
+    try expect(
+        !parsed.clientVersion.isEmpty && parsed.clientVersion != "dev",
+        "ordinary App launch must send product metadata instead of dev")
+    _ = try AppLaunchConfiguration(
+        helperExecutablePath: "/usr/bin/true",
+        runtimeDirectory: expectedRuntime
+    )
+}
+
 private func testNormalLifecycleAndShutdown() async throws {
     let supervisor = FakeSupervisor()
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
@@ -2675,6 +2715,7 @@ struct CodexPulseAppTestMain {
         try testStatusPillUsesProductCopy()
         try testStatusItemRefreshReadsCommittedState()
         try testInitialWindowUsesScreenAwarePreferredLayout()
+        try testNativeSmokeForcesOverviewTransitionLast()
         try testPopoverUsesWeeklyProjectTokenRanking()
         try testSettingsIntervalsUseAuthoritativeBounds()
         try testOverviewRangeIncludesQuotaWeek()
@@ -2696,6 +2737,7 @@ struct CodexPulseAppTestMain {
         try testFeatureRequestsStateAndMerge()
         try testSettingsRevisionRequest()
         try testLaunchConfigurationBoundaries()
+        try testLaunchConfigurationUsesPersistentProductDefaults()
         try await testFeatureGenerationPreventsStaleOverwrite()
         try await testInvalidationRefreshesActivePage()
         try await testIndexInvalidationRefreshesStatusWhileApplicationIsInactive()

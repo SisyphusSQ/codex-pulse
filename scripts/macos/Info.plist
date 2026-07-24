@@ -5,11 +5,11 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>zh_CN</string>
     <key>CFBundleDisplayName</key>
-    <string>Codex Pulse Development</string>
+    <string>Codex Pulse</string>
     <key>CFBundleExecutable</key>
     <string>Codex Pulse</string>
     <key>CFBundleIdentifier</key>
-    <string>com.sisyphussq.codex-pulse.development</string>
+    <string>com.sisyphussq.codexpulse</string>
     <key>CFBundleIconFile</key>
     <string>CodexPulse</string>
     <key>CFBundleIconName</key>
@@ -21,14 +21,16 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.0.0-dev</string>
+    <string>0.1.0</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
+    <key>CodexPulseProductVersion</key>
+    <string>0.1.0-beta.1</string>
     <key>LSMinimumSystemVersion</key>
     <string>15.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
-    <string>Development build only; unsigned and not for distribution.</string>
+    <string>Copyright © 2026 SisyphusSQ. All rights reserved.</string>
 </dict>
 </plist>

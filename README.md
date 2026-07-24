@@ -98,9 +98,18 @@ make check
 # PR / CI 完整验证，使用隔离 Home
 make verify
 
+# 组装本地 unsigned preview 候选，不创建 tag 或 GitHub Release
+scripts/macos/build-release-app.sh \
+  --version 0.1.0-beta.1 \
+  --build-number 2
+
 # contract 修改后重新生成 Go / Swift 代码
 make generate-proto
 ```
+
+发行候选写入 `.artifacts/releases/<tag>/`，包含 Apple Silicon App ZIP 与
+`SHA256SUMS`。未签名、未公证的 preview 不能当作 stable；远端发布还必须
+经过 tag、Release、资产摘要和首次打开流程的独立读回。
 
 主要目录：
 

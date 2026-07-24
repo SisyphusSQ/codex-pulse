@@ -6,6 +6,8 @@
 
 export RUN_ID
 
+APP_VERSION ?= 0.0.0-dev
+
 verify-architecture:
 	bash scripts/project-checks/check.sh
 
@@ -24,7 +26,7 @@ verify-go:
 
 verify-helper:
 	mkdir -p bin
-	go build -trimpath -ldflags '-X main.applicationVersion=dev' -o bin/codex-pulse .
+	go build -trimpath -ldflags '-X main.applicationVersion=$(APP_VERSION)' -o bin/codex-pulse .
 
 verify-swift-proto:
 	bash scripts/proto/generate-swift.sh --check
