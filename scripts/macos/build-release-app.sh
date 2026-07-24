@@ -11,7 +11,7 @@ usage() {
   cat <<'EOF'
 usage: build-release-app.sh --version <semver> --build-number <positive-integer>
 
-Builds the unsigned Apple Silicon preview asset under:
+Builds the ad-hoc-signed, unnotarized Apple Silicon preview asset under:
   .artifacts/releases/v<semver>/
 EOF
 }
@@ -50,7 +50,7 @@ done
 [ "$(uname -s)" = "Darwin" ] || fail "release build requires macOS"
 [ "$(uname -m)" = "arm64" ] || fail "release build requires an Apple Silicon host"
 
-for tool in swift go plutil iconutil lipo vtool ditto unzip shasum strings; do
+for tool in swift go plutil iconutil lipo vtool codesign ditto unzip shasum strings; do
   command -v "$tool" >/dev/null 2>&1 || fail "required tool is unavailable: $tool"
 done
 
@@ -161,6 +161,15 @@ for local_path in "$REPO_ROOT" "$HOME/"; do
   fi
 done
 
+codesign --force --sign - --timestamp=none \
+  "$APP_DIR/Contents/Helpers/codex-pulse"
+codesign --force --sign - --timestamp=none \
+  "$APP_DIR"
+codesign --verify --deep --strict --verbose=2 "$APP_DIR"
+APP_CODESIGN_DETAILS=$(codesign -dv --verbose=2 "$APP_DIR" 2>&1)
+grep -Fq 'Signature=adhoc' <<<"$APP_CODESIGN_DETAILS" ||
+  fail "release App does not have a complete ad-hoc signature"
+
 rm -f -- "$ARCHIVE_PATH" "$CHECKSUM_PATH"
 COPYFILE_DISABLE=1 ditto \
   -c -k --norsrc --noextattr --keepParent \
@@ -185,11 +194,18 @@ cmp \
   fail "extracted App architecture readback failed"
 [ "$(lipo -archs "$EXTRACT_DIR/Codex Pulse.app/Contents/Helpers/codex-pulse")" = "arm64" ] ||
   fail "extracted Helper architecture readback failed"
+codesign --verify --deep --strict --verbose=2 \
+  "$EXTRACT_DIR/Codex Pulse.app"
+EXTRACTED_CODESIGN_DETAILS=$(
+  codesign -dv --verbose=2 "$EXTRACT_DIR/Codex Pulse.app" 2>&1
+)
+grep -Fq 'Signature=adhoc' <<<"$EXTRACTED_CODESIGN_DETAILS" ||
+  fail "extracted release App lost its ad-hoc signature"
 
 DIGEST=$(shasum -a 256 "$ARCHIVE_PATH" | awk '{print $1}')
 printf '%s  %s\n' "$DIGEST" "$ARCHIVE_NAME" >"$CHECKSUM_PATH"
 
 printf '%s\n' \
-  "release app assembled: tag=$TAG build=$BUILD_NUMBER arch=arm64 minos=15.0 developer_id=no notarized=no" \
+  "release app assembled: tag=$TAG build=$BUILD_NUMBER arch=arm64 minos=15.0 adhoc_signed=yes developer_id=no notarized=no" \
   "release asset: $ARCHIVE_PATH" \
   "release sha256: $DIGEST"
