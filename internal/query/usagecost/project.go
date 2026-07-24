@@ -64,7 +64,15 @@ func (service *Service) ProjectDetail(
 	if !validOpaqueIdentity(request.DimensionKey) {
 		return ProjectDetailResponse{}, basequery.NewValidationFailure("projectKey", nil)
 	}
-	validated, err := service.projectSpec.Validate(ctx, basequery.Request{TimeRange: &request.Range})
+	rangeRequest := basequery.Request{TimeRange: &request.Range}
+	if request.ExactRange != nil {
+		if request.Range != (basequery.LocalDateRange{}) {
+			return ProjectDetailResponse{}, basequery.NewValidationFailure("timeRange", nil)
+		}
+		rangeRequest.TimeRange = nil
+		rangeRequest.ExactTimeRange = request.ExactRange
+	}
+	validated, err := service.projectSpec.Validate(ctx, rangeRequest)
 	if err != nil {
 		return ProjectDetailResponse{}, err
 	}
@@ -103,6 +111,7 @@ func (service *Service) ProjectDetail(
 		Range: store.AnalyticsRange{
 			ReportingTimezone: validated.TimeRange.TimeZone,
 			StartAtMS:         validated.TimeRange.StartAtMS, EndAtMS: validated.TimeRange.EndAtMS,
+			Exact: validated.TimeRangeExact,
 		},
 		DimensionKey: request.DimensionKey, SessionLimit: sessionPage.Limit,
 		SessionCursor: sessionCursor, ModelLimit: modelPage.Limit, ModelCursor: modelCursor,
@@ -160,6 +169,7 @@ func projectStoreFilter(
 		Range: store.AnalyticsRange{
 			ReportingTimezone: request.TimeRange.TimeZone,
 			StartAtMS:         request.TimeRange.StartAtMS, EndAtMS: request.TimeRange.EndAtMS,
+			Exact: request.TimeRangeExact,
 		},
 		Limit: request.Page.Limit,
 	}
@@ -294,6 +304,9 @@ func mapProjectListResponse(
 	if mode == store.AnalyticsReadActiveRollup {
 		response.PricingSource = cloneString(page.Generation.PricingSource)
 		response.Currency = cloneString(page.Generation.Currency)
+	} else if page.PricingSource != "" {
+		response.PricingSource = cloneString(page.PricingSource)
+		response.Currency = cloneString(page.Currency)
 	}
 	return response, nil
 }
@@ -349,7 +362,7 @@ func mapProjectDetailResponse(
 	}
 	models := make([]ProjectModelItem, 0, len(snapshot.Models))
 	for _, record := range snapshot.Models {
-		mapped, err := mapProjectModelItem(record)
+		mapped, err := mapProjectModelItem(record, mode)
 		if err != nil {
 			return ProjectDetailResponse{}, err
 		}
@@ -403,6 +416,9 @@ func mapProjectDetailResponse(
 	if mode == store.AnalyticsReadActiveRollup {
 		response.PricingSource = cloneString(snapshot.Generation.PricingSource)
 		response.Currency = cloneString(snapshot.Generation.Currency)
+	} else if snapshot.PricingSource != "" {
+		response.PricingSource = cloneString(snapshot.PricingSource)
+		response.Currency = cloneString(snapshot.Currency)
 	}
 	return response, nil
 }
@@ -462,6 +478,7 @@ func mapProjectSessionItem(
 
 func mapProjectModelItem(
 	record store.ProjectModelAnalyticsRecord,
+	mode store.AnalyticsReadMode,
 ) (ProjectModelItem, error) {
 	if !validOpaqueIdentity(record.DimensionKey) ||
 		!validAttributionTuple(record.Model.ModelKey, record.Model.DisplayName) ||
@@ -473,7 +490,7 @@ func mapProjectModelItem(
 			string(record.Model.Reason)) {
 		return ProjectModelItem{}, errors.New("stored project model item is invalid")
 	}
-	totals, err := mapUsageTotals(record.Totals, store.AnalyticsReadActiveRollup)
+	totals, err := mapUsageTotals(record.Totals, mode)
 	if err != nil {
 		return ProjectModelItem{}, err
 	}
@@ -614,7 +631,7 @@ func validateProjectSnapshotShape(
 		}
 	}
 	for index, record := range snapshot.Models {
-		if _, err := mapProjectModelItem(record); err != nil {
+		if _, err := mapProjectModelItem(record, mode); err != nil {
 			return err
 		}
 		if index > 0 && !projectModelRecordComesBefore(snapshot.Models[index-1], record) {
@@ -627,11 +644,10 @@ func validateProjectSnapshotShape(
 		}
 		last := snapshot.Sessions[len(snapshot.Sessions)-1]
 		expectedGeneration := snapshot.Generation.GenerationID
-		if mode == store.AnalyticsReadLightIndex {
-			expectedGeneration = ""
-		}
 		if snapshot.NextSessionCursor.DimensionKey != dimensionKey ||
-			snapshot.NextSessionCursor.GenerationID != expectedGeneration ||
+			((mode == store.AnalyticsReadLightIndex && snapshot.NextSessionCursor.GenerationID == "") ||
+				(mode != store.AnalyticsReadLightIndex &&
+					snapshot.NextSessionCursor.GenerationID != expectedGeneration)) ||
 			snapshot.NextSessionCursor.SessionID != last.SessionID ||
 			snapshot.NextSessionCursor.LastActivityAtMS != last.LastActivityAtMS {
 			return errors.New("stored project session next cursor is inconsistent")
@@ -643,7 +659,9 @@ func validateProjectSnapshotShape(
 		}
 		last := snapshot.Models[len(snapshot.Models)-1]
 		if snapshot.NextModelCursor.DimensionKey != dimensionKey ||
-			snapshot.NextModelCursor.GenerationID != snapshot.Generation.GenerationID ||
+			((mode == store.AnalyticsReadLightIndex && snapshot.NextModelCursor.GenerationID == "") ||
+				(mode != store.AnalyticsReadLightIndex &&
+					snapshot.NextModelCursor.GenerationID != snapshot.Generation.GenerationID)) ||
 			snapshot.NextModelCursor.ModelDimensionKey != last.DimensionKey ||
 			snapshot.NextModelCursor.Null != (last.Totals.TotalTokens == nil) ||
 			!equalInt64Pointers(snapshot.NextModelCursor.TotalTokens, last.Totals.TotalTokens) {

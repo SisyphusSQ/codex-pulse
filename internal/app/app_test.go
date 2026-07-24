@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"testing"
-	"testing/fstest"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/bootstrap"
@@ -20,9 +20,13 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/scheduler"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
-	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
 )
+
+func TestDefaultApplicationLightRefreshIntervalKeepsStatusCurrent(t *testing.T) {
+	if got, want := defaultApplicationLightRefreshInterval, 30*time.Second; got != want {
+		t.Fatalf("default light refresh interval = %s, want %s for status freshness", got, want)
+	}
+}
 
 type applicationLightMetadataFunc func(context.Context, string) (appserver.ThreadList, error)
 
@@ -34,35 +38,6 @@ func (function applicationLightMetadataFunc) List(
 }
 
 var _ lightindex.MetadataProvider = applicationLightMetadataFunc(nil)
-
-func TestApplicationOptions(t *testing.T) {
-	t.Parallel()
-
-	assets := fstest.MapFS{
-		"index.html": {Data: []byte("<!doctype html><title>Codex Pulse</title>")},
-	}
-	service := newBindingTestService(t, &usageCostBindingStub{}, &runtimeInfoBindingStub{})
-	got := applicationOptions(assets, wailsBindingService(service))
-
-	if got.Name != appName {
-		t.Fatalf("Name = %q, want %q", got.Name, appName)
-	}
-	if got.Description == "" {
-		t.Fatal("Description must not be empty")
-	}
-	if len(got.Services) != 1 {
-		t.Fatalf("len(Services) = %d, want 1", len(got.Services))
-	}
-	if got.Services[0].Instance() != service {
-		t.Fatalf("registered service = %T, want binding facade", got.Services[0].Instance())
-	}
-	if got.Assets.Handler == nil {
-		t.Fatal("Assets.Handler must be configured")
-	}
-	if got.Mac.ApplicationShouldTerminateAfterLastWindowClosed {
-		t.Fatal("tray application must remain alive when all windows are hidden")
-	}
-}
 
 func TestApplicationLightIndexDoesNotRunLegacySchedulerWorker(t *testing.T) {
 	t.Parallel()
@@ -103,9 +78,8 @@ func TestApplicationLightIndexDoesNotRunLegacySchedulerWorker(t *testing.T) {
 	}
 	defer func() { _ = database.Close(context.Background()) }()
 	repository := factstore.NewRepository(database.(*storesqlite.Store))
-	registrar := &fakeLifecycleRegistrar{callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent))}
 	runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
-		Database: database.(*storesqlite.Store), Registrar: registrar, Preferences: preferenceStore,
+		Database: database.(*storesqlite.Store), Preferences: preferenceStore,
 		EventTimeout: time.Second,
 		LightMetadata: applicationLightMetadataFunc(func(context.Context, string) (appserver.ThreadList, error) {
 			return appserver.ThreadList{Threads: []appserver.ThreadMetadata{}}, nil
@@ -121,6 +95,195 @@ func TestApplicationLightIndexDoesNotRunLegacySchedulerWorker(t *testing.T) {
 		t.Fatalf("TryAcquireSchedulerOwner(light) error = %v", err)
 	}
 	lease.Release()
+}
+
+// 测试 native light-index 启动在开放查询前把旧额度规则投影升级到当前版本。（风险复现用例）
+func TestApplicationLightIndexUpgradesQuotaProjectionRuleBeforeServing(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	home := t.TempDir()
+	for _, directory := range []string{"sessions", "archived_sessions"} {
+		if err := os.Mkdir(filepath.Join(home, directory), 0o700); err != nil {
+			t.Fatalf("create %s: %v", directory, err)
+		}
+	}
+	metadata, err := logs.NewHomeProbe().Probe(ctx, home)
+	if err != nil {
+		t.Fatalf("Probe(home) error = %v", err)
+	}
+	preferenceStore, err := preferences.NewFileStore(filepath.Join(t.TempDir(), "private", "preferences.json"))
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+	if err := preferenceStore.Confirm(ctx, preferences.OnboardingSnapshot{
+		SchemaVersion: preferences.CurrentSchemaVersion, OnboardingVersion: preferences.CurrentOnboardingVersion,
+		OnboardingCompleted: true,
+		CodexHome: preferences.ConfirmedSource{
+			Path: metadata.Path, DeviceID: metadata.DeviceID, Inode: metadata.Inode,
+			ConfirmedAtMS: time.Now().UnixMilli(),
+		},
+	}); err != nil {
+		t.Fatalf("Confirm() error = %v", err)
+	}
+	databaseDirectory := t.TempDir()
+	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
+		t.Fatalf("secure database directory: %v", err)
+	}
+	opened, err := openConfiguredStore(ctx, storesqlite.Config{
+		Path: filepath.Join(databaseDirectory, "quota-rule-upgrade.db"),
+	})
+	if err != nil {
+		t.Fatalf("openConfiguredStore() error = %v", err)
+	}
+	database := opened.(*storesqlite.Store)
+	defer func() { _ = database.Close(context.Background()) }()
+	repository := factstore.NewRepository(database)
+	nowMS := time.Now().UnixMilli()
+	limitID, requestID := "codex", "synthetic-old-rule"
+	observation := factstore.QuotaObservationSample{
+		ObservationID: "old-rule-observation", AccountScope: factstore.QuotaAccountScopeDefault,
+		Source: factstore.QuotaSourceWham, LimitID: &limitID, WindowKind: factstore.QuotaWindowPrimary,
+		UsedPercent: 100, WindowMinutes: 7 * 24 * 60, ResetsAtMS: nowMS + 7*24*60*60*1000,
+		ObservedAtMS: nowMS, Validity: factstore.QuotaValidityAccepted, RequestID: &requestID,
+	}
+	if err := repository.UpsertFacts(ctx, factstore.FactBatch{QuotaObservation: &observation}); err != nil {
+		t.Fatalf("UpsertFacts(quota) error = %v", err)
+	}
+	if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		return transaction.WithContext(ctx).Model(&quotaCurrentRuleVersionModel{}).
+			Where("account_scope = ? AND window_kind = ? AND limit_id = ?",
+				factstore.QuotaAccountScopeDefault, factstore.QuotaWindowPrimary, limitID).
+			Update("rule_version", "quota-arbiter-v1").Error
+	}); err != nil {
+		t.Fatalf("seed old quota rule version: %v", err)
+	}
+
+	runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
+		Database: database, Preferences: preferenceStore, EventTimeout: time.Second,
+		LightMetadata: applicationLightMetadataFunc(func(context.Context, string) (appserver.ThreadList, error) {
+			return appserver.ThreadList{}, nil
+		}),
+	})
+	if err != nil || runtime == nil {
+		t.Fatalf("startApplicationLifecycleRuntime(light) = %#v, %v", runtime, err)
+	}
+	defer func() { _ = runtime.Close(context.Background()) }()
+	current, err := repository.QuotaCurrent(
+		ctx, factstore.QuotaAccountScopeDefault, factstore.QuotaWindowPrimary, limitID, nowMS,
+	)
+	if err != nil || current.RuleVersion != "quota-arbiter-v2" {
+		t.Fatalf("QuotaCurrent(after light startup) = %#v, %v; want quota-arbiter-v2", current, err)
+	}
+}
+
+type quotaCurrentRuleVersionModel struct {
+	AccountScope string `gorm:"column:account_scope"`
+	WindowKind   string `gorm:"column:window_kind"`
+	LimitID      string `gorm:"column:limit_id"`
+}
+
+func (quotaCurrentRuleVersionModel) TableName() string { return "quota_current" }
+
+func TestApplicationLightIndexRefreshesTitleWhenAppBecomesActive(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	home := t.TempDir()
+	for _, directory := range []string{"sessions", "archived_sessions"} {
+		if err := os.Mkdir(filepath.Join(home, directory), 0o700); err != nil {
+			t.Fatalf("create %s: %v", directory, err)
+		}
+	}
+	homeMetadata, err := logs.NewHomeProbe().Probe(ctx, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preferenceStore, err := preferences.NewFileStore(filepath.Join(t.TempDir(), "private", "preferences.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := preferenceStore.Confirm(ctx, preferences.OnboardingSnapshot{
+		SchemaVersion: preferences.CurrentSchemaVersion, OnboardingVersion: preferences.CurrentOnboardingVersion,
+		OnboardingCompleted: true,
+		CodexHome: preferences.ConfirmedSource{
+			Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
+			ConfirmedAtMS: time.Now().UnixMilli(),
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	databaseDirectory := t.TempDir()
+	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	opened, err := openConfiguredStore(ctx, storesqlite.Config{
+		Path: filepath.Join(databaseDirectory, "dynamic-title.db"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	database := opened.(*storesqlite.Store)
+	defer func() { _ = database.Close(context.Background()) }()
+
+	var metadataMu sync.Mutex
+	title := "初始标题"
+	updatedAtMS := int64(200)
+	provider := applicationLightMetadataFunc(func(context.Context, string) (appserver.ThreadList, error) {
+		metadataMu.Lock()
+		defer metadataMu.Unlock()
+		currentTitle := title
+		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
+			SessionID: "dynamic-title", Name: &currentTitle, CWD: "/workspace",
+			CreatedAtMS: 100, UpdatedAtMS: updatedAtMS,
+		}}}, nil
+	})
+	runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
+		Database: database, Preferences: preferenceStore, EventTimeout: time.Second,
+		LightMetadata: provider, LightRefreshInterval: time.Hour,
+	})
+	if err != nil || runtime == nil {
+		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
+	}
+	defer func() { _ = runtime.Close(context.Background()) }()
+	repository := factstore.NewRepository(database)
+	assertLightSessionTitle(t, repository, "初始标题", 1)
+
+	metadataMu.Lock()
+	title = "动态标题"
+	updatedAtMS = 300
+	metadataMu.Unlock()
+	if err := runtime.adapter.NotifyLifecycle(ctx, "application_did_become_active"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		sessions, listErr := repository.ListLightSessions(ctx)
+		state, stateErr := repository.LightIndexState(ctx)
+		if listErr == nil && stateErr == nil && state.MetadataGeneration == 2 && len(sessions) == 1 &&
+			sessions[0].ThreadName != nil && *sessions[0].ThreadName == "动态标题" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("title did not refresh: state=%#v sessions=%#v errors=%v/%v", state, sessions, stateErr, listErr)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func assertLightSessionTitle(
+	t *testing.T,
+	repository *factstore.Repository,
+	want string,
+	wantGeneration int64,
+) {
+	t.Helper()
+	sessions, err := repository.ListLightSessions(context.Background())
+	state, stateErr := repository.LightIndexState(context.Background())
+	if err != nil || stateErr != nil || state.MetadataGeneration != wantGeneration || len(sessions) != 1 ||
+		sessions[0].ThreadName == nil || *sessions[0].ThreadName != want {
+		t.Fatalf("state=%#v sessions=%#v errors=%v/%v", state, sessions, stateErr, err)
+	}
 }
 
 func TestApplicationLightIndexHomeSwitchRestartsMetadataWithoutLegacyBootstrap(t *testing.T) {
@@ -177,9 +340,8 @@ func TestApplicationLightIndexHomeSwitchRestartsMetadataWithoutLegacyBootstrap(t
 			SessionID: sessionID, CWD: "/workspace/" + sessionID, CreatedAtMS: 100, UpdatedAtMS: 200,
 		}}}, nil
 	})
-	registrar := &fakeLifecycleRegistrar{callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent))}
 	runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second, LightMetadata: provider,
 	})
 	if err != nil || runtime == nil {
@@ -205,34 +367,6 @@ func TestApplicationLightIndexHomeSwitchRestartsMetadataWithoutLegacyBootstrap(t
 	tasks, err := repository.ListSchedulerTasks(ctx, factstore.SchedulerTaskFilter{Limit: 10})
 	if err != nil || len(tasks) != 0 {
 		t.Fatalf("legacy bootstrap tasks = %#v, %v", tasks, err)
-	}
-}
-
-func TestMainWindowOptions(t *testing.T) {
-	t.Parallel()
-
-	got := mainWindowOptions()
-
-	if got.Name != "main" {
-		t.Fatalf("Name = %q, want main", got.Name)
-	}
-	if got.Title != appName {
-		t.Fatalf("Title = %q, want %q", got.Title, appName)
-	}
-	if got.URL != "/" {
-		t.Fatalf("URL = %q, want /", got.URL)
-	}
-	if got.Width != 1120 || got.Height != 720 || got.MinWidth != 900 || got.MinHeight != 600 {
-		t.Fatalf(
-			"window size = %dx%d min %dx%d, want 1120x720 min 900x600",
-			got.Width, got.Height, got.MinWidth, got.MinHeight,
-		)
-	}
-	if got.BackgroundColour != application.NewRGB(242, 245, 249) {
-		t.Fatalf("BackgroundColour = %#v", got.BackgroundColour)
-	}
-	if got.CloseButtonState != application.ButtonHidden || got.KeyBindings["cmd+w"] == nil {
-		t.Fatalf("durable main window controls = close:%v cmd+w:%v", got.CloseButtonState, got.KeyBindings["cmd+w"] != nil)
 	}
 }
 
@@ -349,9 +483,8 @@ func TestApplicationLifecycleRuntimeComposesConfiguredHomeAndReleasesWorker(t *t
 	}
 	database := lifecycleStore.(*storesqlite.Store)
 	t.Cleanup(func() { _ = database.Close(context.Background()) })
-	registrar := &fakeLifecycleRegistrar{callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent))}
 	runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second,
 	})
 	if err != nil {
@@ -383,7 +516,9 @@ func TestApplicationLifecycleRuntimeComposesConfiguredHomeAndReleasesWorker(t *t
 		t.Fatalf("LatestBootstrapRunByGeneration() error = %v", err)
 	}
 	initialRevision := state.Revision
-	registrar.trigger(events.Mac.ApplicationDidBecomeActive)
+	if err := runtime.adapter.NotifyLifecycle(ctx, "application_did_become_active"); err != nil {
+		t.Fatalf("NotifyLifecycle() error = %v", err)
+	}
 	waitForAppCondition(t, func() bool {
 		current, readErr := repository.SchedulerLifecycle(ctx)
 		return readErr == nil && current.Revision > initialRevision &&
@@ -391,9 +526,6 @@ func TestApplicationLifecycleRuntimeComposesConfiguredHomeAndReleasesWorker(t *t
 	}, "foreground source check did not reconcile")
 	if err := runtime.Close(context.Background()); err != nil {
 		t.Fatalf("runtime.Close() error = %v", err)
-	}
-	if registrar.cancelCalls != 3 {
-		t.Fatalf("cancel calls = %d, want 3", registrar.cancelCalls)
 	}
 	lease, err := repository.TryAcquireSchedulerOwner(ctx)
 	if err != nil {
@@ -497,9 +629,8 @@ func TestApplicationLifecycleRuntimeValidatesPhysicalHomeBeforeRecoveringTargets
 			t.Fatalf("create replacement %s: %v", directory, err)
 		}
 	}
-	registrar := &fakeLifecycleRegistrar{callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent))}
 	runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second,
 	})
 	if err != nil {

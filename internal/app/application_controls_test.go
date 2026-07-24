@@ -16,8 +16,6 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
-	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 func TestApplicationControlsUpdateSettingsPreservesReadOnlyPreferences(t *testing.T) {
@@ -285,11 +283,8 @@ func startApplicationControlsTestRuntime(
 	home := writeSyntheticAuthHome(t, "synthetic-control-home-token")
 	prepareApplicationControlsHome(t, home)
 	preferenceStore := confirmedQuotaRuntimeFileStore(t, home, false, false)
-	registrar := &fakeLifecycleRegistrar{
-		callbacks: make(map[events.ApplicationEventType]func(*application.ApplicationEvent)),
-	}
 	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
-		Database: database, Registrar: registrar, Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second,
 		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
 			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil

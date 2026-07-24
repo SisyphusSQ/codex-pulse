@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Codex Pulse app icon - Mono</title>
+  <desc id="desc">The monochrome appearance of the Codex Pulse local core and pulse orbit.</desc>
+  <defs>
+    <linearGradient id="bg" x1="128" y1="96" x2="896" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#12141A"/>
+      <stop offset="1" stop-color="#30323A"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="192" y1="240" x2="834" y2="812" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FAFAFB"/>
+      <stop offset="1" stop-color="#B8BBC4"/>
+    </linearGradient>
+    <clipPath id="legacy-mask"><rect width="1024" height="1024" rx="224"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#legacy-mask)">
+    <rect width="1024" height="1024" fill="url(#bg)"/>
+    <circle cx="512" cy="512" r="300" fill="none" stroke="url(#mark)" stroke-width="86" stroke-linecap="round"
+      stroke-dasharray="1260 625" transform="rotate(31 512 512)"/>
+    <path d="M360 624 C405 695 505 725 589 694 C647 673 693 628 716 570"
+      fill="none" stroke="#D7D9DF" stroke-opacity="0.72" stroke-width="42" stroke-linecap="round"/>
+    <path d="M650 278 C690 294 722 317 748 346 L782 303 L808 394 L847 346 L878 373"
+      fill="none" stroke="#FFFFFF" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="512" cy="512" r="112" fill="#0B0C10" fill-opacity="0.78" stroke="#FFFFFF" stroke-opacity="0.24" stroke-width="12"/>
+    <circle cx="512" cy="512" r="62" fill="#F8F8F9"/>
+    <circle cx="286" cy="321" r="27" fill="#FFFFFF"/>
+  </g>
+</svg>

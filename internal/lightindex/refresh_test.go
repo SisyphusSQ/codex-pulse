@@ -35,6 +35,24 @@ func TestDecideRefreshAppendForGrowthAndIncompleteTail(t *testing.T) {
 			t.Fatalf("decision = %+v, want resume append", decision)
 		}
 	})
+
+	t.Run("short file growth with previous prefix proof", func(t *testing.T) {
+		checkpoint := refreshFixture()
+		checkpoint.File.SizeBytes = 1_000
+		checkpoint.File.PrefixBytes = 1_000
+		checkpoint.File.PrefixSHA256 = "short-old-prefix"
+		checkpoint.DurableOffset = 1_000
+		current := checkpoint.File
+		current.SizeBytes = 1_500
+		current.MTimeNS++
+		current.PrefixBytes = 1_500
+		current.PrefixSHA256 = "short-grown-prefix"
+		current.Comparison = &PrefixComparison{PrefixBytes: 1_000, PrefixSHA256: "short-old-prefix"}
+		decision := DecideRefresh(&checkpoint, checkpoint.Home, current, TokenParserVersion)
+		if decision.Kind != RefreshAppend || decision.StartOffset != checkpoint.DurableOffset {
+			t.Fatalf("decision = %+v, want proved short append", decision)
+		}
+	})
 }
 
 func TestDecideRefreshRebuildsUnsafeFileChanges(t *testing.T) {

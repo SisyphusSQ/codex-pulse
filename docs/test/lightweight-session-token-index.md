@@ -4,13 +4,24 @@
 
 - 日期：2026-07-19（Asia/Shanghai）
 - 结果：`PASS`
-- 数据边界：只读访问用户明确确认的 Codex Home；App Server state DB、rollout JSONL 均未修改
-- 写入边界：只在 `0700` 临时目录创建隔离 SQLite，成功后删除；未读取或改写 Codex Pulse 现有生产数据库
+- 当前数据边界：本机 development App / live E2E 使用用户明确确认的真实 Codex Home；允许 Codex App Server 产生正常 state DB、WAL、锁和日志，Codex Pulse 派生索引只写已配置私有 runtime SQLite，不复制或改写 rollout JSONL 内容
+- CI/确定性边界：unit、contract 与 CI smoke 继续只在隔离 synthetic/empty Home 和可清理 SQLite 中执行，不依赖真实用户数据
 - 外部副作用：未 commit、push、创建 Issue/PR/MR 或发布产物
 
 正常启动已改为 metadata-first 两阶段路径：Codex App Server `thread/list` 先提供真实标题、cwd、时间和 rollout path；首屏开放后，utility 后台任务才扫描 Token。首次路径不再运行 full-history bootstrap，不生成 Turn、历史 quota receipt、parser diagnostic 或 source generation staged facts。
 
-Token scanner 以 64KiB 分块读取，未包含精确字节串 `"token_count"` 的行不做 JSON decode。每个 rollout 保存 Home/file identity、size、mtime、parser version、prefix proof 和完整行 offset；无变化复用、同文件追加扫描、截断/替换/parser bump 重建均有自动化测试。Turn timeline 保留为打开单会话详情时的按需严格深索引；它复用原 parser 与 checkpoint/generation fence、跳过历史 quota facts，并通过 lifecycle drain fence 支持取消和退出恢复。
+Token scanner 以 64KiB 分块读取，只有包含精确字节串 `"token_count"` 或 `"turn_context"` 的行才做 JSON decode。parser v2 从 `turn_context.model` 提取最长 128 bytes 的安全 normalized key/source，并把当前模型 checkpoint 与每个 timed token delta 一起持久化；raw/非法 model 不落库。每个 rollout 保存 Home/file identity、size、mtime、parser version、prefix proof 和完整行 offset；无变化复用、同文件追加扫描、截断/替换/parser bump 重建均有自动化测试。Turn timeline 保留为打开单会话详情时的按需严格深索引；它复用原 parser 与 checkpoint/generation fence、跳过历史 quota facts，并通过 lifecycle drain fence 支持取消和退出恢复。
+
+## 2026-07-24 会话标题与 JSONL 动态刷新
+
+- 常驻 Helper 每 30 秒执行一次 coalesced 轻量 refresh；`application_did_become_active` 与 `system_did_wake` 通过既有 lifecycle reconcile 立即发送一次非阻塞 trigger。同一 worker 串行拉取 App Server metadata 和检查 rollout，不会为周期、前台和唤醒事件并发启动多份扫描。
+- App Server snapshot 按 `session_id` 比较 title、cwd、rollout path、created/updated/recency；完全相同的 snapshot 不推进 metadata generation、不重写 `light_sessions`，避免周期刷新让 query cursor 无效。真实字段变化原子发布后发送 index invalidation。
+- rollout 无变化时仍走 metadata-only identity fast path；增长文件复用 active generation、high-water 和 durable offset，只读取 4 KiB prefix proof 与新增字节。截断、替换、同尺寸改写和 parser version 变化继续安全重建。
+- 单次 App Server/rollout 可恢复错误不会终止常驻 worker，下一周期或 trigger 会重试；confirmed Home identity 漂移继续 fail closed。Home switch 和退出先 cancel/wait 当前 worker，再切换或关闭。
+- synthetic tests 覆盖 title 更新、foreground trigger、周期 refresh 单次失败后的恢复、metadata no-op generation、同 generation append、短文件旧 prefix proof、rollout 归档换 path、安全重建、物理读取小于旧文件全量以及 monitor 取消。
+- 当前轮定向验证：`go test ./internal/store ./internal/lightindex ./internal/app -count=1` PASS；逐包 `go test -race` 均 PASS（Store 184.105s、lightindex 7.935s、App 44.941s）；`git diff --check` PASS。这里是 synthetic Home/临时 SQLite 证据，不冒充真实 Home 产品验收。
+- 当前轮真实 Home 验收：显式绑定 `/private/tmp/cp-codex-pulse-live-502` 已确认私有 runtime 和真实 `CODEX_HOME`，`make verify-live` PASS，返回 `primary_pages=loaded`、`sessions=20`、`usage_models=4`、`usage_cost=known`、`unavailable=none`、`shutdown=clean`；该 smoke 自身仍标记 `lifecycle=not_executed`。
+- 为单独验证动态标题，在同一常驻 App 进程中先读回当前任务 generation `18` 和旧 E2E 标题，再通过官方任务标题入口改名；4 秒后只读 runtime SQLite 观察到 generation `20` 和新标题匹配，期间 App/Helper 未重启。随后用显式 `CODEX_HOME` 恢复 LaunchServices 常驻新版本，最终 generation `22`、标题匹配、App/Helper/socket 均 active。readback 只查询当前任务固定 ID，不输出其他 Session 标题或用户内容。
 
 设计参考与协议依据：
 
@@ -19,7 +30,15 @@ Token scanner 以 64KiB 分块读取，未包含精确字节串 `"token_count"` 
 - [Codex App Server thread/list protocol](https://github.com/openai/codex/blob/rust-v0.144.0/codex-rs/app-server-protocol/src/protocol/v2/thread.rs)
 - [Codex state DB thread listing](https://github.com/openai/codex/blob/rust-v0.144.0/codex-rs/thread-store/src/local/list_threads.rs)
 
-## 真实 Home 只读 E2E
+## 2026-07-22 原生 App 成本与模型 live E2E
+
+- 复用既有私有 development runtime 与用户明确确认的真实 Codex Home；未创建新的验证目录，App Server 标准 housekeeping 与 Codex Pulse 派生索引写入已获授权。
+- native live gate 返回 `usage_models=5`、`usage_cost=known`、`primary_pages=loaded`、`unavailable=none`，证明 parser v2 model attribution 已通过 generated client 到达页面，且 Helper 能用生效 pricing catalog 返回真实范围的已计价小计。
+- 第二次短生命周期 live gate 退出后使用 immutable SQLite URI 做只读聚合检查：Schema v17、`quick_check=ok`、pricing version `2`；parser v2 已从第一次的 `10` 条推进到 `55` 条。smoke 会主动 clean shutdown，因此随后以正常常驻方式启动同一 development App；并发只读快照最终读回当前 `933/933` 条 scan 全部为 parser v2、active/complete，历史 timed facts 的安全模型维度共 `7` 个。页面所选 7 日范围返回其中 `5` 个模型分组。
+- 对抗式复审为 parser bump 增加 runtime-level 回归，先证明 unchanged 快路径会跳过旧 parser，再修正为只有 parser version 已匹配时才允许复用。因而未变化的 v1 rollout 也能通过既有 Home/file identity 和 prefix proof 安全重建，而不是等待文件 append。
+- 提交版不记录模型以外的用户维度、真实路径、Session 名称、原始 JSONL/payload 或日志。empty Home regression 仍断言 `usage_models=0 usage_cost=unknown`。
+
+## 2026-07-19 历史真实 Home 只读 E2E
 
 执行入口：
 
@@ -55,7 +74,7 @@ go run ./scripts/lightindex-e2e \
 ## 隐私与安全语义
 
 - `light_sessions` 只持久化产品需要的 metadata，不保存 App Server `preview`。
-- Token 表只保存累计计数、按日/时间点正增量、offset 和不可逆文件身份证明。
+- Token 表只保存累计计数、按日/时间点正增量、安全 normalized model attribution、offset 和不可逆文件身份证明。
 - metadata path 和 Token reader 都经过 confirmed Home device/inode fence、根内路径和 symlink 拒绝检查。
 - rebuild 使用 pending generation；成功后原子激活，失败/取消时旧 active generation 继续可查。
 - durable offset 只推进到完整换行边界；EOF 半行在下次 append 继续处理。
@@ -72,8 +91,8 @@ go run ./scripts/lightindex-e2e \
 | frontend typecheck | PASS |
 | frontend Vitest | PASS，57 files / 186 tests |
 | frontend production build | PASS；只有既有的 500kB chunk warning |
-| `make harness-verify` | PASS |
-| `make verify-project` | PASS |
+| `make verify-architecture` | PASS |
+| `make verify-architecture` | PASS |
 | `make verify-generated` | PASS；bindings 与 Go module files stable |
 | `make verify-package` | PASS；arm64、minOS 15.0、ad-hoc 签名、App/ZIP 解包复验 |
 | `make m11-privacy-audit` | PASS；内部完整串行执行 `make verify` |
@@ -84,11 +103,11 @@ go run ./scripts/lightindex-e2e \
 1. **offset 漏扫或重扫**：覆盖跨 64KiB 行、EOF 半行、取消和 checkpoint 恢复；offset 只在完整行事务提交后推进。
 2. **把活动文件误判为无变化**：E2E 二刷按 size/mtime 分离 unchanged 与 changed；884 个 unchanged 的内容读取为 0，活跃 append 只读新增 7,048 bytes。
 3. **Home 切换或退出竞争**：Home switch 先取消旧 generation，metadata/token replacement 受旧/新 Home fence 约束；按需深索引也进入统一 drain admission。
-4. **轻量值覆盖严格真相**：App Server metadata 始终是标题/cwd/path/时间真相；Token 轻量汇总只补 Token，Turn/model/cost 在深索引前明确为 partial/unknown。
+4. **轻量值覆盖严格真相**：App Server metadata 始终是标题/cwd/path/时间真相；Token scanner 只补 token 与 safe model attribution，API 等价成本由 Go 使用本地不可变 catalog 计算并保持 partial，Turn timeline 仍由按需深索引提供。
 5. **隐私或写放大回流**：schema/DTO/package canary 审计通过；正常首次路径没有 prompt/response/tool output/raw JSON，也不调用 legacy full-history scheduler。
 
 ## 残余边界
 
 - App Server 缺失或拒绝某个 rollout path 时，会话 metadata 仍可展示，Token 状态标记为 deferred；不会回退到全量 rollout metadata 解析。
-- 精确 model/cost 与 Turn timeline 仍需要用户打开单会话后执行严格深索引；这是显式能力边界，不把 unknown 伪装成 0。
+- 轻量 range query 可返回 safe model/token/cost 统计；没有模型或 exact 价格的 bucket 保持 unknown/unpriced。精确 Turn timeline 仍需要用户打开单会话后执行严格深索引。
 - 旧约 823MB 数据库不会在 startup 自动 `VACUUM` 或删除。历史空间回收应作为独立、显式维护动作设计。

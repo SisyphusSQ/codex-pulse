@@ -18,11 +18,20 @@ const (
 	AnalyticsReadLightIndex        AnalyticsReadMode = "light_index"
 )
 
-// AnalyticsRange 是已由业务 query 归一化的 IANA 本地日 UTC 半开区间。
+type AnalyticsGranularity string
+
+const (
+	AnalyticsGranularityDay  AnalyticsGranularity = "day"
+	AnalyticsGranularityHour AnalyticsGranularity = "hour"
+)
+
+// AnalyticsRange 是已由业务 query 归一化的 UTC 半开区间。
 type AnalyticsRange struct {
 	ReportingTimezone string
 	StartAtMS         int64
 	EndAtMS           int64
+	Exact             bool
+	Granularity       AnalyticsGranularity
 }
 
 // CostReasonCount 汇总 range 内未定价 turn 的稳定原因。
@@ -35,7 +44,10 @@ type CostReasonCount struct {
 type UsageCostRangeSnapshot struct {
 	Mode            AnalyticsReadMode
 	Generation      *CostRollupGeneration
+	PricingSource   string
+	Currency        string
 	Daily           []UsageDaily
+	Models          []ModelUsageDaily
 	PricingVersions []string
 	UnpricedReasons []CostReasonCount
 }
@@ -77,6 +89,7 @@ type SessionAnalyticsFilter struct {
 	Activity                *SessionActivity
 	LastActivityAtOrAfterMS *int64
 	LastActivityBeforeMS    *int64
+	RangeExact              bool
 	Limit                   int
 	SortField               SessionAnalyticsSortField
 	SortDirection           AnalyticsSortDirection
@@ -145,6 +158,8 @@ type SessionAnalyticsRecord struct {
 type SessionAnalyticsPage struct {
 	Mode          AnalyticsReadMode
 	Generation    *CostRollupGeneration
+	PricingSource string
+	Currency      string
 	Records       []SessionAnalyticsRecord
 	MatchedCount  int64
 	MatchedTotals *RollupTotals
@@ -153,13 +168,17 @@ type SessionAnalyticsPage struct {
 }
 
 type SessionAnalyticsSnapshot struct {
-	Mode            AnalyticsReadMode
-	Generation      *CostRollupGeneration
-	Record          SessionAnalyticsRecord
-	Turns           []SessionTurnAnalyticsRecord
-	NextTurnCursor  *SessionTurnAnalyticsCursor
-	PricingVersions []string
-	UnpricedReasons []CostReasonCount
+	Mode              AnalyticsReadMode
+	Generation        *CostRollupGeneration
+	PricingSource     string
+	Currency          string
+	ReportingTimezone string
+	Record            SessionAnalyticsRecord
+	Daily             []UsageDaily
+	Turns             []SessionTurnAnalyticsRecord
+	NextTurnCursor    *SessionTurnAnalyticsCursor
+	PricingVersions   []string
+	UnpricedReasons   []CostReasonCount
 }
 
 type ProjectAnalyticsSortField string
@@ -180,6 +199,7 @@ type ProjectAnalyticsCursor struct {
 
 type ProjectAnalyticsFilter struct {
 	Range         AnalyticsRange
+	DimensionKeys []string
 	ProjectIDs    []string
 	Confidences   []string
 	Limit         int
@@ -227,6 +247,8 @@ type ProjectAnalyticsRecord struct {
 type ProjectAnalyticsPage struct {
 	Mode            AnalyticsReadMode
 	Generation      CostRollupGeneration
+	PricingSource   string
+	Currency        string
 	Records         []ProjectAnalyticsRecord
 	MatchedCount    int64
 	GlobalTotals    RollupTotals
@@ -257,6 +279,8 @@ type ProjectModelAnalyticsRecord struct {
 type ProjectAnalyticsSnapshot struct {
 	Mode              AnalyticsReadMode
 	Generation        CostRollupGeneration
+	PricingSource     string
+	Currency          string
 	Record            ProjectAnalyticsRecord
 	Daily             []ProjectUsageDaily
 	Sessions          []ProjectSessionAnalyticsRecord

@@ -27,6 +27,8 @@ var (
 	ErrApplicationPreferencesPostCommit = errors.New("application preferences committed but reconcile failed")
 )
 
+const defaultApplicationLightRefreshInterval = 30 * time.Second
+
 type ApplicationPreferencesPostCommitError struct {
 	Committed preferences.Snapshot
 	Cause     error
@@ -48,17 +50,17 @@ type confirmedPreferencesLoader interface {
 }
 
 type ApplicationLifecycleRuntimeConfig struct {
-	Database       *storesqlite.Store
-	Registrar      lifecycleEventRegistrar
-	Preferences    confirmedPreferencesLoader
-	EventTimeout   time.Duration
-	QuotaTransport http.RoundTripper
-	QuotaClock     func() time.Time
-	Invalidation   queryInvalidationNotifier
-	UpdateWake     func(context.Context) error
-	LightMetadata  lightindex.MetadataProvider
-	quotaHooks     quotaRuntimeHooks
-	homeRuntime    preferences.HomeRuntime
+	Database             *storesqlite.Store
+	Preferences          confirmedPreferencesLoader
+	EventTimeout         time.Duration
+	QuotaTransport       http.RoundTripper
+	QuotaClock           func() time.Time
+	Invalidation         queryInvalidationNotifier
+	UpdateWake           func(context.Context) error
+	LightMetadata        lightindex.MetadataProvider
+	LightRefreshInterval time.Duration
+	quotaHooks           quotaRuntimeHooks
+	homeRuntime          preferences.HomeRuntime
 }
 
 type applicationLifecycleRuntime struct {
@@ -99,7 +101,7 @@ func startApplicationLifecycleRuntime(
 	ctx context.Context,
 	config ApplicationLifecycleRuntimeConfig,
 ) (*applicationLifecycleRuntime, error) {
-	if ctx == nil || config.Database == nil || config.Registrar == nil || config.EventTimeout < 0 {
+	if ctx == nil || config.Database == nil || config.EventTimeout < 0 || config.LightRefreshInterval < 0 {
 		return nil, ErrApplicationLifecycleRuntime
 	}
 	loader := config.Preferences
@@ -121,6 +123,10 @@ func startApplicationLifecycleRuntime(
 		return nil, applicationLifecycleDependencyError(ctx, err)
 	}
 	repository := store.NewRepository(config.Database)
+	// 额度仲裁规则可独立于 schema 升级；Core 查询开放前必须先重建当前版本的派生投影。
+	if err := repository.RebuildQuotaProjection(ctx, store.DefaultQuotaArbitrationRule()); err != nil {
+		return nil, applicationLifecycleDependencyError(ctx, err)
+	}
 	bootstrapRuntime, err := bootstrap.NewRuntime(bootstrap.RuntimeConfig{Repository: repository})
 	if err != nil {
 		return nil, applicationLifecycleDependencyError(ctx, err)
@@ -168,10 +174,15 @@ func startApplicationLifecycleRuntime(
 	}
 	var lightRuntime *lightindex.Runtime
 	var lightRun *lightindex.Run
+	var lightReconcileRunner *applicationLightIndexReconcileRunner
 	if useLightIndex {
+		refreshInterval := config.LightRefreshInterval
+		if refreshInterval == 0 {
+			refreshInterval = defaultApplicationLightRefreshInterval
+		}
 		lightRuntime, err = lightindex.NewRuntime(lightindex.RuntimeConfig{
-			Repository: repository, Metadata: config.LightMetadata,
-			BatchCommitted: func(store.LightTokenScan) {
+			Repository: repository, Metadata: config.LightMetadata, RefreshInterval: refreshInterval,
+			RefreshCommitted: func() {
 				notifyQueryInvalidation(config.Invalidation, context.Background(), QueryInvalidationIndex)
 			},
 		})
@@ -231,7 +242,8 @@ func startApplicationLifecycleRuntime(
 		repository: repository, delegate: queueRunner,
 	}
 	if useLightIndex {
-		runner = applicationLightIndexReconcileRunner{}
+		lightReconcileRunner = &applicationLightIndexReconcileRunner{}
+		runner = lightReconcileRunner
 	}
 	reconciler, err := appLifecycle.NewConfirmedHomeReconciler(appLifecycle.ConfirmedHomeReconcilerConfig{
 		HomeProvider: fileConfirmedHomeProvider{loader: loader}, Runner: runner,
@@ -300,7 +312,6 @@ func startApplicationLifecycleRuntime(
 		}
 	}
 	adapter, err := NewLifecycleEventAdapter(LifecycleEventAdapterConfig{
-		Registrar: config.Registrar,
 		Coordinator: applicationQuotaLifecycleCoordinator{
 			local: coordinator, quota: quotaRuntime,
 		},
@@ -327,6 +338,7 @@ func startApplicationLifecycleRuntime(
 	}
 	if useLightIndex {
 		runtime.workerDone <- nil
+		lightReconcileRunner.setTrigger(runtime.triggerLightIndex)
 	} else {
 		go func() { runtime.workerDone <- schedulerService.Run(workerCtx) }()
 	}
@@ -378,14 +390,49 @@ type applicationBootstrapAwareReconcileRunner struct {
 	delegate   appLifecycle.ReconcileRunner
 }
 
-type applicationLightIndexReconcileRunner struct{}
+type applicationLightIndexReconcileRunner struct {
+	mu      sync.RWMutex
+	trigger func()
+}
 
-func (applicationLightIndexReconcileRunner) RunReconcile(
+func (runner *applicationLightIndexReconcileRunner) setTrigger(trigger func()) {
+	if runner == nil {
+		return
+	}
+	runner.mu.Lock()
+	runner.trigger = trigger
+	runner.mu.Unlock()
+}
+
+func (runner *applicationLightIndexReconcileRunner) RunReconcile(
 	ctx context.Context,
 	_ appLifecycle.ConfirmedHome,
 	_ appLifecycle.ReconcileReason,
 ) error {
-	return ctx.Err()
+	if runner == nil || ctx == nil {
+		return ErrApplicationLifecycleRuntime
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	runner.mu.RLock()
+	trigger := runner.trigger
+	runner.mu.RUnlock()
+	if trigger != nil {
+		trigger()
+	}
+	return nil
+}
+
+func (runtime *applicationLifecycleRuntime) triggerLightIndex() {
+	if runtime == nil {
+		return
+	}
+	runtime.lightMu.Lock()
+	defer runtime.lightMu.Unlock()
+	if runtime.lightRun != nil {
+		_ = runtime.lightRun.Trigger()
+	}
 }
 
 func (runner *applicationBootstrapAwareReconcileRunner) RunReconcile(
@@ -549,6 +596,13 @@ func (runtime *applicationLifecycleRuntime) resumeCommittedQuotaGeneration(
 		}
 		return committed, errors.Join(original, postCommitErr)
 	}
+	if err := runtime.quota.RearmAfterHomeChange(ctx); err != nil {
+		postCommitErr := &ApplicationPreferencesPostCommitError{
+			Committed: committed,
+			Cause:     err,
+		}
+		return committed, errors.Join(original, postCommitErr)
+	}
 	return committed, original
 }
 
@@ -615,7 +669,7 @@ func (runtime *applicationLifecycleRuntime) Close(ctx context.Context) error {
 }
 
 // BeginDrain is the irreversible admission fence shared by Quit and Install.
-// It rejects new Wails controls, unregisters lifecycle events, and cancels the
+// It rejects new RPC controls, closes lifecycle admission, and cancels the
 // scheduler worker so an active slice reaches its cooperative checkpoint. Close
 // later waits for the worker and tears down quota/coordinator resources.
 func (runtime *applicationLifecycleRuntime) BeginDrain(ctx context.Context) error {

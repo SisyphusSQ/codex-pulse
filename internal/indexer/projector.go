@@ -175,6 +175,7 @@ func (projector *projector) projectQuotaObservation(event logs.ParsedEvent) (sto
 		AccountScope:     store.QuotaAccountScopeDefault,
 		Source:           store.QuotaSourceLocalJSONL,
 		LimitID:          cloneString(observation.LimitID),
+		LimitName:        cloneString(observation.LimitName),
 		WindowKind:       store.QuotaWindowKind(observation.WindowKind),
 		UsedPercent:      observation.UsedPercent,
 		WindowMinutes:    observation.WindowMinutes,

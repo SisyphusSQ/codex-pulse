@@ -63,6 +63,10 @@ func TestQuotaCurrentAndSettingsReturnVersionedRedactedFacts(t *testing.T) {
 	}
 	assertEditableField(t, settings.EditableFields, "refresh.quotaIntervalSeconds", true, int64Pointer(60), int64Pointer(1800))
 	assertEditableField(t, settings.EditableFields, "updates.channel", false, nil, nil)
+	assertEditableOptions(
+		t, settings.EditableFields, "ui.overviewRange",
+		[]string{"quota_week", "today", "seven_days", "thirty_days"},
+	)
 }
 
 func TestListSourcesMapsBothKindsRedactsAndRoundTripsCursor(t *testing.T) {
@@ -747,6 +751,19 @@ func assertEditableField(
 			if field.Editable != editable || !equalInt64Pointer(field.Minimum, minimum) ||
 				!equalInt64Pointer(field.Maximum, maximum) {
 				t.Fatalf("field %s = %#v", key, field)
+			}
+			return
+		}
+	}
+	t.Fatalf("field %s missing from %#v", key, fields)
+}
+
+func assertEditableOptions(t *testing.T, fields []EditableField, key string, want []string) {
+	t.Helper()
+	for _, field := range fields {
+		if field.Key == key {
+			if !reflect.DeepEqual(field.Options, want) {
+				t.Fatalf("field %s options = %#v, want %#v", key, field.Options, want)
 			}
 			return
 		}

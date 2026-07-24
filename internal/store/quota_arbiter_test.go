@@ -147,6 +147,72 @@ func TestQuotaArbiterQuarantinesSameGenerationRegressionAndRecoversOnNewGenerati
 	}
 }
 
+func TestQuotaArbiterToleratesOneSecondResetTimestampJitter(t *testing.T) {
+	t.Parallel()
+
+	rule := defaultQuotaArbitrationRule()
+	observedAt := int64(300 * quotaTestHourMS)
+	resetAt := observedAt + 7*24*quotaTestHourMS + quotaTestMinuteMS
+	first := quotaArbiterObservation("wham-reset-19", QuotaSourceWham, 5, observedAt, resetAt)
+	first.WindowMinutes = 7 * 24 * 60
+	jittered := quotaArbiterObservation(
+		"wham-reset-18", QuotaSourceWham, 6, observedAt+quotaTestMinuteMS, resetAt-1_000,
+	)
+	jittered.WindowMinutes = 7 * 24 * 60
+
+	projection, err := arbitrateQuotaWindow(
+		[]QuotaObservation{first, jittered}, observedAt+2*quotaTestMinuteMS, rule,
+	)
+	if err != nil {
+		t.Fatalf("reset jitter arbitration error = %v", err)
+	}
+	if projection.Current.ObservationID == nil ||
+		*projection.Current.ObservationID != jittered.ObservationID ||
+		projection.Current.EffectiveUsedPercent == nil ||
+		*projection.Current.EffectiveUsedPercent != jittered.UsedPercent ||
+		projection.Current.ResetsAtMS == nil ||
+		*projection.Current.ResetsAtMS != resetAt ||
+		projection.Current.FreshnessState != QuotaCurrentFresh {
+		t.Fatalf("reset jitter current = %#v, want latest trusted observation", projection.Current)
+	}
+	assertQuotaEvidence(t, projection.Evidence, jittered.ObservationID, QuotaEvidenceSelected, "")
+}
+
+// 测试 QuotaArbiter 在 7 天滑动窗口提前刷新 reset_at 场景下接受服务端已重置的新事实。（风险复现用例）
+func TestQuotaArbiterAcceptsEarlySlidingWindowReset(t *testing.T) {
+	t.Parallel()
+
+	rule := defaultQuotaArbitrationRule()
+	firstObserved := int64(200 * quotaTestHourMS)
+	firstReset := firstObserved + 7*24*quotaTestHourMS
+	exhausted := quotaArbiterObservation(
+		"wham-exhausted-sliding-window", QuotaSourceWham, 100, firstObserved, firstReset,
+	)
+	exhausted.WindowMinutes = 7 * 24 * 60
+	resetObserved := firstObserved + 4*quotaTestHourMS
+	resetAt := resetObserved + 7*24*quotaTestHourMS
+	reset := quotaArbiterObservation(
+		"wham-reset-sliding-window", QuotaSourceWham, 0, resetObserved, resetAt,
+	)
+	reset.WindowMinutes = 7 * 24 * 60
+
+	projection, err := arbitrateQuotaWindow(
+		[]QuotaObservation{exhausted, reset}, resetObserved+quotaTestMinuteMS, rule,
+	)
+	if err != nil {
+		t.Fatalf("sliding-window arbitration error = %v", err)
+	}
+	if projection.Current.ObservationID == nil || *projection.Current.ObservationID != reset.ObservationID ||
+		projection.Current.EffectiveUsedPercent == nil || *projection.Current.EffectiveUsedPercent != 0 ||
+		projection.Current.WindowGeneration == nil || *projection.Current.WindowGeneration != resetAt ||
+		projection.Current.FreshnessState != QuotaCurrentFresh ||
+		projection.Current.RuleVersion != "quota-arbiter-v2" {
+		t.Fatalf("sliding-window current = %#v, want trusted reset observation", projection.Current)
+	}
+	assertQuotaEvidence(t, projection.Evidence, exhausted.ObservationID, QuotaEvidenceSuperseded, "")
+	assertQuotaEvidence(t, projection.Evidence, reset.ObservationID, QuotaEvidenceSelected, "")
+}
+
 func TestQuotaArbiterRejectsClockAndResetAnomaliesWithoutLosingLastKnownGood(t *testing.T) {
 	t.Parallel()
 

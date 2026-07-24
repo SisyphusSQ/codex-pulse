@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   verify:
-    name: macOS 15 arm64 verification
+    name: Product verification
     runs-on: macos-15
     timeout-minutes: 30
 
@@ -32,21 +32,10 @@ jobs:
           go-version-file: go.mod
           cache: false
 
-      - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-        with:
-          node-version: '22.13.0'
-          package-manager-cache: false
-
-      - name: Install frontend dependencies from lockfile
-        working-directory: frontend
-        run: npm ci
-
-      - name: Install exact Wails CLI
+      - name: Install pinned protobuf toolchain
         run: |
-          mkdir -p "$RUNNER_TEMP/bin"
-          GOBIN="$RUNNER_TEMP/bin" go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha2.117
-          echo "$RUNNER_TEMP/bin" >>"$GITHUB_PATH"
+          brew install protobuf@34
+          echo "$(brew --prefix protobuf@34)/bin" >>"$GITHUB_PATH"
 
       - name: Run unified verification
         run: make verify

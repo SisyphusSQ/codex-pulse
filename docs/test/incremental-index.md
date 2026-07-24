@@ -27,7 +27,7 @@
 | coverage | PASS | Store 78.9%、Store/sqlite 74.5%、indexer 85.3% |
 | race | PASS | Store/indexer race 通过 |
 | transaction fault matrix | PASS | diagnostic、checkpoint、fact、source、job、activation、prepare/winner/active staging cleanup 全部 rollback |
-| full integration gate | PASS | count=20、全仓 test/race/vet、harness、project-check、version check 与 `make verify` 全部通过 |
+| full integration gate | PASS | count=20、全仓 test/race/vet、当时的架构与 version check、`make verify` 全部通过 |
 
 ## 目标
 
@@ -109,10 +109,9 @@ fi
 go test ./... -count=1
 go test -race ./... -count=1
 go vet ./...
-make harness-verify
-PATH="/tmp/codex-pulse-tools/bin:$PATH" make project-check
+make verify-architecture
+PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify-architecture
 git diff --check
-python3 .agents/skills/project-version-release/scripts/project_version_release.py check --repo "$PWD" --json
 PATH="/tmp/codex-pulse-tools/bin:$PATH" make verify
 ```
 

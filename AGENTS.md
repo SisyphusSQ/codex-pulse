@@ -1,99 +1,58 @@
 # Codex Pulse AGENTS
 
-## 项目定位
+## 项目边界
 
-本文件是 `Codex Pulse` 的根级协作入口，只负责：
+Codex Pulse 是 local-first 的 Codex 使用量、额度、Session、项目归因和数据健康工具。当前运行时由 Go Helper 与原生 Swift macOS App 组成：
 
-1. 说明仓库当前阶段
-2. 给出控制面文档导航
-3. 定义 `docs/harness/` 与 `.agents/` 的边界
-4. 明确哪些内容默认不提交
+- `api/codexpulse/core/v1/core.proto` 是唯一跨进程 contract。
+- Go Helper 负责数据、索引、调度、SQLite 和业务口径。
+- Swift App 负责窗口、菜单栏和 UI，通过 generated CoreService client 访问 Helper。
+- Helper 只监听 Unix Domain Socket，不监听 TCP；鉴权 token 只通过继承 pipe 传递。
+- Swift App 不得直接读取 SQLite、JSONL 或复制 Go 业务真相。
 
-## 快速导航
+## 工作方式
 
-| 主题 | 入口 |
+- 开始修改前先检查 `git status`，保留并避开无关工作树改动。
+- 普通改动不要求 repo-local plan、state、run、write lease 或重复 review 文档。
+- Linear 可作为轻量任务列表；仓库不维护另一套 Issue 状态机镜像。
+- 复杂或高风险改动仍应先明确目标、范围、失败语义和验证入口，但不要求固定模板。
+- 修改目录前读取就近的 `AGENTS.md`；更细目录规则优先。
+- PR 标题和正文默认使用中文，代码标识、命令和必要错误原文可保留英文。
+
+## 真实 Codex Home 默认环境
+
+- 本地 development App 的启动、手工调试、菜单栏/UI 检查、E2E 与产品验收一律同时满足两个条件：显式绑定按 `${CODEX_HOME:-$HOME/.codex}` 解析的真实 Home；通过 `CODEX_PULSE_APP_RUNTIME` 或 `--runtime-directory` 复用 mode `0700` 的已配置私有 runtime，其中 `preferences.json` 的 confirmed Home path/device/inode 必须与真实 Home一致。仅设置 `CODEX_HOME` 只会提供 onboarding 候选，不能视为真实数据启动；启动前必须读回 App 和 Helper 的最终环境与 Helper 参数。
+- 用户已明确授权本仓库后续本地 App 启动与人工验收使用真实 Codex Home，无需每次重复询问；但执行脚本前仍须说明会读取 Session/JSONL，并可能写入应用 runtime、SQLite、偏好及 App Server 标准 housekeeping。
+- 本地产品验收默认使用 `make verify-live` 或等价的显式真实 Home 启动，并通过进程环境或产品读回确认实际使用的 `CODEX_HOME`。不得用 isolated / synthetic / empty Home 的结果代替真实产品结论。
+- CI、单元测试、contract test 和确定性 smoke 是唯一例外：为防止测试污染个人数据，仍必须使用 synthetic / empty Home；这些结果只能作为测试证据，不能冒充真实 Home 验收。
+
+## 验证入口
+
+日常开发优先运行受影响的包或 Swift executable tests，不在每次迭代都跑完整验证。
+
+| 目标 | 用途 |
 | --- | --- |
-| 仓库说明 | `README.md` |
-| 主流程、gate、计划 contract | `docs/harness/control-plane.md` |
-| Issue Workflow 与模板 | `docs/harness/issue-workflow.md` |
-| Linear 兼容 profile | `docs/harness/linear.md` |
-| 仓库内 issue 存储 | `docs/issues/` |
-| 项目级机械约束登记 | `docs/harness/project-constraints.md` |
-| 计划协议 | `.agents/PLANS.md` |
-| 计划主模板 | `.agents/plans/TEMPLATE.md` |
-| 实现型示例 | `.agents/plans/EXAMPLE-implementation.md` |
-| 默认技能层 | `.agents/skills/` |
-| Issue goal prompt skill | `.agents/skills/issue-goal-prompt/SKILL.md` |
-| 计划归档 skill | `.agents/skills/project-plan-archive/SKILL.md` |
-| 版本发布 skill | `.agents/skills/project-version-release/SKILL.md` |
-| 测试 runbook skill | `.agents/skills/test-runbook/SKILL.md` |
-| 本地恢复面 | `.agents/state/TEMPLATE.md` |
-| 本地结果面 | `.agents/runs/TEMPLATE.md` |
-| 可选 Prompt 层 | `.agents/prompts/README.md`（如存在） |
-| 可选主 thread 编排 Prompt | `.agents/prompts/orchestrator-thread.md`（如存在） |
-| 可选维护循环 Prompt | `.agents/prompts/maintenance-loop.md`（如存在，默认 `report-only`） |
-| 可选 Guide 层 | `.agents/guides/`（如存在） |
+| `make test-go` | Go 全仓非 race 测试 |
+| `make test-swift` | Swift client 与 App 测试 |
+| `make check` | 提交前产品检查：架构、Proto、Go、Swift |
+| `make verify` | PR / CI 完整验证：架构、Proto、Go race/vet、Swift transport 与隔离 App smoke |
+| `make verify-live` | 显式复用本机私有 runtime 的真实 Home development App 验收 |
 
-## 真相边界
+- `make verify-live` 不属于 PR / CI 默认验证，但属于本地 App 启动与人工产品验收的默认入口；真实 Home 使用授权见上文，运行前仍须说明副作用边界。
+- CI、单元测试、contract test 与确定性 smoke 使用 synthetic / empty Home，不能冒充真实 Home 产品验收。
+- 正式签名、公证和发布只在对应任务明确授权后执行。
 
-| 路径 | 负责内容 |
-| --- | --- |
-| `docs/harness/` | 控制面规则、Issue Workflow、Issue Tracker profile 与项目级机械约束登记 |
-| `docs/issues/` | `issue-provider=repo` 时的仓库 issue 存储 |
-| `.agents/PLANS.md` + `.agents/plans/` | 计划协议、计划主模板和实现型示例 |
-| `.agents/skills/` | base 默认 repo-local workflow skill：计划归档、版本发布边界、测试 runbook 执行与回写 |
-| `.agents/state/` + `.agents/runs/` | repo-local 恢复点与结果摘要面 |
-| `.agents/prompts/` | 可选 Prompt 模板，仅 agent 驱动初始化时补充；默认使用 `full` |
-| `.agents/guides/` | 可选 review / linter 说明，仅 agent 驱动初始化时补充；默认使用 `full` |
-| `scripts/harness/` | base harness 的最小 gate 脚本与共享 helper |
+## 文档与本地证据
 
-固定解释：
+- `README.md` 是仓库和开发入口。
+- `docs/design/` 保存产品、架构和契约设计。
+- `docs/test/` 保存可复用 runbook 与提交版脱敏结果摘要。
+- `.artifacts/` 保存本机验证原始证据，默认忽略且不得提交。
+- 不提交凭据、真实路径、原始 JSONL、用户内容、完整日志或临时下载地址。
 
-- `Issue Tracker 是主协作真相`
-- `repo 是主执行真相`
-- `PR / MR 是次级代码叙事面`
-- `.agents/state/` 与 `.agents/runs/` 只补充本地恢复和结果细节，不替代 Issue Tracker
+## Git 与交付
 
-## 协作约束
-
-- 复杂任务默认先写 plan，再进入实现
-- macOS / Linux / Git Bash 默认用 `make harness-verify` 验证 base harness
-- Windows PowerShell 默认用 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\harness\check.ps1` 验证 base harness
-- Bash / Git Bash 命令示例使用 POSIX 路径；PowerShell 命令示例使用 `C:\path\to\repo` 或 UNC 路径，不自动互转
-- `docs/harness/*.md` 默认应提交
-- 初始化后应在 `docs/harness/project-constraints.md` 中登记项目级机械约束；没有可执行命令或 gate 的规则不得标记为 `enforced`
-- `.agents/plans/TEMPLATE.md` 默认应提交
-- `.agents/plans/EXAMPLE-implementation.md` 默认应提交
-- `.agents/skills/*/SKILL.md` 默认应提交；默认技能脚本只做 dry-run 或显式 `--write` 写入，不直接操作外部系统
-- `.agents/state/TEMPLATE.md` 默认应提交
-- `.agents/runs/TEMPLATE.md` 默认应提交
-- 若后续补齐 `.agents/prompts/` 和 `.agents/guides/`，默认使用 `full` 模式，且这些文档默认也应提交
-- 若存在 `.agents/prompts/orchestrator-thread.md`，多 thread / worktree / subagent 编排先读它；子 thread 不默认归档，完成后标题加 `【完成】`
-- `.agents/prompts/orchestrator-thread.md` 是 Codex 专用 thread 编排 prompt；非 Codex agent 或人工流程只能按其中的 handoff / Issue comment / `Current State` 约束维护状态机
-- 若存在 `.agents/prompts/maintenance-loop.md`，默认只做 `report-only` 维护扫描；`issue-create / safe-fix / rule-promotion` 必须由用户显式指定
-- 模板配置可提交
-- 若需要环境配置，可按项目约定提交 `.env.example`、`settings.example.yaml` 这类示例文件
-- `docs/test/*` 默认提交可复用 runbook 与当前 / 本次验证结果摘要
-- `docs/issues/*` 默认提交工具中立 issue 与 writeback log
-- 已写入 `docs/test/*` 的验证结果摘要是提交版测试真相，后续同步或 closeout 不得删成空模板
-- `.agents/state/*` 与 `.agents/runs/*` 的真实运行文件默认不提交
-- 本地日志、数据库文件、缓存、IDE 私有文件默认不提交
-- `merge` / `escalation` 仍然是流程阶段，但默认不由 initializer 自带 shell gate 承担
-
-## 多仓协作约定（按需）
-
-- 多仓协作时，默认由 provider 仓维护 contract truth、schema truth、接口示例和服务端验收口径。
-- consumer 仓只维护 consumer rule、快照、缓存、mock、golden 或消费侧验证，不反定义 provider truth。
-- 若 consumer 仓需要新增或调整 contract 快照，默认同步检查 provider 仓的 contract 文档是否需要更新。
-
-## 目录级 AGENTS（按需）
-
-- 大仓或分层约束较重的目录，可以在子目录放置更细的 `AGENTS.md`。
-- 修改某个目录下的代码前，先读取该目录就近的 `AGENTS.md`；更细目录规则优先于根级通用规则。
-- 目录级 `AGENTS.md` 只写稳定实现习惯、分层边界、测试约定和代码风格，不承接临时 issue 计划。
-
-## Provider 默认值
-
-- 当前 provider：`github`
-- 当前 issue provider：`linear`
-- 若后续锁定 GitHub 或 GitLab，只调整 merge 说明，不改变目录结构
+- 分支名仅使用英文、数字、`-`、`_` 和 `/`。
+- 不重置、覆盖或删除无关改动。
+- 完成实现后运行与风险匹配的验证；PR/CI 收口运行 `make verify`。
+- 未实际执行的 CI、live E2E、签名、公证、发布或外部回写不得描述为已完成。

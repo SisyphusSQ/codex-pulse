@@ -139,6 +139,89 @@ func TestClientFetchesValidatedWhamObservationsAndClearsAuthorization(t *testing
 	}
 }
 
+func TestClientFetchesNamedAdditionalRateLimitBuckets(t *testing.T) {
+	t.Parallel()
+
+	client := clientForBody(t, `{
+  "plan_type": "pro",
+  "rate_limit": {
+    "primary_window": {
+      "used_percent": 80,
+      "limit_window_seconds": 604800,
+      "reset_at": 1784604800
+    }
+  },
+  "additional_rate_limits": [
+    {
+      "limit_name": "GPT-5.3-Codex-Spark",
+      "metered_feature": "codex_spark",
+      "rate_limit": {
+        "primary_window": {
+          "used_percent": 0,
+          "limit_window_seconds": 604800,
+          "reset_at": 1784691200
+        }
+      }
+    }
+  ]
+}`)
+	result, err := client.Fetch(context.Background(), "request-additional")
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	if result.Failure != nil {
+		t.Fatalf("failure = %#v", result.Failure)
+	}
+	if len(result.Observations) != 2 {
+		t.Fatalf("observations = %#v, want general + named additional quota", result.Observations)
+	}
+	general, additional := result.Observations[0], result.Observations[1]
+	if general.LimitID == nil || *general.LimitID != "codex" {
+		t.Fatalf("general limit ID = %#v", general.LimitID)
+	}
+	if additional.LimitID == nil || *additional.LimitID != "codex_spark" ||
+		additional.WindowKind != store.QuotaWindowPrimary || additional.UsedPercent != 0 ||
+		additional.WindowMinutes != 10_080 || additional.ResetsAtMS != 1_784_691_200_000 {
+		t.Fatalf("additional observation = %#v", additional)
+	}
+	if general.ObservationID == additional.ObservationID {
+		t.Fatalf("different limit buckets shared observation ID %q", general.ObservationID)
+	}
+	if additional.LimitName == nil || *additional.LimitName != "GPT-5.3-Codex-Spark" {
+		t.Fatalf("additional limit name was not preserved: %#v", additional)
+	}
+}
+
+func TestClientIgnoresAdditionalRateLimitWithoutWindows(t *testing.T) {
+	t.Parallel()
+
+	client := clientForBody(t, `{
+  "plan_type": "pro",
+  "rate_limit": {
+    "primary_window": {
+      "used_percent": 20,
+      "limit_window_seconds": 604800,
+      "reset_at": 1784604800
+    }
+  },
+  "additional_rate_limits": [
+    {
+      "limit_name": "Future Model",
+      "metered_feature": "future_model",
+      "rate_limit": null
+    }
+  ]
+}`)
+	result, err := client.Fetch(context.Background(), "request-empty-additional")
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	if result.Failure != nil || len(result.Observations) != 1 ||
+		result.Observations[0].LimitID == nil || *result.Observations[0].LimitID != "codex" {
+		t.Fatalf("result = %#v, want only the valid general quota", result)
+	}
+}
+
 func TestClientKeepsAttemptContextAliveUntilResponseBodyCloses(t *testing.T) {
 	t.Parallel()
 

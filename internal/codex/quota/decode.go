@@ -8,11 +8,16 @@ import (
 	"io"
 	"math"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
-const maxWindowMinutes int64 = 525600
+const (
+	maxWindowMinutes        int64 = 525600
+	maxLimitIdentityBytes         = 512
+	maxAdditionalRateLimits       = 49
+)
 
 type decodedWindow struct {
 	usedPercent  float64
@@ -32,16 +37,69 @@ func decodeWhamUsage(
 	if !valid {
 		return nil, true
 	}
-	rateLimitRaw, present := envelope["rate_limit"]
-	if !present || isNullJSON(rateLimitRaw) {
-		return nil, true
-	}
-	rateLimit, valid := decodeJSONObject(rateLimitRaw)
-	if !valid {
-		return nil, true
-	}
 	plan, planTrusted, planValid := decodePlan(envelope["plan_type"])
 	if !planValid {
+		return nil, true
+	}
+	observations, schemaFailure := decodeRateLimitBucket(
+		envelope["rate_limit"], "codex", nil, requestID, plan, planTrusted, observedAtMS,
+	)
+	if len(observations) == 0 {
+		return nil, true
+	}
+
+	additionalRaw, present := envelope["additional_rate_limits"]
+	if !present || isNullJSON(additionalRaw) {
+		return observations, schemaFailure
+	}
+	var additional []json.RawMessage
+	if json.Unmarshal(additionalRaw, &additional) != nil || len(additional) > maxAdditionalRateLimits {
+		return observations, true
+	}
+	seenLimitIDs := map[string]struct{}{"codex": {}}
+	for _, raw := range additional {
+		details, valid := decodeJSONObject(raw)
+		if !valid {
+			schemaFailure = true
+			continue
+		}
+		limitID, idValid := decodeLimitIdentity(details["metered_feature"])
+		limitName, nameValid := decodeLimitIdentity(details["limit_name"])
+		if !idValid || !nameValid {
+			schemaFailure = true
+			continue
+		}
+		if _, duplicate := seenLimitIDs[limitID]; duplicate {
+			schemaFailure = true
+			continue
+		}
+		seenLimitIDs[limitID] = struct{}{}
+		if rateLimitRaw, present := details["rate_limit"]; !present || isNullJSON(rateLimitRaw) {
+			continue
+		}
+		name := limitName
+		bucket, bucketFailure := decodeRateLimitBucket(
+			details["rate_limit"], limitID, &name, requestID, plan, planTrusted, observedAtMS,
+		)
+		if len(bucket) == 0 || bucketFailure {
+			schemaFailure = true
+		}
+		observations = append(observations, bucket...)
+	}
+	return observations, schemaFailure
+}
+
+func decodeRateLimitBucket(
+	raw json.RawMessage,
+	limitID string,
+	limitName *string,
+	requestID string,
+	plan string,
+	planTrusted bool,
+	observedAtMS int64,
+) ([]store.QuotaObservationSample, bool) {
+	rateLimit, valid := decodeJSONObject(raw)
+	if !valid {
 		return nil, true
 	}
 	primaryRaw := rateLimit["primary_window"]
@@ -53,18 +111,29 @@ func decodeWhamUsage(
 	observations := make([]store.QuotaObservationSample, 0, 2)
 	if primaryValid {
 		observations = append(observations, newObservation(
-			requestID, store.QuotaWindowPrimary, primary, plan, planTrusted, false, observedAtMS,
+			requestID, limitID, limitName, store.QuotaWindowPrimary,
+			primary, plan, planTrusted, false, observedAtMS,
 		))
 	}
 	if secondaryValid {
 		observations = append(observations, newObservation(
-			requestID, store.QuotaWindowSecondary, secondary, plan, planTrusted, !primaryValid, observedAtMS,
+			requestID, limitID, limitName, store.QuotaWindowSecondary,
+			secondary, plan, planTrusted, !primaryValid, observedAtMS,
 		))
 	}
 	if len(observations) == 0 {
 		return nil, true
 	}
 	return observations, schemaFailure
+}
+
+func decodeLimitIdentity(raw json.RawMessage) (string, bool) {
+	var value string
+	if !decodeRequiredScalar(raw, &value) {
+		return "", false
+	}
+	value = strings.TrimSpace(value)
+	return value, value != "" && len(value) <= maxLimitIdentityBytes && utf8.ValidString(value)
 }
 
 func decodePlan(raw json.RawMessage) (string, bool, bool) {
@@ -126,6 +195,8 @@ func decodeRequiredScalar(raw json.RawMessage, target any) bool {
 
 func newObservation(
 	requestID string,
+	limitID string,
+	limitName *string,
 	kind store.QuotaWindowKind,
 	window decodedWindow,
 	plan string,
@@ -133,7 +204,6 @@ func newObservation(
 	missingPrimary bool,
 	observedAtMS int64,
 ) store.QuotaObservationSample {
-	limitID := "codex"
 	requestIDCopy := requestID
 	planCopy := plan
 	validity := store.QuotaValidityAccepted
@@ -149,15 +219,24 @@ func newObservation(
 		validity = store.QuotaValiditySuspicious
 		reason = quotaReason(store.QuotaReasonResetNotFuture)
 	}
-	identity := fmt.Sprintf("wham\x00%s\x00%s\x00%d", requestID, kind, observedAtMS)
+	identity := fmt.Sprintf("wham\x00%s\x00%s\x00%s\x00%d", requestID, limitID, kind, observedAtMS)
 	return store.QuotaObservationSample{
 		ObservationID: "quota-wham-" + store.SHA256DigestOf([]byte(identity)).String(),
 		AccountScope:  store.QuotaAccountScopeDefault, Source: store.QuotaSourceWham,
-		LimitID: &limitID, WindowKind: kind, UsedPercent: window.usedPercent,
+		LimitID: &limitID, LimitName: cloneOptionalString(limitName),
+		WindowKind: kind, UsedPercent: window.usedPercent,
 		WindowMinutes: window.windowMinute, ResetsAtMS: window.resetsAtMS, PlanType: &planCopy,
 		ObservedAtMS: observedAtMS, Validity: validity, RejectionReason: reason,
 		RequestID: &requestIDCopy,
 	}
+}
+
+func cloneOptionalString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func validateUniqueJSONKeys(content []byte) error {

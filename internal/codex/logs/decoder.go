@@ -372,6 +372,7 @@ func decodeRateLimitSnapshot(raw json.RawMessage, observedAtMS int64) ([]QuotaOb
 	}
 	var snapshot struct {
 		LimitID   json.RawMessage `json:"limit_id"`
+		LimitName json.RawMessage `json:"limit_name"`
 		Primary   json.RawMessage `json:"primary"`
 		Secondary json.RawMessage `json:"secondary"`
 		PlanType  json.RawMessage `json:"plan_type"`
@@ -380,6 +381,10 @@ func decodeRateLimitSnapshot(raw json.RawMessage, observedAtMS int64) ([]QuotaOb
 		return nil, []DiagnosticCode{DiagnosticInvalidQuotaSnapshot}
 	}
 	limitID, ok := decodeOptionalString(snapshot.LimitID, maxIdentifierBytes)
+	if !ok {
+		return nil, []DiagnosticCode{DiagnosticInvalidQuotaSnapshot}
+	}
+	limitName, ok := decodeOptionalString(snapshot.LimitName, maxIdentifierBytes)
 	if !ok {
 		return nil, []DiagnosticCode{DiagnosticInvalidQuotaSnapshot}
 	}
@@ -407,12 +412,12 @@ func decodeRateLimitSnapshot(raw json.RawMessage, observedAtMS int64) ([]QuotaOb
 	result := make([]QuotaObservationFact, 0, 2)
 	if primaryValid {
 		result = append(result, quotaObservationFromWindow(
-			QuotaWindowPrimary, primary, limitID, planType, unknownPlan, true, observedAtMS,
+			QuotaWindowPrimary, primary, limitID, limitName, planType, unknownPlan, true, observedAtMS,
 		))
 	}
 	if secondaryValid {
 		result = append(result, quotaObservationFromWindow(
-			QuotaWindowSecondary, secondary, limitID, planType, unknownPlan, primaryValid, observedAtMS,
+			QuotaWindowSecondary, secondary, limitID, limitName, planType, unknownPlan, primaryValid, observedAtMS,
 		))
 	}
 	return result, diagnostics
@@ -442,6 +447,7 @@ func quotaObservationFromWindow(
 	kind QuotaWindowKind,
 	window rateLimitWindowPayload,
 	limitID *string,
+	limitName *string,
 	planType *string,
 	unknownPlan bool,
 	primaryValid bool,
@@ -450,7 +456,8 @@ func quotaObservationFromWindow(
 	resetsAtMS, _ := secondsToMilliseconds(*window.ResetsAt)
 	observation := QuotaObservationFact{
 		AccountScope: QuotaAccountScopeDefault, Source: QuotaSourceLocalJSONL,
-		LimitID: cloneString(limitID), WindowKind: kind, UsedPercent: *window.UsedPercent,
+		LimitID: cloneString(limitID), LimitName: cloneString(limitName),
+		WindowKind: kind, UsedPercent: *window.UsedPercent,
 		WindowMinutes: *window.WindowMinutes, ResetsAtMS: resetsAtMS,
 		PlanType: cloneString(planType), ObservedAtMS: observedAtMS, Validity: QuotaValidityAccepted,
 	}

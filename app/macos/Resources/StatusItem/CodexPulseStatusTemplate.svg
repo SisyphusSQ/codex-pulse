@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 38 38" role="img" aria-labelledby="title desc">
+  <title id="title">Codex Pulse status item template</title>
+  <desc id="desc">A monochrome local core, orbit, and pulse signal for macOS menu bar use.</desc>
+  <g fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="19" cy="19" r="13" stroke-width="3.4" stroke-dasharray="55 27" transform="rotate(31 19 19)"/>
+    <path d="M25 9.8 C26.7 10.4 28.1 11.4 29.2 12.7 L30.6 10.9 L31.6 14.6 L33.1 12.7 L34.3 13.8" stroke-width="2.8"/>
+  </g>
+  <circle cx="19" cy="19" r="3.3" fill="#000000"/>
+</svg>

@@ -9,15 +9,9 @@ import (
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
-	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 var ErrInvalidLifecycleEventAdapter = errors.New("invalid lifecycle event adapter")
-
-type lifecycleEventRegistrar interface {
-	OnApplicationEvent(events.ApplicationEventType, func(*application.ApplicationEvent)) func()
-}
 
 type systemLifecycleCoordinator interface {
 	SystemWillSleep(context.Context, string) (store.SchedulerLifecycle, error)
@@ -26,7 +20,6 @@ type systemLifecycleCoordinator interface {
 }
 
 type LifecycleEventAdapterConfig struct {
-	Registrar    lifecycleEventRegistrar
 	Coordinator  systemLifecycleCoordinator
 	EventTimeout time.Duration
 	NewEventID   func(string) string
@@ -41,8 +34,8 @@ const (
 	sourceAvailabilityCheck
 )
 
-// LifecycleEventAdapter 把Wails common event转换为串行coordinator命令。
-// callback只在内存队列追加一个枚举，不执行Store、文件IO或reconcile。
+// LifecycleEventAdapter serializes finite lifecycle notifications from the
+// native client. NotifyLifecycle only enqueues an enum and performs no I/O.
 type LifecycleEventAdapter struct {
 	coordinator  systemLifecycleCoordinator
 	eventTimeout time.Duration
@@ -56,12 +49,11 @@ type LifecycleEventAdapter struct {
 	signal    chan struct{}
 	done      chan struct{}
 	errors    chan error
-	cancels   []func()
 	closeOnce sync.Once
 }
 
 func NewLifecycleEventAdapter(config LifecycleEventAdapterConfig) (*LifecycleEventAdapter, error) {
-	if config.Registrar == nil || config.Coordinator == nil || config.EventTimeout < 0 {
+	if config.Coordinator == nil || config.EventTimeout < 0 {
 		return nil, ErrInvalidLifecycleEventAdapter
 	}
 	if config.EventTimeout == 0 {
@@ -78,27 +70,29 @@ func NewLifecycleEventAdapter(config LifecycleEventAdapterConfig) (*LifecycleEve
 		newEventID: config.NewEventID, didWake: config.DidWake, accepting: true,
 		signal: make(chan struct{}, 1), done: make(chan struct{}), errors: make(chan error, 16),
 	}
-	adapter.cancels = []func(){
-		config.Registrar.OnApplicationEvent(events.Common.SystemWillSleep, func(*application.ApplicationEvent) {
-			adapter.enqueue(systemWillSleep)
-		}),
-		config.Registrar.OnApplicationEvent(events.Common.SystemDidWake, func(*application.ApplicationEvent) {
-			adapter.enqueue(systemDidWake)
-		}),
-		config.Registrar.OnApplicationEvent(events.Mac.ApplicationDidBecomeActive, func(*application.ApplicationEvent) {
-			adapter.enqueue(sourceAvailabilityCheck)
-		}),
-	}
-	if adapter.cancels[0] == nil || adapter.cancels[1] == nil || adapter.cancels[2] == nil {
-		for _, cancel := range adapter.cancels {
-			if cancel != nil {
-				cancel()
-			}
-		}
-		return nil, ErrInvalidLifecycleEventAdapter
-	}
 	go adapter.run()
 	return adapter, nil
+}
+
+func (adapter *LifecycleEventAdapter) NotifyLifecycle(ctx context.Context, name string) error {
+	if adapter == nil || ctx == nil {
+		return ErrInvalidLifecycleEventAdapter
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	var event systemLifecycleEvent
+	switch name {
+	case "system_will_sleep":
+		event = systemWillSleep
+	case "system_did_wake":
+		event = systemDidWake
+	case "application_did_become_active":
+		event = sourceAvailabilityCheck
+	default:
+		return ErrInvalidLifecycleEventAdapter
+	}
+	return adapter.enqueue(event)
 }
 
 func (adapter *LifecycleEventAdapter) Errors() <-chan error {
@@ -113,9 +107,6 @@ func (adapter *LifecycleEventAdapter) Close(ctx context.Context) error {
 		return ErrInvalidLifecycleEventAdapter
 	}
 	adapter.closeOnce.Do(func() {
-		for _, cancel := range adapter.cancels {
-			cancel()
-		}
 		adapter.mu.Lock()
 		adapter.accepting = false
 		adapter.closing = true
@@ -130,17 +121,17 @@ func (adapter *LifecycleEventAdapter) Close(ctx context.Context) error {
 	}
 }
 
-func (adapter *LifecycleEventAdapter) enqueue(event systemLifecycleEvent) {
+func (adapter *LifecycleEventAdapter) enqueue(event systemLifecycleEvent) error {
 	adapter.mu.Lock()
+	defer adapter.mu.Unlock()
 	if !adapter.accepting {
-		adapter.mu.Unlock()
-		return
+		return ErrInvalidLifecycleEventAdapter
 	}
 	if len(adapter.queue) == 0 || adapter.queue[len(adapter.queue)-1] != event {
 		adapter.queue = append(adapter.queue, event)
 	}
-	adapter.mu.Unlock()
 	adapter.notify()
+	return nil
 }
 
 func (adapter *LifecycleEventAdapter) notify() {
@@ -183,9 +174,9 @@ func (adapter *LifecycleEventAdapter) handle(event systemLifecycleEvent) {
 		_, err = adapter.coordinator.SystemDidWake(ctx, adapter.newEventID("system-wake"))
 		cancel()
 		if adapter.didWake != nil {
-			updateCtx, updateCancel := context.WithTimeout(context.Background(), adapter.eventTimeout)
-			err = errors.Join(err, adapter.didWake(updateCtx))
-			updateCancel()
+			wakeCtx, wakeCancel := context.WithTimeout(context.Background(), adapter.eventTimeout)
+			err = errors.Join(err, adapter.didWake(wakeCtx))
+			wakeCancel()
 		}
 	case sourceAvailabilityCheck:
 		_, err = adapter.coordinator.SourceChanged(ctx, adapter.newEventID("source-check"), true)
@@ -193,13 +184,10 @@ func (adapter *LifecycleEventAdapter) handle(event systemLifecycleEvent) {
 		err = ErrInvalidLifecycleEventAdapter
 	}
 	cancel()
-	if err == nil {
-		return
-	}
-	select {
-	case adapter.errors <- err:
-	default:
+	if err != nil {
+		select {
+		case adapter.errors <- err:
+		default:
+		}
 	}
 }
-
-var _ lifecycleEventRegistrar = (*application.EventManager)(nil)

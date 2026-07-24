@@ -264,6 +264,44 @@ func (coordinator *QuotaRefreshCoordinator) ReconcilePreferences(ctx context.Con
 	return coordinator.runDueCycleLocked(ctx, snapshot, nowMS)
 }
 
+// RearmAfterHomeChange clears durable automatic-refresh pauses that belong to
+// the previous confirmed Home, then immediately probes every enabled online
+// source with the credentials from the new Home.
+func (coordinator *QuotaRefreshCoordinator) RearmAfterHomeChange(ctx context.Context) error {
+	if coordinator == nil || ctx == nil {
+		return ErrInvalidQuotaRefreshCoordinator
+	}
+	coordinator.cycleMu.Lock()
+	defer coordinator.cycleMu.Unlock()
+	snapshot, err := coordinator.preferences.LoadPreferences(ctx)
+	if err != nil {
+		return err
+	}
+	nowMS := coordinator.clock().UnixMilli()
+	for _, descriptor := range coordinator.descriptors(snapshot) {
+		schedule, err := coordinator.loadSchedule(ctx, descriptor.sourceInstanceID)
+		if err != nil {
+			return err
+		}
+		if schedule != nil && schedule.ActiveClaimID != nil {
+			continue
+		}
+		decision := quotaonline.RefreshDecision{Reason: store.RefreshReasonDisabled}
+		if descriptor.enabled {
+			dueAtMS := nowMS
+			decision = quotaonline.RefreshDecision{
+				NextDueAtMS: &dueAtMS,
+				Reason:      store.RefreshReasonRecovery,
+				ShouldFetch: true,
+			}
+		}
+		if _, err := coordinator.persistDecision(ctx, descriptor, schedule, decision, nowMS); err != nil {
+			return err
+		}
+	}
+	return coordinator.runDueCycleLocked(ctx, snapshot, nowMS)
+}
+
 func (coordinator *QuotaRefreshCoordinator) RequestRefresh(
 	ctx context.Context,
 	source quotaonline.RefreshSource,

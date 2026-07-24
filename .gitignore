@@ -31,26 +31,18 @@ coverage.*
 coverage.out
 coverage.html
 
-# Node, Vite and frontend tooling
+# Local generated/tooling artifacts. These paths are not product source and may
+# remain after migration from the legacy desktop stack.
 node_modules/
-frontend/node_modules/
 dist/
-!frontend/dist/
-frontend/dist/*
-!frontend/dist/.gitkeep
-dist-ssr/
 .vite/
-frontend/.vite/
-frontend/*.tsbuildinfo
-storybook-static/
+*.tsbuildinfo
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-
-# Wails build output
 .task/
-build/bin/
+build/
 
 # Local databases and runtime data
 *.db
@@ -67,16 +59,13 @@ tmp/
 temp/
 *.tmp
 
-# Harness local auxiliary run surfaces
-.agents/plans/*
-!.agents/plans/TEMPLATE.md
-!.agents/plans/EXAMPLE-implementation.md
-.agents/state/*
-!.agents/state/TEMPLATE.md
-.agents/runs/*
-!.agents/runs/TEMPLATE.md
+# Machine-local validation evidence
+.artifacts/
 
 # Cursor project rules are commit-safe; other Cursor files stay local by default.
 .cursor/*
 !.cursor/rules/
 !.cursor/rules/*.mdc
+
+# Local Linear delivery loop runtime
+.issue-loops/

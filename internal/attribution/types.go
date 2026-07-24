@@ -2,7 +2,7 @@
 // derived identities. It performs no filesystem or database I/O.
 package attribution
 
-const RuleVersion = 1
+const RuleVersion = 2
 
 type Confidence string
 

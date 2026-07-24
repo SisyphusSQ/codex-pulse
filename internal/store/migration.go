@@ -11,6 +11,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -31,7 +32,10 @@ const (
 	applicationSchemaV14Version = 14
 	applicationSchemaV15Version = 15
 	applicationSchemaV16Version = 16
-	applicationSchemaVersion    = applicationSchemaV16Version
+	applicationSchemaV17Version = 17
+	applicationSchemaV18Version = 18
+	applicationSchemaV19Version = 19
+	applicationSchemaVersion    = applicationSchemaV19Version
 )
 
 var (
@@ -216,6 +220,24 @@ var applicationMigrations = []migrationDefinition{
 			return ensureSchemaObjects(ctx, transaction, lightIndexSchemaObjects)
 		},
 	},
+	{
+		version:  applicationSchemaV17Version,
+		name:     "lightweight-model-attribution",
+		checksum: applicationSchemaV17Checksum(),
+		apply:    addLightModelAttributionColumns,
+	},
+	{
+		version:  applicationSchemaV18Version,
+		name:     "project-identity-rule-v2",
+		checksum: applicationSchemaV18Checksum(),
+		apply:    migrateProjectIdentityRuleV2,
+	},
+	{
+		version:  applicationSchemaV19Version,
+		name:     "quota-limit-display-name",
+		checksum: applicationSchemaV19Checksum(),
+		apply:    addQuotaLimitNameColumn,
+	},
 }
 
 type sourceFailureMigrationColumn struct {
@@ -320,6 +342,96 @@ func backfillInterruptedResumeConsumption(ctx context.Context, transaction *gorm
 
 func verifyMetricsMigrationColumns(transaction *gorm.DB) error {
 	for _, column := range metricsMigrationColumns {
+		if !transaction.Migrator().HasColumn(column.model, column.column) {
+			return fmt.Errorf("%w: missing column %s.%s", ErrSchemaContract, column.table, column.column)
+		}
+	}
+	return nil
+}
+
+type lightModelMigrationColumn struct {
+	model      any
+	field      string
+	table      string
+	column     string
+	definition string
+}
+
+var lightModelMigrationColumns = []lightModelMigrationColumn{
+	{
+		model: &lightTokenScanModel{}, field: "CurrentModelKey", table: "light_token_scans",
+		column: "current_model_key", definition: "TEXT nullable normalized model key up to 128 characters",
+	},
+	{
+		model: &lightTokenScanModel{}, field: "CurrentModelSource", table: "light_token_scans",
+		column: "current_model_source", definition: "TEXT NOT NULL default missing allowlisted model attribution source",
+	},
+	{
+		model: &lightTokenTimedModel{}, field: "ModelKey", table: "light_token_timed",
+		column: "model_key", definition: "TEXT nullable normalized model key up to 128 characters",
+	},
+	{
+		model: &lightTokenTimedModel{}, field: "ModelSource", table: "light_token_timed",
+		column: "model_source", definition: "TEXT NOT NULL default missing allowlisted model attribution source",
+	},
+}
+
+func addLightModelAttributionColumns(ctx context.Context, transaction *gorm.DB) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: invalid light model migration database", ErrMigrationContract)
+	}
+	database := transaction.WithContext(ctx)
+	for _, column := range lightModelMigrationColumns {
+		if database.Migrator().HasColumn(column.model, column.column) {
+			continue
+		}
+		if err := database.Migrator().AddColumn(column.model, column.field); err != nil {
+			return fmt.Errorf("%w: add %s.%s: %v", ErrMigrationContract, column.table, column.column, err)
+		}
+	}
+	return nil
+}
+
+func verifyLightModelAttributionColumns(transaction *gorm.DB) error {
+	for _, column := range lightModelMigrationColumns {
+		if !transaction.Migrator().HasColumn(column.model, column.column) {
+			return fmt.Errorf("%w: missing column %s.%s", ErrSchemaContract, column.table, column.column)
+		}
+	}
+	return nil
+}
+
+type quotaLimitNameMigrationColumn struct {
+	model      any
+	field      string
+	table      string
+	column     string
+	definition string
+}
+
+var quotaLimitNameMigrationColumns = []quotaLimitNameMigrationColumn{{
+	model: &quotaObservationModel{}, field: "LimitName", table: "quota_observations",
+	column: "limit_name", definition: "TEXT nullable display name between 1 and 512 characters",
+}}
+
+func addQuotaLimitNameColumn(ctx context.Context, transaction *gorm.DB) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: invalid quota limit name migration database", ErrMigrationContract)
+	}
+	database := transaction.WithContext(ctx)
+	for _, column := range quotaLimitNameMigrationColumns {
+		if database.Migrator().HasColumn(column.model, column.column) {
+			continue
+		}
+		if err := database.Migrator().AddColumn(column.model, column.field); err != nil {
+			return fmt.Errorf("%w: add %s.%s: %v", ErrMigrationContract, column.table, column.column, err)
+		}
+	}
+	return nil
+}
+
+func verifyQuotaLimitNameColumn(transaction *gorm.DB) error {
+	for _, column := range quotaLimitNameMigrationColumns {
 		if !transaction.Migrator().HasColumn(column.model, column.column) {
 			return fmt.Errorf("%w: missing column %s.%s", ErrSchemaContract, column.table, column.column)
 		}
@@ -680,6 +792,65 @@ func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteT
 		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
+		currentQuotaSchemaObjects(), quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
+		metricsSchemaObjects, quotaPerformanceSchemaObjects,
+		currentLightIndexSchemaObjects(),
+	} {
+		for _, object := range objects {
+			exists, err := verifySchemaObject(ctx, transaction, object)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				return fmt.Errorf("%w: missing %s %q", ErrSchemaContract, object.objectType, object.name)
+			}
+		}
+	}
+	if err := verifySourceFailureColumns(transaction); err != nil {
+		return err
+	}
+	if err := verifyMetricsMigrationColumns(transaction); err != nil {
+		return err
+	}
+	if err := verifyLightModelAttributionColumns(transaction); err != nil {
+		return err
+	}
+	return verifyQuotaLimitNameColumn(transaction)
+}
+
+func verifyApplicationSchemaV18(ctx context.Context, transaction storesqlite.WriteTx) error {
+	for _, objects := range [][]schemaObject{
+		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
+		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
+		schedulerSchemaObjects, lifecycleSchemaObjects,
+		quotaSchemaObjects, quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
+		metricsSchemaObjects, quotaPerformanceSchemaObjects,
+		currentLightIndexSchemaObjects(),
+	} {
+		for _, object := range objects {
+			exists, err := verifySchemaObject(ctx, transaction, object)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				return fmt.Errorf("%w: missing %s %q", ErrSchemaContract, object.objectType, object.name)
+			}
+		}
+	}
+	if err := verifySourceFailureColumns(transaction); err != nil {
+		return err
+	}
+	if err := verifyMetricsMigrationColumns(transaction); err != nil {
+		return err
+	}
+	return verifyLightModelAttributionColumns(transaction)
+}
+
+func verifyApplicationSchemaV16(ctx context.Context, transaction storesqlite.WriteTx) error {
+	for _, objects := range [][]schemaObject{
+		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
+		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
+		schedulerSchemaObjects, lifecycleSchemaObjects,
 		quotaSchemaObjects, quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
 		metricsSchemaObjects, quotaPerformanceSchemaObjects,
 		lightIndexSchemaObjects,
@@ -796,6 +967,43 @@ func appendSQLiteMigratedColumns(statement, before string, columns ...string) st
 		return statement
 	}
 	return statement[:boundary] + " " + strings.Join(columns, ", ") + "," + statement[boundary:]
+}
+
+func currentLightIndexSchemaObjects() []schemaObject {
+	objects := append([]schemaObject(nil), lightIndexSchemaObjects...)
+	for index := range objects {
+		switch objects[index].name {
+		case "light_token_scans":
+			objects[index].statement = appendSQLiteMigratedColumns(
+				objects[index].statement,
+				"\n\t\t\tPRIMARY KEY",
+				"`current_model_key` TEXT CHECK (current_model_key IS NULL OR (length(current_model_key) BETWEEN 1 AND 128))",
+				"`current_model_source` TEXT NOT NULL DEFAULT 'missing' CHECK (current_model_source IN ('model_canonical','model_alias','missing','invalid_model'))",
+			)
+		case "light_token_timed":
+			objects[index].statement = appendSQLiteMigratedColumns(
+				objects[index].statement,
+				"\n\t\t\tPRIMARY KEY",
+				"`model_key` TEXT CHECK (model_key IS NULL OR (length(model_key) BETWEEN 1 AND 128))",
+				"`model_source` TEXT NOT NULL DEFAULT 'missing' CHECK (model_source IN ('model_canonical','model_alias','missing','invalid_model'))",
+			)
+		}
+	}
+	return objects
+}
+
+func currentQuotaSchemaObjects() []schemaObject {
+	objects := append([]schemaObject(nil), quotaSchemaObjects...)
+	for index := range objects {
+		if objects[index].name == "quota_observations" {
+			objects[index].statement = appendSQLiteMigratedColumns(
+				objects[index].statement,
+				"\n\t\tCHECK ((validity",
+				"`limit_name` TEXT CHECK (limit_name IS NULL OR (length(limit_name) BETWEEN 1 AND 512))",
+			)
+		}
+	}
+	return objects
 }
 
 func applicationSchemaV1Checksum() string {
@@ -998,6 +1206,44 @@ func applicationSchemaV16Checksum() string {
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV17Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV17Version, "lightweight-model-attribution")
+	for _, column := range lightModelMigrationColumns {
+		_, _ = fmt.Fprintln(hasher, column.table, column.column, column.definition)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV18Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV18Version, "project-identity-rule-v2")
+	_, _ = fmt.Fprintln(hasher, "attribution-rule-version", attribution.RuleVersion)
+	_, _ = fmt.Fprintln(hasher, "recompute", "session-and-turn-attributions")
+	_, _ = fmt.Fprintln(hasher, "invalidate", "cost-rollup-generations")
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV19Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV19Version, "quota-limit-display-name")
+	for _, column := range quotaLimitNameMigrationColumns {
+		_, _ = fmt.Fprintln(hasher, column.table, column.column, column.definition)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func migrateProjectIdentityRuleV2(ctx context.Context, transaction *gorm.DB) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: invalid project identity migration database", ErrMigrationContract)
+	}
+	if _, err := recomputeAttributionsInTransaction(ctx, transaction, nil); err != nil {
+		return err
+	}
+	return transaction.WithContext(ctx).Session(&gorm.Session{AllowGlobalUpdate: true}).
+		Delete(&costRollupGenerationModel{}).Error
 }
 
 const healthEventMigrationBatchSize = 100

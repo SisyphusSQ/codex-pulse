@@ -6,13 +6,21 @@ import (
 	"testing"
 )
 
+func TestParserVersionIncludesQuotaLimitNames(t *testing.T) {
+	t.Parallel()
+
+	if ParserVersion != "codex-rollout-v3" {
+		t.Fatalf("ParserVersion = %q, want quota limit name rebuild version", ParserVersion)
+	}
+}
+
 func TestStreamParserEmitsLocalQuotaObservationsWithoutTokenUsage(t *testing.T) {
 	t.Parallel()
 
 	const privateMarker = "PRIVATE_QUOTA_UNKNOWN_FIELD"
 	input := []byte(strings.Join([]string{
 		quotaSessionMetaLine("session-quota"),
-		`{"timestamp":"2026-07-14T01:00:01Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex","limit_name":"` + privateMarker + `","primary":{"used_percent":38.0,"window_minutes":300,"resets_at":1784008800},"secondary":{"used_percent":12.0,"window_minutes":10080,"resets_at":1784595600},"credits":{"private":"` + privateMarker + `"},"plan_type":"pro","future":{"private":"` + privateMarker + `"}}}}`,
+		`{"timestamp":"2026-07-14T01:00:01Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex","limit_name":"通用使用限额","primary":{"used_percent":38.0,"window_minutes":300,"resets_at":1784008800},"secondary":{"used_percent":12.0,"window_minutes":10080,"resets_at":1784595600},"credits":{"private":"` + privateMarker + `"},"plan_type":"pro","future":{"private":"` + privateMarker + `"}}}}`,
 	}, "\n") + "\n")
 
 	parser, err := NewStreamParser(ParserConfig{SourceKind: SourceKindSession})
@@ -32,17 +40,19 @@ func TestStreamParserEmitsLocalQuotaObservationsWithoutTokenUsage(t *testing.T) 
 		t.Fatalf("events = %#v", result.Events)
 	}
 
-	limitID, planType := "codex", "pro"
+	limitID, limitName, planType := "codex", "通用使用限额", "pro"
 	want := []QuotaObservationFact{
 		{
 			SessionID: "session-quota", AccountScope: QuotaAccountScopeDefault,
-			Source: QuotaSourceLocalJSONL, LimitID: &limitID, WindowKind: QuotaWindowPrimary,
+			Source: QuotaSourceLocalJSONL, LimitID: &limitID, LimitName: &limitName,
+			WindowKind:  QuotaWindowPrimary,
 			UsedPercent: 38, WindowMinutes: 300, ResetsAtMS: 1784008800000,
 			PlanType: &planType, ObservedAtMS: 1783990801000, Validity: QuotaValidityAccepted,
 		},
 		{
 			SessionID: "session-quota", AccountScope: QuotaAccountScopeDefault,
-			Source: QuotaSourceLocalJSONL, LimitID: &limitID, WindowKind: QuotaWindowSecondary,
+			Source: QuotaSourceLocalJSONL, LimitID: &limitID, LimitName: &limitName,
+			WindowKind:  QuotaWindowSecondary,
 			UsedPercent: 12, WindowMinutes: 10080, ResetsAtMS: 1784595600000,
 			PlanType: &planType, ObservedAtMS: 1783990801000, Validity: QuotaValidityAccepted,
 		},

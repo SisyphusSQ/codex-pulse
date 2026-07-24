@@ -70,6 +70,48 @@ func TestSpecificationValidateNormalizesBoundedRequest(t *testing.T) {
 	}
 }
 
+func TestSpecificationValidateAcceptsExactUTCTimeRange(t *testing.T) {
+	specification, err := NewSpecification(validSpecificationConfig())
+	if err != nil {
+		t.Fatalf("NewSpecification() error = %v", err)
+	}
+	exact := &UTCTimeRange{
+		StartAtMS: 1_753_056_000_000,
+		EndAtMS:   1_753_059_600_000,
+		TimeZone:  "Asia/Shanghai",
+	}
+	request := Request{}
+	field := reflect.ValueOf(&request).Elem().FieldByName("ExactTimeRange")
+	if !field.IsValid() || !field.CanSet() || field.Type() != reflect.TypeOf(exact) {
+		t.Fatal("Request must expose an *UTCTimeRange ExactTimeRange field")
+	}
+	field.Set(reflect.ValueOf(exact))
+
+	validated, err := specification.Validate(t.Context(), request)
+	if err != nil {
+		t.Fatalf("Validate(exact) error = %v", err)
+	}
+	if validated.TimeRange == nil || *validated.TimeRange != *exact {
+		t.Fatalf("validated exact range = %#v, want %#v", validated.TimeRange, exact)
+	}
+}
+
+func TestSpecificationValidateRejectsAmbiguousTimeRanges(t *testing.T) {
+	specification, err := NewSpecification(validSpecificationConfig())
+	if err != nil {
+		t.Fatalf("NewSpecification() error = %v", err)
+	}
+	_, err = specification.Validate(t.Context(), Request{
+		TimeRange: &LocalDateRange{
+			StartDate: "2026-07-22", EndDateExclusive: "2026-07-23", TimeZone: "UTC",
+		},
+		ExactTimeRange: &UTCTimeRange{
+			StartAtMS: 1_753_056_000_000, EndAtMS: 1_753_059_600_000, TimeZone: "UTC",
+		},
+	})
+	assertValidationField(t, err, "timeRange")
+}
+
 func TestSpecificationValidateUsesFrozenDefaultsAcrossRestart(t *testing.T) {
 	first, err := NewSpecification(validSpecificationConfig())
 	if err != nil {

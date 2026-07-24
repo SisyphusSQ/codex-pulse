@@ -1,87 +1,61 @@
-.PHONY: harness-check harness-verify harness-review-gate m8-resource-fault \
-	m10-release-e2e m11-acceptance-matrix m11-acceptance-matrix-test m11-real-home m11-performance m11-performance-support m11-privacy-audit \
-	m11-upgrade-recovery m11-upgrade-recovery-test \
-	project-check project-check-test project-generated-check-test verify verify-project verify-go \
-	verify-frontend verify-package verify-generated
+.PHONY: check test-go test-swift verify verify-architecture verify-proto generate-proto \
+	verify-go verify-helper verify-swift-proto verify-swift-client \
+	verify-swift-transport verify-swift-app verify-swift-app-smoke-isolated \
+	verify-swift-app-live verify-swift-app-smoke verify-swift-primary-pages \
+	verify-live
 
 export RUN_ID
 
-harness-check:
-	bash scripts/harness/check.sh
-
-harness-verify: harness-check
-
-harness-review-gate:
-	@if [ -z "$(PLAN)" ]; then echo "usage: make harness-review-gate PLAN=path/to/plan.md" >&2; exit 2; fi
-	bash scripts/harness/review_gate.sh --plan "$(PLAN)"
-
-project-check:
+verify-architecture:
 	bash scripts/project-checks/check.sh
 
-project-check-test:
-	bash scripts/project-checks/check_test.sh
+verify-proto:
+	bash scripts/proto/generate.sh --check
 
-project-generated-check-test:
-	bash scripts/project-checks/check_generated_test.sh
+generate-proto:
+	bash scripts/proto/generate.sh --write
 
-verify:
-	$(MAKE) harness-verify
-	$(MAKE) verify-project
-	$(MAKE) verify-go
-	$(MAKE) verify-frontend
-	$(MAKE) verify-generated
-	$(MAKE) verify-package
-
-verify-project:
-	$(MAKE) project-check
-	$(MAKE) project-check-test
-	$(MAKE) project-generated-check-test
+test-go:
+	go test ./...
 
 verify-go:
-	go test ./...
+	go test -race ./...
 	go vet ./...
 
-verify-frontend:
-	npm --prefix frontend run typecheck
-	npm --prefix frontend test
-	npm --prefix frontend run build
+verify-helper:
+	mkdir -p bin
+	go build -trimpath -ldflags '-X main.applicationVersion=dev' -o bin/codex-pulse .
 
-verify-package:
-	wails3 package GOOS=darwin
-	wails3 task package:verify
+verify-swift-proto:
+	bash scripts/proto/generate-swift.sh --check
 
-verify-generated:
-	bash scripts/project-checks/check_binding_generation_failure.sh
-	bash scripts/project-checks/check_generated.sh
+verify-swift-client:
+	mkdir -p bin
+	go build -trimpath -o bin/codex-pulse-cancel-probe ./scripts/swift-cancel-probe
+	CODEX_PULSE_CANCEL_PROBE="$(CURDIR)/bin/codex-pulse-cancel-probe" \
+		swift run --package-path app/macos codex-pulse-core-client-tests
 
-m8-resource-fault:
-	bash scripts/validation/m8-resource-fault.sh
+verify-swift-transport: verify-helper verify-swift-proto verify-swift-client
+	swift run --package-path app/macos codex-pulse-transport-spike --helper "$(CURDIR)/bin/codex-pulse"
 
-m10-release-e2e:
-	bash scripts/sparkle/local_release_pipeline.sh
+verify-swift-app:
+	swift run --package-path app/macos codex-pulse-app-tests
+	swift build --package-path app/macos --product codex-pulse-app
 
-m11-acceptance-matrix:
-	bash scripts/validation/m11-acceptance-matrix.sh
+test-swift: verify-swift-client verify-swift-app
 
-m11-acceptance-matrix-test: m11-acceptance-matrix
-	bash scripts/validation/m11-acceptance-matrix-test.sh
+check: verify-architecture verify-proto verify-swift-proto test-go test-swift
 
-m11-real-home:
-	@bash scripts/validation/m11-real-home.sh
+verify-swift-app-smoke-isolated: verify-helper verify-swift-app
+	bash scripts/macos/run-app-smoke.sh
 
-m11-performance:
-	@bash scripts/validation/m11-performance.sh
+verify-swift-app-live: verify-helper verify-swift-app
+	bash scripts/macos/run-app-live-smoke.sh
 
-m11-performance-support:
-	@set -e; trap 'wails3 task darwin:package:clean >/dev/null 2>&1 || true' EXIT; \
-		$(MAKE) verify-package; \
-		bash scripts/validation/m11-performance-support.sh
+verify-swift-app-smoke: verify-swift-app-live
 
-m11-privacy-audit:
-	@bash scripts/validation/m11-privacy-audit.sh
+verify-swift-primary-pages: verify-swift-app-live
 
-m11-upgrade-recovery:
-	@bash scripts/validation/m11-upgrade-recovery.sh
+verify-live: verify-swift-app-live
 
-m11-upgrade-recovery-test:
-	@bash scripts/validation/m11-upgrade-recovery-test.sh
+verify: verify-architecture verify-proto verify-go verify-swift-transport verify-swift-app-smoke-isolated

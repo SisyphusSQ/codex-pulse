@@ -79,7 +79,7 @@ type commandResult struct {
 }
 
 // Coordinator 通过一个私有event loop线性化用户、系统、来源与startup事件。
-// Wails callback和UI调用者只等待自己的response，不直接操作scheduler或Store。
+// RPC lifecycle和UI调用者只等待自己的response，不直接操作scheduler或Store。
 type Coordinator struct {
 	repository *store.Repository
 	scheduler  SchedulerControl

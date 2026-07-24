@@ -23,6 +23,7 @@ func TestCurrentQueryMapsStableNullZeroExplanationAndRefreshContract(t *testing.
 	primaryMinutes := int64(300)
 	primaryReset := nowMS + 3_600_000
 	primaryObservationID := "opaque-primary"
+	primaryLimitName := "GPT-5.3-Codex-Spark"
 	wham := store.QuotaSourceWham
 	selected := store.QuotaEvidenceSelected
 	trusted := store.QuotaExplanationTrusted
@@ -54,7 +55,8 @@ func TestCurrentQueryMapsStableNullZeroExplanationAndRefreshContract(t *testing.
 					},
 					Observations: []store.QuotaObservation{{
 						ObservationID: primaryObservationID, AccountScope: store.QuotaAccountScopeDefault,
-						Source: wham, LimitID: stringPointer("codex"), WindowKind: store.QuotaWindowPrimary,
+						Source: wham, LimitID: stringPointer("codex"), LimitName: &primaryLimitName,
+						WindowKind:  store.QuotaWindowPrimary,
 						UsedPercent: zero, WindowMinutes: primaryMinutes, ResetsAtMS: primaryReset,
 						Validity: accepted, FirstObservedAtMS: secondaryAttempt,
 						LastObservedAtMS: secondaryAttempt, SampleCount: 1,
@@ -112,6 +114,9 @@ func TestCurrentQueryMapsStableNullZeroExplanationAndRefreshContract(t *testing.
 		*response.Windows[1].UnknownReason != CurrentUnknownNeverLoaded {
 		t.Fatalf("response windows = %#v", response.Windows)
 	}
+	if response.Windows[0].LimitName == nil || *response.Windows[0].LimitName != primaryLimitName {
+		t.Fatalf("selected window limit name was not preserved: %#v", response.Windows[0])
+	}
 	if response.NextReset.AtMS == nil || *response.NextReset.AtMS != primaryReset ||
 		response.NextReset.RemainingMS == nil || *response.NextReset.RemainingMS != 3_600_000 ||
 		response.NextReset.TrustedWindowCount != 1 || len(response.Sources) != 2 ||
@@ -140,6 +145,89 @@ func TestCurrentQueryMapsStableNullZeroExplanationAndRefreshContract(t *testing.
 	}
 }
 
+func TestCurrentLimitNameFallsBackToLatestAcceptedObservation(t *testing.T) {
+	t.Parallel()
+
+	selectedID := "selected-local-without-name"
+	displayName := "GPT-5.3-Codex-Spark"
+	observations := []store.QuotaObservation{
+		{
+			ObservationID:    selectedID,
+			LimitName:        nil,
+			Validity:         store.QuotaValidityAccepted,
+			LastObservedAtMS: 1_000,
+		},
+		{
+			ObservationID:    "newer-wham-with-name",
+			LimitName:        &displayName,
+			Validity:         store.QuotaValidityAccepted,
+			LastObservedAtMS: 2_000,
+		},
+	}
+
+	got, err := currentLimitName(observations, &selectedID)
+	if err != nil {
+		t.Fatalf("currentLimitName() error = %v", err)
+	}
+	if got == nil || *got != displayName {
+		t.Fatalf("currentLimitName() = %#v, want %q from latest accepted observation", got, displayName)
+	}
+}
+
+func TestCurrentLimitNameIgnoresRejectedSupplementalObservation(t *testing.T) {
+	t.Parallel()
+
+	selectedID := "selected-local-without-name"
+	acceptedName := "GPT-5.3-Codex-Spark"
+	rejectedName := "untrusted-name"
+	observations := []store.QuotaObservation{
+		{ObservationID: selectedID, Validity: store.QuotaValidityAccepted, LastObservedAtMS: 1_000},
+		{
+			ObservationID: "accepted-name", LimitName: &acceptedName,
+			Validity: store.QuotaValidityAccepted, LastObservedAtMS: 2_000,
+		},
+		{
+			ObservationID: "rejected-name", LimitName: &rejectedName,
+			Validity: store.QuotaValidityRejected, LastObservedAtMS: 3_000,
+		},
+	}
+
+	got, err := currentLimitName(observations, &selectedID)
+	if err != nil {
+		t.Fatalf("currentLimitName() error = %v", err)
+	}
+	if got == nil || *got != acceptedName {
+		t.Fatalf("currentLimitName() = %#v, want accepted name %q", got, acceptedName)
+	}
+}
+
+func TestCurrentLimitNameDoesNotChooseBetweenLatestConflictingNames(t *testing.T) {
+	t.Parallel()
+
+	selectedID := "selected-local-without-name"
+	firstName := "First Model Name"
+	secondName := "Second Model Name"
+	observations := []store.QuotaObservation{
+		{ObservationID: selectedID, Validity: store.QuotaValidityAccepted, LastObservedAtMS: 1_000},
+		{
+			ObservationID: "first-name", LimitName: &firstName,
+			Validity: store.QuotaValidityAccepted, LastObservedAtMS: 2_000,
+		},
+		{
+			ObservationID: "second-name", LimitName: &secondName,
+			Validity: store.QuotaValidityAccepted, LastObservedAtMS: 2_000,
+		},
+	}
+
+	got, err := currentLimitName(observations, &selectedID)
+	if err != nil {
+		t.Fatalf("currentLimitName() error = %v", err)
+	}
+	if got != nil {
+		t.Fatalf("currentLimitName() = %q, want nil for latest conflicting names", *got)
+	}
+}
+
 func TestCurrentQueryCancellationAndMissingProjectionAreReadOnlyFailures(t *testing.T) {
 	t.Parallel()
 
@@ -164,6 +252,57 @@ func TestCurrentQueryCancellationAndMissingProjectionAreReadOnlyFailures(t *test
 	}
 	if _, err := service.Query(context.Background(), 1); !errors.Is(err, ErrQuotaCurrentUnavailable) || calls != 1 {
 		t.Fatalf("Query(missing projection) calls=%d error=%v", calls, err)
+	}
+}
+
+func TestCurrentQueryMapsResetCreditItemsWithoutIdentifiers(t *testing.T) {
+	t.Parallel()
+
+	const nowMS = int64(1_784_320_000_000)
+	one := int64(1)
+	two := int64(2)
+	remaining := int64(3_600_000)
+	last := nowMS - 1_000
+	reader := currentSnapshotReaderFunc(func(
+		context.Context, string, int64,
+	) (store.QuotaCurrentSnapshot, error) {
+		return store.QuotaCurrentSnapshot{
+			AccountScope: store.QuotaAccountScopeDefault, EvaluatedAtMS: nowMS,
+			ResetCredits: store.ResetCreditsSummary{
+				AccountScope: store.QuotaAccountScopeDefault, SnapshotID: stringPointer("private-snapshot"),
+				AvailableCount: &one, TotalCount: &two, RedeemedCount: &one,
+				CumulativeRemainingMS: &remaining, NextExpiresAtMS: int64Pointer(nowMS + remaining),
+				LastSuccessAtMS: &last, LastAttemptAtMS: &last,
+				FreshnessState: store.SourceFreshnessCurrent, EvaluationAtMS: nowMS,
+				Credits: []store.ResetCredit{
+					{Status: store.ResetCreditRedeemed, Type: store.ResetCreditTypeCodexRateLimits, GrantedAtMS: nowMS - 20_000, ExpiresAtMS: nowMS + 7_200_000, RedeemedAtMS: &last},
+					{Status: store.ResetCreditAvailable, Type: store.ResetCreditTypeCodexRateLimits, GrantedAtMS: nowMS - 10_000, ExpiresAtMS: nowMS + remaining},
+				},
+			},
+		}, nil
+	})
+	service, err := NewCurrentQueryService(reader)
+	if err != nil {
+		t.Fatalf("NewCurrentQueryService() error = %v", err)
+	}
+	response, err := service.Query(context.Background(), nowMS)
+	if err != nil {
+		t.Fatalf("Query() error = %v", err)
+	}
+	items := response.ResetCredits.Items
+	if len(items) != 2 || items[0].Status != store.ResetCreditAvailable ||
+		items[0].RemainingMS == nil || *items[0].RemainingMS != remaining ||
+		items[1].Status != store.ResetCreditRedeemed || items[1].RedeemedAtMS == nil {
+		t.Fatalf("reset credit items = %#v", items)
+	}
+	encoded, err := json.Marshal(response.ResetCredits)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	for _, forbidden := range []string{"private-snapshot", "creditId", "creditHash", "requestId"} {
+		if strings.Contains(strings.ToLower(string(encoded)), strings.ToLower(forbidden)) {
+			t.Fatalf("reset credit items leak %q: %s", forbidden, encoded)
+		}
 	}
 }
 

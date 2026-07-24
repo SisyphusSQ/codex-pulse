@@ -19,6 +19,7 @@ const (
 type OverviewRange string
 
 const (
+	OverviewRangeQuotaWeek  OverviewRange = "quota_week"
 	OverviewRangeToday      OverviewRange = "today"
 	OverviewRangeSevenDays  OverviewRange = "seven_days"
 	OverviewRangeThirtyDays OverviewRange = "thirty_days"
@@ -108,7 +109,7 @@ type HomeSwitchAudit struct {
 	FinishedAtMS   int64              `json:"finished_at_ms"`
 }
 
-// Snapshot 是权威私有 preferences domain contract，与 SQLite model 和 Wails/UI DTO 隔离。
+// Snapshot 是权威私有 preferences domain contract，与 SQLite model 和 RPC/UI DTO 隔离。
 type Snapshot struct {
 	SchemaVersion int                    `json:"schema_version"`
 	Revision      uint64                 `json:"revision"`
@@ -140,6 +141,6 @@ func DefaultUpdatePreferences() UpdatePreferences {
 
 func DefaultUIPreferences() UIPreferences {
 	return UIPreferences{
-		Locale: "zh-CN", LaunchBehavior: LaunchBehaviorTray, OverviewRange: OverviewRangeSevenDays,
+		Locale: "zh-CN", LaunchBehavior: LaunchBehaviorTray, OverviewRange: OverviewRangeQuotaWeek,
 	}
 }

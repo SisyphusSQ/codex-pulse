@@ -90,11 +90,8 @@ go test ./internal/app -count=1
 go test ./... -count=1
 go vet ./...
 go test -race ./...
-make harness-verify
-make project-check
+make verify-architecture
 git diff --check
-python3 .agents/skills/project-version-release/scripts/project_version_release.py \
-  check --repo "$PWD" --json
 make verify
 ```
 
@@ -133,4 +130,4 @@ make verify
 | PR / post-merge | PASS：PR #10 合并为 `090b5ee`；`main` 上 Pure Go/full/race/harness/version/diff/完整 `make verify` 同口径通过 |
 | Actions | `actions_disabled_by_user`：不触发、不等待、不作为 gate |
 
-执行说明：首次直接运行 `make project-check` 因固定 Wails CLI 不在当前 shell 的 `PATH` 以 `TOOLCHAIN-001` 正确停止；补齐当前 shell 的 Wails CLI PATH 后通过。首次 `make verify` 在 `vue-tsc` 前因 `frontend/node_modules` 未恢复停止；按 lockfile 执行 `npm --prefix frontend ci` 后从完整 verify 重跑通过，199 个依赖 audit 为 0。`glob@10.5.0` 输出既有 deprecated warning，本卡不顺手升级依赖。验证完成后已删除本轮 `frontend/node_modules`、`.task`、`bin` 与 dist 构建文件，保留 tracked `.gitkeep`；go.mod/go.sum/bindings 无漂移。Wails 链接阶段仍有既有 macOS SDK deployment-target warning，相关命令退出码均为 0。
+执行说明：首次直接运行 `make verify-architecture` 因固定 Wails CLI 不在当前 shell 的 `PATH` 以 `TOOLCHAIN-001` 正确停止；补齐当前 shell 的 Wails CLI PATH 后通过。首次 `make verify` 在 `vue-tsc` 前因 `frontend/node_modules` 未恢复停止；按 lockfile 执行 `npm --prefix frontend ci` 后从完整 verify 重跑通过，199 个依赖 audit 为 0。`glob@10.5.0` 输出既有 deprecated warning，本卡不顺手升级依赖。验证完成后已删除本轮 `frontend/node_modules`、`.task`、`bin` 与 dist 构建文件，保留 tracked `.gitkeep`；go.mod/go.sum/bindings 无漂移。Wails 链接阶段仍有既有 macOS SDK deployment-target warning，相关命令退出码均为 0。

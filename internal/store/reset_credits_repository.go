@@ -334,6 +334,7 @@ func populateResetCreditsSummary(summary *ResetCreditsSummary, snapshot ResetCre
 	summary.RedeemedCount = &redeemed
 	summary.CumulativeRemainingMS = &cumulative
 	summary.NextExpiresAtMS = next
+	summary.Credits = cloneResetCreditsSnapshot(&snapshot).Credits
 }
 
 func resetCreditsSnapshotModelFromDomain(snapshot ResetCreditsSnapshot) resetCreditsSnapshotModel {

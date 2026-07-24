@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
+	"github.com/SisyphusSQ/codex-pulse/internal/projectidentity"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -161,9 +162,10 @@ func (writer attributionWriter) refreshSessionAttributions(sessionID string, atM
 	if err != nil {
 		return 0, err
 	}
+	projectResolver := projectidentity.NewResolver(projectAttributionPaths(session, current, hasCurrent, turns, roots))
 	updatedAt := attributionTimestamp(session, current, hasCurrent, turns, atMS)
 
-	initialProject, err := writer.resolveAndRegisterProject(session.InitialCWD, &roots, updatedAt)
+	initialProject, err := writer.resolveAndRegisterProject(session.InitialCWD, &roots, projectResolver, updatedAt)
 	if err != nil {
 		return 0, err
 	}
@@ -172,7 +174,7 @@ func (writer attributionWriter) refreshSessionAttributions(sessionID string, atM
 	turnModels := make(map[string]attribution.ModelDecision, len(turns))
 	for _, turn := range turns {
 		decisionRoots := append([]attribution.ProjectRoot(nil), roots...)
-		project, err := writer.resolveAndRegisterProject(turn.CWD, &decisionRoots, updatedAt)
+		project, err := writer.resolveAndRegisterProject(turn.CWD, &decisionRoots, projectResolver, updatedAt)
 		if err != nil {
 			return 0, err
 		}
@@ -193,7 +195,7 @@ func (writer attributionWriter) refreshSessionAttributions(sessionID string, atM
 	currentModel := attribution.NormalizeModel("")
 	if hasCurrent {
 		decisionRoots := append([]attribution.ProjectRoot(nil), roots...)
-		currentProject, err = writer.resolveAndRegisterProject(current.CurrentCWD, &decisionRoots, updatedAt)
+		currentProject, err = writer.resolveAndRegisterProject(current.CurrentCWD, &decisionRoots, projectResolver, updatedAt)
 		if err != nil {
 			return 0, err
 		}
@@ -247,11 +249,10 @@ func projectRoots(database *gorm.DB) ([]attribution.ProjectRoot, error) {
 func (writer attributionWriter) resolveAndRegisterProject(
 	rawPath *string,
 	roots *[]attribution.ProjectRoot,
+	resolver projectidentity.Resolver,
 	atMS int64,
 ) (attribution.ProjectDecision, error) {
-	decision := attribution.ResolveProject(attribution.ProjectInput{
-		CWD: valueOrEmpty(rawPath), Roots: *roots,
-	})
+	decision := resolveProjectDecision(valueOrEmpty(rawPath), *roots, resolver)
 	if decision.ProjectID == "" || decision.Source != attribution.SourceCWDPathDigest {
 		return decision, nil
 	}
@@ -270,6 +271,52 @@ func (writer attributionWriter) resolveAndRegisterProject(
 		DisplayName: project.DisplayName, Confidence: attribution.ConfidenceMedium,
 	})
 	return decision, nil
+}
+
+func projectAttributionPaths(
+	session sessionModel,
+	current sessionCurrentModel,
+	hasCurrent bool,
+	turns []turnModel,
+	roots []attribution.ProjectRoot,
+) []string {
+	paths := make([]string, 0, len(roots)+len(turns)+2)
+	for _, root := range roots {
+		paths = append(paths, root.RootPath)
+	}
+	if session.InitialCWD != nil {
+		paths = append(paths, *session.InitialCWD)
+	}
+	if hasCurrent && current.CurrentCWD != nil {
+		paths = append(paths, *current.CurrentCWD)
+	}
+	for _, turn := range turns {
+		if turn.CWD != nil {
+			paths = append(paths, *turn.CWD)
+		}
+	}
+	return paths
+}
+
+func resolveProjectDecision(
+	rawPath string,
+	roots []attribution.ProjectRoot,
+	resolver projectidentity.Resolver,
+) attribution.ProjectDecision {
+	raw := attribution.ResolveProject(attribution.ProjectInput{CWD: rawPath, Roots: roots})
+	if raw.Source != attribution.SourceCWDPathDigest {
+		return raw
+	}
+	resolution := resolver.Resolve(rawPath)
+	if resolution.Other {
+		return attribution.ResolveProject(attribution.ProjectInput{})
+	}
+	if resolution.CanonicalPath == rawPath {
+		return raw
+	}
+	return attribution.ResolveProject(attribution.ProjectInput{
+		CWD: resolution.CanonicalPath, Roots: roots,
+	})
 }
 
 func appendProjectCandidate(

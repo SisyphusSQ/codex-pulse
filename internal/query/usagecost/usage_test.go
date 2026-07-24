@@ -100,6 +100,95 @@ func TestUsageCostGroupsDayWeekMonthAndPreservesLedgerEvidence(t *testing.T) {
 	}
 }
 
+func TestUsageCostGroupsHourlyTrend(t *testing.T) {
+	t.Parallel()
+
+	start := mustUsageTime(t, "2026-07-22T00:00:00Z")
+	secondHour := mustUsageTime(t, "2026-07-22T01:00:00Z")
+	end := mustUsageTime(t, "2026-07-22T02:00:00Z")
+	one, two := int64(1), int64(2)
+	reader := usageReaderFunc(func(context.Context, store.AnalyticsRange) (store.UsageCostRangeSnapshot, error) {
+		return store.UsageCostRangeSnapshot{
+			Mode: store.AnalyticsReadDetailFallback,
+			Daily: []store.UsageDaily{
+				{
+					BucketStartMS: start, ReportingTimezone: "UTC",
+					RollupTotals: store.RollupTotals{
+						TurnCount: 1, InputTokens: &one, CachedInputTokens: int64Ptr(0),
+						OutputTokens: int64Ptr(0), ReasoningTokens: int64Ptr(0), TotalTokens: &one,
+						UnpricedTurnCount: 1, FirstActivityAtMS: start, LastActivityAtMS: start,
+					},
+				},
+				{
+					BucketStartMS: secondHour, ReportingTimezone: "UTC",
+					RollupTotals: store.RollupTotals{
+						TurnCount: 1, InputTokens: &two, CachedInputTokens: int64Ptr(0),
+						OutputTokens: int64Ptr(0), ReasoningTokens: int64Ptr(0), TotalTokens: &two,
+						UnpricedTurnCount: 1, FirstActivityAtMS: secondHour, LastActivityAtMS: secondHour,
+					},
+				},
+			},
+			PricingVersions: make([]string, 0), UnpricedReasons: make([]store.CostReasonCount, 0),
+		}, nil
+	})
+	service := newUsageService(t, reader)
+	response, err := service.UsageCost(context.Background(), UsageCostRequest{
+		ExactRange:  &basequery.UTCTimeRange{StartAtMS: start, EndAtMS: end, TimeZone: "UTC"},
+		Granularity: TrendGranularity("hour"),
+	})
+	if err != nil {
+		t.Fatalf("UsageCost(hour) error = %v", err)
+	}
+	wantKeys := []string{"2026-07-22T00:00", "2026-07-22T01:00"}
+	keys := make([]string, 0, len(response.Trend))
+	for _, point := range response.Trend {
+		keys = append(keys, point.Key)
+	}
+	if !reflect.DeepEqual(keys, wantKeys) {
+		t.Fatalf("UsageCost(hour) keys = %#v, want %#v", keys, wantKeys)
+	}
+	assertKnownNumeric(t, response.Trend[0].EndAtMS, secondHour, basequery.NumericMilliseconds)
+	assertKnownNumeric(t, response.Totals.TotalTokens, 3, basequery.NumericTokens)
+}
+
+// 测试 UsageCost 在精确 UTC 范围下不扩展为自然日，并把趋势边界裁剪到请求区间。
+func TestUsageCostUsesExactRangeWithoutLocalDayExpansion(t *testing.T) {
+	t.Parallel()
+
+	start := mustUsageTime(t, "2026-07-22T01:30:00Z")
+	end := mustUsageTime(t, "2026-07-22T02:30:00Z")
+	reader := usageReaderFunc(func(_ context.Context, filter store.AnalyticsRange) (store.UsageCostRangeSnapshot, error) {
+		if !filter.Exact || filter.ReportingTimezone != "UTC" || filter.StartAtMS != start || filter.EndAtMS != end {
+			t.Fatalf("exact filter = %#v", filter)
+		}
+		tokens := int64(200)
+		return store.UsageCostRangeSnapshot{
+			Mode: store.AnalyticsReadLightIndex,
+			Daily: []store.UsageDaily{{
+				BucketStartMS: start, ReportingTimezone: "UTC",
+				RollupTotals: store.RollupTotals{
+					InputTokens: &tokens, CachedInputTokens: int64Ptr(0), OutputTokens: int64Ptr(0),
+					ReasoningTokens: int64Ptr(0), TotalTokens: &tokens,
+				},
+			}},
+			PricingVersions: make([]string, 0), UnpricedReasons: make([]store.CostReasonCount, 0),
+		}, nil
+	})
+	service := newUsageService(t, reader)
+	response, err := service.UsageCost(context.Background(), UsageCostRequest{
+		ExactRange:  &basequery.UTCTimeRange{StartAtMS: start, EndAtMS: end, TimeZone: "UTC"},
+		Granularity: TrendDay,
+	})
+	if err != nil {
+		t.Fatalf("UsageCost(exact) error = %v", err)
+	}
+	if response.Range.StartAtMS != start || response.Range.EndAtMS != end || len(response.Trend) != 1 ||
+		response.Trend[0].StartAtMS.Value == nil || *response.Trend[0].StartAtMS.Value != start ||
+		response.Trend[0].EndAtMS.Value == nil || *response.Trend[0].EndAtMS.Value != end {
+		t.Fatalf("UsageCost(exact) response = %#v", response)
+	}
+}
+
 func TestUsageCostFallbackIsPartialAndDoesNotInventUnknownOrZero(t *testing.T) {
 	t.Parallel()
 
@@ -182,6 +271,59 @@ func TestUsageCostLightIndexReturnsKnownTokensAndUnknownTurnCost(t *testing.T) {
 	assertKnownNumeric(t, response.Totals.TotalTokens, total, basequery.NumericTokens)
 	assertUnknownNumeric(t, response.Totals.TurnCount, basequery.UnknownUnavailable)
 	assertUnknownNumeric(t, response.Totals.EstimatedUSDMicros, basequery.UnknownNotComputed)
+}
+
+func TestUsageCostLightIndexReturnsKnownCostAndModelBreakdown(t *testing.T) {
+	t.Parallel()
+
+	input, cached, output, reasoning, total, cost := int64(1_000_000), int64(200_000), int64(100_000), int64(50_000), int64(1_150_000), int64(1_290_000)
+	model := "gpt-5.4-mini"
+	display := "GPT-5.4 Mini"
+	reader := usageReaderFunc(func(context.Context, store.AnalyticsRange) (store.UsageCostRangeSnapshot, error) {
+		return store.UsageCostRangeSnapshot{
+			Mode: store.AnalyticsReadLightIndex, PricingSource: "openai-api", Currency: "USD",
+			Daily: []store.UsageDaily{{
+				BucketStartMS: 1_784_419_200_000, ReportingTimezone: "UTC",
+				RollupTotals: store.RollupTotals{
+					InputTokens: &input, CachedInputTokens: &cached, OutputTokens: &output,
+					ReasoningTokens: &reasoning, TotalTokens: &total, EstimatedUSDMicros: &cost,
+				},
+			}},
+			Models: []store.ModelUsageDaily{{
+				BucketStartMS: 1_784_419_200_000, ReportingTimezone: "UTC", DimensionKey: model,
+				ModelKey: &model, ModelDisplayName: &display,
+				AttributionConfidence: "high", AttributionSource: "model_canonical", AttributionReason: "observed",
+				RollupTotals: store.RollupTotals{
+					InputTokens: &input, CachedInputTokens: &cached, OutputTokens: &output,
+					ReasoningTokens: &reasoning, TotalTokens: &total, EstimatedUSDMicros: &cost,
+				},
+			}},
+			PricingVersions: []string{"openai-api-2026-07-22"}, UnpricedReasons: []store.CostReasonCount{},
+		}, nil
+	})
+	service := newUsageService(t, reader)
+	response, err := service.UsageCost(context.Background(), UsageCostRequest{
+		Range:       basequery.LocalDateRange{StartDate: "2026-07-19", EndDateExclusive: "2026-07-20", TimeZone: "UTC"},
+		Granularity: TrendDay,
+	})
+	if err != nil {
+		t.Fatalf("UsageCost(light priced) error = %v", err)
+	}
+	if response.PricingSource == nil || *response.PricingSource != "openai-api" ||
+		response.Currency == nil || *response.Currency != "USD" || len(response.Models) != 1 ||
+		response.Models[0].DimensionKey != model {
+		t.Fatalf("priced light response = %#v", response)
+	}
+	assertKnownNumeric(t, response.Totals.EstimatedUSDMicros, cost, basequery.NumericMicroUSD)
+	assertKnownNumeric(t, response.Models[0].Totals.TotalTokens, total, basequery.NumericTokens)
+	assertKnownNumeric(t, response.Models[0].Totals.EstimatedUSDMicros, cost, basequery.NumericMicroUSD)
+	encodedModel, err := json.Marshal(response.Models[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encodedModel), `"trend":[{"key":"2026-07-19"`) {
+		t.Fatalf("usage model omitted its daily trend: %s", encodedModel)
+	}
 }
 
 func TestUsageCostEmptyFallbackKeepsCostUnknown(t *testing.T) {

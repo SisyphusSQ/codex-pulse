@@ -1,233 +1,124 @@
-# TOO-272 Design QA
+# Token 明细与状态栏 Design QA
 
-## Source truth
+## 对照目标
 
-- `docs/design/front/previews/00-design-system.png`：颜色、表面、状态、圆角与控件语言。
-- `docs/design/front/previews/04-overview.png`：1440×1024 主壳、侧栏、标题与内容面。
-- `docs/design/front/previews/01-local-status.png`：1440×1024 侧栏复核与内容层级。
-- `docs/design/front/assets/icons/codex-pulse-app-icon-64.png`：正式应用图标资产。
+- 输入/输出参考图：`/var/folders/j1/blrv77y956q8d747sb8pqfvm0000gp/T/codex-clipboard-8a0af528-b23f-4867-a858-c77e45deaa07.png`
+- 状态栏总量参考图：`/var/folders/j1/blrv77y956q8d747sb8pqfvm0000gp/T/codex-clipboard-b7b9e0be-6fc2-4b59-a1c0-6fde4902f45e.png`
+- 概览对比图：`/Users/suqing/Coding/golang/00_self/codex-pulse/.artifacts/token-breakdown-refresh/reference-vs-overview.png`
+- 状态栏详情上半部分：`/Users/suqing/Coding/golang/00_self/codex-pulse/.artifacts/token-breakdown-refresh/status-popover-upper.jpeg`
+- 状态栏详情成本与排行：`/Users/suqing/Coding/golang/00_self/codex-pulse/.artifacts/token-breakdown-refresh/status-popover-total-ranking.jpeg`
+- source pixels: 输入/输出参考图 `400 x 345`
+- implementation pixels: 概览重点区域 `835 x 255`；状态栏详情窗口 `420 x 672`
+- state: 真实 Codex Home、周额度周期、原生浅色外观、动态本机数据
 
-## Implementation evidence
+## Full-view comparison evidence
 
-所有截图与 comparison 都位于 ignored `.agents/runs/too-272-visual-qa/`，不作为发布资产提交：
+- 使用真实 Home 启动 development App，检查概览、会话列表、会话详情和状态栏详情。
+- 状态栏详情通过与正式 `NSPopover` 共用的 `MenuBarPopoverView` 在 `420 x 640` points 标准窗口中捕获；验收辅助入口未保留在交付代码中。
+- 状态栏菜单项通过 macOS Accessibility 读回为 `Codex Pulse · 周剩 0%，已用 12.5亿 Token`，保持原来的总量单行样式。
 
-- `implementation-final-1280x770.png` / `comparison-final.png`
-- `implementation-final-1440x1024.png` / `shell-comparison-final.png`
-- `sidebar-comparison-final.png`
-- `min-window-900x600-pass-2.png`
-- `native-ready.png`（打包版 1120×720 Wails 窗口）
+## Focused region comparison evidence
 
-## Viewports and states
+- `reference-vs-overview.png` 把用户的输入/输出/总量参考图与概览实现放在同一张图中检查。
+- 概览、会话和成本卡片均区分输入、输出、总量；缓存作为输入子项，推理作为输出子项。
+- `status-popover-total-ranking.jpeg` 显示项目排行仅保留总量，未把输入/输出塞进窄排行列表。
+- 状态栏每日趋势悬停详情位于图表下方，避免遮挡柱状图。
 
-| 验证面 | 状态 | 结果 |
-| --- | --- | --- |
-| 浏览器 900×600 | `/overview`，无 Wails runtime | 无水平/垂直溢出；六项导航、当前项、错误说明与重试入口完整可见 |
-| 浏览器 1280×770 | `/overview`，无 Wails runtime | token、sidebar、titlebar、error state 与 Design System source 同屏比较通过 |
-| 浏览器 1440×1024 | `/overview`，无 Wails runtime | 侧栏宽度、24px 外边距、内容面宽度和标题层级与 Overview/Local Status source 比较通过 |
-| 打包版 1120×720 | `/overview`，真实 Wails runtime | 显示“本机服务已连接”、`darwin`、`zh-CN`；六个导航与原生窗口控制完整 |
+## Findings
 
-浏览器 error state 是预期降级：独立 Vite 页面无法调用 Wails generated binding，但仍必须保留共享壳、可理解错误文案和重试动作。原生打包态证明相同页面连接真实 Bootstrap 后进入 ready，不使用 mock 数据。
+- [resolved P1] 旧验收无法捕获原生弹窗
+  - 旧证据：离屏缓存未合成文字和系统材质，系统窗口截图被 Screen Recording 权限阻断。
+  - 处理：用相同 `MenuBarPopoverView` 和真实数据建立临时标准窗口，获得完整像素证据后移除验收入口。
+- [resolved P2] 状态栏项目排行输入/输出换行拥挤
+  - 证据：`420` points 窄窗口中三组明细会压缩成多行。
+  - 处理：按用户确认恢复为项目总量单值；成本卡片仍保留输入/输出明细。
+- 当前没有未解决的 P0、P1 或 P2 视觉问题。
 
-## Interaction and accessibility checks
+## Required fidelity surfaces
 
-- 通过“设置”router link切换到 `/settings`，active route 与键盘 focus 保持正确；根路径与未知地址由 router contract归一到概览。
-- 浏览器 console 无实现错误；仅出现脱离 Wails runtime 的预期提示。
-- 所有导航均为真实 link，当前项通过 `aria-current` 表达；按钮、卡片、表格、empty/error/skeleton 有独立语义测试。
-- hidden inset titlebar 使用 `--wails-draggable: drag`，交互元素显式回退 `no-drag`；打包版通过 Computer Use 对标题区执行 drag gesture 后仍保持 `/overview` ready state，未产生文本选择或导航副作用。
-- Bootstrap pending/error 只保留状态组件自身的单一 `role=status` / `role=alert`，不再嵌套外层 live region；品牌图标作为相邻应用名的装饰资产使用空 `alt`。
-- `prefers-reduced-transparency`、`prefers-contrast`、`prefers-reduced-motion` 均有 CSS 降级；`data-transparency="reduce"` 提供确定性复验入口。
-- 字体使用系统栈；图标来自冻结 app icon 与 `@lucide/vue`，没有手绘 SVG、emoji 或占位资产。
+- Fonts and typography: passed，沿用系统字体、现有字号和字重。
+- Spacing and layout rhythm: passed，主窗口明细列与状态栏成本卡片对齐；排行恢复为单值后无拥挤换行。
+- Colors and visual tokens: passed，沿用原生系统材质、现有强调色和图表色。
+- Image quality and asset fidelity: passed，界面仅使用 SF Symbols，无新增外部位图资产。
+- Copy and content: passed，菜单栏使用“已用总量”，详情面按确认范围展示输入/输出。
 
-## Iteration history
+## Comparison history
 
-1. 首轮 900×600 检查发现侧栏品牌副文案被压缩成孤立换行（P2）。在 `<=1040px` 隐藏 `.sidebar-secondary-copy`，复测 viewport 与 scroll size 均为 900×600，导航不溢出。
-2. 首轮 1440×1024 检查发现内容区被 `max-w-5xl` 限制，和 source 的全宽内容面偏差明显（P2）。移除该限制后，内容从约 x=280 延伸到右侧 24px 外边距，最终 comparison 通过。
-3. 打包并启动 ad-hoc `.app`，读回 Accessibility tree 与截图，确认 WebView URL 为 `wails://localhost/overview`、真实 ready state 和原生窗口控制均存在。
-4. 独立 implementation review发现标题区缺少 Wails drag contract 与 live region嵌套两个P2，以及品牌图标重复播报一个P3。三项均先新增失败测试，再实现 drag/no-drag、单一状态播报和装饰图标语义；focused test/typecheck/build与打包版 drag gesture复验通过。
+1. 旧状态栏弹窗离屏捕获只保留状态色图形，判定为无效视觉证据。
+2. 本轮真实窗口捕获确认概览和会话 Token 明细可读。
+3. 第一次状态栏详情捕获发现项目排行拆分后过于拥挤。
+4. 按用户确认将排行恢复为总量，第二次捕获确认布局清晰。
+5. Accessibility 读回确认状态栏菜单项恢复“周剩 … / 已用 …”原样。
 
-## Fidelity assessment
+## Implementation checklist
 
-- 字体与层级：系统字体、标题/副标题/正文/辅助文字权重和对比符合 source。
-- 间距与圆角：窗口、侧栏、内容卡和控件保持同心圆角；侧栏与内容起点、底部本机数据块比例一致。
-- 色彩与材质：light base、near-white content、selected blue、soft border/shadow 与冻结 PNG 一致；辅助模式有不透明/高对比降级。
-- 图像与图标：复用正式 app icon；导航采用同一线性图标语言。
-- 文案与数据：中文集中 i18n；browser/native 状态均使用真实运行边界，不展示演示业务数字。
-- 剩余差异：应用图标和品牌副标题按现有正式资产/文案保留，属于已冻结产品语义；无未关闭 P0/P1/P2 视觉 finding。
-
-final result: passed
-
----
-
-# 2026-07-19 macOS 侧栏顶栏对齐 Design QA
-
-## Source truth and evidence
-
-- Pencil source：`docs/design/front/codex-pulse-liquid-glass.pen` 的 Overview 节点 `qipkO`；同一修正同步到七个主页面侧栏。
-- Source preview：`docs/design/front/previews/04-overview.png`。
-- Native implementation：`/Users/suqing/.codex/visualizations/2026/07/19/019f7a4d-5d42-7d40-bca2-0e6119f67593/implementation-1120x720.png`。
-- Focused comparison：`/Users/suqing/.codex/visualizations/2026/07/19/019f7a4d-5d42-7d40-bca2-0e6119f67593/sidebar-comparison.png`，Pencil source 与 native implementation 并排复核。
-- Minimum native window：`/Users/suqing/.codex/visualizations/2026/07/19/019f7a4d-5d42-7d40-bca2-0e6119f67593/implementation-900x600.jpeg`。
-
-## Fidelity assessment
-
-| 验证面 | 结果 | 结论 |
-| --- | --- | --- |
-| 原生窗口按钮 | PASS | 保留 AppKit 最小化/缩放按钮及原生交互；没有用网页元素复刻系统按钮，既有隐藏关闭按钮语义未改变 |
-| 侧栏玻璃背景 | PASS | 背景由 24px 下移改为 8px 起始，完整承接黄色/绿色按钮，不再出现按钮跨越圆角边界的问题 |
-| 品牌区 | PASS | 品牌内容继续从约 40px 顶部内边距开始，与原生按钮区分层；没有横向挤压或文字截断 |
-| 主内容基线 | PASS | 主内容仍保持 24px 顶部起始，只拆分外壳 padding，没有让 Overview 标题随侧栏一起上移 |
-| 材质与 token | PASS | 继续复用现有 Liquid Glass、圆角、阴影、颜色和字体 token，没有引入新的视觉语言 |
-| 最小窗口 | PASS | 900×600 原生窗口无横向溢出，导航、状态条、趋势卡和日期范围控件保持可读 |
-
-## Interaction and accessibility
-
-- 原生可访问性树仍暴露最小化按钮和可执行缩放的全屏幕按钮；六项主导航及 Overview 内容保持可访问。
-- 900×600 窗口下导航与主内容同时存在，未发生侧栏遮挡或横向滚动。
-- 浏览器降级态仅验证到无横向溢出；完整布局与原生窗口按钮必须以 packaged Wails 原生窗口为准。
-- 当前无未关闭 P0/P1/P2 视觉 finding。
-
-## Iteration history
-
-1. 初始截图显示侧栏从 24px 开始，原生黄/绿按钮位于玻璃背景之外并压住圆角边界。
-2. Pencil 先把七个主页面侧栏统一改为 8px 起始，在内部显式保留原生窗口控制区，并下移品牌内容。
-3. 实现将 AppShell 的侧栏与主内容顶距拆分：侧栏 8px、主内容 24px；AppSidebar 顶部内容 padding 调整为 40px。
-4. 1120×720 source/implementation 合并对照通过；随后用 packaged Wails 在 900×600 原生窗口复核，无布局回退。
+- [x] 概览、会话、项目、额度与用量的 Token 明细区分输入/输出/总量
+- [x] 缓存归于输入子项，推理归于输出子项
+- [x] 状态栏成本卡片保留输入/输出明细
+- [x] 状态栏菜单项保持总量样式
+- [x] 状态栏项目排行只显示总量
+- [x] 状态栏趋势悬停详情放在图表下方
+- [x] 真实 Home development App 视觉检查
 
 final result: passed
 
-# TOO-274 Sessions Design QA
+# 会话与项目每日趋势 Design QA
 
-## Source truth and evidence
+## 对照目标
 
-- Source：`docs/design/front/previews/05-sessions.png`，固定 1440×1024。
-- Implementation：ignored `.agents/runs/too-274-sessions-qa/implementation-final-1440x1024.png`。
-- Combined comparison：ignored `.agents/runs/too-274-sessions-qa/comparison-final-2880x1024.jpg`，source在左、implementation在右，同为1440×1024后横向合并。
-- Minimum fallback：ignored `.agents/runs/too-274-sessions-qa/minimum-900x600.jpg`。
-- Native packaged：ignored `.agents/runs/too-274-sessions-qa/native-1120x720.jpg`；nominal 1120×720 Wails window 的截屏像素为1119×719。
-- Normal-state 数据来自临时隔离 typed DTO cache；夹具不进入 production route、产品 runtime 或提交范围，验证后已删除。
+- 每日趋势参考图：`/var/folders/j1/blrv77y956q8d747sb8pqfvm0000gp/T/codex-clipboard-aa4253e4-b01a-4aee-be9e-0d64c4ef99d8.png`
+- 虚线选中态参考图：`/var/folders/j1/blrv77y956q8d747sb8pqfvm0000gp/T/codex-clipboard-7e834aaa-7f86-4b54-a87d-d480b0e4e092.png`
+- 会话详情实现截图：`/Users/suqing/Coding/golang/00_self/codex-pulse/.artifacts/design-qa/session-project-daily-trend-session.png`
+- 项目详情实现截图：`/Users/suqing/Coding/golang/00_self/codex-pulse/.artifacts/design-qa/session-project-daily-trend-project.png`
+- 同画布对照图：`/Users/suqing/Coding/golang/00_self/codex-pulse/.artifacts/design-qa/session-project-daily-trend-comparison.png`
+- source pixels: 每日趋势 `864 x 316`；虚线选中态 `868 x 676`
+- implementation pixels: 会话与项目窗口均为 `1124 x 768`
+- state: 真实 Codex Home、原生浅色外观、最新日期默认选中
 
-## Fidelity assessment
+## Full-view comparison evidence
 
-| 验证面 | 结果 | 结论 |
-| --- | --- | --- |
-| 页面层级 | PASS | 复用冻结侧栏与标题区，保持 source 的紧凑筛选 → 高密度列表 → 右侧详情三层结构 |
-| filters | PASS | activity/time/project/model/sort 都是具名控件；provider 无全文搜索，因此未伪造 source 的本地 search |
-| list | PASS | title/project/model confidence、active/idle、last activity、token、API等价成本来自 DTO；unknown 与真实0分离，选中行有明确状态 |
-| detail | PASS | safe metadata、aggregate、pricing versions、带计数的未定价原因与 Turn usage/cost timeline可读；没有演示正文事件 |
-| density / overflow | PASS | 1440详情使用内部有界滚动，不推动整个页面；900×600自然堆叠，无页面级水平溢出 |
-| typography / material | PASS | 系统字栈、content surface、soft border/shadow、selected blue、同心圆角与 TOO-272 token一致 |
-| privacy / truth | PASS | 未显示 Session/Turn ID、timeline key、cursor、prompt/response/tool/path/raw error；未本地重算排序、aggregate或pricing |
-| native packaged | PASS | 隔离HOME/TMP下真实Wails打开`/sessions`；1119×719截图无裁切，empty/partial与隐私提示可读，activity/direction交互写入可恢复URL |
+- 会话与项目详情均使用同一个每日趋势组件，延续现有卡片、系统字体、蓝色折线和右侧 Token 轴。
+- 会话详情真实数据只有一个每日桶时，仍显示数据点、贯穿绘图区的竖向虚线和图表下方日期详情。
+- 项目详情存在多个每日桶时，默认选中最新一天；后续可通过图表横向选择切换日期。
 
-## Interaction and accessibility
+## Focused region comparison evidence
 
-- Idle 点击后读回 `aria-pressed=true`，URL规范化为 `activity=idle`；筛选变化清空 list cursor 和 selection。
-- table row 支持鼠标、Enter 与 Space，使用语义 table 和 `aria-selected`；初始 URL 详情恢复不抢焦点，用户选择后聚焦详情标题。
-- list 与 detail 分别表达 loading、empty、partial/stale、fatal、not-found/cursor recovery；底层 error cause 不进入 DOM。
-- 1440×1024 与 900×600 Browser console error均为0；脱离Wails runtime的开发提示不属于页面实现错误。
-- source与implementation已放入同一comparison输入审查；browser范围当前无未关闭P0/P1/P2视觉finding。
-- packaged native Accessibility读回具名筛选、空态与原生窗口控制；Active与排序升序分别规范化为`activity=active`和`direction=asc`，没有读取真实Codex Home。
+- `session-project-daily-trend-comparison.png` 把两张用户参考图和会话实现的选中态放在同一画布检查。
+- 实现与参考图一致保留蓝色数据点和竖向虚线；虚线使用次级色，避免压过趋势主线。
+- 图表下方明确显示 `2026年7月24日`，随后展示输入、输出、总量、缓存和推理明细。
+- Accessibility 读回在会话和项目详情中均包含 `daily-trend.selection-detail` 和完整日期。
 
-## Iteration history
+## Findings
 
-1. source中的全文搜索没有对应 provider contract，改为真实 project/model精确筛选；演示“最近事件”改为content-free Turn usage/cost timeline。
-2. adversarial检查发现 placeholder page可能复用旧cursor、外部scope变化可能泄漏cursor history，均补失败断言后修复。
-3. 补齐 project/model confidence、Turn count、observed/completed time与未定价原因计数，保留unknown和真实0。
-4. 初始URL恢复曾可能抢焦点，改为只在用户重新选择时聚焦详情；宽屏长详情改为面板内部滚动后，1440页面不再整体溢出。
+- [resolved P1] 会话详情原来没有每日趋势数据契约
+  - 处理：从 Helper 的 light daily index 返回会话每日桶，并经 Proto 传给 Swift App。
+- [resolved P1] 选中态只能在指针交互后出现，不利于首次读取
+  - 处理：默认选中最新一天，因此首屏即可看到虚线和日期；横向选择仍可更新选中日期。
+- [resolved P2] light daily 桶误带活动时间会触发详情 unavailable
+  - 处理：每日桶只携带可信 Token 事实，不伪造 turn 活动时间；真实 Home smoke 已恢复 `unavailable=none`。
+- 当前没有未解决的 P0、P1 或 P2 视觉问题。
 
-current result: passed
+## Required fidelity surfaces
 
----
+- Fonts and typography: passed，沿用 macOS 系统字体和现有图表字号。
+- Spacing and layout rhythm: passed，日期详情位于图表下方，不遮挡数据点或坐标轴。
+- Colors and visual tokens: passed，沿用现有 tint 折线和 secondary 虚线。
+- Image quality and asset fidelity: passed，无新增图片资产。
+- Copy and content: passed，会话与项目均显示完整中文日期和 Token 明细。
 
-# TOO-275 Projects Design QA
+## Comparison history
 
-## Source truth and current evidence
+1. 首次实现仅在指针选择后显示虚线，自动化截图无法稳定进入选中态。
+2. 改为默认选中最新一天，真实会话和项目详情首屏均出现虚线与日期。
+3. 同画布对照确认参考图要求的竖向提示线和图表下方日期均已落地。
 
-- Source：`docs/design/front/previews/06-projects.png`，固定 1440×1024。
-- Implementation：ignored `.agents/runs/too-275-projects-qa/implementation-final-1440x1024.png`。
-- Combined comparison：ignored `.agents/runs/too-275-projects-qa/comparison-final-2880x1024.png`，source在左、implementation在右，二者同为1440×1024。
-- Minimum / native：ignored `minimum-900x600.png`、`native-normal-1120x720.png`与`native-isolated-empty-1120x720.png`。
-- 自动化已覆盖：有限range/confidence/sort、list/Session/Model三套pagination、unknown/真实0、partial/stale/fatal/not-found、键盘选择、focus return、ECharts reduce-motion/lifecycle和opaque identity不进DOM。
+## Implementation checklist
 
-## Source adaptation freeze
-
-| source区域 | 实现映射 | 当前状态 |
-| --- | --- | --- |
-| 顶部summary | generated matched count与global/matched/page Token+cost context | 1440/900通过 |
-| 左侧project list | safe display name、confidence/reason、exact SessionCount、Token/cost/last active和ECharts trend | 1440/900通过 |
-| 右侧detail | aggregate、pricing、Model contribution、Session contribution、daily ECharts和独立pagination | 1440同viewport比较通过；按source把Model/Session置于daily之前 |
-| path / Finder / search | provider无安全contract，不渲染、不做page-local伪搜索 | scope已冻结 |
-| privacy | 不显示path、opaque identity/cursor/generation/content/raw cause | 自动化、DOM/source scan与native状态通过 |
-
-视觉对照首轮发现daily图先于source冻结的Model/Session层级，且WebKit原生`progress`呈系统绿色；RED/GREEN后改为Model → Session → daily顺序，并使用设计系统`--color-accent`。900×600无横向溢出；1120×720 normal fixture与隔离真实fatal状态均保持可读、可恢复且不泄露底层cause。临时fixture、进程与isolated HOME/TMP均已清理。
-
-current result: passed
-
----
-
-# TOO-273 Overview Design QA
-
-## Source truth and evidence
-
-- Source：`docs/design/front/previews/04-overview.png`，固定 1440×1024。
-- Implementation：ignored `.agents/runs/TOO-273-overview-qa.png`。
-- Combined comparison：ignored `.agents/runs/TOO-273-overview-comparison.png`，source 在左、implementation 在右，同为 1440×1024 后横向合并。
-- Minimum fallback：ignored `.agents/runs/TOO-273-min-900x600.png`。
-- Native packaged：ignored `.agents/runs/TOO-273-native-1120x720.png`，nominal 1120×720 Wails window 的截屏像素为1119×719。
-- Normal-state 数据来自临时隔离 typed DTO cache；夹具不进入 production route、产品 runtime 或提交范围，验证后已删除。
-
-## Fidelity assessment
-
-| 验证面 | 结果 | 结论 |
-| --- | --- | --- |
-| 首屏顺序 | PASS | 配额 → Token 趋势/范围 → Token 构成/API 等价成本 → 每日明细与 source 一致 |
-| quota | PASS | 双卡、remaining 百分比、蓝/紫进度、reset/source/freshness保持 source 比例；Reset credits 作为冻结新增事实压缩进次级卡标题 |
-| range/trend | PASS | 默认近 7 天；范围控件位于趋势卡右上；四个 series 使用 ECharts canvas、legend、Aria/decal，未用 div/SVG 手绘图表 |
-| composition/cost | PASS | 两列同高内容卡；构成色点与金额层级一致；pricing source/version 与未定价事实直接来自 DTO |
-| daily | PASS | 1440×1024 首屏可见表头和首行；review 后改回 source 的 Cached 列，并使用服务端 start/timezone 本地化日期；DTO 无 completeness事实，因此不伪造该列 |
-| typography/material | PASS | 系统字栈、near-white content surface、soft border/shadow、selected blue、同心圆角与 TOO-272 token 一致 |
-| privacy/truth | PASS | 未显示 session/dimension/source opaque ID、路径、原始错误或用户内容；API 等价成本保留估算说明 |
-
-## Interaction and accessibility
-
-- “近 30 天”点击后读回 `aria-pressed=true`；“自定义”点击后出现具名“开始日期”和“结束日期（不含）”输入。
-- ECharts 注册 AriaComponent 与 decal，Reduce Motion 关闭动画；独立组件测试覆盖 canvas init/setOption/dispose。
-- generic query region 与 Overview 集成共同覆盖 loading/empty/partial/stale/error/retry；同一 Usage query 只有主趋势区拥有 live status，派生构成/成本/每日视图不重复播报。fatal Usage 不遮蔽 quota，底层 error cause 不进入 DOM。
-- in-app Browser error log 为 0；只出现 Wails 浏览器环境自身的预期开发提示，不属于页面实现错误。
-- source 与 implementation 已放入同一个 comparison 输入复核；当前无未关闭 P0/P1/P2 视觉 finding。
-
-## Iteration history
-
-1. 首轮 implementation 把 range 放在独立顶部面板、quota 包入大外卡、趋势落到首屏下方，和 source 顺序/密度偏差明显。改为 bare 双 quota 卡，并把范围移入趋势卡。
-2. 第二轮趋势卡与成本卡过高，导致每日明细完全落出 1024px 首屏。将 chart 从 256px 收敛到 208px、压缩 quota metadata，并把 pricing source/version 移到金额右侧，重新生成 combined comparison。
-3. 最终首屏已显示 daily 表头/首行；Linear 额外要求的 recent/index/health留在下方滚动区。范围切换、自定义输入与 console 复验通过。
-4. implementation review 发现 freshness enum、unknown/0、partial-empty、重复 live status、日期/tooltip i18n 与缺少最小/native证据六个 P2。全部先形成6项失败断言再修复；额外把 daily列改回 Cached，并异步加载ECharts。
-5. 900×600 浏览器降级态没有水平溢出或 console error；nominal 1120×720 packaged Wails在隔离HOME下同屏显示quota empty、Usage/Session partial-empty、Project fatal error、Source/Health ready，且empty Usage仍保留range controls。
-6. review rework后重新生成1440×1024 implementation与combined comparison；当前画面已显示Cached列、本地化日期和中文未定价原因，Browser snapshot精确读回这些事实且console error=0，旧画面不再作为最终证据。
+- [x] 会话详情接入每日趋势数据
+- [x] 会话与项目共用同一趋势组件
+- [x] 最新一天默认选中
+- [x] 显示竖向虚线
+- [x] 图表下方显示完整日期和 Token 明细
+- [x] 真实 Home development App 视觉检查
 
 final result: passed
-# TOO-283 Data Health Design QA
-
-## Source truth and implementation mapping
-
-- Source：`docs/design/front/previews/10-data-health.png`，固定 1440×1024。
-- Route：`/local-status/data-health`，作为“本机状态”二级页面，不进入六项主导航。
-- 页面顺序：影响/保护 → 七组件领域 → 当前工作/最近事件 → 资源与存储 → 当前 projection 声明的安全恢复动作。
-- 自动化已覆盖：七组件、known/unknown/not-configured evidence、Source/scheduler 聚合、current/open 优先与 24 小时历史裁剪、真实 Job phase、open/recent event occurrence/impact、CPU/RSS 双趋势、DB/WAL/磁盘/queue、DataHealth/Projection 独立评估时间、known empty/partial/unavailable/last-trusted、动作预览/pending/receipt/error、unknown recovery fail-closed、opaque identity 不进入 DOM。
-
-## Source adaptation freeze
-
-| source 区域 | 实现映射 | 当前状态 |
-| --- | --- | --- |
-| 顶部影响提示 | 权威 Health Projection primary 的 impact/protection；AppShell 仍保持全局唯一 Banner | PASS |
-| 数据领域 | 七个稳定 evaluator component，而非设计演示中的六个合并领域 | PASS，遵循后端 contract |
-| 当前工作/事件 | typed Job 与 Health event query；同类事件 occurrence 合并展示 | PASS |
-| 资源与存储 | 最新 CPU/RSS、DB/WAL、磁盘、queue；最近 24 小时 CPU/RSS 双趋势 | PASS |
-| 可执行操作 | 只显示 projection 注册的 retry/reconcile/repair dry-run/Settings 映射 | PASS；不实现通用命令或 repair execute |
-| 隐私 | 不显示路径、opaque source/job/event identity、fingerprint、raw error、JSONL 或凭据 | PASS |
-
-当前实现复用 M7 Liquid Glass token、900px minimum responsive grid、forced-colors/reduced-motion 基础约束；最终本卡证据以自动化 DOM/contract、同 source 人工结构复核与 packaged gate 为准，不把 synthetic 视觉数据写入产品 runtime。
-
-current result: passed
-
----

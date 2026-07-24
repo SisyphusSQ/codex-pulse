@@ -74,18 +74,20 @@ type UTCTimeRange struct {
 
 // Request 是跨页面公共查询输入 envelope。
 type Request struct {
-	Page      PageRequest     `json:"page"`
-	Sort      []SortTerm      `json:"sort"`
-	Filters   []FilterTerm    `json:"filters"`
-	TimeRange *LocalDateRange `json:"timeRange"`
+	Page           PageRequest     `json:"page"`
+	Sort           []SortTerm      `json:"sort"`
+	Filters        []FilterTerm    `json:"filters"`
+	TimeRange      *LocalDateRange `json:"timeRange"`
+	ExactTimeRange *UTCTimeRange   `json:"exactTimeRange"`
 }
 
 // ValidatedRequest 只由 Specification 生成，供后续业务 query service 消费。
 type ValidatedRequest struct {
-	Page      PageRequest   `json:"page"`
-	Sort      []SortTerm    `json:"sort"`
-	Filters   []FilterTerm  `json:"filters"`
-	TimeRange *UTCTimeRange `json:"timeRange"`
+	Page           PageRequest   `json:"page"`
+	Sort           []SortTerm    `json:"sort"`
+	Filters        []FilterTerm  `json:"filters"`
+	TimeRange      *UTCTimeRange `json:"timeRange"`
+	TimeRangeExact bool          `json:"timeRangeExact"`
 }
 
 // FilterField 冻结一个 endpoint 可接受的字段和操作符。

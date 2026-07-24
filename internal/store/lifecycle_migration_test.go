@@ -63,8 +63,8 @@ func TestApplicationMigrationUpgradesV7ThroughCurrentWithoutLosingSchedulerFacts
 		t.Fatalf("run() error = %v", err)
 	}
 	if report.FromVersion != 7 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{8, 9, 10, 11, 12, 13, 14, 15, 16}) || backupVersions != [2]int{7, 16} {
-		t.Fatalf("run() report = %#v backup=%v, want v7 to v16", report, backupVersions)
+		!equalInts(report.AppliedVersions, []int{8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}) || backupVersions != [2]int{7, 19} {
+		t.Fatalf("run() report = %#v backup=%v, want v7 to v19", report, backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 	stored, err := repository.SchedulerTask(context.Background(), task.TaskID)
@@ -141,8 +141,8 @@ func verifyApplicationSchemaV7(ctx context.Context, transaction storesqlite.Writ
 func TestCurrentApplicationSchemaIncludesV8LifecycleAndRetryFacts(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV16Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 16", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV19Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 19", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	repository := NewRepository(database)

@@ -19,7 +19,7 @@ func TestProjectorMapsQuotaObservationWithStableProvenance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newProjector() error = %v", err)
 	}
-	limitID, planType := "codex", "pro"
+	limitID, limitName, planType := "codex_bengalfox", "GPT-5.3-Codex-Spark", "pro"
 	events := []logs.ParsedEvent{
 		{
 			Kind: logs.EventSessionMeta, Position: logs.SourcePosition{StartOffset: 0, EndOffset: 100},
@@ -34,7 +34,8 @@ func TestProjectorMapsQuotaObservationWithStableProvenance(t *testing.T) {
 			Kind: logs.EventQuotaObservation, Position: logs.SourcePosition{StartOffset: 100, EndOffset: 200},
 			QuotaObservation: &logs.QuotaObservationFact{
 				SessionID: "session-quota", AccountScope: logs.QuotaAccountScopeDefault,
-				Source: logs.QuotaSourceLocalJSONL, LimitID: &limitID, WindowKind: logs.QuotaWindowPrimary,
+				Source: logs.QuotaSourceLocalJSONL, LimitID: &limitID, LimitName: &limitName,
+				WindowKind:  logs.QuotaWindowPrimary,
 				UsedPercent: 38, WindowMinutes: 300, ResetsAtMS: 1_784_008_800_000,
 				PlanType: &planType, ObservedAtMS: 1_783_990_801_000, Validity: logs.QuotaValidityAccepted,
 			},
@@ -51,6 +52,7 @@ func TestProjectorMapsQuotaObservationWithStableProvenance(t *testing.T) {
 	got := facts[1].QuotaObservation
 	if got.ObservationID == "" || !strings.HasPrefix(got.ObservationID, "quota-local-jsonl-") ||
 		got.AccountScope != store.QuotaAccountScopeDefault || got.Source != store.QuotaSourceLocalJSONL ||
+		got.LimitName == nil || *got.LimitName != limitName ||
 		got.WindowKind != store.QuotaWindowPrimary || got.UsedPercent != 38 || got.WindowMinutes != 300 ||
 		got.ResetsAtMS != 1_784_008_800_000 || got.Validity != store.QuotaValidityAccepted ||
 		got.SessionID == nil || *got.SessionID != "session-quota" || got.SourceGeneration != 4 ||
@@ -84,7 +86,7 @@ func TestIngesterCommitsLocalQuotaObservationsWithCheckpoint(t *testing.T) {
 	}
 	home, path := newSyntheticCodexHome(t)
 	meta := rolloutSessionMetaLine("session-quota")
-	quota := `{"timestamp":"2026-07-14T01:00:01Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex","primary":{"used_percent":38,"window_minutes":300,"resets_at":1784008800},"secondary":{"used_percent":12,"window_minutes":10080,"resets_at":1784595600},"plan_type":"pro"}}}`
+	quota := `{"timestamp":"2026-07-14T01:00:01Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex_bengalfox","limit_name":"GPT-5.3-Codex-Spark","primary":{"used_percent":38,"window_minutes":300,"resets_at":1784008800},"secondary":{"used_percent":12,"window_minutes":10080,"resets_at":1784595600},"plan_type":"pro"}}}`
 	content := []byte(strings.Join([]string{meta, quota}, "\n") + "\n")
 	writeSyntheticRollout(t, path, content, time.Unix(10, 0))
 	discoverer, err := logs.NewDiscoverer(home)
@@ -133,6 +135,7 @@ func TestIngesterCommitsLocalQuotaObservationsWithCheckpoint(t *testing.T) {
 	}
 	for _, observation := range observations {
 		if observation.Source != store.QuotaSourceLocalJSONL || observation.SessionID == nil ||
+			observation.LimitName == nil || *observation.LimitName != "GPT-5.3-Codex-Spark" ||
 			*observation.SessionID != sessionID || observation.SourceGeneration != result.Cursor.Generation ||
 			observation.SourceFileID == nil || *observation.SourceFileID != result.Cursor.SourceFileID ||
 			observation.SourceOffset != quotaOffset || observation.FirstSourceOffset != quotaOffset ||

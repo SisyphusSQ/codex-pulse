@@ -87,7 +87,18 @@ type lightSessionModel struct {
 func (lightSessionModel) TableName() string { return "light_sessions" }
 
 func (repository *Repository) ReplaceLightMetadata(ctx context.Context, snapshot LightMetadataSnapshot) error {
-	return repository.replaceLightMetadata(ctx, snapshot, nil)
+	_, err := repository.replaceLightMetadata(ctx, snapshot, nil, false)
+	return err
+}
+
+// ReconcileLightMetadata publishes a new metadata generation only when the
+// App Server snapshot changes. Periodic refreshes therefore do not invalidate
+// query cursors or rewrite every light_sessions row for an identical snapshot.
+func (repository *Repository) ReconcileLightMetadata(
+	ctx context.Context,
+	snapshot LightMetadataSnapshot,
+) (bool, error) {
+	return repository.replaceLightMetadata(ctx, snapshot, nil, true)
 }
 
 // ReplaceLightMetadataForHomeSwitch atomically fences the previously confirmed
@@ -102,21 +113,24 @@ func (repository *Repository) ReplaceLightMetadataForHomeSwitch(
 	if err := validateLightHomeIdentity(expected); err != nil || expected == snapshot.Home {
 		return invalidRecord("invalid light Home switch")
 	}
-	return repository.replaceLightMetadata(ctx, snapshot, &expected)
+	_, err := repository.replaceLightMetadata(ctx, snapshot, &expected, false)
+	return err
 }
 
 func (repository *Repository) replaceLightMetadata(
 	ctx context.Context,
 	snapshot LightMetadataSnapshot,
 	expected *LightHomeIdentity,
-) error {
+	detectNoop bool,
+) (bool, error) {
 	if repository == nil || repository.database == nil {
-		return ErrInvalidRepository
+		return false, ErrInvalidRepository
 	}
 	if err := validateLightMetadataSnapshot(snapshot); err != nil {
-		return err
+		return false, err
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	changed := false
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
 		var state lightIndexStateModel
 		result := transaction.WithContext(ctx).Where("state_id = 1").Take(&state)
 		switch {
@@ -140,6 +154,15 @@ func (repository *Repository) replaceLightMetadata(
 				if snapshot.Generation <= state.MetadataGeneration {
 					return invalidRecord("light metadata generation must advance")
 				}
+				if detectNoop {
+					matches, err := lightMetadataSnapshotMatches(ctx, transaction, state, snapshot)
+					if err != nil {
+						return err
+					}
+					if matches {
+						return nil
+					}
+				}
 			}
 		case errors.Is(result.Error, gorm.ErrRecordNotFound):
 			if expected != nil {
@@ -152,6 +175,7 @@ func (repository *Repository) replaceLightMetadata(
 		default:
 			return result.Error
 		}
+		changed = true
 
 		for _, session := range snapshot.Sessions {
 			model := lightSessionModel{
@@ -179,6 +203,53 @@ func (repository *Repository) replaceLightMetadata(
 		state.UpdatedAtMS = snapshot.ReadyAtMS
 		return transaction.WithContext(ctx).Save(&state).Error
 	})
+	return changed, err
+}
+
+func lightMetadataSnapshotMatches(
+	ctx context.Context,
+	transaction storesqlite.WriteTx,
+	state lightIndexStateModel,
+	snapshot LightMetadataSnapshot,
+) (bool, error) {
+	var current []lightSessionModel
+	if err := transaction.WithContext(ctx).Order("session_id").Find(&current).Error; err != nil {
+		return false, err
+	}
+	if len(current) != len(snapshot.Sessions) {
+		return false, nil
+	}
+	byID := make(map[string]LightSessionMetadata, len(snapshot.Sessions))
+	for _, session := range snapshot.Sessions {
+		byID[session.SessionID] = session
+	}
+	for _, persisted := range current {
+		candidate, ok := byID[persisted.SessionID]
+		if !ok || persisted.MetadataGeneration != state.MetadataGeneration ||
+			!equalLightString(persisted.ThreadName, candidate.ThreadName) ||
+			persisted.CWD != candidate.CWD ||
+			!equalLightString(persisted.RolloutPath, candidate.RolloutPath) ||
+			persisted.CreatedAtMS != candidate.CreatedAtMS ||
+			persisted.UpdatedAtMS != candidate.UpdatedAtMS ||
+			!equalLightInt64(persisted.RecencyAtMS, candidate.RecencyAtMS) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func equalLightString(left, right *string) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
+}
+
+func equalLightInt64(left, right *int64) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
 }
 
 func (repository *Repository) LightIndexState(ctx context.Context) (LightIndexState, error) {

@@ -5,7 +5,7 @@ import (
 )
 
 const (
-	// JavaScriptMaxSafeInteger 是 Wails/TypeScript number 可精确表示的最大整数。
+	// JavaScriptMaxSafeInteger 是 JSON/JavaScript number 可精确表示的最大整数。
 	JavaScriptMaxSafeInteger int64 = 9_007_199_254_740_991
 	dateLayout                     = "2006-01-02"
 )
@@ -109,6 +109,27 @@ func normalizeLocalDateRange(input LocalDateRange, maxDays int) (*UTCTimeRange, 
 	return &UTCTimeRange{
 		StartAtMS: startAtMS, EndAtMS: endAtMS, TimeZone: input.TimeZone,
 	}, nil
+}
+
+func normalizeExactTimeRange(input UTCTimeRange, maxDays int) (*UTCTimeRange, error) {
+	if input.TimeZone == "" || input.TimeZone == "Local" || input.StartAtMS < 0 ||
+		input.EndAtMS <= input.StartAtMS || input.EndAtMS > JavaScriptMaxSafeInteger {
+		return nil, validationFailure("exactTimeRange")
+	}
+	location, err := time.LoadLocation(input.TimeZone)
+	if err != nil {
+		return nil, validationFailure("exactTimeRange.timeZone")
+	}
+	start := time.UnixMilli(input.StartAtMS).In(location)
+	end := time.UnixMilli(input.EndAtMS).In(location)
+	calendarStart := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
+	calendarEnd := time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, time.UTC)
+	days := int(calendarEnd.Sub(calendarStart) / (24 * time.Hour))
+	if days < 0 || days > maxDays {
+		return nil, validationFailure("exactTimeRange")
+	}
+	result := input
+	return &result, nil
 }
 
 func parseLocalDate(value string, location *time.Location) (time.Time, error) {

@@ -55,18 +55,29 @@
 52. [TOO-295] 实现 migration startup gate 与只读恢复服务图，新增私有备份摘要冻结、可取消重试和二次确认恢复、content-free 审计告警及 SQLite 在线保全与原子文件交换，固定失败不推进版本、canonical path 不缺失和唯一副本不覆盖语义
 53. [TOO-296] 建立显式本地发布流水线与真实 Sparkle N-1 升级矩阵，覆盖 Ed25519 签名、替换重启、schema 迁移、坏签名、离线、information-only、migration failure 回滚、恢复态安全安装及 HOME/PID 零残留门禁
 54. [TOO-300] 建立统一隐私与敏感字段审计合同，以 synthetic canary 验证 parser、GORM Pure Go SQLite TEXT/BLOB、备份与公共投影，冻结 generated DTO、进程内缓存、启动日志、可编辑设计源、视觉证据和 packaged App regular/symlink 边界，并以独占 lease 保证只清理本轮产物
+55. 将 Go 运行时迁移为经认证的 `grpc-go` + Protobuf Unix Domain Socket Helper，冻结 34 项 Core RPC、失效订阅与迁移恢复合同，并移除 Wails、Vue、Go AppKit 与 Sparkle 运行面
+56. 重做原生 macOS 状态栏额度摘要，提供 A 基准圆环、B 缺口圆环、D 仪表弧三种可切换样式，按真实额度窗口显示 remaining 与严格同周期 Token，并将旧电池、倒计时、双条和纯圆环偏好迁移到默认 A
+57. 将原生 Popover 的最近会话替换为周额度周期项目 Token Top 5，独立绑定通用周额度精确 UTC 范围，并在分页前排除未归类的“其他”项目
+58. 将配额页每日 Token 趋势改为真实模型日明细堆叠柱，新增中文数量级纵轴与鼠标悬停详情；模型合计无法与当日总量对账时仅展示总量并明确标记明细不可用
 
 #### optimization:
 1. [TOO-285] 完善 AppIcon、ICNS 与 Tray Template 资产闭环，新增冻结源校验、严格灰阶 1x/2x 派生、macOS bundle/ZIP 资源读回及可重复导出与 live smoke 证据
 2. [TOO-298] 优化首次全量索引的 GORM 有界批量冻结、1MiB 读取与分阶段 quota 投影，使用增量 evidence 写入保持首屏后 quota 持续可查询；单次约 6.55GB 真实 Home 样本首屏约 36.4 秒、full bootstrap 约 18.08 分钟，正式阈值与后半程 arbitration 读放大优化留给 TOO-299
 3. [TOO-299] 优化首次初始化为生产幂等入队、4MiB 读取、schema v15 quota 过滤与排序索引及增量投影读回，并在 robfig cron 的零 yield cycle 间连续推进且保留 live 抢占和 mutable Home final reconcile；约 6.56GB 真实只读 Home 三轮首屏 p95 约 38.4 秒、full bootstrap p95 约 15.3 分钟，资源、查询、隐私和清理门禁均通过
+4. 退役 repo-local harness 控制面、计划状态模板和重复 review gate，保留产品测试并将本地开发、PR/CI 与真实 Home 验收拆分为独立验证入口
+5. 优化原生 macOS App 首次窗口为优先 `1440×900` 内容区并按当前屏幕可见区域约束居中，避免概览被侧栏覆盖；统一剩余额度进度条为健康绿色、预警黄色和紧急红色，未知或陈旧数据保持系统灰色
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功
 2. [TOO-309] 修复 Tray 与 Popover 在 5 小时额度无有效值时仍显示占位行的问题，隐藏 null primary 且保留真实 `0%` 与后续动态恢复
 3. [TOO-310] 修复更新跳过与稍后操作先消费 Sparkle choice、后写偏好造成的半成功窗口，以既有 skip/snooze 偏好承载 durable intent，新增不确定写入读回与启动/available 自动 reconcile，保证存储失败不丢失当前更新且 native failure 可跨重启恢复
+4. 修复通用额度与模型专属额度同周期时显示成相同“7 天”的问题，解析 `additional_rate_limits` 的 `metered_feature/limit_name`，经 schema v19、Core Proto 与 Swift presentation 保留额度身份，并让状态栏稳定优先通用额度
 4. [TOO-298] 修复真实 rollout 的 session-local turn ID、quota 事件时间回退与重叠 active turn 兼容性，保持 source offset、事实引用和 SessionCurrent 的严格一致性
 5. [TOO-302] 修复真实 N-1 升级 fixture 停留在旧 schema v13→v14、rollback marker 可被重建和 helper/进程清理失败被忽略的问题，改为当前 v14→v15 migration、权威事实读回与可传播的 identity-checked cleanup
+6. 修复原生 Popover 最近会话按 Token 而非最近活动排序、轻量 Session API 等价成本恒为 unknown 的问题，复用 model/token/pricing catalog 口径返回会话成本，并将剩余未知值改为明确文案
+7. 修复轻量索引中“其他”项目列表可见但详情用 `project_id` 过滤后必然查不到、以及大项目 Session 分页 cursor 缺失 generation 导致详情 unavailable 的问题；内部详情改按稳定 `dimension_key` 查询，并用 metadata/token-scan 代际约束 opaque cursor
+8. 修复模型专属额度选中无名称的 Local observation 后泄露内部 `limit_id` 的问题，从同额度最新 accepted observation 补全 `limit_name`，并在名称仍不可用时回退为“模型专属额度”
+9. 修复 7 天滑动额度在旧 reset 尚未到期时已重置、但更晚 `reset_at` 被误判为 `reset_regression` 的问题；以 `quota-arbiter-v2` 接受通过时长与时钟校验的新代际，继续隔离同 reset 的 used 回落和向过去移动的 reset
 
 #### note:
 1. [TOO-242] 固定 Wails3 `v3.0.0-alpha2.117` 与 macOS arm64 工具链能力基线，补充可复现 runbook、平台 adapter 边界和依赖升级准入规则

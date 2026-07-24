@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Codex Pulse opaque background layer">
+  <defs>
+    <linearGradient id="bg" x1="128" y1="96" x2="896" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#08172E"/>
+      <stop offset="0.55" stop-color="#162A5B"/>
+      <stop offset="1" stop-color="#342A78"/>
+    </linearGradient>
+    <radialGradient id="field" cx="0" cy="0" r="1" gradientTransform="translate(470 432) rotate(48) scale(520)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#55DCFF" stop-opacity="0.16"/>
+      <stop offset="0.58" stop-color="#6B72FF" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#0B1026" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="url(#field)"/>
+</svg>

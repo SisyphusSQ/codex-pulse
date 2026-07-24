@@ -10,16 +10,56 @@ import (
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
+func TestApplicationSchemaVersionIncludesLightModelAttribution(t *testing.T) {
+	t.Parallel()
+
+	if applicationSchemaVersion != applicationSchemaV19Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 19", applicationSchemaVersion)
+	}
+	database := openTestDatabase(t)
+	seedApplicationSchemaV16(t, database)
+	var backupVersions [2]int
+	runner := applicationMigrationRunnerForTest(database)
+	runner.spaceCheck = func(context.Context, string, int64) error { return nil }
+	runner.backup = func(
+		_ context.Context,
+		fromVersion int,
+		targetVersion int,
+		_ func(storesqlite.BackupProgress),
+	) (string, error) {
+		backupVersions = [2]int{fromVersion, targetVersion}
+		return "/tmp/application-v16-before-v19.db", nil
+	}
+	report, err := runner.run(t.Context())
+	if err != nil {
+		t.Fatalf("run(v16->v19) error = %v", err)
+	}
+	if report.FromVersion != 16 || report.TargetVersion != 19 ||
+		!equalInts(report.AppliedVersions, []int{17, 18, 19}) || backupVersions != [2]int{16, 19} {
+		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
+	}
+	assertMigrationVersionAndHistory(t, database, 19, 19)
+	if err := database.View(t.Context(), func(_ context.Context, connection *gorm.DB) error {
+		for _, column := range lightModelMigrationColumns {
+			if !connection.Migrator().HasColumn(column.model, column.column) {
+				t.Errorf("v17 column %s.%s is missing", column.table, column.column)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("inspect v17 schema: %v", err)
+	}
+}
+
 func TestApplicationSchemaV16AddsLightIndexTables(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV16Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 16", applicationSchemaVersion)
-	}
 	database := openTestDatabase(t)
 	seedApplicationSchemaV15(t, database)
 	var backupVersions [2]int
 	runner := applicationMigrationRunnerForTest(database)
+	runner.catalog = applicationMigrations[:16]
+	runner.verifyCurrent = verifyApplicationSchemaV16
 	runner.spaceCheck = func(context.Context, string, int64) error { return nil }
 	runner.backup = func(
 		_ context.Context,
@@ -65,6 +105,7 @@ func TestApplicationSchemaV16MigrationRollsBackAtomically(t *testing.T) {
 	seedApplicationSchemaV15(t, database)
 	want := errors.New("injected v16 failure")
 	catalog := append([]migrationDefinition(nil), applicationMigrations...)
+	catalog = catalog[:16]
 	catalog[15].apply = func(ctx context.Context, transaction *gorm.DB) error {
 		if err := ensureSchemaObjects(ctx, transaction, lightIndexSchemaObjects); err != nil {
 			return err
@@ -73,6 +114,7 @@ func TestApplicationSchemaV16MigrationRollsBackAtomically(t *testing.T) {
 	}
 	runner := applicationMigrationRunnerForTest(database)
 	runner.catalog = catalog
+	runner.verifyCurrent = verifyApplicationSchemaV16
 	runner.spaceCheck = func(context.Context, string, int64) error { return nil }
 	runner.backup = func(context.Context, int, int, func(storesqlite.BackupProgress)) (string, error) {
 		return "/tmp/application-v15-before-failed-v16.db", nil
@@ -102,4 +144,15 @@ func seedApplicationSchemaV15(t *testing.T, database *storesqlite.Store) {
 		t.Fatalf("seed application schema v15 = %#v, %v", report, err)
 	}
 	assertMigrationVersionAndHistory(t, database, 15, 15)
+}
+
+func seedApplicationSchemaV16(t *testing.T, database *storesqlite.Store) {
+	t.Helper()
+	runner := applicationMigrationRunnerForTest(database)
+	runner.catalog = applicationMigrations[:16]
+	runner.verifyCurrent = verifyApplicationSchemaV16
+	if report, err := runner.run(t.Context()); err != nil || report.TargetVersion != 16 {
+		t.Fatalf("seed application schema v16 = %#v, %v", report, err)
+	}
+	assertMigrationVersionAndHistory(t, database, 16, 16)
 }

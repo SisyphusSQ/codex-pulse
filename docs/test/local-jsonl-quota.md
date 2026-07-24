@@ -7,7 +7,7 @@
 - 本轮任务性质：TOO-262 本地 Codex JSONL quota observation 解析、投影与 GORM 持久化
 - 当前结论：`PASS（已合并并完成 post-merge verify）`；独立实现评审三项 finding 与最终 scope review 的 zero-reset finding 均已修复并复审清零；PR #25 已合并为 `91841c7`，main focused/race/full/Wails 门禁通过，Linear TOO-262 已读回 Done。
 - 自动化入口：`internal/codex/logs`、`internal/indexer`、`internal/store`
-- 对应计划 / issue：TOO-262 / `.agents/plans/2026-07-15-too-262-local-jsonl-quota-observation.md`
+- 对应 issue：TOO-262
 - 结果说明：全部 fixture 为 synthetic upstream-shaped JSONL，SQLite 仅位于测试临时目录；三项评审回归重复 20 次、3,160,033 次 parser fuzz、受影响包与全仓 test/race/vet、Pure Go 依赖、harness/project/version/diff 与完整 `make verify` 均通过；未读取真实 Codex Home 或默认应用数据库。
 
 ### 本次执行结果
@@ -101,11 +101,8 @@ CGO_ENABLED=0 go test ./internal/codex/logs ./internal/indexer ./internal/store 
 go test ./... -count=1
 go test -race ./... -count=1
 go vet ./...
-make harness-verify
-make project-check
+make verify-architecture
 git diff --check
-python3 .agents/skills/project-version-release/scripts/project_version_release.py \
-  check --repo "$PWD" --json
 make verify
 ```
 
@@ -139,6 +136,6 @@ git status --short
 ## 结果回写
 
 - 执行后更新本文顶部的真实时间、结论、步骤状态和清理摘要；未执行项不得写成通过。
-- 原始长输出与本机路径只留在 `.agents/runs`，不进入提交版。
+- 原始长输出与本机路径只留在 `.artifacts/runs`，不进入提交版。
 - 普通 Execution 只更新 `CHANGELOG.md -> Unreleased`，不创建版本、tag、GitHub Release 或正式发布。
 - Actions 保持 `actions_disabled_by_user`，不把未运行 CI 写成失败或通过。

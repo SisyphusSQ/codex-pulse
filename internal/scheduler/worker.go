@@ -312,7 +312,8 @@ func (service *Service) runCycleOwned(
 	defer service.setActivity(nil)
 	claimed, err := service.repository.ClaimSchedulerTask(ctx, selection.Task.TaskID, startedAtMS)
 	if err != nil {
-		if errors.Is(err, store.ErrSchedulerBusy) || errors.Is(err, store.ErrSchedulerTransition) {
+		if errors.Is(err, store.ErrSchedulerBusy) || errors.Is(err, store.ErrSchedulerTransition) ||
+			errors.Is(err, store.ErrSchedulerPaused) {
 			return CycleResult{}, errors.Join(ErrSchedulerRetry, err)
 		}
 		return CycleResult{}, err

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -105,6 +106,88 @@ func TestRuntimePublishesMetadataBeforeBackgroundTokenScan(t *testing.T) {
 		t.Fatalf("no-change refresh read content: %#v, %v", active, err)
 	}
 	assertLightRuntimeDidNotWriteDeepFacts(t, database)
+}
+
+func TestRuntimeRebuildsUnchangedRolloutAfterParserVersionBump(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	homePath := t.TempDir()
+	rollout := filepath.Join(homePath, "sessions", "parser-bump.jsonl")
+	if err := os.MkdirAll(filepath.Dir(rollout), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := strings.Join([]string{
+		`{"timestamp":"2026-07-19T01:00:00Z","type":"turn_context","payload":{"model":"gpt-5.4-mini"}}`,
+		tokenLine("2026-07-19T01:00:01Z", 100, 20, 10, 2),
+	}, "\n") + "\n"
+	if err := os.WriteFile(rollout, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	homeMetadata, err := logs.NewHomeProbe().Probe(ctx, homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalRollout, err := filepath.EvalSymlinks(rollout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	database, repository := openLightRuntimeRepository(t)
+	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
+			SessionID: "parser-bump", CWD: "/workspace", RolloutPath: &canonicalRollout,
+			CreatedAtMS: 100, UpdatedAtMS: 200,
+		}}}, nil
+	})
+	runtime, err := NewRuntime(RuntimeConfig{Repository: repository, Metadata: provider})
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := store.LightHomeIdentity{Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode}
+	first, err := runtime.Start(ctx, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+	initial, err := repository.ActiveLightTokenScan(ctx, "parser-bump")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		if err := transaction.WithContext(ctx).Table("light_token_scans").
+			Where("session_id = ? AND generation = ?", "parser-bump", initial.Generation).
+			Updates(map[string]any{
+				"parser_version": "codex-token-count-v1", "current_model_key": nil,
+				"current_model_source": "missing",
+			}).Error; err != nil {
+			return err
+		}
+		return transaction.WithContext(ctx).Table("light_token_timed").
+			Where("session_id = ? AND generation = ?", "parser-bump", initial.Generation).
+			Updates(map[string]any{"model_key": nil, "model_source": "missing"}).Error
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := runtime.Start(ctx, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+	active, err := repository.ActiveLightTokenScan(ctx, "parser-bump")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active.Generation <= initial.Generation || active.ParserVersion != TokenParserVersion ||
+		active.Checkpoint.CurrentModelKey == nil || *active.Checkpoint.CurrentModelKey != "gpt-5.4-mini" {
+		t.Fatalf("parser bump did not rebuild unchanged rollout: initial=%#v active=%#v", initial, active)
+	}
 }
 
 func TestRuntimeCancellationLeavesMetadataReady(t *testing.T) {
@@ -353,6 +436,431 @@ func TestRuntimeResumesCommittedOffsetAfterCancellation(t *testing.T) {
 	if err != nil || active.Generation != pending.Generation || active.Checkpoint.DurableOffset != active.Identity.SizeBytes ||
 		active.Checkpoint.InputTokens != 1_200 || active.Checkpoint.PhysicalBytesRead <= resumeOffset {
 		t.Fatalf("active after resume = %#v, %v", active, err)
+	}
+}
+
+func TestRuntimeCoalescesPublishedSessionsIntoOneRefreshNotification(t *testing.T) {
+	t.Parallel()
+
+	homePath := t.TempDir()
+	sessionsDirectory := filepath.Join(homePath, "sessions")
+	if err := os.MkdirAll(sessionsDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	threads := make([]appserver.ThreadMetadata, 0, 2)
+	for index, sessionID := range []string{"coalesced-one", "coalesced-two"} {
+		rollout := filepath.Join(sessionsDirectory, sessionID+".jsonl")
+		if err := os.WriteFile(
+			rollout,
+			[]byte(tokenLine("2026-07-24T01:00:00Z", int64(10+index), 2, 1, 0)+"\n"),
+			0o600,
+		); err != nil {
+			t.Fatal(err)
+		}
+		canonicalRollout, err := filepath.EvalSymlinks(rollout)
+		if err != nil {
+			t.Fatal(err)
+		}
+		threads = append(threads, appserver.ThreadMetadata{
+			SessionID: sessionID, CWD: "/workspace", RolloutPath: &canonicalRollout,
+			CreatedAtMS: 100, UpdatedAtMS: 200,
+		})
+	}
+	homeMetadata, err := logs.NewHomeProbe().Probe(context.Background(), homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, repository := openLightRuntimeRepository(t)
+	var countsMu sync.Mutex
+	batchCommits := 0
+	refreshCommits := 0
+	runtime, err := NewRuntime(RuntimeConfig{
+		Repository: repository,
+		Metadata: metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+			return appserver.ThreadList{Threads: threads}, nil
+		}),
+		BatchCommitted: func(store.LightTokenScan) {
+			countsMu.Lock()
+			batchCommits++
+			countsMu.Unlock()
+		},
+		RefreshCommitted: func() {
+			countsMu.Lock()
+			refreshCommits++
+			countsMu.Unlock()
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := runtime.Start(context.Background(), store.LightHomeIdentity{
+		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := run.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	countsMu.Lock()
+	defer countsMu.Unlock()
+	if batchCommits != 2 || refreshCommits != 1 {
+		t.Fatalf("commit notifications = batches:%d refreshes:%d, want 2/1", batchCommits, refreshCommits)
+	}
+}
+
+func TestRuntimePublishesMetadataOnlyRefreshNotification(t *testing.T) {
+	t.Parallel()
+
+	homePath := t.TempDir()
+	for _, directory := range []string{"sessions", "archived_sessions"} {
+		if err := os.Mkdir(filepath.Join(homePath, directory), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	homeMetadata, err := logs.NewHomeProbe().Probe(context.Background(), homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, repository := openLightRuntimeRepository(t)
+	metadataCommits := 0
+	refreshCommits := 0
+	runtime, err := NewRuntime(RuntimeConfig{
+		Repository: repository,
+		Metadata: metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+			title := "只有元数据"
+			return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
+				SessionID: "metadata-only", Name: &title, CWD: "/workspace",
+				CreatedAtMS: 100, UpdatedAtMS: 200,
+			}}}, nil
+		}),
+		MetadataCommitted: func() { metadataCommits++ },
+		RefreshCommitted:  func() { refreshCommits++ },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := runtime.Start(context.Background(), store.LightHomeIdentity{
+		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := run.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if metadataCommits != 1 || refreshCommits != 1 {
+		t.Fatalf(
+			"metadata-only notifications = metadata:%d refreshes:%d, want 1/1",
+			metadataCommits, refreshCommits,
+		)
+	}
+}
+
+func TestRuntimeMonitorRefreshesTitleAndAppendedTokensFromDurableOffset(t *testing.T) {
+	t.Parallel()
+
+	homePath := t.TempDir()
+	rollout := filepath.Join(homePath, "sessions", "dynamic.jsonl")
+	if err := os.MkdirAll(filepath.Dir(rollout), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	initialContent := strings.Repeat("x", 5_000) + "\n" +
+		tokenLine("2026-07-19T01:00:00Z", 100, 20, 10, 2) + "\n"
+	if err := os.WriteFile(rollout, []byte(initialContent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	homeMetadata, err := logs.NewHomeProbe().Probe(context.Background(), homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalRollout, err := filepath.EvalSymlinks(rollout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, repository := openLightRuntimeRepository(t)
+	var metadataMu sync.Mutex
+	title := "初始标题"
+	updatedAtMS := int64(200)
+	rolloutPath := canonicalRollout
+	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+		metadataMu.Lock()
+		defer metadataMu.Unlock()
+		currentTitle := title
+		path := rolloutPath
+		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
+			SessionID: "dynamic", Name: &currentTitle, CWD: "/workspace", RolloutPath: &path,
+			CreatedAtMS: 100, UpdatedAtMS: updatedAtMS,
+		}}}, nil
+	})
+	metadataCommits := make(chan struct{}, 4)
+	batchCommits := make(chan store.LightTokenScan, 4)
+	runtime, err := NewRuntime(RuntimeConfig{
+		Repository: repository, Metadata: provider, RefreshInterval: time.Hour,
+		MetadataCommitted: func() { metadataCommits <- struct{}{} },
+		BatchCommitted:    func(scan store.LightTokenScan) { batchCommits <- scan },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runContext, cancelRun := context.WithCancel(context.Background())
+	run, err := runtime.Start(runContext, store.LightHomeIdentity{
+		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
+	})
+	if err != nil {
+		cancelRun()
+		t.Fatal(err)
+	}
+	waitLightRuntimeSignal(t, metadataCommits, "initial metadata commit")
+	initialScan := waitLightRuntimeSignal(t, batchCommits, "initial token scan")
+	initialState, err := repository.LightIndexState(context.Background())
+	if err != nil {
+		cancelRun()
+		t.Fatal(err)
+	}
+
+	metadataMu.Lock()
+	title = "动态标题"
+	updatedAtMS = 300
+	metadataMu.Unlock()
+	appendLine := tokenLine("2026-07-19T01:01:00Z", 130, 30, 15, 4) + "\n"
+	file, err := os.OpenFile(rollout, os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		cancelRun()
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString(appendLine); err != nil {
+		_ = file.Close()
+		cancelRun()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		cancelRun()
+		t.Fatal(err)
+	}
+	if !run.Trigger() {
+		cancelRun()
+		t.Fatal("monitored run rejected refresh trigger")
+	}
+	waitLightRuntimeSignal(t, metadataCommits, "updated metadata commit")
+	updatedScan := waitLightRuntimeSignal(t, batchCommits, "appended token scan")
+
+	sessions, err := repository.ListLightSessions(context.Background())
+	if err != nil || len(sessions) != 1 || sessions[0].ThreadName == nil || *sessions[0].ThreadName != "动态标题" {
+		cancelRun()
+		t.Fatalf("refreshed sessions = %#v, %v", sessions, err)
+	}
+	updatedState, err := repository.LightIndexState(context.Background())
+	if err != nil || updatedState.MetadataGeneration != initialState.MetadataGeneration+1 {
+		cancelRun()
+		t.Fatalf("metadata state = %#v, %v", updatedState, err)
+	}
+	fileInfo, err := os.Stat(rollout)
+	if err != nil {
+		cancelRun()
+		t.Fatal(err)
+	}
+	physicalDelta := updatedScan.Checkpoint.PhysicalBytesRead - initialScan.Checkpoint.PhysicalBytesRead
+	if updatedScan.Generation != initialScan.Generation ||
+		updatedScan.Checkpoint.DurableOffset != fileInfo.Size() ||
+		updatedScan.Checkpoint.InputTokens != 130 || updatedScan.Checkpoint.JSONDecoded != 2 ||
+		physicalDelta <= int64(len(appendLine)) || physicalDelta >= int64(len(initialContent)) {
+		cancelRun()
+		t.Fatalf(
+			"append refresh initial=%#v updated=%#v physical_delta=%d file_size=%d",
+			initialScan, updatedScan, physicalDelta, fileInfo.Size(),
+		)
+	}
+	archivedRollout := filepath.Join(homePath, "archived_sessions", "dynamic.jsonl")
+	if err := os.MkdirAll(filepath.Dir(archivedRollout), 0o700); err != nil {
+		cancelRun()
+		t.Fatal(err)
+	}
+	if err := os.Rename(rollout, archivedRollout); err != nil {
+		cancelRun()
+		t.Fatal(err)
+	}
+	canonicalArchived, err := filepath.EvalSymlinks(archivedRollout)
+	if err != nil {
+		cancelRun()
+		t.Fatal(err)
+	}
+	metadataMu.Lock()
+	rolloutPath = canonicalArchived
+	updatedAtMS = 400
+	metadataMu.Unlock()
+	if !run.Trigger() {
+		cancelRun()
+		t.Fatal("monitored run rejected archived-path refresh trigger")
+	}
+	waitLightRuntimeSignal(t, metadataCommits, "archived metadata commit")
+	archivedScan := waitLightRuntimeSignal(t, batchCommits, "archived rollout rebuild")
+	if archivedScan.Generation != updatedScan.Generation+1 || archivedScan.Identity.Path != canonicalArchived ||
+		archivedScan.Checkpoint.InputTokens != 130 || archivedScan.Checkpoint.DurableOffset != fileInfo.Size() {
+		cancelRun()
+		t.Fatalf("archived rollout scan = %#v, previous=%#v", archivedScan, updatedScan)
+	}
+
+	cancelRun()
+	if err := run.Wait(context.Background()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Wait(cancel monitor) error = %v, want context.Canceled", err)
+	}
+}
+
+func TestRuntimeMonitorAppendsShortRolloutUsingPreviousPrefixProof(t *testing.T) {
+	t.Parallel()
+
+	homePath := t.TempDir()
+	rollout := filepath.Join(homePath, "sessions", "short.jsonl")
+	if err := os.MkdirAll(filepath.Dir(rollout), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	initialContent := tokenLine("2026-07-19T01:00:00Z", 10, 2, 1, 0) + "\n"
+	if err := os.WriteFile(rollout, []byte(initialContent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	homeMetadata, err := logs.NewHomeProbe().Probe(context.Background(), homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalRollout, err := filepath.EvalSymlinks(rollout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, repository := openLightRuntimeRepository(t)
+	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+		path := canonicalRollout
+		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
+			SessionID: "short", CWD: "/workspace", RolloutPath: &path, CreatedAtMS: 100, UpdatedAtMS: 200,
+		}}}, nil
+	})
+	commits := make(chan store.LightTokenScan, 3)
+	runtime, err := NewRuntime(RuntimeConfig{
+		Repository: repository, Metadata: provider, RefreshInterval: time.Hour,
+		BatchCommitted: func(scan store.LightTokenScan) { commits <- scan },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runContext, cancelRun := context.WithCancel(context.Background())
+	run, err := runtime.Start(runContext, store.LightHomeIdentity{
+		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
+	})
+	if err != nil {
+		cancelRun()
+		t.Fatal(err)
+	}
+	initialScan := waitLightRuntimeSignal(t, commits, "initial short rollout scan")
+	appendLine := tokenLine("2026-07-19T01:01:00Z", 20, 4, 2, 1) + "\n"
+	file, err := os.OpenFile(rollout, os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		cancelRun()
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString(appendLine); err != nil {
+		_ = file.Close()
+		cancelRun()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		cancelRun()
+		t.Fatal(err)
+	}
+	if !run.Trigger() {
+		cancelRun()
+		t.Fatal("short rollout monitor rejected refresh trigger")
+	}
+	updatedScan := waitLightRuntimeSignal(t, commits, "short rollout append")
+	if updatedScan.Generation != initialScan.Generation || updatedScan.Checkpoint.JSONDecoded != 2 ||
+		updatedScan.Checkpoint.InputTokens != 20 || updatedScan.Checkpoint.DurableOffset != int64(len(initialContent)+len(appendLine)) {
+		cancelRun()
+		t.Fatalf("short rollout initial=%#v updated=%#v", initialScan, updatedScan)
+	}
+	cancelRun()
+	if err := run.Wait(context.Background()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Wait(cancel short monitor) error = %v, want context.Canceled", err)
+	}
+}
+
+func TestRuntimeMonitorPeriodicRefreshRecoversAfterMetadataFailure(t *testing.T) {
+	t.Parallel()
+
+	homePath := t.TempDir()
+	for _, directory := range []string{"sessions", "archived_sessions"} {
+		if err := os.Mkdir(filepath.Join(homePath, directory), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	homeMetadata, err := logs.NewHomeProbe().Probe(context.Background(), homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, repository := openLightRuntimeRepository(t)
+	transient := errors.New("transient metadata failure")
+	var metadataMu sync.Mutex
+	title := "初始标题"
+	calls := 0
+	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+		metadataMu.Lock()
+		defer metadataMu.Unlock()
+		calls++
+		if calls == 2 {
+			return appserver.ThreadList{}, transient
+		}
+		currentTitle := title
+		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
+			SessionID: "periodic", Name: &currentTitle, CWD: "/workspace",
+			CreatedAtMS: 100, UpdatedAtMS: int64(calls) * 100,
+		}}}, nil
+	})
+	metadataCommits := make(chan struct{}, 4)
+	refreshFailures := make(chan error, 4)
+	runtime, err := NewRuntime(RuntimeConfig{
+		Repository: repository, Metadata: provider, RefreshInterval: 10 * time.Millisecond,
+		MetadataCommitted: func() { metadataCommits <- struct{}{} },
+		RefreshFailed:     func(err error) { refreshFailures <- err },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runContext, cancelRun := context.WithCancel(context.Background())
+	run, err := runtime.Start(runContext, store.LightHomeIdentity{
+		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
+	})
+	if err != nil {
+		cancelRun()
+		t.Fatal(err)
+	}
+	waitLightRuntimeSignal(t, metadataCommits, "initial periodic metadata")
+	metadataMu.Lock()
+	title = "周期标题"
+	metadataMu.Unlock()
+	if failure := waitLightRuntimeSignal(t, refreshFailures, "transient refresh failure"); !errors.Is(failure, transient) {
+		cancelRun()
+		t.Fatalf("refresh failure = %v, want transient error", failure)
+	}
+	waitLightRuntimeSignal(t, metadataCommits, "recovered periodic metadata")
+	sessions, err := repository.ListLightSessions(context.Background())
+	if err != nil || len(sessions) != 1 || sessions[0].ThreadName == nil || *sessions[0].ThreadName != "周期标题" {
+		cancelRun()
+		t.Fatalf("periodic sessions = %#v, %v", sessions, err)
+	}
+	cancelRun()
+	if err := run.Wait(context.Background()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Wait(cancel periodic monitor) error = %v, want context.Canceled", err)
+	}
+}
+
+func waitLightRuntimeSignal[T any](t *testing.T, values <-chan T, name string) T {
+	t.Helper()
+	select {
+	case value := <-values:
+		return value
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timed out waiting for %s", name)
+		var zero T
+		return zero
 	}
 }
 

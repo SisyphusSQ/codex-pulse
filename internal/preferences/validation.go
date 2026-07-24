@@ -109,7 +109,8 @@ func validUIPreferences(value UIPreferences) bool {
 	if value.LaunchBehavior != LaunchBehaviorMainWindow && value.LaunchBehavior != LaunchBehaviorTray {
 		return false
 	}
-	return value.OverviewRange == OverviewRangeToday || value.OverviewRange == OverviewRangeSevenDays ||
+	return value.OverviewRange == OverviewRangeQuotaWeek || value.OverviewRange == OverviewRangeToday ||
+		value.OverviewRange == OverviewRangeSevenDays ||
 		value.OverviewRange == OverviewRangeThirtyDays
 }
 

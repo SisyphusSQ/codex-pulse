@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -25,20 +26,31 @@ type LightRolloutIdentity struct {
 	PrefixBytes       int64
 	PrefixSHA256      string
 	FingerprintSHA256 string
+	Comparison        *LightPrefixComparison
+}
+
+// LightPrefixComparison is transient proof of the current file's bytes at the
+// previous snapshot prefix length. It allows short files to append without
+// persisting or rereading source content through the token parser.
+type LightPrefixComparison struct {
+	PrefixBytes  int64
+	PrefixSHA256 string
 }
 
 type LightTokenCheckpoint struct {
-	DurableOffset     int64
-	Complete          bool
-	InputTokens       int64
-	CachedInputTokens int64
-	OutputTokens      int64
-	ReasoningTokens   int64
-	LatestEventAtMS   *int64
-	PhysicalBytesRead int64
-	LinesSeen         int64
-	CandidateLines    int64
-	JSONDecoded       int64
+	DurableOffset      int64
+	Complete           bool
+	InputTokens        int64
+	CachedInputTokens  int64
+	OutputTokens       int64
+	ReasoningTokens    int64
+	CurrentModelKey    *string
+	CurrentModelSource attribution.Source
+	LatestEventAtMS    *int64
+	PhysicalBytesRead  int64
+	LinesSeen          int64
+	CandidateLines     int64
+	JSONDecoded        int64
 }
 
 type LightTokenDailyDelta struct {
@@ -62,6 +74,8 @@ type LightTokenBatch struct {
 type LightTokenTimedDelta struct {
 	SourceOffset      int64
 	ObservedAtMS      int64
+	ModelKey          *string
+	ModelSource       attribution.Source
 	InputTokens       int64
 	CachedInputTokens int64
 	OutputTokens      int64
@@ -104,6 +118,8 @@ type LightSessionTokenTimed struct {
 	Generation        int64
 	SourceOffset      int64
 	ObservedAtMS      int64
+	ModelKey          *string
+	ModelSource       attribution.Source
 	InputTokens       int64
 	CachedInputTokens int64
 	OutputTokens      int64
@@ -111,34 +127,36 @@ type LightSessionTokenTimed struct {
 }
 
 type lightTokenScanModel struct {
-	SessionID         string `gorm:"column:session_id;primaryKey"`
-	Generation        int64  `gorm:"column:generation;primaryKey"`
-	RolloutPath       string `gorm:"column:rollout_path"`
-	SourceFileID      string `gorm:"column:source_file_id"`
-	HomePath          string `gorm:"column:home_path"`
-	HomeDeviceID      string `gorm:"column:home_device_id"`
-	HomeInode         int64  `gorm:"column:home_inode"`
-	FileDeviceID      string `gorm:"column:file_device_id"`
-	FileInode         int64  `gorm:"column:file_inode"`
-	FileSizeBytes     int64  `gorm:"column:file_size_bytes"`
-	FileMTimeNS       int64  `gorm:"column:file_mtime_ns"`
-	PrefixBytes       int64  `gorm:"column:prefix_bytes"`
-	PrefixSHA256      string `gorm:"column:prefix_sha256"`
-	FingerprintSHA256 string `gorm:"column:fingerprint_sha256"`
-	ParserVersion     string `gorm:"column:parser_version"`
-	DurableOffset     int64  `gorm:"column:durable_offset"`
-	Complete          bool   `gorm:"column:complete"`
-	InputTokens       int64  `gorm:"column:input_tokens"`
-	CachedInputTokens int64  `gorm:"column:cached_input_tokens"`
-	OutputTokens      int64  `gorm:"column:output_tokens"`
-	ReasoningTokens   int64  `gorm:"column:reasoning_tokens"`
-	LatestEventAtMS   *int64 `gorm:"column:latest_event_at_ms"`
-	PhysicalBytesRead int64  `gorm:"column:physical_bytes_read"`
-	LinesSeen         int64  `gorm:"column:lines_seen"`
-	CandidateLines    int64  `gorm:"column:candidate_lines"`
-	JSONDecoded       int64  `gorm:"column:json_decoded"`
-	State             string `gorm:"column:state"`
-	UpdatedAtMS       int64  `gorm:"column:updated_at_ms"`
+	SessionID          string  `gorm:"column:session_id;primaryKey"`
+	Generation         int64   `gorm:"column:generation;primaryKey"`
+	RolloutPath        string  `gorm:"column:rollout_path"`
+	SourceFileID       string  `gorm:"column:source_file_id"`
+	HomePath           string  `gorm:"column:home_path"`
+	HomeDeviceID       string  `gorm:"column:home_device_id"`
+	HomeInode          int64   `gorm:"column:home_inode"`
+	FileDeviceID       string  `gorm:"column:file_device_id"`
+	FileInode          int64   `gorm:"column:file_inode"`
+	FileSizeBytes      int64   `gorm:"column:file_size_bytes"`
+	FileMTimeNS        int64   `gorm:"column:file_mtime_ns"`
+	PrefixBytes        int64   `gorm:"column:prefix_bytes"`
+	PrefixSHA256       string  `gorm:"column:prefix_sha256"`
+	FingerprintSHA256  string  `gorm:"column:fingerprint_sha256"`
+	ParserVersion      string  `gorm:"column:parser_version"`
+	DurableOffset      int64   `gorm:"column:durable_offset"`
+	Complete           bool    `gorm:"column:complete"`
+	InputTokens        int64   `gorm:"column:input_tokens"`
+	CachedInputTokens  int64   `gorm:"column:cached_input_tokens"`
+	OutputTokens       int64   `gorm:"column:output_tokens"`
+	ReasoningTokens    int64   `gorm:"column:reasoning_tokens"`
+	CurrentModelKey    *string `gorm:"column:current_model_key;type:TEXT CHECK (current_model_key IS NULL OR (length(current_model_key) BETWEEN 1 AND 128))"`
+	CurrentModelSource string  `gorm:"column:current_model_source;type:TEXT NOT NULL DEFAULT 'missing' CHECK (current_model_source IN ('model_canonical','model_alias','missing','invalid_model'))"`
+	LatestEventAtMS    *int64  `gorm:"column:latest_event_at_ms"`
+	PhysicalBytesRead  int64   `gorm:"column:physical_bytes_read"`
+	LinesSeen          int64   `gorm:"column:lines_seen"`
+	CandidateLines     int64   `gorm:"column:candidate_lines"`
+	JSONDecoded        int64   `gorm:"column:json_decoded"`
+	State              string  `gorm:"column:state"`
+	UpdatedAtMS        int64   `gorm:"column:updated_at_ms"`
 }
 
 func (lightTokenScanModel) TableName() string { return "light_token_scans" }
@@ -156,14 +174,16 @@ type lightTokenDailyModel struct {
 func (lightTokenDailyModel) TableName() string { return "light_token_daily" }
 
 type lightTokenTimedModel struct {
-	SessionID         string `gorm:"column:session_id;primaryKey"`
-	Generation        int64  `gorm:"column:generation;primaryKey"`
-	SourceOffset      int64  `gorm:"column:source_offset;primaryKey"`
-	ObservedAtMS      int64  `gorm:"column:observed_at_ms"`
-	InputTokens       int64  `gorm:"column:input_tokens"`
-	CachedInputTokens int64  `gorm:"column:cached_input_tokens"`
-	OutputTokens      int64  `gorm:"column:output_tokens"`
-	ReasoningTokens   int64  `gorm:"column:reasoning_tokens"`
+	SessionID         string  `gorm:"column:session_id;primaryKey"`
+	Generation        int64   `gorm:"column:generation;primaryKey"`
+	SourceOffset      int64   `gorm:"column:source_offset;primaryKey"`
+	ObservedAtMS      int64   `gorm:"column:observed_at_ms"`
+	ModelKey          *string `gorm:"column:model_key;type:TEXT CHECK (model_key IS NULL OR (length(model_key) BETWEEN 1 AND 128))"`
+	ModelSource       string  `gorm:"column:model_source;type:TEXT NOT NULL DEFAULT 'missing' CHECK (model_source IN ('model_canonical','model_alias','missing','invalid_model'))"`
+	InputTokens       int64   `gorm:"column:input_tokens"`
+	CachedInputTokens int64   `gorm:"column:cached_input_tokens"`
+	OutputTokens      int64   `gorm:"column:output_tokens"`
+	ReasoningTokens   int64   `gorm:"column:reasoning_tokens"`
 }
 
 func (lightTokenTimedModel) TableName() string { return "light_token_timed" }
@@ -210,7 +230,8 @@ func (repository *Repository) StartLightTokenRebuild(
 			FileDeviceID: identity.DeviceID, FileInode: identity.Inode, FileSizeBytes: identity.SizeBytes,
 			FileMTimeNS: identity.MTimeNS, PrefixBytes: identity.PrefixBytes, PrefixSHA256: identity.PrefixSHA256,
 			FingerprintSHA256: identity.FingerprintSHA256,
-			ParserVersion:     parserVersion, State: "building", UpdatedAtMS: startedAtMS,
+			ParserVersion:     parserVersion, CurrentModelSource: string(attribution.SourceMissing),
+			State: "building", UpdatedAtMS: startedAtMS,
 		}
 		if err := transaction.WithContext(ctx).Create(&model).Error; err != nil {
 			return err
@@ -267,11 +288,17 @@ func (repository *Repository) StartLightTokenAppend(
 			Where("session_id = ? AND generation = ?", sessionID, generation).Take(&scan).Error; err != nil {
 			return err
 		}
+		proofBytes := identity.PrefixBytes
+		proofSHA256 := identity.PrefixSHA256
+		if identity.Comparison != nil {
+			proofBytes = identity.Comparison.PrefixBytes
+			proofSHA256 = identity.Comparison.PrefixSHA256
+		}
 		if scan.State != "active" || scan.ParserVersion != parserVersion || scan.RolloutPath != identity.Path ||
 			scan.SourceFileID != identity.SourceFileID || scan.FileDeviceID != identity.DeviceID ||
 			scan.FileInode != identity.Inode || identity.SizeBytes <= scan.FileSizeBytes ||
-			identity.MTimeNS < scan.FileMTimeNS || scan.PrefixBytes != identity.PrefixBytes ||
-			scan.PrefixSHA256 != identity.PrefixSHA256 {
+			identity.MTimeNS < scan.FileMTimeNS || scan.PrefixBytes != proofBytes ||
+			scan.PrefixSHA256 != proofSHA256 {
 			return ErrLightTokenConflict
 		}
 		scan.FileSizeBytes = identity.SizeBytes
@@ -344,6 +371,7 @@ func (repository *Repository) CommitLightTokenBatch(ctx context.Context, batch L
 			model := lightTokenTimedModel{
 				SessionID: batch.SessionID, Generation: batch.Generation,
 				SourceOffset: delta.SourceOffset, ObservedAtMS: delta.ObservedAtMS,
+				ModelKey: cloneLightString(delta.ModelKey), ModelSource: string(lightModelSource(delta.ModelSource)),
 				InputTokens: delta.InputTokens, CachedInputTokens: delta.CachedInputTokens,
 				OutputTokens: delta.OutputTokens, ReasoningTokens: delta.ReasoningTokens,
 			}
@@ -489,7 +517,8 @@ func (repository *Repository) LightSessionTokenTimed(
 	for _, model := range models {
 		output = append(output, LightSessionTokenTimed{
 			SessionID: model.SessionID, Generation: model.Generation, SourceOffset: model.SourceOffset,
-			ObservedAtMS: model.ObservedAtMS, InputTokens: model.InputTokens,
+			ObservedAtMS: model.ObservedAtMS, ModelKey: cloneLightString(model.ModelKey),
+			ModelSource: attribution.Source(model.ModelSource), InputTokens: model.InputTokens,
 			CachedInputTokens: model.CachedInputTokens, OutputTokens: model.OutputTokens,
 			ReasoningTokens: model.ReasoningTokens,
 		})
@@ -507,6 +536,13 @@ func validateLightRolloutIdentity(sessionID string, identity LightRolloutIdentit
 		strings.TrimSpace(parserVersion) == "" || timestampMS < 0 {
 		return invalidRecord("invalid light rollout identity")
 	}
+	if identity.Comparison != nil {
+		comparisonDigest, comparisonDigestErr := hex.DecodeString(identity.Comparison.PrefixSHA256)
+		if identity.Comparison.PrefixBytes < 0 || identity.Comparison.PrefixBytes > identity.PrefixBytes ||
+			comparisonDigestErr != nil || len(comparisonDigest) != 32 {
+			return invalidRecord("invalid light rollout comparison")
+		}
+	}
 	return nil
 }
 
@@ -516,6 +552,7 @@ func validateLightTokenBatch(batch LightTokenBatch) error {
 		checkpoint.InputTokens < 0 || checkpoint.CachedInputTokens < 0 || checkpoint.OutputTokens < 0 ||
 		checkpoint.ReasoningTokens < 0 || checkpoint.PhysicalBytesRead < 0 || checkpoint.LinesSeen < 0 ||
 		checkpoint.CandidateLines < 0 || checkpoint.JSONDecoded < 0 ||
+		!validLightModelAttribution(checkpoint.CurrentModelKey, checkpoint.CurrentModelSource) ||
 		(checkpoint.LatestEventAtMS != nil && *checkpoint.LatestEventAtMS < 0) {
 		return invalidRecord("invalid light token batch")
 	}
@@ -527,7 +564,8 @@ func validateLightTokenBatch(batch LightTokenBatch) error {
 	}
 	for _, delta := range batch.TimedDeltas {
 		if delta.SourceOffset <= 0 || delta.SourceOffset > checkpoint.DurableOffset || delta.ObservedAtMS < 0 ||
-			delta.InputTokens < 0 || delta.CachedInputTokens < 0 || delta.OutputTokens < 0 || delta.ReasoningTokens < 0 {
+			delta.InputTokens < 0 || delta.CachedInputTokens < 0 || delta.OutputTokens < 0 || delta.ReasoningTokens < 0 ||
+			!validLightModelAttribution(delta.ModelKey, delta.ModelSource) {
 			return invalidRecord("invalid light token timed delta")
 		}
 	}
@@ -552,6 +590,8 @@ func applyLightCheckpoint(model *lightTokenScanModel, checkpoint LightTokenCheck
 	model.CachedInputTokens = checkpoint.CachedInputTokens
 	model.OutputTokens = checkpoint.OutputTokens
 	model.ReasoningTokens = checkpoint.ReasoningTokens
+	model.CurrentModelKey = cloneLightString(checkpoint.CurrentModelKey)
+	model.CurrentModelSource = string(lightModelSource(checkpoint.CurrentModelSource))
 	model.LatestEventAtMS = checkpoint.LatestEventAtMS
 	model.PhysicalBytesRead = checkpoint.PhysicalBytesRead
 	model.LinesSeen = checkpoint.LinesSeen
@@ -575,9 +615,38 @@ func lightTokenScanFromModel(model lightTokenScanModel) LightTokenScan {
 			DurableOffset: model.DurableOffset, Complete: model.Complete,
 			InputTokens: model.InputTokens, CachedInputTokens: model.CachedInputTokens,
 			OutputTokens: model.OutputTokens, ReasoningTokens: model.ReasoningTokens,
-			LatestEventAtMS: model.LatestEventAtMS, PhysicalBytesRead: model.PhysicalBytesRead,
+			CurrentModelKey:    cloneLightString(model.CurrentModelKey),
+			CurrentModelSource: attribution.Source(model.CurrentModelSource),
+			LatestEventAtMS:    model.LatestEventAtMS, PhysicalBytesRead: model.PhysicalBytesRead,
 			LinesSeen: model.LinesSeen, CandidateLines: model.CandidateLines, JSONDecoded: model.JSONDecoded,
 		},
 		State: model.State, UpdatedAtMS: model.UpdatedAtMS,
 	}
+}
+
+func lightModelSource(source attribution.Source) attribution.Source {
+	if source == "" {
+		return attribution.SourceMissing
+	}
+	return source
+}
+
+func validLightModelAttribution(modelKey *string, source attribution.Source) bool {
+	source = lightModelSource(source)
+	switch source {
+	case attribution.SourceModelCanonical, attribution.SourceModelAlias:
+		return modelKey != nil && attribution.NormalizeModel(*modelKey).Key == *modelKey
+	case attribution.SourceMissing, attribution.SourceInvalidModel:
+		return modelKey == nil
+	default:
+		return false
+	}
+}
+
+func cloneLightString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }

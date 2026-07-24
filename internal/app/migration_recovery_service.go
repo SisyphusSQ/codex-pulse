@@ -1,6 +1,11 @@
 package app
 
-import "context"
+import (
+	"context"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/core"
+	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
+)
 
 type MigrationRecoveryService struct {
 	controller *migrationRecoveryController
@@ -13,48 +18,93 @@ func newMigrationRecoveryService(controller *migrationRecoveryController) (*Migr
 	return &MigrationRecoveryService{controller: controller}, nil
 }
 
-func (service *MigrationRecoveryService) State(context.Context) (MigrationRecoverySnapshot, error) {
+func (service *MigrationRecoveryService) State(ctx context.Context) (core.MigrationRecoverySnapshot, error) {
 	if service == nil || service.controller == nil {
-		return MigrationRecoverySnapshot{}, newBindingFailure(ErrMigrationRecoveryUnavailable)
+		return core.MigrationRecoverySnapshot{}, basequery.NewUnavailableFailure(ErrMigrationRecoveryUnavailable)
 	}
-	return service.controller.Snapshot(), nil
+	if err := ctx.Err(); err != nil {
+		return core.MigrationRecoverySnapshot{}, err
+	}
+	return coreRecoverySnapshot(service.controller.Snapshot()), nil
 }
 
-func (service *MigrationRecoveryService) Retry(ctx context.Context) (MigrationRecoveryReceipt, error) {
+func (service *MigrationRecoveryService) Retry(ctx context.Context) (core.MigrationRecoveryReceipt, error) {
 	if service == nil || service.controller == nil {
-		return MigrationRecoveryReceipt{}, newBindingFailure(ErrMigrationRecoveryUnavailable)
+		return core.MigrationRecoveryReceipt{}, basequery.NewUnavailableFailure(ErrMigrationRecoveryUnavailable)
 	}
-	return bindingCall(func() (MigrationRecoveryReceipt, error) { return service.controller.Retry(ctx) })
+	receipt, err := service.controller.Retry(ctx)
+	return coreRecoveryReceipt(receipt), publicRuntimeCommandFailure(err)
 }
 
-func (service *MigrationRecoveryService) Prepare(ctx context.Context, backupName string) (MigrationRestoreConfirmation, error) {
+func (service *MigrationRecoveryService) Prepare(
+	ctx context.Context,
+	backupName string,
+) (core.MigrationRestoreConfirmation, error) {
 	if service == nil || service.controller == nil {
-		return MigrationRestoreConfirmation{}, newBindingFailure(ErrMigrationRecoveryUnavailable)
+		return core.MigrationRestoreConfirmation{}, basequery.NewUnavailableFailure(ErrMigrationRecoveryUnavailable)
 	}
-	return bindingCall(func() (MigrationRestoreConfirmation, error) {
-		return service.controller.PrepareRestore(ctx, backupName)
-	})
+	confirmation, err := service.controller.PrepareRestore(ctx, backupName)
+	return coreRestoreConfirmation(confirmation), publicRuntimeCommandFailure(err)
 }
 
-func (service *MigrationRecoveryService) Confirm(ctx context.Context, token string) (MigrationRecoveryReceipt, error) {
+func (service *MigrationRecoveryService) Confirm(
+	ctx context.Context,
+	token string,
+) (core.MigrationRecoveryReceipt, error) {
 	if service == nil || service.controller == nil {
-		return MigrationRecoveryReceipt{}, newBindingFailure(ErrMigrationRecoveryUnavailable)
+		return core.MigrationRecoveryReceipt{}, basequery.NewUnavailableFailure(ErrMigrationRecoveryUnavailable)
 	}
-	return bindingCall(func() (MigrationRecoveryReceipt, error) { return service.controller.ConfirmRestore(ctx, token) })
+	receipt, err := service.controller.ConfirmRestore(ctx, token)
+	return coreRecoveryReceipt(receipt), publicRuntimeCommandFailure(err)
 }
 
-func (service *MigrationRecoveryService) Cancel(context.Context) error {
+func (service *MigrationRecoveryService) Cancel(ctx context.Context) error {
 	if service == nil || service.controller == nil {
-		return newBindingFailure(ErrMigrationRecoveryUnavailable)
+		return basequery.NewUnavailableFailure(ErrMigrationRecoveryUnavailable)
 	}
-	_, err := bindingCall(func() (struct{}, error) { return struct{}{}, service.controller.CancelRestore() })
-	return err
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return publicRuntimeCommandFailure(service.controller.CancelRestore())
 }
 
-func (service *MigrationRecoveryService) Exit(context.Context) error {
+func (service *MigrationRecoveryService) Exit(ctx context.Context) error {
 	if service == nil || service.controller == nil {
-		return newBindingFailure(ErrMigrationRecoveryUnavailable)
+		return basequery.NewUnavailableFailure(ErrMigrationRecoveryUnavailable)
 	}
-	_, err := bindingCall(func() (struct{}, error) { return struct{}{}, service.controller.Exit() })
-	return err
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return publicRuntimeCommandFailure(service.controller.Exit())
+}
+
+func coreRecoverySnapshot(snapshot MigrationRecoverySnapshot) core.MigrationRecoverySnapshot {
+	backups := make([]core.MigrationBackupInfo, 0, len(snapshot.Backups))
+	for _, backup := range snapshot.Backups {
+		backups = append(backups, core.MigrationBackupInfo{
+			Name: backup.Name, SizeBytes: backup.SizeBytes, ModifiedAtMS: backup.ModifiedAtMS,
+		})
+	}
+	return core.MigrationRecoverySnapshot{
+		Version: snapshot.Version, Phase: string(snapshot.Phase), Stage: string(snapshot.Stage), Code: snapshot.Code,
+		CurrentVersion: snapshot.CurrentVersion, TargetVersion: snapshot.TargetVersion,
+		FailedVersion: snapshot.FailedVersion, CanRetry: snapshot.CanRetry, CanExit: snapshot.CanExit,
+		Backups: backups, AuditWarning: snapshot.AuditWarning,
+	}
+}
+
+func coreRecoveryReceipt(receipt MigrationRecoveryReceipt) core.MigrationRecoveryReceipt {
+	return core.MigrationRecoveryReceipt{
+		Phase: string(receipt.Phase), RestartRequired: receipt.RestartRequired, AuditWarning: receipt.AuditWarning,
+	}
+}
+
+func coreRestoreConfirmation(confirmation MigrationRestoreConfirmation) core.MigrationRestoreConfirmation {
+	return core.MigrationRestoreConfirmation{
+		ConfirmationToken: confirmation.Token,
+		Backup: core.MigrationBackupInfo{
+			Name: confirmation.Backup.Name, SizeBytes: confirmation.Backup.SizeBytes,
+			ModifiedAtMS: confirmation.Backup.ModifiedAtMS,
+		},
+	}
 }

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Codex Pulse signal layer">
+  <defs>
+    <linearGradient id="pulse" x1="650" y1="274" x2="884" y2="416" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#DDFBFF"/>
+      <stop offset="0.5" stop-color="#72DEFF"/>
+      <stop offset="1" stop-color="#9087FF"/>
+    </linearGradient>
+  </defs>
+  <path d="M650 278 C690 294 722 317 748 346 L782 303 L808 394 L847 346 L878 373"
+    fill="none" stroke="url(#pulse)" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

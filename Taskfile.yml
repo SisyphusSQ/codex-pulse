@@ -1,120 +1,22 @@
 version: "3"
 
-vars:
-  VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
-
-includes:
-  common: ./build/Taskfile.yml
-  darwin: ./build/darwin/Taskfile.yml
-
 tasks:
-  generate:bindings:
-    summary: 生成前端 TypeScript bindings
+  generate:
+    summary: 重生成 Core RPC Go stub
     cmds:
-      - task: common:generate:bindings
+      - make generate-proto
+
+  test:
+    summary: 运行 Go race test 与 vet
+    cmds:
+      - make verify-go
 
   build:
-    summary: 构建 macOS arm64 应用二进制
+    summary: 构建 Go Helper 到 bin/codex-pulse
     cmds:
-      - task: darwin:build
-        vars:
-          ARCH: '{{.ARCH | default "arm64"}}'
-          DEV: '{{.DEV}}'
-          APP_VERSION: '{{.APP_VERSION | default "0.0.0"}}'
+      - make verify-helper
 
-  package:
-    summary: 构建、验证并归档 macOS 15+ arm64 应用 bundle
-    preconditions:
-      - sh: test "{{OS}}" = darwin
-        msg: Codex Pulse v0.1 只支持在 macOS 上打包
-      - sh: test "$CODEX_PULSE_GOOS" = darwin
-        msg: Codex Pulse v0.1 package 只接受 GOOS=darwin
+  verify:
+    summary: 运行 Helper 完整本地验证
     cmds:
-      - task: darwin:package
-        vars:
-          ARCH: '{{.ARCH | default "arm64"}}'
-          APP_VERSION: '{{.APP_VERSION | default "0.0.0"}}'
-          BUILD_NUMBER: '{{.BUILD_NUMBER | default "0"}}'
-          FEED_URL: '{{.FEED_URL}}'
-          PUBLIC_KEY: '{{.PUBLIC_KEY}}'
-    env:
-      CODEX_PULSE_GOOS: '{{.GOOS | default "darwin"}}'
-
-  package:verify:
-    summary: 验证 macOS arm64 bundle、ad-hoc 签名与单顶层 ZIP
-    cmds:
-      - task: darwin:package:verify
-        vars:
-          APP_VERSION: '{{.APP_VERSION | default "0.0.0"}}'
-          BUILD_NUMBER: '{{.BUILD_NUMBER | default "0"}}'
-
-  package:archive:
-    summary: 从已签名 bundle 重新生成并验证单顶层 ZIP
-    cmds:
-      - task: darwin:package:archive
-        vars:
-          APP_VERSION: '{{.APP_VERSION | default "0.0.0"}}'
-          BUILD_NUMBER: '{{.BUILD_NUMBER | default "0"}}'
-
-  package:clean:
-    summary: 删除本地 macOS bundle、ZIP 与临时图标产物
-    cmds:
-      - task: darwin:package:clean
-
-  release:local:
-    summary: 从 stdin 私钥构建并离线验证本地 Sparkle release 目录（不发布）
-    preconditions:
-      - sh: test "{{OS}}" = darwin
-        msg: Sparkle release 仅支持在 macOS 上构建
-    cmds:
-      - >-
-        scripts/sparkle/release.sh
-        "$CODEX_PULSE_APP_VERSION"
-        "$CODEX_PULSE_BUILD_NUMBER"
-        "$CODEX_PULSE_FEED_URL"
-        "$CODEX_PULSE_DOWNLOAD_URL_PREFIX"
-        "$CODEX_PULSE_PUBLIC_KEY"
-        "$CODEX_PULSE_RELEASE_NOTES_FILE"
-    env:
-      CODEX_PULSE_APP_VERSION: '{{.APP_VERSION}}'
-      CODEX_PULSE_BUILD_NUMBER: '{{.BUILD_NUMBER}}'
-      CODEX_PULSE_FEED_URL: '{{.FEED_URL}}'
-      CODEX_PULSE_DOWNLOAD_URL_PREFIX: '{{.DOWNLOAD_URL_PREFIX}}'
-      CODEX_PULSE_PUBLIC_KEY: '{{.PUBLIC_KEY}}'
-      CODEX_PULSE_RELEASE_NOTES_FILE: '{{.RELEASE_NOTES_FILE}}'
-
-  release:verify:
-    summary: 仅使用公钥离线复验本地 Sparkle release 目录
-    cmds:
-      - >-
-        scripts/sparkle/verify_release.sh
-        dist/update
-        "$CODEX_PULSE_APP_VERSION"
-        "$CODEX_PULSE_BUILD_NUMBER"
-        "$CODEX_PULSE_FEED_URL"
-        "$CODEX_PULSE_DOWNLOAD_URL_PREFIX"
-        "$CODEX_PULSE_PUBLIC_KEY"
-    env:
-      CODEX_PULSE_APP_VERSION: '{{.APP_VERSION}}'
-      CODEX_PULSE_BUILD_NUMBER: '{{.BUILD_NUMBER}}'
-      CODEX_PULSE_FEED_URL: '{{.FEED_URL}}'
-      CODEX_PULSE_DOWNLOAD_URL_PREFIX: '{{.DOWNLOAD_URL_PREFIX}}'
-      CODEX_PULSE_PUBLIC_KEY: '{{.PUBLIC_KEY}}'
-
-  release:e2e:
-    summary: 显式运行本地 synthetic release 与 N-1 真实升级矩阵（不发布、不触发 Actions）
-    preconditions:
-      - sh: test "$CODEX_PULSE_RUN_RELEASE_PIPELINE" = 1
-        msg: 请显式设置 CODEX_PULSE_RUN_RELEASE_PIPELINE=1
-    cmds:
-      - bash scripts/sparkle/local_release_pipeline.sh
-
-  run:
-    summary: 运行已构建的 macOS 开发应用
-    cmds:
-      - task: darwin:run
-
-  dev:
-    summary: 启动 Wails 开发模式
-    cmds:
-      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+      - make verify

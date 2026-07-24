@@ -1,142 +1,124 @@
 # Codex Pulse
 
-> A local-first macOS observability companion for Codex usage, quotas, sessions, and data health.
+**看清 Codex 在本机如何消耗、额度还剩多少，以及当前数据是否可信。**
 
-Codex Pulse 是一个 Codex-only、本机优先的 macOS 菜单栏应用。它计划从 Codex 在本机维护的数据中提取有限的结构化事实，帮助用户查看额度、Token 用量、Session、项目归因、索引进度和数据健康状态。
+Codex Pulse 是一款 local-first 的原生 macOS 应用。它把 Codex 分散在本机会话、用量记录和额度窗口中的信息整理成菜单栏状态与可下钻的分析界面，帮助你快速定位高消耗项目和 Session，同时持续说明数据的新鲜度、完整性与健康状态。
 
-## 当前状态
+> 项目仍在积极开发中。目前面向 macOS 15+ / Apple Silicon，主要通过源码构建和本机验收，暂未提供正式签名、公证的发行版。
 
-项目已完成 M1 工程基线并进入 M2 数据层阶段。当前仓库包含可启动的 Go + Wails3 + Vue 3 空应用壳、generated bindings、前后端测试、macOS 15+ arm64 package/signing/CI，以及 SQLite WAL 连接、单写队列、独立只读池和应用关闭生命周期基线；业务 schema、Codex 索引、quota、Tray、Popover、Updater 和正式页面仍由后续 Execution Issue 实现。
+## 它能回答什么
 
-## 设计文档
+- 当前额度还剩多少，何时重置，这个数值是否仍然可信；
+- 今天或最近一段时间用了多少 Token，主要消耗在哪些模型、项目和 Session；
+- 某个 Session 的使用量、API 等价成本和 Turn 时间线是什么；
+- 本地历史是否索引完整，后台任务是否正常，哪些异常正在影响数据；
+- 数据来自本地还是可选在线接口，失败后界面展示的是最新值、上次可信值还是未知状态。
 
-版本化设计资料以 [docs/design](docs/design/README.md) 为唯一入口：模块设计按职责归档在 `details/`，Pencil 源稿、页面预览和图标资产归档在 `front/`。
+## 产品体验
 
-## v0.1 方向
+| 区域 | 你可以看到什么 |
+| --- | --- |
+| 菜单栏 | 额度剩余、同一额度周期内的累计 Token、重置时间与必要的健康提醒，无需打开主窗口 |
+| 概览 | 周额度、今天、最近 7 天或 30 天的使用趋势，按模型拆分的 Token、API 等价成本和高消耗 Session |
+| 会话 | Session 的项目、模型、活跃状态、Token、成本与不含对话正文的 Turn 用量时间线 |
+| 项目 | 按项目聚合的用量与成本排行，并继续下钻到相关 Session |
+| 配额 | 通用额度与模型专属额度的真实周期、剩余比例、重置倒计时、Reset credits 和来源状态 |
+| 本机状态 | 数据完整性、历史补齐进度、索引新鲜度、后台任务、SQLite、存储与最近运行情况 |
+| 设置 | Codex Home、在线额度能力、刷新周期、启动行为、概览范围和更新偏好 |
 
-- 仅支持 macOS，优先完成菜单栏、Popover 和本机工作台体验。
-- 只读增量索引 Codex 本地 JSONL，不复制原始对话，不保存完整 prompt、response 或工具输出。
-- 使用本地 SQLite 保存支持统计、可信状态和恢复所需的结构化数据。
-- 展示 5 小时 / 本周额度、Token 用量、API 等价成本、Session、项目和数据健康。
-- 在线 quota 与 reset credits 作为可关闭的可选能力，凭证只在内存中使用。
-- 首版只提供简体中文界面，不提供用户数据导出。
+主窗口采用“概览 → 会话 → 项目 → 配额”的分析路径；运行诊断、数据来源和设置收拢在系统区域。菜单栏负责快速判断，主窗口负责解释消耗去了哪里，本机状态负责说明数据为什么可信或为什么暂时不可用。
 
-## 当前工程栈
+## 不把未知伪装成正常
 
-- Go + Wails3
-- SQLite（GORM + `github.com/libtnb/sqlite` + `modernc.org/sqlite`，Pure Go）
-- Vue 3 + TypeScript + Vite
-- Tailwind CSS v4
-- Vue Router
-- Vue I18n
-- TanStack Vue Query
+额度和用量工具最容易产生误导的地方，不是没有数据，而是把失败后的默认值当成真实结果。Codex Pulse 对此使用明确的展示语义：
 
-Go module 已固定为 `github.com/SisyphusSQ/codex-pulse`。Wails CLI 与 Go module 精确使用 `v3.0.0-alpha2.117`，前端 runtime 精确使用 `3.0.0-alpha.97`；Go 和 npm lockfile 均已提交，不使用浮动的 `latest`。
+- `0%` 只表示已经确认耗尽；从未取得、尚未计算或当前不适用时显示 `--`；
+- 在线刷新失败但仍有可信历史观测时，继续展示 last-known-good，而不是突然变成 100%；
+- 时间范围尚未索引完整时标记为“部分数据”，不把局部结果冒充完整统计；
+- 额度名称与周期来自当前数据，例如按真实 `window_minutes` 生成周期标签，不硬编码“5 小时额度”；
+- 金额始终标为“API 等价成本”，用于理解 Token 对应的公开 API 价格量级，不代表真实账单或实际扣费。
 
-## 开发环境
+## Local-first 与隐私
 
-- macOS 15+、Apple Silicon arm64
-- Go 1.25+
-- Node.js `^22.13.0 || >=24.0.0`、npm 10+；不支持 Node 23
-- Wails CLI `v3.0.0-alpha2.117`
+Codex Pulse 的分析链路运行在本机：
 
-首次安装精确 Wails CLI 与前端依赖：
+- 只读发现和增量索引 Codex 本地 Session 数据，结构化结果保存在本机 SQLite；
+- 不复制完整对话正文，不持久化工具输出、access token、refresh token、Authorization header 或 RPC token；
+- 在线 quota 与 Reset credits 是可关闭的独立能力，凭证仅在请求期间进入内存；
+- 不提供云同步或公网访问，Swift App 与 Go Helper 只通过私有 Unix Domain Socket 通信；
+- 日志、公开错误和 UI contract 不返回原始 payload、完整路径或底层错误文本。
 
-```bash
-go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha2.117
-wails3 version
-cd frontend
-npm ci
-cd ..
+Codex 原始文件仍由 Codex 自己管理。Codex Pulse 只保存产品功能所需的索引、统计和运行状态，不修改原始 Session 内容。
+
+## 工作原理
+
+Codex Pulse 由两个本地进程组成：
+
+```text
+Codex 本地数据 / 可选在线额度
+             │
+             ▼
+   Go Helper：发现、索引、聚合、调度、SQLite
+             │  Protobuf / gRPC over UDS
+             ▼
+   Swift App：菜单栏、窗口、交互与 Helper 生命周期
 ```
 
-`wails3 version` 必须输出 `v3.0.0-alpha2.117`。若命中其它版本，先修正当前 shell 的 `PATH`，不要用 `latest` 覆盖项目基线。
+[`api/codexpulse/core/v1/core.proto`](api/codexpulse/core/v1/core.proto) 是唯一跨进程 contract。Go Helper 负责数据和业务口径，Swift App 只消费 generated CoreService，不直接读取 SQLite 或 JSONL，也不在 UI 层重新计算业务事实。
 
-### 开发、测试与构建
+## 从源码运行
 
-完整验证当前工程基线时，先确保精确 Wails CLI 与前端 lockfile 依赖已安装，再从仓库根执行统一入口：
+环境要求：
+
+- macOS 15+
+- Apple Silicon
+- Go 1.25
+- `protoc 34.1`
+
+本地产品验收使用真实 `${CODEX_HOME:-$HOME/.codex}`。下面的命令会只读 Session / JSONL，并可能在私有 App runtime 中写入 SQLite、偏好、运行日志和 App Server 的常规 housekeeping；不会修改原始 Session 内容：
 
 ```bash
+make verify-live
+```
+
+`make verify-live` 会构建 development App、复用已确认的私有 runtime，并启动真实 Home 验收。CI、单元测试和确定性 smoke 则使用 synthetic / empty Home，避免读取个人数据。
+
+## 开发与验证
+
+日常开发优先运行受影响的 Go package 或 Swift executable tests。统一入口如下：
+
+```bash
+# Go / Swift 分项测试
+make test-go
+make test-swift
+
+# 提交前产品检查
+make check
+
+# PR / CI 完整验证，使用隔离 Home
 make verify
+
+# contract 修改后重新生成 Go / Swift 代码
+make generate-proto
 ```
 
-`make verify` 会按顺序执行 base harness、项目级机械约束、Go test/vet、前端 typecheck/test/build、Wails bindings/Go module 重生成漂移检查，以及 macOS 15+ arm64 package/ZIP 复验。生成一致性检查先于 package，避免 package 内部的 tidy 掩盖输入漂移；任一层失败都会保留可单独重放的 Make target 和原始命令。
-
-project-check 使用 macOS 自带 Ruby/Psych 安全解析 GitHub Actions YAML：AST 约束唯一的 permissions/contents key，safe-load 后拒绝任何实际 job permissions，并递归扫描解码后的全部 key/value 字符串，只允许当前需要的 `github.workflow`、`github.ref` expressions；不安装额外 gem。缺少 Ruby 或 workflow 无法安全解析时，`CI-001` 会直接失败。
-
-需要定位单层失败时使用：
-
-```bash
-make harness-verify
-make project-check
-make project-check-test
-make project-generated-check-test
-make verify-go
-make verify-frontend
-make verify-generated
-make verify-package
-```
-
-GitHub PR 与 `main` push CI 运行同一个 `make verify`。workflow 固定在 public repository 的 `macos-15` arm64 runner，官方 actions 使用 commit SHA；safe YAML/AST gate 要求唯一顶层权限块只有 `contents: read`，并拒绝 direct、inline、merge 后的 job override。checkout 不持久化凭证，Go/npm dependency cache 显式关闭；完成后同时检查 tracked 与非忽略 untracked 状态。workflow 不显式引用 GitHub token 或发布 secret，也不执行签名身份、notarization、发布或 Linear 写入。
-
-日常单项命令仍可直接执行：
-
-```bash
-# 启动 Wails + Vite 开发模式
-wails3 task dev
-
-# Go 测试
-go test ./...
-
-# 前端检查（从 frontend/ 执行）
-cd frontend
-npm run typecheck
-npm test
-npm run build
-cd ..
-
-# 运行 base harness
-make harness-verify
-
-# 构建 macOS 15 arm64 二进制到 bin/codex-pulse
-wails3 task build ARCH=arm64
-
-# 从 clean package output 构建、ad-hoc 签名并验证 bundle 与 ZIP
-wails3 package GOOS=darwin
-
-# 复验现有 bundle 与 ZIP
-wails3 task package:verify
-
-# 删除 bundle、ZIP 与临时 icns（保留 bin/codex-pulse）
-wails3 task package:clean
-```
-
-验证会生成 ignored `frontend/node_modules/`、`frontend/dist/`、`.task/`、`bin/`。可用 `wails3 task package:clean` 删除 bundle/ZIP/icon 临时产物；如需完全清理依赖和构建缓存，再显式删除其余 ignored 目录。详细复现、失败输出和缓存边界见 `docs/test/engineering-baseline/basic-ci-and-verification.md`。
-
-`wails3 package GOOS=darwin` 默认生成 `bin/Codex Pulse.app` 与 `bin/Codex Pulse.app.zip`，版本为未发布基线 `0.0.0`、build number 为 `0`。需要验证版本注入时可显式传入三段数字版本和非负整数 build number，例如：
-
-```bash
-wails3 package GOOS=darwin APP_VERSION=1.2.3 BUILD_NUMBER=42
-wails3 task package:verify APP_VERSION=1.2.3 BUILD_NUMBER=42
-```
-
-package 只接受 macOS/arm64 目标；图标从 `docs/design/front/assets/icons/` 的冻结资产生成，生成物全部位于 ignored `bin/`。当前签名是 `Signature=adhoc`，只用于本机开发和受控自用：它没有 Developer ID、没有 notarization，`spctl --assess` 拒绝是已知且预期的 Gatekeeper 边界。普通开发卡不会触发 tag、GitHub Release 或其它正式发布动作。
-
-## 工程目录
+主要目录：
 
 | 路径 | 职责 |
 | --- | --- |
-| `main.go` | 嵌入 `frontend/dist` 并启动桌面应用 |
-| `internal/app/` | Wails application composition、窗口生命周期与最小 `Bootstrap` binding |
-| `internal/store/sqlite/` | macOS 应用数据路径、SQLite WAL/pragma、单写队列、只读查询和 drain/close |
-| `frontend/src/` | Vue app assembly、Router、I18n、TanStack Query 与空应用壳 |
-| `frontend/bindings/` | Wails CLI 生成的 Go/TypeScript contract，不手工修改 |
-| `build/` | Wails dev/build/package task、应用 metadata 与 macOS 15+ arm64 bundle/signing 约束 |
-| `docs/` | 设计、harness、runbook 与提交版执行真相 |
+| [`app/macos/`](app/macos/) | 原生 SwiftUI / AppKit 应用、Core client 与 executable tests |
+| [`api/codexpulse/core/v1/`](api/codexpulse/core/v1/) | Protobuf contract 与生成代码 |
+| [`internal/`](internal/) | Go Helper 的索引、查询、调度、持久化和运行时实现 |
+| [`docs/design/`](docs/design/) | 产品、架构、数据、额度、调度与可观测性设计 |
+| [`docs/test/`](docs/test/) | 可复用验收 runbook 与脱敏结果摘要 |
 
-## 隐私原则
+更多细节从以下文档开始：
 
-Codex Pulse 只保存产品功能所需的结构化 metadata 和统计结果。原始 JSONL 继续由 Codex 管理；应用不复制对话正文，不持久化 access token、refresh token、Authorization header、Cookie 或其他凭证。
+- [产品设计](docs/design/details/product/README.md)
+- [系统架构](docs/design/details/architecture/README.md)
+- [数据模型](docs/design/details/data-model/README.md)
+- [额度可信模型](docs/design/details/quota/README.md)
+- [调度与首次索引](docs/design/details/scheduling-and-bootstrap/README.md)
 
 ## License
 

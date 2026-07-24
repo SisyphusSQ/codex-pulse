@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Codex Pulse rear trace layer">
+  <defs>
+    <linearGradient id="rear-trace" x1="360" y1="570" x2="716" y2="706" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#55B8FF"/>
+      <stop offset="1" stop-color="#7A81FF"/>
+    </linearGradient>
+  </defs>
+  <path d="M360 624 C405 695 505 725 589 694 C647 673 693 628 716 570"
+    fill="none" stroke="url(#rear-trace)" stroke-opacity="0.68" stroke-width="42" stroke-linecap="round"/>
+</svg>
