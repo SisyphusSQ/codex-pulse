@@ -79,7 +79,15 @@ func (runtime *Runtime) Start(ctx context.Context, home store.LightHomeIdentity)
 	if !runtime.validStart(ctx, home) {
 		return nil, errors.New("invalid lightweight index start")
 	}
-	metadataChanged, err := runtime.refreshMetadata(ctx, home)
+	metadata, err := runtime.metadata.List(ctx, home.Path)
+	if err != nil {
+		if ctx.Err() != nil || fatalRefreshError(err) {
+			return nil, err
+		}
+		runtime.notifyRefreshFailed(err)
+		return runtime.startWorker(ctx, home, false), nil
+	}
+	metadataChanged, err := runtime.reconcileMetadata(ctx, home, metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +125,14 @@ func (runtime *Runtime) refreshMetadata(
 	if err != nil {
 		return false, err
 	}
+	return runtime.reconcileMetadata(ctx, home, metadata)
+}
+
+func (runtime *Runtime) reconcileMetadata(
+	ctx context.Context,
+	home store.LightHomeIdentity,
+	metadata appserver.ThreadList,
+) (bool, error) {
 	generation := int64(1)
 	state, stateErr := runtime.repository.LightIndexState(ctx)
 	switch {
@@ -139,6 +155,12 @@ func (runtime *Runtime) refreshMetadata(
 		runtime.notifyMetadataCommitted()
 	}
 	return changed, nil
+}
+
+func (runtime *Runtime) notifyRefreshFailed(err error) {
+	if runtime.refreshFailed != nil {
+		runtime.refreshFailed(err)
+	}
 }
 
 func (runtime *Runtime) notifyMetadataCommitted() {
@@ -202,9 +224,7 @@ func (runtime *Runtime) run(
 		if runtime.refreshInterval <= 0 || ctx.Err() != nil || fatalRefreshError(err) {
 			return err
 		}
-		if runtime.refreshFailed != nil {
-			runtime.refreshFailed(err)
-		}
+		runtime.notifyRefreshFailed(err)
 	}
 	if runtime.refreshInterval <= 0 {
 		return nil
@@ -222,9 +242,7 @@ func (runtime *Runtime) run(
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			if runtime.refreshFailed != nil {
-				runtime.refreshFailed(err)
-			}
+			runtime.notifyRefreshFailed(err)
 			if fatalRefreshError(err) {
 				return err
 			}

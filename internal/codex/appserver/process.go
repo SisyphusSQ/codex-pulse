@@ -3,11 +3,16 @@ package appserver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
+
+// ErrCodexBinaryUnavailable 表示当前环境没有可执行的 Codex CLI。
+var ErrCodexBinaryUnavailable = errors.New("Codex binary unavailable")
 
 type ProcessOptions struct {
 	CodexBinary string
@@ -21,9 +26,9 @@ func ListLocalThreads(ctx context.Context, confirmedHome string, options Process
 	if err != nil {
 		return ThreadList{}, err
 	}
-	binary := options.CodexBinary
-	if binary == "" {
-		binary = "codex"
+	binary, err := resolveCodexBinary(options.CodexBinary, defaultCodexBinaryCandidates())
+	if err != nil {
+		return ThreadList{}, err
 	}
 	clientName := options.ClientName
 	if clientName == "" {
@@ -77,6 +82,59 @@ func ListLocalThreads(ctx context.Context, confirmedHome string, options Process
 		return ThreadList{}, err
 	}
 	return NewThreadLister(rpc, ThreadListerOptions{PageSize: options.PageSize}).List(ctx, canonicalHome)
+}
+
+func resolveCodexBinary(explicit string, fallbacks []string) (string, error) {
+	if explicit != "" {
+		path, err := executablePath(explicit)
+		if err != nil {
+			return "", fmt.Errorf("%w: configured executable", ErrCodexBinaryUnavailable)
+		}
+		return path, nil
+	}
+	if path, err := executablePath("codex"); err == nil {
+		return path, nil
+	}
+	for _, candidate := range fallbacks {
+		if candidate == "" {
+			continue
+		}
+		if path, err := executablePath(candidate); err == nil {
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("%w: searched PATH and known installation locations", ErrCodexBinaryUnavailable)
+}
+
+func executablePath(candidate string) (string, error) {
+	path, err := exec.LookPath(candidate)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Abs(path)
+}
+
+func defaultCodexBinaryCandidates() []string {
+	candidates := []string{
+		"/Applications/ChatGPT.app/Contents/Resources/codex",
+		"/Applications/Codex.app/Contents/Resources/codex",
+		"/opt/homebrew/bin/codex",
+		"/usr/local/bin/codex",
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return candidates
+	}
+	candidates = append(candidates,
+		filepath.Join(home, "Applications", "ChatGPT.app", "Contents", "Resources", "codex"),
+		filepath.Join(home, "Applications", "Codex.app", "Contents", "Resources", "codex"),
+		filepath.Join(home, ".codex", "plugins", ".plugin-appserver", "codex"),
+	)
+	nvmCandidates, _ := filepath.Glob(filepath.Join(home, ".nvm", "versions", "node", "*", "bin", "codex"))
+	for index := len(nvmCandidates) - 1; index >= 0; index-- {
+		candidates = append(candidates, nvmCandidates[index])
+	}
+	return candidates
 }
 
 func isolatedCodexEnvironment(environment []string, confirmedHome string) []string {

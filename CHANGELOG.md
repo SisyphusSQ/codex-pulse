@@ -81,6 +81,7 @@
 10. 修复原生 macOS preview 发行包只保留可执行文件 linker ad-hoc 签名、导致整个 App bundle 严格验签失败且 Gatekeeper 不提供“仍要打开”的问题；改为 inside-out ad-hoc 签名，并在打包前和 ZIP 解压后读回完整签名
 11. 修复首次安装缺少 runtime preferences 时 Helper 不会绑定任何数据源、界面持续显示空数据的问题；默认 `${CODEX_HOME:-$HOME/.codex}` 现在经过 metadata-only probe 与 path/device/inode 二次校验后自动持久化，额度与重置额度采集默认开启，已有或自定义 Home 仍保持不覆盖与显式切换确认
 12. 修复 Swift production 构建使用 `-gnone` 时多条 async 路径触发 task-stack 逆序释放并以 `freed pointer was not the last allocation` 终止的问题；改用最小 line tables 编译后再 strip 调试段，继续以 C prefix map 与最终二进制扫描阻止本机路径泄漏，并在发行打包前以同一 production 编译参数运行 App 回归测试
+13. 修复从 Finder 启动时系统最小 `PATH` 找不到 Codex CLI、导致 Helper 在创建 CoreService socket 前退出的问题；App Server 现在解析受控的绝对可执行路径，并将首次 metadata 不可用降级为可观察、可重试的局部失败
 
 #### note:
 1. [TOO-242] 固定 Wails3 `v3.0.0-alpha2.117` 与 macOS arm64 工具链能力基线，补充可复现 runbook、平台 adapter 边界和依赖升级准入规则

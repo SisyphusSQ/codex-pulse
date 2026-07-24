@@ -852,6 +852,76 @@ func TestRuntimeMonitorPeriodicRefreshRecoversAfterMetadataFailure(t *testing.T)
 	}
 }
 
+// 测试首次 App Server 元数据不可用时轻量索引仍启动，并可在后续触发中恢复。（风险复现用例）
+func TestRuntimeStartRecoversAfterInitialMetadataFailure(t *testing.T) {
+	t.Parallel()
+
+	homePath := t.TempDir()
+	for _, directory := range []string{"sessions", "archived_sessions"} {
+		if err := os.Mkdir(filepath.Join(homePath, directory), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	homeMetadata, err := logs.NewHomeProbe().Probe(context.Background(), homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, repository := openLightRuntimeRepository(t)
+	unavailable := errors.New("Codex App Server unavailable")
+	var metadataMu sync.Mutex
+	calls := 0
+	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+		metadataMu.Lock()
+		defer metadataMu.Unlock()
+		calls++
+		if calls == 1 {
+			return appserver.ThreadList{}, unavailable
+		}
+		title := "恢复后的标题"
+		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
+			SessionID: "recovered", Name: &title, CWD: "/workspace",
+			CreatedAtMS: 100, UpdatedAtMS: 200,
+		}}}, nil
+	})
+	metadataCommits := make(chan struct{}, 1)
+	refreshFailures := make(chan error, 1)
+	runtime, err := NewRuntime(RuntimeConfig{
+		Repository: repository, Metadata: provider, RefreshInterval: time.Hour,
+		MetadataCommitted: func() { metadataCommits <- struct{}{} },
+		RefreshFailed:     func(err error) { refreshFailures <- err },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runContext, cancelRun := context.WithCancel(context.Background())
+	run, err := runtime.Start(runContext, store.LightHomeIdentity{
+		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
+	})
+	if err != nil {
+		cancelRun()
+		t.Fatalf("Start() error = %v", err)
+	}
+	if failure := waitLightRuntimeSignal(t, refreshFailures, "initial metadata failure"); !errors.Is(failure, unavailable) {
+		cancelRun()
+		t.Fatalf("refresh failure = %v, want %v", failure, unavailable)
+	}
+	if !run.Trigger() {
+		cancelRun()
+		t.Fatal("runtime rejected recovery trigger")
+	}
+	waitLightRuntimeSignal(t, metadataCommits, "recovered metadata")
+	sessions, err := repository.ListLightSessions(context.Background())
+	if err != nil || len(sessions) != 1 || sessions[0].ThreadName == nil ||
+		*sessions[0].ThreadName != "恢复后的标题" {
+		cancelRun()
+		t.Fatalf("recovered sessions = %#v, %v", sessions, err)
+	}
+	cancelRun()
+	if err := run.Wait(context.Background()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Wait(cancel recovered monitor) error = %v, want context.Canceled", err)
+	}
+}
+
 func waitLightRuntimeSignal[T any](t *testing.T, values <-chan T, name string) T {
 	t.Helper()
 	select {
