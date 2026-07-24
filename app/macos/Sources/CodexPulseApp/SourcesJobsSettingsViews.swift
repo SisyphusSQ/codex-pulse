@@ -404,8 +404,14 @@ struct SettingsView: View {
                     uiSection(response)
                 }
                 Section("本机数据") {
-                    LabeledContent("配置状态", value: response.snapshot.home.configured ? "已配置" : "未配置")
+                    LabeledContent(
+                        "配置状态",
+                        value: response.snapshot.home.configured ? "已配置" : "默认 Codex Home 不可用"
+                    )
                     LabeledContent("当前状态", value: ProductCopy.status(response.snapshot.home.switchStatus))
+                    Text("首次启动会自动使用默认 Codex Home，无需手动确认。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Text("Codex Pulse 只读取本机 Codex 数据。")
                         .font(.caption)
                         .foregroundStyle(.secondary)

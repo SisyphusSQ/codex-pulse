@@ -463,6 +463,17 @@ private func testSettingsOverviewRangeFallbackMatchesProductOptions() throws {
         "settings fallback must expose the same overview ranges as the product")
 }
 
+private func testSettingsExplainsAutomaticDefaultHome() throws {
+    let source = try mainWindowSource("SourcesJobsSettingsViews.swift")
+    try expect(
+        source.contains(
+            "response.snapshot.home.configured ? \"已配置\" : \"默认 Codex Home 不可用\""),
+        "settings must explain why a first launch can remain unconfigured")
+    try expect(
+        source.contains("首次启动会自动使用默认 Codex Home，无需手动确认。"),
+        "settings must describe automatic first-launch binding")
+}
+
 private func testStatusPillUsesProductCopy() throws {
     let source = try mainWindowSource("FeatureViewSupport.swift")
     try expect(
@@ -2712,6 +2723,7 @@ struct CodexPulseAppTestMain {
         try testTrendSelectionSnapsToNearestRealPoint()
         try testSidebarSettingsUsesSystemRowSpacing()
         try testSettingsOverviewRangeFallbackMatchesProductOptions()
+        try testSettingsExplainsAutomaticDefaultHome()
         try testStatusPillUsesProductCopy()
         try testStatusItemRefreshReadsCommittedState()
         try testInitialWindowUsesScreenAwarePreferredLayout()

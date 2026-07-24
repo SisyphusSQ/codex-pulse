@@ -50,6 +50,12 @@ Codex Pulse 的分析链路运行在本机：
 
 Codex 原始文件仍由 Codex 自己管理。Codex Pulse 只保存产品功能所需的索引、统计和运行状态，不修改原始 Session 内容。
 
+首次启动且尚无应用偏好时，Go Helper 会自动选择
+`${CODEX_HOME:-$HOME/.codex}`，先执行不读取会话正文的 metadata-only 安全探测，
+再保存 canonical path、device 和 inode；这一默认来源不要求用户手工确认。
+默认目录不存在或未通过安全探测时，应用保持未配置且不开始索引。之后更换为
+其他 Codex Home 仍需在设置中显式确认。
+
 ## 工作原理
 
 Codex Pulse 由两个本地进程组成：
@@ -101,7 +107,7 @@ make verify
 # 组装本地 unsigned preview 候选，不创建 tag 或 GitHub Release
 scripts/macos/build-release-app.sh \
   --version 0.1.0-beta.1 \
-  --build-number 2
+  --build-number 4
 
 # contract 修改后重新生成 Go / Swift 代码
 make generate-proto
@@ -110,6 +116,8 @@ make generate-proto
 发行候选写入 `.artifacts/releases/<tag>/`，包含 Apple Silicon App ZIP 与
 `SHA256SUMS`。未签名、未公证的 preview 不能当作 stable；远端发布还必须
 经过 tag、Release、资产摘要和首次打开流程的独立读回。
+preview 可在逐次明确授权后以 ad-hoc 签名的 GitHub prerelease 形式提供；
+stable 发行必须具备 Developer ID 签名、公证和对应安装验证。
 
 主要目录：
 

@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/helper"
@@ -38,8 +40,24 @@ func parseRuntimeConfig(arguments []string) (helper.RuntimeConfig, error) {
 	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || *socketPath == "" || *authFD < 3 {
 		return helper.RuntimeConfig{}, fmt.Errorf("invalid helper arguments")
 	}
+	defaultCodexHome, err := resolveDefaultCodexHome()
+	if err != nil {
+		return helper.RuntimeConfig{}, fmt.Errorf("resolve default Codex Home: %w", err)
+	}
 	return helper.RuntimeConfig{
 		SocketPath: *socketPath, AuthFD: uintptr(*authFD), HelperVersion: applicationVersion,
 		DatabasePath: *databasePath, PreferencesPath: *preferencesPath,
+		DefaultCodexHome: defaultCodexHome,
 	}, nil
+}
+
+func resolveDefaultCodexHome() (string, error) {
+	if configured := os.Getenv("CODEX_HOME"); strings.TrimSpace(configured) != "" {
+		return configured, nil
+	}
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(userHome, ".codex"), nil
 }

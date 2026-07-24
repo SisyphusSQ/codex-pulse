@@ -26,9 +26,10 @@ type lifecycleStore interface {
 type storeOpener func(context.Context) (lifecycleStore, error)
 
 type Config struct {
-	Broker          *core.InvalidationBroker
-	Store           storesqlite.Config
-	PreferencesPath string
+	Broker           *core.InvalidationBroker
+	Store            storesqlite.Config
+	PreferencesPath  string
+	DefaultCodexHome string
 }
 
 // Runtime owns the business graph behind the RPC transport. It contains no
@@ -94,6 +95,15 @@ func openNormalRuntime(
 		_ = metricsRuntime.Close(context.Background())
 		_ = database.Close(context.Background())
 		return nil, err
+	}
+	if _, err := ensureDefaultCodexHomeConfigured(ctx, defaultCodexHomeConfiguration{
+		HomePath:            config.DefaultCodexHome,
+		TrackerDatabasePath: database.Config().Path,
+		Store:               preferenceStore,
+	}); err != nil {
+		_ = metricsRuntime.Close(context.Background())
+		_ = database.Close(context.Background())
+		return nil, fmt.Errorf("configure default Codex Home: %w", err)
 	}
 	service, err := composeCoreService(database, preferenceStore, metricsRuntime.Observer())
 	if err != nil {

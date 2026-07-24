@@ -2,9 +2,12 @@
 
 ## 当前状态
 
-当前仓库只交付 Go Helper，不交付可独立运行的 macOS `.app`、更新器或发布包。旧桌面运行时、平台更新 adapter、bundle/package 脚本和本地更新流水线已经删除；历史实现不能继续作为当前设计真相。
+当前仓库交付 Go Helper 与原生 Swift macOS App，并提供 Apple Silicon preview
+Bundle/ZIP 组装、ad-hoc 签名和解压后严格验签入口。preview 尚未使用
+Developer ID，也未完成 Apple 公证；因此只能在逐次明确授权后作为 GitHub
+prerelease 提供，不能冒充 stable。
 
-后续 Swift native client 负责：
+Swift native client 负责：
 
 - 窗口、菜单栏、应用激活与退出交互；
 - Helper 进程创建、一次性 token pipe、UDS 目录和崩溃重启策略；
@@ -47,19 +50,19 @@ Shutdown(reason = client_exit | client_restart)
 - 恢复流程只暴露稳定 stage/code/version 与安全备份摘要；底层 SQL、数据库正文、绝对路径和凭据不跨 RPC。
 - 二进制回滚不等于 schema 回滚。后续发布矩阵必须显式验证 N-1、migration failure、恢复、重启和数据兼容性。
 
-## 后续发布门禁
+## 发布门禁
 
-Swift 客户端实现前，以下项目均保持 `planned`，不得引用旧本地脚本或历史测试结果冒充当前通过：
+以下证据必须按具体发行候选重新读回，历史结果不能冒充当前通过：
 
-1. gRPC Swift client 生成与 contract drift。
-2. Helper 在 `.app` 内的嵌入、权限、架构和签名读回。
-3. UDS/token pipe 的真实父子进程 E2E、Helper 崩溃恢复和版本握手。
-4. Developer ID、hardened runtime、notarization 与发布产物校验。
-5. 更新检查、下载、签名验证、safe shutdown、替换和重启矩阵。
-6. migration recovery 与 N-1 兼容矩阵。
-7. 正式密钥、上传、tag、release 和外部分发授权。
+1. gRPC Swift client 生成、contract drift 与隔离 transport smoke。
+2. Helper 在 `.app` 内的嵌入、权限、arm64 架构和 inside-out 签名读回。
+3. UDS/token pipe 的父子进程 E2E、Helper 崩溃恢复和版本握手。
+4. preview 的 ZIP 单顶层结构、解压后严格验签、SHA-256、tag、Draft Release 和远端资产读回。
+5. 真实 Home 产品验收，以及新安装首次绑定默认 Home 的独立验证。
+6. stable 所需的 Developer ID、hardened runtime、公证、安装和更新矩阵。
+7. 正式密钥、stable 发布和外部分发授权。
 
-正式发布必须继续遵守：密钥不进入 argv、环境、日志、manifest 或仓库；缺少签名/notarization/读回证据时 fail closed；本地 ad-hoc build 不能冒充正式发布。
+所有发布必须继续遵守：密钥不进入 argv、环境、日志、manifest 或仓库。明确标记的 preview 可使用 ad-hoc 签名且不公证，但 Release Notes 必须说明 Gatekeeper 手工放行步骤；stable 缺少 Developer ID 签名、公证或安装读回证据时 fail closed。
 
 ## 当前验证入口
 

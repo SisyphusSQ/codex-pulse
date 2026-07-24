@@ -27,12 +27,13 @@ var (
 )
 
 type RuntimeConfig struct {
-	SocketPath      string
-	AuthFD          uintptr
-	HelperVersion   string
-	ShutdownTimeout time.Duration
-	DatabasePath    string
-	PreferencesPath string
+	SocketPath       string
+	AuthFD           uintptr
+	HelperVersion    string
+	ShutdownTimeout  time.Duration
+	DatabasePath     string
+	PreferencesPath  string
+	DefaultCodexHome string
 }
 
 // Run starts the authenticated UDS server and blocks until shutdown RPC,
@@ -111,9 +112,10 @@ func Run(ctx context.Context, config RuntimeConfig) error {
 
 func applicationConfig(config RuntimeConfig, broker *core.InvalidationBroker) app.Config {
 	return app.Config{
-		Broker:          broker,
-		Store:           storesqlite.Config{Path: config.DatabasePath},
-		PreferencesPath: config.PreferencesPath,
+		Broker:           broker,
+		Store:            storesqlite.Config{Path: config.DatabasePath},
+		PreferencesPath:  config.PreferencesPath,
+		DefaultCodexHome: config.DefaultCodexHome,
 	}
 }
 

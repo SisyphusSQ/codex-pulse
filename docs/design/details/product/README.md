@@ -132,6 +132,13 @@ Pricing Catalog 本地版本化，每条记录包含 model、input/cached/output
 
 Settings 使用强类型 Preferences，不把空值或非法值静默折成默认值。v0.1 可配置在线 quota/reset credits、对应刷新周期、JSONL debounce、更新检查和 UI 启动/概览范围；`zh-CN` 和 stable update channel 固定，自动下载保持关闭。保存使用 revision conflict 提示，不采用 last-writer-wins；切换恢复进行中时普通设置暂不可保存。
 
+普通首次启动且不存在 Preferences 时，Go Helper 自动选择
+`${CODEX_HOME:-$HOME/.codex}`。它先执行 metadata-only probe，再用相同
+canonical path/device/inode 重新探测并原子保存；这个受信默认来源不要求用户点击
+确认，且在线 quota/reset credits 初始均为开启、之后可分别关闭。候选缺失、不安全、探测中变化或
+持久化结果不确定时不启动索引、不猜测替代目录，Settings 显示默认 Home 不可用。
+已有 Preferences 永远优先，自动路径不能覆盖已有选择。
+
 Codex Home 更换是独立的两步确认，不属于普通设置保存：先 metadata-only 检测目标并展示影响，再由用户明确选择“新建独立数据库”或“清空当前派生索引后重建”。前者保留旧数据库与审计事实，切回相同 Home 时复用；后者复用当前数据库 key，由 bootstrap 清理派生索引后重建。两种策略都不删除或修改 Codex JSONL/auth，也不允许同时激活两个 Home。
 
 确认后 UI 进入不可伪装为普通 loading 的切换状态：先取得跨进程切换 execution lease、持久登记旧 Home 的恢复责任，再等待旧任务 drain，随后发布新 Home generation 并启动 bootstrap。并发确认或恢复必须等待同一租约；live owner 不得被另一进程提前 Resume/清 marker，owner 进程退出并由 OS 释放租约后才允许接管。应用退出、请求取消、Resume 失败或启动结果不明确时，重启根据持久 journal 和 runtime status 明确继续、回滚或提示恢复；不能因为没收到成功响应就重复启动任务，也不能在旧任务仍 drained 时把恢复标记清掉。后台任务、设置保存和数据查询都只认当前 active Home generation。

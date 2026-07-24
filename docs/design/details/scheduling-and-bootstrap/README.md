@@ -209,6 +209,6 @@ TOO-251 交付纯 snapshot/reconcile，TOO-253 交付逐 source generation/check
 - SQLite 无法打开：重试、打开数据目录、查看安全日志、备份后显式重建。
 - migration 失败：只读安全模式，停止索引，保留查看数据、检查更新和恢复备份。
 
-独立 Preferences v2 保存 confirmed Home physical identity、active Home generation/data-store key、两个在线能力、刷新/更新/UI 设置和切换恢复信息；新安装的两个在线能力默认值为 `true`，v1 迁移保留已有显式值。`initial_index_started_at` 只有在后续 bootstrap 真正启动时才由后续任务状态记录，onboarding 和 Preferences 不提前伪造。每次启动先 `LoadPreferences`；存在 pending journal 时先按 durable runtime status 恢复，否则用 metadata-only probe 复核保存的 canonical path/device/inode。source replacement 不授予 indexing。事实、进度和逐文件游标仍以 SQLite 为准。
+独立 Preferences v2 保存 confirmed Home physical identity、active Home generation/data-store key、两个在线能力、刷新/更新/UI 设置和切换恢复信息；新安装的两个在线能力默认值为 `true`，迁移保留已有显式值。首次没有 Preferences 时，Helper 对 `${CODEX_HOME:-$HOME/.codex}` 做 metadata-only probe 和 path/device/inode 二次校验后自动原子确认；候选缺失、不安全或变化时保持未配置。`initial_index_started_at` 只有在后续 bootstrap 真正启动时才由后续任务状态记录，onboarding 和 Preferences 不提前伪造。之后每次启动先 `LoadPreferences`；存在 pending journal 时先按 durable runtime status 恢复，否则用 metadata-only probe 复核保存的 canonical path/device/inode。source replacement 不授予 indexing。事实、进度和逐文件游标仍以 SQLite 为准。
 
 首次启动验收：无网络/无 auth 可完成本地初始化；主窗口不等待全量历史；部分数据明确标注；退出可续传；live append 不被 backfill 饿死；坏文件不阻塞全局；重建数据库和更换 home 必须显式确认。

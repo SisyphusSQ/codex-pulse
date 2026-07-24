@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
+	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/metadata"
 )
@@ -21,7 +23,8 @@ func TestApplicationConfigPreservesDefaultAndExplicitPaths(t *testing.T) {
 	t.Cleanup(func() { broker.Close() })
 
 	defaultConfig := applicationConfig(RuntimeConfig{}, broker)
-	if defaultConfig.Store.Path != "" || defaultConfig.PreferencesPath != "" {
+	if defaultConfig.Store.Path != "" || defaultConfig.PreferencesPath != "" ||
+		defaultConfig.DefaultCodexHome != "" {
 		t.Fatalf("default application config = %#v, want empty path overrides", defaultConfig)
 	}
 	if defaultConfig.Broker != broker {
@@ -29,11 +32,13 @@ func TestApplicationConfigPreservesDefaultAndExplicitPaths(t *testing.T) {
 	}
 
 	explicit := applicationConfig(RuntimeConfig{
-		DatabasePath:    "/private/tmp/cp/data/codex-pulse.db",
-		PreferencesPath: "/private/tmp/cp/preferences.json",
+		DatabasePath:     "/private/tmp/cp/data/codex-pulse.db",
+		PreferencesPath:  "/private/tmp/cp/preferences.json",
+		DefaultCodexHome: "/private/tmp/cp/codex-home",
 	}, broker)
 	if explicit.Store.Path != "/private/tmp/cp/data/codex-pulse.db" ||
-		explicit.PreferencesPath != "/private/tmp/cp/preferences.json" {
+		explicit.PreferencesPath != "/private/tmp/cp/preferences.json" ||
+		explicit.DefaultCodexHome != "/private/tmp/cp/codex-home" {
 		t.Fatalf("explicit application config = %#v", explicit)
 	}
 }
@@ -51,6 +56,17 @@ func TestRunStartsWithExplicitIsolatedPaths(t *testing.T) {
 	if err := os.Mkdir(dataDirectory, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	codexHome := filepath.Join(root, "codex-home")
+	for _, directory := range []string{
+		codexHome,
+		filepath.Join(codexHome, "sessions"),
+		filepath.Join(codexHome, "archived_sessions"),
+	} {
+		if err := os.Mkdir(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	preferencesPath := filepath.Join(root, "preferences.json")
 	reader, writer, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -65,11 +81,12 @@ func TestRunStartsWithExplicitIsolatedPaths(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		done <- Run(ctx, RuntimeConfig{
-			SocketPath:      filepath.Join(root, "core.sock"),
-			AuthFD:          uintptr(authFD),
-			HelperVersion:   "test",
-			DatabasePath:    filepath.Join(dataDirectory, "codex-pulse.db"),
-			PreferencesPath: filepath.Join(root, "preferences.json"),
+			SocketPath:       filepath.Join(root, "core.sock"),
+			AuthFD:           uintptr(authFD),
+			HelperVersion:    "test",
+			DatabasePath:     filepath.Join(dataDirectory, "codex-pulse.db"),
+			PreferencesPath:  preferencesPath,
+			DefaultCodexHome: codexHome,
 		})
 	}()
 	if _, err := writer.WriteString("abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-token\n"); err != nil {
@@ -89,6 +106,26 @@ func TestRunStartsWithExplicitIsolatedPaths(t *testing.T) {
 			t.Fatal("Run() did not create socket")
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	preferenceStore, err := preferences.NewFileStore(preferencesPath)
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+	snapshot, err := preferenceStore.LoadPreferences(t.Context())
+	if err != nil {
+		t.Fatalf("LoadPreferences() error = %v", err)
+	}
+	metadata, err := logs.NewHomeProbe().Probe(t.Context(), codexHome)
+	if err != nil {
+		t.Fatalf("Probe() error = %v", err)
+	}
+	if snapshot.CodexHome.Source.Path != metadata.Path ||
+		snapshot.CodexHome.Source.DeviceID != metadata.DeviceID ||
+		snapshot.CodexHome.Source.Inode != metadata.Inode {
+		t.Fatalf("automatic Home = %#v, want %#v", snapshot.CodexHome.Source, metadata)
+	}
+	if !snapshot.Online.QuotaEnabled || !snapshot.Online.ResetCreditsEnabled {
+		t.Fatalf("automatic online defaults = %#v, want enabled", snapshot.Online)
 	}
 	cancel()
 	select {

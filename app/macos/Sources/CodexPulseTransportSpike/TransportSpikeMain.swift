@@ -7,6 +7,7 @@ private enum SpikeError: Error, CustomStringConvertible {
     case invalidBootstrapMode(String)
     case helperExit(Int32)
     case isolatedDatabaseMissing
+    case isolatedHomeUnavailable
 
     var description: String {
         switch self {
@@ -18,6 +19,8 @@ private enum SpikeError: Error, CustomStringConvertible {
             return "helper exited with status \(status)"
         case .isolatedDatabaseMissing:
             return "helper did not create the isolated database"
+        case .isolatedHomeUnavailable:
+            return "transport spike could not prepare an isolated Codex Home"
         }
     }
 }
@@ -106,6 +109,27 @@ private func setSQLiteUserVersion(databasePath: String, version: Int32) throws {
 struct TransportSpikeMain {
     static func main() async throws {
         let arguments = try Arguments(Array(CommandLine.arguments.dropFirst()))
+        let isolatedCodexHome = URL(
+            fileURLWithPath: arguments.runtimeRoot,
+            isDirectory: true
+        ).appendingPathComponent("codex-home", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(
+                atPath: arguments.runtimeRoot,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            try FileManager.default.createDirectory(
+                at: isolatedCodexHome,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+        } catch {
+            throw SpikeError.isolatedHomeUnavailable
+        }
+        guard setenv("CODEX_HOME", isolatedCodexHome.path, 1) == 0 else {
+            throw SpikeError.isolatedHomeUnavailable
+        }
         let supervisor = HelperSupervisor(configuration: .init(
             executablePath: arguments.helperPath,
             runtimeDirectory: arguments.runtimeRoot

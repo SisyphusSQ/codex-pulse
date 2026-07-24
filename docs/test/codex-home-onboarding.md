@@ -1,5 +1,10 @@
 # Codex Home 探测与隐私 Onboarding Runbook
 
+> 当前主分支的普通首次启动会把 `${CODEX_HOME:-$HOME/.codex}` 作为受信默认候选，
+> 在本 runbook 覆盖的 metadata-only probe、二次 physical identity 校验和原子
+> `Confirm` 全部成功后自动完成配置，不要求用户点击确认。本文仍验证底层
+> onboarding 状态机；用户选择其他 Home、Home 切换及破坏性重建继续要求显式确认。
+
 ## 当前验证结果
 
 - 记录时间：2026-07-14（Asia/Shanghai）
