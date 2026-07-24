@@ -12,6 +12,12 @@ import (
 	"testing"
 )
 
+func TestDefaultUIPreferencesUsesQuotaWeek(t *testing.T) {
+	if got := DefaultUIPreferences().OverviewRange; got != OverviewRange("quota_week") {
+		t.Fatalf("default overview range = %q, want quota_week", got)
+	}
+}
+
 func TestFileStoreConfirmCreatesCurrentTypedPreferences(t *testing.T) {
 	t.Parallel()
 

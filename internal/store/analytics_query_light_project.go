@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -14,6 +15,8 @@ type lightProjectDeltaProjection struct {
 	ThreadName      *string `gorm:"column:thread_name"`
 	CWD             string  `gorm:"column:cwd"`
 	ObservedAtMS    int64   `gorm:"column:observed_at_ms"`
+	ModelKey        *string `gorm:"column:model_key"`
+	ModelSource     string  `gorm:"column:model_source"`
 	InputTokens     int64   `gorm:"column:input_tokens"`
 	CachedInput     int64   `gorm:"column:cached_input_tokens"`
 	OutputTokens    int64   `gorm:"column:output_tokens"`
@@ -24,6 +27,7 @@ type lightProjectGroup struct {
 	record   ProjectAnalyticsRecord
 	sessions map[string]struct{}
 	daily    map[int64]*RollupTotals
+	pricing  map[lightCostGroupKey]*lightCostGroup
 }
 
 func listLightProjectAnalytics(
@@ -44,6 +48,7 @@ func listLightProjectAnalytics(
 	var rows []lightProjectDeltaProjection
 	err = database.Table("light_token_timed AS timed").
 		Select(`session.session_id, session.cwd, timed.observed_at_ms,
+			timed.model_key, timed.model_source,
 			timed.input_tokens, timed.cached_input_tokens, timed.output_tokens, timed.reasoning_tokens`).
 		Joins(`JOIN light_sessions AS session ON session.session_id = timed.session_id
 			AND session.active_token_generation = timed.generation`).
@@ -52,9 +57,22 @@ func listLightProjectAnalytics(
 	if err != nil {
 		return ProjectAnalyticsPage{}, true, err
 	}
+	catalogs, err := loadLightPricingCatalogs(database, filter.Range.EndAtMS)
+	if err != nil {
+		return ProjectAnalyticsPage{}, true, err
+	}
+	catalogByVersion := make(map[string]lightPricingCatalog, len(catalogs))
+	for _, catalog := range catalogs {
+		catalogByVersion[catalog.version.PricingVersion] = catalog
+	}
+	usedVersions := make(map[string]struct{})
+	projectResolver, err := lightProjectIdentityResolver(database)
+	if err != nil {
+		return ProjectAnalyticsPage{}, true, err
+	}
 	groups := make(map[string]*lightProjectGroup)
 	for _, row := range rows {
-		decision := attribution.ResolveProject(attribution.ProjectInput{CWD: row.CWD})
+		decision := lightProjectDecision(projectResolver, row.CWD)
 		dimensionKey := decision.ProjectID
 		if dimensionKey == "" {
 			dimensionKey = "unknown|" + string(decision.Confidence) + "|" + string(decision.Source) + "|" + string(decision.Reason)
@@ -69,6 +87,7 @@ func listLightProjectAnalytics(
 					AttributionReason: string(decision.Reason), Trend: make([]ProjectUsageDaily, 0),
 				},
 				sessions: make(map[string]struct{}), daily: make(map[int64]*RollupTotals),
+				pricing: make(map[lightCostGroupKey]*lightCostGroup),
 			}
 			groups[dimensionKey] = group
 		}
@@ -76,16 +95,50 @@ func listLightProjectAnalytics(
 		if err := addLightProjectDelta(&group.record.Totals, row); err != nil {
 			return ProjectAnalyticsPage{}, true, err
 		}
-		bucket := localDayBucketStart(row.ObservedAtMS, location)
+		bucket := analyticsBucketStart(row.ObservedAtMS, filter.Range, location)
 		if group.daily[bucket] == nil {
 			group.daily[bucket] = &RollupTotals{}
 		}
 		if err := addLightProjectDelta(group.daily[bucket], row); err != nil {
 			return ProjectAnalyticsPage{}, true, err
 		}
+		dimension := lightModelDimension(row.ModelKey, row.ModelSource)
+		catalog := effectiveLightPricingCatalog(catalogs, row.ObservedAtMS)
+		pricingVersion := ""
+		if catalog != nil {
+			pricingVersion = catalog.version.PricingVersion
+			usedVersions[pricingVersion] = struct{}{}
+		}
+		pricingKey := lightCostGroupKey{
+			bucketStartMS: bucket, dimensionKey: dimension.key, pricingVersion: pricingVersion,
+		}
+		pricingGroup := group.pricing[pricingKey]
+		if pricingGroup == nil {
+			pricingGroup = &lightCostGroup{dimension: dimension}
+			group.pricing[pricingKey] = pricingGroup
+		}
+		if err := addLightTokens(
+			pricingGroup, row.InputTokens, row.CachedInput, row.OutputTokens, row.ReasoningTokens,
+		); err != nil {
+			return ProjectAnalyticsPage{}, true, err
+		}
 	}
 	all := make([]ProjectAnalyticsRecord, 0, len(groups))
 	for _, group := range groups {
+		for key, pricingGroup := range group.pricing {
+			estimated, err := calculateLightGroupCost(
+				pricingGroup, catalogByVersion, key.pricingVersion,
+			)
+			if err != nil {
+				return ProjectAnalyticsPage{}, true, err
+			}
+			if err := addLightProjectEstimatedCost(&group.record.Totals, estimated); err != nil {
+				return ProjectAnalyticsPage{}, true, err
+			}
+			if err := addLightProjectEstimatedCost(group.daily[key.bucketStartMS], estimated); err != nil {
+				return ProjectAnalyticsPage{}, true, err
+			}
+		}
 		group.record.SessionCount = int64(len(group.sessions))
 		buckets := make([]int64, 0, len(group.daily))
 		for bucket := range group.daily {
@@ -136,8 +189,15 @@ func listLightProjectAnalytics(
 	page := ProjectAnalyticsPage{
 		Mode: AnalyticsReadLightIndex, Records: matched, MatchedCount: matchedCount,
 		GlobalTotals: global, MatchedTotals: matchedTotals, PageTotals: pageTotals,
-		PricingVersions: make([]string, 0),
+		PricingVersions: make([]string, 0, len(usedVersions)),
 	}
+	if len(rows) > 0 && len(catalogs) > 0 {
+		page.PricingSource, page.Currency = "openai-api", "USD"
+	}
+	for version := range usedVersions {
+		page.PricingVersions = append(page.PricingVersions, version)
+	}
+	sort.Strings(page.PricingVersions)
 	if hasMore && len(matched) > 0 {
 		page.NextCursor = lightProjectCursor(matched[len(matched)-1], filter.SortField)
 	}
@@ -149,11 +209,19 @@ func lightProjectAnalytics(
 	filter ProjectAnalyticsDetailFilter,
 ) (ProjectAnalyticsSnapshot, bool, error) {
 	page, handled, err := listLightProjectAnalytics(database, ProjectAnalyticsFilter{
-		Range: filter.Range, ProjectIDs: []string{filter.DimensionKey}, Limit: 1,
+		Range: filter.Range, DimensionKeys: []string{filter.DimensionKey}, Limit: 1,
 		SortField: ProjectAnalyticsSortTotalTokens, SortDirection: AnalyticsSortDescending,
 	})
 	if err != nil || !handled {
 		return ProjectAnalyticsSnapshot{}, handled, err
+	}
+	cursorGeneration, err := lightProjectCursorGeneration(database)
+	if err != nil {
+		return ProjectAnalyticsSnapshot{}, true, err
+	}
+	if (filter.SessionCursor != nil && filter.SessionCursor.GenerationID != cursorGeneration) ||
+		(filter.ModelCursor != nil && filter.ModelCursor.GenerationID != cursorGeneration) {
+		return ProjectAnalyticsSnapshot{}, true, invalidRecord("light project cursor generation is stale")
 	}
 	if len(page.Records) != 1 {
 		return ProjectAnalyticsSnapshot{}, true, ErrNotFound
@@ -161,6 +229,7 @@ func lightProjectAnalytics(
 	var rows []lightProjectDeltaProjection
 	if err := database.Table("light_token_timed AS timed").
 		Select(`session.session_id, session.thread_name, session.cwd, timed.observed_at_ms,
+			timed.model_key, timed.model_source,
 			timed.input_tokens, timed.cached_input_tokens, timed.output_tokens, timed.reasoning_tokens`).
 		Joins(`JOIN light_sessions AS session ON session.session_id = timed.session_id
 			AND session.active_token_generation = timed.generation`).
@@ -168,13 +237,30 @@ func lightProjectAnalytics(
 		Order("timed.observed_at_ms, timed.session_id, timed.source_offset").Find(&rows).Error; err != nil {
 		return ProjectAnalyticsSnapshot{}, true, err
 	}
+	projectResolver, err := lightProjectIdentityResolver(database)
+	if err != nil {
+		return ProjectAnalyticsSnapshot{}, true, err
+	}
+	location, err := time.LoadLocation(filter.Range.ReportingTimezone)
+	if err != nil {
+		return ProjectAnalyticsSnapshot{}, true, err
+	}
 	type sessionTotals struct {
 		name   *string
 		totals RollupTotals
 	}
 	bySession := make(map[string]*sessionTotals)
+	catalogs, err := loadLightPricingCatalogs(database, filter.Range.EndAtMS)
+	if err != nil {
+		return ProjectAnalyticsSnapshot{}, true, err
+	}
+	catalogByVersion := make(map[string]lightPricingCatalog, len(catalogs))
+	for _, catalog := range catalogs {
+		catalogByVersion[catalog.version.PricingVersion] = catalog
+	}
+	modelPricing := make(map[lightCostGroupKey]*lightCostGroup)
 	for _, row := range rows {
-		decision := attribution.ResolveProject(attribution.ProjectInput{CWD: row.CWD})
+		decision := lightProjectDecision(projectResolver, row.CWD)
 		dimensionKey := decision.ProjectID
 		if dimensionKey == "" {
 			dimensionKey = "unknown|" + string(decision.Confidence) + "|" + string(decision.Source) + "|" + string(decision.Reason)
@@ -188,6 +274,26 @@ func lightProjectAnalytics(
 			bySession[row.SessionID] = session
 		}
 		if err := addLightProjectDelta(&session.totals, row); err != nil {
+			return ProjectAnalyticsSnapshot{}, true, err
+		}
+		bucket := analyticsBucketStart(row.ObservedAtMS, filter.Range, location)
+		modelDimension := lightModelDimension(row.ModelKey, row.ModelSource)
+		catalog := effectiveLightPricingCatalog(catalogs, row.ObservedAtMS)
+		pricingVersion := ""
+		if catalog != nil {
+			pricingVersion = catalog.version.PricingVersion
+		}
+		pricingKey := lightCostGroupKey{
+			bucketStartMS: bucket, dimensionKey: modelDimension.key, pricingVersion: pricingVersion,
+		}
+		pricingGroup := modelPricing[pricingKey]
+		if pricingGroup == nil {
+			pricingGroup = &lightCostGroup{dimension: modelDimension}
+			modelPricing[pricingKey] = pricingGroup
+		}
+		if err := addLightTokens(
+			pricingGroup, row.InputTokens, row.CachedInput, row.OutputTokens, row.ReasoningTokens,
+		); err != nil {
 			return ProjectAnalyticsSnapshot{}, true, err
 		}
 	}
@@ -228,20 +334,94 @@ func lightProjectAnalytics(
 	if hasMore {
 		items = items[:filter.SessionLimit]
 	}
+	modelTotals := make(map[string]*lightRollupAccumulator)
+	modelDimensions := make(map[string]safeDimension)
+	for key, pricingGroup := range modelPricing {
+		estimated, err := calculateLightGroupCost(
+			pricingGroup, catalogByVersion, key.pricingVersion,
+		)
+		if err != nil {
+			return ProjectAnalyticsSnapshot{}, true, err
+		}
+		modelDimensions[key.dimensionKey] = pricingGroup.dimension
+		if err := accumulatorForLight(modelTotals, key.dimensionKey).add(pricingGroup, estimated); err != nil {
+			return ProjectAnalyticsSnapshot{}, true, err
+		}
+	}
+	models := make([]ProjectModelAnalyticsRecord, 0, len(modelTotals))
+	for dimensionKey, totals := range modelTotals {
+		dimension := modelDimensions[dimensionKey]
+		models = append(models, ProjectModelAnalyticsRecord{
+			DimensionKey: dimensionKey,
+			Model: ModelAttribution{
+				ModelKey: cloneLightString(dimension.identity), DisplayName: cloneLightString(dimension.display),
+				Confidence: AttributionConfidence(dimension.confidence),
+				Source:     AttributionSource(dimension.source), Reason: AttributionReason(dimension.reason),
+			},
+			Totals: totals.totals(),
+		})
+	}
+	sort.Slice(models, func(left, right int) bool {
+		leftTokens, rightTokens := models[left].Totals.TotalTokens, models[right].Totals.TotalTokens
+		if leftTokens == nil || rightTokens == nil {
+			if leftTokens == nil && rightTokens == nil {
+				return models[left].DimensionKey > models[right].DimensionKey
+			}
+			return rightTokens == nil
+		}
+		if *leftTokens == *rightTokens {
+			return models[left].DimensionKey > models[right].DimensionKey
+		}
+		return *leftTokens > *rightTokens
+	})
+	if filter.ModelCursor != nil {
+		filtered := models[:0]
+		for _, model := range models {
+			if lightProjectModelAfterCursor(model, filter.ModelCursor) {
+				filtered = append(filtered, model)
+			}
+		}
+		models = filtered
+	}
+	modelsHaveMore := len(models) > filter.ModelLimit
+	if modelsHaveMore {
+		models = models[:filter.ModelLimit]
+	}
 	record := page.Records[0]
 	result := ProjectAnalyticsSnapshot{
-		Mode: AnalyticsReadLightIndex, Record: record,
-		Daily: append([]ProjectUsageDaily(nil), record.Trend...), Sessions: items,
-		Models: make([]ProjectModelAnalyticsRecord, 0), GlobalTotals: page.GlobalTotals,
-		PricingVersions: make([]string, 0),
+		Mode: AnalyticsReadLightIndex, PricingSource: page.PricingSource, Currency: page.Currency,
+		Record: record,
+		Daily:  append([]ProjectUsageDaily(nil), record.Trend...), Sessions: items,
+		Models: models, GlobalTotals: page.GlobalTotals,
+		PricingVersions: append([]string(nil), page.PricingVersions...),
 	}
 	if hasMore && len(items) > 0 {
 		last := items[len(items)-1]
 		result.NextSessionCursor = &ProjectSessionAnalyticsCursor{
-			DimensionKey: filter.DimensionKey, SessionID: last.SessionID, LastActivityAtMS: last.LastActivityAtMS,
+			GenerationID: cursorGeneration, DimensionKey: filter.DimensionKey,
+			SessionID: last.SessionID, LastActivityAtMS: last.LastActivityAtMS,
+		}
+	}
+	if modelsHaveMore && len(models) > 0 {
+		last := models[len(models)-1]
+		result.NextModelCursor = &ProjectModelAnalyticsCursor{
+			GenerationID: cursorGeneration, DimensionKey: filter.DimensionKey,
+			ModelDimensionKey: last.DimensionKey, Null: last.Totals.TotalTokens == nil,
+			TotalTokens: cloneInt64Pointer(last.Totals.TotalTokens),
 		}
 	}
 	return result, true, nil
+}
+
+func lightProjectCursorGeneration(database *gorm.DB) (string, error) {
+	var state lightIndexStateModel
+	if err := database.Where("state_id = 1").Take(&state).Error; err != nil {
+		return "", err
+	}
+	if state.MetadataGeneration <= 0 || state.TokenScanGeneration < 0 {
+		return "", invalidRecord("light project cursor generation is invalid")
+	}
+	return fmt.Sprintf("light:%d:%d", state.MetadataGeneration, state.TokenScanGeneration), nil
 }
 
 func addLightProjectDelta(total *RollupTotals, row lightProjectDeltaProjection) error {
@@ -281,6 +461,22 @@ func addLightProjectDelta(total *RollupTotals, row lightProjectDeltaProjection) 
 	return nil
 }
 
+func addLightProjectEstimatedCost(total *RollupTotals, estimated *int64) error {
+	if total == nil || estimated == nil {
+		return nil
+	}
+	current := int64(0)
+	if total.EstimatedUSDMicros != nil {
+		current = *total.EstimatedUSDMicros
+	}
+	next, err := checkedAdd(current, *estimated)
+	if err != nil {
+		return err
+	}
+	total.EstimatedUSDMicros = &next
+	return nil
+}
+
 func lightProjectDaily(record ProjectAnalyticsRecord, bucket int64, totals RollupTotals, timezone string) ProjectUsageDaily {
 	return ProjectUsageDaily{
 		BucketStartMS: bucket, ReportingTimezone: timezone, DimensionKey: record.DimensionKey,
@@ -291,6 +487,10 @@ func lightProjectDaily(record ProjectAnalyticsRecord, bucket int64, totals Rollu
 }
 
 func lightProjectRecordMatches(record ProjectAnalyticsRecord, filter ProjectAnalyticsFilter) bool {
+	if len(filter.DimensionKeys) > 0 &&
+		!lightProjectDimensionIncluded(record.DimensionKey, filter.DimensionKeys) {
+		return false
+	}
 	if len(filter.ProjectIDs) > 0 && !lightProjectIDIncluded(record.ProjectID, filter.ProjectIDs) {
 		return false
 	}
@@ -303,6 +503,15 @@ func lightProjectRecordMatches(record ProjectAnalyticsRecord, filter ProjectAnal
 		return false
 	}
 	return true
+}
+
+func lightProjectDimensionIncluded(dimensionKey string, allowed []string) bool {
+	for _, value := range allowed {
+		if value == dimensionKey {
+			return true
+		}
+	}
+	return false
 }
 
 func sumLightProjectRecords(records []ProjectAnalyticsRecord) (RollupTotals, error) {
@@ -325,6 +534,16 @@ func sumLightProjectRecords(records []ProjectAnalyticsRecord) (RollupTotals, err
 				return RollupTotals{}, err
 			}
 			*pair.target = next
+		}
+		if record.Totals.EstimatedUSDMicros != nil {
+			if result.EstimatedUSDMicros == nil {
+				result.EstimatedUSDMicros = cloneInt64Pointer(&zero)
+			}
+			next, err := checkedAdd(*result.EstimatedUSDMicros, *record.Totals.EstimatedUSDMicros)
+			if err != nil {
+				return RollupTotals{}, err
+			}
+			*result.EstimatedUSDMicros = next
 		}
 		if result.FirstActivityAtMS == 0 || record.Totals.FirstActivityAtMS < result.FirstActivityAtMS {
 			result.FirstActivityAtMS = record.Totals.FirstActivityAtMS
@@ -391,10 +610,30 @@ func lightProjectSortNumeric(record ProjectAnalyticsRecord, field ProjectAnalyti
 	case ProjectAnalyticsSortTotalTokens:
 		return record.Totals.TotalTokens
 	case ProjectAnalyticsSortEstimatedCost:
-		return nil
+		return record.Totals.EstimatedUSDMicros
 	default:
 		return &record.Totals.LastActivityAtMS
 	}
+}
+
+func lightProjectModelAfterCursor(
+	record ProjectModelAnalyticsRecord,
+	cursor *ProjectModelAnalyticsCursor,
+) bool {
+	if cursor == nil {
+		return true
+	}
+	value := record.Totals.TotalTokens
+	if cursor.Null {
+		return value == nil && record.DimensionKey < cursor.ModelDimensionKey
+	}
+	if value == nil {
+		return true
+	}
+	if *value == *cursor.TotalTokens {
+		return record.DimensionKey < cursor.ModelDimensionKey
+	}
+	return *value < *cursor.TotalTokens
 }
 
 func lightProjectCursor(record ProjectAnalyticsRecord, field ProjectAnalyticsSortField) *ProjectAnalyticsCursor {

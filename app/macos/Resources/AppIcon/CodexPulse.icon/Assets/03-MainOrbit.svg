@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Codex Pulse main orbit layer">
+  <defs>
+    <linearGradient id="orbit" x1="192" y1="240" x2="834" y2="812" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#91F1FF"/>
+      <stop offset="0.5" stop-color="#55B8FF"/>
+      <stop offset="1" stop-color="#9383FF"/>
+    </linearGradient>
+  </defs>
+  <circle cx="512" cy="512" r="300" fill="none" stroke="url(#orbit)" stroke-width="86" stroke-linecap="round"
+    stroke-dasharray="1260 625" transform="rotate(31 512 512)"/>
+  <circle cx="286" cy="321" r="27" fill="#C5F8FF"/>
+</svg>

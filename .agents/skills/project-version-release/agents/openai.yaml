@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Pulse 发版"
+  short_description: "准备并验证 Codex Pulse 版本、Tag 与 GitHub Release"
+  default_prompt: "使用 $project-version-release 检查并准备 Codex Pulse 发版。"

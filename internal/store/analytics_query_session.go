@@ -286,6 +286,7 @@ func (repository *Repository) SessionAnalytics(
 	}
 	result := SessionAnalyticsSnapshot{
 		PricingVersions: make([]string, 0), UnpricedReasons: make([]CostReasonCount, 0),
+		Daily: make([]UsageDaily, 0),
 	}
 	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
 		database := connection.WithContext(ctx)
@@ -306,9 +307,13 @@ func (repository *Repository) SessionAnalytics(
 		}
 		result.Mode = mode
 		if generation == nil {
+			if filter.ReportingTimezone != nil {
+				result.ReportingTimezone = *filter.ReportingTimezone
+			}
 		} else {
 			record := generationFromModel(*generation)
 			result.Generation = &record
+			result.ReportingTimezone = generation.ReportingTimezone
 		}
 		queryFilter := SessionAnalyticsFilter{
 			Limit: 1, SortField: SessionAnalyticsSortLastActivity,
@@ -559,7 +564,10 @@ func buildSessionAnalyticsQuery(
 	query := database.Table("sessions AS session").
 		Joins("JOIN session_attributions AS attribution ON attribution.session_id = session.session_id").
 		Joins("LEFT JOIN session_current AS current ON current.session_id = session.session_id")
-	if generation == nil {
+	if filter.RangeExact && generation != nil {
+		exactRollup := buildSessionExactRollupQuery(database, filter, *generation)
+		query = query.Joins("JOIN (?) AS rollup ON rollup.session_id = session.session_id", exactRollup)
+	} else if generation == nil {
 		query = query.Joins("LEFT JOIN session_usage_rollups AS rollup ON 1 = 0")
 	} else {
 		query = query.Joins(
@@ -585,13 +593,29 @@ func buildSessionAnalyticsQuery(
 			query = query.Where("NOT " + activeClause)
 		}
 	}
-	if filter.LastActivityAtOrAfterMS != nil {
+	if !filter.RangeExact && filter.LastActivityAtOrAfterMS != nil {
 		query = query.Where("current.last_activity_at_ms >= ?", *filter.LastActivityAtOrAfterMS)
 	}
-	if filter.LastActivityBeforeMS != nil {
+	if !filter.RangeExact && filter.LastActivityBeforeMS != nil {
 		query = query.Where("current.last_activity_at_ms < ?", *filter.LastActivityBeforeMS)
 	}
 	return query
+}
+
+func buildSessionExactRollupQuery(
+	database *gorm.DB,
+	filter SessionAnalyticsFilter,
+	generation costRollupGenerationModel,
+) *gorm.DB {
+	return database.Table("turn_usage AS usage").
+		Joins("JOIN turns AS turn_record ON turn_record.turn_id = usage.turn_id AND turn_record.source_generation = usage.source_generation").
+		Joins("JOIN turn_costs AS cost ON cost.turn_id = usage.turn_id AND cost.generation_id = ?", generation.GenerationID).
+		Where(
+			"usage.is_final = ? AND usage.observed_at_ms >= ? AND usage.observed_at_ms < ?",
+			true, *filter.LastActivityAtOrAfterMS, *filter.LastActivityBeforeMS,
+		).
+		Select("turn_record.session_id AS session_id, " + projectContributionTotalsSelect).
+		Group("turn_record.session_id")
 }
 
 func applySessionAnalyticsCursor(query *gorm.DB, filter SessionAnalyticsFilter) *gorm.DB {
@@ -927,6 +951,9 @@ func validateSessionAnalyticsFilter(filter SessionAnalyticsFilter) error {
 	if filter.LastActivityAtOrAfterMS != nil && (*filter.LastActivityAtOrAfterMS < 0 ||
 		*filter.LastActivityBeforeMS <= *filter.LastActivityAtOrAfterMS) {
 		return invalidRecord("session activity range is invalid")
+	}
+	if filter.RangeExact && (filter.ReportingTimezone == nil || filter.LastActivityAtOrAfterMS == nil) {
+		return invalidRecord("session exact range is incomplete")
 	}
 	if filter.Cursor != nil {
 		if filter.Cursor.SessionID == "" || len(filter.Cursor.SessionID) > 512 ||

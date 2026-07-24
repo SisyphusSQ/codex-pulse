@@ -10,6 +10,10 @@
     <string>Codex Pulse</string>
     <key>CFBundleIdentifier</key>
     <string>com.sisyphussq.codex-pulse.development</string>
+    <key>CFBundleIconFile</key>
+    <string>CodexPulse</string>
+    <key>CFBundleIconName</key>
+    <string>CodexPulse</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

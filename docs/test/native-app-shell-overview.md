@@ -109,7 +109,8 @@ make verify-swift-app
 
 覆盖：
 
-- `OverviewRequestSet` 的 7 日半开区间、IANA timezone、bounded sessions page 和 quota clock。
+- `OverviewRequestSet` 的 quota clock、按最近活动倒序的 bounded sessions page，以及由真实周额度窗口构造的精确 UTC 半开区间；测试覆盖不依赖 `primary/secondary` 位置、未知 reset 不伪造范围、Token 中文数量级格式化和 Session 未计算成本的明确文案。
+- Popover 交互门禁覆盖 `44 pt` 最小命中目标、顶栏图标和紧凑文字按钮的 `28 pt` 视觉面、完整 `contentShape`、整卡 Button、中性 pressed 反馈、禁止自定义蓝色 hover、inactive control state 对比度、扁平子页返回导航和单一标题层级，以及刷新箭头对真实 `isOverviewRefreshing` 状态的原位旋转和无障碍文案绑定；确定性 App 测试同时验证手动刷新会立即进入忙碌态并在请求完成后恢复。静态门禁不能替代真实鼠标、键盘焦点与 VoiceOver 验收。
 - 非 Gregorian 系统 Calendar 仍生成 canonical Gregorian local date，避免请求错误世纪。
 - 真实零、unknown reason、partial issue、health state 的 presentation mapping。
 - `starting -> handshaking -> loadingOverview -> normal`。
@@ -171,7 +172,7 @@ NSApplication executable
   -> HelperSupervisor auth pipe + private UDS
   -> generated CoreService client
   -> Handshake / Bootstrap
-  -> UsageCost / QuotaCurrent / ListSessions / HealthProjection
+  -> QuotaCurrent -> weekly exact UsageCost / ListSessions / HealthProjection
   -> Overview presentation
   -> NSWindow / NSStatusItem / NSPopover readback
   -> Shutdown / Helper exit / UDS cleanup

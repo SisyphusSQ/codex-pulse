@@ -4,7 +4,7 @@
 
 Codex Pulse 不只是 quota meter，而是 Codex 本机观测工具。它应让用户快速回答：
 
-- 5 小时和周额度是否可信、还能使用多少、何时 reset；
+- 当前真实额度窗口是否可信、还能使用多少、何时 reset；
 - 今天哪些项目、模型和 Session 消耗最多；
 - 最近 Session 是否仍有 active turn；
 - 本地索引是否完整、后台是否推进、应用最近是否健康；
@@ -18,19 +18,18 @@ v0.1 先服务单机、单账号、Codex-only 场景。仅提供简体中文（`
 
 ### Tray
 
-默认只显示 5h 和 weekly 剩余，不显示 active session 数：
+默认显示周额度剩余与同一额度周期内的累计 Token，不显示 active session 数：
 
 ```text
-fresh       5h 62% · W 71%
-stale       5h 62% · W 71%
-conflict    5h 55% · W 71%
-unknown     5h 55% · W 71%
-exhausted   5h 0% · 42m
+fresh       周剩 30% / 已用 7.9亿
+stale       周剩 30% / 已用 7.9亿
+unknown     周剩 -- / 已用 --
+exhausted   周剩 0% / 已用 9.4亿
 ```
 
 百分比始终表示 remaining。界面只显示普通百分比，不使用 `≤`、`?` 或状态胶囊向用户解释不确定性。stale、conflict 和 expired_unknown 有 last-known-good 时继续显示当前选定值；从未取得数值时显示 `--`；`0%` 只表示确认耗尽。
 
-状态栏采用紧凑双行额度仪表：左侧为 Codex Pulse 单色模板图标，右侧分别展示“5 小时”和“本周”的短进度条与普通百分比。正常状态使用低饱和系统蓝 / 紫；stale 与 unknown 弱化为灰色；conflict 使用橙色；确认耗尽的对应额度使用红色。颜色只辅助扫读，百分比文字始终保留。
+状态栏采用紧凑双行额度摘要：左侧可在 A 基准圆环、B 缺口圆环、D 仪表弧之间切换，右侧第一行显示从真实 `window_minutes` 派生的周期标签与 remaining 百分比，第二行显示同一窗口起点至本次 `evaluated_at_ms` 的累计 Token。存在多个同周期额度时，状态栏固定优先 `limit_id=codex` 的通用额度，不得任取模型专属额度；详细窗口按 `limit_name + window_minutes` 明确标注。模型专属额度的选中数值 observation 缺少名称时，可使用同额度最新 accepted observation 的 `limit_name`；最终仍无名称时显示“模型专属额度”，不得暴露内部 `limit_id`。默认使用 A；fresh 图形使用系统黄色，stale 与 unknown 弱化为语义灰色。Usage 查询范围与额度窗口无法精确对齐时必须显示“已用 --”，不得拿今天、自然周或最近 7 天冒充本周期用量。
 
 正常时不显示来源、更新时间、索引进度、CPU、读取字节或队列。`blocked` 立即在模板图标右上增加红色健康点；`degraded` 只有持续 2 分钟，并且影响当前数据可信度或需要用户处理时，才增加橙色健康点。健康点独立于额度进度条颜色，普通 quota 网络失败不额外制造全局警告。
 
@@ -40,10 +39,10 @@ exhausted   5h 0% · 42m
 
 Popover 不放复杂图表，也不显示来源冲突、网络失败或索引异常说明，顺序为：
 
-1. 5h / weekly quota：普通 remaining 百分比、进度条和 reset 倒计时。
+1. 动态 quota windows：用后端 `limit_name`（默认桶回退“通用额度”）与真实周期联合标注，展示普通 remaining 百分比、进度条和 reset 倒计时。
 2. Reset credits：可用次数、总次数、累计剩余时间、最近到期时间和 Quota 详情入口。
 3. API 等价成本：今日金额、token 总量、统计周期、计算时间和概览详情入口。
-4. Session 摘要：active session 数、最近活动和最多 5 个 Session，只表达 active / idle。
+4. Session 摘要：最多 5 个 Session 按最近活动时间倒序展示，并在右侧显示与顶部相同口径的 Session API 等价成本；未计算、不适用或暂不可用必须使用明确文案，不显示无标签的 `--`。
 5. 固定操作：刷新、打开概览。
 
 打开 Popover 时，quota 上次成功超过 60 秒则异步刷新。有 last-known-good 时继续显示当前数值，不切换成空白 loading，也不增加不确定性说明。Reset credits 与 API 等价成本摘要整块可点击，分别进入配额和概览对应区域。
@@ -52,9 +51,9 @@ Popover 不放复杂图表，也不显示来源冲突、网络失败或索引异
 
 概览是默认落地页，由原 Usage 页面升级而来，按“先看额度、再看趋势和成本”排序：
 
-- 顶部紧凑摘要：5 小时和本周额度、普通百分比、进度条与 reset 时间。
+- 顶部紧凑摘要：按额度名称和真实窗口周期区分通用/模型专属额度，展示普通百分比、进度条与 reset 时间。
 - 时间范围：今天、7 天、30 天和自定义区间，默认 7 天。
-- 使用趋势：input、cached input、output 与 reasoning token。
+- 使用趋势：每日 Token 按模型堆叠，纵轴使用本地化数量级，鼠标移入某日后展示总量、各模型 Token 与占比；模型分项无法与当日总量精确对账时只展示已知总量并明确提示明细不可用，不按比例推算。
 - 用量构成与 API 等价成本：保留估算口径和未定价提示。
 - 每日明细：日期、token、cached、output、API 等价成本和完整性。
 
@@ -112,9 +111,9 @@ Pricing Catalog 本地版本化，每条记录包含 model、input/cached/output
 
 ### 查询、下钻与降级语义
 
-- 概览按用户选择的 IANA timezone 和本地日半开区间查询，日趋势直接读取 active daily rollup；轻量启动模式则从带安全模型归因的 timed token delta 在同一 read snapshot 中聚合。周、月只合并 daily rows，不维护第二套持久聚合。响应同时返回全局 totals、按模型统计、pricing source/currency、range 内 pricing versions，以及能够确定的未定价语义。
+- 概览按用户选择的 IANA timezone 和本地日半开区间查询，日趋势直接读取 active daily rollup；轻量启动模式则从带安全模型归因的 timed token delta 在同一 read snapshot 中聚合。周、月只合并 daily rows，不维护第二套持久聚合。响应同时返回全局 totals、按模型统计及每个模型同粒度的 `UsageModelItem.trend`、pricing source/currency、range 内 pricing versions，以及能够确定的未定价语义。Swift 只能按 bucket 对账并展示这些模型事实，不得用 range 总量或比例反推日明细。
 - active cost generation 暂不可见时，概览只从 final usage 做有界 token fallback：cost/pricing 保持 unknown，响应标记 `partial / rollup_missing`；查询路径不得触发 ledger rebuild。无事实但 active generation 正常存在时是 known-empty complete，真实 `0` 不显示成 `--`。
-- Sessions 列表和详情只展示安全 `session_attributions` 的 title/project/model，active/idle 由是否存在未完成 Turn 判断；不返回 cwd、raw model、root path 或对话内容。列表支持最近活动、token、API 等价成本排序以及 project/model/activity/time filter，cursor 是不可解析的 keyset token。
+- Sessions 列表和详情只展示安全 title/project/model；轻量模式优先使用 Codex App Server `thread/list` 返回的 name，缺失时使用不可逆 Session ID fallback。常驻 Helper 每 30 秒刷新一次 metadata，并在 App 前台激活或系统唤醒时立即触发；相同 snapshot 不推进 metadata generation，标题变化原子发布后通过 index invalidation 到达 Swift。严格模式继续使用 `session_attributions`；active/idle 由是否存在未完成 Turn 判断。两种模式都不返回 cwd、raw model、root path 或对话内容。列表支持最近活动、token、API 等价成本排序以及 project/model/activity/time filter，cursor 是不可解析的 keyset token。
 - Session 详情还返回按 `startedAt + turn identity` 稳定倒序、默认 20 / 最大 50 条的 content-free Turn usage/cost 时间线。每项只包含不可逆 timeline key、active/complete、安全 model attribution、时间、整数 usage、pricing status/version/reason；`completed_at_ms IS NULL` 已明确定义 active，unknown 只用于 usage/cost/time 数值，不伪造不可达的 lifecycle 状态。不得返回 raw Session/Turn ID、正文事件、tool、路径、offset 或 generation。下一页 cursor 由 process-key AEAD 认证加密并绑定当前 Session，native client 只可原样回传；完整首屏必须与 Session aggregate 精确对账，截断/后续页必须满足 aggregate 下界和 pricing evidence membership，page totals 不得覆盖整段 Session aggregate。
 - `/sessions` 的 UI 状态只把有限 activity/time/sort、精确 safe project/model、列表 cursor 与选中 Session 写入 URL；未知 key、重复值、空值和非法枚举会归一到安全默认。list cursor 不解析，筛选/排序变化清空 cursor 与 selection；Turn cursor 只存在于当前 detail 生命周期，切换 Session 或进程重启后失效，不进入 URL、Preferences 或 Web Storage。
 - 当前 query contract 不提供 title/contains search 或全库 project/model option endpoint，页面不得在当前 page 本地过滤后伪装成全量搜索。列表、详情、activity、totals、pricing、partial 与时间线顺序全部使用 generated Protobuf DTO；Swift client 只做 locale 格式化和微美元显示换算，不重新聚合或定价。
@@ -123,8 +122,10 @@ Pricing Catalog 本地版本化，每条记录包含 model、input/cached/output
 - Project list/detail 同时返回 global、matched、page totals；无筛选全局 Project totals 必须与同 range `usage_daily` 一致，detail daily 合计必须与 list item 一致。任一对账漂移或 active generation 缺失都返回 unavailable，不能伪装成空项目。
 - Project list item 返回所选 range 内贡献 Turn 的精确 distinct Session 数，以及该 range 末尾最多 30 个已有日 bucket 的升序 trend。trend 只用于趋势展示，不是 full-range totals；native client 不得用当前页 Session 或 daily 重算 count/totals。
 - Project detail 沿用既有方法返回 Project contribution 的两组独立 keyset page：Session 按 `lastActivityAt DESC, session identity DESC`，Model 按 `totalTokens DESC NULLS LAST, model dimension DESC`；两者均默认 20、最大 50。Session 页只复用安全 title/current-model attribution，totals 仅统计当前 Project dimension 在 range 内的贡献，不得用 `ListSessions(projectId)` 的整 Session rollup 替代。两类 opaque cursor 同时绑定当前 active generation；同进程 generation rollover、Project/range变化或进程重启后必须从首页恢复。
+- 轻量索引的 Project detail 必须按列表返回的稳定 `dimension_key` 查找；已归类项目的 `project_id` 可以与其相同，但未归类“其他”的 `project_id` 为 `NULL`，不得拿 `dimension_key` 冒充 `project_id` 后把可见列表项错误返回为 not-found。Session contribution 需要分页时，opaque cursor 必须绑定当前 metadata/token-scan 组合代际并在下一页读回时校验；不得因为轻量模式没有 cost generation 就写入空 generation，也不得在索引变化后继续消费旧页。
 - Store 必须在同一 active generation/read snapshot 中，分别把全量 Session groups 和全量 Model groups 的 NULL-preserving totals 对账到 Project item；unknown/conflict/invalid Project/Model dimension 不丢弃。任一分组对账失败都 fail closed 为 unavailable，不返回局部伪造页。
 - `/projects` 产品交互固定为默认近 7 天，并支持今日、近 30 天、自定义本地日半开区间、range-level confidence、服务端排序与稳定分页。列表选中 Project 后在同页下钻 daily、Model contribution 与 Session contribution；list cursor可进入URL，两类detail cursor不进入URL或持久状态。Project/range变化清空两类detail page，单类cursor validation只恢复对应page；not-found关闭旧detail并保留列表。页面不提供没有provider contract的path、Finder/reveal或全文搜索，也不显示opaque identity。
+- 原生 Popover 固定展示“本周项目 Token 排行”，按当前通用周额度的精确 UTC 周期和 `totalTokens DESC` 取前 5 个已归类项目。该请求独立于主 Overview 的范围选择，unknown confidence 的未归类用量在分页前排除；“其他”不显示、不占名次，但仍保留在主 Overview 与全局 totals 的对账口径中。周额度范围缺失时必须局部显示不可用，不能回退成自然周或最近 7 天后继续称为“本周额度”。
 - 所有 count/token/微美元保持整数和 unknown reason；只要存在未定价 Turn，即使已定价小计非空，相关 Session/Project 响应也必须是 partial。priced turn 必须至少关联一个 pricing version，未定价原因计数之和必须严格等于 unpriced turn count，否则 fail closed 为 unavailable。金额仍是 API 等价估算，不接入或对账云账单。
 
 ## Settings 与 Codex Home

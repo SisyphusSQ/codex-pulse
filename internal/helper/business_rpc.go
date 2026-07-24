@@ -48,9 +48,7 @@ func (api *grpcAPI) UsageCost(
 	if api == nil || api.service == nil {
 		return nil, coreServiceUnavailable()
 	}
-	response, err := api.service.UsageCost(ctx, usagecost.UsageCostRequest{
-		Range: fromProtoDateRange(request.GetRange()), Granularity: usagecost.TrendGranularity(request.GetGranularity()),
-	})
+	response, err := api.service.UsageCost(ctx, fromProtoUsageCostRequest(request))
 	return encodeRPC(response, &corev1.UsageCostResponse{}, err)
 }
 
@@ -93,6 +91,10 @@ func (api *grpcAPI) ProjectDetail(
 	query := usagecost.ProjectDetailRequest{
 		DimensionKey: request.GetDimensionKey(), Range: fromProtoDateRange(request.GetRange()),
 		SessionPage: fromProtoPage(request.GetSessionPage()), ModelPage: fromProtoPage(request.GetModelPage()),
+	}
+	if request.ExactRange != nil {
+		rangeValue := fromProtoExactTimeRange(request.GetExactRange())
+		query.ExactRange = &rangeValue
 	}
 	response, err := api.service.ProjectDetail(ctx, query)
 	return encodeRPC(response, &corev1.ProjectDetailResponse{}, err)
@@ -337,6 +339,32 @@ func fromProtoDateRange(dateRange *corev1.LocalDateRange) basequery.LocalDateRan
 	return basequery.LocalDateRange{
 		StartDate: dateRange.StartDate, EndDateExclusive: dateRange.EndDateExclusive, TimeZone: dateRange.TimeZone,
 	}
+}
+
+func fromProtoExactTimeRange(timeRange *corev1.UTCTimeRange) basequery.UTCTimeRange {
+	if timeRange == nil {
+		return basequery.UTCTimeRange{}
+	}
+	return basequery.UTCTimeRange{
+		StartAtMS: timeRange.StartAtMs, EndAtMS: timeRange.EndAtMs, TimeZone: timeRange.TimeZone,
+	}
+}
+
+func fromProtoUsageCostRequest(request *corev1.UsageCostRequest) usagecost.UsageCostRequest {
+	if request == nil {
+		return usagecost.UsageCostRequest{}
+	}
+	result := usagecost.UsageCostRequest{
+		Range: fromProtoDateRange(request.GetRange()), Granularity: usagecost.TrendGranularity(request.GetGranularity()),
+	}
+	if request.ExactRange != nil {
+		result.ExactRange = &basequery.UTCTimeRange{
+			StartAtMS: request.ExactRange.StartAtMs,
+			EndAtMS:   request.ExactRange.EndAtMs,
+			TimeZone:  request.ExactRange.TimeZone,
+		}
+	}
+	return result
 }
 
 func coreServiceUnavailable() error {

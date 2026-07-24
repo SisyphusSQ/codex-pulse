@@ -72,6 +72,102 @@ func TestUsageCostRangeReadsBoundedActiveGenerationEvidence(t *testing.T) {
 	}
 }
 
+func TestUsageCostRangeBucketsActiveGenerationByHour(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	ctx := context.Background()
+	if err := repository.AddPricingVersion(ctx, pricing.BuiltinOpenAI20260714()); err != nil {
+		t.Fatalf("AddPricingVersion() error = %v", err)
+	}
+	one, zero := int64(1), int64(0)
+	first := mustParseCostTime(t, "2026-07-22T01:15:00Z")
+	second := mustParseCostTime(t, "2026-07-22T02:45:00Z")
+	seedCostTurn(t, repository, "hour-one", pointerTo("gpt-5.2-codex"), first, true, pricing.Usage{
+		InputTokens: &one, CachedInputTokens: &zero, OutputTokens: &zero, ReasoningTokens: &zero,
+	})
+	seedCostTurn(t, repository, "hour-two", pointerTo("gpt-5.2-codex"), second, true, pricing.Usage{
+		InputTokens: &one, CachedInputTokens: &zero, OutputTokens: &zero, ReasoningTokens: &zero,
+	})
+	_, err := repository.RebuildCostLedger(ctx, RebuildCostLedgerRequest{
+		GenerationID: "analytics-hour-v1", ReportingTimezone: "UTC",
+		PricingSource: "openai-api", Currency: "USD", RollupVersion: 1,
+		CalculatedAtMS: mustParseCostTime(t, "2026-07-22T03:00:00Z"),
+	})
+	if err != nil {
+		t.Fatalf("RebuildCostLedger() error = %v", err)
+	}
+	filter := AnalyticsRange{
+		ReportingTimezone: "UTC",
+		StartAtMS:         mustParseCostTime(t, "2026-07-22T00:00:00Z"),
+		EndAtMS:           mustParseCostTime(t, "2026-07-23T00:00:00Z"),
+	}
+	granularity := reflect.ValueOf(&filter).Elem().FieldByName("Granularity")
+	if !granularity.IsValid() || granularity.Kind() != reflect.String || !granularity.CanSet() {
+		t.Fatal("AnalyticsRange must expose a settable string Granularity field")
+	}
+	granularity.SetString("hour")
+
+	snapshot, err := repository.UsageCostRange(ctx, filter)
+	if err != nil {
+		t.Fatalf("UsageCostRange(hour) error = %v", err)
+	}
+	wantBuckets := []int64{
+		mustParseCostTime(t, "2026-07-22T01:00:00Z"),
+		mustParseCostTime(t, "2026-07-22T02:00:00Z"),
+	}
+	buckets := make([]int64, 0, len(snapshot.Daily))
+	for _, row := range snapshot.Daily {
+		buckets = append(buckets, row.BucketStartMS)
+		if row.EstimatedUSDMicros == nil {
+			t.Fatalf("hourly row lost active pricing evidence: %#v", row)
+		}
+	}
+	if !reflect.DeepEqual(buckets, wantBuckets) {
+		t.Fatalf("hourly buckets = %#v, want %#v", buckets, wantBuckets)
+	}
+}
+
+func TestUsageCostRangeExactPartialDayPreservesActivePricing(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	ctx := context.Background()
+	if err := repository.AddPricingVersion(ctx, pricing.BuiltinOpenAI20260714()); err != nil {
+		t.Fatalf("AddPricingVersion() error = %v", err)
+	}
+	million, zero := int64(1_000_000), int64(0)
+	seedCostTurn(t, repository, "exact-before", pointerTo("gpt-5.2-codex"),
+		mustParseCostTime(t, "2026-07-22T01:00:00Z"), true, pricing.Usage{
+			InputTokens: &million, CachedInputTokens: &zero, OutputTokens: &zero, ReasoningTokens: &zero,
+		})
+	seedCostTurn(t, repository, "exact-inside", pointerTo("gpt-5.2-codex"),
+		mustParseCostTime(t, "2026-07-22T02:00:00Z"), true, pricing.Usage{
+			InputTokens: &million, CachedInputTokens: &zero, OutputTokens: &zero, ReasoningTokens: &zero,
+		})
+	_, err := repository.RebuildCostLedger(ctx, RebuildCostLedgerRequest{
+		GenerationID: "analytics-exact-v1", ReportingTimezone: "UTC",
+		PricingSource: "openai-api", Currency: "USD", RollupVersion: 1,
+		CalculatedAtMS: mustParseCostTime(t, "2026-07-22T03:00:00Z"),
+	})
+	if err != nil {
+		t.Fatalf("RebuildCostLedger() error = %v", err)
+	}
+	start := mustParseCostTime(t, "2026-07-22T01:30:00Z")
+	snapshot, err := repository.UsageCostRange(ctx, AnalyticsRange{
+		ReportingTimezone: "UTC", StartAtMS: start,
+		EndAtMS: mustParseCostTime(t, "2026-07-22T03:00:00Z"), Exact: true,
+	})
+	if err != nil {
+		t.Fatalf("UsageCostRange(exact) error = %v", err)
+	}
+	if snapshot.Mode != AnalyticsReadActiveRollup || snapshot.Generation == nil ||
+		len(snapshot.Daily) != 1 || snapshot.Daily[0].BucketStartMS != start ||
+		snapshot.Daily[0].TurnCount != 1 || snapshot.Daily[0].EstimatedUSDMicros == nil {
+		t.Fatalf("exact active snapshot = %#v", snapshot)
+	}
+}
+
 func TestUsageCostRangeFallsBackToFinalDetailWithoutInventingCost(t *testing.T) {
 	t.Parallel()
 
@@ -356,6 +452,29 @@ func TestListSessionAnalyticsFiltersSortsAndPaginatesSafeFacts(t *testing.T) {
 	wantAscending := []string{"session-delta", "session-alpha", "session-gamma", "session-beta"}
 	if !reflect.DeepEqual(gotAscending, wantAscending) {
 		t.Fatalf("ascending keyset = %#v, want %#v", gotAscending, wantAscending)
+	}
+}
+
+func TestListSessionAnalyticsUsesExactContributionRange(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	seedProjectAnalyticsFixture(t, repository, false)
+	page, err := repository.ListSessionAnalytics(context.Background(), SessionAnalyticsFilter{
+		ReportingTimezone:       pointerTo("UTC"),
+		LastActivityAtOrAfterMS: pointerTo(int64(5)), LastActivityBeforeMS: pointerTo(int64(25)),
+		RangeExact: true, Limit: 10, SortField: SessionAnalyticsSortTotalTokens,
+		SortDirection: AnalyticsSortDescending,
+	})
+	if err != nil {
+		t.Fatalf("ListSessionAnalytics(exact) error = %v", err)
+	}
+	if len(page.Records) != 2 || page.Records[0].SessionID != "project-session-alpha" ||
+		page.Records[1].SessionID != "project-session-delta" ||
+		page.Records[0].Rollup == nil || page.Records[0].Rollup.TotalTokens == nil ||
+		*page.Records[0].Rollup.TotalTokens != 10 || page.MatchedTotals == nil ||
+		page.MatchedTotals.TotalTokens == nil || *page.MatchedTotals.TotalTokens != 15 {
+		t.Fatalf("exact session page = %#v", page)
 	}
 }
 
@@ -909,6 +1028,55 @@ func TestListProjectAnalyticsDecoratesExactSessionCountsAndBoundedTrend(t *testi
 		page.Records[0].Trend[1].BucketStartMS,
 	}; !reflect.DeepEqual(got, []int64{0, 86_400_000}) {
 		t.Fatalf("project-a trend buckets = %#v", got)
+	}
+}
+
+func TestListProjectAnalyticsUsesExactContributionRange(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	seedProjectAnalyticsFixture(t, repository, false)
+	page, err := repository.ListProjectAnalytics(context.Background(), ProjectAnalyticsFilter{
+		Range: AnalyticsRange{
+			ReportingTimezone: "UTC", StartAtMS: 5, EndAtMS: 25, Exact: true,
+		},
+		Limit: 10, SortField: ProjectAnalyticsSortTotalTokens,
+		SortDirection: AnalyticsSortDescending,
+	})
+	if err != nil {
+		t.Fatalf("ListProjectAnalytics(exact) error = %v", err)
+	}
+	if len(page.Records) != 2 || page.Records[0].DimensionKey != "project-a" ||
+		page.Records[1].DimensionKey != "project-b" ||
+		page.Records[0].Totals.TotalTokens == nil || *page.Records[0].Totals.TotalTokens != 10 ||
+		page.GlobalTotals.TotalTokens == nil || *page.GlobalTotals.TotalTokens != 15 {
+		t.Fatalf("exact project page = %#v", page)
+	}
+	for _, record := range page.Records {
+		if len(record.Trend) != 1 || record.Trend[0].BucketStartMS != 5 {
+			t.Fatalf("exact project trend = %#v", record.Trend)
+		}
+	}
+}
+
+func TestProjectAnalyticsUsesExactContributionRange(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	seedProjectAnalyticsFixture(t, repository, false)
+	snapshot, err := repository.ProjectAnalytics(context.Background(), ProjectAnalyticsDetailFilter{
+		Range: AnalyticsRange{
+			ReportingTimezone: "UTC", StartAtMS: 5, EndAtMS: 25, Exact: true,
+		},
+		DimensionKey: "project-a", SessionLimit: 10, ModelLimit: 10,
+	})
+	if err != nil {
+		t.Fatalf("ProjectAnalytics(exact) error = %v", err)
+	}
+	if snapshot.Record.Totals.TotalTokens == nil || *snapshot.Record.Totals.TotalTokens != 10 ||
+		len(snapshot.Daily) != 1 || snapshot.Daily[0].BucketStartMS != 5 ||
+		len(snapshot.Sessions) != 1 || snapshot.Sessions[0].SessionID != "project-session-alpha" {
+		t.Fatalf("exact project detail = %#v", snapshot)
 	}
 }
 

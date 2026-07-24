@@ -143,7 +143,7 @@ func loadLightUsageCostRange(
 		if err := ctx.Err(); err != nil {
 			return false, err
 		}
-		bucket := localDayBucketStart(row.ObservedAtMS, location)
+		bucket := analyticsBucketStart(row.ObservedAtMS, filter, location)
 		dimension := lightModelDimension(row.ModelKey, row.ModelSource)
 		catalog := effectiveLightPricingCatalog(catalogs, row.ObservedAtMS)
 		version := ""
@@ -165,23 +165,9 @@ func loadLightUsageCostRange(
 	byModel := make(map[dimensionBucketKey]*lightRollupAccumulator)
 	modelDimensions := make(map[dimensionBucketKey]safeDimension)
 	for key, group := range groups {
-		var estimated *int64
-		if key.pricingVersion != "" && group.dimension.identity != nil {
-			catalog := catalogByVersion[key.pricingVersion]
-			if model, ok := catalog.models[*group.dimension.identity]; ok {
-				calculation, err := pricing.Calculate(pricing.Usage{
-					InputTokens: &group.input, CachedInputTokens: &group.cached,
-					OutputTokens: &group.output, ReasoningTokens: &group.reasoning,
-				}, pricing.Rates{
-					InputMicrosPerMillion:       model.InputMicrosPerMillion,
-					CachedInputMicrosPerMillion: model.CachedInputMicrosPerMillion,
-					OutputMicrosPerMillion:      model.OutputMicrosPerMillion,
-				})
-				if err != nil {
-					return false, err
-				}
-				estimated = calculation.EstimatedUSDMicros
-			}
+		estimated, err := calculateLightGroupCost(group, catalogByVersion, key.pricingVersion)
+		if err != nil {
+			return false, err
 		}
 		if err := accumulatorForLight(byDay, key.bucketStartMS).add(group, estimated); err != nil {
 			return false, err
@@ -311,6 +297,36 @@ func addLightTokens(group *lightCostGroup, input, cached, output, reasoning int6
 	return err
 }
 
+func calculateLightGroupCost(
+	group *lightCostGroup,
+	catalogs map[string]lightPricingCatalog,
+	pricingVersion string,
+) (*int64, error) {
+	if group == nil || pricingVersion == "" || group.dimension.identity == nil {
+		return nil, nil
+	}
+	catalog, found := catalogs[pricingVersion]
+	if !found {
+		return nil, invalidRecord("light pricing version is missing")
+	}
+	model, found := catalog.models[*group.dimension.identity]
+	if !found {
+		return nil, nil
+	}
+	calculation, err := pricing.Calculate(pricing.Usage{
+		InputTokens: &group.input, CachedInputTokens: &group.cached,
+		OutputTokens: &group.output, ReasoningTokens: &group.reasoning,
+	}, pricing.Rates{
+		InputMicrosPerMillion:       model.InputMicrosPerMillion,
+		CachedInputMicrosPerMillion: model.CachedInputMicrosPerMillion,
+		OutputMicrosPerMillion:      model.OutputMicrosPerMillion,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return calculation.EstimatedUSDMicros, nil
+}
+
 func accumulatorForLight[K comparable](groups map[K]*lightRollupAccumulator, key K) *lightRollupAccumulator {
 	if groups[key] == nil {
 		groups[key] = &lightRollupAccumulator{}
@@ -372,8 +388,14 @@ func validateAnalyticsRange(filter AnalyticsRange) (*time.Location, error) {
 	if err != nil {
 		return nil, invalidRecord("analytics timezone is invalid")
 	}
-	if localDayBucketStart(filter.StartAtMS, location) != filter.StartAtMS ||
-		localDayBucketStart(filter.EndAtMS, location) != filter.EndAtMS {
+	if filter.Granularity == "" {
+		filter.Granularity = AnalyticsGranularityDay
+	}
+	if filter.Granularity != AnalyticsGranularityDay && filter.Granularity != AnalyticsGranularityHour {
+		return nil, invalidRecord("analytics granularity is invalid")
+	}
+	if !filter.Exact && (localDayBucketStart(filter.StartAtMS, location) != filter.StartAtMS ||
+		localDayBucketStart(filter.EndAtMS, location) != filter.EndAtMS) {
 		return nil, invalidRecord("analytics range must use local day boundaries")
 	}
 	start := time.UnixMilli(filter.StartAtMS).In(location)
@@ -381,10 +403,24 @@ func validateAnalyticsRange(filter AnalyticsRange) (*time.Location, error) {
 	calendarStart := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
 	calendarEnd := time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, time.UTC)
 	days := int(calendarEnd.Sub(calendarStart) / (24 * time.Hour))
-	if days < 1 || days > analyticsHardMaxRangeDays {
+	if days > analyticsHardMaxRangeDays || (!filter.Exact && days < 1) {
 		return nil, invalidRecord("analytics range exceeds calendar day limit")
 	}
 	return location, nil
+}
+
+func analyticsBucketStart(observedAtMS int64, filter AnalyticsRange, location *time.Location) int64 {
+	bucket := localDayBucketStart(observedAtMS, location)
+	if filter.Granularity == AnalyticsGranularityHour {
+		local := time.UnixMilli(observedAtMS).In(location)
+		bucket = time.Date(
+			local.Year(), local.Month(), local.Day(), local.Hour(), 0, 0, 0, location,
+		).UTC().UnixMilli()
+	}
+	if filter.Exact && bucket < filter.StartAtMS {
+		return filter.StartAtMS
+	}
+	return bucket
 }
 
 func loadActiveUsageCostRange(
@@ -404,37 +440,45 @@ func loadActiveUsageCostRange(
 	snapshot.PricingVersions = make([]string, 0)
 	snapshot.UnpricedReasons = make([]CostReasonCount, 0)
 
-	var days []usageDailyModel
-	if err := database.Where(
-		"generation_id = ? AND bucket_start_ms >= ? AND bucket_start_ms < ?",
-		generation.GenerationID, filter.StartAtMS, filter.EndAtMS,
-	).Order("bucket_start_ms").Find(&days).Error; err != nil {
-		return err
-	}
-	for _, model := range days {
-		if model.ReportingTimezone != filter.ReportingTimezone {
-			return invalidRecord("stored daily timezone is inconsistent")
+	if filter.Exact || filter.Granularity == AnalyticsGranularityHour {
+		if err := loadActiveGranularUsageRows(ctx, database, filter, generation, snapshot); err != nil {
+			return err
 		}
-		snapshot.Daily = append(snapshot.Daily, UsageDaily{
-			GenerationID: model.GenerationID, BucketStartMS: model.BucketStartMS,
-			ReportingTimezone: model.ReportingTimezone, RollupTotals: totalsFromModel(model.Totals),
-		})
+	} else {
+		var days []usageDailyModel
+		if err := database.Where(
+			"generation_id = ? AND bucket_start_ms >= ? AND bucket_start_ms < ?",
+			generation.GenerationID, filter.StartAtMS, filter.EndAtMS,
+		).Order("bucket_start_ms").Find(&days).Error; err != nil {
+			return err
+		}
+		for _, model := range days {
+			if model.ReportingTimezone != filter.ReportingTimezone {
+				return invalidRecord("stored daily timezone is inconsistent")
+			}
+			snapshot.Daily = append(snapshot.Daily, UsageDaily{
+				GenerationID: model.GenerationID, BucketStartMS: model.BucketStartMS,
+				ReportingTimezone: model.ReportingTimezone, RollupTotals: totalsFromModel(model.Totals),
+			})
+		}
 	}
-	var models []modelUsageDailyModel
-	if err := database.Where(
-		"generation_id = ? AND bucket_start_ms >= ? AND bucket_start_ms < ?",
-		generation.GenerationID, filter.StartAtMS, filter.EndAtMS,
-	).Order("bucket_start_ms, dimension_key").Find(&models).Error; err != nil {
-		return err
-	}
-	for _, model := range models {
-		snapshot.Models = append(snapshot.Models, ModelUsageDaily{
-			GenerationID: model.GenerationID, BucketStartMS: model.BucketStartMS,
-			ReportingTimezone: model.ReportingTimezone, DimensionKey: model.DimensionKey,
-			ModelKey: model.ModelKey, ModelDisplayName: model.ModelDisplayName,
-			AttributionConfidence: model.AttributionConfidence, AttributionSource: model.AttributionSource,
-			AttributionReason: model.AttributionReason, RollupTotals: totalsFromModel(model.Totals),
-		})
+	if !filter.Exact {
+		var models []modelUsageDailyModel
+		if err := database.Where(
+			"generation_id = ? AND bucket_start_ms >= ? AND bucket_start_ms < ?",
+			generation.GenerationID, filter.StartAtMS, filter.EndAtMS,
+		).Order("bucket_start_ms, dimension_key").Find(&models).Error; err != nil {
+			return err
+		}
+		for _, model := range models {
+			snapshot.Models = append(snapshot.Models, ModelUsageDaily{
+				GenerationID: model.GenerationID, BucketStartMS: model.BucketStartMS,
+				ReportingTimezone: model.ReportingTimezone, DimensionKey: model.DimensionKey,
+				ModelKey: model.ModelKey, ModelDisplayName: model.ModelDisplayName,
+				AttributionConfidence: model.AttributionConfidence, AttributionSource: model.AttributionSource,
+				AttributionReason: model.AttributionReason, RollupTotals: totalsFromModel(model.Totals),
+			})
+		}
 	}
 
 	if err := database.Table("turn_costs AS cost").
@@ -470,6 +514,86 @@ func loadActiveUsageCostRange(
 	return nil
 }
 
+func loadActiveGranularUsageRows(
+	ctx context.Context,
+	database *gorm.DB,
+	filter AnalyticsRange,
+	generation costRollupGenerationModel,
+	snapshot *UsageCostRangeSnapshot,
+) error {
+	facts, err := loadFinalCostFactsInRange(database, filter.StartAtMS, filter.EndAtMS)
+	if err != nil {
+		return err
+	}
+	var models []turnCostModel
+	if err := database.Table("turn_costs AS cost").
+		Select("cost.*").
+		Joins("JOIN turn_usage AS usage ON usage.turn_id = cost.turn_id").
+		Where(
+			"cost.generation_id = ? AND usage.is_final = ? AND usage.observed_at_ms >= ? AND usage.observed_at_ms < ?",
+			generation.GenerationID, true, filter.StartAtMS, filter.EndAtMS,
+		).
+		Order("cost.turn_id").Scan(&models).Error; err != nil {
+		return err
+	}
+	costs := make(map[string]TurnCost, len(models))
+	for _, model := range models {
+		if _, duplicated := costs[model.TurnID]; duplicated {
+			return invalidRecord("stored hourly turn cost is duplicated")
+		}
+		status := pricing.CostStatus(model.PricingStatus)
+		reason := pricing.CostReason(model.PricingReason)
+		if status != pricing.CostStatusPriced && status != pricing.CostStatusUnpriced {
+			return invalidRecord("stored hourly turn cost status is invalid")
+		}
+		if status == pricing.CostStatusPriced && (reason != pricing.CostReasonPriced || model.EstimatedUSDMicros == nil) {
+			return invalidRecord("stored hourly priced turn is invalid")
+		}
+		if status == pricing.CostStatusUnpriced && !validStoredCostReason(reason) {
+			return invalidRecord("stored hourly unpriced turn is invalid")
+		}
+		costs[model.TurnID] = TurnCost{
+			GenerationID: model.GenerationID, TurnID: model.TurnID,
+			PricingVersion: model.PricingVersion, EstimatedUSDMicros: model.EstimatedUSDMicros,
+			Status: status, Reason: reason, CalculatedAtMS: model.CalculatedAtMS,
+		}
+	}
+	location, err := time.LoadLocation(filter.ReportingTimezone)
+	if err != nil {
+		return invalidRecord("analytics timezone is invalid")
+	}
+	groups := make(map[int64]*aggregateAccumulator)
+	for _, fact := range facts {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		cost, ok := costs[fact.TurnID]
+		if !ok {
+			return invalidRecord("stored hourly turn cost is missing")
+		}
+		bucket := analyticsBucketStart(fact.ObservedAtMS, filter, location)
+		if err := accumulatorFor(groups, bucket).add(fact, cost); err != nil {
+			return err
+		}
+	}
+	keys := make([]int64, 0, len(groups))
+	for key := range groups {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(left, right int) bool { return keys[left] < keys[right] })
+	for _, key := range keys {
+		totals, err := groups[key].totals(generation.UpdatedAtMS)
+		if err != nil {
+			return err
+		}
+		snapshot.Daily = append(snapshot.Daily, UsageDaily{
+			GenerationID: generation.GenerationID, BucketStartMS: key,
+			ReportingTimezone: filter.ReportingTimezone, RollupTotals: totals,
+		})
+	}
+	return nil
+}
+
 func loadUsageCostDetailFallback(
 	ctx context.Context,
 	database *gorm.DB,
@@ -491,7 +615,7 @@ func loadUsageCostDetailFallback(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		bucket := localDayBucketStart(fact.ObservedAtMS, location)
+		bucket := analyticsBucketStart(fact.ObservedAtMS, filter, location)
 		fallbackCost := TurnCost{
 			Status: pricing.CostStatusUnpriced, Reason: pricing.CostReasonCatalogNotEffective,
 		}

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -184,6 +185,7 @@ func sessionStoreFilter(
 		filter.ReportingTimezone = cloneStringPointer(&request.TimeRange.TimeZone)
 		filter.LastActivityAtOrAfterMS = cloneInt64(&request.TimeRange.StartAtMS)
 		filter.LastActivityBeforeMS = cloneInt64(&request.TimeRange.EndAtMS)
+		filter.RangeExact = request.TimeRangeExact
 	}
 	if filter.ProjectIDs == nil {
 		filter.ProjectIDs = make([]string, 0)
@@ -253,6 +255,10 @@ func mapSessionListResponse(
 		response.PricingSource = cloneString(page.Generation.PricingSource)
 		response.Currency = cloneString(page.Generation.Currency)
 	} else {
+		if page.PricingSource != "" {
+			response.PricingSource = cloneString(page.PricingSource)
+			response.Currency = cloneString(page.Currency)
+		}
 		reason := sessionDegradedReason(page.Mode)
 		response.DegradedReason = &reason
 	}
@@ -276,7 +282,7 @@ func mapSessionDetailResponse(
 	if snapshot.Record.Rollup != nil {
 		evidenceTotals = *snapshot.Record.Rollup
 	}
-	pricingSource, currency := "", ""
+	pricingSource, currency := snapshot.PricingSource, snapshot.Currency
 	if snapshot.Generation != nil {
 		pricingSource, currency = snapshot.Generation.PricingSource, snapshot.Generation.Currency
 	}
@@ -291,6 +297,10 @@ func mapSessionDetailResponse(
 		return SessionDetailResponse{}, err
 	}
 	reasons, err := normalizedReasonCounts(snapshot.UnpricedReasons)
+	if err != nil {
+		return SessionDetailResponse{}, err
+	}
+	daily, err := mapSessionDailyTrend(snapshot)
 	if err != nil {
 		return SessionDetailResponse{}, err
 	}
@@ -323,19 +333,51 @@ func mapSessionDetailResponse(
 	}
 	response := SessionDetailResponse{
 		Meta: meta, Item: item, PricingVersions: versions, UnpricedReasons: reasons,
+		ReportingTimeZone: snapshot.ReportingTimezone, Daily: daily,
 		TurnPage: basequery.PageInfo{
 			Limit: turnLimit, HasMore: nextTurnCursor != nil, NextCursor: nextTurnCursor,
 		},
 		Turns: turns,
 	}
-	if snapshot.Generation != nil {
-		response.PricingSource = cloneString(snapshot.Generation.PricingSource)
-		response.Currency = cloneString(snapshot.Generation.Currency)
-	} else {
+	if pricingSource != "" {
+		response.PricingSource = cloneString(pricingSource)
+		response.Currency = cloneString(currency)
+	}
+	if snapshot.Generation == nil {
 		reason := sessionDegradedReason(snapshot.Mode)
 		response.DegradedReason = &reason
 	}
 	return response, nil
+}
+
+func mapSessionDailyTrend(snapshot store.SessionAnalyticsSnapshot) ([]TrendPoint, error) {
+	rows := append([]store.UsageDaily(nil), snapshot.Daily...)
+	if len(rows) == 0 {
+		return make([]TrendPoint, 0), nil
+	}
+	timezone := snapshot.ReportingTimezone
+	if timezone == "" {
+		return nil, errors.New("stored session daily timezone is missing")
+	}
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(rows, func(left, right int) bool {
+		return rows[left].BucketStartMS < rows[right].BucketStartMS
+	})
+	startAtMS := rows[0].BucketStartMS
+	last := time.UnixMilli(rows[len(rows)-1].BucketStartMS).In(location)
+	endAtMS := time.Date(
+		last.Year(), last.Month(), last.Day()+1, 0, 0, 0, 0, location,
+	).UTC().UnixMilli()
+	rangeValue := basequery.UTCTimeRange{
+		StartAtMS: startAtMS, EndAtMS: endAtMS, TimeZone: timezone,
+	}
+	if err := validateAndSortDaily(rows, rangeValue, snapshot.Generation); err != nil {
+		return nil, err
+	}
+	return groupTrend(rows, TrendDay, rangeValue, snapshot.Mode)
 }
 
 func validateSessionTurnReconciliation(
@@ -734,23 +776,37 @@ func validateSessionPageShape(page store.SessionAnalyticsPage, limit int, sortFi
 		}
 	}
 	if page.Mode == store.AnalyticsReadActiveRollup {
-		if page.Generation == nil || page.MatchedTotals == nil || page.PageTotals == nil {
+		if page.Generation == nil || page.PricingSource != "" || page.Currency != "" ||
+			page.MatchedTotals == nil || page.PageTotals == nil {
 			return errors.New("stored active session page shape is invalid")
 		}
 		return validateSessionGeneration(*page.Generation)
 	}
 	if page.Mode == store.AnalyticsReadLightIndex {
-		if page.Generation != nil || page.MatchedTotals == nil || page.PageTotals == nil {
+		if page.Generation != nil || (page.PricingSource == "") != (page.Currency == "") ||
+			(sessionPageHasEstimatedCost(page) && page.PricingSource == "") ||
+			page.MatchedTotals == nil || page.PageTotals == nil {
 			return errors.New("stored light session page shape is invalid")
 		}
 		return nil
 	}
 	if (page.Mode != store.AnalyticsReadDetailFallback &&
 		page.Mode != store.AnalyticsReadAmbiguousFallback) || page.Generation != nil ||
+		page.PricingSource != "" || page.Currency != "" ||
 		page.MatchedTotals != nil || page.PageTotals != nil {
 		return errors.New("stored fallback session page shape is invalid")
 	}
 	return nil
+}
+
+func sessionPageHasEstimatedCost(page store.SessionAnalyticsPage) bool {
+	for _, record := range page.Records {
+		if record.Rollup != nil && record.Rollup.EstimatedUSDMicros != nil {
+			return true
+		}
+	}
+	return (page.MatchedTotals != nil && page.MatchedTotals.EstimatedUSDMicros != nil) ||
+		(page.PageTotals != nil && page.PageTotals.EstimatedUSDMicros != nil)
 }
 
 func validateSessionSnapshotShape(snapshot store.SessionAnalyticsSnapshot, turnLimit int) error {
@@ -780,19 +836,21 @@ func validateSessionSnapshotShape(snapshot store.SessionAnalyticsSnapshot, turnL
 		}
 	}
 	if snapshot.Mode == store.AnalyticsReadActiveRollup {
-		if snapshot.Generation == nil {
+		if snapshot.Generation == nil || snapshot.PricingSource != "" || snapshot.Currency != "" {
 			return errors.New("stored active session detail shape is invalid")
 		}
 		return validateSessionGeneration(*snapshot.Generation)
 	}
 	if snapshot.Mode == store.AnalyticsReadLightIndex {
-		if snapshot.Generation != nil || len(snapshot.PricingVersions) != 0 || len(snapshot.UnpricedReasons) != 0 {
+		if snapshot.Generation != nil || (snapshot.PricingSource == "") != (snapshot.Currency == "") ||
+			len(snapshot.UnpricedReasons) != 0 {
 			return errors.New("stored light session detail shape is invalid")
 		}
 		return nil
 	}
 	if (snapshot.Mode != store.AnalyticsReadDetailFallback &&
 		snapshot.Mode != store.AnalyticsReadAmbiguousFallback) || snapshot.Generation != nil ||
+		snapshot.PricingSource != "" || snapshot.Currency != "" ||
 		len(snapshot.PricingVersions) != 0 || len(snapshot.UnpricedReasons) != 0 {
 		return errors.New("stored fallback session detail shape is invalid")
 	}

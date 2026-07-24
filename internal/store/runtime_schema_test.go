@@ -214,7 +214,7 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 			"used_percent", "window_minutes", "resets_at_ms", "plan_type", "validity",
 			"rejection_reason", "first_observed_at_ms", "last_observed_at_ms", "sample_count",
 			"request_id", "session_id", "source_file_id", "first_source_generation", "first_source_offset",
-			"source_generation", "source_offset",
+			"source_generation", "source_offset", "limit_name",
 		},
 		"quota_observation_receipts": {
 			"observation_id", "segment_observation_id", "sample_sha256",

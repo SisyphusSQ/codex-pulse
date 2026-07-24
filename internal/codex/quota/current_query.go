@@ -57,6 +57,7 @@ type CurrentResponse struct {
 type CurrentWindow struct {
 	WindowKind       store.QuotaWindowKind       `json:"windowKind"`
 	LimitID          string                      `json:"limitId"`
+	LimitName        *string                     `json:"limitName"`
 	UsedPercent      *float64                    `json:"usedPercent"`
 	RemainingPercent *float64                    `json:"remainingPercent"`
 	WindowMinutes    *int64                      `json:"windowMinutes"`
@@ -118,6 +119,16 @@ type CurrentResetCredits struct {
 	Freshness             store.SourceFreshness    `json:"freshness"`
 	FailureCode           *store.SourceFailureCode `json:"failureCode"`
 	UnknownReason         *CurrentUnknownReason    `json:"unknownReason"`
+	Items                 []CurrentResetCreditItem `json:"items"`
+}
+
+type CurrentResetCreditItem struct {
+	Status       store.ResetCreditStatus `json:"status"`
+	Type         store.ResetCreditType   `json:"type"`
+	GrantedAtMS  int64                   `json:"grantedAtMs"`
+	ExpiresAtMS  int64                   `json:"expiresAtMs"`
+	RedeemedAtMS *int64                  `json:"redeemedAtMs"`
+	RemainingMS  *int64                  `json:"remainingMs"`
 }
 
 type CurrentRefresh struct {
@@ -253,6 +264,11 @@ func mapCurrentWindow(
 		ExplanationCode: current.ExplanationCode, LastSuccessAtMS: cloneInt64(current.LastSuccessAtMS),
 		LastAttemptAtMS: cloneInt64(current.LastAttemptAtMS),
 	}
+	limitName, err := currentLimitName(facts.Observations, current.ObservationID)
+	if err != nil {
+		return CurrentWindow{}, err
+	}
+	window.LimitName = limitName
 	if window.UsedPercent == nil {
 		if current.ObservationID != nil || current.FreshnessState != store.QuotaCurrentNeverLoaded {
 			return CurrentWindow{}, fmt.Errorf("%w: unknown window shape is inconsistent", ErrInvalidCurrentQuery)
@@ -277,6 +293,55 @@ func mapCurrentWindow(
 	}
 	window.Explanations = explanations
 	return window, nil
+}
+
+func currentLimitName(
+	observations []store.QuotaObservation,
+	selectedID *string,
+) (*string, error) {
+	if selectedID == nil {
+		return nil, nil
+	}
+	selectedFound := false
+	var latestName *string
+	var latestObservedAtMS int64
+	latestNameConflict := false
+	// 展示名不参与额度数值仲裁；选中记录缺名时，可由同一逻辑额度的最新 accepted 事实补全。
+	for _, observation := range observations {
+		if observation.ObservationID == *selectedID {
+			selectedFound = true
+			if observation.LimitName != nil {
+				if *observation.LimitName == "" || len(*observation.LimitName) > maxLimitIdentityBytes {
+					return nil, fmt.Errorf("%w: selected limit name is invalid", ErrInvalidCurrentQuery)
+				}
+				value := *observation.LimitName
+				return &value, nil
+			}
+		}
+		if observation.Validity != store.QuotaValidityAccepted || observation.LimitName == nil {
+			continue
+		}
+		if *observation.LimitName == "" || len(*observation.LimitName) > maxLimitIdentityBytes {
+			return nil, fmt.Errorf("%w: supplemental limit name is invalid", ErrInvalidCurrentQuery)
+		}
+		switch {
+		case latestName == nil || observation.LastObservedAtMS > latestObservedAtMS:
+			value := *observation.LimitName
+			latestName = &value
+			latestObservedAtMS = observation.LastObservedAtMS
+			latestNameConflict = false
+		case observation.LastObservedAtMS == latestObservedAtMS &&
+			*observation.LimitName != *latestName:
+			latestNameConflict = true
+		}
+	}
+	if !selectedFound {
+		return nil, fmt.Errorf("%w: selected limit name observation is missing", ErrInvalidCurrentQuery)
+	}
+	if latestNameConflict {
+		return nil, nil
+	}
+	return latestName, nil
 }
 
 func mapCurrentExplanations(
@@ -427,7 +492,8 @@ func mapCurrentResetCredits(
 	loaded := summary.SnapshotID != nil
 	countsComplete := summary.AvailableCount != nil && summary.TotalCount != nil &&
 		summary.RedeemedCount != nil && summary.CumulativeRemainingMS != nil
-	if loaded != countsComplete {
+	if loaded != countsComplete || (loaded && int64(len(summary.Credits)) != *summary.TotalCount) ||
+		(!loaded && len(summary.Credits) != 0) {
 		return CurrentResetCredits{}, fmt.Errorf(
 			"%w: reset credits value shape is inconsistent", ErrInvalidCurrentQuery,
 		)
@@ -457,11 +523,46 @@ func mapCurrentResetCredits(
 		NextExpiresAtMS:       cloneInt64(summary.NextExpiresAtMS), LastSuccessAtMS: cloneInt64(summary.LastSuccessAtMS),
 		LastAttemptAtMS: cloneInt64(summary.LastAttemptAtMS), Freshness: summary.FreshnessState,
 		FailureCode: cloneSourceFailureCode(summary.LastFailureCode),
+		Items:       mapCurrentResetCreditItems(summary.Credits, evaluatedAtMS),
 	}
 	if result.AvailableCount == nil {
 		result.UnknownReason = currentUnknownPointer(CurrentUnknownNeverLoaded)
 	}
 	return result, nil
+}
+
+func mapCurrentResetCreditItems(
+	credits []store.ResetCredit,
+	evaluatedAtMS int64,
+) []CurrentResetCreditItem {
+	items := make([]CurrentResetCreditItem, 0, len(credits))
+	for _, credit := range credits {
+		status := credit.Status
+		var remaining *int64
+		if status == store.ResetCreditAvailable {
+			if credit.ExpiresAtMS <= evaluatedAtMS {
+				status = store.ResetCreditExpired
+			} else {
+				value := credit.ExpiresAtMS - evaluatedAtMS
+				remaining = &value
+			}
+		}
+		items = append(items, CurrentResetCreditItem{
+			Status: status, Type: credit.Type, GrantedAtMS: credit.GrantedAtMS,
+			ExpiresAtMS: credit.ExpiresAtMS, RedeemedAtMS: cloneInt64(credit.RedeemedAtMS),
+			RemainingMS: remaining,
+		})
+	}
+	sort.Slice(items, func(left, right int) bool {
+		if items[left].ExpiresAtMS != items[right].ExpiresAtMS {
+			return items[left].ExpiresAtMS < items[right].ExpiresAtMS
+		}
+		if items[left].GrantedAtMS != items[right].GrantedAtMS {
+			return items[left].GrantedAtMS < items[right].GrantedAtMS
+		}
+		return items[left].Status < items[right].Status
+	})
+	return items
 }
 
 func validCurrentSourceFreshness(value store.SourceFreshness) bool {

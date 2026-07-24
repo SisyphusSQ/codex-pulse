@@ -24,7 +24,8 @@ public actor CoreClient {
     public init(socketPath: String, bearerToken: String) throws {
         let transport = try HTTP2ClientTransport.Posix(
             target: .unixDomainSocket(path: socketPath),
-            transportSecurity: .plaintext
+            transportSecurity: .plaintext,
+            serviceConfig: CodexPulseTransportContract.clientServiceConfig
         )
         let grpcClient = GRPCClient(transport: transport)
         self.grpcClient = grpcClient

@@ -77,8 +77,12 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
     public let healthEvents: Int
     public let usageTrend: Int
     public let usageModels: Int
+    public let usageModelTrend: Int
+    public let usageModelReconciled: Int
     public let usageCostKnown: Bool
     public let quotaWindows: Int
+    public let projectDetailCostKnown: Bool
+    public let projectDetailModels: Int
     public let detailsRead: Int
     public let settingsMutation: String
     public let unavailableSteps: [String]
@@ -91,8 +95,12 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
         healthEvents: Int,
         usageTrend: Int,
         usageModels: Int,
+        usageModelTrend: Int,
+        usageModelReconciled: Int,
         usageCostKnown: Bool,
         quotaWindows: Int,
+        projectDetailCostKnown: Bool = false,
+        projectDetailModels: Int = 0,
         detailsRead: Int,
         settingsMutation: String,
         unavailableSteps: [String]
@@ -104,8 +112,12 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
         self.healthEvents = healthEvents
         self.usageTrend = usageTrend
         self.usageModels = usageModels
+        self.usageModelTrend = usageModelTrend
+        self.usageModelReconciled = usageModelReconciled
         self.usageCostKnown = usageCostKnown
         self.quotaWindows = quotaWindows
+        self.projectDetailCostKnown = projectDetailCostKnown
+        self.projectDetailModels = projectDetailModels
         self.detailsRead = detailsRead
         self.settingsMutation = settingsMutation
         self.unavailableSteps = unavailableSteps
@@ -114,7 +126,10 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
     public var stableDescription: String {
         "sessions=\(sessions) projects=\(projects) sources=\(sources) jobs=\(jobs) "
             + "health_events=\(healthEvents) usage_trend=\(usageTrend) usage_models=\(usageModels) "
+            + "usage_model_trend=\(usageModelTrend) usage_model_reconciled=\(usageModelReconciled) "
             + "usage_cost=\(usageCostKnown ? "known" : "unknown") quota_windows=\(quotaWindows) "
+            + "project_detail_cost=\(projectDetailCostKnown ? "known" : "unknown") "
+            + "project_detail_models=\(projectDetailModels) "
             + "details_read=\(detailsRead) settings=\(settingsMutation) "
             + "unavailable=\(unavailableSteps.isEmpty ? "none" : unavailableSteps.joined(separator: ","))"
     }

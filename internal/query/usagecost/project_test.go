@@ -85,6 +85,51 @@ func TestListProjectsValidatesMapsAndRoundTripsOpaqueCursor(t *testing.T) {
 	}
 }
 
+func TestListProjectsPreservesExactRangeForStore(t *testing.T) {
+	t.Parallel()
+
+	var captured store.ProjectAnalyticsFilter
+	reader := &projectReaderStub{list: func(
+		_ context.Context, filter store.ProjectAnalyticsFilter,
+	) (store.ProjectAnalyticsPage, error) {
+		captured = filter
+		return store.ProjectAnalyticsPage{}, errors.New("stop after capture")
+	}}
+	service := newUsageService(t, reader)
+	_, _ = service.ListProjects(context.Background(), basequery.Request{
+		ExactTimeRange: &basequery.UTCTimeRange{
+			StartAtMS: 3_600_000, EndAtMS: 7_200_000, TimeZone: "UTC",
+		},
+	})
+	if !captured.Range.Exact || captured.Range.StartAtMS != 3_600_000 ||
+		captured.Range.EndAtMS != 7_200_000 {
+		t.Fatalf("project exact range = %#v", captured.Range)
+	}
+}
+
+func TestProjectDetailPreservesExactRangeForStore(t *testing.T) {
+	t.Parallel()
+
+	var captured store.ProjectAnalyticsDetailFilter
+	reader := &projectReaderStub{detail: func(
+		_ context.Context, filter store.ProjectAnalyticsDetailFilter,
+	) (store.ProjectAnalyticsSnapshot, error) {
+		captured = filter
+		return store.ProjectAnalyticsSnapshot{}, errors.New("stop after capture")
+	}}
+	service := newUsageService(t, reader)
+	_, _ = service.ProjectDetail(context.Background(), ProjectDetailRequest{
+		DimensionKey: "project-a",
+		ExactRange: &basequery.UTCTimeRange{
+			StartAtMS: 3_600_000, EndAtMS: 7_200_000, TimeZone: "UTC",
+		},
+	})
+	if !captured.Range.Exact || captured.Range.StartAtMS != 3_600_000 ||
+		captured.Range.EndAtMS != 7_200_000 {
+		t.Fatalf("project detail exact range = %#v", captured.Range)
+	}
+}
+
 func TestListProjectsPreservesUnknownDimensionAndPartialCost(t *testing.T) {
 	t.Parallel()
 
@@ -127,17 +172,18 @@ func TestListProjectsPreservesUnknownDimensionAndPartialCost(t *testing.T) {
 	assertUnknownNumeric(t, response.Items[0].Totals.EstimatedUSDMicros, basequery.UnknownNotComputed)
 }
 
-func TestListProjectsLightIndexKeepsProjectTokensWithoutPricing(t *testing.T) {
+func TestListProjectsLightIndexKeepsProjectTokensCostAndModels(t *testing.T) {
 	t.Parallel()
 
-	input, cached, output, reasoning, total := int64(100), int64(20), int64(10), int64(2), int64(112)
+	input, cached, output, reasoning, total, cost := int64(100), int64(20), int64(10), int64(2), int64(112), int64(129)
 	record := safeProjectRecord("project-light", pointerToString("project-light"), pointerToString("Project Light"), 0, -1)
 	record.AttributionConfidence = "medium"
 	record.AttributionSource = "cwd_path_digest"
 	record.AttributionReason = "path_derived"
+	record.SessionCount = 2
 	record.Totals = store.RollupTotals{
 		InputTokens: &input, CachedInputTokens: &cached, OutputTokens: &output,
-		ReasoningTokens: &reasoning, TotalTokens: &total,
+		ReasoningTokens: &reasoning, TotalTokens: &total, EstimatedUSDMicros: &cost,
 		FirstActivityAtMS: 1, LastActivityAtMS: 1, UpdatedAtMS: 1,
 	}
 	record.Trend[0].GenerationID = ""
@@ -148,15 +194,17 @@ func TestListProjectsLightIndexKeepsProjectTokensWithoutPricing(t *testing.T) {
 	reader := &projectReaderStub{
 		list: func(context.Context, store.ProjectAnalyticsFilter) (store.ProjectAnalyticsPage, error) {
 			return store.ProjectAnalyticsPage{
-				Mode: store.AnalyticsReadLightIndex, Records: []store.ProjectAnalyticsRecord{record}, MatchedCount: 1,
+				Mode: store.AnalyticsReadLightIndex, PricingSource: "openai-api", Currency: "USD",
+				Records: []store.ProjectAnalyticsRecord{record}, MatchedCount: 1,
 				GlobalTotals: record.Totals, MatchedTotals: record.Totals, PageTotals: record.Totals,
 				PricingVersions: make([]string, 0),
 			}, nil
 		},
 		detail: func(context.Context, store.ProjectAnalyticsDetailFilter) (store.ProjectAnalyticsSnapshot, error) {
 			return store.ProjectAnalyticsSnapshot{
-				Mode: store.AnalyticsReadLightIndex, Record: record,
-				Daily: append([]store.ProjectUsageDaily(nil), record.Trend...),
+				Mode: store.AnalyticsReadLightIndex, PricingSource: "openai-api", Currency: "USD",
+				Record: record,
+				Daily:  append([]store.ProjectUsageDaily(nil), record.Trend...),
 				Sessions: []store.ProjectSessionAnalyticsRecord{{
 					SessionID: "session-light", DisplayTitle: "真实标题",
 					TitleConfidence: store.AttributionConfidenceHigh,
@@ -168,8 +216,24 @@ func TestListProjectsLightIndexKeepsProjectTokensWithoutPricing(t *testing.T) {
 					},
 					Activity: store.SessionActivityIdle, LastActivityAtMS: 1, Totals: record.Totals,
 				}},
-				Models: make([]store.ProjectModelAnalyticsRecord, 0), GlobalTotals: record.Totals,
-				PricingVersions: make([]string, 0),
+				NextSessionCursor: &store.ProjectSessionAnalyticsCursor{
+					GenerationID: "light:1:3", DimensionKey: "project-light",
+					SessionID: "session-light", LastActivityAtMS: 1,
+				},
+				Models: []store.ProjectModelAnalyticsRecord{{
+					DimensionKey: "gpt-5.4-mini",
+					Model: store.ModelAttribution{
+						ModelKey: pointerToString("gpt-5.4-mini"), DisplayName: pointerToString("GPT-5.4 Mini"),
+						Confidence: store.AttributionConfidenceHigh,
+						Source:     store.AttributionSourceModelCanonical, Reason: store.AttributionReasonObserved,
+					},
+					Totals: record.Totals,
+				}},
+				NextModelCursor: &store.ProjectModelAnalyticsCursor{
+					GenerationID: "light:1:3", DimensionKey: "project-light",
+					ModelDimensionKey: "gpt-5.4-mini", TotalTokens: &total,
+				},
+				GlobalTotals: record.Totals, PricingVersions: []string{"pricing-v1"},
 			}, nil
 		},
 	}
@@ -181,22 +245,30 @@ func TestListProjectsLightIndexKeepsProjectTokensWithoutPricing(t *testing.T) {
 		t.Fatalf("ListProjects(light) error = %v", err)
 	}
 	if response.Meta.Status != basequery.ResponsePartial || len(response.Items) != 1 ||
-		response.PricingSource != nil || response.Currency != nil {
+		response.PricingSource == nil || *response.PricingSource != "openai-api" ||
+		response.Currency == nil || *response.Currency != "USD" {
 		t.Fatalf("response = %#v", response)
 	}
 	assertKnownNumeric(t, response.Items[0].Totals.TotalTokens, total, basequery.NumericTokens)
 	assertUnknownNumeric(t, response.Items[0].Totals.TurnCount, basequery.UnknownUnavailable)
-	assertUnknownNumeric(t, response.Items[0].Totals.EstimatedUSDMicros, basequery.UnknownNotComputed)
+	assertKnownNumeric(t, response.Items[0].Totals.EstimatedUSDMicros, cost, basequery.NumericMicroUSD)
 	detail, err := service.ProjectDetail(context.Background(), ProjectDetailRequest{
 		DimensionKey: "project-light",
 		Range:        basequery.LocalDateRange{StartDate: "1970-01-01", EndDateExclusive: "1970-01-02", TimeZone: "UTC"},
+		SessionPage:  basequery.PageRequest{Limit: 1},
+		ModelPage:    basequery.PageRequest{Limit: 1},
 	})
 	if err != nil {
 		t.Fatalf("ProjectDetail(light) error = %v", err)
 	}
-	if detail.Meta.Status != basequery.ResponsePartial || len(detail.Sessions) != 1 || detail.PricingSource != nil {
+	if detail.Meta.Status != basequery.ResponsePartial || len(detail.Sessions) != 1 || len(detail.Models) != 1 ||
+		detail.SessionPage.NextCursor == nil || detail.PricingSource == nil ||
+		detail.ModelPage.NextCursor == nil || *detail.PricingSource != "openai-api" ||
+		detail.Currency == nil || *detail.Currency != "USD" {
 		t.Fatalf("detail = %#v", detail)
 	}
+	assertKnownNumeric(t, detail.Models[0].Totals.EstimatedUSDMicros, cost, basequery.NumericMicroUSD)
+	assertUnknownNumeric(t, detail.Models[0].Totals.TurnCount, basequery.UnknownUnavailable)
 }
 
 func TestListProjectsKnownEmptyIsComplete(t *testing.T) {

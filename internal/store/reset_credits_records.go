@@ -70,6 +70,7 @@ type ResetCreditsSummary struct {
 	LastFailureCode       *SourceFailureCode
 	FreshnessState        SourceFreshness
 	EvaluationAtMS        int64
+	Credits               []ResetCredit
 }
 
 func cloneResetCreditsSnapshot(value *ResetCreditsSnapshot) *ResetCreditsSnapshot {

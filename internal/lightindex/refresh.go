@@ -16,6 +16,12 @@ type RolloutFileIdentity struct {
 	MTimeNS      int64
 	PrefixBytes  int64
 	PrefixSHA256 string
+	Comparison   *PrefixComparison
+}
+
+type PrefixComparison struct {
+	PrefixBytes  int64
+	PrefixSHA256 string
 }
 
 type ScanCheckpoint struct {
@@ -102,8 +108,14 @@ func sameHome(left, right HomeIdentity) bool {
 }
 
 func samePrefix(previous, current RolloutFileIdentity) bool {
-	return previous.PrefixBytes >= 0 && previous.PrefixBytes == current.PrefixBytes &&
-		previous.PrefixSHA256 != "" && previous.PrefixSHA256 == current.PrefixSHA256
+	prefixBytes := current.PrefixBytes
+	prefixSHA256 := current.PrefixSHA256
+	if current.Comparison != nil {
+		prefixBytes = current.Comparison.PrefixBytes
+		prefixSHA256 = current.Comparison.PrefixSHA256
+	}
+	return previous.PrefixBytes >= 0 && previous.PrefixBytes == prefixBytes &&
+		previous.PrefixSHA256 != "" && previous.PrefixSHA256 == prefixSHA256
 }
 
 func rebuildDecision(reason string) RefreshDecision {

@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"gorm.io/gorm"
@@ -53,11 +55,11 @@ func TestApplicationMigrationAppendsAttributionSchemaToFrozenV3(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 	if report.FromVersion != 3 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v3 to v17 with backup", report)
+		!equalInts(report.AppliedVersions, []int{4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v3 to v19 with backup", report)
 	}
-	if backupVersions != [2]int{3, 17} {
-		t.Fatalf("backup versions = %v, want [3 17]", backupVersions)
+	if backupVersions != [2]int{3, 19} {
+		t.Fatalf("backup versions = %v, want [3 19]", backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 
@@ -138,6 +140,96 @@ func TestApplicationMigrationRollsBackV4WhenAttributionBackfillFails(t *testing.
 		return nil
 	}); err != nil {
 		t.Fatalf("inspect failed v4 migration: %v", err)
+	}
+}
+
+func TestApplicationMigrationRecomputesProjectIdentityRuleV2(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	seedApplicationSchemaV17ForAttribution(t, database)
+	repository := NewRepository(database)
+	ctx := context.Background()
+	root := t.TempDir()
+	main := filepath.Join(root, "repos", "codex-pulse")
+	linkedOne := filepath.Join(root, "linked-one", "codex-pulse")
+	linkedTwo := filepath.Join(root, "linked-two", "codex-pulse")
+	for index, cwd := range []string{linkedOne, linkedTwo} {
+		atMS := int64(index + 100)
+		if err := repository.UpsertFacts(ctx, FactBatch{Session: &Session{
+			SessionID: []string{"one", "two"}[index], Provider: "codex", SourceKind: "session",
+			InitialCWD: &cwd, CreatedAtMS: atMS, FirstSeenAtMS: atMS, LastSeenAtMS: atMS,
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		if err := transaction.WithContext(ctx).Model(&sessionAttributionModel{}).
+			Where("1 = 1").Update("rule_version", 1).Error; err != nil {
+			return err
+		}
+		return transaction.WithContext(ctx).Create(&costRollupGenerationModel{
+			GenerationID: "stale-project-rule", ReportingTimezone: "UTC",
+			PricingSource: "test", Currency: "USD", RollupVersion: 1,
+			State: string(CostRollupGenerationActive), CreatedAtMS: 1,
+			CompletedAtMS: int64Pointer254(2), UpdatedAtMS: 2,
+		}).Error
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for index, linked := range []string{linkedOne, linkedTwo} {
+		gitDirectory := filepath.Join(main, ".git", "worktrees", []string{"one", "two"}[index])
+		if err := os.MkdirAll(gitDirectory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(linked, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(gitDirectory, "commondir"), []byte("../..\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(linked, ".git"), []byte("gitdir: "+gitDirectory+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	runner := applicationMigrationRunnerForTest(database)
+	runner.catalog = applicationMigrations[:18]
+	runner.verifyCurrent = verifyApplicationSchemaV18
+	runner.spaceCheck = func(context.Context, string, int64) error { return nil }
+	runner.backup = func(
+		context.Context, int, int, func(storesqlite.BackupProgress),
+	) (string, error) {
+		return "/tmp/application-v17-before-v18.db", nil
+	}
+	report, err := runner.run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.FromVersion != 17 || report.TargetVersion != 18 ||
+		!equalInts(report.AppliedVersions, []int{18}) {
+		t.Fatalf("rule v2 migration report = %#v", report)
+	}
+	first, err := repository.SessionAttribution(ctx, "one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := repository.SessionAttribution(ctx, "two")
+	if err != nil || first.Project.ProjectID == nil || second.Project.ProjectID == nil ||
+		*first.Project.ProjectID != *second.Project.ProjectID || first.RuleVersion != 2 || second.RuleVersion != 2 {
+		t.Fatalf("migrated attributions = %#v and %#v, %v", first, second, err)
+	}
+	if err := database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+		var count int64
+		if err := connection.WithContext(ctx).Model(&costRollupGenerationModel{}).Count(&count).Error; err != nil {
+			return err
+		}
+		if count != 0 {
+			t.Fatalf("stale cost generations after rule migration = %d", count)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -310,5 +402,32 @@ func seedApplicationSchemaV3ForAttribution(t *testing.T, database *storesqlite.S
 	})
 	if err != nil {
 		t.Fatalf("seed application schema v3: %v", err)
+	}
+}
+
+func seedApplicationSchemaV17ForAttribution(t *testing.T, database *storesqlite.Store) {
+	t.Helper()
+	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		if err := ensureSchemaObjects(ctx, transaction, migrationSchemaObjects); err != nil {
+			return err
+		}
+		for _, migration := range applicationMigrations[:17] {
+			migrationContext := context.WithValue(
+				ctx, quotaMigrationEvaluationTimeKey{}, int64(migration.version),
+			)
+			if err := migration.apply(migrationContext, transaction); err != nil {
+				return err
+			}
+			if err := transaction.WithContext(ctx).Create(&schemaMigrationModel{
+				Version: migration.version, Name: migration.name,
+				Checksum: migration.checksum, AppliedAtMS: int64(migration.version),
+			}).Error; err != nil {
+				return err
+			}
+		}
+		return transaction.WithContext(ctx).Exec("PRAGMA user_version = 17").Error
+	})
+	if err != nil {
+		t.Fatalf("seed application schema v17: %v", err)
 	}
 }

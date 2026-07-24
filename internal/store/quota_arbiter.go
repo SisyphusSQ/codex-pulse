@@ -7,10 +7,11 @@ import (
 )
 
 const (
-	quotaArbitrationRuleV1  = "quota-arbiter-v1"
+	quotaArbitrationRuleV2  = "quota-arbiter-v2"
 	quotaFreshForMS         = int64(10 * 60 * 1000)
 	quotaMaxClockSkewMS     = int64(2 * 60 * 1000)
 	quotaMaxRuleClockSkewMS = int64(24 * 60 * 60 * 1000)
+	quotaResetJitterMS      = int64(1_000)
 	quotaMinuteMS           = int64(60 * 1000)
 )
 
@@ -34,7 +35,7 @@ func defaultQuotaArbitrationRule() QuotaArbitrationRule {
 // DefaultQuotaArbitrationRule returns the current versioned production rule.
 func DefaultQuotaArbitrationRule() QuotaArbitrationRule {
 	return QuotaArbitrationRule{
-		Version: quotaArbitrationRuleV1, FreshForMS: quotaFreshForMS, MaxClockSkewMS: quotaMaxClockSkewMS,
+		Version: quotaArbitrationRuleV2, FreshForMS: quotaFreshForMS, MaxClockSkewMS: quotaMaxClockSkewMS,
 	}
 }
 
@@ -305,15 +306,20 @@ func classifyQuotaGenerations(
 			candidate.eligible = false
 			continue
 		case observation.ResetsAtMS > activeReset:
-			if observation.LastObservedAtMS < activeReset-rule.MaxClockSkewMS {
-				setQuotaCandidateReason(candidate, QuotaEvidenceSuspicious, QuotaReasonResetRegression)
-				candidate.eligible = false
-				continue
-			}
+			// 滑动窗口可在旧 reset 尚未到达时提前重置，并给出更晚的新 reset。
+			// 基础校验已保证新 reset 位于观测后的窗口时长内，不能再用旧 reset 作为准入门槛。
 			activeReset = observation.ResetsAtMS
 			activeMinutes = observation.WindowMinutes
 			activeFirstObserved = observation.LastObservedAtMS
 		case observation.ResetsAtMS < activeReset:
+			if observation.WindowMinutes == activeMinutes &&
+				activeReset-observation.ResetsAtMS <= quotaResetJitterMS {
+				// Wham 的滑动窗口 reset_at 会在相邻采样间出现 1 秒取整抖动。
+				// 把它归入已知的同一窗口，避免把可信倒计时反复降级为 suspicious。
+				observation.ResetsAtMS = activeReset
+				candidate.observation.ResetsAtMS = activeReset
+				break
+			}
 			if observation.LastObservedAtMS >= activeFirstObserved {
 				setQuotaCandidateReason(candidate, QuotaEvidenceSuspicious, QuotaReasonResetRegression)
 				candidate.eligible = false

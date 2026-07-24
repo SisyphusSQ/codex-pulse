@@ -122,7 +122,8 @@ func validSettingsUI(value preferences.UIPreferences) bool {
 	return value.Locale == "zh-CN" &&
 		(value.LaunchBehavior == preferences.LaunchBehaviorMainWindow ||
 			value.LaunchBehavior == preferences.LaunchBehaviorTray) &&
-		(value.OverviewRange == preferences.OverviewRangeToday ||
+		(value.OverviewRange == preferences.OverviewRangeQuotaWeek ||
+			value.OverviewRange == preferences.OverviewRangeToday ||
 			value.OverviewRange == preferences.OverviewRangeSevenDays ||
 			value.OverviewRange == preferences.OverviewRangeThirtyDays)
 }
@@ -141,7 +142,7 @@ func settingsEditableFields() []EditableField {
 		integerField("updates.checkIntervalSeconds", true, 3600, 86400),
 		enumField("ui.locale", false, []string{"zh-CN"}),
 		enumField("ui.launchBehavior", true, []string{"main_window", "tray"}),
-		enumField("ui.overviewRange", true, []string{"today", "seven_days", "thirty_days"}),
+		enumField("ui.overviewRange", true, []string{"quota_week", "today", "seven_days", "thirty_days"}),
 	}
 }
 

@@ -13,8 +13,8 @@ import (
 func TestApplicationSchemaV11CreatesQuotaProjection(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV17Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 17", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV19Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 19", applicationSchemaVersion)
 	}
 	const wantChecksum = "838ab8173f637ae8f702b3f4e2139bf1d6810941b0a83d1c258743183d914475"
 	if got := applicationSchemaV11Checksum(); got != wantChecksum {
@@ -56,7 +56,7 @@ func TestApplicationMigrationUpgradesV10ThroughCurrentWithoutChangingRawObservat
 		"v10-wham", 38, 1_000_000, 1_000_000+5*quotaTestHourMS,
 	))
 	if err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		return transaction.WithContext(ctx).Create(observation).Error
+		return transaction.WithContext(ctx).Omit("limit_name").Create(observation).Error
 	}); err != nil {
 		t.Fatalf("seed v10 observation: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestApplicationMigrationUpgradesV10ThroughCurrentWithoutChangingRawObservat
 		t.Fatalf("run(v10->v11) error = %v", err)
 	}
 	if report.FromVersion != 10 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{11, 12, 13, 14, 15, 16, 17}) {
+		!equalInts(report.AppliedVersions, []int{11, 12, 13, 14, 15, 16, 17, 18, 19}) {
 		t.Fatalf("migration report = %#v", report)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
@@ -100,7 +100,7 @@ func TestApplicationMigrationV11UsesTrustedClockForFutureObservation(t *testing.
 		"v10-future-wham", 38, observed, observed+5*quotaTestHourMS,
 	))
 	if err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		return transaction.WithContext(ctx).Create(observation).Error
+		return transaction.WithContext(ctx).Omit("limit_name").Create(observation).Error
 	}); err != nil {
 		t.Fatalf("seed future v10 observation: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestApplicationMigrationV11BatchesEvidenceBeyondSQLiteVariableLimit(t *test
 			)
 			models = append(models, quotaObservationModelFromSample(sample))
 		}
-		return transaction.WithContext(ctx).CreateInBatches(&models, 256).Error
+		return transaction.WithContext(ctx).Omit("limit_name").CreateInBatches(&models, 256).Error
 	}); err != nil {
 		t.Fatalf("seed %d v10 observations: %v", historySize, err)
 	}

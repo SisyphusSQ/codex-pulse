@@ -19,6 +19,7 @@ const (
 type OverviewRange string
 
 const (
+	OverviewRangeQuotaWeek  OverviewRange = "quota_week"
 	OverviewRangeToday      OverviewRange = "today"
 	OverviewRangeSevenDays  OverviewRange = "seven_days"
 	OverviewRangeThirtyDays OverviewRange = "thirty_days"
@@ -140,6 +141,6 @@ func DefaultUpdatePreferences() UpdatePreferences {
 
 func DefaultUIPreferences() UIPreferences {
 	return UIPreferences{
-		Locale: "zh-CN", LaunchBehavior: LaunchBehaviorTray, OverviewRange: OverviewRangeSevenDays,
+		Locale: "zh-CN", LaunchBehavior: LaunchBehaviorTray, OverviewRange: OverviewRangeQuotaWeek,
 	}
 }

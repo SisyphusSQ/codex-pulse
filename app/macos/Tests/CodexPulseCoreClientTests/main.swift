@@ -443,6 +443,27 @@ struct ContractTestMain {
     static func main() async throws {
         try expect(CodexPulseTransportContract.version, "core-rpc-v1", "contract version")
         try expect(CodexPulseTransportContract.transport, "grpc+unix", "transport")
+        try expect(
+            CodexPulseTransportContract.maximumMessageBytes,
+            16 * 1024 * 1024,
+            "transport message boundary"
+        )
+        guard CodexPulseTransportContract.clientServiceConfig.methodConfig.count == 1,
+              let messageConfig = CodexPulseTransportContract.clientServiceConfig.methodConfig.first,
+              messageConfig.names == [MethodConfig.Name(service: "")]
+        else {
+            throw TestFailure.mismatch("transport message boundary is not configured for every RPC")
+        }
+        try expect(
+            messageConfig.maxRequestMessageBytes,
+            CodexPulseTransportContract.maximumMessageBytes,
+            "transport request boundary"
+        )
+        try expect(
+            messageConfig.maxResponseMessageBytes,
+            CodexPulseTransportContract.maximumMessageBytes,
+            "transport response boundary"
+        )
         try expect(LifecycleEvent.systemWillSleep.rawValue, "system_will_sleep", "sleep event")
         try expect(LifecycleEvent.systemDidWake.rawValue, "system_did_wake", "wake event")
 

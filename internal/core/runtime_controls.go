@@ -212,7 +212,8 @@ func validSettingsUpdateRequest(request SettingsUpdateRequest) bool {
 		request.Refresh.JSONLDebounceMilliseconds >= 3000 && request.Refresh.JSONLDebounceMilliseconds <= 5000 &&
 		request.Updates.CheckIntervalSeconds >= 3600 && request.Updates.CheckIntervalSeconds <= 86400 &&
 		(request.UI.LaunchBehavior == "main_window" || request.UI.LaunchBehavior == "tray") &&
-		(request.UI.OverviewRange == "today" || request.UI.OverviewRange == "seven_days" ||
+		(request.UI.OverviewRange == "quota_week" || request.UI.OverviewRange == "today" ||
+			request.UI.OverviewRange == "seven_days" ||
 			request.UI.OverviewRange == "thirty_days")
 }
 

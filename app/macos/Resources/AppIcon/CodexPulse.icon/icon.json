@@ -1,0 +1,51 @@
+{
+  "fill" : {
+    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "image-name" : "06-CoreDot.svg",
+          "name" : "06-CoreDot"
+        },
+        {
+          "image-name" : "05-CoreLens.svg",
+          "name" : "05-CoreLens"
+        },
+        {
+          "image-name" : "04-Pulse.svg",
+          "name" : "04-Pulse"
+        },
+        {
+          "image-name" : "03-MainOrbit.svg",
+          "name" : "03-MainOrbit"
+        },
+        {
+          "image-name" : "02-RearTrace 2.svg",
+          "name" : "02-RearTrace"
+        },
+        {
+          "glass" : false,
+          "image-name" : "01-Background 2.svg",
+          "name" : "01-Background"
+        }
+      ],
+      "name" : "Pulse Core",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Codex Pulse core dot layer">
+  <defs>
+    <linearGradient id="core" x1="430" y1="420" x2="594" y2="608" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F3FEFF"/>
+      <stop offset="0.44" stop-color="#9CEBFF"/>
+      <stop offset="1" stop-color="#7D7BFF"/>
+    </linearGradient>
+  </defs>
+  <circle cx="512" cy="512" r="62" fill="url(#core)"/>
+</svg>

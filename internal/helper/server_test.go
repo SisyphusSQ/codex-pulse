@@ -123,12 +123,21 @@ func TestGRPCServerMapsBusinessResponseAndTypedError(t *testing.T) {
 	}
 	client, authorize := startConfiguredTestGRPCServer(t, func(config *ServerConfig) { config.Service = business })
 	response, err := client.ListSessions(authorize(t.Context()), &corev1.ListSessionsRequest{
-		Query: &corev1.QueryRequest{Page: &corev1.PageRequest{Limit: 17}},
+		Query: &corev1.QueryRequest{
+			Page: &corev1.PageRequest{Limit: 17},
+			ExactTimeRange: &corev1.UTCTimeRange{
+				StartAtMs: 1_753_056_000_000, EndAtMs: 1_753_059_600_000, TimeZone: "Asia/Shanghai",
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("ListSessions() error = %v", err)
 	}
-	if usage.request.Page.Limit != 17 || response.Meta == nil || response.Meta.Status != "partial" ||
+	if usage.request.Page.Limit != 17 || usage.request.ExactTimeRange == nil ||
+		usage.request.ExactTimeRange.StartAtMS != 1_753_056_000_000 ||
+		usage.request.ExactTimeRange.EndAtMS != 1_753_059_600_000 ||
+		usage.request.ExactTimeRange.TimeZone != "Asia/Shanghai" ||
+		response.Meta == nil || response.Meta.Status != "partial" ||
 		response.MatchedCount == nil || response.MatchedCount.UnknownReason == nil {
 		t.Fatalf("ListSessions() request = %#v, response = %#v", usage.request, response)
 	}
@@ -207,6 +216,21 @@ func startTestGRPCServer(
 	t testing.TB,
 ) (corev1.CoreServiceClient, func(context.Context) context.Context) {
 	return startConfiguredTestGRPCServer(t, nil)
+}
+
+// 测试 UsageCost RPC 映射保留精确 UTC 半开区间，不转换成本地自然日。
+func TestFromProtoUsageCostRequestPreservesExactRange(t *testing.T) {
+	request := fromProtoUsageCostRequest(&corev1.UsageCostRequest{
+		Granularity: "day",
+		ExactRange: &corev1.UTCTimeRange{
+			StartAtMs: 1_753_056_000_000, EndAtMs: 1_753_059_600_000, TimeZone: "Asia/Shanghai",
+		},
+	})
+	if request.Granularity != usagecost.TrendDay || request.ExactRange == nil ||
+		request.ExactRange.StartAtMS != 1_753_056_000_000 || request.ExactRange.EndAtMS != 1_753_059_600_000 ||
+		request.ExactRange.TimeZone != "Asia/Shanghai" || request.Range != (basequery.LocalDateRange{}) {
+		t.Fatalf("mapped exact usage request = %#v", request)
+	}
 }
 
 func startConfiguredTestGRPCServer(

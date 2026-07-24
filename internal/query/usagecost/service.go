@@ -114,17 +114,19 @@ func (service *Service) UsageCost(
 	if !validGranularity(request.Granularity) {
 		return UsageCostResponse{}, fmt.Errorf("%w: usage granularity", basequery.ErrValidation)
 	}
-	validated, err := service.rangeSpec.Validate(ctx, basequery.Request{TimeRange: &request.Range})
+	validatedRange, exact, err := service.validateUsageRange(ctx, request)
 	if err != nil {
 		return UsageCostResponse{}, err
 	}
-	if validated.TimeRange == nil {
-		return UsageCostResponse{}, fmt.Errorf("%w: usage range", basequery.ErrValidation)
-	}
 	rangeFilter := store.AnalyticsRange{
-		ReportingTimezone: validated.TimeRange.TimeZone,
-		StartAtMS:         validated.TimeRange.StartAtMS,
-		EndAtMS:           validated.TimeRange.EndAtMS,
+		ReportingTimezone: validatedRange.TimeZone,
+		StartAtMS:         validatedRange.StartAtMS,
+		EndAtMS:           validatedRange.EndAtMS,
+		Exact:             exact,
+		Granularity:       store.AnalyticsGranularityDay,
+	}
+	if request.Granularity == TrendHour {
+		rangeFilter.Granularity = store.AnalyticsGranularityHour
 	}
 	snapshot, err := service.reader.UsageCostRange(ctx, rangeFilter)
 	if err != nil {
@@ -133,11 +135,56 @@ func (service *Service) UsageCost(
 		}
 		return UsageCostResponse{}, basequery.NewUnavailableFailure(err)
 	}
-	response, err := mapUsageCostResponse(request.Granularity, *validated.TimeRange, snapshot)
+	response, err := mapUsageCostResponse(request.Granularity, *validatedRange, snapshot)
 	if err != nil {
 		return UsageCostResponse{}, basequery.NewUnavailableFailure(err)
 	}
 	return response, nil
+}
+
+func (service *Service) validateUsageRange(
+	ctx context.Context,
+	request UsageCostRequest,
+) (*basequery.UTCTimeRange, bool, error) {
+	if request.ExactRange == nil {
+		validated, err := service.rangeSpec.Validate(ctx, basequery.Request{TimeRange: &request.Range})
+		if err != nil {
+			return nil, false, err
+		}
+		if validated.TimeRange == nil {
+			return nil, false, fmt.Errorf("%w: usage range", basequery.ErrValidation)
+		}
+		return validated.TimeRange, false, nil
+	}
+	if request.Range != (basequery.LocalDateRange{}) {
+		return nil, false, fmt.Errorf("%w: usage range", basequery.ErrValidation)
+	}
+	rangeValue, err := validateExactUsageRange(*request.ExactRange)
+	if err != nil {
+		return nil, false, err
+	}
+	return rangeValue, true, nil
+}
+
+func validateExactUsageRange(input basequery.UTCTimeRange) (*basequery.UTCTimeRange, error) {
+	if input.TimeZone == "" || input.TimeZone == "Local" || input.StartAtMS < 0 ||
+		input.EndAtMS <= input.StartAtMS || input.EndAtMS > basequery.JavaScriptMaxSafeInteger {
+		return nil, fmt.Errorf("%w: usage exact range", basequery.ErrValidation)
+	}
+	location, err := time.LoadLocation(input.TimeZone)
+	if err != nil {
+		return nil, fmt.Errorf("%w: usage exact range timezone", basequery.ErrValidation)
+	}
+	start := time.UnixMilli(input.StartAtMS).In(location)
+	end := time.UnixMilli(input.EndAtMS).In(location)
+	calendarStart := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
+	calendarEnd := time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, time.UTC)
+	days := int(calendarEnd.Sub(calendarStart) / (24 * time.Hour))
+	if days < 0 || days > usageMaxRangeDays {
+		return nil, fmt.Errorf("%w: usage exact range", basequery.ErrValidation)
+	}
+	result := input
+	return &result, nil
 }
 
 func mapUsageCostResponse(
@@ -184,7 +231,7 @@ func mapUsageCostResponse(
 	if err != nil {
 		return UsageCostResponse{}, err
 	}
-	trend, err := groupTrend(rows, granularity, rangeValue.TimeZone, mode)
+	trend, err := groupTrend(rows, granularity, rangeValue, mode)
 	if err != nil {
 		return UsageCostResponse{}, err
 	}
@@ -196,7 +243,9 @@ func mapUsageCostResponse(
 	if err != nil {
 		return UsageCostResponse{}, err
 	}
-	models, err := mapUsageModels(snapshot.Models, mode, rangeValue, snapshot.Generation)
+	models, err := mapUsageModels(
+		snapshot.Models, mode, rangeValue, snapshot.Generation, granularity,
+	)
 	if err != nil {
 		return UsageCostResponse{}, err
 	}
@@ -230,7 +279,7 @@ func mapUsageCostResponse(
 }
 
 func validGranularity(value TrendGranularity) bool {
-	return value == TrendDay || value == TrendWeek || value == TrendMonth
+	return value == TrendHour || value == TrendDay || value == TrendWeek || value == TrendMonth
 }
 
 func validateAndSortDaily(
@@ -352,10 +401,12 @@ func mapUsageModels(
 	mode store.AnalyticsReadMode,
 	rangeValue basequery.UTCTimeRange,
 	generation *store.CostRollupGeneration,
+	granularity TrendGranularity,
 ) ([]UsageModelItem, error) {
 	type modelGroup struct {
 		record store.ModelUsageDaily
 		totals *totalsAccumulator
+		daily  []store.UsageDaily
 	}
 	groups := make(map[string]*modelGroup)
 	for _, row := range rows {
@@ -371,7 +422,9 @@ func mapUsageModels(
 		}
 		group := groups[row.DimensionKey]
 		if group == nil {
-			group = &modelGroup{record: row, totals: newTotalsAccumulator()}
+			group = &modelGroup{
+				record: row, totals: newTotalsAccumulator(), daily: make([]store.UsageDaily, 0),
+			}
 			groups[row.DimensionKey] = group
 		} else if !equalStringPointers(group.record.ModelKey, row.ModelKey) ||
 			!equalStringPointers(group.record.ModelDisplayName, row.ModelDisplayName) ||
@@ -383,6 +436,10 @@ func mapUsageModels(
 		if err := group.totals.addMode(row.RollupTotals, mode); err != nil {
 			return nil, err
 		}
+		group.daily = append(group.daily, store.UsageDaily{
+			GenerationID: row.GenerationID, BucketStartMS: row.BucketStartMS,
+			ReportingTimezone: row.ReportingTimezone, RollupTotals: row.RollupTotals,
+		})
 	}
 	type mappedModel struct {
 		item  UsageModelItem
@@ -398,6 +455,10 @@ func mapUsageModels(
 		if err != nil {
 			return nil, err
 		}
+		trend, err := groupTrend(group.daily, granularity, rangeValue, mode)
+		if err != nil {
+			return nil, err
+		}
 		mapped = append(mapped, mappedModel{
 			item: UsageModelItem{
 				DimensionKey: group.record.DimensionKey,
@@ -406,7 +467,7 @@ func mapUsageModels(
 					Confidence: group.record.AttributionConfidence, Source: group.record.AttributionSource,
 					Reason: group.record.AttributionReason,
 				},
-				Totals: mappedTotals,
+				Totals: mappedTotals, Trend: trend,
 			},
 			total: totals.TotalTokens,
 		})
@@ -446,6 +507,8 @@ func cloneString(value string) *string {
 
 func trendKey(value time.Time, granularity TrendGranularity) string {
 	switch granularity {
+	case TrendHour:
+		return value.Format("2006-01-02T15:00")
 	case TrendDay:
 		return value.Format("2006-01-02")
 	case TrendWeek:

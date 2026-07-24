@@ -1,15 +1,20 @@
+import Charts
 import CodexPulseAppSupport
 import CodexPulseProtocolGenerated
 import SwiftUI
 
 struct SessionsView: View {
     @ObservedObject var model: AppModel
+    @State private var showsFilters = false
 
     var body: some View {
         VStack(spacing: 0) {
-            filters
+            pageHeader
+            if showsFilters { filters }
             Divider()
-            FeatureStateView(state: model.sessionsState, emptyTitle: "当前条件下没有会话", emptySystemImage: "text.bubble") {
+            FeatureStateView(
+                state: model.sessionsState, emptyTitle: "当前条件下没有会话", emptySystemImage: "text.bubble"
+            ) {
                 sessionResults($0)
             }
         }
@@ -17,10 +22,30 @@ struct SessionsView: View {
         .accessibilityIdentifier("page.sessions")
     }
 
+    private var pageHeader: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("会话").font(.title.bold())
+                Text("查看本机会话的用量、模型和活动时间")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                withAnimation(.snappy) { showsFilters.toggle() }
+            } label: {
+                Label(showsFilters ? "收起筛选" : "筛选", systemImage: "line.3.horizontal.decrease.circle")
+            }
+            .accessibilityIdentifier("sessions.filters.toggle")
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+    }
+
     private var filters: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("筛选")
+                Text("筛选条件")
                     .font(.headline)
                 Spacer()
                 Button("应用筛选") { model.sessionFiltersChanged() }
@@ -29,16 +54,23 @@ struct SessionsView: View {
             }
 
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 205, maximum: 280), spacing: 12, alignment: .leading)],
+                columns: [
+                    GridItem(.adaptive(minimum: 205, maximum: 280), spacing: 12, alignment: .leading)
+                ],
                 alignment: .leading,
                 spacing: 10
             ) {
                 SessionFilterField(title: "范围") {
                     Picker("范围", selection: $model.sessionOptions.range) {
-                        ForEach(DateRangePreset.allCases) { Text($0.title).tag($0) }
+                        ForEach(DateRangePreset.allCases.filter {
+                            $0 != .quotaWeek || model.sessionOptions.exactRange != nil
+                        }) { Text($0.title).tag($0) }
                     }
                     .labelsHidden()
                     .frame(maxWidth: .infinity)
+                    .onChange(of: model.sessionOptions.range) { oldValue, newValue in
+                        if oldValue != newValue { model.sessionOptions.exactRange = nil }
+                    }
                 }
                 SessionFilterField(title: "活跃状态") {
                     Picker("活跃状态", selection: $model.sessionOptions.activity) {
@@ -49,21 +81,21 @@ struct SessionsView: View {
                     .labelsHidden()
                     .frame(maxWidth: .infinity)
                 }
-                SessionFilterField(title: "项目 ID") {
-                    TextField("精确匹配", text: $model.sessionOptions.projectID)
+                SessionFilterField(title: "项目名称") {
+                    TextField("可选，精确匹配", text: $model.sessionOptions.projectID)
                         .textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("项目 ID（精确匹配）")
+                        .accessibilityLabel("项目名称，精确匹配")
                 }
-                SessionFilterField(title: "模型 key") {
-                    TextField("精确匹配", text: $model.sessionOptions.modelKey)
+                SessionFilterField(title: "模型名称") {
+                    TextField("可选，精确匹配", text: $model.sessionOptions.modelKey)
                         .textFieldStyle(.roundedBorder)
-                        .accessibilityLabel("模型 key（精确匹配）")
+                        .accessibilityLabel("模型名称，精确匹配")
                 }
                 SessionFilterField(title: "排序") {
                     Picker("排序", selection: $model.sessionOptions.sortField) {
                         Text("最近活动").tag("lastActivityAt")
                         Text("Token").tag("totalTokens")
-                        Text("估算成本").tag("estimatedCost")
+                        Text("API 折算成本").tag("estimatedCost")
                     }
                     .labelsHidden()
                     .frame(maxWidth: .infinity)
@@ -133,7 +165,7 @@ struct SessionsView: View {
                     .foregroundStyle(.tertiary)
                 Text("选择一个会话")
                     .font(.headline)
-                Text("会话事实和 Turn 时间线会显示在这里。")
+                Text("会话用量和活动时间线会显示在这里。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -187,10 +219,10 @@ private struct SessionRow: View {
             HStack {
                 Text(timestampText(item.lastActivityAtMs))
                 Spacer()
-                Text("\(numericText(item.totals.totalTokens)) tokens")
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
+            TokenBreakdownView(tokens: TokenBreakdownPresentation(item.totals), style: .compact)
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
@@ -208,17 +240,22 @@ private struct SessionDetailView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text(response.item.displayTitle.isEmpty ? "未命名会话" : response.item.displayTitle)
                     .font(.title2.bold())
-                SectionCard(title: "事实摘要") {
-                    KeyValueRow(key: "会话 ID", value: response.item.sessionID)
+                SectionCard(title: "使用概览") {
                     KeyValueRow(key: "项目", value: attributionText(response.item.project))
                     KeyValueRow(key: "模型", value: attributionText(response.item.model))
-                    KeyValueRow(key: "状态", value: response.item.activity.isEmpty ? "unknown" : response.item.activity)
-                    KeyValueRow(key: "Token", value: numericText(response.item.totals.totalTokens))
-                    KeyValueRow(key: "估算成本", value: costText(response.item.totals.estimatedUsdMicros))
+                    KeyValueRow(key: "状态", value: ProductCopy.status(response.item.activity))
+                    TokenBreakdownView(tokens: TokenBreakdownPresentation(response.item.totals))
+                    KeyValueRow(key: "API 折算成本", value: costText(response.item.totals.estimatedUsdMicros))
                 }
-                SectionCard(title: "Turn 时间线（不展示对话内容）") {
+                SectionCard(title: "每日趋势") {
+                    DailyTokenTrendView(points: response.daily)
+                }
+                SectionCard(title: "活动时间线") {
+                    Text("只展示用量信息，不读取对话内容。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     if response.turns.isEmpty {
-                        Text("当前页没有 turn。")
+                        Text("当前页没有活动记录。")
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(response.turns, id: \.timelineKey) { turn in
@@ -228,11 +265,15 @@ private struct SessionDetailView: View {
                                     Spacer()
                                     StatusPill(text: turn.state)
                                 }
-                                Text("模型：\(attributionText(turn.model)) · \(numericText(turn.totals.totalTokens)) tokens")
+                                Text("模型：\(attributionText(turn.model))")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                TokenBreakdownView(
+                                    tokens: TokenBreakdownPresentation(turn.totals),
+                                    style: .compact
+                                )
                                 if turn.hasUnpricedReason {
-                                    Text("未计价：\(turn.unpricedReason)")
+                                    Text("部分用量暂未折算")
                                         .font(.caption)
                                         .foregroundStyle(.orange)
                                 }
@@ -241,13 +282,10 @@ private struct SessionDetailView: View {
                         }
                     }
                     if response.turnPage.hasMore_p && response.turnPage.hasNextCursor {
-                        Button(isLoading ? "正在加载…" : "加载更多 Turn") { loadMore() }
+                        Button(isLoading ? "正在加载…" : "加载更多记录") { loadMore() }
                             .disabled(isLoading)
                             .accessibilityIdentifier("session-detail.load-more")
                     }
-                }
-                if response.hasDegradedReason {
-                    StateBanner(title: "详情退化：\(response.degradedReason)", systemImage: "exclamationmark.triangle", color: .orange)
                 }
             }
             .padding(18)
@@ -258,28 +296,57 @@ private struct SessionDetailView: View {
 
 struct ProjectsView: View {
     @ObservedObject var model: AppModel
+    @State private var showsFilters = false
 
     var body: some View {
         VStack(spacing: 0) {
-            filters
+            pageHeader
+            if showsFilters { filters }
             Divider()
-            FeatureStateView(state: model.projectsState, emptyTitle: "当前条件下没有项目", emptySystemImage: "folder") {
+            FeatureStateView(
+                state: model.projectsState, emptyTitle: "当前条件下没有项目", emptySystemImage: "folder"
+            ) {
                 projectSplit($0)
             }
         }
         .accessibilityIdentifier("page.projects")
     }
 
+    private var pageHeader: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("项目").font(.title.bold())
+                Text("比较不同项目的会话、Token 和折算成本")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                withAnimation(.snappy) { showsFilters.toggle() }
+            } label: {
+                Label(showsFilters ? "收起筛选" : "筛选", systemImage: "line.3.horizontal.decrease.circle")
+            }
+            .accessibilityIdentifier("projects.filters.toggle")
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+    }
+
     private var filters: some View {
         HStack(spacing: 10) {
             Picker("范围", selection: $model.projectOptions.range) {
-                ForEach(DateRangePreset.allCases.filter { $0 != .all }) { Text($0.title).tag($0) }
+                ForEach(DateRangePreset.allCases.filter {
+                    $0 != .all && ($0 != .quotaWeek || model.projectOptions.exactRange != nil)
+                }) { Text($0.title).tag($0) }
             }
             .frame(width: 120)
-            TextField("项目 ID（精确）", text: $model.projectOptions.projectID)
+            .onChange(of: model.projectOptions.range) { oldValue, newValue in
+                if oldValue != newValue { model.projectOptions.exactRange = nil }
+            }
+            TextField("项目名称（精确匹配）", text: $model.projectOptions.projectID)
                 .textFieldStyle(.roundedBorder)
-            Picker("归属可信度", selection: $model.projectOptions.confidence) {
-                Text("全部可信度").tag("all")
+            Picker("项目识别准确度", selection: $model.projectOptions.confidence) {
+                Text("全部准确度").tag("all")
                 Text("高").tag("high")
                 Text("中").tag("medium")
                 Text("低").tag("low")
@@ -289,7 +356,7 @@ struct ProjectsView: View {
             Picker("排序", selection: $model.projectOptions.sortField) {
                 Text("最近活动").tag("lastActivityAt")
                 Text("Token").tag("totalTokens")
-                Text("估算成本").tag("estimatedCost")
+                Text("API 折算成本").tag("estimatedCost")
                 Text("名称").tag("displayName")
             }
             .frame(width: 130)
@@ -317,10 +384,13 @@ struct ProjectsView: View {
                         HStack {
                             Text("\(numericText(item.sessionCount)) 个会话")
                             Spacer()
-                            Text("\(numericText(item.totals.totalTokens)) tokens")
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        TokenBreakdownView(
+                            tokens: TokenBreakdownPresentation(item.totals),
+                            style: .compact
+                        )
                     }
                     .padding(.vertical, 4)
                     .tag(item.dimensionKey)
@@ -369,32 +439,27 @@ private struct ProjectDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 Text(attributionText(response.item.project)).font(.title2.bold())
-                SectionCard(title: "项目统计") {
-                    KeyValueRow(key: "归属 key", value: response.item.dimensionKey)
-                    KeyValueRow(key: "可信度", value: response.item.project.confidence.isEmpty ? "unknown" : response.item.project.confidence)
+                SectionCard(title: "项目概览") {
+                    KeyValueRow(
+                        key: "项目识别准确度",
+                        value: ProductCopy.confidence(response.item.project.confidence)
+                    )
                     KeyValueRow(key: "会话", value: numericText(response.item.sessionCount))
-                    KeyValueRow(key: "Token", value: numericText(response.item.totals.totalTokens))
-                    KeyValueRow(key: "估算成本", value: costText(response.item.totals.estimatedUsdMicros))
+                    TokenBreakdownView(tokens: TokenBreakdownPresentation(response.item.totals))
+                    KeyValueRow(key: "API 折算成本", value: costText(response.item.totals.estimatedUsdMicros))
                 }
                 SectionCard(title: "每日趋势") {
-                    if response.daily.isEmpty {
-                        Text("当前范围没有趋势数据。").foregroundStyle(.secondary)
-                    } else {
-                        ForEach(Array(response.daily.enumerated()), id: \.offset) { _, point in
-                            HStack {
-                                Text(timestampText(point.bucketStartAtMs))
-                                Spacer()
-                                Text("\(numericText(point.totals.totalTokens)) tokens")
-                                Text(costText(point.totals.estimatedUsdMicros)).frame(width: 80, alignment: .trailing)
-                            }
-                            .font(.caption)
-                            Divider()
-                        }
-                    }
+                    DailyTokenTrendView(points: response.daily)
                 }
                 SectionCard(title: "模型") {
                     ForEach(response.models, id: \.dimensionKey) { item in
-                        KeyValueRow(key: attributionText(item.model), value: "\(numericText(item.totals.totalTokens)) tokens")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(attributionText(item.model))
+                            TokenBreakdownView(
+                                tokens: TokenBreakdownPresentation(item.totals),
+                                style: .compact
+                            )
+                        }
                     }
                     if response.models.isEmpty { Text("没有模型统计。").foregroundStyle(.secondary) }
                 }
@@ -402,8 +467,13 @@ private struct ProjectDetailView: View {
                     ForEach(response.sessions, id: \.sessionID) { item in
                         VStack(alignment: .leading) {
                             Text(item.displayTitle.isEmpty ? "未命名会话" : item.displayTitle)
-                            Text("\(attributionText(item.model)) · \(numericText(item.totals.totalTokens)) tokens")
-                                .font(.caption).foregroundStyle(.secondary)
+                            Text(attributionText(item.model))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TokenBreakdownView(
+                                tokens: TokenBreakdownPresentation(item.totals),
+                                style: .compact
+                            )
                             Divider()
                         }
                     }
@@ -419,4 +489,123 @@ private struct ProjectDetailView: View {
         }
         .accessibilityIdentifier("project.detail")
     }
+}
+
+private struct DailyTokenTrendPoint: Identifiable {
+    let date: Date
+    let totals: Codexpulse_Core_V1_UsageTotals
+
+    var id: Int64 { Int64(date.timeIntervalSince1970 * 1_000) }
+}
+
+private struct DailyTokenTrendView: View {
+    private let points: [DailyTokenTrendPoint]
+    @State private var selectedDate: Date?
+
+    init(points: [Codexpulse_Core_V1_TrendPoint]) {
+        let mapped: [DailyTokenTrendPoint] = points.compactMap { point in
+            guard point.startAtMs.hasValue, point.totals.totalTokens.hasValue else { return nil }
+            return DailyTokenTrendPoint(
+                date: Date(
+                    timeIntervalSince1970: TimeInterval(point.startAtMs.value) / 1_000
+                ),
+                totals: point.totals
+            )
+        }
+        self.points = mapped
+        _selectedDate = State(initialValue: mapped.last?.date)
+    }
+
+    init(points: [Codexpulse_Core_V1_ProjectDailyPoint]) {
+        let mapped: [DailyTokenTrendPoint] = points.compactMap { point in
+            guard point.bucketStartAtMs.hasValue, point.totals.totalTokens.hasValue else { return nil }
+            return DailyTokenTrendPoint(
+                date: Date(
+                    timeIntervalSince1970: TimeInterval(point.bucketStartAtMs.value) / 1_000
+                ),
+                totals: point.totals
+            )
+        }
+        self.points = mapped
+        _selectedDate = State(initialValue: mapped.last?.date)
+    }
+
+    var body: some View {
+        if points.isEmpty {
+            Text("当前范围没有趋势数据。")
+                .foregroundStyle(.secondary)
+        } else {
+            Chart {
+                ForEach(points) { point in
+                    LineMark(
+                        x: .value("日期", point.date),
+                        y: .value("Token", point.totals.totalTokens.value)
+                    )
+                    .interpolationMethod(.catmullRom)
+                    PointMark(
+                        x: .value("日期", point.date),
+                        y: .value("Token", point.totals.totalTokens.value)
+                    )
+                    .symbolSize(selectedPoint?.id == point.id ? 70 : 28)
+                    .accessibilityLabel(Self.detailDateFormatter.string(from: point.date))
+                    .accessibilityValue(
+                        "\(TokenQuantityFormatter.string(point.totals.totalTokens.value)) Token"
+                    )
+                }
+                if let selected = selectedPoint {
+                    RuleMark(x: .value("选中日期", selected.date))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .foregroundStyle(.tint)
+            .chartYAxis {
+                AxisMarks(position: .trailing) { value in
+                    AxisGridLine().foregroundStyle(.quaternary)
+                    AxisValueLabel {
+                        if let value = value.as(Int64.self) {
+                            Text(TokenQuantityFormatter.compactString(value))
+                        }
+                    }
+                }
+            }
+            .chartXAxis {
+                AxisMarks(values: .automatic) { _ in
+                    AxisValueLabel(format: .dateTime.month().day())
+                }
+            }
+            .chartXSelection(value: $selectedDate)
+            .frame(height: 180)
+
+            if let selected = selectedPoint {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(Self.detailDateFormatter.string(from: selected.date))
+                        .font(.subheadline.weight(.semibold))
+                    TokenBreakdownView(
+                        tokens: TokenBreakdownPresentation(selected.totals),
+                        style: .compact
+                    )
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("daily-trend.selection-detail")
+            }
+        }
+    }
+
+    private var selectedPoint: DailyTokenTrendPoint? {
+        guard let selectedDate else { return nil }
+        return points.min {
+            abs($0.date.timeIntervalSince1970 - selectedDate.timeIntervalSince1970)
+                < abs($1.date.timeIntervalSince1970 - selectedDate.timeIntervalSince1970)
+        }
+    }
+
+    private static let detailDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateStyle = .long
+        formatter.timeStyle = .none
+        return formatter
+    }()
 }

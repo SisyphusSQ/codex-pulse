@@ -26,6 +26,15 @@ type LightRolloutIdentity struct {
 	PrefixBytes       int64
 	PrefixSHA256      string
 	FingerprintSHA256 string
+	Comparison        *LightPrefixComparison
+}
+
+// LightPrefixComparison is transient proof of the current file's bytes at the
+// previous snapshot prefix length. It allows short files to append without
+// persisting or rereading source content through the token parser.
+type LightPrefixComparison struct {
+	PrefixBytes  int64
+	PrefixSHA256 string
 }
 
 type LightTokenCheckpoint struct {
@@ -279,11 +288,17 @@ func (repository *Repository) StartLightTokenAppend(
 			Where("session_id = ? AND generation = ?", sessionID, generation).Take(&scan).Error; err != nil {
 			return err
 		}
+		proofBytes := identity.PrefixBytes
+		proofSHA256 := identity.PrefixSHA256
+		if identity.Comparison != nil {
+			proofBytes = identity.Comparison.PrefixBytes
+			proofSHA256 = identity.Comparison.PrefixSHA256
+		}
 		if scan.State != "active" || scan.ParserVersion != parserVersion || scan.RolloutPath != identity.Path ||
 			scan.SourceFileID != identity.SourceFileID || scan.FileDeviceID != identity.DeviceID ||
 			scan.FileInode != identity.Inode || identity.SizeBytes <= scan.FileSizeBytes ||
-			identity.MTimeNS < scan.FileMTimeNS || scan.PrefixBytes != identity.PrefixBytes ||
-			scan.PrefixSHA256 != identity.PrefixSHA256 {
+			identity.MTimeNS < scan.FileMTimeNS || scan.PrefixBytes != proofBytes ||
+			scan.PrefixSHA256 != proofSHA256 {
 			return ErrLightTokenConflict
 		}
 		scan.FileSizeBytes = identity.SizeBytes
@@ -520,6 +535,13 @@ func validateLightRolloutIdentity(sessionID string, identity LightRolloutIdentit
 		fingerprintDigestErr != nil || len(fingerprintDigest) != 32 ||
 		strings.TrimSpace(parserVersion) == "" || timestampMS < 0 {
 		return invalidRecord("invalid light rollout identity")
+	}
+	if identity.Comparison != nil {
+		comparisonDigest, comparisonDigestErr := hex.DecodeString(identity.Comparison.PrefixSHA256)
+		if identity.Comparison.PrefixBytes < 0 || identity.Comparison.PrefixBytes > identity.PrefixBytes ||
+			comparisonDigestErr != nil || len(comparisonDigest) != 32 {
+			return invalidRecord("invalid light rollout comparison")
+		}
 	}
 	return nil
 }

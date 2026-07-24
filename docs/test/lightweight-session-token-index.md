@@ -12,6 +12,17 @@
 
 Token scanner 以 64KiB 分块读取，只有包含精确字节串 `"token_count"` 或 `"turn_context"` 的行才做 JSON decode。parser v2 从 `turn_context.model` 提取最长 128 bytes 的安全 normalized key/source，并把当前模型 checkpoint 与每个 timed token delta 一起持久化；raw/非法 model 不落库。每个 rollout 保存 Home/file identity、size、mtime、parser version、prefix proof 和完整行 offset；无变化复用、同文件追加扫描、截断/替换/parser bump 重建均有自动化测试。Turn timeline 保留为打开单会话详情时的按需严格深索引；它复用原 parser 与 checkpoint/generation fence、跳过历史 quota facts，并通过 lifecycle drain fence 支持取消和退出恢复。
 
+## 2026-07-24 会话标题与 JSONL 动态刷新
+
+- 常驻 Helper 每 30 秒执行一次 coalesced 轻量 refresh；`application_did_become_active` 与 `system_did_wake` 通过既有 lifecycle reconcile 立即发送一次非阻塞 trigger。同一 worker 串行拉取 App Server metadata 和检查 rollout，不会为周期、前台和唤醒事件并发启动多份扫描。
+- App Server snapshot 按 `session_id` 比较 title、cwd、rollout path、created/updated/recency；完全相同的 snapshot 不推进 metadata generation、不重写 `light_sessions`，避免周期刷新让 query cursor 无效。真实字段变化原子发布后发送 index invalidation。
+- rollout 无变化时仍走 metadata-only identity fast path；增长文件复用 active generation、high-water 和 durable offset，只读取 4 KiB prefix proof 与新增字节。截断、替换、同尺寸改写和 parser version 变化继续安全重建。
+- 单次 App Server/rollout 可恢复错误不会终止常驻 worker，下一周期或 trigger 会重试；confirmed Home identity 漂移继续 fail closed。Home switch 和退出先 cancel/wait 当前 worker，再切换或关闭。
+- synthetic tests 覆盖 title 更新、foreground trigger、周期 refresh 单次失败后的恢复、metadata no-op generation、同 generation append、短文件旧 prefix proof、rollout 归档换 path、安全重建、物理读取小于旧文件全量以及 monitor 取消。
+- 当前轮定向验证：`go test ./internal/store ./internal/lightindex ./internal/app -count=1` PASS；逐包 `go test -race` 均 PASS（Store 184.105s、lightindex 7.935s、App 44.941s）；`git diff --check` PASS。这里是 synthetic Home/临时 SQLite 证据，不冒充真实 Home 产品验收。
+- 当前轮真实 Home 验收：显式绑定 `/private/tmp/cp-codex-pulse-live-502` 已确认私有 runtime 和真实 `CODEX_HOME`，`make verify-live` PASS，返回 `primary_pages=loaded`、`sessions=20`、`usage_models=4`、`usage_cost=known`、`unavailable=none`、`shutdown=clean`；该 smoke 自身仍标记 `lifecycle=not_executed`。
+- 为单独验证动态标题，在同一常驻 App 进程中先读回当前任务 generation `18` 和旧 E2E 标题，再通过官方任务标题入口改名；4 秒后只读 runtime SQLite 观察到 generation `20` 和新标题匹配，期间 App/Helper 未重启。随后用显式 `CODEX_HOME` 恢复 LaunchServices 常驻新版本，最终 generation `22`、标题匹配、App/Helper/socket 均 active。readback 只查询当前任务固定 ID，不输出其他 Session 标题或用户内容。
+
 设计参考与协议依据：
 
 - [SessionNest Token scanner](https://github.com/nemoob/sessionnest/blob/main/Sources/SessionNest/ThreadTokenUsage.swift)

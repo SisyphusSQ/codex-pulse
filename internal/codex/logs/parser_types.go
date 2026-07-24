@@ -3,7 +3,7 @@ package logs
 import "errors"
 
 const (
-	ParserVersion         = "codex-rollout-v2"
+	ParserVersion         = "codex-rollout-v3"
 	DefaultMaxLineBytes   = 16 << 20
 	MaxSupportedLineBytes = 64 << 20
 )
@@ -188,6 +188,7 @@ type QuotaObservationFact struct {
 	AccountScope    string
 	Source          QuotaSource
 	LimitID         *string
+	LimitName       *string
 	WindowKind      QuotaWindowKind
 	UsedPercent     float64
 	WindowMinutes   int64

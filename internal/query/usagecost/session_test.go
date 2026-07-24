@@ -245,6 +245,38 @@ func TestListSessionsLightIndexReturnsKnownTokensAndUnknownTurnCost(t *testing.T
 	assertUnknownNumeric(t, response.Items[0].Totals.EstimatedUSDMicros, basequery.UnknownNotComputed)
 }
 
+func TestListSessionsLightIndexReturnsKnownSessionCostAndPricingEvidence(t *testing.T) {
+	t.Parallel()
+
+	input, cached, output, reasoning, total := int64(100), int64(20), int64(10), int64(2), int64(112)
+	cost := int64(1_250_000)
+	record := safeFallbackSessionRecord("session-light-priced", "已定价会话")
+	record.Rollup = &store.RollupTotals{
+		InputTokens: &input, CachedInputTokens: &cached, OutputTokens: &output,
+		ReasoningTokens: &reasoning, TotalTokens: &total, EstimatedUSDMicros: &cost,
+	}
+	reader := &sessionReaderStub{list: func(
+		context.Context, store.SessionAnalyticsFilter,
+	) (store.SessionAnalyticsPage, error) {
+		return store.SessionAnalyticsPage{
+			Mode: store.AnalyticsReadLightIndex, PricingSource: "openai-api", Currency: "USD",
+			Records: []store.SessionAnalyticsRecord{record}, MatchedCount: 1,
+			MatchedTotals: record.Rollup, PageTotals: record.Rollup,
+		}, nil
+	}}
+	service := newUsageService(t, reader)
+	response, err := service.ListSessions(context.Background(), basequery.Request{})
+	if err != nil {
+		t.Fatalf("ListSessions(light priced) error = %v", err)
+	}
+	if response.Meta.Status != basequery.ResponsePartial || response.PricingSource == nil ||
+		*response.PricingSource != "openai-api" || response.Currency == nil || *response.Currency != "USD" ||
+		len(response.Items) != 1 {
+		t.Fatalf("priced light response = %#v", response)
+	}
+	assertKnownNumeric(t, response.Items[0].Totals.EstimatedUSDMicros, cost, basequery.NumericMicroUSD)
+}
+
 func TestListSessionsAmbiguousLedgerReturnsSafePartial(t *testing.T) {
 	t.Parallel()
 
@@ -508,8 +540,13 @@ func TestSessionDetailMapsBoundedTurnPageAndRoundTripsOpaqueCursor(t *testing.T)
 				GenerationID: "generation-v1", ReportingTimezone: "UTC",
 				PricingSource: "test", Currency: "USD", RollupVersion: 1,
 			},
-			Record: record,
-			Turns:  []store.SessionTurnAnalyticsRecord{turn},
+			ReportingTimezone: "UTC",
+			Record:            record,
+			Daily: []store.UsageDaily{{
+				GenerationID: "generation-v1", BucketStartMS: 0, ReportingTimezone: "UTC",
+				RollupTotals: *record.Rollup,
+			}},
+			Turns: []store.SessionTurnAnalyticsRecord{turn},
 			NextTurnCursor: &store.SessionTurnAnalyticsCursor{
 				SessionID: filter.SessionID, TurnID: turn.TurnID, StartedAtMS: turn.StartedAtMS,
 			},
@@ -529,6 +566,11 @@ func TestSessionDetailMapsBoundedTurnPageAndRoundTripsOpaqueCursor(t *testing.T)
 		len(first.Turns) != 1 || !first.TurnPage.HasMore || first.TurnPage.NextCursor == nil {
 		t.Fatalf("first SessionDetail() = %#v, filters=%#v", first, filters)
 	}
+	if first.ReportingTimeZone != "UTC" || len(first.Daily) != 1 ||
+		first.Daily[0].Key != "1970-01-01" {
+		t.Fatalf("first SessionDetail() daily = %#v", first)
+	}
+	assertKnownNumeric(t, first.Daily[0].Totals.TotalTokens, 30, basequery.NumericTokens)
 	mapped := first.Turns[0]
 	if mapped.TimelineKey == "" || strings.Contains(mapped.TimelineKey, turn.TurnID) ||
 		mapped.State != SessionTurnComplete || mapped.Model.DisplayName == nil ||

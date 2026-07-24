@@ -53,7 +53,10 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		`(?s)message ErrorDetail\s*\{.*string code\s*=.*string message_key\s*=.*optional string field\s*=.*bool retryable\s*=`,
 		`(?s)message HandshakeResponse\s*\{.*string contract_version\s*=.*string transport\s*=`,
 		`(?s)message QueryInvalidationEvent\s*\{.*string version\s*=.*string domain\s*=.*uint64 sequence\s*=`,
-		`(?s)message UsageModelItem\s*\{.*string dimension_key\s*=.*AttributionValue model\s*=.*UsageTotals totals\s*=`,
+		`(?s)message QueryRequest\s*\{.*optional LocalDateRange time_range\s*=\s*4\s*;.*optional UTCTimeRange exact_time_range\s*=\s*5\s*;`,
+		`(?s)message UsageModelItem\s*\{.*string dimension_key\s*=.*AttributionValue model\s*=.*UsageTotals totals\s*=\s*3\s*;.*repeated TrendPoint trend\s*=\s*4\s*;`,
+		`(?s)message UsageCostRequest\s*\{.*LocalDateRange range\s*=\s*1\s*;.*string granularity\s*=\s*2\s*;.*optional UTCTimeRange exact_range\s*=\s*3\s*;`,
+		`(?s)message ProjectDetailRequest\s*\{.*LocalDateRange range\s*=\s*2\s*;.*optional UTCTimeRange exact_range\s*=\s*5\s*;`,
 		`(?s)message UsageCostResponse\s*\{.*repeated UsageModelItem models\s*=\s*11\s*;`,
 	} {
 		if !regexp.MustCompile(pattern).MatchString(content) {

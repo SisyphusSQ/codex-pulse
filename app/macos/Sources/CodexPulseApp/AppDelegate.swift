@@ -101,17 +101,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.contentViewController = hosting
         window.contentMinSize = NSSize(width: 820, height: 560)
-        window.setContentSize(NSSize(width: 1_080, height: 720))
-        window.center()
+        sizeInitialWindow(window)
         window.delegate = self
         window.isReleasedWhenClosed = false
         self.window = window
-        self.statusItemController = StatusItemController(
+        let statusItemController = StatusItemController(
             model: model,
             onOpenOverview: { [weak self] in self?.showOverviewWindow() },
             onQuit: { NSApp.terminate(nil) }
         )
+        self.statusItemController = statusItemController
         window.makeKeyAndOrderFront(nil)
+    }
+
+    private func sizeInitialWindow(_ window: NSWindow) {
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else {
+            window.setContentSize(NSSize(
+                width: MainWindowLayout.preferredContentSize.width,
+                height: MainWindowLayout.preferredContentSize.height
+            ))
+            window.center()
+            return
+        }
+
+        let preferred = MainWindowLayout.preferredContentSize
+        let preferredContentRect = NSRect(
+            x: 0,
+            y: 0,
+            width: preferred.width,
+            height: preferred.height
+        )
+        let preferredFrame = window.frameRect(forContentRect: preferredContentRect)
+        let contentSize = MainWindowLayout.initialContentSize(
+            visibleFrameWidth: screen.visibleFrame.width,
+            visibleFrameHeight: screen.visibleFrame.height,
+            frameChromeWidth: preferredFrame.width - preferred.width,
+            frameChromeHeight: preferredFrame.height - preferred.height
+        )
+        window.setContentSize(NSSize(width: contentSize.width, height: contentSize.height))
+        let frame = window.frame
+        window.setFrameOrigin(NSPoint(
+            x: screen.visibleFrame.midX - frame.width / 2,
+            y: screen.visibleFrame.midY - frame.height / 2
+        ))
     }
 
     private func installWorkspaceObservers() {
@@ -141,12 +173,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 case .overview(let overview), .partial(let overview):
                     guard !smokeProbeStarted else { return }
                     smokeProbeStarted = true
-                    let surfaces = nativeSurfaceSmokeSummary()
                     let health = overview.health.hasValue
                         ? Self.safeToken(overview.health.level ?? "unknown")
                         : "empty"
                     Task { @MainActor [weak self] in
                         guard let self else { return }
+                        let surfaces = nativeSurfaceSmokeSummary()
                         do {
                             let renderedPageCount = await renderPrimaryPagesForSmoke()
                             let pages = try await model.runPrimaryPagesSmoke()

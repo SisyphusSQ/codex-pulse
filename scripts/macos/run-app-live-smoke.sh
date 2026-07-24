@@ -106,7 +106,7 @@ case "$smoke_summary" in
   *) fail "application did not report a passing smoke summary" ;;
 esac
 printf '%s\n' "$smoke_summary" | grep -Eq \
-  'overview=loaded .*sessions=[1-9][0-9]* trend_points=[1-9][0-9]* .*primary_pages=loaded sessions=[1-9][0-9]* projects=[1-9][0-9]* .*usage_trend=[1-9][0-9]* usage_models=[1-9][0-9]* usage_cost=known .*details_read=[1-9][0-9]* .*unavailable=none ui_pages=7 .*shutdown=clean' || \
+  'overview=loaded .*sessions=[1-9][0-9]* trend_points=[1-9][0-9]* .*primary_pages=loaded sessions=[1-9][0-9]* projects=[1-9][0-9]* .*usage_trend=[1-9][0-9]* usage_models=[1-9][0-9]* usage_model_trend=[1-9][0-9]* usage_model_reconciled=[1-9][0-9]* usage_cost=known .*project_detail_cost=known project_detail_models=[1-9][0-9]* details_read=[1-9][0-9]* .*unavailable=none ui_pages=7 .*shutdown=clean' || \
   fail "real Home did not produce the required non-zero page contract"
 [ ! -S "$RUNTIME_DIR/core.sock" ] || fail "Helper socket remained after shutdown"
 

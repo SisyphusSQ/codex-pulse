@@ -50,6 +50,7 @@ type QuotaObservationSample struct {
 	AccountScope     string
 	Source           QuotaSource
 	LimitID          *string
+	LimitName        *string
 	WindowKind       QuotaWindowKind
 	UsedPercent      float64
 	WindowMinutes    int64
@@ -71,6 +72,7 @@ type QuotaObservation struct {
 	AccountScope          string
 	Source                QuotaSource
 	LimitID               *string
+	LimitName             *string
 	WindowKind            QuotaWindowKind
 	UsedPercent           float64
 	WindowMinutes         int64

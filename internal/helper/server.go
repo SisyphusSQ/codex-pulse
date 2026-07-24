@@ -119,6 +119,13 @@ func fromProtoQuery(request *corev1.QueryRequest) basequery.Request {
 			TimeZone: request.TimeRange.TimeZone,
 		}
 	}
+	if request.ExactTimeRange != nil {
+		result.ExactTimeRange = &basequery.UTCTimeRange{
+			StartAtMS: request.ExactTimeRange.StartAtMs,
+			EndAtMS:   request.ExactTimeRange.EndAtMs,
+			TimeZone:  request.ExactTimeRange.TimeZone,
+		}
+	}
 	return result
 }
 

@@ -5,6 +5,7 @@ type quotaObservationModel struct {
 	AccountScope          string  `gorm:"column:account_scope"`
 	Source                string  `gorm:"column:source"`
 	LimitID               *string `gorm:"column:limit_id"`
+	LimitName             *string `gorm:"column:limit_name;type:TEXT CHECK (limit_name IS NULL OR (length(limit_name) BETWEEN 1 AND 512))"`
 	WindowKind            string  `gorm:"column:window_kind"`
 	UsedPercent           float64 `gorm:"column:used_percent"`
 	WindowMinutes         int64   `gorm:"column:window_minutes"`

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -281,6 +282,14 @@ func TestSessionAnalyticsPrefersLightMetadataAndTokenTotals(t *testing.T) {
 			DurableOffset: identity.SizeBytes, Complete: true,
 			InputTokens: 100, CachedInputTokens: 20, OutputTokens: 10, ReasoningTokens: 2,
 		},
+		DailyDeltas: []LightTokenDailyDelta{{
+			DayStartMS:  0,
+			InputTokens: 100, CachedInputTokens: 20, OutputTokens: 10, ReasoningTokens: 2,
+		}},
+		TimedDeltas: []LightTokenTimedDelta{{
+			SourceOffset: 4_000, ObservedAtMS: 200,
+			InputTokens: 100, CachedInputTokens: 20, OutputTokens: 10, ReasoningTokens: 2,
+		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -304,6 +313,9 @@ func TestSessionAnalyticsPrefersLightMetadataAndTokenTotals(t *testing.T) {
 		SessionID: "one", TurnLimit: 50,
 	})
 	if err != nil || detail.Mode != AnalyticsReadLightIndex || detail.Record.SessionID != "one" ||
+		detail.ReportingTimezone != "UTC" || len(detail.Daily) != 1 ||
+		detail.Daily[0].BucketStartMS != 0 || detail.Daily[0].TotalTokens == nil ||
+		*detail.Daily[0].TotalTokens != 112 ||
 		len(detail.Turns) != 0 || detail.PricingVersions == nil || detail.UnpricedReasons == nil {
 		t.Fatalf("SessionAnalytics(light) = %#v, %v", detail, err)
 	}
@@ -344,6 +356,55 @@ func TestUsageCostRangeBucketsLightTimedDeltasInRequestedTimezone(t *testing.T) 
 	if row.BucketStartMS != start || row.ReportingTimezone != "Asia/Shanghai" ||
 		row.InputTokens == nil || *row.InputTokens != 100 || row.TotalTokens == nil || *row.TotalTokens != 100 {
 		t.Fatalf("daily row = %#v", row)
+	}
+}
+
+// 测试 UsageCostRange 在精确范围内排除同一自然日中窗口起点之前的增量。
+func TestUsageCostRangeUsesExactPartialDayBoundaries(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(context.Background(), "one", identity, "parser-v2", 2_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := time.Date(2026, 7, 22, 1, 0, 0, 0, time.UTC).UnixMilli()
+	inside := time.Date(2026, 7, 22, 2, 0, 0, 0, time.UTC).UnixMilli()
+	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: inside + 1, Activate: true,
+		Checkpoint: LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 300,
+		},
+		TimedDeltas: []LightTokenTimedDelta{
+			{SourceOffset: 4_000, ObservedAtMS: before, InputTokens: 100},
+			{SourceOffset: 5_000, ObservedAtMS: inside, InputTokens: 200},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 7, 22, 1, 30, 0, 0, time.UTC).UnixMilli()
+	end := time.Date(2026, 7, 22, 2, 30, 0, 0, time.UTC).UnixMilli()
+	snapshot, err := repository.UsageCostRange(context.Background(), AnalyticsRange{
+		ReportingTimezone: "UTC", StartAtMS: start, EndAtMS: end, Exact: true,
+	})
+	if err != nil || snapshot.Mode != AnalyticsReadLightIndex || len(snapshot.Daily) != 1 {
+		t.Fatalf("UsageCostRange(exact) = %#v, %v", snapshot, err)
+	}
+	row := snapshot.Daily[0]
+	if row.BucketStartMS != start || row.InputTokens == nil || *row.InputTokens != 200 ||
+		row.TotalTokens == nil || *row.TotalTokens != 200 {
+		t.Fatalf("exact daily row = %#v", row)
+	}
+	page, err := repository.ListSessionAnalytics(context.Background(), SessionAnalyticsFilter{
+		ReportingTimezone:       pointerTo("UTC"),
+		LastActivityAtOrAfterMS: &start, LastActivityBeforeMS: &end, RangeExact: true,
+		Limit: 10, SortField: SessionAnalyticsSortTotalTokens,
+		SortDirection: AnalyticsSortDescending,
+	})
+	if err != nil || len(page.Records) != 1 || page.Records[0].Rollup == nil ||
+		page.Records[0].Rollup.TotalTokens == nil || *page.Records[0].Rollup.TotalTokens != 200 {
+		t.Fatalf("ListSessionAnalytics(exact light) = %#v, %v", page, err)
 	}
 }
 
@@ -406,24 +467,59 @@ func TestUsageCostRangePricesAndGroupsLightTimedDeltasByModel(t *testing.T) {
 		modelRow.EstimatedUSDMicros == nil || *modelRow.EstimatedUSDMicros != 1_290_000 {
 		t.Fatalf("light model row = %#v", modelRow)
 	}
+	rangeStart := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC).UnixMilli()
+	rangeEnd := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC).UnixMilli()
+	sessionPage, err := repository.ListSessionAnalytics(context.Background(), SessionAnalyticsFilter{
+		ReportingTimezone: pointerTo("UTC"), LastActivityAtOrAfterMS: &rangeStart,
+		LastActivityBeforeMS: &rangeEnd, RangeExact: true, Limit: 10,
+		SortField: SessionAnalyticsSortLastActivity, SortDirection: AnalyticsSortDescending,
+	})
+	if err != nil || sessionPage.PricingSource != "openai-api" || sessionPage.Currency != "USD" ||
+		len(sessionPage.Records) != 1 || sessionPage.Records[0].Rollup == nil ||
+		sessionPage.Records[0].Rollup.EstimatedUSDMicros == nil ||
+		*sessionPage.Records[0].Rollup.EstimatedUSDMicros != 1_290_000 {
+		t.Fatalf("priced light session page = %#v, %v", sessionPage, err)
+	}
+	detail, err := repository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
+		SessionID: "one", TurnLimit: 50,
+	})
+	if err != nil || detail.PricingSource != "openai-api" || detail.Currency != "USD" ||
+		len(detail.PricingVersions) != 1 || detail.PricingVersions[0] != "openai-api-2026-07-22" ||
+		detail.Record.Rollup == nil || detail.Record.Rollup.EstimatedUSDMicros == nil ||
+		*detail.Record.Rollup.EstimatedUSDMicros != 1_290_000 {
+		t.Fatalf("priced light session detail = %#v, %v", detail, err)
+	}
 }
 
 func TestProjectAnalyticsGroupsLightTokenDeltasByCWDProject(t *testing.T) {
 	t.Parallel()
 
 	repository := lightIndexRepositoryFixture(t)
+	for _, catalog := range pricing.BuiltinOpenAICatalog() {
+		if err := repository.AddPricingVersion(context.Background(), catalog); err != nil {
+			t.Fatal(err)
+		}
+	}
 	identity := lightRolloutFixture()
+	model := "gpt-5.4-mini"
 	generation, err := repository.StartLightTokenRebuild(context.Background(), "one", identity, "parser-v1", 2_000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	observedAtMS := time.Date(2024, 7, 19, 1, 0, 0, 0, time.UTC).UnixMilli()
+	observedAtMS := time.Date(2026, 7, 19, 1, 0, 0, 0, time.UTC).UnixMilli()
 	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
-		Checkpoint: LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100, CachedInputTokens: 20, OutputTokens: 10, ReasoningTokens: 2},
+		Checkpoint: LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes, Complete: true,
+			InputTokens: 1_000_000, CachedInputTokens: 200_000,
+			OutputTokens: 100_000, ReasoningTokens: 50_000,
+			CurrentModelKey: &model, CurrentModelSource: attribution.SourceModelCanonical,
+		},
 		TimedDeltas: []LightTokenTimedDelta{{
 			SourceOffset: 4_000, ObservedAtMS: observedAtMS,
-			InputTokens: 100, CachedInputTokens: 20, OutputTokens: 10, ReasoningTokens: 2,
+			ModelKey: &model, ModelSource: attribution.SourceModelCanonical,
+			InputTokens: 1_000_000, CachedInputTokens: 200_000,
+			OutputTokens: 100_000, ReasoningTokens: 50_000,
 		}},
 	}); err != nil {
 		t.Fatal(err)
@@ -431,8 +527,8 @@ func TestProjectAnalyticsGroupsLightTokenDeltasByCWDProject(t *testing.T) {
 	page, err := repository.ListProjectAnalytics(context.Background(), ProjectAnalyticsFilter{
 		Range: AnalyticsRange{
 			ReportingTimezone: "UTC",
-			StartAtMS:         time.Date(2024, 7, 19, 0, 0, 0, 0, time.UTC).UnixMilli(),
-			EndAtMS:           time.Date(2024, 7, 20, 0, 0, 0, 0, time.UTC).UnixMilli(),
+			StartAtMS:         time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC).UnixMilli(),
+			EndAtMS:           time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC).UnixMilli(),
 		},
 		Limit: 20, SortField: ProjectAnalyticsSortTotalTokens, SortDirection: AnalyticsSortDescending,
 	})
@@ -441,23 +537,195 @@ func TestProjectAnalyticsGroupsLightTokenDeltasByCWDProject(t *testing.T) {
 	}
 	record := page.Records[0]
 	if record.ProjectID == nil || record.ProjectDisplayName == nil || *record.ProjectDisplayName != "workspace" ||
-		record.Totals.TotalTokens == nil || *record.Totals.TotalTokens != 112 || record.SessionCount != 1 ||
-		len(record.Trend) != 1 {
-		t.Fatalf("record = %#v", record)
+		record.Totals.TotalTokens == nil || *record.Totals.TotalTokens != 1_150_000 ||
+		record.Totals.EstimatedUSDMicros == nil || *record.Totals.EstimatedUSDMicros != 1_290_000 ||
+		record.SessionCount != 1 || len(record.Trend) != 1 ||
+		len(page.PricingVersions) != 1 || page.PricingVersions[0] != "openai-api-2026-07-22" {
+		t.Fatalf("record/page = %#v / %#v", record, page)
 	}
 	detail, err := repository.ProjectAnalytics(context.Background(), ProjectAnalyticsDetailFilter{
 		Range: ProjectAnalyticsFilter{
 			Range: AnalyticsRange{
 				ReportingTimezone: "UTC",
-				StartAtMS:         time.Date(2024, 7, 19, 0, 0, 0, 0, time.UTC).UnixMilli(),
-				EndAtMS:           time.Date(2024, 7, 20, 0, 0, 0, 0, time.UTC).UnixMilli(),
+				StartAtMS:         time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC).UnixMilli(),
+				EndAtMS:           time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC).UnixMilli(),
 			},
 		}.Range,
 		DimensionKey: record.DimensionKey, SessionLimit: 20, ModelLimit: 20,
 	})
 	if err != nil || detail.Mode != AnalyticsReadLightIndex || detail.Record.DimensionKey != record.DimensionKey ||
-		len(detail.Sessions) != 1 || detail.Sessions[0].SessionID != "one" || len(detail.Models) != 0 {
+		len(detail.Sessions) != 1 || detail.Sessions[0].SessionID != "one" || len(detail.Models) != 1 ||
+		detail.Models[0].DimensionKey != model || detail.Models[0].Model.ModelKey == nil ||
+		*detail.Models[0].Model.ModelKey != model || detail.Models[0].Totals.TotalTokens == nil ||
+		*detail.Models[0].Totals.TotalTokens != 1_150_000 ||
+		detail.Models[0].Totals.EstimatedUSDMicros == nil ||
+		*detail.Models[0].Totals.EstimatedUSDMicros != 1_290_000 {
 		t.Fatalf("ProjectAnalytics(light) = %#v, %v", detail, err)
+	}
+}
+
+func TestProjectAnalyticsUsesExactPartialDayBoundaries(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(context.Background(), "one", identity, "parser-v2", 2_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observedAtMS := time.Date(2026, 7, 23, 1, 0, 0, 0, time.UTC).UnixMilli()
+	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: observedAtMS + 1, Activate: true,
+		Checkpoint: LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100},
+		TimedDeltas: []LightTokenTimedDelta{{
+			SourceOffset: 4_000, ObservedAtMS: observedAtMS, InputTokens: 100,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 7, 23, 0, 30, 0, 0, time.UTC).UnixMilli()
+	end := time.Date(2026, 7, 23, 2, 0, 0, 0, time.UTC).UnixMilli()
+	page, err := repository.ListProjectAnalytics(context.Background(), ProjectAnalyticsFilter{
+		Range: AnalyticsRange{
+			ReportingTimezone: "UTC", StartAtMS: start, EndAtMS: end, Exact: true,
+		},
+		Limit: 5, SortField: ProjectAnalyticsSortTotalTokens,
+		SortDirection: AnalyticsSortDescending,
+	})
+	if err != nil || len(page.Records) != 1 || len(page.Records[0].Trend) != 1 {
+		t.Fatalf("ListProjectAnalytics(exact light) = %#v, %v", page, err)
+	}
+	if page.Records[0].Trend[0].BucketStartMS != start {
+		t.Fatalf(
+			"exact project bucket = %d, want range start %d",
+			page.Records[0].Trend[0].BucketStartMS, start,
+		)
+	}
+}
+
+func TestLightAnalyticsGroupsCodexWorktreesAndKeepsScratchUsageAsOther(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	repository := openRuntimeRepository(t)
+	home := LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
+	root := t.TempDir()
+	worktreeOne := filepath.Join(root, ".codex", "worktrees", "aaaa", "codex-pulse")
+	worktreeTwo := filepath.Join(root, ".codex", "worktrees", "bbbb", "codex-pulse", "internal")
+	scratch := filepath.Join(root, "Codex", "2026-07-23", "quota-overview")
+	sessions := []LightSessionMetadata{
+		{SessionID: "worktree-one", CWD: worktreeOne, CreatedAtMS: 100, UpdatedAtMS: 200},
+		{SessionID: "worktree-two", CWD: worktreeTwo, CreatedAtMS: 100, UpdatedAtMS: 200},
+		{SessionID: "scratch", CWD: scratch, CreatedAtMS: 100, UpdatedAtMS: 200},
+	}
+	for index := range sessions {
+		path := filepath.Join(home.Path, "sessions", sessions[index].SessionID+".jsonl")
+		sessions[index].RolloutPath = &path
+	}
+	if err := repository.ReplaceLightMetadata(ctx, LightMetadataSnapshot{
+		Home: home, Generation: 1, ReadyAtMS: 1_000, Sessions: sessions,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	observedAtMS := time.Date(2026, 7, 23, 1, 0, 0, 0, time.UTC).UnixMilli()
+	for index, session := range sessions {
+		identity := LightRolloutIdentity{
+			Path: *session.RolloutPath, SourceFileID: "codex:" + session.SessionID,
+			Home: home, DeviceID: "3", Inode: int64(index + 10), SizeBytes: 8_192,
+			MTimeNS: 100, PrefixBytes: 4_096,
+			PrefixSHA256:      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			FingerprintSHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		}
+		generation, err := repository.StartLightTokenRebuild(ctx, session.SessionID, identity, "parser-v2", 2_000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := repository.CommitLightTokenBatch(ctx, LightTokenBatch{
+			SessionID: session.SessionID, Generation: generation, UpdatedAtMS: 2_100, Activate: true,
+			Checkpoint: LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100},
+			TimedDeltas: []LightTokenTimedDelta{{
+				SourceOffset: 4_000, ObservedAtMS: observedAtMS + int64(index), InputTokens: 100,
+			}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	page, err := repository.ListProjectAnalytics(ctx, ProjectAnalyticsFilter{
+		Range: AnalyticsRange{
+			ReportingTimezone: "UTC",
+			StartAtMS:         time.Date(2026, 7, 23, 0, 0, 0, 0, time.UTC).UnixMilli(),
+			EndAtMS:           time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC).UnixMilli(),
+		},
+		Limit: 20, SortField: ProjectAnalyticsSortTotalTokens,
+		SortDirection: AnalyticsSortDescending,
+	})
+	if err != nil || len(page.Records) != 2 {
+		t.Fatalf("ListProjectAnalytics(grouped) = %#v, %v", page, err)
+	}
+	grouped := page.Records[0]
+	if grouped.ProjectDisplayName == nil || *grouped.ProjectDisplayName != "codex-pulse" ||
+		grouped.SessionCount != 2 || grouped.Totals.TotalTokens == nil || *grouped.Totals.TotalTokens != 200 {
+		t.Fatalf("grouped worktree project = %#v", grouped)
+	}
+	groupedDetail, err := repository.ProjectAnalytics(ctx, ProjectAnalyticsDetailFilter{
+		Range: AnalyticsRange{
+			ReportingTimezone: "UTC",
+			StartAtMS:         time.Date(2026, 7, 23, 0, 0, 0, 0, time.UTC).UnixMilli(),
+			EndAtMS:           time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC).UnixMilli(),
+		},
+		DimensionKey: grouped.DimensionKey, SessionLimit: 1, ModelLimit: 20,
+	})
+	if err != nil || len(groupedDetail.Sessions) != 1 || groupedDetail.NextSessionCursor == nil ||
+		groupedDetail.NextSessionCursor.GenerationID == "" {
+		t.Fatalf("ProjectAnalytics(grouped first page) = %#v, %v", groupedDetail, err)
+	}
+	groupedSecondPage, err := repository.ProjectAnalytics(ctx, ProjectAnalyticsDetailFilter{
+		Range: AnalyticsRange{
+			ReportingTimezone: "UTC",
+			StartAtMS:         time.Date(2026, 7, 23, 0, 0, 0, 0, time.UTC).UnixMilli(),
+			EndAtMS:           time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC).UnixMilli(),
+		},
+		DimensionKey: grouped.DimensionKey, SessionLimit: 1,
+		SessionCursor: groupedDetail.NextSessionCursor, ModelLimit: 20,
+	})
+	if err != nil || len(groupedSecondPage.Sessions) != 1 || groupedSecondPage.NextSessionCursor != nil ||
+		groupedSecondPage.Sessions[0].SessionID == groupedDetail.Sessions[0].SessionID {
+		t.Fatalf("ProjectAnalytics(grouped second page) = %#v, %v", groupedSecondPage, err)
+	}
+	other := page.Records[1]
+	if other.ProjectID != nil || other.ProjectDisplayName != nil || other.SessionCount != 1 ||
+		other.Totals.TotalTokens == nil || *other.Totals.TotalTokens != 100 {
+		t.Fatalf("scratch other project = %#v", other)
+	}
+	otherDetail, err := repository.ProjectAnalytics(ctx, ProjectAnalyticsDetailFilter{
+		Range: AnalyticsRange{
+			ReportingTimezone: "UTC",
+			StartAtMS:         time.Date(2026, 7, 23, 0, 0, 0, 0, time.UTC).UnixMilli(),
+			EndAtMS:           time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC).UnixMilli(),
+		},
+		DimensionKey: other.DimensionKey, SessionLimit: 20, ModelLimit: 20,
+	})
+	if err != nil || otherDetail.Record.DimensionKey != other.DimensionKey ||
+		otherDetail.Record.ProjectID != nil || otherDetail.Record.Totals.TotalTokens == nil ||
+		*otherDetail.Record.Totals.TotalTokens != 100 || len(otherDetail.Sessions) != 1 {
+		t.Fatalf("ProjectAnalytics(other) = %#v, %v", otherDetail, err)
+	}
+
+	sessionPage, err := repository.ListSessionAnalytics(ctx, SessionAnalyticsFilter{
+		Limit: 10, SortField: SessionAnalyticsSortTotalTokens,
+		SortDirection: AnalyticsSortDescending,
+	})
+	if err != nil || len(sessionPage.Records) != 3 {
+		t.Fatalf("ListSessionAnalytics(grouped) = %#v, %v", sessionPage, err)
+	}
+	projectIDs := make(map[string]*string)
+	for _, record := range sessionPage.Records {
+		projectIDs[record.SessionID] = record.Project.ProjectID
+	}
+	if projectIDs["worktree-one"] == nil || projectIDs["worktree-two"] == nil ||
+		*projectIDs["worktree-one"] != *projectIDs["worktree-two"] || projectIDs["scratch"] != nil {
+		t.Fatalf("session project identities = %#v", projectIDs)
 	}
 }
 

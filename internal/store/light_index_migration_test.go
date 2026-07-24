@@ -13,8 +13,8 @@ import (
 func TestApplicationSchemaVersionIncludesLightModelAttribution(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV17Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 17", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV19Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 19", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	seedApplicationSchemaV16(t, database)
@@ -28,17 +28,17 @@ func TestApplicationSchemaVersionIncludesLightModelAttribution(t *testing.T) {
 		_ func(storesqlite.BackupProgress),
 	) (string, error) {
 		backupVersions = [2]int{fromVersion, targetVersion}
-		return "/tmp/application-v16-before-v17.db", nil
+		return "/tmp/application-v16-before-v19.db", nil
 	}
 	report, err := runner.run(t.Context())
 	if err != nil {
-		t.Fatalf("run(v16->v17) error = %v", err)
+		t.Fatalf("run(v16->v19) error = %v", err)
 	}
-	if report.FromVersion != 16 || report.TargetVersion != 17 ||
-		!equalInts(report.AppliedVersions, []int{17}) || backupVersions != [2]int{16, 17} {
+	if report.FromVersion != 16 || report.TargetVersion != 19 ||
+		!equalInts(report.AppliedVersions, []int{17, 18, 19}) || backupVersions != [2]int{16, 19} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 17, 17)
+	assertMigrationVersionAndHistory(t, database, 19, 19)
 	if err := database.View(t.Context(), func(_ context.Context, connection *gorm.DB) error {
 		for _, column := range lightModelMigrationColumns {
 			if !connection.Migrator().HasColumn(column.model, column.column) {

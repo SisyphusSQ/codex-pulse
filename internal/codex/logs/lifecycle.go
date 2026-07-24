@@ -337,6 +337,7 @@ func (normalizer *lifecycleNormalizer) applyTokenCount(
 		observation := decoded
 		observation.SessionID = normalizer.session.SessionID
 		observation.LimitID = cloneString(decoded.LimitID)
+		observation.LimitName = cloneString(decoded.LimitName)
 		observation.PlanType = cloneString(decoded.PlanType)
 		if decoded.RejectionReason != nil {
 			reason := *decoded.RejectionReason

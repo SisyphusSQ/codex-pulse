@@ -96,6 +96,24 @@ const projectContributionTotalsSelect = `
 	MAX(usage.observed_at_ms) AS last_activity_at_ms,
 	MAX(cost.calculated_at_ms) AS updated_at_ms`
 
+const projectContributionGroupSelect = projectContributionDimensionExpression + ` AS dimension_key,
+	MIN(attribution.project_id) AS project_id_min,
+	MAX(attribution.project_id) AS project_id_max,
+	CASE
+		WHEN MIN(attribution.project_id) IS NULL THEN NULL
+		WHEN MIN(attribution.project_display_name) = MAX(attribution.project_display_name)
+			THEN MIN(attribution.project_display_name)
+		ELSE MIN(attribution.project_id)
+	END AS project_display_name,
+	MIN(CASE COALESCE(attribution.project_confidence, 'unknown')
+		WHEN 'unknown' THEN 0 WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3
+		ELSE -1 END) AS confidence_rank,
+	MIN(COALESCE(attribution.project_source, 'missing')) AS source_min,
+	MAX(COALESCE(attribution.project_source, 'missing')) AS source_max,
+	MIN(COALESCE(attribution.project_reason, 'missing')) AS reason_min,
+	MAX(COALESCE(attribution.project_reason, 'missing')) AS reason_max,
+	` + projectContributionTotalsSelect
+
 const projectSessionContributionSelect = `
 	turn_record.session_id AS session_id,
 	MIN(session_attribution.display_title) AS display_title,
@@ -379,6 +397,21 @@ func decorateProjectAnalyticsRecords(
 			return invalidRecord("stored project session count is missing")
 		}
 	}
+	if filter.Exact {
+		for index := range records {
+			record := &records[index]
+			record.Trend = append(record.Trend, ProjectUsageDaily{
+				GenerationID: generation.GenerationID, BucketStartMS: filter.StartAtMS,
+				ReportingTimezone: filter.ReportingTimezone, DimensionKey: record.DimensionKey,
+				ProjectID:             cloneStringPointerStore(record.ProjectID),
+				ProjectDisplayName:    cloneStringPointerStore(record.ProjectDisplayName),
+				AttributionConfidence: record.AttributionConfidence,
+				AttributionSource:     record.AttributionSource, AttributionReason: record.AttributionReason,
+				RollupTotals: record.Totals,
+			})
+		}
+		return nil
+	}
 
 	var models []projectUsageDailyModel
 	if err := database.Where(
@@ -495,20 +528,24 @@ func (repository *Repository) ProjectAnalytics(
 			return err
 		}
 		result.Record = decorated[0]
-		var models []projectUsageDailyModel
-		if err := database.Where(
-			"generation_id = ? AND reporting_timezone = ? AND dimension_key = ? AND bucket_start_ms >= ? AND bucket_start_ms < ?",
-			generation.GenerationID, filter.Range.ReportingTimezone, filter.DimensionKey,
-			filter.Range.StartAtMS, filter.Range.EndAtMS,
-		).Order("bucket_start_ms").Find(&models).Error; err != nil {
-			return err
-		}
-		for _, model := range models {
-			daily, err := projectDailyFromModel(model, filter.Range, generation.GenerationID)
-			if err != nil {
+		if filter.Range.Exact {
+			result.Daily = append(result.Daily, result.Record.Trend...)
+		} else {
+			var models []projectUsageDailyModel
+			if err := database.Where(
+				"generation_id = ? AND reporting_timezone = ? AND dimension_key = ? AND bucket_start_ms >= ? AND bucket_start_ms < ?",
+				generation.GenerationID, filter.Range.ReportingTimezone, filter.DimensionKey,
+				filter.Range.StartAtMS, filter.Range.EndAtMS,
+			).Order("bucket_start_ms").Find(&models).Error; err != nil {
 				return err
 			}
-			result.Daily = append(result.Daily, daily)
+			for _, model := range models {
+				daily, err := projectDailyFromModel(model, filter.Range, generation.GenerationID)
+				if err != nil {
+					return err
+				}
+				result.Daily = append(result.Daily, daily)
+			}
 		}
 		dailyTotals, err := aggregateProjectDailyTotals(result.Daily)
 		if err != nil {
@@ -829,6 +866,9 @@ func validateProjectAnalyticsFilter(filter ProjectAnalyticsFilter) error {
 	if err := validateAnalyticsDimensionValues(filter.ProjectIDs); err != nil {
 		return err
 	}
+	if err := validateAnalyticsDimensionValues(filter.DimensionKeys); err != nil {
+		return err
+	}
 	if len(filter.Confidences) > 4 || hasDuplicateStoreStrings(filter.Confidences) {
 		return invalidRecord("project confidence filter is invalid")
 	}
@@ -887,6 +927,9 @@ func buildProjectAnalyticsDailyQuery(
 	if len(filter.ProjectIDs) > 0 {
 		query = query.Where("project.project_id IN ?", filter.ProjectIDs)
 	}
+	if len(filter.DimensionKeys) > 0 {
+		query = query.Where("project.dimension_key IN ?", filter.DimensionKeys)
+	}
 	return query
 }
 
@@ -895,8 +938,22 @@ func projectAnalyticsGroupQuery(
 	filter ProjectAnalyticsFilter,
 	generation costRollupGenerationModel,
 ) *gorm.DB {
-	subquery := buildProjectAnalyticsDailyQuery(database, filter, generation).
-		Select(projectAnalyticsGroupSelect).Group("project.dimension_key")
+	var subquery *gorm.DB
+	if filter.Range.Exact {
+		subquery = buildProjectContributionRangeQuery(database, filter.Range, generation)
+		if len(filter.ProjectIDs) > 0 {
+			subquery = subquery.Where("attribution.project_id IN ?", filter.ProjectIDs)
+		}
+		if len(filter.DimensionKeys) > 0 {
+			subquery = subquery.Where(
+				projectContributionDimensionExpression+" IN ?", filter.DimensionKeys)
+		}
+		subquery = subquery.Select(projectContributionGroupSelect).
+			Group(projectContributionDimensionExpression)
+	} else {
+		subquery = buildProjectAnalyticsDailyQuery(database, filter, generation).
+			Select(projectAnalyticsGroupSelect).Group("project.dimension_key")
+	}
 	query := database.Table("(?) AS project_group", subquery)
 	if len(filter.Confidences) > 0 {
 		ranks := make([]int, 0, len(filter.Confidences))
@@ -937,6 +994,32 @@ func reconcileProjectAnalyticsRange(
 	filter AnalyticsRange,
 	generation costRollupGenerationModel,
 ) (RollupTotals, error) {
+	if filter.Exact {
+		if err := ensureProjectContributionAttributionsPresent(database, filter, generation); err != nil {
+			return RollupTotals{}, err
+		}
+		projects, err := aggregateProjectGroupAnalyticsTotals(
+			database, projectAnalyticsGroupQuery(
+				database, ProjectAnalyticsFilter{Range: filter}, generation,
+			),
+		)
+		if err != nil {
+			return RollupTotals{}, err
+		}
+		var projection sessionAnalyticsTotalsProjection
+		if err := buildProjectContributionRangeQuery(database, filter, generation).
+			Select(projectContributionTotalsSelect).Scan(&projection).Error; err != nil {
+			return RollupTotals{}, err
+		}
+		global, err := sessionTotalsFromProjection(projection)
+		if err != nil {
+			return RollupTotals{}, err
+		}
+		if !equalAnalyticsTotals(projects, global) {
+			return RollupTotals{}, invalidRecord("project analytics exact reconciliation failed")
+		}
+		return global, nil
+	}
 	if err := validateProjectAnalyticsRows(database, filter, generation.GenerationID); err != nil {
 		return RollupTotals{}, err
 	}
@@ -959,6 +1042,21 @@ func reconcileProjectAnalyticsRange(
 		return RollupTotals{}, invalidRecord("project analytics global reconciliation failed")
 	}
 	return global, nil
+}
+
+func buildProjectContributionRangeQuery(
+	database *gorm.DB,
+	filter AnalyticsRange,
+	generation costRollupGenerationModel,
+) *gorm.DB {
+	return database.Table("turn_usage AS usage").
+		Joins("JOIN turns AS turn_record ON turn_record.turn_id = usage.turn_id AND turn_record.source_generation = usage.source_generation").
+		Joins("LEFT JOIN turn_attributions AS attribution ON attribution.turn_id = usage.turn_id").
+		Joins("JOIN turn_costs AS cost ON cost.turn_id = usage.turn_id AND cost.generation_id = ?", generation.GenerationID).
+		Where(
+			"usage.is_final = ? AND usage.observed_at_ms >= ? AND usage.observed_at_ms < ?",
+			true, filter.StartAtMS, filter.EndAtMS,
+		)
 }
 
 func validateProjectAnalyticsRows(

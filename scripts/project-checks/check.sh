@@ -21,6 +21,10 @@ require_pattern() {
   grep -Eq -- "$2" "$REPO_ROOT/$1" || fail "$3" "$4" "missing contract in $1: $2"
 }
 
+reject_pattern() {
+  ! grep -Eq -- "$2" "$REPO_ROOT/$1" || fail "$3" "$4" "forbidden contract in $1: $2"
+}
+
 require_file go.mod TOOLCHAIN-001 go.mod
 require_file api/codexpulse/core/v1/core.proto RPC-001 docs/design/details/architecture/README.md
 require_file api/codexpulse/core/v1/core.pb.go RPC-001 api/codexpulse/core/v1/core.proto
@@ -108,6 +112,22 @@ require_pattern app/macos/Sources/CodexPulseApp/AppDelegate.swift 'NSWindow' SWI
 require_pattern app/macos/Sources/CodexPulseApp/AppDelegate.swift 'applicationWillResignActive' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/RootView.swift 'NavigationSplitView' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'NSStatusBar.system.statusItem' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'minimumHitTarget: CGFloat = 44' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'iconVisualSize: CGFloat = 28' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'compactButtonVisualHeight: CGFloat = 28' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'padding\(\.vertical, -PopoverInteractionMetrics\.compactButtonHitSlop\)' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'InteractiveCardButtonStyle' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift '\.contentShape\(' SWIFT-002 docs/design/details/native-macos-client/README.md
+reject_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift '\.onHover' SWIFT-002 docs/design/details/native-macos-client/README.md
+reject_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift '\.accentColor\.opacity' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'controlActiveState' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'model\.isOverviewRefreshing' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift '正在刷新本地数据' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'private struct RefreshArrowSymbol' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'TimelineView\(\.animation' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'private struct PopoverBackButton' SWIFT-002 docs/design/details/native-macos-client/README.md
+reject_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'private struct DetailHeader' SWIFT-002 docs/design/details/native-macos-client/README.md
+reject_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift '重置次数详情' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseAppSupport/AppRuntime.swift 'OverviewRequestSet.make' SWIFT-002 api/codexpulse/core/v1/core.proto
 require_pattern app/macos/Sources/CodexPulseAppSupport/AppModel.swift 'featureGenerations' SWIFT-003 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseAppSupport/FeatureModels.swift '^public enum RuntimeControlAction:' SWIFT-003 api/codexpulse/core/v1/core.proto

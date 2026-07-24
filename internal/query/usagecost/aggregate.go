@@ -319,10 +319,10 @@ type trendGroup struct {
 func groupTrend(
 	rows []store.UsageDaily,
 	granularity TrendGranularity,
-	timezone string,
+	rangeValue basequery.UTCTimeRange,
 	mode store.AnalyticsReadMode,
 ) ([]TrendPoint, error) {
-	location, err := time.LoadLocation(timezone)
+	location, err := time.LoadLocation(rangeValue.TimeZone)
 	if err != nil {
 		return nil, err
 	}
@@ -338,9 +338,18 @@ func groupTrend(
 		if row.BucketStartMS < group.startAtMS {
 			group.startAtMS = row.BucketStartMS
 		}
-		nextDay := time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, location).UTC().UnixMilli()
-		if nextDay > group.endAtMS {
-			group.endAtMS = nextDay
+		nextBucket := time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, location)
+		if granularity == TrendHour {
+			nextBucket = time.Date(
+				local.Year(), local.Month(), local.Day(), local.Hour()+1, 0, 0, 0, location,
+			)
+		}
+		nextBucketAtMS := nextBucket.UTC().UnixMilli()
+		if nextBucketAtMS > rangeValue.EndAtMS {
+			nextBucketAtMS = rangeValue.EndAtMS
+		}
+		if nextBucketAtMS > group.endAtMS {
+			group.endAtMS = nextBucketAtMS
 		}
 		if err := group.accumulator.addMode(row.RollupTotals, mode); err != nil {
 			return nil, err

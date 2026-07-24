@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Codex Pulse app icon - Dark</title>
+  <desc id="desc">The dark appearance of the Codex Pulse local core and pulse orbit.</desc>
+  <defs>
+    <linearGradient id="bg" x1="128" y1="96" x2="896" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#020713"/>
+      <stop offset="0.55" stop-color="#0C1738"/>
+      <stop offset="1" stop-color="#21184F"/>
+    </linearGradient>
+    <radialGradient id="field" cx="0" cy="0" r="1" gradientTransform="translate(470 432) rotate(48) scale(520)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4DDCFF" stop-opacity="0.19"/>
+      <stop offset="0.58" stop-color="#655DFF" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#050817" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="orbit" x1="192" y1="240" x2="834" y2="812" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#71E8F8"/>
+      <stop offset="0.5" stop-color="#4DA8F4"/>
+      <stop offset="1" stop-color="#816EFF"/>
+    </linearGradient>
+    <linearGradient id="pulse" x1="650" y1="274" x2="884" y2="416" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C8F9FF"/>
+      <stop offset="0.5" stop-color="#65D7F7"/>
+      <stop offset="1" stop-color="#7F74FF"/>
+    </linearGradient>
+    <linearGradient id="core" x1="430" y1="420" x2="594" y2="608" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E8FCFF"/>
+      <stop offset="0.44" stop-color="#82E1F8"/>
+      <stop offset="1" stop-color="#716BFF"/>
+    </linearGradient>
+    <clipPath id="legacy-mask"><rect width="1024" height="1024" rx="224"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#legacy-mask)">
+    <rect width="1024" height="1024" fill="url(#bg)"/>
+    <rect width="1024" height="1024" fill="url(#field)"/>
+    <circle cx="512" cy="512" r="300" fill="none" stroke="url(#orbit)" stroke-width="86" stroke-linecap="round"
+      stroke-dasharray="1260 625" transform="rotate(31 512 512)"/>
+    <path d="M360 624 C405 695 505 725 589 694 C647 673 693 628 716 570"
+      fill="none" stroke="url(#orbit)" stroke-opacity="0.7" stroke-width="42" stroke-linecap="round"/>
+    <path d="M650 278 C690 294 722 317 748 346 L782 303 L808 394 L847 346 L878 373"
+      fill="none" stroke="url(#pulse)" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="512" cy="512" r="112" fill="#020817" fill-opacity="0.82" stroke="#C7F7FF" stroke-opacity="0.24" stroke-width="12"/>
+    <circle cx="512" cy="512" r="62" fill="url(#core)"/>
+    <circle cx="286" cy="321" r="27" fill="#A9F3FC"/>
+  </g>
+</svg>

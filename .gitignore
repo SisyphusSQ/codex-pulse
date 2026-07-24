@@ -42,7 +42,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 .task/
-build/bin/
+build/
 
 # Local databases and runtime data
 *.db
@@ -66,3 +66,6 @@ temp/
 .cursor/*
 !.cursor/rules/
 !.cursor/rules/*.mdc
+
+# Local Linear delivery loop runtime
+.issue-loops/

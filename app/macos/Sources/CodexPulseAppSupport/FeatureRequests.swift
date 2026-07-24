@@ -2,15 +2,17 @@ import CodexPulseProtocolGenerated
 import Foundation
 
 public enum DateRangePreset: String, CaseIterable, Hashable, Identifiable, Sendable {
-    case today
-    case sevenDays
-    case thirtyDays
-    case all
+    case quotaWeek = "quota_week"
+    case today = "today"
+    case sevenDays = "seven_days"
+    case thirtyDays = "thirty_days"
+    case all = "all"
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
+        case .quotaWeek: "周额度"
         case .today: "今天"
         case .sevenDays: "近 7 天"
         case .thirtyDays: "近 30 天"
@@ -21,6 +23,7 @@ public enum DateRangePreset: String, CaseIterable, Hashable, Identifiable, Senda
 
 public struct SessionQueryOptions: Equatable, Sendable {
     public var range: DateRangePreset = .sevenDays
+    public var exactRange: Codexpulse_Core_V1_UTCTimeRange?
     public var activity: String = "all"
     public var projectID: String = ""
     public var modelKey: String = ""
@@ -32,6 +35,7 @@ public struct SessionQueryOptions: Equatable, Sendable {
 
 public struct ProjectQueryOptions: Equatable, Sendable {
     public var range: DateRangePreset = .thirtyDays
+    public var exactRange: Codexpulse_Core_V1_UTCTimeRange?
     public var projectID: String = ""
     public var confidence: String = "all"
     public var sortField: String = "lastActivityAt"
@@ -106,6 +110,10 @@ public enum FeatureRequestFactory {
             filters: filters,
             timeRange: options.range == .all ? nil : localDateRange(options.range, now: now, calendar: calendar)
         )
+        if let exactRange = options.exactRange {
+            request.query.clearTimeRange()
+            request.query.exactTimeRange = exactRange
+        }
         return request
     }
 
@@ -148,12 +156,17 @@ public enum FeatureRequestFactory {
             filters: filters,
             timeRange: localDateRange(options.range == .all ? .thirtyDays : options.range, now: now, calendar: calendar)
         )
+        if let exactRange = options.exactRange {
+            request.query.clearTimeRange()
+            request.query.exactTimeRange = exactRange
+        }
         return request
     }
 
     public static func projectDetail(
         dimensionKey: String,
         range: DateRangePreset,
+        exactRange: Codexpulse_Core_V1_UTCTimeRange? = nil,
         sessionCursor: String? = nil,
         modelCursor: String? = nil,
         pageLimit: Int32 = 30,
@@ -162,7 +175,11 @@ public enum FeatureRequestFactory {
     ) -> Codexpulse_Core_V1_ProjectDetailRequest {
         var request = Codexpulse_Core_V1_ProjectDetailRequest()
         request.dimensionKey = dimensionKey
-        request.range = localDateRange(range == .all ? .thirtyDays : range, now: now, calendar: calendar)
+        if let exactRange {
+            request.exactRange = exactRange
+        } else {
+            request.range = localDateRange(range == .all ? .thirtyDays : range, now: now, calendar: calendar)
+        }
         request.sessionPage = page(cursor: sessionCursor, limit: pageLimit)
         request.modelPage = page(cursor: modelCursor, limit: pageLimit)
         return request
@@ -290,6 +307,7 @@ public enum FeatureRequestFactory {
         let today = calendar.startOfDay(for: now)
         let days: Int
         switch preset {
+        case .quotaWeek: days = 7
         case .today: days = 1
         case .sevenDays: days = 7
         case .thirtyDays, .all: days = 30

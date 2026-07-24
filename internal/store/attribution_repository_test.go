@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -208,6 +210,68 @@ func TestRepositoryAttributionUsesExplicitRegisteredProjectRoot(t *testing.T) {
 		derived.Project.Confidence != AttributionConfidenceHigh ||
 		derived.Project.Source != AttributionSourceRegisteredRoot {
 		t.Fatalf("SessionAttribution() = %#v, %v", derived, err)
+	}
+}
+
+func TestRepositoryAttributionGroupsLinkedWorktreesAndLeavesScratchUnclassified(t *testing.T) {
+	t.Parallel()
+
+	repository := openAttributionRepository(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	main := filepath.Join(root, "repos", "codex-pulse")
+	linkedOne := filepath.Join(root, "linked-one", "codex-pulse")
+	linkedTwo := filepath.Join(root, "linked-two", "codex-pulse")
+	for index, linked := range []string{linkedOne, linkedTwo} {
+		gitDirectory := filepath.Join(main, ".git", "worktrees", []string{"one", "two"}[index])
+		if err := os.MkdirAll(gitDirectory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(linked, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(gitDirectory, "commondir"), []byte("../..\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(linked, ".git"), []byte("gitdir: "+gitDirectory+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	scratch := filepath.Join(root, "Codex", "2026-07-23", "quota-overview")
+	for index, fixture := range []struct {
+		sessionID string
+		cwd       string
+	}{
+		{sessionID: "linked-one", cwd: linkedOne},
+		{sessionID: "linked-two", cwd: linkedTwo},
+		{sessionID: "scratch", cwd: scratch},
+	} {
+		atMS := int64(index + 100)
+		if err := repository.UpsertFacts(ctx, FactBatch{Session: &Session{
+			SessionID: fixture.sessionID, Provider: "codex", SourceKind: "session",
+			InitialCWD: &fixture.cwd, CreatedAtMS: atMS, FirstSeenAtMS: atMS, LastSeenAtMS: atMS,
+		}}); err != nil {
+			t.Fatalf("UpsertFacts(%s) error = %v", fixture.sessionID, err)
+		}
+	}
+
+	first, err := repository.SessionAttribution(ctx, "linked-one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := repository.SessionAttribution(ctx, "linked-two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Project.ProjectID == nil || second.Project.ProjectID == nil ||
+		*first.Project.ProjectID != *second.Project.ProjectID || first.Project.DisplayName == nil ||
+		*first.Project.DisplayName != "codex-pulse" || first.RuleVersion != 2 || second.RuleVersion != 2 {
+		t.Fatalf("linked worktree attributions = %#v and %#v", first.Project, second.Project)
+	}
+	scratchAttribution, err := repository.SessionAttribution(ctx, "scratch")
+	if err != nil || scratchAttribution.Project.ProjectID != nil ||
+		scratchAttribution.Project.Source != AttributionSourceMissing {
+		t.Fatalf("scratch attribution = %#v, %v", scratchAttribution.Project, err)
 	}
 }
 

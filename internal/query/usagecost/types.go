@@ -14,6 +14,7 @@ var ErrInvalidService = errors.New("usage cost query service is invalid")
 type TrendGranularity string
 
 const (
+	TrendHour  TrendGranularity = "hour"
 	TrendDay   TrendGranularity = "day"
 	TrendWeek  TrendGranularity = "week"
 	TrendMonth TrendGranularity = "month"
@@ -27,6 +28,7 @@ const DegradedRollupAmbiguous DegradedReason = "rollup_ambiguous"
 
 type UsageCostRequest struct {
 	Range       basequery.LocalDateRange `json:"range"`
+	ExactRange  *basequery.UTCTimeRange  `json:"exactRange"`
 	Granularity TrendGranularity         `json:"granularity"`
 }
 
@@ -60,6 +62,7 @@ type UsageModelItem struct {
 	DimensionKey string           `json:"dimensionKey"`
 	Model        AttributionValue `json:"model"`
 	Totals       UsageTotals      `json:"totals"`
+	Trend        []TrendPoint     `json:"trend"`
 }
 
 type UsageCostResponse struct {
@@ -146,15 +149,17 @@ type SessionTurnItem struct {
 }
 
 type SessionDetailResponse struct {
-	Meta            basequery.ResponseMeta `json:"meta"`
-	PricingSource   *string                `json:"pricingSource"`
-	Currency        *string                `json:"currency"`
-	PricingVersions []string               `json:"pricingVersions"`
-	UnpricedReasons []ReasonCount          `json:"unpricedReasons"`
-	Item            SessionItem            `json:"item"`
-	TurnPage        basequery.PageInfo     `json:"turnPage"`
-	Turns           []SessionTurnItem      `json:"turns"`
-	DegradedReason  *DegradedReason        `json:"degradedReason"`
+	Meta              basequery.ResponseMeta `json:"meta"`
+	PricingSource     *string                `json:"pricingSource"`
+	Currency          *string                `json:"currency"`
+	PricingVersions   []string               `json:"pricingVersions"`
+	UnpricedReasons   []ReasonCount          `json:"unpricedReasons"`
+	Item              SessionItem            `json:"item"`
+	TurnPage          basequery.PageInfo     `json:"turnPage"`
+	Turns             []SessionTurnItem      `json:"turns"`
+	DegradedReason    *DegradedReason        `json:"degradedReason"`
+	ReportingTimeZone string                 `json:"reportingTimeZone"`
+	Daily             []TrendPoint           `json:"daily"`
 }
 
 type ProjectItem struct {
@@ -190,6 +195,7 @@ type ProjectListResponse struct {
 type ProjectDetailRequest struct {
 	DimensionKey string                   `json:"dimensionKey"`
 	Range        basequery.LocalDateRange `json:"range"`
+	ExactRange   *basequery.UTCTimeRange  `json:"exactRange"`
 	SessionPage  basequery.PageRequest    `json:"sessionPage"`
 	ModelPage    basequery.PageRequest    `json:"modelPage"`
 }

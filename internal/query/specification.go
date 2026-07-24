@@ -107,9 +107,17 @@ func (spec Specification) Validate(ctx context.Context, request Request) (Valida
 	if err != nil {
 		return ValidatedRequest{}, err
 	}
+	if request.TimeRange != nil && request.ExactTimeRange != nil {
+		return ValidatedRequest{}, validationFailure("timeRange")
+	}
 	var timeRange *UTCTimeRange
 	if request.TimeRange != nil {
 		timeRange, err = normalizeLocalDateRange(*request.TimeRange, spec.maxRangeDays)
+		if err != nil {
+			return ValidatedRequest{}, err
+		}
+	} else if request.ExactTimeRange != nil {
+		timeRange, err = normalizeExactTimeRange(*request.ExactTimeRange, spec.maxRangeDays)
 		if err != nil {
 			return ValidatedRequest{}, err
 		}
@@ -117,6 +125,7 @@ func (spec Specification) Validate(ctx context.Context, request Request) (Valida
 
 	return ValidatedRequest{
 		Page: page, Sort: sortTerms, Filters: filters, TimeRange: timeRange,
+		TimeRangeExact: request.ExactTimeRange != nil,
 	}, nil
 }
 

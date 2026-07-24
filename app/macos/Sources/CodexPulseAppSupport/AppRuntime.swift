@@ -8,6 +8,64 @@ private enum ShutdownRequestResult: Equatable, Sendable {
     case timedOut
 }
 
+private enum OverviewSectionResult<Value: Sendable>: Sendable {
+    case value(Value)
+    case failure(AppNotice)
+
+    var notice: AppNotice? {
+        if case .failure(let notice) = self { return notice }
+        return nil
+    }
+}
+
+private func captureOverviewSection<Value: Sendable>(
+    _ operation: @Sendable () async throws -> Value
+) async -> OverviewSectionResult<Value> {
+    do {
+        return .value(try await operation())
+    } catch {
+        return .failure(AppNotice.from(error))
+    }
+}
+
+private func unavailableMeta() -> Codexpulse_Core_V1_ResponseMeta {
+    var meta = Codexpulse_Core_V1_ResponseMeta()
+    meta.version = "overview-v1"
+    meta.status = "unavailable"
+    return meta
+}
+
+private func unavailableQuota(at date: Date) -> Codexpulse_Core_V1_QuotaCurrentResponse {
+    var response = Codexpulse_Core_V1_QuotaCurrentResponse()
+    response.meta = unavailableMeta()
+    response.current.evaluatedAtMs = Int64(date.timeIntervalSince1970 * 1_000)
+    return response
+}
+
+private func unavailableUsage() -> Codexpulse_Core_V1_UsageCostResponse {
+    var response = Codexpulse_Core_V1_UsageCostResponse()
+    response.meta = unavailableMeta()
+    return response
+}
+
+private func unavailableSessions() -> Codexpulse_Core_V1_SessionListResponse {
+    var response = Codexpulse_Core_V1_SessionListResponse()
+    response.meta = unavailableMeta()
+    return response
+}
+
+private func unavailableProjects() -> Codexpulse_Core_V1_ProjectListResponse {
+    var response = Codexpulse_Core_V1_ProjectListResponse()
+    response.meta = unavailableMeta()
+    return response
+}
+
+private func unavailableHealth() -> Codexpulse_Core_V1_HealthProjectionResponse {
+    var response = Codexpulse_Core_V1_HealthProjectionResponse()
+    response.failure = "overview_section_unavailable"
+    return response
+}
+
 private final class OneShot<Value: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
     private var result: Value?
@@ -44,6 +102,7 @@ public enum AppRuntimeError: Error, Equatable, Sendable {
     case alreadyStarted
     case unavailable
     case invalidBootstrap
+    case weeklyQuotaRangeUnavailable
 }
 
 public enum ShutdownOutcome: Equatable, Sendable {
@@ -74,6 +133,7 @@ public actor AppRuntime {
     private var helperProcessMonitor: (any HelperProcessMonitoring)?
     private var refreshTask: Task<OverviewResponses, any Error>?
     private var lastResponses: OverviewResponses?
+    private var overviewRange: DateRangePreset = .quotaWeek
     private var runtimeGeneration: UInt64 = 0
     private var refreshGeneration: UInt64 = 0
     private var startInFlight = false
@@ -189,6 +249,16 @@ public actor AppRuntime {
     }
 
     public func refresh() async {
+        await refresh(showLoading: false)
+    }
+
+    public func refresh(range: DateRangePreset) async {
+        guard range != .all else { return }
+        if range != overviewRange {
+            overviewRange = range
+            refreshTask?.cancel()
+            refreshTask = nil
+        }
         await refresh(showLoading: false)
     }
 
@@ -386,6 +456,8 @@ public actor AppRuntime {
             }
 
             var detailsRead = 0
+            var projectDetailCostKnown = false
+            var projectDetailModels = 0
             if let item = sessions?.items.first {
                 step = "session_detail"
                 do {
@@ -398,12 +470,14 @@ public actor AppRuntime {
             if let item = projects?.items.first {
                 step = "project_detail"
                 do {
-                    _ = try await projectDetail(FeatureRequestFactory.projectDetail(
+                    let detail = try await projectDetail(FeatureRequestFactory.projectDetail(
                         dimensionKey: item.dimensionKey,
                         range: .thirtyDays,
                         now: now,
                         calendar: calendar
                     ))
+                    projectDetailCostKnown = detail.item.totals.estimatedUsdMicros.hasValue
+                    projectDetailModels = detail.models.count
                     detailsRead += 1
                 } catch {
                     unavailableSteps.append(try acceptedSmokeFailure(step: step, error: error))
@@ -446,8 +520,14 @@ public actor AppRuntime {
                 healthEvents: healthEvents?.items.count ?? 0,
                 usageTrend: usage?.trend.count ?? 0,
                 usageModels: usage?.models.count ?? 0,
+                usageModelTrend: usage?.models.reduce(0) { $0 + $1.trend.count } ?? 0,
+                usageModelReconciled: usage.map {
+                    UsageModelTrendResolver.buckets($0).count(where: \.breakdownAvailable)
+                } ?? 0,
                 usageCostKnown: usage?.totals.estimatedUsdMicros.hasValue == true,
                 quotaWindows: quota?.current.windows.count ?? 0,
+                projectDetailCostKnown: projectDetailCostKnown,
+                projectDetailModels: projectDetailModels,
                 detailsRead: detailsRead,
                 settingsMutation: try await settingsMutationSmoke(),
                 unavailableSteps: unavailableSteps
@@ -734,19 +814,117 @@ public actor AppRuntime {
         }
         if showLoading || lastResponses == nil { await emit(.loadingOverview) }
         let requests = OverviewRequestSet.make()
+        let requestedRange = overviewRange
         refreshGeneration &+= 1
         let generation = refreshGeneration
         let task = Task<OverviewResponses, any Error> {
-            async let usage = client.usageCost(requests.usage, retryPolicy: .transportDefault)
-            async let quota = client.quotaCurrent(requests.quota, retryPolicy: .transportDefault)
-            async let sessions = client.listSessions(requests.sessions, retryPolicy: .transportDefault)
-            async let health = client.healthProjection(retryPolicy: .transportDefault)
-            let values = try await (usage, quota, sessions, health)
+            let quotaResult = await captureOverviewSection {
+                try await client.quotaCurrent(requests.quota, retryPolicy: .transportDefault)
+            }
+            let quotaResponse: Codexpulse_Core_V1_QuotaCurrentResponse
+            switch quotaResult {
+            case .value(let response): quotaResponse = response
+            case .failure: quotaResponse = unavailableQuota(at: Date())
+            }
+            let quotaNow = quotaResponse.current.evaluatedAtMs > 0
+                ? Date(timeIntervalSince1970: TimeInterval(quotaResponse.current.evaluatedAtMs) / 1_000)
+                : Date()
+            let rangeNow = requestedRange == .quotaWeek ? quotaNow : Date()
+            let range = OverviewRequestSet.resolveRange(
+                requestedRange, quota: quotaResponse, now: rangeNow)
+            let weeklyProjectRange = OverviewRequestSet.resolveRange(
+                .quotaWeek, quota: quotaResponse, now: quotaNow)
+            let content = OverviewRequestSet.content(range: range)
+            let sharesWeeklyUsage = !weeklyProjectRange.fellBackFromQuotaWeek
+                && range.startAtMS == weeklyProjectRange.startAtMS
+                && range.endAtMS == weeklyProjectRange.endAtMS
+                && range.timeZone == weeklyProjectRange.timeZone
+                && range.granularity == weeklyProjectRange.granularity
+            let weeklyUsageRequest = sharesWeeklyUsage
+                ? nil
+                : OverviewRequestSet.weeklyUsageRequest(quota: quotaResponse)
+            let weeklyProjectRequest = OverviewRequestSet.weeklyProjectRanking(
+                range: weeklyProjectRange)
+            async let usageResult = captureOverviewSection {
+                try await client.usageCost(content.usage, retryPolicy: .transportDefault)
+            }
+            async let sessionResult = captureOverviewSection {
+                try await client.listSessions(content.sessions, retryPolicy: .transportDefault)
+            }
+            async let projectResult = captureOverviewSection {
+                try await client.listProjects(content.projects, retryPolicy: .transportDefault)
+            }
+            async let weeklyProjectResult = captureOverviewSection {
+                guard let weeklyProjectRequest else { return unavailableProjects() }
+                return try await client.listProjects(
+                    weeklyProjectRequest, retryPolicy: .transportDefault)
+            }
+            async let weeklyUsageResult = captureOverviewSection {
+                guard let weeklyUsageRequest else { return unavailableUsage() }
+                return try await client.usageCost(
+                    weeklyUsageRequest, retryPolicy: .transportDefault)
+            }
+            async let healthResult = captureOverviewSection {
+                try await client.healthProjection(retryPolicy: .transportDefault)
+            }
+            let sectionResults = await (
+                usageResult, sessionResult, projectResult, weeklyProjectResult,
+                weeklyUsageResult, healthResult)
+            let mandatoryNotices = [
+                quotaResult.notice,
+                sectionResults.0.notice,
+                sectionResults.1.notice,
+                sectionResults.2.notice,
+                sectionResults.5.notice,
+            ].compactMap { $0 }
+            guard mandatoryNotices.count < 5 else { throw AppRuntimeError.unavailable }
+            let notices = mandatoryNotices
+
+            let usageResponse: Codexpulse_Core_V1_UsageCostResponse
+            switch sectionResults.0 {
+            case .value(let response): usageResponse = response
+            case .failure: usageResponse = unavailableUsage()
+            }
+            let sessionResponse: Codexpulse_Core_V1_SessionListResponse
+            switch sectionResults.1 {
+            case .value(let response): sessionResponse = response
+            case .failure: sessionResponse = unavailableSessions()
+            }
+            let projectResponse: Codexpulse_Core_V1_ProjectListResponse
+            switch sectionResults.2 {
+            case .value(let response): projectResponse = response
+            case .failure: projectResponse = unavailableProjects()
+            }
+            let weeklyProjectResponse: Codexpulse_Core_V1_ProjectListResponse
+            switch sectionResults.3 {
+            case .value(let response): weeklyProjectResponse = response
+            case .failure: weeklyProjectResponse = unavailableProjects()
+            }
+            let weeklyUsageResponse: Codexpulse_Core_V1_UsageCostResponse
+            if sharesWeeklyUsage {
+                weeklyUsageResponse = usageResponse
+            } else {
+                switch sectionResults.4 {
+                case .value(let response): weeklyUsageResponse = response
+                case .failure: weeklyUsageResponse = unavailableUsage()
+                }
+            }
+            let healthResponse: Codexpulse_Core_V1_HealthProjectionResponse
+            switch sectionResults.5 {
+            case .value(let response): healthResponse = response
+            case .failure: healthResponse = unavailableHealth()
+            }
             return OverviewResponses(
-                usage: values.0,
-                quota: values.1,
-                sessions: values.2,
-                health: values.3
+                usage: usageResponse,
+                quota: quotaResponse,
+                sessions: sessionResponse,
+                projects: projectResponse,
+                health: healthResponse,
+                rangeResolution: range,
+                weeklyUsage: weeklyUsageResponse,
+                weeklyProjects: weeklyProjectResponse,
+                weeklyProjectRange: weeklyProjectRange,
+                additionalNotices: notices
             )
         }
         refreshTask = task
@@ -806,9 +984,7 @@ public actor AppRuntime {
 
     private func handleInvalidation(domain: String) async {
         await invalidationSink(domain)
-        guard applicationIsActive, !systemIsSleeping else {
-            return
-        }
+        guard !systemIsSleeping else { return }
         if domain != "settings" { await refresh(showLoading: false) }
     }
 
@@ -827,7 +1003,9 @@ public actor AppRuntime {
             }
         }
         await invalidationSink("lifecycle")
-        await refresh(showLoading: false)
+        if lastResponses == nil {
+            await refresh(showLoading: true)
+        }
     }
 
     private func deliverPendingActive(

@@ -127,7 +127,7 @@ func validateQuotaObservationSample(sample QuotaObservationSample) error {
 		return invalidRecord("quota observation sample is invalid")
 	}
 	if err := validateOptionalStrings(
-		sample.LimitID, sample.PlanType, sample.RequestID, sample.SessionID, sample.SourceFileID,
+		sample.LimitID, sample.LimitName, sample.PlanType, sample.RequestID, sample.SessionID, sample.SourceFileID,
 	); err != nil {
 		return err
 	}
@@ -265,7 +265,8 @@ func latestQuotaObservationSegment(
 func quotaObservationSemanticMatches(model quotaObservationModel, sample QuotaObservationSample) bool {
 	reason := optionalQuotaReasonString(sample.RejectionReason)
 	return model.AccountScope == sample.AccountScope && model.Source == string(sample.Source) &&
-		equalStringPointer(model.LimitID, sample.LimitID) && model.WindowKind == string(sample.WindowKind) &&
+		equalStringPointer(model.LimitID, sample.LimitID) && equalStringPointer(model.LimitName, sample.LimitName) &&
+		model.WindowKind == string(sample.WindowKind) &&
 		model.UsedPercent == sample.UsedPercent && model.WindowMinutes == sample.WindowMinutes &&
 		model.ResetsAtMS == sample.ResetsAtMS && equalStringPointer(model.PlanType, sample.PlanType) &&
 		model.Validity == string(sample.Validity) && equalStringPointer(model.RejectionReason, reason)
@@ -274,7 +275,8 @@ func quotaObservationSemanticMatches(model quotaObservationModel, sample QuotaOb
 func quotaObservationModelFromSample(sample QuotaObservationSample) *quotaObservationModel {
 	return &quotaObservationModel{
 		ObservationID: sample.ObservationID, AccountScope: sample.AccountScope,
-		Source: string(sample.Source), LimitID: cloneQuotaString(sample.LimitID), WindowKind: string(sample.WindowKind),
+		Source: string(sample.Source), LimitID: cloneQuotaString(sample.LimitID),
+		LimitName: cloneQuotaString(sample.LimitName), WindowKind: string(sample.WindowKind),
 		UsedPercent: sample.UsedPercent, WindowMinutes: sample.WindowMinutes, ResetsAtMS: sample.ResetsAtMS,
 		PlanType: cloneQuotaString(sample.PlanType), Validity: string(sample.Validity),
 		RejectionReason:   optionalQuotaReasonString(sample.RejectionReason),
@@ -318,7 +320,8 @@ func quotaObservationFromModel(model quotaObservationModel) (QuotaObservation, e
 	}
 	return QuotaObservation{
 		ObservationID: model.ObservationID, AccountScope: model.AccountScope, Source: source,
-		LimitID: cloneQuotaString(model.LimitID), WindowKind: window, UsedPercent: model.UsedPercent,
+		LimitID: cloneQuotaString(model.LimitID), LimitName: cloneQuotaString(model.LimitName),
+		WindowKind: window, UsedPercent: model.UsedPercent,
 		WindowMinutes: model.WindowMinutes, ResetsAtMS: model.ResetsAtMS, PlanType: cloneQuotaString(model.PlanType),
 		Validity: validity, RejectionReason: reason, FirstObservedAtMS: model.FirstObservedAtMS,
 		LastObservedAtMS: model.LastObservedAtMS, SampleCount: model.SampleCount,

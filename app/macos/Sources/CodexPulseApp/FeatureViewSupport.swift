@@ -9,27 +9,27 @@ struct RuntimeAwarePage<Content: View>: View {
     var body: some View {
         switch model.state {
         case .idle, .loading:
-            PageProgressView(title: "正在连接核心组件…")
-        case .recovery(let phase, let stage, _):
+            PageProgressView(title: "正在连接本地数据…")
+        case .recovery:
             ContentUnavailableView {
-                Label("核心组件需要恢复", systemImage: "wrench.and.screwdriver")
+                Label("正在修复本地数据", systemImage: "wrench.and.screwdriver")
             } description: {
-                Text("阶段：\(phase) · 步骤：\(stage)")
+                Text("修复完成后会自动恢复页面内容。")
             } actions: {
-                Button("重试恢复") { model.retryRecovery() }
+                Button("重试") { model.retryRecovery() }
             }
         case .restartRequired:
             ContentUnavailableView {
-                Label("需要重新启动核心组件", systemImage: "arrow.triangle.2.circlepath")
+                Label("需要重新连接本地数据", systemImage: "arrow.triangle.2.circlepath")
             } description: {
-                Text("恢复已完成，重新建立认证 UDS 连接后才能继续。")
+                Text("数据修复已经完成，重新连接后即可继续。")
             } actions: {
-                Button("重新启动") { model.restartCore() }
+                Button("重新连接") { model.restartCore() }
             }
         case .shuttingDown:
             PageProgressView(title: "正在安全退出…")
         case .stopped:
-            ContentUnavailableView("核心组件已停止", systemImage: "stop.circle")
+            ContentUnavailableView("本地数据服务已停止", systemImage: "stop.circle")
         case .cancelled:
             ContentUnavailableView("连接已取消", systemImage: "xmark.circle")
         case .overview, .partial, .stale, .unavailable:
@@ -48,7 +48,7 @@ struct RuntimeAwarePage<Content: View>: View {
             EmptyView()
         case .unavailable(let notice):
             HStack {
-                Label("核心组件不可用（\(notice.code)）", systemImage: "bolt.slash")
+                Label("本地数据暂时不可用", systemImage: "bolt.slash")
                     .foregroundStyle(.red)
                 Spacer()
                 if notice.retryable { Button("重新连接") { model.restartCore() } }
@@ -75,43 +75,27 @@ struct FeatureStateView<Value: Sendable, Content: View>: View {
                 ContentUnavailableView(emptyTitle, systemImage: emptySystemImage)
             case .loading(let previous):
                 if let previous {
-                    VStack(spacing: 0) {
-                        StateBanner(title: "正在刷新，暂时保留上次结果", systemImage: "arrow.clockwise", color: .blue)
-                        content(previous)
-                    }
+                    content(previous)
                 } else {
                     PageProgressView(title: "正在加载…")
                 }
             case .ready(let value):
                 content(value)
-            case .partial(let value, let notices):
-                VStack(spacing: 0) {
-                    StateBanner(
-                        title: notices.isEmpty ? "结果不完整" : "结果不完整（\(notices.count) 项事实受影响）",
-                        systemImage: "exclamationmark.triangle",
-                        color: .orange
-                    )
-                    content(value)
-                }
+            case .partial(let value, _):
+                content(value)
             case .stale(let value, _):
-                VStack(spacing: 0) {
-                    StateBanner(title: "这是上次成功结果，当前刷新失败", systemImage: "clock.arrow.circlepath", color: .orange)
-                    content(value)
-                }
+                content(value)
             case .empty:
                 ContentUnavailableView(emptyTitle, systemImage: emptySystemImage)
             case .unavailable(let notice):
                 ContentUnavailableView {
                     Label("当前数据不可用", systemImage: "exclamationmark.icloud")
                 } description: {
-                    Text("错误代码：\(notice.code)\(notice.retryable ? "，可以重试" : "")")
+                    Text(notice.retryable ? "请稍后重试。" : "当前版本无法读取这部分数据。")
                 }
             case .cancelled(let previous):
                 if let previous {
-                    VStack(spacing: 0) {
-                        StateBanner(title: "新请求已取消，保留上次结果", systemImage: "xmark.circle", color: .secondary)
-                        content(previous)
-                    }
+                    content(previous)
                 } else {
                     ContentUnavailableView("加载已取消", systemImage: "xmark.circle")
                 }
@@ -144,8 +128,12 @@ struct SectionCard<Content: View>: View {
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(.quaternary.opacity(0.32), in: RoundedRectangle(cornerRadius: 12))
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(.quaternary, lineWidth: 1)
+        }
     }
 }
 
@@ -163,30 +151,112 @@ struct KeyValueRow: View {
     }
 }
 
+enum TokenBreakdownViewStyle {
+    case columns
+    case compact
+}
+
+struct TokenBreakdownView: View {
+    let tokens: TokenBreakdownPresentation
+    var style: TokenBreakdownViewStyle = .columns
+
+    var body: some View {
+        switch style {
+        case .columns:
+            HStack(alignment: .top, spacing: 0) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("输入")
+                        .foregroundStyle(.secondary)
+                    Text(metricText(tokens.input))
+                        .font(.headline)
+                        .monospacedDigit()
+                    Text("缓存 \(metricText(tokens.cachedInput))")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("输出")
+                        .foregroundStyle(.secondary)
+                    Text(metricText(tokens.output))
+                        .font(.headline)
+                        .monospacedDigit()
+                    Text("推理 \(metricText(tokens.reasoning))")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.leading, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("总量")
+                        .foregroundStyle(.secondary)
+                    Text(metricText(tokens.total))
+                        .font(.headline)
+                        .monospacedDigit()
+                }
+                .padding(.leading, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .font(.caption)
+
+        case .compact:
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 10) {
+                    Text("输入")
+                    Text(metricText(tokens.input)).monospacedDigit()
+                    Text("输出")
+                    Text(metricText(tokens.output)).monospacedDigit()
+                    Text("总量")
+                    Text(metricText(tokens.total)).monospacedDigit()
+                }
+                Text("缓存 \(metricText(tokens.cachedInput)) · 推理 \(metricText(tokens.reasoning))")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+}
+
 struct StatusPill: View {
     let text: String
 
     var body: some View {
-        Text(text.isEmpty ? "unknown" : text)
+        Text(ProductCopy.status(text))
             .font(.caption.weight(.medium))
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(statusColor.opacity(0.14), in: Capsule())
             .foregroundStyle(statusColor)
-            .accessibilityLabel("状态：\(text.isEmpty ? "未知" : text)")
+            .accessibilityLabel("状态：\(ProductCopy.status(text))")
     }
 
     private var statusColor: Color {
         let normalized = text.lowercased()
-        if ["healthy", "current", "succeeded", "complete", "ready", "normal"].contains(normalized) { return .green }
-        if ["failed", "critical", "error", "blocked", "unavailable"].contains(normalized) { return .red }
-        if ["warning", "stale", "degraded", "partial", "interrupted"].contains(normalized) { return .orange }
+        if ["healthy", "current", "succeeded", "complete", "ready", "normal"].contains(normalized) {
+            return .green
+        }
+        if ["failed", "critical", "error", "blocked", "unavailable"].contains(normalized) {
+            return .red
+        }
+        if ["warning", "stale", "degraded", "partial", "interrupted"].contains(normalized) {
+            return .orange
+        }
         return .secondary
     }
 }
 
 func numericText(_ value: Codexpulse_Core_V1_NumericValue) -> String {
-    value.hasValue ? value.value.formatted() : "--"
+    guard value.hasValue else { return "--" }
+    if value.unit == "tokens" { return TokenQuantityFormatter.string(value.value) }
+    return value.value.formatted()
 }
 
 func costText(_ value: Codexpulse_Core_V1_NumericValue) -> String {
@@ -211,6 +281,5 @@ func timestampText(_ milliseconds: Int64) -> String {
 
 func attributionText(_ value: Codexpulse_Core_V1_AttributionValue) -> String {
     if value.hasDisplayName, !value.displayName.isEmpty { return value.displayName }
-    if value.hasID, !value.id.isEmpty { return value.id }
-    return "未知"
+    return "其他"
 }

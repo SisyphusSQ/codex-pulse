@@ -53,6 +53,7 @@ private enum FeatureTaskKey: Hashable {
 public final class AppModel: ObservableObject {
     @Published public private(set) var state: AppViewState = .idle
     @Published public private(set) var lastShutdownOutcome: ShutdownOutcome?
+    @Published public private(set) var isOverviewRefreshing = false
     @Published public var selectedFeature: AppFeature = .overview
     @Published public private(set) var renderedFeatures: Set<AppFeature> = []
 
@@ -62,6 +63,7 @@ public final class AppModel: ObservableObject {
     @Published public var jobOptions = RuntimeQueryOptions()
     @Published public var healthOptions = RuntimeQueryOptions(firstField: "active", firstValues: ["true"])
     @Published public var usageRange: DateRangePreset = .sevenDays
+    @Published public private(set) var overviewRange: DateRangePreset = .quotaWeek
 
     @Published public private(set) var usageState: FeatureLoadState<Codexpulse_Core_V1_UsageCostResponse> = .idle
     @Published public private(set) var quotaState: FeatureLoadState<Codexpulse_Core_V1_QuotaCurrentResponse> = .idle
@@ -91,6 +93,8 @@ public final class AppModel: ObservableObject {
 
     private let runtime: AppRuntime
     private var startTask: Task<Void, Never>?
+    private var overviewRefreshTask: Task<Void, Never>?
+    private var overviewRefreshGeneration: UInt64 = 0
     private var featureTasks: [FeatureTaskKey: Task<Void, Never>] = [:]
     private var featureGenerations: [FeatureTaskKey: UInt64] = [:]
     private var consumedCursors: [FeatureTaskKey: Set<String>] = [:]
@@ -139,10 +143,32 @@ public final class AppModel: ObservableObject {
     }
 
     public var canRefreshOrRestart: Bool {
-        switch state {
+        guard !isOverviewRefreshing else { return false }
+        return switch state {
         case .unavailable(let notice): notice.retryable
         case .cancelled, .shuttingDown, .stopped: false
         default: true
+        }
+    }
+
+    public func isRefreshing(_ feature: AppFeature) -> Bool {
+        switch feature {
+        case .overview:
+            isOverviewRefreshing
+        case .sessions:
+            sessionsState.isLoading || sessionDetailState.isLoading
+        case .projects:
+            projectsState.isLoading || projectDetailState.isLoading
+        case .quotaUsage:
+            quotaState.isLoading || usageState.isLoading
+        case .localStatus:
+            healthProjectionState.isLoading || dataHealthState.isLoading ||
+                healthState.isLoading || healthDetailState.isLoading
+        case .sourcesJobs:
+            sourcesState.isLoading || sourceDetailState.isLoading ||
+                jobsState.isLoading || jobDetailState.isLoading
+        case .settings:
+            settingsState.isLoading
         }
     }
 
@@ -164,7 +190,30 @@ public final class AppModel: ObservableObject {
 
     public func refresh() {
         guard canRefreshOrRestart else { return }
-        Task { await runtime.refresh() }
+        isOverviewRefreshing = true
+        overviewRefreshGeneration &+= 1
+        let generation = overviewRefreshGeneration
+        let runtime = runtime
+        overviewRefreshTask = Task { [weak self] in
+            await runtime.refresh()
+            guard let self, generation == self.overviewRefreshGeneration else { return }
+            self.finishOverviewRefresh()
+        }
+    }
+
+    public func selectOverviewRange(_ range: DateRangePreset) {
+        guard range != .all, range != overviewRange, canRefreshOrRestart else { return }
+        overviewRange = range
+        isOverviewRefreshing = true
+        overviewRefreshGeneration &+= 1
+        let generation = overviewRefreshGeneration
+        let runtime = runtime
+        overviewRefreshTask?.cancel()
+        overviewRefreshTask = Task { [weak self] in
+            await runtime.refresh(range: range)
+            guard let self, generation == self.overviewRefreshGeneration else { return }
+            self.finishOverviewRefresh()
+        }
     }
 
     public func refresh(_ feature: AppFeature) {
@@ -221,13 +270,13 @@ public final class AppModel: ObservableObject {
             restartCore()
             return
         }
-        refresh()
         loadSessions(reset: true)
         loadProjects(reset: true)
         loadQuotaAndUsage()
         loadLocalStatus()
         loadSourcesAndJobs(reset: true)
         loadSettings()
+        refresh()
     }
 
     public func refreshOrRestart() {
@@ -271,6 +320,10 @@ public final class AppModel: ObservableObject {
     public func shutdown() async -> ShutdownOutcome {
         startTask?.cancel()
         startTask = nil
+        overviewRefreshTask?.cancel()
+        overviewRefreshTask = nil
+        overviewRefreshGeneration &+= 1
+        isOverviewRefreshing = false
         cancelAllFeatureTasks()
         let outcome = await runtime.shutdown()
         lastShutdownOutcome = outcome
@@ -410,6 +463,7 @@ public final class AppModel: ObservableObject {
         let request = FeatureRequestFactory.projectDetail(
             dimensionKey: dimensionKey,
             range: projectOptions.range,
+            exactRange: projectOptions.exactRange,
             sessionCursor: sessionCursor,
             modelCursor: modelCursor
         )
@@ -801,6 +855,12 @@ public final class AppModel: ObservableObject {
     }
 
     private func receive(_ runtimeState: CoreConnectionState) {
+        switch runtimeState {
+        case .normal, .partial, .stale, .unavailable, .cancelled:
+            finishOverviewRefresh()
+        case .idle, .starting, .handshaking, .loadingOverview, .recovery, .restartRequired, .shuttingDown, .stopped:
+            break
+        }
         state = AppViewState(runtimeState)
         switch runtimeState {
         case .normal, .partial:
@@ -819,6 +879,11 @@ public final class AppModel: ObservableObject {
         case .idle, .starting, .handshaking, .loadingOverview, .cancelled:
             break
         }
+    }
+
+    private func finishOverviewRefresh() {
+        isOverviewRefreshing = false
+        overviewRefreshTask = nil
     }
 
     private func markMutationsUncertain(_ notice: AppNotice) {

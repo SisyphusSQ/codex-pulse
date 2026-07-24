@@ -150,11 +150,13 @@ message QueryRequest {
   repeated SortTerm sort = 2;
   repeated FilterTerm filters = 3;
   optional LocalDateRange time_range = 4;
+  optional UTCTimeRange exact_time_range = 5;
 }
 
 message UsageCostRequest {
   LocalDateRange range = 1;
   string granularity = 2;
+  optional UTCTimeRange exact_range = 3;
 }
 
 message ListSessionsRequest { QueryRequest query = 1; }
@@ -172,6 +174,7 @@ message ProjectDetailRequest {
   LocalDateRange range = 2;
   PageRequest session_page = 3;
   PageRequest model_page = 4;
+  optional UTCTimeRange exact_range = 5;
 }
 
 message AttributionValue {
@@ -212,6 +215,7 @@ message UsageModelItem {
   string dimension_key = 1;
   AttributionValue model = 2;
   UsageTotals totals = 3;
+  repeated TrendPoint trend = 4;
 }
 
 message UsageCostResponse {
@@ -275,6 +279,8 @@ message SessionDetailResponse {
   PageInfo turn_page = 7;
   repeated SessionTurnItem turns = 8;
   optional string degraded_reason = 9;
+  string reporting_time_zone = 10;
+  repeated TrendPoint daily = 11;
 }
 
 message ProjectDailyPoint {
@@ -375,6 +381,7 @@ message CurrentWindow {
   optional int64 last_success_at_ms = 14;
   optional int64 last_attempt_at_ms = 15;
   repeated CurrentExplanation explanations = 16;
+  optional string limit_name = 17;
 }
 
 message CurrentSource {
@@ -396,6 +403,15 @@ message CurrentNextReset {
   optional string unknown_reason = 4;
 }
 
+message CurrentResetCreditItem {
+  string status = 1;
+  string type = 2;
+  int64 granted_at_ms = 3;
+  int64 expires_at_ms = 4;
+  optional int64 redeemed_at_ms = 5;
+  optional int64 remaining_ms = 6;
+}
+
 message CurrentResetCredits {
   optional int64 available_count = 1;
   optional int64 total_count = 2;
@@ -407,6 +423,7 @@ message CurrentResetCredits {
   string freshness = 8;
   optional string failure_code = 9;
   optional string unknown_reason = 10;
+  repeated CurrentResetCreditItem items = 11;
 }
 
 message CurrentRefreshStatus {
