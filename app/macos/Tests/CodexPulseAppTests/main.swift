@@ -504,14 +504,24 @@ private func testStatusItemRefreshReadsCommittedState() throws {
         "status item style refresh must run after Published preference has committed"
     )
     try expect(
-        source.contains("func verifyNativeSurfacesForSmoke() -> Bool {\n        updateStatusBarView()")
-            && source.contains("statusBarView.hasSummary"),
-        "native surface smoke must reject the status item fallback state"
+        source.contains("func verifyNativeSurfacesForSmoke(requireSummary: Bool) -> Bool {\n        updateStatusBarView()")
+            && source.contains("statusBarView.superview === button")
+            && source.contains("statusBarView.preferredWidth > 0")
+            && source.contains("if requireSummary && !statusBarView.hasSummary { return false }"),
+        "native surface smoke must accept empty Home fallback but require summary when quota data exists"
     )
     let contentSource = try mainWindowSource("StatusBarQuotaContentView.swift")
     try expect(
-        contentSource.contains("var hasSummary: Bool { summary != nil }"),
-        "status bar view must expose content-free summary readiness for smoke"
+        contentSource.contains("var hasSummary: Bool { summary != nil }")
+            && contentSource.contains("guard let summary else {")
+            && contentSource.contains("textWidth(fallbackText, font: fallbackFont)"),
+        "status bar view must distinguish summary readiness while keeping a deterministic fallback width"
+    )
+    let delegateSource = try mainWindowSource("AppDelegate.swift")
+    try expect(
+        delegateSource.contains("let surfaces = nativeSurfaceSmokeSummary(")
+            && delegateSource.contains("requireStatusSummary: !overview.quotaWindows.isEmpty"),
+        "native surface smoke must derive summary strictness from authoritative overview quota data"
     )
     try expect(
         contentSource.contains("QuotaRemainingLevel(remainingPercent: summary.remainingPercent)")

@@ -95,14 +95,14 @@ final class StatusItemController: NSObject {
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
-    func verifyNativeSurfacesForSmoke() -> Bool {
+    func verifyNativeSurfacesForSmoke(requireSummary: Bool) -> Bool {
         updateStatusBarView()
         guard let button = statusItem.button,
               popover.contentViewController != nil,
               statusBarView.superview === button,
-              statusBarView.hasSummary,
               statusBarView.preferredWidth > 0
         else { return false }
+        if requireSummary && !statusBarView.hasSummary { return false }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         let shown = popover.isShown
         popover.performClose(nil)

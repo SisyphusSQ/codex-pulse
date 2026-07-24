@@ -178,7 +178,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                         : "empty"
                     Task { @MainActor [weak self] in
                         guard let self else { return }
-                        let surfaces = nativeSurfaceSmokeSummary()
+                        let surfaces = nativeSurfaceSmokeSummary(
+                            requireStatusSummary: !overview.quotaWindows.isEmpty
+                        )
                         do {
                             let renderedPageCount = await renderPrimaryPagesForSmoke()
                             let pages = try await model.runPrimaryPagesSmoke()
@@ -231,10 +233,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    private func nativeSurfaceSmokeSummary() -> (passed: Bool, summary: String) {
+    private func nativeSurfaceSmokeSummary(
+        requireStatusSummary: Bool
+    ) -> (passed: Bool, summary: String) {
         guard configuration.nativeSurfaceSmoke else { return (true, "not_executed") }
         let windowVisible = window?.isVisible == true && window?.contentViewController != nil
-        let statusReady = statusItemController?.verifyNativeSurfacesForSmoke() == true
+        let statusReady = statusItemController?.verifyNativeSurfacesForSmoke(
+            requireSummary: requireStatusSummary
+        ) == true
         let passed = windowVisible && statusReady
         return (passed, passed ? "window+status_item+popover" : "unavailable")
     }
