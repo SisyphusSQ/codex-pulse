@@ -69,3 +69,4 @@ temp/
 
 # Local Linear delivery loop runtime
 .issue-loops/
+.agents/skills/manage-linear-delivery-loop/
