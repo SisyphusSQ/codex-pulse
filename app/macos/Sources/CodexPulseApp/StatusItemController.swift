@@ -11,14 +11,20 @@ final class StatusItemController: NSObject {
     private let popover = NSPopover()
     private let model: AppModel
     private let displayPreferences = StatusBarDisplayPreferences()
+    private let nativeAcceptanceEnabled: Bool
     private var cancellables: Set<AnyCancellable> = []
+    private var smokeFocusedAction: PopoverQuickActionFocus?
+    private var smokeActionResults: [PopoverQuickActionFocus: PopoverQuickActionResult] = [:]
+    private var smokeOpenedProjectURL: URL?
 
     init(
         model: AppModel,
+        nativeAcceptanceEnabled: Bool = false,
         onOpenOverview: @escaping @MainActor () -> Void,
         onQuit: @escaping @MainActor () -> Void
     ) {
         self.model = model
+        self.nativeAcceptanceEnabled = nativeAcceptanceEnabled
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
 
@@ -44,6 +50,22 @@ final class StatusItemController: NSObject {
         let popoverView = MenuBarPopoverView(
             model: model,
             preferences: displayPreferences,
+            openProjectURL: { [weak self] url in
+                guard let self else { return false }
+                if self.nativeAcceptanceEnabled {
+                    self.smokeOpenedProjectURL = url
+                    return true
+                }
+                return NSWorkspace.shared.open(url)
+            },
+            onQuickActionResult: { [weak self] action, result in
+                guard self?.nativeAcceptanceEnabled == true else { return }
+                self?.smokeActionResults[action] = result
+            },
+            onQuickActionFocusChanged: { [weak self] action in
+                guard self?.nativeAcceptanceEnabled == true else { return }
+                self?.smokeFocusedAction = action
+            },
             onOpenOverview: {
                 self.popover.performClose(nil)
                 onOpenOverview()
@@ -95,24 +117,143 @@ final class StatusItemController: NSObject {
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
-    func verifyNativeSurfacesForSmoke(requireSummary: Bool) -> Bool {
+    func verifyNativeSurfacesForSmoke(
+        requireSummary: Bool
+    ) async -> (passed: Bool, summary: String) {
         updateStatusBarView()
         guard let button = statusItem.button,
               popover.contentViewController != nil,
               statusBarView.superview === button,
               statusBarView.preferredWidth > 0
-        else { return false }
-        if requireSummary && !statusBarView.hasSummary { return false }
+        else { return (false, "unavailable step=native_surface") }
+        if requireSummary && !statusBarView.hasSummary {
+            return (false, "unavailable step=status_summary")
+        }
+        guard nativeAcceptanceEnabled,
+              let expectedSummary = model.presentation.map(PopoverPrivacySummary.init)
+        else { return (false, "unavailable step=acceptance_fixture") }
+
+        smokeFocusedAction = nil
+        smokeActionResults.removeAll()
+        smokeOpenedProjectURL = nil
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        let shown = popover.isShown
-        popover.performClose(nil)
-        return shown
+        defer { popover.performClose(nil) }
+
+        guard await waitForNativeSmoke({
+            self.popover.isShown && self.smokeFocusedAction == .accountSummary
+        }) else {
+            return (false, "unavailable step=popover_focus")
+        }
+        guard sendNativeSmokeKey("\t", keyCode: 48),
+              await waitForNativeSmoke({ self.smokeFocusedAction == .openProject }),
+              sendNativeSmokeKey("\r", keyCode: 36),
+              await waitForNativeSmoke({
+                  self.smokeActionResults[.openProject] != nil
+              }),
+              smokeOpenedProjectURL?.absoluteString
+                  == "https://github.com/SisyphusSQ/codex-pulse",
+              smokeActionResults[.openProject]?.isFailure == false
+        else {
+            return (false, "unavailable step=project_keyboard_action")
+        }
+
+        guard sendNativeSmokeKey("\t", keyCode: 48),
+              await waitForNativeSmoke({ self.smokeFocusedAction == .copyPrivacySummary }),
+              sendNativeSmokeKey(" ", keyCode: 49),
+              await waitForNativeSmoke({
+                  self.smokeActionResults[.copyPrivacySummary] != nil
+              }),
+              smokeActionResults[.copyPrivacySummary]?.isFailure == false,
+              verifyGeneralPasteboardForSmoke(expected: expectedSummary)
+        else {
+            return (false, "unavailable step=clipboard_keyboard_action")
+        }
+
+        guard sendNativeSmokeKey("\t", keyCode: 48),
+              await waitForNativeSmoke({ self.smokeFocusedAction == .accountSummary }),
+              sendNativeSmokeKey("\r", keyCode: 36),
+              await waitForNativeSmoke({
+                  self.smokeActionResults[.accountSummary] != nil
+              }),
+              smokeActionResults[.accountSummary]?.isFailure == false,
+              popover.isShown
+        else {
+            return (false, "unavailable step=account_keyboard_action")
+        }
+
+        return (
+            true,
+            "window+status_item+popover actions=account+project+copy "
+                + "keyboard=tab+return+space clipboard=single_item_string+png"
+        )
+    }
+
+    private func sendNativeSmokeKey(_ characters: String, keyCode: UInt16) -> Bool {
+        guard let window = popover.contentViewController?.view.window,
+              let keyDown = NSEvent.keyEvent(
+                  with: .keyDown,
+                  location: .zero,
+                  modifierFlags: [],
+                  timestamp: ProcessInfo.processInfo.systemUptime,
+                  windowNumber: window.windowNumber,
+                  context: nil,
+                  characters: characters,
+                  charactersIgnoringModifiers: characters,
+                  isARepeat: false,
+                  keyCode: keyCode
+              ),
+              let keyUp = NSEvent.keyEvent(
+                  with: .keyUp,
+                  location: .zero,
+                  modifierFlags: [],
+                  timestamp: ProcessInfo.processInfo.systemUptime,
+                  windowNumber: window.windowNumber,
+                  context: nil,
+                  characters: characters,
+                  charactersIgnoringModifiers: characters,
+                  isARepeat: false,
+                  keyCode: keyCode
+              )
+        else { return false }
+
+        window.makeKey()
+        window.sendEvent(keyDown)
+        window.sendEvent(keyUp)
+        return true
+    }
+
+    private func waitForNativeSmoke(
+        _ predicate: @escaping @MainActor () -> Bool
+    ) async -> Bool {
+        for _ in 0..<100 {
+            if predicate() { return true }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return false
+    }
+
+    private func verifyGeneralPasteboardForSmoke(
+        expected: PopoverPrivacySummary
+    ) -> Bool {
+        guard let items = NSPasteboard.general.pasteboardItems,
+              items.count == 1,
+              items[0].types.contains(.string),
+              items[0].types.contains(.png),
+              items[0].string(forType: .string) == expected.plainText,
+              let png = items[0].data(forType: .png),
+              png.starts(with: Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
+        else { return false }
+        return true
     }
 }
 
 private struct MenuBarPopoverView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var preferences: StatusBarDisplayPreferences
+    let openProjectURL: @MainActor (URL) -> Bool
+    let onQuickActionResult:
+        @MainActor (PopoverQuickActionFocus, PopoverQuickActionResult) -> Void
+    let onQuickActionFocusChanged: @MainActor (PopoverQuickActionFocus?) -> Void
     let onOpenOverview: @MainActor () -> Void
     let onQuit: @MainActor () -> Void
     @State private var route: PopoverRoute = .main
@@ -168,6 +309,7 @@ private struct MenuBarPopoverView: View {
                 onShowAccount: showAccountSummary,
                 onOpenProject: openProject,
                 onCopyPrivacySummary: copyPrivacySummary,
+                onQuickActionFocusChanged: onQuickActionFocusChanged,
                 onOpen: onOpenOverview,
                 onRefresh: model.refreshOrRestart,
                 canRefresh: model.canRefreshOrRestart,
@@ -211,7 +353,7 @@ private struct MenuBarPopoverView: View {
 
     private func showAccountSummary() {
         guard let summary = model.presentation?.popoverAccountSummary else {
-            quickActionResult = isAccountSummaryLoading
+            let result: PopoverQuickActionResult = isAccountSummaryLoading
                 ? .failure(
                     title: "账户摘要正在加载",
                     message: "正在等待本机展示级账户与额度数据。"
@@ -220,32 +362,41 @@ private struct MenuBarPopoverView: View {
                     title: "账户摘要不可用",
                     message: "当前没有可展示的账户或套餐摘要。"
                 )
+            onQuickActionResult(.accountSummary, result)
+            quickActionResult = result
             return
         }
-        quickActionResult = .success(
+        let result = PopoverQuickActionResult.success(
             title: "账户摘要",
             message: "\(summary.title)\n\(summary.detail)\n仅使用本机展示级聚合信息。"
         )
+        onQuickActionResult(.accountSummary, result)
+        quickActionResult = result
     }
 
     private func openProject() {
-        let result = PopoverQuickActions.openProject { NSWorkspace.shared.open($0) }
+        let result = PopoverQuickActions.openProject(using: openProjectURL)
+        onQuickActionResult(.openProject, result)
         if result.isFailure { quickActionResult = result }
     }
 
     private func copyPrivacySummary() {
         guard let overview = model.presentation else {
-            quickActionResult = .failure(
+            let result = PopoverQuickActionResult.failure(
                 title: "无法复制安全摘要",
                 message: "当前没有可用于生成安全截图的展示级数据。"
             )
+            onQuickActionResult(.copyPrivacySummary, result)
+            quickActionResult = result
             return
         }
-        quickActionResult = PopoverQuickActions.copyPrivacySummary(
+        let result = PopoverQuickActions.copyPrivacySummary(
             PopoverPrivacySummary(overview),
             renderPNG: renderPrivacySummaryPNG,
             writeClipboard: writePrivacySummaryClipboard
         )
+        onQuickActionResult(.copyPrivacySummary, result)
+        if result.isFailure { quickActionResult = result }
     }
 
     private func quotaSection(_ overview: OverviewPresentation) -> some View {
@@ -669,10 +820,12 @@ private struct PopoverHeader: View {
     let onShowAccount: @MainActor () -> Void
     let onOpenProject: @MainActor () -> Void
     let onCopyPrivacySummary: @MainActor () -> Void
+    let onQuickActionFocusChanged: @MainActor (PopoverQuickActionFocus?) -> Void
     let onOpen: @MainActor () -> Void
     let onRefresh: @MainActor () -> Void
     let canRefresh: Bool
     let isRefreshing: Bool
+    @FocusState private var focusedQuickAction: PopoverQuickActionFocus?
 
     var body: some View {
         VStack(spacing: 10) {
@@ -705,6 +858,17 @@ private struct PopoverHeader: View {
                     isLoading: isAccountLoading,
                     action: onShowAccount
                 )
+                .focusable(true)
+                .focused($focusedQuickAction, equals: .accountSummary)
+                .onKeyPress(.tab) { advanceQuickActionFocus() }
+                .onKeyPress(.return) {
+                    onShowAccount()
+                    return .handled
+                }
+                .onKeyPress(.space) {
+                    onShowAccount()
+                    return .handled
+                }
                 HStack(spacing: 16) {
                     Button(action: onOpenProject) {
                         Image(systemName: "chevron.left.forwardslash.chevron.right")
@@ -712,6 +876,17 @@ private struct PopoverHeader: View {
                     .help("打开 GitHub 项目主页")
                     .accessibilityLabel("打开 GitHub 项目主页")
                     .accessibilityIdentifier("popover.open-project")
+                    .focusable(true)
+                    .focused($focusedQuickAction, equals: .openProject)
+                    .onKeyPress(.tab) { advanceQuickActionFocus() }
+                    .onKeyPress(.return) {
+                        onOpenProject()
+                        return .handled
+                    }
+                    .onKeyPress(.space) {
+                        onOpenProject()
+                        return .handled
+                    }
 
                     Button(action: onCopyPrivacySummary) {
                         Image(systemName: "camera")
@@ -719,6 +894,17 @@ private struct PopoverHeader: View {
                     .help("复制隐私安全截图与摘要")
                     .accessibilityLabel("复制隐私安全截图与摘要")
                     .accessibilityIdentifier("popover.copy-privacy-summary")
+                    .focusable(true)
+                    .focused($focusedQuickAction, equals: .copyPrivacySummary)
+                    .onKeyPress(.tab) { advanceQuickActionFocus() }
+                    .onKeyPress(.return) {
+                        onCopyPrivacySummary()
+                        return .handled
+                    }
+                    .onKeyPress(.space) {
+                        onCopyPrivacySummary()
+                        return .handled
+                    }
                 }
                 .buttonStyle(PopoverIconButtonStyle())
             }
@@ -726,6 +912,19 @@ private struct PopoverHeader: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
         .nativeGlass(in: Rectangle())
+        .onAppear {
+            if focusedQuickAction == nil {
+                focusedQuickAction = .accountSummary
+            }
+        }
+        .onChange(of: focusedQuickAction) { _, action in
+            onQuickActionFocusChanged(action)
+        }
+    }
+
+    private func advanceQuickActionFocus() -> KeyPress.Result {
+        focusedQuickAction = (focusedQuickAction ?? .accountSummary).next
+        return .handled
     }
 }
 
@@ -1168,14 +1367,7 @@ private func renderPrivacySummaryPNG(_ summary: PopoverPrivacySummary) -> Data? 
 
 @MainActor
 private func writePrivacySummaryClipboard(_ text: String, _ png: Data) -> Bool {
-    let item = NSPasteboardItem()
-    guard item.setString(text, forType: .string),
-          item.setData(png, forType: .png)
-    else { return false }
-
-    let pasteboard = NSPasteboard.general
-    pasteboard.clearContents()
-    return pasteboard.writeObjects([item])
+    PopoverPasteboardPayload.write(text: text, png: png, to: .general)
 }
 
 private struct PopoverPrivacySnapshotView: View {

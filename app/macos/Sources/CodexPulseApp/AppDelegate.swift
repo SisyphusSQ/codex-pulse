@@ -107,6 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self.window = window
         let statusItemController = StatusItemController(
             model: model,
+            nativeAcceptanceEnabled: configuration.nativeSurfaceSmoke,
             onOpenOverview: { [weak self] in self?.showOverviewWindow() },
             onQuit: { NSApp.terminate(nil) }
         )
@@ -178,7 +179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                         : "empty"
                     Task { @MainActor [weak self] in
                         guard let self else { return }
-                        let surfaces = nativeSurfaceSmokeSummary(
+                        let surfaces = await nativeSurfaceSmokeSummary(
                             requireStatusSummary: !overview.quotaWindows.isEmpty
                         )
                         do {
@@ -235,14 +236,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func nativeSurfaceSmokeSummary(
         requireStatusSummary: Bool
-    ) -> (passed: Bool, summary: String) {
+    ) async -> (passed: Bool, summary: String) {
         guard configuration.nativeSurfaceSmoke else { return (true, "not_executed") }
         let windowVisible = window?.isVisible == true && window?.contentViewController != nil
-        let statusReady = statusItemController?.verifyNativeSurfacesForSmoke(
+        let status = await statusItemController?.verifyNativeSurfacesForSmoke(
             requireSummary: requireStatusSummary
-        ) == true
-        let passed = windowVisible && statusReady
-        return (passed, passed ? "window+status_item+popover" : "unavailable")
+        ) ?? (passed: false, summary: "unavailable step=status_item")
+        let passed = windowVisible && status.passed
+        return (
+            passed,
+            passed ? status.summary : (windowVisible ? status.summary : "unavailable step=window")
+        )
     }
 
     private func showOverviewWindow() {

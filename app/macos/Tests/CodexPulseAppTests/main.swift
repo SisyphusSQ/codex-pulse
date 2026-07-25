@@ -1,3 +1,4 @@
+import AppKit
 import CodexPulseAppSupport
 import CodexPulseCoreClient
 import CodexPulseProtocolGenerated
@@ -578,6 +579,58 @@ private func testPopoverCopyActionWritesOneSafeImageAndTextPayload() throws {
     )
 }
 
+private func testPopoverKeyboardFocusCyclesThroughEveryQuickAction() throws {
+    var focus = PopoverQuickActionFocus.accountSummary
+    focus = focus.next
+    try expect(
+        focus == .openProject,
+        "Tab from the account summary must focus the project action"
+    )
+    focus = focus.next
+    try expect(
+        focus == .copyPrivacySummary,
+        "Tab from the project action must focus the privacy copy action"
+    )
+    focus = focus.next
+    try expect(
+        focus == .accountSummary,
+        "Tab from the privacy copy action must return to the account summary"
+    )
+}
+
+@MainActor
+private func testPopoverPasteboardWriterUsesOneRealItemForTextAndPNG() throws {
+    let pasteboard = NSPasteboard(
+        name: NSPasteboard.Name(
+            "com.sisyphussq.codex-pulse.tests.popover.\(UUID().uuidString)"
+        )
+    )
+    defer { pasteboard.clearContents() }
+    let text = "Codex Pulse 隐私摘要\n仅包含展示级聚合信息"
+    let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+
+    try expect(
+        PopoverPasteboardPayload.write(text: text, png: png, to: pasteboard),
+        "the production pasteboard writer must accept a real macOS pasteboard"
+    )
+    guard let items = pasteboard.pasteboardItems else {
+        throw TestFailure.mismatch("the real pasteboard must expose written items")
+    }
+    try expect(items.count == 1, "text and PNG must be written as one pasteboard item")
+    try expect(
+        items[0].types.contains(.string) && items[0].types.contains(.png),
+        "the same pasteboard item must advertise both .string and .png"
+    )
+    try expect(
+        items[0].string(forType: .string) == text,
+        "the real pasteboard item must retain the reviewed safe text"
+    )
+    try expect(
+        items[0].data(forType: .png) == png,
+        "the real pasteboard item must retain the rendered PNG"
+    )
+}
+
 private func testPopoverWeeklyTrendDoesNotFollowOverviewRange() throws {
     func trendPoint(_ key: String, tokens: Int64) -> Codexpulse_Core_V1_TrendPoint {
         var point = Codexpulse_Core_V1_TrendPoint()
@@ -728,10 +781,13 @@ private func testStatusItemRefreshReadsCommittedState() throws {
         "status item style refresh must run after Published preference has committed"
     )
     try expect(
-        source.contains("func verifyNativeSurfacesForSmoke(requireSummary: Bool) -> Bool {\n        updateStatusBarView()")
+        source.contains(
+            "func verifyNativeSurfacesForSmoke(\n        requireSummary: Bool\n"
+                + "    ) async -> (passed: Bool, summary: String) {\n        updateStatusBarView()"
+        )
             && source.contains("statusBarView.superview === button")
             && source.contains("statusBarView.preferredWidth > 0")
-            && source.contains("if requireSummary && !statusBarView.hasSummary { return false }"),
+            && source.contains("if requireSummary && !statusBarView.hasSummary {"),
         "native surface smoke must accept empty Home fallback but require summary when quota data exists"
     )
     let contentSource = try mainWindowSource("StatusBarQuotaContentView.swift")
@@ -743,7 +799,7 @@ private func testStatusItemRefreshReadsCommittedState() throws {
     )
     let delegateSource = try mainWindowSource("AppDelegate.swift")
     try expect(
-        delegateSource.contains("let surfaces = nativeSurfaceSmokeSummary(")
+        delegateSource.contains("let surfaces = await nativeSurfaceSmokeSummary(")
             && delegateSource.contains("requireStatusSummary: !overview.quotaWindows.isEmpty"),
         "native surface smoke must derive summary strictness from authoritative overview quota data"
     )
@@ -2950,6 +3006,8 @@ struct CodexPulseAppTestMain {
         try testPopoverCopyActionStopsWhenSafeScreenshotIsUnavailable()
         try testPopoverCopyActionReportsClipboardFailureWithoutRawFallback()
         try testPopoverCopyActionWritesOneSafeImageAndTextPayload()
+        try testPopoverKeyboardFocusCyclesThroughEveryQuickAction()
+        try testPopoverPasteboardWriterUsesOneRealItemForTextAndPNG()
         try testPopoverWeeklyTrendDoesNotFollowOverviewRange()
         try testTrendSelectionSnapsToNearestRealPoint()
         try testSidebarSettingsUsesSystemRowSpacing()

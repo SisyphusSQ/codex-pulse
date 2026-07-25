@@ -1,4 +1,36 @@
+import AppKit
 import Foundation
+
+public enum PopoverQuickActionFocus: String, CaseIterable, Equatable, Hashable, Sendable {
+    case accountSummary
+    case openProject
+    case copyPrivacySummary
+
+    public var next: Self {
+        switch self {
+        case .accountSummary: .openProject
+        case .openProject: .copyPrivacySummary
+        case .copyPrivacySummary: .accountSummary
+        }
+    }
+}
+
+@MainActor
+public enum PopoverPasteboardPayload {
+    public static func write(
+        text: String,
+        png: Data,
+        to pasteboard: NSPasteboard
+    ) -> Bool {
+        let item = NSPasteboardItem()
+        guard item.setString(text, forType: .string),
+              item.setData(png, forType: .png)
+        else { return false }
+
+        pasteboard.clearContents()
+        return pasteboard.writeObjects([item])
+    }
+}
 
 public enum PopoverAccountSummaryAvailability: Equatable, Sendable {
     case available
