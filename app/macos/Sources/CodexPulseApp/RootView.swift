@@ -451,7 +451,21 @@ private struct OverviewContentView: View {
                         }
                     }
                 }
-                .chartXAxis { AxisMarks(values: .automatic(desiredCount: 6)) }
+                .chartXAxis {
+                    if selectedRange == .quotaWeek {
+                        AxisMarks(values: .stride(by: .day)) { value in
+                            AxisGridLine().foregroundStyle(.quaternary)
+                            AxisTick()
+                            AxisValueLabel {
+                                if let date = value.as(Date.self) {
+                                    Text(trendPointDateText(date))
+                                }
+                            }
+                        }
+                    } else {
+                        AxisMarks(values: .automatic(desiredCount: 6))
+                    }
+                }
                 .chartXSelection(value: $selectedTrendDate)
                 .frame(height: 230)
                 .onChange(of: selectedRange) { _, _ in selectedTrendDate = nil }
@@ -605,6 +619,10 @@ private struct OverviewContentView: View {
             return date.formatted(.dateTime.month().day().hour().minute())
         }
         return date.formatted(.dateTime.year().month().day())
+    }
+
+    private func trendPointDateText(_ date: Date) -> String {
+        date.formatted(.dateTime.month().day())
     }
 
     private var projectTokenTotal: Int64? {

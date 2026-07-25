@@ -654,11 +654,19 @@ public struct OverviewPresentation: Equatable, Sendable {
     public let isPartial: Bool
 
     public init(_ responses: OverviewResponses) {
+        let requestedRange = responses.rangeResolution?.requestedPreset ?? .quotaWeek
+        let isWeeklyQuotaRange = requestedRange == .quotaWeek
         self.quotaWindows = responses.quota.current.windows.map(QuotaWindowPresentation.init)
         self.resetCredits = ResetCreditsPresentation(responses.quota.current.resetCredits)
         self.evaluatedAtMS = responses.quota.current.evaluatedAtMs
-        self.usageRangeLabel = Self.usageRangeLabel(responses.usage.range)
-        self.weeklyUsageRangeLabel = Self.usageRangeLabel(responses.weeklyUsage.range)
+        self.usageRangeLabel = Self.usageRangeLabel(
+            responses.usage.range,
+            isDailyWeeklyRange: isWeeklyQuotaRange
+        )
+        self.weeklyUsageRangeLabel = Self.usageRangeLabel(
+            responses.weeklyUsage.range,
+            isDailyWeeklyRange: true
+        )
         self.estimatedCost = DisplayMetric(responses.usage.totals.estimatedUsdMicros)
         self.totalTokens = DisplayMetric(responses.usage.totals.totalTokens)
         self.tokenBreakdown = TokenBreakdownPresentation(responses.usage.totals)
@@ -685,7 +693,7 @@ public struct OverviewPresentation: Equatable, Sendable {
         self.sessionsAvailable = Self.isAvailable(responses.sessions.meta)
         self.projectsAvailable = Self.isAvailable(responses.projects.meta)
         self.weeklyProjectRankingAvailable = Self.isAvailable(responses.weeklyProjects.meta)
-        self.requestedRange = responses.rangeResolution?.requestedPreset ?? .quotaWeek
+        self.requestedRange = requestedRange
         self.effectiveRange = responses.rangeResolution?.effectivePreset ?? .quotaWeek
         if let resolved = responses.rangeResolution {
             var range = Codexpulse_Core_V1_UTCTimeRange()
@@ -724,15 +732,19 @@ public struct OverviewPresentation: Equatable, Sendable {
             || !responses.additionalNotices.isEmpty
     }
 
-    private static func usageRangeLabel(_ range: Codexpulse_Core_V1_UTCTimeRange) -> String {
+    private static func usageRangeLabel(
+        _ range: Codexpulse_Core_V1_UTCTimeRange,
+        isDailyWeeklyRange: Bool
+    ) -> String {
         guard range.startAtMs > 0 else { return "周额度周期" }
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "zh_CN")
         formatter.timeZone = TimeZone(identifier: range.timeZone) ?? .current
-        formatter.dateFormat = "M月d日 HH:mm"
+        formatter.dateFormat = isDailyWeeklyRange ? "M月d日" : "M月d日 HH:mm"
         let start = Date(timeIntervalSince1970: Double(range.startAtMs) / 1_000)
-        return "自 \(formatter.string(from: start))"
+        let label = "自 \(formatter.string(from: start))"
+        return isDailyWeeklyRange ? "\(label) · 按天" : label
     }
 
     private static func projectOtherBreakdown(

@@ -202,6 +202,52 @@ private func testOverviewUsesOneNavigationAndARealTrendChart() throws {
         "overview rankings must navigate to their details")
 }
 
+private func testWeeklyOverviewTrendUsesDailyAxisAndRangeCopy() throws {
+    let weekly = OverviewPresentation(makeResponses())
+    try expect(
+        weekly.usageRangeLabel == "自 7月14日 · 按天",
+        "weekly overview range copy must not expose an hourly boundary"
+    )
+    try expect(
+        weekly.weeklyUsageRangeLabel == "自 7月14日 · 按天",
+        "popover weekly range copy must use the same daily unit"
+    )
+
+    let base = makeResponses()
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: base.usage.range.timeZone)!
+    let todayResolution = OverviewRequestSet.resolveRange(
+        .today,
+        quota: base.quota,
+        now: Date(timeIntervalSince1970: Double(base.usage.range.endAtMs) / 1_000),
+        calendar: calendar
+    )
+    let today = OverviewPresentation(OverviewResponses(
+        usage: base.usage,
+        quota: base.quota,
+        sessions: base.sessions,
+        projects: base.projects,
+        health: base.health,
+        rangeResolution: todayResolution
+    ))
+    try expect(
+        today.usageRangeLabel == "自 7月14日 09:00",
+        "non-week overview range copy must preserve its existing time boundary"
+    )
+    try expect(
+        today.weeklyUsageRangeLabel == "自 7月14日 · 按天",
+        "independent popover weekly copy must remain daily when the main range is hourly"
+    )
+
+    let source = try mainWindowSource("RootView.swift")
+    try expect(
+        source.contains("if selectedRange == .quotaWeek")
+            && source.contains("AxisMarks(values: .stride(by: .day))")
+            && source.contains("trendPointDateText"),
+        "weekly overview x-axis must stride and label by date"
+    )
+}
+
 private func testUsageChartStacksModelsWithLocalizedHoverDetails() throws {
     let source = try mainWindowSource("QuotaHealthViews.swift")
     try expect(
@@ -1960,7 +2006,8 @@ private func testRequestFactoryAndPresentation() throws {
         presentation.resetCredits.items.first?.remainingMS == 3_600_000,
         "reset credit detail must survive")
     try expect(
-        presentation.usageRangeLabel == "自 7月14日 09:00", "usage range label must show the weekly start")
+        presentation.usageRangeLabel == "自 7月14日 · 按天",
+        "usage range label must show the daily weekly start")
     try expect(presentation.sessions.first?.project == "Codex Pulse", "session project must survive")
     try expect(
         presentation.sessions.first?.estimatedCost == .known(1_250_000, unit: "usd_micros"),
@@ -3062,6 +3109,7 @@ struct CodexPulseAppTestMain {
         try testOverviewMergesAllOtherProjectUsage()
         try testWeeklyProjectRankingFailureStaysLocal()
         try testOverviewUsesOneNavigationAndARealTrendChart()
+        try testWeeklyOverviewTrendUsesDailyAxisAndRangeCopy()
         try testUsageChartStacksModelsWithLocalizedHoverDetails()
         try testSessionAndProjectDailyTrendsShowSelectionRuleAndDateDetail()
         try testSessionAndProjectDetailsShareResponsiveThirdWidthSplit()
