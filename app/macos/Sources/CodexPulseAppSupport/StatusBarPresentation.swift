@@ -30,9 +30,9 @@ public enum StatusBarStyle: String, CaseIterable, Identifiable, Sendable {
 
     public var title: String {
         switch self {
-        case .ringSummary: "A · 基准圆环"
-        case .openRingSummary: "B · 缺口圆环"
-        case .gaugeSummary: "D · 仪表弧"
+        case .ringSummary: "基准圆环"
+        case .openRingSummary: "缺口圆环"
+        case .gaugeSummary: "仪表弧"
         }
     }
 
