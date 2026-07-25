@@ -117,6 +117,7 @@ private struct MenuBarPopoverView: View {
     let onQuit: @MainActor () -> Void
     @State private var route: PopoverRoute = .main
     @State private var selectedDailyTrendKey: String?
+    @State private var quickActionResult: PopoverQuickActionResult?
 
     var body: some View {
         ZStack {
@@ -140,6 +141,19 @@ private struct MenuBarPopoverView: View {
         }
         .foregroundStyle(.primary)
         .frame(width: 420, height: 640)
+        .alert(
+            quickActionResult?.title ?? "",
+            isPresented: Binding(
+                get: { quickActionResult != nil },
+                set: { isPresented in
+                    if !isPresented { quickActionResult = nil }
+                }
+            )
+        ) {
+            Button("好", role: .cancel) { quickActionResult = nil }
+        } message: {
+            Text(quickActionResult?.message ?? "")
+        }
     }
 
     private var mainContent: some View {
@@ -149,6 +163,11 @@ private struct MenuBarPopoverView: View {
                 subtitle: model.isOverviewRefreshing
                     ? "正在刷新本机数据…"
                     : model.presentation.map { "本机数据 · \(relativeTimestamp($0.evaluatedAtMS))" } ?? "正在连接 Helper…",
+                accountSummary: model.presentation?.popoverAccountSummary,
+                isAccountLoading: isAccountSummaryLoading,
+                onShowAccount: showAccountSummary,
+                onOpenProject: openProject,
+                onCopyPrivacySummary: copyPrivacySummary,
                 onOpen: onOpenOverview,
                 onRefresh: model.refreshOrRestart,
                 canRefresh: model.canRefreshOrRestart,
@@ -181,6 +200,52 @@ private struct MenuBarPopoverView: View {
                 onQuit: onQuit
             )
         }
+    }
+
+    private var isAccountSummaryLoading: Bool {
+        switch model.state {
+        case .idle, .loading: true
+        default: false
+        }
+    }
+
+    private func showAccountSummary() {
+        guard let summary = model.presentation?.popoverAccountSummary else {
+            quickActionResult = isAccountSummaryLoading
+                ? .failure(
+                    title: "账户摘要正在加载",
+                    message: "正在等待本机展示级账户与额度数据。"
+                )
+                : .failure(
+                    title: "账户摘要不可用",
+                    message: "当前没有可展示的账户或套餐摘要。"
+                )
+            return
+        }
+        quickActionResult = .success(
+            title: "账户摘要",
+            message: "\(summary.title)\n\(summary.detail)\n仅使用本机展示级聚合信息。"
+        )
+    }
+
+    private func openProject() {
+        let result = PopoverQuickActions.openProject { NSWorkspace.shared.open($0) }
+        if result.isFailure { quickActionResult = result }
+    }
+
+    private func copyPrivacySummary() {
+        guard let overview = model.presentation else {
+            quickActionResult = .failure(
+                title: "无法复制安全摘要",
+                message: "当前没有可用于生成安全截图的展示级数据。"
+            )
+            return
+        }
+        quickActionResult = PopoverQuickActions.copyPrivacySummary(
+            PopoverPrivacySummary(overview),
+            renderPNG: renderPrivacySummaryPNG,
+            writeClipboard: writePrivacySummaryClipboard
+        )
     }
 
     private func quotaSection(_ overview: OverviewPresentation) -> some View {
@@ -599,37 +664,114 @@ private struct RefreshArrowSymbol: View {
 private struct PopoverHeader: View {
     let title: String
     let subtitle: String
+    let accountSummary: PopoverAccountSummaryPresentation?
+    let isAccountLoading: Bool
+    let onShowAccount: @MainActor () -> Void
+    let onOpenProject: @MainActor () -> Void
+    let onCopyPrivacySummary: @MainActor () -> Void
     let onOpen: @MainActor () -> Void
     let onRefresh: @MainActor () -> Void
     let canRefresh: Bool
     let isRefreshing: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.title3.bold())
-                Text(subtitle).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            HStack(spacing: 16) {
-                Button(action: onOpen) { Image(systemName: "macwindow") }
-                    .help("打开主窗口")
-                    .accessibilityIdentifier("popover.open-overview")
-                Button(action: onRefresh) {
-                    RefreshArrowSymbol(isAnimating: isRefreshing)
-                        .frame(width: 18, height: 18)
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.title3.bold())
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
                 }
-                    .disabled(!canRefresh)
-                    .help(isRefreshing ? "正在刷新本地数据" : "刷新本地数据")
-                    .accessibilityLabel(isRefreshing ? "正在刷新本地数据" : "刷新本地数据")
-                    .accessibilityValue(isRefreshing ? "进行中" : "就绪")
-                    .accessibilityIdentifier("popover.refresh")
+                Spacer()
+                HStack(spacing: 16) {
+                    Button(action: onOpen) { Image(systemName: "macwindow") }
+                        .help("打开主窗口")
+                        .accessibilityIdentifier("popover.open-overview")
+                    Button(action: onRefresh) {
+                        RefreshArrowSymbol(isAnimating: isRefreshing)
+                            .frame(width: 18, height: 18)
+                    }
+                        .disabled(!canRefresh)
+                        .help(isRefreshing ? "正在刷新本地数据" : "刷新本地数据")
+                        .accessibilityLabel(isRefreshing ? "正在刷新本地数据" : "刷新本地数据")
+                        .accessibilityValue(isRefreshing ? "进行中" : "就绪")
+                        .accessibilityIdentifier("popover.refresh")
+                }
+                .buttonStyle(PopoverIconButtonStyle())
             }
-            .buttonStyle(PopoverIconButtonStyle())
+
+            HStack(spacing: 10) {
+                PopoverAccountShortcut(
+                    summary: accountSummary,
+                    isLoading: isAccountLoading,
+                    action: onShowAccount
+                )
+                HStack(spacing: 16) {
+                    Button(action: onOpenProject) {
+                        Image(systemName: "chevron.left.forwardslash.chevron.right")
+                    }
+                    .help("打开 GitHub 项目主页")
+                    .accessibilityLabel("打开 GitHub 项目主页")
+                    .accessibilityIdentifier("popover.open-project")
+
+                    Button(action: onCopyPrivacySummary) {
+                        Image(systemName: "camera")
+                    }
+                    .help("复制隐私安全截图与摘要")
+                    .accessibilityLabel("复制隐私安全截图与摘要")
+                    .accessibilityIdentifier("popover.copy-privacy-summary")
+                }
+                .buttonStyle(PopoverIconButtonStyle())
+            }
         }
         .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .padding(.vertical, 12)
         .nativeGlass(in: Rectangle())
+    }
+}
+
+private struct PopoverAccountShortcut: View {
+    let summary: PopoverAccountSummaryPresentation?
+    let isLoading: Bool
+    let action: @MainActor () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            PulseCard(padding: 9) {
+                HStack(spacing: 9) {
+                    if isLoading {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "person.crop.circle")
+                            .font(.system(size: 18, weight: .semibold))
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(displayTitle)
+                            .font(.system(size: 12, weight: .semibold))
+                            .lineLimit(1)
+                        Text(displayDetail)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .buttonStyle(InteractiveCardButtonStyle())
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityIdentifier("popover.account-summary")
+    }
+
+    private var displayTitle: String {
+        summary?.title ?? (isLoading ? "正在读取账户摘要" : "账户摘要不可用")
+    }
+
+    private var displayDetail: String {
+        summary?.detail ?? (isLoading ? "仅使用本机展示级数据" : "没有可展示的数据")
+    }
+
+    private var accessibilityLabel: String {
+        summary?.accessibilityLabel ?? "\(displayTitle)，\(displayDetail)"
     }
 }
 
@@ -1010,6 +1152,69 @@ private struct NativeGlassModifier<S: Shape>: ViewModifier {
 private extension View {
     func nativeGlass<S: Shape>(in shape: S) -> some View {
         modifier(NativeGlassModifier(shape: shape))
+    }
+}
+
+@MainActor
+private func renderPrivacySummaryPNG(_ summary: PopoverPrivacySummary) -> Data? {
+    let renderer = ImageRenderer(content: PopoverPrivacySnapshotView(summary: summary))
+    renderer.scale = max(NSScreen.main?.backingScaleFactor ?? 2, 1)
+    guard let image = renderer.nsImage,
+          let tiff = image.tiffRepresentation,
+          let bitmap = NSBitmapImageRep(data: tiff)
+    else { return nil }
+    return bitmap.representation(using: .png, properties: [:])
+}
+
+@MainActor
+private func writePrivacySummaryClipboard(_ text: String, _ png: Data) -> Bool {
+    let item = NSPasteboardItem()
+    guard item.setString(text, forType: .string),
+          item.setData(png, forType: .png)
+    else { return false }
+
+    let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+    return pasteboard.writeObjects([item])
+}
+
+private struct PopoverPrivacySnapshotView: View {
+    let summary: PopoverPrivacySummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: "waveform.path.ecg")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.blue)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Codex Pulse").font(.title3.bold())
+                    Text("隐私安全摘要").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 4) {
+                Text(summary.accountTitle).font(.headline)
+                Text(summary.accountDetail).font(.subheadline).foregroundStyle(.secondary)
+            }
+            ForEach(Array(summary.quotaRows.enumerated()), id: \.offset) { index, row in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("额度 \(index + 1)").font(.caption.bold()).foregroundStyle(.secondary)
+                    Text(row).font(.system(size: 13, weight: .medium))
+                }
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text("重置次数").font(.caption.bold()).foregroundStyle(.secondary)
+                Text(summary.resetCreditsRow).font(.system(size: 13, weight: .medium))
+            }
+            Divider()
+            Label("仅包含 Popover 已展示的聚合信息", systemImage: "lock.shield")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(22)
+        .frame(width: 360, alignment: .leading)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }
 
