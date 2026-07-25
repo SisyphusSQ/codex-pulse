@@ -579,25 +579,6 @@ private func testPopoverCopyActionWritesOneSafeImageAndTextPayload() throws {
     )
 }
 
-private func testPopoverKeyboardFocusCyclesThroughEveryQuickAction() throws {
-    var focus = PopoverQuickActionFocus.accountSummary
-    focus = focus.next
-    try expect(
-        focus == .openProject,
-        "Tab from the account summary must focus the project action"
-    )
-    focus = focus.next
-    try expect(
-        focus == .copyPrivacySummary,
-        "Tab from the project action must focus the privacy copy action"
-    )
-    focus = focus.next
-    try expect(
-        focus == .accountSummary,
-        "Tab from the privacy copy action must return to the account summary"
-    )
-}
-
 @MainActor
 private func testPopoverPasteboardWriterUsesOneRealItemForTextAndPNG() throws {
     let pasteboard = NSPasteboard(
@@ -3006,7 +2987,6 @@ struct CodexPulseAppTestMain {
         try testPopoverCopyActionStopsWhenSafeScreenshotIsUnavailable()
         try testPopoverCopyActionReportsClipboardFailureWithoutRawFallback()
         try testPopoverCopyActionWritesOneSafeImageAndTextPayload()
-        try testPopoverKeyboardFocusCyclesThroughEveryQuickAction()
         try testPopoverPasteboardWriterUsesOneRealItemForTextAndPNG()
         try testPopoverWeeklyTrendDoesNotFollowOverviewRange()
         try testTrendSelectionSnapsToNearestRealPoint()

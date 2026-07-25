@@ -1,18 +1,10 @@
 import AppKit
 import Foundation
 
-public enum PopoverQuickActionFocus: String, CaseIterable, Equatable, Hashable, Sendable {
+public enum PopoverQuickActionKind: Hashable, Sendable {
     case accountSummary
     case openProject
     case copyPrivacySummary
-
-    public var next: Self {
-        switch self {
-        case .accountSummary: .openProject
-        case .openProject: .copyPrivacySummary
-        case .copyPrivacySummary: .accountSummary
-        }
-    }
 }
 
 @MainActor
