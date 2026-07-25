@@ -5,8 +5,11 @@ import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    private static let releasesURLString = "https://github.com/SisyphusSQ/codex-pulse/releases"
+
     private let configuration: AppLaunchConfiguration
     private let model: AppModel
+    private let openExternalURL: @MainActor (URL) -> Bool
     private var window: NSWindow?
     private var statusItemController: StatusItemController?
     private var workspaceObservers: [NSObjectProtocol] = []
@@ -18,9 +21,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private(set) var exitCode: Int32 = 0
 
-    init(configuration: AppLaunchConfiguration) {
+    init(
+        configuration: AppLaunchConfiguration,
+        openExternalURL: @escaping @MainActor (URL) -> Bool = { NSWorkspace.shared.open($0) }
+    ) {
         self.configuration = configuration
         self.model = AppModel(configuration: configuration)
+        self.openExternalURL = openExternalURL
         super.init()
     }
 
@@ -37,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         } else {
             NSApp.setActivationPolicy(.regular)
             buildNativeSurfaces()
+            installApplicationMenu()
             installWorkspaceObservers()
             NSApp.activate(ignoringOtherApps: true)
         }
@@ -86,6 +94,116 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     ) -> Bool {
         showOverviewWindow()
         return true
+    }
+
+    private func installApplicationMenu() {
+        let mainMenu = NSMenu()
+        let applicationMenuItem = NSMenuItem()
+        mainMenu.addItem(applicationMenuItem)
+
+        let applicationMenu = NSMenu(title: "Codex Pulse")
+        applicationMenuItem.submenu = applicationMenu
+
+        let aboutItem = NSMenuItem(
+            title: "关于 Codex Pulse",
+            action: #selector(showAboutPanel(_:)),
+            keyEquivalent: ""
+        )
+        aboutItem.target = self
+        applicationMenu.addItem(aboutItem)
+        applicationMenu.addItem(.separator())
+
+        let settingsItem = NSMenuItem(
+            title: "设置…",
+            action: #selector(showSettings(_:)),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        settingsItem.keyEquivalentModifierMask = .command
+        applicationMenu.addItem(settingsItem)
+
+        let updateItem = NSMenuItem(
+            title: "检查更新…",
+            action: #selector(checkForUpdates(_:)),
+            keyEquivalent: ""
+        )
+        updateItem.target = self
+        applicationMenu.addItem(updateItem)
+        applicationMenu.addItem(.separator())
+
+        let servicesMenu = NSMenu(title: "服务")
+        let servicesItem = NSMenuItem(title: "服务", action: nil, keyEquivalent: "")
+        servicesItem.submenu = servicesMenu
+        applicationMenu.addItem(servicesItem)
+        NSApp.servicesMenu = servicesMenu
+        applicationMenu.addItem(.separator())
+
+        let hideItem = NSMenuItem(
+            title: "隐藏 Codex Pulse",
+            action: #selector(NSApplication.hide(_:)),
+            keyEquivalent: "h"
+        )
+        hideItem.target = NSApp
+        applicationMenu.addItem(hideItem)
+
+        let hideOthersItem = NSMenuItem(
+            title: "隐藏其他",
+            action: #selector(NSApplication.hideOtherApplications(_:)),
+            keyEquivalent: "h"
+        )
+        hideOthersItem.target = NSApp
+        hideOthersItem.keyEquivalentModifierMask = [.command, .option]
+        applicationMenu.addItem(hideOthersItem)
+
+        let showAllItem = NSMenuItem(
+            title: "全部显示",
+            action: #selector(NSApplication.unhideAllApplications(_:)),
+            keyEquivalent: ""
+        )
+        showAllItem.target = NSApp
+        applicationMenu.addItem(showAllItem)
+        applicationMenu.addItem(.separator())
+
+        let quitItem = NSMenuItem(
+            title: "退出 Codex Pulse",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        )
+        quitItem.target = NSApp
+        applicationMenu.addItem(quitItem)
+
+        NSApp.mainMenu = mainMenu
+    }
+
+    @objc private func showAboutPanel(_ sender: Any?) {
+        NSApp.orderFrontStandardAboutPanel(sender)
+    }
+
+    @objc private func showSettings(_ sender: Any?) {
+        model.navigate(to: .settings)
+        showMainWindow(sender)
+    }
+
+    @objc private func checkForUpdates(_ sender: Any?) {
+        guard let releasesURL = URL(string: Self.releasesURLString),
+              openExternalURL(releasesURL)
+        else {
+            presentUpdateOpenFailure()
+            return
+        }
+    }
+
+    private func presentUpdateOpenFailure() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "无法打开更新页面"
+        alert.informativeText = "请稍后重试，或在浏览器中访问 \(Self.releasesURLString)。"
+        alert.addButton(withTitle: "好")
+        if let window, window.isVisible {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
     }
 
     private func buildNativeSurfaces() {
@@ -251,7 +369,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func showOverviewWindow() {
         model.navigate(to: .overview)
-        window?.makeKeyAndOrderFront(nil)
+        showMainWindow(nil)
+    }
+
+    private func showMainWindow(_ sender: Any?) {
+        window?.makeKeyAndOrderFront(sender)
         NSApp.activate(ignoringOtherApps: true)
     }
 

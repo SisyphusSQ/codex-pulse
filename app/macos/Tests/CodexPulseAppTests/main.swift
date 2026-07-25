@@ -793,6 +793,95 @@ private func testStatusItemRefreshReadsCommittedState() throws {
     )
 }
 
+private func testApplicationMenuRegistersNativeCommands() throws {
+    let source = try mainWindowSource("AppDelegate.swift")
+    try expect(
+        source.contains(
+            "NSMenuItem(\n            title: \"关于 Codex Pulse\",\n            action: #selector(showAboutPanel(_:))"
+        ),
+        "application menu must register the native About command"
+    )
+    try expect(
+        source.contains(
+            "NSMenuItem(\n            title: \"设置…\",\n            action: #selector(showSettings(_:)),\n            keyEquivalent: \",\""
+        ),
+        "application menu must register Settings with the standard Command-comma shortcut"
+    )
+    try expect(
+        source.contains(
+            "NSMenuItem(\n            title: \"检查更新…\",\n            action: #selector(checkForUpdates(_:))"
+        ),
+        "application menu must register the Check for Updates command"
+    )
+    try expect(
+        source.contains("NSApp.orderFrontStandardAboutPanel(sender)"),
+        "About must use the native standard About panel"
+    )
+}
+
+private func testApplicationMenuSettingsShowsTheExistingSettingsPage() throws {
+    let source = try mainWindowSource("AppDelegate.swift")
+    guard let settingsAction = source.range(of: "@objc private func showSettings"),
+          let updateAction = source.range(
+              of: "@objc private func checkForUpdates",
+              range: settingsAction.upperBound..<source.endIndex
+          )
+    else {
+        throw TestFailure.mismatch("application menu settings action was unavailable")
+    }
+    let settingsSource = source[settingsAction.lowerBound..<updateAction.lowerBound]
+    try expect(
+        settingsSource.contains("model.navigate(to: .settings)")
+            && settingsSource.contains("showMainWindow(sender)"),
+        "Settings must navigate through AppModel and reveal the existing main window"
+    )
+}
+
+private func testApplicationMenuUpdateUsesObservableReleasesOpenerAndHandlesFailure() throws {
+    let source = try mainWindowSource("AppDelegate.swift")
+    try expect(
+        source.contains(
+            "private static let releasesURLString = \"https://github.com/SisyphusSQ/codex-pulse/releases\""
+        ),
+        "Check for Updates must target the approved GitHub Releases page"
+    )
+    try expect(
+        source.contains("private let openExternalURL: @MainActor (URL) -> Bool")
+            && source.contains(
+                "openExternalURL: @escaping @MainActor (URL) -> Bool = { NSWorkspace.shared.open($0) }"
+            )
+            && source.contains("openExternalURL(releasesURL)"),
+        "Check for Updates must use an injectable URL opener instead of hiding browser launch"
+    )
+    try expect(
+        source.contains("guard let releasesURL = URL(string: Self.releasesURLString),")
+            && source.contains("presentUpdateOpenFailure()")
+            && source.contains("alert.messageText = \"无法打开更新页面\""),
+        "invalid or rejected Releases URLs must produce a visible native failure"
+    )
+}
+
+private func testApplicationMenuIsSkippedForSmokeLaunches() throws {
+    let source = try mainWindowSource("AppDelegate.swift")
+    guard let normalLaunch = source.range(
+        of: "        } else {\n            NSApp.setActivationPolicy(.regular)"
+    ),
+          let modelStart = source.range(
+              of: "        model.start()",
+              range: normalLaunch.upperBound..<source.endIndex
+          )
+    else {
+        throw TestFailure.mismatch("application launch branches were unavailable")
+    }
+    let smokeLaunchSource = source[..<normalLaunch.lowerBound]
+    let normalLaunchSource = source[normalLaunch.lowerBound..<modelStart.lowerBound]
+    try expect(
+        !smokeLaunchSource.contains("installApplicationMenu()")
+            && normalLaunchSource.contains("installApplicationMenu()"),
+        "application menu must install only on the normal App launch path"
+    )
+}
+
 private func testInitialWindowUsesScreenAwarePreferredLayout() throws {
     let source = try mainWindowSource("AppDelegate.swift")
     try expect(
@@ -2995,6 +3084,10 @@ struct CodexPulseAppTestMain {
         try testSettingsExplainsAutomaticDefaultHome()
         try testStatusPillUsesProductCopy()
         try testStatusItemRefreshReadsCommittedState()
+        try testApplicationMenuRegistersNativeCommands()
+        try testApplicationMenuSettingsShowsTheExistingSettingsPage()
+        try testApplicationMenuUpdateUsesObservableReleasesOpenerAndHandlesFailure()
+        try testApplicationMenuIsSkippedForSmokeLaunches()
         try testInitialWindowUsesScreenAwarePreferredLayout()
         try testNativeSmokeForcesOverviewTransitionLast()
         try testPopoverUsesWeeklyProjectTokenRanking()
