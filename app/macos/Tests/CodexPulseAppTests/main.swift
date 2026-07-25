@@ -2119,7 +2119,12 @@ private func testStatusBarStyleSelectionAndLegacyFallback() throws {
     try expect(
         StatusBarStyle.allCases.map(\.rawValue)
             == ["ring_summary", "open_ring_summary", "gauge_summary"],
-        "status bar must expose only the approved A/B/D styles"
+        "status bar styles must preserve their persisted raw values"
+    )
+    try expect(
+        StatusBarStyle.allCases.map(\.title)
+            == ["基准圆环", "缺口圆环", "仪表弧"],
+        "status bar style options must omit internal letter prefixes"
     )
     try expect(
         StatusBarStyle.resolve(storedValue: "open_ring_summary") == .openRingSummary,
@@ -2128,7 +2133,7 @@ private func testStatusBarStyleSelectionAndLegacyFallback() throws {
     for legacy in ["countdown", "battery", "meters", "rings", "unsupported", nil] as [String?] {
         try expect(
             StatusBarStyle.resolve(storedValue: legacy) == .ringSummary,
-            "legacy or unknown status bar preference must migrate to A"
+            "legacy or unknown status bar preference must use the baseline ring"
         )
     }
 }
