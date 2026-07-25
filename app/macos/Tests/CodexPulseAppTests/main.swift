@@ -245,6 +245,59 @@ private func testSessionAndProjectDailyTrendsShowSelectionRuleAndDateDetail() th
     )
 }
 
+private func testSessionAndProjectDetailsShareResponsiveThirdWidthSplit() throws {
+    let wide = SessionsProjectsSplitLayout.initialDividerPosition(
+        availableWidth: 1_200,
+        listMinimumWidth: 300,
+        dividerThickness: 1
+    )
+    try expect(
+        wide == 799,
+        "a wide sessions/projects split must reserve one third for detail"
+    )
+
+    let compact = SessionsProjectsSplitLayout.initialDividerPosition(
+        availableWidth: 900,
+        listMinimumWidth: 320,
+        dividerThickness: 1
+    )
+    try expect(
+        compact == 559,
+        "a compact sessions/projects split must preserve the readable detail minimum"
+    )
+    try expect(
+        SessionsProjectsSplitLayout.initialDividerPosition(
+            availableWidth: 660,
+            listMinimumWidth: 320,
+            dividerThickness: 1
+        ) == nil,
+        "an over-constrained split must preserve native narrow-window fallback sizing"
+    )
+
+    let source = try mainWindowSource("SessionsProjectsViews.swift")
+    try expect(
+        source.components(
+            separatedBy: "SessionsProjectsSplitView(listMinimumWidth:"
+        ).count == 3,
+        "sessions and projects must both use the shared split layout"
+    )
+    try expect(
+        source.components(separatedBy: "SessionsProjectsNativeSplitView(").count == 2,
+        "sessions and projects must share one native draggable split implementation"
+    )
+    try expect(
+        source.contains("private final class SessionsProjectsNativeSplitView")
+            && source.contains("NSSplitViewDelegate")
+            && source.contains("private var appliedInitialPosition = false")
+            && source.contains("DispatchQueue.main.async")
+            && source.contains("setPosition(CGFloat(position), ofDividerAt: 0)")
+            && source.contains("constrainMinCoordinate")
+            && source.contains("constrainMaxCoordinate")
+            && !source.contains("idealWidth: 480"),
+        "the shared native split must set a responsive default and retain draggable bounds"
+    )
+}
+
 private func testEveryTokenChartUsesLocalizedAxisAndAccessibilityUnits() throws {
     let chartSources = [
         ("RootView.swift", try mainWindowSource("RootView.swift")),
@@ -2716,6 +2769,7 @@ struct CodexPulseAppTestMain {
         try testOverviewUsesOneNavigationAndARealTrendChart()
         try testUsageChartStacksModelsWithLocalizedHoverDetails()
         try testSessionAndProjectDailyTrendsShowSelectionRuleAndDateDetail()
+        try testSessionAndProjectDetailsShareResponsiveThirdWidthSplit()
         try testEveryTokenChartUsesLocalizedAxisAndAccessibilityUnits()
         try testEveryTokenSurfaceUsesInputOutputBreakdown()
         try testStatusPopoverShowsLocalizedModelDailyTrend()

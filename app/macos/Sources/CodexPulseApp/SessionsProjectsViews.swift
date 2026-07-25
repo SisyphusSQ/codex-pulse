@@ -1,7 +1,139 @@
+import AppKit
 import Charts
 import CodexPulseAppSupport
 import CodexPulseProtocolGenerated
 import SwiftUI
+
+private final class SessionsProjectsNativeSplitView: NSSplitView, NSSplitViewDelegate {
+    var listMinimumWidth: CGFloat {
+        didSet { needsLayout = true }
+    }
+    let detailMinimumWidth: CGFloat
+
+    private var appliedInitialPosition = false
+    private var scheduledInitialPosition = false
+
+    init(listMinimumWidth: CGFloat, detailMinimumWidth: CGFloat) {
+        self.listMinimumWidth = listMinimumWidth
+        self.detailMinimumWidth = detailMinimumWidth
+        super.init(frame: .zero)
+        isVertical = true
+        dividerStyle = .thin
+        delegate = self
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is unavailable")
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        scheduleInitialPosition()
+    }
+
+    override func layout() {
+        super.layout()
+        scheduleInitialPosition()
+    }
+
+    private func scheduleInitialPosition() {
+        guard !appliedInitialPosition,
+              !scheduledInitialPosition,
+              subviews.count >= 2
+        else {
+            return
+        }
+
+        scheduledInitialPosition = true
+        // NSSplitView equalizes new panes during its first layout pass. Apply the
+        // responsive default once afterward, then leave later divider moves to the user.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            scheduledInitialPosition = false
+            guard !appliedInitialPosition,
+                  let position = SessionsProjectsSplitLayout.initialDividerPosition(
+                      availableWidth: Double(bounds.width),
+                      listMinimumWidth: Double(listMinimumWidth),
+                      dividerThickness: Double(dividerThickness)
+                  )
+            else {
+                return
+            }
+            appliedInitialPosition = true
+            setPosition(CGFloat(position), ofDividerAt: 0)
+        }
+    }
+
+    func splitView(
+        _ splitView: NSSplitView,
+        constrainMinCoordinate proposedMinimumPosition: CGFloat,
+        ofSubviewAt dividerIndex: Int
+    ) -> CGFloat {
+        min(
+            listMinimumWidth,
+            max(0, bounds.width - detailMinimumWidth - dividerThickness)
+        )
+    }
+
+    func splitView(
+        _ splitView: NSSplitView,
+        constrainMaxCoordinate proposedMaximumPosition: CGFloat,
+        ofSubviewAt dividerIndex: Int
+    ) -> CGFloat {
+        max(0, bounds.width - detailMinimumWidth - dividerThickness)
+    }
+}
+
+private struct SessionsProjectsSplitView<ListPane: View, DetailPane: View>: NSViewRepresentable {
+    let listMinimumWidth: CGFloat
+    private let listPane: ListPane
+    private let detailPane: DetailPane
+
+    init(
+        listMinimumWidth: CGFloat,
+        @ViewBuilder listPane: () -> ListPane,
+        @ViewBuilder detailPane: () -> DetailPane
+    ) {
+        self.listMinimumWidth = listMinimumWidth
+        self.listPane = listPane()
+        self.detailPane = detailPane()
+    }
+
+    @MainActor
+    final class Coordinator {
+        var listHostingView: NSHostingView<ListPane>?
+        var detailHostingView: NSHostingView<DetailPane>?
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> SessionsProjectsNativeSplitView {
+        let detailMinimumWidth = CGFloat(SessionsProjectsSplitLayout.detailMinimumWidth)
+        let splitView = SessionsProjectsNativeSplitView(
+            listMinimumWidth: listMinimumWidth,
+            detailMinimumWidth: detailMinimumWidth
+        )
+        let listHostingView = NSHostingView(rootView: listPane)
+        let detailHostingView = NSHostingView(rootView: detailPane)
+        listHostingView.sizingOptions = []
+        detailHostingView.sizingOptions = []
+        splitView.addArrangedSubview(listHostingView)
+        splitView.addArrangedSubview(detailHostingView)
+        splitView.setHoldingPriority(.defaultHigh, forSubviewAt: 1)
+        context.coordinator.listHostingView = listHostingView
+        context.coordinator.detailHostingView = detailHostingView
+        return splitView
+    }
+
+    func updateNSView(_ splitView: SessionsProjectsNativeSplitView, context: Context) {
+        splitView.listMinimumWidth = listMinimumWidth
+        context.coordinator.listHostingView?.rootView = listPane
+        context.coordinator.detailHostingView?.rootView = detailPane
+    }
+}
 
 struct SessionsView: View {
     @ObservedObject var model: AppModel
@@ -122,7 +254,7 @@ struct SessionsView: View {
     }
 
     private func sessionSplit(_ response: Codexpulse_Core_V1_SessionListResponse) -> some View {
-        HSplitView {
+        SessionsProjectsSplitView(listMinimumWidth: 300) {
             VStack(spacing: 0) {
                 HStack {
                     Text("已加载 \(response.items.count) 条")
@@ -145,9 +277,8 @@ struct SessionsView: View {
                     .accessibilityIdentifier("sessions.load-more")
                 }
             }
-            .frame(minWidth: 300, idealWidth: 360, maxWidth: 430)
+        } detailPane: {
             sessionDetail
-                .frame(minWidth: 340, idealWidth: 480)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -368,7 +499,7 @@ struct ProjectsView: View {
     }
 
     private func projectSplit(_ response: Codexpulse_Core_V1_ProjectListResponse) -> some View {
-        HSplitView {
+        SessionsProjectsSplitView(listMinimumWidth: 320) {
             VStack(spacing: 0) {
                 HStack {
                     Text("已加载 \(response.items.count) 个")
@@ -405,10 +536,10 @@ struct ProjectsView: View {
                     .accessibilityIdentifier("projects.load-more")
                 }
             }
-            .frame(minWidth: 320, idealWidth: 390)
+        } detailPane: {
             projectDetail
-                .frame(minWidth: 340, idealWidth: 480)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var projectSelection: Binding<String?> {
