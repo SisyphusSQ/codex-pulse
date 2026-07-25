@@ -31,3 +31,22 @@ public enum MainWindowLayout {
         )
     }
 }
+
+public enum SessionsProjectsSplitLayout {
+    public static let detailMinimumWidth = 340.0
+    public static let detailWidthFraction = 1.0 / 3.0
+
+    public static func initialDividerPosition(
+        availableWidth: Double,
+        listMinimumWidth: Double,
+        dividerThickness: Double
+    ) -> Double? {
+        let availableWidth = max(0, availableWidth)
+        let dividerThickness = max(0, dividerThickness)
+        guard availableWidth >= listMinimumWidth + detailMinimumWidth + dividerThickness else {
+            return nil
+        }
+        let detailWidth = max(detailMinimumWidth, availableWidth * detailWidthFraction)
+        return availableWidth - detailWidth - dividerThickness
+    }
+}
