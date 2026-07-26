@@ -1,3 +1,4 @@
+import AppKit
 import CodexPulseAppSupport
 import CodexPulseCoreClient
 import CodexPulseProtocolGenerated
@@ -418,6 +419,199 @@ private func testStatusPopoverShowsLocalizedModelDailyTrend() throws {
     )
 }
 
+private func testPopoverAccountSummaryNeverExposesRawAccountScope() throws {
+    let overview = OverviewPresentation(makeResponses(
+        accountScope: "account-token-/Users/private/example@example.com"
+    ))
+    let summary = overview.popoverAccountSummary
+
+    try expect(summary.availability == .available, "quota facts must produce an available account summary")
+    try expect(summary.title == "当前 Codex 账号", "account summary must use privacy-safe copy")
+    try expect(
+        summary.detail == "套餐信息未提供 · 2 项额度",
+        "account summary must describe only the display-level quota facts"
+    )
+    try expect(
+        !summary.accessibilityLabel.contains("account-token")
+            && !summary.accessibilityLabel.contains("/Users/")
+            && !summary.accessibilityLabel.contains("@example.com"),
+        "account summary must never expose the raw account scope"
+    )
+}
+
+private func testPopoverAccountSummaryDistinguishesEmptyAndUnavailableData() throws {
+    let empty = OverviewPresentation(makeResponses(includeWeeklyQuota: false))
+        .popoverAccountSummary
+    try expect(empty.availability == .empty, "a successful empty response must remain empty")
+    try expect(
+        empty.detail == "套餐信息未提供 · 暂无额度数据",
+        "an empty response must not be described as a transport failure"
+    )
+
+    let unavailable = OverviewPresentation(makeResponses(quotaStatus: "unavailable"))
+        .popoverAccountSummary
+    try expect(unavailable.availability == .unavailable, "unavailable quota data must stay unavailable")
+    try expect(
+        unavailable.detail == "套餐与额度信息暂不可用",
+        "unavailable quota data must expose a user-facing unavailable state"
+    )
+}
+
+private func testPopoverPrivacySummaryContainsOnlyApprovedAggregateFacts() throws {
+    let overview = OverviewPresentation(makeResponses(
+        accountScope: "private-account-marker"
+    ))
+    let summary = PopoverPrivacySummary(overview)
+
+    try expect(
+        summary.plainText == """
+        Codex Pulse 隐私摘要
+        账户：当前 Codex 账号
+        套餐与额度：套餐信息未提供 · 2 项额度
+        额度 1：通用额度 · 7 天，剩余 0%，下次重置 1 小时
+        额度 2：通用额度，剩余 --，下次重置 --
+        重置次数：1 可用 / 2 总数
+        仅包含 Popover 已展示的聚合信息
+        """,
+        "privacy summary must have a deterministic aggregate-only clipboard payload"
+    )
+    try expect(
+        !summary.plainText.contains("private-account-marker")
+            && !summary.plainText.contains("session-test")
+            && !summary.plainText.contains("project-test"),
+        "privacy summary must exclude account, session, and project identifiers"
+    )
+}
+
+private func testPopoverProjectActionUsesExactPublicRepositoryURL() throws {
+    var openedURL: URL?
+    let result = PopoverQuickActions.openProject { url in
+        openedURL = url
+        return true
+    }
+
+    try expect(
+        openedURL?.absoluteString == "https://github.com/SisyphusSQ/codex-pulse",
+        "project action must open the approved public repository"
+    )
+    try expect(
+        result == .success(title: "已打开项目主页", message: "已交给默认浏览器处理。"),
+        "project action must expose a user-visible success result"
+    )
+}
+
+private func testPopoverProjectActionMakesSystemOpenFailureVisible() throws {
+    let result = PopoverQuickActions.openProject { _ in false }
+
+    try expect(
+        result == .failure(
+            title: "无法打开项目主页",
+            message: "系统未能打开 GitHub 项目主页，请稍后再试。"
+        ),
+        "project action must expose a precise user-visible system open failure"
+    )
+}
+
+private func testPopoverCopyActionStopsWhenSafeScreenshotIsUnavailable() throws {
+    let summary = PopoverPrivacySummary(OverviewPresentation(makeResponses()))
+    var clipboardWriteCount = 0
+
+    let result = PopoverQuickActions.copyPrivacySummary(
+        summary,
+        renderPNG: { _ in nil },
+        writeClipboard: { _, _ in
+            clipboardWriteCount += 1
+            return true
+        }
+    )
+
+    try expect(clipboardWriteCount == 0, "render failure must not write any clipboard fallback")
+    try expect(
+        result == .failure(
+            title: "无法复制安全摘要",
+            message: "安全截图生成失败，未写入剪贴板。"
+        ),
+        "render failure must be visible and privacy preserving"
+    )
+}
+
+private func testPopoverCopyActionReportsClipboardFailureWithoutRawFallback() throws {
+    let summary = PopoverPrivacySummary(OverviewPresentation(makeResponses()))
+    let result = PopoverQuickActions.copyPrivacySummary(
+        summary,
+        renderPNG: { _ in Data([0x89, 0x50, 0x4E, 0x47]) },
+        writeClipboard: { _, _ in false }
+    )
+
+    try expect(
+        result == .failure(
+            title: "无法复制安全摘要",
+            message: "剪贴板写入失败，未复制任何数据。"
+        ),
+        "clipboard failure must not claim success or fall back to raw data"
+    )
+}
+
+private func testPopoverCopyActionWritesOneSafeImageAndTextPayload() throws {
+    let summary = PopoverPrivacySummary(OverviewPresentation(makeResponses()))
+    let expectedPNG = Data([0x89, 0x50, 0x4E, 0x47])
+    var writtenText: String?
+    var writtenPNG: Data?
+
+    let result = PopoverQuickActions.copyPrivacySummary(
+        summary,
+        renderPNG: { _ in expectedPNG },
+        writeClipboard: { text, png in
+            writtenText = text
+            writtenPNG = png
+            return true
+        }
+    )
+
+    try expect(writtenText == summary.plainText, "copy action must write the reviewed safe text")
+    try expect(writtenPNG == expectedPNG, "copy action must write the rendered safe screenshot")
+    try expect(
+        result == .success(
+            title: "已复制安全摘要",
+            message: "安全截图和脱敏摘要已写入剪贴板。"
+        ),
+        "copy action must expose a user-visible success result"
+    )
+}
+
+@MainActor
+private func testPopoverPasteboardWriterUsesOneRealItemForTextAndPNG() throws {
+    let pasteboard = NSPasteboard(
+        name: NSPasteboard.Name(
+            "com.sisyphussq.codex-pulse.tests.popover.\(UUID().uuidString)"
+        )
+    )
+    defer { pasteboard.clearContents() }
+    let text = "Codex Pulse 隐私摘要\n仅包含展示级聚合信息"
+    let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+
+    try expect(
+        PopoverPasteboardPayload.write(text: text, png: png, to: pasteboard),
+        "the production pasteboard writer must accept a real macOS pasteboard"
+    )
+    guard let items = pasteboard.pasteboardItems else {
+        throw TestFailure.mismatch("the real pasteboard must expose written items")
+    }
+    try expect(items.count == 1, "text and PNG must be written as one pasteboard item")
+    try expect(
+        items[0].types.contains(.string) && items[0].types.contains(.png),
+        "the same pasteboard item must advertise both .string and .png"
+    )
+    try expect(
+        items[0].string(forType: .string) == text,
+        "the real pasteboard item must retain the reviewed safe text"
+    )
+    try expect(
+        items[0].data(forType: .png) == png,
+        "the real pasteboard item must retain the rendered PNG"
+    )
+}
+
 private func testPopoverWeeklyTrendDoesNotFollowOverviewRange() throws {
     func trendPoint(_ key: String, tokens: Int64) -> Codexpulse_Core_V1_TrendPoint {
         var point = Codexpulse_Core_V1_TrendPoint()
@@ -568,10 +762,13 @@ private func testStatusItemRefreshReadsCommittedState() throws {
         "status item style refresh must run after Published preference has committed"
     )
     try expect(
-        source.contains("func verifyNativeSurfacesForSmoke(requireSummary: Bool) -> Bool {\n        updateStatusBarView()")
+        source.contains(
+            "func verifyNativeSurfacesForSmoke(\n        requireSummary: Bool\n"
+                + "    ) async -> (passed: Bool, summary: String) {\n        updateStatusBarView()"
+        )
             && source.contains("statusBarView.superview === button")
             && source.contains("statusBarView.preferredWidth > 0")
-            && source.contains("if requireSummary && !statusBarView.hasSummary { return false }"),
+            && source.contains("if requireSummary && !statusBarView.hasSummary {"),
         "native surface smoke must accept empty Home fallback but require summary when quota data exists"
     )
     let contentSource = try mainWindowSource("StatusBarQuotaContentView.swift")
@@ -583,7 +780,7 @@ private func testStatusItemRefreshReadsCommittedState() throws {
     )
     let delegateSource = try mainWindowSource("AppDelegate.swift")
     try expect(
-        delegateSource.contains("let surfaces = nativeSurfaceSmokeSummary(")
+        delegateSource.contains("let surfaces = await nativeSurfaceSmokeSummary(")
             && delegateSource.contains("requireStatusSummary: !overview.quotaWindows.isEmpty"),
         "native surface smoke must derive summary strictness from authoritative overview quota data"
     )
@@ -982,7 +1179,9 @@ private func makeNormalBootstrap() -> Codexpulse_Core_V1_BootstrapResponse {
 
 private func makeResponses(
     partial: Bool = false,
-    includeWeeklyQuota: Bool = true
+    includeWeeklyQuota: Bool = true,
+    accountScope: String = "default",
+    quotaStatus: String = "complete"
 ) -> OverviewResponses {
     var usage = Codexpulse_Core_V1_UsageCostResponse()
     usage.meta = completeMeta()
@@ -1016,6 +1215,8 @@ private func makeResponses(
     secondary.unknownReason = "not_observed"
     var quota = Codexpulse_Core_V1_QuotaCurrentResponse()
     quota.meta = completeMeta()
+    quota.meta.status = quotaStatus
+    quota.current.accountScope = accountScope
     quota.current.windows = includeWeeklyQuota ? [primary, secondary] : []
     quota.current.evaluatedAtMs = 1_753_056_000_000
     quota.current.resetCredits.availableCount = 1
@@ -2778,6 +2979,15 @@ struct CodexPulseAppTestMain {
         try testEveryTokenChartUsesLocalizedAxisAndAccessibilityUnits()
         try testEveryTokenSurfaceUsesInputOutputBreakdown()
         try testStatusPopoverShowsLocalizedModelDailyTrend()
+        try testPopoverAccountSummaryNeverExposesRawAccountScope()
+        try testPopoverAccountSummaryDistinguishesEmptyAndUnavailableData()
+        try testPopoverPrivacySummaryContainsOnlyApprovedAggregateFacts()
+        try testPopoverProjectActionUsesExactPublicRepositoryURL()
+        try testPopoverProjectActionMakesSystemOpenFailureVisible()
+        try testPopoverCopyActionStopsWhenSafeScreenshotIsUnavailable()
+        try testPopoverCopyActionReportsClipboardFailureWithoutRawFallback()
+        try testPopoverCopyActionWritesOneSafeImageAndTextPayload()
+        try testPopoverPasteboardWriterUsesOneRealItemForTextAndPNG()
         try testPopoverWeeklyTrendDoesNotFollowOverviewRange()
         try testTrendSelectionSnapsToNearestRealPoint()
         try testSidebarSettingsUsesSystemRowSpacing()

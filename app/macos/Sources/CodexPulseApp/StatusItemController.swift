@@ -11,14 +11,20 @@ final class StatusItemController: NSObject {
     private let popover = NSPopover()
     private let model: AppModel
     private let displayPreferences = StatusBarDisplayPreferences()
+    private let nativeAcceptanceEnabled: Bool
     private var cancellables: Set<AnyCancellable> = []
+    private var smokeFocusedControl: PopoverFocusTarget?
+    private var smokeActionResults: [PopoverQuickActionKind: PopoverQuickActionResult] = [:]
+    private var smokeOpenedProjectURL: URL?
 
     init(
         model: AppModel,
+        nativeAcceptanceEnabled: Bool = false,
         onOpenOverview: @escaping @MainActor () -> Void,
         onQuit: @escaping @MainActor () -> Void
     ) {
         self.model = model
+        self.nativeAcceptanceEnabled = nativeAcceptanceEnabled
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
 
@@ -44,6 +50,22 @@ final class StatusItemController: NSObject {
         let popoverView = MenuBarPopoverView(
             model: model,
             preferences: displayPreferences,
+            openProjectURL: { [weak self] url in
+                guard let self else { return false }
+                if self.nativeAcceptanceEnabled {
+                    self.smokeOpenedProjectURL = url
+                    return true
+                }
+                return NSWorkspace.shared.open(url)
+            },
+            onQuickActionResult: { [weak self] action, result in
+                guard self?.nativeAcceptanceEnabled == true else { return }
+                self?.smokeActionResults[action] = result
+            },
+            onPopoverFocusChanged: { [weak self] control in
+                guard self?.nativeAcceptanceEnabled == true else { return }
+                self?.smokeFocusedControl = control
+            },
             onOpenOverview: {
                 self.popover.performClose(nil)
                 onOpenOverview()
@@ -95,28 +117,181 @@ final class StatusItemController: NSObject {
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
-    func verifyNativeSurfacesForSmoke(requireSummary: Bool) -> Bool {
+    func verifyNativeSurfacesForSmoke(
+        requireSummary: Bool
+    ) async -> (passed: Bool, summary: String) {
         updateStatusBarView()
         guard let button = statusItem.button,
               popover.contentViewController != nil,
               statusBarView.superview === button,
               statusBarView.preferredWidth > 0
-        else { return false }
-        if requireSummary && !statusBarView.hasSummary { return false }
+        else { return (false, "unavailable step=native_surface") }
+        if requireSummary && !statusBarView.hasSummary {
+            return (false, "unavailable step=status_summary")
+        }
+        guard nativeAcceptanceEnabled,
+              let expectedSummary = model.presentation.map(PopoverPrivacySummary.init)
+        else { return (false, "unavailable step=acceptance_fixture") }
+
+        smokeFocusedControl = nil
+        smokeActionResults.removeAll()
+        smokeOpenedProjectURL = nil
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        let shown = popover.isShown
-        popover.performClose(nil)
-        return shown
+        defer { popover.performClose(nil) }
+
+        guard await waitForNativeSmoke({
+            self.popover.isShown && self.smokeFocusedControl == .accountSummary
+        }) else {
+            return (false, "unavailable step=popover_focus")
+        }
+        guard await moveNativeSmokeFocus(to: .refresh, backward: true),
+              await moveNativeSmokeFocus(to: .openOverview, backward: true),
+              await moveNativeSmokeFocus(to: .refresh),
+              await moveNativeSmokeFocus(to: .accountSummary),
+              await moveNativeSmokeFocus(to: .openProject),
+              sendNativeSmokeKey("\r", keyCode: 36),
+              await waitForNativeSmoke({
+                  self.smokeActionResults[.openProject] != nil
+              }),
+              smokeOpenedProjectURL?.absoluteString
+                  == "https://github.com/SisyphusSQ/codex-pulse",
+              smokeActionResults[.openProject]?.isFailure == false
+        else {
+            return (false, "unavailable step=project_keyboard_action")
+        }
+
+        guard await moveNativeSmokeFocus(to: .copyPrivacySummary),
+              sendNativeSmokeKey(" ", keyCode: 49),
+              await waitForNativeSmoke({
+                  self.smokeActionResults[.copyPrivacySummary] != nil
+              }),
+              smokeActionResults[.copyPrivacySummary]?.isFailure == false,
+              verifyGeneralPasteboardForSmoke(expected: expectedSummary)
+        else {
+            return (false, "unavailable step=clipboard_keyboard_action")
+        }
+
+        guard await moveNativeSmokeFocus(to: .resetCredits),
+              await moveNativeSmokeFocus(to: .settings),
+              await moveNativeSmokeFocus(to: .quit),
+              await moveNativeSmokeFocus(to: .settings, backward: true),
+              await moveNativeSmokeFocus(to: .resetCredits, backward: true),
+              await moveNativeSmokeFocus(to: .copyPrivacySummary, backward: true),
+              await moveNativeSmokeFocus(to: .openProject, backward: true),
+              await moveNativeSmokeFocus(to: .accountSummary, backward: true),
+              sendNativeSmokeKey("\r", keyCode: 36),
+              await waitForNativeSmoke({
+                  self.smokeActionResults[.accountSummary] != nil
+              }),
+              smokeActionResults[.accountSummary]?.isFailure == false,
+              popover.isShown
+        else {
+            return (false, "unavailable step=account_keyboard_action")
+        }
+
+        return (
+            true,
+            "window+status_item+popover actions=account+project+copy "
+                + "keyboard=tab+shift-tab+return+space "
+                + "focus_escape=open-overview+refresh+reset-credits+settings+quit "
+                + "clipboard=single_item_string+png"
+        )
+    }
+
+    private func moveNativeSmokeFocus(
+        to target: PopoverFocusTarget,
+        backward: Bool = false,
+        maximumSteps: Int = 12
+    ) async -> Bool {
+        let modifierFlags: NSEvent.ModifierFlags = backward ? [.shift] : []
+        for _ in 0..<maximumSteps {
+            guard sendNativeSmokeKey(
+                "\t",
+                keyCode: 48,
+                modifierFlags: modifierFlags
+            ) else { return false }
+            try? await Task.sleep(for: .milliseconds(20))
+            if smokeFocusedControl == target { return true }
+        }
+        return false
+    }
+
+    private func sendNativeSmokeKey(
+        _ characters: String,
+        keyCode: UInt16,
+        modifierFlags: NSEvent.ModifierFlags = []
+    ) -> Bool {
+        guard let window = popover.contentViewController?.view.window,
+              let keyDown = NSEvent.keyEvent(
+                  with: .keyDown,
+                  location: .zero,
+                  modifierFlags: modifierFlags,
+                  timestamp: ProcessInfo.processInfo.systemUptime,
+                  windowNumber: window.windowNumber,
+                  context: nil,
+                  characters: characters,
+                  charactersIgnoringModifiers: characters,
+                  isARepeat: false,
+                  keyCode: keyCode
+              ),
+              let keyUp = NSEvent.keyEvent(
+                  with: .keyUp,
+                  location: .zero,
+                  modifierFlags: modifierFlags,
+                  timestamp: ProcessInfo.processInfo.systemUptime,
+                  windowNumber: window.windowNumber,
+                  context: nil,
+                  characters: characters,
+                  charactersIgnoringModifiers: characters,
+                  isARepeat: false,
+                  keyCode: keyCode
+              )
+        else { return false }
+
+        window.makeKey()
+        window.sendEvent(keyDown)
+        window.sendEvent(keyUp)
+        return true
+    }
+
+    private func waitForNativeSmoke(
+        _ predicate: @escaping @MainActor () -> Bool
+    ) async -> Bool {
+        for _ in 0..<100 {
+            if predicate() { return true }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return false
+    }
+
+    private func verifyGeneralPasteboardForSmoke(
+        expected: PopoverPrivacySummary
+    ) -> Bool {
+        guard let items = NSPasteboard.general.pasteboardItems,
+              items.count == 1,
+              items[0].types.contains(.string),
+              items[0].types.contains(.png),
+              items[0].string(forType: .string) == expected.plainText,
+              let png = items[0].data(forType: .png),
+              png.starts(with: Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
+        else { return false }
+        return true
     }
 }
 
 private struct MenuBarPopoverView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var preferences: StatusBarDisplayPreferences
+    let openProjectURL: @MainActor (URL) -> Bool
+    let onQuickActionResult:
+        @MainActor (PopoverQuickActionKind, PopoverQuickActionResult) -> Void
+    let onPopoverFocusChanged: @MainActor (PopoverFocusTarget?) -> Void
     let onOpenOverview: @MainActor () -> Void
     let onQuit: @MainActor () -> Void
     @State private var route: PopoverRoute = .main
     @State private var selectedDailyTrendKey: String?
+    @State private var quickActionResult: PopoverQuickActionResult?
+    @FocusState private var focusedControl: PopoverFocusTarget?
 
     var body: some View {
         ZStack {
@@ -140,6 +315,19 @@ private struct MenuBarPopoverView: View {
         }
         .foregroundStyle(.primary)
         .frame(width: 420, height: 640)
+        .alert(
+            quickActionResult?.title ?? "",
+            isPresented: Binding(
+                get: { quickActionResult != nil },
+                set: { isPresented in
+                    if !isPresented { quickActionResult = nil }
+                }
+            )
+        ) {
+            Button("好", role: .cancel) { quickActionResult = nil }
+        } message: {
+            Text(quickActionResult?.message ?? "")
+        }
     }
 
     private var mainContent: some View {
@@ -149,6 +337,12 @@ private struct MenuBarPopoverView: View {
                 subtitle: model.isOverviewRefreshing
                     ? "正在刷新本机数据…"
                     : model.presentation.map { "本机数据 · \(relativeTimestamp($0.evaluatedAtMS))" } ?? "正在连接 Helper…",
+                accountSummary: model.presentation?.popoverAccountSummary,
+                isAccountLoading: isAccountSummaryLoading,
+                onShowAccount: showAccountSummary,
+                onOpenProject: openProject,
+                onCopyPrivacySummary: copyPrivacySummary,
+                focusedControl: $focusedControl,
                 onOpen: onOpenOverview,
                 onRefresh: model.refreshOrRestart,
                 canRefresh: model.canRefreshOrRestart,
@@ -178,9 +372,73 @@ private struct MenuBarPopoverView: View {
 
             PopoverFooter(
                 onSettings: { route = .displaySettings },
-                onQuit: onQuit
+                onQuit: onQuit,
+                focusedControl: $focusedControl
             )
         }
+        .onAppear {
+            if focusedControl == nil {
+                focusedControl = .accountSummary
+            }
+        }
+        .onChange(of: focusedControl) { _, control in
+            onPopoverFocusChanged(control)
+        }
+    }
+
+    private var isAccountSummaryLoading: Bool {
+        switch model.state {
+        case .idle, .loading: true
+        default: false
+        }
+    }
+
+    private func showAccountSummary() {
+        guard let summary = model.presentation?.popoverAccountSummary else {
+            let result: PopoverQuickActionResult = isAccountSummaryLoading
+                ? .failure(
+                    title: "账户摘要正在加载",
+                    message: "正在等待本机展示级账户与额度数据。"
+                )
+                : .failure(
+                    title: "账户摘要不可用",
+                    message: "当前没有可展示的账户或套餐摘要。"
+                )
+            onQuickActionResult(.accountSummary, result)
+            quickActionResult = result
+            return
+        }
+        let result = PopoverQuickActionResult.success(
+            title: "账户摘要",
+            message: "\(summary.title)\n\(summary.detail)\n仅使用本机展示级聚合信息。"
+        )
+        onQuickActionResult(.accountSummary, result)
+        quickActionResult = result
+    }
+
+    private func openProject() {
+        let result = PopoverQuickActions.openProject(using: openProjectURL)
+        onQuickActionResult(.openProject, result)
+        if result.isFailure { quickActionResult = result }
+    }
+
+    private func copyPrivacySummary() {
+        guard let overview = model.presentation else {
+            let result = PopoverQuickActionResult.failure(
+                title: "无法复制安全摘要",
+                message: "当前没有可用于生成安全截图的展示级数据。"
+            )
+            onQuickActionResult(.copyPrivacySummary, result)
+            quickActionResult = result
+            return
+        }
+        let result = PopoverQuickActions.copyPrivacySummary(
+            PopoverPrivacySummary(overview),
+            renderPNG: renderPrivacySummaryPNG,
+            writeClipboard: writePrivacySummaryClipboard
+        )
+        onQuickActionResult(.copyPrivacySummary, result)
+        if result.isFailure { quickActionResult = result }
     }
 
     private func quotaSection(_ overview: OverviewPresentation) -> some View {
@@ -246,6 +504,8 @@ private struct MenuBarPopoverView: View {
             .contentShape(RoundedRectangle(cornerRadius: PopoverInteractionMetrics.cardCornerRadius, style: .continuous))
             .buttonStyle(InteractiveCardButtonStyle())
             .accessibilityIdentifier("popover.reset-credits")
+            .focusable(true)
+            .focused($focusedControl, equals: .resetCredits)
         }
     }
 
@@ -578,6 +838,17 @@ private enum PopoverRoute {
     case displaySettings
 }
 
+private enum PopoverFocusTarget: Hashable {
+    case openOverview
+    case refresh
+    case accountSummary
+    case openProject
+    case copyPrivacySummary
+    case resetCredits
+    case settings
+    case quit
+}
+
 private struct RefreshArrowSymbol: View {
     let isAnimating: Bool
 
@@ -599,37 +870,149 @@ private struct RefreshArrowSymbol: View {
 private struct PopoverHeader: View {
     let title: String
     let subtitle: String
+    let accountSummary: PopoverAccountSummaryPresentation?
+    let isAccountLoading: Bool
+    let onShowAccount: @MainActor () -> Void
+    let onOpenProject: @MainActor () -> Void
+    let onCopyPrivacySummary: @MainActor () -> Void
+    let focusedControl: FocusState<PopoverFocusTarget?>.Binding
     let onOpen: @MainActor () -> Void
     let onRefresh: @MainActor () -> Void
     let canRefresh: Bool
     let isRefreshing: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.title3.bold())
-                Text(subtitle).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            HStack(spacing: 16) {
-                Button(action: onOpen) { Image(systemName: "macwindow") }
-                    .help("打开主窗口")
-                    .accessibilityIdentifier("popover.open-overview")
-                Button(action: onRefresh) {
-                    RefreshArrowSymbol(isAnimating: isRefreshing)
-                        .frame(width: 18, height: 18)
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.title3.bold())
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
                 }
-                    .disabled(!canRefresh)
-                    .help(isRefreshing ? "正在刷新本地数据" : "刷新本地数据")
-                    .accessibilityLabel(isRefreshing ? "正在刷新本地数据" : "刷新本地数据")
-                    .accessibilityValue(isRefreshing ? "进行中" : "就绪")
-                    .accessibilityIdentifier("popover.refresh")
+                Spacer()
+                HStack(spacing: 16) {
+                    Button(action: onOpen) { Image(systemName: "macwindow") }
+                        .help("打开主窗口")
+                        .accessibilityIdentifier("popover.open-overview")
+                        .focusable(true)
+                        .focused(focusedControl, equals: .openOverview)
+                    Button(action: onRefresh) {
+                        RefreshArrowSymbol(isAnimating: isRefreshing)
+                            .frame(width: 18, height: 18)
+                    }
+                        .disabled(!canRefresh)
+                        .help(isRefreshing ? "正在刷新本地数据" : "刷新本地数据")
+                        .accessibilityLabel(isRefreshing ? "正在刷新本地数据" : "刷新本地数据")
+                        .accessibilityValue(isRefreshing ? "进行中" : "就绪")
+                        .accessibilityIdentifier("popover.refresh")
+                        .focusable(true)
+                        .focused(focusedControl, equals: .refresh)
+                }
+                .buttonStyle(PopoverIconButtonStyle())
             }
-            .buttonStyle(PopoverIconButtonStyle())
+
+            HStack(spacing: 10) {
+                PopoverAccountShortcut(
+                    summary: accountSummary,
+                    isLoading: isAccountLoading,
+                    action: onShowAccount
+                )
+                .focusable(true)
+                .focused(focusedControl, equals: .accountSummary)
+                .onKeyPress(.return) {
+                    onShowAccount()
+                    return .handled
+                }
+                .onKeyPress(.space) {
+                    onShowAccount()
+                    return .handled
+                }
+                HStack(spacing: 16) {
+                    Button(action: onOpenProject) {
+                        Image(systemName: "chevron.left.forwardslash.chevron.right")
+                    }
+                    .help("打开 GitHub 项目主页")
+                    .accessibilityLabel("打开 GitHub 项目主页")
+                    .accessibilityIdentifier("popover.open-project")
+                    .focusable(true)
+                    .focused(focusedControl, equals: .openProject)
+                    .onKeyPress(.return) {
+                        onOpenProject()
+                        return .handled
+                    }
+                    .onKeyPress(.space) {
+                        onOpenProject()
+                        return .handled
+                    }
+
+                    Button(action: onCopyPrivacySummary) {
+                        Image(systemName: "camera")
+                    }
+                    .help("复制隐私安全截图与摘要")
+                    .accessibilityLabel("复制隐私安全截图与摘要")
+                    .accessibilityIdentifier("popover.copy-privacy-summary")
+                    .focusable(true)
+                    .focused(focusedControl, equals: .copyPrivacySummary)
+                    .onKeyPress(.return) {
+                        onCopyPrivacySummary()
+                        return .handled
+                    }
+                    .onKeyPress(.space) {
+                        onCopyPrivacySummary()
+                        return .handled
+                    }
+                }
+                .buttonStyle(PopoverIconButtonStyle())
+            }
         }
         .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .padding(.vertical, 12)
         .nativeGlass(in: Rectangle())
+    }
+}
+
+private struct PopoverAccountShortcut: View {
+    let summary: PopoverAccountSummaryPresentation?
+    let isLoading: Bool
+    let action: @MainActor () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            PulseCard(padding: 9) {
+                HStack(spacing: 9) {
+                    if isLoading {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "person.crop.circle")
+                            .font(.system(size: 18, weight: .semibold))
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(displayTitle)
+                            .font(.system(size: 12, weight: .semibold))
+                            .lineLimit(1)
+                        Text(displayDetail)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .buttonStyle(InteractiveCardButtonStyle())
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityIdentifier("popover.account-summary")
+    }
+
+    private var displayTitle: String {
+        summary?.title ?? (isLoading ? "正在读取账户摘要" : "账户摘要不可用")
+    }
+
+    private var displayDetail: String {
+        summary?.detail ?? (isLoading ? "仅使用本机展示级数据" : "没有可展示的数据")
+    }
+
+    private var accessibilityLabel: String {
+        summary?.accessibilityLabel ?? "\(displayTitle)，\(displayDetail)"
     }
 }
 
@@ -785,14 +1168,19 @@ private struct PopoverBackButton: View {
 private struct PopoverFooter: View {
     let onSettings: () -> Void
     let onQuit: @MainActor () -> Void
+    let focusedControl: FocusState<PopoverFocusTarget?>.Binding
 
     var body: some View {
         HStack {
             Button(action: onSettings) { Label("设置", systemImage: "slider.horizontal.3") }
                 .accessibilityIdentifier("popover.settings")
+                .focusable(true)
+                .focused(focusedControl, equals: .settings)
             Spacer()
             Button(action: onQuit) { Label("退出", systemImage: "power") }
                 .accessibilityIdentifier("popover.quit")
+                .focusable(true)
+                .focused(focusedControl, equals: .quit)
         }
         .buttonStyle(NativeGlassButtonStyle())
         .padding(.horizontal, 18)
@@ -1010,6 +1398,62 @@ private struct NativeGlassModifier<S: Shape>: ViewModifier {
 private extension View {
     func nativeGlass<S: Shape>(in shape: S) -> some View {
         modifier(NativeGlassModifier(shape: shape))
+    }
+}
+
+@MainActor
+private func renderPrivacySummaryPNG(_ summary: PopoverPrivacySummary) -> Data? {
+    let renderer = ImageRenderer(content: PopoverPrivacySnapshotView(summary: summary))
+    renderer.scale = max(NSScreen.main?.backingScaleFactor ?? 2, 1)
+    guard let image = renderer.nsImage,
+          let tiff = image.tiffRepresentation,
+          let bitmap = NSBitmapImageRep(data: tiff)
+    else { return nil }
+    return bitmap.representation(using: .png, properties: [:])
+}
+
+@MainActor
+private func writePrivacySummaryClipboard(_ text: String, _ png: Data) -> Bool {
+    PopoverPasteboardPayload.write(text: text, png: png, to: .general)
+}
+
+private struct PopoverPrivacySnapshotView: View {
+    let summary: PopoverPrivacySummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: "waveform.path.ecg")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.blue)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Codex Pulse").font(.title3.bold())
+                    Text("隐私安全摘要").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 4) {
+                Text(summary.accountTitle).font(.headline)
+                Text(summary.accountDetail).font(.subheadline).foregroundStyle(.secondary)
+            }
+            ForEach(Array(summary.quotaRows.enumerated()), id: \.offset) { index, row in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("额度 \(index + 1)").font(.caption.bold()).foregroundStyle(.secondary)
+                    Text(row).font(.system(size: 13, weight: .medium))
+                }
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text("重置次数").font(.caption.bold()).foregroundStyle(.secondary)
+                Text(summary.resetCreditsRow).font(.system(size: 13, weight: .medium))
+            }
+            Divider()
+            Label("仅包含 Popover 已展示的聚合信息", systemImage: "lock.shield")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(22)
+        .frame(width: 360, alignment: .leading)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }
 
