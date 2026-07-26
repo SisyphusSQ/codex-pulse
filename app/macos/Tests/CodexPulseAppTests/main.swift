@@ -1039,10 +1039,12 @@ private actor StateRecorder {
 private actor LoadingStateBarrier {
     private var isBlockingLoading = false
     private var loadingReleased = false
+    private var loadingEntryCount = 0
     private var loadingWaiters: [CheckedContinuation<Void, Never>] = []
 
     func accept(_ state: CoreConnectionState) async {
         guard case .loadingOverview = state else { return }
+        loadingEntryCount += 1
         isBlockingLoading = true
         guard !loadingReleased else { return }
         await withCheckedContinuation { continuation in
@@ -1054,11 +1056,27 @@ private actor LoadingStateBarrier {
         isBlockingLoading && !loadingReleased
     }
 
+    func entryCount() -> Int {
+        loadingEntryCount
+    }
+
     func release() {
         loadingReleased = true
         let waiters = loadingWaiters
         loadingWaiters.removeAll()
         waiters.forEach { $0.resume() }
+    }
+}
+
+private actor CompletionFlag {
+    private var completed = false
+
+    func markCompleted() {
+        completed = true
+    }
+
+    func isCompleted() -> Bool {
+        completed
     }
 }
 
@@ -1294,6 +1312,9 @@ private actor FakeCore: AppCoreServing {
                 || $0 == "projects"
                 || $0 == "health"
         }.count
+    }
+    func overviewBatchCallCount() -> Int {
+        calls.filter { $0 == "quota" }.count
     }
     func recordedCalls() -> [String] { calls }
     func recordedUsageRequests() -> [Codexpulse_Core_V1_UsageCostRequest] { usageRequests }
@@ -3294,6 +3315,249 @@ private func testReadyJitterBeforeInitialCoreQueryCompletesOneOverview() async t
     _ = await runtime.shutdown()
 }
 
+private func testInvalidationDuringLoadingAdmissionCompletesOneOverview() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let loadingBarrier = LoadingStateBarrier()
+    let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    await runtime.setStateSink { state in await loadingBarrier.accept(state) }
+
+    let start = Task { await runtime.start() }
+    try await waitUntil("loading blocks before invalidation admission") {
+        await loadingBarrier.isBlocking()
+    }
+    var overviewCoreCalls = await core.overviewCoreCallCount()
+    try expect(
+        overviewCoreCalls == 0,
+        "loading barrier must precede every Overview Core query"
+    )
+
+    let invalidationCompleted = CompletionFlag()
+    let invalidation = Task {
+        await core.publishOverviewInvalidations(count: 1, recovered: false)
+        await invalidationCompleted.markCompleted()
+    }
+    try await waitUntil("invalidation either coalesces or reaches the blocked loading sink") {
+        let entryCount = await loadingBarrier.entryCount()
+        let completed = await invalidationCompleted.isCompleted()
+        return entryCount == 2 || completed
+    }
+    overviewCoreCalls = await core.overviewCoreCallCount()
+    try expect(
+        overviewCoreCalls == 0,
+        "invalidation during loading admission must not start a Core query early"
+    )
+
+    await loadingBarrier.release()
+    await invalidation.value
+    await start.value
+    let stats = await core.overviewRecoveryStats()
+    try expect(
+        stats.usageCalls == 1 && stats.completedUsageCalls == 1,
+        "invalidation before Core admission must share exactly one Overview"
+    )
+    try expect(
+        stats.maximumConcurrentUsageCalls == 1,
+        "invalidation before Core admission must preserve single-flight"
+    )
+    _ = await runtime.shutdown()
+}
+
+private func testSecondManualRefreshDuringLoadingAdmissionCompletesOneOverview() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let loadingBarrier = LoadingStateBarrier()
+    let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    await runtime.setStateSink { state in await loadingBarrier.accept(state) }
+
+    let start = Task { await runtime.start() }
+    try await waitUntil("loading blocks before the second manual refresh") {
+        await loadingBarrier.isBlocking()
+    }
+    var overviewCoreCalls = await core.overviewCoreCallCount()
+    try expect(
+        overviewCoreCalls == 0,
+        "manual refresh race must begin before every Overview Core query"
+    )
+
+    let secondRefreshCompleted = CompletionFlag()
+    let secondRefresh = Task {
+        await runtime.refresh()
+        await secondRefreshCompleted.markCompleted()
+    }
+    try await waitUntil("second refresh either coalesces or reaches the blocked loading sink") {
+        let entryCount = await loadingBarrier.entryCount()
+        let completed = await secondRefreshCompleted.isCompleted()
+        return entryCount == 2 || completed
+    }
+    overviewCoreCalls = await core.overviewCoreCallCount()
+    try expect(
+        overviewCoreCalls == 0,
+        "second refresh during loading admission must not start a Core query early"
+    )
+
+    await loadingBarrier.release()
+    await secondRefresh.value
+    await start.value
+    let stats = await core.overviewRecoveryStats()
+    try expect(
+        stats.usageCalls == 1 && stats.completedUsageCalls == 1,
+        "concurrent manual refresh before Core admission must share exactly one Overview"
+    )
+    try expect(
+        stats.maximumConcurrentUsageCalls == 1,
+        "concurrent manual refresh before Core admission must preserve single-flight"
+    )
+    _ = await runtime.shutdown()
+}
+
+private func testRangeChangeDuringLoadingAdmissionReplacesOldRefresh() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let loadingBarrier = LoadingStateBarrier()
+    let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    await runtime.setStateSink { state in await loadingBarrier.accept(state) }
+
+    let start = Task { await runtime.start() }
+    try await waitUntil("loading blocks before the range change") {
+        await loadingBarrier.isBlocking()
+    }
+    let rangeRefreshCompleted = CompletionFlag()
+    let rangeRefresh = Task {
+        await runtime.refresh(range: .sevenDays)
+        await rangeRefreshCompleted.markCompleted()
+    }
+    try await waitUntil("range refresh either reserves or reaches the blocked loading sink") {
+        let entryCount = await loadingBarrier.entryCount()
+        let completed = await rangeRefreshCompleted.isCompleted()
+        return entryCount == 2 || completed
+    }
+    let overviewCoreCalls = await core.overviewCoreCallCount()
+    try expect(
+        overviewCoreCalls == 0,
+        "range change during loading admission must cancel before Core query"
+    )
+
+    await loadingBarrier.release()
+    await rangeRefresh.value
+    await start.value
+    let stats = await core.overviewRecoveryStats()
+    let overviewBatches = await core.overviewBatchCallCount()
+    try expect(
+        overviewBatches == 1 && stats.usageCalls == 2 && stats.completedUsageCalls == 2,
+        "range change must replace the old admission with exactly one Overview"
+    )
+    _ = await runtime.shutdown()
+}
+
+private func testCancelDuringLoadingAdmissionPreventsCoreQuery() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let loadingBarrier = LoadingStateBarrier()
+    let recorder = StateRecorder()
+    let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    await runtime.setStateSink { state in
+        await recorder.append(state)
+        await loadingBarrier.accept(state)
+    }
+
+    let start = Task { await runtime.start() }
+    try await waitUntil("loading blocks before cancel") {
+        await loadingBarrier.isBlocking()
+    }
+    await runtime.cancelRefresh()
+    var overviewCoreCalls = await core.overviewCoreCallCount()
+    try expect(
+        overviewCoreCalls == 0,
+        "cancel during loading admission must happen before every Core query"
+    )
+
+    await loadingBarrier.release()
+    await start.value
+    overviewCoreCalls = await core.overviewCoreCallCount()
+    try expect(
+        overviewCoreCalls == 0,
+        "cancelled loading admission must never start an Overview query"
+    )
+    let phases = await recorder.snapshot()
+    try expect(phases.last == "cancelled", "late loading completion must not overwrite cancel")
+    try expect(
+        !phases.contains("normal") && !phases.contains("partial") && !phases.contains("unavailable"),
+        "cancelled loading admission must not publish fresh or unavailable data"
+    )
+    _ = await runtime.shutdown()
+}
+
+private func testSleepDuringLoadingAdmissionPreventsCoreQuery() async throws {
+    let supervisor = FakeSupervisor()
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let loadingBarrier = LoadingStateBarrier()
+    let recorder = StateRecorder()
+    let runtime = AppRuntime(supervisor: supervisor, clientFactory: { _ in core })
+    await runtime.setStateSink { state in
+        await recorder.append(state)
+        await loadingBarrier.accept(state)
+    }
+
+    let start = Task { await runtime.start() }
+    try await waitUntil("loading blocks before sleep") {
+        await loadingBarrier.isBlocking()
+    }
+    await runtime.prepareForSleep()
+    var overviewCoreCalls = await core.overviewCoreCallCount()
+    try expect(
+        overviewCoreCalls == 0,
+        "sleep during loading admission must happen before every Core query"
+    )
+
+    await loadingBarrier.release()
+    await start.value
+    overviewCoreCalls = await core.overviewCoreCallCount()
+    try expect(
+        overviewCoreCalls == 0,
+        "sleeping runtime must not admit the stale loading refresh"
+    )
+    let phases = await recorder.snapshot()
+    try expect(
+        !phases.contains("normal") && !phases.contains("partial") && !phases.contains("unavailable"),
+        "sleeping runtime must not publish a late Overview result"
+    )
+    let counts = await supervisor.counts()
+    try expect(counts == (1, 0), "sleep admission cancellation must preserve the Helper")
+    _ = await runtime.shutdown()
+}
+
+private func testShutdownDuringLoadingAdmissionKeepsStoppedTerminal() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let loadingBarrier = LoadingStateBarrier()
+    let recorder = StateRecorder()
+    let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    await runtime.setStateSink { state in
+        await recorder.append(state)
+        await loadingBarrier.accept(state)
+    }
+
+    let start = Task { await runtime.start() }
+    try await waitUntil("loading blocks before shutdown") {
+        await loadingBarrier.isBlocking()
+    }
+    let shutdownOutcome = await runtime.shutdown()
+    try expect(shutdownOutcome == .clean, "loading admission shutdown must remain clean")
+    var overviewCoreCalls = await core.overviewCoreCallCount()
+    try expect(
+        overviewCoreCalls == 0,
+        "shutdown during loading admission must happen before every Core query"
+    )
+    var phases = await recorder.snapshot()
+    try expect(phases.last == "stopped", "shutdown must publish stopped before releasing loading")
+
+    await loadingBarrier.release()
+    await start.value
+    overviewCoreCalls = await core.overviewCoreCallCount()
+    try expect(
+        overviewCoreCalls == 0,
+        "stopped runtime must not start a query from stale loading admission"
+    )
+    phases = await recorder.snapshot()
+    try expect(phases.last == "stopped", "late loading completion must not overwrite stopped")
+}
+
 @MainActor
 private func testUnavailableRecoveryFailureDoesNotPublishSuccess() async throws {
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
@@ -3866,6 +4130,12 @@ struct CodexPulseAppTestMain {
         try await testSleepDuringInvalidationReadinessPreservesRuntimeUntilWake()
         try await testWakeBeforeSleepLifecycleCompletionResumesRuntime()
         try await testReadyJitterBeforeInitialCoreQueryCompletesOneOverview()
+        try await testInvalidationDuringLoadingAdmissionCompletesOneOverview()
+        try await testSecondManualRefreshDuringLoadingAdmissionCompletesOneOverview()
+        try await testRangeChangeDuringLoadingAdmissionReplacesOldRefresh()
+        try await testCancelDuringLoadingAdmissionPreventsCoreQuery()
+        try await testSleepDuringLoadingAdmissionPreventsCoreQuery()
+        try await testShutdownDuringLoadingAdmissionKeepsStoppedTerminal()
         try await testInitialInFlightReconnectQueuesOneRecoveryRefresh()
         try await testSuspendingReadinessPastTimeoutPreservesRuntimeUntilWake()
         try await testRecoveryDuringDisconnectedStreamRefreshesAfterReconnectWithoutReplay()

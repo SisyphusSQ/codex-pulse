@@ -148,6 +148,7 @@ public actor AppRuntime {
     private var overviewRange: DateRangePreset = .quotaWeek
     private var runtimeGeneration: UInt64 = 0
     private var refreshGeneration: UInt64 = 0
+    private var refreshAdmissionGeneration: UInt64?
     private var startInFlight = false
     private var shuttingDown = false
     private var applicationIsActive = true
@@ -216,6 +217,7 @@ public actor AppRuntime {
         runtimeGeneration &+= 1
         let generation = runtimeGeneration
         readyForOverview = false
+        refreshAdmissionGeneration = nil
         invalidationRefreshPending = false
         initialOverviewRefreshState = .idle
         sleepTransitionInFlight = false
@@ -284,6 +286,8 @@ public actor AppRuntime {
         guard range != .all else { return }
         if range != overviewRange {
             overviewRange = range
+            refreshGeneration &+= 1
+            refreshAdmissionGeneration = nil
             invalidationRefreshPending = false
             restorePendingInitialOverviewAfterCancellation()
             refreshTask?.cancel()
@@ -650,6 +654,7 @@ public actor AppRuntime {
 
     public func cancelRefresh() async {
         refreshGeneration &+= 1
+        refreshAdmissionGeneration = nil
         invalidationRefreshPending = false
         restorePendingInitialOverviewAfterCancellation()
         refreshTask?.cancel()
@@ -712,6 +717,7 @@ public actor AppRuntime {
         systemIsSleeping = true
         sleepTransitionInFlight = true
         refreshGeneration &+= 1
+        refreshAdmissionGeneration = nil
         invalidationRefreshPending = false
         restorePendingInitialOverviewAfterCancellation()
         refreshTask?.cancel()
@@ -863,6 +869,7 @@ public actor AppRuntime {
         wakeAfterSleepPending = false
         sleepLifecycleDelivered = false
         refreshGeneration &+= 1
+        refreshAdmissionGeneration = nil
         invalidationRefreshPending = false
         refreshTask?.cancel()
         refreshTask = nil
@@ -874,16 +881,32 @@ public actor AppRuntime {
     }
 
     private func refresh(showLoading: Bool) async {
-        guard !shuttingDown, let client else { return }
+        guard readyForOverview, !systemIsSleeping, !shuttingDown, let client else { return }
         if let refreshTask {
             _ = try? await refreshTask.value
             return
         }
-        if showLoading || lastResponses == nil { await emit(.loadingOverview) }
-        let requests = OverviewRequestSet.make()
-        let requestedRange = overviewRange
+        guard refreshAdmissionGeneration == nil else { return }
         refreshGeneration &+= 1
         let generation = refreshGeneration
+        let admittedRuntimeGeneration = runtimeGeneration
+        refreshAdmissionGeneration = generation
+        if showLoading || lastResponses == nil { await emit(.loadingOverview) }
+        guard refreshAdmissionGeneration == generation,
+              generation == refreshGeneration,
+              admittedRuntimeGeneration == runtimeGeneration,
+              readyForOverview,
+              !systemIsSleeping,
+              !shuttingDown,
+              self.client != nil
+        else {
+            if refreshAdmissionGeneration == generation {
+                refreshAdmissionGeneration = nil
+            }
+            return
+        }
+        let requests = OverviewRequestSet.make()
+        let requestedRange = overviewRange
         if initialOverviewRefreshState == .pending {
             initialOverviewRefreshState = .inFlight
         }
@@ -998,6 +1021,7 @@ public actor AppRuntime {
             )
         }
         refreshTask = task
+        refreshAdmissionGeneration = nil
         do {
             let responses = try await task.value
             guard generation == refreshGeneration, refreshTask != nil, !shuttingDown else { return }
@@ -1251,6 +1275,7 @@ public actor AppRuntime {
         streamHasReachedReady = false
         suppressNextStreamReadyRefresh = false
         refreshGeneration &+= 1
+        refreshAdmissionGeneration = nil
         invalidationRefreshPending = false
         initialOverviewRefreshState = .idle
         refreshTask?.cancel()
@@ -1298,6 +1323,7 @@ public actor AppRuntime {
         helperProcessMonitor?.cancel()
         helperProcessMonitor = nil
         refreshGeneration &+= 1
+        refreshAdmissionGeneration = nil
         invalidationRefreshPending = false
         initialOverviewRefreshState = .idle
         refreshTask?.cancel()
@@ -1379,6 +1405,7 @@ public actor AppRuntime {
             self.streamController = nil
         }
         refreshGeneration &+= 1
+        refreshAdmissionGeneration = nil
         invalidationRefreshPending = false
         initialOverviewRefreshState = .idle
         refreshTask?.cancel()
