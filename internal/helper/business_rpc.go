@@ -41,6 +41,17 @@ func (api *grpcAPI) Contracts(ctx context.Context, _ *corev1.ContractsRequest) (
 	}, nil
 }
 
+func (api *grpcAPI) AccountSnapshot(
+	ctx context.Context,
+	_ *corev1.AccountSnapshotRequest,
+) (*corev1.AccountSnapshotResponse, error) {
+	if api == nil || api.service == nil {
+		return nil, coreServiceUnavailable()
+	}
+	response, err := api.service.AccountSnapshot(ctx)
+	return encodeRPC(response, &corev1.AccountSnapshotResponse{}, err)
+}
+
 func (api *grpcAPI) UsageCost(
 	ctx context.Context,
 	request *corev1.UsageCostRequest,

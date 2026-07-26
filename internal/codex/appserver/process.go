@@ -19,16 +19,56 @@ type ProcessOptions struct {
 	PageSize    int
 	ClientName  string
 	Version     string
+	// BeforeStart 在 pipe 就绪后、command.Start 前执行调用方代际检查。
+	BeforeStart func(context.Context) error
+	homeBinding processHomeBinding
+	// afterBeforeStartForTest 确定性覆盖最后校验返回到 Start 之间的竞态窗口。
+	afterBeforeStartForTest func() error
+}
+
+type processHomeBinding interface {
+	canonicalPath() string
+	attach(*exec.Cmd) (string, error)
+	validate(context.Context) error
+	close() error
 }
 
 func ListLocalThreads(ctx context.Context, confirmedHome string, options ProcessOptions) (ThreadList, error) {
-	canonicalHome, err := canonicalConfirmedHome(confirmedHome)
-	if err != nil {
-		return ThreadList{}, err
+	return withInitializedLocalRPC(
+		ctx,
+		confirmedHome,
+		options,
+		func(ctx context.Context, rpc *jsonLineRPC, canonicalHome string) (ThreadList, error) {
+			return NewThreadLister(
+				rpc,
+				ThreadListerOptions{PageSize: options.PageSize},
+			).List(ctx, canonicalHome)
+		},
+	)
+}
+
+func withInitializedLocalRPC[T any](
+	ctx context.Context,
+	confirmedHome string,
+	options ProcessOptions,
+	operation func(context.Context, *jsonLineRPC, string) (T, error),
+) (result T, returnErr error) {
+	if ctx == nil || operation == nil {
+		return result, errors.New("invalid App Server operation")
+	}
+	canonicalHome := confirmedHome
+	if options.homeBinding == nil {
+		var err error
+		canonicalHome, err = canonicalConfirmedHome(confirmedHome)
+		if err != nil {
+			return result, err
+		}
+	} else if canonicalHome != options.homeBinding.canonicalPath() {
+		return result, errors.New("invalid App Server Home binding")
 	}
 	binary, err := resolveCodexBinary(options.CodexBinary, defaultCodexBinaryCandidates())
 	if err != nil {
-		return ThreadList{}, err
+		return result, err
 	}
 	clientName := options.ClientName
 	if clientName == "" {
@@ -42,18 +82,43 @@ func ListLocalThreads(ctx context.Context, confirmedHome string, options Process
 	processContext, cancelProcess := context.WithCancel(ctx)
 	defer cancelProcess()
 	command := exec.CommandContext(processContext, binary, "app-server", "--listen", "stdio://")
-	command.Env = isolatedCodexEnvironment(os.Environ(), canonicalHome)
+	processHome := canonicalHome
+	command.Env = isolatedCodexEnvironment(os.Environ(), processHome)
+	if options.homeBinding != nil {
+		processHome, err = options.homeBinding.attach(command)
+		if err != nil {
+			return result, err
+		}
+		command.Env = isolatedCodexEnvironment(command.Env, processHome)
+	}
 	stdin, err := command.StdinPipe()
 	if err != nil {
-		return ThreadList{}, errors.New("open App Server stdin")
+		return result, errors.New("open App Server stdin")
 	}
 	stdout, err := command.StdoutPipe()
 	if err != nil {
-		return ThreadList{}, errors.New("open App Server stdout")
+		_ = stdin.Close()
+		return result, errors.New("open App Server stdout")
 	}
 	command.Stderr = io.Discard
+	if options.BeforeStart != nil {
+		if err := options.BeforeStart(processContext); err != nil {
+			_ = stdin.Close()
+			_ = stdout.Close()
+			return result, err
+		}
+	}
+	if options.afterBeforeStartForTest != nil {
+		if err := options.afterBeforeStartForTest(); err != nil {
+			_ = stdin.Close()
+			_ = stdout.Close()
+			return result, err
+		}
+	}
 	if err := command.Start(); err != nil {
-		return ThreadList{}, errors.New("start Codex App Server")
+		_ = stdin.Close()
+		_ = stdout.Close()
+		return result, errors.New("start Codex App Server")
 	}
 	done := make(chan error, 1)
 	go func() { done <- command.Wait() }()
@@ -76,12 +141,12 @@ func ListLocalThreads(ctx context.Context, confirmedHome string, options Process
 		Title   string `json:"title"`
 		Version string `json:"version"`
 	}{Name: clientName, Title: "Codex Pulse", Version: version}}, &initializeResult); err != nil {
-		return ThreadList{}, err
+		return result, err
 	}
 	if err := rpc.Notify(ctx, "initialized", struct{}{}); err != nil {
-		return ThreadList{}, err
+		return result, err
 	}
-	return NewThreadLister(rpc, ThreadListerOptions{PageSize: options.PageSize}).List(ctx, canonicalHome)
+	return operation(ctx, rpc, canonicalHome)
 }
 
 func resolveCodexBinary(explicit string, fallbacks []string) (string, error) {

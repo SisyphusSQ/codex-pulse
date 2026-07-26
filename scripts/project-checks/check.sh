@@ -129,12 +129,15 @@ require_pattern app/macos/Sources/CodexPulseApp/AppDelegate.swift 'applicationWi
 require_pattern app/macos/Sources/CodexPulseApp/RootView.swift 'NavigationSplitView' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'NSStatusBar.system.statusItem' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'minimumHitTarget: CGFloat = 44' SWIFT-002 docs/design/details/native-macos-client/README.md
-require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'iconVisualSize: CGFloat = 28' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'headerButtonDiameter: CGFloat = 30' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'headerIconSize: CGFloat = 16' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'headerDividerHeight: CGFloat = 18' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift '\.focusEffectDisabled\(\)' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'compactButtonVisualHeight: CGFloat = 28' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'padding\(\.vertical, -PopoverInteractionMetrics\.compactButtonHitSlop\)' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'InteractiveCardButtonStyle' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift '\.contentShape\(' SWIFT-002 docs/design/details/native-macos-client/README.md
-reject_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift '\.onHover' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift '\.onHover' SWIFT-002 docs/design/details/native-macos-client/README.md
 reject_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift '\.accentColor\.opacity' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'controlActiveState' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'model\.isOverviewRefreshing' SWIFT-002 docs/design/details/native-macos-client/README.md

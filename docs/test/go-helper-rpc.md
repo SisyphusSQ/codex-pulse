@@ -10,7 +10,7 @@
 
 ## Contract 与安全断言
 
-- `codexpulse.core.v1.CoreService` 固定 34 个 RPC，Updater、Window、Tray、Popover 不在 allowlist。
+- `codexpulse.core.v1.CoreService` 当前固定 35 个 RPC；新增 `AccountSnapshot` 只返回受控 `account/read` 的 `type`、`email`、`planType`，Updater、Window、Tray、Popover 不在 allowlist。
 - `NumericValue` 用 Proto presence 区分真实零与 unknown；partial/issues 和 content-free `ErrorDetail` 保持强类型。
 - Helper 只监听安全 UDS；父目录必须是当前用户拥有的 `0700` 目录，socket 为 `0600`，拒绝 symlink、普通残留文件和超长路径。
 - 一次性 token 从继承 pipe 读取；interceptor 同时覆盖 unary/stream，Authenticator 只保留 SHA-256 摘要。

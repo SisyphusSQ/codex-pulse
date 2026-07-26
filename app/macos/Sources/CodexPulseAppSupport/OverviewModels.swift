@@ -3,6 +3,7 @@ import CodexPulseProtocolGenerated
 import Foundation
 
 public struct OverviewResponses: Sendable {
+    public let account: Codexpulse_Core_V1_AccountSnapshotResponse?
     public let usage: Codexpulse_Core_V1_UsageCostResponse
     public let weeklyUsage: Codexpulse_Core_V1_UsageCostResponse
     public let quota: Codexpulse_Core_V1_QuotaCurrentResponse
@@ -17,6 +18,7 @@ public struct OverviewResponses: Sendable {
     public init(
         usage: Codexpulse_Core_V1_UsageCostResponse,
         quota: Codexpulse_Core_V1_QuotaCurrentResponse,
+        account: Codexpulse_Core_V1_AccountSnapshotResponse? = nil,
         sessions: Codexpulse_Core_V1_SessionListResponse,
         projects: Codexpulse_Core_V1_ProjectListResponse,
         health: Codexpulse_Core_V1_HealthProjectionResponse,
@@ -26,6 +28,7 @@ public struct OverviewResponses: Sendable {
         weeklyProjectRange: OverviewRangeResolution? = nil,
         additionalNotices: [AppNotice] = []
     ) {
+        self.account = account
         self.usage = usage
         self.weeklyUsage = weeklyUsage ?? usage
         self.quota = quota
@@ -36,6 +39,102 @@ public struct OverviewResponses: Sendable {
         self.rangeResolution = rangeResolution
         self.weeklyProjectRange = weeklyProjectRange ?? rangeResolution
         self.additionalNotices = additionalNotices
+    }
+
+    func replacingAccount(
+        _ account: Codexpulse_Core_V1_AccountSnapshotResponse?
+    ) -> OverviewResponses {
+        OverviewResponses(
+            usage: usage,
+            quota: quota,
+            account: account,
+            sessions: sessions,
+            projects: projects,
+            health: health,
+            rangeResolution: rangeResolution,
+            weeklyUsage: weeklyUsage,
+            weeklyProjects: weeklyProjects,
+            weeklyProjectRange: weeklyProjectRange,
+            additionalNotices: additionalNotices
+        )
+    }
+}
+
+public enum CodexAccountAvailability: Equatable, Sendable {
+    case available
+    case empty
+    case unavailable
+}
+
+public struct CodexAccountPresentation: Equatable, Sendable {
+    public let availability: CodexAccountAvailability
+    public let type: String?
+    public let email: String?
+    public let planType: String?
+    public let planText: String
+    public let emailText: String
+    public let accessibilityLabel: String
+
+    public init(_ response: Codexpulse_Core_V1_AccountSnapshotResponse?) {
+        guard let response else {
+            availability = .unavailable
+            type = nil
+            email = nil
+            planType = nil
+            planText = "--"
+            emailText = "--"
+            accessibilityLabel = "Codex 账户与套餐信息暂不可用"
+            return
+        }
+        guard response.hasAccount else {
+            availability = .empty
+            type = nil
+            email = nil
+            planType = nil
+            planText = "--"
+            emailText = "--"
+            accessibilityLabel = "当前没有 Codex 账户信息"
+            return
+        }
+
+        let account = response.account
+        let normalizedType = Self.nonEmpty(account.type)
+        let normalizedEmail = account.hasEmail ? Self.nonEmpty(account.email) : nil
+        let normalizedPlan = account.hasPlanType ? Self.nonEmpty(account.planType) : nil
+        availability = .available
+        type = normalizedType
+        email = normalizedEmail
+        planType = normalizedPlan
+
+        guard normalizedType == "chatgpt" else {
+            planText = "--"
+            emailText = "--"
+            accessibilityLabel = "Codex 账户类型 \(normalizedType ?? "--")"
+            return
+        }
+        planText = Self.planDisplayName(normalizedPlan)
+        emailText = normalizedEmail ?? "--"
+        accessibilityLabel = "Codex 套餐 \(planText)，账号 \(emailText)"
+    }
+
+    private static func nonEmpty(_ value: String) -> String? {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private static func planDisplayName(_ value: String?) -> String {
+        switch value {
+        case "free": "Free"
+        case "go": "Go"
+        case "plus": "Plus"
+        case "pro": "Pro"
+        case "prolite": "Pro Lite"
+        case "team": "Team"
+        case "self_serve_business_usage_based", "business": "Business"
+        case "enterprise_cbp_usage_based", "enterprise": "Enterprise"
+        case "edu": "Edu"
+        default: "--"
+        }
     }
 }
 
@@ -621,6 +720,7 @@ public struct HealthPresentation: Equatable, Sendable {
 }
 
 public struct OverviewPresentation: Equatable, Sendable {
+    public let account: CodexAccountPresentation
     public let quotaWindows: [QuotaWindowPresentation]
     public let resetCredits: ResetCreditsPresentation
     public let evaluatedAtMS: Int64
@@ -656,6 +756,7 @@ public struct OverviewPresentation: Equatable, Sendable {
     public init(_ responses: OverviewResponses) {
         let requestedRange = responses.rangeResolution?.requestedPreset ?? .quotaWeek
         let isWeeklyQuotaRange = requestedRange == .quotaWeek
+        self.account = CodexAccountPresentation(responses.account)
         self.quotaWindows = responses.quota.current.windows.map(QuotaWindowPresentation.init)
         self.resetCredits = ResetCreditsPresentation(responses.quota.current.resetCredits)
         self.evaluatedAtMS = responses.quota.current.evaluatedAtMs

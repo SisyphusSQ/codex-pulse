@@ -22,7 +22,7 @@ func TestCoreProtoExposesExactRPCSurface(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
-		"AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DataHealth",
+		"AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DataHealth",
 		"Handshake", "Health", "HealthProjection", "Job", "ListHealth", "ListJobs", "ListProjects",
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
 		"MigrationRecoveryExit", "MigrationRecoveryPrepare", "MigrationRecoveryRetry",
@@ -58,6 +58,8 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		`(?s)message UsageCostRequest\s*\{.*LocalDateRange range\s*=\s*1\s*;.*string granularity\s*=\s*2\s*;.*optional UTCTimeRange exact_range\s*=\s*3\s*;`,
 		`(?s)message ProjectDetailRequest\s*\{.*LocalDateRange range\s*=\s*2\s*;.*optional UTCTimeRange exact_range\s*=\s*5\s*;`,
 		`(?s)message UsageCostResponse\s*\{.*repeated UsageModelItem models\s*=\s*11\s*;`,
+		`(?s)message CodexAccountIdentity\s*\{\s*string type\s*=\s*1\s*;\s*optional string email\s*=\s*2\s*;\s*optional string plan_type\s*=\s*3\s*;\s*\}`,
+		`(?s)message AccountSnapshotResponse\s*\{\s*optional CodexAccountIdentity account\s*=\s*1\s*;\s*\}`,
 	} {
 		if !regexp.MustCompile(pattern).MatchString(content) {
 			t.Fatalf("core.proto does not satisfy contract pattern %q", pattern)

@@ -466,45 +466,76 @@ private func testStatusPopoverShowsLocalizedModelDailyTrend() throws {
     )
 }
 
-private func testPopoverAccountSummaryNeverExposesRawAccountScope() throws {
+private func testPopoverHeaderMatchesSessionNestLayoutAndNeutralFocus() throws {
+    let source = try mainWindowSource("StatusItemController.swift")
+    try expect(
+        source.contains("NSSize(width: 460, height: 640)")
+            && source.contains(".frame(width: 460, height: 640)")
+            && source.contains("HStack(alignment: .top, spacing: 0)")
+            && source.contains("HStack(spacing: 4)"),
+        "Popover must use the widened SessionNest-style single-row header"
+    )
+    try expect(
+        source.contains("GitHubMarkShape().fill(.primary)")
+            && source.contains("headerDividerHeight")
+            && source.contains("case .idle: \"camera\"")
+            && source.contains("Image(systemName: screenshotFeedback.systemImage)")
+            && source.contains("Image(systemName: \"arrow.triangle.2.circlepath\")")
+            && source.contains("Image(systemName: \"rectangle.split.2x1\")"),
+        "Popover header must preserve the SessionNest icon group and ordering"
+    )
+    try expect(
+        source.contains("headerButtonDiameter: CGFloat = 30")
+            && source.contains("headerIconSize: CGFloat = 16")
+            && source.contains("minimumHitTarget: CGFloat = 44")
+            && source.contains(".focusEffectDisabled()")
+            && source.contains("isFocused: focusedControl.wrappedValue == target"),
+        "Popover header controls must keep 44-point hit targets with neutral visible keyboard focus"
+    )
+    try expect(
+        source.contains("private struct PopoverAccountCapsule")
+            && source.contains(".background(Color.orange.opacity(0.14), in: Capsule())")
+            && !source.contains("case accountSummary")
+            && !source.contains("focusedControl = .accountSummary"),
+        "account and plan must be a non-interactive orange capsule without the regressed selection frame"
+    )
+}
+
+private func testPopoverAccountSummaryShowsSessionNestAccountFieldsOnly() throws {
     let overview = OverviewPresentation(makeResponses(
         accountScope: "account-token-/Users/private/example@example.com"
     ))
     let summary = overview.popoverAccountSummary
 
-    try expect(summary.availability == .available, "quota facts must produce an available account summary")
-    try expect(summary.title == "当前 Codex 账号", "account summary must use privacy-safe copy")
-    try expect(
-        summary.detail == "套餐信息未提供 · 2 项额度",
-        "account summary must describe only the display-level quota facts"
-    )
+    try expect(summary.availability == .available, "account/read facts must be available")
+    try expect(summary.planText == "Pro", "account plan type must use SessionNest product copy")
+    try expect(summary.emailText == "person@example.com", "account email must remain user-visible")
     try expect(
         !summary.accessibilityLabel.contains("account-token")
-            && !summary.accessibilityLabel.contains("/Users/")
-            && !summary.accessibilityLabel.contains("@example.com"),
-        "account summary must never expose the raw account scope"
+            && !summary.accessibilityLabel.contains("/Users/private"),
+        "account summary must not fall back to the unrelated quota account scope"
     )
 }
 
 private func testPopoverAccountSummaryDistinguishesEmptyAndUnavailableData() throws {
-    let empty = OverviewPresentation(makeResponses(includeWeeklyQuota: false))
+    let empty = OverviewPresentation(makeResponses(includeAccountIdentity: false))
         .popoverAccountSummary
-    try expect(empty.availability == .empty, "a successful empty response must remain empty")
+    try expect(empty.availability == .empty, "a successful empty account/read response must remain empty")
     try expect(
-        empty.detail == "套餐信息未提供 · 暂无额度数据",
-        "an empty response must not be described as a transport failure"
+        empty.planText == "--" && empty.emailText == "--",
+        "an empty account/read response must retain the SessionNest placeholders"
     )
 
-    let unavailable = OverviewPresentation(makeResponses(quotaStatus: "unavailable"))
+    let unavailable = OverviewPresentation(makeResponses(includeAccountResponse: false))
         .popoverAccountSummary
-    try expect(unavailable.availability == .unavailable, "unavailable quota data must stay unavailable")
+    try expect(unavailable.availability == .unavailable, "a failed account/read response must stay unavailable")
     try expect(
-        unavailable.detail == "套餐与额度信息暂不可用",
-        "unavailable quota data must expose a user-facing unavailable state"
+        unavailable.accessibilityLabel.contains("暂不可用"),
+        "an unavailable account/read response must expose a user-facing unavailable state"
     )
 }
 
-private func testPopoverPrivacySummaryContainsOnlyApprovedAggregateFacts() throws {
+private func testPopoverSummaryContainsDisplayedAccountWithoutInternalIdentifiers() throws {
     let overview = OverviewPresentation(makeResponses(
         accountScope: "private-account-marker"
     ))
@@ -512,21 +543,21 @@ private func testPopoverPrivacySummaryContainsOnlyApprovedAggregateFacts() throw
 
     try expect(
         summary.plainText == """
-        Codex Pulse 隐私摘要
-        账户：当前 Codex 账号
-        套餐与额度：套餐信息未提供 · 2 项额度
+        Codex Pulse Popover 摘要
+        套餐：Pro
+        账号：person@example.com
         额度 1：通用额度 · 7 天，剩余 0%，下次重置 1 小时
         额度 2：通用额度，剩余 --，下次重置 --
         重置次数：1 可用 / 2 总数
-        仅包含 Popover 已展示的聚合信息
+        仅包含 Popover 已展示信息
         """,
-        "privacy summary must have a deterministic aggregate-only clipboard payload"
+        "Popover summary must have a deterministic displayed-information payload"
     )
     try expect(
         !summary.plainText.contains("private-account-marker")
             && !summary.plainText.contains("session-test")
             && !summary.plainText.contains("project-test"),
-        "privacy summary must exclude account, session, and project identifiers"
+        "Popover summary must exclude internal account scope, session, and project identifiers"
     )
 }
 
@@ -575,8 +606,8 @@ private func testPopoverCopyActionStopsWhenSafeScreenshotIsUnavailable() throws 
     try expect(clipboardWriteCount == 0, "render failure must not write any clipboard fallback")
     try expect(
         result == .failure(
-            title: "无法复制安全摘要",
-            message: "安全截图生成失败，未写入剪贴板。"
+            title: "无法复制 Popover 摘要",
+            message: "Popover 截图生成失败，未写入剪贴板。"
         ),
         "render failure must be visible and privacy preserving"
     )
@@ -592,7 +623,7 @@ private func testPopoverCopyActionReportsClipboardFailureWithoutRawFallback() th
 
     try expect(
         result == .failure(
-            title: "无法复制安全摘要",
+            title: "无法复制 Popover 摘要",
             message: "剪贴板写入失败，未复制任何数据。"
         ),
         "clipboard failure must not claim success or fall back to raw data"
@@ -619,8 +650,8 @@ private func testPopoverCopyActionWritesOneSafeImageAndTextPayload() throws {
     try expect(writtenPNG == expectedPNG, "copy action must write the rendered safe screenshot")
     try expect(
         result == .success(
-            title: "已复制安全摘要",
-            message: "安全截图和脱敏摘要已写入剪贴板。"
+            title: "已复制 Popover 摘要",
+            message: "Popover 截图和摘要已写入剪贴板。"
         ),
         "copy action must expose a user-visible success result"
     )
@@ -634,7 +665,7 @@ private func testPopoverPasteboardWriterUsesOneRealItemForTextAndPNG() throws {
         )
     )
     defer { pasteboard.clearContents() }
-    let text = "Codex Pulse 隐私摘要\n仅包含展示级聚合信息"
+    let text = "Codex Pulse Popover 摘要\n仅包含 Popover 已展示信息"
     let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
 
     try expect(
@@ -1145,9 +1176,11 @@ private actor FakeCore: AppCoreServing {
     private var responses: OverviewResponses
     private var failOverview = false
     private var failOverviewProjects = false
+    private var failAccount = false
     private var handshakeFailure = false
     private var handshakeError: CoreClientError?
     private var overviewDelay: Duration = .zero
+    private var accountDelay: Duration = .zero
     private var handshakeDelay: Duration = .zero
     private var bootstrapDelay: Duration = .zero
     private var shutdownDelay: Duration = .zero
@@ -1186,6 +1219,7 @@ private actor FakeCore: AppCoreServing {
     private var systemWillSleepReleased = false
     private var systemWillSleepWaiters: [CheckedContinuation<Void, Never>] = []
     private var readyInvalidationStreamCalls = 0
+    private var completedAccountCalls = 0
 
     init(
         bootstrap: Codexpulse_Core_V1_BootstrapResponse,
@@ -1199,9 +1233,11 @@ private actor FakeCore: AppCoreServing {
 
     func setOverviewFailure(_ value: Bool) { failOverview = value }
     func setOverviewProjectFailure(_ value: Bool) { failOverviewProjects = value }
+    func setAccountFailure(_ value: Bool) { failAccount = value }
     func setHandshakeFailure(_ value: Bool) { handshakeFailure = value }
     func setHandshakeError(_ value: CoreClientError?) { handshakeError = value }
     func setOverviewDelay(_ value: Duration) { overviewDelay = value }
+    func setAccountDelay(_ value: Duration) { accountDelay = value }
     func setHandshakeDelay(_ value: Duration) { handshakeDelay = value }
     func setBootstrapDelay(_ value: Duration) { bootstrapDelay = value }
     func setShutdownDelay(_ value: Duration) { shutdownDelay = value }
@@ -1320,6 +1356,7 @@ private actor FakeCore: AppCoreServing {
     func recordedUsageRequests() -> [Codexpulse_Core_V1_UsageCostRequest] { usageRequests }
     func recordedSessionRequests() -> [Codexpulse_Core_V1_ListSessionsRequest] { sessionRequests }
     func recordedProjectRequests() -> [Codexpulse_Core_V1_ListProjectsRequest] { projectRequests }
+    func recordedCompletedAccountCalls() -> Int { completedAccountCalls }
 
     func handshake(
         clientName: String,
@@ -1373,6 +1410,16 @@ private actor FakeCore: AppCoreServing {
         if overviewDelay != .zero { try await Task.sleep(for: overviewDelay) }
         if shouldFail { throw FakeFailure.unavailable }
         return responses.quota
+    }
+
+    func accountSnapshot(
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_AccountSnapshotResponse {
+        calls.append("account")
+        defer { completedAccountCalls += 1 }
+        if accountDelay != .zero { try await Task.sleep(for: accountDelay) }
+        if failAccount { throw FakeFailure.unavailable }
+        return responses.account ?? .init()
     }
 
     func listSessions(
@@ -1568,8 +1615,25 @@ private func makeResponses(
     partial: Bool = false,
     includeWeeklyQuota: Bool = true,
     accountScope: String = "default",
-    quotaStatus: String = "complete"
+    quotaStatus: String = "complete",
+    includeAccountResponse: Bool = true,
+    includeAccountIdentity: Bool = true,
+    accountType: String = "chatgpt",
+    accountEmail: String? = "person@example.com",
+    accountPlanType: String? = "pro"
 ) -> OverviewResponses {
+    var accountResponse: Codexpulse_Core_V1_AccountSnapshotResponse?
+    if includeAccountResponse {
+        var response = Codexpulse_Core_V1_AccountSnapshotResponse()
+        if includeAccountIdentity {
+            var account = Codexpulse_Core_V1_CodexAccountIdentity()
+            account.type = accountType
+            if let accountEmail { account.email = accountEmail }
+            if let accountPlanType { account.planType = accountPlanType }
+            response.account = account
+        }
+        accountResponse = response
+    }
     var usage = Codexpulse_Core_V1_UsageCostResponse()
     usage.meta = completeMeta()
     usage.totals.totalTokens.value = 0
@@ -1658,7 +1722,13 @@ private func makeResponses(
     health.level = "healthy"
 
     return OverviewResponses(
-        usage: usage, quota: quota, sessions: sessions, projects: projects, health: health)
+        usage: usage,
+        quota: quota,
+        account: accountResponse,
+        sessions: sessions,
+        projects: projects,
+        health: health
+    )
 }
 
 private func makeSessionPage(
@@ -2417,6 +2487,103 @@ private func testAppRuntimeUsesWeeklyQuotaRangeForOverview() async throws {
     }
     try expect(quotaIndex < usageIndex, "quota must be observed before the weekly usage request")
     _ = await runtime.shutdown()
+}
+
+@MainActor
+private func testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess() async throws {
+    let hangingCore = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses()
+    )
+    await hangingCore.setAccountDelay(.seconds(60))
+    await hangingCore.setInvalidation(domain: "index", delay: .milliseconds(50))
+    let hangingModel = AppModel(runtime: AppRuntime(
+        supervisor: FakeSupervisor(),
+        clientFactory: { _ in hangingCore }
+    ))
+    hangingModel.start()
+    try await waitUntil("hanging account/read initial Overview") {
+        await MainActor.run {
+            hangingModel.presentation != nil && !hangingModel.isOverviewRefreshing
+        }
+    }
+    try expect(
+        hangingModel.presentation?.account.availability == .unavailable,
+        "a hanging initial account/read must publish Overview with unavailable account semantics"
+    )
+    try await waitUntil("hanging account/read invalidation Overview") {
+        let usageCalls = await hangingCore.recordedUsageRequests().count
+        let accountCalls = await hangingCore.recordedCalls().filter { $0 == "account" }.count
+        let isRefreshing = await MainActor.run { hangingModel.isOverviewRefreshing }
+        return usageCalls >= 2 && accountCalls >= 2 && !isRefreshing
+    }
+    hangingModel.refreshOrRestart()
+    try await waitUntil("hanging account/read manual Overview") {
+        let usageCalls = await hangingCore.recordedUsageRequests().count
+        let accountCalls = await hangingCore.recordedCalls().filter { $0 == "account" }.count
+        let isRefreshing = await MainActor.run { hangingModel.isOverviewRefreshing }
+        return usageCalls >= 3 && accountCalls >= 3 && !isRefreshing
+    }
+    _ = await hangingModel.shutdown()
+
+    let failingCore = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses()
+    )
+    await failingCore.setAccountFailure(true)
+    let failingRuntime = AppRuntime(
+        supervisor: FakeSupervisor(),
+        clientFactory: { _ in failingCore }
+    )
+    let failingModel = AppModel(runtime: failingRuntime)
+    failingModel.start()
+    try await waitUntil("optional account/read failure") {
+        let completed = await failingCore.recordedCompletedAccountCalls()
+        return await MainActor.run {
+            completed >= 1 && failingModel.presentation != nil
+                && !failingModel.isOverviewRefreshing
+        }
+    }
+    try expect(
+        failingModel.presentation?.account.availability == .unavailable,
+        "an initial account/read failure must not downgrade the rest of Overview"
+    )
+    _ = await failingModel.shutdown()
+
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses()
+    )
+    let runtime = AppRuntime(
+        supervisor: FakeSupervisor(),
+        clientFactory: { _ in core }
+    )
+    let model = AppModel(runtime: runtime)
+    model.start()
+    try await waitUntil("initial account/read success") {
+        await MainActor.run { model.presentation?.account.planText == "Pro" }
+    }
+    await core.setAccountFailure(true)
+    await core.setAccountDelay(.milliseconds(100))
+    model.refreshOrRestart()
+    try await waitUntil("failed account/read does not block manual Overview") {
+        let accountCalls = await core.recordedCalls().filter { $0 == "account" }.count
+        let isRefreshing = await MainActor.run { model.isOverviewRefreshing }
+        return accountCalls >= 2 && !isRefreshing
+    }
+    try expect(
+        model.presentation?.account.planText == "Pro",
+        "an in-flight optional account refresh must retain the last successful account"
+    )
+    try await waitUntil("failed account/read completes independently") {
+        await core.recordedCompletedAccountCalls() >= 2
+    }
+    try expect(
+        model.presentation?.account.planText == "Pro"
+            && model.presentation?.account.emailText == "person@example.com",
+        "a later account/read failure must retain the last successful display fields"
+    )
+    _ = await model.shutdown()
 }
 
 @MainActor
@@ -4069,9 +4236,10 @@ struct CodexPulseAppTestMain {
         try testEveryTokenChartUsesLocalizedAxisAndAccessibilityUnits()
         try testEveryTokenSurfaceUsesInputOutputBreakdown()
         try testStatusPopoverShowsLocalizedModelDailyTrend()
-        try testPopoverAccountSummaryNeverExposesRawAccountScope()
+        try testPopoverHeaderMatchesSessionNestLayoutAndNeutralFocus()
+        try testPopoverAccountSummaryShowsSessionNestAccountFieldsOnly()
         try testPopoverAccountSummaryDistinguishesEmptyAndUnavailableData()
-        try testPopoverPrivacySummaryContainsOnlyApprovedAggregateFacts()
+        try testPopoverSummaryContainsDisplayedAccountWithoutInternalIdentifiers()
         try testPopoverProjectActionUsesExactPublicRepositoryURL()
         try testPopoverProjectActionMakesSystemOpenFailureVisible()
         try testPopoverCopyActionStopsWhenSafeScreenshotIsUnavailable()
@@ -4096,6 +4264,7 @@ struct CodexPulseAppTestMain {
         try testOverviewRangeIncludesQuotaWeek()
         try testRequestFactoryAndPresentation()
         try await testAppRuntimeUsesWeeklyQuotaRangeForOverview()
+        try await testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess()
         try await testAppRuntimeFallsBackWhenWeeklyQuotaIsUnavailable()
         try await testOverviewRangeSelectionRefreshesAllContent()
         try await testOverviewProjectFailureDoesNotHideUsageAndSessions()

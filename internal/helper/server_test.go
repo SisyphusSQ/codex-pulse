@@ -76,7 +76,7 @@ func TestGRPCAPIImplementsEveryFrozenRPC(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
-		"AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DataHealth",
+		"AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DataHealth",
 		"Handshake", "Health", "HealthProjection", "Job", "ListHealth", "ListJobs", "ListProjects",
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
 		"MigrationRecoveryExit", "MigrationRecoveryPrepare", "MigrationRecoveryRetry",
@@ -218,6 +218,38 @@ func startTestGRPCServer(
 	return startConfiguredTestGRPCServer(t, nil)
 }
 
+func TestGRPCServerReturnsOnlyAccountDisplayFields(t *testing.T) {
+	email, planType := "person@example.com", "pro"
+	account := &helperAccountSnapshotStub{snapshot: core.AccountSnapshot{
+		Account: &core.AccountIdentity{Type: "chatgpt", Email: &email, PlanType: &planType},
+	}}
+	business, err := core.NewService(core.ServiceConfig{
+		UsageCost:       &helperUsageQueryStub{},
+		RuntimeInfo:     helperRuntimeQueryStub{},
+		AccountSnapshot: account,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, authorize := startConfiguredTestGRPCServer(t, func(config *ServerConfig) {
+		config.Service = business
+	})
+
+	response, err := client.AccountSnapshot(
+		authorize(t.Context()),
+		&corev1.AccountSnapshotRequest{},
+	)
+	if err != nil {
+		t.Fatalf("AccountSnapshot() error = %v", err)
+	}
+	if response.GetAccount() == nil || response.Account.Type != "chatgpt" ||
+		response.Account.Email == nil || response.Account.GetEmail() != email ||
+		response.Account.PlanType == nil || response.Account.GetPlanType() != planType ||
+		account.calls != 1 {
+		t.Fatalf("AccountSnapshot() = %#v, calls = %d", response, account.calls)
+	}
+}
+
 // 测试 UsageCost RPC 映射保留精确 UTC 半开区间，不转换成本地自然日。
 func TestFromProtoUsageCostRequestPreservesExactRange(t *testing.T) {
 	request := fromProtoUsageCostRequest(&corev1.UsageCostRequest{
@@ -280,6 +312,18 @@ type helperUsageQueryStub struct {
 	request  basequery.Request
 	response usagecost.SessionListResponse
 	err      error
+}
+
+type helperAccountSnapshotStub struct {
+	snapshot core.AccountSnapshot
+	calls    int
+}
+
+func (stub *helperAccountSnapshotStub) AccountSnapshot(
+	context.Context,
+) (core.AccountSnapshot, error) {
+	stub.calls++
+	return stub.snapshot, nil
 }
 
 type shutdownRequestStub struct {

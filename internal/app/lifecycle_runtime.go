@@ -11,8 +11,10 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/bootstrap"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	appLifecycle "github.com/SisyphusSQ/codex-pulse/internal/lifecycle"
 	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/liveindex"
@@ -49,6 +51,12 @@ type confirmedPreferencesLoader interface {
 	LoadPreferences(context.Context) (preferences.Snapshot, error)
 }
 
+type applicationAccountReader func(
+	context.Context,
+	appserver.ConfirmedHome,
+	appserver.ProcessOptions,
+) (*appserver.AccountSnapshot, error)
+
 type ApplicationLifecycleRuntimeConfig struct {
 	Database             *storesqlite.Store
 	Preferences          confirmedPreferencesLoader
@@ -71,6 +79,7 @@ type applicationLifecycleRuntime struct {
 	quota          *applicationQuotaRuntime
 	preferences    *preferences.Service
 	settingsLoader confirmedPreferencesLoader
+	accountReader  applicationAccountReader
 	database       *storesqlite.Store
 	invalidation   queryInvalidationNotifier
 	cancel         context.CancelFunc
@@ -329,7 +338,8 @@ func startApplicationLifecycleRuntime(
 		adapter: adapter, coordinator: coordinator, scheduler: schedulerService,
 		repository: repository, quota: quotaRuntime,
 		preferences: preferencesService, settingsLoader: loader, database: config.Database,
-		invalidation: config.Invalidation, cancel: cancel,
+		accountReader: appserver.ReadLocalAccount,
+		invalidation:  config.Invalidation, cancel: cancel,
 		workerDone: make(chan error, 1), lightRuntime: lightRuntime, lightRun: lightRun,
 		controlCtx: controlCtx, controlStop: controlStop,
 		controlAccepting: true, controlDone: closedApplicationLifecycleSignal(),
@@ -882,6 +892,90 @@ func (provider fileConfirmedHomeProvider) CurrentHome(ctx context.Context) (appL
 		DeviceID:   snapshot.CodexHome.Source.DeviceID,
 		Inode:      snapshot.CodexHome.Source.Inode,
 	}, nil
+}
+
+func (runtime *applicationLifecycleRuntime) AccountSnapshot(
+	ctx context.Context,
+) (core.AccountSnapshot, error) {
+	if runtime == nil || runtime.settingsLoader == nil || ctx == nil {
+		return core.AccountSnapshot{}, ErrApplicationLifecycleRuntime
+	}
+	reader := runtime.accountReader
+	if reader == nil {
+		reader = appserver.ReadLocalAccount
+	}
+	account, err := readConfirmedApplicationAccount(
+		ctx,
+		fileConfirmedHomeProvider{loader: runtime.settingsLoader},
+		reader,
+	)
+	if err != nil {
+		return core.AccountSnapshot{}, err
+	}
+	if account == nil {
+		return core.AccountSnapshot{}, nil
+	}
+	return core.AccountSnapshot{Account: &core.AccountIdentity{
+		Type:     account.Type,
+		Email:    cloneApplicationAccountField(account.Email),
+		PlanType: cloneApplicationAccountField(account.PlanType),
+	}}, nil
+}
+
+func readConfirmedApplicationAccount(
+	ctx context.Context,
+	provider appLifecycle.ConfirmedHomeProvider,
+	reader applicationAccountReader,
+) (*appserver.AccountSnapshot, error) {
+	if ctx == nil || provider == nil || reader == nil {
+		return nil, ErrApplicationLifecycleRuntime
+	}
+	confirmed, err := provider.CurrentHome(ctx)
+	if err != nil {
+		return nil, applicationLifecycleDependencyError(ctx, err)
+	}
+	// 在交给 descriptor guard 前重新读取逻辑快照，避免旧代际进入启动阶段。
+	beforeLaunch, err := provider.CurrentHome(ctx)
+	if err != nil {
+		return nil, applicationLifecycleDependencyError(ctx, err)
+	}
+	if beforeLaunch != confirmed {
+		return nil, ErrApplicationLifecycleRuntime
+	}
+	account, err := reader(ctx, appserver.ConfirmedHome{
+		Generation: confirmed.Generation,
+		Path:       confirmed.Path,
+		DeviceID:   confirmed.DeviceID,
+		Inode:      confirmed.Inode,
+	}, appserver.ProcessOptions{BeforeStart: func(startContext context.Context) error {
+		current, err := provider.CurrentHome(startContext)
+		if err != nil {
+			return applicationLifecycleDependencyError(startContext, err)
+		}
+		if current != confirmed {
+			return ErrApplicationLifecycleRuntime
+		}
+		return nil
+	}})
+	if err != nil {
+		return nil, applicationLifecycleDependencyError(ctx, err)
+	}
+	afterRead, err := provider.CurrentHome(ctx)
+	if err != nil {
+		return nil, applicationLifecycleDependencyError(ctx, err)
+	}
+	if afterRead != confirmed {
+		return nil, ErrApplicationLifecycleRuntime
+	}
+	return account, nil
+}
+
+func cloneApplicationAccountField(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func startupEventID(kind string) string {

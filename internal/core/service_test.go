@@ -21,7 +21,7 @@ func TestServiceExposesExactBusinessSurface(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
-		"AnalyzeSessionIndexRepair", "ConfirmHomeSwitch", "Contracts", "DataHealth", "Health",
+		"AccountSnapshot", "AnalyzeSessionIndexRepair", "ConfirmHomeSwitch", "Contracts", "DataHealth", "Health",
 		"HealthProjection", "Job", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
 		"PlanHomeSwitch", "ProjectDetail", "QuotaCurrent", "RecoverHomeSwitch", "RequestQuotaRefresh",
 		"RunRuntimeAction", "SessionDetail", "Settings", "Source", "UpdateSettings", "UsageCost",
@@ -29,6 +29,30 @@ func TestServiceExposesExactBusinessSurface(t *testing.T) {
 	sort.Strings(want)
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("Service methods = %v, want %v", got, want)
+	}
+}
+
+func TestServiceDelegatesEphemeralAccountSnapshot(t *testing.T) {
+	email, planType := "person@example.com", "pro"
+	account := &accountSnapshotQueryStub{snapshot: AccountSnapshot{
+		Account: &AccountIdentity{Type: "chatgpt", Email: &email, PlanType: &planType},
+	}}
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageQueryStub{}, RuntimeInfo: runtimeQueryStub{},
+		AccountSnapshot: account,
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	got, err := service.AccountSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("AccountSnapshot() error = %v", err)
+	}
+	if got.Account == nil || got.Account.Type != "chatgpt" || got.Account.Email == nil ||
+		*got.Account.Email != email || got.Account.PlanType == nil ||
+		*got.Account.PlanType != planType || account.calls != 1 {
+		t.Fatalf("AccountSnapshot() = %#v, calls = %d", got, account.calls)
 	}
 }
 
@@ -96,6 +120,16 @@ func (*usageQueryStub) ListProjects(context.Context, basequery.Request) (usageco
 
 func (*usageQueryStub) ProjectDetail(context.Context, usagecost.ProjectDetailRequest) (usagecost.ProjectDetailResponse, error) {
 	return usagecost.ProjectDetailResponse{}, nil
+}
+
+type accountSnapshotQueryStub struct {
+	snapshot AccountSnapshot
+	calls    int
+}
+
+func (stub *accountSnapshotQueryStub) AccountSnapshot(context.Context) (AccountSnapshot, error) {
+	stub.calls++
+	return stub.snapshot, nil
 }
 
 type runtimeQueryStub struct{}

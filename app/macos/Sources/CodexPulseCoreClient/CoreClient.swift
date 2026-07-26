@@ -74,6 +74,25 @@ public actor CoreClient {
         }
     }
 
+    public func accountSnapshot(
+        retryPolicy: ReadRetryPolicy = .none
+    ) async throws -> Codexpulse_Core_V1_AccountSnapshotResponse {
+        let service = service
+        let metadata = metadata
+        let options: CallOptions = {
+            var options = CallOptions.defaults
+            options.timeout = .seconds(5)
+            return options
+        }()
+        return try await retryPolicy.execute {
+            try await service.accountSnapshot(
+                Codexpulse_Core_V1_AccountSnapshotRequest(),
+                metadata: metadata,
+                options: options
+            )
+        }
+    }
+
     public func usageCost(
         _ request: Codexpulse_Core_V1_UsageCostRequest,
         retryPolicy: ReadRetryPolicy = .transportDefault

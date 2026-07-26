@@ -9,6 +9,7 @@ service CoreService {
   rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
   rpc Bootstrap(BootstrapRequest) returns (BootstrapResponse);
   rpc Contracts(ContractsRequest) returns (ContractsResponse);
+  rpc AccountSnapshot(AccountSnapshotRequest) returns (AccountSnapshotResponse);
   rpc UsageCost(UsageCostRequest) returns (UsageCostResponse);
   rpc ListSessions(ListSessionsRequest) returns (SessionListResponse);
   rpc SessionDetail(SessionDetailRequest) returns (SessionDetailResponse);
@@ -907,3 +908,15 @@ message QueryInvalidationEvent {
 message ShutdownRequest { string reason = 1; }
 
 message ShutdownResponse { bool accepted = 1; }
+
+message AccountSnapshotRequest {}
+
+message CodexAccountIdentity {
+  string type = 1;
+  optional string email = 2;
+  optional string plan_type = 3;
+}
+
+message AccountSnapshotResponse {
+  optional CodexAccountIdentity account = 1;
+}

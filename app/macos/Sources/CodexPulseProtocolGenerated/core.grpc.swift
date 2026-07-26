@@ -59,6 +59,19 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
                 type: .unary
             )
         }
+        /// Namespace for "AccountSnapshot" metadata.
+        public enum AccountSnapshot: Sendable {
+            /// Request type for "AccountSnapshot".
+            public typealias Input = Codexpulse_Core_V1_AccountSnapshotRequest
+            /// Response type for "AccountSnapshot".
+            public typealias Output = Codexpulse_Core_V1_AccountSnapshotResponse
+            /// Descriptor for "AccountSnapshot".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "AccountSnapshot",
+                type: .unary
+            )
+        }
         /// Namespace for "UsageCost" metadata.
         public enum UsageCost: Sendable {
             /// Request type for "UsageCost".
@@ -467,6 +480,7 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
             Handshake.descriptor,
             Bootstrap.descriptor,
             Contracts.descriptor,
+            AccountSnapshot.descriptor,
             UsageCost.descriptor,
             ListSessions.descriptor,
             SessionDetail.descriptor,
@@ -576,6 +590,25 @@ extension Codexpulse_Core_V1_CoreService {
             deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_ContractsResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_ContractsResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "AccountSnapshot" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_AccountSnapshotRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_AccountSnapshotRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_AccountSnapshotResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func accountSnapshot<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_AccountSnapshotRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_AccountSnapshotRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_AccountSnapshotResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_AccountSnapshotResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
         /// Call the "UsageCost" method.
@@ -1271,6 +1304,36 @@ extension Codexpulse_Core_V1_CoreService {
             try await self.client.unary(
                 request: request,
                 descriptor: Codexpulse_Core_V1_CoreService.Method.Contracts.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "AccountSnapshot" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_AccountSnapshotRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_AccountSnapshotRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_AccountSnapshotResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func accountSnapshot<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_AccountSnapshotRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_AccountSnapshotRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_AccountSnapshotResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_AccountSnapshotResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.AccountSnapshot.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -2286,6 +2349,31 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
         )
     }
 
+    /// Call the "AccountSnapshot" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_AccountSnapshotRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func accountSnapshot<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_AccountSnapshotRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_AccountSnapshotResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.accountSnapshot(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_AccountSnapshotRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_AccountSnapshotResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "UsageCost" method.
     ///
     /// - Parameters:
@@ -3144,6 +3232,35 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
             metadata: metadata
         )
         return try await self.contracts(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "AccountSnapshot" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func accountSnapshot<Result>(
+        _ message: Codexpulse_Core_V1_AccountSnapshotRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_AccountSnapshotResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_AccountSnapshotRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.accountSnapshot(
             request: request,
             options: options,
             onResponse: handleResponse
