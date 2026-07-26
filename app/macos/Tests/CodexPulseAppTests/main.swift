@@ -1036,6 +1036,32 @@ private actor StateRecorder {
     func snapshot() -> [String] { phases }
 }
 
+private actor LoadingStateBarrier {
+    private var isBlockingLoading = false
+    private var loadingReleased = false
+    private var loadingWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func accept(_ state: CoreConnectionState) async {
+        guard case .loadingOverview = state else { return }
+        isBlockingLoading = true
+        guard !loadingReleased else { return }
+        await withCheckedContinuation { continuation in
+            loadingWaiters.append(continuation)
+        }
+    }
+
+    func isBlocking() -> Bool {
+        isBlockingLoading && !loadingReleased
+    }
+
+    func release() {
+        loadingReleased = true
+        let waiters = loadingWaiters
+        loadingWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+}
+
 private actor ForegroundSurfaceRecorder {
     private var overviewTimestamps: [Int64] = []
     private var unavailableCount = 0
@@ -1137,6 +1163,7 @@ private actor FakeCore: AppCoreServing {
     private var holdReconnectStreamReadiness = false
     private var reconnectStreamReadinessReleased = false
     private var reconnectStreamReadinessWaiters: [CheckedContinuation<Void, Never>] = []
+    private var reconnectReadySignalCount = 1
     private var blockSystemWillSleep = false
     private var systemWillSleepReleased = false
     private var systemWillSleepWaiters: [CheckedContinuation<Void, Never>] = []
@@ -1207,6 +1234,9 @@ private actor FakeCore: AppCoreServing {
         reconnectStreamReadinessWaiters.removeAll()
         waiters.forEach { $0.resume() }
     }
+    func setReconnectReadySignalCount(_ count: Int) {
+        reconnectReadySignalCount = max(1, count)
+    }
     func prepareSystemWillSleepBarrier() {
         blockSystemWillSleep = true
         systemWillSleepReleased = false
@@ -1256,6 +1286,15 @@ private actor FakeCore: AppCoreServing {
     func reconnectStreamReadinessWaiterCount() -> Int { reconnectStreamReadinessWaiters.count }
     func systemWillSleepWaiterCount() -> Int { systemWillSleepWaiters.count }
     func readyInvalidationStreamCallCount() -> Int { readyInvalidationStreamCalls }
+    func overviewCoreCallCount() -> Int {
+        calls.filter {
+            $0 == "quota"
+                || $0 == "usage"
+                || $0 == "sessions"
+                || $0 == "projects"
+                || $0 == "health"
+        }.count
+    }
     func recordedCalls() -> [String] { calls }
     func recordedUsageRequests() -> [Codexpulse_Core_V1_UsageCostRequest] { usageRequests }
     func recordedSessionRequests() -> [Codexpulse_Core_V1_ListSessionsRequest] { sessionRequests }
@@ -1452,8 +1491,11 @@ private actor FakeCore: AppCoreServing {
             }
             try Task.checkCancellation()
         }
-        await onReady()
-        readyInvalidationStreamCalls += 1
+        let readySignalCount = streamCall == 2 ? reconnectReadySignalCount : 1
+        for _ in 0..<readySignalCount {
+            await onReady()
+            readyInvalidationStreamCalls += 1
+        }
         if streamCall == 1,
            disconnectInitialStreamAfterReady,
            !initialStreamDisconnectReleased
@@ -3200,6 +3242,58 @@ private func testInitialInFlightReconnectQueuesOneRecoveryRefresh() async throws
     _ = await model.shutdown()
 }
 
+private func testReadyJitterBeforeInitialCoreQueryCompletesOneOverview() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.prepareReconnectWithoutInvalidationReplay()
+    await core.setReconnectReadySignalCount(2)
+    let loadingBarrier = LoadingStateBarrier()
+    let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    await runtime.setStateSink { state in
+        await loadingBarrier.accept(state)
+    }
+
+    let start = Task { await runtime.start() }
+    try await waitUntil("loading state sink blocks before the first Core query") {
+        await loadingBarrier.isBlocking()
+    }
+    var stats = await core.overviewRecoveryStats()
+    var overviewCoreCalls = await core.overviewCoreCallCount()
+    try expect(
+        stats.usageCalls == 0 && overviewCoreCalls == 0,
+        "blocking the loading sink must keep the first Core Overview query unstarted"
+    )
+    try await waitUntil("initial stream can disconnect during the loading-state window") {
+        await core.initialStreamDisconnectWaiterCount() == 1
+    }
+    await core.disconnectInitialInvalidationStream()
+    try await waitUntil("replacement stream waits before repeated ready signals") {
+        await core.reconnectStreamReadinessWaiterCount() == 1
+    }
+    await core.releaseReconnectStreamReadiness()
+    try await waitUntil("replacement and repeated ready signals arrive before the first Core query") {
+        await core.readyInvalidationStreamCallCount() == 3
+    }
+    stats = await core.overviewRecoveryStats()
+    overviewCoreCalls = await core.overviewCoreCallCount()
+    try expect(
+        stats.usageCalls == 0 && overviewCoreCalls == 0,
+        "ready jitter while loading is blocked must not start a Core query through reentrancy"
+    )
+
+    await loadingBarrier.release()
+    await start.value
+    stats = await core.overviewRecoveryStats()
+    try expect(
+        stats.usageCalls == 1 && stats.completedUsageCalls == 1,
+        "ready jitter before Core admission must complete exactly one Overview"
+    )
+    try expect(
+        stats.maximumConcurrentUsageCalls == 1,
+        "ready jitter before Core admission must preserve Overview single-flight"
+    )
+    _ = await runtime.shutdown()
+}
+
 @MainActor
 private func testUnavailableRecoveryFailureDoesNotPublishSuccess() async throws {
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
@@ -3771,6 +3865,7 @@ struct CodexPulseAppTestMain {
         try await testUnavailableRecoveryRefreshesOpenForegroundSurfaces()
         try await testSleepDuringInvalidationReadinessPreservesRuntimeUntilWake()
         try await testWakeBeforeSleepLifecycleCompletionResumesRuntime()
+        try await testReadyJitterBeforeInitialCoreQueryCompletesOneOverview()
         try await testInitialInFlightReconnectQueuesOneRecoveryRefresh()
         try await testSuspendingReadinessPastTimeoutPreservesRuntimeUntilWake()
         try await testRecoveryDuringDisconnectedStreamRefreshesAfterReconnectWithoutReplay()

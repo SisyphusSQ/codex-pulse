@@ -879,14 +879,14 @@ public actor AppRuntime {
             _ = try? await refreshTask.value
             return
         }
-        if initialOverviewRefreshState == .pending {
-            initialOverviewRefreshState = .inFlight
-        }
         if showLoading || lastResponses == nil { await emit(.loadingOverview) }
         let requests = OverviewRequestSet.make()
         let requestedRange = overviewRange
         refreshGeneration &+= 1
         let generation = refreshGeneration
+        if initialOverviewRefreshState == .pending {
+            initialOverviewRefreshState = .inFlight
+        }
         let task = Task<OverviewResponses, any Error> {
             let quotaResult = await captureOverviewSection {
                 try await client.quotaCurrent(requests.quota, retryPolicy: .transportDefault)
