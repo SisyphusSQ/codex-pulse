@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import CodexPulseAppSupport
 import CodexPulseCoreClient
 import CodexPulseProtocolGenerated
@@ -1035,6 +1036,30 @@ private actor StateRecorder {
     func snapshot() -> [String] { phases }
 }
 
+private actor ForegroundSurfaceRecorder {
+    private var overviewTimestamps: [Int64] = []
+    private var unavailableCount = 0
+
+    func append(_ state: AppViewState) {
+        switch state {
+        case .overview(let overview), .partial(let overview), .stale(let overview, _):
+            overviewTimestamps.append(overview.evaluatedAtMS)
+        case .unavailable:
+            unavailableCount += 1
+        default:
+            break
+        }
+    }
+
+    func observedUnavailable() -> Bool {
+        unavailableCount > 0
+    }
+
+    func latestOverviewTimestamp() -> Int64? {
+        overviewTimestamps.last
+    }
+}
+
 private actor FakeSupervisor: HelperSupervising {
     private var starts = 0
     private var stops = 0
@@ -1090,6 +1115,13 @@ private actor FakeCore: AppCoreServing {
     private var settingsUpdateFailure = false
     private var settingsReadDelay: Duration = .zero
     private var settingsUpdateDelay: Duration = .zero
+    private var overviewBarrierClosed = false
+    private var overviewBarrierWaiters: [CheckedContinuation<Void, Never>] = []
+    private var invalidationHandler:
+        (@Sendable (Codexpulse_Core_V1_QueryInvalidationEvent) async throws -> Void)?
+    private var nextInvalidationSequence: UInt64 = 1
+    private var activeUsageCalls = 0
+    private var maximumConcurrentUsageCalls = 0
 
     init(
         bootstrap: Codexpulse_Core_V1_BootstrapResponse,
@@ -1120,6 +1152,39 @@ private actor FakeCore: AppCoreServing {
     func setSettingsResponses(_ values: [Codexpulse_Core_V1_SettingsResponse], updateFailure: Bool) {
         settingsResponses = values
         settingsUpdateFailure = updateFailure
+    }
+    func prepareUnavailableOverviewRecovery() {
+        failOverview = true
+        overviewBarrierClosed = true
+    }
+    func publishOverviewInvalidations(
+        count: Int,
+        recovered: Bool
+    ) async {
+        if recovered { failOverview = false }
+        guard let invalidationHandler else { return }
+        for _ in 0..<count {
+            var event = Codexpulse_Core_V1_QueryInvalidationEvent()
+            event.version = CodexPulseTransportContract.invalidationVersion
+            event.domain = "index"
+            event.sequence = nextInvalidationSequence
+            nextInvalidationSequence += 1
+            try? await invalidationHandler(event)
+        }
+    }
+    func releaseOverviewBarrier() {
+        overviewBarrierClosed = false
+        let waiters = overviewBarrierWaiters
+        overviewBarrierWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+    func releaseNextOverviewBarrierWaiter() {
+        guard !overviewBarrierWaiters.isEmpty else { return }
+        overviewBarrierWaiters.removeFirst().resume()
+    }
+    func overviewBarrierWaiterCount() -> Int { overviewBarrierWaiters.count }
+    func overviewRecoveryStats() -> (usageCalls: Int, maximumConcurrentUsageCalls: Int) {
+        (usageRequests.count, maximumConcurrentUsageCalls)
     }
     func recordedCalls() -> [String] { calls }
     func recordedUsageRequests() -> [Codexpulse_Core_V1_UsageCostRequest] { usageRequests }
@@ -1155,8 +1220,13 @@ private actor FakeCore: AppCoreServing {
     ) async throws -> Codexpulse_Core_V1_UsageCostResponse {
         calls.append("usage")
         usageRequests.append(request)
+        let shouldFail = failOverview
+        activeUsageCalls += 1
+        maximumConcurrentUsageCalls = max(maximumConcurrentUsageCalls, activeUsageCalls)
+        defer { activeUsageCalls -= 1 }
+        await waitForOverviewBarrier()
         if overviewDelay != .zero { try await Task.sleep(for: overviewDelay) }
-        if failOverview { throw FakeFailure.unavailable }
+        if shouldFail { throw FakeFailure.unavailable }
         return responses.usage
     }
 
@@ -1165,8 +1235,10 @@ private actor FakeCore: AppCoreServing {
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_QuotaCurrentResponse {
         calls.append("quota")
+        let shouldFail = failOverview
+        await waitForOverviewBarrier()
         if overviewDelay != .zero { try await Task.sleep(for: overviewDelay) }
-        if failOverview { throw FakeFailure.unavailable }
+        if shouldFail { throw FakeFailure.unavailable }
         return responses.quota
     }
 
@@ -1182,8 +1254,10 @@ private actor FakeCore: AppCoreServing {
             if plan.fails { throw FakeFailure.unavailable }
             return plan.response
         }
+        let shouldFail = failOverview
+        await waitForOverviewBarrier()
         if overviewDelay != .zero { try await Task.sleep(for: overviewDelay) }
-        if failOverview { throw FakeFailure.unavailable }
+        if shouldFail { throw FakeFailure.unavailable }
         return responses.sessions
     }
 
@@ -1193,9 +1267,11 @@ private actor FakeCore: AppCoreServing {
     ) async throws -> Codexpulse_Core_V1_ProjectListResponse {
         calls.append("projects")
         projectRequests.append(request)
+        let shouldFail = failOverview
+        await waitForOverviewBarrier()
         if overviewDelay != .zero { try await Task.sleep(for: overviewDelay) }
         if request.query.page.limit == 5, failOverviewProjects { throw FakeFailure.unavailable }
-        if failOverview { throw FakeFailure.unavailable }
+        if shouldFail { throw FakeFailure.unavailable }
         if request.query.filters.contains(where: { $0.field == "confidence" }) {
             return responses.weeklyProjects
         }
@@ -1253,8 +1329,10 @@ private actor FakeCore: AppCoreServing {
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_HealthProjectionResponse {
         calls.append("health")
+        let shouldFail = failOverview
+        await waitForOverviewBarrier()
         if overviewDelay != .zero { try await Task.sleep(for: overviewDelay) }
-        if failOverview { throw FakeFailure.unavailable }
+        if shouldFail { throw FakeFailure.unavailable }
         return responses.health
     }
 
@@ -1280,6 +1358,8 @@ private actor FakeCore: AppCoreServing {
         onEvent: @Sendable @escaping (Codexpulse_Core_V1_QueryInvalidationEvent) async throws -> Void
     ) async throws {
         calls.append("stream:\(domains.joined(separator: ","))")
+        invalidationHandler = onEvent
+        defer { invalidationHandler = nil }
         await onReady()
         if let invalidationDomain {
             if invalidationDelay != .zero { try await Task.sleep(for: invalidationDelay) }
@@ -1290,6 +1370,13 @@ private actor FakeCore: AppCoreServing {
             try await onEvent(event)
         }
         try await Task.sleep(for: .seconds(60))
+    }
+
+    private func waitForOverviewBarrier() async {
+        guard overviewBarrierClosed else { return }
+        await withCheckedContinuation { continuation in
+            overviewBarrierWaiters.append(continuation)
+        }
     }
 
     func shutdown(reason: String) async throws {
@@ -2815,6 +2902,104 @@ private func testStaleAndUnavailable() async throws {
 }
 
 @MainActor
+private func testUnavailableRecoveryRefreshesOpenForegroundSurfaces() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.prepareUnavailableOverviewRecovery()
+    await core.setOverviewDelay(.milliseconds(80))
+    let model = AppModel(runtime: AppRuntime(
+        supervisor: FakeSupervisor(),
+        clientFactory: { _ in core }
+    ))
+    let mainWindow = ForegroundSurfaceRecorder()
+    let statusPopover = ForegroundSurfaceRecorder()
+    var cancellables: Set<AnyCancellable> = []
+    model.$state.sink { state in
+        Task { await mainWindow.append(state) }
+    }.store(in: &cancellables)
+    model.$state.sink { state in
+        Task { await statusPopover.append(state) }
+    }.store(in: &cancellables)
+
+    model.start()
+    try await waitUntil("initial unavailable quota is in flight") {
+        await core.overviewBarrierWaiterCount() == 1
+    }
+    await core.releaseNextOverviewBarrierWaiter()
+    try await waitUntil("initial unavailable Overview sections are in flight") {
+        await core.overviewBarrierWaiterCount() == 4
+    }
+    await core.publishOverviewInvalidations(count: 3, recovered: true)
+    await core.releaseOverviewBarrier()
+
+    try await waitUntil("main window observes unavailable before recovery") {
+        await mainWindow.observedUnavailable()
+    }
+    try await waitUntil("status Popover observes unavailable before recovery") {
+        await statusPopover.observedUnavailable()
+    }
+    try await waitUntil("main window receives recovered Overview") {
+        await mainWindow.latestOverviewTimestamp() != nil
+    }
+    try await waitUntil("status Popover receives recovered Overview") {
+        await statusPopover.latestOverviewTimestamp() != nil
+    }
+    let stats = await core.overviewRecoveryStats()
+    try expect(
+        stats.usageCalls == 2,
+        "coalesced recovery invalidations must schedule exactly one follow-up Overview refresh"
+    )
+    try expect(
+        stats.maximumConcurrentUsageCalls == 1,
+        "recovery refresh must not overlap the unavailable Overview request"
+    )
+    try expect(model.presentation != nil, "recovered Overview must become the shared AppModel truth")
+    withExtendedLifetime(cancellables) {}
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testUnavailableRecoveryFailureDoesNotPublishSuccess() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.prepareUnavailableOverviewRecovery()
+    let model = AppModel(runtime: AppRuntime(
+        supervisor: FakeSupervisor(),
+        clientFactory: { _ in core }
+    ))
+
+    model.start()
+    try await waitUntil("failed recovery quota is in flight") {
+        await core.overviewBarrierWaiterCount() == 1
+    }
+    await core.releaseNextOverviewBarrierWaiter()
+    try await waitUntil("failed recovery Overview sections are in flight") {
+        await core.overviewBarrierWaiterCount() == 4
+    }
+    await core.publishOverviewInvalidations(count: 2, recovered: false)
+    await core.releaseOverviewBarrier()
+
+    try await waitUntil("failed recovery follow-up completes") {
+        let stats = await core.overviewRecoveryStats()
+        return stats.usageCalls == 2
+    }
+    try await waitUntil("failed recovery remains unavailable") {
+        await MainActor.run {
+            if case .unavailable = model.state { return true }
+            return false
+        }
+    }
+    let stats = await core.overviewRecoveryStats()
+    try expect(
+        stats.maximumConcurrentUsageCalls == 1,
+        "failed recovery follow-up must remain serial"
+    )
+    try expect(
+        model.presentation == nil,
+        "failed recovery must not publish an Overview or reuse unavailable data as fresh"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
 private func testContractUnavailableCannotRestartLoop() async throws {
     let supervisor = FakeSupervisor()
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
@@ -3173,6 +3358,8 @@ struct CodexPulseAppTestMain {
         try await testNormalLifecycleAndShutdown()
         try await testRecoveryAndRestartRequired()
         try await testStaleAndUnavailable()
+        try await testUnavailableRecoveryRefreshesOpenForegroundSurfaces()
+        try await testUnavailableRecoveryFailureDoesNotPublishSuccess()
         try await testContractUnavailableCannotRestartLoop()
         try await testManualOverviewRefreshExposesBusyState()
         try await testShutdownDuringStartup()
