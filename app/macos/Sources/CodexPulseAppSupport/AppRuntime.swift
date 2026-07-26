@@ -13,6 +13,13 @@ private enum InvalidationStreamStartOutcome: Equatable, Sendable {
     case sleeping
 }
 
+private enum InitialOverviewRefreshState: Equatable, Sendable {
+    case idle
+    case pending
+    case inFlight
+    case completed
+}
+
 private enum OverviewSectionResult<Value: Sendable>: Sendable {
     case value(Value)
     case failure(AppNotice)
@@ -145,12 +152,13 @@ public actor AppRuntime {
     private var shuttingDown = false
     private var applicationIsActive = true
     private var systemIsSleeping = false
+    private var sleepTransitionInFlight = false
+    private var wakeAfterSleepPending = false
     private var sleepLifecycleDelivered = false
     private var readyForOverview = false
     private var activeRefreshPending = false
     private var invalidationRefreshPending = false
-    private var initialOverviewRefreshPending = false
-    private var initialOverviewRefreshCompleted = false
+    private var initialOverviewRefreshState: InitialOverviewRefreshState = .idle
     private var streamHasReachedReady = false
     private var suppressNextStreamReadyRefresh = false
 
@@ -209,8 +217,9 @@ public actor AppRuntime {
         let generation = runtimeGeneration
         readyForOverview = false
         invalidationRefreshPending = false
-        initialOverviewRefreshPending = false
-        initialOverviewRefreshCompleted = false
+        initialOverviewRefreshState = .idle
+        sleepTransitionInFlight = false
+        wakeAfterSleepPending = false
         await emit(.starting)
         do {
             let helper = try await supervisor.start()
@@ -276,6 +285,7 @@ public actor AppRuntime {
         if range != overviewRange {
             overviewRange = range
             invalidationRefreshPending = false
+            restorePendingInitialOverviewAfterCancellation()
             refreshTask?.cancel()
             refreshTask = nil
         }
@@ -641,6 +651,7 @@ public actor AppRuntime {
     public func cancelRefresh() async {
         refreshGeneration &+= 1
         invalidationRefreshPending = false
+        restorePendingInitialOverviewAfterCancellation()
         refreshTask?.cancel()
         refreshTask = nil
         await emit(.cancelled)
@@ -699,8 +710,10 @@ public actor AppRuntime {
 
     public func prepareForSleep() async {
         systemIsSleeping = true
+        sleepTransitionInFlight = true
         refreshGeneration &+= 1
         invalidationRefreshPending = false
+        restorePendingInitialOverviewAfterCancellation()
         refreshTask?.cancel()
         refreshTask = nil
         let generation = runtimeGeneration
@@ -708,19 +721,35 @@ public actor AppRuntime {
             if readyForOverview, let client {
                 await suspendWithoutStream(client: client, generation: generation)
             }
+            await finishSleepTransition(generation: generation)
             return
         }
         do {
             try await streamController.prepareForSleep(sendLifecycle: sendLifecycleToHelper)
             guard generation == runtimeGeneration, !shuttingDown else { return }
             sleepLifecycleDelivered = sendLifecycleToHelper
+            await finishSleepTransition(generation: generation)
         } catch {
             guard generation == runtimeGeneration, !shuttingDown else { return }
+            sleepTransitionInFlight = false
+            if wakeAfterSleepPending {
+                wakeAfterSleepPending = false
+                systemIsSleeping = false
+            }
             await emitRefreshFailure(error)
         }
     }
 
     public func resumeAfterWake() async {
+        guard !shuttingDown, systemIsSleeping else { return }
+        if sleepTransitionInFlight {
+            wakeAfterSleepPending = true
+            return
+        }
+        await resumeAfterWakeNow()
+    }
+
+    private func resumeAfterWakeNow() async {
         systemIsSleeping = false
         let generation = runtimeGeneration
         guard let streamController else {
@@ -830,6 +859,8 @@ public actor AppRuntime {
         runtimeGeneration &+= 1
         readyForOverview = false
         activeRefreshPending = false
+        sleepTransitionInFlight = false
+        wakeAfterSleepPending = false
         sleepLifecycleDelivered = false
         refreshGeneration &+= 1
         invalidationRefreshPending = false
@@ -847,6 +878,9 @@ public actor AppRuntime {
         if let refreshTask {
             _ = try? await refreshTask.value
             return
+        }
+        if initialOverviewRefreshState == .pending {
+            initialOverviewRefreshState = .inFlight
         }
         if showLoading || lastResponses == nil { await emit(.loadingOverview) }
         let requests = OverviewRequestSet.make()
@@ -980,6 +1014,7 @@ public actor AppRuntime {
         } catch is CancellationError {
             guard generation == refreshGeneration else { return }
             refreshTask = nil
+            restorePendingInitialOverviewAfterCancellation()
             await emit(.cancelled)
             await drainPendingInvalidationRefresh()
         } catch {
@@ -1063,9 +1098,15 @@ public actor AppRuntime {
             return
         }
         guard isReconnect, readyForOverview, !systemIsSleeping, client != nil else { return }
-        if !initialOverviewRefreshCompleted {
+        switch initialOverviewRefreshState {
+        case .idle, .pending:
             requestInitialOverviewRefresh()
             return
+        case .inFlight:
+            invalidationRefreshPending = true
+            return
+        case .completed:
+            break
         }
         if refreshTask != nil {
             invalidationRefreshPending = true
@@ -1093,12 +1134,13 @@ public actor AppRuntime {
     }
 
     private func requestInitialOverviewRefresh() {
-        guard !initialOverviewRefreshCompleted else { return }
-        initialOverviewRefreshPending = true
+        if initialOverviewRefreshState == .idle {
+            initialOverviewRefreshState = .pending
+        }
     }
 
     private func refreshAfterStreamReady(showLoading: Bool) async {
-        if initialOverviewRefreshCompleted {
+        if initialOverviewRefreshState == .completed {
             await refresh(showLoading: showLoading)
             return
         }
@@ -1107,14 +1149,26 @@ public actor AppRuntime {
 
     private func drainInitialOverviewRefresh(showLoading: Bool) async {
         requestInitialOverviewRefresh()
-        guard initialOverviewRefreshPending else { return }
+        guard initialOverviewRefreshState == .pending else { return }
         await refresh(showLoading: showLoading)
     }
 
     private func completeInitialOverviewRefreshIfNeeded() {
-        guard initialOverviewRefreshPending, !initialOverviewRefreshCompleted else { return }
-        initialOverviewRefreshPending = false
-        initialOverviewRefreshCompleted = true
+        guard initialOverviewRefreshState == .inFlight else { return }
+        initialOverviewRefreshState = .completed
+    }
+
+    private func restorePendingInitialOverviewAfterCancellation() {
+        guard initialOverviewRefreshState == .inFlight else { return }
+        initialOverviewRefreshState = .pending
+    }
+
+    private func finishSleepTransition(generation: UInt64) async {
+        guard generation == runtimeGeneration, !shuttingDown else { return }
+        sleepTransitionInFlight = false
+        guard wakeAfterSleepPending else { return }
+        wakeAfterSleepPending = false
+        await resumeAfterWakeNow()
     }
 
     private func notifyActiveAndRefresh(
@@ -1191,13 +1245,14 @@ public actor AppRuntime {
         let failureGeneration = runtimeGeneration
         readyForOverview = false
         activeRefreshPending = applicationIsActive
+        sleepTransitionInFlight = false
+        wakeAfterSleepPending = false
         sleepLifecycleDelivered = false
         streamHasReachedReady = false
         suppressNextStreamReadyRefresh = false
         refreshGeneration &+= 1
         invalidationRefreshPending = false
-        initialOverviewRefreshPending = false
-        initialOverviewRefreshCompleted = false
+        initialOverviewRefreshState = .idle
         refreshTask?.cancel()
         refreshTask = nil
         helperProcessMonitor?.cancel()
@@ -1235,6 +1290,8 @@ public actor AppRuntime {
 
     private func stopCurrentCore(reason: String) async -> ShutdownOutcome {
         readyForOverview = false
+        sleepTransitionInFlight = false
+        wakeAfterSleepPending = false
         sleepLifecycleDelivered = false
         streamHasReachedReady = false
         suppressNextStreamReadyRefresh = false
@@ -1242,8 +1299,7 @@ public actor AppRuntime {
         helperProcessMonitor = nil
         refreshGeneration &+= 1
         invalidationRefreshPending = false
-        initialOverviewRefreshPending = false
-        initialOverviewRefreshCompleted = false
+        initialOverviewRefreshState = .idle
         refreshTask?.cancel()
         refreshTask = nil
         if let streamController {
@@ -1307,6 +1363,8 @@ public actor AppRuntime {
     private func closeFailedStartup() async {
         runtimeGeneration &+= 1
         readyForOverview = false
+        sleepTransitionInFlight = false
+        wakeAfterSleepPending = false
         sleepLifecycleDelivered = false
         streamHasReachedReady = false
         suppressNextStreamReadyRefresh = false
@@ -1322,8 +1380,7 @@ public actor AppRuntime {
         }
         refreshGeneration &+= 1
         invalidationRefreshPending = false
-        initialOverviewRefreshPending = false
-        initialOverviewRefreshCompleted = false
+        initialOverviewRefreshState = .idle
         refreshTask?.cancel()
         refreshTask = nil
         await supervisor.stop(mode: .terminate)

@@ -3130,48 +3130,74 @@ private func testRecoveryDuringDisconnectedStreamRefreshesAfterReconnectWithoutR
     _ = await model.shutdown()
 }
 
-private func testInitialReadyReconnectCompletesOnlyOneAuthoritativeOverview() async throws {
+@MainActor
+private func testInitialInFlightReconnectQueuesOneRecoveryRefresh() async throws {
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
-    await core.prepareOverviewBarrier()
+    await core.prepareUnavailableOverviewRecovery()
     await core.prepareReconnectWithoutInvalidationReplay()
-    let recorder = StateRecorder()
-    let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
-    await runtime.setStateSink { state in await recorder.append(state) }
+    let model = AppModel(runtime: AppRuntime(
+        supervisor: FakeSupervisor(),
+        clientFactory: { _ in core }
+    ))
+    let mainWindow = ForegroundSurfaceRecorder()
+    let statusPopover = ForegroundSurfaceRecorder()
+    var cancellables: Set<AnyCancellable> = []
+    model.$state.sink { state in
+        Task { await mainWindow.append(state) }
+    }.store(in: &cancellables)
+    model.$state.sink { state in
+        Task { await statusPopover.append(state) }
+    }.store(in: &cancellables)
 
-    let start = Task { await runtime.start() }
-    try await waitUntil("initial Overview is in flight") {
+    model.start()
+    try await waitUntil("initial unavailable quota is in flight before reconnect") {
         await core.overviewBarrierWaiterCount() == 1
     }
-    try await waitUntil("initial ready stream can end during the first Overview") {
+    await core.releaseNextOverviewBarrierWaiter()
+    try await waitUntil("initial unavailable Overview sections are in flight before reconnect") {
+        await core.overviewBarrierWaiterCount() == 4
+    }
+    try await waitUntil("initial stream can disconnect during the first Overview") {
         await core.initialStreamDisconnectWaiterCount() == 1
     }
     await core.disconnectInitialInvalidationStream()
-    try await waitUntil("replacement stream waits before ready during initial Overview") {
+    try await waitUntil("replacement stream waits while the first Overview remains in flight") {
         await core.reconnectStreamReadinessWaiterCount() == 1
     }
+    await core.setOverviewFailure(false)
     await core.releaseReconnectStreamReadiness()
-    try await waitUntil("replacement stream reaches ready before initial Overview completes") {
+    try await waitUntil("replacement stream becomes ready before the first Overview completes") {
         await core.readyInvalidationStreamCallCount() == 2
     }
     await core.releaseOverviewBarrier()
-    await start.value
-    try await Task.sleep(for: .milliseconds(100))
 
+    try await waitUntil("first captured Overview failure reaches the main window") {
+        await mainWindow.observedUnavailable()
+    }
+    try await waitUntil("first captured Overview failure reaches the status Popover") {
+        await statusPopover.observedUnavailable()
+    }
+    try await waitUntil("reconnect follow-up updates the main window without replay") {
+        await mainWindow.latestOverviewTimestamp() != nil
+    }
+    try await waitUntil("reconnect follow-up updates the status Popover without replay") {
+        await statusPopover.latestOverviewTimestamp() != nil
+    }
     let stats = await core.overviewRecoveryStats()
     try expect(
-        stats.usageCalls == 1 && stats.completedUsageCalls == 1,
-        "startup ready and its immediate reconnect must share one authoritative Overview refresh"
+        stats.usageCalls == 2 && stats.completedUsageCalls == 2,
+        "reconnect after the first Overview starts must complete one serial authoritative follow-up"
     )
     try expect(
         stats.maximumConcurrentUsageCalls == 1,
-        "startup reconnect must not overlap or serialize a duplicate Overview refresh"
+        "reconnect recovery must not overlap the first Overview request"
     )
-    let phases = await recorder.snapshot()
     try expect(
-        phases.filter { $0 == "normal" }.count == 1,
-        "startup reconnect must publish the initial Overview exactly once"
+        model.presentation != nil,
+        "the reconnect follow-up must publish successful shared AppModel truth"
     )
-    _ = await runtime.shutdown()
+    withExtendedLifetime(cancellables) {}
+    _ = await model.shutdown()
 }
 
 @MainActor
@@ -3476,6 +3502,71 @@ private func testSuspendingReadinessPastTimeoutPreservesRuntimeUntilWake() async
     _ = await runtime.shutdown()
 }
 
+private func testWakeBeforeSleepLifecycleCompletionResumesRuntime() async throws {
+    let supervisor = FakeSupervisor()
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.prepareInitialStreamReadinessBarrier()
+    await core.prepareSystemWillSleepBarrier()
+    let recorder = StateRecorder()
+    let runtime = AppRuntime(supervisor: supervisor, clientFactory: { _ in core })
+    await runtime.setStateSink { state in await recorder.append(state) }
+
+    let start = Task { await runtime.start() }
+    try await waitUntil("initial stream readiness is blocked before the sleep race") {
+        await core.initialStreamReadinessWaiterCount() == 1
+    }
+    let sleep = Task { await runtime.prepareForSleep() }
+    try await waitUntil("systemWillSleep lifecycle is blocked") {
+        await core.systemWillSleepWaiterCount() == 1
+    }
+
+    await runtime.resumeAfterWake()
+    var calls = await core.recordedCalls()
+    try expect(
+        !calls.contains("lifecycle:system_did_wake"),
+        "wake must wait until the in-flight systemWillSleep transition reaches sleeping"
+    )
+    let statsBeforeWakeRecovery = await core.overviewRecoveryStats()
+    try expect(
+        statsBeforeWakeRecovery.usageCalls == 0,
+        "the first Overview must remain deferred while sleep transition is incomplete"
+    )
+
+    await core.releaseInitialStreamReadinessBarrier()
+    await start.value
+    await core.releaseSystemWillSleepBarrier()
+    await sleep.value
+
+    try await waitUntil("deferred wake reconnects the invalidation stream") {
+        await core.invalidationStreamCallCount() == 2
+    }
+    try await waitUntil("deferred wake completes one authoritative Overview") {
+        let stats = await core.overviewRecoveryStats()
+        return stats.completedUsageCalls == 1
+    }
+    calls = await core.recordedCalls()
+    guard
+        let willSleepIndex = calls.firstIndex(of: "lifecycle:system_will_sleep"),
+        let didWakeIndex = calls.firstIndex(of: "lifecycle:system_did_wake")
+    else {
+        throw TestFailure.mismatch("sleep/wake lifecycle calls were not both delivered")
+    }
+    try expect(
+        willSleepIndex < didWakeIndex,
+        "an early wake must be delivered after the blocked sleep lifecycle RPC completes"
+    )
+    let stats = await core.overviewRecoveryStats()
+    try expect(
+        stats.usageCalls == 1 && stats.completedUsageCalls == 1,
+        "the deferred wake must perform the first Overview exactly once"
+    )
+    let counts = await supervisor.counts()
+    try expect(counts == (1, 0), "the sleep race must preserve the original Helper runtime")
+    let phases = await recorder.snapshot()
+    try expect(phases.last == "normal", "the deferred wake must not leave runtime sleeping")
+    _ = await runtime.shutdown()
+}
+
 private final class FakeProcessMonitor: HelperProcessMonitoring, @unchecked Sendable {
     private let lock = NSLock()
     private var cancelled = false
@@ -3679,7 +3770,8 @@ struct CodexPulseAppTestMain {
         try await testStaleAndUnavailable()
         try await testUnavailableRecoveryRefreshesOpenForegroundSurfaces()
         try await testSleepDuringInvalidationReadinessPreservesRuntimeUntilWake()
-        try await testInitialReadyReconnectCompletesOnlyOneAuthoritativeOverview()
+        try await testWakeBeforeSleepLifecycleCompletionResumesRuntime()
+        try await testInitialInFlightReconnectQueuesOneRecoveryRefresh()
         try await testSuspendingReadinessPastTimeoutPreservesRuntimeUntilWake()
         try await testRecoveryDuringDisconnectedStreamRefreshesAfterReconnectWithoutReplay()
         try await testUnavailableRecoveryFailureDoesNotPublishSuccess()
