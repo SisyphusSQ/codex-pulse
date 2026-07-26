@@ -203,7 +203,7 @@ contract 不兼容时必须 fail closed，由客户端展示稳定的“核心�
 | 分类 | RPC |
 | --- | --- |
 | 握手与启动 | `Handshake`、`Bootstrap`、`Contracts` |
-| 用量与主实体 | `UsageCost`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail` |
+| 用量与主实体 | `AccountSnapshot`、`UsageCost`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail` |
 | Quota | `QuotaCurrent`、`RequestQuotaRefresh` |
 | 数据源、任务与健康 | `ListSources`、`Source`、`ListJobs`、`Job`、`ListHealth`、`Health`、`HealthProjection`、`DataHealth` |
 | 设置与 Home | `Settings`、`UpdateSettings`、`PlanHomeSwitch`、`ConfirmHomeSwitch`、`RecoverHomeSwitch` |
@@ -461,7 +461,7 @@ Bundle 是只读签名结构。SQLite、preferences、socket、日志和缓存�
 - `NavigationSplitView`、Sidebar、Toolbar。
 - Menu Bar Item 和原生 Popover。
 - CoreClient connection state 和全局错误 surface。
-- Overview 真实接入 `Bootstrap`、`QuotaCurrent`、`UsageCost`、`ListSessions`、`ListProjects`、`HealthProjection`；API 等价成本先读取 `window_minutes=10080` 的通用周额度窗口，再以 `resets_at_ms - window_minutes` 到同次 `evaluated_at_ms` 的精确 UTC 半开区间查询，不把窗口起点扩成自然日。Popover 另发一条始终绑定该周额度精确范围的 Project 请求，按 `totalTokens DESC` 返回最多 5 个已归类项目；查询在分页前用 confidence allowlist 排除“其他”，主窗口切换范围不得改变弹窗排行周期。
+- Overview 真实接入 `Bootstrap`、`AccountSnapshot`、`QuotaCurrent`、`UsageCost`、`ListSessions`、`ListProjects`、`HealthProjection`；API 等价成本先读取 `window_minutes=10080` 的通用周额度窗口，再以 `resets_at_ms - window_minutes` 到同次 `evaluated_at_ms` 的精确 UTC 半开区间查询，不把窗口起点扩成自然日。Popover 另发一条始终绑定该周额度精确范围的 Project 请求，按 `totalTokens DESC` 返回最多 5 个已归类项目；查询在分页前用 confidence allowlist 排除“其他”，主窗口切换范围不得改变弹窗排行周期。
 - 深浅色、键盘焦点、Reduce Transparency 和 VoiceOver 基础验证。
 
 fixture 只用于 Preview/单元测试，不能用静态数据宣布 transport 或产品切片完成。
@@ -475,10 +475,11 @@ fixture 只用于 Preview/单元测试，不能用静态数据宣布 transport �
 - Token 主界面展示统一按 `百万`、`千万`、`亿` 三档格式化并固定保留两位小数，`亿` 是最高单位；状态栏因空间受限使用无空格、最多一位小数的 `万` / `百万` / `千万` / `亿` 紧凑格式。count、Turn、队列深度等非 Token 数值继续使用原始计数格式。
 - `NSStatusItem` 的动态额度视图提供 A 基准圆环、B 缺口圆环、D 仪表弧三种样式，默认 A；三种样式共享同一 `StatusBarQuotaPresentation`，优先展示 `limit_id=codex` 的真实周窗口，缺少通用周窗口时才选择其它周窗口或最长的已观测窗口。主窗口、配额页与 Popover 通过 Proto `limit_name` 显示“额度名称 · 动态周期”，默认桶名称缺失时回退“通用额度”，不得把多个 7 天窗口渲染成同名额度。第二行 Token 只有在 `UsageCost` 的精确 UTC range 与该额度窗口完全一致时才显示，否则保持 `已用 --`。旧版 `countdown` / `battery` / `meters` / `rings` 本地偏好在读取时迁移到 A，不保留错误的电池语义或固定窗口解释。
 - Popover 的“本周项目 Token 排行”不复用主 Overview 当前选择范围：每次先从 Quota Current 解析通用 10080 分钟窗口，再以同一 evaluated time 构造独立 Project exact range。请求固定 `totalTokens DESC`、limit 5，并在服务端聚合分页前筛除 unknown confidence，因此未归类“其他”既不展示也不占 Top 5 名额；周额度范围不可用或请求失败时显示局部 unavailable，不拿自然周、最近 7 天或当前主页面范围冒充。
-- Popover 顶部三项快捷功能保持为 Swift/AppKit 展示与平台能力，不改 Proto 或 Helper。账户套餐 / 账号摘要只消费 `OverviewPresentation` 已有的 Quota 展示聚合，后端没有套餐名称时保持“套餐信息未提供”，不得展示 raw account scope、完整账号标识、token、路径或鉴权材料。项目按钮只在用户点击，或按钮获得焦点后由 Return / Space 显式激活时，把固定 URL `https://github.com/SisyphusSQ/codex-pulse` 交给 `NSWorkspace`；Popover 展示、刷新、启动和后台更新均不得触发外跳。
-- 隐私复制由 Swift 从相同展示级聚合渲染专用摘要卡片，而不是捕获整个 Popover；文本与 PNG 必须写入同一个 `NSPasteboardItem` 的 `.string` / `.png` 两种表示。生成或写入任一步失败都必须显示安全错误并停止，禁止回退到原始 Session/JSONL、SQLite、完整账号标识、绝对路径、鉴权材料或日志，也不能留下半成功语义。三项按钮具有稳定 accessibility identifier/label、显式 `focusable` 状态及 Return / Space 激活，但不得用 `onKeyPress(.tab)` 或等价逻辑建立私有循环；焦点由 Popover 的原生 Tab / Shift-Tab 顺序统一管理，必须能在三项按钮、打开概览、刷新、Reset Credits、设置和退出之间双向移动。
-- Popover 的卡片、顶栏、返回、设置/退出、Picker 和 Toggle 行使用完整容器命中区，交互目标最小为 `44 pt`；透明扩展区域必须显式设置 `contentShape`。顶栏图标按钮以及返回、设置、退出等紧凑文字按钮的 Glass 视觉高度保持 `28 pt`，外层 `44 pt` 仅用于命中，不放大图标、文字或背景；交互反馈只保留中性按压状态，不增加蓝色 hover 铺底或描边。Reset Credits 与显示设置子页不再复用整条 Glass 标题栏，而是在同一滚动内容内使用紧凑返回按钮和唯一页面标题；Reset Credits 列表标题缩短为“次数”，避免重复标题。Popover 失焦时仍保留语义底色和描边，不只依赖会随 active state 变淡的 Glass 材质。手动刷新期间由 `AppModel.isOverviewRefreshing` 暴露真实请求忙碌状态，原刷新箭头在请求期间原位旋转、同步更新副标题和无障碍文案，并在请求结束前阻止重复刷新。
-- development-only unsigned `.app` 使用 `Contents/MacOS` 和 `Contents/Helpers`，隔离 UI smoke 真实读回 window/status item/popover、Overview 和 `shutdown=clean`；Smoke 在 Popover 保持显示期间通过系统原生 key event 路由验证 Tab / Shift-Tab 能从三项按钮双向到达打开概览、刷新、Reset Credits、设置和退出，并用 Return / Space 激活三项快捷功能。项目外跳在测试边界只读回固定 URL、不启动浏览器，隐私复制则真实写入并读回 `NSPasteboard.general` 的单一 `.string` + `.png` item。RPC/runtime/shell deadline 防止退出 gate 无限挂起，forced/uncertain 不算通过。
+- Popover 顶部按 SessionNest 收敛为一行：左侧为产品名和橙色 `套餐 + 账号` 胶囊，右侧依次为 GitHub、分隔线、截图、刷新和打开主窗口。详情区宽度由 `420 pt` 增至 `460 pt`。GitHub、截图、刷新和打开主窗口仍是 Swift/AppKit 平台交互；只有用户显式激活项目按钮时才把固定 URL `https://github.com/SisyphusSQ/codex-pulse` 交给 `NSWorkspace`，Popover 展示、刷新、启动和后台更新均不得触发外跳。
+- 账户信息属于 Go 拥有的本地业务能力：Helper 在已确认的 canonical Codex Home 下启动受控 App Server，通过 `account/read` 且固定 `refreshToken=false` 只解码 `type`、`email`、`planType`，再由 `AccountSnapshot` Core RPC 传给 Swift。Swift 不直接读取 SQLite、JSONL 或 session 文件。邮箱和套餐是用户明确要求展示与复制的字段，不做脱敏；token、refresh token、cookie、授权头、未声明的原始响应字段和原始 session 内容不得进入 DTO、日志或持久化。首次读取失败只让账户胶囊显示 unavailable，后续失败保留上次成功值，不降级整页 Overview。
+- 截图动作由 Swift 从 Popover 已展示信息渲染专用摘要卡片，而不是读取原始 Session/JSONL 或 SQLite；文本与 PNG 必须写入同一个 `NSPasteboardItem` 的 `.string` / `.png` 两种表示。生成或写入任一步失败都必须显示错误并停止，禁止回退到 token、cookie、授权头、raw account scope、内部 Session/Project identity、绝对路径、原始响应或日志，也不能留下半成功语义。四个图标按钮具有稳定 accessibility identifier/label、显式 `focusable` 状态及系统原生 Return / Space 激活；不得用 `onKeyPress(.tab)` 或等价逻辑建立私有循环。
+- Popover 的卡片、顶栏、返回、设置/退出、Picker 和 Toggle 行使用完整容器命中区，交互目标最小为 `44 pt`；透明扩展区域必须显式设置 `contentShape`。顶栏图标按 SessionNest 使用 `30 pt` 圆形视觉面和 `16 pt` 图标，外层 `44 pt` 仅用于命中，不放大图标；交互反馈采用中性圆形 hover、pressed 和焦点状态，并关闭系统蓝色 focus effect，修复刷新按钮重新出现蓝色选择框的回归，同时保留可见键盘焦点。Reset Credits 与显示设置子页继续使用紧凑返回按钮和唯一页面标题。手动刷新期间由 `AppModel.isOverviewRefreshing` 暴露真实请求忙碌状态，双箭头图标原位旋转、同步更新无障碍文案，并在请求结束前阻止重复刷新。
+- development-only unsigned `.app` 使用 `Contents/MacOS` 和 `Contents/Helpers`，隔离 UI smoke 真实读回 window/status item/popover、Overview 和 `shutdown=clean`；Smoke 在 Popover 保持显示期间通过系统原生 key event 路由验证 Tab / Shift-Tab 能遍历 GitHub、截图、刷新、打开主窗口、Reset Credits、设置和退出，并用 Return / Space 激活 GitHub 与截图动作。项目外跳在测试边界只读回固定 URL、不启动浏览器，Popover 摘要则真实写入并读回 `NSPasteboard.general` 的单一 `.string` + `.png` item。RPC/runtime/shell deadline 防止退出 gate 无限挂起，forced/uncertain 不算通过。
 - 当前 Command Line Tools 不提供 `xcodebuild`/XCTest/XCUITest；现有 in-process native event smoke 能验证三项按钮的键盘焦点、动作与真实剪贴板副作用，但不冒充跨进程 Accessibility Inspector、完整鼠标路径或视觉断言。真实 system sleep/wake、签名、公证和发布仍不在本卡完成证据内。测试真相见 [`docs/test/native-app-shell-overview.md`](../../../test/native-app-shell-overview.md)。
 
 ### 阶段 D：主要日常页面（TOO-314 当前工作树已实现当前工具链闭环）
@@ -606,7 +607,7 @@ fixture 只用于 Preview/单元测试，不能用静态数据宣布 transport �
 make verify
 ```
 
-覆盖架构与依赖约束、Proto drift、Go race/vet、Swift client/transport、原生 App deterministic tests 和隔离 development App smoke。Popover smoke 必须保持弹窗打开直到三项快捷操作结束，通过原生 Tab / Shift-Tab 证明焦点可离开三项快捷按钮并遍历已有控件，再用 Return / Space 完成按钮激活，同时读回系统剪贴板中同一个 item 的 `.string` / `.png` 表示；只显示后立即关闭、只验证注入式 coordinator，或把三项按钮内部循环断言为通过，都不能作为该能力的证据。正式签名、公证与真实 Home live E2E 仍需通过各自的显式入口验证。
+覆盖架构与依赖约束、Proto drift、Go race/vet、Swift client/transport、原生 App deterministic tests 和隔离 development App smoke。Popover smoke 必须保持弹窗打开直到 GitHub 与截图操作结束，通过原生 Tab / Shift-Tab 证明焦点可遍历顶栏和已有控件，再用 Return / Space 完成动作激活，同时读回系统剪贴板中同一个 item 的 `.string` / `.png` 表示；只显示后立即关闭、只验证注入式 coordinator，或把顶栏按钮内部循环断言为通过，都不能作为该能力的证据。正式签名、公证与真实 Home live E2E 仍需通过各自的显式入口验证。
 
 ### Swift/集成 gate
 

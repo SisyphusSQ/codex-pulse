@@ -2,7 +2,6 @@ import AppKit
 import Foundation
 
 public enum PopoverQuickActionKind: Hashable, Sendable {
-    case accountSummary
     case openProject
     case copyPrivacySummary
 }
@@ -32,32 +31,28 @@ public enum PopoverAccountSummaryAvailability: Equatable, Sendable {
 
 public struct PopoverAccountSummaryPresentation: Equatable, Sendable {
     public let availability: PopoverAccountSummaryAvailability
-    public let title: String
-    public let detail: String
+    public let planText: String
+    public let emailText: String
     public let accessibilityLabel: String
 
-    public init(quotaWindows: [QuotaWindowPresentation], quotaAvailable: Bool) {
-        self.title = "当前 Codex 账号"
-        if !quotaAvailable {
-            self.availability = .unavailable
-            self.detail = "套餐与额度信息暂不可用"
-        } else if quotaWindows.isEmpty {
-            self.availability = .empty
-            self.detail = "套餐信息未提供 · 暂无额度数据"
-        } else {
+    public init(account: CodexAccountPresentation) {
+        switch account.availability {
+        case .available:
             self.availability = .available
-            self.detail = "套餐信息未提供 · \(quotaWindows.count) 项额度"
+        case .empty:
+            self.availability = .empty
+        case .unavailable:
+            self.availability = .unavailable
         }
-        self.accessibilityLabel = "\(title)，\(detail)"
+        self.planText = account.planText
+        self.emailText = account.emailText
+        self.accessibilityLabel = account.accessibilityLabel
     }
 }
 
 public extension OverviewPresentation {
     var popoverAccountSummary: PopoverAccountSummaryPresentation {
-        PopoverAccountSummaryPresentation(
-            quotaWindows: quotaWindows,
-            quotaAvailable: quotaAvailable
-        )
+        PopoverAccountSummaryPresentation(account: account)
     }
 }
 
@@ -78,18 +73,18 @@ public struct PopoverPrivacySummary: Equatable, Sendable {
             "\(Self.countText(overview.resetCredits.availableCount)) 可用 / "
             + "\(Self.countText(overview.resetCredits.totalCount)) 总数"
         var lines = [
-            "Codex Pulse 隐私摘要",
-            "账户：\(account.title)",
-            "套餐与额度：\(account.detail)",
+            "Codex Pulse Popover 摘要",
+            "套餐：\(account.planText)",
+            "账号：\(account.emailText)",
         ]
         lines.append(contentsOf: quotaRows.enumerated().map { index, row in
             "额度 \(index + 1)：\(row)"
         })
         lines.append("重置次数：\(resetCreditsRow)")
-        lines.append("仅包含 Popover 已展示的聚合信息")
+        lines.append("仅包含 Popover 已展示信息")
 
-        self.accountTitle = account.title
-        self.accountDetail = account.detail
+        self.accountTitle = account.planText
+        self.accountDetail = account.emailText
         self.quotaRows = quotaRows
         self.resetCreditsRow = resetCreditsRow
         self.plainText = lines.joined(separator: "\n")
@@ -168,19 +163,19 @@ public enum PopoverQuickActions {
     ) -> PopoverQuickActionResult {
         guard let png = renderPNG(summary) else {
             return .failure(
-                title: "无法复制安全摘要",
-                message: "安全截图生成失败，未写入剪贴板。"
+                title: "无法复制 Popover 摘要",
+                message: "Popover 截图生成失败，未写入剪贴板。"
             )
         }
         guard writeClipboard(summary.plainText, png) else {
             return .failure(
-                title: "无法复制安全摘要",
+                title: "无法复制 Popover 摘要",
                 message: "剪贴板写入失败，未复制任何数据。"
             )
         }
         return .success(
-            title: "已复制安全摘要",
-            message: "安全截图和脱敏摘要已写入剪贴板。"
+            title: "已复制 Popover 摘要",
+            message: "Popover 截图和摘要已写入剪贴板。"
         )
     }
 }

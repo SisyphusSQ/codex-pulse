@@ -22,6 +22,7 @@ const (
 	CoreService_Handshake_FullMethodName                 = "/codexpulse.core.v1.CoreService/Handshake"
 	CoreService_Bootstrap_FullMethodName                 = "/codexpulse.core.v1.CoreService/Bootstrap"
 	CoreService_Contracts_FullMethodName                 = "/codexpulse.core.v1.CoreService/Contracts"
+	CoreService_AccountSnapshot_FullMethodName           = "/codexpulse.core.v1.CoreService/AccountSnapshot"
 	CoreService_UsageCost_FullMethodName                 = "/codexpulse.core.v1.CoreService/UsageCost"
 	CoreService_ListSessions_FullMethodName              = "/codexpulse.core.v1.CoreService/ListSessions"
 	CoreService_SessionDetail_FullMethodName             = "/codexpulse.core.v1.CoreService/SessionDetail"
@@ -64,6 +65,7 @@ type CoreServiceClient interface {
 	Handshake(ctx context.Context, in *HandshakeRequest, opts ...grpc.CallOption) (*HandshakeResponse, error)
 	Bootstrap(ctx context.Context, in *BootstrapRequest, opts ...grpc.CallOption) (*BootstrapResponse, error)
 	Contracts(ctx context.Context, in *ContractsRequest, opts ...grpc.CallOption) (*ContractsResponse, error)
+	AccountSnapshot(ctx context.Context, in *AccountSnapshotRequest, opts ...grpc.CallOption) (*AccountSnapshotResponse, error)
 	UsageCost(ctx context.Context, in *UsageCostRequest, opts ...grpc.CallOption) (*UsageCostResponse, error)
 	ListSessions(ctx context.Context, in *ListSessionsRequest, opts ...grpc.CallOption) (*SessionListResponse, error)
 	SessionDetail(ctx context.Context, in *SessionDetailRequest, opts ...grpc.CallOption) (*SessionDetailResponse, error)
@@ -129,6 +131,16 @@ func (c *coreServiceClient) Contracts(ctx context.Context, in *ContractsRequest,
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ContractsResponse)
 	err := c.cc.Invoke(ctx, CoreService_Contracts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) AccountSnapshot(ctx context.Context, in *AccountSnapshotRequest, opts ...grpc.CallOption) (*AccountSnapshotResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AccountSnapshotResponse)
+	err := c.cc.Invoke(ctx, CoreService_AccountSnapshot_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -463,6 +475,7 @@ type CoreServiceServer interface {
 	Handshake(context.Context, *HandshakeRequest) (*HandshakeResponse, error)
 	Bootstrap(context.Context, *BootstrapRequest) (*BootstrapResponse, error)
 	Contracts(context.Context, *ContractsRequest) (*ContractsResponse, error)
+	AccountSnapshot(context.Context, *AccountSnapshotRequest) (*AccountSnapshotResponse, error)
 	UsageCost(context.Context, *UsageCostRequest) (*UsageCostResponse, error)
 	ListSessions(context.Context, *ListSessionsRequest) (*SessionListResponse, error)
 	SessionDetail(context.Context, *SessionDetailRequest) (*SessionDetailResponse, error)
@@ -512,6 +525,9 @@ func (UnimplementedCoreServiceServer) Bootstrap(context.Context, *BootstrapReque
 }
 func (UnimplementedCoreServiceServer) Contracts(context.Context, *ContractsRequest) (*ContractsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Contracts not implemented")
+}
+func (UnimplementedCoreServiceServer) AccountSnapshot(context.Context, *AccountSnapshotRequest) (*AccountSnapshotResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AccountSnapshot not implemented")
 }
 func (UnimplementedCoreServiceServer) UsageCost(context.Context, *UsageCostRequest) (*UsageCostResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UsageCost not implemented")
@@ -677,6 +693,24 @@ func _CoreService_Contracts_Handler(srv interface{}, ctx context.Context, dec fu
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CoreServiceServer).Contracts(ctx, req.(*ContractsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_AccountSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AccountSnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).AccountSnapshot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_AccountSnapshot_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).AccountSnapshot(ctx, req.(*AccountSnapshotRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1250,6 +1284,10 @@ var CoreService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Contracts",
 			Handler:    _CoreService_Contracts_Handler,
+		},
+		{
+			MethodName: "AccountSnapshot",
+			Handler:    _CoreService_AccountSnapshot_Handler,
 		},
 		{
 			MethodName: "UsageCost",

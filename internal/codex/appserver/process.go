@@ -22,13 +22,35 @@ type ProcessOptions struct {
 }
 
 func ListLocalThreads(ctx context.Context, confirmedHome string, options ProcessOptions) (ThreadList, error) {
+	return withInitializedLocalRPC(
+		ctx,
+		confirmedHome,
+		options,
+		func(ctx context.Context, rpc *jsonLineRPC, canonicalHome string) (ThreadList, error) {
+			return NewThreadLister(
+				rpc,
+				ThreadListerOptions{PageSize: options.PageSize},
+			).List(ctx, canonicalHome)
+		},
+	)
+}
+
+func withInitializedLocalRPC[T any](
+	ctx context.Context,
+	confirmedHome string,
+	options ProcessOptions,
+	operation func(context.Context, *jsonLineRPC, string) (T, error),
+) (result T, returnErr error) {
+	if ctx == nil || operation == nil {
+		return result, errors.New("invalid App Server operation")
+	}
 	canonicalHome, err := canonicalConfirmedHome(confirmedHome)
 	if err != nil {
-		return ThreadList{}, err
+		return result, err
 	}
 	binary, err := resolveCodexBinary(options.CodexBinary, defaultCodexBinaryCandidates())
 	if err != nil {
-		return ThreadList{}, err
+		return result, err
 	}
 	clientName := options.ClientName
 	if clientName == "" {
@@ -45,15 +67,15 @@ func ListLocalThreads(ctx context.Context, confirmedHome string, options Process
 	command.Env = isolatedCodexEnvironment(os.Environ(), canonicalHome)
 	stdin, err := command.StdinPipe()
 	if err != nil {
-		return ThreadList{}, errors.New("open App Server stdin")
+		return result, errors.New("open App Server stdin")
 	}
 	stdout, err := command.StdoutPipe()
 	if err != nil {
-		return ThreadList{}, errors.New("open App Server stdout")
+		return result, errors.New("open App Server stdout")
 	}
 	command.Stderr = io.Discard
 	if err := command.Start(); err != nil {
-		return ThreadList{}, errors.New("start Codex App Server")
+		return result, errors.New("start Codex App Server")
 	}
 	done := make(chan error, 1)
 	go func() { done <- command.Wait() }()
@@ -76,12 +98,12 @@ func ListLocalThreads(ctx context.Context, confirmedHome string, options Process
 		Title   string `json:"title"`
 		Version string `json:"version"`
 	}{Name: clientName, Title: "Codex Pulse", Version: version}}, &initializeResult); err != nil {
-		return ThreadList{}, err
+		return result, err
 	}
 	if err := rpc.Notify(ctx, "initialized", struct{}{}); err != nil {
-		return ThreadList{}, err
+		return result, err
 	}
-	return NewThreadLister(rpc, ThreadListerOptions{PageSize: options.PageSize}).List(ctx, canonicalHome)
+	return operation(ctx, rpc, canonicalHome)
 }
 
 func resolveCodexBinary(explicit string, fallbacks []string) (string, error) {

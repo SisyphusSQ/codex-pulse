@@ -123,6 +123,7 @@ func openNormalRuntime(
 	if lifecycleRuntime != nil {
 		err = core.BindDependencies(service, core.ServiceConfig{
 			QuotaRefresh: lifecycleRuntime, RuntimeControls: lifecycleRuntime, SessionDeepIndex: lifecycleRuntime,
+			AccountSnapshot: lifecycleRuntime,
 		})
 		if err != nil {
 			_ = lifecycleRuntime.Close(context.Background())

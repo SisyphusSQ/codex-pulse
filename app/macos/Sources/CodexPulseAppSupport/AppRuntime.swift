@@ -907,6 +907,7 @@ public actor AppRuntime {
         }
         let requests = OverviewRequestSet.make()
         let requestedRange = overviewRange
+        let previousAccount = lastResponses?.account
         if initialOverviewRefreshState == .pending {
             initialOverviewRefreshState = .inFlight
         }
@@ -960,9 +961,12 @@ public actor AppRuntime {
             async let healthResult = captureOverviewSection {
                 try await client.healthProjection(retryPolicy: .transportDefault)
             }
+            async let accountResult = captureOverviewSection {
+                try await client.accountSnapshot(retryPolicy: .none)
+            }
             let sectionResults = await (
                 usageResult, sessionResult, projectResult, weeklyProjectResult,
-                weeklyUsageResult, healthResult)
+                weeklyUsageResult, healthResult, accountResult)
             let mandatoryNotices = [
                 quotaResult.notice,
                 sectionResults.0.notice,
@@ -1007,9 +1011,15 @@ public actor AppRuntime {
             case .value(let response): healthResponse = response
             case .failure: healthResponse = unavailableHealth()
             }
+            let accountResponse: Codexpulse_Core_V1_AccountSnapshotResponse?
+            switch sectionResults.6 {
+            case .value(let response): accountResponse = response
+            case .failure: accountResponse = previousAccount
+            }
             return OverviewResponses(
                 usage: usageResponse,
                 quota: quotaResponse,
+                account: accountResponse,
                 sessions: sessionResponse,
                 projects: projectResponse,
                 health: healthResponse,

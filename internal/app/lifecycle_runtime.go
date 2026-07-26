@@ -11,8 +11,10 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/bootstrap"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	appLifecycle "github.com/SisyphusSQ/codex-pulse/internal/lifecycle"
 	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/liveindex"
@@ -882,6 +884,38 @@ func (provider fileConfirmedHomeProvider) CurrentHome(ctx context.Context) (appL
 		DeviceID:   snapshot.CodexHome.Source.DeviceID,
 		Inode:      snapshot.CodexHome.Source.Inode,
 	}, nil
+}
+
+func (runtime *applicationLifecycleRuntime) AccountSnapshot(
+	ctx context.Context,
+) (core.AccountSnapshot, error) {
+	if runtime == nil || runtime.settingsLoader == nil || ctx == nil {
+		return core.AccountSnapshot{}, ErrApplicationLifecycleRuntime
+	}
+	home, err := fileConfirmedHomeProvider{loader: runtime.settingsLoader}.CurrentHome(ctx)
+	if err != nil {
+		return core.AccountSnapshot{}, err
+	}
+	account, err := appserver.ReadLocalAccount(ctx, home.Path, appserver.ProcessOptions{})
+	if err != nil {
+		return core.AccountSnapshot{}, err
+	}
+	if account == nil {
+		return core.AccountSnapshot{}, nil
+	}
+	return core.AccountSnapshot{Account: &core.AccountIdentity{
+		Type:     account.Type,
+		Email:    cloneApplicationAccountField(account.Email),
+		PlanType: cloneApplicationAccountField(account.PlanType),
+	}}, nil
+}
+
+func cloneApplicationAccountField(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func startupEventID(kind string) string {

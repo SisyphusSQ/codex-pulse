@@ -73,7 +73,7 @@ final class StatusItemController: NSObject {
             onQuit: onQuit
         )
         popover.contentViewController = NSHostingController(rootView: popoverView)
-        popover.contentSize = NSSize(width: 420, height: 640)
+        popover.contentSize = NSSize(width: 460, height: 640)
 
         model.$state
             .receive(on: RunLoop.main)
@@ -139,16 +139,10 @@ final class StatusItemController: NSObject {
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         defer { popover.performClose(nil) }
 
-        guard await waitForNativeSmoke({
-            self.popover.isShown && self.smokeFocusedControl == .accountSummary
-        }) else {
+        guard await waitForNativeSmoke({ self.popover.isShown }) else {
             return (false, "unavailable step=popover_focus")
         }
-        guard await moveNativeSmokeFocus(to: .refresh, backward: true),
-              await moveNativeSmokeFocus(to: .openOverview, backward: true),
-              await moveNativeSmokeFocus(to: .refresh),
-              await moveNativeSmokeFocus(to: .accountSummary),
-              await moveNativeSmokeFocus(to: .openProject),
+        guard await moveNativeSmokeFocus(to: .openProject),
               sendNativeSmokeKey("\r", keyCode: 36),
               await waitForNativeSmoke({
                   self.smokeActionResults[.openProject] != nil
@@ -178,20 +172,16 @@ final class StatusItemController: NSObject {
               await moveNativeSmokeFocus(to: .resetCredits, backward: true),
               await moveNativeSmokeFocus(to: .copyPrivacySummary, backward: true),
               await moveNativeSmokeFocus(to: .openProject, backward: true),
-              await moveNativeSmokeFocus(to: .accountSummary, backward: true),
-              sendNativeSmokeKey("\r", keyCode: 36),
-              await waitForNativeSmoke({
-                  self.smokeActionResults[.accountSummary] != nil
-              }),
-              smokeActionResults[.accountSummary]?.isFailure == false,
+              await moveNativeSmokeFocus(to: .openOverview, backward: true),
+              await moveNativeSmokeFocus(to: .refresh, backward: true),
               popover.isShown
         else {
-            return (false, "unavailable step=account_keyboard_action")
+            return (false, "unavailable step=keyboard_focus_chain")
         }
 
         return (
             true,
-            "window+status_item+popover actions=account+project+copy "
+            "window+status_item+popover actions=project+copy "
                 + "keyboard=tab+shift-tab+return+space "
                 + "focus_escape=open-overview+refresh+reset-credits+settings+quit "
                 + "clipboard=single_item_string+png"
@@ -291,6 +281,7 @@ private struct MenuBarPopoverView: View {
     @State private var route: PopoverRoute = .main
     @State private var selectedDailyTrendKey: String?
     @State private var quickActionResult: PopoverQuickActionResult?
+    @State private var screenshotFeedback: PopoverScreenshotFeedback = .idle
     @FocusState private var focusedControl: PopoverFocusTarget?
 
     var body: some View {
@@ -314,7 +305,7 @@ private struct MenuBarPopoverView: View {
             }
         }
         .foregroundStyle(.primary)
-        .frame(width: 420, height: 640)
+        .frame(width: 460, height: 640)
         .alert(
             quickActionResult?.title ?? "",
             isPresented: Binding(
@@ -334,12 +325,8 @@ private struct MenuBarPopoverView: View {
         VStack(spacing: 0) {
             PopoverHeader(
                 title: "Codex Pulse",
-                subtitle: model.isOverviewRefreshing
-                    ? "正在刷新本机数据…"
-                    : model.presentation.map { "本机数据 · \(relativeTimestamp($0.evaluatedAtMS))" } ?? "正在连接 Helper…",
                 accountSummary: model.presentation?.popoverAccountSummary,
-                isAccountLoading: isAccountSummaryLoading,
-                onShowAccount: showAccountSummary,
+                screenshotFeedback: screenshotFeedback,
                 onOpenProject: openProject,
                 onCopyPrivacySummary: copyPrivacySummary,
                 focusedControl: $focusedControl,
@@ -376,44 +363,9 @@ private struct MenuBarPopoverView: View {
                 focusedControl: $focusedControl
             )
         }
-        .onAppear {
-            if focusedControl == nil {
-                focusedControl = .accountSummary
-            }
-        }
         .onChange(of: focusedControl) { _, control in
             onPopoverFocusChanged(control)
         }
-    }
-
-    private var isAccountSummaryLoading: Bool {
-        switch model.state {
-        case .idle, .loading: true
-        default: false
-        }
-    }
-
-    private func showAccountSummary() {
-        guard let summary = model.presentation?.popoverAccountSummary else {
-            let result: PopoverQuickActionResult = isAccountSummaryLoading
-                ? .failure(
-                    title: "账户摘要正在加载",
-                    message: "正在等待本机展示级账户与额度数据。"
-                )
-                : .failure(
-                    title: "账户摘要不可用",
-                    message: "当前没有可展示的账户或套餐摘要。"
-                )
-            onQuickActionResult(.accountSummary, result)
-            quickActionResult = result
-            return
-        }
-        let result = PopoverQuickActionResult.success(
-            title: "账户摘要",
-            message: "\(summary.title)\n\(summary.detail)\n仅使用本机展示级聚合信息。"
-        )
-        onQuickActionResult(.accountSummary, result)
-        quickActionResult = result
     }
 
     private func openProject() {
@@ -425,8 +377,8 @@ private struct MenuBarPopoverView: View {
     private func copyPrivacySummary() {
         guard let overview = model.presentation else {
             let result = PopoverQuickActionResult.failure(
-                title: "无法复制安全摘要",
-                message: "当前没有可用于生成安全截图的展示级数据。"
+                title: "无法复制 Popover 摘要",
+                message: "当前没有可用于生成 Popover 截图的数据。"
             )
             onQuickActionResult(.copyPrivacySummary, result)
             quickActionResult = result
@@ -438,7 +390,15 @@ private struct MenuBarPopoverView: View {
             writeClipboard: writePrivacySummaryClipboard
         )
         onQuickActionResult(.copyPrivacySummary, result)
+        screenshotFeedback = result.isFailure ? .failed : .copied
         if result.isFailure { quickActionResult = result }
+        let feedback = screenshotFeedback
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            if screenshotFeedback == feedback {
+                screenshotFeedback = .idle
+            }
+        }
     }
 
     private func quotaSection(_ overview: OverviewPresentation) -> some View {
@@ -841,7 +801,6 @@ private enum PopoverRoute {
 private enum PopoverFocusTarget: Hashable {
     case openOverview
     case refresh
-    case accountSummary
     case openProject
     case copyPrivacySummary
     case resetCredits
@@ -849,12 +808,34 @@ private enum PopoverFocusTarget: Hashable {
     case quit
 }
 
+private enum PopoverScreenshotFeedback: Equatable {
+    case idle
+    case copied
+    case failed
+
+    var systemImage: String {
+        switch self {
+        case .idle: "camera"
+        case .copied: "checkmark"
+        case .failed: "exclamationmark.triangle"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .idle: "复制 Popover 截图与摘要"
+        case .copied: "Popover 截图与摘要已复制"
+        case .failed: "复制失败，请重试"
+        }
+    }
+}
+
 private struct RefreshArrowSymbol: View {
     let isAnimating: Bool
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 30, paused: !isAnimating)) { context in
-            Image(systemName: "arrow.clockwise")
+            Image(systemName: "arrow.triangle.2.circlepath")
                 .rotationEffect(.degrees(rotationAngle(at: context.date)))
         }
     }
@@ -869,10 +850,8 @@ private struct RefreshArrowSymbol: View {
 
 private struct PopoverHeader: View {
     let title: String
-    let subtitle: String
     let accountSummary: PopoverAccountSummaryPresentation?
-    let isAccountLoading: Bool
-    let onShowAccount: @MainActor () -> Void
+    let screenshotFeedback: PopoverScreenshotFeedback
     let onOpenProject: @MainActor () -> Void
     let onCopyPrivacySummary: @MainActor () -> Void
     let focusedControl: FocusState<PopoverFocusTarget?>.Binding
@@ -882,86 +861,63 @@ private struct PopoverHeader: View {
     let isRefreshing: Bool
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.title3.bold())
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                HStack(spacing: 16) {
-                    Button(action: onOpen) { Image(systemName: "macwindow") }
-                        .help("打开主窗口")
-                        .accessibilityIdentifier("popover.open-overview")
-                        .focusable(true)
-                        .focused(focusedControl, equals: .openOverview)
-                    Button(action: onRefresh) {
-                        RefreshArrowSymbol(isAnimating: isRefreshing)
-                            .frame(width: 18, height: 18)
-                    }
-                        .disabled(!canRefresh)
-                        .help(isRefreshing ? "正在刷新本地数据" : "刷新本地数据")
-                        .accessibilityLabel(isRefreshing ? "正在刷新本地数据" : "刷新本地数据")
-                        .accessibilityValue(isRefreshing ? "进行中" : "就绪")
-                        .accessibilityIdentifier("popover.refresh")
-                        .focusable(true)
-                        .focused(focusedControl, equals: .refresh)
-                }
-                .buttonStyle(PopoverIconButtonStyle())
+        HStack(alignment: .top, spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.headline)
+                PopoverAccountCapsule(summary: accountSummary)
             }
+            Spacer(minLength: 12)
+            HStack(spacing: 4) {
+                PopoverHeaderButton(
+                    title: "打开 GitHub 项目主页",
+                    identifier: "popover.open-project",
+                    target: .openProject,
+                    focusedControl: focusedControl,
+                    action: onOpenProject
+                ) {
+                    GitHubMarkShape().fill(.primary)
+                }
 
-            HStack(spacing: 10) {
-                PopoverAccountShortcut(
-                    summary: accountSummary,
-                    isLoading: isAccountLoading,
-                    action: onShowAccount
-                )
-                .focusable(true)
-                .focused(focusedControl, equals: .accountSummary)
-                .onKeyPress(.return) {
-                    onShowAccount()
-                    return .handled
-                }
-                .onKeyPress(.space) {
-                    onShowAccount()
-                    return .handled
-                }
-                HStack(spacing: 16) {
-                    Button(action: onOpenProject) {
-                        Image(systemName: "chevron.left.forwardslash.chevron.right")
-                    }
-                    .help("打开 GitHub 项目主页")
-                    .accessibilityLabel("打开 GitHub 项目主页")
-                    .accessibilityIdentifier("popover.open-project")
-                    .focusable(true)
-                    .focused(focusedControl, equals: .openProject)
-                    .onKeyPress(.return) {
-                        onOpenProject()
-                        return .handled
-                    }
-                    .onKeyPress(.space) {
-                        onOpenProject()
-                        return .handled
-                    }
+                Rectangle()
+                    .fill(Color.primary.opacity(0.14))
+                    .frame(
+                        width: 1,
+                        height: PopoverInteractionMetrics.headerDividerHeight
+                    )
+                    .padding(.horizontal, 2)
+                    .accessibilityHidden(true)
 
-                    Button(action: onCopyPrivacySummary) {
-                        Image(systemName: "camera")
-                    }
-                    .help("复制隐私安全截图与摘要")
-                    .accessibilityLabel("复制隐私安全截图与摘要")
-                    .accessibilityIdentifier("popover.copy-privacy-summary")
-                    .focusable(true)
-                    .focused(focusedControl, equals: .copyPrivacySummary)
-                    .onKeyPress(.return) {
-                        onCopyPrivacySummary()
-                        return .handled
-                    }
-                    .onKeyPress(.space) {
-                        onCopyPrivacySummary()
-                        return .handled
-                    }
+                PopoverHeaderButton(
+                    title: screenshotFeedback.title,
+                    identifier: "popover.copy-privacy-summary",
+                    target: .copyPrivacySummary,
+                    focusedControl: focusedControl,
+                    action: onCopyPrivacySummary
+                ) {
+                    Image(systemName: screenshotFeedback.systemImage)
                 }
-                .buttonStyle(PopoverIconButtonStyle())
+
+                PopoverHeaderButton(
+                    title: isRefreshing ? "正在刷新本地数据" : "刷新本地数据",
+                    identifier: "popover.refresh",
+                    target: .refresh,
+                    focusedControl: focusedControl,
+                    isEnabled: canRefresh,
+                    action: onRefresh
+                ) {
+                    RefreshArrowSymbol(isAnimating: isRefreshing)
+                }
+
+                PopoverHeaderButton(
+                    title: "打开主窗口",
+                    identifier: "popover.open-overview",
+                    target: .openOverview,
+                    focusedControl: focusedControl,
+                    action: onOpen
+                ) {
+                    Image(systemName: "rectangle.split.2x1")
+                }
             }
         }
         .padding(.horizontal, 18)
@@ -970,49 +926,26 @@ private struct PopoverHeader: View {
     }
 }
 
-private struct PopoverAccountShortcut: View {
+private struct PopoverAccountCapsule: View {
     let summary: PopoverAccountSummaryPresentation?
-    let isLoading: Bool
-    let action: @MainActor () -> Void
 
     var body: some View {
-        Button(action: action) {
-            PulseCard(padding: 9) {
-                HStack(spacing: 9) {
-                    if isLoading {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: "person.crop.circle")
-                            .font(.system(size: 18, weight: .semibold))
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(displayTitle)
-                            .font(.system(size: 12, weight: .semibold))
-                            .lineLimit(1)
-                        Text(displayDetail)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 0)
-                }
-            }
+        HStack(spacing: 4) {
+            Text(summary?.planText ?? "--")
+            Text(summary?.emailText ?? "--")
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
-        .buttonStyle(InteractiveCardButtonStyle())
-        .accessibilityLabel(accessibilityLabel)
+        .font(.caption)
+        .foregroundStyle(.orange)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.orange.opacity(0.14), in: Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            summary?.accessibilityLabel ?? "正在读取 Codex 账户与套餐信息"
+        )
         .accessibilityIdentifier("popover.account-summary")
-    }
-
-    private var displayTitle: String {
-        summary?.title ?? (isLoading ? "正在读取账户摘要" : "账户摘要不可用")
-    }
-
-    private var displayDetail: String {
-        summary?.detail ?? (isLoading ? "仅使用本机展示级数据" : "没有可展示的数据")
-    }
-
-    private var accessibilityLabel: String {
-        summary?.accessibilityLabel ?? "\(displayTitle)，\(displayDetail)"
     }
 }
 
@@ -1270,38 +1203,253 @@ private struct StatusCapsule: View {
     }
 }
 
-private struct PopoverIconButtonStyle: ButtonStyle {
-    @Environment(\.controlActiveState) private var controlActiveState
-    @Environment(\.isEnabled) private var isEnabled
+private struct PopoverHeaderButton<Label: View>: View {
+    let title: String
+    let identifier: String
+    let target: PopoverFocusTarget
+    let focusedControl: FocusState<PopoverFocusTarget?>.Binding
+    let isEnabled: Bool
+    let action: @MainActor () -> Void
+    let label: Label
+    @State private var isHovered = false
+
+    init(
+        title: String,
+        identifier: String,
+        target: PopoverFocusTarget,
+        focusedControl: FocusState<PopoverFocusTarget?>.Binding,
+        isEnabled: Bool = true,
+        action: @escaping @MainActor () -> Void,
+        @ViewBuilder label: () -> Label
+    ) {
+        self.title = title
+        self.identifier = identifier
+        self.target = target
+        self.focusedControl = focusedControl
+        self.isEnabled = isEnabled
+        self.action = action
+        self.label = label()
+    }
+
+    var body: some View {
+        Button(action: action) {
+            label
+                .frame(
+                    width: PopoverInteractionMetrics.headerIconSize,
+                    height: PopoverInteractionMetrics.headerIconSize
+                )
+        }
+        .buttonStyle(PopoverHeaderButtonStyle(
+            isHovered: isHovered,
+            isFocused: focusedControl.wrappedValue == target
+        ))
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.35)
+        .frame(
+            width: PopoverInteractionMetrics.minimumHitTarget,
+            height: PopoverInteractionMetrics.minimumHitTarget
+        )
+        .contentShape(Circle())
+        .padding(-PopoverInteractionMetrics.headerHitSlop)
+        .onHover { isHovered = $0 }
+        .help(title)
+        .accessibilityLabel(title)
+        .accessibilityIdentifier(identifier)
+        .focusable(true)
+        .focused(focusedControl, equals: target)
+        .focusEffectDisabled()
+        .onKeyPress(.return) {
+            guard isEnabled else { return .ignored }
+            action()
+            return .handled
+        }
+        .onKeyPress(.space) {
+            guard isEnabled else { return .ignored }
+            action()
+            return .handled
+        }
+    }
+}
+
+private struct PopoverHeaderButtonStyle: ButtonStyle {
+    let isHovered: Bool
+    let isFocused: Bool
 
     func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
         configuration.label
             .frame(
-                width: PopoverInteractionMetrics.iconVisualSize,
-                height: PopoverInteractionMetrics.iconVisualSize
+                width: PopoverInteractionMetrics.headerButtonDiameter,
+                height: PopoverInteractionMetrics.headerButtonDiameter
             )
-            .foregroundStyle(.primary)
-            .background(iconFill, in: shape)
-            .nativeGlass(in: shape)
-            .overlay(shape.strokeBorder(iconBorder, lineWidth: 1))
-            .scaleEffect(configuration.isPressed ? 0.94 : 1)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.72 : 1) : 0.5)
-            .frame(
-                width: PopoverInteractionMetrics.minimumHitTarget,
-                height: PopoverInteractionMetrics.minimumHitTarget
-            )
-            .contentShape(Rectangle())
-            .padding(-PopoverInteractionMetrics.iconHitSlop)
-            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+            .background {
+                Circle()
+                    .fill(Color.primary.opacity(backgroundOpacity(
+                        pressed: configuration.isPressed
+                    )))
+            }
+            .overlay {
+                if isFocused {
+                    Circle()
+                        .strokeBorder(Color.primary.opacity(0.42), lineWidth: 1)
+                }
+            }
+            .contentShape(Circle())
     }
 
-    private var iconFill: Color {
-        .primary.opacity(controlActiveState == .inactive ? 0.075 : 0.04)
+    private func backgroundOpacity(pressed: Bool) -> Double {
+        if pressed { return 0.16 }
+        if isFocused { return 0.1 }
+        return isHovered ? 0.08 : 0
     }
+}
 
-    private var iconBorder: Color {
-        .primary.opacity(controlActiveState == .inactive ? 0.22 : 0.12)
+private struct GitHubMarkShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let scale = min(rect.width / 98, rect.height / 96)
+        let origin = CGPoint(
+            x: rect.midX - 49 * scale,
+            y: rect.midY - 48 * scale
+        )
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: origin.x + x * scale, y: origin.y + y * scale)
+        }
+
+        var path = Path()
+        path.move(to: point(41.4395, 69.3848))
+        path.addCurve(
+            to: point(19.9062, 46.9902),
+            control1: point(28.8066, 67.8535),
+            control2: point(19.9062, 58.7617)
+        )
+        path.addCurve(
+            to: point(24.5, 33.5918),
+            control1: point(19.9062, 42.2051),
+            control2: point(21.6289, 37.0371)
+        )
+        path.addCurve(
+            to: point(24.8828, 20.959),
+            control1: point(23.2559, 30.4336),
+            control2: point(23.4473, 23.7344)
+        )
+        path.addCurve(
+            to: point(36.9414, 25.2656),
+            control1: point(28.7109, 20.4805),
+            control2: point(33.8789, 22.4902)
+        )
+        path.addCurve(
+            to: point(49.0957, 23.543),
+            control1: point(40.5781, 24.1172),
+            control2: point(44.4062, 23.543)
+        )
+        path.addCurve(
+            to: point(61.0586, 25.1699),
+            control1: point(53.7852, 23.543),
+            control2: point(57.6133, 24.1172)
+        )
+        path.addCurve(
+            to: point(73.1172, 20.959),
+            control1: point(64.0254, 22.4902),
+            control2: point(69.2891, 20.4805)
+        )
+        path.addCurve(
+            to: point(73.4043, 33.4961),
+            control1: point(74.457, 23.543),
+            control2: point(74.6484, 30.2422)
+        )
+        path.addCurve(
+            to: point(78.0937, 46.9902),
+            control1: point(76.4668, 37.1328),
+            control2: point(78.0937, 42.0137)
+        )
+        path.addCurve(
+            to: point(56.3691, 69.2891),
+            control1: point(78.0937, 58.7617),
+            control2: point(69.1934, 67.6621)
+        )
+        path.addCurve(
+            to: point(61.8242, 81.252),
+            control1: point(59.623, 71.3945),
+            control2: point(61.8242, 75.9883)
+        )
+        path.addLine(to: point(61.8242, 91.2051))
+        path.addCurve(
+            to: point(67.0879, 94.5547),
+            control1: point(61.8242, 94.0762),
+            control2: point(64.2168, 95.7031)
+        )
+        path.addCurve(
+            to: point(98, 49.1914),
+            control1: point(84.4102, 87.9512),
+            control2: point(98, 70.6289)
+        )
+        path.addCurve(
+            to: point(48.9043, 0),
+            control1: point(98, 22.1074),
+            control2: point(75.9883, 0)
+        )
+        path.addCurve(
+            to: point(0, 49.1914),
+            control1: point(21.8203, 0),
+            control2: point(0, 22.1074)
+        )
+        path.addCurve(
+            to: point(31.6777, 94.6504),
+            control1: point(0, 70.4375),
+            control2: point(13.4941, 88.0469)
+        )
+        path.addCurve(
+            to: point(36.75, 91.3008),
+            control1: point(34.2617, 95.6074),
+            control2: point(36.75, 93.8848)
+        )
+        path.addLine(to: point(36.75, 83.6445))
+        path.addCurve(
+            to: point(32.1562, 84.6016),
+            control1: point(35.4102, 84.2188),
+            control2: point(33.6875, 84.6016)
+        )
+        path.addCurve(
+            to: point(19.4277, 74.7441),
+            control1: point(25.8398, 84.6016),
+            control2: point(22.1074, 81.1563)
+        )
+        path.addCurve(
+            to: point(15.0254, 70.3418),
+            control1: point(18.375, 72.1602),
+            control2: point(17.2266, 70.6289)
+        )
+        path.addCurve(
+            to: point(13.4941, 69.1934),
+            control1: point(13.877, 70.2461),
+            control2: point(13.4941, 69.7676)
+        )
+        path.addCurve(
+            to: point(17.3223, 67.1836),
+            control1: point(13.4941, 68.0449),
+            control2: point(15.4082, 67.1836)
+        )
+        path.addCurve(
+            to: point(24.9785, 72.4473),
+            control1: point(20.0977, 67.1836),
+            control2: point(22.4902, 68.9063)
+        )
+        path.addCurve(
+            to: point(31.2949, 76.4668),
+            control1: point(26.8926, 75.2227),
+            control2: point(28.9023, 76.4668)
+        )
+        path.addCurve(
+            to: point(37.4199, 73.4043),
+            control1: point(33.6875, 76.4668),
+            control2: point(35.2187, 75.6055)
+        )
+        path.addCurve(
+            to: point(41.4395, 69.3848),
+            control1: point(39.0469, 71.7773),
+            control2: point(40.291, 70.3418)
+        )
+        path.closeSubpath()
+        return path
     }
 }
 
@@ -1375,8 +1523,10 @@ private struct NativePopoverBackdrop: View {
 
 private enum PopoverInteractionMetrics {
     static let minimumHitTarget: CGFloat = 44
-    static let iconVisualSize: CGFloat = 28
-    static let iconHitSlop = (minimumHitTarget - iconVisualSize) / 2
+    static let headerButtonDiameter: CGFloat = 30
+    static let headerIconSize: CGFloat = 16
+    static let headerDividerHeight: CGFloat = 18
+    static let headerHitSlop = (minimumHitTarget - headerButtonDiameter) / 2
     static let compactButtonVisualHeight: CGFloat = 28
     static let compactButtonHitSlop = (minimumHitTarget - compactButtonVisualHeight) / 2
     static let cardCornerRadius: CGFloat = 12
@@ -1428,7 +1578,7 @@ private struct PopoverPrivacySnapshotView: View {
                     .foregroundStyle(.blue)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Codex Pulse").font(.title3.bold())
-                    Text("隐私安全摘要").font(.caption).foregroundStyle(.secondary)
+                    Text("Popover 摘要").font(.caption).foregroundStyle(.secondary)
                 }
             }
             Divider()
@@ -1447,7 +1597,7 @@ private struct PopoverPrivacySnapshotView: View {
                 Text(summary.resetCreditsRow).font(.system(size: 13, weight: .medium))
             }
             Divider()
-            Label("仅包含 Popover 已展示的聚合信息", systemImage: "lock.shield")
+            Label("仅包含 Popover 已展示信息", systemImage: "checkmark.shield")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

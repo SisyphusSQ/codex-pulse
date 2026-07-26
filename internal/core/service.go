@@ -48,6 +48,10 @@ type quotaRefreshCommand interface {
 	RequestQuotaRefresh(context.Context, quotaonline.RefreshSource) (store.SourceRefreshSchedule, error)
 }
 
+type accountSnapshotQuery interface {
+	AccountSnapshot(context.Context) (AccountSnapshot, error)
+}
+
 type sessionDeepIndexCommand interface {
 	DeepIndexSession(context.Context, string) (lightindex.DeepIndexResult, error)
 }
@@ -66,6 +70,7 @@ type ServiceConfig struct {
 	QuotaRefresh     quotaRefreshCommand
 	RuntimeControls  runtimeControlCommand
 	HealthProjection healthProjectionQuery
+	AccountSnapshot  accountSnapshotQuery
 	QueryObserver    QueryObserver
 	SessionDeepIndex sessionDeepIndexCommand
 }
@@ -82,6 +87,8 @@ type Service struct {
 	sessionDeepIndex sessionDeepIndexCommand
 	healthMu         sync.RWMutex
 	healthProjection healthProjectionQuery
+	accountMu        sync.RWMutex
+	accountSnapshot  accountSnapshotQuery
 	queryObserver    QueryObserver
 }
 
@@ -97,6 +104,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 		sessionDeepIndex: config.SessionDeepIndex,
 		queryObserver:    config.QueryObserver,
 		healthProjection: config.HealthProjection,
+		accountSnapshot:  config.AccountSnapshot,
 	}, nil
 }
 
@@ -152,6 +160,19 @@ func (service *Service) bindHealthProjection(query healthProjectionQuery) error 
 	return nil
 }
 
+func (service *Service) bindAccountSnapshot(query accountSnapshotQuery) error {
+	if service == nil || query == nil {
+		return ErrService
+	}
+	service.accountMu.Lock()
+	defer service.accountMu.Unlock()
+	if service.accountSnapshot != nil {
+		return ErrService
+	}
+	service.accountSnapshot = query
+	return nil
+}
+
 // BindDependencies attaches runtime capabilities without widening Service's
 // exported RPC-shaped method surface. Each capability can be bound once.
 func BindDependencies(service *Service, config ServiceConfig) error {
@@ -175,6 +196,11 @@ func BindDependencies(service *Service, config ServiceConfig) error {
 	}
 	if config.HealthProjection != nil {
 		if err := service.bindHealthProjection(config.HealthProjection); err != nil {
+			return err
+		}
+	}
+	if config.AccountSnapshot != nil {
+		if err := service.bindAccountSnapshot(config.AccountSnapshot); err != nil {
 			return err
 		}
 	}
@@ -205,6 +231,7 @@ type ContractInfo struct {
 
 var methodAllowlist = []MethodInfo{
 	{Name: "Contracts", Kind: MethodQuery},
+	{Name: "AccountSnapshot", Kind: MethodQuery},
 	{Name: "UsageCost", Kind: MethodQuery},
 	{Name: "ListSessions", Kind: MethodQuery},
 	{Name: "SessionDetail", Kind: MethodQuery},
@@ -241,6 +268,31 @@ func (service *Service) Contracts() ContractInfo {
 				"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
 			}, ErrorExample: errorExample,
 		}
+	})
+}
+
+type AccountIdentity struct {
+	Type     string  `json:"type"`
+	Email    *string `json:"email,omitempty"`
+	PlanType *string `json:"planType,omitempty"`
+}
+
+type AccountSnapshot struct {
+	Account *AccountIdentity `json:"account,omitempty"`
+}
+
+func (service *Service) AccountSnapshot(ctx context.Context) (AccountSnapshot, error) {
+	if service == nil {
+		return AccountSnapshot{}, newServiceFailure(ErrService)
+	}
+	service.accountMu.RLock()
+	query := service.accountSnapshot
+	service.accountMu.RUnlock()
+	if query == nil {
+		return AccountSnapshot{}, newServiceFailure(ErrService)
+	}
+	return serviceQueryCall(service, func() (AccountSnapshot, error) {
+		return query.AccountSnapshot(ctx)
 	})
 }
 
