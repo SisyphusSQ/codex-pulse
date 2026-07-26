@@ -1055,6 +1055,10 @@ private actor ForegroundSurfaceRecorder {
         unavailableCount > 0
     }
 
+    func unavailableCountValue() -> Int {
+        unavailableCount
+    }
+
     func latestOverviewTimestamp() -> Int64? {
         overviewTimestamps.last
     }
@@ -1121,7 +1125,18 @@ private actor FakeCore: AppCoreServing {
         (@Sendable (Codexpulse_Core_V1_QueryInvalidationEvent) async throws -> Void)?
     private var nextInvalidationSequence: UInt64 = 1
     private var activeUsageCalls = 0
+    private var completedUsageCalls = 0
     private var maximumConcurrentUsageCalls = 0
+    private var invalidationStreamCalls = 0
+    private var holdInitialStreamReadiness = false
+    private var initialStreamReadinessReleased = false
+    private var initialStreamReadinessWaiters: [CheckedContinuation<Void, Never>] = []
+    private var disconnectInitialStreamAfterReady = false
+    private var initialStreamDisconnectReleased = false
+    private var initialStreamDisconnectWaiters: [CheckedContinuation<Void, Never>] = []
+    private var holdReconnectStreamReadiness = false
+    private var reconnectStreamReadinessReleased = false
+    private var reconnectStreamReadinessWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(
         bootstrap: Codexpulse_Core_V1_BootstrapResponse,
@@ -1157,6 +1172,34 @@ private actor FakeCore: AppCoreServing {
         failOverview = true
         overviewBarrierClosed = true
     }
+    func prepareInitialStreamReadinessBarrier() {
+        holdInitialStreamReadiness = true
+        initialStreamReadinessReleased = false
+    }
+    func releaseInitialStreamReadinessBarrier() {
+        initialStreamReadinessReleased = true
+        let waiters = initialStreamReadinessWaiters
+        initialStreamReadinessWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+    func prepareReconnectWithoutInvalidationReplay() {
+        disconnectInitialStreamAfterReady = true
+        initialStreamDisconnectReleased = false
+        holdReconnectStreamReadiness = true
+        reconnectStreamReadinessReleased = false
+    }
+    func disconnectInitialInvalidationStream() {
+        initialStreamDisconnectReleased = true
+        let waiters = initialStreamDisconnectWaiters
+        initialStreamDisconnectWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+    func releaseReconnectStreamReadiness() {
+        reconnectStreamReadinessReleased = true
+        let waiters = reconnectStreamReadinessWaiters
+        reconnectStreamReadinessWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
     func publishOverviewInvalidations(
         count: Int,
         recovered: Bool
@@ -1183,9 +1226,17 @@ private actor FakeCore: AppCoreServing {
         overviewBarrierWaiters.removeFirst().resume()
     }
     func overviewBarrierWaiterCount() -> Int { overviewBarrierWaiters.count }
-    func overviewRecoveryStats() -> (usageCalls: Int, maximumConcurrentUsageCalls: Int) {
-        (usageRequests.count, maximumConcurrentUsageCalls)
+    func overviewRecoveryStats() -> (
+        usageCalls: Int,
+        completedUsageCalls: Int,
+        maximumConcurrentUsageCalls: Int
+    ) {
+        (usageRequests.count, completedUsageCalls, maximumConcurrentUsageCalls)
     }
+    func invalidationStreamCallCount() -> Int { invalidationStreamCalls }
+    func initialStreamReadinessWaiterCount() -> Int { initialStreamReadinessWaiters.count }
+    func initialStreamDisconnectWaiterCount() -> Int { initialStreamDisconnectWaiters.count }
+    func reconnectStreamReadinessWaiterCount() -> Int { reconnectStreamReadinessWaiters.count }
     func recordedCalls() -> [String] { calls }
     func recordedUsageRequests() -> [Codexpulse_Core_V1_UsageCostRequest] { usageRequests }
     func recordedSessionRequests() -> [Codexpulse_Core_V1_ListSessionsRequest] { sessionRequests }
@@ -1223,7 +1274,10 @@ private actor FakeCore: AppCoreServing {
         let shouldFail = failOverview
         activeUsageCalls += 1
         maximumConcurrentUsageCalls = max(maximumConcurrentUsageCalls, activeUsageCalls)
-        defer { activeUsageCalls -= 1 }
+        defer {
+            activeUsageCalls -= 1
+            completedUsageCalls += 1
+        }
         await waitForOverviewBarrier()
         if overviewDelay != .zero { try await Task.sleep(for: overviewDelay) }
         if shouldFail { throw FakeFailure.unavailable }
@@ -1358,9 +1412,32 @@ private actor FakeCore: AppCoreServing {
         onEvent: @Sendable @escaping (Codexpulse_Core_V1_QueryInvalidationEvent) async throws -> Void
     ) async throws {
         calls.append("stream:\(domains.joined(separator: ","))")
+        invalidationStreamCalls += 1
+        let streamCall = invalidationStreamCalls
         invalidationHandler = onEvent
         defer { invalidationHandler = nil }
+        if streamCall == 1, holdInitialStreamReadiness, !initialStreamReadinessReleased {
+            await withCheckedContinuation { continuation in
+                initialStreamReadinessWaiters.append(continuation)
+            }
+            try Task.checkCancellation()
+        }
+        if streamCall == 2, holdReconnectStreamReadiness, !reconnectStreamReadinessReleased {
+            await withCheckedContinuation { continuation in
+                reconnectStreamReadinessWaiters.append(continuation)
+            }
+            try Task.checkCancellation()
+        }
         await onReady()
+        if streamCall == 1,
+           disconnectInitialStreamAfterReady,
+           !initialStreamDisconnectReleased
+        {
+            await withCheckedContinuation { continuation in
+                initialStreamDisconnectWaiters.append(continuation)
+            }
+            throw FakeFailure.unavailable
+        }
         if let invalidationDomain {
             if invalidationDelay != .zero { try await Task.sleep(for: invalidationDelay) }
             var event = Codexpulse_Core_V1_QueryInvalidationEvent()
@@ -2949,10 +3026,81 @@ private func testUnavailableRecoveryRefreshesOpenForegroundSurfaces() async thro
         "coalesced recovery invalidations must schedule exactly one follow-up Overview refresh"
     )
     try expect(
+        stats.completedUsageCalls == 2,
+        "recovered Overview follow-up must complete before foreground success is asserted"
+    )
+    try expect(
         stats.maximumConcurrentUsageCalls == 1,
         "recovery refresh must not overlap the unavailable Overview request"
     )
     try expect(model.presentation != nil, "recovered Overview must become the shared AppModel truth")
+    withExtendedLifetime(cancellables) {}
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testRecoveryDuringDisconnectedStreamRefreshesAfterReconnectWithoutReplay() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.prepareUnavailableOverviewRecovery()
+    await core.prepareReconnectWithoutInvalidationReplay()
+    let model = AppModel(runtime: AppRuntime(
+        supervisor: FakeSupervisor(),
+        clientFactory: { _ in core }
+    ))
+    let mainWindow = ForegroundSurfaceRecorder()
+    let statusPopover = ForegroundSurfaceRecorder()
+    var cancellables: Set<AnyCancellable> = []
+    model.$state.sink { state in
+        Task { await mainWindow.append(state) }
+    }.store(in: &cancellables)
+    model.$state.sink { state in
+        Task { await statusPopover.append(state) }
+    }.store(in: &cancellables)
+
+    model.start()
+    try await waitUntil("disconnected recovery quota is in flight") {
+        await core.overviewBarrierWaiterCount() == 1
+    }
+    await core.releaseNextOverviewBarrierWaiter()
+    try await waitUntil("disconnected recovery Overview sections are in flight") {
+        await core.overviewBarrierWaiterCount() == 4
+    }
+    await core.releaseOverviewBarrier()
+    try await waitUntil("disconnected recovery starts unavailable") {
+        let stats = await core.overviewRecoveryStats()
+        let mainUnavailable = await mainWindow.observedUnavailable()
+        let popoverUnavailable = await statusPopover.observedUnavailable()
+        return stats.completedUsageCalls == 1 && mainUnavailable && popoverUnavailable
+    }
+    try await waitUntil("initial invalidation stream can disconnect") {
+        await core.initialStreamDisconnectWaiterCount() == 1
+    }
+
+    await core.disconnectInitialInvalidationStream()
+    try await waitUntil("replacement invalidation stream waits before ready") {
+        let streamCalls = await core.invalidationStreamCallCount()
+        let readinessWaiters = await core.reconnectStreamReadinessWaiterCount()
+        return streamCalls == 2 && readinessWaiters == 1
+    }
+    await core.setOverviewFailure(false)
+    await core.releaseReconnectStreamReadiness()
+
+    try await waitUntil("main window refreshes after reconnect without replay") {
+        await mainWindow.latestOverviewTimestamp() != nil
+    }
+    try await waitUntil("status Popover refreshes after reconnect without replay") {
+        await statusPopover.latestOverviewTimestamp() != nil
+    }
+    let stats = await core.overviewRecoveryStats()
+    try expect(
+        stats.usageCalls == 2 && stats.completedUsageCalls == 2,
+        "stream ready after a disconnected recovery must schedule one completed authoritative refresh"
+    )
+    try expect(
+        stats.maximumConcurrentUsageCalls == 1,
+        "reconnect recovery refresh must remain serial"
+    )
+    try expect(model.presentation != nil, "reconnect recovery must update shared AppModel truth")
     withExtendedLifetime(cancellables) {}
     _ = await model.shutdown()
 }
@@ -2965,6 +3113,11 @@ private func testUnavailableRecoveryFailureDoesNotPublishSuccess() async throws 
         supervisor: FakeSupervisor(),
         clientFactory: { _ in core }
     ))
+    let foreground = ForegroundSurfaceRecorder()
+    var cancellables: Set<AnyCancellable> = []
+    model.$state.sink { state in
+        Task { await foreground.append(state) }
+    }.store(in: &cancellables)
 
     model.start()
     try await waitUntil("failed recovery quota is in flight") {
@@ -2979,23 +3132,27 @@ private func testUnavailableRecoveryFailureDoesNotPublishSuccess() async throws 
 
     try await waitUntil("failed recovery follow-up completes") {
         let stats = await core.overviewRecoveryStats()
-        return stats.usageCalls == 2
+        return stats.completedUsageCalls == 2
     }
-    try await waitUntil("failed recovery remains unavailable") {
-        await MainActor.run {
-            if case .unavailable = model.state { return true }
-            return false
-        }
+    try await waitUntil("failed recovery publishes its second unavailable result") {
+        await foreground.unavailableCountValue() == 2
     }
+    try await Task.sleep(for: .milliseconds(100))
     let stats = await core.overviewRecoveryStats()
+    try expect(
+        stats.usageCalls == 2 && stats.completedUsageCalls == 2,
+        "failed recovery must stop after exactly one completed follow-up Overview refresh"
+    )
     try expect(
         stats.maximumConcurrentUsageCalls == 1,
         "failed recovery follow-up must remain serial"
     )
+    let foregroundOverviewTimestamp = await foreground.latestOverviewTimestamp()
     try expect(
-        model.presentation == nil,
+        model.presentation == nil && foregroundOverviewTimestamp == nil,
         "failed recovery must not publish an Overview or reuse unavailable data as fresh"
     )
+    withExtendedLifetime(cancellables) {}
     _ = await model.shutdown()
 }
 
@@ -3154,6 +3311,51 @@ private func testSleepDuringStartupDefersOverviewUntilWake() async throws {
     try expect(calls.contains("usage"), "wake must load the deferred Overview")
     let phases = await recorder.snapshot()
     try expect(phases.last == "normal", "wake after startup sleep must reach normal")
+    _ = await runtime.shutdown()
+}
+
+private func testSleepDuringInvalidationReadinessPreservesRuntimeUntilWake() async throws {
+    let supervisor = FakeSupervisor()
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.prepareInitialStreamReadinessBarrier()
+    let recorder = StateRecorder()
+    let runtime = AppRuntime(supervisor: supervisor, clientFactory: { _ in core })
+    await runtime.setStateSink { state in await recorder.append(state) }
+
+    let start = Task { await runtime.start() }
+    try await waitUntil("initial stream readiness is blocked") {
+        await core.initialStreamReadinessWaiterCount() == 1
+    }
+    await runtime.prepareForSleep()
+    await core.releaseInitialStreamReadinessBarrier()
+    await start.value
+
+    let sleepingCounts = await supervisor.counts()
+    try expect(
+        sleepingCounts == (1, 0),
+        "sleep during initial stream readiness must preserve the existing Helper runtime"
+    )
+    var calls = await core.recordedCalls()
+    try expect(
+        calls.contains("lifecycle:system_will_sleep"),
+        "readiness-window sleep must notify the existing Helper"
+    )
+    try expect(!calls.contains("usage"), "readiness-window sleep must defer the first Overview")
+
+    await runtime.resumeAfterWake()
+    try await waitUntil("wake after readiness-window sleep completes first Overview") {
+        let stats = await core.overviewRecoveryStats()
+        return stats.completedUsageCalls == 1
+    }
+    calls = await core.recordedCalls()
+    try expect(
+        calls.contains("lifecycle:system_did_wake"),
+        "wake must resume the preserved stream lifecycle"
+    )
+    let phases = await recorder.snapshot()
+    try expect(phases.last == "normal", "wake must resume the stream before the deferred first read")
+    let awakeCounts = await supervisor.counts()
+    try expect(awakeCounts == (1, 0), "wake must reuse the original Helper runtime")
     _ = await runtime.shutdown()
 }
 
@@ -3359,6 +3561,8 @@ struct CodexPulseAppTestMain {
         try await testRecoveryAndRestartRequired()
         try await testStaleAndUnavailable()
         try await testUnavailableRecoveryRefreshesOpenForegroundSurfaces()
+        try await testSleepDuringInvalidationReadinessPreservesRuntimeUntilWake()
+        try await testRecoveryDuringDisconnectedStreamRefreshesAfterReconnectWithoutReplay()
         try await testUnavailableRecoveryFailureDoesNotPublishSuccess()
         try await testContractUnavailableCannotRestartLoop()
         try await testManualOverviewRefreshExposesBusyState()

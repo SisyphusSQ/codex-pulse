@@ -90,6 +90,13 @@ private actor ReadyFlag {
     func isReady() -> Bool { ready }
 }
 
+private actor ReadyCounter {
+    private var count = 0
+
+    func increment() { count += 1 }
+    func value() -> Int { count }
+}
+
 private actor RetryHarness {
     private var attempts = 0
 
@@ -196,11 +203,13 @@ private func testLifecycleTransitionReentrancy() async throws {
 
 private func testStreamGenerationIsolation() async throws {
     let harness = StreamRaceHarness()
+    let readyCounter = ReadyCounter()
     let controller = InvalidationStreamController(
         domains: ["quota"],
         consumeInvalidations: { _, _, onReady, _ in
             try await harness.consume(onReady: onReady)
         },
+        onReady: { await readyCounter.increment() },
         onEvent: { _ in }
     )
     await controller.start()
@@ -221,9 +230,39 @@ private func testStreamGenerationIsolation() async throws {
     let (state, _) = await controller.snapshot()
     try expect(state, .ready, "stale stream callback must not replace current state")
     try expect(await harness.callCount(), 2, "stale stream must not launch a third stream")
+    try expect(
+        await readyCounter.value(),
+        1,
+        "stale stream readiness must not escape the controller generation boundary"
+    )
 
     await controller.stop()
     await harness.release(2)
+}
+
+private func testReadinessWaitTreatsSleepAsRecoverableSuspension() async throws {
+    let harness = StreamRaceHarness()
+    let controller = InvalidationStreamController(
+        domains: ["quota"],
+        consumeInvalidations: { _, _, onReady, _ in
+            try await harness.consume(onReady: onReady)
+        },
+        onEvent: { _ in }
+    )
+    await controller.start()
+    try await waitUntil("stream connecting before sleep") { await harness.callCount() == 1 }
+    let readiness = Task { try await controller.waitUntilReady() }
+    try await controller.prepareForSleep(sendLifecycle: false)
+    do {
+        try await readiness.value
+        throw TestFailure.mismatch("sleeping stream was incorrectly reported ready")
+    } catch InvalidationStreamError.suspendedForSleep {
+        // Expected: the owner can preserve the runtime and resume after wake.
+    }
+    let (state, _) = await controller.snapshot()
+    try expect(state, .sleeping, "sleep-suspended readiness must preserve sleeping state")
+    await controller.stop()
+    await harness.release(1)
 }
 
 private func testReconnectBudget() async throws {
@@ -533,6 +572,7 @@ struct ContractTestMain {
         )
 
         try await testStreamGenerationIsolation()
+        try await testReadinessWaitTreatsSleepAsRecoverableSuspension()
         try await testReconnectBudget()
         try await testReadRetryPolicy()
         try await testLifecycleTransitionReentrancy()

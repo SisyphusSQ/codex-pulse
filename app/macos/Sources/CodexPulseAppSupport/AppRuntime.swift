@@ -8,6 +8,11 @@ private enum ShutdownRequestResult: Equatable, Sendable {
     case timedOut
 }
 
+private enum InvalidationStreamStartOutcome: Equatable, Sendable {
+    case ready
+    case sleeping
+}
+
 private enum OverviewSectionResult<Value: Sendable>: Sendable {
     case value(Value)
     case failure(AppNotice)
@@ -144,6 +149,8 @@ public actor AppRuntime {
     private var readyForOverview = false
     private var activeRefreshPending = false
     private var invalidationRefreshPending = false
+    private var streamHasReachedReady = false
+    private var suppressNextStreamReadyRefresh = false
 
     public init(configuration: AppLaunchConfiguration) {
         self.supervisor = HelperSupervisor(configuration: .init(
@@ -224,10 +231,11 @@ public actor AppRuntime {
                     await suspendWithoutStream(client: connectedClient, generation: generation)
                     return
                 }
-                try await startInvalidationStream(
+                let streamOutcome = try await startInvalidationStream(
                     client: connectedClient,
                     generation: generation
                 )
+                guard streamOutcome == .ready, !systemIsSleeping else { return }
                 guard generation == runtimeGeneration, client != nil else { return }
                 await refresh(showLoading: true)
                 guard generation == runtimeGeneration, client != nil else { return }
@@ -721,7 +729,11 @@ public actor AppRuntime {
                     guard generation == runtimeGeneration, !shuttingDown else { return }
                 }
                 sleepLifecycleDelivered = false
-                try await startInvalidationStream(client: client, generation: generation)
+                let streamOutcome = try await startInvalidationStream(
+                    client: client,
+                    generation: generation
+                )
+                guard streamOutcome == .ready, !systemIsSleeping else { return }
                 guard generation == runtimeGeneration, !shuttingDown else { return }
                 await refresh(showLoading: lastResponses == nil)
                 guard generation == runtimeGeneration, !shuttingDown else { return }
@@ -733,6 +745,7 @@ public actor AppRuntime {
             return
         }
         do {
+            suppressNextStreamReadyRefresh = true
             try await streamController.resumeAfterWake(sendLifecycle: sendLifecycleToHelper)
             guard generation == runtimeGeneration, !shuttingDown else { return }
             try await streamController.waitUntilReady()
@@ -743,6 +756,7 @@ public actor AppRuntime {
             await deliverPendingActive(client: client, generation: generation)
         } catch {
             guard generation == runtimeGeneration, !shuttingDown else { return }
+            suppressNextStreamReadyRefresh = false
             await emitRefreshFailure(error)
         }
     }
@@ -776,7 +790,11 @@ public actor AppRuntime {
                     await suspendWithoutStream(client: client, generation: generation)
                     return
                 }
-                try await startInvalidationStream(client: client, generation: generation)
+                let streamOutcome = try await startInvalidationStream(
+                    client: client,
+                    generation: generation
+                )
+                guard streamOutcome == .ready, !systemIsSleeping else { return }
                 guard generation == runtimeGeneration, !shuttingDown else { return }
                 await refresh(showLoading: true)
                 guard generation == runtimeGeneration, !shuttingDown else { return }
@@ -968,9 +986,11 @@ public actor AppRuntime {
     private func startInvalidationStream(
         client: any AppCoreServing,
         generation: UInt64
-    ) async throws {
-        guard streamController == nil, generation == runtimeGeneration else { return }
+    ) async throws -> InvalidationStreamStartOutcome {
+        guard streamController == nil, generation == runtimeGeneration else { return .ready }
         let runtime = self
+        streamHasReachedReady = false
+        suppressNextStreamReadyRefresh = false
         let controller = InvalidationStreamController(
             domains: ["index", "quota", "health", "settings"],
             consumeInvalidations: { domains, afterSequence, onReady, onEvent in
@@ -983,6 +1003,9 @@ public actor AppRuntime {
             },
             notifyLifecycle: { event in
                 _ = try await client.notifyLifecycle(event)
+            },
+            onReady: {
+                await runtime.handleInvalidationStreamReady(generation: generation)
             },
             onTerminalFailure: {
                 await runtime.handleRuntimeFailure(
@@ -997,13 +1020,46 @@ public actor AppRuntime {
         await controller.start()
         do {
             try await controller.waitUntilReady()
+            return .ready
+        } catch InvalidationStreamError.suspendedForSleep {
+            guard generation == runtimeGeneration,
+                  systemIsSleeping,
+                  streamController != nil
+            else {
+                if generation == runtimeGeneration, streamController != nil {
+                    streamController = nil
+                    streamHasReachedReady = false
+                    suppressNextStreamReadyRefresh = false
+                    await controller.stop()
+                }
+                throw InvalidationStreamError.suspendedForSleep
+            }
+            return .sleeping
         } catch {
             if generation == runtimeGeneration, streamController != nil {
                 streamController = nil
+                streamHasReachedReady = false
+                suppressNextStreamReadyRefresh = false
                 await controller.stop()
             }
             throw error
         }
+    }
+
+    private func handleInvalidationStreamReady(generation: UInt64) async {
+        guard generation == runtimeGeneration, streamController != nil, !shuttingDown else { return }
+        let isReconnect = streamHasReachedReady
+        streamHasReachedReady = true
+        if suppressNextStreamReadyRefresh {
+            suppressNextStreamReadyRefresh = false
+            return
+        }
+        guard isReconnect, readyForOverview, !systemIsSleeping, client != nil else { return }
+        if refreshTask != nil {
+            invalidationRefreshPending = true
+            return
+        }
+        await refresh(showLoading: false)
     }
 
     private func handleInvalidation(domain: String) async {
@@ -1099,6 +1155,8 @@ public actor AppRuntime {
         readyForOverview = false
         activeRefreshPending = applicationIsActive
         sleepLifecycleDelivered = false
+        streamHasReachedReady = false
+        suppressNextStreamReadyRefresh = false
         refreshGeneration &+= 1
         invalidationRefreshPending = false
         refreshTask?.cancel()
@@ -1139,6 +1197,8 @@ public actor AppRuntime {
     private func stopCurrentCore(reason: String) async -> ShutdownOutcome {
         readyForOverview = false
         sleepLifecycleDelivered = false
+        streamHasReachedReady = false
+        suppressNextStreamReadyRefresh = false
         helperProcessMonitor?.cancel()
         helperProcessMonitor = nil
         refreshGeneration &+= 1
@@ -1207,6 +1267,8 @@ public actor AppRuntime {
         runtimeGeneration &+= 1
         readyForOverview = false
         sleepLifecycleDelivered = false
+        streamHasReachedReady = false
+        suppressNextStreamReadyRefresh = false
         helperProcessMonitor?.cancel()
         helperProcessMonitor = nil
         if let client {
