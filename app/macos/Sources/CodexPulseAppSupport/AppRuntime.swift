@@ -144,11 +144,13 @@ public actor AppRuntime {
     private var streamController: InvalidationStreamController?
     private var helperProcessMonitor: (any HelperProcessMonitoring)?
     private var refreshTask: Task<OverviewResponses, any Error>?
+    private var accountRefreshTask: Task<Void, Never>?
     private var lastResponses: OverviewResponses?
     private var overviewRange: DateRangePreset = .quotaWeek
     private var runtimeGeneration: UInt64 = 0
     private var refreshGeneration: UInt64 = 0
     private var refreshAdmissionGeneration: UInt64?
+    private var accountRefreshGeneration: UInt64 = 0
     private var startInFlight = false
     private var shuttingDown = false
     private var applicationIsActive = true
@@ -292,6 +294,7 @@ public actor AppRuntime {
             restorePendingInitialOverviewAfterCancellation()
             refreshTask?.cancel()
             refreshTask = nil
+            cancelAccountRefresh()
         }
         await refresh(showLoading: false)
     }
@@ -659,6 +662,7 @@ public actor AppRuntime {
         restorePendingInitialOverviewAfterCancellation()
         refreshTask?.cancel()
         refreshTask = nil
+        cancelAccountRefresh()
         await emit(.cancelled)
     }
 
@@ -722,6 +726,7 @@ public actor AppRuntime {
         restorePendingInitialOverviewAfterCancellation()
         refreshTask?.cancel()
         refreshTask = nil
+        cancelAccountRefresh()
         let generation = runtimeGeneration
         guard let streamController else {
             if readyForOverview, let client {
@@ -873,6 +878,7 @@ public actor AppRuntime {
         invalidationRefreshPending = false
         refreshTask?.cancel()
         refreshTask = nil
+        cancelAccountRefresh()
         await emit(.shuttingDown)
         let outcome = await stopCurrentCore(reason: "client_exit")
         shuttingDown = false
@@ -887,6 +893,7 @@ public actor AppRuntime {
             return
         }
         guard refreshAdmissionGeneration == nil else { return }
+        cancelAccountRefresh()
         refreshGeneration &+= 1
         let generation = refreshGeneration
         let admittedRuntimeGeneration = runtimeGeneration
@@ -961,12 +968,9 @@ public actor AppRuntime {
             async let healthResult = captureOverviewSection {
                 try await client.healthProjection(retryPolicy: .transportDefault)
             }
-            async let accountResult = captureOverviewSection {
-                try await client.accountSnapshot(retryPolicy: .none)
-            }
             let sectionResults = await (
                 usageResult, sessionResult, projectResult, weeklyProjectResult,
-                weeklyUsageResult, healthResult, accountResult)
+                weeklyUsageResult, healthResult)
             let mandatoryNotices = [
                 quotaResult.notice,
                 sectionResults.0.notice,
@@ -1011,15 +1015,10 @@ public actor AppRuntime {
             case .value(let response): healthResponse = response
             case .failure: healthResponse = unavailableHealth()
             }
-            let accountResponse: Codexpulse_Core_V1_AccountSnapshotResponse?
-            switch sectionResults.6 {
-            case .value(let response): accountResponse = response
-            case .failure: accountResponse = previousAccount
-            }
             return OverviewResponses(
                 usage: usageResponse,
                 quota: quotaResponse,
-                account: accountResponse,
+                account: previousAccount,
                 sessions: sessionResponse,
                 projects: projectResponse,
                 health: healthResponse,
@@ -1037,14 +1036,17 @@ public actor AppRuntime {
             guard generation == refreshGeneration, refreshTask != nil, !shuttingDown else { return }
             refreshTask = nil
             lastResponses = responses
-            let presentation = OverviewPresentation(responses)
-            if presentation.isPartial {
-                await emit(.partial(responses, presentation.notices))
-            } else {
-                await emit(.normal(responses))
-            }
+            await publishOverview(responses)
             completeInitialOverviewRefreshIfNeeded()
             await drainPendingInvalidationRefresh()
+            guard generation == refreshGeneration, !shuttingDown else { return }
+            // Account data is optional and has its own bounded RPC/task lifecycle,
+            // so it cannot delay the primary Overview publication above.
+            startAccountRefresh(
+                client: client,
+                runtimeGeneration: runtimeGeneration,
+                overviewGeneration: generation
+            )
         } catch is CancellationError {
             guard generation == refreshGeneration else { return }
             refreshTask = nil
@@ -1057,6 +1059,72 @@ public actor AppRuntime {
             await emitRefreshFailure(error)
             completeInitialOverviewRefreshIfNeeded()
             await drainPendingInvalidationRefresh()
+        }
+    }
+
+    private func startAccountRefresh(
+        client: any AppCoreServing,
+        runtimeGeneration: UInt64,
+        overviewGeneration: UInt64
+    ) {
+        guard !shuttingDown, readyForOverview,
+              runtimeGeneration == self.runtimeGeneration,
+              overviewGeneration == refreshGeneration
+        else { return }
+        cancelAccountRefresh()
+        let generation = accountRefreshGeneration
+        accountRefreshTask = Task { [weak self] in
+            do {
+                let response = try await client.accountSnapshot(retryPolicy: .none)
+                try Task.checkCancellation()
+                await self?.finishAccountRefresh(
+                    response,
+                    generation: generation,
+                    runtimeGeneration: runtimeGeneration,
+                    overviewGeneration: overviewGeneration
+                )
+            } catch {
+                await self?.finishAccountRefresh(
+                    nil,
+                    generation: generation,
+                    runtimeGeneration: runtimeGeneration,
+                    overviewGeneration: overviewGeneration
+                )
+            }
+        }
+    }
+
+    private func finishAccountRefresh(
+        _ response: Codexpulse_Core_V1_AccountSnapshotResponse?,
+        generation: UInt64,
+        runtimeGeneration: UInt64,
+        overviewGeneration: UInt64
+    ) async {
+        guard generation == accountRefreshGeneration,
+              runtimeGeneration == self.runtimeGeneration,
+              overviewGeneration == refreshGeneration,
+              !shuttingDown,
+              readyForOverview
+        else { return }
+        accountRefreshTask = nil
+        guard let response, let responses = lastResponses else { return }
+        let updated = responses.replacingAccount(response)
+        lastResponses = updated
+        await publishOverview(updated)
+    }
+
+    private func cancelAccountRefresh() {
+        accountRefreshGeneration &+= 1
+        accountRefreshTask?.cancel()
+        accountRefreshTask = nil
+    }
+
+    private func publishOverview(_ responses: OverviewResponses) async {
+        let presentation = OverviewPresentation(responses)
+        if presentation.isPartial {
+            await emit(.partial(responses, presentation.notices))
+        } else {
+            await emit(.normal(responses))
         }
     }
 
@@ -1290,6 +1358,7 @@ public actor AppRuntime {
         initialOverviewRefreshState = .idle
         refreshTask?.cancel()
         refreshTask = nil
+        cancelAccountRefresh()
         helperProcessMonitor?.cancel()
         helperProcessMonitor = nil
         if let streamController {
@@ -1338,6 +1407,7 @@ public actor AppRuntime {
         initialOverviewRefreshState = .idle
         refreshTask?.cancel()
         refreshTask = nil
+        cancelAccountRefresh()
         if let streamController {
             await streamController.stop()
             self.streamController = nil
@@ -1420,6 +1490,7 @@ public actor AppRuntime {
         initialOverviewRefreshState = .idle
         refreshTask?.cancel()
         refreshTask = nil
+        cancelAccountRefresh()
         await supervisor.stop(mode: .terminate)
     }
 

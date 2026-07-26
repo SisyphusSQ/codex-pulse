@@ -1180,6 +1180,7 @@ private actor FakeCore: AppCoreServing {
     private var handshakeFailure = false
     private var handshakeError: CoreClientError?
     private var overviewDelay: Duration = .zero
+    private var accountDelay: Duration = .zero
     private var handshakeDelay: Duration = .zero
     private var bootstrapDelay: Duration = .zero
     private var shutdownDelay: Duration = .zero
@@ -1218,6 +1219,7 @@ private actor FakeCore: AppCoreServing {
     private var systemWillSleepReleased = false
     private var systemWillSleepWaiters: [CheckedContinuation<Void, Never>] = []
     private var readyInvalidationStreamCalls = 0
+    private var completedAccountCalls = 0
 
     init(
         bootstrap: Codexpulse_Core_V1_BootstrapResponse,
@@ -1235,6 +1237,7 @@ private actor FakeCore: AppCoreServing {
     func setHandshakeFailure(_ value: Bool) { handshakeFailure = value }
     func setHandshakeError(_ value: CoreClientError?) { handshakeError = value }
     func setOverviewDelay(_ value: Duration) { overviewDelay = value }
+    func setAccountDelay(_ value: Duration) { accountDelay = value }
     func setHandshakeDelay(_ value: Duration) { handshakeDelay = value }
     func setBootstrapDelay(_ value: Duration) { bootstrapDelay = value }
     func setShutdownDelay(_ value: Duration) { shutdownDelay = value }
@@ -1353,6 +1356,7 @@ private actor FakeCore: AppCoreServing {
     func recordedUsageRequests() -> [Codexpulse_Core_V1_UsageCostRequest] { usageRequests }
     func recordedSessionRequests() -> [Codexpulse_Core_V1_ListSessionsRequest] { sessionRequests }
     func recordedProjectRequests() -> [Codexpulse_Core_V1_ListProjectsRequest] { projectRequests }
+    func recordedCompletedAccountCalls() -> Int { completedAccountCalls }
 
     func handshake(
         clientName: String,
@@ -1412,7 +1416,8 @@ private actor FakeCore: AppCoreServing {
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_AccountSnapshotResponse {
         calls.append("account")
-        if overviewDelay != .zero { try await Task.sleep(for: overviewDelay) }
+        defer { completedAccountCalls += 1 }
+        if accountDelay != .zero { try await Task.sleep(for: accountDelay) }
         if failAccount { throw FakeFailure.unavailable }
         return responses.account ?? .init()
     }
@@ -2486,6 +2491,41 @@ private func testAppRuntimeUsesWeeklyQuotaRangeForOverview() async throws {
 
 @MainActor
 private func testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess() async throws {
+    let hangingCore = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses()
+    )
+    await hangingCore.setAccountDelay(.seconds(60))
+    await hangingCore.setInvalidation(domain: "index", delay: .milliseconds(50))
+    let hangingModel = AppModel(runtime: AppRuntime(
+        supervisor: FakeSupervisor(),
+        clientFactory: { _ in hangingCore }
+    ))
+    hangingModel.start()
+    try await waitUntil("hanging account/read initial Overview") {
+        await MainActor.run {
+            hangingModel.presentation != nil && !hangingModel.isOverviewRefreshing
+        }
+    }
+    try expect(
+        hangingModel.presentation?.account.availability == .unavailable,
+        "a hanging initial account/read must publish Overview with unavailable account semantics"
+    )
+    try await waitUntil("hanging account/read invalidation Overview") {
+        let usageCalls = await hangingCore.recordedUsageRequests().count
+        let accountCalls = await hangingCore.recordedCalls().filter { $0 == "account" }.count
+        let isRefreshing = await MainActor.run { hangingModel.isOverviewRefreshing }
+        return usageCalls >= 2 && accountCalls >= 2 && !isRefreshing
+    }
+    hangingModel.refreshOrRestart()
+    try await waitUntil("hanging account/read manual Overview") {
+        let usageCalls = await hangingCore.recordedUsageRequests().count
+        let accountCalls = await hangingCore.recordedCalls().filter { $0 == "account" }.count
+        let isRefreshing = await MainActor.run { hangingModel.isOverviewRefreshing }
+        return usageCalls >= 3 && accountCalls >= 3 && !isRefreshing
+    }
+    _ = await hangingModel.shutdown()
+
     let failingCore = FakeCore(
         bootstrap: makeNormalBootstrap(),
         responses: makeResponses()
@@ -2498,7 +2538,11 @@ private func testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess() async
     let failingModel = AppModel(runtime: failingRuntime)
     failingModel.start()
     try await waitUntil("optional account/read failure") {
-        await MainActor.run { failingModel.presentation != nil }
+        let completed = await failingCore.recordedCompletedAccountCalls()
+        return await MainActor.run {
+            completed >= 1 && failingModel.presentation != nil
+                && !failingModel.isOverviewRefreshing
+        }
     }
     try expect(
         failingModel.presentation?.account.availability == .unavailable,
@@ -2520,11 +2564,19 @@ private func testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess() async
         await MainActor.run { model.presentation?.account.planText == "Pro" }
     }
     await core.setAccountFailure(true)
+    await core.setAccountDelay(.milliseconds(100))
     model.refreshOrRestart()
-    try await waitUntil("failed account/read refresh completes") {
+    try await waitUntil("failed account/read does not block manual Overview") {
         let accountCalls = await core.recordedCalls().filter { $0 == "account" }.count
         let isRefreshing = await MainActor.run { model.isOverviewRefreshing }
         return accountCalls >= 2 && !isRefreshing
+    }
+    try expect(
+        model.presentation?.account.planText == "Pro",
+        "an in-flight optional account refresh must retain the last successful account"
+    )
+    try await waitUntil("failed account/read completes independently") {
+        await core.recordedCompletedAccountCalls() >= 2
     }
     try expect(
         model.presentation?.account.planText == "Pro"

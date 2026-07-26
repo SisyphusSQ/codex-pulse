@@ -40,6 +40,24 @@ public struct OverviewResponses: Sendable {
         self.weeklyProjectRange = weeklyProjectRange ?? rangeResolution
         self.additionalNotices = additionalNotices
     }
+
+    func replacingAccount(
+        _ account: Codexpulse_Core_V1_AccountSnapshotResponse?
+    ) -> OverviewResponses {
+        OverviewResponses(
+            usage: usage,
+            quota: quota,
+            account: account,
+            sessions: sessions,
+            projects: projects,
+            health: health,
+            rangeResolution: rangeResolution,
+            weeklyUsage: weeklyUsage,
+            weeklyProjects: weeklyProjects,
+            weeklyProjectRange: weeklyProjectRange,
+            additionalNotices: additionalNotices
+        )
+    }
 }
 
 public enum CodexAccountAvailability: Equatable, Sendable {

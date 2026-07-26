@@ -19,6 +19,8 @@ type ProcessOptions struct {
 	PageSize    int
 	ClientName  string
 	Version     string
+	// BeforeStart runs after pipes are prepared and immediately before command.Start.
+	BeforeStart func(context.Context) error
 }
 
 func ListLocalThreads(ctx context.Context, confirmedHome string, options ProcessOptions) (ThreadList, error) {
@@ -71,10 +73,20 @@ func withInitializedLocalRPC[T any](
 	}
 	stdout, err := command.StdoutPipe()
 	if err != nil {
+		_ = stdin.Close()
 		return result, errors.New("open App Server stdout")
 	}
 	command.Stderr = io.Discard
+	if options.BeforeStart != nil {
+		if err := options.BeforeStart(processContext); err != nil {
+			_ = stdin.Close()
+			_ = stdout.Close()
+			return result, err
+		}
+	}
 	if err := command.Start(); err != nil {
+		_ = stdin.Close()
+		_ = stdout.Close()
 		return result, errors.New("start Codex App Server")
 	}
 	done := make(chan error, 1)

@@ -51,6 +51,12 @@ type confirmedPreferencesLoader interface {
 	LoadPreferences(context.Context) (preferences.Snapshot, error)
 }
 
+type applicationAccountReader func(
+	context.Context,
+	appserver.ConfirmedHome,
+	appserver.ProcessOptions,
+) (*appserver.AccountSnapshot, error)
+
 type ApplicationLifecycleRuntimeConfig struct {
 	Database             *storesqlite.Store
 	Preferences          confirmedPreferencesLoader
@@ -73,6 +79,7 @@ type applicationLifecycleRuntime struct {
 	quota          *applicationQuotaRuntime
 	preferences    *preferences.Service
 	settingsLoader confirmedPreferencesLoader
+	accountReader  applicationAccountReader
 	database       *storesqlite.Store
 	invalidation   queryInvalidationNotifier
 	cancel         context.CancelFunc
@@ -331,7 +338,8 @@ func startApplicationLifecycleRuntime(
 		adapter: adapter, coordinator: coordinator, scheduler: schedulerService,
 		repository: repository, quota: quotaRuntime,
 		preferences: preferencesService, settingsLoader: loader, database: config.Database,
-		invalidation: config.Invalidation, cancel: cancel,
+		accountReader: appserver.ReadLocalAccount,
+		invalidation:  config.Invalidation, cancel: cancel,
 		workerDone: make(chan error, 1), lightRuntime: lightRuntime, lightRun: lightRun,
 		controlCtx: controlCtx, controlStop: controlStop,
 		controlAccepting: true, controlDone: closedApplicationLifecycleSignal(),
@@ -892,11 +900,16 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 	if runtime == nil || runtime.settingsLoader == nil || ctx == nil {
 		return core.AccountSnapshot{}, ErrApplicationLifecycleRuntime
 	}
-	home, err := fileConfirmedHomeProvider{loader: runtime.settingsLoader}.CurrentHome(ctx)
-	if err != nil {
-		return core.AccountSnapshot{}, err
+	reader := runtime.accountReader
+	if reader == nil {
+		reader = appserver.ReadLocalAccount
 	}
-	account, err := appserver.ReadLocalAccount(ctx, home.Path, appserver.ProcessOptions{})
+	account, err := readConfirmedApplicationAccount(
+		ctx,
+		fileConfirmedHomeProvider{loader: runtime.settingsLoader},
+		logs.NewHomeProbe(),
+		reader,
+	)
 	if err != nil {
 		return core.AccountSnapshot{}, err
 	}
@@ -908,6 +921,82 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 		Email:    cloneApplicationAccountField(account.Email),
 		PlanType: cloneApplicationAccountField(account.PlanType),
 	}}, nil
+}
+
+func readConfirmedApplicationAccount(
+	ctx context.Context,
+	provider appLifecycle.ConfirmedHomeProvider,
+	probe appLifecycle.HomeProbe,
+	reader applicationAccountReader,
+) (*appserver.AccountSnapshot, error) {
+	if ctx == nil || provider == nil || probe == nil || reader == nil {
+		return nil, ErrApplicationLifecycleRuntime
+	}
+	confirmed, err := provider.CurrentHome(ctx)
+	if err != nil {
+		return nil, applicationLifecycleDependencyError(ctx, err)
+	}
+	if err := confirmApplicationAccountHome(ctx, probe, confirmed); err != nil {
+		return nil, err
+	}
+	// Re-read the logical snapshot immediately before delegating to the reader.
+	// The reader independently checks the physical identity before process start.
+	beforeLaunch, err := provider.CurrentHome(ctx)
+	if err != nil {
+		return nil, applicationLifecycleDependencyError(ctx, err)
+	}
+	if beforeLaunch != confirmed {
+		return nil, ErrApplicationLifecycleRuntime
+	}
+	account, err := reader(ctx, appserver.ConfirmedHome{
+		Generation: confirmed.Generation,
+		Path:       confirmed.Path,
+		DeviceID:   confirmed.DeviceID,
+		Inode:      confirmed.Inode,
+	}, appserver.ProcessOptions{BeforeStart: func(startContext context.Context) error {
+		current, err := provider.CurrentHome(startContext)
+		if err != nil {
+			return applicationLifecycleDependencyError(startContext, err)
+		}
+		if current != confirmed {
+			return ErrApplicationLifecycleRuntime
+		}
+		return confirmApplicationAccountHome(startContext, probe, current)
+	}})
+	if err != nil {
+		return nil, applicationLifecycleDependencyError(ctx, err)
+	}
+	afterRead, err := provider.CurrentHome(ctx)
+	if err != nil {
+		return nil, applicationLifecycleDependencyError(ctx, err)
+	}
+	if afterRead != confirmed {
+		return nil, ErrApplicationLifecycleRuntime
+	}
+	// A successful result is publishable only while both the preferences
+	// generation and the path/device/inode identity remain unchanged.
+	if err := confirmApplicationAccountHome(ctx, probe, afterRead); err != nil {
+		return nil, err
+	}
+	return account, nil
+}
+
+func confirmApplicationAccountHome(
+	ctx context.Context,
+	probe appLifecycle.HomeProbe,
+	home appLifecycle.ConfirmedHome,
+) error {
+	if home.Generation < 0 || home.Path == "" || home.DeviceID == "" || home.Inode <= 0 {
+		return ErrApplicationLifecycleRuntime
+	}
+	metadata, err := probe.Probe(ctx, home.Path)
+	if err != nil {
+		return applicationLifecycleDependencyError(ctx, err)
+	}
+	if metadata.Path != home.Path || metadata.DeviceID != home.DeviceID || metadata.Inode != home.Inode {
+		return ErrApplicationLifecycleRuntime
+	}
+	return nil
 }
 
 func cloneApplicationAccountField(value *string) *string {

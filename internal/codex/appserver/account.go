@@ -3,8 +3,11 @@ package appserver
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
 )
 
 const (
@@ -12,6 +15,17 @@ const (
 	maxAccountEmailBytes = 320
 	maxAccountPlanBytes  = 128
 )
+
+// ErrConfirmedHomeChanged prevents account data from crossing a confirmed physical Home boundary.
+var ErrConfirmedHomeChanged = errors.New("confirmed Codex Home changed")
+
+// ConfirmedHome carries the complete logical and physical identity approved by preferences.
+type ConfirmedHome struct {
+	Generation int64
+	Path       string
+	DeviceID   string
+	Inode      int64
+}
 
 type AccountSnapshot struct {
 	Type     string  `json:"type"`
@@ -29,17 +43,54 @@ type accountReadResult struct {
 
 func ReadLocalAccount(
 	ctx context.Context,
-	confirmedHome string,
+	confirmedHome ConfirmedHome,
 	options ProcessOptions,
 ) (*AccountSnapshot, error) {
-	return withInitializedLocalRPC(
+	if err := confirmAccountHome(ctx, confirmedHome); err != nil {
+		return nil, err
+	}
+	beforeStart := options.BeforeStart
+	options.BeforeStart = func(startContext context.Context) error {
+		if beforeStart != nil {
+			if err := beforeStart(startContext); err != nil {
+				return err
+			}
+		}
+		return confirmAccountHome(startContext, confirmedHome)
+	}
+	account, err := withInitializedLocalRPC(
 		ctx,
-		confirmedHome,
+		confirmedHome.Path,
 		options,
 		func(ctx context.Context, rpc *jsonLineRPC, _ string) (*AccountSnapshot, error) {
 			return readAccount(ctx, rpc)
 		},
 	)
+	if err != nil {
+		return nil, err
+	}
+	if err := confirmAccountHome(ctx, confirmedHome); err != nil {
+		return nil, err
+	}
+	return account, nil
+}
+
+func confirmAccountHome(ctx context.Context, home ConfirmedHome) error {
+	if ctx == nil || home.Generation < 0 || !filepath.IsAbs(home.Path) ||
+		filepath.Clean(home.Path) != home.Path || home.DeviceID == "" || home.Inode <= 0 {
+		return ErrConfirmedHomeChanged
+	}
+	metadata, err := logs.NewHomeProbe().Probe(ctx, home.Path)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return ErrConfirmedHomeChanged
+	}
+	if metadata.Path != home.Path || metadata.DeviceID != home.DeviceID || metadata.Inode != home.Inode {
+		return ErrConfirmedHomeChanged
+	}
+	return nil
 }
 
 func readAccount(ctx context.Context, rpc RPC) (*AccountSnapshot, error) {
