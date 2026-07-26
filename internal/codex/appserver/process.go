@@ -19,8 +19,18 @@ type ProcessOptions struct {
 	PageSize    int
 	ClientName  string
 	Version     string
-	// BeforeStart runs after pipes are prepared and immediately before command.Start.
+	// BeforeStart 在 pipe 就绪后、command.Start 前执行调用方代际检查。
 	BeforeStart func(context.Context) error
+	homeBinding processHomeBinding
+	// afterBeforeStartForTest 确定性覆盖最后校验返回到 Start 之间的竞态窗口。
+	afterBeforeStartForTest func() error
+}
+
+type processHomeBinding interface {
+	canonicalPath() string
+	attach(*exec.Cmd) (string, error)
+	validate(context.Context) error
+	close() error
 }
 
 func ListLocalThreads(ctx context.Context, confirmedHome string, options ProcessOptions) (ThreadList, error) {
@@ -46,9 +56,15 @@ func withInitializedLocalRPC[T any](
 	if ctx == nil || operation == nil {
 		return result, errors.New("invalid App Server operation")
 	}
-	canonicalHome, err := canonicalConfirmedHome(confirmedHome)
-	if err != nil {
-		return result, err
+	canonicalHome := confirmedHome
+	if options.homeBinding == nil {
+		var err error
+		canonicalHome, err = canonicalConfirmedHome(confirmedHome)
+		if err != nil {
+			return result, err
+		}
+	} else if canonicalHome != options.homeBinding.canonicalPath() {
+		return result, errors.New("invalid App Server Home binding")
 	}
 	binary, err := resolveCodexBinary(options.CodexBinary, defaultCodexBinaryCandidates())
 	if err != nil {
@@ -66,7 +82,15 @@ func withInitializedLocalRPC[T any](
 	processContext, cancelProcess := context.WithCancel(ctx)
 	defer cancelProcess()
 	command := exec.CommandContext(processContext, binary, "app-server", "--listen", "stdio://")
-	command.Env = isolatedCodexEnvironment(os.Environ(), canonicalHome)
+	processHome := canonicalHome
+	command.Env = isolatedCodexEnvironment(os.Environ(), processHome)
+	if options.homeBinding != nil {
+		processHome, err = options.homeBinding.attach(command)
+		if err != nil {
+			return result, err
+		}
+		command.Env = isolatedCodexEnvironment(command.Env, processHome)
+	}
 	stdin, err := command.StdinPipe()
 	if err != nil {
 		return result, errors.New("open App Server stdin")
@@ -79,6 +103,13 @@ func withInitializedLocalRPC[T any](
 	command.Stderr = io.Discard
 	if options.BeforeStart != nil {
 		if err := options.BeforeStart(processContext); err != nil {
+			_ = stdin.Close()
+			_ = stdout.Close()
+			return result, err
+		}
+	}
+	if options.afterBeforeStartForTest != nil {
+		if err := options.afterBeforeStartForTest(); err != nil {
 			_ = stdin.Close()
 			_ = stdout.Close()
 			return result, err

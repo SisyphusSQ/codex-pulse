@@ -3,11 +3,14 @@ package app
 import (
 	"context"
 	"errors"
+	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 )
 
@@ -186,15 +189,19 @@ func accountRuntimePreferences(
 	generation uint64,
 ) preferences.Snapshot {
 	t.Helper()
-	metadata, err := logs.NewHomeProbe().Probe(context.Background(), home)
+	canonicalHome, err := filepath.EvalSymlinks(home)
 	if err != nil {
-		t.Fatalf("HomeProbe.Probe() error = %v", err)
+		t.Fatalf("filepath.EvalSymlinks() error = %v", err)
+	}
+	var stat unix.Stat_t
+	if err := unix.Stat(canonicalHome, &stat); err != nil {
+		t.Fatalf("unix.Stat() error = %v", err)
 	}
 	return preferences.Snapshot{CodexHome: preferences.CodexHomePreferences{
 		Source: preferences.ConfirmedSource{
-			Path:          metadata.Path,
-			DeviceID:      metadata.DeviceID,
-			Inode:         metadata.Inode,
+			Path:          canonicalHome,
+			DeviceID:      strconv.FormatUint(uint64(uint32(stat.Dev)), 10),
+			Inode:         int64(stat.Ino),
 			ConfirmedAtMS: 1,
 		},
 		Generation:   generation,

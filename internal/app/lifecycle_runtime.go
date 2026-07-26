@@ -907,7 +907,6 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 	account, err := readConfirmedApplicationAccount(
 		ctx,
 		fileConfirmedHomeProvider{loader: runtime.settingsLoader},
-		logs.NewHomeProbe(),
 		reader,
 	)
 	if err != nil {
@@ -926,21 +925,16 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 func readConfirmedApplicationAccount(
 	ctx context.Context,
 	provider appLifecycle.ConfirmedHomeProvider,
-	probe appLifecycle.HomeProbe,
 	reader applicationAccountReader,
 ) (*appserver.AccountSnapshot, error) {
-	if ctx == nil || provider == nil || probe == nil || reader == nil {
+	if ctx == nil || provider == nil || reader == nil {
 		return nil, ErrApplicationLifecycleRuntime
 	}
 	confirmed, err := provider.CurrentHome(ctx)
 	if err != nil {
 		return nil, applicationLifecycleDependencyError(ctx, err)
 	}
-	if err := confirmApplicationAccountHome(ctx, probe, confirmed); err != nil {
-		return nil, err
-	}
-	// Re-read the logical snapshot immediately before delegating to the reader.
-	// The reader independently checks the physical identity before process start.
+	// 在交给 descriptor guard 前重新读取逻辑快照，避免旧代际进入启动阶段。
 	beforeLaunch, err := provider.CurrentHome(ctx)
 	if err != nil {
 		return nil, applicationLifecycleDependencyError(ctx, err)
@@ -961,7 +955,7 @@ func readConfirmedApplicationAccount(
 		if current != confirmed {
 			return ErrApplicationLifecycleRuntime
 		}
-		return confirmApplicationAccountHome(startContext, probe, current)
+		return nil
 	}})
 	if err != nil {
 		return nil, applicationLifecycleDependencyError(ctx, err)
@@ -973,30 +967,7 @@ func readConfirmedApplicationAccount(
 	if afterRead != confirmed {
 		return nil, ErrApplicationLifecycleRuntime
 	}
-	// A successful result is publishable only while both the preferences
-	// generation and the path/device/inode identity remain unchanged.
-	if err := confirmApplicationAccountHome(ctx, probe, afterRead); err != nil {
-		return nil, err
-	}
 	return account, nil
-}
-
-func confirmApplicationAccountHome(
-	ctx context.Context,
-	probe appLifecycle.HomeProbe,
-	home appLifecycle.ConfirmedHome,
-) error {
-	if home.Generation < 0 || home.Path == "" || home.DeviceID == "" || home.Inode <= 0 {
-		return ErrApplicationLifecycleRuntime
-	}
-	metadata, err := probe.Probe(ctx, home.Path)
-	if err != nil {
-		return applicationLifecycleDependencyError(ctx, err)
-	}
-	if metadata.Path != home.Path || metadata.DeviceID != home.DeviceID || metadata.Inode != home.Inode {
-		return ErrApplicationLifecycleRuntime
-	}
-	return nil
 }
 
 func cloneApplicationAccountField(value *string) *string {
