@@ -1137,6 +1137,10 @@ private actor FakeCore: AppCoreServing {
     private var holdReconnectStreamReadiness = false
     private var reconnectStreamReadinessReleased = false
     private var reconnectStreamReadinessWaiters: [CheckedContinuation<Void, Never>] = []
+    private var blockSystemWillSleep = false
+    private var systemWillSleepReleased = false
+    private var systemWillSleepWaiters: [CheckedContinuation<Void, Never>] = []
+    private var readyInvalidationStreamCalls = 0
 
     init(
         bootstrap: Codexpulse_Core_V1_BootstrapResponse,
@@ -1172,6 +1176,9 @@ private actor FakeCore: AppCoreServing {
         failOverview = true
         overviewBarrierClosed = true
     }
+    func prepareOverviewBarrier() {
+        overviewBarrierClosed = true
+    }
     func prepareInitialStreamReadinessBarrier() {
         holdInitialStreamReadiness = true
         initialStreamReadinessReleased = false
@@ -1198,6 +1205,16 @@ private actor FakeCore: AppCoreServing {
         reconnectStreamReadinessReleased = true
         let waiters = reconnectStreamReadinessWaiters
         reconnectStreamReadinessWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+    func prepareSystemWillSleepBarrier() {
+        blockSystemWillSleep = true
+        systemWillSleepReleased = false
+    }
+    func releaseSystemWillSleepBarrier() {
+        systemWillSleepReleased = true
+        let waiters = systemWillSleepWaiters
+        systemWillSleepWaiters.removeAll()
         waiters.forEach { $0.resume() }
     }
     func publishOverviewInvalidations(
@@ -1237,6 +1254,8 @@ private actor FakeCore: AppCoreServing {
     func initialStreamReadinessWaiterCount() -> Int { initialStreamReadinessWaiters.count }
     func initialStreamDisconnectWaiterCount() -> Int { initialStreamDisconnectWaiters.count }
     func reconnectStreamReadinessWaiterCount() -> Int { reconnectStreamReadinessWaiters.count }
+    func systemWillSleepWaiterCount() -> Int { systemWillSleepWaiters.count }
+    func readyInvalidationStreamCallCount() -> Int { readyInvalidationStreamCalls }
     func recordedCalls() -> [String] { calls }
     func recordedUsageRequests() -> [Codexpulse_Core_V1_UsageCostRequest] { usageRequests }
     func recordedSessionRequests() -> [Codexpulse_Core_V1_ListSessionsRequest] { sessionRequests }
@@ -1399,6 +1418,11 @@ private actor FakeCore: AppCoreServing {
         _ event: LifecycleEvent
     ) async throws -> Codexpulse_Core_V1_LifecycleNotificationReceipt {
         calls.append("lifecycle:\(event.rawValue)")
+        if event == .systemWillSleep, blockSystemWillSleep, !systemWillSleepReleased {
+            await withCheckedContinuation { continuation in
+                systemWillSleepWaiters.append(continuation)
+            }
+        }
         var response = Codexpulse_Core_V1_LifecycleNotificationReceipt()
         response.event = event.rawValue
         response.accepted = true
@@ -1429,6 +1453,7 @@ private actor FakeCore: AppCoreServing {
             try Task.checkCancellation()
         }
         await onReady()
+        readyInvalidationStreamCalls += 1
         if streamCall == 1,
            disconnectInitialStreamAfterReady,
            !initialStreamDisconnectReleased
@@ -3105,6 +3130,50 @@ private func testRecoveryDuringDisconnectedStreamRefreshesAfterReconnectWithoutR
     _ = await model.shutdown()
 }
 
+private func testInitialReadyReconnectCompletesOnlyOneAuthoritativeOverview() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.prepareOverviewBarrier()
+    await core.prepareReconnectWithoutInvalidationReplay()
+    let recorder = StateRecorder()
+    let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    await runtime.setStateSink { state in await recorder.append(state) }
+
+    let start = Task { await runtime.start() }
+    try await waitUntil("initial Overview is in flight") {
+        await core.overviewBarrierWaiterCount() == 1
+    }
+    try await waitUntil("initial ready stream can end during the first Overview") {
+        await core.initialStreamDisconnectWaiterCount() == 1
+    }
+    await core.disconnectInitialInvalidationStream()
+    try await waitUntil("replacement stream waits before ready during initial Overview") {
+        await core.reconnectStreamReadinessWaiterCount() == 1
+    }
+    await core.releaseReconnectStreamReadiness()
+    try await waitUntil("replacement stream reaches ready before initial Overview completes") {
+        await core.readyInvalidationStreamCallCount() == 2
+    }
+    await core.releaseOverviewBarrier()
+    await start.value
+    try await Task.sleep(for: .milliseconds(100))
+
+    let stats = await core.overviewRecoveryStats()
+    try expect(
+        stats.usageCalls == 1 && stats.completedUsageCalls == 1,
+        "startup ready and its immediate reconnect must share one authoritative Overview refresh"
+    )
+    try expect(
+        stats.maximumConcurrentUsageCalls == 1,
+        "startup reconnect must not overlap or serialize a duplicate Overview refresh"
+    )
+    let phases = await recorder.snapshot()
+    try expect(
+        phases.filter { $0 == "normal" }.count == 1,
+        "startup reconnect must publish the initial Overview exactly once"
+    )
+    _ = await runtime.shutdown()
+}
+
 @MainActor
 private func testUnavailableRecoveryFailureDoesNotPublishSuccess() async throws {
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
@@ -3359,6 +3428,54 @@ private func testSleepDuringInvalidationReadinessPreservesRuntimeUntilWake() asy
     _ = await runtime.shutdown()
 }
 
+private func testSuspendingReadinessPastTimeoutPreservesRuntimeUntilWake() async throws {
+    let supervisor = FakeSupervisor()
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.prepareInitialStreamReadinessBarrier()
+    await core.prepareSystemWillSleepBarrier()
+    let recorder = StateRecorder()
+    let runtime = AppRuntime(supervisor: supervisor, clientFactory: { _ in core })
+    await runtime.setStateSink { state in await recorder.append(state) }
+
+    let start = Task { await runtime.start() }
+    try await waitUntil("initial stream readiness waits before suspending") {
+        await core.initialStreamReadinessWaiterCount() == 1
+    }
+    let sleep = Task { await runtime.prepareForSleep() }
+    try await waitUntil("systemWillSleep lifecycle remains in flight") {
+        await core.systemWillSleepWaiterCount() == 1
+    }
+    await core.releaseInitialStreamReadinessBarrier()
+    try await Task.sleep(for: .milliseconds(5_200))
+    let countsPastReadinessTimeout = await supervisor.counts()
+
+    await core.releaseSystemWillSleepBarrier()
+    await sleep.value
+    await start.value
+    try expect(
+        countsPastReadinessTimeout == (1, 0),
+        "suspending past stream readiness timeout must preserve the existing Helper"
+    )
+    let sleepingCounts = await supervisor.counts()
+    try expect(sleepingCounts == (1, 0), "completed sleep transition must not stop the Helper")
+
+    await runtime.resumeAfterWake()
+    try await waitUntil("wake after prolonged suspending completes the first Overview") {
+        let stats = await core.overviewRecoveryStats()
+        return stats.completedUsageCalls == 1
+    }
+    let calls = await core.recordedCalls()
+    try expect(
+        calls.contains("lifecycle:system_did_wake"),
+        "wake must resume the preserved stream after prolonged suspending"
+    )
+    let phases = await recorder.snapshot()
+    try expect(phases.last == "normal", "wake must resume the stream before the first Overview read")
+    let awakeCounts = await supervisor.counts()
+    try expect(awakeCounts == (1, 0), "wake must reuse the original Helper runtime")
+    _ = await runtime.shutdown()
+}
+
 private final class FakeProcessMonitor: HelperProcessMonitoring, @unchecked Sendable {
     private let lock = NSLock()
     private var cancelled = false
@@ -3562,6 +3679,8 @@ struct CodexPulseAppTestMain {
         try await testStaleAndUnavailable()
         try await testUnavailableRecoveryRefreshesOpenForegroundSurfaces()
         try await testSleepDuringInvalidationReadinessPreservesRuntimeUntilWake()
+        try await testInitialReadyReconnectCompletesOnlyOneAuthoritativeOverview()
+        try await testSuspendingReadinessPastTimeoutPreservesRuntimeUntilWake()
         try await testRecoveryDuringDisconnectedStreamRefreshesAfterReconnectWithoutReplay()
         try await testUnavailableRecoveryFailureDoesNotPublishSuccess()
         try await testContractUnavailableCannotRestartLoop()

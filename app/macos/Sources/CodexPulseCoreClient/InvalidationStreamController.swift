@@ -172,7 +172,9 @@ public actor InvalidationStreamController {
         while clock.now < deadline {
             if state == .ready { return }
             if state == .failed { throw InvalidationStreamError.readinessTimeout }
-            if state == .sleeping { throw InvalidationStreamError.suspendedForSleep }
+            if state == .suspending || state == .sleeping {
+                throw InvalidationStreamError.suspendedForSleep
+            }
             try await Task.sleep(for: .milliseconds(10))
         }
         throw InvalidationStreamError.readinessTimeout
