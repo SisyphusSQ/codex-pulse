@@ -496,6 +496,7 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
     public let remainingPercent: Double?
     public let usageText: String
     public let freshness: String
+    public let dataState: StatusBarQuotaDataState
     public let accessibilityLabel: String
 
     public init?(_ overview: OverviewPresentation) {
@@ -504,16 +505,19 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
         self.periodLabel = periodLabel
         self.remainingPercent = window.remainingPercent
         self.freshness = window.freshness
+        self.dataState = StatusBarQuotaDataState(freshness: window.freshness)
 
         let remainingText = window.remainingPercent.map { String(format: "%.0f%%", $0) } ?? "--"
+        let baseAccessibilityLabel: String
         if let tokens = Self.matchingPeriodTokens(window: window, overview: overview) {
             let total = Self.compact(tokens.total)
             self.usageText = "已用 \(total)"
-            self.accessibilityLabel = "\(periodLabel) \(remainingText)，已用 \(total) Token"
+            baseAccessibilityLabel = "\(periodLabel) \(remainingText)，已用 \(total) Token"
         } else {
             self.usageText = "已用 --"
-            self.accessibilityLabel = "\(periodLabel) \(remainingText)，本周期用量暂不可用"
+            baseAccessibilityLabel = "\(periodLabel) \(remainingText)，本周期用量暂不可用"
         }
+        self.accessibilityLabel = baseAccessibilityLabel + dataState.accessibilitySuffix
     }
 
     public var remainingText: String {

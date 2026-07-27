@@ -349,6 +349,9 @@ func (repository *Repository) CommitLightTokenBatch(ctx context.Context, batch L
 		if err := validateLightCheckpointAdvance(scan, batch.Checkpoint); err != nil {
 			return err
 		}
+		if err := reconcileLightTokenBatchDelta(scan, batch); err != nil {
+			return err
+		}
 		for _, delta := range batch.DailyDeltas {
 			model := lightTokenDailyModel{
 				SessionID: batch.SessionID, Generation: batch.Generation, DayStartMS: delta.DayStartMS,
@@ -375,9 +378,24 @@ func (repository *Repository) CommitLightTokenBatch(ctx context.Context, batch L
 				InputTokens: delta.InputTokens, CachedInputTokens: delta.CachedInputTokens,
 				OutputTokens: delta.OutputTokens, ReasoningTokens: delta.ReasoningTokens,
 			}
-			if err := transaction.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&model).Error; err != nil {
-				return err
+			result := transaction.WithContext(ctx).
+				Clauses(clause.OnConflict{DoNothing: true}).
+				Create(&model)
+			if result.Error != nil {
+				return result.Error
 			}
+			if result.RowsAffected != 1 {
+				return ErrLightTokenConflict
+			}
+		}
+		if err := reconcileStoredLightTimedTotals(
+			ctx,
+			transaction,
+			batch.SessionID,
+			batch.Generation,
+			batch.Checkpoint,
+		); err != nil {
+			return err
 		}
 		applyLightCheckpoint(&scan, batch.Checkpoint, batch.UpdatedAtMS)
 		if batch.Activate {
@@ -405,6 +423,109 @@ func (repository *Repository) CommitLightTokenBatch(ctx context.Context, batch L
 			Where("session_id = ? AND generation <> ?", batch.SessionID, batch.Generation).
 			Delete(&lightTokenScanModel{}).Error
 	})
+}
+
+type lightTokenCounters struct {
+	input     int64
+	cached    int64
+	output    int64
+	reasoning int64
+}
+
+func reconcileLightTokenBatchDelta(
+	previous lightTokenScanModel,
+	batch LightTokenBatch,
+) error {
+	want := lightTokenCounters{
+		input:     batch.Checkpoint.InputTokens - previous.InputTokens,
+		cached:    batch.Checkpoint.CachedInputTokens - previous.CachedInputTokens,
+		output:    batch.Checkpoint.OutputTokens - previous.OutputTokens,
+		reasoning: batch.Checkpoint.ReasoningTokens - previous.ReasoningTokens,
+	}
+	got := lightTokenCounters{}
+	seenOffsets := make(map[int64]struct{}, len(batch.TimedDeltas))
+	for _, delta := range batch.TimedDeltas {
+		if _, duplicated := seenOffsets[delta.SourceOffset]; duplicated {
+			return ErrLightTokenConflict
+		}
+		seenOffsets[delta.SourceOffset] = struct{}{}
+		var err error
+		got.input, err = checkedAdd(got.input, delta.InputTokens)
+		if err == nil {
+			got.cached, err = checkedAdd(got.cached, delta.CachedInputTokens)
+		}
+		if err == nil {
+			got.output, err = checkedAdd(got.output, delta.OutputTokens)
+		}
+		if err == nil {
+			got.reasoning, err = checkedAdd(got.reasoning, delta.ReasoningTokens)
+		}
+		if err != nil {
+			return ErrLightTokenConflict
+		}
+	}
+	if !lightTokenCountersEqual(got, want) ||
+		!lightTokenCounterTotalsEqual(got, want) {
+		return ErrLightTokenConflict
+	}
+	return nil
+}
+
+func reconcileStoredLightTimedTotals(
+	ctx context.Context,
+	transaction *gorm.DB,
+	sessionID string,
+	generation int64,
+	checkpoint LightTokenCheckpoint,
+) error {
+	var stored struct {
+		InputTokens       int64 `gorm:"column:input_tokens"`
+		CachedInputTokens int64 `gorm:"column:cached_input_tokens"`
+		OutputTokens      int64 `gorm:"column:output_tokens"`
+		ReasoningTokens   int64 `gorm:"column:reasoning_tokens"`
+	}
+	if err := transaction.WithContext(ctx).
+		Table("light_token_timed").
+		Select(`COALESCE(SUM(input_tokens), 0) AS input_tokens,
+			COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens,
+			COALESCE(SUM(output_tokens), 0) AS output_tokens,
+			COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens`).
+		Where("session_id = ? AND generation = ?", sessionID, generation).
+		Scan(&stored).Error; err != nil {
+		return err
+	}
+	got := lightTokenCounters{
+		input: stored.InputTokens, cached: stored.CachedInputTokens,
+		output: stored.OutputTokens, reasoning: stored.ReasoningTokens,
+	}
+	want := lightTokenCounters{
+		input: checkpoint.InputTokens, cached: checkpoint.CachedInputTokens,
+		output: checkpoint.OutputTokens, reasoning: checkpoint.ReasoningTokens,
+	}
+	if !lightTokenCountersEqual(got, want) ||
+		!lightTokenCounterTotalsEqual(got, want) {
+		return ErrLightTokenConflict
+	}
+	return nil
+}
+
+func lightTokenCountersEqual(left, right lightTokenCounters) bool {
+	return left.input == right.input &&
+		left.cached == right.cached &&
+		left.output == right.output &&
+		left.reasoning == right.reasoning
+}
+
+func lightTokenCounterTotalsEqual(left, right lightTokenCounters) bool {
+	leftTotal, leftErr := checkedAdd(left.input, left.output)
+	if leftErr == nil {
+		leftTotal, leftErr = checkedAdd(leftTotal, left.reasoning)
+	}
+	rightTotal, rightErr := checkedAdd(right.input, right.output)
+	if rightErr == nil {
+		rightTotal, rightErr = checkedAdd(rightTotal, right.reasoning)
+	}
+	return leftErr == nil && rightErr == nil && leftTotal == rightTotal
 }
 
 func (repository *Repository) PendingLightTokenScan(ctx context.Context, sessionID string) (LightTokenScan, error) {
@@ -552,6 +673,7 @@ func validateLightTokenBatch(batch LightTokenBatch) error {
 		checkpoint.InputTokens < 0 || checkpoint.CachedInputTokens < 0 || checkpoint.OutputTokens < 0 ||
 		checkpoint.ReasoningTokens < 0 || checkpoint.PhysicalBytesRead < 0 || checkpoint.LinesSeen < 0 ||
 		checkpoint.CandidateLines < 0 || checkpoint.JSONDecoded < 0 ||
+		checkpoint.CachedInputTokens > checkpoint.InputTokens ||
 		!validLightModelAttribution(checkpoint.CurrentModelKey, checkpoint.CurrentModelSource) ||
 		(checkpoint.LatestEventAtMS != nil && *checkpoint.LatestEventAtMS < 0) {
 		return invalidRecord("invalid light token batch")

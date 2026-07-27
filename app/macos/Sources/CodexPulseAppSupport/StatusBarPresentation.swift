@@ -21,6 +21,35 @@ public enum QuotaRemainingLevel: Equatable, Sendable {
     }
 }
 
+public enum StatusBarQuotaDataState: Equatable, Sendable {
+    case fresh
+    case stale
+    case suspicious
+    case unavailable
+
+    public init(freshness: String) {
+        switch freshness {
+        case "fresh": self = .fresh
+        case "stale": self = .stale
+        case "suspicious": self = .suspicious
+        default: self = .unavailable
+        }
+    }
+
+    public var preservesRemainingColor: Bool {
+        self != .unavailable
+    }
+
+    public var accessibilitySuffix: String {
+        switch self {
+        case .fresh: ""
+        case .stale: "，显示上次可信额度"
+        case .suspicious: "，新额度数据异常，显示上次可信额度"
+        case .unavailable: "，额度数据可信度不可用"
+        }
+    }
+}
+
 public enum StatusBarStyle: String, CaseIterable, Identifiable, Sendable {
     case ringSummary = "ring_summary"
     case openRingSummary = "open_ring_summary"

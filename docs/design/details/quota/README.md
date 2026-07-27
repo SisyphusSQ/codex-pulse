@@ -79,7 +79,7 @@ application schema v11 新增 `quota_current` 与 `quota_arbitration_evidence`�
 
 - `used_percent` 必须在 `0..100`；
 - window duration 和 reset 时间必须合理；
-- primary 必须存在，字段类型和 observation 时间不能明显倒退；默认允许的系统时钟偏差为 2 分钟，规则版本为 `quota-arbiter-v2`；
+- primary 必须存在，字段类型和 observation 时间不能明显倒退；默认允许的系统时钟偏差为 2 分钟，规则版本为 `quota-arbiter-v3`；
 - secondary 暂时缺失不能删除上一条 weekly；
 - partial response 只更新通过校验的 window。
 
@@ -115,7 +115,7 @@ freshness 与 conflict 分开：current 可以同时是 `fresh + conflict` 或 `
 1. 同一代际内，按来源分别检查 used 单调性；相同或上升才参与 current，下降写 `suspicious/used_regression` evidence，不覆盖 current。
 2. 同代际有多个 accepted 来源时，取最大的 `used_percent`，即采用最保守的 remaining。
 3. 较新 observation 的 reset 向未来前移，且新 reset 晚于 observation、不超过 `window_minutes + skew` 时，接受为新 generation，允许 used 重新从低值开始；滑动窗口无需等待上一 reset 到期，中间未观测到的窗口也可以跳过。generation 先做基础有效性分类，再做代际排序；若新代际零值被更晚 Local 旧窗口否定，会隔离该零值并重新分类旧窗口候选，确保首次观测也不会暴露 false-zero，已有历史时选更新的 Local last-known-good 而不是更旧值。
-4. reset 向过去移动、跨度异常或来源代际无法解释时保留 last-known-good；旧 reset 到期后进入 expired_unknown。
+4. 同一 `window_minutes` 的逻辑窗口出现不超过 5 秒的 reset 向后抖动时，将其归一到该代际已见的最大 reset；超过 5 秒的向后移动、跨度异常或来源代际无法解释时继续保留 last-known-good，并写入 `reset_regression` evidence；旧 reset 到期后进入 expired_unknown。
 5. 本地 JSONL 到来只重新仲裁，不触发在线请求；较新的本地高值可以更新旧 wham，较新的 wham 低值不能覆盖同代际本地高值。旧 generation 晚到只保留 `reset_regression` evidence，不能回退 current。
 
 例：同一 reset 下本地已用 45%、在线已用 41%，current 采用 45%，UI 显示“剩余最多 55%”；41% 保留为 conflict evidence。之后在线返回 47% 时，47% 成为 current。

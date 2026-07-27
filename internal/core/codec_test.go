@@ -2,11 +2,13 @@ package core
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // 测试 encodeResponse 在 partial 响应中保留真实零和 unknown presence。
@@ -61,6 +63,103 @@ func TestEncodeResponseRejectsInvalidNumericPresence(t *testing.T) {
 	err := EncodeResponse(response, &corev1.UsageCostResponse{})
 	if !errors.Is(err, ErrProtoMapping) {
 		t.Fatalf("encodeResponse() error = %v, want ErrProtoMapping", err)
+	}
+}
+
+// 测试 EncodeResponse 把 Session 自适应趋势粒度和点映射到 Protobuf contract。
+func TestEncodeResponseMapsAdaptiveSessionTrend(t *testing.T) {
+	t.Parallel()
+
+	tokens, err := basequery.KnownNumeric(10, basequery.NumericTokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unknownCost, err := basequery.UnknownNumeric(
+		basequery.NumericMicroUSD,
+		basequery.UnknownNotComputed,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	timestamp, err := basequery.KnownNumeric(100, basequery.NumericMilliseconds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := usagecost.SessionDetailResponse{
+		Item: usagecost.SessionItem{
+			LastActivityAt: timestamp,
+			Totals:         withUsageTotals(t, tokens, unknownCost),
+		},
+		TrendGranularity: usagecost.TrendHour,
+		Trend: []usagecost.TrendPoint{{
+			Key: "1970-01-01T00:00", StartAtMS: timestamp, EndAtMS: timestamp,
+			Totals: withUsageTotals(t, tokens, unknownCost),
+		}},
+	}
+	target := &corev1.SessionDetailResponse{}
+	if err := EncodeResponse(response, target); err != nil {
+		t.Fatalf("EncodeResponse(SessionDetailResponse) error = %v", err)
+	}
+	encoded, err := protojson.Marshal(target)
+	if err != nil {
+		t.Fatalf("protojson.Marshal(SessionDetailResponse) error = %v", err)
+	}
+	if !strings.Contains(string(encoded), `"trendGranularity":"hour"`) ||
+		!strings.Contains(string(encoded), `"trend":[`) {
+		t.Fatalf("SessionDetailResponse contract = %s", encoded)
+	}
+}
+
+// 测试 Session generation fallback 经 Proto 保持空趋势与明确降级原因，不伪造小时口径。
+func TestEncodeResponsePreservesUnavailableFallbackSessionTrend(t *testing.T) {
+	t.Parallel()
+
+	reason := usagecost.DegradedRollupMissing
+	unknownTokens, err := basequery.UnknownNumeric(
+		basequery.NumericTokens,
+		basequery.UnknownUnavailable,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unknownCost, err := basequery.UnknownNumeric(
+		basequery.NumericMicroUSD,
+		basequery.UnknownUnavailable,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unknownTime, err := basequery.UnknownNumeric(
+		basequery.NumericMilliseconds,
+		basequery.UnknownUnavailable,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := &corev1.SessionDetailResponse{}
+	if err := EncodeResponse(usagecost.SessionDetailResponse{
+		TrendGranularity: "",
+		Trend:            make([]usagecost.TrendPoint, 0),
+		DegradedReason:   &reason,
+		Item: usagecost.SessionItem{
+			LastActivityAt: unknownTime,
+			Totals:         withUsageTotals(t, unknownTokens, unknownCost),
+		},
+	}, target); err != nil {
+		t.Fatalf("EncodeResponse(fallback SessionDetailResponse) error = %v", err)
+	}
+	if len(target.Trend) != 0 || target.TrendGranularity != "" ||
+		target.DegradedReason == nil ||
+		target.GetDegradedReason() != string(usagecost.DegradedRollupMissing) {
+		t.Fatalf("fallback SessionDetailResponse = %#v", target)
+	}
+	encoded, err := protojson.Marshal(target)
+	if err != nil {
+		t.Fatalf("protojson.Marshal(fallback SessionDetailResponse) error = %v", err)
+	}
+	if strings.Contains(string(encoded), `"trend"`) ||
+		strings.Contains(string(encoded), `"trendGranularity"`) {
+		t.Fatalf("fallback SessionDetailResponse exposed trend fields: %s", encoded)
 	}
 }
 

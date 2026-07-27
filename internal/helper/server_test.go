@@ -27,7 +27,15 @@ import (
 
 // 测试 gRPC server 对所有 unary 调用执行鉴权，并协商精确 contract。
 func TestGRPCServerAuthenticatesHandshakeAndNegotiatesContract(t *testing.T) {
-	client, authorize := startTestGRPCServer(t)
+	business, err := core.NewService(core.ServiceConfig{
+		UsageCost: &helperUsageQueryStub{}, RuntimeInfo: helperRuntimeQueryStub{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, authorize := startConfiguredTestGRPCServer(t, func(config *ServerConfig) {
+		config.Service = business
+	})
 	if _, err := client.Handshake(t.Context(), &corev1.HandshakeRequest{
 		ClientName: "swift-tests", ContractVersion: core.ContractVersion,
 	}); status.Code(err) != codes.Unauthenticated {
@@ -41,14 +49,26 @@ func TestGRPCServerAuthenticatesHandshakeAndNegotiatesContract(t *testing.T) {
 		t.Fatalf("Handshake(valid) error = %v", err)
 	}
 	if response.ContractVersion != core.ContractVersion || response.HelperVersion != "test-helper" ||
-		response.Transport != "grpc+unix" {
+		response.QueryVersion != basequery.ContractVersion || response.Transport != "grpc+unix" {
 		t.Fatalf("Handshake(valid) response = %#v", response)
 	}
 
 	if _, err := client.Handshake(authorize(t.Context()), &corev1.HandshakeRequest{
-		ClientName: "swift-tests", ContractVersion: "future-contract",
+		ClientName: "swift-tests", ContractVersion: "core-rpc-v1",
 	}); status.Code(err) != codes.FailedPrecondition {
-		t.Fatalf("Handshake(mismatch) error = %v, want FailedPrecondition", err)
+		t.Fatalf("Handshake(legacy v1) error = %v, want FailedPrecondition", err)
+	}
+
+	contracts, err := client.Contracts(
+		authorize(t.Context()),
+		&corev1.ContractsRequest{},
+	)
+	if err != nil {
+		t.Fatalf("Contracts() error = %v", err)
+	}
+	if contracts.Version != "core-rpc-v2" ||
+		contracts.UsageCostVersion != "usage-cost-v2" {
+		t.Fatalf("Contracts() versions = %#v", contracts)
 	}
 }
 

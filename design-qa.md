@@ -62,7 +62,7 @@
 
 final result: passed
 
-# 会话与项目每日趋势 Design QA
+# 会话自适应趋势与项目每日趋势 Design QA
 
 ## 对照目标
 
@@ -73,52 +73,77 @@ final result: passed
 - 同画布对照图：`/Users/suqing/Coding/golang/00_self/codex-pulse/.artifacts/design-qa/session-project-daily-trend-comparison.png`
 - source pixels: 每日趋势 `864 x 316`；虚线选中态 `868 x 676`
 - implementation pixels: 会话与项目窗口均为 `1124 x 768`
-- state: 真实 Codex Home、原生浅色外观、最新日期默认选中
+- evidence status: `pending`
+- 历史证据边界：上述三张 `.artifacts/design-qa/session-project-daily-trend-*`
+  文件生成于 2026-07-24，只能作为旧“每日趋势”视觉基线；不能证明本轮
+  Session 小时路径、跨日切换、DST 重复小时、`usage-trend.selection-detail`
+  Accessibility 读回或当前工作树的真实 Home 状态。
 
 ## Full-view comparison evidence
 
-- 会话与项目详情均使用同一个每日趋势组件，延续现有卡片、系统字体、蓝色折线和右侧 Token 轴。
-- 会话详情真实数据只有一个每日桶时，仍显示数据点、贯穿绘图区的竖向虚线和图表下方日期详情。
-- 项目详情存在多个每日桶时，默认选中最新一天；后续可通过图表横向选择切换日期。
+- pending：尚未生成当前工作树的 Session 同日小时趋势截图。
+- pending：尚未生成当前工作树的 Session 跨日每日趋势截图。
+- pending：尚未生成当前工作树的项目每日趋势截图。
+- 2026-07-27 当前未提交工作树实际执行
+  `CODEX_PULSE_APP_RUNTIME=/private/tmp/cp-codex-pulse-live-502 make verify-live`
+  并读回 passed：`confirmed_home=real`、`primary_pages=loaded`、
+  `sessions=20`、`details_read=5`、`unavailable=none`、`shutdown=clean`。
+  这只证明真实 Home 功能链路，不证明小时/跨日视觉或 Accessibility。
+- 自动化 contract/Store/Query/Swift 测试同样不替代原生窗口像素或
+  Accessibility 验收。
 
 ## Focused region comparison evidence
 
-- `session-project-daily-trend-comparison.png` 把两张用户参考图和会话实现的选中态放在同一画布检查。
-- 实现与参考图一致保留蓝色数据点和竖向虚线；虚线使用次级色，避免压过趋势主线。
-- 图表下方明确显示 `2026年7月24日`，随后展示输入、输出、总量、缓存和推理明细。
-- Accessibility 读回在会话和项目详情中均包含 `daily-trend.selection-detail` 和完整日期。
+- 旧 `session-project-daily-trend-comparison.png` 只证明 2026-07-24 每日趋势
+  基线中的蓝色数据点、竖向虚线和图表下方日期，不证明自适应小时实现。
+- pending：仓库当前没有与本轮实现对应的脱敏 Accessibility dump，不能把
+  `usage-trend.selection-detail` 写成已读回。
+- 自动化 Swift 测试只证明普通小时省略 offset、重复 DST 小时追加 offset
+  以及每日 formatter 文案，不是
+  Accessibility Inspector 或真实 UI 读回。
 
 ## Findings
 
-- [resolved P1] 会话详情原来没有每日趋势数据契约
-  - 处理：从 Helper 的 light daily index 返回会话每日桶，并经 Proto 传给 Swift App。
-- [resolved P1] 选中态只能在指针交互后出现，不利于首次读取
-  - 处理：默认选中最新一天，因此首屏即可看到虚线和日期；横向选择仍可更新选中日期。
-- [resolved P2] light daily 桶误带活动时间会触发详情 unavailable
-  - 处理：每日桶只携带可信 Token 事实，不伪造 turn 活动时间；真实 Home smoke 已恢复 `unavailable=none`。
-- 当前没有未解决的 P0、P1 或 P2 视觉问题。
+- [implementation resolved / visual pending P1] 固定每日趋势无法表达单日变化
+  - 实现：Helper 按请求 IANA timezone 返回小时或每日 bucket，Proto 传递
+    `trend_granularity`；fallback aggregate 趋势保持 unavailable。
+  - 待验：真实 Home 的小时路径与跨日路径像素证据。
+- [implementation resolved / visual pending P1] DST 回拨小时不可区分
+  - 实现：Go 保留真实 instant/offset，Query key 包含数值 UTC offset；
+    Swift 普通小时省略 offset，只在同一墙钟时间存在多个实际 instant 时追加。
+  - 待验：真实 UI 中两个重复墙钟小时的顺序、选中详情与 Accessibility 文案。
+- [pending P2] 最新点默认选中、竖向虚线和详情布局
+  - 旧每日截图可作为历史基线；本轮自适应路径尚未重新捕获。
+- 当前不能据此断言“没有未解决的视觉问题”；视觉与 Accessibility 结论保持
+  pending。
 
 ## Required fidelity surfaces
 
-- Fonts and typography: passed，沿用 macOS 系统字体和现有图表字号。
-- Spacing and layout rhythm: passed，日期详情位于图表下方，不遮挡数据点或坐标轴。
-- Colors and visual tokens: passed，沿用现有 tint 折线和 secondary 虚线。
-- Image quality and asset fidelity: passed，无新增图片资产。
-- Copy and content: passed，会话与项目均显示完整中文日期和 Token 明细。
+- Fonts and typography: pending（无本轮真实窗口截图）。
+- Spacing and layout rhythm: pending（无本轮小时/跨日截图）。
+- Colors and visual tokens: pending（旧每日基线不能证明当前工作树）。
+- Image quality and asset fidelity: pending（无本轮新像素证据）。
+- Copy and content: automated tests 与真实 Home 功能 smoke passed；真实
+  UI/Accessibility readback pending。
 
 ## Comparison history
 
-1. 首次实现仅在指针选择后显示虚线，自动化截图无法稳定进入选中态。
-2. 改为默认选中最新一天，真实会话和项目详情首屏均出现虚线与日期。
-3. 同画布对照确认参考图要求的竖向提示线和图表下方日期均已落地。
+1. 2026-07-24 旧截图证明当时的每日趋势、默认选中态和竖向提示线。
+2. 本轮实现引入 Session 小时/每日自适应、fallback unavailable 与 DST offset。
+3. 在新截图、Accessibility dump 和真实 Home readback 产生前，不沿用旧 artifact
+   作为本轮 passed 证据。
 
 ## Implementation checklist
 
-- [x] 会话详情接入每日趋势数据
+- [x] 会话详情接入自适应小时/每日趋势数据
 - [x] 会话与项目共用同一趋势组件
 - [x] 最新一天默认选中
 - [x] 显示竖向虚线
 - [x] 图表下方显示完整日期和 Token 明细
-- [x] 真实 Home development App 视觉检查
+- [x] DST 重复小时使用 offset 区分
+- [x] 当前工作树真实 Home development App 功能读回
+- [ ] 当前工作树同日小时路径截图
+- [ ] 当前工作树跨日路径截图
+- [ ] 当前工作树脱敏 Accessibility 读回
 
-final result: passed
+final result: pending

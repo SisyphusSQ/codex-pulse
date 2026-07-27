@@ -508,7 +508,7 @@ func cloneString(value string) *string {
 func trendKey(value time.Time, granularity TrendGranularity) string {
 	switch granularity {
 	case TrendHour:
-		return value.Format("2006-01-02T15:00")
+		return value.Format("2006-01-02T15:00-07:00")
 	case TrendDay:
 		return value.Format("2006-01-02")
 	case TrendWeek:

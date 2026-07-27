@@ -340,8 +340,10 @@ func groupTrend(
 		}
 		nextBucket := time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, location)
 		if granularity == TrendHour {
+			_, offsetSeconds := local.Zone()
+			fixedOffset := time.FixedZone("", offsetSeconds)
 			nextBucket = time.Date(
-				local.Year(), local.Month(), local.Day(), local.Hour()+1, 0, 0, 0, location,
+				local.Year(), local.Month(), local.Day(), local.Hour()+1, 0, 0, 0, fixedOffset,
 			)
 		}
 		nextBucketAtMS := nextBucket.UTC().UnixMilli()
@@ -355,14 +357,18 @@ func groupTrend(
 			return nil, err
 		}
 	}
-	keys := make([]string, 0, len(groups))
-	for key := range groups {
-		keys = append(keys, key)
+	ordered := make([]*trendGroup, 0, len(groups))
+	for _, group := range groups {
+		ordered = append(ordered, group)
 	}
-	sort.Strings(keys)
-	result := make([]TrendPoint, 0, len(keys))
-	for _, key := range keys {
-		group := groups[key]
+	sort.Slice(ordered, func(left, right int) bool {
+		if ordered[left].startAtMS == ordered[right].startAtMS {
+			return ordered[left].key < ordered[right].key
+		}
+		return ordered[left].startAtMS < ordered[right].startAtMS
+	})
+	result := make([]TrendPoint, 0, len(ordered))
+	for _, group := range ordered {
 		storedTotals, err := group.accumulator.totalsMode(mode)
 		if err != nil {
 			return nil, err
@@ -379,7 +385,9 @@ func groupTrend(
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, TrendPoint{Key: key, StartAtMS: start, EndAtMS: end, Totals: totals})
+		result = append(result, TrendPoint{
+			Key: group.key, StartAtMS: start, EndAtMS: end, Totals: totals,
+		})
 	}
 	return result, nil
 }

@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	ContractVersion = "core-rpc-v1"
+	ContractVersion = "core-rpc-v2"
 )
 
 var (

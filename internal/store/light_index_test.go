@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
+	"gorm.io/gorm"
 )
 
 func TestReplaceLightMetadataPublishesOneGenerationAndRemovesStaleSessions(t *testing.T) {
@@ -171,6 +173,10 @@ func TestLightTokenRebuildPublishesOnlyAfterCompleteAndResumesCheckpoint(t *test
 		DailyDeltas: []LightTokenDailyDelta{{
 			DayStartMS: 1_721_347_200_000, InputTokens: 30, CachedInputTokens: 5, OutputTokens: 5, ReasoningTokens: 2,
 		}},
+		TimedDeltas: []LightTokenTimedDelta{{
+			SourceOffset: 5_000, ObservedAtMS: 1_721_347_200_000,
+			InputTokens: 30, CachedInputTokens: 5, OutputTokens: 5, ReasoningTokens: 2,
+		}},
 	}); err != nil {
 		t.Fatalf("CommitLightTokenBatch(final) error = %v", err)
 	}
@@ -185,8 +191,336 @@ func TestLightTokenRebuildPublishesOnlyAfterCompleteAndResumesCheckpoint(t *test
 		t.Fatalf("LightSessionTokenDaily() = %#v, %v", daily, err)
 	}
 	timed, err := repository.LightSessionTokenTimed(context.Background(), "one", 0, 2_000_000_000_000)
-	if err != nil || len(timed) != 1 || timed[0].SourceOffset != 3_900 || timed[0].InputTokens != 100 {
+	if err != nil || len(timed) != 2 ||
+		timed[0].SourceOffset != 3_900 || timed[0].InputTokens != 100 ||
+		timed[1].SourceOffset != 5_000 || timed[1].InputTokens != 30 {
 		t.Fatalf("LightSessionTokenTimed() = %#v, %v", timed, err)
+	}
+}
+
+func TestCommitLightTokenBatchRejectsMissingTimedDeltaWithoutAdvancingCheckpoint(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	generation, err := repository.StartLightTokenRebuild(
+		context.Background(),
+		"one",
+		lightRolloutFixture(),
+		"parser-v1",
+		2_000,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100,
+		Checkpoint: LightTokenCheckpoint{
+			DurableOffset: 4_000,
+			InputTokens:   10,
+		},
+	})
+	if !errors.Is(err, ErrLightTokenConflict) {
+		t.Fatalf("CommitLightTokenBatch(missing timed delta) error = %v", err)
+	}
+	pending, readErr := repository.PendingLightTokenScan(context.Background(), "one")
+	if readErr != nil {
+		t.Fatalf("PendingLightTokenScan() error = %v", readErr)
+	}
+	if pending.Checkpoint.DurableOffset != 0 || pending.Checkpoint.InputTokens != 0 {
+		t.Fatalf("rejected batch advanced checkpoint: %#v", pending.Checkpoint)
+	}
+}
+
+func TestCommitLightTokenBatchRejectsDuplicateSourceOffsetAtomically(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	generation, err := repository.StartLightTokenRebuild(
+		context.Background(),
+		"one",
+		lightRolloutFixture(),
+		"parser-v1",
+		2_000,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100,
+		Checkpoint: LightTokenCheckpoint{
+			DurableOffset: 4_000,
+			InputTokens:   20,
+		},
+		TimedDeltas: []LightTokenTimedDelta{
+			{SourceOffset: 3_900, ObservedAtMS: 100, InputTokens: 10},
+			{SourceOffset: 3_900, ObservedAtMS: 200, InputTokens: 10},
+		},
+	})
+	if !errors.Is(err, ErrLightTokenConflict) {
+		t.Fatalf("CommitLightTokenBatch(duplicate source offset) error = %v", err)
+	}
+	pending, readErr := repository.PendingLightTokenScan(context.Background(), "one")
+	if readErr != nil {
+		t.Fatalf("PendingLightTokenScan() error = %v", readErr)
+	}
+	if pending.Checkpoint.DurableOffset != 0 || pending.Checkpoint.InputTokens != 0 {
+		t.Fatalf("rejected duplicate batch advanced checkpoint: %#v", pending.Checkpoint)
+	}
+}
+
+func TestCommitLightTokenBatchRejectsPreviouslyStoredSourceOffsetAtomically(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	generation, err := repository.StartLightTokenRebuild(
+		context.Background(),
+		"one",
+		lightRolloutFixture(),
+		"parser-v1",
+		2_000,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100,
+		Checkpoint: LightTokenCheckpoint{
+			DurableOffset: 4_000,
+			InputTokens:   10,
+		},
+		TimedDeltas: []LightTokenTimedDelta{{
+			SourceOffset: 3_900, ObservedAtMS: 100, InputTokens: 10,
+		}},
+	}); err != nil {
+		t.Fatalf("CommitLightTokenBatch(first) error = %v", err)
+	}
+	err = repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_200,
+		Checkpoint: LightTokenCheckpoint{
+			DurableOffset: 5_000,
+			InputTokens:   20,
+		},
+		TimedDeltas: []LightTokenTimedDelta{{
+			SourceOffset: 3_900, ObservedAtMS: 200, InputTokens: 10,
+		}},
+	})
+	if !errors.Is(err, ErrLightTokenConflict) {
+		t.Fatalf("CommitLightTokenBatch(reused source offset) error = %v", err)
+	}
+	pending, readErr := repository.PendingLightTokenScan(context.Background(), "one")
+	if readErr != nil {
+		t.Fatalf("PendingLightTokenScan() error = %v", readErr)
+	}
+	if pending.Checkpoint.DurableOffset != 4_000 || pending.Checkpoint.InputTokens != 10 {
+		t.Fatalf("rejected reused offset advanced checkpoint: %#v", pending.Checkpoint)
+	}
+}
+
+func TestSessionAnalyticsFailsClosedWhenActiveTimedRowsDriftFromCheckpoint(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(
+		context.Background(),
+		"one",
+		identity,
+		"parser-v1",
+		2_000,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
+		Checkpoint: LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes,
+			Complete:      true,
+			InputTokens:   10,
+		},
+		TimedDeltas: []LightTokenTimedDelta{{
+			SourceOffset: 4_000, ObservedAtMS: 200, InputTokens: 10,
+		}},
+	}); err != nil {
+		t.Fatalf("CommitLightTokenBatch() error = %v", err)
+	}
+	if err := repository.database.Write(context.Background(), func(
+		ctx context.Context,
+		transaction *gorm.DB,
+	) error {
+		return transaction.WithContext(ctx).
+			Where("session_id = ? AND generation = ?", "one", generation).
+			Delete(&lightTokenTimedModel{}).Error
+	}); err != nil {
+		t.Fatalf("delete active timed rows: %v", err)
+	}
+
+	_, err = repository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
+		SessionID: "one",
+		TurnLimit: 20,
+	})
+	if !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("SessionAnalytics(drifted timed rows) error = %v", err)
+	}
+}
+
+func TestSessionAnalyticsFailsClosedForEveryTimedTokenDimensionDrift(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		column string
+	}{
+		{name: "input and derived total", column: "input_tokens"},
+		{name: "cached input", column: "cached_input_tokens"},
+		{name: "output and derived total", column: "output_tokens"},
+		{name: "reasoning and derived total", column: "reasoning_tokens"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			repository := lightIndexRepositoryFixture(t)
+			identity := lightRolloutFixture()
+			generation, err := repository.StartLightTokenRebuild(
+				context.Background(),
+				"one",
+				identity,
+				"parser-v1",
+				2_000,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+				SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
+				Checkpoint: LightTokenCheckpoint{
+					DurableOffset: identity.SizeBytes, Complete: true,
+					InputTokens: 100, CachedInputTokens: 20,
+					OutputTokens: 30, ReasoningTokens: 10,
+				},
+				TimedDeltas: []LightTokenTimedDelta{{
+					SourceOffset: 4_000, ObservedAtMS: 200,
+					InputTokens: 100, CachedInputTokens: 20,
+					OutputTokens: 30, ReasoningTokens: 10,
+				}},
+			}); err != nil {
+				t.Fatalf("CommitLightTokenBatch() error = %v", err)
+			}
+			if err := repository.database.Write(context.Background(), func(
+				ctx context.Context,
+				transaction *gorm.DB,
+			) error {
+				return transaction.WithContext(ctx).
+					Model(&lightTokenTimedModel{}).
+					Where("session_id = ? AND generation = ?", "one", generation).
+					UpdateColumn(test.column, gorm.Expr(test.column+" + 1")).
+					Error
+			}); err != nil {
+				t.Fatalf("drift active timed %s: %v", test.column, err)
+			}
+
+			_, err = repository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
+				SessionID: "one",
+				TurnLimit: 20,
+			})
+			if !errors.Is(err, ErrInvalidRecord) {
+				t.Fatalf("SessionAnalytics(%s drift) error = %v", test.column, err)
+			}
+		})
+	}
+}
+
+func TestSessionAnalyticsAllowsKnownZeroCheckpointWithEmptyTimedTrend(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(
+		context.Background(),
+		"one",
+		identity,
+		"parser-v1",
+		2_000,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
+		Checkpoint: LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes,
+			Complete:      true,
+		},
+	}); err != nil {
+		t.Fatalf("CommitLightTokenBatch() error = %v", err)
+	}
+
+	detail, err := repository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
+		SessionID: "one",
+		TurnLimit: 20,
+	})
+	if err != nil {
+		t.Fatalf("SessionAnalytics(known zero) error = %v", err)
+	}
+	if detail.Record.Rollup == nil || detail.Record.Rollup.TotalTokens == nil ||
+		*detail.Record.Rollup.TotalTokens != 0 || len(detail.Daily) != 0 {
+		t.Fatalf("SessionAnalytics(known zero) = %#v", detail)
+	}
+}
+
+func TestSessionAnalyticsPreservesRepeatedDSTHourFromLightTimedDeltas(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(
+		context.Background(),
+		"one",
+		identity,
+		"parser-v1",
+		2_000,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstObserved := mustParseCostTime(t, "2026-11-01T05:30:00Z")
+	secondObserved := mustParseCostTime(t, "2026-11-01T06:45:00Z")
+	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
+		Checkpoint: LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes, Complete: true,
+			InputTokens: 10, OutputTokens: 20,
+		},
+		TimedDeltas: []LightTokenTimedDelta{
+			{SourceOffset: 4_000, ObservedAtMS: firstObserved, InputTokens: 10},
+			{SourceOffset: 5_000, ObservedAtMS: secondObserved, OutputTokens: 20},
+		},
+	}); err != nil {
+		t.Fatalf("CommitLightTokenBatch() error = %v", err)
+	}
+
+	detail, err := repository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
+		SessionID:         "one",
+		ReportingTimezone: pointerTo("America/New_York"),
+		TurnLimit:         20,
+	})
+	if err != nil {
+		t.Fatalf("SessionAnalytics(DST repeated hour) error = %v", err)
+	}
+	wantStarts := []int64{
+		mustParseCostTime(t, "2026-11-01T05:00:00Z"),
+		mustParseCostTime(t, "2026-11-01T06:00:00Z"),
+	}
+	gotStarts := make([]int64, 0, len(detail.Daily))
+	for _, bucket := range detail.Daily {
+		gotStarts = append(gotStarts, bucket.BucketStartMS)
+	}
+	if !reflect.DeepEqual(gotStarts, wantStarts) ||
+		detail.Daily[0].InputTokens == nil || *detail.Daily[0].InputTokens != 10 ||
+		detail.Daily[1].OutputTokens == nil || *detail.Daily[1].OutputTokens != 20 {
+		t.Fatalf("SessionAnalytics(DST repeated hour) = %#v", detail)
 	}
 }
 
@@ -202,6 +536,9 @@ func TestLightTokenRebuildKeepsOldActiveGenerationUntilReplacementActivates(t *t
 	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
 		SessionID: "one", Generation: first, UpdatedAtMS: 2_100, Activate: true,
 		Checkpoint: LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100},
+		TimedDeltas: []LightTokenTimedDelta{{
+			SourceOffset: 4_000, ObservedAtMS: 100, InputTokens: 100,
+		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -212,6 +549,9 @@ func TestLightTokenRebuildKeepsOldActiveGenerationUntilReplacementActivates(t *t
 	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
 		SessionID: "one", Generation: second, UpdatedAtMS: 3_100,
 		Checkpoint: LightTokenCheckpoint{DurableOffset: 4_000, InputTokens: 50},
+		TimedDeltas: []LightTokenTimedDelta{{
+			SourceOffset: 3_900, ObservedAtMS: 100, InputTokens: 50,
+		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -221,6 +561,9 @@ func TestLightTokenRebuildKeepsOldActiveGenerationUntilReplacementActivates(t *t
 	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
 		SessionID: "one", Generation: second, UpdatedAtMS: 3_200, Activate: true,
 		Checkpoint: LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 150},
+		TimedDeltas: []LightTokenTimedDelta{{
+			SourceOffset: 5_000, ObservedAtMS: 200, InputTokens: 100,
+		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -241,6 +584,9 @@ func TestLightTokenAppendKeepsActiveCountersAndAdvancesSameGeneration(t *testing
 	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
 		Checkpoint: LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100},
+		TimedDeltas: []LightTokenTimedDelta{{
+			SourceOffset: 4_000, ObservedAtMS: 100, InputTokens: 100,
+		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -258,6 +604,9 @@ func TestLightTokenAppendKeepsActiveCountersAndAdvancesSameGeneration(t *testing
 	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 3_100, Activate: true,
 		Checkpoint: LightTokenCheckpoint{DurableOffset: grown.SizeBytes, Complete: true, InputTokens: 130},
+		TimedDeltas: []LightTokenTimedDelta{{
+			SourceOffset: grown.SizeBytes, ObservedAtMS: 200, InputTokens: 30,
+		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -318,6 +667,124 @@ func TestSessionAnalyticsPrefersLightMetadataAndTokenTotals(t *testing.T) {
 		*detail.Daily[0].TotalTokens != 112 ||
 		len(detail.Turns) != 0 || detail.PricingVersions == nil || detail.UnpricedReasons == nil {
 		t.Fatalf("SessionAnalytics(light) = %#v, %v", detail, err)
+	}
+}
+
+// 测试 Session detail 按请求时区把同一自然日内的轻量 timed delta 聚合为小时趋势。
+func TestSessionAnalyticsBucketsLightTimedUsageByRequestedLocalHour(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(
+		context.Background(),
+		"one",
+		identity,
+		"parser-v1",
+		2_000,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := mustParseCostTime(t, "2026-07-26T16:30:00Z")
+	second := mustParseCostTime(t, "2026-07-26T17:45:00Z")
+	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
+		Checkpoint: LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes, Complete: true,
+			InputTokens: 10, OutputTokens: 20,
+		},
+		DailyDeltas: []LightTokenDailyDelta{{
+			DayStartMS:  mustParseCostTime(t, "2026-07-26T00:00:00Z"),
+			InputTokens: 10, OutputTokens: 20,
+		}},
+		TimedDeltas: []LightTokenTimedDelta{
+			{SourceOffset: 4_000, ObservedAtMS: first, InputTokens: 10},
+			{SourceOffset: 5_000, ObservedAtMS: second, OutputTokens: 20},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	detail, err := repository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
+		SessionID: "one", ReportingTimezone: pointerTo("Asia/Shanghai"), TurnLimit: 50,
+	})
+	if err != nil {
+		t.Fatalf("SessionAnalytics(hourly light trend) error = %v", err)
+	}
+	wantBuckets := []int64{
+		mustParseCostTime(t, "2026-07-26T16:00:00Z"),
+		mustParseCostTime(t, "2026-07-26T17:00:00Z"),
+	}
+	gotBuckets := make([]int64, 0, len(detail.Daily))
+	for _, bucket := range detail.Daily {
+		gotBuckets = append(gotBuckets, bucket.BucketStartMS)
+	}
+	if detail.ReportingTimezone != "Asia/Shanghai" ||
+		!reflect.DeepEqual(gotBuckets, wantBuckets) {
+		t.Fatalf(
+			"SessionAnalytics(hourly light trend) timezone=%q buckets=%#v, want %#v",
+			detail.ReportingTimezone,
+			gotBuckets,
+			wantBuckets,
+		)
+	}
+}
+
+// 测试 Session detail 的轻量 timed delta 一旦跨越请求时区的自然日就切换为每日趋势。
+func TestSessionAnalyticsBucketsLightTimedUsageByLocalDayAcrossDates(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(
+		context.Background(),
+		"one",
+		identity,
+		"parser-v1",
+		2_000,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
+		Checkpoint: LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes, Complete: true,
+			InputTokens: 10, OutputTokens: 20,
+		},
+		TimedDeltas: []LightTokenTimedDelta{
+			{
+				SourceOffset: 4_000,
+				ObservedAtMS: mustParseCostTime(t, "2026-07-26T15:30:00Z"),
+				InputTokens:  10,
+			},
+			{
+				SourceOffset: 5_000,
+				ObservedAtMS: mustParseCostTime(t, "2026-07-26T16:30:00Z"),
+				OutputTokens: 20,
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	detail, err := repository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
+		SessionID: "one", ReportingTimezone: pointerTo("Asia/Shanghai"), TurnLimit: 50,
+	})
+	if err != nil {
+		t.Fatalf("SessionAnalytics(daily light trend) error = %v", err)
+	}
+	wantBuckets := []int64{
+		mustParseCostTime(t, "2026-07-25T16:00:00Z"),
+		mustParseCostTime(t, "2026-07-26T16:00:00Z"),
+	}
+	gotBuckets := make([]int64, 0, len(detail.Daily))
+	for _, bucket := range detail.Daily {
+		gotBuckets = append(gotBuckets, bucket.BucketStartMS)
+	}
+	if !reflect.DeepEqual(gotBuckets, wantBuckets) {
+		t.Fatalf("SessionAnalytics(daily light trend) buckets=%#v, want %#v", gotBuckets, wantBuckets)
 	}
 }
 

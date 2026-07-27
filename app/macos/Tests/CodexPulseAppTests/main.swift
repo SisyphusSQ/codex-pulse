@@ -4,6 +4,7 @@ import CodexPulseAppSupport
 import CodexPulseCoreClient
 import CodexPulseProtocolGenerated
 import Foundation
+import SwiftUI
 
 private enum TestFailure: Error, CustomStringConvertible, Sendable {
     case mismatch(String)
@@ -33,6 +34,42 @@ private struct SessionPagePlan: Sendable {
         self.response = response
         self.fails = fails
     }
+}
+
+private struct SessionDetailPlan: Sendable {
+    let delay: Duration
+    let response: Codexpulse_Core_V1_SessionDetailResponse
+    let fails: Bool
+
+    init(
+        delay: Duration,
+        response: Codexpulse_Core_V1_SessionDetailResponse,
+        fails: Bool = false
+    ) {
+        self.delay = delay
+        self.response = response
+        self.fails = fails
+    }
+}
+
+private struct ProjectDetailPlan: Sendable {
+    let response: Codexpulse_Core_V1_ProjectDetailResponse
+    let fails: Bool
+}
+
+private struct SourceDetailPlan: Sendable {
+    let response: Codexpulse_Core_V1_SourceDetailResponse
+    let fails: Bool
+}
+
+private struct JobDetailPlan: Sendable {
+    let response: Codexpulse_Core_V1_JobDetailResponse
+    let fails: Bool
+}
+
+private struct HealthDetailPlan: Sendable {
+    let response: Codexpulse_Core_V1_HealthDetailResponse
+    let fails: Bool
 }
 
 private func expect(_ condition: @autoclosure () -> Bool, _ message: String) throws {
@@ -268,28 +305,77 @@ private func testUsageChartStacksModelsWithLocalizedHoverDetails() throws {
         "usage chart must expose pointer-selected per-model details")
 }
 
-private func testSessionAndProjectDailyTrendsShowSelectionRuleAndDateDetail() throws {
-    let source = try mainWindowSource("SessionsProjectsViews.swift")
+private func testSessionTrendPresentationAdaptsGranularityAndReportingTimezone() throws {
+    let point = Date(timeIntervalSince1970: 1_785_114_000)
+    guard let hourly = UsageTrendPresentation(
+        granularity: "hour",
+        reportingTimeZone: "Asia/Shanghai"
+    ) else {
+        throw TestFailure.mismatch("hourly trend presentation was rejected")
+    }
+    try expect(hourly.sectionTitle == "每小时趋势", "same-day sessions must use an hourly title")
     try expect(
-        source.contains("private struct DailyTokenTrendView")
-            && source.contains("RuleMark(x: .value(\"选中日期\"")
-            && source.contains(".chartXSelection(value: $selectedDate)"),
-        "session and project daily trends must share a selectable vertical rule"
+        hourly.axisText(for: point) == "09:00",
+        "ordinary hourly trend axes must omit the redundant local offset"
     )
     try expect(
-        source.contains("DailyTokenTrendView(points: response.daily)")
-            && source.components(separatedBy: "DailyTokenTrendView(points: response.daily)").count == 3,
-        "session and project details must both use the shared daily trend"
+        hourly.detailText(for: point) == "2026年7月27日 09:00",
+        "ordinary hourly trend details must omit the redundant local offset"
+    )
+
+    guard let repeatedHour = UsageTrendPresentation(
+        granularity: "hour",
+        reportingTimeZone: "America/New_York"
+    ) else {
+        throw TestFailure.mismatch("DST repeated-hour trend presentation was rejected")
+    }
+    let firstOneAM = Date(timeIntervalSince1970: 1_793_509_200)
+    let secondOneAM = Date(timeIntervalSince1970: 1_793_512_800)
+    let ordinaryHour = Date(timeIntervalSince1970: 1_793_516_400)
+    try expect(
+        repeatedHour.axisText(for: ordinaryHour) == "02:00",
+        "ordinary hours in a DST-observing timezone must still omit the offset"
     )
     try expect(
-        source.contains("Text(Self.detailDateFormatter.string(from: selected.date))"),
-        "daily trend detail must show the selected date"
+        repeatedHour.axisText(for: firstOneAM) == "01:00 -04:00",
+        "first repeated wall-clock hour must retain the daylight offset"
     )
     try expect(
-        source.components(
-            separatedBy: "_selectedDate = State(initialValue: mapped.last?.date)"
-        ).count == 3,
-        "daily trends must select the latest day before pointer interaction"
+        repeatedHour.axisText(for: secondOneAM) == "01:00 -05:00",
+        "second repeated wall-clock hour must retain the standard offset"
+    )
+    try expect(
+        repeatedHour.detailText(for: firstOneAM) == "2026年11月1日 01:00 -04:00",
+        "first repeated-hour detail must retain the daylight offset"
+    )
+    try expect(
+        repeatedHour.detailText(for: secondOneAM) == "2026年11月1日 01:00 -05:00",
+        "second repeated-hour detail must retain the standard offset"
+    )
+
+    guard let daily = UsageTrendPresentation(
+        granularity: "day",
+        reportingTimeZone: "Asia/Shanghai"
+    ) else {
+        throw TestFailure.mismatch("daily trend presentation was rejected")
+    }
+    try expect(daily.sectionTitle == "每日趋势", "cross-day sessions must use a daily title")
+    try expect(daily.axisText(for: point) == "7月27日", "daily trend axis must show the local date")
+    try expect(
+        daily.detailText(for: point) == "2026年7月27日",
+        "daily trend detail must omit the hour"
+    )
+    try expect(
+        UsageTrendPresentation(granularity: "week", reportingTimeZone: "Asia/Shanghai") == nil,
+        "unknown session trend granularities must fail closed"
+    )
+    try expect(
+        UsageTrendPresentation(granularity: "", reportingTimeZone: "Asia/Shanghai") == nil,
+        "missing fallback trend granularity must stay unavailable"
+    )
+    try expect(
+        UsageTrendPresentation(granularity: "hour", reportingTimeZone: "Local") == nil,
+        "invalid reporting timezones must fail closed"
     )
 }
 
@@ -344,6 +430,87 @@ private func testSessionAndProjectDetailsShareResponsiveThirdWidthSplit() throws
             && !source.contains("idealWidth: 480"),
         "the shared native split must set a responsive default and retain draggable bounds"
     )
+}
+
+@MainActor
+private final class NativeContentIdentityRecorder {
+    private(set) var views: [NSView] = []
+
+    func record(_ view: NSView) {
+        views.append(view)
+    }
+}
+
+@MainActor
+private struct NativeContentIdentityProbe: NSViewRepresentable {
+    let recorder: NativeContentIdentityRecorder
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        recorder.record(view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+@MainActor
+private func testFeatureRefreshRetainsNativeContentIdentity() async throws {
+    let recorder = NativeContentIdentityRecorder()
+    let notice = AppNotice(
+        code: "content_invalidated",
+        messageKey: "app.notice.content_invalidated.index",
+        retryable: true
+    )
+    func stateView(
+        _ state: FeatureLoadState<Int>
+    ) -> FeatureStateView<Int, NativeContentIdentityProbe> {
+        FeatureStateView(
+            state: state,
+            emptyTitle: "empty",
+            emptySystemImage: "tray"
+        ) { _ in
+            NativeContentIdentityProbe(recorder: recorder)
+        }
+    }
+
+    let hostingView = NSHostingView(rootView: stateView(.ready(1)))
+    hostingView.frame = NSRect(x: 0, y: 0, width: 900, height: 600)
+    let window = NSWindow(
+        contentRect: hostingView.frame,
+        styleMask: [.borderless],
+        backing: .buffered,
+        defer: false
+    )
+    window.contentView = hostingView
+
+    for _ in 0..<20 where recorder.views.isEmpty {
+        hostingView.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(1))
+    }
+    try expect(recorder.views.count == 1, "initial feature content must create one native view")
+    let initialView = recorder.views[0]
+
+    let refreshStates: [FeatureLoadState<Int>] = [
+        .stale(1, notice: notice),
+        .loading(previous: 1),
+        .partial(1, notices: [notice]),
+        .ready(2),
+    ]
+    for state in refreshStates {
+        hostingView.rootView = stateView(state)
+        hostingView.needsLayout = true
+        for _ in 0..<3 {
+            hostingView.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(1))
+        }
+    }
+
+    try expect(
+        recorder.views.count == 1 && recorder.views[0] === initialView,
+        "content-bearing refresh states must retain one native view identity"
+    )
+    window.contentView = nil
 }
 
 private func testEveryTokenChartUsesLocalizedAxisAndAccessibilityUnits() throws {
@@ -535,30 +702,21 @@ private func testPopoverAccountSummaryDistinguishesEmptyAndUnavailableData() thr
     )
 }
 
-private func testPopoverSummaryContainsDisplayedAccountWithoutInternalIdentifiers() throws {
-    let overview = OverviewPresentation(makeResponses(
-        accountScope: "private-account-marker"
-    ))
-    let summary = PopoverPrivacySummary(overview)
-
+private func testPopoverScreenshotClipboardTextHidesAccountAndPlan() throws {
+    let text = PopoverScreenshotClipboardText.plainText
     try expect(
-        summary.plainText == """
-        Codex Pulse Popover 摘要
-        套餐：Pro
-        账号：person@example.com
-        额度 1：通用额度 · 7 天，剩余 0%，下次重置 1 小时
-        额度 2：通用额度，剩余 --，下次重置 --
-        重置次数：1 可用 / 2 总数
-        仅包含 Popover 已展示信息
+        text == """
+        Codex Pulse Popover 完整截图
+        账号与套餐信息已隐藏
         """,
-        "Popover summary must have a deterministic displayed-information payload"
+        "Popover screenshot must expose one deterministic privacy notice"
     )
-    try expect(
-        !summary.plainText.contains("private-account-marker")
-            && !summary.plainText.contains("session-test")
-            && !summary.plainText.contains("project-test"),
-        "Popover summary must exclude internal account scope, session, and project identifiers"
-    )
+    for canary in ["Pro", "person@example.com", "private-account-marker"] {
+        try expect(
+            !text.contains(canary),
+            "Popover screenshot clipboard text must exclude account canary \(canary)"
+        )
+    }
 }
 
 private func testPopoverProjectActionUsesExactPublicRepositoryURL() throws {
@@ -591,12 +749,10 @@ private func testPopoverProjectActionMakesSystemOpenFailureVisible() throws {
 }
 
 private func testPopoverCopyActionStopsWhenSafeScreenshotIsUnavailable() throws {
-    let summary = PopoverPrivacySummary(OverviewPresentation(makeResponses()))
     var clipboardWriteCount = 0
 
-    let result = PopoverQuickActions.copyPrivacySummary(
-        summary,
-        renderPNG: { _ in nil },
+    let result = PopoverQuickActions.copyPopoverScreenshot(
+        png: nil,
         writeClipboard: { _, _ in
             clipboardWriteCount += 1
             return true
@@ -606,7 +762,7 @@ private func testPopoverCopyActionStopsWhenSafeScreenshotIsUnavailable() throws 
     try expect(clipboardWriteCount == 0, "render failure must not write any clipboard fallback")
     try expect(
         result == .failure(
-            title: "无法复制 Popover 摘要",
+            title: "无法复制 Popover 完整截图",
             message: "Popover 截图生成失败，未写入剪贴板。"
         ),
         "render failure must be visible and privacy preserving"
@@ -614,16 +770,14 @@ private func testPopoverCopyActionStopsWhenSafeScreenshotIsUnavailable() throws 
 }
 
 private func testPopoverCopyActionReportsClipboardFailureWithoutRawFallback() throws {
-    let summary = PopoverPrivacySummary(OverviewPresentation(makeResponses()))
-    let result = PopoverQuickActions.copyPrivacySummary(
-        summary,
-        renderPNG: { _ in Data([0x89, 0x50, 0x4E, 0x47]) },
+    let result = PopoverQuickActions.copyPopoverScreenshot(
+        png: Data([0x89, 0x50, 0x4E, 0x47]),
         writeClipboard: { _, _ in false }
     )
 
     try expect(
         result == .failure(
-            title: "无法复制 Popover 摘要",
+            title: "无法复制 Popover 完整截图",
             message: "剪贴板写入失败，未复制任何数据。"
         ),
         "clipboard failure must not claim success or fall back to raw data"
@@ -631,14 +785,12 @@ private func testPopoverCopyActionReportsClipboardFailureWithoutRawFallback() th
 }
 
 private func testPopoverCopyActionWritesOneSafeImageAndTextPayload() throws {
-    let summary = PopoverPrivacySummary(OverviewPresentation(makeResponses()))
     let expectedPNG = Data([0x89, 0x50, 0x4E, 0x47])
     var writtenText: String?
     var writtenPNG: Data?
 
-    let result = PopoverQuickActions.copyPrivacySummary(
-        summary,
-        renderPNG: { _ in expectedPNG },
+    let result = PopoverQuickActions.copyPopoverScreenshot(
+        png: expectedPNG,
         writeClipboard: { text, png in
             writtenText = text
             writtenPNG = png
@@ -646,12 +798,15 @@ private func testPopoverCopyActionWritesOneSafeImageAndTextPayload() throws {
         }
     )
 
-    try expect(writtenText == summary.plainText, "copy action must write the reviewed safe text")
+    try expect(
+        writtenText == PopoverScreenshotClipboardText.plainText,
+        "copy action must write the reviewed privacy-safe text"
+    )
     try expect(writtenPNG == expectedPNG, "copy action must write the rendered safe screenshot")
     try expect(
         result == .success(
-            title: "已复制 Popover 摘要",
-            message: "Popover 截图和摘要已写入剪贴板。"
+            title: "已复制 Popover 完整截图",
+            message: "Popover 全部内容已复制，账号与套餐信息已隐藏。"
         ),
         "copy action must expose a user-visible success result"
     )
@@ -665,7 +820,7 @@ private func testPopoverPasteboardWriterUsesOneRealItemForTextAndPNG() throws {
         )
     )
     defer { pasteboard.clearContents() }
-    let text = "Codex Pulse Popover 摘要\n仅包含 Popover 已展示信息"
+    let text = PopoverScreenshotClipboardText.plainText
     let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
 
     try expect(
@@ -687,6 +842,183 @@ private func testPopoverPasteboardWriterUsesOneRealItemForTextAndPNG() throws {
     try expect(
         items[0].data(forType: .png) == png,
         "the real pasteboard item must retain the rendered PNG"
+    )
+}
+
+@MainActor
+private final class PopoverCaptureBandView: NSView {
+    let colors: [NSColor]
+
+    init(frame: NSRect, colors: [NSColor]) {
+        self.colors = colors
+        super.init(frame: frame)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is unavailable")
+    }
+
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let bandHeight = bounds.height / CGFloat(colors.count)
+        for (index, color) in colors.enumerated() {
+            color.setFill()
+            NSRect(
+                x: bounds.minX,
+                y: bounds.minY + CGFloat(index) * bandHeight,
+                width: bounds.width,
+                height: bandHeight
+            ).fill()
+        }
+    }
+}
+
+@MainActor
+private func testPopoverFullPageCaptureUsesLiveScrollableViewAndRestoresOffset() throws {
+    let root = NSView(frame: NSRect(x: 0, y: 0, width: 120, height: 100))
+    let header = PopoverCaptureBandView(
+        frame: NSRect(x: 0, y: 80, width: 120, height: 20),
+        colors: [.darkGray]
+    )
+    let footer = PopoverCaptureBandView(
+        frame: NSRect(x: 0, y: 0, width: 120, height: 20),
+        colors: [.lightGray]
+    )
+    let scrollView = NSScrollView(frame: NSRect(x: 10, y: 20, width: 100, height: 60))
+    scrollView.hasVerticalScroller = false
+    scrollView.drawsBackground = false
+    let document = PopoverCaptureBandView(
+        frame: NSRect(x: 0, y: 0, width: 100, height: 180),
+        colors: [.systemRed, .systemGreen, .systemBlue]
+    )
+    scrollView.documentView = document
+    root.addSubview(header)
+    root.addSubview(scrollView)
+    root.addSubview(footer)
+    let window = NSWindow(
+        contentRect: root.frame,
+        styleMask: [.borderless],
+        backing: .buffered,
+        defer: false
+    )
+    window.contentView = root
+    window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
+    window.orderFront(nil)
+    defer {
+        window.orderOut(nil)
+        window.contentView = nil
+    }
+    root.layoutSubtreeIfNeeded()
+    root.displayIfNeeded()
+
+    scrollView.contentView.scroll(to: NSPoint(x: 0, y: 37))
+    scrollView.reflectScrolledClipView(scrollView.contentView)
+    let originalOrigin = scrollView.contentView.bounds.origin
+    guard let directBitmap = root.bitmapImageRepForCachingDisplay(in: root.bounds) else {
+        throw TestFailure.mismatch("the live test view must support AppKit bitmap capture")
+    }
+    root.cacheDisplay(in: root.bounds, to: directBitmap)
+    let directColors = stride(
+        from: 0,
+        to: directBitmap.pixelsHigh,
+        by: max(1, directBitmap.pixelsHigh / 40)
+    ).compactMap {
+        directBitmap.colorAt(
+            x: directBitmap.pixelsWide / 2,
+            y: $0
+        )?.usingColorSpace(.deviceRGB)
+    }
+    try expect(
+        directColors.contains { $0.redComponent > 0 || $0.greenComponent > 0 || $0.blueComponent > 0 },
+        "the live test view must draw non-black content before full-page stitching"
+    )
+
+    guard let png = PopoverFullPageCapture.renderPNG(
+        rootView: root,
+        scrollView: scrollView
+    ), let bitmap = NSBitmapImageRep(data: png)
+    else {
+        throw TestFailure.mismatch("live Popover full-page capture must produce PNG data")
+    }
+
+    try expect(
+        abs(bitmap.size.width - 120) < 1 && abs(bitmap.size.height - 220) < 1,
+        "full-page capture must retain the wider Popover frame, one header, "
+            + "all 180 points of content, and one footer"
+    )
+    try expect(
+        bitmap.colorAt(x: 0, y: 0)?.alphaComponent == 1,
+        "full-page capture must flatten native material transparency onto "
+            + "the current system window background"
+    )
+    try expect(
+        abs(scrollView.contentView.bounds.origin.y - originalOrigin.y) < 0.5,
+        "full-page capture must restore the user's original scroll offset"
+    )
+
+    let sampledColors = stride(from: 0, to: bitmap.pixelsHigh, by: max(1, bitmap.pixelsHigh / 80))
+        .compactMap { bitmap.colorAt(x: bitmap.pixelsWide / 2, y: $0)?.usingColorSpace(.deviceRGB) }
+    let hasRed = sampledColors.contains { $0.redComponent > 0.7 && $0.greenComponent < 0.45 }
+    let hasGreen = sampledColors.contains { $0.greenComponent > 0.7 && $0.blueComponent < 0.45 }
+    let hasBlue = sampledColors.contains { $0.blueComponent > 0.7 && $0.redComponent < 0.45 }
+    let channelRanges = sampledColors.reduce(
+        (red: CGFloat.zero, green: CGFloat.zero, blue: CGFloat.zero)
+    ) { ranges, color in
+        (
+            max(ranges.red, color.redComponent),
+            max(ranges.green, color.greenComponent),
+            max(ranges.blue, color.blueComponent)
+        )
+    }
+    try expect(
+        hasRed && hasGreen && hasBlue,
+        "full-page capture must include the top, middle, and bottom of the real document view "
+            + "(matched red=\(hasRed) green=\(hasGreen) blue=\(hasBlue); "
+            + "max=\(channelRanges))"
+    )
+    let pixelScale = CGFloat(bitmap.pixelsHigh) / bitmap.size.height
+    func color(atPointY y: CGFloat) -> NSColor? {
+        bitmap.colorAt(
+            x: bitmap.pixelsWide / 2,
+            y: min(bitmap.pixelsHigh - 1, max(0, Int(y * pixelScale)))
+        )?.usingColorSpace(.deviceRGB)
+    }
+    let topBand = color(atPointY: 50)
+    let middleBand = color(atPointY: 110)
+    let bottomBand = color(atPointY: 170)
+    try expect(
+        topBand.map { $0.redComponent > 0.7 && $0.greenComponent < 0.45 } == true
+            && middleBand.map { $0.greenComponent > 0.7 && $0.blueComponent < 0.45 } == true
+            && bottomBand.map { $0.blueComponent > 0.7 && $0.redComponent < 0.45 } == true,
+        "full-page capture must preserve the document's visual top-to-bottom order "
+            + "(top=\(String(describing: topBand)), "
+            + "middle=\(String(describing: middleBand)), "
+            + "bottom=\(String(describing: bottomBand)))"
+    )
+}
+
+private func testPopoverScreenshotUsesLiveViewAndRedactsAccountCapsule() throws {
+    let source = try mainWindowSource("StatusItemController.swift")
+    try expect(
+        source.contains("PopoverFullPageCapture.renderPNG(")
+            && source.contains("resolveScrollView(in: rootView)")
+            && source.contains("PopoverCaptureDocumentProbe(source: captureSource)"),
+        "Popover screenshot must capture the currently presented native scroll view"
+    )
+    try expect(
+        source.contains(".opacity(isPrivacyHidden ? 0 : 1)")
+            && source.contains("Image(systemName: \"eye.slash\")")
+            && source.contains("截图中账号与套餐信息已隐藏")
+            && source.contains("waitUntilPrivacyRendered(true)")
+            && source.contains("PopoverPrivacyRenderProbe"),
+        "Popover screenshot must wait for the live account and plan capsule to be hidden"
+    )
+    try expect(
+        !source.contains("ImageRenderer(content: PopoverPrivacySnapshotView")
+            && !source.contains("private struct PopoverPrivacySnapshotView"),
+        "Popover screenshot must not reconstruct a separate summary card"
     )
 }
 
@@ -1189,6 +1521,11 @@ private actor FakeCore: AppCoreServing {
     private var sessionRequests: [Codexpulse_Core_V1_ListSessionsRequest] = []
     private var projectRequests: [Codexpulse_Core_V1_ListProjectsRequest] = []
     private var featureSessionPlans: [SessionPagePlan] = []
+    private var featureSessionDetailPlans: [SessionDetailPlan] = []
+    private var featureProjectDetailPlans: [ProjectDetailPlan] = []
+    private var featureSourceDetailPlans: [SourceDetailPlan] = []
+    private var featureJobDetailPlans: [JobDetailPlan] = []
+    private var featureHealthDetailPlans: [HealthDetailPlan] = []
     private var invalidationDomain: String?
     private var invalidationDelay: Duration = .zero
     private var quotaRefreshDelay: Duration = .zero
@@ -1242,6 +1579,21 @@ private actor FakeCore: AppCoreServing {
     func setBootstrapDelay(_ value: Duration) { bootstrapDelay = value }
     func setShutdownDelay(_ value: Duration) { shutdownDelay = value }
     func setFeatureSessionPlans(_ plans: [SessionPagePlan]) { featureSessionPlans = plans }
+    func setFeatureSessionDetailPlans(_ plans: [SessionDetailPlan]) {
+        featureSessionDetailPlans = plans
+    }
+    func setFeatureProjectDetailPlans(_ plans: [ProjectDetailPlan]) {
+        featureProjectDetailPlans = plans
+    }
+    func setFeatureSourceDetailPlans(_ plans: [SourceDetailPlan]) {
+        featureSourceDetailPlans = plans
+    }
+    func setFeatureJobDetailPlans(_ plans: [JobDetailPlan]) {
+        featureJobDetailPlans = plans
+    }
+    func setFeatureHealthDetailPlans(_ plans: [HealthDetailPlan]) {
+        featureHealthDetailPlans = plans
+    }
     func setInvalidation(domain: String?, delay: Duration = .zero) {
         invalidationDomain = domain
         invalidationDelay = delay
@@ -1441,6 +1793,18 @@ private actor FakeCore: AppCoreServing {
         return responses.sessions
     }
 
+    func sessionDetail(
+        _ request: Codexpulse_Core_V1_SessionDetailRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_SessionDetailResponse {
+        calls.append("session-detail:\(request.sessionID)")
+        guard !featureSessionDetailPlans.isEmpty else { throw FakeFailure.unavailable }
+        let plan = featureSessionDetailPlans.removeFirst()
+        if plan.delay != .zero { try await Task.sleep(for: plan.delay) }
+        if plan.fails { throw FakeFailure.unavailable }
+        return plan.response
+    }
+
     func listProjects(
         _ request: Codexpulse_Core_V1_ListProjectsRequest,
         retryPolicy: ReadRetryPolicy
@@ -1458,6 +1822,50 @@ private actor FakeCore: AppCoreServing {
         var response = Codexpulse_Core_V1_ProjectListResponse()
         response.meta = completeMeta()
         return response
+    }
+
+    func projectDetail(
+        _ request: Codexpulse_Core_V1_ProjectDetailRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_ProjectDetailResponse {
+        calls.append("project-detail:\(request.dimensionKey)")
+        guard !featureProjectDetailPlans.isEmpty else { throw FakeFailure.unavailable }
+        let plan = featureProjectDetailPlans.removeFirst()
+        if plan.fails { throw FakeFailure.unavailable }
+        return plan.response
+    }
+
+    func source(
+        _ request: Codexpulse_Core_V1_SourceRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_SourceDetailResponse {
+        calls.append("source-detail:\(request.sourceKey)")
+        guard !featureSourceDetailPlans.isEmpty else { throw FakeFailure.unavailable }
+        let plan = featureSourceDetailPlans.removeFirst()
+        if plan.fails { throw FakeFailure.unavailable }
+        return plan.response
+    }
+
+    func job(
+        _ request: Codexpulse_Core_V1_JobRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_JobDetailResponse {
+        calls.append("job-detail:\(request.jobID)")
+        guard !featureJobDetailPlans.isEmpty else { throw FakeFailure.unavailable }
+        let plan = featureJobDetailPlans.removeFirst()
+        if plan.fails { throw FakeFailure.unavailable }
+        return plan.response
+    }
+
+    func health(
+        _ request: Codexpulse_Core_V1_HealthRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_HealthDetailResponse {
+        calls.append("health-detail:\(request.eventID)")
+        guard !featureHealthDetailPlans.isEmpty else { throw FakeFailure.unavailable }
+        let plan = featureHealthDetailPlans.removeFirst()
+        if plan.fails { throw FakeFailure.unavailable }
+        return plan.response
     }
 
     func runRuntimeAction(
@@ -1751,6 +2159,53 @@ private func makeSessionPage(
     return response
 }
 
+private func makeSessionDetail(
+    id: String,
+    title: String
+) -> Codexpulse_Core_V1_SessionDetailResponse {
+    var response = Codexpulse_Core_V1_SessionDetailResponse()
+    response.meta = completeMeta()
+    response.item.sessionID = id
+    response.item.displayTitle = title
+    return response
+}
+
+private func makeProjectDetail(
+    key: String
+) -> Codexpulse_Core_V1_ProjectDetailResponse {
+    var response = Codexpulse_Core_V1_ProjectDetailResponse()
+    response.meta = completeMeta()
+    response.item.dimensionKey = key
+    return response
+}
+
+private func makeSourceDetail(
+    key: String
+) -> Codexpulse_Core_V1_SourceDetailResponse {
+    var response = Codexpulse_Core_V1_SourceDetailResponse()
+    response.meta = completeMeta()
+    response.item.sourceKey = key
+    return response
+}
+
+private func makeJobDetail(
+    id: String
+) -> Codexpulse_Core_V1_JobDetailResponse {
+    var response = Codexpulse_Core_V1_JobDetailResponse()
+    response.meta = completeMeta()
+    response.item.jobID = id
+    return response
+}
+
+private func makeHealthDetail(
+    id: String
+) -> Codexpulse_Core_V1_HealthDetailResponse {
+    var response = Codexpulse_Core_V1_HealthDetailResponse()
+    response.meta = completeMeta()
+    response.item.eventID = id
+    return response
+}
+
 private func makeSettingsResponse(revision: String, quotaEnabled: Bool)
     -> Codexpulse_Core_V1_SettingsResponse
 {
@@ -1960,6 +2415,542 @@ private func testInvalidationRefreshesActivePage() async throws {
     try expect(
         calls.contains(where: { $0 == "stream:index,quota,health,settings" }),
         "invalidation stream must subscribe to settings as well as data domains"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testIndexInvalidationRefreshesSelectedSessionDetail() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setFeatureSessionPlans([
+        SessionPagePlan(
+            delay: .zero,
+            response: makeSessionPage(id: "selected", title: "before")
+        ),
+        SessionPagePlan(
+            delay: .zero,
+            response: makeSessionPage(id: "selected", title: "after")
+        ),
+    ])
+    await core.setFeatureSessionDetailPlans([
+        SessionDetailPlan(
+            delay: .milliseconds(500),
+            response: makeSessionDetail(id: "selected", title: "too late")
+        ),
+        SessionDetailPlan(
+            delay: .zero,
+            response: makeSessionDetail(id: "selected", title: "recovered")
+        ),
+    ])
+    await core.setInvalidation(domain: "index", delay: .milliseconds(250))
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    )
+
+    model.start()
+    try await waitUntil("selected-detail overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.navigate(to: .sessions)
+    try await waitUntil("selected-detail initial page") {
+        await MainActor.run {
+            model.sessionsState.value?.items.first?.sessionID == "selected"
+        }
+    }
+    model.selectSession("selected")
+    try await waitUntil("selected-detail initial request") {
+        await core.recordedCalls().filter { $0 == "session-detail:selected" }.count == 1
+    }
+
+    try await waitUntil("selected-detail list recovers after invalidation") {
+        await MainActor.run {
+            model.sessionsState.value?.items.first?.displayTitle == "after"
+        }
+    }
+    try await waitUntil("selected detail recovers without another click") {
+        await MainActor.run {
+            model.sessionDetailState.value?.item.displayTitle == "recovered"
+        }
+    }
+    try expect(
+        model.selectedSessionID == "selected",
+        "successful recovery must preserve the selected Session"
+    )
+    let detailCalls = await core.recordedCalls().filter { $0 == "session-detail:selected" }
+    try expect(
+        detailCalls.count == 2,
+        "one invalidation must replace the cancelled detail request exactly once"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testForegroundRecoveryRefreshesSelectedSessionOnce() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setFeatureSessionPlans([
+        SessionPagePlan(
+            delay: .zero,
+            response: makeSessionPage(id: "selected", title: "before")
+        ),
+        SessionPagePlan(
+            delay: .zero,
+            response: makeSessionPage(id: "selected", title: "after")
+        ),
+        SessionPagePlan(
+            delay: .zero,
+            response: makeSessionPage(id: "selected", title: "duplicate")
+        ),
+    ])
+    await core.setFeatureSessionDetailPlans([
+        SessionDetailPlan(
+            delay: .zero,
+            response: makeSessionDetail(id: "selected", title: "before")
+        ),
+        SessionDetailPlan(
+            delay: .zero,
+            response: makeSessionDetail(id: "selected", title: "after")
+        ),
+    ])
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    )
+
+    model.start()
+    try await waitUntil("foreground overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.navigate(to: .sessions)
+    try await waitUntil("foreground initial page") {
+        await MainActor.run {
+            model.sessionsState.value?.items.first?.displayTitle == "before"
+        }
+    }
+    model.selectSession("selected")
+    try await waitUntil("foreground initial detail") {
+        await MainActor.run {
+            model.sessionDetailState.value?.item.displayTitle == "before"
+        }
+    }
+    let sessionRequestsBefore = await core.recordedSessionRequests().count
+
+    model.applicationDidBecomeActive()
+
+    try expect(
+        model.sessionDetailState.value?.item.displayTitle == "before",
+        "foreground activation must not clear the selected detail before lifecycle recovery begins"
+    )
+    try await waitUntil("foreground lifecycle reaches Core") {
+        await core.recordedCalls().contains("lifecycle:application_did_become_active")
+    }
+    try await waitUntil("foreground selected detail recovers") {
+        await MainActor.run {
+            model.sessionDetailState.value?.item.displayTitle == "after"
+        }
+    }
+    let sessionRequestsAfter = await core.recordedSessionRequests().count
+    try expect(
+        sessionRequestsAfter == sessionRequestsBefore + 1,
+        "foreground recovery must refresh the Sessions page through lifecycle exactly once"
+    )
+    try expect(
+        model.selectedSessionID == "selected",
+        "foreground recovery must preserve the selected Session"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testLoadingActiveSessionsRetriesUnavailableSelectedDetail() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setFeatureSessionPlans([
+        SessionPagePlan(
+            delay: .zero,
+            response: makeSessionPage(id: "selected", title: "selected")
+        )
+    ])
+    await core.setFeatureSessionDetailPlans([
+        SessionDetailPlan(
+            delay: .zero,
+            response: makeSessionDetail(id: "selected", title: "unavailable"),
+            fails: true
+        ),
+        SessionDetailPlan(
+            delay: .zero,
+            response: makeSessionDetail(id: "selected", title: "recovered")
+        ),
+    ])
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    )
+
+    model.start()
+    try await waitUntil("active-load overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.navigate(to: .sessions)
+    try await waitUntil("active-load sessions") {
+        await MainActor.run {
+            model.sessionsState.value?.items.first?.sessionID == "selected"
+        }
+    }
+    model.selectSession("selected")
+    try await waitUntil("active-load unavailable detail") {
+        await MainActor.run {
+            if case .unavailable = model.sessionDetailState { return true }
+            return false
+        }
+    }
+
+    model.load(.sessions)
+
+    try await waitUntil("active load retries selected detail without reselection") {
+        await MainActor.run {
+            model.sessionDetailState.value?.item.displayTitle == "recovered"
+        }
+    }
+    let detailCalls = await core.recordedCalls().filter { $0 == "session-detail:selected" }
+    try expect(
+        detailCalls.count == 2,
+        "loading the active page must retry only the unavailable selected detail"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testLoadingActiveProjectsRetriesUnavailableSelectedDetail() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setFeatureProjectDetailPlans([
+        ProjectDetailPlan(response: makeProjectDetail(key: "project"), fails: true),
+        ProjectDetailPlan(response: makeProjectDetail(key: "project"), fails: false),
+    ])
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    )
+
+    model.start()
+    try await waitUntil("active-project overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.selectProject("project")
+    try await waitUntil("active-project unavailable detail") {
+        await MainActor.run {
+            if case .unavailable = model.projectDetailState { return true }
+            return false
+        }
+    }
+
+    model.load(.projects)
+
+    try await waitUntil("active project load retries selected detail") {
+        await MainActor.run {
+            model.projectDetailState.value?.item.dimensionKey == "project"
+        }
+    }
+    let detailCalls = await core.recordedCalls().filter { $0 == "project-detail:project" }
+    try expect(
+        detailCalls.count == 2,
+        "loading the active Projects page must retry only the unavailable selected detail"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testRefreshingProjectsRetriesUnavailableSelectedDetail() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setFeatureProjectDetailPlans([
+        ProjectDetailPlan(response: makeProjectDetail(key: "project"), fails: true),
+        ProjectDetailPlan(response: makeProjectDetail(key: "project"), fails: false),
+    ])
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    )
+
+    model.start()
+    try await waitUntil("refresh-project overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.selectProject("project")
+    try await waitUntil("refresh-project unavailable detail") {
+        await MainActor.run {
+            if case .unavailable = model.projectDetailState { return true }
+            return false
+        }
+    }
+
+    model.refresh(.projects)
+
+    try await waitUntil("project refresh retries selected detail") {
+        await MainActor.run {
+            model.projectDetailState.value?.item.dimensionKey == "project"
+        }
+    }
+    let detailCalls = await core.recordedCalls().filter { $0 == "project-detail:project" }
+    try expect(
+        detailCalls.count == 2,
+        "refreshing Projects must retry the selected detail exactly once"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testRefreshingSourcesAndJobsRetriesUnavailableSelectedDetails() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setFeatureSourceDetailPlans([
+        SourceDetailPlan(response: makeSourceDetail(key: "source"), fails: true),
+        SourceDetailPlan(response: makeSourceDetail(key: "source"), fails: false),
+    ])
+    await core.setFeatureJobDetailPlans([
+        JobDetailPlan(response: makeJobDetail(id: "job"), fails: true),
+        JobDetailPlan(response: makeJobDetail(id: "job"), fails: false),
+    ])
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    )
+
+    model.start()
+    try await waitUntil("refresh-sources-jobs overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.selectSource("source")
+    model.selectJob("job")
+    try await waitUntil("refresh-sources-jobs unavailable details") {
+        await MainActor.run {
+            guard case .unavailable = model.sourceDetailState else { return false }
+            guard case .unavailable = model.jobDetailState else { return false }
+            return true
+        }
+    }
+
+    model.refresh(.sourcesJobs)
+
+    try await waitUntil("sources and jobs refresh selected details") {
+        await MainActor.run {
+            model.sourceDetailState.value?.item.sourceKey == "source"
+                && model.jobDetailState.value?.item.jobID == "job"
+        }
+    }
+    let calls = await core.recordedCalls()
+    try expect(
+        calls.filter { $0 == "source-detail:source" }.count == 2,
+        "refreshing Sources and Jobs must retry the selected Source exactly once"
+    )
+    try expect(
+        calls.filter { $0 == "job-detail:job" }.count == 2,
+        "refreshing Sources and Jobs must retry the selected Job exactly once"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testLoadingActiveSourcesAndJobsRetriesUnavailableSelectedDetails() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setFeatureSourceDetailPlans([
+        SourceDetailPlan(response: makeSourceDetail(key: "source"), fails: true),
+        SourceDetailPlan(response: makeSourceDetail(key: "source"), fails: false),
+    ])
+    await core.setFeatureJobDetailPlans([
+        JobDetailPlan(response: makeJobDetail(id: "job"), fails: true),
+        JobDetailPlan(response: makeJobDetail(id: "job"), fails: false),
+    ])
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    )
+
+    model.start()
+    try await waitUntil("load-sources-jobs overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.selectSource("source")
+    model.selectJob("job")
+    try await waitUntil("load-sources-jobs unavailable details") {
+        await MainActor.run {
+            guard case .unavailable = model.sourceDetailState else { return false }
+            guard case .unavailable = model.jobDetailState else { return false }
+            return true
+        }
+    }
+
+    model.load(.sourcesJobs)
+
+    try await waitUntil("active sources and jobs load selected details") {
+        await MainActor.run {
+            model.sourceDetailState.value?.item.sourceKey == "source"
+                && model.jobDetailState.value?.item.jobID == "job"
+        }
+    }
+    let calls = await core.recordedCalls()
+    try expect(
+        calls.filter { $0 == "source-detail:source" }.count == 2,
+        "loading active Sources and Jobs must retry the selected Source exactly once"
+    )
+    try expect(
+        calls.filter { $0 == "job-detail:job" }.count == 2,
+        "loading active Sources and Jobs must retry the selected Job exactly once"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testRefreshingLocalStatusRetriesUnavailableSelectedHealthDetail() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setFeatureHealthDetailPlans([
+        HealthDetailPlan(response: makeHealthDetail(id: "health"), fails: true),
+        HealthDetailPlan(response: makeHealthDetail(id: "health"), fails: false),
+    ])
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    )
+
+    model.start()
+    try await waitUntil("refresh-health overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.selectHealthEvent("health")
+    try await waitUntil("refresh-health unavailable detail") {
+        await MainActor.run {
+            if case .unavailable = model.healthDetailState { return true }
+            return false
+        }
+    }
+
+    model.refresh(.localStatus)
+
+    try await waitUntil("local status refresh retries selected health detail") {
+        await MainActor.run {
+            model.healthDetailState.value?.item.eventID == "health"
+        }
+    }
+    let detailCalls = await core.recordedCalls().filter { $0 == "health-detail:health" }
+    try expect(
+        detailCalls.count == 2,
+        "refreshing Local Status must retry the selected Health event exactly once"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testLoadingActiveLocalStatusRetriesUnavailableSelectedHealthDetail() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setFeatureHealthDetailPlans([
+        HealthDetailPlan(response: makeHealthDetail(id: "health"), fails: true),
+        HealthDetailPlan(response: makeHealthDetail(id: "health"), fails: false),
+    ])
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    )
+
+    model.start()
+    try await waitUntil("load-health overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.selectHealthEvent("health")
+    try await waitUntil("load-health unavailable detail") {
+        await MainActor.run {
+            if case .unavailable = model.healthDetailState { return true }
+            return false
+        }
+    }
+
+    model.load(.localStatus)
+
+    try await waitUntil("active local status load retries selected health detail") {
+        await MainActor.run {
+            model.healthDetailState.value?.item.eventID == "health"
+        }
+    }
+    let detailCalls = await core.recordedCalls().filter { $0 == "health-detail:health" }
+    try expect(
+        detailCalls.count == 2,
+        "loading active Local Status must retry the selected Health event exactly once"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testRefreshAllRetriesEveryUnavailableSelectedDetail() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setFeatureSessionDetailPlans([
+        SessionDetailPlan(
+            delay: .zero,
+            response: makeSessionDetail(id: "session", title: "unavailable"),
+            fails: true
+        ),
+        SessionDetailPlan(
+            delay: .zero,
+            response: makeSessionDetail(id: "session", title: "recovered")
+        ),
+    ])
+    await core.setFeatureProjectDetailPlans([
+        ProjectDetailPlan(response: makeProjectDetail(key: "project"), fails: true),
+        ProjectDetailPlan(response: makeProjectDetail(key: "project"), fails: false),
+    ])
+    await core.setFeatureSourceDetailPlans([
+        SourceDetailPlan(response: makeSourceDetail(key: "source"), fails: true),
+        SourceDetailPlan(response: makeSourceDetail(key: "source"), fails: false),
+    ])
+    await core.setFeatureJobDetailPlans([
+        JobDetailPlan(response: makeJobDetail(id: "job"), fails: true),
+        JobDetailPlan(response: makeJobDetail(id: "job"), fails: false),
+    ])
+    await core.setFeatureHealthDetailPlans([
+        HealthDetailPlan(response: makeHealthDetail(id: "health"), fails: true),
+        HealthDetailPlan(response: makeHealthDetail(id: "health"), fails: false),
+    ])
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    )
+
+    model.start()
+    try await waitUntil("refresh-all overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.selectSession("session")
+    model.selectProject("project")
+    model.selectSource("source")
+    model.selectJob("job")
+    model.selectHealthEvent("health")
+    try await waitUntil("refresh-all unavailable details") {
+        await MainActor.run {
+            guard case .unavailable = model.sessionDetailState else { return false }
+            guard case .unavailable = model.projectDetailState else { return false }
+            guard case .unavailable = model.sourceDetailState else { return false }
+            guard case .unavailable = model.jobDetailState else { return false }
+            guard case .unavailable = model.healthDetailState else { return false }
+            return true
+        }
+    }
+
+    model.refreshAllFeatures()
+
+    try await waitUntil("refresh all retries every selected detail") {
+        await MainActor.run {
+            model.sessionDetailState.value?.item.sessionID == "session"
+                && model.projectDetailState.value?.item.dimensionKey == "project"
+                && model.sourceDetailState.value?.item.sourceKey == "source"
+                && model.jobDetailState.value?.item.jobID == "job"
+                && model.healthDetailState.value?.item.eventID == "health"
+        }
+    }
+    let calls = await core.recordedCalls()
+    try expect(
+        calls.filter { $0 == "session-detail:session" }.count == 2,
+        "Refresh All must retry the selected Session exactly once"
+    )
+    try expect(
+        calls.filter { $0 == "project-detail:project" }.count == 2,
+        "Refresh All must retry the selected Project exactly once"
+    )
+    try expect(
+        calls.filter { $0 == "source-detail:source" }.count == 2,
+        "Refresh All must retry the selected Source exactly once"
+    )
+    try expect(
+        calls.filter { $0 == "job-detail:job" }.count == 2,
+        "Refresh All must retry the selected Job exactly once"
+    )
+    try expect(
+        calls.filter { $0 == "health-detail:health" }.count == 2,
+        "Refresh All must retry the selected Health event exactly once"
     )
     _ = await model.shutdown()
 }
@@ -2964,6 +3955,53 @@ private func testQuotaRemainingLevelUsesGreenYellowRedThresholds() throws {
         QuotaRemainingLevel(remainingPercent: nil) == .unavailable
             && QuotaRemainingLevel(remainingPercent: .nan) == .unavailable,
         "missing or invalid remaining quota must stay unavailable"
+    )
+}
+
+private func testStatusBarQuotaDataStateSeparatesRemainingColorFromTrust() throws {
+    let fresh = StatusBarQuotaDataState(freshness: "fresh")
+    let stale = StatusBarQuotaDataState(freshness: "stale")
+    let suspicious = StatusBarQuotaDataState(freshness: "suspicious")
+    let unavailable = StatusBarQuotaDataState(freshness: "expired_unknown")
+
+    try expect(
+        fresh.preservesRemainingColor
+            && stale.preservesRemainingColor
+            && suspicious.preservesRemainingColor,
+        "known last-good quota values must retain their green/yellow/red remaining-level color"
+    )
+    try expect(
+        stale.accessibilitySuffix == "，显示上次可信额度"
+            && suspicious.accessibilitySuffix == "，新额度数据异常，显示上次可信额度",
+        "stale and suspicious quota values must expose their independent trust state"
+    )
+    try expect(
+        !unavailable.preservesRemainingColor
+            && unavailable.accessibilitySuffix == "，额度数据可信度不可用",
+        "expired or unknown quota values must remain fully unavailable"
+    )
+}
+
+private func testStatusBarQuotaPresentationDescribesLastKnownGoodState() throws {
+    let base = makeResponses()
+    var quota = base.quota
+    quota.current.windows[0].remainingPercent = 73
+    quota.current.windows[0].freshness = "stale"
+    let overview = OverviewPresentation(OverviewResponses(
+        usage: base.usage,
+        quota: quota,
+        sessions: base.sessions,
+        projects: base.projects,
+        health: base.health
+    ))
+    guard let summary = StatusBarQuotaPresentation(overview) else {
+        throw TestFailure.mismatch("stale last-known-good status bar summary was unavailable")
+    }
+
+    try expect(
+        summary.dataState == .stale
+            && summary.accessibilityLabel.hasSuffix("，显示上次可信额度"),
+        "status bar summary must retain the value while naming its stale trust state"
     )
 }
 
@@ -4231,21 +5269,24 @@ struct CodexPulseAppTestMain {
         try testOverviewUsesOneNavigationAndARealTrendChart()
         try testWeeklyOverviewTrendUsesDailyAxisAndRangeCopy()
         try testUsageChartStacksModelsWithLocalizedHoverDetails()
-        try testSessionAndProjectDailyTrendsShowSelectionRuleAndDateDetail()
+        try testSessionTrendPresentationAdaptsGranularityAndReportingTimezone()
         try testSessionAndProjectDetailsShareResponsiveThirdWidthSplit()
+        try await testFeatureRefreshRetainsNativeContentIdentity()
         try testEveryTokenChartUsesLocalizedAxisAndAccessibilityUnits()
         try testEveryTokenSurfaceUsesInputOutputBreakdown()
         try testStatusPopoverShowsLocalizedModelDailyTrend()
         try testPopoverHeaderMatchesSessionNestLayoutAndNeutralFocus()
         try testPopoverAccountSummaryShowsSessionNestAccountFieldsOnly()
         try testPopoverAccountSummaryDistinguishesEmptyAndUnavailableData()
-        try testPopoverSummaryContainsDisplayedAccountWithoutInternalIdentifiers()
+        try testPopoverScreenshotClipboardTextHidesAccountAndPlan()
         try testPopoverProjectActionUsesExactPublicRepositoryURL()
         try testPopoverProjectActionMakesSystemOpenFailureVisible()
         try testPopoverCopyActionStopsWhenSafeScreenshotIsUnavailable()
         try testPopoverCopyActionReportsClipboardFailureWithoutRawFallback()
         try testPopoverCopyActionWritesOneSafeImageAndTextPayload()
         try testPopoverPasteboardWriterUsesOneRealItemForTextAndPNG()
+        try testPopoverFullPageCaptureUsesLiveScrollableViewAndRestoresOffset()
+        try testPopoverScreenshotUsesLiveViewAndRedactsAccountCapsule()
         try testPopoverWeeklyTrendDoesNotFollowOverviewRange()
         try testTrendSelectionSnapsToNearestRealPoint()
         try testSidebarSettingsUsesSystemRowSpacing()
@@ -4275,6 +5316,8 @@ struct CodexPulseAppTestMain {
         try testStatusBarQuotaPresentationUsesOnlyMatchingPeriodUsage()
         try testStatusBarStyleSelectionAndLegacyFallback()
         try testQuotaRemainingLevelUsesGreenYellowRedThresholds()
+        try testStatusBarQuotaDataStateSeparatesRemainingColorFromTrust()
+        try testStatusBarQuotaPresentationDescribesLastKnownGoodState()
         try testMainWindowLayoutPrefersFullOverviewWithoutLeavingTheScreen()
         try testWeeklyQuotaUsageRequestUsesExactWindowStart()
         try testOverviewRangeResolutionDrivesEveryContentRequest()
@@ -4284,6 +5327,16 @@ struct CodexPulseAppTestMain {
         try testLaunchConfigurationUsesPersistentProductDefaults()
         try await testFeatureGenerationPreventsStaleOverwrite()
         try await testInvalidationRefreshesActivePage()
+        try await testIndexInvalidationRefreshesSelectedSessionDetail()
+        try await testForegroundRecoveryRefreshesSelectedSessionOnce()
+        try await testLoadingActiveSessionsRetriesUnavailableSelectedDetail()
+        try await testLoadingActiveProjectsRetriesUnavailableSelectedDetail()
+        try await testRefreshingProjectsRetriesUnavailableSelectedDetail()
+        try await testRefreshingSourcesAndJobsRetriesUnavailableSelectedDetails()
+        try await testLoadingActiveSourcesAndJobsRetriesUnavailableSelectedDetails()
+        try await testRefreshingLocalStatusRetriesUnavailableSelectedHealthDetail()
+        try await testLoadingActiveLocalStatusRetriesUnavailableSelectedHealthDetail()
+        try await testRefreshAllRetriesEveryUnavailableSelectedDetail()
         try await testIndexInvalidationRefreshesStatusWhileApplicationIsInactive()
         try await testRepeatedCursorStopsPagination()
         try await testTransientCursorFailureCanRetry()

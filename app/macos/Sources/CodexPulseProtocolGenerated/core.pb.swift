@@ -1250,9 +1250,14 @@ public nonisolated struct Codexpulse_Core_V1_SessionDetailResponse: @unchecked S
     set {_uniqueStorage()._reportingTimeZone = newValue}
   }
 
-  public var daily: [Codexpulse_Core_V1_TrendPoint] {
-    get {_storage._daily}
-    set {_uniqueStorage()._daily = newValue}
+  public var trend: [Codexpulse_Core_V1_TrendPoint] {
+    get {_storage._trend}
+    set {_uniqueStorage()._trend = newValue}
+  }
+
+  public var trendGranularity: String {
+    get {_storage._trendGranularity}
+    set {_uniqueStorage()._trendGranularity = newValue}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -6696,7 +6701,7 @@ nonisolated extension Codexpulse_Core_V1_SessionTurnItem: SwiftProtobuf.Message,
 
 nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SessionDetailResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{3}unpriced_reasons\0\u{1}item\0\u{3}turn_page\0\u{1}turns\0\u{3}degraded_reason\0\u{3}reporting_time_zone\0\u{1}daily\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{3}unpriced_reasons\0\u{1}item\0\u{3}turn_page\0\u{1}turns\0\u{3}degraded_reason\0\u{3}reporting_time_zone\0\u{2}\u{2}trend\0\u{3}trend_granularity\0\u{b}daily\0\u{c}\u{b}\u{1}")
 
   fileprivate class _StorageClass {
     var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
@@ -6709,7 +6714,8 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Me
     var _turns: [Codexpulse_Core_V1_SessionTurnItem] = []
     var _degradedReason: String? = nil
     var _reportingTimeZone: String = String()
-    var _daily: [Codexpulse_Core_V1_TrendPoint] = []
+    var _trend: [Codexpulse_Core_V1_TrendPoint] = []
+    var _trendGranularity: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -6730,7 +6736,8 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Me
       _turns = source._turns
       _degradedReason = source._degradedReason
       _reportingTimeZone = source._reportingTimeZone
-      _daily = source._daily
+      _trend = source._trend
+      _trendGranularity = source._trendGranularity
     }
   }
 
@@ -6759,7 +6766,8 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Me
         case 8: try { try decoder.decodeRepeatedMessageField(value: &_storage._turns) }()
         case 9: try { try decoder.decodeSingularStringField(value: &_storage._degradedReason) }()
         case 10: try { try decoder.decodeSingularStringField(value: &_storage._reportingTimeZone) }()
-        case 11: try { try decoder.decodeRepeatedMessageField(value: &_storage._daily) }()
+        case 12: try { try decoder.decodeRepeatedMessageField(value: &_storage._trend) }()
+        case 13: try { try decoder.decodeSingularStringField(value: &_storage._trendGranularity) }()
         default: break
         }
       }
@@ -6802,8 +6810,11 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Me
       if !_storage._reportingTimeZone.isEmpty {
         try visitor.visitSingularStringField(value: _storage._reportingTimeZone, fieldNumber: 10)
       }
-      if !_storage._daily.isEmpty {
-        try visitor.visitRepeatedMessageField(value: _storage._daily, fieldNumber: 11)
+      if !_storage._trend.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._trend, fieldNumber: 12)
+      }
+      if !_storage._trendGranularity.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._trendGranularity, fieldNumber: 13)
       }
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -6824,7 +6835,8 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Me
         if _storage._turns != rhs_storage._turns {return false}
         if _storage._degradedReason != rhs_storage._degradedReason {return false}
         if _storage._reportingTimeZone != rhs_storage._reportingTimeZone {return false}
-        if _storage._daily != rhs_storage._daily {return false}
+        if _storage._trend != rhs_storage._trend {return false}
+        if _storage._trendGranularity != rhs_storage._trendGranularity {return false}
         return true
       }
       if !storagesAreEqual {return false}

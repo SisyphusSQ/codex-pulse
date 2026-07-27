@@ -6,6 +6,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // 测试 CoreService contract 在迁移场景下暴露完整业务面，并排除桌面平台职责。
@@ -58,6 +61,7 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		`(?s)message UsageCostRequest\s*\{.*LocalDateRange range\s*=\s*1\s*;.*string granularity\s*=\s*2\s*;.*optional UTCTimeRange exact_range\s*=\s*3\s*;`,
 		`(?s)message ProjectDetailRequest\s*\{.*LocalDateRange range\s*=\s*2\s*;.*optional UTCTimeRange exact_range\s*=\s*5\s*;`,
 		`(?s)message UsageCostResponse\s*\{.*repeated UsageModelItem models\s*=\s*11\s*;`,
+		`(?s)message SessionDetailResponse\s*\{.*reserved 11\s*;.*reserved "daily"\s*;.*repeated TrendPoint trend\s*=\s*12\s*;.*string trend_granularity\s*=\s*13\s*;`,
 		`(?s)message CodexAccountIdentity\s*\{\s*string type\s*=\s*1\s*;\s*optional string email\s*=\s*2\s*;\s*optional string plan_type\s*=\s*3\s*;\s*\}`,
 		`(?s)message AccountSnapshotResponse\s*\{\s*optional CodexAccountIdentity account\s*=\s*1\s*;\s*\}`,
 	} {
@@ -71,6 +75,36 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		if regexp.MustCompile(`(?i)\b` + forbidden + `\b`).MatchString(content) {
 			t.Fatalf("core.proto exposes forbidden error or credential field %q", forbidden)
 		}
+	}
+}
+
+// 测试破坏性 Session 趋势演进永久隔离旧 daily wire tag，避免绕过握手时静默错读。
+func TestSessionDetailDescriptorReservesLegacyDailyField(t *testing.T) {
+	t.Parallel()
+
+	message := (&corev1.SessionDetailResponse{}).ProtoReflect().Descriptor()
+	if !message.ReservedRanges().Has(protoreflect.FieldNumber(11)) {
+		t.Fatal("SessionDetailResponse field 11 must remain reserved")
+	}
+	foundDaily := false
+	for index := 0; index < message.ReservedNames().Len(); index++ {
+		if message.ReservedNames().Get(index) == protoreflect.Name("daily") {
+			foundDaily = true
+			break
+		}
+	}
+	if !foundDaily {
+		t.Fatal(`SessionDetailResponse name "daily" must remain reserved`)
+	}
+	trend := message.Fields().ByName("trend")
+	granularity := message.Fields().ByName("trend_granularity")
+	if trend == nil || trend.Number() != 12 ||
+		granularity == nil || granularity.Number() != 13 {
+		t.Fatalf(
+			"SessionDetailResponse adaptive trend fields = trend:%v granularity:%v",
+			trend,
+			granularity,
+		)
 	}
 }
 

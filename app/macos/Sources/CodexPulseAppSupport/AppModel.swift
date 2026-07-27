@@ -231,6 +231,7 @@ public final class AppModel: ObservableObject {
         case .sourcesJobs: loadSourcesAndJobs(reset: true)
         case .settings: loadSettings()
         }
+        reloadSelectedDetails(for: feature, onlyIfNeeded: false)
     }
 
     public func load(_ feature: AppFeature) {
@@ -253,6 +254,7 @@ public final class AppModel: ObservableObject {
         case .settings:
             if settingsState.shouldReloadOnNavigation { loadSettings() }
         }
+        reloadSelectedDetails(for: feature, onlyIfNeeded: true)
     }
 
     public func navigate(to feature: AppFeature) {
@@ -276,7 +278,46 @@ public final class AppModel: ObservableObject {
         loadLocalStatus()
         loadSourcesAndJobs(reset: true)
         loadSettings()
+        for feature in [AppFeature.sessions, .projects, .localStatus, .sourcesJobs] {
+            reloadSelectedDetails(for: feature, onlyIfNeeded: false)
+        }
         refresh()
+    }
+
+    private func reloadSelectedDetails(for feature: AppFeature, onlyIfNeeded: Bool) {
+        switch feature {
+        case .sessions:
+            if let selectedSessionID,
+               !onlyIfNeeded || sessionDetailState.shouldReloadOnNavigation
+            {
+                loadSessionDetail(sessionID: selectedSessionID, reset: true)
+            }
+        case .projects:
+            if let selectedProjectKey,
+               !onlyIfNeeded || projectDetailState.shouldReloadOnNavigation
+            {
+                loadProjectDetail(dimensionKey: selectedProjectKey, reset: true)
+            }
+        case .localStatus:
+            if let selectedHealthEventID,
+               !onlyIfNeeded || healthDetailState.shouldReloadOnNavigation
+            {
+                loadHealthDetail(eventID: selectedHealthEventID)
+            }
+        case .sourcesJobs:
+            if let selectedSourceKey,
+               !onlyIfNeeded || sourceDetailState.shouldReloadOnNavigation
+            {
+                loadSourceDetail(sourceKey: selectedSourceKey)
+            }
+            if let selectedJobID,
+               !onlyIfNeeded || jobDetailState.shouldReloadOnNavigation
+            {
+                loadJobDetail(jobID: selectedJobID)
+            }
+        case .overview, .quotaUsage, .settings:
+            break
+        }
     }
 
     public func refreshOrRestart() {
@@ -585,6 +626,10 @@ public final class AppModel: ObservableObject {
         selectedSourceKey = sourceKey
         sourceDetailState = .idle
         guard let sourceKey else { return }
+        loadSourceDetail(sourceKey: sourceKey)
+    }
+
+    private func loadSourceDetail(sourceKey: String) {
         let previous = sourceDetailState.value
         sourceDetailState = .loading(previous: previous)
         launch(.sourceDetail, operation: { [runtime] in try await runtime.source(key: sourceKey) }) { [weak self] response in
@@ -627,6 +672,10 @@ public final class AppModel: ObservableObject {
         selectedJobID = jobID
         jobDetailState = .idle
         guard let jobID else { return }
+        loadJobDetail(jobID: jobID)
+    }
+
+    private func loadJobDetail(jobID: String) {
         let previous = jobDetailState.value
         jobDetailState = .loading(previous: previous)
         launch(.jobDetail, operation: { [runtime] in try await runtime.job(id: jobID) }) { [weak self] response in
@@ -702,6 +751,10 @@ public final class AppModel: ObservableObject {
         selectedHealthEventID = eventID
         healthDetailState = .idle
         guard let eventID else { return }
+        loadHealthDetail(eventID: eventID)
+    }
+
+    private func loadHealthDetail(eventID: String) {
         let previous = healthDetailState.value
         healthDetailState = .loading(previous: previous)
         launch(.healthDetail, operation: { [runtime] in try await runtime.health(eventID: eventID) }) { [weak self] response in

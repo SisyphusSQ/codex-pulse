@@ -281,7 +281,10 @@ message SessionDetailResponse {
   repeated SessionTurnItem turns = 8;
   optional string degraded_reason = 9;
   string reporting_time_zone = 10;
-  repeated TrendPoint daily = 11;
+  reserved 11;
+  reserved "daily";
+  repeated TrendPoint trend = 12;
+  string trend_granularity = 13;
 }
 
 message ProjectDailyPoint {

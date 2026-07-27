@@ -139,7 +139,7 @@ func TestUsageCostGroupsHourlyTrend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UsageCost(hour) error = %v", err)
 	}
-	wantKeys := []string{"2026-07-22T00:00", "2026-07-22T01:00"}
+	wantKeys := []string{"2026-07-22T00:00+00:00", "2026-07-22T01:00+00:00"}
 	keys := make([]string, 0, len(response.Trend))
 	for _, point := range response.Trend {
 		keys = append(keys, point.Key)
