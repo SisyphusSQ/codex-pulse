@@ -240,6 +240,27 @@ private func testOverviewUsesOneNavigationAndARealTrendChart() throws {
         "overview rankings must navigate to their details")
 }
 
+private func testToolbarSeparatesCurrentReloadFromGlobalReload() throws {
+    let source = try mainWindowSource("RootView.swift")
+    try expect(
+        source.contains("Label(currentReloadTitle, systemImage: \"arrow.clockwise\")"),
+        "toolbar must describe the primary action as reloading the selected page"
+    )
+    try expect(
+        source.contains("Menu {")
+            && source.contains("\"重新加载所有页面\",")
+            && source.contains("systemImage: \"arrow.triangle.2.circlepath\"")
+            && source.contains("Label(\"更多重新加载选项\", systemImage: \"ellipsis.circle\")"),
+        "global reload must live in a clearly named secondary menu"
+    )
+    try expect(
+        !source.contains(
+            "Label(\"刷新全部页面\", systemImage: \"arrow.triangle.2.circlepath\")"
+        ),
+        "toolbar must not present two adjacent refresh symbols"
+    )
+}
+
 private func testWeeklyOverviewTrendUsesDailyAxisAndRangeCopy() throws {
     let weekly = OverviewPresentation(makeResponses())
     try expect(
@@ -2955,6 +2976,41 @@ private func testRefreshAllRetriesEveryUnavailableSelectedDetail() async throws 
     _ = await model.shutdown()
 }
 
+@MainActor
+private func testRefreshAllReportsGlobalProgressUntilEveryReadCompletes() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setFeatureSessionPlans([
+        SessionPagePlan(
+            delay: .milliseconds(150),
+            response: makeSessionPage(id: "session", title: "refreshed")
+        )
+    ])
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    )
+
+    model.start()
+    try await waitUntil("refresh-all progress overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+
+    model.refreshAllFeatures()
+
+    try expect(model.isRefreshingAll, "Refresh All must expose global progress immediately")
+    try expect(
+        model.sessionsState.isLoading,
+        "Refresh All progress must begin while the delayed page read is still running"
+    )
+    try await waitUntil("refresh-all progress completion") {
+        await MainActor.run { !model.isRefreshingAll }
+    }
+    try expect(
+        model.sessionsState.value?.items.first?.sessionID == "session",
+        "Refresh All must clear global progress only after the last page read completes"
+    )
+    _ = await model.shutdown()
+}
+
 private func testIndexInvalidationRefreshesStatusWhileApplicationIsInactive() async throws {
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.setInvalidation(domain: "index", delay: .milliseconds(250))
@@ -5267,6 +5323,7 @@ struct CodexPulseAppTestMain {
         try testOverviewMergesAllOtherProjectUsage()
         try testWeeklyProjectRankingFailureStaysLocal()
         try testOverviewUsesOneNavigationAndARealTrendChart()
+        try testToolbarSeparatesCurrentReloadFromGlobalReload()
         try testWeeklyOverviewTrendUsesDailyAxisAndRangeCopy()
         try testUsageChartStacksModelsWithLocalizedHoverDetails()
         try testSessionTrendPresentationAdaptsGranularityAndReportingTimezone()
@@ -5337,6 +5394,7 @@ struct CodexPulseAppTestMain {
         try await testRefreshingLocalStatusRetriesUnavailableSelectedHealthDetail()
         try await testLoadingActiveLocalStatusRetriesUnavailableSelectedHealthDetail()
         try await testRefreshAllRetriesEveryUnavailableSelectedDetail()
+        try await testRefreshAllReportsGlobalProgressUntilEveryReadCompletes()
         try await testIndexInvalidationRefreshesStatusWhileApplicationIsInactive()
         try await testRepeatedCursorStopsPagination()
         try await testTransientCursorFailureCanRetry()

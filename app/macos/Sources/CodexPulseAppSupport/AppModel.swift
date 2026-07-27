@@ -47,6 +47,15 @@ private enum FeatureTaskKey: Hashable {
     case jobs, jobDetail
     case healthProjection, dataHealth, healthList, healthDetail
     case settings, settingsSave
+
+    var isRead: Bool {
+        switch self {
+        case .quotaRefresh, .runtimeAction, .settingsSave:
+            false
+        default:
+            true
+        }
+    }
 }
 
 @MainActor
@@ -54,6 +63,7 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var state: AppViewState = .idle
     @Published public private(set) var lastShutdownOutcome: ShutdownOutcome?
     @Published public private(set) var isOverviewRefreshing = false
+    @Published public private(set) var isRefreshingAll = false
     @Published public var selectedFeature: AppFeature = .overview
     @Published public private(set) var renderedFeatures: Set<AppFeature> = []
 
@@ -98,6 +108,8 @@ public final class AppModel: ObservableObject {
     private var featureTasks: [FeatureTaskKey: Task<Void, Never>] = [:]
     private var featureGenerations: [FeatureTaskKey: UInt64] = [:]
     private var consumedCursors: [FeatureTaskKey: Set<String>] = [:]
+    private var refreshAllPendingTasks: Set<FeatureTaskKey> = []
+    private var refreshAllWaitsForOverview = false
 
     public init(configuration: AppLaunchConfiguration) {
         runtime = AppRuntime(configuration: configuration)
@@ -267,11 +279,14 @@ public final class AppModel: ObservableObject {
     }
 
     public func refreshAllFeatures() {
-        guard canRefreshOrRestart else { return }
+        guard canRefreshOrRestart, !isRefreshingAll else { return }
         if requiresCoreRestart {
             restartCore()
             return
         }
+        isRefreshingAll = true
+        refreshAllPendingTasks.removeAll()
+        refreshAllWaitsForOverview = true
         loadSessions(reset: true)
         loadProjects(reset: true)
         loadQuotaAndUsage()
@@ -282,6 +297,7 @@ public final class AppModel: ObservableObject {
             reloadSelectedDetails(for: feature, onlyIfNeeded: false)
         }
         refresh()
+        finishRefreshAllIfPossible()
     }
 
     private func reloadSelectedDetails(for feature: AppFeature, onlyIfNeeded: Bool) {
@@ -878,6 +894,9 @@ public final class AppModel: ObservableObject {
         featureTasks[key]?.cancel()
         let generation = (featureGenerations[key] ?? 0) &+ 1
         featureGenerations[key] = generation
+        if isRefreshingAll, key.isRead {
+            refreshAllPendingTasks.insert(key)
+        }
         return generation
     }
 
@@ -887,6 +906,8 @@ public final class AppModel: ObservableObject {
 
     private func finishTask(_ key: FeatureTaskKey) {
         featureTasks[key] = nil
+        refreshAllPendingTasks.remove(key)
+        finishRefreshAllIfPossible()
     }
 
     private func cancelAllFeatureTasks() {
@@ -895,6 +916,7 @@ public final class AppModel: ObservableObject {
             featureGenerations[key, default: 0] &+= 1
         }
         featureTasks.removeAll()
+        cancelRefreshAll()
     }
 
     private func cancelFeatureReadTasks() {
@@ -905,6 +927,7 @@ public final class AppModel: ObservableObject {
             featureTasks[key] = nil
             featureGenerations[key, default: 0] &+= 1
         }
+        cancelRefreshAll()
     }
 
     private func receive(_ runtimeState: CoreConnectionState) {
@@ -937,6 +960,24 @@ public final class AppModel: ObservableObject {
     private func finishOverviewRefresh() {
         isOverviewRefreshing = false
         overviewRefreshTask = nil
+        refreshAllWaitsForOverview = false
+        finishRefreshAllIfPossible()
+    }
+
+    private func finishRefreshAllIfPossible() {
+        guard isRefreshingAll,
+              refreshAllPendingTasks.isEmpty,
+              !refreshAllWaitsForOverview
+        else {
+            return
+        }
+        isRefreshingAll = false
+    }
+
+    private func cancelRefreshAll() {
+        isRefreshingAll = false
+        refreshAllPendingTasks.removeAll()
+        refreshAllWaitsForOverview = false
     }
 
     private func markMutationsUncertain(_ notice: AppNotice) {
@@ -997,7 +1038,9 @@ public final class AppModel: ObservableObject {
             featureTasks[key]?.cancel()
             featureTasks[key] = nil
             featureGenerations[key, default: 0] &+= 1
+            refreshAllPendingTasks.remove(key)
         }
+        finishRefreshAllIfPossible()
     }
 
     private func resetFeatureState() {
