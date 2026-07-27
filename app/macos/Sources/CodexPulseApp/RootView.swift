@@ -32,20 +32,35 @@ struct RootView: View {
                         Button {
                             model.refresh(model.selectedFeature)
                         } label: {
-                            currentRefreshLabel
+                            currentReloadLabel
                         }
                         .keyboardShortcut("r", modifiers: .command)
-                        .disabled(!model.canRefreshOrRestart || model.isRefreshing(model.selectedFeature))
-                        .help(currentRefreshHelp)
+                        .disabled(
+                            !model.canRefreshOrRestart
+                                || model.isRefreshingAll
+                                || model.isRefreshing(model.selectedFeature)
+                        )
+                        .help(currentReloadHelp)
                         .accessibilityIdentifier("toolbar.refresh.current")
-                        Button {
-                            model.refreshAllFeatures()
+                        Menu {
+                            Button(
+                                "重新加载所有页面",
+                                systemImage: "arrow.triangle.2.circlepath"
+                            ) {
+                                model.refreshAllFeatures()
+                            }
+                            .accessibilityIdentifier("toolbar.refresh.all")
                         } label: {
-                            Label("刷新全部页面", systemImage: "arrow.triangle.2.circlepath")
+                            reloadOptionsLabel
                         }
-                        .disabled(!model.canRefreshOrRestart)
-                        .help("刷新全部页面")
-                        .accessibilityIdentifier("toolbar.refresh.all")
+                        .disabled(
+                            !model.canRefreshOrRestart
+                                || model.requiresCoreRestart
+                                || model.isRefreshingAll
+                                || model.isRefreshing(model.selectedFeature)
+                        )
+                        .help(reloadOptionsHelp)
+                        .accessibilityIdentifier("toolbar.reload.options")
                     }
                 }
         }
@@ -64,22 +79,43 @@ struct RootView: View {
     }
 
     @ViewBuilder
-    private var currentRefreshLabel: some View {
+    private var currentReloadLabel: some View {
         if model.requiresCoreRestart {
             Label("重新连接", systemImage: "bolt.horizontal.circle")
-        } else if model.isRefreshing(model.selectedFeature) {
+        } else if model.isRefreshing(model.selectedFeature), !model.isRefreshingAll {
             ProgressView()
                 .controlSize(.small)
                 .frame(width: 16, height: 16)
-                .accessibilityLabel("正在刷新当前页面")
+                .accessibilityLabel("正在\(currentReloadTitle)")
         } else {
-            Label("刷新当前页面", systemImage: "arrow.clockwise")
+            Label(currentReloadTitle, systemImage: "arrow.clockwise")
         }
     }
 
-    private var currentRefreshHelp: String {
+    private var currentReloadTitle: String {
+        "重新加载「\(model.selectedFeature.title)」"
+    }
+
+    private var currentReloadHelp: String {
         if model.requiresCoreRestart { return "重新连接本地数据" }
-        return model.isRefreshing(model.selectedFeature) ? "正在刷新当前页面" : "刷新当前页面"
+        if model.isRefreshingAll { return "正在重新加载所有页面" }
+        return model.isRefreshing(model.selectedFeature) ? "正在\(currentReloadTitle)" : currentReloadTitle
+    }
+
+    @ViewBuilder
+    private var reloadOptionsLabel: some View {
+        if model.isRefreshingAll {
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: 16, height: 16)
+                .accessibilityLabel("正在重新加载所有页面")
+        } else {
+            Label("更多重新加载选项", systemImage: "ellipsis.circle")
+        }
+    }
+
+    private var reloadOptionsHelp: String {
+        model.isRefreshingAll ? "正在重新加载所有页面" : "更多重新加载选项"
     }
 
     @ViewBuilder
