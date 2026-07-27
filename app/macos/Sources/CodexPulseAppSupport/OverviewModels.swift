@@ -671,6 +671,20 @@ public struct OverviewActivityTimelinePoint: Equatable, Identifiable, Sendable {
     public let totalTokens: DisplayMetric
     public let sessionCount: DisplayMetric
 
+    public init(
+        id: Int64,
+        startAtMS: Int64,
+        endAtMS: Int64,
+        totalTokens: DisplayMetric,
+        sessionCount: DisplayMetric
+    ) {
+        self.id = id
+        self.startAtMS = startAtMS
+        self.endAtMS = endAtMS
+        self.totalTokens = totalTokens
+        self.sessionCount = sessionCount
+    }
+
     public func value(for metric: OverviewActivityMetric) -> Int64? {
         switch metric {
         case .tokenConsumption: Self.knownValue(totalTokens)
@@ -681,6 +695,139 @@ public struct OverviewActivityTimelinePoint: Equatable, Identifiable, Sendable {
     private static func knownValue(_ metric: DisplayMetric) -> Int64? {
         guard case .known(let value, _) = metric else { return nil }
         return value
+    }
+}
+
+public struct OverviewActivityAxisTick: Equatable, Identifiable, Sendable {
+    public let id: Int64
+    public let date: Date
+    public let label: String
+
+    public init(id: Int64, date: Date, label: String) {
+        self.id = id
+        self.date = date
+        self.label = label
+    }
+}
+
+public enum OverviewActivityTimelineResolver {
+    public static func axisTicks(
+        points: [OverviewActivityTimelinePoint],
+        granularity: OverviewActivityTimelineGranularity,
+        timeZoneID: String,
+        maximumCount: Int = 7
+    ) -> [OverviewActivityAxisTick] {
+        guard maximumCount > 0,
+              !points.isEmpty,
+              let timeZone = TimeZone(identifier: timeZoneID)
+        else { return [] }
+
+        let ordered = points.sorted { $0.startAtMS < $1.startAtMS }
+        let selected: [OverviewActivityTimelinePoint]
+        if ordered.count <= maximumCount {
+            selected = ordered
+        } else if maximumCount == 1 {
+            selected = [ordered[0]]
+        } else {
+            selected = (0..<maximumCount).map { offset in
+                let position = Double(offset) * Double(ordered.count - 1)
+                    / Double(maximumCount - 1)
+                return ordered[Int(position.rounded())]
+            }
+        }
+
+        let dayKeyFormatter = dateFormatter(
+            format: "yyyy-MM-dd",
+            timeZone: timeZone,
+            locale: Locale(identifier: "en_US_POSIX")
+        )
+        let dateHourFormatter = dateFormatter(
+            format: "M月d日 H时",
+            timeZone: timeZone,
+            locale: Locale(identifier: "zh_CN")
+        )
+        let hourFormatter = dateFormatter(
+            format: "H时",
+            timeZone: timeZone,
+            locale: Locale(identifier: "zh_CN")
+        )
+        let dayFormatter = dateFormatter(
+            format: "M月d日",
+            timeZone: timeZone,
+            locale: Locale(identifier: "zh_CN")
+        )
+        var previousDayKey: String?
+        return selected.map { point in
+            let date = Date(timeIntervalSince1970: Double(point.startAtMS) / 1_000)
+            let dayKey = dayKeyFormatter.string(from: date)
+            let label: String
+            if granularity == .day {
+                label = dayFormatter.string(from: date)
+            } else if dayKey == previousDayKey {
+                label = hourFormatter.string(from: date)
+            } else {
+                label = dateHourFormatter.string(from: date)
+            }
+            previousDayKey = dayKey
+            return OverviewActivityAxisTick(id: point.id, date: date, label: label)
+        }
+    }
+
+    public static func nearest(
+        to selectedDate: Date?,
+        in points: [OverviewActivityTimelinePoint]
+    ) -> OverviewActivityTimelinePoint? {
+        guard let selectedDate else { return nil }
+        let selectedAtMS = selectedDate.timeIntervalSince1970 * 1_000
+        let ordered = points.sorted { $0.startAtMS < $1.startAtMS }
+        if let containing = ordered.first(where: {
+            selectedAtMS >= Double($0.startAtMS) && selectedAtMS < Double($0.endAtMS)
+        }) {
+            return containing
+        }
+        return ordered.min { left, right in
+            let leftCenter = Double(left.startAtMS) + Double(left.endAtMS - left.startAtMS) / 2
+            let rightCenter = Double(right.startAtMS)
+                + Double(right.endAtMS - right.startAtMS) / 2
+            let leftDistance = abs(leftCenter - selectedAtMS)
+            let rightDistance = abs(rightCenter - selectedAtMS)
+            if leftDistance == rightDistance {
+                return left.startAtMS < right.startAtMS
+            }
+            return leftDistance < rightDistance
+        }
+    }
+
+    public static func visibleRange(
+        for point: OverviewActivityTimelinePoint,
+        gapFraction: Double = 0.2
+    ) -> ClosedRange<Date>? {
+        guard point.endAtMS > point.startAtMS,
+              gapFraction >= 0,
+              gapFraction < 0.5
+        else { return nil }
+        let duration = Double(point.endAtMS - point.startAtMS)
+        let inset = duration * gapFraction
+        let lower = Date(
+            timeIntervalSince1970: (Double(point.startAtMS) + inset) / 1_000
+        )
+        let upper = Date(
+            timeIntervalSince1970: (Double(point.endAtMS) - inset) / 1_000
+        )
+        return lower...upper
+    }
+
+    private static func dateFormatter(
+        format: String,
+        timeZone: TimeZone,
+        locale: Locale
+    ) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        formatter.dateFormat = format
+        return formatter
     }
 }
 

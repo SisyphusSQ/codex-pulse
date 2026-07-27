@@ -200,8 +200,8 @@ private func testOverviewUsesOneNavigationAndARealTrendChart() throws {
     try expect(source.contains("AreaMark("), "overview trend must use a quiet area chart")
     try expect(source.contains("LineMark("), "overview trend must retain a readable trend line")
     try expect(
-        source.contains("BarMark("),
-        "current-range activity must use a bar chart without replacing the existing Token trend")
+        source.contains("RectangleMark("),
+        "current-range activity must render each real time bucket without replacing the Token trend")
     try expect(source.contains("PointMark("), "overview trend must expose each selectable point")
     try expect(source.contains("RuleMark("), "overview trend must highlight the selected time")
     try expect(
@@ -3767,6 +3767,90 @@ private func testOverviewActivityPresentationBuildsTimelineAndCompleteHeatmap() 
         "timeline buckets must preserve distinct session counts")
 }
 
+private func testOverviewActivityAxisTicksKeepDateOnlyAtDayBoundaries() throws {
+    let hour: Int64 = 3_600_000
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+    let dayOne = Int64(calendar.date(
+        from: DateComponents(year: 2026, month: 7, day: 26)
+    )!.timeIntervalSince1970 * 1_000)
+    let starts = [0, 6, 12, 18, 24, 30, 36, 42].map { dayOne + Int64($0) * hour }
+    let points = starts.map { start in
+        OverviewActivityTimelinePoint(
+            id: start,
+            startAtMS: start,
+            endAtMS: start + hour,
+            totalTokens: .known(1, unit: "tokens"),
+            sessionCount: .known(1, unit: "count")
+        )
+    }
+
+    let ticks = OverviewActivityTimelineResolver.axisTicks(
+        points: points,
+        granularity: .hour,
+        timeZoneID: "Asia/Shanghai",
+        maximumCount: 8
+    )
+
+    try expect(
+        ticks.map(\.label) == [
+            "7月26日 0时", "6时", "12时", "18时",
+            "7月27日 0时", "6时", "12时", "18时",
+        ],
+        "hourly activity axis must show the date once per local day instead of repeating it")
+}
+
+private func testOverviewActivityTimelineResolverSelectsContainingBucketThenNearest() throws {
+    let hour: Int64 = 3_600_000
+    let start: Int64 = 1_753_488_000_000
+    let points = [0, 1, 2].map { offset in
+        let bucketStart = start + Int64(offset) * hour
+        return OverviewActivityTimelinePoint(
+            id: bucketStart,
+            startAtMS: bucketStart,
+            endAtMS: bucketStart + hour,
+            totalTokens: .known(Int64(offset + 1), unit: "tokens"),
+            sessionCount: .known(1, unit: "count")
+        )
+    }
+
+    let insideSecond = Date(
+        timeIntervalSince1970: Double(start + hour + 15 * 60_000) / 1_000
+    )
+    let afterLast = Date(timeIntervalSince1970: Double(start + 4 * hour) / 1_000)
+
+    try expect(
+        OverviewActivityTimelineResolver.nearest(to: insideSecond, in: points)?.id
+            == start + hour,
+        "hovering anywhere inside an activity bucket must select that bucket")
+    try expect(
+        OverviewActivityTimelineResolver.nearest(to: afterLast, in: points)?.id
+            == start + 2 * hour,
+        "hovering outside the buckets must fall back to the nearest bucket center")
+    try expect(
+        OverviewActivityTimelineResolver.nearest(to: nil, in: points) == nil,
+        "ending chart hover must clear the selected activity bucket")
+}
+
+private func testOverviewActivityTimelineResolverInsetsBarsSymmetrically() throws {
+    let point = OverviewActivityTimelinePoint(
+        id: 0,
+        startAtMS: 0,
+        endAtMS: 1_000,
+        totalTokens: .known(1, unit: "tokens"),
+        sessionCount: .known(1, unit: "count")
+    )
+
+    let range = OverviewActivityTimelineResolver.visibleRange(for: point)
+
+    try expect(
+        range.map {
+            abs($0.lowerBound.timeIntervalSince1970 - 0.2) < 0.000_001
+                && abs($0.upperBound.timeIntervalSince1970 - 0.8) < 0.000_001
+        } == true,
+        "activity bars must reserve a stable symmetric gap between adjacent time buckets")
+}
+
 private func testTokenActivityPresentationBuildsCalendarAndStreakStatistics() throws {
     var response = makeTokenActivityResponse()
     response.trend = [
@@ -6039,6 +6123,9 @@ struct CodexPulseAppTestMain {
         try testRequestFactoryAndPresentation()
         try testTokenActivityRequestUsesAnIndependentRollingYear()
         try testOverviewActivityPresentationBuildsTimelineAndCompleteHeatmap()
+        try testOverviewActivityAxisTicksKeepDateOnlyAtDayBoundaries()
+        try testOverviewActivityTimelineResolverSelectsContainingBucketThenNearest()
+        try testOverviewActivityTimelineResolverInsetsBarsSymmetrically()
         try testTokenActivityPresentationBuildsCalendarAndStreakStatistics()
         try testTokenActivityPresentationSummarizesKnownLocalFactsFromPartialResponse()
         try testTokenActivityPresentationAnchorsToTheResponseRange()

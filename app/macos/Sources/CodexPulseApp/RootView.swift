@@ -564,28 +564,33 @@ private struct OverviewContentView: View {
     private var activityAndSessionsSection: some View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 16) {
-                activityDistributionCard
+                activityDistributionCard(fillsProposedHeight: true)
                     .frame(minWidth: 560)
-                highConsumptionSessions
+                    .frame(maxHeight: .infinity, alignment: .top)
+                highConsumptionSessions(fillsProposedHeight: true)
                     .frame(minWidth: 320, idealWidth: 360, maxWidth: 420)
+                    .frame(maxHeight: .infinity, alignment: .top)
             }
             VStack(alignment: .leading, spacing: 16) {
-                activityDistributionCard
-                highConsumptionSessions
+                activityDistributionCard(fillsProposedHeight: false)
+                highConsumptionSessions(fillsProposedHeight: false)
             }
         }
     }
 
-    private var activityDistributionCard: some View {
+    private func activityDistributionCard(fillsProposedHeight: Bool) -> some View {
         OverviewActivityCard(
             activity: overview.activityDistribution,
-            rangeLabel: overview.usageRangeLabel
+            rangeLabel: overview.usageRangeLabel,
+            fillsProposedHeight: fillsProposedHeight
         )
-        .frame(minHeight: 500, alignment: .top)
     }
 
-    private var highConsumptionSessions: some View {
-        SectionCard(title: "高消耗会话") {
+    private func highConsumptionSessions(fillsProposedHeight: Bool) -> some View {
+        SectionCard(
+            title: "高消耗会话",
+            fillsProposedHeight: fillsProposedHeight
+        ) {
             Text("当前范围 · 按 Token 总量排序")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -628,7 +633,6 @@ private struct OverviewContentView: View {
                 Button("查看全部会话") { onNavigate(.sessions) }.buttonStyle(.link)
             }
         }
-        .frame(minHeight: 500, alignment: .top)
     }
 
     private func sessionTokenText(_ metric: DisplayMetric) -> String {
@@ -742,7 +746,10 @@ private struct OverviewContentView: View {
 private struct OverviewActivityCard: View {
     let activity: OverviewActivityPresentation
     let rangeLabel: String
+    let fillsProposedHeight: Bool
     @State private var selectedMetric = OverviewActivityMetric.tokenConsumption
+    @State private var selectedTimelineDate: Date?
+    @State private var hoveredHeatmapCellID: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -778,20 +785,35 @@ private struct OverviewActivityCard: View {
                 weekdayHourHeatmap
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: fillsProposedHeight ? .infinity : nil,
+            alignment: .topLeading
+        )
         .padding(16)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(.quaternary, lineWidth: 1)
         }
+        .onChange(of: selectedMetric) {
+            selectedTimelineDate = nil
+            hoveredHeatmapCellID = nil
+        }
     }
 
     @ViewBuilder
     private var timelineChart: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("按\(activity.timelineGranularity == .hour ? "小时" : "天")活动")
-                .font(.subheadline.weight(.semibold))
+            HStack(spacing: 12) {
+                Text("按\(activity.timelineGranularity == .hour ? "小时" : "天")活动")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(selectedTimelinePoint.map(timelinePointDetail) ?? "悬停柱体查看详情")
+                    .font(.caption2)
+                    .foregroundStyle(selectedTimelinePoint == nil ? .secondary : metricColor)
+                    .monospacedDigit()
+            }
             if timelinePoints.isEmpty {
                 ContentUnavailableView(
                     "当前范围暂无活动",
@@ -800,15 +822,20 @@ private struct OverviewActivityCard: View {
                 .frame(maxWidth: .infinity, minHeight: 150)
             } else {
                 Chart(timelinePoints) { point in
-                    BarMark(
-                        x: .value("时间", point.date),
-                        y: .value(selectedMetric.title, point.value)
+                    RectangleMark(
+                        xStart: .value("开始时间", point.barStartDate),
+                        xEnd: .value("结束时间", point.barEndDate),
+                        yStart: .value("基线", Int64.zero),
+                        yEnd: .value(selectedMetric.title, point.value)
                     )
                     .foregroundStyle(metricColor.gradient)
-                    .cornerRadius(2)
-                    .accessibilityLabel(activityTimeText(point.date))
+                    .opacity(selectedTimelinePoint == nil || selectedTimelinePoint?.id == point.id
+                        ? 1 : 0.4)
+                    .cornerRadius(4)
+                    .accessibilityLabel(activityTimeText(point.startDate))
                     .accessibilityValue(activityValueText(point.value))
                 }
+                .chartXScale(domain: timelineDomain)
                 .chartYAxis {
                     AxisMarks(position: .leading) { value in
                         AxisGridLine().foregroundStyle(.quaternary)
@@ -820,7 +847,44 @@ private struct OverviewActivityCard: View {
                     }
                 }
                 .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 6))
+                    AxisMarks(values: timelineAxisTicks.map(\.date)) { value in
+                        AxisGridLine(stroke: StrokeStyle(dash: [3, 3]))
+                            .foregroundStyle(.quaternary)
+                        AxisValueLabel {
+                            if let date = value.as(Date.self),
+                               let tick = timelineAxisTicks.first(where: { $0.date == date })
+                            {
+                                Text(tick.label)
+                            }
+                        }
+                    }
+                }
+                .chartOverlay { proxy in
+                    GeometryReader { geometry in
+                        Rectangle()
+                            .fill(.clear)
+                            .contentShape(Rectangle())
+                            .onContinuousHover { phase in
+                                switch phase {
+                                case .active(let location):
+                                    guard let plotFrame = proxy.plotFrame else {
+                                        selectedTimelineDate = nil
+                                        return
+                                    }
+                                    let plotRect = geometry[plotFrame]
+                                    guard plotRect.contains(location) else {
+                                        selectedTimelineDate = nil
+                                        return
+                                    }
+                                    selectedTimelineDate = proxy.value(
+                                        atX: location.x - plotRect.origin.x,
+                                        as: Date.self
+                                    )
+                                case .ended:
+                                    selectedTimelineDate = nil
+                                }
+                            }
+                    }
                 }
                 .frame(height: 170)
             }
@@ -833,9 +897,10 @@ private struct OverviewActivityCard: View {
                 Text("星期与小时分布")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Text(activity.availability == .partial ? "部分格子暂不可用" : "颜色越深，活动越集中")
+                Text(hoveredHeatmapCell.map(cellHelp) ?? heatmapHint)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(hoveredHeatmapCell == nil ? .secondary : metricColor)
+                    .monospacedDigit()
             }
             GeometryReader { proxy in
                 let spacing: CGFloat = 3
@@ -861,7 +926,64 @@ private struct OverviewActivityCard: View {
                             ForEach(cells(for: weekday)) { cell in
                                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                                     .fill(heatmapColor(cell))
+                                    .overlay {
+                                        if hoveredHeatmapCellID == cell.id {
+                                            RoundedRectangle(
+                                                cornerRadius: 3,
+                                                style: .continuous
+                                            )
+                                            .stroke(metricColor, lineWidth: 1.5)
+                                        }
+                                    }
+                                    .overlay(
+                                        alignment: cell.hour >= 12 ? .topTrailing : .topLeading
+                                    ) {
+                                        if hoveredHeatmapCellID == cell.id {
+                                            Text(cellHelp(cell))
+                                                .font(.caption)
+                                                .foregroundStyle(.primary)
+                                                .fixedSize()
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 5)
+                                                .background(
+                                                    .ultraThickMaterial,
+                                                    in: RoundedRectangle(
+                                                        cornerRadius: 6,
+                                                        style: .continuous
+                                                    )
+                                                )
+                                                .overlay {
+                                                    RoundedRectangle(
+                                                        cornerRadius: 6,
+                                                        style: .continuous
+                                                    )
+                                                    .stroke(
+                                                        .separator.opacity(0.55),
+                                                        lineWidth: 0.5
+                                                    )
+                                                }
+                                                .shadow(
+                                                    color: .black.opacity(0.14),
+                                                    radius: 5,
+                                                    y: 2
+                                                )
+                                                .offset(y: -30)
+                                                .allowsHitTesting(false)
+                                                .transition(.opacity)
+                                        }
+                                    }
                                     .frame(width: cellSize, height: cellSize)
+                                    .contentShape(Rectangle())
+                                    .onHover { isHovering in
+                                        withAnimation(.easeOut(duration: 0.12)) {
+                                            if isHovering {
+                                                hoveredHeatmapCellID = cell.id
+                                            } else if hoveredHeatmapCellID == cell.id {
+                                                hoveredHeatmapCellID = nil
+                                            }
+                                        }
+                                    }
+                                    .zIndex(hoveredHeatmapCellID == cell.id ? 1 : 0)
                                     .help(cellHelp(cell))
                                     .accessibilityLabel(
                                         "\(weekdayText(cell.weekday)) \(cell.hour)时"
@@ -879,13 +1001,54 @@ private struct OverviewActivityCard: View {
 
     private var timelinePoints: [OverviewActivityChartPoint] {
         activity.timeline.compactMap { point in
-            guard let value = point.value(for: selectedMetric) else { return nil }
+            guard let value = point.value(for: selectedMetric),
+                  let barRange = OverviewActivityTimelineResolver.visibleRange(for: point)
+            else { return nil }
+            let startDate = Date(timeIntervalSince1970: Double(point.startAtMS) / 1_000)
+            let endDate = Date(timeIntervalSince1970: Double(point.endAtMS) / 1_000)
             return OverviewActivityChartPoint(
                 id: point.id,
-                date: Date(timeIntervalSince1970: Double(point.startAtMS) / 1_000),
+                startDate: startDate,
+                endDate: endDate,
+                barStartDate: barRange.lowerBound,
+                barEndDate: barRange.upperBound,
                 value: value
             )
         }
+    }
+
+    private var timelineAxisTicks: [OverviewActivityAxisTick] {
+        OverviewActivityTimelineResolver.axisTicks(
+            points: activity.timeline.filter { $0.value(for: selectedMetric) != nil },
+            granularity: activity.timelineGranularity ?? .day,
+            timeZoneID: activity.reportingTimeZone
+        )
+    }
+
+    private var timelineDomain: ClosedRange<Date> {
+        guard let first = timelinePoints.first, let last = timelinePoints.last else {
+            let now = Date()
+            return now...now
+        }
+        return first.startDate...last.endDate
+    }
+
+    private var selectedTimelinePoint: OverviewActivityChartPoint? {
+        let availablePoints = activity.timeline.filter { $0.value(for: selectedMetric) != nil }
+        guard let selected = OverviewActivityTimelineResolver.nearest(
+            to: selectedTimelineDate,
+            in: availablePoints
+        ) else { return nil }
+        return timelinePoints.first(where: { $0.id == selected.id })
+    }
+
+    private var hoveredHeatmapCell: OverviewActivityHeatmapCell? {
+        guard let hoveredHeatmapCellID else { return nil }
+        return activity.heatmap.first(where: { $0.id == hoveredHeatmapCellID })
+    }
+
+    private var heatmapHint: String {
+        activity.availability == .partial ? "部分格子暂不可用" : "悬停格子查看详情"
     }
 
     private var maximumHeatmapValue: Int64 {
@@ -926,10 +1089,17 @@ private struct OverviewActivityCard: View {
     }
 
     private func activityTimeText(_ date: Date) -> String {
-        if activity.timelineGranularity == .hour {
-            return date.formatted(.dateTime.month().day().hour())
-        }
-        return date.formatted(.dateTime.month().day())
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = TimeZone(identifier: activity.reportingTimeZone)
+        formatter.dateFormat = activity.timelineGranularity == .hour
+            ? "M月d日 H时" : "M月d日"
+        return formatter.string(from: date)
+    }
+
+    private func timelinePointDetail(_ point: OverviewActivityChartPoint) -> String {
+        "\(activityTimeText(point.startDate)) · \(activityValueText(point.value))"
     }
 
     private func activityValueText(_ value: Int64) -> String {
@@ -958,7 +1128,10 @@ private struct OverviewActivityCard: View {
 
 private struct OverviewActivityChartPoint: Identifiable {
     let id: Int64
-    let date: Date
+    let startDate: Date
+    let endDate: Date
+    let barStartDate: Date
+    let barEndDate: Date
     let value: Int64
 }
 
