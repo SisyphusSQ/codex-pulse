@@ -413,8 +413,10 @@ func analyticsBucketStart(observedAtMS int64, filter AnalyticsRange, location *t
 	bucket := localDayBucketStart(observedAtMS, location)
 	if filter.Granularity == AnalyticsGranularityHour {
 		local := time.UnixMilli(observedAtMS).In(location)
+		_, offsetSeconds := local.Zone()
+		fixedOffset := time.FixedZone("", offsetSeconds)
 		bucket = time.Date(
-			local.Year(), local.Month(), local.Day(), local.Hour(), 0, 0, 0, location,
+			local.Year(), local.Month(), local.Day(), local.Hour(), 0, 0, 0, fixedOffset,
 		).UTC().UnixMilli()
 	}
 	if filter.Exact && bucket < filter.StartAtMS {

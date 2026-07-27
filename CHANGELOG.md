@@ -65,7 +65,7 @@
 2. [TOO-298] 优化首次全量索引的 GORM 有界批量冻结、1MiB 读取与分阶段 quota 投影，使用增量 evidence 写入保持首屏后 quota 持续可查询；单次约 6.55GB 真实 Home 样本首屏约 36.4 秒、full bootstrap 约 18.08 分钟，正式阈值与后半程 arbitration 读放大优化留给 TOO-299
 3. [TOO-299] 优化首次初始化为生产幂等入队、4MiB 读取、schema v15 quota 过滤与排序索引及增量投影读回，并在 robfig cron 的零 yield cycle 间连续推进且保留 live 抢占和 mutable Home final reconcile；约 6.56GB 真实只读 Home 三轮首屏 p95 约 38.4 秒、full bootstrap p95 约 15.3 分钟，资源、查询、隐私和清理门禁均通过
 4. 退役 repo-local harness 控制面、计划状态模板和重复 review gate，保留产品测试并将本地开发、PR/CI 与真实 Home 验收拆分为独立验证入口
-5. 优化原生 macOS App 首次窗口为优先 `1440×900` 内容区并按当前屏幕可见区域约束居中，避免概览被侧栏覆盖；统一剩余额度进度条为健康绿色、预警黄色和紧急红色，未知或陈旧数据保持系统灰色
+5. 优化原生 macOS App 首次窗口为优先 `1440×900` 内容区并按当前屏幕可见区域约束居中，避免概览被侧栏覆盖；统一剩余额度进度条为健康绿色、预警黄色和紧急红色，stale/suspicious 的 last-known-good 继续按剩余量着色并用独立状态点标记可信度，未知或不可用数据保持系统灰色
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功
@@ -82,6 +82,7 @@
 11. 修复首次安装缺少 runtime preferences 时 Helper 不会绑定任何数据源、界面持续显示空数据的问题；默认 `${CODEX_HOME:-$HOME/.codex}` 现在经过 metadata-only probe 与 path/device/inode 二次校验后自动持久化，额度与重置额度采集默认开启，已有或自定义 Home 仍保持不覆盖与显式切换确认
 12. 修复 Swift production 构建使用 `-gnone` 时多条 async 路径触发 task-stack 逆序释放并以 `freed pointer was not the last allocation` 终止的问题；改用最小 line tables 编译后再 strip 调试段，继续以 C prefix map 与最终二进制扫描阻止本机路径泄漏，并在发行打包前以同一 production 编译参数运行 App 回归测试
 13. 修复从 Finder 启动时系统最小 `PATH` 找不到 Codex CLI、导致 Helper 在创建 CoreService socket 前退出的问题；App Server 现在解析受控的绝对可执行路径，并将首次 metadata 不可用降级为可观察、可重试的局部失败
+14. 修复 Wham 同一逻辑额度的 `reset_at` 在数秒内抖动时被误判为 `reset_regression`、进而让状态栏整体丢失余量颜色的问题；`quota-arbiter-v3` 将不超过 5 秒的向后抖动归一到该代际最大 reset，仍严格隔离超过边界的回退，并让状态栏以余量色和可信度状态点分别表达数值与数据状态
 
 #### note:
 1. [TOO-242] 固定 Wails3 `v3.0.0-alpha2.117` 与 macOS arm64 工具链能力基线，补充可复现 runbook、平台 adapter 边界和依赖升级准入规则

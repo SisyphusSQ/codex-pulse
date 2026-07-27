@@ -49,18 +49,7 @@ public actor CoreClient {
         let response = try await retryPolicy.execute {
             try await service.handshake(request, metadata: metadata)
         }
-        guard response.contractVersion == CodexPulseTransportContract.version else {
-            throw CoreClientError.incompatibleContract(
-                expected: CodexPulseTransportContract.version,
-                actual: response.contractVersion
-            )
-        }
-        guard response.transport == CodexPulseTransportContract.transport else {
-            throw CoreClientError.incompatibleTransport(
-                expected: CodexPulseTransportContract.transport,
-                actual: response.transport
-            )
-        }
+        try CodexPulseTransportContract.validateHandshake(response)
         return response
     }
 

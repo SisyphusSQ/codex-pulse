@@ -526,6 +526,87 @@ func TestSessionAnalyticsDetailMatchesListAndMissingRollupDegrades(t *testing.T)
 	}
 }
 
+func TestSessionAnalyticsDetailBucketsActiveRollupByLocalHourWithinOneDate(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	ctx := context.Background()
+	if err := repository.AddPricingVersion(ctx, pricing.BuiltinOpenAI20260714()); err != nil {
+		t.Fatalf("AddPricingVersion() error = %v", err)
+	}
+	zero, input := int64(0), int64(1_000_000)
+	sessionID := "session-adaptive-trend"
+	observed := []int64{
+		mustParseCostTime(t, "2026-07-27T01:15:00Z"),
+		mustParseCostTime(t, "2026-07-27T02:45:00Z"),
+	}
+	for index, observedAtMS := range observed {
+		turnID := "turn-adaptive-trend-" + string(rune('a'+index))
+		if err := repository.UpsertFacts(ctx, FactBatch{
+			Session: &Session{
+				SessionID: sessionID, Provider: "codex", SourceKind: "session",
+				CreatedAtMS: observed[0] - 10, FirstSeenAtMS: observed[0] - 10,
+				LastSeenAtMS: observedAtMS,
+			},
+			Turn: &Turn{
+				TurnID: turnID, SessionID: sessionID, StartedAtMS: observedAtMS - 10,
+				CompletedAtMS: pointerTo(observedAtMS), Outcome: pointerTo("completed"),
+				Model: pointerTo("gpt-5.2-codex"), SourceGeneration: 0,
+				StartOffset: int64(index*20 + 10), CompleteOffset: pointerTo(int64(index*20 + 20)),
+			},
+			Usage: &TurnUsage{
+				TurnID: turnID, ObservedAtMS: observedAtMS, IsFinal: true,
+				InputTokens: &input, CachedInputTokens: &zero,
+				OutputTokens: &zero, ReasoningTokens: &zero,
+				SourceGeneration: 0, SourceOffset: int64(index*20 + 20),
+				Confidence: "exact", UpdatedAtMS: observedAtMS,
+			},
+		}); err != nil {
+			t.Fatalf("UpsertFacts(turn %d) error = %v", index, err)
+		}
+	}
+	fallback, err := repository.SessionAnalytics(ctx, SessionAnalyticsDetailFilter{
+		SessionID: sessionID, ReportingTimezone: pointerTo("Asia/Shanghai"), TurnLimit: 20,
+	})
+	if err != nil {
+		t.Fatalf("SessionAnalytics(fallback) error = %v", err)
+	}
+	if fallback.Mode != AnalyticsReadDetailFallback || len(fallback.Daily) != 0 {
+		t.Fatalf("SessionAnalytics(fallback) = %#v", fallback)
+	}
+
+	if _, err := repository.RebuildCostLedger(ctx, RebuildCostLedgerRequest{
+		GenerationID: "session-adaptive-trend-v1", ReportingTimezone: "Asia/Shanghai",
+		PricingSource: "openai-api", Currency: "USD", RollupVersion: 1,
+		CalculatedAtMS: mustParseCostTime(t, "2026-07-27T03:00:00Z"),
+	}); err != nil {
+		t.Fatalf("RebuildCostLedger() error = %v", err)
+	}
+
+	detail, err := repository.SessionAnalytics(ctx, SessionAnalyticsDetailFilter{
+		SessionID: sessionID, ReportingTimezone: pointerTo("Asia/Shanghai"), TurnLimit: 20,
+	})
+	if err != nil {
+		t.Fatalf("SessionAnalytics() error = %v", err)
+	}
+	wantBuckets := []int64{
+		mustParseCostTime(t, "2026-07-27T01:00:00Z"),
+		mustParseCostTime(t, "2026-07-27T02:00:00Z"),
+	}
+	gotBuckets := make([]int64, 0, len(detail.Daily))
+	for _, bucket := range detail.Daily {
+		gotBuckets = append(gotBuckets, bucket.BucketStartMS)
+		if bucket.ReportingTimezone != "Asia/Shanghai" ||
+			bucket.GenerationID != "session-adaptive-trend-v1" {
+			t.Fatalf("session trend bucket identity = %#v", bucket)
+		}
+	}
+	if detail.Mode != AnalyticsReadActiveRollup ||
+		!reflect.DeepEqual(gotBuckets, wantBuckets) {
+		t.Fatalf("SessionAnalytics() mode=%q buckets=%#v, want %#v", detail.Mode, gotBuckets, wantBuckets)
+	}
+}
+
 func TestSessionAnalyticsDetailExposesBoundedTurnContract(t *testing.T) {
 	t.Parallel()
 
@@ -617,7 +698,7 @@ func TestSessionAnalyticsDetailReturnsKnownEmptyAndRejectsMissingTurnAttribution
 	emptyRepository := openRuntimeRepository(t)
 	seedSessionAnalyticsFixture(t, emptyRepository, true)
 	empty, err := emptyRepository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
-		SessionID: "session-beta", ReportingTimezone: pointerTo("UTC"), TurnLimit: 20,
+		SessionID: "session-gamma", ReportingTimezone: pointerTo("UTC"), TurnLimit: 20,
 	})
 	if err != nil {
 		t.Fatalf("SessionAnalytics(known empty) error = %v", err)
@@ -1828,6 +1909,14 @@ func seedProjectContributionPaginationEdges(t *testing.T, repository *Repository
 
 func seedSessionAnalyticsFixture(t *testing.T, repository *Repository, withLedger bool) {
 	t.Helper()
+	pricingVersionID := pricing.BuiltinOpenAI20260714().PricingVersion
+	if withLedger {
+		if err := repository.AddPricingVersion(
+			context.Background(), pricing.BuiltinOpenAI20260714(),
+		); err != nil {
+			t.Fatalf("AddPricingVersion(session fixture) error = %v", err)
+		}
+	}
 	type fixture struct {
 		id, title                 string
 		projectID, projectDisplay *string
@@ -1945,6 +2034,57 @@ func seedSessionAnalyticsFixture(t *testing.T, repository *Repository, withLedge
 					GenerationID: "session-analytics-v1", SessionID: value.id, Totals: *value.rollup,
 				}
 				if err := database.Create(&rollup).Error; err != nil {
+					return err
+				}
+				completedAt := value.rollup.LastActivityAtMS
+				turnID := "rollup-turn-" + value.id
+				if err := database.Create(&turnModel{
+					TurnID: turnID, SessionID: value.id, StartedAtMS: completedAt,
+					CompletedAtMS: &completedAt, Outcome: pointerTo("completed"),
+					SourceGeneration: 1, StartOffset: 10, CompleteOffset: pointerTo(int64(20)),
+				}).Error; err != nil {
+					return err
+				}
+				if err := database.Create(&turnUsageModel{
+					TurnID: turnID, ObservedAtMS: completedAt, IsFinal: true,
+					InputTokens:       value.rollup.InputTokens,
+					CachedInputTokens: value.rollup.CachedInputTokens,
+					OutputTokens:      value.rollup.OutputTokens,
+					ReasoningTokens:   value.rollup.ReasoningTokens,
+					SourceGeneration:  1, SourceOffset: 20,
+					Confidence: "exact", UpdatedAtMS: completedAt,
+				}).Error; err != nil {
+					return err
+				}
+				if err := database.Create(&turnAttributionModel{
+					TurnID: turnID, ProjectID: value.projectID, ProjectDisplay: value.projectDisplay,
+					ProjectConfidence: attribution.ProjectConfidence,
+					ProjectSource:     attribution.ProjectSource,
+					ProjectReason:     attribution.ProjectReason,
+					ModelKey:          value.modelKey,
+					ModelDisplay:      value.modelDisplay,
+					ModelConfidence:   attribution.ModelConfidence,
+					ModelSource:       attribution.ModelSource,
+					ModelReason:       attribution.ModelReason,
+					RuleVersion:       1,
+					UpdatedAtMS:       completedAt,
+				}).Error; err != nil {
+					return err
+				}
+				cost := turnCostModel{
+					GenerationID: "session-analytics-v1", TurnID: turnID,
+					EstimatedUSDMicros: value.rollup.EstimatedUSDMicros,
+					CalculatedAtMS:     value.rollup.UpdatedAtMS,
+				}
+				if value.rollup.PricedTurnCount == 1 {
+					cost.PricingVersion = &pricingVersionID
+					cost.PricingStatus = string(pricing.CostStatusPriced)
+					cost.PricingReason = string(pricing.CostReasonPriced)
+				} else {
+					cost.PricingStatus = string(pricing.CostStatusUnpriced)
+					cost.PricingReason = string(pricing.CostReasonModelNotListed)
+				}
+				if err := database.Create(&cost).Error; err != nil {
 					return err
 				}
 			}

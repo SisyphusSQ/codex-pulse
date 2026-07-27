@@ -2,6 +2,7 @@ package store
 
 import (
 	"sort"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -192,44 +193,102 @@ func lightSessionAnalytics(
 	if err != nil {
 		return SessionAnalyticsSnapshot{}, true, err
 	}
-	daily, err := loadLightSessionDaily(database, filter.SessionID)
+	reportingTimezone := "UTC"
+	if filter.ReportingTimezone != nil {
+		reportingTimezone = *filter.ReportingTimezone
+	}
+	daily, err := loadLightSessionDaily(
+		database,
+		filter.SessionID,
+		projection.Generation,
+		records[0].Rollup,
+		reportingTimezone,
+	)
 	if err != nil {
 		return SessionAnalyticsSnapshot{}, true, err
 	}
 	return SessionAnalyticsSnapshot{
 		Mode: AnalyticsReadLightIndex, Record: records[0],
 		PricingSource: pricingEvidence.source, Currency: pricingEvidence.currency,
-		ReportingTimezone: "UTC", Daily: daily,
+		ReportingTimezone: reportingTimezone, Daily: daily,
 		Turns: turns, NextTurnCursor: nextCursor, PricingVersions: pricingEvidence.versions,
 		UnpricedReasons: make([]CostReasonCount, 0),
 	}, true, nil
 }
 
-func loadLightSessionDaily(database *gorm.DB, sessionID string) ([]UsageDaily, error) {
-	var models []lightTokenDailyModel
-	if err := database.Table("light_token_daily AS daily").
-		Select("daily.*").
-		Joins(`JOIN light_sessions AS sessions
-			ON sessions.session_id = daily.session_id
-			AND sessions.active_token_generation = daily.generation`).
-		Where("daily.session_id = ?", sessionID).
-		Order("daily.day_start_ms").
+func loadLightSessionDaily(
+	database *gorm.DB,
+	sessionID string,
+	generation *int64,
+	expected *RollupTotals,
+	reportingTimezone string,
+) ([]UsageDaily, error) {
+	location, err := time.LoadLocation(reportingTimezone)
+	if err != nil {
+		return nil, invalidRecord("light session reporting timezone is invalid")
+	}
+	if generation == nil {
+		if expected != nil {
+			return nil, invalidRecord("light session generation is inconsistent")
+		}
+		return make([]UsageDaily, 0), nil
+	}
+	if expected == nil {
+		return nil, invalidRecord("light session rollup is missing")
+	}
+	var models []lightTokenTimedModel
+	if err := database.Table("light_token_timed AS timed").
+		Select("timed.*").
+		Where("timed.session_id = ? AND timed.generation = ?", sessionID, *generation).
+		Order("timed.observed_at_ms, timed.source_offset").
 		Find(&models).Error; err != nil {
 		return nil, err
 	}
-	result := make([]UsageDaily, 0, len(models))
+	granularity := AnalyticsGranularityHour
+	if len(models) > 0 {
+		firstLocal := time.UnixMilli(models[0].ObservedAtMS).In(location)
+		for _, model := range models {
+			local := time.UnixMilli(model.ObservedAtMS).In(location)
+			if local.Year() != firstLocal.Year() ||
+				local.Month() != firstLocal.Month() ||
+				local.Day() != firstLocal.Day() {
+				granularity = AnalyticsGranularityDay
+				break
+			}
+		}
+	}
+	groups := make(map[int64]*lightRollupAccumulator)
+	reconciled := &lightRollupAccumulator{}
+	filter := AnalyticsRange{
+		ReportingTimezone: reportingTimezone,
+		Granularity:       granularity,
+	}
 	for _, model := range models {
-		input := model.InputTokens
-		cached := model.CachedInputTokens
-		output := model.OutputTokens
-		reasoning := model.ReasoningTokens
-		total := input + output + reasoning
+		bucket := analyticsBucketStart(model.ObservedAtMS, filter, location)
+		group := &lightCostGroup{
+			input: model.InputTokens, cached: model.CachedInputTokens,
+			output: model.OutputTokens, reasoning: model.ReasoningTokens,
+		}
+		if err := accumulatorForLight(groups, bucket).add(group, nil); err != nil {
+			return nil, err
+		}
+		if err := reconciled.add(group, nil); err != nil {
+			return nil, err
+		}
+	}
+	if !lightSessionTokenTotalsEqual(*expected, reconciled.totals()) {
+		return nil, invalidRecord("light session timed totals are inconsistent")
+	}
+	keys := make([]int64, 0, len(groups))
+	for key := range groups {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(left, right int) bool { return keys[left] < keys[right] })
+	result := make([]UsageDaily, 0, len(keys))
+	for _, key := range keys {
 		result = append(result, UsageDaily{
-			BucketStartMS: model.DayStartMS, ReportingTimezone: "UTC",
-			RollupTotals: RollupTotals{
-				InputTokens: &input, CachedInputTokens: &cached,
-				OutputTokens: &output, ReasoningTokens: &reasoning, TotalTokens: &total,
-			},
+			BucketStartMS: key, ReportingTimezone: reportingTimezone,
+			RollupTotals: groups[key].totals(),
 		})
 	}
 	return result, nil

@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 func TestOpenUsesApplicationSupportPathAndPrivatePermissions(t *testing.T) {
@@ -108,6 +110,69 @@ func TestOpenRejectsInvalidConfig(t *testing.T) {
 				t.Fatalf("Open() error = %v, want ErrInvalidConfig", err)
 			}
 		})
+	}
+}
+
+func TestViewSnapshotKeepsOneGenerationAcrossConcurrentWriterCommit(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, Config{MaxReadConnections: 2})
+	ctx := context.Background()
+	if err := store.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+		if err := transaction.WithContext(ctx).
+			Exec("CREATE TABLE snapshot_probe (id INTEGER PRIMARY KEY, value INTEGER NOT NULL)").
+			Error; err != nil {
+			return err
+		}
+		return transaction.WithContext(ctx).
+			Exec("INSERT INTO snapshot_probe (id, value) VALUES (1, 1)").
+			Error
+	}); err != nil {
+		t.Fatalf("seed snapshot probe: %v", err)
+	}
+
+	firstRead := make(chan struct{})
+	writerDone := make(chan error, 1)
+	go func() {
+		<-firstRead
+		writerDone <- store.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+			return transaction.WithContext(ctx).
+				Exec("UPDATE snapshot_probe SET value = 2 WHERE id = 1").
+				Error
+		})
+	}()
+
+	var before, after int64
+	err := store.ViewSnapshot(ctx, func(ctx context.Context, snapshot *gorm.DB) error {
+		if err := snapshot.WithContext(ctx).
+			Raw("SELECT value FROM snapshot_probe WHERE id = 1").
+			Scan(&before).Error; err != nil {
+			return err
+		}
+		close(firstRead)
+		if writeErr := <-writerDone; writeErr != nil {
+			return writeErr
+		}
+		return snapshot.WithContext(ctx).
+			Raw("SELECT value FROM snapshot_probe WHERE id = 1").
+			Scan(&after).Error
+	})
+	if err != nil {
+		t.Fatalf("ViewSnapshot() error = %v", err)
+	}
+	if before != 1 || after != 1 {
+		t.Fatalf("ViewSnapshot() values = before:%d after:%d, want 1/1", before, after)
+	}
+	var committed int64
+	if err := store.View(ctx, func(ctx context.Context, reader *gorm.DB) error {
+		return reader.WithContext(ctx).
+			Raw("SELECT value FROM snapshot_probe WHERE id = 1").
+			Scan(&committed).Error
+	}); err != nil {
+		t.Fatalf("View(committed) error = %v", err)
+	}
+	if committed != 2 {
+		t.Fatalf("committed value = %d, want 2", committed)
 	}
 }
 

@@ -172,8 +172,8 @@ func TestApplicationLightIndexUpgradesQuotaProjectionRuleBeforeServing(t *testin
 	current, err := repository.QuotaCurrent(
 		ctx, factstore.QuotaAccountScopeDefault, factstore.QuotaWindowPrimary, limitID, nowMS,
 	)
-	if err != nil || current.RuleVersion != "quota-arbiter-v2" {
-		t.Fatalf("QuotaCurrent(after light startup) = %#v, %v; want quota-arbiter-v2", current, err)
+	if err != nil || current.RuleVersion != "quota-arbiter-v3" {
+		t.Fatalf("QuotaCurrent(after light startup) = %#v, %v; want quota-arbiter-v3", current, err)
 	}
 }
 

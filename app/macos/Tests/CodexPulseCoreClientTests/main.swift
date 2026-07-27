@@ -480,7 +480,7 @@ private func testCrossLanguageCancellation() async throws {
 @main
 struct ContractTestMain {
     static func main() async throws {
-        try expect(CodexPulseTransportContract.version, "core-rpc-v1", "contract version")
+        try expect(CodexPulseTransportContract.version, "core-rpc-v2", "contract version")
         try expect(CodexPulseTransportContract.transport, "grpc+unix", "transport")
         try expect(
             CodexPulseTransportContract.maximumMessageBytes,
@@ -505,6 +505,20 @@ struct ContractTestMain {
         )
         try expect(LifecycleEvent.systemWillSleep.rawValue, "system_will_sleep", "sleep event")
         try expect(LifecycleEvent.systemDidWake.rawValue, "system_did_wake", "wake event")
+
+        var legacyHandshake = Codexpulse_Core_V1_HandshakeResponse()
+        legacyHandshake.contractVersion = "core-rpc-v1"
+        legacyHandshake.transport = CodexPulseTransportContract.transport
+        do {
+            try CodexPulseTransportContract.validateHandshake(legacyHandshake)
+            throw TestFailure.mismatch("legacy helper handshake was accepted")
+        } catch let error as CoreClientError {
+            try expect(
+                error,
+                .incompatibleContract(expected: "core-rpc-v2", actual: "core-rpc-v1"),
+                "legacy helper handshake rejection"
+            )
+        }
 
         var zero = Codexpulse_Core_V1_NumericValue()
         zero.value = 0

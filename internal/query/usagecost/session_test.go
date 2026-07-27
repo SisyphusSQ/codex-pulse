@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -13,6 +15,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
+	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 func TestListSessionsValidatesMapsAndRoundTripsOpaqueCursor(t *testing.T) {
@@ -566,11 +569,11 @@ func TestSessionDetailMapsBoundedTurnPageAndRoundTripsOpaqueCursor(t *testing.T)
 		len(first.Turns) != 1 || !first.TurnPage.HasMore || first.TurnPage.NextCursor == nil {
 		t.Fatalf("first SessionDetail() = %#v, filters=%#v", first, filters)
 	}
-	if first.ReportingTimeZone != "UTC" || len(first.Daily) != 1 ||
-		first.Daily[0].Key != "1970-01-01" {
-		t.Fatalf("first SessionDetail() daily = %#v", first)
+	if first.ReportingTimeZone != "UTC" || first.TrendGranularity != TrendHour ||
+		len(first.Trend) != 1 || first.Trend[0].Key != "1970-01-01T00:00+00:00" {
+		t.Fatalf("first SessionDetail() trend = %#v", first)
 	}
-	assertKnownNumeric(t, first.Daily[0].Totals.TotalTokens, 30, basequery.NumericTokens)
+	assertKnownNumeric(t, first.Trend[0].Totals.TotalTokens, 30, basequery.NumericTokens)
 	mapped := first.Turns[0]
 	if mapped.TimelineKey == "" || strings.Contains(mapped.TimelineKey, turn.TurnID) ||
 		mapped.State != SessionTurnComplete || mapped.Model.DisplayName == nil ||
@@ -601,6 +604,442 @@ func TestSessionDetailMapsBoundedTurnPageAndRoundTripsOpaqueCursor(t *testing.T)
 		filters[1].TurnCursor.TurnID != turn.TurnID ||
 		filters[1].TurnCursor.StartedAtMS != turn.StartedAtMS {
 		t.Fatalf("decoded turn cursor filters = %#v", filters)
+	}
+}
+
+// 测试 Session detail 在全部用量位于同一本地自然日时返回小时趋势。
+func TestSessionDetailUsesHourlyTrendWithinOneReportingDate(t *testing.T) {
+	t.Parallel()
+
+	firstTokens, secondTokens := int64(10), int64(20)
+	zero := int64(0)
+	record := safeFallbackSessionRecord("session-hourly", "Hourly trend")
+	record.Rollup = &store.RollupTotals{
+		InputTokens: &firstTokens, CachedInputTokens: &zero, OutputTokens: &secondTokens,
+		ReasoningTokens: &zero, TotalTokens: int64Ptr(firstTokens + secondTokens),
+	}
+	reader := &sessionReaderStub{detail: func(
+		context.Context,
+		store.SessionAnalyticsDetailFilter,
+	) (store.SessionAnalyticsSnapshot, error) {
+		return store.SessionAnalyticsSnapshot{
+			Mode:              store.AnalyticsReadLightIndex,
+			ReportingTimezone: "Asia/Shanghai",
+			Record:            record,
+			Daily: []store.UsageDaily{
+				{
+					BucketStartMS:     mustUsageTime(t, "2026-07-27T01:00:00Z"),
+					ReportingTimezone: "Asia/Shanghai",
+					RollupTotals: store.RollupTotals{
+						InputTokens: &firstTokens, CachedInputTokens: &zero,
+						OutputTokens: &zero, ReasoningTokens: &zero, TotalTokens: &firstTokens,
+					},
+				},
+				{
+					BucketStartMS:     mustUsageTime(t, "2026-07-27T02:00:00Z"),
+					ReportingTimezone: "Asia/Shanghai",
+					RollupTotals: store.RollupTotals{
+						InputTokens: &zero, CachedInputTokens: &zero,
+						OutputTokens: &secondTokens, ReasoningTokens: &zero, TotalTokens: &secondTokens,
+					},
+				},
+			},
+			Turns:           make([]store.SessionTurnAnalyticsRecord, 0),
+			PricingVersions: make([]string, 0),
+			UnpricedReasons: make([]store.CostReasonCount, 0),
+		}, nil
+	}}
+
+	response, err := newUsageService(t, reader).SessionDetail(
+		context.Background(),
+		SessionDetailRequest{
+			SessionID: "session-hourly", ReportingTimezone: pointerToString("Asia/Shanghai"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("SessionDetail(hourly trend) error = %v", err)
+	}
+	if len(response.Trend) != 2 {
+		t.Fatalf("SessionDetail(hourly trend) points = %#v", response.Trend)
+	}
+	if got := []string{response.Trend[0].Key, response.Trend[1].Key}; !reflect.DeepEqual(
+		got,
+		[]string{"2026-07-27T09:00+08:00", "2026-07-27T10:00+08:00"},
+	) {
+		t.Fatalf("SessionDetail(hourly trend) keys = %#v", got)
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("json.Marshal(hourly trend) error = %v", err)
+	}
+	if !strings.Contains(string(encoded), `"trendGranularity":"hour"`) ||
+		!strings.Contains(string(encoded), `"trend":[`) ||
+		strings.Contains(string(encoded), `"daily"`) {
+		t.Fatalf("SessionDetail(hourly trend) contract = %s", encoded)
+	}
+}
+
+// 测试 Session detail 的用量跨越请求时区自然日时保持每日趋势。
+func TestSessionDetailUsesDailyTrendAcrossReportingDates(t *testing.T) {
+	t.Parallel()
+
+	firstTokens, secondTokens := int64(10), int64(20)
+	zero := int64(0)
+	record := safeFallbackSessionRecord("session-daily", "Daily trend")
+	record.Rollup = &store.RollupTotals{
+		InputTokens: &firstTokens, CachedInputTokens: &zero, OutputTokens: &secondTokens,
+		ReasoningTokens: &zero, TotalTokens: int64Ptr(firstTokens + secondTokens),
+	}
+	reader := &sessionReaderStub{detail: func(
+		context.Context,
+		store.SessionAnalyticsDetailFilter,
+	) (store.SessionAnalyticsSnapshot, error) {
+		return store.SessionAnalyticsSnapshot{
+			Mode:              store.AnalyticsReadLightIndex,
+			ReportingTimezone: "Asia/Shanghai",
+			Record:            record,
+			Daily: []store.UsageDaily{
+				{
+					BucketStartMS:     mustUsageTime(t, "2026-07-26T15:00:00Z"),
+					ReportingTimezone: "Asia/Shanghai",
+					RollupTotals: store.RollupTotals{
+						InputTokens: &firstTokens, CachedInputTokens: &zero,
+						OutputTokens: &zero, ReasoningTokens: &zero, TotalTokens: &firstTokens,
+					},
+				},
+				{
+					BucketStartMS:     mustUsageTime(t, "2026-07-26T16:00:00Z"),
+					ReportingTimezone: "Asia/Shanghai",
+					RollupTotals: store.RollupTotals{
+						InputTokens: &zero, CachedInputTokens: &zero,
+						OutputTokens: &secondTokens, ReasoningTokens: &zero, TotalTokens: &secondTokens,
+					},
+				},
+			},
+			Turns:           make([]store.SessionTurnAnalyticsRecord, 0),
+			PricingVersions: make([]string, 0),
+			UnpricedReasons: make([]store.CostReasonCount, 0),
+		}, nil
+	}}
+
+	response, err := newUsageService(t, reader).SessionDetail(
+		context.Background(),
+		SessionDetailRequest{
+			SessionID: "session-daily", ReportingTimezone: pointerToString("Asia/Shanghai"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("SessionDetail(daily trend) error = %v", err)
+	}
+	if len(response.Trend) != 2 {
+		t.Fatalf("SessionDetail(daily trend) points = %#v", response.Trend)
+	}
+	if got := []string{response.Trend[0].Key, response.Trend[1].Key}; !reflect.DeepEqual(
+		got,
+		[]string{"2026-07-26", "2026-07-27"},
+	) {
+		t.Fatalf("SessionDetail(daily trend) keys = %#v", got)
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("json.Marshal(daily trend) error = %v", err)
+	}
+	if !strings.Contains(string(encoded), `"trendGranularity":"day"`) ||
+		!strings.Contains(string(encoded), `"trend":[`) ||
+		strings.Contains(string(encoded), `"daily"`) {
+		t.Fatalf("SessionDetail(daily trend) contract = %s", encoded)
+	}
+}
+
+func TestSessionDetailRejectsFallbackTrendBypassAndUsesUnavailableGranularity(t *testing.T) {
+	t.Parallel()
+
+	zero := int64(0)
+	record := safeFallbackSessionRecord("session-fallback-trend", "Fallback trend")
+	snapshot := store.SessionAnalyticsSnapshot{
+		Mode:              store.AnalyticsReadDetailFallback,
+		ReportingTimezone: "UTC",
+		Record:            record,
+		Daily: []store.UsageDaily{{
+			BucketStartMS:     0,
+			ReportingTimezone: "UTC",
+			RollupTotals: store.RollupTotals{
+				InputTokens: &zero, CachedInputTokens: &zero,
+				OutputTokens: &zero, ReasoningTokens: &zero, TotalTokens: &zero,
+			},
+		}},
+		Turns:           make([]store.SessionTurnAnalyticsRecord, 0),
+		PricingVersions: make([]string, 0),
+		UnpricedReasons: make([]store.CostReasonCount, 0),
+	}
+	reader := &sessionReaderStub{detail: func(
+		context.Context,
+		store.SessionAnalyticsDetailFilter,
+	) (store.SessionAnalyticsSnapshot, error) {
+		return snapshot, nil
+	}}
+	service := newUsageService(t, reader)
+	_, err := service.SessionDetail(context.Background(), SessionDetailRequest{
+		SessionID: "session-fallback-trend",
+	})
+	if !errors.Is(err, basequery.ErrUnavailable) {
+		t.Fatalf("SessionDetail(fallback trend bypass) error = %v, want unavailable", err)
+	}
+
+	snapshot.Daily = make([]store.UsageDaily, 0)
+	response, err := service.SessionDetail(context.Background(), SessionDetailRequest{
+		SessionID: "session-fallback-trend",
+	})
+	if err != nil {
+		t.Fatalf("SessionDetail(empty fallback trend) error = %v", err)
+	}
+	if response.TrendGranularity != "" || len(response.Trend) != 0 ||
+		response.DegradedReason == nil ||
+		*response.DegradedReason != DegradedRollupMissing {
+		t.Fatalf("SessionDetail(empty fallback trend) = %#v", response)
+	}
+}
+
+func TestSessionDetailStoreToQueryFallbackDoesNotExposeAggregateTrend(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dataDirectory := filepath.Join(t.TempDir(), "private")
+	if err := os.Mkdir(dataDirectory, 0o700); err != nil {
+		t.Fatalf("os.Mkdir(private data directory) error = %v", err)
+	}
+	database, err := storesqlite.Open(ctx, storesqlite.Config{
+		Path: filepath.Join(dataDirectory, "session-fallback.db"),
+	})
+	if err != nil {
+		t.Fatalf("sqlite.Open() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if closeErr := database.Close(context.Background()); closeErr != nil {
+			t.Errorf("sqlite.Close() error = %v", closeErr)
+		}
+	})
+	repository := store.NewRepository(database)
+	if err := repository.EnsureApplicationSchema(ctx); err != nil {
+		t.Fatalf("EnsureApplicationSchema() error = %v", err)
+	}
+	zero, input := int64(0), int64(42)
+	completedAtMS := int64(120)
+	if err := repository.UpsertFacts(ctx, store.FactBatch{
+		Session: &store.Session{
+			SessionID: "session-real-fallback", Provider: "codex", SourceKind: "session",
+			CreatedAtMS: 90, FirstSeenAtMS: 90, LastSeenAtMS: completedAtMS,
+		},
+		Turn: &store.Turn{
+			TurnID: "turn-real-fallback", SessionID: "session-real-fallback",
+			StartedAtMS: 100, CompletedAtMS: &completedAtMS, Outcome: pointerToString("completed"),
+			Model: pointerToString("gpt-5.2-codex"), SourceGeneration: 0,
+			StartOffset: 10, CompleteOffset: int64Ptr(20),
+		},
+		Usage: &store.TurnUsage{
+			TurnID: "turn-real-fallback", ObservedAtMS: completedAtMS, IsFinal: true,
+			InputTokens: &input, CachedInputTokens: &zero,
+			OutputTokens: &zero, ReasoningTokens: &zero,
+			SourceGeneration: 0, SourceOffset: 20,
+			Confidence: "exact", UpdatedAtMS: completedAtMS,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertFacts() error = %v", err)
+	}
+
+	response, err := newUsageService(t, repository).SessionDetail(
+		ctx,
+		SessionDetailRequest{
+			SessionID: "session-real-fallback",
+			TurnPage:  basequery.PageRequest{Limit: 20},
+		},
+	)
+	if err != nil {
+		t.Fatalf("SessionDetail(Store→Query fallback) error = %v", err)
+	}
+	if response.Meta.Status != basequery.ResponsePartial ||
+		response.DegradedReason == nil ||
+		*response.DegradedReason != DegradedRollupMissing ||
+		response.TrendGranularity != "" ||
+		len(response.Trend) != 0 {
+		t.Fatalf("SessionDetail(Store→Query fallback) = %#v", response)
+	}
+	for _, value := range []basequery.NumericValue{
+		response.Item.Totals.InputTokens,
+		response.Item.Totals.CachedInputTokens,
+		response.Item.Totals.OutputTokens,
+		response.Item.Totals.ReasoningTokens,
+		response.Item.Totals.TotalTokens,
+		response.Item.Totals.EstimatedUSDMicros,
+	} {
+		assertUnknownNumeric(t, value, basequery.UnknownUnavailable)
+	}
+}
+
+func TestMapSessionTrendDistinguishesRepeatedDSTHour(t *testing.T) {
+	t.Parallel()
+
+	zero, firstTokens, secondTokens := int64(0), int64(10), int64(20)
+	firstStart := mustUsageTime(t, "2026-11-01T05:00:00Z")
+	secondStart := mustUsageTime(t, "2026-11-01T06:00:00Z")
+	snapshot := store.SessionAnalyticsSnapshot{
+		Mode:              store.AnalyticsReadLightIndex,
+		ReportingTimezone: "America/New_York",
+		Daily: []store.UsageDaily{
+			{
+				BucketStartMS:     firstStart,
+				ReportingTimezone: "America/New_York",
+				RollupTotals: store.RollupTotals{
+					InputTokens: &firstTokens, CachedInputTokens: &zero,
+					OutputTokens: &zero, ReasoningTokens: &zero, TotalTokens: &firstTokens,
+				},
+			},
+			{
+				BucketStartMS:     secondStart,
+				ReportingTimezone: "America/New_York",
+				RollupTotals: store.RollupTotals{
+					InputTokens: &zero, CachedInputTokens: &zero,
+					OutputTokens: &secondTokens, ReasoningTokens: &zero, TotalTokens: &secondTokens,
+				},
+			},
+		},
+	}
+	granularity, points, err := mapSessionTrend(snapshot)
+	if err != nil {
+		t.Fatalf("mapSessionTrend(DST fallback hour) error = %v", err)
+	}
+	if granularity != TrendHour || len(points) != 2 {
+		t.Fatalf("mapSessionTrend(DST fallback hour) = %q, %#v", granularity, points)
+	}
+	gotKeys := []string{points[0].Key, points[1].Key}
+	wantKeys := []string{
+		"2026-11-01T01:00-04:00",
+		"2026-11-01T01:00-05:00",
+	}
+	if !reflect.DeepEqual(gotKeys, wantKeys) {
+		t.Fatalf("mapSessionTrend(DST fallback hour) keys = %#v, want %#v", gotKeys, wantKeys)
+	}
+	wantBounds := [][2]int64{
+		{firstStart, mustUsageTime(t, "2026-11-01T06:00:00Z")},
+		{secondStart, mustUsageTime(t, "2026-11-01T07:00:00Z")},
+	}
+	for index, point := range points {
+		if point.StartAtMS.Value == nil || point.EndAtMS.Value == nil ||
+			*point.StartAtMS.Value != wantBounds[index][0] ||
+			*point.EndAtMS.Value != wantBounds[index][1] {
+			t.Fatalf("mapSessionTrend(DST fallback hour) point[%d] = %#v", index, point)
+		}
+	}
+}
+
+func TestSessionDetailStoreToQueryPreservesRepeatedDSTHour(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dataDirectory := filepath.Join(t.TempDir(), "private")
+	if err := os.Mkdir(dataDirectory, 0o700); err != nil {
+		t.Fatalf("os.Mkdir(private data directory) error = %v", err)
+	}
+	database, err := storesqlite.Open(ctx, storesqlite.Config{
+		Path: filepath.Join(dataDirectory, "session-dst.db"),
+	})
+	if err != nil {
+		t.Fatalf("sqlite.Open() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if closeErr := database.Close(context.Background()); closeErr != nil {
+			t.Errorf("sqlite.Close() error = %v", closeErr)
+		}
+	})
+	repository := store.NewRepository(database)
+	if err := repository.EnsureApplicationSchema(ctx); err != nil {
+		t.Fatalf("EnsureApplicationSchema() error = %v", err)
+	}
+	home := store.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
+	rolloutPath := "/confirmed-home/sessions/repeated-hour.jsonl"
+	if err := repository.ReplaceLightMetadata(ctx, store.LightMetadataSnapshot{
+		Home: home, Generation: 1, ReadyAtMS: 1_000,
+		Sessions: []store.LightSessionMetadata{{
+			SessionID: "session-dst-real", CWD: "/workspace",
+			RolloutPath: &rolloutPath, CreatedAtMS: 100, UpdatedAtMS: 200,
+		}},
+	}); err != nil {
+		t.Fatalf("ReplaceLightMetadata() error = %v", err)
+	}
+	identity := store.LightRolloutIdentity{
+		Path: rolloutPath, SourceFileID: "source-dst-real", Home: home,
+		DeviceID: "2", Inode: 3, SizeBytes: 8_192, MTimeNS: 1,
+		PrefixBytes:       4_096,
+		PrefixSHA256:      strings.Repeat("a", 64),
+		FingerprintSHA256: strings.Repeat("b", 64),
+	}
+	generation, err := repository.StartLightTokenRebuild(
+		ctx,
+		"session-dst-real",
+		identity,
+		"parser-v1",
+		2_000,
+	)
+	if err != nil {
+		t.Fatalf("StartLightTokenRebuild() error = %v", err)
+	}
+	firstStart := mustUsageTime(t, "2026-11-01T05:00:00Z")
+	secondStart := mustUsageTime(t, "2026-11-01T06:00:00Z")
+	if err := repository.CommitLightTokenBatch(ctx, store.LightTokenBatch{
+		SessionID: "session-dst-real", Generation: generation,
+		UpdatedAtMS: 2_100, Activate: true,
+		Checkpoint: store.LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes, Complete: true,
+			InputTokens: 10, OutputTokens: 20,
+		},
+		TimedDeltas: []store.LightTokenTimedDelta{
+			{
+				SourceOffset: 4_000,
+				ObservedAtMS: mustUsageTime(t, "2026-11-01T05:30:00Z"),
+				InputTokens:  10,
+			},
+			{
+				SourceOffset: 5_000,
+				ObservedAtMS: mustUsageTime(t, "2026-11-01T06:45:00Z"),
+				OutputTokens: 20,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("CommitLightTokenBatch() error = %v", err)
+	}
+
+	response, err := newUsageService(t, repository).SessionDetail(
+		ctx,
+		SessionDetailRequest{
+			SessionID:         "session-dst-real",
+			ReportingTimezone: pointerToString("America/New_York"),
+			TurnPage:          basequery.PageRequest{Limit: 20},
+		},
+	)
+	if err != nil {
+		t.Fatalf("SessionDetail(Store→Query DST) error = %v", err)
+	}
+	if response.TrendGranularity != TrendHour || len(response.Trend) != 2 {
+		t.Fatalf("SessionDetail(Store→Query DST) = %#v", response)
+	}
+	wantKeys := []string{
+		"2026-11-01T01:00-04:00",
+		"2026-11-01T01:00-05:00",
+	}
+	gotKeys := []string{response.Trend[0].Key, response.Trend[1].Key}
+	if !reflect.DeepEqual(gotKeys, wantKeys) {
+		t.Fatalf("SessionDetail(Store→Query DST) keys = %#v, want %#v", gotKeys, wantKeys)
+	}
+	wantBounds := [][2]int64{
+		{firstStart, secondStart},
+		{secondStart, mustUsageTime(t, "2026-11-01T07:00:00Z")},
+	}
+	for index, point := range response.Trend {
+		if point.StartAtMS.Value == nil || point.EndAtMS.Value == nil ||
+			*point.StartAtMS.Value != wantBounds[index][0] ||
+			*point.EndAtMS.Value != wantBounds[index][1] {
+			t.Fatalf("SessionDetail(Store→Query DST) point[%d] = %#v", index, point)
+		}
 	}
 }
 

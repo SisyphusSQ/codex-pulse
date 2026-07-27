@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"gorm.io/gorm"
@@ -193,7 +194,7 @@ func (repository *Repository) ListSessionAnalytics(
 		return SessionAnalyticsPage{}, err
 	}
 	page := SessionAnalyticsPage{Records: make([]SessionAnalyticsRecord, 0)}
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.ViewSnapshot(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
 		database := connection.WithContext(ctx)
 		lightPage, handled, err := listLightSessionAnalytics(database, filter)
 		if err != nil {
@@ -288,7 +289,7 @@ func (repository *Repository) SessionAnalytics(
 		PricingVersions: make([]string, 0), UnpricedReasons: make([]CostReasonCount, 0),
 		Daily: make([]UsageDaily, 0),
 	}
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.ViewSnapshot(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
 		database := connection.WithContext(ctx)
 		lightSnapshot, handled, err := lightSessionAnalytics(database, filter)
 		if err != nil {
@@ -307,6 +308,7 @@ func (repository *Repository) SessionAnalytics(
 		}
 		result.Mode = mode
 		if generation == nil {
+			result.ReportingTimezone = "UTC"
 			if filter.ReportingTimezone != nil {
 				result.ReportingTimezone = *filter.ReportingTimezone
 			}
@@ -332,6 +334,21 @@ func (repository *Repository) SessionAnalytics(
 		result.Record, err = sessionRecordFromProjection(projection)
 		if err != nil {
 			return err
+		}
+		if generation == nil {
+			result.Daily = make([]UsageDaily, 0)
+		} else {
+			result.Daily, err = loadSessionUsageTrend(
+				ctx,
+				database,
+				filter.SessionID,
+				result.ReportingTimezone,
+				generation,
+				result.Record.Rollup,
+			)
+			if err != nil {
+				return err
+			}
 		}
 		result.Turns, result.NextTurnCursor, err = loadSessionTurnAnalytics(
 			database, filter, generation,
@@ -370,6 +387,150 @@ func (repository *Repository) SessionAnalytics(
 		return nil
 	})
 	return result, err
+}
+
+// loadSessionUsageTrend 以请求的 IANA 时区判断会话是否跨本地自然日：
+// 同日按小时聚合，跨日按天聚合。active rollup 路径沿用同一 generation 的
+// final usage 与 turn cost，并与 Session 总计严格对账。fallback 不返回累计趋势，
+// 避免在 Session aggregate unknown 时从 final usage 旁路暴露确定总量。
+func loadSessionUsageTrend(
+	ctx context.Context,
+	database *gorm.DB,
+	sessionID string,
+	reportingTimezone string,
+	generation *costRollupGenerationModel,
+	expected *RollupTotals,
+) ([]UsageDaily, error) {
+	location, err := time.LoadLocation(reportingTimezone)
+	if err != nil {
+		return nil, invalidRecord("session trend reporting timezone is invalid")
+	}
+	var facts []costFactModel
+	if err := database.Table("turn_usage AS usage").
+		Select(`usage.turn_id, turns.session_id, usage.observed_at_ms,
+			usage.input_tokens, usage.cached_input_tokens, usage.output_tokens, usage.reasoning_tokens`).
+		Joins(`JOIN turns ON turns.turn_id = usage.turn_id
+			AND turns.source_generation = usage.source_generation`).
+		Where("turns.session_id = ? AND usage.is_final = ?", sessionID, true).
+		Order("usage.observed_at_ms, usage.turn_id").Scan(&facts).Error; err != nil {
+		return nil, err
+	}
+	if len(facts) == 0 {
+		if generation != nil && expected != nil {
+			if err := reconcileRollupTotals(*expected, nil); err != nil {
+				return nil, err
+			}
+		}
+		return make([]UsageDaily, 0), nil
+	}
+
+	granularity := AnalyticsGranularityHour
+	firstLocal := time.UnixMilli(facts[0].ObservedAtMS).In(location)
+	for _, fact := range facts[1:] {
+		local := time.UnixMilli(fact.ObservedAtMS).In(location)
+		if local.Year() != firstLocal.Year() ||
+			local.Month() != firstLocal.Month() ||
+			local.Day() != firstLocal.Day() {
+			granularity = AnalyticsGranularityDay
+			break
+		}
+	}
+
+	costs := make(map[string]TurnCost, len(facts))
+	if generation != nil {
+		if expected == nil {
+			return nil, invalidRecord("stored session trend rollup is missing")
+		}
+		var models []turnCostModel
+		if err := database.Table("turn_costs AS cost").
+			Select("cost.*").
+			Joins("JOIN turns AS turn_record ON turn_record.turn_id = cost.turn_id").
+			Joins(`JOIN turn_usage AS usage ON usage.turn_id = turn_record.turn_id
+				AND usage.source_generation = turn_record.source_generation`).
+			Where(
+				"cost.generation_id = ? AND turn_record.session_id = ? AND usage.is_final = ?",
+				generation.GenerationID, sessionID, true,
+			).
+			Order("cost.turn_id").Scan(&models).Error; err != nil {
+			return nil, err
+		}
+		for _, model := range models {
+			if _, duplicated := costs[model.TurnID]; duplicated {
+				return nil, invalidRecord("stored session trend turn cost is duplicated")
+			}
+			status := pricing.CostStatus(model.PricingStatus)
+			reason := pricing.CostReason(model.PricingReason)
+			if status != pricing.CostStatusPriced && status != pricing.CostStatusUnpriced {
+				return nil, invalidRecord("stored session trend turn cost status is invalid")
+			}
+			if status == pricing.CostStatusPriced &&
+				(reason != pricing.CostReasonPriced || model.EstimatedUSDMicros == nil) {
+				return nil, invalidRecord("stored session trend priced turn is invalid")
+			}
+			if status == pricing.CostStatusUnpriced && !validStoredCostReason(reason) {
+				return nil, invalidRecord("stored session trend unpriced turn is invalid")
+			}
+			costs[model.TurnID] = TurnCost{
+				GenerationID: model.GenerationID, TurnID: model.TurnID,
+				PricingVersion: model.PricingVersion, EstimatedUSDMicros: model.EstimatedUSDMicros,
+				Status: status, Reason: reason, CalculatedAtMS: model.CalculatedAtMS,
+			}
+		}
+	}
+
+	filter := AnalyticsRange{
+		ReportingTimezone: reportingTimezone,
+		Granularity:       granularity,
+	}
+	groups := make(map[int64]*aggregateAccumulator)
+	for _, fact := range facts {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		cost := TurnCost{
+			Status: pricing.CostStatusUnpriced, Reason: pricing.CostReasonCatalogNotEffective,
+		}
+		if generation != nil {
+			var found bool
+			cost, found = costs[fact.TurnID]
+			if !found {
+				return nil, invalidRecord("stored session trend turn cost is missing")
+			}
+		}
+		bucket := analyticsBucketStart(fact.ObservedAtMS, filter, location)
+		if err := accumulatorFor(groups, bucket).add(fact, cost); err != nil {
+			return nil, err
+		}
+	}
+	if generation != nil {
+		if err := reconcileAggregateGroups(*expected, groups, generation.UpdatedAtMS); err != nil {
+			return nil, err
+		}
+	}
+
+	keys := make([]int64, 0, len(groups))
+	for key := range groups {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(left, right int) bool { return keys[left] < keys[right] })
+	result := make([]UsageDaily, 0, len(keys))
+	for _, key := range keys {
+		updatedAtMS := groups[key].lastActivityAtMS
+		generationID := ""
+		if generation != nil {
+			updatedAtMS = generation.UpdatedAtMS
+			generationID = generation.GenerationID
+		}
+		totals, err := groups[key].totals(updatedAtMS)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, UsageDaily{
+			GenerationID: generationID, BucketStartMS: key,
+			ReportingTimezone: reportingTimezone, RollupTotals: totals,
+		})
+	}
+	return result, nil
 }
 
 // loadSessionTurnAnalytics 在Session detail所属的同一Store.View中读取bounded turn page。

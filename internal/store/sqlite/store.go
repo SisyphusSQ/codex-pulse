@@ -234,6 +234,17 @@ func (store *Store) enqueueJob(ctx context.Context, job writeJob, queue chan<- w
 
 // View runs a callback against the read-only pool while the store is open.
 func (store *Store) View(ctx context.Context, view ViewFunc) error {
+	return store.view(ctx, view, false)
+}
+
+// ViewSnapshot runs all callback queries in one read-only SQLite transaction.
+// Callers that reconcile multiple projections must use this entrypoint so a
+// concurrent writer cannot move one projection to a different generation.
+func (store *Store) ViewSnapshot(ctx context.Context, view ViewFunc) error {
+	return store.view(ctx, view, true)
+}
+
+func (store *Store) view(ctx context.Context, view ViewFunc, snapshot bool) error {
 	if view == nil {
 		return newClassifiedError("view", ErrInvalidConfig, fmt.Errorf("view callback is nil"))
 	}
@@ -256,7 +267,14 @@ func (store *Store) View(ctx context.Context, view ViewFunc) error {
 	defer store.reads.Done()
 
 	reader := store.reader.Session(&gorm.Session{NewDB: true, Context: ctx})
-	err := view(ctx, reader)
+	var err error
+	if snapshot {
+		err = reader.Transaction(func(transaction *gorm.DB) error {
+			return view(ctx, transaction.WithContext(ctx))
+		}, &sql.TxOptions{ReadOnly: true})
+	} else {
+		err = view(ctx, reader)
+	}
 	if contextErr := ctx.Err(); err != nil && contextErr != nil {
 		err = errors.Join(contextErr, err)
 	}

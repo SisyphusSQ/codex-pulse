@@ -69,6 +69,7 @@ final class StatusBarQuotaContentView: NSView {
         case .gaugeSummary:
             drawGauge(in: iconRect, summary: summary)
         }
+        drawDataStateIndicator(in: iconRect, summary: summary)
         drawSummary(summary, leadingX: iconRect.maxX + iconTextSpacing)
     }
 
@@ -236,7 +237,7 @@ final class StatusBarQuotaContentView: NSView {
     }
 
     private func accentColor(_ summary: StatusBarQuotaPresentation) -> NSColor {
-        guard summary.freshness == "fresh" else { return .secondaryLabelColor }
+        guard summary.dataState.preservesRemainingColor else { return .secondaryLabelColor }
         switch QuotaRemainingLevel(remainingPercent: summary.remainingPercent) {
         case .healthy: return NSColor.systemGreen
         case .warning: return NSColor.systemYellow
@@ -246,11 +247,35 @@ final class StatusBarQuotaContentView: NSView {
     }
 
     private func detailColor(_ summary: StatusBarQuotaPresentation) -> NSColor {
-        switch summary.freshness {
-        case "fresh": .labelColor
-        case "stale": .secondaryLabelColor
-        default: .tertiaryLabelColor
+        switch summary.dataState {
+        case .fresh: .labelColor
+        case .stale, .suspicious: .secondaryLabelColor
+        case .unavailable: .tertiaryLabelColor
         }
+    }
+
+    private func drawDataStateIndicator(
+        in rect: NSRect,
+        summary: StatusBarQuotaPresentation
+    ) {
+        let color: NSColor
+        switch summary.dataState {
+        case .fresh, .unavailable:
+            return
+        case .stale:
+            color = .secondaryLabelColor
+        case .suspicious:
+            color = .systemOrange
+        }
+        let diameter: CGFloat = 4
+        let indicatorRect = NSRect(
+            x: rect.maxX - diameter,
+            y: rect.maxY - diameter,
+            width: diameter,
+            height: diameter
+        )
+        color.setFill()
+        NSBezierPath(ovalIn: indicatorRect).fill()
     }
 
     private func textWidth(_ text: String, font: NSFont) -> CGFloat {

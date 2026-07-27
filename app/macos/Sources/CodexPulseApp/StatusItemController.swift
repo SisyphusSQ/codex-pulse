@@ -11,11 +11,13 @@ final class StatusItemController: NSObject {
     private let popover = NSPopover()
     private let model: AppModel
     private let displayPreferences = StatusBarDisplayPreferences()
+    private let captureSource = PopoverCaptureSource()
     private let nativeAcceptanceEnabled: Bool
     private var cancellables: Set<AnyCancellable> = []
     private var smokeFocusedControl: PopoverFocusTarget?
     private var smokeActionResults: [PopoverQuickActionKind: PopoverQuickActionResult] = [:]
     private var smokeOpenedProjectURL: URL?
+    private var lastPopoverCaptureFailure = "none"
 
     init(
         model: AppModel,
@@ -50,6 +52,11 @@ final class StatusItemController: NSObject {
         let popoverView = MenuBarPopoverView(
             model: model,
             preferences: displayPreferences,
+            captureSource: captureSource,
+            capturePopoverPNG: { [weak self] in
+                guard let self else { return nil }
+                return await self.captureCurrentPopoverPNG()
+            },
             openProjectURL: { [weak self] url in
                 guard let self else { return false }
                 if self.nativeAcceptanceEnabled {
@@ -117,6 +124,49 @@ final class StatusItemController: NSObject {
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
+    private func captureCurrentPopoverPNG() async -> Data? {
+        lastPopoverCaptureFailure = "none"
+        guard popover.isShown else {
+            lastPopoverCaptureFailure = "popover_hidden"
+            return nil
+        }
+        captureSource.setPrivacyHidden(true)
+        defer { captureSource.setPrivacyHidden(false) }
+
+        guard await captureSource.waitUntilPrivacyRendered(true) else {
+            lastPopoverCaptureFailure = "privacy_render"
+            return nil
+        }
+        guard popover.isShown else {
+            lastPopoverCaptureFailure = "popover_closed"
+            return nil
+        }
+        guard let rootView = popover.contentViewController?.view else {
+            lastPopoverCaptureFailure = "root_view"
+            return nil
+        }
+        guard let scrollView = captureSource.resolveScrollView(in: rootView) else {
+            lastPopoverCaptureFailure = "scroll_view"
+            return nil
+        }
+
+        rootView.layoutSubtreeIfNeeded()
+        rootView.displayIfNeeded()
+        guard let png = PopoverFullPageCapture.renderPNG(
+            rootView: rootView,
+            scrollView: scrollView,
+            onFailure: { [weak self] reason in
+                self?.lastPopoverCaptureFailure = "bitmap_\(reason)"
+            }
+        ) else {
+            if lastPopoverCaptureFailure == "none" {
+                lastPopoverCaptureFailure = "bitmap_unknown"
+            }
+            return nil
+        }
+        return png
+    }
+
     func verifyNativeSurfacesForSmoke(
         requireSummary: Bool
     ) async -> (passed: Bool, summary: String) {
@@ -130,7 +180,7 @@ final class StatusItemController: NSObject {
             return (false, "unavailable step=status_summary")
         }
         guard nativeAcceptanceEnabled,
-              let expectedSummary = model.presentation.map(PopoverPrivacySummary.init)
+              model.presentation != nil
         else { return (false, "unavailable step=acceptance_fixture") }
 
         smokeFocusedControl = nil
@@ -154,15 +204,35 @@ final class StatusItemController: NSObject {
             return (false, "unavailable step=project_keyboard_action")
         }
 
-        guard await moveNativeSmokeFocus(to: .copyPrivacySummary),
-              sendNativeSmokeKey(" ", keyCode: 49),
-              await waitForNativeSmoke({
-                  self.smokeActionResults[.copyPrivacySummary] != nil
-              }),
-              smokeActionResults[.copyPrivacySummary]?.isFailure == false,
-              verifyGeneralPasteboardForSmoke(expected: expectedSummary)
+        guard await moveNativeSmokeFocus(to: .copyPopoverScreenshot) else {
+            return (false, "unavailable step=clipboard_keyboard_focus")
+        }
+        guard sendNativeSmokeKey(" ", keyCode: 49) else {
+            return (false, "unavailable step=clipboard_keyboard_event")
+        }
+        guard await waitForNativeSmoke({
+            self.smokeActionResults[.copyPopoverScreenshot] != nil
+        }) else {
+            return (false, "unavailable step=clipboard_keyboard_result")
+        }
+        guard let screenshotResult =
+            smokeActionResults[.copyPopoverScreenshot]
         else {
-            return (false, "unavailable step=clipboard_keyboard_action")
+            return (false, "unavailable step=clipboard_capture_result")
+        }
+        guard screenshotResult.isFailure == false else {
+            if screenshotResult.message
+                == "Popover 截图生成失败，未写入剪贴板。"
+            {
+                return (
+                    false,
+                    "unavailable step=clipboard_capture_\(lastPopoverCaptureFailure)"
+                )
+            }
+            return (false, "unavailable step=clipboard_capture_write")
+        }
+        guard verifyGeneralPasteboardForSmoke() else {
+            return (false, "unavailable step=clipboard_payload")
         }
 
         guard await moveNativeSmokeFocus(to: .resetCredits),
@@ -170,7 +240,7 @@ final class StatusItemController: NSObject {
               await moveNativeSmokeFocus(to: .quit),
               await moveNativeSmokeFocus(to: .settings, backward: true),
               await moveNativeSmokeFocus(to: .resetCredits, backward: true),
-              await moveNativeSmokeFocus(to: .copyPrivacySummary, backward: true),
+              await moveNativeSmokeFocus(to: .copyPopoverScreenshot, backward: true),
               await moveNativeSmokeFocus(to: .openProject, backward: true),
               await moveNativeSmokeFocus(to: .openOverview, backward: true),
               await moveNativeSmokeFocus(to: .refresh, backward: true),
@@ -254,24 +324,112 @@ final class StatusItemController: NSObject {
         return false
     }
 
-    private func verifyGeneralPasteboardForSmoke(
-        expected: PopoverPrivacySummary
-    ) -> Bool {
+    private func verifyGeneralPasteboardForSmoke() -> Bool {
         guard let items = NSPasteboard.general.pasteboardItems,
               items.count == 1,
               items[0].types.contains(.string),
               items[0].types.contains(.png),
-              items[0].string(forType: .string) == expected.plainText,
+              items[0].string(forType: .string)
+                  == PopoverScreenshotClipboardText.plainText,
               let png = items[0].data(forType: .png),
-              png.starts(with: Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
+              png.starts(with: Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])),
+              let bitmap = NSBitmapImageRep(data: png),
+              bitmap.pixelsHigh > bitmap.pixelsWide
         else { return false }
         return true
+    }
+}
+
+@MainActor
+private final class PopoverCaptureSource: ObservableObject {
+    @Published private(set) var isPrivacyHidden = false
+    private weak var documentAnchor: NSView?
+    private var renderedPrivacyHidden = false
+
+    func setPrivacyHidden(_ hidden: Bool) {
+        isPrivacyHidden = hidden
+    }
+
+    func registerDocumentAnchor(_ view: NSView) {
+        documentAnchor = view
+    }
+
+    func registerPrivacyRendered(_ hidden: Bool) {
+        renderedPrivacyHidden = hidden
+    }
+
+    func waitUntilPrivacyRendered(_ hidden: Bool) async -> Bool {
+        for _ in 0..<50 {
+            if renderedPrivacyHidden == hidden { return true }
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+        return false
+    }
+
+    func resolveScrollView(in rootView: NSView) -> NSScrollView? {
+        var ancestor = documentAnchor
+        while let view = ancestor {
+            if let scrollView = view as? NSScrollView,
+               scrollView.isDescendant(of: rootView)
+            {
+                return scrollView
+            }
+            ancestor = view.superview
+        }
+        return descendantScrollViews(of: rootView)
+            .filter { $0.documentView != nil }
+            .max {
+                ($0.documentView?.bounds.height ?? 0)
+                    < ($1.documentView?.bounds.height ?? 0)
+            }
+    }
+
+    private func descendantScrollViews(of view: NSView) -> [NSScrollView] {
+        view.subviews.flatMap { child in
+            var matches = descendantScrollViews(of: child)
+            if let scrollView = child as? NSScrollView {
+                matches.append(scrollView)
+            }
+            return matches
+        }
+    }
+}
+
+@MainActor
+private struct PopoverCaptureDocumentProbe: NSViewRepresentable {
+    let source: PopoverCaptureSource
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        source.registerDocumentAnchor(view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        source.registerDocumentAnchor(nsView)
+    }
+}
+
+@MainActor
+private struct PopoverPrivacyRenderProbe: NSViewRepresentable {
+    let source: PopoverCaptureSource
+    let isPrivacyHidden: Bool
+
+    func makeNSView(context: Context) -> NSView {
+        source.registerPrivacyRendered(isPrivacyHidden)
+        return NSView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        source.registerPrivacyRendered(isPrivacyHidden)
     }
 }
 
 private struct MenuBarPopoverView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var preferences: StatusBarDisplayPreferences
+    @ObservedObject var captureSource: PopoverCaptureSource
+    let capturePopoverPNG: @MainActor () async -> Data?
     let openProjectURL: @MainActor (URL) -> Bool
     let onQuickActionResult:
         @MainActor (PopoverQuickActionKind, PopoverQuickActionResult) -> Void
@@ -282,6 +440,7 @@ private struct MenuBarPopoverView: View {
     @State private var selectedDailyTrendKey: String?
     @State private var quickActionResult: PopoverQuickActionResult?
     @State private var screenshotFeedback: PopoverScreenshotFeedback = .idle
+    @State private var isCapturingScreenshot = false
     @FocusState private var focusedControl: PopoverFocusTarget?
 
     var body: some View {
@@ -326,9 +485,11 @@ private struct MenuBarPopoverView: View {
             PopoverHeader(
                 title: "Codex Pulse",
                 accountSummary: model.presentation?.popoverAccountSummary,
+                captureSource: captureSource,
+                isPrivacyHidden: captureSource.isPrivacyHidden,
                 screenshotFeedback: screenshotFeedback,
                 onOpenProject: openProject,
-                onCopyPrivacySummary: copyPrivacySummary,
+                onCopyPopoverScreenshot: copyPopoverScreenshot,
                 focusedControl: $focusedControl,
                 onOpen: onOpenOverview,
                 onRefresh: model.refreshOrRestart,
@@ -347,6 +508,10 @@ private struct MenuBarPopoverView: View {
                     }
                     .padding(.horizontal, 18)
                     .padding(.vertical, 16)
+                    .background(
+                        PopoverCaptureDocumentProbe(source: captureSource)
+                            .allowsHitTesting(false)
+                    )
                 } else {
                     VStack(spacing: 12) {
                         ProgressView()
@@ -374,26 +539,20 @@ private struct MenuBarPopoverView: View {
         if result.isFailure { quickActionResult = result }
     }
 
-    private func copyPrivacySummary() {
-        guard let overview = model.presentation else {
-            let result = PopoverQuickActionResult.failure(
-                title: "无法复制 Popover 摘要",
-                message: "当前没有可用于生成 Popover 截图的数据。"
-            )
-            onQuickActionResult(.copyPrivacySummary, result)
-            quickActionResult = result
-            return
-        }
-        let result = PopoverQuickActions.copyPrivacySummary(
-            PopoverPrivacySummary(overview),
-            renderPNG: renderPrivacySummaryPNG,
-            writeClipboard: writePrivacySummaryClipboard
-        )
-        onQuickActionResult(.copyPrivacySummary, result)
-        screenshotFeedback = result.isFailure ? .failed : .copied
-        if result.isFailure { quickActionResult = result }
-        let feedback = screenshotFeedback
+    private func copyPopoverScreenshot() {
+        guard !isCapturingScreenshot else { return }
+        isCapturingScreenshot = true
         Task { @MainActor in
+            let png = model.presentation == nil ? nil : await capturePopoverPNG()
+            let result = PopoverQuickActions.copyPopoverScreenshot(
+                png: png,
+                writeClipboard: writePopoverScreenshotClipboard
+            )
+            onQuickActionResult(.copyPopoverScreenshot, result)
+            screenshotFeedback = result.isFailure ? .failed : .copied
+            isCapturingScreenshot = false
+            if result.isFailure { quickActionResult = result }
+            let feedback = screenshotFeedback
             try? await Task.sleep(for: .seconds(2))
             if screenshotFeedback == feedback {
                 screenshotFeedback = .idle
@@ -802,7 +961,7 @@ private enum PopoverFocusTarget: Hashable {
     case openOverview
     case refresh
     case openProject
-    case copyPrivacySummary
+    case copyPopoverScreenshot
     case resetCredits
     case settings
     case quit
@@ -823,8 +982,8 @@ private enum PopoverScreenshotFeedback: Equatable {
 
     var title: String {
         switch self {
-        case .idle: "复制 Popover 截图与摘要"
-        case .copied: "Popover 截图与摘要已复制"
+        case .idle: "复制 Popover 完整截图"
+        case .copied: "Popover 完整截图已复制"
         case .failed: "复制失败，请重试"
         }
     }
@@ -851,9 +1010,11 @@ private struct RefreshArrowSymbol: View {
 private struct PopoverHeader: View {
     let title: String
     let accountSummary: PopoverAccountSummaryPresentation?
+    let captureSource: PopoverCaptureSource
+    let isPrivacyHidden: Bool
     let screenshotFeedback: PopoverScreenshotFeedback
     let onOpenProject: @MainActor () -> Void
-    let onCopyPrivacySummary: @MainActor () -> Void
+    let onCopyPopoverScreenshot: @MainActor () -> Void
     let focusedControl: FocusState<PopoverFocusTarget?>.Binding
     let onOpen: @MainActor () -> Void
     let onRefresh: @MainActor () -> Void
@@ -865,7 +1026,11 @@ private struct PopoverHeader: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title)
                     .font(.headline)
-                PopoverAccountCapsule(summary: accountSummary)
+                PopoverAccountCapsule(
+                    summary: accountSummary,
+                    captureSource: captureSource,
+                    isPrivacyHidden: isPrivacyHidden
+                )
             }
             Spacer(minLength: 12)
             HStack(spacing: 4) {
@@ -890,10 +1055,10 @@ private struct PopoverHeader: View {
 
                 PopoverHeaderButton(
                     title: screenshotFeedback.title,
-                    identifier: "popover.copy-privacy-summary",
-                    target: .copyPrivacySummary,
+                    identifier: "popover.copy-screenshot",
+                    target: .copyPopoverScreenshot,
                     focusedControl: focusedControl,
-                    action: onCopyPrivacySummary
+                    action: onCopyPopoverScreenshot
                 ) {
                     Image(systemName: screenshotFeedback.systemImage)
                 }
@@ -928,6 +1093,8 @@ private struct PopoverHeader: View {
 
 private struct PopoverAccountCapsule: View {
     let summary: PopoverAccountSummaryPresentation?
+    let captureSource: PopoverCaptureSource
+    let isPrivacyHidden: Bool
 
     var body: some View {
         HStack(spacing: 4) {
@@ -936,6 +1103,13 @@ private struct PopoverAccountCapsule: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
+        .opacity(isPrivacyHidden ? 0 : 1)
+        .overlay {
+            if isPrivacyHidden {
+                Image(systemName: "eye.slash")
+                    .accessibilityHidden(true)
+            }
+        }
         .font(.caption)
         .foregroundStyle(.orange)
         .padding(.horizontal, 8)
@@ -943,9 +1117,18 @@ private struct PopoverAccountCapsule: View {
         .background(Color.orange.opacity(0.14), in: Capsule())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            summary?.accessibilityLabel ?? "正在读取 Codex 账户与套餐信息"
+            isPrivacyHidden
+                ? "截图中账号与套餐信息已隐藏"
+                : summary?.accessibilityLabel ?? "正在读取 Codex 账户与套餐信息"
         )
         .accessibilityIdentifier("popover.account-summary")
+        .background(
+            PopoverPrivacyRenderProbe(
+                source: captureSource,
+                isPrivacyHidden: isPrivacyHidden
+            )
+            .allowsHitTesting(false)
+        )
     }
 }
 
@@ -1552,59 +1735,8 @@ private extension View {
 }
 
 @MainActor
-private func renderPrivacySummaryPNG(_ summary: PopoverPrivacySummary) -> Data? {
-    let renderer = ImageRenderer(content: PopoverPrivacySnapshotView(summary: summary))
-    renderer.scale = max(NSScreen.main?.backingScaleFactor ?? 2, 1)
-    guard let image = renderer.nsImage,
-          let tiff = image.tiffRepresentation,
-          let bitmap = NSBitmapImageRep(data: tiff)
-    else { return nil }
-    return bitmap.representation(using: .png, properties: [:])
-}
-
-@MainActor
-private func writePrivacySummaryClipboard(_ text: String, _ png: Data) -> Bool {
+private func writePopoverScreenshotClipboard(_ text: String, _ png: Data) -> Bool {
     PopoverPasteboardPayload.write(text: text, png: png, to: .general)
-}
-
-private struct PopoverPrivacySnapshotView: View {
-    let summary: PopoverPrivacySummary
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                Image(systemName: "waveform.path.ecg")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.blue)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Codex Pulse").font(.title3.bold())
-                    Text("Popover 摘要").font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            Divider()
-            VStack(alignment: .leading, spacing: 4) {
-                Text(summary.accountTitle).font(.headline)
-                Text(summary.accountDetail).font(.subheadline).foregroundStyle(.secondary)
-            }
-            ForEach(Array(summary.quotaRows.enumerated()), id: \.offset) { index, row in
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("额度 \(index + 1)").font(.caption.bold()).foregroundStyle(.secondary)
-                    Text(row).font(.system(size: 13, weight: .medium))
-                }
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                Text("重置次数").font(.caption.bold()).foregroundStyle(.secondary)
-                Text(summary.resetCreditsRow).font(.system(size: 13, weight: .medium))
-            }
-            Divider()
-            Label("仅包含 Popover 已展示信息", systemImage: "checkmark.shield")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(22)
-        .frame(width: 360, alignment: .leading)
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
 }
 
 private func percentText(_ value: Double?) -> String {

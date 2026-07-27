@@ -378,8 +378,13 @@ private struct SessionDetailView: View {
                     TokenBreakdownView(tokens: TokenBreakdownPresentation(response.item.totals))
                     KeyValueRow(key: "API 折算成本", value: costText(response.item.totals.estimatedUsdMicros))
                 }
-                SectionCard(title: "每日趋势") {
-                    DailyTokenTrendView(points: response.daily)
+                SectionCard(title: trendPresentation?.sectionTitle ?? "用量趋势") {
+                    if let trendPresentation {
+                        TokenTrendView(points: response.trend, presentation: trendPresentation)
+                    } else {
+                        Text("趋势口径不可用。")
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 SectionCard(title: "活动时间线") {
                     Text("只展示用量信息，不读取对话内容。")
@@ -422,6 +427,13 @@ private struct SessionDetailView: View {
             .padding(18)
         }
         .accessibilityIdentifier("session.detail")
+    }
+
+    private var trendPresentation: UsageTrendPresentation? {
+        UsageTrendPresentation(
+            granularity: response.trendGranularity,
+            reportingTimeZone: response.reportingTimeZone
+        )
     }
 }
 
@@ -580,7 +592,12 @@ private struct ProjectDetailView: View {
                     KeyValueRow(key: "API 折算成本", value: costText(response.item.totals.estimatedUsdMicros))
                 }
                 SectionCard(title: "每日趋势") {
-                    DailyTokenTrendView(points: response.daily)
+                    if let trendPresentation {
+                        TokenTrendView(points: response.daily, presentation: trendPresentation)
+                    } else {
+                        Text("趋势口径不可用。")
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 SectionCard(title: "模型") {
                     ForEach(response.models, id: \.dimensionKey) { item in
@@ -620,23 +637,34 @@ private struct ProjectDetailView: View {
         }
         .accessibilityIdentifier("project.detail")
     }
+
+    private var trendPresentation: UsageTrendPresentation? {
+        UsageTrendPresentation(
+            granularity: "day",
+            reportingTimeZone: response.reportingTimeZone
+        )
+    }
 }
 
-private struct DailyTokenTrendPoint: Identifiable {
+private struct TokenTrendPoint: Identifiable {
     let date: Date
     let totals: Codexpulse_Core_V1_UsageTotals
 
     var id: Int64 { Int64(date.timeIntervalSince1970 * 1_000) }
 }
 
-private struct DailyTokenTrendView: View {
-    private let points: [DailyTokenTrendPoint]
+private struct TokenTrendView: View {
+    private let points: [TokenTrendPoint]
+    private let presentation: UsageTrendPresentation
     @State private var selectedDate: Date?
 
-    init(points: [Codexpulse_Core_V1_TrendPoint]) {
-        let mapped: [DailyTokenTrendPoint] = points.compactMap { point in
+    init(
+        points: [Codexpulse_Core_V1_TrendPoint],
+        presentation: UsageTrendPresentation
+    ) {
+        let mapped: [TokenTrendPoint] = points.compactMap { point in
             guard point.startAtMs.hasValue, point.totals.totalTokens.hasValue else { return nil }
-            return DailyTokenTrendPoint(
+            return TokenTrendPoint(
                 date: Date(
                     timeIntervalSince1970: TimeInterval(point.startAtMs.value) / 1_000
                 ),
@@ -644,13 +672,17 @@ private struct DailyTokenTrendView: View {
             )
         }
         self.points = mapped
+        self.presentation = presentation
         _selectedDate = State(initialValue: mapped.last?.date)
     }
 
-    init(points: [Codexpulse_Core_V1_ProjectDailyPoint]) {
-        let mapped: [DailyTokenTrendPoint] = points.compactMap { point in
+    init(
+        points: [Codexpulse_Core_V1_ProjectDailyPoint],
+        presentation: UsageTrendPresentation
+    ) {
+        let mapped: [TokenTrendPoint] = points.compactMap { point in
             guard point.bucketStartAtMs.hasValue, point.totals.totalTokens.hasValue else { return nil }
-            return DailyTokenTrendPoint(
+            return TokenTrendPoint(
                 date: Date(
                     timeIntervalSince1970: TimeInterval(point.bucketStartAtMs.value) / 1_000
                 ),
@@ -658,6 +690,7 @@ private struct DailyTokenTrendView: View {
             )
         }
         self.points = mapped
+        self.presentation = presentation
         _selectedDate = State(initialValue: mapped.last?.date)
     }
 
@@ -669,22 +702,22 @@ private struct DailyTokenTrendView: View {
             Chart {
                 ForEach(points) { point in
                     LineMark(
-                        x: .value("日期", point.date),
+                        x: .value("时间", point.date),
                         y: .value("Token", point.totals.totalTokens.value)
                     )
                     .interpolationMethod(.catmullRom)
                     PointMark(
-                        x: .value("日期", point.date),
+                        x: .value("时间", point.date),
                         y: .value("Token", point.totals.totalTokens.value)
                     )
                     .symbolSize(selectedPoint?.id == point.id ? 70 : 28)
-                    .accessibilityLabel(Self.detailDateFormatter.string(from: point.date))
+                    .accessibilityLabel(presentation.detailText(for: point.date))
                     .accessibilityValue(
                         "\(TokenQuantityFormatter.string(point.totals.totalTokens.value)) Token"
                     )
                 }
                 if let selected = selectedPoint {
-                    RuleMark(x: .value("选中日期", selected.date))
+                    RuleMark(x: .value("选中时间", selected.date))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                         .foregroundStyle(.secondary)
                 }
@@ -701,8 +734,12 @@ private struct DailyTokenTrendView: View {
                 }
             }
             .chartXAxis {
-                AxisMarks(values: .automatic) { _ in
-                    AxisValueLabel(format: .dateTime.month().day())
+                AxisMarks(values: .automatic) { value in
+                    AxisValueLabel {
+                        if let date = value.as(Date.self) {
+                            Text(presentation.axisText(for: date))
+                        }
+                    }
                 }
             }
             .chartXSelection(value: $selectedDate)
@@ -710,7 +747,7 @@ private struct DailyTokenTrendView: View {
 
             if let selected = selectedPoint {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(Self.detailDateFormatter.string(from: selected.date))
+                    Text(presentation.detailText(for: selected.date))
                         .font(.subheadline.weight(.semibold))
                     TokenBreakdownView(
                         tokens: TokenBreakdownPresentation(selected.totals),
@@ -718,25 +755,16 @@ private struct DailyTokenTrendView: View {
                     )
                 }
                 .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("daily-trend.selection-detail")
+                .accessibilityIdentifier("usage-trend.selection-detail")
             }
         }
     }
 
-    private var selectedPoint: DailyTokenTrendPoint? {
+    private var selectedPoint: TokenTrendPoint? {
         guard let selectedDate else { return nil }
         return points.min {
             abs($0.date.timeIntervalSince1970 - selectedDate.timeIntervalSince1970)
                 < abs($1.date.timeIntervalSince1970 - selectedDate.timeIntervalSince1970)
         }
     }
-
-    private static let detailDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateStyle = .long
-        formatter.timeStyle = .none
-        return formatter
-    }()
 }

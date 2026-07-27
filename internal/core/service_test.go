@@ -63,6 +63,10 @@ func TestServiceContractsExposeUniqueCommandMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	contract := service.Contracts()
+	if contract.Version != "core-rpc-v2" ||
+		contract.UsageCostVersion != "usage-cost-v2" {
+		t.Fatalf("Contracts() versions = %#v", contract)
+	}
 	commandsFromMethods := make([]string, 0)
 	for _, method := range contract.Methods {
 		if method.Kind == MethodCommand {

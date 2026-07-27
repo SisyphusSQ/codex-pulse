@@ -2294,7 +2294,8 @@ type SessionDetailResponse struct {
 	Turns             []*SessionTurnItem     `protobuf:"bytes,8,rep,name=turns,proto3" json:"turns,omitempty"`
 	DegradedReason    *string                `protobuf:"bytes,9,opt,name=degraded_reason,json=degradedReason,proto3,oneof" json:"degraded_reason,omitempty"`
 	ReportingTimeZone string                 `protobuf:"bytes,10,opt,name=reporting_time_zone,json=reportingTimeZone,proto3" json:"reporting_time_zone,omitempty"`
-	Daily             []*TrendPoint          `protobuf:"bytes,11,rep,name=daily,proto3" json:"daily,omitempty"`
+	Trend             []*TrendPoint          `protobuf:"bytes,12,rep,name=trend,proto3" json:"trend,omitempty"`
+	TrendGranularity  string                 `protobuf:"bytes,13,opt,name=trend_granularity,json=trendGranularity,proto3" json:"trend_granularity,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -2399,11 +2400,18 @@ func (x *SessionDetailResponse) GetReportingTimeZone() string {
 	return ""
 }
 
-func (x *SessionDetailResponse) GetDaily() []*TrendPoint {
+func (x *SessionDetailResponse) GetTrend() []*TrendPoint {
 	if x != nil {
-		return x.Daily
+		return x.Trend
 	}
 	return nil
+}
+
+func (x *SessionDetailResponse) GetTrendGranularity() string {
+	if x != nil {
+		return x.TrendGranularity
+	}
+	return ""
 }
 
 type ProjectDailyPoint struct {
@@ -9237,7 +9245,7 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x0funpriced_reason\x18\n" +
 	" \x01(\tH\x01R\x0eunpricedReason\x88\x01\x01B\x12\n" +
 	"\x10_pricing_versionB\x12\n" +
-	"\x10_unpriced_reason\"\x84\x05\n" +
+	"\x10_unpriced_reason\"\xbe\x05\n" +
 	"\x15SessionDetailResponse\x124\n" +
 	"\x04meta\x18\x01 \x01(\v2 .codexpulse.core.v1.ResponseMetaR\x04meta\x12*\n" +
 	"\x0epricing_source\x18\x02 \x01(\tH\x00R\rpricingSource\x88\x01\x01\x12\x1f\n" +
@@ -9250,10 +9258,11 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x0fdegraded_reason\x18\t \x01(\tH\x02R\x0edegradedReason\x88\x01\x01\x12.\n" +
 	"\x13reporting_time_zone\x18\n" +
 	" \x01(\tR\x11reportingTimeZone\x124\n" +
-	"\x05daily\x18\v \x03(\v2\x1e.codexpulse.core.v1.TrendPointR\x05dailyB\x11\n" +
+	"\x05trend\x18\f \x03(\v2\x1e.codexpulse.core.v1.TrendPointR\x05trend\x12+\n" +
+	"\x11trend_granularity\x18\r \x01(\tR\x10trendGranularityB\x11\n" +
 	"\x0f_pricing_sourceB\v\n" +
 	"\t_currencyB\x12\n" +
-	"\x10_degraded_reason\"\xeb\x01\n" +
+	"\x10_degraded_reasonJ\x04\b\v\x10\fR\x05daily\"\xeb\x01\n" +
 	"\x11ProjectDailyPoint\x12M\n" +
 	"\x12bucket_start_at_ms\x18\x01 \x01(\v2 .codexpulse.core.v1.NumericValueR\x0fbucketStartAtMs\x12\x1e\n" +
 	"\n" +
@@ -10139,7 +10148,7 @@ var file_api_codexpulse_core_v1_core_proto_depIdxs = []int32{
 	30,  // 59: codexpulse.core.v1.SessionDetailResponse.item:type_name -> codexpulse.core.v1.SessionItem
 	11,  // 60: codexpulse.core.v1.SessionDetailResponse.turn_page:type_name -> codexpulse.core.v1.PageInfo
 	32,  // 61: codexpulse.core.v1.SessionDetailResponse.turns:type_name -> codexpulse.core.v1.SessionTurnItem
-	27,  // 62: codexpulse.core.v1.SessionDetailResponse.daily:type_name -> codexpulse.core.v1.TrendPoint
+	27,  // 62: codexpulse.core.v1.SessionDetailResponse.trend:type_name -> codexpulse.core.v1.TrendPoint
 	10,  // 63: codexpulse.core.v1.ProjectDailyPoint.bucket_start_at_ms:type_name -> codexpulse.core.v1.NumericValue
 	25,  // 64: codexpulse.core.v1.ProjectDailyPoint.totals:type_name -> codexpulse.core.v1.UsageTotals
 	24,  // 65: codexpulse.core.v1.ProjectItem.project:type_name -> codexpulse.core.v1.AttributionValue

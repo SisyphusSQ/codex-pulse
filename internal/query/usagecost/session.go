@@ -300,7 +300,7 @@ func mapSessionDetailResponse(
 	if err != nil {
 		return SessionDetailResponse{}, err
 	}
-	daily, err := mapSessionDailyTrend(snapshot)
+	trendGranularity, trend, err := mapSessionTrend(snapshot)
 	if err != nil {
 		return SessionDetailResponse{}, err
 	}
@@ -333,7 +333,9 @@ func mapSessionDetailResponse(
 	}
 	response := SessionDetailResponse{
 		Meta: meta, Item: item, PricingVersions: versions, UnpricedReasons: reasons,
-		ReportingTimeZone: snapshot.ReportingTimezone, Daily: daily,
+		ReportingTimeZone: snapshot.ReportingTimezone,
+		TrendGranularity:  trendGranularity,
+		Trend:             trend,
 		TurnPage: basequery.PageInfo{
 			Limit: turnLimit, HasMore: nextTurnCursor != nil, NextCursor: nextTurnCursor,
 		},
@@ -350,18 +352,24 @@ func mapSessionDetailResponse(
 	return response, nil
 }
 
-func mapSessionDailyTrend(snapshot store.SessionAnalyticsSnapshot) ([]TrendPoint, error) {
+func mapSessionTrend(
+	snapshot store.SessionAnalyticsSnapshot,
+) (TrendGranularity, []TrendPoint, error) {
 	rows := append([]store.UsageDaily(nil), snapshot.Daily...)
 	if len(rows) == 0 {
-		return make([]TrendPoint, 0), nil
+		if snapshot.Mode == store.AnalyticsReadDetailFallback ||
+			snapshot.Mode == store.AnalyticsReadAmbiguousFallback {
+			return "", make([]TrendPoint, 0), nil
+		}
+		return TrendHour, make([]TrendPoint, 0), nil
 	}
 	timezone := snapshot.ReportingTimezone
 	if timezone == "" {
-		return nil, errors.New("stored session daily timezone is missing")
+		return "", nil, errors.New("stored session trend timezone is missing")
 	}
 	location, err := time.LoadLocation(timezone)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	sort.Slice(rows, func(left, right int) bool {
 		return rows[left].BucketStartMS < rows[right].BucketStartMS
@@ -375,9 +383,24 @@ func mapSessionDailyTrend(snapshot store.SessionAnalyticsSnapshot) ([]TrendPoint
 		StartAtMS: startAtMS, EndAtMS: endAtMS, TimeZone: timezone,
 	}
 	if err := validateAndSortDaily(rows, rangeValue, snapshot.Generation); err != nil {
-		return nil, err
+		return "", nil, err
 	}
-	return groupTrend(rows, TrendDay, rangeValue, snapshot.Mode)
+	granularity := TrendHour
+	firstLocal := time.UnixMilli(rows[0].BucketStartMS).In(location)
+	for _, row := range rows[1:] {
+		local := time.UnixMilli(row.BucketStartMS).In(location)
+		if local.Year() != firstLocal.Year() ||
+			local.Month() != firstLocal.Month() ||
+			local.Day() != firstLocal.Day() {
+			granularity = TrendDay
+			break
+		}
+	}
+	points, err := groupTrend(rows, granularity, rangeValue, snapshot.Mode)
+	if err != nil {
+		return "", nil, err
+	}
+	return granularity, points, nil
 }
 
 func validateSessionTurnReconciliation(
@@ -851,7 +874,8 @@ func validateSessionSnapshotShape(snapshot store.SessionAnalyticsSnapshot, turnL
 	if (snapshot.Mode != store.AnalyticsReadDetailFallback &&
 		snapshot.Mode != store.AnalyticsReadAmbiguousFallback) || snapshot.Generation != nil ||
 		snapshot.PricingSource != "" || snapshot.Currency != "" ||
-		len(snapshot.PricingVersions) != 0 || len(snapshot.UnpricedReasons) != 0 {
+		len(snapshot.PricingVersions) != 0 || len(snapshot.UnpricedReasons) != 0 ||
+		len(snapshot.Daily) != 0 {
 		return errors.New("stored fallback session detail shape is invalid")
 	}
 	return nil

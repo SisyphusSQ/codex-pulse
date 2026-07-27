@@ -7,7 +7,7 @@ import (
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 )
 
-const ContractVersion = "usage-cost-v1"
+const ContractVersion = "usage-cost-v2"
 
 var ErrInvalidService = errors.New("usage cost query service is invalid")
 
@@ -159,7 +159,8 @@ type SessionDetailResponse struct {
 	Turns             []SessionTurnItem      `json:"turns"`
 	DegradedReason    *DegradedReason        `json:"degradedReason"`
 	ReportingTimeZone string                 `json:"reportingTimeZone"`
-	Daily             []TrendPoint           `json:"daily"`
+	TrendGranularity  TrendGranularity       `json:"trendGranularity"`
+	Trend             []TrendPoint           `json:"trend"`
 }
 
 type ProjectItem struct {

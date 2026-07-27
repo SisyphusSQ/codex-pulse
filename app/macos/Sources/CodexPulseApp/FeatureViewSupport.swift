@@ -62,62 +62,6 @@ struct RuntimeAwarePage<Content: View>: View {
     }
 }
 
-struct FeatureStateView<Value: Sendable, Content: View>: View {
-    let state: FeatureLoadState<Value>
-    let emptyTitle: String
-    let emptySystemImage: String
-    @ViewBuilder let content: (Value) -> Content
-
-    var body: some View {
-        Group {
-            switch state {
-            case .idle:
-                ContentUnavailableView(emptyTitle, systemImage: emptySystemImage)
-            case .loading(let previous):
-                if let previous {
-                    content(previous)
-                } else {
-                    PageProgressView(title: "正在加载…")
-                }
-            case .ready(let value):
-                content(value)
-            case .partial(let value, _):
-                content(value)
-            case .stale(let value, _):
-                content(value)
-            case .empty:
-                ContentUnavailableView(emptyTitle, systemImage: emptySystemImage)
-            case .unavailable(let notice):
-                ContentUnavailableView {
-                    Label("当前数据不可用", systemImage: "exclamationmark.icloud")
-                } description: {
-                    Text(notice.retryable ? "请稍后重试。" : "当前版本无法读取这部分数据。")
-                }
-            case .cancelled(let previous):
-                if let previous {
-                    content(previous)
-                } else {
-                    ContentUnavailableView("加载已取消", systemImage: "xmark.circle")
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-}
-
-struct PageProgressView: View {
-    let title: String
-
-    var body: some View {
-        VStack(spacing: 12) {
-            ProgressView().controlSize(.large)
-            Text(title).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
-    }
-}
-
 struct SectionCard<Content: View>: View {
     let title: String
     @ViewBuilder let content: () -> Content
