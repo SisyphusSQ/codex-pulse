@@ -128,6 +128,94 @@ func TestUsageCostRangeBucketsActiveGenerationByHour(t *testing.T) {
 	}
 }
 
+func TestUsageCostRangeBuildsTokenAndDistinctSessionActivityDistribution(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	zero := int64(0)
+	nextOffset := int64(10)
+	seedActivityTurn := func(sessionID, turnID, observedAt string, inputTokens int64) {
+		t.Helper()
+		observedAtMS := mustParseCostTime(t, observedAt)
+		startOffset := nextOffset
+		completeOffset := startOffset + 10
+		nextOffset += 20
+		if err := repository.UpsertFacts(context.Background(), FactBatch{
+			Session: &Session{
+				SessionID: sessionID, Provider: "codex", SourceKind: "session",
+				CreatedAtMS: observedAtMS - 10, FirstSeenAtMS: observedAtMS - 10,
+				LastSeenAtMS: observedAtMS,
+			},
+			Turn: &Turn{
+				TurnID: turnID, SessionID: sessionID, StartedAtMS: observedAtMS - 10,
+				CompletedAtMS: pointerTo(observedAtMS), Outcome: pointerTo("completed"),
+				SourceGeneration: 0, StartOffset: startOffset, CompleteOffset: &completeOffset,
+			},
+			Usage: &TurnUsage{
+				TurnID: turnID, ObservedAtMS: observedAtMS, IsFinal: true,
+				InputTokens: &inputTokens, CachedInputTokens: &zero,
+				OutputTokens: &zero, ReasoningTokens: &zero,
+				SourceGeneration: 0, SourceOffset: completeOffset, Confidence: "exact",
+				UpdatedAtMS: observedAtMS,
+			},
+		}); err != nil {
+			t.Fatalf("seed activity turn %q: %v", turnID, err)
+		}
+	}
+	seedActivityTurn("session-one", "turn-one-a", "2026-07-20T01:15:00Z", 10)
+	seedActivityTurn("session-one", "turn-one-b", "2026-07-20T01:45:00Z", 20)
+	seedActivityTurn("session-two", "turn-two", "2026-07-20T01:30:00Z", 30)
+	seedActivityTurn("session-one", "turn-one-c", "2026-07-21T02:00:00Z", 40)
+	seedActivityTurn("session-three", "turn-three", "2026-07-27T01:05:00Z", 50)
+
+	snapshot, err := repository.UsageCostRange(context.Background(), AnalyticsRange{
+		ReportingTimezone:           "UTC",
+		StartAtMS:                   mustParseCostTime(t, "2026-07-20T00:00:00Z"),
+		EndAtMS:                     mustParseCostTime(t, "2026-07-28T00:00:00Z"),
+		Granularity:                 AnalyticsGranularityHour,
+		IncludeActivityDistribution: true,
+	})
+	if err != nil {
+		t.Fatalf("UsageCostRange(activity) error = %v", err)
+	}
+	if snapshot.ActivityDistribution == nil {
+		t.Fatal("activity distribution is nil")
+	}
+	if snapshot.ActivityDistribution.TimelineGranularity != AnalyticsGranularityHour {
+		t.Fatalf("timeline granularity = %q", snapshot.ActivityDistribution.TimelineGranularity)
+	}
+	wantTimeline := []UsageActivityTimelinePoint{
+		{
+			BucketStartMS: mustParseCostTime(t, "2026-07-20T01:00:00Z"),
+			BucketEndMS:   mustParseCostTime(t, "2026-07-20T02:00:00Z"),
+			TotalTokens:   pointerTo(int64(60)), SessionCount: 2,
+		},
+		{
+			BucketStartMS: mustParseCostTime(t, "2026-07-21T02:00:00Z"),
+			BucketEndMS:   mustParseCostTime(t, "2026-07-21T03:00:00Z"),
+			TotalTokens:   pointerTo(int64(40)), SessionCount: 1,
+		},
+		{
+			BucketStartMS: mustParseCostTime(t, "2026-07-27T01:00:00Z"),
+			BucketEndMS:   mustParseCostTime(t, "2026-07-27T02:00:00Z"),
+			TotalTokens:   pointerTo(int64(50)), SessionCount: 1,
+		},
+	}
+	if !reflect.DeepEqual(snapshot.ActivityDistribution.Timeline, wantTimeline) {
+		t.Fatalf("timeline = %#v, want %#v", snapshot.ActivityDistribution.Timeline, wantTimeline)
+	}
+	wantWeekdayHours := []UsageActivityWeekdayHour{
+		{Weekday: 1, Hour: 1, TotalTokens: pointerTo(int64(110)), SessionCount: 3},
+		{Weekday: 2, Hour: 2, TotalTokens: pointerTo(int64(40)), SessionCount: 1},
+	}
+	if !reflect.DeepEqual(snapshot.ActivityDistribution.WeekdayHours, wantWeekdayHours) {
+		t.Fatalf(
+			"weekday hours = %#v, want %#v",
+			snapshot.ActivityDistribution.WeekdayHours, wantWeekdayHours,
+		)
+	}
+}
+
 func TestUsageCostRangeExactPartialDayPreservesActivePricing(t *testing.T) {
 	t.Parallel()
 

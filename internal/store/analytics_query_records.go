@@ -27,11 +27,12 @@ const (
 
 // AnalyticsRange 是已由业务 query 归一化的 UTC 半开区间。
 type AnalyticsRange struct {
-	ReportingTimezone string
-	StartAtMS         int64
-	EndAtMS           int64
-	Exact             bool
-	Granularity       AnalyticsGranularity
+	ReportingTimezone           string
+	StartAtMS                   int64
+	EndAtMS                     int64
+	Exact                       bool
+	Granularity                 AnalyticsGranularity
+	IncludeActivityDistribution bool
 }
 
 // CostReasonCount 汇总 range 内未定价 turn 的稳定原因。
@@ -42,14 +43,39 @@ type CostReasonCount struct {
 
 // UsageCostRangeSnapshot 是同一 SQLite read snapshot 内的 range 事实。
 type UsageCostRangeSnapshot struct {
-	Mode            AnalyticsReadMode
-	Generation      *CostRollupGeneration
-	PricingSource   string
-	Currency        string
-	Daily           []UsageDaily
-	Models          []ModelUsageDaily
-	PricingVersions []string
-	UnpricedReasons []CostReasonCount
+	Mode                 AnalyticsReadMode
+	Generation           *CostRollupGeneration
+	PricingSource        string
+	Currency             string
+	Daily                []UsageDaily
+	Models               []ModelUsageDaily
+	PricingVersions      []string
+	UnpricedReasons      []CostReasonCount
+	ActivityDistribution *UsageActivityDistribution
+}
+
+// UsageActivityTimelinePoint 汇总当前范围时间轴中一个非空桶的 Token 和去重会话数。
+type UsageActivityTimelinePoint struct {
+	BucketStartMS int64
+	BucketEndMS   int64
+	TotalTokens   *int64
+	SessionCount  int64
+}
+
+// UsageActivityWeekdayHour 汇总当前范围内一个星期小时格子。
+// Weekday 使用稳定的 ISO 序号：周一为 1，周日为 7。
+type UsageActivityWeekdayHour struct {
+	Weekday      int
+	Hour         int
+	TotalTokens  *int64
+	SessionCount int64
+}
+
+// UsageActivityDistribution 同时承载当前范围时间线和星期小时热力图。
+type UsageActivityDistribution struct {
+	TimelineGranularity AnalyticsGranularity
+	Timeline            []UsageActivityTimelinePoint
+	WeekdayHours        []UsageActivityWeekdayHour
 }
 
 type AnalyticsSortDirection string

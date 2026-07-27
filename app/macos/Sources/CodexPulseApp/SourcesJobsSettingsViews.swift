@@ -453,7 +453,18 @@ struct SettingsView: View {
                 range: 3_600...86_400, step: 3_600, response: response)
             KeyValueRow(
                 key: "下载策略", value: response.snapshot.updates.autoDownloadEnabled ? "自动下载" : "仅检查")
-            KeyValueRow(key: "更新渠道", value: ProductCopy.settingOption(response.snapshot.updates.channel))
+            Picker("更新渠道", selection: draftBinding(\.updateChannel)) {
+                ForEach(
+                    options(
+                        "updates.channel",
+                        response,
+                        fallback: ["stable", "prerelease"]
+                    ), id: \.self
+                ) {
+                    Text(ProductCopy.settingOption($0)).tag($0)
+                }
+            }
+            .disabled(!editable("updates.channel", response) || settingsAreBusy)
         }
     }
 

@@ -444,6 +444,8 @@ public nonisolated struct Codexpulse_Core_V1_UsageCostRequest: Sendable {
   /// Clears the value of `exactRange`. Subsequent reads from it will return its default value.
   public mutating func clearExactRange() {self._exactRange = nil}
 
+  public var includeActivityDistribution: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -829,6 +831,120 @@ public nonisolated struct Codexpulse_Core_V1_UsageModelItem: Sendable {
   fileprivate var _totals: Codexpulse_Core_V1_UsageTotals? = nil
 }
 
+public nonisolated struct Codexpulse_Core_V1_ActivityMetrics: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var totalTokens: Codexpulse_Core_V1_NumericValue {
+    get {_totalTokens ?? Codexpulse_Core_V1_NumericValue()}
+    set {_totalTokens = newValue}
+  }
+  /// Returns true if `totalTokens` has been explicitly set.
+  public var hasTotalTokens: Bool {self._totalTokens != nil}
+  /// Clears the value of `totalTokens`. Subsequent reads from it will return its default value.
+  public mutating func clearTotalTokens() {self._totalTokens = nil}
+
+  public var sessionCount: Codexpulse_Core_V1_NumericValue {
+    get {_sessionCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_sessionCount = newValue}
+  }
+  /// Returns true if `sessionCount` has been explicitly set.
+  public var hasSessionCount: Bool {self._sessionCount != nil}
+  /// Clears the value of `sessionCount`. Subsequent reads from it will return its default value.
+  public mutating func clearSessionCount() {self._sessionCount = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _totalTokens: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _sessionCount: Codexpulse_Core_V1_NumericValue? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_ActivityTimelinePoint: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var startAtMs: Codexpulse_Core_V1_NumericValue {
+    get {_startAtMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_startAtMs = newValue}
+  }
+  /// Returns true if `startAtMs` has been explicitly set.
+  public var hasStartAtMs: Bool {self._startAtMs != nil}
+  /// Clears the value of `startAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearStartAtMs() {self._startAtMs = nil}
+
+  public var endAtMs: Codexpulse_Core_V1_NumericValue {
+    get {_endAtMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_endAtMs = newValue}
+  }
+  /// Returns true if `endAtMs` has been explicitly set.
+  public var hasEndAtMs: Bool {self._endAtMs != nil}
+  /// Clears the value of `endAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearEndAtMs() {self._endAtMs = nil}
+
+  public var metrics: Codexpulse_Core_V1_ActivityMetrics {
+    get {_metrics ?? Codexpulse_Core_V1_ActivityMetrics()}
+    set {_metrics = newValue}
+  }
+  /// Returns true if `metrics` has been explicitly set.
+  public var hasMetrics: Bool {self._metrics != nil}
+  /// Clears the value of `metrics`. Subsequent reads from it will return its default value.
+  public mutating func clearMetrics() {self._metrics = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _startAtMs: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _endAtMs: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _metrics: Codexpulse_Core_V1_ActivityMetrics? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_ActivityWeekdayHourPoint: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// ISO weekday：周一为 1，周日为 7。
+  public var weekday: Int32 = 0
+
+  public var hour: Int32 = 0
+
+  public var metrics: Codexpulse_Core_V1_ActivityMetrics {
+    get {_metrics ?? Codexpulse_Core_V1_ActivityMetrics()}
+    set {_metrics = newValue}
+  }
+  /// Returns true if `metrics` has been explicitly set.
+  public var hasMetrics: Bool {self._metrics != nil}
+  /// Clears the value of `metrics`. Subsequent reads from it will return its default value.
+  public mutating func clearMetrics() {self._metrics = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _metrics: Codexpulse_Core_V1_ActivityMetrics? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_ActivityDistribution: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var timelineGranularity: String = String()
+
+  public var timeline: [Codexpulse_Core_V1_ActivityTimelinePoint] = []
+
+  public var weekdayHours: [Codexpulse_Core_V1_ActivityWeekdayHourPoint] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 public nonisolated struct Codexpulse_Core_V1_UsageCostResponse: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -912,6 +1028,15 @@ public nonisolated struct Codexpulse_Core_V1_UsageCostResponse: @unchecked Senda
     get {_storage._models}
     set {_uniqueStorage()._models = newValue}
   }
+
+  public var activityDistribution: Codexpulse_Core_V1_ActivityDistribution {
+    get {_storage._activityDistribution ?? Codexpulse_Core_V1_ActivityDistribution()}
+    set {_uniqueStorage()._activityDistribution = newValue}
+  }
+  /// Returns true if `activityDistribution` has been explicitly set.
+  public var hasActivityDistribution: Bool {_storage._activityDistribution != nil}
+  /// Clears the value of `activityDistribution`. Subsequent reads from it will return its default value.
+  public mutating func clearActivityDistribution() {_uniqueStorage()._activityDistribution = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -4399,6 +4524,8 @@ public nonisolated struct Codexpulse_Core_V1_SettingsUpdatesUpdate: Sendable {
 
   public var checkIntervalSeconds: Int64 = 0
 
+  public var channel: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -5685,7 +5812,7 @@ nonisolated extension Codexpulse_Core_V1_QueryRequest: SwiftProtobuf.Message, Sw
 
 nonisolated extension Codexpulse_Core_V1_UsageCostRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".UsageCostRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}range\0\u{1}granularity\0\u{3}exact_range\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}range\0\u{1}granularity\0\u{3}exact_range\0\u{3}include_activity_distribution\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -5696,6 +5823,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostRequest: SwiftProtobuf.Message
       case 1: try { try decoder.decodeSingularMessageField(value: &self._range) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.granularity) }()
       case 3: try { try decoder.decodeSingularMessageField(value: &self._exactRange) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.includeActivityDistribution) }()
       default: break
       }
     }
@@ -5715,6 +5843,9 @@ nonisolated extension Codexpulse_Core_V1_UsageCostRequest: SwiftProtobuf.Message
     try { if let v = self._exactRange {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
     } }()
+    if self.includeActivityDistribution != false {
+      try visitor.visitSingularBoolField(value: self.includeActivityDistribution, fieldNumber: 4)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -5722,6 +5853,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostRequest: SwiftProtobuf.Message
     if lhs._range != rhs._range {return false}
     if lhs.granularity != rhs.granularity {return false}
     if lhs._exactRange != rhs._exactRange {return false}
+    if lhs.includeActivityDistribution != rhs.includeActivityDistribution {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -6224,9 +6356,176 @@ nonisolated extension Codexpulse_Core_V1_UsageModelItem: SwiftProtobuf.Message, 
   }
 }
 
+nonisolated extension Codexpulse_Core_V1_ActivityMetrics: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ActivityMetrics"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}total_tokens\0\u{3}session_count\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._totalTokens) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._sessionCount) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._totalTokens {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try { if let v = self._sessionCount {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ActivityMetrics, rhs: Codexpulse_Core_V1_ActivityMetrics) -> Bool {
+    if lhs._totalTokens != rhs._totalTokens {return false}
+    if lhs._sessionCount != rhs._sessionCount {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ActivityTimelinePoint: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ActivityTimelinePoint"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}start_at_ms\0\u{3}end_at_ms\0\u{1}metrics\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._startAtMs) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._endAtMs) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._metrics) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._startAtMs {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try { if let v = self._endAtMs {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._metrics {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ActivityTimelinePoint, rhs: Codexpulse_Core_V1_ActivityTimelinePoint) -> Bool {
+    if lhs._startAtMs != rhs._startAtMs {return false}
+    if lhs._endAtMs != rhs._endAtMs {return false}
+    if lhs._metrics != rhs._metrics {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ActivityWeekdayHourPoint: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ActivityWeekdayHourPoint"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}weekday\0\u{1}hour\0\u{1}metrics\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt32Field(value: &self.weekday) }()
+      case 2: try { try decoder.decodeSingularInt32Field(value: &self.hour) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._metrics) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.weekday != 0 {
+      try visitor.visitSingularInt32Field(value: self.weekday, fieldNumber: 1)
+    }
+    if self.hour != 0 {
+      try visitor.visitSingularInt32Field(value: self.hour, fieldNumber: 2)
+    }
+    try { if let v = self._metrics {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ActivityWeekdayHourPoint, rhs: Codexpulse_Core_V1_ActivityWeekdayHourPoint) -> Bool {
+    if lhs.weekday != rhs.weekday {return false}
+    if lhs.hour != rhs.hour {return false}
+    if lhs._metrics != rhs._metrics {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ActivityDistribution: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ActivityDistribution"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}timeline_granularity\0\u{1}timeline\0\u{3}weekday_hours\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.timelineGranularity) }()
+      case 2: try { try decoder.decodeRepeatedMessageField(value: &self.timeline) }()
+      case 3: try { try decoder.decodeRepeatedMessageField(value: &self.weekdayHours) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.timelineGranularity.isEmpty {
+      try visitor.visitSingularStringField(value: self.timelineGranularity, fieldNumber: 1)
+    }
+    if !self.timeline.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.timeline, fieldNumber: 2)
+    }
+    if !self.weekdayHours.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.weekdayHours, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ActivityDistribution, rhs: Codexpulse_Core_V1_ActivityDistribution) -> Bool {
+    if lhs.timelineGranularity != rhs.timelineGranularity {return false}
+    if lhs.timeline != rhs.timeline {return false}
+    if lhs.weekdayHours != rhs.weekdayHours {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".UsageCostResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}range\0\u{3}reporting_time_zone\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{1}totals\0\u{1}trend\0\u{3}unpriced_reasons\0\u{3}degraded_reason\0\u{1}models\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}range\0\u{3}reporting_time_zone\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{1}totals\0\u{1}trend\0\u{3}unpriced_reasons\0\u{3}degraded_reason\0\u{1}models\0\u{3}activity_distribution\0")
 
   fileprivate class _StorageClass {
     var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
@@ -6240,6 +6539,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
     var _unpricedReasons: [Codexpulse_Core_V1_ReasonCount] = []
     var _degradedReason: String? = nil
     var _models: [Codexpulse_Core_V1_UsageModelItem] = []
+    var _activityDistribution: Codexpulse_Core_V1_ActivityDistribution? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -6261,6 +6561,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
       _unpricedReasons = source._unpricedReasons
       _degradedReason = source._degradedReason
       _models = source._models
+      _activityDistribution = source._activityDistribution
     }
   }
 
@@ -6290,6 +6591,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
         case 9: try { try decoder.decodeRepeatedMessageField(value: &_storage._unpricedReasons) }()
         case 10: try { try decoder.decodeSingularStringField(value: &_storage._degradedReason) }()
         case 11: try { try decoder.decodeRepeatedMessageField(value: &_storage._models) }()
+        case 12: try { try decoder.decodeSingularMessageField(value: &_storage._activityDistribution) }()
         default: break
         }
       }
@@ -6335,6 +6637,9 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
       if !_storage._models.isEmpty {
         try visitor.visitRepeatedMessageField(value: _storage._models, fieldNumber: 11)
       }
+      try { if let v = _storage._activityDistribution {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 12)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -6355,6 +6660,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
         if _storage._unpricedReasons != rhs_storage._unpricedReasons {return false}
         if _storage._degradedReason != rhs_storage._degradedReason {return false}
         if _storage._models != rhs_storage._models {return false}
+        if _storage._activityDistribution != rhs_storage._activityDistribution {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -11169,7 +11475,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsRefreshUpdate: SwiftProtobuf.Me
 
 nonisolated extension Codexpulse_Core_V1_SettingsUpdatesUpdate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SettingsUpdatesUpdate"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}auto_check_enabled\0\u{3}check_interval_seconds\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}auto_check_enabled\0\u{3}check_interval_seconds\0\u{1}channel\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -11179,6 +11485,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsUpdatesUpdate: SwiftProtobuf.Me
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularBoolField(value: &self.autoCheckEnabled) }()
       case 2: try { try decoder.decodeSingularInt64Field(value: &self.checkIntervalSeconds) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.channel) }()
       default: break
       }
     }
@@ -11191,12 +11498,16 @@ nonisolated extension Codexpulse_Core_V1_SettingsUpdatesUpdate: SwiftProtobuf.Me
     if self.checkIntervalSeconds != 0 {
       try visitor.visitSingularInt64Field(value: self.checkIntervalSeconds, fieldNumber: 2)
     }
+    if !self.channel.isEmpty {
+      try visitor.visitSingularStringField(value: self.channel, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Codexpulse_Core_V1_SettingsUpdatesUpdate, rhs: Codexpulse_Core_V1_SettingsUpdatesUpdate) -> Bool {
     if lhs.autoCheckEnabled != rhs.autoCheckEnabled {return false}
     if lhs.checkIntervalSeconds != rhs.checkIntervalSeconds {return false}
+    if lhs.channel != rhs.channel {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

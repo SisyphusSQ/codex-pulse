@@ -55,27 +55,34 @@ func (repository *Repository) UsageCostRange(
 		if err != nil {
 			return err
 		}
-		if handled {
+		if !handled {
+			var generation costRollupGenerationModel
+			err = database.Where(
+				"reporting_timezone = ? AND state = ?",
+				filter.ReportingTimezone, CostRollupGenerationActive,
+			).Take(&generation).Error
+			switch {
+			case err == nil:
+				err = loadActiveUsageCostRange(ctx, database, filter, generation, &snapshot)
+			case !errors.Is(err, gorm.ErrRecordNotFound):
+				return err
+			default:
+				err = loadUsageCostDetailFallback(ctx, database, filter, location, &snapshot)
+			}
+			if err != nil {
+				return err
+			}
+		}
+		if !filter.IncludeActivityDistribution {
 			return nil
 		}
-		var generation costRollupGenerationModel
-		err = database.Where(
-			"reporting_timezone = ? AND state = ?",
-			filter.ReportingTimezone, CostRollupGenerationActive,
-		).Take(&generation).Error
-		switch {
-		case err == nil:
-			return loadActiveUsageCostRange(ctx, database, filter, generation, &snapshot)
-		case !errors.Is(err, gorm.ErrRecordNotFound):
-			return err
-		default:
-			return loadUsageCostDetailFallback(ctx, database, filter, location, &snapshot)
-		}
+		return loadUsageActivityDistribution(ctx, database, filter, location, handled, &snapshot)
 	})
 	return snapshot, err
 }
 
 type lightTimedRangeProjection struct {
+	SessionID         string  `gorm:"column:session_id"`
 	ObservedAtMS      int64   `gorm:"column:observed_at_ms"`
 	ModelKey          *string `gorm:"column:model_key"`
 	ModelSource       string  `gorm:"column:model_source"`
@@ -123,7 +130,7 @@ func loadLightUsageCostRange(
 	}
 	var rows []lightTimedRangeProjection
 	if err := database.Table("light_token_timed AS timed").
-		Select("timed.observed_at_ms, timed.model_key, timed.model_source, timed.input_tokens, timed.cached_input_tokens, timed.output_tokens, timed.reasoning_tokens").
+		Select("timed.session_id, timed.observed_at_ms, timed.model_key, timed.model_source, timed.input_tokens, timed.cached_input_tokens, timed.output_tokens, timed.reasoning_tokens").
 		Joins("JOIN light_sessions AS session ON session.session_id = timed.session_id AND session.active_token_generation = timed.generation").
 		Where("timed.observed_at_ms >= ? AND timed.observed_at_ms < ?", filter.StartAtMS, filter.EndAtMS).
 		Order("timed.observed_at_ms, timed.session_id, timed.source_offset").Find(&rows).Error; err != nil {
@@ -225,6 +232,203 @@ func loadLightUsageCostRange(
 		})
 	}
 	return true, nil
+}
+
+type usageActivityFact struct {
+	sessionID    string
+	observedAtMS int64
+	totalTokens  *int64
+}
+
+type usageActivityAccumulator struct {
+	total    nullableSum
+	sessions map[string]struct{}
+}
+
+func newUsageActivityAccumulator() *usageActivityAccumulator {
+	return &usageActivityAccumulator{
+		total:    newNullableSum(),
+		sessions: make(map[string]struct{}),
+	}
+}
+
+func (aggregate *usageActivityAccumulator) add(fact usageActivityFact) error {
+	if fact.sessionID == "" {
+		return invalidRecord("activity fact session is missing")
+	}
+	if err := aggregate.total.add(fact.totalTokens); err != nil {
+		return err
+	}
+	aggregate.sessions[fact.sessionID] = struct{}{}
+	return nil
+}
+
+func (aggregate *usageActivityAccumulator) totalTokens() (*int64, error) {
+	return aggregate.total.pointer(), nil
+}
+
+func activityTotalTokens(
+	input, cached, output, reasoning *int64,
+	includeCached bool,
+) (*int64, error) {
+	components := []*int64{input}
+	if includeCached {
+		components = append(components, cached)
+	}
+	components = append(components, output, reasoning)
+	total := int64(0)
+	for _, component := range components {
+		if component == nil {
+			return nil, nil
+		}
+		var err error
+		total, err = addCostInteger(total, *component)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &total, nil
+}
+
+type usageActivityWeekdayHourKey struct {
+	weekday int
+	hour    int
+}
+
+func loadUsageActivityDistribution(
+	ctx context.Context,
+	database *gorm.DB,
+	filter AnalyticsRange,
+	location *time.Location,
+	lightIndex bool,
+	snapshot *UsageCostRangeSnapshot,
+) error {
+	facts, err := loadUsageActivityFacts(database, filter, lightIndex)
+	if err != nil {
+		return err
+	}
+	timeline := make(map[int64]*usageActivityAccumulator)
+	weekdayHours := make(map[usageActivityWeekdayHourKey]*usageActivityAccumulator)
+	for _, fact := range facts {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		bucket := analyticsBucketStart(fact.observedAtMS, filter, location)
+		if timeline[bucket] == nil {
+			timeline[bucket] = newUsageActivityAccumulator()
+		}
+		if err := timeline[bucket].add(fact); err != nil {
+			return err
+		}
+		local := time.UnixMilli(fact.observedAtMS).In(location)
+		key := usageActivityWeekdayHourKey{
+			weekday: (int(local.Weekday())+6)%7 + 1,
+			hour:    local.Hour(),
+		}
+		if weekdayHours[key] == nil {
+			weekdayHours[key] = newUsageActivityAccumulator()
+		}
+		if err := weekdayHours[key].add(fact); err != nil {
+			return err
+		}
+	}
+
+	distribution := &UsageActivityDistribution{
+		TimelineGranularity: filter.Granularity,
+		Timeline:            make([]UsageActivityTimelinePoint, 0, len(timeline)),
+		WeekdayHours:        make([]UsageActivityWeekdayHour, 0, len(weekdayHours)),
+	}
+	if distribution.TimelineGranularity == "" {
+		distribution.TimelineGranularity = AnalyticsGranularityDay
+	}
+	timelineKeys := make([]int64, 0, len(timeline))
+	for key := range timeline {
+		timelineKeys = append(timelineKeys, key)
+	}
+	sort.Slice(timelineKeys, func(left, right int) bool { return timelineKeys[left] < timelineKeys[right] })
+	for _, key := range timelineKeys {
+		totalTokens, err := timeline[key].totalTokens()
+		if err != nil {
+			return err
+		}
+		distribution.Timeline = append(distribution.Timeline, UsageActivityTimelinePoint{
+			BucketStartMS: key,
+			BucketEndMS:   analyticsBucketEnd(key, filter, location),
+			TotalTokens:   totalTokens,
+			SessionCount:  int64(len(timeline[key].sessions)),
+		})
+	}
+	weekdayHourKeys := make([]usageActivityWeekdayHourKey, 0, len(weekdayHours))
+	for key := range weekdayHours {
+		weekdayHourKeys = append(weekdayHourKeys, key)
+	}
+	sort.Slice(weekdayHourKeys, func(left, right int) bool {
+		if weekdayHourKeys[left].weekday != weekdayHourKeys[right].weekday {
+			return weekdayHourKeys[left].weekday < weekdayHourKeys[right].weekday
+		}
+		return weekdayHourKeys[left].hour < weekdayHourKeys[right].hour
+	})
+	for _, key := range weekdayHourKeys {
+		totalTokens, err := weekdayHours[key].totalTokens()
+		if err != nil {
+			return err
+		}
+		distribution.WeekdayHours = append(distribution.WeekdayHours, UsageActivityWeekdayHour{
+			Weekday: key.weekday, Hour: key.hour, TotalTokens: totalTokens,
+			SessionCount: int64(len(weekdayHours[key].sessions)),
+		})
+	}
+	snapshot.ActivityDistribution = distribution
+	return nil
+}
+
+func loadUsageActivityFacts(
+	database *gorm.DB,
+	filter AnalyticsRange,
+	lightIndex bool,
+) ([]usageActivityFact, error) {
+	if lightIndex {
+		var rows []lightTimedRangeProjection
+		if err := database.Table("light_token_timed AS timed").
+			Select("timed.session_id, timed.observed_at_ms, timed.input_tokens, timed.cached_input_tokens, timed.output_tokens, timed.reasoning_tokens").
+			Joins("JOIN light_sessions AS session ON session.session_id = timed.session_id AND session.active_token_generation = timed.generation").
+			Where("timed.observed_at_ms >= ? AND timed.observed_at_ms < ?", filter.StartAtMS, filter.EndAtMS).
+			Order("timed.observed_at_ms, timed.session_id, timed.source_offset").Find(&rows).Error; err != nil {
+			return nil, err
+		}
+		facts := make([]usageActivityFact, 0, len(rows))
+		for _, row := range rows {
+			input, cached := row.InputTokens, row.CachedInputTokens
+			output, reasoning := row.OutputTokens, row.ReasoningTokens
+			total, err := activityTotalTokens(&input, &cached, &output, &reasoning, false)
+			if err != nil {
+				return nil, err
+			}
+			facts = append(facts, usageActivityFact{
+				sessionID: row.SessionID, observedAtMS: row.ObservedAtMS,
+				totalTokens: total,
+			})
+		}
+		return facts, nil
+	}
+	rows, err := loadFinalCostFactsInRange(database, filter.StartAtMS, filter.EndAtMS)
+	if err != nil {
+		return nil, err
+	}
+	facts := make([]usageActivityFact, 0, len(rows))
+	for _, row := range rows {
+		total, err := activityTotalTokens(
+			row.InputTokens, row.CachedInputTokens, row.OutputTokens, row.ReasoningTokens, true,
+		)
+		if err != nil {
+			return nil, err
+		}
+		facts = append(facts, usageActivityFact{
+			sessionID: row.SessionID, observedAtMS: row.ObservedAtMS,
+			totalTokens: total,
+		})
+	}
+	return facts, nil
 }
 
 func loadLightPricingCatalogs(database *gorm.DB, endAtMS int64) ([]lightPricingCatalog, error) {
@@ -423,6 +627,26 @@ func analyticsBucketStart(observedAtMS int64, filter AnalyticsRange, location *t
 		return filter.StartAtMS
 	}
 	return bucket
+}
+
+func analyticsBucketEnd(bucketStartMS int64, filter AnalyticsRange, location *time.Location) int64 {
+	local := time.UnixMilli(bucketStartMS).In(location)
+	var endAtMS int64
+	if filter.Granularity == AnalyticsGranularityHour {
+		_, offsetSeconds := local.Zone()
+		fixedOffset := time.FixedZone("", offsetSeconds)
+		endAtMS = time.Date(
+			local.Year(), local.Month(), local.Day(), local.Hour()+1, 0, 0, 0, fixedOffset,
+		).UTC().UnixMilli()
+	} else {
+		endAtMS = time.Date(
+			local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, location,
+		).UTC().UnixMilli()
+	}
+	if endAtMS > filter.EndAtMS {
+		return filter.EndAtMS
+	}
+	return endAtMS
 }
 
 func loadActiveUsageCostRange(

@@ -158,6 +158,7 @@ message UsageCostRequest {
   LocalDateRange range = 1;
   string granularity = 2;
   optional UTCTimeRange exact_range = 3;
+  bool include_activity_distribution = 4;
 }
 
 message ListSessionsRequest { QueryRequest query = 1; }
@@ -219,6 +220,30 @@ message UsageModelItem {
   repeated TrendPoint trend = 4;
 }
 
+message ActivityMetrics {
+  NumericValue total_tokens = 1;
+  NumericValue session_count = 2;
+}
+
+message ActivityTimelinePoint {
+  NumericValue start_at_ms = 1;
+  NumericValue end_at_ms = 2;
+  ActivityMetrics metrics = 3;
+}
+
+message ActivityWeekdayHourPoint {
+  // ISO weekday：周一为 1，周日为 7。
+  int32 weekday = 1;
+  int32 hour = 2;
+  ActivityMetrics metrics = 3;
+}
+
+message ActivityDistribution {
+  string timeline_granularity = 1;
+  repeated ActivityTimelinePoint timeline = 2;
+  repeated ActivityWeekdayHourPoint weekday_hours = 3;
+}
+
 message UsageCostResponse {
   ResponseMeta meta = 1;
   UTCTimeRange range = 2;
@@ -231,6 +256,7 @@ message UsageCostResponse {
   repeated ReasonCount unpriced_reasons = 9;
   optional string degraded_reason = 10;
   repeated UsageModelItem models = 11;
+  ActivityDistribution activity_distribution = 12;
 }
 
 message SessionItem {
@@ -789,6 +815,7 @@ message SettingsRefreshUpdate {
 message SettingsUpdatesUpdate {
   bool auto_check_enabled = 1;
   int64 check_interval_seconds = 2;
+  string channel = 3;
 }
 
 message SettingsUIUpdate {

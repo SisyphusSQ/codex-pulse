@@ -47,7 +47,7 @@ func TestApplicationControlsUpdateSettingsPreservesReadOnlyPreferences(t *testin
 			ReconcileIntervalSeconds: 7200, JSONLDebounceMilliseconds: 5000,
 		},
 		Updates: SettingsUpdatesUpdate{
-			AutoCheckEnabled: false, CheckIntervalSeconds: 7200,
+			AutoCheckEnabled: false, CheckIntervalSeconds: 7200, Channel: "prerelease",
 		},
 		UI: SettingsUIUpdate{LaunchBehavior: "main_window", OverviewRange: "thirty_days"},
 	})
@@ -65,7 +65,7 @@ func TestApplicationControlsUpdateSettingsPreservesReadOnlyPreferences(t *testin
 		readback.UI.OverviewRange != preferences.OverviewRangeThirtyDays {
 		t.Fatalf("editable settings readback = %#v", readback)
 	}
-	if readback.Updates.AutoDownloadEnabled || readback.Updates.Channel != preferences.UpdateChannelStable ||
+	if readback.Updates.AutoDownloadEnabled || readback.Updates.Channel != preferences.UpdateChannelPrerelease ||
 		readback.Updates.SkippedVersion == nil || *readback.Updates.SkippedVersion != skippedVersion ||
 		readback.Updates.SnoozeUntilMS == nil || *readback.Updates.SnoozeUntilMS != snoozeUntilMS ||
 		readback.Updates.LastCheckAtMS == nil || *readback.Updates.LastCheckAtMS != lastCheckAtMS ||
@@ -364,6 +364,7 @@ func settingsRequestFromSnapshot(snapshot preferences.Snapshot) SettingsUpdateRe
 		Updates: SettingsUpdatesUpdate{
 			AutoCheckEnabled:     snapshot.Updates.AutoCheckEnabled,
 			CheckIntervalSeconds: snapshot.Updates.CheckIntervalSeconds,
+			Channel:              string(snapshot.Updates.Channel),
 		},
 		UI: SettingsUIUpdate{
 			LaunchBehavior: string(snapshot.UI.LaunchBehavior),

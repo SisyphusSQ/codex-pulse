@@ -49,10 +49,16 @@ final class StatusItemController: NSObject {
 
         popover.behavior = .transient
         popover.animates = true
+        let popoverContentSize = MenuBarPopoverLayout.contentSize(
+            availableScreenHeight: statusItem.button?.window?.screen?.visibleFrame.height
+                ?? NSScreen.main?.visibleFrame.height
+                ?? 720
+        )
         let popoverView = MenuBarPopoverView(
             model: model,
             preferences: displayPreferences,
             captureSource: captureSource,
+            contentSize: popoverContentSize,
             capturePopoverPNG: { [weak self] in
                 guard let self else { return nil }
                 return await self.captureCurrentPopoverPNG()
@@ -80,7 +86,7 @@ final class StatusItemController: NSObject {
             onQuit: onQuit
         )
         popover.contentViewController = NSHostingController(rootView: popoverView)
-        popover.contentSize = NSSize(width: 460, height: 640)
+        popover.contentSize = popoverContentSize
 
         model.$state
             .receive(on: RunLoop.main)
@@ -429,6 +435,7 @@ private struct MenuBarPopoverView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var preferences: StatusBarDisplayPreferences
     @ObservedObject var captureSource: PopoverCaptureSource
+    let contentSize: NSSize
     let capturePopoverPNG: @MainActor () async -> Data?
     let openProjectURL: @MainActor (URL) -> Bool
     let onQuickActionResult:
@@ -464,7 +471,7 @@ private struct MenuBarPopoverView: View {
             }
         }
         .foregroundStyle(.primary)
-        .frame(width: 460, height: 640)
+        .frame(width: contentSize.width, height: contentSize.height)
         .alert(
             quickActionResult?.title ?? "",
             isPresented: Binding(
@@ -500,6 +507,9 @@ private struct MenuBarPopoverView: View {
             ScrollView {
                 if let overview = model.presentation {
                     VStack(alignment: .leading, spacing: 18) {
+                        if let reminder = model.updateReminder {
+                            updateReminderSection(reminder)
+                        }
                         quotaSection(overview)
                         dailyTrendSection(overview)
                         resetCreditsSection(overview)
@@ -536,6 +546,11 @@ private struct MenuBarPopoverView: View {
     private func openProject() {
         let result = PopoverQuickActions.openProject(using: openProjectURL)
         onQuickActionResult(.openProject, result)
+        if result.isFailure { quickActionResult = result }
+    }
+
+    private func openUpdate(_ reminder: AppUpdateReminder) {
+        let result = PopoverQuickActions.openUpdate(reminder, using: openProjectURL)
         if result.isFailure { quickActionResult = result }
     }
 
@@ -595,6 +610,34 @@ private struct MenuBarPopoverView: View {
                 }
             }
         }
+    }
+
+    private func updateReminderSection(_ reminder: AppUpdateReminder) -> some View {
+        Button {
+            openUpdate(reminder)
+        } label: {
+            PulseCard {
+                HStack(spacing: 12) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(.blue)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("新版本 \(reminder.version) 可用")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text(reminder.title)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .buttonStyle(InteractiveCardButtonStyle())
+        .accessibilityIdentifier("popover.update-reminder")
+        .accessibilityLabel("新版本 \(reminder.version) 可用，打开版本页面")
     }
 
     private func resetCreditsSection(_ overview: OverviewPresentation) -> some View {

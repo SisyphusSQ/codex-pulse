@@ -33,7 +33,7 @@ func TestServiceUpdateSettingsValidatesCASAndExactReplay(t *testing.T) {
 		},
 		Updates: UpdatePreferences{
 			AutoCheckEnabled: false, AutoDownloadEnabled: false,
-			Channel: UpdateChannelStable, CheckIntervalSeconds: 7200,
+			Channel: UpdateChannelPrerelease, CheckIntervalSeconds: 7200,
 		},
 		UI: UIPreferences{
 			Locale: "zh-CN", LaunchBehavior: LaunchBehaviorMainWindow, OverviewRange: OverviewRangeThirtyDays,

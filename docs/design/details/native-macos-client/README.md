@@ -233,6 +233,13 @@ Proto3 scalar 默认值不能单独表达“未提供”和“真实为零”。
 
 Swift 生成类型到页面 state 的映射必须覆盖这四类情况，禁止使用 `value ?? 0` 抹平未知语义。
 
+Overview 当前范围通过 `UsageCostRequest.include_activity_distribution` 显式请求活动分布。
+`ActivityDistribution` 在同一精确 range 内返回按小时或按天的时间线，以及 ISO
+weekday（周一为 1）× 0～23 时的稀疏热力格；每个点同时携带 Token 和格内去重
+Session 数。Swift 只有在两组 Token 与 response totals 完整对账时才能把缺失格补为
+真实零，否则必须保留 unknown。独立的过去 365 天 Token 日历请求不设置该开关，避免
+为长期日历重复扫描会话分布。
+
 ### 5.4 错误
 
 错误由 gRPC status code 和 `ErrorDetail` 共同表达：
@@ -413,7 +420,7 @@ Swift cache 只用于展示连续性，不成为权威事实。任何 mutation �
 
 ## 9. 更新、签名和发布边界
 
-Swift/AppKit 是更新和 App 生命周期 owner。Go Helper 不提供检查、下载、安装、跳过或延后更新的 RPC。
+Swift/AppKit 是更新和 App 生命周期 owner。Go Helper 不提供检查、下载、安装、跳过或延后更新的 RPC。当前 Swift 客户端按 Helper 中的自动检查、检查间隔和 `stable` / `prerelease` 偏好查询公开 GitHub Releases；候选经 SemVer、draft/prerelease 一致性和本项目可信 URL 校验后，只在菜单栏 Popover 展示提醒。该能力不下载、不安装、不发系统通知，用户点击后才打开 Release 页面。
 
 发布顺序：
 
@@ -483,6 +490,7 @@ fixture 只用于 Preview/单元测试，不能用静态数据宣布 transport �
 - `NSStatusItem` 的动态额度视图提供 A 基准圆环、B 缺口圆环、D 仪表弧三种样式，默认 A；三种样式共享同一 `StatusBarQuotaPresentation`，优先展示 `limit_id=codex` 的真实周窗口，缺少通用周窗口时才选择其它周窗口或最长的已观测窗口。主窗口、配额页与 Popover 通过 Proto `limit_name` 显示“额度名称 · 动态周期”，默认桶名称缺失时回退“通用额度”，不得把多个 7 天窗口渲染成同名额度。第二行 Token 只有在 `UsageCost` 的精确 UTC range 与该额度窗口完全一致时才显示，否则保持 `已用 --`。旧版 `countdown` / `battery` / `meters` / `rings` 本地偏好在读取时迁移到 A，不保留错误的电池语义或固定窗口解释。
 - Popover 的“本周项目 Token 排行”不复用主 Overview 当前选择范围：每次先从 Quota Current 解析通用 10080 分钟窗口，再以同一 evaluated time 构造独立 Project exact range。请求固定 `totalTokens DESC`、limit 5，并在服务端聚合分页前筛除 unknown confidence，因此未归类“其他”既不展示也不占 Top 5 名额；周额度范围不可用或请求失败时显示局部 unavailable，不拿自然周、最近 7 天或当前主页面范围冒充。
 - Popover 顶部按 SessionNest 收敛为一行：左侧为产品名和橙色 `套餐 + 账号` 胶囊，右侧依次为 GitHub、分隔线、截图、刷新和打开主窗口。详情区宽度由 `420 pt` 增至 `460 pt`。GitHub、截图、刷新和打开主窗口仍是 Swift/AppKit 平台交互；只有用户显式激活项目按钮时才把固定 URL `https://github.com/SisyphusSQ/codex-pulse` 交给 `NSWorkspace`，Popover 展示、刷新、启动和后台更新均不得触发外跳。
+- Popover 常规屏幕内容高度为 `680 pt`，比原 `640 pt` 增加首屏可见内容；紧凑屏幕按可用高度减去 `40 pt` 安全边距回落。新版本提醒卡片只出现在该 Popover 的滚动内容顶部，不在主窗口或系统通知中重复展示；点击前再次验证为本项目 GitHub Release URL。
 - 账户信息属于 Go 拥有的本地业务能力：Helper 在已确认的 canonical Codex Home 下启动受控 App Server，通过 `account/read` 且固定 `refreshToken=false` 只解码 `type`、`email`、`planType`，再由 `AccountSnapshot` Core RPC 传给 Swift。Swift 不直接读取 SQLite、JSONL 或 session 文件。邮箱和套餐只在正常 Popover 账户胶囊中展示；复制完整截图时必须隐藏二者，剪贴板文本表示也不得包含这些值。token、refresh token、cookie、授权头、未声明的原始响应字段和原始 session 内容不得进入 DTO、日志或持久化。首次读取失败只让账户胶囊显示 unavailable，后续失败保留上次成功值，不降级整页 Overview。
 - 截图动作由 Swift/AppKit 捕获当前已打开的 `NSPopover` 原生视图树：顶栏和底栏各捕获一次，实际 `NSScrollView` 的可见区域按滚动偏移分段捕获并无缝拼接，禁止使用 `ImageRenderer` 或第二个 hosting view 从 DTO 重建截图专用页面。原生材质离开屏幕背景后产生的透明像素必须合成到当前 macOS appearance 对应的系统窗口底色，避免浅色文字或深色文字在其它应用中不可读。捕获期间账号/套餐胶囊只保留隐私隐藏状态，完成或失败后必须恢复原滚动位置和正常胶囊；文本与 PNG 必须写入同一个 `NSPasteboardItem` 的 `.string` / `.png` 两种表示。生成或写入任一步失败都必须显示错误并停止，禁止回退到 token、cookie、授权头、raw account scope、账号、套餐、内部 Session/Project identity、绝对路径、原始响应或日志，也不能留下半成功语义。四个图标按钮具有稳定 accessibility identifier/label、显式 `focusable` 状态及系统原生 Return / Space 激活；不得用 `onKeyPress(.tab)` 或等价逻辑建立私有循环。
 - Popover 的卡片、顶栏、返回、设置/退出、Picker 和 Toggle 行使用完整容器命中区，交互目标最小为 `44 pt`；透明扩展区域必须显式设置 `contentShape`。顶栏图标按 SessionNest 使用 `30 pt` 圆形视觉面和 `16 pt` 图标，外层 `44 pt` 仅用于命中，不放大图标；交互反馈采用中性圆形 hover、pressed 和焦点状态，并关闭系统蓝色 focus effect，修复刷新按钮重新出现蓝色选择框的回归，同时保留可见键盘焦点。Reset Credits 与显示设置子页继续使用紧凑返回按钮和唯一页面标题。手动刷新期间由 `AppModel.isOverviewRefreshing` 暴露真实请求忙碌状态，双箭头图标原位旋转、同步更新无障碍文案，并在请求结束前阻止重复刷新。

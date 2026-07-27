@@ -800,9 +800,13 @@ func TestUsageCostRangeBucketsLightTimedDeltasInRequestedTimezone(t *testing.T) 
 	observedAtMS := time.Date(2024, 7, 18, 23, 30, 0, 0, time.UTC).UnixMilli()
 	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
-		Checkpoint: LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100},
+		Checkpoint: LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes, Complete: true,
+			InputTokens: 100, CachedInputTokens: 20, OutputTokens: 10, ReasoningTokens: 2,
+		},
 		TimedDeltas: []LightTokenTimedDelta{{
-			SourceOffset: 4_000, ObservedAtMS: observedAtMS, InputTokens: 100,
+			SourceOffset: 4_000, ObservedAtMS: observedAtMS,
+			InputTokens: 100, CachedInputTokens: 20, OutputTokens: 10, ReasoningTokens: 2,
 		}},
 	}); err != nil {
 		t.Fatal(err)
@@ -815,14 +819,27 @@ func TestUsageCostRangeBucketsLightTimedDeltasInRequestedTimezone(t *testing.T) 
 	end := time.Date(2024, 7, 20, 0, 0, 0, 0, location).UTC().UnixMilli()
 	snapshot, err := repository.UsageCostRange(context.Background(), AnalyticsRange{
 		ReportingTimezone: "Asia/Shanghai", StartAtMS: start, EndAtMS: end,
+		IncludeActivityDistribution: true,
 	})
 	if err != nil || snapshot.Mode != AnalyticsReadLightIndex || snapshot.Generation != nil || len(snapshot.Daily) != 1 {
 		t.Fatalf("UsageCostRange(light) = %#v, %v", snapshot, err)
 	}
 	row := snapshot.Daily[0]
 	if row.BucketStartMS != start || row.ReportingTimezone != "Asia/Shanghai" ||
-		row.InputTokens == nil || *row.InputTokens != 100 || row.TotalTokens == nil || *row.TotalTokens != 100 {
+		row.InputTokens == nil || *row.InputTokens != 100 || row.TotalTokens == nil || *row.TotalTokens != 112 {
 		t.Fatalf("daily row = %#v", row)
+	}
+	if snapshot.ActivityDistribution == nil ||
+		len(snapshot.ActivityDistribution.Timeline) != 1 ||
+		len(snapshot.ActivityDistribution.WeekdayHours) != 1 ||
+		snapshot.ActivityDistribution.Timeline[0].TotalTokens == nil ||
+		*snapshot.ActivityDistribution.Timeline[0].TotalTokens != *row.TotalTokens ||
+		snapshot.ActivityDistribution.WeekdayHours[0].TotalTokens == nil ||
+		*snapshot.ActivityDistribution.WeekdayHours[0].TotalTokens != *row.TotalTokens ||
+		snapshot.ActivityDistribution.Timeline[0].SessionCount != 1 ||
+		snapshot.ActivityDistribution.WeekdayHours[0].Weekday != 5 ||
+		snapshot.ActivityDistribution.WeekdayHours[0].Hour != 7 {
+		t.Fatalf("light activity distribution = %#v", snapshot.ActivityDistribution)
 	}
 }
 

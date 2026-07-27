@@ -273,12 +273,14 @@ func TestGRPCServerReturnsOnlyAccountDisplayFields(t *testing.T) {
 // 测试 UsageCost RPC 映射保留精确 UTC 半开区间，不转换成本地自然日。
 func TestFromProtoUsageCostRequestPreservesExactRange(t *testing.T) {
 	request := fromProtoUsageCostRequest(&corev1.UsageCostRequest{
-		Granularity: "day",
+		Granularity:                 "day",
+		IncludeActivityDistribution: true,
 		ExactRange: &corev1.UTCTimeRange{
 			StartAtMs: 1_753_056_000_000, EndAtMs: 1_753_059_600_000, TimeZone: "Asia/Shanghai",
 		},
 	})
 	if request.Granularity != usagecost.TrendDay || request.ExactRange == nil ||
+		!request.IncludeActivityDistribution ||
 		request.ExactRange.StartAtMS != 1_753_056_000_000 || request.ExactRange.EndAtMS != 1_753_059_600_000 ||
 		request.ExactRange.TimeZone != "Asia/Shanghai" || request.Range != (basequery.LocalDateRange{}) {
 		t.Fatalf("mapped exact usage request = %#v", request)

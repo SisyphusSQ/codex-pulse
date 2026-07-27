@@ -242,8 +242,9 @@ private struct OverviewContentView: View {
                 pageHeader
                 if overview.fellBackFromQuotaWeek { fallbackNotice }
                 quotaStatusStrip
+                tokenActivitySection
                 consumptionSection
-                highConsumptionSessions
+                activityAndSessionsSection
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -345,6 +346,10 @@ private struct OverviewContentView: View {
                     .frame(minWidth: 220, idealWidth: 270, maxWidth: 310)
             }
         }
+    }
+
+    private var tokenActivitySection: some View {
+        TokenActivityCard(card: TokenActivityCardPresentation(overview.tokenActivity))
     }
 
     private var usageSummary: some View {
@@ -556,8 +561,34 @@ private struct OverviewContentView: View {
         }
     }
 
+    private var activityAndSessionsSection: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 16) {
+                activityDistributionCard
+                    .frame(minWidth: 560)
+                highConsumptionSessions
+                    .frame(minWidth: 320, idealWidth: 360, maxWidth: 420)
+            }
+            VStack(alignment: .leading, spacing: 16) {
+                activityDistributionCard
+                highConsumptionSessions
+            }
+        }
+    }
+
+    private var activityDistributionCard: some View {
+        OverviewActivityCard(
+            activity: overview.activityDistribution,
+            rangeLabel: overview.usageRangeLabel
+        )
+        .frame(minHeight: 500, alignment: .top)
+    }
+
     private var highConsumptionSessions: some View {
         SectionCard(title: "高消耗会话") {
+            Text("当前范围 · 按 Token 总量排序")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             if !overview.sessionsAvailable {
                 Text("会话消耗暂时不可用。").foregroundStyle(.secondary)
             } else if overview.sessions.isEmpty {
@@ -570,19 +601,20 @@ private struct OverviewContentView: View {
                                 .font(.caption.bold())
                                 .foregroundStyle(.secondary)
                                 .frame(width: 20)
-                            Image(systemName: "terminal").foregroundStyle(.tint).frame(width: 22)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(session.title).lineLimit(1)
-                                Text(
-                                    [session.project, ProductCopy.status(session.activity)]
-                                        .compactMap { $0 }.joined(separator: " · ")
-                                )
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                if let project = session.project {
+                                    Text(project)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
                             }
                             Spacer()
-                            TokenBreakdownView(tokens: session.tokenBreakdown, style: .compact)
-                                .frame(maxWidth: 250, alignment: .trailing)
+                            Text(sessionTokenText(session.tokens))
+                                .font(.subheadline.weight(.semibold))
+                                .monospacedDigit()
+                                .foregroundStyle(.tint)
                             Image(systemName: "chevron.right")
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
@@ -596,6 +628,12 @@ private struct OverviewContentView: View {
                 Button("查看全部会话") { onNavigate(.sessions) }.buttonStyle(.link)
             }
         }
+        .frame(minHeight: 500, alignment: .top)
+    }
+
+    private func sessionTokenText(_ metric: DisplayMetric) -> String {
+        guard case .known(let value, _) = metric else { return "--" }
+        return "\(TokenQuantityFormatter.compactString(value)) Token"
     }
 
     private var chartPoints: [OverviewChartPoint] {
@@ -698,6 +736,417 @@ private struct OverviewContentView: View {
     private func quotaResetText(_ window: QuotaWindowPresentation) -> String {
         guard window.resetRemainingMS != nil else { return "重置时间待定" }
         return "\(ProductCopy.duration(milliseconds: window.resetRemainingMS))后重置"
+    }
+}
+
+private struct OverviewActivityCard: View {
+    let activity: OverviewActivityPresentation
+    let rangeLabel: String
+    @State private var selectedMetric = OverviewActivityMetric.tokenConsumption
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("活动分布")
+                        .font(.headline)
+                    Text(scopeText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 12)
+                Picker("活动指标", selection: $selectedMetric) {
+                    ForEach(OverviewActivityMetric.allCases) { metric in
+                        Text(metric.title).tag(metric)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 220)
+            }
+
+            switch activity.availability {
+            case .unavailable:
+                ContentUnavailableView(
+                    "活动分布暂时不可用",
+                    systemImage: "chart.bar.xaxis",
+                    description: Text("当前范围的 Token 与会话活动尚未准备好。")
+                )
+                .frame(maxWidth: .infinity, minHeight: 390)
+            case .available, .partial:
+                timelineChart
+                Divider()
+                weekdayHourHeatmap
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(.quaternary, lineWidth: 1)
+        }
+    }
+
+    @ViewBuilder
+    private var timelineChart: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("按\(activity.timelineGranularity == .hour ? "小时" : "天")活动")
+                .font(.subheadline.weight(.semibold))
+            if timelinePoints.isEmpty {
+                ContentUnavailableView(
+                    "当前范围暂无活动",
+                    systemImage: "chart.bar.xaxis"
+                )
+                .frame(maxWidth: .infinity, minHeight: 150)
+            } else {
+                Chart(timelinePoints) { point in
+                    BarMark(
+                        x: .value("时间", point.date),
+                        y: .value(selectedMetric.title, point.value)
+                    )
+                    .foregroundStyle(metricColor.gradient)
+                    .cornerRadius(2)
+                    .accessibilityLabel(activityTimeText(point.date))
+                    .accessibilityValue(activityValueText(point.value))
+                }
+                .chartYAxis {
+                    AxisMarks(position: .leading) { value in
+                        AxisGridLine().foregroundStyle(.quaternary)
+                        AxisValueLabel {
+                            if let value = value.as(Int64.self) {
+                                Text(axisValueText(value))
+                            }
+                        }
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 6))
+                }
+                .frame(height: 170)
+            }
+        }
+    }
+
+    private var weekdayHourHeatmap: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("星期与小时分布")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(activity.availability == .partial ? "部分格子暂不可用" : "颜色越深，活动越集中")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            GeometryReader { proxy in
+                let spacing: CGFloat = 3
+                let labelWidth: CGFloat = 30
+                let availableWidth = proxy.size.width - labelWidth - spacing * 24
+                let cellSize = min(22, max(6, availableWidth / 24))
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: spacing) {
+                        Color.clear.frame(width: labelWidth, height: 12)
+                        ForEach(0..<24, id: \.self) { hour in
+                            Text(hour.isMultiple(of: 3) ? "\(hour)" : "")
+                                .font(.system(size: 8))
+                                .foregroundStyle(.secondary)
+                                .frame(width: cellSize, height: 12)
+                        }
+                    }
+                    ForEach(1...7, id: \.self) { weekday in
+                        HStack(spacing: spacing) {
+                            Text(weekdayText(weekday))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .frame(width: labelWidth, alignment: .leading)
+                            ForEach(cells(for: weekday)) { cell in
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .fill(heatmapColor(cell))
+                                    .frame(width: cellSize, height: cellSize)
+                                    .help(cellHelp(cell))
+                                    .accessibilityLabel(
+                                        "\(weekdayText(cell.weekday)) \(cell.hour)时"
+                                    )
+                                    .accessibilityValue(cellValueText(cell))
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(height: 202)
+        }
+    }
+
+    private var timelinePoints: [OverviewActivityChartPoint] {
+        activity.timeline.compactMap { point in
+            guard let value = point.value(for: selectedMetric) else { return nil }
+            return OverviewActivityChartPoint(
+                id: point.id,
+                date: Date(timeIntervalSince1970: Double(point.startAtMS) / 1_000),
+                value: value
+            )
+        }
+    }
+
+    private var maximumHeatmapValue: Int64 {
+        activity.heatmap.compactMap { $0.value(for: selectedMetric) }.max() ?? 0
+    }
+
+    private var metricColor: Color {
+        selectedMetric == .tokenConsumption ? .blue : .green
+    }
+
+    private var granularityText: String {
+        activity.timelineGranularity == .hour ? "按小时" : "按天"
+    }
+
+    private var scopeText: String {
+        rangeLabel.contains(granularityText) ? rangeLabel : "\(rangeLabel) · \(granularityText)"
+    }
+
+    private func cells(for weekday: Int) -> [OverviewActivityHeatmapCell] {
+        activity.heatmap.filter { $0.weekday == weekday }
+    }
+
+    private func heatmapColor(_ cell: OverviewActivityHeatmapCell) -> Color {
+        guard let value = cell.value(for: selectedMetric) else {
+            return Color.secondary.opacity(0.12)
+        }
+        guard value > 0, maximumHeatmapValue > 0 else {
+            return metricColor.opacity(0.07)
+        }
+        let ratio = min(max(Double(value) / Double(maximumHeatmapValue), 0), 1)
+        return metricColor.opacity(0.18 + ratio * 0.72)
+    }
+
+    private func weekdayText(_ weekday: Int) -> String {
+        ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][
+            min(max(weekday - 1, 0), 6)
+        ]
+    }
+
+    private func activityTimeText(_ date: Date) -> String {
+        if activity.timelineGranularity == .hour {
+            return date.formatted(.dateTime.month().day().hour())
+        }
+        return date.formatted(.dateTime.month().day())
+    }
+
+    private func activityValueText(_ value: Int64) -> String {
+        switch selectedMetric {
+        case .tokenConsumption: "\(TokenQuantityFormatter.string(value)) Token"
+        case .sessionCount: "\(value) 个会话"
+        }
+    }
+
+    private func axisValueText(_ value: Int64) -> String {
+        switch selectedMetric {
+        case .tokenConsumption: TokenQuantityFormatter.compactString(value)
+        case .sessionCount: value.formatted()
+        }
+    }
+
+    private func cellValueText(_ cell: OverviewActivityHeatmapCell) -> String {
+        guard let value = cell.value(for: selectedMetric) else { return "数据暂不可用" }
+        return activityValueText(value)
+    }
+
+    private func cellHelp(_ cell: OverviewActivityHeatmapCell) -> String {
+        "\(weekdayText(cell.weekday)) \(cell.hour)时 · \(cellValueText(cell))"
+    }
+}
+
+private struct OverviewActivityChartPoint: Identifiable {
+    let id: Int64
+    let date: Date
+    let value: Int64
+}
+
+private struct TokenActivityCard: View {
+    let card: TokenActivityCardPresentation
+    @State private var hoverState = TokenActivityHoverState()
+
+    var body: some View {
+        SectionCard(title: card.title) {
+            if card.availability == .unavailable {
+                ContentUnavailableView(
+                    "年度活动暂时不可用",
+                    systemImage: "calendar.badge.exclamationmark",
+                    description: Text("额度状态和消耗概览仍可继续查看。")
+                )
+                .frame(height: 160)
+            } else {
+                metricStrip
+                Divider()
+                heatmapHeader
+                heatmap
+            }
+        }
+        .accessibilityIdentifier("overview.token-activity")
+    }
+
+    private var metricStrip: some View {
+        HStack(alignment: .top, spacing: 14) {
+            ForEach(Array(card.metrics.enumerated()), id: \.element.id) { index, metric in
+                if index > 0 { Divider().frame(height: 54) }
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(metric.value)
+                        .font(.system(size: 22, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                    Text(metric.title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+            }
+        }
+    }
+
+    private var heatmapHeader: some View {
+        HStack(spacing: 10) {
+            Text(card.scope)
+                .font(.subheadline.weight(.semibold))
+            if let notice = card.notice {
+                Label(notice, systemImage: "externaldrive")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+    }
+
+    private var heatmap: some View {
+        GeometryReader { geometry in
+            let weekCount = max(card.calendar.weeks.count, 1)
+            let labelWidth: CGFloat = 24
+            let spacing: CGFloat = geometry.size.width >= 900 ? 3 : 2
+            let availableWidth =
+                geometry.size.width - labelWidth - 8 - spacing * CGFloat(weekCount - 1)
+            let cellSize = max(6, availableWidth / CGFloat(weekCount))
+
+            HStack(alignment: .top, spacing: 8) {
+                weekdayLabels(cellSize: cellSize, spacing: spacing)
+                VStack(alignment: .leading, spacing: 4) {
+                    monthLabels(cellSize: cellSize, spacing: spacing)
+                    HStack(alignment: .top, spacing: spacing) {
+                        ForEach(card.calendar.weeks) { week in
+                            VStack(spacing: spacing) {
+                                ForEach(Array(week.days.enumerated()), id: \.offset) { _, day in
+                                    activityCell(
+                                        day,
+                                        size: cellSize,
+                                        tooltipAlignment: week.id >= weekCount / 2
+                                            ? .topTrailing : .topLeading
+                                    )
+                                }
+                            }
+                            .zIndex(week.days.compactMap { $0 }.contains(where: {
+                                hoverState.isHovered(dayID: $0.id)
+                            }) ? 1 : 0)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(6.8, contentMode: .fit)
+    }
+
+    private func weekdayLabels(cellSize: CGFloat, spacing: CGFloat) -> some View {
+        VStack(spacing: spacing) {
+            ForEach(0..<7, id: \.self) { index in
+                Text(index == 0 ? "一" : index == 2 ? "三" : index == 4 ? "五" : "")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: cellSize, alignment: .trailing)
+            }
+        }
+        .padding(.top, 18)
+        .accessibilityHidden(true)
+    }
+
+    private func monthLabels(cellSize: CGFloat, spacing: CGFloat) -> some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(card.calendar.monthLabels) { label in
+                Text(label.title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .offset(x: CGFloat(label.weekIndex) * (cellSize + spacing))
+            }
+        }
+        .frame(height: 14)
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func activityCell(
+        _ value: TokenActivityCalendarDay?,
+        size: CGFloat,
+        tooltipAlignment: Alignment
+    ) -> some View {
+        if let value {
+            RoundedRectangle(cornerRadius: max(2, size * 0.22), style: .continuous)
+                .fill(color(for: value.intensity))
+                .frame(width: size, height: size)
+                .overlay {
+                    if value.intensity == .unknown {
+                        RoundedRectangle(
+                            cornerRadius: max(2, size * 0.22),
+                            style: .continuous
+                        )
+                        .stroke(.secondary.opacity(0.28), lineWidth: 0.7)
+                    }
+                }
+                .overlay(alignment: tooltipAlignment) {
+                    if hoverState.isHovered(dayID: value.id) {
+                        Text(card.dayDetail(value))
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                            .fixedSize()
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(
+                                .ultraThickMaterial,
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(.separator.opacity(0.55), lineWidth: 0.5)
+                            }
+                            .shadow(color: .black.opacity(0.14), radius: 5, y: 2)
+                            .offset(y: -32)
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    }
+                }
+                .contentShape(Rectangle())
+                .onHover { isHovering in
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        hoverState.update(isHovering: isHovering, dayID: value.id)
+                    }
+                }
+                .zIndex(hoverState.isHovered(dayID: value.id) ? 1 : 0)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(card.dayDetail(value))
+        } else {
+            Color.clear
+                .frame(width: size, height: size)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func color(for intensity: TokenActivityIntensity) -> Color {
+        switch intensity {
+        case .unknown: .secondary.opacity(0.08)
+        case .none: .secondary.opacity(0.10)
+        case .low: .blue.opacity(0.24)
+        case .medium: .blue.opacity(0.43)
+        case .high: .blue.opacity(0.68)
+        case .veryHigh: .blue
+        }
     }
 }
 

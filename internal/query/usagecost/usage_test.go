@@ -151,6 +151,70 @@ func TestUsageCostGroupsHourlyTrend(t *testing.T) {
 	assertKnownNumeric(t, response.Totals.TotalTokens, 3, basequery.NumericTokens)
 }
 
+func TestUsageCostMapsRequestedActivityDistribution(t *testing.T) {
+	t.Parallel()
+
+	start := mustUsageTime(t, "2026-07-20T00:00:00Z")
+	bucketStart := mustUsageTime(t, "2026-07-20T01:00:00Z")
+	bucketEnd := mustUsageTime(t, "2026-07-20T02:00:00Z")
+	end := mustUsageTime(t, "2026-07-21T00:00:00Z")
+	totalTokens := int64(60)
+	reader := usageReaderFunc(func(_ context.Context, filter store.AnalyticsRange) (store.UsageCostRangeSnapshot, error) {
+		if !filter.IncludeActivityDistribution {
+			t.Fatal("activity distribution was not requested from store")
+		}
+		return store.UsageCostRangeSnapshot{
+			Mode: store.AnalyticsReadLightIndex,
+			Daily: []store.UsageDaily{{
+				BucketStartMS: bucketStart, ReportingTimezone: "UTC",
+				RollupTotals: store.RollupTotals{
+					InputTokens: &totalTokens, CachedInputTokens: int64Ptr(0),
+					OutputTokens: int64Ptr(0), ReasoningTokens: int64Ptr(0),
+					TotalTokens: &totalTokens,
+				},
+			}},
+			PricingVersions: make([]string, 0),
+			UnpricedReasons: make([]store.CostReasonCount, 0),
+			ActivityDistribution: &store.UsageActivityDistribution{
+				TimelineGranularity: store.AnalyticsGranularityHour,
+				Timeline: []store.UsageActivityTimelinePoint{{
+					BucketStartMS: bucketStart, BucketEndMS: bucketEnd,
+					TotalTokens: &totalTokens, SessionCount: 2,
+				}},
+				WeekdayHours: []store.UsageActivityWeekdayHour{{
+					Weekday: 1, Hour: 1, TotalTokens: &totalTokens, SessionCount: 2,
+				}},
+			},
+		}, nil
+	})
+	service := newUsageService(t, reader)
+	response, err := service.UsageCost(context.Background(), UsageCostRequest{
+		ExactRange:                  &basequery.UTCTimeRange{StartAtMS: start, EndAtMS: end, TimeZone: "UTC"},
+		Granularity:                 TrendHour,
+		IncludeActivityDistribution: true,
+	})
+	if err != nil {
+		t.Fatalf("UsageCost(activity) error = %v", err)
+	}
+	if response.ActivityDistribution == nil ||
+		response.ActivityDistribution.TimelineGranularity != TrendHour ||
+		len(response.ActivityDistribution.Timeline) != 1 ||
+		len(response.ActivityDistribution.WeekdayHours) != 1 {
+		t.Fatalf("activity distribution = %#v", response.ActivityDistribution)
+	}
+	timeline := response.ActivityDistribution.Timeline[0]
+	assertKnownNumeric(t, timeline.StartAtMS, bucketStart, basequery.NumericMilliseconds)
+	assertKnownNumeric(t, timeline.EndAtMS, bucketEnd, basequery.NumericMilliseconds)
+	assertKnownNumeric(t, timeline.Metrics.TotalTokens, totalTokens, basequery.NumericTokens)
+	assertKnownNumeric(t, timeline.Metrics.SessionCount, 2, basequery.NumericCount)
+	weekdayHour := response.ActivityDistribution.WeekdayHours[0]
+	if weekdayHour.Weekday != 1 || weekdayHour.Hour != 1 {
+		t.Fatalf("weekday hour = %#v", weekdayHour)
+	}
+	assertKnownNumeric(t, weekdayHour.Metrics.TotalTokens, totalTokens, basequery.NumericTokens)
+	assertKnownNumeric(t, weekdayHour.Metrics.SessionCount, 2, basequery.NumericCount)
+}
+
 // 测试 UsageCost 在精确 UTC 范围下不扩展为自然日，并把趋势边界裁剪到请求区间。
 func TestUsageCostUsesExactRangeWithoutLocalDayExpansion(t *testing.T) {
 	t.Parallel()
@@ -474,6 +538,47 @@ func TestUsageCostRejectsInconsistentStoredTotalsAndEvidence(t *testing.T) {
 				t.Fatalf("UsageCost() error = %v, want unavailable", err)
 			}
 		})
+	}
+}
+
+func TestUsageCostRejectsActivityDistributionThatDoesNotReconcile(t *testing.T) {
+	t.Parallel()
+
+	one, two, zero := int64(1), int64(2), int64(0)
+	service := newUsageService(t, usageReaderFunc(func(
+		context.Context, store.AnalyticsRange,
+	) (store.UsageCostRangeSnapshot, error) {
+		return store.UsageCostRangeSnapshot{
+			Mode: store.AnalyticsReadLightIndex,
+			Daily: []store.UsageDaily{{
+				BucketStartMS: 0, ReportingTimezone: "UTC",
+				RollupTotals: store.RollupTotals{
+					InputTokens: &one, CachedInputTokens: &zero, OutputTokens: &zero,
+					ReasoningTokens: &zero, TotalTokens: &one,
+				},
+			}},
+			PricingVersions: make([]string, 0),
+			UnpricedReasons: make([]store.CostReasonCount, 0),
+			ActivityDistribution: &store.UsageActivityDistribution{
+				TimelineGranularity: store.AnalyticsGranularityDay,
+				Timeline: []store.UsageActivityTimelinePoint{{
+					BucketStartMS: 0, BucketEndMS: 86_400_000,
+					TotalTokens: &two, SessionCount: 1,
+				}},
+				WeekdayHours: []store.UsageActivityWeekdayHour{{
+					Weekday: 4, Hour: 0, TotalTokens: &two, SessionCount: 1,
+				}},
+			},
+		}, nil
+	}))
+	_, err := service.UsageCost(context.Background(), UsageCostRequest{
+		Range: basequery.LocalDateRange{
+			StartDate: "1970-01-01", EndDateExclusive: "1970-01-02", TimeZone: "UTC",
+		},
+		Granularity: TrendDay, IncludeActivityDistribution: true,
+	})
+	if !errors.Is(err, basequery.ErrUnavailable) {
+		t.Fatalf("UsageCost(inconsistent activity) error = %v, want unavailable", err)
 	}
 }
 

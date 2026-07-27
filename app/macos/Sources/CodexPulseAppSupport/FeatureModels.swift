@@ -152,6 +152,7 @@ public struct SettingsDraft: Equatable, Sendable {
     public var jsonlDebounceMilliseconds: Int64
     public var autoCheckEnabled: Bool
     public var checkIntervalSeconds: Int64
+    public var updateChannel: String
     public var launchBehavior: String
     public var overviewRange: String
 
@@ -165,6 +166,7 @@ public struct SettingsDraft: Equatable, Sendable {
         jsonlDebounceMilliseconds = snapshot.refresh.jsonlDebounceMilliseconds
         autoCheckEnabled = snapshot.updates.autoCheckEnabled
         checkIntervalSeconds = snapshot.updates.checkIntervalSeconds
+        updateChannel = snapshot.updates.channel
         launchBehavior = snapshot.ui.launchBehavior
         overviewRange = snapshot.ui.overviewRange
     }
@@ -199,6 +201,8 @@ public struct SettingsDraft: Equatable, Sendable {
             ? autoCheckEnabled : current.autoCheckEnabled
         updates.checkIntervalSeconds = editable.contains("updates.checkIntervalSeconds")
             ? checkIntervalSeconds : current.checkIntervalSeconds
+        updates.channel = editable.contains("updates.channel")
+            ? updateChannel : current.updateChannel
         request.updates = updates
 
         var ui = Codexpulse_Core_V1_SettingsUIUpdate()
