@@ -287,11 +287,3 @@ func cloneStringPointer(value *string) *string {
 	}
 	return cloneString(*value)
 }
-
-func cloneInt64(value *int64) *int64 {
-	if value == nil {
-		return nil
-	}
-	cloned := *value
-	return &cloned
-}

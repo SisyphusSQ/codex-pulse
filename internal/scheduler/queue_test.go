@@ -10,6 +10,20 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
+func (service *Service) promoteForTest(
+	ctx context.Context,
+	dedupeKey string,
+) (store.SchedulerTask, error) {
+	if service == nil || service.repository == nil || dedupeKey == "" {
+		return store.SchedulerTask{}, ErrInvalidService
+	}
+	atMS, err := service.afterMS(0, store.MaxSchedulerTimestampMS)
+	if err != nil {
+		return store.SchedulerTask{}, err
+	}
+	return service.repository.PromoteSchedulerTask(ctx, dedupeKey, atMS)
+}
+
 func TestServiceEnqueueAndPromoteUseExactDurableTaskIdentity(t *testing.T) {
 	t.Parallel()
 
@@ -36,10 +50,10 @@ func TestServiceEnqueueAndPromoteUseExactDurableTaskIdentity(t *testing.T) {
 	if err != nil || replay != created {
 		t.Fatalf("Enqueue(replay) = %#v, %v, want %#v", replay, err, created)
 	}
-	promoted, err := service.Promote(context.Background(), request.DedupeKey)
+	promoted, err := service.promoteForTest(context.Background(), request.DedupeKey)
 	if err != nil || promoted.ServiceClass != store.SchedulerServiceInteractive ||
 		promoted.TaskID != created.TaskID {
-		t.Fatalf("Promote() = %#v, %v", promoted, err)
+		t.Fatalf("promoteForTest() = %#v, %v", promoted, err)
 	}
 	replay, err = service.Enqueue(context.Background(), request)
 	if err != nil || replay != promoted {

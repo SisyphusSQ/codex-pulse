@@ -279,14 +279,6 @@ type ParseStats struct {
 	EventsEmitted     uint64
 }
 
-func (stats *ParseStats) add(other ParseStats) {
-	stats.CompleteLines += other.CompleteLines
-	stats.ParsedLines += other.ParsedLines
-	stats.KnownIgnoredLines += other.KnownIgnoredLines
-	stats.DiagnosticLines += other.DiagnosticLines
-	stats.EventsEmitted += other.EventsEmitted
-}
-
 type ParseResult struct {
 	Events            []ParsedEvent
 	Diagnostics       []ParserDiagnostic

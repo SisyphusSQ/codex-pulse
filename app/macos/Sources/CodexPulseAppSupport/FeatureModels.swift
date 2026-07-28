@@ -364,8 +364,3 @@ public enum FeatureResponseMerge {
 public func pageHasMore(_ meta: Codexpulse_Core_V1_ResponseMeta) -> Bool {
     meta.hasPage && meta.page.hasMore_p && meta.page.hasNextCursor
 }
-
-public func safeTimestamp(_ metric: Codexpulse_Core_V1_NumericValue) -> Date? {
-    guard metric.hasValue else { return nil }
-    return Date(timeIntervalSince1970: TimeInterval(metric.value) / 1_000)
-}

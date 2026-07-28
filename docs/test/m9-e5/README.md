@@ -1,5 +1,7 @@
 # M9-E5 原生右键菜单、窗口激活与页面跳转
 
+> 历史记录：本页冻结 Wails 时代 TOO-289 的提交版证据。对应 native replay 与运行时已退役；下面的命令和路径只用于解释当时结果，不能作为当前仓库验证入口。
+
 ## 范围与安全边界
 
 - Issue：`TOO-289`
@@ -20,19 +22,11 @@
 | 安全退出 | PASS | 先封闭并等待 lifecycle controls、quota worker、scheduler/coordinator；15 秒超时 fail closed、记录并保留应用，drain 完成后才 Quit |
 | 配额兼容 | PASS | TOO-288 的动态窗口行为保持：primary 缺失时不显示“5 小时”或 `5 小时 --`，未来数据恢复后动态出现 |
 
-## 可复现命令
+## 历史验证方式
 
-```bash
-go test -race ./internal/platform/tray ./internal/app
-(cd frontend && npm test && npm run build)
-go test ./...
-go vet ./...
-make verify-architecture
-git diff --check
-bash docs/test/m9-e5/replay-native.sh
-```
+当时使用聚焦 Go race、Wails frontend、全仓 Go/vet、架构检查与 diff gate 共同验证。对应 package 与 frontend 已退役，不能从当前 checkout 直接重跑；当前原生架构使用 `make check` / `make verify`。
 
-runbook 会重新 package macOS 15 arm64 ad-hoc `.app`，验证有限菜单构造、`Cmd-W` hide、原有 Popover 主动作保持、精确 PID 存活及无 native crash；typed 菜单映射、设置/概览路由、最小化恢复、双源 refresh、About 与 fail-closed drain 由聚焦 Go/前端测试覆盖。当前机器的状态项位于 camera notch 后方，因此脚本不会把不可达坐标右击伪装成真实菜单回放。AX/应用日志只写入 ignored `.artifacts/runs/too-289-native-*`。
+原 runbook 当时会重新 package macOS 15 arm64 ad-hoc `.app`，验证有限菜单构造、`Cmd-W` hide、原有 Popover 主动作保持、精确 PID 存活及无 native crash；typed 菜单映射、设置/概览路由、最小化恢复、双源 refresh、About 与 fail-closed drain 由聚焦 Go/前端测试覆盖。该 replay 已随 Wails runtime 退役；当时的 AX/应用日志只写入 ignored `.artifacts/runs/too-289-native-*`。
 
 ## 当前结果
 

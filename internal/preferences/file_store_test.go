@@ -2,7 +2,9 @@ package preferences
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,6 +13,18 @@ import (
 	"testing"
 	"time"
 )
+
+func newFileStore(path string, publish publisher) (*FileStore, error) {
+	return newFileStoreWithReplace(path, publish, replacePrivateFile)
+}
+
+func marshalSnapshot(snapshot OnboardingSnapshot) ([]byte, error) {
+	content, err := json.MarshalIndent(snapshot, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("%w: encode snapshot", ErrInvalidPreferences)
+	}
+	return append(content, '\n'), nil
+}
 
 func TestFileStoreConfirmLoadPermissionsAndIdempotence(t *testing.T) {
 	t.Parallel()

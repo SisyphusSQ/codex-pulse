@@ -494,18 +494,6 @@ func (runtime *applicationLifecycleRuntime) UpdateQuotaSettings(
 	return committed, nil
 }
 
-func (runtime *applicationLifecycleRuntime) ReconcileQuotaPreferences(ctx context.Context) error {
-	if runtime == nil || runtime.quota == nil || ctx == nil {
-		return ErrApplicationLifecycleRuntime
-	}
-	operationContext, finish, err := runtime.beginControlAdmission(ctx)
-	if err != nil {
-		return err
-	}
-	defer finish()
-	return runtime.quota.ReconcilePreferences(operationContext)
-}
-
 func (runtime *applicationLifecycleRuntime) RequestQuotaRefresh(
 	ctx context.Context,
 	source quotaonline.RefreshSource,

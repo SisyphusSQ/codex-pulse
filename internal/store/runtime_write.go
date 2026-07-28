@@ -144,20 +144,6 @@ func int64PointerRegresses(existing, incoming *int64) bool {
 	return existing != nil && (incoming == nil || *incoming < *existing)
 }
 
-func nullableRuntimeErrorClass(value *RuntimeErrorClass) any {
-	if value == nil {
-		return nil
-	}
-	return string(*value)
-}
-
-func nullableSHA256Digest(value *SHA256Digest) any {
-	if value == nil {
-		return nil
-	}
-	return value.String()
-}
-
 // CreateJobRun 创建 queued job；同 ID 只允许完全一致重放。
 func (repository *Repository) CreateJobRun(ctx context.Context, job JobRun) error {
 	if repository == nil || repository.database == nil {
@@ -430,20 +416,6 @@ func updateJobRun(ctx context.Context, transaction *gorm.DB, job JobRun) error {
 		"resume_offset": model.ResumeOffset, "error_class": model.ErrorClass,
 		"updated_at_ms": model.UpdatedAtMS,
 	}).Error
-}
-
-func jobCursorGeneration(cursor *JobCursor) any {
-	if cursor == nil {
-		return nil
-	}
-	return cursor.Generation
-}
-
-func jobCursorOffset(cursor *JobCursor) any {
-	if cursor == nil {
-		return nil
-	}
-	return cursor.Offset
 }
 
 func sourceFileModelFromDomain(file SourceFile) sourceFileModel {

@@ -59,10 +59,6 @@ func NewFileStore(path string) (*FileStore, error) {
 	return newFileStoreWithReplace(path, publishPrivateFile, replacePrivateFile)
 }
 
-func newFileStore(path string, publish publisher) (*FileStore, error) {
-	return newFileStoreWithReplace(path, publish, replacePrivateFile)
-}
-
 func newFileStoreWithReplace(path string, publish publisher, replace replacer) (*FileStore, error) {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path || filepath.Base(path) == "." ||
 		filepath.Base(path) == string(filepath.Separator) || publish == nil || replace == nil {
@@ -314,14 +310,6 @@ func decodeSnapshot(content []byte) (OnboardingSnapshot, error) {
 		return OnboardingSnapshot{}, err
 	}
 	return snapshot, nil
-}
-
-func marshalSnapshot(snapshot OnboardingSnapshot) ([]byte, error) {
-	content, err := json.MarshalIndent(snapshot, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("%w: encode snapshot", ErrInvalidPreferences)
-	}
-	return append(content, '\n'), nil
 }
 
 func publishPrivateFile(path string, content []byte) error {

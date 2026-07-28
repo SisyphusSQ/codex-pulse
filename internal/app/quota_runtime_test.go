@@ -24,6 +24,18 @@ import (
 
 const quotaRuntimeNowMS = int64(1_784_000_000_000)
 
+func (runtime *applicationLifecycleRuntime) reconcileQuotaPreferencesForTest(ctx context.Context) error {
+	if runtime == nil || runtime.quota == nil || ctx == nil {
+		return ErrApplicationLifecycleRuntime
+	}
+	operationContext, finish, err := runtime.beginControlAdmission(ctx)
+	if err != nil {
+		return err
+	}
+	defer finish()
+	return runtime.quota.ReconcilePreferences(operationContext)
+}
+
 func TestApplicationQuotaRuntimeStartsEnabledSourcesAndStops(t *testing.T) {
 	t.Parallel()
 
@@ -675,8 +687,8 @@ func TestApplicationLifecycleRuntimeComposesQuotaControlHooksAndForeground(t *te
 	disabled.Revision++
 	disabled.Online = preferences.OnlinePreferences{}
 	loader.setSnapshot(disabled)
-	if err := runtime.ReconcileQuotaPreferences(context.Background()); err != nil {
-		t.Fatalf("ReconcileQuotaPreferences(disabled) error = %v", err)
+	if err := runtime.reconcileQuotaPreferencesForTest(context.Background()); err != nil {
+		t.Fatalf("reconcileQuotaPreferencesForTest(disabled) error = %v", err)
 	}
 	for _, sourceInstanceID := range []string{
 		store.QuotaSourceInstanceWhamDefault,
@@ -692,8 +704,8 @@ func TestApplicationLifecycleRuntimeComposesQuotaControlHooksAndForeground(t *te
 	enabled.Revision++
 	enabled.Online = preferences.OnlinePreferences{QuotaEnabled: true, ResetCreditsEnabled: true}
 	loader.setSnapshot(enabled)
-	if err := runtime.ReconcileQuotaPreferences(context.Background()); err != nil {
-		t.Fatalf("ReconcileQuotaPreferences(enabled) error = %v", err)
+	if err := runtime.reconcileQuotaPreferencesForTest(context.Background()); err != nil {
+		t.Fatalf("reconcileQuotaPreferencesForTest(enabled) error = %v", err)
 	}
 	if _, err := runtime.RequestQuotaRefresh(context.Background(), quotaonline.RefreshSourceQuota); err != nil {
 		t.Fatalf("RequestQuotaRefresh() error = %v", err)

@@ -68,20 +68,6 @@ func NewService(config Config) (*Service, error) {
 	}, nil
 }
 
-func NewDefaultService(trackerDatabasePath string) (*Service, error) {
-	preferencesPath, err := preferences.DefaultPath()
-	if err != nil {
-		return nil, err
-	}
-	store, err := preferences.NewFileStore(preferencesPath)
-	if err != nil {
-		return nil, err
-	}
-	return NewService(Config{
-		Probe: logsource.NewHomeProbe(), Store: store, TrackerDatabasePath: trackerDatabasePath,
-	})
-}
-
 func (service *Service) Detect(ctx context.Context, selectedPath string) (State, error) {
 	if service == nil {
 		return State{}, ErrInvalidConfiguration

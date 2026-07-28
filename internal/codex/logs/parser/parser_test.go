@@ -10,6 +10,14 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 )
 
+func (stats *ParseStats) add(other ParseStats) {
+	stats.CompleteLines += other.CompleteLines
+	stats.ParsedLines += other.ParsedLines
+	stats.KnownIgnoredLines += other.KnownIgnoredLines
+	stats.DiagnosticLines += other.DiagnosticLines
+	stats.EventsEmitted += other.EventsEmitted
+}
+
 func TestStreamParserParsesCompleteLinesAndRetainsIncompleteTail(t *testing.T) {
 	t.Parallel()
 

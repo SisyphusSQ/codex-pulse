@@ -1,5 +1,7 @@
 # M9-E6 AppKit Fallback、辅助功能与多显示器回归
 
+> 历史记录：本页冻结 Wails 时代 TOO-290 的提交版证据。对应 platform replay 与运行时已退役；下面的命令和路径只用于解释当时结果，不能作为当前仓库验证入口。
+
 ## 范围
 
 - Issue：`TOO-290`
@@ -19,19 +21,11 @@
 | 资源释放 | PASS | native callback 在 AppKit main queue 只做非阻塞 event emit；Close 关闭 registration 后以 main-queue barrier 移除 observer、view block 和 status item，不在 main 等待 Wails Window API |
 | fallback | PASS | platform event 或 anchor 失败时只隐藏 attached window，durable 主窗口仍可由菜单/Popover route 打开 |
 
-## 可复现命令
+## 历史验证方式
 
-```bash
-go test -race ./internal/platform/tray ./internal/app
-(cd frontend && npm test && npm run build)
-go test ./...
-go vet ./...
-make verify-architecture
-git diff --check
-bash docs/test/m9-e6/replay-platform.sh
-```
+当时使用聚焦 Go race、Wails frontend、全仓 Go/vet、架构检查与 diff gate 共同验证。对应 package 与 frontend 已退役，不能从当前 checkout 直接重跑；当前原生架构使用 `make check` / `make verify`。
 
-脚本使用隔离 `HOME/TMPDIR`，输出到 ignored `.artifacts/runs/too-290-platform-*`。它不会切换真实系统主题、Space、休眠或显示器配置；platform probe 仅在自己的 AppKit 进程内发布同名公共通知并切换自己的 `NSApp.appearance`。真实硬件屏幕数量、frame、visibleFrame 与 scale 只做脱敏 inventory；仅有一块可达屏幕时，不声称完成物理拖屏操作。
+原脚本使用隔离 `HOME/TMPDIR`，输出到 ignored `.artifacts/runs/too-290-platform-*`。它不会切换真实系统主题、Space、休眠或显示器配置；platform probe 仅在自己的 AppKit 进程内发布同名公共通知并切换自己的 `NSApp.appearance`。该 replay 已随 Wails runtime 退役；真实硬件屏幕数量、frame、visibleFrame 与 scale 当时只做脱敏 inventory，且没有把单屏结果冒充物理拖屏验证。
 
 ## 当前结果
 

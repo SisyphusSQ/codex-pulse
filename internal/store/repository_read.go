@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 
 	"gorm.io/gorm"
@@ -202,18 +201,4 @@ func turnSnapshotFromModel(turn turnModel, usage *turnUsageModel) TurnSnapshot {
 		}
 	}
 	return snapshot
-}
-
-func stringPointer(value sql.NullString) *string {
-	if !value.Valid {
-		return nil
-	}
-	return &value.String
-}
-
-func int64Pointer(value sql.NullInt64) *int64 {
-	if !value.Valid {
-		return nil
-	}
-	return &value.Int64
 }

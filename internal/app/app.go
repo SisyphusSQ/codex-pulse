@@ -23,8 +23,6 @@ type lifecycleStore interface {
 	Close(context.Context) error
 }
 
-type storeOpener func(context.Context) (lifecycleStore, error)
-
 type Config struct {
 	Broker           *core.InvalidationBroker
 	Store            storesqlite.Config
@@ -258,10 +256,6 @@ func (runtime *Runtime) Close(ctx context.Context) error {
 	return runtime.shutdown.Close(ctx)
 }
 
-func openApplicationStore(ctx context.Context) (lifecycleStore, error) {
-	return openConfiguredStore(ctx, storesqlite.Config{})
-}
-
 func openApplicationStartup(
 	ctx context.Context,
 	config storesqlite.Config,
@@ -339,23 +333,4 @@ func openBootstrappedStore[T lifecycleStore](
 		return zero, errors.Join(err, closeErr)
 	}
 	return store, nil
-}
-
-func runWithStore(
-	ctx context.Context,
-	openStore storeOpener,
-	runApplication func(lifecycleStore) error,
-) (returnErr error) {
-	store, err := openStore(ctx)
-	if err != nil {
-		return fmt.Errorf("open application SQLite store: %w", err)
-	}
-	defer func() {
-		closeErr := store.Close(context.WithoutCancel(ctx))
-		if closeErr != nil {
-			closeErr = fmt.Errorf("close application SQLite store: %w", closeErr)
-		}
-		returnErr = errors.Join(returnErr, closeErr)
-	}()
-	return runApplication(store)
 }

@@ -1445,80 +1445,9 @@ struct MetricCard: View {
     }
 }
 
-private struct QuotaOverviewCard: View {
-    let window: QuotaWindowPresentation
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Label(window.title, systemImage: "gauge.with.dots.needle.67percent")
-                    .font(.headline)
-                Spacer()
-                Text(percentText)
-                    .font(.system(size: 26, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-            }
-            ProgressView(value: progress)
-                .tint(progressColor)
-            HStack {
-                Text(window.remainingPercent == nil ? "暂时无法获取" : "剩余额度")
-                Spacer()
-                Text(resetText)
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(.quaternary, lineWidth: 1)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var percentText: String {
-        window.remainingPercent.map { String(format: "%.0f%%", $0) } ?? "--"
-    }
-
-    private var progress: Double {
-        min(max((window.remainingPercent ?? 0) / 100, 0), 1)
-    }
-
-    private var progressColor: Color {
-        switch QuotaRemainingLevel(remainingPercent: window.remainingPercent) {
-        case .healthy: .green
-        case .warning: .yellow
-        case .critical: .red
-        case .unavailable: .secondary
-        }
-    }
-
-    private var resetText: String {
-        guard window.resetRemainingMS != nil else { return "重置时间待定" }
-        return "将在 \(ProductCopy.duration(milliseconds: window.resetRemainingMS))后重置"
-    }
-}
-
 private func metricValue(_ metric: DisplayMetric) -> Int64? {
     if case .known(let value, _) = metric { return value }
     return nil
-}
-
-struct StateBanner: View {
-    let title: String
-    let systemImage: String
-    let color: Color
-
-    var body: some View {
-        Label(title, systemImage: systemImage)
-            .font(.caption.weight(.medium))
-            .foregroundStyle(color)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 7)
-            .accessibilityLabel(title)
-    }
 }
 
 func metricText(_ metric: DisplayMetric, cost: Bool = false) -> String {

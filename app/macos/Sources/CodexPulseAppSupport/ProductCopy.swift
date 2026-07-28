@@ -1,14 +1,6 @@
 import Foundation
 
 public enum ProductCopy {
-    public static func unknownMetric(_ rawValue: String) -> String {
-        switch normalized(rawValue) {
-        case "not_computed": "未计算"
-        case "not_applicable": "不适用"
-        default: "暂不可用"
-        }
-    }
-
     public static func status(_ rawValue: String) -> String {
         switch normalized(rawValue) {
         case "healthy", "current", "ready", "normal", "fresh":
