@@ -156,7 +156,7 @@ struct TransportSpikeMain {
             let streamTask = Task {
                 try await connectedClient.consumeInvalidations(domains: ["quota"]) { _ in }
             }
-            try await Task.sleep(for: .milliseconds(100))
+            try await Task.sleep(nanoseconds: 100_000_000)
             streamTask.cancel()
             do {
                 try await streamTask.value

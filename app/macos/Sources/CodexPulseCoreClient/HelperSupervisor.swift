@@ -182,7 +182,7 @@ public actor HelperSupervisor {
                 }
                 throw HelperSupervisorError.wait(errno)
             }
-            try await Task.sleep(for: .milliseconds(20))
+            try await Task.sleep(nanoseconds: 20_000_000)
         }
         throw HelperSupervisorError.exitTimeout
     }
@@ -366,7 +366,7 @@ public actor HelperSupervisor {
                 throw HelperSupervisorError.helperExited(exitStatus)
             }
             if result == -1 { throw HelperSupervisorError.wait(errno) }
-            try await Task.sleep(for: .milliseconds(20))
+            try await Task.sleep(nanoseconds: 20_000_000)
         }
         throw HelperSupervisorError.socketTimeout
     }

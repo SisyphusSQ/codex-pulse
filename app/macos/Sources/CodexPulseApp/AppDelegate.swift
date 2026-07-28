@@ -392,7 +392,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         for feature in renderOrder {
             model.navigate(to: feature)
             for _ in 0..<50 where !model.renderedFeatures.contains(feature) {
-                try? await Task.sleep(for: .milliseconds(10))
+                try? await Task.sleep(nanoseconds: 10_000_000)
             }
         }
         return model.renderedFeatures.count

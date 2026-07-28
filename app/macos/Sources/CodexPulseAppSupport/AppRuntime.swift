@@ -1474,17 +1474,20 @@ public actor AppRuntime {
             }
         }
         let timeout = shutdownRequestTimeout
-        let timeoutTask = Task {
-            do {
-                try await Task.sleep(for: timeout)
-                completion.resolve(.timedOut)
-            } catch {
-                // The request completed before the deadline.
-            }
+        let timeoutComponents = timeout.components
+        let timeoutSeconds = max(
+            0,
+            Double(timeoutComponents.seconds)
+                + Double(timeoutComponents.attoseconds) / 1e18
+        )
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeoutSeconds) {
+            completion.resolve(.timedOut)
         }
         let result = await completion.wait()
         requestTask.cancel()
-        timeoutTask.cancel()
+        if result != .timedOut {
+            _ = await requestTask.result
+        }
         return result
     }
 
