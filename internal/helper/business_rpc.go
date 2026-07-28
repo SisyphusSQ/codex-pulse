@@ -254,6 +254,7 @@ func (api *grpcAPI) UpdateSettings(
 		Updates: core.SettingsUpdatesUpdate{
 			AutoCheckEnabled:     request.GetUpdates().GetAutoCheckEnabled(),
 			CheckIntervalSeconds: request.GetUpdates().GetCheckIntervalSeconds(),
+			Channel:              request.GetUpdates().GetChannel(),
 		},
 		UI: core.SettingsUIUpdate{
 			LaunchBehavior: request.GetUi().GetLaunchBehavior(), OverviewRange: request.GetUi().GetOverviewRange(),
@@ -367,6 +368,7 @@ func fromProtoUsageCostRequest(request *corev1.UsageCostRequest) usagecost.Usage
 	}
 	result := usagecost.UsageCostRequest{
 		Range: fromProtoDateRange(request.GetRange()), Granularity: usagecost.TrendGranularity(request.GetGranularity()),
+		IncludeActivityDistribution: request.GetIncludeActivityDistribution(),
 	}
 	if request.ExactRange != nil {
 		result.ExactRange = &basequery.UTCTimeRange{

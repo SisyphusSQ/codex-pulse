@@ -85,13 +85,17 @@ func validRefreshPreferences(value RefreshPreferences) bool {
 }
 
 func validUpdatePreferences(value UpdatePreferences) bool {
-	if value.AutoDownloadEnabled || value.Channel != UpdateChannelStable ||
+	if value.AutoDownloadEnabled || !validUpdateChannel(value.Channel) ||
 		value.CheckIntervalSeconds < 3600 || value.CheckIntervalSeconds > 86400 ||
 		!validOptionalVersion(value.SkippedVersion) || !validOptionalTimestamp(value.SnoozeUntilMS) ||
 		!validOptionalTimestamp(value.LastCheckAtMS) {
 		return false
 	}
 	return true
+}
+
+func validUpdateChannel(value UpdateChannel) bool {
+	return value == UpdateChannelStable || value == UpdateChannelPrerelease
 }
 
 func validOptionalVersion(value *string) bool {

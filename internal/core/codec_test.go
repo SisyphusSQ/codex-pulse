@@ -66,6 +66,65 @@ func TestEncodeResponseRejectsInvalidNumericPresence(t *testing.T) {
 	}
 }
 
+// 测试 EncodeResponse 保留活动分布中的 Token、会话数和星期小时语义。
+func TestEncodeResponseMapsActivityDistribution(t *testing.T) {
+	t.Parallel()
+
+	tokens, err := basequery.KnownNumeric(60, basequery.NumericTokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := basequery.KnownNumeric(2, basequery.NumericCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, err := basequery.KnownNumeric(100, basequery.NumericMilliseconds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	end, err := basequery.KnownNumeric(200, basequery.NumericMilliseconds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unknownCost, err := basequery.UnknownNumeric(
+		basequery.NumericMicroUSD,
+		basequery.UnknownNotComputed,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := &corev1.UsageCostResponse{}
+	if err := EncodeResponse(usagecost.UsageCostResponse{
+		Totals: withUsageTotals(t, tokens, unknownCost),
+		ActivityDistribution: &usagecost.ActivityDistribution{
+			TimelineGranularity:   usagecost.TrendHour,
+			TimelineBucketMinutes: 180,
+			Timeline: []usagecost.ActivityTimelinePoint{{
+				StartAtMS: start, EndAtMS: end,
+				Metrics: usagecost.ActivityMetrics{TotalTokens: tokens, SessionCount: sessions},
+			}},
+			WeekdayHours: []usagecost.ActivityWeekdayHourPoint{{
+				Weekday: 1, Hour: 9,
+				Metrics: usagecost.ActivityMetrics{TotalTokens: tokens, SessionCount: sessions},
+			}},
+		},
+	}, target); err != nil {
+		t.Fatalf("EncodeResponse(activity) error = %v", err)
+	}
+	if target.ActivityDistribution == nil {
+		t.Fatal("activity distribution presence was lost")
+	}
+	activity := target.GetActivityDistribution()
+	if activity.TimelineGranularity != "hour" || activity.TimelineBucketMinutes != 180 ||
+		len(activity.Timeline) != 1 ||
+		len(activity.WeekdayHours) != 1 || activity.WeekdayHours[0].Weekday != 1 ||
+		activity.WeekdayHours[0].Hour != 9 ||
+		activity.Timeline[0].Metrics.GetTotalTokens().GetValue() != 60 ||
+		activity.Timeline[0].Metrics.GetSessionCount().GetValue() != 2 {
+		t.Fatalf("activity distribution = %#v", activity)
+	}
+}
+
 // 测试 EncodeResponse 把 Session 自适应趋势粒度和点映射到 Protobuf contract。
 func TestEncodeResponseMapsAdaptiveSessionTrend(t *testing.T) {
 	t.Parallel()

@@ -111,7 +111,9 @@ func validSettingsRefresh(value preferences.RefreshPreferences) bool {
 }
 
 func validSettingsUpdates(value preferences.UpdatePreferences) bool {
-	return !value.AutoDownloadEnabled && value.Channel == preferences.UpdateChannelStable &&
+	validChannel := value.Channel == preferences.UpdateChannelStable ||
+		value.Channel == preferences.UpdateChannelPrerelease
+	return !value.AutoDownloadEnabled && validChannel &&
 		value.CheckIntervalSeconds >= 3600 && value.CheckIntervalSeconds <= 86400 &&
 		(value.SkippedVersion == nil || safeVersionPattern.MatchString(*value.SkippedVersion)) &&
 		(value.SnoozeUntilMS == nil || *value.SnoozeUntilMS >= 0) &&
@@ -138,7 +140,7 @@ func settingsEditableFields() []EditableField {
 		integerField("refresh.jsonlDebounceMilliseconds", true, 3000, 5000),
 		booleanField("updates.autoCheckEnabled", true),
 		booleanField("updates.autoDownloadEnabled", false),
-		enumField("updates.channel", false, []string{"stable"}),
+		enumField("updates.channel", true, []string{"stable", "prerelease"}),
 		integerField("updates.checkIntervalSeconds", true, 3600, 86400),
 		enumField("ui.locale", false, []string{"zh-CN"}),
 		enumField("ui.launchBehavior", true, []string{"main_window", "tray"}),

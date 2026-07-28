@@ -60,6 +60,8 @@ Popover 顶部还固定提供三项快捷功能：
 概览是默认落地页，由原 Usage 页面升级而来，按“先看额度、再看趋势和成本”排序：
 
 - 顶部紧凑摘要：按额度名称和真实窗口周期区分通用/模型专属额度，展示普通百分比、进度条与 reset 时间。
+- 年度 Token 活动：在额度摘要与当前范围消耗之间展示独立的过去 365 个本地自然日日历热力图，并汇总近 365 天 Token、峰值日 Token、活跃天数、当前连续天数和最长连续天数。当前连续天数允许今天尚未活动时从昨天回溯；热力图不跟随顶部时间范围切换。完整响应缺失的日期表示真实零活动，partial 响应缺失的日期保持未知；如果本机已知的每日 Token 与合计能够对账，仍按本机现有数据展示五项汇总并明确标注本地口径。格子悬浮立即展示日期、紧凑单位 Token 和已知轮数；局部查询失败不得隐藏额度或当前范围消耗。
+- 当前范围活动与高消耗会话：复用顶部选择的精确时间范围，不再提供第二套日 / 周 / 月切换。左侧用柱状时间线和“星期 × 小时”热力图组成两个活动视图，并可在“Token 消耗 / 会话数量”之间切换；今天按小时，其它预设按天。会话数量按格子内出现过 final usage 的去重 Session 计数，同一 Session 可分别出现在不同时间桶；Token 使用现有总量口径。右侧展示同范围内按 Token 总量倒序的前 10 个高消耗会话，并可下钻到保持同一范围的会话详情。宽窗口使用双栏，窄窗口自动改为纵向布局。
 - 时间范围：今天、7 天、30 天和自定义区间，默认 7 天。
 - 使用趋势：每日 Token 按模型堆叠，纵轴使用本地化数量级，鼠标移入某日后展示总量、各模型 Token 与占比；模型分项无法与当日总量精确对账时只展示已知总量并明确提示明细不可用，不按比例推算。
 - 用量构成与 API 等价成本：保留估算口径和未定价提示。
@@ -120,6 +122,7 @@ Pricing Catalog 本地版本化，每条记录包含 model、input/cached/output
 ### 查询、下钻与降级语义
 
 - 概览按用户选择的 IANA timezone 和本地日半开区间查询，日趋势直接读取 active daily rollup；轻量启动模式则从带安全模型归因的 timed token delta 在同一 read snapshot 中聚合。周、月只合并 daily rows，不维护第二套持久聚合。响应同时返回全局 totals、按模型统计及每个模型同粒度的 `UsageModelItem.trend`、pricing source/currency、range 内 pricing versions，以及能够确定的未定价语义。Swift 只能按 bucket 对账并展示这些模型事实，不得用 range 总量或比例反推日明细。
+- `UsageCostRequest.include_activity_distribution=true` 时，Go 在同一查询范围内额外返回非空时间桶和稀疏的 ISO weekday（周一 1、周日 7）小时格。每个点同时包含 Token 总量和格内去重 Session 数；热力图跨日期合并相同星期小时，DST 回拨的两个真实小时在时间线中保持不同 instant，但在星期小时视图中归入同一墙钟小时。Swift 只有在时间线 Token、星期小时 Token 与响应 totals 能对账时，才把未返回格解释为真实零；否则保持 unknown。
 - active cost generation 暂不可见时，概览只从 final usage 做有界 token fallback：cost/pricing 保持 unknown，响应标记 `partial / rollup_missing`；查询路径不得触发 ledger rebuild。无事实但 active generation 正常存在时是 known-empty complete，真实 `0` 不显示成 `--`。
 - Sessions 列表和详情只展示安全 title/project/model；轻量模式优先使用 Codex App Server `thread/list` 返回的 name，缺失时使用不可逆 Session ID fallback。常驻 Helper 每 30 秒刷新一次 metadata，并在 App 前台激活或系统唤醒时立即触发；相同 snapshot 不推进 metadata generation，标题变化原子发布后通过 index invalidation 到达 Swift。严格模式继续使用 `session_attributions`；active/idle 由是否存在未完成 Turn 判断。Session 详情趋势由 Go 按请求的 IANA timezone 检查完整会话用量覆盖的本地自然日：全部位于同一日时返回 `trend_granularity=hour` 和小时 bucket，只要跨越两个或更多本地日期就返回 `trend_granularity=day` 和每日 bucket；只有轻量 timed delta 或同一 active cost generation 的 final usage 可以生成趋势。DST 回拨的重复墙钟小时必须保留各自真实 instant/UTC offset，作为两个有序 bucket 返回。Swift 只消费 granularity、timezone、bucket 时间和 totals，不得用当前页面点数或本机日历自行猜测口径。两种模式都不返回 cwd、raw model、root path 或对话内容。列表支持最近活动、token、API 等价成本排序以及 project/model/activity/time filter，cursor 是不可解析的 keyset token。
 - Session 详情还返回按 `startedAt + turn identity` 稳定倒序、默认 20 / 最大 50 条的 content-free Turn usage/cost 时间线。每项只包含不可逆 timeline key、active/complete、安全 model attribution、时间、整数 usage、pricing status/version/reason；`completed_at_ms IS NULL` 已明确定义 active，unknown 只用于 usage/cost/time 数值，不伪造不可达的 lifecycle 状态。不得返回 raw Session/Turn ID、正文事件、tool、路径、offset 或 generation。下一页 cursor 由 process-key AEAD 认证加密并绑定当前 Session，native client 只可原样回传；完整首屏必须与 Session aggregate 精确对账，截断/后续页必须满足 aggregate 下界和 pricing evidence membership，page totals 不得覆盖整段 Session aggregate。

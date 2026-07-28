@@ -151,6 +151,108 @@ func TestUsageCostGroupsHourlyTrend(t *testing.T) {
 	assertKnownNumeric(t, response.Totals.TotalTokens, 3, basequery.NumericTokens)
 }
 
+func TestUsageCostMapsRequestedActivityDistribution(t *testing.T) {
+	t.Parallel()
+
+	start := mustUsageTime(t, "2026-07-20T00:00:00Z")
+	bucketStart := mustUsageTime(t, "2026-07-20T01:00:00Z")
+	bucketEnd := mustUsageTime(t, "2026-07-20T02:00:00Z")
+	end := mustUsageTime(t, "2026-07-21T00:00:00Z")
+	totalTokens := int64(60)
+	reader := usageReaderFunc(func(_ context.Context, filter store.AnalyticsRange) (store.UsageCostRangeSnapshot, error) {
+		if !filter.IncludeActivityDistribution || filter.ActivityBucketMinutes != 60 {
+			t.Fatalf("activity distribution filter = %#v", filter)
+		}
+		return store.UsageCostRangeSnapshot{
+			Mode: store.AnalyticsReadLightIndex,
+			Daily: []store.UsageDaily{{
+				BucketStartMS: bucketStart, ReportingTimezone: "UTC",
+				RollupTotals: store.RollupTotals{
+					InputTokens: &totalTokens, CachedInputTokens: int64Ptr(0),
+					OutputTokens: int64Ptr(0), ReasoningTokens: int64Ptr(0),
+					TotalTokens: &totalTokens,
+				},
+			}},
+			PricingVersions: make([]string, 0),
+			UnpricedReasons: make([]store.CostReasonCount, 0),
+			ActivityDistribution: &store.UsageActivityDistribution{
+				TimelineGranularity:   store.AnalyticsGranularityHour,
+				TimelineBucketMinutes: 60,
+				Timeline: []store.UsageActivityTimelinePoint{{
+					BucketStartMS: bucketStart, BucketEndMS: bucketEnd,
+					TotalTokens: &totalTokens, SessionCount: 2,
+				}},
+				WeekdayHours: []store.UsageActivityWeekdayHour{{
+					Weekday: 1, Hour: 1, TotalTokens: &totalTokens, SessionCount: 2,
+				}},
+			},
+		}, nil
+	})
+	service := newUsageService(t, reader)
+	response, err := service.UsageCost(context.Background(), UsageCostRequest{
+		ExactRange:                  &basequery.UTCTimeRange{StartAtMS: start, EndAtMS: end, TimeZone: "UTC"},
+		Granularity:                 TrendHour,
+		IncludeActivityDistribution: true,
+	})
+	if err != nil {
+		t.Fatalf("UsageCost(activity) error = %v", err)
+	}
+	if response.ActivityDistribution == nil ||
+		response.ActivityDistribution.TimelineGranularity != TrendHour ||
+		response.ActivityDistribution.TimelineBucketMinutes != 60 ||
+		len(response.ActivityDistribution.Timeline) != 1 ||
+		len(response.ActivityDistribution.WeekdayHours) != 1 {
+		t.Fatalf("activity distribution = %#v", response.ActivityDistribution)
+	}
+	timeline := response.ActivityDistribution.Timeline[0]
+	assertKnownNumeric(t, timeline.StartAtMS, bucketStart, basequery.NumericMilliseconds)
+	assertKnownNumeric(t, timeline.EndAtMS, bucketEnd, basequery.NumericMilliseconds)
+	assertKnownNumeric(t, timeline.Metrics.TotalTokens, totalTokens, basequery.NumericTokens)
+	assertKnownNumeric(t, timeline.Metrics.SessionCount, 2, basequery.NumericCount)
+	weekdayHour := response.ActivityDistribution.WeekdayHours[0]
+	if weekdayHour.Weekday != 1 || weekdayHour.Hour != 1 {
+		t.Fatalf("weekday hour = %#v", weekdayHour)
+	}
+	assertKnownNumeric(t, weekdayHour.Metrics.TotalTokens, totalTokens, basequery.NumericTokens)
+	assertKnownNumeric(t, weekdayHour.Metrics.SessionCount, 2, basequery.NumericCount)
+}
+
+// 测试 adaptiveActivityBucketMinutes 在常用概览范围内维持约 24 至 48 个时间桶。
+func TestAdaptiveActivityBucketMinutesKeepsStableChartDensity(t *testing.T) {
+	t.Parallel()
+
+	const day = int64(24 * time.Hour / time.Millisecond)
+	for _, test := range []struct {
+		name        string
+		durationDay int64
+		wantMinutes int
+	}{
+		{name: "one-day", durationDay: 1, wantMinutes: 60},
+		{name: "two-days", durationDay: 2, wantMinutes: 60},
+		{name: "three-days", durationDay: 3, wantMinutes: 120},
+		{name: "four-days", durationDay: 4, wantMinutes: 180},
+		{name: "seven-days", durationDay: 7, wantMinutes: 360},
+		{name: "thirty-days", durationDay: 30, wantMinutes: 1_440},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got := adaptiveActivityBucketMinutes(basequery.UTCTimeRange{
+				StartAtMS: 0,
+				EndAtMS:   test.durationDay * day,
+				TimeZone:  "UTC",
+			})
+			if got != test.wantMinutes {
+				t.Fatalf(
+					"adaptiveActivityBucketMinutes(%d days) = %d, want %d",
+					test.durationDay,
+					got,
+					test.wantMinutes,
+				)
+			}
+		})
+	}
+}
+
 // 测试 UsageCost 在精确 UTC 范围下不扩展为自然日，并把趋势边界裁剪到请求区间。
 func TestUsageCostUsesExactRangeWithoutLocalDayExpansion(t *testing.T) {
 	t.Parallel()
@@ -474,6 +576,47 @@ func TestUsageCostRejectsInconsistentStoredTotalsAndEvidence(t *testing.T) {
 				t.Fatalf("UsageCost() error = %v, want unavailable", err)
 			}
 		})
+	}
+}
+
+func TestUsageCostRejectsActivityDistributionThatDoesNotReconcile(t *testing.T) {
+	t.Parallel()
+
+	one, two, zero := int64(1), int64(2), int64(0)
+	service := newUsageService(t, usageReaderFunc(func(
+		context.Context, store.AnalyticsRange,
+	) (store.UsageCostRangeSnapshot, error) {
+		return store.UsageCostRangeSnapshot{
+			Mode: store.AnalyticsReadLightIndex,
+			Daily: []store.UsageDaily{{
+				BucketStartMS: 0, ReportingTimezone: "UTC",
+				RollupTotals: store.RollupTotals{
+					InputTokens: &one, CachedInputTokens: &zero, OutputTokens: &zero,
+					ReasoningTokens: &zero, TotalTokens: &one,
+				},
+			}},
+			PricingVersions: make([]string, 0),
+			UnpricedReasons: make([]store.CostReasonCount, 0),
+			ActivityDistribution: &store.UsageActivityDistribution{
+				TimelineGranularity: store.AnalyticsGranularityDay,
+				Timeline: []store.UsageActivityTimelinePoint{{
+					BucketStartMS: 0, BucketEndMS: 86_400_000,
+					TotalTokens: &two, SessionCount: 1,
+				}},
+				WeekdayHours: []store.UsageActivityWeekdayHour{{
+					Weekday: 4, Hour: 0, TotalTokens: &two, SessionCount: 1,
+				}},
+			},
+		}, nil
+	}))
+	_, err := service.UsageCost(context.Background(), UsageCostRequest{
+		Range: basequery.LocalDateRange{
+			StartDate: "1970-01-01", EndDateExclusive: "1970-01-02", TimeZone: "UTC",
+		},
+		Granularity: TrendDay, IncludeActivityDistribution: true,
+	})
+	if !errors.Is(err, basequery.ErrUnavailable) {
+		t.Fatalf("UsageCost(inconsistent activity) error = %v, want unavailable", err)
 	}
 }
 

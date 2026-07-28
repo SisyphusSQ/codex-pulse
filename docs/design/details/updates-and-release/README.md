@@ -14,6 +14,15 @@ Swift native client 负责：
 - 更新检查、下载、平台签名验证、安装、重启和用户提示；
 - `.app` bundle、Helper 嵌入位置、Developer ID、notarization 和正式分发。
 
+当前已落地的更新能力限于“检查并提醒”：Swift 客户端读取 Helper 持久化的
+`updates.autoCheckEnabled`、`updates.checkIntervalSeconds` 与
+`updates.channel` 偏好，直接查询本项目公开 GitHub Releases API。`stable`
+只接受非 prerelease；`prerelease` 同时接受预发布版和正式版，并按 SemVer
+选择高于当前 App 的最高版本。草稿、Release 标记与版本不一致、超限响应和
+非 `https://github.com/SisyphusSQ/codex-pulse/releases/tag/...` 地址全部
+fail closed。提醒只显示在菜单栏 Popover，只有用户点击后才交给系统浏览器；
+当前不包含后台下载、自动安装或系统通知。
+
 Go Helper 只负责：
 
 - Core RPC、业务运行时、SQLite ownership 和 migration recovery；
@@ -21,7 +30,9 @@ Go Helper 只负责：
 - 在 `Shutdown` RPC、signal 或父 pipe EOF 后停止 RPC admission 并 drain 已接纳业务；
 - 返回 content-free typed error，不接收更新包、签名材料或平台安装命令。
 
-Updater、Window、Tray 和 Popover 不属于 `codexpulse.core.v1.CoreService`。未来客户端不得通过扩张 Core RPC 把平台职责重新塞回 Go。
+Updater、Window、Tray 和 Popover 不属于 `codexpulse.core.v1.CoreService`。
+Core contract 中的 update settings 只承载跨端共享偏好，不执行检查、下载或
+安装。未来客户端不得通过扩张 Core RPC 把平台职责重新塞回 Go。
 
 ## 安全退出与更新衔接
 

@@ -7,7 +7,10 @@ const (
 
 type UpdateChannel string
 
-const UpdateChannelStable UpdateChannel = "stable"
+const (
+	UpdateChannelStable     UpdateChannel = "stable"
+	UpdateChannelPrerelease UpdateChannel = "prerelease"
+)
 
 type LaunchBehavior string
 

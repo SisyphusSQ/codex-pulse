@@ -64,14 +64,29 @@ struct RuntimeAwarePage<Content: View>: View {
 
 struct SectionCard<Content: View>: View {
     let title: String
+    let fillsProposedHeight: Bool
     @ViewBuilder let content: () -> Content
+
+    init(
+        title: String,
+        fillsProposedHeight: Bool = false,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.fillsProposedHeight = fillsProposedHeight
+        self.content = content
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.headline)
             content()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: fillsProposedHeight ? .infinity : nil,
+            alignment: .topLeading
+        )
         .padding(16)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {

@@ -1,6 +1,15 @@
 import AppKit
 import Foundation
 
+public enum MenuBarPopoverLayout {
+    public static func contentSize(availableScreenHeight: CGFloat) -> NSSize {
+        NSSize(
+            width: 460,
+            height: min(680, max(1, availableScreenHeight - 40))
+        )
+    }
+}
+
 public enum PopoverQuickActionKind: Hashable, Sendable {
     case openProject
     case copyPopoverScreenshot
@@ -378,6 +387,28 @@ public enum PopoverQuickActions {
         }
         return .success(
             title: "已打开项目主页",
+            message: "已交给默认浏览器处理。"
+        )
+    }
+
+    public static func openUpdate(
+        _ reminder: AppUpdateReminder,
+        using opener: (URL) -> Bool
+    ) -> PopoverQuickActionResult {
+        guard GitHubReleaseUpdateChecker.isTrustedReleaseURL(reminder.releaseURL) else {
+            return .failure(
+                title: "无法打开版本页面",
+                message: "版本地址未通过安全校验，未交给浏览器处理。"
+            )
+        }
+        guard opener(reminder.releaseURL) else {
+            return .failure(
+                title: "无法打开版本页面",
+                message: "系统未能打开 GitHub 版本页面，请稍后再试。"
+            )
+        }
+        return .success(
+            title: "已打开版本页面",
             message: "已交给默认浏览器处理。"
         )
     }
