@@ -42,17 +42,3 @@ func (service *Service) Enqueue(
 	}
 	return service.repository.SchedulerTask(ctx, task.TaskID)
 }
-
-func (service *Service) Promote(
-	ctx context.Context,
-	dedupeKey string,
-) (store.SchedulerTask, error) {
-	if service == nil || service.repository == nil || dedupeKey == "" {
-		return store.SchedulerTask{}, ErrInvalidService
-	}
-	atMS, err := service.afterMS(0, store.MaxSchedulerTimestampMS)
-	if err != nil {
-		return store.SchedulerTask{}, err
-	}
-	return service.repository.PromoteSchedulerTask(ctx, dedupeKey, atMS)
-}

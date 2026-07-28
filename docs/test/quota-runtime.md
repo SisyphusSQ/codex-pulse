@@ -113,7 +113,7 @@ fi
 ### 3. Composition、隐私、GORM 与 cron guard
 
 ```bash
-rg -n 'startApplicationQuotaRuntime|NewQuotaRefreshRunner|ReconcileQuotaPreferences|RequestQuotaRefresh' \
+rg -n 'startApplicationQuotaRuntime|NewQuotaRefreshRunner|ReconcilePreferences|RequestQuotaRefresh' \
   internal/app/lifecycle_runtime.go internal/app/quota_runtime.go
 
 if rg -n '\.(Raw|Exec)\(' \

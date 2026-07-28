@@ -150,13 +150,6 @@ func (service *Service) Projection() Projection {
 	return cloneProjection(service.projection)
 }
 
-func (service *Service) SkippedEvaluations() uint64 {
-	if service == nil {
-		return 0
-	}
-	return service.skipped.Load()
-}
-
 func (service *Service) evaluateSafely(ctx context.Context) {
 	if !service.evaluating.CompareAndSwap(false, true) {
 		service.skipped.Add(1)

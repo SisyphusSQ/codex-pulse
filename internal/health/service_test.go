@@ -14,6 +14,13 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
+func (service *Service) skippedEvaluationsForTest() uint64 {
+	if service == nil {
+		return 0
+	}
+	return service.skipped.Load()
+}
+
 func TestDefaultCronRunnerUsesThirtySecondSchedule(t *testing.T) {
 	t.Parallel()
 	runner, err := defaultCronRunnerFactory(cron.FuncJob(func() {}))
@@ -100,8 +107,8 @@ func TestServiceRecoversPanicAndSkipsOverlappingEvaluation(t *testing.T) {
 		t.Fatal("evaluation did not enter source")
 	}
 	service.evaluateSafely(context.Background())
-	if source.calls.Load() != 1 || service.SkippedEvaluations() != 1 {
-		t.Fatalf("calls=%d skipped=%d", source.calls.Load(), service.SkippedEvaluations())
+	if source.calls.Load() != 1 || service.skippedEvaluationsForTest() != 1 {
+		t.Fatalf("calls=%d skipped=%d", source.calls.Load(), service.skippedEvaluationsForTest())
 	}
 	close(source.release)
 	<-firstDone

@@ -252,24 +252,3 @@ func coalesceInt64(preferred, fallback *int64) *int64 {
 	}
 	return fallback
 }
-
-func nullableString(value *string) any {
-	if value == nil {
-		return nil
-	}
-	return *value
-}
-
-func nullableInt64(value *int64) any {
-	if value == nil {
-		return nil
-	}
-	return *value
-}
-
-func boolInteger(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
-}

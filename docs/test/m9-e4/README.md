@@ -1,5 +1,7 @@
 # M9-E4 冻结版 Popover 内容与交互
 
+> 历史记录：本页冻结 Wails 时代 TOO-288 的提交版证据。对应 native replay 与运行时已退役；下面的命令和路径只用于解释当时结果，不能作为当前仓库验证入口。
+
 ## 范围与安全边界
 
 - Issue：`TOO-288`
@@ -20,27 +22,16 @@
 | 窗口与 anchor | PASS | anchor 在 AppKit click action 主线程计算后随 callback 传回，不再持 Go mutex 同步等待 main queue；隔离 package 在 `Cmd-W` 后保持进程存活，真实 `AXPress` 产生 on-screen 419×759 Popover，再次触发后 on-screen window=0 |
 | 420×760 visual | PASS | 两态 `clientWidth=scrollWidth=420`，console/page error=0；5 个可聚焦 action |
 
-## 可复现命令
+## 历史验证方式
 
-```bash
-go test -race ./internal/platform/tray ./internal/app
-(cd frontend && npm test && npm run build)
-go test ./...
-go vet ./...
-make verify-architecture
-git diff --check
-```
+当时使用聚焦 Go race、Wails frontend、全仓 Go/vet、架构检查与 diff gate 共同验证。对应 package 与 frontend 已退役，不能从当前 checkout 直接重跑；当前原生架构使用 `make check` / `make verify`。
 
 浏览器视觉验证使用 ignored `.artifacts/runs/too-288-popover-qa/capture.mjs`，短暂启动只监听 `127.0.0.1:9245` 的 Vite server，并把固定 420×760 结果写入：
 
 - [secondary-only.png](evidence/secondary-only.png)
 - [primary-restored.png](evidence/primary-restored.png)
 
-该 browser probe 只验证 Vue 内容、尺寸、焦点入口和动态窗口。隔离 native probe 使用 ignored HOME/TMP、package 内真实进程和状态项 `AXPress`，修复了 `NSStatusBarButton` 截获子 view `mouseDown` 导致真实点击不弹窗的问题；修复后由 button target/action 与 custom view VoiceOver press 共用同一有限 callback。可按以下入口重放完整 package、ready、`Cmd-W`、exact PID 存活、CGWindow geometry 与 show/hide 断言；它只终止本脚本启动的 exact child PID：
-
-```bash
-bash docs/test/m9-e4/replay-native.sh
-```
+该 browser probe 只验证 Vue 内容、尺寸、焦点入口和动态窗口。隔离 native probe 当时使用 ignored HOME/TMP、package 内真实进程和状态项 `AXPress`，修复了 `NSStatusBarButton` 截获子 view `mouseDown` 导致真实点击不弹窗的问题；修复后由 button target/action 与 custom view VoiceOver press 共用同一有限 callback。对应 replay 已随 Wails runtime 退役，提交版截图继续作为历史证据保留。
 
 真实 AppKit 多显示器几何、右键菜单及完整 VoiceOver 回归由 `TOO-290` 覆盖，不从单屏 evidence 外推。
 

@@ -647,26 +647,6 @@ func analyticsBucketStart(observedAtMS int64, filter AnalyticsRange, location *t
 	return bucket
 }
 
-func analyticsBucketEnd(bucketStartMS int64, filter AnalyticsRange, location *time.Location) int64 {
-	local := time.UnixMilli(bucketStartMS).In(location)
-	var endAtMS int64
-	if filter.Granularity == AnalyticsGranularityHour {
-		_, offsetSeconds := local.Zone()
-		fixedOffset := time.FixedZone("", offsetSeconds)
-		endAtMS = time.Date(
-			local.Year(), local.Month(), local.Day(), local.Hour()+1, 0, 0, 0, fixedOffset,
-		).UTC().UnixMilli()
-	} else {
-		endAtMS = time.Date(
-			local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, location,
-		).UTC().UnixMilli()
-	}
-	if endAtMS > filter.EndAtMS {
-		return filter.EndAtMS
-	}
-	return endAtMS
-}
-
 func resolvedActivityBucketMinutes(filter AnalyticsRange) int {
 	if filter.ActivityBucketMinutes > 0 {
 		return filter.ActivityBucketMinutes

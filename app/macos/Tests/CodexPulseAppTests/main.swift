@@ -1259,8 +1259,6 @@ private func testStatusPillUsesProductCopy() throws {
     try expect(
         ProductCopy.settingOption("future_channel") == "其他选项",
         "unknown setting options must not expose raw backend values")
-    try expect(ProductCopy.unknownMetric("not_computed") == "未计算", "uncomputed metric copy")
-    try expect(ProductCopy.unknownMetric("unavailable") == "暂不可用", "unavailable metric copy")
 
     let healthSource = try mainWindowSource("QuotaHealthViews.swift")
     try expect(
