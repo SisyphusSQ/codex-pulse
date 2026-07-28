@@ -75,6 +75,7 @@ Apple 将普通 helper tool 的标准位置定义为 `Contents/MacOS/` 或 `Cont
 | Core RPC contract 与 Go adapter | Go 仓内 contract 层 |
 | Window、Sidebar、Toolbar、Table、Chart、Settings 页面 | SwiftUI |
 | Menu Bar、Popover、系统菜单、快捷键、应用激活与退出交互 | AppKit / Swift |
+| 主 App 登录项注册、取消、系统批准状态与系统设置跳转 | Swift / ServiceManagement |
 | Helper 启动、握手、崩溃呈现、有限重启 | Swift |
 | 更新检查、下载、安装、Sparkle、签名和公证 | Swift / 发布链 |
 | SQLite、业务 DTO 和健康结论的直接解释 | 禁止在 Swift 重复实现 |
@@ -219,6 +220,12 @@ field 11 的每日桶与新趋势互相解码。
 | 失效通知 | `SubscribeInvalidations` server stream |
 
 未来新增 RPC 必须先回答：这是 Go 拥有的业务能力，还是 Swift 拥有的平台/交互能力？只有前者才能进入 `CoreService`。
+
+“登录时启动 Codex Pulse”属于主 App 的 macOS 平台能力，由 Swift 通过
+`SMAppService.mainApp` 直接管理。它不进入 Go Preferences、`CoreService` 或
+SQLite；Settings 展示以 `SMAppService.Status` 读回为唯一真相，不用本地布尔值
+推断注册成功。ServiceManagement 只位于可替换的薄适配层，状态和副作用通过协议
+注入测试，确定性测试不得注册或移除当前用户的真实登录项。
 
 ### 5.3 零、缺失、unknown 和 partial
 

@@ -1245,6 +1245,215 @@ private func testSettingsExplainsAutomaticDefaultHome() throws {
         "settings must describe automatic first-launch binding")
 }
 
+private enum FakeLoginItemServiceError: Error {
+    case privatePlatformDetails
+}
+
+@MainActor
+private final class FakeLoginItemService: LoginItemServiceManaging {
+    var status: LoginItemRegistrationStatus
+    var statusAfterRegister: LoginItemRegistrationStatus = .enabled
+    var statusAfterUnregister: LoginItemRegistrationStatus = .notRegistered
+    var registerFails = false
+    var unregisterFails = false
+    private(set) var statusReadCount = 0
+    private(set) var registerCount = 0
+    private(set) var unregisterCount = 0
+    private(set) var openSystemSettingsCount = 0
+
+    init(status: LoginItemRegistrationStatus) {
+        self.status = status
+    }
+
+    func readStatus() -> LoginItemRegistrationStatus {
+        statusReadCount += 1
+        return status
+    }
+
+    func register() throws {
+        registerCount += 1
+        status = statusAfterRegister
+        if registerFails {
+            throw FakeLoginItemServiceError.privatePlatformDetails
+        }
+    }
+
+    func unregister() throws {
+        unregisterCount += 1
+        status = statusAfterUnregister
+        if unregisterFails {
+            throw FakeLoginItemServiceError.privatePlatformDetails
+        }
+    }
+
+    func openSystemSettings() {
+        openSystemSettingsCount += 1
+    }
+}
+
+@MainActor
+private func testLoginItemDefaultsToSystemStatusWithoutRegistration() throws {
+    let service = FakeLoginItemService(status: .notRegistered)
+    let settings = LoginItemSettingsModel(service: service)
+
+    try expect(!settings.isRequested, "not-registered system status must render the toggle off")
+    try expect(service.statusReadCount == 1, "initialization must read the real system status once")
+    try expect(service.registerCount == 0, "initialization must never silently register the app")
+    try expect(service.unregisterCount == 0, "initialization must never mutate the login item")
+}
+
+@MainActor
+private func testLoginItemRegistrationAndExternalStatusDrift() throws {
+    let service = FakeLoginItemService(status: .notRegistered)
+    let settings = LoginItemSettingsModel(service: service)
+
+    settings.setRequested(true)
+    try expect(service.registerCount == 1, "turning the toggle on must register exactly once")
+    try expect(settings.status == .enabled, "successful registration must use enabled readback")
+    try expect(settings.isRequested, "enabled system status must render the toggle on")
+    try expect(settings.actionFailure == nil, "successful registration must clear action failures")
+
+    settings.setRequested(false)
+    try expect(service.unregisterCount == 1, "turning the toggle off must unregister exactly once")
+    try expect(
+        settings.status == .notRegistered && !settings.isRequested,
+        "successful unregistration must use not-registered readback"
+    )
+
+    service.status = .enabled
+    settings.refreshStatus()
+    try expect(
+        settings.status == .enabled && settings.isRequested,
+        "an external registration must replace the displayed state with current system status"
+    )
+
+    service.status = .notFound
+    settings.refreshStatus()
+    try expect(
+        settings.status == .notFound && !settings.isRequested,
+        "not-found system status must stay distinct from successful registration"
+    )
+}
+
+@MainActor
+private func testLoginItemRequiresApprovalUsesRegisteredIntent() throws {
+    let service = FakeLoginItemService(status: .notRegistered)
+    service.statusAfterRegister = .requiresApproval
+    service.registerFails = true
+    let settings = LoginItemSettingsModel(service: service)
+
+    settings.setRequested(true)
+    try expect(
+        settings.status == .requiresApproval && settings.isRequested,
+        "requires-approval readback must keep the registered intent visible"
+    )
+    try expect(
+        settings.actionFailure == nil,
+        "requires-approval system status must explain the outcome instead of showing a false failure"
+    )
+
+    settings.openSystemSettings()
+    try expect(
+        service.openSystemSettingsCount == 1,
+        "approval guidance must use the injected System Settings opener"
+    )
+
+    settings.setRequested(false)
+    try expect(
+        service.unregisterCount == 1
+            && settings.status == .notRegistered
+            && !settings.isRequested,
+        "requires-approval state must remain cancellable through system unregistration"
+    )
+}
+
+@MainActor
+private func testLoginItemFailuresRestoreAuthoritativeState() throws {
+    let registrationService = FakeLoginItemService(status: .notRegistered)
+    registrationService.statusAfterRegister = .notRegistered
+    registrationService.registerFails = true
+    let registrationSettings = LoginItemSettingsModel(service: registrationService)
+
+    registrationSettings.setRequested(true)
+    try expect(
+        registrationSettings.status == .notRegistered && !registrationSettings.isRequested,
+        "failed registration must restore the toggle from system readback"
+    )
+    try expect(
+        registrationSettings.actionFailure == .registrationFailed,
+        "failed registration must expose only the stable registration failure"
+    )
+
+    let unregistrationService = FakeLoginItemService(status: .enabled)
+    unregistrationService.statusAfterUnregister = .enabled
+    unregistrationService.unregisterFails = true
+    let unregistrationSettings = LoginItemSettingsModel(service: unregistrationService)
+
+    unregistrationSettings.setRequested(false)
+    try expect(
+        unregistrationSettings.status == .enabled && unregistrationSettings.isRequested,
+        "failed unregistration must restore the toggle from system readback"
+    )
+    try expect(
+        unregistrationSettings.actionFailure == .unregistrationFailed,
+        "failed unregistration must expose only the stable unregistration failure"
+    )
+
+    unregistrationService.status = .notRegistered
+    unregistrationSettings.refreshStatus()
+    try expect(
+        unregistrationSettings.actionFailure == nil,
+        "a later external status change must clear the obsolete action failure"
+    )
+}
+
+private func testLoginItemServiceManagementWiringAndCopy() throws {
+    let adapterSource = try mainWindowSource("MainAppLoginItemService.swift")
+    try expect(
+        adapterSource.contains("SMAppService = .mainApp")
+            && adapterSource.contains("try service.register()")
+            && adapterSource.contains("try service.unregister()"),
+        "the platform adapter must use SMAppService.mainApp registration APIs"
+    )
+    for status in [".notRegistered", ".enabled", ".requiresApproval", ".notFound"] {
+        try expect(
+            adapterSource.contains(status),
+            "the platform adapter must map every SMAppService status: \(status)"
+        )
+    }
+
+    let delegateSource = try mainWindowSource("AppDelegate.swift")
+    try expect(
+        delegateSource.contains(
+            "func applicationDidBecomeActive(_ notification: Notification) {\n"
+                + "        guard !configuration.smokeMode else { return }\n"
+                + "        loginItemSettings.refreshStatus()"),
+        "application activation must refresh the login-item system status"
+    )
+
+    let settingsSource = try mainWindowSource("SourcesJobsSettingsViews.swift")
+    try expect(
+        settingsSource.contains(".onAppear { loginItemSettings.refreshStatus() }"),
+        "re-entering Settings must refresh the login-item system status"
+    )
+    try expect(
+        settingsSource.contains("settings.login-at-launch")
+            && settingsSource.contains("等待系统批准")
+            && settingsSource.contains("登录项不可用")
+            && settingsSource.contains("打开系统登录项设置")
+            && settingsSource.contains("无需点击“保存更改”")
+            && settingsSource.contains(
+                "loginItemSettings.isChanging || loginItemSettings.status == .notFound"
+            ),
+        "Settings must expose stable controls and copy for every actionable login-item state"
+    )
+    try expect(
+        !settingsSource.contains("localizedDescription")
+            && !adapterSource.contains("localizedDescription"),
+        "login-item UI must not expose raw platform error text"
+    )
+}
+
 private func testStatusPillUsesProductCopy() throws {
     let source = try mainWindowSource("FeatureViewSupport.swift")
     try expect(
@@ -6204,6 +6413,11 @@ struct CodexPulseAppTestMain {
         try testSidebarSettingsUsesSystemRowSpacing()
         try testSettingsOverviewRangeFallbackMatchesProductOptions()
         try testSettingsExplainsAutomaticDefaultHome()
+        try testLoginItemDefaultsToSystemStatusWithoutRegistration()
+        try testLoginItemRegistrationAndExternalStatusDrift()
+        try testLoginItemRequiresApprovalUsesRegisteredIntent()
+        try testLoginItemFailuresRestoreAuthoritativeState()
+        try testLoginItemServiceManagementWiringAndCopy()
         try testStatusPillUsesProductCopy()
         try testStatusItemRefreshReadsCommittedState()
         try testApplicationMenuRegistersNativeCommands()
