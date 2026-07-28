@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 )
 
@@ -66,7 +66,7 @@ type Candidate struct {
 	Status    CandidateStatus
 	Reason    CandidateReason
 	Retryable bool
-	Metadata  logs.HomeMetadata
+	Metadata  logsource.HomeMetadata
 }
 
 type Confirmation struct {
@@ -93,7 +93,7 @@ type State struct {
 }
 
 type HomeProbe interface {
-	Probe(ctx context.Context, path string) (logs.HomeMetadata, error)
+	Probe(ctx context.Context, path string) (logsource.HomeMetadata, error)
 }
 
 type Store interface {

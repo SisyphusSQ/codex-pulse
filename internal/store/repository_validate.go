@@ -6,8 +6,6 @@ import (
 	"fmt"
 
 	"gorm.io/gorm"
-
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 func validateTurnFilter(filter TurnFilter) (int, error) {
@@ -218,11 +216,11 @@ func batchSessionID(batch FactBatch) (string, error) {
 	return expected, nil
 }
 
-func requireProject(ctx context.Context, transaction storesqlite.WriteTx, projectID string) error {
+func requireProject(ctx context.Context, transaction *gorm.DB, projectID string) error {
 	return requireStoredReference(ctx, transaction, &projectModel{}, "project_id = ?", projectID, "project")
 }
 
-func validateProjectReplay(ctx context.Context, transaction storesqlite.WriteTx, project Project) error {
+func validateProjectReplay(ctx context.Context, transaction *gorm.DB, project Project) error {
 	var existing projectModel
 	err := transaction.WithContext(ctx).Take(&existing, "project_id = ?", project.ProjectID).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -239,17 +237,17 @@ func validateProjectReplay(ctx context.Context, transaction storesqlite.WriteTx,
 	return nil
 }
 
-func requireSession(ctx context.Context, transaction storesqlite.WriteTx, sessionID string) error {
+func requireSession(ctx context.Context, transaction *gorm.DB, sessionID string) error {
 	return requireStoredReference(ctx, transaction, &sessionModel{}, "session_id = ?", sessionID, "session")
 }
 
-func requireTurn(ctx context.Context, transaction storesqlite.WriteTx, turnID string) error {
+func requireTurn(ctx context.Context, transaction *gorm.DB, turnID string) error {
 	return requireStoredReference(ctx, transaction, &turnModel{}, "turn_id = ?", turnID, "turn")
 }
 
 func requireStoredReference(
 	ctx context.Context,
-	transaction storesqlite.WriteTx,
+	transaction *gorm.DB,
 	model any,
 	query string,
 	identifier string,
@@ -263,7 +261,7 @@ func requireStoredReference(
 	return err
 }
 
-func validateSessionIdentity(ctx context.Context, transaction storesqlite.WriteTx, session Session) error {
+func validateSessionIdentity(ctx context.Context, transaction *gorm.DB, session Session) error {
 	var existing sessionModel
 	err := transaction.WithContext(ctx).Take(&existing, "session_id = ?", session.SessionID).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -294,7 +292,7 @@ func validateSessionIdentity(ctx context.Context, transaction storesqlite.WriteT
 	return nil
 }
 
-func validateTurnIdentity(ctx context.Context, transaction storesqlite.WriteTx, turn Turn) error {
+func validateTurnIdentity(ctx context.Context, transaction *gorm.DB, turn Turn) error {
 	var existing turnModel
 	err := transaction.WithContext(ctx).Take(&existing, "turn_id = ?", turn.TurnID).Error
 	switch {
@@ -337,7 +335,7 @@ func validateTurnIdentity(ctx context.Context, transaction storesqlite.WriteTx, 
 	return nil
 }
 
-func validateActiveTurnReference(ctx context.Context, transaction storesqlite.WriteTx, current SessionCurrent) error {
+func validateActiveTurnReference(ctx context.Context, transaction *gorm.DB, current SessionCurrent) error {
 	if current.ActiveTurnID == nil {
 		return nil
 	}
@@ -357,7 +355,7 @@ func validateActiveTurnReference(ctx context.Context, transaction storesqlite.Wr
 
 func validateTurnUsageReplay(
 	ctx context.Context,
-	transaction storesqlite.WriteTx,
+	transaction *gorm.DB,
 	usage TurnUsage,
 	expectedSessionID string,
 ) error {
@@ -408,7 +406,7 @@ func validateTurnUsageReplay(
 
 func validateSessionCurrentReplay(
 	ctx context.Context,
-	transaction storesqlite.WriteTx,
+	transaction *gorm.DB,
 	current SessionCurrent,
 ) error {
 	var stored sessionCurrentModel
@@ -434,7 +432,7 @@ func validateSessionCurrentReplay(
 
 func validateSessionUsageReplay(
 	ctx context.Context,
-	transaction storesqlite.WriteTx,
+	transaction *gorm.DB,
 	usage SessionUsageCurrent,
 ) error {
 	var stored sessionUsageCurrentModel

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"gorm.io/gorm"
+
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -152,7 +154,7 @@ func writeUnitFixtures() (Project, SourceFile) {
 
 func assertWriteUnitRows(t *testing.T, database *storesqlite.Store, wantProjects, wantSources int64) {
 	t.Helper()
-	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		var projects int64
 		if err := connection.WithContext(ctx).Model(&projectModel{}).Count(&projects).Error; err != nil {
 			return err

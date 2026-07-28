@@ -12,9 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
+	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -79,7 +80,7 @@ func execute(ctx context.Context, home, confirm, tempParent string) (summary, er
 	if home == "" || confirm != confirmationPhrase {
 		return summary{}, errors.New("LIGHT-E2E-001: explicit Home and read-only confirmation are required")
 	}
-	metadata, err := logs.NewHomeProbe().Probe(ctx, home)
+	metadata, err := logsource.NewHomeProbe().Probe(ctx, home)
 	if err != nil {
 		return summary{}, errors.New("LIGHT-E2E-002: confirm Home identity")
 	}
@@ -108,25 +109,29 @@ func execute(ctx context.Context, home, confirm, tempParent string) (summary, er
 		}
 	}()
 	repository := store.NewRepository(database)
+	lightRepository := storelight.NewRepository(database)
 	migrationStarted := time.Now()
 	if _, err := repository.MigrateApplicationSchema(ctx); err != nil {
 		return summary{}, errors.New("LIGHT-E2E-004: migrate isolated store")
 	}
 	result := summary{Version: "light-index-e2e-v1", Result: "passed", MigrationMS: time.Since(migrationStarted).Milliseconds()}
 	runtime, err := lightindex.NewRuntime(lightindex.RuntimeConfig{
-		Repository: repository, Metadata: lightindex.LocalMetadataProvider{},
+		Repository: lightRepository, DeepRepository: repository,
+		Metadata: lightindex.LocalMetadataProvider{},
 	})
 	if err != nil {
 		return summary{}, errors.New("LIGHT-E2E-005: create runtime")
 	}
-	homeIdentity := store.LightHomeIdentity{Path: metadata.Path, DeviceID: metadata.DeviceID, Inode: metadata.Inode}
+	homeIdentity := storelight.LightHomeIdentity{
+		Path: metadata.Path, DeviceID: metadata.DeviceID, Inode: metadata.Inode,
+	}
 	initialStarted := time.Now()
 	run, err := runtime.Start(ctx, homeIdentity)
 	result.MetadataFirstScreenMS = time.Since(initialStarted).Milliseconds()
 	if err != nil {
 		return summary{}, errors.New("LIGHT-E2E-006: publish App Server metadata")
 	}
-	sessions, err := repository.ListLightSessions(ctx)
+	sessions, err := lightRepository.ListLightSessions(ctx)
 	if err != nil {
 		return summary{}, errors.New("LIGHT-E2E-006: read metadata projection")
 	}
@@ -137,7 +142,7 @@ func execute(ctx context.Context, home, confirm, tempParent string) (summary, er
 	}
 	result.BackgroundTokenScanMS = time.Since(backgroundStarted).Milliseconds()
 	result.InitialTotalMS = time.Since(initialStarted).Milliseconds()
-	first, err := collectMetrics(ctx, repository, sessions)
+	first, err := collectMetrics(ctx, lightRepository, sessions)
 	if err != nil {
 		return summary{}, errors.New("LIGHT-E2E-007: collect scan metrics")
 	}
@@ -158,11 +163,11 @@ func execute(ctx context.Context, home, confirm, tempParent string) (summary, er
 		return summary{}, errors.New("LIGHT-E2E-008: reuse unchanged scans")
 	}
 	result.NoChangeBackgroundMS = time.Since(refreshBackgroundStarted).Milliseconds()
-	secondSessions, err := repository.ListLightSessions(ctx)
+	secondSessions, err := lightRepository.ListLightSessions(ctx)
 	if err != nil {
 		return summary{}, errors.New("LIGHT-E2E-008: read unchanged metadata")
 	}
-	second, err := collectMetrics(ctx, repository, secondSessions)
+	second, err := collectMetrics(ctx, lightRepository, secondSessions)
 	if err != nil {
 		return summary{}, errors.New("LIGHT-E2E-008: collect unchanged metrics")
 	}
@@ -194,7 +199,11 @@ func execute(ctx context.Context, home, confirm, tempParent string) (summary, er
 	return result, nil
 }
 
-func collectMetrics(ctx context.Context, repository *store.Repository, sessions []store.LightSessionMetadata) (scanMetrics, error) {
+func collectMetrics(
+	ctx context.Context,
+	repository *storelight.Repository,
+	sessions []storelight.LightSessionMetadata,
+) (scanMetrics, error) {
 	result := scanMetrics{bySession: make(map[string]scanSnapshot)}
 	for _, session := range sessions {
 		if session.RolloutPath == nil {
@@ -202,7 +211,7 @@ func collectMetrics(ctx context.Context, repository *store.Repository, sessions 
 		}
 		result.rollouts++
 		scan, err := repository.ActiveLightTokenScan(ctx, session.SessionID)
-		if errors.Is(err, store.ErrNotFound) {
+		if errors.Is(err, storelight.ErrNotFound) {
 			continue
 		}
 		if err != nil {

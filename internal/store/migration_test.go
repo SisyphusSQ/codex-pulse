@@ -9,6 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -114,7 +118,7 @@ func TestApplicationMigrationAppendsIngestSchemaToFrozenV2(t *testing.T) {
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 
-	err = database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		for _, table := range []string{
 			"source_generations", "parser_checkpoints", "source_generation_batches", "parser_diagnostics",
 		} {
@@ -128,7 +132,7 @@ func TestApplicationMigrationAppendsIngestSchemaToFrozenV2(t *testing.T) {
 		).Scan(&turnDDL).Error; err != nil {
 			return err
 		}
-		normalized := normalizeSchemaSQL(turnDDL)
+		normalized := storeschema.NormalizeSQL(turnDDL)
 		if strings.Contains(normalized, "complete_offset >= start_offset") {
 			t.Errorf("turns DDL still orders terminal offset after start: %s", turnDDL)
 		}
@@ -172,7 +176,7 @@ func TestApplicationMigrationAppendsRetentionIndexesToFrozenV1(t *testing.T) {
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 
-	err = database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		var checksum string
 		if err := connection.WithContext(ctx).Model(&schemaMigrationModel{}).
 			Where("version = ?", 1).Pluck("checksum", &checksum).Error; err != nil {
@@ -207,13 +211,13 @@ func TestMigrationRunnerAppliesAllPendingVersionsInOrder(t *testing.T) {
 		catalog: []migrationDefinition{
 			{
 				version: 1, name: "one", checksum: strings.Repeat("1", 64),
-				apply: func(ctx context.Context, transaction storesqlite.WriteTx) error {
+				apply: func(ctx context.Context, transaction *gorm.DB) error {
 					return transaction.WithContext(ctx).Exec(`CREATE TABLE migration_one (id INTEGER) STRICT`).Error
 				},
 			},
 			{
 				version: 2, name: "two", checksum: strings.Repeat("2", 64),
-				apply: func(ctx context.Context, transaction storesqlite.WriteTx) error {
+				apply: func(ctx context.Context, transaction *gorm.DB) error {
 					return transaction.WithContext(ctx).Exec(`CREATE TABLE migration_two (id INTEGER) STRICT`).Error
 				},
 			},
@@ -248,13 +252,13 @@ func TestMigrationRunnerRollsBackAllPendingVersionsOnLaterFailure(t *testing.T) 
 		catalog: []migrationDefinition{
 			{
 				version: 1, name: "one", checksum: strings.Repeat("1", 64),
-				apply: func(ctx context.Context, transaction storesqlite.WriteTx) error {
+				apply: func(ctx context.Context, transaction *gorm.DB) error {
 					return transaction.WithContext(ctx).Exec(`CREATE TABLE migration_one (id INTEGER) STRICT`).Error
 				},
 			},
 			{
 				version: 2, name: "two", checksum: strings.Repeat("2", 64),
-				apply: func(ctx context.Context, transaction storesqlite.WriteTx) error {
+				apply: func(ctx context.Context, transaction *gorm.DB) error {
 					if err := transaction.WithContext(ctx).Exec(`CREATE TABLE migration_two (id INTEGER) STRICT`).Error; err != nil {
 						return err
 					}
@@ -270,7 +274,7 @@ func TestMigrationRunnerRollsBackAllPendingVersionsOnLaterFailure(t *testing.T) 
 	if len(report.AppliedVersions) != 0 {
 		t.Fatalf("AppliedVersions = %v, want empty after rollback", report.AppliedVersions)
 	}
-	err = database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		var version int
 		if err := rawQueryRow(ctx, connection, `PRAGMA user_version`).Scan(&version); err != nil {
 			return err
@@ -418,7 +422,7 @@ func TestApplicationMigrationUpgradesCoreOnlyLegacyDatabaseAndPreservesDataInBac
 	}
 
 	now := time.UnixMilli(200_000_000).UTC()
-	cutoffMS := now.Add(-RetentionWindow).UnixMilli()
+	cutoffMS := now.Add(-storeretention.RetentionWindow).UnixMilli()
 	state := SourceState{
 		SourceInstanceID: "legacy-upgraded-source", SourceType: "quota", ScopeKey: "default",
 		FreshnessState: SourceFreshnessCurrent, CursorVersion: 1, UpdatedAtMS: now.UnixMilli(),
@@ -433,18 +437,18 @@ func TestApplicationMigrationUpgradesCoreOnlyLegacyDatabaseAndPreservesDataInBac
 	}); err != nil {
 		t.Fatalf("AppendSourceAttempt(after upgrade) error = %v", err)
 	}
-	cleanup, err := repository.CleanupRetention(context.Background(), RetentionCleanupOptions{Now: now})
+	cleanup, err := storeretention.NewRepository(repository.database).CleanupRetention(context.Background(), storeretention.RetentionCleanupOptions{Now: now})
 	if err != nil {
 		t.Fatalf("CleanupRetention(after upgrade) error = %v", err)
 	}
-	if cleanup.Deleted != (RetentionDeletedCounts{SourceAttempts: 1}) {
+	if cleanup.Deleted != (storeretention.RetentionDeletedCounts{SourceAttempts: 1}) {
 		t.Fatalf("CleanupRetention(after upgrade) = %#v, want one source attempt", cleanup)
 	}
 	if attempts, err := repository.ListSourceAttempts(context.Background(), state.SourceInstanceID, 10); err != nil || len(attempts) != 0 {
 		t.Fatalf("ListSourceAttempts(after cleanup) = %#v, %v, want empty", attempts, err)
 	}
 	var projectCount int64
-	err = database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Model(&projectModel{}).
 			Where("project_id = ?", project.ProjectID).Count(&projectCount).Error
 	})
@@ -618,7 +622,7 @@ func applicationMigrationRunnerForTest(database *storesqlite.Store) migrationRun
 	return migrationRunner{
 		repository: NewRepository(database), catalog: applicationMigrations,
 		now: func() time.Time { return time.UnixMilli(123) },
-		verifyCurrent: func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		verifyCurrent: func(ctx context.Context, transaction *gorm.DB) error {
 			return verifyApplicationSchema(ctx, transaction)
 		},
 	}
@@ -626,11 +630,11 @@ func applicationMigrationRunnerForTest(database *storesqlite.Store) migrationRun
 
 func seedLegacyApplicationSchema(t *testing.T, database *storesqlite.Store) {
 	t.Helper()
-	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		if err := ensureSchemaObjects(ctx, transaction, applicationSchemaV1CoreObjects()); err != nil {
+	err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
+		if err := storeschema.EnsureObjects(ctx, transaction, applicationSchemaV1CoreObjects()); err != nil {
 			return err
 		}
-		return ensureSchemaObjects(ctx, transaction, runtimeSchemaObjects)
+		return storeschema.EnsureObjects(ctx, transaction, runtimeSchemaObjects)
 	})
 	if err != nil {
 		t.Fatalf("seed legacy application schema: %v", err)
@@ -639,8 +643,8 @@ func seedLegacyApplicationSchema(t *testing.T, database *storesqlite.Store) {
 
 func seedApplicationSchemaV1(t *testing.T, database *storesqlite.Store) {
 	t.Helper()
-	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		if err := ensureSchemaObjects(ctx, transaction, migrationSchemaObjects); err != nil {
+	err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
+		if err := storeschema.EnsureObjects(ctx, transaction, migrationSchemaObjects); err != nil {
 			return err
 		}
 		if err := applicationMigrations[0].apply(ctx, transaction); err != nil {
@@ -661,8 +665,8 @@ func seedApplicationSchemaV1(t *testing.T, database *storesqlite.Store) {
 
 func seedApplicationSchemaV2(t *testing.T, database *storesqlite.Store) {
 	t.Helper()
-	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		if err := ensureSchemaObjects(ctx, transaction, migrationSchemaObjects); err != nil {
+	err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
+		if err := storeschema.EnsureObjects(ctx, transaction, migrationSchemaObjects); err != nil {
 			return err
 		}
 		for _, migration := range applicationMigrations[:2] {
@@ -685,7 +689,7 @@ func seedApplicationSchemaV2(t *testing.T, database *storesqlite.Store) {
 
 func assertLegacyMigrationState(t *testing.T, database *storesqlite.Store) {
 	t.Helper()
-	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		var version int
 		if err := rawQueryRow(ctx, connection, `PRAGMA user_version`).Scan(&version); err != nil {
 			return err
@@ -726,7 +730,7 @@ func TestMigrationRejectsChecksumDrift(t *testing.T) {
 	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Model(&schemaMigrationModel{}).
 			Where("version = ?", 1).Update("checksum", "0000000000000000000000000000000000000000000000000000000000000000").Error
 	})
@@ -767,7 +771,7 @@ func TestMigrationRejectsVersionHistoryDivergenceAndNewerSchema(t *testing.T) {
 		if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
 			t.Fatalf("EnsureApplicationSchema() error = %v", err)
 		}
-		err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 			return transaction.WithContext(ctx).Create(&schemaMigrationModel{
 				Version: applicationSchemaVersion + 1, Name: "future", Checksum: strings.Repeat("3", 64), AppliedAtMS: 2,
 			}).Error
@@ -784,7 +788,7 @@ func TestMigrationRejectsVersionHistoryDivergenceAndNewerSchema(t *testing.T) {
 func TestMigrationRunnerRejectsInvalidCatalogBeforeWriting(t *testing.T) {
 	t.Parallel()
 
-	validApply := func(context.Context, storesqlite.WriteTx) error { return nil }
+	validApply := func(context.Context, *gorm.DB) error { return nil }
 	for _, testCase := range []struct {
 		name    string
 		catalog []migrationDefinition
@@ -830,7 +834,7 @@ func TestMigrationRunnerRejectsInvalidCatalogBeforeWriting(t *testing.T) {
 
 func assertLegacyMigrationStateWithoutSchema(t *testing.T, database *storesqlite.Store) {
 	t.Helper()
-	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		var version int
 		if err := rawQueryRow(ctx, connection, `PRAGMA user_version`).Scan(&version); err != nil {
 			return err
@@ -849,7 +853,7 @@ func TestMigrationApplyFailureRollsBackVersionHistoryAndPendingObjects(t *testin
 	t.Parallel()
 
 	database := openTestDatabase(t)
-	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).
 			Exec(`CREATE TABLE source_files (source_file_id TEXT PRIMARY KEY) STRICT`).Error
 	})
@@ -858,10 +862,10 @@ func TestMigrationApplyFailureRollsBackVersionHistoryAndPendingObjects(t *testin
 	}
 
 	err = NewRepository(database).EnsureApplicationSchema(context.Background())
-	if !errors.Is(err, ErrSchemaContract) {
-		t.Fatalf("EnsureApplicationSchema() error = %v, want ErrSchemaContract", err)
+	if !errors.Is(err, storeschema.ErrContract) {
+		t.Fatalf("EnsureApplicationSchema() error = %v, want storeschema.ErrContract", err)
 	}
-	err = database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		var version int
 		if err := rawQueryRow(ctx, connection, `PRAGMA user_version`).Scan(&version); err != nil {
 			return err
@@ -883,7 +887,7 @@ func TestMigrationApplyFailureRollsBackVersionHistoryAndPendingObjects(t *testin
 }
 
 func setMigrationUserVersion(database *storesqlite.Store, version int) error {
-	return database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Exec("PRAGMA user_version = " + strconv.Itoa(version)).Error
 	})
 }
@@ -895,7 +899,7 @@ func assertMigrationVersionAndHistory(
 	wantHistory int64,
 ) {
 	t.Helper()
-	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		var version int
 		if err := rawQueryRow(ctx, connection, `PRAGMA user_version`).Scan(&version); err != nil {
 			return err

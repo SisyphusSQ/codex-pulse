@@ -5,7 +5,7 @@ import (
 	"errors"
 	"sort"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -13,7 +13,7 @@ var ErrInvalidPlan = errors.New("invalid bootstrap plan")
 
 type PlanRequest struct {
 	JobID        string
-	Reconcile    logs.ReconcilePlan
+	Reconcile    logsource.ReconcilePlan
 	NowMS        int64
 	DayStartMS   int64
 	FastMaxFiles int
@@ -27,7 +27,7 @@ type PlanRequest struct {
 
 type ReconcilePlanRequest struct {
 	JobID        string
-	Reconcile    logs.ReconcilePlan
+	Reconcile    logsource.ReconcilePlan
 	StartOrdinal int64
 	Pass         int64
 	AtMS         int64
@@ -56,7 +56,7 @@ func FreezeInitialPlan(request PlanRequest) ([]store.BootstrapPlanItem, error) {
 		}
 		sourceID := snapshotSourceIDFromAction(action)
 		committedOffset, incomplete := request.CommittedOffsets[sourceID]
-		if action.Kind == logs.ChangeUnchanged && !incomplete {
+		if action.Kind == logsource.ChangeUnchanged && !incomplete {
 			continue
 		}
 		kind, ok := bootstrapActionKind(action.Kind)
@@ -93,7 +93,7 @@ func FreezeInitialPlan(request PlanRequest) ([]store.BootstrapPlanItem, error) {
 			progressTotal = current.SizeBytes
 		}
 		fastRank := 1
-		if action.Kind == logs.ChangeGrown || incomplete {
+		if action.Kind == logsource.ChangeGrown || incomplete {
 			fastRank = 0
 			tier = store.BootstrapTierActiveAppend
 			tierRank = -1
@@ -150,7 +150,7 @@ func FreezeInitialPlan(request PlanRequest) ([]store.BootstrapPlanItem, error) {
 	return items, nil
 }
 
-func snapshotSourceIDFromAction(action logs.ReconcileAction) string {
+func snapshotSourceIDFromAction(action logsource.ReconcileAction) string {
 	if action.Current != nil {
 		return action.Current.SourceFileID
 	}
@@ -168,12 +168,12 @@ func FreezeReconcilePlan(request ReconcilePlanRequest) ([]store.BootstrapPlanIte
 	}
 	items := make([]store.BootstrapPlanItem, 0, len(request.Reconcile.Actions))
 	for _, action := range request.Reconcile.Actions {
-		if action.Kind == logs.ChangeUnchanged || actionUsesSessionIndex(action) {
+		if action.Kind == logsource.ChangeUnchanged || actionUsesSessionIndex(action) {
 			continue
 		}
 		// A discovery issue with no previously known source has no executable
 		// source action. The caller persists it in ReconcileIssueCount instead.
-		if action.Kind == logs.ChangeUnreadable && action.Previous == nil && action.Current == nil {
+		if action.Kind == logsource.ChangeUnreadable && action.Previous == nil && action.Current == nil {
 			continue
 		}
 		kind, ok := bootstrapActionKind(action.Kind)
@@ -205,39 +205,39 @@ func FreezeReconcilePlan(request ReconcilePlanRequest) ([]store.BootstrapPlanIte
 	return items, nil
 }
 
-func actionUsesSessionIndex(action logs.ReconcileAction) bool {
-	return action.Previous != nil && action.Previous.Kind == logs.SourceKindSessionIndex ||
-		action.Current != nil && action.Current.Kind == logs.SourceKindSessionIndex
+func actionUsesSessionIndex(action logsource.ReconcileAction) bool {
+	return action.Previous != nil && action.Previous.Kind == logsource.SourceKindSessionIndex ||
+		action.Current != nil && action.Current.Kind == logsource.SourceKindSessionIndex
 }
 
-func bootstrapActionKind(kind logs.ChangeKind) (store.BootstrapActionKind, bool) {
+func bootstrapActionKind(kind logsource.ChangeKind) (store.BootstrapActionKind, bool) {
 	switch kind {
-	case logs.ChangeAdded:
+	case logsource.ChangeAdded:
 		return store.BootstrapActionAdded, true
-	case logs.ChangeUnchanged:
+	case logsource.ChangeUnchanged:
 		return store.BootstrapActionUnchanged, true
-	case logs.ChangeGrown:
+	case logsource.ChangeGrown:
 		return store.BootstrapActionGrown, true
-	case logs.ChangeTruncated:
+	case logsource.ChangeTruncated:
 		return store.BootstrapActionTruncated, true
-	case logs.ChangeMoved:
+	case logsource.ChangeMoved:
 		return store.BootstrapActionMoved, true
-	case logs.ChangeReplaced:
+	case logsource.ChangeReplaced:
 		return store.BootstrapActionReplaced, true
-	case logs.ChangeDeleted:
+	case logsource.ChangeDeleted:
 		return store.BootstrapActionDeleted, true
-	case logs.ChangeUnreadable:
+	case logsource.ChangeUnreadable:
 		return store.BootstrapActionUnreadable, true
 	default:
 		return "", false
 	}
 }
 
-func bootstrapFingerprint(snapshot *logs.Snapshot) (*store.SourceFingerprint, error) {
+func bootstrapFingerprint(snapshot *logsource.Snapshot) (*store.SourceFingerprint, error) {
 	if snapshot == nil {
 		return nil, nil
 	}
-	if snapshot.Kind != logs.SourceKindSession && snapshot.Kind != logs.SourceKindArchivedSession {
+	if snapshot.Kind != logsource.SourceKindSession && snapshot.Kind != logsource.SourceKindArchivedSession {
 		return nil, ErrInvalidPlan
 	}
 	value := store.SourceFingerprint{

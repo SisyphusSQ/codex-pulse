@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestIngestSchemaColumnsForeignKeysIndexesAndPrivacyAreFrozen(t *testing.T) {
@@ -59,7 +59,7 @@ func TestIngestSchemaColumnsForeignKeysIndexesAndPrivacyAreFrozen(t *testing.T) 
 		"idx_source_generations_building", "idx_source_generations_snapshot",
 	}
 	var gotForeignKeys, gotIndexes []string
-	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		for table, want := range wantColumns {
 			rows, err := rawQueryRows(ctx, connection, `SELECT name FROM pragma_table_info(?) ORDER BY cid`, table)
 			if err != nil {

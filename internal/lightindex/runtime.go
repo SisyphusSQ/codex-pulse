@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
+	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
 )
 
 const defaultScanBatchBytes int64 = 8 << 20
@@ -21,27 +22,29 @@ type MetadataProvider interface {
 }
 
 type RuntimeConfig struct {
-	Repository        *store.Repository
+	Repository        *storelight.Repository
+	DeepRepository    *store.Repository
 	Metadata          MetadataProvider
 	ScanBatchBytes    int64
 	RefreshInterval   time.Duration
 	Clock             func() time.Time
 	BeforeTokenScan   func(context.Context) error
 	MetadataCommitted func()
-	BatchCommitted    func(store.LightTokenScan)
+	BatchCommitted    func(storelight.LightTokenScan)
 	RefreshCommitted  func()
 	RefreshFailed     func(error)
 }
 
 type Runtime struct {
-	repository        *store.Repository
+	repository        *storelight.Repository
+	deepRepository    *store.Repository
 	metadata          MetadataProvider
 	scanBatchBytes    int64
 	refreshInterval   time.Duration
 	clock             func() time.Time
 	beforeTokenScan   func(context.Context) error
 	metadataCommitted func()
-	batchCommitted    func(store.LightTokenScan)
+	batchCommitted    func(storelight.LightTokenScan)
 	refreshCommitted  func()
 	refreshFailed     func(error)
 	deepMu            sync.Mutex
@@ -68,14 +71,15 @@ func NewRuntime(config RuntimeConfig) (*Runtime, error) {
 		clock = time.Now
 	}
 	return &Runtime{
-		repository: config.Repository, metadata: config.Metadata, scanBatchBytes: batchBytes,
+		repository: config.Repository, deepRepository: config.DeepRepository,
+		metadata: config.Metadata, scanBatchBytes: batchBytes,
 		refreshInterval: config.RefreshInterval, clock: clock, beforeTokenScan: config.BeforeTokenScan,
 		metadataCommitted: config.MetadataCommitted, batchCommitted: config.BatchCommitted,
 		refreshCommitted: config.RefreshCommitted, refreshFailed: config.RefreshFailed,
 	}, nil
 }
 
-func (runtime *Runtime) Start(ctx context.Context, home store.LightHomeIdentity) (*Run, error) {
+func (runtime *Runtime) Start(ctx context.Context, home storelight.LightHomeIdentity) (*Run, error) {
 	if !runtime.validStart(ctx, home) {
 		return nil, errors.New("invalid lightweight index start")
 	}
@@ -99,8 +103,8 @@ func (runtime *Runtime) Start(ctx context.Context, home store.LightHomeIdentity)
 // before old lightweight derived rows are replaced.
 func (runtime *Runtime) StartHomeSwitch(
 	ctx context.Context,
-	expected store.LightHomeIdentity,
-	next store.LightHomeIdentity,
+	expected storelight.LightHomeIdentity,
+	next storelight.LightHomeIdentity,
 ) (*Run, error) {
 	if !runtime.validStart(ctx, expected) || !runtime.validStart(ctx, next) || expected == next {
 		return nil, errors.New("invalid lightweight Home switch")
@@ -119,7 +123,7 @@ func (runtime *Runtime) StartHomeSwitch(
 
 func (runtime *Runtime) refreshMetadata(
 	ctx context.Context,
-	home store.LightHomeIdentity,
+	home storelight.LightHomeIdentity,
 ) (bool, error) {
 	metadata, err := runtime.metadata.List(ctx, home.Path)
 	if err != nil {
@@ -130,7 +134,7 @@ func (runtime *Runtime) refreshMetadata(
 
 func (runtime *Runtime) reconcileMetadata(
 	ctx context.Context,
-	home store.LightHomeIdentity,
+	home storelight.LightHomeIdentity,
 	metadata appserver.ThreadList,
 ) (bool, error) {
 	generation := int64(1)
@@ -138,10 +142,10 @@ func (runtime *Runtime) reconcileMetadata(
 	switch {
 	case stateErr == nil:
 		if state.Home != home {
-			return false, store.ErrLightHomeFence
+			return false, storelight.ErrLightHomeFence
 		}
 		generation = state.MetadataGeneration + 1
-	case errors.Is(stateErr, store.ErrNotFound):
+	case errors.Is(stateErr, storelight.ErrNotFound):
 	default:
 		return false, stateErr
 	}
@@ -169,22 +173,22 @@ func (runtime *Runtime) notifyMetadataCommitted() {
 	}
 }
 
-func (runtime *Runtime) validStart(ctx context.Context, home store.LightHomeIdentity) bool {
+func (runtime *Runtime) validStart(ctx context.Context, home storelight.LightHomeIdentity) bool {
 	return runtime != nil && runtime.repository != nil && runtime.metadata != nil && ctx != nil &&
 		home.Path != "" && home.DeviceID != "" && home.Inode > 0
 }
 
 func (runtime *Runtime) metadataSnapshot(
-	home store.LightHomeIdentity,
+	home storelight.LightHomeIdentity,
 	generation int64,
 	metadata appserver.ThreadList,
-) store.LightMetadataSnapshot {
-	snapshot := store.LightMetadataSnapshot{
+) storelight.LightMetadataSnapshot {
+	snapshot := storelight.LightMetadataSnapshot{
 		Home: home, Generation: generation, ReadyAtMS: runtime.clock().UnixMilli(),
-		Sessions: make([]store.LightSessionMetadata, 0, len(metadata.Threads)),
+		Sessions: make([]storelight.LightSessionMetadata, 0, len(metadata.Threads)),
 	}
 	for _, thread := range metadata.Threads {
-		snapshot.Sessions = append(snapshot.Sessions, store.LightSessionMetadata{
+		snapshot.Sessions = append(snapshot.Sessions, storelight.LightSessionMetadata{
 			SessionID: thread.SessionID, ThreadName: thread.Name, CWD: thread.CWD,
 			RolloutPath: thread.RolloutPath, CreatedAtMS: thread.CreatedAtMS,
 			UpdatedAtMS: thread.UpdatedAtMS, RecencyAtMS: thread.RecencyAtMS,
@@ -195,7 +199,7 @@ func (runtime *Runtime) metadataSnapshot(
 
 func (runtime *Runtime) startWorker(
 	ctx context.Context,
-	home store.LightHomeIdentity,
+	home storelight.LightHomeIdentity,
 	initialMetadataChanged bool,
 ) *Run {
 	workerCtx, cancel := context.WithCancel(ctx)
@@ -212,7 +216,7 @@ func (runtime *Runtime) startWorker(
 
 func (runtime *Runtime) run(
 	ctx context.Context,
-	home store.LightHomeIdentity,
+	home storelight.LightHomeIdentity,
 	initialMetadataChanged bool,
 	trigger <-chan struct{},
 ) error {
@@ -250,7 +254,7 @@ func (runtime *Runtime) run(
 	}
 }
 
-func (runtime *Runtime) refreshOnce(ctx context.Context, home store.LightHomeIdentity) error {
+func (runtime *Runtime) refreshOnce(ctx context.Context, home storelight.LightHomeIdentity) error {
 	metadataChanged, err := runtime.refreshMetadata(ctx, home)
 	if err != nil {
 		return err
@@ -263,8 +267,8 @@ func (runtime *Runtime) refreshOnce(ctx context.Context, home store.LightHomeIde
 }
 
 func fatalRefreshError(err error) bool {
-	return errors.Is(err, store.ErrLightHomeFence) || errors.Is(err, logs.ErrHomeChanged) ||
-		errors.Is(err, logs.ErrInvalidHome) || errors.Is(err, logs.ErrUnsafeHome)
+	return errors.Is(err, storelight.ErrLightHomeFence) || errors.Is(err, logsource.ErrHomeChanged) ||
+		errors.Is(err, logsource.ErrInvalidHome) || errors.Is(err, logsource.ErrUnsafeHome)
 }
 
 func (run *Run) Cancel() {
@@ -306,18 +310,18 @@ func (run *Run) Wait(ctx context.Context) error {
 
 func (runtime *Runtime) scanAll(
 	ctx context.Context,
-	home store.LightHomeIdentity,
+	home storelight.LightHomeIdentity,
 ) (bool, error) {
 	if runtime.beforeTokenScan != nil {
 		if err := runtime.beforeTokenScan(ctx); err != nil {
 			return false, err
 		}
 	}
-	discoverer, err := logs.NewConfirmedDiscoverer(home.Path, home.DeviceID, home.Inode)
+	discoverer, err := logsource.NewConfirmedDiscoverer(home.Path, home.DeviceID, home.Inode)
 	if err != nil {
 		return false, err
 	}
-	reader, err := logs.NewConfirmedSnapshotReader(
+	reader, err := logsource.NewConfirmedSnapshotReader(
 		home.Path, home.DeviceID, home.Inode, DefaultTokenScanChunkBytes,
 	)
 	if err != nil {
@@ -355,10 +359,10 @@ func (runtime *Runtime) scanAll(
 
 func (runtime *Runtime) scanSession(
 	ctx context.Context,
-	home store.LightHomeIdentity,
-	session store.LightSessionMetadata,
-	discoverer *logs.Discoverer,
-	reader *logs.SnapshotReader,
+	home storelight.LightHomeIdentity,
+	session storelight.LightSessionMetadata,
+	discoverer *logsource.Discoverer,
+	reader *logsource.SnapshotReader,
 ) (bool, error) {
 	pending, pendingErr := runtime.repository.PendingLightTokenScan(ctx, session.SessionID)
 	if pendingErr == nil {
@@ -368,16 +372,16 @@ func (runtime *Runtime) scanSession(
 			return false, err
 		}
 		if !sameStoredSnapshot(pending, current) {
-			return false, store.ErrLightTokenConflict
+			return false, storelight.ErrLightTokenConflict
 		}
 		return runtime.scanPending(ctx, pending, current, reader)
 	}
-	if !errors.Is(pendingErr, store.ErrNotFound) {
+	if !errors.Is(pendingErr, storelight.ErrNotFound) {
 		return false, pendingErr
 	}
 
 	active, activeErr := runtime.repository.ActiveLightTokenScan(ctx, session.SessionID)
-	var previous *logs.Snapshot
+	var previous *logsource.Snapshot
 	if activeErr == nil {
 		value := snapshotFromStoredScan(active)
 		previous = &value
@@ -390,7 +394,7 @@ func (runtime *Runtime) scanSession(
 				return false, nil
 			}
 		}
-	} else if !errors.Is(activeErr, store.ErrNotFound) {
+	} else if !errors.Is(activeErr, storelight.ErrNotFound) {
 		return false, activeErr
 	}
 	inspectPrevious := previous
@@ -418,11 +422,11 @@ func (runtime *Runtime) scanSession(
 			}
 			pending, err = runtime.repository.PendingLightTokenScan(ctx, session.SessionID)
 			if err != nil || pending.Generation != generation {
-				return false, errors.Join(store.ErrLightTokenConflict, err)
+				return false, errors.Join(storelight.ErrLightTokenConflict, err)
 			}
 			return runtime.scanPending(ctx, pending, current, reader)
 		case RefreshDefer:
-			return false, store.ErrLightHomeFence
+			return false, storelight.ErrLightHomeFence
 		}
 	}
 	generation, err := runtime.repository.StartLightTokenRebuild(
@@ -433,16 +437,16 @@ func (runtime *Runtime) scanSession(
 	}
 	pending, err = runtime.repository.PendingLightTokenScan(ctx, session.SessionID)
 	if err != nil || pending.Generation != generation {
-		return false, errors.Join(store.ErrLightTokenConflict, err)
+		return false, errors.Join(storelight.ErrLightTokenConflict, err)
 	}
 	return runtime.scanPending(ctx, pending, current, reader)
 }
 
 func (runtime *Runtime) scanPending(
 	ctx context.Context,
-	pending store.LightTokenScan,
-	snapshot logs.Snapshot,
-	reader *logs.SnapshotReader,
+	pending storelight.LightTokenScan,
+	snapshot logsource.Snapshot,
+	reader *logsource.SnapshotReader,
 ) (bool, error) {
 	budget := runtime.scanBatchBytes
 	minimumBudget := snapshot.Fingerprint.PrefixBytes + 1
@@ -458,7 +462,7 @@ func (runtime *Runtime) scanPending(
 		if err != nil {
 			return false, err
 		}
-		checkpoint := store.LightTokenCheckpoint{
+		checkpoint := storelight.LightTokenCheckpoint{
 			DurableOffset: scanResult.DurableOffset,
 			Complete:      readResult.EOF && scanResult.Complete,
 			InputTokens:   scanResult.State.HighWater.Input, CachedInputTokens: scanResult.State.HighWater.CachedInput,
@@ -470,7 +474,7 @@ func (runtime *Runtime) scanPending(
 			CandidateLines:     pending.Checkpoint.CandidateLines + scanResult.CandidateLines,
 			JSONDecoded:        pending.Checkpoint.JSONDecoded + scanResult.JSONDecoded,
 		}
-		batch := store.LightTokenBatch{
+		batch := storelight.LightTokenBatch{
 			SessionID: pending.SessionID, Generation: pending.Generation, Checkpoint: checkpoint,
 			DailyDeltas: dailyDeltasToStore(scanResult.DailyDeltas), Activate: checkpoint.Complete,
 			TimedDeltas: timedDeltasToStore(scanResult.TokenDeltas),
@@ -516,14 +520,14 @@ func (runtime *Runtime) notifyRefreshCommitted() {
 
 func scanSnapshotBatch(
 	ctx context.Context,
-	reader *logs.SnapshotReader,
-	snapshot logs.Snapshot,
-	pending store.LightTokenScan,
+	reader *logsource.SnapshotReader,
+	snapshot logsource.Snapshot,
+	pending storelight.LightTokenScan,
 	budget int64,
-) (ScanResult, logs.SnapshotReadResult, error) {
+) (ScanResult, logsource.SnapshotReadResult, error) {
 	pipeReader, pipeWriter := io.Pipe()
 	type readOutcome struct {
-		result logs.SnapshotReadResult
+		result logsource.SnapshotReadResult
 		err    error
 	}
 	readDone := make(chan readOutcome, 1)
@@ -559,8 +563,8 @@ func scanSnapshotBatch(
 	return scanResult, read.result, nil
 }
 
-func identityFromSnapshot(home store.LightHomeIdentity, snapshot logs.Snapshot) store.LightRolloutIdentity {
-	identity := store.LightRolloutIdentity{
+func identityFromSnapshot(home storelight.LightHomeIdentity, snapshot logsource.Snapshot) storelight.LightRolloutIdentity {
+	identity := storelight.LightRolloutIdentity{
 		Path: snapshot.Path, SourceFileID: snapshot.SourceFileID, Home: home,
 		DeviceID: snapshot.Fingerprint.DeviceID, Inode: snapshot.Fingerprint.Inode,
 		SizeBytes: snapshot.Fingerprint.SizeBytes, MTimeNS: snapshot.Fingerprint.MTimeNS,
@@ -568,21 +572,21 @@ func identityFromSnapshot(home store.LightHomeIdentity, snapshot logs.Snapshot) 
 		FingerprintSHA256: snapshot.Fingerprint.Digest,
 	}
 	if snapshot.Comparison != nil {
-		identity.Comparison = &store.LightPrefixComparison{
+		identity.Comparison = &storelight.LightPrefixComparison{
 			PrefixBytes: snapshot.Comparison.PrefixBytes, PrefixSHA256: snapshot.Comparison.PrefixSHA256,
 		}
 	}
 	return identity
 }
 
-func snapshotFromStoredScan(scan store.LightTokenScan) logs.Snapshot {
-	kind := logs.SourceKindSession
+func snapshotFromStoredScan(scan storelight.LightTokenScan) logsource.Snapshot {
+	kind := logsource.SourceKindSession
 	if strings.Contains(scan.Identity.Path, string(filepath.Separator)+"archived_sessions"+string(filepath.Separator)) {
-		kind = logs.SourceKindArchivedSession
+		kind = logsource.SourceKindArchivedSession
 	}
-	return logs.Snapshot{
-		SourceFileID: scan.Identity.SourceFileID, Provider: logs.ProviderCodex, Kind: kind, Path: scan.Identity.Path,
-		Fingerprint: logs.Fingerprint{
+	return logsource.Snapshot{
+		SourceFileID: scan.Identity.SourceFileID, Provider: logsource.ProviderCodex, Kind: kind, Path: scan.Identity.Path,
+		Fingerprint: logsource.Fingerprint{
 			DeviceID: scan.Identity.DeviceID, Inode: scan.Identity.Inode, SizeBytes: scan.Identity.SizeBytes,
 			MTimeNS: scan.Identity.MTimeNS, PrefixBytes: scan.Identity.PrefixBytes,
 			PrefixSHA256: scan.Identity.PrefixSHA256, Digest: scan.Identity.FingerprintSHA256,
@@ -590,7 +594,7 @@ func snapshotFromStoredScan(scan store.LightTokenScan) logs.Snapshot {
 	}
 }
 
-func sameStoredSnapshot(scan store.LightTokenScan, snapshot logs.Snapshot) bool {
+func sameStoredSnapshot(scan storelight.LightTokenScan, snapshot logsource.Snapshot) bool {
 	identity := scan.Identity
 	return identity.Path == snapshot.Path && identity.SourceFileID == snapshot.SourceFileID &&
 		identity.DeviceID == snapshot.Fingerprint.DeviceID && identity.Inode == snapshot.Fingerprint.Inode &&
@@ -599,7 +603,7 @@ func sameStoredSnapshot(scan store.LightTokenScan, snapshot logs.Snapshot) bool 
 		identity.FingerprintSHA256 == snapshot.Fingerprint.Digest && scan.ParserVersion == TokenParserVersion
 }
 
-func checkpointFromStoredScan(scan store.LightTokenScan) *ScanCheckpoint {
+func checkpointFromStoredScan(scan storelight.LightTokenScan) *ScanCheckpoint {
 	return &ScanCheckpoint{
 		Home: homeIdentity(scan.Identity.Home), File: fileIdentity(scan.Identity), ParserVersion: scan.ParserVersion,
 		DurableOffset: scan.Checkpoint.DurableOffset, Complete: scan.Checkpoint.Complete,
@@ -610,11 +614,11 @@ func checkpointFromStoredScan(scan store.LightTokenScan) *ScanCheckpoint {
 	}
 }
 
-func homeIdentity(value store.LightHomeIdentity) HomeIdentity {
+func homeIdentity(value storelight.LightHomeIdentity) HomeIdentity {
 	return HomeIdentity{Path: value.Path, DeviceID: value.DeviceID, Inode: value.Inode}
 }
 
-func fileIdentity(value store.LightRolloutIdentity) RolloutFileIdentity {
+func fileIdentity(value storelight.LightRolloutIdentity) RolloutFileIdentity {
 	identity := RolloutFileIdentity{
 		Path: value.Path, DeviceID: value.DeviceID, Inode: value.Inode, SizeBytes: value.SizeBytes,
 		MTimeNS: value.MTimeNS, PrefixBytes: value.PrefixBytes, PrefixSHA256: value.PrefixSHA256,
@@ -627,14 +631,14 @@ func fileIdentity(value store.LightRolloutIdentity) RolloutFileIdentity {
 	return identity
 }
 
-func dailyDeltasToStore(values []DailyTokenDelta) []store.LightTokenDailyDelta {
-	output := make([]store.LightTokenDailyDelta, 0, len(values))
+func dailyDeltasToStore(values []DailyTokenDelta) []storelight.LightTokenDailyDelta {
+	output := make([]storelight.LightTokenDailyDelta, 0, len(values))
 	for _, value := range values {
 		day, err := time.Parse("2006-01-02", value.Day)
 		if err != nil {
 			continue
 		}
-		output = append(output, store.LightTokenDailyDelta{
+		output = append(output, storelight.LightTokenDailyDelta{
 			DayStartMS: day.UTC().UnixMilli(), InputTokens: value.Tokens.Input,
 			CachedInputTokens: value.Tokens.CachedInput, OutputTokens: value.Tokens.Output,
 			ReasoningTokens: value.Tokens.Reasoning,
@@ -643,10 +647,10 @@ func dailyDeltasToStore(values []DailyTokenDelta) []store.LightTokenDailyDelta {
 	return output
 }
 
-func timedDeltasToStore(values []TimedTokenDelta) []store.LightTokenTimedDelta {
-	output := make([]store.LightTokenTimedDelta, 0, len(values))
+func timedDeltasToStore(values []TimedTokenDelta) []storelight.LightTokenTimedDelta {
+	output := make([]storelight.LightTokenTimedDelta, 0, len(values))
 	for _, value := range values {
-		output = append(output, store.LightTokenTimedDelta{
+		output = append(output, storelight.LightTokenTimedDelta{
 			SourceOffset: value.SourceOffset, ObservedAtMS: value.ObservedAtMS,
 			ModelKey: value.ModelKey, ModelSource: value.ModelSource,
 			InputTokens: value.Tokens.Input, CachedInputTokens: value.Tokens.CachedInput,

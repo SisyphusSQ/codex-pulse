@@ -7,8 +7,6 @@ import (
 	"math"
 
 	"gorm.io/gorm"
-
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 var (
@@ -34,7 +32,7 @@ func (repository *Repository) EnqueueSchedulerTask(
 	if err := validateSchedulerAdmissionTask(task); err != nil {
 		return err
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		if err := ensureSchedulerLifecycleForAdmission(ctx, transaction, task); err != nil {
 			return err
 		}
@@ -79,7 +77,7 @@ func (repository *Repository) SchedulerTask(ctx context.Context, taskID string) 
 		return SchedulerTask{}, ErrInvalidRepository
 	}
 	var task SchedulerTask
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		value, found, err := schedulerTaskByID(ctx, connection, taskID)
 		if err != nil {
 			return err
@@ -104,7 +102,7 @@ func (repository *Repository) SchedulerTaskByTarget(
 		return SchedulerTask{}, ErrInvalidRepository
 	}
 	var task SchedulerTask
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var model schedulerTaskModel
 		result := connection.WithContext(ctx).Where("target_id = ?", targetID).Take(&model)
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
@@ -135,7 +133,7 @@ func (repository *Repository) ListSchedulerTasks(
 		return nil, err
 	}
 	var tasks []SchedulerTask
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		query := connection.WithContext(ctx).Model(&schedulerTaskModel{})
 		if filter.State != nil {
 			query = query.Where("state = ?", string(*filter.State))
@@ -173,7 +171,7 @@ func (repository *Repository) SchedulerQueueSnapshot(ctx context.Context) (Sched
 		return SchedulerQueueSnapshot{}, ErrInvalidRepository
 	}
 	var snapshot SchedulerQueueSnapshot
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
 			for _, lane := range []SchedulerLane{SchedulerLaneLive, SchedulerLaneBackfill} {
 				query := transaction.WithContext(ctx).Model(&schedulerTaskModel{}).
@@ -232,7 +230,7 @@ func (repository *Repository) SchedulerRunnableQueueSnapshot(ctx context.Context
 		return SchedulerQueueSnapshot{}, ErrInvalidRepository
 	}
 	var snapshot SchedulerQueueSnapshot
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
 			lifecycle, found, err := schedulerLifecycleIn(ctx, transaction)
 			if err != nil {
@@ -310,7 +308,7 @@ func (repository *Repository) ListRecoverableSchedulerTasks(
 		return nil, nil, ErrSchedulerTransition
 	}
 	var tasks []SchedulerTask
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		query := connection.WithContext(ctx).Model(&schedulerTaskModel{}).
 			Where("state IN ?", []string{
 				string(SchedulerTaskRunning), string(SchedulerTaskInterrupted),
@@ -352,7 +350,7 @@ func (repository *Repository) PromoteSchedulerTask(
 		return SchedulerTask{}, ErrInvalidRepository
 	}
 	var promoted SchedulerTask
-	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		var model schedulerTaskModel
 		result := transaction.WithContext(ctx).Where("dedupe_key = ?", dedupeKey).Take(&model)
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
@@ -420,7 +418,7 @@ func (repository *Repository) RecoverSchedulerTask(
 		return SchedulerTask{}, ErrInvalidRepository
 	}
 	var recovered SchedulerTask
-	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		task, found, err := schedulerTaskByID(ctx, transaction, taskID)
 		if err != nil {
 			return err
@@ -489,7 +487,7 @@ func (repository *Repository) RequeueFailedSchedulerTask(
 		return SchedulerTask{}, ErrInvalidRepository
 	}
 	var requeued SchedulerTask
-	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		task, found, err := schedulerTaskByID(ctx, transaction, taskID)
 		if err != nil {
 			return err
@@ -569,7 +567,7 @@ func (repository *Repository) ClaimSchedulerTask(
 		return SchedulerTask{}, ErrInvalidRepository
 	}
 	var claimed SchedulerTask
-	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		task, found, err := schedulerTaskByID(ctx, transaction, taskID)
 		if err != nil {
 			return err
@@ -619,7 +617,7 @@ func (repository *Repository) CommitSchedulerCycle(
 	if err := validateSchedulerCycleCommit(commit); err != nil {
 		return err
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		task, found, err := schedulerTaskByID(ctx, transaction, commit.TaskID)
 		if err != nil {
 			return err
@@ -676,7 +674,7 @@ func (repository *Repository) ListSchedulerCycles(
 		return nil, err
 	}
 	var cycles []SchedulerCycle
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		query := connection.WithContext(ctx).Model(&schedulerCycleModel{})
 		if filter.TaskID != nil {
 			query = query.Where("task_id = ?", *filter.TaskID)
@@ -706,7 +704,7 @@ func (repository *Repository) SchedulerCycle(ctx context.Context, cycleID string
 		return SchedulerCycle{}, ErrInvalidRepository
 	}
 	var cycle SchedulerCycle
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var model schedulerCycleModel
 		result := connection.WithContext(ctx).Where("cycle_id = ?", cycleID).Take(&model)
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {

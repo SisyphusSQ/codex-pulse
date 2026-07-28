@@ -7,8 +7,6 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	"gorm.io/gorm"
-
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 var (
@@ -28,7 +26,7 @@ func (repository *Repository) InitializeSchedulerLifecycle(
 		return SchedulerLifecycle{}, err
 	}
 	var stored SchedulerLifecycle
-	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		current, found, err := schedulerLifecycleIn(ctx, transaction)
 		if err != nil {
 			return err
@@ -55,7 +53,7 @@ func (repository *Repository) SchedulerLifecycle(ctx context.Context) (Scheduler
 		return SchedulerLifecycle{}, ErrInvalidRepository
 	}
 	var stored SchedulerLifecycle
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		value, found, err := schedulerLifecycleIn(ctx, connection)
 		if err != nil {
 			return err
@@ -81,7 +79,7 @@ func (repository *Repository) CompareAndSwapSchedulerLifecycle(
 		return SchedulerLifecycle{}, err
 	}
 	var stored SchedulerLifecycle
-	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		current, found, err := schedulerLifecycleIn(ctx, transaction)
 		if err != nil {
 			return err
@@ -192,7 +190,7 @@ func (repository *Repository) SchedulerRetryState(
 		return SchedulerRetryState{}, ErrInvalidRepository
 	}
 	var stored SchedulerRetryState
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		value, found, err := schedulerRetryStateIn(ctx, connection, taskID)
 		if err != nil {
 			return err
@@ -224,7 +222,7 @@ func (repository *Repository) ListDueSchedulerRetries(
 		return nil, nil, ErrSchedulerRetryTransition
 	}
 	var states []SchedulerRetryState
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		query := connection.WithContext(ctx).Model(&schedulerRetryStateModel{}).
 			Select("scheduler_retry_states.*").
 			Joins("JOIN scheduler_tasks ON scheduler_tasks.task_id = scheduler_retry_states.task_id").

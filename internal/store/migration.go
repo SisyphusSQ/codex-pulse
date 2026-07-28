@@ -12,6 +12,9 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
+	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -54,11 +57,11 @@ type schemaMigrationModel struct {
 
 func (schemaMigrationModel) TableName() string { return "schema_migrations" }
 
-var migrationSchemaObjects = []schemaObject{
+var migrationSchemaObjects = []storeschema.Object{
 	{
-		objectType: "table",
-		name:       "schema_migrations",
-		statement: `CREATE TABLE IF NOT EXISTS schema_migrations (
+		ObjectType: "table",
+		Name:       "schema_migrations",
+		Statement: `CREATE TABLE IF NOT EXISTS schema_migrations (
 			version INTEGER PRIMARY KEY CHECK (version > 0),
 			name TEXT NOT NULL CHECK (length(name) > 0),
 			checksum TEXT NOT NULL CHECK (length(checksum) = 64 AND checksum NOT GLOB '*[^0-9a-f]*'),
@@ -83,7 +86,7 @@ var applicationMigrations = []migrationDefinition{
 			if err := ensureApplicationSchemaV1(ctx, transaction); err != nil {
 				return err
 			}
-			return ensureSchemaObjects(ctx, transaction, runtimeSchemaObjects)
+			return storeschema.EnsureObjects(ctx, transaction, runtimeSchemaObjects)
 		},
 	},
 	{
@@ -91,7 +94,7 @@ var applicationMigrations = []migrationDefinition{
 		name:     "retention-query-indexes",
 		checksum: applicationSchemaV2Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
-			return ensureSchemaObjects(ctx, transaction, retentionSchemaObjects)
+			return storeschema.EnsureObjects(ctx, transaction, storeretention.SchemaObjects())
 		},
 	},
 	{
@@ -102,7 +105,7 @@ var applicationMigrations = []migrationDefinition{
 			if err := rebuildTurnTablesForV3(ctx, transaction); err != nil {
 				return err
 			}
-			return ensureSchemaObjects(ctx, transaction, ingestSchemaObjects)
+			return storeschema.EnsureObjects(ctx, transaction, ingestSchemaObjects)
 		},
 	},
 	{
@@ -110,7 +113,7 @@ var applicationMigrations = []migrationDefinition{
 		name:     "session-project-model-attribution",
 		checksum: applicationSchemaV4Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
-			if err := ensureSchemaObjects(ctx, transaction, attributionSchemaObjects); err != nil {
+			if err := storeschema.EnsureObjects(ctx, transaction, attributionSchemaObjects); err != nil {
 				return err
 			}
 			_, err := recomputeAttributionsInTransaction(ctx, transaction, nil)
@@ -122,7 +125,7 @@ var applicationMigrations = []migrationDefinition{
 		name:     "pricing-cost-daily-rollup",
 		checksum: applicationSchemaV5Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
-			return ensureSchemaObjects(ctx, transaction, costSchemaObjects)
+			return storeschema.EnsureObjects(ctx, transaction, costSchemaObjects)
 		},
 	},
 	{
@@ -130,7 +133,7 @@ var applicationMigrations = []migrationDefinition{
 		name:     "bootstrap-plan-and-job-facts",
 		checksum: applicationSchemaV6Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
-			return ensureSchemaObjects(ctx, transaction, bootstrapSchemaObjects)
+			return storeschema.EnsureObjects(ctx, transaction, bootstrapSchemaObjects)
 		},
 	},
 	{
@@ -138,7 +141,7 @@ var applicationMigrations = []migrationDefinition{
 		name:     "live-backfill-scheduler",
 		checksum: applicationSchemaV7Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
-			return ensureSchemaObjects(ctx, transaction, schedulerSchemaObjects)
+			return storeschema.EnsureObjects(ctx, transaction, schedulerSchemaObjects)
 		},
 	},
 	{
@@ -146,7 +149,7 @@ var applicationMigrations = []migrationDefinition{
 		name:     "scheduler-lifecycle-and-retry",
 		checksum: applicationSchemaV8Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
-			return ensureSchemaObjects(ctx, transaction, lifecycleSchemaObjects)
+			return storeschema.EnsureObjects(ctx, transaction, lifecycleSchemaObjects)
 		},
 	},
 	{
@@ -154,7 +157,7 @@ var applicationMigrations = []migrationDefinition{
 		name:     "local-jsonl-quota-observations",
 		checksum: applicationSchemaV9Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
-			return ensureSchemaObjects(ctx, transaction, quotaSchemaObjects)
+			return storeschema.EnsureObjects(ctx, transaction, quotaSchemaObjects)
 		},
 	},
 	{
@@ -170,7 +173,7 @@ var applicationMigrations = []migrationDefinition{
 		name:     "quota-window-arbitration-projection",
 		checksum: applicationSchemaV11Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
-			if err := ensureSchemaObjects(ctx, transaction, quotaProjectionSchemaObjects); err != nil {
+			if err := storeschema.EnsureObjects(ctx, transaction, quotaProjectionSchemaObjects); err != nil {
 				return err
 			}
 			return rebuildQuotaProjectionDuringMigration(ctx, transaction)
@@ -181,7 +184,7 @@ var applicationMigrations = []migrationDefinition{
 		name:     "reset-credits-and-quota-scheduling",
 		checksum: applicationSchemaV12Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
-			return ensureSchemaObjects(ctx, transaction, quotaScheduleSchemaObjects)
+			return storeschema.EnsureObjects(ctx, transaction, quotaScheduleSchemaObjects)
 		},
 	},
 	{
@@ -195,7 +198,7 @@ var applicationMigrations = []migrationDefinition{
 			if err := backfillInterruptedResumeConsumption(ctx, transaction); err != nil {
 				return err
 			}
-			return ensureSchemaObjects(ctx, transaction, metricsSchemaObjects)
+			return storeschema.EnsureObjects(ctx, transaction, metricsSchemaObjects)
 		},
 	},
 	{
@@ -209,7 +212,7 @@ var applicationMigrations = []migrationDefinition{
 		name:     "quota-projection-performance-index",
 		checksum: applicationSchemaV15Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
-			return ensureSchemaObjects(ctx, transaction, quotaPerformanceSchemaObjects)
+			return storeschema.EnsureObjects(ctx, transaction, quotaPerformanceSchemaObjects)
 		},
 	},
 	{
@@ -217,7 +220,7 @@ var applicationMigrations = []migrationDefinition{
 		name:     "lightweight-session-token-index",
 		checksum: applicationSchemaV16Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
-			return ensureSchemaObjects(ctx, transaction, lightIndexSchemaObjects)
+			return storeschema.EnsureObjects(ctx, transaction, storelight.SchemaObjects())
 		},
 	},
 	{
@@ -290,7 +293,7 @@ func addSourceFailureColumns(ctx context.Context, transaction *gorm.DB, limit in
 func verifySourceFailureColumns(transaction *gorm.DB) error {
 	for _, column := range sourceFailureMigrationColumns {
 		if !transaction.Migrator().HasColumn(column.model, column.column) {
-			return fmt.Errorf("%w: missing column %s.%s", ErrSchemaContract, column.table, column.column)
+			return fmt.Errorf("%w: missing column %s.%s", storeschema.ErrContract, column.table, column.column)
 		}
 	}
 	return nil
@@ -343,7 +346,7 @@ func backfillInterruptedResumeConsumption(ctx context.Context, transaction *gorm
 func verifyMetricsMigrationColumns(transaction *gorm.DB) error {
 	for _, column := range metricsMigrationColumns {
 		if !transaction.Migrator().HasColumn(column.model, column.column) {
-			return fmt.Errorf("%w: missing column %s.%s", ErrSchemaContract, column.table, column.column)
+			return fmt.Errorf("%w: missing column %s.%s", storeschema.ErrContract, column.table, column.column)
 		}
 	}
 	return nil
@@ -359,19 +362,19 @@ type lightModelMigrationColumn struct {
 
 var lightModelMigrationColumns = []lightModelMigrationColumn{
 	{
-		model: &lightTokenScanModel{}, field: "CurrentModelKey", table: "light_token_scans",
+		model: &lightTokenScanMigrationModel{}, field: "CurrentModelKey", table: "light_token_scans",
 		column: "current_model_key", definition: "TEXT nullable normalized model key up to 128 characters",
 	},
 	{
-		model: &lightTokenScanModel{}, field: "CurrentModelSource", table: "light_token_scans",
+		model: &lightTokenScanMigrationModel{}, field: "CurrentModelSource", table: "light_token_scans",
 		column: "current_model_source", definition: "TEXT NOT NULL default missing allowlisted model attribution source",
 	},
 	{
-		model: &lightTokenTimedModel{}, field: "ModelKey", table: "light_token_timed",
+		model: &lightTokenTimedMigrationModel{}, field: "ModelKey", table: "light_token_timed",
 		column: "model_key", definition: "TEXT nullable normalized model key up to 128 characters",
 	},
 	{
-		model: &lightTokenTimedModel{}, field: "ModelSource", table: "light_token_timed",
+		model: &lightTokenTimedMigrationModel{}, field: "ModelSource", table: "light_token_timed",
 		column: "model_source", definition: "TEXT NOT NULL default missing allowlisted model attribution source",
 	},
 }
@@ -395,7 +398,7 @@ func addLightModelAttributionColumns(ctx context.Context, transaction *gorm.DB) 
 func verifyLightModelAttributionColumns(transaction *gorm.DB) error {
 	for _, column := range lightModelMigrationColumns {
 		if !transaction.Migrator().HasColumn(column.model, column.column) {
-			return fmt.Errorf("%w: missing column %s.%s", ErrSchemaContract, column.table, column.column)
+			return fmt.Errorf("%w: missing column %s.%s", storeschema.ErrContract, column.table, column.column)
 		}
 	}
 	return nil
@@ -433,7 +436,7 @@ func addQuotaLimitNameColumn(ctx context.Context, transaction *gorm.DB) error {
 func verifyQuotaLimitNameColumn(transaction *gorm.DB) error {
 	for _, column := range quotaLimitNameMigrationColumns {
 		if !transaction.Migrator().HasColumn(column.model, column.column) {
-			return fmt.Errorf("%w: missing column %s.%s", ErrSchemaContract, column.table, column.column)
+			return fmt.Errorf("%w: missing column %s.%s", storeschema.ErrContract, column.table, column.column)
 		}
 	}
 	return nil
@@ -562,7 +565,7 @@ func (runner migrationRunner) run(ctx context.Context) (MigrationReport, error) 
 	var pendingApplied []int
 	failedStage := MigrationStageInspect
 	failedVersion := 0
-	err = runner.repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err = runner.repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		state, err := inspectMigrationState(ctx, transaction)
 		if err != nil {
 			return err
@@ -583,7 +586,7 @@ func (runner migrationRunner) run(ctx context.Context) (MigrationReport, error) 
 		}
 
 		failedStage = MigrationStageApply
-		if err := ensureSchemaObjects(ctx, transaction, migrationSchemaObjects); err != nil {
+		if err := storeschema.EnsureObjects(ctx, transaction, migrationSchemaObjects); err != nil {
 			return fmt.Errorf("%w: create migration ledger: %v", ErrMigrationContract, err)
 		}
 		appliedAtMS := runner.now().UnixMilli()
@@ -667,7 +670,7 @@ func (runner migrationRunner) preflight(
 ) (migrationState, bool, error) {
 	var state migrationState
 	var hasUserSchema bool
-	err := runner.repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := runner.repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var err error
 		state, err = inspectMigrationState(ctx, connection)
 		if err != nil {
@@ -697,7 +700,7 @@ type migrationState struct {
 	history      []schemaMigrationModel
 }
 
-func inspectMigrationState(ctx context.Context, transaction storesqlite.WriteTx) (migrationState, error) {
+func inspectMigrationState(ctx context.Context, transaction *gorm.DB) (migrationState, error) {
 	var state migrationState
 	if err := transaction.WithContext(ctx).Raw(`PRAGMA user_version`).Row().Scan(&state.version); err != nil {
 		return migrationState{}, fmt.Errorf("%w: read user_version: %v", ErrMigrationContract, err)
@@ -706,7 +709,7 @@ func inspectMigrationState(ctx context.Context, transaction storesqlite.WriteTx)
 	if !state.ledgerExists {
 		return state, nil
 	}
-	validLedger, err := verifySchemaObject(ctx, transaction, migrationSchemaObjects[0])
+	validLedger, err := storeschema.VerifyObject(ctx, transaction, migrationSchemaObjects[0])
 	if err != nil || !validLedger {
 		return migrationState{}, fmt.Errorf("%w: invalid migration ledger: %v", ErrMigrationContract, err)
 	}
@@ -787,22 +790,22 @@ func validateMigrationState(
 	return nil
 }
 
-func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteTx) error {
-	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
+func verifyApplicationSchema(ctx context.Context, transaction *gorm.DB) error {
+	for _, objects := range [][]storeschema.Object{
+		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
 		currentQuotaSchemaObjects(), quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
 		metricsSchemaObjects, quotaPerformanceSchemaObjects,
-		currentLightIndexSchemaObjects(),
+		storelight.CurrentSchemaObjects(),
 	} {
 		for _, object := range objects {
-			exists, err := verifySchemaObject(ctx, transaction, object)
+			exists, err := storeschema.VerifyObject(ctx, transaction, object)
 			if err != nil {
 				return err
 			}
 			if !exists {
-				return fmt.Errorf("%w: missing %s %q", ErrSchemaContract, object.objectType, object.name)
+				return fmt.Errorf("%w: missing %s %q", storeschema.ErrContract, object.ObjectType, object.Name)
 			}
 		}
 	}
@@ -818,22 +821,22 @@ func verifyApplicationSchema(ctx context.Context, transaction storesqlite.WriteT
 	return verifyQuotaLimitNameColumn(transaction)
 }
 
-func verifyApplicationSchemaV18(ctx context.Context, transaction storesqlite.WriteTx) error {
-	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
+func verifyApplicationSchemaV18(ctx context.Context, transaction *gorm.DB) error {
+	for _, objects := range [][]storeschema.Object{
+		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
 		quotaSchemaObjects, quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
 		metricsSchemaObjects, quotaPerformanceSchemaObjects,
-		currentLightIndexSchemaObjects(),
+		storelight.CurrentSchemaObjects(),
 	} {
 		for _, object := range objects {
-			exists, err := verifySchemaObject(ctx, transaction, object)
+			exists, err := storeschema.VerifyObject(ctx, transaction, object)
 			if err != nil {
 				return err
 			}
 			if !exists {
-				return fmt.Errorf("%w: missing %s %q", ErrSchemaContract, object.objectType, object.name)
+				return fmt.Errorf("%w: missing %s %q", storeschema.ErrContract, object.ObjectType, object.Name)
 			}
 		}
 	}
@@ -846,22 +849,22 @@ func verifyApplicationSchemaV18(ctx context.Context, transaction storesqlite.Wri
 	return verifyLightModelAttributionColumns(transaction)
 }
 
-func verifyApplicationSchemaV16(ctx context.Context, transaction storesqlite.WriteTx) error {
-	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
+func verifyApplicationSchemaV16(ctx context.Context, transaction *gorm.DB) error {
+	for _, objects := range [][]storeschema.Object{
+		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
 		quotaSchemaObjects, quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
 		metricsSchemaObjects, quotaPerformanceSchemaObjects,
-		lightIndexSchemaObjects,
+		storelight.SchemaObjects(),
 	} {
 		for _, object := range objects {
-			exists, err := verifySchemaObject(ctx, transaction, object)
+			exists, err := storeschema.VerifyObject(ctx, transaction, object)
 			if err != nil {
 				return err
 			}
 			if !exists {
-				return fmt.Errorf("%w: missing %s %q", ErrSchemaContract, object.objectType, object.name)
+				return fmt.Errorf("%w: missing %s %q", storeschema.ErrContract, object.ObjectType, object.Name)
 			}
 		}
 	}
@@ -871,21 +874,21 @@ func verifyApplicationSchemaV16(ctx context.Context, transaction storesqlite.Wri
 	return verifyMetricsMigrationColumns(transaction)
 }
 
-func verifyApplicationSchemaV15(ctx context.Context, transaction storesqlite.WriteTx) error {
-	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
+func verifyApplicationSchemaV15(ctx context.Context, transaction *gorm.DB) error {
+	for _, objects := range [][]storeschema.Object{
+		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
 		quotaSchemaObjects, quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
 		metricsSchemaObjects, quotaPerformanceSchemaObjects,
 	} {
 		for _, object := range objects {
-			exists, err := verifySchemaObject(ctx, transaction, object)
+			exists, err := storeschema.VerifyObject(ctx, transaction, object)
 			if err != nil {
 				return err
 			}
 			if !exists {
-				return fmt.Errorf("%w: missing %s %q", ErrSchemaContract, object.objectType, object.name)
+				return fmt.Errorf("%w: missing %s %q", storeschema.ErrContract, object.ObjectType, object.Name)
 			}
 		}
 	}
@@ -895,19 +898,19 @@ func verifyApplicationSchemaV15(ctx context.Context, transaction storesqlite.Wri
 	return verifyMetricsMigrationColumns(transaction)
 }
 
-func runtimeSchemaObjectsThroughV12() []schemaObject {
-	objects := append([]schemaObject(nil), runtimeSchemaObjects...)
+func runtimeSchemaObjectsThroughV12() []storeschema.Object {
+	objects := append([]storeschema.Object(nil), runtimeSchemaObjects...)
 	for index := range objects {
-		switch objects[index].name {
+		switch objects[index].Name {
 		case "source_state":
-			objects[index].statement = appendSQLiteMigratedColumns(
-				objects[index].statement,
+			objects[index].Statement = appendSQLiteMigratedColumns(
+				objects[index].Statement,
 				"\n\t\tCHECK (last_success_at_ms",
 				"`last_failure_code` TEXT CHECK (last_failure_code IS NULL OR last_failure_code IN ('network_unavailable','timeout','auth_required','http_429','server_error','schema_incompatible','cancelled'))",
 			)
 		case "source_attempts":
-			objects[index].statement = appendSQLiteMigratedColumns(
-				objects[index].statement,
+			objects[index].Statement = appendSQLiteMigratedColumns(
+				objects[index].Statement,
 				"\n\t\tCHECK ((outcome",
 				"`failure_code` TEXT CHECK (failure_code IS NULL OR failure_code IN ('network_unavailable','timeout','auth_required','http_429','server_error','schema_incompatible','cancelled'))",
 				"`attempt_count` INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count BETWEEN 0 AND 3)",
@@ -919,22 +922,22 @@ func runtimeSchemaObjectsThroughV12() []schemaObject {
 	return objects
 }
 
-func currentRuntimeSchemaObjects() []schemaObject {
+func currentRuntimeSchemaObjects() []storeschema.Object {
 	objects := runtimeSchemaObjectsThroughV13()
 	for index := range objects {
-		if objects[index].name == "health_events" {
+		if objects[index].Name == "health_events" {
 			objects[index] = healthEventsSchemaObjectV14(objects[index])
 		}
 	}
 	return objects
 }
 
-func runtimeSchemaObjectsThroughV13() []schemaObject {
+func runtimeSchemaObjectsThroughV13() []storeschema.Object {
 	objects := runtimeSchemaObjectsThroughV12()
 	for index := range objects {
-		if objects[index].name == "job_runs" {
-			objects[index].statement = appendSQLiteMigratedColumns(
-				objects[index].statement,
+		if objects[index].Name == "job_runs" {
+			objects[index].Statement = appendSQLiteMigratedColumns(
+				objects[index].Statement,
 				"\n\t\tCHECK (progress_current",
 				"`resume_consumed_by_job_id` TEXT CHECK (resume_consumed_by_job_id IS NULL OR (state = 'interrupted' AND length(resume_consumed_by_job_id) > 0 AND resume_consumed_by_job_id != job_id))",
 			)
@@ -943,8 +946,8 @@ func runtimeSchemaObjectsThroughV13() []schemaObject {
 	return objects
 }
 
-func healthEventsSchemaObjectV14(object schemaObject) schemaObject {
-	statement := object.statement
+func healthEventsSchemaObjectV14(object storeschema.Object) storeschema.Object {
+	statement := object.Statement
 	statement = strings.Replace(statement,
 		"'source.timeout', 'source.unavailable', 'source.permission', 'source.corrupt', 'source.stale'",
 		"'source.timeout', 'source.unavailable', 'source.permission', 'source.corrupt', 'source.stale', 'source.auth_required', 'source.failure_streak'", 1)
@@ -957,7 +960,7 @@ func healthEventsSchemaObjectV14(object schemaObject) schemaObject {
 	statement = strings.Replace(statement,
 		"(domain = 'runtime' AND code = 'runtime.unknown')",
 		"(domain = 'runtime' AND code IN ('runtime.unknown', 'runtime.cpu_pressure', 'runtime.memory_pressure', 'runtime.metrics_stale', 'runtime.updater_unavailable', 'runtime.updater_unknown'))", 1)
-	object.statement = statement
+	object.Statement = statement
 	return object
 }
 
@@ -969,35 +972,12 @@ func appendSQLiteMigratedColumns(statement, before string, columns ...string) st
 	return statement[:boundary] + " " + strings.Join(columns, ", ") + "," + statement[boundary:]
 }
 
-func currentLightIndexSchemaObjects() []schemaObject {
-	objects := append([]schemaObject(nil), lightIndexSchemaObjects...)
+func currentQuotaSchemaObjects() []storeschema.Object {
+	objects := append([]storeschema.Object(nil), quotaSchemaObjects...)
 	for index := range objects {
-		switch objects[index].name {
-		case "light_token_scans":
-			objects[index].statement = appendSQLiteMigratedColumns(
-				objects[index].statement,
-				"\n\t\t\tPRIMARY KEY",
-				"`current_model_key` TEXT CHECK (current_model_key IS NULL OR (length(current_model_key) BETWEEN 1 AND 128))",
-				"`current_model_source` TEXT NOT NULL DEFAULT 'missing' CHECK (current_model_source IN ('model_canonical','model_alias','missing','invalid_model'))",
-			)
-		case "light_token_timed":
-			objects[index].statement = appendSQLiteMigratedColumns(
-				objects[index].statement,
-				"\n\t\t\tPRIMARY KEY",
-				"`model_key` TEXT CHECK (model_key IS NULL OR (length(model_key) BETWEEN 1 AND 128))",
-				"`model_source` TEXT NOT NULL DEFAULT 'missing' CHECK (model_source IN ('model_canonical','model_alias','missing','invalid_model'))",
-			)
-		}
-	}
-	return objects
-}
-
-func currentQuotaSchemaObjects() []schemaObject {
-	objects := append([]schemaObject(nil), quotaSchemaObjects...)
-	for index := range objects {
-		if objects[index].name == "quota_observations" {
-			objects[index].statement = appendSQLiteMigratedColumns(
-				objects[index].statement,
+		if objects[index].Name == "quota_observations" {
+			objects[index].Statement = appendSQLiteMigratedColumns(
+				objects[index].Statement,
 				"\n\t\tCHECK ((validity",
 				"`limit_name` TEXT CHECK (limit_name IS NULL OR (length(limit_name) BETWEEN 1 AND 512))",
 			)
@@ -1009,11 +989,11 @@ func currentQuotaSchemaObjects() []schemaObject {
 func applicationSchemaV1Checksum() string {
 	hasher := sha256.New()
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV1Version, "initial-application-schema")
-	for _, objects := range [][]schemaObject{migrationSchemaObjects, applicationSchemaV1CoreObjects(), runtimeSchemaObjects} {
+	for _, objects := range [][]storeschema.Object{migrationSchemaObjects, applicationSchemaV1CoreObjects(), runtimeSchemaObjects} {
 		for _, object := range objects {
 			_, _ = fmt.Fprintln(
-				hasher, object.objectType, object.name,
-				strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+				hasher, object.ObjectType, object.Name,
+				strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 			)
 		}
 	}
@@ -1023,10 +1003,10 @@ func applicationSchemaV1Checksum() string {
 func applicationSchemaV2Checksum() string {
 	hasher := sha256.New()
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV2Version, "retention-query-indexes")
-	for _, object := range retentionSchemaObjects {
+	for _, object := range storeretention.SchemaObjects() {
 		_, _ = fmt.Fprintln(
-			hasher, object.objectType, object.name,
-			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
@@ -1035,10 +1015,10 @@ func applicationSchemaV2Checksum() string {
 func applicationSchemaV3Checksum() string {
 	hasher := sha256.New()
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV3Version, "incremental-ingest-checkpoints")
-	for _, object := range append([]schemaObject{currentTurnsSchemaObject()}, ingestSchemaObjects...) {
+	for _, object := range append([]storeschema.Object{currentTurnsSchemaObject()}, ingestSchemaObjects...) {
 		_, _ = fmt.Fprintln(
-			hasher, object.objectType, object.name,
-			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
@@ -1049,8 +1029,8 @@ func applicationSchemaV4Checksum() string {
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV4Version, "session-project-model-attribution")
 	for _, object := range attributionSchemaObjects {
 		_, _ = fmt.Fprintln(
-			hasher, object.objectType, object.name,
-			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
@@ -1061,8 +1041,8 @@ func applicationSchemaV5Checksum() string {
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV5Version, "pricing-cost-daily-rollup")
 	for _, object := range costSchemaObjects {
 		_, _ = fmt.Fprintln(
-			hasher, object.objectType, object.name,
-			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
@@ -1073,8 +1053,8 @@ func applicationSchemaV6Checksum() string {
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV6Version, "bootstrap-plan-and-job-facts")
 	for _, object := range bootstrapSchemaObjects {
 		_, _ = fmt.Fprintln(
-			hasher, object.objectType, object.name,
-			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
@@ -1085,8 +1065,8 @@ func applicationSchemaV7Checksum() string {
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV7Version, "live-backfill-scheduler")
 	for _, object := range schedulerSchemaObjects {
 		_, _ = fmt.Fprintln(
-			hasher, object.objectType, object.name,
-			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
@@ -1097,8 +1077,8 @@ func applicationSchemaV8Checksum() string {
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV8Version, "scheduler-lifecycle-and-retry")
 	for _, object := range lifecycleSchemaObjects {
 		_, _ = fmt.Fprintln(
-			hasher, object.objectType, object.name,
-			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
@@ -1109,8 +1089,8 @@ func applicationSchemaV9Checksum() string {
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV9Version, "local-jsonl-quota-observations")
 	for _, object := range quotaSchemaObjects {
 		_, _ = fmt.Fprintln(
-			hasher, object.objectType, object.name,
-			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
@@ -1130,8 +1110,8 @@ func applicationSchemaV11Checksum() string {
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV11Version, "quota-window-arbitration-projection")
 	for _, object := range quotaProjectionSchemaObjects {
 		_, _ = fmt.Fprintln(
-			hasher, object.objectType, object.name,
-			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
@@ -1142,8 +1122,8 @@ func applicationSchemaV12Checksum() string {
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV12Version, "reset-credits-and-quota-scheduling")
 	for _, object := range quotaScheduleSchemaObjects {
 		_, _ = fmt.Fprintln(
-			hasher, object.objectType, object.name,
-			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
@@ -1158,8 +1138,8 @@ func applicationSchemaV13Checksum() string {
 	_, _ = fmt.Fprintln(hasher, "backfill", "interrupted-resume-consumption", "minimum-existing-resume-child-id")
 	for _, object := range metricsSchemaObjects {
 		_, _ = fmt.Fprintln(
-			hasher, object.objectType, object.name,
-			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
@@ -1168,16 +1148,16 @@ func applicationSchemaV13Checksum() string {
 func applicationSchemaV14Checksum() string {
 	hasher := sha256.New()
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV14Version, "health-evaluator-events")
-	var object schemaObject
+	var object storeschema.Object
 	for _, candidate := range currentRuntimeSchemaObjects() {
-		if candidate.objectType == "table" && candidate.name == "health_events" {
+		if candidate.ObjectType == "table" && candidate.Name == "health_events" {
 			object = candidate
 			break
 		}
 	}
 	_, _ = fmt.Fprintln(
-		hasher, object.objectType, object.name,
-		strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+		hasher, object.ObjectType, object.Name,
+		strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 	)
 	_, _ = fmt.Fprintln(hasher, "rebuild", "gorm-read-write", "isolated-sqlite-ddl")
 	_, _ = fmt.Fprintln(hasher, "write-batch-size", healthEventMigrationBatchSize)
@@ -1189,8 +1169,8 @@ func applicationSchemaV15Checksum() string {
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV15Version, "quota-projection-performance-index")
 	for _, object := range quotaPerformanceSchemaObjects {
 		_, _ = fmt.Fprintln(
-			hasher, object.objectType, object.name,
-			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
@@ -1199,10 +1179,10 @@ func applicationSchemaV15Checksum() string {
 func applicationSchemaV16Checksum() string {
 	hasher := sha256.New()
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV16Version, "lightweight-session-token-index")
-	for _, object := range lightIndexSchemaObjects {
+	for _, object := range storelight.SchemaObjects() {
 		_, _ = fmt.Fprintln(
-			hasher, object.objectType, object.name,
-			strings.TrimSpace(normalizeSchemaSQL(canonicalSchemaSQL(object.statement))),
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
@@ -1269,25 +1249,25 @@ func rebuildHealthEventsForV14(ctx context.Context, transaction *gorm.DB) error 
 	if err := transaction.WithContext(ctx).Exec("ALTER TABLE health_events RENAME TO health_events_v13").Error; err != nil {
 		return fmt.Errorf("%w: rename v13 health events: %v", ErrMigrationContract, err)
 	}
-	var table schemaObject
-	var indexes []schemaObject
+	var table storeschema.Object
+	var indexes []storeschema.Object
 	for _, object := range currentRuntimeSchemaObjects() {
 		switch {
-		case object.objectType == "table" && object.name == "health_events":
+		case object.ObjectType == "table" && object.Name == "health_events":
 			table = object
-		case object.objectType == "index" && strings.HasPrefix(object.name, "idx_health_events_"):
+		case object.ObjectType == "index" && strings.HasPrefix(object.Name, "idx_health_events_"):
 			indexes = append(indexes, object)
 		}
 	}
-	for _, object := range retentionSchemaObjects {
-		if object.objectType == "index" && object.name == "idx_health_events_retention" {
+	for _, object := range storeretention.SchemaObjects() {
+		if object.ObjectType == "index" && object.Name == "idx_health_events_retention" {
 			indexes = append(indexes, object)
 		}
 	}
-	if table.name == "" {
+	if table.Name == "" {
 		return fmt.Errorf("%w: v14 health event table is missing", ErrMigrationContract)
 	}
-	if err := ensureSchemaObjects(ctx, transaction, []schemaObject{table}); err != nil {
+	if err := storeschema.EnsureObjects(ctx, transaction, []storeschema.Object{table}); err != nil {
 		return err
 	}
 	if len(models) > 0 {
@@ -1299,14 +1279,14 @@ func rebuildHealthEventsForV14(ctx context.Context, transaction *gorm.DB) error 
 	if err := transaction.WithContext(ctx).Exec("DROP TABLE health_events_v13").Error; err != nil {
 		return fmt.Errorf("%w: drop v13 health events: %v", ErrMigrationContract, err)
 	}
-	return ensureSchemaObjects(ctx, transaction, indexes)
+	return storeschema.EnsureObjects(ctx, transaction, indexes)
 }
 
-func applicationSchemaV1CoreObjects() []schemaObject {
-	objects := append([]schemaObject(nil), coreSchemaObjects...)
+func applicationSchemaV1CoreObjects() []storeschema.Object {
+	objects := append([]storeschema.Object(nil), coreSchemaObjects...)
 	for index := range objects {
-		if objects[index].objectType == "table" && objects[index].name == "turns" {
-			objects[index].statement = turnsSchemaV1Statement
+		if objects[index].ObjectType == "table" && objects[index].Name == "turns" {
+			objects[index].Statement = turnsSchemaV1Statement
 			break
 		}
 	}
@@ -1316,23 +1296,23 @@ func applicationSchemaV1CoreObjects() []schemaObject {
 func ensureApplicationSchemaV1(ctx context.Context, transaction *gorm.DB) error {
 	objects := applicationSchemaV1CoreObjects()
 	for _, object := range objects {
-		if object.objectType != "table" || object.name != "turns" {
-			if err := ensureSchemaObjects(ctx, transaction, []schemaObject{object}); err != nil {
+		if object.ObjectType != "table" || object.Name != "turns" {
+			if err := storeschema.EnsureObjects(ctx, transaction, []storeschema.Object{object}); err != nil {
 				return err
 			}
 			continue
 		}
 		if !transaction.Migrator().HasTable("turns") {
-			if err := ensureSchemaObjects(ctx, transaction, []schemaObject{object}); err != nil {
+			if err := storeschema.EnsureObjects(ctx, transaction, []storeschema.Object{object}); err != nil {
 				return err
 			}
 			continue
 		}
-		validHistorical, historicalErr := verifySchemaObject(ctx, transaction, object)
+		validHistorical, historicalErr := storeschema.VerifyObject(ctx, transaction, object)
 		if validHistorical {
 			continue
 		}
-		validCurrent, currentErr := verifySchemaObject(ctx, transaction, currentTurnsSchemaObject())
+		validCurrent, currentErr := storeschema.VerifyObject(ctx, transaction, currentTurnsSchemaObject())
 		if validCurrent {
 			continue
 		}
@@ -1343,14 +1323,14 @@ func ensureApplicationSchemaV1(ctx context.Context, transaction *gorm.DB) error 
 			return currentErr
 		}
 		if !validCurrent {
-			return fmt.Errorf("%w: table %q differs from canonical definition", ErrSchemaContract, "turns")
+			return fmt.Errorf("%w: table %q differs from canonical definition", storeschema.ErrContract, "turns")
 		}
 	}
 	return nil
 }
 
-func currentTurnsSchemaObject() schemaObject {
-	return schemaObject{objectType: "table", name: "turns", statement: turnsSchemaCurrentStatement}
+func currentTurnsSchemaObject() storeschema.Object {
+	return storeschema.Object{ObjectType: "table", Name: "turns", Statement: turnsSchemaCurrentStatement}
 }
 
 // rebuildTurnTablesForV3 是 v3 唯一的 table-rebuild raw SQL bridge。SQLite 不支持
@@ -1375,20 +1355,20 @@ func rebuildTurnTablesForV3(ctx context.Context, transaction *gorm.DB) error {
 		}
 	}
 
-	var tables, indexes []schemaObject
+	var tables, indexes []storeschema.Object
 	for _, object := range coreSchemaObjects {
 		switch {
-		case object.objectType == "table" &&
-			(object.name == "turns" || object.name == "session_current" || object.name == "turn_usage"):
+		case object.ObjectType == "table" &&
+			(object.Name == "turns" || object.Name == "session_current" || object.Name == "turn_usage"):
 			tables = append(tables, object)
-		case object.objectType == "index" &&
-			(object.name == "idx_turns_source_position" || object.name == "idx_turns_session_lifecycle" ||
-				object.name == "idx_turns_project_time" || object.name == "idx_turns_model_time" ||
-				object.name == "idx_session_current_activity" || object.name == "idx_turn_usage_observed_final"):
+		case object.ObjectType == "index" &&
+			(object.Name == "idx_turns_source_position" || object.Name == "idx_turns_session_lifecycle" ||
+				object.Name == "idx_turns_project_time" || object.Name == "idx_turns_model_time" ||
+				object.Name == "idx_session_current_activity" || object.Name == "idx_turn_usage_observed_final"):
 			indexes = append(indexes, object)
 		}
 	}
-	if err := ensureSchemaObjects(ctx, transaction, tables); err != nil {
+	if err := storeschema.EnsureObjects(ctx, transaction, tables); err != nil {
 		return err
 	}
 	for _, copyStatement := range []string{
@@ -1423,5 +1403,5 @@ func rebuildTurnTablesForV3(ctx context.Context, transaction *gorm.DB) error {
 			return fmt.Errorf("drop rebuilt v2 table %q: %w", table, err)
 		}
 	}
-	return ensureSchemaObjects(ctx, transaction, indexes)
+	return storeschema.EnsureObjects(ctx, transaction, indexes)
 }

@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestQuotaObservationRepositoryCoalescesOnlyContinuousLocalSamples(t *testing.T) {
@@ -243,7 +243,7 @@ func TestQuotaObservationHistorySurvivesSessionDeletion(t *testing.T) {
 	if err := repository.UpsertFacts(ctx, FactBatch{Session: &session, QuotaObservation: &sample}); err != nil {
 		t.Fatalf("UpsertFacts() error = %v", err)
 	}
-	if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Delete(&sessionModel{}, "session_id = ?", session.SessionID).Error
 	}); err != nil {
 		t.Fatalf("delete session: %v", err)

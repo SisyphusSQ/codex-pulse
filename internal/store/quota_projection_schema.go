@@ -1,7 +1,9 @@
 package store
 
-var quotaProjectionSchemaObjects = []schemaObject{
-	{objectType: "table", name: "quota_current", statement: `CREATE TABLE IF NOT EXISTS quota_current (
+import storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
+
+var quotaProjectionSchemaObjects = []storeschema.Object{
+	{ObjectType: "table", Name: "quota_current", Statement: `CREATE TABLE IF NOT EXISTS quota_current (
 		account_scope TEXT NOT NULL CHECK (account_scope = 'default'),
 		window_kind TEXT NOT NULL CHECK (
 			window_kind IN ('primary', 'secondary')
@@ -46,7 +48,7 @@ var quotaProjectionSchemaObjects = []schemaObject{
 		CHECK (conflict_state != 'conflict' OR observation_id IS NOT NULL),
 		CHECK (freshness_state != 'never_loaded' OR explanation_code = 'unavailable')
 	) STRICT`},
-	{objectType: "table", name: "quota_arbitration_evidence", statement: `CREATE TABLE IF NOT EXISTS quota_arbitration_evidence (
+	{ObjectType: "table", Name: "quota_arbitration_evidence", Statement: `CREATE TABLE IF NOT EXISTS quota_arbitration_evidence (
 		account_scope TEXT NOT NULL CHECK (account_scope = 'default'),
 		window_kind TEXT NOT NULL CHECK (
 			window_kind IN ('primary', 'secondary')
@@ -74,8 +76,8 @@ var quotaProjectionSchemaObjects = []schemaObject{
 			OR (disposition = 'superseded' AND reason IS NULL)
 		)
 	) STRICT`},
-	{objectType: "index", name: "idx_quota_current_freshness", statement: `CREATE INDEX IF NOT EXISTS idx_quota_current_freshness
+	{ObjectType: "index", Name: "idx_quota_current_freshness", Statement: `CREATE INDEX IF NOT EXISTS idx_quota_current_freshness
 		ON quota_current(account_scope, freshness_state, fresh_until_ms, resets_at_ms, window_kind, limit_id)`},
-	{objectType: "index", name: "idx_quota_arbitration_evidence_observation", statement: `CREATE INDEX IF NOT EXISTS idx_quota_arbitration_evidence_observation
+	{ObjectType: "index", Name: "idx_quota_arbitration_evidence_observation", Statement: `CREATE INDEX IF NOT EXISTS idx_quota_arbitration_evidence_observation
 		ON quota_arbitration_evidence(observation_id, account_scope, window_kind, limit_id)`},
 }

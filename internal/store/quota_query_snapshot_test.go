@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestQuotaCurrentSnapshotReadsVerifiedQueryFacts(t *testing.T) {
@@ -209,7 +209,7 @@ func TestQuotaCurrentSnapshotFailsClosedUntilProjectionIsRebuilt(t *testing.T) {
 	); err != nil {
 		t.Fatalf("RecordQuotaFetch() error = %v", err)
 	}
-	if err := repository.database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := repository.database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		if err := transaction.WithContext(ctx).Where(
 			"account_scope = ? AND window_kind = ?", QuotaAccountScopeDefault, string(QuotaWindowPrimary),
 		).Delete(&quotaArbitrationEvidenceModel{}).Error; err != nil {
@@ -228,7 +228,7 @@ func TestQuotaCurrentSnapshotFailsClosedUntilProjectionIsRebuilt(t *testing.T) {
 		t.Fatalf("QuotaCurrentSnapshot(missing projection) error = %v, want ErrNotFound", err)
 	}
 	var currentCount int64
-	if err := repository.database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	if err := repository.database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Model(&quotaCurrentModel{}).Count(&currentCount).Error
 	}); err != nil {
 		t.Fatalf("count current rows: %v", err)
@@ -257,7 +257,7 @@ func TestQuotaCurrentSnapshotRejectsWrongWhamSourceIdentity(t *testing.T) {
 	); err != nil {
 		t.Fatalf("RecordQuotaFetch() error = %v", err)
 	}
-	if err := repository.database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := repository.database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Model(&sourceStateModel{}).
 			Where("source_instance_id = ?", QuotaSourceInstanceWhamDefault).
 			Update("source_type", ResetCreditsSourceTypeWham).Error

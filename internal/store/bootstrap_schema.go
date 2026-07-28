@@ -1,7 +1,9 @@
 package store
 
-var bootstrapSchemaObjects = []schemaObject{
-	{objectType: "table", name: "bootstrap_jobs", statement: `CREATE TABLE IF NOT EXISTS bootstrap_jobs (
+import storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
+
+var bootstrapSchemaObjects = []storeschema.Object{
+	{ObjectType: "table", Name: "bootstrap_jobs", Statement: `CREATE TABLE IF NOT EXISTS bootstrap_jobs (
 		job_id TEXT PRIMARY KEY CHECK (length(job_id) > 0) REFERENCES job_runs(job_id) ON DELETE CASCADE,
 		switch_id TEXT NOT NULL CHECK (length(switch_id) > 0),
 		home_generation INTEGER NOT NULL CHECK (home_generation >= 0),
@@ -34,7 +36,7 @@ var bootstrapSchemaObjects = []schemaObject{
 		CHECK (full_history_ready_at_ms IS NULL OR reconcile_plan_at_ms IS NOT NULL),
 		CHECK (reconciled_at_ms IS NULL OR full_history_ready_at_ms IS NOT NULL)
 	) STRICT`},
-	{objectType: "table", name: "bootstrap_plan_items", statement: `CREATE TABLE IF NOT EXISTS bootstrap_plan_items (
+	{ObjectType: "table", Name: "bootstrap_plan_items", Statement: `CREATE TABLE IF NOT EXISTS bootstrap_plan_items (
 		job_id TEXT NOT NULL CHECK (length(job_id) > 0) REFERENCES bootstrap_jobs(job_id) ON DELETE CASCADE,
 		ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
 		pass INTEGER NOT NULL CHECK (pass >= 0),
@@ -103,8 +105,8 @@ var bootstrapSchemaObjects = []schemaObject{
 		),
 		CHECK ((lane = 'reconcile') = (tier = 'reconcile'))
 	) STRICT`},
-	{objectType: "index", name: "idx_bootstrap_jobs_generation_status", statement: `CREATE INDEX IF NOT EXISTS idx_bootstrap_jobs_generation_status
+	{ObjectType: "index", Name: "idx_bootstrap_jobs_generation_status", Statement: `CREATE INDEX IF NOT EXISTS idx_bootstrap_jobs_generation_status
 		ON bootstrap_jobs(switch_id, home_generation, updated_at_ms DESC, job_id DESC)`},
-	{objectType: "index", name: "idx_bootstrap_plan_items_pending", statement: `CREATE INDEX IF NOT EXISTS idx_bootstrap_plan_items_pending
+	{ObjectType: "index", Name: "idx_bootstrap_plan_items_pending", Statement: `CREATE INDEX IF NOT EXISTS idx_bootstrap_plan_items_pending
 		ON bootstrap_plan_items(job_id, lane, state, pass, ordinal)`},
 }

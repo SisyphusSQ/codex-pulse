@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -111,7 +111,7 @@ func (runtime *Runtime) RunSlice(
 
 func validSliceBudget(budget SliceBudget) bool {
 	return budget.MaxFiles > 0 && budget.MaxFiles <= maxSliceFiles &&
-		budget.MaxBytes >= logs.PrefixLimitBytes && budget.MaxBytes <= maxSliceBytes &&
+		budget.MaxBytes >= logsource.PrefixLimitBytes && budget.MaxBytes <= maxSliceBytes &&
 		budget.MaxActive > 0 && budget.MaxActive <= maxSliceActive
 }
 

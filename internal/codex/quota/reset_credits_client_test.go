@@ -20,7 +20,7 @@ func TestResetCreditsClientFetchesTypedReadOnlySnapshot(t *testing.T) {
 	}
 	t.Cleanup(provider.Close)
 	var retained *http.Request
-	client := mustResetCreditsClient(t, ResetCreditsClientConfig{
+	client := mustResetCreditsClient(t, ClientConfig{
 		Credentials: provider, Now: fixedClock(1_784_000_000_000),
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 			retained = request
@@ -93,7 +93,7 @@ func TestResetCreditsClientFailsClosedOnInvalidPayloads(t *testing.T) {
 	}
 }
 
-func mustResetCreditsClient(t *testing.T, config ResetCreditsClientConfig) *ResetCreditsClient {
+func mustResetCreditsClient(t *testing.T, config ClientConfig) *ResetCreditsClient {
 	t.Helper()
 	client, err := NewResetCreditsClient(config)
 	if err != nil {
@@ -109,7 +109,7 @@ func resetCreditsClientForBody(t *testing.T, body string) *ResetCreditsClient {
 		t.Fatalf("NewMemoryCredentialProvider() error = %v", err)
 	}
 	t.Cleanup(provider.Close)
-	return mustResetCreditsClient(t, ResetCreditsClientConfig{
+	return mustResetCreditsClient(t, ClientConfig{
 		Credentials: provider, Now: fixedClock(1_784_000_000_000),
 		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{

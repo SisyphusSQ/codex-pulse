@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"testing"
 
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
@@ -24,14 +26,14 @@ func TestApplicationSchemaV12CreatesResetCreditsAndRefreshScheduling(t *testing.
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
-	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		for _, object := range quotaScheduleSchemaObjects {
-			exists, err := verifySchemaObject(ctx, connection, object)
+			exists, err := storeschema.VerifyObject(ctx, connection, object)
 			if err != nil {
 				return err
 			}
 			if !exists {
-				t.Errorf("schema v12 %s %q missing", object.objectType, object.name)
+				t.Errorf("schema v12 %s %q missing", object.ObjectType, object.Name)
 			}
 		}
 		return nil
@@ -82,7 +84,7 @@ func TestApplicationMigrationRollsBackFailedV12Atomically(t *testing.T) {
 	want := errors.New("injected v12 failure")
 	catalog := append([]migrationDefinition(nil), applicationMigrations...)
 	catalog[11].apply = func(ctx context.Context, transaction *gorm.DB) error {
-		if err := ensureSchemaObjects(ctx, transaction, quotaScheduleSchemaObjects[:1]); err != nil {
+		if err := storeschema.EnsureObjects(ctx, transaction, quotaScheduleSchemaObjects[:1]); err != nil {
 			return err
 		}
 		return want
@@ -97,10 +99,10 @@ func TestApplicationMigrationRollsBackFailedV12Atomically(t *testing.T) {
 		t.Fatalf("run() error = %v, want injected failure", err)
 	}
 	assertMigrationVersionAndHistory(t, database, 11, 11)
-	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(_ context.Context, connection *gorm.DB) error {
 		for _, object := range quotaScheduleSchemaObjects {
-			if object.objectType == "table" && connection.Migrator().HasTable(object.name) {
-				t.Errorf("failed v12 migration left table %q", object.name)
+			if object.ObjectType == "table" && connection.Migrator().HasTable(object.Name) {
+				t.Errorf("failed v12 migration left table %q", object.Name)
 			}
 		}
 		return nil
@@ -121,19 +123,19 @@ func seedApplicationSchemaV11(t *testing.T, database *storesqlite.Store) {
 	assertMigrationVersionAndHistory(t, database, 11, 11)
 }
 
-func verifyApplicationSchemaV11(ctx context.Context, transaction storesqlite.WriteTx) error {
-	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV12(), retentionSchemaObjects,
+func verifyApplicationSchemaV11(ctx context.Context, transaction *gorm.DB) error {
+	for _, objects := range [][]storeschema.Object{
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV12(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects, quotaSchemaObjects, quotaProjectionSchemaObjects,
 	} {
 		for _, object := range objects {
-			exists, err := verifySchemaObject(ctx, transaction, object)
+			exists, err := storeschema.VerifyObject(ctx, transaction, object)
 			if err != nil {
 				return err
 			}
 			if !exists {
-				return ErrSchemaContract
+				return storeschema.ErrContract
 			}
 		}
 	}

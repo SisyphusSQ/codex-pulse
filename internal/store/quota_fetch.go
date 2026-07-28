@@ -6,8 +6,6 @@ import (
 	"sort"
 
 	"gorm.io/gorm"
-
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 // RecordQuotaFetch atomically appends one content-free online attempt, all
@@ -19,7 +17,7 @@ func (repository *Repository) RecordQuotaFetch(ctx context.Context, record Quota
 	if err := validateQuotaFetchRecord(record); err != nil {
 		return err
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		database := transaction.WithContext(ctx)
 		existingAttempt, replay, err := sourceAttemptByID(ctx, database, record.Attempt.RequestID)
 		if err != nil {

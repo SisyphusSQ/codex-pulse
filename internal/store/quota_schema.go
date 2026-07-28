@@ -1,7 +1,9 @@
 package store
 
-var quotaSchemaObjects = []schemaObject{
-	{objectType: "table", name: "quota_observations", statement: `CREATE TABLE IF NOT EXISTS quota_observations (
+import storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
+
+var quotaSchemaObjects = []storeschema.Object{
+	{ObjectType: "table", Name: "quota_observations", Statement: `CREATE TABLE IF NOT EXISTS quota_observations (
 		observation_id TEXT PRIMARY KEY CHECK (length(observation_id) > 0 AND length(observation_id) <= 512),
 		account_scope TEXT NOT NULL CHECK (account_scope = 'default'),
 		source TEXT NOT NULL CHECK (source IN ('local_jsonl', 'wham')),
@@ -47,7 +49,7 @@ var quotaSchemaObjects = []schemaObject{
 			OR (source = 'wham' AND source_file_id IS NULL AND request_id IS NOT NULL)),
 		CHECK (source_generation > first_source_generation OR source_offset >= first_source_offset)
 	) STRICT`},
-	{objectType: "table", name: "quota_observation_receipts", statement: `CREATE TABLE IF NOT EXISTS quota_observation_receipts (
+	{ObjectType: "table", Name: "quota_observation_receipts", Statement: `CREATE TABLE IF NOT EXISTS quota_observation_receipts (
 		observation_id TEXT PRIMARY KEY CHECK (length(observation_id) > 0 AND length(observation_id) <= 512),
 		segment_observation_id TEXT NOT NULL CHECK (length(segment_observation_id) > 0 AND length(segment_observation_id) <= 512)
 			REFERENCES quota_observations(observation_id) ON DELETE CASCADE,
@@ -55,11 +57,11 @@ var quotaSchemaObjects = []schemaObject{
 			length(sample_sha256) = 64 AND sample_sha256 NOT GLOB '*[^0-9a-f]*'
 		)
 	) STRICT`},
-	{objectType: "index", name: "idx_quota_observations_current", statement: `CREATE INDEX IF NOT EXISTS idx_quota_observations_current
+	{ObjectType: "index", Name: "idx_quota_observations_current", Statement: `CREATE INDEX IF NOT EXISTS idx_quota_observations_current
 		ON quota_observations(account_scope, source, source_file_id, window_kind, limit_id, last_observed_at_ms DESC, observation_id DESC)`},
-	{objectType: "index", name: "idx_quota_observations_source_position", statement: `CREATE UNIQUE INDEX IF NOT EXISTS idx_quota_observations_source_position
+	{ObjectType: "index", Name: "idx_quota_observations_source_position", Statement: `CREATE UNIQUE INDEX IF NOT EXISTS idx_quota_observations_source_position
 		ON quota_observations(source_file_id, source_generation, source_offset, window_kind)
 		WHERE source_file_id IS NOT NULL`},
-	{objectType: "index", name: "idx_quota_observation_receipts_segment", statement: `CREATE INDEX IF NOT EXISTS idx_quota_observation_receipts_segment
+	{ObjectType: "index", Name: "idx_quota_observation_receipts_segment", Statement: `CREATE INDEX IF NOT EXISTS idx_quota_observation_receipts_segment
 		ON quota_observation_receipts(segment_observation_id, observation_id)`},
 }

@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strings"
 
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -27,7 +26,7 @@ func (repository *Repository) ListSessionIndexExpectations(
 		return nil, ErrInvalidRepository
 	}
 	var expectations []SessionIndexExpectation
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var queryErr error
 		expectations, queryErr = listSessionIndexExpectations(ctx, connection)
 		return queryErr
@@ -55,7 +54,7 @@ func (repository *Repository) CompleteSessionIndexRepairJob(
 		return invalidRecord("session index repair completion must transition running to succeeded")
 	}
 	expected = slices.Clone(expected)
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		current, err := listSessionIndexExpectations(ctx, transaction)
 		if err != nil {
 			return err

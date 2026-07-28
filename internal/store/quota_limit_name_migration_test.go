@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"gorm.io/gorm"
+
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -23,7 +25,7 @@ func TestApplicationMigrationV19AddsQuotaLimitNameWithoutChangingExistingFacts(t
 		PlanType: &plan, ObservedAtMS: 100_000_000, Validity: QuotaValidityAccepted,
 		RequestID: &requestID,
 	}
-	if err := database.Write(t.Context(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(t.Context(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Omit("limit_name").Create(
 			quotaObservationModelFromSample(existing),
 		).Error

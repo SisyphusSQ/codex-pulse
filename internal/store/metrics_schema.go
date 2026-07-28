@@ -1,11 +1,13 @@
 package store
 
+import storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
+
 // metricsSchemaObjects 是 v13 app runtime metrics schema。
 //
 // STRICT、跨字段 CHECK 与显式 retention index 无法由 GORM Migrator 完整表达，
 // 因此 DDL 集中保留为 raw SQL 例外；普通 sample CRUD 与 snapshot 查询使用 GORM。
-var metricsSchemaObjects = []schemaObject{
-	{objectType: "table", name: "app_runtime_samples", statement: `CREATE TABLE IF NOT EXISTS app_runtime_samples (
+var metricsSchemaObjects = []storeschema.Object{
+	{ObjectType: "table", Name: "app_runtime_samples", Statement: `CREATE TABLE IF NOT EXISTS app_runtime_samples (
 		captured_at_ms INTEGER PRIMARY KEY CHECK (captured_at_ms >= 0),
 		cpu_percent REAL NOT NULL CHECK (cpu_percent >= 0 AND cpu_percent <= 102400),
 		cpu_user_ms INTEGER NOT NULL CHECK (cpu_user_ms >= 0),
@@ -30,6 +32,6 @@ var metricsSchemaObjects = []schemaObject{
 			OR (query_count > 0 AND query_total_micros >= query_max_micros)
 		)
 	) STRICT`},
-	{objectType: "index", name: "idx_app_runtime_samples_retention", statement: `CREATE INDEX IF NOT EXISTS idx_app_runtime_samples_retention
+	{ObjectType: "index", Name: "idx_app_runtime_samples_retention", Statement: `CREATE INDEX IF NOT EXISTS idx_app_runtime_samples_retention
 		ON app_runtime_samples(captured_at_ms)`},
 }

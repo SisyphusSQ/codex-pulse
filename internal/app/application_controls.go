@@ -8,7 +8,8 @@ import (
 	"github.com/google/uuid"
 
 	codexindex "github.com/SisyphusSQ/codex-pulse/internal/codex/index"
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
+	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -16,18 +17,18 @@ import (
 
 func (runtime *applicationLifecycleRuntime) UpdateSettings(
 	ctx context.Context,
-	request SettingsUpdateRequest,
-) (SettingsUpdateReceipt, error) {
+	request core.SettingsUpdateRequest,
+) (core.SettingsUpdateReceipt, error) {
 	if runtime == nil || runtime.settingsLoader == nil {
-		return SettingsUpdateReceipt{}, basequery.NewUnavailableFailure(ErrApplicationLifecycleRuntime)
+		return core.SettingsUpdateReceipt{}, basequery.NewUnavailableFailure(ErrApplicationLifecycleRuntime)
 	}
 	expectedRevision, err := strconv.ParseUint(request.ExpectedRevision, 10, 64)
 	if err != nil || expectedRevision == 0 {
-		return SettingsUpdateReceipt{}, basequery.NewValidationFailure("settings", err)
+		return core.SettingsUpdateReceipt{}, basequery.NewValidationFailure("settings", err)
 	}
 	current, err := runtime.settingsLoader.LoadPreferences(ctx)
 	if err != nil {
-		return SettingsUpdateReceipt{}, publicRuntimeCommandFailure(err)
+		return core.SettingsUpdateReceipt{}, publicRuntimeCommandFailure(err)
 	}
 	update := preferences.SettingsUpdate{
 		ExpectedRevision: expectedRevision,
@@ -51,47 +52,47 @@ func (runtime *applicationLifecycleRuntime) UpdateSettings(
 	update.UI.OverviewRange = preferences.OverviewRange(request.UI.OverviewRange)
 
 	committed, updateErr := runtime.UpdateQuotaSettings(ctx, update)
-	receipt := SettingsUpdateReceipt{Revision: strconv.FormatUint(committed.Revision, 10)}
+	receipt := core.SettingsUpdateReceipt{Revision: strconv.FormatUint(committed.Revision, 10)}
 	if updateErr == nil {
-		receipt.Result = SettingsUpdateApplied
+		receipt.Result = core.SettingsUpdateApplied
 		return receipt, nil
 	}
 	var postCommit *ApplicationPreferencesPostCommitError
 	if errors.As(updateErr, &postCommit) && committed.Revision > 0 {
-		receipt.Result = SettingsUpdateReconcileRequired
+		receipt.Result = core.SettingsUpdateReconcileRequired
 		return receipt, nil
 	}
-	return SettingsUpdateReceipt{}, publicRuntimeCommandFailure(updateErr)
+	return core.SettingsUpdateReceipt{}, publicRuntimeCommandFailure(updateErr)
 }
 
 func (runtime *applicationLifecycleRuntime) PlanHomeSwitch(
 	ctx context.Context,
-	request HomeSwitchPlanRequest,
-) (HomeSwitchPlanReceipt, error) {
+	request core.HomeSwitchPlanRequest,
+) (core.HomeSwitchPlanReceipt, error) {
 	strategy := preferences.HomeSwitchStrategy(request.Strategy)
 	plan, err := runtime.PlanQuotaHomeSwitch(ctx, request.TargetPath, strategy)
 	if err != nil {
-		return HomeSwitchPlanReceipt{}, publicRuntimeCommandFailure(err)
+		return core.HomeSwitchPlanReceipt{}, publicRuntimeCommandFailure(err)
 	}
 	runtime.homePlanMu.Lock()
 	runtime.homePlanID = plan.ID
 	runtime.homePlanMu.Unlock()
-	return HomeSwitchPlanReceipt{
+	return core.HomeSwitchPlanReceipt{
 		Strategy: request.Strategy, TargetGeneration: strconv.FormatUint(plan.Target.Generation, 10),
 		PreservesOldFacts:  plan.Impact.PreservesOldFacts,
 		ClearsDerivedFacts: plan.Impact.ClearsDerivedFacts,
 	}, nil
 }
 
-func (runtime *applicationLifecycleRuntime) ConfirmHomeSwitch(ctx context.Context) (HomeSwitchReceipt, error) {
+func (runtime *applicationLifecycleRuntime) ConfirmHomeSwitch(ctx context.Context) (core.HomeSwitchReceipt, error) {
 	if runtime == nil {
-		return HomeSwitchReceipt{}, basequery.NewUnavailableFailure(ErrApplicationLifecycleRuntime)
+		return core.HomeSwitchReceipt{}, basequery.NewUnavailableFailure(ErrApplicationLifecycleRuntime)
 	}
 	runtime.homePlanMu.Lock()
 	planID := runtime.homePlanID
 	runtime.homePlanMu.Unlock()
 	if planID == "" {
-		return HomeSwitchReceipt{}, basequery.NewUnavailableFailure(preferences.ErrSwitchPlanNotFound)
+		return core.HomeSwitchReceipt{}, basequery.NewUnavailableFailure(preferences.ErrSwitchPlanNotFound)
 	}
 	snapshot, err := runtime.ConfirmQuotaHomeSwitch(ctx, planID)
 	runtime.notifyHomeSwitchInvalidation(ctx, snapshot)
@@ -100,18 +101,18 @@ func (runtime *applicationLifecycleRuntime) ConfirmHomeSwitch(ctx context.Contex
 		if errors.As(err, &postCommit) && snapshot.Revision > 0 {
 			runtime.clearHomePlanIfCurrent(planID)
 			receipt := redactedHomeSwitchReceipt(snapshot)
-			receipt.Result = HomeSwitchRecoveryRequired
+			receipt.Result = core.HomeSwitchRecoveryRequired
 			return receipt, nil
 		}
-		return HomeSwitchReceipt{}, publicRuntimeCommandFailure(err)
+		return core.HomeSwitchReceipt{}, publicRuntimeCommandFailure(err)
 	}
 	runtime.clearHomePlanIfCurrent(planID)
 	return redactedHomeSwitchReceipt(snapshot), nil
 }
 
-func (runtime *applicationLifecycleRuntime) RecoverHomeSwitch(ctx context.Context) (HomeSwitchReceipt, error) {
+func (runtime *applicationLifecycleRuntime) RecoverHomeSwitch(ctx context.Context) (core.HomeSwitchReceipt, error) {
 	if runtime == nil {
-		return HomeSwitchReceipt{}, basequery.NewUnavailableFailure(ErrApplicationLifecycleRuntime)
+		return core.HomeSwitchReceipt{}, basequery.NewUnavailableFailure(ErrApplicationLifecycleRuntime)
 	}
 	runtime.homePlanMu.Lock()
 	runtime.homePlanID = ""
@@ -122,10 +123,10 @@ func (runtime *applicationLifecycleRuntime) RecoverHomeSwitch(ctx context.Contex
 		var postCommit *ApplicationPreferencesPostCommitError
 		if errors.As(err, &postCommit) && snapshot.Revision > 0 {
 			receipt := redactedHomeSwitchReceipt(snapshot)
-			receipt.Result = HomeSwitchRecoveryRequired
+			receipt.Result = core.HomeSwitchRecoveryRequired
 			return receipt, nil
 		}
-		return HomeSwitchReceipt{}, publicRuntimeCommandFailure(err)
+		return core.HomeSwitchReceipt{}, publicRuntimeCommandFailure(err)
 	}
 	return redactedHomeSwitchReceipt(snapshot), nil
 }
@@ -148,41 +149,41 @@ func (runtime *applicationLifecycleRuntime) notifyHomeSwitchInvalidation(
 	if runtime == nil || ctx == nil || snapshot.Revision == 0 {
 		return
 	}
-	notifyQueryInvalidation(runtime.invalidation, ctx, QueryInvalidationIndex)
-	notifyQueryInvalidation(runtime.invalidation, ctx, QueryInvalidationSettings)
+	notifyQueryInvalidation(runtime.invalidation, ctx, core.InvalidationIndex)
+	notifyQueryInvalidation(runtime.invalidation, ctx, core.InvalidationSettings)
 }
 
 func (runtime *applicationLifecycleRuntime) RunRuntimeAction(
 	ctx context.Context,
-	action RuntimeAction,
-) (RuntimeActionReceipt, error) {
+	action core.RuntimeAction,
+) (core.RuntimeActionReceipt, error) {
 	if runtime == nil || runtime.coordinator == nil || ctx == nil {
-		return RuntimeActionReceipt{}, basequery.NewUnavailableFailure(ErrApplicationLifecycleRuntime)
+		return core.RuntimeActionReceipt{}, basequery.NewUnavailableFailure(ErrApplicationLifecycleRuntime)
 	}
 	operationContext, finish, err := runtime.beginControlAdmission(ctx)
 	if err != nil {
-		return RuntimeActionReceipt{}, publicRuntimeCommandFailure(err)
+		return core.RuntimeActionReceipt{}, publicRuntimeCommandFailure(err)
 	}
 	defer finish()
 	eventID := "user:" + string(action) + ":" + uuid.NewString()
 	var state store.SchedulerLifecycle
 	switch action {
-	case RuntimeActionPauseBackfill:
+	case core.RuntimeActionPauseBackfill:
 		state, err = runtime.coordinator.Pause(operationContext, eventID, store.LifecyclePauseBackfill)
-	case RuntimeActionPauseAll:
+	case core.RuntimeActionPauseAll:
 		state, err = runtime.coordinator.Pause(operationContext, eventID, store.LifecyclePauseAll)
-	case RuntimeActionResume:
+	case core.RuntimeActionResume:
 		state, err = runtime.coordinator.Resume(operationContext, eventID)
-	case RuntimeActionReconcile:
+	case core.RuntimeActionReconcile:
 		state, err = runtime.coordinator.SourceChanged(operationContext, eventID, true)
 	default:
-		return RuntimeActionReceipt{}, basequery.NewValidationFailure("action", nil)
+		return core.RuntimeActionReceipt{}, basequery.NewValidationFailure("action", nil)
 	}
 	if err != nil && !nonFatalSourceStateError(err) {
-		return RuntimeActionReceipt{}, publicRuntimeCommandFailure(err)
+		return core.RuntimeActionReceipt{}, publicRuntimeCommandFailure(err)
 	}
-	notifyQueryInvalidation(runtime.invalidation, operationContext, QueryInvalidationIndex)
-	return RuntimeActionReceipt{
+	notifyQueryInvalidation(runtime.invalidation, operationContext, core.InvalidationIndex)
+	return core.RuntimeActionReceipt{
 		Action: action, PauseScope: string(state.UserPauseScope),
 		SourceState: string(state.SourceState), Transition: string(state.Transition),
 	}, nil
@@ -190,35 +191,35 @@ func (runtime *applicationLifecycleRuntime) RunRuntimeAction(
 
 func (runtime *applicationLifecycleRuntime) AnalyzeSessionIndexRepair(
 	ctx context.Context,
-) (RepairDryRunReceipt, error) {
+) (core.RepairDryRunReceipt, error) {
 	if runtime == nil || runtime.database == nil || runtime.settingsLoader == nil || ctx == nil {
-		return RepairDryRunReceipt{}, basequery.NewUnavailableFailure(ErrApplicationLifecycleRuntime)
+		return core.RepairDryRunReceipt{}, basequery.NewUnavailableFailure(ErrApplicationLifecycleRuntime)
 	}
 	operationContext, finish, err := runtime.beginControlAdmission(ctx)
 	if err != nil {
-		return RepairDryRunReceipt{}, publicRuntimeCommandFailure(err)
+		return core.RepairDryRunReceipt{}, publicRuntimeCommandFailure(err)
 	}
 	defer finish()
 	home, err := fileConfirmedHomeProvider{loader: runtime.settingsLoader}.CurrentHome(operationContext)
 	if err != nil {
-		return RepairDryRunReceipt{}, publicRuntimeCommandFailure(err)
+		return core.RepairDryRunReceipt{}, publicRuntimeCommandFailure(err)
 	}
-	metadata, err := logs.NewHomeProbe().Probe(operationContext, home.Path)
+	metadata, err := logsource.NewHomeProbe().Probe(operationContext, home.Path)
 	if err != nil || metadata.Path != home.Path || metadata.DeviceID != home.DeviceID || metadata.Inode != home.Inode {
 		if err == nil {
 			err = ErrApplicationLifecycleRuntime
 		}
-		return RepairDryRunReceipt{}, basequery.NewUnavailableFailure(err)
+		return core.RepairDryRunReceipt{}, basequery.NewUnavailableFailure(err)
 	}
 	service, err := codexindex.NewService(store.NewRepository(runtime.database), runtime.database, home.Path)
 	if err != nil {
-		return RepairDryRunReceipt{}, publicRuntimeCommandFailure(err)
+		return core.RepairDryRunReceipt{}, publicRuntimeCommandFailure(err)
 	}
 	plan, err := service.Analyze(operationContext)
 	if err != nil {
-		return RepairDryRunReceipt{}, publicRuntimeCommandFailure(err)
+		return core.RepairDryRunReceipt{}, publicRuntimeCommandFailure(err)
 	}
-	return RepairDryRunReceipt{
+	return core.RepairDryRunReceipt{
 		AnalyzedAtMS: plan.AnalyzedAtMS, ActionCount: int64(len(plan.Actions)),
 		ConflictCount: int64(len(plan.Conflicts)), HistoryCount: int64(len(plan.Histories)),
 		DiagnosticCount: int64(len(plan.Diagnostics)),
@@ -226,14 +227,14 @@ func (runtime *applicationLifecycleRuntime) AnalyzeSessionIndexRepair(
 	}, nil
 }
 
-func redactedHomeSwitchReceipt(snapshot preferences.Snapshot) HomeSwitchReceipt {
-	result := HomeSwitchCompletedResult
+func redactedHomeSwitchReceipt(snapshot preferences.Snapshot) core.HomeSwitchReceipt {
+	result := core.HomeSwitchCompletedResult
 	if snapshot.PendingSwitch != nil || snapshot.PendingResume != nil {
-		result = HomeSwitchRecoveryRequired
+		result = core.HomeSwitchRecoveryRequired
 	} else if snapshot.LastSwitch != nil && snapshot.LastSwitch.Outcome == preferences.HomeSwitchRolledBack {
-		result = HomeSwitchRolledBackResult
+		result = core.HomeSwitchRolledBackResult
 	}
-	return HomeSwitchReceipt{
+	return core.HomeSwitchReceipt{
 		Revision:   strconv.FormatUint(snapshot.Revision, 10),
 		Generation: strconv.FormatUint(snapshot.CodexHome.Generation, 10), Result: result,
 	}

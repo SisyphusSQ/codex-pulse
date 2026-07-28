@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logparser "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/parser"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -22,7 +23,7 @@ type Ingester struct {
 }
 
 type OpenRequest struct {
-	Action               logs.ReconcileAction
+	Action               logsource.ReconcileAction
 	JobID                string
 	AtMS                 int64
 	DeferQuotaProjection bool
@@ -31,7 +32,7 @@ type OpenRequest struct {
 
 type CommitResult struct {
 	Cursor            store.GenerationCursor
-	Stats             logs.ParseStats
+	Stats             logparser.ParseStats
 	ReadOffset        int64
 	CommittableOffset int64
 	BufferedBytes     int
@@ -51,7 +52,7 @@ type Stream struct {
 	mu sync.Mutex
 
 	repository           *store.Repository
-	parser               *logs.StreamParser
+	parser               *logparser.StreamParser
 	projector            *projector
 	cursor               store.GenerationCursor
 	readOffset           int64
@@ -100,11 +101,11 @@ func (ingester *Ingester) Open(ctx context.Context, request OpenRequest) (*Strea
 	if err != nil {
 		return nil, err
 	}
-	if current.SourceKind == string(logs.SourceKindSessionIndex) {
-		return nil, logs.ErrUnsupportedParserSource
+	if current.SourceKind == string(logsource.SourceKindSessionIndex) {
+		return nil, logparser.ErrUnsupportedParserSource
 	}
 	if file, lookupErr := ingester.repository.SourceFile(ctx, current.SourceFileID); lookupErr == nil {
-		if file.ParserVersion != logs.ParserVersion {
+		if file.ParserVersion != logparser.ParserVersion {
 			mode = store.GenerationModeRebuild
 		}
 	} else if !errors.Is(lookupErr, store.ErrNotFound) {
@@ -118,7 +119,7 @@ func (ingester *Ingester) Open(ctx context.Context, request OpenRequest) (*Strea
 	if building != nil {
 		mode = store.GenerationModeRebuild
 		if building.SourceFileID != current.SourceFileID || building.Fingerprint != current ||
-			building.ParserVersion != logs.ParserVersion ||
+			building.ParserVersion != logparser.ParserVersion ||
 			!buildingLineageMatchesOpen(building.ReplacesSourceFileID, replaces) {
 			supersedeBuilding = &store.BuildingGenerationExpectation{
 				SourceFileID: building.SourceFileID, Generation: building.Generation,
@@ -146,18 +147,18 @@ func (ingester *Ingester) Open(ctx context.Context, request OpenRequest) (*Strea
 		jobState = &streamJob{jobID: job.JobID, state: job.State, phase: job.Phase}
 	}
 	cursor, err := ingester.repository.PrepareGeneration(ctx, store.PrepareGenerationRequest{
-		Mode: mode, Previous: previous, Current: current, ParserVersion: logs.ParserVersion,
+		Mode: mode, Previous: previous, Current: current, ParserVersion: logparser.ParserVersion,
 		ReplacesSourceFileID: replaces, SupersedeBuilding: supersedeBuilding, AtMS: request.AtMS,
 	})
 	if err != nil {
 		return nil, err
 	}
 	seed := parserSeedFromCheckpoint(cursor.Checkpoint.Seed)
-	currentSourceKind := logs.SourceKind(cursor.Fingerprint.SourceKind)
+	currentSourceKind := logsource.SourceKind(cursor.Fingerprint.SourceKind)
 	if seed != nil && seed.Session != nil {
 		seed.Session.SourceKind = currentSourceKind
 	}
-	parser, err := logs.NewStreamParser(logs.ParserConfig{
+	parser, err := logparser.NewStreamParser(logparser.ParserConfig{
 		SourceKind:  currentSourceKind,
 		StartOffset: cursor.Checkpoint.CommittedOffset, Seed: seed,
 	})
@@ -329,7 +330,7 @@ func (stream *Stream) Feed(
 		seedCheckpoint = nil
 	}
 	checkpoint := store.ParserCheckpoint{
-		Version: store.ParserCheckpointVersion, ParserVersion: logs.ParserVersion,
+		Version: store.ParserCheckpointVersion, ParserVersion: logparser.ParserVersion,
 		CommittedOffset: result.CommittableOffset, Seed: seedCheckpoint,
 		Projector: projectorCheckpoint,
 	}
@@ -371,7 +372,7 @@ func (stream *Stream) invalidate(err error) error {
 }
 
 func generationRequestFromAction(
-	action logs.ReconcileAction,
+	action logsource.ReconcileAction,
 ) (
 	store.GenerationMode,
 	*store.SourceFingerprint,
@@ -380,10 +381,10 @@ func generationRequestFromAction(
 	error,
 ) {
 	switch action.Kind {
-	case logs.ChangeDeleted, logs.ChangeUnreadable:
+	case logsource.ChangeDeleted, logsource.ChangeUnreadable:
 		return "", nil, store.SourceFingerprint{}, nil, ErrNoStream
-	case logs.ChangeAdded, logs.ChangeTruncated, logs.ChangeReplaced,
-		logs.ChangeGrown, logs.ChangeMoved, logs.ChangeUnchanged:
+	case logsource.ChangeAdded, logsource.ChangeTruncated, logsource.ChangeReplaced,
+		logsource.ChangeGrown, logsource.ChangeMoved, logsource.ChangeUnchanged:
 	default:
 		return "", nil, store.SourceFingerprint{}, nil, invalidOpenRequest("reconcile action kind is invalid")
 	}
@@ -398,11 +399,11 @@ func generationRequestFromAction(
 	}
 	mode := store.GenerationModeAppend
 	switch action.Kind {
-	case logs.ChangeAdded, logs.ChangeTruncated, logs.ChangeReplaced:
+	case logsource.ChangeAdded, logsource.ChangeTruncated, logsource.ChangeReplaced:
 		mode = store.GenerationModeRebuild
 	}
 	var replaces *string
-	if action.Kind == logs.ChangeReplaced && action.Previous != nil &&
+	if action.Kind == logsource.ChangeReplaced && action.Previous != nil &&
 		action.Previous.SourceFileID != action.Current.SourceFileID {
 		value := action.Previous.SourceFileID
 		replaces = &value
@@ -410,7 +411,7 @@ func generationRequestFromAction(
 	return mode, previous, current, replaces, nil
 }
 
-func sourceFingerprintFromSnapshot(snapshot logs.Snapshot) store.SourceFingerprint {
+func sourceFingerprintFromSnapshot(snapshot logsource.Snapshot) store.SourceFingerprint {
 	return store.SourceFingerprint{
 		SourceFileID: snapshot.SourceFileID, Provider: snapshot.Provider,
 		SourceKind: string(snapshot.Kind), CurrentPath: snapshot.Path,
@@ -422,7 +423,7 @@ func sourceFingerprintFromSnapshot(snapshot logs.Snapshot) store.SourceFingerpri
 	}
 }
 
-func diagnosticsToStore(values []logs.ParserDiagnostic) []store.IngestDiagnostic {
+func diagnosticsToStore(values []logparser.ParserDiagnostic) []store.IngestDiagnostic {
 	diagnostics := make([]store.IngestDiagnostic, len(values))
 	for index, value := range values {
 		diagnostics[index] = store.IngestDiagnostic{

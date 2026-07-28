@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 )
 
 func TestServiceUpdateSettingsValidatesCASAndExactReplay(t *testing.T) {
@@ -191,7 +191,7 @@ func TestServiceSwitchDrainsPublishesGenerationThenStartsBootstrap(t *testing.T)
 	t.Parallel()
 
 	store := confirmedPreferencesStore(t)
-	probe := &fakeHomeProbe{metadata: logs.HomeMetadata{
+	probe := &fakeHomeProbe{metadata: logsource.HomeMetadata{
 		Path: filepath.Join(t.TempDir(), "new-home"), DeviceID: "device-new", Inode: 99,
 	}}
 	runtime := &fakeHomeRuntime{status: BootstrapStatusQueued, store: store}
@@ -238,7 +238,7 @@ func TestServiceSwitchDrainFailureLeavesOldSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadPreferences(before) error = %v", err)
 	}
-	probe := &fakeHomeProbe{metadata: logs.HomeMetadata{
+	probe := &fakeHomeProbe{metadata: logsource.HomeMetadata{
 		Path: filepath.Join(t.TempDir(), "new-home"), DeviceID: "device-new", Inode: 100,
 	}}
 	drainErr := errors.New("drain failed")
@@ -271,7 +271,7 @@ func TestServiceBootstrapNotStartedRollsBackAndResumesOldGeneration(t *testing.T
 	t.Parallel()
 
 	store := confirmedPreferencesStore(t)
-	probe := &fakeHomeProbe{metadata: logs.HomeMetadata{
+	probe := &fakeHomeProbe{metadata: logsource.HomeMetadata{
 		Path: filepath.Join(t.TempDir(), "new-home"), DeviceID: "device-new", Inode: 101,
 	}}
 	startErr := errors.New("start failed")
@@ -395,7 +395,7 @@ func TestServiceSwitchCancellationBeforeAndAfterPendingCommit(t *testing.T) {
 	t.Run("before confirm", func(t *testing.T) {
 		t.Parallel()
 		store := confirmedPreferencesStore(t)
-		probe := &fakeHomeProbe{metadata: logs.HomeMetadata{
+		probe := &fakeHomeProbe{metadata: logsource.HomeMetadata{
 			Path: filepath.Join(t.TempDir(), "target"), DeviceID: "device-target", Inode: 127,
 		}}
 		runtime := &fakeHomeRuntime{}
@@ -430,7 +430,7 @@ func TestServiceSwitchCancellationBeforeAndAfterPendingCommit(t *testing.T) {
 				return nil
 			},
 		}
-		probe := &fakeHomeProbe{metadata: logs.HomeMetadata{
+		probe := &fakeHomeProbe{metadata: logsource.HomeMetadata{
 			Path: filepath.Join(t.TempDir(), "target"), DeviceID: "device-target", Inode: 128,
 		}}
 		runtime := &fakeHomeRuntime{status: BootstrapStatusQueued, store: fileStore, respectStartContext: true}
@@ -461,7 +461,7 @@ func TestServiceRejectsNoRuntimeSameHomeAndTargetDrift(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadPreferences() error = %v", err)
 	}
-	probe := &fakeHomeProbe{metadata: logs.HomeMetadata{
+	probe := &fakeHomeProbe{metadata: logsource.HomeMetadata{
 		Path: current.CodexHome.Source.Path, DeviceID: current.CodexHome.Source.DeviceID,
 		Inode: current.CodexHome.Source.Inode,
 	}}
@@ -471,7 +471,7 @@ func TestServiceRejectsNoRuntimeSameHomeAndTargetDrift(t *testing.T) {
 		t.Fatalf("PlanSwitch(same Home) error = %v, want ErrHomeAlreadyActive", err)
 	}
 
-	probe.metadata = logs.HomeMetadata{
+	probe.metadata = logsource.HomeMetadata{
 		Path: filepath.Join(t.TempDir(), "target"), DeviceID: "device-target", Inode: 120,
 	}
 	plan, err := service.PlanSwitch(context.Background(), probe.metadata.Path, HomeSwitchClearAndRebuild)
@@ -493,7 +493,7 @@ func TestServiceBootstrapAmbiguousStartFinalizesOrRetainsRecovery(t *testing.T) 
 	t.Run("queued readback finalizes", func(t *testing.T) {
 		t.Parallel()
 		store := confirmedPreferencesStore(t)
-		probe := &fakeHomeProbe{metadata: logs.HomeMetadata{
+		probe := &fakeHomeProbe{metadata: logsource.HomeMetadata{
 			Path: filepath.Join(t.TempDir(), "target"), DeviceID: "device-target", Inode: 121,
 		}}
 		startErr := errors.New("start reply lost")
@@ -512,7 +512,7 @@ func TestServiceBootstrapAmbiguousStartFinalizesOrRetainsRecovery(t *testing.T) 
 	t.Run("status failure retains journal", func(t *testing.T) {
 		t.Parallel()
 		store := confirmedPreferencesStore(t)
-		probe := &fakeHomeProbe{metadata: logs.HomeMetadata{
+		probe := &fakeHomeProbe{metadata: logsource.HomeMetadata{
 			Path: filepath.Join(t.TempDir(), "target"), DeviceID: "device-target", Inode: 122,
 		}}
 		startErr := errors.New("start failed")
@@ -558,7 +558,7 @@ func TestServiceFirstCASReadbackUsesAuthoritativeSnapshot(t *testing.T) {
 				return nil
 			},
 		}
-		probe := &fakeHomeProbe{metadata: logs.HomeMetadata{
+		probe := &fakeHomeProbe{metadata: logsource.HomeMetadata{
 			Path: filepath.Join(t.TempDir(), "target"), DeviceID: "device-target", Inode: 123,
 		}}
 		runtime := &fakeHomeRuntime{status: BootstrapStatusQueued, store: fileStore}
@@ -585,7 +585,7 @@ func TestServiceFirstCASReadbackUsesAuthoritativeSnapshot(t *testing.T) {
 				return ErrPreferencesConflict
 			},
 		}
-		probe := &fakeHomeProbe{metadata: logs.HomeMetadata{
+		probe := &fakeHomeProbe{metadata: logsource.HomeMetadata{
 			Path: filepath.Join(t.TempDir(), "target"), DeviceID: "device-target", Inode: 124,
 		}}
 		runtime := &fakeHomeRuntime{}
@@ -619,7 +619,7 @@ func TestServiceFirstCASReadbackUsesAuthoritativeSnapshot(t *testing.T) {
 				return fileStore.LoadPreferences(ctx)
 			},
 		}
-		probe := &fakeHomeProbe{metadata: logs.HomeMetadata{
+		probe := &fakeHomeProbe{metadata: logsource.HomeMetadata{
 			Path: filepath.Join(t.TempDir(), "target"), DeviceID: "device-target", Inode: 125,
 		}}
 		runtime := &fakeHomeRuntime{}
@@ -655,7 +655,7 @@ func TestServiceFinalizeCASReadbackAcceptsCommittedResolution(t *testing.T) {
 			return nil
 		},
 	}
-	probe := &fakeHomeProbe{metadata: logs.HomeMetadata{
+	probe := &fakeHomeProbe{metadata: logsource.HomeMetadata{
 		Path: filepath.Join(t.TempDir(), "target"), DeviceID: "device-target", Inode: 126,
 	}}
 	runtime := &fakeHomeRuntime{status: BootstrapStatusQueued, store: fileStore}
@@ -708,7 +708,7 @@ func TestServiceRealProbeAndStoreNeverReadHomeContent(t *testing.T) {
 	})
 
 	runtime := &fakeHomeRuntime{status: BootstrapStatusQueued, store: store}
-	service := newPreferencesService(t, store, logs.NewHomeProbe(), runtime)
+	service := newPreferencesService(t, store, logsource.NewHomeProbe(), runtime)
 	plan, err := service.PlanSwitch(context.Background(), home, HomeSwitchClearAndRebuild)
 	if err != nil {
 		t.Fatalf("PlanSwitch(real probe) error = %v", err)
@@ -754,7 +754,7 @@ func TestServiceIndependentSwitchBackReusesDetachedDataStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadPreferences(initial) error = %v", err)
 	}
-	probe := &fakeHomeProbe{metadata: logs.HomeMetadata{
+	probe := &fakeHomeProbe{metadata: logsource.HomeMetadata{
 		Path: filepath.Join(t.TempDir(), "home-b"), DeviceID: "device-b", Inode: 201,
 	}}
 	runtime := &fakeHomeRuntime{status: BootstrapStatusQueued, store: store}
@@ -771,7 +771,7 @@ func TestServiceIndependentSwitchBackReusesDetachedDataStore(t *testing.T) {
 		t.Fatalf("active B = %#v", activeB)
 	}
 
-	probe.metadata = logs.HomeMetadata{
+	probe.metadata = logsource.HomeMetadata{
 		Path: initial.CodexHome.Source.Path, DeviceID: initial.CodexHome.Source.DeviceID,
 		Inode: initial.CodexHome.Source.Inode,
 	}
@@ -798,7 +798,7 @@ func TestServiceConfirmSwitchReplaysCompletedPlanOnSameService(t *testing.T) {
 
 	store := confirmedPreferencesStore(t)
 	runtime := &fakeHomeRuntime{status: BootstrapStatusQueued, store: store}
-	metadata := logs.HomeMetadata{
+	metadata := logsource.HomeMetadata{
 		Path: filepath.Join(t.TempDir(), "home-b"), DeviceID: "device-b", Inode: 300,
 	}
 	service := newPreferencesService(t, store, &fakeHomeProbe{metadata: metadata}, runtime)
@@ -829,7 +829,7 @@ func TestServiceConcurrentConfirmReplaysCompletedPlanOnSameService(t *testing.T)
 
 	store := confirmedPreferencesStore(t)
 	runtime := &fakeHomeRuntime{status: BootstrapStatusQueued, store: store}
-	metadata := logs.HomeMetadata{
+	metadata := logsource.HomeMetadata{
 		Path: filepath.Join(t.TempDir(), "home-b"), DeviceID: "device-b", Inode: 300,
 	}
 	service := newPreferencesService(t, store, &fakeHomeProbe{metadata: metadata}, runtime)
@@ -865,8 +865,8 @@ func TestServiceConcurrentSwitchesCommitOnlyOneGeneration(t *testing.T) {
 	store := confirmedPreferencesStore(t)
 	runtime := &fakeHomeRuntime{status: BootstrapStatusQueued, store: store}
 	probes := []*fakeHomeProbe{
-		{metadata: logs.HomeMetadata{Path: filepath.Join(t.TempDir(), "home-b"), DeviceID: "device-b", Inode: 301}},
-		{metadata: logs.HomeMetadata{Path: filepath.Join(t.TempDir(), "home-c"), DeviceID: "device-c", Inode: 302}},
+		{metadata: logsource.HomeMetadata{Path: filepath.Join(t.TempDir(), "home-b"), DeviceID: "device-b", Inode: 301}},
+		{metadata: logsource.HomeMetadata{Path: filepath.Join(t.TempDir(), "home-c"), DeviceID: "device-c", Inode: 302}},
 	}
 	services := []*Service{
 		newPreferencesService(t, store, probes[0], runtime),
@@ -946,7 +946,7 @@ func TestServiceConcurrentSameTargetSwitchesHaveOneRuntimeOwner(t *testing.T) {
 		},
 	}
 	runtime := &fakeHomeRuntime{status: BootstrapStatusQueued, store: fileStore}
-	metadata := logs.HomeMetadata{
+	metadata := logsource.HomeMetadata{
 		Path: filepath.Join(t.TempDir(), "home-b"), DeviceID: "device-b", Inode: 401,
 	}
 	probe := &fakeHomeProbe{metadata: metadata}
@@ -1009,7 +1009,7 @@ func TestServiceConcurrentSameTargetDrainFailureHasOneRuntimeOwner(t *testing.T)
 	store := confirmedPreferencesStore(t)
 	drainErr := errors.New("drain failed")
 	runtime := &fakeHomeRuntime{status: BootstrapStatusQueued, store: store, drainErr: drainErr}
-	metadata := logs.HomeMetadata{
+	metadata := logsource.HomeMetadata{
 		Path: filepath.Join(t.TempDir(), "home-b"), DeviceID: "device-b", Inode: 402,
 	}
 	probe := &fakeHomeProbe{metadata: metadata}
@@ -1070,7 +1070,7 @@ func TestServiceRecoverCannotPreemptLiveConfirmOwner(t *testing.T) {
 			return nil
 		},
 	}
-	probe := &fakeHomeProbe{metadata: logs.HomeMetadata{
+	probe := &fakeHomeProbe{metadata: logsource.HomeMetadata{
 		Path: filepath.Join(t.TempDir(), "home-b"), DeviceID: "device-b", Inode: 403,
 	}}
 	runtime := &fakeHomeRuntime{status: BootstrapStatusQueued, store: fileStore}
@@ -1147,7 +1147,7 @@ func assertRuntimeCallCount(t *testing.T, runtime *fakeHomeRuntime, prefix strin
 
 type fakeHomeProbe struct {
 	mu       sync.Mutex
-	metadata logs.HomeMetadata
+	metadata logsource.HomeMetadata
 	err      error
 }
 
@@ -1190,18 +1190,18 @@ func (store *scriptedPreferencesStore) AcquireSwitchLease(ctx context.Context) (
 	return store.inner.AcquireSwitchLease(ctx)
 }
 
-func (probe *fakeHomeProbe) Probe(ctx context.Context, path string) (logs.HomeMetadata, error) {
+func (probe *fakeHomeProbe) Probe(ctx context.Context, path string) (logsource.HomeMetadata, error) {
 	probe.mu.Lock()
 	defer probe.mu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return logs.HomeMetadata{}, err
+		return logsource.HomeMetadata{}, err
 	}
 	if probe.err != nil {
-		return logs.HomeMetadata{}, probe.err
+		return logsource.HomeMetadata{}, probe.err
 	}
 	value := probe.metadata
 	if value.Path == "" {
-		value = logs.HomeMetadata{Path: path, DeviceID: "device-probe", Inode: 500}
+		value = logsource.HomeMetadata{Path: path, DeviceID: "device-probe", Inode: 500}
 	}
 	return value, nil
 }

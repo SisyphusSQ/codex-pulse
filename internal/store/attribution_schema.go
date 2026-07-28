@@ -1,5 +1,7 @@
 package store
 
+import storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
+
 const attributionEnumCheck = `('high', 'medium', 'low', 'unknown')`
 const attributionSourceCheck = `(
 	'session_id_fallback', 'registered_root', 'cwd_path_digest',
@@ -11,8 +13,8 @@ const attributionReasonCheck = `(
 	'conflict', 'missing', 'invalid'
 )`
 
-var attributionSchemaObjects = []schemaObject{
-	{objectType: "table", name: "session_attributions", statement: `CREATE TABLE IF NOT EXISTS session_attributions (
+var attributionSchemaObjects = []storeschema.Object{
+	{ObjectType: "table", Name: "session_attributions", Statement: `CREATE TABLE IF NOT EXISTS session_attributions (
 		session_id TEXT PRIMARY KEY CHECK (length(session_id) > 0)
 			REFERENCES sessions(session_id) ON DELETE CASCADE,
 		display_title TEXT NOT NULL CHECK (length(display_title) > 0),
@@ -38,7 +40,7 @@ var attributionSchemaObjects = []schemaObject{
 			OR (model_key IS NOT NULL AND model_display_name IS NOT NULL
 				AND length(model_key) > 0 AND length(model_display_name) > 0))
 	) STRICT`},
-	{objectType: "table", name: "turn_attributions", statement: `CREATE TABLE IF NOT EXISTS turn_attributions (
+	{ObjectType: "table", Name: "turn_attributions", Statement: `CREATE TABLE IF NOT EXISTS turn_attributions (
 		turn_id TEXT PRIMARY KEY CHECK (length(turn_id) > 0)
 			REFERENCES turns(turn_id) ON DELETE CASCADE,
 		project_id TEXT,
@@ -60,12 +62,12 @@ var attributionSchemaObjects = []schemaObject{
 			OR (model_key IS NOT NULL AND model_display_name IS NOT NULL
 				AND length(model_key) > 0 AND length(model_display_name) > 0))
 	) STRICT`},
-	{objectType: "index", name: "idx_session_attributions_project", statement: `CREATE INDEX IF NOT EXISTS idx_session_attributions_project
+	{ObjectType: "index", Name: "idx_session_attributions_project", Statement: `CREATE INDEX IF NOT EXISTS idx_session_attributions_project
 		ON session_attributions(project_id, session_id)`},
-	{objectType: "index", name: "idx_session_attributions_model", statement: `CREATE INDEX IF NOT EXISTS idx_session_attributions_model
+	{ObjectType: "index", Name: "idx_session_attributions_model", Statement: `CREATE INDEX IF NOT EXISTS idx_session_attributions_model
 		ON session_attributions(model_key, session_id)`},
-	{objectType: "index", name: "idx_turn_attributions_project", statement: `CREATE INDEX IF NOT EXISTS idx_turn_attributions_project
+	{ObjectType: "index", Name: "idx_turn_attributions_project", Statement: `CREATE INDEX IF NOT EXISTS idx_turn_attributions_project
 		ON turn_attributions(project_id, turn_id)`},
-	{objectType: "index", name: "idx_turn_attributions_model", statement: `CREATE INDEX IF NOT EXISTS idx_turn_attributions_model
+	{ObjectType: "index", Name: "idx_turn_attributions_model", Statement: `CREATE INDEX IF NOT EXISTS idx_turn_attributions_model
 		ON turn_attributions(model_key, turn_id)`},
 }

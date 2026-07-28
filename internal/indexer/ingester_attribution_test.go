@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -31,15 +31,15 @@ func TestIngesterPersistsRestartSafePrivacyAttribution(t *testing.T) {
 			rolloutTurnEndLine("turn-attribution") + "\n",
 	)
 	writeSyntheticRollout(t, rolloutPath, content, time.Unix(10, 0))
-	discoverer, err := logs.NewDiscoverer(home)
+	discoverer, err := logsource.NewDiscoverer(home)
 	if err != nil {
-		t.Fatalf("logs.NewDiscoverer() error = %v", err)
+		t.Fatalf("logsource.NewDiscoverer() error = %v", err)
 	}
 	discovery, err := discoverer.Discover(ctx)
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	plan, err := logs.PlanReconcile(home, nil, discovery)
+	plan, err := logsource.PlanReconcile(home, nil, discovery)
 	if err != nil || len(plan.Actions) != 1 {
 		t.Fatalf("PlanReconcile() = %#v, %v", plan, err)
 	}

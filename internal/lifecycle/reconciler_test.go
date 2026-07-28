@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -21,7 +21,7 @@ func TestConfirmedHomeReconcilerValidatesPhysicalIdentityBeforeAndAfterRun(t *te
 			t.Fatalf("Mkdir(%s) error = %v", directory, err)
 		}
 	}
-	metadata, err := logs.NewHomeProbe().Probe(context.Background(), homePath)
+	metadata, err := logsource.NewHomeProbe().Probe(context.Background(), homePath)
 	if err != nil {
 		t.Fatalf("HomeProbe.Probe() error = %v", err)
 	}
@@ -91,8 +91,8 @@ type errorHomeProbe struct {
 	err error
 }
 
-func (probe errorHomeProbe) Probe(context.Context, string) (logs.HomeMetadata, error) {
-	return logs.HomeMetadata{}, probe.err
+func (probe errorHomeProbe) Probe(context.Context, string) (logsource.HomeMetadata, error) {
+	return logsource.HomeMetadata{}, probe.err
 }
 
 func (runner *recordingReconcileRunner) RunReconcile(

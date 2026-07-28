@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"testing"
 
+	"gorm.io/gorm"
+
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -282,7 +284,7 @@ func TestHealthPersistenceDoesNotContainRawSensitiveErrorText(t *testing.T) {
 	}
 
 	var databasePath string
-	err = repository.database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		rows, err := rawQueryRows(ctx, connection, `PRAGMA database_list`)
 		if err != nil {
 			return err

@@ -7,6 +7,8 @@ import (
 
 	"gorm.io/gorm"
 
+	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -107,7 +109,7 @@ func TestApplicationSchemaV16MigrationRollsBackAtomically(t *testing.T) {
 	catalog := append([]migrationDefinition(nil), applicationMigrations...)
 	catalog = catalog[:16]
 	catalog[15].apply = func(ctx context.Context, transaction *gorm.DB) error {
-		if err := ensureSchemaObjects(ctx, transaction, lightIndexSchemaObjects); err != nil {
+		if err := storeschema.EnsureObjects(ctx, transaction, storelight.SchemaObjects()); err != nil {
 			return err
 		}
 		return want

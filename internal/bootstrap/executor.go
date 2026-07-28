@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io/fs"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/indexer"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -271,7 +271,7 @@ func (runtime *Runtime) applyItemSlice(
 	if item.Current == nil {
 		return false, ErrInvalidRuntime
 	}
-	var action logs.ReconcileAction
+	var action logsource.ReconcileAction
 	if cursor, usable, found, err := runtime.authoritativeItemCursor(ctx, item); err != nil {
 		return false, err
 	} else if found {
@@ -288,8 +288,8 @@ func (runtime *Runtime) applyItemSlice(
 		}
 		current := snapshotFromFingerprint(*item.Current)
 		previous := current
-		action = logs.ReconcileAction{
-			Kind: logs.ChangeUnchanged, Previous: &previous, Current: &current,
+		action = logsource.ReconcileAction{
+			Kind: logsource.ChangeUnchanged, Previous: &previous, Current: &current,
 		}
 	} else {
 		action = reconcileActionFromItem(item)
@@ -358,7 +358,7 @@ func (runtime *Runtime) readItem(
 	if err != nil {
 		return err
 	}
-	reader, err := logs.NewConfirmedSnapshotReader(
+	reader, err := logsource.NewConfirmedSnapshotReader(
 		facts.HomePath, facts.HomeDeviceID, facts.HomeInode, runtime.readChunkBytes,
 	)
 	if err != nil {
@@ -386,7 +386,7 @@ func (runtime *Runtime) readItem(
 	} else if !errors.Is(fileErr, store.ErrNotFound) {
 		return fileErr
 	}
-	if errors.Is(readErr, logs.ErrChangedDuringScan) {
+	if errors.Is(readErr, logsource.ErrChangedDuringScan) {
 		return runtime.finishItem(
 			ctx, item, store.BootstrapItemDrifted, &generation, latest.CommittedOffset, usable,
 		)
@@ -410,7 +410,7 @@ func (runtime *Runtime) readItemSlice(
 	if err != nil {
 		return false, err
 	}
-	reader, err := logs.NewConfirmedSnapshotReader(
+	reader, err := logsource.NewConfirmedSnapshotReader(
 		facts.HomePath, facts.HomeDeviceID, facts.HomeInode, runtime.readChunkBytes,
 	)
 	if err != nil {
@@ -433,7 +433,7 @@ func (runtime *Runtime) readItemSlice(
 				runtime.hooks.afterChunk(item, result.ReadOffset)
 			}
 			if !eof && tracker.stopForTime(runtime.clock()) {
-				return logs.StopSnapshotRead(errSliceTimeBudget)
+				return logsource.StopSnapshotRead(errSliceTimeBudget)
 			}
 			return nil
 		},
@@ -450,7 +450,7 @@ func (runtime *Runtime) readItemSlice(
 	} else if !errors.Is(fileErr, store.ErrNotFound) {
 		return false, fileErr
 	}
-	if errors.Is(readErr, logs.ErrChangedDuringScan) {
+	if errors.Is(readErr, logsource.ErrChangedDuringScan) {
 		return true, runtime.finishItem(
 			ctx, item, store.BootstrapItemDrifted, &generation, latest.CommittedOffset, usable,
 		)
@@ -616,7 +616,7 @@ func (runtime *Runtime) freezeFinalReconcile(ctx context.Context, jobID string) 
 		return err
 	}
 	previousSnapshots := snapshotsFromFingerprints(previous)
-	discoverer, err := logs.NewConfirmedDiscoverer(
+	discoverer, err := logsource.NewConfirmedDiscoverer(
 		facts.HomePath, facts.HomeDeviceID, facts.HomeInode,
 	)
 	if err != nil {
@@ -626,7 +626,7 @@ func (runtime *Runtime) freezeFinalReconcile(ctx context.Context, jobID string) 
 	if err != nil {
 		return err
 	}
-	reconcile, err := logs.PlanReconcile(facts.HomePath, previousSnapshots, discovery)
+	reconcile, err := logsource.PlanReconcile(facts.HomePath, previousSnapshots, discovery)
 	if err != nil {
 		return err
 	}
@@ -743,8 +743,8 @@ func (runtime *Runtime) planItem(
 	return store.BootstrapPlanItem{}, store.ErrNotFound
 }
 
-func reconcileActionFromItem(item store.BootstrapPlanItem) logs.ReconcileAction {
-	action := logs.ReconcileAction{Kind: logs.ChangeKind(item.ActionKind)}
+func reconcileActionFromItem(item store.BootstrapPlanItem) logsource.ReconcileAction {
+	action := logsource.ReconcileAction{Kind: logsource.ChangeKind(item.ActionKind)}
 	if item.Previous != nil {
 		value := snapshotFromFingerprint(*item.Previous)
 		action.Previous = &value
@@ -760,8 +760,8 @@ func reconcileActionFromItem(item store.BootstrapPlanItem) logs.ReconcileAction 
 
 func sourcePauseReason(err error) *store.BootstrapPauseReason {
 	if errors.Is(err, ErrSourceUnavailable) || errors.Is(err, ErrDiscoveryIncomplete) ||
-		errors.Is(err, logs.ErrUnsafeSource) || errors.Is(err, logs.ErrUnsupportedFile) ||
-		errors.Is(err, logs.ErrChangedDuringScan) || errors.Is(err, logs.ErrHomeChanged) ||
+		errors.Is(err, logsource.ErrUnsafeSource) || errors.Is(err, logsource.ErrUnsupportedFile) ||
+		errors.Is(err, logsource.ErrChangedDuringScan) || errors.Is(err, logsource.ErrHomeChanged) ||
 		errors.Is(err, fs.ErrPermission) {
 		value := store.BootstrapPauseSourceUnavailable
 		return &value

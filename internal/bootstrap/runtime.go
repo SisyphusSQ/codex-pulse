@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/index"
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -172,7 +172,7 @@ func (runtime *Runtime) StartBootstrap(
 		return err
 	}
 
-	metadata, err := logs.NewHomeProbe().Probe(ctx, request.Source.Path)
+	metadata, err := logsource.NewHomeProbe().Probe(ctx, request.Source.Path)
 	if err != nil {
 		return err
 	}
@@ -276,7 +276,7 @@ func (runtime *Runtime) freezeInitialPlan(
 	if err != nil {
 		return err
 	}
-	discoverer, err := logs.NewConfirmedDiscoverer(
+	discoverer, err := logsource.NewConfirmedDiscoverer(
 		request.Source.Path, request.Source.DeviceID, request.Source.Inode,
 	)
 	if err != nil {
@@ -289,7 +289,7 @@ func (runtime *Runtime) freezeInitialPlan(
 	if runtime.hooks.afterInitialDiscovery != nil {
 		runtime.hooks.afterInitialDiscovery(ctx)
 	}
-	reconcile, err := logs.PlanReconcile(request.Source.Path, previousSnapshots, discovery)
+	reconcile, err := logsource.PlanReconcile(request.Source.Path, previousSnapshots, discovery)
 	if err != nil {
 		return err
 	}
@@ -607,19 +607,19 @@ func stableDigest(value string) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func snapshotsFromFingerprints(values []store.SourceFingerprint) []logs.Snapshot {
-	result := make([]logs.Snapshot, len(values))
+func snapshotsFromFingerprints(values []store.SourceFingerprint) []logsource.Snapshot {
+	result := make([]logsource.Snapshot, len(values))
 	for index, value := range values {
 		result[index] = snapshotFromFingerprint(value)
 	}
 	return result
 }
 
-func snapshotFromFingerprint(value store.SourceFingerprint) logs.Snapshot {
-	return logs.Snapshot{
+func snapshotFromFingerprint(value store.SourceFingerprint) logsource.Snapshot {
+	return logsource.Snapshot{
 		SourceFileID: value.SourceFileID, Provider: value.Provider,
-		Kind: logs.SourceKind(value.SourceKind), Path: value.CurrentPath,
-		Fingerprint: logs.Fingerprint{
+		Kind: logsource.SourceKind(value.SourceKind), Path: value.CurrentPath,
+		Fingerprint: logsource.Fingerprint{
 			DeviceID: value.DeviceID, Inode: value.Inode, SizeBytes: value.SizeBytes,
 			MTimeNS: value.MTimeNS, PrefixBytes: value.PrefixBytes,
 			PrefixSHA256: value.PrefixSHA256, Digest: value.FingerprintSHA256,
@@ -632,7 +632,7 @@ func loadSessionIndexHints(
 	home string,
 	deviceID string,
 	inode int64,
-	snapshots []logs.Snapshot,
+	snapshots []logsource.Snapshot,
 	maximumMS int64,
 ) (map[string]int64, error) {
 	hints := make(map[string]int64)
@@ -642,14 +642,14 @@ func loadSessionIndexHints(
 	indexFile, err := index.OpenConfirmedIndexFile(home, deviceID, inode)
 	if err != nil {
 		if errors.Is(err, index.ErrHomeChanged) {
-			return nil, logs.ErrHomeChanged
+			return nil, logsource.ErrHomeChanged
 		}
 		return hints, nil
 	}
 	read, err := indexFile.Read(ctx)
 	if err != nil {
 		if errors.Is(err, index.ErrHomeChanged) {
-			return nil, logs.ErrHomeChanged
+			return nil, logsource.ErrHomeChanged
 		}
 		return hints, nil
 	}
@@ -659,7 +659,7 @@ func loadSessionIndexHints(
 		return hints, nil
 	}
 	for _, snapshot := range snapshots {
-		if snapshot.Kind == logs.SourceKindSessionIndex {
+		if snapshot.Kind == logsource.SourceKindSessionIndex {
 			continue
 		}
 		base := filepath.Base(snapshot.Path)

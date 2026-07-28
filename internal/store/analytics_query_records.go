@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 )
 
@@ -173,9 +174,9 @@ type SessionTurnAnalyticsRecord struct {
 type SessionAnalyticsRecord struct {
 	SessionID        string
 	DisplayTitle     string
-	TitleConfidence  AttributionConfidence
-	TitleSource      AttributionSource
-	TitleReason      AttributionReason
+	TitleConfidence  attribution.Confidence
+	TitleSource      attribution.Source
+	TitleReason      attribution.Reason
 	Project          ProjectAttribution
 	Model            ModelAttribution
 	Activity         SessionActivity
@@ -289,9 +290,9 @@ type ProjectAnalyticsPage struct {
 type ProjectSessionAnalyticsRecord struct {
 	SessionID        string
 	DisplayTitle     string
-	TitleConfidence  AttributionConfidence
-	TitleSource      AttributionSource
-	TitleReason      AttributionReason
+	TitleConfidence  attribution.Confidence
+	TitleSource      attribution.Source
+	TitleReason      attribution.Reason
 	Model            ModelAttribution
 	Activity         SessionActivity
 	LastActivityAtMS int64

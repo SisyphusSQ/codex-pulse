@@ -5,11 +5,9 @@ import (
 	"errors"
 
 	"gorm.io/gorm"
-
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
-func upsertProject(ctx context.Context, transaction storesqlite.WriteTx, project Project) error {
+func upsertProject(ctx context.Context, transaction *gorm.DB, project Project) error {
 	database := transaction.WithContext(ctx)
 	var existing projectModel
 	err := database.Take(&existing, "project_id = ?", project.ProjectID).Error
@@ -35,7 +33,7 @@ func upsertProject(ctx context.Context, transaction storesqlite.WriteTx, project
 	return database.Model(&projectModel{}).Where("project_id = ?", project.ProjectID).Updates(updates).Error
 }
 
-func upsertSession(ctx context.Context, transaction storesqlite.WriteTx, session Session) error {
+func upsertSession(ctx context.Context, transaction *gorm.DB, session Session) error {
 	database := transaction.WithContext(ctx)
 	var existing sessionModel
 	err := database.Take(&existing, "session_id = ?", session.SessionID).Error
@@ -64,7 +62,7 @@ func upsertSession(ctx context.Context, transaction storesqlite.WriteTx, session
 	return database.Model(&sessionModel{}).Where("session_id = ?", session.SessionID).Updates(updates).Error
 }
 
-func upsertTurn(ctx context.Context, transaction storesqlite.WriteTx, turn Turn) error {
+func upsertTurn(ctx context.Context, transaction *gorm.DB, turn Turn) error {
 	database := transaction.WithContext(ctx)
 	var existing turnModel
 	err := database.Take(&existing, "turn_id = ?", turn.TurnID).Error
@@ -96,7 +94,7 @@ func upsertTurn(ctx context.Context, transaction storesqlite.WriteTx, turn Turn)
 	return database.Model(&turnModel{}).Where("turn_id = ?", turn.TurnID).Updates(updates).Error
 }
 
-func upsertTurnUsage(ctx context.Context, transaction storesqlite.WriteTx, usage TurnUsage) error {
+func upsertTurnUsage(ctx context.Context, transaction *gorm.DB, usage TurnUsage) error {
 	database := transaction.WithContext(ctx)
 	var existing turnUsageModel
 	err := database.Take(&existing, "turn_id = ?", usage.TurnID).Error
@@ -121,7 +119,7 @@ func upsertTurnUsage(ctx context.Context, transaction storesqlite.WriteTx, usage
 	}).Error
 }
 
-func removeInvalidTurnUsage(ctx context.Context, transaction storesqlite.WriteTx, turnID string) error {
+func removeInvalidTurnUsage(ctx context.Context, transaction *gorm.DB, turnID string) error {
 	database := transaction.WithContext(ctx)
 	var turn turnModel
 	if err := database.Select("turn_id", "source_generation", "completed_at_ms").Take(&turn, "turn_id = ?", turnID).Error; err != nil {
@@ -141,7 +139,7 @@ func removeInvalidTurnUsage(ctx context.Context, transaction storesqlite.WriteTx
 	return database.Delete(&turnUsageModel{}, "turn_id = ?", turnID).Error
 }
 
-func upsertSessionCurrent(ctx context.Context, transaction storesqlite.WriteTx, current SessionCurrent) error {
+func upsertSessionCurrent(ctx context.Context, transaction *gorm.DB, current SessionCurrent) error {
 	database := transaction.WithContext(ctx)
 	var existing sessionCurrentModel
 	err := database.Take(&existing, "session_id = ?", current.SessionID).Error
@@ -170,7 +168,7 @@ func upsertSessionCurrent(ctx context.Context, transaction storesqlite.WriteTx, 
 	return database.Model(&sessionCurrentModel{}).Where("session_id = ?", current.SessionID).Updates(updates).Error
 }
 
-func upsertSessionUsageCurrent(ctx context.Context, transaction storesqlite.WriteTx, usage SessionUsageCurrent) error {
+func upsertSessionUsageCurrent(ctx context.Context, transaction *gorm.DB, usage SessionUsageCurrent) error {
 	database := transaction.WithContext(ctx)
 	var existing sessionUsageCurrentModel
 	err := database.Take(&existing, "session_id = ?", usage.SessionID).Error

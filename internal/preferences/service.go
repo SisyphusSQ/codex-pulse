@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 )
 
 var (
@@ -49,7 +49,7 @@ type SwitchExecutionLease interface {
 }
 
 type HomeProbe interface {
-	Probe(ctx context.Context, path string) (logs.HomeMetadata, error)
+	Probe(ctx context.Context, path string) (logsource.HomeMetadata, error)
 }
 
 // HomeRuntime 由 TOO-259/260 实现。Drain 只有在旧 generation 不再存在已接纳或执行中 writer
@@ -705,12 +705,12 @@ func writeSwitchUint64(hasher hash.Hash, value uint64) {
 	_, _ = hasher.Write(encoded[:])
 }
 
-func validHomeMetadata(value logs.HomeMetadata) bool {
+func validHomeMetadata(value logsource.HomeMetadata) bool {
 	return filepath.IsAbs(value.Path) && filepath.Clean(value.Path) == value.Path &&
 		value.DeviceID != "" && value.Inode > 0
 }
 
-func metadataMatchesSource(metadata logs.HomeMetadata, source ConfirmedSource) bool {
+func metadataMatchesSource(metadata logsource.HomeMetadata, source ConfirmedSource) bool {
 	return validHomeMetadata(metadata) && metadata.Path == source.Path &&
 		metadata.DeviceID == source.DeviceID && metadata.Inode == source.Inode
 }

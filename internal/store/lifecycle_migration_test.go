@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"testing"
 
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
@@ -23,7 +25,7 @@ func TestApplicationMigrationUpgradesV7ThroughCurrentWithoutLosingSchedulerFacts
 	seedApplicationSchemaV7(t, database)
 	repository := NewRepository(database)
 	job := schedulerTargetJob("v7-preserved-job", JobPhaseLive, 10)
-	if err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Table("job_runs").Create(map[string]any{
 			"job_id": job.JobID, "job_type": job.JobType, "requested_by": job.RequestedBy,
 			"priority": job.Priority, "state": string(job.State), "phase": string(job.Phase),
@@ -38,7 +40,7 @@ func TestApplicationMigrationUpgradesV7ThroughCurrentWithoutLosingSchedulerFacts
 		Lane: SchedulerLaneLive, ServiceClass: SchedulerServiceBackground,
 		State: SchedulerTaskQueued, QueueOrderMS: 11, EnqueuedAtMS: 11, UpdatedAtMS: 11,
 	}
-	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		model := schedulerTaskModelFromDomain(task)
 		return transaction.WithContext(ctx).Create(&model).Error
 	})
@@ -81,7 +83,7 @@ func TestApplicationMigrationRollsBackFailedV8Atomically(t *testing.T) {
 	want := errors.New("injected v8 failure")
 	catalog := append([]migrationDefinition(nil), applicationMigrations...)
 	catalog[7].apply = func(ctx context.Context, transaction *gorm.DB) error {
-		if err := ensureSchemaObjects(ctx, transaction, lifecycleSchemaObjects[:1]); err != nil {
+		if err := storeschema.EnsureObjects(ctx, transaction, lifecycleSchemaObjects[:1]); err != nil {
 			return err
 		}
 		return want
@@ -96,7 +98,7 @@ func TestApplicationMigrationRollsBackFailedV8Atomically(t *testing.T) {
 		t.Fatalf("run() error = %v, want injected failure", err)
 	}
 	assertMigrationVersionAndHistory(t, database, 7, 7)
-	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(_ context.Context, connection *gorm.DB) error {
 		if connection.Migrator().HasTable("scheduler_lifecycle") ||
 			connection.Migrator().HasTable("scheduler_retry_states") {
 			t.Fatal("failed v8 migration left lifecycle tables behind")
@@ -119,19 +121,19 @@ func seedApplicationSchemaV7(t *testing.T, database *storesqlite.Store) {
 	assertMigrationVersionAndHistory(t, database, 7, 7)
 }
 
-func verifyApplicationSchemaV7(ctx context.Context, transaction storesqlite.WriteTx) error {
-	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects, retentionSchemaObjects,
+func verifyApplicationSchemaV7(ctx context.Context, transaction *gorm.DB) error {
+	for _, objects := range [][]storeschema.Object{
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects, storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects,
 	} {
 		for _, object := range objects {
-			exists, err := verifySchemaObject(ctx, transaction, object)
+			exists, err := storeschema.VerifyObject(ctx, transaction, object)
 			if err != nil {
 				return err
 			}
 			if !exists {
-				return ErrSchemaContract
+				return storeschema.ErrContract
 			}
 		}
 	}
@@ -151,7 +153,7 @@ func TestCurrentApplicationSchemaIncludesV8LifecycleAndRetryFacts(t *testing.T) 
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 
-	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(_ context.Context, connection *gorm.DB) error {
 		for _, table := range []string{"scheduler_lifecycle", "scheduler_retry_states"} {
 			if !connection.Migrator().HasTable(table) {
 				t.Errorf("schema v8 table %q missing", table)

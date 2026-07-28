@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"testing"
 
 	"gorm.io/gorm"
@@ -98,7 +100,7 @@ func TestApplicationMigrationV13ToV14PreservesLargeHealthHistoryInBatches(t *tes
 			UpdatedAtMS: int64(index),
 		})
 	}
-	if err := database.WriteMaintenance(t.Context(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.WriteMaintenance(t.Context(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).CreateInBatches(&models, 100).Error
 	}); err != nil {
 		t.Fatalf("seed large v13 health history: %v", err)
@@ -111,7 +113,7 @@ func TestApplicationMigrationV13ToV14PreservesLargeHealthHistoryInBatches(t *tes
 	if _, err := runner.run(t.Context()); err != nil {
 		t.Fatalf("run(v13->v14 large history) error = %v", err)
 	}
-	if err := database.View(t.Context(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	if err := database.View(t.Context(), func(ctx context.Context, connection *gorm.DB) error {
 		var count int64
 		if err := connection.WithContext(ctx).Model(&healthEventModel{}).Count(&count).Error; err != nil {
 			return err
@@ -153,15 +155,15 @@ func TestApplicationMigrationRollsBackFailedV14Atomically(t *testing.T) {
 		t.Fatalf("run() error = %v, want injected failure", err)
 	}
 	assertMigrationVersionAndHistory(t, database, 13, 13)
-	if err := database.View(t.Context(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	if err := database.View(t.Context(), func(ctx context.Context, connection *gorm.DB) error {
 		if connection.Migrator().HasTable("health_events_v13") {
 			t.Error("failed v14 migration left temporary table")
 		}
 		for _, object := range runtimeSchemaObjectsThroughV13() {
-			if object.name != "health_events" {
+			if object.Name != "health_events" {
 				continue
 			}
-			valid, err := verifySchemaObject(ctx, connection, object)
+			valid, err := storeschema.VerifyObject(ctx, connection, object)
 			if err != nil || !valid {
 				t.Errorf("v13 health event schema was not restored: valid=%v err=%v", valid, err)
 			}
@@ -186,20 +188,20 @@ func seedApplicationSchemaV13(t *testing.T, database *storesqlite.Store) {
 	assertMigrationVersionAndHistory(t, database, 13, 13)
 }
 
-func verifyApplicationSchemaV13(ctx context.Context, transaction storesqlite.WriteTx) error {
-	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV13(), retentionSchemaObjects,
+func verifyApplicationSchemaV13(ctx context.Context, transaction *gorm.DB) error {
+	for _, objects := range [][]storeschema.Object{
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV13(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects, quotaSchemaObjects, quotaProjectionSchemaObjects,
 		quotaScheduleSchemaObjects, metricsSchemaObjects,
 	} {
 		for _, object := range objects {
-			exists, err := verifySchemaObject(ctx, transaction, object)
+			exists, err := storeschema.VerifyObject(ctx, transaction, object)
 			if err != nil {
 				return err
 			}
 			if !exists {
-				return ErrSchemaContract
+				return storeschema.ErrContract
 			}
 		}
 	}
@@ -209,20 +211,20 @@ func verifyApplicationSchemaV13(ctx context.Context, transaction storesqlite.Wri
 	return verifyMetricsMigrationColumns(transaction)
 }
 
-func verifyApplicationSchemaV14(ctx context.Context, transaction storesqlite.WriteTx) error {
-	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
+func verifyApplicationSchemaV14(ctx context.Context, transaction *gorm.DB) error {
+	for _, objects := range [][]storeschema.Object{
+		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects, quotaSchemaObjects, quotaProjectionSchemaObjects,
 		quotaScheduleSchemaObjects, metricsSchemaObjects,
 	} {
 		for _, object := range objects {
-			exists, err := verifySchemaObject(ctx, transaction, object)
+			exists, err := storeschema.VerifyObject(ctx, transaction, object)
 			if err != nil {
 				return err
 			}
 			if !exists {
-				return ErrSchemaContract
+				return storeschema.ErrContract
 			}
 		}
 	}

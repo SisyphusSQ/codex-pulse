@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/indexer"
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -49,7 +49,7 @@ type LiveRequest struct {
 	HomePath       string
 	HomeDeviceID   string
 	HomeInode      int64
-	Action         logs.ReconcileAction
+	Action         logsource.ReconcileAction
 	RequestedAtMS  int64
 }
 
@@ -130,7 +130,7 @@ func (runtime *Runtime) Start(ctx context.Context, request LiveRequest) (store.J
 	if !errors.Is(readErr, store.ErrNotFound) {
 		return store.JobRun{}, readErr
 	}
-	metadata, err := logs.NewHomeProbe().Probe(ctx, request.HomePath)
+	metadata, err := logsource.NewHomeProbe().Probe(ctx, request.HomePath)
 	if err != nil {
 		return store.JobRun{}, err
 	}
@@ -200,7 +200,7 @@ func (runtime *Runtime) RunSlice(
 	if err != nil {
 		return runtime.fail(ctx, job, facts, started, 0, err)
 	}
-	reader, err := logs.NewConfirmedSnapshotReader(
+	reader, err := logsource.NewConfirmedSnapshotReader(
 		facts.HomePath, facts.HomeDeviceID, facts.HomeInode, runtime.readChunkBytes,
 	)
 	if err != nil {
@@ -222,7 +222,7 @@ func (runtime *Runtime) RunSlice(
 				}
 			}
 			if !eof && runtime.clock().Sub(started) >= budget.MaxActive {
-				return logs.StopSnapshotRead(errSliceTimeBudget)
+				return logsource.StopSnapshotRead(errSliceTimeBudget)
 			}
 			return nil
 		},
@@ -489,11 +489,11 @@ func liveFactsFromRequest(request LiveRequest) (store.LiveScanJob, error) {
 	}, nil
 }
 
-func validActionShape(action logs.ReconcileAction) bool {
+func validActionShape(action logsource.ReconcileAction) bool {
 	if action.Current == nil {
 		return false
 	}
-	if action.Kind == logs.ChangeAdded {
+	if action.Kind == logsource.ChangeAdded {
 		return action.Previous == nil && !action.PathChanged
 	}
 	if action.Previous == nil {
@@ -502,38 +502,38 @@ func validActionShape(action logs.ReconcileAction) bool {
 	return action.PathChanged == (action.Previous.Path != action.Current.Path)
 }
 
-func liveActionKind(kind logs.ChangeKind) (store.LiveScanActionKind, error) {
+func liveActionKind(kind logsource.ChangeKind) (store.LiveScanActionKind, error) {
 	switch kind {
-	case logs.ChangeAdded:
+	case logsource.ChangeAdded:
 		return store.LiveScanActionAdded, nil
-	case logs.ChangeUnchanged:
+	case logsource.ChangeUnchanged:
 		return store.LiveScanActionUnchanged, nil
-	case logs.ChangeGrown:
+	case logsource.ChangeGrown:
 		return store.LiveScanActionGrown, nil
-	case logs.ChangeTruncated:
+	case logsource.ChangeTruncated:
 		return store.LiveScanActionTruncated, nil
-	case logs.ChangeMoved:
+	case logsource.ChangeMoved:
 		return store.LiveScanActionMoved, nil
-	case logs.ChangeReplaced:
+	case logsource.ChangeReplaced:
 		return store.LiveScanActionReplaced, nil
 	default:
 		return "", ErrInvalidRequest
 	}
 }
 
-func liveSnapshotAllowed(home string, snapshot logs.Snapshot) bool {
-	if snapshot.Provider != logs.ProviderCodex || snapshot.SourceFileID == "" ||
+func liveSnapshotAllowed(home string, snapshot logsource.Snapshot) bool {
+	if snapshot.Provider != logsource.ProviderCodex || snapshot.SourceFileID == "" ||
 		snapshot.Fingerprint.DeviceID == "" || snapshot.Fingerprint.Inode <= 0 ||
 		snapshot.Fingerprint.SizeBytes < 0 || snapshot.Fingerprint.MTimeNS < 0 ||
-		snapshot.Fingerprint.PrefixBytes < 0 || snapshot.Fingerprint.PrefixBytes > logs.PrefixLimitBytes ||
+		snapshot.Fingerprint.PrefixBytes < 0 || snapshot.Fingerprint.PrefixBytes > logsource.PrefixLimitBytes ||
 		snapshot.Fingerprint.PrefixSHA256 == "" || snapshot.Fingerprint.Digest == "" {
 		return false
 	}
 	var root string
 	switch snapshot.Kind {
-	case logs.SourceKindSession:
+	case logsource.SourceKindSession:
 		root = filepath.Join(home, "sessions")
-	case logs.SourceKindArchivedSession:
+	case logsource.SourceKindArchivedSession:
 		root = filepath.Join(home, "archived_sessions")
 	default:
 		return false
@@ -543,7 +543,7 @@ func liveSnapshotAllowed(home string, snapshot logs.Snapshot) bool {
 		!strings.HasPrefix(relative, ".."+string(filepath.Separator)) && filepath.Ext(snapshot.Path) == ".jsonl"
 }
 
-func fingerprintFromSnapshot(snapshot logs.Snapshot) store.SourceFingerprint {
+func fingerprintFromSnapshot(snapshot logsource.Snapshot) store.SourceFingerprint {
 	return store.SourceFingerprint{
 		SourceFileID: snapshot.SourceFileID, Provider: snapshot.Provider, SourceKind: string(snapshot.Kind),
 		CurrentPath: snapshot.Path, DeviceID: snapshot.Fingerprint.DeviceID,
@@ -554,11 +554,11 @@ func fingerprintFromSnapshot(snapshot logs.Snapshot) store.SourceFingerprint {
 	}
 }
 
-func snapshotFromFingerprint(value store.SourceFingerprint) logs.Snapshot {
-	return logs.Snapshot{
+func snapshotFromFingerprint(value store.SourceFingerprint) logsource.Snapshot {
+	return logsource.Snapshot{
 		SourceFileID: value.SourceFileID, Provider: value.Provider,
-		Kind: logs.SourceKind(value.SourceKind), Path: value.CurrentPath,
-		Fingerprint: logs.Fingerprint{
+		Kind: logsource.SourceKind(value.SourceKind), Path: value.CurrentPath,
+		Fingerprint: logsource.Fingerprint{
 			DeviceID: value.DeviceID, Inode: value.Inode, SizeBytes: value.SizeBytes,
 			MTimeNS: value.MTimeNS, PrefixBytes: value.PrefixBytes,
 			PrefixSHA256: value.PrefixSHA256, Digest: value.FingerprintSHA256,
@@ -566,9 +566,9 @@ func snapshotFromFingerprint(value store.SourceFingerprint) logs.Snapshot {
 	}
 }
 
-func reconcileActionFromFacts(facts store.LiveScanJob) logs.ReconcileAction {
+func reconcileActionFromFacts(facts store.LiveScanJob) logsource.ReconcileAction {
 	current := snapshotFromFingerprint(facts.Current)
-	action := logs.ReconcileAction{Kind: logs.ChangeKind(facts.ActionKind), Current: &current}
+	action := logsource.ReconcileAction{Kind: logsource.ChangeKind(facts.ActionKind), Current: &current}
 	if facts.Previous != nil {
 		previous := snapshotFromFingerprint(*facts.Previous)
 		action.Previous = &previous
@@ -579,13 +579,13 @@ func reconcileActionFromFacts(facts store.LiveScanJob) logs.ReconcileAction {
 
 func validSliceBudget(budget SliceBudget) bool {
 	return budget.MaxFiles > 0 && budget.MaxFiles <= maxSliceFiles &&
-		budget.MaxBytes >= logs.PrefixLimitBytes && budget.MaxBytes <= maxSliceBytes &&
+		budget.MaxBytes >= logsource.PrefixLimitBytes && budget.MaxBytes <= maxSliceBytes &&
 		budget.MaxActive > 0 && budget.MaxActive <= maxSliceActive
 }
 
 func classifyLiveError(err error) store.RuntimeErrorClass {
-	if errors.Is(err, logs.ErrChangedDuringScan) || errors.Is(err, logs.ErrHomeChanged) ||
-		errors.Is(err, logs.ErrUnsafeSource) || errors.Is(err, logs.ErrUnsupportedFile) ||
+	if errors.Is(err, logsource.ErrChangedDuringScan) || errors.Is(err, logsource.ErrHomeChanged) ||
+		errors.Is(err, logsource.ErrUnsafeSource) || errors.Is(err, logsource.ErrUnsupportedFile) ||
 		errors.Is(err, fs.ErrNotExist) {
 		return store.RuntimeErrorUnavailable
 	}

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 )
 
@@ -29,7 +29,7 @@ func TestEnsureDefaultCodexHomeConfiguredConfirmsSafeCandidate(t *testing.T) {
 		HomePath:            home,
 		TrackerDatabasePath: filepath.Join(t.TempDir(), "data", "codex-pulse.db"),
 		Store:               store,
-		Probe:               logs.NewHomeProbe(),
+		Probe:               logsource.NewHomeProbe(),
 	})
 	if err != nil {
 		t.Fatalf("ensureDefaultCodexHomeConfigured() error = %v", err)
@@ -41,7 +41,7 @@ func TestEnsureDefaultCodexHomeConfiguredConfirmsSafeCandidate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadPreferences() error = %v", err)
 	}
-	metadata, err := logs.NewHomeProbe().Probe(ctx, home)
+	metadata, err := logsource.NewHomeProbe().Probe(ctx, home)
 	if err != nil {
 		t.Fatalf("Probe() error = %v", err)
 	}
@@ -62,7 +62,7 @@ func TestEnsureDefaultCodexHomeConfiguredPreservesExistingChoice(t *testing.T) {
 	ctx := context.Background()
 	existingHome := t.TempDir()
 	defaultHome := t.TempDir()
-	existingMetadata, err := logs.NewHomeProbe().Probe(ctx, existingHome)
+	existingMetadata, err := logsource.NewHomeProbe().Probe(ctx, existingHome)
 	if err != nil {
 		t.Fatalf("Probe(existing) error = %v", err)
 	}
@@ -85,7 +85,7 @@ func TestEnsureDefaultCodexHomeConfiguredPreservesExistingChoice(t *testing.T) {
 		HomePath:            defaultHome,
 		TrackerDatabasePath: filepath.Join(t.TempDir(), "data", "codex-pulse.db"),
 		Store:               store,
-		Probe:               logs.NewHomeProbe(),
+		Probe:               logsource.NewHomeProbe(),
 	})
 	if err != nil {
 		t.Fatalf("ensureDefaultCodexHomeConfigured() error = %v", err)
@@ -114,7 +114,7 @@ func TestEnsureDefaultCodexHomeConfiguredLeavesMissingCandidateUnconfigured(t *t
 		HomePath:            filepath.Join(t.TempDir(), "missing"),
 		TrackerDatabasePath: filepath.Join(t.TempDir(), "data", "codex-pulse.db"),
 		Store:               store,
-		Probe:               logs.NewHomeProbe(),
+		Probe:               logsource.NewHomeProbe(),
 	})
 	if err != nil {
 		t.Fatalf("ensureDefaultCodexHomeConfigured() error = %v", err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -811,31 +812,31 @@ func equalStringPointers(left, right *string) bool {
 }
 
 func validProjectAttributionDTO(confidence, source, reason string) bool {
-	validSource := source == string(store.AttributionSourceSessionIDFallback) ||
-		source == string(store.AttributionSourceAppServerName) ||
-		source == string(store.AttributionSourceRegisteredRoot) ||
-		source == string(store.AttributionSourceCWDPathDigest) ||
-		source == string(store.AttributionSourceModelCanonical) ||
-		source == string(store.AttributionSourceModelAlias) ||
-		source == string(store.AttributionSourceConflict) ||
-		source == string(store.AttributionSourceMissing) ||
-		source == string(store.AttributionSourceInvalidPath) ||
-		source == string(store.AttributionSourceInvalidModel) || source == "mixed"
-	validReason := reason == string(store.AttributionReasonStableIdentity) ||
-		reason == string(store.AttributionReasonRootMatched) ||
-		reason == string(store.AttributionReasonPathDerived) ||
-		reason == string(store.AttributionReasonObserved) ||
-		reason == string(store.AttributionReasonConflict) ||
-		reason == string(store.AttributionReasonMissing) ||
-		reason == string(store.AttributionReasonInvalid) || reason == "mixed"
+	validSource := source == string(attribution.SourceSessionIDFallback) ||
+		source == string(attribution.SourceAppServerName) ||
+		source == string(attribution.SourceRegisteredRoot) ||
+		source == string(attribution.SourceCWDPathDigest) ||
+		source == string(attribution.SourceModelCanonical) ||
+		source == string(attribution.SourceModelAlias) ||
+		source == string(attribution.SourceConflict) ||
+		source == string(attribution.SourceMissing) ||
+		source == string(attribution.SourceInvalidPath) ||
+		source == string(attribution.SourceInvalidModel) || source == "mixed"
+	validReason := reason == string(attribution.ReasonStableIdentity) ||
+		reason == string(attribution.ReasonRootMatched) ||
+		reason == string(attribution.ReasonPathDerived) ||
+		reason == string(attribution.ReasonObserved) ||
+		reason == string(attribution.ReasonConflict) ||
+		reason == string(attribution.ReasonMissing) ||
+		reason == string(attribution.ReasonInvalid) || reason == "mixed"
 	return validProjectConfidenceDTO(confidence) && validSource && validReason
 }
 
 func validProjectConfidenceDTO(value string) bool {
-	return value == string(store.AttributionConfidenceHigh) ||
-		value == string(store.AttributionConfidenceMedium) ||
-		value == string(store.AttributionConfidenceLow) ||
-		value == string(store.AttributionConfidenceUnknown)
+	return value == string(attribution.ConfidenceHigh) ||
+		value == string(attribution.ConfidenceMedium) ||
+		value == string(attribution.ConfidenceLow) ||
+		value == string(attribution.ConfidenceUnknown)
 }
 
 func mapProjectReaderError(err error) error {

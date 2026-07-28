@@ -5,7 +5,10 @@ import (
 	"errors"
 	"testing"
 
+	"gorm.io/gorm"
+
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -37,14 +40,14 @@ func TestApplicationSchemaV5CreatesStrictCostLedgerContract(t *testing.T) {
 		}
 	}
 
-	err = database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		for _, object := range costSchemaObjects {
-			valid, err := verifySchemaObject(ctx, connection, object)
+			valid, err := storeschema.VerifyObject(ctx, connection, object)
 			if err != nil {
 				return err
 			}
 			if !valid {
-				t.Errorf("cost schema %s %q differs from canonical contract", object.objectType, object.name)
+				t.Errorf("cost schema %s %q differs from canonical contract", object.ObjectType, object.Name)
 			}
 		}
 		return nil
@@ -117,11 +120,11 @@ func TestPricingCatalogMetadataIsImmutableAndLegacyMetadataRemainsOptional(t *te
 		t.Fatalf("metadata changed after rejected mutation: %#v", stored)
 	}
 
-	legacy := PricingVersion{
+	legacy := pricing.CatalogVersion{
 		PricingVersion: "legacy-without-metadata", Source: "test", Currency: "USD",
 		EffectiveFromMS: 1, CreatedAtMS: 1,
-		Models: []ModelPrice{{
-			MatchKind: ModelMatchExact, ModelPattern: "test-model", Priority: 1,
+		Models: []pricing.ModelPrice{{
+			MatchKind: pricing.ModelMatchExact, ModelPattern: "test-model", Priority: 1,
 			InputMicrosPerMillion: pointerTo(int64(1)),
 		}},
 	}
@@ -154,14 +157,14 @@ func TestCostSchemaRejectsDuplicateActiveAndInconsistentNullableTotals(t *testin
 		State: string(CostRollupGenerationActive), CreatedAtMS: 100,
 		CompletedAtMS: pointerTo(int64(100)), UpdatedAtMS: 100,
 	}
-	if err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Create(&active).Error
 	}); err != nil {
 		t.Fatalf("create active generation: %v", err)
 	}
 	duplicate := active
 	duplicate.GenerationID = "generation-check-2"
-	if err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Create(&duplicate).Error
 	}); err == nil {
 		t.Fatal("duplicate active generation unexpectedly succeeded")
@@ -193,7 +196,7 @@ func TestCostSchemaRejectsDuplicateActiveAndInconsistentNullableTotals(t *testin
 			model := sessionUsageRollupModel{
 				GenerationID: active.GenerationID, SessionID: "session-cost-check", Totals: testCase.totals,
 			}
-			if err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+			if err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 				return transaction.WithContext(ctx).Create(&model).Error
 			}); err == nil {
 				t.Fatal("inconsistent nullable totals unexpectedly succeeded")
@@ -204,8 +207,8 @@ func TestCostSchemaRejectsDuplicateActiveAndInconsistentNullableTotals(t *testin
 
 func seedApplicationSchemaV4ForCost(t *testing.T, database *storesqlite.Store) {
 	t.Helper()
-	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		if err := ensureSchemaObjects(ctx, transaction, migrationSchemaObjects); err != nil {
+	err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
+		if err := storeschema.EnsureObjects(ctx, transaction, migrationSchemaObjects); err != nil {
 			return err
 		}
 		for _, migration := range applicationMigrations[:4] {

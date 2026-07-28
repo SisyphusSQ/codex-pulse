@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"testing"
 
 	"gorm.io/gorm"
@@ -62,7 +63,7 @@ func TestApplicationSchemaV15IndexMigrationRollsBackAtomically(t *testing.T) {
 	want := errors.New("injected v15 failure")
 	catalog := append([]migrationDefinition(nil), applicationMigrations...)
 	catalog[14].apply = func(ctx context.Context, transaction *gorm.DB) error {
-		if err := ensureSchemaObjects(ctx, transaction, quotaPerformanceSchemaObjects); err != nil {
+		if err := storeschema.EnsureObjects(ctx, transaction, quotaPerformanceSchemaObjects); err != nil {
 			return err
 		}
 		return want

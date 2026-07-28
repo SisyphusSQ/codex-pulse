@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/indexer"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -137,13 +137,13 @@ func TestRuntimeRunSliceYieldsAtByteBudgetAndResumesFromCommittedOffset(t *testi
 	}
 	job, _, _ := repository.BootstrapRunByIdentity(context.Background(), request.SwitchID, 101)
 	first, err := runtime.RunSlice(context.Background(), job.JobID, SliceBudget{
-		MaxFiles: 1, MaxBytes: logs.PrefixLimitBytes, MaxActive: time.Minute,
+		MaxFiles: 1, MaxBytes: logsource.PrefixLimitBytes, MaxActive: time.Minute,
 	})
 	if err != nil {
 		t.Fatalf("RunSlice(first) error = %v", err)
 	}
 	if first.Complete || first.ExhaustedBy != SliceStopByteBudget || first.FilesProcessed != 1 ||
-		first.BytesRead != logs.PrefixLimitBytes || first.State != store.JobRunning {
+		first.BytesRead != logsource.PrefixLimitBytes || first.State != store.JobRunning {
 		t.Fatalf("RunSlice(first) = %#v", first)
 	}
 	items, err := repository.ListBootstrapPlanItems(context.Background(), store.BootstrapPlanItemFilter{
@@ -158,12 +158,12 @@ func TestRuntimeRunSliceYieldsAtByteBudgetAndResumesFromCommittedOffset(t *testi
 	}
 	cursor, err := repository.BuildingGenerationCursor(context.Background(), file.SourceFileID)
 	if err != nil || cursor.Checkpoint.CommittedOffset <= 0 ||
-		cursor.Checkpoint.CommittedOffset >= logs.PrefixLimitBytes {
+		cursor.Checkpoint.CommittedOffset >= logsource.PrefixLimitBytes {
 		t.Fatalf("BuildingGenerationCursor() = %#v, %v, want committed offset within prefix", cursor, err)
 	}
 	committedOffset := cursor.Checkpoint.CommittedOffset
 
-	secondBudget := logs.PrefixLimitBytes + int64(len(content)) - committedOffset
+	secondBudget := logsource.PrefixLimitBytes + int64(len(content)) - committedOffset
 	second, err := runtime.RunSlice(context.Background(), job.JobID, SliceBudget{
 		MaxFiles: 1, MaxBytes: secondBudget,
 		MaxActive: time.Minute,
@@ -172,7 +172,7 @@ func TestRuntimeRunSliceYieldsAtByteBudgetAndResumesFromCommittedOffset(t *testi
 		t.Fatalf("RunSlice(second) error = %v", err)
 	}
 	if !second.Complete || second.ExhaustedBy != SliceStopCompleted ||
-		second.FilesProcessed != 1 || second.BytesRead <= logs.PrefixLimitBytes ||
+		second.FilesProcessed != 1 || second.BytesRead <= logsource.PrefixLimitBytes ||
 		second.BytesRead > secondBudget ||
 		second.State != store.JobSucceeded {
 		t.Fatalf("RunSlice(second) = %#v", second)
@@ -294,7 +294,7 @@ func TestRuntimeRunSliceHonorsFileBudgetAndExactCompletionBoundary(t *testing.T)
 		}
 		job, _, _ := repository.BootstrapRunByIdentity(context.Background(), request.SwitchID, 103)
 		report, err := runtime.RunSlice(context.Background(), job.JobID, SliceBudget{
-			MaxFiles: 1, MaxBytes: logs.PrefixLimitBytes, MaxActive: time.Minute,
+			MaxFiles: 1, MaxBytes: logsource.PrefixLimitBytes, MaxActive: time.Minute,
 		})
 		if err != nil || !report.Complete || report.ExhaustedBy != SliceStopCompleted ||
 			report.BytesRead != int64(len(content)) {
@@ -770,7 +770,7 @@ func TestRuntimeRejectsConfirmedHomeReplacementAcrossBootstrapStages(t *testing.
 					completeBootstrapRollout("session-replacement", "turn-replacement"), time.Now())
 			},
 		})
-		if err := runtime.StartBootstrap(context.Background(), request); !errors.Is(err, logs.ErrHomeChanged) {
+		if err := runtime.StartBootstrap(context.Background(), request); !errors.Is(err, logsource.ErrHomeChanged) {
 			t.Fatalf("StartBootstrap(replaced root) error = %v, want ErrHomeChanged", err)
 		}
 		if _, err := repository.Session(context.Background(), "session-replacement"); !errors.Is(err, store.ErrNotFound) {
@@ -791,7 +791,7 @@ func TestRuntimeRejectsConfirmedHomeReplacementAcrossBootstrapStages(t *testing.
 		}
 		replaceBootstrapHomeWithHardlinks(t, home, []string{"sessions/initial.jsonl"})
 		job, _, _ := repository.BootstrapRunByIdentity(context.Background(), request.SwitchID, 22)
-		if _, err := runtime.Run(context.Background(), job.JobID); !errors.Is(err, logs.ErrHomeChanged) {
+		if _, err := runtime.Run(context.Background(), job.JobID); !errors.Is(err, logsource.ErrHomeChanged) {
 			t.Fatalf("Run(replaced root) error = %v, want ErrHomeChanged", err)
 		}
 		if _, err := repository.Session(context.Background(), "session-original"); !errors.Is(err, store.ErrNotFound) {
@@ -816,7 +816,7 @@ func TestRuntimeRejectsConfirmedHomeReplacementAcrossBootstrapStages(t *testing.
 				)
 			},
 		})
-		if err := runtime.StartBootstrap(context.Background(), request); !errors.Is(err, logs.ErrHomeChanged) {
+		if err := runtime.StartBootstrap(context.Background(), request); !errors.Is(err, logsource.ErrHomeChanged) {
 			t.Fatalf("StartBootstrap(replaced root before hints) error = %v, want ErrHomeChanged", err)
 		}
 	})
@@ -842,7 +842,7 @@ func TestRuntimeRejectsConfirmedHomeReplacementAcrossBootstrapStages(t *testing.
 			t.Fatalf("StartBootstrap() error = %v", err)
 		}
 		job, _, _ := repository.BootstrapRunByIdentity(context.Background(), request.SwitchID, 23)
-		if _, err := runtime.Run(context.Background(), job.JobID); !errors.Is(err, logs.ErrHomeChanged) {
+		if _, err := runtime.Run(context.Background(), job.JobID); !errors.Is(err, logsource.ErrHomeChanged) {
 			t.Fatalf("Run(replaced root before reconcile) error = %v, want ErrHomeChanged", err)
 		}
 		if _, err := repository.Session(context.Background(), "session-late-root"); !errors.Is(err, store.ErrNotFound) {
@@ -1698,7 +1698,7 @@ func TestLoadSessionIndexHintsUsesSafeLatestEntryAndDropsFutureTime(t *testing.T
 	if err := os.WriteFile(filepath.Join(home, "session_index.jsonl"), indexContent, 0o600); err != nil {
 		t.Fatalf("WriteFile(session_index) error = %v", err)
 	}
-	discoverer, err := logs.NewDiscoverer(home)
+	discoverer, err := logsource.NewDiscoverer(home)
 	if err != nil {
 		t.Fatalf("NewDiscoverer() error = %v", err)
 	}
@@ -1707,7 +1707,7 @@ func TestLoadSessionIndexHintsUsesSafeLatestEntryAndDropsFutureTime(t *testing.T
 		t.Fatalf("Discover() error = %v", err)
 	}
 	maximum := time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC).UnixMilli()
-	metadata, err := logs.NewHomeProbe().Probe(context.Background(), home)
+	metadata, err := logsource.NewHomeProbe().Probe(context.Background(), home)
 	if err != nil {
 		t.Fatalf("HomeProbe.Probe() error = %v", err)
 	}
@@ -1780,7 +1780,7 @@ func newTestRuntime(
 
 func bootstrapRequest(t *testing.T, home, switchID string, generation uint64) preferences.BootstrapRequest {
 	t.Helper()
-	metadata, err := logs.NewHomeProbe().Probe(context.Background(), home)
+	metadata, err := logsource.NewHomeProbe().Probe(context.Background(), home)
 	if err != nil {
 		t.Fatalf("HomeProbe.Probe() error = %v", err)
 	}
@@ -1864,7 +1864,7 @@ func ingestBootstrapCurrentSource(
 	if err != nil {
 		t.Fatalf("CodexSnapshots() error = %v", err)
 	}
-	discoverer, err := logs.NewConfirmedDiscoverer(
+	discoverer, err := logsource.NewConfirmedDiscoverer(
 		request.Source.Path, request.Source.DeviceID, request.Source.Inode,
 	)
 	if err != nil {
@@ -1876,20 +1876,20 @@ func ingestBootstrapCurrentSource(
 	if err != nil {
 		t.Fatalf("DiscoverAgainst() error = %v", err)
 	}
-	plan, err := logs.PlanReconcile(
+	plan, err := logsource.PlanReconcile(
 		request.Source.Path, snapshotsFromFingerprints(previous), discovery,
 	)
 	if err != nil {
 		t.Fatalf("PlanReconcile() error = %v", err)
 	}
-	var action *logs.ReconcileAction
+	var action *logsource.ReconcileAction
 	for index := range plan.Actions {
-		if plan.Actions[index].Kind == logs.ChangeGrown && plan.Actions[index].Current != nil {
+		if plan.Actions[index].Kind == logsource.ChangeGrown && plan.Actions[index].Current != nil {
 			action = &plan.Actions[index]
 			break
 		}
 	}
-	if action == nil || action.Kind != logs.ChangeGrown {
+	if action == nil || action.Kind != logsource.ChangeGrown {
 		t.Fatalf("current source reconcile action = %#v, want grown", action)
 	}
 	ingester, err := indexer.New(repository)
@@ -1905,7 +1905,7 @@ func ingestBootstrapCurrentSource(
 	if err != nil {
 		t.Fatalf("Stream.Cursor() error = %v", err)
 	}
-	reader, err := logs.NewConfirmedSnapshotReader(
+	reader, err := logsource.NewConfirmedSnapshotReader(
 		request.Source.Path, request.Source.DeviceID, request.Source.Inode, defaultReadChunkBytes,
 	)
 	if err != nil {
@@ -1937,7 +1937,7 @@ func completeBootstrapRolloutWithQuota(sessionID, turnID string) []byte {
 func largeBootstrapRollout(sessionID, turnID string) []byte {
 	return append(completeBootstrapRollout(sessionID, turnID), []byte(
 		`{"timestamp":"2026-07-14T01:00:03Z","type":"response_item","payload":{"type":"message","content":[{"type":"output_text","text":"`+
-			strings.Repeat("x", int(logs.PrefixLimitBytes))+`"}]}}`+"\n",
+			strings.Repeat("x", int(logsource.PrefixLimitBytes))+`"}]}}`+"\n",
 	)...)
 }
 

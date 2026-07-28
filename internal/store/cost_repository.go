@@ -10,8 +10,8 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 const (
@@ -450,7 +450,7 @@ func turnCostForFact(
 	var model modelPriceModel
 	err = database.WithContext(ctx).
 		Where("pricing_version = ? AND match_kind = ? AND model_pattern = ?",
-			version.PricingVersion, ModelMatchExact, *fact.ModelKey).
+			version.PricingVersion, pricing.ModelMatchExact, *fact.ModelKey).
 		Take(&model).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		base.Status = pricing.CostStatusUnpriced
@@ -481,12 +481,12 @@ func modelAttributionCostReason(reason *string) pricing.CostReason {
 	if reason == nil {
 		return pricing.CostReasonMissingAttribution
 	}
-	switch AttributionReason(*reason) {
-	case AttributionReasonConflict:
+	switch attribution.Reason(*reason) {
+	case attribution.ReasonConflict:
 		return pricing.CostReasonConflictModel
-	case AttributionReasonInvalid:
+	case attribution.ReasonInvalid:
 		return pricing.CostReasonInvalidModel
-	case AttributionReasonMissing:
+	case attribution.ReasonMissing:
 		return pricing.CostReasonMissingModel
 	default:
 		return pricing.CostReasonMissingAttribution
@@ -505,9 +505,9 @@ func costDimension(
 	source *string,
 	reason *string,
 ) safeDimension {
-	safeConfidence := optionalCostDimensionValue(confidence, string(AttributionConfidenceUnknown))
-	safeSource := optionalCostDimensionValue(source, string(AttributionSourceMissing))
-	safeReason := optionalCostDimensionValue(reason, string(AttributionReasonMissing))
+	safeConfidence := optionalCostDimensionValue(confidence, string(attribution.ConfidenceUnknown))
+	safeSource := optionalCostDimensionValue(source, string(attribution.SourceMissing))
+	safeReason := optionalCostDimensionValue(reason, string(attribution.ReasonMissing))
 	if identity != nil && *identity != "" && display != nil && *display != "" {
 		return safeDimension{
 			key: *identity, identity: identity, display: display,
@@ -568,14 +568,14 @@ func conservativeCostDimensionConfidence(left, right string) string {
 }
 
 func costDimensionConfidenceRank(value string) int {
-	switch AttributionConfidence(value) {
-	case AttributionConfidenceHigh:
+	switch attribution.Confidence(value) {
+	case attribution.ConfidenceHigh:
 		return 4
-	case AttributionConfidenceMedium:
+	case attribution.ConfidenceMedium:
 		return 3
-	case AttributionConfidenceLow:
+	case attribution.ConfidenceLow:
 		return 2
-	case AttributionConfidenceUnknown:
+	case attribution.ConfidenceUnknown:
 		return 1
 	default:
 		return 0
@@ -1007,7 +1007,7 @@ func (repository *Repository) ActiveCostLedger(
 		return CostLedgerSnapshot{}, invalidRecord("reporting timezone is invalid")
 	}
 	var snapshot CostLedgerSnapshot
-	err := repository.database.View(ctx, func(ctx context.Context, database storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, database *gorm.DB) error {
 		var generation costRollupGenerationModel
 		err := database.WithContext(ctx).Where(
 			"reporting_timezone = ? AND state = ?", reportingTimezone, CostRollupGenerationActive,

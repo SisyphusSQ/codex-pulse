@@ -6,8 +6,6 @@ import (
 	"errors"
 
 	"gorm.io/gorm"
-
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 // Session 返回稳定 Session 事实及其可选当前投影。
@@ -17,7 +15,7 @@ func (repository *Repository) Session(ctx context.Context, sessionID string) (Se
 	}
 
 	var snapshot SessionSnapshot
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		database := connection.WithContext(ctx)
 		var session sessionModel
 		if err := database.Take(&session, "session_id = ?", sessionID).Error; err != nil {
@@ -59,7 +57,7 @@ func (repository *Repository) Turn(ctx context.Context, turnID string) (TurnSnap
 	}
 
 	var snapshot TurnSnapshot
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		database := connection.WithContext(ctx)
 		var turn turnModel
 		if err := database.Take(&turn, "turn_id = ?", turnID).Error; err != nil {
@@ -98,7 +96,7 @@ func (repository *Repository) ListTurns(ctx context.Context, filter TurnFilter) 
 	}
 
 	var snapshots []TurnSnapshot
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		query := connection.WithContext(ctx).Model(&turnModel{})
 		if filter.SessionID != nil {
 			query = query.Where("session_id = ?", *filter.SessionID)

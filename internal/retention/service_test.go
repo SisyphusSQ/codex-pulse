@@ -10,14 +10,14 @@ import (
 
 	"github.com/robfig/cron/v3"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/store"
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 func TestServiceRunsStartupThenHonorsHourlySuccessDue(t *testing.T) {
 	clock := newTestClock(time.UnixMilli(200_000_000).UTC())
-	cleaner := &fakeCleaner{reports: []store.RetentionCleanupReport{{
-		CutoffMS: 1, Batches: 2, Deleted: store.RetentionDeletedCounts{RuntimeSamples: 3, HealthEvents: 1},
+	cleaner := &fakeCleaner{reports: []storeretention.RetentionCleanupReport{{
+		CutoffMS: 1, Batches: 2, Deleted: storeretention.RetentionDeletedCounts{RuntimeSamples: 3, HealthEvents: 1},
 	}}}
 	checkpointer := &fakeCheckpointer{reports: []storesqlite.WALCheckpointReport{{LogFrames: 8, CheckpointedFrames: 8}}}
 	service := newTestService(t, clock.Now, cleaner, checkpointer)
@@ -50,10 +50,10 @@ func TestServiceRunsStartupThenHonorsHourlySuccessDue(t *testing.T) {
 func TestServiceBacksOffFailuresAndPreservesLastSuccess(t *testing.T) {
 	clock := newTestClock(time.UnixMilli(200_000_000).UTC())
 	cleaner := &fakeCleaner{
-		reports: []store.RetentionCleanupReport{
-			{Deleted: store.RetentionDeletedCounts{RuntimeSamples: 1}},
-			{Deleted: store.RetentionDeletedCounts{RuntimeSamples: 2}},
-			{Deleted: store.RetentionDeletedCounts{RuntimeSamples: 3}},
+		reports: []storeretention.RetentionCleanupReport{
+			{Deleted: storeretention.RetentionDeletedCounts{RuntimeSamples: 1}},
+			{Deleted: storeretention.RetentionDeletedCounts{RuntimeSamples: 2}},
+			{Deleted: storeretention.RetentionDeletedCounts{RuntimeSamples: 3}},
 		},
 		errors: []error{nil, errors.New("cleanup failed"), nil},
 	}
@@ -90,7 +90,7 @@ func TestServiceBacksOffFailuresAndPreservesLastSuccess(t *testing.T) {
 
 func TestServiceClassifiesCheckpointFailureAndDependencyPanic(t *testing.T) {
 	clock := newTestClock(time.UnixMilli(200_000_000).UTC())
-	cleaner := &fakeCleaner{reports: []store.RetentionCleanupReport{{Deleted: store.RetentionDeletedCounts{JobRuns: 2}}, {}}}
+	cleaner := &fakeCleaner{reports: []storeretention.RetentionCleanupReport{{Deleted: storeretention.RetentionDeletedCounts{JobRuns: 2}}, {}}}
 	checkpointer := &fakeCheckpointer{errors: []error{errors.New("checkpoint failed")}, panicAt: 2}
 	service := newTestService(t, clock.Now, cleaner, checkpointer)
 
@@ -272,18 +272,18 @@ func TestServiceRunStartsImmediatelyUsesCronAndStopsCleanly(t *testing.T) {
 
 type fakeCleaner struct {
 	mu      sync.Mutex
-	reports []store.RetentionCleanupReport
+	reports []storeretention.RetentionCleanupReport
 	errors  []error
 	calls   int
 	started chan struct{}
 	release chan struct{}
 }
 
-func (cleaner *fakeCleaner) CleanupRetention(context.Context, store.RetentionCleanupOptions) (store.RetentionCleanupReport, error) {
+func (cleaner *fakeCleaner) CleanupRetention(context.Context, storeretention.RetentionCleanupOptions) (storeretention.RetentionCleanupReport, error) {
 	cleaner.mu.Lock()
 	cleaner.calls++
 	call := cleaner.calls
-	var report store.RetentionCleanupReport
+	var report storeretention.RetentionCleanupReport
 	if call <= len(cleaner.reports) {
 		report = cleaner.reports[call-1]
 	}

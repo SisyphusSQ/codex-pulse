@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -91,12 +92,12 @@ type fakeSystemLifecycleCoordinator struct {
 
 type recordingQueryInvalidationNotifier struct {
 	mu      sync.Mutex
-	domains []QueryInvalidationDomain
+	domains []core.InvalidationDomain
 }
 
 func (notifier *recordingQueryInvalidationNotifier) Notify(
 	ctx context.Context,
-	domain QueryInvalidationDomain,
+	domain core.InvalidationDomain,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -107,7 +108,7 @@ func (notifier *recordingQueryInvalidationNotifier) Notify(
 	return nil
 }
 
-func (notifier *recordingQueryInvalidationNotifier) count(domain QueryInvalidationDomain) int {
+func (notifier *recordingQueryInvalidationNotifier) count(domain core.InvalidationDomain) int {
 	notifier.mu.Lock()
 	defer notifier.mu.Unlock()
 	count := 0

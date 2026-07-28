@@ -8,7 +8,7 @@ import (
 	"time"
 
 	retentionmodel "github.com/SisyphusSQ/codex-pulse/internal/retention"
-	"github.com/SisyphusSQ/codex-pulse/internal/store"
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -31,7 +31,7 @@ func startApplicationRetentionRuntime(
 	if ctx == nil || database == nil {
 		return nil, ErrApplicationRetentionRuntime
 	}
-	repository := store.NewRepository(database)
+	repository := storeretention.NewRepository(database)
 	service, err := retentionmodel.NewService(retentionmodel.ServiceConfig{
 		Cleaner: repository, Checkpointer: database, Clock: time.Now,
 	})

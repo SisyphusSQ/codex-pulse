@@ -10,7 +10,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 // RecordResetCreditsFetch atomically appends one source attempt and its
@@ -22,7 +21,7 @@ func (repository *Repository) RecordResetCreditsFetch(ctx context.Context, recor
 	if err := validateResetCreditsFetchRecord(record); err != nil {
 		return err
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		database := transaction.WithContext(ctx)
 		existingAttempt, replay, err := sourceAttemptByID(ctx, database, record.Attempt.RequestID)
 		if err != nil {
@@ -112,7 +111,7 @@ func (repository *Repository) ResetCreditsSummary(
 	summary := ResetCreditsSummary{
 		AccountScope: accountScope, FreshnessState: SourceFreshnessUnknown, EvaluationAtMS: evaluationAtMS,
 	}
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
 			var err error
 			summary, err = resetCreditsSummaryFromDatabase(ctx, transaction, accountScope, evaluationAtMS)

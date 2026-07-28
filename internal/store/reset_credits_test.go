@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestRecordResetCreditsFetchPersistsReplaySafeSummary(t *testing.T) {
@@ -65,7 +65,7 @@ func TestResetCreditsSummaryRejectsSnapshotAttachedToAnotherSourceAttempt(t *tes
 	if err := repository.RecordQuotaFetch(context.Background(), quotaRecord); err != nil {
 		t.Fatalf("record quota: %v", err)
 	}
-	if err := repository.database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := repository.database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Model(&resetCreditsSnapshotModel{}).
 			Where("snapshot_id = ?", resetRecord.Snapshot.SnapshotID).
 			Update("request_id", quotaRecord.Attempt.RequestID).Error

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -207,12 +208,12 @@ func TestListProjectsLightIndexKeepsProjectTokensCostAndModels(t *testing.T) {
 				Daily:  append([]store.ProjectUsageDaily(nil), record.Trend...),
 				Sessions: []store.ProjectSessionAnalyticsRecord{{
 					SessionID: "session-light", DisplayTitle: "真实标题",
-					TitleConfidence: store.AttributionConfidenceHigh,
-					TitleSource:     store.AttributionSourceSessionIDFallback,
-					TitleReason:     store.AttributionReasonObserved,
+					TitleConfidence: attribution.ConfidenceHigh,
+					TitleSource:     attribution.SourceSessionIDFallback,
+					TitleReason:     attribution.ReasonObserved,
 					Model: store.ModelAttribution{
-						Confidence: store.AttributionConfidenceUnknown,
-						Source:     store.AttributionSourceMissing, Reason: store.AttributionReasonMissing,
+						Confidence: attribution.ConfidenceUnknown,
+						Source:     attribution.SourceMissing, Reason: attribution.ReasonMissing,
 					},
 					Activity: store.SessionActivityIdle, LastActivityAtMS: 1, Totals: record.Totals,
 				}},
@@ -224,8 +225,8 @@ func TestListProjectsLightIndexKeepsProjectTokensCostAndModels(t *testing.T) {
 					DimensionKey: "gpt-5.4-mini",
 					Model: store.ModelAttribution{
 						ModelKey: pointerToString("gpt-5.4-mini"), DisplayName: pointerToString("GPT-5.4 Mini"),
-						Confidence: store.AttributionConfidenceHigh,
-						Source:     store.AttributionSourceModelCanonical, Reason: store.AttributionReasonObserved,
+						Confidence: attribution.ConfidenceHigh,
+						Source:     attribution.SourceModelCanonical, Reason: attribution.ReasonObserved,
 					},
 					Totals: record.Totals,
 				}},
@@ -473,14 +474,14 @@ func TestProjectDetailMapsDailyNotFoundAndUnavailable(t *testing.T) {
 				}},
 				Sessions: []store.ProjectSessionAnalyticsRecord{{
 					SessionID: "session-a", DisplayTitle: "Safe title",
-					TitleConfidence: store.AttributionConfidenceHigh,
-					TitleSource:     store.AttributionSourceSessionIDFallback,
-					TitleReason:     store.AttributionReasonStableIdentity,
+					TitleConfidence: attribution.ConfidenceHigh,
+					TitleSource:     attribution.SourceSessionIDFallback,
+					TitleReason:     attribution.ReasonStableIdentity,
 					Model: store.ModelAttribution{
 						ModelKey: pointerToString("model-a"), DisplayName: pointerToString("Model A"),
-						Confidence: store.AttributionConfidenceHigh,
-						Source:     store.AttributionSourceModelCanonical,
-						Reason:     store.AttributionReasonObserved,
+						Confidence: attribution.ConfidenceHigh,
+						Source:     attribution.SourceModelCanonical,
+						Reason:     attribution.ReasonObserved,
 					},
 					Activity: store.SessionActivityIdle, LastActivityAtMS: 10,
 					Totals: safeProjectContributionTotals(10, 20, 10),
@@ -612,13 +613,13 @@ func TestProjectDetailMapsContributionPagesAndRoundTripsBoundCursors(t *testing.
 		if filter.SessionCursor == nil {
 			snapshot.Sessions = []store.ProjectSessionAnalyticsRecord{{
 				SessionID: "session-beta", DisplayTitle: "Beta safe title",
-				TitleConfidence: store.AttributionConfidenceHigh,
-				TitleSource:     store.AttributionSourceSessionIDFallback,
-				TitleReason:     store.AttributionReasonStableIdentity,
+				TitleConfidence: attribution.ConfidenceHigh,
+				TitleSource:     attribution.SourceSessionIDFallback,
+				TitleReason:     attribution.ReasonStableIdentity,
 				Model: store.ModelAttribution{
 					ModelKey: pointerToString("model-b"), DisplayName: pointerToString("Model B"),
-					Confidence: store.AttributionConfidenceHigh,
-					Source:     store.AttributionSourceModelCanonical, Reason: store.AttributionReasonObserved,
+					Confidence: attribution.ConfidenceHigh,
+					Source:     attribution.SourceModelCanonical, Reason: attribution.ReasonObserved,
 				},
 				Activity: store.SessionActivityIdle, LastActivityAtMS: 20,
 				Totals: safeProjectContributionTotals(twenty, 200, 20),
@@ -627,8 +628,8 @@ func TestProjectDetailMapsContributionPagesAndRoundTripsBoundCursors(t *testing.
 			snapshot.Models = []store.ProjectModelAnalyticsRecord{{
 				DimensionKey: "model-b", Model: store.ModelAttribution{
 					ModelKey: pointerToString("model-b"), DisplayName: pointerToString("Model B"),
-					Confidence: store.AttributionConfidenceHigh,
-					Source:     store.AttributionSourceModelCanonical, Reason: store.AttributionReasonObserved,
+					Confidence: attribution.ConfidenceHigh,
+					Source:     attribution.SourceModelCanonical, Reason: attribution.ReasonObserved,
 				},
 				Totals: safeProjectRecord("ignored", nil, nil, twenty, 200).Totals,
 			}}
@@ -637,13 +638,13 @@ func TestProjectDetailMapsContributionPagesAndRoundTripsBoundCursors(t *testing.
 		}
 		snapshot.Sessions = []store.ProjectSessionAnalyticsRecord{{
 			SessionID: "session-alpha", DisplayTitle: "Alpha safe title",
-			TitleConfidence: store.AttributionConfidenceHigh,
-			TitleSource:     store.AttributionSourceSessionIDFallback,
-			TitleReason:     store.AttributionReasonStableIdentity,
+			TitleConfidence: attribution.ConfidenceHigh,
+			TitleSource:     attribution.SourceSessionIDFallback,
+			TitleReason:     attribution.ReasonStableIdentity,
 			Model: store.ModelAttribution{
 				ModelKey: pointerToString("model-a"), DisplayName: pointerToString("Model A"),
-				Confidence: store.AttributionConfidenceHigh,
-				Source:     store.AttributionSourceModelCanonical, Reason: store.AttributionReasonObserved,
+				Confidence: attribution.ConfidenceHigh,
+				Source:     attribution.SourceModelCanonical, Reason: attribution.ReasonObserved,
 			},
 			Activity: store.SessionActivityIdle, LastActivityAtMS: 10,
 			Totals: safeProjectContributionTotals(ten, 100, 10),
@@ -651,8 +652,8 @@ func TestProjectDetailMapsContributionPagesAndRoundTripsBoundCursors(t *testing.
 		snapshot.Models = []store.ProjectModelAnalyticsRecord{{
 			DimensionKey: "model-a", Model: store.ModelAttribution{
 				ModelKey: pointerToString("model-a"), DisplayName: pointerToString("Model A"),
-				Confidence: store.AttributionConfidenceHigh,
-				Source:     store.AttributionSourceModelCanonical, Reason: store.AttributionReasonObserved,
+				Confidence: attribution.ConfidenceHigh,
+				Source:     attribution.SourceModelCanonical, Reason: attribution.ReasonObserved,
 			},
 			Totals: safeProjectRecord("ignored", nil, nil, ten, 100).Totals,
 		}}
@@ -758,13 +759,13 @@ func TestProjectDetailRejectsOutOfOrderSessionPage(t *testing.T) {
 	makeSession := func(id string, atMS int64) store.ProjectSessionAnalyticsRecord {
 		return store.ProjectSessionAnalyticsRecord{
 			SessionID: id, DisplayTitle: "Safe title",
-			TitleConfidence: store.AttributionConfidenceHigh,
-			TitleSource:     store.AttributionSourceSessionIDFallback,
-			TitleReason:     store.AttributionReasonStableIdentity,
+			TitleConfidence: attribution.ConfidenceHigh,
+			TitleSource:     attribution.SourceSessionIDFallback,
+			TitleReason:     attribution.ReasonStableIdentity,
 			Model: store.ModelAttribution{
 				ModelKey: pointerToString("model-a"), DisplayName: pointerToString("Model A"),
-				Confidence: store.AttributionConfidenceHigh,
-				Source:     store.AttributionSourceModelCanonical, Reason: store.AttributionReasonObserved,
+				Confidence: attribution.ConfidenceHigh,
+				Source:     attribution.SourceModelCanonical, Reason: attribution.ReasonObserved,
 			},
 			Activity: store.SessionActivityIdle, LastActivityAtMS: atMS,
 			Totals: safeProjectContributionTotals(15, 150, atMS),
@@ -792,9 +793,9 @@ func TestProjectDetailRejectsOutOfOrderSessionPage(t *testing.T) {
 			DimensionKey: key,
 			Model: store.ModelAttribution{
 				ModelKey: pointerToString(key), DisplayName: pointerToString(key),
-				Confidence: store.AttributionConfidenceHigh,
-				Source:     store.AttributionSourceModelCanonical,
-				Reason:     store.AttributionReasonObserved,
+				Confidence: attribution.ConfidenceHigh,
+				Source:     attribution.SourceModelCanonical,
+				Reason:     attribution.ReasonObserved,
 			},
 			Totals: safeProjectRecord("ignored", nil, nil, tokens, tokens*10).Totals,
 		}
@@ -823,14 +824,14 @@ func TestProjectDetailRejectsTruncatedFirstSessionPageWithoutCursor(t *testing.T
 		Record: record, Daily: append([]store.ProjectUsageDaily(nil), record.Trend...),
 		Sessions: []store.ProjectSessionAnalyticsRecord{{
 			SessionID: "session-only", DisplayTitle: "Safe title",
-			TitleConfidence: store.AttributionConfidenceHigh,
-			TitleSource:     store.AttributionSourceSessionIDFallback,
-			TitleReason:     store.AttributionReasonStableIdentity,
+			TitleConfidence: attribution.ConfidenceHigh,
+			TitleSource:     attribution.SourceSessionIDFallback,
+			TitleReason:     attribution.ReasonStableIdentity,
 			Model: store.ModelAttribution{
 				ModelKey: pointerToString("model-a"), DisplayName: pointerToString("Model A"),
-				Confidence: store.AttributionConfidenceHigh,
-				Source:     store.AttributionSourceModelCanonical,
-				Reason:     store.AttributionReasonObserved,
+				Confidence: attribution.ConfidenceHigh,
+				Source:     attribution.SourceModelCanonical,
+				Reason:     attribution.ReasonObserved,
 			},
 			Activity: store.SessionActivityIdle, LastActivityAtMS: 10,
 			Totals: safeProjectContributionTotals(30, 300, 10),
@@ -948,14 +949,14 @@ func safeProjectDetailSnapshot() store.ProjectAnalyticsSnapshot {
 		Record: record, Daily: append([]store.ProjectUsageDaily(nil), record.Trend...),
 		Sessions: []store.ProjectSessionAnalyticsRecord{{
 			SessionID: "session-a", DisplayTitle: "Safe title",
-			TitleConfidence: store.AttributionConfidenceHigh,
-			TitleSource:     store.AttributionSourceSessionIDFallback,
-			TitleReason:     store.AttributionReasonStableIdentity,
+			TitleConfidence: attribution.ConfidenceHigh,
+			TitleSource:     attribution.SourceSessionIDFallback,
+			TitleReason:     attribution.ReasonStableIdentity,
 			Model: store.ModelAttribution{
 				ModelKey: pointerToString("model-a"), DisplayName: pointerToString("Model A"),
-				Confidence: store.AttributionConfidenceHigh,
-				Source:     store.AttributionSourceModelCanonical,
-				Reason:     store.AttributionReasonObserved,
+				Confidence: attribution.ConfidenceHigh,
+				Source:     attribution.SourceModelCanonical,
+				Reason:     attribution.ReasonObserved,
 			},
 			Activity: store.SessionActivityIdle, LastActivityAtMS: 1,
 			Totals: safeProjectContributionTotals(10, 20, 1),
@@ -964,9 +965,9 @@ func safeProjectDetailSnapshot() store.ProjectAnalyticsSnapshot {
 			DimensionKey: "model-a",
 			Model: store.ModelAttribution{
 				ModelKey: pointerToString("model-a"), DisplayName: pointerToString("Model A"),
-				Confidence: store.AttributionConfidenceHigh,
-				Source:     store.AttributionSourceModelCanonical,
-				Reason:     store.AttributionReasonObserved,
+				Confidence: attribution.ConfidenceHigh,
+				Source:     attribution.SourceModelCanonical,
+				Reason:     attribution.ReasonObserved,
 			},
 			Totals: safeProjectContributionTotals(10, 20, 1),
 		}},

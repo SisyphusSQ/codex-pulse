@@ -10,8 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"gorm.io/gorm"
+
 	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 func TestRepositoryDerivesSafeSessionTurnProjectAndModelAttribution(t *testing.T) {
@@ -51,13 +52,13 @@ func TestRepositoryDerivesSafeSessionTurnProjectAndModelAttribution(t *testing.T
 		t.Fatalf("SessionAttribution() error = %v", err)
 	}
 	if session.SessionID != "session-1" || !strings.HasPrefix(session.DisplayTitle, "Session ") ||
-		session.TitleConfidence != AttributionConfidenceHigh ||
-		session.TitleSource != AttributionSourceSessionIDFallback ||
+		session.TitleConfidence != attribution.ConfidenceHigh ||
+		session.TitleSource != attribution.SourceSessionIDFallback ||
 		session.Project.ProjectID == nil || session.Project.DisplayName == nil ||
 		*session.Project.DisplayName != "api" ||
 		session.Model.ModelKey == nil || *session.Model.ModelKey != "gpt-5.2-codex" ||
 		session.Model.DisplayName == nil || *session.Model.DisplayName != "GPT-5.2 Codex" ||
-		session.Model.Source != AttributionSourceModelAlias || session.RuleVersion != attribution.RuleVersion {
+		session.Model.Source != attribution.SourceModelAlias || session.RuleVersion != attribution.RuleVersion {
 		t.Fatalf("session attribution = %#v", session)
 	}
 
@@ -67,7 +68,7 @@ func TestRepositoryDerivesSafeSessionTurnProjectAndModelAttribution(t *testing.T
 	}
 	if turn.Project.ProjectID == nil || turn.Project.DisplayName == nil || *turn.Project.DisplayName != "api" ||
 		turn.Model.ModelKey == nil || *turn.Model.ModelKey != "gpt-5.2-codex" ||
-		turn.Model.Source != AttributionSourceModelAlias || turn.RuleVersion != attribution.RuleVersion {
+		turn.Model.Source != attribution.SourceModelAlias || turn.RuleVersion != attribution.RuleVersion {
 		t.Fatalf("turn attribution = %#v", turn)
 	}
 
@@ -113,9 +114,9 @@ func TestRepositoryAttributionReturnsUnknownAndFailsClosedOnPeerConflict(t *test
 	if err != nil {
 		t.Fatalf("SessionAttribution(missing) error = %v", err)
 	}
-	if missing.Project.ProjectID != nil || missing.Project.Confidence != AttributionConfidenceUnknown ||
-		missing.Project.Source != AttributionSourceMissing || missing.Model.ModelKey != nil ||
-		missing.Model.Confidence != AttributionConfidenceUnknown || missing.Model.Source != AttributionSourceMissing {
+	if missing.Project.ProjectID != nil || missing.Project.Confidence != attribution.ConfidenceUnknown ||
+		missing.Project.Source != attribution.SourceMissing || missing.Model.ModelKey != nil ||
+		missing.Model.Confidence != attribution.ConfidenceUnknown || missing.Model.Source != attribution.SourceMissing {
 		t.Fatalf("missing attribution = %#v", missing)
 	}
 
@@ -144,11 +145,11 @@ func TestRepositoryAttributionReturnsUnknownAndFailsClosedOnPeerConflict(t *test
 		t.Fatalf("SessionAttribution(conflict) error = %v", err)
 	}
 	if conflict.Project.ProjectID != nil || conflict.Project.DisplayName != nil ||
-		conflict.Project.Confidence != AttributionConfidenceLow ||
-		conflict.Project.Source != AttributionSourceConflict ||
+		conflict.Project.Confidence != attribution.ConfidenceLow ||
+		conflict.Project.Source != attribution.SourceConflict ||
 		conflict.Model.ModelKey != nil || conflict.Model.DisplayName != nil ||
-		conflict.Model.Confidence != AttributionConfidenceLow ||
-		conflict.Model.Source != AttributionSourceConflict {
+		conflict.Model.Confidence != attribution.ConfidenceLow ||
+		conflict.Model.Source != attribution.SourceConflict {
 		t.Fatalf("conflict attribution = %#v", conflict)
 	}
 }
@@ -174,13 +175,13 @@ func TestRepositorySessionAttributionPreservesInvalidInputReasons(t *testing.T) 
 	}
 	derived, err := repository.SessionAttribution(ctx, "session-invalid")
 	if err != nil || derived.Project.ProjectID != nil || derived.Project.DisplayName != nil ||
-		derived.Project.Confidence != AttributionConfidenceUnknown ||
-		derived.Project.Source != AttributionSourceInvalidPath ||
-		derived.Project.Reason != AttributionReasonInvalid ||
+		derived.Project.Confidence != attribution.ConfidenceUnknown ||
+		derived.Project.Source != attribution.SourceInvalidPath ||
+		derived.Project.Reason != attribution.ReasonInvalid ||
 		derived.Model.ModelKey != nil || derived.Model.DisplayName != nil ||
-		derived.Model.Confidence != AttributionConfidenceUnknown ||
-		derived.Model.Source != AttributionSourceInvalidModel ||
-		derived.Model.Reason != AttributionReasonInvalid {
+		derived.Model.Confidence != attribution.ConfidenceUnknown ||
+		derived.Model.Source != attribution.SourceInvalidModel ||
+		derived.Model.Reason != attribution.ReasonInvalid {
 		t.Fatalf("SessionAttribution() = %#v, %v", derived, err)
 	}
 }
@@ -207,8 +208,8 @@ func TestRepositoryAttributionUsesExplicitRegisteredProjectRoot(t *testing.T) {
 	derived, err := repository.SessionAttribution(ctx, "session-registered")
 	if err != nil || derived.Project.ProjectID == nil || *derived.Project.ProjectID != "project-registered" ||
 		derived.Project.DisplayName == nil || *derived.Project.DisplayName != "Registered Project" ||
-		derived.Project.Confidence != AttributionConfidenceHigh ||
-		derived.Project.Source != AttributionSourceRegisteredRoot {
+		derived.Project.Confidence != attribution.ConfidenceHigh ||
+		derived.Project.Source != attribution.SourceRegisteredRoot {
 		t.Fatalf("SessionAttribution() = %#v, %v", derived, err)
 	}
 }
@@ -270,7 +271,7 @@ func TestRepositoryAttributionGroupsLinkedWorktreesAndLeavesScratchUnclassified(
 	}
 	scratchAttribution, err := repository.SessionAttribution(ctx, "scratch")
 	if err != nil || scratchAttribution.Project.ProjectID != nil ||
-		scratchAttribution.Project.Source != AttributionSourceMissing {
+		scratchAttribution.Project.Source != attribution.SourceMissing {
 		t.Fatalf("scratch attribution = %#v, %v", scratchAttribution.Project, err)
 	}
 }
@@ -297,7 +298,7 @@ func TestRepositoryRecomputeAttributionsDoesNotRewriteCanonicalFacts(t *testing.
 	beforeSession, _ := repository.Session(ctx, "session-recompute")
 	beforeTurn, _ := repository.Turn(ctx, "turn-recompute")
 
-	if err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Model(&sessionAttributionModel{}).
 			Where("session_id = ?", "session-recompute").
 			Update("display_title", "corrupted-derived-value").Error
@@ -382,7 +383,7 @@ func TestRepositoryAttributionFailureRollsBackCanonicalFacts(t *testing.T) {
 
 	repository := openAttributionRepository(t)
 	ctx := context.Background()
-	if err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Exec(`CREATE TRIGGER fail_attribution_insert
 			BEFORE INSERT ON session_attributions
 			BEGIN SELECT RAISE(ABORT, 'injected attribution failure'); END`).Error
@@ -431,7 +432,7 @@ func TestWriteUnitRefreshesAttributionOncePerDirtySession(t *testing.T) {
 			t.Fatalf("UpsertFacts(%s) error = %v", turnID, err)
 		}
 	}
-	if err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		if err := transaction.WithContext(ctx).Exec(`CREATE TABLE attribution_refresh_audit (
 			id INTEGER PRIMARY KEY
 		) STRICT`).Error; err != nil {
@@ -460,7 +461,7 @@ func TestWriteUnitRefreshesAttributionOncePerDirtySession(t *testing.T) {
 	}
 
 	var refreshes int64
-	if err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	if err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Table("attribution_refresh_audit").Count(&refreshes).Error
 	}); err != nil {
 		t.Fatalf("count attribution refreshes: %v", err)

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"golang.org/x/sys/unix"
@@ -115,7 +115,7 @@ func TestRunStartsWithExplicitIsolatedPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadPreferences() error = %v", err)
 	}
-	metadata, err := logs.NewHomeProbe().Probe(t.Context(), codexHome)
+	metadata, err := logsource.NewHomeProbe().Probe(t.Context(), codexHome)
 	if err != nil {
 		t.Fatalf("Probe() error = %v", err)
 	}

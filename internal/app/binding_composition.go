@@ -15,8 +15,8 @@ import (
 func composeCoreService(
 	database *storesqlite.Store,
 	preferenceStore *preferences.FileStore,
-	queryObserver QueryObserver,
-) (*Service, error) {
+	queryObserver core.QueryObserver,
+) (*core.Service, error) {
 	if database == nil || preferenceStore == nil {
 		return nil, core.ErrService
 	}

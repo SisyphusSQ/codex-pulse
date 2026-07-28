@@ -8,6 +8,7 @@ import (
 
 	retentionmodel "github.com/SisyphusSQ/codex-pulse/internal/retention"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
 )
 
 func TestApplicationRetentionRuntimeCleansExpiredSamplesAndCloses(t *testing.T) {
@@ -15,8 +16,8 @@ func TestApplicationRetentionRuntimeCleansExpiredSamplesAndCloses(t *testing.T) 
 	defer func() { _ = database.Close(context.Background()) }()
 	now := time.Now().UTC()
 	for _, capturedAtMS := range []int64{
-		now.Add(-store.RetentionWindow - time.Second).UnixMilli(),
-		now.Add(-store.RetentionWindow + time.Second).UnixMilli(),
+		now.Add(-storeretention.RetentionWindow - time.Second).UnixMilli(),
+		now.Add(-storeretention.RetentionWindow + time.Second).UnixMilli(),
 	} {
 		if err := repository.RecordAppRuntimeSample(t.Context(), store.AppRuntimeSample{
 			CapturedAtMS: capturedAtMS, GoroutineCount: 1,
@@ -38,7 +39,8 @@ func TestApplicationRetentionRuntimeCleansExpiredSamplesAndCloses(t *testing.T) 
 		samples, listErr := repository.ListAppRuntimeSamples(t.Context(), store.AppRuntimeSampleFilter{
 			FromMS: 0, UntilMS: now.Add(time.Minute).UnixMilli(), Limit: 10,
 		})
-		return listErr == nil && len(samples) == 1 && samples[0].CapturedAtMS > now.Add(-store.RetentionWindow).UnixMilli()
+		return listErr == nil && len(samples) == 1 &&
+			samples[0].CapturedAtMS > now.Add(-storeretention.RetentionWindow).UnixMilli()
 	}, "retention runtime did not complete immediate cleanup and checkpoint")
 	if err := runtime.Close(context.Background()); err != nil {
 		t.Fatalf("Close() error = %v", err)

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
+	"gorm.io/gorm"
 )
 
 // 测试 application schema v7 checksum 在scheduler contract冻结后保持不变。
@@ -29,7 +29,7 @@ func TestApplicationSchemaV7CreatesSchedulerAndLiveJobTables(t *testing.T) {
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 
-	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(_ context.Context, connection *gorm.DB) error {
 		for _, table := range []string{"scheduler_tasks", "scheduler_cycles", "live_scan_jobs"} {
 			if !connection.Migrator().HasTable(table) {
 				t.Errorf("schema v7 table %q missing", table)

@@ -5,13 +5,13 @@ package store
 import (
 	"context"
 
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
+	"gorm.io/gorm"
 )
 
 func applicationMigrationCatalog() []migrationDefinition {
 	return applicationMigrations
 }
 
-func applicationMigrationVerifier() func(context.Context, storesqlite.WriteTx) error {
+func applicationMigrationVerifier() func(context.Context, *gorm.DB) error {
 	return verifyApplicationSchema
 }

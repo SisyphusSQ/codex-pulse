@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
+	"gorm.io/gorm"
+
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
 )
 
 // 测试 MetricsSnapshot 在一个窗口中聚合 runtime、scheduler、job 与 source 权威事实。
@@ -235,7 +237,7 @@ func TestMetricsSnapshotReturnsFullDetailedWindowAndRejectsOverflow(t *testing.T
 	for index := range models {
 		models[index] = appRuntimeSampleModelFromDomain(validAppRuntimeSample(int64(index) * MetricsDetailedSampleIntervalMS))
 	}
-	if err := repository.database.WriteMaintenance(t.Context(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := repository.database.WriteMaintenance(t.Context(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).CreateInBatches(models, 256).Error
 	}); err != nil {
 		t.Fatalf("seed runtime samples error = %v", err)
@@ -249,7 +251,7 @@ func TestMetricsSnapshotReturnsFullDetailedWindowAndRejectsOverflow(t *testing.T
 		t.Fatalf("MetricsSnapshot(capacity) len = %d, error = %v", len(snapshot.RuntimeSamples), err)
 	}
 	extra := appRuntimeSampleModelFromDomain(validAppRuntimeSample(MetricsSnapshotWindowMS - 1))
-	if err := repository.database.WriteMaintenance(t.Context(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := repository.database.WriteMaintenance(t.Context(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Create(&extra).Error
 	}); err != nil {
 		t.Fatalf("seed overflow sample error = %v", err)
@@ -323,7 +325,7 @@ func TestMetricsSnapshotCountsOnlyRecoverableInterruptedJobs(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("TransitionJobRun(resumed succeeded) error = %v", err)
 	}
-	report, err := repository.CleanupRetention(t.Context(), RetentionCleanupOptions{
+	report, err := storeretention.NewRepository(repository.database).CleanupRetention(t.Context(), storeretention.RetentionCleanupOptions{
 		Now: time.UnixMilli(3 * MetricsSnapshotWindowMS), BatchSize: 10,
 	})
 	if err != nil || report.Deleted.JobRuns != 1 {

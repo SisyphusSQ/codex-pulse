@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"gorm.io/gorm"
+
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -1641,7 +1643,7 @@ func assertStoredProject(
 ) {
 	t.Helper()
 
-	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		var gotDisplayName, gotRootPath, gotRemote string
 		var gotCreatedAt, gotUpdatedAt int64
 		if err := rawQueryRow(ctx, connection, `
@@ -1667,7 +1669,7 @@ func assertStoredProject(
 
 func tableCounts(ctx context.Context, database *storesqlite.Store, tables []string) (map[string]int, error) {
 	counts := make(map[string]int, len(tables))
-	err := database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		for _, table := range tables {
 			var count int
 			query := "SELECT COUNT(*) FROM " + table

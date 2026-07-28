@@ -17,8 +17,6 @@ import (
 
 const WhamResetCreditsEndpoint = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
 
-type ResetCreditsClientConfig = ClientConfig
-
 type ResetCreditsResult struct {
 	Snapshot      *store.ResetCreditsSnapshot
 	Failure       *Failure
@@ -37,8 +35,8 @@ type ResetCreditsClient struct {
 	base *Client
 }
 
-func NewResetCreditsClient(config ResetCreditsClientConfig) (*ResetCreditsClient, error) {
-	base, err := NewClient(ClientConfig(config))
+func NewResetCreditsClient(config ClientConfig) (*ResetCreditsClient, error) {
+	base, err := NewClient(config)
 	if err != nil {
 		return nil, err
 	}

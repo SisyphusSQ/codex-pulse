@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
-
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 const (
@@ -28,7 +26,7 @@ func (repository *Repository) RuntimeSourcePage(
 		return RuntimeSourcePage{}, invalidRecord("runtime source query is invalid")
 	}
 	var page RuntimeSourcePage
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
 			candidates := make([]RuntimeSourceRecord, 0, 2*(limit+1))
 			selectedKinds := 0
@@ -230,7 +228,7 @@ func (repository *Repository) RuntimeJobPage(
 		return RuntimeJobPage{}, invalidRecord("runtime job query is invalid")
 	}
 	var page RuntimeJobPage
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
 			query := runtimeJobQuery(transaction.WithContext(ctx), filter)
 			if err := runtimeJobCounts(query, &page.Summary); err != nil {
@@ -284,7 +282,7 @@ func (repository *Repository) RuntimeJob(
 		return RuntimeJobRecord{}, ErrInvalidRepository
 	}
 	var record RuntimeJobRecord
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
 			var model jobRunModel
 			result := transaction.WithContext(ctx).Where("job_id = ?", jobID).Take(&model)
@@ -319,7 +317,7 @@ func (repository *Repository) RuntimeHealthPage(
 		return RuntimeHealthPage{}, invalidRecord("runtime health query is invalid")
 	}
 	var page RuntimeHealthPage
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
 			query := runtimeHealthQuery(transaction.WithContext(ctx), filter)
 			if err := runtimeHealthCounts(

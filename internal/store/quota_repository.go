@@ -10,8 +10,6 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
-
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 func (repository *Repository) QuotaObservation(ctx context.Context, observationID string) (QuotaObservation, error) {
@@ -22,7 +20,7 @@ func (repository *Repository) QuotaObservation(ctx context.Context, observationI
 		return QuotaObservation{}, invalidRecord("quota observation ID must not be empty")
 	}
 	var observation QuotaObservation
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var model quotaObservationModel
 		err := connection.WithContext(ctx).Take(&model, "observation_id = ?", observationID).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -50,7 +48,7 @@ func (repository *Repository) ListQuotaObservations(
 		return nil, err
 	}
 	var observations []QuotaObservation
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		query := connection.WithContext(ctx).Model(&quotaObservationModel{})
 		if filter.AccountScope != nil {
 			query = query.Where("account_scope = ?", *filter.AccountScope)
