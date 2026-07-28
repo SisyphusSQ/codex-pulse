@@ -59,6 +59,7 @@
 56. 重做原生 macOS 状态栏额度摘要，提供 A 基准圆环、B 缺口圆环、D 仪表弧三种可切换样式，按真实额度窗口显示 remaining 与严格同周期 Token，并将旧电池、倒计时、双条和纯圆环偏好迁移到默认 A
 57. 将原生 Popover 的最近会话替换为周额度周期项目 Token Top 5，独立绑定通用周额度精确 UTC 范围，并在分页前排除未归类的“其他”项目
 58. 将配额页每日 Token 趋势改为真实模型日明细堆叠柱，新增中文数量级纵轴与鼠标悬停详情；模型合计无法与当日总量对账时仅展示总量并明确标记明细不可用
+59. 新增原生 macOS 版本提醒：设置可选择稳定版或预发布版通道，Swift 客户端按 SemVer 筛选可信 GitHub Releases，并仅在菜单栏 Popover 展示可点击的新版本卡片
 
 #### optimization:
 1. [TOO-285] 完善 AppIcon、ICNS 与 Tray Template 资产闭环，新增冻结源校验、严格灰阶 1x/2x 派生、macOS bundle/ZIP 资源读回及可重复导出与 live smoke 证据
@@ -66,6 +67,7 @@
 3. [TOO-299] 优化首次初始化为生产幂等入队、4MiB 读取、schema v15 quota 过滤与排序索引及增量投影读回，并在 robfig cron 的零 yield cycle 间连续推进且保留 live 抢占和 mutable Home final reconcile；约 6.56GB 真实只读 Home 三轮首屏 p95 约 38.4 秒、full bootstrap p95 约 15.3 分钟，资源、查询、隐私和清理门禁均通过
 4. 退役 repo-local harness 控制面、计划状态模板和重复 review gate，保留产品测试并将本地开发、PR/CI 与真实 Home 验收拆分为独立验证入口
 5. 优化原生 macOS App 首次窗口为优先 `1440×900` 内容区并按当前屏幕可见区域约束居中，避免概览被侧栏覆盖；统一剩余额度进度条为健康绿色、预警黄色和紧急红色，stale/suspicious 的 last-known-good 继续按剩余量着色并用独立状态点标记可信度，未知或不可用数据保持系统灰色
+6. 将菜单栏 Popover 的常规高度由 `640 pt` 增至 `680 pt`，并在紧凑屏幕按可用高度回落，增加首屏可见内容且避免越出屏幕
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功

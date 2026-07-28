@@ -105,6 +105,7 @@ public enum ProductCopy {
         case "7d", "seven_days": "最近 7 天"
         case "30d", "thirty_days": "最近 30 天"
         case "stable": "稳定版"
+        case "prerelease": "预发布版"
         case "beta": "测试版"
         default: rawValue.isEmpty ? "默认" : "其他选项"
         }

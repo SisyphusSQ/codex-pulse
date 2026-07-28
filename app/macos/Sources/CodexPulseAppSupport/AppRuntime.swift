@@ -60,6 +60,17 @@ private func unavailableUsage() -> Codexpulse_Core_V1_UsageCostResponse {
     return response
 }
 
+private func unavailableUsage(
+    for request: Codexpulse_Core_V1_UsageCostRequest
+) -> Codexpulse_Core_V1_UsageCostResponse {
+    var response = unavailableUsage()
+    if request.hasExactRange {
+        response.range = request.exactRange
+        response.reportingTimeZone = request.exactRange.timeZone
+    }
+    return response
+}
+
 private func unavailableSessions() -> Codexpulse_Core_V1_SessionListResponse {
     var response = Codexpulse_Core_V1_SessionListResponse()
     response.meta = unavailableMeta()
@@ -946,6 +957,7 @@ public actor AppRuntime {
                 : OverviewRequestSet.weeklyUsageRequest(quota: quotaResponse)
             let weeklyProjectRequest = OverviewRequestSet.weeklyProjectRanking(
                 range: weeklyProjectRange)
+            let tokenActivityRequest = OverviewRequestSet.tokenActivityRequest()
             async let usageResult = captureOverviewSection {
                 try await client.usageCost(content.usage, retryPolicy: .transportDefault)
             }
@@ -968,9 +980,13 @@ public actor AppRuntime {
             async let healthResult = captureOverviewSection {
                 try await client.healthProjection(retryPolicy: .transportDefault)
             }
+            async let tokenActivityResult = captureOverviewSection {
+                try await client.usageCost(
+                    tokenActivityRequest, retryPolicy: .transportDefault)
+            }
             let sectionResults = await (
                 usageResult, sessionResult, projectResult, weeklyProjectResult,
-                weeklyUsageResult, healthResult)
+                weeklyUsageResult, healthResult, tokenActivityResult)
             let mandatoryNotices = [
                 quotaResult.notice,
                 sectionResults.0.notice,
@@ -1015,6 +1031,11 @@ public actor AppRuntime {
             case .value(let response): healthResponse = response
             case .failure: healthResponse = unavailableHealth()
             }
+            let tokenActivityResponse: Codexpulse_Core_V1_UsageCostResponse
+            switch sectionResults.6 {
+            case .value(let response): tokenActivityResponse = response
+            case .failure: tokenActivityResponse = unavailableUsage(for: tokenActivityRequest)
+            }
             return OverviewResponses(
                 usage: usageResponse,
                 quota: quotaResponse,
@@ -1024,6 +1045,7 @@ public actor AppRuntime {
                 health: healthResponse,
                 rangeResolution: range,
                 weeklyUsage: weeklyUsageResponse,
+                tokenActivityUsage: tokenActivityResponse,
                 weeklyProjects: weeklyProjectResponse,
                 weeklyProjectRange: weeklyProjectRange,
                 additionalNotices: notices

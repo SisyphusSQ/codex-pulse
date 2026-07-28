@@ -38,8 +38,9 @@ type SettingsRefreshUpdate struct {
 }
 
 type SettingsUpdatesUpdate struct {
-	AutoCheckEnabled     bool  `json:"autoCheckEnabled"`
-	CheckIntervalSeconds int64 `json:"checkIntervalSeconds"`
+	AutoCheckEnabled     bool   `json:"autoCheckEnabled"`
+	CheckIntervalSeconds int64  `json:"checkIntervalSeconds"`
+	Channel              string `json:"channel"`
 }
 
 type SettingsUIUpdate struct {
@@ -211,6 +212,7 @@ func validSettingsUpdateRequest(request SettingsUpdateRequest) bool {
 		request.Refresh.ReconcileIntervalSeconds >= 60 && request.Refresh.ReconcileIntervalSeconds <= 86400 &&
 		request.Refresh.JSONLDebounceMilliseconds >= 3000 && request.Refresh.JSONLDebounceMilliseconds <= 5000 &&
 		request.Updates.CheckIntervalSeconds >= 3600 && request.Updates.CheckIntervalSeconds <= 86400 &&
+		(request.Updates.Channel == "stable" || request.Updates.Channel == "prerelease") &&
 		(request.UI.LaunchBehavior == "main_window" || request.UI.LaunchBehavior == "tray") &&
 		(request.UI.OverviewRange == "quota_week" || request.UI.OverviewRange == "today" ||
 			request.UI.OverviewRange == "seven_days" ||

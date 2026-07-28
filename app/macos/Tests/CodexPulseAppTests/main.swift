@@ -20,6 +20,24 @@ private enum FakeFailure: Error, Sendable {
     case unavailable
 }
 
+private actor FakeAppUpdateChecker: AppUpdateChecking {
+    let reminder: AppUpdateReminder?
+
+    init(reminder: AppUpdateReminder?) {
+        self.reminder = reminder
+    }
+
+    func latestUpdate(
+        currentVersion: String,
+        channel: AppUpdateChannel
+    ) async throws -> AppUpdateReminder? {
+        guard currentVersion == "0.1.0-beta.3", channel == .prerelease else {
+            return nil
+        }
+        return reminder
+    }
+}
+
 private struct SessionPagePlan: Sendable {
     let delay: Duration
     let response: Codexpulse_Core_V1_SessionListResponse
@@ -181,7 +199,9 @@ private func testOverviewUsesOneNavigationAndARealTrendChart() throws {
     try expect(source.contains("import Charts"), "overview trend must use Swift Charts")
     try expect(source.contains("AreaMark("), "overview trend must use a quiet area chart")
     try expect(source.contains("LineMark("), "overview trend must retain a readable trend line")
-    try expect(!source.contains("BarMark("), "overview must not fall back to the old bar chart")
+    try expect(
+        source.contains("RectangleMark("),
+        "current-range activity must render each real time bucket without replacing the Token trend")
     try expect(source.contains("PointMark("), "overview trend must expose each selectable point")
     try expect(source.contains("RuleMark("), "overview trend must highlight the selected time")
     try expect(
@@ -222,6 +242,9 @@ private func testOverviewUsesOneNavigationAndARealTrendChart() throws {
         ),
         "overview summary must separate Token usage and place API equivalent cost at the top-left")
     try expect(
+        source.contains("usageSummary\n                        .fixedSize(horizontal: false, vertical: true)"),
+        "overview summary must keep its intrinsic height instead of absorbing project-ranking height")
+    try expect(
         !source.contains("按公开 API 价格换算，不代表实际账单"),
         "overview summary must keep API equivalent cost free of redundant explanatory copy")
     try expect(source.contains("项目消耗"), "overview must explain where usage went by project")
@@ -235,6 +258,25 @@ private func testOverviewUsesOneNavigationAndARealTrendChart() throws {
         !source.contains(".disabled(project.id.isEmpty)"),
         "the merged Other row must not be dimmed as a disabled project button")
     try expect(source.contains("高消耗会话"), "overview must rank high-consumption sessions")
+    try expect(
+        source.contains("Picker(\"活动指标\"")
+            && source.contains("OverviewActivityMetric.allCases"),
+        "activity distribution must expose the approved Chinese metric selector")
+    try expect(
+        source.contains("ViewThatFits(in: .horizontal)")
+            && source.contains("activityDistributionCard"),
+        "activity distribution and top sessions must adapt between two columns and a vertical stack")
+    try expect(
+        source.contains("Text(\"时段活动\")")
+            && !source.contains("metricColor.gradient")
+            && source.contains("activityHeatmapColor(")
+            && source.contains("range: .plotDimension(startPadding: 24, endPadding: 32)")
+            && source.contains(".fixedSize(horizontal: true, vertical: false)"),
+        "activity visuals must use restrained columns and the shared heatmap palette")
+    try expect(
+        source.contains("maxHeight: fillsProposedHeight ? .infinity : nil")
+            && source.contains(".padding(.vertical, 8)"),
+        "the five session rows must distribute through the equal-height ranking card")
     try expect(
         source.contains("onSelectProject") && source.contains("onSelectSession"),
         "overview rankings must navigate to their details")
@@ -656,12 +698,16 @@ private func testStatusPopoverShowsLocalizedModelDailyTrend() throws {
 
 private func testPopoverHeaderMatchesSessionNestLayoutAndNeutralFocus() throws {
     let source = try mainWindowSource("StatusItemController.swift")
+    let regularSize = MenuBarPopoverLayout.contentSize(availableScreenHeight: 900)
+    let compactSize = MenuBarPopoverLayout.contentSize(availableScreenHeight: 680)
     try expect(
-        source.contains("NSSize(width: 460, height: 640)")
-            && source.contains(".frame(width: 460, height: 640)")
+        regularSize.width == 460
+            && regularSize.height == 680
+            && compactSize.width == 460
+            && compactSize.height == 640
             && source.contains("HStack(alignment: .top, spacing: 0)")
             && source.contains("HStack(spacing: 4)"),
-        "Popover must use the widened SessionNest-style single-row header"
+        "Popover must gain visible height on regular screens without overflowing compact screens"
     )
     try expect(
         source.contains("GitHubMarkShape().fill(.primary)")
@@ -766,6 +812,53 @@ private func testPopoverProjectActionMakesSystemOpenFailureVisible() throws {
             message: "系统未能打开 GitHub 项目主页，请稍后再试。"
         ),
         "project action must expose a precise user-visible system open failure"
+    )
+}
+
+private func testPopoverUpdateReminderStaysOnTheMenuBarSurface() throws {
+    let popoverSource = try mainWindowSource("StatusItemController.swift")
+    let mainWindowSource = try mainWindowSource("RootView.swift")
+
+    try expect(
+        popoverSource.contains("model.updateReminder")
+            && popoverSource.contains("popover.update-reminder")
+            && popoverSource.contains("新版本 \\(reminder.version) 可用")
+            && !mainWindowSource.contains("updateReminder"),
+        "update availability must render only in the menu bar Popover"
+    )
+}
+
+private func testPopoverUpdateActionOpensOnlyTrustedReleaseURLs() throws {
+    let trusted = AppUpdateReminder(
+        version: "0.1.0-beta.4",
+        title: "Codex Pulse v0.1.0-beta.4",
+        releaseURL: URL(
+            string: "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.1.0-beta.4"
+        )!
+    )
+    var openedURL: URL?
+    let trustedResult = PopoverQuickActions.openUpdate(trusted) { url in
+        openedURL = url
+        return true
+    }
+    try expect(
+        openedURL == trusted.releaseURL && !trustedResult.isFailure,
+        "trusted update cards must open their exact GitHub release"
+    )
+
+    let untrusted = AppUpdateReminder(
+        version: "9.9.9",
+        title: "untrusted",
+        releaseURL: URL(string: "https://example.com/replace-app")!
+    )
+    var untrustedOpenCount = 0
+    let untrustedResult = PopoverQuickActions.openUpdate(untrusted) { _ in
+        untrustedOpenCount += 1
+        return true
+    }
+    try expect(
+        untrustedOpenCount == 0 && untrustedResult.isFailure,
+        "untrusted update URLs must fail closed before invoking the system opener"
     )
 }
 
@@ -1529,6 +1622,7 @@ private actor FakeCore: AppCoreServing {
     private var responses: OverviewResponses
     private var failOverview = false
     private var failOverviewProjects = false
+    private var failTokenActivity = false
     private var failAccount = false
     private var handshakeFailure = false
     private var handshakeError: CoreClientError?
@@ -1539,6 +1633,7 @@ private actor FakeCore: AppCoreServing {
     private var shutdownDelay: Duration = .zero
     private var calls: [String] = []
     private var usageRequests: [Codexpulse_Core_V1_UsageCostRequest] = []
+    private var tokenActivityRequests: [Codexpulse_Core_V1_UsageCostRequest] = []
     private var sessionRequests: [Codexpulse_Core_V1_ListSessionsRequest] = []
     private var projectRequests: [Codexpulse_Core_V1_ListProjectsRequest] = []
     private var featureSessionPlans: [SessionPagePlan] = []
@@ -1591,6 +1686,7 @@ private actor FakeCore: AppCoreServing {
 
     func setOverviewFailure(_ value: Bool) { failOverview = value }
     func setOverviewProjectFailure(_ value: Bool) { failOverviewProjects = value }
+    func setTokenActivityFailure(_ value: Bool) { failTokenActivity = value }
     func setAccountFailure(_ value: Bool) { failAccount = value }
     func setHandshakeFailure(_ value: Bool) { handshakeFailure = value }
     func setHandshakeError(_ value: CoreClientError?) { handshakeError = value }
@@ -1727,6 +1823,9 @@ private actor FakeCore: AppCoreServing {
     }
     func recordedCalls() -> [String] { calls }
     func recordedUsageRequests() -> [Codexpulse_Core_V1_UsageCostRequest] { usageRequests }
+    func recordedTokenActivityRequests() -> [Codexpulse_Core_V1_UsageCostRequest] {
+        tokenActivityRequests
+    }
     func recordedSessionRequests() -> [Codexpulse_Core_V1_ListSessionsRequest] { sessionRequests }
     func recordedProjectRequests() -> [Codexpulse_Core_V1_ListProjectsRequest] { projectRequests }
     func recordedCompletedAccountCalls() -> Int { completedAccountCalls }
@@ -1758,6 +1857,16 @@ private actor FakeCore: AppCoreServing {
         _ request: Codexpulse_Core_V1_UsageCostRequest,
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_UsageCostResponse {
+        if request.hasExactRange,
+           request.exactRange.endAtMs - request.exactRange.startAtMs > 300 * 86_400_000 {
+            calls.append("token-activity")
+            tokenActivityRequests.append(request)
+            let shouldFail = failOverview || failTokenActivity
+            await waitForOverviewBarrier()
+            if overviewDelay != .zero { try await Task.sleep(for: overviewDelay) }
+            if shouldFail { throw FakeFailure.unavailable }
+            return responses.tokenActivityUsage
+        }
         calls.append("usage")
         usageRequests.append(request)
         let shouldFail = failOverview
@@ -1801,7 +1910,10 @@ private actor FakeCore: AppCoreServing {
     ) async throws -> Codexpulse_Core_V1_SessionListResponse {
         calls.append("sessions")
         sessionRequests.append(request)
-        if request.query.page.limit != 5, !featureSessionPlans.isEmpty {
+        let isOverviewRequest = request.query.page.limit == 5
+            && request.query.sort.first?.field == "totalTokens"
+            && request.query.hasExactTimeRange
+        if !isOverviewRequest, !featureSessionPlans.isEmpty {
             let plan = featureSessionPlans.removeFirst()
             if plan.delay != .zero { try await Task.sleep(for: plan.delay) }
             if plan.fails { throw FakeFailure.unavailable }
@@ -2034,6 +2146,30 @@ private func completeMeta() -> Codexpulse_Core_V1_ResponseMeta {
     return meta
 }
 
+private func makeTokenActivityResponse() -> Codexpulse_Core_V1_UsageCostResponse {
+    var response = Codexpulse_Core_V1_UsageCostResponse()
+    response.meta = completeMeta()
+    response.reportingTimeZone = "Asia/Shanghai"
+    response.range.startAtMs = 1_753_632_000_000
+    response.range.endAtMs = 1_785_137_400_000
+    response.range.timeZone = "Asia/Shanghai"
+    return response
+}
+
+private func makeTokenActivityPoint(
+    date: String,
+    tokens: Int64,
+    turns: Int64
+) -> Codexpulse_Core_V1_TrendPoint {
+    var point = Codexpulse_Core_V1_TrendPoint()
+    point.key = date
+    point.totals.totalTokens.value = tokens
+    point.totals.totalTokens.unit = "tokens"
+    point.totals.turnCount.value = turns
+    point.totals.turnCount.unit = "count"
+    return point
+}
+
 private func makeNormalBootstrap() -> Codexpulse_Core_V1_BootstrapResponse {
     var response = Codexpulse_Core_V1_BootstrapResponse()
     response.mode = "normal"
@@ -2150,13 +2286,18 @@ private func makeResponses(
     health.hasValue_p = true
     health.level = "healthy"
 
+    var tokenActivity = makeTokenActivityResponse()
+    tokenActivity.totals.totalTokens.value = 0
+    tokenActivity.totals.totalTokens.unit = "tokens"
+
     return OverviewResponses(
         usage: usage,
         quota: quota,
         account: accountResponse,
         sessions: sessions,
         projects: projects,
-        health: health
+        health: health,
+        tokenActivityUsage: tokenActivity
     )
 }
 
@@ -3275,17 +3416,23 @@ private func testSettingsRevisionRequest() throws {
     response.snapshot.refresh.jsonlDebounceMilliseconds = 250
     response.snapshot.updates.autoCheckEnabled = true
     response.snapshot.updates.checkIntervalSeconds = 3_600
+    response.snapshot.updates.channel = "stable"
     response.snapshot.ui.launchBehavior = "main_window"
     response.snapshot.ui.overviewRange = "7d"
     var editable = Codexpulse_Core_V1_EditableField()
     editable.key = "online.quotaEnabled"
     editable.editable = true
-    response.editableFields = [editable]
+    var updateChannelEditable = Codexpulse_Core_V1_EditableField()
+    updateChannelEditable.key = "updates.channel"
+    updateChannelEditable.editable = true
+    updateChannelEditable.options = ["stable", "prerelease"]
+    response.editableFields = [editable, updateChannelEditable]
 
     var draft = SettingsDraft(response)
     draft.quotaEnabled = true
     draft.resetCreditsEnabled = false
     draft.quotaIntervalSeconds = 1
+    draft.updateChannel = "prerelease"
     let request = draft.makeRequest(authoritative: response)
     try expect(
         request.expectedRevision == "revision-1", "settings write must carry authoritative revision")
@@ -3295,6 +3442,139 @@ private func testSettingsRevisionRequest() throws {
     try expect(
         request.refresh.quotaIntervalSeconds == 300,
         "non-editable numeric field must not be shadow-edited")
+    try expect(
+        request.updates.channel == "prerelease",
+        "editable update channel must carry the user's stable or prerelease selection")
+}
+
+private func testGitHubUpdateCheckerFiltersStableAndPrereleaseChannels() async throws {
+    let payload = Data(
+        """
+        [
+          {
+            "tag_name": "v0.1.0-beta.5",
+            "name": "draft preview",
+            "html_url": "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.1.0-beta.5",
+            "draft": true,
+            "prerelease": true
+          },
+          {
+            "tag_name": "v0.1.0-beta.4",
+            "name": "Codex Pulse v0.1.0-beta.4",
+            "html_url": "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.1.0-beta.4",
+            "draft": false,
+            "prerelease": true
+          },
+          {
+            "tag_name": "v0.0.9",
+            "name": "Codex Pulse v0.0.9",
+            "html_url": "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.0.9",
+            "draft": false,
+            "prerelease": false
+          }
+        ]
+        """.utf8
+    )
+    let checker = GitHubReleaseUpdateChecker(fetchResponse: { request in
+        guard request.url?.absoluteString
+            == "https://api.github.com/repos/SisyphusSQ/codex-pulse/releases?per_page=20"
+        else {
+            throw TestFailure.mismatch("update checker used an unexpected endpoint")
+        }
+        return AppUpdateHTTPResponse(statusCode: 200, data: payload)
+    })
+
+    let stable = try await checker.latestUpdate(
+        currentVersion: "0.1.0-beta.3",
+        channel: .stable
+    )
+    let prerelease = try await checker.latestUpdate(
+        currentVersion: "0.1.0-beta.3",
+        channel: .prerelease
+    )
+
+    try expect(
+        stable == nil,
+        "stable channel must exclude prereleases and ignore an older stable release")
+    try expect(
+        prerelease?.version == "0.1.0-beta.4"
+            && prerelease?.title == "Codex Pulse v0.1.0-beta.4"
+            && prerelease?.releaseURL.absoluteString
+                == "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.1.0-beta.4",
+        "prerelease channel must select the newest non-draft prerelease")
+}
+
+private func testGitHubUpdateCheckerPrefersAStableReleaseAndRejectsUntrustedLinks() async throws {
+    let payload = Data(
+        """
+        [
+          {
+            "tag_name": "v0.1.0-beta.10",
+            "name": "Codex Pulse v0.1.0-beta.10",
+            "html_url": "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.1.0-beta.10",
+            "draft": false,
+            "prerelease": true
+          },
+          {
+            "tag_name": "v0.1.0",
+            "name": "Codex Pulse v0.1.0",
+            "html_url": "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.1.0",
+            "draft": false,
+            "prerelease": false
+          },
+          {
+            "tag_name": "v9.9.9",
+            "name": "untrusted",
+            "html_url": "https://example.com/replace-app",
+            "draft": false,
+            "prerelease": false
+          }
+        ]
+        """.utf8
+    )
+    let checker = GitHubReleaseUpdateChecker(fetchResponse: { _ in
+        AppUpdateHTTPResponse(statusCode: 200, data: payload)
+    })
+
+    let update = try await checker.latestUpdate(
+        currentVersion: "0.1.0-beta.9",
+        channel: .prerelease
+    )
+
+    try expect(
+        update?.version == "0.1.0",
+        "a stable release must supersede its prereleases while untrusted links stay ineligible")
+}
+
+@MainActor
+private func testAppModelPublishesConfiguredPrereleaseReminderForPopover() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    var settings = makeSettingsResponse(revision: "revision-1", quotaEnabled: true)
+    settings.snapshot.updates.autoCheckEnabled = true
+    settings.snapshot.updates.channel = "prerelease"
+    settings.snapshot.updates.checkIntervalSeconds = 3_600
+    await core.setSettingsResponses([settings], updateFailure: false)
+    let reminder = AppUpdateReminder(
+        version: "0.1.0-beta.4",
+        title: "Codex Pulse v0.1.0-beta.4",
+        releaseURL: URL(
+            string: "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.1.0-beta.4"
+        )!
+    )
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        updateChecker: FakeAppUpdateChecker(reminder: reminder),
+        currentVersion: "0.1.0-beta.3"
+    )
+
+    model.start()
+    try await waitUntil("configured prerelease update reminder") {
+        await MainActor.run { model.updateReminder == reminder }
+    }
+    try expect(
+        model.updateReminder?.version == "0.1.0-beta.4",
+        "normal startup must publish the configured update channel's reminder")
+    _ = await model.shutdown()
 }
 
 @MainActor
@@ -3395,6 +3675,499 @@ private func testRequestFactoryAndPresentation() throws {
     }
 }
 
+private func testTokenActivityRequestUsesAnIndependentRollingYear() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+    let now = Date(timeIntervalSince1970: 1_785_137_400)
+
+    let request = OverviewRequestSet.tokenActivityRequest(now: now, calendar: calendar)
+
+    try expect(request.granularity == "day", "Token activity must request daily buckets")
+    try expect(request.hasExactRange, "Token activity must use one exact rolling-year range")
+    try expect(
+        request.exactRange.startAtMs == 1_753_632_000_000,
+        "Token activity must include 365 local calendar days including today")
+    try expect(
+        request.exactRange.endAtMs == 1_785_137_400_000,
+        "Token activity must end at its own evaluation time")
+    try expect(
+        request.exactRange.timeZone == "Asia/Shanghai",
+        "Token activity must preserve the reporting timezone")
+    try expect(
+        !request.includeActivityDistribution,
+        "the independent annual request must not scan the current-range activity distribution")
+}
+
+private func testOverviewActivityPresentationBuildsTimelineAndCompleteHeatmap() throws {
+    let rangeStart: Int64 = 1_753_056_000_000
+    let firstStart = rangeStart + 3_600_000
+    let secondStart = rangeStart + 7_200_000
+    let rangeEnd = rangeStart + 86_400_000
+    var response = Codexpulse_Core_V1_UsageCostResponse()
+    response.meta = completeMeta()
+    response.range.startAtMs = rangeStart
+    response.range.endAtMs = rangeEnd
+    response.range.timeZone = "UTC"
+    response.reportingTimeZone = "UTC"
+    response.totals.totalTokens.value = 100
+    response.totals.totalTokens.unit = "tokens"
+    response.activityDistribution.timelineGranularity = "hour"
+    response.activityDistribution.timelineBucketMinutes = 60
+
+    func metrics(tokens: Int64, sessions: Int64) -> Codexpulse_Core_V1_ActivityMetrics {
+        var value = Codexpulse_Core_V1_ActivityMetrics()
+        value.totalTokens.value = tokens
+        value.totalTokens.unit = "tokens"
+        value.sessionCount.value = sessions
+        value.sessionCount.unit = "count"
+        return value
+    }
+    func timeline(
+        start: Int64,
+        tokens: Int64,
+        sessions: Int64
+    ) -> Codexpulse_Core_V1_ActivityTimelinePoint {
+        var point = Codexpulse_Core_V1_ActivityTimelinePoint()
+        point.startAtMs.value = start
+        point.startAtMs.unit = "milliseconds"
+        point.endAtMs.value = start + 3_600_000
+        point.endAtMs.unit = "milliseconds"
+        point.metrics = metrics(tokens: tokens, sessions: sessions)
+        return point
+    }
+    func weekdayHour(
+        weekday: Int32,
+        hour: Int32,
+        tokens: Int64,
+        sessions: Int64
+    ) -> Codexpulse_Core_V1_ActivityWeekdayHourPoint {
+        var point = Codexpulse_Core_V1_ActivityWeekdayHourPoint()
+        point.weekday = weekday
+        point.hour = hour
+        point.metrics = metrics(tokens: tokens, sessions: sessions)
+        return point
+    }
+    response.activityDistribution.timeline = [
+        timeline(start: firstStart, tokens: 40, sessions: 2),
+        timeline(start: secondStart, tokens: 60, sessions: 1),
+    ]
+    response.activityDistribution.weekdayHours = [
+        weekdayHour(weekday: 1, hour: 1, tokens: 40, sessions: 2),
+        weekdayHour(weekday: 1, hour: 2, tokens: 60, sessions: 1),
+    ]
+
+    let presentation = OverviewActivityPresentation(response)
+
+    try expect(
+        OverviewActivityMetric.allCases.map(\.title) == ["Token 消耗", "会话数量"],
+        "activity metric options must use the approved Chinese wording")
+    try expect(
+        presentation.availability == .available
+            && presentation.timelineGranularity == .hour
+            && presentation.timelineBucketMinutes == 60
+            && presentation.timeline.count == 2,
+        "a reconciled activity response must expose its ordered hourly timeline")
+    try expect(
+        presentation.heatmap.count == 7 * 24,
+        "a complete activity response must expose every weekday-hour cell")
+    try expect(
+        presentation.heatmap.first(where: { $0.weekday == 1 && $0.hour == 1 })?.totalTokens
+            == .known(40, unit: "tokens"),
+        "an observed weekday-hour cell must preserve Token consumption")
+    try expect(
+        presentation.heatmap.first(where: { $0.weekday == 7 && $0.hour == 23 })?.sessionCount
+            == .known(0, unit: "count"),
+        "a missing cell in reconciled facts must be a known zero")
+    try expect(
+        presentation.timeline.first?.sessionCount == .known(2, unit: "count"),
+        "timeline buckets must preserve distinct session counts")
+}
+
+private func testOverviewActivityAxisTicksKeepDateOnlyAtDayBoundaries() throws {
+    let hour: Int64 = 3_600_000
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+    let dayOne = Int64(calendar.date(
+        from: DateComponents(year: 2026, month: 7, day: 26)
+    )!.timeIntervalSince1970 * 1_000)
+    let starts = [0, 6, 12, 18, 24, 30, 36, 42].map { dayOne + Int64($0) * hour }
+    let points = starts.map { start in
+        OverviewActivityTimelinePoint(
+            id: start,
+            startAtMS: start,
+            endAtMS: start + hour,
+            totalTokens: .known(1, unit: "tokens"),
+            sessionCount: .known(1, unit: "count")
+        )
+    }
+
+    let ticks = OverviewActivityTimelineResolver.axisTicks(
+        points: points,
+        granularity: .hour,
+        timeZoneID: "Asia/Shanghai",
+        maximumCount: 8
+    )
+
+    try expect(
+        ticks.map(\.label) == [
+            "7月26日 0时", "6时", "12时", "18时",
+            "7月27日 0时", "6时", "12时", "18时",
+        ],
+        "hourly activity axis must show the date once per local day instead of repeating it")
+}
+
+private func testOverviewActivityTimelineResolverSelectsContainingBucketThenNearest() throws {
+    let hour: Int64 = 3_600_000
+    let start: Int64 = 1_753_488_000_000
+    let points = [0, 1, 2].map { offset in
+        let bucketStart = start + Int64(offset) * hour
+        return OverviewActivityTimelinePoint(
+            id: bucketStart,
+            startAtMS: bucketStart,
+            endAtMS: bucketStart + hour,
+            totalTokens: .known(Int64(offset + 1), unit: "tokens"),
+            sessionCount: .known(1, unit: "count")
+        )
+    }
+
+    let insideSecond = Date(
+        timeIntervalSince1970: Double(start + hour + 15 * 60_000) / 1_000
+    )
+    let afterLast = Date(timeIntervalSince1970: Double(start + 4 * hour) / 1_000)
+
+    try expect(
+        OverviewActivityTimelineResolver.nearest(to: insideSecond, in: points)?.id
+            == start + hour,
+        "hovering anywhere inside an activity bucket must select that bucket")
+    try expect(
+        OverviewActivityTimelineResolver.nearest(to: afterLast, in: points)?.id
+            == start + 2 * hour,
+        "hovering outside the buckets must fall back to the nearest bucket center")
+    try expect(
+        OverviewActivityTimelineResolver.nearest(to: nil, in: points) == nil,
+        "ending chart hover must clear the selected activity bucket")
+}
+
+private func testOverviewActivityTimelineResolverInsetsBarsSymmetrically() throws {
+    let point = OverviewActivityTimelinePoint(
+        id: 0,
+        startAtMS: 0,
+        endAtMS: 1_000,
+        totalTokens: .known(1, unit: "tokens"),
+        sessionCount: .known(1, unit: "count")
+    )
+
+    let range = OverviewActivityTimelineResolver.visibleRange(for: point)
+
+    try expect(
+        range.map {
+            abs($0.lowerBound.timeIntervalSince1970 - 0.28) < 0.000_001
+                && abs($0.upperBound.timeIntervalSince1970 - 0.72) < 0.000_001
+        } == true,
+        "activity bars must reserve a stable symmetric gap between adjacent time buckets")
+}
+
+private func testTokenActivityPresentationBuildsCalendarAndStreakStatistics() throws {
+    var response = makeTokenActivityResponse()
+    response.trend = [
+        makeTokenActivityPoint(date: "2026-07-22", tokens: 10, turns: 1),
+        makeTokenActivityPoint(date: "2026-07-23", tokens: 20, turns: 2),
+        makeTokenActivityPoint(date: "2026-07-25", tokens: 40, turns: 4),
+        makeTokenActivityPoint(date: "2026-07-26", tokens: 50, turns: 5),
+    ]
+    response.totals.totalTokens.value = 120
+    response.totals.totalTokens.unit = "tokens"
+
+    let presentation = TokenActivityPresentation(
+        response,
+        now: Date(timeIntervalSince1970: 1_785_137_400)
+    )
+
+    try expect(
+        presentation.availability == .available,
+        "a complete annual response must remain available")
+    try expect(
+        presentation.days.count == 365
+            && presentation.days.first?.dateKey == "2025-07-28"
+            && presentation.days.last?.dateKey == "2026-07-27",
+        "Token activity must expose exactly 365 ordered local calendar days")
+    try expect(
+        presentation.days.first(where: { $0.dateKey == "2026-07-24" })?.tokens == 0,
+        "a missing day in a complete response must mean known zero activity")
+    try expect(
+        presentation.totalTokens == 120
+            && presentation.peakDailyTokens == 50
+            && presentation.activeDays == 4,
+        "Token activity statistics must use the complete daily facts")
+    try expect(
+        presentation.currentStreakDays == 2,
+        "an inactive in-progress today must preserve the streak ending yesterday")
+    try expect(
+        presentation.longestStreakDays == 2,
+        "Token activity must find the longest consecutive active-day run")
+}
+
+private func testTokenActivityPresentationSummarizesKnownLocalFactsFromPartialResponse() throws {
+    var response = makeTokenActivityResponse()
+    response.meta.status = "partial"
+    response.trend = [makeTokenActivityPoint(date: "2026-07-26", tokens: 50, turns: 5)]
+    response.totals.totalTokens.value = 50
+    response.totals.totalTokens.unit = "tokens"
+
+    let presentation = TokenActivityPresentation(
+        response,
+        now: Date(timeIntervalSince1970: 1_785_137_400)
+    )
+
+    try expect(
+        presentation.availability == .partial,
+        "a partial annual response must not look complete")
+    try expect(
+        presentation.days.first(where: { $0.dateKey == "2026-07-24" })?.tokens == nil,
+        "a missing day in a partial response must stay unknown instead of becoming zero")
+    try expect(
+        presentation.totalTokens == 50
+            && presentation.peakDailyTokens == 50
+            && presentation.activeDays == 1
+            && presentation.currentStreakDays == 1
+            && presentation.longestStreakDays == 1,
+        "a partial response with reconciled Token facts must summarize the local data it knows")
+}
+
+private func testTokenActivityPresentationAnchorsToTheResponseRange() throws {
+    var response = makeTokenActivityResponse()
+    response.range.endAtMs = 1_767_544_200_000
+    response.totals.totalTokens.value = 0
+    response.totals.totalTokens.unit = "tokens"
+
+    let presentation = TokenActivityPresentation(response)
+
+    try expect(
+        presentation.days.last?.dateKey == "2026-01-05",
+        "retained annual data must stay anchored to its response range instead of drifting with wall time")
+}
+
+private func testTokenActivityPresentationRejectsFactsOutsideItsVisibleYear() throws {
+    var response = makeTokenActivityResponse()
+    response.trend = [makeTokenActivityPoint(date: "2025-07-27", tokens: 10, turns: 1)]
+    response.totals.totalTokens.value = 10
+    response.totals.totalTokens.unit = "tokens"
+
+    let presentation = TokenActivityPresentation(
+        response,
+        now: Date(timeIntervalSince1970: 1_785_137_400)
+    )
+
+    try expect(
+        presentation.availability == .partial
+            && presentation.totalTokens == nil
+            && presentation.activeDays == nil,
+        "out-of-range daily facts must not produce complete summary values that the heatmap cannot show")
+}
+
+private func testTokenActivityCalendarAlignsWeeksAndMonthLabels() throws {
+    var response = makeTokenActivityResponse()
+    response.totals.totalTokens.value = 0
+    response.totals.totalTokens.unit = "tokens"
+    let activity = TokenActivityPresentation(
+        response,
+        now: Date(timeIntervalSince1970: 1_785_137_400)
+    )
+
+    let calendar = TokenActivityCalendarPresentation(activity)
+
+    try expect(calendar.weeks.count == 53, "365 daily cells must align into 53 calendar weeks")
+    try expect(
+        calendar.weeks.first?.days.first??.day.dateKey == "2025-07-28",
+        "the annual calendar must align its first Monday to the first row")
+    try expect(
+        calendar.weeks.last?.days.first??.day.dateKey == "2026-07-27"
+            && calendar.weeks.last?.days.dropFirst().allSatisfy { $0 == nil } == true,
+        "the current partial week must end with non-data padding cells")
+    try expect(
+        calendar.monthLabels.first
+            == TokenActivityMonthLabel(id: "2025-08", title: "8月", weekIndex: 0)
+            && calendar.monthLabels.last?.title == "7月",
+        "month labels must follow visible month boundaries without labeling a partial prior month")
+}
+
+private func testTokenActivityCalendarSeparatesUnknownZeroAndRelativeIntensity() throws {
+    let thresholds = ActivityIntensityScale.thresholds(for: [10, 20, 40, 80])
+    try expect(
+        ActivityIntensityScale.intensity(for: nil, thresholds: thresholds) == .unknown
+            && ActivityIntensityScale.intensity(for: 0, thresholds: thresholds) == .none
+            && ActivityIntensityScale.intensity(for: 10, thresholds: thresholds) == .low
+            && ActivityIntensityScale.intensity(for: 20, thresholds: thresholds) == .medium
+            && ActivityIntensityScale.intensity(for: 40, thresholds: thresholds) == .high
+            && ActivityIntensityScale.intensity(for: 80, thresholds: thresholds) == .veryHigh,
+        "shared activity scale must keep unknown, zero, and four non-zero levels distinct")
+
+    var response = makeTokenActivityResponse()
+    response.trend = [
+        makeTokenActivityPoint(date: "2026-07-22", tokens: 10, turns: 1),
+        makeTokenActivityPoint(date: "2026-07-23", tokens: 20, turns: 2),
+        makeTokenActivityPoint(date: "2026-07-24", tokens: 40, turns: 4),
+        makeTokenActivityPoint(date: "2026-07-25", tokens: 80, turns: 8),
+    ]
+    response.totals.totalTokens.value = 150
+    response.totals.totalTokens.unit = "tokens"
+    let complete = TokenActivityCalendarPresentation(TokenActivityPresentation(
+        response,
+        now: Date(timeIntervalSince1970: 1_785_137_400)
+    ))
+
+    let levels = Dictionary(uniqueKeysWithValues: complete.weeks.flatMap(\.days).compactMap {
+        $0.map { ($0.day.dateKey, $0.intensity) }
+    })
+    try expect(
+        levels["2026-07-21"] == TokenActivityIntensity.none
+            && levels["2026-07-22"] == .low
+            && levels["2026-07-23"] == .medium
+            && levels["2026-07-24"] == .high
+            && levels["2026-07-25"] == .veryHigh,
+        "the heatmap must reserve zero for no activity and order four non-zero intensity levels")
+
+    response.meta.status = "partial"
+    let partial = TokenActivityCalendarPresentation(TokenActivityPresentation(
+        response,
+        now: Date(timeIntervalSince1970: 1_785_137_400)
+    ))
+    let partialLevels = Dictionary(uniqueKeysWithValues: partial.weeks.flatMap(\.days).compactMap {
+        $0.map { ($0.day.dateKey, $0.intensity) }
+    })
+    try expect(
+        partialLevels["2026-07-21"] == .unknown
+            && partialLevels["2026-07-25"] == .veryHigh,
+        "partial heatmaps must distinguish missing unknown days from known activity")
+}
+
+private func testTokenActivityCardPresentsFiveBoundedMetricsAndDayDetails() throws {
+    var response = makeTokenActivityResponse()
+    response.trend = [
+        makeTokenActivityPoint(date: "2026-07-22", tokens: 10, turns: 1),
+        makeTokenActivityPoint(date: "2026-07-23", tokens: 20, turns: 2),
+        makeTokenActivityPoint(date: "2026-07-25", tokens: 40, turns: 4),
+        makeTokenActivityPoint(date: "2026-07-26", tokens: 23_032_305, turns: 5),
+    ]
+    response.totals.totalTokens.value = 23_032_375
+    response.totals.totalTokens.unit = "tokens"
+    let activity = TokenActivityPresentation(
+        response,
+        now: Date(timeIntervalSince1970: 1_785_137_400)
+    )
+
+    let card = TokenActivityCardPresentation(activity)
+
+    try expect(
+        card.title == "Token 活动" && card.scope == "过去 365 天",
+        "the annual card must state its independent scope")
+    try expect(
+        card.metrics.map(\.title) == [
+            "近 365 天 Token", "峰值日 Token", "活跃天数", "当前连续天数", "最长连续天数",
+        ] && card.metrics.map(\.value) == ["2.3千万", "2.3千万", "4 天", "2 天", "2 天"],
+        "the annual card must present the five approved bounded metrics in order")
+    guard let peakDay = card.calendar.weeks.flatMap(\.days).compactMap({ $0 }).first(where: {
+        $0.day.dateKey == "2026-07-26"
+    }) else {
+        throw TestFailure.mismatch("annual card omitted a known peak day")
+    }
+    try expect(
+        card.dayDetail(peakDay) == "2026年7月26日 · 2.3千万 Token · 5 轮",
+        "a heatmap cell must expose an exact localized hover and accessibility description")
+}
+
+private func testTokenActivityCardLabelsReconciledPartialFactsAsLocalData() throws {
+    var response = makeTokenActivityResponse()
+    response.meta.status = "partial"
+    response.trend = [makeTokenActivityPoint(date: "2026-07-26", tokens: 50, turns: 5)]
+    response.totals.totalTokens.value = 50
+    response.totals.totalTokens.unit = "tokens"
+
+    let card = TokenActivityCardPresentation(TokenActivityPresentation(
+        response,
+        now: Date(timeIntervalSince1970: 1_785_137_400)
+    ))
+
+    try expect(
+        card.notice == "仅统计本机现有数据"
+            && card.metrics.map(\.value) == ["50", "50", "1 天", "1 天", "1 天"],
+        "reconciled partial facts must show local summary values with an honest scope notice")
+}
+
+private func testTokenActivityHoverStateTracksOnlyTheCurrentCell() throws {
+    var hover = TokenActivityHoverState()
+
+    hover.update(isHovering: true, dayID: "2026-07-27")
+    try expect(
+        hover.isHovered(dayID: "2026-07-27"),
+        "entering an activity cell must immediately expose its explicit hover state")
+
+    hover.update(isHovering: false, dayID: "2026-07-26")
+    try expect(
+        hover.isHovered(dayID: "2026-07-27"),
+        "leaving a stale cell must not dismiss the currently hovered day")
+
+    hover.update(isHovering: false, dayID: "2026-07-27")
+    try expect(
+        !hover.isHovered(dayID: "2026-07-27"),
+        "leaving the current activity cell must dismiss its hover detail")
+}
+
+private func testTokenActivityHeatmapUsesTheAvailableCardWidth() throws {
+    let source = try mainWindowSource("RootView.swift")
+    try expect(
+        source.contains("let cellSize = max(6, availableWidth / CGFloat(weekCount))")
+            && source.contains(".aspectRatio(6.8, contentMode: .fit)")
+            && !source.contains("let cellSize = min(14"),
+        "the annual heatmap must grow with the card instead of leaving a fixed-size empty tail")
+}
+
+@MainActor
+private func testAppRuntimeLoadsTokenActivityThroughAnIndependentAnnualRequest() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+
+    model.start()
+    try await waitUntil("annual Token activity overview") {
+        await MainActor.run {
+            model.presentation?.tokenActivity.availability == .available
+        }
+    }
+
+    let requests = await core.recordedTokenActivityRequests()
+    try expect(requests.count == 1, "overview must issue one independent annual activity request")
+    try expect(
+        requests[0].granularity == "day"
+            && requests[0].exactRange.endAtMs - requests[0].exactRange.startAtMs
+                > 300 * 86_400_000,
+        "the annual activity request must stay daily and independent of the selected overview range")
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testAppRuntimeKeepsTokenActivityFailureLocal() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setTokenActivityFailure(true)
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+
+    model.start()
+    try await waitUntil("locally unavailable Token activity") {
+        await MainActor.run { model.presentation != nil }
+    }
+
+    try expect(
+        model.presentation?.tokenActivity.availability == .unavailable,
+        "a failed annual activity request must stay unavailable in its own card")
+    try expect(
+        model.presentation?.usageAvailable == true
+            && model.presentation?.quotaAvailable == true
+            && model.presentation?.isPartial == false,
+        "annual activity failure must not downgrade quota or current-range usage")
+    _ = await model.shutdown()
+}
+
 private func testOverviewMergesAllOtherProjectUsage() throws {
     let base = makeResponses()
     var projects = base.projects
@@ -3438,6 +4211,64 @@ private func testOverviewMergesAllOtherProjectUsage() throws {
         "popover weekly ranking must exclude every merged Other row")
 }
 
+private func testOverviewLimitsMergedProjectRowsToFive() throws {
+    let base = makeResponses()
+    var projects = base.projects
+    projects.items = (0..<5).map { index in
+        var project = Codexpulse_Core_V1_ProjectItem()
+        project.project.id = "project-\(index + 1)"
+        project.project.displayName = "Project \(index + 1)"
+        project.dimensionKey = "project-\(index + 1)"
+        project.totals.totalTokens.value = 100 - Int64(index * 10)
+        project.totals.totalTokens.unit = "tokens"
+        return project
+    }
+    projects.matchedTotals.totalTokens.value = 465
+    projects.matchedTotals.totalTokens.unit = "tokens"
+
+    let presentation = OverviewPresentation(OverviewResponses(
+        usage: base.usage,
+        quota: base.quota,
+        sessions: base.sessions,
+        projects: projects,
+        health: base.health
+    ))
+
+    try expect(
+        presentation.projects.map(\.title)
+            == ["Project 1", "Project 2", "Project 3", "Project 4", "其他"],
+        "overview must rank the merged Other row and then keep at most five project rows")
+    try expect(
+        presentation.projects.last?.tokens == .known(65, unit: "tokens"),
+        "the visible Other row must preserve the full remainder after the five-project query")
+}
+
+private func testOverviewLimitsHighConsumptionSessionsToFive() throws {
+    let base = makeResponses()
+    var sessions = base.sessions
+    sessions.items = (0..<7).map { index in
+        var session = Codexpulse_Core_V1_SessionItem()
+        session.sessionID = "session-\(index + 1)"
+        session.displayTitle = "Session \(index + 1)"
+        session.totals.totalTokens.value = 700 - Int64(index * 100)
+        session.totals.totalTokens.unit = "tokens"
+        return session
+    }
+
+    let presentation = OverviewPresentation(OverviewResponses(
+        usage: base.usage,
+        quota: base.quota,
+        sessions: sessions,
+        projects: base.projects,
+        health: base.health
+    ))
+
+    try expect(
+        presentation.sessions.map(\.id)
+            == ["session-1", "session-2", "session-3", "session-4", "session-5"],
+        "overview must preserve Token order and expose at most five high-consumption sessions")
+}
+
 private func testWeeklyProjectRankingFailureStaysLocal() throws {
     let base = makeResponses()
     var unavailableWeeklyProjects = base.weeklyProjects
@@ -3479,8 +4310,16 @@ private func testAppRuntimeUsesWeeklyQuotaRangeForOverview() async throws {
         "overview must issue one content project request and one weekly ranking request")
     try expect(usageRequests[0].hasExactRange, "overview usage must use weekly quota exact range")
     try expect(
+        usageRequests[0].includeActivityDistribution,
+        "overview usage must include current-range activity distribution")
+    try expect(
         sessionRequests[0].query.hasExactTimeRange,
         "overview sessions must use weekly quota exact range")
+    try expect(
+        sessionRequests[0].query.page.limit == 5
+            && sessionRequests[0].query.sort.first?.field == "totalTokens"
+            && sessionRequests[0].query.sort.first?.direction == "desc",
+        "overview sessions must be a bounded Token-descending ranking")
     guard let contentProjectRequest = projectRequests.first(where: { $0.query.filters.isEmpty }),
           let rankingProjectRequest = projectRequests.first(where: {
               $0.query.filters.contains { $0.field == "confidence" }
@@ -4155,11 +4994,14 @@ private func testOverviewRangeResolutionDrivesEveryContentRequest() throws {
 
     let requests = OverviewRequestSet.content(range: weekly)
     try expect(requests.usage.exactRange.startAtMs == weekly.startAtMS, "usage range start")
+    try expect(
+        requests.usage.includeActivityDistribution,
+        "overview usage must request the current-range activity distribution")
     try expect(requests.sessions.query.exactTimeRange.startAtMs == weekly.startAtMS, "session range start")
     try expect(requests.projects.query.exactTimeRange.startAtMs == weekly.startAtMS, "project range start")
     try expect(requests.sessions.query.page.limit == 5, "overview sessions must stay bounded")
     try expect(requests.projects.query.page.limit == 5, "overview projects must stay bounded")
-    try expect(requests.sessions.query.sort.first?.field == "lastActivityAt", "sessions sort by recent activity")
+    try expect(requests.sessions.query.sort.first?.field == "totalTokens", "sessions sort by Token")
     try expect(requests.projects.query.sort.first?.field == "totalTokens", "projects sort by Token")
 
     let today = OverviewRequestSet.resolveRange(.today, quota: quota, now: now, calendar: calendar)
@@ -4352,7 +5194,7 @@ private func testUnavailableRecoveryRefreshesOpenForegroundSurfaces() async thro
     }
     await core.releaseNextOverviewBarrierWaiter()
     try await waitUntil("initial unavailable Overview sections are in flight") {
-        await core.overviewBarrierWaiterCount() == 4
+        await core.overviewBarrierWaiterCount() == 5
     }
     await core.publishOverviewInvalidations(count: 3, recovered: true)
     await core.releaseOverviewBarrier()
@@ -4412,7 +5254,7 @@ private func testRecoveryDuringDisconnectedStreamRefreshesAfterReconnectWithoutR
     }
     await core.releaseNextOverviewBarrierWaiter()
     try await waitUntil("disconnected recovery Overview sections are in flight") {
-        await core.overviewBarrierWaiterCount() == 4
+        await core.overviewBarrierWaiterCount() == 5
     }
     await core.releaseOverviewBarrier()
     try await waitUntil("disconnected recovery starts unavailable") {
@@ -4479,7 +5321,7 @@ private func testInitialInFlightReconnectQueuesOneRecoveryRefresh() async throws
     }
     await core.releaseNextOverviewBarrierWaiter()
     try await waitUntil("initial unavailable Overview sections are in flight before reconnect") {
-        await core.overviewBarrierWaiterCount() == 4
+        await core.overviewBarrierWaiterCount() == 5
     }
     try await waitUntil("initial stream can disconnect during the first Overview") {
         await core.initialStreamDisconnectWaiterCount() == 1
@@ -4839,7 +5681,7 @@ private func testUnavailableRecoveryFailureDoesNotPublishSuccess() async throws 
     }
     await core.releaseNextOverviewBarrierWaiter()
     try await waitUntil("failed recovery Overview sections are in flight") {
-        await core.overviewBarrierWaiterCount() == 4
+        await core.overviewBarrierWaiterCount() == 5
     }
     await core.publishOverviewInvalidations(count: 2, recovered: false)
     await core.releaseOverviewBarrier()
@@ -5321,6 +6163,8 @@ struct CodexPulseAppTestMain {
         try testPrimaryPagesSmokeSummaryIncludesProjectDetailEvidence()
         try testMainWindowCopyDoesNotExposeImplementationLanguage()
         try testOverviewMergesAllOtherProjectUsage()
+        try testOverviewLimitsMergedProjectRowsToFive()
+        try testOverviewLimitsHighConsumptionSessionsToFive()
         try testWeeklyProjectRankingFailureStaysLocal()
         try testOverviewUsesOneNavigationAndARealTrendChart()
         try testToolbarSeparatesCurrentReloadFromGlobalReload()
@@ -5338,6 +6182,8 @@ struct CodexPulseAppTestMain {
         try testPopoverScreenshotClipboardTextHidesAccountAndPlan()
         try testPopoverProjectActionUsesExactPublicRepositoryURL()
         try testPopoverProjectActionMakesSystemOpenFailureVisible()
+        try testPopoverUpdateReminderStaysOnTheMenuBarSurface()
+        try testPopoverUpdateActionOpensOnlyTrustedReleaseURLs()
         try testPopoverCopyActionStopsWhenSafeScreenshotIsUnavailable()
         try testPopoverCopyActionReportsClipboardFailureWithoutRawFallback()
         try testPopoverCopyActionWritesOneSafeImageAndTextPayload()
@@ -5361,6 +6207,23 @@ struct CodexPulseAppTestMain {
         try testSettingsIntervalsUseAuthoritativeBounds()
         try testOverviewRangeIncludesQuotaWeek()
         try testRequestFactoryAndPresentation()
+        try testTokenActivityRequestUsesAnIndependentRollingYear()
+        try testOverviewActivityPresentationBuildsTimelineAndCompleteHeatmap()
+        try testOverviewActivityAxisTicksKeepDateOnlyAtDayBoundaries()
+        try testOverviewActivityTimelineResolverSelectsContainingBucketThenNearest()
+        try testOverviewActivityTimelineResolverInsetsBarsSymmetrically()
+        try testTokenActivityPresentationBuildsCalendarAndStreakStatistics()
+        try testTokenActivityPresentationSummarizesKnownLocalFactsFromPartialResponse()
+        try testTokenActivityPresentationAnchorsToTheResponseRange()
+        try testTokenActivityPresentationRejectsFactsOutsideItsVisibleYear()
+        try testTokenActivityCalendarAlignsWeeksAndMonthLabels()
+        try testTokenActivityCalendarSeparatesUnknownZeroAndRelativeIntensity()
+        try testTokenActivityCardPresentsFiveBoundedMetricsAndDayDetails()
+        try testTokenActivityCardLabelsReconciledPartialFactsAsLocalData()
+        try testTokenActivityHoverStateTracksOnlyTheCurrentCell()
+        try testTokenActivityHeatmapUsesTheAvailableCardWidth()
+        try await testAppRuntimeLoadsTokenActivityThroughAnIndependentAnnualRequest()
+        try await testAppRuntimeKeepsTokenActivityFailureLocal()
         try await testAppRuntimeUsesWeeklyQuotaRangeForOverview()
         try await testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess()
         try await testAppRuntimeFallsBackWhenWeeklyQuotaIsUnavailable()
@@ -5380,6 +6243,9 @@ struct CodexPulseAppTestMain {
         try testOverviewRangeResolutionDrivesEveryContentRequest()
         try testFeatureRequestsStateAndMerge()
         try testSettingsRevisionRequest()
+        try await testGitHubUpdateCheckerFiltersStableAndPrereleaseChannels()
+        try await testGitHubUpdateCheckerPrefersAStableReleaseAndRejectsUntrustedLinks()
+        try await testAppModelPublishesConfiguredPrereleaseReminderForPopover()
         try testLaunchConfigurationBoundaries()
         try testLaunchConfigurationUsesPersistentProductDefaults()
         try await testFeatureGenerationPreventsStaleOverwrite()

@@ -27,9 +27,10 @@ const DegradedRollupMissing DegradedReason = "rollup_missing"
 const DegradedRollupAmbiguous DegradedReason = "rollup_ambiguous"
 
 type UsageCostRequest struct {
-	Range       basequery.LocalDateRange `json:"range"`
-	ExactRange  *basequery.UTCTimeRange  `json:"exactRange"`
-	Granularity TrendGranularity         `json:"granularity"`
+	Range                       basequery.LocalDateRange `json:"range"`
+	ExactRange                  *basequery.UTCTimeRange  `json:"exactRange"`
+	Granularity                 TrendGranularity         `json:"granularity"`
+	IncludeActivityDistribution bool                     `json:"includeActivityDistribution"`
 }
 
 type UsageTotals struct {
@@ -65,18 +66,44 @@ type UsageModelItem struct {
 	Trend        []TrendPoint     `json:"trend"`
 }
 
+type ActivityMetrics struct {
+	TotalTokens  basequery.NumericValue `json:"totalTokens"`
+	SessionCount basequery.NumericValue `json:"sessionCount"`
+}
+
+type ActivityTimelinePoint struct {
+	StartAtMS basequery.NumericValue `json:"startAtMs"`
+	EndAtMS   basequery.NumericValue `json:"endAtMs"`
+	Metrics   ActivityMetrics        `json:"metrics"`
+}
+
+// ActivityWeekdayHourPoint 使用 ISO weekday：周一为 1，周日为 7。
+type ActivityWeekdayHourPoint struct {
+	Weekday int             `json:"weekday"`
+	Hour    int             `json:"hour"`
+	Metrics ActivityMetrics `json:"metrics"`
+}
+
+type ActivityDistribution struct {
+	TimelineGranularity   TrendGranularity           `json:"timelineGranularity"`
+	Timeline              []ActivityTimelinePoint    `json:"timeline"`
+	WeekdayHours          []ActivityWeekdayHourPoint `json:"weekdayHours"`
+	TimelineBucketMinutes int32                      `json:"timelineBucketMinutes"`
+}
+
 type UsageCostResponse struct {
-	Meta              basequery.ResponseMeta `json:"meta"`
-	Range             basequery.UTCTimeRange `json:"range"`
-	ReportingTimeZone string                 `json:"reportingTimeZone"`
-	PricingSource     *string                `json:"pricingSource"`
-	Currency          *string                `json:"currency"`
-	PricingVersions   []string               `json:"pricingVersions"`
-	Totals            UsageTotals            `json:"totals"`
-	Trend             []TrendPoint           `json:"trend"`
-	UnpricedReasons   []ReasonCount          `json:"unpricedReasons"`
-	DegradedReason    *DegradedReason        `json:"degradedReason"`
-	Models            []UsageModelItem       `json:"models"`
+	Meta                 basequery.ResponseMeta `json:"meta"`
+	Range                basequery.UTCTimeRange `json:"range"`
+	ReportingTimeZone    string                 `json:"reportingTimeZone"`
+	PricingSource        *string                `json:"pricingSource"`
+	Currency             *string                `json:"currency"`
+	PricingVersions      []string               `json:"pricingVersions"`
+	Totals               UsageTotals            `json:"totals"`
+	Trend                []TrendPoint           `json:"trend"`
+	UnpricedReasons      []ReasonCount          `json:"unpricedReasons"`
+	DegradedReason       *DegradedReason        `json:"degradedReason"`
+	Models               []UsageModelItem       `json:"models"`
+	ActivityDistribution *ActivityDistribution  `json:"activityDistribution,omitempty"`
 }
 
 type AttributionValue struct {

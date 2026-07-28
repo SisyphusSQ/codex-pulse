@@ -15,6 +15,14 @@ import (
 
 const usageMaxRangeDays = 366
 
+const (
+	activityBucketTargetCount  = 36
+	activityBucketMinimumCount = 24
+	activityBucketMaximumCount = 48
+)
+
+var activityBucketMinuteOptions = [...]int{60, 120, 180, 360, 720, 1_440}
+
 type UsageReader interface {
 	UsageCostRange(context.Context, store.AnalyticsRange) (store.UsageCostRangeSnapshot, error)
 }
@@ -118,12 +126,18 @@ func (service *Service) UsageCost(
 	if err != nil {
 		return UsageCostResponse{}, err
 	}
+	activityBucketMinutes := 0
+	if request.IncludeActivityDistribution {
+		activityBucketMinutes = adaptiveActivityBucketMinutes(*validatedRange)
+	}
 	rangeFilter := store.AnalyticsRange{
-		ReportingTimezone: validatedRange.TimeZone,
-		StartAtMS:         validatedRange.StartAtMS,
-		EndAtMS:           validatedRange.EndAtMS,
-		Exact:             exact,
-		Granularity:       store.AnalyticsGranularityDay,
+		ReportingTimezone:           validatedRange.TimeZone,
+		StartAtMS:                   validatedRange.StartAtMS,
+		EndAtMS:                     validatedRange.EndAtMS,
+		Exact:                       exact,
+		Granularity:                 store.AnalyticsGranularityDay,
+		ActivityBucketMinutes:       activityBucketMinutes,
+		IncludeActivityDistribution: request.IncludeActivityDistribution,
 	}
 	if request.Granularity == TrendHour {
 		rangeFilter.Granularity = store.AnalyticsGranularityHour
@@ -135,7 +149,13 @@ func (service *Service) UsageCost(
 		}
 		return UsageCostResponse{}, basequery.NewUnavailableFailure(err)
 	}
-	response, err := mapUsageCostResponse(request.Granularity, *validatedRange, snapshot)
+	response, err := mapUsageCostResponse(
+		request.Granularity,
+		*validatedRange,
+		activityBucketMinutes,
+		request.IncludeActivityDistribution,
+		snapshot,
+	)
 	if err != nil {
 		return UsageCostResponse{}, basequery.NewUnavailableFailure(err)
 	}
@@ -190,6 +210,8 @@ func validateExactUsageRange(input basequery.UTCTimeRange) (*basequery.UTCTimeRa
 func mapUsageCostResponse(
 	granularity TrendGranularity,
 	rangeValue basequery.UTCTimeRange,
+	activityBucketMinutes int,
+	includeActivityDistribution bool,
 	snapshot store.UsageCostRangeSnapshot,
 ) (UsageCostResponse, error) {
 	mode := snapshot.Mode
@@ -249,6 +271,16 @@ func mapUsageCostResponse(
 	if err != nil {
 		return UsageCostResponse{}, err
 	}
+	activityDistribution, err := mapActivityDistribution(
+		activityBucketMinutes,
+		rangeValue,
+		includeActivityDistribution,
+		overall.TotalTokens,
+		snapshot.ActivityDistribution,
+	)
+	if err != nil {
+		return UsageCostResponse{}, err
+	}
 	partial := mode != store.AnalyticsReadActiveRollup || overall.UnpricedTurnCount > 0 ||
 		overall.InputTokens == nil || overall.CachedInputTokens == nil ||
 		overall.OutputTokens == nil || overall.ReasoningTokens == nil
@@ -265,7 +297,7 @@ func mapUsageCostResponse(
 	response := UsageCostResponse{
 		Meta: meta, Range: rangeValue, ReportingTimeZone: rangeValue.TimeZone,
 		PricingVersions: versions, Totals: totals, Trend: trend, UnpricedReasons: reasons,
-		Models: models,
+		Models: models, ActivityDistribution: activityDistribution,
 	}
 	if pricingSource != "" {
 		response.PricingSource = cloneString(pricingSource)
@@ -278,8 +310,183 @@ func mapUsageCostResponse(
 	return response, nil
 }
 
+func mapActivityDistribution(
+	activityBucketMinutes int,
+	rangeValue basequery.UTCTimeRange,
+	include bool,
+	expectedTotalTokens *int64,
+	snapshot *store.UsageActivityDistribution,
+) (*ActivityDistribution, error) {
+	if !include {
+		if snapshot != nil {
+			return nil, errors.New("stored activity distribution was not requested")
+		}
+		return nil, nil
+	}
+	if snapshot == nil {
+		return nil, errors.New("stored activity distribution is missing")
+	}
+	if snapshot.TimelineBucketMinutes == 0 {
+		switch snapshot.TimelineGranularity {
+		case store.AnalyticsGranularityHour:
+			snapshot.TimelineBucketMinutes = 60
+		case store.AnalyticsGranularityDay:
+			snapshot.TimelineBucketMinutes = 1_440
+		}
+	}
+	if snapshot.TimelineBucketMinutes != activityBucketMinutes {
+		return nil, errors.New("stored activity bucket width is inconsistent")
+	}
+	expectedGranularity := store.AnalyticsGranularityDay
+	if activityBucketMinutes < 1_440 {
+		expectedGranularity = store.AnalyticsGranularityHour
+	}
+	if snapshot.TimelineGranularity != expectedGranularity {
+		return nil, errors.New("stored activity granularity is inconsistent")
+	}
+	result := &ActivityDistribution{
+		TimelineGranularity:   TrendGranularity(expectedGranularity),
+		TimelineBucketMinutes: int32(activityBucketMinutes),
+		Timeline:              make([]ActivityTimelinePoint, 0, len(snapshot.Timeline)),
+		WeekdayHours:          make([]ActivityWeekdayHourPoint, 0, len(snapshot.WeekdayHours)),
+	}
+	timeline := append([]store.UsageActivityTimelinePoint(nil), snapshot.Timeline...)
+	sort.Slice(timeline, func(left, right int) bool {
+		return timeline[left].BucketStartMS < timeline[right].BucketStartMS
+	})
+	for index, point := range timeline {
+		if point.BucketStartMS < rangeValue.StartAtMS || point.BucketStartMS >= rangeValue.EndAtMS ||
+			point.BucketEndMS <= point.BucketStartMS || point.BucketEndMS > rangeValue.EndAtMS ||
+			(index > 0 && timeline[index-1].BucketStartMS == point.BucketStartMS) {
+			return nil, errors.New("stored activity timeline is invalid")
+		}
+		mapped, err := mapActivityMetrics(point.TotalTokens, point.SessionCount)
+		if err != nil {
+			return nil, err
+		}
+		startAtMS, err := basequery.KnownNumeric(point.BucketStartMS, basequery.NumericMilliseconds)
+		if err != nil {
+			return nil, err
+		}
+		endAtMS, err := basequery.KnownNumeric(point.BucketEndMS, basequery.NumericMilliseconds)
+		if err != nil {
+			return nil, err
+		}
+		result.Timeline = append(result.Timeline, ActivityTimelinePoint{
+			StartAtMS: startAtMS, EndAtMS: endAtMS, Metrics: mapped,
+		})
+	}
+	weekdayHours := append([]store.UsageActivityWeekdayHour(nil), snapshot.WeekdayHours...)
+	sort.Slice(weekdayHours, func(left, right int) bool {
+		if weekdayHours[left].Weekday != weekdayHours[right].Weekday {
+			return weekdayHours[left].Weekday < weekdayHours[right].Weekday
+		}
+		return weekdayHours[left].Hour < weekdayHours[right].Hour
+	})
+	for index, point := range weekdayHours {
+		if point.Weekday < 1 || point.Weekday > 7 || point.Hour < 0 || point.Hour > 23 ||
+			(index > 0 && weekdayHours[index-1].Weekday == point.Weekday &&
+				weekdayHours[index-1].Hour == point.Hour) {
+			return nil, errors.New("stored activity weekday hour is invalid")
+		}
+		mapped, err := mapActivityMetrics(point.TotalTokens, point.SessionCount)
+		if err != nil {
+			return nil, err
+		}
+		result.WeekdayHours = append(result.WeekdayHours, ActivityWeekdayHourPoint{
+			Weekday: point.Weekday, Hour: point.Hour, Metrics: mapped,
+		})
+	}
+	timelineTotal, err := sumActivityTokens(
+		snapshot.Timeline,
+		func(point store.UsageActivityTimelinePoint) *int64 { return point.TotalTokens },
+	)
+	if err != nil {
+		return nil, err
+	}
+	weekdayHourTotal, err := sumActivityTokens(
+		snapshot.WeekdayHours,
+		func(point store.UsageActivityWeekdayHour) *int64 { return point.TotalTokens },
+	)
+	if err != nil {
+		return nil, err
+	}
+	if (timelineTotal != nil && weekdayHourTotal != nil && *timelineTotal != *weekdayHourTotal) ||
+		(expectedTotalTokens != nil && timelineTotal != nil && *expectedTotalTokens != *timelineTotal) ||
+		(expectedTotalTokens != nil && weekdayHourTotal != nil &&
+			*expectedTotalTokens != *weekdayHourTotal) {
+		return nil, errors.New("stored activity totals are inconsistent")
+	}
+	return result, nil
+}
+
+func sumActivityTokens[T any](points []T, value func(T) *int64) (*int64, error) {
+	total := int64(0)
+	for _, point := range points {
+		current := value(point)
+		if current == nil {
+			return nil, nil
+		}
+		if _, err := basequery.KnownNumeric(*current, basequery.NumericTokens); err != nil {
+			return nil, err
+		}
+		if total > basequery.JavaScriptMaxSafeInteger-*current {
+			return nil, errors.New("stored activity total overflows safe integer")
+		}
+		total += *current
+	}
+	return &total, nil
+}
+
+func mapActivityMetrics(totalTokens *int64, sessionCount int64) (ActivityMetrics, error) {
+	tokens, err := numericOrUnknown(
+		totalTokens,
+		basequery.NumericTokens,
+		basequery.UnknownUnavailable,
+	)
+	if err != nil {
+		return ActivityMetrics{}, err
+	}
+	sessions, err := basequery.KnownNumeric(sessionCount, basequery.NumericCount)
+	if err != nil {
+		return ActivityMetrics{}, err
+	}
+	return ActivityMetrics{TotalTokens: tokens, SessionCount: sessions}, nil
+}
+
 func validGranularity(value TrendGranularity) bool {
 	return value == TrendHour || value == TrendDay || value == TrendWeek || value == TrendMonth
+}
+
+func adaptiveActivityBucketMinutes(rangeValue basequery.UTCTimeRange) int {
+	durationMS := rangeValue.EndAtMS - rangeValue.StartAtMS
+	selected := activityBucketMinuteOptions[0]
+	bestDistance := int(^uint(0) >> 1)
+	found := false
+	for _, minutes := range activityBucketMinuteOptions {
+		bucketMS := int64(minutes) * int64(time.Minute/time.Millisecond)
+		count := int((durationMS + bucketMS - 1) / bucketMS)
+		if count < activityBucketMinimumCount || count > activityBucketMaximumCount {
+			continue
+		}
+		distance := count - activityBucketTargetCount
+		if distance < 0 {
+			distance = -distance
+		}
+		if !found || distance < bestDistance {
+			selected = minutes
+			bestDistance = distance
+			found = true
+		}
+	}
+	if found {
+		return selected
+	}
+	finestBucketMS := int64(activityBucketMinuteOptions[0]) * int64(time.Minute/time.Millisecond)
+	if (durationMS+finestBucketMS-1)/finestBucketMS < activityBucketMinimumCount {
+		return activityBucketMinuteOptions[0]
+	}
+	return activityBucketMinuteOptions[len(activityBucketMinuteOptions)-1]
 }
 
 func validateAndSortDaily(

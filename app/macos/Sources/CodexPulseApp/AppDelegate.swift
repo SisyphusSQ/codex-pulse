@@ -295,6 +295,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     let health = overview.health.hasValue
                         ? Self.safeToken(overview.health.level ?? "unknown")
                         : "empty"
+                    let activityAvailability: String
+                    switch overview.activityDistribution.availability {
+                    case .available:
+                        activityAvailability = "available"
+                    case .partial:
+                        activityAvailability = "partial"
+                    case .unavailable:
+                        activityAvailability = "unavailable"
+                    }
                     Task { @MainActor [weak self] in
                         guard let self else { return }
                         let surfaces = await nativeSurfaceSmokeSummary(
@@ -307,7 +316,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                             let rendered = renderedPageCount == AppFeature.allCases.count
                             finishSmoke(
                                 success: surfaces.passed && rendered,
-                                summary: "app smoke \(surfaces.passed && rendered ? "passed" : "failed"): overview=loaded quota_windows=\(overview.quotaWindows.count) sessions=\(overview.sessions.count) trend_points=\(overview.trend.count) health=\(health) primary_pages=\(pagesStatus) \(pages.stableDescription) ui_pages=\(renderedPageCount) native_surfaces=\(surfaces.summary) lifecycle=not_executed"
+                                summary: "app smoke \(surfaces.passed && rendered ? "passed" : "failed"): overview=loaded quota_windows=\(overview.quotaWindows.count) sessions=\(overview.sessions.count) trend_points=\(overview.trend.count) activity=\(activityAvailability) activity_timeline=\(overview.activityDistribution.timeline.count) activity_heatmap=\(overview.activityDistribution.heatmap.count) health=\(health) primary_pages=\(pagesStatus) \(pages.stableDescription) ui_pages=\(renderedPageCount) native_surfaces=\(surfaces.summary) lifecycle=not_executed"
                             )
                         } catch {
                             let step = (error as? PrimaryPagesSmokeError)?.step ?? "unknown"

@@ -46,6 +46,7 @@ func (runtime *applicationLifecycleRuntime) UpdateSettings(
 	}
 	update.Updates.AutoCheckEnabled = request.Updates.AutoCheckEnabled
 	update.Updates.CheckIntervalSeconds = request.Updates.CheckIntervalSeconds
+	update.Updates.Channel = preferences.UpdateChannel(request.Updates.Channel)
 	update.UI.LaunchBehavior = preferences.LaunchBehavior(request.UI.LaunchBehavior)
 	update.UI.OverviewRange = preferences.OverviewRange(request.UI.OverviewRange)
 

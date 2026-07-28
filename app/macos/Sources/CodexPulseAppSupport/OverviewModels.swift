@@ -6,6 +6,7 @@ public struct OverviewResponses: Sendable {
     public let account: Codexpulse_Core_V1_AccountSnapshotResponse?
     public let usage: Codexpulse_Core_V1_UsageCostResponse
     public let weeklyUsage: Codexpulse_Core_V1_UsageCostResponse
+    public let tokenActivityUsage: Codexpulse_Core_V1_UsageCostResponse
     public let quota: Codexpulse_Core_V1_QuotaCurrentResponse
     public let sessions: Codexpulse_Core_V1_SessionListResponse
     public let projects: Codexpulse_Core_V1_ProjectListResponse
@@ -24,6 +25,7 @@ public struct OverviewResponses: Sendable {
         health: Codexpulse_Core_V1_HealthProjectionResponse,
         rangeResolution: OverviewRangeResolution? = nil,
         weeklyUsage: Codexpulse_Core_V1_UsageCostResponse? = nil,
+        tokenActivityUsage: Codexpulse_Core_V1_UsageCostResponse = .init(),
         weeklyProjects: Codexpulse_Core_V1_ProjectListResponse? = nil,
         weeklyProjectRange: OverviewRangeResolution? = nil,
         additionalNotices: [AppNotice] = []
@@ -31,6 +33,7 @@ public struct OverviewResponses: Sendable {
         self.account = account
         self.usage = usage
         self.weeklyUsage = weeklyUsage ?? usage
+        self.tokenActivityUsage = tokenActivityUsage
         self.quota = quota
         self.sessions = sessions
         self.projects = projects
@@ -53,6 +56,7 @@ public struct OverviewResponses: Sendable {
             health: health,
             rangeResolution: rangeResolution,
             weeklyUsage: weeklyUsage,
+            tokenActivityUsage: tokenActivityUsage,
             weeklyProjects: weeklyProjects,
             weeklyProjectRange: weeklyProjectRange,
             additionalNotices: additionalNotices
@@ -635,6 +639,817 @@ public struct TrendPresentation: Equatable, Sendable, Identifiable {
     }
 }
 
+public enum OverviewActivityAvailability: Equatable, Sendable {
+    case available
+    case partial
+    case unavailable
+}
+
+public enum OverviewActivityTimelineGranularity: String, Equatable, Sendable {
+    case hour
+    case day
+}
+
+public enum OverviewActivityMetric: String, CaseIterable, Equatable, Identifiable, Sendable {
+    case tokenConsumption
+    case sessionCount
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .tokenConsumption: "Token 消耗"
+        case .sessionCount: "会话数量"
+        }
+    }
+}
+
+public struct OverviewActivityTimelinePoint: Equatable, Identifiable, Sendable {
+    public let id: Int64
+    public let startAtMS: Int64
+    public let endAtMS: Int64
+    public let totalTokens: DisplayMetric
+    public let sessionCount: DisplayMetric
+
+    public init(
+        id: Int64,
+        startAtMS: Int64,
+        endAtMS: Int64,
+        totalTokens: DisplayMetric,
+        sessionCount: DisplayMetric
+    ) {
+        self.id = id
+        self.startAtMS = startAtMS
+        self.endAtMS = endAtMS
+        self.totalTokens = totalTokens
+        self.sessionCount = sessionCount
+    }
+
+    public func value(for metric: OverviewActivityMetric) -> Int64? {
+        switch metric {
+        case .tokenConsumption: Self.knownValue(totalTokens)
+        case .sessionCount: Self.knownValue(sessionCount)
+        }
+    }
+
+    private static func knownValue(_ metric: DisplayMetric) -> Int64? {
+        guard case .known(let value, _) = metric else { return nil }
+        return value
+    }
+}
+
+public struct OverviewActivityAxisTick: Equatable, Identifiable, Sendable {
+    public let id: Int64
+    public let date: Date
+    public let label: String
+
+    public init(id: Int64, date: Date, label: String) {
+        self.id = id
+        self.date = date
+        self.label = label
+    }
+}
+
+public enum OverviewActivityTimelineResolver {
+    public static func axisTicks(
+        points: [OverviewActivityTimelinePoint],
+        granularity: OverviewActivityTimelineGranularity,
+        timeZoneID: String,
+        maximumCount: Int = 7
+    ) -> [OverviewActivityAxisTick] {
+        guard maximumCount > 0,
+              !points.isEmpty,
+              let timeZone = TimeZone(identifier: timeZoneID)
+        else { return [] }
+
+        let ordered = points.sorted { $0.startAtMS < $1.startAtMS }
+        let selected: [OverviewActivityTimelinePoint]
+        if ordered.count <= maximumCount {
+            selected = ordered
+        } else if maximumCount == 1 {
+            selected = [ordered[0]]
+        } else {
+            selected = (0..<maximumCount).map { offset in
+                let position = Double(offset) * Double(ordered.count - 1)
+                    / Double(maximumCount - 1)
+                return ordered[Int(position.rounded())]
+            }
+        }
+
+        let dayKeyFormatter = dateFormatter(
+            format: "yyyy-MM-dd",
+            timeZone: timeZone,
+            locale: Locale(identifier: "en_US_POSIX")
+        )
+        let dateHourFormatter = dateFormatter(
+            format: "M月d日 H时",
+            timeZone: timeZone,
+            locale: Locale(identifier: "zh_CN")
+        )
+        let hourFormatter = dateFormatter(
+            format: "H时",
+            timeZone: timeZone,
+            locale: Locale(identifier: "zh_CN")
+        )
+        let dayFormatter = dateFormatter(
+            format: "M月d日",
+            timeZone: timeZone,
+            locale: Locale(identifier: "zh_CN")
+        )
+        var previousDayKey: String?
+        return selected.map { point in
+            let date = Date(timeIntervalSince1970: Double(point.startAtMS) / 1_000)
+            let dayKey = dayKeyFormatter.string(from: date)
+            let label: String
+            if granularity == .day {
+                label = dayFormatter.string(from: date)
+            } else if dayKey == previousDayKey {
+                label = hourFormatter.string(from: date)
+            } else {
+                label = dateHourFormatter.string(from: date)
+            }
+            previousDayKey = dayKey
+            return OverviewActivityAxisTick(id: point.id, date: date, label: label)
+        }
+    }
+
+    public static func nearest(
+        to selectedDate: Date?,
+        in points: [OverviewActivityTimelinePoint]
+    ) -> OverviewActivityTimelinePoint? {
+        guard let selectedDate else { return nil }
+        let selectedAtMS = selectedDate.timeIntervalSince1970 * 1_000
+        let ordered = points.sorted { $0.startAtMS < $1.startAtMS }
+        if let containing = ordered.first(where: {
+            selectedAtMS >= Double($0.startAtMS) && selectedAtMS < Double($0.endAtMS)
+        }) {
+            return containing
+        }
+        return ordered.min { left, right in
+            let leftCenter = Double(left.startAtMS) + Double(left.endAtMS - left.startAtMS) / 2
+            let rightCenter = Double(right.startAtMS)
+                + Double(right.endAtMS - right.startAtMS) / 2
+            let leftDistance = abs(leftCenter - selectedAtMS)
+            let rightDistance = abs(rightCenter - selectedAtMS)
+            if leftDistance == rightDistance {
+                return left.startAtMS < right.startAtMS
+            }
+            return leftDistance < rightDistance
+        }
+    }
+
+    public static func visibleRange(
+        for point: OverviewActivityTimelinePoint,
+        gapFraction: Double = 0.28
+    ) -> ClosedRange<Date>? {
+        guard point.endAtMS > point.startAtMS,
+              gapFraction >= 0,
+              gapFraction < 0.5
+        else { return nil }
+        let duration = Double(point.endAtMS - point.startAtMS)
+        let inset = duration * gapFraction
+        let lower = Date(
+            timeIntervalSince1970: (Double(point.startAtMS) + inset) / 1_000
+        )
+        let upper = Date(
+            timeIntervalSince1970: (Double(point.endAtMS) - inset) / 1_000
+        )
+        return lower...upper
+    }
+
+    private static func dateFormatter(
+        format: String,
+        timeZone: TimeZone,
+        locale: Locale
+    ) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        formatter.dateFormat = format
+        return formatter
+    }
+}
+
+public struct OverviewActivityHeatmapCell: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let weekday: Int
+    public let hour: Int
+    public let totalTokens: DisplayMetric
+    public let sessionCount: DisplayMetric
+
+    public func value(for metric: OverviewActivityMetric) -> Int64? {
+        switch metric {
+        case .tokenConsumption: Self.knownValue(totalTokens)
+        case .sessionCount: Self.knownValue(sessionCount)
+        }
+    }
+
+    private static func knownValue(_ metric: DisplayMetric) -> Int64? {
+        guard case .known(let value, _) = metric else { return nil }
+        return value
+    }
+}
+
+public struct OverviewActivityPresentation: Equatable, Sendable {
+    public let availability: OverviewActivityAvailability
+    public let timelineGranularity: OverviewActivityTimelineGranularity?
+    public let timelineBucketMinutes: Int
+    public let timeline: [OverviewActivityTimelinePoint]
+    public let heatmap: [OverviewActivityHeatmapCell]
+    public let reportingTimeZone: String
+
+    public init(_ response: Codexpulse_Core_V1_UsageCostResponse) {
+        let timeZoneID = response.reportingTimeZone.isEmpty
+            ? response.range.timeZone : response.reportingTimeZone
+        reportingTimeZone = timeZoneID
+        let parsedGranularity = OverviewActivityTimelineGranularity(
+            rawValue: response.activityDistribution.timelineGranularity
+        )
+        let reportedBucketMinutes = Int(
+            response.activityDistribution.timelineBucketMinutes
+        )
+        let inferredBucketMinutes = parsedGranularity == .hour ? 60 : 1_440
+        let bucketMinutes = reportedBucketMinutes > 0
+            ? reportedBucketMinutes : inferredBucketMinutes
+        guard ["complete", "partial"].contains(response.meta.status),
+              response.hasActivityDistribution,
+              TimeZone(identifier: timeZoneID) != nil,
+              timeZoneID != "Local",
+              response.range.timeZone == timeZoneID,
+              response.range.startAtMs >= 0,
+              response.range.endAtMs > response.range.startAtMs,
+              [60, 120, 180, 360, 720, 1_440].contains(bucketMinutes),
+              let granularity = parsedGranularity
+        else {
+            availability = .unavailable
+            timelineGranularity = nil
+            timelineBucketMinutes = 0
+            timeline = []
+            heatmap = []
+            return
+        }
+
+        var timelineRows: [OverviewActivityTimelinePoint] = []
+        var timelineIDs = Set<Int64>()
+        var structurallyValid = true
+        for point in response.activityDistribution.timeline {
+            guard point.hasStartAtMs, point.startAtMs.hasValue,
+                  point.startAtMs.unit == "milliseconds",
+                  point.hasEndAtMs, point.endAtMs.hasValue,
+                  point.endAtMs.unit == "milliseconds",
+                  point.hasMetrics,
+                  point.startAtMs.value >= response.range.startAtMs,
+                  point.startAtMs.value < response.range.endAtMs,
+                  point.endAtMs.value > point.startAtMs.value,
+                  point.endAtMs.value <= response.range.endAtMs,
+                  point.endAtMs.value - point.startAtMs.value
+                    <= Int64(bucketMinutes) * 60_000,
+                  timelineIDs.insert(point.startAtMs.value).inserted,
+                  let tokens = Self.metric(point.metrics.totalTokens, unit: "tokens"),
+                  let sessions = Self.metric(point.metrics.sessionCount, unit: "count")
+            else {
+                structurallyValid = false
+                continue
+            }
+            timelineRows.append(OverviewActivityTimelinePoint(
+                id: point.startAtMs.value,
+                startAtMS: point.startAtMs.value,
+                endAtMS: point.endAtMs.value,
+                totalTokens: tokens,
+                sessionCount: sessions
+            ))
+        }
+        timelineRows.sort { $0.startAtMS < $1.startAtMS }
+
+        var providedCells: [String: OverviewActivityHeatmapCell] = [:]
+        for point in response.activityDistribution.weekdayHours {
+            let weekday = Int(point.weekday)
+            let hour = Int(point.hour)
+            let id = "\(weekday)-\(hour)"
+            guard (1...7).contains(weekday), (0...23).contains(hour),
+                  point.hasMetrics, providedCells[id] == nil,
+                  let tokens = Self.metric(point.metrics.totalTokens, unit: "tokens"),
+                  let sessions = Self.metric(point.metrics.sessionCount, unit: "count")
+            else {
+                structurallyValid = false
+                continue
+            }
+            providedCells[id] = OverviewActivityHeatmapCell(
+                id: id,
+                weekday: weekday,
+                hour: hour,
+                totalTokens: tokens,
+                sessionCount: sessions
+            )
+        }
+
+        guard structurallyValid else {
+            availability = .unavailable
+            timelineGranularity = nil
+            timelineBucketMinutes = 0
+            timeline = []
+            heatmap = []
+            return
+        }
+        let expectedTotal = Self.knownValue(DisplayMetric(response.totals.totalTokens))
+        let timelineTotal = Self.sumKnown(timelineRows.map(\.totalTokens))
+        let heatmapTotal = Self.sumKnown(providedCells.values.map(\.totalTokens))
+        let sessionsAreKnown = timelineRows.allSatisfy {
+            Self.knownValue($0.sessionCount) != nil
+        } && providedCells.values.allSatisfy {
+            Self.knownValue($0.sessionCount) != nil
+        }
+        let reconciled = expectedTotal != nil
+            && timelineTotal == expectedTotal
+            && heatmapTotal == expectedTotal
+            && sessionsAreKnown
+        let missingTokens: DisplayMetric = reconciled
+            ? .known(0, unit: "tokens") : .absent(unit: "tokens")
+        let missingSessions: DisplayMetric = reconciled
+            ? .known(0, unit: "count") : .absent(unit: "count")
+        var heatmapRows: [OverviewActivityHeatmapCell] = []
+        heatmapRows.reserveCapacity(7 * 24)
+        for weekday in 1...7 {
+            for hour in 0...23 {
+                let id = "\(weekday)-\(hour)"
+                heatmapRows.append(providedCells[id] ?? OverviewActivityHeatmapCell(
+                    id: id,
+                    weekday: weekday,
+                    hour: hour,
+                    totalTokens: missingTokens,
+                    sessionCount: missingSessions
+                ))
+            }
+        }
+
+        availability = reconciled ? .available : .partial
+        timelineGranularity = granularity
+        timelineBucketMinutes = bucketMinutes
+        timeline = timelineRows
+        heatmap = heatmapRows
+    }
+
+    private static func metric(
+        _ value: Codexpulse_Core_V1_NumericValue,
+        unit expectedUnit: String
+    ) -> DisplayMetric? {
+        let metric = DisplayMetric(value)
+        switch metric {
+        case .known(let value, let unit):
+            return value >= 0 && unit == expectedUnit ? metric : nil
+        case .unknown(let reason, let unit):
+            return !reason.isEmpty && unit == expectedUnit ? metric : nil
+        case .absent(let unit):
+            return unit.isEmpty || unit == expectedUnit ? .absent(unit: expectedUnit) : nil
+        }
+    }
+
+    private static func knownValue(_ metric: DisplayMetric) -> Int64? {
+        guard case .known(let value, _) = metric, value >= 0 else { return nil }
+        return value
+    }
+
+    private static func sumKnown(_ metrics: [DisplayMetric]) -> Int64? {
+        var sum: Int64 = 0
+        for metric in metrics {
+            guard let value = knownValue(metric) else { return nil }
+            let result = sum.addingReportingOverflow(value)
+            guard !result.overflow else { return nil }
+            sum = result.partialValue
+        }
+        return sum
+    }
+}
+
+public enum TokenActivityAvailability: Equatable, Sendable {
+    case available
+    case partial
+    case unavailable
+}
+
+public struct TokenActivityDay: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let dateKey: String
+    public let date: Date
+    public let tokens: Int64?
+    public let turnCount: Int64?
+
+    public init(dateKey: String, date: Date, tokens: Int64?, turnCount: Int64?) {
+        self.id = dateKey
+        self.dateKey = dateKey
+        self.date = date
+        self.tokens = tokens
+        self.turnCount = turnCount
+    }
+}
+
+public struct TokenActivityPresentation: Equatable, Sendable {
+    public let availability: TokenActivityAvailability
+    public let days: [TokenActivityDay]
+    public let totalTokens: Int64?
+    public let peakDailyTokens: Int64?
+    public let activeDays: Int?
+    public let currentStreakDays: Int?
+    public let longestStreakDays: Int?
+    public let reportingTimeZone: String
+
+    public init(
+        _ response: Codexpulse_Core_V1_UsageCostResponse,
+        now: Date? = nil
+    ) {
+        let timeZoneID = response.reportingTimeZone.isEmpty
+            ? response.range.timeZone : response.reportingTimeZone
+        guard let timeZone = TimeZone(identifier: timeZoneID),
+              timeZoneID != "Local"
+        else {
+            availability = .unavailable
+            days = []
+            totalTokens = nil
+            peakDailyTokens = nil
+            activeDays = nil
+            currentStreakDays = nil
+            longestStreakDays = nil
+            reportingTimeZone = timeZoneID
+            return
+        }
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.isLenient = false
+
+        let requestedAvailability: TokenActivityAvailability
+        switch response.meta.status {
+        case "complete": requestedAvailability = .available
+        case "partial": requestedAvailability = .partial
+        default: requestedAvailability = .unavailable
+        }
+
+        let responseEnd = response.range.endAtMs > 0
+            ? Date(timeIntervalSince1970: Double(response.range.endAtMs) / 1_000)
+            : Date()
+        let today = calendar.startOfDay(for: now ?? responseEnd)
+        let firstDay = calendar.date(byAdding: .day, value: -364, to: today) ?? today
+        var pointsByDate: [String: (tokens: Int64, turns: Int64?)] = [:]
+        var pointsAreValid = true
+        for point in response.trend {
+            guard !point.key.isEmpty,
+                  let pointDate = formatter.date(from: point.key),
+                  pointDate >= firstDay,
+                  pointDate <= today,
+                  point.totals.totalTokens.hasValue,
+                  point.totals.totalTokens.value >= 0,
+                  pointsByDate[point.key] == nil
+            else {
+                pointsAreValid = false
+                continue
+            }
+            let turns = point.totals.turnCount.hasValue && point.totals.turnCount.value >= 0
+                ? point.totals.turnCount.value : nil
+            pointsByDate[point.key] = (point.totals.totalTokens.value, turns)
+        }
+
+        let responseTotal = response.totals.totalTokens.hasValue
+            && response.totals.totalTokens.value >= 0
+            ? response.totals.totalTokens.value : nil
+        var dailyTotal: Int64 = 0
+        var dailyTotalOverflowed = false
+        for point in pointsByDate.values {
+            let result = dailyTotal.addingReportingOverflow(point.tokens)
+            dailyTotal = result.partialValue
+            dailyTotalOverflowed = dailyTotalOverflowed || result.overflow
+        }
+        let reconciledTokenFacts = pointsAreValid
+            && !dailyTotalOverflowed
+            && responseTotal == dailyTotal
+        let completeFacts = requestedAvailability == .available
+            && reconciledTokenFacts
+        let canSummarizeLocalFacts = requestedAvailability != .unavailable
+            && reconciledTokenFacts
+        let resolvedAvailability: TokenActivityAvailability
+        if requestedAvailability == .unavailable {
+            resolvedAvailability = .unavailable
+        } else {
+            resolvedAvailability = completeFacts ? .available : .partial
+        }
+
+        var calendarDays: [TokenActivityDay] = []
+        calendarDays.reserveCapacity(365)
+        for offset in 0..<365 {
+            guard let date = calendar.date(byAdding: .day, value: offset, to: firstDay) else {
+                continue
+            }
+            let key = formatter.string(from: date)
+            let point = pointsByDate[key]
+            calendarDays.append(TokenActivityDay(
+                dateKey: key,
+                date: date,
+                tokens: point?.tokens ?? (completeFacts ? 0 : nil),
+                turnCount: point?.turns
+            ))
+        }
+
+        availability = resolvedAvailability
+        days = calendarDays
+        reportingTimeZone = timeZoneID
+        guard canSummarizeLocalFacts else {
+            totalTokens = nil
+            peakDailyTokens = nil
+            activeDays = nil
+            currentStreakDays = nil
+            longestStreakDays = nil
+            return
+        }
+
+        let observedTokenValues = calendarDays.compactMap(\.tokens)
+        let tokenValues = calendarDays.map { $0.tokens ?? 0 }
+        totalTokens = responseTotal
+        peakDailyTokens = observedTokenValues.max() ?? 0
+        activeDays = observedTokenValues.reduce(into: 0) { count, tokens in
+            if tokens > 0 { count += 1 }
+        }
+
+        var longest = 0
+        var running = 0
+        for tokens in tokenValues {
+            if tokens > 0 {
+                running += 1
+                longest = max(longest, running)
+            } else {
+                running = 0
+            }
+        }
+        longestStreakDays = longest
+
+        var currentIndex = tokenValues.count - 1
+        if currentIndex >= 0, tokenValues[currentIndex] == 0 {
+            currentIndex -= 1
+        }
+        var current = 0
+        while currentIndex >= 0, tokenValues[currentIndex] > 0 {
+            current += 1
+            currentIndex -= 1
+        }
+        currentStreakDays = current
+    }
+}
+
+public enum TokenActivityIntensity: Int, Equatable, Sendable {
+    case unknown = -1
+    case none = 0
+    case low = 1
+    case medium = 2
+    case high = 3
+    case veryHigh = 4
+}
+
+public struct ActivityIntensityThresholds: Equatable, Sendable {
+    public let low: Int64
+    public let medium: Int64
+    public let high: Int64
+}
+
+public enum ActivityIntensityScale {
+    public static func thresholds(for values: [Int64]) -> ActivityIntensityThresholds? {
+        let positiveValues = values.filter { $0 > 0 }.sorted()
+        guard !positiveValues.isEmpty else { return nil }
+        func value(at fraction: Double) -> Int64 {
+            positiveValues[Int(Double(positiveValues.count - 1) * fraction)]
+        }
+        return ActivityIntensityThresholds(
+            low: value(at: 0.25),
+            medium: value(at: 0.5),
+            high: value(at: 0.75)
+        )
+    }
+
+    public static func intensity(
+        for value: Int64?,
+        thresholds: ActivityIntensityThresholds?
+    ) -> TokenActivityIntensity {
+        guard let value else { return .unknown }
+        guard value > 0 else { return .none }
+        guard let thresholds else { return .low }
+        if value <= thresholds.low { return .low }
+        if value <= thresholds.medium { return .medium }
+        if value <= thresholds.high { return .high }
+        return .veryHigh
+    }
+}
+
+public struct TokenActivityCalendarDay: Equatable, Identifiable, Sendable {
+    public let day: TokenActivityDay
+    public let intensity: TokenActivityIntensity
+
+    public var id: String { day.id }
+
+    public init(day: TokenActivityDay, intensity: TokenActivityIntensity) {
+        self.day = day
+        self.intensity = intensity
+    }
+}
+
+public struct TokenActivityWeek: Equatable, Identifiable, Sendable {
+    public let id: Int
+    public let days: [TokenActivityCalendarDay?]
+
+    public init(id: Int, days: [TokenActivityCalendarDay?]) {
+        self.id = id
+        self.days = days
+    }
+}
+
+public struct TokenActivityMonthLabel: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let title: String
+    public let weekIndex: Int
+
+    public init(id: String, title: String, weekIndex: Int) {
+        self.id = id
+        self.title = title
+        self.weekIndex = weekIndex
+    }
+}
+
+public struct TokenActivityHoverState: Equatable, Sendable {
+    public private(set) var dayID: String?
+
+    public init(dayID: String? = nil) {
+        self.dayID = dayID
+    }
+
+    public mutating func update(isHovering: Bool, dayID: String) {
+        if isHovering {
+            self.dayID = dayID
+        } else if self.dayID == dayID {
+            self.dayID = nil
+        }
+    }
+
+    public func isHovered(dayID: String) -> Bool {
+        self.dayID == dayID
+    }
+}
+
+public struct TokenActivityCalendarPresentation: Equatable, Sendable {
+    public let weeks: [TokenActivityWeek]
+    public let monthLabels: [TokenActivityMonthLabel]
+
+    public init(_ activity: TokenActivityPresentation) {
+        guard let first = activity.days.first,
+              let timeZone = TimeZone(identifier: activity.reportingTimeZone)
+        else {
+            weeks = []
+            monthLabels = []
+            return
+        }
+
+        let thresholds = ActivityIntensityScale.thresholds(
+            for: activity.days.compactMap(\.tokens)
+        )
+        let calendarDays = activity.days.map { day in
+            TokenActivityCalendarDay(
+                day: day,
+                intensity: ActivityIntensityScale.intensity(
+                    for: day.tokens,
+                    thresholds: thresholds
+                )
+            )
+        }
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let firstWeekday = calendar.component(.weekday, from: first.date)
+        let leadingPadding = (firstWeekday + 5) % 7
+        var slots = Array<TokenActivityCalendarDay?>(repeating: nil, count: leadingPadding)
+        slots.append(contentsOf: calendarDays.map(Optional.some))
+        let trailingPadding = (7 - slots.count % 7) % 7
+        slots.append(contentsOf: repeatElement(nil, count: trailingPadding))
+
+        var resolvedWeeks: [TokenActivityWeek] = []
+        resolvedWeeks.reserveCapacity(slots.count / 7)
+        for start in stride(from: 0, to: slots.count, by: 7) {
+            resolvedWeeks.append(TokenActivityWeek(
+                id: start / 7,
+                days: Array(slots[start..<min(start + 7, slots.count)])
+            ))
+        }
+        weeks = resolvedWeeks
+
+        monthLabels = activity.days.enumerated().compactMap { offset, day in
+            guard calendar.component(.day, from: day.date) == 1 else { return nil }
+            let month = calendar.component(.month, from: day.date)
+            return TokenActivityMonthLabel(
+                id: String(day.dateKey.prefix(7)),
+                title: "\(month)月",
+                weekIndex: (leadingPadding + offset) / 7
+            )
+        }
+    }
+
+}
+
+public struct TokenActivityMetricPresentation: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let title: String
+    public let value: String
+
+    public init(id: String, title: String, value: String) {
+        self.id = id
+        self.title = title
+        self.value = value
+    }
+}
+
+public struct TokenActivityCardPresentation: Equatable, Sendable {
+    public let title = "Token 活动"
+    public let scope = "过去 365 天"
+    public let availability: TokenActivityAvailability
+    public let metrics: [TokenActivityMetricPresentation]
+    public let calendar: TokenActivityCalendarPresentation
+    public let notice: String?
+    public let reportingTimeZone: String
+    private let dayDetails: [String: String]
+
+    public init(_ activity: TokenActivityPresentation) {
+        availability = activity.availability
+        let resolvedCalendar = TokenActivityCalendarPresentation(activity)
+        calendar = resolvedCalendar
+        reportingTimeZone = activity.reportingTimeZone
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = TimeZone(identifier: activity.reportingTimeZone)
+        formatter.dateFormat = "yyyy年M月d日"
+        dayDetails = Dictionary(uniqueKeysWithValues: resolvedCalendar.weeks
+            .flatMap(\.days)
+            .compactMap { $0 }
+            .map { value in
+                (value.id, Self.dayDetail(value, formatter: formatter))
+            })
+        switch activity.availability {
+        case .available: notice = nil
+        case .partial: notice = "仅统计本机现有数据"
+        case .unavailable: notice = "年度活动暂时不可用"
+        }
+        metrics = [
+            TokenActivityMetricPresentation(
+                id: "total",
+                title: "近 365 天 Token",
+                value: Self.tokenText(activity.totalTokens)
+            ),
+            TokenActivityMetricPresentation(
+                id: "peak",
+                title: "峰值日 Token",
+                value: Self.tokenText(activity.peakDailyTokens)
+            ),
+            TokenActivityMetricPresentation(
+                id: "active-days",
+                title: "活跃天数",
+                value: Self.dayCountText(activity.activeDays)
+            ),
+            TokenActivityMetricPresentation(
+                id: "current-streak",
+                title: "当前连续天数",
+                value: Self.dayCountText(activity.currentStreakDays)
+            ),
+            TokenActivityMetricPresentation(
+                id: "longest-streak",
+                title: "最长连续天数",
+                value: Self.dayCountText(activity.longestStreakDays)
+            ),
+        ]
+    }
+
+    public func dayDetail(_ value: TokenActivityCalendarDay) -> String {
+        dayDetails[value.id] ?? value.day.dateKey
+    }
+
+    private static func dayDetail(
+        _ value: TokenActivityCalendarDay,
+        formatter: DateFormatter
+    ) -> String {
+        let date = formatter.string(from: value.day.date)
+        guard let tokens = value.day.tokens else { return "\(date) · 数据未知" }
+        let tokenText = "\(TokenQuantityFormatter.compactString(tokens)) Token"
+        guard let turns = value.day.turnCount else { return "\(date) · \(tokenText)" }
+        return "\(date) · \(tokenText) · \(turns) 轮"
+    }
+
+    private static func tokenText(_ value: Int64?) -> String {
+        value.map(TokenQuantityFormatter.compactString) ?? "--"
+    }
+
+    private static func dayCountText(_ value: Int?) -> String {
+        value.map { "\($0) 天" } ?? "--"
+    }
+}
+
 public enum TrendSelectionResolver {
     public static func nearest(
         to selectedDate: Date?,
@@ -724,6 +1539,9 @@ public struct HealthPresentation: Equatable, Sendable {
 }
 
 public struct OverviewPresentation: Equatable, Sendable {
+    private static let maximumSessionRows = 5
+    private static let maximumProjectRows = 5
+
     public let account: CodexAccountPresentation
     public let quotaWindows: [QuotaWindowPresentation]
     public let resetCredits: ResetCreditsPresentation
@@ -734,6 +1552,8 @@ public struct OverviewPresentation: Equatable, Sendable {
     public let totalTokens: DisplayMetric
     public let tokenBreakdown: TokenBreakdownPresentation
     public let weeklyTokenBreakdown: TokenBreakdownPresentation
+    public let tokenActivity: TokenActivityPresentation
+    public let activityDistribution: OverviewActivityPresentation
     public let trend: [TrendPresentation]
     public let usageModelTrend: [UsageModelTrendBucket]
     public let weeklyUsageModelTrend: [UsageModelTrendBucket]
@@ -776,15 +1596,23 @@ public struct OverviewPresentation: Equatable, Sendable {
         self.totalTokens = DisplayMetric(responses.usage.totals.totalTokens)
         self.tokenBreakdown = TokenBreakdownPresentation(responses.usage.totals)
         self.weeklyTokenBreakdown = TokenBreakdownPresentation(responses.weeklyUsage.totals)
+        self.tokenActivity = TokenActivityPresentation(responses.tokenActivityUsage)
+        self.activityDistribution = OverviewActivityPresentation(responses.usage)
         self.trend = responses.usage.trend.map(TrendPresentation.init)
         self.usageModelTrend = UsageModelTrendResolver.buckets(responses.usage)
         self.weeklyUsageModelTrend = UsageModelTrendResolver.buckets(responses.weeklyUsage)
-        self.sessions = responses.sessions.items.map(SessionPresentation.init)
+        self.sessions = Array(
+            responses.sessions.items.map(SessionPresentation.init)
+                .prefix(Self.maximumSessionRows)
+        )
         let rawProjects = responses.projects.items.map(ProjectPresentation.init)
         let otherProjectBreakdown = Self.projectOtherBreakdown(
             matched: TokenBreakdownPresentation(responses.projects.matchedTotals),
             projects: rawProjects)
-        self.projects = Self.mergedProjectRows(rawProjects, otherBreakdown: otherProjectBreakdown)
+        self.projects = Array(
+            Self.mergedProjectRows(rawProjects, otherBreakdown: otherProjectBreakdown)
+                .prefix(Self.maximumProjectRows)
+        )
         let weeklyProjectRows = responses.weeklyProjects.items
             .map(ProjectPresentation.init)
             .filter { !$0.isOther }
@@ -1025,6 +1853,26 @@ public struct OverviewRequestSet: Sendable {
         return content(range: range).usage
     }
 
+    public static func tokenActivityRequest(
+        now: Date = Date(),
+        calendar inputCalendar: Calendar = .current
+    ) -> Codexpulse_Core_V1_UsageCostRequest {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = inputCalendar.timeZone
+        let today = calendar.startOfDay(for: now)
+        let start = calendar.date(byAdding: .day, value: -364, to: today) ?? today
+
+        var exactRange = Codexpulse_Core_V1_UTCTimeRange()
+        exactRange.startAtMs = Int64(start.timeIntervalSince1970 * 1_000)
+        exactRange.endAtMs = Int64(now.timeIntervalSince1970 * 1_000)
+        exactRange.timeZone = calendar.timeZone.identifier
+
+        var request = Codexpulse_Core_V1_UsageCostRequest()
+        request.exactRange = exactRange
+        request.granularity = "day"
+        return request
+    }
+
     public static func resolveRange(
         _ requestedPreset: DateRangePreset,
         quota: Codexpulse_Core_V1_QuotaCurrentResponse,
@@ -1080,11 +1928,12 @@ public struct OverviewRequestSet: Sendable {
         var usage = Codexpulse_Core_V1_UsageCostRequest()
         usage.exactRange = exactRange
         usage.granularity = range.granularity
+        usage.includeActivityDistribution = true
 
         var sessionPage = Codexpulse_Core_V1_PageRequest()
         sessionPage.limit = sessionLimit
         var sessionSort = Codexpulse_Core_V1_SortTerm()
-        sessionSort.field = "lastActivityAt"
+        sessionSort.field = "totalTokens"
         sessionSort.direction = "desc"
         var sessionQuery = Codexpulse_Core_V1_QueryRequest()
         sessionQuery.page = sessionPage

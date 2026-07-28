@@ -62,7 +62,11 @@ func TestQuotaCurrentAndSettingsReturnVersionedRedactedFacts(t *testing.T) {
 		}
 	}
 	assertEditableField(t, settings.EditableFields, "refresh.quotaIntervalSeconds", true, int64Pointer(60), int64Pointer(1800))
-	assertEditableField(t, settings.EditableFields, "updates.channel", false, nil, nil)
+	assertEditableField(t, settings.EditableFields, "updates.channel", true, nil, nil)
+	assertEditableOptions(
+		t, settings.EditableFields, "updates.channel",
+		[]string{"stable", "prerelease"},
+	)
 	assertEditableOptions(
 		t, settings.EditableFields, "ui.overviewRange",
 		[]string{"quota_week", "today", "seven_days", "thirty_days"},
