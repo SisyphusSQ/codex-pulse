@@ -60,6 +60,7 @@
 57. 将原生 Popover 的最近会话替换为周额度周期项目 Token Top 5，独立绑定通用周额度精确 UTC 范围，并在分页前排除未归类的“其他”项目
 58. 将配额页每日 Token 趋势改为真实模型日明细堆叠柱，新增中文数量级纵轴与鼠标悬停详情；模型合计无法与当日总量对账时仅展示总量并明确标记明细不可用
 59. 新增原生 macOS 版本提醒：设置可选择稳定版或预发布版通道，Swift 客户端按 SemVer 筛选可信 GitHub Releases，并仅在菜单栏 Popover 展示可点击的新版本卡片
+60. 新增原生 macOS“登录时启动 Codex Pulse”设置，以 `SMAppService.mainApp` 的系统状态作为唯一真相，支持注册、取消、待系统批准、外部状态漂移刷新和稳定错误提示
 
 #### optimization:
 1. [TOO-285] 完善 AppIcon、ICNS 与 Tray Template 资产闭环，新增冻结源校验、严格灰阶 1x/2x 派生、macOS bundle/ZIP 资源读回及可重复导出与 live smoke 证据

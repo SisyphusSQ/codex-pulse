@@ -369,11 +369,13 @@ struct RuntimeActionControl: View {
 
 struct SettingsView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var loginItemSettings: LoginItemSettingsModel
 
     var body: some View {
         FeatureStateView(state: model.settingsState, emptyTitle: "设置不可用", emptySystemImage: "gearshape") { response in
             settingsContent(response)
         }
+        .onAppear { loginItemSettings.refreshStatus() }
         .accessibilityIdentifier("page.settings")
     }
 
@@ -382,7 +384,7 @@ struct SettingsView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("设置").font(.largeTitle.bold())
-                    Text("管理数据更新、默认页面和版本检查")
+                    Text("管理数据更新、启动方式、默认页面和版本检查")
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -403,6 +405,7 @@ struct SettingsView: View {
                     updatesSection(response)
                     uiSection(response)
                 }
+                loginItemSection
                 Section("本机数据") {
                     LabeledContent(
                         "配置状态",
@@ -490,6 +493,94 @@ struct SettingsView: View {
                 }
             }
             .disabled(!editable("ui.overviewRange", response) || settingsAreBusy)
+        }
+    }
+
+    private var loginItemSection: some View {
+        Section("启动") {
+            Toggle(
+                "登录时启动 Codex Pulse",
+                isOn: Binding(
+                    get: { loginItemSettings.isRequested },
+                    set: { loginItemSettings.setRequested($0) }
+                )
+            )
+            .disabled(
+                loginItemSettings.isChanging || loginItemSettings.status == .notFound
+            )
+            .accessibilityIdentifier("settings.login-at-launch")
+
+            Text("此项会立即提交给 macOS，无需点击“保存更改”。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                loginItemStatusLabel
+                if loginItemSettings.isChanging {
+                    Spacer()
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("正在更新登录项")
+                }
+            }
+
+            Text(loginItemStatusDescription)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if loginItemSettings.status == .requiresApproval {
+                Button("打开系统登录项设置") {
+                    loginItemSettings.openSystemSettings()
+                }
+                .accessibilityIdentifier("settings.login-at-launch.open-system-settings")
+            }
+
+            if let failure = loginItemSettings.actionFailure {
+                Label(loginItemFailureDescription(failure), systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("settings.login-at-launch.error")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var loginItemStatusLabel: some View {
+        switch loginItemSettings.status {
+        case .notRegistered:
+            Label("未启用", systemImage: "minus.circle")
+                .foregroundStyle(.secondary)
+        case .enabled:
+            Label("已启用", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        case .requiresApproval:
+            Label("等待系统批准", systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+        case .notFound:
+            Label("登录项不可用", systemImage: "questionmark.circle")
+                .foregroundStyle(.orange)
+        }
+    }
+
+    private var loginItemStatusDescription: String {
+        switch loginItemSettings.status {
+        case .notRegistered:
+            "Codex Pulse 不会在你登录 Mac 时自动打开。"
+        case .enabled:
+            "下次登录 Mac 时，系统会自动打开 Codex Pulse。"
+        case .requiresApproval:
+            "请前往“系统设置 → 通用 → 登录项与扩展”，允许 Codex Pulse 在登录时打开。"
+        case .notFound:
+            "系统无法识别当前 Codex Pulse App。请从完整的 App 安装包打开后重试。"
+        }
+    }
+
+    private func loginItemFailureDescription(_ failure: LoginItemActionFailure) -> String {
+        switch failure {
+        case .registrationFailed:
+            "无法启用登录时启动。系统没有接受本次更改，请稍后重试。"
+        case .unregistrationFailed:
+            "无法关闭登录时启动。系统没有接受本次更改，请稍后重试。"
         }
     }
 

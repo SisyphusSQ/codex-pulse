@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private let configuration: AppLaunchConfiguration
     private let model: AppModel
+    private let loginItemSettings: LoginItemSettingsModel
     private let openExternalURL: @MainActor (URL) -> Bool
     private var window: NSWindow?
     private var statusItemController: StatusItemController?
@@ -23,10 +24,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     init(
         configuration: AppLaunchConfiguration,
+        loginItemService: any LoginItemServiceManaging = MainAppLoginItemService(),
         openExternalURL: @escaping @MainActor (URL) -> Bool = { NSWorkspace.shared.open($0) }
     ) {
         self.configuration = configuration
         self.model = AppModel(configuration: configuration)
+        self.loginItemSettings = LoginItemSettingsModel(service: loginItemService)
         self.openExternalURL = openExternalURL
         super.init()
     }
@@ -53,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         guard !configuration.smokeMode else { return }
+        loginItemSettings.refreshStatus()
         model.applicationDidBecomeActive()
     }
 
@@ -207,7 +211,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func buildNativeSurfaces() {
-        let root = RootView(model: model)
+        let root = RootView(model: model, loginItemSettings: loginItemSettings)
         let hosting = NSHostingController(rootView: root)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1_080, height: 720),

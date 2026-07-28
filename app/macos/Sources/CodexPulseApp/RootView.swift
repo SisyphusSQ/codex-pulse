@@ -4,6 +4,7 @@ import SwiftUI
 
 struct RootView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var loginItemSettings: LoginItemSettingsModel
 
     var body: some View {
         NavigationSplitView {
@@ -135,7 +136,9 @@ struct RootView: View {
             case .sourcesJobs:
                 RuntimeAwarePage(model: model) { SourcesJobsView(model: model) }
             case .settings:
-                RuntimeAwarePage(model: model) { SettingsView(model: model) }
+                RuntimeAwarePage(model: model) {
+                    SettingsView(model: model, loginItemSettings: loginItemSettings)
+                }
             }
         }
         .id(model.selectedFeature)
