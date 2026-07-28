@@ -1,7 +1,9 @@
 package store
 
-var schedulerSchemaObjects = []schemaObject{
-	{objectType: "table", name: "live_scan_jobs", statement: `CREATE TABLE IF NOT EXISTS live_scan_jobs (
+import storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
+
+var schedulerSchemaObjects = []storeschema.Object{
+	{ObjectType: "table", Name: "live_scan_jobs", Statement: `CREATE TABLE IF NOT EXISTS live_scan_jobs (
 		job_id TEXT PRIMARY KEY CHECK (length(job_id) > 0) REFERENCES job_runs(job_id) ON DELETE CASCADE,
 		request_id TEXT NOT NULL UNIQUE CHECK (length(request_id) > 0),
 		home_generation INTEGER NOT NULL CHECK (home_generation >= 0),
@@ -49,7 +51,7 @@ var schedulerSchemaObjects = []schemaObject{
 			OR (action_kind != 'added' AND previous_source_file_id IS NOT NULL)
 		)
 	) STRICT`},
-	{objectType: "table", name: "scheduler_tasks", statement: `CREATE TABLE IF NOT EXISTS scheduler_tasks (
+	{ObjectType: "table", Name: "scheduler_tasks", Statement: `CREATE TABLE IF NOT EXISTS scheduler_tasks (
 		task_id TEXT PRIMARY KEY CHECK (length(task_id) > 0),
 		dedupe_key TEXT NOT NULL UNIQUE CHECK (length(dedupe_key) > 0),
 		target_kind TEXT NOT NULL CHECK (target_kind IN ('bootstrap', 'live_scan')),
@@ -84,7 +86,7 @@ var schedulerSchemaObjects = []schemaObject{
 			OR (state = 'interrupted' AND last_started_at_ms IS NOT NULL AND finished_at_ms IS NOT NULL)
 		)
 	) STRICT`},
-	{objectType: "table", name: "scheduler_cycles", statement: `CREATE TABLE IF NOT EXISTS scheduler_cycles (
+	{ObjectType: "table", Name: "scheduler_cycles", Statement: `CREATE TABLE IF NOT EXISTS scheduler_cycles (
 		commit_order INTEGER PRIMARY KEY AUTOINCREMENT,
 		cycle_id TEXT NOT NULL UNIQUE CHECK (length(cycle_id) > 0),
 		task_id TEXT NOT NULL CHECK (length(task_id) > 0) REFERENCES scheduler_tasks(task_id) ON DELETE CASCADE,
@@ -116,14 +118,14 @@ var schedulerSchemaObjects = []schemaObject{
 			OR (outcome = 'interrupted' AND stop_reason IN ('cancelled', 'worker_panic'))
 		)
 	) STRICT`},
-	{objectType: "index", name: "idx_live_scan_jobs_generation", statement: `CREATE INDEX IF NOT EXISTS idx_live_scan_jobs_generation
+	{ObjectType: "index", Name: "idx_live_scan_jobs_generation", Statement: `CREATE INDEX IF NOT EXISTS idx_live_scan_jobs_generation
 		ON live_scan_jobs(home_generation, updated_at_ms DESC, job_id DESC)`},
-	{objectType: "index", name: "idx_scheduler_tasks_active", statement: `CREATE INDEX IF NOT EXISTS idx_scheduler_tasks_active
+	{ObjectType: "index", Name: "idx_scheduler_tasks_active", Statement: `CREATE INDEX IF NOT EXISTS idx_scheduler_tasks_active
 		ON scheduler_tasks(state, lane, queue_order_ms, task_id)`},
-	{objectType: "index", name: "idx_scheduler_tasks_generation", statement: `CREATE INDEX IF NOT EXISTS idx_scheduler_tasks_generation
+	{ObjectType: "index", Name: "idx_scheduler_tasks_generation", Statement: `CREATE INDEX IF NOT EXISTS idx_scheduler_tasks_generation
 		ON scheduler_tasks(home_generation, state, updated_at_ms DESC, task_id DESC)`},
-	{objectType: "index", name: "idx_scheduler_cycles_recent", statement: `CREATE INDEX IF NOT EXISTS idx_scheduler_cycles_recent
+	{ObjectType: "index", Name: "idx_scheduler_cycles_recent", Statement: `CREATE INDEX IF NOT EXISTS idx_scheduler_cycles_recent
 		ON scheduler_cycles(commit_order DESC)`},
-	{objectType: "index", name: "idx_scheduler_cycles_task", statement: `CREATE INDEX IF NOT EXISTS idx_scheduler_cycles_task
+	{ObjectType: "index", Name: "idx_scheduler_cycles_task", Statement: `CREATE INDEX IF NOT EXISTS idx_scheduler_cycles_task
 		ON scheduler_cycles(task_id, commit_order DESC)`},
 }

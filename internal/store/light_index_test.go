@@ -8,30 +8,32 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
-	"gorm.io/gorm"
+	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
 )
 
 func TestReplaceLightMetadataPublishesOneGenerationAndRemovesStaleSessions(t *testing.T) {
 	t.Parallel()
 
-	repository := openRuntimeRepository(t)
-	home := LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
+	repository := openLightRuntimeRepository(t)
+	home := storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
 	name := "真实标题"
 	path := "/confirmed-home/sessions/one.jsonl"
-	if err := repository.ReplaceLightMetadata(context.Background(), LightMetadataSnapshot{
+	if err := repository.ReplaceLightMetadata(context.Background(), storelight.LightMetadataSnapshot{
 		Home: home, Generation: 1, ReadyAtMS: 1_000,
-		Sessions: []LightSessionMetadata{
+		Sessions: []storelight.LightSessionMetadata{
 			{SessionID: "one", ThreadName: &name, CWD: "/workspace/one", RolloutPath: &path, CreatedAtMS: 100, UpdatedAtMS: 200},
 			{SessionID: "stale", CWD: "/workspace/stale", CreatedAtMS: 300, UpdatedAtMS: 400},
 		},
 	}); err != nil {
 		t.Fatalf("ReplaceLightMetadata(first) error = %v", err)
 	}
-	if err := repository.ReplaceLightMetadata(context.Background(), LightMetadataSnapshot{
+	if err := repository.ReplaceLightMetadata(context.Background(), storelight.LightMetadataSnapshot{
 		Home: home, Generation: 2, ReadyAtMS: 2_000,
-		Sessions: []LightSessionMetadata{
+		Sessions: []storelight.LightSessionMetadata{
 			{SessionID: "one", ThreadName: &name, CWD: "/workspace/renamed", RolloutPath: &path, CreatedAtMS: 100, UpdatedAtMS: 500},
 		},
 	}); err != nil {
@@ -40,7 +42,7 @@ func TestReplaceLightMetadataPublishesOneGenerationAndRemovesStaleSessions(t *te
 
 	state, err := repository.LightIndexState(context.Background())
 	if err != nil || state.MetadataGeneration != 2 || state.MetadataReadyAtMS == nil || *state.MetadataReadyAtMS != 2_000 {
-		t.Fatalf("LightIndexState() = %#v, %v", state, err)
+		t.Fatalf("storelight.LightIndexState() = %#v, %v", state, err)
 	}
 	sessions, err := repository.ListLightSessions(context.Background())
 	if err != nil || len(sessions) != 1 {
@@ -55,21 +57,21 @@ func TestReplaceLightMetadataPublishesOneGenerationAndRemovesStaleSessions(t *te
 func TestReplaceLightMetadataRejectsHomeGenerationConflictAtomically(t *testing.T) {
 	t.Parallel()
 
-	repository := openRuntimeRepository(t)
-	first := LightMetadataSnapshot{
-		Home:       LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2},
+	repository := openLightRuntimeRepository(t)
+	first := storelight.LightMetadataSnapshot{
+		Home:       storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2},
 		Generation: 1, ReadyAtMS: 1_000,
-		Sessions: []LightSessionMetadata{{SessionID: "one", CWD: "/workspace", CreatedAtMS: 100, UpdatedAtMS: 200}},
+		Sessions: []storelight.LightSessionMetadata{{SessionID: "one", CWD: "/workspace", CreatedAtMS: 100, UpdatedAtMS: 200}},
 	}
 	if err := repository.ReplaceLightMetadata(context.Background(), first); err != nil {
 		t.Fatalf("ReplaceLightMetadata(first) error = %v", err)
 	}
-	conflict := LightMetadataSnapshot{
-		Home:       LightHomeIdentity{Path: "/other-home", DeviceID: "9", Inode: 10},
+	conflict := storelight.LightMetadataSnapshot{
+		Home:       storelight.LightHomeIdentity{Path: "/other-home", DeviceID: "9", Inode: 10},
 		Generation: 2, ReadyAtMS: 2_000,
-		Sessions: []LightSessionMetadata{{SessionID: "other", CWD: "/other", CreatedAtMS: 300, UpdatedAtMS: 400}},
+		Sessions: []storelight.LightSessionMetadata{{SessionID: "other", CWD: "/other", CreatedAtMS: 300, UpdatedAtMS: 400}},
 	}
-	if err := repository.ReplaceLightMetadata(context.Background(), conflict); !errors.Is(err, ErrLightHomeFence) {
+	if err := repository.ReplaceLightMetadata(context.Background(), conflict); !errors.Is(err, storelight.ErrLightHomeFence) {
 		t.Fatalf("ReplaceLightMetadata(conflict) error = %v", err)
 	}
 	sessions, err := repository.ListLightSessions(context.Background())
@@ -82,29 +84,29 @@ func TestReplaceLightMetadataForConfirmedHomeSwitchDropsOldDerivedIndex(t *testi
 	t.Parallel()
 
 	repository := lightIndexRepositoryFixture(t)
-	oldHome := LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
-	newHome := LightHomeIdentity{Path: "/next-home", DeviceID: "9", Inode: 10}
-	if err := repository.ReplaceLightMetadataForHomeSwitch(context.Background(), oldHome, LightMetadataSnapshot{
+	oldHome := storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
+	newHome := storelight.LightHomeIdentity{Path: "/next-home", DeviceID: "9", Inode: 10}
+	if err := repository.ReplaceLightMetadataForHomeSwitch(context.Background(), oldHome, storelight.LightMetadataSnapshot{
 		Home: newHome, Generation: 1, ReadyAtMS: 3_000,
-		Sessions: []LightSessionMetadata{{SessionID: "next", CWD: "/workspace/next", CreatedAtMS: 300, UpdatedAtMS: 400}},
+		Sessions: []storelight.LightSessionMetadata{{SessionID: "next", CWD: "/workspace/next", CreatedAtMS: 300, UpdatedAtMS: 400}},
 	}); err != nil {
 		t.Fatalf("ReplaceLightMetadataForHomeSwitch() error = %v", err)
 	}
 	state, err := repository.LightIndexState(context.Background())
 	if err != nil || state.Home != newHome || state.MetadataGeneration != 1 {
-		t.Fatalf("LightIndexState() = %#v, %v", state, err)
+		t.Fatalf("storelight.LightIndexState() = %#v, %v", state, err)
 	}
 	sessions, err := repository.ListLightSessions(context.Background())
 	if err != nil || len(sessions) != 1 || sessions[0].SessionID != "next" {
 		t.Fatalf("ListLightSessions() = %#v, %v", sessions, err)
 	}
-	if _, err := repository.LightSessionTokenUsage(context.Background(), "one"); !errors.Is(err, ErrNotFound) {
+	if _, err := repository.LightSessionTokenUsage(context.Background(), "one"); !errors.Is(err, storelight.ErrNotFound) {
 		t.Fatalf("old Home token facts survived switch: %v", err)
 	}
-	if err := repository.ReplaceLightMetadataForHomeSwitch(context.Background(), oldHome, LightMetadataSnapshot{
-		Home:       LightHomeIdentity{Path: "/third-home", DeviceID: "11", Inode: 12},
+	if err := repository.ReplaceLightMetadataForHomeSwitch(context.Background(), oldHome, storelight.LightMetadataSnapshot{
+		Home:       storelight.LightHomeIdentity{Path: "/third-home", DeviceID: "11", Inode: 12},
 		Generation: 1, ReadyAtMS: 4_000,
-	}); !errors.Is(err, ErrLightHomeFence) {
+	}); !errors.Is(err, storelight.ErrLightHomeFence) {
 		t.Fatalf("stale expected Home error = %v", err)
 	}
 }
@@ -112,16 +114,16 @@ func TestReplaceLightMetadataForConfirmedHomeSwitchDropsOldDerivedIndex(t *testi
 func TestReplaceLightMetadataRejectsDuplicateSessionIDs(t *testing.T) {
 	t.Parallel()
 
-	repository := openRuntimeRepository(t)
-	err := repository.ReplaceLightMetadata(context.Background(), LightMetadataSnapshot{
-		Home:       LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2},
+	repository := openLightRuntimeRepository(t)
+	err := repository.ReplaceLightMetadata(context.Background(), storelight.LightMetadataSnapshot{
+		Home:       storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2},
 		Generation: 1, ReadyAtMS: 1_000,
-		Sessions: []LightSessionMetadata{
+		Sessions: []storelight.LightSessionMetadata{
 			{SessionID: "same", CWD: "/one", CreatedAtMS: 100, UpdatedAtMS: 200},
 			{SessionID: "same", CWD: "/two", CreatedAtMS: 300, UpdatedAtMS: 400},
 		},
 	})
-	if !errors.Is(err, ErrInvalidRecord) {
+	if !errors.Is(err, storelight.ErrInvalidRecord) {
 		t.Fatalf("ReplaceLightMetadata(duplicate) error = %v", err)
 	}
 	if sessions, listErr := repository.ListLightSessions(context.Background()); listErr != nil || len(sessions) != 0 {
@@ -138,17 +140,17 @@ func TestLightTokenRebuildPublishesOnlyAfterCompleteAndResumesCheckpoint(t *test
 	if err != nil || generation != 1 {
 		t.Fatalf("StartLightTokenRebuild() = %d, %v", generation, err)
 	}
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: 4_000, Complete: false,
 			InputTokens: 100, CachedInputTokens: 20, OutputTokens: 10, ReasoningTokens: 2,
 			PhysicalBytesRead: 4_096, LinesSeen: 20, CandidateLines: 2, JSONDecoded: 2,
 		},
-		DailyDeltas: []LightTokenDailyDelta{{
+		DailyDeltas: []storelight.LightTokenDailyDelta{{
 			DayStartMS: 1_721_347_200_000, InputTokens: 100, CachedInputTokens: 20, OutputTokens: 10, ReasoningTokens: 2,
 		}},
-		TimedDeltas: []LightTokenTimedDelta{{
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
 			SourceOffset: 3_900, ObservedAtMS: 1_721_347_199_000,
 			InputTokens: 100, CachedInputTokens: 20, OutputTokens: 10, ReasoningTokens: 2,
 		}},
@@ -159,21 +161,21 @@ func TestLightTokenRebuildPublishesOnlyAfterCompleteAndResumesCheckpoint(t *test
 	if err != nil || pending.Generation != generation || pending.Checkpoint.DurableOffset != 4_000 || pending.Checkpoint.Complete {
 		t.Fatalf("PendingLightTokenScan() = %#v, %v", pending, err)
 	}
-	if _, err := repository.LightSessionTokenUsage(context.Background(), "one"); !errors.Is(err, ErrNotFound) {
+	if _, err := repository.LightSessionTokenUsage(context.Background(), "one"); !errors.Is(err, storelight.ErrNotFound) {
 		t.Fatalf("partial generation became visible: %v", err)
 	}
 
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_200, Activate: true,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: identity.SizeBytes, Complete: true,
 			InputTokens: 130, CachedInputTokens: 25, OutputTokens: 15, ReasoningTokens: 4,
 			PhysicalBytesRead: identity.SizeBytes, LinesSeen: 30, CandidateLines: 3, JSONDecoded: 3,
 		},
-		DailyDeltas: []LightTokenDailyDelta{{
+		DailyDeltas: []storelight.LightTokenDailyDelta{{
 			DayStartMS: 1_721_347_200_000, InputTokens: 30, CachedInputTokens: 5, OutputTokens: 5, ReasoningTokens: 2,
 		}},
-		TimedDeltas: []LightTokenTimedDelta{{
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
 			SourceOffset: 5_000, ObservedAtMS: 1_721_347_200_000,
 			InputTokens: 30, CachedInputTokens: 5, OutputTokens: 5, ReasoningTokens: 2,
 		}},
@@ -183,18 +185,18 @@ func TestLightTokenRebuildPublishesOnlyAfterCompleteAndResumesCheckpoint(t *test
 	usage, err := repository.LightSessionTokenUsage(context.Background(), "one")
 	if err != nil || usage.Generation != generation || usage.InputTokens != 130 || usage.CachedInputTokens != 25 ||
 		usage.OutputTokens != 15 || usage.ReasoningTokens != 4 || !usage.Complete {
-		t.Fatalf("LightSessionTokenUsage() = %#v, %v", usage, err)
+		t.Fatalf("storelight.LightSessionTokenUsage() = %#v, %v", usage, err)
 	}
 	daily, err := repository.LightSessionTokenDaily(context.Background(), "one")
 	if err != nil || len(daily) != 1 || daily[0].InputTokens != 130 || daily[0].CachedInputTokens != 25 ||
 		daily[0].OutputTokens != 15 || daily[0].ReasoningTokens != 4 {
-		t.Fatalf("LightSessionTokenDaily() = %#v, %v", daily, err)
+		t.Fatalf("storelight.LightSessionTokenDaily() = %#v, %v", daily, err)
 	}
 	timed, err := repository.LightSessionTokenTimed(context.Background(), "one", 0, 2_000_000_000_000)
 	if err != nil || len(timed) != 2 ||
 		timed[0].SourceOffset != 3_900 || timed[0].InputTokens != 100 ||
 		timed[1].SourceOffset != 5_000 || timed[1].InputTokens != 30 {
-		t.Fatalf("LightSessionTokenTimed() = %#v, %v", timed, err)
+		t.Fatalf("storelight.LightSessionTokenTimed() = %#v, %v", timed, err)
 	}
 }
 
@@ -212,14 +214,14 @@ func TestCommitLightTokenBatchRejectsMissingTimedDeltaWithoutAdvancingCheckpoint
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	err = repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: 4_000,
 			InputTokens:   10,
 		},
 	})
-	if !errors.Is(err, ErrLightTokenConflict) {
+	if !errors.Is(err, storelight.ErrLightTokenConflict) {
 		t.Fatalf("CommitLightTokenBatch(missing timed delta) error = %v", err)
 	}
 	pending, readErr := repository.PendingLightTokenScan(context.Background(), "one")
@@ -245,18 +247,18 @@ func TestCommitLightTokenBatchRejectsDuplicateSourceOffsetAtomically(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	err = repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: 4_000,
 			InputTokens:   20,
 		},
-		TimedDeltas: []LightTokenTimedDelta{
+		TimedDeltas: []storelight.LightTokenTimedDelta{
 			{SourceOffset: 3_900, ObservedAtMS: 100, InputTokens: 10},
 			{SourceOffset: 3_900, ObservedAtMS: 200, InputTokens: 10},
 		},
 	})
-	if !errors.Is(err, ErrLightTokenConflict) {
+	if !errors.Is(err, storelight.ErrLightTokenConflict) {
 		t.Fatalf("CommitLightTokenBatch(duplicate source offset) error = %v", err)
 	}
 	pending, readErr := repository.PendingLightTokenScan(context.Background(), "one")
@@ -282,29 +284,29 @@ func TestCommitLightTokenBatchRejectsPreviouslyStoredSourceOffsetAtomically(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: 4_000,
 			InputTokens:   10,
 		},
-		TimedDeltas: []LightTokenTimedDelta{{
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
 			SourceOffset: 3_900, ObservedAtMS: 100, InputTokens: 10,
 		}},
 	}); err != nil {
 		t.Fatalf("CommitLightTokenBatch(first) error = %v", err)
 	}
-	err = repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	err = repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_200,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: 5_000,
 			InputTokens:   20,
 		},
-		TimedDeltas: []LightTokenTimedDelta{{
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
 			SourceOffset: 3_900, ObservedAtMS: 200, InputTokens: 10,
 		}},
 	})
-	if !errors.Is(err, ErrLightTokenConflict) {
+	if !errors.Is(err, storelight.ErrLightTokenConflict) {
 		t.Fatalf("CommitLightTokenBatch(reused source offset) error = %v", err)
 	}
 	pending, readErr := repository.PendingLightTokenScan(context.Background(), "one")
@@ -331,14 +333,14 @@ func TestSessionAnalyticsFailsClosedWhenActiveTimedRowsDriftFromCheckpoint(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: identity.SizeBytes,
 			Complete:      true,
 			InputTokens:   10,
 		},
-		TimedDeltas: []LightTokenTimedDelta{{
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
 			SourceOffset: 4_000, ObservedAtMS: 200, InputTokens: 10,
 		}},
 	}); err != nil {
@@ -350,7 +352,7 @@ func TestSessionAnalyticsFailsClosedWhenActiveTimedRowsDriftFromCheckpoint(t *te
 	) error {
 		return transaction.WithContext(ctx).
 			Where("session_id = ? AND generation = ?", "one", generation).
-			Delete(&lightTokenTimedModel{}).Error
+			Delete(&lightTokenTimedTestModel{}).Error
 	}); err != nil {
 		t.Fatalf("delete active timed rows: %v", err)
 	}
@@ -393,14 +395,14 @@ func TestSessionAnalyticsFailsClosedForEveryTimedTokenDimensionDrift(t *testing.
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+			if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 				SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
-				Checkpoint: LightTokenCheckpoint{
+				Checkpoint: storelight.LightTokenCheckpoint{
 					DurableOffset: identity.SizeBytes, Complete: true,
 					InputTokens: 100, CachedInputTokens: 20,
 					OutputTokens: 30, ReasoningTokens: 10,
 				},
-				TimedDeltas: []LightTokenTimedDelta{{
+				TimedDeltas: []storelight.LightTokenTimedDelta{{
 					SourceOffset: 4_000, ObservedAtMS: 200,
 					InputTokens: 100, CachedInputTokens: 20,
 					OutputTokens: 30, ReasoningTokens: 10,
@@ -413,7 +415,7 @@ func TestSessionAnalyticsFailsClosedForEveryTimedTokenDimensionDrift(t *testing.
 				transaction *gorm.DB,
 			) error {
 				return transaction.WithContext(ctx).
-					Model(&lightTokenTimedModel{}).
+					Model(&lightTokenTimedTestModel{}).
 					Where("session_id = ? AND generation = ?", "one", generation).
 					UpdateColumn(test.column, gorm.Expr(test.column+" + 1")).
 					Error
@@ -447,9 +449,9 @@ func TestSessionAnalyticsAllowsKnownZeroCheckpointWithEmptyTimedTrend(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: identity.SizeBytes,
 			Complete:      true,
 		},
@@ -487,13 +489,13 @@ func TestSessionAnalyticsPreservesRepeatedDSTHourFromLightTimedDeltas(t *testing
 	}
 	firstObserved := mustParseCostTime(t, "2026-11-01T05:30:00Z")
 	secondObserved := mustParseCostTime(t, "2026-11-01T06:45:00Z")
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: identity.SizeBytes, Complete: true,
 			InputTokens: 10, OutputTokens: 20,
 		},
-		TimedDeltas: []LightTokenTimedDelta{
+		TimedDeltas: []storelight.LightTokenTimedDelta{
 			{SourceOffset: 4_000, ObservedAtMS: firstObserved, InputTokens: 10},
 			{SourceOffset: 5_000, ObservedAtMS: secondObserved, OutputTokens: 20},
 		},
@@ -533,10 +535,10 @@ func TestLightTokenRebuildKeepsOldActiveGenerationUntilReplacementActivates(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: first, UpdatedAtMS: 2_100, Activate: true,
-		Checkpoint: LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100},
-		TimedDeltas: []LightTokenTimedDelta{{
+		Checkpoint: storelight.LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100},
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
 			SourceOffset: 4_000, ObservedAtMS: 100, InputTokens: 100,
 		}},
 	}); err != nil {
@@ -546,10 +548,10 @@ func TestLightTokenRebuildKeepsOldActiveGenerationUntilReplacementActivates(t *t
 	if err != nil || second != 2 {
 		t.Fatalf("StartLightTokenRebuild(second) = %d, %v", second, err)
 	}
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: second, UpdatedAtMS: 3_100,
-		Checkpoint: LightTokenCheckpoint{DurableOffset: 4_000, InputTokens: 50},
-		TimedDeltas: []LightTokenTimedDelta{{
+		Checkpoint: storelight.LightTokenCheckpoint{DurableOffset: 4_000, InputTokens: 50},
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
 			SourceOffset: 3_900, ObservedAtMS: 100, InputTokens: 50,
 		}},
 	}); err != nil {
@@ -558,10 +560,10 @@ func TestLightTokenRebuildKeepsOldActiveGenerationUntilReplacementActivates(t *t
 	if usage, err := repository.LightSessionTokenUsage(context.Background(), "one"); err != nil || usage.Generation != first || usage.InputTokens != 100 {
 		t.Fatalf("old active usage not preserved: %#v, %v", usage, err)
 	}
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: second, UpdatedAtMS: 3_200, Activate: true,
-		Checkpoint: LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 150},
-		TimedDeltas: []LightTokenTimedDelta{{
+		Checkpoint: storelight.LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 150},
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
 			SourceOffset: 5_000, ObservedAtMS: 200, InputTokens: 100,
 		}},
 	}); err != nil {
@@ -581,10 +583,10 @@ func TestLightTokenAppendKeepsActiveCountersAndAdvancesSameGeneration(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
-		Checkpoint: LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100},
-		TimedDeltas: []LightTokenTimedDelta{{
+		Checkpoint: storelight.LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100},
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
 			SourceOffset: 4_000, ObservedAtMS: 100, InputTokens: 100,
 		}},
 	}); err != nil {
@@ -601,10 +603,10 @@ func TestLightTokenAppendKeepsActiveCountersAndAdvancesSameGeneration(t *testing
 	if usage, err := repository.LightSessionTokenUsage(context.Background(), "one"); err != nil || usage.InputTokens != 100 {
 		t.Fatalf("active counters disappeared during append: %#v, %v", usage, err)
 	}
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 3_100, Activate: true,
-		Checkpoint: LightTokenCheckpoint{DurableOffset: grown.SizeBytes, Complete: true, InputTokens: 130},
-		TimedDeltas: []LightTokenTimedDelta{{
+		Checkpoint: storelight.LightTokenCheckpoint{DurableOffset: grown.SizeBytes, Complete: true, InputTokens: 130},
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
 			SourceOffset: grown.SizeBytes, ObservedAtMS: 200, InputTokens: 30,
 		}},
 	}); err != nil {
@@ -625,17 +627,17 @@ func TestSessionAnalyticsPrefersLightMetadataAndTokenTotals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: identity.SizeBytes, Complete: true,
 			InputTokens: 100, CachedInputTokens: 20, OutputTokens: 10, ReasoningTokens: 2,
 		},
-		DailyDeltas: []LightTokenDailyDelta{{
+		DailyDeltas: []storelight.LightTokenDailyDelta{{
 			DayStartMS:  0,
 			InputTokens: 100, CachedInputTokens: 20, OutputTokens: 10, ReasoningTokens: 2,
 		}},
-		TimedDeltas: []LightTokenTimedDelta{{
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
 			SourceOffset: 4_000, ObservedAtMS: 200,
 			InputTokens: 100, CachedInputTokens: 20, OutputTokens: 10, ReasoningTokens: 2,
 		}},
@@ -655,7 +657,7 @@ func TestSessionAnalyticsPrefersLightMetadataAndTokenTotals(t *testing.T) {
 		record.LastActivityAtMS == nil || *record.LastActivityAtMS != 200 ||
 		record.Project.ProjectID == nil || record.Project.DisplayName == nil ||
 		*record.Project.DisplayName != "workspace" ||
-		record.Project.Source != AttributionSourceCWDPathDigest || record.TitleSource != AttributionSourceAppServerName {
+		record.Project.Source != attribution.SourceCWDPathDigest || record.TitleSource != attribution.SourceAppServerName {
 		t.Fatalf("record = %#v", record)
 	}
 	detail, err := repository.SessionAnalytics(context.Background(), SessionAnalyticsDetailFilter{
@@ -688,17 +690,17 @@ func TestSessionAnalyticsBucketsLightTimedUsageByRequestedLocalHour(t *testing.T
 	}
 	first := mustParseCostTime(t, "2026-07-26T16:30:00Z")
 	second := mustParseCostTime(t, "2026-07-26T17:45:00Z")
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: identity.SizeBytes, Complete: true,
 			InputTokens: 10, OutputTokens: 20,
 		},
-		DailyDeltas: []LightTokenDailyDelta{{
+		DailyDeltas: []storelight.LightTokenDailyDelta{{
 			DayStartMS:  mustParseCostTime(t, "2026-07-26T00:00:00Z"),
 			InputTokens: 10, OutputTokens: 20,
 		}},
-		TimedDeltas: []LightTokenTimedDelta{
+		TimedDeltas: []storelight.LightTokenTimedDelta{
 			{SourceOffset: 4_000, ObservedAtMS: first, InputTokens: 10},
 			{SourceOffset: 5_000, ObservedAtMS: second, OutputTokens: 20},
 		},
@@ -747,13 +749,13 @@ func TestSessionAnalyticsBucketsLightTimedUsageByLocalDayAcrossDates(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: identity.SizeBytes, Complete: true,
 			InputTokens: 10, OutputTokens: 20,
 		},
-		TimedDeltas: []LightTokenTimedDelta{
+		TimedDeltas: []storelight.LightTokenTimedDelta{
 			{
 				SourceOffset: 4_000,
 				ObservedAtMS: mustParseCostTime(t, "2026-07-26T15:30:00Z"),
@@ -798,13 +800,13 @@ func TestUsageCostRangeBucketsLightTimedDeltasInRequestedTimezone(t *testing.T) 
 		t.Fatal(err)
 	}
 	observedAtMS := time.Date(2024, 7, 18, 23, 30, 0, 0, time.UTC).UnixMilli()
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: identity.SizeBytes, Complete: true,
 			InputTokens: 100, CachedInputTokens: 20, OutputTokens: 10, ReasoningTokens: 2,
 		},
-		TimedDeltas: []LightTokenTimedDelta{{
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
 			SourceOffset: 4_000, ObservedAtMS: observedAtMS,
 			InputTokens: 100, CachedInputTokens: 20, OutputTokens: 10, ReasoningTokens: 2,
 		}},
@@ -855,12 +857,12 @@ func TestUsageCostRangeUsesExactPartialDayBoundaries(t *testing.T) {
 	}
 	before := time.Date(2026, 7, 22, 1, 0, 0, 0, time.UTC).UnixMilli()
 	inside := time.Date(2026, 7, 22, 2, 0, 0, 0, time.UTC).UnixMilli()
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: inside + 1, Activate: true,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 300,
 		},
-		TimedDeltas: []LightTokenTimedDelta{
+		TimedDeltas: []storelight.LightTokenTimedDelta{
 			{SourceOffset: 4_000, ObservedAtMS: before, InputTokens: 100},
 			{SourceOffset: 5_000, ObservedAtMS: inside, InputTokens: 200},
 		},
@@ -908,15 +910,15 @@ func TestUsageCostRangePricesAndGroupsLightTimedDeltasByModel(t *testing.T) {
 	}
 	model := "gpt-5.4-mini"
 	observedAtMS := time.Date(2026, 7, 19, 1, 0, 0, 0, time.UTC).UnixMilli()
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: observedAtMS + 1, Activate: true,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: identity.SizeBytes, Complete: true,
 			InputTokens: 1_000_000, CachedInputTokens: 200_000,
 			OutputTokens: 100_000, ReasoningTokens: 50_000,
 			CurrentModelKey: &model, CurrentModelSource: attribution.SourceModelCanonical,
 		},
-		TimedDeltas: []LightTokenTimedDelta{{
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
 			SourceOffset: 4_000, ObservedAtMS: observedAtMS,
 			ModelKey: &model, ModelSource: attribution.SourceModelCanonical,
 			InputTokens: 1_000_000, CachedInputTokens: 200_000,
@@ -991,15 +993,15 @@ func TestProjectAnalyticsGroupsLightTokenDeltasByCWDProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	observedAtMS := time.Date(2026, 7, 19, 1, 0, 0, 0, time.UTC).UnixMilli()
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
-		Checkpoint: LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: identity.SizeBytes, Complete: true,
 			InputTokens: 1_000_000, CachedInputTokens: 200_000,
 			OutputTokens: 100_000, ReasoningTokens: 50_000,
 			CurrentModelKey: &model, CurrentModelSource: attribution.SourceModelCanonical,
 		},
-		TimedDeltas: []LightTokenTimedDelta{{
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
 			SourceOffset: 4_000, ObservedAtMS: observedAtMS,
 			ModelKey: &model, ModelSource: attribution.SourceModelCanonical,
 			InputTokens: 1_000_000, CachedInputTokens: 200_000,
@@ -1058,10 +1060,10 @@ func TestProjectAnalyticsUsesExactPartialDayBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	observedAtMS := time.Date(2026, 7, 23, 1, 0, 0, 0, time.UTC).UnixMilli()
-	if err := repository.CommitLightTokenBatch(context.Background(), LightTokenBatch{
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
 		SessionID: "one", Generation: generation, UpdatedAtMS: observedAtMS + 1, Activate: true,
-		Checkpoint: LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100},
-		TimedDeltas: []LightTokenTimedDelta{{
+		Checkpoint: storelight.LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100},
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
 			SourceOffset: 4_000, ObservedAtMS: observedAtMS, InputTokens: 100,
 		}},
 	}); err != nil {
@@ -1091,13 +1093,13 @@ func TestLightAnalyticsGroupsCodexWorktreesAndKeepsScratchUsageAsOther(t *testin
 	t.Parallel()
 
 	ctx := context.Background()
-	repository := openRuntimeRepository(t)
-	home := LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
+	repository := openLightRuntimeRepository(t)
+	home := storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
 	root := t.TempDir()
 	worktreeOne := filepath.Join(root, ".codex", "worktrees", "aaaa", "codex-pulse")
 	worktreeTwo := filepath.Join(root, ".codex", "worktrees", "bbbb", "codex-pulse", "internal")
 	scratch := filepath.Join(root, "Codex", "2026-07-23", "quota-overview")
-	sessions := []LightSessionMetadata{
+	sessions := []storelight.LightSessionMetadata{
 		{SessionID: "worktree-one", CWD: worktreeOne, CreatedAtMS: 100, UpdatedAtMS: 200},
 		{SessionID: "worktree-two", CWD: worktreeTwo, CreatedAtMS: 100, UpdatedAtMS: 200},
 		{SessionID: "scratch", CWD: scratch, CreatedAtMS: 100, UpdatedAtMS: 200},
@@ -1106,14 +1108,14 @@ func TestLightAnalyticsGroupsCodexWorktreesAndKeepsScratchUsageAsOther(t *testin
 		path := filepath.Join(home.Path, "sessions", sessions[index].SessionID+".jsonl")
 		sessions[index].RolloutPath = &path
 	}
-	if err := repository.ReplaceLightMetadata(ctx, LightMetadataSnapshot{
+	if err := repository.ReplaceLightMetadata(ctx, storelight.LightMetadataSnapshot{
 		Home: home, Generation: 1, ReadyAtMS: 1_000, Sessions: sessions,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	observedAtMS := time.Date(2026, 7, 23, 1, 0, 0, 0, time.UTC).UnixMilli()
 	for index, session := range sessions {
-		identity := LightRolloutIdentity{
+		identity := storelight.LightRolloutIdentity{
 			Path: *session.RolloutPath, SourceFileID: "codex:" + session.SessionID,
 			Home: home, DeviceID: "3", Inode: int64(index + 10), SizeBytes: 8_192,
 			MTimeNS: 100, PrefixBytes: 4_096,
@@ -1124,10 +1126,10 @@ func TestLightAnalyticsGroupsCodexWorktreesAndKeepsScratchUsageAsOther(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := repository.CommitLightTokenBatch(ctx, LightTokenBatch{
+		if err := repository.CommitLightTokenBatch(ctx, storelight.LightTokenBatch{
 			SessionID: session.SessionID, Generation: generation, UpdatedAtMS: 2_100, Activate: true,
-			Checkpoint: LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100},
-			TimedDeltas: []LightTokenTimedDelta{{
+			Checkpoint: storelight.LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100},
+			TimedDeltas: []storelight.LightTokenTimedDelta{{
 				SourceOffset: 4_000, ObservedAtMS: observedAtMS + int64(index), InputTokens: 100,
 			}},
 		}); err != nil {
@@ -1213,15 +1215,15 @@ func TestLightAnalyticsGroupsCodexWorktreesAndKeepsScratchUsageAsOther(t *testin
 	}
 }
 
-func lightIndexRepositoryFixture(t *testing.T) *Repository {
+func lightIndexRepositoryFixture(t *testing.T) *lightTestRepository {
 	t.Helper()
-	repository := openRuntimeRepository(t)
+	repository := openLightRuntimeRepository(t)
 	path := "/confirmed-home/sessions/one.jsonl"
 	name := "真实标题"
-	if err := repository.ReplaceLightMetadata(context.Background(), LightMetadataSnapshot{
-		Home:       LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2},
+	if err := repository.ReplaceLightMetadata(context.Background(), storelight.LightMetadataSnapshot{
+		Home:       storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2},
 		Generation: 1, ReadyAtMS: 1_000,
-		Sessions: []LightSessionMetadata{{
+		Sessions: []storelight.LightSessionMetadata{{
 			SessionID: "one", ThreadName: &name, CWD: "/workspace", RolloutPath: &path, CreatedAtMS: 100, UpdatedAtMS: 200,
 		}},
 	}); err != nil {
@@ -1230,10 +1232,10 @@ func lightIndexRepositoryFixture(t *testing.T) *Repository {
 	return repository
 }
 
-func lightRolloutFixture() LightRolloutIdentity {
-	return LightRolloutIdentity{
+func lightRolloutFixture() storelight.LightRolloutIdentity {
+	return storelight.LightRolloutIdentity{
 		Path: "/confirmed-home/sessions/one.jsonl", SourceFileID: "codex:test",
-		Home:     LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2},
+		Home:     storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2},
 		DeviceID: "3", Inode: 4, SizeBytes: 8_192, MTimeNS: 100,
 		PrefixBytes: 4_096, PrefixSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		FingerprintSHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",

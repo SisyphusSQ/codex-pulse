@@ -6,15 +6,6 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 )
 
-type QueryInvalidationDomain = core.InvalidationDomain
-
-const (
-	QueryInvalidationIndex    = core.InvalidationIndex
-	QueryInvalidationQuota    = core.InvalidationQuota
-	QueryInvalidationHealth   = core.InvalidationHealth
-	QueryInvalidationSettings = core.InvalidationSettings
-)
-
 type queryInvalidationNotifier interface {
 	Notify(context.Context, core.InvalidationDomain) error
 }

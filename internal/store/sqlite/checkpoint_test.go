@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 func TestCheckpointWALRunsFixedPassiveCheckpoint(t *testing.T) {
@@ -40,7 +42,7 @@ func TestCheckpointWALDoesNotBlockActiveReadSnapshot(t *testing.T) {
 	releaseRead := make(chan struct{})
 	readResult := make(chan error, 1)
 	go func() {
-		readResult <- store.View(context.Background(), func(ctx context.Context, connection ReadConn) error {
+		readResult <- store.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 			transaction := connection.WithContext(ctx).Begin()
 			if transaction.Error != nil {
 				return transaction.Error
@@ -85,7 +87,7 @@ func TestCheckpointWALUsesLowPriorityQueueAndSkipsCanceledWork(t *testing.T) {
 	releaseFirst := make(chan struct{})
 	firstResult := make(chan error, 1)
 	go func() {
-		firstResult <- store.Write(context.Background(), func(context.Context, WriteTx) error {
+		firstResult <- store.Write(context.Background(), func(context.Context, *gorm.DB) error {
 			close(firstStarted)
 			<-releaseFirst
 			return nil

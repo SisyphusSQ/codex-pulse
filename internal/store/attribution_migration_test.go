@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -63,7 +64,7 @@ func TestApplicationMigrationAppendsAttributionSchemaToFrozenV3(t *testing.T) {
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 
-	err = database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
+	err = database.View(context.Background(), func(_ context.Context, connection *gorm.DB) error {
 		for _, table := range []string{"session_attributions", "turn_attributions"} {
 			if !connection.Migrator().HasTable(table) {
 				t.Errorf("v4 table %q missing", table)
@@ -132,7 +133,7 @@ func TestApplicationMigrationRollsBackV4WhenAttributionBackfillFails(t *testing.
 		t.Fatal("run() error = nil, want attribution backfill failure")
 	}
 	assertMigrationVersionAndHistory(t, database, 3, 3)
-	if err := database.View(ctx, func(_ context.Context, connection storesqlite.ReadConn) error {
+	if err := database.View(ctx, func(_ context.Context, connection *gorm.DB) error {
 		if connection.Migrator().HasTable("session_attributions") ||
 			connection.Migrator().HasTable("turn_attributions") {
 			t.Error("failed v4 attribution schema must roll back")
@@ -163,7 +164,7 @@ func TestApplicationMigrationRecomputesProjectIdentityRuleV2(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		if err := transaction.WithContext(ctx).Model(&sessionAttributionModel{}).
 			Where("1 = 1").Update("rule_version", 1).Error; err != nil {
 			return err
@@ -219,7 +220,7 @@ func TestApplicationMigrationRecomputesProjectIdentityRuleV2(t *testing.T) {
 		*first.Project.ProjectID != *second.Project.ProjectID || first.RuleVersion != 2 || second.RuleVersion != 2 {
 		t.Fatalf("migrated attributions = %#v and %#v, %v", first, second, err)
 	}
-	if err := database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	if err := database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var count int64
 		if err := connection.WithContext(ctx).Model(&costRollupGenerationModel{}).Count(&count).Error; err != nil {
 			return err
@@ -255,7 +256,7 @@ func TestAttributionSchemaColumnsForeignKeysAndStrictContract(t *testing.T) {
 		},
 	}
 
-	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		for table, expected := range wantColumns {
 			var strict int
 			if err := rawQueryRow(ctx, connection,
@@ -369,7 +370,7 @@ func TestAttributionSchemaRejectsPartialIdentityDisplayTuples(t *testing.T) {
 		{name: "turn model display only", model: &turnAttributionModel{}, where: "turn_id = ?", id: "turn-tuple-check", column: "model_key"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+			err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 				return transaction.WithContext(ctx).Model(test.model).
 					Where(test.where, test.id).
 					Update(test.column, gorm.Expr("NULL")).Error
@@ -383,8 +384,8 @@ func TestAttributionSchemaRejectsPartialIdentityDisplayTuples(t *testing.T) {
 
 func seedApplicationSchemaV3ForAttribution(t *testing.T, database *storesqlite.Store) {
 	t.Helper()
-	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		if err := ensureSchemaObjects(ctx, transaction, migrationSchemaObjects); err != nil {
+	err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
+		if err := storeschema.EnsureObjects(ctx, transaction, migrationSchemaObjects); err != nil {
 			return err
 		}
 		for _, migration := range applicationMigrations[:3] {
@@ -407,8 +408,8 @@ func seedApplicationSchemaV3ForAttribution(t *testing.T, database *storesqlite.S
 
 func seedApplicationSchemaV17ForAttribution(t *testing.T, database *storesqlite.Store) {
 	t.Helper()
-	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
-		if err := ensureSchemaObjects(ctx, transaction, migrationSchemaObjects); err != nil {
+	err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
+		if err := storeschema.EnsureObjects(ctx, transaction, migrationSchemaObjects); err != nil {
 			return err
 		}
 		for _, migration := range applicationMigrations[:17] {

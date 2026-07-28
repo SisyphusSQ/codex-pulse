@@ -9,7 +9,6 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	"github.com/SisyphusSQ/codex-pulse/internal/projectidentity"
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 const (
@@ -30,7 +29,7 @@ func (repository *Repository) SessionAttribution(
 		return SessionAttributionSnapshot{}, invalidRecord("session attribution ID must not be empty")
 	}
 	var result SessionAttributionSnapshot
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var model sessionAttributionModel
 		if err := connection.WithContext(ctx).Take(&model, "session_id = ?", sessionID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -56,7 +55,7 @@ func (repository *Repository) TurnAttribution(
 		return TurnAttributionSnapshot{}, invalidRecord("turn attribution ID must not be empty")
 	}
 	var result TurnAttributionSnapshot
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var model turnAttributionModel
 		if err := connection.WithContext(ctx).Take(&model, "turn_id = ?", turnID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -453,17 +452,17 @@ func upsertTurnAttribution(database *gorm.DB, model turnAttributionModel) error 
 func sessionAttributionFromModel(model sessionAttributionModel) SessionAttributionSnapshot {
 	return SessionAttributionSnapshot{
 		SessionID: model.SessionID, DisplayTitle: model.DisplayTitle,
-		TitleConfidence: AttributionConfidence(model.TitleConfidence),
-		TitleSource:     AttributionSource(model.TitleSource), TitleReason: AttributionReason(model.TitleReason),
+		TitleConfidence: attribution.Confidence(model.TitleConfidence),
+		TitleSource:     attribution.Source(model.TitleSource), TitleReason: attribution.Reason(model.TitleReason),
 		Project: ProjectAttribution{
 			ProjectID: cloneAttributionString(model.ProjectID), DisplayName: cloneAttributionString(model.ProjectDisplay),
-			Confidence: AttributionConfidence(model.ProjectConfidence),
-			Source:     AttributionSource(model.ProjectSource), Reason: AttributionReason(model.ProjectReason),
+			Confidence: attribution.Confidence(model.ProjectConfidence),
+			Source:     attribution.Source(model.ProjectSource), Reason: attribution.Reason(model.ProjectReason),
 		},
 		Model: ModelAttribution{
 			ModelKey: cloneAttributionString(model.ModelKey), DisplayName: cloneAttributionString(model.ModelDisplay),
-			Confidence: AttributionConfidence(model.ModelConfidence),
-			Source:     AttributionSource(model.ModelSource), Reason: AttributionReason(model.ModelReason),
+			Confidence: attribution.Confidence(model.ModelConfidence),
+			Source:     attribution.Source(model.ModelSource), Reason: attribution.Reason(model.ModelReason),
 		},
 		RuleVersion: model.RuleVersion, UpdatedAtMS: model.UpdatedAtMS,
 	}
@@ -474,13 +473,13 @@ func turnAttributionFromModel(model turnAttributionModel) TurnAttributionSnapsho
 		TurnID: model.TurnID,
 		Project: ProjectAttribution{
 			ProjectID: cloneAttributionString(model.ProjectID), DisplayName: cloneAttributionString(model.ProjectDisplay),
-			Confidence: AttributionConfidence(model.ProjectConfidence),
-			Source:     AttributionSource(model.ProjectSource), Reason: AttributionReason(model.ProjectReason),
+			Confidence: attribution.Confidence(model.ProjectConfidence),
+			Source:     attribution.Source(model.ProjectSource), Reason: attribution.Reason(model.ProjectReason),
 		},
 		Model: ModelAttribution{
 			ModelKey: cloneAttributionString(model.ModelKey), DisplayName: cloneAttributionString(model.ModelDisplay),
-			Confidence: AttributionConfidence(model.ModelConfidence),
-			Source:     AttributionSource(model.ModelSource), Reason: AttributionReason(model.ModelReason),
+			Confidence: attribution.Confidence(model.ModelConfidence),
+			Source:     attribution.Source(model.ModelSource), Reason: attribution.Reason(model.ModelReason),
 		},
 		RuleVersion: model.RuleVersion, UpdatedAtMS: model.UpdatedAtMS,
 	}

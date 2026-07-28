@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/indexer"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
@@ -43,26 +43,26 @@ func TestRuntimeStartsExactTypedLiveJobAndRunsBoundedSlices(t *testing.T) {
 	}
 
 	first, err := runtime.RunSlice(context.Background(), job.JobID, SliceBudget{
-		MaxFiles: 1, MaxBytes: logs.PrefixLimitBytes, MaxActive: time.Minute,
+		MaxFiles: 1, MaxBytes: logsource.PrefixLimitBytes, MaxActive: time.Minute,
 	})
 	if err != nil || first.Complete || first.ExhaustedBy != SliceStopByteBudget ||
-		first.FilesProcessed != 1 || first.BytesRead != logs.PrefixLimitBytes || first.State != store.JobRunning {
+		first.FilesProcessed != 1 || first.BytesRead != logsource.PrefixLimitBytes || first.State != store.JobRunning {
 		t.Fatalf("RunSlice(first) = %#v, %v", first, err)
 	}
 	cursor, err := repository.BuildingGenerationCursor(context.Background(), facts.Current.SourceFileID)
 	if err != nil || cursor.Checkpoint.CommittedOffset <= 0 ||
-		cursor.Checkpoint.CommittedOffset >= logs.PrefixLimitBytes {
+		cursor.Checkpoint.CommittedOffset >= logsource.PrefixLimitBytes {
 		t.Fatalf("BuildingGenerationCursor() = %#v, %v", cursor, err)
 	}
 	committedOffset := cursor.Checkpoint.CommittedOffset
 
-	secondBudget := logs.PrefixLimitBytes + int64(len(content)) - committedOffset
+	secondBudget := logsource.PrefixLimitBytes + int64(len(content)) - committedOffset
 	second, err := runtime.RunSlice(context.Background(), job.JobID, SliceBudget{
 		MaxFiles: 1, MaxBytes: secondBudget,
 		MaxActive: time.Minute,
 	})
 	if err != nil || !second.Complete || second.ExhaustedBy != SliceStopCompleted ||
-		second.BytesRead <= logs.PrefixLimitBytes || second.BytesRead > secondBudget ||
+		second.BytesRead <= logsource.PrefixLimitBytes || second.BytesRead > secondBudget ||
 		second.State != store.JobSucceeded {
 		t.Fatalf("RunSlice(second) = %#v, %v", second, err)
 	}
@@ -98,7 +98,7 @@ func TestRuntimeRejectsConflictingAndUnsupportedLiveRequests(t *testing.T) {
 	}
 	unsupported := request
 	unsupported.RequestID = "request-live-deleted"
-	unsupported.Action = logs.ReconcileAction{Kind: logs.ChangeDeleted, Previous: request.Action.Current}
+	unsupported.Action = logsource.ReconcileAction{Kind: logsource.ChangeDeleted, Previous: request.Action.Current}
 	if _, err := runtime.Start(context.Background(), unsupported); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("Start(deleted) error = %v, want ErrInvalidRequest", err)
 	}
@@ -118,7 +118,7 @@ func TestRuntimeInterruptsAndRecoversLiveJobFromAuthoritativeCheckpoint(t *testi
 		t.Fatalf("Start() error = %v", err)
 	}
 	if _, err := runtime.RunSlice(context.Background(), job.JobID, SliceBudget{
-		MaxFiles: 1, MaxBytes: logs.PrefixLimitBytes, MaxActive: time.Minute,
+		MaxFiles: 1, MaxBytes: logsource.PrefixLimitBytes, MaxActive: time.Minute,
 	}); err != nil {
 		t.Fatalf("RunSlice(first) error = %v", err)
 	}
@@ -138,7 +138,7 @@ func TestRuntimeInterruptsAndRecoversLiveJobFromAuthoritativeCheckpoint(t *testi
 		t.Fatalf("LiveScanRun(resumed) = %#v %#v, %v", resumed, facts, err)
 	}
 	report, err := runtime.RunSlice(context.Background(), resumedJob.JobID, SliceBudget{
-		MaxFiles: 1, MaxBytes: logs.PrefixLimitBytes + int64(len(content)), MaxActive: time.Minute,
+		MaxFiles: 1, MaxBytes: logsource.PrefixLimitBytes + int64(len(content)), MaxActive: time.Minute,
 	})
 	if err != nil || !report.Complete {
 		t.Fatalf("RunSlice(resumed) = %#v, %v", report, err)
@@ -199,7 +199,7 @@ func TestRuntimeFailsLiveJobWhenSnapshotDriftsBeforeRead(t *testing.T) {
 	}
 	if _, err := runtime.RunSlice(context.Background(), job.JobID, SliceBudget{
 		MaxFiles: 1, MaxBytes: 1 << 20, MaxActive: time.Minute,
-	}); !errors.Is(err, logs.ErrChangedDuringScan) {
+	}); !errors.Is(err, logsource.ErrChangedDuringScan) {
 		t.Fatalf("RunSlice(drift) error = %v, want ErrChangedDuringScan", err)
 	}
 	failed, _, err := repository.LiveScanRun(context.Background(), job.JobID)
@@ -306,7 +306,7 @@ func TestRuntimeTimeBudgetStillFailsWhenSnapshotDriftsAfterChunk(t *testing.T) {
 	if mutationErr != nil {
 		t.Fatalf("append drift error = %v", mutationErr)
 	}
-	if !errors.Is(err, logs.ErrChangedDuringScan) || report.ExhaustedBy == SliceStopTimeBudget {
+	if !errors.Is(err, logsource.ErrChangedDuringScan) || report.ExhaustedBy == SliceStopTimeBudget {
 		t.Fatalf("RunSlice(time+drift) = %#v, %v, want ErrChangedDuringScan", report, err)
 	}
 	failed, _, readErr := repository.LiveScanRun(context.Background(), job.JobID)
@@ -356,11 +356,11 @@ func newLiveRuntime(t testing.TB, repository *store.Repository, config Config) *
 
 func liveRequest(t testing.TB, home, requestID string, generation int64) LiveRequest {
 	t.Helper()
-	metadata, err := logs.NewHomeProbe().Probe(context.Background(), home)
+	metadata, err := logsource.NewHomeProbe().Probe(context.Background(), home)
 	if err != nil {
 		t.Fatalf("HomeProbe() error = %v", err)
 	}
-	discoverer, err := logs.NewConfirmedDiscoverer(metadata.Path, metadata.DeviceID, metadata.Inode)
+	discoverer, err := logsource.NewConfirmedDiscoverer(metadata.Path, metadata.DeviceID, metadata.Inode)
 	if err != nil {
 		t.Fatalf("NewDiscoverer() error = %v", err)
 	}
@@ -368,7 +368,7 @@ func liveRequest(t testing.TB, home, requestID string, generation int64) LiveReq
 	if err != nil || len(discovery.Snapshots) != 1 {
 		t.Fatalf("Discover() = %#v, %v", discovery, err)
 	}
-	plan, err := logs.PlanReconcile(metadata.Path, nil, discovery)
+	plan, err := logsource.PlanReconcile(metadata.Path, nil, discovery)
 	if err != nil || len(plan.Actions) != 1 {
 		t.Fatalf("PlanReconcile() = %#v, %v", plan, err)
 	}
@@ -420,11 +420,11 @@ func BenchmarkRuntimeIncrementalAppend(b *testing.B) {
 		}); err != nil || !report.Complete {
 			b.Fatalf("RunSlice(initial) = %#v, %v", report, err)
 		}
-		metadata, err := logs.NewHomeProbe().Probe(ctx, home)
+		metadata, err := logsource.NewHomeProbe().Probe(ctx, home)
 		if err != nil {
 			b.Fatalf("Probe() error = %v", err)
 		}
-		discoverer, err := logs.NewConfirmedDiscoverer(metadata.Path, metadata.DeviceID, metadata.Inode)
+		discoverer, err := logsource.NewConfirmedDiscoverer(metadata.Path, metadata.DeviceID, metadata.Inode)
 		if err != nil {
 			b.Fatalf("NewConfirmedDiscoverer() error = %v", err)
 		}
@@ -447,8 +447,8 @@ func BenchmarkRuntimeIncrementalAppend(b *testing.B) {
 		if err != nil {
 			b.Fatalf("Discover(after) error = %v", err)
 		}
-		plan, err := logs.PlanReconcile(metadata.Path, before.Snapshots, after)
-		if err != nil || len(plan.Actions) != 1 || plan.Actions[0].Kind != logs.ChangeGrown {
+		plan, err := logsource.PlanReconcile(metadata.Path, before.Snapshots, after)
+		if err != nil || len(plan.Actions) != 1 || plan.Actions[0].Kind != logsource.ChangeGrown {
 			b.Fatalf("PlanReconcile() = %#v, %v", plan, err)
 		}
 		requests[iteration] = LiveRequest{
@@ -495,7 +495,7 @@ func liveRollout(sessionID, turnID string) []byte {
 func largeLiveRollout(sessionID, turnID string) []byte {
 	return append(liveRollout(sessionID, turnID), []byte(
 		`{"timestamp":"2026-07-14T01:00:03Z","type":"response_item","payload":{"type":"message","content":[{"type":"output_text","text":"`+
-			strings.Repeat("x", int(logs.PrefixLimitBytes))+`"}]}}`+"\n",
+			strings.Repeat("x", int(logsource.PrefixLimitBytes))+`"}]}}`+"\n",
 	)...)
 }
 
@@ -504,7 +504,7 @@ func largeOpenLiveRollout(sessionID, turnID string) []byte {
 		`{"timestamp":"2026-07-14T01:00:01Z","type":"event_msg","payload":{"type":"task_started","turn_id":"` + turnID +
 		`","started_at":1783990801,"model_context_window":258000}}` + "\n" +
 		`{"timestamp":"2026-07-14T01:00:03Z","type":"response_item","payload":{"type":"message","content":[{"type":"output_text","text":"` +
-		strings.Repeat("x", int(logs.PrefixLimitBytes)) + `"}]}}` + "\n")
+		strings.Repeat("x", int(logsource.PrefixLimitBytes)) + `"}]}}` + "\n")
 }
 
 func liveSessionMetaLine(sessionID string) string {

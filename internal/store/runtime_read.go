@@ -6,8 +6,6 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	"gorm.io/gorm"
-
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 // SourceFile 返回当前 source file snapshot。
@@ -19,7 +17,7 @@ func (repository *Repository) SourceFile(ctx context.Context, sourceFileID strin
 		return SourceFile{}, invalidRecord("source file ID must not be empty")
 	}
 	var file SourceFile
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var found bool
 		var err error
 		file, found, err = sourceFileByID(ctx, connection, sourceFileID)
@@ -49,7 +47,7 @@ func (repository *Repository) ListSourceFilesBySessionState(
 		return nil, err
 	}
 	var files []SourceFile
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var models []sourceFileModel
 		if err := connection.WithContext(ctx).
 			Where("session_id = ? AND state = ?", sessionID, string(state)).
@@ -75,7 +73,7 @@ func (repository *Repository) SourceState(ctx context.Context, sourceInstanceID 
 		return SourceState{}, invalidRecord("source instance ID must not be empty")
 	}
 	var state SourceState
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var found bool
 		var err error
 		state, found, err = sourceStateByID(ctx, connection, sourceInstanceID)
@@ -100,7 +98,7 @@ func (repository *Repository) ListDueSources(ctx context.Context, nowMS int64, l
 		return nil, err
 	}
 	var states []SourceState
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var models []sourceStateModel
 		if err := connection.WithContext(ctx).Where("next_due_at_ms <= ?", nowMS).
 			Order("next_due_at_ms").Order("source_instance_id").Limit(validatedLimit).
@@ -129,7 +127,7 @@ func (repository *Repository) ListSourceAttempts(ctx context.Context, sourceInst
 		return nil, err
 	}
 	var attempts []SourceAttempt
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var models []sourceAttemptModel
 		if err := connection.WithContext(ctx).Where("source_instance_id = ?", sourceInstanceID).
 			Order("started_at_ms DESC").Order("request_id DESC").Limit(validatedLimit).
@@ -189,7 +187,7 @@ func (repository *Repository) SourceAttempt(ctx context.Context, requestID strin
 		return SourceAttempt{}, ErrInvalidRepository
 	}
 	var attempt SourceAttempt
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		value, found, err := sourceAttemptByID(ctx, connection, requestID)
 		if err != nil {
 			return err
@@ -331,7 +329,7 @@ func (repository *Repository) JobRun(ctx context.Context, jobID string) (JobRun,
 		return JobRun{}, invalidRecord("job ID must not be empty")
 	}
 	var job JobRun
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var found bool
 		var err error
 		job, found, err = jobRunByID(ctx, connection, jobID)
@@ -360,7 +358,7 @@ func (repository *Repository) ListJobRuns(ctx context.Context, filter JobRunFilt
 	}
 
 	var jobs []JobRun
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		query := connection.WithContext(ctx).Model(&jobRunModel{})
 		if filter.State != nil {
 			query = query.Where("state = ?", string(*filter.State))

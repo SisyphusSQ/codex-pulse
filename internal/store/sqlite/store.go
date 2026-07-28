@@ -19,12 +19,6 @@ type WriteFunc func(context.Context, *gorm.DB) error
 // statements must be consumed or closed before the callback returns.
 type ViewFunc func(context.Context, *gorm.DB) error
 
-// WriteTx 是迁移期兼容别名；新代码直接使用 *gorm.DB。
-type WriteTx = *gorm.DB
-
-// ReadConn 是迁移期兼容别名；新代码直接使用 *gorm.DB。
-type ReadConn = *gorm.DB
-
 type lifecycleState uint8
 
 const (

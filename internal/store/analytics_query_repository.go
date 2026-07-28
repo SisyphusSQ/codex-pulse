@@ -11,7 +11,6 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 func checkedAdd(left, right int64) (int64, error) {
@@ -49,7 +48,7 @@ func (repository *Repository) UsageCostRange(
 	}
 
 	var snapshot UsageCostRangeSnapshot
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		database := connection.WithContext(ctx)
 		handled, err := loadLightUsageCostRange(ctx, database, filter, location, &snapshot)
 		if err != nil {
@@ -122,7 +121,7 @@ func loadLightUsageCostRange(
 	snapshot *UsageCostRangeSnapshot,
 ) (bool, error) {
 	var sessionCount int64
-	if err := database.Model(&lightSessionModel{}).Count(&sessionCount).Error; err != nil {
+	if err := database.Table("light_sessions").Count(&sessionCount).Error; err != nil {
 		return false, err
 	}
 	if sessionCount == 0 {
@@ -452,7 +451,7 @@ func loadLightPricingCatalogs(database *gorm.DB, endAtMS int64) ([]lightPricingC
 	output := make([]lightPricingCatalog, 0, len(versions))
 	for _, version := range versions {
 		var models []modelPriceModel
-		if err := database.Where("pricing_version = ? AND match_kind = ?", version.PricingVersion, ModelMatchExact).
+		if err := database.Where("pricing_version = ? AND match_kind = ?", version.PricingVersion, pricing.ModelMatchExact).
 			Order("model_pattern").Find(&models).Error; err != nil {
 			return nil, err
 		}

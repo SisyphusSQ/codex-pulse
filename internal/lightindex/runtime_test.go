@@ -13,8 +13,9 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
+	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -31,7 +32,7 @@ func TestRuntimePublishesMetadataBeforeBackgroundTokenScan(t *testing.T) {
 	if err := os.WriteFile(rollout, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	homeMetadata, err := logs.NewHomeProbe().Probe(ctx, homePath)
+	homeMetadata, err := logsource.NewHomeProbe().Probe(ctx, homePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +41,7 @@ func TestRuntimePublishesMetadataBeforeBackgroundTokenScan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	database, repository := openLightRuntimeRepository(t)
+	database, deepRepository, repository := openLightRuntimeRepository(t)
 	name := "真实标题"
 	path := canonicalRollout
 	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
@@ -51,7 +52,8 @@ func TestRuntimePublishesMetadataBeforeBackgroundTokenScan(t *testing.T) {
 	})
 	releaseScan := make(chan struct{})
 	runtime, err := NewRuntime(RuntimeConfig{
-		Repository: repository, Metadata: provider, ScanBatchBytes: 8 << 10,
+		Repository:     repository,
+		DeepRepository: deepRepository, Metadata: provider, ScanBatchBytes: 8 << 10,
 		Clock: func() time.Time { return time.UnixMilli(1_000) },
 		BeforeTokenScan: func(ctx context.Context) error {
 			select {
@@ -65,7 +67,7 @@ func TestRuntimePublishesMetadataBeforeBackgroundTokenScan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := runtime.Start(ctx, store.LightHomeIdentity{
+	run, err := runtime.Start(ctx, storelight.LightHomeIdentity{
 		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
 	})
 	if err != nil {
@@ -75,7 +77,7 @@ func TestRuntimePublishesMetadataBeforeBackgroundTokenScan(t *testing.T) {
 	if err != nil || len(sessions) != 1 || sessions[0].ThreadName == nil || *sessions[0].ThreadName != name {
 		t.Fatalf("metadata was not ready before Start returned: %#v, %v", sessions, err)
 	}
-	if _, err := repository.LightSessionTokenUsage(ctx, "one"); !errors.Is(err, store.ErrNotFound) {
+	if _, err := repository.LightSessionTokenUsage(ctx, "one"); !errors.Is(err, storelight.ErrNotFound) {
 		t.Fatalf("Token scan crossed blocking hook: %v", err)
 	}
 	close(releaseScan)
@@ -92,7 +94,7 @@ func TestRuntimePublishesMetadataBeforeBackgroundTokenScan(t *testing.T) {
 		t.Fatalf("active scan = %#v, %v", active, err)
 	}
 	physicalBytes := active.Checkpoint.PhysicalBytesRead
-	refresh, err := runtime.Start(ctx, store.LightHomeIdentity{
+	refresh, err := runtime.Start(ctx, storelight.LightHomeIdentity{
 		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
 	})
 	if err != nil {
@@ -124,7 +126,7 @@ func TestRuntimeRebuildsUnchangedRolloutAfterParserVersionBump(t *testing.T) {
 	if err := os.WriteFile(rollout, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	homeMetadata, err := logs.NewHomeProbe().Probe(ctx, homePath)
+	homeMetadata, err := logsource.NewHomeProbe().Probe(ctx, homePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,18 +135,18 @@ func TestRuntimeRebuildsUnchangedRolloutAfterParserVersionBump(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	database, repository := openLightRuntimeRepository(t)
+	database, deepRepository, repository := openLightRuntimeRepository(t)
 	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
 		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
 			SessionID: "parser-bump", CWD: "/workspace", RolloutPath: &canonicalRollout,
 			CreatedAtMS: 100, UpdatedAtMS: 200,
 		}}}, nil
 	})
-	runtime, err := NewRuntime(RuntimeConfig{Repository: repository, Metadata: provider})
+	runtime, err := NewRuntime(RuntimeConfig{Repository: repository, DeepRepository: deepRepository, Metadata: provider})
 	if err != nil {
 		t.Fatal(err)
 	}
-	home := store.LightHomeIdentity{Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode}
+	home := storelight.LightHomeIdentity{Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode}
 	first, err := runtime.Start(ctx, home)
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +159,7 @@ func TestRuntimeRebuildsUnchangedRolloutAfterParserVersionBump(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		if err := transaction.WithContext(ctx).Table("light_token_scans").
 			Where("session_id = ? AND generation = ?", "parser-bump", initial.Generation).
 			Updates(map[string]any{
@@ -198,11 +200,11 @@ func TestRuntimeCancellationLeavesMetadataReady(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(homePath, "sessions"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	homeMetadata, err := logs.NewHomeProbe().Probe(ctx, homePath)
+	homeMetadata, err := logsource.NewHomeProbe().Probe(ctx, homePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, repository := openLightRuntimeRepository(t)
+	_, deepRepository, repository := openLightRuntimeRepository(t)
 	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
 		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
 			SessionID: "one", CWD: "/workspace", CreatedAtMS: 100, UpdatedAtMS: 200,
@@ -210,7 +212,8 @@ func TestRuntimeCancellationLeavesMetadataReady(t *testing.T) {
 	})
 	blocked := make(chan struct{})
 	runtime, err := NewRuntime(RuntimeConfig{
-		Repository: repository, Metadata: provider,
+		Repository:     repository,
+		DeepRepository: deepRepository, Metadata: provider,
 		BeforeTokenScan: func(ctx context.Context) error {
 			close(blocked)
 			<-ctx.Done()
@@ -220,7 +223,7 @@ func TestRuntimeCancellationLeavesMetadataReady(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := runtime.Start(ctx, store.LightHomeIdentity{
+	run, err := runtime.Start(ctx, storelight.LightHomeIdentity{
 		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
 	})
 	if err != nil {
@@ -247,17 +250,17 @@ func TestRuntimeHomeSwitchReplacesOnlyConfirmedOldHome(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	oldMetadata, err := logs.NewHomeProbe().Probe(ctx, oldPath)
+	oldMetadata, err := logsource.NewHomeProbe().Probe(ctx, oldPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	newMetadata, err := logs.NewHomeProbe().Probe(ctx, newPath)
+	newMetadata, err := logsource.NewHomeProbe().Probe(ctx, newPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldHome := store.LightHomeIdentity{Path: oldMetadata.Path, DeviceID: oldMetadata.DeviceID, Inode: oldMetadata.Inode}
-	newHome := store.LightHomeIdentity{Path: newMetadata.Path, DeviceID: newMetadata.DeviceID, Inode: newMetadata.Inode}
-	_, repository := openLightRuntimeRepository(t)
+	oldHome := storelight.LightHomeIdentity{Path: oldMetadata.Path, DeviceID: oldMetadata.DeviceID, Inode: oldMetadata.Inode}
+	newHome := storelight.LightHomeIdentity{Path: newMetadata.Path, DeviceID: newMetadata.DeviceID, Inode: newMetadata.Inode}
+	_, deepRepository, repository := openLightRuntimeRepository(t)
 	provider := metadataProviderFunc(func(_ context.Context, home string) (appserver.ThreadList, error) {
 		sessionID := "old"
 		if home == newHome.Path {
@@ -267,7 +270,7 @@ func TestRuntimeHomeSwitchReplacesOnlyConfirmedOldHome(t *testing.T) {
 			SessionID: sessionID, CWD: "/workspace/" + sessionID, CreatedAtMS: 100, UpdatedAtMS: 200,
 		}}}, nil
 	})
-	runtime, err := NewRuntime(RuntimeConfig{Repository: repository, Metadata: provider})
+	runtime, err := NewRuntime(RuntimeConfig{Repository: repository, DeepRepository: deepRepository, Metadata: provider})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +317,7 @@ func TestRuntimeDeepIndexesOnlyRequestedSessionWithoutQuotaFacts(t *testing.T) {
 	if err := os.WriteFile(rollout, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	homeMetadata, err := logs.NewHomeProbe().Probe(ctx, homePath)
+	homeMetadata, err := logsource.NewHomeProbe().Probe(ctx, homePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,18 +325,18 @@ func TestRuntimeDeepIndexesOnlyRequestedSessionWithoutQuotaFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, repository := openLightRuntimeRepository(t)
+	_, deepRepository, repository := openLightRuntimeRepository(t)
 	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
 		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
 			SessionID: "session-deep", CWD: "/tmp/project", RolloutPath: &path,
 			CreatedAtMS: 100, UpdatedAtMS: 200,
 		}}}, nil
 	})
-	runtime, err := NewRuntime(RuntimeConfig{Repository: repository, Metadata: provider})
+	runtime, err := NewRuntime(RuntimeConfig{Repository: repository, DeepRepository: deepRepository, Metadata: provider})
 	if err != nil {
 		t.Fatal(err)
 	}
-	home := store.LightHomeIdentity{Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode}
+	home := storelight.LightHomeIdentity{Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode}
 	run, err := runtime.Start(ctx, home)
 	if err != nil {
 		t.Fatal(err)
@@ -345,12 +348,15 @@ func TestRuntimeDeepIndexesOnlyRequestedSessionWithoutQuotaFacts(t *testing.T) {
 	if err != nil || result.LoadedTurnCount != 1 || result.Reused {
 		t.Fatalf("DeepIndexSession() = %#v, %v", result, err)
 	}
-	detail, err := repository.SessionAnalytics(ctx, store.SessionAnalyticsDetailFilter{SessionID: "session-deep", TurnLimit: 20})
+	detail, err := deepRepository.SessionAnalytics(ctx, store.SessionAnalyticsDetailFilter{SessionID: "session-deep", TurnLimit: 20})
 	if err != nil || detail.Mode != store.AnalyticsReadLightIndex || len(detail.Turns) != 1 || detail.Turns[0].TurnID == "" {
 		t.Fatalf("SessionAnalytics() = %#v, %v", detail, err)
 	}
 	sessionID := "session-deep"
-	observations, err := repository.ListQuotaObservations(ctx, store.QuotaObservationFilter{SessionID: &sessionID, Limit: 10})
+	observations, err := deepRepository.ListQuotaObservations(
+		ctx,
+		store.QuotaObservationFilter{SessionID: &sessionID, Limit: 10},
+	)
 	if err != nil || len(observations) != 0 {
 		t.Fatalf("quota observations = %#v, %v", observations, err)
 	}
@@ -375,7 +381,7 @@ func TestRuntimeResumesCommittedOffsetAfterCancellation(t *testing.T) {
 	if err := os.WriteFile(rollout, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	homeMetadata, err := logs.NewHomeProbe().Probe(context.Background(), homePath)
+	homeMetadata, err := logsource.NewHomeProbe().Probe(context.Background(), homePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +389,7 @@ func TestRuntimeResumesCommittedOffsetAfterCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, repository := openLightRuntimeRepository(t)
+	_, deepRepository, repository := openLightRuntimeRepository(t)
 	path := canonicalRollout
 	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
 		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
@@ -393,8 +399,9 @@ func TestRuntimeResumesCommittedOffsetAfterCancellation(t *testing.T) {
 	firstCtx, cancelFirst := context.WithCancel(context.Background())
 	commits := 0
 	firstRuntime, err := NewRuntime(RuntimeConfig{
-		Repository: repository, Metadata: provider, ScanBatchBytes: 4_600,
-		BatchCommitted: func(store.LightTokenScan) {
+		Repository:     repository,
+		DeepRepository: deepRepository, Metadata: provider, ScanBatchBytes: 4_600,
+		BatchCommitted: func(storelight.LightTokenScan) {
 			commits++
 			cancelFirst()
 		},
@@ -402,7 +409,7 @@ func TestRuntimeResumesCommittedOffsetAfterCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstRun, err := firstRuntime.Start(firstCtx, store.LightHomeIdentity{
+	firstRun, err := firstRuntime.Start(firstCtx, storelight.LightHomeIdentity{
 		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
 	})
 	if err != nil {
@@ -418,12 +425,13 @@ func TestRuntimeResumesCommittedOffsetAfterCancellation(t *testing.T) {
 	resumeOffset := pending.Checkpoint.DurableOffset
 
 	secondRuntime, err := NewRuntime(RuntimeConfig{
-		Repository: repository, Metadata: provider, ScanBatchBytes: 4_600,
+		Repository:     repository,
+		DeepRepository: deepRepository, Metadata: provider, ScanBatchBytes: 4_600,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondRun, err := secondRuntime.Start(context.Background(), store.LightHomeIdentity{
+	secondRun, err := secondRuntime.Start(context.Background(), storelight.LightHomeIdentity{
 		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
 	})
 	if err != nil {
@@ -466,20 +474,21 @@ func TestRuntimeCoalescesPublishedSessionsIntoOneRefreshNotification(t *testing.
 			CreatedAtMS: 100, UpdatedAtMS: 200,
 		})
 	}
-	homeMetadata, err := logs.NewHomeProbe().Probe(context.Background(), homePath)
+	homeMetadata, err := logsource.NewHomeProbe().Probe(context.Background(), homePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, repository := openLightRuntimeRepository(t)
+	_, deepRepository, repository := openLightRuntimeRepository(t)
 	var countsMu sync.Mutex
 	batchCommits := 0
 	refreshCommits := 0
 	runtime, err := NewRuntime(RuntimeConfig{
-		Repository: repository,
+		Repository:     repository,
+		DeepRepository: deepRepository,
 		Metadata: metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
 			return appserver.ThreadList{Threads: threads}, nil
 		}),
-		BatchCommitted: func(store.LightTokenScan) {
+		BatchCommitted: func(storelight.LightTokenScan) {
 			countsMu.Lock()
 			batchCommits++
 			countsMu.Unlock()
@@ -493,7 +502,7 @@ func TestRuntimeCoalescesPublishedSessionsIntoOneRefreshNotification(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := runtime.Start(context.Background(), store.LightHomeIdentity{
+	run, err := runtime.Start(context.Background(), storelight.LightHomeIdentity{
 		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
 	})
 	if err != nil {
@@ -518,15 +527,16 @@ func TestRuntimePublishesMetadataOnlyRefreshNotification(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	homeMetadata, err := logs.NewHomeProbe().Probe(context.Background(), homePath)
+	homeMetadata, err := logsource.NewHomeProbe().Probe(context.Background(), homePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, repository := openLightRuntimeRepository(t)
+	_, deepRepository, repository := openLightRuntimeRepository(t)
 	metadataCommits := 0
 	refreshCommits := 0
 	runtime, err := NewRuntime(RuntimeConfig{
-		Repository: repository,
+		Repository:     repository,
+		DeepRepository: deepRepository,
 		Metadata: metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
 			title := "只有元数据"
 			return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
@@ -540,7 +550,7 @@ func TestRuntimePublishesMetadataOnlyRefreshNotification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := runtime.Start(context.Background(), store.LightHomeIdentity{
+	run, err := runtime.Start(context.Background(), storelight.LightHomeIdentity{
 		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
 	})
 	if err != nil {
@@ -570,7 +580,7 @@ func TestRuntimeMonitorRefreshesTitleAndAppendedTokensFromDurableOffset(t *testi
 	if err := os.WriteFile(rollout, []byte(initialContent), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	homeMetadata, err := logs.NewHomeProbe().Probe(context.Background(), homePath)
+	homeMetadata, err := logsource.NewHomeProbe().Probe(context.Background(), homePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -579,7 +589,7 @@ func TestRuntimeMonitorRefreshesTitleAndAppendedTokensFromDurableOffset(t *testi
 		t.Fatal(err)
 	}
 
-	_, repository := openLightRuntimeRepository(t)
+	_, deepRepository, repository := openLightRuntimeRepository(t)
 	var metadataMu sync.Mutex
 	title := "初始标题"
 	updatedAtMS := int64(200)
@@ -595,17 +605,18 @@ func TestRuntimeMonitorRefreshesTitleAndAppendedTokensFromDurableOffset(t *testi
 		}}}, nil
 	})
 	metadataCommits := make(chan struct{}, 4)
-	batchCommits := make(chan store.LightTokenScan, 4)
+	batchCommits := make(chan storelight.LightTokenScan, 4)
 	runtime, err := NewRuntime(RuntimeConfig{
-		Repository: repository, Metadata: provider, RefreshInterval: time.Hour,
+		Repository:     repository,
+		DeepRepository: deepRepository, Metadata: provider, RefreshInterval: time.Hour,
 		MetadataCommitted: func() { metadataCommits <- struct{}{} },
-		BatchCommitted:    func(scan store.LightTokenScan) { batchCommits <- scan },
+		BatchCommitted:    func(scan storelight.LightTokenScan) { batchCommits <- scan },
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	runContext, cancelRun := context.WithCancel(context.Background())
-	run, err := runtime.Start(runContext, store.LightHomeIdentity{
+	run, err := runtime.Start(runContext, storelight.LightHomeIdentity{
 		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
 	})
 	if err != nil {
@@ -720,7 +731,7 @@ func TestRuntimeMonitorAppendsShortRolloutUsingPreviousPrefixProof(t *testing.T)
 	if err := os.WriteFile(rollout, []byte(initialContent), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	homeMetadata, err := logs.NewHomeProbe().Probe(context.Background(), homePath)
+	homeMetadata, err := logsource.NewHomeProbe().Probe(context.Background(), homePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -728,23 +739,24 @@ func TestRuntimeMonitorAppendsShortRolloutUsingPreviousPrefixProof(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, repository := openLightRuntimeRepository(t)
+	_, deepRepository, repository := openLightRuntimeRepository(t)
 	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
 		path := canonicalRollout
 		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
 			SessionID: "short", CWD: "/workspace", RolloutPath: &path, CreatedAtMS: 100, UpdatedAtMS: 200,
 		}}}, nil
 	})
-	commits := make(chan store.LightTokenScan, 3)
+	commits := make(chan storelight.LightTokenScan, 3)
 	runtime, err := NewRuntime(RuntimeConfig{
-		Repository: repository, Metadata: provider, RefreshInterval: time.Hour,
-		BatchCommitted: func(scan store.LightTokenScan) { commits <- scan },
+		Repository:     repository,
+		DeepRepository: deepRepository, Metadata: provider, RefreshInterval: time.Hour,
+		BatchCommitted: func(scan storelight.LightTokenScan) { commits <- scan },
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	runContext, cancelRun := context.WithCancel(context.Background())
-	run, err := runtime.Start(runContext, store.LightHomeIdentity{
+	run, err := runtime.Start(runContext, storelight.LightHomeIdentity{
 		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
 	})
 	if err != nil {
@@ -792,11 +804,11 @@ func TestRuntimeMonitorPeriodicRefreshRecoversAfterMetadataFailure(t *testing.T)
 			t.Fatal(err)
 		}
 	}
-	homeMetadata, err := logs.NewHomeProbe().Probe(context.Background(), homePath)
+	homeMetadata, err := logsource.NewHomeProbe().Probe(context.Background(), homePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, repository := openLightRuntimeRepository(t)
+	_, deepRepository, repository := openLightRuntimeRepository(t)
 	transient := errors.New("transient metadata failure")
 	var metadataMu sync.Mutex
 	title := "初始标题"
@@ -817,7 +829,8 @@ func TestRuntimeMonitorPeriodicRefreshRecoversAfterMetadataFailure(t *testing.T)
 	metadataCommits := make(chan struct{}, 4)
 	refreshFailures := make(chan error, 4)
 	runtime, err := NewRuntime(RuntimeConfig{
-		Repository: repository, Metadata: provider, RefreshInterval: 10 * time.Millisecond,
+		Repository:     repository,
+		DeepRepository: deepRepository, Metadata: provider, RefreshInterval: 10 * time.Millisecond,
 		MetadataCommitted: func() { metadataCommits <- struct{}{} },
 		RefreshFailed:     func(err error) { refreshFailures <- err },
 	})
@@ -825,7 +838,7 @@ func TestRuntimeMonitorPeriodicRefreshRecoversAfterMetadataFailure(t *testing.T)
 		t.Fatal(err)
 	}
 	runContext, cancelRun := context.WithCancel(context.Background())
-	run, err := runtime.Start(runContext, store.LightHomeIdentity{
+	run, err := runtime.Start(runContext, storelight.LightHomeIdentity{
 		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
 	})
 	if err != nil {
@@ -862,11 +875,11 @@ func TestRuntimeStartRecoversAfterInitialMetadataFailure(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	homeMetadata, err := logs.NewHomeProbe().Probe(context.Background(), homePath)
+	homeMetadata, err := logsource.NewHomeProbe().Probe(context.Background(), homePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, repository := openLightRuntimeRepository(t)
+	_, deepRepository, repository := openLightRuntimeRepository(t)
 	unavailable := errors.New("Codex App Server unavailable")
 	var metadataMu sync.Mutex
 	calls := 0
@@ -886,7 +899,8 @@ func TestRuntimeStartRecoversAfterInitialMetadataFailure(t *testing.T) {
 	metadataCommits := make(chan struct{}, 1)
 	refreshFailures := make(chan error, 1)
 	runtime, err := NewRuntime(RuntimeConfig{
-		Repository: repository, Metadata: provider, RefreshInterval: time.Hour,
+		Repository:     repository,
+		DeepRepository: deepRepository, Metadata: provider, RefreshInterval: time.Hour,
 		MetadataCommitted: func() { metadataCommits <- struct{}{} },
 		RefreshFailed:     func(err error) { refreshFailures <- err },
 	})
@@ -894,7 +908,7 @@ func TestRuntimeStartRecoversAfterInitialMetadataFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	runContext, cancelRun := context.WithCancel(context.Background())
-	run, err := runtime.Start(runContext, store.LightHomeIdentity{
+	run, err := runtime.Start(runContext, storelight.LightHomeIdentity{
 		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
 	})
 	if err != nil {
@@ -940,7 +954,9 @@ func (provider metadataProviderFunc) List(ctx context.Context, home string) (app
 	return provider(ctx, home)
 }
 
-func openLightRuntimeRepository(t *testing.T) (*storesqlite.Store, *store.Repository) {
+func openLightRuntimeRepository(
+	t *testing.T,
+) (*storesqlite.Store, *store.Repository, *storelight.Repository) {
 	t.Helper()
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
@@ -955,7 +971,7 @@ func openLightRuntimeRepository(t *testing.T) (*storesqlite.Store, *store.Reposi
 	if _, err := repository.MigrateApplicationSchema(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	return database, repository
+	return database, repository, storelight.NewRepository(database)
 }
 
 func assertLightRuntimeDidNotWriteDeepFacts(t *testing.T, database *storesqlite.Store) {

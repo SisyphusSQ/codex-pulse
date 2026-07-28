@@ -4,7 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logparser "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/parser"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 )
 
 func TestParserSeedCheckpointMappingRoundTripsAllSafeFields(t *testing.T) {
@@ -12,43 +13,43 @@ func TestParserSeedCheckpointMappingRoundTripsAllSafeFields(t *testing.T) {
 
 	zero, ten := int64(0), int64(10)
 	effort := "high"
-	seed := &logs.ParserSeed{
-		Session: &logs.SessionMetaFact{
-			SessionID: "session-a", RootSessionID: "root-a", SourceKind: logs.SourceKindArchivedSession,
+	seed := &logparser.ParserSeed{
+		Session: &logparser.SessionMetaFact{
+			SessionID: "session-a", RootSessionID: "root-a", SourceKind: logsource.SourceKindArchivedSession,
 			CreatedAtMS: 1, ObservedAtMS: 2, InitialCWD: "/synthetic", Originator: "cli",
 			CLIVersion: "1", Source: "subagent", ModelProvider: "openai",
 		},
-		OpenTurns: []logs.OpenTurnSeed{{
+		OpenTurns: []logparser.OpenTurnSeed{{
 			TurnID: "turn-open", StartedAtMS: 3, ContextWindow: &zero,
-			Context: &logs.TurnContextFact{
+			Context: &logparser.TurnContextFact{
 				SessionID: "session-a", TurnID: "turn-open", ObservedAtMS: 4,
 				CWD: "/synthetic", Model: "gpt-5", Effort: &effort,
 			},
-			LatestUsage: &logs.TurnUsageFact{
+			LatestUsage: &logparser.TurnUsageFact{
 				SessionID: "session-a", TurnID: "turn-open", ObservedAtMS: 5,
-				Usage:         logs.TokenCounters{InputTokens: &zero, OutputTokens: &ten},
+				Usage:         logparser.TokenCounters{InputTokens: &zero, OutputTokens: &ten},
 				ContextWindow: &ten,
 			},
 		}},
-		PendingTurns: []logs.PendingTurnSeed{{
+		PendingTurns: []logparser.PendingTurnSeed{{
 			TurnID: "turn-pending",
-			Context: &logs.PendingTurnContextSeed{
-				Position:     logs.SourcePosition{StartOffset: 10, EndOffset: 20},
+			Context: &logparser.PendingTurnContextSeed{
+				Position:     logparser.SourcePosition{StartOffset: 10, EndOffset: 20},
 				ObservedAtMS: 6, CWD: "/synthetic", Model: "gpt-5", Effort: &effort,
 			},
-			Terminal: &logs.PendingTurnTerminalSeed{
-				Position:      logs.SourcePosition{StartOffset: 20, EndOffset: 30},
-				CompletedAtMS: 7, Outcome: logs.TurnOutcomeInterrupted,
+			Terminal: &logparser.PendingTurnTerminalSeed{
+				Position:      logparser.SourcePosition{StartOffset: 20, EndOffset: 30},
+				CompletedAtMS: 7, Outcome: logparser.TurnOutcomeInterrupted,
 			},
 		}},
-		ClosedTurns: []logs.ClosedTurnSeed{{
+		ClosedTurns: []logparser.ClosedTurnSeed{{
 			TurnID: "turn-closed", StartedAtMS: 8, ContextWindow: &ten,
-			Terminal: logs.TurnEndFact{
+			Terminal: logparser.TurnEndFact{
 				SessionID: "session-a", TurnID: "turn-closed", CompletedAtMS: 9,
-				Outcome: logs.TurnOutcomeCompleted,
-				FinalUsage: &logs.TurnUsageFact{
+				Outcome: logparser.TurnOutcomeCompleted,
+				FinalUsage: &logparser.TurnUsageFact{
 					SessionID: "session-a", TurnID: "turn-closed", ObservedAtMS: 9,
-					Usage:         logs.TokenCounters{InputTokens: &ten, CachedInputTokens: &zero},
+					Usage:         logparser.TokenCounters{InputTokens: &ten, CachedInputTokens: &zero},
 					ContextWindow: &ten, IsFinal: true,
 				},
 			},

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 )
 
@@ -96,12 +96,12 @@ func TestServiceDetectClassifiesOnlyAllowlistedFailures(t *testing.T) {
 		reason    CandidateReason
 		retryable bool
 	}{
-		{"/missing", logs.ErrInvalidHome, CandidateStatusUnavailable, CandidateReasonMissing, false},
+		{"/missing", logsource.ErrInvalidHome, CandidateStatusUnavailable, CandidateReasonMissing, false},
 		{"/permission", fs.ErrPermission, CandidateStatusUnavailable, CandidateReasonPermission, true},
-		{"/symlink", logs.ErrUnsafeHome, CandidateStatusUnsafe, CandidateReasonUnsafeSymlink, false},
-		{"/nested-symlink", logs.ErrUnsafeSource, CandidateStatusUnsafe, CandidateReasonUnsafeSymlink, false},
-		{"/unsupported", logs.ErrUnsupportedFile, CandidateStatusUnsafe, CandidateReasonUnsupportedEntry, false},
-		{"/changed", logs.ErrChangedDuringScan, CandidateStatusUnavailable, CandidateReasonChanged, true},
+		{"/symlink", logsource.ErrUnsafeHome, CandidateStatusUnsafe, CandidateReasonUnsafeSymlink, false},
+		{"/nested-symlink", logsource.ErrUnsafeSource, CandidateStatusUnsafe, CandidateReasonUnsafeSymlink, false},
+		{"/unsupported", logsource.ErrUnsupportedFile, CandidateStatusUnsafe, CandidateReasonUnsupportedEntry, false},
+		{"/changed", logsource.ErrChangedDuringScan, CandidateStatusUnavailable, CandidateReasonChanged, true},
 		{"/io", secretError, CandidateStatusUnavailable, CandidateReasonIO, true},
 	}
 	results := make(map[string][]probeResult, len(tests))
@@ -137,8 +137,8 @@ func TestServiceDetectNeedsSelectionWhenNoCandidateIsReady(t *testing.T) {
 	t.Parallel()
 
 	probe := newFakeProbe(map[string][]probeResult{
-		"/env":     {{err: logs.ErrInvalidHome}},
-		"/default": {{err: logs.ErrInvalidHome}},
+		"/env":     {{err: logsource.ErrInvalidHome}},
+		"/default": {{err: logsource.ErrInvalidHome}},
 	})
 	service := newTestService(t, probe, &fakeStore{}, "/env", "/default", "/data/tracker.sqlite")
 	state, err := service.Detect(context.Background(), "")
@@ -158,7 +158,7 @@ func TestServiceConfirmReprobesIdentityAllowsAppendAndPersistsAtomicChoice(t *te
 			{metadata: homeMetadata("/home", "5", 9, 1, 10)},
 			{metadata: homeMetadata("/home", "5", 9, 2, 25)},
 		},
-		"/default": {{err: logs.ErrInvalidHome}},
+		"/default": {{err: logsource.ErrInvalidHome}},
 	})
 	store := &fakeStore{}
 	service := newTestService(t, probe, store, "/home", "/default", "/data/tracker.sqlite")
@@ -201,7 +201,7 @@ func TestServiceConfirmRejectsStaleOrUnavailableCandidateWithoutWriting(t *testi
 			{metadata: homeMetadata("/home", "5", 9, 1, 10)},
 			{metadata: homeMetadata("/home", "5", 10, 1, 10)},
 		},
-		"/default": {{err: logs.ErrInvalidHome}},
+		"/default": {{err: logsource.ErrInvalidHome}},
 	})
 	store := &fakeStore{}
 	service := newTestService(t, probe, store, "/home", "/default", "/data/tracker.sqlite")
@@ -228,7 +228,7 @@ func TestServiceConfirmMasksPersistenceFailureAndRecoversUncertainPublish(t *tes
 		t.Helper()
 		probe := newFakeProbe(map[string][]probeResult{
 			"/home":    {{metadata: homeMetadata("/home", "5", 9, 1, 10)}},
-			"/default": {{err: logs.ErrInvalidHome}},
+			"/default": {{err: logsource.ErrInvalidHome}},
 		})
 		service := newTestService(t, probe, store, "/home", "/default", "/data/tracker.sqlite")
 		detected, err := service.Detect(context.Background(), "")
@@ -282,7 +282,7 @@ func TestServiceConfirmPreservesAlreadyConfirmedConflict(t *testing.T) {
 	}
 	probe := newFakeProbe(map[string][]probeResult{
 		"/home":    {{metadata: homeMetadata("/home", "5", 9, 1, 10)}},
-		"/default": {{err: logs.ErrInvalidHome}},
+		"/default": {{err: logsource.ErrInvalidHome}},
 	})
 	store := &fakeStore{snapshot: &existing}
 	service := newTestService(t, probe, store, "/home", "/default", "/data/tracker.sqlite")
@@ -311,7 +311,7 @@ func TestServiceConfirmCommitPointIgnoresLateCancellation(t *testing.T) {
 	store := &cancelAfterCommitStore{cancel: cancel}
 	probe := newFakeProbe(map[string][]probeResult{
 		"/home":    {{metadata: homeMetadata("/home", "5", 9, 1, 10)}},
-		"/default": {{err: logs.ErrInvalidHome}},
+		"/default": {{err: logsource.ErrInvalidHome}},
 	})
 	service := newTestService(t, probe, store, "/home", "/default", "/data/tracker.sqlite")
 	detected, err := service.Detect(ctx, "")
@@ -336,7 +336,7 @@ func TestServiceConfirmLateCancellationWithUnreadableCommitIsDurabilityUnknown(t
 	store := &cancelAfterCommitUnreadableStore{cancel: cancel}
 	probe := newFakeProbe(map[string][]probeResult{
 		"/home":    {{metadata: homeMetadata("/home", "5", 9, 1, 10)}},
-		"/default": {{err: logs.ErrInvalidHome}},
+		"/default": {{err: logsource.ErrInvalidHome}},
 	})
 	service := newTestService(t, probe, store, "/home", "/default", "/data/tracker.sqlite")
 	detected, err := service.Detect(ctx, "")
@@ -369,7 +369,7 @@ func TestServiceConfirmCanceledStoreDistinguishesReadbackOutcomes(t *testing.T) 
 		t.Helper()
 		probe := newFakeProbe(map[string][]probeResult{
 			"/home":    {{metadata: homeMetadata("/home", "5", 9, 1, 10)}},
-			"/default": {{err: logs.ErrInvalidHome}},
+			"/default": {{err: logsource.ErrInvalidHome}},
 		})
 		service := newTestService(t, probe, store, "/home", "/default", "/data/tracker.sqlite")
 		detected, err := service.Detect(ctx, "")
@@ -421,7 +421,7 @@ func TestServiceResumeNotConfiguredClearsDurabilityUnknownLatch(t *testing.T) {
 	store := &unavailableThenUnconfiguredStore{}
 	probe := newFakeProbe(map[string][]probeResult{
 		"/home":    {{metadata: homeMetadata("/home", "5", 9, 1, 10)}},
-		"/default": {{err: logs.ErrInvalidHome}},
+		"/default": {{err: logsource.ErrInvalidHome}},
 	})
 	service := newTestService(t, probe, store, "/home", "/default", "/data/tracker.sqlite")
 	detected, err := service.Detect(context.Background(), "")
@@ -454,7 +454,7 @@ func TestServiceConcurrentConfirmAndCancelLinearizeAtCommit(t *testing.T) {
 	store := newBlockingCommitStore()
 	probe := newFakeProbe(map[string][]probeResult{
 		"/home":    {{metadata: homeMetadata("/home", "5", 9, 1, 10)}},
-		"/default": {{err: logs.ErrInvalidHome}},
+		"/default": {{err: logsource.ErrInvalidHome}},
 	})
 	service := newTestService(t, probe, store, "/home", "/default", "/data/tracker.sqlite")
 	detected, err := service.Detect(context.Background(), "")
@@ -499,7 +499,7 @@ func TestServicePropagatesCancellationWithoutWriting(t *testing.T) {
 	store := &fakeStore{}
 	probe := newFakeProbe(map[string][]probeResult{
 		"/home":    {{err: context.Canceled}},
-		"/default": {{err: logs.ErrInvalidHome}},
+		"/default": {{err: logsource.ErrInvalidHome}},
 	})
 	service := newTestService(t, probe, store, "/home", "/default", "/data/tracker.sqlite")
 	if _, err := service.Detect(context.Background(), ""); !errors.Is(err, context.Canceled) {
@@ -515,7 +515,7 @@ func TestServiceCancelInvalidatesDetectionAndWritesNothing(t *testing.T) {
 
 	probe := newFakeProbe(map[string][]probeResult{
 		"/home":    {{metadata: homeMetadata("/home", "5", 9, 0, 0)}},
-		"/default": {{err: logs.ErrInvalidHome}},
+		"/default": {{err: logsource.ErrInvalidHome}},
 	})
 	store := &fakeStore{}
 	service := newTestService(t, probe, store, "/home", "/default", "/data/tracker.sqlite")
@@ -598,7 +598,7 @@ func TestServiceRealAdaptersNeverReadContentBeforeConfirmation(t *testing.T) {
 		t.Fatalf("preferences.NewFileStore() error = %v", err)
 	}
 	service, err := NewService(Config{
-		Probe: logs.NewHomeProbe(), Store: store,
+		Probe: logsource.NewHomeProbe(), Store: store,
 		Getenv: func(key string) string {
 			if key == "CODEX_HOME" {
 				return home
@@ -663,7 +663,7 @@ func TestServiceRealAdaptersNeverReadContentBeforeConfirmation(t *testing.T) {
 }
 
 type probeResult struct {
-	metadata logs.HomeMetadata
+	metadata logsource.HomeMetadata
 	err      error
 }
 
@@ -677,15 +677,15 @@ func newFakeProbe(results map[string][]probeResult) *fakeProbe {
 	return &fakeProbe{results: results, calls: make(map[string]int)}
 }
 
-func (probe *fakeProbe) Probe(ctx context.Context, path string) (logs.HomeMetadata, error) {
+func (probe *fakeProbe) Probe(ctx context.Context, path string) (logsource.HomeMetadata, error) {
 	if err := ctx.Err(); err != nil {
-		return logs.HomeMetadata{}, err
+		return logsource.HomeMetadata{}, err
 	}
 	probe.mu.Lock()
 	defer probe.mu.Unlock()
 	sequence := probe.results[path]
 	if len(sequence) == 0 {
-		return logs.HomeMetadata{}, logs.ErrInvalidHome
+		return logsource.HomeMetadata{}, logsource.ErrInvalidHome
 	}
 	index := probe.calls[path]
 	probe.calls[path]++
@@ -878,8 +878,8 @@ func newTestService(
 	return service
 }
 
-func homeMetadata(path, deviceID string, inode, files, bytes int64) logs.HomeMetadata {
-	return logs.HomeMetadata{
+func homeMetadata(path, deviceID string, inode, files, bytes int64) logsource.HomeMetadata {
+	return logsource.HomeMetadata{
 		Path: path, DeviceID: deviceID, Inode: inode, SessionsDirectory: true,
 		JSONLFiles: files, JSONLBytes: bytes,
 	}

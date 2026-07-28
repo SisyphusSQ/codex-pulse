@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -443,7 +445,7 @@ func TestCurrentQueryMapsTamperedProjectionToRecoverableDomainError(t *testing.T
 	recordCurrentQueryLocal(
 		t, repository, "tamper-local", nowMS+1, resetAtMS, 40, store.QuotaWindowPrimary, 100,
 	)
-	if err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).
 			Where("observation_id = ?", "query-tamper-local-observation").
 			Delete(&currentQueryEvidenceFixture{}).Error

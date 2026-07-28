@@ -8,7 +8,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 // RecordAppRuntimeSample 通过 maintenance lane 写入一个 replay-safe runtime sample。
@@ -19,7 +18,7 @@ func (repository *Repository) RecordAppRuntimeSample(ctx context.Context, sample
 	if err := validateAppRuntimeSample(sample); err != nil {
 		return err
 	}
-	return repository.database.WriteMaintenance(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.WriteMaintenance(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		var existing appRuntimeSampleModel
 		result := transaction.WithContext(ctx).Take(&existing, "captured_at_ms = ?", sample.CapturedAtMS)
 		if result.Error == nil {
@@ -48,7 +47,7 @@ func (repository *Repository) ListAppRuntimeSamples(
 		return nil, err
 	}
 	var values []AppRuntimeSample
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var models []appRuntimeSampleModel
 		if err := connection.WithContext(ctx).
 			Where("captured_at_ms >= ? AND captured_at_ms < ?", filter.FromMS, filter.UntilMS).

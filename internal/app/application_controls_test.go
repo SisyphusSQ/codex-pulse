@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
@@ -37,21 +38,21 @@ func TestApplicationControlsUpdateSettingsPreservesReadOnlyPreferences(t *testin
 		t.Fatalf("CompareAndSwap(read-only fixture) error = %v", err)
 	}
 
-	receipt, err := runtime.UpdateSettings(context.Background(), SettingsUpdateRequest{
+	receipt, err := runtime.UpdateSettings(context.Background(), core.SettingsUpdateRequest{
 		ExpectedRevision: strconv.FormatUint(current.Revision, 10),
-		Online: SettingsOnlineUpdate{
+		Online: core.SettingsOnlineUpdate{
 			QuotaEnabled: true, ResetCreditsEnabled: true,
 		},
-		Refresh: SettingsRefreshUpdate{
+		Refresh: core.SettingsRefreshUpdate{
 			QuotaIntervalSeconds: 600, ResetCreditsIntervalSeconds: 3600,
 			ReconcileIntervalSeconds: 7200, JSONLDebounceMilliseconds: 5000,
 		},
-		Updates: SettingsUpdatesUpdate{
+		Updates: core.SettingsUpdatesUpdate{
 			AutoCheckEnabled: false, CheckIntervalSeconds: 7200, Channel: "prerelease",
 		},
-		UI: SettingsUIUpdate{LaunchBehavior: "main_window", OverviewRange: "thirty_days"},
+		UI: core.SettingsUIUpdate{LaunchBehavior: "main_window", OverviewRange: "thirty_days"},
 	})
-	if err != nil || receipt.Result != SettingsUpdateApplied || receipt.Revision == "" {
+	if err != nil || receipt.Result != core.SettingsUpdateApplied || receipt.Revision == "" {
 		t.Fatalf("UpdateSettings() = %#v, %v", receipt, err)
 	}
 	readback, err := preferenceStore.LoadPreferences(context.Background())
@@ -86,7 +87,7 @@ func TestApplicationControlsReturnsCommittedReceiptWhenReconcileRequiresRecovery
 	reconcileFailure := errors.New("synthetic reconcile failure")
 	runtime.quota.reconcilePreferences = func(context.Context) error { return reconcileFailure }
 	receipt, err := runtime.UpdateSettings(context.Background(), settingsRequestFromSnapshot(current))
-	if err != nil || receipt.Result != SettingsUpdateReconcileRequired || receipt.Revision == "" {
+	if err != nil || receipt.Result != core.SettingsUpdateReconcileRequired || receipt.Revision == "" {
 		t.Fatalf("UpdateSettings(reconcile failure) = %#v, %v", receipt, err)
 	}
 	readback, loadErr := preferenceStore.LoadPreferences(context.Background())
@@ -104,8 +105,8 @@ func TestApplicationControlsKeepHomePlanPrivateAndConsumeItOnce(t *testing.T) {
 	runtime, database, preferenceStore := startApplicationControlsTestRuntime(t)
 	invalidation := &recordingQueryInvalidationNotifier{}
 	runtime.invalidation = invalidation
-	plan, err := runtime.PlanHomeSwitch(context.Background(), HomeSwitchPlanRequest{
-		TargetPath: homeB, Strategy: HomeSwitchClearAndRebuild,
+	plan, err := runtime.PlanHomeSwitch(context.Background(), core.HomeSwitchPlanRequest{
+		TargetPath: homeB, Strategy: core.HomeSwitchClearAndRebuild,
 	})
 	if err != nil || plan.TargetGeneration != "2" || !plan.ClearsDerivedFacts {
 		t.Fatalf("PlanHomeSwitch() = %#v, %v", plan, err)
@@ -120,26 +121,26 @@ func TestApplicationControlsKeepHomePlanPrivateAndConsumeItOnce(t *testing.T) {
 		}
 	}
 	receipt, err := runtime.ConfirmHomeSwitch(context.Background())
-	if err != nil || (receipt.Result != HomeSwitchCompletedResult && receipt.Result != HomeSwitchRecoveryRequired) ||
+	if err != nil || (receipt.Result != core.HomeSwitchCompletedResult && receipt.Result != core.HomeSwitchRecoveryRequired) ||
 		receipt.Generation != "2" {
 		t.Fatalf("ConfirmHomeSwitch() = %#v, %v", receipt, err)
 	}
-	if receipt.Result == HomeSwitchRecoveryRequired {
+	if receipt.Result == core.HomeSwitchRecoveryRequired {
 		recovered, recoverErr := runtime.RecoverHomeSwitch(context.Background())
-		if recoverErr != nil || recovered.Result != HomeSwitchRecoveryRequired || recovered.Generation != "2" {
+		if recoverErr != nil || recovered.Result != core.HomeSwitchRecoveryRequired || recovered.Generation != "2" {
 			t.Fatalf("RecoverHomeSwitch() = %#v, %v", recovered, recoverErr)
 		}
 	}
 	wantInvalidations := 1
-	if receipt.Result == HomeSwitchRecoveryRequired {
+	if receipt.Result == core.HomeSwitchRecoveryRequired {
 		wantInvalidations = 2
 	}
-	if invalidation.count(QueryInvalidationIndex) != wantInvalidations ||
-		invalidation.count(QueryInvalidationSettings) != wantInvalidations {
+	if invalidation.count(core.InvalidationIndex) != wantInvalidations ||
+		invalidation.count(core.InvalidationSettings) != wantInvalidations {
 		t.Fatalf(
 			"Home invalidations = index:%d settings:%d, want %d each",
-			invalidation.count(QueryInvalidationIndex),
-			invalidation.count(QueryInvalidationSettings),
+			invalidation.count(core.InvalidationIndex),
+			invalidation.count(core.InvalidationSettings),
 			wantInvalidations,
 		)
 	}
@@ -186,8 +187,8 @@ func TestApplicationControlsConfirmDoesNotClearAPlanCreatedWhileWrapperFinishes(
 		entered: wrapperFinishEntered,
 		release: releaseWrapperFinish,
 	}
-	planA, err := runtime.PlanHomeSwitch(context.Background(), HomeSwitchPlanRequest{
-		TargetPath: homeB, Strategy: HomeSwitchClearAndRebuild,
+	planA, err := runtime.PlanHomeSwitch(context.Background(), core.HomeSwitchPlanRequest{
+		TargetPath: homeB, Strategy: core.HomeSwitchClearAndRebuild,
 	})
 	if err != nil {
 		t.Fatalf("PlanHomeSwitch(A) error = %v", err)
@@ -203,8 +204,8 @@ func TestApplicationControlsConfirmDoesNotClearAPlanCreatedWhileWrapperFinishes(
 		close(releaseWrapperFinish)
 		t.Fatal("ConfirmHomeSwitch(A) did not reach wrapper-finish barrier")
 	}
-	planB, err := runtime.PlanHomeSwitch(context.Background(), HomeSwitchPlanRequest{
-		TargetPath: homeC, Strategy: HomeSwitchClearAndRebuild,
+	planB, err := runtime.PlanHomeSwitch(context.Background(), core.HomeSwitchPlanRequest{
+		TargetPath: homeC, Strategy: core.HomeSwitchClearAndRebuild,
 	})
 	if err != nil || planB.TargetGeneration != "3" {
 		close(releaseWrapperFinish)
@@ -244,16 +245,16 @@ func TestApplicationControlsExposeFiniteLifecycleAndReadOnlyRepair(t *testing.T)
 	runtime, database, _ := startApplicationControlsTestRuntime(t)
 	invalidation := &recordingQueryInvalidationNotifier{}
 	runtime.invalidation = invalidation
-	for _, action := range []RuntimeAction{
-		RuntimeActionPauseBackfill, RuntimeActionPauseAll, RuntimeActionResume, RuntimeActionReconcile,
+	for _, action := range []core.RuntimeAction{
+		core.RuntimeActionPauseBackfill, core.RuntimeActionPauseAll, core.RuntimeActionResume, core.RuntimeActionReconcile,
 	} {
 		receipt, err := runtime.RunRuntimeAction(context.Background(), action)
 		if err != nil || receipt.Action != action || receipt.SourceState == "" || receipt.Transition == "" {
 			t.Fatalf("RunRuntimeAction(%q) = %#v, %v", action, receipt, err)
 		}
 	}
-	if invalidation.count(QueryInvalidationIndex) != 4 {
-		t.Fatalf("index invalidations = %d, want 4", invalidation.count(QueryInvalidationIndex))
+	if invalidation.count(core.InvalidationIndex) != 4 {
+		t.Fatalf("index invalidations = %d, want 4", invalidation.count(core.InvalidationIndex))
 	}
 	databaseDirectory := filepath.Dir(database.Config().Path)
 	before, err := os.ReadFile(filepath.Join(runtimeConfirmedHome(t, runtime), "session_index.jsonl"))
@@ -306,9 +307,9 @@ type blockingHomeInvalidationNotifier struct {
 
 func (notifier *blockingHomeInvalidationNotifier) Notify(
 	ctx context.Context,
-	domain QueryInvalidationDomain,
+	domain core.InvalidationDomain,
 ) error {
-	if domain != QueryInvalidationIndex {
+	if domain != core.InvalidationIndex {
 		return nil
 	}
 	notifier.once.Do(func() { close(notifier.entered) })
@@ -348,25 +349,25 @@ func closeApplicationControlsTestRuntime(
 	}
 }
 
-func settingsRequestFromSnapshot(snapshot preferences.Snapshot) SettingsUpdateRequest {
-	return SettingsUpdateRequest{
+func settingsRequestFromSnapshot(snapshot preferences.Snapshot) core.SettingsUpdateRequest {
+	return core.SettingsUpdateRequest{
 		ExpectedRevision: strconv.FormatUint(snapshot.Revision, 10),
-		Online: SettingsOnlineUpdate{
+		Online: core.SettingsOnlineUpdate{
 			QuotaEnabled:        !snapshot.Online.QuotaEnabled,
 			ResetCreditsEnabled: snapshot.Online.ResetCreditsEnabled,
 		},
-		Refresh: SettingsRefreshUpdate{
+		Refresh: core.SettingsRefreshUpdate{
 			QuotaIntervalSeconds:        snapshot.Refresh.QuotaIntervalSeconds,
 			ResetCreditsIntervalSeconds: snapshot.Refresh.ResetCreditsIntervalSeconds,
 			ReconcileIntervalSeconds:    snapshot.Refresh.ReconcileIntervalSeconds,
 			JSONLDebounceMilliseconds:   snapshot.Refresh.JSONLDebounceMilliseconds,
 		},
-		Updates: SettingsUpdatesUpdate{
+		Updates: core.SettingsUpdatesUpdate{
 			AutoCheckEnabled:     snapshot.Updates.AutoCheckEnabled,
 			CheckIntervalSeconds: snapshot.Updates.CheckIntervalSeconds,
 			Channel:              string(snapshot.Updates.Channel),
 		},
-		UI: SettingsUIUpdate{
+		UI: core.SettingsUIUpdate{
 			LaunchBehavior: string(snapshot.UI.LaunchBehavior),
 			OverviewRange:  string(snapshot.UI.OverviewRange),
 		},

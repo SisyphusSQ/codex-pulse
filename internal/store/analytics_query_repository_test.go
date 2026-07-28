@@ -8,6 +8,9 @@ import (
 	"reflect"
 	"testing"
 
+	"gorm.io/gorm"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -838,7 +841,7 @@ func TestSessionAnalyticsDetailReturnsKnownEmptyAndRejectsMissingTurnAttribution
 	seedSessionAnalyticsFixture(t, missingRepository, true)
 	if err := missingRepository.database.Write(context.Background(), func(
 		ctx context.Context,
-		transaction storesqlite.WriteTx,
+		transaction *gorm.DB,
 	) error {
 		return transaction.WithContext(ctx).Where("turn_id = ?", "turn-session-alpha").
 			Delete(&turnAttributionModel{}).Error
@@ -1014,7 +1017,7 @@ func TestSessionAnalyticsAmbiguousGenerationFallsBackWithoutTimezone(t *testing.
 		CompletedAtMS: pointerTo(int64(500)), UpdatedAtMS: 500,
 	}
 	if err := repository.database.Write(context.Background(), func(
-		ctx context.Context, transaction storesqlite.WriteTx,
+		ctx context.Context, transaction *gorm.DB,
 	) error {
 		return transaction.WithContext(ctx).Create(&second).Error
 	}); err != nil {
@@ -1081,7 +1084,7 @@ func TestListProjectAnalyticsPreservesUnknownFiltersSortsAndPaginates(t *testing
 		t.Fatalf("first project IDs = %#v", got)
 	}
 	if first.Records[1].ProjectID != nil || first.Records[1].ProjectDisplayName != nil ||
-		first.Records[1].AttributionConfidence != string(AttributionConfidenceUnknown) {
+		first.Records[1].AttributionConfidence != string(attribution.ConfidenceUnknown) {
 		t.Fatalf("unknown project dimension was lost = %#v", first.Records[1])
 	}
 	secondFilter := filter
@@ -1096,7 +1099,7 @@ func TestListProjectAnalyticsPreservesUnknownFiltersSortsAndPaginates(t *testing
 		t.Fatalf("second project page = %#v", second)
 	}
 
-	confidence := string(AttributionConfidenceUnknown)
+	confidence := string(attribution.ConfidenceUnknown)
 	unknownOnly, err := repository.ListProjectAnalytics(context.Background(), ProjectAnalyticsFilter{
 		Range: filter.Range, Limit: 10,
 		SortField: ProjectAnalyticsSortLastActivity, SortDirection: AnalyticsSortDescending,
@@ -1112,7 +1115,7 @@ func TestListProjectAnalyticsPreservesUnknownFiltersSortsAndPaginates(t *testing
 	highOnly, err := repository.ListProjectAnalytics(context.Background(), ProjectAnalyticsFilter{
 		Range: filter.Range, Limit: 10,
 		SortField: ProjectAnalyticsSortLastActivity, SortDirection: AnalyticsSortDescending,
-		Confidences: []string{string(AttributionConfidenceHigh)},
+		Confidences: []string{string(attribution.ConfidenceHigh)},
 	})
 	if err != nil {
 		t.Fatalf("ListProjectAnalytics(high confidence) error = %v", err)
@@ -1170,7 +1173,7 @@ func TestProjectAnalyticsDetailMatchesListAndReconcilesGlobalTotals(t *testing.T
 		t.Fatalf("ProjectAnalytics(missing) error = %v, want ErrNotFound", err)
 	}
 	if err := repository.database.Write(context.Background(), func(
-		ctx context.Context, transaction storesqlite.WriteTx,
+		ctx context.Context, transaction *gorm.DB,
 	) error {
 		return transaction.WithContext(ctx).Model(&projectUsageDailyModel{}).
 			Where("generation_id = ? AND dimension_key = ?", "project-analytics-v1", "project-a").
@@ -1520,7 +1523,7 @@ func TestProjectAnalyticsRejectsContributionCursorAfterGenerationRollover(t *tes
 	}
 	if err := repository.database.Write(context.Background(), func(
 		ctx context.Context,
-		transaction storesqlite.WriteTx,
+		transaction *gorm.DB,
 	) error {
 		database := transaction.WithContext(ctx)
 		if err := database.Model(&costRollupGenerationModel{}).
@@ -1560,7 +1563,7 @@ func TestListProjectAnalyticsRejectsProjectContributionDrift(t *testing.T) {
 	seedProjectAnalyticsFixture(t, repository, false)
 	if err := repository.database.Write(context.Background(), func(
 		ctx context.Context,
-		transaction storesqlite.WriteTx,
+		transaction *gorm.DB,
 	) error {
 		return transaction.WithContext(ctx).Model(&turnAttributionModel{}).
 			Where("turn_id = ?", "project-turn-alpha").
@@ -1589,7 +1592,7 @@ func TestProjectAnalyticsRejectsMissingTurnAttributionForUnknownContribution(t *
 	seedProjectAnalyticsFixture(t, repository, false)
 	if err := repository.database.Write(context.Background(), func(
 		ctx context.Context,
-		transaction storesqlite.WriteTx,
+		transaction *gorm.DB,
 	) error {
 		return transaction.WithContext(ctx).Where(
 			"turn_id = ?", "project-turn-gamma",
@@ -1724,7 +1727,7 @@ func seedProjectAnalyticsFixture(t *testing.T, repository *Repository, driftGlob
 		{GenerationID: generation.GenerationID, BucketStartMS: 86_400_000, ReportingTimezone: "UTC",
 			Totals: rollup(20, &cost200, 1, 0, 86_400_010)},
 	}
-	err := repository.database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		database := transaction.WithContext(ctx)
 		if err := database.Create(&generation).Error; err != nil {
 			return err
@@ -1795,7 +1798,7 @@ func seedProjectContributionFacts(t *testing.T, repository *Repository) {
 	}
 	err := repository.database.Write(context.Background(), func(
 		ctx context.Context,
-		transaction storesqlite.WriteTx,
+		transaction *gorm.DB,
 	) error {
 		database := transaction.WithContext(ctx)
 		for _, value := range fixtures {
@@ -1879,7 +1882,7 @@ func seedProjectContributionPaginationEdges(t *testing.T, repository *Repository
 	pricingVersion := pricing.BuiltinOpenAI20260714().PricingVersion
 	err := repository.database.Write(context.Background(), func(
 		ctx context.Context,
-		transaction storesqlite.WriteTx,
+		transaction *gorm.DB,
 	) error {
 		database := transaction.WithContext(ctx)
 		if err := database.Model(&turnUsageModel{}).Where("turn_id = ?", "project-turn-alpha").
@@ -2078,7 +2081,7 @@ func seedSessionAnalyticsFixture(t *testing.T, repository *Repository, withLedge
 				EstimatedUSDMicros: pointerTo(int64(0)), PricedTurnCount: 1,
 				FirstActivityAtMS: 100, LastActivityAtMS: 100, UpdatedAtMS: 400}},
 	}
-	err := repository.database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		database := transaction.WithContext(ctx)
 		if withLedger {
 			generation := costRollupGenerationModel{
@@ -2114,42 +2117,42 @@ func seedSessionAnalyticsFixture(t *testing.T, repository *Repository, withLedge
 			if err := database.Create(&current).Error; err != nil {
 				return err
 			}
-			attribution := sessionAttributionModel{
+			attributionModel := sessionAttributionModel{
 				SessionID: value.id, DisplayTitle: value.title,
-				TitleConfidence: string(AttributionConfidenceHigh),
-				TitleSource:     string(AttributionSourceSessionIDFallback),
-				TitleReason:     string(AttributionReasonStableIdentity),
+				TitleConfidence: string(attribution.ConfidenceHigh),
+				TitleSource:     string(attribution.SourceSessionIDFallback),
+				TitleReason:     string(attribution.ReasonStableIdentity),
 				ProjectID:       value.projectID, ProjectDisplay: value.projectDisplay,
-				ProjectConfidence: string(AttributionConfidenceHigh),
-				ProjectSource:     string(AttributionSourceRegisteredRoot),
-				ProjectReason:     string(AttributionReasonRootMatched),
+				ProjectConfidence: string(attribution.ConfidenceHigh),
+				ProjectSource:     string(attribution.SourceRegisteredRoot),
+				ProjectReason:     string(attribution.ReasonRootMatched),
 				ModelKey:          value.modelKey, ModelDisplay: value.modelDisplay,
-				ModelConfidence: string(AttributionConfidenceHigh),
-				ModelSource:     string(AttributionSourceModelCanonical),
-				ModelReason:     string(AttributionReasonObserved), RuleVersion: 1, UpdatedAtMS: 400,
+				ModelConfidence: string(attribution.ConfidenceHigh),
+				ModelSource:     string(attribution.SourceModelCanonical),
+				ModelReason:     string(attribution.ReasonObserved), RuleVersion: 1, UpdatedAtMS: 400,
 			}
 			if value.projectID == nil {
-				attribution.ProjectConfidence = string(AttributionConfidenceUnknown)
-				attribution.ProjectSource = string(AttributionSourceMissing)
-				attribution.ProjectReason = string(AttributionReasonMissing)
+				attributionModel.ProjectConfidence = string(attribution.ConfidenceUnknown)
+				attributionModel.ProjectSource = string(attribution.SourceMissing)
+				attributionModel.ProjectReason = string(attribution.ReasonMissing)
 			}
 			if value.modelKey == nil {
-				attribution.ModelConfidence = string(AttributionConfidenceUnknown)
-				attribution.ModelSource = string(AttributionSourceMissing)
-				attribution.ModelReason = string(AttributionReasonMissing)
+				attributionModel.ModelConfidence = string(attribution.ConfidenceUnknown)
+				attributionModel.ModelSource = string(attribution.SourceMissing)
+				attributionModel.ModelReason = string(attribution.ReasonMissing)
 			}
-			if err := database.Create(&attribution).Error; err != nil {
+			if err := database.Create(&attributionModel).Error; err != nil {
 				return err
 			}
 			if value.active {
 				turnAttribution := turnAttributionModel{
 					TurnID:    "turn-" + value.id,
 					ProjectID: value.projectID, ProjectDisplay: value.projectDisplay,
-					ProjectConfidence: attribution.ProjectConfidence,
-					ProjectSource:     attribution.ProjectSource, ProjectReason: attribution.ProjectReason,
+					ProjectConfidence: attributionModel.ProjectConfidence,
+					ProjectSource:     attributionModel.ProjectSource, ProjectReason: attributionModel.ProjectReason,
 					ModelKey: value.modelKey, ModelDisplay: value.modelDisplay,
-					ModelConfidence: attribution.ModelConfidence,
-					ModelSource:     attribution.ModelSource, ModelReason: attribution.ModelReason,
+					ModelConfidence: attributionModel.ModelConfidence,
+					ModelSource:     attributionModel.ModelSource, ModelReason: attributionModel.ModelReason,
 					RuleVersion: 1, UpdatedAtMS: 400,
 				}
 				if err := database.Create(&turnAttribution).Error; err != nil {
@@ -2185,14 +2188,14 @@ func seedSessionAnalyticsFixture(t *testing.T, repository *Repository, withLedge
 				}
 				if err := database.Create(&turnAttributionModel{
 					TurnID: turnID, ProjectID: value.projectID, ProjectDisplay: value.projectDisplay,
-					ProjectConfidence: attribution.ProjectConfidence,
-					ProjectSource:     attribution.ProjectSource,
-					ProjectReason:     attribution.ProjectReason,
+					ProjectConfidence: attributionModel.ProjectConfidence,
+					ProjectSource:     attributionModel.ProjectSource,
+					ProjectReason:     attributionModel.ProjectReason,
 					ModelKey:          value.modelKey,
 					ModelDisplay:      value.modelDisplay,
-					ModelConfidence:   attribution.ModelConfidence,
-					ModelSource:       attribution.ModelSource,
-					ModelReason:       attribution.ModelReason,
+					ModelConfidence:   attributionModel.ModelConfidence,
+					ModelSource:       attributionModel.ModelSource,
+					ModelReason:       attributionModel.ModelReason,
 					RuleVersion:       1,
 					UpdatedAtMS:       completedAt,
 				}).Error; err != nil {
@@ -2235,7 +2238,7 @@ func seedSessionTurnTimelineFixture(t *testing.T, repository *Repository, withLe
 	completedAt := int64(120)
 	err := repository.database.Write(context.Background(), func(
 		ctx context.Context,
-		transaction storesqlite.WriteTx,
+		transaction *gorm.DB,
 	) error {
 		database := transaction.WithContext(ctx)
 		if err := database.Create(&sessionModel{
@@ -2251,16 +2254,16 @@ func seedSessionTurnTimelineFixture(t *testing.T, repository *Repository, withLe
 		}
 		sessionAttribution := sessionAttributionModel{
 			SessionID: "session-timeline", DisplayTitle: "Timeline safe title",
-			TitleConfidence:   string(AttributionConfidenceHigh),
-			TitleSource:       string(AttributionSourceSessionIDFallback),
-			TitleReason:       string(AttributionReasonStableIdentity),
-			ProjectConfidence: string(AttributionConfidenceUnknown),
-			ProjectSource:     string(AttributionSourceMissing),
-			ProjectReason:     string(AttributionReasonMissing),
+			TitleConfidence:   string(attribution.ConfidenceHigh),
+			TitleSource:       string(attribution.SourceSessionIDFallback),
+			TitleReason:       string(attribution.ReasonStableIdentity),
+			ProjectConfidence: string(attribution.ConfidenceUnknown),
+			ProjectSource:     string(attribution.SourceMissing),
+			ProjectReason:     string(attribution.ReasonMissing),
 			ModelKey:          pointerTo("model-safe"), ModelDisplay: pointerTo("Model Safe"),
-			ModelConfidence: string(AttributionConfidenceHigh),
-			ModelSource:     string(AttributionSourceModelCanonical),
-			ModelReason:     string(AttributionReasonObserved), RuleVersion: 1, UpdatedAtMS: 220,
+			ModelConfidence: string(attribution.ConfidenceHigh),
+			ModelSource:     string(attribution.SourceModelCanonical),
+			ModelReason:     string(attribution.ReasonObserved), RuleVersion: 1, UpdatedAtMS: 220,
 		}
 		if err := database.Create(&sessionAttribution).Error; err != nil {
 			return err
@@ -2302,14 +2305,14 @@ func seedSessionTurnTimelineFixture(t *testing.T, repository *Repository, withLe
 			{TurnID: "turn-timeline-active"},
 		}
 		for index := range attributions {
-			attributions[index].ProjectConfidence = string(AttributionConfidenceUnknown)
-			attributions[index].ProjectSource = string(AttributionSourceMissing)
-			attributions[index].ProjectReason = string(AttributionReasonMissing)
+			attributions[index].ProjectConfidence = string(attribution.ConfidenceUnknown)
+			attributions[index].ProjectSource = string(attribution.SourceMissing)
+			attributions[index].ProjectReason = string(attribution.ReasonMissing)
 			attributions[index].ModelKey = pointerTo("model-safe")
 			attributions[index].ModelDisplay = pointerTo("Model Safe")
-			attributions[index].ModelConfidence = string(AttributionConfidenceHigh)
-			attributions[index].ModelSource = string(AttributionSourceModelCanonical)
-			attributions[index].ModelReason = string(AttributionReasonObserved)
+			attributions[index].ModelConfidence = string(attribution.ConfidenceHigh)
+			attributions[index].ModelSource = string(attribution.SourceModelCanonical)
+			attributions[index].ModelReason = string(attribution.ReasonObserved)
 			attributions[index].RuleVersion = 1
 			attributions[index].UpdatedAtMS = 220
 		}

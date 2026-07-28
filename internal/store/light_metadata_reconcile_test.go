@@ -3,17 +3,19 @@ package store
 import (
 	"context"
 	"testing"
+
+	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
 )
 
 func TestReconcileLightMetadataSkipsIdenticalSnapshotAndPublishesTitleChange(t *testing.T) {
 	t.Parallel()
 
-	repository := openRuntimeRepository(t)
-	home := LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
+	repository := openLightRuntimeRepository(t)
+	home := storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
 	title := "初始标题"
-	snapshot := LightMetadataSnapshot{
+	snapshot := storelight.LightMetadataSnapshot{
 		Home: home, Generation: 1, ReadyAtMS: 1_000,
-		Sessions: []LightSessionMetadata{{
+		Sessions: []storelight.LightSessionMetadata{{
 			SessionID: "one", ThreadName: &title, CWD: "/workspace",
 			CreatedAtMS: 100, UpdatedAtMS: 200,
 		}},
@@ -37,7 +39,7 @@ func TestReconcileLightMetadataSkipsIdenticalSnapshotAndPublishesTitleChange(t *
 
 	updatedTitle := "动态标题"
 	updated := identical
-	updated.Sessions = []LightSessionMetadata{{
+	updated.Sessions = []storelight.LightSessionMetadata{{
 		SessionID: "one", ThreadName: &updatedTitle, CWD: "/workspace",
 		CreatedAtMS: 100, UpdatedAtMS: 300,
 	}}

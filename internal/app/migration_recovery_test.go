@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -81,7 +83,7 @@ func TestMigrationRecoveryRestorePreservesFailedDatabaseAndConsumesConfirmation(
 	if err != nil {
 		t.Fatalf("Open(corrupt) error = %v", err)
 	}
-	if err := corrupt.Write(context.Background(), func(ctx context.Context, tx storesqlite.WriteTx) error {
+	if err := corrupt.Write(context.Background(), func(ctx context.Context, tx *gorm.DB) error {
 		return tx.WithContext(ctx).Exec("PRAGMA user_version = 99").Error
 	}); err != nil {
 		t.Fatalf("set newer version: %v", err)

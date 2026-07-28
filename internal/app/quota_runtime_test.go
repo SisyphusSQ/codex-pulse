@@ -16,6 +16,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/bootstrap"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
@@ -773,12 +774,12 @@ func TestApplicationLifecycleRuntimeCommitsSettingsBeforeQuotaReconcile(t *testi
 	if committed.Revision != current.Revision+1 || committed.Online != (preferences.OnlinePreferences{}) {
 		t.Fatalf("committed settings = %#v", committed)
 	}
-	if invalidation.count(QueryInvalidationSettings) != 1 ||
-		invalidation.count(QueryInvalidationQuota) != 1 {
+	if invalidation.count(core.InvalidationSettings) != 1 ||
+		invalidation.count(core.InvalidationQuota) != 1 {
 		t.Fatalf(
 			"settings invalidation counts = settings:%d quota:%d",
-			invalidation.count(QueryInvalidationSettings),
-			invalidation.count(QueryInvalidationQuota),
+			invalidation.count(core.InvalidationSettings),
+			invalidation.count(core.InvalidationQuota),
 		)
 	}
 	readback, err := preferenceStore.LoadPreferences(context.Background())
@@ -860,12 +861,12 @@ func TestApplicationLifecycleRuntimeReturnsCommittedSettingsOnReconcileFailure(t
 	if !errors.As(err, &postCommitError) || postCommitError.Committed.Revision != committed.Revision {
 		t.Fatalf("post-commit error = %#v, committed = %#v", postCommitError, committed)
 	}
-	if invalidation.count(QueryInvalidationSettings) != 1 ||
-		invalidation.count(QueryInvalidationQuota) != 1 {
+	if invalidation.count(core.InvalidationSettings) != 1 ||
+		invalidation.count(core.InvalidationQuota) != 1 {
 		t.Fatalf(
 			"post-commit invalidation counts = settings:%d quota:%d",
-			invalidation.count(QueryInvalidationSettings),
-			invalidation.count(QueryInvalidationQuota),
+			invalidation.count(core.InvalidationSettings),
+			invalidation.count(core.InvalidationQuota),
 		)
 	}
 	readback, err := preferenceStore.LoadPreferences(context.Background())

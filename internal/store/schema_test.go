@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+
+	"gorm.io/gorm"
 
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -33,7 +36,7 @@ func TestEnsureCoreSchemaCreatesStrictCoreTables(t *testing.T) {
 	}
 	var gotTables []string
 	strictByTable := make(map[string]bool)
-	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		rows, err := rawQueryRows(ctx, connection, `
 			SELECT name, strict
 			FROM pragma_table_list
@@ -168,7 +171,7 @@ func TestCoreSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 	var gotIndexes []string
 	queryPlans := make(map[string]string)
 	var sourceIndexUnique int
-	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		for table := range wantColumns {
 			rows, err := rawQueryRows(ctx, connection, `
 				SELECT name, type, "notnull", pk FROM pragma_table_info(?) ORDER BY cid
@@ -390,7 +393,7 @@ func TestCoreSchemaExcludesPrivateContentColumns(t *testing.T) {
 		"token_secret",
 		"access_token",
 	}
-	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		rows, err := rawQueryRows(ctx, connection, `
 			SELECT m.name, p.name
 			FROM sqlite_schema AS m
@@ -424,7 +427,7 @@ func TestEnsureCoreSchemaRejectsIncompatibleExistingTableAtomically(t *testing.T
 	t.Parallel()
 
 	database := openTestDatabase(t)
-	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		_, err := rawExec(ctx, transaction, `CREATE TABLE sessions (session_id TEXT PRIMARY KEY) STRICT`)
 		return err
 	})
@@ -434,8 +437,8 @@ func TestEnsureCoreSchemaRejectsIncompatibleExistingTableAtomically(t *testing.T
 
 	repository := NewRepository(database)
 	err = repository.EnsureCoreSchema(context.Background())
-	if !errors.Is(err, ErrSchemaContract) {
-		t.Fatalf("EnsureCoreSchema() error = %v, want ErrSchemaContract", err)
+	if !errors.Is(err, storeschema.ErrContract) {
+		t.Fatalf("EnsureCoreSchema() error = %v, want storeschema.ErrContract", err)
 	}
 
 	gotTables, err := coreTableNames(context.Background(), database)
@@ -447,7 +450,7 @@ func TestEnsureCoreSchemaRejectsIncompatibleExistingTableAtomically(t *testing.T
 	}
 }
 
-// 测试 malformed table 或同名异类对象在执行依赖 DDL 前稳定返回 ErrSchemaContract。
+// 测试 malformed table 或同名异类对象在执行依赖 DDL 前稳定返回 storeschema.ErrContract。
 func TestEnsureCoreSchemaClassifiesMalformedExistingObjects(t *testing.T) {
 	t.Parallel()
 
@@ -474,7 +477,7 @@ func TestEnsureCoreSchemaClassifiesMalformedExistingObjects(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			database := openTestDatabase(t)
-			err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+			err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 				_, err := rawExec(ctx, transaction, testCase.statement)
 				return err
 			})
@@ -483,13 +486,13 @@ func TestEnsureCoreSchemaClassifiesMalformedExistingObjects(t *testing.T) {
 			}
 
 			err = NewRepository(database).EnsureCoreSchema(context.Background())
-			if !errors.Is(err, ErrSchemaContract) {
-				t.Fatalf("EnsureCoreSchema() error = %v, want ErrSchemaContract", err)
+			if !errors.Is(err, storeschema.ErrContract) {
+				t.Fatalf("EnsureCoreSchema() error = %v, want storeschema.ErrContract", err)
 			}
 
 			var gotType string
 			var objectCount int
-			err = database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+			err = database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 				if err := rawQueryRow(
 					ctx, connection,
 					`SELECT type FROM sqlite_schema WHERE name = ?`,
@@ -520,7 +523,7 @@ func TestCoreSchemaEnforcesConstraintsWithoutRepository(t *testing.T) {
 	if err := NewRepository(database).EnsureCoreSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureCoreSchema() error = %v", err)
 	}
-	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		if _, err := rawExec(ctx, transaction, `
 			INSERT INTO projects VALUES ('project-a', 'Project', '/workspace', NULL, 0, 0)
 		`); err != nil {
@@ -659,7 +662,7 @@ func TestCoreSchemaEnforcesConstraintsWithoutRepository(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+			err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 				_, err := rawExec(ctx, transaction, testCase.statement)
 				return err
 			})
@@ -693,7 +696,7 @@ func openTestDatabase(t testing.TB) *storesqlite.Store {
 
 func coreTableNames(ctx context.Context, database *storesqlite.Store) ([]string, error) {
 	var tables []string
-	err := database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		rows, err := rawQueryRows(ctx, connection, `
 			SELECT name
 			FROM pragma_table_list

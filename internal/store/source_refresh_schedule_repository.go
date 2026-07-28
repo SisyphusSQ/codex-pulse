@@ -8,7 +8,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 const sourceRefreshManualMinimumIntervalMS = int64(60_000)
@@ -24,7 +23,7 @@ func (repository *Repository) UpsertSourceRefreshSchedule(
 		return SourceRefreshSchedule{}, err
 	}
 	var stored SourceRefreshSchedule
-	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		existing, found, err := sourceRefreshScheduleByID(ctx, transaction, update.SourceInstanceID)
 		if err != nil {
 			return err
@@ -81,7 +80,7 @@ func (repository *Repository) SourceRefreshSchedule(
 		return SourceRefreshSchedule{}, ErrInvalidRepository
 	}
 	var schedule SourceRefreshSchedule
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		value, found, err := sourceRefreshScheduleByID(ctx, connection, sourceInstanceID)
 		if err != nil {
 			return err
@@ -107,7 +106,7 @@ func (repository *Repository) ListDueSourceRefreshSchedules(
 		return nil, invalidRecord("source refresh due query is invalid")
 	}
 	var schedules []SourceRefreshSchedule
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var models []sourceRefreshScheduleModel
 		if err := connection.WithContext(ctx).
 			Where("next_due_at_ms IS NOT NULL AND next_due_at_ms <= ? AND active_claim_id IS NULL", atMS).
@@ -146,7 +145,7 @@ func (repository *Repository) ClaimSourceRefresh(
 	}
 	var stored SourceRefreshSchedule
 	claimed := false
-	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		existing, found, err := sourceRefreshScheduleByID(ctx, transaction, sourceInstanceID)
 		if err != nil {
 			return err
@@ -222,7 +221,7 @@ func (repository *Repository) CompleteSourceRefresh(
 		return SourceRefreshSchedule{}, invalidRecord("source refresh completion is invalid")
 	}
 	var stored SourceRefreshSchedule
-	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		existing, found, err := sourceRefreshScheduleByID(ctx, transaction, completion.SourceInstanceID)
 		if err != nil {
 			return err
@@ -296,7 +295,7 @@ func (repository *Repository) ListExpiredSourceRefreshClaims(
 		return nil, invalidRecord("source refresh recovery time is invalid")
 	}
 	var expired []SourceRefreshSchedule
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var models []sourceRefreshScheduleModel
 		if err := connection.WithContext(ctx).
 			Where("active_claim_id IS NOT NULL AND claim_expires_at_ms <= ?", atMS).
@@ -332,7 +331,7 @@ func (repository *Repository) ReleaseExpiredSourceRefreshClaim(
 	}
 	var recovered SourceRefreshSchedule
 	released := false
-	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		existing, found, err := sourceRefreshScheduleByID(ctx, transaction, recovery.SourceInstanceID)
 		if err != nil {
 			return err

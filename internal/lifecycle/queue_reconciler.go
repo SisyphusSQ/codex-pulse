@@ -7,7 +7,7 @@ import (
 	"hash"
 	"strconv"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/liveindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/scheduler"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -27,7 +27,7 @@ type liveTaskEnqueuer interface {
 	Enqueue(context.Context, scheduler.EnqueueRequest) (store.SchedulerTask, error)
 }
 
-type reconcileDiscover func(context.Context, ConfirmedHome, []logs.Snapshot) (logs.ReconcilePlan, error)
+type reconcileDiscover func(context.Context, ConfirmedHome, []logsource.Snapshot) (logsource.ReconcilePlan, error)
 
 type QueueReconcileRunnerConfig struct {
 	Repository   snapshotRepository
@@ -77,7 +77,7 @@ func (runner *QueueReconcileRunner) RunReconcile(
 	if err != nil {
 		return sanitizedReconcileDependencyError(ctx, err)
 	}
-	previous := make([]logs.Snapshot, len(stored))
+	previous := make([]logsource.Snapshot, len(stored))
 	for index, value := range stored {
 		previous[index] = snapshotFromStoreFingerprint(value)
 	}
@@ -118,24 +118,24 @@ func (runner *QueueReconcileRunner) RunReconcile(
 func discoverConfirmedHome(
 	ctx context.Context,
 	home ConfirmedHome,
-	previous []logs.Snapshot,
-) (logs.ReconcilePlan, error) {
-	discoverer, err := logs.NewConfirmedDiscoverer(home.Path, home.DeviceID, home.Inode)
+	previous []logsource.Snapshot,
+) (logsource.ReconcilePlan, error) {
+	discoverer, err := logsource.NewConfirmedDiscoverer(home.Path, home.DeviceID, home.Inode)
 	if err != nil {
-		return logs.ReconcilePlan{}, err
+		return logsource.ReconcilePlan{}, err
 	}
 	discovery, err := discoverer.DiscoverAgainst(ctx, previous)
 	if err != nil {
-		return logs.ReconcilePlan{}, err
+		return logsource.ReconcilePlan{}, err
 	}
-	return logs.PlanReconcile(home.Path, previous, discovery)
+	return logsource.PlanReconcile(home.Path, previous, discovery)
 }
 
-func snapshotFromStoreFingerprint(value store.SourceFingerprint) logs.Snapshot {
-	return logs.Snapshot{
+func snapshotFromStoreFingerprint(value store.SourceFingerprint) logsource.Snapshot {
+	return logsource.Snapshot{
 		SourceFileID: value.SourceFileID, Provider: value.Provider,
-		Kind: logs.SourceKind(value.SourceKind), Path: value.CurrentPath,
-		Fingerprint: logs.Fingerprint{
+		Kind: logsource.SourceKind(value.SourceKind), Path: value.CurrentPath,
+		Fingerprint: logsource.Fingerprint{
 			DeviceID: value.DeviceID, Inode: value.Inode, SizeBytes: value.SizeBytes,
 			MTimeNS: value.MTimeNS, PrefixBytes: value.PrefixBytes,
 			PrefixSHA256: value.PrefixSHA256, Digest: value.FingerprintSHA256,
@@ -143,20 +143,20 @@ func snapshotFromStoreFingerprint(value store.SourceFingerprint) logs.Snapshot {
 	}
 }
 
-func liveReconcileAction(action logs.ReconcileAction) bool {
+func liveReconcileAction(action logsource.ReconcileAction) bool {
 	if action.Current == nil || action.Issue != nil {
 		return false
 	}
 	switch action.Kind {
-	case logs.ChangeAdded, logs.ChangeGrown, logs.ChangeTruncated,
-		logs.ChangeMoved, logs.ChangeReplaced:
+	case logsource.ChangeAdded, logsource.ChangeGrown, logsource.ChangeTruncated,
+		logsource.ChangeMoved, logsource.ChangeReplaced:
 		return true
 	default:
 		return false
 	}
 }
 
-func stableReconcileRequestID(generation int64, action logs.ReconcileAction) string {
+func stableReconcileRequestID(generation int64, action logsource.ReconcileAction) string {
 	hasher := sha256.New()
 	writeReconcileIdentity(hasher, strconv.FormatInt(generation, 10))
 	writeReconcileIdentity(hasher, string(action.Kind))
@@ -165,7 +165,7 @@ func stableReconcileRequestID(generation int64, action logs.ReconcileAction) str
 	return "reconcile-" + hex.EncodeToString(hasher.Sum(nil))
 }
 
-func writeReconcileSnapshotIdentity(hasher hash.Hash, snapshot *logs.Snapshot) {
+func writeReconcileSnapshotIdentity(hasher hash.Hash, snapshot *logsource.Snapshot) {
 	if snapshot == nil {
 		writeReconcileIdentity(hasher, "")
 		return

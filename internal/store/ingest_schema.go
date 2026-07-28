@@ -1,5 +1,7 @@
 package store
 
+import storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
+
 // turnsSchemaV1Statement 是 migration v1 的历史 DDL。它必须与已发布 checksum
 // 保持一致；v3 只通过 append-only table rebuild 放宽 source offset 顺序。
 const turnsSchemaV1Statement = `CREATE TABLE IF NOT EXISTS turns (
@@ -50,8 +52,8 @@ const turnsSchemaCurrentStatement = `CREATE TABLE IF NOT EXISTS turns (
 		)
 	) STRICT`
 
-var ingestSchemaObjects = []schemaObject{
-	{objectType: "table", name: "source_generations", statement: `CREATE TABLE IF NOT EXISTS source_generations (
+var ingestSchemaObjects = []storeschema.Object{
+	{ObjectType: "table", Name: "source_generations", Statement: `CREATE TABLE IF NOT EXISTS source_generations (
 		source_file_id TEXT NOT NULL CHECK (length(source_file_id) > 0) REFERENCES source_files(source_file_id) ON DELETE CASCADE,
 		generation INTEGER NOT NULL CHECK (generation >= 0),
 		state TEXT NOT NULL CHECK (state IN ('building', 'active', 'superseded')),
@@ -118,7 +120,7 @@ var ingestSchemaObjects = []schemaObject{
 			)
 		)
 	) STRICT`},
-	{objectType: "table", name: "parser_checkpoints", statement: `CREATE TABLE IF NOT EXISTS parser_checkpoints (
+	{ObjectType: "table", Name: "parser_checkpoints", Statement: `CREATE TABLE IF NOT EXISTS parser_checkpoints (
 		source_file_id TEXT NOT NULL CHECK (length(source_file_id) > 0),
 		generation INTEGER NOT NULL CHECK (generation >= 0),
 		checkpoint_version INTEGER NOT NULL CHECK (checkpoint_version > 0),
@@ -129,7 +131,7 @@ var ingestSchemaObjects = []schemaObject{
 		FOREIGN KEY (source_file_id, generation)
 			REFERENCES source_generations(source_file_id, generation) ON DELETE CASCADE
 	) STRICT`},
-	{objectType: "table", name: "source_generation_batches", statement: `CREATE TABLE IF NOT EXISTS source_generation_batches (
+	{ObjectType: "table", Name: "source_generation_batches", Statement: `CREATE TABLE IF NOT EXISTS source_generation_batches (
 		source_file_id TEXT NOT NULL CHECK (length(source_file_id) > 0),
 		generation INTEGER NOT NULL CHECK (generation >= 0),
 		from_offset INTEGER NOT NULL CHECK (from_offset >= 0),
@@ -143,7 +145,7 @@ var ingestSchemaObjects = []schemaObject{
 			REFERENCES source_generations(source_file_id, generation) ON DELETE CASCADE,
 		CHECK (to_offset > from_offset OR eof = 1)
 	) STRICT`},
-	{objectType: "table", name: "parser_diagnostics", statement: `CREATE TABLE IF NOT EXISTS parser_diagnostics (
+	{ObjectType: "table", Name: "parser_diagnostics", Statement: `CREATE TABLE IF NOT EXISTS parser_diagnostics (
 		source_file_id TEXT NOT NULL CHECK (length(source_file_id) > 0),
 		generation INTEGER NOT NULL CHECK (generation >= 0),
 		batch_end_offset INTEGER NOT NULL CHECK (batch_end_offset >= 0),
@@ -160,16 +162,16 @@ var ingestSchemaObjects = []schemaObject{
 		FOREIGN KEY (source_file_id, generation)
 			REFERENCES source_generations(source_file_id, generation) ON DELETE CASCADE
 	) STRICT`},
-	{objectType: "index", name: "idx_source_generations_active", statement: `CREATE UNIQUE INDEX IF NOT EXISTS idx_source_generations_active
+	{ObjectType: "index", Name: "idx_source_generations_active", Statement: `CREATE UNIQUE INDEX IF NOT EXISTS idx_source_generations_active
 		ON source_generations(source_file_id) WHERE state = 'active'`},
-	{objectType: "index", name: "idx_source_generations_building", statement: `CREATE UNIQUE INDEX IF NOT EXISTS idx_source_generations_building
+	{ObjectType: "index", Name: "idx_source_generations_building", Statement: `CREATE UNIQUE INDEX IF NOT EXISTS idx_source_generations_building
 		ON source_generations(source_file_id) WHERE state = 'building'`},
-	{objectType: "index", name: "idx_source_generations_active_session", statement: `CREATE UNIQUE INDEX IF NOT EXISTS idx_source_generations_active_session
+	{ObjectType: "index", Name: "idx_source_generations_active_session", Statement: `CREATE UNIQUE INDEX IF NOT EXISTS idx_source_generations_active_session
 		ON source_generations(session_id) WHERE state = 'active' AND session_id IS NOT NULL`},
-	{objectType: "index", name: "idx_source_generations_snapshot", statement: `CREATE INDEX IF NOT EXISTS idx_source_generations_snapshot
+	{ObjectType: "index", Name: "idx_source_generations_snapshot", Statement: `CREATE INDEX IF NOT EXISTS idx_source_generations_snapshot
 		ON source_generations(state, current_path, source_file_id)`},
-	{objectType: "index", name: "idx_generation_batches_replay", statement: `CREATE INDEX IF NOT EXISTS idx_generation_batches_replay
+	{ObjectType: "index", Name: "idx_generation_batches_replay", Statement: `CREATE INDEX IF NOT EXISTS idx_generation_batches_replay
 		ON source_generation_batches(source_file_id, generation, from_offset, to_offset, batch_identity_sha256)`},
-	{objectType: "index", name: "idx_parser_diagnostics_source", statement: `CREATE INDEX IF NOT EXISTS idx_parser_diagnostics_source
+	{ObjectType: "index", Name: "idx_parser_diagnostics_source", Statement: `CREATE INDEX IF NOT EXISTS idx_parser_diagnostics_source
 		ON parser_diagnostics(source_file_id, generation, batch_end_offset, batch_identity_sha256, ordinal)`},
 }

@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -196,7 +199,7 @@ func TestRebuildCostLedgerIsIdempotentAndKeepsOldActiveOnFailure(t *testing.T) {
 		t.Fatalf("RebuildCostLedger(g1 conflict) error = %v, want ErrInvalidRecord", err)
 	}
 
-	if err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Exec(`CREATE TRIGGER fail_generation_two
 			BEFORE INSERT ON turn_costs WHEN NEW.generation_id = 'generation-atomic-2'
 			BEGIN SELECT RAISE(ABORT, 'synthetic turn cost failure'); END`).Error
@@ -211,7 +214,7 @@ func TestRebuildCostLedgerIsIdempotentAndKeepsOldActiveOnFailure(t *testing.T) {
 	}
 	assertActiveCostGeneration(t, repository, "UTC", requestOne.GenerationID)
 	var failedGenerationCount int64
-	if err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	if err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Model(&costRollupGenerationModel{}).
 			Where("generation_id = ?", requestTwo.GenerationID).Count(&failedGenerationCount).Error
 	}); err != nil {
@@ -220,7 +223,7 @@ func TestRebuildCostLedgerIsIdempotentAndKeepsOldActiveOnFailure(t *testing.T) {
 	if failedGenerationCount != 0 {
 		t.Fatalf("failed generation rows = %d, want 0", failedGenerationCount)
 	}
-	if err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Exec("DROP TRIGGER fail_generation_two").Error
 	}); err != nil {
 		t.Fatalf("drop failure trigger: %v", err)
@@ -230,7 +233,7 @@ func TestRebuildCostLedgerIsIdempotentAndKeepsOldActiveOnFailure(t *testing.T) {
 	}
 	assertActiveCostGeneration(t, repository, "UTC", requestTwo.GenerationID)
 	var previous costRollupGenerationModel
-	if err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	if err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Where("generation_id = ?", requestOne.GenerationID).Take(&previous).Error
 	}); err != nil {
 		t.Fatalf("read superseded generation: %v", err)
@@ -417,16 +420,16 @@ func TestCostRollupsMergeSafeAttributionMetadataByStableIdentity(t *testing.T) {
 		t, repository, "project-stable-b", "Replacement Safe Project", "/synthetic/stable-b",
 		"OpenAI/GPT-5.2-Codex", baseTime+200,
 	)
-	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		stableProjectID := "project-stable-a"
 		return transaction.WithContext(ctx).Model(&turnAttributionModel{}).
 			Where("turn_id = ?", "turn-project-stable-b").
 			Updates(map[string]any{
 				"project_id":           stableProjectID,
 				"project_display_name": "Replacement Safe Project",
-				"project_confidence":   string(AttributionConfidenceMedium),
-				"project_source":       string(AttributionSourceCWDPathDigest),
-				"project_reason":       string(AttributionReasonPathDerived),
+				"project_confidence":   string(attribution.ConfidenceMedium),
+				"project_source":       string(attribution.SourceCWDPathDigest),
+				"project_reason":       string(attribution.ReasonPathDerived),
 			}).Error
 	})
 	if err != nil {
@@ -451,7 +454,7 @@ func TestCostRollupsMergeSafeAttributionMetadataByStableIdentity(t *testing.T) {
 	project := snapshot.ProjectDaily[0]
 	if project.ProjectID == nil || *project.ProjectID != "project-stable-a" ||
 		project.ProjectDisplayName == nil || *project.ProjectDisplayName != "project-stable-a" ||
-		project.AttributionConfidence != string(AttributionConfidenceMedium) ||
+		project.AttributionConfidence != string(attribution.ConfidenceMedium) ||
 		project.AttributionSource != "mixed" || project.AttributionReason != "mixed" ||
 		project.TurnCount != 2 {
 		t.Fatalf("merged project dimension = %#v", project)
@@ -459,9 +462,9 @@ func TestCostRollupsMergeSafeAttributionMetadataByStableIdentity(t *testing.T) {
 	model := snapshot.ModelDaily[0]
 	if model.ModelKey == nil || *model.ModelKey != "gpt-5.2-codex" ||
 		model.ModelDisplayName == nil || *model.ModelDisplayName != "GPT-5.2 Codex" ||
-		model.AttributionConfidence != string(AttributionConfidenceHigh) ||
+		model.AttributionConfidence != string(attribution.ConfidenceHigh) ||
 		model.AttributionSource != "mixed" ||
-		model.AttributionReason != string(AttributionReasonObserved) || model.TurnCount != 2 {
+		model.AttributionReason != string(attribution.ReasonObserved) || model.TurnCount != 2 {
 		t.Fatalf("merged model dimension = %#v", model)
 	}
 }
@@ -554,7 +557,7 @@ func TestRebuildCostLedgerRejectsIncompletePersistedGeneration(t *testing.T) {
 			if _, err := repository.RebuildCostLedger(ctx, requestOne); err != nil {
 				t.Fatalf("RebuildCostLedger(g1) error = %v", err)
 			}
-			if err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+			if err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 				return transaction.WithContext(ctx).Exec(testCase.trigger).Error
 			}); err != nil {
 				t.Fatalf("create synthetic trigger: %v", err)
@@ -567,7 +570,7 @@ func TestRebuildCostLedgerRejectsIncompletePersistedGeneration(t *testing.T) {
 			}
 			assertActiveCostGeneration(t, repository, "UTC", requestOne.GenerationID)
 			var failedCount int64
-			if err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+			if err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 				return connection.WithContext(ctx).Model(&costRollupGenerationModel{}).
 					Where("generation_id = ?", failedGeneration).Count(&failedCount).Error
 			}); err != nil {
@@ -609,15 +612,15 @@ func TestRebuildCostLedgerPricesFinalTurnsAndPreservesUnknownReasons(t *testing.
 		InputTokens: &zero, CachedInputTokens: &zero, OutputTokens: &zero, ReasoningTokens: &zero,
 	})
 	setTurnModelAttributionReason(
-		t, repository, "turn-conflict-model", AttributionConfidenceLow,
-		AttributionSourceConflict, AttributionReasonConflict,
+		t, repository, "turn-conflict-model", attribution.ConfidenceLow,
+		attribution.SourceConflict, attribution.ReasonConflict,
 	)
 	seedCostTurn(t, repository, "invalid-model", nil, baseTime+600, true, pricing.Usage{
 		InputTokens: &zero, CachedInputTokens: &zero, OutputTokens: &zero, ReasoningTokens: &zero,
 	})
 	setTurnModelAttributionReason(
-		t, repository, "turn-invalid-model", AttributionConfidenceUnknown,
-		AttributionSourceInvalidModel, AttributionReasonInvalid,
+		t, repository, "turn-invalid-model", attribution.ConfidenceUnknown,
+		attribution.SourceInvalidModel, attribution.ReasonInvalid,
 	)
 	seedCostTurn(t, repository, "provisional", pointerTo("gpt-5.2-codex"), baseTime+700, false, pricing.Usage{
 		InputTokens: &million, CachedInputTokens: &zero, OutputTokens: &zero, ReasoningTokens: &zero,
@@ -745,12 +748,12 @@ func setTurnModelAttributionReason(
 	t *testing.T,
 	repository *Repository,
 	turnID string,
-	confidence AttributionConfidence,
-	source AttributionSource,
-	reason AttributionReason,
+	confidence attribution.Confidence,
+	source attribution.Source,
+	reason attribution.Reason,
 ) {
 	t.Helper()
-	err := repository.database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Model(&turnAttributionModel{}).Where("turn_id = ?", turnID).
 			Updates(map[string]any{
 				"model_confidence": string(confidence),

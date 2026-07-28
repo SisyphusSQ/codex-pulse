@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -341,7 +342,7 @@ func validHealthDomain(value HealthDomain) bool {
 	}
 }
 
-func validatePricingVersion(version PricingVersion) error {
+func validatePricingVersion(version pricing.CatalogVersion) error {
 	if version.PricingVersion == "" || version.Source == "" || version.Currency == "" ||
 		version.EffectiveFromMS < 0 || version.CreatedAtMS < 0 {
 		return invalidRecord("pricing version identity or timestamps are invalid")
@@ -373,14 +374,14 @@ func validatePricingVersion(version PricingVersion) error {
 	return nil
 }
 
-func validateModelPrice(model ModelPrice) error {
+func validateModelPrice(model pricing.ModelPrice) error {
 	if !validModelMatchKind(model.MatchKind) || model.ModelPattern == "" || model.Priority < 0 {
 		return invalidRecord("model price identity or priority is invalid")
 	}
-	if model.MatchKind == ModelMatchDefault && model.ModelPattern != "*" {
+	if model.MatchKind == pricing.ModelMatchDefault && model.ModelPattern != "*" {
 		return invalidRecord("default model price pattern must be an asterisk")
 	}
-	if model.MatchKind != ModelMatchDefault && model.ModelPattern == "*" {
+	if model.MatchKind != pricing.ModelMatchDefault && model.ModelPattern == "*" {
 		return invalidRecord("non-default model price pattern must not be an asterisk")
 	}
 	values := []*int64{
@@ -404,9 +405,9 @@ func validateModelPrice(model ModelPrice) error {
 	return nil
 }
 
-func validModelMatchKind(value ModelMatchKind) bool {
+func validModelMatchKind(value pricing.ModelMatchKind) bool {
 	switch value {
-	case ModelMatchExact, ModelMatchPrefix, ModelMatchDefault:
+	case pricing.ModelMatchExact, pricing.ModelMatchPrefix, pricing.ModelMatchDefault:
 		return true
 	default:
 		return false

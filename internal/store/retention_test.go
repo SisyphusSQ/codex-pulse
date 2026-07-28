@@ -4,111 +4,21 @@ import (
 	"context"
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"gorm.io/gorm"
+
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
+	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
-
-func TestRetentionCandidateQueriesUseDedicatedIndexes(t *testing.T) {
-	t.Parallel()
-
-	repository := openRuntimeRepository(t)
-	cutoffMS := int64(100)
-	testCases := []struct {
-		name    string
-		query   func(*gorm.DB) *gorm.DB
-		indexes []string
-	}{
-		{
-			name: "runtime samples",
-			query: func(database *gorm.DB) *gorm.DB {
-				var timestamps []int64
-				return expiredRuntimeSamples(database, cutoffMS).
-					Order("captured_at_ms").Limit(100).Pluck("captured_at_ms", &timestamps)
-			},
-			indexes: []string{"idx_app_runtime_samples_retention"},
-		},
-		{
-			name: "health events",
-			query: func(database *gorm.DB) *gorm.DB {
-				var ids []string
-				return expiredHealthEvents(database, cutoffMS).
-					Order("resolved_at_ms, event_id").Limit(100).Pluck("event_id", &ids)
-			},
-			indexes: []string{"idx_health_events_retention"},
-		},
-		{
-			name: "job runs and references",
-			query: func(database *gorm.DB) *gorm.DB {
-				var ids []string
-				return expiredJobRunsForState(database, cutoffMS, JobSucceeded).
-					Order("finished_at_ms, job_id").Limit(100).Pluck("job_id", &ids)
-			},
-			indexes: []string{
-				"idx_job_runs_retention", "idx_health_events_job", "idx_job_runs_resume_lineage",
-			},
-		},
-		{
-			name: "source attempts",
-			query: func(database *gorm.DB) *gorm.DB {
-				var ids []string
-				return expiredSourceAttempts(database, cutoffMS).
-					Order("finished_at_ms, request_id").Limit(100).Pluck("request_id", &ids)
-			},
-			indexes: []string{"idx_source_attempts_retention"},
-		},
-	}
-
-	err := repository.database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
-		for _, testCase := range testCases {
-			dryRun := testCase.query(connection.Session(&gorm.Session{DryRun: true, Context: ctx}))
-			if dryRun.Error != nil {
-				return dryRun.Error
-			}
-			rows, err := rawQueryRows(
-				ctx, connection, "EXPLAIN QUERY PLAN "+dryRun.Statement.SQL.String(), dryRun.Statement.Vars...,
-			)
-			if err != nil {
-				return err
-			}
-			var details []string
-			for rows.Next() {
-				var detail string
-				if err := rows.Scan(new(int), new(int), new(int), &detail); err != nil {
-					rows.Close()
-					return err
-				}
-				details = append(details, detail)
-			}
-			if err := rows.Close(); err != nil {
-				return err
-			}
-			plan := strings.Join(details, "; ")
-			for _, index := range testCase.indexes {
-				if !strings.Contains(plan, index) {
-					t.Errorf("%s query plan = %q, want %s", testCase.name, plan, index)
-				}
-			}
-			if strings.Contains(plan, "USE TEMP B-TREE") {
-				t.Errorf("%s query plan = %q, want no temporary ordering", testCase.name, plan)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("inspect retention query plans: %v", err)
-	}
-}
 
 func TestCleanupRetentionAppliesFixedWindowAndReferenceRules(t *testing.T) {
 	t.Parallel()
 
 	repository := openRuntimeRepository(t)
 	now := time.UnixMilli(200_000_000).UTC()
-	cutoff := now.Add(-RetentionWindow).UnixMilli()
+	cutoff := now.Add(-storeretention.RetentionWindow).UnixMilli()
 
 	seedRetentionModels(t, repository, retentionFixture{
 		runtimeSamples: []appRuntimeSampleModel{
@@ -152,17 +62,17 @@ func TestCleanupRetentionAppliesFixedWindowAndReferenceRules(t *testing.T) {
 		},
 	})
 
-	var progress []RetentionCleanupProgress
-	report, err := repository.CleanupRetentionBatch(context.Background(), RetentionCleanupOptions{
+	var progress []storeretention.RetentionCleanupProgress
+	report, err := storeretention.NewRepository(repository.database).CleanupRetentionBatch(context.Background(), storeretention.RetentionCleanupOptions{
 		Now: now, BatchSize: 100,
-		Observe: func(update RetentionCleanupProgress) {
+		Observe: func(update storeretention.RetentionCleanupProgress) {
 			progress = append(progress, update)
 		},
 	})
 	if err != nil {
 		t.Fatalf("CleanupRetentionBatch() error = %v", err)
 	}
-	wantDeleted := RetentionDeletedCounts{RuntimeSamples: 1, HealthEvents: 2, JobRuns: 2, SourceAttempts: 1}
+	wantDeleted := storeretention.RetentionDeletedCounts{RuntimeSamples: 1, HealthEvents: 2, JobRuns: 2, SourceAttempts: 1}
 	if report.CutoffMS != cutoff || report.Deleted != wantDeleted || report.More {
 		t.Fatalf("CleanupRetentionBatch() = %#v, want cutoff=%d deleted=%#v more=false", report, cutoff, wantDeleted)
 	}
@@ -194,7 +104,7 @@ func TestCleanupRetentionBatchUsesOneBudgetAcrossRuntimeTables(t *testing.T) {
 
 	repository := openRuntimeRepository(t)
 	now := time.UnixMilli(200_000_000).UTC()
-	cutoff := now.Add(-RetentionWindow).UnixMilli()
+	cutoff := now.Add(-storeretention.RetentionWindow).UnixMilli()
 	seedRetentionModels(t, repository, retentionFixture{
 		runtimeSamples: []appRuntimeSampleModel{retentionRuntimeSample(cutoff - 3), retentionRuntimeSample(cutoff - 2)},
 		health: []healthEventModel{
@@ -203,18 +113,18 @@ func TestCleanupRetentionBatchUsesOneBudgetAcrossRuntimeTables(t *testing.T) {
 		},
 	})
 
-	first, err := repository.CleanupRetentionBatch(context.Background(), RetentionCleanupOptions{Now: now, BatchSize: 3})
+	first, err := storeretention.NewRepository(repository.database).CleanupRetentionBatch(context.Background(), storeretention.RetentionCleanupOptions{Now: now, BatchSize: 3})
 	if err != nil {
 		t.Fatalf("CleanupRetentionBatch() error = %v", err)
 	}
 	if first.Deleted.Total() != 3 || first.Deleted.RuntimeSamples != 2 || first.Deleted.HealthEvents != 1 || !first.More {
 		t.Fatalf("first batch = %#v, want one shared three-row budget and more=true", first)
 	}
-	second, err := repository.CleanupRetentionBatch(context.Background(), RetentionCleanupOptions{Now: now, BatchSize: 3})
+	second, err := storeretention.NewRepository(repository.database).CleanupRetentionBatch(context.Background(), storeretention.RetentionCleanupOptions{Now: now, BatchSize: 3})
 	if err != nil {
 		t.Fatalf("CleanupRetentionBatch(second) error = %v", err)
 	}
-	if second.Deleted != (RetentionDeletedCounts{HealthEvents: 1}) || second.More {
+	if second.Deleted != (storeretention.RetentionDeletedCounts{HealthEvents: 1}) || second.More {
 		t.Fatalf("second batch = %#v, want final health event", second)
 	}
 }
@@ -224,7 +134,7 @@ func TestCleanupRetentionCancelsBetweenCommittedBatchesAndRetriesWithoutCursor(t
 
 	repository := openRuntimeRepository(t)
 	now := time.UnixMilli(200_000_000).UTC()
-	cutoff := now.Add(-RetentionWindow).UnixMilli()
+	cutoff := now.Add(-storeretention.RetentionWindow).UnixMilli()
 	attempts := make([]sourceAttemptModel, 0, 5)
 	for index := range 5 {
 		attempts = append(attempts, sourceAttemptModel{
@@ -242,10 +152,10 @@ func TestCleanupRetentionCancelsBetweenCommittedBatchesAndRetriesWithoutCursor(t
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
-	progress := make([]RetentionCleanupProgress, 0, 1)
-	report, err := repository.CleanupRetention(ctx, RetentionCleanupOptions{
+	progress := make([]storeretention.RetentionCleanupProgress, 0, 1)
+	report, err := storeretention.NewRepository(repository.database).CleanupRetention(ctx, storeretention.RetentionCleanupOptions{
 		Now: now, BatchSize: 2,
-		Observe: func(update RetentionCleanupProgress) {
+		Observe: func(update storeretention.RetentionCleanupProgress) {
 			progress = append(progress, update)
 			cancel()
 		},
@@ -260,7 +170,7 @@ func TestCleanupRetentionCancelsBetweenCommittedBatchesAndRetriesWithoutCursor(t
 		t.Fatalf("remaining attempts after cancel = %v, want three", got)
 	}
 
-	retry, err := repository.CleanupRetention(context.Background(), RetentionCleanupOptions{Now: now, BatchSize: 2})
+	retry, err := storeretention.NewRepository(repository.database).CleanupRetention(context.Background(), storeretention.RetentionCleanupOptions{Now: now, BatchSize: 2})
 	if err != nil {
 		t.Fatalf("CleanupRetention(retry) error = %v", err)
 	}
@@ -277,7 +187,7 @@ func TestCleanupRetentionRecomputesEligibilityAcrossTerminalResumeLineage(t *tes
 
 	repository := openRuntimeRepository(t)
 	now := time.UnixMilli(200_000_000).UTC()
-	cutoff := now.Add(-RetentionWindow).UnixMilli()
+	cutoff := now.Add(-storeretention.RetentionWindow).UnixMilli()
 	parent := retentionTerminalJob("job-parent", cutoff-10, cutoff-3)
 	child := retentionTerminalJob("job-child", cutoff-9, cutoff-2)
 	child.ResumeOfJobID = pointerTo(parent.JobID)
@@ -285,13 +195,13 @@ func TestCleanupRetentionRecomputesEligibilityAcrossTerminalResumeLineage(t *tes
 	grandchild.ResumeOfJobID = pointerTo(child.JobID)
 	seedRetentionModels(t, repository, retentionFixture{jobs: []jobRunModel{parent, child, grandchild}})
 
-	report, err := repository.CleanupRetention(context.Background(), RetentionCleanupOptions{
+	report, err := storeretention.NewRepository(repository.database).CleanupRetention(context.Background(), storeretention.RetentionCleanupOptions{
 		Now: now, BatchSize: 10,
 	})
 	if err != nil {
 		t.Fatalf("CleanupRetention() error = %v", err)
 	}
-	if report.Batches != 3 || report.Deleted != (RetentionDeletedCounts{JobRuns: 3}) {
+	if report.Batches != 3 || report.Deleted != (storeretention.RetentionDeletedCounts{JobRuns: 3}) {
 		t.Fatalf("CleanupRetention() report = %#v, want three lineage batches", report)
 	}
 	if got := retentionIDs(t, repository, &jobRunModel{}, "job_id"); len(got) != 0 {
@@ -304,7 +214,7 @@ func TestCleanupRetentionRollsBackFailedBatchAndCanRetry(t *testing.T) {
 
 	repository := openRuntimeRepository(t)
 	now := time.UnixMilli(200_000_000).UTC()
-	cutoff := now.Add(-RetentionWindow).UnixMilli()
+	cutoff := now.Add(-storeretention.RetentionWindow).UnixMilli()
 	seedRetentionModels(t, repository, retentionFixture{
 		sourceStates: []sourceStateModel{{
 			SourceInstanceID: "source-a", SourceType: "quota", ScopeKey: "default",
@@ -320,7 +230,7 @@ func TestCleanupRetentionRollsBackFailedBatchAndCanRetry(t *testing.T) {
 		},
 	})
 
-	err := repository.database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Exec(`
 			CREATE TRIGGER fail_retention_job_delete
 			BEFORE DELETE ON job_runs
@@ -332,7 +242,7 @@ func TestCleanupRetentionRollsBackFailedBatchAndCanRetry(t *testing.T) {
 		t.Fatalf("create failure trigger: %v", err)
 	}
 
-	report, err := repository.CleanupRetentionBatch(context.Background(), RetentionCleanupOptions{Now: now, BatchSize: 100})
+	report, err := storeretention.NewRepository(repository.database).CleanupRetentionBatch(context.Background(), storeretention.RetentionCleanupOptions{Now: now, BatchSize: 100})
 	if err == nil {
 		t.Fatal("CleanupRetentionBatch() error = nil, want injected failure")
 	}
@@ -349,17 +259,17 @@ func TestCleanupRetentionRollsBackFailedBatchAndCanRetry(t *testing.T) {
 		t.Fatalf("attempt IDs after rollback = %v", got)
 	}
 
-	err = repository.database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err = repository.database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Exec("DROP TRIGGER fail_retention_job_delete").Error
 	})
 	if err != nil {
 		t.Fatalf("drop failure trigger: %v", err)
 	}
-	retry, err := repository.CleanupRetentionBatch(context.Background(), RetentionCleanupOptions{Now: now, BatchSize: 100})
+	retry, err := storeretention.NewRepository(repository.database).CleanupRetentionBatch(context.Background(), storeretention.RetentionCleanupOptions{Now: now, BatchSize: 100})
 	if err != nil {
 		t.Fatalf("CleanupRetentionBatch(retry) error = %v", err)
 	}
-	if retry.Deleted != (RetentionDeletedCounts{HealthEvents: 1, JobRuns: 1, SourceAttempts: 1}) {
+	if retry.Deleted != (storeretention.RetentionDeletedCounts{HealthEvents: 1, JobRuns: 1, SourceAttempts: 1}) {
 		t.Fatalf("retry report = %#v", retry)
 	}
 }
@@ -368,14 +278,17 @@ func TestCleanupRetentionRejectsInvalidOptions(t *testing.T) {
 	t.Parallel()
 
 	repository := openRuntimeRepository(t)
-	for _, batchSize := range []int{-1, MaxRetentionBatchSize + 1} {
-		if _, err := repository.CleanupRetentionBatch(context.Background(), RetentionCleanupOptions{BatchSize: batchSize}); !errors.Is(err, ErrInvalidRetentionOptions) {
-			t.Fatalf("batch size %d error = %v, want ErrInvalidRetentionOptions", batchSize, err)
+	for _, batchSize := range []int{-1, storeretention.MaxRetentionBatchSize + 1} {
+		if _, err := storeretention.NewRepository(repository.database).CleanupRetentionBatch(context.Background(), storeretention.RetentionCleanupOptions{BatchSize: batchSize}); !errors.Is(err, storeretention.ErrInvalidRetentionOptions) {
+			t.Fatalf("batch size %d error = %v, want storeretention.ErrInvalidRetentionOptions", batchSize, err)
 		}
 	}
-	var nilRepository *Repository
-	if _, err := nilRepository.CleanupRetentionBatch(context.Background(), RetentionCleanupOptions{}); !errors.Is(err, ErrInvalidRepository) {
-		t.Fatalf("nil repository error = %v, want ErrInvalidRepository", err)
+	var nilRepository *storeretention.Repository
+	if _, err := nilRepository.CleanupRetentionBatch(
+		context.Background(),
+		storeretention.RetentionCleanupOptions{},
+	); !errors.Is(err, storeretention.ErrInvalidRepository) {
+		t.Fatalf("nil repository error = %v, want storeretention.ErrInvalidRepository", err)
 	}
 }
 
@@ -390,7 +303,7 @@ type retentionFixture struct {
 
 func seedRetentionModels(t testing.TB, repository *Repository, fixture retentionFixture) {
 	t.Helper()
-	err := repository.database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		for _, models := range []any{fixture.runtimeSamples, fixture.projects, fixture.sourceStates, fixture.sourceAttempts, fixture.jobs, fixture.health} {
 			switch rows := models.(type) {
 			case []appRuntimeSampleModel:
@@ -441,7 +354,7 @@ func seedRetentionModels(t testing.TB, repository *Repository, fixture retention
 func BenchmarkCleanupRetentionBatch1000(b *testing.B) {
 	repository := openRuntimeRepository(b)
 	now := time.UnixMilli(200_000_000).UTC()
-	cutoff := now.Add(-RetentionWindow).UnixMilli()
+	cutoff := now.Add(-storeretention.RetentionWindow).UnixMilli()
 	b.ReportAllocs()
 	b.ResetTimer()
 	for iteration := 0; iteration < b.N; iteration++ {
@@ -453,7 +366,7 @@ func BenchmarkCleanupRetentionBatch1000(b *testing.B) {
 		}
 		seedRetentionModels(b, repository, retentionFixture{runtimeSamples: samples})
 		b.StartTimer()
-		report, err := repository.CleanupRetentionBatch(context.Background(), RetentionCleanupOptions{
+		report, err := storeretention.NewRepository(repository.database).CleanupRetentionBatch(context.Background(), storeretention.RetentionCleanupOptions{
 			Now: now, BatchSize: 1_000,
 		})
 		if err != nil || report.Deleted.RuntimeSamples != 1_000 {
@@ -493,7 +406,7 @@ func retentionHealthEvent(eventID string, jobID *string, lastSeenAtMS int64, res
 func retentionIDs(t *testing.T, repository *Repository, model any, column string) []string {
 	t.Helper()
 	var identifiers []string
-	err := repository.database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Model(model).Order(column).Pluck(column, &identifiers).Error
 	})
 	if err != nil {
@@ -505,7 +418,7 @@ func retentionIDs(t *testing.T, repository *Repository, model any, column string
 func retentionInt64Values(t *testing.T, repository *Repository, model any, column string) []int64 {
 	t.Helper()
 	var values []int64
-	err := repository.database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Model(model).Order(column).Pluck(column, &values).Error
 	})
 	if err != nil {

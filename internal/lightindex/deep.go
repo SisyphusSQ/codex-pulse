@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logparser "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/parser"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/indexer"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
+	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
 )
 
 type DeepIndexResult struct {
@@ -19,7 +21,8 @@ type DeepIndexResult struct {
 // requested session. It persists only safe session/Turn projections; local
 // quota observations are deliberately skipped and no source bytes are stored.
 func (runtime *Runtime) DeepIndexSession(ctx context.Context, sessionID string) (DeepIndexResult, error) {
-	if runtime == nil || runtime.repository == nil || ctx == nil || sessionID == "" {
+	if runtime == nil || runtime.repository == nil || runtime.deepRepository == nil ||
+		ctx == nil || sessionID == "" {
 		return DeepIndexResult{}, errors.New("invalid deep session index request")
 	}
 	runtime.deepMu.Lock()
@@ -32,7 +35,7 @@ func (runtime *Runtime) DeepIndexSession(ctx context.Context, sessionID string) 
 	if err != nil {
 		return DeepIndexResult{}, err
 	}
-	var session *store.LightSessionMetadata
+	var session *storelight.LightSessionMetadata
 	for index := range sessions {
 		if sessions[index].SessionID == sessionID {
 			session = &sessions[index]
@@ -40,9 +43,9 @@ func (runtime *Runtime) DeepIndexSession(ctx context.Context, sessionID string) 
 		}
 	}
 	if session == nil || session.RolloutPath == nil {
-		return DeepIndexResult{}, store.ErrNotFound
+		return DeepIndexResult{}, storelight.ErrNotFound
 	}
-	discoverer, err := logs.NewConfirmedDiscoverer(state.Home.Path, state.Home.DeviceID, state.Home.Inode)
+	discoverer, err := logsource.NewConfirmedDiscoverer(state.Home.Path, state.Home.DeviceID, state.Home.Inode)
 	if err != nil {
 		return DeepIndexResult{}, err
 	}
@@ -50,22 +53,22 @@ func (runtime *Runtime) DeepIndexSession(ctx context.Context, sessionID string) 
 	if err != nil {
 		return DeepIndexResult{}, err
 	}
-	if file, lookupErr := runtime.repository.SourceFile(ctx, snapshot.SourceFileID); lookupErr == nil &&
+	if file, lookupErr := runtime.deepRepository.SourceFile(ctx, snapshot.SourceFileID); lookupErr == nil &&
 		file.State == store.SourceFileActive && file.SessionID != nil && *file.SessionID == sessionID &&
 		file.CurrentPath == snapshot.Path && file.DeviceID == snapshot.Fingerprint.DeviceID &&
 		file.Inode == snapshot.Fingerprint.Inode && file.SizeBytes == snapshot.Fingerprint.SizeBytes &&
 		file.MTimeNS == snapshot.Fingerprint.MTimeNS && file.ParsedOffset == snapshot.Fingerprint.SizeBytes &&
-		file.ParserVersion == logs.ParserVersion {
+		file.ParserVersion == logparser.ParserVersion {
 		return runtime.deepIndexResult(ctx, sessionID, true)
 	} else if lookupErr != nil && !errors.Is(lookupErr, store.ErrNotFound) {
 		return DeepIndexResult{}, lookupErr
 	}
-	ingester, err := indexer.New(runtime.repository)
+	ingester, err := indexer.New(runtime.deepRepository)
 	if err != nil {
 		return DeepIndexResult{}, err
 	}
 	stream, err := ingester.Open(ctx, indexer.OpenRequest{
-		Action: logs.ReconcileAction{Kind: logs.ChangeAdded, Current: &snapshot},
+		Action: logsource.ReconcileAction{Kind: logsource.ChangeAdded, Current: &snapshot},
 		AtMS:   runtime.clock().UnixMilli(), SkipQuotaFacts: true,
 	})
 	if err != nil {
@@ -75,7 +78,7 @@ func (runtime *Runtime) DeepIndexSession(ctx context.Context, sessionID string) 
 	if err != nil {
 		return DeepIndexResult{}, err
 	}
-	reader, err := logs.NewConfirmedSnapshotReader(
+	reader, err := logsource.NewConfirmedSnapshotReader(
 		state.Home.Path, state.Home.DeviceID, state.Home.Inode, DefaultTokenScanChunkBytes,
 	)
 	if err != nil {
@@ -99,7 +102,7 @@ func (runtime *Runtime) DeepIndexSession(ctx context.Context, sessionID string) 
 }
 
 func (runtime *Runtime) deepIndexResult(ctx context.Context, sessionID string, reused bool) (DeepIndexResult, error) {
-	snapshot, err := runtime.repository.SessionAnalytics(ctx, store.SessionAnalyticsDetailFilter{
+	snapshot, err := runtime.deepRepository.SessionAnalytics(ctx, store.SessionAnalyticsDetailFilter{
 		SessionID: sessionID, TurnLimit: 50,
 	})
 	if err != nil {

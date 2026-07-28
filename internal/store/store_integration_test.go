@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -66,11 +67,14 @@ func TestStoreIntegrationReopensAfterAbnormalExit(t *testing.T) {
 	if err != nil || interrupted != 1 {
 		t.Fatalf("InterruptIncompleteJobs() = %d, %v, want 1, nil", interrupted, err)
 	}
-	cleanup, err := repository.CleanupRetention(context.Background(), RetentionCleanupOptions{Now: now})
+	cleanup, err := storeretention.NewRepository(repository.database).CleanupRetention(
+		context.Background(),
+		storeretention.RetentionCleanupOptions{Now: now},
+	)
 	if err != nil {
 		t.Fatalf("CleanupRetention(after abnormal exit) error = %v", err)
 	}
-	if cleanup.Deleted != (RetentionDeletedCounts{SourceAttempts: 1}) {
+	if cleanup.Deleted != (storeretention.RetentionDeletedCounts{SourceAttempts: 1}) {
 		t.Fatalf("CleanupRetention(after abnormal exit) = %#v, want one source attempt", cleanup)
 	}
 	job, err = repository.JobRun(context.Background(), job.JobID)
@@ -90,7 +94,7 @@ func seedStoreBeforeAbnormalExit(path string) error {
 		return fmt.Errorf("migrate abnormal-exit store: %w", err)
 	}
 	now := time.UnixMilli(200_000_000).UTC()
-	cutoffMS := now.Add(-RetentionWindow).UnixMilli()
+	cutoffMS := now.Add(-storeretention.RetentionWindow).UnixMilli()
 	state := SourceState{
 		SourceInstanceID: "abnormal-source", SourceType: "quota", ScopeKey: "default",
 		FreshnessState: SourceFreshnessCurrent, CursorVersion: 1, UpdatedAtMS: now.UnixMilli(),
@@ -138,7 +142,7 @@ func TestStoreIntegrationFreshReplayCleanupInterruptedAndReopen(t *testing.T) {
 	}
 
 	now := time.UnixMilli(200_000_000).UTC()
-	cutoff := now.Add(-RetentionWindow).UnixMilli()
+	cutoff := now.Add(-storeretention.RetentionWindow).UnixMilli()
 	database := open()
 	repository := NewRepository(database)
 	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
@@ -191,11 +195,14 @@ func TestStoreIntegrationFreshReplayCleanupInterruptedAndReopen(t *testing.T) {
 	if err != nil || interrupted != 1 {
 		t.Fatalf("InterruptIncompleteJobs() = %d, %v, want 1, nil", interrupted, err)
 	}
-	report, err := repository.CleanupRetention(context.Background(), RetentionCleanupOptions{Now: now, BatchSize: 1})
+	report, err := storeretention.NewRepository(repository.database).CleanupRetention(
+		context.Background(),
+		storeretention.RetentionCleanupOptions{Now: now, BatchSize: 1},
+	)
 	if err != nil {
 		t.Fatalf("CleanupRetention() error = %v", err)
 	}
-	if report.Deleted != (RetentionDeletedCounts{SourceAttempts: 1}) {
+	if report.Deleted != (storeretention.RetentionDeletedCounts{SourceAttempts: 1}) {
 		t.Fatalf("CleanupRetention() report = %#v, want one source attempt", report)
 	}
 	if attempts, err := repository.ListSourceAttempts(context.Background(), state.SourceInstanceID, 10); err != nil || len(attempts) != 0 {

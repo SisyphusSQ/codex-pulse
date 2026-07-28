@@ -12,7 +12,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/bootstrap"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	appLifecycle "github.com/SisyphusSQ/codex-pulse/internal/lifecycle"
@@ -21,6 +21,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/scheduler"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
+	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -72,23 +73,24 @@ type ApplicationLifecycleRuntimeConfig struct {
 }
 
 type applicationLifecycleRuntime struct {
-	adapter        *LifecycleEventAdapter
-	coordinator    *appLifecycle.Coordinator
-	scheduler      *scheduler.Service
-	repository     *store.Repository
-	quota          *applicationQuotaRuntime
-	preferences    *preferences.Service
-	settingsLoader confirmedPreferencesLoader
-	accountReader  applicationAccountReader
-	database       *storesqlite.Store
-	invalidation   queryInvalidationNotifier
-	cancel         context.CancelFunc
-	workerDone     chan error
-	lightRuntime   *lightindex.Runtime
-	lightRun       *lightindex.Run
-	lightMu        sync.Mutex
-	controlCtx     context.Context
-	controlStop    context.CancelFunc
+	adapter         *LifecycleEventAdapter
+	coordinator     *appLifecycle.Coordinator
+	scheduler       *scheduler.Service
+	repository      *store.Repository
+	lightRepository *storelight.Repository
+	quota           *applicationQuotaRuntime
+	preferences     *preferences.Service
+	settingsLoader  confirmedPreferencesLoader
+	accountReader   applicationAccountReader
+	database        *storesqlite.Store
+	invalidation    queryInvalidationNotifier
+	cancel          context.CancelFunc
+	workerDone      chan error
+	lightRuntime    *lightindex.Runtime
+	lightRun        *lightindex.Run
+	lightMu         sync.Mutex
+	controlCtx      context.Context
+	controlStop     context.CancelFunc
 
 	controlMu        sync.Mutex
 	controlAccepting bool
@@ -132,6 +134,7 @@ func startApplicationLifecycleRuntime(
 		return nil, applicationLifecycleDependencyError(ctx, err)
 	}
 	repository := store.NewRepository(config.Database)
+	lightRepository := storelight.NewRepository(config.Database)
 	// 额度仲裁规则可独立于 schema 升级；Core 查询开放前必须先重建当前版本的派生投影。
 	if err := repository.RebuildQuotaProjection(ctx, store.DefaultQuotaArbitrationRule()); err != nil {
 		return nil, applicationLifecycleDependencyError(ctx, err)
@@ -167,7 +170,7 @@ func startApplicationLifecycleRuntime(
 			quota: quotaRuntime,
 		}
 		preferencesService, err = preferences.NewService(preferences.ServiceConfig{
-			Store: preferencesStore, Probe: logs.NewHomeProbe(),
+			Store: preferencesStore, Probe: logsource.NewHomeProbe(),
 			Runtime: quotaHomeRuntime,
 		})
 		if err != nil {
@@ -190,13 +193,14 @@ func startApplicationLifecycleRuntime(
 			refreshInterval = defaultApplicationLightRefreshInterval
 		}
 		lightRuntime, err = lightindex.NewRuntime(lightindex.RuntimeConfig{
-			Repository: repository, Metadata: config.LightMetadata, RefreshInterval: refreshInterval,
+			Repository: lightRepository, DeepRepository: repository,
+			Metadata: config.LightMetadata, RefreshInterval: refreshInterval,
 			RefreshCommitted: func() {
-				notifyQueryInvalidation(config.Invalidation, context.Background(), QueryInvalidationIndex)
+				notifyQueryInvalidation(config.Invalidation, context.Background(), core.InvalidationIndex)
 			},
 		})
 		if err == nil {
-			lightRun, err = lightRuntime.Start(ctx, store.LightHomeIdentity{
+			lightRun, err = lightRuntime.Start(ctx, storelight.LightHomeIdentity{
 				Path: snapshot.CodexHome.Source.Path, DeviceID: snapshot.CodexHome.Source.DeviceID,
 				Inode: snapshot.CodexHome.Source.Inode,
 			})
@@ -233,7 +237,7 @@ func startApplicationLifecycleRuntime(
 		},
 		BudgetPolicy: scheduler.DefaultBudgetPolicy(), MaxLiveBurst: 8,
 		CycleCommitted: func(ctx context.Context, _ store.SchedulerCycle) {
-			notifyQueryInvalidation(config.Invalidation, ctx, QueryInvalidationIndex)
+			notifyQueryInvalidation(config.Invalidation, ctx, core.InvalidationIndex)
 		},
 	})
 	if err != nil {
@@ -336,7 +340,7 @@ func startApplicationLifecycleRuntime(
 	controlCtx, controlStop := context.WithCancel(ctx)
 	runtime := &applicationLifecycleRuntime{
 		adapter: adapter, coordinator: coordinator, scheduler: schedulerService,
-		repository: repository, quota: quotaRuntime,
+		repository: repository, lightRepository: lightRepository, quota: quotaRuntime,
 		preferences: preferencesService, settingsLoader: loader, database: config.Database,
 		accountReader: appserver.ReadLocalAccount,
 		invalidation:  config.Invalidation, cancel: cancel,
@@ -386,9 +390,9 @@ func ensureApplicationBootstrap(
 		DataStoreKey: home.DataStoreKey,
 		Strategy:     preferences.HomeSwitchClearAndRebuild,
 	})
-	if errors.Is(err, logs.ErrInvalidHome) || errors.Is(err, logs.ErrUnsafeHome) ||
-		errors.Is(err, logs.ErrHomeChanged) || errors.Is(err, logs.ErrUnsafeSource) ||
-		errors.Is(err, logs.ErrChangedDuringScan) || errors.Is(err, logs.ErrUnsupportedFile) ||
+	if errors.Is(err, logsource.ErrInvalidHome) || errors.Is(err, logsource.ErrUnsafeHome) ||
+		errors.Is(err, logsource.ErrHomeChanged) || errors.Is(err, logsource.ErrUnsafeSource) ||
+		errors.Is(err, logsource.ErrChangedDuringScan) || errors.Is(err, logsource.ErrUnsupportedFile) ||
 		errors.Is(err, bootstrap.ErrDiscoveryIncomplete) || errors.Is(err, bootstrap.ErrInvalidRequest) {
 		return nil
 	}
@@ -482,8 +486,8 @@ func (runtime *applicationLifecycleRuntime) UpdateQuotaSettings(
 	if err != nil {
 		return committed, err
 	}
-	notifyQueryInvalidation(runtime.invalidation, controlContext, QueryInvalidationSettings)
-	notifyQueryInvalidation(runtime.invalidation, controlContext, QueryInvalidationQuota)
+	notifyQueryInvalidation(runtime.invalidation, controlContext, core.InvalidationSettings)
+	notifyQueryInvalidation(runtime.invalidation, controlContext, core.InvalidationQuota)
 	if err := runtime.quota.ReconcilePreferences(controlContext); err != nil {
 		return committed, &ApplicationPreferencesPostCommitError{Committed: committed, Cause: err}
 	}
@@ -617,12 +621,12 @@ func (runtime *applicationLifecycleRuntime) resumeCommittedQuotaGeneration(
 }
 
 func (runtime *applicationLifecycleRuntime) restartLightIndex(committed preferences.Snapshot) error {
-	if runtime == nil || runtime.lightRuntime == nil || runtime.repository == nil {
+	if runtime == nil || runtime.lightRuntime == nil || runtime.lightRepository == nil {
 		return ErrApplicationLifecycleRuntime
 	}
 	runtime.lightMu.Lock()
 	defer runtime.lightMu.Unlock()
-	state, err := runtime.repository.LightIndexState(runtime.controlCtx)
+	state, err := runtime.lightRepository.LightIndexState(runtime.controlCtx)
 	if err != nil {
 		return err
 	}
@@ -630,7 +634,7 @@ func (runtime *applicationLifecycleRuntime) restartLightIndex(committed preferen
 		runtime.lightRun.Cancel()
 		_ = runtime.lightRun.Wait(context.Background())
 	}
-	next := store.LightHomeIdentity{
+	next := storelight.LightHomeIdentity{
 		Path: committed.CodexHome.Source.Path, DeviceID: committed.CodexHome.Source.DeviceID,
 		Inode: committed.CodexHome.Source.Inode,
 	}
@@ -639,7 +643,7 @@ func (runtime *applicationLifecycleRuntime) restartLightIndex(committed preferen
 		return err
 	}
 	runtime.lightRun = run
-	notifyQueryInvalidation(runtime.invalidation, context.Background(), QueryInvalidationIndex)
+	notifyQueryInvalidation(runtime.invalidation, context.Background(), core.InvalidationIndex)
 	return nil
 }
 
@@ -660,7 +664,7 @@ func (runtime *applicationLifecycleRuntime) DeepIndexSession(
 	defer finish()
 	result, err := runtime.lightRuntime.DeepIndexSession(operationContext, sessionID)
 	if err == nil {
-		notifyQueryInvalidation(runtime.invalidation, operationContext, QueryInvalidationIndex)
+		notifyQueryInvalidation(runtime.invalidation, operationContext, core.InvalidationIndex)
 	}
 	return result, err
 }

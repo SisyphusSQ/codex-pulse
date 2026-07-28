@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"testing"
 	"time"
 
@@ -25,18 +27,18 @@ func TestApplicationSchemaV11CreatesQuotaProjection(t *testing.T) {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
-	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(_ context.Context, connection *gorm.DB) error {
 		for _, object := range quotaProjectionSchemaObjects {
-			if object.objectType == "table" && !connection.Migrator().HasTable(object.name) {
-				t.Errorf("schema v11 table %q missing", object.name)
+			if object.ObjectType == "table" && !connection.Migrator().HasTable(object.Name) {
+				t.Errorf("schema v11 table %q missing", object.Name)
 			}
-			if object.objectType == "index" {
+			if object.ObjectType == "index" {
 				model := any(&quotaCurrentModel{})
-				if object.name == "idx_quota_arbitration_evidence_observation" {
+				if object.Name == "idx_quota_arbitration_evidence_observation" {
 					model = &quotaArbitrationEvidenceModel{}
 				}
-				if !connection.Migrator().HasIndex(model, object.name) {
-					t.Errorf("schema v11 index %q missing", object.name)
+				if !connection.Migrator().HasIndex(model, object.Name) {
+					t.Errorf("schema v11 index %q missing", object.Name)
 				}
 			}
 		}
@@ -55,7 +57,7 @@ func TestApplicationMigrationUpgradesV10ThroughCurrentWithoutChangingRawObservat
 	observation := quotaObservationModelFromSample(quotaProjectionWhamSample(
 		"v10-wham", 38, 1_000_000, 1_000_000+5*quotaTestHourMS,
 	))
-	if err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Omit("limit_name").Create(observation).Error
 	}); err != nil {
 		t.Fatalf("seed v10 observation: %v", err)
@@ -99,7 +101,7 @@ func TestApplicationMigrationV11UsesTrustedClockForFutureObservation(t *testing.
 	observation := quotaObservationModelFromSample(quotaProjectionWhamSample(
 		"v10-future-wham", 38, observed, observed+5*quotaTestHourMS,
 	))
-	if err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Omit("limit_name").Create(observation).Error
 	}); err != nil {
 		t.Fatalf("seed future v10 observation: %v", err)
@@ -133,7 +135,7 @@ func TestApplicationMigrationV11BatchesEvidenceBeyondSQLiteVariableLimit(t *test
 	const historySize = 4096
 	base := int64(220 * quotaTestHourMS)
 	reset := base + 5*quotaTestHourMS
-	if err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		models := make([]*quotaObservationModel, 0, historySize)
 		for index := 0; index < historySize; index++ {
 			sample := quotaProjectionWhamSample(
@@ -171,7 +173,7 @@ func TestApplicationMigrationRollsBackFailedV11Atomically(t *testing.T) {
 	want := errors.New("injected v11 failure")
 	catalog := append([]migrationDefinition(nil), applicationMigrations...)
 	catalog[10].apply = func(ctx context.Context, transaction *gorm.DB) error {
-		if err := ensureSchemaObjects(ctx, transaction, quotaProjectionSchemaObjects[:1]); err != nil {
+		if err := storeschema.EnsureObjects(ctx, transaction, quotaProjectionSchemaObjects[:1]); err != nil {
 			return err
 		}
 		return want
@@ -186,7 +188,7 @@ func TestApplicationMigrationRollsBackFailedV11Atomically(t *testing.T) {
 		t.Fatalf("run(failed v11) error = %v, want injected failure", err)
 	}
 	assertMigrationVersionAndHistory(t, database, 10, 10)
-	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(_ context.Context, connection *gorm.DB) error {
 		for _, table := range []string{"quota_current", "quota_arbitration_evidence"} {
 			if connection.Migrator().HasTable(table) {
 				t.Fatalf("failed v11 migration left %s behind", table)
@@ -210,19 +212,19 @@ func seedApplicationSchemaV10(t *testing.T, database *storesqlite.Store) {
 	assertMigrationVersionAndHistory(t, database, 10, 10)
 }
 
-func verifyApplicationSchemaV10(ctx context.Context, transaction storesqlite.WriteTx) error {
-	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV12(), retentionSchemaObjects,
+func verifyApplicationSchemaV10(ctx context.Context, transaction *gorm.DB) error {
+	for _, objects := range [][]storeschema.Object{
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV12(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects, quotaSchemaObjects,
 	} {
 		for _, object := range objects {
-			exists, err := verifySchemaObject(ctx, transaction, object)
+			exists, err := storeschema.VerifyObject(ctx, transaction, object)
 			if err != nil {
 				return err
 			}
 			if !exists {
-				return ErrSchemaContract
+				return storeschema.ErrContract
 			}
 		}
 	}

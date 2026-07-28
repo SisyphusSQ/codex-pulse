@@ -269,7 +269,7 @@ func TestStoreWriteIsFIFOAndRollsBackCallbackFailures(t *testing.T) {
 	results := make(chan error, 3)
 
 	go func() {
-		results <- store.Write(context.Background(), func(ctx context.Context, tx WriteTx) error {
+		results <- store.Write(context.Background(), func(ctx context.Context, tx *gorm.DB) error {
 			close(firstStarted)
 			<-releaseFirst
 			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "first"}).Error
@@ -299,7 +299,7 @@ func TestStoreWriteIsFIFOAndRollsBackCallbackFailures(t *testing.T) {
 	}
 
 	errBoom := errors.New("callback failed")
-	err := store.Write(context.Background(), func(ctx context.Context, tx WriteTx) error {
+	err := store.Write(context.Background(), func(ctx context.Context, tx *gorm.DB) error {
 		if execErr := tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "rollback"}).Error; execErr != nil {
 			return execErr
 		}
@@ -312,7 +312,7 @@ func TestStoreWriteIsFIFOAndRollsBackCallbackFailures(t *testing.T) {
 		t.Fatalf("rows after rollback = %v, want original three rows", values)
 	}
 
-	err = store.Write(context.Background(), func(context.Context, WriteTx) error {
+	err = store.Write(context.Background(), func(context.Context, *gorm.DB) error {
 		panic("callback panic")
 	})
 	if !errors.Is(err, ErrCallbackPanic) {
@@ -331,7 +331,7 @@ func TestStoreReturnsQueueFullAndSkipsCanceledQueuedWrite(t *testing.T) {
 	releaseFirst := make(chan struct{})
 	firstResult := make(chan error, 1)
 	go func() {
-		firstResult <- store.Write(context.Background(), func(ctx context.Context, tx WriteTx) error {
+		firstResult <- store.Write(context.Background(), func(ctx context.Context, tx *gorm.DB) error {
 			close(firstStarted)
 			<-releaseFirst
 			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "first"}).Error
@@ -374,7 +374,7 @@ func TestStorePrioritizesNormalWritesOverQueuedMaintenance(t *testing.T) {
 	releaseFirst := make(chan struct{})
 	results := make(chan error, 3)
 	go func() {
-		results <- store.Write(context.Background(), func(ctx context.Context, tx WriteTx) error {
+		results <- store.Write(context.Background(), func(ctx context.Context, tx *gorm.DB) error {
 			close(firstStarted)
 			<-releaseFirst
 			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "first"}).Error
@@ -383,7 +383,7 @@ func TestStorePrioritizesNormalWritesOverQueuedMaintenance(t *testing.T) {
 	<-firstStarted
 
 	go func() {
-		results <- store.WriteMaintenance(context.Background(), func(ctx context.Context, tx WriteTx) error {
+		results <- store.WriteMaintenance(context.Background(), func(ctx context.Context, tx *gorm.DB) error {
 			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "maintenance"}).Error
 		})
 	}()
@@ -413,7 +413,7 @@ func TestStoreMaintenanceQueueIsBoundedAndSkipsCanceledWork(t *testing.T) {
 	releaseFirst := make(chan struct{})
 	firstResult := make(chan error, 1)
 	go func() {
-		firstResult <- store.Write(context.Background(), func(context.Context, WriteTx) error {
+		firstResult <- store.Write(context.Background(), func(context.Context, *gorm.DB) error {
 			close(firstStarted)
 			<-releaseFirst
 			return nil
@@ -424,13 +424,13 @@ func TestStoreMaintenanceQueueIsBoundedAndSkipsCanceledWork(t *testing.T) {
 	queuedContext, cancelQueued := context.WithCancel(context.Background())
 	queuedResult := make(chan error, 1)
 	go func() {
-		queuedResult <- store.WriteMaintenance(queuedContext, func(ctx context.Context, tx WriteTx) error {
+		queuedResult <- store.WriteMaintenance(queuedContext, func(ctx context.Context, tx *gorm.DB) error {
 			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "canceled"}).Error
 		})
 	}()
 	waitForMaintenanceQueueDepth(t, store, 1)
 
-	err := store.WriteMaintenance(context.Background(), func(context.Context, WriteTx) error { return nil })
+	err := store.WriteMaintenance(context.Background(), func(context.Context, *gorm.DB) error { return nil })
 	if !errors.Is(err, ErrQueueFull) {
 		t.Fatalf("maintenance overflow error = %v, want ErrQueueFull", err)
 	}
@@ -457,7 +457,7 @@ func TestStoreWriteWaitsForAuthoritativeResultAfterAdmission(t *testing.T) {
 	releaseCallback := make(chan struct{})
 	result := make(chan error, 1)
 	go func() {
-		result <- store.Write(ctx, func(_ context.Context, tx WriteTx) error {
+		result <- store.Write(ctx, func(_ context.Context, tx *gorm.DB) error {
 			close(callbackStarted)
 			<-releaseCallback
 			return tx.WithContext(context.Background()).Table("events").Create(map[string]any{"value": "must-rollback"}).Error
@@ -486,7 +486,7 @@ func TestStoreWriteWaitsForAuthoritativeResultAfterAdmission(t *testing.T) {
 func TestCallbackSessionsAreBoundToQueueOwnedPools(t *testing.T) {
 	store := openTestStore(t, Config{})
 
-	err := store.Write(context.Background(), func(_ context.Context, tx WriteTx) error {
+	err := store.Write(context.Background(), func(_ context.Context, tx *gorm.DB) error {
 		if tx == store.writer {
 			return errors.New("write callback received the shared root GORM session")
 		}
@@ -499,7 +499,7 @@ func TestCallbackSessionsAreBoundToQueueOwnedPools(t *testing.T) {
 		t.Fatalf("write callback binding: %v", err)
 	}
 
-	err = store.View(context.Background(), func(_ context.Context, reader ReadConn) error {
+	err = store.View(context.Background(), func(_ context.Context, reader *gorm.DB) error {
 		if reader == store.reader {
 			return errors.New("read callback received the shared root GORM session")
 		}
@@ -542,7 +542,7 @@ func TestStoreSupportsConcurrentWALReadsAndQueuedWrites(t *testing.T) {
 			defer wait.Done()
 			<-start
 			for range 20 {
-				err := store.View(context.Background(), func(ctx context.Context, db ReadConn) error {
+				err := store.View(context.Background(), func(ctx context.Context, db *gorm.DB) error {
 					var count int64
 					return db.WithContext(ctx).Table("events").Count(&count).Error
 				})
@@ -570,7 +570,7 @@ func TestStoreViewEnforcesReadOnlyConnection(t *testing.T) {
 	store := openTestStore(t, Config{})
 	createEventsTable(t, store)
 
-	err := store.View(context.Background(), func(ctx context.Context, db ReadConn) error {
+	err := store.View(context.Background(), func(ctx context.Context, db *gorm.DB) error {
 		return db.WithContext(ctx).Table("events").Create(map[string]any{"value": "forbidden"}).Error
 	})
 	if !errors.Is(err, ErrReadOnly) {
@@ -622,7 +622,7 @@ func TestStoreCloseDrainsAcceptedWritesRejectsNewWorkAndIsIdempotent(t *testing.
 	releaseFirst := make(chan struct{})
 	firstResult := make(chan error, 1)
 	go func() {
-		firstResult <- store.Write(context.Background(), func(ctx context.Context, tx WriteTx) error {
+		firstResult <- store.Write(context.Background(), func(ctx context.Context, tx *gorm.DB) error {
 			close(firstStarted)
 			<-releaseFirst
 			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "first"}).Error
@@ -645,7 +645,7 @@ func TestStoreCloseDrainsAcceptedWritesRejectsNewWorkAndIsIdempotent(t *testing.
 	if err := insertEvent(store, context.Background(), "rejected"); !errors.Is(err, ErrClosing) {
 		t.Fatalf("write during close error = %v, want ErrClosing", err)
 	}
-	if err := store.View(context.Background(), func(context.Context, ReadConn) error { return nil }); !errors.Is(err, ErrClosing) {
+	if err := store.View(context.Background(), func(context.Context, *gorm.DB) error { return nil }); !errors.Is(err, ErrClosing) {
 		t.Fatalf("view during close error = %v, want ErrClosing", err)
 	}
 
@@ -688,7 +688,7 @@ func TestStoreCloseDrainsAcceptedMaintenanceAndRejectsNewMaintenance(t *testing.
 	releaseFirst := make(chan struct{})
 	firstResult := make(chan error, 1)
 	go func() {
-		firstResult <- store.Write(context.Background(), func(ctx context.Context, tx WriteTx) error {
+		firstResult <- store.Write(context.Background(), func(ctx context.Context, tx *gorm.DB) error {
 			close(firstStarted)
 			<-releaseFirst
 			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "first"}).Error
@@ -698,7 +698,7 @@ func TestStoreCloseDrainsAcceptedMaintenanceAndRejectsNewMaintenance(t *testing.
 
 	maintenanceResult := make(chan error, 1)
 	go func() {
-		maintenanceResult <- store.WriteMaintenance(context.Background(), func(ctx context.Context, tx WriteTx) error {
+		maintenanceResult <- store.WriteMaintenance(context.Background(), func(ctx context.Context, tx *gorm.DB) error {
 			return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": "maintenance"}).Error
 		})
 	}()
@@ -708,7 +708,7 @@ func TestStoreCloseDrainsAcceptedMaintenanceAndRejectsNewMaintenance(t *testing.
 	go func() { closeResult <- store.Close(context.Background()) }()
 	waitForState(t, store, stateClosing)
 
-	if err := store.WriteMaintenance(context.Background(), func(context.Context, WriteTx) error { return nil }); !errors.Is(err, ErrClosing) {
+	if err := store.WriteMaintenance(context.Background(), func(context.Context, *gorm.DB) error { return nil }); !errors.Is(err, ErrClosing) {
 		t.Fatalf("maintenance during close error = %v, want ErrClosing", err)
 	}
 	close(releaseFirst)
@@ -721,7 +721,7 @@ func TestStoreCloseDrainsAcceptedMaintenanceAndRejectsNewMaintenance(t *testing.
 	if err := <-closeResult; err != nil {
 		t.Fatalf("close: %v", err)
 	}
-	if err := store.WriteMaintenance(context.Background(), func(context.Context, WriteTx) error { return nil }); !errors.Is(err, ErrClosed) {
+	if err := store.WriteMaintenance(context.Background(), func(context.Context, *gorm.DB) error { return nil }); !errors.Is(err, ErrClosed) {
 		t.Fatalf("maintenance after close error = %v, want ErrClosed", err)
 	}
 
@@ -741,7 +741,7 @@ func TestStoreCloseWaitsForInflightReadAndCanceledWaitDoesNotAbortClose(t *testi
 	releaseRead := make(chan struct{})
 	readResult := make(chan error, 1)
 	go func() {
-		readResult <- store.View(context.Background(), func(context.Context, ReadConn) error {
+		readResult <- store.View(context.Background(), func(context.Context, *gorm.DB) error {
 			close(readStarted)
 			<-releaseRead
 			return nil
@@ -798,7 +798,7 @@ func openTestStoreWithoutCleanup(t *testing.T, config Config) *Store {
 
 func createEventsTable(t *testing.T, store *Store) {
 	t.Helper()
-	err := store.Write(context.Background(), func(ctx context.Context, tx WriteTx) error {
+	err := store.Write(context.Background(), func(ctx context.Context, tx *gorm.DB) error {
 		return tx.WithContext(ctx).Exec(`
 			CREATE TABLE IF NOT EXISTS events (
 				sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -812,7 +812,7 @@ func createEventsTable(t *testing.T, store *Store) {
 }
 
 func insertEvent(store *Store, ctx context.Context, value string) error {
-	return store.Write(ctx, func(ctx context.Context, tx WriteTx) error {
+	return store.Write(ctx, func(ctx context.Context, tx *gorm.DB) error {
 		return tx.WithContext(ctx).Table("events").Create(map[string]any{"value": value}).Error
 	})
 }
@@ -820,7 +820,7 @@ func insertEvent(store *Store, ctx context.Context, value string) error {
 func readEventValues(t *testing.T, store *Store) []string {
 	t.Helper()
 	var values []string
-	err := store.View(context.Background(), func(ctx context.Context, db ReadConn) error {
+	err := store.View(context.Background(), func(ctx context.Context, db *gorm.DB) error {
 		return db.WithContext(ctx).Table("events").Order("sequence").Pluck("value", &values).Error
 	})
 	if err != nil {

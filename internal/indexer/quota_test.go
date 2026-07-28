@@ -8,7 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logparser "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/parser"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -20,24 +21,24 @@ func TestProjectorMapsQuotaObservationWithStableProvenance(t *testing.T) {
 		t.Fatalf("newProjector() error = %v", err)
 	}
 	limitID, limitName, planType := "codex_bengalfox", "GPT-5.3-Codex-Spark", "pro"
-	events := []logs.ParsedEvent{
+	events := []logparser.ParsedEvent{
 		{
-			Kind: logs.EventSessionMeta, Position: logs.SourcePosition{StartOffset: 0, EndOffset: 100},
-			SessionMeta: &logs.SessionMetaFact{
-				SessionID: "session-quota", RootSessionID: "session-quota", SourceKind: logs.SourceKindSession,
+			Kind: logparser.EventSessionMeta, Position: logparser.SourcePosition{StartOffset: 0, EndOffset: 100},
+			SessionMeta: &logparser.SessionMetaFact{
+				SessionID: "session-quota", RootSessionID: "session-quota", SourceKind: logsource.SourceKindSession,
 				CreatedAtMS: 1_783_990_800_000, ObservedAtMS: 1_783_990_800_000,
 				InitialCWD: "/synthetic", Originator: "codex_cli_rs", CLIVersion: "0.142.3",
 				Source: "cli", ModelProvider: "openai",
 			},
 		},
 		{
-			Kind: logs.EventQuotaObservation, Position: logs.SourcePosition{StartOffset: 100, EndOffset: 200},
-			QuotaObservation: &logs.QuotaObservationFact{
-				SessionID: "session-quota", AccountScope: logs.QuotaAccountScopeDefault,
-				Source: logs.QuotaSourceLocalJSONL, LimitID: &limitID, LimitName: &limitName,
-				WindowKind:  logs.QuotaWindowPrimary,
+			Kind: logparser.EventQuotaObservation, Position: logparser.SourcePosition{StartOffset: 100, EndOffset: 200},
+			QuotaObservation: &logparser.QuotaObservationFact{
+				SessionID: "session-quota", AccountScope: logparser.QuotaAccountScopeDefault,
+				Source: logparser.QuotaSourceLocalJSONL, LimitID: &limitID, LimitName: &limitName,
+				WindowKind:  logparser.QuotaWindowPrimary,
 				UsedPercent: 38, WindowMinutes: 300, ResetsAtMS: 1_784_008_800_000,
-				PlanType: &planType, ObservedAtMS: 1_783_990_801_000, Validity: logs.QuotaValidityAccepted,
+				PlanType: &planType, ObservedAtMS: 1_783_990_801_000, Validity: logparser.QuotaValidityAccepted,
 			},
 		},
 	}
@@ -89,15 +90,15 @@ func TestIngesterCommitsLocalQuotaObservationsWithCheckpoint(t *testing.T) {
 	quota := `{"timestamp":"2026-07-14T01:00:01Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex_bengalfox","limit_name":"GPT-5.3-Codex-Spark","primary":{"used_percent":38,"window_minutes":300,"resets_at":1784008800},"secondary":{"used_percent":12,"window_minutes":10080,"resets_at":1784595600},"plan_type":"pro"}}}`
 	content := []byte(strings.Join([]string{meta, quota}, "\n") + "\n")
 	writeSyntheticRollout(t, path, content, time.Unix(10, 0))
-	discoverer, err := logs.NewDiscoverer(home)
+	discoverer, err := logsource.NewDiscoverer(home)
 	if err != nil {
-		t.Fatalf("logs.NewDiscoverer() error = %v", err)
+		t.Fatalf("logsource.NewDiscoverer() error = %v", err)
 	}
 	discovery, err := discoverer.Discover(ctx)
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	plan, err := logs.PlanReconcile(home, nil, discovery)
+	plan, err := logsource.PlanReconcile(home, nil, discovery)
 	if err != nil || len(plan.Actions) != 1 {
 		t.Fatalf("PlanReconcile() = %#v, %v", plan, err)
 	}
@@ -159,7 +160,7 @@ func TestIngesterDeepSessionModeSkipsQuotaFacts(t *testing.T) {
 	quota := `{"timestamp":"2026-07-14T01:00:01Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex","primary":{"used_percent":38,"window_minutes":300,"resets_at":1784008800},"plan_type":"pro"}}}`
 	content := []byte(meta + "\n" + quota + "\n")
 	writeSyntheticRollout(t, path, content, time.Unix(10, 0))
-	discovery, err := logs.NewDiscoverer(home)
+	discovery, err := logsource.NewDiscoverer(home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +168,7 @@ func TestIngesterDeepSessionModeSkipsQuotaFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := logs.PlanReconcile(home, nil, observed)
+	plan, err := logsource.PlanReconcile(home, nil, observed)
 	if err != nil || len(plan.Actions) != 1 {
 		t.Fatalf("PlanReconcile() = %#v, %v", plan, err)
 	}
@@ -199,15 +200,15 @@ func TestIngesterCommitsZeroResetAsSuspiciousQuota(t *testing.T) {
 	quota := `{"timestamp":"2026-07-14T01:00:01Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex","primary":{"used_percent":38,"window_minutes":300,"resets_at":0},"plan_type":"pro"}}}`
 	content := []byte(strings.Join([]string{meta, quota}, "\n") + "\n")
 	writeSyntheticRollout(t, path, content, time.Unix(10, 0))
-	discoverer, err := logs.NewDiscoverer(home)
+	discoverer, err := logsource.NewDiscoverer(home)
 	if err != nil {
-		t.Fatalf("logs.NewDiscoverer() error = %v", err)
+		t.Fatalf("logsource.NewDiscoverer() error = %v", err)
 	}
 	discovery, err := discoverer.Discover(ctx)
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	plan, err := logs.PlanReconcile(home, nil, discovery)
+	plan, err := logsource.PlanReconcile(home, nil, discovery)
 	if err != nil || len(plan.Actions) != 1 {
 		t.Fatalf("PlanReconcile() = %#v, %v", plan, err)
 	}
@@ -244,9 +245,9 @@ func TestIngesterKeepsQuotaLineageDistinctAcrossPhysicalReplacement(t *testing.T
 		t.Fatalf("New() error = %v", err)
 	}
 	home, path := newSyntheticCodexHome(t)
-	discoverer, err := logs.NewDiscoverer(home)
+	discoverer, err := logsource.NewDiscoverer(home)
 	if err != nil {
-		t.Fatalf("logs.NewDiscoverer() error = %v", err)
+		t.Fatalf("logsource.NewDiscoverer() error = %v", err)
 	}
 	meta := rolloutSessionMetaLine("session-quota-replacement")
 	quotaLine := func(usedPercent int) string {
@@ -259,7 +260,7 @@ func TestIngesterKeepsQuotaLineageDistinctAcrossPhysicalReplacement(t *testing.T
 	if err != nil {
 		t.Fatalf("Discover(old) error = %v", err)
 	}
-	oldPlan, err := logs.PlanReconcile(home, nil, oldDiscovery)
+	oldPlan, err := logsource.PlanReconcile(home, nil, oldDiscovery)
 	if err != nil || len(oldPlan.Actions) != 1 {
 		t.Fatalf("PlanReconcile(old) = %#v, %v", oldPlan, err)
 	}
@@ -281,8 +282,8 @@ func TestIngesterKeepsQuotaLineageDistinctAcrossPhysicalReplacement(t *testing.T
 	if err != nil {
 		t.Fatalf("DiscoverAgainst(new) error = %v", err)
 	}
-	newPlan, err := logs.PlanReconcile(home, oldDiscovery.Snapshots, newDiscovery)
-	if err != nil || len(newPlan.Actions) != 1 || newPlan.Actions[0].Kind != logs.ChangeReplaced ||
+	newPlan, err := logsource.PlanReconcile(home, oldDiscovery.Snapshots, newDiscovery)
+	if err != nil || len(newPlan.Actions) != 1 || newPlan.Actions[0].Kind != logsource.ChangeReplaced ||
 		newPlan.Actions[0].Previous == nil || newPlan.Actions[0].Current == nil ||
 		newPlan.Actions[0].Previous.SourceFileID == newPlan.Actions[0].Current.SourceFileID {
 		t.Fatalf("PlanReconcile(new) = %#v, %v, want physical replacement", newPlan, err)

@@ -7,7 +7,8 @@ import (
 	"math"
 	"sort"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logparser "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/parser"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -18,8 +19,8 @@ type projector struct {
 	generation        int64
 	firstCounterState string
 	sessionID         string
-	sessionSourceKind logs.SourceKind
-	session           *logs.SessionMetaFact
+	sessionSourceKind logsource.SourceKind
+	session           *logparser.SessionMetaFact
 	openTurns         map[string]store.ProjectedOpenTurnCheckpoint
 	current           *store.SessionCurrent
 	sessionUsage      *store.SessionUsageCurrent
@@ -30,7 +31,7 @@ func newProjector(
 	sourceFileID string,
 	generation int64,
 	mode store.GenerationMode,
-	seed *logs.ParserSeed,
+	seed *logparser.ParserSeed,
 	checkpoint store.ProjectorCheckpoint,
 ) (*projector, error) {
 	if sourceFileID == "" || generation < 0 ||
@@ -42,9 +43,9 @@ func newProjector(
 		openTurns: make(map[string]store.ProjectedOpenTurnCheckpoint, len(checkpoint.OpenTurns)),
 	}
 	if checkpoint.SessionSourceKind != "" {
-		result.sessionSourceKind = logs.SourceKind(checkpoint.SessionSourceKind)
-		if result.sessionSourceKind != logs.SourceKindSession &&
-			result.sessionSourceKind != logs.SourceKindArchivedSession {
+		result.sessionSourceKind = logsource.SourceKind(checkpoint.SessionSourceKind)
+		if result.sessionSourceKind != logsource.SourceKindSession &&
+			result.sessionSourceKind != logsource.SourceKindArchivedSession {
 			return nil, invalidProjection("projector session source kind is invalid")
 		}
 	}
@@ -59,7 +60,7 @@ func newProjector(
 		}
 		result.session.SourceKind = result.sessionSourceKind
 	}
-	seedOpen := make(map[string]logs.OpenTurnSeed)
+	seedOpen := make(map[string]logparser.OpenTurnSeed)
 	if seed != nil {
 		for _, turn := range seed.OpenTurns {
 			if turn.TurnID == "" {
@@ -106,14 +107,14 @@ func newProjector(
 	return result, nil
 }
 
-func (projector *projector) Project(events []logs.ParsedEvent) ([]store.FactBatch, store.ProjectorCheckpoint, error) {
+func (projector *projector) Project(events []logparser.ParsedEvent) ([]store.FactBatch, store.ProjectorCheckpoint, error) {
 	if projector == nil {
 		return nil, store.ProjectorCheckpoint{}, invalidProjection("projector is nil")
 	}
 	working := projector.clone()
 	facts := make([]store.FactBatch, 0, len(events))
 	for _, event := range events {
-		if event.Kind == logs.EventQuotaObservation && working.skipQuotaFacts {
+		if event.Kind == logparser.EventQuotaObservation && working.skipQuotaFacts {
 			continue
 		}
 		fact, err := working.projectEvent(event)
@@ -126,36 +127,36 @@ func (projector *projector) Project(events []logs.ParsedEvent) ([]store.FactBatc
 	return facts, projector.checkpoint(), nil
 }
 
-func (projector *projector) projectEvent(event logs.ParsedEvent) (store.FactBatch, error) {
+func (projector *projector) projectEvent(event logparser.ParsedEvent) (store.FactBatch, error) {
 	if event.Position.StartOffset < 0 || event.Position.EndOffset <= event.Position.StartOffset {
 		return store.FactBatch{}, invalidProjection("event source position is invalid")
 	}
 	switch event.Kind {
-	case logs.EventSessionMeta:
+	case logparser.EventSessionMeta:
 		return projector.projectSessionMeta(event)
-	case logs.EventTurnStarted:
+	case logparser.EventTurnStarted:
 		return projector.projectTurnStart(event)
-	case logs.EventTurnContext:
+	case logparser.EventTurnContext:
 		return projector.projectTurnContext(event)
-	case logs.EventTurnUsage:
+	case logparser.EventTurnUsage:
 		return projector.projectTurnUsage(event)
-	case logs.EventSessionUsage:
+	case logparser.EventSessionUsage:
 		return projector.projectSessionUsage(event)
-	case logs.EventQuotaObservation:
+	case logparser.EventQuotaObservation:
 		return projector.projectQuotaObservation(event)
-	case logs.EventTurnEnded:
+	case logparser.EventTurnEnded:
 		return projector.projectTurnEnd(event)
 	default:
 		return store.FactBatch{}, invalidProjection("event kind is unsupported")
 	}
 }
 
-func (projector *projector) projectQuotaObservation(event logs.ParsedEvent) (store.FactBatch, error) {
+func (projector *projector) projectQuotaObservation(event logparser.ParsedEvent) (store.FactBatch, error) {
 	observation := event.QuotaObservation
 	if observation == nil || projector.session == nil || observation.SessionID != projector.sessionID ||
-		observation.AccountScope != logs.QuotaAccountScopeDefault ||
-		observation.Source != logs.QuotaSourceLocalJSONL ||
-		(observation.WindowKind != logs.QuotaWindowPrimary && observation.WindowKind != logs.QuotaWindowSecondary) ||
+		observation.AccountScope != logparser.QuotaAccountScopeDefault ||
+		observation.Source != logparser.QuotaSourceLocalJSONL ||
+		(observation.WindowKind != logparser.QuotaWindowPrimary && observation.WindowKind != logparser.QuotaWindowSecondary) ||
 		math.IsNaN(observation.UsedPercent) || math.IsInf(observation.UsedPercent, 0) ||
 		observation.UsedPercent < 0 || observation.UsedPercent > 100 || observation.WindowMinutes <= 0 ||
 		observation.ResetsAtMS < 0 || observation.ObservedAtMS < 0 || !validQuotaPlanType(observation.PlanType) {
@@ -203,7 +204,7 @@ func quotaObservationID(
 	sessionID string,
 	generation int64,
 	offset int64,
-	window logs.QuotaWindowKind,
+	window logparser.QuotaWindowKind,
 ) string {
 	digest := sha256.Sum256([]byte(fmt.Sprintf(
 		"%q\n%q\n%d\n%d\n%s", sourceFileID, sessionID, generation, offset, window,
@@ -212,16 +213,16 @@ func quotaObservationID(
 }
 
 func quotaValidityFromEvent(
-	validity logs.QuotaValidity,
-	reason *logs.QuotaRejectionReason,
+	validity logparser.QuotaValidity,
+	reason *logparser.QuotaRejectionReason,
 ) (store.QuotaValidity, *store.QuotaRejectionReason, error) {
 	var projectedValidity store.QuotaValidity
 	switch validity {
-	case logs.QuotaValidityAccepted:
+	case logparser.QuotaValidityAccepted:
 		projectedValidity = store.QuotaValidityAccepted
-	case logs.QuotaValiditySuspicious:
+	case logparser.QuotaValiditySuspicious:
 		projectedValidity = store.QuotaValiditySuspicious
-	case logs.QuotaValidityRejected:
+	case logparser.QuotaValidityRejected:
 		projectedValidity = store.QuotaValidityRejected
 	default:
 		return "", nil, invalidProjection("quota validity is invalid")
@@ -258,10 +259,10 @@ func validQuotaPlanType(planType *string) bool {
 	}
 }
 
-func (projector *projector) projectSessionMeta(event logs.ParsedEvent) (store.FactBatch, error) {
+func (projector *projector) projectSessionMeta(event logparser.ParsedEvent) (store.FactBatch, error) {
 	meta := event.SessionMeta
 	if meta == nil || meta.SessionID == "" ||
-		(meta.SourceKind != logs.SourceKindSession && meta.SourceKind != logs.SourceKindArchivedSession) {
+		(meta.SourceKind != logsource.SourceKindSession && meta.SourceKind != logsource.SourceKindArchivedSession) {
 		return store.FactBatch{}, invalidProjection("session metadata event is invalid")
 	}
 	if projector.sessionID != "" && projector.sessionID != meta.SessionID {
@@ -284,7 +285,7 @@ func (projector *projector) projectSessionMeta(event logs.ParsedEvent) (store.Fa
 	}, nil
 }
 
-func (projector *projector) projectTurnStart(event logs.ParsedEvent) (store.FactBatch, error) {
+func (projector *projector) projectTurnStart(event logparser.ParsedEvent) (store.FactBatch, error) {
 	start := event.TurnStart
 	if start == nil || start.TurnID == "" || start.StartedAtMS < 0 ||
 		!projector.matchesSession(start.SessionID) {
@@ -308,7 +309,7 @@ func (projector *projector) projectTurnStart(event logs.ParsedEvent) (store.Fact
 	}, nil
 }
 
-func (projector *projector) projectTurnContext(event logs.ParsedEvent) (store.FactBatch, error) {
+func (projector *projector) projectTurnContext(event logparser.ParsedEvent) (store.FactBatch, error) {
 	context := event.TurnContext
 	if context == nil || context.TurnID == "" || !projector.matchesSession(context.SessionID) {
 		return store.FactBatch{}, invalidProjection("turn context event is invalid")
@@ -335,7 +336,7 @@ func (projector *projector) projectTurnContext(event logs.ParsedEvent) (store.Fa
 	return fact, nil
 }
 
-func (projector *projector) projectTurnUsage(event logs.ParsedEvent) (store.FactBatch, error) {
+func (projector *projector) projectTurnUsage(event logparser.ParsedEvent) (store.FactBatch, error) {
 	usage := event.TurnUsage
 	if usage == nil || usage.TurnID == "" || !projector.matchesSession(usage.SessionID) {
 		return store.FactBatch{}, invalidProjection("turn usage event is invalid")
@@ -349,7 +350,7 @@ func (projector *projector) projectTurnUsage(event logs.ParsedEvent) (store.Fact
 	}, nil
 }
 
-func (projector *projector) projectSessionUsage(event logs.ParsedEvent) (store.FactBatch, error) {
+func (projector *projector) projectSessionUsage(event logparser.ParsedEvent) (store.FactBatch, error) {
 	usage := event.SessionUsage
 	if usage == nil || !projector.matchesSession(usage.SessionID) {
 		return store.FactBatch{}, invalidProjection("session usage event is invalid")
@@ -379,7 +380,7 @@ func (projector *projector) projectSessionUsage(event logs.ParsedEvent) (store.F
 	}, nil
 }
 
-func (projector *projector) projectTurnEnd(event logs.ParsedEvent) (store.FactBatch, error) {
+func (projector *projector) projectTurnEnd(event logparser.ParsedEvent) (store.FactBatch, error) {
 	end := event.TurnEnd
 	if end == nil || end.TurnID == "" || !projector.matchesSession(end.SessionID) {
 		return store.FactBatch{}, invalidProjection("turn terminal event is invalid")
@@ -481,7 +482,7 @@ func (projector *projector) sessionFactAt(lastSeenAtMS int64) *store.Session {
 		lastSeenAtMS = meta.ObservedAtMS
 	}
 	return &store.Session{
-		SessionID: meta.SessionID, Provider: logs.ProviderCodex,
+		SessionID: meta.SessionID, Provider: logsource.ProviderCodex,
 		Originator: optionalString(meta.Originator), SourceKind: string(meta.SourceKind),
 		ModelProvider: optionalString(meta.ModelProvider), InitialCWD: optionalString(meta.InitialCWD),
 		CLIVersion: optionalString(meta.CLIVersion), CreatedAtMS: meta.CreatedAtMS,
@@ -489,7 +490,7 @@ func (projector *projector) sessionFactAt(lastSeenAtMS int64) *store.Session {
 	}
 }
 
-func cloneParserSession(value *logs.SessionMetaFact) *logs.SessionMetaFact {
+func cloneParserSession(value *logparser.SessionMetaFact) *logparser.SessionMetaFact {
 	if value == nil {
 		return nil
 	}
@@ -525,7 +526,7 @@ func turnFromCheckpoint(value store.ProjectedOpenTurnCheckpoint) *store.Turn {
 	}
 }
 
-func turnUsageFromEvent(value *logs.TurnUsageFact, generation, offset int64) *store.TurnUsage {
+func turnUsageFromEvent(value *logparser.TurnUsageFact, generation, offset int64) *store.TurnUsage {
 	return &store.TurnUsage{
 		TurnID: CanonicalTurnID(value.SessionID, value.TurnID), ObservedAtMS: value.ObservedAtMS, IsFinal: value.IsFinal,
 		InputTokens:       cloneInt64(value.Usage.InputTokens),
@@ -553,7 +554,7 @@ func CanonicalTurnID(sessionID, sourceTurnID string) string {
 	return fmt.Sprintf("codex-turn-%x", digest[:])
 }
 
-func countersDecrease(previous *store.SessionUsageCurrent, current logs.TokenCounters) bool {
+func countersDecrease(previous *store.SessionUsageCurrent, current logparser.TokenCounters) bool {
 	return knownCounterDecreases(previous.TotalInputTokens, current.InputTokens) ||
 		knownCounterDecreases(previous.TotalCachedTokens, current.CachedInputTokens) ||
 		knownCounterDecreases(previous.TotalOutputTokens, current.OutputTokens) ||

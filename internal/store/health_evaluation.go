@@ -5,8 +5,6 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
-
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 const maxHealthEvaluationManagedEvents = 64
@@ -30,7 +28,7 @@ func (repository *Repository) HealthEvaluationSnapshot(
 		return HealthEvaluationSnapshot{}, err
 	}
 	result := HealthEvaluationSnapshot{Metrics: MetricsSnapshot{FromMS: filter.FromMS, UntilMS: filter.UntilMS}}
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
 			if err := repository.readMetricsSnapshotIn(ctx, transaction, filter, &result.Metrics); err != nil {
 				return err
@@ -112,7 +110,7 @@ func (repository *Repository) ApplyHealthEvaluationBatch(ctx context.Context, ba
 	if err != nil {
 		return err
 	}
-	return repository.database.WriteMaintenance(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.WriteMaintenance(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		for _, observation := range batch.Observations {
 			if _, err := observeHealthEventIn(ctx, transaction, observation); err != nil {
 				return err

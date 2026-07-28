@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -43,7 +43,7 @@ func TestFreezeInitialPlanPrioritizesHintsWithinBudgetAndTiersBackfill(t *testin
 		t.Fatalf("WriteFile(session index) error = %v", err)
 	}
 
-	discoverer, err := logs.NewDiscoverer(home)
+	discoverer, err := logsource.NewDiscoverer(home)
 	if err != nil {
 		t.Fatalf("NewDiscoverer() error = %v", err)
 	}
@@ -51,7 +51,7 @@ func TestFreezeInitialPlanPrioritizesHintsWithinBudgetAndTiersBackfill(t *testin
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	reconcile, err := logs.PlanReconcile(home, nil, discovery)
+	reconcile, err := logsource.PlanReconcile(home, nil, discovery)
 	if err != nil {
 		t.Fatalf("PlanReconcile() error = %v", err)
 	}
@@ -114,7 +114,7 @@ func TestFreezeInitialPlanFillsStaticFastBudgetFromOlderSessions(t *testing.T) {
 			t.Fatalf("Chtimes(%s) error = %v", name, err)
 		}
 	}
-	discoverer, err := logs.NewDiscoverer(home)
+	discoverer, err := logsource.NewDiscoverer(home)
 	if err != nil {
 		t.Fatalf("NewDiscoverer() error = %v", err)
 	}
@@ -122,7 +122,7 @@ func TestFreezeInitialPlanFillsStaticFastBudgetFromOlderSessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	reconcile, err := logs.PlanReconcile(home, nil, discovery)
+	reconcile, err := logsource.PlanReconcile(home, nil, discovery)
 	if err != nil {
 		t.Fatalf("PlanReconcile() error = %v", err)
 	}
@@ -152,7 +152,7 @@ func TestFreezeReconcilePlanPreservesActionOrderAndStartsAtFixedOrdinal(t *testi
 			t.Fatalf("WriteFile(%s) error = %v", name, err)
 		}
 	}
-	discoverer, err := logs.NewDiscoverer(home)
+	discoverer, err := logsource.NewDiscoverer(home)
 	if err != nil {
 		t.Fatalf("NewDiscoverer() error = %v", err)
 	}
@@ -160,7 +160,7 @@ func TestFreezeReconcilePlanPreservesActionOrderAndStartsAtFixedOrdinal(t *testi
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	reconcile, err := logs.PlanReconcile(home, nil, discovery)
+	reconcile, err := logsource.PlanReconcile(home, nil, discovery)
 	if err != nil {
 		t.Fatalf("PlanReconcile() error = %v", err)
 	}

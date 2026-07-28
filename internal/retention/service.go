@@ -10,7 +10,7 @@ import (
 
 	"github.com/robfig/cron/v3"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/store"
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -26,7 +26,7 @@ var (
 )
 
 type Cleaner interface {
-	CleanupRetention(context.Context, store.RetentionCleanupOptions) (store.RetentionCleanupReport, error)
+	CleanupRetention(context.Context, storeretention.RetentionCleanupOptions) (storeretention.RetentionCleanupReport, error)
 }
 
 type Checkpointer interface {
@@ -59,7 +59,7 @@ type Attempt struct {
 	DurationMS          int64
 	CutoffMS            int64
 	Batches             int
-	Deleted             store.RetentionDeletedCounts
+	Deleted             storeretention.RetentionDeletedCounts
 	Checkpoint          storesqlite.WALCheckpointReport
 	CheckpointCompleted bool
 }
@@ -237,8 +237,8 @@ func (service *Service) executeAttempt(ctx context.Context, now time.Time, attem
 			failure = FailurePanic
 		}
 	}()
-	report, err := service.cleaner.CleanupRetention(ctx, store.RetentionCleanupOptions{
-		Now: now, BatchSize: store.DefaultRetentionBatchSize,
+	report, err := service.cleaner.CleanupRetention(ctx, storeretention.RetentionCleanupOptions{
+		Now: now, BatchSize: storeretention.DefaultRetentionBatchSize,
 	})
 	attempt.CutoffMS = report.CutoffMS
 	attempt.Batches = report.Batches

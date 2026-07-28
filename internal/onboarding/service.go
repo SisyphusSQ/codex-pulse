@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 )
 
@@ -78,7 +78,7 @@ func NewDefaultService(trackerDatabasePath string) (*Service, error) {
 		return nil, err
 	}
 	return NewService(Config{
-		Probe: logs.NewHomeProbe(), Store: store, TrackerDatabasePath: trackerDatabasePath,
+		Probe: logsource.NewHomeProbe(), Store: store, TrackerDatabasePath: trackerDatabasePath,
 	})
 }
 
@@ -346,22 +346,22 @@ func (service *Service) probeCandidate(
 
 func classifyProbeError(err error) (CandidateStatus, CandidateReason, bool) {
 	switch {
-	case errors.Is(err, fs.ErrNotExist), errors.Is(err, logs.ErrInvalidHome):
+	case errors.Is(err, fs.ErrNotExist), errors.Is(err, logsource.ErrInvalidHome):
 		return CandidateStatusUnavailable, CandidateReasonMissing, false
 	case errors.Is(err, fs.ErrPermission):
 		return CandidateStatusUnavailable, CandidateReasonPermission, true
-	case errors.Is(err, logs.ErrUnsafeHome), errors.Is(err, logs.ErrUnsafeSource):
+	case errors.Is(err, logsource.ErrUnsafeHome), errors.Is(err, logsource.ErrUnsafeSource):
 		return CandidateStatusUnsafe, CandidateReasonUnsafeSymlink, false
-	case errors.Is(err, logs.ErrUnsupportedFile):
+	case errors.Is(err, logsource.ErrUnsupportedFile):
 		return CandidateStatusUnsafe, CandidateReasonUnsupportedEntry, false
-	case errors.Is(err, logs.ErrHomeChanged), errors.Is(err, logs.ErrChangedDuringScan):
+	case errors.Is(err, logsource.ErrHomeChanged), errors.Is(err, logsource.ErrChangedDuringScan):
 		return CandidateStatusUnavailable, CandidateReasonChanged, true
 	default:
 		return CandidateStatusUnavailable, CandidateReasonIO, true
 	}
 }
 
-func candidateID(source CandidateSource, metadata logs.HomeMetadata) string {
+func candidateID(source CandidateSource, metadata logsource.HomeMetadata) string {
 	hasher := sha256.New()
 	writeDigestString(hasher, string(source))
 	writeDigestString(hasher, metadata.Path)

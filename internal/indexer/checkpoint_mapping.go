@@ -1,11 +1,12 @@
 package indexer
 
 import (
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logparser "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/parser"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
-func parserSeedToCheckpoint(seed *logs.ParserSeed) *store.ParserSeedCheckpoint {
+func parserSeedToCheckpoint(seed *logparser.ParserSeed) *store.ParserSeedCheckpoint {
 	if seed == nil {
 		return nil
 	}
@@ -51,20 +52,20 @@ func parserSeedToCheckpoint(seed *logs.ParserSeed) *store.ParserSeedCheckpoint {
 	return checkpoint
 }
 
-func parserSeedFromCheckpoint(checkpoint *store.ParserSeedCheckpoint) *logs.ParserSeed {
+func parserSeedFromCheckpoint(checkpoint *store.ParserSeedCheckpoint) *logparser.ParserSeed {
 	if checkpoint == nil {
 		return nil
 	}
-	seed := &logs.ParserSeed{
-		OpenTurns:    make([]logs.OpenTurnSeed, len(checkpoint.OpenTurns)),
-		PendingTurns: make([]logs.PendingTurnSeed, len(checkpoint.PendingTurns)),
-		ClosedTurns:  make([]logs.ClosedTurnSeed, len(checkpoint.ClosedTurns)),
+	seed := &logparser.ParserSeed{
+		OpenTurns:    make([]logparser.OpenTurnSeed, len(checkpoint.OpenTurns)),
+		PendingTurns: make([]logparser.PendingTurnSeed, len(checkpoint.PendingTurns)),
+		ClosedTurns:  make([]logparser.ClosedTurnSeed, len(checkpoint.ClosedTurns)),
 	}
 	if checkpoint.Session != nil {
 		seed.Session = parserSessionFromCheckpoint(checkpoint.Session)
 	}
 	for index, turn := range checkpoint.OpenTurns {
-		seed.OpenTurns[index] = logs.OpenTurnSeed{
+		seed.OpenTurns[index] = logparser.OpenTurnSeed{
 			TurnID: turn.TurnID, StartedAtMS: turn.StartedAtMS,
 			ContextWindow: cloneInt64(turn.ContextWindow),
 			Context:       parserContextFromCheckpoint(turn.Context),
@@ -72,24 +73,24 @@ func parserSeedFromCheckpoint(checkpoint *store.ParserSeedCheckpoint) *logs.Pars
 		}
 	}
 	for index, turn := range checkpoint.PendingTurns {
-		seed.PendingTurns[index] = logs.PendingTurnSeed{TurnID: turn.TurnID}
+		seed.PendingTurns[index] = logparser.PendingTurnSeed{TurnID: turn.TurnID}
 		if turn.Context != nil {
-			seed.PendingTurns[index].Context = &logs.PendingTurnContextSeed{
+			seed.PendingTurns[index].Context = &logparser.PendingTurnContextSeed{
 				Position:     parserPositionFromCheckpoint(turn.Context.Position),
 				ObservedAtMS: turn.Context.ObservedAtMS, CWD: turn.Context.CWD,
 				Model: turn.Context.Model, Effort: cloneString(turn.Context.Effort),
 			}
 		}
 		if turn.Terminal != nil {
-			seed.PendingTurns[index].Terminal = &logs.PendingTurnTerminalSeed{
+			seed.PendingTurns[index].Terminal = &logparser.PendingTurnTerminalSeed{
 				Position:      parserPositionFromCheckpoint(turn.Terminal.Position),
 				CompletedAtMS: turn.Terminal.CompletedAtMS,
-				Outcome:       logs.TurnOutcome(turn.Terminal.Outcome),
+				Outcome:       logparser.TurnOutcome(turn.Terminal.Outcome),
 			}
 		}
 	}
 	for index, turn := range checkpoint.ClosedTurns {
-		seed.ClosedTurns[index] = logs.ClosedTurnSeed{
+		seed.ClosedTurns[index] = logparser.ClosedTurnSeed{
 			TurnID: turn.TurnID, StartedAtMS: turn.StartedAtMS,
 			ContextWindow: cloneInt64(turn.ContextWindow),
 			Terminal:      parserEndFromCheckpoint(turn.Terminal),
@@ -98,7 +99,7 @@ func parserSeedFromCheckpoint(checkpoint *store.ParserSeedCheckpoint) *logs.Pars
 	return seed
 }
 
-func checkpointSessionFromParser(value *logs.SessionMetaFact) *store.CheckpointSessionMeta {
+func checkpointSessionFromParser(value *logparser.SessionMetaFact) *store.CheckpointSessionMeta {
 	if value == nil {
 		return nil
 	}
@@ -111,20 +112,20 @@ func checkpointSessionFromParser(value *logs.SessionMetaFact) *store.CheckpointS
 	}
 }
 
-func parserSessionFromCheckpoint(value *store.CheckpointSessionMeta) *logs.SessionMetaFact {
+func parserSessionFromCheckpoint(value *store.CheckpointSessionMeta) *logparser.SessionMetaFact {
 	if value == nil {
 		return nil
 	}
-	return &logs.SessionMetaFact{
+	return &logparser.SessionMetaFact{
 		SessionID: value.SessionID, RootSessionID: value.RootSessionID,
-		SourceKind: logs.SourceKind(value.SourceKind), CreatedAtMS: value.CreatedAtMS,
+		SourceKind: logsource.SourceKind(value.SourceKind), CreatedAtMS: value.CreatedAtMS,
 		ObservedAtMS: value.ObservedAtMS, InitialCWD: value.InitialCWD,
 		Originator: value.Originator, CLIVersion: value.CLIVersion,
 		Source: value.Source, ModelProvider: value.ModelProvider,
 	}
 }
 
-func checkpointContextFromParser(value *logs.TurnContextFact) *store.CheckpointTurnContext {
+func checkpointContextFromParser(value *logparser.TurnContextFact) *store.CheckpointTurnContext {
 	if value == nil {
 		return nil
 	}
@@ -134,17 +135,17 @@ func checkpointContextFromParser(value *logs.TurnContextFact) *store.CheckpointT
 	}
 }
 
-func parserContextFromCheckpoint(value *store.CheckpointTurnContext) *logs.TurnContextFact {
+func parserContextFromCheckpoint(value *store.CheckpointTurnContext) *logparser.TurnContextFact {
 	if value == nil {
 		return nil
 	}
-	return &logs.TurnContextFact{
+	return &logparser.TurnContextFact{
 		SessionID: value.SessionID, TurnID: value.TurnID, ObservedAtMS: value.ObservedAtMS,
 		CWD: value.CWD, Model: value.Model, Effort: cloneString(value.Effort),
 	}
 }
 
-func checkpointUsageFromParser(value *logs.TurnUsageFact) *store.CheckpointTurnUsage {
+func checkpointUsageFromParser(value *logparser.TurnUsageFact) *store.CheckpointTurnUsage {
 	if value == nil {
 		return nil
 	}
@@ -158,13 +159,13 @@ func checkpointUsageFromParser(value *logs.TurnUsageFact) *store.CheckpointTurnU
 	}
 }
 
-func parserUsageFromCheckpoint(value *store.CheckpointTurnUsage) *logs.TurnUsageFact {
+func parserUsageFromCheckpoint(value *store.CheckpointTurnUsage) *logparser.TurnUsageFact {
 	if value == nil {
 		return nil
 	}
-	return &logs.TurnUsageFact{
+	return &logparser.TurnUsageFact{
 		SessionID: value.SessionID, TurnID: value.TurnID, ObservedAtMS: value.ObservedAtMS,
-		Usage: logs.TokenCounters{
+		Usage: logparser.TokenCounters{
 			InputTokens: cloneInt64(value.InputTokens), CachedInputTokens: cloneInt64(value.CachedInputTokens),
 			OutputTokens: cloneInt64(value.OutputTokens), ReasoningTokens: cloneInt64(value.ReasoningTokens),
 		},
@@ -172,24 +173,24 @@ func parserUsageFromCheckpoint(value *store.CheckpointTurnUsage) *logs.TurnUsage
 	}
 }
 
-func checkpointEndFromParser(value logs.TurnEndFact) store.CheckpointTurnEnd {
+func checkpointEndFromParser(value logparser.TurnEndFact) store.CheckpointTurnEnd {
 	return store.CheckpointTurnEnd{
 		SessionID: value.SessionID, TurnID: value.TurnID, CompletedAtMS: value.CompletedAtMS,
 		Outcome: string(value.Outcome), FinalUsage: checkpointUsageFromParser(value.FinalUsage),
 	}
 }
 
-func parserEndFromCheckpoint(value store.CheckpointTurnEnd) logs.TurnEndFact {
-	return logs.TurnEndFact{
+func parserEndFromCheckpoint(value store.CheckpointTurnEnd) logparser.TurnEndFact {
+	return logparser.TurnEndFact{
 		SessionID: value.SessionID, TurnID: value.TurnID, CompletedAtMS: value.CompletedAtMS,
-		Outcome: logs.TurnOutcome(value.Outcome), FinalUsage: parserUsageFromCheckpoint(value.FinalUsage),
+		Outcome: logparser.TurnOutcome(value.Outcome), FinalUsage: parserUsageFromCheckpoint(value.FinalUsage),
 	}
 }
 
-func checkpointPositionFromParser(value logs.SourcePosition) store.CheckpointSourcePosition {
+func checkpointPositionFromParser(value logparser.SourcePosition) store.CheckpointSourcePosition {
 	return store.CheckpointSourcePosition{StartOffset: value.StartOffset, EndOffset: value.EndOffset}
 }
 
-func parserPositionFromCheckpoint(value store.CheckpointSourcePosition) logs.SourcePosition {
-	return logs.SourcePosition{StartOffset: value.StartOffset, EndOffset: value.EndOffset}
+func parserPositionFromCheckpoint(value store.CheckpointSourcePosition) logparser.SourcePosition {
+	return logparser.SourcePosition{StartOffset: value.StartOffset, EndOffset: value.EndOffset}
 }

@@ -35,7 +35,7 @@ func listLightProjectAnalytics(
 	filter ProjectAnalyticsFilter,
 ) (ProjectAnalyticsPage, bool, error) {
 	var sessionCount int64
-	if err := database.Model(&lightSessionModel{}).Count(&sessionCount).Error; err != nil {
+	if err := database.Table("light_sessions").Count(&sessionCount).Error; err != nil {
 		return ProjectAnalyticsPage{}, false, err
 	}
 	if sessionCount == 0 {
@@ -309,7 +309,7 @@ func lightProjectAnalytics(
 			SessionID: sessionID, DisplayTitle: title.DisplayTitle,
 			TitleConfidence: title.Confidence, TitleSource: title.Source, TitleReason: title.Reason,
 			Model: ModelAttribution{
-				Confidence: AttributionConfidenceUnknown, Source: AttributionSourceMissing, Reason: AttributionReasonMissing,
+				Confidence: attribution.ConfidenceUnknown, Source: attribution.SourceMissing, Reason: attribution.ReasonMissing,
 			},
 			Activity: SessionActivityIdle, LastActivityAtMS: session.totals.LastActivityAtMS, Totals: session.totals,
 		})
@@ -355,8 +355,8 @@ func lightProjectAnalytics(
 			DimensionKey: dimensionKey,
 			Model: ModelAttribution{
 				ModelKey: cloneLightString(dimension.identity), DisplayName: cloneLightString(dimension.display),
-				Confidence: AttributionConfidence(dimension.confidence),
-				Source:     AttributionSource(dimension.source), Reason: AttributionReason(dimension.reason),
+				Confidence: attribution.Confidence(dimension.confidence),
+				Source:     attribution.Source(dimension.source), Reason: attribution.Reason(dimension.reason),
 			},
 			Totals: totals.totals(),
 		})
@@ -414,8 +414,8 @@ func lightProjectAnalytics(
 }
 
 func lightProjectCursorGeneration(database *gorm.DB) (string, error) {
-	var state lightIndexStateModel
-	if err := database.Where("state_id = 1").Take(&state).Error; err != nil {
+	var state lightIndexStateQueryRow
+	if err := database.Table("light_index_state").Where("state_id = 1").Take(&state).Error; err != nil {
 		return "", err
 	}
 	if state.MetadataGeneration <= 0 || state.TokenScanGeneration < 0 {

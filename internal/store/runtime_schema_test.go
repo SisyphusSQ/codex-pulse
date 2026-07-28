@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"sort"
 	"strings"
 	"testing"
+
+	"gorm.io/gorm"
 
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -325,7 +328,7 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 	var gotForeignKeys []string
 	var gotIndexes []string
 	columnTypes := make(map[string]string)
-	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		for table := range wantColumns {
 			rows, err := rawQueryRows(ctx, connection, `
 				SELECT name, type FROM pragma_table_info(?) ORDER BY cid
@@ -481,7 +484,7 @@ func TestRuntimeSchemaRequiredIndexesServeQueries(t *testing.T) {
 		{"idx_model_prices_match", pricingVersionModelsQuery, []any{"pricing-a"}},
 	}
 
-	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		for _, query := range queries {
 			rows, err := rawQueryRows(ctx, connection, "EXPLAIN QUERY PLAN "+query.statement, query.arguments...)
 			if err != nil {
@@ -527,7 +530,7 @@ func TestRuntimeSchemaExcludesSensitiveContentColumns(t *testing.T) {
 		"token", "cookie", "authorization", "raw_error", "error_message", "error_detail",
 		"stack", "prompt", "response_body", "tool_output", "jsonl", "payload_body",
 	}
-	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		rows, err := rawQueryRows(ctx, connection, `
 			SELECT m.name, p.name
 			FROM sqlite_schema AS m
@@ -567,7 +570,7 @@ func TestRuntimeSchemaRejectsInvalidClassesAndPriceTypesWithoutRepository(t *tes
 	if err := NewRepository(database).EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		if _, err := rawExec(ctx, transaction, `
 			INSERT INTO source_state (
 				source_instance_id, source_type, scope_key, last_attempt_at_ms, last_success_at_ms,
@@ -677,7 +680,7 @@ func TestRuntimeSchemaRejectsInvalidClassesAndPriceTypesWithoutRepository(t *tes
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+			err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 				_, err := rawExec(ctx, transaction, testCase.statement)
 				return err
 			})
@@ -693,7 +696,7 @@ func TestEnsureApplicationSchemaRejectsIncompatibleRuntimeTableAtomically(t *tes
 	t.Parallel()
 
 	database := openTestDatabase(t)
-	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		_, err := rawExec(ctx, transaction, `CREATE TABLE source_files (source_file_id TEXT PRIMARY KEY) STRICT`)
 		return err
 	})
@@ -702,8 +705,8 @@ func TestEnsureApplicationSchemaRejectsIncompatibleRuntimeTableAtomically(t *tes
 	}
 
 	err = NewRepository(database).EnsureApplicationSchema(context.Background())
-	if !errors.Is(err, ErrSchemaContract) {
-		t.Fatalf("EnsureApplicationSchema() error = %v, want ErrSchemaContract", err)
+	if !errors.Is(err, storeschema.ErrContract) {
+		t.Fatalf("EnsureApplicationSchema() error = %v, want storeschema.ErrContract", err)
 	}
 
 	gotTables, _, err := applicationTableContract(context.Background(), database)
@@ -721,7 +724,7 @@ func applicationTableContract(
 ) ([]string, map[string]bool, error) {
 	var tables []string
 	strictByTable := make(map[string]bool)
-	err := database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		rows, err := rawQueryRows(ctx, connection, `
 			SELECT name, strict
 			FROM pragma_table_list

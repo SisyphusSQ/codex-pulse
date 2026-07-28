@@ -48,7 +48,7 @@ func listLightSessionAnalytics(
 	filter SessionAnalyticsFilter,
 ) (SessionAnalyticsPage, bool, error) {
 	var count int64
-	if err := database.Model(&lightSessionModel{}).Count(&count).Error; err != nil {
+	if err := database.Table("light_sessions").Count(&count).Error; err != nil {
 		return SessionAnalyticsPage{}, false, err
 	}
 	if count == 0 {
@@ -156,7 +156,7 @@ func lightSessionAnalytics(
 	filter SessionAnalyticsDetailFilter,
 ) (SessionAnalyticsSnapshot, bool, error) {
 	var count int64
-	if err := database.Model(&lightSessionModel{}).Count(&count).Error; err != nil {
+	if err := database.Table("light_sessions").Count(&count).Error; err != nil {
 		return SessionAnalyticsSnapshot{}, false, err
 	}
 	if count == 0 {
@@ -236,7 +236,7 @@ func loadLightSessionDaily(
 	if expected == nil {
 		return nil, invalidRecord("light session rollup is missing")
 	}
-	var models []lightTokenTimedModel
+	var models []lightTokenTimedQueryRow
 	if err := database.Table("light_token_timed AS timed").
 		Select("timed.*").
 		Where("timed.session_id = ? AND timed.generation = ?", sessionID, *generation).
@@ -314,7 +314,7 @@ func lightSessionRecord(
 			Confidence: project.Confidence, Source: project.Source, Reason: project.Reason,
 		},
 		Model: ModelAttribution{
-			Confidence: AttributionConfidenceUnknown, Source: AttributionSourceMissing, Reason: AttributionReasonMissing,
+			Confidence: attribution.ConfidenceUnknown, Source: attribution.SourceMissing, Reason: attribution.ReasonMissing,
 		},
 		Activity: SessionActivityIdle, LastActivityAtMS: &lastActivity,
 	}
@@ -331,7 +331,7 @@ func lightSessionRecord(
 
 func lightProjectIdentityResolver(database *gorm.DB) (projectidentity.Resolver, error) {
 	var paths []string
-	if err := database.Model(&lightSessionModel{}).Distinct().Order("cwd").Pluck("cwd", &paths).Error; err != nil {
+	if err := database.Table("light_sessions").Distinct().Order("cwd").Pluck("cwd", &paths).Error; err != nil {
 		return projectidentity.Resolver{}, err
 	}
 	return projectidentity.NewResolver(paths), nil

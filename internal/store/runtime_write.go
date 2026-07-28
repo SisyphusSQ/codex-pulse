@@ -3,8 +3,9 @@ package store
 import (
 	"context"
 
+	"gorm.io/gorm"
+
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 // UpsertSourceFile 只允许稳定物理身份下 generation/offset 单调推进。
@@ -22,7 +23,7 @@ func (repository *Repository) UpsertSourceState(ctx context.Context, state Sourc
 	if err := validateSourceState(state); err != nil {
 		return err
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		existing, found, err := sourceStateByID(ctx, transaction, state.SourceInstanceID)
 		if err != nil {
 			return err
@@ -90,7 +91,7 @@ func (repository *Repository) AppendSourceAttempt(ctx context.Context, attempt S
 	if err := validateSourceAttempt(attempt); err != nil {
 		return err
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		if err := requireStoredReference(
 			ctx, transaction, &sourceStateModel{}, "source_instance_id = ?",
 			attempt.SourceInstanceID, "source state",
@@ -168,7 +169,7 @@ func (repository *Repository) CreateJobRun(ctx context.Context, job JobRun) erro
 	if job.ResumeOfJobID != nil {
 		return invalidRecord("new job resume lineage must use ResumeInterruptedJob")
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return createJobRun(ctx, transaction, job)
 	})
 }
@@ -181,14 +182,14 @@ func (repository *Repository) TransitionJobRun(ctx context.Context, transition J
 	if err := validateJobTransition(transition); err != nil {
 		return err
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return transitionJobRun(ctx, transaction, transition)
 	})
 }
 
 func transitionJobRun(
 	ctx context.Context,
-	transaction storesqlite.WriteTx,
+	transaction *gorm.DB,
 	transition JobTransition,
 ) error {
 	existing, found, err := jobRunByID(ctx, transaction, transition.JobID)
@@ -217,7 +218,7 @@ func (repository *Repository) InterruptIncompleteJobs(ctx context.Context, atMS 
 		return 0, invalidRecord("job interruption timestamp must not be negative")
 	}
 	var interrupted int64
-	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		var newer int64
 		if err := transaction.WithContext(ctx).Model(&jobRunModel{}).
 			Where("state IN ? AND updated_at_ms > ?", []string{string(JobQueued), string(JobRunning)}, atMS).
@@ -250,7 +251,7 @@ func (repository *Repository) ResumeInterruptedJob(ctx context.Context, oldJobID
 	if err := validateNewJobRun(resumed); err != nil {
 		return err
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		old, found, err := jobRunByID(ctx, transaction, oldJobID)
 		if err != nil {
 			return err
@@ -302,7 +303,7 @@ func interruptedResumeConsumption(old JobRun, resumed JobRun) (bool, error) {
 
 func markInterruptedResumeConsumed(
 	ctx context.Context,
-	transaction storesqlite.WriteTx,
+	transaction *gorm.DB,
 	old JobRun,
 	resumed JobRun,
 ) error {
@@ -327,7 +328,7 @@ func markInterruptedResumeConsumed(
 	return nil
 }
 
-func createJobRun(ctx context.Context, transaction storesqlite.WriteTx, job JobRun) error {
+func createJobRun(ctx context.Context, transaction *gorm.DB, job JobRun) error {
 	if job.SourceFileID != nil {
 		if err := requireStoredReference(
 			ctx, transaction, &sourceFileModel{}, "source_file_id = ?", *job.SourceFileID, "source file",
@@ -420,7 +421,7 @@ func isTerminalJobState(state JobState) bool {
 	return state == JobSucceeded || state == JobFailed || state == JobCancelled || state == JobInterrupted
 }
 
-func updateJobRun(ctx context.Context, transaction storesqlite.WriteTx, job JobRun) error {
+func updateJobRun(ctx context.Context, transaction *gorm.DB, job JobRun) error {
 	model := jobRunModelFromDomain(job)
 	return transaction.WithContext(ctx).Model(&jobRunModel{}).Where("job_id = ?", job.JobID).Updates(map[string]any{
 		"state": model.State, "phase": model.Phase, "started_at_ms": model.StartedAtMS,

@@ -8,8 +8,8 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 const sessionAnalyticsProjectionSelect = `
@@ -194,7 +194,7 @@ func (repository *Repository) ListSessionAnalytics(
 		return SessionAnalyticsPage{}, err
 	}
 	page := SessionAnalyticsPage{Records: make([]SessionAnalyticsRecord, 0)}
-	err := repository.database.ViewSnapshot(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.ViewSnapshot(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		database := connection.WithContext(ctx)
 		lightPage, handled, err := listLightSessionAnalytics(database, filter)
 		if err != nil {
@@ -289,7 +289,7 @@ func (repository *Repository) SessionAnalytics(
 		PricingVersions: make([]string, 0), UnpricedReasons: make([]CostReasonCount, 0),
 		Daily: make([]UsageDaily, 0),
 	}
-	err := repository.database.ViewSnapshot(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.ViewSnapshot(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		database := connection.WithContext(ctx)
 		lightSnapshot, handled, err := lightSessionAnalytics(database, filter)
 		if err != nil {
@@ -611,9 +611,9 @@ func sessionTurnRecordFromProjection(
 		Model: ModelAttribution{
 			ModelKey:    cloneAttributionString(projection.ModelKey),
 			DisplayName: cloneAttributionString(projection.ModelDisplay),
-			Confidence:  AttributionConfidence(*projection.ModelConfidence),
-			Source:      AttributionSource(*projection.ModelSource),
-			Reason:      AttributionReason(*projection.ModelReason),
+			Confidence:  attribution.Confidence(*projection.ModelConfidence),
+			Source:      attribution.Source(*projection.ModelSource),
+			Reason:      attribution.Reason(*projection.ModelReason),
 		},
 	}
 	if projection.UsageTurnID != nil {

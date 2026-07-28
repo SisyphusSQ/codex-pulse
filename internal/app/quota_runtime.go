@@ -8,6 +8,7 @@ import (
 	"time"
 
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/scheduler"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -120,7 +121,7 @@ func startApplicationQuotaRuntime(
 		ResetCreditsFetcher: scheduler.AdaptResetCreditsFetchService(resetCreditsService),
 		Clock:               config.Clock,
 		RefreshCommitted: func(ctx context.Context, _ quotaonline.RefreshSource) {
-			notifyQueryInvalidation(config.invalidation, ctx, QueryInvalidationQuota)
+			notifyQueryInvalidation(config.invalidation, ctx, core.InvalidationQuota)
 		},
 	})
 	if err != nil {

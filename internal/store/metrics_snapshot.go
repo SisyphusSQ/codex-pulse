@@ -7,7 +7,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 type schedulerMetricsRow struct {
@@ -77,7 +76,7 @@ func (repository *Repository) MetricsSnapshot(
 		return MetricsSnapshot{}, err
 	}
 	snapshot := MetricsSnapshot{FromMS: filter.FromMS, UntilMS: filter.UntilMS}
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
 			return repository.readMetricsSnapshotIn(ctx, transaction, filter, &snapshot)
 		})

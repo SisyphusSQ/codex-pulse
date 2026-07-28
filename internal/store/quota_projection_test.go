@@ -592,7 +592,7 @@ func TestQuotaProjectionBatchesEvidenceBeyondSQLiteVariableLimit(t *testing.T) {
 	base := int64(150 * quotaTestHourMS)
 	reset := base + 5*quotaTestHourMS
 	const historySize = 4096
-	err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		models := make([]*quotaObservationModel, 0, historySize)
 		for index := 0; index < historySize; index++ {
 			sample := quotaProjectionWhamSample(
@@ -646,7 +646,7 @@ func BenchmarkQuotaProjectionRebuild4096(b *testing.B) {
 	base := int64(150 * quotaTestHourMS)
 	reset := base + 5*quotaTestHourMS
 	const historySize = 4096
-	if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		models := make([]*quotaObservationModel, 0, historySize)
 		for index := 0; index < historySize; index++ {
 			sample := quotaProjectionWhamSample(
@@ -687,7 +687,7 @@ func TestQuotaProjectionReadersFailClosedOnTypedTampering(t *testing.T) {
 		t.Fatalf("RecordQuotaFetch() error = %v", err)
 	}
 	primaryObservationID := record.Observations[0].ObservationID
-	if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Model(&quotaCurrentModel{}).Where(
 			"account_scope = ? AND window_kind = ? AND limit_id = ?",
 			QuotaAccountScopeDefault, string(QuotaWindowPrimary), "codex",
@@ -698,7 +698,7 @@ func TestQuotaProjectionReadersFailClosedOnTypedTampering(t *testing.T) {
 
 	updateCurrent := func(values map[string]any) {
 		t.Helper()
-		if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 			return transaction.WithContext(ctx).Model(&quotaCurrentModel{}).Where(
 				"account_scope = ? AND window_kind = ? AND limit_id = ?",
 				QuotaAccountScopeDefault, string(QuotaWindowPrimary), "codex",
@@ -709,7 +709,7 @@ func TestQuotaProjectionReadersFailClosedOnTypedTampering(t *testing.T) {
 	}
 	updateEvidence := func(values map[string]any) {
 		t.Helper()
-		if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+		if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 			return transaction.WithContext(ctx).Model(&quotaArbitrationEvidenceModel{}).Where(
 				"account_scope = ? AND window_kind = ? AND limit_id = ? AND observation_id = ?",
 				QuotaAccountScopeDefault, string(QuotaWindowPrimary), "codex", primaryObservationID,
@@ -761,7 +761,7 @@ func TestQuotaProjectionReadersFailClosedOnTypedTampering(t *testing.T) {
 	); !errors.Is(err, ErrInvalidRecord) {
 		t.Fatalf("ListQuotaArbitrationEvidence(tampered logical window) error = %v, want ErrInvalidRecord", err)
 	}
-	if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Model(&quotaArbitrationEvidenceModel{}).Where(
 			"account_scope = ? AND window_kind = ? AND limit_id = ? AND observation_id = ?",
 			QuotaAccountScopeDefault, string(QuotaWindowSecondary), "codex", primaryObservationID,
@@ -793,7 +793,7 @@ func TestQuotaProjectionReadersFailClosedOnTypedTampering(t *testing.T) {
 		"reason":           nil,
 		"explanation_code": string(QuotaExplanationTrusted),
 	})
-	if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Where(
 			"account_scope = ? AND window_kind = ? AND limit_id = ?",
 			QuotaAccountScopeDefault, string(QuotaWindowPrimary), "codex",
@@ -836,7 +836,7 @@ func TestQuotaProjectionReadersRejectMissingAndExtraEvidenceMembers(t *testing.T
 	if err := repository.RecordQuotaFetch(ctx, updated); err != nil {
 		t.Fatalf("RecordQuotaFetch(updated) error = %v", err)
 	}
-	if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Where(
 			"account_scope = ? AND window_kind = ? AND limit_id = ? AND observation_id = ?",
 			QuotaAccountScopeDefault, string(QuotaWindowPrimary), "codex", initial.Observations[0].ObservationID,
@@ -862,7 +862,7 @@ func TestQuotaProjectionReadersRejectMissingAndExtraEvidenceMembers(t *testing.T
 		Disposition:      string(QuotaEvidenceEligible),
 		ExplanationCode:  string(QuotaExplanationTrusted),
 	}
-	if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Create(&extra).Error
 	}); err != nil {
 		t.Fatalf("insert extra quota evidence member: %v", err)

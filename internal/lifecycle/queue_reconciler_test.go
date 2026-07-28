@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/liveindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/scheduler"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -13,36 +13,36 @@ import (
 
 func TestQueueReconcileRunnerUsesStableTypedLiveQueue(t *testing.T) {
 	previous := store.SourceFingerprint{
-		SourceFileID: "codex:previous", Provider: logs.ProviderCodex,
-		SourceKind: string(logs.SourceKindSession), CurrentPath: "/home/sessions/a.jsonl",
+		SourceFileID: "codex:previous", Provider: logsource.ProviderCodex,
+		SourceKind: string(logsource.SourceKindSession), CurrentPath: "/home/sessions/a.jsonl",
 		DeviceID: "file-device", Inode: 11, SizeBytes: 10, MTimeNS: 2_000_000,
 		PrefixBytes: 10, PrefixSHA256: "prefix-old", FingerprintSHA256: "digest-old",
 	}
-	current := logs.Snapshot{
-		SourceFileID: previous.SourceFileID, Provider: logs.ProviderCodex,
-		Kind: logs.SourceKindSession, Path: previous.CurrentPath,
-		Fingerprint: logs.Fingerprint{
+	current := logsource.Snapshot{
+		SourceFileID: previous.SourceFileID, Provider: logsource.ProviderCodex,
+		Kind: logsource.SourceKindSession, Path: previous.CurrentPath,
+		Fingerprint: logsource.Fingerprint{
 			DeviceID: "file-device", Inode: 11, SizeBytes: 20, MTimeNS: 3_000_000,
 			PrefixBytes: 10, PrefixSHA256: "prefix-old", Digest: "digest-new",
 		},
 	}
 	old := snapshotFromStoreFingerprint(previous)
-	plan := logs.ReconcilePlan{Actions: []logs.ReconcileAction{
-		{Kind: logs.ChangeUnchanged, Previous: &old, Current: &old},
-		{Kind: logs.ChangeGrown, Previous: &old, Current: &current},
-		{Kind: logs.ChangeDeleted, Previous: &old},
+	plan := logsource.ReconcilePlan{Actions: []logsource.ReconcileAction{
+		{Kind: logsource.ChangeUnchanged, Previous: &old, Current: &old},
+		{Kind: logsource.ChangeGrown, Previous: &old, Current: &current},
+		{Kind: logsource.ChangeDeleted, Previous: &old},
 	}}
 	repository := &fakeSnapshotRepository{values: []store.SourceFingerprint{previous}}
 	live := &fakeLiveActionStarter{}
 	queue := &fakeLiveTaskEnqueuer{}
-	var discoveries [][]logs.Snapshot
+	var discoveries [][]logsource.Snapshot
 	runner, err := NewQueueReconcileRunner(QueueReconcileRunnerConfig{
 		Repository: repository, Live: live, Queue: queue, LaneCapacity: 32,
 		Discover: func(
 			_ context.Context,
 			home ConfirmedHome,
-			got []logs.Snapshot,
-		) (logs.ReconcilePlan, error) {
+			got []logsource.Snapshot,
+		) (logsource.ReconcilePlan, error) {
 			if home.Path != "/home" || home.DeviceID != "home-device" || home.Inode != 7 {
 				t.Fatalf("home = %#v", home)
 			}
@@ -59,14 +59,14 @@ func TestQueueReconcileRunnerUsesStableTypedLiveQueue(t *testing.T) {
 			t.Fatalf("RunReconcile() attempt %d error = %v", attempt+1, err)
 		}
 	}
-	if len(discoveries) != 2 || !reflect.DeepEqual(discoveries[0], []logs.Snapshot{old}) {
+	if len(discoveries) != 2 || !reflect.DeepEqual(discoveries[0], []logsource.Snapshot{old}) {
 		t.Fatalf("discoveries = %#v", discoveries)
 	}
 	if len(live.requests) != 2 || live.requests[0] != live.requests[1] {
 		t.Fatalf("live requests = %#v, want stable replay", live.requests)
 	}
 	request := live.requests[0]
-	if request.HomeGeneration != 4 || request.Action.Kind != logs.ChangeGrown ||
+	if request.HomeGeneration != 4 || request.Action.Kind != logsource.ChangeGrown ||
 		request.RequestID == "" || request.RequestedAtMS != 3 {
 		t.Fatalf("live request = %#v", request)
 	}

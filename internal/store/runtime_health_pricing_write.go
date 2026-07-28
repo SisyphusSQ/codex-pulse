@@ -3,9 +3,8 @@ package store
 import (
 	"context"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	"gorm.io/gorm"
-
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 // ObserveHealthEvent 按 fingerprint 合并递增观测，并在新观测到达时重开已解决事件。
@@ -20,7 +19,7 @@ func (repository *Repository) ObserveHealthEvent(
 		return HealthEvent{}, err
 	}
 	var result HealthEvent
-	err := repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		var err error
 		result, err = observeHealthEventIn(ctx, transaction, observation)
 		return err
@@ -120,7 +119,7 @@ func (repository *Repository) ResolveHealthEvent(ctx context.Context, eventID st
 	if eventID == "" || resolvedAtMS < 0 {
 		return invalidRecord("health resolution identity or timestamp is invalid")
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return resolveHealthEventIn(ctx, transaction, eventID, resolvedAtMS, false)
 	})
 }
@@ -160,14 +159,14 @@ func resolveHealthEventIn(
 }
 
 // AddPricingVersion 原子追加不可变版本和完整模型规则集合。
-func (repository *Repository) AddPricingVersion(ctx context.Context, version PricingVersion) error {
+func (repository *Repository) AddPricingVersion(ctx context.Context, version pricing.CatalogVersion) error {
 	if repository == nil || repository.database == nil {
 		return ErrInvalidRepository
 	}
 	if err := validatePricingVersion(version); err != nil {
 		return err
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		existing, found, err := pricingVersionByID(ctx, transaction, version.PricingVersion)
 		if err != nil {
 			return err

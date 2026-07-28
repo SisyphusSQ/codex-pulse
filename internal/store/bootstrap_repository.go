@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 
 	"gorm.io/gorm"
-
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 // bootstrapPlanInsertBatchSize keeps the widest 31-column plan-item insert
@@ -39,7 +37,7 @@ func (repository *Repository) CreateBootstrapJob(
 	if facts.JobID != job.JobID || facts.PlanState != BootstrapPlanPending {
 		return invalidRecord("bootstrap job and facts do not match pending creation")
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		existingJob, jobFound, err := jobRunByID(ctx, transaction, job.JobID)
 		if err != nil {
 			return err
@@ -84,7 +82,7 @@ func (repository *Repository) FreezeBootstrapPlan(
 	if err != nil {
 		return err
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		job, found, err := jobRunByID(ctx, transaction, jobID)
 		if err != nil {
 			return err
@@ -154,7 +152,7 @@ func (repository *Repository) BootstrapRun(
 	}
 	var job JobRun
 	var facts BootstrapJobFacts
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var found bool
 		var err error
 		job, found, err = jobRunByID(ctx, connection, jobID)
@@ -212,7 +210,7 @@ func (repository *Repository) bootstrapRunByFactsQuery(
 	}
 	var job JobRun
 	var facts BootstrapJobFacts
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var model bootstrapJobModel
 		query := filter(connection.WithContext(ctx).Model(&bootstrapJobModel{}))
 		if err := query.Order("updated_at_ms DESC").Order("job_id DESC").Take(&model).Error; err != nil {
@@ -250,7 +248,7 @@ func (repository *Repository) ListBootstrapPlanItems(
 		return nil, err
 	}
 	var items []BootstrapPlanItem
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var err error
 		items, err = bootstrapPlanItems(ctx, connection, filter)
 		return err
@@ -274,7 +272,7 @@ func (repository *Repository) AdvanceBootstrapRun(ctx context.Context, advance B
 	if advance.Item != nil && (advance.Item.JobID != advance.Job.JobID || advance.Item.UpdatedAtMS != advance.Job.AtMS) {
 		return invalidRecord("bootstrap advance item does not match job transition")
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		existingJob, found, err := jobRunByID(ctx, transaction, advance.Job.JobID)
 		if err != nil {
 			return err
@@ -359,7 +357,7 @@ func (repository *Repository) AppendBootstrapReconcilePlan(
 		}
 		return invalidRecord("bootstrap reconcile counts are invalid")
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		job, found, err := jobRunByID(ctx, transaction, jobID)
 		if err != nil {
 			return err
@@ -501,7 +499,7 @@ func (repository *Repository) ResumeBootstrapJob(
 	if err := validateNewJobRun(resumed); err != nil {
 		return err
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		old, found, err := jobRunByID(ctx, transaction, oldJobID)
 		if err != nil {
 			return err
@@ -585,7 +583,7 @@ func (repository *Repository) ResumeBootstrapJob(
 
 func createBootstrapPlanItemModels(
 	ctx context.Context,
-	transaction storesqlite.WriteTx,
+	transaction *gorm.DB,
 	models []bootstrapPlanItemModel,
 ) error {
 	if len(models) == 0 {

@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
-
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 var ErrLiveScanConflict = errors.New("live scan job conflicts with durable identity")
@@ -25,7 +23,7 @@ func (repository *Repository) CreateLiveScanJob(
 	if err := validateLiveScanCreate(job, facts); err != nil {
 		return err
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		existingJob, jobFound, err := jobRunByID(ctx, transaction, job.JobID)
 		if err != nil {
 			return err
@@ -65,7 +63,7 @@ func (repository *Repository) LiveScanRun(
 	}
 	var job JobRun
 	var facts LiveScanJob
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		value, found, err := jobRunByID(ctx, connection, jobID)
 		if err != nil {
 			return err
@@ -103,7 +101,7 @@ func (repository *Repository) ResumeLiveScanJob(
 	if resumed.ResumeOfJobID == nil || *resumed.ResumeOfJobID != oldJobID {
 		return ErrLiveScanConflict
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		oldJob, found, err := jobRunByID(ctx, transaction, oldJobID)
 		if err != nil {
 			return err

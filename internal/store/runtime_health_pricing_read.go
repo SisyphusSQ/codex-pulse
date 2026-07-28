@@ -3,12 +3,11 @@ package store
 import (
 	"context"
 	"errors"
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	"sort"
 	"strings"
 
 	"gorm.io/gorm"
-
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 // HealthEvent 返回 fingerprint 聚合后的完整生命周期。
@@ -20,7 +19,7 @@ func (repository *Repository) HealthEvent(ctx context.Context, eventID string) (
 		return HealthEvent{}, invalidRecord("health event ID must not be empty")
 	}
 	var event HealthEvent
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var found bool
 		var err error
 		event, found, err = healthEventByID(ctx, connection, eventID)
@@ -52,7 +51,7 @@ func (repository *Repository) ListHealthEvents(
 	}
 
 	var events []HealthEvent
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		query := connection.WithContext(ctx).Model(&healthEventModel{})
 		if filter.Active != nil {
 			if *filter.Active {
@@ -129,15 +128,15 @@ func healthEventFromModel(model healthEventModel) (HealthEvent, error) {
 }
 
 // PricingVersion 返回不可变 catalog 及其完整规则集合。
-func (repository *Repository) PricingVersion(ctx context.Context, versionID string) (PricingVersion, error) {
+func (repository *Repository) PricingVersion(ctx context.Context, versionID string) (pricing.CatalogVersion, error) {
 	if repository == nil || repository.database == nil {
-		return PricingVersion{}, ErrInvalidRepository
+		return pricing.CatalogVersion{}, ErrInvalidRepository
 	}
 	if versionID == "" {
-		return PricingVersion{}, invalidRecord("pricing version ID must not be empty")
+		return pricing.CatalogVersion{}, invalidRecord("pricing version ID must not be empty")
 	}
-	var version PricingVersion
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	var version pricing.CatalogVersion
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var found bool
 		var err error
 		version, found, err = pricingVersionByID(ctx, connection, versionID)
@@ -164,7 +163,7 @@ func (repository *Repository) PricingForModelAt(
 		return EffectivePricing{}, invalidRecord("pricing query identity or timestamp is invalid")
 	}
 	var effective EffectivePricing
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		var current pricingVersionModel
 		err := connection.WithContext(ctx).
 			Where("source = ? AND currency = ? AND effective_from_ms <= ?", source, currency, atMS).
@@ -182,7 +181,7 @@ func (repository *Repository) PricingForModelAt(
 		if !found {
 			return ErrNotFound
 		}
-		candidates := make([]ModelPrice, 0, len(version.Models))
+		candidates := make([]pricing.ModelPrice, 0, len(version.Models))
 		for _, candidate := range version.Models {
 			if modelPriceMatches(candidate, model) {
 				candidates = append(candidates, candidate)
@@ -221,33 +220,33 @@ func pricingVersionByID(
 	ctx context.Context,
 	querier *gorm.DB,
 	versionID string,
-) (PricingVersion, bool, error) {
+) (pricing.CatalogVersion, bool, error) {
 	var versionModel pricingVersionModel
 	err := querier.WithContext(ctx).Where("pricing_version = ?", versionID).Take(&versionModel).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return PricingVersion{}, false, nil
+		return pricing.CatalogVersion{}, false, nil
 	}
 	if err != nil {
-		return PricingVersion{}, false, err
+		return pricing.CatalogVersion{}, false, err
 	}
 	var priceModels []modelPriceModel
 	if err := querier.WithContext(ctx).
 		Where("pricing_version = ?", versionID).
 		Order("priority DESC").Order("match_kind").Order("model_pattern").
 		Find(&priceModels).Error; err != nil {
-		return PricingVersion{}, false, err
+		return pricing.CatalogVersion{}, false, err
 	}
-	version := PricingVersion{
+	version := pricing.CatalogVersion{
 		PricingVersion: versionModel.PricingVersion, Source: versionModel.Source,
 		Currency: versionModel.Currency, EffectiveFromMS: versionModel.EffectiveFromMS,
-		CreatedAtMS: versionModel.CreatedAtMS, Models: make([]ModelPrice, 0, len(priceModels)),
+		CreatedAtMS: versionModel.CreatedAtMS, Models: make([]pricing.ModelPrice, 0, len(priceModels)),
 	}
 	if querier.Migrator().HasTable(&pricingCatalogMetadataModel{}) {
 		var metadata pricingCatalogMetadataModel
 		metadataQuery := querier.WithContext(ctx).
 			Where("pricing_version = ?", versionID).Limit(1).Find(&metadata)
 		if metadataQuery.Error != nil {
-			return PricingVersion{}, false, metadataQuery.Error
+			return pricing.CatalogVersion{}, false, metadataQuery.Error
 		}
 		if metadataQuery.RowsAffected > 0 {
 			version.SourceURL = metadata.SourceURL
@@ -260,24 +259,24 @@ func pricingVersionByID(
 	return version, true, nil
 }
 
-func modelPriceFromModel(model modelPriceModel) ModelPrice {
-	return ModelPrice{
-		MatchKind: ModelMatchKind(model.MatchKind), ModelPattern: model.ModelPattern,
+func modelPriceFromModel(model modelPriceModel) pricing.ModelPrice {
+	return pricing.ModelPrice{
+		MatchKind: pricing.ModelMatchKind(model.MatchKind), ModelPattern: model.ModelPattern,
 		Priority: model.Priority, InputMicrosPerMillion: model.InputMicrosPerMillion,
 		CachedInputMicrosPerMillion: model.CachedInputMicrosPerMillion,
 		OutputMicrosPerMillion:      model.OutputMicrosPerMillion,
 	}
 }
 
-func pricingVersionsEquivalent(left, right PricingVersion) bool {
+func pricingVersionsEquivalent(left, right pricing.CatalogVersion) bool {
 	if left.PricingVersion != right.PricingVersion || left.Source != right.Source ||
 		left.Currency != right.Currency || left.EffectiveFromMS != right.EffectiveFromMS ||
 		left.CreatedAtMS != right.CreatedAtMS || left.SourceURL != right.SourceURL ||
 		left.VerifiedAtMS != right.VerifiedAtMS || len(left.Models) != len(right.Models) {
 		return false
 	}
-	leftModels := append([]ModelPrice(nil), left.Models...)
-	rightModels := append([]ModelPrice(nil), right.Models...)
+	leftModels := append([]pricing.ModelPrice(nil), left.Models...)
+	rightModels := append([]pricing.ModelPrice(nil), right.Models...)
 	sort.Slice(leftModels, func(i, j int) bool { return modelPriceIdentityLess(leftModels[i], leftModels[j]) })
 	sort.Slice(rightModels, func(i, j int) bool { return modelPriceIdentityLess(rightModels[i], rightModels[j]) })
 	for index := range leftModels {
@@ -288,7 +287,7 @@ func pricingVersionsEquivalent(left, right PricingVersion) bool {
 	return true
 }
 
-func modelPricesEqual(left, right ModelPrice) bool {
+func modelPricesEqual(left, right pricing.ModelPrice) bool {
 	return left.MatchKind == right.MatchKind && left.ModelPattern == right.ModelPattern &&
 		left.Priority == right.Priority &&
 		equalInt64Pointer(left.InputMicrosPerMillion, right.InputMicrosPerMillion) &&
@@ -296,27 +295,27 @@ func modelPricesEqual(left, right ModelPrice) bool {
 		equalInt64Pointer(left.OutputMicrosPerMillion, right.OutputMicrosPerMillion)
 }
 
-func modelPriceIdentityLess(left, right ModelPrice) bool {
+func modelPriceIdentityLess(left, right pricing.ModelPrice) bool {
 	if left.MatchKind != right.MatchKind {
 		return left.MatchKind < right.MatchKind
 	}
 	return left.ModelPattern < right.ModelPattern
 }
 
-func modelPriceMatches(price ModelPrice, model string) bool {
+func modelPriceMatches(price pricing.ModelPrice, model string) bool {
 	switch price.MatchKind {
-	case ModelMatchExact:
+	case pricing.ModelMatchExact:
 		return model == price.ModelPattern
-	case ModelMatchPrefix:
+	case pricing.ModelMatchPrefix:
 		return strings.HasPrefix(model, price.ModelPattern)
-	case ModelMatchDefault:
+	case pricing.ModelMatchDefault:
 		return true
 	default:
 		return false
 	}
 }
 
-func modelPriceLess(left, right ModelPrice) bool {
+func modelPriceLess(left, right pricing.ModelPrice) bool {
 	if left.Priority != right.Priority {
 		return left.Priority > right.Priority
 	}
@@ -331,11 +330,11 @@ func modelPriceLess(left, right ModelPrice) bool {
 	return left.ModelPattern < right.ModelPattern
 }
 
-func modelMatchRank(kind ModelMatchKind) int {
+func modelMatchRank(kind pricing.ModelMatchKind) int {
 	switch kind {
-	case ModelMatchExact:
+	case pricing.ModelMatchExact:
 		return 0
-	case ModelMatchPrefix:
+	case pricing.ModelMatchPrefix:
 		return 1
 	default:
 		return 2

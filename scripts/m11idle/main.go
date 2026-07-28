@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/bootstrap"
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/metrics"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -297,7 +297,7 @@ func configureSyntheticHome(ctx context.Context, userHome string) error {
 	if err := os.WriteFile(filepath.Join(codexHome, "sessions", "idle.jsonl"), rollout, 0o600); err != nil {
 		return err
 	}
-	metadata, err := logs.NewHomeProbe().Probe(ctx, codexHome)
+	metadata, err := logsource.NewHomeProbe().Probe(ctx, codexHome)
 	if err != nil {
 		return err
 	}

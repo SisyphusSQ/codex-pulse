@@ -5,7 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -25,7 +25,7 @@ type ReconcileRunner interface {
 }
 
 type HomeProbe interface {
-	Probe(context.Context, string) (logs.HomeMetadata, error)
+	Probe(context.Context, string) (logsource.HomeMetadata, error)
 }
 
 type ConfirmedHomeReconcilerConfig struct {
@@ -47,7 +47,7 @@ func NewConfirmedHomeReconciler(config ConfirmedHomeReconcilerConfig) (*Confirme
 		return nil, ErrInvalidCoordinator
 	}
 	if config.Probe == nil {
-		config.Probe = logs.NewHomeProbe()
+		config.Probe = logsource.NewHomeProbe()
 	}
 	return &ConfirmedHomeReconciler{
 		homeProvider: config.HomeProvider, runner: config.Runner, probe: config.Probe,

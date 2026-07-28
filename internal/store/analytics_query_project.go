@@ -3,10 +3,9 @@ package store
 import (
 	"context"
 	"errors"
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 
 	"gorm.io/gorm"
-
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 const projectAnalyticsGroupSelect = `
@@ -270,7 +269,7 @@ func (repository *Repository) ListProjectAnalytics(
 	page := ProjectAnalyticsPage{
 		Records: make([]ProjectAnalyticsRecord, 0), PricingVersions: make([]string, 0),
 	}
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		database := connection.WithContext(ctx)
 		lightPage, handled, err := listLightProjectAnalytics(database, filter)
 		if err != nil {
@@ -479,7 +478,7 @@ func (repository *Repository) ProjectAnalytics(
 		Daily: make([]ProjectUsageDaily, 0), Sessions: make([]ProjectSessionAnalyticsRecord, 0),
 		Models: make([]ProjectModelAnalyticsRecord, 0), PricingVersions: make([]string, 0),
 	}
-	err := repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		database := connection.WithContext(ctx)
 		lightSnapshot, handled, err := lightProjectAnalytics(database, filter)
 		if err != nil {
@@ -792,15 +791,15 @@ func projectSessionRecordFromProjection(
 	}
 	return ProjectSessionAnalyticsRecord{
 		SessionID: projection.SessionID, DisplayTitle: projection.DisplayTitle,
-		TitleConfidence: AttributionConfidence(projection.TitleConfidence),
-		TitleSource:     AttributionSource(projection.TitleSource),
-		TitleReason:     AttributionReason(projection.TitleReason),
+		TitleConfidence: attribution.Confidence(projection.TitleConfidence),
+		TitleSource:     attribution.Source(projection.TitleSource),
+		TitleReason:     attribution.Reason(projection.TitleReason),
 		Model: ModelAttribution{
 			ModelKey:    cloneAttributionString(projection.ModelKey),
 			DisplayName: cloneAttributionString(projection.ModelDisplay),
-			Confidence:  AttributionConfidence(projection.ModelConfidence),
-			Source:      AttributionSource(projection.ModelSource),
-			Reason:      AttributionReason(projection.ModelReason),
+			Confidence:  attribution.Confidence(projection.ModelConfidence),
+			Source:      attribution.Source(projection.ModelSource),
+			Reason:      attribution.Reason(projection.ModelReason),
 		},
 		Activity: activity, LastActivityAtMS: totals.LastActivityAtMS, Totals: totals,
 	}, nil
@@ -824,8 +823,8 @@ func projectModelRecordFromProjection(
 		return ProjectModelAnalyticsRecord{}, invalidRecord("stored project model attribution is invalid")
 	}
 	model := ModelAttribution{
-		Confidence: AttributionConfidence(confidence), Source: AttributionSource(source),
-		Reason: AttributionReason(reason),
+		Confidence: attribution.Confidence(confidence), Source: attribution.Source(source),
+		Reason: attribution.Reason(reason),
 	}
 	switch {
 	case projection.ModelKeyMin == nil && projection.ModelKeyMax == nil &&
@@ -1065,22 +1064,22 @@ func validateProjectAnalyticsRows(
 	generationID string,
 ) error {
 	confidences := []string{
-		string(AttributionConfidenceHigh), string(AttributionConfidenceMedium),
-		string(AttributionConfidenceLow), string(AttributionConfidenceUnknown),
+		string(attribution.ConfidenceHigh), string(attribution.ConfidenceMedium),
+		string(attribution.ConfidenceLow), string(attribution.ConfidenceUnknown),
 	}
 	sources := []string{
-		string(AttributionSourceSessionIDFallback), string(AttributionSourceAppServerName),
-		string(AttributionSourceRegisteredRoot),
-		string(AttributionSourceCWDPathDigest), string(AttributionSourceModelCanonical),
-		string(AttributionSourceModelAlias), string(AttributionSourceConflict),
-		string(AttributionSourceMissing), string(AttributionSourceInvalidPath),
-		string(AttributionSourceInvalidModel), costDimensionMixed,
+		string(attribution.SourceSessionIDFallback), string(attribution.SourceAppServerName),
+		string(attribution.SourceRegisteredRoot),
+		string(attribution.SourceCWDPathDigest), string(attribution.SourceModelCanonical),
+		string(attribution.SourceModelAlias), string(attribution.SourceConflict),
+		string(attribution.SourceMissing), string(attribution.SourceInvalidPath),
+		string(attribution.SourceInvalidModel), costDimensionMixed,
 	}
 	reasons := []string{
-		string(AttributionReasonStableIdentity), string(AttributionReasonRootMatched),
-		string(AttributionReasonPathDerived), string(AttributionReasonObserved),
-		string(AttributionReasonConflict), string(AttributionReasonMissing),
-		string(AttributionReasonInvalid), costDimensionMixed,
+		string(attribution.ReasonStableIdentity), string(attribution.ReasonRootMatched),
+		string(attribution.ReasonPathDerived), string(attribution.ReasonObserved),
+		string(attribution.ReasonConflict), string(attribution.ReasonMissing),
+		string(attribution.ReasonInvalid), costDimensionMixed,
 	}
 	var invalid int64
 	err := database.Table("project_usage_daily AS project").
@@ -1314,13 +1313,13 @@ func equalAnalyticsTotals(left, right RollupTotals) bool {
 func projectConfidenceFromRank(rank int) string {
 	switch rank {
 	case 0:
-		return string(AttributionConfidenceUnknown)
+		return string(attribution.ConfidenceUnknown)
 	case 1:
-		return string(AttributionConfidenceLow)
+		return string(attribution.ConfidenceLow)
 	case 2:
-		return string(AttributionConfidenceMedium)
+		return string(attribution.ConfidenceMedium)
 	case 3:
-		return string(AttributionConfidenceHigh)
+		return string(attribution.ConfidenceHigh)
 	default:
 		return ""
 	}
@@ -1328,13 +1327,13 @@ func projectConfidenceFromRank(rank int) string {
 
 func projectConfidenceRank(value string) int {
 	switch value {
-	case string(AttributionConfidenceUnknown):
+	case string(attribution.ConfidenceUnknown):
 		return 0
-	case string(AttributionConfidenceLow):
+	case string(attribution.ConfidenceLow):
 		return 1
-	case string(AttributionConfidenceMedium):
+	case string(attribution.ConfidenceMedium):
 		return 2
-	case string(AttributionConfidenceHigh):
+	case string(attribution.ConfidenceHigh):
 		return 3
 	default:
 		return -1
@@ -1352,33 +1351,33 @@ func mergedProjectAttributionValue(minimum, maximum string) string {
 }
 
 func validProjectConfidence(value string) bool {
-	return value == string(AttributionConfidenceHigh) ||
-		value == string(AttributionConfidenceMedium) ||
-		value == string(AttributionConfidenceLow) ||
-		value == string(AttributionConfidenceUnknown)
+	return value == string(attribution.ConfidenceHigh) ||
+		value == string(attribution.ConfidenceMedium) ||
+		value == string(attribution.ConfidenceLow) ||
+		value == string(attribution.ConfidenceUnknown)
 }
 
 func validProjectAttributionSource(value string) bool {
-	return value == string(AttributionSourceSessionIDFallback) ||
-		value == string(AttributionSourceAppServerName) ||
-		value == string(AttributionSourceRegisteredRoot) ||
-		value == string(AttributionSourceCWDPathDigest) ||
-		value == string(AttributionSourceModelCanonical) ||
-		value == string(AttributionSourceModelAlias) ||
-		value == string(AttributionSourceConflict) ||
-		value == string(AttributionSourceMissing) ||
-		value == string(AttributionSourceInvalidPath) ||
-		value == string(AttributionSourceInvalidModel) || value == costDimensionMixed
+	return value == string(attribution.SourceSessionIDFallback) ||
+		value == string(attribution.SourceAppServerName) ||
+		value == string(attribution.SourceRegisteredRoot) ||
+		value == string(attribution.SourceCWDPathDigest) ||
+		value == string(attribution.SourceModelCanonical) ||
+		value == string(attribution.SourceModelAlias) ||
+		value == string(attribution.SourceConflict) ||
+		value == string(attribution.SourceMissing) ||
+		value == string(attribution.SourceInvalidPath) ||
+		value == string(attribution.SourceInvalidModel) || value == costDimensionMixed
 }
 
 func validProjectAttributionReason(value string) bool {
-	return value == string(AttributionReasonStableIdentity) ||
-		value == string(AttributionReasonRootMatched) ||
-		value == string(AttributionReasonPathDerived) ||
-		value == string(AttributionReasonObserved) ||
-		value == string(AttributionReasonConflict) ||
-		value == string(AttributionReasonMissing) ||
-		value == string(AttributionReasonInvalid) || value == costDimensionMixed
+	return value == string(attribution.ReasonStableIdentity) ||
+		value == string(attribution.ReasonRootMatched) ||
+		value == string(attribution.ReasonPathDerived) ||
+		value == string(attribution.ReasonObserved) ||
+		value == string(attribution.ReasonConflict) ||
+		value == string(attribution.ReasonMissing) ||
+		value == string(attribution.ReasonInvalid) || value == costDimensionMixed
 }
 
 func hasDuplicateStoreStrings(values []string) bool {

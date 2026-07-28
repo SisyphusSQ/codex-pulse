@@ -5,7 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logparser "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/parser"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -19,44 +20,44 @@ func TestProjectorMapsLifecycleEventsToOrderedFacts(t *testing.T) {
 	effort := "high"
 	contextWindow := int64(258_000)
 	input, output := int64(10), int64(3)
-	events := []logs.ParsedEvent{
+	events := []logparser.ParsedEvent{
 		{
-			Kind: logs.EventSessionMeta, Position: logs.SourcePosition{StartOffset: 0, EndOffset: 10},
-			SessionMeta: &logs.SessionMetaFact{
-				SessionID: "session-a", RootSessionID: "session-a", SourceKind: logs.SourceKindSession,
+			Kind: logparser.EventSessionMeta, Position: logparser.SourcePosition{StartOffset: 0, EndOffset: 10},
+			SessionMeta: &logparser.SessionMetaFact{
+				SessionID: "session-a", RootSessionID: "session-a", SourceKind: logsource.SourceKindSession,
 				CreatedAtMS: 100, ObservedAtMS: 110, InitialCWD: "/synthetic/project",
 				Originator: "codex_cli_rs", CLIVersion: "0.142.3", Source: "cli", ModelProvider: "openai",
 			},
 		},
 		{
-			Kind: logs.EventTurnStarted, Position: logs.SourcePosition{StartOffset: 10, EndOffset: 20},
-			TurnStart: &logs.TurnStartFact{
+			Kind: logparser.EventTurnStarted, Position: logparser.SourcePosition{StartOffset: 10, EndOffset: 20},
+			TurnStart: &logparser.TurnStartFact{
 				SessionID: "session-a", TurnID: "turn-a", StartedAtMS: 120, ContextWindow: &contextWindow,
 			},
 		},
 		{
-			Kind: logs.EventTurnContext, Position: logs.SourcePosition{StartOffset: 20, EndOffset: 30},
-			TurnContext: &logs.TurnContextFact{
+			Kind: logparser.EventTurnContext, Position: logparser.SourcePosition{StartOffset: 20, EndOffset: 30},
+			TurnContext: &logparser.TurnContextFact{
 				SessionID: "session-a", TurnID: "turn-a", ObservedAtMS: 130,
 				CWD: "/synthetic/project", Model: "gpt-5", Effort: &effort,
 			},
 		},
 		{
-			Kind: logs.EventTurnUsage, Position: logs.SourcePosition{StartOffset: 30, EndOffset: 40},
-			TurnUsage: &logs.TurnUsageFact{
+			Kind: logparser.EventTurnUsage, Position: logparser.SourcePosition{StartOffset: 30, EndOffset: 40},
+			TurnUsage: &logparser.TurnUsageFact{
 				SessionID: "session-a", TurnID: "turn-a", ObservedAtMS: 140,
-				Usage:         logs.TokenCounters{InputTokens: &input, OutputTokens: &output},
+				Usage:         logparser.TokenCounters{InputTokens: &input, OutputTokens: &output},
 				ContextWindow: &contextWindow,
 			},
 		},
 		{
-			Kind: logs.EventTurnEnded, Position: logs.SourcePosition{StartOffset: 40, EndOffset: 50},
-			TurnEnd: &logs.TurnEndFact{
+			Kind: logparser.EventTurnEnded, Position: logparser.SourcePosition{StartOffset: 40, EndOffset: 50},
+			TurnEnd: &logparser.TurnEndFact{
 				SessionID: "session-a", TurnID: "turn-a", CompletedAtMS: 150,
-				Outcome: logs.TurnOutcomeCompleted,
-				FinalUsage: &logs.TurnUsageFact{
+				Outcome: logparser.TurnOutcomeCompleted,
+				FinalUsage: &logparser.TurnUsageFact{
 					SessionID: "session-a", TurnID: "turn-a", ObservedAtMS: 140,
-					Usage:         logs.TokenCounters{InputTokens: &input, OutputTokens: &output},
+					Usage:         logparser.TokenCounters{InputTokens: &input, OutputTokens: &output},
 					ContextWindow: &contextWindow, IsFinal: true,
 				},
 			},
@@ -120,33 +121,33 @@ func TestProjectorKeepsOverlappingInactiveTurnFactsOutOfSessionCurrent(t *testin
 	if err != nil {
 		t.Fatalf("newProjector() error = %v", err)
 	}
-	events := []logs.ParsedEvent{
+	events := []logparser.ParsedEvent{
 		{
-			Kind: logs.EventSessionMeta, Position: logs.SourcePosition{StartOffset: 0, EndOffset: 10},
-			SessionMeta: &logs.SessionMetaFact{
-				SessionID: "session-overlap", RootSessionID: "session-overlap", SourceKind: logs.SourceKindSession,
+			Kind: logparser.EventSessionMeta, Position: logparser.SourcePosition{StartOffset: 0, EndOffset: 10},
+			SessionMeta: &logparser.SessionMetaFact{
+				SessionID: "session-overlap", RootSessionID: "session-overlap", SourceKind: logsource.SourceKindSession,
 				CreatedAtMS: 100, ObservedAtMS: 100,
 			},
 		},
 		{
-			Kind: logs.EventTurnStarted, Position: logs.SourcePosition{StartOffset: 10, EndOffset: 20},
-			TurnStart: &logs.TurnStartFact{SessionID: "session-overlap", TurnID: "turn-a", StartedAtMS: 110},
+			Kind: logparser.EventTurnStarted, Position: logparser.SourcePosition{StartOffset: 10, EndOffset: 20},
+			TurnStart: &logparser.TurnStartFact{SessionID: "session-overlap", TurnID: "turn-a", StartedAtMS: 110},
 		},
 		{
-			Kind: logs.EventTurnStarted, Position: logs.SourcePosition{StartOffset: 20, EndOffset: 30},
-			TurnStart: &logs.TurnStartFact{SessionID: "session-overlap", TurnID: "turn-b", StartedAtMS: 120},
+			Kind: logparser.EventTurnStarted, Position: logparser.SourcePosition{StartOffset: 20, EndOffset: 30},
+			TurnStart: &logparser.TurnStartFact{SessionID: "session-overlap", TurnID: "turn-b", StartedAtMS: 120},
 		},
 		{
-			Kind: logs.EventTurnContext, Position: logs.SourcePosition{StartOffset: 30, EndOffset: 40},
-			TurnContext: &logs.TurnContextFact{
+			Kind: logparser.EventTurnContext, Position: logparser.SourcePosition{StartOffset: 30, EndOffset: 40},
+			TurnContext: &logparser.TurnContextFact{
 				SessionID: "session-overlap", TurnID: "turn-a", ObservedAtMS: 130, Model: "gpt-a",
 			},
 		},
 		{
-			Kind: logs.EventTurnEnded, Position: logs.SourcePosition{StartOffset: 40, EndOffset: 50},
-			TurnEnd: &logs.TurnEndFact{
+			Kind: logparser.EventTurnEnded, Position: logparser.SourcePosition{StartOffset: 40, EndOffset: 50},
+			TurnEnd: &logparser.TurnEndFact{
 				SessionID: "session-overlap", TurnID: "turn-a", CompletedAtMS: 140,
-				Outcome: logs.TurnOutcomeCompleted,
+				Outcome: logparser.TurnOutcomeCompleted,
 			},
 		},
 	}
@@ -180,26 +181,26 @@ func TestProjectorCounterEpochUsesOnlyKnownDecreases(t *testing.T) {
 		t.Fatalf("newProjector() error = %v", err)
 	}
 	input110, input90, output60 := int64(110), int64(90), int64(60)
-	events := []logs.ParsedEvent{
+	events := []logparser.ParsedEvent{
 		{
-			Kind: logs.EventSessionUsage, Position: logs.SourcePosition{StartOffset: 20, EndOffset: 21},
-			SessionUsage: &logs.SessionUsageFact{
+			Kind: logparser.EventSessionUsage, Position: logparser.SourcePosition{StartOffset: 20, EndOffset: 21},
+			SessionUsage: &logparser.SessionUsageFact{
 				SessionID: "session-a", ObservedAtMS: 110,
-				Usage: logs.TokenCounters{InputTokens: &input110, OutputTokens: &previousOutput},
+				Usage: logparser.TokenCounters{InputTokens: &input110, OutputTokens: &previousOutput},
 			},
 		},
 		{
-			Kind: logs.EventSessionUsage, Position: logs.SourcePosition{StartOffset: 30, EndOffset: 31},
-			SessionUsage: &logs.SessionUsageFact{
+			Kind: logparser.EventSessionUsage, Position: logparser.SourcePosition{StartOffset: 30, EndOffset: 31},
+			SessionUsage: &logparser.SessionUsageFact{
 				SessionID: "session-a", ObservedAtMS: 120,
-				Usage: logs.TokenCounters{InputTokens: &input90, OutputTokens: &previousOutput},
+				Usage: logparser.TokenCounters{InputTokens: &input90, OutputTokens: &previousOutput},
 			},
 		},
 		{
-			Kind: logs.EventSessionUsage, Position: logs.SourcePosition{StartOffset: 40, EndOffset: 41},
-			SessionUsage: &logs.SessionUsageFact{
+			Kind: logparser.EventSessionUsage, Position: logparser.SourcePosition{StartOffset: 40, EndOffset: 41},
+			SessionUsage: &logparser.SessionUsageFact{
 				SessionID: "session-a", ObservedAtMS: 130,
-				Usage: logs.TokenCounters{InputTokens: nil, OutputTokens: &output60},
+				Usage: logparser.TokenCounters{InputTokens: nil, OutputTokens: &output60},
 			},
 		},
 	}
@@ -230,17 +231,17 @@ func TestProjectorClampsOutOfOrderEventToSessionObservation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newProjector() error = %v", err)
 	}
-	events := []logs.ParsedEvent{
+	events := []logparser.ParsedEvent{
 		{
-			Kind: logs.EventSessionMeta, Position: logs.SourcePosition{StartOffset: 0, EndOffset: 10},
-			SessionMeta: &logs.SessionMetaFact{
-				SessionID: "session-a", RootSessionID: "session-a", SourceKind: logs.SourceKindSession,
+			Kind: logparser.EventSessionMeta, Position: logparser.SourcePosition{StartOffset: 0, EndOffset: 10},
+			SessionMeta: &logparser.SessionMetaFact{
+				SessionID: "session-a", RootSessionID: "session-a", SourceKind: logsource.SourceKindSession,
 				CreatedAtMS: 100, ObservedAtMS: 110, InitialCWD: "/synthetic", Originator: "cli",
 			},
 		},
 		{
-			Kind: logs.EventTurnStarted, Position: logs.SourcePosition{StartOffset: 10, EndOffset: 20},
-			TurnStart: &logs.TurnStartFact{
+			Kind: logparser.EventTurnStarted, Position: logparser.SourcePosition{StartOffset: 10, EndOffset: 20},
+			TurnStart: &logparser.TurnStartFact{
 				SessionID: "session-a", TurnID: "turn-a", StartedAtMS: 105,
 			},
 		},
@@ -263,13 +264,13 @@ func TestProjectorRestoresOpenTurnSourcePosition(t *testing.T) {
 	t.Parallel()
 
 	active := "turn-a"
-	seed := &logs.ParserSeed{
-		Session: &logs.SessionMetaFact{
-			SessionID: "session-a", RootSessionID: "session-a", SourceKind: logs.SourceKindSession,
+	seed := &logparser.ParserSeed{
+		Session: &logparser.SessionMetaFact{
+			SessionID: "session-a", RootSessionID: "session-a", SourceKind: logsource.SourceKindSession,
 			CreatedAtMS: 1, ObservedAtMS: 1, InitialCWD: "/synthetic", Originator: "cli",
 			CLIVersion: "1", Source: "cli",
 		},
-		OpenTurns: []logs.OpenTurnSeed{{TurnID: "turn-a", StartedAtMS: 10}},
+		OpenTurns: []logparser.OpenTurnSeed{{TurnID: "turn-a", StartedAtMS: 10}},
 	}
 	checkpoint := store.ProjectorCheckpoint{
 		OpenTurns: []store.ProjectedOpenTurnCheckpoint{{
@@ -282,11 +283,11 @@ func TestProjectorRestoresOpenTurnSourcePosition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newProjector() error = %v", err)
 	}
-	facts, next, err := projector.Project([]logs.ParsedEvent{{
-		Kind: logs.EventTurnEnded, Position: logs.SourcePosition{StartOffset: 20, EndOffset: 30},
-		TurnEnd: &logs.TurnEndFact{
+	facts, next, err := projector.Project([]logparser.ParsedEvent{{
+		Kind: logparser.EventTurnEnded, Position: logparser.SourcePosition{StartOffset: 20, EndOffset: 30},
+		TurnEnd: &logparser.TurnEndFact{
 			SessionID: "session-a", TurnID: "turn-a", CompletedAtMS: 20,
-			Outcome: logs.TurnOutcomeInterrupted,
+			Outcome: logparser.TurnOutcomeInterrupted,
 		},
 	}})
 	if err != nil {

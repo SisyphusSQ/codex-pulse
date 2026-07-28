@@ -2,9 +2,10 @@ package store
 
 import (
 	"context"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"testing"
 
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestEnsureCoreSchemaUsesCurrentTurnDDL(t *testing.T) {
@@ -14,8 +15,8 @@ func TestEnsureCoreSchemaUsesCurrentTurnDDL(t *testing.T) {
 	if err := NewRepository(database).EnsureCoreSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureCoreSchema() error = %v", err)
 	}
-	err := database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
-		valid, err := verifySchemaObject(ctx, connection, currentTurnsSchemaObject())
+	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
+		valid, err := storeschema.VerifyObject(ctx, connection, currentTurnsSchemaObject())
 		if err != nil {
 			return err
 		}
@@ -44,7 +45,7 @@ func TestHistoricalV1BootstrapAcceptsCurrentCoreTurnDDL(t *testing.T) {
 	if err := repository.EnsureCoreSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureCoreSchema() error = %v", err)
 	}
-	if err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return ensureApplicationSchemaV1(ctx, transaction)
 	}); err != nil {
 		t.Fatalf("ensureApplicationSchemaV1(current core) error = %v", err)

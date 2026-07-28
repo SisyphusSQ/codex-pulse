@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"testing"
 
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
@@ -27,7 +29,7 @@ func TestApplicationSchemaV10AddsTypedSourceFailureMetrics(t *testing.T) {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
-	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(_ context.Context, connection *gorm.DB) error {
 		for _, field := range []struct {
 			model any
 			name  string
@@ -56,7 +58,7 @@ func TestApplicationMigrationUpgradesV9ToV10AndEnforcesFailureAllowlist(t *testi
 	seedApplicationSchemaV9(t, database)
 	repository := NewRepository(database)
 	stateID := "v9-preserved-source"
-	err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Table("source_state").Create(map[string]any{
 			"source_instance_id": stateID, "source_type": "wham_quota", "scope_key": "default",
 			"consecutive_failures": 0, "freshness_state": string(SourceFreshnessUnknown),
@@ -70,7 +72,7 @@ func TestApplicationMigrationUpgradesV9ToV10AndEnforcesFailureAllowlist(t *testi
 		RequestID: "v9-preserved-attempt", SourceInstanceID: stateID,
 		StartedAtMS: 10, FinishedAtMS: 11, Outcome: SourceAttemptSucceeded,
 	}
-	err = database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err = database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Table("source_attempts").Create(map[string]any{
 			"request_id": legacyAttempt.RequestID, "source_instance_id": stateID,
 			"started_at_ms": 10, "finished_at_ms": 11, "outcome": string(SourceAttemptSucceeded),
@@ -100,7 +102,7 @@ func TestApplicationMigrationUpgradesV9ToV10AndEnforcesFailureAllowlist(t *testi
 		t.Fatalf("legacy attempt after v10 = %#v, %v", attempts, err)
 	}
 
-	err = database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err = database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Model(&sourceAttemptModel{}).
 			Where("request_id = ?", legacyAttempt.RequestID).
 			UpdateColumn("failure_code", "raw-secret-or-unknown-code").Error
@@ -133,7 +135,7 @@ func TestApplicationMigrationRollsBackFailedV10Atomically(t *testing.T) {
 		t.Fatalf("run(failed v10) error = %v, want injected failure", err)
 	}
 	assertMigrationVersionAndHistory(t, database, 9, 9)
-	err := database.View(context.Background(), func(_ context.Context, connection storesqlite.ReadConn) error {
+	err := database.View(context.Background(), func(_ context.Context, connection *gorm.DB) error {
 		if connection.Migrator().HasColumn(&sourceStateModel{}, "last_failure_code") ||
 			connection.Migrator().HasColumn(&sourceAttemptModel{}, "failure_code") {
 			t.Fatal("failed v10 migration left columns behind")
@@ -156,19 +158,19 @@ func seedApplicationSchemaV9(t *testing.T, database *storesqlite.Store) {
 	assertMigrationVersionAndHistory(t, database, 9, 9)
 }
 
-func verifyApplicationSchemaV9(ctx context.Context, transaction storesqlite.WriteTx) error {
-	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects, retentionSchemaObjects,
+func verifyApplicationSchemaV9(ctx context.Context, transaction *gorm.DB) error {
+	for _, objects := range [][]storeschema.Object{
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjects, storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects, quotaSchemaObjects,
 	} {
 		for _, object := range objects {
-			exists, err := verifySchemaObject(ctx, transaction, object)
+			exists, err := storeschema.VerifyObject(ctx, transaction, object)
 			if err != nil {
 				return err
 			}
 			if !exists {
-				return ErrSchemaContract
+				return storeschema.ErrContract
 			}
 		}
 	}

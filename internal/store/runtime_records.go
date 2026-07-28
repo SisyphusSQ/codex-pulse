@@ -351,22 +351,9 @@ type HealthEventFilter struct {
 	Limit        int
 }
 
-type ModelMatchKind = pricing.ModelMatchKind
-
-const (
-	ModelMatchExact   = pricing.ModelMatchExact
-	ModelMatchPrefix  = pricing.ModelMatchPrefix
-	ModelMatchDefault = pricing.ModelMatchDefault
-)
-
-type ModelPrice = pricing.ModelPrice
-
-// PricingVersion 是 source/currency 时间线上的不可变 catalog snapshot。
-type PricingVersion = pricing.CatalogVersion
-
 // EffectivePricing 返回版本的推导半开区间和唯一匹配规则。
 type EffectivePricing struct {
-	PricingVersion PricingVersion
+	PricingVersion pricing.CatalogVersion
 	EffectiveToMS  *int64
-	Matched        ModelPrice
+	Matched        pricing.ModelPrice
 }

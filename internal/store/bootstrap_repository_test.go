@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestBootstrapRepositoryCreatesFreezesAndReadsTypedPlan(t *testing.T) {
@@ -104,7 +104,7 @@ func TestBootstrapRepositoryLargePlanBatchFailureRollsBackAtomically(t *testing.
 	}
 	if err := repository.database.Write(context.Background(), func(
 		ctx context.Context,
-		transaction storesqlite.WriteTx,
+		transaction *gorm.DB,
 	) error {
 		return transaction.WithContext(ctx).Exec(`
 			CREATE TRIGGER fail_large_bootstrap_plan

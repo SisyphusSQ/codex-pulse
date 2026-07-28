@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	"reflect"
 	"testing"
 )
@@ -12,40 +13,40 @@ func TestPricingVersionsAreImmutableAndUseHalfOpenEffectiveIntervals(t *testing.
 	t.Parallel()
 
 	repository := openRuntimeRepository(t)
-	versionOne := PricingVersion{
+	versionOne := pricing.CatalogVersion{
 		PricingVersion:  "pricing-v1",
 		Source:          "builtin",
 		Currency:        "USD",
 		EffectiveFromMS: 100,
 		CreatedAtMS:     90,
-		Models: []ModelPrice{
+		Models: []pricing.ModelPrice{
 			{
-				MatchKind: ModelMatchExact, ModelPattern: "gpt-5", Priority: 10,
+				MatchKind: pricing.ModelMatchExact, ModelPattern: "gpt-5", Priority: 10,
 				InputMicrosPerMillion:       pointerTo(int64(1_000_000)),
 				CachedInputMicrosPerMillion: pointerTo(int64(0)),
 				OutputMicrosPerMillion:      pointerTo(int64(2_000_000)),
 			},
 			{
-				MatchKind: ModelMatchPrefix, ModelPattern: "gpt-", Priority: 10,
+				MatchKind: pricing.ModelMatchPrefix, ModelPattern: "gpt-", Priority: 10,
 				InputMicrosPerMillion:  pointerTo(int64(900_000)),
 				OutputMicrosPerMillion: pointerTo(int64(1_800_000)),
 			},
 			{
-				MatchKind: ModelMatchDefault, ModelPattern: "*", Priority: 1,
+				MatchKind: pricing.ModelMatchDefault, ModelPattern: "*", Priority: 1,
 				InputMicrosPerMillion: pointerTo(int64(500_000)),
 			},
 		},
 	}
-	versionTwo := PricingVersion{
+	versionTwo := pricing.CatalogVersion{
 		PricingVersion: "pricing-v2", Source: "builtin", Currency: "USD",
 		EffectiveFromMS: 200, CreatedAtMS: 190,
-		Models: []ModelPrice{{
-			MatchKind: ModelMatchExact, ModelPattern: "gpt-5", Priority: 10,
+		Models: []pricing.ModelPrice{{
+			MatchKind: pricing.ModelMatchExact, ModelPattern: "gpt-5", Priority: 10,
 			InputMicrosPerMillion:  pointerTo(int64(1_100_000)),
 			OutputMicrosPerMillion: pointerTo(int64(2_100_000)),
 		}},
 	}
-	for _, version := range []PricingVersion{versionOne, versionTwo} {
+	for _, version := range []pricing.CatalogVersion{versionOne, versionTwo} {
 		if err := repository.AddPricingVersion(context.Background(), version); err != nil {
 			t.Fatalf("AddPricingVersion(%s) error = %v", version.PricingVersion, err)
 		}
@@ -64,7 +65,7 @@ func TestPricingVersionsAreImmutableAndUseHalfOpenEffectiveIntervals(t *testing.
 		}
 		if got.PricingVersion.PricingVersion != versionOne.PricingVersion ||
 			got.EffectiveToMS == nil || *got.EffectiveToMS != 200 ||
-			got.Matched.MatchKind != ModelMatchExact ||
+			got.Matched.MatchKind != pricing.ModelMatchExact ||
 			got.Matched.CachedInputMicrosPerMillion == nil || *got.Matched.CachedInputMicrosPerMillion != 0 {
 			t.Fatalf("PricingForModelAt(%d) = %#v, want v1 exact with real cached zero and end=200", atMS, got)
 		}
@@ -81,14 +82,14 @@ func TestPricingVersionsAreImmutableAndUseHalfOpenEffectiveIntervals(t *testing.
 	if err != nil {
 		t.Fatalf("PricingForModelAt(prefix) error = %v", err)
 	}
-	if prefix.Matched.MatchKind != ModelMatchPrefix || prefix.Matched.ModelPattern != "gpt-" {
+	if prefix.Matched.MatchKind != pricing.ModelMatchPrefix || prefix.Matched.ModelPattern != "gpt-" {
 		t.Fatalf("PricingForModelAt(prefix) matched = %#v", prefix.Matched)
 	}
 	defaultPrice, err := repository.PricingForModelAt(context.Background(), "builtin", "USD", "other-model", 150)
 	if err != nil {
 		t.Fatalf("PricingForModelAt(default) error = %v", err)
 	}
-	if defaultPrice.Matched.MatchKind != ModelMatchDefault {
+	if defaultPrice.Matched.MatchKind != pricing.ModelMatchDefault {
 		t.Fatalf("PricingForModelAt(default) matched = %#v", defaultPrice.Matched)
 	}
 	if _, err := repository.PricingForModelAt(context.Background(), "builtin", "CNY", "gpt-5", 150); !errors.Is(err, ErrNotFound) {
@@ -96,7 +97,7 @@ func TestPricingVersionsAreImmutableAndUseHalfOpenEffectiveIntervals(t *testing.
 	}
 
 	mutated := versionOne
-	mutated.Models = append([]ModelPrice(nil), versionOne.Models...)
+	mutated.Models = append([]pricing.ModelPrice(nil), versionOne.Models...)
 	mutated.Models[0].InputMicrosPerMillion = pointerTo(int64(9_999_999))
 	if err := repository.AddPricingVersion(context.Background(), mutated); !errors.Is(err, ErrInvalidRecord) {
 		t.Fatalf("AddPricingVersion(mutation) error = %v, want ErrInvalidRecord", err)
@@ -121,12 +122,12 @@ func TestPricingCatalogRejectsInvalidOrDuplicateRulesAtomically(t *testing.T) {
 	t.Parallel()
 
 	repository := openRuntimeRepository(t)
-	invalid := PricingVersion{
+	invalid := pricing.CatalogVersion{
 		PricingVersion: "pricing-invalid", Source: "builtin", Currency: "USD",
 		EffectiveFromMS: 100, CreatedAtMS: 90,
-		Models: []ModelPrice{
-			{MatchKind: ModelMatchDefault, ModelPattern: "*", Priority: 1, InputMicrosPerMillion: pointerTo(int64(1))},
-			{MatchKind: ModelMatchDefault, ModelPattern: "*", Priority: 2, InputMicrosPerMillion: pointerTo(int64(2))},
+		Models: []pricing.ModelPrice{
+			{MatchKind: pricing.ModelMatchDefault, ModelPattern: "*", Priority: 1, InputMicrosPerMillion: pointerTo(int64(1))},
+			{MatchKind: pricing.ModelMatchDefault, ModelPattern: "*", Priority: 2, InputMicrosPerMillion: pointerTo(int64(2))},
 		},
 	}
 	if err := repository.AddPricingVersion(context.Background(), invalid); !errors.Is(err, ErrInvalidRecord) {
@@ -136,11 +137,11 @@ func TestPricingCatalogRejectsInvalidOrDuplicateRulesAtomically(t *testing.T) {
 		t.Fatalf("PricingVersion(invalid) error = %v, want ErrNotFound", err)
 	}
 
-	unknownAndZero := PricingVersion{
+	unknownAndZero := pricing.CatalogVersion{
 		PricingVersion: "pricing-null-zero", Source: "builtin", Currency: "USD",
 		EffectiveFromMS: 300, CreatedAtMS: 290,
-		Models: []ModelPrice{{
-			MatchKind: ModelMatchDefault, ModelPattern: "*", Priority: 1,
+		Models: []pricing.ModelPrice{{
+			MatchKind: pricing.ModelMatchDefault, ModelPattern: "*", Priority: 1,
 			InputMicrosPerMillion: nil, CachedInputMicrosPerMillion: pointerTo(int64(0)),
 			OutputMicrosPerMillion: nil,
 		}},

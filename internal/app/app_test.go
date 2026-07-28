@@ -10,15 +10,19 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/SisyphusSQ/codex-pulse/internal/bootstrap"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/liveindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	"github.com/SisyphusSQ/codex-pulse/internal/scheduler"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
+	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -49,7 +53,7 @@ func TestApplicationLightIndexDoesNotRunLegacySchedulerWorker(t *testing.T) {
 			t.Fatalf("create %s: %v", directory, err)
 		}
 	}
-	metadata, err := logs.NewHomeProbe().Probe(ctx, home)
+	metadata, err := logsource.NewHomeProbe().Probe(ctx, home)
 	if err != nil {
 		t.Fatalf("Probe(home) error = %v", err)
 	}
@@ -108,7 +112,7 @@ func TestApplicationLightIndexUpgradesQuotaProjectionRuleBeforeServing(t *testin
 			t.Fatalf("create %s: %v", directory, err)
 		}
 	}
-	metadata, err := logs.NewHomeProbe().Probe(ctx, home)
+	metadata, err := logsource.NewHomeProbe().Probe(ctx, home)
 	if err != nil {
 		t.Fatalf("Probe(home) error = %v", err)
 	}
@@ -150,7 +154,7 @@ func TestApplicationLightIndexUpgradesQuotaProjectionRuleBeforeServing(t *testin
 	if err := repository.UpsertFacts(ctx, factstore.FactBatch{QuotaObservation: &observation}); err != nil {
 		t.Fatalf("UpsertFacts(quota) error = %v", err)
 	}
-	if err := database.Write(ctx, func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Model(&quotaCurrentRuleVersionModel{}).
 			Where("account_scope = ? AND window_kind = ? AND limit_id = ?",
 				factstore.QuotaAccountScopeDefault, factstore.QuotaWindowPrimary, limitID).
@@ -195,7 +199,7 @@ func TestApplicationLightIndexRefreshesTitleWhenAppBecomesActive(t *testing.T) {
 			t.Fatalf("create %s: %v", directory, err)
 		}
 	}
-	homeMetadata, err := logs.NewHomeProbe().Probe(ctx, home)
+	homeMetadata, err := logsource.NewHomeProbe().Probe(ctx, home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,8 +250,8 @@ func TestApplicationLightIndexRefreshesTitleWhenAppBecomesActive(t *testing.T) {
 		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
 	}
 	defer func() { _ = runtime.Close(context.Background()) }()
-	repository := factstore.NewRepository(database)
-	assertLightSessionTitle(t, repository, "初始标题", 1)
+	lightRepository := storelight.NewRepository(database)
+	assertLightSessionTitle(t, lightRepository, "初始标题", 1)
 
 	metadataMu.Lock()
 	title = "动态标题"
@@ -258,8 +262,8 @@ func TestApplicationLightIndexRefreshesTitleWhenAppBecomesActive(t *testing.T) {
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		sessions, listErr := repository.ListLightSessions(ctx)
-		state, stateErr := repository.LightIndexState(ctx)
+		sessions, listErr := lightRepository.ListLightSessions(ctx)
+		state, stateErr := lightRepository.LightIndexState(ctx)
 		if listErr == nil && stateErr == nil && state.MetadataGeneration == 2 && len(sessions) == 1 &&
 			sessions[0].ThreadName != nil && *sessions[0].ThreadName == "动态标题" {
 			break
@@ -273,7 +277,7 @@ func TestApplicationLightIndexRefreshesTitleWhenAppBecomesActive(t *testing.T) {
 
 func assertLightSessionTitle(
 	t *testing.T,
-	repository *factstore.Repository,
+	repository *storelight.Repository,
 	want string,
 	wantGeneration int64,
 ) {
@@ -299,11 +303,11 @@ func TestApplicationLightIndexHomeSwitchRestartsMetadataWithoutLegacyBootstrap(t
 			}
 		}
 	}
-	metadataA, err := logs.NewHomeProbe().Probe(ctx, homeA)
+	metadataA, err := logsource.NewHomeProbe().Probe(ctx, homeA)
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadataB, err := logs.NewHomeProbe().Probe(ctx, homeB)
+	metadataB, err := logsource.NewHomeProbe().Probe(ctx, homeB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,11 +360,12 @@ func TestApplicationLightIndexHomeSwitchRestartsMetadataWithoutLegacyBootstrap(t
 		t.Fatalf("ConfirmQuotaHomeSwitch() error = %v", err)
 	}
 	repository := factstore.NewRepository(database)
-	state, err := repository.LightIndexState(ctx)
+	lightRepository := storelight.NewRepository(database)
+	state, err := lightRepository.LightIndexState(ctx)
 	if err != nil || state.Home.Path != metadataB.Path {
 		t.Fatalf("LightIndexState() = %#v, %v", state, err)
 	}
-	sessions, err := repository.ListLightSessions(ctx)
+	sessions, err := lightRepository.ListLightSessions(ctx)
 	if err != nil || len(sessions) != 1 || sessions[0].SessionID != "home-b" {
 		t.Fatalf("ListLightSessions() = %#v, %v", sessions, err)
 	}
@@ -454,7 +459,7 @@ func TestApplicationLifecycleRuntimeComposesConfiguredHomeAndReleasesWorker(t *t
 	if err := os.WriteFile(rolloutPath, rollout, 0o600); err != nil {
 		t.Fatalf("write rollout: %v", err)
 	}
-	metadata, err := logs.NewHomeProbe().Probe(ctx, home)
+	metadata, err := logsource.NewHomeProbe().Probe(ctx, home)
 	if err != nil {
 		t.Fatalf("Probe(home) error = %v", err)
 	}
@@ -549,7 +554,7 @@ func TestApplicationLifecycleRuntimeValidatesPhysicalHomeBeforeRecoveringTargets
 	if err := os.WriteFile(rolloutPath, rollout, 0o600); err != nil {
 		t.Fatalf("write rollout: %v", err)
 	}
-	metadata, err := logs.NewHomeProbe().Probe(ctx, home)
+	metadata, err := logsource.NewHomeProbe().Probe(ctx, home)
 	if err != nil {
 		t.Fatalf("Probe(home) error = %v", err)
 	}
@@ -580,7 +585,7 @@ func TestApplicationLifecycleRuntimeValidatesPhysicalHomeBeforeRecoveringTargets
 	database := lifecycleStore.(*storesqlite.Store)
 	t.Cleanup(func() { _ = database.Close(context.Background()) })
 	repository := factstore.NewRepository(database)
-	discoverer, err := logs.NewConfirmedDiscoverer(metadata.Path, metadata.DeviceID, metadata.Inode)
+	discoverer, err := logsource.NewConfirmedDiscoverer(metadata.Path, metadata.DeviceID, metadata.Inode)
 	if err != nil {
 		t.Fatalf("NewConfirmedDiscoverer() error = %v", err)
 	}
@@ -588,7 +593,7 @@ func TestApplicationLifecycleRuntimeValidatesPhysicalHomeBeforeRecoveringTargets
 	if err != nil || len(discovery.Snapshots) != 1 {
 		t.Fatalf("Discover() = %#v, %v", discovery, err)
 	}
-	plan, err := logs.PlanReconcile(metadata.Path, nil, discovery)
+	plan, err := logsource.PlanReconcile(metadata.Path, nil, discovery)
 	if err != nil || len(plan.Actions) != 1 {
 		t.Fatalf("PlanReconcile() = %#v, %v", plan, err)
 	}
@@ -672,7 +677,7 @@ func TestApplicationBootstrapIsDurablyEnqueuedWithInteractiveBudget(t *testing.T
 	if err := os.WriteFile(filepath.Join(home, "sessions", "enqueue.jsonl"), rollout, 0o600); err != nil {
 		t.Fatalf("write rollout: %v", err)
 	}
-	metadata, err := logs.NewHomeProbe().Probe(ctx, home)
+	metadata, err := logsource.NewHomeProbe().Probe(ctx, home)
 	if err != nil {
 		t.Fatalf("Probe(home) error = %v", err)
 	}
@@ -815,7 +820,7 @@ func TestOpenConfiguredStoreBootstrapsApplicationSchemaAndReopens(t *testing.T) 
 		}
 
 		var tables int
-		err = database.View(context.Background(), func(ctx context.Context, connection storesqlite.ReadConn) error {
+		err = database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 			return connection.WithContext(ctx).Raw(`
 				SELECT COUNT(*) FROM sqlite_schema
 				WHERE type = 'table' AND name IN (
@@ -904,7 +909,7 @@ func TestOpenConfiguredStoreRejectsIncompatibleSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlite.Open() error = %v", err)
 	}
-	err = database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err = database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).
 			Exec(`CREATE TABLE sessions (session_id TEXT PRIMARY KEY) STRICT`).Error
 	})
@@ -919,7 +924,7 @@ func TestOpenConfiguredStoreRejectsIncompatibleSchema(t *testing.T) {
 	if lifecycle != nil {
 		t.Fatalf("openConfiguredStore() lifecycle = %T, want nil", lifecycle)
 	}
-	if !errors.Is(err, factstore.ErrSchemaContract) {
+	if !errors.Is(err, storeschema.ErrContract) {
 		t.Fatalf("openConfiguredStore() error = %v, want ErrSchemaContract", err)
 	}
 }
@@ -937,7 +942,7 @@ func TestOpenApplicationStartupReturnsRecoveryGraphForMigrationFailure(t *testin
 	if err != nil {
 		t.Fatalf("sqlite.Open() error = %v", err)
 	}
-	if err := database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	if err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Exec("PRAGMA user_version = 99").Error
 	}); err != nil {
 		t.Fatalf("set newer user_version: %v", err)
@@ -971,7 +976,7 @@ func TestOpenConfiguredStoreRejectsIncompatibleRuntimeSchema(t *testing.T) {
 	if err := factstore.NewRepository(database).EnsureCoreSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureCoreSchema() error = %v", err)
 	}
-	err = database.Write(context.Background(), func(ctx context.Context, transaction storesqlite.WriteTx) error {
+	err = database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).
 			Exec(`CREATE TABLE source_files (source_file_id TEXT PRIMARY KEY) STRICT`).Error
 	})
@@ -986,7 +991,7 @@ func TestOpenConfiguredStoreRejectsIncompatibleRuntimeSchema(t *testing.T) {
 	if lifecycle != nil {
 		t.Fatalf("openConfiguredStore() lifecycle = %T, want nil", lifecycle)
 	}
-	if !errors.Is(err, factstore.ErrSchemaContract) {
+	if !errors.Is(err, storeschema.ErrContract) {
 		t.Fatalf("openConfiguredStore() error = %v, want ErrSchemaContract", err)
 	}
 }

@@ -12,9 +12,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
+	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -31,18 +33,18 @@ func TestListSessionsValidatesMapsAndRoundTripsOpaqueCursor(t *testing.T) {
 		},
 		Records: []store.SessionAnalyticsRecord{{
 			SessionID: "session-alpha", DisplayTitle: "Alpha safe title",
-			TitleConfidence: store.AttributionConfidenceHigh,
-			TitleSource:     store.AttributionSourceSessionIDFallback,
-			TitleReason:     store.AttributionReasonStableIdentity,
+			TitleConfidence: attribution.ConfidenceHigh,
+			TitleSource:     attribution.SourceSessionIDFallback,
+			TitleReason:     attribution.ReasonStableIdentity,
 			Project: store.ProjectAttribution{
 				ProjectID: pointerToString("project-a"), DisplayName: pointerToString("Project A"),
-				Confidence: store.AttributionConfidenceHigh,
-				Source:     store.AttributionSourceRegisteredRoot, Reason: store.AttributionReasonRootMatched,
+				Confidence: attribution.ConfidenceHigh,
+				Source:     attribution.SourceRegisteredRoot, Reason: attribution.ReasonRootMatched,
 			},
 			Model: store.ModelAttribution{
 				ModelKey: pointerToString("model-a"), DisplayName: pointerToString("Model A"),
-				Confidence: store.AttributionConfidenceHigh,
-				Source:     store.AttributionSourceModelCanonical, Reason: store.AttributionReasonObserved,
+				Confidence: attribution.ConfidenceHigh,
+				Source:     attribution.SourceModelCanonical, Reason: attribution.ReasonObserved,
 			},
 			Activity: store.SessionActivityActive, LastActivityAtMS: &last,
 			Rollup: &store.RollupTotals{
@@ -512,8 +514,8 @@ func TestSessionDetailMapsBoundedTurnPageAndRoundTripsOpaqueCursor(t *testing.T)
 		TurnID: "private-turn-id", StartedAtMS: 100, CompletedAtMS: &completedAt,
 		Model: store.ModelAttribution{
 			ModelKey: pointerToString("model-safe"), DisplayName: pointerToString("Model Safe"),
-			Confidence: store.AttributionConfidenceHigh,
-			Source:     store.AttributionSourceModelCanonical, Reason: store.AttributionReasonObserved,
+			Confidence: attribution.ConfidenceHigh,
+			Source:     attribution.SourceModelCanonical, Reason: attribution.ReasonObserved,
 		},
 		Usage: &store.SessionTurnUsageAnalytics{
 			ObservedAtMS: 120, IsFinal: true, InputTokens: &input,
@@ -952,28 +954,29 @@ func TestSessionDetailStoreToQueryPreservesRepeatedDSTHour(t *testing.T) {
 		}
 	})
 	repository := store.NewRepository(database)
+	lightRepository := storelight.NewRepository(database)
 	if err := repository.EnsureApplicationSchema(ctx); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	home := store.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
+	home := storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
 	rolloutPath := "/confirmed-home/sessions/repeated-hour.jsonl"
-	if err := repository.ReplaceLightMetadata(ctx, store.LightMetadataSnapshot{
+	if err := lightRepository.ReplaceLightMetadata(ctx, storelight.LightMetadataSnapshot{
 		Home: home, Generation: 1, ReadyAtMS: 1_000,
-		Sessions: []store.LightSessionMetadata{{
+		Sessions: []storelight.LightSessionMetadata{{
 			SessionID: "session-dst-real", CWD: "/workspace",
 			RolloutPath: &rolloutPath, CreatedAtMS: 100, UpdatedAtMS: 200,
 		}},
 	}); err != nil {
 		t.Fatalf("ReplaceLightMetadata() error = %v", err)
 	}
-	identity := store.LightRolloutIdentity{
+	identity := storelight.LightRolloutIdentity{
 		Path: rolloutPath, SourceFileID: "source-dst-real", Home: home,
 		DeviceID: "2", Inode: 3, SizeBytes: 8_192, MTimeNS: 1,
 		PrefixBytes:       4_096,
 		PrefixSHA256:      strings.Repeat("a", 64),
 		FingerprintSHA256: strings.Repeat("b", 64),
 	}
-	generation, err := repository.StartLightTokenRebuild(
+	generation, err := lightRepository.StartLightTokenRebuild(
 		ctx,
 		"session-dst-real",
 		identity,
@@ -985,14 +988,14 @@ func TestSessionDetailStoreToQueryPreservesRepeatedDSTHour(t *testing.T) {
 	}
 	firstStart := mustUsageTime(t, "2026-11-01T05:00:00Z")
 	secondStart := mustUsageTime(t, "2026-11-01T06:00:00Z")
-	if err := repository.CommitLightTokenBatch(ctx, store.LightTokenBatch{
+	if err := lightRepository.CommitLightTokenBatch(ctx, storelight.LightTokenBatch{
 		SessionID: "session-dst-real", Generation: generation,
 		UpdatedAtMS: 2_100, Activate: true,
-		Checkpoint: store.LightTokenCheckpoint{
+		Checkpoint: storelight.LightTokenCheckpoint{
 			DurableOffset: identity.SizeBytes, Complete: true,
 			InputTokens: 10, OutputTokens: 20,
 		},
-		TimedDeltas: []store.LightTokenTimedDelta{
+		TimedDeltas: []storelight.LightTokenTimedDelta{
 			{
 				SourceOffset: 4_000,
 				ObservedAtMS: mustUsageTime(t, "2026-11-01T05:30:00Z"),
@@ -1087,8 +1090,8 @@ func TestSessionDetailRejectsTurnPageAggregateDrift(t *testing.T) {
 	turn := store.SessionTurnAnalyticsRecord{
 		TurnID: "turn-drift", StartedAtMS: 100, CompletedAtMS: &completedAt,
 		Model: store.ModelAttribution{
-			Confidence: store.AttributionConfidenceUnknown,
-			Source:     store.AttributionSourceMissing, Reason: store.AttributionReasonMissing,
+			Confidence: attribution.ConfidenceUnknown,
+			Source:     attribution.SourceMissing, Reason: attribution.ReasonMissing,
 		},
 		Usage: &store.SessionTurnUsageAnalytics{
 			ObservedAtMS: 120, IsFinal: true, InputTokens: &input,
@@ -1169,8 +1172,8 @@ func TestSessionDetailRejectsTurnUsageObservedBeforeStart(t *testing.T) {
 		Turns: []store.SessionTurnAnalyticsRecord{{
 			TurnID: "turn-invalid", StartedAtMS: 100,
 			Model: store.ModelAttribution{
-				Confidence: store.AttributionConfidenceUnknown,
-				Source:     store.AttributionSourceMissing, Reason: store.AttributionReasonMissing,
+				Confidence: attribution.ConfidenceUnknown,
+				Source:     attribution.SourceMissing, Reason: attribution.ReasonMissing,
 			},
 			Usage: &store.SessionTurnUsageAnalytics{
 				ObservedAtMS: 99, InputTokens: &zero, CachedInputTokens: &zero,
@@ -1204,8 +1207,8 @@ func TestSessionDetailPreservesFallbackTurnZeroAndUnavailableCost(t *testing.T) 
 		Turns: []store.SessionTurnAnalyticsRecord{{
 			TurnID: "turn-fallback-active", StartedAtMS: 100,
 			Model: store.ModelAttribution{
-				Confidence: store.AttributionConfidenceUnknown,
-				Source:     store.AttributionSourceMissing, Reason: store.AttributionReasonMissing,
+				Confidence: attribution.ConfidenceUnknown,
+				Source:     attribution.SourceMissing, Reason: attribution.ReasonMissing,
 			},
 			Usage: &store.SessionTurnUsageAnalytics{
 				ObservedAtMS: 110, InputTokens: &zero, CachedInputTokens: &zero,
@@ -1262,8 +1265,8 @@ func TestSessionDetailPreservesUnpricedTurnEvidence(t *testing.T) {
 		Turns: []store.SessionTurnAnalyticsRecord{{
 			TurnID: "turn-unpriced", StartedAtMS: 100, CompletedAtMS: &completedAt,
 			Model: store.ModelAttribution{
-				Confidence: store.AttributionConfidenceUnknown,
-				Source:     store.AttributionSourceMissing, Reason: store.AttributionReasonMissing,
+				Confidence: attribution.ConfidenceUnknown,
+				Source:     attribution.SourceMissing, Reason: attribution.ReasonMissing,
 			},
 			Usage: &store.SessionTurnUsageAnalytics{
 				ObservedAtMS: 120, IsFinal: true, InputTokens: &zero,
@@ -1310,8 +1313,8 @@ func TestSessionDetailRejectsMalformedTurnPricingEvidence(t *testing.T) {
 	baseTurn := store.SessionTurnAnalyticsRecord{
 		TurnID: "turn-malformed-pricing", StartedAtMS: 100, CompletedAtMS: &completedAt,
 		Model: store.ModelAttribution{
-			Confidence: store.AttributionConfidenceUnknown,
-			Source:     store.AttributionSourceMissing, Reason: store.AttributionReasonMissing,
+			Confidence: attribution.ConfidenceUnknown,
+			Source:     attribution.SourceMissing, Reason: attribution.ReasonMissing,
 		},
 		Usage: &store.SessionTurnUsageAnalytics{
 			ObservedAtMS: 120, IsFinal: true, InputTokens: &zero,
@@ -1465,16 +1468,16 @@ func testSessionTurnCursorKey() sessionTurnCursorKey {
 func safeFallbackSessionRecord(sessionID, title string) store.SessionAnalyticsRecord {
 	return store.SessionAnalyticsRecord{
 		SessionID: sessionID, DisplayTitle: title,
-		TitleConfidence: store.AttributionConfidenceHigh,
-		TitleSource:     store.AttributionSourceSessionIDFallback,
-		TitleReason:     store.AttributionReasonStableIdentity,
+		TitleConfidence: attribution.ConfidenceHigh,
+		TitleSource:     attribution.SourceSessionIDFallback,
+		TitleReason:     attribution.ReasonStableIdentity,
 		Project: store.ProjectAttribution{
-			Confidence: store.AttributionConfidenceUnknown,
-			Source:     store.AttributionSourceMissing, Reason: store.AttributionReasonMissing,
+			Confidence: attribution.ConfidenceUnknown,
+			Source:     attribution.SourceMissing, Reason: attribution.ReasonMissing,
 		},
 		Model: store.ModelAttribution{
-			Confidence: store.AttributionConfidenceUnknown,
-			Source:     store.AttributionSourceMissing, Reason: store.AttributionReasonMissing,
+			Confidence: attribution.ConfidenceUnknown,
+			Source:     attribution.SourceMissing, Reason: attribution.ReasonMissing,
 		},
 		Activity: store.SessionActivityIdle,
 	}

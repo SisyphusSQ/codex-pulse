@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/onboarding"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 )
@@ -32,7 +32,7 @@ func ensureDefaultCodexHomeConfigured(
 		return false, err
 	}
 	if config.Probe == nil {
-		config.Probe = logs.NewHomeProbe()
+		config.Probe = logsource.NewHomeProbe()
 	}
 	service, err := onboarding.NewService(onboarding.Config{
 		Probe: config.Probe,

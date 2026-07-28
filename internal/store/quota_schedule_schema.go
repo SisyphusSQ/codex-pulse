@@ -1,10 +1,12 @@
 package store
 
+import storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
+
 // quotaScheduleSchemaObjects is the v12 Reset Credits and refresh scheduling
 // schema. STRICT/CHECK/composite FK definitions are isolated here because GORM
 // Migrator cannot express their full SQLite contract.
-var quotaScheduleSchemaObjects = []schemaObject{
-	{objectType: "table", name: "reset_credit_snapshots", statement: `CREATE TABLE IF NOT EXISTS reset_credit_snapshots (
+var quotaScheduleSchemaObjects = []storeschema.Object{
+	{ObjectType: "table", Name: "reset_credit_snapshots", Statement: `CREATE TABLE IF NOT EXISTS reset_credit_snapshots (
 		snapshot_id TEXT PRIMARY KEY CHECK (length(snapshot_id) > 0 AND length(snapshot_id) <= 512),
 		request_id TEXT NOT NULL UNIQUE CHECK (length(request_id) > 0 AND length(request_id) <= 512)
 			REFERENCES source_attempts(request_id) ON DELETE RESTRICT,
@@ -12,7 +14,7 @@ var quotaScheduleSchemaObjects = []schemaObject{
 		available_count INTEGER NOT NULL CHECK (available_count BETWEEN 0 AND 100),
 		observed_at_ms INTEGER NOT NULL CHECK (observed_at_ms >= 0)
 	) STRICT`},
-	{objectType: "table", name: "reset_credits", statement: `CREATE TABLE IF NOT EXISTS reset_credits (
+	{ObjectType: "table", Name: "reset_credits", Statement: `CREATE TABLE IF NOT EXISTS reset_credits (
 		snapshot_id TEXT NOT NULL REFERENCES reset_credit_snapshots(snapshot_id) ON DELETE CASCADE,
 		credit_id_hash TEXT NOT NULL CHECK (
 			length(credit_id_hash) = 64 AND credit_id_hash NOT GLOB '*[^0-9a-f]*'
@@ -31,11 +33,11 @@ var quotaScheduleSchemaObjects = []schemaObject{
 			OR status = 'expired'
 		)
 	) STRICT`},
-	{objectType: "index", name: "idx_reset_credit_snapshots_current", statement: `CREATE INDEX IF NOT EXISTS idx_reset_credit_snapshots_current
+	{ObjectType: "index", Name: "idx_reset_credit_snapshots_current", Statement: `CREATE INDEX IF NOT EXISTS idx_reset_credit_snapshots_current
 		ON reset_credit_snapshots(account_scope, observed_at_ms DESC, snapshot_id DESC)`},
-	{objectType: "index", name: "idx_reset_credits_expiry", statement: `CREATE INDEX IF NOT EXISTS idx_reset_credits_expiry
+	{ObjectType: "index", Name: "idx_reset_credits_expiry", Statement: `CREATE INDEX IF NOT EXISTS idx_reset_credits_expiry
 		ON reset_credits(snapshot_id, status, expires_at_ms, credit_id_hash)`},
-	{objectType: "table", name: "source_refresh_schedules", statement: `CREATE TABLE IF NOT EXISTS source_refresh_schedules (
+	{ObjectType: "table", Name: "source_refresh_schedules", Statement: `CREATE TABLE IF NOT EXISTS source_refresh_schedules (
 		source_instance_id TEXT PRIMARY KEY CHECK (length(source_instance_id) > 0 AND length(source_instance_id) <= 512),
 		source_type TEXT NOT NULL CHECK (length(source_type) > 0 AND length(source_type) <= 128),
 		scope_key TEXT NOT NULL CHECK (length(scope_key) > 0 AND length(scope_key) <= 128),
@@ -60,11 +62,11 @@ var quotaScheduleSchemaObjects = []schemaObject{
 		CHECK ((active_claim_id IS NULL) = (claim_expires_at_ms IS NULL)),
 		CHECK (reason NOT IN ('auth_required', 'schema_incompatible', 'disabled') OR next_due_at_ms IS NULL)
 	) STRICT`},
-	{objectType: "index", name: "idx_source_refresh_schedules_due", statement: `CREATE INDEX IF NOT EXISTS idx_source_refresh_schedules_due
+	{ObjectType: "index", Name: "idx_source_refresh_schedules_due", Statement: `CREATE INDEX IF NOT EXISTS idx_source_refresh_schedules_due
 		ON source_refresh_schedules(next_due_at_ms, source_instance_id, revision)`},
-	{objectType: "index", name: "idx_source_refresh_schedules_claim", statement: `CREATE INDEX IF NOT EXISTS idx_source_refresh_schedules_claim
+	{ObjectType: "index", Name: "idx_source_refresh_schedules_claim", Statement: `CREATE INDEX IF NOT EXISTS idx_source_refresh_schedules_claim
 		ON source_refresh_schedules(claim_expires_at_ms, source_instance_id)`},
-	{objectType: "table", name: "source_refresh_claims", statement: `CREATE TABLE IF NOT EXISTS source_refresh_claims (
+	{ObjectType: "table", Name: "source_refresh_claims", Statement: `CREATE TABLE IF NOT EXISTS source_refresh_claims (
 		claim_id TEXT PRIMARY KEY CHECK (length(claim_id) > 0 AND length(claim_id) <= 512),
 		source_instance_id TEXT NOT NULL REFERENCES source_refresh_schedules(source_instance_id) ON DELETE CASCADE,
 		schedule_revision INTEGER NOT NULL CHECK (schedule_revision > 0),
@@ -75,6 +77,6 @@ var quotaScheduleSchemaObjects = []schemaObject{
 		finalized_at_ms INTEGER CHECK (finalized_at_ms IS NULL OR finalized_at_ms >= started_at_ms),
 		CHECK ((state = 'active') = (finalized_at_ms IS NULL))
 	) STRICT`},
-	{objectType: "index", name: "idx_source_refresh_claims_source", statement: `CREATE INDEX IF NOT EXISTS idx_source_refresh_claims_source
+	{ObjectType: "index", Name: "idx_source_refresh_claims_source", Statement: `CREATE INDEX IF NOT EXISTS idx_source_refresh_claims_source
 		ON source_refresh_claims(source_instance_id, state, expires_at_ms, claim_id)`},
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -1081,31 +1082,31 @@ func validAttributionTuple(identity, display *string) bool {
 }
 
 func validAttributionEvidence(
-	confidence store.AttributionConfidence,
-	source store.AttributionSource,
-	reason store.AttributionReason,
+	confidence attribution.Confidence,
+	source attribution.Source,
+	reason attribution.Reason,
 ) bool {
-	validConfidence := confidence == store.AttributionConfidenceHigh ||
-		confidence == store.AttributionConfidenceMedium ||
-		confidence == store.AttributionConfidenceLow ||
-		confidence == store.AttributionConfidenceUnknown
-	validSource := source == store.AttributionSourceSessionIDFallback ||
-		source == store.AttributionSourceAppServerName ||
-		source == store.AttributionSourceRegisteredRoot ||
-		source == store.AttributionSourceCWDPathDigest ||
-		source == store.AttributionSourceModelCanonical ||
-		source == store.AttributionSourceModelAlias ||
-		source == store.AttributionSourceConflict ||
-		source == store.AttributionSourceMissing ||
-		source == store.AttributionSourceInvalidPath ||
-		source == store.AttributionSourceInvalidModel
-	validReason := reason == store.AttributionReasonStableIdentity ||
-		reason == store.AttributionReasonRootMatched ||
-		reason == store.AttributionReasonPathDerived ||
-		reason == store.AttributionReasonObserved ||
-		reason == store.AttributionReasonConflict ||
-		reason == store.AttributionReasonMissing ||
-		reason == store.AttributionReasonInvalid
+	validConfidence := confidence == attribution.ConfidenceHigh ||
+		confidence == attribution.ConfidenceMedium ||
+		confidence == attribution.ConfidenceLow ||
+		confidence == attribution.ConfidenceUnknown
+	validSource := source == attribution.SourceSessionIDFallback ||
+		source == attribution.SourceAppServerName ||
+		source == attribution.SourceRegisteredRoot ||
+		source == attribution.SourceCWDPathDigest ||
+		source == attribution.SourceModelCanonical ||
+		source == attribution.SourceModelAlias ||
+		source == attribution.SourceConflict ||
+		source == attribution.SourceMissing ||
+		source == attribution.SourceInvalidPath ||
+		source == attribution.SourceInvalidModel
+	validReason := reason == attribution.ReasonStableIdentity ||
+		reason == attribution.ReasonRootMatched ||
+		reason == attribution.ReasonPathDerived ||
+		reason == attribution.ReasonObserved ||
+		reason == attribution.ReasonConflict ||
+		reason == attribution.ReasonMissing ||
+		reason == attribution.ReasonInvalid
 	return validConfidence && validSource && validReason
 }
 

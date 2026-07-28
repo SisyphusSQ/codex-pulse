@@ -1,6 +1,8 @@
 package store
 
-import "github.com/SisyphusSQ/codex-pulse/internal/pricing"
+import (
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
+)
 
 type CostRollupGenerationState string
 

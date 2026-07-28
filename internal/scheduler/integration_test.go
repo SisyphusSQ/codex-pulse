@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/bootstrap"
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/liveindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -279,7 +279,7 @@ func assertRecoveredSucceededTarget(
 
 func schedulerBootstrapRequest(t *testing.T, home string) preferences.BootstrapRequest {
 	t.Helper()
-	metadata, err := logs.NewHomeProbe().Probe(context.Background(), home)
+	metadata, err := logsource.NewHomeProbe().Probe(context.Background(), home)
 	if err != nil {
 		t.Fatalf("HomeProbe(backfill) error = %v", err)
 	}
@@ -296,11 +296,11 @@ func schedulerBootstrapRequest(t *testing.T, home string) preferences.BootstrapR
 
 func schedulerLiveRequest(t *testing.T, home string) liveindex.LiveRequest {
 	t.Helper()
-	metadata, err := logs.NewHomeProbe().Probe(context.Background(), home)
+	metadata, err := logsource.NewHomeProbe().Probe(context.Background(), home)
 	if err != nil {
 		t.Fatalf("HomeProbe(live) error = %v", err)
 	}
-	discoverer, err := logs.NewConfirmedDiscoverer(metadata.Path, metadata.DeviceID, metadata.Inode)
+	discoverer, err := logsource.NewConfirmedDiscoverer(metadata.Path, metadata.DeviceID, metadata.Inode)
 	if err != nil {
 		t.Fatalf("NewConfirmedDiscoverer() error = %v", err)
 	}
@@ -308,13 +308,13 @@ func schedulerLiveRequest(t *testing.T, home string) liveindex.LiveRequest {
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	plan, err := logs.PlanReconcile(metadata.Path, nil, discovery)
+	plan, err := logsource.PlanReconcile(metadata.Path, nil, discovery)
 	if err != nil {
 		t.Fatalf("PlanReconcile() = %#v, %v", plan, err)
 	}
-	var liveAction *logs.ReconcileAction
+	var liveAction *logsource.ReconcileAction
 	for index := range plan.Actions {
-		if plan.Actions[index].Current != nil && plan.Actions[index].Current.Kind == logs.SourceKindSession {
+		if plan.Actions[index].Current != nil && plan.Actions[index].Current.Kind == logsource.SourceKindSession {
 			liveAction = &plan.Actions[index]
 			break
 		}

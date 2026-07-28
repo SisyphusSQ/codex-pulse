@@ -9,7 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/codex/logs"
+	logparser "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/parser"
+	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -29,16 +30,16 @@ func TestIngesterRestartsFromCommittedOffsetAndReplaysHalfLineOnce(t *testing.T)
 	split := len(start) / 2
 	initialContent := []byte(meta + "\n" + start[:split])
 	writeSyntheticRollout(t, path, initialContent, time.Unix(10, 0))
-	discoverer, err := logs.NewDiscoverer(home)
+	discoverer, err := logsource.NewDiscoverer(home)
 	if err != nil {
-		t.Fatalf("logs.NewDiscoverer() error = %v", err)
+		t.Fatalf("logsource.NewDiscoverer() error = %v", err)
 	}
 	initialDiscovery, err := discoverer.Discover(ctx)
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	initialPlan, err := logs.PlanReconcile(home, nil, initialDiscovery)
-	if err != nil || len(initialPlan.Actions) != 1 || initialPlan.Actions[0].Kind != logs.ChangeAdded {
+	initialPlan, err := logsource.PlanReconcile(home, nil, initialDiscovery)
+	if err != nil || len(initialPlan.Actions) != 1 || initialPlan.Actions[0].Kind != logsource.ChangeAdded {
 		t.Fatalf("PlanReconcile(initial) = %#v, %v", initialPlan, err)
 	}
 	stream, err := ingester.Open(ctx, OpenRequest{Action: initialPlan.Actions[0], AtMS: 10})
@@ -74,8 +75,8 @@ func TestIngesterRestartsFromCommittedOffsetAndReplaysHalfLineOnce(t *testing.T)
 	if err != nil {
 		t.Fatalf("DiscoverAgainst() error = %v", err)
 	}
-	nextPlan, err := logs.PlanReconcile(home, initialDiscovery.Snapshots, nextDiscovery)
-	if err != nil || len(nextPlan.Actions) != 1 || nextPlan.Actions[0].Kind != logs.ChangeGrown {
+	nextPlan, err := logsource.PlanReconcile(home, initialDiscovery.Snapshots, nextDiscovery)
+	if err != nil || len(nextPlan.Actions) != 1 || nextPlan.Actions[0].Kind != logsource.ChangeGrown {
 		t.Fatalf("PlanReconcile(grown) = %#v, %v", nextPlan, err)
 	}
 	stream, err = ingester.Open(ctx, OpenRequest{Action: nextPlan.Actions[0], AtMS: 30})
@@ -106,12 +107,12 @@ func TestIngesterSupersedesGrowingBuildingAndRejectsStaleStream(t *testing.T) {
 	home, path := newSyntheticCodexHome(t)
 	initialContent := []byte(rolloutSessionMetaLine("session-a") + "\n")
 	writeSyntheticRollout(t, path, initialContent, time.Unix(10, 0))
-	discoverer, _ := logs.NewDiscoverer(home)
+	discoverer, _ := logsource.NewDiscoverer(home)
 	initialDiscovery, err := discoverer.Discover(ctx)
 	if err != nil {
 		t.Fatalf("Discover(initial building) error = %v", err)
 	}
-	initialPlan, _ := logs.PlanReconcile(home, nil, initialDiscovery)
+	initialPlan, _ := logsource.PlanReconcile(home, nil, initialDiscovery)
 	staleStream, err := ingester.Open(ctx, OpenRequest{Action: initialPlan.Actions[0], AtMS: 10})
 	if err != nil {
 		t.Fatalf("Open(initial building) error = %v", err)
@@ -131,8 +132,8 @@ func TestIngesterSupersedesGrowingBuildingAndRejectsStaleStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DiscoverAgainst(grown building) error = %v", err)
 	}
-	nextPlan, err := logs.PlanReconcile(home, snapshotsFromStore(durablePrevious), nextDiscovery)
-	if err != nil || len(nextPlan.Actions) != 1 || nextPlan.Actions[0].Kind != logs.ChangeAdded {
+	nextPlan, err := logsource.PlanReconcile(home, snapshotsFromStore(durablePrevious), nextDiscovery)
+	if err != nil || len(nextPlan.Actions) != 1 || nextPlan.Actions[0].Kind != logsource.ChangeAdded {
 		t.Fatalf("PlanReconcile(durable grown building) = %#v, %v", nextPlan, err)
 	}
 	restarted, err := ingester.Open(ctx, OpenRequest{Action: nextPlan.Actions[0], AtMS: 40})
@@ -164,7 +165,7 @@ func TestIngesterResumesExactDurableSiblingAndSupersedesCompetitor(t *testing.T)
 	home, path := newSyntheticCodexHome(t)
 	content := completeRollout("session-a", "turn-a")
 	writeSyntheticRollout(t, path, content, time.Unix(10, 0))
-	discoverer, _ := logs.NewDiscoverer(home)
+	discoverer, _ := logsource.NewDiscoverer(home)
 	discoveryB, err := discoverer.Discover(ctx)
 	if err != nil || len(discoveryB.Snapshots) != 1 {
 		t.Fatalf("Discover(B) = %#v, %v", discoveryB, err)
@@ -186,21 +187,21 @@ func TestIngesterResumesExactDurableSiblingAndSupersedesCompetitor(t *testing.T)
 	fingerprintC := sourceFingerprintFromSnapshot(snapshotC)
 	buildingB, err := repository.PrepareGeneration(ctx, store.PrepareGenerationRequest{
 		Mode: store.GenerationModeRebuild, Current: fingerprintB,
-		ParserVersion: logs.ParserVersion, AtMS: 30,
+		ParserVersion: logparser.ParserVersion, AtMS: 30,
 	})
 	if err != nil {
 		t.Fatalf("PrepareGeneration(B) error = %v", err)
 	}
 	buildingC, err := repository.PrepareGeneration(ctx, store.PrepareGenerationRequest{
 		Mode: store.GenerationModeRebuild, Current: fingerprintC,
-		ParserVersion: logs.ParserVersion, AtMS: 31,
+		ParserVersion: logparser.ParserVersion, AtMS: 31,
 	})
 	if err != nil {
 		t.Fatalf("PrepareGeneration(C) error = %v", err)
 	}
 
 	stream, err := ingester.Open(ctx, OpenRequest{
-		Action: logs.ReconcileAction{Kind: logs.ChangeAdded, Current: &snapshotB}, AtMS: 40,
+		Action: logsource.ReconcileAction{Kind: logsource.ChangeAdded, Current: &snapshotB}, AtMS: 40,
 	})
 	if err != nil {
 		t.Fatalf("Open(exact durable B) error = %v", err)
@@ -229,11 +230,11 @@ func TestIngesterSupersedesPhysicalReplacementChainFromDurableBase(t *testing.T)
 	repository, _ := openIndexerRepository(t)
 	ingester, _ := New(repository)
 	home, path := newSyntheticCodexHome(t)
-	discoverer, _ := logs.NewDiscoverer(home)
+	discoverer, _ := logsource.NewDiscoverer(home)
 	activeContent := completeRollout("session-a", "turn-a")
 	writeSyntheticRollout(t, path, activeContent, time.Unix(10, 0))
 	activeDiscovery, _ := discoverer.Discover(ctx)
-	activePlan, _ := logs.PlanReconcile(home, nil, activeDiscovery)
+	activePlan, _ := logsource.PlanReconcile(home, nil, activeDiscovery)
 	activeStream, err := ingester.Open(ctx, OpenRequest{Action: activePlan.Actions[0], AtMS: 10})
 	if err != nil {
 		t.Fatalf("Open(active A) error = %v", err)
@@ -253,8 +254,8 @@ func TestIngesterSupersedesPhysicalReplacementChainFromDurableBase(t *testing.T)
 		t.Fatalf("CodexSnapshots(active A) = %#v, %v", durableBase, err)
 	}
 	buildingDiscovery, _ := discoverer.DiscoverAgainst(ctx, snapshotsFromStore(durableBase))
-	buildingPlan, err := logs.PlanReconcile(home, snapshotsFromStore(durableBase), buildingDiscovery)
-	if err != nil || len(buildingPlan.Actions) != 1 || buildingPlan.Actions[0].Kind != logs.ChangeReplaced {
+	buildingPlan, err := logsource.PlanReconcile(home, snapshotsFromStore(durableBase), buildingDiscovery)
+	if err != nil || len(buildingPlan.Actions) != 1 || buildingPlan.Actions[0].Kind != logsource.ChangeReplaced {
 		t.Fatalf("PlanReconcile(building B) = %#v, %v", buildingPlan, err)
 	}
 	buildingStream, err := ingester.Open(ctx, OpenRequest{Action: buildingPlan.Actions[0], AtMS: 40})
@@ -273,8 +274,8 @@ func TestIngesterSupersedesPhysicalReplacementChainFromDurableBase(t *testing.T)
 	}
 	writeSyntheticRollout(t, path, replacementContent, time.Unix(60, 0))
 	replacementDiscovery, _ := discoverer.DiscoverAgainst(ctx, snapshotsFromStore(durableBase))
-	replacementPlan, err := logs.PlanReconcile(home, snapshotsFromStore(durableBase), replacementDiscovery)
-	if err != nil || len(replacementPlan.Actions) != 1 || replacementPlan.Actions[0].Kind != logs.ChangeReplaced {
+	replacementPlan, err := logsource.PlanReconcile(home, snapshotsFromStore(durableBase), replacementDiscovery)
+	if err != nil || len(replacementPlan.Actions) != 1 || replacementPlan.Actions[0].Kind != logsource.ChangeReplaced {
 		t.Fatalf("PlanReconcile(replacement C) = %#v, %v", replacementPlan, err)
 	}
 	replacementStream, err := ingester.Open(ctx, OpenRequest{Action: replacementPlan.Actions[0], AtMS: 70})
@@ -304,11 +305,11 @@ func TestIngesterResumesInitialPhysicalReplacementWithoutActiveSnapshot(t *testi
 	repository, _ := openIndexerRepository(t)
 	ingester, _ := New(repository)
 	home, path := newSyntheticCodexHome(t)
-	discoverer, _ := logs.NewDiscoverer(home)
+	discoverer, _ := logsource.NewDiscoverer(home)
 	content := []byte(rolloutSessionMetaLine("session-a") + "\n")
 	writeSyntheticRollout(t, path, content, time.Unix(10, 0))
 	discoveryA, _ := discoverer.Discover(ctx)
-	planA, _ := logs.PlanReconcile(home, nil, discoveryA)
+	planA, _ := logsource.PlanReconcile(home, nil, discoveryA)
 	streamA, err := ingester.Open(ctx, OpenRequest{Action: planA.Actions[0], AtMS: 10})
 	if err != nil {
 		t.Fatalf("Open(initial A) error = %v", err)
@@ -327,8 +328,8 @@ func TestIngesterResumesInitialPhysicalReplacementWithoutActiveSnapshot(t *testi
 		t.Fatalf("CodexSnapshots(initial A) = %#v, %v, want none", durable, err)
 	}
 	discoveryB, _ := discoverer.DiscoverAgainst(ctx, nil)
-	planB, err := logs.PlanReconcile(home, nil, discoveryB)
-	if err != nil || len(planB.Actions) != 1 || planB.Actions[0].Kind != logs.ChangeAdded {
+	planB, err := logsource.PlanReconcile(home, nil, discoveryB)
+	if err != nil || len(planB.Actions) != 1 || planB.Actions[0].Kind != logsource.ChangeAdded {
 		t.Fatalf("PlanReconcile(initial B) = %#v, %v", planB, err)
 	}
 	streamB, err := ingester.Open(ctx, OpenRequest{Action: planB.Actions[0], AtMS: 40})
@@ -367,15 +368,15 @@ func TestIngesterKeepsOldFactsVisibleUntilReplacementEOF(t *testing.T) {
 	home, path := newSyntheticCodexHome(t)
 	oldContent := completeRollout("session-a", "turn-old")
 	writeSyntheticRollout(t, path, oldContent, time.Unix(10, 0))
-	discoverer, err := logs.NewDiscoverer(home)
+	discoverer, err := logsource.NewDiscoverer(home)
 	if err != nil {
-		t.Fatalf("logs.NewDiscoverer() error = %v", err)
+		t.Fatalf("logsource.NewDiscoverer() error = %v", err)
 	}
 	oldDiscovery, err := discoverer.Discover(ctx)
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	oldPlan, _ := logs.PlanReconcile(home, nil, oldDiscovery)
+	oldPlan, _ := logsource.PlanReconcile(home, nil, oldDiscovery)
 	oldStream, err := ingester.Open(ctx, OpenRequest{Action: oldPlan.Actions[0], AtMS: 10})
 	if err != nil {
 		t.Fatalf("Open(old) error = %v", err)
@@ -393,9 +394,9 @@ func TestIngesterKeepsOldFactsVisibleUntilReplacementEOF(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DiscoverAgainst() error = %v", err)
 	}
-	newPlan, err := logs.PlanReconcile(home, oldDiscovery.Snapshots, newDiscovery)
+	newPlan, err := logsource.PlanReconcile(home, oldDiscovery.Snapshots, newDiscovery)
 	if err != nil || len(newPlan.Actions) != 1 ||
-		(newPlan.Actions[0].Kind != logs.ChangeReplaced && newPlan.Actions[0].Kind != logs.ChangeTruncated) {
+		(newPlan.Actions[0].Kind != logsource.ChangeReplaced && newPlan.Actions[0].Kind != logsource.ChangeTruncated) {
 		t.Fatalf("PlanReconcile(replacement) = %#v, %v", newPlan, err)
 	}
 	newStream, err := ingester.Open(ctx, OpenRequest{Action: newPlan.Actions[0], AtMS: 30})
@@ -437,12 +438,12 @@ func TestIngesterReplacesNewPhysicalIdentityEndToEnd(t *testing.T) {
 	home, path := newSyntheticCodexHome(t)
 	oldContent := completeRollout("session-a", "turn-old")
 	writeSyntheticRollout(t, path, oldContent, time.Unix(10, 0))
-	discoverer, _ := logs.NewDiscoverer(home)
+	discoverer, _ := logsource.NewDiscoverer(home)
 	oldDiscovery, err := discoverer.Discover(ctx)
 	if err != nil {
 		t.Fatalf("Discover(old) error = %v", err)
 	}
-	oldPlan, _ := logs.PlanReconcile(home, nil, oldDiscovery)
+	oldPlan, _ := logsource.PlanReconcile(home, nil, oldDiscovery)
 	oldStream, err := ingester.Open(ctx, OpenRequest{Action: oldPlan.Actions[0], AtMS: 10})
 	if err != nil {
 		t.Fatalf("Open(old) error = %v", err)
@@ -460,8 +461,8 @@ func TestIngesterReplacesNewPhysicalIdentityEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DiscoverAgainst(new identity) error = %v", err)
 	}
-	newPlan, err := logs.PlanReconcile(home, oldDiscovery.Snapshots, newDiscovery)
-	if err != nil || len(newPlan.Actions) != 1 || newPlan.Actions[0].Kind != logs.ChangeReplaced ||
+	newPlan, err := logsource.PlanReconcile(home, oldDiscovery.Snapshots, newDiscovery)
+	if err != nil || len(newPlan.Actions) != 1 || newPlan.Actions[0].Kind != logsource.ChangeReplaced ||
 		newPlan.Actions[0].Previous == nil || newPlan.Actions[0].Current == nil ||
 		newPlan.Actions[0].Previous.SourceFileID == newPlan.Actions[0].Current.SourceFileID {
 		t.Fatalf("PlanReconcile(new identity) = %#v, %v, want one physical replacement", newPlan, err)
@@ -495,9 +496,9 @@ func TestIngesterPoisonsFailedStreamAndLeavesDurableCheckpoint(t *testing.T) {
 	home, rolloutPath := newSyntheticCodexHome(t)
 	content := []byte(rolloutSessionMetaLine("session-a") + "\n")
 	writeSyntheticRollout(t, rolloutPath, content, time.Unix(10, 0))
-	discoverer, _ := logs.NewDiscoverer(home)
+	discoverer, _ := logsource.NewDiscoverer(home)
 	discovery, _ := discoverer.Discover(ctx)
-	plan, _ := logs.PlanReconcile(home, nil, discovery)
+	plan, _ := logsource.PlanReconcile(home, nil, discovery)
 	stream, err := ingester.Open(ctx, OpenRequest{Action: plan.Actions[0], AtMS: 10})
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
@@ -533,7 +534,7 @@ func TestIngesterRejectsActionsWithoutRolloutStream(t *testing.T) {
 	repository, _ := openIndexerRepository(t)
 	ingester, _ := New(repository)
 	if _, err := ingester.Open(context.Background(), OpenRequest{
-		Action: logs.ReconcileAction{Kind: logs.ChangeDeleted}, AtMS: 1,
+		Action: logsource.ReconcileAction{Kind: logsource.ChangeDeleted}, AtMS: 1,
 	}); !errors.Is(err, ErrNoStream) {
 		t.Fatalf("Open(deleted) error = %v, want ErrNoStream", err)
 	}
@@ -551,12 +552,12 @@ func TestIngesterPersistsTerminalBeforeStartWithoutReorderingOffsets(t *testing.
 	start := rolloutTurnStartLine("turn-late")
 	content := []byte(meta + "\n" + terminal + "\n" + start + "\n")
 	writeSyntheticRollout(t, path, content, time.Unix(10, 0))
-	discoverer, _ := logs.NewDiscoverer(home)
+	discoverer, _ := logsource.NewDiscoverer(home)
 	discovery, err := discoverer.Discover(ctx)
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	plan, err := logs.PlanReconcile(home, nil, discovery)
+	plan, err := logsource.PlanReconcile(home, nil, discovery)
 	if err != nil {
 		t.Fatalf("PlanReconcile() error = %v", err)
 	}
@@ -592,7 +593,7 @@ func TestIngesterRebuildsWhenParserVersionChanges(t *testing.T) {
 	home, path := newSyntheticCodexHome(t)
 	content := completeRollout("session-a", "turn-a")
 	writeSyntheticRollout(t, path, content, time.Unix(10, 0))
-	discoverer, _ := logs.NewDiscoverer(home)
+	discoverer, _ := logsource.NewDiscoverer(home)
 	discovery, _ := discoverer.Discover(ctx)
 	snapshot := discovery.Snapshots[0]
 	fingerprint := sourceFingerprintFromSnapshot(snapshot)
@@ -628,14 +629,14 @@ func TestIngesterRebuildsWhenParserVersionChanges(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CommitIngestBatch(old parser) error = %v", err)
 	}
-	action := logs.ReconcileAction{Kind: logs.ChangeUnchanged, Previous: &snapshot, Current: &snapshot}
+	action := logsource.ReconcileAction{Kind: logsource.ChangeUnchanged, Previous: &snapshot, Current: &snapshot}
 	ingester, _ := New(repository)
 	stream, err := ingester.Open(ctx, OpenRequest{Action: action, AtMS: 30})
 	if err != nil {
 		t.Fatalf("Open(parser upgrade) error = %v", err)
 	}
 	if stream.cursor.Generation != 1 || stream.cursor.State != store.GenerationBuilding ||
-		stream.cursor.ParserVersion != logs.ParserVersion {
+		stream.cursor.ParserVersion != logparser.ParserVersion {
 		t.Fatalf("Open(parser upgrade) cursor = %#v, want building generation 1", stream.cursor)
 	}
 }
@@ -652,9 +653,9 @@ func TestIngesterRestoresOpenTurnProjectionAcrossRestart(t *testing.T) {
 	contextLine := `{"timestamp":"2026-07-14T01:00:02Z","type":"turn_context","payload":{"turn_id":"turn-a","cwd":"/tmp/project","model":"gpt-5","effort":"high"}}`
 	initialContent := []byte(meta + "\n" + start + "\n" + contextLine + "\n")
 	writeSyntheticRollout(t, path, initialContent, time.Unix(10, 0))
-	discoverer, _ := logs.NewDiscoverer(home)
+	discoverer, _ := logsource.NewDiscoverer(home)
 	initialDiscovery, _ := discoverer.Discover(ctx)
-	initialPlan, _ := logs.PlanReconcile(home, nil, initialDiscovery)
+	initialPlan, _ := logsource.PlanReconcile(home, nil, initialDiscovery)
 	stream, err := ingester.Open(ctx, OpenRequest{Action: initialPlan.Actions[0], AtMS: 10})
 	if err != nil {
 		t.Fatalf("Open(initial) error = %v", err)
@@ -671,7 +672,7 @@ func TestIngesterRestoresOpenTurnProjectionAcrossRestart(t *testing.T) {
 	fullContent := append(append([]byte(nil), initialContent...), []byte(terminal)...)
 	writeSyntheticRollout(t, path, fullContent, time.Unix(20, 0))
 	nextDiscovery, _ := discoverer.DiscoverAgainst(ctx, initialDiscovery.Snapshots)
-	nextPlan, _ := logs.PlanReconcile(home, initialDiscovery.Snapshots, nextDiscovery)
+	nextPlan, _ := logsource.PlanReconcile(home, initialDiscovery.Snapshots, nextDiscovery)
 	restarted, err := ingester.Open(ctx, OpenRequest{Action: nextPlan.Actions[0], AtMS: 30})
 	if err != nil {
 		t.Fatalf("Open(restart) error = %v", err)
@@ -699,9 +700,9 @@ func TestIngesterRestoresCounterEpochAcrossRestart(t *testing.T) {
 	usage100 := rolloutSessionUsageLine(100, 50)
 	initialContent := []byte(meta + "\n" + usage100 + "\n")
 	writeSyntheticRollout(t, path, initialContent, time.Unix(10, 0))
-	discoverer, _ := logs.NewDiscoverer(home)
+	discoverer, _ := logsource.NewDiscoverer(home)
 	initialDiscovery, _ := discoverer.Discover(ctx)
-	initialPlan, _ := logs.PlanReconcile(home, nil, initialDiscovery)
+	initialPlan, _ := logsource.PlanReconcile(home, nil, initialDiscovery)
 	stream, err := ingester.Open(ctx, OpenRequest{Action: initialPlan.Actions[0], AtMS: 10})
 	if err != nil {
 		t.Fatalf("Open(initial) error = %v", err)
@@ -719,7 +720,7 @@ func TestIngesterRestoresCounterEpochAcrossRestart(t *testing.T) {
 	fullContent := append(append([]byte(nil), initialContent...), []byte(usage50)...)
 	writeSyntheticRollout(t, path, fullContent, time.Unix(20, 0))
 	nextDiscovery, _ := discoverer.DiscoverAgainst(ctx, initialDiscovery.Snapshots)
-	nextPlan, _ := logs.PlanReconcile(home, initialDiscovery.Snapshots, nextDiscovery)
+	nextPlan, _ := logsource.PlanReconcile(home, initialDiscovery.Snapshots, nextDiscovery)
 	restarted, err := ingester.Open(ctx, OpenRequest{Action: nextPlan.Actions[0], AtMS: 30})
 	if err != nil {
 		t.Fatalf("Open(restart) error = %v", err)
@@ -744,9 +745,9 @@ func TestIngesterCommitsMetadataOnlyMoveWithoutReplayingFacts(t *testing.T) {
 	home, path := newSyntheticCodexHome(t)
 	content := []byte(rolloutSessionMetaLine("session-a") + "\n")
 	writeSyntheticRollout(t, path, content, time.Unix(10, 0))
-	discoverer, _ := logs.NewDiscoverer(home)
+	discoverer, _ := logsource.NewDiscoverer(home)
 	initialDiscovery, _ := discoverer.Discover(ctx)
-	initialPlan, _ := logs.PlanReconcile(home, nil, initialDiscovery)
+	initialPlan, _ := logsource.PlanReconcile(home, nil, initialDiscovery)
 	stream, err := ingester.Open(ctx, OpenRequest{Action: initialPlan.Actions[0], AtMS: 10})
 	if err != nil {
 		t.Fatalf("Open(initial) error = %v", err)
@@ -765,8 +766,8 @@ func TestIngesterCommitsMetadataOnlyMoveWithoutReplayingFacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DiscoverAgainst(move) error = %v", err)
 	}
-	nextPlan, err := logs.PlanReconcile(home, initialDiscovery.Snapshots, nextDiscovery)
-	if err != nil || len(nextPlan.Actions) != 1 || nextPlan.Actions[0].Kind != logs.ChangeMoved {
+	nextPlan, err := logsource.PlanReconcile(home, initialDiscovery.Snapshots, nextDiscovery)
+	if err != nil || len(nextPlan.Actions) != 1 || nextPlan.Actions[0].Kind != logsource.ChangeMoved {
 		t.Fatalf("PlanReconcile(move) = %#v, %v", nextPlan, err)
 	}
 	moved, err := ingester.Open(ctx, OpenRequest{Action: nextPlan.Actions[0], AtMS: 30})
@@ -795,8 +796,8 @@ func TestIngesterCommitsMetadataOnlyMoveWithoutReplayingFacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DiscoverAgainst(grown archive) error = %v", err)
 	}
-	grownPlan, err := logs.PlanReconcile(home, snapshotsFromStore(durableMoved), grownDiscovery)
-	if err != nil || len(grownPlan.Actions) != 1 || grownPlan.Actions[0].Kind != logs.ChangeGrown {
+	grownPlan, err := logsource.PlanReconcile(home, snapshotsFromStore(durableMoved), grownDiscovery)
+	if err != nil || len(grownPlan.Actions) != 1 || grownPlan.Actions[0].Kind != logsource.ChangeGrown {
 		t.Fatalf("PlanReconcile(grown archive) = %#v, %v", grownPlan, err)
 	}
 	grown, err := ingester.Open(ctx, OpenRequest{Action: grownPlan.Actions[0], AtMS: 60})
@@ -830,8 +831,8 @@ func TestIngesterCommitsMetadataOnlyMoveWithoutReplayingFacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DiscoverAgainst(archived rebuild) error = %v", err)
 	}
-	rebuildPlan, err := logs.PlanReconcile(home, snapshotsFromStore(durableArchived), rebuildDiscovery)
-	if err != nil || len(rebuildPlan.Actions) != 1 || rebuildPlan.Actions[0].Kind != logs.ChangeUnchanged {
+	rebuildPlan, err := logsource.PlanReconcile(home, snapshotsFromStore(durableArchived), rebuildDiscovery)
+	if err != nil || len(rebuildPlan.Actions) != 1 || rebuildPlan.Actions[0].Kind != logsource.ChangeUnchanged {
 		t.Fatalf("PlanReconcile(archived rebuild) = %#v, %v", rebuildPlan, err)
 	}
 	rebuild, err := ingester.Open(ctx, OpenRequest{Action: rebuildPlan.Actions[0], AtMS: 90})
@@ -857,13 +858,13 @@ func TestIngesterCommitsJobCursorWithFactsAndCheckpoint(t *testing.T) {
 	home, path := newSyntheticCodexHome(t)
 	content := []byte(rolloutSessionMetaLine("session-a") + "\n")
 	writeSyntheticRollout(t, path, content, time.Unix(10, 0))
-	discoverer, _ := logs.NewDiscoverer(home)
+	discoverer, _ := logsource.NewDiscoverer(home)
 	discovery, _ := discoverer.Discover(ctx)
-	plan, _ := logs.PlanReconcile(home, nil, discovery)
+	plan, _ := logsource.PlanReconcile(home, nil, discovery)
 	fingerprint := sourceFingerprintFromSnapshot(*plan.Actions[0].Current)
 	if _, err := repository.PrepareGeneration(ctx, store.PrepareGenerationRequest{
 		Mode: store.GenerationModeRebuild, Current: fingerprint,
-		ParserVersion: logs.ParserVersion, AtMS: 5,
+		ParserVersion: logparser.ParserVersion, AtMS: 5,
 	}); err != nil {
 		t.Fatalf("PrepareGeneration() error = %v", err)
 	}
@@ -943,13 +944,13 @@ func writeSyntheticRollout(t *testing.T, path string, content []byte, modified t
 	}
 }
 
-func snapshotsFromStore(values []store.SourceFingerprint) []logs.Snapshot {
-	result := make([]logs.Snapshot, len(values))
+func snapshotsFromStore(values []store.SourceFingerprint) []logsource.Snapshot {
+	result := make([]logsource.Snapshot, len(values))
 	for index, value := range values {
-		result[index] = logs.Snapshot{
+		result[index] = logsource.Snapshot{
 			SourceFileID: value.SourceFileID, Provider: value.Provider,
-			Kind: logs.SourceKind(value.SourceKind), Path: value.CurrentPath,
-			Fingerprint: logs.Fingerprint{
+			Kind: logsource.SourceKind(value.SourceKind), Path: value.CurrentPath,
+			Fingerprint: logsource.Fingerprint{
 				DeviceID: value.DeviceID, Inode: value.Inode, SizeBytes: value.SizeBytes,
 				MTimeNS: value.MTimeNS, PrefixBytes: value.PrefixBytes,
 				PrefixSHA256: value.PrefixSHA256, Digest: value.FingerprintSHA256,

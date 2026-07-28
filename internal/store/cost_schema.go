@@ -1,12 +1,14 @@
 package store
 
-var costSchemaObjects = []schemaObject{
-	{objectType: "table", name: "pricing_catalog_metadata", statement: `CREATE TABLE IF NOT EXISTS pricing_catalog_metadata (
+import storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
+
+var costSchemaObjects = []storeschema.Object{
+	{ObjectType: "table", Name: "pricing_catalog_metadata", Statement: `CREATE TABLE IF NOT EXISTS pricing_catalog_metadata (
 		pricing_version TEXT PRIMARY KEY CHECK (length(pricing_version) > 0) REFERENCES pricing_versions(pricing_version) ON DELETE CASCADE,
 		source_url TEXT NOT NULL CHECK (length(source_url) > 0 AND length(source_url) <= 2048 AND source_url LIKE 'https://%'),
 		verified_at_ms INTEGER NOT NULL CHECK (verified_at_ms > 0)
 	) STRICT`},
-	{objectType: "table", name: "cost_rollup_generations", statement: `CREATE TABLE IF NOT EXISTS cost_rollup_generations (
+	{ObjectType: "table", Name: "cost_rollup_generations", Statement: `CREATE TABLE IF NOT EXISTS cost_rollup_generations (
 		generation_id TEXT PRIMARY KEY CHECK (length(generation_id) > 0),
 		reporting_timezone TEXT NOT NULL CHECK (length(reporting_timezone) > 0),
 		pricing_source TEXT NOT NULL CHECK (length(pricing_source) > 0),
@@ -27,7 +29,7 @@ var costSchemaObjects = []schemaObject{
 			)
 		)
 	) STRICT`},
-	{objectType: "table", name: "turn_costs", statement: `CREATE TABLE IF NOT EXISTS turn_costs (
+	{ObjectType: "table", Name: "turn_costs", Statement: `CREATE TABLE IF NOT EXISTS turn_costs (
 		generation_id TEXT NOT NULL CHECK (length(generation_id) > 0) REFERENCES cost_rollup_generations(generation_id) ON DELETE CASCADE,
 		turn_id TEXT NOT NULL CHECK (length(turn_id) > 0) REFERENCES turns(turn_id) ON DELETE CASCADE,
 		pricing_version TEXT CHECK (pricing_version IS NULL OR length(pricing_version) > 0) REFERENCES pricing_versions(pricing_version),
@@ -44,7 +46,7 @@ var costSchemaObjects = []schemaObject{
 			OR (pricing_status = 'unpriced' AND pricing_reason != 'priced' AND estimated_usd_micros IS NULL)
 		)
 	) STRICT`},
-	{objectType: "table", name: "session_usage_rollups", statement: `CREATE TABLE IF NOT EXISTS session_usage_rollups (
+	{ObjectType: "table", Name: "session_usage_rollups", Statement: `CREATE TABLE IF NOT EXISTS session_usage_rollups (
 		generation_id TEXT NOT NULL CHECK (length(generation_id) > 0) REFERENCES cost_rollup_generations(generation_id) ON DELETE CASCADE,
 		session_id TEXT NOT NULL CHECK (length(session_id) > 0) REFERENCES sessions(session_id) ON DELETE CASCADE,
 		turn_count INTEGER NOT NULL CHECK (turn_count > 0),
@@ -72,7 +74,7 @@ var costSchemaObjects = []schemaObject{
 			)
 		)
 	) STRICT`},
-	{objectType: "table", name: "usage_daily", statement: `CREATE TABLE IF NOT EXISTS usage_daily (
+	{ObjectType: "table", Name: "usage_daily", Statement: `CREATE TABLE IF NOT EXISTS usage_daily (
 		generation_id TEXT NOT NULL CHECK (length(generation_id) > 0),
 		bucket_start_ms INTEGER NOT NULL CHECK (bucket_start_ms >= 0),
 		reporting_timezone TEXT NOT NULL CHECK (length(reporting_timezone) > 0),
@@ -102,7 +104,7 @@ var costSchemaObjects = []schemaObject{
 			)
 		)
 	) STRICT`},
-	{objectType: "table", name: "project_usage_daily", statement: `CREATE TABLE IF NOT EXISTS project_usage_daily (
+	{ObjectType: "table", Name: "project_usage_daily", Statement: `CREATE TABLE IF NOT EXISTS project_usage_daily (
 		generation_id TEXT NOT NULL CHECK (length(generation_id) > 0),
 		bucket_start_ms INTEGER NOT NULL CHECK (bucket_start_ms >= 0),
 		reporting_timezone TEXT NOT NULL CHECK (length(reporting_timezone) > 0),
@@ -139,7 +141,7 @@ var costSchemaObjects = []schemaObject{
 			)
 		)
 	) STRICT`},
-	{objectType: "table", name: "model_usage_daily", statement: `CREATE TABLE IF NOT EXISTS model_usage_daily (
+	{ObjectType: "table", Name: "model_usage_daily", Statement: `CREATE TABLE IF NOT EXISTS model_usage_daily (
 		generation_id TEXT NOT NULL CHECK (length(generation_id) > 0),
 		bucket_start_ms INTEGER NOT NULL CHECK (bucket_start_ms >= 0),
 		reporting_timezone TEXT NOT NULL CHECK (length(reporting_timezone) > 0),
@@ -176,16 +178,16 @@ var costSchemaObjects = []schemaObject{
 			)
 		)
 	) STRICT`},
-	{objectType: "index", name: "idx_cost_rollup_generations_active", statement: `CREATE UNIQUE INDEX IF NOT EXISTS idx_cost_rollup_generations_active
+	{ObjectType: "index", Name: "idx_cost_rollup_generations_active", Statement: `CREATE UNIQUE INDEX IF NOT EXISTS idx_cost_rollup_generations_active
 		ON cost_rollup_generations(reporting_timezone) WHERE state = 'active'`},
-	{objectType: "index", name: "idx_turn_costs_turn", statement: `CREATE INDEX IF NOT EXISTS idx_turn_costs_turn
+	{ObjectType: "index", Name: "idx_turn_costs_turn", Statement: `CREATE INDEX IF NOT EXISTS idx_turn_costs_turn
 		ON turn_costs(turn_id, generation_id)`},
-	{objectType: "index", name: "idx_session_usage_rollups_session", statement: `CREATE INDEX IF NOT EXISTS idx_session_usage_rollups_session
+	{ObjectType: "index", Name: "idx_session_usage_rollups_session", Statement: `CREATE INDEX IF NOT EXISTS idx_session_usage_rollups_session
 		ON session_usage_rollups(session_id, generation_id)`},
-	{objectType: "index", name: "idx_usage_daily_bucket", statement: `CREATE INDEX IF NOT EXISTS idx_usage_daily_bucket
+	{ObjectType: "index", Name: "idx_usage_daily_bucket", Statement: `CREATE INDEX IF NOT EXISTS idx_usage_daily_bucket
 		ON usage_daily(bucket_start_ms, generation_id)`},
-	{objectType: "index", name: "idx_project_usage_daily_dimension", statement: `CREATE INDEX IF NOT EXISTS idx_project_usage_daily_dimension
+	{ObjectType: "index", Name: "idx_project_usage_daily_dimension", Statement: `CREATE INDEX IF NOT EXISTS idx_project_usage_daily_dimension
 		ON project_usage_daily(dimension_key, bucket_start_ms, generation_id)`},
-	{objectType: "index", name: "idx_model_usage_daily_dimension", statement: `CREATE INDEX IF NOT EXISTS idx_model_usage_daily_dimension
+	{ObjectType: "index", Name: "idx_model_usage_daily_dimension", Statement: `CREATE INDEX IF NOT EXISTS idx_model_usage_daily_dimension
 		ON model_usage_daily(dimension_key, bucket_start_ms, generation_id)`},
 }

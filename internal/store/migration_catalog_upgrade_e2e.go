@@ -5,9 +5,10 @@ package store
 import (
 	"context"
 	"fmt"
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"strconv"
 
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -44,13 +45,13 @@ func applicationMigrationCatalog() []migrationDefinition {
 	return catalog
 }
 
-func applicationMigrationVerifier() func(context.Context, storesqlite.WriteTx) error {
+func applicationMigrationVerifier() func(context.Context, *gorm.DB) error {
 	if upgradeE2ESchemaLimit == "" {
 		return verifyApplicationSchema
 	}
 	limit, err := strconv.Atoi(upgradeE2ESchemaLimit)
 	if err != nil {
-		return func(context.Context, storesqlite.WriteTx) error {
+		return func(context.Context, *gorm.DB) error {
 			return fmt.Errorf("%w: invalid upgrade E2E schema verifier", ErrMigrationContract)
 		}
 	}
@@ -60,26 +61,26 @@ func applicationMigrationVerifier() func(context.Context, storesqlite.WriteTx) e
 	case applicationSchemaV14Version:
 		return verifyApplicationSchemaV14ForUpgradeE2E
 	default:
-		return func(context.Context, storesqlite.WriteTx) error {
+		return func(context.Context, *gorm.DB) error {
 			return fmt.Errorf("%w: unsupported upgrade E2E schema verifier", ErrMigrationContract)
 		}
 	}
 }
 
-func verifyApplicationSchemaV13ForUpgradeE2E(ctx context.Context, transaction storesqlite.WriteTx) error {
-	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV13(), retentionSchemaObjects,
+func verifyApplicationSchemaV13ForUpgradeE2E(ctx context.Context, transaction *gorm.DB) error {
+	for _, objects := range [][]storeschema.Object{
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV13(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects, quotaSchemaObjects, quotaProjectionSchemaObjects,
 		quotaScheduleSchemaObjects, metricsSchemaObjects,
 	} {
 		for _, object := range objects {
-			exists, err := verifySchemaObject(ctx, transaction, object)
+			exists, err := storeschema.VerifyObject(ctx, transaction, object)
 			if err != nil {
 				return err
 			}
 			if !exists {
-				return fmt.Errorf("%w: missing %s %q", ErrSchemaContract, object.objectType, object.name)
+				return fmt.Errorf("%w: missing %s %q", storeschema.ErrContract, object.ObjectType, object.Name)
 			}
 		}
 	}
@@ -89,20 +90,20 @@ func verifyApplicationSchemaV13ForUpgradeE2E(ctx context.Context, transaction st
 	return verifyMetricsMigrationColumns(transaction)
 }
 
-func verifyApplicationSchemaV14ForUpgradeE2E(ctx context.Context, transaction storesqlite.WriteTx) error {
-	for _, objects := range [][]schemaObject{
-		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), retentionSchemaObjects,
+func verifyApplicationSchemaV14ForUpgradeE2E(ctx context.Context, transaction *gorm.DB) error {
+	for _, objects := range [][]storeschema.Object{
+		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects, quotaSchemaObjects, quotaProjectionSchemaObjects,
 		quotaScheduleSchemaObjects, metricsSchemaObjects,
 	} {
 		for _, object := range objects {
-			exists, err := verifySchemaObject(ctx, transaction, object)
+			exists, err := storeschema.VerifyObject(ctx, transaction, object)
 			if err != nil {
 				return err
 			}
 			if !exists {
-				return fmt.Errorf("%w: missing %s %q", ErrSchemaContract, object.objectType, object.name)
+				return fmt.Errorf("%w: missing %s %q", storeschema.ErrContract, object.ObjectType, object.Name)
 			}
 		}
 	}
@@ -124,7 +125,7 @@ func (repository *Repository) UpgradeE2ESchemaVersion(ctx context.Context) (int,
 		return 0, err
 	}
 	version := 0
-	err = repository.database.View(ctx, func(ctx context.Context, connection storesqlite.ReadConn) error {
+	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		state, err := inspectMigrationState(ctx, connection)
 		if err != nil {
 			return err
