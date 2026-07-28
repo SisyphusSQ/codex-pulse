@@ -549,7 +549,7 @@ private func testFeatureRefreshRetainsNativeContentIdentity() async throws {
 
     for _ in 0..<20 where recorder.views.isEmpty {
         hostingView.layoutSubtreeIfNeeded()
-        try await Task.sleep(for: .milliseconds(1))
+        try await sleepForTest(.milliseconds(1))
     }
     try expect(recorder.views.count == 1, "initial feature content must create one native view")
     let initialView = recorder.views[0]
@@ -565,7 +565,7 @@ private func testFeatureRefreshRetainsNativeContentIdentity() async throws {
         hostingView.needsLayout = true
         for _ in 0..<3 {
             hostingView.layoutSubtreeIfNeeded()
-            try await Task.sleep(for: .milliseconds(1))
+            try await sleepForTest(.milliseconds(1))
         }
     }
 
@@ -1484,7 +1484,7 @@ private func waitUntil(
     let deadline = clock.now.advanced(by: timeout)
     while clock.now < deadline {
         if await condition() { return }
-        try await Task.sleep(for: .milliseconds(10))
+        try await sleepForTest(.milliseconds(10))
     }
     throw TestFailure.mismatch("timed out: \(context)")
 }
@@ -1585,6 +1585,15 @@ private actor ForegroundSurfaceRecorder {
     }
 }
 
+private func sleepForTest(_ duration: Duration) async throws {
+    let components = duration.components
+    let seconds = max(
+        0,
+        Double(components.seconds) + Double(components.attoseconds) / 1e18
+    )
+    try await Task.sleep(nanoseconds: UInt64(seconds * 1e9))
+}
+
 private actor FakeSupervisor: HelperSupervising {
     private var starts = 0
     private var stops = 0
@@ -1598,7 +1607,7 @@ private actor FakeSupervisor: HelperSupervising {
 
     func start() async throws -> RunningHelper {
         starts += 1
-        if startDelay != .zero { try await Task.sleep(for: startDelay) }
+        if startDelay != .zero { try await sleepForTest(startDelay) }
         if startFailure { throw FakeFailure.unavailable }
         return RunningHelper(
             processID: 42,
@@ -1836,7 +1845,7 @@ private actor FakeCore: AppCoreServing {
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_HandshakeResponse {
         calls.append("handshake")
-        if handshakeDelay != .zero { try await Task.sleep(for: handshakeDelay) }
+        if handshakeDelay != .zero { try await sleepForTest(handshakeDelay) }
         if let handshakeError { throw handshakeError }
         if handshakeFailure { throw FakeFailure.unavailable }
         var response = Codexpulse_Core_V1_HandshakeResponse()
@@ -1849,7 +1858,7 @@ private actor FakeCore: AppCoreServing {
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_BootstrapResponse {
         calls.append("bootstrap")
-        if bootstrapDelay != .zero { try await Task.sleep(for: bootstrapDelay) }
+        if bootstrapDelay != .zero { try await sleepForTest(bootstrapDelay) }
         return bootstrapResponse
     }
 
@@ -1863,7 +1872,7 @@ private actor FakeCore: AppCoreServing {
             tokenActivityRequests.append(request)
             let shouldFail = failOverview || failTokenActivity
             await waitForOverviewBarrier()
-            if overviewDelay != .zero { try await Task.sleep(for: overviewDelay) }
+            if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
             if shouldFail { throw FakeFailure.unavailable }
             return responses.tokenActivityUsage
         }
@@ -1877,7 +1886,7 @@ private actor FakeCore: AppCoreServing {
             completedUsageCalls += 1
         }
         await waitForOverviewBarrier()
-        if overviewDelay != .zero { try await Task.sleep(for: overviewDelay) }
+        if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
         if shouldFail { throw FakeFailure.unavailable }
         return responses.usage
     }
@@ -1889,7 +1898,7 @@ private actor FakeCore: AppCoreServing {
         calls.append("quota")
         let shouldFail = failOverview
         await waitForOverviewBarrier()
-        if overviewDelay != .zero { try await Task.sleep(for: overviewDelay) }
+        if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
         if shouldFail { throw FakeFailure.unavailable }
         return responses.quota
     }
@@ -1899,7 +1908,7 @@ private actor FakeCore: AppCoreServing {
     ) async throws -> Codexpulse_Core_V1_AccountSnapshotResponse {
         calls.append("account")
         defer { completedAccountCalls += 1 }
-        if accountDelay != .zero { try await Task.sleep(for: accountDelay) }
+        if accountDelay != .zero { try await sleepForTest(accountDelay) }
         if failAccount { throw FakeFailure.unavailable }
         return responses.account ?? .init()
     }
@@ -1915,13 +1924,13 @@ private actor FakeCore: AppCoreServing {
             && request.query.hasExactTimeRange
         if !isOverviewRequest, !featureSessionPlans.isEmpty {
             let plan = featureSessionPlans.removeFirst()
-            if plan.delay != .zero { try await Task.sleep(for: plan.delay) }
+            if plan.delay != .zero { try await sleepForTest(plan.delay) }
             if plan.fails { throw FakeFailure.unavailable }
             return plan.response
         }
         let shouldFail = failOverview
         await waitForOverviewBarrier()
-        if overviewDelay != .zero { try await Task.sleep(for: overviewDelay) }
+        if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
         if shouldFail { throw FakeFailure.unavailable }
         return responses.sessions
     }
@@ -1933,7 +1942,7 @@ private actor FakeCore: AppCoreServing {
         calls.append("session-detail:\(request.sessionID)")
         guard !featureSessionDetailPlans.isEmpty else { throw FakeFailure.unavailable }
         let plan = featureSessionDetailPlans.removeFirst()
-        if plan.delay != .zero { try await Task.sleep(for: plan.delay) }
+        if plan.delay != .zero { try await sleepForTest(plan.delay) }
         if plan.fails { throw FakeFailure.unavailable }
         return plan.response
     }
@@ -1946,7 +1955,7 @@ private actor FakeCore: AppCoreServing {
         projectRequests.append(request)
         let shouldFail = failOverview
         await waitForOverviewBarrier()
-        if overviewDelay != .zero { try await Task.sleep(for: overviewDelay) }
+        if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
         if request.query.page.limit == 5, failOverviewProjects { throw FakeFailure.unavailable }
         if shouldFail { throw FakeFailure.unavailable }
         if request.query.filters.contains(where: { $0.field == "confidence" }) {
@@ -2017,7 +2026,7 @@ private actor FakeCore: AppCoreServing {
         _ request: Codexpulse_Core_V1_QuotaRefreshRequest
     ) async throws -> Codexpulse_Core_V1_QuotaRefreshReceipt {
         calls.append("quota_refresh:\(request.source)")
-        if quotaRefreshDelay != .zero { try await Task.sleep(for: quotaRefreshDelay) }
+        if quotaRefreshDelay != .zero { try await sleepForTest(quotaRefreshDelay) }
         var receipt = Codexpulse_Core_V1_QuotaRefreshReceipt()
         receipt.source = request.source
         receipt.reason = "accepted"
@@ -2028,7 +2037,7 @@ private actor FakeCore: AppCoreServing {
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_SettingsResponse {
         calls.append("settings")
-        if settingsReadDelay != .zero { try await Task.sleep(for: settingsReadDelay) }
+        if settingsReadDelay != .zero { try await sleepForTest(settingsReadDelay) }
         guard !settingsResponses.isEmpty else { throw FakeFailure.unavailable }
         if settingsResponses.count == 1 { return settingsResponses[0] }
         return settingsResponses.removeFirst()
@@ -2038,7 +2047,7 @@ private actor FakeCore: AppCoreServing {
         _ request: Codexpulse_Core_V1_UpdateSettingsRequest
     ) async throws -> Codexpulse_Core_V1_SettingsUpdateReceipt {
         calls.append("settings_update:\(request.expectedRevision)")
-        if settingsUpdateDelay != .zero { try await Task.sleep(for: settingsUpdateDelay) }
+        if settingsUpdateDelay != .zero { try await sleepForTest(settingsUpdateDelay) }
         if settingsUpdateFailure { throw FakeFailure.unavailable }
         var receipt = Codexpulse_Core_V1_SettingsUpdateReceipt()
         receipt.result = "applied"
@@ -2052,7 +2061,7 @@ private actor FakeCore: AppCoreServing {
         calls.append("health")
         let shouldFail = failOverview
         await waitForOverviewBarrier()
-        if overviewDelay != .zero { try await Task.sleep(for: overviewDelay) }
+        if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
         if shouldFail { throw FakeFailure.unavailable }
         return responses.health
     }
@@ -2115,14 +2124,16 @@ private actor FakeCore: AppCoreServing {
             throw FakeFailure.unavailable
         }
         if let invalidationDomain {
-            if invalidationDelay != .zero { try await Task.sleep(for: invalidationDelay) }
+            if invalidationDelay != .zero { try await sleepForTest(invalidationDelay) }
             var event = Codexpulse_Core_V1_QueryInvalidationEvent()
             event.version = CodexPulseTransportContract.invalidationVersion
             event.domain = invalidationDomain
             event.sequence = 1
             try await onEvent(event)
         }
-        try await Task.sleep(for: .seconds(60))
+        let idleStream = AsyncStream<Void>.makeStream()
+        for await _ in idleStream.stream {}
+        try Task.checkCancellation()
     }
 
     private func waitForOverviewBarrier() async {
@@ -2134,7 +2145,7 @@ private actor FakeCore: AppCoreServing {
 
     func shutdown(reason: String) async throws {
         calls.append("shutdown:\(reason)")
-        if shutdownDelay != .zero { try await Task.sleep(for: shutdownDelay) }
+        if shutdownDelay != .zero { try await sleepForTest(shutdownDelay) }
     }
     func closeTransport() async { calls.append("close_transport") }
 }
@@ -3389,7 +3400,7 @@ private func testSettingsEditDuringRefreshIsPreserved() async throws {
     }
     await core.setSettingsReadDelay(.milliseconds(120))
     model.loadSettings()
-    try await Task.sleep(for: .milliseconds(20))
+    try await sleepForTest(.milliseconds(20))
     guard var edited = model.settingsDraft else {
         throw TestFailure.mismatch("settings draft missing")
     }
@@ -3593,13 +3604,13 @@ private func testFeatureGenerationPreventsStaleOverwrite() async throws {
         await MainActor.run { model.presentation != nil }
     }
     model.loadSessions(reset: true)
-    try await Task.sleep(for: .milliseconds(20))
+    try await sleepForTest(.milliseconds(20))
     model.sessionOptions.projectID = "replacement"
     model.sessionFiltersChanged()
     try await waitUntil("replacement feature result") {
         await MainActor.run { model.sessionsState.value?.items.first?.sessionID == "new" }
     }
-    try await Task.sleep(for: .milliseconds(140))
+    try await sleepForTest(.milliseconds(140))
     try expect(
         model.sessionsState.value?.items.first?.sessionID == "new",
         "cancelled old generation overwrote replacement")
@@ -5693,7 +5704,7 @@ private func testUnavailableRecoveryFailureDoesNotPublishSuccess() async throws 
     try await waitUntil("failed recovery publishes its second unavailable result") {
         await foreground.unavailableCountValue() == 2
     }
-    try await Task.sleep(for: .milliseconds(100))
+    try await sleepForTest(.milliseconds(100))
     let stats = await core.overviewRecoveryStats()
     try expect(
         stats.usageCalls == 2 && stats.completedUsageCalls == 2,
@@ -5731,7 +5742,7 @@ private func testContractUnavailableCannotRestartLoop() async throws {
         !model.canRefreshOrRestart,
         "non-retryable contract failure must disable refresh/restart actions")
     model.refreshOrRestart()
-    try await Task.sleep(for: .milliseconds(40))
+    try await sleepForTest(.milliseconds(40))
     let counts = await supervisor.counts()
     try expect(counts.0 == 1, "non-retryable contract failure must not start a reconnect loop")
     _ = await model.shutdown()
@@ -5766,7 +5777,7 @@ private func testShutdownDuringStartup() async throws {
     await runtime.setStateSink { state in await recorder.append(state) }
 
     let start = Task { await runtime.start() }
-    try await Task.sleep(for: .milliseconds(20))
+    try await sleepForTest(.milliseconds(20))
     let outcome = await runtime.shutdown()
     await start.value
 
@@ -5789,7 +5800,7 @@ private func testConcurrentStartIsCoalesced() async throws {
     let runtime = AppRuntime(supervisor: supervisor, clientFactory: { _ in core })
 
     let first = Task { await runtime.start() }
-    try await Task.sleep(for: .milliseconds(10))
+    try await sleepForTest(.milliseconds(10))
     await runtime.start()
     await first.value
 
@@ -5808,7 +5819,7 @@ private func testCancelledRefreshCannotOverwriteReplacement() async throws {
 
     await core.setOverviewDelay(.milliseconds(100))
     let first = Task { await runtime.refresh() }
-    try await Task.sleep(for: .milliseconds(20))
+    try await sleepForTest(.milliseconds(20))
     await runtime.cancelRefresh()
     await core.setOverviewDelay(.zero)
     await runtime.refresh()
@@ -5933,7 +5944,7 @@ private func testSuspendingReadinessPastTimeoutPreservesRuntimeUntilWake() async
         await core.systemWillSleepWaiterCount() == 1
     }
     await core.releaseInitialStreamReadinessBarrier()
-    try await Task.sleep(for: .milliseconds(5_200))
+    try await sleepForTest(.milliseconds(5_200))
     let countsPastReadinessTimeout = await supervisor.counts()
 
     await core.releaseSystemWillSleepBarrier()
@@ -6125,7 +6136,7 @@ private func testHelperExitCannotBecomeFeatureCancelled() async throws {
         await MainActor.run { model.sessionsState.value?.items.first?.sessionID == "last-good" }
     }
     model.loadSessions(reset: true)
-    try await Task.sleep(for: .milliseconds(20))
+    try await sleepForTest(.milliseconds(20))
     exit.triggerExit()
     try await waitUntil("feature terminal stale state") {
         await MainActor.run {

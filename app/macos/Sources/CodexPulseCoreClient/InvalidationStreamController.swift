@@ -175,7 +175,7 @@ public actor InvalidationStreamController {
             if state == .suspending || state == .sleeping {
                 throw InvalidationStreamError.suspendedForSleep
             }
-            try await Task.sleep(for: .milliseconds(10))
+            try await Task.sleep(nanoseconds: 10_000_000)
         }
         throw InvalidationStreamError.readinessTimeout
     }
@@ -252,7 +252,7 @@ public actor InvalidationStreamController {
         metrics.reconnectCount += 1
         reconnectStartedAt = ContinuousClock().now
         state = .reconnecting
-        try? await Task.sleep(for: .milliseconds(50 * reconnectAttempts))
+        try? await Task.sleep(nanoseconds: UInt64(50 * reconnectAttempts) * 1_000_000)
         guard desiredRunning, generation == streamGeneration else { return }
         launchStream(generation: generation)
     }

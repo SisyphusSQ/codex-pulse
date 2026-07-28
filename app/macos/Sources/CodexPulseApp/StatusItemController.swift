@@ -276,7 +276,7 @@ final class StatusItemController: NSObject {
                 keyCode: 48,
                 modifierFlags: modifierFlags
             ) else { return false }
-            try? await Task.sleep(for: .milliseconds(20))
+            try? await Task.sleep(nanoseconds: 20_000_000)
             if smokeFocusedControl == target { return true }
         }
         return false
@@ -325,7 +325,7 @@ final class StatusItemController: NSObject {
     ) async -> Bool {
         for _ in 0..<100 {
             if predicate() { return true }
-            try? await Task.sleep(for: .milliseconds(10))
+            try? await Task.sleep(nanoseconds: 10_000_000)
         }
         return false
     }
@@ -367,7 +367,7 @@ private final class PopoverCaptureSource: ObservableObject {
     func waitUntilPrivacyRendered(_ hidden: Bool) async -> Bool {
         for _ in 0..<50 {
             if renderedPrivacyHidden == hidden { return true }
-            try? await Task.sleep(for: .milliseconds(1))
+            try? await Task.sleep(nanoseconds: 1_000_000)
         }
         return false
     }
@@ -568,7 +568,7 @@ private struct MenuBarPopoverView: View {
             isCapturingScreenshot = false
             if result.isFailure { quickActionResult = result }
             let feedback = screenshotFeedback
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
             if screenshotFeedback == feedback {
                 screenshotFeedback = .idle
             }
