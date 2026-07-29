@@ -2,10 +2,12 @@ package app
 
 import (
 	"errors"
+	"time"
 
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -25,6 +27,10 @@ func composeCoreService(
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
+	pricingService, err := pricingcatalog.NewService(repository, time.Now)
+	if err != nil {
+		return nil, errors.Join(core.ErrService, err)
+	}
 	quotaService, err := quotaquery.NewCurrentQueryService(repository)
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
@@ -36,7 +42,8 @@ func composeCoreService(
 		return nil, errors.Join(core.ErrService, err)
 	}
 	return core.NewService(core.ServiceConfig{
-		UsageCost: usageService, RuntimeInfo: runtimeService, QueryObserver: queryObserver,
+		UsageCost: usageService, PricingCatalog: pricingService,
+		RuntimeInfo: runtimeService, QueryObserver: queryObserver,
 	})
 }
 

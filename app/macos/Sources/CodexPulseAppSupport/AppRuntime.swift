@@ -316,6 +316,13 @@ public actor AppRuntime {
         try await performRead { try await $0.usageCost(request, retryPolicy: .transportDefault) }
     }
 
+    public func pricingCatalogCurrent(
+    ) async throws -> Codexpulse_Core_V1_PricingCatalogCurrentResponse {
+        try await performRead {
+            try await $0.pricingCatalogCurrent(retryPolicy: .transportDefault)
+        }
+    }
+
     public func quotaCurrent(
         _ request: Codexpulse_Core_V1_QuotaCurrentRequest
     ) async throws -> Codexpulse_Core_V1_QuotaCurrentResponse {

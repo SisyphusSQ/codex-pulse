@@ -12,7 +12,7 @@ struct QuotaUsageView: View {
                 HStack(alignment: .center, spacing: 16) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("额度与用量").font(.largeTitle.bold())
-                        Text("跟踪额度窗口、Token 趋势和 API 折算成本")
+                        Text("跟踪额度窗口、Token 趋势、API 折算成本和参考价格")
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -26,11 +26,14 @@ struct QuotaUsageView: View {
                     .frame(width: 150)
                     .onChange(of: model.usageRange) { _, _ in model.loadUsage() }
                     Spacer()
-                    if model.quotaState.isLoading || model.usageState.isLoading {
+                    if model.quotaState.isLoading || model.usageState.isLoading ||
+                        model.pricingCatalogState.isLoading
+                    {
                         ProgressView().controlSize(.small)
                     }
                 }
                 quotaSection
+                pricingSection
                 usageSection
             }
             .padding(20)
@@ -55,12 +58,26 @@ struct QuotaUsageView: View {
             UsageContentView(response: $0)
         }
     }
+
+    private var pricingSection: some View {
+        FeatureStateView(
+            state: model.pricingCatalogState,
+            emptyTitle: "当前没有可展示的参考价格",
+            emptySystemImage: "dollarsign.circle"
+        ) {
+            PricingCatalogView(response: $0)
+        }
+    }
 }
 
 private struct QuotaContentView: View {
     let response: Codexpulse_Core_V1_QuotaCurrentResponse
     let refreshState: ActionState
     let refresh: (String) -> Void
+
+    private var displayWindows: [Codexpulse_Core_V1_CurrentWindow] {
+        QuotaWindowDisplayResolver.displayWindows(response.current.windows)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -88,7 +105,7 @@ private struct QuotaContentView: View {
                     .font(.caption).foregroundStyle(.orange)
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], spacing: 12) {
-                ForEach(Array(response.current.windows.enumerated()), id: \.offset) { _, window in
+                ForEach(Array(displayWindows.enumerated()), id: \.offset) { _, window in
                     let presentation = QuotaWindowPresentation(window)
                     SectionCard(title: presentation.title) {
                         HStack(alignment: .firstTextBaseline) {
@@ -120,7 +137,7 @@ private struct QuotaContentView: View {
                     }
                 }
             }
-            if response.current.windows.isEmpty {
+            if displayWindows.isEmpty {
                 Text("没有窗口；这不等于额度充足。")
                     .foregroundStyle(.secondary)
             }
@@ -331,6 +348,99 @@ private struct UsageContentView: View {
     private func shareText(_ tokens: Int64, total: Int64) -> String {
         guard total > 0 else { return "0%" }
         return String(format: "%.1f%%", Double(tokens) / Double(total) * 100)
+    }
+}
+
+private struct PricingCatalogView: View {
+    let response: Codexpulse_Core_V1_PricingCatalogCurrentResponse
+
+    private var rows: [ReferencePriceTableRow] {
+        response.items
+            .filter { ReferencePriceFormatter.shouldDisplay(modelID: $0.modelID) }
+            .sorted { $0.modelID < $1.modelID }
+            .map { ReferencePriceTableRow(item: $0, currency: response.currency) }
+    }
+
+    private var tableHeight: CGFloat {
+        max(220, min(360, CGFloat(rows.count) * 24 + 40))
+    }
+
+    var body: some View {
+        SectionCard(title: "模型参考价格") {
+            Text("OpenAI API Standard 基础文本参考价 · \(response.currency) / 100 万 Token")
+                .font(.subheadline.weight(.medium))
+            Text("仅用于 API 等价折算，不是 Codex 订阅账单。长上下文、Batch、Flex、Priority 和区域处理等可能适用不同费率。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Table(rows) {
+                TableColumn("模型") { row in
+                    Text(row.modelID)
+                        .font(.body.monospaced())
+                        .textSelection(.enabled)
+                }
+                .width(min: 150, ideal: 190)
+                TableColumn("输入") { row in
+                    priceText(row.input)
+                }
+                .width(min: 72, ideal: 90)
+                TableColumn("缓存输入") { row in
+                    priceText(row.cachedInput)
+                }
+                .width(min: 88, ideal: 110)
+                TableColumn("输出") { row in
+                    priceText(row.output)
+                }
+                .width(min: 72, ideal: 90)
+            }
+            .tableStyle(.inset(alternatesRowBackgrounds: false))
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
+            .frame(height: tableHeight)
+            .accessibilityIdentifier("pricing.catalog.table")
+
+            HStack(spacing: 10) {
+                Text(snapshotText)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                if let sourceURL = ReferencePriceFormatter.sourceURL(response) {
+                    Link("OpenAI 官方价格", destination: sourceURL)
+                        .font(.caption)
+                }
+            }
+        }
+        .accessibilityIdentifier("pricing.catalog")
+    }
+
+    private var snapshotText: String {
+        let verified = ReferencePriceFormatter.verifiedDate(response.verifiedAtMs)
+        return if let verified {
+            "价格快照 \(response.pricingVersion) · 验证于 \(verified)"
+        } else {
+            "价格快照 \(response.pricingVersion)"
+        }
+    }
+
+    private func priceText(_ value: String) -> some View {
+        Text(value)
+            .font(.body.monospacedDigit())
+    }
+}
+
+private struct ReferencePriceTableRow: Identifiable {
+    let id: String
+    let modelID: String
+    let input: String
+    let cachedInput: String
+    let output: String
+
+    init(item: Codexpulse_Core_V1_ModelReferencePrice, currency: String) {
+        id = item.modelID
+        modelID = item.modelID
+        input = ReferencePriceFormatter.rate(item.inputMicros, currency: currency)
+        cachedInput = ReferencePriceFormatter.rate(item.cachedInputMicros, currency: currency)
+        output = ReferencePriceFormatter.rate(item.outputMicros, currency: currency)
     }
 }
 

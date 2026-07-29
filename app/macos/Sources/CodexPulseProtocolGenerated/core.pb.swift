@@ -153,6 +153,8 @@ public nonisolated struct Codexpulse_Core_V1_ContractsResponse: Sendable {
   /// Clears the value of `errorExample`. Subsequent reads from it will return its default value.
   public mutating func clearErrorExample() {self._errorExample = nil}
 
+  public var pricingCatalogVersion: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1039,6 +1041,150 @@ public nonisolated struct Codexpulse_Core_V1_UsageCostResponse: @unchecked Senda
   public var hasActivityDistribution: Bool {_storage._activityDistribution != nil}
   /// Clears the value of `activityDistribution`. Subsequent reads from it will return its default value.
   public mutating func clearActivityDistribution() {_uniqueStorage()._activityDistribution = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+public nonisolated struct Codexpulse_Core_V1_PricingCatalogCurrentRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_ModelReferencePrice: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var modelID: String = String()
+
+  public var inputMicros: Codexpulse_Core_V1_NumericValue {
+    get {_inputMicros ?? Codexpulse_Core_V1_NumericValue()}
+    set {_inputMicros = newValue}
+  }
+  /// Returns true if `inputMicros` has been explicitly set.
+  public var hasInputMicros: Bool {self._inputMicros != nil}
+  /// Clears the value of `inputMicros`. Subsequent reads from it will return its default value.
+  public mutating func clearInputMicros() {self._inputMicros = nil}
+
+  public var cachedInputMicros: Codexpulse_Core_V1_NumericValue {
+    get {_cachedInputMicros ?? Codexpulse_Core_V1_NumericValue()}
+    set {_cachedInputMicros = newValue}
+  }
+  /// Returns true if `cachedInputMicros` has been explicitly set.
+  public var hasCachedInputMicros: Bool {self._cachedInputMicros != nil}
+  /// Clears the value of `cachedInputMicros`. Subsequent reads from it will return its default value.
+  public mutating func clearCachedInputMicros() {self._cachedInputMicros = nil}
+
+  public var outputMicros: Codexpulse_Core_V1_NumericValue {
+    get {_outputMicros ?? Codexpulse_Core_V1_NumericValue()}
+    set {_outputMicros = newValue}
+  }
+  /// Returns true if `outputMicros` has been explicitly set.
+  public var hasOutputMicros: Bool {self._outputMicros != nil}
+  /// Clears the value of `outputMicros`. Subsequent reads from it will return its default value.
+  public mutating func clearOutputMicros() {self._outputMicros = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _inputMicros: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _cachedInputMicros: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _outputMicros: Codexpulse_Core_V1_NumericValue? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_PricingCatalogCurrentResponse: @unchecked Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var meta: Codexpulse_Core_V1_ResponseMeta {
+    get {_storage._meta ?? Codexpulse_Core_V1_ResponseMeta()}
+    set {_uniqueStorage()._meta = newValue}
+  }
+  /// Returns true if `meta` has been explicitly set.
+  public var hasMeta: Bool {_storage._meta != nil}
+  /// Clears the value of `meta`. Subsequent reads from it will return its default value.
+  public mutating func clearMeta() {_uniqueStorage()._meta = nil}
+
+  public var evaluatedAtMs: Codexpulse_Core_V1_NumericValue {
+    get {_storage._evaluatedAtMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._evaluatedAtMs = newValue}
+  }
+  /// Returns true if `evaluatedAtMs` has been explicitly set.
+  public var hasEvaluatedAtMs: Bool {_storage._evaluatedAtMs != nil}
+  /// Clears the value of `evaluatedAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearEvaluatedAtMs() {_uniqueStorage()._evaluatedAtMs = nil}
+
+  public var pricingVersion: String {
+    get {_storage._pricingVersion}
+    set {_uniqueStorage()._pricingVersion = newValue}
+  }
+
+  public var source: String {
+    get {_storage._source}
+    set {_uniqueStorage()._source = newValue}
+  }
+
+  public var currency: String {
+    get {_storage._currency}
+    set {_uniqueStorage()._currency = newValue}
+  }
+
+  public var basis: String {
+    get {_storage._basis}
+    set {_uniqueStorage()._basis = newValue}
+  }
+
+  public var unitTokens: Codexpulse_Core_V1_NumericValue {
+    get {_storage._unitTokens ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._unitTokens = newValue}
+  }
+  /// Returns true if `unitTokens` has been explicitly set.
+  public var hasUnitTokens: Bool {_storage._unitTokens != nil}
+  /// Clears the value of `unitTokens`. Subsequent reads from it will return its default value.
+  public mutating func clearUnitTokens() {_uniqueStorage()._unitTokens = nil}
+
+  public var effectiveFromMs: Codexpulse_Core_V1_NumericValue {
+    get {_storage._effectiveFromMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._effectiveFromMs = newValue}
+  }
+  /// Returns true if `effectiveFromMs` has been explicitly set.
+  public var hasEffectiveFromMs: Bool {_storage._effectiveFromMs != nil}
+  /// Clears the value of `effectiveFromMs`. Subsequent reads from it will return its default value.
+  public mutating func clearEffectiveFromMs() {_uniqueStorage()._effectiveFromMs = nil}
+
+  public var verifiedAtMs: Codexpulse_Core_V1_NumericValue {
+    get {_storage._verifiedAtMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._verifiedAtMs = newValue}
+  }
+  /// Returns true if `verifiedAtMs` has been explicitly set.
+  public var hasVerifiedAtMs: Bool {_storage._verifiedAtMs != nil}
+  /// Clears the value of `verifiedAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearVerifiedAtMs() {_uniqueStorage()._verifiedAtMs = nil}
+
+  public var sourceURL: String {
+    get {_storage._sourceURL ?? String()}
+    set {_uniqueStorage()._sourceURL = newValue}
+  }
+  /// Returns true if `sourceURL` has been explicitly set.
+  public var hasSourceURL: Bool {_storage._sourceURL != nil}
+  /// Clears the value of `sourceURL`. Subsequent reads from it will return its default value.
+  public mutating func clearSourceURL() {_uniqueStorage()._sourceURL = nil}
+
+  public var items: [Codexpulse_Core_V1_ModelReferencePrice] {
+    get {_storage._items}
+    set {_uniqueStorage()._items = newValue}
+  }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -5276,7 +5422,7 @@ nonisolated extension Codexpulse_Core_V1_MethodInfo: SwiftProtobuf.Message, Swif
 
 nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ContractsResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}query_version\0\u{3}usage_cost_version\0\u{3}runtime_info_version\0\u{1}methods\0\u{3}command_methods\0\u{3}error_example\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}query_version\0\u{3}usage_cost_version\0\u{3}runtime_info_version\0\u{1}methods\0\u{3}command_methods\0\u{3}error_example\0\u{3}pricing_catalog_version\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -5291,6 +5437,7 @@ nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Messag
       case 5: try { try decoder.decodeRepeatedMessageField(value: &self.methods) }()
       case 6: try { try decoder.decodeRepeatedStringField(value: &self.commandMethods) }()
       case 7: try { try decoder.decodeSingularMessageField(value: &self._errorExample) }()
+      case 8: try { try decoder.decodeSingularStringField(value: &self.pricingCatalogVersion) }()
       default: break
       }
     }
@@ -5322,6 +5469,9 @@ nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Messag
     try { if let v = self._errorExample {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
     } }()
+    if !self.pricingCatalogVersion.isEmpty {
+      try visitor.visitSingularStringField(value: self.pricingCatalogVersion, fieldNumber: 8)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -5333,6 +5483,7 @@ nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Messag
     if lhs.methods != rhs.methods {return false}
     if lhs.commandMethods != rhs.commandMethods {return false}
     if lhs._errorExample != rhs._errorExample {return false}
+    if lhs.pricingCatalogVersion != rhs.pricingCatalogVersion {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -6668,6 +6819,214 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
         if _storage._degradedReason != rhs_storage._degradedReason {return false}
         if _storage._models != rhs_storage._models {return false}
         if _storage._activityDistribution != rhs_storage._activityDistribution {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_PricingCatalogCurrentRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PricingCatalogCurrentRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_PricingCatalogCurrentRequest, rhs: Codexpulse_Core_V1_PricingCatalogCurrentRequest) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ModelReferencePrice: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ModelReferencePrice"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}model_id\0\u{3}input_micros\0\u{3}cached_input_micros\0\u{3}output_micros\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.modelID) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._inputMicros) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._cachedInputMicros) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._outputMicros) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.modelID.isEmpty {
+      try visitor.visitSingularStringField(value: self.modelID, fieldNumber: 1)
+    }
+    try { if let v = self._inputMicros {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._cachedInputMicros {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try { if let v = self._outputMicros {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ModelReferencePrice, rhs: Codexpulse_Core_V1_ModelReferencePrice) -> Bool {
+    if lhs.modelID != rhs.modelID {return false}
+    if lhs._inputMicros != rhs._inputMicros {return false}
+    if lhs._cachedInputMicros != rhs._cachedInputMicros {return false}
+    if lhs._outputMicros != rhs._outputMicros {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_PricingCatalogCurrentResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PricingCatalogCurrentResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{3}evaluated_at_ms\0\u{3}pricing_version\0\u{1}source\0\u{1}currency\0\u{1}basis\0\u{3}unit_tokens\0\u{3}effective_from_ms\0\u{3}verified_at_ms\0\u{3}source_url\0\u{1}items\0")
+
+  fileprivate class _StorageClass {
+    var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
+    var _evaluatedAtMs: Codexpulse_Core_V1_NumericValue? = nil
+    var _pricingVersion: String = String()
+    var _source: String = String()
+    var _currency: String = String()
+    var _basis: String = String()
+    var _unitTokens: Codexpulse_Core_V1_NumericValue? = nil
+    var _effectiveFromMs: Codexpulse_Core_V1_NumericValue? = nil
+    var _verifiedAtMs: Codexpulse_Core_V1_NumericValue? = nil
+    var _sourceURL: String? = nil
+    var _items: [Codexpulse_Core_V1_ModelReferencePrice] = []
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _meta = source._meta
+      _evaluatedAtMs = source._evaluatedAtMs
+      _pricingVersion = source._pricingVersion
+      _source = source._source
+      _currency = source._currency
+      _basis = source._basis
+      _unitTokens = source._unitTokens
+      _effectiveFromMs = source._effectiveFromMs
+      _verifiedAtMs = source._verifiedAtMs
+      _sourceURL = source._sourceURL
+      _items = source._items
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularMessageField(value: &_storage._meta) }()
+        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._evaluatedAtMs) }()
+        case 3: try { try decoder.decodeSingularStringField(value: &_storage._pricingVersion) }()
+        case 4: try { try decoder.decodeSingularStringField(value: &_storage._source) }()
+        case 5: try { try decoder.decodeSingularStringField(value: &_storage._currency) }()
+        case 6: try { try decoder.decodeSingularStringField(value: &_storage._basis) }()
+        case 7: try { try decoder.decodeSingularMessageField(value: &_storage._unitTokens) }()
+        case 8: try { try decoder.decodeSingularMessageField(value: &_storage._effectiveFromMs) }()
+        case 9: try { try decoder.decodeSingularMessageField(value: &_storage._verifiedAtMs) }()
+        case 10: try { try decoder.decodeSingularStringField(value: &_storage._sourceURL) }()
+        case 11: try { try decoder.decodeRepeatedMessageField(value: &_storage._items) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      try { if let v = _storage._meta {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+      } }()
+      try { if let v = _storage._evaluatedAtMs {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+      } }()
+      if !_storage._pricingVersion.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._pricingVersion, fieldNumber: 3)
+      }
+      if !_storage._source.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._source, fieldNumber: 4)
+      }
+      if !_storage._currency.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._currency, fieldNumber: 5)
+      }
+      if !_storage._basis.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._basis, fieldNumber: 6)
+      }
+      try { if let v = _storage._unitTokens {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
+      } }()
+      try { if let v = _storage._effectiveFromMs {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 8)
+      } }()
+      try { if let v = _storage._verifiedAtMs {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
+      } }()
+      try { if let v = _storage._sourceURL {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 10)
+      } }()
+      if !_storage._items.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._items, fieldNumber: 11)
+      }
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_PricingCatalogCurrentResponse, rhs: Codexpulse_Core_V1_PricingCatalogCurrentResponse) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._meta != rhs_storage._meta {return false}
+        if _storage._evaluatedAtMs != rhs_storage._evaluatedAtMs {return false}
+        if _storage._pricingVersion != rhs_storage._pricingVersion {return false}
+        if _storage._source != rhs_storage._source {return false}
+        if _storage._currency != rhs_storage._currency {return false}
+        if _storage._basis != rhs_storage._basis {return false}
+        if _storage._unitTokens != rhs_storage._unitTokens {return false}
+        if _storage._effectiveFromMs != rhs_storage._effectiveFromMs {return false}
+        if _storage._verifiedAtMs != rhs_storage._verifiedAtMs {return false}
+        if _storage._sourceURL != rhs_storage._sourceURL {return false}
+        if _storage._items != rhs_storage._items {return false}
         return true
       }
       if !storagesAreEqual {return false}

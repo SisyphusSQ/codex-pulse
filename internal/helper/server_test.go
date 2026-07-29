@@ -15,6 +15,7 @@ import (
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
+	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
 	"google.golang.org/grpc"
@@ -28,7 +29,8 @@ import (
 // 测试 gRPC server 对所有 unary 调用执行鉴权，并协商精确 contract。
 func TestGRPCServerAuthenticatesHandshakeAndNegotiatesContract(t *testing.T) {
 	business, err := core.NewService(core.ServiceConfig{
-		UsageCost: &helperUsageQueryStub{}, RuntimeInfo: helperRuntimeQueryStub{},
+		UsageCost: &helperUsageQueryStub{}, PricingCatalog: helperPricingCatalogQueryStub{},
+		RuntimeInfo: helperRuntimeQueryStub{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -67,8 +69,67 @@ func TestGRPCServerAuthenticatesHandshakeAndNegotiatesContract(t *testing.T) {
 		t.Fatalf("Contracts() error = %v", err)
 	}
 	if contracts.Version != "core-rpc-v2" ||
-		contracts.UsageCostVersion != "usage-cost-v2" {
+		contracts.UsageCostVersion != "usage-cost-v2" ||
+		contracts.PricingCatalogVersion != "pricing-catalog-v1" {
 		t.Fatalf("Contracts() versions = %#v", contracts)
+	}
+}
+
+// 测试当前价格目录经 gRPC 保留每百万 Token 单位、真实零和 unknown。
+func TestGRPCServerMapsCurrentPricingCatalog(t *testing.T) {
+	meta, err := basequery.NewResponseMeta(basequery.ResponseComplete, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evaluated, err := basequery.KnownNumeric(200, basequery.NumericMilliseconds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit, err := basequery.KnownNumeric(1_000_000, basequery.NumericTokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zero, err := basequery.KnownNumeric(0, basequery.NumericMicroUSD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unknown, err := basequery.UnknownNumeric(basequery.NumericMicroUSD, basequery.UnknownUnavailable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pricingQuery := helperPricingCatalogQueryStub{response: pricingcatalog.CurrentResponse{
+		Meta: meta, EvaluatedAtMS: evaluated, PricingVersion: "openai-api-test",
+		Source: "openai-api", Currency: "USD", Basis: pricingcatalog.BasisStandard,
+		UnitTokens: unit, EffectiveFromMS: evaluated, VerifiedAtMS: evaluated,
+		Items: []pricingcatalog.ModelReferencePrice{{
+			ModelID: "model-a", InputMicros: zero,
+			CachedInputMicros: unknown, OutputMicros: zero,
+		}},
+	}}
+	business, err := core.NewService(core.ServiceConfig{
+		UsageCost: &helperUsageQueryStub{}, PricingCatalog: pricingQuery,
+		RuntimeInfo: helperRuntimeQueryStub{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, authorize := startConfiguredTestGRPCServer(t, func(config *ServerConfig) {
+		config.Service = business
+	})
+
+	response, err := client.PricingCatalogCurrent(
+		authorize(t.Context()),
+		&corev1.PricingCatalogCurrentRequest{},
+	)
+	if err != nil {
+		t.Fatalf("PricingCatalogCurrent() error = %v", err)
+	}
+	if response.PricingVersion != "openai-api-test" || response.UnitTokens.GetValue() != 1_000_000 ||
+		len(response.Items) != 1 || response.Items[0].InputMicros.Value == nil ||
+		response.Items[0].InputMicros.GetValue() != 0 ||
+		response.Items[0].CachedInputMicros.Value != nil ||
+		response.Items[0].CachedInputMicros.GetUnknownReason() != "unavailable" {
+		t.Fatalf("PricingCatalogCurrent() = %#v", response)
 	}
 }
 
@@ -100,7 +161,7 @@ func TestGRPCAPIImplementsEveryFrozenRPC(t *testing.T) {
 		"Handshake", "Health", "HealthProjection", "Job", "ListHealth", "ListJobs", "ListProjects",
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
 		"MigrationRecoveryExit", "MigrationRecoveryPrepare", "MigrationRecoveryRetry",
-		"MigrationRecoveryState", "NotifyLifecycle", "PlanHomeSwitch", "ProjectDetail", "QuotaCurrent",
+		"MigrationRecoveryState", "NotifyLifecycle", "PlanHomeSwitch", "PricingCatalogCurrent", "ProjectDetail", "QuotaCurrent",
 		"RecoverHomeSwitch", "RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings",
 		"Shutdown", "Source", "SubscribeInvalidations", "UpdateSettings", "UsageCost",
 	}
@@ -137,7 +198,10 @@ func TestGRPCServerMapsBusinessResponseAndTypedError(t *testing.T) {
 		MatchedTotals: helperUsageTotals(unknownCount, unknownTokens, unknownCost, unknownTime),
 		PageTotals:    helperUsageTotals(unknownCount, unknownTokens, unknownCost, unknownTime),
 	}}
-	business, err := core.NewService(core.ServiceConfig{UsageCost: usage, RuntimeInfo: helperRuntimeQueryStub{}})
+	business, err := core.NewService(core.ServiceConfig{
+		UsageCost: usage, PricingCatalog: helperPricingCatalogQueryStub{},
+		RuntimeInfo: helperRuntimeQueryStub{},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,6 +309,7 @@ func TestGRPCServerReturnsOnlyAccountDisplayFields(t *testing.T) {
 	}}
 	business, err := core.NewService(core.ServiceConfig{
 		UsageCost:       &helperUsageQueryStub{},
+		PricingCatalog:  helperPricingCatalogQueryStub{},
 		RuntimeInfo:     helperRuntimeQueryStub{},
 		AccountSnapshot: account,
 	})
@@ -334,6 +399,16 @@ type helperUsageQueryStub struct {
 	request  basequery.Request
 	response usagecost.SessionListResponse
 	err      error
+}
+
+type helperPricingCatalogQueryStub struct {
+	response pricingcatalog.CurrentResponse
+}
+
+func (stub helperPricingCatalogQueryStub) Current(
+	context.Context,
+) (pricingcatalog.CurrentResponse, error) {
+	return stub.response, nil
 }
 
 type helperAccountSnapshotStub struct {

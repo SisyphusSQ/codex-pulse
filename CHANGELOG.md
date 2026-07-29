@@ -61,6 +61,7 @@
 58. 将配额页每日 Token 趋势改为真实模型日明细堆叠柱，新增中文数量级纵轴与鼠标悬停详情；模型合计无法与当日总量对账时仅展示总量并明确标记明细不可用
 59. 新增原生 macOS 版本提醒：设置可选择稳定版或预发布版通道，Swift 客户端按 SemVer 筛选可信 GitHub Releases，并仅在菜单栏 Popover 展示可点击的新版本卡片
 60. 新增原生 macOS“登录时启动 Codex Pulse”设置，以 `SMAppService.mainApp` 的系统状态作为唯一真相，支持注册、取消、待系统批准、外部状态漂移刷新和稳定错误提示
+61. 在原生“额度与用量”页新增当前 OpenAI API 模型参考价格：Go Helper 通过独立版本化 RPC 返回 exact-only 完整目录，Swift 以默认可见的原生四列表格展示 `gpt-5.3` 及后续有效模型的输入、缓存输入和输出费率，旧 `gpt-5` / `gpt-5.1` / `gpt-5.2` 家族及不存在的无后缀 `gpt-5.6` 不进入展示，但价格仍保留用于历史成本折算；同时保留官方来源、订阅账单边界及 unknown/真实零语义
 
 #### optimization:
 1. [TOO-285] 完善 AppIcon、ICNS 与 Tray Template 资产闭环，新增冻结源校验、严格灰阶 1x/2x 派生、macOS bundle/ZIP 资源读回及可重复导出与 live smoke 证据

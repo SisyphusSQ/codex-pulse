@@ -188,6 +188,86 @@ private func testMainWindowCopyDoesNotExposeImplementationLanguage() throws {
     }
 }
 
+private func testReferencePriceFormattingPreservesPrecisionAndUnknown() throws {
+    var response = Codexpulse_Core_V1_PricingCatalogCurrentResponse()
+    response.currency = "USD"
+    response.sourceURL = "https://developers.openai.com/api/docs/pricing"
+    var price = Codexpulse_Core_V1_ModelReferencePrice()
+    price.modelID = "gpt-5.4-mini"
+    price.inputMicros.value = 750_000
+    price.inputMicros.unit = "micro_usd"
+    price.cachedInputMicros.value = 75_000
+    price.cachedInputMicros.unit = "micro_usd"
+    price.outputMicros.unknownReason = "unavailable"
+    price.outputMicros.unit = "micro_usd"
+    response.items = [price]
+
+    try expect(
+        ReferencePriceFormatter.rate(price.inputMicros, currency: "USD") == "$0.75",
+        "reference input price must retain two-decimal display"
+    )
+    try expect(
+        ReferencePriceFormatter.rate(price.cachedInputMicros, currency: "USD") == "$0.075",
+        "reference cached input price must retain three-decimal precision"
+    )
+    try expect(
+        ReferencePriceFormatter.rate(price.outputMicros, currency: "USD") == "暂无",
+        "unknown reference price must not become zero"
+    )
+    var wrongUnit = price.inputMicros
+    wrongUnit.unit = "tokens"
+    try expect(
+        ReferencePriceFormatter.rate(wrongUnit, currency: "USD") == "暂无",
+        "non-currency numeric values must fail closed"
+    )
+    try expect(
+        ReferencePriceFormatter.sourceURL(response)?.host == "developers.openai.com",
+        "official HTTPS source URL must remain linkable"
+    )
+    for hiddenModel in [
+        "gpt-5",
+        "gpt-5-codex",
+        "gpt-5.1-codex-max",
+        "gpt-5.2-codex",
+        "gpt-5.2-codex-max",
+        "gpt-5.6",
+    ] {
+        try expect(
+            !ReferencePriceFormatter.shouldDisplay(modelID: hiddenModel),
+            "\(hiddenModel) must stay in pricing history without appearing in the reference table"
+        )
+    }
+    for visibleModel in [
+        "gpt-5.3-codex",
+        "gpt-5.4",
+        "gpt-5.6-luna",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.10-codex",
+    ] {
+        try expect(
+            ReferencePriceFormatter.shouldDisplay(modelID: visibleModel),
+            "\(visibleModel) must remain visible in the reference table"
+        )
+    }
+}
+
+private func testQuotaUsageShowsIndependentReferencePriceCatalogAndBillingBoundary() throws {
+    let source = try mainWindowSource("QuotaHealthViews.swift")
+    try expect(
+        source.contains("pricingSection")
+            && source.contains("Table(rows)")
+            && source.contains("ReferencePriceFormatter.shouldDisplay(modelID:")
+            && source.contains(".tableStyle(.inset(alternatesRowBackgrounds: false))")
+            && source.contains(".scrollContentBackground(.hidden)")
+            && !source.contains("DisclosureGroup")
+            && !source.contains("当前 API 参考价（每 100 万 Token）")
+            && source.contains("仅用于 API 等价折算，不是 Codex 订阅账单。")
+            && source.contains("长上下文、Batch、Flex、Priority 和区域处理"),
+        "quota usage page must expose the independent catalog and its billing boundary"
+    )
+}
+
 private func testOverviewUsesOneNavigationAndARealTrendChart() throws {
     let source = try mainWindowSource("RootView.swift")
     try expect(
@@ -1862,6 +1942,8 @@ private actor FakeCore: AppCoreServing {
     private var invalidationDelay: Duration = .zero
     private var quotaRefreshDelay: Duration = .zero
     private var settingsResponses: [Codexpulse_Core_V1_SettingsResponse] = []
+    private var pricingCatalogResponse = Codexpulse_Core_V1_PricingCatalogCurrentResponse()
+    private var pricingCatalogCalls = 0
     private var settingsUpdateFailure = false
     private var settingsReadDelay: Duration = .zero
     private var settingsUpdateDelay: Duration = .zero
@@ -1937,6 +2019,9 @@ private actor FakeCore: AppCoreServing {
     func setSettingsResponses(_ values: [Codexpulse_Core_V1_SettingsResponse], updateFailure: Bool) {
         settingsResponses = values
         settingsUpdateFailure = updateFailure
+    }
+    func setPricingCatalogResponse(_ value: Codexpulse_Core_V1_PricingCatalogCurrentResponse) {
+        pricingCatalogResponse = value
     }
     func prepareUnavailableOverviewRecovery() {
         failOverview = true
@@ -2045,6 +2130,7 @@ private actor FakeCore: AppCoreServing {
     func recordedSessionRequests() -> [Codexpulse_Core_V1_ListSessionsRequest] { sessionRequests }
     func recordedProjectRequests() -> [Codexpulse_Core_V1_ListProjectsRequest] { projectRequests }
     func recordedCompletedAccountCalls() -> Int { completedAccountCalls }
+    func recordedPricingCatalogCalls() -> Int { pricingCatalogCalls }
 
     func handshake(
         clientName: String,
@@ -2096,6 +2182,13 @@ private actor FakeCore: AppCoreServing {
         if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
         if shouldFail { throw FakeFailure.unavailable }
         return responses.usage
+    }
+
+    func pricingCatalogCurrent(
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_PricingCatalogCurrentResponse {
+        pricingCatalogCalls += 1
+        return pricingCatalogResponse
     }
 
     func quotaCurrent(
@@ -2362,6 +2455,30 @@ private func completeMeta() -> Codexpulse_Core_V1_ResponseMeta {
     meta.version = "test-v1"
     meta.status = "complete"
     return meta
+}
+
+private func makePricingCatalogResponse() -> Codexpulse_Core_V1_PricingCatalogCurrentResponse {
+    var response = Codexpulse_Core_V1_PricingCatalogCurrentResponse()
+    response.meta = completeMeta()
+    response.pricingVersion = "openai-api-test"
+    response.source = "openai-api"
+    response.currency = "USD"
+    response.basis = "openai_api_standard_short_context_text"
+    response.unitTokens.value = 1_000_000
+    response.unitTokens.unit = "tokens"
+    response.verifiedAtMs.value = 1_785_254_400_000
+    response.verifiedAtMs.unit = "milliseconds"
+    response.sourceURL = "https://developers.openai.com/api/docs/pricing"
+    var item = Codexpulse_Core_V1_ModelReferencePrice()
+    item.modelID = "gpt-5.4-mini"
+    item.inputMicros.value = 750_000
+    item.inputMicros.unit = "micro_usd"
+    item.cachedInputMicros.value = 75_000
+    item.cachedInputMicros.unit = "micro_usd"
+    item.outputMicros.value = 4_500_000
+    item.outputMicros.unit = "micro_usd"
+    response.items = [item]
+    return response
 }
 
 private func makeTokenActivityResponse() -> Codexpulse_Core_V1_UsageCostResponse {
@@ -2763,6 +2880,35 @@ private func testFeatureRequestsStateAndMerge() throws {
     } else {
         throw TestFailure.mismatch("cancellation was presented as unavailable")
     }
+}
+
+@MainActor
+private func testPricingCatalogLoadsWithoutUsageModels() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setPricingCatalogResponse(makePricingCatalogResponse())
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    )
+    model.start()
+    try await waitUntil("pricing catalog overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.navigate(to: .quotaUsage)
+    try await waitUntil("pricing catalog current response") {
+        await MainActor.run {
+            model.pricingCatalogState.value?.items.first?.modelID == "gpt-5.4-mini"
+        }
+    }
+    try expect(
+        model.usageState.value?.models.isEmpty == true,
+        "pricing catalog test requires an empty usage-model result"
+    )
+    let pricingCatalogCalls = await core.recordedPricingCatalogCalls()
+    try expect(
+        pricingCatalogCalls == 1,
+        "quota usage navigation must load the current pricing catalog once"
+    )
+    _ = await model.shutdown()
 }
 
 @MainActor
@@ -4819,6 +4965,91 @@ private func testQuotaWindowPresentationUsesActualDuration() throws {
     }
 }
 
+private func testQuotaWindowDisplayResolverDeduplicatesOnlyEquivalentWindows() throws {
+    func window(
+        kind: String,
+        limitID: String,
+        name: String? = nil,
+        minutes: Int64,
+        freshness: String,
+        resetRemainingMS: Int64? = nil
+    ) -> Codexpulse_Core_V1_CurrentWindow {
+        var value = Codexpulse_Core_V1_CurrentWindow()
+        value.windowKind = kind
+        value.limitID = limitID
+        if let name { value.limitName = name }
+        value.windowMinutes = minutes
+        value.remainingPercent = 50
+        value.freshness = freshness
+        if let resetRemainingMS { value.resetRemainingMs = resetRemainingMS }
+        return value
+    }
+
+    let generalPrimary = window(
+        kind: "primary", limitID: "codex", minutes: 10_080,
+        freshness: "fresh", resetRemainingMS: 6 * 24 * 60 * 60 * 1_000
+    )
+    let sparkPrimary = window(
+        kind: "primary", limitID: "codex_spark", name: "GPT-5.3-Codex-Spark",
+        minutes: 10_080, freshness: "fresh",
+        resetRemainingMS: 6 * 24 * 60 * 60 * 1_000
+    )
+    let generalSecondary = window(
+        kind: "secondary", limitID: "codex", minutes: 10_080,
+        freshness: "expired_unknown"
+    )
+    let sparkSecondary = window(
+        kind: "secondary", limitID: "codex_spark", minutes: 10_080,
+        freshness: "expired_unknown"
+    )
+    let deduplicated = QuotaWindowDisplayResolver.displayWindows([
+        generalPrimary, sparkPrimary, generalSecondary, sparkSecondary,
+    ])
+    try expect(
+        deduplicated.count == 2
+            && deduplicated[0].windowKind == "primary"
+            && deduplicated[0].limitID == "codex"
+            && deduplicated[1].windowKind == "primary"
+            && deduplicated[1].limitID == "codex_spark",
+        "same quota and duration must resolve to the two trustworthy primary windows"
+    )
+
+    let fiveHour = window(
+        kind: "primary", limitID: "codex", minutes: 300,
+        freshness: "fresh", resetRemainingMS: 3_600_000
+    )
+    let sevenDay = window(
+        kind: "secondary", limitID: "codex", minutes: 10_080,
+        freshness: "fresh", resetRemainingMS: 6 * 24 * 60 * 60 * 1_000
+    )
+    let distinctPeriods = QuotaWindowDisplayResolver.displayWindows([fiveHour, sevenDay])
+    try expect(
+        distinctPeriods.count == 2
+            && distinctPeriods.map(\.windowMinutes) == [300, 10_080],
+        "different periods for the same quota must remain independently visible"
+    )
+
+    let weakPrimary = window(
+        kind: "primary", limitID: "codex", minutes: 10_080,
+        freshness: "suspicious"
+    )
+    let trustedSecondary = window(
+        kind: "secondary", limitID: "codex", minutes: 10_080,
+        freshness: "fresh", resetRemainingMS: 3_600_000
+    )
+    let preferred = QuotaWindowDisplayResolver.displayWindows([weakPrimary, trustedSecondary])
+    try expect(
+        preferred.count == 1 && preferred[0].windowKind == "secondary",
+        "a trustworthy secondary window must beat an untrusted primary duplicate"
+    )
+
+    let secondaryOnly = QuotaWindowDisplayResolver.displayWindows([sevenDay])
+    try expect(
+        secondaryOnly.count == 1 && secondaryOnly[0].windowKind == "secondary",
+        "a secondary window without an equivalent sibling must remain visible"
+    )
+}
+
 private func testTokenQuantityFormatterUsesChineseMagnitudeUnits() throws {
     let cases: [(value: Int64, expected: String)] = [
         (0, "0.00 百万"),
@@ -6380,6 +6611,8 @@ struct CodexPulseAppTestMain {
     static func main() async throws {
         try testPrimaryPagesSmokeSummaryIncludesProjectDetailEvidence()
         try testMainWindowCopyDoesNotExposeImplementationLanguage()
+        try testReferencePriceFormattingPreservesPrecisionAndUnknown()
+        try testQuotaUsageShowsIndependentReferencePriceCatalogAndBillingBoundary()
         try testOverviewMergesAllOtherProjectUsage()
         try testOverviewLimitsMergedProjectRowsToFive()
         try testOverviewLimitsHighConsumptionSessionsToFive()
@@ -6431,6 +6664,7 @@ struct CodexPulseAppTestMain {
         try testOverviewRangeIncludesQuotaWeek()
         try testRequestFactoryAndPresentation()
         try testTokenActivityRequestUsesAnIndependentRollingYear()
+        try testQuotaWindowDisplayResolverDeduplicatesOnlyEquivalentWindows()
         try testOverviewActivityPresentationBuildsTimelineAndCompleteHeatmap()
         try testOverviewActivityAxisTicksKeepDateOnlyAtDayBoundaries()
         try testOverviewActivityTimelineResolverSelectsContainingBucketThenNearest()
@@ -6471,6 +6705,7 @@ struct CodexPulseAppTestMain {
         try await testAppModelPublishesConfiguredPrereleaseReminderForPopover()
         try testLaunchConfigurationBoundaries()
         try testLaunchConfigurationUsesPersistentProductDefaults()
+        try await testPricingCatalogLoadsWithoutUsageModels()
         try await testFeatureGenerationPreventsStaleOverwrite()
         try await testInvalidationRefreshesActivePage()
         try await testIndexInvalidationRefreshesSelectedSessionDetail()

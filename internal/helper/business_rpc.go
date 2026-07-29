@@ -36,8 +36,10 @@ func (api *grpcAPI) Contracts(ctx context.Context, _ *corev1.ContractsRequest) (
 	}
 	return &corev1.ContractsResponse{
 		Version: contract.Version, QueryVersion: contract.QueryVersion,
-		UsageCostVersion: contract.UsageCostVersion, RuntimeInfoVersion: contract.RuntimeInfoVersion,
-		Methods: methods, CommandMethods: append([]string(nil), contract.CommandMethods...), ErrorExample: detail,
+		UsageCostVersion:      contract.UsageCostVersion,
+		PricingCatalogVersion: contract.PricingCatalogVersion,
+		RuntimeInfoVersion:    contract.RuntimeInfoVersion,
+		Methods:               methods, CommandMethods: append([]string(nil), contract.CommandMethods...), ErrorExample: detail,
 	}, nil
 }
 
@@ -61,6 +63,17 @@ func (api *grpcAPI) UsageCost(
 	}
 	response, err := api.service.UsageCost(ctx, fromProtoUsageCostRequest(request))
 	return encodeRPC(response, &corev1.UsageCostResponse{}, err)
+}
+
+func (api *grpcAPI) PricingCatalogCurrent(
+	ctx context.Context,
+	_ *corev1.PricingCatalogCurrentRequest,
+) (*corev1.PricingCatalogCurrentResponse, error) {
+	if api == nil || api.service == nil {
+		return nil, coreServiceUnavailable()
+	}
+	response, err := api.service.PricingCatalogCurrent(ctx)
+	return encodeRPC(response, &corev1.PricingCatalogCurrentResponse{}, err)
 }
 
 func (api *grpcAPI) SessionDetail(

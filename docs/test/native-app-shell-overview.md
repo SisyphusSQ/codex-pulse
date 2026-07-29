@@ -109,7 +109,7 @@ make verify-swift-app
 
 覆盖：
 
-- `OverviewRequestSet` 的 quota clock、按最近活动倒序的 bounded sessions page，以及由真实周额度窗口构造的精确 UTC 半开区间；测试覆盖不依赖 `primary/secondary` 位置、未知 reset 不伪造范围、Token 中文数量级格式化和 Session 未计算成本的明确文案。
+- `OverviewRequestSet` 的 quota clock、按最近活动倒序的 bounded sessions page，以及由真实周额度窗口构造的精确 UTC 半开区间；测试覆盖不依赖 `primary/secondary` 位置、未知 reset 不伪造范围、Token 中文数量级格式化和 Session 未计算成本的明确文案。配额页展示 resolver 还覆盖同 `limit_id + window_minutes` 去重、可信 secondary 胜过异常 primary、不同周期并存与 secondary-only 保留。
 - Popover 交互门禁覆盖 `44 pt` 最小命中目标、SessionNest 风格的 `30 pt` 圆形顶栏视觉面、`16 pt` 图标与 `18 pt` 分隔线、完整 `contentShape`、中性 hover/pressed/focus 反馈、关闭系统蓝色 focus effect、inactive control state 对比度、扁平子页返回导航和单一标题层级，以及刷新双箭头对真实 `isOverviewRefreshing` 状态的原位旋转和无障碍文案绑定；确定性 App 测试同时验证手动刷新会立即进入忙碌态并在请求完成后恢复。静态门禁不能替代真实鼠标、键盘焦点与 VoiceOver 验收。
 - 非 Gregorian 系统 Calendar 仍生成 canonical Gregorian local date，避免请求错误世纪。
 - 真实零、unknown reason、partial issue、health state 的 presentation mapping。

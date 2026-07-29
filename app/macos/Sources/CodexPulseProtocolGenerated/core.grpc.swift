@@ -85,6 +85,19 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
                 type: .unary
             )
         }
+        /// Namespace for "PricingCatalogCurrent" metadata.
+        public enum PricingCatalogCurrent: Sendable {
+            /// Request type for "PricingCatalogCurrent".
+            public typealias Input = Codexpulse_Core_V1_PricingCatalogCurrentRequest
+            /// Response type for "PricingCatalogCurrent".
+            public typealias Output = Codexpulse_Core_V1_PricingCatalogCurrentResponse
+            /// Descriptor for "PricingCatalogCurrent".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "PricingCatalogCurrent",
+                type: .unary
+            )
+        }
         /// Namespace for "ListSessions" metadata.
         public enum ListSessions: Sendable {
             /// Request type for "ListSessions".
@@ -482,6 +495,7 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
             Contracts.descriptor,
             AccountSnapshot.descriptor,
             UsageCost.descriptor,
+            PricingCatalogCurrent.descriptor,
             ListSessions.descriptor,
             SessionDetail.descriptor,
             ListProjects.descriptor,
@@ -628,6 +642,25 @@ extension Codexpulse_Core_V1_CoreService {
             deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_UsageCostResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_UsageCostResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "PricingCatalogCurrent" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_PricingCatalogCurrentRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_PricingCatalogCurrentRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_PricingCatalogCurrentResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func pricingCatalogCurrent<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_PricingCatalogCurrentRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_PricingCatalogCurrentRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_PricingCatalogCurrentResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_PricingCatalogCurrentResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
         /// Call the "ListSessions" method.
@@ -1364,6 +1397,36 @@ extension Codexpulse_Core_V1_CoreService {
             try await self.client.unary(
                 request: request,
                 descriptor: Codexpulse_Core_V1_CoreService.Method.UsageCost.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "PricingCatalogCurrent" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_PricingCatalogCurrentRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_PricingCatalogCurrentRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_PricingCatalogCurrentResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func pricingCatalogCurrent<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_PricingCatalogCurrentRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_PricingCatalogCurrentRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_PricingCatalogCurrentResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_PricingCatalogCurrentResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.PricingCatalogCurrent.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -2399,6 +2462,31 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
         )
     }
 
+    /// Call the "PricingCatalogCurrent" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_PricingCatalogCurrentRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func pricingCatalogCurrent<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_PricingCatalogCurrentRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_PricingCatalogCurrentResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.pricingCatalogCurrent(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_PricingCatalogCurrentRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_PricingCatalogCurrentResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "ListSessions" method.
     ///
     /// - Parameters:
@@ -3290,6 +3378,35 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
             metadata: metadata
         )
         return try await self.usageCost(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "PricingCatalogCurrent" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func pricingCatalogCurrent<Result>(
+        _ message: Codexpulse_Core_V1_PricingCatalogCurrentRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_PricingCatalogCurrentResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_PricingCatalogCurrentRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.pricingCatalogCurrent(
             request: request,
             options: options,
             onResponse: handleResponse
