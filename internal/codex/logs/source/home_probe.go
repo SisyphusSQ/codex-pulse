@@ -54,7 +54,7 @@ func (probe *HomeProbe) Probe(ctx context.Context, home string) (HomeMetadata, e
 	if err != nil {
 		return HomeMetadata{}, err
 	}
-	if confirmed != observed {
+	if !sameObservedRootIdentity(observed, confirmed) {
 		return HomeMetadata{}, ErrHomeChanged
 	}
 	root, err := probe.filesystem.OpenRoot(home, false)
@@ -62,7 +62,7 @@ func (probe *HomeProbe) Probe(ctx context.Context, home string) (HomeMetadata, e
 		return HomeMetadata{}, err
 	}
 	defer func() { _ = root.Close() }()
-	if root.Identity() != confirmed {
+	if !samePersistentRootIdentity(root.Identity(), confirmed) {
 		return HomeMetadata{}, ErrHomeChanged
 	}
 

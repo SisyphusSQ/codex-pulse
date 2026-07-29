@@ -50,7 +50,7 @@ func newDiscovererWithIdentity(
 	if err != nil {
 		return nil, err
 	}
-	if expected != nil && identity != *expected {
+	if expected != nil && !samePersistentRootIdentity(identity, *expected) {
 		return nil, ErrHomeChanged
 	}
 	return &Discoverer{home: home, rootIdentity: identity, filesystem: filesystem}, nil
@@ -99,7 +99,7 @@ func (discoverer *Discoverer) Inspect(
 		return Snapshot{}, fmt.Errorf("%w: %v", ErrHomeChanged, err)
 	}
 	defer func() { _ = root.Close() }()
-	if root.Identity() != discoverer.rootIdentity {
+	if !samePersistentRootIdentity(root.Identity(), discoverer.rootIdentity) {
 		return Snapshot{}, ErrHomeChanged
 	}
 	previousByID := make(map[string]Snapshot)
@@ -147,7 +147,7 @@ func (discoverer *Discoverer) Unchanged(
 		return false, fmt.Errorf("%w: %v", ErrHomeChanged, err)
 	}
 	defer func() { _ = root.Close() }()
-	if root.Identity() != discoverer.rootIdentity {
+	if !samePersistentRootIdentity(root.Identity(), discoverer.rootIdentity) {
 		return false, ErrHomeChanged
 	}
 	metadata, err := root.Metadata(relativePath)
@@ -191,7 +191,7 @@ func (discoverer *Discoverer) discover(
 		return DiscoveryResult{}, fmt.Errorf("%w: %v", ErrHomeChanged, err)
 	}
 	defer func() { _ = root.Close() }()
-	if root.Identity() != discoverer.rootIdentity {
+	if !samePersistentRootIdentity(root.Identity(), discoverer.rootIdentity) {
 		return DiscoveryResult{}, ErrHomeChanged
 	}
 

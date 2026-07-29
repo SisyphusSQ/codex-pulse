@@ -63,7 +63,7 @@ func newSnapshotReader(home string, expected *rootIdentity, chunkBytes int) (*Sn
 	if err != nil {
 		return nil, err
 	}
-	if expected != nil && identity != *expected {
+	if expected != nil && !samePersistentRootIdentity(identity, *expected) {
 		return nil, ErrHomeChanged
 	}
 	return &SnapshotReader{
@@ -127,7 +127,7 @@ func (reader *SnapshotReader) read(
 		return result, err
 	}
 	defer func() { _ = root.Close() }()
-	if root.Identity() != reader.rootIdentity {
+	if !samePersistentRootIdentity(root.Identity(), reader.rootIdentity) {
 		return result, ErrHomeChanged
 	}
 	relativePath, err := filepath.Rel(reader.home, snapshot.Path)

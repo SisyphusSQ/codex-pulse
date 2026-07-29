@@ -39,6 +39,13 @@ CODEX_PULSE_APP_RUNTIME=<existing-configured-private-runtime> \
 - 更新后真实 Home live smoke：`quota_windows=1`、Sessions/Projects/Usage 非零、四类详情成功、`unavailable=none`、七页 render、shutdown clean。最终常驻 App 读回 quota `fresh/current`、可信重置时间和 reset credits `3/3`。
 - 最终 `make verify` 通过，覆盖全仓 race/vet、Proto、Swift transport/App tests 和隔离 smoke。此前两次完整 gate 分别命中两条既有 Home-switch race 用例的 `unavailable`，但精确 race 分别重复 `10`/`20` 次无法复现，且最终完整 gate 从头通过；该并行压力抖动保留为 bounded observation，不写成已修复的新缺陷。
 
+## 2026-07-30 重启后 Home 身份与额度恢复
+
+- 根因：Darwin `st_dev` 是挂载期编号，系统重启后同一默认 Codex Home 的 inode 保持不变但 `st_dev` 变化。旧 Helper 因此在发 HTTP 前把 credential 读取判为 `auth_required`，两个在线来源都写入空 next due，UI 按 last-known-good 继续显示旧状态。
+- 修复：confirmed Home 改用 APFS 卷根 `ATTR_VOL_UUID` 的稳定 `volume:<lowercase-hex>` 加目录 inode；单次探测仍保留挂载期 device/inode 竞态核对。旧默认 Home 只在 canonical path 与 inode 一致且无 switch journal 时通过 preferences revision CAS 迁移，轻量索引根身份在 SQLite 单 writer transaction 中同步更新。每次 Helper 启动对遗留 `auth_required` 只做一次 `startup` 重探，失败后继续暂停，避免进程内请求风暴。
+- TDD：稳定卷身份、旧 preferences identity-only 迁移、无法证明时零写、轻量索引 state/token scan 原子迁移、startup auth recovery 均先在旧实现上失败后转绿。受影响 Go 包、`go test ./...`、完整 `make verify` 和隔离 App smoke 通过；race 全仓压力暴露的 App Server barrier 预算从 2 秒调整到 10 秒后，精确 race 用例重复 20 次通过。
+- 真实 Home 验证使用已关闭生产 runtime 的临时私有副本，不改生产 preferences/SQLite。development App 完成旧 identity 迁移后，读回 stable device、两个在线来源均为 current 且有 next due、quota current 两行；live smoke 为 `quota_windows=2`、Sessions/Projects/Usage 非零、`unavailable=none`、七页可读、shutdown clean。临时副本随后移动到废纸篓，原安装版重新启动；未执行安装、签名、公证或发布，因此生产 App 仍需安装含本修复的新版本后才会迁移。
+
 真实手动刷新会访问两个既有只读 Wham GET endpoint，并在当前私有 runtime DB 中写入 source attempt/state、schedule、quota snapshot 与 reset credits snapshot；不会 consume credit，不会写真实 Codex Home 内容。自动化 gate 继续使用 synthetic credential/fake transport，不依赖真实用户数据。
 
 ## 2026-07-22 API 等价成本与按模型统计修复

@@ -5,7 +5,6 @@ package appserver
 import (
 	"context"
 	"errors"
-	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +12,8 @@ import (
 	"strings"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
 )
 
 type darwinConfirmedHomeBinding struct {
@@ -151,13 +152,12 @@ func (binding *darwinConfirmedHomeBinding) validate(ctx context.Context) error {
 }
 
 func (binding *darwinConfirmedHomeBinding) validateDescriptor() error {
-	var stat unix.Stat_t
-	if binding == nil || binding.root == nil ||
-		unix.Fstat(int(binding.root.Fd()), &stat) != nil ||
-		stat.Mode&unix.S_IFMT != unix.S_IFDIR ||
-		stat.Ino > math.MaxInt64 ||
-		strconv.FormatUint(uint64(uint32(stat.Dev)), 10) != binding.home.DeviceID ||
-		int64(stat.Ino) != binding.home.Inode {
+	if binding == nil || binding.root == nil {
+		return ErrConfirmedHomeChanged
+	}
+	identity, err := homeidentity.FromDescriptor(int(binding.root.Fd()))
+	if err != nil || identity.DeviceID != binding.home.DeviceID ||
+		identity.Inode != binding.home.Inode {
 		return ErrConfirmedHomeChanged
 	}
 	return nil

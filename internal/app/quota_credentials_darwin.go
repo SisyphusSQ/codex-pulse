@@ -8,11 +8,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"golang.org/x/sys/unix"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 )
@@ -110,11 +110,9 @@ func readConfirmedAuthFileWithHooks(
 		return nil, err
 	}
 	defer func() { _ = unix.Close(rootDescriptor) }()
-	var rootStat unix.Stat_t
-	if err := unix.Fstat(rootDescriptor, &rootStat); err != nil ||
-		rootStat.Mode&unix.S_IFMT != unix.S_IFDIR ||
-		strconv.FormatUint(uint64(uint32(rootStat.Dev)), 10) != source.DeviceID ||
-		int64(rootStat.Ino) != source.Inode {
+	rootIdentity, err := homeidentity.FromDescriptor(rootDescriptor)
+	if err != nil || rootIdentity.DeviceID != source.DeviceID ||
+		rootIdentity.Inode != source.Inode {
 		return nil, quotaonline.ErrCredentialUnavailable
 	}
 	if err := ctx.Err(); err != nil {

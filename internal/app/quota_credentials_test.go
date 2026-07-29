@@ -6,13 +6,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
 
-	"golang.org/x/sys/unix"
-
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 )
@@ -352,14 +350,19 @@ func quotaRuntimePreferencesForHome(t testing.TB, home string) preferences.Snaps
 	if err != nil {
 		t.Fatalf("filepath.EvalSymlinks(home) error = %v", err)
 	}
-	var stat unix.Stat_t
-	if err := unix.Stat(canonicalHome, &stat); err != nil {
-		t.Fatalf("unix.Stat(home) error = %v", err)
+	directory, err := os.Open(canonicalHome)
+	if err != nil {
+		t.Fatalf("os.Open(home) error = %v", err)
+	}
+	defer directory.Close()
+	identity, err := homeidentity.FromDescriptor(int(directory.Fd()))
+	if err != nil {
+		t.Fatalf("homeidentity.FromDescriptor(home) error = %v", err)
 	}
 	return preferences.Snapshot{CodexHome: preferences.CodexHomePreferences{
 		Source: preferences.ConfirmedSource{
-			Path: filepath.Clean(canonicalHome), DeviceID: strconv.FormatUint(uint64(uint32(stat.Dev)), 10),
-			Inode:         int64(stat.Ino),
+			Path: filepath.Clean(canonicalHome), DeviceID: identity.DeviceID,
+			Inode:         identity.Inode,
 			ConfirmedAtMS: 1_784_000_000_000,
 		},
 		Generation: 1, DataStoreKey: preferences.DefaultDataStoreKey,

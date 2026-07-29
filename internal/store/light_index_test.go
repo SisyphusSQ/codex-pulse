@@ -111,6 +111,45 @@ func TestReplaceLightMetadataForConfirmedHomeSwitchDropsOldDerivedIndex(t *testi
 	}
 }
 
+func TestMigrateLightHomeIdentityUpdatesStateAndTokenScansAtomically(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(ctx, "one", identity, "parser-v1", 2_000)
+	if err != nil {
+		t.Fatalf("StartLightTokenRebuild() error = %v", err)
+	}
+	if err := repository.CommitLightTokenBatch(ctx, storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
+		Checkpoint: storelight.LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes, Complete: true,
+		},
+	}); err != nil {
+		t.Fatalf("CommitLightTokenBatch() error = %v", err)
+	}
+	legacy := identity.Home
+	stable := legacy
+	stable.DeviceID = "volume:00112233445566778899aabbccddeeff"
+	migrated, err := repository.MigrateLightHomeIdentity(ctx, legacy, stable)
+	if err != nil || !migrated {
+		t.Fatalf("MigrateLightHomeIdentity() = %t, %v", migrated, err)
+	}
+	state, err := repository.LightIndexState(ctx)
+	if err != nil || state.Home != stable {
+		t.Fatalf("LightIndexState() = %#v, %v, want Home %#v", state, err, stable)
+	}
+	active, err := repository.ActiveLightTokenScan(ctx, "one")
+	if err != nil || active.Identity.Home != stable {
+		t.Fatalf("ActiveLightTokenScan() = %#v, %v, want Home %#v", active, err, stable)
+	}
+	migrated, err = repository.MigrateLightHomeIdentity(ctx, legacy, stable)
+	if !errors.Is(err, storelight.ErrLightHomeFence) || migrated {
+		t.Fatalf("stale migration = %t, %v, want ErrLightHomeFence", migrated, err)
+	}
+}
+
 func TestReplaceLightMetadataRejectsDuplicateSessionIDs(t *testing.T) {
 	t.Parallel()
 
