@@ -188,8 +188,22 @@ func TestRefreshPolicyRevalidatesStartupAndDisabledState(t *testing.T) {
 		*decision.NextDueAtMS != now || decision.Reason != store.RefreshReasonStartup {
 		t.Fatalf("startup never loaded = %#v, %v", decision, err)
 	}
-	future := now + 3_600_000
 	lastAttempt := now - 1_000
+	authRequired := store.SourceFailureAuthRequired
+	decision, err = policy.Plan(RefreshPlanInput{
+		Source: RefreshSourceQuota, Trigger: store.RefreshTriggerStartup,
+		Enabled: true, NowMS: now, IntervalSeconds: 300,
+		Schedule: &store.SourceRefreshSchedule{Reason: store.RefreshReasonAuthRequired},
+		SourceState: &store.SourceState{
+			LastAttemptAtMS: &lastAttempt, LastFailureCode: &authRequired,
+			ConsecutiveFailures: 1, FreshnessState: store.SourceFreshnessStale,
+		},
+	})
+	if err != nil || !decision.ShouldFetch || decision.NextDueAtMS == nil ||
+		*decision.NextDueAtMS != now || decision.Reason != store.RefreshReasonStartup {
+		t.Fatalf("startup auth recovery = %#v, %v", decision, err)
+	}
+	future := now + 3_600_000
 	decision, err = policy.Plan(RefreshPlanInput{
 		Source: RefreshSourceResetCredits, Trigger: store.RefreshTriggerRecovery,
 		Enabled: true, NowMS: now, IntervalSeconds: 1_800,

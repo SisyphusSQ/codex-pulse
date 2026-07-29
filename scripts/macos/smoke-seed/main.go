@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 )
 
@@ -37,13 +37,14 @@ func seed(preferencesPath, homePath string) error {
 	if err := os.MkdirAll(homePath, 0o700); err != nil {
 		return err
 	}
-	info, err := os.Stat(homePath)
+	directory, err := os.Open(homePath)
 	if err != nil {
 		return err
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Ino == 0 {
-		return fmt.Errorf("home identity unavailable")
+	defer directory.Close()
+	identity, err := homeidentity.FromDescriptor(int(directory.Fd()))
+	if err != nil {
+		return err
 	}
 	store, err := preferences.NewFileStore(preferencesPath)
 	if err != nil {
@@ -54,7 +55,7 @@ func seed(preferencesPath, homePath string) error {
 		OnboardingVersion:   preferences.CurrentOnboardingVersion,
 		OnboardingCompleted: true,
 		CodexHome: preferences.ConfirmedSource{
-			Path: homePath, DeviceID: fmt.Sprintf("%d", stat.Dev), Inode: int64(stat.Ino),
+			Path: homePath, DeviceID: identity.DeviceID, Inode: identity.Inode,
 			ConfirmedAtMS: time.Now().UnixMilli(),
 		},
 		OnlineQuotaEnabled: false, ResetCreditsEnabled: false,

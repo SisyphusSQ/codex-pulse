@@ -57,7 +57,7 @@ STORED_HOME=$(jq -er '.codex_home.source.path' "$RUNTIME_DIR/preferences.json") 
 STORED_DEVICE=$(jq -er '.codex_home.source.device_id' "$RUNTIME_DIR/preferences.json") || fail "confirmed Home device is unavailable"
 STORED_INODE=$(jq -er '.codex_home.source.inode' "$RUNTIME_DIR/preferences.json") || fail "confirmed Home inode is unavailable"
 [ "$STORED_HOME" = "$REAL_HOME" ] || fail "confirmed Home is not the real Codex Home"
-[ "$STORED_DEVICE" = "$(stat -f '%d' "$REAL_HOME")" ] || fail "confirmed Home device changed"
+printf '%s\n' "$STORED_DEVICE" | grep -Eq '^(volume:[0-9a-f]{32}|[1-9][0-9]*)$' || fail "confirmed Home device format is invalid"
 [ "$STORED_INODE" = "$(stat -f '%i' "$REAL_HOME")" ] || fail "confirmed Home inode changed"
 
 if [ -z "$APP_DIR" ]; then
@@ -109,5 +109,11 @@ printf '%s\n' "$smoke_summary" | grep -Eq \
   'overview=loaded .*sessions=[1-9][0-9]* trend_points=[1-9][0-9]* activity=available activity_timeline=[1-9][0-9]* activity_heatmap=168 .*primary_pages=loaded sessions=[1-9][0-9]* projects=[1-9][0-9]* .*usage_trend=[1-9][0-9]* usage_models=[1-9][0-9]* usage_model_trend=[1-9][0-9]* usage_model_reconciled=[1-9][0-9]* usage_cost=known .*project_detail_cost=known project_detail_models=[1-9][0-9]* details_read=[1-9][0-9]* .*unavailable=none ui_pages=7 .*shutdown=clean' || \
   fail "real Home did not produce the required non-zero page contract"
 [ ! -S "$RUNTIME_DIR/core.sock" ] || fail "Helper socket remained after shutdown"
+MIGRATED_HOME=$(jq -er '.codex_home.source.path' "$RUNTIME_DIR/preferences.json") || fail "migrated Home is unavailable"
+MIGRATED_DEVICE=$(jq -er '.codex_home.source.device_id' "$RUNTIME_DIR/preferences.json") || fail "migrated Home device is unavailable"
+MIGRATED_INODE=$(jq -er '.codex_home.source.inode' "$RUNTIME_DIR/preferences.json") || fail "migrated Home inode is unavailable"
+[ "$MIGRATED_HOME" = "$REAL_HOME" ] || fail "migrated Home is not the real Codex Home"
+printf '%s\n' "$MIGRATED_DEVICE" | grep -Eq '^volume:[0-9a-f]{32}$' || fail "migrated Home device is not stable"
+[ "$MIGRATED_INODE" = "$STORED_INODE" ] || fail "migrated Home inode changed"
 
 printf 'app live smoke cleanup passed: runtime=reused confirmed_home=real standard_housekeeping=allowed raw_output=removed\n'

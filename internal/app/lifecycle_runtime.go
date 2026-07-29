@@ -12,6 +12,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/bootstrap"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
 	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
@@ -135,6 +136,11 @@ func startApplicationLifecycleRuntime(
 	}
 	repository := store.NewRepository(config.Database)
 	lightRepository := storelight.NewRepository(config.Database)
+	if config.LightMetadata != nil {
+		if err := migrateApplicationLightHomeIdentity(ctx, lightRepository, snapshot.CodexHome.Source); err != nil {
+			return nil, applicationLifecycleDependencyError(ctx, err)
+		}
+	}
 	// 额度仲裁规则可独立于 schema 升级；Core 查询开放前必须先重建当前版本的派生投影。
 	if err := repository.RebuildQuotaProjection(ctx, store.DefaultQuotaArbitrationRule()); err != nil {
 		return nil, applicationLifecycleDependencyError(ctx, err)
@@ -357,6 +363,31 @@ func startApplicationLifecycleRuntime(
 		go func() { runtime.workerDone <- schedulerService.Run(workerCtx) }()
 	}
 	return runtime, nil
+}
+
+func migrateApplicationLightHomeIdentity(
+	ctx context.Context,
+	repository *storelight.Repository,
+	confirmed preferences.ConfirmedSource,
+) error {
+	if repository == nil || !homeidentity.IsStableDeviceID(confirmed.DeviceID) {
+		return nil
+	}
+	state, err := repository.LightIndexState(ctx)
+	if errors.Is(err, storelight.ErrNotFound) {
+		return nil
+	}
+	if err != nil || state.Home.DeviceID == confirmed.DeviceID {
+		return err
+	}
+	if state.Home.Path != confirmed.Path || state.Home.Inode != confirmed.Inode ||
+		!homeidentity.IsLegacyDeviceID(state.Home.DeviceID) {
+		return storelight.ErrLightHomeFence
+	}
+	_, err = repository.MigrateLightHomeIdentity(ctx, state.Home, storelight.LightHomeIdentity{
+		Path: confirmed.Path, DeviceID: confirmed.DeviceID, Inode: confirmed.Inode,
+	})
+	return err
 }
 
 const initialApplicationBootstrapSwitchID = "initial-onboarding-bootstrap"

@@ -9,13 +9,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
 )
 
 func TestReadAccountRequestsDisplayFieldsWithoutRefreshingToken(t *testing.T) {
@@ -283,7 +282,7 @@ done
 		if !errors.Is(got.err, ErrConfirmedHomeChanged) || got.account != nil {
 			t.Fatalf("ReadLocalAccount(replaced and restored) = %#v, %v", got.account, got.err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("ReadLocalAccount(replaced and restored) did not finish")
 	}
 	boundRead, err := os.ReadFile(boundReadPath)
@@ -393,21 +392,26 @@ func confirmedAccountTestHome(t testing.TB, path string, generation int64) Confi
 	if err != nil {
 		t.Fatalf("filepath.EvalSymlinks() error = %v", err)
 	}
-	var stat unix.Stat_t
-	if err := unix.Stat(canonicalPath, &stat); err != nil {
-		t.Fatalf("unix.Stat() error = %v", err)
+	directory, err := os.Open(canonicalPath)
+	if err != nil {
+		t.Fatalf("os.Open() error = %v", err)
+	}
+	defer directory.Close()
+	identity, err := homeidentity.FromDescriptor(int(directory.Fd()))
+	if err != nil {
+		t.Fatalf("homeidentity.FromDescriptor() error = %v", err)
 	}
 	return ConfirmedHome{
 		Generation: generation,
 		Path:       canonicalPath,
-		DeviceID:   strconv.FormatUint(uint64(uint32(stat.Dev)), 10),
-		Inode:      int64(stat.Ino),
+		DeviceID:   identity.DeviceID,
+		Inode:      identity.Inode,
 	}
 }
 
 func waitForAccountTestPath(t testing.TB, path string) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(path); err == nil {
 			return

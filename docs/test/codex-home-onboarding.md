@@ -109,7 +109,7 @@ CGO_ENABLED=0 go test -race ./internal/preferences ./internal/onboarding -count=
 - snapshot 严格校验版本、未知/trailing JSON、绝对 clean Home identity 和私有权限。
 - 新建 private 目录先 fsync containing directory；同目录文件 fsync 后不覆盖发布并 fsync private 目录；相同确认幂等，并发首次确认不残留 partial，不同确认拒绝覆盖。
 - env/default/selected 输入先 clean、顺序稳定并按 canonical path 去重；只暴露 allowlisted failure reason。
-- confirmation ID 不含 JSONL count/bytes；Confirm 重探测 path/device/inode，允许普通 append，拒绝 identity drift。
+- confirmation ID 不含 JSONL count/bytes；Confirm 重探测 canonical path/稳定卷 UUID/inode，允许普通 append，拒绝 identity drift；Darwin `st_dev` 只用于单次探测内的竞态核对，不作为跨重启身份。
 - privacy notice 明确 tracker SQLite、本地只读、不保存内容、在线 token 仅驻内存且两个开关独立。
 - 提交前 Cancel 零写；Confirm/Cancel 以提交点线性化，late cancellation 使用不继承原取消信号的有界读回，并直接覆盖 matches/not-configured/conflict/unavailable 四类结果；无法证明零写时返回 durability-unknown，后续 Resume 明确未配置会清除 latch 并恢复 Detect/Cancel；source replacement 不返回 confirmed authorization。
 

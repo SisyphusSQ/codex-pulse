@@ -52,7 +52,8 @@ Codex 原始文件仍由 Codex 自己管理。Codex Pulse 只保存产品功能�
 
 首次启动且尚无应用偏好时，Go Helper 会自动选择
 `${CODEX_HOME:-$HOME/.codex}`，先执行不读取会话正文的 metadata-only 安全探测，
-再保存 canonical path、device 和 inode；这一默认来源不要求用户手工确认。
+再保存 canonical path、稳定卷 UUID 和 inode；这一默认来源不要求用户手工确认。
+稳定卷 UUID 不依赖 Darwin 挂载期 `st_dev`，因此系统重启不会让同一 Home 被误判为替换目录。
 默认目录不存在或未通过安全探测时，应用保持未配置且不开始索引。之后更换为
 其他 Codex Home 仍需在设置中显式确认。
 

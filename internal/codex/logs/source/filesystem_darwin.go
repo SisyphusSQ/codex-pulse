@@ -15,6 +15,8 @@ import (
 	"syscall"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
 )
 
 type fileSystem interface {
@@ -31,8 +33,9 @@ type scanRoot interface {
 }
 
 type rootIdentity struct {
-	deviceID string
-	inode    int64
+	deviceID        string
+	inode           int64
+	runtimeDeviceID string
 }
 
 type fileProbe struct {
@@ -288,8 +291,13 @@ func identityFromDescriptor(fileDescriptor int) (rootIdentity, error) {
 	if stat.Mode&unix.S_IFMT != unix.S_IFDIR || stat.Ino > math.MaxInt64 {
 		return rootIdentity{}, ErrInvalidHome
 	}
+	identity, err := homeidentity.FromDescriptor(fileDescriptor)
+	if err != nil {
+		return rootIdentity{}, err
+	}
 	return rootIdentity{
-		deviceID: strconv.FormatUint(uint64(uint32(stat.Dev)), 10), inode: int64(stat.Ino),
+		deviceID: identity.DeviceID, inode: identity.Inode,
+		runtimeDeviceID: strconv.FormatUint(uint64(uint32(stat.Dev)), 10),
 	}, nil
 }
 
@@ -299,8 +307,19 @@ func identityFromFileInfo(info fs.FileInfo) (rootIdentity, error) {
 		return rootIdentity{}, ErrInvalidHome
 	}
 	return rootIdentity{
-		deviceID: strconv.FormatUint(uint64(uint32(stat.Dev)), 10), inode: int64(stat.Ino),
+		inode:           int64(stat.Ino),
+		runtimeDeviceID: strconv.FormatUint(uint64(uint32(stat.Dev)), 10),
 	}, nil
+}
+
+func samePersistentRootIdentity(left, right rootIdentity) bool {
+	return left.deviceID == right.deviceID && left.inode == right.inode
+}
+
+func sameObservedRootIdentity(observed, opened rootIdentity) bool {
+	return observed.runtimeDeviceID != "" &&
+		observed.runtimeDeviceID == opened.runtimeDeviceID &&
+		observed.inode == opened.inode
 }
 
 func openAtNoFollow(rootDescriptor int, relativePath string, finalDirectory bool) (int, error) {

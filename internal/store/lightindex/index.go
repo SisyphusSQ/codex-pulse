@@ -115,6 +115,81 @@ func (repository *Repository) ReplaceLightMetadataForHomeSwitch(
 	return err
 }
 
+// MigrateLightHomeIdentity 只改写同一路径、同一 inode 的根身份表示，
+// 保留轻量索引 generation、session 与 token 派生结果。
+func (repository *Repository) MigrateLightHomeIdentity(
+	ctx context.Context,
+	expected LightHomeIdentity,
+	next LightHomeIdentity,
+) (bool, error) {
+	if repository == nil || repository.database == nil {
+		return false, ErrInvalidRepository
+	}
+	if validateLightHomeIdentity(expected) != nil || validateLightHomeIdentity(next) != nil ||
+		expected.Path != next.Path || expected.Inode != next.Inode ||
+		expected.DeviceID == next.DeviceID {
+		return false, invalidRecord("invalid light Home identity migration")
+	}
+	migrated := false
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+		var state lightIndexStateModel
+		result := transaction.WithContext(ctx).Where("state_id = 1").Take(&state)
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		if result.Error != nil {
+			return result.Error
+		}
+		current := LightHomeIdentity{
+			Path: state.HomePath, DeviceID: state.HomeDeviceID, Inode: state.HomeInode,
+		}
+		if current != expected {
+			return ErrLightHomeFence
+		}
+		var mismatchedScans int64
+		if err := transaction.WithContext(ctx).Model(&lightTokenScanModel{}).
+			Where(
+				"home_path <> ? OR home_device_id <> ? OR home_inode <> ?",
+				expected.Path,
+				expected.DeviceID,
+				expected.Inode,
+			).
+			Count(&mismatchedScans).Error; err != nil {
+			return err
+		}
+		if mismatchedScans != 0 {
+			return ErrLightHomeFence
+		}
+		updated := transaction.WithContext(ctx).Model(&lightIndexStateModel{}).
+			Where(
+				"state_id = 1 AND home_path = ? AND home_device_id = ? AND home_inode = ?",
+				expected.Path,
+				expected.DeviceID,
+				expected.Inode,
+			).
+			Update("home_device_id", next.DeviceID)
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected != 1 {
+			return ErrLightHomeFence
+		}
+		if err := transaction.WithContext(ctx).Model(&lightTokenScanModel{}).
+			Where(
+				"home_path = ? AND home_device_id = ? AND home_inode = ?",
+				expected.Path,
+				expected.DeviceID,
+				expected.Inode,
+			).
+			Update("home_device_id", next.DeviceID).Error; err != nil {
+			return err
+		}
+		migrated = true
+		return nil
+	})
+	return migrated, err
+}
+
 func (repository *Repository) replaceLightMetadata(
 	ctx context.Context,
 	snapshot LightMetadataSnapshot,

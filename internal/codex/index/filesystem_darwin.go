@@ -18,6 +18,8 @@ import (
 
 	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
 )
 
 const sessionIndexFilename = "session_index.jsonl"
@@ -217,7 +219,12 @@ func openRoot(home string) (*os.File, rootVersion, error) {
 		_ = file.Close()
 		return nil, rootVersion{}, ErrInvalidHome
 	}
-	return file, rootVersion{deviceID: deviceID(stat.Dev), inode: stat.Ino}, nil
+	identity, err := homeidentity.FromDescriptor(descriptor)
+	if err != nil {
+		_ = file.Close()
+		return nil, rootVersion{}, fmt.Errorf("identify Codex home: %w", err)
+	}
+	return file, rootVersion{deviceID: identity.DeviceID, inode: uint64(identity.Inode)}, nil
 }
 
 func readIndexAt(ctx context.Context, rootDescriptor int) (IndexRead, error) {
