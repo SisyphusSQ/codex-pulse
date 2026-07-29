@@ -77,9 +77,27 @@ func TestBuiltinOpenAI20260722AddsGPT54MiniWithoutMutatingPriorCatalog(t *testin
 		t.Fatalf("gpt-5.4-mini catalog entry = %#v", mini)
 	}
 	versions := BuiltinOpenAICatalog()
-	if len(versions) != 2 || versions[0].PricingVersion != "openai-api-2026-07-14" ||
+	if len(versions) != 3 || versions[0].PricingVersion != "openai-api-2026-07-14" ||
 		versions[1].PricingVersion != "openai-api-2026-07-22" ||
+		versions[2].PricingVersion != "openai-api-2026-07-29" ||
 		len(BuiltinOpenAI20260714().Models) != 11 {
 		t.Fatalf("builtin catalog history = %#v", versions)
+	}
+}
+
+func TestBuiltinOpenAI20260729UsesGeneralPricingSourceWithoutMutatingHistory(t *testing.T) {
+	t.Parallel()
+
+	current := BuiltinOpenAI20260729()
+	previous := BuiltinOpenAI20260722()
+	if current.PricingVersion != "openai-api-2026-07-29" ||
+		current.EffectiveFromMS != 1_785_254_400_000 ||
+		current.VerifiedAtMS != 1_785_254_400_000 ||
+		current.SourceURL != "https://developers.openai.com/api/docs/pricing" ||
+		!reflect.DeepEqual(current.Models, previous.Models) {
+		t.Fatalf("BuiltinOpenAI20260729() = %#v, previous = %#v", current, previous)
+	}
+	if previous.SourceURL != "https://developers.openai.com/api/docs/models/gpt-5.4-mini" {
+		t.Fatalf("BuiltinOpenAI20260722() source URL mutated to %q", previous.SourceURL)
 	}
 }

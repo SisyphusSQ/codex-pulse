@@ -159,3 +159,44 @@ func TestPricingCatalogRejectsInvalidOrDuplicateRulesAtomically(t *testing.T) {
 		t.Fatalf("null/zero round trip = %#v", stored.Models[0])
 	}
 }
+
+// 测试 PricingCatalogAt 在生效边界返回完整版本，而不是单模型匹配结果。
+func TestPricingCatalogAtSelectsLatestEffectiveVersion(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	for _, version := range []pricing.CatalogVersion{
+		{
+			PricingVersion: "catalog-v1", Source: "openai-api", Currency: "USD",
+			EffectiveFromMS: 100, CreatedAtMS: 90,
+			Models: []pricing.ModelPrice{{
+				MatchKind: pricing.ModelMatchExact, ModelPattern: "model-a", Priority: 100,
+				InputMicrosPerMillion: pointerTo(int64(1)),
+			}},
+		},
+		{
+			PricingVersion: "catalog-v2", Source: "openai-api", Currency: "USD",
+			EffectiveFromMS: 200, CreatedAtMS: 190,
+			Models: []pricing.ModelPrice{{
+				MatchKind: pricing.ModelMatchExact, ModelPattern: "model-b", Priority: 100,
+				OutputMicrosPerMillion: pointerTo(int64(2)),
+			}},
+		},
+	} {
+		if err := repository.AddPricingVersion(context.Background(), version); err != nil {
+			t.Fatalf("AddPricingVersion(%s) error = %v", version.PricingVersion, err)
+		}
+	}
+
+	if _, err := repository.PricingCatalogAt(context.Background(), "openai-api", "USD", 99); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("PricingCatalogAt(before first) error = %v, want ErrNotFound", err)
+	}
+	got, err := repository.PricingCatalogAt(context.Background(), "openai-api", "USD", 200)
+	if err != nil {
+		t.Fatalf("PricingCatalogAt(boundary) error = %v", err)
+	}
+	if got.PricingVersion != "catalog-v2" || len(got.Models) != 1 ||
+		got.Models[0].ModelPattern != "model-b" {
+		t.Fatalf("PricingCatalogAt(boundary) = %#v", got)
+	}
+}

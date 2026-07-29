@@ -148,6 +148,41 @@ func (repository *Repository) PricingVersion(ctx context.Context, versionID stri
 	return version, err
 }
 
+// PricingCatalogAt 返回 source/currency 在指定时刻生效的完整不可变目录。
+func (repository *Repository) PricingCatalogAt(
+	ctx context.Context,
+	source string,
+	currency string,
+	atMS int64,
+) (pricing.CatalogVersion, error) {
+	if repository == nil || repository.database == nil {
+		return pricing.CatalogVersion{}, ErrInvalidRepository
+	}
+	if source == "" || currency == "" || atMS < 0 {
+		return pricing.CatalogVersion{}, invalidRecord("pricing catalog query identity or timestamp is invalid")
+	}
+	var version pricing.CatalogVersion
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
+		var current pricingVersionModel
+		err := connection.WithContext(ctx).
+			Where("source = ? AND currency = ? AND effective_from_ms <= ?", source, currency, atMS).
+			Order("effective_from_ms DESC").Take(&current).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		var found bool
+		version, found, err = pricingVersionByID(ctx, connection, current.PricingVersion)
+		if err == nil && !found {
+			return ErrNotFound
+		}
+		return err
+	})
+	return version, err
+}
+
 // PricingForModelAt 选择 source/currency/as-of 版本并稳定匹配模型规则。
 func (repository *Repository) PricingForModelAt(
 	ctx context.Context,

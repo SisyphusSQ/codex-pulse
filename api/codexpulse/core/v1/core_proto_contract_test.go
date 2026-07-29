@@ -30,7 +30,7 @@ func TestCoreProtoExposesExactRPCSurface(t *testing.T) {
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
 		"MigrationRecoveryExit", "MigrationRecoveryPrepare", "MigrationRecoveryRetry",
 		"MigrationRecoveryState", "NotifyLifecycle", "PlanHomeSwitch", "ProjectDetail", "QuotaCurrent",
-		"RecoverHomeSwitch", "RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings",
+		"PricingCatalogCurrent", "RecoverHomeSwitch", "RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings",
 		"Shutdown", "Source", "SubscribeInvalidations", "UpdateSettings", "UsageCost",
 	}
 	sort.Strings(want)
@@ -65,6 +65,8 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		`(?s)message ActivityWeekdayHourPoint\s*\{.*int32 weekday\s*=\s*1\s*;.*int32 hour\s*=\s*2\s*;.*ActivityMetrics metrics\s*=\s*3\s*;`,
 		`(?s)message ActivityDistribution\s*\{.*string timeline_granularity\s*=\s*1\s*;.*repeated ActivityTimelinePoint timeline\s*=\s*2\s*;.*repeated ActivityWeekdayHourPoint weekday_hours\s*=\s*3\s*;.*int32 timeline_bucket_minutes\s*=\s*4\s*;`,
 		`(?s)message UsageCostResponse\s*\{.*repeated UsageModelItem models\s*=\s*11\s*;.*ActivityDistribution activity_distribution\s*=\s*12\s*;`,
+		`(?s)message ModelReferencePrice\s*\{.*string model_id\s*=\s*1\s*;.*NumericValue input_micros\s*=\s*2\s*;.*NumericValue cached_input_micros\s*=\s*3\s*;.*NumericValue output_micros\s*=\s*4\s*;`,
+		`(?s)message PricingCatalogCurrentResponse\s*\{.*NumericValue evaluated_at_ms\s*=\s*2\s*;.*string pricing_version\s*=\s*3\s*;.*string basis\s*=\s*6\s*;.*NumericValue unit_tokens\s*=\s*7\s*;.*optional string source_url\s*=\s*10\s*;.*repeated ModelReferencePrice items\s*=\s*11\s*;`,
 		`(?s)message SessionDetailResponse\s*\{.*reserved 11\s*;.*reserved "daily"\s*;.*repeated TrendPoint trend\s*=\s*12\s*;.*string trend_granularity\s*=\s*13\s*;`,
 		`(?s)message CodexAccountIdentity\s*\{\s*string type\s*=\s*1\s*;\s*optional string email\s*=\s*2\s*;\s*optional string plan_type\s*=\s*3\s*;\s*\}`,
 		`(?s)message AccountSnapshotResponse\s*\{\s*optional CodexAccountIdentity account\s*=\s*1\s*;\s*\}`,

@@ -11,6 +11,7 @@ service CoreService {
   rpc Contracts(ContractsRequest) returns (ContractsResponse);
   rpc AccountSnapshot(AccountSnapshotRequest) returns (AccountSnapshotResponse);
   rpc UsageCost(UsageCostRequest) returns (UsageCostResponse);
+  rpc PricingCatalogCurrent(PricingCatalogCurrentRequest) returns (PricingCatalogCurrentResponse);
   rpc ListSessions(ListSessionsRequest) returns (SessionListResponse);
   rpc SessionDetail(SessionDetailRequest) returns (SessionDetailResponse);
   rpc ListProjects(ListProjectsRequest) returns (ProjectListResponse);
@@ -83,6 +84,7 @@ message ContractsResponse {
   repeated MethodInfo methods = 5;
   repeated string command_methods = 6;
   ErrorDetail error_example = 7;
+  string pricing_catalog_version = 8;
 }
 
 // ErrorDetail 只承载稳定分类，不允许泄漏底层错误或请求值。
@@ -258,6 +260,29 @@ message UsageCostResponse {
   optional string degraded_reason = 10;
   repeated UsageModelItem models = 11;
   ActivityDistribution activity_distribution = 12;
+}
+
+message PricingCatalogCurrentRequest {}
+
+message ModelReferencePrice {
+  string model_id = 1;
+  NumericValue input_micros = 2;
+  NumericValue cached_input_micros = 3;
+  NumericValue output_micros = 4;
+}
+
+message PricingCatalogCurrentResponse {
+  ResponseMeta meta = 1;
+  NumericValue evaluated_at_ms = 2;
+  string pricing_version = 3;
+  string source = 4;
+  string currency = 5;
+  string basis = 6;
+  NumericValue unit_tokens = 7;
+  NumericValue effective_from_ms = 8;
+  NumericValue verified_at_ms = 9;
+  optional string source_url = 10;
+  repeated ModelReferencePrice items = 11;
 }
 
 message SessionItem {

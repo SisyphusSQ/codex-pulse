@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
+	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
 )
@@ -23,7 +24,7 @@ func TestServiceExposesExactBusinessSurface(t *testing.T) {
 	want := []string{
 		"AccountSnapshot", "AnalyzeSessionIndexRepair", "ConfirmHomeSwitch", "Contracts", "DataHealth", "Health",
 		"HealthProjection", "Job", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
-		"PlanHomeSwitch", "ProjectDetail", "QuotaCurrent", "RecoverHomeSwitch", "RequestQuotaRefresh",
+		"PlanHomeSwitch", "PricingCatalogCurrent", "ProjectDetail", "QuotaCurrent", "RecoverHomeSwitch", "RequestQuotaRefresh",
 		"RunRuntimeAction", "SessionDetail", "Settings", "Source", "UpdateSettings", "UsageCost",
 	}
 	sort.Strings(want)
@@ -38,7 +39,8 @@ func TestServiceDelegatesEphemeralAccountSnapshot(t *testing.T) {
 		Account: &AccountIdentity{Type: "chatgpt", Email: &email, PlanType: &planType},
 	}}
 	service, err := NewService(ServiceConfig{
-		UsageCost: &usageQueryStub{}, RuntimeInfo: runtimeQueryStub{},
+		UsageCost: &usageQueryStub{}, PricingCatalog: pricingCatalogQueryStub{},
+		RuntimeInfo:     runtimeQueryStub{},
 		AccountSnapshot: account,
 	})
 	if err != nil {
@@ -58,13 +60,17 @@ func TestServiceDelegatesEphemeralAccountSnapshot(t *testing.T) {
 
 // 测试 Contracts 的命令清单与方法 kind 一致，且不会向 client 发布重复能力。
 func TestServiceContractsExposeUniqueCommandMethods(t *testing.T) {
-	service, err := NewService(ServiceConfig{UsageCost: &usageQueryStub{}, RuntimeInfo: runtimeQueryStub{}})
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageQueryStub{}, PricingCatalog: pricingCatalogQueryStub{},
+		RuntimeInfo: runtimeQueryStub{},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	contract := service.Contracts()
 	if contract.Version != "core-rpc-v2" ||
-		contract.UsageCostVersion != "usage-cost-v2" {
+		contract.UsageCostVersion != "usage-cost-v2" ||
+		contract.PricingCatalogVersion != "pricing-catalog-v1" {
 		t.Fatalf("Contracts() versions = %#v", contract)
 	}
 	commandsFromMethods := make([]string, 0)
@@ -86,7 +92,10 @@ func TestServiceDelegatesSessionQuery(t *testing.T) {
 	usage := &usageQueryStub{sessions: usagecost.SessionListResponse{
 		Meta: basequery.ResponseMeta{Version: usagecost.ContractVersion, Status: basequery.ResponsePartial},
 	}}
-	service, err := NewService(ServiceConfig{UsageCost: usage, RuntimeInfo: runtimeQueryStub{}})
+	service, err := NewService(ServiceConfig{
+		UsageCost: usage, PricingCatalog: pricingCatalogQueryStub{},
+		RuntimeInfo: runtimeQueryStub{},
+	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
@@ -129,6 +138,12 @@ func (*usageQueryStub) ProjectDetail(context.Context, usagecost.ProjectDetailReq
 type accountSnapshotQueryStub struct {
 	snapshot AccountSnapshot
 	calls    int
+}
+
+type pricingCatalogQueryStub struct{}
+
+func (pricingCatalogQueryStub) Current(context.Context) (pricingcatalog.CurrentResponse, error) {
+	return pricingcatalog.CurrentResponse{}, nil
 }
 
 func (stub *accountSnapshotQueryStub) AccountSnapshot(context.Context) (AccountSnapshot, error) {

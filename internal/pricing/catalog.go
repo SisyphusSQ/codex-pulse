@@ -9,6 +9,9 @@ const (
 	builtinPricing20260722URL           = "https://developers.openai.com/api/docs/models/gpt-5.4-mini"
 	builtinPricing20260722EffectiveAtMS = int64(1_773_705_600_000)
 	builtinPricing20260722VerifiedAtMS  = int64(1_784_678_400_000)
+	builtinPricing20260729Version       = "openai-api-2026-07-29"
+	builtinPricing20260729EffectiveAtMS = int64(1_785_254_400_000)
+	builtinPricing20260729VerifiedAtMS  = int64(1_785_254_400_000)
 )
 
 type builtinModelRate struct {
@@ -41,19 +44,37 @@ func BuiltinOpenAI20260714() CatalogVersion {
 // BuiltinOpenAI20260722 增补 GPT-5.4 mini 的官方 API 价格；旧版本保持不可变，
 // observed_at 早于模型发布日期的事实仍解析到先前 catalog。
 func BuiltinOpenAI20260722() CatalogVersion {
-	rates := append([]builtinModelRate(nil), builtinOpenAIModelRates[:]...)
-	rates = append(rates, builtinModelRate{
-		model: "gpt-5.4-mini", input: 750_000, cached: 75_000, output: 4_500_000,
-	})
+	rates := builtinOpenAI20260722Rates()
 	return catalogFromRates(
 		builtinPricing20260722Version, builtinPricing20260722EffectiveAtMS,
 		builtinPricing20260722VerifiedAtMS, builtinPricing20260722URL, rates,
 	)
 }
 
+func builtinOpenAI20260722Rates() []builtinModelRate {
+	rates := append([]builtinModelRate(nil), builtinOpenAIModelRates[:]...)
+	rates = append(rates, builtinModelRate{
+		model: "gpt-5.4-mini", input: 750_000, cached: 75_000, output: 4_500_000,
+	})
+	return rates
+}
+
+// BuiltinOpenAI20260729 固化通用官方价格页的完整当前快照；旧版本和其来源
+// 元数据保持不可变，避免安装时把同一 pricing_version 解释成不同事实。
+func BuiltinOpenAI20260729() CatalogVersion {
+	return catalogFromRates(
+		builtinPricing20260729Version, builtinPricing20260729EffectiveAtMS,
+		builtinPricing20260729VerifiedAtMS, builtinPricingURL, builtinOpenAI20260722Rates(),
+	)
+}
+
 // BuiltinOpenAICatalog 返回按生效时间升序排列的完整内置价格历史。
 func BuiltinOpenAICatalog() []CatalogVersion {
-	return []CatalogVersion{BuiltinOpenAI20260714(), BuiltinOpenAI20260722()}
+	return []CatalogVersion{
+		BuiltinOpenAI20260714(),
+		BuiltinOpenAI20260722(),
+		BuiltinOpenAI20260729(),
+	}
 }
 
 func catalogFromRates(

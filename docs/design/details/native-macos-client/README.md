@@ -211,7 +211,7 @@ field 11 的每日桶与新趋势互相解码。
 | 分类 | RPC |
 | --- | --- |
 | 握手与启动 | `Handshake`、`Bootstrap`、`Contracts` |
-| 用量与主实体 | `AccountSnapshot`、`UsageCost`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail` |
+| 用量、价格与主实体 | `AccountSnapshot`、`UsageCost`、`PricingCatalogCurrent`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail` |
 | Quota | `QuotaCurrent`、`RequestQuotaRefresh` |
 | 数据源、任务与健康 | `ListSources`、`Source`、`ListJobs`、`Job`、`ListHealth`、`Health`、`HealthProjection`、`DataHealth` |
 | 设置与 Home | `Settings`、`UpdateSettings`、`PlanHomeSwitch`、`ConfirmHomeSwitch`、`RecoverHomeSwitch` |
@@ -494,7 +494,7 @@ fixture 只用于 Preview/单元测试，不能用静态数据宣布 transport �
 - `AppRuntime` 复用 `HelperSupervisor`、`CoreClient` 和 `InvalidationStreamController`，用 process exit source 与 stream terminal callback 感知运行期失效，显式暴露 starting/handshaking/loading/normal/partial/recovery/restart-required/stale/unavailable/shutdown 状态。
 - Overview 通过生成 client 真实调用 `Bootstrap`、`QuotaCurrent`、`UsageCost`、`ListSessions`、`HealthProjection`；`UsageCostRequest.exact_range` 保留周额度的毫秒级边界，生成 response 仍是 contract truth，Swift 只生成 presentation state。若精确范围无法由可信周窗口构造，不回退成固定最近 7 天。
 - Token 主界面展示统一按 `百万`、`千万`、`亿` 三档格式化并固定保留两位小数，`亿` 是最高单位；状态栏因空间受限使用无空格、最多一位小数的 `万` / `百万` / `千万` / `亿` 紧凑格式。count、Turn、队列深度等非 Token 数值继续使用原始计数格式。
-- `NSStatusItem` 的动态额度视图提供 A 基准圆环、B 缺口圆环、D 仪表弧三种样式，默认 A；三种样式共享同一 `StatusBarQuotaPresentation`，优先展示 `limit_id=codex` 的真实周窗口，缺少通用周窗口时才选择其它周窗口或最长的已观测窗口。主窗口、配额页与 Popover 通过 Proto `limit_name` 显示“额度名称 · 动态周期”，默认桶名称缺失时回退“通用额度”，不得把多个 7 天窗口渲染成同名额度。第二行 Token 只有在 `UsageCost` 的精确 UTC range 与该额度窗口完全一致时才显示，否则保持 `已用 --`。旧版 `countdown` / `battery` / `meters` / `rings` 本地偏好在读取时迁移到 A，不保留错误的电池语义或固定窗口解释。
+- `NSStatusItem` 的动态额度视图提供 A 基准圆环、B 缺口圆环、D 仪表弧三种样式，默认 A；三种样式共享同一 `StatusBarQuotaPresentation`，优先展示 `limit_id=codex` 的真实周窗口，缺少通用周窗口时才选择其它周窗口或最长的已观测窗口。主窗口、配额页与 Popover 通过 Proto `limit_name` 显示“额度名称 · 动态周期”，默认桶名称缺失时回退“通用额度”。配额页在 Swift 展示层按 `limit_id + window_minutes` 合并重复 primary/secondary，优先可信 reset、较新鲜状态、完整名称和 primary，但保留同一额度的不同真实周期；Helper 完整窗口、仲裁证据和其它消费面不被裁剪。第二行 Token 只有在 `UsageCost` 的精确 UTC range 与该额度窗口完全一致时才显示，否则保持 `已用 --`。旧版 `countdown` / `battery` / `meters` / `rings` 本地偏好在读取时迁移到 A，不保留错误的电池语义或固定窗口解释。
 - Popover 的“本周项目 Token 排行”不复用主 Overview 当前选择范围：每次先从 Quota Current 解析通用 10080 分钟窗口，再以同一 evaluated time 构造独立 Project exact range。请求固定 `totalTokens DESC`、limit 5，并在服务端聚合分页前筛除 unknown confidence，因此未归类“其他”既不展示也不占 Top 5 名额；周额度范围不可用或请求失败时显示局部 unavailable，不拿自然周、最近 7 天或当前主页面范围冒充。
 - Popover 顶部按 SessionNest 收敛为一行：左侧为产品名和橙色 `套餐 + 账号` 胶囊，右侧依次为 GitHub、分隔线、截图、刷新和打开主窗口。详情区宽度由 `420 pt` 增至 `460 pt`。GitHub、截图、刷新和打开主窗口仍是 Swift/AppKit 平台交互；只有用户显式激活项目按钮时才把固定 URL `https://github.com/SisyphusSQ/codex-pulse` 交给 `NSWorkspace`，Popover 展示、刷新、启动和后台更新均不得触发外跳。
 - Popover 常规屏幕内容高度为 `680 pt`，比原 `640 pt` 增加首屏可见内容；紧凑屏幕按可用高度减去 `40 pt` 安全边距回落。新版本提醒卡片只出现在该 Popover 的滚动内容顶部，不在主窗口或系统通知中重复展示；点击前再次验证为本项目 GitHub Release URL。

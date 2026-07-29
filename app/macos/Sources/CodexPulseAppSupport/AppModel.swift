@@ -39,7 +39,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
 }
 
 private enum FeatureTaskKey: Hashable {
-    case usage, quota, quotaRefresh
+    case usage, pricingCatalog, quota, quotaRefresh
     case runtimeAction
     case sessions, sessionDetail
     case projects, projectDetail
@@ -76,6 +76,8 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var overviewRange: DateRangePreset = .quotaWeek
 
     @Published public private(set) var usageState: FeatureLoadState<Codexpulse_Core_V1_UsageCostResponse> = .idle
+    @Published public private(set) var pricingCatalogState:
+        FeatureLoadState<Codexpulse_Core_V1_PricingCatalogCurrentResponse> = .idle
     @Published public private(set) var quotaState: FeatureLoadState<Codexpulse_Core_V1_QuotaCurrentResponse> = .idle
     @Published public private(set) var quotaRefreshState: ActionState = .idle
     @Published public private(set) var runtimeActionState: ActionState = .idle
@@ -193,7 +195,7 @@ public final class AppModel: ObservableObject {
         case .projects:
             projectsState.isLoading || projectDetailState.isLoading
         case .quotaUsage:
-            quotaState.isLoading || usageState.isLoading
+            quotaState.isLoading || usageState.isLoading || pricingCatalogState.isLoading
         case .localStatus:
             healthProjectionState.isLoading || dataHealthState.isLoading ||
                 healthState.isLoading || healthDetailState.isLoading
@@ -277,7 +279,11 @@ public final class AppModel: ObservableObject {
         case .projects:
             if projectsState.shouldReloadOnNavigation { loadProjects(reset: true) }
         case .quotaUsage:
-            if quotaState.shouldReloadOnNavigation || usageState.shouldReloadOnNavigation { loadQuotaAndUsage() }
+            if quotaState.shouldReloadOnNavigation || usageState.shouldReloadOnNavigation ||
+                pricingCatalogState.shouldReloadOnNavigation
+            {
+                loadQuotaAndUsage()
+            }
         case .localStatus:
             if dataHealthState.shouldReloadOnNavigation || healthState.shouldReloadOnNavigation { loadLocalStatus() }
         case .sourcesJobs:
@@ -573,6 +579,7 @@ public final class AppModel: ObservableObject {
 
     public func loadQuotaAndUsage() {
         loadUsage()
+        loadPricingCatalog()
         loadQuota()
     }
 
@@ -584,6 +591,23 @@ public final class AppModel: ObservableObject {
             self?.usageState = loadState(value: response, meta: response.meta, isEmpty: false)
         } failure: { [weak self] error in
             self?.usageState = failedLoadState(previous: previous, error: error)
+        }
+    }
+
+    public func loadPricingCatalog() {
+        let previous = pricingCatalogState.value
+        pricingCatalogState = .loading(previous: previous)
+        launch(
+            .pricingCatalog,
+            operation: { [runtime] in try await runtime.pricingCatalogCurrent() }
+        ) { [weak self] response in
+            self?.pricingCatalogState = loadState(
+                value: response,
+                meta: response.meta,
+                isEmpty: response.items.isEmpty
+            )
+        } failure: { [weak self] error in
+            self?.pricingCatalogState = failedLoadState(previous: previous, error: error)
         }
     }
 
@@ -1135,6 +1159,7 @@ public final class AppModel: ObservableObject {
 
     private func resetFeatureState() {
         usageState = .idle
+        pricingCatalogState = .idle
         quotaState = .idle
         quotaRefreshState = .idle
         runtimeActionState = .idle
@@ -1253,6 +1278,7 @@ public final class AppModel: ObservableObject {
 
     private func markFeatureStatesStale(_ notice: AppNotice) {
         usageState = stale(usageState, notice)
+        pricingCatalogState = stale(pricingCatalogState, notice)
         quotaState = stale(quotaState, notice)
         sessionsState = stale(sessionsState, notice)
         sessionDetailState = stale(sessionDetailState, notice)

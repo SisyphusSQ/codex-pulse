@@ -495,6 +495,56 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
     }
 }
 
+public enum QuotaWindowDisplayResolver {
+    private struct WindowKey: Hashable {
+        let limitID: String
+        let windowMinutes: Int64?
+    }
+
+    public static func displayWindows(
+        _ windows: [Codexpulse_Core_V1_CurrentWindow]
+    ) -> [Codexpulse_Core_V1_CurrentWindow] {
+        var resolved: [Codexpulse_Core_V1_CurrentWindow] = []
+        var indexByKey: [WindowKey: Int] = [:]
+
+        for window in windows {
+            let key = WindowKey(
+                limitID: window.limitID,
+                windowMinutes: window.hasWindowMinutes ? window.windowMinutes : nil
+            )
+            if let index = indexByKey[key] {
+                if preferenceScore(window) > preferenceScore(resolved[index]) {
+                    resolved[index] = window
+                }
+            } else {
+                indexByKey[key] = resolved.count
+                resolved.append(window)
+            }
+        }
+        return resolved
+    }
+
+    private static func preferenceScore(
+        _ window: Codexpulse_Core_V1_CurrentWindow
+    ) -> Int {
+        let trustedResetScore =
+            window.hasResetRemainingMs && window.resetRemainingMs > 0 ? 1_000 : 0
+        let freshnessScore: Int = switch window.freshness {
+        case "fresh": 400
+        case "stale": 300
+        case "suspicious": 200
+        case "expired_unknown": 100
+        default: 0
+        }
+        let trimmedName =
+            window.hasLimitName
+            ? window.limitName.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        let namedScore = trimmedName.isEmpty ? 0 : 10
+        let primaryScore = window.windowKind == "primary" ? 1 : 0
+        return trustedResetScore + freshnessScore + namedScore + primaryScore
+    }
+}
+
 public struct StatusBarQuotaPresentation: Equatable, Sendable {
     public let periodLabel: String
     public let remainingPercent: Double?

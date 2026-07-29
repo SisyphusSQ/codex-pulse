@@ -31,7 +31,7 @@
 
 ## 价格快照与免责声明
 
-内置价格历史包含不可变的 `openai-api-2026-07-14`（`effective_from_ms=0`）与 `openai-api-2026-07-22`（自 `2026-03-17T00:00:00Z` 生效）；币种 `USD`，价格单位 `microUSD / 1,000,000 tokens`。后一版本增补 `gpt-5.4-mini`，运行时按时间顺序安装本地快照，不联网抓价，也不修改旧版本。
+内置价格历史包含不可变的 `openai-api-2026-07-14`（`effective_from_ms=0`）、`openai-api-2026-07-22`（自 `2026-03-17T00:00:00Z` 生效）与 `openai-api-2026-07-29`（自 `2026-07-29T00:00:00+08:00` 生效）；币种 `USD`，价格单位 `microUSD / 1,000,000 tokens`。第二个版本增补 `gpt-5.4-mini`，第三个版本不改费率，只把完整当前目录固定到通用官方价格页来源；运行时按时间顺序安装本地快照，不联网抓价，也不修改旧版本。
 
 | exact model key | input | cached input | output | 官方证据 |
 | --- | ---: | ---: | ---: | --- |
@@ -47,7 +47,9 @@
 | `gpt-5.6-terra` | 2,500,000 | 250,000 | 15,000,000 | [GPT-5.6 Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra) |
 | `gpt-5.6-luna` | 1,000,000 | 100,000 | 6,000,000 | [GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) |
 
-旧目录 source URL 为 [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing)，增补版本对 `gpt-5.4-mini` 使用其官方 model page。`gpt-5.2-codex-max`、`gpt-5.3-codex-spark`、Pro、日期 snapshot 和其它未逐项确认的 key 保持 `unpriced/model_not_listed`；不借 prefix/default 或相似名字猜价。长上下文、regional、cache-write、Batch/Flex/Priority 倍率不在当前 JSONL 事实 contract 中，也不参与估算。
+初始和当前目录 source URL 为 [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing)，`2026-07-22` 增补版本对 `gpt-5.4-mini` 保留其官方 model page 来源。`gpt-5.2-codex-max`、`gpt-5.3-codex-spark`、Pro、日期 snapshot 和其它未逐项确认的 key 保持 `unpriced/model_not_listed`；不借 prefix/default 或相似名字猜价。长上下文、regional、cache-write、Batch/Flex/Priority 倍率不在当前 JSONL 事实 contract 中，也不参与估算。
+
+`PricingCatalogCurrent` 只读查询与历史 `UsageCost` pricing evidence 分离，返回当前 exact-only 完整目录、基础计价口径、单位和来源。原生“额度与用量”页在无用量时仍默认显示四列价格表，只展示 `gpt-5.3` 及后续有效模型，不在模型用量行重复价格；`gpt-5`、`gpt-5.1`、`gpt-5.2` 家族和不存在的无后缀 `gpt-5.6` 不展示，但继续保留在 catalog 中供历史成本折算，带 `luna` / `sol` / `terra` 后缀的 `gpt-5.6` 模型正常展示。unknown 保持“暂无”，真实零仍是 `$0.00`。这组数值仅用于 API 等价折算，不代表 Codex 订阅账单。
 
 所有金额只是公开 API 单价下的本地等价估算，不代表 OpenAI/Codex 实际账单、订阅配额或应付款。
 
