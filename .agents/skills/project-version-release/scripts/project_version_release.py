@@ -364,14 +364,13 @@ def inspect_repository(
 
 
 def manual_gates(channel: str) -> list[str]:
-    shared = [
-        "make verify",
-        "real Codex Home product acceptance",
-        "remote tag, Release, asset, and SHA-256 readback",
-    ]
     if channel == "stable":
         return [
-            *shared,
+            (
+                "make verify and real Codex Home acceptance, unless "
+                "explicitly waived for unsigned stable"
+            ),
+            "remote tag, Release, asset, and SHA-256 readback",
             (
                 "explicit stable distribution decision: unsigned or "
                 "signed-notarized"
@@ -386,7 +385,9 @@ def manual_gates(channel: str) -> list[str]:
             ),
         ]
     return [
-        *shared,
+        "make verify",
+        "real Codex Home product acceptance",
+        "remote tag, Release, asset, and SHA-256 readback",
         (
             "explicit preview distribution decision: unsigned or "
             "signed-notarized"

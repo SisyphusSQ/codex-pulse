@@ -8,11 +8,13 @@ VERSION=""
 BUILD_NUMBER=""
 SPARKLE_FEED_URL=""
 SPARKLE_PUBLIC_KEY_FILE=""
+RUN_APP_TESTS=true
 
 usage() {
   cat <<'EOF'
 usage: build-release-app.sh --version <semver> --build-number <positive-integer>
   --sparkle-feed-url <https-url> --sparkle-public-key-file <path>
+  [--skip-app-tests]
 
 Builds an ad-hoc-signed, unnotarized Apple Silicon distribution asset under:
   .artifacts/releases/v<semver>/
@@ -45,6 +47,10 @@ while [ "$#" -gt 0 ]; do
       [ "$#" -ge 2 ] || fail "missing value for --sparkle-public-key-file"
       SPARKLE_PUBLIC_KEY_FILE=$2
       shift 2
+      ;;
+    --skip-app-tests)
+      RUN_APP_TESTS=false
+      shift
       ;;
     --help|-h)
       usage
@@ -128,9 +134,11 @@ SWIFT_RELEASE_ARGUMENTS=(
   -Xcc "-fmacro-prefix-map=$REPO_ROOT=."
 )
 
-swift run \
-  "${SWIFT_RELEASE_ARGUMENTS[@]}" \
-  codex-pulse-app-tests
+if [ "$RUN_APP_TESTS" = true ]; then
+  swift run \
+    "${SWIFT_RELEASE_ARGUMENTS[@]}" \
+    codex-pulse-app-tests
+fi
 swift build \
   "${SWIFT_RELEASE_ARGUMENTS[@]}" \
   --product codex-pulse-app
@@ -291,7 +299,7 @@ printf '%s  %s\n%s  %s\n' \
   "$DMG_DIGEST" "$DMG_NAME" >"$CHECKSUM_PATH"
 
 printf '%s\n' \
-  "release app assembled: tag=$TAG build=$BUILD_NUMBER arch=arm64 minos=15.0 sparkle_updater=yes adhoc_signed=yes developer_id=no notarized=no" \
+  "release app assembled: tag=$TAG build=$BUILD_NUMBER arch=arm64 minos=15.0 sparkle_updater=yes adhoc_signed=yes developer_id=no notarized=no app_tests=$RUN_APP_TESTS" \
   "release update asset: $ARCHIVE_PATH" \
   "release install asset: $DMG_PATH" \
   "release ZIP sha256: $ZIP_DIGEST" \

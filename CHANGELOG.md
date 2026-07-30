@@ -115,3 +115,4 @@
 6. [TOO-302] 新增显式 opt-in 的 M11 更新恢复验证入口，聚合更新选择、安全 drain、单实例接管、磁盘/只读/备份故障、全相关包 race 与真实 Sparkle 五场景，并绑定逐场景提交版证据
 7. 新增原生 macOS arm64 preview 发行构建入口，注入统一 App/Helper 产品版本，校验 production Bundle 元数据、macOS 15 最低版本、ZIP 单顶层结构与 SHA-256；普通 App 启动改用用户级私有持久 runtime，development smoke 继续显式使用隔离临时目录
 8. 将 stable channel 与 macOS 发行信任等级拆分，允许在用户显式授权、Gatekeeper 风险披露和 Sparkle 更新密钥可用时发布 `unsigned stable`，同时保留 signed-notarized 可信分发门禁
+9. 为经明确授权跳过测试的 unsigned stable 增加 `--skip-app-tests` 构建开关，默认发行构建仍执行 production App 测试，资产机械完整性检查不受影响

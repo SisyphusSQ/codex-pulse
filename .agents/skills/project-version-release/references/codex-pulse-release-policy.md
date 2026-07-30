@@ -50,8 +50,9 @@ Stable 表示产品 SemVer 与 GitHub Release 已进入非 prerelease 渠道；m
 
 用户可以显式授权 `unsigned stable`。该例外路径仍必须满足 clean release
 commit、统一 Bundle/Helper 版本、ad-hoc inside-out 完整签名、DMG/ZIP/SHA-256、
-Sparkle Ed25519、signed tag 与 GitHub readback，但允许跳过 Developer ID、
-Hardened Runtime、公证、stapling 和全新用户验收。Release Notes 必须明确：
+Sparkle Ed25519、signed tag 与 GitHub readback，但允许在用户逐项明确授权时
+跳过 `make verify`、真实 Home、全新用户验收、Developer ID、Hardened Runtime、
+公证和 stapling。Release Notes 必须明确：
 
 - 这是正式功能版本，但不是 macOS 已认证的可信分发；
 - 首次打开仍需通过“系统设置 → 隐私与安全性 → 仍要打开”；
