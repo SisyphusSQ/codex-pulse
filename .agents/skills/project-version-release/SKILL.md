@@ -62,8 +62,9 @@ python3 .agents/skills/project-version-release/scripts/project_version_release.p
 ```
 
 脚本不得执行 `git tag`、`git push`、`gh release`、签名、公证或上传。
-`release-plan` 只在 release SHA 等于当前 clean `main` HEAD、最终三项资产和
-SHA-256 匹配、Release Notes 无占位符且本地 tag 不存在时输出分阶段命令。
+`release-plan` 只在 release SHA 等于当前 clean `main` HEAD、最终 DMG、ZIP、
+`SHA256SUMS` 和 Release Notes 四项资产齐全且摘要匹配、Release Notes 无占位符
+且本地 tag 不存在时输出分阶段命令。
 
 ## 远端副作用边界
 
@@ -78,7 +79,8 @@ SHA-256 匹配、Release Notes 无占位符且本地 tag 不存在时输出分�
 
 以 [release notes template](assets/release-notes-template.md) 为模板。必须包含：
 
-- 下载哪个资产，并提醒不要下载 GitHub 的 `Source code`；
+- 首次安装下载 DMG、Sparkle 使用 ZIP，并提醒不要下载 GitHub 的
+  `Source code`；
 - macOS 版本、CPU 架构和发布等级；
 - 与实际签名状态匹配的首次打开方式；
 - Codex Home、本地数据库、可选在线额度能力和隐私边界；

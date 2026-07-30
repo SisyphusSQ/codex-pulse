@@ -507,9 +507,6 @@ private struct MenuBarPopoverView: View {
             ScrollView {
                 if let overview = model.presentation {
                     VStack(alignment: .leading, spacing: 18) {
-                        if let reminder = model.updateReminder {
-                            updateReminderSection(reminder)
-                        }
                         quotaSection(overview)
                         dailyTrendSection(overview)
                         resetCreditsSection(overview)
@@ -546,11 +543,6 @@ private struct MenuBarPopoverView: View {
     private func openProject() {
         let result = PopoverQuickActions.openProject(using: openProjectURL)
         onQuickActionResult(.openProject, result)
-        if result.isFailure { quickActionResult = result }
-    }
-
-    private func openUpdate(_ reminder: AppUpdateReminder) {
-        let result = PopoverQuickActions.openUpdate(reminder, using: openProjectURL)
         if result.isFailure { quickActionResult = result }
     }
 
@@ -610,34 +602,6 @@ private struct MenuBarPopoverView: View {
                 }
             }
         }
-    }
-
-    private func updateReminderSection(_ reminder: AppUpdateReminder) -> some View {
-        Button {
-            openUpdate(reminder)
-        } label: {
-            PulseCard {
-                HStack(spacing: 12) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(.blue)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("新版本 \(reminder.version) 可用")
-                            .font(.system(size: 14, weight: .semibold))
-                        Text(reminder.title)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 8)
-                    Image(systemName: "chevron.right")
-                        .foregroundStyle(.tertiary)
-                }
-            }
-        }
-        .buttonStyle(InteractiveCardButtonStyle())
-        .accessibilityIdentifier("popover.update-reminder")
-        .accessibilityLabel("新版本 \(reminder.version) 可用，打开版本页面")
     }
 
     private func resetCreditsSection(_ overview: OverviewPresentation) -> some View {

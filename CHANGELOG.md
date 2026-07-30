@@ -59,7 +59,7 @@
 56. 重做原生 macOS 状态栏额度摘要，提供 A 基准圆环、B 缺口圆环、D 仪表弧三种可切换样式，按真实额度窗口显示 remaining 与严格同周期 Token，并将旧电池、倒计时、双条和纯圆环偏好迁移到默认 A
 57. 将原生 Popover 的最近会话替换为周额度周期项目 Token Top 5，独立绑定通用周额度精确 UTC 范围，并在分页前排除未归类的“其他”项目
 58. 将配额页每日 Token 趋势改为真实模型日明细堆叠柱，新增中文数量级纵轴与鼠标悬停详情；模型合计无法与当日总量对账时仅展示总量并明确标记明细不可用
-59. 新增原生 macOS 版本提醒：设置可选择稳定版或预发布版通道，Swift 客户端按 SemVer 筛选可信 GitHub Releases，并仅在菜单栏 Popover 展示可点击的新版本卡片
+59. 将原生 macOS 版本提醒升级为 Sparkle 2.9.4 应用内更新：stable 与 prerelease 共用带 channel 的签名 appcast，发行 Bundle 内嵌 Framework、HTTPS feed 与 Ed25519 公钥，Swift 在用户确认安装前以 `client_restart` 安全关闭 Helper，只有 clean drain 才允许替换重启；同时新增带 `/Applications` 拖拽入口的首次安装 DMG、exact GitHub Release ZIP 签名、双资产 SHA-256、密钥匹配、全局 build number 与发行包读回门禁
 60. 新增原生 macOS“登录时启动 Codex Pulse”设置，以 `SMAppService.mainApp` 的系统状态作为唯一真相，支持注册、取消、待系统批准、外部状态漂移刷新和稳定错误提示
 61. 在原生“额度与用量”页新增当前 OpenAI API 模型参考价格：Go Helper 通过独立版本化 RPC 返回 exact-only 完整目录，Swift 以默认可见的原生四列表格展示 `gpt-5.3` 及后续有效模型的输入、缓存输入和输出费率，旧 `gpt-5` / `gpt-5.1` / `gpt-5.2` 家族及不存在的无后缀 `gpt-5.6` 不进入展示，但价格仍保留用于历史成本折算；同时保留官方来源、订阅账单边界及 unknown/真实零语义
 

@@ -1,16 +1,15 @@
 import AppKit
 import CodexPulseAppSupport
+import CodexPulseUpdater
 import Combine
 import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-    private static let releasesURLString = "https://github.com/SisyphusSQ/codex-pulse/releases"
-
     private let configuration: AppLaunchConfiguration
     private let model: AppModel
     private let loginItemSettings: LoginItemSettingsModel
-    private let openExternalURL: @MainActor (URL) -> Bool
+    private var updater: SparkleAppUpdater?
     private var window: NSWindow?
     private var statusItemController: StatusItemController?
     private var workspaceObservers: [NSObjectProtocol] = []
@@ -24,14 +23,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     init(
         configuration: AppLaunchConfiguration,
-        loginItemService: any LoginItemServiceManaging = MainAppLoginItemService(),
-        openExternalURL: @escaping @MainActor (URL) -> Bool = { NSWorkspace.shared.open($0) }
+        loginItemService: any LoginItemServiceManaging = MainAppLoginItemService()
     ) {
         self.configuration = configuration
         self.model = AppModel(configuration: configuration)
         self.loginItemSettings = LoginItemSettingsModel(service: loginItemService)
-        self.openExternalURL = openExternalURL
         super.init()
+        if !configuration.smokeMode {
+            updater = SparkleAppUpdater()
+        }
+        model.$updatePolicy
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] policy in
+                self?.updater?.apply(policy)
+            }
+            .store(in: &cancellables)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -72,6 +79,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         Task { @MainActor [weak self] in
             guard let self else {
                 sender.reply(toApplicationShouldTerminate: true)
+                return
+            }
+            if updater?.installationInProgress == true {
+                switch await model.prepareForUpdateInstallation() {
+                case .ready:
+                    shutdownComplete = true
+                    sender.reply(toApplicationShouldTerminate: true)
+                case .blocked(let outcome):
+                    terminationInFlight = false
+                    sender.reply(toApplicationShouldTerminate: false)
+                    model.start()
+                    presentUpdateInstallationBlocked(outcome)
+                }
                 return
             }
             let outcome = await model.shutdown()
@@ -189,19 +209,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func checkForUpdates(_ sender: Any?) {
-        guard let releasesURL = URL(string: Self.releasesURLString),
-              openExternalURL(releasesURL)
-        else {
-            presentUpdateOpenFailure()
+        guard let updater else {
+            presentUpdaterUnavailable()
             return
+        }
+        updater.checkForUpdates()
+    }
+
+    private func presentUpdaterUnavailable() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "此构建未配置应用内更新"
+        alert.informativeText = "正式发布包需要同时包含 HTTPS 更新源和 Ed25519 公钥。"
+        alert.addButton(withTitle: "好")
+        if let window, window.isVisible {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
         }
     }
 
-    private func presentUpdateOpenFailure() {
+    private func presentUpdateInstallationBlocked(_ outcome: ShutdownOutcome) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "无法打开更新页面"
-        alert.informativeText = "请稍后重试，或在浏览器中访问 \(Self.releasesURLString)。"
+        alert.messageText = "暂时无法安装更新"
+        switch outcome {
+        case .forced:
+            alert.informativeText = "后台服务未能正常退出，已阻止替换应用。请稍后再次检查更新。"
+        case .uncertain:
+            alert.informativeText = "无法确认后台服务已经退出，已阻止替换应用。请稍后再次检查更新。"
+        case .clean:
+            alert.informativeText = "更新准备状态异常，请稍后再次检查更新。"
+        }
         alert.addButton(withTitle: "好")
         if let window, window.isVisible {
             alert.beginSheetModal(for: window)

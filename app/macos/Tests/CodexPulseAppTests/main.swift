@@ -3,6 +3,7 @@ import Combine
 import CodexPulseAppSupport
 import CodexPulseCoreClient
 import CodexPulseProtocolGenerated
+import CodexPulseUpdater
 import Foundation
 import SwiftUI
 
@@ -18,24 +19,6 @@ private enum TestFailure: Error, CustomStringConvertible, Sendable {
 
 private enum FakeFailure: Error, Sendable {
     case unavailable
-}
-
-private actor FakeAppUpdateChecker: AppUpdateChecking {
-    let reminder: AppUpdateReminder?
-
-    init(reminder: AppUpdateReminder?) {
-        self.reminder = reminder
-    }
-
-    func latestUpdate(
-        currentVersion: String,
-        channel: AppUpdateChannel
-    ) async throws -> AppUpdateReminder? {
-        guard currentVersion == "0.1.0-beta.3", channel == .prerelease else {
-            return nil
-        }
-        return reminder
-    }
 }
 
 private struct SessionPagePlan: Sendable {
@@ -126,6 +109,18 @@ private func mainWindowSource(_ fileName: String) throws -> String {
     let fileURL =
         packageRoot
         .appendingPathComponent("Sources/CodexPulseApp", isDirectory: true)
+        .appendingPathComponent(fileName)
+    return try String(contentsOf: fileURL, encoding: .utf8)
+}
+
+private func updaterSource(_ fileName: String) throws -> String {
+    let packageRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+    let fileURL =
+        packageRoot
+        .appendingPathComponent("Sources/CodexPulseUpdater", isDirectory: true)
         .appendingPathComponent(fileName)
     return try String(contentsOf: fileURL, encoding: .utf8)
 }
@@ -895,50 +890,15 @@ private func testPopoverProjectActionMakesSystemOpenFailureVisible() throws {
     )
 }
 
-private func testPopoverUpdateReminderStaysOnTheMenuBarSurface() throws {
+private func testPopoverDoesNotRetainLegacyReleaseLinkUpdater() throws {
     let popoverSource = try mainWindowSource("StatusItemController.swift")
     let mainWindowSource = try mainWindowSource("RootView.swift")
 
     try expect(
-        popoverSource.contains("model.updateReminder")
-            && popoverSource.contains("popover.update-reminder")
-            && popoverSource.contains("新版本 \\(reminder.version) 可用")
+        !popoverSource.contains("model.updateReminder")
+            && !popoverSource.contains("PopoverQuickActions.openUpdate")
             && !mainWindowSource.contains("updateReminder"),
-        "update availability must render only in the menu bar Popover"
-    )
-}
-
-private func testPopoverUpdateActionOpensOnlyTrustedReleaseURLs() throws {
-    let trusted = AppUpdateReminder(
-        version: "0.1.0-beta.4",
-        title: "Codex Pulse v0.1.0-beta.4",
-        releaseURL: URL(
-            string: "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.1.0-beta.4"
-        )!
-    )
-    var openedURL: URL?
-    let trustedResult = PopoverQuickActions.openUpdate(trusted) { url in
-        openedURL = url
-        return true
-    }
-    try expect(
-        openedURL == trusted.releaseURL && !trustedResult.isFailure,
-        "trusted update cards must open their exact GitHub release"
-    )
-
-    let untrusted = AppUpdateReminder(
-        version: "9.9.9",
-        title: "untrusted",
-        releaseURL: URL(string: "https://example.com/replace-app")!
-    )
-    var untrustedOpenCount = 0
-    let untrustedResult = PopoverQuickActions.openUpdate(untrusted) { _ in
-        untrustedOpenCount += 1
-        return true
-    }
-    try expect(
-        untrustedOpenCount == 0 && untrustedResult.isFailure,
-        "untrusted update URLs must fail closed before invoking the system opener"
+        "Sparkle must replace the legacy GitHub release-link reminder"
     )
 }
 
@@ -1648,27 +1608,59 @@ private func testApplicationMenuSettingsShowsTheExistingSettingsPage() throws {
     )
 }
 
-private func testApplicationMenuUpdateUsesObservableReleasesOpenerAndHandlesFailure() throws {
+private func testApplicationMenuUpdateUsesSparkleAndObservedHelperPolicy() throws {
     let source = try mainWindowSource("AppDelegate.swift")
     try expect(
-        source.contains(
-            "private static let releasesURLString = \"https://github.com/SisyphusSQ/codex-pulse/releases\""
-        ),
-        "Check for Updates must target the approved GitHub Releases page"
+        source.contains("import CodexPulseUpdater")
+            && source.contains("private var updater: SparkleAppUpdater?")
+            && source.contains("updater.checkForUpdates()"),
+        "Check for Updates must use the embedded Sparkle updater"
     )
     try expect(
-        source.contains("private let openExternalURL: @MainActor (URL) -> Bool")
-            && source.contains(
-                "openExternalURL: @escaping @MainActor (URL) -> Bool = { NSWorkspace.shared.open($0) }"
-            )
-            && source.contains("openExternalURL(releasesURL)"),
-        "Check for Updates must use an injectable URL opener instead of hiding browser launch"
+        source.contains("model.$updatePolicy")
+            && source.contains("self?.updater?.apply(policy)"),
+        "Sparkle must observe the Helper-owned update policy"
     )
     try expect(
-        source.contains("guard let releasesURL = URL(string: Self.releasesURLString),")
-            && source.contains("presentUpdateOpenFailure()")
-            && source.contains("alert.messageText = \"无法打开更新页面\""),
-        "invalid or rejected Releases URLs must produce a visible native failure"
+        !source.contains("releasesURLString")
+            && !source.contains("openExternalURL(releasesURL)"),
+        "the legacy browser-only update path must be removed"
+    )
+}
+
+private func testSparkleStartsWithoutRacingTheHelperOwnedPolicy() throws {
+    let source = try updaterSource("SparkleAppUpdater.swift")
+    guard let disableChecks = source.range(
+        of: "engine.automaticallyChecksForUpdates = policy.automaticallyChecks"
+    ),
+          let startUpdater = source.range(
+              of: "standardController.startUpdater()"
+          )
+    else {
+        throw TestFailure.mismatch(
+            "Sparkle startup policy ordering was unavailable"
+        )
+    }
+    try expect(
+        disableChecks.lowerBound < startUpdater.lowerBound,
+        "Sparkle must stay offline until the Helper-owned policy is applied"
+    )
+}
+
+private func testUpdateInstallationBlocksTerminationAfterUncleanHelperShutdown() throws {
+    let source = try mainWindowSource("AppDelegate.swift")
+    try expect(
+        source.contains("updater?.installationInProgress == true")
+            && source.contains("await model.prepareForUpdateInstallation()")
+            && source.contains("case .blocked(let outcome):")
+            && source.contains("sender.reply(toApplicationShouldTerminate: false)"),
+        "Sparkle installation must not replace the bundle after a forced or uncertain Helper stop"
+    )
+    try expect(
+        !source.contains("updater?.resetBlockedInstallation()")
+            && source.contains("model.start()")
+            && source.contains("presentUpdateInstallationBlocked(outcome)"),
+        "a blocked install must retain Sparkle's scheduled intent, restart the model, and explain the failure"
     )
 }
 
@@ -3811,133 +3803,163 @@ private func testSettingsRevisionRequest() throws {
         "editable update channel must carry the user's stable or prerelease selection")
 }
 
-private func testGitHubUpdateCheckerFiltersStableAndPrereleaseChannels() async throws {
-    let payload = Data(
-        """
-        [
-          {
-            "tag_name": "v0.1.0-beta.5",
-            "name": "draft preview",
-            "html_url": "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.1.0-beta.5",
-            "draft": true,
-            "prerelease": true
-          },
-          {
-            "tag_name": "v0.1.0-beta.4",
-            "name": "Codex Pulse v0.1.0-beta.4",
-            "html_url": "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.1.0-beta.4",
-            "draft": false,
-            "prerelease": true
-          },
-          {
-            "tag_name": "v0.0.9",
-            "name": "Codex Pulse v0.0.9",
-            "html_url": "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.0.9",
-            "draft": false,
-            "prerelease": false
-          }
-        ]
-        """.utf8
-    )
-    let checker = GitHubReleaseUpdateChecker(fetchResponse: { request in
-        guard request.url?.absoluteString
-            == "https://api.github.com/repos/SisyphusSQ/codex-pulse/releases?per_page=20"
-        else {
-            throw TestFailure.mismatch("update checker used an unexpected endpoint")
-        }
-        return AppUpdateHTTPResponse(statusCode: 200, data: payload)
-    })
-
-    let stable = try await checker.latestUpdate(
-        currentVersion: "0.1.0-beta.3",
-        channel: .stable
-    )
-    let prerelease = try await checker.latestUpdate(
-        currentVersion: "0.1.0-beta.3",
-        channel: .prerelease
-    )
-
+private func testUpdateChannelsMapToSparkleAllowedChannels() throws {
     try expect(
-        stable == nil,
-        "stable channel must exclude prereleases and ignore an older stable release")
+        AppUpdateChannel.stable.sparkleAllowedChannels.isEmpty,
+        "stable updates must use Sparkle's default channel"
+    )
     try expect(
-        prerelease?.version == "0.1.0-beta.4"
-            && prerelease?.title == "Codex Pulse v0.1.0-beta.4"
-            && prerelease?.releaseURL.absoluteString
-                == "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.1.0-beta.4",
-        "prerelease channel must select the newest non-draft prerelease")
+        AppUpdateChannel.prerelease.sparkleAllowedChannels == ["prerelease"],
+        "prerelease updates must opt into prerelease while retaining Sparkle's default channel"
+    )
 }
 
-private func testGitHubUpdateCheckerPrefersAStableReleaseAndRejectsUntrustedLinks() async throws {
-    let payload = Data(
-        """
-        [
-          {
-            "tag_name": "v0.1.0-beta.10",
-            "name": "Codex Pulse v0.1.0-beta.10",
-            "html_url": "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.1.0-beta.10",
-            "draft": false,
-            "prerelease": true
-          },
-          {
-            "tag_name": "v0.1.0",
-            "name": "Codex Pulse v0.1.0",
-            "html_url": "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.1.0",
-            "draft": false,
-            "prerelease": false
-          },
-          {
-            "tag_name": "v9.9.9",
-            "name": "untrusted",
-            "html_url": "https://example.com/replace-app",
-            "draft": false,
-            "prerelease": false
-          }
-        ]
-        """.utf8
+private func testUpdateInstallationRequiresCleanClientRestartShutdown() async throws {
+    let cleanCore = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let cleanRuntime = AppRuntime(
+        supervisor: FakeSupervisor(),
+        clientFactory: { _ in cleanCore }
     )
-    let checker = GitHubReleaseUpdateChecker(fetchResponse: { _ in
-        AppUpdateHTTPResponse(statusCode: 200, data: payload)
-    })
-
-    let update = try await checker.latestUpdate(
-        currentVersion: "0.1.0-beta.9",
-        channel: .prerelease
-    )
-
+    await cleanRuntime.start()
+    let cleanOutcome = await cleanRuntime.shutdown(reason: .updateInstallation)
     try expect(
-        update?.version == "0.1.0",
-        "a stable release must supersede its prereleases while untrusted links stay ineligible")
+        AppUpdateInstallPreparation(shutdownOutcome: cleanOutcome) == .ready,
+        "an update may replace the bundle only after a clean Helper shutdown"
+    )
+    let cleanCalls = await cleanCore.recordedCalls()
+    try expect(
+        cleanCalls.contains("shutdown:client_restart"),
+        "update installation must identify the shutdown as a client restart"
+    )
+
+    let delayedCore = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await delayedCore.setShutdownDelay(.seconds(60))
+    let forcedRuntime = AppRuntime(
+        supervisor: FakeSupervisor(),
+        shutdownRequestTimeout: .milliseconds(40),
+        clientFactory: { _ in delayedCore }
+    )
+    await forcedRuntime.start()
+    let forcedOutcome = await forcedRuntime.shutdown(reason: .updateInstallation)
+    try expect(
+        AppUpdateInstallPreparation(shutdownOutcome: forcedOutcome) == .blocked(.forced),
+        "a forced or uncertain Helper shutdown must block bundle replacement"
+    )
 }
 
 @MainActor
-private func testAppModelPublishesConfiguredPrereleaseReminderForPopover() async throws {
+private final class FakeSparkleUpdaterEngine: SparkleUpdaterEngine {
+    var automaticallyChecksForUpdates = false
+    var automaticallyDownloadsUpdates = false
+    var updateCheckInterval: TimeInterval = 0
+    var canCheckForUpdates = true
+    private(set) var checkCount = 0
+    private(set) var resetCount = 0
+
+    func checkForUpdates() {
+        checkCount += 1
+    }
+
+    func resetUpdateCycle() {
+        resetCount += 1
+    }
+}
+
+@MainActor
+private func testSparkleUpdaterAppliesPolicyAndTracksInstallation() throws {
+    let engine = FakeSparkleUpdaterEngine()
+    let updater = SparkleAppUpdater(engine: engine)
+    let policy = AppUpdatePolicy(
+        automaticallyChecks: true,
+        automaticallyDownloads: false,
+        channel: .prerelease,
+        checkIntervalSeconds: 7_200
+    )
+
+    updater.apply(policy)
+    try expect(engine.automaticallyChecksForUpdates, "Sparkle must inherit automatic checks")
+    try expect(!engine.automaticallyDownloadsUpdates, "Sparkle must preserve check-only policy")
+    try expect(engine.updateCheckInterval == 7_200, "Sparkle must inherit the check interval")
+    try expect(
+        updater.allowedChannels == ["prerelease"],
+        "Sparkle must receive the configured prerelease channel"
+    )
+    try expect(engine.resetCount == 1, "a policy change must reset Sparkle's update cycle")
+
+    updater.checkForUpdates()
+    try expect(engine.checkCount == 1, "manual checks must be delegated to Sparkle")
+
+    updater.noteUpdateWillInstall()
+    try expect(updater.installationInProgress, "Sparkle install intent must be observable")
+    updater.noteUpdateDidAbort()
+    try expect(!updater.installationInProgress, "an aborted install must clear stale intent")
+
+    updater.noteUpdateWillInstall()
+    try expect(
+        updater.installationInProgress,
+        "a scheduled install must remain observable until Sparkle aborts it"
+    )
+}
+
+private func testSparkleBundleConfigurationRequiresHTTPSAndEd25519Key() throws {
+    let publicKey = Data(repeating: 7, count: 32).base64EncodedString()
+    try expect(
+        SparkleBundleConfiguration(
+            feedURLString: "https://updates.example.com/codex-pulse/appcast.xml",
+            publicEDKey: publicKey
+        ) != nil,
+        "a release bundle must accept an HTTPS appcast and a 32-byte Ed25519 public key"
+    )
+    try expect(
+        SparkleBundleConfiguration(
+            feedURLString: "http://updates.example.com/appcast.xml",
+            publicEDKey: publicKey
+        ) == nil,
+        "an insecure appcast URL must not enable the updater"
+    )
+    try expect(
+        SparkleBundleConfiguration(
+            feedURLString: "https://user@updates.example.com/appcast.xml",
+            publicEDKey: publicKey
+        ) == nil,
+        "a feed URL containing credentials must not enable the updater"
+    )
+    try expect(
+        SparkleBundleConfiguration(
+            feedURLString: "https://updates.example.com/appcast.xml",
+            publicEDKey: "not-a-key"
+        ) == nil,
+        "an invalid Ed25519 public key must not enable the updater"
+    )
+}
+
+@MainActor
+private func testAppModelPublishesConfiguredUpdatePolicyForSparkle() async throws {
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     var settings = makeSettingsResponse(revision: "revision-1", quotaEnabled: true)
     settings.snapshot.updates.autoCheckEnabled = true
+    settings.snapshot.updates.autoDownloadEnabled = true
     settings.snapshot.updates.channel = "prerelease"
-    settings.snapshot.updates.checkIntervalSeconds = 3_600
+    settings.snapshot.updates.checkIntervalSeconds = 7_200
     await core.setSettingsResponses([settings], updateFailure: false)
-    let reminder = AppUpdateReminder(
-        version: "0.1.0-beta.4",
-        title: "Codex Pulse v0.1.0-beta.4",
-        releaseURL: URL(
-            string: "https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.1.0-beta.4"
-        )!
-    )
     let model = AppModel(
         runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
-        updateChecker: FakeAppUpdateChecker(reminder: reminder),
-        currentVersion: "0.1.0-beta.3"
+        observesUpdatePolicy: true
     )
 
     model.start()
-    try await waitUntil("configured prerelease update reminder") {
-        await MainActor.run { model.updateReminder == reminder }
+    let expected = AppUpdatePolicy(
+        automaticallyChecks: true,
+        automaticallyDownloads: true,
+        channel: .prerelease,
+        checkIntervalSeconds: 7_200
+    )
+    try await waitUntil("configured Sparkle update policy") {
+        await MainActor.run { model.updatePolicy == expected }
     }
     try expect(
-        model.updateReminder?.version == "0.1.0-beta.4",
-        "normal startup must publish the configured update channel's reminder")
+        model.updatePolicy == expected,
+        "normal startup must publish the Helper-owned update policy for Sparkle")
     _ = await model.shutdown()
 }
 
@@ -6633,8 +6655,7 @@ struct CodexPulseAppTestMain {
         try testPopoverScreenshotClipboardTextHidesAccountAndPlan()
         try testPopoverProjectActionUsesExactPublicRepositoryURL()
         try testPopoverProjectActionMakesSystemOpenFailureVisible()
-        try testPopoverUpdateReminderStaysOnTheMenuBarSurface()
-        try testPopoverUpdateActionOpensOnlyTrustedReleaseURLs()
+        try testPopoverDoesNotRetainLegacyReleaseLinkUpdater()
         try testPopoverCopyActionStopsWhenSafeScreenshotIsUnavailable()
         try testPopoverCopyActionReportsClipboardFailureWithoutRawFallback()
         try testPopoverCopyActionWritesOneSafeImageAndTextPayload()
@@ -6655,7 +6676,9 @@ struct CodexPulseAppTestMain {
         try testStatusItemRefreshReadsCommittedState()
         try testApplicationMenuRegistersNativeCommands()
         try testApplicationMenuSettingsShowsTheExistingSettingsPage()
-        try testApplicationMenuUpdateUsesObservableReleasesOpenerAndHandlesFailure()
+        try testApplicationMenuUpdateUsesSparkleAndObservedHelperPolicy()
+        try testSparkleStartsWithoutRacingTheHelperOwnedPolicy()
+        try testUpdateInstallationBlocksTerminationAfterUncleanHelperShutdown()
         try testApplicationMenuIsSkippedForSmokeLaunches()
         try testInitialWindowUsesScreenAwarePreferredLayout()
         try testNativeSmokeForcesOverviewTransitionLast()
@@ -6700,9 +6723,11 @@ struct CodexPulseAppTestMain {
         try testOverviewRangeResolutionDrivesEveryContentRequest()
         try testFeatureRequestsStateAndMerge()
         try testSettingsRevisionRequest()
-        try await testGitHubUpdateCheckerFiltersStableAndPrereleaseChannels()
-        try await testGitHubUpdateCheckerPrefersAStableReleaseAndRejectsUntrustedLinks()
-        try await testAppModelPublishesConfiguredPrereleaseReminderForPopover()
+        try testUpdateChannelsMapToSparkleAllowedChannels()
+        try testSparkleBundleConfigurationRequiresHTTPSAndEd25519Key()
+        try await MainActor.run { try testSparkleUpdaterAppliesPolicyAndTracksInstallation() }
+        try await testUpdateInstallationRequiresCleanClientRestartShutdown()
+        try await testAppModelPublishesConfiguredUpdatePolicyForSparkle()
         try testLaunchConfigurationBoundaries()
         try testLaunchConfigurationUsesPersistentProductDefaults()
         try await testPricingCatalogLoadsWithoutUsageModels()

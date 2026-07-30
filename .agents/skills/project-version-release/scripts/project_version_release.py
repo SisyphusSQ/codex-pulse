@@ -492,14 +492,17 @@ def archive_changelog(
     }
 
 
-def preview_first_open() -> str:
+def preview_first_open(version: Version) -> str:
     return "\n".join(
         (
             "Codex Pulse 当前是未签名、未公证的开发预览版。"
             "macOS 首次启动时会阻止应用打开。",
             "",
-            "1. 下载并解压发行 ZIP。",
-            "2. 将 `Codex Pulse.app` 拖入“应用程序”文件夹。",
+            (
+                "1. 下载 "
+                f"`Codex-Pulse-{version.tag}-macos-arm64.dmg`。"
+            ),
+            "2. 打开 DMG，将 `Codex Pulse.app` 拖到“Applications”入口。",
             "3. 双击应用。macOS 可能询问是否移到废纸篓；"
             "请不要移到废纸篓，关闭该提示。",
             "4. 打开“系统设置 → 隐私与安全性”。",
@@ -515,11 +518,14 @@ def preview_first_open() -> str:
     )
 
 
-def stable_first_open() -> str:
+def stable_first_open(version: Version) -> str:
     return "\n".join(
         (
-            "1. 下载并解压发行 ZIP。",
-            "2. 将 `Codex Pulse.app` 拖入“应用程序”文件夹。",
+            (
+                "1. 下载 "
+                f"`Codex-Pulse-{version.tag}-macos-arm64.dmg`。"
+            ),
+            "2. 打开 DMG，将 `Codex Pulse.app` 拖到“Applications”入口。",
             "3. 双击打开；macOS 首次确认从互联网下载的"
             "应用时，选择“打开”。",
             "4. 按应用提示确认 Codex Home。"
@@ -556,7 +562,7 @@ def render_release_notes(
             "> 这是开发预览版，尚未完成 Developer ID 签名和 "
             "Apple 公证。"
         )
-        first_open = preview_first_open()
+        first_open = preview_first_open(version)
         limitations = (
             "- 未签名、未公证，仅供已了解风险的"
             "测试用户使用。\n"
@@ -573,7 +579,7 @@ def render_release_notes(
                 "> 本版本已通过 Developer ID 签名、Apple 公证和"
                 "发布资产校验。"
             )
-        first_open = stable_first_open()
+        first_open = stable_first_open(version)
         limitations = (
             "- 请按本版本实际限制补充；"
             "不得保留此占位文本。"
@@ -713,12 +719,19 @@ def validate_local_release_inputs(
         raise SystemExit(f"local tag already exists: {version.tag}")
 
     release_root = Path(".artifacts") / "releases" / version.tag
-    artifact_name = (
+    zip_name = (
         f"Codex-Pulse-{version.tag}-macos-arm64.zip"
     )
-    artifact = safe_repository_path(
+    dmg_name = (
+        f"Codex-Pulse-{version.tag}-macos-arm64.dmg"
+    )
+    zip_artifact = safe_repository_path(
         repository,
-        release_root / artifact_name,
+        release_root / zip_name,
+    )
+    dmg_artifact = safe_repository_path(
+        repository,
+        release_root / dmg_name,
     )
     checksums = safe_repository_path(
         repository,
@@ -728,25 +741,27 @@ def validate_local_release_inputs(
         repository,
         release_root / "release-notes.md",
     )
-    for required_path in (artifact, checksums, notes):
+    for required_path in (
+        zip_artifact,
+        dmg_artifact,
+        checksums,
+        notes,
+    ):
         if not required_path.is_file() or required_path.stat().st_size == 0:
             relative = required_path.relative_to(repository)
             raise SystemExit(
                 f"required release input is missing or empty: {relative}"
             )
 
-    digest = sha256_file(artifact)
-    checksum_lines = checksums.read_text(
-        encoding="utf-8"
-    ).splitlines()
-    checksum_matches = any(
-        digest in line and artifact_name in line
-        for line in checksum_lines
+    zip_digest = sha256_file(zip_artifact)
+    dmg_digest = sha256_file(dmg_artifact)
+    checksum_lines = set(
+        checksums.read_text(encoding="utf-8").splitlines()
     )
-    if not checksum_matches:
-        raise SystemExit(
-            "SHA256SUMS does not match the release artifact"
-        )
+    if f"{zip_digest}  {zip_name}" not in checksum_lines:
+        raise SystemExit("SHA256SUMS does not match the ZIP artifact")
+    if f"{dmg_digest}  {dmg_name}" not in checksum_lines:
+        raise SystemExit("SHA256SUMS does not match the DMG artifact")
 
     notes_text = notes.read_text(encoding="utf-8")
     if "{{" in notes_text or "请填写" in notes_text:
@@ -755,10 +770,13 @@ def validate_local_release_inputs(
         raise SystemExit("release notes do not mention the target version")
 
     return {
-        "artifact": str(artifact.relative_to(repository)),
+        "artifact": str(zip_artifact.relative_to(repository)),
+        "dmg": str(dmg_artifact.relative_to(repository)),
         "checksums": str(checksums.relative_to(repository)),
         "notes": str(notes.relative_to(repository)),
-        "sha256": digest,
+        "sha256": zip_digest,
+        "zip_sha256": zip_digest,
+        "dmg_sha256": dmg_digest,
     }
 
 
@@ -780,6 +798,9 @@ def release_plan(
     artifact = (
         f"{release_dir}/Codex-Pulse-{version.tag}-macos-arm64.zip"
     )
+    dmg = (
+        f"{release_dir}/Codex-Pulse-{version.tag}-macos-arm64.dmg"
+    )
     checksums = f"{release_dir}/SHA256SUMS"
     notes = f"{release_dir}/release-notes.md"
     create_arguments = [
@@ -787,7 +808,8 @@ def release_plan(
         "release",
         "create",
         version.tag,
-        f"{artifact}#Codex Pulse for macOS (Apple Silicon)",
+        f"{dmg}#Codex Pulse 首次安装 DMG (Apple Silicon)",
+        f"{artifact}#Codex Pulse Sparkle 更新 ZIP (Apple Silicon)",
         checksums,
         "--repo",
         EXPECTED_REPOSITORY,
@@ -906,6 +928,7 @@ def release_plan(
         "channel": channel,
         "release_sha": release_sha,
         "artifact": artifact,
+        "dmg": dmg,
         "checksums": checksums,
         "notes": notes,
         "phases": phases,

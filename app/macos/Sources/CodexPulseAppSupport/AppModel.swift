@@ -96,7 +96,7 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var settingsState: FeatureLoadState<Codexpulse_Core_V1_SettingsResponse> = .idle
     @Published public var settingsDraft: SettingsDraft?
     @Published public private(set) var settingsSaveState: SettingsSaveState = .idle
-    @Published public private(set) var updateReminder: AppUpdateReminder?
+    @Published public private(set) var updatePolicy: AppUpdatePolicy = .disabled
 
     @Published public private(set) var selectedSessionID: String?
     @Published public private(set) var selectedProjectKey: String?
@@ -105,10 +105,9 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var selectedHealthEventID: String?
 
     private let runtime: AppRuntime
-    private let updateChecker: (any AppUpdateChecking)?
-    private let currentVersion: String
+    private let observesUpdatePolicy: Bool
     private var startTask: Task<Void, Never>?
-    private var updateCheckTask: Task<Void, Never>?
+    private var updatePolicyTask: Task<Void, Never>?
     private var overviewRefreshTask: Task<Void, Never>?
     private var overviewRefreshGeneration: UInt64 = 0
     private var featureTasks: [FeatureTaskKey: Task<Void, Never>] = [:]
@@ -119,27 +118,15 @@ public final class AppModel: ObservableObject {
 
     public init(configuration: AppLaunchConfiguration) {
         runtime = AppRuntime(configuration: configuration)
-        currentVersion = configuration.clientVersion
-        updateChecker = !configuration.smokeMode
-            && !configuration.clientVersion.hasPrefix("0.0.0")
-            ? GitHubReleaseUpdateChecker()
-            : nil
-    }
-
-    public init(runtime: AppRuntime) {
-        self.runtime = runtime
-        updateChecker = nil
-        currentVersion = "0.0.0-test"
+        observesUpdatePolicy = !configuration.smokeMode
     }
 
     public init(
         runtime: AppRuntime,
-        updateChecker: any AppUpdateChecking,
-        currentVersion: String
+        observesUpdatePolicy: Bool = false
     ) {
         self.runtime = runtime
-        self.updateChecker = updateChecker
-        self.currentVersion = currentVersion
+        self.observesUpdatePolicy = observesUpdatePolicy
     }
 
     public var statusItemTitle: String {
@@ -374,7 +361,7 @@ public final class AppModel: ObservableObject {
 
     public func restartCore() {
         guard canRefreshOrRestart else { return }
-        cancelUpdateChecks()
+        cancelUpdatePolicyObservation()
         cancelAllFeatureTasks()
         resetFeatureState()
         Task { await runtime.restart() }
@@ -389,7 +376,7 @@ public final class AppModel: ObservableObject {
     }
 
     public func prepareForSleep() {
-        cancelUpdateChecks()
+        cancelUpdatePolicyObservation()
         cancelFeatureReadTasks()
         markFeatureStatesStale(AppNotice(
             code: "system_sleeping",
@@ -403,20 +390,31 @@ public final class AppModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             await runtime.resumeAfterWake()
-            startUpdateChecksIfNeeded()
+            startUpdatePolicyObservationIfNeeded()
         }
     }
 
     public func shutdown() async -> ShutdownOutcome {
+        await shutdown(reason: .applicationExit)
+    }
+
+    public func prepareForUpdateInstallation() async -> AppUpdateInstallPreparation {
+        AppUpdateInstallPreparation(
+            shutdownOutcome: await shutdown(reason: .updateInstallation)
+        )
+    }
+
+    private func shutdown(reason: AppShutdownReason) async -> ShutdownOutcome {
         startTask?.cancel()
         startTask = nil
         overviewRefreshTask?.cancel()
         overviewRefreshTask = nil
         overviewRefreshGeneration &+= 1
         isOverviewRefreshing = false
-        cancelUpdateChecks()
+        cancelUpdatePolicyObservation()
+        updatePolicy = .disabled
         cancelAllFeatureTasks()
-        let outcome = await runtime.shutdown()
+        let outcome = await runtime.shutdown(reason: reason)
         lastShutdownOutcome = outcome
         return outcome
     }
@@ -891,11 +889,11 @@ public final class AppModel: ObservableObject {
                 case "applied":
                     settingsDraft = pendingDraft ?? SettingsDraft(readback)
                     settingsSaveState = pendingDraft == nil ? .applied(revision: receipt.revision) : .idle
-                    restartUpdateChecks()
+                    restartUpdatePolicyObservation()
                 case "applied_reconcile_required":
                     settingsDraft = pendingDraft ?? SettingsDraft(readback)
                     settingsSaveState = .reconcileRequired(revision: receipt.revision)
-                    restartUpdateChecks()
+                    restartUpdatePolicyObservation()
                 default:
                     settingsDraft = pendingDraft ?? draft
                     settingsSaveState = .unavailable(AppNotice(
@@ -994,15 +992,15 @@ public final class AppModel: ObservableObject {
         state = AppViewState(runtimeState)
         switch runtimeState {
         case .normal, .partial:
-            startUpdateChecksIfNeeded()
+            startUpdatePolicyObservationIfNeeded()
             if selectedFeature != .overview { load(selectedFeature) }
         case .stale(_, let notice), .unavailable(let notice):
-            cancelUpdateChecks()
+            cancelUpdatePolicyObservation()
             cancelAllFeatureTasks()
             markMutationsUncertain(notice)
             markFeatureStatesStale(notice)
         case .recovery, .restartRequired, .shuttingDown, .stopped:
-            cancelUpdateChecks()
+            cancelUpdatePolicyObservation()
             cancelAllFeatureTasks()
             markMutationsUncertain(AppNotice(
                 code: "mutation_result_unknown",
@@ -1014,37 +1012,35 @@ public final class AppModel: ObservableObject {
         }
     }
 
-    private func startUpdateChecksIfNeeded() {
-        guard updateCheckTask == nil, let updateChecker else { return }
+    private func startUpdatePolicyObservationIfNeeded() {
+        guard updatePolicyTask == nil, observesUpdatePolicy else { return }
         let runtime = runtime
-        let currentVersion = currentVersion
-        updateCheckTask = Task { [weak self] in
+        updatePolicyTask = Task { [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
                 var retryDelay: Int64 = 3_600
                 do {
                     let settings = try await runtime.settings()
                     try Task.checkCancellation()
-                    guard settings.snapshot.updates.autoCheckEnabled else {
-                        updateReminder = nil
-                        updateCheckTask = nil
-                        return
-                    }
                     guard let channel = AppUpdateChannel(
                         rawValue: settings.snapshot.updates.channel
                     ) else {
-                        throw AppUpdateCheckError.invalidResponse
+                        updatePolicy = .disabled
+                        try await Task.sleep(nanoseconds: 3_600 * 1_000_000_000)
+                        continue
                     }
-                    retryDelay = min(
-                        max(settings.snapshot.updates.checkIntervalSeconds, 3_600),
-                        86_400
+                    let policy = AppUpdatePolicy(
+                        automaticallyChecks: settings.snapshot.updates.autoCheckEnabled,
+                        automaticallyDownloads: settings.snapshot.updates.autoDownloadEnabled,
+                        channel: channel,
+                        checkIntervalSeconds: settings.snapshot.updates.checkIntervalSeconds
                     )
-                    let reminder = try await updateChecker.latestUpdate(
-                        currentVersion: currentVersion,
-                        channel: channel
-                    )
-                    try Task.checkCancellation()
-                    updateReminder = reminder
+                    updatePolicy = policy
+                    retryDelay = Int64(policy.checkIntervalSeconds)
+                    guard policy.automaticallyChecks else {
+                        updatePolicyTask = nil
+                        return
+                    }
                 } catch is CancellationError {
                     return
                 } catch {
@@ -1061,14 +1057,14 @@ public final class AppModel: ObservableObject {
         }
     }
 
-    private func restartUpdateChecks() {
-        cancelUpdateChecks()
-        startUpdateChecksIfNeeded()
+    private func restartUpdatePolicyObservation() {
+        cancelUpdatePolicyObservation()
+        startUpdatePolicyObservationIfNeeded()
     }
 
-    private func cancelUpdateChecks() {
-        updateCheckTask?.cancel()
-        updateCheckTask = nil
+    private func cancelUpdatePolicyObservation() {
+        updatePolicyTask?.cancel()
+        updatePolicyTask = nil
     }
 
     private func finishOverviewRefresh() {

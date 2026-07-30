@@ -108,15 +108,22 @@ make verify
 # 组装本地 unsigned preview 候选，不创建 tag 或 GitHub Release
 scripts/macos/build-release-app.sh \
   --version 0.1.0-beta.1 \
-  --build-number 4
+  --build-number 4 \
+  --sparkle-feed-url \
+    https://github.com/SisyphusSQ/codex-pulse/releases/download/updates/appcast.xml \
+  --sparkle-public-key-file \
+    /secure/path/codex-pulse-sparkle-public.key
 
 # contract 修改后重新生成 Go / Swift 代码
 make generate-proto
 ```
 
-发行候选写入 `.artifacts/releases/<tag>/`，包含 Apple Silicon App ZIP 与
-`SHA256SUMS`。未签名、未公证的 preview 不能当作 stable；远端发布还必须
-经过 tag、Release、资产摘要和首次打开流程的独立读回。
+发行候选写入 `.artifacts/releases/<tag>/`，包含首次安装 DMG、内嵌 Sparkle
+的 Apple Silicon App ZIP 与覆盖两项资产的 `SHA256SUMS`。DMG 提供
+`Codex Pulse.app` 到 `/Applications` 的标准拖拽入口；appcast 仍只指向
+exact ZIP。公钥文件可公开，但必须与通过 stdin 用于 appcast 签名的私钥配对。
+未签名、未公证的 preview 不能当作 stable；远端发布还必须经过 tag、Release、
+资产摘要、固定 appcast 和首次打开流程的独立读回。
 preview 可在逐次明确授权后以 ad-hoc 签名的 GitHub prerelease 形式提供；
 stable 发行必须具备 Developer ID 签名、公证和对应安装验证。
 
