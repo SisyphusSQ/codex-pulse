@@ -4334,10 +4334,129 @@ private func testOverviewActivityAxisTicksKeepDateOnlyAtDayBoundaries() throws {
 
     try expect(
         ticks.map(\.label) == [
-            "7月26日 0时", "6时", "12时", "18时",
-            "7月27日 0时", "6时", "12时", "18时",
+            "7月26日\n0时", "6时", "12时", "18时",
+            "7月27日\n0时", "6时", "12时", "18时",
         ],
-        "hourly activity axis must show the date once per local day instead of repeating it")
+        "hourly activity axis must stack the date at each local day boundary")
+}
+
+private func testOverviewActivityAxisTicksUseElapsedTimeAcrossSparseClusters() throws {
+    let hour: Int64 = 3_600_000
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+    let rangeStart = Int64(calendar.date(
+        from: DateComponents(year: 2026, month: 7, day: 29, hour: 14)
+    )!.timeIntervalSince1970 * 1_000)
+    let activeHourOffsets = [
+        0, 1, 2, 3, 4,
+        9, 10,
+        18, 19, 20, 21, 22, 23, 24,
+    ]
+    let points = activeHourOffsets.map { offset in
+        let start = rangeStart + Int64(offset) * hour
+        return OverviewActivityTimelinePoint(
+            id: start,
+            startAtMS: start,
+            endAtMS: start + hour,
+            totalTokens: .known(1, unit: "tokens"),
+            sessionCount: .known(1, unit: "count")
+        )
+    }
+
+    let ticks = OverviewActivityTimelineResolver.axisTicks(
+        points: points,
+        granularity: .hour,
+        timeZoneID: "Asia/Shanghai"
+    )
+
+    try expect(
+        ticks.map(\.label) == [
+            "7月29日\n14时", "18时", "22时",
+            "7月30日\n2时", "6时", "10时", "14时",
+        ],
+        "hourly activity axis must distribute ticks by elapsed time instead of sparse point indexes"
+    )
+    try expect(
+        ticks.map { Int64($0.date.timeIntervalSince1970 * 1_000) }
+            == [0, 4, 8, 12, 16, 20, 24].map { rangeStart + Int64($0) * hour },
+        "hourly activity axis must keep a uniform temporal gap across empty buckets"
+    )
+}
+
+private func testOverviewActivityAxisTicksStayInsidePartialHourDomain() throws {
+    let minute: Int64 = 60_000
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+    let rangeStart = Int64(calendar.date(
+        from: DateComponents(year: 2026, month: 7, day: 29, hour: 14, minute: 30)
+    )!.timeIntervalSince1970 * 1_000)
+    let lastStart = rangeStart + 270 * minute
+    let points = [
+        OverviewActivityTimelinePoint(
+            id: rangeStart,
+            startAtMS: rangeStart,
+            endAtMS: rangeStart + 30 * minute,
+            totalTokens: .known(1, unit: "tokens"),
+            sessionCount: .known(1, unit: "count")
+        ),
+        OverviewActivityTimelinePoint(
+            id: lastStart,
+            startAtMS: lastStart,
+            endAtMS: lastStart + 60 * minute,
+            totalTokens: .known(1, unit: "tokens"),
+            sessionCount: .known(1, unit: "count")
+        ),
+    ]
+
+    let ticks = OverviewActivityTimelineResolver.axisTicks(
+        points: points,
+        granularity: .hour,
+        timeZoneID: "Asia/Shanghai"
+    )
+    let timestamps = ticks.map { Int64($0.date.timeIntervalSince1970 * 1_000) }
+
+    try expect(
+        timestamps.first == rangeStart && timestamps.last == lastStart,
+        "hourly activity axis must preserve exact partial-range boundaries"
+    )
+    try expect(
+        timestamps.allSatisfy { $0 >= rangeStart && $0 <= lastStart },
+        "hourly activity axis must not round a tick outside its plotted time domain"
+    )
+}
+
+private func testOverviewActivityAxisTicksDeduplicateRoundedPartialHours() throws {
+    let minute: Int64 = 60_000
+    let rangeStart: Int64 = 1_753_800_600_000
+    let lastStart = rangeStart + 126 * minute
+    let points = [
+        OverviewActivityTimelinePoint(
+            id: rangeStart,
+            startAtMS: rangeStart,
+            endAtMS: rangeStart + 30 * minute,
+            totalTokens: .known(1, unit: "tokens"),
+            sessionCount: .known(1, unit: "count")
+        ),
+        OverviewActivityTimelinePoint(
+            id: lastStart,
+            startAtMS: lastStart,
+            endAtMS: lastStart + 60 * minute,
+            totalTokens: .known(1, unit: "tokens"),
+            sessionCount: .known(1, unit: "count")
+        ),
+    ]
+
+    let ticks = OverviewActivityTimelineResolver.axisTicks(
+        points: points,
+        granularity: .hour,
+        timeZoneID: "Asia/Shanghai"
+    )
+    let timestamps = ticks.map { Int64($0.date.timeIntervalSince1970 * 1_000) }
+
+    try expect(
+        Set(timestamps).count == timestamps.count,
+        "hourly activity axis must not emit duplicate marks after snapping partial buckets"
+    )
 }
 
 private func testOverviewActivityTimelineResolverSelectsContainingBucketThenNearest() throws {
@@ -6832,6 +6951,9 @@ struct CodexPulseAppTestMain {
         try testQuotaWindowDisplayResolverDeduplicatesOnlyEquivalentWindows()
         try testOverviewActivityPresentationBuildsTimelineAndCompleteHeatmap()
         try testOverviewActivityAxisTicksKeepDateOnlyAtDayBoundaries()
+        try testOverviewActivityAxisTicksUseElapsedTimeAcrossSparseClusters()
+        try testOverviewActivityAxisTicksStayInsidePartialHourDomain()
+        try testOverviewActivityAxisTicksDeduplicateRoundedPartialHours()
         try testOverviewActivityTimelineResolverSelectsContainingBucketThenNearest()
         try testOverviewActivityTimelineResolverInsetsBarsSymmetrically()
         try testTokenActivityPresentationBuildsCalendarAndStreakStatistics()
