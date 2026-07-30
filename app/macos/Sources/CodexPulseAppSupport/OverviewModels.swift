@@ -773,18 +773,11 @@ public enum OverviewActivityTimelineResolver {
         else { return [] }
 
         let ordered = points.sorted { $0.startAtMS < $1.startAtMS }
-        let selected: [OverviewActivityTimelinePoint]
-        if ordered.count <= maximumCount {
-            selected = ordered
-        } else if maximumCount == 1 {
-            selected = [ordered[0]]
-        } else {
-            selected = (0..<maximumCount).map { offset in
-                let position = Double(offset) * Double(ordered.count - 1)
-                    / Double(maximumCount - 1)
-                return ordered[Int(position.rounded())]
-            }
-        }
+        let selectedDates = axisTickDates(
+            points: ordered,
+            granularity: granularity,
+            maximumCount: maximumCount
+        )
 
         let dayKeyFormatter = dateFormatter(
             format: "yyyy-MM-dd",
@@ -792,7 +785,7 @@ public enum OverviewActivityTimelineResolver {
             locale: Locale(identifier: "en_US_POSIX")
         )
         let dateHourFormatter = dateFormatter(
-            format: "M月d日 H时",
+            format: "M月d日\nH时",
             timeZone: timeZone,
             locale: Locale(identifier: "zh_CN")
         )
@@ -807,8 +800,7 @@ public enum OverviewActivityTimelineResolver {
             locale: Locale(identifier: "zh_CN")
         )
         var previousDayKey: String?
-        return selected.map { point in
-            let date = Date(timeIntervalSince1970: Double(point.startAtMS) / 1_000)
+        return selectedDates.map { date in
             let dayKey = dayKeyFormatter.string(from: date)
             let label: String
             if granularity == .day {
@@ -819,7 +811,8 @@ public enum OverviewActivityTimelineResolver {
                 label = dateHourFormatter.string(from: date)
             }
             previousDayKey = dayKey
-            return OverviewActivityAxisTick(id: point.id, date: date, label: label)
+            let id = Int64(date.timeIntervalSince1970 * 1_000)
+            return OverviewActivityAxisTick(id: id, date: date, label: label)
         }
     }
 
@@ -878,6 +871,72 @@ public enum OverviewActivityTimelineResolver {
         formatter.timeZone = timeZone
         formatter.dateFormat = format
         return formatter
+    }
+
+    private static func axisTickDates(
+        points: [OverviewActivityTimelinePoint],
+        granularity: OverviewActivityTimelineGranularity,
+        maximumCount: Int
+    ) -> [Date] {
+        guard let first = points.first, let last = points.last else { return [] }
+        let firstDate = Date(timeIntervalSince1970: Double(first.startAtMS) / 1_000)
+        guard maximumCount > 1, first.startAtMS < last.startAtMS else {
+            return [firstDate]
+        }
+
+        switch granularity {
+        case .hour:
+            let bucketDurationMS: Int64 = points
+                .map { $0.endAtMS - $0.startAtMS }
+                .filter { $0 > 0 }
+                .max() ?? Int64(3_600_000)
+            let spanMS = last.startAtMS - first.startAtMS
+            let bucketCount = max(
+                2,
+                Int((spanMS + bucketDurationMS - 1) / bucketDurationMS) + 1
+            )
+            let tickCount = min(maximumCount, bucketCount)
+            let candidates = (0..<tickCount).map { offset in
+                if offset == 0 {
+                    return firstDate
+                }
+                if offset == tickCount - 1 {
+                    return Date(
+                        timeIntervalSince1970: Double(last.startAtMS) / 1_000
+                    )
+                }
+                let position = Double(offset) * Double(spanMS)
+                    / Double(tickCount - 1)
+                let bucketOffset = Int64(
+                    (position / Double(bucketDurationMS)).rounded()
+                )
+                let timestamp = min(
+                    last.startAtMS,
+                    first.startAtMS + bucketOffset * bucketDurationMS
+                )
+                return Date(timeIntervalSince1970: Double(timestamp) / 1_000)
+            }
+            var seenTimestamps = Set<Int64>()
+            return candidates.filter { date in
+                seenTimestamps.insert(
+                    Int64(date.timeIntervalSince1970 * 1_000)
+                ).inserted
+            }
+        case .day:
+            let selected: [OverviewActivityTimelinePoint]
+            if points.count <= maximumCount {
+                selected = points
+            } else {
+                selected = (0..<maximumCount).map { offset in
+                    let position = Double(offset) * Double(points.count - 1)
+                        / Double(maximumCount - 1)
+                    return points[Int(position.rounded())]
+                }
+            }
+            return selected.map { point in
+                Date(timeIntervalSince1970: Double(point.startAtMS) / 1_000)
+            }
+        }
     }
 }
 
