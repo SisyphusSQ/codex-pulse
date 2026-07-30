@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -916,6 +917,136 @@ func TestQuotaProjectionPartialFetchKeepsSiblingWindow(t *testing.T) {
 	if err != nil || secondary.EffectiveUsedPercent == nil || *secondary.EffectiveUsedPercent != 60 ||
 		secondary.ObservationID == nil {
 		t.Fatalf("secondary after partial = %#v, %v", secondary, err)
+	}
+}
+
+// 测试 RebuildQuotaProjection 从完整历史恢复 5 小时 primary、保留独立的周 secondary，
+// 且 projection 不受原始 observation 插入顺序影响。（风险复现用例）
+func TestQuotaProjectionRebuildRestoresFiveHourPrimaryAndKeepsWeeklySecondaryDeterministically(t *testing.T) {
+	t.Parallel()
+
+	firstObserved := int64(200 * quotaTestHourMS)
+	historicalFiveHour := quotaProjectionWhamSample(
+		"rebuild-historical-five-hour", 82,
+		firstObserved, firstObserved+5*quotaTestHourMS,
+	)
+	temporaryWeekly := quotaProjectionWhamSample(
+		"rebuild-temporary-weekly-primary", 46,
+		firstObserved+quotaTestMinuteMS, firstObserved+quotaTestMinuteMS+7*24*quotaTestHourMS,
+	)
+	temporaryWeekly.WindowMinutes = 7 * 24 * 60
+	restoredFiveHour := quotaProjectionWhamSample(
+		"rebuild-restored-five-hour", 4,
+		firstObserved+2*quotaTestMinuteMS, firstObserved+2*quotaTestMinuteMS+5*quotaTestHourMS,
+	)
+	restoredWeeklySecondary := quotaProjectionWhamSample(
+		"rebuild-restored-weekly-secondary", 47,
+		firstObserved+2*quotaTestMinuteMS, firstObserved+2*quotaTestMinuteMS+7*24*quotaTestHourMS,
+	)
+	restoredWeeklySecondary.WindowKind = QuotaWindowSecondary
+	restoredWeeklySecondary.WindowMinutes = 7 * 24 * 60
+	lateTemporaryWeekly := quotaProjectionWhamSample(
+		"rebuild-late-temporary-weekly", 48,
+		firstObserved+3*quotaTestMinuteMS, temporaryWeekly.ResetsAtMS,
+	)
+	lateTemporaryWeekly.WindowMinutes = temporaryWeekly.WindowMinutes
+	samples := []QuotaObservationSample{
+		historicalFiveHour,
+		temporaryWeekly,
+		restoredFiveHour,
+		restoredWeeklySecondary,
+		lateTemporaryWeekly,
+	}
+	evaluatedAtMS := firstObserved + 4*quotaTestMinuteMS
+
+	type projectionReadback struct {
+		primary           QuotaCurrent
+		secondary         QuotaCurrent
+		primaryEvidence   []QuotaArbitrationEvidence
+		secondaryEvidence []QuotaArbitrationEvidence
+	}
+	var want projectionReadback
+	orders := []struct {
+		name    string
+		indexes []int
+	}{
+		{name: "chronological", indexes: []int{0, 1, 2, 3, 4}},
+		{name: "reverse arrival", indexes: []int{4, 3, 2, 1, 0}},
+	}
+	for orderIndex, order := range orders {
+		t.Run(order.name, func(t *testing.T) {
+			database := openTestDatabase(t)
+			repository := NewRepository(database)
+			ctx := context.Background()
+			if err := repository.EnsureApplicationSchema(ctx); err != nil {
+				t.Fatalf("EnsureApplicationSchema() error = %v", err)
+			}
+			if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+				models := make([]*quotaObservationModel, 0, len(order.indexes))
+				for _, index := range order.indexes {
+					model := quotaObservationModelFromSample(samples[index])
+					if samples[index].ObservationID == temporaryWeekly.ObservationID {
+						model.LastObservedAtMS = firstObserved + 3*quotaTestMinuteMS
+						model.SampleCount = 3
+					}
+					models = append(models, model)
+				}
+				return transaction.WithContext(ctx).Create(&models).Error
+			}); err != nil {
+				t.Fatalf("seed quota migration history: %v", err)
+			}
+			repository.quotaNow = func() time.Time { return time.UnixMilli(evaluatedAtMS) }
+			if err := repository.RebuildQuotaProjection(ctx, defaultQuotaArbitrationRule()); err != nil {
+				t.Fatalf("RebuildQuotaProjection() error = %v", err)
+			}
+			primary, err := repository.QuotaCurrent(
+				ctx, QuotaAccountScopeDefault, QuotaWindowPrimary, "codex", evaluatedAtMS,
+			)
+			if err != nil ||
+				primary.ObservationID == nil ||
+				*primary.ObservationID != restoredFiveHour.ObservationID ||
+				primary.WindowMinutes == nil ||
+				*primary.WindowMinutes != 300 ||
+				primary.RuleVersion != "quota-arbiter-v4" {
+				t.Fatalf("primary current = %#v, %v; want restored five-hour v4", primary, err)
+			}
+			secondary, err := repository.QuotaCurrent(
+				ctx, QuotaAccountScopeDefault, QuotaWindowSecondary, "codex", evaluatedAtMS,
+			)
+			if err != nil ||
+				secondary.ObservationID == nil ||
+				*secondary.ObservationID != restoredWeeklySecondary.ObservationID ||
+				secondary.WindowMinutes == nil ||
+				*secondary.WindowMinutes != 7*24*60 {
+				t.Fatalf("secondary current = %#v, %v; want independent weekly window", secondary, err)
+			}
+			primaryEvidence, err := repository.ListQuotaArbitrationEvidence(
+				ctx, QuotaAccountScopeDefault, QuotaWindowPrimary, "codex",
+			)
+			if err != nil {
+				t.Fatalf("ListQuotaArbitrationEvidence(primary) error = %v", err)
+			}
+			assertQuotaEvidence(
+				t, primaryEvidence, lateTemporaryWeekly.ObservationID, QuotaEvidenceSuperseded, "",
+			)
+			secondaryEvidence, err := repository.ListQuotaArbitrationEvidence(
+				ctx, QuotaAccountScopeDefault, QuotaWindowSecondary, "codex",
+			)
+			if err != nil {
+				t.Fatalf("ListQuotaArbitrationEvidence(secondary) error = %v", err)
+			}
+			got := projectionReadback{
+				primary: primary, secondary: secondary,
+				primaryEvidence: primaryEvidence, secondaryEvidence: secondaryEvidence,
+			}
+			if orderIndex == 0 {
+				want = got
+				return
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("projection differs by insertion order\n got=%#v\nwant=%#v", got, want)
+			}
+		})
 	}
 }
 

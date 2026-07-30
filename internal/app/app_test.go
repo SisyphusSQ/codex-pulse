@@ -144,23 +144,43 @@ func TestApplicationLightIndexUpgradesQuotaProjectionRuleBeforeServing(t *testin
 	defer func() { _ = database.Close(context.Background()) }()
 	repository := factstore.NewRepository(database)
 	nowMS := time.Now().UnixMilli()
-	limitID, requestID := "codex", "synthetic-old-rule"
-	observation := factstore.QuotaObservationSample{
-		ObservationID: "old-rule-observation", AccountScope: factstore.QuotaAccountScopeDefault,
+	limitID, weeklyRequestID := "codex", "synthetic-old-weekly-rule"
+	weeklyObservedAtMS := nowMS - 60*1000
+	weekly := factstore.QuotaObservationSample{
+		ObservationID: "old-rule-weekly-primary", AccountScope: factstore.QuotaAccountScopeDefault,
 		Source: factstore.QuotaSourceWham, LimitID: &limitID, WindowKind: factstore.QuotaWindowPrimary,
-		UsedPercent: 100, WindowMinutes: 7 * 24 * 60, ResetsAtMS: nowMS + 7*24*60*60*1000,
-		ObservedAtMS: nowMS, Validity: factstore.QuotaValidityAccepted, RequestID: &requestID,
+		UsedPercent: 46, WindowMinutes: 7 * 24 * 60, ResetsAtMS: weeklyObservedAtMS + 7*24*60*60*1000,
+		ObservedAtMS: weeklyObservedAtMS, Validity: factstore.QuotaValidityAccepted, RequestID: &weeklyRequestID,
 	}
-	if err := repository.UpsertFacts(ctx, factstore.FactBatch{QuotaObservation: &observation}); err != nil {
-		t.Fatalf("UpsertFacts(quota) error = %v", err)
+	if err := repository.UpsertFacts(ctx, factstore.FactBatch{QuotaObservation: &weekly}); err != nil {
+		t.Fatalf("UpsertFacts(weekly primary) error = %v", err)
+	}
+	fiveHourRequestID := "synthetic-restored-five-hour"
+	restoredFiveHour := factstore.QuotaObservationSample{
+		ObservationID: "restored-five-hour-primary", AccountScope: factstore.QuotaAccountScopeDefault,
+		Source: factstore.QuotaSourceWham, LimitID: &limitID, WindowKind: factstore.QuotaWindowPrimary,
+		UsedPercent: 4, WindowMinutes: 300, ResetsAtMS: nowMS + 5*60*60*1000,
+		ObservedAtMS: nowMS, Validity: factstore.QuotaValidityAccepted, RequestID: &fiveHourRequestID,
+	}
+	if err := repository.UpsertFacts(ctx, factstore.FactBatch{QuotaObservation: &restoredFiveHour}); err != nil {
+		t.Fatalf("UpsertFacts(restored five-hour primary) error = %v", err)
 	}
 	if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).Model(&quotaCurrentRuleVersionModel{}).
 			Where("account_scope = ? AND window_kind = ? AND limit_id = ?",
 				factstore.QuotaAccountScopeDefault, factstore.QuotaWindowPrimary, limitID).
-			Update("rule_version", "quota-arbiter-v1").Error
+			Updates(map[string]any{
+				"observation_id":         weekly.ObservationID,
+				"effective_used_percent": weekly.UsedPercent,
+				"window_minutes":         weekly.WindowMinutes,
+				"resets_at_ms":           weekly.ResetsAtMS,
+				"window_generation":      weekly.ResetsAtMS,
+				"fresh_until_ms":         weeklyObservedAtMS + 10*60*1000,
+				"last_success_at_ms":     weeklyObservedAtMS,
+				"rule_version":           "quota-arbiter-v3",
+			}).Error
 	}); err != nil {
-		t.Fatalf("seed old quota rule version: %v", err)
+		t.Fatalf("seed old weekly quota projection: %v", err)
 	}
 
 	runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
@@ -176,8 +196,13 @@ func TestApplicationLightIndexUpgradesQuotaProjectionRuleBeforeServing(t *testin
 	current, err := repository.QuotaCurrent(
 		ctx, factstore.QuotaAccountScopeDefault, factstore.QuotaWindowPrimary, limitID, nowMS,
 	)
-	if err != nil || current.RuleVersion != "quota-arbiter-v3" {
-		t.Fatalf("QuotaCurrent(after light startup) = %#v, %v; want quota-arbiter-v3", current, err)
+	if err != nil ||
+		current.RuleVersion != "quota-arbiter-v4" ||
+		current.ObservationID == nil ||
+		*current.ObservationID != restoredFiveHour.ObservationID ||
+		current.WindowMinutes == nil ||
+		*current.WindowMinutes != restoredFiveHour.WindowMinutes {
+		t.Fatalf("QuotaCurrent(after light startup) = %#v, %v; want restored five-hour quota-arbiter-v4", current, err)
 	}
 }
 
