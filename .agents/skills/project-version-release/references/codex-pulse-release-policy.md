@@ -4,7 +4,7 @@
 
 1. 产品与版本边界
 2. 发布等级
-3. 当前 stable blockers
+3. 当前 signed-notarized stable blockers
 4. 版本与产物
 5. 验证矩阵
 6. CHANGELOG
@@ -29,7 +29,10 @@ Release 段和创建版本 tag。
 
 ### Stable
 
-Stable 必须满足：
+Stable 表示产品 SemVer 与 GitHub Release 已进入非 prerelease 渠道；macOS
+发行信任等级另行记录为 `unsigned` 或 `signed-notarized`。
+
+默认 stable 使用 `signed-notarized`，并满足：
 
 - clean release commit，且发布 commit 已冻结；
 - `make verify` 通过；
@@ -45,6 +48,16 @@ Stable 必须满足：
 - fixed HTTPS appcast 已完成 stable/prerelease 选路、远端下载和 N-1 替换重启；
 - Git tag、GitHub Release、资产 SHA-256 和发布状态远端读回一致。
 
+用户可以显式授权 `unsigned stable`。该例外路径仍必须满足 clean release
+commit、统一 Bundle/Helper 版本、ad-hoc inside-out 完整签名、DMG/ZIP/SHA-256、
+Sparkle Ed25519、signed tag 与 GitHub readback，但允许跳过 Developer ID、
+Hardened Runtime、公证、stapling 和全新用户验收。Release Notes 必须明确：
+
+- 这是正式功能版本，但不是 macOS 已认证的可信分发；
+- 首次打开仍需通过“系统设置 → 隐私与安全性 → 仍要打开”；
+- 不得声称 Developer ID、Apple 公证或 Gatekeeper acceptance 已通过；
+- 后续取得可信分发能力时使用新 patch 版本，不覆盖既有 tag 或资产。
+
 ### Preview
 
 Preview 使用 prerelease SemVer，例如 `v0.1.0-beta.1`，并在 GitHub 标记
@@ -53,7 +66,7 @@ Notes 必须写清风险和 Gatekeeper 打开步骤。
 
 Preview 不能被描述为 stable，也不能把 isolated smoke 当作最终用户验收。
 
-## 3. 当前 stable blockers
+## 3. 当前 signed-notarized stable blockers
 
 检查实际仓库，不要把本节当作永久事实。当前已知 gate 包括：
 
@@ -65,13 +78,15 @@ Preview 不能被描述为 stable，也不能把 isolated smoke 当作最终用�
   替换重启与 migration/recovery 矩阵需要针对发行候选读回；
 - 首次 Codex Home 确认、持久偏好与普通用户重启仍需完成产品验收。
 
-只要任一项仍成立，skill 必须输出 `stable_release_ready=false`。
-Release Notes 不能代替产品实现或签名公证 gate。
+只要任一项仍成立，skill 必须输出 `stable_release_ready=false`，表示
+`signed-notarized stable` 尚未就绪。这个字段不能由 Release Notes 代替。
+用户显式授权的 `unsigned stable` 可以在 source preflight、ad-hoc 发行资产、
+Sparkle key、Gatekeeper 披露和远端读回成立后继续，但不得把该例外解释为
+可信分发 gate 已通过。
 
-`render-notes --channel stable` 还必须显式选择
-`--distribution signed-notarized`。该参数只是防止误操作的分类，不是
-签名或公证证据；执行者仍须保存并报告真实 readback。Preview 按最终产物
-选择 `unsigned` 或 `signed-notarized`，不能由 channel 推断签名状态。
+`render-notes --channel stable` 仍必须显式选择真实 distribution。
+`signed-notarized` 只是防止误操作的分类，不是签名或公证证据；执行者仍须保存
+并报告真实 readback。stable 与 Preview 都不能只由 channel 推断签名状态。
 
 ## 4. 版本与产物
 
@@ -135,8 +150,8 @@ Sparkle Ed25519 私钥必须从该命令的 stdin 输入。脚本使用官方
 | 真实 Home 产品验收 | `make verify-live` 或等价显式真实 Home 启动 |
 | Bundle metadata | `plutil` 读回最终 App 的 Info.plist |
 | 嵌套签名 | `codesign --verify --deep --strict --verbose=2` |
-| Gatekeeper | `spctl --assess --type execute --verbose=4` |
-| 公证票据 | `xcrun stapler validate` |
+| Gatekeeper | signed-notarized 要求 acceptance；unsigned 必须记录预期拒绝并在 notes 披露 |
+| 公证票据 | signed-notarized 使用 `xcrun stapler validate`；unsigned 明确为未执行 |
 | ZIP 完整性 | 解压后重跑 Bundle、签名、公证检查 |
 | DMG 完整性 | `hdiutil verify`，只读挂载后检查 App、`/Applications` 链接、签名与公证 |
 | Sparkle Bundle | `SUFeedURL`、`SUPublicEDKey`、Framework 与 rpath 读回 |
@@ -191,7 +206,7 @@ Release Notes 应说明：
 - UI 不展示完整提示词或回复正文；
 - 启用在线额度能力时可能访问相应上游接口；
 - 首次索引时长与 Home 规模相关；
-- 未签名 preview 的打开方式与正式 signed/notarized 版本不同。
+- 未签名发行版的打开方式与 signed-notarized 可信分发版本不同。
 
 不得指导用户关闭 Gatekeeper、执行 `spctl --master-disable`，或批量移除
 系统隔离属性。

@@ -14,7 +14,7 @@ usage() {
 usage: build-release-app.sh --version <semver> --build-number <positive-integer>
   --sparkle-feed-url <https-url> --sparkle-public-key-file <path>
 
-Builds the ad-hoc-signed, unnotarized Apple Silicon preview asset under:
+Builds an ad-hoc-signed, unnotarized Apple Silicon distribution asset under:
   .artifacts/releases/v<semver>/
 EOF
 }

@@ -1,6 +1,18 @@
 ## Unreleased
 
 #### feature:
+
+#### optimization:
+
+#### bugFix:
+
+#### note:
+
+#### script:
+
+## v0.1.0 - 2026-07-30
+
+#### feature:
 1. [TOO-243] 完成 Go、Wails3 与 Vue 3 工程骨架初始化，固定前后端依赖、generated bindings 与 macOS 15 arm64 开发构建入口
 2. [TOO-244] 新增 macOS 15+ thin arm64 应用 Bundle、冻结图标、ad-hoc 签名与单顶层 ZIP 打包验证闭环
 3. [TOO-246] 新增 SQLite WAL 连接面、有界单写队列、独立只读池与应用 drain/close 生命周期，固定私有路径权限、authoritative cancellation 和可判定错误语义
@@ -70,6 +82,7 @@
 4. 退役 repo-local harness 控制面、计划状态模板和重复 review gate，保留产品测试并将本地开发、PR/CI 与真实 Home 验收拆分为独立验证入口
 5. 优化原生 macOS App 首次窗口为优先 `1440×900` 内容区并按当前屏幕可见区域约束居中，避免概览被侧栏覆盖；统一剩余额度进度条为健康绿色、预警黄色和紧急红色，stale/suspicious 的 last-known-good 继续按剩余量着色并用独立状态点标记可信度，未知或不可用数据保持系统灰色
 6. 将菜单栏 Popover 的常规高度由 `640 pt` 增至 `680 pt`，并在紧凑屏幕按可用高度回落，增加首屏可见内容且避免越出屏幕
+7. 优化额度重置展示，在相对倒计时之外补充本地时区的具体恢复时间点，降低跨天窗口的理解成本
 
 #### bugFix:
 1. [TOO-242] 修正 Wails3 版本探针未捕获 stderr 且未保留 CLI 退出状态的断言，避免 post-merge 验证稳定失败或误报成功
@@ -87,6 +100,7 @@
 12. 修复 Swift production 构建使用 `-gnone` 时多条 async 路径触发 task-stack 逆序释放并以 `freed pointer was not the last allocation` 终止的问题；改用最小 line tables 编译后再 strip 调试段，继续以 C prefix map 与最终二进制扫描阻止本机路径泄漏，并在发行打包前以同一 production 编译参数运行 App 回归测试
 13. 修复从 Finder 启动时系统最小 `PATH` 找不到 Codex CLI、导致 Helper 在创建 CoreService socket 前退出的问题；App Server 现在解析受控的绝对可执行路径，并将首次 metadata 不可用降级为可观察、可重试的局部失败
 14. 修复 Wham 同一逻辑额度的 `reset_at` 在数秒内抖动时被误判为 `reset_regression`、进而让状态栏整体丢失余量颜色的问题；`quota-arbiter-v3` 将不超过 5 秒的向后抖动归一到该代际最大 reset，仍严格隔离超过边界的回退，并让状态栏以余量色和可信度状态点分别表达数值与数据状态
+15. 修复时段活动图横轴标签在紧凑宽度下重叠的问题，按可用空间稳定控制标签密度
 
 #### note:
 1. [TOO-242] 固定 Wails3 `v3.0.0-alpha2.117` 与 macOS arm64 工具链能力基线，补充可复现 runbook、平台 adapter 边界和依赖升级准入规则
@@ -100,3 +114,4 @@
 5. [TOO-298] 新增显式 opt-in 的真实 Codex Home 只读验证器，使用隔离 Pure Go GORM SQLite 闭环验证 bootstrap、UTC 成本账本、公共查询、quota、Tray、隐私扫描与安全清理
 6. [TOO-302] 新增显式 opt-in 的 M11 更新恢复验证入口，聚合更新选择、安全 drain、单实例接管、磁盘/只读/备份故障、全相关包 race 与真实 Sparkle 五场景，并绑定逐场景提交版证据
 7. 新增原生 macOS arm64 preview 发行构建入口，注入统一 App/Helper 产品版本，校验 production Bundle 元数据、macOS 15 最低版本、ZIP 单顶层结构与 SHA-256；普通 App 启动改用用户级私有持久 runtime，development smoke 继续显式使用隔离临时目录
+8. 将 stable channel 与 macOS 发行信任等级拆分，允许在用户显式授权、Gatekeeper 风险披露和 Sparkle 更新密钥可用时发布 `unsigned stable`，同时保留 signed-notarized 可信分发门禁

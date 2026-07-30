@@ -372,8 +372,18 @@ def manual_gates(channel: str) -> list[str]:
     if channel == "stable":
         return [
             *shared,
-            "signed and notarized final App ZIP",
-            "fresh macOS user standard first-open and restart readback",
+            (
+                "explicit stable distribution decision: unsigned or "
+                "signed-notarized"
+            ),
+            (
+                "unsigned requires Gatekeeper disclosure and a retained "
+                "Sparkle key; signed-notarized requires full trust readback"
+            ),
+            (
+                "fresh macOS user first-open and restart readback, unless "
+                "explicitly waived for unsigned stable"
+            ),
         ]
     return [
         *shared,
@@ -492,11 +502,20 @@ def archive_changelog(
     }
 
 
-def preview_first_open(version: Version) -> str:
+def unsigned_first_open(version: Version, channel: str) -> str:
+    if channel == "stable":
+        introduction = (
+            f"Codex Pulse {version.tag} 是正式功能版，但发行资产尚未完成 "
+            "Developer ID 签名和 Apple 公证。macOS 首次启动时会阻止应用打开。"
+        )
+    else:
+        introduction = (
+            "Codex Pulse 当前是未签名、未公证的开发预览版。"
+            "macOS 首次启动时会阻止应用打开。"
+        )
     return "\n".join(
         (
-            "Codex Pulse 当前是未签名、未公证的开发预览版。"
-            "macOS 首次启动时会阻止应用打开。",
+            introduction,
             "",
             (
                 "1. 下载 "
@@ -549,25 +568,32 @@ def render_release_notes(
         raise SystemExit("preview notes require a prerelease SemVer")
     if distribution not in ("unsigned", "signed-notarized"):
         raise SystemExit(f"unsupported distribution: {distribution}")
-    if channel == "stable" and distribution != "signed-notarized":
-        raise SystemExit(
-            "stable notes require a signed-notarized distribution"
-        )
     if sha256 != "<待生成>" and SHA256_PATTERN.fullmatch(sha256) is None:
         raise SystemExit("sha256 must be 64 lowercase hexadecimal characters")
 
     template = RELEASE_NOTES_TEMPLATE.read_text(encoding="utf-8")
     if distribution == "unsigned":
-        notice = (
-            "> 这是开发预览版，尚未完成 Developer ID 签名和 "
-            "Apple 公证。"
-        )
-        first_open = preview_first_open(version)
-        limitations = (
-            "- 未签名、未公证，仅供已了解风险的"
-            "测试用户使用。\n"
-            "- 首次打开需要在“隐私与安全性”中手工允许。"
-        )
+        if channel == "stable":
+            notice = (
+                "> 这是正式功能版本；发行资产采用 ad-hoc 签名，尚未完成 "
+                "Developer ID 签名和 Apple 公证。"
+            )
+            limitations = (
+                "- 发行资产未完成 Developer ID 签名和 Apple 公证，"
+                "不属于 macOS 已认证的可信分发。\n"
+                "- 首次打开需要在“隐私与安全性”中手工允许。"
+            )
+        else:
+            notice = (
+                "> 这是开发预览版，尚未完成 Developer ID 签名和 "
+                "Apple 公证。"
+            )
+            limitations = (
+                "- 未签名、未公证，仅供已了解风险的"
+                "测试用户使用。\n"
+                "- 首次打开需要在“隐私与安全性”中手工允许。"
+            )
+        first_open = unsigned_first_open(version, channel)
     else:
         if channel == "preview":
             notice = (

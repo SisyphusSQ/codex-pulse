@@ -125,17 +125,21 @@ class ReleaseNotesTests(unittest.TestCase):
                 "<待生成>",
             )
 
-    def test_stable_notes_require_signed_distribution(
+    def test_unsigned_stable_notes_disclose_gatekeeper_flow(
         self,
     ) -> None:
-        with self.assertRaises(SystemExit):
-            release.render_release_notes(
-                release.parse_version("v0.1.0"),
-                "stable",
-                "unsigned",
-                "正式版本",
-                "a" * 64,
-            )
+        rendered = release.render_release_notes(
+            release.parse_version("v0.1.0"),
+            "stable",
+            "unsigned",
+            "正式版本",
+            "a" * 64,
+        )
+
+        self.assertIn("正式功能版本", rendered)
+        self.assertIn("尚未完成 Developer ID 签名", rendered)
+        self.assertIn("仍要打开", rendered)
+        self.assertIn("不属于 macOS 已认证的可信分发", rendered)
 
     def test_signed_preview_uses_standard_first_open(self) -> None:
         rendered = release.render_release_notes(
