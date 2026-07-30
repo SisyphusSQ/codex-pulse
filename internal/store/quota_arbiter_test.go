@@ -301,11 +301,164 @@ func TestQuotaArbiterAcceptsEarlySlidingWindowReset(t *testing.T) {
 		projection.Current.EffectiveUsedPercent == nil || *projection.Current.EffectiveUsedPercent != 0 ||
 		projection.Current.WindowGeneration == nil || *projection.Current.WindowGeneration != resetAt ||
 		projection.Current.FreshnessState != QuotaCurrentFresh ||
-		projection.Current.RuleVersion != "quota-arbiter-v3" {
+		projection.Current.RuleVersion != "quota-arbiter-v4" {
 		t.Fatalf("sliding-window current = %#v, want trusted reset observation", projection.Current)
 	}
 	assertQuotaEvidence(t, projection.Evidence, exhausted.ObservationID, QuotaEvidenceSuperseded, "")
 	assertQuotaEvidence(t, projection.Evidence, reset.ObservationID, QuotaEvidenceSelected, "")
+}
+
+// 测试 QuotaArbiter 在 primary/codex 经历 300→10080→300 分钟角色切换后选择恢复的 5 小时窗口，
+// 并且不会被随后晚到的旧周窗口重新覆盖。（风险复现用例）
+func TestQuotaArbiterRestoresFiveHourRoleWithoutRevivingRetiredWeeklyGeneration(t *testing.T) {
+	t.Parallel()
+
+	rule := defaultQuotaArbitrationRule()
+	firstObserved := int64(400 * quotaTestHourMS)
+	historicalFiveHour := quotaArbiterObservation(
+		"historical-five-hour", QuotaSourceWham, 82,
+		firstObserved, firstObserved+5*quotaTestHourMS,
+	)
+	temporaryWeekly := quotaArbiterObservation(
+		"temporary-weekly-primary", QuotaSourceWham, 46,
+		firstObserved+quotaTestMinuteMS, firstObserved+quotaTestMinuteMS+7*24*quotaTestHourMS,
+	)
+	temporaryWeekly.WindowMinutes = 7 * 24 * 60
+	temporaryWeekly.LastObservedAtMS = firstObserved + 3*quotaTestMinuteMS
+	temporaryWeekly.SampleCount = 3
+	restoredFiveHour := quotaArbiterObservation(
+		"restored-five-hour", QuotaSourceWham, 4,
+		firstObserved+2*quotaTestMinuteMS, firstObserved+2*quotaTestMinuteMS+5*quotaTestHourMS,
+	)
+	lateTemporaryWeekly := quotaArbiterObservation(
+		"late-temporary-weekly", QuotaSourceWham, 47,
+		firstObserved+4*quotaTestMinuteMS, temporaryWeekly.ResetsAtMS,
+	)
+	lateTemporaryWeekly.WindowMinutes = temporaryWeekly.WindowMinutes
+	observations := []QuotaObservation{
+		historicalFiveHour,
+		temporaryWeekly,
+		restoredFiveHour,
+		lateTemporaryWeekly,
+	}
+
+	want, err := arbitrateQuotaWindow(
+		observations, firstObserved+5*quotaTestMinuteMS, rule,
+	)
+	if err != nil {
+		t.Fatalf("role-switch arbitration error = %v", err)
+	}
+	if want.Current.ObservationID == nil ||
+		*want.Current.ObservationID != restoredFiveHour.ObservationID ||
+		want.Current.WindowMinutes == nil ||
+		*want.Current.WindowMinutes != restoredFiveHour.WindowMinutes ||
+		want.Current.ResetsAtMS == nil ||
+		*want.Current.ResetsAtMS != restoredFiveHour.ResetsAtMS ||
+		want.Current.FreshnessState != QuotaCurrentFresh ||
+		want.Current.RuleVersion != "quota-arbiter-v4" {
+		t.Fatalf("role-switch current = %#v, want restored five-hour observation", want.Current)
+	}
+	assertQuotaEvidence(
+		t, want.Evidence, temporaryWeekly.ObservationID, QuotaEvidenceSuperseded, "",
+	)
+	assertQuotaEvidence(
+		t, want.Evidence, restoredFiveHour.ObservationID, QuotaEvidenceSelected, "",
+	)
+	assertQuotaEvidence(
+		t, want.Evidence, lateTemporaryWeekly.ObservationID, QuotaEvidenceSuperseded, "",
+	)
+
+	for seed := int64(0); seed < 100; seed++ {
+		shuffled := append([]QuotaObservation(nil), observations...)
+		rand.New(rand.NewSource(seed)).Shuffle(len(shuffled), func(i, j int) {
+			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+		})
+		got, err := arbitrateQuotaWindow(
+			shuffled, firstObserved+5*quotaTestMinuteMS, rule,
+		)
+		if err != nil {
+			t.Fatalf("seed %d role-switch arbitration error = %v", seed, err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("seed %d role-switch projection differs\n got=%#v\nwant=%#v", seed, got, want)
+		}
+	}
+}
+
+// 测试 QuotaArbiter 在退役周角色晚到且 reset 向后超过 5 秒时继续隔离回退。（风险复现用例）
+func TestQuotaArbiterQuarantinesResetRegressionFromRetiredWindowRole(t *testing.T) {
+	t.Parallel()
+
+	rule := defaultQuotaArbitrationRule()
+	firstObserved := int64(500 * quotaTestHourMS)
+	temporaryWeekly := quotaArbiterObservation(
+		"retired-weekly", QuotaSourceWham, 46,
+		firstObserved, firstObserved+7*24*quotaTestHourMS,
+	)
+	temporaryWeekly.WindowMinutes = 7 * 24 * 60
+	restoredFiveHour := quotaArbiterObservation(
+		"five-hour-after-retired-weekly", QuotaSourceWham, 4,
+		firstObserved+quotaTestMinuteMS, firstObserved+quotaTestMinuteMS+5*quotaTestHourMS,
+	)
+	regressedWeekly := quotaArbiterObservation(
+		"regressed-retired-weekly", QuotaSourceWham, 47,
+		firstObserved+2*quotaTestMinuteMS, temporaryWeekly.ResetsAtMS-quotaResetJitterMS-1,
+	)
+	regressedWeekly.WindowMinutes = temporaryWeekly.WindowMinutes
+
+	projection, err := arbitrateQuotaWindow(
+		[]QuotaObservation{temporaryWeekly, restoredFiveHour, regressedWeekly},
+		firstObserved+3*quotaTestMinuteMS,
+		rule,
+	)
+	if err != nil {
+		t.Fatalf("retired-role reset regression arbitration error = %v", err)
+	}
+	if projection.Current.ObservationID == nil ||
+		*projection.Current.ObservationID != restoredFiveHour.ObservationID ||
+		projection.Current.WindowMinutes == nil ||
+		*projection.Current.WindowMinutes != restoredFiveHour.WindowMinutes ||
+		projection.Current.FreshnessState != QuotaCurrentSuspicious {
+		t.Fatalf("retired-role reset regression current = %#v, want suspicious five-hour LKG", projection.Current)
+	}
+	assertQuotaEvidence(
+		t,
+		projection.Evidence,
+		regressedWeekly.ObservationID,
+		QuotaEvidenceSuspicious,
+		QuotaReasonResetRegression,
+	)
+}
+
+// 测试 QuotaArbiter 在 reset 相同但 observation 更新、且新时长自身合法时接受窗口角色切换。
+func TestQuotaArbiterAcceptsNewerWindowRoleWithSharedReset(t *testing.T) {
+	t.Parallel()
+
+	rule := defaultQuotaArbitrationRule()
+	firstObserved := int64(600 * quotaTestHourMS)
+	sharedReset := firstObserved + 4*quotaTestHourMS
+	weekly := quotaArbiterObservation(
+		"weekly-before-shared-reset", QuotaSourceWham, 46, firstObserved, sharedReset,
+	)
+	weekly.WindowMinutes = 7 * 24 * 60
+	fiveHour := quotaArbiterObservation(
+		"five-hour-with-shared-reset", QuotaSourceWham, 4,
+		firstObserved+quotaTestMinuteMS, sharedReset,
+	)
+
+	projection, err := arbitrateQuotaWindow(
+		[]QuotaObservation{weekly, fiveHour}, firstObserved+2*quotaTestMinuteMS, rule,
+	)
+	if err != nil {
+		t.Fatalf("shared-reset role-switch arbitration error = %v", err)
+	}
+	if projection.Current.ObservationID == nil ||
+		*projection.Current.ObservationID != fiveHour.ObservationID ||
+		projection.Current.WindowMinutes == nil ||
+		*projection.Current.WindowMinutes != fiveHour.WindowMinutes ||
+		projection.Current.FreshnessState != QuotaCurrentFresh {
+		t.Fatalf("shared-reset role-switch current = %#v, want newer five-hour role", projection.Current)
+	}
 }
 
 func TestQuotaArbiterRejectsClockAndResetAnomaliesWithoutLosingLastKnownGood(t *testing.T) {
