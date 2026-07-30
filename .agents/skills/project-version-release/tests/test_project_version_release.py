@@ -90,6 +90,11 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertIn("系统设置 → 隐私与安全性", rendered)
         self.assertIn("仍要打开", rendered)
         self.assertIn("不要关闭 Gatekeeper", rendered)
+        self.assertIn(
+            "Codex-Pulse-v0.1.0-beta.1-macos-arm64.dmg",
+            rendered,
+        )
+        self.assertIn("打开 DMG", rendered)
         self.assertNotIn("{{", rendered)
 
     def test_stable_notes_do_not_include_gatekeeper_bypass(self) -> None:
@@ -104,6 +109,11 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertNotIn("移到废纸篓", rendered)
         self.assertNotIn("仍要打开", rendered)
         self.assertIn("Developer ID", rendered)
+        self.assertIn(
+            "Codex-Pulse-v0.1.0-macos-arm64.dmg",
+            rendered,
+        )
+        self.assertIn("打开 DMG", rendered)
 
     def test_preview_requires_prerelease_semver(self) -> None:
         with self.assertRaises(SystemExit):
@@ -342,26 +352,35 @@ class RepositoryCheckTests(unittest.TestCase):
         self,
         repository: Path,
         tag: str,
-    ) -> str:
+    ) -> tuple[str, str]:
         release_root = (
             repository / ".artifacts" / "releases" / tag
         )
         release_root.mkdir(parents=True)
-        artifact = (
+        zip_artifact = (
             release_root
             / f"Codex-Pulse-{tag}-macos-arm64.zip"
         )
-        artifact.write_bytes(b"release archive")
-        digest = release.sha256_file(artifact)
+        dmg_artifact = (
+            release_root
+            / f"Codex-Pulse-{tag}-macos-arm64.dmg"
+        )
+        zip_artifact.write_bytes(b"release archive")
+        dmg_artifact.write_bytes(b"install disk image")
+        zip_digest = release.sha256_file(zip_artifact)
+        dmg_digest = release.sha256_file(dmg_artifact)
         (release_root / "SHA256SUMS").write_text(
-            f"{digest}  {artifact.name}\n",
+            (
+                f"{zip_digest}  {zip_artifact.name}\n"
+                f"{dmg_digest}  {dmg_artifact.name}\n"
+            ),
             encoding="utf-8",
         )
         (release_root / "release-notes.md").write_text(
             f"# Codex Pulse {tag}\n\nReady for review.\n",
             encoding="utf-8",
         )
-        return digest
+        return zip_digest, dmg_digest
 
     def test_clean_fixture_still_requires_manual_release_gates(
         self,
@@ -407,7 +426,7 @@ class RepositoryCheckTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repository = self.create_repository(Path(temporary))
-            digest = self.create_release_inputs(
+            zip_digest, dmg_digest = self.create_release_inputs(
                 repository,
                 "v0.1.0-beta.1",
             )
@@ -423,7 +442,42 @@ class RepositoryCheckTests(unittest.TestCase):
                 head,
             )
 
-            self.assertEqual(result["sha256"], digest)
+            self.assertEqual(result.get("zip_sha256"), zip_digest)
+            self.assertEqual(result.get("dmg_sha256"), dmg_digest)
+
+    def test_local_release_inputs_reject_missing_dmg_checksum(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = self.create_repository(Path(temporary))
+            self.create_release_inputs(repository, "v0.1.0-beta.1")
+            release_root = (
+                repository
+                / ".artifacts"
+                / "releases"
+                / "v0.1.0-beta.1"
+            )
+            checksum_path = release_root / "SHA256SUMS"
+            checksum_path.write_text(
+                checksum_path.read_text(encoding="utf-8").splitlines()[0]
+                + "\n",
+                encoding="utf-8",
+            )
+            head = release.run_git(
+                repository,
+                ["rev-parse", "HEAD"],
+            )
+
+            with self.assertRaisesRegex(
+                SystemExit,
+                "DMG",
+            ):
+                release.validate_local_release_inputs(
+                    repository,
+                    release.parse_version("v0.1.0-beta.1"),
+                    "preview",
+                    head,
+                )
 
 
 class ReleasePlanTests(unittest.TestCase):
@@ -444,6 +498,10 @@ class ReleasePlanTests(unittest.TestCase):
         self.assertIn("--draft", commands)
         self.assertIn("--prerelease", commands)
         self.assertIn("--draft=false", commands)
+        self.assertIn(
+            "Codex-Pulse-v0.1.0-beta.1-macos-arm64.dmg",
+            commands,
+        )
         publish_phase = result["phases"][-1]
         self.assertTrue(
             publish_phase["requires_separate_approval"]

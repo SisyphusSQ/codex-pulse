@@ -25,7 +25,7 @@ RELEASE_DIR=".artifacts/releases/$TAG"
 - `RELEASE_SHA` 是用户确认的发布 commit；
 - 工作树干净，所需验证针对同一 commit；
 - tag 和 Release 尚不存在；
-- Release Notes、App ZIP 和 `SHA256SUMS` 已完成；
+- Release Notes、首次安装 DMG、Sparkle App ZIP 和 `SHA256SUMS` 已完成；
 - stable 的签名、公证和首启 gate 已通过。
 
 ## 2. Signed tag
@@ -58,7 +58,8 @@ Stable：
 
 ```bash
 gh release create "$TAG" \
-  "$RELEASE_DIR/Codex-Pulse-$TAG-macos-arm64.zip#Codex Pulse for macOS (Apple Silicon)" \
+  "$RELEASE_DIR/Codex-Pulse-$TAG-macos-arm64.dmg#Codex Pulse 首次安装 DMG (Apple Silicon)" \
+  "$RELEASE_DIR/Codex-Pulse-$TAG-macos-arm64.zip#Codex Pulse Sparkle 更新 ZIP (Apple Silicon)" \
   "$RELEASE_DIR/SHA256SUMS" \
   --repo "$REPO" \
   --verify-tag \
@@ -85,10 +86,14 @@ gh release view "$TAG" \
   --json tagName,targetCommitish,isDraft,isPrerelease,name,body,assets,url
 ```
 
-把 GitHub 上的 ZIP 下载到新的临时目录，重新检查：
+把 GitHub 上的 DMG 与 ZIP 下载到新的临时目录，重新检查：
 
 ```bash
+shasum -a 256 "Codex-Pulse-$TAG-macos-arm64.dmg"
 shasum -a 256 "Codex-Pulse-$TAG-macos-arm64.zip"
+hdiutil verify "Codex-Pulse-$TAG-macos-arm64.dmg"
+# 将 DMG 只读挂载到新的临时目录后，检查根目录只有 App 与 Applications 链接，
+# 再对挂载后的 App 执行以下 codesign/spctl/stapler 读回。
 codesign --verify --deep --strict --verbose=2 "Codex Pulse.app"
 spctl --assess --type execute --verbose=4 "Codex Pulse.app"
 xcrun stapler validate "Codex Pulse.app"

@@ -40,6 +40,7 @@ require_file app/macos/Sources/CodexPulseCoreClient/CoreClient.swift SWIFT-001 d
 require_file app/macos/Sources/CodexPulseCoreClient/HelperSupervisor.swift SWIFT-001 docs/design/details/native-macos-client/README.md
 require_file app/macos/Sources/CodexPulseCoreClient/InvalidationStreamController.swift SWIFT-001 docs/design/details/native-macos-client/README.md
 require_file app/macos/Sources/CodexPulseCoreClient/ReadRetryPolicy.swift SWIFT-001 docs/design/details/native-macos-client/README.md
+require_file app/macos/Sources/CodexPulseUpdater/SparkleAppUpdater.swift SWIFT-002 docs/design/details/updates-and-release/README.md
 require_file scripts/swift-cancel-probe/main.go SWIFT-001 docs/test/swift-transport-spike.md
 require_file app/macos/Sources/CodexPulseApp/AppMain.swift SWIFT-002 docs/design/details/native-macos-client/README.md
 require_file app/macos/Sources/CodexPulseApp/AppDelegate.swift SWIFT-002 docs/design/details/native-macos-client/README.md
@@ -60,6 +61,8 @@ require_file scripts/macos/run-app-smoke.sh SWIFT-002 docs/test/native-app-shell
 require_file scripts/macos/run-app-live-smoke.sh SWIFT-004 docs/test/native-primary-pages.md
 require_file scripts/macos/smoke-seed/main.go DATA-001 docs/test/native-app-shell-overview.md
 require_file scripts/macos/Info.plist SWIFT-002 docs/test/native-app-shell-overview.md
+require_file scripts/sparkle/generate_appcast.sh RELEASE-001 docs/design/details/updates-and-release/README.md
+require_file scripts/sparkle/verify_archive_signature.py RELEASE-001 docs/design/details/updates-and-release/README.md
 require_file .github/workflows/ci.yml CI-001 docs/test/engineering-baseline/basic-ci-and-verification.md
 
 go_version=$(awk '$1 == "go" { print $2; exit }' "$REPO_ROOT/go.mod")
@@ -68,7 +71,7 @@ grep -Fq 'google.golang.org/grpc v1.82.1' "$REPO_ROOT/go.mod" || fail TOOLCHAIN-
 grep -Fq 'google.golang.org/protobuf v1.36.11' "$REPO_ROOT/go.mod" || fail TOOLCHAIN-001 go.mod "protobuf-go must be v1.36.11"
 
 [ ! -e "$REPO_ROOT/frontend/package.json" ] || fail ARCH-001 AGENTS.md "frontend manifest returned"
-for removed in internal/updater internal/platform/tray internal/singleinstance scripts/sparkle build cmd/trayprobe cmd/traystatusprobe; do
+for removed in internal/updater internal/platform/tray internal/singleinstance build cmd/trayprobe cmd/traystatusprobe; do
   if [ -d "$REPO_ROOT/$removed" ] && find "$REPO_ROOT/$removed" -type f \( -name '*.go' -o -name '*.sh' -o -name '*.yml' -o -name '*.yaml' \) -print -quit | grep -q .; then
     fail ARCH-001 AGENTS.md "removed desktop source returned: $removed"
   fi
@@ -102,6 +105,7 @@ grep -Fq 'exact: "2.4.2"' "$REPO_ROOT/app/macos/Package.swift" || fail SWIFT-001
 grep -Fq 'exact: "2.9.0"' "$REPO_ROOT/app/macos/Package.swift" || fail SWIFT-001 app/macos/Package.swift "grpc-swift-nio-transport must be pinned to 2.9.0"
 grep -Fq 'exact: "2.4.1"' "$REPO_ROOT/app/macos/Package.swift" || fail SWIFT-001 app/macos/Package.swift "grpc-swift-protobuf must be pinned to 2.4.1"
 grep -Fq 'exact: "1.38.1"' "$REPO_ROOT/app/macos/Package.swift" || fail SWIFT-001 app/macos/Package.swift "swift-protobuf must be pinned to 1.38.1"
+grep -Fq 'exact: "2.9.4"' "$REPO_ROOT/app/macos/Package.swift" || fail SWIFT-002 app/macos/Package.swift "Sparkle must be pinned to 2.9.4"
 require_pattern app/macos/Sources/CodexPulseCoreClient/CoreClient.swift 'unixDomainSocket' SWIFT-001 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseCoreClient/HelperSupervisor.swift 'posix_spawn' SWIFT-001 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseCoreClient/HelperSupervisor.swift 'POSIX_SPAWN_CLOEXEC_DEFAULT' SWIFT-001 docs/design/details/native-macos-client/README.md
@@ -109,6 +113,10 @@ require_pattern app/macos/Sources/CodexPulseCoreClient/HelperSupervisor.swift 'v
 require_pattern scripts/macos/build-release-app.sh 'CFBundleShortVersionString' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern scripts/macos/build-release-app.sh 'main.applicationVersion=' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern scripts/macos/build-release-app.sh 'Codex-Pulse-.*-macos-arm64.zip' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
+require_file scripts/macos/create-install-dmg.sh RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
+require_pattern scripts/macos/build-release-app.sh 'Codex-Pulse-.*-macos-arm64.dmg' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
+require_pattern scripts/macos/build-release-app.sh 'create-install-dmg.sh' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
+require_pattern scripts/macos/create-install-dmg.sh '/Applications' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 reject_pattern scripts/macos/build-release-app.sh '(^|[[:space:]])-gnone([[:space:]]|$)' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern scripts/macos/build-release-app.sh '--scratch-path' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern scripts/macos/build-release-app.sh 'gline-tables-only' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md

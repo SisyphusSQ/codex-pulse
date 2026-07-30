@@ -14,7 +14,8 @@
 
 - 系统要求：macOS 15 或更高版本
 - 支持架构：Apple Silicon
-- 下载：`Codex-Pulse-{{VERSION}}-macos-arm64.zip`
+- 首次安装（推荐）：`Codex-Pulse-{{VERSION}}-macos-arm64.dmg`
+- Sparkle 应用内更新资产：`Codex-Pulse-{{VERSION}}-macos-arm64.zip`
 - 不要下载 GitHub 自动生成的 `Source code (zip)` 或
   `Source code (tar.gz)`
 
@@ -37,9 +38,11 @@ Codex Pulse 会读取你确认的本机 Codex Home，并在本机保存索引数
 
 ## 文件完整性
 
-文件：`Codex-Pulse-{{VERSION}}-macos-arm64.zip`
+Sparkle 更新 ZIP：`Codex-Pulse-{{VERSION}}-macos-arm64.zip`
 
-SHA-256：`{{SHA256}}`
+ZIP SHA-256：`{{SHA256}}`
+
+DMG 与 ZIP 的完整摘要同时收录在 Release 资产 `SHA256SUMS` 中。
 
 ## 完整变更
 

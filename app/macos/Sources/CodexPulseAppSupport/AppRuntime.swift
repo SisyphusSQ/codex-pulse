@@ -134,6 +134,30 @@ public enum ShutdownOutcome: Equatable, Sendable {
     case uncertain
 }
 
+public enum AppShutdownReason: Equatable, Sendable {
+    case applicationExit
+    case updateInstallation
+
+    fileprivate var coreValue: String {
+        switch self {
+        case .applicationExit: "client_exit"
+        case .updateInstallation: "client_restart"
+        }
+    }
+}
+
+public enum AppUpdateInstallPreparation: Equatable, Sendable {
+    case ready
+    case blocked(ShutdownOutcome)
+
+    public init(shutdownOutcome: ShutdownOutcome) {
+        switch shutdownOutcome {
+        case .clean: self = .ready
+        case .forced, .uncertain: self = .blocked(shutdownOutcome)
+        }
+    }
+}
+
 public actor AppRuntime {
     public typealias StateSink = @Sendable (CoreConnectionState) async -> Void
     public typealias InvalidationSink = @Sendable (_ domain: String) async -> Void
@@ -882,7 +906,9 @@ public actor AppRuntime {
         await start()
     }
 
-    public func shutdown() async -> ShutdownOutcome {
+    public func shutdown(
+        reason: AppShutdownReason = .applicationExit
+    ) async -> ShutdownOutcome {
         guard !shuttingDown else { return .uncertain }
         shuttingDown = true
         runtimeGeneration &+= 1
@@ -898,7 +924,7 @@ public actor AppRuntime {
         refreshTask = nil
         cancelAccountRefresh()
         await emit(.shuttingDown)
-        let outcome = await stopCurrentCore(reason: "client_exit")
+        let outcome = await stopCurrentCore(reason: reason.coreValue)
         shuttingDown = false
         await emit(.stopped)
         return outcome

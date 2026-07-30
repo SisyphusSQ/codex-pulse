@@ -37,8 +37,12 @@ Stable 必须满足：
 - App 内所有可执行代码按 inside-out 顺序使用 Developer ID 签名；
 - Hardened Runtime、secure timestamp、notarization 和 stapling 通过；
 - 解压后的最终资产通过 `codesign`、`spctl` 和 `stapler`；
+- 挂载后的首次安装 DMG 只包含 App 与 `/Applications` 链接，且其中 App
+  通过 `codesign`、`spctl` 和 `stapler`；
 - 持久 runtime、Codex Home 首次确认和重启读回闭环；
 - 在全新 macOS 用户环境完成首次安装、打开、索引和再次启动验证；
+- 使用正式 Sparkle Ed25519 公钥构建，私钥只经 stdin 参与 exact ZIP 签名；
+- fixed HTTPS appcast 已完成 stable/prerelease 选路、远端下载和 N-1 替换重启；
 - Git tag、GitHub Release、资产 SHA-256 和发布状态远端读回一致。
 
 ### Preview
@@ -53,12 +57,13 @@ Preview 不能被描述为 stable，也不能把 isolated smoke 当作最终用�
 
 检查实际仓库，不要把本节当作永久事实。当前已知 gate 包括：
 
-- `scripts/macos/Info.plist` 是 development identifier 和 development copy；
 - `scripts/macos/build-dev-app.sh` 明确只组装 unsigned development App；
-- 尚无项目所有的 `scripts/macos/build-release-app.sh`；
-- Helper 的 Makefile 构建版本和 App 默认 client version 仍为 `dev`；
-- App 默认 runtime 仍使用随机 `/private/tmp/cp-app-*`；
-- 首次 Codex Home 确认、持久偏好与普通用户重启读回需要完成产品验收。
+- `scripts/macos/build-release-app.sh` 当前只执行完整 ad-hoc inside-out 签名，
+  不执行 Developer ID、Hardened Runtime、公证或 stapling；
+- 正式 Sparkle key pair、固定生产 appcast 与远端更新资产尚需逐次授权启用；
+- 已安装 N-1 App 的 stable/prerelease 真实下载、验签、Helper clean shutdown、
+  替换重启与 migration/recovery 矩阵需要针对发行候选读回；
+- 首次 Codex Home 确认、持久偏好与普通用户重启仍需完成产品验收。
 
 只要任一项仍成立，skill 必须输出 `stable_release_ready=false`。
 Release Notes 不能代替产品实现或签名公证 gate。
@@ -87,13 +92,40 @@ Release 和产品展示版本中，不写入 `CFBundleShortVersionString`。
 
 ```text
 .artifacts/releases/<tag>/
+├── Codex-Pulse-<tag>-macos-arm64.dmg
 ├── Codex-Pulse-<tag>-macos-arm64.zip
 ├── SHA256SUMS
-└── release-notes.md
+├── release-notes.md
+└── appcast.xml              # 待发布到固定 feed 的候选，不上传到版本 Release
 ```
 
-GitHub 自动生成的 `Source code (zip)` 与 `Source code (tar.gz)` 不是 App
+DMG 是用户首次安装的推荐资产，包含 `Codex Pulse.app` 与指向
+`/Applications` 的拖拽入口；ZIP 是 Sparkle appcast 指向的 exact 更新资产。
+GitHub 自动生成的 `Source code (zip)` 与 `Source code (tar.gz)` 都不是 App
 安装包，Release Notes 必须明确区分。
+
+stable 与 prerelease 共用一个 appcast。stable item 不写
+`sparkle:channel`，prerelease item 写 `prerelease`；两个 channel 的
+`CFBundleVersion` 必须使用同一个严格递增序列。版本 Release 托管首次安装
+DMG、exact ZIP、校验和与 notes；固定 feed 必须在版本 Release 公开且 ZIP
+可下载后最后更新，避免客户端看到尚不可用的 enclosure。
+
+生成 appcast 时使用：
+
+```bash
+scripts/sparkle/generate_appcast.sh \
+  --version 0.1.0-beta.7 \
+  --build-number 7 \
+  --channel prerelease \
+  --archive .artifacts/releases/v0.1.0-beta.7/Codex-Pulse-v0.1.0-beta.7-macos-arm64.zip \
+  --archive-url https://github.com/SisyphusSQ/codex-pulse/releases/download/v0.1.0-beta.7/Codex-Pulse-v0.1.0-beta.7-macos-arm64.zip \
+  --existing .artifacts/appcast-current.xml \
+  --output .artifacts/releases/v0.1.0-beta.7/appcast.xml
+```
+
+Sparkle Ed25519 私钥必须从该命令的 stdin 输入。脚本使用官方
+`sign_update` 签 exact ZIP，并以 ZIP 内的 `SUPublicEDKey` 再次验签；私钥
+不得进入 argv、环境、日志、manifest、仓库或发布产物。
 
 ## 5. 验证矩阵
 
@@ -106,6 +138,10 @@ GitHub 自动生成的 `Source code (zip)` 与 `Source code (tar.gz)` 不是 App
 | Gatekeeper | `spctl --assess --type execute --verbose=4` |
 | 公证票据 | `xcrun stapler validate` |
 | ZIP 完整性 | 解压后重跑 Bundle、签名、公证检查 |
+| DMG 完整性 | `hdiutil verify`，只读挂载后检查 App、`/Applications` 链接、签名与公证 |
+| Sparkle Bundle | `SUFeedURL`、`SUPublicEDKey`、Framework 与 rpath 读回 |
+| Sparkle appcast | XML、channel、全局 build number、exact asset URL 与 Ed25519 验签 |
+| N-1 更新 | 已安装旧 App 真实检查、下载、Helper drain、替换、重启与版本/schema 读回 |
 | SHA-256 | 本地生成、GitHub 下载后重新比对 |
 | tag | 远端 tag object 与 peeled commit readback |
 | Release | `gh release view --json ...` |

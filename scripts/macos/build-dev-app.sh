@@ -44,17 +44,23 @@ make -C "$REPO_ROOT" verify-helper
 
 SWIFT_BIN_DIR=$(swift build --package-path "$REPO_ROOT/app/macos" --show-bin-path)
 APP_EXECUTABLE="$SWIFT_BIN_DIR/codex-pulse-app"
+SPARKLE_FRAMEWORK="$SWIFT_BIN_DIR/Sparkle.framework"
 HELPER_EXECUTABLE="$REPO_ROOT/bin/codex-pulse"
 APP_ICON_SOURCE="$REPO_ROOT/app/macos/Resources/AppIcon/CodexPulse.icon"
 APP_ICONSET="$REPO_ROOT/app/macos/Resources/AppIcon/CodexPulse.iconset"
 [ -x "$APP_EXECUTABLE" ] || { echo "Swift app executable is missing" >&2; exit 1; }
+[ -d "$SPARKLE_FRAMEWORK" ] || { echo "Sparkle framework is missing" >&2; exit 1; }
 [ -x "$HELPER_EXECUTABLE" ] || { echo "Go Helper executable is missing" >&2; exit 1; }
 [ -f "$APP_ICON_SOURCE/icon.json" ] || { echo "Codex Pulse Icon Composer source is missing" >&2; exit 1; }
 [ -d "$APP_ICONSET" ] || { echo "Codex Pulse AppIcon iconset is missing" >&2; exit 1; }
 command -v iconutil >/dev/null 2>&1 || { echo "iconutil is unavailable" >&2; exit 1; }
 
 rm -rf -- "$APP_DIR"
-mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Helpers" "$APP_DIR/Contents/Resources"
+mkdir -p \
+  "$APP_DIR/Contents/MacOS" \
+  "$APP_DIR/Contents/Helpers" \
+  "$APP_DIR/Contents/Resources" \
+  "$APP_DIR/Contents/Frameworks"
 cp "$SCRIPT_DIR/Info.plist" "$APP_DIR/Contents/Info.plist"
 plutil -replace CFBundleDisplayName -string "Codex Pulse Development" "$APP_DIR/Contents/Info.plist"
 plutil -replace CFBundleIdentifier -string "com.sisyphussq.codex-pulse.development" "$APP_DIR/Contents/Info.plist"
@@ -63,6 +69,7 @@ plutil -replace CFBundleVersion -string "1" "$APP_DIR/Contents/Info.plist"
 plutil -replace CodexPulseProductVersion -string "0.0.0-dev" "$APP_DIR/Contents/Info.plist"
 cp "$APP_EXECUTABLE" "$APP_DIR/Contents/MacOS/Codex Pulse"
 cp "$HELPER_EXECUTABLE" "$APP_DIR/Contents/Helpers/codex-pulse"
+ditto "$SPARKLE_FRAMEWORK" "$APP_DIR/Contents/Frameworks/Sparkle.framework"
 iconutil -c icns "$APP_ICONSET" -o "$APP_DIR/Contents/Resources/CodexPulse.icns"
 
 ICON_PIPELINE=icns-fallback
@@ -126,6 +133,13 @@ elif [ "$REQUIRE_LAYERED_ICON" -eq 1 ]; then
 fi
 
 chmod 0755 "$APP_DIR/Contents/MacOS/Codex Pulse" "$APP_DIR/Contents/Helpers/codex-pulse"
+codesign --verify --deep --strict \
+  "$APP_DIR/Contents/Frameworks/Sparkle.framework"
+otool -l "$APP_DIR/Contents/MacOS/Codex Pulse" |
+  grep -Fq '@executable_path/../Frameworks' || {
+    echo "Swift app executable is missing the standard Frameworks rpath" >&2
+    exit 1
+  }
 plutil -lint "$APP_DIR/Contents/Info.plist" >/dev/null
 [ -s "$APP_DIR/Contents/Resources/CodexPulse.icns" ] || { echo "Codex Pulse AppIcon ICNS is missing" >&2; exit 1; }
 [ "$(plutil -extract CFBundleIconName raw "$APP_DIR/Contents/Info.plist")" = "CodexPulse" ] || {
@@ -133,4 +147,4 @@ plutil -lint "$APP_DIR/Contents/Info.plist" >/dev/null
   exit 1
 }
 
-printf 'development app assembled: executable=present helper=present icon_pipeline=%s signed=no distribution=no\n' "$ICON_PIPELINE"
+printf 'development app assembled: executable=present helper=present sparkle=embedded icon_pipeline=%s signed=no distribution=no\n' "$ICON_PIPELINE"

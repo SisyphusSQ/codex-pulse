@@ -8,6 +8,7 @@ let package = Package(
     products: [
         .library(name: "CodexPulseCoreClient", targets: ["CodexPulseCoreClient"]),
         .library(name: "CodexPulseAppSupport", targets: ["CodexPulseAppSupport"]),
+        .library(name: "CodexPulseUpdater", targets: ["CodexPulseUpdater"]),
         .executable(name: "codex-pulse-app", targets: ["CodexPulseApp"]),
         .executable(name: "codex-pulse-transport-spike", targets: ["CodexPulseTransportSpike"]),
         .executable(name: "codex-pulse-core-client-tests", targets: ["CodexPulseCoreClientTests"]),
@@ -18,6 +19,7 @@ let package = Package(
         .package(url: "https://github.com/grpc/grpc-swift-nio-transport.git", exact: "2.9.0"),
         .package(url: "https://github.com/grpc/grpc-swift-protobuf.git", exact: "2.4.1"),
         .package(url: "https://github.com/apple/swift-protobuf.git", exact: "1.38.1"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.4"),
     ],
     targets: [
         .target(
@@ -45,9 +47,27 @@ let package = Package(
                 "CodexPulseProtocolGenerated",
             ]
         ),
+        .target(
+            name: "CodexPulseUpdater",
+            dependencies: [
+                "CodexPulseAppSupport",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ]
+        ),
         .executableTarget(
             name: "CodexPulseApp",
-            dependencies: ["CodexPulseAppSupport"]
+            dependencies: [
+                "CodexPulseAppSupport",
+                "CodexPulseUpdater",
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker",
+                    "-rpath",
+                    "-Xlinker",
+                    "@executable_path/../Frameworks",
+                ]),
+            ]
         ),
         .executableTarget(
             name: "CodexPulseTransportSpike",
@@ -68,6 +88,7 @@ let package = Package(
             name: "CodexPulseAppTests",
             dependencies: [
                 "CodexPulseAppSupport",
+                "CodexPulseUpdater",
                 "CodexPulseCoreClient",
                 "CodexPulseProtocolGenerated",
             ],

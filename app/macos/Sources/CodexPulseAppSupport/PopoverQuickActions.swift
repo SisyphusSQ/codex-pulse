@@ -391,28 +391,6 @@ public enum PopoverQuickActions {
         )
     }
 
-    public static func openUpdate(
-        _ reminder: AppUpdateReminder,
-        using opener: (URL) -> Bool
-    ) -> PopoverQuickActionResult {
-        guard GitHubReleaseUpdateChecker.isTrustedReleaseURL(reminder.releaseURL) else {
-            return .failure(
-                title: "无法打开版本页面",
-                message: "版本地址未通过安全校验，未交给浏览器处理。"
-            )
-        }
-        guard opener(reminder.releaseURL) else {
-            return .failure(
-                title: "无法打开版本页面",
-                message: "系统未能打开 GitHub 版本页面，请稍后再试。"
-            )
-        }
-        return .success(
-            title: "已打开版本页面",
-            message: "已交给默认浏览器处理。"
-        )
-    }
-
     public static func copyPopoverScreenshot(
         png: Data?,
         writeClipboard: (String, Data) -> Bool
