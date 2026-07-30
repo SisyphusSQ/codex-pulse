@@ -1521,6 +1521,144 @@ private func testStatusPillUsesProductCopy() throws {
         "health reasons must map raw values to product copy")
 }
 
+private func testQuotaResetPresentationFormatsTrustedCurrentYearReset() throws {
+    let presentation = QuotaResetPresentation(
+        resetsAtMS: 1_785_911_400_000,
+        resetRemainingMS: 534_600_000,
+        referenceDate: Date(timeIntervalSince1970: 1_785_376_800),
+        timeZone: TimeZone(identifier: "Asia/Shanghai")!
+    )
+
+    try expect(
+        presentation.remainingText == "6 天 4 小时",
+        "trusted quota countdown must retain the existing compact duration"
+    )
+    try expect(
+        presentation.resetTimeText == "8月5日 14:30",
+        "a reset in the reference year must omit the year and use the injected timezone"
+    )
+    try expect(
+        presentation.compactText == "6 天 4 小时后 · 8月5日 14:30",
+        "compact quota copy must combine the countdown with the authoritative reset timestamp"
+    )
+}
+
+private func testQuotaResetPresentationRejectsMissingAndUntrustedFacts() throws {
+    let referenceDate = Date(timeIntervalSince1970: 1_785_376_800)
+    let timeZone = TimeZone(identifier: "Asia/Shanghai")!
+    let missing = QuotaResetPresentation(
+        resetsAtMS: nil,
+        resetRemainingMS: nil,
+        referenceDate: referenceDate,
+        timeZone: timeZone
+    )
+    try expect(
+        missing.remainingText == "--"
+            && missing.resetTimeText == "--"
+            && missing.compactText == "重置时间待定",
+        "missing reset facts must use one stable unavailable fallback"
+    )
+
+    for remainingMS in [Int64(0), -1] {
+        let presentation = QuotaResetPresentation(
+            resetsAtMS: 1_785_911_400_000,
+            resetRemainingMS: remainingMS,
+            referenceDate: referenceDate,
+            timeZone: timeZone
+        )
+        try expect(
+            presentation.remainingText == "--"
+                && presentation.resetTimeText == "--"
+                && presentation.compactText == "重置时间待定",
+            "zero or negative reset countdowns must not expose a reset timestamp"
+        )
+    }
+
+    let missingTimestamp = QuotaResetPresentation(
+        resetsAtMS: nil,
+        resetRemainingMS: 3_600_000,
+        referenceDate: referenceDate,
+        timeZone: timeZone
+    )
+    try expect(
+        missingTimestamp.remainingText == "1 小时"
+            && missingTimestamp.resetTimeText == "--"
+            && missingTimestamp.compactText == "1 小时后 · --",
+        "a trusted countdown may remain visible when the absolute timestamp is unavailable"
+    )
+
+    for invalidResetAtMS in [Int64(0), 1_785_373_200_000] {
+        let inconsistent = QuotaResetPresentation(
+            resetsAtMS: invalidResetAtMS,
+            resetRemainingMS: 3_600_000,
+            referenceDate: referenceDate,
+            timeZone: timeZone
+        )
+        try expect(
+            inconsistent.remainingText == "--"
+                && inconsistent.resetTimeText == "--"
+                && inconsistent.compactText == "重置时间待定",
+            "an invalid or expired reset timestamp must invalidate its contradictory countdown"
+        )
+    }
+}
+
+private func testQuotaResetPresentationUsesTimezoneForYearBoundary() throws {
+    let referenceDate = Date(timeIntervalSince1970: 1_798_729_200)
+    let resetAtMS: Int64 = 1_798_738_200_000
+    let remainingMS: Int64 = 9_000_000
+
+    let shanghai = QuotaResetPresentation(
+        resetsAtMS: resetAtMS,
+        resetRemainingMS: remainingMS,
+        referenceDate: referenceDate,
+        timeZone: TimeZone(identifier: "Asia/Shanghai")!
+    )
+    try expect(
+        shanghai.resetTimeText == "2027年1月1日 01:30",
+        "a reset crossing the injected timezone's year boundary must include the year"
+    )
+
+    let utc = QuotaResetPresentation(
+        resetsAtMS: resetAtMS,
+        resetRemainingMS: remainingMS,
+        referenceDate: referenceDate,
+        timeZone: TimeZone(secondsFromGMT: 0)!
+    )
+    try expect(
+        utc.resetTimeText == "12月31日 17:30",
+        "the same instant must use the injected timezone before deciding whether to show the year"
+    )
+}
+
+private func testQuotaResetPresentationIsUsedByEveryQuotaSurface() throws {
+    let root = try mainWindowSource("RootView.swift")
+    try expect(
+        root.contains("QuotaResetPresentation(")
+            && root.contains("reset.compactText")
+            && root.contains("overview.quota.reset.\\(window.id)"),
+        "Overview quota windows must show the shared reset copy on a stable accessibility surface"
+    )
+
+    let popover = try mainWindowSource("StatusItemController.swift")
+    try expect(
+        popover.contains("QuotaResetPresentation(")
+            && popover.contains("Text(\"距离重置：\\(reset.remainingText)\")")
+            && popover.contains("Text(\"重置时间：\\(reset.resetTimeText)\")")
+            && popover.contains("popover.quota.reset.\\(window.id)"),
+        "the status popover must expose separate countdown and reset-time rows"
+    )
+
+    let quotaDetail = try mainWindowSource("QuotaHealthViews.swift")
+    try expect(
+        quotaDetail.contains("QuotaResetPresentation(")
+            && quotaDetail.contains("key: \"重置时间\"")
+            && quotaDetail.contains("value: reset.resetTimeText")
+            && quotaDetail.contains("quota.window.reset-time.\\(presentation.id)"),
+        "quota detail cards must expose the shared reset timestamp below the countdown"
+    )
+}
+
 private func testStatusItemRefreshReadsCommittedState() throws {
     let source = try mainWindowSource("StatusItemController.swift")
     try expect(
@@ -6673,6 +6811,10 @@ struct CodexPulseAppTestMain {
         try testLoginItemFailuresRestoreAuthoritativeState()
         try testLoginItemServiceManagementWiringAndCopy()
         try testStatusPillUsesProductCopy()
+        try testQuotaResetPresentationFormatsTrustedCurrentYearReset()
+        try testQuotaResetPresentationRejectsMissingAndUntrustedFacts()
+        try testQuotaResetPresentationUsesTimezoneForYearBoundary()
+        try testQuotaResetPresentationIsUsedByEveryQuotaSurface()
         try testStatusItemRefreshReadsCommittedState()
         try testApplicationMenuRegistersNativeCommands()
         try testApplicationMenuSettingsShowsTheExistingSettingsPage()
