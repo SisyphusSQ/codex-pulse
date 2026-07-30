@@ -303,7 +303,11 @@ private struct OverviewContentView: View {
             } else {
                 ForEach(Array(overview.quotaWindows.prefix(2).enumerated()), id: \.element.id) {
                     index, window in
-                    if index > 0 { Divider().frame(height: 34) }
+                    let reset = QuotaResetPresentation(
+                        resetsAtMS: window.resetsAtMS,
+                        resetRemainingMS: window.resetRemainingMS
+                    )
+                    if index > 0 { Divider().frame(height: 48) }
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 8) {
                             Text(window.title).font(.subheadline.weight(.medium))
@@ -312,14 +316,17 @@ private struct OverviewContentView: View {
                                 .monospacedDigit()
                                 .foregroundStyle(quotaColor(window.remainingPercent))
                         }
-                        HStack(spacing: 8) {
-                            ProgressView(value: quotaProgress(window.remainingPercent))
-                                .tint(quotaColor(window.remainingPercent))
-                                .frame(width: 92)
-                            Text(quotaResetText(window))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        ProgressView(value: quotaProgress(window.remainingPercent))
+                            .tint(quotaColor(window.remainingPercent))
+                            .frame(width: 132)
+                        Text(reset.compactText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .accessibilityIdentifier("overview.quota.reset.\(window.id)")
+                            .accessibilityLabel("额度重置")
+                            .accessibilityValue(reset.compactText)
                     }
                 }
             }
@@ -755,10 +762,6 @@ private struct OverviewContentView: View {
         }
     }
 
-    private func quotaResetText(_ window: QuotaWindowPresentation) -> String {
-        guard window.resetRemainingMS != nil else { return "重置时间待定" }
-        return "\(ProductCopy.duration(milliseconds: window.resetRemainingMS))后重置"
-    }
 }
 
 private struct OverviewActivityCard: View {

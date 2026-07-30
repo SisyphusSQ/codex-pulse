@@ -107,6 +107,10 @@ private struct QuotaContentView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], spacing: 12) {
                 ForEach(Array(displayWindows.enumerated()), id: \.offset) { _, window in
                     let presentation = QuotaWindowPresentation(window)
+                    let reset = QuotaResetPresentation(
+                        resetsAtMS: presentation.resetsAtMS,
+                        resetRemainingMS: presentation.resetRemainingMS
+                    )
                     SectionCard(title: presentation.title) {
                         HStack(alignment: .firstTextBaseline) {
                             Text("剩余")
@@ -125,10 +129,12 @@ private struct QuotaContentView: View {
                             ))
                         KeyValueRow(
                             key: "距离重置",
-                            value: ProductCopy.duration(
-                                milliseconds: window.hasResetRemainingMs ? window.resetRemainingMs : nil
-                            )
+                            value: reset.remainingText
                         )
+                        KeyValueRow(key: "重置时间", value: reset.resetTimeText)
+                            .accessibilityIdentifier(
+                                "quota.window.reset-time.\(presentation.id)"
+                            )
                         if window.hasUnknownReason {
                             Text("这项额度暂时无法获取。")
                                 .font(.caption)

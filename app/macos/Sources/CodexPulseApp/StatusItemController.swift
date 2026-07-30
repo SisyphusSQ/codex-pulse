@@ -574,6 +574,10 @@ private struct MenuBarPopoverView: View {
                 PulseCard { Text("尚未取得可信额度数据").foregroundStyle(.secondary) }
             } else {
                 ForEach(overview.quotaWindows.prefix(2)) { window in
+                    let reset = QuotaResetPresentation(
+                        resetsAtMS: window.resetsAtMS,
+                        resetRemainingMS: window.resetRemainingMS
+                    )
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(alignment: .firstTextBaseline) {
                             Text(window.title).font(.system(size: 15, weight: .semibold))
@@ -591,10 +595,16 @@ private struct MenuBarPopoverView: View {
                             }
                         }
                         .frame(height: 9)
-                        HStack {
+                        HStack(alignment: .top) {
                             Text("\(percentText(window.remainingPercent)) 剩余")
                             Spacer()
-                            Text("下次重置：\(durationText(window.resetRemainingMS))")
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("距离重置：\(reset.remainingText)")
+                                Text("重置时间：\(reset.resetTimeText)")
+                            }
+                            .multilineTextAlignment(.trailing)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("popover.quota.reset.\(window.id)")
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
