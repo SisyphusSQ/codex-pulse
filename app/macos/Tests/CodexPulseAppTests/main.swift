@@ -258,7 +258,7 @@ private func testQuotaUsageShowsIndependentReferencePriceCatalogAndBillingBounda
             && !source.contains("DisclosureGroup")
             && !source.contains("当前 API 参考价（每 100 万 Token）")
             && source.contains("仅用于 API 等价折算，不是 Codex 订阅账单。")
-            && source.contains("长上下文、Batch、Flex、Priority 和区域处理"),
+            && source.contains("长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理"),
         "quota usage page must expose the independent catalog and its billing boundary"
     )
 }

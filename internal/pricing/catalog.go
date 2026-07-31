@@ -12,6 +12,9 @@ const (
 	builtinPricing20260729Version       = "openai-api-2026-07-29"
 	builtinPricing20260729EffectiveAtMS = int64(1_785_254_400_000)
 	builtinPricing20260729VerifiedAtMS  = int64(1_785_254_400_000)
+	builtinPricing20260731Version       = "openai-api-2026-07-31"
+	builtinPricing20260731EffectiveAtMS = int64(1_785_464_448_000)
+	builtinPricing20260731VerifiedAtMS  = int64(1_785_464_448_000)
 )
 
 type builtinModelRate struct {
@@ -68,12 +71,39 @@ func BuiltinOpenAI20260729() CatalogVersion {
 	)
 }
 
+// BuiltinOpenAI20260731 固化 GPT-5.6 Terra 与 Luna 的官方降价；它从上一版
+// 独立复制费率后替换对应 exact 规则，旧目录及历史成本保持不可变。
+func BuiltinOpenAI20260731() CatalogVersion {
+	return catalogFromRates(
+		builtinPricing20260731Version, builtinPricing20260731EffectiveAtMS,
+		builtinPricing20260731VerifiedAtMS, builtinPricingURL, builtinOpenAI20260731Rates(),
+	)
+}
+
+func builtinOpenAI20260731Rates() []builtinModelRate {
+	rates := builtinOpenAI20260722Rates()
+	for index := range rates {
+		switch rates[index].model {
+		case "gpt-5.6-terra":
+			rates[index] = builtinModelRate{
+				model: "gpt-5.6-terra", input: 2_000_000, cached: 200_000, output: 12_000_000,
+			}
+		case "gpt-5.6-luna":
+			rates[index] = builtinModelRate{
+				model: "gpt-5.6-luna", input: 200_000, cached: 20_000, output: 1_200_000,
+			}
+		}
+	}
+	return rates
+}
+
 // BuiltinOpenAICatalog 返回按生效时间升序排列的完整内置价格历史。
 func BuiltinOpenAICatalog() []CatalogVersion {
 	return []CatalogVersion{
 		BuiltinOpenAI20260714(),
 		BuiltinOpenAI20260722(),
 		BuiltinOpenAI20260729(),
+		BuiltinOpenAI20260731(),
 	}
 }
 

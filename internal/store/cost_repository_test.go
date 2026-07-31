@@ -168,6 +168,68 @@ func TestRebuildCostLedgerSelectsHalfOpenCatalogVersionsAndExactRules(t *testing
 	}
 }
 
+func TestRebuildCostLedgerUsesReducedBuiltinPricesFrom20260731Boundary(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	ctx := context.Background()
+	for _, catalog := range pricing.BuiltinOpenAICatalog() {
+		if err := repository.AddPricingVersion(ctx, catalog); err != nil {
+			t.Fatalf("AddPricingVersion(%s) error = %v", catalog.PricingVersion, err)
+		}
+	}
+
+	const effectiveAtMS = int64(1_785_464_448_000)
+	million, zero := int64(1_000_000), int64(0)
+	for _, fixture := range []struct {
+		suffix string
+		model  string
+		atMS   int64
+	}{
+		{suffix: "terra-before", model: "gpt-5.6-terra", atMS: effectiveAtMS - 1},
+		{suffix: "terra-current", model: "gpt-5.6-terra", atMS: effectiveAtMS},
+		{suffix: "luna-before", model: "gpt-5.6-luna", atMS: effectiveAtMS - 1},
+		{suffix: "luna-current", model: "gpt-5.6-luna", atMS: effectiveAtMS},
+	} {
+		seedCostTurn(t, repository, fixture.suffix, &fixture.model, fixture.atMS, true, pricing.Usage{
+			InputTokens: &million, CachedInputTokens: &zero,
+			OutputTokens: &zero, ReasoningTokens: &zero,
+		})
+	}
+
+	if _, err := repository.RebuildCostLedger(ctx, RebuildCostLedgerRequest{
+		GenerationID: "generation-builtin-price-cut", ReportingTimezone: "Asia/Shanghai",
+		PricingSource: "openai-api", Currency: "USD", RollupVersion: 1,
+		CalculatedAtMS: effectiveAtMS + 1,
+	}); err != nil {
+		t.Fatalf("RebuildCostLedger() error = %v", err)
+	}
+	snapshot, err := repository.ActiveCostLedger(ctx, "Asia/Shanghai")
+	if err != nil {
+		t.Fatalf("ActiveCostLedger() error = %v", err)
+	}
+	byTurn := make(map[string]TurnCost, len(snapshot.TurnCosts))
+	for _, cost := range snapshot.TurnCosts {
+		byTurn[cost.TurnID] = cost
+	}
+	for turnID, want := range map[string]struct {
+		version string
+		micros  int64
+	}{
+		"turn-terra-before":  {version: "openai-api-2026-07-29", micros: 2_500_000},
+		"turn-terra-current": {version: "openai-api-2026-07-31", micros: 2_000_000},
+		"turn-luna-before":   {version: "openai-api-2026-07-29", micros: 1_000_000},
+		"turn-luna-current":  {version: "openai-api-2026-07-31", micros: 200_000},
+	} {
+		got := byTurn[turnID]
+		if got.Status != pricing.CostStatusPriced || got.PricingVersion == nil ||
+			*got.PricingVersion != want.version || got.EstimatedUSDMicros == nil ||
+			*got.EstimatedUSDMicros != want.micros {
+			t.Errorf("%s cost = %#v, want version=%s micros=%d", turnID, got, want.version, want.micros)
+		}
+	}
+}
+
 func TestRebuildCostLedgerIsIdempotentAndKeepsOldActiveOnFailure(t *testing.T) {
 	t.Parallel()
 
