@@ -77,9 +77,10 @@ func TestBuiltinOpenAI20260722AddsGPT54MiniWithoutMutatingPriorCatalog(t *testin
 		t.Fatalf("gpt-5.4-mini catalog entry = %#v", mini)
 	}
 	versions := BuiltinOpenAICatalog()
-	if len(versions) != 3 || versions[0].PricingVersion != "openai-api-2026-07-14" ||
+	if len(versions) != 4 || versions[0].PricingVersion != "openai-api-2026-07-14" ||
 		versions[1].PricingVersion != "openai-api-2026-07-22" ||
 		versions[2].PricingVersion != "openai-api-2026-07-29" ||
+		versions[3].PricingVersion != "openai-api-2026-07-31" ||
 		len(BuiltinOpenAI20260714().Models) != 11 {
 		t.Fatalf("builtin catalog history = %#v", versions)
 	}
@@ -100,4 +101,65 @@ func TestBuiltinOpenAI20260729UsesGeneralPricingSourceWithoutMutatingHistory(t *
 	if previous.SourceURL != "https://developers.openai.com/api/docs/models/gpt-5.4-mini" {
 		t.Fatalf("BuiltinOpenAI20260722() source URL mutated to %q", previous.SourceURL)
 	}
+}
+
+func TestBuiltinOpenAICatalogApplies20260731PriceCutsWithoutMutatingHistory(t *testing.T) {
+	t.Parallel()
+
+	versions := BuiltinOpenAICatalog()
+	if len(versions) != 4 {
+		t.Fatalf("BuiltinOpenAICatalog() versions = %d, want 4", len(versions))
+	}
+	current := versions[3]
+	if current.PricingVersion != "openai-api-2026-07-31" ||
+		current.EffectiveFromMS != 1_785_464_448_000 ||
+		current.VerifiedAtMS != 1_785_464_448_000 ||
+		current.SourceURL != "https://developers.openai.com/api/docs/pricing" {
+		t.Fatalf("current catalog metadata = %#v", current)
+	}
+
+	wantCurrent := map[string][3]int64{
+		"gpt-5.6-terra": {2_000_000, 200_000, 12_000_000},
+		"gpt-5.6-luna":  {200_000, 20_000, 1_200_000},
+	}
+	gotCurrent := selectedCatalogRates(t, current, "gpt-5.6-terra", "gpt-5.6-luna")
+	if !reflect.DeepEqual(gotCurrent, wantCurrent) {
+		t.Fatalf("current reduced prices = %#v, want %#v", gotCurrent, wantCurrent)
+	}
+
+	previous := BuiltinOpenAI20260729()
+	wantPrevious := map[string][3]int64{
+		"gpt-5.6-terra": {2_500_000, 250_000, 15_000_000},
+		"gpt-5.6-luna":  {1_000_000, 100_000, 6_000_000},
+	}
+	gotPrevious := selectedCatalogRates(t, previous, "gpt-5.6-terra", "gpt-5.6-luna")
+	if !reflect.DeepEqual(gotPrevious, wantPrevious) {
+		t.Fatalf("previous prices mutated = %#v, want %#v", gotPrevious, wantPrevious)
+	}
+}
+
+func selectedCatalogRates(t *testing.T, catalog CatalogVersion, modelIDs ...string) map[string][3]int64 {
+	t.Helper()
+
+	selected := make(map[string]struct{}, len(modelIDs))
+	for _, modelID := range modelIDs {
+		selected[modelID] = struct{}{}
+	}
+	got := make(map[string][3]int64, len(modelIDs))
+	for _, model := range catalog.Models {
+		if _, ok := selected[model.ModelPattern]; !ok {
+			continue
+		}
+		if model.InputMicrosPerMillion == nil ||
+			model.CachedInputMicrosPerMillion == nil ||
+			model.OutputMicrosPerMillion == nil {
+			t.Fatalf("catalog model %q has incomplete rates: %#v", model.ModelPattern, model)
+		}
+		got[model.ModelPattern] = [3]int64{
+			*model.InputMicrosPerMillion,
+			*model.CachedInputMicrosPerMillion,
+			*model.OutputMicrosPerMillion,
+		}
+	}
+	return got
 }

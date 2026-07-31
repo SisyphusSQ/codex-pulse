@@ -375,7 +375,7 @@ private struct PricingCatalogView: View {
         SectionCard(title: "模型参考价格") {
             Text("OpenAI API Standard 基础文本参考价 · \(response.currency) / 100 万 Token")
                 .font(.subheadline.weight(.medium))
-            Text("仅用于 API 等价折算，不是 Codex 订阅账单。长上下文、Batch、Flex、Priority 和区域处理等可能适用不同费率。")
+            Text("仅用于 API 等价折算，不是 Codex 订阅账单。长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理等可能适用不同费率。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
