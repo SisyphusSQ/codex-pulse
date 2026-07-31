@@ -30,6 +30,7 @@ const (
 	CoreService_ListProjects_FullMethodName              = "/codexpulse.core.v1.CoreService/ListProjects"
 	CoreService_ProjectDetail_FullMethodName             = "/codexpulse.core.v1.CoreService/ProjectDetail"
 	CoreService_QuotaCurrent_FullMethodName              = "/codexpulse.core.v1.CoreService/QuotaCurrent"
+	CoreService_QuotaPace_FullMethodName                 = "/codexpulse.core.v1.CoreService/QuotaPace"
 	CoreService_RequestQuotaRefresh_FullMethodName       = "/codexpulse.core.v1.CoreService/RequestQuotaRefresh"
 	CoreService_ListSources_FullMethodName               = "/codexpulse.core.v1.CoreService/ListSources"
 	CoreService_Source_FullMethodName                    = "/codexpulse.core.v1.CoreService/Source"
@@ -74,6 +75,7 @@ type CoreServiceClient interface {
 	ListProjects(ctx context.Context, in *ListProjectsRequest, opts ...grpc.CallOption) (*ProjectListResponse, error)
 	ProjectDetail(ctx context.Context, in *ProjectDetailRequest, opts ...grpc.CallOption) (*ProjectDetailResponse, error)
 	QuotaCurrent(ctx context.Context, in *QuotaCurrentRequest, opts ...grpc.CallOption) (*QuotaCurrentResponse, error)
+	QuotaPace(ctx context.Context, in *QuotaPaceRequest, opts ...grpc.CallOption) (*QuotaPaceResponse, error)
 	RequestQuotaRefresh(ctx context.Context, in *QuotaRefreshRequest, opts ...grpc.CallOption) (*QuotaRefreshReceipt, error)
 	ListSources(ctx context.Context, in *ListSourcesRequest, opts ...grpc.CallOption) (*SourceListResponse, error)
 	Source(ctx context.Context, in *SourceRequest, opts ...grpc.CallOption) (*SourceDetailResponse, error)
@@ -213,6 +215,16 @@ func (c *coreServiceClient) QuotaCurrent(ctx context.Context, in *QuotaCurrentRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QuotaCurrentResponse)
 	err := c.cc.Invoke(ctx, CoreService_QuotaCurrent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) QuotaPace(ctx context.Context, in *QuotaPaceRequest, opts ...grpc.CallOption) (*QuotaPaceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QuotaPaceResponse)
+	err := c.cc.Invoke(ctx, CoreService_QuotaPace_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -495,6 +507,7 @@ type CoreServiceServer interface {
 	ListProjects(context.Context, *ListProjectsRequest) (*ProjectListResponse, error)
 	ProjectDetail(context.Context, *ProjectDetailRequest) (*ProjectDetailResponse, error)
 	QuotaCurrent(context.Context, *QuotaCurrentRequest) (*QuotaCurrentResponse, error)
+	QuotaPace(context.Context, *QuotaPaceRequest) (*QuotaPaceResponse, error)
 	RequestQuotaRefresh(context.Context, *QuotaRefreshRequest) (*QuotaRefreshReceipt, error)
 	ListSources(context.Context, *ListSourcesRequest) (*SourceListResponse, error)
 	Source(context.Context, *SourceRequest) (*SourceDetailResponse, error)
@@ -562,6 +575,9 @@ func (UnimplementedCoreServiceServer) ProjectDetail(context.Context, *ProjectDet
 }
 func (UnimplementedCoreServiceServer) QuotaCurrent(context.Context, *QuotaCurrentRequest) (*QuotaCurrentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method QuotaCurrent not implemented")
+}
+func (UnimplementedCoreServiceServer) QuotaPace(context.Context, *QuotaPaceRequest) (*QuotaPaceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method QuotaPace not implemented")
 }
 func (UnimplementedCoreServiceServer) RequestQuotaRefresh(context.Context, *QuotaRefreshRequest) (*QuotaRefreshReceipt, error) {
 	return nil, status.Error(codes.Unimplemented, "method RequestQuotaRefresh not implemented")
@@ -853,6 +869,24 @@ func _CoreService_QuotaCurrent_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CoreServiceServer).QuotaCurrent(ctx, req.(*QuotaCurrentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_QuotaPace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QuotaPaceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).QuotaPace(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_QuotaPace_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).QuotaPace(ctx, req.(*QuotaPaceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1350,6 +1384,10 @@ var CoreService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "QuotaCurrent",
 			Handler:    _CoreService_QuotaCurrent_Handler,
+		},
+		{
+			MethodName: "QuotaPace",
+			Handler:    _CoreService_QuotaPace_Handler,
 		},
 		{
 			MethodName: "RequestQuotaRefresh",

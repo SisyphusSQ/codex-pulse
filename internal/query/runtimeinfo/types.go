@@ -40,6 +40,11 @@ type QuotaCurrentResponse struct {
 	Current quotaquery.CurrentResponse `json:"current"`
 }
 
+type QuotaPaceResponse struct {
+	Meta basequery.ResponseMeta  `json:"meta"`
+	Pace quotaquery.PaceResponse `json:"pace"`
+}
+
 type SourceKind string
 
 const (

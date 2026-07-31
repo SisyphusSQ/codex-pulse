@@ -30,7 +30,7 @@ func TestCoreProtoExposesExactRPCSurface(t *testing.T) {
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
 		"MigrationRecoveryExit", "MigrationRecoveryPrepare", "MigrationRecoveryRetry",
 		"MigrationRecoveryState", "NotifyLifecycle", "PlanHomeSwitch", "ProjectDetail", "QuotaCurrent",
-		"PricingCatalogCurrent", "RecoverHomeSwitch", "RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings",
+		"PricingCatalogCurrent", "QuotaPace", "RecoverHomeSwitch", "RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings",
 		"Shutdown", "Source", "SubscribeInvalidations", "UpdateSettings", "UsageCost",
 	}
 	sort.Strings(want)
@@ -70,6 +70,9 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		`(?s)message SessionDetailResponse\s*\{.*reserved 11\s*;.*reserved "daily"\s*;.*repeated TrendPoint trend\s*=\s*12\s*;.*string trend_granularity\s*=\s*13\s*;`,
 		`(?s)message CodexAccountIdentity\s*\{\s*string type\s*=\s*1\s*;\s*optional string email\s*=\s*2\s*;\s*optional string plan_type\s*=\s*3\s*;\s*\}`,
 		`(?s)message AccountSnapshotResponse\s*\{\s*optional CodexAccountIdentity account\s*=\s*1\s*;\s*\}`,
+		`(?s)message QuotaPaceForecast\s*\{.*string state\s*=\s*1\s*;.*optional int64 exhaust_at_ms\s*=\s*3\s*;.*optional int64 lead_before_reset_ms\s*=\s*4\s*;`,
+		`(?s)message QuotaPaceWindow\s*\{.*optional double pace_delta_pp\s*=\s*10\s*;.*QuotaPaceForecast forecast\s*=\s*11\s*;.*repeated QuotaPaceCycle historical_cycles\s*=\s*14\s*;.*repeated QuotaPaceHistoryBandPoint history_band\s*=\s*15\s*;`,
+		`(?s)message QuotaPaceResponse\s*\{\s*ResponseMeta meta\s*=\s*1\s*;\s*CurrentQuotaPace pace\s*=\s*2\s*;\s*\}`,
 	} {
 		if !regexp.MustCompile(pattern).MatchString(content) {
 			t.Fatalf("core.proto does not satisfy contract pattern %q", pattern)

@@ -54,6 +54,15 @@ private func unavailableQuota(at date: Date) -> Codexpulse_Core_V1_QuotaCurrentR
     return response
 }
 
+private func unavailableQuotaPace(
+    at date: Date
+) -> Codexpulse_Core_V1_QuotaPaceResponse {
+    var response = Codexpulse_Core_V1_QuotaPaceResponse()
+    response.meta = unavailableMeta()
+    response.pace.evaluatedAtMs = Int64(date.timeIntervalSince1970 * 1_000)
+    return response
+}
+
 private func unavailableUsage() -> Codexpulse_Core_V1_UsageCostResponse {
     var response = Codexpulse_Core_V1_UsageCostResponse()
     response.meta = unavailableMeta()
@@ -353,6 +362,12 @@ public actor AppRuntime {
         try await performRead { try await $0.quotaCurrent(request, retryPolicy: .transportDefault) }
     }
 
+    public func quotaPace(
+        _ request: Codexpulse_Core_V1_QuotaPaceRequest
+    ) async throws -> Codexpulse_Core_V1_QuotaPaceResponse {
+        try await performRead { try await $0.quotaPace(request, retryPolicy: .transportDefault) }
+    }
+
     public func requestQuotaRefresh(
         source: String
     ) async throws -> Codexpulse_Core_V1_QuotaRefreshReceipt {
@@ -486,6 +501,13 @@ public actor AppRuntime {
             } catch {
                 unavailableSteps.append(try acceptedSmokeFailure(step: step, error: error))
             }
+            step = "quota_pace"
+            var paceResponse: Codexpulse_Core_V1_QuotaPaceResponse?
+            do {
+                paceResponse = try await quotaPace(FeatureRequestFactory.quotaPace(now: now))
+            } catch {
+                unavailableSteps.append(try acceptedSmokeFailure(step: step, error: error))
+            }
             step = "sessions"
             var sessions: Codexpulse_Core_V1_SessionListResponse?
             do {
@@ -605,6 +627,7 @@ public actor AppRuntime {
                 } ?? 0,
                 usageCostKnown: usage?.totals.estimatedUsdMicros.hasValue == true,
                 quotaWindows: quota?.current.windows.count ?? 0,
+                quotaPaceWindows: paceResponse?.pace.windows.count ?? 0,
                 projectDetailCostKnown: projectDetailCostKnown,
                 projectDetailModels: projectDetailModels,
                 detailsRead: detailsRead,
@@ -991,6 +1014,10 @@ public actor AppRuntime {
             let weeklyProjectRequest = OverviewRequestSet.weeklyProjectRanking(
                 range: weeklyProjectRange)
             let tokenActivityRequest = OverviewRequestSet.tokenActivityRequest()
+            async let quotaPaceResult = captureOverviewSection {
+                try await client.quotaPace(
+                    requests.quotaPace, retryPolicy: .transportDefault)
+            }
             async let usageResult = captureOverviewSection {
                 try await client.usageCost(content.usage, retryPolicy: .transportDefault)
             }
@@ -1018,35 +1045,36 @@ public actor AppRuntime {
                     tokenActivityRequest, retryPolicy: .transportDefault)
             }
             let sectionResults = await (
+                quotaPaceResult,
                 usageResult, sessionResult, projectResult, weeklyProjectResult,
                 weeklyUsageResult, healthResult, tokenActivityResult)
             let mandatoryNotices = [
                 quotaResult.notice,
-                sectionResults.0.notice,
                 sectionResults.1.notice,
                 sectionResults.2.notice,
-                sectionResults.5.notice,
+                sectionResults.3.notice,
+                sectionResults.6.notice,
             ].compactMap { $0 }
             guard mandatoryNotices.count < 5 else { throw AppRuntimeError.unavailable }
             let notices = mandatoryNotices
 
             let usageResponse: Codexpulse_Core_V1_UsageCostResponse
-            switch sectionResults.0 {
+            switch sectionResults.1 {
             case .value(let response): usageResponse = response
             case .failure: usageResponse = unavailableUsage()
             }
             let sessionResponse: Codexpulse_Core_V1_SessionListResponse
-            switch sectionResults.1 {
+            switch sectionResults.2 {
             case .value(let response): sessionResponse = response
             case .failure: sessionResponse = unavailableSessions()
             }
             let projectResponse: Codexpulse_Core_V1_ProjectListResponse
-            switch sectionResults.2 {
+            switch sectionResults.3 {
             case .value(let response): projectResponse = response
             case .failure: projectResponse = unavailableProjects()
             }
             let weeklyProjectResponse: Codexpulse_Core_V1_ProjectListResponse
-            switch sectionResults.3 {
+            switch sectionResults.4 {
             case .value(let response): weeklyProjectResponse = response
             case .failure: weeklyProjectResponse = unavailableProjects()
             }
@@ -1054,24 +1082,30 @@ public actor AppRuntime {
             if sharesWeeklyUsage {
                 weeklyUsageResponse = usageResponse
             } else {
-                switch sectionResults.4 {
+                switch sectionResults.5 {
                 case .value(let response): weeklyUsageResponse = response
                 case .failure: weeklyUsageResponse = unavailableUsage()
                 }
             }
             let healthResponse: Codexpulse_Core_V1_HealthProjectionResponse
-            switch sectionResults.5 {
+            switch sectionResults.6 {
             case .value(let response): healthResponse = response
             case .failure: healthResponse = unavailableHealth()
             }
             let tokenActivityResponse: Codexpulse_Core_V1_UsageCostResponse
-            switch sectionResults.6 {
+            switch sectionResults.7 {
             case .value(let response): tokenActivityResponse = response
             case .failure: tokenActivityResponse = unavailableUsage(for: tokenActivityRequest)
+            }
+            let quotaPaceResponse: Codexpulse_Core_V1_QuotaPaceResponse
+            switch sectionResults.0 {
+            case .value(let response): quotaPaceResponse = response
+            case .failure: quotaPaceResponse = unavailableQuotaPace(at: quotaNow)
             }
             return OverviewResponses(
                 usage: usageResponse,
                 quota: quotaResponse,
+                quotaPace: quotaPaceResponse,
                 account: previousAccount,
                 sessions: sessionResponse,
                 projects: projectResponse,

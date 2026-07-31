@@ -73,6 +73,32 @@ func TestQuotaCurrentAndSettingsReturnVersionedRedactedFacts(t *testing.T) {
 	)
 }
 
+func TestQuotaPaceReturnsVersionedFactsWithResponseMetadata(t *testing.T) {
+	t.Parallel()
+
+	quotaReader := &quotaStub{pace: func(
+		_ context.Context,
+		atMS int64,
+	) (quotaquery.PaceResponse, error) {
+		return quotaquery.PaceResponse{
+			Version: quotaquery.PaceContractVersion, AccountScope: store.QuotaAccountScopeDefault,
+			EvaluatedAtMS: atMS, Windows: []quotaquery.PaceWindow{},
+		}, nil
+	}}
+	service := newTestService(t, quotaReader, &runtimeStub{}, &preferencesStub{})
+
+	response, err := service.QuotaPace(context.Background(), 500)
+	if err != nil {
+		t.Fatalf("QuotaPace() error = %v", err)
+	}
+	if response.Meta.Version != basequery.ContractVersion ||
+		response.Meta.Status != basequery.ResponseComplete ||
+		response.Pace.Version != quotaquery.PaceContractVersion ||
+		response.Pace.EvaluatedAtMS != 500 {
+		t.Fatalf("QuotaPace() = %#v", response)
+	}
+}
+
 func TestListSourcesMapsBothKindsRedactsAndRoundTripsCursor(t *testing.T) {
 	t.Parallel()
 
@@ -613,6 +639,7 @@ func assertRegisteredRecovery(t *testing.T, action RecoveryAction, want Recovery
 
 type quotaStub struct {
 	query func(context.Context, int64) (quotaquery.CurrentResponse, error)
+	pace  func(context.Context, int64) (quotaquery.PaceResponse, error)
 }
 
 func (stub *quotaStub) Query(ctx context.Context, atMS int64) (quotaquery.CurrentResponse, error) {
@@ -620,6 +647,13 @@ func (stub *quotaStub) Query(ctx context.Context, atMS int64) (quotaquery.Curren
 		return stub.query(ctx, atMS)
 	}
 	return quotaquery.CurrentResponse{}, errors.New("quota stub is not configured")
+}
+
+func (stub *quotaStub) Pace(ctx context.Context, atMS int64) (quotaquery.PaceResponse, error) {
+	if stub != nil && stub.pace != nil {
+		return stub.pace(ctx, atMS)
+	}
+	return quotaquery.PaceResponse{}, errors.New("quota pace stub is not configured")
 }
 
 type preferencesStub struct {

@@ -17,6 +17,7 @@ service CoreService {
   rpc ListProjects(ListProjectsRequest) returns (ProjectListResponse);
   rpc ProjectDetail(ProjectDetailRequest) returns (ProjectDetailResponse);
   rpc QuotaCurrent(QuotaCurrentRequest) returns (QuotaCurrentResponse);
+  rpc QuotaPace(QuotaPaceRequest) returns (QuotaPaceResponse);
   rpc RequestQuotaRefresh(QuotaRefreshRequest) returns (QuotaRefreshReceipt);
   rpc ListSources(ListSourcesRequest) returns (SourceListResponse);
   rpc Source(SourceRequest) returns (SourceDetailResponse);
@@ -512,6 +513,75 @@ message CurrentQuota {
 message QuotaCurrentResponse {
   ResponseMeta meta = 1;
   CurrentQuota current = 2;
+}
+
+message QuotaPaceRequest { int64 evaluated_at_ms = 1; }
+
+message QuotaPacePoint {
+  int64 observed_at_ms = 1;
+  double elapsed_percent = 2;
+  double used_percent = 3;
+  double remaining_percent = 4;
+}
+
+message QuotaPaceCycle {
+  int64 window_generation = 1;
+  int64 window_start_at_ms = 2;
+  int64 resets_at_ms = 3;
+  bool complete = 4;
+  repeated QuotaPacePoint points = 5;
+}
+
+message QuotaPaceHistoryBandPoint {
+  double elapsed_percent = 1;
+  double median_remaining = 2;
+  double minimum_remaining = 3;
+  double maximum_remaining = 4;
+  int64 cycle_count = 5;
+}
+
+message QuotaPaceForecast {
+  string state = 1;
+  string method = 2;
+  optional int64 exhaust_at_ms = 3;
+  optional int64 lead_before_reset_ms = 4;
+  int64 evidence_count = 5;
+  int64 evidence_span_ms = 6;
+  optional string unknown_reason = 7;
+}
+
+message QuotaPaceWindow {
+  string window_kind = 1;
+  string limit_id = 2;
+  optional int64 window_start_at_ms = 3;
+  optional int64 resets_at_ms = 4;
+  optional int64 window_minutes = 5;
+  optional int64 window_generation = 6;
+  optional double used_percent = 7;
+  optional double remaining_percent = 8;
+  optional double elapsed_percent = 9;
+  optional double pace_delta_pp = 10;
+  QuotaPaceForecast forecast = 11;
+  repeated QuotaPacePoint current_points = 12;
+  optional QuotaPaceCycle previous_cycle = 13;
+  repeated QuotaPaceCycle historical_cycles = 14;
+  repeated QuotaPaceHistoryBandPoint history_band = 15;
+  int64 history_cycle_count = 16;
+  optional double previous_remaining_at_elapsed = 17;
+  optional double history_median_remaining_at_elapsed = 18;
+  optional string unknown_reason = 19;
+}
+
+message CurrentQuotaPace {
+  string version = 1;
+  string account_scope = 2;
+  int64 evaluated_at_ms = 3;
+  repeated QuotaPaceWindow windows = 4;
+}
+
+message QuotaPaceResponse {
+  ResponseMeta meta = 1;
+  CurrentQuotaPace pace = 2;
 }
 
 message QuotaRefreshRequest { string source = 1; }

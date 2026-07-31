@@ -178,6 +178,40 @@ func TestQuotaArbiterToleratesOneSecondResetTimestampJitter(t *testing.T) {
 	assertQuotaEvidence(t, projection.Evidence, jittered.ObservationID, QuotaEvidenceSelected, "")
 }
 
+func TestQuotaResetsEquivalentUsesBoundedJitter(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		left  int64
+		right int64
+		want  bool
+	}{
+		{name: "same_timestamp", left: 10_000, right: 10_000, want: true},
+		{name: "one_second", left: 10_000, right: 9_000, want: true},
+		{name: "five_second_boundary", left: 10_000, right: 5_000, want: true},
+		{name: "five_second_boundary_reversed", left: 5_000, right: 10_000, want: true},
+		{name: "beyond_boundary", left: 10_000, right: 4_999, want: false},
+		{name: "negative_timestamp", left: -1, right: -1, want: false},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := QuotaResetsEquivalent(test.left, test.right); got != test.want {
+				t.Fatalf(
+					"QuotaResetsEquivalent(%d, %d) = %t, want %t",
+					test.left,
+					test.right,
+					got,
+					test.want,
+				)
+			}
+		})
+	}
+}
+
 // 测试 QuotaArbiter 在同一窗口 reset_at 出现有界多秒抖动时继续选择最新可信值。（风险复现用例）
 func TestQuotaArbiterToleratesBoundedMultiSecondResetTimestampJitter(t *testing.T) {
 	t.Parallel()

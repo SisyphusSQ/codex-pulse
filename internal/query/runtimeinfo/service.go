@@ -15,6 +15,7 @@ var ErrInvalidService = errors.New("runtime info query service is invalid")
 
 type QuotaReader interface {
 	Query(context.Context, int64) (quotaquery.CurrentResponse, error)
+	Pace(context.Context, int64) (quotaquery.PaceResponse, error)
 }
 
 type RuntimeReader interface {
@@ -130,6 +131,37 @@ func (service *Service) QuotaCurrent(
 		return QuotaCurrentResponse{}, err
 	}
 	return QuotaCurrentResponse{Meta: meta, Current: current}, nil
+}
+
+func (service *Service) QuotaPace(
+	ctx context.Context,
+	evaluatedAtMS int64,
+) (QuotaPaceResponse, error) {
+	if service == nil || service.quota == nil {
+		return QuotaPaceResponse{}, ErrInvalidService
+	}
+	ctx, err := queryContext(ctx)
+	if err != nil {
+		return QuotaPaceResponse{}, err
+	}
+	if evaluatedAtMS < 0 || evaluatedAtMS > basequery.JavaScriptMaxSafeInteger {
+		return QuotaPaceResponse{}, basequery.NewValidationFailure("evaluatedAtMS", nil)
+	}
+	pace, err := service.quota.Pace(ctx, evaluatedAtMS)
+	if err != nil {
+		return QuotaPaceResponse{}, runtimeReadFailure(err)
+	}
+	if pace.Version != quotaquery.PaceContractVersion || pace.EvaluatedAtMS != evaluatedAtMS ||
+		pace.Windows == nil {
+		return QuotaPaceResponse{}, basequery.NewUnavailableFailure(
+			fmt.Errorf("quota pace response is inconsistent"),
+		)
+	}
+	meta, err := basequery.NewResponseMeta(basequery.ResponseComplete, nil, nil)
+	if err != nil {
+		return QuotaPaceResponse{}, err
+	}
+	return QuotaPaceResponse{Meta: meta, Pace: pace}, nil
 }
 
 func queryContext(ctx context.Context) (context.Context, error) {

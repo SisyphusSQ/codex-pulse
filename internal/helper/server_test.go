@@ -162,6 +162,7 @@ func TestGRPCAPIImplementsEveryFrozenRPC(t *testing.T) {
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
 		"MigrationRecoveryExit", "MigrationRecoveryPrepare", "MigrationRecoveryRetry",
 		"MigrationRecoveryState", "NotifyLifecycle", "PlanHomeSwitch", "PricingCatalogCurrent", "ProjectDetail", "QuotaCurrent",
+		"QuotaPace",
 		"RecoverHomeSwitch", "RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings",
 		"Shutdown", "Source", "SubscribeInvalidations", "UpdateSettings", "UsageCost",
 	}
@@ -466,6 +467,9 @@ type helperRuntimeQueryStub struct{}
 
 func (helperRuntimeQueryStub) QuotaCurrent(context.Context, int64) (runtimeinfo.QuotaCurrentResponse, error) {
 	return runtimeinfo.QuotaCurrentResponse{}, nil
+}
+func (helperRuntimeQueryStub) QuotaPace(context.Context, int64) (runtimeinfo.QuotaPaceResponse, error) {
+	return runtimeinfo.QuotaPaceResponse{}, nil
 }
 func (helperRuntimeQueryStub) ListSources(context.Context, basequery.Request) (runtimeinfo.SourceListResponse, error) {
 	return runtimeinfo.SourceListResponse{}, nil

@@ -30,6 +30,11 @@ public protocol AppCoreServing: Sendable {
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_QuotaCurrentResponse
 
+    func quotaPace(
+        _ request: Codexpulse_Core_V1_QuotaPaceRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_QuotaPaceResponse
+
     func requestQuotaRefresh(
         _ request: Codexpulse_Core_V1_QuotaRefreshRequest
     ) async throws -> Codexpulse_Core_V1_QuotaRefreshReceipt
@@ -132,6 +137,13 @@ public extension AppCoreServing {
     func pricingCatalogCurrent(
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_PricingCatalogCurrentResponse {
+        throw AppRuntimeError.unavailable
+    }
+
+    func quotaPace(
+        _ request: Codexpulse_Core_V1_QuotaPaceRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_QuotaPaceResponse {
         throw AppRuntimeError.unavailable
     }
 

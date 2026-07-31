@@ -327,6 +327,14 @@ private struct OverviewContentView: View {
                             .accessibilityIdentifier("overview.quota.reset.\(window.id)")
                             .accessibilityLabel("额度重置")
                             .accessibilityValue(reset.compactText)
+                        if let pace = overview.quotaPaceWindows.first(where: { $0.id == window.id }) {
+                            Text(pace.forecastText)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(pace.forecastState == "at_risk" ? .orange : .secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                                .accessibilityIdentifier("overview.quota.pace.\(window.id)")
+                        }
                     }
                 }
             }
