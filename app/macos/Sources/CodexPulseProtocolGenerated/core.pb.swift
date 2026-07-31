@@ -2617,6 +2617,333 @@ public nonisolated struct Codexpulse_Core_V1_QuotaCurrentResponse: Sendable {
   fileprivate var _current: Codexpulse_Core_V1_CurrentQuota? = nil
 }
 
+public nonisolated struct Codexpulse_Core_V1_QuotaPaceRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var evaluatedAtMs: Int64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_QuotaPacePoint: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var observedAtMs: Int64 = 0
+
+  public var elapsedPercent: Double = 0
+
+  public var usedPercent: Double = 0
+
+  public var remainingPercent: Double = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_QuotaPaceCycle: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var windowGeneration: Int64 = 0
+
+  public var windowStartAtMs: Int64 = 0
+
+  public var resetsAtMs: Int64 = 0
+
+  public var complete: Bool = false
+
+  public var points: [Codexpulse_Core_V1_QuotaPacePoint] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_QuotaPaceHistoryBandPoint: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var elapsedPercent: Double = 0
+
+  public var medianRemaining: Double = 0
+
+  public var minimumRemaining: Double = 0
+
+  public var maximumRemaining: Double = 0
+
+  public var cycleCount: Int64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_QuotaPaceForecast: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var state: String = String()
+
+  public var method: String = String()
+
+  public var exhaustAtMs: Int64 {
+    get {_exhaustAtMs ?? 0}
+    set {_exhaustAtMs = newValue}
+  }
+  /// Returns true if `exhaustAtMs` has been explicitly set.
+  public var hasExhaustAtMs: Bool {self._exhaustAtMs != nil}
+  /// Clears the value of `exhaustAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearExhaustAtMs() {self._exhaustAtMs = nil}
+
+  public var leadBeforeResetMs: Int64 {
+    get {_leadBeforeResetMs ?? 0}
+    set {_leadBeforeResetMs = newValue}
+  }
+  /// Returns true if `leadBeforeResetMs` has been explicitly set.
+  public var hasLeadBeforeResetMs: Bool {self._leadBeforeResetMs != nil}
+  /// Clears the value of `leadBeforeResetMs`. Subsequent reads from it will return its default value.
+  public mutating func clearLeadBeforeResetMs() {self._leadBeforeResetMs = nil}
+
+  public var evidenceCount: Int64 = 0
+
+  public var evidenceSpanMs: Int64 = 0
+
+  public var unknownReason: String {
+    get {_unknownReason ?? String()}
+    set {_unknownReason = newValue}
+  }
+  /// Returns true if `unknownReason` has been explicitly set.
+  public var hasUnknownReason: Bool {self._unknownReason != nil}
+  /// Clears the value of `unknownReason`. Subsequent reads from it will return its default value.
+  public mutating func clearUnknownReason() {self._unknownReason = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _exhaustAtMs: Int64? = nil
+  fileprivate var _leadBeforeResetMs: Int64? = nil
+  fileprivate var _unknownReason: String? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_QuotaPaceWindow: @unchecked Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var windowKind: String {
+    get {_storage._windowKind}
+    set {_uniqueStorage()._windowKind = newValue}
+  }
+
+  public var limitID: String {
+    get {_storage._limitID}
+    set {_uniqueStorage()._limitID = newValue}
+  }
+
+  public var windowStartAtMs: Int64 {
+    get {_storage._windowStartAtMs ?? 0}
+    set {_uniqueStorage()._windowStartAtMs = newValue}
+  }
+  /// Returns true if `windowStartAtMs` has been explicitly set.
+  public var hasWindowStartAtMs: Bool {_storage._windowStartAtMs != nil}
+  /// Clears the value of `windowStartAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearWindowStartAtMs() {_uniqueStorage()._windowStartAtMs = nil}
+
+  public var resetsAtMs: Int64 {
+    get {_storage._resetsAtMs ?? 0}
+    set {_uniqueStorage()._resetsAtMs = newValue}
+  }
+  /// Returns true if `resetsAtMs` has been explicitly set.
+  public var hasResetsAtMs: Bool {_storage._resetsAtMs != nil}
+  /// Clears the value of `resetsAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearResetsAtMs() {_uniqueStorage()._resetsAtMs = nil}
+
+  public var windowMinutes: Int64 {
+    get {_storage._windowMinutes ?? 0}
+    set {_uniqueStorage()._windowMinutes = newValue}
+  }
+  /// Returns true if `windowMinutes` has been explicitly set.
+  public var hasWindowMinutes: Bool {_storage._windowMinutes != nil}
+  /// Clears the value of `windowMinutes`. Subsequent reads from it will return its default value.
+  public mutating func clearWindowMinutes() {_uniqueStorage()._windowMinutes = nil}
+
+  public var windowGeneration: Int64 {
+    get {_storage._windowGeneration ?? 0}
+    set {_uniqueStorage()._windowGeneration = newValue}
+  }
+  /// Returns true if `windowGeneration` has been explicitly set.
+  public var hasWindowGeneration: Bool {_storage._windowGeneration != nil}
+  /// Clears the value of `windowGeneration`. Subsequent reads from it will return its default value.
+  public mutating func clearWindowGeneration() {_uniqueStorage()._windowGeneration = nil}
+
+  public var usedPercent: Double {
+    get {_storage._usedPercent ?? 0}
+    set {_uniqueStorage()._usedPercent = newValue}
+  }
+  /// Returns true if `usedPercent` has been explicitly set.
+  public var hasUsedPercent: Bool {_storage._usedPercent != nil}
+  /// Clears the value of `usedPercent`. Subsequent reads from it will return its default value.
+  public mutating func clearUsedPercent() {_uniqueStorage()._usedPercent = nil}
+
+  public var remainingPercent: Double {
+    get {_storage._remainingPercent ?? 0}
+    set {_uniqueStorage()._remainingPercent = newValue}
+  }
+  /// Returns true if `remainingPercent` has been explicitly set.
+  public var hasRemainingPercent: Bool {_storage._remainingPercent != nil}
+  /// Clears the value of `remainingPercent`. Subsequent reads from it will return its default value.
+  public mutating func clearRemainingPercent() {_uniqueStorage()._remainingPercent = nil}
+
+  public var elapsedPercent: Double {
+    get {_storage._elapsedPercent ?? 0}
+    set {_uniqueStorage()._elapsedPercent = newValue}
+  }
+  /// Returns true if `elapsedPercent` has been explicitly set.
+  public var hasElapsedPercent: Bool {_storage._elapsedPercent != nil}
+  /// Clears the value of `elapsedPercent`. Subsequent reads from it will return its default value.
+  public mutating func clearElapsedPercent() {_uniqueStorage()._elapsedPercent = nil}
+
+  public var paceDeltaPp: Double {
+    get {_storage._paceDeltaPp ?? 0}
+    set {_uniqueStorage()._paceDeltaPp = newValue}
+  }
+  /// Returns true if `paceDeltaPp` has been explicitly set.
+  public var hasPaceDeltaPp: Bool {_storage._paceDeltaPp != nil}
+  /// Clears the value of `paceDeltaPp`. Subsequent reads from it will return its default value.
+  public mutating func clearPaceDeltaPp() {_uniqueStorage()._paceDeltaPp = nil}
+
+  public var forecast: Codexpulse_Core_V1_QuotaPaceForecast {
+    get {_storage._forecast ?? Codexpulse_Core_V1_QuotaPaceForecast()}
+    set {_uniqueStorage()._forecast = newValue}
+  }
+  /// Returns true if `forecast` has been explicitly set.
+  public var hasForecast: Bool {_storage._forecast != nil}
+  /// Clears the value of `forecast`. Subsequent reads from it will return its default value.
+  public mutating func clearForecast() {_uniqueStorage()._forecast = nil}
+
+  public var currentPoints: [Codexpulse_Core_V1_QuotaPacePoint] {
+    get {_storage._currentPoints}
+    set {_uniqueStorage()._currentPoints = newValue}
+  }
+
+  public var previousCycle: Codexpulse_Core_V1_QuotaPaceCycle {
+    get {_storage._previousCycle ?? Codexpulse_Core_V1_QuotaPaceCycle()}
+    set {_uniqueStorage()._previousCycle = newValue}
+  }
+  /// Returns true if `previousCycle` has been explicitly set.
+  public var hasPreviousCycle: Bool {_storage._previousCycle != nil}
+  /// Clears the value of `previousCycle`. Subsequent reads from it will return its default value.
+  public mutating func clearPreviousCycle() {_uniqueStorage()._previousCycle = nil}
+
+  public var historicalCycles: [Codexpulse_Core_V1_QuotaPaceCycle] {
+    get {_storage._historicalCycles}
+    set {_uniqueStorage()._historicalCycles = newValue}
+  }
+
+  public var historyBand: [Codexpulse_Core_V1_QuotaPaceHistoryBandPoint] {
+    get {_storage._historyBand}
+    set {_uniqueStorage()._historyBand = newValue}
+  }
+
+  public var historyCycleCount: Int64 {
+    get {_storage._historyCycleCount}
+    set {_uniqueStorage()._historyCycleCount = newValue}
+  }
+
+  public var previousRemainingAtElapsed: Double {
+    get {_storage._previousRemainingAtElapsed ?? 0}
+    set {_uniqueStorage()._previousRemainingAtElapsed = newValue}
+  }
+  /// Returns true if `previousRemainingAtElapsed` has been explicitly set.
+  public var hasPreviousRemainingAtElapsed: Bool {_storage._previousRemainingAtElapsed != nil}
+  /// Clears the value of `previousRemainingAtElapsed`. Subsequent reads from it will return its default value.
+  public mutating func clearPreviousRemainingAtElapsed() {_uniqueStorage()._previousRemainingAtElapsed = nil}
+
+  public var historyMedianRemainingAtElapsed: Double {
+    get {_storage._historyMedianRemainingAtElapsed ?? 0}
+    set {_uniqueStorage()._historyMedianRemainingAtElapsed = newValue}
+  }
+  /// Returns true if `historyMedianRemainingAtElapsed` has been explicitly set.
+  public var hasHistoryMedianRemainingAtElapsed: Bool {_storage._historyMedianRemainingAtElapsed != nil}
+  /// Clears the value of `historyMedianRemainingAtElapsed`. Subsequent reads from it will return its default value.
+  public mutating func clearHistoryMedianRemainingAtElapsed() {_uniqueStorage()._historyMedianRemainingAtElapsed = nil}
+
+  public var unknownReason: String {
+    get {_storage._unknownReason ?? String()}
+    set {_uniqueStorage()._unknownReason = newValue}
+  }
+  /// Returns true if `unknownReason` has been explicitly set.
+  public var hasUnknownReason: Bool {_storage._unknownReason != nil}
+  /// Clears the value of `unknownReason`. Subsequent reads from it will return its default value.
+  public mutating func clearUnknownReason() {_uniqueStorage()._unknownReason = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+public nonisolated struct Codexpulse_Core_V1_CurrentQuotaPace: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var version: String = String()
+
+  public var accountScope: String = String()
+
+  public var evaluatedAtMs: Int64 = 0
+
+  public var windows: [Codexpulse_Core_V1_QuotaPaceWindow] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_QuotaPaceResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var meta: Codexpulse_Core_V1_ResponseMeta {
+    get {_meta ?? Codexpulse_Core_V1_ResponseMeta()}
+    set {_meta = newValue}
+  }
+  /// Returns true if `meta` has been explicitly set.
+  public var hasMeta: Bool {self._meta != nil}
+  /// Clears the value of `meta`. Subsequent reads from it will return its default value.
+  public mutating func clearMeta() {self._meta = nil}
+
+  public var pace: Codexpulse_Core_V1_CurrentQuotaPace {
+    get {_pace ?? Codexpulse_Core_V1_CurrentQuotaPace()}
+    set {_pace = newValue}
+  }
+  /// Returns true if `pace` has been explicitly set.
+  public var hasPace: Bool {self._pace != nil}
+  /// Clears the value of `pace`. Subsequent reads from it will return its default value.
+  public mutating func clearPace() {self._pace = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
+  fileprivate var _pace: Codexpulse_Core_V1_CurrentQuotaPace? = nil
+}
+
 public nonisolated struct Codexpulse_Core_V1_QuotaRefreshRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -8866,6 +9193,525 @@ nonisolated extension Codexpulse_Core_V1_QuotaCurrentResponse: SwiftProtobuf.Mes
   public static func ==(lhs: Codexpulse_Core_V1_QuotaCurrentResponse, rhs: Codexpulse_Core_V1_QuotaCurrentResponse) -> Bool {
     if lhs._meta != rhs._meta {return false}
     if lhs._current != rhs._current {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_QuotaPaceRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".QuotaPaceRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}evaluated_at_ms\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt64Field(value: &self.evaluatedAtMs) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.evaluatedAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.evaluatedAtMs, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_QuotaPaceRequest, rhs: Codexpulse_Core_V1_QuotaPaceRequest) -> Bool {
+    if lhs.evaluatedAtMs != rhs.evaluatedAtMs {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_QuotaPacePoint: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".QuotaPacePoint"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}observed_at_ms\0\u{3}elapsed_percent\0\u{3}used_percent\0\u{3}remaining_percent\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt64Field(value: &self.observedAtMs) }()
+      case 2: try { try decoder.decodeSingularDoubleField(value: &self.elapsedPercent) }()
+      case 3: try { try decoder.decodeSingularDoubleField(value: &self.usedPercent) }()
+      case 4: try { try decoder.decodeSingularDoubleField(value: &self.remainingPercent) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.observedAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.observedAtMs, fieldNumber: 1)
+    }
+    if self.elapsedPercent.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.elapsedPercent, fieldNumber: 2)
+    }
+    if self.usedPercent.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.usedPercent, fieldNumber: 3)
+    }
+    if self.remainingPercent.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.remainingPercent, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_QuotaPacePoint, rhs: Codexpulse_Core_V1_QuotaPacePoint) -> Bool {
+    if lhs.observedAtMs != rhs.observedAtMs {return false}
+    if lhs.elapsedPercent != rhs.elapsedPercent {return false}
+    if lhs.usedPercent != rhs.usedPercent {return false}
+    if lhs.remainingPercent != rhs.remainingPercent {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_QuotaPaceCycle: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".QuotaPaceCycle"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_generation\0\u{3}window_start_at_ms\0\u{3}resets_at_ms\0\u{1}complete\0\u{1}points\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt64Field(value: &self.windowGeneration) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.windowStartAtMs) }()
+      case 3: try { try decoder.decodeSingularInt64Field(value: &self.resetsAtMs) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.complete) }()
+      case 5: try { try decoder.decodeRepeatedMessageField(value: &self.points) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.windowGeneration != 0 {
+      try visitor.visitSingularInt64Field(value: self.windowGeneration, fieldNumber: 1)
+    }
+    if self.windowStartAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.windowStartAtMs, fieldNumber: 2)
+    }
+    if self.resetsAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.resetsAtMs, fieldNumber: 3)
+    }
+    if self.complete != false {
+      try visitor.visitSingularBoolField(value: self.complete, fieldNumber: 4)
+    }
+    if !self.points.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.points, fieldNumber: 5)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_QuotaPaceCycle, rhs: Codexpulse_Core_V1_QuotaPaceCycle) -> Bool {
+    if lhs.windowGeneration != rhs.windowGeneration {return false}
+    if lhs.windowStartAtMs != rhs.windowStartAtMs {return false}
+    if lhs.resetsAtMs != rhs.resetsAtMs {return false}
+    if lhs.complete != rhs.complete {return false}
+    if lhs.points != rhs.points {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_QuotaPaceHistoryBandPoint: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".QuotaPaceHistoryBandPoint"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}elapsed_percent\0\u{3}median_remaining\0\u{3}minimum_remaining\0\u{3}maximum_remaining\0\u{3}cycle_count\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularDoubleField(value: &self.elapsedPercent) }()
+      case 2: try { try decoder.decodeSingularDoubleField(value: &self.medianRemaining) }()
+      case 3: try { try decoder.decodeSingularDoubleField(value: &self.minimumRemaining) }()
+      case 4: try { try decoder.decodeSingularDoubleField(value: &self.maximumRemaining) }()
+      case 5: try { try decoder.decodeSingularInt64Field(value: &self.cycleCount) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.elapsedPercent.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.elapsedPercent, fieldNumber: 1)
+    }
+    if self.medianRemaining.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.medianRemaining, fieldNumber: 2)
+    }
+    if self.minimumRemaining.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.minimumRemaining, fieldNumber: 3)
+    }
+    if self.maximumRemaining.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.maximumRemaining, fieldNumber: 4)
+    }
+    if self.cycleCount != 0 {
+      try visitor.visitSingularInt64Field(value: self.cycleCount, fieldNumber: 5)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_QuotaPaceHistoryBandPoint, rhs: Codexpulse_Core_V1_QuotaPaceHistoryBandPoint) -> Bool {
+    if lhs.elapsedPercent != rhs.elapsedPercent {return false}
+    if lhs.medianRemaining != rhs.medianRemaining {return false}
+    if lhs.minimumRemaining != rhs.minimumRemaining {return false}
+    if lhs.maximumRemaining != rhs.maximumRemaining {return false}
+    if lhs.cycleCount != rhs.cycleCount {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_QuotaPaceForecast: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".QuotaPaceForecast"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}state\0\u{1}method\0\u{3}exhaust_at_ms\0\u{3}lead_before_reset_ms\0\u{3}evidence_count\0\u{3}evidence_span_ms\0\u{3}unknown_reason\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.state) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.method) }()
+      case 3: try { try decoder.decodeSingularInt64Field(value: &self._exhaustAtMs) }()
+      case 4: try { try decoder.decodeSingularInt64Field(value: &self._leadBeforeResetMs) }()
+      case 5: try { try decoder.decodeSingularInt64Field(value: &self.evidenceCount) }()
+      case 6: try { try decoder.decodeSingularInt64Field(value: &self.evidenceSpanMs) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self._unknownReason) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.state.isEmpty {
+      try visitor.visitSingularStringField(value: self.state, fieldNumber: 1)
+    }
+    if !self.method.isEmpty {
+      try visitor.visitSingularStringField(value: self.method, fieldNumber: 2)
+    }
+    try { if let v = self._exhaustAtMs {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 3)
+    } }()
+    try { if let v = self._leadBeforeResetMs {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 4)
+    } }()
+    if self.evidenceCount != 0 {
+      try visitor.visitSingularInt64Field(value: self.evidenceCount, fieldNumber: 5)
+    }
+    if self.evidenceSpanMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.evidenceSpanMs, fieldNumber: 6)
+    }
+    try { if let v = self._unknownReason {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 7)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_QuotaPaceForecast, rhs: Codexpulse_Core_V1_QuotaPaceForecast) -> Bool {
+    if lhs.state != rhs.state {return false}
+    if lhs.method != rhs.method {return false}
+    if lhs._exhaustAtMs != rhs._exhaustAtMs {return false}
+    if lhs._leadBeforeResetMs != rhs._leadBeforeResetMs {return false}
+    if lhs.evidenceCount != rhs.evidenceCount {return false}
+    if lhs.evidenceSpanMs != rhs.evidenceSpanMs {return false}
+    if lhs._unknownReason != rhs._unknownReason {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_QuotaPaceWindow: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".QuotaPaceWindow"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}window_kind\0\u{3}limit_id\0\u{3}window_start_at_ms\0\u{3}resets_at_ms\0\u{3}window_minutes\0\u{3}window_generation\0\u{3}used_percent\0\u{3}remaining_percent\0\u{3}elapsed_percent\0\u{3}pace_delta_pp\0\u{1}forecast\0\u{3}current_points\0\u{3}previous_cycle\0\u{3}historical_cycles\0\u{3}history_band\0\u{3}history_cycle_count\0\u{3}previous_remaining_at_elapsed\0\u{3}history_median_remaining_at_elapsed\0\u{3}unknown_reason\0")
+
+  fileprivate class _StorageClass {
+    var _windowKind: String = String()
+    var _limitID: String = String()
+    var _windowStartAtMs: Int64? = nil
+    var _resetsAtMs: Int64? = nil
+    var _windowMinutes: Int64? = nil
+    var _windowGeneration: Int64? = nil
+    var _usedPercent: Double? = nil
+    var _remainingPercent: Double? = nil
+    var _elapsedPercent: Double? = nil
+    var _paceDeltaPp: Double? = nil
+    var _forecast: Codexpulse_Core_V1_QuotaPaceForecast? = nil
+    var _currentPoints: [Codexpulse_Core_V1_QuotaPacePoint] = []
+    var _previousCycle: Codexpulse_Core_V1_QuotaPaceCycle? = nil
+    var _historicalCycles: [Codexpulse_Core_V1_QuotaPaceCycle] = []
+    var _historyBand: [Codexpulse_Core_V1_QuotaPaceHistoryBandPoint] = []
+    var _historyCycleCount: Int64 = 0
+    var _previousRemainingAtElapsed: Double? = nil
+    var _historyMedianRemainingAtElapsed: Double? = nil
+    var _unknownReason: String? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _windowKind = source._windowKind
+      _limitID = source._limitID
+      _windowStartAtMs = source._windowStartAtMs
+      _resetsAtMs = source._resetsAtMs
+      _windowMinutes = source._windowMinutes
+      _windowGeneration = source._windowGeneration
+      _usedPercent = source._usedPercent
+      _remainingPercent = source._remainingPercent
+      _elapsedPercent = source._elapsedPercent
+      _paceDeltaPp = source._paceDeltaPp
+      _forecast = source._forecast
+      _currentPoints = source._currentPoints
+      _previousCycle = source._previousCycle
+      _historicalCycles = source._historicalCycles
+      _historyBand = source._historyBand
+      _historyCycleCount = source._historyCycleCount
+      _previousRemainingAtElapsed = source._previousRemainingAtElapsed
+      _historyMedianRemainingAtElapsed = source._historyMedianRemainingAtElapsed
+      _unknownReason = source._unknownReason
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._windowKind) }()
+        case 2: try { try decoder.decodeSingularStringField(value: &_storage._limitID) }()
+        case 3: try { try decoder.decodeSingularInt64Field(value: &_storage._windowStartAtMs) }()
+        case 4: try { try decoder.decodeSingularInt64Field(value: &_storage._resetsAtMs) }()
+        case 5: try { try decoder.decodeSingularInt64Field(value: &_storage._windowMinutes) }()
+        case 6: try { try decoder.decodeSingularInt64Field(value: &_storage._windowGeneration) }()
+        case 7: try { try decoder.decodeSingularDoubleField(value: &_storage._usedPercent) }()
+        case 8: try { try decoder.decodeSingularDoubleField(value: &_storage._remainingPercent) }()
+        case 9: try { try decoder.decodeSingularDoubleField(value: &_storage._elapsedPercent) }()
+        case 10: try { try decoder.decodeSingularDoubleField(value: &_storage._paceDeltaPp) }()
+        case 11: try { try decoder.decodeSingularMessageField(value: &_storage._forecast) }()
+        case 12: try { try decoder.decodeRepeatedMessageField(value: &_storage._currentPoints) }()
+        case 13: try { try decoder.decodeSingularMessageField(value: &_storage._previousCycle) }()
+        case 14: try { try decoder.decodeRepeatedMessageField(value: &_storage._historicalCycles) }()
+        case 15: try { try decoder.decodeRepeatedMessageField(value: &_storage._historyBand) }()
+        case 16: try { try decoder.decodeSingularInt64Field(value: &_storage._historyCycleCount) }()
+        case 17: try { try decoder.decodeSingularDoubleField(value: &_storage._previousRemainingAtElapsed) }()
+        case 18: try { try decoder.decodeSingularDoubleField(value: &_storage._historyMedianRemainingAtElapsed) }()
+        case 19: try { try decoder.decodeSingularStringField(value: &_storage._unknownReason) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if !_storage._windowKind.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._windowKind, fieldNumber: 1)
+      }
+      if !_storage._limitID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._limitID, fieldNumber: 2)
+      }
+      try { if let v = _storage._windowStartAtMs {
+        try visitor.visitSingularInt64Field(value: v, fieldNumber: 3)
+      } }()
+      try { if let v = _storage._resetsAtMs {
+        try visitor.visitSingularInt64Field(value: v, fieldNumber: 4)
+      } }()
+      try { if let v = _storage._windowMinutes {
+        try visitor.visitSingularInt64Field(value: v, fieldNumber: 5)
+      } }()
+      try { if let v = _storage._windowGeneration {
+        try visitor.visitSingularInt64Field(value: v, fieldNumber: 6)
+      } }()
+      try { if let v = _storage._usedPercent {
+        try visitor.visitSingularDoubleField(value: v, fieldNumber: 7)
+      } }()
+      try { if let v = _storage._remainingPercent {
+        try visitor.visitSingularDoubleField(value: v, fieldNumber: 8)
+      } }()
+      try { if let v = _storage._elapsedPercent {
+        try visitor.visitSingularDoubleField(value: v, fieldNumber: 9)
+      } }()
+      try { if let v = _storage._paceDeltaPp {
+        try visitor.visitSingularDoubleField(value: v, fieldNumber: 10)
+      } }()
+      try { if let v = _storage._forecast {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 11)
+      } }()
+      if !_storage._currentPoints.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._currentPoints, fieldNumber: 12)
+      }
+      try { if let v = _storage._previousCycle {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 13)
+      } }()
+      if !_storage._historicalCycles.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._historicalCycles, fieldNumber: 14)
+      }
+      if !_storage._historyBand.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._historyBand, fieldNumber: 15)
+      }
+      if _storage._historyCycleCount != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._historyCycleCount, fieldNumber: 16)
+      }
+      try { if let v = _storage._previousRemainingAtElapsed {
+        try visitor.visitSingularDoubleField(value: v, fieldNumber: 17)
+      } }()
+      try { if let v = _storage._historyMedianRemainingAtElapsed {
+        try visitor.visitSingularDoubleField(value: v, fieldNumber: 18)
+      } }()
+      try { if let v = _storage._unknownReason {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 19)
+      } }()
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_QuotaPaceWindow, rhs: Codexpulse_Core_V1_QuotaPaceWindow) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._windowKind != rhs_storage._windowKind {return false}
+        if _storage._limitID != rhs_storage._limitID {return false}
+        if _storage._windowStartAtMs != rhs_storage._windowStartAtMs {return false}
+        if _storage._resetsAtMs != rhs_storage._resetsAtMs {return false}
+        if _storage._windowMinutes != rhs_storage._windowMinutes {return false}
+        if _storage._windowGeneration != rhs_storage._windowGeneration {return false}
+        if _storage._usedPercent != rhs_storage._usedPercent {return false}
+        if _storage._remainingPercent != rhs_storage._remainingPercent {return false}
+        if _storage._elapsedPercent != rhs_storage._elapsedPercent {return false}
+        if _storage._paceDeltaPp != rhs_storage._paceDeltaPp {return false}
+        if _storage._forecast != rhs_storage._forecast {return false}
+        if _storage._currentPoints != rhs_storage._currentPoints {return false}
+        if _storage._previousCycle != rhs_storage._previousCycle {return false}
+        if _storage._historicalCycles != rhs_storage._historicalCycles {return false}
+        if _storage._historyBand != rhs_storage._historyBand {return false}
+        if _storage._historyCycleCount != rhs_storage._historyCycleCount {return false}
+        if _storage._previousRemainingAtElapsed != rhs_storage._previousRemainingAtElapsed {return false}
+        if _storage._historyMedianRemainingAtElapsed != rhs_storage._historyMedianRemainingAtElapsed {return false}
+        if _storage._unknownReason != rhs_storage._unknownReason {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_CurrentQuotaPace: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CurrentQuotaPace"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}account_scope\0\u{3}evaluated_at_ms\0\u{1}windows\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.version) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.accountScope) }()
+      case 3: try { try decoder.decodeSingularInt64Field(value: &self.evaluatedAtMs) }()
+      case 4: try { try decoder.decodeRepeatedMessageField(value: &self.windows) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.version.isEmpty {
+      try visitor.visitSingularStringField(value: self.version, fieldNumber: 1)
+    }
+    if !self.accountScope.isEmpty {
+      try visitor.visitSingularStringField(value: self.accountScope, fieldNumber: 2)
+    }
+    if self.evaluatedAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.evaluatedAtMs, fieldNumber: 3)
+    }
+    if !self.windows.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.windows, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_CurrentQuotaPace, rhs: Codexpulse_Core_V1_CurrentQuotaPace) -> Bool {
+    if lhs.version != rhs.version {return false}
+    if lhs.accountScope != rhs.accountScope {return false}
+    if lhs.evaluatedAtMs != rhs.evaluatedAtMs {return false}
+    if lhs.windows != rhs.windows {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_QuotaPaceResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".QuotaPaceResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}pace\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._meta) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._pace) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._meta {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try { if let v = self._pace {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_QuotaPaceResponse, rhs: Codexpulse_Core_V1_QuotaPaceResponse) -> Bool {
+    if lhs._meta != rhs._meta {return false}
+    if lhs._pace != rhs._pace {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

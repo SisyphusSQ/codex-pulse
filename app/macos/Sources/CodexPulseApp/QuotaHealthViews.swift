@@ -26,7 +26,8 @@ struct QuotaUsageView: View {
                     .frame(width: 150)
                     .onChange(of: model.usageRange) { _, _ in model.loadUsage() }
                     Spacer()
-                    if model.quotaState.isLoading || model.usageState.isLoading ||
+                    if model.quotaState.isLoading || model.quotaPaceState.isLoading ||
+                        model.usageState.isLoading ||
                         model.pricingCatalogState.isLoading
                     {
                         ProgressView().controlSize(.small)
@@ -47,7 +48,11 @@ struct QuotaUsageView: View {
             emptySystemImage: "gauge.open.with.lines.needle.33percent"
         ) {
             QuotaContentView(
-                response: $0, refreshState: model.quotaRefreshState, refresh: model.requestQuotaRefresh)
+                response: $0,
+                paceState: model.quotaPaceState,
+                refreshState: model.quotaRefreshState,
+                refresh: model.requestQuotaRefresh
+            )
         }
     }
 
@@ -72,6 +77,7 @@ struct QuotaUsageView: View {
 
 private struct QuotaContentView: View {
     let response: Codexpulse_Core_V1_QuotaCurrentResponse
+    let paceState: FeatureLoadState<Codexpulse_Core_V1_QuotaPaceResponse>
     let refreshState: ActionState
     let refresh: (String) -> Void
 
@@ -147,6 +153,10 @@ private struct QuotaContentView: View {
                 Text("没有窗口；这不等于额度充足。")
                     .foregroundStyle(.secondary)
             }
+            QuotaPaceStateView(
+                state: paceState,
+                currentWindows: displayWindows
+            )
             SectionCard(title: "重置次数") {
                 let credits = response.current.resetCredits
                 KeyValueRow(

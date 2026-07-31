@@ -24,7 +24,7 @@ func TestServiceExposesExactBusinessSurface(t *testing.T) {
 	want := []string{
 		"AccountSnapshot", "AnalyzeSessionIndexRepair", "ConfirmHomeSwitch", "Contracts", "DataHealth", "Health",
 		"HealthProjection", "Job", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
-		"PlanHomeSwitch", "PricingCatalogCurrent", "ProjectDetail", "QuotaCurrent", "RecoverHomeSwitch", "RequestQuotaRefresh",
+		"PlanHomeSwitch", "PricingCatalogCurrent", "ProjectDetail", "QuotaCurrent", "QuotaPace", "RecoverHomeSwitch", "RequestQuotaRefresh",
 		"RunRuntimeAction", "SessionDetail", "Settings", "Source", "UpdateSettings", "UsageCost",
 	}
 	sort.Strings(want)
@@ -155,6 +155,10 @@ type runtimeQueryStub struct{}
 
 func (runtimeQueryStub) QuotaCurrent(context.Context, int64) (runtimeinfo.QuotaCurrentResponse, error) {
 	return runtimeinfo.QuotaCurrentResponse{}, nil
+}
+
+func (runtimeQueryStub) QuotaPace(context.Context, int64) (runtimeinfo.QuotaPaceResponse, error) {
+	return runtimeinfo.QuotaPaceResponse{}, nil
 }
 
 func (runtimeQueryStub) ListSources(context.Context, basequery.Request) (runtimeinfo.SourceListResponse, error) {

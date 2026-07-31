@@ -39,7 +39,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
 }
 
 private enum FeatureTaskKey: Hashable {
-    case usage, pricingCatalog, quota, quotaRefresh
+    case usage, pricingCatalog, quota, quotaPace, quotaRefresh
     case runtimeAction
     case sessions, sessionDetail
     case projects, projectDetail
@@ -79,6 +79,8 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var pricingCatalogState:
         FeatureLoadState<Codexpulse_Core_V1_PricingCatalogCurrentResponse> = .idle
     @Published public private(set) var quotaState: FeatureLoadState<Codexpulse_Core_V1_QuotaCurrentResponse> = .idle
+    @Published public private(set) var quotaPaceState:
+        FeatureLoadState<Codexpulse_Core_V1_QuotaPaceResponse> = .idle
     @Published public private(set) var quotaRefreshState: ActionState = .idle
     @Published public private(set) var runtimeActionState: ActionState = .idle
     @Published public private(set) var sessionsState: FeatureLoadState<Codexpulse_Core_V1_SessionListResponse> = .idle
@@ -182,7 +184,8 @@ public final class AppModel: ObservableObject {
         case .projects:
             projectsState.isLoading || projectDetailState.isLoading
         case .quotaUsage:
-            quotaState.isLoading || usageState.isLoading || pricingCatalogState.isLoading
+            quotaState.isLoading || quotaPaceState.isLoading ||
+                usageState.isLoading || pricingCatalogState.isLoading
         case .localStatus:
             healthProjectionState.isLoading || dataHealthState.isLoading ||
                 healthState.isLoading || healthDetailState.isLoading
@@ -266,7 +269,8 @@ public final class AppModel: ObservableObject {
         case .projects:
             if projectsState.shouldReloadOnNavigation { loadProjects(reset: true) }
         case .quotaUsage:
-            if quotaState.shouldReloadOnNavigation || usageState.shouldReloadOnNavigation ||
+            if quotaState.shouldReloadOnNavigation || quotaPaceState.shouldReloadOnNavigation ||
+                usageState.shouldReloadOnNavigation ||
                 pricingCatalogState.shouldReloadOnNavigation
             {
                 loadQuotaAndUsage()
@@ -576,9 +580,11 @@ public final class AppModel: ObservableObject {
     }
 
     public func loadQuotaAndUsage() {
+        let now = Date()
         loadUsage()
         loadPricingCatalog()
-        loadQuota()
+        loadQuota(now: now)
+        loadQuotaPace(now: now)
     }
 
     public func loadUsage() {
@@ -609,10 +615,10 @@ public final class AppModel: ObservableObject {
         }
     }
 
-    public func loadQuota() {
+    public func loadQuota(now: Date = Date()) {
         let previous = quotaState.value
         quotaState = .loading(previous: previous)
-        let request = FeatureRequestFactory.quota()
+        let request = FeatureRequestFactory.quota(now: now)
         launch(.quota, operation: { [runtime] in try await runtime.quotaCurrent(request) }) { [weak self] response in
             self?.quotaState = loadState(
                 value: response,
@@ -621,6 +627,21 @@ public final class AppModel: ObservableObject {
             )
         } failure: { [weak self] error in
             self?.quotaState = failedLoadState(previous: previous, error: error)
+        }
+    }
+
+    public func loadQuotaPace(now: Date = Date()) {
+        let previous = quotaPaceState.value
+        quotaPaceState = .loading(previous: previous)
+        let request = FeatureRequestFactory.quotaPace(now: now)
+        launch(.quotaPace, operation: { [runtime] in try await runtime.quotaPace(request) }) { [weak self] response in
+            self?.quotaPaceState = loadState(
+                value: response,
+                meta: response.meta,
+                isEmpty: response.pace.windows.isEmpty
+            )
+        } failure: { [weak self] error in
+            self?.quotaPaceState = failedLoadState(previous: previous, error: error)
         }
     }
 
@@ -633,7 +654,9 @@ public final class AppModel: ObservableObject {
         }) { [weak self] receipt in
             guard let self else { return }
             quotaRefreshState = .succeeded(receipt.reason)
-            loadQuota()
+            let now = Date()
+            loadQuota(now: now)
+            loadQuotaPace(now: now)
         } failure: { [weak self] error in
             self?.quotaRefreshState = .unavailable(AppNotice.from(error))
         }
@@ -1113,8 +1136,9 @@ public final class AppModel: ObservableObject {
             projectDetailState = stale(projectDetailState, notice)
             affected = [.sessions, .projects, .quotaUsage]
         case "quota":
-            invalidateTasks([.quota])
+            invalidateTasks([.quota, .quotaPace])
             quotaState = stale(quotaState, notice)
+            quotaPaceState = stale(quotaPaceState, notice)
             affected = [.quotaUsage]
         case "health":
             invalidateTasks([.healthProjection, .dataHealth, .healthList, .healthDetail, .sources, .sourceDetail, .jobs, .jobDetail])
@@ -1157,6 +1181,7 @@ public final class AppModel: ObservableObject {
         usageState = .idle
         pricingCatalogState = .idle
         quotaState = .idle
+        quotaPaceState = .idle
         quotaRefreshState = .idle
         runtimeActionState = .idle
         sessionsState = .idle
@@ -1276,6 +1301,7 @@ public final class AppModel: ObservableObject {
         usageState = stale(usageState, notice)
         pricingCatalogState = stale(pricingCatalogState, notice)
         quotaState = stale(quotaState, notice)
+        quotaPaceState = stale(quotaPaceState, notice)
         sessionsState = stale(sessionsState, notice)
         sessionDetailState = stale(sessionDetailState, notice)
         projectsState = stale(projectsState, notice)

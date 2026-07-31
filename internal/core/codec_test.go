@@ -6,8 +6,11 @@ import (
 	"testing"
 
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
+	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
+	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
+	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -63,6 +66,90 @@ func TestEncodeResponseRejectsInvalidNumericPresence(t *testing.T) {
 	err := EncodeResponse(response, &corev1.UsageCostResponse{})
 	if !errors.Is(err, ErrProtoMapping) {
 		t.Fatalf("encodeResponse() error = %v, want ErrProtoMapping", err)
+	}
+}
+
+func TestEncodeResponsePreservesQuotaPacePresenceAndHistory(t *testing.T) {
+	t.Parallel()
+
+	meta, err := basequery.NewResponseMeta(basequery.ResponseComplete, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	windowStartAtMS := int64(0)
+	resetsAtMS := int64(6_000_000)
+	windowMinutes := int64(100)
+	windowGeneration := resetsAtMS
+	usedPercent := 0.0
+	remainingPercent := 100.0
+	elapsedPercent := 42.0
+	paceDeltaPP := -42.0
+	previousRemaining := 80.0
+	historyRemaining := 75.0
+	exhaustAtMS := int64(5_000_000)
+	leadBeforeResetMS := resetsAtMS - exhaustAtMS
+	target := &corev1.QuotaPaceResponse{}
+	if err := EncodeResponse(runtimeinfo.QuotaPaceResponse{
+		Meta: meta,
+		Pace: quotaquery.PaceResponse{
+			Version:       quotaquery.PaceContractVersion,
+			AccountScope:  store.QuotaAccountScopeDefault,
+			EvaluatedAtMS: 2_520_000,
+			Windows: []quotaquery.PaceWindow{{
+				WindowKind:       store.QuotaWindowPrimary,
+				LimitID:          "codex",
+				WindowStartAtMS:  &windowStartAtMS,
+				ResetsAtMS:       &resetsAtMS,
+				WindowMinutes:    &windowMinutes,
+				WindowGeneration: &windowGeneration,
+				UsedPercent:      &usedPercent,
+				RemainingPercent: &remainingPercent,
+				ElapsedPercent:   &elapsedPercent,
+				PaceDeltaPP:      &paceDeltaPP,
+				Forecast: quotaquery.PaceForecast{
+					State:             quotaquery.PaceForecastAtRisk,
+					Method:            quotaquery.PaceForecastMethodRecentTheilSen,
+					ExhaustAtMS:       &exhaustAtMS,
+					LeadBeforeResetMS: &leadBeforeResetMS,
+					EvidenceCount:     4,
+					EvidenceSpanMS:    1_800_000,
+				},
+				CurrentPoints: []quotaquery.PacePoint{{
+					ObservedAtMS: 2_520_000, ElapsedPercent: 42,
+					UsedPercent: 0, RemainingPercent: 100,
+				}},
+				HistoricalCycles: []quotaquery.PaceCycle{{
+					WindowGeneration: 1, Complete: true,
+					Points: []quotaquery.PacePoint{{
+						ObservedAtMS: 1, ElapsedPercent: 42,
+						UsedPercent: 20, RemainingPercent: 80,
+					}},
+				}},
+				HistoryBand: []quotaquery.PaceHistoryBandPoint{{
+					ElapsedPercent: 42, MedianRemaining: 75,
+					MinimumRemaining: 70, MaximumRemaining: 80, CycleCount: 4,
+				}},
+				HistoryCycleCount:               4,
+				PreviousRemainingAtElapsed:      &previousRemaining,
+				HistoryMedianRemainingAtElapsed: &historyRemaining,
+			}},
+		},
+	}, target); err != nil {
+		t.Fatalf("EncodeResponse(QuotaPaceResponse) error = %v", err)
+	}
+	if target.Meta == nil || target.Pace == nil || len(target.Pace.Windows) != 1 {
+		t.Fatalf("QuotaPaceResponse envelope = %#v", target)
+	}
+	window := target.Pace.Windows[0]
+	if window.UsedPercent == nil || window.GetUsedPercent() != 0 ||
+		window.RemainingPercent == nil || window.GetRemainingPercent() != 100 ||
+		window.Forecast == nil || window.Forecast.ExhaustAtMs == nil ||
+		window.Forecast.GetLeadBeforeResetMs() != leadBeforeResetMS ||
+		len(window.CurrentPoints) != 1 || len(window.HistoricalCycles) != 1 ||
+		len(window.HistoryBand) != 1 ||
+		window.PreviousRemainingAtElapsed == nil ||
+		window.HistoryMedianRemainingAtElapsed == nil {
+		t.Fatalf("QuotaPaceResponse window = %#v", window)
 	}
 }
 

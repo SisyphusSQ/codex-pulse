@@ -35,6 +35,7 @@ type usageCostQuery interface {
 
 type runtimeInfoQuery interface {
 	QuotaCurrent(context.Context, int64) (runtimeinfo.QuotaCurrentResponse, error)
+	QuotaPace(context.Context, int64) (runtimeinfo.QuotaPaceResponse, error)
 	ListSources(context.Context, basequery.Request) (runtimeinfo.SourceListResponse, error)
 	Source(context.Context, runtimeinfo.SourceDetailRequest) (runtimeinfo.SourceDetailResponse, error)
 	ListJobs(context.Context, basequery.Request) (runtimeinfo.JobListResponse, error)
@@ -248,6 +249,7 @@ var methodAllowlist = []MethodInfo{
 	{Name: "ListProjects", Kind: MethodQuery},
 	{Name: "ProjectDetail", Kind: MethodQuery},
 	{Name: "QuotaCurrent", Kind: MethodQuery},
+	{Name: "QuotaPace", Kind: MethodQuery},
 	{Name: "RequestQuotaRefresh", Kind: MethodCommand},
 	{Name: "UpdateSettings", Kind: MethodCommand},
 	{Name: "PlanHomeSwitch", Kind: MethodCommand},
@@ -449,6 +451,18 @@ func (service *Service) QuotaCurrent(
 	}
 	return serviceQueryCall(service, func() (runtimeinfo.QuotaCurrentResponse, error) {
 		return service.runtimeInfo.QuotaCurrent(ctx, evaluatedAtMS)
+	})
+}
+
+func (service *Service) QuotaPace(
+	ctx context.Context,
+	evaluatedAtMS int64,
+) (runtimeinfo.QuotaPaceResponse, error) {
+	if service == nil || service.runtimeInfo == nil {
+		return runtimeinfo.QuotaPaceResponse{}, newServiceFailure(ErrService)
+	}
+	return serviceQueryCall(service, func() (runtimeinfo.QuotaPaceResponse, error) {
+		return service.runtimeInfo.QuotaPace(ctx, evaluatedAtMS)
 	})
 }
 

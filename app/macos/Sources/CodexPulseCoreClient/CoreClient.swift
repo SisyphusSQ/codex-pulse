@@ -117,6 +117,17 @@ public actor CoreClient {
         }
     }
 
+    public func quotaPace(
+        _ request: Codexpulse_Core_V1_QuotaPaceRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_QuotaPaceResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.quotaPace(request, metadata: metadata)
+        }
+    }
+
     public func requestQuotaRefresh(
         _ request: Codexpulse_Core_V1_QuotaRefreshRequest
     ) async throws -> Codexpulse_Core_V1_QuotaRefreshReceipt {

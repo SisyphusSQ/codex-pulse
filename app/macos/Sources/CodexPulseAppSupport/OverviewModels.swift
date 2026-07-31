@@ -8,6 +8,7 @@ public struct OverviewResponses: Sendable {
     public let weeklyUsage: Codexpulse_Core_V1_UsageCostResponse
     public let tokenActivityUsage: Codexpulse_Core_V1_UsageCostResponse
     public let quota: Codexpulse_Core_V1_QuotaCurrentResponse
+    public let quotaPace: Codexpulse_Core_V1_QuotaPaceResponse
     public let sessions: Codexpulse_Core_V1_SessionListResponse
     public let projects: Codexpulse_Core_V1_ProjectListResponse
     public let weeklyProjects: Codexpulse_Core_V1_ProjectListResponse
@@ -19,6 +20,7 @@ public struct OverviewResponses: Sendable {
     public init(
         usage: Codexpulse_Core_V1_UsageCostResponse,
         quota: Codexpulse_Core_V1_QuotaCurrentResponse,
+        quotaPace: Codexpulse_Core_V1_QuotaPaceResponse = .init(),
         account: Codexpulse_Core_V1_AccountSnapshotResponse? = nil,
         sessions: Codexpulse_Core_V1_SessionListResponse,
         projects: Codexpulse_Core_V1_ProjectListResponse,
@@ -35,6 +37,7 @@ public struct OverviewResponses: Sendable {
         self.weeklyUsage = weeklyUsage ?? usage
         self.tokenActivityUsage = tokenActivityUsage
         self.quota = quota
+        self.quotaPace = quotaPace
         self.sessions = sessions
         self.projects = projects
         self.weeklyProjects = weeklyProjects ?? projects
@@ -50,6 +53,7 @@ public struct OverviewResponses: Sendable {
         OverviewResponses(
             usage: usage,
             quota: quota,
+            quotaPace: quotaPace,
             account: account,
             sessions: sessions,
             projects: projects,
@@ -1653,6 +1657,7 @@ public struct OverviewPresentation: Equatable, Sendable {
 
     public let account: CodexAccountPresentation
     public let quotaWindows: [QuotaWindowPresentation]
+    public let quotaPaceWindows: [QuotaPaceWindowPresentation]
     public let resetCredits: ResetCreditsPresentation
     public let evaluatedAtMS: Int64
     public let usageRangeLabel: String
@@ -1691,6 +1696,12 @@ public struct OverviewPresentation: Equatable, Sendable {
         let isWeeklyQuotaRange = requestedRange == .quotaWeek
         self.account = CodexAccountPresentation(responses.account)
         self.quotaWindows = responses.quota.current.windows.map(QuotaWindowPresentation.init)
+        self.quotaPaceWindows = responses.quotaPace.pace.windows.map {
+            QuotaPaceWindowPresentation(
+                $0,
+                evaluatedAtMS: responses.quotaPace.pace.evaluatedAtMs
+            )
+        }
         self.resetCredits = ResetCreditsPresentation(responses.quota.current.resetCredits)
         self.evaluatedAtMS = responses.quota.current.evaluatedAtMs
         self.usageRangeLabel = Self.usageRangeLabel(
@@ -1933,6 +1944,7 @@ public enum AppViewState: Equatable, Sendable {
 
 public struct OverviewRequestSet: Sendable {
     public let quota: Codexpulse_Core_V1_QuotaCurrentRequest
+    public let quotaPace: Codexpulse_Core_V1_QuotaPaceRequest
     public let sessions: Codexpulse_Core_V1_ListSessionsRequest
 
     public static func make(
@@ -1941,6 +1953,8 @@ public struct OverviewRequestSet: Sendable {
     ) -> Self {
         var quota = Codexpulse_Core_V1_QuotaCurrentRequest()
         quota.evaluatedAtMs = Int64(now.timeIntervalSince1970 * 1_000)
+        var quotaPace = Codexpulse_Core_V1_QuotaPaceRequest()
+        quotaPace.evaluatedAtMs = quota.evaluatedAtMs
 
         var page = Codexpulse_Core_V1_PageRequest()
         page.limit = sessionLimit
@@ -1949,7 +1963,7 @@ public struct OverviewRequestSet: Sendable {
         var sessions = Codexpulse_Core_V1_ListSessionsRequest()
         sessions.query = query
 
-        return Self(quota: quota, sessions: sessions)
+        return Self(quota: quota, quotaPace: quotaPace, sessions: sessions)
     }
 
     public static func weeklyUsageRequest(

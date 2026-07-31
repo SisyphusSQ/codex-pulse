@@ -135,6 +135,17 @@ func (api *grpcAPI) QuotaCurrent(
 	return encodeRPC(response, &corev1.QuotaCurrentResponse{}, err)
 }
 
+func (api *grpcAPI) QuotaPace(
+	ctx context.Context,
+	request *corev1.QuotaPaceRequest,
+) (*corev1.QuotaPaceResponse, error) {
+	if api == nil || api.service == nil {
+		return nil, coreServiceUnavailable()
+	}
+	response, err := api.service.QuotaPace(ctx, request.GetEvaluatedAtMs())
+	return encodeRPC(response, &corev1.QuotaPaceResponse{}, err)
+}
+
 func (api *grpcAPI) RequestQuotaRefresh(
 	ctx context.Context,
 	request *corev1.QuotaRefreshRequest,

@@ -81,6 +81,7 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
     public let usageModelReconciled: Int
     public let usageCostKnown: Bool
     public let quotaWindows: Int
+    public let quotaPaceWindows: Int
     public let projectDetailCostKnown: Bool
     public let projectDetailModels: Int
     public let detailsRead: Int
@@ -99,6 +100,7 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
         usageModelReconciled: Int,
         usageCostKnown: Bool,
         quotaWindows: Int,
+        quotaPaceWindows: Int,
         projectDetailCostKnown: Bool = false,
         projectDetailModels: Int = 0,
         detailsRead: Int,
@@ -116,6 +118,7 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
         self.usageModelReconciled = usageModelReconciled
         self.usageCostKnown = usageCostKnown
         self.quotaWindows = quotaWindows
+        self.quotaPaceWindows = quotaPaceWindows
         self.projectDetailCostKnown = projectDetailCostKnown
         self.projectDetailModels = projectDetailModels
         self.detailsRead = detailsRead
@@ -128,6 +131,7 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
             + "health_events=\(healthEvents) usage_trend=\(usageTrend) usage_models=\(usageModels) "
             + "usage_model_trend=\(usageModelTrend) usage_model_reconciled=\(usageModelReconciled) "
             + "usage_cost=\(usageCostKnown ? "known" : "unknown") quota_windows=\(quotaWindows) "
+            + "quota_pace_windows=\(quotaPaceWindows) "
             + "project_detail_cost=\(projectDetailCostKnown ? "known" : "unknown") "
             + "project_detail_models=\(projectDetailModels) "
             + "details_read=\(detailsRead) settings=\(settingsMutation) "

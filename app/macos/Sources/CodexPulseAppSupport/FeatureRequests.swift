@@ -81,6 +81,12 @@ public enum FeatureRequestFactory {
         return request
     }
 
+    public static func quotaPace(now: Date = Date()) -> Codexpulse_Core_V1_QuotaPaceRequest {
+        var request = Codexpulse_Core_V1_QuotaPaceRequest()
+        request.evaluatedAtMs = Int64(now.timeIntervalSince1970 * 1_000)
+        return request
+    }
+
     public static func sessions(
         options: SessionQueryOptions,
         cursor: String? = nil,

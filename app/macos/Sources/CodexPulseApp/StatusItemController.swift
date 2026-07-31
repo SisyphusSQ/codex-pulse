@@ -595,16 +595,30 @@ private struct MenuBarPopoverView: View {
                             }
                         }
                         .frame(height: 9)
-                        HStack(alignment: .top) {
-                            Text("\(percentText(window.remainingPercent)) 剩余")
-                            Spacer()
-                            VStack(alignment: .trailing, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text("\(percentText(window.remainingPercent)) 剩余")
+                                Spacer(minLength: 12)
                                 Text("距离重置：\(reset.remainingText)")
-                                Text("重置时间：\(reset.resetTimeText)")
+                                    .lineLimit(1)
                             }
-                            .multilineTextAlignment(.trailing)
-                            .accessibilityElement(children: .combine)
-                            .accessibilityIdentifier("popover.quota.reset.\(window.id)")
+                            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                if let pace = overview.quotaPaceWindows.first(where: { $0.id == window.id }) {
+                                    Text(pace.forecastText)
+                                        .fontWeight(.medium)
+                                        .foregroundStyle(pace.forecastState == "at_risk" ? .orange : .secondary)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.75)
+                                        .layoutPriority(1)
+                                        .accessibilityIdentifier("popover.quota.pace.\(window.id)")
+                                }
+                                Spacer(minLength: 0)
+                                Text("重置时间：\(reset.resetTimeText)")
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .accessibilityIdentifier("popover.quota.reset.\(window.id)")
+                            }
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)

@@ -90,14 +90,15 @@ private func testPrimaryPagesSmokeSummaryIncludesProjectDetailEvidence() throws 
         usageModelReconciled: 0,
         usageCostKnown: false,
         quotaWindows: 0,
+        quotaPaceWindows: 0,
         detailsRead: 0,
         settingsMutation: "skipped",
         unavailableSteps: []
     )
     try expect(
         summary.stableDescription.contains(
-            "project_detail_cost=unknown project_detail_models=0"),
-        "primary-page smoke summary must expose project detail cost and model evidence"
+            "quota_pace_windows=0 project_detail_cost=unknown project_detail_models=0"),
+        "primary-page smoke summary must expose pace and project detail evidence"
     )
 }
 
@@ -2243,6 +2244,7 @@ private actor FakeCore: AppCoreServing {
     func overviewCoreCallCount() -> Int {
         calls.filter {
             $0 == "quota"
+                || $0 == "quota-pace"
                 || $0 == "usage"
                 || $0 == "sessions"
                 || $0 == "projects"
@@ -2331,6 +2333,18 @@ private actor FakeCore: AppCoreServing {
         if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
         if shouldFail { throw FakeFailure.unavailable }
         return responses.quota
+    }
+
+    func quotaPace(
+        _ request: Codexpulse_Core_V1_QuotaPaceRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_QuotaPaceResponse {
+        calls.append("quota-pace")
+        let shouldFail = failOverview
+        await waitForOverviewBarrier()
+        if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
+        if shouldFail { throw FakeFailure.unavailable }
+        return responses.quotaPace
     }
 
     func accountSnapshot(
@@ -2644,6 +2658,7 @@ private func makeNormalBootstrap() -> Codexpulse_Core_V1_BootstrapResponse {
 private func makeResponses(
     partial: Bool = false,
     includeWeeklyQuota: Bool = true,
+    quotaPace: Codexpulse_Core_V1_QuotaPaceResponse = .init(),
     accountScope: String = "default",
     quotaStatus: String = "complete",
     includeAccountResponse: Bool = true,
@@ -2758,6 +2773,7 @@ private func makeResponses(
     return OverviewResponses(
         usage: usage,
         quota: quota,
+        quotaPace: quotaPace,
         account: accountResponse,
         sessions: sessions,
         projects: projects,
@@ -5019,6 +5035,78 @@ private func testAppRuntimeUsesWeeklyQuotaRangeForOverview() async throws {
 }
 
 @MainActor
+private func testAppRuntimeLoadsQuotaPaceWithOverview() async throws {
+    var pace = Codexpulse_Core_V1_QuotaPaceResponse()
+    pace.meta = completeMeta()
+    pace.pace.version = "quota-pace-v1"
+    pace.pace.accountScope = "default"
+    pace.pace.evaluatedAtMs = 1_753_056_000_000
+    var window = Codexpulse_Core_V1_QuotaPaceWindow()
+    window.windowKind = "primary"
+    window.limitID = "codex"
+    window.usedPercent = 61
+    window.remainingPercent = 39
+    window.elapsedPercent = 42
+    window.paceDeltaPp = 19
+    pace.pace.windows = [window]
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(quotaPace: pace)
+    )
+    let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    let model = AppModel(runtime: runtime)
+
+    model.start()
+    try await waitUntil("quota pace overview") {
+        await MainActor.run { model.presentation?.quotaPaceWindows.count == 1 }
+    }
+    try expect(
+        model.presentation?.quotaPaceWindows.first?.paceText
+            == "用量快于周期进度 19%",
+        "overview must publish the quota pace result returned by Core"
+    )
+    let calls = await core.recordedCalls()
+    try expect(calls.contains("quota-pace"), "overview must issue the quota pace query")
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testQuotaUsageFeatureReloadsQuotaPace() async throws {
+    var pace = Codexpulse_Core_V1_QuotaPaceResponse()
+    pace.meta = completeMeta()
+    pace.pace.version = "quota-pace-v1"
+    pace.pace.accountScope = "default"
+    pace.pace.evaluatedAtMs = 1_753_056_000_000
+    var window = Codexpulse_Core_V1_QuotaPaceWindow()
+    window.windowKind = "primary"
+    window.limitID = "codex"
+    window.usedPercent = 61
+    window.remainingPercent = 39
+    window.elapsedPercent = 42
+    window.paceDeltaPp = 19
+    pace.pace.windows = [window]
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(quotaPace: pace)
+    )
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    )
+
+    model.start()
+    try await waitUntil("quota pace overview before feature reload") {
+        await MainActor.run { model.presentation?.quotaPaceWindows.count == 1 }
+    }
+    model.loadQuotaAndUsage()
+    try await waitUntil("quota pace feature response") {
+        await MainActor.run { model.quotaPaceState.value?.pace.windows.count == 1 }
+    }
+    let calls = await core.recordedCalls().filter { $0 == "quota-pace" }
+    try expect(calls.count >= 2, "quota feature reload must issue its own quota pace query")
+    _ = await model.shutdown()
+}
+
+@MainActor
 private func testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess() async throws {
     let hangingCore = FakeCore(
         bootstrap: makeNormalBootstrap(),
@@ -5242,6 +5330,211 @@ private func testQuotaWindowPresentationUsesActualDuration() throws {
             "quota window \(item.id)/\(item.minutes.map(String.init) ?? "nil") must be titled \(item.expected), got \(presentation.title)"
         )
     }
+}
+
+private func testQuotaPacePresentationExplainsPaceForecastAndEvidence() throws {
+    var window = Codexpulse_Core_V1_QuotaPaceWindow()
+    window.windowKind = "secondary"
+    window.limitID = "codex"
+    window.usedPercent = 61
+    window.remainingPercent = 39
+    window.elapsedPercent = 42
+    window.paceDeltaPp = 19
+    window.historyCycleCount = 4
+    window.previousRemainingAtElapsed = 55
+    window.historyMedianRemainingAtElapsed = 51
+    window.forecast.state = "at_risk"
+    window.forecast.method = "recent_theil_sen"
+    window.forecast.exhaustAtMs = 14_400_000
+    window.forecast.leadBeforeResetMs = 3_600_000
+    window.forecast.evidenceCount = 4
+    window.forecast.evidenceSpanMs = 4_500_000
+
+    let presentation = QuotaPaceWindowPresentation(window, evaluatedAtMS: 0)
+    try expect(
+        presentation.paceText == "用量快于周期进度 19%",
+        "quota pace must compare usage with elapsed time"
+    )
+    try expect(
+        presentation.paceDeltaMetricText == "+19%",
+        "quota pace metric must keep a meaningful positive sign"
+    )
+    try expect(
+        presentation.forecastText == "预计约 4 小时后耗尽",
+        "quota pace must describe approximate time remaining instead of an exact timestamp"
+    )
+    try expect(
+        presentation.evidenceText == "4 个观测 · 跨度 1 小时 15 分钟",
+        "quota pace must expose bounded forecast evidence"
+    )
+    try expect(
+        presentation.previousComparisonText == "比上一周期少 16%"
+            && presentation.historyComparisonText == "比近 4 个周期少 12%",
+        "quota pace must compare remaining quota at the same cycle progress"
+    )
+
+    var almostZero = window
+    almostZero.paceDeltaPp = -0.1
+    try expect(
+        QuotaPaceWindowPresentation(almostZero, evaluatedAtMS: 0).paceDeltaMetricText == "0%",
+        "quota pace metric must not render rounded negative zero"
+    )
+}
+
+private func testQuotaPaceForecastUsesCoarseRelativeUnitsAndHonestFallbacks() throws {
+    func presentation(
+        state: String,
+        exhaustAfterMS: Int64? = nil,
+        usedPercent: Double = 50,
+        unknownReason: String? = nil
+    ) -> QuotaPaceWindowPresentation {
+        var window = Codexpulse_Core_V1_QuotaPaceWindow()
+        window.windowKind = "primary"
+        window.limitID = "codex"
+        window.usedPercent = usedPercent
+        window.remainingPercent = 100 - usedPercent
+        window.forecast.state = state
+        if let exhaustAfterMS {
+            window.forecast.exhaustAtMs = exhaustAfterMS
+        }
+        if let unknownReason {
+            window.forecast.unknownReason = unknownReason
+        }
+        return QuotaPaceWindowPresentation(window, evaluatedAtMS: 0)
+    }
+
+    try expect(
+        presentation(
+            state: "at_risk",
+            exhaustAfterMS: 40 * 60 * 1_000
+        ).forecastText == "预计约 40 分钟后耗尽",
+        "sub-hour quota forecasts must use approximate ten-minute units"
+    )
+    try expect(
+        presentation(
+            state: "at_risk",
+            exhaustAfterMS: (2 * 60 + 37) * 60 * 1_000
+        ).forecastText == "预计约 3 小时后耗尽",
+        "same-day quota forecasts must round to approximate whole hours"
+    )
+    try expect(
+        presentation(
+            state: "at_risk",
+            exhaustAfterMS: 49 * 60 * 60 * 1_000
+        ).forecastText == "预计约 2 天后耗尽",
+        "large remaining quotas must use approximate whole days"
+    )
+    try expect(
+        presentation(state: "on_track").forecastText == "预计本周期不会耗尽",
+        "a forecast beyond reset must not claim exhaustion after the quota resets"
+    )
+    try expect(
+        presentation(
+            state: "unavailable",
+            usedPercent: 0,
+            unknownReason: "evidence_sparse"
+        ).forecastText == "当前暂无消耗，暂不预测",
+        "a zero-usage window must explain why no exhaustion time is shown"
+    )
+    try expect(
+        presentation(
+            state: "unavailable",
+            usedPercent: 0,
+            unknownReason: "evidence_stale"
+        ).forecastText == "数据更新不及时，暂无法预测",
+        "stale data must take priority over a possibly untrusted zero-usage value"
+    )
+    try expect(
+        presentation(
+            state: "unavailable",
+            usedPercent: 0,
+            unknownReason: "source_conflict"
+        ).forecastText == "额度数据不一致，暂无法预测",
+        "source conflicts must take priority over a possibly untrusted zero-usage value"
+    )
+    try expect(
+        presentation(
+            state: "unavailable",
+            unknownReason: "evidence_sparse"
+        ).forecastText == "观测不足，暂无法预测",
+        "sparse non-zero usage must keep an honest unavailable state"
+    )
+    try expect(
+        presentation(state: "exhausted").forecastText == "额度已用尽",
+        "an exhausted quota must use terminal product copy"
+    )
+}
+
+private func testQuotaForecastPresentationIsUsedByOverviewAndStatusPopover() throws {
+    let overview = try mainWindowSource("RootView.swift")
+    let popover = try mainWindowSource("StatusItemController.swift")
+    let paceView = try mainWindowSource("QuotaPaceViews.swift")
+
+    try expect(
+        overview.contains("Text(pace.forecastText)")
+            && overview.contains("overview.quota.pace.\\(window.id)"),
+        "the Overview quota strip must show the shared exhaustion forecast"
+    )
+    try expect(
+        popover.contains("Text(pace.forecastText)")
+            && popover.contains("popover.quota.pace.\\(window.id)")
+            && popover.contains("HStack(alignment: .firstTextBaseline, spacing: 12)")
+            && popover.contains(".layoutPriority(1)")
+            && popover.contains(".fixedSize(horizontal: true, vertical: false)"),
+        "the status popover must keep the forecast and reset timestamp on one readable row"
+    )
+    try expect(
+        !paceView.contains("func quotaPaceCompactText"),
+        "quota surfaces must not retain a separate pace-delta compact copy"
+    )
+}
+
+private func testQuotaPaceRequestUsesTheSameEvaluationClockAsQuota() throws {
+    let now = Date(timeIntervalSince1970: 1_750_000_000)
+    let quota = FeatureRequestFactory.quota(now: now)
+    let pace = FeatureRequestFactory.quotaPace(now: now)
+    try expect(
+        pace.evaluatedAtMs == quota.evaluatedAtMs,
+        "quota and pace requests must share one evaluation clock"
+    )
+}
+
+private func testOverviewPresentationCarriesQuotaPaceWindows() throws {
+    let base = makeResponses()
+    var pace = Codexpulse_Core_V1_QuotaPaceResponse()
+    pace.meta = completeMeta()
+    pace.pace.version = "quota-pace-v1"
+    pace.pace.accountScope = "default"
+    pace.pace.evaluatedAtMs = 10 * 60 * 60 * 1_000
+    var window = Codexpulse_Core_V1_QuotaPaceWindow()
+    window.windowKind = "primary"
+    window.limitID = "codex"
+    window.usedPercent = 61
+    window.remainingPercent = 39
+    window.elapsedPercent = 42
+    window.paceDeltaPp = 19
+    window.forecast.state = "at_risk"
+    window.forecast.exhaustAtMs = pace.pace.evaluatedAtMs + (2 * 60 + 37) * 60 * 1_000
+    pace.pace.windows = [window]
+    let responses = OverviewResponses(
+        usage: base.usage,
+        quota: base.quota,
+        quotaPace: pace,
+        account: base.account,
+        sessions: base.sessions,
+        projects: base.projects,
+        health: base.health
+    )
+
+    let presentation = OverviewPresentation(responses)
+    try expect(
+        presentation.quotaPaceWindows.first?.paceText == "用量快于周期进度 19%",
+        "overview must carry the Helper-owned quota pace summary"
+    )
+    try expect(
+        presentation.quotaPaceWindows.first?.forecastText == "预计约 3 小时后耗尽",
+        "overview must calculate exhaustion from the Helper evaluation clock"
+    )
 }
 
 private func testQuotaWindowDisplayResolverDeduplicatesOnlyEquivalentWindows() throws {
@@ -5922,7 +6215,7 @@ private func testUnavailableRecoveryRefreshesOpenForegroundSurfaces() async thro
     }
     await core.releaseNextOverviewBarrierWaiter()
     try await waitUntil("initial unavailable Overview sections are in flight") {
-        await core.overviewBarrierWaiterCount() == 5
+        await core.overviewBarrierWaiterCount() == 6
     }
     await core.publishOverviewInvalidations(count: 3, recovered: true)
     await core.releaseOverviewBarrier()
@@ -5982,7 +6275,7 @@ private func testRecoveryDuringDisconnectedStreamRefreshesAfterReconnectWithoutR
     }
     await core.releaseNextOverviewBarrierWaiter()
     try await waitUntil("disconnected recovery Overview sections are in flight") {
-        await core.overviewBarrierWaiterCount() == 5
+        await core.overviewBarrierWaiterCount() == 6
     }
     await core.releaseOverviewBarrier()
     try await waitUntil("disconnected recovery starts unavailable") {
@@ -6049,7 +6342,7 @@ private func testInitialInFlightReconnectQueuesOneRecoveryRefresh() async throws
     }
     await core.releaseNextOverviewBarrierWaiter()
     try await waitUntil("initial unavailable Overview sections are in flight before reconnect") {
-        await core.overviewBarrierWaiterCount() == 5
+        await core.overviewBarrierWaiterCount() == 6
     }
     try await waitUntil("initial stream can disconnect during the first Overview") {
         await core.initialStreamDisconnectWaiterCount() == 1
@@ -6409,7 +6702,7 @@ private func testUnavailableRecoveryFailureDoesNotPublishSuccess() async throws 
     }
     await core.releaseNextOverviewBarrierWaiter()
     try await waitUntil("failed recovery Overview sections are in flight") {
-        await core.overviewBarrierWaiterCount() == 5
+        await core.overviewBarrierWaiterCount() == 6
     }
     await core.publishOverviewInvalidations(count: 2, recovered: false)
     await core.releaseOverviewBarrier()
@@ -6969,11 +7262,18 @@ struct CodexPulseAppTestMain {
         try await testAppRuntimeLoadsTokenActivityThroughAnIndependentAnnualRequest()
         try await testAppRuntimeKeepsTokenActivityFailureLocal()
         try await testAppRuntimeUsesWeeklyQuotaRangeForOverview()
+        try await testAppRuntimeLoadsQuotaPaceWithOverview()
+        try await testQuotaUsageFeatureReloadsQuotaPace()
         try await testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess()
         try await testAppRuntimeFallsBackWhenWeeklyQuotaIsUnavailable()
         try await testOverviewRangeSelectionRefreshesAllContent()
         try await testOverviewProjectFailureDoesNotHideUsageAndSessions()
         try testQuotaWindowPresentationUsesActualDuration()
+        try testQuotaPacePresentationExplainsPaceForecastAndEvidence()
+        try testQuotaPaceForecastUsesCoarseRelativeUnitsAndHonestFallbacks()
+        try testQuotaForecastPresentationIsUsedByOverviewAndStatusPopover()
+        try testQuotaPaceRequestUsesTheSameEvaluationClockAsQuota()
+        try testOverviewPresentationCarriesQuotaPaceWindows()
         try testTokenQuantityFormatterUsesChineseMagnitudeUnits()
         try testTokenBreakdownPresentationPreservesInputOutputSemantics()
         try testUsageModelTrendResolverUsesOnlyReconciledDailyFacts()

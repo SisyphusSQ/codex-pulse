@@ -39,6 +39,18 @@ func DefaultQuotaArbitrationRule() QuotaArbitrationRule {
 	}
 }
 
+// QuotaResetsEquivalent reports whether two reset instants identify the same
+// logical quota generation after accounting for bounded source timestamp jitter.
+func QuotaResetsEquivalent(leftAtMS, rightAtMS int64) bool {
+	if leftAtMS < 0 || rightAtMS < 0 {
+		return false
+	}
+	if leftAtMS < rightAtMS {
+		leftAtMS, rightAtMS = rightAtMS, leftAtMS
+	}
+	return leftAtMS-rightAtMS <= quotaResetJitterMS
+}
+
 func arbitrateQuotaWindowWithSourceStates(
 	observations []QuotaObservation,
 	evaluatedAtMS int64,
@@ -359,7 +371,7 @@ func classifyQuotaGenerations(
 			activeLatestFirstObserved = observation.FirstObservedAtMS
 		case observation.ResetsAtMS < activeReset:
 			if observation.WindowMinutes == activeMinutes &&
-				activeReset-observation.ResetsAtMS <= quotaResetJitterMS {
+				QuotaResetsEquivalent(activeReset, observation.ResetsAtMS) {
 				// Wham 的滑动窗口 reset_at 会在相邻采样间出现数秒取整抖动。
 				// 把它归入已知的同一窗口，避免把可信倒计时反复降级为 suspicious。
 				observation.ResetsAtMS = activeReset
@@ -404,8 +416,7 @@ func quotaKnownGenerationReset(
 	}
 	canonical := int64(-1)
 	for knownReset := range knownResets {
-		if knownReset < resetAtMS && resetAtMS-knownReset > quotaResetJitterMS ||
-			knownReset > resetAtMS && knownReset-resetAtMS > quotaResetJitterMS {
+		if !QuotaResetsEquivalent(knownReset, resetAtMS) {
 			continue
 		}
 		if knownReset > canonical {

@@ -163,6 +163,19 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
                 type: .unary
             )
         }
+        /// Namespace for "QuotaPace" metadata.
+        public enum QuotaPace: Sendable {
+            /// Request type for "QuotaPace".
+            public typealias Input = Codexpulse_Core_V1_QuotaPaceRequest
+            /// Response type for "QuotaPace".
+            public typealias Output = Codexpulse_Core_V1_QuotaPaceResponse
+            /// Descriptor for "QuotaPace".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "QuotaPace",
+                type: .unary
+            )
+        }
         /// Namespace for "RequestQuotaRefresh" metadata.
         public enum RequestQuotaRefresh: Sendable {
             /// Request type for "RequestQuotaRefresh".
@@ -501,6 +514,7 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
             ListProjects.descriptor,
             ProjectDetail.descriptor,
             QuotaCurrent.descriptor,
+            QuotaPace.descriptor,
             RequestQuotaRefresh.descriptor,
             ListSources.descriptor,
             Source.descriptor,
@@ -756,6 +770,25 @@ extension Codexpulse_Core_V1_CoreService {
             deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_QuotaCurrentResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_QuotaCurrentResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "QuotaPace" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_QuotaPaceRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_QuotaPaceRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_QuotaPaceResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func quotaPace<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_QuotaPaceRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_QuotaPaceRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_QuotaPaceResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_QuotaPaceResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
         /// Call the "RequestQuotaRefresh" method.
@@ -1577,6 +1610,36 @@ extension Codexpulse_Core_V1_CoreService {
             try await self.client.unary(
                 request: request,
                 descriptor: Codexpulse_Core_V1_CoreService.Method.QuotaCurrent.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "QuotaPace" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_QuotaPaceRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_QuotaPaceRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_QuotaPaceResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func quotaPace<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_QuotaPaceRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_QuotaPaceRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_QuotaPaceResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_QuotaPaceResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.QuotaPace.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -2612,6 +2675,31 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
         )
     }
 
+    /// Call the "QuotaPace" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_QuotaPaceRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func quotaPace<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_QuotaPaceRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_QuotaPaceResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.quotaPace(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_QuotaPaceRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_QuotaPaceResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "RequestQuotaRefresh" method.
     ///
     /// - Parameters:
@@ -3552,6 +3640,35 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
             metadata: metadata
         )
         return try await self.quotaCurrent(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "QuotaPace" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func quotaPace<Result>(
+        _ message: Codexpulse_Core_V1_QuotaPaceRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_QuotaPaceResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_QuotaPaceRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.quotaPace(
             request: request,
             options: options,
             onResponse: handleResponse
