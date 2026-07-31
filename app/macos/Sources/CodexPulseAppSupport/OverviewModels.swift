@@ -307,6 +307,7 @@ public struct UsageModelTrendSegment: Equatable, Identifiable, Sendable {
 public struct UsageModelTrendBucket: Equatable, Identifiable, Sendable {
     public let id: String
     public let key: String
+    public let startAtMS: Int64?
     public let totalTokens: Int64
     public let tokenBreakdown: TokenBreakdownPresentation
     public let segments: [UsageModelTrendSegment]
@@ -314,6 +315,7 @@ public struct UsageModelTrendBucket: Equatable, Identifiable, Sendable {
 
     public init(
         key: String,
+        startAtMS: Int64? = nil,
         totalTokens: Int64,
         tokenBreakdown: TokenBreakdownPresentation,
         segments: [UsageModelTrendSegment],
@@ -321,6 +323,7 @@ public struct UsageModelTrendBucket: Equatable, Identifiable, Sendable {
     ) {
         self.id = key
         self.key = key
+        self.startAtMS = startAtMS
         self.totalTokens = totalTokens
         self.tokenBreakdown = tokenBreakdown
         self.segments = segments
@@ -427,6 +430,7 @@ public enum UsageModelTrendResolver {
             }
             return UsageModelTrendBucket(
                 key: point.key,
+                startAtMS: point.startAtMs.hasValue ? point.startAtMs.value : nil,
                 totalTokens: totalTokens,
                 tokenBreakdown: TokenBreakdownPresentation(point.totals),
                 segments: segments,

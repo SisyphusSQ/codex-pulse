@@ -1,61 +1,68 @@
 # Codex Pulse
 
-**看清 Codex 在本机如何消耗、额度还剩多少，以及当前数据是否可信。**
+**看清 Codex 在本机如何消耗、额度还剩多少，以及当前数据是否可用。**
 
-Codex Pulse 是一款 local-first 的原生 macOS 应用。它把 Codex 分散在本机会话、用量记录和额度窗口中的信息整理成菜单栏状态与可下钻的分析界面，帮助你快速定位高消耗项目和 Session，同时持续说明数据的新鲜度、完整性与健康状态。
+Codex Pulse 是一款 local-first 的原生 macOS 应用：把 Codex 分散在本机会话、用量记录和额度窗口中的信息，整理成菜单栏状态与可下钻的分析界面，同时说明数据的新鲜度、完整性与健康状态。
 
-> 项目仍在积极开发中。目前面向 macOS 15+ / Apple Silicon，主要通过源码构建和本机验收，暂未提供正式签名、公证的发行版。
+![Codex Pulse 概览中的额度、年度活动热力图与项目消耗，动态数据已脱敏](docs/assets/codex-pulse-overview-redacted.png)
 
-## 它能回答什么
+*基于真实 Codex Home 的界面截取；侧栏和通用产品文案保留，账号、项目、Session、模型、数值、日期和运行时明细均已不可逆脱敏，图表的形态、颜色与布局保留。*
 
-- 当前额度还剩多少，何时重置，这个数值是否仍然可信；
-- 今天或最近一段时间用了多少 Token，主要消耗在哪些模型、项目和 Session；
-- 某个 Session 的使用量、API 等价成本和 Turn 时间线是什么；
-- 本地历史是否索引完整，后台任务是否正常，哪些异常正在影响数据；
-- 数据来自本地还是可选在线接口，失败后界面展示的是最新值、上次可信值还是未知状态。
+## 主要功能
 
-## 产品体验
+- **菜单栏**：查看额度、重置时间和健康提醒。
+- **用量分析**：在概览、会话和项目页面查看 Token、模型、API 等价成本与活动分布。
+- **数据状态**：查看额度来源、本机索引和后台任务的状态，了解统计结果是否完整。
+
+## 功能概览
 
 | 区域 | 你可以看到什么 |
 | --- | --- |
-| 菜单栏 | 额度剩余、同一额度周期内的累计 Token、重置时间与必要的健康提醒，无需打开主窗口 |
-| 概览 | 周额度、今天、最近 7 天或 30 天的 Token 趋势与活动分布、星期小时热力图、按模型拆分、API 等价成本和高消耗 Session |
-| 会话 | Session 的项目、模型、活跃状态、Token、成本与不含对话正文的 Turn 用量时间线 |
-| 项目 | 按项目聚合的用量与成本排行，并继续下钻到相关 Session |
-| 配额 | 通用额度与模型专属额度的真实周期、剩余比例、重置倒计时、Reset credits 和来源状态 |
-| 本机状态 | 数据完整性、历史补齐进度、索引新鲜度、后台任务、SQLite、存储与最近运行情况 |
-| 设置 | Codex Home、在线额度能力、刷新周期、登录时启动、启动行为、概览范围和更新偏好 |
+| 菜单栏 | 额度剩余、累计 Token、重置时间和健康提醒 |
+| 概览、会话与项目 | 趋势和热力图、模型与成本拆分、高消耗 Session，以及项目关联的 Session |
+| 状态与设置 | 额度周期和来源、索引进度和新鲜度、后台任务、本机存储和设置 |
 
-主窗口采用“概览 → 会话 → 项目 → 配额”的分析路径；运行诊断、数据来源和设置收拢在系统区域。菜单栏负责快速判断，主窗口负责解释消耗去了哪里，本机状态负责说明数据为什么可信或为什么暂时不可用。
+主窗口包括概览、会话、项目和配额页面；运行诊断、数据来源和设置位于系统区域。菜单栏用于查看当前状态，主窗口用于查看用量明细和数据状态。
 
-## 不把未知伪装成正常
+## 产品界面
 
-额度和用量工具最容易产生误导的地方，不是没有数据，而是把失败后的默认值当成真实结果。Codex Pulse 对此使用明确的展示语义：
+以下界面均基于真实 Codex Home 截取，并使用相同的脱敏规则：固定导航和产品文案可读，项目、会话、模型、数值、成本与时间等动态数据均已不可逆处理。
+
+### 概览：趋势与活动分布
+
+![Codex Pulse 概览中的 Token 趋势、活动分布与高消耗会话，动态数据已脱敏](docs/assets/codex-pulse-activity-redacted.png)
+
+### 菜单栏
+
+<p align="center">
+  <img src="docs/assets/codex-pulse-popover-redacted.png" alt="Codex Pulse 菜单栏 Popover，动态数据已脱敏" width="420">
+</p>
+
+### 项目列表与详情
+
+![Codex Pulse 项目页面中的列表、趋势、模型与会话下钻，动态数据已脱敏](docs/assets/codex-pulse-projects-redacted.png)
+
+## 数值不确定时
+
+额度和用量工具最容易产生误导的地方，不是没有数据，而是把获取失败后的默认值当成真实结果。Codex Pulse 使用以下显示规则：
 
 - `0%` 只表示已经确认耗尽；从未取得、尚未计算或当前不适用时显示 `--`；
-- 在线刷新失败但仍有可信历史观测时，继续展示 last-known-good，而不是突然变成 100%；
+- 在线刷新失败但已有上次成功获取的数据时，继续展示 last-known-good，而不是突然变成 100%；
 - 时间范围尚未索引完整时标记为“部分数据”，不把局部结果冒充完整统计；
 - 额度名称与周期来自当前数据，例如按真实 `window_minutes` 生成周期标签，不硬编码“5 小时额度”；
 - 金额始终标为“API 等价成本”，用于理解 Token 对应的公开 API 价格量级，不代表真实账单或实际扣费。
 
 ## Local-first 与隐私
 
-Codex Pulse 的分析链路运行在本机：
+所有分析都在本机完成：
 
-- 只读发现和增量索引 Codex 本地 Session 数据，结构化结果保存在本机 SQLite；
-- 不复制完整对话正文，不持久化工具输出、access token、refresh token、Authorization header 或 RPC token；
-- 在线 quota 与 Reset credits 是可关闭的独立能力，凭证仅在请求期间进入内存；
-- 不提供云同步或公网访问，Swift App 与 Go Helper 只通过私有 Unix Domain Socket 通信；
-- 日志、公开错误和 UI contract 不返回原始 payload、完整路径或底层错误文本。
+- 只读发现和增量索引本地 Session，结构化结果只保存在本机 SQLite；不复制完整对话正文，也不持久化 token、Authorization header 或 RPC token。
+- 在线 quota 与 Reset credits 可以关闭，凭证仅在请求期间进入内存；不提供云同步或公网访问。
+- Swift App 与 Go Helper 只通过私有 Unix Domain Socket 通信；日志、错误和 UI 返回值不包含原始 payload、完整路径或底层错误。
 
 Codex 原始文件仍由 Codex 自己管理。Codex Pulse 只保存产品功能所需的索引、统计和运行状态，不修改原始 Session 内容。
 
-首次启动且尚无应用偏好时，Go Helper 会自动选择
-`${CODEX_HOME:-$HOME/.codex}`，先执行不读取会话正文的 metadata-only 安全探测，
-再保存 canonical path、稳定卷 UUID 和 inode；这一默认来源不要求用户手工确认。
-稳定卷 UUID 不依赖 Darwin 挂载期 `st_dev`，因此系统重启不会让同一 Home 被误判为替换目录。
-默认目录不存在或未通过安全探测时，应用保持未配置且不开始索引。之后更换为
-其他 Codex Home 仍需在设置中显式确认。
+首次启动时，Go Helper 会对 `${CODEX_HOME:-$HOME/.codex}` 做不读取会话正文的 metadata-only 安全探测，并保存稳定身份；目录不存在或探测失败时保持未配置、不开始索引。之后更换 Codex Home 仍需在设置中显式确认。
 
 ## 工作原理
 
@@ -71,7 +78,7 @@ Codex 本地数据 / 可选在线额度
    Swift App：菜单栏、窗口、交互与 Helper 生命周期
 ```
 
-[`api/codexpulse/core/v1/core.proto`](api/codexpulse/core/v1/core.proto) 是唯一跨进程 contract。Go Helper 负责数据和业务口径，Swift App 只消费 generated CoreService，不直接读取 SQLite 或 JSONL，也不在 UI 层重新计算业务事实。
+[`api/codexpulse/core/v1/core.proto`](api/codexpulse/core/v1/core.proto) 定义了跨进程接口。Go Helper 负责读取、索引和汇总数据；Swift App 通过 generated CoreService 调用 Helper，不直接读取 SQLite 或 JSONL，也不在 UI 层重新汇总数据。
 
 ## 从源码运行
 
@@ -82,17 +89,17 @@ Codex 本地数据 / 可选在线额度
 - Go 1.25
 - `protoc 34.1`
 
-本地产品验收使用真实 `${CODEX_HOME:-$HOME/.codex}`。下面的命令会只读 Session / JSONL，并可能在私有 App runtime 中写入 SQLite、偏好、运行日志和 App Server 的常规 housekeeping；不会修改原始 Session 内容：
+本地运行使用真实 `${CODEX_HOME:-$HOME/.codex}`。下面的命令会只读 Session / JSONL，并可能在私有 App runtime 中写入 SQLite、偏好、运行日志和 App Server 的常规 housekeeping；不会修改原始 Session 内容：
 
 ```bash
 make verify-live
 ```
 
-`make verify-live` 会构建 development App、复用已确认的私有 runtime，并启动真实 Home 验收。CI、单元测试和确定性 smoke 则使用 synthetic / empty Home，避免读取个人数据。
+`make verify-live` 会构建 development App、复用已确认的私有 runtime，并使用真实 Home 启动应用。CI、单元测试和确定性 smoke 使用 synthetic / empty Home，避免读取个人数据。
 
 ## 开发与验证
 
-日常开发优先运行受影响的 Go package 或 Swift executable tests。统一入口如下：
+日常开发优先运行受影响的 Go package 或 Swift executable tests。常用命令如下：
 
 ```bash
 # Go / Swift 分项测试
@@ -114,7 +121,7 @@ scripts/macos/build-release-app.sh \
   --sparkle-public-key-file \
     /secure/path/codex-pulse-sparkle-public.key
 
-# contract 修改后重新生成 Go / Swift 代码
+# 修改 Proto 后重新生成 Go / Swift 代码
 make generate-proto
 ```
 
@@ -132,17 +139,17 @@ stable 发行必须具备 Developer ID 签名、公证和对应安装验证。
 | 路径 | 职责 |
 | --- | --- |
 | [`app/macos/`](app/macos/) | 原生 SwiftUI / AppKit 应用、Core client 与 executable tests |
-| [`api/codexpulse/core/v1/`](api/codexpulse/core/v1/) | Protobuf contract 与生成代码 |
+| [`api/codexpulse/core/v1/`](api/codexpulse/core/v1/) | Protobuf 接口定义与生成代码 |
 | [`internal/`](internal/) | Go Helper 的索引、查询、调度、持久化和运行时实现 |
 | [`docs/design/`](docs/design/) | 产品、架构、数据、额度、调度与可观测性设计 |
-| [`docs/test/`](docs/test/) | 可复用验收 runbook 与脱敏结果摘要 |
+| [`docs/test/`](docs/test/) | 测试说明和脱敏结果摘要 |
 
 更多细节从以下文档开始：
 
 - [产品设计](docs/design/details/product/README.md)
 - [系统架构](docs/design/details/architecture/README.md)
 - [数据模型](docs/design/details/data-model/README.md)
-- [额度可信模型](docs/design/details/quota/README.md)
+- [额度数据说明](docs/design/details/quota/README.md)
 - [调度与首次索引](docs/design/details/scheduling-and-bootstrap/README.md)
 
 ## License
