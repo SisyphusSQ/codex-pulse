@@ -26,12 +26,9 @@
 
 当时使用聚焦 Go race、Wails frontend、全仓 Go/vet、架构检查与 diff gate 共同验证。对应 package 与 frontend 已退役，不能从当前 checkout 直接重跑；当前原生架构使用 `make check` / `make verify`。
 
-浏览器视觉验证使用 ignored `.artifacts/runs/too-288-popover-qa/capture.mjs`，短暂启动只监听 `127.0.0.1:9245` 的 Vite server，并把固定 420×760 结果写入：
+浏览器视觉验证使用 ignored `.artifacts/runs/too-288-popover-qa/capture.mjs`，短暂启动只监听 `127.0.0.1:9245` 的 Vite server，并生成固定 420×760 的合成结果。历史图片素材已从仓库清理；本页保留可复现入口、尺寸和结论。
 
-- [secondary-only.png](evidence/secondary-only.png)
-- [primary-restored.png](evidence/primary-restored.png)
-
-该 browser probe 只验证 Vue 内容、尺寸、焦点入口和动态窗口。隔离 native probe 当时使用 ignored HOME/TMP、package 内真实进程和状态项 `AXPress`，修复了 `NSStatusBarButton` 截获子 view `mouseDown` 导致真实点击不弹窗的问题；修复后由 button target/action 与 custom view VoiceOver press 共用同一有限 callback。对应 replay 已随 Wails runtime 退役，提交版截图继续作为历史证据保留。
+该 browser probe 只验证 Vue 内容、尺寸、焦点入口和动态窗口。隔离 native probe 当时使用 ignored HOME/TMP、package 内真实进程和状态项 `AXPress`，修复了 `NSStatusBarButton` 截获子 view `mouseDown` 导致真实点击不弹窗的问题；修复后由 button target/action 与 custom view VoiceOver press 共用同一有限 callback。对应 replay 已随 Wails runtime 退役，提交版文档继续作为历史文字证据保留。
 
 真实 AppKit 多显示器几何、右键菜单及完整 VoiceOver 回归由 `TOO-290` 覆盖，不从单屏 evidence 外推。
 

@@ -27,13 +27,13 @@ go run ./cmd/traystatusprobe --output docs/test/m9-e3/evidence
 
 probe 只注入合成额度与健康状态，不读取真实 HOME、凭据或本地数据库。2026-07-18 在 macOS 26.5.2 arm64、Wails `v3.0.0-alpha2.117` 上得到：
 
-| 场景 | 可访问文本 | 证据 |
+| 场景 | 可访问文本 | 合成 probe 读回 |
 | --- | --- | --- |
-| 当前 secondary-only | `本周剩余 71%，数据可信`，无“5 小时” | [secondary-only.png](evidence/secondary-only.png) |
-| 未来双窗口 + conflict + blocked | `5 小时剩余 55%，本周剩余 71%，数据冲突，健康受阻` | [dual-conflict-blocked.png](evidence/dual-conflict-blocked.png) |
-| 无额度窗口 + blocked | `数据不可用，健康受阻`；仍显示品牌 glyph 与独立红点 | [unavailable-blocked.png](evidence/unavailable-blocked.png) |
+| 当前 secondary-only | `本周剩余 71%，数据可信`，无“5 小时” | PASS |
+| 未来双窗口 + conflict + blocked | `5 小时剩余 55%，本周剩余 71%，数据冲突，健康受阻` | PASS |
+| 无额度窗口 + blocked | `数据不可用，健康受阻`；仍显示品牌 glyph 与独立红点 | PASS |
 
-PNG 为原生 custom view 自身的确定性 bitmap readback，不包含用户菜单栏或桌面内容。冻结稿的 252px Retina 宽度读回为 126pt 视图；实际高度由系统 status bar button 决定。
+当时的确定性 bitmap readback 不包含用户菜单栏或桌面内容；截图素材已从仓库清理，保留本页的合成输入、可访问文本和读回结论。冻结稿的 252px Retina 宽度读回为 126pt 视图；实际高度由系统 status bar button 决定。
 
 ## 结果
 

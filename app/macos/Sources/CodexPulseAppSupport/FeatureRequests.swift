@@ -71,7 +71,7 @@ public enum FeatureRequestFactory {
     ) -> Codexpulse_Core_V1_UsageCostRequest {
         var request = Codexpulse_Core_V1_UsageCostRequest()
         request.range = localDateRange(preset == .all ? .thirtyDays : preset, now: now, calendar: calendar)
-        request.granularity = "day"
+        request.granularity = preset == .today ? "hour" : "day"
         return request
     }
 

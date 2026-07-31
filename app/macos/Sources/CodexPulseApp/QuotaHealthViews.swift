@@ -60,7 +60,7 @@ struct QuotaUsageView: View {
         FeatureStateView(
             state: model.usageState, emptyTitle: "当前范围暂无用量记录", emptySystemImage: "chart.xyaxis.line"
         ) {
-            UsageContentView(response: $0)
+            UsageContentView(response: $0, preset: model.usageRange)
         }
     }
 
@@ -190,17 +190,42 @@ private func quotaRemainingColor(_ value: Double?) -> Color {
     }
 }
 
+private struct DatedTrendBucket: Identifiable {
+    let bucket: UsageModelTrendBucket
+    let date: Date
+
+    var id: String { bucket.id }
+}
+
 private struct UsageContentView: View {
     let response: Codexpulse_Core_V1_UsageCostResponse
-    @State private var selectedTrendKey: String?
+    let preset: DateRangePreset
+    @State private var selectedTrendDate: Date?
 
     private var trendBuckets: [UsageModelTrendBucket] {
         UsageModelTrendResolver.buckets(response)
     }
 
+    private var chartPresentation: UsageTrendChartPresentation? {
+        UsageTrendChartPresentation(preset: preset, range: response.range)
+    }
+
+    private var datedTrendBuckets: [DatedTrendBucket] {
+        trendBuckets.compactMap { bucket in
+            guard let startAtMS = bucket.startAtMS else { return nil }
+            return DatedTrendBucket(
+                bucket: bucket,
+                date: Date(timeIntervalSince1970: TimeInterval(startAtMS) / 1_000)
+            )
+        }
+    }
+
     private var selectedTrendBucket: UsageModelTrendBucket? {
-        guard let selectedTrendKey else { return nil }
-        return trendBuckets.first { $0.key == selectedTrendKey }
+        guard let selectedTrendDate else { return nil }
+        return datedTrendBuckets.min {
+            abs($0.date.timeIntervalSince(selectedTrendDate))
+                < abs($1.date.timeIntervalSince(selectedTrendDate))
+        }?.bucket
     }
 
     var body: some View {
@@ -242,38 +267,49 @@ private struct UsageContentView: View {
                     Divider()
                 }
             }
-            SectionCard(title: "每日趋势") {
-                if trendBuckets.isEmpty {
+            SectionCard(title: chartPresentation?.sectionTitle ?? "用量趋势") {
+                if datedTrendBuckets.isEmpty {
                     Text("当前范围没有趋势点。")
                         .foregroundStyle(.secondary)
-                } else {
+                } else if let chartPresentation {
                     Chart {
-                        ForEach(trendBuckets) { bucket in
-                            ForEach(bucket.segments) { segment in
+                        ForEach(datedTrendBuckets) { datedBucket in
+                            ForEach(datedBucket.bucket.segments) { segment in
                                 BarMark(
-                                    x: .value("日期", segment.bucketKey),
-                                    y: .value("Token", segment.tokens)
+                                    x: .value("时间", datedBucket.date),
+                                    y: .value("Token", segment.tokens),
+                                    width: .fixed(preset == .sevenDays ? 96 : 24)
                                 )
                                 .foregroundStyle(by: .value("模型", segment.modelName))
                                 .cornerRadius(3)
-                                .accessibilityLabel("\(segment.bucketKey) · \(segment.modelName)")
+                                .accessibilityLabel(
+                                    "\(chartPresentation.detailText(for: datedBucket.date)) · \(segment.modelName)"
+                                )
                                 .accessibilityValue("\(TokenQuantityFormatter.string(segment.tokens)) Token")
                             }
                         }
-                        if let selected = selectedTrendBucket {
-                            RuleMark(x: .value("选中日期", selected.key))
-                                .foregroundStyle(Color.secondary.opacity(0.55))
-                                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                                .annotation(
-                                    position: .top,
-                                    alignment: .leading,
-                                    spacing: 8,
-                                    overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
-                                ) {
-                                    selectedTrendDetail(selected)
-                                }
+                        if let selected = selectedTrendBucket,
+                           let startAtMS = selected.startAtMS
+                        {
+                            RuleMark(
+                                x: .value(
+                                    "选中时间",
+                                    Date(timeIntervalSince1970: TimeInterval(startAtMS) / 1_000)
+                                )
+                            )
+                            .foregroundStyle(Color.secondary.opacity(0.55))
+                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                            .annotation(
+                                position: .top,
+                                alignment: .leading,
+                                spacing: 8,
+                                overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
+                            ) {
+                                selectedTrendDetail(selected, chartPresentation: chartPresentation)
+                            }
                         }
                     }
+                    .chartXScale(domain: chartPresentation.domain)
                     .chartYAxis {
                         AxisMarks(position: .trailing) { value in
                             AxisGridLine().foregroundStyle(.quaternary)
@@ -284,8 +320,26 @@ private struct UsageContentView: View {
                             }
                         }
                     }
+                    .chartXAxis {
+                        AxisMarks(values: chartPresentation.axisTicks) { value in
+                            AxisGridLine().foregroundStyle(.quaternary)
+                            AxisTick()
+                            switch chartPresentation.granularity {
+                            case .hour:
+                                AxisValueLabel(
+                                    format: .dateTime.hour().minute(),
+                                    anchor: .top
+                                )
+                            case .day:
+                                AxisValueLabel(
+                                    format: .dateTime.month().day(),
+                                    anchor: .top
+                                )
+                            }
+                        }
+                    }
                     .chartLegend(position: .bottom, alignment: .leading, spacing: 12)
-                    .chartXSelection(value: $selectedTrendKey)
+                    .chartXSelection(value: $selectedTrendDate)
                     .chartOverlay { proxy in
                         GeometryReader { geometry in
                             Rectangle()
@@ -295,27 +349,30 @@ private struct UsageContentView: View {
                                     switch phase {
                                     case .active(let location):
                                         guard let plotFrame = proxy.plotFrame else {
-                                            selectedTrendKey = nil
+                                            selectedTrendDate = nil
                                             return
                                         }
                                         let plotRect = geometry[plotFrame]
                                         guard plotRect.contains(location) else {
-                                            selectedTrendKey = nil
+                                            selectedTrendDate = nil
                                             return
                                         }
-                                        selectedTrendKey = proxy.value(
+                                        selectedTrendDate = proxy.value(
                                             atX: location.x - plotRect.origin.x,
-                                            as: String.self
+                                            as: Date.self
                                         )
                                     case .ended:
-                                        selectedTrendKey = nil
+                                        selectedTrendDate = nil
                                     }
                                 }
                         }
                     }
                     .frame(height: 220)
-                    .onChange(of: response.range.startAtMs) { _, _ in selectedTrendKey = nil }
-                    .onChange(of: response.range.endAtMs) { _, _ in selectedTrendKey = nil }
+                    .onChange(of: response.range.startAtMs) { _, _ in selectedTrendDate = nil }
+                    .onChange(of: response.range.endAtMs) { _, _ in selectedTrendDate = nil }
+                } else {
+                    Text("趋势时间范围不可用。")
+                        .foregroundStyle(.secondary)
                 }
             }
             if !response.unpricedReasons.isEmpty {
@@ -328,10 +385,20 @@ private struct UsageContentView: View {
         }
     }
 
-    private func selectedTrendDetail(_ bucket: UsageModelTrendBucket) -> some View {
+    private func selectedTrendDetail(
+        _ bucket: UsageModelTrendBucket,
+        chartPresentation: UsageTrendChartPresentation
+    ) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(bucket.key)
+            if let startAtMS = bucket.startAtMS {
+                Text(chartPresentation.detailText(
+                    for: Date(timeIntervalSince1970: TimeInterval(startAtMS) / 1_000)
+                ))
                 .font(.caption.weight(.semibold))
+            } else {
+                Text(bucket.key)
+                    .font(.caption.weight(.semibold))
+            }
             TokenBreakdownView(tokens: bucket.tokenBreakdown, style: .compact)
             if bucket.breakdownAvailable {
                 Divider()

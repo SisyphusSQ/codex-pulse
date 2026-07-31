@@ -434,14 +434,84 @@ private func testUsageChartStacksModelsWithLocalizedHoverDetails() throws {
         "usage chart must stack real model buckets instead of repeating the overall total")
     try expect(
         source.contains("TokenQuantityFormatter.compactString")
-            && source.contains("AxisValueLabel {")
-            && !source.contains("AxisValueLabel(format:"),
+            && source.contains("AxisValueLabel {"),
         "usage chart axis must use localized Token units instead of scientific notation")
     try expect(
-        source.contains(".chartXSelection(value: $selectedTrendKey)")
+        source.contains(".chartXSelection(value: $selectedTrendDate)")
             && source.contains("selectedTrendDetail")
-            && source.contains("RuleMark("),
+            && source.contains("RuleMark(")
+            && source.contains(".chartXScale(domain: chartPresentation.domain)"),
         "usage chart must expose pointer-selected per-model details")
+    try expect(
+        source.contains("width: .fixed(preset == .sevenDays ? 96 : 24)"),
+        "seven-day usage charts must use an explicit readable width on the continuous date axis")
+    try expect(
+        source.contains("anchor: .top"),
+        "usage chart date labels must center on their corresponding time bucket")
+}
+
+private func testUsageTrendChartPresentationAdaptsRangeAndDensity() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    guard let timeZone = TimeZone(identifier: "Asia/Shanghai") else {
+        throw TestFailure.mismatch("Asia/Shanghai timezone was unavailable")
+    }
+    calendar.timeZone = timeZone
+    guard let start = calendar.date(from: DateComponents(
+        year: 2026, month: 7, day: 1, hour: 0
+    )), let todayEnd = calendar.date(from: DateComponents(
+        year: 2026, month: 7, day: 1, hour: 14, minute: 30
+    )), let thirtyDayEnd = calendar.date(byAdding: .day, value: 29, to: todayEnd) else {
+        throw TestFailure.mismatch("test range dates were unavailable")
+    }
+
+    var todayRange = Codexpulse_Core_V1_UTCTimeRange()
+    todayRange.startAtMs = Int64(start.timeIntervalSince1970 * 1_000)
+    todayRange.endAtMs = Int64(todayEnd.timeIntervalSince1970 * 1_000)
+    todayRange.timeZone = "Asia/Shanghai"
+    guard let hourly = UsageTrendChartPresentation(preset: .today, range: todayRange) else {
+        throw TestFailure.mismatch("today usage chart presentation was rejected")
+    }
+    try expect(hourly.sectionTitle == "每小时趋势", "today must use an hourly chart title")
+    try expect(
+        hourly.axisTicks.map { hourly.axisText(for: $0) }
+            == ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"],
+        "today must expose a readable 24-hour axis"
+    )
+    try expect(
+        hourly.domain.lowerBound == calendar.date(byAdding: .minute, value: -30, to: start)
+            && hourly.domain.upperBound == calendar.date(byAdding: .minute, value: 30, to: calendar.date(
+                byAdding: .hour, value: 23, to: start
+            )!),
+        "today must leave half an hour at either edge so hourly columns are not clipped"
+    )
+
+    var thirtyDayRange = todayRange
+    thirtyDayRange.endAtMs = Int64(thirtyDayEnd.timeIntervalSince1970 * 1_000)
+    guard let daily = UsageTrendChartPresentation(preset: .thirtyDays, range: thirtyDayRange) else {
+        throw TestFailure.mismatch("thirty-day usage chart presentation was rejected")
+    }
+    try expect(daily.sectionTitle == "每日趋势", "multi-day ranges must remain daily")
+    try expect(
+        daily.axisTicks.count <= 7 && daily.axisTicks.first == start,
+        "thirty-day charts must cap date labels while retaining the first day"
+    )
+    try expect(
+        daily.domain.lowerBound == calendar.date(byAdding: .hour, value: -12, to: start)
+            && daily.domain.upperBound == calendar.date(byAdding: .hour, value: 12, to: calendar.date(
+                byAdding: .day, value: 29, to: start
+            )!),
+        "daily charts must leave half a day at either edge without creating an extra date"
+    )
+
+    let requestNow = Date(timeIntervalSince1970: 1_785_137_400)
+    try expect(
+        FeatureRequestFactory.usage(range: .today, now: requestNow, calendar: calendar).granularity == "hour",
+        "today usage requests must ask the helper for hourly buckets"
+    )
+    try expect(
+        FeatureRequestFactory.usage(range: .thirtyDays, now: requestNow, calendar: calendar).granularity == "day",
+        "thirty-day usage requests must remain daily"
+    )
 }
 
 private func testSessionTrendPresentationAdaptsGranularityAndReportingTimezone() throws {
@@ -7193,6 +7263,7 @@ struct CodexPulseAppTestMain {
         try testToolbarSeparatesCurrentReloadFromGlobalReload()
         try testWeeklyOverviewTrendUsesDailyAxisAndRangeCopy()
         try testUsageChartStacksModelsWithLocalizedHoverDetails()
+        try testUsageTrendChartPresentationAdaptsRangeAndDensity()
         try testSessionTrendPresentationAdaptsGranularityAndReportingTimezone()
         try testSessionAndProjectDetailsShareResponsiveThirdWidthSplit()
         try await testFeatureRefreshRetainsNativeContentIdentity()
