@@ -225,8 +225,8 @@
 "用量变化不足，暂无法预测" = "Not enough usage change to forecast";
 "quota.pace.evidence" = "%@ · span %@";
 "quota.pace.comparison.same" = "About the same as %@";
-"quota.pace.comparison.more" = "%lld%% more than %@";
-"quota.pace.comparison.less" = "%lld%% less than %@";
+"quota.pace.comparison.more" = "%2$lld%% more than %1$@";
+"quota.pace.comparison.less" = "%2$lld%% less than %1$@";
 
 /* Native App surface copy. */
 "API 折算成本" = "API-equivalent cost";
