@@ -10,6 +10,19 @@
 
 #### script:
 
+## v0.2.2 - 2026-08-01
+
+#### feature:
+
+#### optimization:
+
+#### bugFix:
+1. [PR #100] 修复额度成功恢复后 `auth_required` 状态下的 Reset Credits 未在下一调度周期唤醒的问题；分离额度与重置次数的刷新状态、错误提示和任务键，并为真实 HTTP 401/403 提供有限恢复窗口，本地缺少凭据时继续保持 `auth_required` 暂停
+
+#### note:
+
+#### script:
+
 ## v0.2.0 - 2026-07-31
 
 #### feature:
