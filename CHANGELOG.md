@@ -10,6 +10,21 @@
 
 #### script:
 
+## v0.3.0 - 2026-08-01
+
+#### feature:
+1. [PR #101] 补全中英文界面、侧栏和 Token 单位本地化，增加语言偏好与 locale 传递，并提供中英文 README
+
+#### optimization:
+
+#### bugFix:
+
+#### note:
+1. [PR #101] 将 Go 指令更新到 1.26.2，并同步更新开发与验证文档
+
+#### script:
+1. 将 stable 默认发行策略调整为 `unsigned`，保留 ad-hoc 资产完整性、Sparkle、signed tag、Release、appcast 和公开读回门禁
+
 ## v0.2.2 - 2026-08-01
 
 #### feature:
