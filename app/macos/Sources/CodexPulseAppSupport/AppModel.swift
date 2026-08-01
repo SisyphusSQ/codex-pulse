@@ -39,7 +39,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
 }
 
 private enum FeatureTaskKey: Hashable {
-    case usage, pricingCatalog, quota, quotaPace, quotaRefresh
+    case usage, pricingCatalog, quota, quotaPace, quotaRefresh, resetCreditsRefresh
     case runtimeAction
     case sessions, sessionDetail
     case projects, projectDetail
@@ -50,7 +50,7 @@ private enum FeatureTaskKey: Hashable {
 
     var isRead: Bool {
         switch self {
-        case .quotaRefresh, .runtimeAction, .settingsSave:
+        case .quotaRefresh, .resetCreditsRefresh, .runtimeAction, .settingsSave:
             false
         default:
             true
@@ -82,6 +82,7 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var quotaPaceState:
         FeatureLoadState<Codexpulse_Core_V1_QuotaPaceResponse> = .idle
     @Published public private(set) var quotaRefreshState: ActionState = .idle
+    @Published public private(set) var resetCreditsRefreshState: ActionState = .idle
     @Published public private(set) var runtimeActionState: ActionState = .idle
     @Published public private(set) var sessionsState: FeatureLoadState<Codexpulse_Core_V1_SessionListResponse> = .idle
     @Published public private(set) var sessionDetailState: FeatureLoadState<Codexpulse_Core_V1_SessionDetailResponse> = .idle
@@ -646,19 +647,48 @@ public final class AppModel: ObservableObject {
     }
 
     public func requestQuotaRefresh(source: String) {
+        guard let taskKey = refreshTaskKey(source: source) else { return }
         guard canRefreshOrRestart else { return }
-        if case .running = quotaRefreshState { return }
-        quotaRefreshState = .running
-        launch(.quotaRefresh, operation: { [runtime] in
+        if isRefreshRunning(source: source) { return }
+        setRefreshState(.running, source: source)
+        launch(taskKey, operation: { [runtime] in
             try await runtime.requestQuotaRefresh(source: source)
         }) { [weak self] receipt in
             guard let self else { return }
-            quotaRefreshState = .succeeded(receipt.reason)
+            setRefreshState(.succeeded(receipt.reason), source: source)
             let now = Date()
             loadQuota(now: now)
             loadQuotaPace(now: now)
         } failure: { [weak self] error in
-            self?.quotaRefreshState = .unavailable(AppNotice.from(error))
+            self?.setRefreshState(.unavailable(AppNotice.from(error)), source: source)
+        }
+    }
+
+    private func refreshTaskKey(source: String) -> FeatureTaskKey? {
+        switch source {
+        case "quota": .quotaRefresh
+        case "reset_credits": .resetCreditsRefresh
+        default: nil
+        }
+    }
+
+    private func isRefreshRunning(source: String) -> Bool {
+        switch source {
+        case "quota":
+            if case .running = quotaRefreshState { return true }
+        case "reset_credits":
+            if case .running = resetCreditsRefreshState { return true }
+        default:
+            break
+        }
+        return false
+    }
+
+    private func setRefreshState(_ state: ActionState, source: String) {
+        switch source {
+        case "quota": quotaRefreshState = state
+        case "reset_credits": resetCreditsRefreshState = state
+        default: break
         }
     }
 
@@ -995,7 +1025,9 @@ public final class AppModel: ObservableObject {
     }
 
     private func cancelFeatureReadTasks() {
-        let mutationKeys: Set<FeatureTaskKey> = [.quotaRefresh, .runtimeAction, .settingsSave]
+        let mutationKeys: Set<FeatureTaskKey> = [
+            .quotaRefresh, .resetCreditsRefresh, .runtimeAction, .settingsSave,
+        ]
         let keys = featureTasks.keys.filter { !mutationKeys.contains($0) }
         for key in keys {
             featureTasks[key]?.cancel()
@@ -1115,6 +1147,7 @@ public final class AppModel: ObservableObject {
 
     private func markMutationsUncertain(_ notice: AppNotice) {
         if case .running = quotaRefreshState { quotaRefreshState = .unavailable(notice) }
+        if case .running = resetCreditsRefreshState { resetCreditsRefreshState = .unavailable(notice) }
         if case .running = runtimeActionState { runtimeActionState = .unavailable(notice) }
         if case .saving = settingsSaveState { settingsSaveState = .unavailable(notice) }
     }
@@ -1183,6 +1216,7 @@ public final class AppModel: ObservableObject {
         quotaState = .idle
         quotaPaceState = .idle
         quotaRefreshState = .idle
+        resetCreditsRefreshState = .idle
         runtimeActionState = .idle
         sessionsState = .idle
         sessionDetailState = .idle
