@@ -38,11 +38,11 @@ Sparkle 只能更新“已经包含 Sparkle、feed URL 和公钥”的 App。因
 
 首装 DMG 的卷根只包含 `Codex Pulse.app` 和指向 `/Applications` 的入口，
 用户打开后可完成标准拖拽安装。DMG 改善首次安装交互，但不会替代 Developer ID
-签名、公证，也不会让旧 App 自动获得 updater。未公证 preview 首次下载仍可能
+签名、公证，也不会让旧 App 自动获得 updater。未公证的 stable 或 preview 首次下载仍可能
 需要在“隐私与安全性”中确认。Sparkle 可以消除后续手工下载、覆盖与打开 Release
-页的动作，但 ad-hoc、未公证 preview 不能承诺 macOS 永远不再拦截；要可靠实现
-“仅首次确认，后续更新不重复确认”，仍必须以 Developer ID、notarization、
-stapling 和 Gatekeeper 读回作为发布门禁。
+页的动作，但 ad-hoc、未公证的 stable 或 preview 不能承诺 macOS 永远不再拦截；要可靠实现
+“仅首次确认，后续更新不重复确认”这一 macOS 可信分发承诺，仍必须以 Developer ID、
+notarization、stapling 和 Gatekeeper 读回作为 `signed-notarized` 发布门禁。
 
 ## stable 与 prerelease
 
@@ -95,8 +95,9 @@ Helper，并向用户显示稳定错误；不能在 SQLite 仍可能提交时把
 - appcast 生成器使用官方 Sparkle `sign_update` 对 exact ZIP 签名，并再次
   使用 ZIP 内 `SUPublicEDKey` 验证签名；密钥不匹配时 fail closed。
 - appcast enclosure 只接受本仓库 exact GitHub Release HTTPS 资产 URL。
-- stable 与 prerelease 都必须使用同一受控信任链；密钥轮换需要独立设计和
-  N-1 验证，不能直接替换 Bundle 公钥。
+- stable 与 prerelease 都必须使用同一受控的 Sparkle 更新信任链；这不等同于
+  macOS 的 Developer ID / notarization 信任。密钥轮换需要独立设计和 N-1
+  验证，不能直接替换 Bundle 公钥。
 
 ## 验证边界
 
@@ -113,7 +114,7 @@ DMG 的 metadata、Framework、rpath、签名、挂载结构和 SHA-256。
 真正宣称应用内更新可用前，还需要针对已公开的同一资产完成 N-1 矩阵：stable
 和 prerelease 选路、有效签名更新、坏签名、离线、Helper clean/forced/
 uncertain、替换重启、migration/recovery，以及升级后版本与数据读回。本地测试
-appcast、ad-hoc preview 构建或 `make verify` 都不能替代 Developer ID、
+appcast、ad-hoc stable/preview 构建或 `make verify` 都不能替代 Developer ID、
 notarization、Gatekeeper、远端 feed 和真实 N-1 证据。
 
 ## Migration 与回滚边界

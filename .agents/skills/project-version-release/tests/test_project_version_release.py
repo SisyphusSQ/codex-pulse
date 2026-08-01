@@ -137,9 +137,30 @@ class ReleaseNotesTests(unittest.TestCase):
         )
 
         self.assertIn("正式功能版本", rendered)
+        self.assertIn("ad-hoc 签名", rendered)
         self.assertIn("尚未完成 Developer ID 签名", rendered)
+        self.assertIn("Apple 公证", rendered)
+        self.assertIn("Gatekeeper trusted", rendered)
+        self.assertIn("请不要移到废纸篓", rendered)
+        self.assertIn("系统设置 → 隐私与安全性", rendered)
         self.assertIn("仍要打开", rendered)
-        self.assertIn("不属于 macOS 已认证的可信分发", rendered)
+        self.assertIn("不是 Gatekeeper trusted", rendered)
+
+    def test_stable_manual_gates_keep_distribution_and_test_boundaries(
+        self,
+    ) -> None:
+        gates = release.manual_gates("stable")
+        rendered = "\n".join(gates)
+
+        self.assertIn("stable defaults to unsigned", rendered)
+        self.assertIn("explicit user authorization", rendered)
+        self.assertIn("make check", rendered)
+        self.assertIn("make test-go", rendered)
+        self.assertIn("make test-swift", rendered)
+        self.assertNotIn(
+            "unless explicitly waived for unsigned stable",
+            rendered,
+        )
 
     def test_signed_preview_uses_standard_first_open(self) -> None:
         rendered = release.render_release_notes(

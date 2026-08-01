@@ -129,10 +129,14 @@ make generate-proto
 的 Apple Silicon App ZIP 与覆盖两项资产的 `SHA256SUMS`。DMG 提供
 `Codex Pulse.app` 到 `/Applications` 的标准拖拽入口；appcast 仍只指向
 exact ZIP。公钥文件可公开，但必须与通过 stdin 用于 appcast 签名的私钥配对。
-未签名、未公证的 preview 不能当作 stable；远端发布还必须经过 tag、Release、
-资产摘要、固定 appcast 和首次打开流程的独立读回。
-preview 可在逐次明确授权后以 ad-hoc 签名的 GitHub prerelease 形式提供；
-stable 发行必须具备 Developer ID 签名、公证和对应安装验证。
+stable 与 preview 是产品发布渠道，macOS 信任等级另行记录为 `unsigned` 或
+`signed-notarized`。stable 默认沿用 `unsigned stable`：发行资产采用 ad-hoc
+签名，Release Notes 必须披露未完成 Developer ID 签名、未公证、非 Gatekeeper trusted，
+以及首次打开时在“系统设置 → 隐私与安全性”中“仍要打开”的操作；远端发布还
+必须经过 tag、Release、资产摘要、固定 appcast 和首次打开流程的独立读回。
+`signed-notarized` 仅显式 opt-in，只有现场签名、公证、Gatekeeper 和最终资产
+readback 全部通过时才允许。preview 仍使用 prerelease SemVer，并按实际资产
+选择 unsigned 或 signed-notarized。
 
 主要目录：
 

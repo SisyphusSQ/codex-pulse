@@ -26,7 +26,10 @@ RELEASE_DIR=".artifacts/releases/$TAG"
 - 工作树干净，所需验证针对同一 commit；
 - tag 和 Release 尚不存在；
 - Release Notes、首次安装 DMG、Sparkle App ZIP 和 `SHA256SUMS` 已完成；
-- stable 的签名、公证和首启 gate 已通过。
+- 已明确实际 distribution。stable 默认是 `unsigned`；如果选择
+  `signed-notarized`，签名、公证、Gatekeeper、资产和首启 gate 必须全部通过。
+  unsigned 资产仍须完成 ad-hoc 完整性、发行构建、测试/验收规则、Sparkle、
+  SHA-256 和对应公开读回，Release Notes 必须披露首次打开操作和 macOS 信任边界。
 
 ## 2. Signed tag
 
@@ -93,11 +96,17 @@ shasum -a 256 "Codex-Pulse-$TAG-macos-arm64.dmg"
 shasum -a 256 "Codex-Pulse-$TAG-macos-arm64.zip"
 hdiutil verify "Codex-Pulse-$TAG-macos-arm64.dmg"
 # 将 DMG 只读挂载到新的临时目录后，检查根目录只有 App 与 Applications 链接，
-# 再对挂载后的 App 执行以下 codesign/spctl/stapler 读回。
+# 再对挂载后的 App 执行与实际 distribution 匹配的 codesign/spctl/stapler 读回。
 codesign --verify --deep --strict --verbose=2 "Codex Pulse.app"
 spctl --assess --type execute --verbose=4 "Codex Pulse.app"
 xcrun stapler validate "Codex Pulse.app"
+
 ```
+
+对 `unsigned` 资产，`spctl` 的预期拒绝和没有 stapled ticket 必须如实记录，且
+Release Notes 必须包含“不要移到废纸篓”及“系统设置 → 隐私与安全性 → 仍要打开”。
+对 `signed-notarized` 资产，`spctl` 与 `xcrun stapler validate` 必须成功；任一
+失败都不允许按可信分发发布。
 
 只有配置 GitHub artifact attestations 时才把
 `gh release verify-asset` 作为额外证据；它不能替代 SHA-256 和 macOS

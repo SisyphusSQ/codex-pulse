@@ -367,21 +367,23 @@ def manual_gates(channel: str) -> list[str]:
     if channel == "stable":
         return [
             (
-                "make verify and real Codex Home acceptance, unless "
-                "explicitly waived for unsigned stable"
+                "make verify, make check, make test-go, make test-swift, "
+                "and real Codex Home acceptance by default; skipping any "
+                "item requires explicit user authorization"
             ),
             "remote tag, Release, asset, and SHA-256 readback",
             (
-                "explicit stable distribution decision: unsigned or "
-                "signed-notarized"
+                "stable defaults to unsigned; signed-notarized is explicit "
+                "opt-in only after on-site signing, notarization, Gatekeeper, "
+                "and final asset readback all pass"
             ),
             (
                 "unsigned requires Gatekeeper disclosure and a retained "
                 "Sparkle key; signed-notarized requires full trust readback"
             ),
             (
-                "fresh macOS user first-open and restart readback, unless "
-                "explicitly waived for unsigned stable"
+                "fresh macOS user first-open and restart readback by default; "
+                "skipping it requires explicit user authorization"
             ),
         ]
     return [
@@ -580,8 +582,8 @@ def render_release_notes(
                 "Developer ID 签名和 Apple 公证。"
             )
             limitations = (
-                "- 发行资产未完成 Developer ID 签名和 Apple 公证，"
-                "不属于 macOS 已认证的可信分发。\n"
+                "- 发行资产采用 ad-hoc 签名，未完成 Developer ID 签名和 "
+                "Apple 公证，不是 Gatekeeper trusted 的 macOS 可信分发。\n"
                 "- 首次打开需要在“隐私与安全性”中手工允许。"
             )
         else:

@@ -23,10 +23,16 @@ python3 .agents/skills/project-version-release/scripts/project_version_release.p
   --channel preview --json
 ```
 
-如果工作树不干净、HEAD 未冻结或版本未显式给出，停止发版。stable 默认要求
-完整可信分发 gate；只有用户明确授权 `unsigned stable`、Release Notes 如实披露
-Gatekeeper 边界且 Sparkle 更新私钥仍可用时，才允许按例外路径继续。保留并报告
-已有改动，不执行 reset、restore 或自动 stash。
+如果工作树不干净、HEAD 未冻结或版本未显式给出，停止发版。stable 默认沿用
+`unsigned stable`：必须按本仓库现行规则完成发行构建、验证、资产、tag、Release、
+appcast 和公开读回，并在 Release Notes 如实披露 macOS 信任边界。只有显式选择
+`signed-notarized`，且现场签名、公证、Gatekeeper 和最终资产 readback 全部通过时，
+才允许按可信分发路径继续。保留并报告已有改动，不执行 reset、restore 或自动 stash。
+
+分发模式与测试策略分开判断。`unsigned stable` 不代表跳过测试；默认仍执行
+`make verify`、`make check`、`make test-go`、`make test-swift` 和真实 Codex Home
+验收的现行规则。只有用户明确要求跳过某一项时，才能省略该项，并仍保留发行构建、
+资产完整性、Sparkle、signed tag、Release、appcast 和公开读回。
 
 ## 选择动作
 
@@ -37,7 +43,7 @@ Gatekeeper 边界且 Sparkle 更新私钥仍可用时，才允许按例外路径
 | 归档 CHANGELOG | 先 dry-run `archive-changelog`，确认后才加 `--write`。 |
 | 生成 Release Notes | 运行 `render-notes`；默认 stdout，加 `--write` 才写 `.artifacts/`。 |
 | 准备 tag / Release | 运行 `release-plan`，再按 reference 分步执行并逐步读回。 |
-| 发布 stable | 默认要求完整签名、公证、首启、资产和 GitHub readback；显式授权时可发布如实披露的 `unsigned stable`。 |
+| 发布 stable | 默认发布如实披露的 `unsigned stable`；`signed-notarized` 仅显式 opt-in，且必须通过完整签名、公证、Gatekeeper、首启、资产和 GitHub readback。 |
 | 发布未签名预览版 | 必须显式授权、使用 prerelease tag，并采用 Gatekeeper 说明。 |
 
 ## 本地辅助命令
@@ -88,7 +94,7 @@ python3 .agents/skills/project-version-release/scripts/project_version_release.p
 - Codex Home、本地数据库、可选在线额度能力和隐私边界；
 - 已知限制、SHA-256 和完整变更入口。
 
-未签名发行版（包括显式授权的 `unsigned stable`）必须说明“不要移到废纸篓”，
+未签名发行版（包括默认的 `unsigned stable`）必须说明“不要移到废纸篓”，
 再引导至“系统设置 → 隐私与安全性 → 仍要打开”。已签名、公证的 stable 版
 不得复用该绕过说明；如果 `signed-notarized` 资产仍触发该提示，判定发布验证
 失败。只有签名、公证和最终资产 gate 已读回时，才允许给 notes 添加

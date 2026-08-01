@@ -30,33 +30,45 @@ Release 段和创建版本 tag。
 ### Stable
 
 Stable 表示产品 SemVer 与 GitHub Release 已进入非 prerelease 渠道；macOS
-发行信任等级另行记录为 `unsigned` 或 `signed-notarized`。
+发行信任等级另行记录为 `unsigned` 或 `signed-notarized`，两者不能混为一谈。
 
-默认 stable 使用 `signed-notarized`，并满足：
+默认 stable 使用 `unsigned`，并满足：
 
 - clean release commit，且发布 commit 已冻结；
-- `make verify` 通过；
+- `make verify`、`make check`、`make test-go`、`make test-swift` 和真实
+  Codex Home 验收按现行规则执行；默认不因发行模式而跳过；
 - production Bundle identifier、显示名、版本和 build number 正确；
-- App 内所有可执行代码按 inside-out 顺序使用 Developer ID 签名；
-- Hardened Runtime、secure timestamp、notarization 和 stapling 通过；
-- 解压后的最终资产通过 `codesign`、`spctl` 和 `stapler`；
+- App 内所有可执行代码按 inside-out 顺序完成 ad-hoc 签名，证明最终 Bundle
+  完整性；
+- 解压后的最终资产通过 `codesign`，并记录 unsigned 资产预期不会通过
+  Gatekeeper；公证和 stapling 明确记录为未执行；
 - 挂载后的首次安装 DMG 只包含 App 与 `/Applications` 链接，且其中 App
-  通过 `codesign`、`spctl` 和 `stapler`；
+  通过 `codesign`；
 - 持久 runtime、Codex Home 首次确认和重启读回闭环；
 - 在全新 macOS 用户环境完成首次安装、打开、索引和再次启动验证；
 - 使用正式 Sparkle Ed25519 公钥构建，私钥只经 stdin 参与 exact ZIP 签名；
 - fixed HTTPS appcast 已完成 stable/prerelease 选路、远端下载和 N-1 替换重启；
 - Git tag、GitHub Release、资产 SHA-256 和发布状态远端读回一致。
 
-用户可以显式授权 `unsigned stable`。该例外路径仍必须满足 clean release
-commit、统一 Bundle/Helper 版本、ad-hoc inside-out 完整签名、DMG/ZIP/SHA-256、
-Sparkle Ed25519、signed tag 与 GitHub readback，但允许在用户逐项明确授权时
-跳过 `make verify`、真实 Home、全新用户验收、Developer ID、Hardened Runtime、
-公证和 stapling。Release Notes 必须明确：
+只有用户明确要求跳过对应测试或真实验收时，才可以省略该项，并逐项报告未执行
+的证据。发行模式本身不能成为测试豁免。
 
-- 这是正式功能版本，但不是 macOS 已认证的可信分发；
-- 首次打开仍需通过“系统设置 → 隐私与安全性 → 仍要打开”；
-- 不得声称 Developer ID、Apple 公证或 Gatekeeper acceptance 已通过；
+`signed-notarized` 是显式 opt-in，不是 stable 的默认值。只有现场完成并读回
+以下全部 gate 后才允许使用该分发等级：
+
+- App 内所有可执行代码的 Developer ID inside-out 签名、Hardened Runtime、
+  secure timestamp；
+- Apple notarization 与 stapling；
+- 解压 ZIP、挂载 DMG 后的 `codesign`、`spctl` 和 `stapler` acceptance；
+- GitHub 资产下载后的摘要、签名/公证和发布状态 readback。
+
+Release Notes 必须按实际产物明确：
+
+- 默认 `unsigned stable` 是正式功能版本，但采用 ad-hoc 签名，未完成
+  Developer ID 签名和 Apple 公证，不是 Gatekeeper trusted 分发；
+- unsigned 首次打开仍需通过“系统设置 → 隐私与安全性 → 仍要打开”，并说明
+  不要移到废纸篓；
+- signed-notarized 只有在上述全部 gate 通过后，才可按 macOS 可信分发描述；
 - 后续取得可信分发能力时使用新 patch 版本，不覆盖既有 tag 或资产。
 
 ### Preview
@@ -80,10 +92,10 @@ Preview 不能被描述为 stable，也不能把 isolated smoke 当作最终用�
 - 首次 Codex Home 确认、持久偏好与普通用户重启仍需完成产品验收。
 
 只要任一项仍成立，skill 必须输出 `stable_release_ready=false`，表示
-`signed-notarized stable` 尚未就绪。这个字段不能由 Release Notes 代替。
-用户显式授权的 `unsigned stable` 可以在 source preflight、ad-hoc 发行资产、
-Sparkle key、Gatekeeper 披露和远端读回成立后继续，但不得把该例外解释为
-可信分发 gate 已通过。
+`signed-notarized stable` 尚未就绪。这个字段仍只表示可信分发 gate，不是
+unsigned stable 的默认发布开关，也不能由 Release Notes 代替。`unsigned stable`
+可以在 source preflight、ad-hoc 发行资产、Sparkle key、Gatekeeper 披露和远端
+读回成立后继续，但不得把它解释为可信分发 gate 已通过。
 
 `render-notes --channel stable` 仍必须显式选择真实 distribution。
 `signed-notarized` 只是防止误操作的分类，不是签名或公证证据；执行者仍须保存
