@@ -107,7 +107,7 @@ func validOptionalTimestamp(value *int64) bool {
 }
 
 func validUIPreferences(value UIPreferences) bool {
-	if value.Locale != "zh-CN" {
+	if value.Locale != LocaleSystem && value.Locale != LocaleChineseSimplified && value.Locale != LocaleEnglishUS {
 		return false
 	}
 	if value.LaunchBehavior != LaunchBehaviorMainWindow && value.LaunchBehavior != LaunchBehaviorTray {

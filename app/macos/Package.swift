@@ -4,6 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "CodexPulseMacOS",
+    defaultLocalization: "zh-Hans",
     platforms: [.macOS(.v15)],
     products: [
         .library(name: "CodexPulseCoreClient", targets: ["CodexPulseCoreClient"]),
@@ -45,7 +46,8 @@ let package = Package(
             dependencies: [
                 "CodexPulseCoreClient",
                 "CodexPulseProtocolGenerated",
-            ]
+            ],
+            resources: [.process("Resources")]
         ),
         .target(
             name: "CodexPulseUpdater",

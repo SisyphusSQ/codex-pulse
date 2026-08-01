@@ -1,118 +1,120 @@
 # Codex Pulse
 
-**看清 Codex 在本机如何消耗、额度还剩多少，以及当前数据是否可用。**
+English | [简体中文](README_CN.md)
 
-Codex Pulse 是一款 local-first 的原生 macOS 应用：把 Codex 分散在本机会话、用量记录和额度窗口中的信息，整理成菜单栏状态与可下钻的分析界面，同时说明数据的新鲜度、完整性与健康状态。
+**Understand how Codex is being used on your Mac, how much quota remains, and whether the underlying data is reliable.**
 
-![Codex Pulse 概览中的额度、年度活动热力图与项目消耗，动态数据已脱敏](docs/assets/codex-pulse-overview-redacted.png)
+Codex Pulse is a local-first, native macOS app. It turns Codex sessions, usage records, and quota windows scattered across your machine into a menu bar status view and a drill-down analytics interface, while making data freshness, completeness, and health explicit.
 
-*基于真实 Codex Home 的界面截取；侧栏和通用产品文案保留，账号、项目、Session、模型、数值、日期和运行时明细均已不可逆脱敏，图表的形态、颜色与布局保留。*
+![Quota, annual activity heatmap, and project usage in the Codex Pulse overview; dynamic data has been redacted](docs/assets/codex-pulse-overview-redacted.png)
 
-## 主要功能
+*Captured from a real Codex Home. Navigation and general product copy are preserved, while account, project, session, model, numeric, date, and runtime details have been irreversibly redacted. Chart shapes, colors, and layout are preserved.*
 
-- **菜单栏**：查看额度、重置时间和健康提醒。
-- **用量分析**：在概览、会话和项目页面查看 Token、模型、API 等价成本与活动分布。
-- **数据状态**：查看额度来源、本机索引和后台任务的状态，了解统计结果是否完整。
+## Key features
 
-## 功能概览
+- **Menu bar:** Check quota, reset times, and health alerts at a glance.
+- **Usage analytics:** Explore tokens, models, API-equivalent cost, and activity distribution across overview, session, and project pages.
+- **Data status:** Inspect quota sources, local indexing, and background jobs to understand whether reported results are complete.
 
-| 区域 | 你可以看到什么 |
+## Feature overview
+
+| Area | What you can see |
 | --- | --- |
-| 菜单栏 | 额度剩余、累计 Token、重置时间和健康提醒 |
-| 概览、会话与项目 | 趋势和热力图、模型与成本拆分、高消耗 Session，以及项目关联的 Session |
-| 状态与设置 | 额度周期和来源、索引进度和新鲜度、后台任务、本机存储和设置 |
+| Menu bar | Remaining quota, cumulative tokens, reset times, and health alerts |
+| Overview, sessions, and projects | Trends and heatmaps, model and cost breakdowns, high-usage sessions, and project-linked sessions |
+| Status and settings | Quota periods and sources, indexing progress and freshness, background jobs, local storage, and settings |
 
-主窗口包括概览、会话、项目和配额页面；运行诊断、数据来源和设置位于系统区域。菜单栏用于查看当前状态，主窗口用于查看用量明细和数据状态。
+The main window includes overview, session, project, and quota pages. Runtime diagnostics, data sources, and settings live in the System section. Use the menu bar for current status and the main window for usage details and data health.
 
-## 产品界面
+## Product tour
 
-以下界面均基于真实 Codex Home 截取，并使用相同的脱敏规则：固定导航和产品文案可读，项目、会话、模型、数值、成本与时间等动态数据均已不可逆处理。
+The following screens were captured from a real Codex Home under the same redaction policy: fixed navigation and product copy remain readable, while dynamic project, session, model, numeric, cost, and time data has been irreversibly transformed.
 
-### 概览：趋势与活动分布
+### Overview: trends and activity distribution
 
-![Codex Pulse 概览中的 Token 趋势、活动分布与高消耗会话，动态数据已脱敏](docs/assets/codex-pulse-activity-redacted.png)
+![Token trends, activity distribution, and high-usage sessions in the Codex Pulse overview; dynamic data has been redacted](docs/assets/codex-pulse-activity-redacted.png)
 
-### 菜单栏
+### Menu bar
 
 <p align="center">
-  <img src="docs/assets/codex-pulse-popover-redacted.png" alt="Codex Pulse 菜单栏 Popover，动态数据已脱敏" width="420">
+  <img src="docs/assets/codex-pulse-popover-redacted.png" alt="Codex Pulse menu bar popover with dynamic data redacted" width="420">
 </p>
 
-### 项目列表与详情
+### Project list and details
 
-![Codex Pulse 项目页面中的列表、趋势、模型与会话下钻，动态数据已脱敏](docs/assets/codex-pulse-projects-redacted.png)
+![Project list, trends, models, and session drill-downs in Codex Pulse; dynamic data has been redacted](docs/assets/codex-pulse-projects-redacted.png)
 
-## 数值不确定时
+## When a value is uncertain
 
-额度和用量工具最容易产生误导的地方，不是没有数据，而是把获取失败后的默认值当成真实结果。Codex Pulse 使用以下显示规则：
+The most misleading failure mode for quota and usage tools is not missing data—it is presenting fallback values as facts. Codex Pulse follows these display rules:
 
-- `0%` 只表示已经确认耗尽；从未取得、尚未计算或当前不适用时显示 `--`；
-- 在线刷新失败但已有上次成功获取的数据时，继续展示 last-known-good，而不是突然变成 100%；
-- 时间范围尚未索引完整时标记为“部分数据”，不把局部结果冒充完整统计；
-- 额度名称与周期来自当前数据，例如按真实 `window_minutes` 生成周期标签，不硬编码“5 小时额度”；
-- 金额始终标为“API 等价成本”，用于理解 Token 对应的公开 API 价格量级，不代表真实账单或实际扣费。
+- `0%` is shown only when exhaustion has been confirmed. Values that were never retrieved, have not been calculated, or do not apply are shown as `--`.
+- If an online refresh fails but a previous successful result exists, the last-known-good value remains visible instead of suddenly changing to 100%.
+- A time range that has not been fully indexed is marked as partial data rather than presented as a complete total.
+- Quota names and periods come from current data. For example, period labels are derived from the actual `window_minutes` value instead of hard-coding a "5-hour quota."
+- Currency values are always labeled as "API-equivalent cost." They help explain the public API price scale associated with token usage and do not represent an actual bill or charge.
 
-## Local-first 与隐私
+## Local-first and privacy
 
-所有分析都在本机完成：
+All analytics run locally:
 
-- 只读发现和增量索引本地 Session，结构化结果只保存在本机 SQLite；不复制完整对话正文，也不持久化 token、Authorization header 或 RPC token。
-- 在线 quota 与 Reset credits 可以关闭，凭证仅在请求期间进入内存；不提供云同步或公网访问。
-- Swift App 与 Go Helper 只通过私有 Unix Domain Socket 通信；日志、错误和 UI 返回值不包含原始 payload、完整路径或底层错误。
+- Local sessions are discovered read-only and indexed incrementally. Structured results stay in local SQLite; full conversation bodies are not copied, and tokens, Authorization headers, and RPC tokens are not persisted.
+- Online quota and reset-credit retrieval can be disabled. Credentials enter memory only for the duration of a request; there is no cloud sync or public network endpoint.
+- The Swift app and Go Helper communicate only over a private Unix Domain Socket. Logs, errors, and UI responses exclude raw payloads, full paths, and underlying error details.
 
-Codex 原始文件仍由 Codex 自己管理。Codex Pulse 只保存产品功能所需的索引、统计和运行状态，不修改原始 Session 内容。
+The original Codex files remain managed by Codex itself. Codex Pulse stores only the indexes, aggregates, and runtime state required by the product, and never modifies original session content.
 
-首次启动时，Go Helper 会对 `${CODEX_HOME:-$HOME/.codex}` 做不读取会话正文的 metadata-only 安全探测，并保存稳定身份；目录不存在或探测失败时保持未配置、不开始索引。之后更换 Codex Home 仍需在设置中显式确认。
+On first launch, the Go Helper performs a metadata-only safety probe of `${CODEX_HOME:-$HOME/.codex}` without reading session bodies, then stores a stable identity for that directory. If the directory does not exist or the probe fails, Codex Pulse remains unconfigured and does not start indexing. Changing Codex Home later still requires explicit confirmation in Settings.
 
-## 工作原理
+## How it works
 
-Codex Pulse 由两个本地进程组成：
+Codex Pulse consists of two local processes:
 
 ```text
-Codex 本地数据 / 可选在线额度
+Local Codex data / optional online quota
              │
              ▼
-   Go Helper：发现、索引、聚合、调度、SQLite
+   Go Helper: discovery, indexing, aggregation, scheduling, SQLite
              │  Protobuf / gRPC over UDS
              ▼
-   Swift App：菜单栏、窗口、交互与 Helper 生命周期
+   Swift app: menu bar, windows, interactions, and Helper lifecycle
 ```
 
-[`api/codexpulse/core/v1/core.proto`](api/codexpulse/core/v1/core.proto) 定义了跨进程接口。Go Helper 负责读取、索引和汇总数据；Swift App 通过 generated CoreService 调用 Helper，不直接读取 SQLite 或 JSONL，也不在 UI 层重新汇总数据。
+[`api/codexpulse/core/v1/core.proto`](api/codexpulse/core/v1/core.proto) defines the cross-process contract. The Go Helper reads, indexes, and aggregates data. The Swift app calls it through the generated CoreService client and neither reads SQLite or JSONL directly nor reimplements aggregation in the UI layer.
 
-## 从源码运行
+## Run from source
 
-环境要求：
+Requirements:
 
 - macOS 15+
 - Apple Silicon
-- Go 1.25
+- Go 1.26.2
 - `protoc 34.1`
 
-本地运行使用真实 `${CODEX_HOME:-$HOME/.codex}`。下面的命令会只读 Session / JSONL，并可能在私有 App runtime 中写入 SQLite、偏好、运行日志和 App Server 的常规 housekeeping；不会修改原始 Session 内容：
+Local runs use the real `${CODEX_HOME:-$HOME/.codex}`. The following command reads session/JSONL data read-only and may write SQLite, preferences, runtime logs, and standard App Server housekeeping data inside a private app runtime. It does not modify original session content:
 
 ```bash
 make verify-live
 ```
 
-`make verify-live` 会构建 development App、复用已确认的私有 runtime，并使用真实 Home 启动应用。CI、单元测试和确定性 smoke 使用 synthetic / empty Home，避免读取个人数据。
+`make verify-live` builds the development app, reuses a confirmed private runtime, and launches the app against the real Home. CI, unit tests, and deterministic smoke tests use a synthetic or empty Home so they do not read personal data.
 
-## 开发与验证
+## Development and verification
 
-日常开发优先运行受影响的 Go package 或 Swift executable tests。常用命令如下：
+For routine development, prefer the affected Go package tests or Swift executable tests. Common commands:
 
 ```bash
-# Go / Swift 分项测试
+# Go and Swift test suites
 make test-go
 make test-swift
 
-# 提交前产品检查
+# Pre-commit product checks
 make check
 
-# PR / CI 完整验证，使用隔离 Home
+# Full PR/CI verification with an isolated Home
 make verify
 
-# 组装本地 unsigned preview 候选，不创建 tag 或 GitHub Release
+# Assemble a local unsigned preview candidate without creating a tag or GitHub Release
 scripts/macos/build-release-app.sh \
   --version 0.1.0-beta.1 \
   --build-number 4 \
@@ -121,40 +123,31 @@ scripts/macos/build-release-app.sh \
   --sparkle-public-key-file \
     /secure/path/codex-pulse-sparkle-public.key
 
-# 修改 Proto 后重新生成 Go / Swift 代码
+# Regenerate Go and Swift sources after changing the Proto contract
 make generate-proto
 ```
 
-发行候选写入 `.artifacts/releases/<tag>/`，包含首次安装 DMG、内嵌 Sparkle
-的 Apple Silicon App ZIP 与覆盖两项资产的 `SHA256SUMS`。DMG 提供
-`Codex Pulse.app` 到 `/Applications` 的标准拖拽入口；appcast 仍只指向
-exact ZIP。公钥文件可公开，但必须与通过 stdin 用于 appcast 签名的私钥配对。
-stable 与 preview 是产品发布渠道，macOS 信任等级另行记录为 `unsigned` 或
-`signed-notarized`。stable 默认沿用 `unsigned stable`：发行资产采用 ad-hoc
-签名，Release Notes 必须披露未完成 Developer ID 签名、未公证、非 Gatekeeper trusted，
-以及首次打开时在“系统设置 → 隐私与安全性”中“仍要打开”的操作；远端发布还
-必须经过 tag、Release、资产摘要、固定 appcast 和首次打开流程的独立读回。
-`signed-notarized` 仅显式 opt-in，只有现场签名、公证、Gatekeeper 和最终资产
-readback 全部通过时才允许。preview 仍使用 prerelease SemVer，并按实际资产
-选择 unsigned 或 signed-notarized。
+Release candidates are written to `.artifacts/releases/<tag>/`. Each candidate includes a first-install DMG, an Apple Silicon app ZIP with Sparkle embedded, and `SHA256SUMS` covering both assets. The DMG provides the standard drag-and-drop path from `Codex Pulse.app` to `/Applications`; the appcast continues to point only to the exact ZIP. The public key file may be public, but it must match the private key supplied through stdin when signing the appcast.
 
-主要目录：
+Stable and preview are product release channels. macOS trust is recorded separately as `unsigned` or `signed-notarized`. Stable defaults to `unsigned stable`: release assets use ad-hoc signing, and Release Notes must disclose that Developer ID signing and notarization are incomplete, the build is not Gatekeeper-trusted, and first launch requires choosing **Open Anyway** in **System Settings → Privacy & Security**. A remote release must also pass independent readback of the tag, Release, asset digests, pinned appcast, and first-launch flow. `signed-notarized` is an explicit opt-in and is allowed only after signing, notarization, Gatekeeper verification, and final asset readback all pass in the release environment. Preview releases continue to use prerelease SemVer and select either unsigned or signed-notarized assets according to what was actually produced.
 
-| 路径 | 职责 |
+Main directories:
+
+| Path | Responsibility |
 | --- | --- |
-| [`app/macos/`](app/macos/) | 原生 SwiftUI / AppKit 应用、Core client 与 executable tests |
-| [`api/codexpulse/core/v1/`](api/codexpulse/core/v1/) | Protobuf 接口定义与生成代码 |
-| [`internal/`](internal/) | Go Helper 的索引、查询、调度、持久化和运行时实现 |
-| [`docs/design/`](docs/design/) | 产品、架构、数据、额度、调度与可观测性设计 |
-| [`docs/test/`](docs/test/) | 测试说明和脱敏结果摘要 |
+| [`app/macos/`](app/macos/) | Native SwiftUI/AppKit app, Core client, and executable tests |
+| [`api/codexpulse/core/v1/`](api/codexpulse/core/v1/) | Protobuf contract and generated code |
+| [`internal/`](internal/) | Go Helper indexing, queries, scheduling, persistence, and runtime implementation |
+| [`docs/design/`](docs/design/) | Product, architecture, data, quota, scheduling, and observability design |
+| [`docs/test/`](docs/test/) | Test guidance and redacted result summaries |
 
-更多细节从以下文档开始：
+Start with these documents for more detail:
 
-- [产品设计](docs/design/details/product/README.md)
-- [系统架构](docs/design/details/architecture/README.md)
-- [数据模型](docs/design/details/data-model/README.md)
-- [额度数据说明](docs/design/details/quota/README.md)
-- [调度与首次索引](docs/design/details/scheduling-and-bootstrap/README.md)
+- [Product design](docs/design/details/product/README.md)
+- [System architecture](docs/design/details/architecture/README.md)
+- [Data model](docs/design/details/data-model/README.md)
+- [Quota data](docs/design/details/quota/README.md)
+- [Scheduling and initial indexing](docs/design/details/scheduling-and-bootstrap/README.md)
 
 ## License
 

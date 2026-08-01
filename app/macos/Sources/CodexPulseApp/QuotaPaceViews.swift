@@ -76,7 +76,7 @@ private struct QuotaPaceCenterView: View {
                     if windows.count > 1 {
                         Picker("额度窗口", selection: selectedWindowBinding) {
                             ForEach(windows) { window in
-                                Text(title(for: window)).tag(window.id)
+                                Text(localizedCopy(title(for: window))).tag(window.id)
                             }
                         }
                         .pickerStyle(.segmented)
@@ -121,18 +121,19 @@ private struct QuotaPaceCenterView: View {
 
     private func title(for window: QuotaPaceWindowPresentation) -> String {
         if let title = titleByID[window.id] { return title }
-        return window.windowKind == "primary" ? "主额度窗口" : "次额度窗口"
+        return localizedCopy(window.windowKind == "primary" ? "主额度窗口" : "次额度窗口")
     }
 }
 
 private struct QuotaPaceWindowView: View {
     let presentation: QuotaPaceWindowPresentation
     let title: String
+    private var localization: AppLocalization { AppLocalizationRegistry.shared.current }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
-                Text(title)
+                Text(localization.textValue(title))
                     .font(.headline)
                 Spacer()
                 Label(presentation.paceText, systemImage: paceSymbol)
@@ -151,7 +152,9 @@ private struct QuotaPaceWindowView: View {
                 paceMetric(
                     title: "历史基线",
                     value: presentation.historyCycleCount > 0
-                        ? "\(presentation.historyCycleCount) 个周期" : "--"
+                        ? localization.quantity(
+                            "copy.count.cycle", count: presentation.historyCycleCount
+                        ) : "--"
                 )
             }
 
@@ -290,7 +293,12 @@ private struct QuotaPaceWindowView: View {
             comparisonRow("上一周期", presentation.previousComparisonText)
             comparisonRow(
                 presentation.historyCycleCount > 0
-                    ? "近 \(presentation.historyCycleCount) 个周期" : "最近周期",
+                    ? localization.format(
+                        "quota.pace.historyTarget",
+                        localization.quantity(
+                            "copy.count.cycle", count: presentation.historyCycleCount
+                        )
+                    ) : localization.textValue("最近周期"),
                 presentation.historyComparisonText
             )
         }
@@ -339,8 +347,9 @@ private struct QuotaPaceWindowView: View {
     }
 
     private func paceMetric(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
+        let localization = AppLocalizationRegistry.shared.current
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(localization.textValue(title))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Text(value)
@@ -353,10 +362,11 @@ private struct QuotaPaceWindowView: View {
     }
 
     private func comparisonRow(_ title: String, _ value: String?) -> some View {
-        HStack {
-            Text(title).foregroundStyle(.secondary)
+        let localization = AppLocalizationRegistry.shared.current
+        return HStack {
+            Text(localization.textValue(title)).foregroundStyle(.secondary)
             Spacer()
-            Text(value ?? "暂无完整对比")
+            Text(value ?? localization.textValue("暂无完整对比"))
                 .fontWeight(.medium)
                 .multilineTextAlignment(.trailing)
         }
@@ -364,7 +374,8 @@ private struct QuotaPaceWindowView: View {
     }
 
     private func legend(color: Color, title: String, dashed: Bool = false) -> some View {
-        HStack(spacing: 5) {
+        let localization = AppLocalizationRegistry.shared.current
+        return HStack(spacing: 5) {
             Capsule()
                 .fill(color)
                 .frame(width: 18, height: dashed ? 2 : 3)
@@ -377,13 +388,13 @@ private struct QuotaPaceWindowView: View {
                         }
                     }
                 }
-            Text(title)
+            Text(localization.textValue(title))
         }
     }
 
     private func percent(_ value: Double?) -> String {
         guard let value else { return "--" }
-        return String(format: "%.0f%%", value)
+        return AppLocalizationRegistry.shared.current.percent(value)
     }
 
 }

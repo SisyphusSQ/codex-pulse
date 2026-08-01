@@ -10,7 +10,7 @@ Codex Pulse 不只是 quota meter，而是 Codex 本机观测工具。它应让�
 - 本地索引是否完整、后台是否推进、应用最近是否健康；
 - 数据来自本地还是可选在线接口，失败时当前展示还是否可信。
 
-v0.1 先服务单机、单账号、Codex-only 场景。仅提供简体中文（`zh-CN`）UI，不提供语言切换；绝对路径可复制，不做云同步或公网访问。
+v0.1 先服务单机、单账号、Codex-only 场景。UI 支持跟随 macOS 系统语言自动选择简体中文或英文，也支持在 App 设置中显式切换并持久化选择；绝对路径可复制，不做云同步或公网访问。
 
 ## 渐进披露
 
@@ -142,7 +142,7 @@ Pricing Catalog 本地版本化，每条记录包含 model、input/cached/output
 
 ## Settings 与 Codex Home
 
-Settings 使用强类型 Preferences，不把空值或非法值静默折成默认值。v0.1 可配置在线 quota/reset credits、对应刷新周期、JSONL debounce、更新检查和 UI 启动/概览范围；`zh-CN` 和 stable update channel 固定，自动下载保持关闭。保存使用 revision conflict 提示，不采用 last-writer-wins；切换恢复进行中时普通设置暂不可保存。
+Settings 使用强类型 Preferences，不把空值或非法值静默折成默认值。v0.1 可配置在线 quota/reset credits、对应刷新周期、JSONL debounce、更新检查、UI 启动/概览范围和语言；语言支持 `system`、`zh-CN`、`en-US`，其中 `system` 按 macOS 首选语言自动解析。stable update channel 固定，自动下载保持关闭。保存使用 revision conflict 提示，不采用 last-writer-wins；切换恢复进行中时普通设置暂不可保存。
 
 普通首次启动且不存在 Preferences 时，Go Helper 自动选择
 `${CODEX_HOME:-$HOME/.codex}`。它先执行 metadata-only probe，再用相同
@@ -194,6 +194,6 @@ GitHub Actions 当前按用户要求停用；最终验收使用本地 gate 并�
 - 不用一个全局周期反复全量扫描，也不在前台刷新时重复启动扫描。
 - 不静默下载、强制安装或在 SQLite 事务未安全结束时重启。
 - v0.1 不提供 Usage JSON/CSV、诊断包或其他用户数据导出。
-- v0.1 不提供语言切换或其他语言包；Swift client 的本地化资源由后续原生客户端任务定义。
+- v0.1 只提供简体中文和英文资源，不承诺其他语言；新增文案必须进入 SwiftPM 的 `en.lproj` / `zh-hans.lproj` 资源，并通过 App Bundle 组装脚本复制到最终 `.app`。语言切换只影响 UI 展示、日期、数字和无障碍文案，不改变 Go Helper 的业务数据或 contract 语义。Token 紧凑数量在英文中使用十进制 `K/M/B`，在简体中文中使用 `万/亿`；英文计数文案必须区分单复数。
 - 不在 v0.1 做 turn 完成通知、Attention、云同步或公网访问。
 - 不复制 Codex Runway 的代码、图标或高度相似 UI。

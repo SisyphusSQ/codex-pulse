@@ -60,12 +60,13 @@ public enum RuntimeControlAction: String, CaseIterable, Equatable, Sendable {
     }
 
     public var title: String {
-        switch self {
+        let value: String = switch self {
         case .pauseBackfill: "暂停回填"
         case .pauseAll: "暂停全部任务"
         case .resume: "恢复任务"
         case .reconcile: "立即对账"
         }
+        return AppLocalizationRegistry.shared.current.textValue(value)
     }
 }
 
@@ -157,6 +158,7 @@ public struct SettingsDraft: Equatable, Sendable {
     public var autoCheckEnabled: Bool
     public var checkIntervalSeconds: Int64
     public var updateChannel: String
+    public var locale: String
     public var launchBehavior: String
     public var overviewRange: String
 
@@ -171,6 +173,7 @@ public struct SettingsDraft: Equatable, Sendable {
         autoCheckEnabled = snapshot.updates.autoCheckEnabled
         checkIntervalSeconds = snapshot.updates.checkIntervalSeconds
         updateChannel = snapshot.updates.channel
+        locale = snapshot.ui.locale
         launchBehavior = snapshot.ui.launchBehavior
         overviewRange = snapshot.ui.overviewRange
     }
@@ -210,6 +213,7 @@ public struct SettingsDraft: Equatable, Sendable {
         request.updates = updates
 
         var ui = Codexpulse_Core_V1_SettingsUIUpdate()
+        ui.locale = editable.contains("ui.locale") ? locale : current.locale
         ui.launchBehavior = editable.contains("ui.launchBehavior") ? launchBehavior : current.launchBehavior
         ui.overviewRange = editable.contains("ui.overviewRange") ? overviewRange : current.overviewRange
         request.ui = ui

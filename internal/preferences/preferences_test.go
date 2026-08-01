@@ -188,7 +188,7 @@ func TestValidatePreferencesRejectsInvalidTypedFields(t *testing.T) {
 		"debounce":    func(value *Snapshot) { value.Refresh.JSONLDebounceMilliseconds = 5001 },
 		"download":    func(value *Snapshot) { value.Updates.AutoDownloadEnabled = true },
 		"channel":     func(value *Snapshot) { value.Updates.Channel = "nightly" },
-		"locale":      func(value *Snapshot) { value.UI.Locale = "en-US" },
+		"locale":      func(value *Snapshot) { value.UI.Locale = "fr-FR" },
 		"launch":      func(value *Snapshot) { value.UI.LaunchBehavior = "hidden" },
 		"range":       func(value *Snapshot) { value.UI.OverviewRange = "year" },
 	}

@@ -7,7 +7,9 @@ struct SourcesJobsView: View {
         case sources
         case jobs
         var id: String { rawValue }
-        var title: String { self == .sources ? "数据源" : "任务" }
+        var title: String {
+            localizedCopy(self == .sources ? "数据源" : "任务")
+        }
     }
 
     @ObservedObject var model: AppModel
@@ -43,7 +45,9 @@ struct SourcesJobsView: View {
 
     private var sources: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
+                Text("状态")
+                    .foregroundStyle(.secondary)
                 Picker("状态", selection: sourceStateFilter) {
                     Text("全部状态").tag("all")
                     Text("当前").tag("current")
@@ -51,6 +55,7 @@ struct SourcesJobsView: View {
                     Text("不可用").tag("unavailable")
                     Text("未知").tag("unknown")
                 }
+                .labelsHidden()
                 .frame(width: 145)
                 TextField("类型（精确）", text: sourceKindFilter)
                     .textFieldStyle(.roundedBorder)
@@ -73,7 +78,9 @@ struct SourcesJobsView: View {
 
     private var jobs: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
+                Text("状态")
+                    .foregroundStyle(.secondary)
                 Picker("状态", selection: jobStateFilter) {
                     Text("全部状态").tag("all")
                     Text("排队").tag("queued")
@@ -83,6 +90,7 @@ struct SourcesJobsView: View {
                     Text("取消").tag("cancelled")
                     Text("中断").tag("interrupted")
                 }
+                .labelsHidden()
                 .frame(width: 145)
                 TextField("阶段（精确）", text: jobPhaseFilter)
                     .textFieldStyle(.roundedBorder)
@@ -282,7 +290,10 @@ private struct JobDetailView: View {
                 SectionCard(title: "任务进度") {
                     KeyValueRow(key: "状态", value: ProductCopy.status(item.state))
                     KeyValueRow(key: "当前步骤", value: ProductCopy.phase(item.phase))
-                    KeyValueRow(key: "数据源", value: item.hasSourceKey ? "本机数据" : "--")
+                    KeyValueRow(
+                        key: "数据源",
+                        value: item.hasSourceKey ? localizedCopy("本机数据") : "--"
+                    )
                     KeyValueRow(
                         key: "进度",
                         value: "\(numericText(item.progress.current)) / \(numericText(item.progress.total))")
@@ -322,11 +333,12 @@ struct RuntimeActionControl: View {
     @State private var pendingAction: RuntimeControlAction?
 
     var body: some View {
+        let localization = AppLocalizationRegistry.shared.current
         Button(action.title) { pendingAction = action }
             .disabled(isRunning)
             .accessibilityIdentifier("runtime-action.\(action.rawValue)")
             .confirmationDialog(
-                "确认\(action.title)？",
+                localization.format("确认%@？", action.title),
                 isPresented: Binding(
                     get: { pendingAction != nil },
                     set: { if !$0 { pendingAction = nil } }
@@ -383,7 +395,8 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("设置").font(.largeTitle.bold())
+                    Text(AppFeature.settings.title(localization: model.localization))
+                        .font(.largeTitle.bold())
                     Text("管理数据更新、启动方式、默认页面和版本检查")
                         .foregroundStyle(.secondary)
                 }
@@ -409,7 +422,9 @@ struct SettingsView: View {
                 Section("本机数据") {
                     LabeledContent(
                         "配置状态",
-                        value: response.snapshot.home.configured ? "已配置" : "默认 Codex Home 不可用"
+                        value: localizedCopy(
+                            response.snapshot.home.configured ? "已配置" : "默认 Codex Home 不可用"
+                        )
                     )
                     LabeledContent("当前状态", value: ProductCopy.status(response.snapshot.home.switchStatus))
                     Text("首次启动会自动使用默认 Codex Home，无需手动确认。")
@@ -420,6 +435,7 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .id(model.localization.preference.rawValue)
             .formStyle(.grouped)
         }
     }
@@ -454,8 +470,12 @@ struct SettingsView: View {
             intervalField(
                 "检查频率", keyPath: \.checkIntervalSeconds, key: "updates.checkIntervalSeconds",
                 range: 3_600...86_400, step: 3_600, response: response)
-            KeyValueRow(
-                key: "下载策略", value: response.snapshot.updates.autoDownloadEnabled ? "自动下载" : "仅检查")
+                    KeyValueRow(
+                key: "下载策略",
+                value: localizedCopy(
+                    response.snapshot.updates.autoDownloadEnabled ? "自动下载" : "仅检查"
+                )
+            )
             Picker("更新渠道", selection: draftBinding(\.updateChannel)) {
                 ForEach(
                     options(
@@ -464,7 +484,8 @@ struct SettingsView: View {
                         fallback: ["stable", "prerelease"]
                     ), id: \.self
                 ) {
-                    Text(ProductCopy.settingOption($0)).tag($0)
+                    Text(verbatim: ProductCopy.settingOption($0, localization: model.localization))
+                        .tag($0)
                 }
             }
             .disabled(!editable("updates.channel", response) || settingsAreBusy)
@@ -473,11 +494,22 @@ struct SettingsView: View {
 
     private func uiSection(_ response: Codexpulse_Core_V1_SettingsResponse) -> some View {
         Section("界面") {
+            Picker("语言", selection: localeBinding) {
+                ForEach(
+                    options("ui.locale", response, fallback: ["system", "zh-CN", "en-US"]),
+                    id: \.self
+                ) {
+                    Text(verbatim: ProductCopy.settingOption($0, localization: model.localization))
+                        .tag($0)
+                }
+            }
+            .disabled(!editable("ui.locale", response) || settingsAreBusy)
             Picker("启动行为", selection: draftBinding(\.launchBehavior)) {
                 ForEach(
                     options("ui.launchBehavior", response, fallback: ["main_window", "tray"]), id: \.self
                 ) {
-                    Text(ProductCopy.settingOption($0)).tag($0)
+                    Text(verbatim: ProductCopy.settingOption($0, localization: model.localization))
+                        .tag($0)
                 }
             }
             .disabled(!editable("ui.launchBehavior", response) || settingsAreBusy)
@@ -489,7 +521,8 @@ struct SettingsView: View {
                         fallback: ["quota_week", "today", "seven_days", "thirty_days"]
                     ), id: \.self
                 ) {
-                    Text(ProductCopy.settingOption($0)).tag($0)
+                    Text(verbatim: ProductCopy.settingOption($0, localization: model.localization))
+                        .tag($0)
                 }
             }
             .disabled(!editable("ui.overviewRange", response) || settingsAreBusy)
@@ -565,22 +598,22 @@ struct SettingsView: View {
     private var loginItemStatusDescription: String {
         switch loginItemSettings.status {
         case .notRegistered:
-            "Codex Pulse 不会在你登录 Mac 时自动打开。"
+            localizedCopy("Codex Pulse 不会在你登录 Mac 时自动打开。")
         case .enabled:
-            "下次登录 Mac 时，系统会自动打开 Codex Pulse。"
+            localizedCopy("下次登录 Mac 时，系统会自动打开 Codex Pulse。")
         case .requiresApproval:
-            "请前往“系统设置 → 通用 → 登录项与扩展”，允许 Codex Pulse 在登录时打开。"
+            localizedCopy("请前往“系统设置 → 通用 → 登录项与扩展”，允许 Codex Pulse 在登录时打开。")
         case .notFound:
-            "系统无法识别当前 Codex Pulse App。请从完整的 App 安装包打开后重试。"
+            localizedCopy("系统无法识别当前 Codex Pulse App。请从完整的 App 安装包打开后重试。")
         }
     }
 
     private func loginItemFailureDescription(_ failure: LoginItemActionFailure) -> String {
         switch failure {
         case .registrationFailed:
-            "无法启用登录时启动。系统没有接受本次更改，请稍后重试。"
+            localizedCopy("无法启用登录时启动。系统没有接受本次更改，请稍后重试。")
         case .unregistrationFailed:
-            "无法关闭登录时启动。系统没有接受本次更改，请稍后重试。"
+            localizedCopy("无法关闭登录时启动。系统没有接受本次更改，请稍后重试。")
         }
     }
 
@@ -601,7 +634,9 @@ struct SettingsView: View {
             step: step
         ) {
             LabeledContent(
-                title, value: ProductCopy.interval(seconds: model.settingsDraft![keyPath: keyPath]))
+                localizedCopy(title),
+                value: ProductCopy.interval(seconds: model.settingsDraft![keyPath: keyPath])
+            )
         }
         .disabled(!editable(key, response) || settingsAreBusy)
     }
@@ -655,6 +690,18 @@ struct SettingsView: View {
                 guard var draft = model.settingsDraft else { return }
                 draft[keyPath: keyPath] = next
                 model.settingsDraft = draft
+            }
+        )
+    }
+
+    private var localeBinding: Binding<String> {
+        Binding(
+            get: { model.settingsDraft?.locale ?? "system" },
+            set: { next in
+                guard var draft = model.settingsDraft else { return }
+                draft.locale = next
+                model.settingsDraft = draft
+                model.applyLocalePreference(next)
             }
         )
     }

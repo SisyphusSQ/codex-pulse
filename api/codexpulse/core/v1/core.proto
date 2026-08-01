@@ -917,6 +917,7 @@ message SettingsUpdatesUpdate {
 message SettingsUIUpdate {
   string launch_behavior = 1;
   string overview_range = 2;
+  string locale = 3;
 }
 
 message UpdateSettingsRequest {

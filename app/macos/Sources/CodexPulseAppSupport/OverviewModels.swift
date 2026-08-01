@@ -84,6 +84,7 @@ public struct CodexAccountPresentation: Equatable, Sendable {
     public let accessibilityLabel: String
 
     public init(_ response: Codexpulse_Core_V1_AccountSnapshotResponse?) {
+        let localization = AppLocalizationRegistry.shared.current
         guard let response else {
             availability = .unavailable
             type = nil
@@ -91,7 +92,7 @@ public struct CodexAccountPresentation: Equatable, Sendable {
             planType = nil
             planText = "--"
             emailText = "--"
-            accessibilityLabel = "Codex 账户与套餐信息暂不可用"
+            accessibilityLabel = localization.textValue("Codex 账户与套餐信息暂不可用")
             return
         }
         guard response.hasAccount else {
@@ -101,7 +102,7 @@ public struct CodexAccountPresentation: Equatable, Sendable {
             planType = nil
             planText = "--"
             emailText = "--"
-            accessibilityLabel = "当前没有 Codex 账户信息"
+            accessibilityLabel = localization.textValue("当前没有 Codex 账户信息")
             return
         }
 
@@ -117,12 +118,14 @@ public struct CodexAccountPresentation: Equatable, Sendable {
         guard normalizedType == "chatgpt" else {
             planText = "--"
             emailText = "--"
-            accessibilityLabel = "Codex 账户类型 \(normalizedType ?? "--")"
+            accessibilityLabel = localization.format(
+                "account.type", normalizedType ?? "--"
+            )
             return
         }
         planText = Self.planDisplayName(normalizedPlan)
         emailText = normalizedEmail ?? "--"
-        accessibilityLabel = "Codex 套餐 \(planText)，账号 \(emailText)"
+        accessibilityLabel = localization.format("account.plan", planText, emailText)
     }
 
     private static func nonEmpty(_ value: String) -> String? {
@@ -206,47 +209,90 @@ public enum DisplayMetric: Equatable, Sendable {
 }
 
 public enum TokenQuantityFormatter {
-    public static func string(_ value: Int64) -> String {
-        guard value >= 0 else { return "--" }
-        let divisor: Double
-        let unit: String
-        switch value {
-        case 100_000_000...:
-            divisor = 100_000_000
-            unit = "亿"
-        case 10_000_000...:
-            divisor = 10_000_000
-            unit = "千万"
-        default:
-            divisor = 1_000_000
-            unit = "百万"
-        }
-        return String(format: "%.2f %@", Double(value) / divisor, unit)
+    private struct Magnitude {
+        let divisor: Int64
+        let unitKey: String
     }
 
-    public static func compactString(_ value: Int64) -> String {
+    public static func string(
+        _ value: Int64,
+        localization: AppLocalization = AppLocalizationRegistry.shared.current
+    ) -> String {
+        formatted(value, maximumFractionDigits: 2, compact: false, localization: localization)
+    }
+
+    public static func compactString(
+        _ value: Int64,
+        localization: AppLocalization = AppLocalizationRegistry.shared.current
+    ) -> String {
+        formatted(value, maximumFractionDigits: 1, compact: true, localization: localization)
+    }
+
+    public static func stringWithUnit(
+        _ value: Int64,
+        compact: Bool = false,
+        localization: AppLocalization = AppLocalizationRegistry.shared.current
+    ) -> String {
+        let number = compact
+            ? compactString(value, localization: localization)
+            : string(value, localization: localization)
+        let category = localization.language == .englishUS && value == 1 ? "one" : "other"
+        return localization.format("copy.token.count.\(category)", number)
+    }
+
+    private static func formatted(
+        _ value: Int64,
+        maximumFractionDigits: Int,
+        compact: Bool,
+        localization: AppLocalization
+    ) -> String {
         guard value >= 0 else { return "--" }
-        let divisor: Double
-        let unit: String
-        switch value {
-        case 100_000_000...:
-            divisor = 100_000_000
-            unit = "亿"
-        case 10_000_000...:
-            divisor = 10_000_000
-            unit = "千万"
-        case 1_000_000...:
-            divisor = 1_000_000
-            unit = "百万"
-        case 10_000...:
-            divisor = 10_000
-            unit = "万"
-        default:
-            return String(value)
+        let magnitudes = magnitudes(compact: compact, localization: localization)
+        guard var magnitudeIndex = magnitudes.lastIndex(where: { value >= $0.divisor }) else {
+            return localization.number(value)
         }
-        var number = String(format: "%.1f", Double(value) / divisor)
-        if number.hasSuffix(".0") { number.removeLast(2) }
-        return number + unit
+
+        let roundingFactor = pow(10, Double(maximumFractionDigits))
+        while magnitudeIndex + 1 < magnitudes.count {
+            let current = magnitudes[magnitudeIndex]
+            let next = magnitudes[magnitudeIndex + 1]
+            let scaled = Double(value) / Double(current.divisor)
+            let rounded = (scaled * roundingFactor).rounded() / roundingFactor
+            let transition = Double(next.divisor) / Double(current.divisor)
+            guard rounded >= transition else { break }
+            magnitudeIndex += 1
+        }
+
+        let magnitude = magnitudes[magnitudeIndex]
+        let formatter = NumberFormatter()
+        formatter.locale = localization.locale
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = maximumFractionDigits
+        let scaled = Double(value) / Double(magnitude.divisor)
+        let number = formatter.string(from: NSNumber(value: scaled)) ?? String(scaled)
+        return localization.format(magnitude.unitKey, number)
+    }
+
+    private static func magnitudes(
+        compact: Bool,
+        localization: AppLocalization
+    ) -> [Magnitude] {
+        let prefix = compact ? "copy.token.unit" : "copy.token.displayUnit"
+        switch localization.language {
+        case .englishUS:
+            return [
+                Magnitude(divisor: 1_000, unitKey: "\(prefix).thousand"),
+                Magnitude(divisor: 1_000_000, unitKey: "\(prefix).million"),
+                Magnitude(divisor: 1_000_000_000, unitKey: "\(prefix).billion"),
+            ]
+        case .chineseSimplified:
+            return [
+                Magnitude(divisor: 10_000, unitKey: "\(prefix).tenThousand"),
+                Magnitude(divisor: 100_000_000, unitKey: "\(prefix).hundredMillion"),
+            ]
+        }
     }
 }
 
@@ -423,7 +469,7 @@ public enum UsageModelTrendResolver {
                         id: "\(point.key)|all-models",
                         bucketKey: point.key,
                         modelKey: "all-models",
-                        modelName: "全部模型",
+                        modelName: AppLocalizationRegistry.shared.current.textValue("全部模型"),
                         tokens: totalTokens
                     )
                 ]
@@ -442,9 +488,13 @@ public enum UsageModelTrendResolver {
     private static func modelDisplayName(
         _ model: Codexpulse_Core_V1_AttributionValue
     ) -> String {
-        guard model.hasDisplayName else { return "其他模型" }
+        guard model.hasDisplayName else {
+            return AppLocalizationRegistry.shared.current.textValue("其他模型")
+        }
         let displayName = model.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return displayName.isEmpty ? "其他模型" : displayName
+        return displayName.isEmpty
+            ? AppLocalizationRegistry.shared.current.textValue("其他模型")
+            : displayName
     }
 }
 
@@ -461,12 +511,16 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
     public let resetRemainingMS: Int64?
 
     public init(_ window: Codexpulse_Core_V1_CurrentWindow) {
+        let localization = AppLocalizationRegistry.shared.current
         self.id = "\(window.windowKind):\(window.limitID)"
         self.limitID = window.limitID
         self.limitName = window.hasLimitName ? window.limitName : nil
-        let quotaName = Self.quotaName(limitID: window.limitID, limitName: limitName)
+        let quotaName = Self.quotaName(
+            limitID: window.limitID, limitName: limitName, localization: localization
+        )
         if let duration = Self.durationTitle(
-            windowMinutes: window.hasWindowMinutes ? window.windowMinutes : nil
+            windowMinutes: window.hasWindowMinutes ? window.windowMinutes : nil,
+            localization: localization
         ) {
             self.title = "\(quotaName) · \(duration)"
         } else {
@@ -480,26 +534,35 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
         self.resetRemainingMS = window.hasResetRemainingMs ? window.resetRemainingMs : nil
     }
 
-    private static func quotaName(limitID: String, limitName: String?) -> String {
+    private static func quotaName(
+        limitID: String,
+        limitName: String?,
+        localization: AppLocalization
+    ) -> String {
         let trimmedName = limitName?.trimmingCharacters(in: .whitespacesAndNewlines)
         if limitID == "codex" {
             if trimmedName == nil || trimmedName?.isEmpty == true || trimmedName?.lowercased() == "codex" {
-                return "通用额度"
+                return localization.textValue("通用额度")
             }
         }
         if let trimmedName, !trimmedName.isEmpty { return trimmedName }
-        return limitID.isEmpty ? "其他额度" : "模型专属额度"
+        return limitID.isEmpty
+            ? localization.textValue("其他额度")
+            : localization.textValue("模型专属额度")
     }
 
-    private static func durationTitle(windowMinutes: Int64?) -> String? {
+    private static func durationTitle(
+        windowMinutes: Int64?,
+        localization: AppLocalization
+    ) -> String? {
         guard let windowMinutes, windowMinutes > 0 else { return nil }
         if windowMinutes >= 2_880, windowMinutes.isMultiple(of: 1_440) {
-            return "\(windowMinutes / 1_440) 天"
+            return localization.quantity("copy.count.day", count: windowMinutes / 1_440)
         }
         if windowMinutes.isMultiple(of: 60) {
-            return "\(windowMinutes / 60) 小时"
+            return localization.quantity("copy.count.hour", count: windowMinutes / 60)
         }
-        return "\(windowMinutes) 分钟"
+        return localization.quantity("copy.count.minute", count: windowMinutes)
     }
 }
 
@@ -562,28 +625,37 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
     public let accessibilityLabel: String
 
     public init?(_ overview: OverviewPresentation) {
+        let localization = AppLocalizationRegistry.shared.current
         guard let window = Self.preferredWindow(overview.quotaWindows) else { return nil }
-        let periodLabel = Self.periodLabel(window.windowMinutes)
+        let periodLabel = Self.periodLabel(window.windowMinutes, localization: localization)
         self.periodLabel = periodLabel
         self.remainingPercent = window.remainingPercent
         self.freshness = window.freshness
         self.dataState = StatusBarQuotaDataState(freshness: window.freshness)
 
-        let remainingText = window.remainingPercent.map { String(format: "%.0f%%", $0) } ?? "--"
+        let remainingText = window.remainingPercent.map { localization.percent($0) } ?? "--"
         let baseAccessibilityLabel: String
         if let tokens = Self.matchingPeriodTokens(window: window, overview: overview) {
             let total = Self.compact(tokens.total)
-            self.usageText = "已用 \(total)"
-            baseAccessibilityLabel = "\(periodLabel) \(remainingText)，已用 \(total) Token"
+            self.usageText = localization.format("status.used", total)
+            baseAccessibilityLabel = localization.format(
+                "status.accessibility.used",
+                periodLabel,
+                remainingText,
+                Self.compactWithUnit(tokens.total, localization: localization)
+            )
         } else {
-            self.usageText = "已用 --"
-            baseAccessibilityLabel = "\(periodLabel) \(remainingText)，本周期用量暂不可用"
+            self.usageText = localization.textValue("已用 --")
+            baseAccessibilityLabel = localization.format(
+                "status.accessibility.unavailable", periodLabel, remainingText
+            )
         }
         self.accessibilityLabel = baseAccessibilityLabel + dataState.accessibilitySuffix
     }
 
     public var remainingText: String {
-        let percent = remainingPercent.map { String(format: "%.0f%%", $0) } ?? "--"
+        let localization = AppLocalizationRegistry.shared.current
+        let percent = remainingPercent.map { localization.percent($0) } ?? "--"
         return "\(periodLabel) \(percent)"
     }
 
@@ -593,15 +665,29 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
             ?? windows.max { ($0.windowMinutes ?? -1) < ($1.windowMinutes ?? -1) }
     }
 
-    private static func periodLabel(_ windowMinutes: Int64?) -> String {
-        guard let windowMinutes, windowMinutes > 0 else { return "额度剩" }
-        if windowMinutes == 7 * 24 * 60 { return "周剩" }
-        if windowMinutes == 24 * 60 { return "日剩" }
+    private static func periodLabel(
+        _ windowMinutes: Int64?,
+        localization: AppLocalization
+    ) -> String {
+        guard let windowMinutes, windowMinutes > 0 else { return localization.textValue("额度剩") }
+        if windowMinutes == 7 * 24 * 60 { return localization.textValue("周剩") }
+        if windowMinutes == 24 * 60 { return localization.textValue("日剩") }
         if windowMinutes >= 24 * 60, windowMinutes.isMultiple(of: 24 * 60) {
-            return "\(windowMinutes / (24 * 60))天剩"
+            return localization.format(
+                "status.period",
+                localization.quantity("copy.count.day", count: windowMinutes / (24 * 60))
+            )
         }
-        if windowMinutes.isMultiple(of: 60) { return "\(windowMinutes / 60)小时剩" }
-        return "\(windowMinutes)分钟剩"
+        if windowMinutes.isMultiple(of: 60) {
+            return localization.format(
+                "status.period",
+                localization.quantity("copy.count.hour", count: windowMinutes / 60)
+            )
+        }
+        return localization.format(
+            "status.period",
+            localization.quantity("copy.count.minute", count: windowMinutes)
+        )
     }
 
     private static func matchingPeriodTokens(
@@ -625,6 +711,16 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
     private static func compact(_ metric: DisplayMetric) -> String {
         guard case .known(let value, _) = metric else { return "--" }
         return TokenQuantityFormatter.compactString(value)
+    }
+
+    private static func compactWithUnit(
+        _ metric: DisplayMetric,
+        localization: AppLocalization
+    ) -> String {
+        guard case .known(let value, _) = metric else { return "--" }
+        return TokenQuantityFormatter.stringWithUnit(
+            value, compact: true, localization: localization
+        )
     }
 }
 
@@ -715,10 +811,11 @@ public enum OverviewActivityMetric: String, CaseIterable, Equatable, Identifiabl
     public var id: String { rawValue }
 
     public var title: String {
-        switch self {
+        let value: String = switch self {
         case .tokenConsumption: "Token 消耗"
         case .sessionCount: "会话数量"
         }
+        return AppLocalizationRegistry.shared.current.textValue(value)
     }
 }
 
@@ -792,20 +889,21 @@ public enum OverviewActivityTimelineResolver {
             timeZone: timeZone,
             locale: Locale(identifier: "en_US_POSIX")
         )
+        let localization = AppLocalizationRegistry.shared.current
         let dateHourFormatter = dateFormatter(
-            format: "M月d日\nH时",
+            format: localization.language == .englishUS ? "MMM d\nH:mm" : "M月d日\nH时",
             timeZone: timeZone,
-            locale: Locale(identifier: "zh_CN")
+            locale: localization.locale
         )
         let hourFormatter = dateFormatter(
-            format: "H时",
+            format: localization.language == .englishUS ? "H:mm" : "H时",
             timeZone: timeZone,
-            locale: Locale(identifier: "zh_CN")
+            locale: localization.locale
         )
         let dayFormatter = dateFormatter(
-            format: "M月d日",
+            format: localization.language == .englishUS ? "MMM d" : "M月d日",
             timeZone: timeZone,
-            locale: Locale(identifier: "zh_CN")
+            locale: localization.locale
         )
         var previousDayKey: String?
         return selectedDates.map { date in
@@ -1417,7 +1515,10 @@ public struct TokenActivityCalendarPresentation: Equatable, Sendable {
     public let weeks: [TokenActivityWeek]
     public let monthLabels: [TokenActivityMonthLabel]
 
-    public init(_ activity: TokenActivityPresentation) {
+    public init(
+        _ activity: TokenActivityPresentation,
+        localization: AppLocalization = AppLocalizationRegistry.shared.current
+    ) {
         guard let first = activity.days.first,
               let timeZone = TimeZone(identifier: activity.reportingTimeZone)
         else {
@@ -1461,9 +1562,12 @@ public struct TokenActivityCalendarPresentation: Equatable, Sendable {
         monthLabels = activity.days.enumerated().compactMap { offset, day in
             guard calendar.component(.day, from: day.date) == 1 else { return nil }
             let month = calendar.component(.month, from: day.date)
+            let monthTitle = localization.language == .englishUS
+                ? localization.format("overview.month", month)
+                : "\(month)月"
             return TokenActivityMonthLabel(
                 id: String(day.dateKey.prefix(7)),
-                title: "\(month)月",
+                title: monthTitle,
                 weekIndex: (leadingPadding + offset) / 7
             )
         }
@@ -1484,8 +1588,8 @@ public struct TokenActivityMetricPresentation: Equatable, Identifiable, Sendable
 }
 
 public struct TokenActivityCardPresentation: Equatable, Sendable {
-    public let title = "Token 活动"
-    public let scope = "过去 365 天"
+    public let title: String
+    public let scope: String
     public let availability: TokenActivityAvailability
     public let metrics: [TokenActivityMetricPresentation]
     public let calendar: TokenActivityCalendarPresentation
@@ -1493,52 +1597,60 @@ public struct TokenActivityCardPresentation: Equatable, Sendable {
     public let reportingTimeZone: String
     private let dayDetails: [String: String]
 
-    public init(_ activity: TokenActivityPresentation) {
+    public init(
+        _ activity: TokenActivityPresentation,
+        localization: AppLocalization = AppLocalizationRegistry.shared.current
+    ) {
+        title = localization.textValue("Token 活动")
+        scope = localization.textValue("过去 365 天")
         availability = activity.availability
-        let resolvedCalendar = TokenActivityCalendarPresentation(activity)
+        let resolvedCalendar = TokenActivityCalendarPresentation(
+            activity,
+            localization: localization
+        )
         calendar = resolvedCalendar
         reportingTimeZone = activity.reportingTimeZone
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.locale = localization.locale
         formatter.timeZone = TimeZone(identifier: activity.reportingTimeZone)
-        formatter.dateFormat = "yyyy年M月d日"
+        formatter.dateFormat = localization.language == .englishUS ? "MMM d, yyyy" : "yyyy年M月d日"
         dayDetails = Dictionary(uniqueKeysWithValues: resolvedCalendar.weeks
             .flatMap(\.days)
             .compactMap { $0 }
             .map { value in
-                (value.id, Self.dayDetail(value, formatter: formatter))
+                (value.id, Self.dayDetail(value, formatter: formatter, localization: localization))
             })
         switch activity.availability {
         case .available: notice = nil
-        case .partial: notice = "仅统计本机现有数据"
-        case .unavailable: notice = "年度活动暂时不可用"
+        case .partial: notice = localization.textValue("仅统计本机现有数据")
+        case .unavailable: notice = localization.textValue("年度活动暂时不可用")
         }
         metrics = [
             TokenActivityMetricPresentation(
                 id: "total",
-                title: "近 365 天 Token",
-                value: Self.tokenText(activity.totalTokens)
+                title: localization.textValue("近 365 天 Token"),
+                value: Self.tokenText(activity.totalTokens, localization: localization)
             ),
             TokenActivityMetricPresentation(
                 id: "peak",
-                title: "峰值日 Token",
-                value: Self.tokenText(activity.peakDailyTokens)
+                title: localization.textValue("峰值日 Token"),
+                value: Self.tokenText(activity.peakDailyTokens, localization: localization)
             ),
             TokenActivityMetricPresentation(
                 id: "active-days",
-                title: "活跃天数",
-                value: Self.dayCountText(activity.activeDays)
+                title: localization.textValue("活跃天数"),
+                value: Self.dayCountText(activity.activeDays, localization: localization)
             ),
             TokenActivityMetricPresentation(
                 id: "current-streak",
-                title: "当前连续天数",
-                value: Self.dayCountText(activity.currentStreakDays)
+                title: localization.textValue("当前连续天数"),
+                value: Self.dayCountText(activity.currentStreakDays, localization: localization)
             ),
             TokenActivityMetricPresentation(
                 id: "longest-streak",
-                title: "最长连续天数",
-                value: Self.dayCountText(activity.longestStreakDays)
+                title: localization.textValue("最长连续天数"),
+                value: Self.dayCountText(activity.longestStreakDays, localization: localization)
             ),
         ]
     }
@@ -1549,21 +1661,37 @@ public struct TokenActivityCardPresentation: Equatable, Sendable {
 
     private static func dayDetail(
         _ value: TokenActivityCalendarDay,
-        formatter: DateFormatter
+        formatter: DateFormatter,
+        localization: AppLocalization
     ) -> String {
         let date = formatter.string(from: value.day.date)
-        guard let tokens = value.day.tokens else { return "\(date) · 数据未知" }
-        let tokenText = "\(TokenQuantityFormatter.compactString(tokens)) Token"
-        guard let turns = value.day.turnCount else { return "\(date) · \(tokenText)" }
-        return "\(date) · \(tokenText) · \(turns) 轮"
+        guard let tokens = value.day.tokens else {
+            return localization.format("token.activity.unknown", date)
+        }
+        let tokenText = TokenQuantityFormatter.stringWithUnit(
+            tokens, compact: true, localization: localization
+        )
+        guard let turns = value.day.turnCount else {
+            return localization.format("token.activity.tokens", date, tokenText)
+        }
+        return localization.format(
+            "token.activity.turns",
+            date,
+            tokenText,
+            localization.quantity("copy.count.turn", count: Int64(turns))
+        )
     }
 
-    private static func tokenText(_ value: Int64?) -> String {
-        value.map(TokenQuantityFormatter.compactString) ?? "--"
+    private static func tokenText(
+        _ value: Int64?, localization: AppLocalization
+    ) -> String {
+        value.map { TokenQuantityFormatter.compactString($0, localization: localization) } ?? "--"
     }
 
-    private static func dayCountText(_ value: Int?) -> String {
-        value.map { "\($0) 天" } ?? "--"
+    private static func dayCountText(
+        _ value: Int?, localization: AppLocalization
+    ) -> String {
+        value.map { localization.quantity("copy.count.day", count: Int64($0)) } ?? "--"
     }
 }
 
@@ -1600,7 +1728,9 @@ public struct SessionPresentation: Equatable, Sendable, Identifiable {
 
     public init(_ item: Codexpulse_Core_V1_SessionItem) {
         self.id = item.sessionID
-        self.title = item.displayTitle.isEmpty ? "未命名会话" : item.displayTitle
+        self.title = item.displayTitle.isEmpty
+            ? AppLocalizationRegistry.shared.current.textValue("未命名会话")
+            : item.displayTitle
         self.activity = item.activity
         self.tokens = DisplayMetric(item.totals.totalTokens)
         self.tokenBreakdown = TokenBreakdownPresentation(item.totals)
@@ -1622,7 +1752,9 @@ public struct ProjectPresentation: Equatable, Sendable, Identifiable {
     public init(_ item: Codexpulse_Core_V1_ProjectItem) {
         let hasDisplayName = item.project.hasDisplayName && !item.project.displayName.isEmpty
         self.id = item.dimensionKey
-        self.title = hasDisplayName ? item.project.displayName : "其他"
+        self.title = hasDisplayName
+            ? item.project.displayName
+            : AppLocalizationRegistry.shared.current.textValue("其他")
         self.tokens = DisplayMetric(item.totals.totalTokens)
         self.tokenBreakdown = TokenBreakdownPresentation(item.totals)
         self.estimatedCost = DisplayMetric(item.totals.estimatedUsdMicros)
@@ -1631,7 +1763,7 @@ public struct ProjectPresentation: Equatable, Sendable, Identifiable {
 
     fileprivate init(otherBreakdown: TokenBreakdownPresentation) {
         self.id = ""
-        self.title = "其他"
+        self.title = AppLocalizationRegistry.shared.current.textValue("其他")
         self.tokens = otherBreakdown.total
         self.tokenBreakdown = otherBreakdown
         self.estimatedCost = .absent(unit: "usd_micros")
@@ -1793,15 +1925,22 @@ public struct OverviewPresentation: Equatable, Sendable {
         _ range: Codexpulse_Core_V1_UTCTimeRange,
         isDailyWeeklyRange: Bool
     ) -> String {
-        guard range.startAtMs > 0 else { return "周额度周期" }
+        let localization = AppLocalizationRegistry.shared.current
+        guard range.startAtMs > 0 else { return localization.textValue("周额度周期") }
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.locale = localization.locale
         formatter.timeZone = TimeZone(identifier: range.timeZone) ?? .current
-        formatter.dateFormat = isDailyWeeklyRange ? "M月d日" : "M月d日 HH:mm"
+        formatter.dateFormat = if localization.language == .englishUS {
+            isDailyWeeklyRange ? "MMM d" : "MMM d HH:mm"
+        } else {
+            isDailyWeeklyRange ? "M月d日" : "M月d日 HH:mm"
+        }
         let start = Date(timeIntervalSince1970: Double(range.startAtMs) / 1_000)
-        let label = "自 \(formatter.string(from: start))"
-        return isDailyWeeklyRange ? "\(label) · 按天" : label
+        let label = localization.format("自 %@", formatter.string(from: start))
+        return isDailyWeeklyRange
+            ? localization.format("range.label.daily", label, localization.textValue("按天"))
+            : label
     }
 
     private static func projectOtherBreakdown(
@@ -1923,12 +2062,15 @@ public enum AppViewState: Equatable, Sendable {
     case shuttingDown
     case stopped
 
-    public init(_ state: CoreConnectionState) {
+    public init(
+        _ state: CoreConnectionState,
+        localization: AppLocalization = AppLocalizationRegistry.shared.current
+    ) {
         switch state {
         case .idle: self = .idle
-        case .starting: self = .loading("正在启动核心组件…")
-        case .handshaking: self = .loading("正在连接核心组件…")
-        case .loadingOverview: self = .loading("正在加载概览…")
+        case .starting: self = .loading(localization.textValue("正在启动核心组件…"))
+        case .handshaking: self = .loading(localization.textValue("正在连接核心组件…"))
+        case .loadingOverview: self = .loading(localization.textValue("正在加载概览…"))
         case .normal(let responses):
             let presentation = OverviewPresentation(responses)
             self = presentation.isPartial ? .partial(presentation) : .overview(presentation)

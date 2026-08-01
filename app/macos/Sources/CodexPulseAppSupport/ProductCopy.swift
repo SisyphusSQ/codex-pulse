@@ -1,58 +1,42 @@
 import Foundation
 
 public enum ProductCopy {
-    public static func status(_ rawValue: String) -> String {
-        switch normalized(rawValue) {
-        case "healthy", "current", "ready", "normal", "fresh":
-            "正常"
-        case "succeeded", "complete", "completed", "applied":
-            "已完成"
-        case "active", "running", "in_progress":
-            "进行中"
-        case "queued", "pending":
-            "等待中"
-        case "idle":
-            "空闲"
-        case "warning", "degraded", "partial", "interrupted", "stale":
-            "需要关注"
-        case "failed", "critical", "error", "blocked":
-            "需要处理"
-        case "unavailable":
-            "暂不可用"
-        case "cancelled", "canceled":
-            "已取消"
-        case "resolved":
-            "已解决"
-        case "available":
-            "可用"
-        case "configured":
-            "已配置"
-        case "not_configured":
-            "未配置"
-        case "switching":
-            "正在切换"
-        case "redeemed", "used":
-            "已使用"
-        case "expired":
-            "已过期"
-        case "", "unknown":
-            "暂时未知"
-        default:
-            "其他状态"
+    public static func status(_ rawValue: String, localization: AppLocalization = AppLocalizationRegistry.shared.current) -> String {
+        let value: String = switch normalized(rawValue) {
+        case "healthy", "current", "ready", "normal", "fresh": "正常"
+        case "succeeded", "complete", "completed", "applied": "已完成"
+        case "active", "running", "in_progress": "进行中"
+        case "queued", "pending": "等待中"
+        case "idle": "空闲"
+        case "warning", "degraded", "partial", "interrupted", "stale": "需要关注"
+        case "failed", "critical", "error", "blocked": "需要处理"
+        case "unavailable": "暂不可用"
+        case "cancelled", "canceled": "已取消"
+        case "resolved": "已解决"
+        case "available": "可用"
+        case "configured": "已配置"
+        case "not_configured": "未配置"
+        case "switching": "正在切换"
+        case "redeemed", "used": "已使用"
+        case "expired": "已过期"
+        case "", "unknown": "暂时未知"
+        default: "其他状态"
         }
+        return localized(value, localization)
     }
 
-    public static func confidence(_ rawValue: String) -> String {
-        switch normalized(rawValue) {
+    public static func confidence(_ rawValue: String, localization: AppLocalization = AppLocalizationRegistry.shared.current) -> String {
+        let value: String = switch normalized(rawValue) {
         case "high": "高"
         case "medium": "中"
         case "low": "低"
         default: "暂时未知"
         }
+        return localized(value, localization)
     }
 
-    public static func phase(_ rawValue: String) -> String {
-        switch normalized(rawValue) {
+    public static func phase(_ rawValue: String, localization: AppLocalization = AppLocalizationRegistry.shared.current) -> String {
+        let value: String = switch normalized(rawValue) {
         case "discover", "discovery": "正在查找数据"
         case "backfill": "正在补充历史数据"
         case "index", "indexing": "正在整理数据"
@@ -64,20 +48,22 @@ public enum ProductCopy {
         case "", "unknown": "暂时未知"
         default: "处理中"
         }
+        return localized(value, localization)
     }
 
-    public static func sourceName(_ rawValue: String) -> String {
-        switch normalized(rawValue) {
+    public static func sourceName(_ rawValue: String, localization: AppLocalization = AppLocalizationRegistry.shared.current) -> String {
+        let value: String = switch normalized(rawValue) {
         case "codex", "codex_cli", "local_jsonl", "session_jsonl": "Codex 本机会话"
         case "chatgpt", "openai", "quota", "quota_api": "Codex 额度"
         case "reset_credits": "重置次数"
         case "", "unknown": "本机数据"
         default: "本机数据"
         }
+        return localized(value, localization)
     }
 
-    public static func jobName(_ rawValue: String) -> String {
-        switch normalized(rawValue) {
+    public static func jobName(_ rawValue: String, localization: AppLocalization = AppLocalizationRegistry.shared.current) -> String {
+        let value: String = switch normalized(rawValue) {
         case "discover", "discovery": "查找本机数据"
         case "backfill": "补充历史数据"
         case "index", "indexing": "整理会话数据"
@@ -86,10 +72,11 @@ public enum ProductCopy {
         case "reset_credits_refresh": "更新重置次数"
         default: "数据更新任务"
         }
+        return localized(value, localization)
     }
 
-    public static func settingOption(_ rawValue: String) -> String {
-        switch normalized(rawValue) {
+    public static func settingOption(_ rawValue: String, localization: AppLocalization = AppLocalizationRegistry.shared.current) -> String {
+        let value: String = switch normalized(rawValue) {
         case "main_window": "打开主窗口"
         case "tray", "menu_bar": "仅显示菜单栏"
         case "today": "今天"
@@ -99,35 +86,53 @@ public enum ProductCopy {
         case "stable": "稳定版"
         case "prerelease": "预发布版"
         case "beta": "测试版"
+        case "system": "系统默认"
+        case "zh-cn": "简体中文"
+        case "en-us": "English"
         default: rawValue.isEmpty ? "默认" : "其他选项"
         }
+        return localized(value, localization)
     }
 
-    public static func interval(seconds: Int64) -> String {
-        guard seconds > 0 else { return "关闭" }
-        if seconds.isMultiple(of: 3_600) { return "\(seconds / 3_600) 小时" }
-        if seconds.isMultiple(of: 60) { return "\(seconds / 60) 分钟" }
-        return "\(seconds) 秒"
+    public static func interval(seconds: Int64, localization: AppLocalization = AppLocalizationRegistry.shared.current) -> String {
+        guard seconds > 0 else { return localization.textValue("关闭") }
+        if seconds.isMultiple(of: 3_600) {
+            return localization.quantity("copy.count.hour", count: seconds / 3_600)
+        }
+        if seconds.isMultiple(of: 60) {
+            return localization.quantity("copy.count.minute", count: seconds / 60)
+        }
+        return localization.quantity("copy.count.second", count: seconds)
     }
 
-    public static func duration(milliseconds: Int64?) -> String {
-        guard let milliseconds, milliseconds > 0 else { return "时间待定" }
+    public static func duration(milliseconds: Int64?, localization: AppLocalization = AppLocalizationRegistry.shared.current) -> String {
+        guard let milliseconds, milliseconds > 0 else { return localization.textValue("时间待定") }
         let totalMinutes = milliseconds / 60_000
         if totalMinutes >= 1_440 {
             let days = totalMinutes / 1_440
             let hours = totalMinutes % 1_440 / 60
-            return hours > 0 ? "\(days) 天 \(hours) 小时" : "\(days) 天"
+            return hours > 0
+                ? [
+                    localization.quantity("copy.count.day", count: days),
+                    localization.quantity("copy.count.hour", count: hours),
+                ].joined(separator: " ")
+                : localization.quantity("copy.count.day", count: days)
         }
         if totalMinutes >= 60 {
             let hours = totalMinutes / 60
             let minutes = totalMinutes % 60
-            return minutes > 0 ? "\(hours) 小时 \(minutes) 分钟" : "\(hours) 小时"
+            return minutes > 0
+                ? [
+                    localization.quantity("copy.count.hour", count: hours),
+                    localization.quantity("copy.count.minute", count: minutes),
+                ].joined(separator: " ")
+                : localization.quantity("copy.count.hour", count: hours)
         }
-        return "\(max(totalMinutes, 1)) 分钟"
+        return localization.quantity("copy.count.minute", count: max(totalMinutes, 1))
     }
 
-    public static func recoveryAction(_ rawValue: String) -> String {
-        switch normalized(rawValue) {
+    public static func recoveryAction(_ rawValue: String, localization: AppLocalization = AppLocalizationRegistry.shared.current) -> String {
+        let value: String = switch normalized(rawValue) {
         case "retry": "重试"
         case "resume": "继续处理"
         case "reconcile": "重新校准"
@@ -139,10 +144,11 @@ public enum ProductCopy {
         case "none", "": "暂无建议操作"
         default: "查看处理建议"
         }
+        return localized(value, localization)
     }
 
-    public static func component(_ rawValue: String) -> String {
-        switch normalized(rawValue) {
+    public static func component(_ rawValue: String, localization: AppLocalization = AppLocalizationRegistry.shared.current) -> String {
+        let value: String = switch normalized(rawValue) {
         case "scheduler": "数据更新"
         case "database", "sqlite", "store": "本地数据库"
         case "source", "sources", "discovery": "数据来源"
@@ -156,10 +162,11 @@ public enum ProductCopy {
         case "", "unknown": "本地数据"
         default: "本地数据"
         }
+        return localized(value, localization)
     }
 
-    public static func reason(_ rawValue: String) -> String {
-        switch normalized(rawValue) {
+    public static func reason(_ rawValue: String, localization: AppLocalization = AppLocalizationRegistry.shared.current) -> String {
+        let value: String = switch normalized(rawValue) {
         case "healthy": "运行正常"
         case "not_configured": "尚未配置"
         case "index_paused", "backfill_paused": "数据更新已暂停"
@@ -183,14 +190,14 @@ public enum ProductCopy {
         case "wal_pressure": "本机数据正在整理"
         case "pricing_unavailable", "pricing_invalid": "价格信息暂时不可用"
         case "source_failure_streak": "数据来源连续更新失败"
-        case "runtime_unknown", "lifecycle_unknown", "source_unknown", "store_unknown", "", "unknown":
-            "当前状态尚未确定"
+        case "runtime_unknown", "lifecycle_unknown", "source_unknown", "store_unknown", "", "unknown": "当前状态尚未确定"
         default: "当前状态需要关注"
         }
+        return localized(value, localization)
     }
 
-    public static func impact(_ rawValue: String) -> String {
-        switch normalized(rawValue) {
+    public static func impact(_ rawValue: String, localization: AppLocalization = AppLocalizationRegistry.shared.current) -> String {
+        let value: String = switch normalized(rawValue) {
         case "none", "": "暂无影响"
         case "indexing_stopped": "新会话将暂时无法整理"
         case "indexing_paused": "会话整理已暂停"
@@ -202,10 +209,11 @@ public enum ProductCopy {
         case "update_checks_unavailable": "暂时无法检查新版本"
         default: "部分功能可能暂时受影响"
         }
+        return localized(value, localization)
     }
 
-    public static func protection(_ rawValue: String) -> String {
-        switch normalized(rawValue) {
+    public static func protection(_ rawValue: String, localization: AppLocalization = AppLocalizationRegistry.shared.current) -> String {
+        let value: String = switch normalized(rawValue) {
         case "none", "": "无需额外保护"
         case "writes_stopped": "已停止写入以保护本机数据"
         case "auto_retry_stopped": "已暂停自动重试"
@@ -214,10 +222,11 @@ public enum ProductCopy {
         case "observation_only": "仅监测，不会自动更改数据"
         default: "已启用保护措施"
         }
+        return localized(value, localization)
     }
 
-    public static func eventName(_ rawValue: String) -> String {
-        switch normalized(rawValue) {
+    public static func eventName(_ rawValue: String, localization: AppLocalization = AppLocalizationRegistry.shared.current) -> String {
+        let value: String = switch normalized(rawValue) {
         case "source_unavailable": "数据来源暂时不可用"
         case "source_stale": "数据来源需要更新"
         case "index_incomplete": "部分会话尚未整理"
@@ -225,6 +234,11 @@ public enum ProductCopy {
         case "quota_unavailable": "额度暂时无法获取"
         default: "本机数据提醒"
         }
+        return localized(value, localization)
+    }
+
+    private static func localized(_ value: String, _ localization: AppLocalization) -> String {
+        localization.textValue(value)
     }
 
     private static func normalized(_ value: String) -> String {

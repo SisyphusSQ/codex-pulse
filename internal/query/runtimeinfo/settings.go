@@ -121,7 +121,9 @@ func validSettingsUpdates(value preferences.UpdatePreferences) bool {
 }
 
 func validSettingsUI(value preferences.UIPreferences) bool {
-	return value.Locale == "zh-CN" &&
+	return (value.Locale == preferences.LocaleSystem ||
+		value.Locale == preferences.LocaleChineseSimplified ||
+		value.Locale == preferences.LocaleEnglishUS) &&
 		(value.LaunchBehavior == preferences.LaunchBehaviorMainWindow ||
 			value.LaunchBehavior == preferences.LaunchBehaviorTray) &&
 		(value.OverviewRange == preferences.OverviewRangeQuotaWeek ||
@@ -142,7 +144,9 @@ func settingsEditableFields() []EditableField {
 		booleanField("updates.autoDownloadEnabled", false),
 		enumField("updates.channel", true, []string{"stable", "prerelease"}),
 		integerField("updates.checkIntervalSeconds", true, 3600, 86400),
-		enumField("ui.locale", false, []string{"zh-CN"}),
+		enumField("ui.locale", true, []string{
+			preferences.LocaleSystem, preferences.LocaleChineseSimplified, preferences.LocaleEnglishUS,
+		}),
 		enumField("ui.launchBehavior", true, []string{"main_window", "tray"}),
 		enumField("ui.overviewRange", true, []string{"quota_week", "today", "seven_days", "thirty_days"}),
 	}

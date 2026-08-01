@@ -74,6 +74,7 @@ Apple 将普通 helper tool 的标准位置定义为 `Contents/MacOS/` 或 `Cont
 | 查询过滤、排序、分页、partial/unknown/error 语义 | Go |
 | Core RPC contract 与 Go adapter | Go 仓内 contract 层 |
 | Window、Sidebar、Toolbar、Table、Chart、Settings 页面 | SwiftUI |
+| UI 语言解析、语言设置、日期/数字格式化、无障碍文案 | Swift App；资源位于 `CodexPulseAppSupport/Resources` |
 | Menu Bar、Popover、系统菜单、快捷键、应用激活与退出交互 | AppKit / Swift |
 | 主 App 登录项注册、取消、系统批准状态与系统设置跳转 | Swift / ServiceManagement |
 | Helper 启动、握手、崩溃呈现、有限重启 | Swift |
@@ -90,6 +91,8 @@ Apple 将普通 helper tool 的标准位置定义为 `Contents/MacOS/` 或 `Cont
 | 增加后端字段 | Proto + Go mapping + 生成代码 + Swift |
 | 增加完整页面 | 通常同时涉及 Go contract 与 Swift feature |
 | 修改 RPC 语义 | Proto、Go、Swift、contract tests 必须同批更新 |
+
+本地化也遵循客户端边界：Go Helper 只持久化 `SettingsUIUpdate.locale` 的偏好值（`system`、`zh-CN`、`en-US`），不解释用户可见语言；Swift App 负责把 `system` 解析为 macOS 首选语言、在设置中即时切换、重建 AppKit 菜单，并使用同一份语言状态渲染窗口、Popover、状态栏、日期、数量和无障碍文本。资源由 SwiftPM 编译后由 development/release App 组装脚本复制到最终 Bundle；打包 App 运行时以 `Bundle.main` 为资源真相，SwiftPM executable/tests 只在主 Bundle 不含语言资源时按可执行文件相对路径查找 resource bundle，产品源码不调用 SwiftPM 的 `Bundle.module` fallback，正式分发构建还会拒绝包含本机绝对路径的二进制。显式语言切换涉及的导航、格式化与 AppKit 文案必须通过同一 `AppLocalization` 状态取词，避免主 Bundle 自动本地化和模块资源显式本地化产生混合语言。
 
 ### 2.4 采用 gRPC + Protobuf + Unix Domain Socket
 

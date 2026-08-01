@@ -55,6 +55,7 @@ public struct QuotaPaceWindowPresentation: Equatable, Identifiable, Sendable {
         _ window: Codexpulse_Core_V1_QuotaPaceWindow,
         evaluatedAtMS: Int64
     ) {
+        let localization = AppLocalizationRegistry.shared.current
         self.id = "\(window.windowKind):\(window.limitID)"
         self.windowKind = window.windowKind
         self.limitID = window.limitID
@@ -65,25 +66,36 @@ public struct QuotaPaceWindowPresentation: Equatable, Identifiable, Sendable {
         self.paceDeltaMetricText = Self.paceDeltaMetricText(
             window.hasPaceDeltaPp ? window.paceDeltaPp : nil
         )
-        self.paceText = Self.paceText(window.hasPaceDeltaPp ? window.paceDeltaPp : nil)
+        self.paceText = Self.paceText(
+            window.hasPaceDeltaPp ? window.paceDeltaPp : nil,
+            localization: localization
+        )
         self.forecastText = Self.forecastText(
             window.forecast,
             usedPercent: window.hasUsedPercent ? window.usedPercent : nil,
-            evaluatedAtMS: evaluatedAtMS
+            evaluatedAtMS: evaluatedAtMS,
+            localization: localization
         )
-        self.evidenceText = Self.evidenceText(window.forecast)
+        self.evidenceText = Self.evidenceText(window.forecast, localization: localization)
         self.previousComparisonText = Self.comparisonText(
             currentRemaining: window.hasRemainingPercent ? window.remainingPercent : nil,
             comparisonRemaining: window.hasPreviousRemainingAtElapsed
                 ? window.previousRemainingAtElapsed : nil,
-            target: "上一周期"
+            target: localization.textValue("上一周期"),
+            localization: localization
         )
         self.historyCycleCount = max(window.historyCycleCount, 0)
         self.historyComparisonText = Self.comparisonText(
             currentRemaining: window.hasRemainingPercent ? window.remainingPercent : nil,
             comparisonRemaining: window.hasHistoryMedianRemainingAtElapsed
                 ? window.historyMedianRemainingAtElapsed : nil,
-            target: "近 \(max(window.historyCycleCount, 0)) 个周期"
+            target: localization.format(
+                "quota.pace.historyTarget",
+                localization.quantity(
+                    "copy.count.cycle", count: max(window.historyCycleCount, 0)
+                )
+            ),
+            localization: localization
         )
         self.currentPoints = window.currentPoints.map {
             QuotaPaceChartPoint(series: "current", point: $0)
@@ -97,13 +109,13 @@ public struct QuotaPaceWindowPresentation: Equatable, Identifiable, Sendable {
         self.forecastState = window.forecast.state
     }
 
-    private static func paceText(_ delta: Double?) -> String {
-        guard let delta, delta.isFinite else { return "暂时无法比较消耗节奏" }
+    private static func paceText(_ delta: Double?, localization: AppLocalization) -> String {
+        guard let delta, delta.isFinite else { return localization.textValue("暂时无法比较消耗节奏") }
         let points = Int(abs(delta).rounded())
-        if points == 0 { return "用量与周期进度基本一致" }
+        if points == 0 { return localization.textValue("用量与周期进度基本一致") }
         return delta > 0
-            ? "用量快于周期进度 \(points)%"
-            : "用量慢于周期进度 \(points)%"
+            ? localization.format("quota.pace.faster", points)
+            : localization.format("quota.pace.slower", points)
     }
 
     private static func paceDeltaMetricText(_ delta: Double?) -> String {
@@ -116,46 +128,53 @@ public struct QuotaPaceWindowPresentation: Equatable, Identifiable, Sendable {
     private static func forecastText(
         _ forecast: Codexpulse_Core_V1_QuotaPaceForecast,
         usedPercent: Double?,
-        evaluatedAtMS: Int64
+        evaluatedAtMS: Int64,
+        localization: AppLocalization
     ) -> String {
         switch forecast.state {
         case "at_risk":
             guard forecast.hasExhaustAtMs, evaluatedAtMS >= 0,
                   forecast.exhaustAtMs > evaluatedAtMS
             else {
-                return "暂无法预测耗尽时间"
+                return localization.textValue("暂无法预测耗尽时间")
             }
             let (remainingMS, overflow) = forecast.exhaustAtMs.subtractingReportingOverflow(
                 evaluatedAtMS
             )
-            guard !overflow, let duration = approximateForecastDuration(milliseconds: remainingMS)
+            guard !overflow,
+                  let duration = approximateForecastDuration(
+                      milliseconds: remainingMS, localization: localization
+                  )
             else {
-                return "暂无法预测耗尽时间"
+                return localization.textValue("暂无法预测耗尽时间")
             }
-            return "预计约 \(duration)后耗尽"
+            return localization.format("quota.pace.forecast.atRisk", duration)
         case "on_track":
-            return "预计本周期不会耗尽"
+            return localization.textValue("预计本周期不会耗尽")
         case "exhausted":
-            return "额度已用尽"
+            return localization.textValue("额度已用尽")
         default:
             let unknownReason = forecast.hasUnknownReason ? forecast.unknownReason : ""
             switch unknownReason {
-            case "evidence_stale": return "数据更新不及时，暂无法预测"
-            case "source_conflict": return "额度数据不一致，暂无法预测"
+            case "evidence_stale": return localization.textValue("数据更新不及时，暂无法预测")
+            case "source_conflict": return localization.textValue("额度数据不一致，暂无法预测")
             default: break
             }
             if let usedPercent, usedPercent.isFinite, usedPercent == 0 {
-                return "当前暂无消耗，暂不预测"
+                return localization.textValue("当前暂无消耗，暂不预测")
             }
             switch unknownReason {
-            case "evidence_sparse": return "观测不足，暂无法预测"
-            case "evidence_flat": return "用量变化不足，暂无法预测"
-            default: return "暂无法预测耗尽时间"
+            case "evidence_sparse": return localization.textValue("观测不足，暂无法预测")
+            case "evidence_flat": return localization.textValue("用量变化不足，暂无法预测")
+            default: return localization.textValue("暂无法预测耗尽时间")
             }
         }
     }
 
-    private static func approximateForecastDuration(milliseconds: Int64) -> String? {
+    private static func approximateForecastDuration(
+        milliseconds: Int64,
+        localization: AppLocalization
+    ) -> String? {
         guard milliseconds > 0 else { return nil }
 
         let minuteMS = 60_000.0
@@ -165,36 +184,46 @@ public struct QuotaPaceWindowPresentation: Equatable, Identifiable, Sendable {
 
         if duration < hourMS {
             let minutes = max(10, Int((duration / (10 * minuteMS)).rounded()) * 10)
-            return minutes >= 60 ? "1 小时" : "\(minutes) 分钟"
+            return minutes >= 60
+                ? localization.quantity("copy.count.hour", count: 1)
+                : localization.quantity("copy.count.minute", count: Int64(minutes))
         }
         if duration < dayMS {
             let hours = max(1, Int((duration / hourMS).rounded()))
-            return hours >= 24 ? "1 天" : "\(hours) 小时"
+            return hours >= 24
+                ? localization.quantity("copy.count.day", count: 1)
+                : localization.quantity("copy.count.hour", count: Int64(hours))
         }
         let days = max(1, Int((duration / dayMS).rounded()))
-        return "\(days) 天"
+        return localization.quantity("copy.count.day", count: Int64(days))
     }
 
     private static func evidenceText(
-        _ forecast: Codexpulse_Core_V1_QuotaPaceForecast
+        _ forecast: Codexpulse_Core_V1_QuotaPaceForecast,
+        localization: AppLocalization
     ) -> String? {
         guard forecast.evidenceCount > 0, forecast.evidenceSpanMs > 0 else { return nil }
-        return "\(forecast.evidenceCount) 个观测 · 跨度 \(ProductCopy.duration(milliseconds: forecast.evidenceSpanMs))"
+        return localization.format(
+            "quota.pace.evidence",
+            localization.quantity("copy.count.observation", count: forecast.evidenceCount),
+            ProductCopy.duration(milliseconds: forecast.evidenceSpanMs, localization: localization)
+        )
     }
 
     private static func comparisonText(
         currentRemaining: Double?,
         comparisonRemaining: Double?,
-        target: String
+        target: String,
+        localization: AppLocalization
     ) -> String? {
         guard let currentRemaining, let comparisonRemaining,
               currentRemaining.isFinite, comparisonRemaining.isFinite
         else { return nil }
         let difference = currentRemaining - comparisonRemaining
         let points = Int(abs(difference).rounded())
-        if points == 0 { return "与\(target)基本一致" }
+        if points == 0 { return localization.format("quota.pace.comparison.same", target) }
         return difference > 0
-            ? "比\(target)多 \(points)%"
-            : "比\(target)少 \(points)%"
+            ? localization.format("quota.pace.comparison.more", target, points)
+            : localization.format("quota.pace.comparison.less", target, points)
     }
 }

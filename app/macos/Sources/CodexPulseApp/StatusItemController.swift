@@ -95,6 +95,14 @@ final class StatusItemController: NSObject {
             }
             .store(in: &cancellables)
 
+        model.$localization
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateStatusBarView()
+            }
+            .store(in: &cancellables)
+
         displayPreferences.$style
             .removeDuplicates()
             .receive(on: RunLoop.main)
@@ -462,6 +470,7 @@ private struct MenuBarPopoverView: View {
             case .displaySettings:
                 StatusDisplaySettingsView(
                     preferences: preferences,
+                    localization: model.localization,
                     onBack: { route = .main },
                     onOpenSettings: {
                         model.navigate(to: .settings)
@@ -472,6 +481,8 @@ private struct MenuBarPopoverView: View {
         }
         .foregroundStyle(.primary)
         .frame(width: contentSize.width, height: contentSize.height)
+        .id(model.localization.preference.rawValue)
+        .environment(\.locale, model.localization.locale)
         .alert(
             quickActionResult?.title ?? "",
             isPresented: Binding(
@@ -568,8 +579,13 @@ private struct MenuBarPopoverView: View {
     }
 
     private func quotaSection(_ overview: OverviewPresentation) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            PopoverSectionTitle(title: "配额", systemImage: "gauge.with.dots.needle.67percent")
+        let localization = AppLocalizationRegistry.shared.current
+        return VStack(alignment: .leading, spacing: 12) {
+            PopoverSectionTitle(
+                title: "配额",
+                systemImage: "gauge.with.dots.needle.67percent",
+                localization: model.localization
+            )
             if overview.quotaWindows.isEmpty {
                 PulseCard { Text("尚未取得可信额度数据").foregroundStyle(.secondary) }
             } else {
@@ -597,9 +613,11 @@ private struct MenuBarPopoverView: View {
                         .frame(height: 9)
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(alignment: .firstTextBaseline) {
-                                Text("\(percentText(window.remainingPercent)) 剩余")
+                                Text(localization.format(
+                                    "%@ 剩余", percentText(window.remainingPercent)
+                                ))
                                 Spacer(minLength: 12)
-                                Text("距离重置：\(reset.remainingText)")
+                                Text(localization.format("距离重置：%@", reset.remainingText))
                                     .lineLimit(1)
                             }
                             HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -613,7 +631,7 @@ private struct MenuBarPopoverView: View {
                                         .accessibilityIdentifier("popover.quota.pace.\(window.id)")
                                 }
                                 Spacer(minLength: 0)
-                                Text("重置时间：\(reset.resetTimeText)")
+                                Text(localization.format("重置时间：%@", reset.resetTimeText))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
@@ -629,14 +647,23 @@ private struct MenuBarPopoverView: View {
     }
 
     private func resetCreditsSection(_ overview: OverviewPresentation) -> some View {
+        let localization = model.localization
         let credits = overview.resetCredits
         return VStack(alignment: .leading, spacing: 10) {
-            PopoverSectionTitle(title: "重置次数", systemImage: "clock.arrow.circlepath")
+            PopoverSectionTitle(
+                title: "重置次数",
+                systemImage: "clock.arrow.circlepath",
+                localization: localization
+            )
             Button { route = .resetCredits } label: {
                 PulseCard {
                     VStack(alignment: .leading, spacing: 7) {
                         HStack {
-                            Text("\(optionalCount(credits.availableCount)) 可用 / \(optionalCount(credits.totalCount)) 总数")
+                            Text(verbatim: localization.format(
+                                "可用 %@ / %@ 总数",
+                                optionalCount(credits.availableCount, localization: localization),
+                                optionalCount(credits.totalCount, localization: localization)
+                            ))
                                 .font(.system(size: 15, weight: .semibold))
                             Spacer()
                             Image(systemName: "chevron.right").foregroundStyle(.tertiary)
@@ -665,7 +692,11 @@ private struct MenuBarPopoverView: View {
         let colors = dailyTrendColors(count: modelNames.count)
         let selectedBucket = buckets.first { $0.key == selectedDailyTrendKey }
         return VStack(alignment: .leading, spacing: 10) {
-            PopoverSectionTitle(title: "本周每日 Token", systemImage: "chart.bar.fill")
+            PopoverSectionTitle(
+                title: "本周每日 Token",
+                systemImage: "chart.bar.fill",
+                localization: model.localization
+            )
             PulseCard {
                 if !overview.weeklyUsageAvailable {
                     Text("本周用量趋势暂时不可用")
@@ -701,7 +732,8 @@ private struct MenuBarPopoverView: View {
                                             "\(compactDailyTrendDate(segment.bucketKey)) · \(segment.modelName)"
                                         )
                                         .accessibilityValue(
-                                            "\(TokenQuantityFormatter.string(segment.tokens)) Token")
+                                            TokenQuantityFormatter.stringWithUnit(segment.tokens)
+                                        )
                                     }
                                     if bucket.totalTokens > 0 {
                                         PointMark(
@@ -834,12 +866,16 @@ private struct MenuBarPopoverView: View {
         colors: [Color]
     ) -> some View {
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        let localization = AppLocalizationRegistry.shared.current
+        let totalText = TokenQuantityFormatter.stringWithUnit(
+            bucket.totalTokens, compact: true, localization: localization
+        )
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(compactDailyTrendDate(bucket.key))
                     .font(.system(size: 12, weight: .bold))
                 Spacer(minLength: 12)
-                Text("总计 \(TokenQuantityFormatter.compactString(bucket.totalTokens)) Token")
+                Text(localization.format("token.total", totalText))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -882,8 +918,13 @@ private struct MenuBarPopoverView: View {
         .overlay(shape.strokeBorder(.primary.opacity(0.1), lineWidth: 1))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(compactDailyTrendDate(bucket.key))，总计 "
-                + "\(TokenQuantityFormatter.string(bucket.totalTokens)) Token"
+            localization.format(
+                "token.activity.total",
+                compactDailyTrendDate(bucket.key),
+                TokenQuantityFormatter.stringWithUnit(
+                    bucket.totalTokens, localization: localization
+                )
+            )
         )
     }
 
@@ -899,8 +940,11 @@ private struct MenuBarPopoverView: View {
     }
 
     private func dailyTrendShareText(_ tokens: Int64, total: Int64) -> String {
-        guard total > 0 else { return "0%" }
-        return String(format: "%.0f%%", Double(tokens) / Double(total) * 100)
+        let localization = AppLocalizationRegistry.shared.current
+        guard total > 0 else { return localization.percent(0) }
+        return localization.percent(
+            Double(tokens) / Double(total) * 100
+        )
     }
 
     private func compactDailyTrendDate(_ key: String) -> String {
@@ -913,7 +957,11 @@ private struct MenuBarPopoverView: View {
 
     private func costSection(_ overview: OverviewPresentation) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            PopoverSectionTitle(title: "API 等价成本", systemImage: "dollarsign.circle")
+            PopoverSectionTitle(
+                title: "API 等价成本",
+                systemImage: "dollarsign.circle",
+                localization: model.localization
+            )
             PulseCard {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .firstTextBaseline) {
@@ -934,7 +982,11 @@ private struct MenuBarPopoverView: View {
 
     private func projectRankingSection(_ overview: OverviewPresentation) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            PopoverSectionTitle(title: "本周项目 Token 排行", systemImage: "chart.bar.xaxis")
+            PopoverSectionTitle(
+                title: "本周项目 Token 排行",
+                systemImage: "chart.bar.xaxis",
+                localization: model.localization
+            )
             PulseCard(padding: 0) {
                 if !overview.weeklyProjectRankingAvailable {
                     Text("周额度项目排行暂时不可用")
@@ -978,7 +1030,10 @@ private struct MenuBarPopoverView: View {
     }
 
     private func nextExpiryText(_ credits: ResetCreditsPresentation) -> String {
-        credits.nextExpiresAtMS == nil ? "无近期到期" : "最近到期 \(minimumRemainingText(credits))"
+        let localization = AppLocalizationRegistry.shared.current
+        return credits.nextExpiresAtMS == nil
+            ? localization.textValue("无近期到期")
+            : localization.format("最近到期 %@", minimumRemainingText(credits))
     }
 }
 
@@ -1149,8 +1204,8 @@ private struct PopoverAccountCapsule: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             isPrivacyHidden
-                ? "截图中账号与套餐信息已隐藏"
-                : summary?.accessibilityLabel ?? "正在读取 Codex 账户与套餐信息"
+                ? localizedCopy("截图中账号与套餐信息已隐藏")
+                : summary?.accessibilityLabel ?? localizedCopy("正在读取 Codex 账户与套餐信息")
         )
         .accessibilityIdentifier("popover.account-summary")
         .background(
@@ -1237,6 +1292,7 @@ private struct ResetCreditsDetailView: View {
 
 private struct StatusDisplaySettingsView: View {
     @ObservedObject var preferences: StatusBarDisplayPreferences
+    let localization: AppLocalization
     let onBack: () -> Void
     let onOpenSettings: () -> Void
 
@@ -1251,7 +1307,9 @@ private struct StatusDisplaySettingsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("状态栏样式").font(.headline)
                     Picker("状态栏样式", selection: $preferences.style) {
-                        ForEach(StatusBarStyle.allCases) { style in Text(style.title).tag(style) }
+                        ForEach(StatusBarStyle.allCases) { style in
+                            Text(verbatim: style.title(localization: localization)).tag(style)
+                        }
                     }
                     .pickerStyle(.menu)
                     .labelsHidden()
@@ -1290,8 +1348,8 @@ private struct SettingsToggle: View {
     var body: some View {
         Toggle(isOn: $value) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 13, weight: .semibold))
-                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                Text(localizedCopy(title)).font(.system(size: 13, weight: .semibold))
+                Text(localizedCopy(subtitle)).font(.caption).foregroundStyle(.secondary)
             }
         }
         .toggleStyle(.switch)
@@ -1339,9 +1397,15 @@ private struct PopoverFooter: View {
 private struct PopoverSectionTitle: View {
     let title: String
     let systemImage: String
+    let localization: AppLocalization
 
     var body: some View {
-        Label(title, systemImage: systemImage).font(.system(size: 14, weight: .bold))
+        Label {
+            Text(verbatim: localization.textValue(title))
+        } icon: {
+            Image(systemName: systemImage)
+        }
+            .font(.system(size: 14, weight: .bold))
     }
 }
 
@@ -1383,7 +1447,10 @@ private struct SummaryTile: View {
     var body: some View {
         PulseCard {
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) { Circle().fill(color).frame(width: 7, height: 7); Text(label) }
+                HStack(spacing: 6) {
+                    Circle().fill(color).frame(width: 7, height: 7)
+                    Text(localizedCopy(label))
+                }
                     .font(.caption).foregroundStyle(.secondary)
                 Text(value).font(.system(size: 15, weight: .bold, design: .rounded)).monospacedDigit()
             }
@@ -1395,7 +1462,7 @@ private struct StatusCapsule: View {
     let status: String
 
     var body: some View {
-        Text(statusTitle)
+        Text(localizedCopy(statusTitle))
             .font(.caption2.bold())
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
@@ -1446,6 +1513,7 @@ private struct PopoverHeaderButton<Label: View>: View {
     }
 
     var body: some View {
+        let localizedTitle = localizedCopy(title)
         Button(action: action) {
             label
                 .frame(
@@ -1466,8 +1534,8 @@ private struct PopoverHeaderButton<Label: View>: View {
         .contentShape(Circle())
         .padding(-PopoverInteractionMetrics.headerHitSlop)
         .onHover { isHovered = $0 }
-        .help(title)
-        .accessibilityLabel(title)
+        .help(localizedTitle)
+        .accessibilityLabel(localizedTitle)
         .accessibilityIdentifier(identifier)
         .focusable(true)
         .focused(focusedControl, equals: target)
@@ -1771,7 +1839,7 @@ private func writePopoverScreenshotClipboard(_ text: String, _ png: Data) -> Boo
 }
 
 private func percentText(_ value: Double?) -> String {
-    value.map { String(format: "%.0f%%", $0) } ?? "--"
+    value.map { AppLocalizationRegistry.shared.current.percent($0) } ?? "--"
 }
 
 private func progress(_ value: Double?) -> CGFloat {
@@ -1787,25 +1855,27 @@ private func quotaColor(_ value: Double?) -> Color {
     }
 }
 
-private func optionalCount(_ value: Int64?) -> String {
-    value?.formatted() ?? "--"
+private func optionalCount(
+    _ value: Int64?,
+    localization: AppLocalization = AppLocalizationRegistry.shared.current
+) -> String {
+    value.map { localization.number($0) } ?? "--"
 }
 
 private func durationText(_ milliseconds: Int64?) -> String {
     guard let milliseconds, milliseconds >= 0 else { return "--" }
-    let totalMinutes = milliseconds / 60_000
-    let days = totalMinutes / 1_440
-    let hours = totalMinutes % 1_440 / 60
-    let minutes = totalMinutes % 60
-    if days > 0 { return "\(days)天 \(hours)小时" }
-    if hours > 0 { return "\(hours)小时 \(minutes)分钟" }
-    return "\(minutes)分钟"
+    return ProductCopy.duration(
+        milliseconds: milliseconds, localization: AppLocalizationRegistry.shared.current
+    )
 }
 
 private func relativeTimestamp(_ milliseconds: Int64) -> String {
-    guard milliseconds > 0 else { return "时间未知" }
+    guard milliseconds > 0 else {
+        return AppLocalizationRegistry.shared.current.textValue("时间未知")
+    }
     let formatter = RelativeDateTimeFormatter()
     formatter.unitsStyle = .short
+    formatter.locale = AppLocalizationRegistry.shared.current.locale
     return formatter.localizedString(for: Date(timeIntervalSince1970: Double(milliseconds) / 1_000), relativeTo: Date())
 }
 
@@ -1813,6 +1883,7 @@ private func absoluteTimestamp(_ milliseconds: Int64) -> String {
     guard milliseconds > 0 else { return "--" }
     return Date(timeIntervalSince1970: Double(milliseconds) / 1_000).formatted(
         .dateTime.year().month().day().hour().minute()
+            .locale(AppLocalizationRegistry.shared.current.locale)
     )
 }
 
@@ -1823,7 +1894,7 @@ private func availabilityRatio(_ credits: ResetCreditsPresentation) -> CGFloat {
 
 private func unavailableCount(_ credits: ResetCreditsPresentation) -> String {
     guard let available = credits.availableCount, let total = credits.totalCount else { return "--" }
-    return max(0, total - available).formatted()
+    return AppLocalizationRegistry.shared.current.number(max(0, total - available))
 }
 
 private func minimumRemainingText(_ credits: ResetCreditsPresentation) -> String {

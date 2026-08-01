@@ -148,8 +148,10 @@ SWIFT_BIN_DIR=$(swift build \
   --show-bin-path)
 APP_EXECUTABLE="$SWIFT_BIN_DIR/codex-pulse-app"
 SPARKLE_FRAMEWORK="$SWIFT_BIN_DIR/Sparkle.framework"
+LOCALIZATION_BUNDLE=$(find "$SWIFT_BIN_DIR" -maxdepth 1 -type d -name '*CodexPulseAppSupport*.bundle' -print -quit)
 [ -x "$APP_EXECUTABLE" ] || fail "Swift release executable is missing"
 [ -d "$SPARKLE_FRAMEWORK" ] || fail "Sparkle framework is missing"
+[ -n "$LOCALIZATION_BUNDLE" ] && [ -d "$LOCALIZATION_BUNDLE" ] || fail "App localization resource bundle is missing"
 
 (
   cd "$REPO_ROOT"
@@ -190,6 +192,12 @@ iconutil \
 chmod 0755 \
   "$APP_DIR/Contents/MacOS/Codex Pulse" \
   "$APP_DIR/Contents/Helpers/codex-pulse"
+for localization_directory in en.lproj zh-hans.lproj; do
+  [ -d "$LOCALIZATION_BUNDLE/$localization_directory" ] || \
+    fail "App localization directory is missing: $localization_directory"
+  ditto "$LOCALIZATION_BUNDLE/$localization_directory" \
+    "$APP_DIR/Contents/Resources/$localization_directory"
+done
 
 PLIST="$APP_DIR/Contents/Info.plist"
 plutil -lint "$PLIST" >/dev/null

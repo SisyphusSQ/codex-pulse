@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 )
 
@@ -46,6 +47,7 @@ type SettingsUpdatesUpdate struct {
 type SettingsUIUpdate struct {
 	LaunchBehavior string `json:"launchBehavior"`
 	OverviewRange  string `json:"overviewRange"`
+	Locale         string `json:"locale"`
 }
 
 type SettingsUpdateResult string
@@ -214,6 +216,9 @@ func validSettingsUpdateRequest(request SettingsUpdateRequest) bool {
 		request.Updates.CheckIntervalSeconds >= 3600 && request.Updates.CheckIntervalSeconds <= 86400 &&
 		(request.Updates.Channel == "stable" || request.Updates.Channel == "prerelease") &&
 		(request.UI.LaunchBehavior == "main_window" || request.UI.LaunchBehavior == "tray") &&
+		(request.UI.Locale == preferences.LocaleSystem ||
+			request.UI.Locale == preferences.LocaleChineseSimplified ||
+			request.UI.Locale == preferences.LocaleEnglishUS) &&
 		(request.UI.OverviewRange == "quota_week" || request.UI.OverviewRange == "today" ||
 			request.UI.OverviewRange == "seven_days" ||
 			request.UI.OverviewRange == "thirty_days")

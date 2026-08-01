@@ -8571,6 +8571,7 @@ type SettingsUIUpdate struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	LaunchBehavior string                 `protobuf:"bytes,1,opt,name=launch_behavior,json=launchBehavior,proto3" json:"launch_behavior,omitempty"`
 	OverviewRange  string                 `protobuf:"bytes,2,opt,name=overview_range,json=overviewRange,proto3" json:"overview_range,omitempty"`
+	Locale         string                 `protobuf:"bytes,3,opt,name=locale,proto3" json:"locale,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -8615,6 +8616,13 @@ func (x *SettingsUIUpdate) GetLaunchBehavior() string {
 func (x *SettingsUIUpdate) GetOverviewRange() string {
 	if x != nil {
 		return x.OverviewRange
+	}
+	return ""
+}
+
+func (x *SettingsUIUpdate) GetLocale() string {
+	if x != nil {
+		return x.Locale
 	}
 	return ""
 }
@@ -11079,10 +11087,11 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x15SettingsUpdatesUpdate\x12,\n" +
 	"\x12auto_check_enabled\x18\x01 \x01(\bR\x10autoCheckEnabled\x124\n" +
 	"\x16check_interval_seconds\x18\x02 \x01(\x03R\x14checkIntervalSeconds\x12\x18\n" +
-	"\achannel\x18\x03 \x01(\tR\achannel\"b\n" +
+	"\achannel\x18\x03 \x01(\tR\achannel\"z\n" +
 	"\x10SettingsUIUpdate\x12'\n" +
 	"\x0flaunch_behavior\x18\x01 \x01(\tR\x0elaunchBehavior\x12%\n" +
-	"\x0eoverview_range\x18\x02 \x01(\tR\roverviewRange\"\xc6\x02\n" +
+	"\x0eoverview_range\x18\x02 \x01(\tR\roverviewRange\x12\x16\n" +
+	"\x06locale\x18\x03 \x01(\tR\x06locale\"\xc6\x02\n" +
 	"\x15UpdateSettingsRequest\x12+\n" +
 	"\x11expected_revision\x18\x01 \x01(\tR\x10expectedRevision\x12@\n" +
 	"\x06online\x18\x02 \x01(\v2(.codexpulse.core.v1.SettingsOnlineUpdateR\x06online\x12C\n" +

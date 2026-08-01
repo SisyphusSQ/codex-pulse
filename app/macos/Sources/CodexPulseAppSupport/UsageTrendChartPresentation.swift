@@ -51,7 +51,9 @@ public struct UsageTrendChartPresentation: Sendable {
     }
 
     public var sectionTitle: String {
-        granularity == .hour ? "每小时趋势" : "每日趋势"
+        AppLocalizationRegistry.shared.current.textValue(
+            granularity == .hour ? "每小时趋势" : "每日趋势"
+        )
     }
 
     public var axisTicks: [Date] {
@@ -85,11 +87,14 @@ public struct UsageTrendChartPresentation: Sendable {
     }
 
     private func formatted(_ date: Date, format: String) -> String {
+        let localization = AppLocalizationRegistry.shared.current
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.locale = localization.locale
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.timeZone = reportingTimeZone
-        formatter.dateFormat = format
+        formatter.dateFormat = localization.language == .englishUS
+            ? format.replacingOccurrences(of: "yyyy年M月d日", with: "MMM d, yyyy")
+            : format
         return formatter.string(from: date)
     }
 }

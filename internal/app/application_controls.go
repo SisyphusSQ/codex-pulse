@@ -50,6 +50,7 @@ func (runtime *applicationLifecycleRuntime) UpdateSettings(
 	update.Updates.Channel = preferences.UpdateChannel(request.Updates.Channel)
 	update.UI.LaunchBehavior = preferences.LaunchBehavior(request.UI.LaunchBehavior)
 	update.UI.OverviewRange = preferences.OverviewRange(request.UI.OverviewRange)
+	update.UI.Locale = request.UI.Locale
 
 	committed, updateErr := runtime.UpdateQuotaSettings(ctx, update)
 	receipt := core.SettingsUpdateReceipt{Revision: strconv.FormatUint(committed.Revision, 10)}
