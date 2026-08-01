@@ -12,6 +12,7 @@ import (
 
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -21,6 +22,12 @@ const (
 	defaultRefreshCompletionTimeout = 5 * time.Second
 	defaultRefreshDueLimit          = 10
 )
+
+var authRecoveryDelays = [...]time.Duration{
+	30 * time.Second,
+	2 * time.Minute,
+	10 * time.Minute,
+}
 
 var ErrInvalidQuotaRefreshCoordinator = errors.New("invalid quota refresh coordinator")
 
@@ -359,6 +366,9 @@ func (coordinator *QuotaRefreshCoordinator) runDueCycleLocked(
 	nowMS int64,
 ) error {
 	cycleErrors := &quotaRefreshCycleErrors{}
+	if err := coordinator.rearmResetCreditsAfterQuotaRecovery(ctx, snapshot, nowMS); err != nil {
+		cycleErrors.add(err, isPermanentQuotaRefreshCycleError(err))
+	}
 	recoveredIDs, err := coordinator.recoverExpiredClaimsLocked(ctx, snapshot, nowMS)
 	if err != nil {
 		cycleErrors.add(err, isPermanentQuotaRefreshCycleError(err))
@@ -505,6 +515,14 @@ func (coordinator *QuotaRefreshCoordinator) completeRecordedClaim(
 	if err != nil {
 		return claimed, err
 	}
+	attempt, err := coordinator.repository.SourceAttempt(completionCtx, requestID)
+	if errors.Is(err, store.ErrNotFound) {
+		// Synthetic fetchers used by scheduler tests do not persist an attempt
+		// record; retain the normal policy decision for those executions.
+		attempt = store.SourceAttempt{}
+	} else if err != nil {
+		return claimed, err
+	}
 	windows, err := coordinator.loadQuotaWindows(completionCtx, descriptor.source, nowMS)
 	if err != nil {
 		return claimed, err
@@ -517,6 +535,7 @@ func (coordinator *QuotaRefreshCoordinator) completeRecordedClaim(
 	if err != nil {
 		return claimed, err
 	}
+	decision = boundedAuthRecoveryDecision(attempt, state, decision, nowMS)
 	completed, err := coordinator.repository.CompleteSourceRefresh(completionCtx, store.SourceRefreshCompletion{
 		SourceInstanceID: descriptor.sourceInstanceID, ClaimID: requestID,
 		ExpectedRevision: claimed.Revision, NextDueAtMS: decision.NextDueAtMS,
@@ -527,6 +546,74 @@ func (coordinator *QuotaRefreshCoordinator) completeRecordedClaim(
 	}
 	coordinator.notifyRefreshCommitted(completionCtx, descriptor.source)
 	return completed, nil
+}
+
+func boundedAuthRecoveryDecision(
+	attempt store.SourceAttempt,
+	state *store.SourceState,
+	decision quotaonline.RefreshDecision,
+	nowMS int64,
+) quotaonline.RefreshDecision {
+	if state == nil || state.LastFailureCode == nil ||
+		*state.LastFailureCode != store.SourceFailureAuthRequired ||
+		attempt.FailureCode == nil ||
+		*attempt.FailureCode != store.SourceFailureAuthRequired ||
+		attempt.HTTPStatus == nil ||
+		(*attempt.HTTPStatus != 401 && *attempt.HTTPStatus != 403) ||
+		decision.NextDueAtMS != nil {
+		return decision
+	}
+	failureNumber := state.ConsecutiveFailures
+	if failureNumber < 1 || failureNumber > int64(len(authRecoveryDelays)) {
+		return decision
+	}
+	delayMS := authRecoveryDelays[failureNumber-1].Milliseconds()
+	if nowMS > runtimeclock.MaxTimestampMS-delayMS {
+		return decision
+	}
+	dueAtMS := nowMS + delayMS
+	decision.NextDueAtMS = &dueAtMS
+	decision.Reason = store.RefreshReasonRecovery
+	return decision
+}
+
+func (coordinator *QuotaRefreshCoordinator) rearmResetCreditsAfterQuotaRecovery(
+	ctx context.Context,
+	snapshot preferences.Snapshot,
+	nowMS int64,
+) error {
+	quotaDescriptor, quotaFound := coordinator.descriptor(snapshot, quotaonline.RefreshSourceQuota)
+	resetDescriptor, resetFound := coordinator.descriptor(snapshot, quotaonline.RefreshSourceResetCredits)
+	if !quotaFound || !resetFound || !quotaDescriptor.enabled || !resetDescriptor.enabled {
+		return nil
+	}
+	quotaState, err := coordinator.loadSourceState(ctx, quotaDescriptor.sourceInstanceID)
+	if err != nil {
+		return err
+	}
+	resetState, err := coordinator.loadSourceState(ctx, resetDescriptor.sourceInstanceID)
+	if err != nil {
+		return err
+	}
+	if quotaState == nil || quotaState.LastSuccessAtMS == nil || resetState == nil ||
+		resetState.LastFailureCode == nil || *resetState.LastFailureCode != store.SourceFailureAuthRequired ||
+		resetState.LastAttemptAtMS == nil || *quotaState.LastSuccessAtMS <= *resetState.LastAttemptAtMS ||
+		resetState.ConsecutiveFailures > int64(len(authRecoveryDelays)) {
+		return nil
+	}
+	schedule, err := coordinator.loadSchedule(ctx, resetDescriptor.sourceInstanceID)
+	if err != nil {
+		return err
+	}
+	if schedule != nil && (schedule.ActiveClaimID != nil || schedule.Reason != store.RefreshReasonAuthRequired) {
+		return nil
+	}
+	decision := quotaonline.RefreshDecision{
+		NextDueAtMS: &nowMS,
+		Reason:      store.RefreshReasonRecovery,
+	}
+	_, err = coordinator.persistDecision(ctx, resetDescriptor, schedule, decision, nowMS)
+	return err
 }
 
 func (coordinator *QuotaRefreshCoordinator) notifyRefreshCommitted(

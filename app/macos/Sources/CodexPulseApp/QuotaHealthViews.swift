@@ -50,7 +50,8 @@ struct QuotaUsageView: View {
             QuotaContentView(
                 response: $0,
                 paceState: model.quotaPaceState,
-                refreshState: model.quotaRefreshState,
+                quotaRefreshState: model.quotaRefreshState,
+                resetCreditsRefreshState: model.resetCreditsRefreshState,
                 refresh: model.requestQuotaRefresh
             )
         }
@@ -78,7 +79,8 @@ struct QuotaUsageView: View {
 private struct QuotaContentView: View {
     let response: Codexpulse_Core_V1_QuotaCurrentResponse
     let paceState: FeatureLoadState<Codexpulse_Core_V1_QuotaPaceResponse>
-    let refreshState: ActionState
+    let quotaRefreshState: ActionState
+    let resetCreditsRefreshState: ActionState
     let refresh: (String) -> Void
 
     private var displayWindows: [Codexpulse_Core_V1_CurrentWindow] {
@@ -97,19 +99,8 @@ private struct QuotaContentView: View {
                 .disabled(isRefreshing)
                 .accessibilityIdentifier("quota.refresh")
             }
-            switch refreshState {
-            case .idle:
-                EmptyView()
-            case .running:
-                Label("正在更新额度…", systemImage: "arrow.clockwise")
-                    .font(.caption).foregroundStyle(.secondary)
-            case .succeeded:
-                Label("额度更新已开始", systemImage: "checkmark.circle")
-                    .font(.caption).foregroundStyle(.green)
-            case .unavailable:
-                Label("暂时无法更新额度", systemImage: "exclamationmark.triangle")
-                    .font(.caption).foregroundStyle(.orange)
-            }
+            refreshStatus(title: "额度", state: quotaRefreshState)
+            refreshStatus(title: "重置次数", state: resetCreditsRefreshState)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], spacing: 12) {
                 ForEach(Array(displayWindows.enumerated()), id: \.offset) { _, window in
                     let presentation = QuotaWindowPresentation(window)
@@ -176,8 +167,26 @@ private struct QuotaContentView: View {
     }
 
     private var isRefreshing: Bool {
-        if case .running = refreshState { return true }
+        if case .running = quotaRefreshState { return true }
+        if case .running = resetCreditsRefreshState { return true }
         return false
+    }
+
+    @ViewBuilder
+    private func refreshStatus(title: String, state: ActionState) -> some View {
+        switch state {
+        case .idle:
+            EmptyView()
+        case .running:
+            Label("正在更新\(title)…", systemImage: "arrow.clockwise")
+                .font(.caption).foregroundStyle(.secondary)
+        case .succeeded:
+            Label("\(title)更新已开始", systemImage: "checkmark.circle")
+                .font(.caption).foregroundStyle(.green)
+        case .unavailable:
+            Label("\(title)暂时无法更新", systemImage: "exclamationmark.triangle")
+                .font(.caption).foregroundStyle(.orange)
+        }
     }
 }
 

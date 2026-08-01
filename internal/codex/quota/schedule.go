@@ -119,7 +119,8 @@ func (policy RefreshPolicy) Plan(input RefreshPlanInput) (RefreshDecision, error
 			return immediateRefreshDecision(input.NowMS, reason), nil
 		}
 		// auth.json 可能在应用停止期间恢复，或旧版 Home 身份已在本次启动迁移。
-		// 每次进程启动仅重试一次，失败后仍由 auth_required 继续暂停自动刷新。
+		// 每次进程启动先做一次即时探测；已记录的 401 由调度器提供有限恢复窗口，
+		// 超出窗口后仍由 auth_required 暂停自动刷新。
 		if input.Trigger == store.RefreshTriggerStartup &&
 			input.SourceState.LastFailureCode != nil &&
 			*input.SourceState.LastFailureCode == store.SourceFailureAuthRequired {
