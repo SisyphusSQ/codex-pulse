@@ -5659,6 +5659,36 @@ private func testQuotaPacePresentationExplainsPaceForecastAndEvidence() throws {
     )
 }
 
+private func testEnglishQuotaPaceComparisonPreservesArgumentTypesWhenWordOrderChanges() throws {
+    let english = AppLocalization.englishUS
+    try expect(
+        english.format("quota.pace.comparison.more", "previous cycle", 0)
+            == "0% more than previous cycle",
+        "English quota comparisons must bind the target and percentage by argument position"
+    )
+    try expect(
+        english.format("quota.pace.comparison.less", "previous cycle", 7)
+            == "7% less than previous cycle",
+        "English quota comparisons must safely format a nonzero percentage"
+    )
+
+    let previousLocalization = AppLocalizationRegistry.shared.current
+    defer { AppLocalizationRegistry.shared.update(previousLocalization) }
+    AppLocalizationRegistry.shared.update(english)
+
+    var window = Codexpulse_Core_V1_QuotaPaceWindow()
+    window.windowKind = "secondary"
+    window.limitID = "codex"
+    window.remainingPercent = 39
+    window.previousRemainingAtElapsed = 32
+
+    let presentation = QuotaPaceWindowPresentation(window, evaluatedAtMS: 0)
+    try expect(
+        presentation.previousComparisonText == "7% more than previous cycle",
+        "rebuilding quota pace presentation in English must preserve typed comparison arguments"
+    )
+}
+
 private func testQuotaPaceForecastUsesCoarseRelativeUnitsAndHonestFallbacks() throws {
     func presentation(
         state: String,
@@ -7567,6 +7597,7 @@ struct CodexPulseAppTestMain {
         try await testOverviewProjectFailureDoesNotHideUsageAndSessions()
         try testQuotaWindowPresentationUsesActualDuration()
         try testQuotaPacePresentationExplainsPaceForecastAndEvidence()
+        try testEnglishQuotaPaceComparisonPreservesArgumentTypesWhenWordOrderChanges()
         try testQuotaPaceForecastUsesCoarseRelativeUnitsAndHonestFallbacks()
         try testQuotaForecastPresentationIsUsedByOverviewAndStatusPopover()
         try testQuotaPaceRequestUsesTheSameEvaluationClockAsQuota()
