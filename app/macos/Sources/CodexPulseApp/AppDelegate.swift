@@ -29,6 +29,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self.model = AppModel(configuration: configuration)
         self.loginItemSettings = LoginItemSettingsModel(service: loginItemService)
         super.init()
+        model.$localization
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] localization in
+                AppLocalizationRegistry.shared.update(localization)
+                guard let self else { return }
+                window?.title = "Codex Pulse"
+                if !configuration.smokeMode, NSApp.mainMenu != nil {
+                    refreshApplicationMenu()
+                }
+            }
+            .store(in: &cancellables)
         if !configuration.smokeMode {
             updater = SparkleAppUpdater()
         }
@@ -121,11 +133,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func installApplicationMenu() {
+        let localization = model.localization
         let mainMenu = NSMenu()
         let applicationMenuItem = NSMenuItem()
         mainMenu.addItem(applicationMenuItem)
 
-        let applicationMenu = NSMenu(title: "Codex Pulse")
+        let applicationMenu = NSMenu(title: localization.textValue("Codex Pulse"))
         applicationMenuItem.submenu = applicationMenu
 
         let aboutItem = NSMenuItem(
@@ -133,6 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             action: #selector(showAboutPanel(_:)),
             keyEquivalent: ""
         )
+        aboutItem.title = localization.textValue("关于 Codex Pulse")
         aboutItem.target = self
         applicationMenu.addItem(aboutItem)
         applicationMenu.addItem(.separator())
@@ -142,6 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             action: #selector(showSettings(_:)),
             keyEquivalent: ","
         )
+        settingsItem.title = localization.textValue("设置…")
         settingsItem.target = self
         settingsItem.keyEquivalentModifierMask = .command
         applicationMenu.addItem(settingsItem)
@@ -151,19 +166,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             action: #selector(checkForUpdates(_:)),
             keyEquivalent: ""
         )
+        updateItem.title = localization.textValue("检查更新…")
         updateItem.target = self
         applicationMenu.addItem(updateItem)
         applicationMenu.addItem(.separator())
 
-        let servicesMenu = NSMenu(title: "服务")
-        let servicesItem = NSMenuItem(title: "服务", action: nil, keyEquivalent: "")
+        let servicesMenu = NSMenu(title: localization.textValue("服务"))
+        let servicesItem = NSMenuItem(title: localization.textValue("服务"), action: nil, keyEquivalent: "")
         servicesItem.submenu = servicesMenu
         applicationMenu.addItem(servicesItem)
         NSApp.servicesMenu = servicesMenu
         applicationMenu.addItem(.separator())
 
         let hideItem = NSMenuItem(
-            title: "隐藏 Codex Pulse",
+            title: localization.textValue("隐藏 Codex Pulse"),
             action: #selector(NSApplication.hide(_:)),
             keyEquivalent: "h"
         )
@@ -171,7 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         applicationMenu.addItem(hideItem)
 
         let hideOthersItem = NSMenuItem(
-            title: "隐藏其他",
+            title: localization.textValue("隐藏其他"),
             action: #selector(NSApplication.hideOtherApplications(_:)),
             keyEquivalent: "h"
         )
@@ -180,7 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         applicationMenu.addItem(hideOthersItem)
 
         let showAllItem = NSMenuItem(
-            title: "全部显示",
+            title: localization.textValue("全部显示"),
             action: #selector(NSApplication.unhideAllApplications(_:)),
             keyEquivalent: ""
         )
@@ -189,7 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         applicationMenu.addItem(.separator())
 
         let quitItem = NSMenuItem(
-            title: "退出 Codex Pulse",
+            title: localization.textValue("退出 Codex Pulse"),
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         )
@@ -197,6 +213,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         applicationMenu.addItem(quitItem)
 
         NSApp.mainMenu = mainMenu
+    }
+
+    private func refreshApplicationMenu() {
+        installApplicationMenu()
     }
 
     @objc private func showAboutPanel(_ sender: Any?) {
@@ -217,11 +237,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func presentUpdaterUnavailable() {
+        let localization = AppLocalizationRegistry.shared.current
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "此构建未配置应用内更新"
-        alert.informativeText = "正式发布包需要同时包含 HTTPS 更新源和 Ed25519 公钥。"
-        alert.addButton(withTitle: "好")
+        alert.messageText = localization.textValue("此构建未配置应用内更新")
+        alert.informativeText = localization.textValue("正式发布包需要同时包含 HTTPS 更新源和 Ed25519 公钥。")
+        alert.addButton(withTitle: localization.textValue("好"))
         if let window, window.isVisible {
             alert.beginSheetModal(for: window)
         } else {
@@ -230,18 +251,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func presentUpdateInstallationBlocked(_ outcome: ShutdownOutcome) {
+        let localization = AppLocalizationRegistry.shared.current
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "暂时无法安装更新"
+        alert.messageText = localization.textValue("暂时无法安装更新")
         switch outcome {
         case .forced:
-            alert.informativeText = "后台服务未能正常退出，已阻止替换应用。请稍后再次检查更新。"
+            alert.informativeText = localization.textValue(
+                "后台服务未能正常退出，已阻止替换应用。请稍后再次检查更新。"
+            )
         case .uncertain:
-            alert.informativeText = "无法确认后台服务已经退出，已阻止替换应用。请稍后再次检查更新。"
+            alert.informativeText = localization.textValue(
+                "无法确认后台服务已经退出，已阻止替换应用。请稍后再次检查更新。"
+            )
         case .clean:
-            alert.informativeText = "更新准备状态异常，请稍后再次检查更新。"
+            alert.informativeText = localization.textValue("更新准备状态异常，请稍后再次检查更新。")
         }
-        alert.addButton(withTitle: "好")
+        alert.addButton(withTitle: localization.textValue("好"))
         if let window, window.isVisible {
             alert.beginSheetModal(for: window)
         } else {

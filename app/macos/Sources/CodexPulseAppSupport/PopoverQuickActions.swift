@@ -377,39 +377,41 @@ public enum PopoverQuickActions {
     )!
 
     public static func openProject(
-        using opener: (URL) -> Bool
+        using opener: (URL) -> Bool,
+        localization: AppLocalization = AppLocalizationRegistry.shared.current
     ) -> PopoverQuickActionResult {
         guard opener(projectURL) else {
             return .failure(
-                title: "无法打开项目主页",
-                message: "系统未能打开 GitHub 项目主页，请稍后再试。"
+                title: localization.textValue("无法打开项目主页"),
+                message: localization.textValue("系统未能打开 GitHub 项目主页，请稍后再试。")
             )
         }
         return .success(
-            title: "已打开项目主页",
-            message: "已交给默认浏览器处理。"
+            title: localization.textValue("已打开项目主页"),
+            message: localization.textValue("已交给默认浏览器处理。")
         )
     }
 
     public static func copyPopoverScreenshot(
         png: Data?,
-        writeClipboard: (String, Data) -> Bool
+        writeClipboard: (String, Data) -> Bool,
+        localization: AppLocalization = AppLocalizationRegistry.shared.current
     ) -> PopoverQuickActionResult {
         guard let png else {
             return .failure(
-                title: "无法复制 Popover 完整截图",
-                message: "Popover 截图生成失败，未写入剪贴板。"
+                title: localization.textValue("无法复制 Popover 完整截图"),
+                message: localization.textValue("Popover 截图生成失败，未写入剪贴板。")
             )
         }
         guard writeClipboard(PopoverScreenshotClipboardText.plainText, png) else {
             return .failure(
-                title: "无法复制 Popover 完整截图",
-                message: "剪贴板写入失败，未复制任何数据。"
+                title: localization.textValue("无法复制 Popover 完整截图"),
+                message: localization.textValue("剪贴板写入失败，未复制任何数据。")
             )
         }
         return .success(
-            title: "已复制 Popover 完整截图",
-            message: "Popover 全部内容已复制，账号与套餐信息已隐藏。"
+            title: localization.textValue("已复制 Popover 完整截图"),
+            message: localization.textValue("Popover 全部内容已复制，账号与套餐信息已隐藏。")
         )
     }
 }

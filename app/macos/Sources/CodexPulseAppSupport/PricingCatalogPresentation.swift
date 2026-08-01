@@ -16,10 +16,13 @@ public enum ReferencePriceFormatter {
         _ value: Codexpulse_Core_V1_NumericValue,
         currency: String
     ) -> String {
-        guard value.hasValue, value.value >= 0, value.unit == "micro_usd" else { return "暂无" }
+        let localization = AppLocalizationRegistry.shared.current
+        guard value.hasValue, value.value >= 0, value.unit == "micro_usd" else {
+            return localization.textValue("暂无")
+        }
         let precision = value.value.isMultiple(of: 10_000) ? 2 : 3
         let amount = Double(value.value) / 1_000_000
-        let number = String(format: "%.\(precision)f", locale: Locale(identifier: "en_US_POSIX"), amount)
+        let number = String(format: "%.\(precision)f", locale: localization.locale, amount)
         return currency == "USD" ? "$\(number)" : "\(currency) \(number)"
     }
 
@@ -27,8 +30,11 @@ public enum ReferencePriceFormatter {
         _ value: Codexpulse_Core_V1_NumericValue
     ) -> String? {
         guard value.hasValue, value.value >= 0, value.unit == "milliseconds" else { return nil }
-        return Date(timeIntervalSince1970: TimeInterval(value.value) / 1_000)
-            .formatted(date: .abbreviated, time: .omitted)
+        let formatter = DateFormatter()
+        formatter.locale = AppLocalizationRegistry.shared.current.locale
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: Date(timeIntervalSince1970: TimeInterval(value.value) / 1_000))
     }
 
     public static func sourceURL(

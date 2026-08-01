@@ -17,12 +17,15 @@ struct QuotaUsageView: View {
                     }
                     Spacer()
                 }
-                HStack {
+                HStack(spacing: 8) {
+                    Text("用量范围")
+                        .foregroundStyle(.secondary)
                     Picker("用量范围", selection: $model.usageRange) {
                         ForEach(DateRangePreset.allCases.filter { $0 != .all && $0 != .quotaWeek }) {
                             Text($0.title).tag($0)
                         }
                     }
+                    .labelsHidden()
                     .frame(width: 150)
                     .onChange(of: model.usageRange) { _, _ in model.loadUsage() }
                     Spacer()
@@ -88,6 +91,7 @@ private struct QuotaContentView: View {
     }
 
     var body: some View {
+        let localization = AppLocalizationRegistry.shared.current
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("额度窗口").font(.title2.bold())
@@ -115,7 +119,7 @@ private struct QuotaContentView: View {
                             Spacer()
                             Text(
                                 window.hasRemainingPercent
-                                    ? String(format: "%.0f%%", window.remainingPercent) : "--"
+                                    ? AppLocalizationRegistry.shared.current.percent(window.remainingPercent) : "--"
                             )
                             .font(.system(size: 28, weight: .semibold, design: .rounded))
                             .monospacedDigit()
@@ -151,8 +155,13 @@ private struct QuotaContentView: View {
             SectionCard(title: "重置次数") {
                 let credits = response.current.resetCredits
                 KeyValueRow(
-                    key: "可用", value: credits.hasAvailableCount ? credits.availableCount.formatted() : "--")
-                KeyValueRow(key: "总量", value: credits.hasTotalCount ? credits.totalCount.formatted() : "--")
+                    key: "可用",
+                    value: credits.hasAvailableCount ? localization.number(credits.availableCount) : "--"
+                )
+                KeyValueRow(
+                    key: "总量",
+                    value: credits.hasTotalCount ? localization.number(credits.totalCount) : "--"
+                )
                 if credits.hasCumulativeRemainingMs {
                     KeyValueRow(
                         key: "累计剩余时间",
@@ -294,7 +303,9 @@ private struct UsageContentView: View {
                                 .accessibilityLabel(
                                     "\(chartPresentation.detailText(for: datedBucket.date)) · \(segment.modelName)"
                                 )
-                                .accessibilityValue("\(TokenQuantityFormatter.string(segment.tokens)) Token")
+                                .accessibilityValue(
+                                    TokenQuantityFormatter.stringWithUnit(segment.tokens)
+                                )
                             }
                         }
                         if let selected = selectedTrendBucket,
@@ -439,7 +450,10 @@ private struct UsageContentView: View {
 
     private func shareText(_ tokens: Int64, total: Int64) -> String {
         guard total > 0 else { return "0%" }
-        return String(format: "%.1f%%", Double(tokens) / Double(total) * 100)
+        return AppLocalizationRegistry.shared.current.percent(
+            Double(tokens) / Double(total) * 100,
+            fractionDigits: 1
+        )
     }
 }
 
@@ -506,11 +520,14 @@ private struct PricingCatalogView: View {
     }
 
     private var snapshotText: String {
+        let localization = AppLocalizationRegistry.shared.current
         let verified = ReferencePriceFormatter.verifiedDate(response.verifiedAtMs)
         return if let verified {
-            "价格快照 \(response.pricingVersion) · 验证于 \(verified)"
+            localization.format(
+                "价格快照 %@ · 验证于 %@", String(response.pricingVersion), verified
+            )
         } else {
-            "价格快照 \(response.pricingVersion)"
+            localization.format("价格快照 %@", String(response.pricingVersion))
         }
     }
 
@@ -572,13 +589,18 @@ struct LocalStatusView: View {
             HStack {
                 Text("状态提醒").font(.title2.bold())
                 Spacer()
+                Text("范围")
+                    .foregroundStyle(.secondary)
                 Picker("范围", selection: activeFilter) {
                     Text("仅活动中").tag("true")
                     Text("已解决").tag("false")
                     Text("全部").tag("all")
                 }
+                .labelsHidden()
                 .frame(width: 140)
                 .onChange(of: activeFilter.wrappedValue) { _, _ in model.healthFiltersChanged() }
+                Text("严重性")
+                    .foregroundStyle(.secondary)
                 Picker("严重性", selection: severityFilter) {
                     Text("全部级别").tag("all")
                     Text("信息").tag("info")
@@ -586,6 +608,7 @@ struct LocalStatusView: View {
                     Text("错误").tag("error")
                     Text("严重").tag("critical")
                 }
+                .labelsHidden()
                 .frame(width: 130)
                 .onChange(of: severityFilter.wrappedValue) { _, _ in model.healthFiltersChanged() }
             }
@@ -707,7 +730,10 @@ private struct DataHealthView: View {
             if response.hasLatest {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 12)], spacing: 12) {
                     MetricCard(
-                        title: "CPU", value: String(format: "%.1f%%", response.latest.cpuPercent),
+                        title: "CPU",
+                        value: AppLocalizationRegistry.shared.current.percent(
+                            response.latest.cpuPercent, fractionDigits: 1
+                        ),
                         detail: "当前使用率", systemImage: "cpu")
                     MetricCard(
                         title: "内存", value: bytesText(response.latest.rssBytes), detail: "当前占用",

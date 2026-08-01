@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key>
-    <string>zh_CN</string>
+    <string>zh-Hans</string>
     <key>CFBundleDisplayName</key>
     <string>Codex Pulse</string>
     <key>CFBundleExecutable</key>

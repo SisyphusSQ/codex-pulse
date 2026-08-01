@@ -49,6 +49,9 @@ require_file app/macos/Sources/CodexPulseApp/StatusItemController.swift SWIFT-00
 require_file app/macos/Sources/CodexPulseAppSupport/AppRuntime.swift SWIFT-002 docs/design/details/native-macos-client/README.md
 require_file app/macos/Sources/CodexPulseAppSupport/HelperProcessMonitor.swift SWIFT-002 docs/design/details/native-macos-client/README.md
 require_file app/macos/Sources/CodexPulseAppSupport/OverviewModels.swift SWIFT-002 docs/design/details/native-macos-client/README.md
+require_file app/macos/Sources/CodexPulseAppSupport/AppLocalization.swift I18N-001 docs/design/details/native-macos-client/README.md
+require_file app/macos/Sources/CodexPulseAppSupport/Resources/en.lproj/Localizable.strings I18N-001 docs/design/details/native-macos-client/README.md
+require_file app/macos/Sources/CodexPulseAppSupport/Resources/zh-Hans.lproj/Localizable.strings I18N-001 docs/design/details/native-macos-client/README.md
 require_file app/macos/Sources/CodexPulseAppSupport/FeatureModels.swift SWIFT-003 docs/design/details/native-macos-client/README.md
 require_file app/macos/Sources/CodexPulseAppSupport/FeatureRequests.swift SWIFT-003 docs/design/details/native-macos-client/README.md
 require_file app/macos/Sources/CodexPulseApp/SessionsProjectsViews.swift SWIFT-003 docs/design/details/native-macos-client/README.md
@@ -66,9 +69,33 @@ require_file scripts/sparkle/verify_archive_signature.py RELEASE-001 docs/design
 require_file .github/workflows/ci.yml CI-001 docs/test/engineering-baseline/basic-ci-and-verification.md
 
 go_version=$(awk '$1 == "go" { print $2; exit }' "$REPO_ROOT/go.mod")
-[ "$go_version" = "1.25.0" ] || fail TOOLCHAIN-001 go.mod "Go directive must be 1.25.0"
+[ "$go_version" = "1.26.2" ] || fail TOOLCHAIN-001 go.mod "Go directive must be 1.26.2"
 grep -Fq 'google.golang.org/grpc v1.82.1' "$REPO_ROOT/go.mod" || fail TOOLCHAIN-001 go.mod "grpc-go must be v1.82.1"
 grep -Fq 'google.golang.org/protobuf v1.36.11' "$REPO_ROOT/go.mod" || fail TOOLCHAIN-001 go.mod "protobuf-go must be v1.36.11"
+
+for localization_file in \
+  app/macos/Sources/CodexPulseAppSupport/Resources/en.lproj/Localizable.strings \
+  app/macos/Sources/CodexPulseAppSupport/Resources/zh-Hans.lproj/Localizable.strings; do
+  plutil -lint "$REPO_ROOT/$localization_file" >/dev/null ||
+    fail I18N-001 "$localization_file" "invalid localization resource"
+  duplicate_key=$(awk -F '"' '/^"/ { print $2 }' "$REPO_ROOT/$localization_file" | sort | uniq -d | head -n 1)
+  [ -z "$duplicate_key" ] ||
+    fail I18N-001 "$localization_file" "duplicate localization key: $duplicate_key"
+done
+
+reject_pattern \
+  app/macos/Sources/CodexPulseAppSupport/Resources/en.lproj/Localizable.strings \
+  'copy\.token\.(unit|displayUnit)\..*=.*(ten thousand|ten million|hundred million)' \
+  I18N-001 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseAppSupport/AppLocalization.swift \
+  'languageBundle\(named: bundleLanguageName, in: \.main\)' \
+  I18N-001 docs/design/details/native-macos-client/README.md
+reject_pattern app/macos/Sources/CodexPulseAppSupport/AppLocalization.swift \
+  'Bundle\.module' \
+  I18N-001 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/RootView.swift \
+  'sidebar\.section\.(usage|system)' \
+  I18N-001 docs/design/details/native-macos-client/README.md
 
 [ ! -e "$REPO_ROOT/frontend/package.json" ] || fail ARCH-001 AGENTS.md "frontend manifest returned"
 for removed in internal/updater internal/platform/tray internal/singleinstance build cmd/trayprobe cmd/traystatusprobe; do

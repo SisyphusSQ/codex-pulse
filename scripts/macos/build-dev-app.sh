@@ -45,11 +45,16 @@ make -C "$REPO_ROOT" verify-helper
 SWIFT_BIN_DIR=$(swift build --package-path "$REPO_ROOT/app/macos" --show-bin-path)
 APP_EXECUTABLE="$SWIFT_BIN_DIR/codex-pulse-app"
 SPARKLE_FRAMEWORK="$SWIFT_BIN_DIR/Sparkle.framework"
+LOCALIZATION_BUNDLE=$(find "$SWIFT_BIN_DIR" -maxdepth 1 -type d -name '*CodexPulseAppSupport*.bundle' -print -quit)
 HELPER_EXECUTABLE="$REPO_ROOT/bin/codex-pulse"
 APP_ICON_SOURCE="$REPO_ROOT/app/macos/Resources/AppIcon/CodexPulse.icon"
 APP_ICONSET="$REPO_ROOT/app/macos/Resources/AppIcon/CodexPulse.iconset"
 [ -x "$APP_EXECUTABLE" ] || { echo "Swift app executable is missing" >&2; exit 1; }
 [ -d "$SPARKLE_FRAMEWORK" ] || { echo "Sparkle framework is missing" >&2; exit 1; }
+[ -n "$LOCALIZATION_BUNDLE" ] && [ -d "$LOCALIZATION_BUNDLE" ] || {
+  echo "App localization resource bundle is missing" >&2
+  exit 1
+}
 [ -x "$HELPER_EXECUTABLE" ] || { echo "Go Helper executable is missing" >&2; exit 1; }
 [ -f "$APP_ICON_SOURCE/icon.json" ] || { echo "Codex Pulse Icon Composer source is missing" >&2; exit 1; }
 [ -d "$APP_ICONSET" ] || { echo "Codex Pulse AppIcon iconset is missing" >&2; exit 1; }
@@ -71,6 +76,14 @@ cp "$APP_EXECUTABLE" "$APP_DIR/Contents/MacOS/Codex Pulse"
 cp "$HELPER_EXECUTABLE" "$APP_DIR/Contents/Helpers/codex-pulse"
 ditto "$SPARKLE_FRAMEWORK" "$APP_DIR/Contents/Frameworks/Sparkle.framework"
 iconutil -c icns "$APP_ICONSET" -o "$APP_DIR/Contents/Resources/CodexPulse.icns"
+for localization_directory in en.lproj zh-hans.lproj; do
+  [ -d "$LOCALIZATION_BUNDLE/$localization_directory" ] || {
+    echo "App localization directory is missing: $localization_directory" >&2
+    exit 1
+  }
+  ditto "$LOCALIZATION_BUNDLE/$localization_directory" \
+    "$APP_DIR/Contents/Resources/$localization_directory"
+done
 
 ICON_PIPELINE=icns-fallback
 XCODE_DEVELOPER_DIR=""

@@ -13,16 +13,17 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
 
     public var id: String { rawValue }
 
-    public var title: String {
-        switch self {
-        case .overview: "概览"
-        case .sessions: "会话"
-        case .projects: "项目"
-        case .quotaUsage: "额度与用量"
-        case .localStatus: "本机状态"
-        case .sourcesJobs: "数据源与任务"
-        case .settings: "设置"
+    public func title(localization: AppLocalization) -> String {
+        let key: String = switch self {
+        case .overview: "feature.overview"
+        case .sessions: "feature.sessions"
+        case .projects: "feature.projects"
+        case .quotaUsage: "feature.quotaUsage"
+        case .localStatus: "feature.localStatus"
+        case .sourcesJobs: "feature.sourcesJobs"
+        case .settings: "feature.settings"
         }
+        return localization.text(key)
     }
 
     public var symbol: String {
@@ -100,6 +101,7 @@ public final class AppModel: ObservableObject {
     @Published public var settingsDraft: SettingsDraft?
     @Published public private(set) var settingsSaveState: SettingsSaveState = .idle
     @Published public private(set) var updatePolicy: AppUpdatePolicy = .disabled
+    @Published public private(set) var localization: AppLocalization = .system
 
     @Published public private(set) var selectedSessionID: String?
     @Published public private(set) var selectedProjectKey: String?
@@ -118,6 +120,7 @@ public final class AppModel: ObservableObject {
     private var consumedCursors: [FeatureTaskKey: Set<String>] = [:]
     private var refreshAllPendingTasks: Set<FeatureTaskKey> = []
     private var refreshAllWaitsForOverview = false
+    private var latestRuntimeState: CoreConnectionState = .idle
 
     public init(configuration: AppLaunchConfiguration) {
         runtime = AppRuntime(configuration: configuration)
@@ -133,18 +136,21 @@ public final class AppModel: ObservableObject {
     }
 
     public var statusItemTitle: String {
+        let currentLocalization = localization
         switch presentation {
         case .some(let overview):
             let values = overview.quotaWindows.prefix(2).map { window in
-                let percent = window.remainingPercent.map { String(format: "%.0f%%", $0) } ?? "--"
+                let percent = window.remainingPercent.map { currentLocalization.percent($0) } ?? "--"
                 return "\(window.title) \(percent)"
             }
             return values.isEmpty ? "Codex Pulse --" : values.joined(separator: " · ")
         case .none:
             switch state {
             case .loading: return "Codex Pulse …"
-            case .recovery, .restartRequired: return "Codex Pulse 恢复"
-            case .unavailable: return "Codex Pulse 离线"
+            case .recovery, .restartRequired:
+                return "Codex Pulse \(currentLocalization.textValue("恢复"))"
+            case .unavailable:
+                return "Codex Pulse \(currentLocalization.textValue("离线"))"
             default: return "Codex Pulse --"
             }
         }
@@ -210,8 +216,20 @@ public final class AppModel: ObservableObject {
                 await self?.receiveInvalidation(domain: domain)
             }
             await runtime.start()
+            if self.observesUpdatePolicy {
+                self.loadSettings()
+            }
             self.startTask = nil
         }
+    }
+
+    public func applyLocalePreference(_ rawValue: String) {
+        let preference = AppLanguagePreference(rawValue: rawValue)
+        let next = AppLocalization(preference: preference)
+        guard next != localization || preference.rawValue != localization.preference.rawValue else { return }
+        AppLocalizationRegistry.shared.update(next)
+        localization = next
+        state = AppViewState(latestRuntimeState, localization: next)
     }
 
     public func refresh() {
@@ -897,6 +915,8 @@ public final class AppModel: ObservableObject {
             settingsState = loadState(value: response, meta: response.meta, isEmpty: false)
             let editedDuringLoad = settingsDraft != draftAtStart
             let preservedDraft = editedDuringLoad ? settingsDraft : (hadUnsavedChanges ? draftAtStart : nil)
+            let effectiveDraft = preservedDraft ?? SettingsDraft(response)
+            applyLocalePreference(effectiveDraft.locale)
             if let preservedDraft {
                 settingsDraft = preservedDraft
                 if previous?.snapshot.revision != response.snapshot.revision {
@@ -905,7 +925,7 @@ public final class AppModel: ObservableObject {
                     settingsSaveState = .idle
                 }
             } else {
-                settingsDraft = SettingsDraft(response)
+                settingsDraft = effectiveDraft
                 settingsSaveState = .idle
             }
         } failure: { [weak self] error in
@@ -940,11 +960,15 @@ public final class AppModel: ObservableObject {
                 settingsState = loadState(value: readback, meta: readback.meta, isEmpty: false)
                 switch receipt.result {
                 case "applied":
-                    settingsDraft = pendingDraft ?? SettingsDraft(readback)
+                    let effectiveDraft = pendingDraft ?? SettingsDraft(readback)
+                    settingsDraft = effectiveDraft
+                    applyLocalePreference(effectiveDraft.locale)
                     settingsSaveState = pendingDraft == nil ? .applied(revision: receipt.revision) : .idle
                     restartUpdatePolicyObservation()
                 case "applied_reconcile_required":
-                    settingsDraft = pendingDraft ?? SettingsDraft(readback)
+                    let effectiveDraft = pendingDraft ?? SettingsDraft(readback)
+                    settingsDraft = effectiveDraft
+                    applyLocalePreference(effectiveDraft.locale)
                     settingsSaveState = .reconcileRequired(revision: receipt.revision)
                     restartUpdatePolicyObservation()
                 default:
@@ -964,6 +988,7 @@ public final class AppModel: ObservableObject {
                     settingsState = loadState(value: readback, meta: readback.meta, isEmpty: false)
                     let pendingDraft = settingsDraft.flatMap { $0 == draft ? nil : $0 }
                     settingsDraft = pendingDraft ?? draft
+                    applyLocalePreference((pendingDraft ?? SettingsDraft(readback)).locale)
                     settingsSaveState = .conflict
                 } else {
                     settingsSaveState = .unavailable(AppNotice.from(error))
@@ -1038,13 +1063,14 @@ public final class AppModel: ObservableObject {
     }
 
     private func receive(_ runtimeState: CoreConnectionState) {
+        latestRuntimeState = runtimeState
         switch runtimeState {
         case .normal, .partial, .stale, .unavailable, .cancelled:
             finishOverviewRefresh()
         case .idle, .starting, .handshaking, .loadingOverview, .recovery, .restartRequired, .shuttingDown, .stopped:
             break
         }
-        state = AppViewState(runtimeState)
+        state = AppViewState(runtimeState, localization: localization)
         switch runtimeState {
         case .normal, .partial:
             startUpdatePolicyObservationIfNeeded()

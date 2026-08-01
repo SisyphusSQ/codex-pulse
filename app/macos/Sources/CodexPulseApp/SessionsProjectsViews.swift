@@ -157,7 +157,8 @@ struct SessionsView: View {
     private var pageHeader: some View {
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("会话").font(.title.bold())
+                Text(AppFeature.sessions.title(localization: model.localization))
+                    .font(.title.bold())
                 Text("查看本机会话的用量、模型和活动时间")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -324,7 +325,7 @@ private struct SessionFilterField<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(title)
+            Text(localizedCopy(title))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             content()
@@ -339,7 +340,10 @@ private struct SessionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text(item.displayTitle.isEmpty ? "未命名会话" : item.displayTitle).lineLimit(1)
+                Text(
+                    item.displayTitle.isEmpty ? localizedCopy("未命名会话") : item.displayTitle
+                )
+                .lineLimit(1)
                 Spacer()
                 StatusPill(text: item.activity)
             }
@@ -369,7 +373,11 @@ private struct SessionDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text(response.item.displayTitle.isEmpty ? "未命名会话" : response.item.displayTitle)
+                Text(
+                    response.item.displayTitle.isEmpty
+                        ? localizedCopy("未命名会话")
+                        : response.item.displayTitle
+                )
                     .font(.title2.bold())
                 SectionCard(title: "使用概览") {
                     KeyValueRow(key: "项目", value: attributionText(response.item.project))
@@ -458,7 +466,8 @@ struct ProjectsView: View {
     private var pageHeader: some View {
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("项目").font(.title.bold())
+                Text(AppFeature.projects.title(localization: model.localization))
+                    .font(.title.bold())
                 Text("比较不同项目的会话、Token 和折算成本")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -525,7 +534,12 @@ struct ProjectsView: View {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(attributionText(item.project)).font(.headline).lineLimit(1)
                         HStack {
-                            Text("\(numericText(item.sessionCount)) 个会话")
+                            Text(
+                                item.sessionCount.hasValue
+                                    ? AppLocalizationRegistry.shared.current.quantity(
+                                        "copy.count.session", count: item.sessionCount.value
+                                    ) : "--"
+                            )
                             Spacer()
                         }
                         .font(.caption)
@@ -713,7 +727,7 @@ private struct TokenTrendView: View {
                     .symbolSize(selectedPoint?.id == point.id ? 70 : 28)
                     .accessibilityLabel(presentation.detailText(for: point.date))
                     .accessibilityValue(
-                        "\(TokenQuantityFormatter.string(point.totals.totalTokens.value)) Token"
+                        TokenQuantityFormatter.stringWithUnit(point.totals.totalTokens.value)
                     )
                 }
                 if let selected = selectedPoint {

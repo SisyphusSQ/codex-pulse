@@ -22,10 +22,11 @@ public struct UsageTrendPresentation: Sendable {
     }
 
     public var sectionTitle: String {
-        switch granularity {
+        let value: String = switch granularity {
         case .hour: "每小时趋势"
         case .day: "每日趋势"
         }
+        return AppLocalizationRegistry.shared.current.textValue(value)
     }
 
     public func axisText(for date: Date) -> String {
@@ -67,11 +68,15 @@ public struct UsageTrendPresentation: Sendable {
     }
 
     private func formatted(_ date: Date, format: String) -> String {
+        let localization = AppLocalizationRegistry.shared.current
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.locale = localization.locale
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.timeZone = reportingTimeZone
-        formatter.dateFormat = format
+        formatter.dateFormat = localization.language == .englishUS
+            ? format.replacingOccurrences(of: "M月d日", with: "MMM d, yyyy")
+                .replacingOccurrences(of: "yyyy年", with: "")
+            : format
         return formatter.string(from: date)
     }
 }

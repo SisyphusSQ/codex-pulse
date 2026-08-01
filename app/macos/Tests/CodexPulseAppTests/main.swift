@@ -114,6 +114,18 @@ private func mainWindowSource(_ fileName: String) throws -> String {
     return try String(contentsOf: fileURL, encoding: .utf8)
 }
 
+private func appSupportSource(_ fileName: String) throws -> String {
+    let packageRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+    let fileURL =
+        packageRoot
+        .appendingPathComponent("Sources/CodexPulseAppSupport", isDirectory: true)
+        .appendingPathComponent(fileName)
+    return try String(contentsOf: fileURL, encoding: .utf8)
+}
+
 private func updaterSource(_ fileName: String) throws -> String {
     let packageRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
@@ -745,11 +757,11 @@ private func testEveryTokenSurfaceUsesInputOutputBreakdown() throws {
     let support = try mainWindowSource("FeatureViewSupport.swift")
     try expect(
         support.contains("struct TokenBreakdownView")
-            && support.contains("Text(\"输入\")")
-            && support.contains("Text(\"缓存")
-            && support.contains("Text(\"输出\")")
-            && support.contains("Text(\"推理")
-            && support.contains("Text(\"总量\")"),
+            && support.contains("localization.textValue(\"输入\")")
+            && support.contains("token.breakdown.cached")
+            && support.contains("localization.textValue(\"输出\")")
+            && support.contains("token.breakdown.reasoning")
+            && support.contains("localization.textValue(\"总量\")"),
         "the shared Token component must expose input, cached input, output, reasoning, and total"
     )
 
@@ -810,9 +822,10 @@ private func testStatusPopoverShowsLocalizedModelDailyTrend() throws {
         "popover daily trend must render the reconciled per-model buckets with Swift Charts"
     )
     try expect(
-        source.contains("TokenQuantityFormatter.compactString")
+        source.contains("TokenQuantityFormatter.stringWithUnit")
             && source.contains(".accessibilityValue(")
-            && source.contains(" Token\")"),
+            && source.contains("token.total")
+            && source.contains("token.activity.total"),
         "popover daily trend must localize visible and accessibility Token units"
     )
     try expect(
@@ -1331,9 +1344,80 @@ private func testTrendSelectionSnapsToNearestRealPoint() throws {
 
 private func testSidebarSettingsUsesSystemRowSpacing() throws {
     let source = try mainWindowSource("RootView.swift")
+    let sessionsProjectsSource = try mainWindowSource("SessionsProjectsViews.swift")
+    let settingsSource = try mainWindowSource("SourcesJobsSettingsViews.swift")
     try expect(
-        source.contains("ForEach([AppFeature.localStatus, .sourcesJobs, .settings])"),
-        "settings must share the system section's native sidebar row spacing"
+        source.contains("ForEach([AppFeature.localStatus, .sourcesJobs, .settings])")
+            && source.contains("Section(localization.text(\"sidebar.section.usage\"))")
+            && source.contains("Section(localization.text(\"sidebar.section.system\"))")
+            && source.contains("section.title(localization: localization)"),
+        "sidebar rows and section titles must share the explicit App localization"
+    )
+    try expect(
+        sessionsProjectsSource.contains(
+            "AppFeature.sessions.title(localization: model.localization)"
+        )
+            && sessionsProjectsSource.contains(
+                "AppFeature.projects.title(localization: model.localization)"
+            )
+            && settingsSource.contains(
+                "AppFeature.settings.title(localization: model.localization)"
+            ),
+        "top-level page titles must share the sidebar's explicit App localization"
+    )
+}
+
+private func testOverviewHeaderAndBreakdownStayLocaleStable() throws {
+    let source = try mainWindowSource("RootView.swift")
+    try expect(
+        source.contains(".labelsHidden()")
+            && source.contains("Picker(\"活动指标\"")
+            && source.contains(".fixedSize(horizontal: false, vertical: true)")
+            && source.contains(".id(model.localization.preference.rawValue)")
+            && source.contains(
+                "Text(verbatim: localization.textValue(range.title)).tag(range)"
+            ),
+        "overview range and activity controls must keep stable dimensions in every language"
+    )
+    try expect(
+        source.contains("Text(localization.textValue(title))")
+            && source.contains("localization.textValue(detailTitle)")
+            && source.contains("localization.textValue(\"悬停柱体查看详情\")")
+            && source.contains("let localization: AppLocalization")
+            && source.contains("localization: localization"),
+        "dynamic overview labels and idle hints must use the explicit App localization"
+    )
+}
+
+private func testLocaleSensitiveControlsAndPopoverCopyStayStable() throws {
+    let quotaSource = try mainWindowSource("QuotaHealthViews.swift")
+    try expect(
+        quotaSource.contains("Text(\"用量范围\")")
+            && quotaSource.contains("Picker(\"用量范围\"")
+            && quotaSource.contains("Picker(\"严重性\"")
+            && quotaSource.components(separatedBy: ".labelsHidden()").count >= 4,
+        "quota and status filters must reserve picker width for values in both languages"
+    )
+
+    let settingsSource = try mainWindowSource("SourcesJobsSettingsViews.swift")
+    try expect(
+        settingsSource.contains(".id(model.localization.preference.rawValue)")
+            && settingsSource.contains(
+                "ProductCopy.settingOption($0, localization: model.localization)"
+            )
+            && settingsSource.contains("Text(verbatim:"),
+        "native settings pickers must rebuild and render options with the selected App language"
+    )
+
+    let popoverSource = try mainWindowSource("StatusItemController.swift")
+    try expect(
+        popoverSource.contains(".id(model.localization.preference.rawValue)")
+            && popoverSource.contains("\"可用 %@ / %@ 总数\"")
+            && !popoverSource.contains(
+                "Text(\"\\(optionalCount(credits.availableCount)) 可用"
+            )
+            && popoverSource.contains("Text(verbatim: localization.textValue(title))"),
+        "popover sections and reset-credit counts must rerender without mixed-language copy"
     )
 }
 
@@ -1714,8 +1798,8 @@ private func testQuotaResetPresentationIsUsedByEveryQuotaSurface() throws {
     let popover = try mainWindowSource("StatusItemController.swift")
     try expect(
         popover.contains("QuotaResetPresentation(")
-            && popover.contains("Text(\"距离重置：\\(reset.remainingText)\")")
-            && popover.contains("Text(\"重置时间：\\(reset.resetTimeText)\")")
+            && popover.contains("距离重置：%@")
+            && popover.contains("重置时间：%@")
             && popover.contains("popover.quota.reset.\\(window.id)"),
         "the status popover must expose separate countdown and reset-time rows"
     )
@@ -1925,14 +2009,14 @@ private func testNativeSmokeForcesOverviewTransitionLast() throws {
 private func testPopoverUsesWeeklyProjectTokenRanking() throws {
     let source = try mainWindowSource("StatusItemController.swift")
     try expect(
-        source.contains("PopoverSectionTitle(title: \"本周项目 Token 排行\"")
+        source.contains("title: \"本周项目 Token 排行\"")
             && source.contains("overview.weeklyProjectRanking")
             && source.contains("Text(metricText(project.tokens))")
             && !source.contains("tokens: project.tokenBreakdown"),
         "popover must render the weekly project Token ranking with total-only values"
     )
     try expect(
-        !source.contains("PopoverSectionTitle(title: \"最近会话\"")
+        !source.contains("title: \"最近会话\"")
             && !source.contains("overview.sessions.prefix(5)"),
         "popover must replace recent sessions instead of adding a second long list"
     )
@@ -3999,6 +4083,7 @@ private func testSettingsRevisionRequest() throws {
     response.snapshot.updates.channel = "stable"
     response.snapshot.ui.launchBehavior = "main_window"
     response.snapshot.ui.overviewRange = "7d"
+    response.snapshot.ui.locale = "system"
     var editable = Codexpulse_Core_V1_EditableField()
     editable.key = "online.quotaEnabled"
     editable.editable = true
@@ -4006,13 +4091,18 @@ private func testSettingsRevisionRequest() throws {
     updateChannelEditable.key = "updates.channel"
     updateChannelEditable.editable = true
     updateChannelEditable.options = ["stable", "prerelease"]
-    response.editableFields = [editable, updateChannelEditable]
+    var localeEditable = Codexpulse_Core_V1_EditableField()
+    localeEditable.key = "ui.locale"
+    localeEditable.editable = true
+    localeEditable.options = ["system", "zh-CN", "en-US"]
+    response.editableFields = [editable, updateChannelEditable, localeEditable]
 
     var draft = SettingsDraft(response)
     draft.quotaEnabled = true
     draft.resetCreditsEnabled = false
     draft.quotaIntervalSeconds = 1
     draft.updateChannel = "prerelease"
+    draft.locale = "en-US"
     let request = draft.makeRequest(authoritative: response)
     try expect(
         request.expectedRevision == "revision-1", "settings write must carry authoritative revision")
@@ -4025,6 +4115,106 @@ private func testSettingsRevisionRequest() throws {
     try expect(
         request.updates.channel == "prerelease",
         "editable update channel must carry the user's stable or prerelease selection")
+    try expect(
+        request.ui.locale == "en-US",
+        "editable locale must carry the user's explicit language selection")
+}
+
+private func testAppLocalizationResolvesSystemAndFormatsBothLanguages() throws {
+    let english = AppLocalization(preference: .system, preferredLanguages: ["en-US"])
+    let chinese = AppLocalization(preference: .system, preferredLanguages: ["zh-Hans"])
+    let fallback = AppLocalization(preference: .system, preferredLanguages: ["fr-FR"])
+
+    try expect(english.language == .englishUS, "system English must resolve to the English resource")
+    try expect(chinese.language == .chineseSimplified, "system Chinese must resolve to the Chinese resource")
+    try expect(fallback.language == .chineseSimplified, "unsupported system languages must use Chinese fallback")
+    try expect(english.textValue("正常") == "Normal", "English resources must translate shared status copy")
+    try expect(chinese.textValue("正常") == "正常", "Chinese resources must preserve Chinese shared status copy")
+    try expect(
+        english.text("sidebar.section.usage") == "Usage"
+            && AppFeature.overview.title(localization: english) == "Overview"
+            && AppFeature.settings.title(localization: chinese) == "设置",
+        "sidebar and feature titles must use the explicit language resource")
+    try expect(
+        ProductCopy.status("healthy", localization: english) == "Normal",
+        "ProductCopy must render status values in the requested language")
+    try expect(
+        ProductCopy.settingOption("stable", localization: english) == "Stable"
+            && ProductCopy.settingOption("quota_week", localization: english) == "Quota week"
+            && ProductCopy.settingOption("stable", localization: chinese) == "稳定版"
+            && ProductCopy.settingOption("quota_week", localization: chinese) == "周额度",
+        "settings options must follow the explicitly selected language"
+    )
+    try expect(
+        StatusBarStyle.gaugeSummary.title(localization: english) == "Gauge arc"
+            && StatusBarStyle.gaugeSummary.title(localization: chinese) == "仪表弧",
+        "status-bar style options must follow the explicitly selected language"
+    )
+    try expect(
+        ProductCopy.duration(milliseconds: 7_200_000, localization: english) == "2 hours",
+        "ProductCopy must format durations using the requested language")
+    try expect(
+        ProductCopy.duration(milliseconds: 3_600_000, localization: english) == "1 hour",
+        "English duration formatting must preserve singular grammar")
+    try expect(
+        english.quantity("copy.count.session", count: 1) == "1 session"
+            && english.quantity("copy.count.session", count: 2) == "2 sessions",
+        "English count formatting must select singular and plural copy")
+    try expect(
+        english.textValue("输入") == "Input"
+            && english.textValue("输出") == "Output"
+            && english.textValue("缓存") == "Cache"
+            && english.textValue("推理") == "Reasoning",
+        "English token breakdown labels must not retain Chinese source copy"
+    )
+    try expect(
+        TokenQuantityFormatter.compactString(23_000_000, localization: english) == "23M",
+        "token compact formatting must use English K/M/B magnitude units")
+    try expect(
+        TokenQuantityFormatter.stringWithUnit(1, localization: english) == "1 token"
+            && TokenQuantityFormatter.stringWithUnit(2, localization: english) == "2 tokens"
+            && TokenQuantityFormatter.stringWithUnit(
+                23_000_000, compact: true, localization: english
+            ) == "23M tokens",
+        "English Token copy must preserve singular, plural, and compact units")
+    try expect(
+        english.format("token.breakdown.cached", "1.2K") == "Cached 1.2K",
+        "English token breakdown templates must resolve from the resource bundle")
+    try expect(
+        english.format("可用 %@ / %@ 总数", "1", "1") == "1 available / 1 total"
+            && chinese.format("可用 %@ / %@ 总数", "1", "1") == "可用 1 / 1 总数",
+        "reset-credit summaries must preserve locale-specific word order"
+    )
+    try expect(
+        chinese.format("token.breakdown.cachedReasoning", "1", "2") == "缓存 1 · 推理 2",
+        "Chinese token breakdown templates must preserve the Chinese resource")
+    try expect(
+        english.format("activity.heatmap.cell", "Monday", 9) == "Monday 9:00",
+        "English accessibility templates must format hour labels")
+    try expect(
+        english.textValue("周一") == "Mon"
+            && english.textValue("周日") == "Sun"
+            && chinese.textValue("周一") == "周一",
+        "weekday heatmap labels must fit the compact row header in both languages"
+    )
+    try expect(
+        english.textValue(DateRangePreset.quotaWeek.title) == "Quota week"
+            && english.textValue(DateRangePreset.sevenDays.title) == "Last 7 days"
+            && chinese.textValue(DateRangePreset.sevenDays.title) == "近 7 天",
+        "dynamic overview range values must follow the explicitly selected language"
+    )
+    try expect(
+        AppViewState(.starting, localization: english) == .loading("Starting core components…"),
+        "connection state copy must use the requested language")
+
+    let source = try appSupportSource("AppLocalization.swift")
+    let mainLookup = source.range(of: "in: .main")
+    let packageLookup = source.range(of: "swiftPMLanguageBundle")
+    try expect(
+        mainLookup != nil && packageLookup != nil
+            && mainLookup!.lowerBound < packageLookup!.lowerBound
+            && !source.contains("Bundle.module"),
+        "packaged App localization must prefer Bundle.main without linking a local build path")
 }
 
 private func testUpdateChannelsMapToSparkleAllowedChannels() throws {
@@ -4718,6 +4908,16 @@ private func testTokenActivityCalendarAlignsWeeksAndMonthLabels() throws {
             == TokenActivityMonthLabel(id: "2025-08", title: "8月", weekIndex: 0)
             && calendar.monthLabels.last?.title == "7月",
         "month labels must follow visible month boundaries without labeling a partial prior month")
+
+    let englishCalendar = TokenActivityCalendarPresentation(
+        activity,
+        localization: .englishUS
+    )
+    try expect(
+        englishCalendar.monthLabels.first?.title == "8"
+            && englishCalendar.monthLabels.last?.title == "7",
+        "month labels must use the explicitly selected App language"
+    )
 }
 
 private func testTokenActivityCalendarSeparatesUnknownZeroAndRelativeIntensity() throws {
@@ -4793,7 +4993,7 @@ private func testTokenActivityCardPresentsFiveBoundedMetricsAndDayDetails() thro
     try expect(
         card.metrics.map(\.title) == [
             "近 365 天 Token", "峰值日 Token", "活跃天数", "当前连续天数", "最长连续天数",
-        ] && card.metrics.map(\.value) == ["2.3千万", "2.3千万", "4 天", "2 天", "2 天"],
+        ] && card.metrics.map(\.value) == ["2303.2万", "2303.2万", "4 天", "2 天", "2 天"],
         "the annual card must present the five approved bounded metrics in order")
     guard let peakDay = card.calendar.weeks.flatMap(\.days).compactMap({ $0 }).first(where: {
         $0.day.dateKey == "2026-07-26"
@@ -4801,8 +5001,16 @@ private func testTokenActivityCardPresentsFiveBoundedMetricsAndDayDetails() thro
         throw TestFailure.mismatch("annual card omitted a known peak day")
     }
     try expect(
-        card.dayDetail(peakDay) == "2026年7月26日 · 2.3千万 Token · 5 轮",
+        card.dayDetail(peakDay) == "2026年7月26日 · 2303.2万 Token · 5 轮",
         "a heatmap cell must expose an exact localized hover and accessibility description")
+
+    let englishCard = TokenActivityCardPresentation(activity, localization: .englishUS)
+    try expect(
+        englishCard.title == "Token activity"
+            && englishCard.scope == "Last 365 days"
+            && englishCard.metrics.first?.value == "23M",
+        "the annual card must rebuild its labels and units in the explicitly selected language"
+    )
 }
 
 private func testTokenActivityCardLabelsReconciledPartialFactsAsLocalData() throws {
@@ -5692,39 +5900,55 @@ private func testQuotaWindowDisplayResolverDeduplicatesOnlyEquivalentWindows() t
     )
 }
 
-private func testTokenQuantityFormatterUsesChineseMagnitudeUnits() throws {
+private func testTokenQuantityFormatterUsesLocalizedMagnitudeUnits() throws {
+    let chinese = AppLocalization.chineseSimplified
+    let english = AppLocalization.englishUS
     let cases: [(value: Int64, expected: String)] = [
-        (0, "0.00 百万"),
-        (999_999, "1.00 百万"),
-        (1_000_000, "1.00 百万"),
-        (9_999_999, "10.00 百万"),
-        (10_000_000, "1.00 千万"),
-        (99_999_999, "10.00 千万"),
-        (100_000_000, "1.00 亿"),
+        (0, "0"),
+        (999_999, "100 万"),
+        (1_000_000, "100 万"),
+        (9_999_999, "1000 万"),
+        (10_000_000, "1000 万"),
+        (99_999_999, "1 亿"),
+        (100_000_000, "1 亿"),
         (1_360_518_381, "13.61 亿"),
         (4_002_161_268, "40.02 亿"),
     ]
 
     for item in cases {
         try expect(
-            TokenQuantityFormatter.string(item.value) == item.expected,
+            TokenQuantityFormatter.string(item.value, localization: chinese) == item.expected,
             "token quantity \(item.value) must be formatted as \(item.expected)"
         )
     }
 
     let compactCases: [(value: Int64, expected: String)] = [
         (0, "0"),
-        (9_999, "9999"),
         (10_000, "1万"),
-        (1_000_000, "1百万"),
-        (10_000_000, "1千万"),
+        (1_000_000, "100万"),
+        (10_000_000, "1000万"),
         (100_000_000, "1亿"),
         (790_000_000, "7.9亿"),
     ]
     for item in compactCases {
         try expect(
-            TokenQuantityFormatter.compactString(item.value) == item.expected,
+            TokenQuantityFormatter.compactString(item.value, localization: chinese) == item.expected,
             "compact token quantity \(item.value) must be formatted as \(item.expected)"
+        )
+    }
+
+    let englishCases: [(value: Int64, expected: String)] = [
+        (999, "999"),
+        (1_000, "1K"),
+        (999_999, "1M"),
+        (23_000_000, "23M"),
+        (999_999_999, "1B"),
+        (1_360_518_381, "1.36B"),
+    ]
+    for item in englishCases {
+        try expect(
+            TokenQuantityFormatter.string(item.value, localization: english) == item.expected,
+            "English token quantity \(item.value) must be formatted as \(item.expected)"
         )
     }
 }
@@ -7286,6 +7510,8 @@ struct CodexPulseAppTestMain {
         try testPopoverWeeklyTrendDoesNotFollowOverviewRange()
         try testTrendSelectionSnapsToNearestRealPoint()
         try testSidebarSettingsUsesSystemRowSpacing()
+        try testOverviewHeaderAndBreakdownStayLocaleStable()
+        try testLocaleSensitiveControlsAndPopoverCopyStayStable()
         try testSettingsOverviewRangeFallbackMatchesProductOptions()
         try testSettingsExplainsAutomaticDefaultHome()
         try testLoginItemDefaultsToSystemStatusWithoutRegistration()
@@ -7345,7 +7571,7 @@ struct CodexPulseAppTestMain {
         try testQuotaForecastPresentationIsUsedByOverviewAndStatusPopover()
         try testQuotaPaceRequestUsesTheSameEvaluationClockAsQuota()
         try testOverviewPresentationCarriesQuotaPaceWindows()
-        try testTokenQuantityFormatterUsesChineseMagnitudeUnits()
+        try testTokenQuantityFormatterUsesLocalizedMagnitudeUnits()
         try testTokenBreakdownPresentationPreservesInputOutputSemantics()
         try testUsageModelTrendResolverUsesOnlyReconciledDailyFacts()
         try testStatusBarQuotaPresentationUsesOnlyMatchingPeriodUsage()
@@ -7358,6 +7584,7 @@ struct CodexPulseAppTestMain {
         try testOverviewRangeResolutionDrivesEveryContentRequest()
         try testFeatureRequestsStateAndMerge()
         try testSettingsRevisionRequest()
+        try testAppLocalizationResolvesSystemAndFormatsBothLanguages()
         try testUpdateChannelsMapToSparkleAllowedChannels()
         try testSparkleBundleConfigurationRequiresHTTPSAndEd25519Key()
         try await MainActor.run { try testSparkleUpdaterAppliesPolicyAndTracksInstallation() }

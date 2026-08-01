@@ -36,7 +36,7 @@ func TestServiceUpdateSettingsValidatesCASAndExactReplay(t *testing.T) {
 			Channel: UpdateChannelPrerelease, CheckIntervalSeconds: 7200,
 		},
 		UI: UIPreferences{
-			Locale: "zh-CN", LaunchBehavior: LaunchBehaviorMainWindow, OverviewRange: OverviewRangeThirtyDays,
+			Locale: LocaleEnglishUS, LaunchBehavior: LaunchBehaviorMainWindow, OverviewRange: OverviewRangeThirtyDays,
 		},
 	}
 	updated, err := service.UpdateSettings(context.Background(), request)
@@ -54,7 +54,7 @@ func TestServiceUpdateSettingsValidatesCASAndExactReplay(t *testing.T) {
 	}
 	invalid := request
 	invalid.ExpectedRevision = updated.Revision
-	invalid.UI.Locale = "en-US"
+	invalid.UI.Locale = "fr-FR"
 	if _, err := service.UpdateSettings(context.Background(), invalid); !errors.Is(err, ErrInvalidPreferences) {
 		t.Fatalf("UpdateSettings(invalid) error = %v, want ErrInvalidPreferences", err)
 	}

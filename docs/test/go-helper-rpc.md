@@ -44,7 +44,7 @@ go vet ./...
 make verify-helper
 ```
 
-工具链：Go `1.26.2 darwin/arm64`；仓库语言基线 Go `1.25`；`protoc 34.1`；`protoc-gen-go v1.36.11`；`protoc-gen-go-grpc v1.6.2`。
+工具链：Go `1.26.2 darwin/arm64`；仓库语言基线 Go `1.26.2`；`protoc 34.1`；`protoc-gen-go v1.36.11`；`protoc-gen-go-grpc v1.6.2`。
 
 ## 结果
 

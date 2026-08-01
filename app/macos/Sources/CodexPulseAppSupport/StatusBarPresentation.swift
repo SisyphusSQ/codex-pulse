@@ -41,12 +41,13 @@ public enum StatusBarQuotaDataState: Equatable, Sendable {
     }
 
     public var accessibilitySuffix: String {
-        switch self {
+        let value: String = switch self {
         case .fresh: ""
         case .stale: "，显示上次可信额度"
         case .suspicious: "，新额度数据异常，显示上次可信额度"
         case .unavailable: "，额度数据可信度不可用"
         }
+        return AppLocalizationRegistry.shared.current.textValue(value)
     }
 }
 
@@ -58,11 +59,16 @@ public enum StatusBarStyle: String, CaseIterable, Identifiable, Sendable {
     public var id: String { rawValue }
 
     public var title: String {
-        switch self {
+        title(localization: AppLocalizationRegistry.shared.current)
+    }
+
+    public func title(localization: AppLocalization) -> String {
+        let value: String = switch self {
         case .ringSummary: "基准圆环"
         case .openRingSummary: "缺口圆环"
         case .gaugeSummary: "仪表弧"
         }
+        return localization.textValue(value)
     }
 
     public static func resolve(storedValue: String?) -> Self {

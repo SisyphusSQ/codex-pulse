@@ -2,7 +2,10 @@ import Foundation
 
 public struct QuotaResetPresentation: Equatable, Sendable {
     public static let unavailableText = "--"
-    public static let pendingText = "重置时间待定"
+
+    public static var pendingText: String {
+        AppLocalizationRegistry.shared.current.textValue("重置时间待定")
+    }
 
     public let remainingText: String
     public let resetTimeText: String
@@ -14,18 +17,25 @@ public struct QuotaResetPresentation: Equatable, Sendable {
         referenceDate: Date = .now,
         timeZone: TimeZone = .current
     ) {
+        let localization = AppLocalizationRegistry.shared.current
+        let pendingText = localization.textValue("重置时间待定")
         guard let resetRemainingMS, resetRemainingMS > 0 else {
             remainingText = Self.unavailableText
             resetTimeText = Self.unavailableText
-            compactText = Self.pendingText
+            compactText = pendingText
             return
         }
 
-        let remainingText = ProductCopy.duration(milliseconds: resetRemainingMS)
+        let remainingText = ProductCopy.duration(
+            milliseconds: resetRemainingMS,
+            localization: localization
+        )
         guard let resetsAtMS else {
             self.remainingText = remainingText
             resetTimeText = Self.unavailableText
-            compactText = "\(remainingText)后 · \(Self.unavailableText)"
+            compactText = localization.format(
+                "quota.reset.compact", remainingText, Self.unavailableText
+            )
             return
         }
 
@@ -33,7 +43,7 @@ public struct QuotaResetPresentation: Equatable, Sendable {
         guard resetsAtMS > 0, resetDate > referenceDate, resetDate <= .distantFuture else {
             self.remainingText = Self.unavailableText
             resetTimeText = Self.unavailableText
-            compactText = Self.pendingText
+            compactText = pendingText
             return
         }
 
@@ -42,23 +52,26 @@ public struct QuotaResetPresentation: Equatable, Sendable {
 
         let formatter = DateFormatter()
         formatter.calendar = calendar
-        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.locale = localization.locale
         formatter.timeZone = timeZone
-        formatter.dateFormat =
-            calendar.component(.year, from: resetDate)
-                == calendar.component(.year, from: referenceDate)
-            ? "M月d日 HH:mm" : "yyyy年M月d日 HH:mm"
+        let sameYear = calendar.component(.year, from: resetDate)
+            == calendar.component(.year, from: referenceDate)
+        formatter.dateFormat = if localization.language == .englishUS {
+            sameYear ? "MMM d HH:mm" : "yyyy MMM d HH:mm"
+        } else {
+            sameYear ? "M月d日 HH:mm" : "yyyy年M月d日 HH:mm"
+        }
 
         let resetTimeText = formatter.string(from: resetDate)
         guard !resetTimeText.isEmpty else {
             self.remainingText = Self.unavailableText
             self.resetTimeText = Self.unavailableText
-            compactText = Self.pendingText
+            compactText = pendingText
             return
         }
 
         self.remainingText = remainingText
         self.resetTimeText = resetTimeText
-        compactText = "\(remainingText)后 · \(resetTimeText)"
+        compactText = localization.format("quota.reset.compact", remainingText, resetTimeText)
     }
 }

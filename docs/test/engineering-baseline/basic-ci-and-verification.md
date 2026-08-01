@@ -16,7 +16,7 @@ make verify
 
 ## 工具链
 
-- Go `1.25.0`
+- Go `1.26.2`
 - `protoc 34.1`
 - `protoc-gen-go v1.36.11`
 - `protoc-gen-go-grpc v1.6.2`

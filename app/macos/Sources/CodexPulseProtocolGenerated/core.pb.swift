@@ -5015,6 +5015,8 @@ public nonisolated struct Codexpulse_Core_V1_SettingsUIUpdate: Sendable {
 
   public var overviewRange: String = String()
 
+  public var locale: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -12727,7 +12729,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsUpdatesUpdate: SwiftProtobuf.Me
 
 nonisolated extension Codexpulse_Core_V1_SettingsUIUpdate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SettingsUIUpdate"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}launch_behavior\0\u{3}overview_range\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}launch_behavior\0\u{3}overview_range\0\u{1}locale\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -12737,6 +12739,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsUIUpdate: SwiftProtobuf.Message
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.launchBehavior) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.overviewRange) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.locale) }()
       default: break
       }
     }
@@ -12749,12 +12752,16 @@ nonisolated extension Codexpulse_Core_V1_SettingsUIUpdate: SwiftProtobuf.Message
     if !self.overviewRange.isEmpty {
       try visitor.visitSingularStringField(value: self.overviewRange, fieldNumber: 2)
     }
+    if !self.locale.isEmpty {
+      try visitor.visitSingularStringField(value: self.locale, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Codexpulse_Core_V1_SettingsUIUpdate, rhs: Codexpulse_Core_V1_SettingsUIUpdate) -> Bool {
     if lhs.launchBehavior != rhs.launchBehavior {return false}
     if lhs.overviewRange != rhs.overviewRange {return false}
+    if lhs.locale != rhs.locale {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

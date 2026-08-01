@@ -11,13 +11,14 @@ public enum DateRangePreset: String, CaseIterable, Hashable, Identifiable, Senda
     public var id: String { rawValue }
 
     public var title: String {
-        switch self {
+        let value: String = switch self {
         case .quotaWeek: "周额度"
         case .today: "今天"
         case .sevenDays: "近 7 天"
         case .thirtyDays: "近 30 天"
         case .all: "全部"
         }
+        return AppLocalizationRegistry.shared.current.textValue(value)
     }
 }
 

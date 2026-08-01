@@ -28,6 +28,12 @@ const (
 	OverviewRangeThirtyDays OverviewRange = "thirty_days"
 )
 
+const (
+	LocaleSystem            = "system"
+	LocaleChineseSimplified = "zh-CN"
+	LocaleEnglishUS         = "en-US"
+)
+
 type HomeSwitchStrategy string
 
 const (
@@ -144,6 +150,6 @@ func DefaultUpdatePreferences() UpdatePreferences {
 
 func DefaultUIPreferences() UIPreferences {
 	return UIPreferences{
-		Locale: "zh-CN", LaunchBehavior: LaunchBehaviorTray, OverviewRange: OverviewRangeQuotaWeek,
+		Locale: LocaleSystem, LaunchBehavior: LaunchBehaviorTray, OverviewRange: OverviewRangeQuotaWeek,
 	}
 }

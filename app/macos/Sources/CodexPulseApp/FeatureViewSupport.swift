@@ -2,6 +2,13 @@ import CodexPulseAppSupport
 import CodexPulseProtocolGenerated
 import SwiftUI
 
+func localizedCopy(
+    _ value: String,
+    localization: AppLocalization = AppLocalizationRegistry.shared.current
+) -> String {
+    localization.textValue(value)
+}
+
 struct RuntimeAwarePage<Content: View>: View {
     @ObservedObject var model: AppModel
     @ViewBuilder let content: () -> Content
@@ -79,7 +86,7 @@ struct SectionCard<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.headline)
+            Text(localizedCopy(title)).font(.headline)
             content()
         }
         .frame(
@@ -102,7 +109,7 @@ struct KeyValueRow: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(key).foregroundStyle(.secondary)
+            Text(localizedCopy(key)).foregroundStyle(.secondary)
             Spacer(minLength: 16)
             Text(value).multilineTextAlignment(.trailing).textSelection(.enabled)
         }
@@ -118,18 +125,22 @@ enum TokenBreakdownViewStyle {
 struct TokenBreakdownView: View {
     let tokens: TokenBreakdownPresentation
     var style: TokenBreakdownViewStyle = .columns
+    var localization: AppLocalization = AppLocalizationRegistry.shared.current
 
     var body: some View {
         switch style {
         case .columns:
             HStack(alignment: .top, spacing: 0) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("输入")
+                    Text(verbatim: localization.textValue("输入"))
                         .foregroundStyle(.secondary)
-                    Text(metricText(tokens.input))
+                    Text(metricText(tokens.input, localization: localization))
                         .font(.headline)
                         .monospacedDigit()
-                    Text("缓存 \(metricText(tokens.cachedInput))")
+                    Text(localization.format(
+                        "token.breakdown.cached",
+                        metricText(tokens.cachedInput, localization: localization)
+                    ))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -138,12 +149,15 @@ struct TokenBreakdownView: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("输出")
+                    Text(verbatim: localization.textValue("输出"))
                         .foregroundStyle(.secondary)
-                    Text(metricText(tokens.output))
+                    Text(metricText(tokens.output, localization: localization))
                         .font(.headline)
                         .monospacedDigit()
-                    Text("推理 \(metricText(tokens.reasoning))")
+                    Text(localization.format(
+                        "token.breakdown.reasoning",
+                        metricText(tokens.reasoning, localization: localization)
+                    ))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -153,9 +167,9 @@ struct TokenBreakdownView: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("总量")
+                    Text(verbatim: localization.textValue("总量"))
                         .foregroundStyle(.secondary)
-                    Text(metricText(tokens.total))
+                    Text(metricText(tokens.total, localization: localization))
                         .font(.headline)
                         .monospacedDigit()
                 }
@@ -167,14 +181,18 @@ struct TokenBreakdownView: View {
         case .compact:
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 10) {
-                    Text("输入")
-                    Text(metricText(tokens.input)).monospacedDigit()
-                    Text("输出")
-                    Text(metricText(tokens.output)).monospacedDigit()
-                    Text("总量")
-                    Text(metricText(tokens.total)).monospacedDigit()
+                    Text(verbatim: localization.textValue("输入"))
+                    Text(metricText(tokens.input, localization: localization)).monospacedDigit()
+                    Text(verbatim: localization.textValue("输出"))
+                    Text(metricText(tokens.output, localization: localization)).monospacedDigit()
+                    Text(verbatim: localization.textValue("总量"))
+                    Text(metricText(tokens.total, localization: localization)).monospacedDigit()
                 }
-                Text("缓存 \(metricText(tokens.cachedInput)) · 推理 \(metricText(tokens.reasoning))")
+                Text(localization.format(
+                    "token.breakdown.cachedReasoning",
+                    metricText(tokens.cachedInput, localization: localization),
+                    metricText(tokens.reasoning, localization: localization)
+                ))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -188,13 +206,14 @@ struct StatusPill: View {
     let text: String
 
     var body: some View {
+        let localization = AppLocalizationRegistry.shared.current
         Text(ProductCopy.status(text))
             .font(.caption.weight(.medium))
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(statusColor.opacity(0.14), in: Capsule())
             .foregroundStyle(statusColor)
-            .accessibilityLabel("状态：\(ProductCopy.status(text))")
+            .accessibilityLabel(localization.format("status.label", ProductCopy.status(text)))
     }
 
     private var statusColor: Color {
@@ -214,18 +233,34 @@ struct StatusPill: View {
 
 func numericText(_ value: Codexpulse_Core_V1_NumericValue) -> String {
     guard value.hasValue else { return "--" }
-    if value.unit == "tokens" { return TokenQuantityFormatter.string(value.value) }
-    return value.value.formatted()
+    let localization = AppLocalizationRegistry.shared.current
+    if value.unit == "tokens" {
+        return TokenQuantityFormatter.string(value.value, localization: localization)
+    }
+    return localization.number(value.value)
 }
 
 func costText(_ value: Codexpulse_Core_V1_NumericValue) -> String {
     guard value.hasValue else { return "--" }
-    return String(format: "$%.2f", Double(value.value) / 1_000_000)
+    return String(
+        format: "$%.2f",
+        locale: AppLocalizationRegistry.shared.current.locale,
+        Double(value.value) / 1_000_000
+    )
 }
 
 func bytesText(_ value: Codexpulse_Core_V1_NumericValue) -> String {
     guard value.hasValue else { return "--" }
-    return ByteCountFormatter.string(fromByteCount: value.value, countStyle: .file)
+    let localization = AppLocalizationRegistry.shared.current
+    let units = ["B", "KB", "MB", "GB", "TB"]
+    var amount = Double(value.value)
+    var unitIndex = 0
+    while amount >= 1_024, unitIndex < units.count - 1 {
+        amount /= 1_024
+        unitIndex += 1
+    }
+    let number = String(format: "%.1f", locale: localization.locale, amount)
+    return "\(number) \(units[unitIndex])"
 }
 
 func timestampText(_ value: Codexpulse_Core_V1_NumericValue) -> String {
@@ -234,11 +269,16 @@ func timestampText(_ value: Codexpulse_Core_V1_NumericValue) -> String {
 }
 
 func timestampText(_ milliseconds: Int64) -> String {
-    Date(timeIntervalSince1970: TimeInterval(milliseconds) / 1_000)
-        .formatted(date: .abbreviated, time: .shortened)
+    let formatter = DateFormatter()
+    formatter.locale = AppLocalizationRegistry.shared.current.locale
+    formatter.dateStyle = .medium
+    formatter.timeStyle = .short
+    return formatter.string(from: Date(timeIntervalSince1970: TimeInterval(milliseconds) / 1_000))
 }
 
 func attributionText(_ value: Codexpulse_Core_V1_AttributionValue) -> String {
     if value.hasDisplayName, !value.displayName.isEmpty { return value.displayName }
-    return "其他"
+    let localizedOther = AppLocalizationRegistry.shared.current.textValue("其他")
+    if localizedOther == "其他" { return "其他" }
+    return localizedOther
 }

@@ -33,19 +33,33 @@ public struct FeatureStateView<Value: Sendable, Content: View>: View {
     private var contentUnavailableState: some View {
         switch state {
         case .idle:
-            ContentUnavailableView(emptyTitle, systemImage: emptySystemImage)
+            ContentUnavailableView(
+                AppLocalizationRegistry.shared.current.textValue(emptyTitle),
+                systemImage: emptySystemImage
+            )
         case .loading:
-            PageProgressView(title: "正在加载…")
+            PageProgressView(title: AppLocalizationRegistry.shared.current.textValue("正在加载…"))
         case .empty:
-            ContentUnavailableView(emptyTitle, systemImage: emptySystemImage)
+            ContentUnavailableView(
+                AppLocalizationRegistry.shared.current.textValue(emptyTitle),
+                systemImage: emptySystemImage
+            )
         case .unavailable(let notice):
             ContentUnavailableView {
-                Label("当前数据不可用", systemImage: "exclamationmark.icloud")
+                Label(
+                    AppLocalizationRegistry.shared.current.textValue("当前数据不可用"),
+                    systemImage: "exclamationmark.icloud"
+                )
             } description: {
-                Text(notice.retryable ? "请稍后重试。" : "当前版本无法读取这部分数据。")
+                Text(AppLocalizationRegistry.shared.current.textValue(
+                    notice.retryable ? "请稍后重试。" : "当前版本无法读取这部分数据。"
+                ))
             }
         case .cancelled:
-            ContentUnavailableView("加载已取消", systemImage: "xmark.circle")
+            ContentUnavailableView(
+                AppLocalizationRegistry.shared.current.textValue("加载已取消"),
+                systemImage: "xmark.circle"
+            )
         case .ready, .partial, .stale:
             EmptyView()
         }
@@ -62,7 +76,8 @@ public struct PageProgressView: View {
     public var body: some View {
         VStack(spacing: 12) {
             ProgressView().controlSize(.large)
-            Text(title).foregroundStyle(.secondary)
+            Text(AppLocalizationRegistry.shared.current.textValue(title))
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)

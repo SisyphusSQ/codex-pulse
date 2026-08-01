@@ -50,7 +50,9 @@ func TestApplicationControlsUpdateSettingsPreservesReadOnlyPreferences(t *testin
 		Updates: core.SettingsUpdatesUpdate{
 			AutoCheckEnabled: false, CheckIntervalSeconds: 7200, Channel: "prerelease",
 		},
-		UI: core.SettingsUIUpdate{LaunchBehavior: "main_window", OverviewRange: "thirty_days"},
+		UI: core.SettingsUIUpdate{
+			Locale: "en-US", LaunchBehavior: "main_window", OverviewRange: "thirty_days",
+		},
 	})
 	if err != nil || receipt.Result != core.SettingsUpdateApplied || receipt.Revision == "" {
 		t.Fatalf("UpdateSettings() = %#v, %v", receipt, err)
@@ -70,7 +72,7 @@ func TestApplicationControlsUpdateSettingsPreservesReadOnlyPreferences(t *testin
 		readback.Updates.SkippedVersion == nil || *readback.Updates.SkippedVersion != skippedVersion ||
 		readback.Updates.SnoozeUntilMS == nil || *readback.Updates.SnoozeUntilMS != snoozeUntilMS ||
 		readback.Updates.LastCheckAtMS == nil || *readback.Updates.LastCheckAtMS != lastCheckAtMS ||
-		readback.UI.Locale != "zh-CN" {
+		readback.UI.Locale != "en-US" {
 		t.Fatalf("read-only settings changed = %#v", readback)
 	}
 	closeApplicationControlsTestRuntime(t, runtime, database)
@@ -368,6 +370,7 @@ func settingsRequestFromSnapshot(snapshot preferences.Snapshot) core.SettingsUpd
 			Channel:              string(snapshot.Updates.Channel),
 		},
 		UI: core.SettingsUIUpdate{
+			Locale:         string(snapshot.UI.Locale),
 			LaunchBehavior: string(snapshot.UI.LaunchBehavior),
 			OverviewRange:  string(snapshot.UI.OverviewRange),
 		},

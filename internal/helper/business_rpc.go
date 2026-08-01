@@ -281,7 +281,9 @@ func (api *grpcAPI) UpdateSettings(
 			Channel:              request.GetUpdates().GetChannel(),
 		},
 		UI: core.SettingsUIUpdate{
-			LaunchBehavior: request.GetUi().GetLaunchBehavior(), OverviewRange: request.GetUi().GetOverviewRange(),
+			LaunchBehavior: request.GetUi().GetLaunchBehavior(),
+			OverviewRange:  request.GetUi().GetOverviewRange(),
+			Locale:         request.GetUi().GetLocale(),
 		},
 	})
 	return encodeRPC(response, &corev1.SettingsUpdateReceipt{}, err)

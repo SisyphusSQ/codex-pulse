@@ -6,18 +6,20 @@ struct RootView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var loginItemSettings: LoginItemSettingsModel
 
+    private var localization: AppLocalization { model.localization }
+
     var body: some View {
         NavigationSplitView {
             List(selection: selection) {
-                Section("使用情况") {
+                Section(localization.text("sidebar.section.usage")) {
                     ForEach([AppFeature.overview, .sessions, .projects, .quotaUsage]) { section in
-                        Label(section.title, systemImage: section.symbol)
+                        Label(section.title(localization: localization), systemImage: section.symbol)
                             .tag(section)
                     }
                 }
-                Section("系统") {
+                Section(localization.text("sidebar.section.system")) {
                     ForEach([AppFeature.localStatus, .sourcesJobs, .settings]) { section in
-                        Label(section.title, systemImage: section.symbol)
+                        Label(section.title(localization: localization), systemImage: section.symbol)
                             .tag(section)
                     }
                 }
@@ -27,7 +29,7 @@ struct RootView: View {
             .frame(minWidth: 190)
         } detail: {
             featureContent
-                .navigationTitle(model.selectedFeature.title)
+                .navigationTitle(model.selectedFeature.title(localization: localization))
                 .toolbar {
                     ToolbarItemGroup(placement: .primaryAction) {
                         Button {
@@ -66,6 +68,8 @@ struct RootView: View {
                 }
         }
         .frame(minWidth: 820, minHeight: 560)
+        .id(model.localization.preference.rawValue)
+        .environment(\.locale, model.localization.locale)
         .onChange(of: model.selectedFeature) { _, next in
             model.load(next)
             model.markFeatureRendered(next)
@@ -87,20 +91,24 @@ struct RootView: View {
             ProgressView()
                 .controlSize(.small)
                 .frame(width: 16, height: 16)
-                .accessibilityLabel("正在\(currentReloadTitle)")
+                .accessibilityLabel(localization.format("正在%@", currentReloadTitle))
         } else {
             Label(currentReloadTitle, systemImage: "arrow.clockwise")
         }
     }
 
     private var currentReloadTitle: String {
-        "重新加载「\(model.selectedFeature.title)」"
+        localization.format(
+            "重新加载「%@」", model.selectedFeature.title(localization: localization)
+        )
     }
 
     private var currentReloadHelp: String {
-        if model.requiresCoreRestart { return "重新连接本地数据" }
-        if model.isRefreshingAll { return "正在重新加载所有页面" }
-        return model.isRefreshing(model.selectedFeature) ? "正在\(currentReloadTitle)" : currentReloadTitle
+        if model.requiresCoreRestart { return localization.textValue("重新连接本地数据") }
+        if model.isRefreshingAll { return localization.textValue("正在重新加载所有页面") }
+        return model.isRefreshing(model.selectedFeature)
+            ? localization.format("正在%@", currentReloadTitle)
+            : currentReloadTitle
     }
 
     @ViewBuilder
@@ -109,14 +117,16 @@ struct RootView: View {
             ProgressView()
                 .controlSize(.small)
                 .frame(width: 16, height: 16)
-                .accessibilityLabel("正在重新加载所有页面")
+                .accessibilityLabel(localization.textValue("正在重新加载所有页面"))
         } else {
             Label("更多重新加载选项", systemImage: "ellipsis.circle")
         }
     }
 
     private var reloadOptionsHelp: String {
-        model.isRefreshingAll ? "正在重新加载所有页面" : "更多重新加载选项"
+        model.isRefreshingAll
+            ? localization.textValue("正在重新加载所有页面")
+            : localization.textValue("更多重新加载选项")
     }
 
     @ViewBuilder
@@ -212,7 +222,8 @@ struct OverviewStateView: View {
                 model.sessionOptions.exactRange = overview.contentRange
                 model.navigate(to: .sessions)
                 model.selectSession(sessionID)
-            }
+            },
+            localization: model.localization
         )
     }
 
@@ -220,7 +231,7 @@ struct OverviewStateView: View {
         VStack(spacing: 12) {
             ProgressView()
                 .controlSize(.large)
-            Text(text)
+            Text(model.localization.textValue(text))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -235,6 +246,7 @@ private struct OverviewContentView: View {
     let onNavigate: (AppFeature) -> Void
     let onSelectProject: (String) -> Void
     let onSelectSession: (String) -> Void
+    let localization: AppLocalization
     @State private var selectedTrendDate: Date?
 
     private let ranges: [DateRangePreset] = [.quotaWeek, .today, .sevenDays, .thirtyDays]
@@ -265,15 +277,25 @@ private struct OverviewContentView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
-                Picker("概览范围", selection: rangeBinding) {
-                    ForEach(ranges) { range in Text(range.title).tag(range) }
+                HStack(spacing: 8) {
+                    Text("概览范围")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Picker("概览范围", selection: rangeBinding) {
+                        ForEach(ranges) { range in
+                            Text(verbatim: localization.textValue(range.title)).tag(range)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 340)
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 340)
+                .fixedSize(horizontal: false, vertical: true)
                 Label("更新于 \(timestampText(overview.evaluatedAtMS))", systemImage: "clock")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -368,7 +390,13 @@ private struct OverviewContentView: View {
     }
 
     private var tokenActivitySection: some View {
-        TokenActivityCard(card: TokenActivityCardPresentation(overview.tokenActivity))
+        TokenActivityCard(
+            card: TokenActivityCardPresentation(
+                overview.tokenActivity,
+                localization: localization
+            ),
+            localization: localization
+        )
     }
 
     private var usageSummary: some View {
@@ -378,7 +406,7 @@ private struct OverviewContentView: View {
                     Text("Token 总量")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
-                    Text(metricText(overview.tokenBreakdown.total))
+                    Text(metricText(overview.tokenBreakdown.total, localization: localization))
                         .font(.system(size: 25, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                 }
@@ -405,7 +433,11 @@ private struct OverviewContentView: View {
                 Text("API 等价成本")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
-                Text(metricText(overview.estimatedCost, cost: true))
+                Text(metricText(
+                    overview.estimatedCost,
+                    cost: true,
+                    localization: localization
+                ))
                     .font(.system(size: 25, weight: .semibold, design: .rounded))
                     .monospacedDigit()
             }
@@ -420,13 +452,16 @@ private struct OverviewContentView: View {
         detailValue: DisplayMetric
     ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title)
+            Text(localization.textValue(title))
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text(metricText(value))
+            Text(metricText(value, localization: localization))
                 .font(.headline)
                 .monospacedDigit()
-            Text("\(detailTitle) \(metricText(detailValue))")
+            Text(
+                localization.textValue(detailTitle) + " "
+                    + metricText(detailValue, localization: localization)
+            )
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
@@ -485,7 +520,9 @@ private struct OverviewContentView: View {
                         .foregroundStyle(Color.blue)
                         .symbolSize(selectedTrendPoint?.id == point.id ? 70 : 28)
                         .accessibilityLabel(trendPointTimeText(point.date))
-                        .accessibilityValue("\(TokenQuantityFormatter.string(point.tokens)) Token")
+                        .accessibilityValue(
+                            TokenQuantityFormatter.stringWithUnit(point.tokens)
+                        )
                     }
                     if let selected = selectedTrendPoint {
                         RuleMark(x: .value("选中时间", selected.date))
@@ -565,7 +602,8 @@ private struct OverviewContentView: View {
                 rank: rank,
                 title: project.title,
                 tokens: project.tokenBreakdown,
-                fraction: projectFraction(project.tokens)
+                fraction: projectFraction(project.tokens),
+                localization: localization
             )
         } else {
             Button { onSelectProject(project.id) } label: {
@@ -573,7 +611,8 @@ private struct OverviewContentView: View {
                     rank: rank,
                     title: project.title,
                     tokens: project.tokenBreakdown,
-                    fraction: projectFraction(project.tokens)
+                    fraction: projectFraction(project.tokens),
+                    localization: localization
                 )
             }
             .buttonStyle(.plain)
@@ -601,7 +640,8 @@ private struct OverviewContentView: View {
         OverviewActivityCard(
             activity: overview.activityDistribution,
             rangeLabel: overview.usageRangeLabel,
-            fillsProposedHeight: fillsProposedHeight
+            fillsProposedHeight: fillsProposedHeight,
+            localization: localization
         )
     }
 
@@ -670,7 +710,9 @@ private struct OverviewContentView: View {
 
     private func sessionTokenText(_ metric: DisplayMetric) -> String {
         guard case .known(let value, _) = metric else { return "--" }
-        return "\(TokenQuantityFormatter.compactString(value)) Token"
+        return TokenQuantityFormatter.stringWithUnit(
+            value, compact: true, localization: localization
+        )
     }
 
     private var chartPoints: [OverviewChartPoint] {
@@ -709,9 +751,20 @@ private struct OverviewContentView: View {
             Text(trendPointTimeText(point.date))
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            TokenBreakdownView(tokens: point.tokenBreakdown, style: .compact)
+            TokenBreakdownView(
+                tokens: point.tokenBreakdown,
+                style: .compact,
+                localization: localization
+            )
             if case .known = point.estimatedCost {
-                Text("API 等价成本 \(metricText(point.estimatedCost, cost: true))")
+                Text(localization.format(
+                    "API 等价成本 %@",
+                    metricText(
+                        point.estimatedCost,
+                        cost: true,
+                        localization: localization
+                    )
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -727,13 +780,15 @@ private struct OverviewContentView: View {
 
     private func trendPointTimeText(_ date: Date) -> String {
         if selectedRange == .today {
-            return date.formatted(.dateTime.month().day().hour().minute())
+            return date.formatted(
+                .dateTime.month().day().hour().minute().locale(localization.locale)
+            )
         }
-        return date.formatted(.dateTime.year().month().day())
+        return date.formatted(.dateTime.year().month().day().locale(localization.locale))
     }
 
     private func trendPointDateText(_ date: Date) -> String {
-        date.formatted(.dateTime.month().day())
+        date.formatted(.dateTime.month().day().locale(localization.locale))
     }
 
     private var projectTokenTotal: Int64? {
@@ -754,7 +809,7 @@ private struct OverviewContentView: View {
     }
 
     private func percentText(_ value: Double?) -> String {
-        value.map { String(format: "%.0f%%", $0) } ?? "--"
+        value.map { localization.percent($0) } ?? "--"
     }
 
     private func quotaProgress(_ value: Double?) -> Double {
@@ -776,6 +831,7 @@ private struct OverviewActivityCard: View {
     let activity: OverviewActivityPresentation
     let rangeLabel: String
     let fillsProposedHeight: Bool
+    let localization: AppLocalization
     @State private var selectedMetric = OverviewActivityMetric.tokenConsumption
     @State private var selectedTimelineDate: Date?
     @State private var hoveredHeatmapCellID: String?
@@ -793,9 +849,10 @@ private struct OverviewActivityCard: View {
                 Spacer(minLength: 12)
                 Picker("活动指标", selection: $selectedMetric) {
                     ForEach(OverviewActivityMetric.allCases) { metric in
-                        Text(metric.title).tag(metric)
+                        Text(localization.textValue(metric.title)).tag(metric)
                     }
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
                 .frame(width: 220)
             }
@@ -838,7 +895,10 @@ private struct OverviewActivityCard: View {
                 Text("时段活动")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Text(selectedTimelinePoint.map(timelinePointDetail) ?? "悬停柱体查看详情")
+                Text(
+                    selectedTimelinePoint.map(timelinePointDetail)
+                        ?? localization.textValue("悬停柱体查看详情")
+                )
                     .font(.caption2)
                     .foregroundStyle(selectedTimelinePoint == nil ? .secondary : metricColor)
                     .monospacedDigit()
@@ -1037,9 +1097,9 @@ private struct OverviewActivityCard: View {
                                     }
                                     .zIndex(hoveredHeatmapCellID == cell.id ? 1 : 0)
                                     .help(cellHelp(cell))
-                                    .accessibilityLabel(
-                                        "\(weekdayText(cell.weekday)) \(cell.hour)时"
-                                    )
+                                    .accessibilityLabel(localization.format(
+                                        "activity.heatmap.cell", weekdayText(cell.weekday), cell.hour
+                                    ))
                                     .accessibilityValue(cellValueText(cell))
                             }
                         }
@@ -1100,7 +1160,9 @@ private struct OverviewActivityCard: View {
     }
 
     private var heatmapHint: String {
-        activity.availability == .partial ? "部分格子暂不可用" : "悬停格子查看详情"
+        localization.textValue(
+            activity.availability == .partial ? "部分格子暂不可用" : "悬停格子查看详情"
+        )
     }
 
     private var heatmapThresholds: ActivityIntensityThresholds? {
@@ -1131,7 +1193,9 @@ private struct OverviewActivityCard: View {
     }
 
     private func weekdayText(_ weekday: Int) -> String {
-        ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][
+        ["周一", "周二", "周三", "周四", "周五", "周六", "周日"].map {
+            localization.textValue($0)
+        }[
             min(max(weekday - 1, 0), 6)
         ]
     }
@@ -1146,18 +1210,18 @@ private struct OverviewActivityCard: View {
         calendar.timeZone = TimeZone(identifier: activity.reportingTimeZone) ?? .current
         let startFormatter = DateFormatter()
         startFormatter.calendar = calendar
-        startFormatter.locale = Locale(identifier: "zh_CN")
+        startFormatter.locale = localization.locale
         startFormatter.timeZone = TimeZone(identifier: activity.reportingTimeZone)
-        startFormatter.dateFormat = "M月d日 H:mm"
+        startFormatter.dateFormat = localization.language == .englishUS ? "MMM d H:mm" : "M月d日 H:mm"
 
         let endFormatter = DateFormatter()
         endFormatter.calendar = calendar
-        endFormatter.locale = Locale(identifier: "zh_CN")
+        endFormatter.locale = localization.locale
         endFormatter.timeZone = TimeZone(identifier: activity.reportingTimeZone)
         endFormatter.dateFormat = calendar.isDate(
             point.startDate,
             inSameDayAs: point.endDate
-        ) ? "H:mm" : "M月d日 H:mm"
+        ) ? "H:mm" : (localization.language == .englishUS ? "MMM d H:mm" : "M月d日 H:mm")
         let start = startFormatter.string(from: point.startDate)
         let end = endFormatter.string(from: point.endDate)
         return "\(start)–\(end)"
@@ -1169,25 +1233,31 @@ private struct OverviewActivityCard: View {
 
     private func activityValueText(_ value: Int64) -> String {
         switch selectedMetric {
-        case .tokenConsumption: "\(TokenQuantityFormatter.string(value)) Token"
-        case .sessionCount: "\(value) 个会话"
+        case .tokenConsumption:
+            TokenQuantityFormatter.stringWithUnit(value, localization: localization)
+        case .sessionCount:
+            localization.quantity("copy.count.session", count: value)
         }
     }
 
     private func axisValueText(_ value: Int64) -> String {
         switch selectedMetric {
-        case .tokenConsumption: TokenQuantityFormatter.compactString(value)
-        case .sessionCount: value.formatted()
+        case .tokenConsumption: TokenQuantityFormatter.compactString(value, localization: localization)
+        case .sessionCount: localization.number(value)
         }
     }
 
     private func cellValueText(_ cell: OverviewActivityHeatmapCell) -> String {
-        guard let value = cell.value(for: selectedMetric) else { return "数据暂不可用" }
+        guard let value = cell.value(for: selectedMetric) else {
+            return localization.textValue("数据暂不可用")
+        }
         return activityValueText(value)
     }
 
     private func cellHelp(_ cell: OverviewActivityHeatmapCell) -> String {
-        "\(weekdayText(cell.weekday)) \(cell.hour)时 · \(cellValueText(cell))"
+        localization.format(
+            "activity.heatmap.detail", weekdayText(cell.weekday), cell.hour, cellValueText(cell)
+        )
     }
 }
 
@@ -1202,6 +1272,7 @@ private struct OverviewActivityChartPoint: Identifiable {
 
 private struct TokenActivityCard: View {
     let card: TokenActivityCardPresentation
+    let localization: AppLocalization
     @State private var hoverState = TokenActivityHoverState()
 
     var body: some View {
@@ -1231,7 +1302,7 @@ private struct TokenActivityCard: View {
                     Text(metric.value)
                         .font(.system(size: 22, weight: .semibold, design: .rounded))
                         .monospacedDigit()
-                    Text(metric.title)
+                    Text(verbatim: metric.title)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -1245,10 +1316,14 @@ private struct TokenActivityCard: View {
 
     private var heatmapHeader: some View {
         HStack(spacing: 10) {
-            Text(card.scope)
+            Text(verbatim: card.scope)
                 .font(.subheadline.weight(.semibold))
             if let notice = card.notice {
-                Label(notice, systemImage: "externaldrive")
+                Label {
+                    Text(verbatim: notice)
+                } icon: {
+                    Image(systemName: "externaldrive")
+                }
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1296,7 +1371,9 @@ private struct TokenActivityCard: View {
     private func weekdayLabels(cellSize: CGFloat, spacing: CGFloat) -> some View {
         VStack(spacing: spacing) {
             ForEach(0..<7, id: \.self) { index in
-                Text(index == 0 ? "一" : index == 2 ? "三" : index == 4 ? "五" : "")
+                Text(verbatim: localization.textValue(
+                    index == 0 ? "一" : index == 2 ? "三" : index == 4 ? "五" : ""
+                ))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .frame(width: 24, height: cellSize, alignment: .trailing)
@@ -1408,6 +1485,7 @@ private struct ProjectUsageRow: View {
     let title: String
     let tokens: TokenBreakdownPresentation
     let fraction: Double?
+    let localization: AppLocalization
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -1419,7 +1497,11 @@ private struct ProjectUsageRow: View {
                 Text(title).lineLimit(1)
                 Spacer(minLength: 8)
             }
-            TokenBreakdownView(tokens: tokens, style: .compact)
+            TokenBreakdownView(
+                tokens: tokens,
+                style: .compact,
+                localization: localization
+            )
                 .padding(.leading, 26)
             ProgressView(value: fraction ?? 0)
                 .tint(.blue)
@@ -1437,16 +1519,17 @@ struct MetricCard: View {
     var systemImage: String? = nil
 
     var body: some View {
+        let localization = AppLocalizationRegistry.shared.current
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 7) {
                 if let systemImage {
                     Image(systemName: systemImage)
                         .foregroundStyle(.tint)
                 }
-                Text(title).font(.headline)
+                Text(localization.textValue(title)).font(.headline)
             }
             Text(value).font(.system(size: 30, weight: .semibold, design: .rounded)).monospacedDigit()
-            Text(detail).font(.caption).foregroundStyle(.secondary)
+            Text(localization.textValue(detail)).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -1464,12 +1547,22 @@ private func metricValue(_ metric: DisplayMetric) -> Int64? {
     return nil
 }
 
-func metricText(_ metric: DisplayMetric, cost: Bool = false) -> String {
+func metricText(
+    _ metric: DisplayMetric,
+    cost: Bool = false,
+    localization: AppLocalization = AppLocalizationRegistry.shared.current
+) -> String {
     switch metric {
     case .known(let value, let unit):
-        if cost { return String(format: "$%.2f", Double(value) / 1_000_000) }
-        if unit == "tokens" { return TokenQuantityFormatter.string(value) }
-        return value.formatted()
+        if cost {
+            return String(
+                format: "$%.2f", locale: localization.locale, Double(value) / 1_000_000
+            )
+        }
+        if unit == "tokens" {
+            return TokenQuantityFormatter.string(value, localization: localization)
+        }
+        return localization.number(value)
     case .unknown, .absent:
         return "--"
     }
