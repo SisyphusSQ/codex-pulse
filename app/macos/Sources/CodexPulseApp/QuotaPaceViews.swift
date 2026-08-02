@@ -170,9 +170,14 @@ private struct QuotaPaceWindowView: View {
     private var paceChart: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 14) {
-                legend(color: .accentColor, title: "本周期")
+                legend(
+                    color: .secondary,
+                    title: "本周期",
+                    dashed: true,
+                    endpointColor: .accentColor
+                )
                 legend(color: .secondary, title: "上一周期", dashed: true)
-                legend(color: .purple, title: "近四周期中位数")
+                legend(color: .purple, title: "近四周期中位数", dashed: true)
                 legend(color: .gray, title: "理想节奏", dashed: true)
                 Spacer()
             }
@@ -194,7 +199,7 @@ private struct QuotaPaceWindowView: View {
                         y: .value("历史中位数", point.medianRemaining)
                     )
                     .foregroundStyle(Color.purple.opacity(0.75))
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
                     .interpolationMethod(.monotone)
                 }
                 ForEach(presentation.previousPoints) { point in
@@ -206,21 +211,13 @@ private struct QuotaPaceWindowView: View {
                     .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
                     .interpolationMethod(.stepEnd)
                 }
-                ForEach(idealPoints) { point in
-                    LineMark(
-                        x: .value("周期进度", point.elapsedPercent),
-                        y: .value("理想剩余", point.remainingPercent)
-                    )
-                    .foregroundStyle(Color.gray.opacity(0.6))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 4]))
-                }
                 ForEach(presentation.currentPoints) { point in
                     LineMark(
                         x: .value("周期进度", point.elapsedPercent),
                         y: .value("本周期剩余", point.remainingPercent)
                     )
-                    .foregroundStyle(Color.accentColor)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5))
+                    .foregroundStyle(Color.secondary.opacity(0.75))
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
                     .interpolationMethod(.stepEnd)
                 }
                 if let point = presentation.currentPoints.last {
@@ -234,6 +231,25 @@ private struct QuotaPaceWindowView: View {
             }
             .chartXScale(domain: 0...100)
             .chartYScale(domain: 0...100)
+            .chartPlotStyle { plotArea in
+                plotArea
+                    .background {
+                        QuotaPaceIdealReferenceShape()
+                            .stroke(
+                                Color.gray.opacity(0.7),
+                                style: StrokeStyle(lineWidth: 1.5, dash: [3, 4])
+                            )
+                            .allowsHitTesting(false)
+                    }
+                    .overlay {
+                        QuotaPacePlotBorderShape()
+                            .strokeBorder(
+                                Color.secondary.opacity(0.65),
+                                style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])
+                            )
+                            .allowsHitTesting(false)
+                    }
+            }
             .chartXAxis {
                 AxisMarks(values: [0, 25, 50, 75, 100]) { value in
                     AxisGridLine().foregroundStyle(Color.secondary.opacity(0.10))
@@ -308,13 +324,6 @@ private struct QuotaPaceWindowView: View {
         .accessibilityIdentifier("quota.pace.comparison.\(presentation.id)")
     }
 
-    private var idealPoints: [IdealPacePoint] {
-        [
-            IdealPacePoint(elapsedPercent: 0, remainingPercent: 100),
-            IdealPacePoint(elapsedPercent: 100, remainingPercent: 0),
-        ]
-    }
-
     private var paceColor: Color {
         guard let delta = presentation.paceDeltaPP else { return .secondary }
         if delta > 5 { return .orange }
@@ -373,21 +382,34 @@ private struct QuotaPaceWindowView: View {
         .font(.caption)
     }
 
-    private func legend(color: Color, title: String, dashed: Bool = false) -> some View {
+    private func legend(
+        color: Color,
+        title: String,
+        dashed: Bool = false,
+        endpointColor: Color? = nil
+    ) -> some View {
         let localization = AppLocalizationRegistry.shared.current
         return HStack(spacing: 5) {
-            Capsule()
-                .fill(color)
-                .frame(width: 18, height: dashed ? 2 : 3)
-                .overlay {
-                    if dashed {
-                        HStack(spacing: 3) {
-                            Rectangle().fill(color).frame(width: 5)
-                            Rectangle().fill(.clear).frame(width: 3)
-                            Rectangle().fill(color).frame(width: 5)
+            ZStack(alignment: .trailing) {
+                Capsule()
+                    .fill(color)
+                    .frame(width: 18, height: dashed ? 2 : 3)
+                    .overlay {
+                        if dashed {
+                            HStack(spacing: 3) {
+                                Rectangle().fill(color).frame(width: 5)
+                                Rectangle().fill(.clear).frame(width: 3)
+                                Rectangle().fill(color).frame(width: 5)
+                            }
                         }
                     }
+                if let endpointColor {
+                    Circle()
+                        .fill(endpointColor)
+                        .frame(width: 6, height: 6)
                 }
+            }
+            .frame(width: 18, height: 6)
             Text(localization.textValue(title))
         }
     }
@@ -397,10 +419,4 @@ private struct QuotaPaceWindowView: View {
         return AppLocalizationRegistry.shared.current.percent(value)
     }
 
-}
-
-private struct IdealPacePoint: Identifiable {
-    let elapsedPercent: Double
-    let remainingPercent: Double
-    var id: Double { elapsedPercent }
 }

@@ -5783,6 +5783,46 @@ private func testQuotaPacePresentationExplainsPaceForecastAndEvidence() throws {
     )
 }
 
+private func testQuotaPaceIdealReferenceShapeRunsFromTopLeftToBottomRight() throws {
+    let rect = CGRect(x: 0, y: 0, width: 200, height: 100)
+    let path = QuotaPaceIdealReferenceShape().path(in: rect).cgPath
+    let strokedPath = path.copy(
+        strokingWithWidth: 4,
+        lineCap: .butt,
+        lineJoin: .miter,
+        miterLimit: 10
+    )
+
+    try expect(
+        path.boundingBoxOfPath == rect
+            && path.currentPoint == CGPoint(x: 200, y: 100)
+            && strokedPath.contains(CGPoint(x: 50, y: 25))
+            && !strokedPath.contains(CGPoint(x: 50, y: 75)),
+        "ideal quota pace must draw from 100% remaining at cycle start to 0% at cycle end"
+    )
+}
+
+private func testQuotaPacePlotBorderShapeStaysInsideThePlotArea() throws {
+    let rect = CGRect(x: 0, y: 0, width: 200, height: 100)
+    let path = QuotaPacePlotBorderShape().inset(by: 2).path(in: rect).cgPath
+    let strokedPath = path.copy(
+        strokingWithWidth: 4,
+        lineCap: .butt,
+        lineJoin: .miter,
+        miterLimit: 10
+    )
+
+    try expect(
+        path.boundingBoxOfPath == CGRect(x: 2, y: 2, width: 196, height: 96)
+            && strokedPath.contains(CGPoint(x: 100, y: 2))
+            && strokedPath.contains(CGPoint(x: 198, y: 50))
+            && strokedPath.contains(CGPoint(x: 100, y: 98))
+            && strokedPath.contains(CGPoint(x: 2, y: 50))
+            && !strokedPath.contains(CGPoint(x: 100, y: 50)),
+        "quota pace plot border must form a closed rectangle inside the plot area"
+    )
+}
+
 private func testEnglishQuotaPaceComparisonPreservesArgumentTypesWhenWordOrderChanges() throws {
     let english = AppLocalization.englishUS
     try expect(
@@ -7723,6 +7763,8 @@ struct CodexPulseAppTestMain {
         try await testOverviewProjectFailureDoesNotHideUsageAndSessions()
         try testQuotaWindowPresentationUsesActualDuration()
         try testQuotaPacePresentationExplainsPaceForecastAndEvidence()
+        try testQuotaPaceIdealReferenceShapeRunsFromTopLeftToBottomRight()
+        try testQuotaPacePlotBorderShapeStaysInsideThePlotArea()
         try testEnglishQuotaPaceComparisonPreservesArgumentTypesWhenWordOrderChanges()
         try testQuotaPaceForecastUsesCoarseRelativeUnitsAndHonestFallbacks()
         try testQuotaForecastPresentationIsUsedByOverviewAndStatusPopover()
