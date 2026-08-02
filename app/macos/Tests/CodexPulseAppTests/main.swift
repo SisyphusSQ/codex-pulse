@@ -4583,6 +4583,72 @@ private func testOverviewActivityPresentationBuildsTimelineAndCompleteHeatmap() 
         "timeline buckets must preserve distinct session counts")
 }
 
+private func testOverviewActivityHeatmapRenderPlanPrecomputesOrderedCellIntensity() throws {
+    let rangeStart: Int64 = 1_753_056_000_000
+    let values: [(weekday: Int32, hour: Int32, tokens: Int64)] = [
+        (1, 1, 10),
+        (1, 2, 20),
+        (1, 3, 40),
+        (1, 4, 80),
+    ]
+    var response = Codexpulse_Core_V1_UsageCostResponse()
+    response.meta = completeMeta()
+    response.range.startAtMs = rangeStart
+    response.range.endAtMs = rangeStart + 86_400_000
+    response.range.timeZone = "UTC"
+    response.reportingTimeZone = "UTC"
+    response.totals.totalTokens.value = 150
+    response.totals.totalTokens.unit = "tokens"
+    response.activityDistribution.timelineGranularity = "hour"
+    response.activityDistribution.timelineBucketMinutes = 60
+
+    response.activityDistribution.timeline = values.enumerated().map { index, value in
+        var point = Codexpulse_Core_V1_ActivityTimelinePoint()
+        point.startAtMs.value = rangeStart + Int64(index) * 3_600_000
+        point.startAtMs.unit = "milliseconds"
+        point.endAtMs.value = point.startAtMs.value + 3_600_000
+        point.endAtMs.unit = "milliseconds"
+        point.metrics.totalTokens.value = value.tokens
+        point.metrics.totalTokens.unit = "tokens"
+        point.metrics.sessionCount.value = 1
+        point.metrics.sessionCount.unit = "count"
+        return point
+    }
+    response.activityDistribution.weekdayHours = values.map { value in
+        var point = Codexpulse_Core_V1_ActivityWeekdayHourPoint()
+        point.weekday = value.weekday
+        point.hour = value.hour
+        point.metrics.totalTokens.value = value.tokens
+        point.metrics.totalTokens.unit = "tokens"
+        point.metrics.sessionCount.value = 1
+        point.metrics.sessionCount.unit = "count"
+        return point
+    }
+
+    let activity = OverviewActivityPresentation(response)
+    let plan = OverviewActivityHeatmapRenderPlan(
+        cells: activity.heatmap,
+        metric: .tokenConsumption
+    )
+
+    try expect(
+        plan.rows.map(\.weekday) == Array(1...7)
+            && plan.rows.allSatisfy { $0.cells.count == 24 },
+        "the render plan must group the complete heatmap into seven ordered 24-hour rows"
+    )
+    let intensities = Dictionary(uniqueKeysWithValues: plan.rows.flatMap(\.cells).map {
+        ($0.id, $0.intensity)
+    })
+    try expect(
+        intensities["1-0"] == TokenActivityIntensity.none
+            && intensities["1-1"] == .low
+            && intensities["1-2"] == .medium
+            && intensities["1-3"] == .high
+            && intensities["1-4"] == .veryHigh,
+        "the render plan must precompute zero and four relative intensity levels once per metric"
+    )
+}
+
 private func testOverviewActivityAxisTicksKeepDateOnlyAtDayBoundaries() throws {
     let hour: Int64 = 3_600_000
     var calendar = Calendar(identifier: .gregorian)
@@ -5031,22 +5097,44 @@ private func testTokenActivityCardLabelsReconciledPartialFactsAsLocalData() thro
         "reconciled partial facts must show local summary values with an honest scope notice")
 }
 
-private func testTokenActivityHoverStateTracksOnlyTheCurrentCell() throws {
-    var hover = TokenActivityHoverState()
-
-    hover.update(isHovering: true, dayID: "2026-07-27")
+private func testActivityHeatmapHoverStateSuppressesScrollAndDuplicateUpdates() throws {
+    let empty = ActivityHeatmapHoverState()
+    let hover = empty.updating(
+        isHovering: true,
+        cellID: "2026-07-27",
+        isScrolling: false
+    )
     try expect(
-        hover.isHovered(dayID: "2026-07-27"),
+        hover.isHovered(cellID: "2026-07-27"),
         "entering an activity cell must immediately expose its explicit hover state")
 
-    hover.update(isHovering: false, dayID: "2026-07-26")
     try expect(
-        hover.isHovered(dayID: "2026-07-27"),
+        hover.updating(
+            isHovering: true,
+            cellID: "2026-07-27",
+            isScrolling: false
+        ) == hover,
+        "repeated hover events for the same cell must not produce a new state")
+    try expect(
+        hover.updating(
+            isHovering: false,
+            cellID: "2026-07-26",
+            isScrolling: false
+        ) == hover,
         "leaving a stale cell must not dismiss the currently hovered day")
-
-    hover.update(isHovering: false, dayID: "2026-07-27")
     try expect(
-        !hover.isHovered(dayID: "2026-07-27"),
+        hover.updating(
+            isHovering: true,
+            cellID: "2026-07-28",
+            isScrolling: true
+        ) == empty,
+        "scrolling must clear hover and reject new heatmap hover states")
+    try expect(
+        hover.updating(
+            isHovering: false,
+            cellID: "2026-07-27",
+            isScrolling: false
+        ) == empty,
         "leaving the current activity cell must dismiss its hover detail")
 }
 
@@ -7570,6 +7658,7 @@ struct CodexPulseAppTestMain {
         try testTokenActivityRequestUsesAnIndependentRollingYear()
         try testQuotaWindowDisplayResolverDeduplicatesOnlyEquivalentWindows()
         try testOverviewActivityPresentationBuildsTimelineAndCompleteHeatmap()
+        try testOverviewActivityHeatmapRenderPlanPrecomputesOrderedCellIntensity()
         try testOverviewActivityAxisTicksKeepDateOnlyAtDayBoundaries()
         try testOverviewActivityAxisTicksUseElapsedTimeAcrossSparseClusters()
         try testOverviewActivityAxisTicksStayInsidePartialHourDomain()
@@ -7584,7 +7673,7 @@ struct CodexPulseAppTestMain {
         try testTokenActivityCalendarSeparatesUnknownZeroAndRelativeIntensity()
         try testTokenActivityCardPresentsFiveBoundedMetricsAndDayDetails()
         try testTokenActivityCardLabelsReconciledPartialFactsAsLocalData()
-        try testTokenActivityHoverStateTracksOnlyTheCurrentCell()
+        try testActivityHeatmapHoverStateSuppressesScrollAndDuplicateUpdates()
         try testTokenActivityHeatmapUsesTheAvailableCardWidth()
         try await testAppRuntimeLoadsTokenActivityThroughAnIndependentAnnualRequest()
         try await testAppRuntimeKeepsTokenActivityFailureLocal()

@@ -1066,6 +1066,63 @@ public struct OverviewActivityHeatmapCell: Equatable, Identifiable, Sendable {
     }
 }
 
+public struct OverviewActivityHeatmapRenderCell: Equatable, Identifiable, Sendable {
+    public let cell: OverviewActivityHeatmapCell
+    public let intensity: TokenActivityIntensity
+
+    public var id: String { cell.id }
+
+    public init(
+        cell: OverviewActivityHeatmapCell,
+        intensity: TokenActivityIntensity
+    ) {
+        self.cell = cell
+        self.intensity = intensity
+    }
+}
+
+public struct OverviewActivityHeatmapRenderRow: Equatable, Identifiable, Sendable {
+    public let weekday: Int
+    public let cells: [OverviewActivityHeatmapRenderCell]
+
+    public var id: Int { weekday }
+
+    public init(weekday: Int, cells: [OverviewActivityHeatmapRenderCell]) {
+        self.weekday = weekday
+        self.cells = cells
+    }
+}
+
+public struct OverviewActivityHeatmapRenderPlan: Equatable, Sendable {
+    public let rows: [OverviewActivityHeatmapRenderRow]
+
+    public init(
+        cells: [OverviewActivityHeatmapCell],
+        metric: OverviewActivityMetric
+    ) {
+        let thresholds = ActivityIntensityScale.thresholds(
+            for: cells.compactMap { $0.value(for: metric) }
+        )
+        rows = (1...7).map { weekday in
+            OverviewActivityHeatmapRenderRow(
+                weekday: weekday,
+                cells: cells
+                    .filter { $0.weekday == weekday }
+                    .sorted { $0.hour < $1.hour }
+                    .map { cell in
+                        OverviewActivityHeatmapRenderCell(
+                            cell: cell,
+                            intensity: ActivityIntensityScale.intensity(
+                                for: cell.value(for: metric),
+                                thresholds: thresholds
+                            )
+                        )
+                    }
+            )
+        }
+    }
+}
+
 public struct OverviewActivityPresentation: Equatable, Sendable {
     public let availability: OverviewActivityAvailability
     public let timelineGranularity: OverviewActivityTimelineGranularity?
@@ -1491,23 +1548,29 @@ public struct TokenActivityMonthLabel: Equatable, Identifiable, Sendable {
     }
 }
 
-public struct TokenActivityHoverState: Equatable, Sendable {
-    public private(set) var dayID: String?
+public struct ActivityHeatmapHoverState: Equatable, Sendable {
+    public private(set) var cellID: String?
 
-    public init(dayID: String? = nil) {
-        self.dayID = dayID
+    public init(cellID: String? = nil) {
+        self.cellID = cellID
     }
 
-    public mutating func update(isHovering: Bool, dayID: String) {
+    public func updating(
+        isHovering: Bool,
+        cellID: String,
+        isScrolling: Bool
+    ) -> ActivityHeatmapHoverState {
+        guard !isScrolling else { return ActivityHeatmapHoverState() }
         if isHovering {
-            self.dayID = dayID
-        } else if self.dayID == dayID {
-            self.dayID = nil
+            guard self.cellID != cellID else { return self }
+            return ActivityHeatmapHoverState(cellID: cellID)
         }
+        guard self.cellID == cellID else { return self }
+        return ActivityHeatmapHoverState()
     }
 
-    public func isHovered(dayID: String) -> Bool {
-        self.dayID == dayID
+    public func isHovered(cellID: String) -> Bool {
+        self.cellID == cellID
     }
 }
 

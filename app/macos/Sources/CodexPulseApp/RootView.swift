@@ -248,12 +248,13 @@ private struct OverviewContentView: View {
     let onSelectSession: (String) -> Void
     let localization: AppLocalization
     @State private var selectedTrendDate: Date?
+    @State private var isScrolling = false
 
     private let ranges: [DateRangePreset] = [.quotaWeek, .today, .sevenDays, .thirtyDays]
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            LazyVStack(alignment: .leading, spacing: 16) {
                 pageHeader
                 if overview.fellBackFromQuotaWeek { fallbackNotice }
                 quotaStatusStrip
@@ -263,6 +264,12 @@ private struct OverviewContentView: View {
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .onScrollPhaseChange { _, phase in
+            let scrolling = phase != .idle
+            guard scrolling != isScrolling else { return }
+            isScrolling = scrolling
+            if scrolling { selectedTrendDate = nil }
         }
         .accessibilityIdentifier("page.overview")
     }
@@ -395,7 +402,8 @@ private struct OverviewContentView: View {
                 overview.tokenActivity,
                 localization: localization
             ),
-            localization: localization
+            localization: localization,
+            isScrolling: isScrolling
         )
     }
 
@@ -564,6 +572,7 @@ private struct OverviewContentView: View {
                     }
                 }
                 .chartXSelection(value: $selectedTrendDate)
+                .allowsHitTesting(!isScrolling)
                 .frame(height: 230)
                 .onChange(of: selectedRange) { _, _ in selectedTrendDate = nil }
             }
@@ -641,7 +650,8 @@ private struct OverviewContentView: View {
             activity: overview.activityDistribution,
             rangeLabel: overview.usageRangeLabel,
             fillsProposedHeight: fillsProposedHeight,
-            localization: localization
+            localization: localization,
+            isScrolling: isScrolling
         )
     }
 
@@ -832,9 +842,10 @@ private struct OverviewActivityCard: View {
     let rangeLabel: String
     let fillsProposedHeight: Bool
     let localization: AppLocalization
+    let isScrolling: Bool
     @State private var selectedMetric = OverviewActivityMetric.tokenConsumption
     @State private var selectedTimelineDate: Date?
-    @State private var hoveredHeatmapCellID: String?
+    @State private var hoverState = ActivityHeatmapHoverState()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -884,45 +895,57 @@ private struct OverviewActivityCard: View {
         }
         .onChange(of: selectedMetric) {
             selectedTimelineDate = nil
-            hoveredHeatmapCellID = nil
+            hoverState = ActivityHeatmapHoverState()
+        }
+        .onChange(of: isScrolling) {
+            guard isScrolling else { return }
+            selectedTimelineDate = nil
+            if hoverState.cellID != nil {
+                hoverState = ActivityHeatmapHoverState()
+            }
         }
     }
 
     @ViewBuilder
     private var timelineChart: some View {
+        let points = timelinePoints
+        let axisTicks = timelineAxisTicks
+        let selectedPoint = selectedTimelinePoint(in: points)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 Text("时段活动")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 Text(
-                    selectedTimelinePoint.map(timelinePointDetail)
+                    selectedPoint.map(timelinePointDetail)
                         ?? localization.textValue("悬停柱体查看详情")
                 )
                     .font(.caption2)
-                    .foregroundStyle(selectedTimelinePoint == nil ? .secondary : metricColor)
+                    .foregroundStyle(selectedPoint == nil ? .secondary : metricColor)
                     .monospacedDigit()
             }
-            if timelinePoints.isEmpty {
+            if points.isEmpty {
                 ContentUnavailableView(
                     "当前范围暂无活动",
                     systemImage: "chart.bar.xaxis"
                 )
                 .frame(maxWidth: .infinity, minHeight: 150)
             } else {
-                Chart(timelinePoints) { point in
+                Chart(points) { point in
                     RectangleMark(
                         xStart: .value("开始时间", point.barStartDate),
                         xEnd: .value("结束时间", point.barEndDate),
                         yStart: .value("基线", Int64.zero),
                         yEnd: .value(selectedMetric.title, point.value)
                     )
-                    .foregroundStyle(metricColor.opacity(barOpacity(point)))
+                    .foregroundStyle(metricColor.opacity(
+                        barOpacity(point, selectedPointID: selectedPoint?.id)
+                    ))
                     .cornerRadius(6)
                     .accessibilityLabel(activityTimeRangeText(point))
                     .accessibilityValue(activityValueText(point.value))
                 }
-                .chartXScale(domain: timelineDomain)
+                .chartXScale(domain: timelineDomain(for: points))
                 .chartXScale(
                     range: .plotDimension(startPadding: 24, endPadding: 32)
                 )
@@ -938,12 +961,12 @@ private struct OverviewActivityCard: View {
                     }
                 }
                 .chartXAxis {
-                    AxisMarks(values: timelineAxisTicks.map(\.date)) { value in
+                    AxisMarks(values: axisTicks.map(\.date)) { value in
                         AxisGridLine(stroke: StrokeStyle(dash: [3, 3]))
                             .foregroundStyle(Color.secondary.opacity(0.08))
                         AxisValueLabel {
                             if let date = value.as(Date.self),
-                               let tick = timelineAxisTicks.first(where: { $0.date == date })
+                               let tick = axisTicks.first(where: { $0.date == date })
                             {
                                 Text(tick.label)
                                     .fixedSize(horizontal: true, vertical: false)
@@ -957,6 +980,10 @@ private struct OverviewActivityCard: View {
                             .fill(.clear)
                             .contentShape(Rectangle())
                             .onContinuousHover { phase in
+                                guard !isScrolling else {
+                                    if selectedTimelineDate != nil { selectedTimelineDate = nil }
+                                    return
+                                }
                                 switch phase {
                                 case .active(let location):
                                     guard let plotFrame = proxy.plotFrame else {
@@ -968,23 +995,31 @@ private struct OverviewActivityCard: View {
                                         selectedTimelineDate = nil
                                         return
                                     }
-                                    selectedTimelineDate = proxy.value(
+                                    let resolved = proxy.value(
                                         atX: location.x - plotRect.origin.x,
                                         as: Date.self
                                     )
+                                    if selectedTimelineDate != resolved {
+                                        selectedTimelineDate = resolved
+                                    }
                                 case .ended:
                                     selectedTimelineDate = nil
                                 }
                             }
                     }
                 }
+                .allowsHitTesting(!isScrolling)
                 .frame(height: 170)
             }
         }
     }
 
     private var weekdayHourHeatmap: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let renderPlan = OverviewActivityHeatmapRenderPlan(
+            cells: activity.heatmap,
+            metric: selectedMetric
+        )
+        return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("星期与小时分布")
                     .font(.subheadline.weight(.semibold))
@@ -1009,14 +1044,15 @@ private struct OverviewActivityCard: View {
                                 .frame(width: cellSize, height: 12)
                         }
                     }
-                    ForEach(1...7, id: \.self) { weekday in
+                    ForEach(renderPlan.rows) { row in
                         HStack(spacing: spacing) {
-                            Text(weekdayText(weekday))
+                            Text(weekdayText(row.weekday))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                                 .frame(width: labelWidth, alignment: .leading)
-                            ForEach(cells(for: weekday)) { cell in
-                                let intensity = heatmapIntensity(cell)
+                            ForEach(row.cells) { renderCell in
+                                let cell = renderCell.cell
+                                let intensity = renderCell.intensity
                                 let cornerRadius = max(2, cellSize * 0.22)
                                 RoundedRectangle(
                                     cornerRadius: cornerRadius,
@@ -1039,7 +1075,7 @@ private struct OverviewActivityCard: View {
                                                 lineWidth: 0.7
                                             )
                                         }
-                                        if hoveredHeatmapCellID == cell.id {
+                                        if hoverState.isHovered(cellID: cell.id) {
                                             RoundedRectangle(
                                                 cornerRadius: cornerRadius,
                                                 style: .continuous
@@ -1050,7 +1086,7 @@ private struct OverviewActivityCard: View {
                                     .overlay(
                                         alignment: cell.hour >= 12 ? .topTrailing : .topLeading
                                     ) {
-                                        if hoveredHeatmapCellID == cell.id {
+                                        if hoverState.isHovered(cellID: cell.id) {
                                             Text(cellHelp(cell))
                                                 .font(.caption)
                                                 .foregroundStyle(.primary)
@@ -1087,15 +1123,12 @@ private struct OverviewActivityCard: View {
                                     .frame(width: cellSize, height: cellSize)
                                     .contentShape(Rectangle())
                                     .onHover { isHovering in
-                                        withAnimation(.easeOut(duration: 0.12)) {
-                                            if isHovering {
-                                                hoveredHeatmapCellID = cell.id
-                                            } else if hoveredHeatmapCellID == cell.id {
-                                                hoveredHeatmapCellID = nil
-                                            }
-                                        }
+                                        updateHeatmapHover(
+                                            isHovering: isHovering,
+                                            cellID: cell.id
+                                        )
                                     }
-                                    .zIndex(hoveredHeatmapCellID == cell.id ? 1 : 0)
+                                    .zIndex(hoverState.isHovered(cellID: cell.id) ? 1 : 0)
                                     .help(cellHelp(cell))
                                     .accessibilityLabel(localization.format(
                                         "activity.heatmap.cell", weekdayText(cell.weekday), cell.hour
@@ -1107,6 +1140,7 @@ private struct OverviewActivityCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .allowsHitTesting(!isScrolling)
             .frame(height: 202)
         }
     }
@@ -1137,37 +1171,35 @@ private struct OverviewActivityCard: View {
         )
     }
 
-    private var timelineDomain: ClosedRange<Date> {
-        guard let first = timelinePoints.first, let last = timelinePoints.last else {
+    private func timelineDomain(
+        for points: [OverviewActivityChartPoint]
+    ) -> ClosedRange<Date> {
+        guard let first = points.first, let last = points.last else {
             let now = Date()
             return now...now
         }
         return first.startDate...last.endDate
     }
 
-    private var selectedTimelinePoint: OverviewActivityChartPoint? {
+    private func selectedTimelinePoint(
+        in points: [OverviewActivityChartPoint]
+    ) -> OverviewActivityChartPoint? {
         let availablePoints = activity.timeline.filter { $0.value(for: selectedMetric) != nil }
         guard let selected = OverviewActivityTimelineResolver.nearest(
             to: selectedTimelineDate,
             in: availablePoints
         ) else { return nil }
-        return timelinePoints.first(where: { $0.id == selected.id })
+        return points.first(where: { $0.id == selected.id })
     }
 
     private var hoveredHeatmapCell: OverviewActivityHeatmapCell? {
-        guard let hoveredHeatmapCellID else { return nil }
+        guard let hoveredHeatmapCellID = hoverState.cellID else { return nil }
         return activity.heatmap.first(where: { $0.id == hoveredHeatmapCellID })
     }
 
     private var heatmapHint: String {
         localization.textValue(
             activity.availability == .partial ? "部分格子暂不可用" : "悬停格子查看详情"
-        )
-    }
-
-    private var heatmapThresholds: ActivityIntensityThresholds? {
-        ActivityIntensityScale.thresholds(
-            for: activity.heatmap.compactMap { $0.value(for: selectedMetric) }
         )
     }
 
@@ -1179,19 +1211,6 @@ private struct OverviewActivityCard: View {
         rangeLabel
     }
 
-    private func cells(for weekday: Int) -> [OverviewActivityHeatmapCell] {
-        activity.heatmap.filter { $0.weekday == weekday }
-    }
-
-    private func heatmapIntensity(
-        _ cell: OverviewActivityHeatmapCell
-    ) -> TokenActivityIntensity {
-        ActivityIntensityScale.intensity(
-            for: cell.value(for: selectedMetric),
-            thresholds: heatmapThresholds
-        )
-    }
-
     private func weekdayText(_ weekday: Int) -> String {
         ["周一", "周二", "周三", "周四", "周五", "周六", "周日"].map {
             localization.textValue($0)
@@ -1200,9 +1219,24 @@ private struct OverviewActivityCard: View {
         ]
     }
 
-    private func barOpacity(_ point: OverviewActivityChartPoint) -> Double {
-        guard let selectedTimelinePoint else { return 0.72 }
-        return selectedTimelinePoint.id == point.id ? 0.96 : 0.26
+    private func barOpacity(
+        _ point: OverviewActivityChartPoint,
+        selectedPointID: Int64?
+    ) -> Double {
+        guard let selectedPointID else { return 0.72 }
+        return selectedPointID == point.id ? 0.96 : 0.26
+    }
+
+    private func updateHeatmapHover(isHovering: Bool, cellID: String) {
+        let next = hoverState.updating(
+            isHovering: isHovering,
+            cellID: cellID,
+            isScrolling: isScrolling
+        )
+        guard next != hoverState else { return }
+        withAnimation(.easeOut(duration: 0.12)) {
+            hoverState = next
+        }
     }
 
     private func activityTimeRangeText(_ point: OverviewActivityChartPoint) -> String {
@@ -1273,7 +1307,8 @@ private struct OverviewActivityChartPoint: Identifiable {
 private struct TokenActivityCard: View {
     let card: TokenActivityCardPresentation
     let localization: AppLocalization
-    @State private var hoverState = TokenActivityHoverState()
+    let isScrolling: Bool
+    @State private var hoverState = ActivityHeatmapHoverState()
 
     var body: some View {
         SectionCard(title: card.title) {
@@ -1292,6 +1327,10 @@ private struct TokenActivityCard: View {
             }
         }
         .accessibilityIdentifier("overview.token-activity")
+        .onChange(of: isScrolling) {
+            guard isScrolling, hoverState.cellID != nil else { return }
+            hoverState = ActivityHeatmapHoverState()
+        }
     }
 
     private var metricStrip: some View {
@@ -1357,7 +1396,7 @@ private struct TokenActivityCard: View {
                                 }
                             }
                             .zIndex(week.days.compactMap { $0 }.contains(where: {
-                                hoverState.isHovered(dayID: $0.id)
+                                hoverState.isHovered(cellID: $0.id)
                             }) ? 1 : 0)
                         }
                     }
@@ -1366,6 +1405,7 @@ private struct TokenActivityCard: View {
         }
         .frame(maxWidth: .infinity)
         .aspectRatio(6.8, contentMode: .fit)
+        .allowsHitTesting(!isScrolling)
     }
 
     private func weekdayLabels(cellSize: CGFloat, spacing: CGFloat) -> some View {
@@ -1416,7 +1456,7 @@ private struct TokenActivityCard: View {
                     }
                 }
                 .overlay(alignment: tooltipAlignment) {
-                    if hoverState.isHovered(dayID: value.id) {
+                    if hoverState.isHovered(cellID: value.id) {
                         Text(card.dayDetail(value))
                             .font(.caption)
                             .foregroundStyle(.primary)
@@ -1439,11 +1479,17 @@ private struct TokenActivityCard: View {
                 }
                 .contentShape(Rectangle())
                 .onHover { isHovering in
+                    let next = hoverState.updating(
+                        isHovering: isHovering,
+                        cellID: value.id,
+                        isScrolling: isScrolling
+                    )
+                    guard next != hoverState else { return }
                     withAnimation(.easeOut(duration: 0.12)) {
-                        hoverState.update(isHovering: isHovering, dayID: value.id)
+                        hoverState = next
                     }
                 }
-                .zIndex(hoverState.isHovered(dayID: value.id) ? 1 : 0)
+                .zIndex(hoverState.isHovered(cellID: value.id) ? 1 : 0)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(card.dayDetail(value))
         } else {
