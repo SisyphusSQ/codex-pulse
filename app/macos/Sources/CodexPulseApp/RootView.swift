@@ -1283,9 +1283,6 @@ private struct OverviewActivityCard: View {
                         lineWidth: 0.7
                     )
                 }
-                if hoveredHeatmapCellID == renderCell.id {
-                    context.stroke(path, with: .color(metricColor), lineWidth: 1.5)
-                }
             }
         }
     }
@@ -1539,9 +1536,6 @@ private struct TokenActivityCard: View {
                         with: .color(.secondary.opacity(0.28)),
                         lineWidth: 0.7
                     )
-                }
-                if hoverState.isHovered(dayID: day.id) {
-                    context.stroke(path, with: .color(.blue), lineWidth: 1.5)
                 }
             }
         }
