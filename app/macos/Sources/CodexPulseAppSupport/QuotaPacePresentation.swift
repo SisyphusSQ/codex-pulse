@@ -1,5 +1,35 @@
 import CodexPulseProtocolGenerated
 import Foundation
+import SwiftUI
+
+public struct QuotaPaceIdealReferenceShape: Shape {
+    public init() {}
+
+    public func path(in rect: CGRect) -> Path {
+        Path { path in
+            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        }
+    }
+}
+
+public struct QuotaPacePlotBorderShape: InsettableShape {
+    private var insetAmount: CGFloat = 0
+
+    public init() {}
+
+    public func path(in rect: CGRect) -> Path {
+        Path { path in
+            path.addRect(rect.insetBy(dx: insetAmount, dy: insetAmount))
+        }
+    }
+
+    public func inset(by amount: CGFloat) -> QuotaPacePlotBorderShape {
+        var shape = self
+        shape.insetAmount += amount
+        return shape
+    }
+}
 
 public struct QuotaPaceChartPoint: Equatable, Identifiable, Sendable {
     public let id: String
