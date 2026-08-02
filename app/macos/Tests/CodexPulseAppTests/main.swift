@@ -4601,7 +4601,6 @@ private func testOverviewActivityHeatmapRenderPlanPrecomputesOrderedCellIntensit
     response.totals.totalTokens.unit = "tokens"
     response.activityDistribution.timelineGranularity = "hour"
     response.activityDistribution.timelineBucketMinutes = 60
-
     response.activityDistribution.timeline = values.enumerated().map { index, value in
         var point = Codexpulse_Core_V1_ActivityTimelinePoint()
         point.startAtMs.value = rangeStart + Int64(index) * 3_600_000
@@ -4625,9 +4624,8 @@ private func testOverviewActivityHeatmapRenderPlanPrecomputesOrderedCellIntensit
         return point
     }
 
-    let activity = OverviewActivityPresentation(response)
     let plan = OverviewActivityHeatmapRenderPlan(
-        cells: activity.heatmap,
+        cells: OverviewActivityPresentation(response).heatmap,
         metric: .tokenConsumption
     )
 
@@ -5097,54 +5095,92 @@ private func testTokenActivityCardLabelsReconciledPartialFactsAsLocalData() thro
         "reconciled partial facts must show local summary values with an honest scope notice")
 }
 
-private func testActivityHeatmapHoverStateSuppressesScrollAndDuplicateUpdates() throws {
-    let empty = ActivityHeatmapHoverState()
-    let hover = empty.updating(
-        isHovering: true,
-        cellID: "2026-07-27",
-        isScrolling: false
-    )
+private func testTokenActivityHoverStateTracksOnlyTheCurrentCell() throws {
+    var hover = TokenActivityHoverState()
+
+    hover.update(isHovering: true, dayID: "2026-07-27")
     try expect(
-        hover.isHovered(cellID: "2026-07-27"),
+        hover.isHovered(dayID: "2026-07-27"),
         "entering an activity cell must immediately expose its explicit hover state")
 
+    hover.update(isHovering: false, dayID: "2026-07-26")
     try expect(
-        hover.updating(
-            isHovering: true,
-            cellID: "2026-07-27",
-            isScrolling: false
-        ) == hover,
-        "repeated hover events for the same cell must not produce a new state")
-    try expect(
-        hover.updating(
-            isHovering: false,
-            cellID: "2026-07-26",
-            isScrolling: false
-        ) == hover,
+        hover.isHovered(dayID: "2026-07-27"),
         "leaving a stale cell must not dismiss the currently hovered day")
+
+    hover.update(isHovering: false, dayID: "2026-07-27")
     try expect(
-        hover.updating(
-            isHovering: true,
-            cellID: "2026-07-28",
-            isScrolling: true
-        ) == empty,
-        "scrolling must clear hover and reject new heatmap hover states")
-    try expect(
-        hover.updating(
-            isHovering: false,
-            cellID: "2026-07-27",
-            isScrolling: false
-        ) == empty,
+        !hover.isHovered(dayID: "2026-07-27"),
         "leaving the current activity cell must dismiss its hover detail")
 }
 
-private func testTokenActivityHeatmapUsesTheAvailableCardWidth() throws {
-    let source = try mainWindowSource("RootView.swift")
+private func testActivityHeatmapGridLayoutMapsCellsAndRejectsSpacingGaps() throws {
+    let layout = ActivityHeatmapGridLayout(
+        availableWidth: 105,
+        columnCount: 4,
+        rowCount: 2,
+        horizontalSpacing: 5,
+        verticalSpacing: 3,
+        minimumCellSize: 6,
+        maximumCellSize: 22
+    )
+
+    let lastFrame = layout.cellFrame(column: 3, row: 1)
     try expect(
-        source.contains("let cellSize = max(6, availableWidth / CGFloat(weekCount))")
-            && source.contains(".aspectRatio(6.8, contentMode: .fit)")
-            && !source.contains("let cellSize = min(14"),
-        "the annual heatmap must grow with the card instead of leaving a fixed-size empty tail")
+        layout.cellSize == 22
+            && layout.contentSize == CGSize(width: 103, height: 47)
+            && lastFrame == CGRect(x: 81, y: 25, width: 22, height: 22),
+        "the Canvas layout must fit complete rows without stretching cells past their cap"
+    )
+    try expect(
+        layout.position(at: CGPoint(x: 92, y: 36))
+            == ActivityHeatmapGridPosition(column: 3, row: 1),
+        "the Canvas hit test must resolve a point inside a heatmap cell"
+    )
+    try expect(
+        layout.position(at: CGPoint(x: 24, y: 11)) == nil
+            && layout.position(at: CGPoint(x: 104, y: 11)) == nil,
+        "the Canvas hit test must reject inter-cell spacing and unused trailing width"
+    )
+}
+
+private func testActivityHeatmapSelectionMovesWithoutHundredsOfAccessibilityChildren() throws {
+    let ids = ["first", "middle", "last"]
+
+    try expect(
+        ActivityHeatmapSelectionResolver.move(
+            from: nil,
+            orderedIDs: ids,
+            direction: .increment
+        ) == "first"
+            && ActivityHeatmapSelectionResolver.move(
+                from: nil,
+                orderedIDs: ids,
+                direction: .decrement
+            ) == "last",
+        "an adjustable heatmap must enter from the nearest edge"
+    )
+    try expect(
+        ActivityHeatmapSelectionResolver.move(
+            from: "middle",
+            orderedIDs: ids,
+            direction: .increment
+        ) == "last"
+            && ActivityHeatmapSelectionResolver.move(
+                from: "middle",
+                orderedIDs: ids,
+                direction: .decrement
+            ) == "first",
+        "an adjustable heatmap must expose every cell in visual order"
+    )
+    try expect(
+        ActivityHeatmapSelectionResolver.move(
+            from: "last",
+            orderedIDs: ids,
+            direction: .increment
+        ) == "last",
+        "an adjustable heatmap must clamp at its final cell"
+    )
 }
 
 @MainActor
@@ -7673,8 +7709,9 @@ struct CodexPulseAppTestMain {
         try testTokenActivityCalendarSeparatesUnknownZeroAndRelativeIntensity()
         try testTokenActivityCardPresentsFiveBoundedMetricsAndDayDetails()
         try testTokenActivityCardLabelsReconciledPartialFactsAsLocalData()
-        try testActivityHeatmapHoverStateSuppressesScrollAndDuplicateUpdates()
-        try testTokenActivityHeatmapUsesTheAvailableCardWidth()
+        try testTokenActivityHoverStateTracksOnlyTheCurrentCell()
+        try testActivityHeatmapGridLayoutMapsCellsAndRejectsSpacingGaps()
+        try testActivityHeatmapSelectionMovesWithoutHundredsOfAccessibilityChildren()
         try await testAppRuntimeLoadsTokenActivityThroughAnIndependentAnnualRequest()
         try await testAppRuntimeKeepsTokenActivityFailureLocal()
         try await testAppRuntimeUsesWeeklyQuotaRangeForOverview()

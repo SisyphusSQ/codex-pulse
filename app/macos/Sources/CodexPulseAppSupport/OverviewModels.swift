@@ -1514,6 +1514,112 @@ public enum ActivityIntensityScale {
     }
 }
 
+public struct ActivityHeatmapGridPosition: Equatable, Sendable {
+    public let column: Int
+    public let row: Int
+
+    public init(column: Int, row: Int) {
+        self.column = column
+        self.row = row
+    }
+}
+
+public struct ActivityHeatmapGridLayout: Equatable, Sendable {
+    public let columnCount: Int
+    public let rowCount: Int
+    public let horizontalSpacing: CGFloat
+    public let verticalSpacing: CGFloat
+    public let cellSize: CGFloat
+    public let contentSize: CGSize
+
+    public init(
+        availableWidth: CGFloat,
+        columnCount: Int,
+        rowCount: Int,
+        horizontalSpacing: CGFloat,
+        verticalSpacing: CGFloat,
+        minimumCellSize: CGFloat,
+        maximumCellSize: CGFloat? = nil
+    ) {
+        self.columnCount = max(columnCount, 0)
+        self.rowCount = max(rowCount, 0)
+        self.horizontalSpacing = max(horizontalSpacing, 0)
+        self.verticalSpacing = max(verticalSpacing, 0)
+
+        let horizontalGapCount = max(self.columnCount - 1, 0)
+        let availableForCells = max(
+            availableWidth - self.horizontalSpacing * CGFloat(horizontalGapCount),
+            0
+        )
+        let fittedCellSize = self.columnCount > 0
+            ? availableForCells / CGFloat(self.columnCount)
+            : 0
+        let lowerBoundedSize = max(fittedCellSize, max(minimumCellSize, 0))
+        if let maximumCellSize {
+            cellSize = min(lowerBoundedSize, max(maximumCellSize, 0))
+        } else {
+            cellSize = lowerBoundedSize
+        }
+
+        contentSize = CGSize(
+            width: CGFloat(self.columnCount) * cellSize
+                + CGFloat(horizontalGapCount) * self.horizontalSpacing,
+            height: CGFloat(self.rowCount) * cellSize
+                + CGFloat(max(self.rowCount - 1, 0)) * self.verticalSpacing
+        )
+    }
+
+    public func cellFrame(column: Int, row: Int) -> CGRect? {
+        guard column >= 0, column < columnCount, row >= 0, row < rowCount else {
+            return nil
+        }
+        return CGRect(
+            x: CGFloat(column) * (cellSize + horizontalSpacing),
+            y: CGFloat(row) * (cellSize + verticalSpacing),
+            width: cellSize,
+            height: cellSize
+        )
+    }
+
+    public func position(at point: CGPoint) -> ActivityHeatmapGridPosition? {
+        guard point.x >= 0, point.y >= 0,
+              point.x < contentSize.width, point.y < contentSize.height,
+              cellSize > 0
+        else { return nil }
+
+        let column = Int(point.x / (cellSize + horizontalSpacing))
+        let row = Int(point.y / (cellSize + verticalSpacing))
+        guard let frame = cellFrame(column: column, row: row), frame.contains(point) else {
+            return nil
+        }
+        return ActivityHeatmapGridPosition(column: column, row: row)
+    }
+}
+
+public enum ActivityHeatmapSelectionDirection: Sendable {
+    case increment
+    case decrement
+}
+
+public enum ActivityHeatmapSelectionResolver {
+    public static func move(
+        from currentID: String?,
+        orderedIDs: [String],
+        direction: ActivityHeatmapSelectionDirection
+    ) -> String? {
+        guard !orderedIDs.isEmpty else { return nil }
+        guard let currentID, let index = orderedIDs.firstIndex(of: currentID) else {
+            return direction == .increment ? orderedIDs.first : orderedIDs.last
+        }
+        switch direction {
+        case .increment:
+            return orderedIDs[min(index + 1, orderedIDs.count - 1)]
+        case .decrement:
+            return orderedIDs[max(index - 1, 0)]
+        }
+    }
+}
+
 public struct TokenActivityCalendarDay: Equatable, Identifiable, Sendable {
     public let day: TokenActivityDay
     public let intensity: TokenActivityIntensity
@@ -1548,29 +1654,23 @@ public struct TokenActivityMonthLabel: Equatable, Identifiable, Sendable {
     }
 }
 
-public struct ActivityHeatmapHoverState: Equatable, Sendable {
-    public private(set) var cellID: String?
+public struct TokenActivityHoverState: Equatable, Sendable {
+    public private(set) var dayID: String?
 
-    public init(cellID: String? = nil) {
-        self.cellID = cellID
+    public init(dayID: String? = nil) {
+        self.dayID = dayID
     }
 
-    public func updating(
-        isHovering: Bool,
-        cellID: String,
-        isScrolling: Bool
-    ) -> ActivityHeatmapHoverState {
-        guard !isScrolling else { return ActivityHeatmapHoverState() }
+    public mutating func update(isHovering: Bool, dayID: String) {
         if isHovering {
-            guard self.cellID != cellID else { return self }
-            return ActivityHeatmapHoverState(cellID: cellID)
+            self.dayID = dayID
+        } else if self.dayID == dayID {
+            self.dayID = nil
         }
-        guard self.cellID == cellID else { return self }
-        return ActivityHeatmapHoverState()
     }
 
-    public func isHovered(cellID: String) -> Bool {
-        self.cellID == cellID
+    public func isHovered(dayID: String) -> Bool {
+        self.dayID == dayID
     }
 }
 
