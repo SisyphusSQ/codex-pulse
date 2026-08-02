@@ -1066,6 +1066,63 @@ public struct OverviewActivityHeatmapCell: Equatable, Identifiable, Sendable {
     }
 }
 
+public struct OverviewActivityHeatmapRenderCell: Equatable, Identifiable, Sendable {
+    public let cell: OverviewActivityHeatmapCell
+    public let intensity: TokenActivityIntensity
+
+    public var id: String { cell.id }
+
+    public init(
+        cell: OverviewActivityHeatmapCell,
+        intensity: TokenActivityIntensity
+    ) {
+        self.cell = cell
+        self.intensity = intensity
+    }
+}
+
+public struct OverviewActivityHeatmapRenderRow: Equatable, Identifiable, Sendable {
+    public let weekday: Int
+    public let cells: [OverviewActivityHeatmapRenderCell]
+
+    public var id: Int { weekday }
+
+    public init(weekday: Int, cells: [OverviewActivityHeatmapRenderCell]) {
+        self.weekday = weekday
+        self.cells = cells
+    }
+}
+
+public struct OverviewActivityHeatmapRenderPlan: Equatable, Sendable {
+    public let rows: [OverviewActivityHeatmapRenderRow]
+
+    public init(
+        cells: [OverviewActivityHeatmapCell],
+        metric: OverviewActivityMetric
+    ) {
+        let thresholds = ActivityIntensityScale.thresholds(
+            for: cells.compactMap { $0.value(for: metric) }
+        )
+        rows = (1...7).map { weekday in
+            OverviewActivityHeatmapRenderRow(
+                weekday: weekday,
+                cells: cells
+                    .filter { $0.weekday == weekday }
+                    .sorted { $0.hour < $1.hour }
+                    .map { cell in
+                        OverviewActivityHeatmapRenderCell(
+                            cell: cell,
+                            intensity: ActivityIntensityScale.intensity(
+                                for: cell.value(for: metric),
+                                thresholds: thresholds
+                            )
+                        )
+                    }
+            )
+        }
+    }
+}
+
 public struct OverviewActivityPresentation: Equatable, Sendable {
     public let availability: OverviewActivityAvailability
     public let timelineGranularity: OverviewActivityTimelineGranularity?
@@ -1454,6 +1511,112 @@ public enum ActivityIntensityScale {
         if value <= thresholds.medium { return .medium }
         if value <= thresholds.high { return .high }
         return .veryHigh
+    }
+}
+
+public struct ActivityHeatmapGridPosition: Equatable, Sendable {
+    public let column: Int
+    public let row: Int
+
+    public init(column: Int, row: Int) {
+        self.column = column
+        self.row = row
+    }
+}
+
+public struct ActivityHeatmapGridLayout: Equatable, Sendable {
+    public let columnCount: Int
+    public let rowCount: Int
+    public let horizontalSpacing: CGFloat
+    public let verticalSpacing: CGFloat
+    public let cellSize: CGFloat
+    public let contentSize: CGSize
+
+    public init(
+        availableWidth: CGFloat,
+        columnCount: Int,
+        rowCount: Int,
+        horizontalSpacing: CGFloat,
+        verticalSpacing: CGFloat,
+        minimumCellSize: CGFloat,
+        maximumCellSize: CGFloat? = nil
+    ) {
+        self.columnCount = max(columnCount, 0)
+        self.rowCount = max(rowCount, 0)
+        self.horizontalSpacing = max(horizontalSpacing, 0)
+        self.verticalSpacing = max(verticalSpacing, 0)
+
+        let horizontalGapCount = max(self.columnCount - 1, 0)
+        let availableForCells = max(
+            availableWidth - self.horizontalSpacing * CGFloat(horizontalGapCount),
+            0
+        )
+        let fittedCellSize = self.columnCount > 0
+            ? availableForCells / CGFloat(self.columnCount)
+            : 0
+        let lowerBoundedSize = max(fittedCellSize, max(minimumCellSize, 0))
+        if let maximumCellSize {
+            cellSize = min(lowerBoundedSize, max(maximumCellSize, 0))
+        } else {
+            cellSize = lowerBoundedSize
+        }
+
+        contentSize = CGSize(
+            width: CGFloat(self.columnCount) * cellSize
+                + CGFloat(horizontalGapCount) * self.horizontalSpacing,
+            height: CGFloat(self.rowCount) * cellSize
+                + CGFloat(max(self.rowCount - 1, 0)) * self.verticalSpacing
+        )
+    }
+
+    public func cellFrame(column: Int, row: Int) -> CGRect? {
+        guard column >= 0, column < columnCount, row >= 0, row < rowCount else {
+            return nil
+        }
+        return CGRect(
+            x: CGFloat(column) * (cellSize + horizontalSpacing),
+            y: CGFloat(row) * (cellSize + verticalSpacing),
+            width: cellSize,
+            height: cellSize
+        )
+    }
+
+    public func position(at point: CGPoint) -> ActivityHeatmapGridPosition? {
+        guard point.x >= 0, point.y >= 0,
+              point.x < contentSize.width, point.y < contentSize.height,
+              cellSize > 0
+        else { return nil }
+
+        let column = Int(point.x / (cellSize + horizontalSpacing))
+        let row = Int(point.y / (cellSize + verticalSpacing))
+        guard let frame = cellFrame(column: column, row: row), frame.contains(point) else {
+            return nil
+        }
+        return ActivityHeatmapGridPosition(column: column, row: row)
+    }
+}
+
+public enum ActivityHeatmapSelectionDirection: Sendable {
+    case increment
+    case decrement
+}
+
+public enum ActivityHeatmapSelectionResolver {
+    public static func move(
+        from currentID: String?,
+        orderedIDs: [String],
+        direction: ActivityHeatmapSelectionDirection
+    ) -> String? {
+        guard !orderedIDs.isEmpty else { return nil }
+        guard let currentID, let index = orderedIDs.firstIndex(of: currentID) else {
+            return direction == .increment ? orderedIDs.first : orderedIDs.last
+        }
+        switch direction {
+        case .increment:
+            return orderedIDs[min(index + 1, orderedIDs.count - 1)]
+        case .decrement:
+            return orderedIDs[max(index - 1, 0)]
+        }
     }
 }
 

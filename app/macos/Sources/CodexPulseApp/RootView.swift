@@ -984,7 +984,11 @@ private struct OverviewActivityCard: View {
     }
 
     private var weekdayHourHeatmap: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let renderPlan = OverviewActivityHeatmapRenderPlan(
+            cells: activity.heatmap,
+            metric: selectedMetric
+        )
+        return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("星期与小时分布")
                     .font(.subheadline.weight(.semibold))
@@ -997,115 +1001,100 @@ private struct OverviewActivityCard: View {
             GeometryReader { proxy in
                 let spacing: CGFloat = 3
                 let labelWidth: CGFloat = 30
-                let availableWidth = proxy.size.width - labelWidth - spacing * 24
-                let cellSize = min(22, max(6, availableWidth / 24))
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: spacing) {
-                        Color.clear.frame(width: labelWidth, height: 12)
-                        ForEach(0..<24, id: \.self) { hour in
-                            Text(hour.isMultiple(of: 3) ? "\(hour)" : "")
-                                .font(.system(size: 8))
-                                .foregroundStyle(.secondary)
-                                .frame(width: cellSize, height: 12)
-                        }
+                let gridOrigin = CGPoint(x: labelWidth + spacing, y: 16)
+                let layout = ActivityHeatmapGridLayout(
+                    availableWidth: proxy.size.width - gridOrigin.x,
+                    columnCount: 24,
+                    rowCount: 7,
+                    horizontalSpacing: spacing,
+                    verticalSpacing: 4,
+                    minimumCellSize: 6,
+                    maximumCellSize: 22
+                )
+
+                ZStack(alignment: .topLeading) {
+                    Canvas { context, _ in
+                        drawWeekdayHourHeatmap(
+                            context: &context,
+                            layout: layout,
+                            gridOrigin: gridOrigin,
+                            labelWidth: labelWidth,
+                            renderPlan: renderPlan
+                        )
                     }
-                    ForEach(1...7, id: \.self) { weekday in
-                        HStack(spacing: spacing) {
-                            Text(weekdayText(weekday))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .frame(width: labelWidth, alignment: .leading)
-                            ForEach(cells(for: weekday)) { cell in
-                                let intensity = heatmapIntensity(cell)
-                                let cornerRadius = max(2, cellSize * 0.22)
-                                RoundedRectangle(
-                                    cornerRadius: cornerRadius,
-                                    style: .continuous
-                                )
-                                    .fill(
-                                        activityHeatmapColor(
-                                            for: intensity,
-                                            tint: metricColor
-                                        )
-                                    )
-                                    .overlay {
-                                        if intensity == .unknown {
-                                            RoundedRectangle(
-                                                cornerRadius: cornerRadius,
-                                                style: .continuous
-                                            )
-                                            .stroke(
-                                                .secondary.opacity(0.28),
-                                                lineWidth: 0.7
-                                            )
-                                        }
-                                        if hoveredHeatmapCellID == cell.id {
-                                            RoundedRectangle(
-                                                cornerRadius: cornerRadius,
-                                                style: .continuous
-                                            )
-                                            .stroke(metricColor, lineWidth: 1.5)
-                                        }
-                                    }
-                                    .overlay(
-                                        alignment: cell.hour >= 12 ? .topTrailing : .topLeading
-                                    ) {
-                                        if hoveredHeatmapCellID == cell.id {
-                                            Text(cellHelp(cell))
-                                                .font(.caption)
-                                                .foregroundStyle(.primary)
-                                                .fixedSize()
-                                                .padding(.horizontal, 8)
-                                                .padding(.vertical, 5)
-                                                .background(
-                                                    .ultraThickMaterial,
-                                                    in: RoundedRectangle(
-                                                        cornerRadius: 6,
-                                                        style: .continuous
-                                                    )
-                                                )
-                                                .overlay {
-                                                    RoundedRectangle(
-                                                        cornerRadius: 6,
-                                                        style: .continuous
-                                                    )
-                                                    .stroke(
-                                                        .separator.opacity(0.55),
-                                                        lineWidth: 0.5
-                                                    )
-                                                }
-                                                .shadow(
-                                                    color: .black.opacity(0.14),
-                                                    radius: 5,
-                                                    y: 2
-                                                )
-                                                .offset(y: -30)
-                                                .allowsHitTesting(false)
-                                                .transition(.opacity)
-                                        }
-                                    }
-                                    .frame(width: cellSize, height: cellSize)
-                                    .contentShape(Rectangle())
-                                    .onHover { isHovering in
-                                        withAnimation(.easeOut(duration: 0.12)) {
-                                            if isHovering {
-                                                hoveredHeatmapCellID = cell.id
-                                            } else if hoveredHeatmapCellID == cell.id {
-                                                hoveredHeatmapCellID = nil
-                                            }
-                                        }
-                                    }
-                                    .zIndex(hoveredHeatmapCellID == cell.id ? 1 : 0)
-                                    .help(cellHelp(cell))
-                                    .accessibilityLabel(localization.format(
-                                        "activity.heatmap.cell", weekdayText(cell.weekday), cell.hour
-                                    ))
-                                    .accessibilityValue(cellValueText(cell))
+
+                    if let hoveredHeatmapCell,
+                       let frame = layout.cellFrame(
+                           column: hoveredHeatmapCell.hour,
+                           row: hoveredHeatmapCell.weekday - 1
+                       )
+                    {
+                        Text(cellHelp(hoveredHeatmapCell))
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                            .fixedSize()
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(
+                                .ultraThickMaterial,
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(.separator.opacity(0.55), lineWidth: 0.5)
                             }
-                        }
+                            .shadow(color: .black.opacity(0.14), radius: 5, y: 2)
+                            .position(
+                                x: min(
+                                    max(gridOrigin.x + frame.midX, 110),
+                                    max(proxy.size.width - 110, 110)
+                                ),
+                                y: max(gridOrigin.y + frame.minY - 18, 0)
+                            )
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active(let location):
+                        updateWeekdayHourSelection(
+                            cellID: weekdayHourCell(
+                                at: CGPoint(
+                                    x: location.x - gridOrigin.x,
+                                    y: location.y - gridOrigin.y
+                                ),
+                                layout: layout,
+                                renderPlan: renderPlan
+                            )?.id,
+                            animated: true
+                        )
+                    case .ended:
+                        updateWeekdayHourSelection(cellID: nil, animated: true)
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(localization.textValue("星期与小时分布")))
+                .accessibilityValue(Text(
+                    hoveredHeatmapCell.map(cellHelp) ?? heatmapHint
+                ))
+                .accessibilityAdjustableAction { direction in
+                    let selectionDirection: ActivityHeatmapSelectionDirection
+                    switch direction {
+                    case .increment: selectionDirection = .increment
+                    case .decrement: selectionDirection = .decrement
+                    @unknown default: return
+                    }
+                    updateWeekdayHourSelection(
+                        cellID: ActivityHeatmapSelectionResolver.move(
+                            from: hoveredHeatmapCellID,
+                            orderedIDs: renderPlan.rows.flatMap(\.cells).map(\.id),
+                            direction: selectionDirection
+                        ),
+                        animated: false
+                    )
+                }
             }
             .frame(height: 202)
         }
@@ -1165,31 +1154,12 @@ private struct OverviewActivityCard: View {
         )
     }
 
-    private var heatmapThresholds: ActivityIntensityThresholds? {
-        ActivityIntensityScale.thresholds(
-            for: activity.heatmap.compactMap { $0.value(for: selectedMetric) }
-        )
-    }
-
     private var metricColor: Color {
         selectedMetric == .tokenConsumption ? .blue : .green
     }
 
     private var scopeText: String {
         rangeLabel
-    }
-
-    private func cells(for weekday: Int) -> [OverviewActivityHeatmapCell] {
-        activity.heatmap.filter { $0.weekday == weekday }
-    }
-
-    private func heatmapIntensity(
-        _ cell: OverviewActivityHeatmapCell
-    ) -> TokenActivityIntensity {
-        ActivityIntensityScale.intensity(
-            for: cell.value(for: selectedMetric),
-            thresholds: heatmapThresholds
-        )
     }
 
     private func weekdayText(_ weekday: Int) -> String {
@@ -1258,6 +1228,88 @@ private struct OverviewActivityCard: View {
         localization.format(
             "activity.heatmap.detail", weekdayText(cell.weekday), cell.hour, cellValueText(cell)
         )
+    }
+
+    private func drawWeekdayHourHeatmap(
+        context: inout GraphicsContext,
+        layout: ActivityHeatmapGridLayout,
+        gridOrigin: CGPoint,
+        labelWidth: CGFloat,
+        renderPlan: OverviewActivityHeatmapRenderPlan
+    ) {
+        for hour in stride(from: 0, to: 24, by: 3) {
+            guard let frame = layout.cellFrame(column: hour, row: 0) else { continue }
+            context.draw(
+                Text("\(hour)")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.secondary),
+                at: CGPoint(x: gridOrigin.x + frame.midX, y: 0),
+                anchor: .top
+            )
+        }
+
+        for row in renderPlan.rows {
+            guard let labelFrame = layout.cellFrame(column: 0, row: row.weekday - 1) else {
+                continue
+            }
+            context.draw(
+                Text(weekdayText(row.weekday))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary),
+                at: CGPoint(x: labelWidth, y: gridOrigin.y + labelFrame.midY),
+                anchor: .trailing
+            )
+            for renderCell in row.cells {
+                guard let frame = layout.cellFrame(
+                    column: renderCell.cell.hour,
+                    row: row.weekday - 1
+                ) else { continue }
+                let resolvedFrame = frame.offsetBy(dx: gridOrigin.x, dy: gridOrigin.y)
+                let path = Path(
+                    roundedRect: resolvedFrame,
+                    cornerRadius: max(2, layout.cellSize * 0.22)
+                )
+                context.fill(
+                    path,
+                    with: .color(activityHeatmapColor(
+                        for: renderCell.intensity,
+                        tint: metricColor
+                    ))
+                )
+                if renderCell.intensity == .unknown {
+                    context.stroke(
+                        path,
+                        with: .color(.secondary.opacity(0.28)),
+                        lineWidth: 0.7
+                    )
+                }
+                if hoveredHeatmapCellID == renderCell.id {
+                    context.stroke(path, with: .color(metricColor), lineWidth: 1.5)
+                }
+            }
+        }
+    }
+
+    private func weekdayHourCell(
+        at point: CGPoint,
+        layout: ActivityHeatmapGridLayout,
+        renderPlan: OverviewActivityHeatmapRenderPlan
+    ) -> OverviewActivityHeatmapCell? {
+        guard let position = layout.position(at: point),
+              renderPlan.rows.indices.contains(position.row),
+              renderPlan.rows[position.row].cells.indices.contains(position.column)
+        else { return nil }
+        return renderPlan.rows[position.row].cells[position.column].cell
+    }
+
+    private func updateWeekdayHourSelection(cellID: String?, animated: Bool) {
+        guard hoveredHeatmapCellID != cellID else { return }
+        let update = { hoveredHeatmapCellID = cellID }
+        if animated {
+            withAnimation(.easeOut(duration: 0.12), update)
+        } else {
+            update()
+        }
     }
 }
 
@@ -1335,121 +1387,193 @@ private struct TokenActivityCard: View {
         GeometryReader { geometry in
             let weekCount = max(card.calendar.weeks.count, 1)
             let labelWidth: CGFloat = 24
+            let labelGap: CGFloat = 8
+            let gridOrigin = CGPoint(x: labelWidth + labelGap, y: 18)
             let spacing: CGFloat = geometry.size.width >= 900 ? 3 : 2
-            let availableWidth =
-                geometry.size.width - labelWidth - 8 - spacing * CGFloat(weekCount - 1)
-            let cellSize = max(6, availableWidth / CGFloat(weekCount))
+            let layout = ActivityHeatmapGridLayout(
+                availableWidth: geometry.size.width - gridOrigin.x,
+                columnCount: weekCount,
+                rowCount: 7,
+                horizontalSpacing: spacing,
+                verticalSpacing: spacing,
+                minimumCellSize: 6
+            )
 
-            HStack(alignment: .top, spacing: 8) {
-                weekdayLabels(cellSize: cellSize, spacing: spacing)
-                VStack(alignment: .leading, spacing: 4) {
-                    monthLabels(cellSize: cellSize, spacing: spacing)
-                    HStack(alignment: .top, spacing: spacing) {
-                        ForEach(card.calendar.weeks) { week in
-                            VStack(spacing: spacing) {
-                                ForEach(Array(week.days.enumerated()), id: \.offset) { _, day in
-                                    activityCell(
-                                        day,
-                                        size: cellSize,
-                                        tooltipAlignment: week.id >= weekCount / 2
-                                            ? .topTrailing : .topLeading
-                                    )
-                                }
-                            }
-                            .zIndex(week.days.compactMap { $0 }.contains(where: {
-                                hoverState.isHovered(dayID: $0.id)
-                            }) ? 1 : 0)
-                        }
-                    }
+            ZStack(alignment: .topLeading) {
+                Canvas { context, _ in
+                    drawAnnualHeatmap(
+                        context: &context,
+                        layout: layout,
+                        gridOrigin: gridOrigin,
+                        labelWidth: labelWidth
+                    )
                 }
+
+                if let selectedDay,
+                   let position = heatmapPosition(for: selectedDay.id),
+                   let frame = layout.cellFrame(column: position.column, row: position.row)
+                {
+                    Text(card.dayDetail(selectedDay))
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .fixedSize()
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(
+                            .ultraThickMaterial,
+                            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(.separator.opacity(0.55), lineWidth: 0.5)
+                        }
+                        .shadow(color: .black.opacity(0.14), radius: 5, y: 2)
+                        .position(
+                            x: min(
+                                max(gridOrigin.x + frame.midX, 110),
+                                max(geometry.size.width - 110, 110)
+                            ),
+                            y: max(gridOrigin.y + frame.minY - 18, 0)
+                        )
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
+            }
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    updateAnnualHeatmapSelection(
+                        dayID: heatmapDay(
+                            at: CGPoint(
+                                x: location.x - gridOrigin.x,
+                                y: location.y - gridOrigin.y
+                            ),
+                            layout: layout
+                        )?.id,
+                        animated: true
+                    )
+                case .ended:
+                    updateAnnualHeatmapSelection(dayID: nil, animated: true)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(verbatim: "\(card.title) · \(card.scope)"))
+            .accessibilityValue(Text(verbatim: selectedDay.map(card.dayDetail) ?? card.scope))
+            .accessibilityAdjustableAction { direction in
+                let selectionDirection: ActivityHeatmapSelectionDirection
+                switch direction {
+                case .increment: selectionDirection = .increment
+                case .decrement: selectionDirection = .decrement
+                @unknown default: return
+                }
+                updateAnnualHeatmapSelection(
+                    dayID: ActivityHeatmapSelectionResolver.move(
+                        from: hoverState.dayID,
+                        orderedIDs: orderedDays.map(\.id),
+                        direction: selectionDirection
+                    ),
+                    animated: false
+                )
             }
         }
         .frame(maxWidth: .infinity)
         .aspectRatio(6.8, contentMode: .fit)
     }
 
-    private func weekdayLabels(cellSize: CGFloat, spacing: CGFloat) -> some View {
-        VStack(spacing: spacing) {
-            ForEach(0..<7, id: \.self) { index in
-                Text(verbatim: localization.textValue(
-                    index == 0 ? "一" : index == 2 ? "三" : index == 4 ? "五" : ""
-                ))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, height: cellSize, alignment: .trailing)
-            }
-        }
-        .padding(.top, 18)
-        .accessibilityHidden(true)
+    private var orderedDays: [TokenActivityCalendarDay] {
+        card.calendar.weeks.flatMap(\.days).compactMap { $0 }
     }
 
-    private func monthLabels(cellSize: CGFloat, spacing: CGFloat) -> some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(card.calendar.monthLabels) { label in
+    private var selectedDay: TokenActivityCalendarDay? {
+        guard let dayID = hoverState.dayID else { return nil }
+        return orderedDays.first(where: { $0.id == dayID })
+    }
+
+    private func drawAnnualHeatmap(
+        context: inout GraphicsContext,
+        layout: ActivityHeatmapGridLayout,
+        gridOrigin: CGPoint,
+        labelWidth: CGFloat
+    ) {
+        for row in 0..<7 {
+            let label = row == 0 ? "一" : row == 2 ? "三" : row == 4 ? "五" : ""
+            guard !label.isEmpty,
+                  let frame = layout.cellFrame(column: 0, row: row)
+            else { continue }
+            context.draw(
+                Text(verbatim: localization.textValue(label))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary),
+                at: CGPoint(x: labelWidth, y: gridOrigin.y + frame.midY),
+                anchor: .trailing
+            )
+        }
+
+        for label in card.calendar.monthLabels {
+            guard let frame = layout.cellFrame(column: label.weekIndex, row: 0) else { continue }
+            context.draw(
                 Text(label.title)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .offset(x: CGFloat(label.weekIndex) * (cellSize + spacing))
+                    .foregroundStyle(.secondary),
+                at: CGPoint(x: gridOrigin.x + frame.minX, y: 0),
+                anchor: .topLeading
+            )
+        }
+
+        for (column, week) in card.calendar.weeks.enumerated() {
+            for (row, day) in week.days.enumerated() {
+                guard let day,
+                      let frame = layout.cellFrame(column: column, row: row)
+                else { continue }
+                let resolvedFrame = frame.offsetBy(dx: gridOrigin.x, dy: gridOrigin.y)
+                let cornerRadius = max(2, layout.cellSize * 0.22)
+                let path = Path(
+                    roundedRect: resolvedFrame,
+                    cornerRadius: cornerRadius
+                )
+                context.fill(path, with: .color(color(for: day.intensity)))
+                if day.intensity == .unknown {
+                    context.stroke(
+                        path,
+                        with: .color(.secondary.opacity(0.28)),
+                        lineWidth: 0.7
+                    )
+                }
+                if hoverState.isHovered(dayID: day.id) {
+                    context.stroke(path, with: .color(.blue), lineWidth: 1.5)
+                }
             }
         }
-        .frame(height: 14)
-        .accessibilityHidden(true)
     }
 
-    @ViewBuilder
-    private func activityCell(
-        _ value: TokenActivityCalendarDay?,
-        size: CGFloat,
-        tooltipAlignment: Alignment
-    ) -> some View {
-        if let value {
-            RoundedRectangle(cornerRadius: max(2, size * 0.22), style: .continuous)
-                .fill(color(for: value.intensity))
-                .frame(width: size, height: size)
-                .overlay {
-                    if value.intensity == .unknown {
-                        RoundedRectangle(
-                            cornerRadius: max(2, size * 0.22),
-                            style: .continuous
-                        )
-                        .stroke(.secondary.opacity(0.28), lineWidth: 0.7)
-                    }
-                }
-                .overlay(alignment: tooltipAlignment) {
-                    if hoverState.isHovered(dayID: value.id) {
-                        Text(card.dayDetail(value))
-                            .font(.caption)
-                            .foregroundStyle(.primary)
-                            .fixedSize()
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(
-                                .ultraThickMaterial,
-                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            )
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .stroke(.separator.opacity(0.55), lineWidth: 0.5)
-                            }
-                            .shadow(color: .black.opacity(0.14), radius: 5, y: 2)
-                            .offset(y: -32)
-                            .allowsHitTesting(false)
-                            .transition(.opacity)
-                    }
-                }
-                .contentShape(Rectangle())
-                .onHover { isHovering in
-                    withAnimation(.easeOut(duration: 0.12)) {
-                        hoverState.update(isHovering: isHovering, dayID: value.id)
-                    }
-                }
-                .zIndex(hoverState.isHovered(dayID: value.id) ? 1 : 0)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(card.dayDetail(value))
+    private func heatmapDay(
+        at point: CGPoint,
+        layout: ActivityHeatmapGridLayout
+    ) -> TokenActivityCalendarDay? {
+        guard let position = layout.position(at: point),
+              card.calendar.weeks.indices.contains(position.column),
+              card.calendar.weeks[position.column].days.indices.contains(position.row)
+        else { return nil }
+        return card.calendar.weeks[position.column].days[position.row]
+    }
+
+    private func heatmapPosition(for dayID: String) -> ActivityHeatmapGridPosition? {
+        for (column, week) in card.calendar.weeks.enumerated() {
+            if let row = week.days.firstIndex(where: { $0?.id == dayID }) {
+                return ActivityHeatmapGridPosition(column: column, row: row)
+            }
+        }
+        return nil
+    }
+
+    private func updateAnnualHeatmapSelection(dayID: String?, animated: Bool) {
+        guard hoverState.dayID != dayID else { return }
+        let update = { hoverState = TokenActivityHoverState(dayID: dayID) }
+        if animated {
+            withAnimation(.easeOut(duration: 0.12), update)
         } else {
-            Color.clear
-                .frame(width: size, height: size)
-                .accessibilityHidden(true)
+            update()
         }
     }
 

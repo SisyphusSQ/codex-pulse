@@ -4583,6 +4583,70 @@ private func testOverviewActivityPresentationBuildsTimelineAndCompleteHeatmap() 
         "timeline buckets must preserve distinct session counts")
 }
 
+private func testOverviewActivityHeatmapRenderPlanPrecomputesOrderedCellIntensity() throws {
+    let rangeStart: Int64 = 1_753_056_000_000
+    let values: [(weekday: Int32, hour: Int32, tokens: Int64)] = [
+        (1, 1, 10),
+        (1, 2, 20),
+        (1, 3, 40),
+        (1, 4, 80),
+    ]
+    var response = Codexpulse_Core_V1_UsageCostResponse()
+    response.meta = completeMeta()
+    response.range.startAtMs = rangeStart
+    response.range.endAtMs = rangeStart + 86_400_000
+    response.range.timeZone = "UTC"
+    response.reportingTimeZone = "UTC"
+    response.totals.totalTokens.value = 150
+    response.totals.totalTokens.unit = "tokens"
+    response.activityDistribution.timelineGranularity = "hour"
+    response.activityDistribution.timelineBucketMinutes = 60
+    response.activityDistribution.timeline = values.enumerated().map { index, value in
+        var point = Codexpulse_Core_V1_ActivityTimelinePoint()
+        point.startAtMs.value = rangeStart + Int64(index) * 3_600_000
+        point.startAtMs.unit = "milliseconds"
+        point.endAtMs.value = point.startAtMs.value + 3_600_000
+        point.endAtMs.unit = "milliseconds"
+        point.metrics.totalTokens.value = value.tokens
+        point.metrics.totalTokens.unit = "tokens"
+        point.metrics.sessionCount.value = 1
+        point.metrics.sessionCount.unit = "count"
+        return point
+    }
+    response.activityDistribution.weekdayHours = values.map { value in
+        var point = Codexpulse_Core_V1_ActivityWeekdayHourPoint()
+        point.weekday = value.weekday
+        point.hour = value.hour
+        point.metrics.totalTokens.value = value.tokens
+        point.metrics.totalTokens.unit = "tokens"
+        point.metrics.sessionCount.value = 1
+        point.metrics.sessionCount.unit = "count"
+        return point
+    }
+
+    let plan = OverviewActivityHeatmapRenderPlan(
+        cells: OverviewActivityPresentation(response).heatmap,
+        metric: .tokenConsumption
+    )
+
+    try expect(
+        plan.rows.map(\.weekday) == Array(1...7)
+            && plan.rows.allSatisfy { $0.cells.count == 24 },
+        "the render plan must group the complete heatmap into seven ordered 24-hour rows"
+    )
+    let intensities = Dictionary(uniqueKeysWithValues: plan.rows.flatMap(\.cells).map {
+        ($0.id, $0.intensity)
+    })
+    try expect(
+        intensities["1-0"] == TokenActivityIntensity.none
+            && intensities["1-1"] == .low
+            && intensities["1-2"] == .medium
+            && intensities["1-3"] == .high
+            && intensities["1-4"] == .veryHigh,
+        "the render plan must precompute zero and four relative intensity levels once per metric"
+    )
+}
+
 private func testOverviewActivityAxisTicksKeepDateOnlyAtDayBoundaries() throws {
     let hour: Int64 = 3_600_000
     var calendar = Calendar(identifier: .gregorian)
@@ -5050,13 +5114,73 @@ private func testTokenActivityHoverStateTracksOnlyTheCurrentCell() throws {
         "leaving the current activity cell must dismiss its hover detail")
 }
 
-private func testTokenActivityHeatmapUsesTheAvailableCardWidth() throws {
-    let source = try mainWindowSource("RootView.swift")
+private func testActivityHeatmapGridLayoutMapsCellsAndRejectsSpacingGaps() throws {
+    let layout = ActivityHeatmapGridLayout(
+        availableWidth: 105,
+        columnCount: 4,
+        rowCount: 2,
+        horizontalSpacing: 5,
+        verticalSpacing: 3,
+        minimumCellSize: 6,
+        maximumCellSize: 22
+    )
+
+    let lastFrame = layout.cellFrame(column: 3, row: 1)
     try expect(
-        source.contains("let cellSize = max(6, availableWidth / CGFloat(weekCount))")
-            && source.contains(".aspectRatio(6.8, contentMode: .fit)")
-            && !source.contains("let cellSize = min(14"),
-        "the annual heatmap must grow with the card instead of leaving a fixed-size empty tail")
+        layout.cellSize == 22
+            && layout.contentSize == CGSize(width: 103, height: 47)
+            && lastFrame == CGRect(x: 81, y: 25, width: 22, height: 22),
+        "the Canvas layout must fit complete rows without stretching cells past their cap"
+    )
+    try expect(
+        layout.position(at: CGPoint(x: 92, y: 36))
+            == ActivityHeatmapGridPosition(column: 3, row: 1),
+        "the Canvas hit test must resolve a point inside a heatmap cell"
+    )
+    try expect(
+        layout.position(at: CGPoint(x: 24, y: 11)) == nil
+            && layout.position(at: CGPoint(x: 104, y: 11)) == nil,
+        "the Canvas hit test must reject inter-cell spacing and unused trailing width"
+    )
+}
+
+private func testActivityHeatmapSelectionMovesWithoutHundredsOfAccessibilityChildren() throws {
+    let ids = ["first", "middle", "last"]
+
+    try expect(
+        ActivityHeatmapSelectionResolver.move(
+            from: nil,
+            orderedIDs: ids,
+            direction: .increment
+        ) == "first"
+            && ActivityHeatmapSelectionResolver.move(
+                from: nil,
+                orderedIDs: ids,
+                direction: .decrement
+            ) == "last",
+        "an adjustable heatmap must enter from the nearest edge"
+    )
+    try expect(
+        ActivityHeatmapSelectionResolver.move(
+            from: "middle",
+            orderedIDs: ids,
+            direction: .increment
+        ) == "last"
+            && ActivityHeatmapSelectionResolver.move(
+                from: "middle",
+                orderedIDs: ids,
+                direction: .decrement
+            ) == "first",
+        "an adjustable heatmap must expose every cell in visual order"
+    )
+    try expect(
+        ActivityHeatmapSelectionResolver.move(
+            from: "last",
+            orderedIDs: ids,
+            direction: .increment
+        ) == "last",
+        "an adjustable heatmap must clamp at its final cell"
+    )
 }
 
 @MainActor
@@ -7570,6 +7694,7 @@ struct CodexPulseAppTestMain {
         try testTokenActivityRequestUsesAnIndependentRollingYear()
         try testQuotaWindowDisplayResolverDeduplicatesOnlyEquivalentWindows()
         try testOverviewActivityPresentationBuildsTimelineAndCompleteHeatmap()
+        try testOverviewActivityHeatmapRenderPlanPrecomputesOrderedCellIntensity()
         try testOverviewActivityAxisTicksKeepDateOnlyAtDayBoundaries()
         try testOverviewActivityAxisTicksUseElapsedTimeAcrossSparseClusters()
         try testOverviewActivityAxisTicksStayInsidePartialHourDomain()
@@ -7585,7 +7710,8 @@ struct CodexPulseAppTestMain {
         try testTokenActivityCardPresentsFiveBoundedMetricsAndDayDetails()
         try testTokenActivityCardLabelsReconciledPartialFactsAsLocalData()
         try testTokenActivityHoverStateTracksOnlyTheCurrentCell()
-        try testTokenActivityHeatmapUsesTheAvailableCardWidth()
+        try testActivityHeatmapGridLayoutMapsCellsAndRejectsSpacingGaps()
+        try testActivityHeatmapSelectionMovesWithoutHundredsOfAccessibilityChildren()
         try await testAppRuntimeLoadsTokenActivityThroughAnIndependentAnnualRequest()
         try await testAppRuntimeKeepsTokenActivityFailureLocal()
         try await testAppRuntimeUsesWeeklyQuotaRangeForOverview()
