@@ -5751,6 +5751,24 @@ private func testQuotaPacePresentationExplainsPaceForecastAndEvidence() throws {
     window.forecast.leadBeforeResetMs = 3_600_000
     window.forecast.evidenceCount = 4
     window.forecast.evidenceSpanMs = 4_500_000
+    var currentFirst = Codexpulse_Core_V1_QuotaPacePoint()
+    currentFirst.observedAtMs = 1_000
+    currentFirst.elapsedPercent = 20
+    currentFirst.remainingPercent = 39
+    var currentDecrease = Codexpulse_Core_V1_QuotaPacePoint()
+    currentDecrease.observedAtMs = 2_000
+    currentDecrease.elapsedPercent = 30
+    currentDecrease.remainingPercent = 45
+    window.currentPoints = [currentFirst, currentDecrease]
+    var previousFirst = Codexpulse_Core_V1_QuotaPacePoint()
+    previousFirst.observedAtMs = 3_000
+    previousFirst.elapsedPercent = 10
+    previousFirst.remainingPercent = 90
+    var previousLast = Codexpulse_Core_V1_QuotaPacePoint()
+    previousLast.observedAtMs = 4_000
+    previousLast.elapsedPercent = 95
+    previousLast.remainingPercent = 12
+    window.previousCycle.points = [previousFirst, previousLast]
 
     let presentation = QuotaPaceWindowPresentation(window, evaluatedAtMS: 0)
     try expect(
@@ -5773,6 +5791,23 @@ private func testQuotaPacePresentationExplainsPaceForecastAndEvidence() throws {
         presentation.previousComparisonText == "比上一周期少 16%"
             && presentation.historyComparisonText == "比近 4 个周期少 12%",
         "quota pace must compare remaining quota at the same cycle progress"
+    )
+    try expect(
+        presentation.currentPoints.count == 3
+            && presentation.currentPoints[0].isCycleStart
+            && presentation.currentPoints[0].elapsedPercent == 0
+            && presentation.currentPoints[0].remainingPercent == 100
+            && presentation.currentPoints[1].series == "current"
+            && presentation.currentPoints[1].remainingPercent == 39
+            && presentation.currentPoints[2].remainingPercent == 45,
+        "current quota pace must prepend the full-cycle anchor and preserve upward jumps"
+    )
+    try expect(
+        presentation.previousPoints.count == 3
+            && presentation.previousPoints[0].isCycleStart
+            && presentation.previousPoints[1].series == "previous"
+            && presentation.previousPoints.last?.remainingPercent == 12,
+        "previous quota pace must keep an independent anchored series and terminal point"
     )
 
     var almostZero = window
@@ -5820,6 +5855,25 @@ private func testQuotaPacePlotBorderShapeStaysInsideThePlotArea() throws {
             && strokedPath.contains(CGPoint(x: 2, y: 50))
             && !strokedPath.contains(CGPoint(x: 100, y: 50)),
         "quota pace plot border must form a closed rectangle inside the plot area"
+    )
+}
+
+private func testQuotaPaceChartOnlyColorsSeriesEndpoints() throws {
+    let source = try mainWindowSource("QuotaPaceViews.swift")
+    let pointMarkCount = source.components(separatedBy: "PointMark(").count - 1
+    let explicitSeriesCount = source.components(
+        separatedBy: "series: .value(\"趋势系列\", point.series)"
+    ).count - 1
+
+    try expect(
+        pointMarkCount == 2
+            && source.contains("if let point = presentation.previousPoints.last")
+            && source.contains("if let point = presentation.currentPoints.last"),
+        "quota pace must color only the current and previous series endpoints"
+    )
+    try expect(
+        explicitSeriesCount == 2,
+        "current and previous quota pace lines must use independent chart series"
     )
 }
 
@@ -7765,6 +7819,7 @@ struct CodexPulseAppTestMain {
         try testQuotaPacePresentationExplainsPaceForecastAndEvidence()
         try testQuotaPaceIdealReferenceShapeRunsFromTopLeftToBottomRight()
         try testQuotaPacePlotBorderShapeStaysInsideThePlotArea()
+        try testQuotaPaceChartOnlyColorsSeriesEndpoints()
         try testEnglishQuotaPaceComparisonPreservesArgumentTypesWhenWordOrderChanges()
         try testQuotaPaceForecastUsesCoarseRelativeUnitsAndHonestFallbacks()
         try testQuotaForecastPresentationIsUsedByOverviewAndStatusPopover()

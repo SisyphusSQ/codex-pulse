@@ -89,6 +89,74 @@ func TestCurrentPacePointsEndsAtCurrentProjection(t *testing.T) {
 	}
 }
 
+func TestCurrentPacePointsDisplaysUsageChangesInBothDirections(t *testing.T) {
+	t.Parallel()
+
+	const (
+		evaluatedAtMS = int64(2_520_000)
+		resetAtMS     = int64(6_000_000)
+		windowMinutes = int64(100)
+	)
+	source := store.QuotaSourceWham
+	usedPercent := 60.0
+	current := store.QuotaCurrent{
+		AccountScope:         store.QuotaAccountScopeDefault,
+		WindowKind:           store.QuotaWindowPrimary,
+		LimitID:              "codex",
+		EffectiveUsedPercent: &usedPercent,
+		WindowMinutes:        int64Pointer(windowMinutes),
+		ResetsAtMS:           int64Pointer(resetAtMS),
+		WindowGeneration:     int64Pointer(resetAtMS),
+		SelectedSource:       &source,
+		EvaluatedAtMS:        evaluatedAtMS,
+	}
+	observations := []store.QuotaObservation{
+		paceObservation("peak", source, 61, 900_000, resetAtMS, windowMinutes),
+		paceObservation("decrease", source, 55, 1_800_000, resetAtMS, windowMinutes),
+	}
+
+	got := currentPacePoints(current, observations)
+	if len(got) != 3 {
+		t.Fatalf("currentPacePoints() count = %d, want 3", len(got))
+	}
+	if got[0].RemainingPercent != 39 ||
+		got[1].RemainingPercent != 45 ||
+		got[2].RemainingPercent != 40 {
+		t.Fatalf("currentPacePoints() = %#v, want raw decrease followed by increase", got)
+	}
+}
+
+func TestCurrentPacePointsAppendsLatestUsageDecrease(t *testing.T) {
+	t.Parallel()
+
+	const (
+		evaluatedAtMS = int64(2_520_000)
+		resetAtMS     = int64(6_000_000)
+		windowMinutes = int64(100)
+	)
+	source := store.QuotaSourceWham
+	usedPercent := 58.0
+	current := store.QuotaCurrent{
+		AccountScope:         store.QuotaAccountScopeDefault,
+		WindowKind:           store.QuotaWindowPrimary,
+		LimitID:              "codex",
+		EffectiveUsedPercent: &usedPercent,
+		WindowMinutes:        int64Pointer(windowMinutes),
+		ResetsAtMS:           int64Pointer(resetAtMS),
+		WindowGeneration:     int64Pointer(resetAtMS),
+		SelectedSource:       &source,
+		EvaluatedAtMS:        evaluatedAtMS,
+	}
+	observations := []store.QuotaObservation{
+		paceObservation("peak", source, 61, 900_000, resetAtMS, windowMinutes),
+	}
+
+	got := currentPacePoints(current, observations)
+	if len(got) != 2 || got[0].UsedPercent != 61 || got[1].UsedPercent != 58 {
+		t.Fatalf("currentPacePoints() = %#v, want latest decrease appended", got)
+	}
+}
+
 func TestBuildPaceWindowForecastsEarlyExhaustionFromRecentAcceptedEvidence(t *testing.T) {
 	t.Parallel()
 
@@ -254,6 +322,53 @@ func TestBuildPaceWindowMergesBoundedResetJitterWithoutMixingLimits(t *testing.T
 		got.Forecast.LeadBeforeResetMS == nil || *got.Forecast.LeadBeforeResetMS != 4_680_000 ||
 		got.Forecast.EvidenceCount != 4 || got.Forecast.EvidenceSpanMS != 3_900_000 {
 		t.Fatalf("buildPaceWindow().Forecast = %#v", got.Forecast)
+	}
+}
+
+func TestBuildPaceWindowMergesWhamWeeklyResetCorrection(t *testing.T) {
+	t.Parallel()
+
+	const (
+		resetAtMS      = int64(700_000_000)
+		windowMinutes  = int64(10_080)
+		evaluatedAtMS  = int64(200_000_000)
+		correctedReset = resetAtMS - 110_000
+	)
+	usedPercent := 70.0
+	source := store.QuotaSourceWham
+	observationID := "weekly-current"
+	facts := store.QuotaCurrentWindowSnapshot{
+		Current: store.QuotaCurrent{
+			AccountScope:         store.QuotaAccountScopeDefault,
+			WindowKind:           store.QuotaWindowPrimary,
+			LimitID:              "codex",
+			ObservationID:        &observationID,
+			EffectiveUsedPercent: &usedPercent,
+			WindowMinutes:        int64Pointer(windowMinutes),
+			ResetsAtMS:           int64Pointer(resetAtMS),
+			WindowGeneration:     int64Pointer(resetAtMS),
+			SelectedSource:       &source,
+			FreshnessState:       store.QuotaCurrentFresh,
+			ConflictState:        store.QuotaConflictNone,
+			ExplanationCode:      store.QuotaExplanationTrusted,
+			EvaluatedAtMS:        evaluatedAtMS,
+		},
+		Observations: []store.QuotaObservation{
+			paceObservation("weekly-1", source, 32.5, 100_000_000, correctedReset, windowMinutes),
+			paceObservation("weekly-2", source, 45, 140_000_000, correctedReset, windowMinutes),
+			paceObservation("weekly-3", source, 57.5, 180_000_000, correctedReset, windowMinutes),
+			paceObservation(observationID, source, 70, 195_000_000, correctedReset, windowMinutes),
+		},
+	}
+
+	got, err := buildPaceWindow(facts, evaluatedAtMS)
+	if err != nil {
+		t.Fatalf("buildPaceWindow() error = %v", err)
+	}
+	if len(got.CurrentPoints) != 5 ||
+		got.Forecast.Method != PaceForecastMethodRecentTheilSen ||
+		got.Forecast.UnknownReason != nil {
+		t.Fatalf("buildPaceWindow() = %#v, want weekly correction retained", got)
 	}
 }
 
@@ -496,6 +611,56 @@ func TestHistoricalPaceCyclesDoNotChainJitterBeyondBoundary(t *testing.T) {
 	}
 }
 
+func TestHistoricalPaceCyclesKeepUsageDecreaseInCompleteBaseline(t *testing.T) {
+	t.Parallel()
+
+	const (
+		evaluatedAtMS       = int64(26_520_000)
+		resetAtMS           = int64(30_000_000)
+		windowMinutes       = int64(100)
+		durationMS          = int64(6_000_000)
+		previousGeneration  = resetAtMS - durationMS
+		previousWindowStart = previousGeneration - durationMS
+	)
+	usedPercent := 61.0
+	source := store.QuotaSourceWham
+	current := store.QuotaCurrent{
+		AccountScope:         store.QuotaAccountScopeDefault,
+		WindowKind:           store.QuotaWindowPrimary,
+		LimitID:              "codex",
+		EffectiveUsedPercent: &usedPercent,
+		WindowMinutes:        int64Pointer(windowMinutes),
+		ResetsAtMS:           int64Pointer(resetAtMS),
+		WindowGeneration:     int64Pointer(resetAtMS),
+		SelectedSource:       &source,
+		FreshnessState:       store.QuotaCurrentFresh,
+		ConflictState:        store.QuotaConflictNone,
+		EvaluatedAtMS:        evaluatedAtMS,
+	}
+	observations := []store.QuotaObservation{
+		paceObservation("previous-start", source, 0, previousWindowStart, previousGeneration, windowMinutes),
+		paceObservation(
+			"previous-peak", source, 60, previousWindowStart+2_000_000,
+			previousGeneration, windowMinutes,
+		),
+		paceObservation(
+			"previous-large-regression", source, 55, previousWindowStart+3_000_000,
+			previousGeneration, windowMinutes,
+		),
+		paceObservation(
+			"previous-end", source, 90, previousGeneration-1, previousGeneration, windowMinutes,
+		),
+	}
+
+	previous, historical := historicalPaceCycles(current, observations)
+	if previous == nil || !previous.Complete || len(previous.Points) != 4 {
+		t.Fatalf("historicalPaceCycles() previous = %#v, want complete raw cycle", previous)
+	}
+	if len(historical) != 1 || len(historical[0].Points) != 4 {
+		t.Fatalf("historicalPaceCycles() historical = %#v, want decrease in baseline", historical)
+	}
+}
+
 func TestCurrentQueryServiceReturnsVersionedPaceWindowsFromOneSnapshot(t *testing.T) {
 	t.Parallel()
 
@@ -553,33 +718,26 @@ func TestCurrentQueryServiceReturnsVersionedPaceWindowsFromOneSnapshot(t *testin
 	}
 }
 
-func TestDownsamplePacePointsPreservesBoundsAndOrder(t *testing.T) {
+func TestCompactPacePointsPreservesEveryValueRunBoundary(t *testing.T) {
 	t.Parallel()
 
-	points := make([]PacePoint, 200)
-	for index := range points {
-		points[index] = PacePoint{
-			ObservedAtMS:     int64(index),
-			ElapsedPercent:   float64(index) / 2,
-			UsedPercent:      float64(index) / 2,
-			RemainingPercent: 100 - float64(index)/2,
-		}
+	used := []float64{0, 0, 0, 10, 10, 9, 9, 12, 12, 12}
+	points := make([]PacePoint, 0, len(used))
+	for index, usedPercent := range used {
+		points = append(points, PacePoint{
+			ObservedAtMS: int64(index), ElapsedPercent: float64(index) * 10,
+			UsedPercent: usedPercent, RemainingPercent: 100 - usedPercent,
+		})
 	}
 
-	got := downsamplePacePoints(points, maximumPacePointsPerCycle)
-	if len(got) != maximumPacePointsPerCycle {
-		t.Fatalf("downsamplePacePoints() count = %d, want %d", len(got), maximumPacePointsPerCycle)
+	got := compactPacePoints(points)
+	wantIndexes := []int{0, 2, 3, 4, 5, 6, 7, 9}
+	if len(got) != len(wantIndexes) {
+		t.Fatalf("compactPacePoints() = %#v, want %d run boundaries", got, len(wantIndexes))
 	}
-	if got[0] != points[0] || got[len(got)-1] != points[len(points)-1] {
-		t.Fatalf("downsamplePacePoints() did not preserve endpoints")
-	}
-	for index := 1; index < len(got); index++ {
-		if got[index].ObservedAtMS <= got[index-1].ObservedAtMS {
-			t.Fatalf(
-				"downsamplePacePoints() is not strictly ordered at %d: %#v",
-				index,
-				got[index-1:index+1],
-			)
+	for index, wantIndex := range wantIndexes {
+		if got[index] != points[wantIndex] {
+			t.Fatalf("compactPacePoints()[%d] = %#v, want %#v", index, got[index], points[wantIndex])
 		}
 	}
 }
@@ -711,6 +869,96 @@ func TestForecastPaceWindowDoesNotProjectPastReset(t *testing.T) {
 		got.LeadBeforeResetMS != nil ||
 		got.UnknownReason != nil {
 		t.Fatalf("forecastPaceWindow() = %#v", got)
+	}
+}
+
+func TestForecastPaceWindowUsesEveryUsageChange(t *testing.T) {
+	t.Parallel()
+
+	const (
+		evaluatedAtMS = int64(10_800_000)
+		resetAtMS     = int64(18_000_000)
+		windowMinutes = int64(300)
+	)
+	source := store.QuotaSourceWham
+	usedPercent := 70.0
+	current := store.QuotaCurrent{
+		AccountScope:         store.QuotaAccountScopeDefault,
+		WindowKind:           store.QuotaWindowPrimary,
+		LimitID:              "codex",
+		EffectiveUsedPercent: &usedPercent,
+		WindowMinutes:        int64Pointer(windowMinutes),
+		ResetsAtMS:           int64Pointer(resetAtMS),
+		WindowGeneration:     int64Pointer(resetAtMS),
+		SelectedSource:       &source,
+		FreshnessState:       store.QuotaCurrentFresh,
+		ConflictState:        store.QuotaConflictNone,
+		EvaluatedAtMS:        evaluatedAtMS,
+	}
+	observations := []store.QuotaObservation{
+		paceObservation("pace-1", source, 45, 7_200_000, resetAtMS, windowMinutes),
+		paceObservation("pace-2", source, 55, 9_000_000, resetAtMS, windowMinutes),
+		paceObservation("pace-decrease", source, 40, 9_300_000, resetAtMS, windowMinutes),
+		paceObservation("pace-current", source, 70, evaluatedAtMS, resetAtMS, windowMinutes),
+	}
+
+	got := forecastPaceWindow(
+		current,
+		observations,
+		resetAtMS-windowMinutes*60_000,
+		windowMinutes*60_000,
+		evaluatedAtMS,
+	)
+	if got.Method != PaceForecastMethodRecentTheilSen ||
+		got.UnknownReason != nil ||
+		got.EvidenceCount != 4 {
+		t.Fatalf("forecastPaceWindow() = %#v, want all usage changes as evidence", got)
+	}
+}
+
+func TestForecastPaceWindowDoesNotRestartAfterUsageDecrease(t *testing.T) {
+	t.Parallel()
+
+	const (
+		evaluatedAtMS = int64(10_800_000)
+		resetAtMS     = int64(18_000_000)
+		windowMinutes = int64(300)
+	)
+	source := store.QuotaSourceWham
+	usedPercent := 70.0
+	current := store.QuotaCurrent{
+		AccountScope:         store.QuotaAccountScopeDefault,
+		WindowKind:           store.QuotaWindowPrimary,
+		LimitID:              "codex",
+		EffectiveUsedPercent: &usedPercent,
+		WindowMinutes:        int64Pointer(windowMinutes),
+		ResetsAtMS:           int64Pointer(resetAtMS),
+		WindowGeneration:     int64Pointer(resetAtMS),
+		SelectedSource:       &source,
+		FreshnessState:       store.QuotaCurrentFresh,
+		ConflictState:        store.QuotaConflictNone,
+		EvaluatedAtMS:        evaluatedAtMS,
+	}
+	observations := []store.QuotaObservation{
+		paceObservation("before-break-1", source, 40, 7_200_000, resetAtMS, windowMinutes),
+		paceObservation("before-break-2", source, 60, 8_000_000, resetAtMS, windowMinutes),
+		paceObservation("after-break-1", source, 55, 8_500_000, resetAtMS, windowMinutes),
+		paceObservation("after-break-2", source, 57, 9_500_000, resetAtMS, windowMinutes),
+		paceObservation("after-break-current", source, 70, evaluatedAtMS, resetAtMS, windowMinutes),
+	}
+
+	got := forecastPaceWindow(
+		current,
+		observations,
+		resetAtMS-windowMinutes*60_000,
+		windowMinutes*60_000,
+		evaluatedAtMS,
+	)
+	if got.Method != PaceForecastMethodRecentTheilSen ||
+		got.UnknownReason != nil ||
+		got.EvidenceCount != 5 ||
+		got.EvidenceSpanMS != 3_600_000 {
+		t.Fatalf("forecastPaceWindow() = %#v, want full evidence across decrease", got)
 	}
 }
 

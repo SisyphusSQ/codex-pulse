@@ -1007,8 +1007,8 @@ func TestQuotaProjectionRebuildRestoresFiveHourPrimaryAndKeepsWeeklySecondaryDet
 				*primary.ObservationID != restoredFiveHour.ObservationID ||
 				primary.WindowMinutes == nil ||
 				*primary.WindowMinutes != 300 ||
-				primary.RuleVersion != "quota-arbiter-v4" {
-				t.Fatalf("primary current = %#v, %v; want restored five-hour v4", primary, err)
+				primary.RuleVersion != "quota-arbiter-v5" {
+				t.Fatalf("primary current = %#v, %v; want restored five-hour v5", primary, err)
 			}
 			secondary, err := repository.QuotaCurrent(
 				ctx, QuotaAccountScopeDefault, QuotaWindowSecondary, "codex", evaluatedAtMS,
