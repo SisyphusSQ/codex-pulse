@@ -264,8 +264,6 @@ type paceEvidencePoint struct {
 	usedPercent float64
 }
 
-const maximumPacePointsPerCycle = 96
-
 func currentPacePoints(
 	current store.QuotaCurrent,
 	observations []store.QuotaObservation,
@@ -299,8 +297,7 @@ func currentPacePoints(
 	}
 	if len(points) > 0 {
 		last := points[len(points)-1]
-		if last.ObservedAtMS > currentPoint.ObservedAtMS ||
-			last.UsedPercent > currentPoint.UsedPercent {
+		if last.ObservedAtMS > currentPoint.ObservedAtMS {
 			return []PacePoint{}
 		}
 		if last.ObservedAtMS == currentPoint.ObservedAtMS {
@@ -309,7 +306,7 @@ func currentPacePoints(
 		}
 	}
 	points = append(points, currentPoint)
-	return downsamplePacePoints(points, maximumPacePointsPerCycle)
+	return compactPacePoints(points)
 }
 
 func historicalPaceCycles(
@@ -323,7 +320,12 @@ func historicalPaceCycles(
 	for _, observation := range observations {
 		if !paceObservationMatchesWindow(current, observation) ||
 			observation.ResetsAtMS >= *current.ResetsAtMS ||
-			store.QuotaResetsEquivalent(observation.ResetsAtMS, *current.ResetsAtMS) {
+			store.QuotaResetsEquivalentForWindow(
+				observation.Source,
+				observation.WindowMinutes,
+				observation.ResetsAtMS,
+				*current.ResetsAtMS,
+			) {
 			continue
 		}
 		eligible = append(eligible, observation)
@@ -341,7 +343,9 @@ func historicalPaceCycles(
 	groups := make([]generationGroup, 0)
 	for _, observation := range eligible {
 		if len(groups) == 0 ||
-			!store.QuotaResetsEquivalent(
+			!store.QuotaResetsEquivalentForWindow(
+				observation.Source,
+				observation.WindowMinutes,
 				groups[len(groups)-1].generation,
 				observation.ResetsAtMS,
 			) {
@@ -447,7 +451,12 @@ func buildPaceCycle(
 	for _, observation := range observations {
 		if !paceObservationMatchesWindow(current, observation) ||
 			observation.Source != source ||
-			!store.QuotaResetsEquivalent(observation.ResetsAtMS, generation) ||
+			!store.QuotaResetsEquivalentForWindow(
+				source,
+				observation.WindowMinutes,
+				observation.ResetsAtMS,
+				generation,
+			) ||
 			observation.UsedPercent < 0 || observation.UsedPercent > 100 ||
 			observation.FirstObservedAtMS < windowStartAtMS ||
 			observation.LastObservedAtMS < observation.FirstObservedAtMS ||
@@ -466,13 +475,8 @@ func buildPaceCycle(
 	}
 	sort.Slice(times, func(left, right int) bool { return times[left] < times[right] })
 	points := make([]PacePoint, 0, len(times))
-	previousUsed := -1.0
 	for _, atMS := range times {
 		usedPercent := pointsByTime[atMS]
-		if usedPercent < previousUsed {
-			return PaceCycle{}, false
-		}
-		previousUsed = usedPercent
 		elapsedPercent := float64(atMS-windowStartAtMS) / float64(durationMS) * 100
 		points = append(points, PacePoint{
 			ObservedAtMS: atMS, ElapsedPercent: elapsedPercent,
@@ -482,7 +486,7 @@ func buildPaceCycle(
 	if len(points) == 0 {
 		return PaceCycle{}, false
 	}
-	points = downsamplePacePoints(points, maximumPacePointsPerCycle)
+	points = compactPacePoints(points)
 	complete := points[0].ElapsedPercent <= 10 &&
 		points[len(points)-1].ElapsedPercent >= 90
 	return PaceCycle{
@@ -491,15 +495,20 @@ func buildPaceCycle(
 	}, true
 }
 
-func downsamplePacePoints(points []PacePoint, limit int) []PacePoint {
-	if len(points) <= limit || limit < 2 {
+func compactPacePoints(points []PacePoint) []PacePoint {
+	if len(points) <= 2 {
 		return append([]PacePoint(nil), points...)
 	}
-	result := make([]PacePoint, 0, limit)
+	result := make([]PacePoint, 0, len(points))
 	result = append(result, points[0])
-	for bucket := 1; bucket < limit-1; bucket++ {
-		index := bucket * (len(points) - 1) / (limit - 1)
-		result = append(result, points[index])
+	for index := 1; index < len(points)-1; index++ {
+		previous := points[index-1]
+		current := points[index]
+		next := points[index+1]
+		if current.UsedPercent != previous.UsedPercent ||
+			current.UsedPercent != next.UsedPercent {
+			result = append(result, current)
+		}
 	}
 	result = append(result, points[len(points)-1])
 	return result
@@ -674,7 +683,12 @@ func recentPaceEvidence(
 	for _, observation := range observations {
 		if !paceObservationMatchesWindow(current, observation) ||
 			observation.Source != *current.SelectedSource ||
-			!store.QuotaResetsEquivalent(observation.ResetsAtMS, *current.ResetsAtMS) ||
+			!store.QuotaResetsEquivalentForWindow(
+				observation.Source,
+				observation.WindowMinutes,
+				observation.ResetsAtMS,
+				*current.ResetsAtMS,
+			) ||
 			observation.UsedPercent < 0 || observation.UsedPercent > 100 ||
 			observation.FirstObservedAtMS < 0 ||
 			observation.LastObservedAtMS < observation.FirstObservedAtMS {
@@ -694,11 +708,6 @@ func recentPaceEvidence(
 		points = append(points, paceEvidencePoint{atMS: atMS, usedPercent: usedPercent})
 	}
 	sort.Slice(points, func(left, right int) bool { return points[left].atMS < points[right].atMS })
-	for index := 1; index < len(points); index++ {
-		if points[index].usedPercent < points[index-1].usedPercent {
-			return nil, false
-		}
-	}
 	return points, true
 }
 

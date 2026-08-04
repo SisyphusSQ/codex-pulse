@@ -33,13 +33,25 @@ public struct QuotaPacePlotBorderShape: InsettableShape {
 
 public struct QuotaPaceChartPoint: Equatable, Identifiable, Sendable {
     public let id: String
+    public let series: String
     public let elapsedPercent: Double
     public let remainingPercent: Double
+    public let isCycleStart: Bool
 
     init(series: String, point: Codexpulse_Core_V1_QuotaPacePoint) {
         self.id = "\(series):\(point.observedAtMs)"
+        self.series = series
         self.elapsedPercent = point.elapsedPercent
         self.remainingPercent = point.remainingPercent
+        self.isCycleStart = false
+    }
+
+    init(cycleStartFor series: String) {
+        self.id = "\(series):cycle-start"
+        self.series = series
+        self.elapsedPercent = 0
+        self.remainingPercent = 100
+        self.isCycleStart = true
     }
 }
 
@@ -127,16 +139,24 @@ public struct QuotaPaceWindowPresentation: Equatable, Identifiable, Sendable {
             ),
             localization: localization
         )
-        self.currentPoints = window.currentPoints.map {
-            QuotaPaceChartPoint(series: "current", point: $0)
-        }
+        self.currentPoints = Self.chartPoints(
+            series: "current",
+            points: window.currentPoints
+        )
         self.previousPoints = window.hasPreviousCycle
-            ? window.previousCycle.points.map {
-                QuotaPaceChartPoint(series: "previous", point: $0)
-            }
+            ? Self.chartPoints(series: "previous", points: window.previousCycle.points)
             : []
         self.historyBand = window.historyBand.map(QuotaPaceBandPoint.init)
         self.forecastState = window.forecast.state
+    }
+
+    private static func chartPoints(
+        series: String,
+        points: [Codexpulse_Core_V1_QuotaPacePoint]
+    ) -> [QuotaPaceChartPoint] {
+        let observed = points.map { QuotaPaceChartPoint(series: series, point: $0) }
+        guard let first = observed.first, first.elapsedPercent > 0 else { return observed }
+        return [QuotaPaceChartPoint(cycleStartFor: series)] + observed
     }
 
     private static func paceText(_ delta: Double?, localization: AppLocalization) -> String {

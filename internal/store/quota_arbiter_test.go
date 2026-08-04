@@ -110,7 +110,7 @@ func TestQuotaArbiterRejectsFirstSeenZeroGenerationInFavorOfLaterLocalWindow(t *
 	assertQuotaEvidence(t, projection.Evidence, zero.ObservationID, QuotaEvidenceSuspicious, QuotaReasonDefaultFallback)
 }
 
-func TestQuotaArbiterQuarantinesSameGenerationRegressionAndRecoversOnNewGeneration(t *testing.T) {
+func TestQuotaArbiterSelectsLatestSameGenerationUsageDecrease(t *testing.T) {
 	t.Parallel()
 
 	rule := defaultQuotaArbitrationRule()
@@ -124,11 +124,13 @@ func TestQuotaArbiterQuarantinesSameGenerationRegressionAndRecoversOnNewGenerati
 	if err != nil {
 		t.Fatalf("same-generation arbitration error = %v", err)
 	}
-	if projection.Current.ObservationID == nil || *projection.Current.ObservationID != first.ObservationID ||
-		projection.Current.FreshnessState != QuotaCurrentSuspicious {
-		t.Fatalf("same-generation current = %#v, want LKG suspicious", projection.Current)
+	if projection.Current.ObservationID == nil || *projection.Current.ObservationID != regressed.ObservationID ||
+		projection.Current.EffectiveUsedPercent == nil || *projection.Current.EffectiveUsedPercent != 0 ||
+		projection.Current.FreshnessState != QuotaCurrentFresh {
+		t.Fatalf("same-generation current = %#v, want latest observed value", projection.Current)
 	}
-	assertQuotaEvidence(t, projection.Evidence, regressed.ObservationID, QuotaEvidenceSuspicious, QuotaReasonUsedRegression)
+	assertQuotaEvidence(t, projection.Evidence, first.ObservationID, QuotaEvidenceEligible, "")
+	assertQuotaEvidence(t, projection.Evidence, regressed.ObservationID, QuotaEvidenceSelected, "")
 
 	secondObserved := firstReset + 3_000
 	secondReset := secondObserved + 5*quotaTestHourMS
@@ -145,6 +147,48 @@ func TestQuotaArbiterQuarantinesSameGenerationRegressionAndRecoversOnNewGenerati
 		projection.Current.FreshnessState != QuotaCurrentFresh {
 		t.Fatalf("new-generation current = %#v, want trusted zero", projection.Current)
 	}
+}
+
+func TestQuotaArbiterKeepsEverySameGenerationUsageChangeEligible(t *testing.T) {
+	t.Parallel()
+
+	rule := defaultQuotaArbitrationRule()
+	observedAt := int64(260 * quotaTestHourMS)
+	resetAt := observedAt + 7*24*quotaTestHourMS
+	peak := quotaArbiterObservation("wham-peak-61", QuotaSourceWham, 61, observedAt, resetAt)
+	onePoint := quotaArbiterObservation(
+		"wham-rounded-60", QuotaSourceWham, 60, observedAt+quotaTestMinuteMS, resetAt,
+	)
+	boundary := quotaArbiterObservation(
+		"wham-rounded-59", QuotaSourceWham, 59, observedAt+2*quotaTestMinuteMS, resetAt,
+	)
+	beyond := quotaArbiterObservation(
+		"wham-regressed-58", QuotaSourceWham, 58, observedAt+3*quotaTestMinuteMS, resetAt,
+	)
+	for _, observation := range []*QuotaObservation{&peak, &onePoint, &boundary, &beyond} {
+		observation.WindowMinutes = quotaWeeklyWindowMinutes
+	}
+
+	projection, err := arbitrateQuotaWindow(
+		[]QuotaObservation{peak, onePoint, boundary, beyond},
+		observedAt+4*quotaTestMinuteMS,
+		rule,
+	)
+	if err != nil {
+		t.Fatalf("bounded used regression arbitration error = %v", err)
+	}
+	if projection.Current.ObservationID == nil ||
+		*projection.Current.ObservationID != beyond.ObservationID ||
+		projection.Current.EffectiveUsedPercent == nil ||
+		*projection.Current.EffectiveUsedPercent != beyond.UsedPercent ||
+		projection.Current.FreshnessState != QuotaCurrentFresh ||
+		projection.Current.RuleVersion != "quota-arbiter-v5" {
+		t.Fatalf("usage change current = %#v, want latest observed value", projection.Current)
+	}
+	assertQuotaEvidence(t, projection.Evidence, peak.ObservationID, QuotaEvidenceEligible, "")
+	assertQuotaEvidence(t, projection.Evidence, onePoint.ObservationID, QuotaEvidenceEligible, "")
+	assertQuotaEvidence(t, projection.Evidence, boundary.ObservationID, QuotaEvidenceEligible, "")
+	assertQuotaEvidence(t, projection.Evidence, beyond.ObservationID, QuotaEvidenceSelected, "")
 }
 
 func TestQuotaArbiterToleratesOneSecondResetTimestampJitter(t *testing.T) {
@@ -212,6 +256,50 @@ func TestQuotaResetsEquivalentUsesBoundedJitter(t *testing.T) {
 	}
 }
 
+func TestQuotaResetsEquivalentForWindowUsesWhamWeeklyBoundaryOnly(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		source        QuotaSource
+		windowMinutes int64
+		differenceMS  int64
+		want          bool
+	}{
+		{
+			name: "wham_weekly_120_second_boundary", source: QuotaSourceWham,
+			windowMinutes: quotaWeeklyWindowMinutes, differenceMS: quotaWhamWeeklyResetJitterMS, want: true,
+		},
+		{
+			name: "wham_weekly_beyond_120_seconds", source: QuotaSourceWham,
+			windowMinutes: quotaWeeklyWindowMinutes, differenceMS: quotaWhamWeeklyResetJitterMS + 1, want: false,
+		},
+		{
+			name: "wham_five_hour_keeps_default_boundary", source: QuotaSourceWham,
+			windowMinutes: 300, differenceMS: quotaResetJitterMS + 1, want: false,
+		},
+		{
+			name: "local_weekly_keeps_default_boundary", source: QuotaSourceLocalJSONL,
+			windowMinutes: quotaWeeklyWindowMinutes, differenceMS: quotaResetJitterMS + 1, want: false,
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := QuotaResetsEquivalentForWindow(
+				test.source,
+				test.windowMinutes,
+				1_000_000,
+				1_000_000-test.differenceMS,
+			); got != test.want {
+				t.Fatalf("QuotaResetsEquivalentForWindow() = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
 // 测试 QuotaArbiter 在同一窗口 reset_at 出现有界多秒抖动时继续选择最新可信值。（风险复现用例）
 func TestQuotaArbiterToleratesBoundedMultiSecondResetTimestampJitter(t *testing.T) {
 	t.Parallel()
@@ -221,7 +309,9 @@ func TestQuotaArbiterToleratesBoundedMultiSecondResetTimestampJitter(t *testing.
 		jitterMS int64
 	}{
 		{name: "two_seconds_observed_in_real_responses", jitterMS: 2_000},
-		{name: "five_seconds_relaxed_boundary", jitterMS: 5_000},
+		{name: "five_seconds_default_boundary", jitterMS: 5_000},
+		{name: "110_second_weekly_correction", jitterMS: 110_000},
+		{name: "120_second_weekly_boundary", jitterMS: quotaWhamWeeklyResetJitterMS},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -275,9 +365,9 @@ func TestQuotaArbiterRejectsResetTimestampRegressionBeyondRelaxedBoundary(t *tes
 
 	rule := defaultQuotaArbitrationRule()
 	observedAt := int64(340 * quotaTestHourMS)
-	resetAt := observedAt + 7*24*quotaTestHourMS
+	resetAt := observedAt + 7*24*quotaTestHourMS - quotaTestMinuteMS
 	peak := quotaArbiterObservation(
-		"wham-reset-peak", QuotaSourceWham, 6, observedAt, resetAt+quotaResetJitterMS+1,
+		"wham-reset-peak", QuotaSourceWham, 6, observedAt, resetAt+quotaWhamWeeklyResetJitterMS+1,
 	)
 	peak.WindowMinutes = 7 * 24 * 60
 	regressed := quotaArbiterObservation(
@@ -305,6 +395,41 @@ func TestQuotaArbiterRejectsResetTimestampRegressionBeyondRelaxedBoundary(t *tes
 		QuotaEvidenceSuspicious,
 		QuotaReasonResetRegression,
 	)
+}
+
+func TestQuotaArbiterDoesNotChainWhamWeeklyResetJitter(t *testing.T) {
+	t.Parallel()
+
+	rule := defaultQuotaArbitrationRule()
+	observedAt := int64(360 * quotaTestHourMS)
+	resetAt := observedAt + 7*24*quotaTestHourMS
+	first := quotaArbiterObservation("wham-anchor", QuotaSourceWham, 10, observedAt, resetAt)
+	within := quotaArbiterObservation(
+		"wham-within-anchor", QuotaSourceWham, 11,
+		observedAt+quotaTestMinuteMS, resetAt+100_000,
+	)
+	beyondAnchor := quotaArbiterObservation(
+		"wham-beyond-anchor", QuotaSourceWham, 0,
+		observedAt+2*quotaTestMinuteMS, resetAt+180_000,
+	)
+	for _, observation := range []*QuotaObservation{&first, &within, &beyondAnchor} {
+		observation.WindowMinutes = quotaWeeklyWindowMinutes
+	}
+
+	projection, err := arbitrateQuotaWindow(
+		[]QuotaObservation{first, within, beyondAnchor}, observedAt+3*quotaTestMinuteMS, rule,
+	)
+	if err != nil {
+		t.Fatalf("non-chained reset jitter arbitration error = %v", err)
+	}
+	if projection.Current.ObservationID == nil ||
+		*projection.Current.ObservationID != beyondAnchor.ObservationID ||
+		projection.Current.EffectiveUsedPercent == nil ||
+		*projection.Current.EffectiveUsedPercent != 0 ||
+		projection.Current.WindowGeneration == nil ||
+		*projection.Current.WindowGeneration != beyondAnchor.ResetsAtMS {
+		t.Fatalf("non-chained reset jitter current = %#v, want distinct generation", projection.Current)
+	}
 }
 
 // 测试 QuotaArbiter 在 7 天滑动窗口提前刷新 reset_at 场景下接受服务端已重置的新事实。（风险复现用例）
@@ -335,7 +460,7 @@ func TestQuotaArbiterAcceptsEarlySlidingWindowReset(t *testing.T) {
 		projection.Current.EffectiveUsedPercent == nil || *projection.Current.EffectiveUsedPercent != 0 ||
 		projection.Current.WindowGeneration == nil || *projection.Current.WindowGeneration != resetAt ||
 		projection.Current.FreshnessState != QuotaCurrentFresh ||
-		projection.Current.RuleVersion != "quota-arbiter-v4" {
+		projection.Current.RuleVersion != "quota-arbiter-v5" {
 		t.Fatalf("sliding-window current = %#v, want trusted reset observation", projection.Current)
 	}
 	assertQuotaEvidence(t, projection.Evidence, exhausted.ObservationID, QuotaEvidenceSuperseded, "")
@@ -389,7 +514,7 @@ func TestQuotaArbiterRestoresFiveHourRoleWithoutRevivingRetiredWeeklyGeneration(
 		want.Current.ResetsAtMS == nil ||
 		*want.Current.ResetsAtMS != restoredFiveHour.ResetsAtMS ||
 		want.Current.FreshnessState != QuotaCurrentFresh ||
-		want.Current.RuleVersion != "quota-arbiter-v4" {
+		want.Current.RuleVersion != "quota-arbiter-v5" {
 		t.Fatalf("role-switch current = %#v, want restored five-hour observation", want.Current)
 	}
 	assertQuotaEvidence(
@@ -419,7 +544,7 @@ func TestQuotaArbiterRestoresFiveHourRoleWithoutRevivingRetiredWeeklyGeneration(
 	}
 }
 
-// 测试 QuotaArbiter 在退役周角色晚到且 reset 向后超过 5 秒时继续隔离回退。（风险复现用例）
+// 测试 QuotaArbiter 在退役周角色晚到且 reset 向后超过 120 秒时继续隔离回退。（风险复现用例）
 func TestQuotaArbiterQuarantinesResetRegressionFromRetiredWindowRole(t *testing.T) {
 	t.Parallel()
 
@@ -436,7 +561,7 @@ func TestQuotaArbiterQuarantinesResetRegressionFromRetiredWindowRole(t *testing.
 	)
 	regressedWeekly := quotaArbiterObservation(
 		"regressed-retired-weekly", QuotaSourceWham, 47,
-		firstObserved+2*quotaTestMinuteMS, temporaryWeekly.ResetsAtMS-quotaResetJitterMS-1,
+		firstObserved+2*quotaTestMinuteMS, temporaryWeekly.ResetsAtMS-quotaWhamWeeklyResetJitterMS-1,
 	)
 	regressedWeekly.WindowMinutes = temporaryWeekly.WindowMinutes
 

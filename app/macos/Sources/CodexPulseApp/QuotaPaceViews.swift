@@ -176,7 +176,12 @@ private struct QuotaPaceWindowView: View {
                     dashed: true,
                     endpointColor: .accentColor
                 )
-                legend(color: .secondary, title: "上一周期", dashed: true)
+                legend(
+                    color: .secondary,
+                    title: "上一周期",
+                    dashed: true,
+                    endpointColor: .secondary
+                )
                 legend(color: .purple, title: "近四周期中位数", dashed: true)
                 legend(color: .gray, title: "理想节奏", dashed: true)
                 Spacer()
@@ -205,7 +210,8 @@ private struct QuotaPaceWindowView: View {
                 ForEach(presentation.previousPoints) { point in
                     LineMark(
                         x: .value("周期进度", point.elapsedPercent),
-                        y: .value("上一周期剩余", point.remainingPercent)
+                        y: .value("上一周期剩余", point.remainingPercent),
+                        series: .value("趋势系列", point.series)
                     )
                     .foregroundStyle(Color.secondary.opacity(0.75))
                     .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
@@ -214,11 +220,20 @@ private struct QuotaPaceWindowView: View {
                 ForEach(presentation.currentPoints) { point in
                     LineMark(
                         x: .value("周期进度", point.elapsedPercent),
-                        y: .value("本周期剩余", point.remainingPercent)
+                        y: .value("本周期剩余", point.remainingPercent),
+                        series: .value("趋势系列", point.series)
                     )
                     .foregroundStyle(Color.secondary.opacity(0.75))
                     .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
                     .interpolationMethod(.stepEnd)
+                }
+                if let point = presentation.previousPoints.last {
+                    PointMark(
+                        x: .value("上一周期结束进度", point.elapsedPercent),
+                        y: .value("上一周期结束剩余", point.remainingPercent)
+                    )
+                    .foregroundStyle(Color.secondary)
+                    .symbolSize(36)
                 }
                 if let point = presentation.currentPoints.last {
                     PointMark(

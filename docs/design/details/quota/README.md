@@ -79,7 +79,7 @@ application schema v11 新增 `quota_current` 与 `quota_arbitration_evidence`�
 
 - `used_percent` 必须在 `0..100`；
 - window duration 和 reset 时间必须合理；
-- primary 必须存在，字段类型和 observation 时间不能明显倒退；默认允许的系统时钟偏差为 2 分钟，规则版本为 `quota-arbiter-v3`；
+- primary 必须存在，字段类型和 observation 时间不能明显倒退；默认允许的系统时钟偏差为 2 分钟，规则版本为 `quota-arbiter-v5`；
 - secondary 暂时缺失不能删除上一条 weekly；
 - partial response 只更新通过校验的 window。
 
@@ -112,17 +112,19 @@ freshness 与 conflict 分开：current 可以同时是 `fresh + conflict` 或 `
 
 不采用“wham 永远覆盖本地”的固定优先级：
 
-1. 同一代际内，按来源分别检查 used 单调性；相同或上升才参与 current，下降写 `suspicious/used_regression` evidence，不覆盖 current。
+1. 同一代际内，同一来源的合法 used 观测按时间原样参与 current 与节奏曲线；服务端用量下降同样是可展示事实，不按历史峰值压平，也不写 `suspicious/used_regression` evidence。跨来源仍比较各来源最新观测并取最大的 `used_percent`，避免把来源差异误当成单条时间线。
 2. 同代际有多个 accepted 来源时，取最大的 `used_percent`，即采用最保守的 remaining。
 3. 较新 observation 的 reset 向未来前移，且新 reset 晚于 observation、不超过 `window_minutes + skew` 时，接受为新 generation，允许 used 重新从低值开始；滑动窗口无需等待上一 reset 到期，中间未观测到的窗口也可以跳过。generation 先做基础有效性分类，再做代际排序；若新代际零值被更晚 Local 旧窗口否定，会隔离该零值并重新分类旧窗口候选，确保首次观测也不会暴露 false-zero，已有历史时选更新的 Local last-known-good 而不是更旧值。
-4. 同一 `window_minutes` 的逻辑窗口出现不超过 5 秒的 reset 向后抖动时，将其归一到该代际已见的最大 reset；超过 5 秒的向后移动、跨度异常或来源代际无法解释时继续保留 last-known-good，并写入 `reset_regression` evidence；旧 reset 到期后进入 expired_unknown。
+4. 同一 `window_minutes` 的逻辑窗口出现有界 reset 抖动时，将其归一到该代际已见的最大 reset；默认容差为 5 秒，Wham 7 天窗口容差为 120 秒，Local 7 天窗口仍保持 5 秒。每个 generation 使用首个 reset 作为固定锚点，不允许通过相邻 observation 链式放大容差；超过窗口专属边界的向过去移动、跨度异常或来源代际无法解释时继续保留 last-known-good，并写入 `reset_regression` evidence，超过边界地向未来推进则进入新 generation；旧 reset 到期后进入 expired_unknown。
 5. 本地 JSONL 到来只重新仲裁，不触发在线请求；较新的本地高值可以更新旧 wham，较新的 wham 低值不能覆盖同代际本地高值。旧 generation 晚到只保留 `reset_regression` evidence，不能回退 current。
 
 例：同一 reset 下本地已用 45%、在线已用 41%，current 采用 45%，UI 显示“剩余最多 55%”；41% 保留为 conflict evidence。之后在线返回 47% 时，47% 成为 current。
 
+节奏曲线按时间保留同一来源的每次用量变化，包括 used 下降所形成的剩余额度上跳。连续相同 used 的平台区间只保留首尾两个形状点，不再把整个周期均匀抽成固定 96 点，因此平台时长、变化发生位置和双向跳变都不会因抽样被删除。Swift 只在本周期与上一周期各自的最后一个点绘制着色端点；`(0%, 100%)` 仅作为连线起点，不伪装成真实采样点。
+
 ## 100% 防误判
 
-只有满足以下条件，才接受 remaining 100% 对应的 `used_percent = 0`：
+同一来源、同一逻辑 generation 内合法的 `used_percent = 0` 与其他用量变化一样按原值接受，不因相对历史值下降而单独隔离。新 generation 首次出现 remaining 100% 时仍要求：
 
 - `resets_at` 已推进到可解释的新窗口；
 - 新 observation 晚于旧事实，且新 reset 位于自身窗口时长与 clock skew 边界内；
@@ -130,13 +132,13 @@ freshness 与 conflict 分开：current 可以同时是 `fresh + conflict` 或 `
 
 若新零值 generation 已通过基本时间校验，但随后出现仍指向上一 reset 的更新 Local snapshot，零值以 `default_fallback` evidence 隔离并回退上一代 last-known-good；不会用到达顺序把 100% 强行设为 current。
 
-以下响应标为 suspicious，保留上一条 accepted observation：
+以下结构或代际异常标为 suspicious，保留上一条 accepted observation：
 
-- reset 未变化，但 used 从非零突然降为 0；
-- 5h 和 weekly 同时归零，但代际都未推进；
 - reset 为 0、window duration 缺失或异常；
 - HTTP 成功但关键字段像默认 fallback；
-- 不同来源在同一窗口明显冲突。
+- reset 向过去越过来源与窗口对应的容差，或 observation 时间明显倒退。
+
+不同来源在同一窗口出现不同 used 时保留两边 evidence，current 取各来源最新值中的较大者并标记 conflict；它不是删除任一来源的理由。
 
 离线且仍在同一窗口时，旧值只能作为边界，例如“5h 剩余最多 62% · 15 分钟前 · 离线”；越过 reset 后显示“当前未知”，附上上次可信值和原 reset 时间，不能自动显示 100%。
 

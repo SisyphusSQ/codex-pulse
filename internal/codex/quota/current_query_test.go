@@ -361,19 +361,24 @@ func TestCurrentQueryRejectsMalformedResetCreditsWithoutLeakingSnapshotIdentity(
 	}
 }
 
-func TestCurrentQuerySuspiciousWindowHidesUntrustedResetCountdown(t *testing.T) {
+func TestCurrentQueryKeepsLatestUsageDecreaseAndTrustedResetCountdown(t *testing.T) {
 	t.Parallel()
 
 	repository, service := newCurrentQueryTestService(t)
 	nowMS := time.Now().UnixMilli()
 	resetAtMS := nowMS + 5*60*60*1_000
-	recordCurrentQueryWham(t, repository, "suspicious-base", nowMS, 40, -1, resetAtMS, 0)
-	recordCurrentQueryWham(t, repository, "suspicious-regression", nowMS+1, 20, -1, resetAtMS, 0)
+	recordCurrentQueryWham(t, repository, "usage-before-decrease", nowMS, 40, -1, resetAtMS, 0)
+	recordCurrentQueryWham(t, repository, "usage-after-decrease", nowMS+1, 20, -1, resetAtMS, 0)
 	response := queryCurrentAt(t, service, nowMS+2)
-	if len(response.Windows) != 1 || response.Windows[0].Freshness != store.QuotaCurrentSuspicious ||
-		response.Windows[0].ResetsAtMS == nil || response.Windows[0].ResetRemainingMS != nil ||
-		response.NextReset.AtMS != nil || response.NextReset.RemainingMS != nil {
-		t.Fatalf("suspicious response exposes untrusted reset countdown = %#v", response)
+	if len(response.Windows) != 1 || response.Windows[0].Freshness != store.QuotaCurrentFresh ||
+		response.Windows[0].UsedPercent == nil || *response.Windows[0].UsedPercent != 20 ||
+		response.Windows[0].ResetsAtMS == nil || *response.Windows[0].ResetsAtMS != resetAtMS ||
+		response.Windows[0].ResetRemainingMS == nil ||
+		*response.Windows[0].ResetRemainingMS != resetAtMS-(nowMS+2) ||
+		response.NextReset.AtMS == nil || *response.NextReset.AtMS != resetAtMS ||
+		response.NextReset.RemainingMS == nil ||
+		*response.NextReset.RemainingMS != resetAtMS-(nowMS+2) {
+		t.Fatalf("usage decrease response did not remain trusted = %#v", response)
 	}
 }
 
