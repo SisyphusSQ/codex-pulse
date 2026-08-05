@@ -303,8 +303,7 @@ func validateResetCreditsReplay(ctx context.Context, database *gorm.DB, record R
 
 func populateResetCreditsSummary(summary *ResetCreditsSummary, snapshot ResetCreditsSnapshot, evaluationAtMS int64) {
 	snapshotID := snapshot.SnapshotID
-	total := int64(len(snapshot.Credits))
-	available, redeemed, cumulative := int64(0), int64(0), int64(0)
+	available, cumulative := int64(0), int64(0)
 	var next *int64
 	for _, credit := range snapshot.Credits {
 		switch credit.Status {
@@ -323,14 +322,12 @@ func populateResetCreditsSummary(summary *ResetCreditsSummary, snapshot ResetCre
 				value := credit.ExpiresAtMS
 				next = &value
 			}
-		case ResetCreditRedeemed, ResetCreditUsed:
-			redeemed++
 		}
 	}
 	summary.SnapshotID = &snapshotID
 	summary.AvailableCount = &available
-	summary.TotalCount = &total
-	summary.RedeemedCount = &redeemed
+	// Wham 返回的是当前库存：已兑换条目可以在后续响应中消失。
+	// 因此 len(Credits) 不是历史总量，也不能据此反推已使用数量。
 	summary.CumulativeRemainingMS = &cumulative
 	summary.NextExpiresAtMS = next
 	summary.Credits = cloneResetCreditsSnapshot(&snapshot).Credits

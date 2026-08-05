@@ -920,6 +920,66 @@ func TestQuotaProjectionPartialFetchKeepsSiblingWindow(t *testing.T) {
 	}
 }
 
+func TestRebuildQuotaProjectionRecoversStableWeeklyResetCreditCorrection(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	repository := NewRepository(database)
+	ctx := context.Background()
+	if err := repository.EnsureApplicationSchema(ctx); err != nil {
+		t.Fatalf("EnsureApplicationSchema() error = %v", err)
+	}
+	firstObserved := int64(700 * quotaTestHourMS)
+	resetObserved := firstObserved + 4*quotaTestHourMS
+	previousReset := firstObserved + 3*24*quotaTestHourMS
+	provisionalReset := resetObserved + 7*24*quotaTestHourMS
+	stableReset := provisionalReset - 44*quotaTestMinuteMS - 8_000
+	samples := []QuotaObservationSample{
+		quotaProjectionWhamSample(
+			"rebuild-reset-credit-exhausted", 100, firstObserved, previousReset,
+		),
+		quotaProjectionWhamSample(
+			"rebuild-reset-credit-provisional", 0, resetObserved, provisionalReset,
+		),
+		quotaProjectionWhamSample(
+			"rebuild-reset-credit-correction-first", 0,
+			resetObserved+4*quotaTestMinuteMS+21_000, stableReset,
+		),
+		quotaProjectionWhamSample(
+			"rebuild-reset-credit-correction-confirmed", 0,
+			resetObserved+9*quotaTestMinuteMS+23_000, stableReset,
+		),
+	}
+	for index := range samples {
+		samples[index].WindowMinutes = quotaWeeklyWindowMinutes
+	}
+	if err := database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+		models := make([]*quotaObservationModel, 0, len(samples))
+		for _, sample := range samples {
+			models = append(models, quotaObservationModelFromSample(sample))
+		}
+		return transaction.WithContext(ctx).Create(&models).Error
+	}); err != nil {
+		t.Fatalf("seed reset-credit quota history: %v", err)
+	}
+	evaluatedAtMS := resetObserved + 10*quotaTestMinuteMS
+	repository.quotaNow = func() time.Time { return time.UnixMilli(evaluatedAtMS) }
+	if err := repository.RebuildQuotaProjection(ctx, defaultQuotaArbitrationRule()); err != nil {
+		t.Fatalf("RebuildQuotaProjection() error = %v", err)
+	}
+
+	current, err := repository.QuotaCurrent(
+		ctx, QuotaAccountScopeDefault, QuotaWindowPrimary, "codex", evaluatedAtMS,
+	)
+	if err != nil || current.ObservationID == nil ||
+		*current.ObservationID != "rebuild-reset-credit-correction-confirmed" ||
+		current.ResetsAtMS == nil || *current.ResetsAtMS != stableReset ||
+		current.FreshnessState != QuotaCurrentFresh ||
+		current.RuleVersion != "quota-arbiter-v6" {
+		t.Fatalf("recovered reset-credit current = %#v, %v", current, err)
+	}
+}
+
 // 测试 RebuildQuotaProjection 从完整历史恢复 5 小时 primary、保留独立的周 secondary，
 // 且 projection 不受原始 observation 插入顺序影响。（风险复现用例）
 func TestQuotaProjectionRebuildRestoresFiveHourPrimaryAndKeepsWeeklySecondaryDeterministically(t *testing.T) {
@@ -1007,8 +1067,8 @@ func TestQuotaProjectionRebuildRestoresFiveHourPrimaryAndKeepsWeeklySecondaryDet
 				*primary.ObservationID != restoredFiveHour.ObservationID ||
 				primary.WindowMinutes == nil ||
 				*primary.WindowMinutes != 300 ||
-				primary.RuleVersion != "quota-arbiter-v5" {
-				t.Fatalf("primary current = %#v, %v; want restored five-hour v5", primary, err)
+				primary.RuleVersion != "quota-arbiter-v6" {
+				t.Fatalf("primary current = %#v, %v; want restored five-hour v6", primary, err)
 			}
 			secondary, err := repository.QuotaCurrent(
 				ctx, QuotaAccountScopeDefault, QuotaWindowSecondary, "codex", evaluatedAtMS,

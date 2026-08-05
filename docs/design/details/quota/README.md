@@ -79,7 +79,7 @@ application schema v11 新增 `quota_current` 与 `quota_arbitration_evidence`�
 
 - `used_percent` 必须在 `0..100`；
 - window duration 和 reset 时间必须合理；
-- primary 必须存在，字段类型和 observation 时间不能明显倒退；默认允许的系统时钟偏差为 2 分钟，规则版本为 `quota-arbiter-v5`；
+- primary 必须存在，字段类型和 observation 时间不能明显倒退；默认允许的系统时钟偏差为 2 分钟，规则版本为 `quota-arbiter-v6`；
 - secondary 暂时缺失不能删除上一条 weekly；
 - partial response 只更新通过校验的 window。
 
@@ -115,7 +115,7 @@ freshness 与 conflict 分开：current 可以同时是 `fresh + conflict` 或 `
 1. 同一代际内，同一来源的合法 used 观测按时间原样参与 current 与节奏曲线；服务端用量下降同样是可展示事实，不按历史峰值压平，也不写 `suspicious/used_regression` evidence。跨来源仍比较各来源最新观测并取最大的 `used_percent`，避免把来源差异误当成单条时间线。
 2. 同代际有多个 accepted 来源时，取最大的 `used_percent`，即采用最保守的 remaining。
 3. 较新 observation 的 reset 向未来前移，且新 reset 晚于 observation、不超过 `window_minutes + skew` 时，接受为新 generation，允许 used 重新从低值开始；滑动窗口无需等待上一 reset 到期，中间未观测到的窗口也可以跳过。generation 先做基础有效性分类，再做代际排序；若新代际零值被更晚 Local 旧窗口否定，会隔离该零值并重新分类旧窗口候选，确保首次观测也不会暴露 false-zero，已有历史时选更新的 Local last-known-good 而不是更旧值。
-4. 同一 `window_minutes` 的逻辑窗口出现有界 reset 抖动时，将其归一到该代际已见的最大 reset；默认容差为 5 秒，Wham 7 天窗口容差为 120 秒，Local 7 天窗口仍保持 5 秒。每个 generation 使用首个 reset 作为固定锚点，不允许通过相邻 observation 链式放大容差；超过窗口专属边界的向过去移动、跨度异常或来源代际无法解释时继续保留 last-known-good，并写入 `reset_regression` evidence，超过边界地向未来推进则进入新 generation；旧 reset 到期后进入 expired_unknown。
+4. 同一 `window_minutes` 的逻辑窗口出现有界 reset 抖动时，将其归一到该代际已见的最大 reset；默认容差为 5 秒，Wham 7 天窗口容差为 120 秒，Local 7 天窗口仍保持 5 秒。每个 generation 使用首个 reset 作为固定锚点，不允许通过相邻 observation 链式放大容差。Wham 重置卡触发的首个零用量周窗口若精确近似“观测时刻 + 7 天”，只作为临时锚点；同来源后续回拨必须连续两次稳定一致、仍严格晚于上一代 reset，才允许重新锚定当前 generation。单次异常、跨来源值和上一代迟到继续保留 last-known-good，并写入 `reset_regression` evidence；超过边界地向未来推进则进入新 generation，旧 reset 到期后进入 expired_unknown。
 5. 本地 JSONL 到来只重新仲裁，不触发在线请求；较新的本地高值可以更新旧 wham，较新的 wham 低值不能覆盖同代际本地高值。旧 generation 晚到只保留 `reset_regression` evidence，不能回退 current。
 
 例：同一 reset 下本地已用 45%、在线已用 41%，current 采用 45%，UI 显示“剩余最多 55%”；41% 保留为 conflict evidence。之后在线返回 47% 时，47% 成为 current。
@@ -160,7 +160,7 @@ freshness 与 conflict 分开：current 可以同时是 `fresh + conflict` 或 `
 
 Reset Credits inventory 来自独立的只读 `GET /backend-api/wham/rate-limit-reset-credits`，不能从 quota 百分比或 reset 时间猜测。客户端与 `wham/usage` 共用内存 credential lease、固定 HTTPS endpoint、redirect 禁止、逐 attempt timeout、response body 上限、duplicate JSON key 拒绝和 typed failure 分类；不调用 consume endpoint。响应只接受有界 `available_count + credits[]`，credit 的 `id` 进入 Store 前转成 SHA-256，`title`、`description`、`profile_user_id`、未知字段、token、header、body 和 raw error 全部丢弃。status 只接受 `available/redeemed/expired/used`，reset type 归一为 `codex_rate_limits/unknown`，时间必须是合法且自洽的 RFC3339；available count 与 items 不一致时整次响应按 `schema_incompatible` fail closed。
 
-application schema v12 新增 `reset_credit_snapshots`、`reset_credits`、`source_refresh_schedules` 和 append-only `source_refresh_claims`。一次成功 Reset Credits 请求把 append-only source attempt、snapshot 与 hashed items 放在同一个 GORM writer transaction；失败/取消只写 attempt/source state，不生成 snapshot。exact request replay 是 no-op，同 request 不同事实拒绝；summary 在调用方 evaluation time 重新计算实际可用数、总数、已兑换数、所有未过期 available credit 的累计剩余毫秒和最近到期时间，因此未加载、真实 0 与已自然过期不会混淆。reader 在同一 SQLite read snapshot 内对账 item、server count 与 source attempt provenance，篡改或跨来源 request 引用 fail closed。已有 last-known-good 在网络失败后保留。
+application schema v12 新增 `reset_credit_snapshots`、`reset_credits`、`source_refresh_schedules` 和 append-only `source_refresh_claims`。一次成功 Reset Credits 请求把 append-only source attempt、snapshot 与 hashed items 放在同一个 GORM writer transaction；失败/取消只写 attempt/source state，不生成 snapshot。exact request replay 是 no-op，同 request 不同事实拒绝；summary 在调用方 evaluation time 重新计算实际可用数、所有未过期 available credit 的累计剩余毫秒和最近到期时间，因此未加载、真实 0 与已自然过期不会混淆。Wham 响应是当前库存，已使用条目可能从后续 `credits[]` 消失，所以 `len(credits)` 不能解释为分配总量，也不能据此反推已使用数量；`total_count` 与 `redeemed_count` 保持 unknown，客户端只展示权威的当前可用数。reader 在同一 SQLite read snapshot 内对账 item、server count 与 source attempt provenance，篡改或跨来源 request 引用 fail closed。已有 last-known-good 在网络失败后保留。
 
 `CalculateQuotaResetSummary` 从所有 `quota_current` 窗口计算最近可信 reset、剩余毫秒和可信窗口数；只有带 selected observation 且 freshness 为 `fresh/stale`、reset 仍在未来的窗口参与。Reset Credits inventory 与 quota reset summary 是两个独立事实，后续 query/UI 只组合，不互相推导。
 
@@ -188,7 +188,7 @@ shutdown 先停止接收 lifecycle，并封闭 application settings/manual/Home-
 
 Repository 在一个显式 GORM read transaction、同一个 SQLite snapshot 内读取全部 `quota_current` logical keys、对应 raw observations、完整 arbitration evidence、Wham source state、两个 durable refresh schedule 与 Reset Credits summary。并发 writer 只能让整份 response 看到完整旧版本或完整新版本，不能混出跨表时序。observation/current/evidence logical key 集必须完全一致；projection 缺行、多行、identity/provenance/shape 漂移时 fail closed，query 返回可恢复的 projection unavailable，不在查询路径写库。恢复只能由已有的显式 maintenance `RebuildQuotaProjection` 执行，调用方不得把查询失败当作 rebuild 授权。
 
-每个 window 同时返回选中事实和按 observation ID 稳定排序的 explanation；explanation 只包含结构化 source、used/remaining、window/reset/generation、observed time、validity、disposition、reason 与固定 explanation code。source summary 只暴露 freshness、last success/attempt、固定 failure code 与 selected/conflict window count；Local freshness 只由 accepted observation 计算，在 10 分钟 freshness/reset 边界内为 current，之后为 stale，只有 suspicious/rejected observation 时仍是 unknown。refresh status 可以暴露 state、due/reason、manual/claim 时间和 trigger，但不暴露 claim ID/revision；Reset Credits 只暴露动态 count/duration/freshness，不暴露 snapshot ID、credit hash；任何 response 都不包含 token、Authorization/Cookie、原始 HTTP body、raw error、JSONL path、request ID 或用户文案。
+每个 window 同时返回选中事实和按 observation ID 稳定排序的 explanation；explanation 只包含结构化 source、used/remaining、window/reset/generation、observed time、validity、disposition、reason 与固定 explanation code。source summary 只暴露 freshness、last success/attempt、固定 failure code 与 selected/conflict window count；Local freshness 只由 accepted observation 计算，在 10 分钟 freshness/reset 边界内为 current，之后为 stale，只有 suspicious/rejected observation 时仍是 unknown。refresh status 可以暴露 state、due/reason、manual/claim 时间和 trigger，但不暴露 claim ID/revision；Reset Credits 只暴露权威 available count、当前库存 items、动态 duration/freshness，历史总量与已使用数保持 unknown，不暴露 snapshot ID、credit hash；任何 response 都不包含 token、Authorization/Cookie、原始 HTTP body、raw error、JSONL path、request ID 或用户文案。
 
 Local-only、Wham-only、双源一致、双源冲突、expired last-known-good、429 backoff、primary/secondary 跨窗口、Reset Credits 真实零/自然到期、空仓库与并发 snapshot 都使用 synthetic fixture 验证。可复用入口见 [`docs/test/quota-current.md`](../../../test/quota-current.md)。
 

@@ -55,14 +55,14 @@ type ResetCreditsFetchRecord struct {
 }
 
 // ResetCreditsSummary is recomputed at EvaluationAtMS so expired credits do
-// not remain available merely because no new response arrived. Pointer counts
-// distinguish never-loaded from a real zero.
+// not remain available merely because no new response arrived. AvailableCount
+// distinguishes never-loaded from a real zero. Wham exposes current inventory
+// rather than allocation history, so this contract does not expose inferred
+// total or redeemed counts.
 type ResetCreditsSummary struct {
 	AccountScope          string
 	SnapshotID            *string
 	AvailableCount        *int64
-	TotalCount            *int64
-	RedeemedCount         *int64
 	CumulativeRemainingMS *int64
 	NextExpiresAtMS       *int64
 	LastSuccessAtMS       *int64

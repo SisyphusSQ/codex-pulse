@@ -4100,9 +4100,15 @@ func (x *CurrentResetCreditItem) GetRemainingMs() int64 {
 }
 
 type CurrentResetCredits struct {
-	state                 protoimpl.MessageState    `protogen:"open.v1"`
-	AvailableCount        *int64                    `protobuf:"varint,1,opt,name=available_count,json=availableCount,proto3,oneof" json:"available_count,omitempty"`
-	TotalCount            *int64                    `protobuf:"varint,2,opt,name=total_count,json=totalCount,proto3,oneof" json:"total_count,omitempty"`
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	AvailableCount *int64                 `protobuf:"varint,1,opt,name=available_count,json=availableCount,proto3,oneof" json:"available_count,omitempty"`
+	// Deprecated: Wham exposes current inventory, not allocation history.
+	//
+	// Deprecated: Marked as deprecated in api/codexpulse/core/v1/core.proto.
+	TotalCount *int64 `protobuf:"varint,2,opt,name=total_count,json=totalCount,proto3,oneof" json:"total_count,omitempty"`
+	// Deprecated: consumed items can disappear from later inventory responses.
+	//
+	// Deprecated: Marked as deprecated in api/codexpulse/core/v1/core.proto.
 	RedeemedCount         *int64                    `protobuf:"varint,3,opt,name=redeemed_count,json=redeemedCount,proto3,oneof" json:"redeemed_count,omitempty"`
 	CumulativeRemainingMs *int64                    `protobuf:"varint,4,opt,name=cumulative_remaining_ms,json=cumulativeRemainingMs,proto3,oneof" json:"cumulative_remaining_ms,omitempty"`
 	NextExpiresAtMs       *int64                    `protobuf:"varint,5,opt,name=next_expires_at_ms,json=nextExpiresAtMs,proto3,oneof" json:"next_expires_at_ms,omitempty"`
@@ -4153,6 +4159,7 @@ func (x *CurrentResetCredits) GetAvailableCount() int64 {
 	return 0
 }
 
+// Deprecated: Marked as deprecated in api/codexpulse/core/v1/core.proto.
 func (x *CurrentResetCredits) GetTotalCount() int64 {
 	if x != nil && x.TotalCount != nil {
 		return *x.TotalCount
@@ -4160,6 +4167,7 @@ func (x *CurrentResetCredits) GetTotalCount() int64 {
 	return 0
 }
 
+// Deprecated: Marked as deprecated in api/codexpulse/core/v1/core.proto.
 func (x *CurrentResetCredits) GetRedeemedCount() int64 {
 	if x != nil && x.RedeemedCount != nil {
 		return *x.RedeemedCount
@@ -10628,12 +10636,12 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x0eredeemed_at_ms\x18\x05 \x01(\x03H\x00R\fredeemedAtMs\x88\x01\x01\x12&\n" +
 	"\fremaining_ms\x18\x06 \x01(\x03H\x01R\vremainingMs\x88\x01\x01B\x11\n" +
 	"\x0f_redeemed_at_msB\x0f\n" +
-	"\r_remaining_ms\"\xd8\x05\n" +
+	"\r_remaining_ms\"\xe0\x05\n" +
 	"\x13CurrentResetCredits\x12,\n" +
-	"\x0favailable_count\x18\x01 \x01(\x03H\x00R\x0eavailableCount\x88\x01\x01\x12$\n" +
-	"\vtotal_count\x18\x02 \x01(\x03H\x01R\n" +
-	"totalCount\x88\x01\x01\x12*\n" +
-	"\x0eredeemed_count\x18\x03 \x01(\x03H\x02R\rredeemedCount\x88\x01\x01\x12;\n" +
+	"\x0favailable_count\x18\x01 \x01(\x03H\x00R\x0eavailableCount\x88\x01\x01\x12(\n" +
+	"\vtotal_count\x18\x02 \x01(\x03B\x02\x18\x01H\x01R\n" +
+	"totalCount\x88\x01\x01\x12.\n" +
+	"\x0eredeemed_count\x18\x03 \x01(\x03B\x02\x18\x01H\x02R\rredeemedCount\x88\x01\x01\x12;\n" +
 	"\x17cumulative_remaining_ms\x18\x04 \x01(\x03H\x03R\x15cumulativeRemainingMs\x88\x01\x01\x120\n" +
 	"\x12next_expires_at_ms\x18\x05 \x01(\x03H\x04R\x0fnextExpiresAtMs\x88\x01\x01\x120\n" +
 	"\x12last_success_at_ms\x18\x06 \x01(\x03H\x05R\x0flastSuccessAtMs\x88\x01\x01\x120\n" +

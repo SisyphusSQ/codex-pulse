@@ -471,8 +471,10 @@ message CurrentResetCreditItem {
 
 message CurrentResetCredits {
   optional int64 available_count = 1;
-  optional int64 total_count = 2;
-  optional int64 redeemed_count = 3;
+  // Deprecated: Wham exposes current inventory, not allocation history.
+  optional int64 total_count = 2 [deprecated = true];
+  // Deprecated: consumed items can disappear from later inventory responses.
+  optional int64 redeemed_count = 3 [deprecated = true];
   optional int64 cumulative_remaining_ms = 4;
   optional int64 next_expires_at_ms = 5;
   optional int64 last_success_at_ms = 6;

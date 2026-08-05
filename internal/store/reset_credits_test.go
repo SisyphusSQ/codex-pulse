@@ -32,8 +32,6 @@ func TestRecordResetCreditsFetchPersistsReplaySafeSummary(t *testing.T) {
 	}
 	if summary.SnapshotID == nil || *summary.SnapshotID != record.Snapshot.SnapshotID ||
 		summary.AvailableCount == nil || *summary.AvailableCount != 2 ||
-		summary.TotalCount == nil || *summary.TotalCount != 3 ||
-		summary.RedeemedCount == nil || *summary.RedeemedCount != 1 ||
 		summary.CumulativeRemainingMS == nil || *summary.CumulativeRemainingMS != 10_680_000 ||
 		summary.NextExpiresAtMS == nil || *summary.NextExpiresAtMS != observedAt+3_600_000 ||
 		summary.LastSuccessAtMS == nil || *summary.LastSuccessAtMS != observedAt ||
@@ -45,6 +43,46 @@ func TestRecordResetCreditsFetchPersistsReplaySafeSummary(t *testing.T) {
 	)
 	if err != nil || len(attempts) != 1 || attempts[0].RequestID != "reset-request-1" {
 		t.Fatalf("attempts = %#v, %v", attempts, err)
+	}
+}
+
+func TestResetCreditsSummaryDoesNotInferHistoricalCountsFromEmptyInventory(t *testing.T) {
+	t.Parallel()
+
+	repository := NewRepository(openTestDatabase(t))
+	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
+		t.Fatalf("EnsureApplicationSchema() error = %v", err)
+	}
+	const observedAt = int64(1_784_000_000_000)
+	status := int64(200)
+	record := ResetCreditsFetchRecord{
+		SourceInstanceID: ResetCreditsSourceInstanceWhamDefault,
+		SourceType:       ResetCreditsSourceTypeWham,
+		ScopeKey:         QuotaAccountScopeDefault,
+		Attempt: SourceAttempt{
+			RequestID: "reset-empty-inventory", SourceInstanceID: ResetCreditsSourceInstanceWhamDefault,
+			StartedAtMS: observedAt, FinishedAtMS: observedAt, Outcome: SourceAttemptSucceeded,
+			HTTPStatus: &status, AttemptCount: 1, ResponseBytes: 70,
+		},
+		Snapshot: &ResetCreditsSnapshot{
+			SnapshotID: "reset-empty-inventory-snapshot", RequestID: "reset-empty-inventory",
+			AccountScope: QuotaAccountScopeDefault, AvailableCount: 0, ObservedAtMS: observedAt,
+		},
+	}
+	if err := repository.RecordResetCreditsFetch(context.Background(), record); err != nil {
+		t.Fatalf("RecordResetCreditsFetch() error = %v", err)
+	}
+
+	summary, err := repository.ResetCreditsSummary(
+		context.Background(), QuotaAccountScopeDefault, observedAt,
+	)
+	if err != nil {
+		t.Fatalf("ResetCreditsSummary() error = %v", err)
+	}
+	if summary.AvailableCount == nil || *summary.AvailableCount != 0 ||
+		summary.CumulativeRemainingMS == nil || *summary.CumulativeRemainingMS != 0 ||
+		summary.NextExpiresAtMS != nil {
+		t.Fatalf("empty inventory summary = %#v, want authoritative available zero without inferred history", summary)
 	}
 }
 

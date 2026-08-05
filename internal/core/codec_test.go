@@ -153,6 +153,32 @@ func TestEncodeResponsePreservesQuotaPacePresenceAndHistory(t *testing.T) {
 	}
 }
 
+func TestEncodeResponseLeavesResetCreditHistoricalCountsUnknown(t *testing.T) {
+	t.Parallel()
+
+	zero := int64(0)
+	target := &corev1.QuotaCurrentResponse{}
+	if err := EncodeResponse(runtimeinfo.QuotaCurrentResponse{
+		Current: quotaquery.CurrentResponse{
+			Version:       quotaquery.CurrentContractVersion,
+			AccountScope:  store.QuotaAccountScopeDefault,
+			EvaluatedAtMS: 1,
+			ResetCredits: quotaquery.CurrentResetCredits{
+				AvailableCount:        &zero,
+				CumulativeRemainingMS: &zero,
+				Freshness:             store.SourceFreshnessCurrent,
+			},
+		},
+	}, target); err != nil {
+		t.Fatalf("EncodeResponse(QuotaCurrentResponse) error = %v", err)
+	}
+	credits := target.GetCurrent().GetResetCredits()
+	if credits == nil || credits.AvailableCount == nil || credits.GetAvailableCount() != 0 ||
+		credits.TotalCount != nil || credits.RedeemedCount != nil {
+		t.Fatalf("reset credits protobuf = %#v, want available zero without inferred history", credits)
+	}
+}
+
 // 测试 EncodeResponse 保留活动分布中的 Token、会话数和星期小时语义。
 func TestEncodeResponseMapsActivityDistribution(t *testing.T) {
 	t.Parallel()

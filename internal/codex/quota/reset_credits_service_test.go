@@ -34,7 +34,7 @@ func TestResetCreditsServicePersistsSuccessfulTypedSnapshot(t *testing.T) {
 		context.Background(), store.QuotaAccountScopeDefault, result.FinishedAtMS,
 	)
 	if err != nil || summary.AvailableCount == nil || *summary.AvailableCount != 1 ||
-		summary.TotalCount == nil || *summary.TotalCount != 1 || summary.NextExpiresAtMS == nil {
+		summary.NextExpiresAtMS == nil {
 		t.Fatalf("summary = %#v, %v", summary, err)
 	}
 }

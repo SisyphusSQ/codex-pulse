@@ -94,8 +94,7 @@ func TestCurrentQueryMapsStableNullZeroExplanationAndRefreshContract(t *testing.
 			},
 			ResetCredits: store.ResetCreditsSummary{
 				AccountScope: store.QuotaAccountScopeDefault, SnapshotID: stringPointer("opaque-reset-snapshot"),
-				AvailableCount: &zeroCount,
-				TotalCount:     &zeroCount, RedeemedCount: &zeroCount, CumulativeRemainingMS: &zeroCount,
+				AvailableCount: &zeroCount, CumulativeRemainingMS: &zeroCount,
 				LastSuccessAtMS: &secondaryAttempt, LastAttemptAtMS: &secondaryAttempt,
 				FreshnessState: store.SourceFreshnessCurrent, EvaluationAtMS: nowMS,
 			},
@@ -262,7 +261,6 @@ func TestCurrentQueryMapsResetCreditItemsWithoutIdentifiers(t *testing.T) {
 
 	const nowMS = int64(1_784_320_000_000)
 	one := int64(1)
-	two := int64(2)
 	remaining := int64(3_600_000)
 	last := nowMS - 1_000
 	reader := currentSnapshotReaderFunc(func(
@@ -272,7 +270,7 @@ func TestCurrentQueryMapsResetCreditItemsWithoutIdentifiers(t *testing.T) {
 			AccountScope: store.QuotaAccountScopeDefault, EvaluatedAtMS: nowMS,
 			ResetCredits: store.ResetCreditsSummary{
 				AccountScope: store.QuotaAccountScopeDefault, SnapshotID: stringPointer("private-snapshot"),
-				AvailableCount: &one, TotalCount: &two, RedeemedCount: &one,
+				AvailableCount:        &one,
 				CumulativeRemainingMS: &remaining, NextExpiresAtMS: int64Pointer(nowMS + remaining),
 				LastSuccessAtMS: &last, LastAttemptAtMS: &last,
 				FreshnessState: store.SourceFreshnessCurrent, EvaluationAtMS: nowMS,
@@ -305,6 +303,41 @@ func TestCurrentQueryMapsResetCreditItemsWithoutIdentifiers(t *testing.T) {
 		if strings.Contains(strings.ToLower(string(encoded)), strings.ToLower(forbidden)) {
 			t.Fatalf("reset credit items leak %q: %s", forbidden, encoded)
 		}
+	}
+}
+
+func TestCurrentQueryMapsLoadedResetCreditInventoryWithoutInventingHistoricalCounts(t *testing.T) {
+	t.Parallel()
+
+	const nowMS = int64(1_784_320_000_000)
+	zero := int64(0)
+	last := nowMS - 1_000
+	reader := currentSnapshotReaderFunc(func(
+		context.Context, string, int64,
+	) (store.QuotaCurrentSnapshot, error) {
+		return store.QuotaCurrentSnapshot{
+			AccountScope: store.QuotaAccountScopeDefault, EvaluatedAtMS: nowMS,
+			ResetCredits: store.ResetCreditsSummary{
+				AccountScope: store.QuotaAccountScopeDefault, SnapshotID: stringPointer("private-empty-inventory"),
+				AvailableCount: &zero, CumulativeRemainingMS: &zero,
+				LastSuccessAtMS: &last, LastAttemptAtMS: &last,
+				FreshnessState: store.SourceFreshnessCurrent, EvaluationAtMS: nowMS,
+			},
+		}, nil
+	})
+	service, err := NewCurrentQueryService(reader)
+	if err != nil {
+		t.Fatalf("NewCurrentQueryService() error = %v", err)
+	}
+	response, err := service.Query(context.Background(), nowMS)
+	if err != nil {
+		t.Fatalf("Query() error = %v", err)
+	}
+	if response.ResetCredits.AvailableCount == nil || *response.ResetCredits.AvailableCount != 0 ||
+		response.ResetCredits.CumulativeRemainingMS == nil ||
+		*response.ResetCredits.CumulativeRemainingMS != 0 ||
+		response.ResetCredits.UnknownReason != nil || len(response.ResetCredits.Items) != 0 {
+		t.Fatalf("empty inventory current = %#v, want known available zero without historical counts", response.ResetCredits)
 	}
 }
 
@@ -434,7 +467,6 @@ func TestCurrentQuerySurvivesStoreRestartWithCompleteAggregateFacts(t *testing.T
 	if advanced.Windows[0].ResetRemainingMS == nil || before.Windows[0].ResetRemainingMS == nil ||
 		*advanced.Windows[0].ResetRemainingMS != *before.Windows[0].ResetRemainingMS-120_000 ||
 		advanced.ResetCredits.AvailableCount == nil || *advanced.ResetCredits.AvailableCount != 0 ||
-		advanced.ResetCredits.TotalCount == nil || *advanced.ResetCredits.TotalCount != 1 ||
 		advanced.ResetCredits.NextExpiresAtMS != nil {
 		t.Fatalf("advanced restart response = %#v", advanced)
 	}
@@ -540,7 +572,6 @@ func TestCurrentQueryTrustedScenarioMatrix(t *testing.T) {
 			*response.Windows[1].RemainingPercent != 80 || response.NextReset.AtMS == nil ||
 			*response.NextReset.AtMS != primaryReset || response.NextReset.TrustedWindowCount != 2 ||
 			response.ResetCredits.AvailableCount == nil || *response.ResetCredits.AvailableCount != 0 ||
-			response.ResetCredits.TotalCount == nil || *response.ResetCredits.TotalCount != 0 ||
 			response.ResetCredits.UnknownReason != nil {
 			t.Fatalf("wham/cross-window response = %#v", response)
 		}
@@ -628,7 +659,6 @@ func TestCurrentQueryTrustedScenarioMatrix(t *testing.T) {
 		recordCurrentQueryResetCredits(t, repository, "expiring-reset-credit", nowMS, &expiresAtMS)
 		response := queryCurrentAt(t, service, nowMS+2_000)
 		if response.ResetCredits.AvailableCount == nil || *response.ResetCredits.AvailableCount != 0 ||
-			response.ResetCredits.TotalCount == nil || *response.ResetCredits.TotalCount != 1 ||
 			response.ResetCredits.CumulativeRemainingMS == nil ||
 			*response.ResetCredits.CumulativeRemainingMS != 0 ||
 			response.ResetCredits.NextExpiresAtMS != nil || response.ResetCredits.UnknownReason != nil {

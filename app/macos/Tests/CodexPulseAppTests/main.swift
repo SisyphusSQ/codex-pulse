@@ -1412,7 +1412,10 @@ private func testLocaleSensitiveControlsAndPopoverCopyStayStable() throws {
     let popoverSource = try mainWindowSource("StatusItemController.swift")
     try expect(
         popoverSource.contains(".id(model.localization.preference.rawValue)")
-            && popoverSource.contains("\"可用 %@ / %@ 总数\"")
+            && popoverSource.contains("\"当前可用 %@\"")
+            && !popoverSource.contains("credits.totalCount")
+            && !popoverSource.contains("credits.redeemedCount")
+            && !popoverSource.contains("unavailableCount(credits)")
             && !popoverSource.contains(
                 "Text(\"\\(optionalCount(credits.availableCount)) 可用"
             )
@@ -2889,8 +2892,6 @@ private func makeResponses(
     quota.current.windows = includeWeeklyQuota ? [primary, secondary] : []
     quota.current.evaluatedAtMs = 1_753_056_000_000
     quota.current.resetCredits.availableCount = 1
-    quota.current.resetCredits.totalCount = 2
-    quota.current.resetCredits.redeemedCount = 1
     quota.current.resetCredits.cumulativeRemainingMs = 3_600_000
     quota.current.resetCredits.nextExpiresAtMs = 1_753_059_600_000
     quota.current.resetCredits.freshness = "fresh"
@@ -4200,9 +4201,9 @@ private func testAppLocalizationResolvesSystemAndFormatsBothLanguages() throws {
         english.format("token.breakdown.cached", "1.2K") == "Cached 1.2K",
         "English token breakdown templates must resolve from the resource bundle")
     try expect(
-        english.format("可用 %@ / %@ 总数", "1", "1") == "1 available / 1 total"
-            && chinese.format("可用 %@ / %@ 总数", "1", "1") == "可用 1 / 1 总数",
-        "reset-credit summaries must preserve locale-specific word order"
+        english.format("当前可用 %@", "1") == "1 currently available"
+            && chinese.format("当前可用 %@", "1") == "当前可用 1",
+        "reset-credit inventory summaries must preserve locale-specific word order"
     )
     try expect(
         chinese.format("token.breakdown.cachedReasoning", "1", "2") == "缓存 1 · 推理 2",
@@ -4492,6 +4493,45 @@ private func testRequestFactoryAndPresentation() throws {
         throw TestFailure.mismatch(
             "normal runtime response with partial meta was presented as complete")
     }
+}
+
+private func testResetCreditsInventoryStateSeparatesUnknownFromKnownEmpty() throws {
+    let unknown = ResetCreditsPresentation(Codexpulse_Core_V1_CurrentResetCredits())
+    try expect(
+        unknown.inventoryState == .unknown,
+        "missing reset-credit inventory must remain unknown"
+    )
+
+    var emptyCredits = Codexpulse_Core_V1_CurrentResetCredits()
+    emptyCredits.availableCount = 0
+    let empty = ResetCreditsPresentation(emptyCredits)
+    try expect(
+        empty.inventoryState == .empty,
+        "explicit zero reset-credit inventory must remain known empty"
+    )
+
+    var availableCredits = Codexpulse_Core_V1_CurrentResetCredits()
+    availableCredits.availableCount = 1
+    var item = Codexpulse_Core_V1_CurrentResetCreditItem()
+    item.status = "available"
+    availableCredits.items = [item]
+    let available = ResetCreditsPresentation(availableCredits)
+    try expect(
+        available.inventoryState == .available,
+        "non-empty reset-credit inventory must remain available"
+    )
+}
+
+private func testResetCreditsDetailUsesInventoryState() throws {
+    let source = try mainWindowSource("StatusItemController.swift")
+    try expect(
+        source.contains("switch credits.inventoryState")
+            && source.contains("case .unknown:")
+            && source.contains("Text(\"重置次数暂时无法获取。\")")
+            && source.contains("case .empty:")
+            && source.contains("Text(\"当前没有可用重置次数\")"),
+        "reset-credit detail must distinguish unknown inventory from known empty inventory"
+    )
 }
 
 private func testTokenActivityRequestUsesAnIndependentRollingYear() throws {
@@ -7806,6 +7846,8 @@ struct CodexPulseAppTestMain {
         try testSettingsIntervalsUseAuthoritativeBounds()
         try testOverviewRangeIncludesQuotaWeek()
         try testRequestFactoryAndPresentation()
+        try testResetCreditsInventoryStateSeparatesUnknownFromKnownEmpty()
+        try testResetCreditsDetailUsesInventoryState()
         try testTokenActivityRequestUsesAnIndependentRollingYear()
         try testQuotaWindowDisplayResolverDeduplicatesOnlyEquivalentWindows()
         try testOverviewActivityPresentationBuildsTimelineAndCompleteHeatmap()

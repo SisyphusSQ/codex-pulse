@@ -73,7 +73,6 @@ func TestQuotaCurrentSnapshotReadsVerifiedQueryFacts(t *testing.T) {
 		t.Fatalf("source/refresh facts = %#v", snapshot)
 	}
 	if snapshot.ResetCredits.AvailableCount == nil || *snapshot.ResetCredits.AvailableCount != 2 ||
-		snapshot.ResetCredits.TotalCount == nil || *snapshot.ResetCredits.TotalCount != 3 ||
 		snapshot.ResetCredits.CumulativeRemainingMS == nil ||
 		*snapshot.ResetCredits.CumulativeRemainingMS != 10_680_000 {
 		t.Fatalf("reset credits = %#v", snapshot.ResetCredits)
