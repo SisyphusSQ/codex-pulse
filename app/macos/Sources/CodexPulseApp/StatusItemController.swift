@@ -23,6 +23,7 @@ final class StatusItemController: NSObject {
         model: AppModel,
         nativeAcceptanceEnabled: Bool = false,
         onOpenOverview: @escaping @MainActor () -> Void,
+        onOpenSettings: @escaping @MainActor () -> Void,
         onQuit: @escaping @MainActor () -> Void
     ) {
         self.model = model
@@ -82,6 +83,10 @@ final class StatusItemController: NSObject {
             onOpenOverview: {
                 self.popover.performClose(nil)
                 onOpenOverview()
+            },
+            onOpenSettings: {
+                self.popover.performClose(nil)
+                onOpenSettings()
             },
             onQuit: onQuit
         )
@@ -450,6 +455,7 @@ private struct MenuBarPopoverView: View {
         @MainActor (PopoverQuickActionKind, PopoverQuickActionResult) -> Void
     let onPopoverFocusChanged: @MainActor (PopoverFocusTarget?) -> Void
     let onOpenOverview: @MainActor () -> Void
+    let onOpenSettings: @MainActor () -> Void
     let onQuit: @MainActor () -> Void
     @State private var route: PopoverRoute = .main
     @State private var selectedDailyTrendKey: String?
@@ -472,10 +478,7 @@ private struct MenuBarPopoverView: View {
                     preferences: preferences,
                     localization: model.localization,
                     onBack: { route = .main },
-                    onOpenSettings: {
-                        model.navigate(to: .settings)
-                        onOpenOverview()
-                    }
+                    onOpenSettings: onOpenSettings
                 )
             }
         }

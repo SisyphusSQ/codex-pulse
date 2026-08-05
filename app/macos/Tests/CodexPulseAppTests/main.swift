@@ -1895,9 +1895,28 @@ private func testApplicationMenuSettingsShowsTheExistingSettingsPage() throws {
     }
     let settingsSource = source[settingsAction.lowerBound..<updateAction.lowerBound]
     try expect(
-        settingsSource.contains("model.navigate(to: .settings)")
-            && settingsSource.contains("showMainWindow(sender)"),
+        settingsSource.contains("presentMainWindow(.open(.settings), sender: sender)"),
         "Settings must navigate through AppModel and reveal the existing main window"
+    )
+}
+
+private func testMainWindowReopenPreservesTheCurrentFeature() throws {
+    let request = MainWindowNavigationRequest.revealCurrent
+
+    try expect(
+        request.navigationTarget == nil,
+        "reopening the main window must not request a navigation change"
+    )
+}
+
+private func testExplicitMainWindowNavigationUsesTheRequestedFeature() throws {
+    try expect(
+        MainWindowNavigationRequest.open(.overview).navigationTarget == .overview,
+        "the explicit Overview action must still open Overview"
+    )
+    try expect(
+        MainWindowNavigationRequest.open(.settings).navigationTarget == .settings,
+        "the explicit Settings action must finish on Settings"
     )
 }
 
@@ -7775,6 +7794,8 @@ struct CodexPulseAppTestMain {
         try testStatusItemRefreshReadsCommittedState()
         try testApplicationMenuRegistersNativeCommands()
         try testApplicationMenuSettingsShowsTheExistingSettingsPage()
+        try testMainWindowReopenPreservesTheCurrentFeature()
+        try testExplicitMainWindowNavigationUsesTheRequestedFeature()
         try testApplicationMenuUpdateUsesSparkleAndObservedHelperPolicy()
         try testSparkleStartsWithoutRacingTheHelperOwnedPolicy()
         try testUpdateInstallationBlocksTerminationAfterUncleanHelperShutdown()
