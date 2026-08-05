@@ -10,6 +10,19 @@
 
 #### script:
 
+## v0.3.6 - 2026-08-05
+
+#### feature:
+
+#### optimization:
+
+#### bugFix:
+1. [PR #109] 修复重置卡触发周窗口换代后的 provisional reset 纠偏，要求同来源连续稳定确认并隔离上一代 jitter、provisional alias 与窗口角色切换；Reset Credits 只陈述当前库存，区分 unknown 与 known-zero，Proto 旧字段保留原 tag 并标记 deprecated
+
+#### note:
+
+#### script:
+
 ## v0.3.5 - 2026-08-05
 
 #### feature:
