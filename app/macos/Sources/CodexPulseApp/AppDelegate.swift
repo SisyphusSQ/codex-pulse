@@ -128,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
     ) -> Bool {
-        showOverviewWindow()
+        presentMainWindow(.revealCurrent, sender: sender)
         return true
     }
 
@@ -224,8 +224,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func showSettings(_ sender: Any?) {
-        model.navigate(to: .settings)
-        showMainWindow(sender)
+        presentMainWindow(.open(.settings), sender: sender)
     }
 
     @objc private func checkForUpdates(_ sender: Any?) {
@@ -296,6 +295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             model: model,
             nativeAcceptanceEnabled: configuration.nativeSurfaceSmoke,
             onOpenOverview: { [weak self] in self?.showOverviewWindow() },
+            onOpenSettings: { [weak self] in self?.showSettings(nil) },
             onQuit: { NSApp.terminate(nil) }
         )
         self.statusItemController = statusItemController
@@ -446,8 +446,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func showOverviewWindow() {
-        model.navigate(to: .overview)
-        showMainWindow(nil)
+        presentMainWindow(.open(.overview), sender: nil)
+    }
+
+    private func presentMainWindow(
+        _ request: MainWindowNavigationRequest,
+        sender: Any?
+    ) {
+        if let feature = request.navigationTarget {
+            model.navigate(to: feature)
+        }
+        showMainWindow(sender)
     }
 
     private func showMainWindow(_ sender: Any?) {
