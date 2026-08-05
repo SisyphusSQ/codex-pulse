@@ -158,10 +158,6 @@ private struct QuotaContentView: View {
                     key: "可用",
                     value: credits.hasAvailableCount ? localization.number(credits.availableCount) : "--"
                 )
-                KeyValueRow(
-                    key: "总量",
-                    value: credits.hasTotalCount ? localization.number(credits.totalCount) : "--"
-                )
                 if credits.hasCumulativeRemainingMs {
                     KeyValueRow(
                         key: "累计剩余时间",

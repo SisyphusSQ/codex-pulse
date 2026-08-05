@@ -744,10 +744,14 @@ public struct ResetCreditItemPresentation: Equatable, Sendable, Identifiable {
     }
 }
 
+public enum ResetCreditsInventoryState: Equatable, Sendable {
+    case unknown
+    case empty
+    case available
+}
+
 public struct ResetCreditsPresentation: Equatable, Sendable {
     public let availableCount: Int64?
-    public let totalCount: Int64?
-    public let redeemedCount: Int64?
     public let cumulativeRemainingMS: Int64?
     public let nextExpiresAtMS: Int64?
     public let lastSuccessAtMS: Int64?
@@ -755,10 +759,15 @@ public struct ResetCreditsPresentation: Equatable, Sendable {
     public let unknownReason: String?
     public let items: [ResetCreditItemPresentation]
 
+    public var inventoryState: ResetCreditsInventoryState {
+        guard let availableCount else { return .unknown }
+        if availableCount == 0, items.isEmpty { return .empty }
+        if !items.isEmpty { return .available }
+        return .unknown
+    }
+
     public init(_ credits: Codexpulse_Core_V1_CurrentResetCredits) {
         self.availableCount = credits.hasAvailableCount ? credits.availableCount : nil
-        self.totalCount = credits.hasTotalCount ? credits.totalCount : nil
-        self.redeemedCount = credits.hasRedeemedCount ? credits.redeemedCount : nil
         self.cumulativeRemainingMS = credits.hasCumulativeRemainingMs ? credits.cumulativeRemainingMs : nil
         self.nextExpiresAtMS = credits.hasNextExpiresAtMs ? credits.nextExpiresAtMs : nil
         self.lastSuccessAtMS = credits.hasLastSuccessAtMs ? credits.lastSuccessAtMs : nil

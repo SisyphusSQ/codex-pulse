@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
@@ -110,8 +111,6 @@ type CurrentNextReset struct {
 
 type CurrentResetCredits struct {
 	AvailableCount        *int64                   `json:"availableCount"`
-	TotalCount            *int64                   `json:"totalCount"`
-	RedeemedCount         *int64                   `json:"redeemedCount"`
 	CumulativeRemainingMS *int64                   `json:"cumulativeRemainingMs"`
 	NextExpiresAtMS       *int64                   `json:"nextExpiresAtMs"`
 	LastSuccessAtMS       *int64                   `json:"lastSuccessAtMs"`
@@ -490,10 +489,8 @@ func mapCurrentResetCredits(
 		)
 	}
 	loaded := summary.SnapshotID != nil
-	countsComplete := summary.AvailableCount != nil && summary.TotalCount != nil &&
-		summary.RedeemedCount != nil && summary.CumulativeRemainingMS != nil
-	if loaded != countsComplete || (loaded && int64(len(summary.Credits)) != *summary.TotalCount) ||
-		(!loaded && len(summary.Credits) != 0) {
+	inventoryComplete := summary.AvailableCount != nil && summary.CumulativeRemainingMS != nil
+	if loaded != inventoryComplete || (!loaded && len(summary.Credits) != 0) {
 		return CurrentResetCredits{}, fmt.Errorf(
 			"%w: reset credits value shape is inconsistent", ErrInvalidCurrentQuery,
 		)
@@ -505,20 +502,16 @@ func mapCurrentResetCredits(
 			)
 		}
 	} else if *summary.SnapshotID == "" || summary.LastSuccessAtMS == nil ||
-		summary.LastAttemptAtMS == nil || *summary.AvailableCount < 0 || *summary.TotalCount < 0 ||
-		*summary.RedeemedCount < 0 || *summary.CumulativeRemainingMS < 0 ||
-		*summary.AvailableCount > *summary.TotalCount || *summary.RedeemedCount > *summary.TotalCount ||
-		*summary.AvailableCount > *summary.TotalCount-*summary.RedeemedCount ||
+		summary.LastAttemptAtMS == nil || *summary.AvailableCount < 0 ||
+		*summary.CumulativeRemainingMS < 0 ||
 		!validCurrentOptionalTimestamp(summary.NextExpiresAtMS) ||
-		(summary.NextExpiresAtMS != nil && (*summary.NextExpiresAtMS <= evaluatedAtMS ||
-			*summary.AvailableCount == 0)) {
+		!resetCreditInventorySummaryIsValid(summary, evaluatedAtMS) {
 		return CurrentResetCredits{}, fmt.Errorf(
 			"%w: reset credits values are inconsistent", ErrInvalidCurrentQuery,
 		)
 	}
 	result := CurrentResetCredits{
-		AvailableCount: cloneInt64(summary.AvailableCount), TotalCount: cloneInt64(summary.TotalCount),
-		RedeemedCount:         cloneInt64(summary.RedeemedCount),
+		AvailableCount:        cloneInt64(summary.AvailableCount),
 		CumulativeRemainingMS: cloneInt64(summary.CumulativeRemainingMS),
 		NextExpiresAtMS:       cloneInt64(summary.NextExpiresAtMS), LastSuccessAtMS: cloneInt64(summary.LastSuccessAtMS),
 		LastAttemptAtMS: cloneInt64(summary.LastAttemptAtMS), Freshness: summary.FreshnessState,
@@ -529,6 +522,35 @@ func mapCurrentResetCredits(
 		result.UnknownReason = currentUnknownPointer(CurrentUnknownNeverLoaded)
 	}
 	return result, nil
+}
+
+func resetCreditInventorySummaryIsValid(summary store.ResetCreditsSummary, evaluatedAtMS int64) bool {
+	available, cumulative := int64(0), int64(0)
+	var next *int64
+	for _, credit := range summary.Credits {
+		if credit.Status != store.ResetCreditAvailable || credit.ExpiresAtMS <= evaluatedAtMS {
+			continue
+		}
+		available++
+		remaining := credit.ExpiresAtMS - evaluatedAtMS
+		if cumulative <= math.MaxInt64-remaining {
+			cumulative += remaining
+		} else {
+			cumulative = math.MaxInt64
+		}
+		if next == nil || credit.ExpiresAtMS < *next {
+			value := credit.ExpiresAtMS
+			next = &value
+		}
+	}
+	if summary.AvailableCount == nil || *summary.AvailableCount != available ||
+		summary.CumulativeRemainingMS == nil || *summary.CumulativeRemainingMS != cumulative {
+		return false
+	}
+	if next == nil {
+		return summary.NextExpiresAtMS == nil
+	}
+	return summary.NextExpiresAtMS != nil && *summary.NextExpiresAtMS == *next
 }
 
 func mapCurrentResetCreditItems(

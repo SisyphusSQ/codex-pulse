@@ -2317,6 +2317,9 @@ public nonisolated struct Codexpulse_Core_V1_CurrentResetCredits: Sendable {
   /// Clears the value of `availableCount`. Subsequent reads from it will return its default value.
   public mutating func clearAvailableCount() {self._availableCount = nil}
 
+  /// Deprecated: Wham exposes current inventory, not allocation history.
+  ///
+  /// NOTE: This field was marked as deprecated in the .proto file.
   public var totalCount: Int64 {
     get {_totalCount ?? 0}
     set {_totalCount = newValue}
@@ -2326,6 +2329,9 @@ public nonisolated struct Codexpulse_Core_V1_CurrentResetCredits: Sendable {
   /// Clears the value of `totalCount`. Subsequent reads from it will return its default value.
   public mutating func clearTotalCount() {self._totalCount = nil}
 
+  /// Deprecated: consumed items can disappear from later inventory responses.
+  ///
+  /// NOTE: This field was marked as deprecated in the .proto file.
   public var redeemedCount: Int64 {
     get {_redeemedCount ?? 0}
     set {_redeemedCount = newValue}

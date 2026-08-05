@@ -663,9 +663,8 @@ private struct MenuBarPopoverView: View {
                     VStack(alignment: .leading, spacing: 7) {
                         HStack {
                             Text(verbatim: localization.format(
-                                "可用 %@ / %@ 总数",
-                                optionalCount(credits.availableCount, localization: localization),
-                                optionalCount(credits.totalCount, localization: localization)
+                                "当前可用 %@",
+                                optionalCount(credits.availableCount, localization: localization)
                             ))
                                 .font(.system(size: 15, weight: .semibold))
                             Spacer()
@@ -1237,32 +1236,30 @@ private struct ResetCreditsDetailView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text("\(optionalCount(credits.availableCount))/\(optionalCount(credits.totalCount))")
-                            .font(.title2.bold().monospacedDigit())
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(optionalCount(credits.availableCount))
+                                .font(.title2.bold().monospacedDigit())
+                            Text("当前可用").font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                         SummaryTile(label: "可用", value: optionalCount(credits.availableCount), color: .green)
-                        SummaryTile(label: "已使用", value: optionalCount(credits.redeemedCount), color: .orange)
                         SummaryTile(label: "总剩余", value: durationText(credits.cumulativeRemainingMS), color: .blue)
                         SummaryTile(label: "最近到期", value: minimumRemainingText(credits), color: .orange)
                     }
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("到期风险").font(.headline)
-                        GeometryReader { geometry in
-                            Capsule().fill(.quaternary)
-                                .overlay(alignment: .leading) {
-                                    Capsule().fill(Color.green).frame(width: geometry.size.width * availabilityRatio(credits))
-                                }
-                        }
-                        .frame(height: 10)
-                        Text("可用 \(optionalCount(credits.availableCount)) · 已使用或过期 \(unavailableCount(credits))")
-                            .font(.caption).foregroundStyle(.secondary)
+                    PulseCard {
+                        Text("接口仅提供当前库存；已使用的次数可能不再出现在后续响应中。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     VStack(alignment: .leading, spacing: 10) {
                         Text("次数").font(.headline)
-                        if credits.items.isEmpty {
-                            PulseCard { Text("当前没有逐条次数事实").foregroundStyle(.secondary) }
-                        } else {
+                        switch credits.inventoryState {
+                        case .unknown:
+                            PulseCard { Text("重置次数暂时无法获取。").foregroundStyle(.orange) }
+                        case .empty:
+                            PulseCard { Text("当前没有可用重置次数").foregroundStyle(.secondary) }
+                        case .available:
                             ForEach(Array(credits.items.enumerated()), id: \.element.id) { index, item in
                                 PulseCard {
                                     HStack(alignment: .top) {
@@ -1888,16 +1885,6 @@ private func absoluteTimestamp(_ milliseconds: Int64) -> String {
         .dateTime.year().month().day().hour().minute()
             .locale(AppLocalizationRegistry.shared.current.locale)
     )
-}
-
-private func availabilityRatio(_ credits: ResetCreditsPresentation) -> CGFloat {
-    guard let available = credits.availableCount, let total = credits.totalCount, total > 0 else { return 0 }
-    return CGFloat(max(0, min(total, available))) / CGFloat(total)
-}
-
-private func unavailableCount(_ credits: ResetCreditsPresentation) -> String {
-    guard let available = credits.availableCount, let total = credits.totalCount else { return "--" }
-    return AppLocalizationRegistry.shared.current.number(max(0, total - available))
 }
 
 private func minimumRemainingText(_ credits: ResetCreditsPresentation) -> String {

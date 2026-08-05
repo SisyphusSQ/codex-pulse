@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	quotaArbitrationRuleV5       = "quota-arbiter-v5"
+	quotaArbitrationRuleV6       = "quota-arbiter-v6"
 	quotaFreshForMS              = int64(10 * 60 * 1000)
 	quotaMaxClockSkewMS          = int64(2 * 60 * 1000)
 	quotaMaxRuleClockSkewMS      = int64(24 * 60 * 60 * 1000)
@@ -31,8 +31,9 @@ type quotaArbiterCandidate struct {
 }
 
 type quotaResetGeneration struct {
-	anchorReset    int64
-	canonicalReset int64
+	anchorReset           int64
+	canonicalReset        int64
+	provisionalAliasReset int64
 }
 
 func defaultQuotaArbitrationRule() QuotaArbitrationRule {
@@ -42,7 +43,7 @@ func defaultQuotaArbitrationRule() QuotaArbitrationRule {
 // DefaultQuotaArbitrationRule returns the current versioned production rule.
 func DefaultQuotaArbitrationRule() QuotaArbitrationRule {
 	return QuotaArbitrationRule{
-		Version: quotaArbitrationRuleV5, FreshForMS: quotaFreshForMS, MaxClockSkewMS: quotaMaxClockSkewMS,
+		Version: quotaArbitrationRuleV6, FreshForMS: quotaFreshForMS, MaxClockSkewMS: quotaMaxClockSkewMS,
 	}
 }
 
@@ -314,6 +315,9 @@ func classifyQuotaGenerations(
 	activeMinutes := int64(0)
 	activeFirstObserved := int64(0)
 	activeLatestFirstObserved := int64(0)
+	activePreviousReset := int64(-1)
+	activeSource := QuotaSource("")
+	activeProvisional := false
 	var activeGeneration *quotaResetGeneration
 	activeIndexes := make([]int, 0)
 	knownGenerationsByMinutes := make(map[int64][]*quotaResetGeneration)
@@ -335,7 +339,7 @@ func classifyQuotaGenerations(
 			candidates[orderedIndexes[j]].observation,
 		)
 	})
-	for _, index := range orderedIndexes {
+	for position, index := range orderedIndexes {
 		candidate := &candidates[index]
 		candidate.eligible = true
 		candidate.disposition = QuotaEvidenceSuperseded
@@ -349,8 +353,12 @@ func classifyQuotaGenerations(
 			activeMinutes = observation.WindowMinutes
 			activeFirstObserved = observation.FirstObservedAtMS
 			activeLatestFirstObserved = observation.FirstObservedAtMS
+			activePreviousReset = -1
+			activeSource = observation.Source
+			activeProvisional = quotaWeeklyResetLooksObservationAnchored(observation, rule)
 			activeGeneration = &quotaResetGeneration{
 				anchorReset: observation.ResetsAtMS, canonicalReset: observation.ResetsAtMS,
+				provisionalAliasReset: -1,
 			}
 			knownGenerationsByMinutes[observation.WindowMinutes] = append(
 				knownGenerationsByMinutes[observation.WindowMinutes], activeGeneration,
@@ -369,9 +377,10 @@ func classifyQuotaGenerations(
 				candidate.eligible = false
 				continue
 			}
-			if latestKnownReset, found := quotaLatestKnownGenerationReset(
+			latestKnownReset, hasLatestKnownReset := quotaLatestKnownGenerationReset(
 				knownGenerationsByMinutes, observation.WindowMinutes,
-			); found && observation.ResetsAtMS < latestKnownReset {
+			)
+			if hasLatestKnownReset && observation.ResetsAtMS < latestKnownReset {
 				// 角色即使暂时退役，其同一时长 reset 代际仍必须单调，超过来源窗口容差的回退继续隔离。
 				setQuotaCandidateReason(candidate, QuotaEvidenceSuspicious, QuotaReasonResetRegression)
 				candidate.eligible = false
@@ -390,8 +399,15 @@ func classifyQuotaGenerations(
 			activeMinutes = observation.WindowMinutes
 			activeFirstObserved = observation.FirstObservedAtMS
 			activeLatestFirstObserved = observation.FirstObservedAtMS
+			activePreviousReset = latestKnownReset
+			if !hasLatestKnownReset {
+				activePreviousReset = -1
+			}
+			activeSource = observation.Source
+			activeProvisional = quotaWeeklyResetLooksObservationAnchored(observation, rule)
 			activeGeneration = &quotaResetGeneration{
 				anchorReset: observation.ResetsAtMS, canonicalReset: observation.ResetsAtMS,
+				provisionalAliasReset: -1,
 			}
 			knownGenerationsByMinutes[observation.WindowMinutes] = append(
 				knownGenerationsByMinutes[observation.WindowMinutes], activeGeneration,
@@ -418,21 +434,71 @@ func classifyQuotaGenerations(
 				activeLatestFirstObserved = observation.FirstObservedAtMS
 			}
 			belongsToActiveGeneration = true
+		case observation.ResetsAtMS > activeReset &&
+			activeGeneration.provisionalAliasReset >= 0 &&
+			QuotaResetsEquivalentForWindow(
+				observation.Source,
+				observation.WindowMinutes,
+				activeGeneration.provisionalAliasReset,
+				observation.ResetsAtMS,
+			):
+			// 已确认回拨后，原先基于观测时刻推算的 reset 仅是当前代际的旧别名。
+			// 它再次出现时不能被误判为下一代，否则会把刚恢复的稳定锚点重新覆盖。
+			setQuotaCandidateReason(candidate, QuotaEvidenceSuspicious, QuotaReasonResetRegression)
+			candidate.eligible = false
+			continue
 		case observation.ResetsAtMS > activeReset:
 			// 滑动窗口可在旧 reset 尚未到达时提前重置，并给出更晚的新 reset。
 			// 基础校验已保证新 reset 位于观测后的窗口时长内，不能再用旧 reset 作为准入门槛。
+			activePreviousReset = activeReset
 			activeAnchorReset = observation.ResetsAtMS
 			activeReset = observation.ResetsAtMS
 			activeMinutes = observation.WindowMinutes
 			activeFirstObserved = observation.FirstObservedAtMS
 			activeLatestFirstObserved = observation.FirstObservedAtMS
+			activeSource = observation.Source
+			activeProvisional = quotaWeeklyResetLooksObservationAnchored(observation, rule)
 			activeGeneration = &quotaResetGeneration{
 				anchorReset: observation.ResetsAtMS, canonicalReset: observation.ResetsAtMS,
+				provisionalAliasReset: -1,
 			}
 			knownGenerationsByMinutes[observation.WindowMinutes] = append(
 				knownGenerationsByMinutes[observation.WindowMinutes], activeGeneration,
 			)
 			activeIndexes = activeIndexes[:0]
+			belongsToActiveGeneration = true
+		case observation.ResetsAtMS < activeReset &&
+			activeProvisional &&
+			observation.Source == activeSource &&
+			observation.ResetsAtMS > activePreviousReset &&
+			!QuotaResetsEquivalentForWindow(
+				observation.Source,
+				observation.WindowMinutes,
+				activePreviousReset,
+				observation.ResetsAtMS,
+			) &&
+			quotaWeeklyResetCorrectionIsConfirmed(
+				candidates,
+				orderedIndexes[position:],
+				observation,
+				activePreviousReset,
+			):
+			// Wham 在重置卡换代后的首个周窗口响应可能暂时使用“观测时刻 + 7 天”，
+			// 随后才稳定到真实窗口锚点。只有同一回拨连续出现两次，且仍严格晚于上一代，
+			// 才重新锚定当前代际；单次异常和旧代晚到继续 fail closed。
+			activeGeneration.provisionalAliasReset = activeReset
+			activeAnchorReset = observation.ResetsAtMS
+			activeReset = observation.ResetsAtMS
+			activeGeneration.anchorReset = activeReset
+			activeGeneration.canonicalReset = activeReset
+			for _, activeIndex := range activeIndexes {
+				candidates[activeIndex].observation.ResetsAtMS = activeReset
+			}
+			candidate.observation.ResetsAtMS = activeReset
+			if observation.FirstObservedAtMS > activeLatestFirstObserved {
+				activeLatestFirstObserved = observation.FirstObservedAtMS
+			}
+			activeProvisional = false
 			belongsToActiveGeneration = true
 		case observation.ResetsAtMS < activeReset:
 			if observation.FirstObservedAtMS >= activeFirstObserved {
@@ -461,6 +527,62 @@ func classifyQuotaGenerations(
 	return validByReset, validResets
 }
 
+func quotaWeeklyResetLooksObservationAnchored(
+	observation QuotaObservation,
+	rule QuotaArbitrationRule,
+) bool {
+	if observation.Source != QuotaSourceWham ||
+		observation.WindowMinutes != quotaWeeklyWindowMinutes ||
+		observation.UsedPercent != 0 {
+		return false
+	}
+	windowMS, valid := quotaWindowDurationMS(observation.WindowMinutes)
+	if !valid || observation.LastObservedAtMS > math.MaxInt64-windowMS {
+		return false
+	}
+	expectedReset := observation.LastObservedAtMS + windowMS
+	return quotaResetsEquivalentWithin(expectedReset, observation.ResetsAtMS, rule.MaxClockSkewMS)
+}
+
+func quotaWeeklyResetCorrectionIsConfirmed(
+	candidates []quotaArbiterCandidate,
+	remainingIndexes []int,
+	correction QuotaObservation,
+	previousReset int64,
+) bool {
+	confirmations := 0
+	for _, index := range remainingIndexes {
+		candidate := candidates[index]
+		observation := candidate.observation
+		if !candidate.basicValid ||
+			observation.Source != correction.Source ||
+			observation.WindowMinutes != correction.WindowMinutes ||
+			observation.FirstObservedAtMS < correction.FirstObservedAtMS {
+			continue
+		}
+		if observation.ResetsAtMS <= previousReset ||
+			QuotaResetsEquivalentForWindow(
+				observation.Source,
+				observation.WindowMinutes,
+				previousReset,
+				observation.ResetsAtMS,
+			) ||
+			!QuotaResetsEquivalentForWindow(
+				observation.Source,
+				observation.WindowMinutes,
+				observation.ResetsAtMS,
+				correction.ResetsAtMS,
+			) {
+			return false
+		}
+		confirmations++
+		if confirmations == 2 {
+			return true
+		}
+	}
+	return false
+}
+
 func quotaGenerationObservationLess(left, right QuotaObservation) bool {
 	if left.FirstObservedAtMS != right.FirstObservedAtMS {
 		return left.FirstObservedAtMS < right.FirstObservedAtMS
@@ -476,7 +598,14 @@ func quotaKnownGenerationResetForWindow(
 ) (int64, bool) {
 	canonical := int64(-1)
 	for _, generation := range knownGenerationsByMinutes[windowMinutes] {
-		if !QuotaResetsEquivalentForWindow(source, windowMinutes, generation.anchorReset, resetAtMS) {
+		matchesAnchor := QuotaResetsEquivalentForWindow(
+			source, windowMinutes, generation.anchorReset, resetAtMS,
+		)
+		matchesProvisionalAlias := generation.provisionalAliasReset >= 0 &&
+			QuotaResetsEquivalentForWindow(
+				source, windowMinutes, generation.provisionalAliasReset, resetAtMS,
+			)
+		if !matchesAnchor && !matchesProvisionalAlias {
 			continue
 		}
 		if generation.canonicalReset > canonical {

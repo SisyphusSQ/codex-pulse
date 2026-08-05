@@ -197,12 +197,12 @@ func TestApplicationLightIndexUpgradesQuotaProjectionRuleBeforeServing(t *testin
 		ctx, factstore.QuotaAccountScopeDefault, factstore.QuotaWindowPrimary, limitID, nowMS,
 	)
 	if err != nil ||
-		current.RuleVersion != "quota-arbiter-v5" ||
+		current.RuleVersion != "quota-arbiter-v6" ||
 		current.ObservationID == nil ||
 		*current.ObservationID != restoredFiveHour.ObservationID ||
 		current.WindowMinutes == nil ||
 		*current.WindowMinutes != restoredFiveHour.WindowMinutes {
-		t.Fatalf("QuotaCurrent(after light startup) = %#v, %v; want restored five-hour quota-arbiter-v5", current, err)
+		t.Fatalf("QuotaCurrent(after light startup) = %#v, %v; want restored five-hour quota-arbiter-v6", current, err)
 	}
 }
 
