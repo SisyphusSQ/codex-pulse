@@ -39,6 +39,11 @@ CHANGELOG_CATEGORIES = (
     "note",
     "script",
 )
+CATEGORY_HEADING_PATTERN = re.compile(
+    r"(?m)^#### (?:"
+    + "|".join(re.escape(category) for category in CHANGELOG_CATEGORIES)
+    + r"):[ \t]*$"
+)
 SEMVER_PATTERN = re.compile(
     r"^v?"
     r"(?P<major>0|[1-9]\d*)\."
@@ -439,11 +444,27 @@ def changelog_bounds(text: str) -> tuple[int, int, int] | None:
     return heading.start(), heading.end(), end
 
 
-def empty_unreleased_block() -> str:
-    lines = ["## Unreleased", ""]
-    for category in CHANGELOG_CATEGORIES:
-        lines.extend((f"#### {category}:", ""))
-    return "\n".join(lines).rstrip() + "\n\n"
+def compact_empty_category_sections(text: str) -> str:
+    """Remove known category headings whose sections contain only whitespace."""
+    matches = list(CATEGORY_HEADING_PATTERN.finditer(text))
+    if not matches:
+        return text.strip()
+
+    chunks = [text[: matches[0].start()]]
+    for index, match in enumerate(matches):
+        section_end = (
+            matches[index + 1].start()
+            if index + 1 < len(matches)
+            else len(text)
+        )
+        section_body = text[match.end() : section_end]
+        if section_body.strip():
+            chunks.extend((match.group(0), section_body))
+    return "".join(chunks).strip()
+
+
+def unreleased_header_block() -> str:
+    return "## Unreleased\n\n"
 
 
 def archive_changelog(
@@ -474,6 +495,7 @@ def archive_changelog(
     )
     if item_count == 0:
         raise SystemExit("Unreleased contains no numbered entries")
+    archived_body = compact_empty_category_sections(unreleased_body)
     release_heading = f"## {version.tag} - {release_date}"
     if re.search(
         rf"(?m)^## {re.escape(version.tag)}(?:\s|$)",
@@ -482,10 +504,10 @@ def archive_changelog(
         raise SystemExit(f"CHANGELOG already contains {version.tag}")
 
     replacement = (
-        empty_unreleased_block()
+        unreleased_header_block()
         + release_heading
         + "\n\n"
-        + unreleased_body
+        + archived_body
         + "\n\n"
     )
     updated = (

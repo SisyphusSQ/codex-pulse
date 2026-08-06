@@ -181,21 +181,12 @@ preferences 和标准 housekeeping。执行前按根级 `AGENTS.md` 说明副作
 ## 6. CHANGELOG
 
 保留 `## Unreleased`。功能、修复、文档和脚本变更先写入对应分类。
+分类标题仅在该分类包含实际条目时保留，不为了凑齐模板创建空分类。
 
 真实发布时归档为：
 
 ```markdown
 ## Unreleased
-
-#### feature:
-
-#### optimization:
-
-#### bugFix:
-
-#### note:
-
-#### script:
 
 ## v0.1.0 - 2026-07-24
 

@@ -281,6 +281,60 @@ class ChangelogTests(unittest.TestCase):
                 original_go_mod,
             )
 
+    def test_archive_drops_empty_category_sections(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary)
+            changelog = repository / "CHANGELOG.md"
+            changelog.write_text(
+                "## Unreleased\n\n"
+                "#### feature:\n\n"
+                "#### bugFix:\n"
+                "1. 修复问题\n\n"
+                "#### note:\n",
+                encoding="utf-8",
+            )
+
+            release.archive_changelog(
+                repository,
+                release.parse_version("v0.1.0"),
+                "2026-07-24",
+                True,
+            )
+
+            self.assertEqual(
+                changelog.read_text(encoding="utf-8"),
+                "## Unreleased\n\n"
+                "## v0.1.0 - 2026-07-24\n\n"
+                "#### bugFix:\n"
+                "1. 修复问题\n\n",
+            )
+
+    def test_archive_preserves_nonempty_category_sections(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary)
+            changelog = repository / "CHANGELOG.md"
+            changelog.write_text(
+                "## Unreleased\n\n"
+                "#### note:\n"
+                "1. 补充说明\n\n"
+                "#### feature:\n"
+                "1. 新能力\n",
+                encoding="utf-8",
+            )
+
+            release.archive_changelog(
+                repository,
+                release.parse_version("v0.1.0"),
+                "2026-07-24",
+                True,
+            )
+
+            rendered = changelog.read_text(encoding="utf-8")
+            self.assertIn("#### note:\n1. 补充说明", rendered)
+            self.assertIn("#### feature:\n1. 新能力", rendered)
+            self.assertEqual(rendered.count("1. 补充说明"), 1)
+            self.assertEqual(rendered.count("1. 新能力"), 1)
+
     def test_archive_write_resets_unreleased_and_adds_release(
         self,
     ) -> None:
@@ -303,8 +357,14 @@ class ChangelogTests(unittest.TestCase):
             )
             rendered = changelog.read_text(encoding="utf-8")
 
-            self.assertIn("## Unreleased", rendered)
-            self.assertIn("## v0.1.0 - 2026-07-24", rendered)
+            self.assertEqual(
+                rendered,
+                "前言\n\n"
+                "## Unreleased\n\n"
+                "## v0.1.0 - 2026-07-24\n\n"
+                "#### feature:\n"
+                "1. 新能力\n\n",
+            )
             self.assertEqual(rendered.count("1. 新能力"), 1)
 
 

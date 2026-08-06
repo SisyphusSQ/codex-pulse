@@ -1,102 +1,40 @@
 ## Unreleased
 
-#### feature:
-
-#### optimization:
-
-#### bugFix:
-
-#### note:
-
-#### script:
-
 ## v0.3.6 - 2026-08-05
-
-#### feature:
-
-#### optimization:
 
 #### bugFix:
 1. [PR #109] 修复重置卡触发周窗口换代后的 provisional reset 纠偏，要求同来源连续稳定确认并隔离上一代 jitter、provisional alias 与窗口角色切换；Reset Credits 只陈述当前库存，区分 unknown 与 known-zero，Proto 旧字段保留原 tag 并标记 deprecated
 
-#### note:
-
-#### script:
-
 ## v0.3.5 - 2026-08-05
-
-#### feature:
-
-#### optimization:
 
 #### bugFix:
 1. [PR #108] 修复主窗口隐藏或关闭后重新打开时回到默认概览页的问题，保留用户当前所在页面；显式打开概览和设置仍分别进入对应页面，并增加导航回归测试
 
-#### note:
-
-#### script:
-
 ## v0.3.4 - 2026-08-04
-
-#### feature:
-
-#### optimization:
 
 #### bugFix:
 1. 修复额度服务端用量回升或 Wham 7 天窗口 `reset_at` 小幅修正时，当前与历史趋势被整体判为无效的问题；`quota-arbiter-v5` 原样保留同来源、同周期内的合法用量变化，并将 Wham 7 天 reset 容差限定为固定锚点内 120 秒，其他窗口继续保持 5 秒；趋势图补齐周期起点和上一周期端点，只为两个周期的末点着色，并隔离本周期与上一周期的 Chart series；后端按相同值平台区间保留首尾，替代均匀 96 点抽样，避免丢失真实双向跳变
 
-#### note:
-
-#### script:
-
 ## v0.3.3 - 2026-08-03
-
-#### feature:
-
-#### optimization:
 
 #### bugFix:
 1. [PR #105] 移除概览页年度热力图和 Token 活动图的悬停描边，避免悬停时出现额外边框
 2. 修复额度节奏图的理想参考线与图例表达，区分当前周期、历史中位数和理想节奏，并增加几何回归测试
 
-#### note:
-
-#### script:
-
 ## v0.3.2 - 2026-08-02
-
-#### feature:
 
 #### optimization:
 1. [PR #104] 将概览页年度热力图和星期小时热力图收敛为 Canvas，统一网格命中与无障碍顺序，降低滚动期间的 SwiftUI 状态开销并补充确定性测试
 
-#### bugFix:
-
-#### note:
-
-#### script:
-
 ## v0.3.1 - 2026-08-02
-
-#### feature:
-
-#### optimization:
 
 #### bugFix:
 1. [PR #102] 修复英文界面下额度节奏比较参数顺序变化导致的崩溃，并增加回归测试
-
-#### note:
-
-#### script:
 
 ## v0.3.0 - 2026-08-01
 
 #### feature:
 1. [PR #101] 补全中英文界面、侧栏和 Token 单位本地化，增加语言偏好与 locale 传递，并提供中英文 README
-
-#### optimization:
-
-#### bugFix:
 
 #### note:
 1. [PR #101] 将 Go 指令更新到 1.26.2，并同步更新开发与验证文档
@@ -106,30 +44,16 @@
 
 ## v0.2.2 - 2026-08-01
 
-#### feature:
-
-#### optimization:
-
 #### bugFix:
 1. [PR #100] 修复额度成功恢复后 `auth_required` 状态下的 Reset Credits 未在下一调度周期唤醒的问题；分离额度与重置次数的刷新状态、错误提示和任务键，并为真实 HTTP 401/403 提供有限恢复窗口，本地缺少凭据时继续保持 `auth_required` 暂停
-
-#### note:
-
-#### script:
 
 ## v0.2.0 - 2026-07-31
 
 #### feature:
 1. [PR #98] 新增配额节奏中心及对应 Core RPC，按独立额度窗口聚合周期进度、近期消耗节奏和粗粒度耗尽时间预测，并让主界面与状态栏共享结果；无有效消耗数据时明确不预测
 
-#### optimization:
-
 #### bugFix:
 1. 更新 OpenAI API Standard 内置价格快照，将 `gpt-5.6-terra` 调整为 `$2.00 / $0.20 / $12.00`、`gpt-5.6-luna` 调整为 `$0.20 / $0.02 / $1.20`；新目录按验证时间 append-only 生效，后续成本折算使用新价且不改写此前历史
-
-#### note:
-
-#### script:
 
 ## v0.1.0 - 2026-07-30
 
