@@ -6,6 +6,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
     case overview
     case sessions
     case projects
+    case invocationUsage
     case quotaUsage
     case localStatus
     case sourcesJobs
@@ -19,6 +20,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .sessions: "feature.sessions"
         case .projects: "feature.projects"
         case .quotaUsage: "feature.quotaUsage"
+        case .invocationUsage: "feature.invocationUsage"
         case .localStatus: "feature.localStatus"
         case .sourcesJobs: "feature.sourcesJobs"
         case .settings: "feature.settings"
@@ -32,6 +34,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .sessions: "text.bubble"
         case .projects: "folder"
         case .quotaUsage: "chart.xyaxis.line"
+        case .invocationUsage: "wrench.and.screwdriver"
         case .localStatus: "heart.text.square"
         case .sourcesJobs: "externaldrive.connected.to.line.below"
         case .settings: "gearshape"
@@ -40,7 +43,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
 }
 
 private enum FeatureTaskKey: Hashable {
-    case usage, pricingCatalog, quota, quotaPace, quotaRefresh, resetCreditsRefresh
+    case usage, invocationUsage, pricingCatalog, quota, quotaPace, quotaRefresh, resetCreditsRefresh
     case runtimeAction
     case sessions, sessionDetail
     case projects, projectDetail
@@ -74,9 +77,14 @@ public final class AppModel: ObservableObject {
     @Published public var jobOptions = RuntimeQueryOptions()
     @Published public var healthOptions = RuntimeQueryOptions(firstField: "active", firstValues: ["true"])
     @Published public var usageRange: DateRangePreset = .sevenDays
+    @Published public private(set) var invocationRange: DateRangePreset = .sevenDays
+    @Published public private(set) var invocationSourceClass = "all"
+    @Published public private(set) var invocationRangeFellBackFromQuotaWeek = false
     @Published public private(set) var overviewRange: DateRangePreset = .quotaWeek
 
     @Published public private(set) var usageState: FeatureLoadState<Codexpulse_Core_V1_UsageCostResponse> = .idle
+    @Published public private(set) var invocationUsageState:
+        FeatureLoadState<Codexpulse_Core_V1_InvocationUsageResponse> = .idle
     @Published public private(set) var pricingCatalogState:
         FeatureLoadState<Codexpulse_Core_V1_PricingCatalogCurrentResponse> = .idle
     @Published public private(set) var quotaState: FeatureLoadState<Codexpulse_Core_V1_QuotaCurrentResponse> = .idle
@@ -193,6 +201,8 @@ public final class AppModel: ObservableObject {
         case .quotaUsage:
             quotaState.isLoading || quotaPaceState.isLoading ||
                 usageState.isLoading || pricingCatalogState.isLoading
+        case .invocationUsage:
+            invocationUsageState.isLoading
         case .localStatus:
             healthProjectionState.isLoading || dataHealthState.isLoading ||
                 healthState.isLoading || healthDetailState.isLoading
@@ -271,6 +281,7 @@ public final class AppModel: ObservableObject {
         case .sessions: loadSessions(reset: true)
         case .projects: loadProjects(reset: true)
         case .quotaUsage: loadQuotaAndUsage()
+        case .invocationUsage: loadInvocationUsage()
         case .localStatus: loadLocalStatus()
         case .sourcesJobs: loadSourcesAndJobs(reset: true)
         case .settings: loadSettings()
@@ -294,6 +305,8 @@ public final class AppModel: ObservableObject {
             {
                 loadQuotaAndUsage()
             }
+        case .invocationUsage:
+            if invocationUsageState.shouldReloadOnNavigation { loadInvocationUsage() }
         case .localStatus:
             if dataHealthState.shouldReloadOnNavigation || healthState.shouldReloadOnNavigation { loadLocalStatus() }
         case .sourcesJobs:
@@ -327,6 +340,7 @@ public final class AppModel: ObservableObject {
         loadSessions(reset: true)
         loadProjects(reset: true)
         loadQuotaAndUsage()
+        loadInvocationUsage()
         loadLocalStatus()
         loadSourcesAndJobs(reset: true)
         loadSettings()
@@ -368,7 +382,7 @@ public final class AppModel: ObservableObject {
             {
                 loadJobDetail(jobID: selectedJobID)
             }
-        case .overview, .quotaUsage, .settings:
+        case .overview, .quotaUsage, .invocationUsage, .settings:
             break
         }
     }
@@ -615,6 +629,57 @@ public final class AppModel: ObservableObject {
         } failure: { [weak self] error in
             self?.usageState = failedLoadState(previous: previous, error: error)
         }
+    }
+
+    public func selectInvocationRange(_ range: DateRangePreset) {
+        guard [.quotaWeek, .today, .sevenDays, .thirtyDays].contains(range),
+              range != invocationRange
+        else { return }
+        invocationRange = range
+        loadInvocationUsage()
+    }
+
+    public func selectInvocationSourceClass(_ sourceClass: String) {
+        let normalized = ["structured", "detected"].contains(sourceClass) ? sourceClass : "all"
+        guard normalized != invocationSourceClass else { return }
+        invocationSourceClass = normalized
+        loadInvocationUsage()
+    }
+
+    public func loadInvocationUsage() {
+        let previous = invocationUsageState.value
+        invocationUsageState = .loading(previous: previous)
+        let quotaWeekRange = invocationRange == .quotaWeek ? availableInvocationQuotaWeekRange : nil
+        invocationRangeFellBackFromQuotaWeek = invocationRange == .quotaWeek && quotaWeekRange == nil
+        let request = FeatureRequestFactory.invocationUsage(
+            range: invocationRange,
+            sourceClass: invocationSourceClass,
+            quotaWeekRange: quotaWeekRange
+        )
+        launch(
+            .invocationUsage,
+            operation: { [runtime] in try await runtime.invocationUsage(request) }
+        ) { [weak self] response in
+            self?.invocationUsageState = loadState(
+                value: response,
+                meta: response.meta,
+                isEmpty: response.tools.isEmpty && response.skills.isEmpty
+            )
+        } failure: { [weak self] error in
+            self?.invocationUsageState = failedLoadState(previous: previous, error: error)
+        }
+    }
+
+    private var availableInvocationQuotaWeekRange: Codexpulse_Core_V1_UTCTimeRange? {
+        guard let presentation else { return nil }
+        if presentation.requestedRange == .quotaWeek,
+           presentation.effectiveRange == .quotaWeek,
+           !presentation.fellBackFromQuotaWeek
+        {
+            return presentation.contentRange
+        }
+        guard presentation.weeklyUsageAvailable else { return nil }
+        return presentation.weeklyUsageRange
     }
 
     public func loadPricingCatalog() {
@@ -1187,13 +1252,16 @@ public final class AppModel: ObservableObject {
         let affected: Set<AppFeature>
         switch domain {
         case "index":
-            invalidateTasks([.usage, .sessions, .sessionDetail, .projects, .projectDetail])
+            invalidateTasks([
+                .usage, .invocationUsage, .sessions, .sessionDetail, .projects, .projectDetail,
+            ])
             usageState = stale(usageState, notice)
+            invocationUsageState = stale(invocationUsageState, notice)
             sessionsState = stale(sessionsState, notice)
             sessionDetailState = stale(sessionDetailState, notice)
             projectsState = stale(projectsState, notice)
             projectDetailState = stale(projectDetailState, notice)
-            affected = [.sessions, .projects, .quotaUsage]
+            affected = [.sessions, .projects, .quotaUsage, .invocationUsage]
         case "quota":
             invalidateTasks([.quota, .quotaPace])
             quotaState = stale(quotaState, notice)
@@ -1238,6 +1306,7 @@ public final class AppModel: ObservableObject {
 
     private func resetFeatureState() {
         usageState = .idle
+        invocationUsageState = .idle
         pricingCatalogState = .idle
         quotaState = .idle
         quotaPaceState = .idle
@@ -1359,6 +1428,7 @@ public final class AppModel: ObservableObject {
 
     private func markFeatureStatesStale(_ notice: AppNotice) {
         usageState = stale(usageState, notice)
+        invocationUsageState = stale(invocationUsageState, notice)
         pricingCatalogState = stale(pricingCatalogState, notice)
         quotaState = stale(quotaState, notice)
         quotaPaceState = stale(quotaPaceState, notice)

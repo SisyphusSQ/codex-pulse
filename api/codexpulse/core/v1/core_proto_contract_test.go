@@ -26,7 +26,7 @@ func TestCoreProtoExposesExactRPCSurface(t *testing.T) {
 	sort.Strings(got)
 	want := []string{
 		"AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DataHealth",
-		"Handshake", "Health", "HealthProjection", "Job", "ListHealth", "ListJobs", "ListProjects",
+		"Handshake", "Health", "HealthProjection", "InvocationUsage", "Job", "ListHealth", "ListJobs", "ListProjects",
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
 		"MigrationRecoveryExit", "MigrationRecoveryPrepare", "MigrationRecoveryRetry",
 		"MigrationRecoveryState", "NotifyLifecycle", "PlanHomeSwitch", "ProjectDetail", "QuotaCurrent",
@@ -65,6 +65,8 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		`(?s)message ActivityWeekdayHourPoint\s*\{.*int32 weekday\s*=\s*1\s*;.*int32 hour\s*=\s*2\s*;.*ActivityMetrics metrics\s*=\s*3\s*;`,
 		`(?s)message ActivityDistribution\s*\{.*string timeline_granularity\s*=\s*1\s*;.*repeated ActivityTimelinePoint timeline\s*=\s*2\s*;.*repeated ActivityWeekdayHourPoint weekday_hours\s*=\s*3\s*;.*int32 timeline_bucket_minutes\s*=\s*4\s*;`,
 		`(?s)message UsageCostResponse\s*\{.*repeated UsageModelItem models\s*=\s*11\s*;.*ActivityDistribution activity_distribution\s*=\s*12\s*;`,
+		`(?s)message InvocationUsageRequest\s*\{.*UTCTimeRange range\s*=\s*1\s*;.*string source_class\s*=\s*3\s*;.*int32 top_limit\s*=\s*4\s*;`,
+		`(?s)message InvocationUsageResponse\s*\{.*InvocationTotals totals\s*=\s*5\s*;.*repeated ToolUsageItem tools\s*=\s*7\s*;.*repeated SkillUsageItem skills\s*=\s*8\s*;.*InvocationCoverage coverage\s*=\s*9\s*;`,
 		`(?s)message ModelReferencePrice\s*\{.*string model_id\s*=\s*1\s*;.*NumericValue input_micros\s*=\s*2\s*;.*NumericValue cached_input_micros\s*=\s*3\s*;.*NumericValue output_micros\s*=\s*4\s*;`,
 		`(?s)message PricingCatalogCurrentResponse\s*\{.*NumericValue evaluated_at_ms\s*=\s*2\s*;.*string pricing_version\s*=\s*3\s*;.*string basis\s*=\s*6\s*;.*NumericValue unit_tokens\s*=\s*7\s*;.*optional string source_url\s*=\s*10\s*;.*repeated ModelReferencePrice items\s*=\s*11\s*;`,
 		`(?s)message SessionDetailResponse\s*\{.*reserved 11\s*;.*reserved "daily"\s*;.*repeated TrendPoint trend\s*=\s*12\s*;.*string trend_granularity\s*=\s*13\s*;`,

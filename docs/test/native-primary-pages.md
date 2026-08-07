@@ -1,5 +1,12 @@
 # 原生主要页面与共享数据闭环验证记录
 
+## 2026-08-07 Tool / Skill 调用统计增量
+
+- 新增第八个原生导航页面“调用统计”，通过 `InvocationUsage` RPC 查询今天/最近 7 天/最近 30 天的 Tool 调用与 Skill 检测活动；支持全部来源、结构化事件和内容检测筛选。
+- isolated smoke 的新稳定边界为 `invocation_tools=0 invocation_skills=0 ui_pages=8`；真实 Home gate 要求两类统计均非零且 `unavailable=none ui_pages=8`。历史七页记录继续作为当时证据，不回写成当前结果。
+- privacy contract 只允许名称、时间、来源、有限结果和可空耗时，不保存参数、命令、正文、输出或完整路径；Skill 统计不声称精确执行，也不与 Token 归因。
+- 当前工作树已通过真实 Home gate：`invocation_tools=1004 invocation_skills=76 unavailable=none ui_pages=8 shutdown=clean`。原生窗口在 `1440 x 984` 视口完成总览、Tool、Skill、来源筛选和排行详情交互读回；当前截图因同一活跃会话继续产生事件，显示值为 `1200 / 81`，不把动态值冒充固定断言。视觉证据保存在 `.artifacts/design-qa/invocation-usage-real-home.png`，结论记录在 `design-qa.md`。
+
 ## 当前结论
 
 - 记录日期：2026-07-22（Asia/Shanghai）

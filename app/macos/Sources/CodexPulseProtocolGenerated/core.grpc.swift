@@ -85,6 +85,19 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
                 type: .unary
             )
         }
+        /// Namespace for "InvocationUsage" metadata.
+        public enum InvocationUsage: Sendable {
+            /// Request type for "InvocationUsage".
+            public typealias Input = Codexpulse_Core_V1_InvocationUsageRequest
+            /// Response type for "InvocationUsage".
+            public typealias Output = Codexpulse_Core_V1_InvocationUsageResponse
+            /// Descriptor for "InvocationUsage".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "InvocationUsage",
+                type: .unary
+            )
+        }
         /// Namespace for "PricingCatalogCurrent" metadata.
         public enum PricingCatalogCurrent: Sendable {
             /// Request type for "PricingCatalogCurrent".
@@ -508,6 +521,7 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
             Contracts.descriptor,
             AccountSnapshot.descriptor,
             UsageCost.descriptor,
+            InvocationUsage.descriptor,
             PricingCatalogCurrent.descriptor,
             ListSessions.descriptor,
             SessionDetail.descriptor,
@@ -656,6 +670,25 @@ extension Codexpulse_Core_V1_CoreService {
             deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_UsageCostResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_UsageCostResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "InvocationUsage" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_InvocationUsageRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_InvocationUsageRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_InvocationUsageResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func invocationUsage<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_InvocationUsageRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_InvocationUsageRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_InvocationUsageResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_InvocationUsageResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
         /// Call the "PricingCatalogCurrent" method.
@@ -1430,6 +1463,36 @@ extension Codexpulse_Core_V1_CoreService {
             try await self.client.unary(
                 request: request,
                 descriptor: Codexpulse_Core_V1_CoreService.Method.UsageCost.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "InvocationUsage" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_InvocationUsageRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_InvocationUsageRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_InvocationUsageResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func invocationUsage<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_InvocationUsageRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_InvocationUsageRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_InvocationUsageResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_InvocationUsageResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.InvocationUsage.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -2525,6 +2588,31 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
         )
     }
 
+    /// Call the "InvocationUsage" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_InvocationUsageRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func invocationUsage<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_InvocationUsageRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_InvocationUsageResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.invocationUsage(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_InvocationUsageRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_InvocationUsageResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "PricingCatalogCurrent" method.
     ///
     /// - Parameters:
@@ -3466,6 +3554,35 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
             metadata: metadata
         )
         return try await self.usageCost(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "InvocationUsage" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func invocationUsage<Result>(
+        _ message: Codexpulse_Core_V1_InvocationUsageRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_InvocationUsageResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_InvocationUsageRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.invocationUsage(
             request: request,
             options: options,
             onResponse: handleResponse

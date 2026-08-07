@@ -4,7 +4,7 @@
 
 本文冻结 Codex Pulse 从旧 Web 桌面运行时迁移到原生 macOS 客户端的完整重构方案。它记录架构决策、职责边界、RPC 语义、进程生命周期、安全要求、实施阶段和验收门槛；不把讨论中的中间选项或时间估算冒充已完成能力。
 
-当前仓库已经完成 Go Helper 基础层和 Swift transport：Go 进程独占业务事实和 SQLite，通过认证后的 gRPC over Unix Domain Socket 暴露 `codexpulse.core.v1.CoreService`。`TOO-313` 当前分支建立了 SwiftUI/AppKit application shell、development-only unsigned `.app`、Bundle Helper 定位和首个 Overview 真实纵向切片；`TOO-314` 当前工作树进一步接通 Sessions、Projects、Quota/Usage、Local Status/Health、Sources/Jobs、Settings 与共享 runtime，并让轻量索引提供 API 等价成本和全局按模型统计。2026-07-22 已在复用的私有 development runtime 上直接绑定真实 Codex Home，完成非零 Sessions/Projects/Usage、已知成本、模型 breakdown、详情读取和七页 render live E2E。完整 Xcode/XCTest/XCUITest、真实 system lifecycle、正式 Bundle/嵌套签名、公证、更新安装和发布切换仍是后续 gate。
+当前仓库已经完成 Go Helper 基础层和 Swift transport：Go 进程独占业务事实和 SQLite，通过认证后的 gRPC over Unix Domain Socket 暴露 `codexpulse.core.v1.CoreService`。`TOO-313` 当前分支建立了 SwiftUI/AppKit application shell、development-only unsigned `.app`、Bundle Helper 定位和首个 Overview 真实纵向切片；`TOO-314` 当前工作树进一步接通 Sessions、Projects、Quota/Usage、Local Status/Health、Sources/Jobs、Settings 与共享 runtime，并让轻量索引提供 API 等价成本和全局按模型统计。调用统计切片继续沿用同一边界，由 Go 解析和聚合 Tool/Skill 安全事实，Swift 只消费 `InvocationUsage` response 并渲染第八个原生导航页面。2026-07-22 的七页真实 Home live E2E 仍是历史基线；新增调用统计必须通过当前八页 gate 重新取证。完整 Xcode/XCTest/XCUITest、真实 system lifecycle、正式 Bundle/嵌套签名、公证、更新安装和发布切换仍是后续 gate。
 
 相关真相入口：
 
@@ -207,6 +207,10 @@ contract 不兼容时必须 fail closed，由客户端展示稳定的“核心�
 与旧 Helper 都必须在精确版本握手中拒绝；即使错误绕过握手，双方也不会把
 field 11 的每日桶与新趋势互相解码。
 
+调用统计使用 `Contracts.invocation_usage_version=invocation-usage-v1`。该版本冻结
+Tool“逐事件计数”、Skill“检测活动”、结构化/内容检测来源分组以及 unknown 结果语义；
+客户端不得把 Skill 活动或 unknown Tool 结果改写为精确执行/成功次数。
+
 ### 5.2 RPC 分类
 
 当前 `CoreService` 覆盖以下边界：
@@ -214,7 +218,7 @@ field 11 的每日桶与新趋势互相解码。
 | 分类 | RPC |
 | --- | --- |
 | 握手与启动 | `Handshake`、`Bootstrap`、`Contracts` |
-| 用量、价格与主实体 | `AccountSnapshot`、`UsageCost`、`PricingCatalogCurrent`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail` |
+| 用量、价格与主实体 | `AccountSnapshot`、`UsageCost`、`InvocationUsage`、`PricingCatalogCurrent`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail` |
 | Quota | `QuotaCurrent`、`RequestQuotaRefresh` |
 | 数据源、任务与健康 | `ListSources`、`Source`、`ListJobs`、`Job`、`ListHealth`、`Health`、`HealthProjection`、`DataHealth` |
 | 设置与 Home | `Settings`、`UpdateSettings`、`PlanHomeSwitch`、`ConfirmHomeSwitch`、`RecoverHomeSwitch` |
@@ -516,19 +520,21 @@ fixture 只用于 Preview/单元测试，不能用静态数据宣布 transport �
 3. Quota 与手动刷新。
 4. Local Status 与 Data Health。
 5. Sources 与 Jobs 的诊断入口。
+6. Tool / Skill 调用统计。
 
 每个切片必须同时完成：contract 使用、ViewModel/View、分页、取消、partial/error、invalidation、Swift 单元测试和 UI smoke。
 
 `TOO-314` 的实现边界：
 
-- 七个原生导航入口共享同一 `AppModel`、runtime/connection truth、Toolbar 刷新和 stale/unavailable/restart surface；主窗口、Status Item 与 Popover 不复制 cache。
+- 八个原生导航入口共享同一 `AppModel`、runtime/connection truth、Toolbar 刷新和 stale/unavailable/restart surface；主窗口、Status Item 与 Popover 不复制 cache。
 - Sessions、Projects、Sources、Jobs、Health list/detail 只消费生成的 response；opaque cursor、cursor history、筛选、选择和 load-more 使用 Task cancellation + feature/runtime generation，旧请求不能覆盖新状态，重复 cursor 会终止分页。Session detail 必须按生成 response 的 `trend_granularity` 自适应显示“每小时趋势”或“每日趋势”，并使用 `reporting_time_zone` 格式化横轴和选中详情；普通小时文案只显示本地墙钟时间，只有 DST 回拨导致同一墙钟时间映射到多个实际 instant 时才追加稳定数值 UTC offset。granularity 为空时必须显示趋势口径不可用，不得猜成小时。Swift 不得从点数、时间跨度或 `Calendar.current` 重算分桶口径。Project detail 仍固定使用每日趋势。
 - Project detail 的 sessions/models 使用两个独立 cursor；Swift 只稳定合并 provider page，不重算 project/model 业务归因。
 - Quota/Usage 保留 zero、unknown reason、partial、source freshness、unpriced/degraded；`UsageModelItem.trend` 由 Go 按与总趋势相同的 granularity 返回真实模型日 bucket，Swift 只做逐日精确对账、模型堆叠、本地化 Token 轴和 pointer hover 展示。某日模型合计不等于总量时回退为单一总量柱并提示模型明细不可用，不进行客户端比例分摊。手动刷新只允许 `quota|reset_credits`，receipt 后权威刷新。
+- Invocation Usage 使用最多 90 天的精确 UTC range、小时/日粒度和 `all|structured|detected` 来源筛选；Go 返回 Tool/Skill 总览、补齐后的趋势、各自 Top 20 与 coverage，Swift 不读取 SQLite/JSONL、不重算结果语义，也不把调用活动关联到 Token。页面显式说明 Skill 只是引用/文件加载检测，参数、命令、正文、输出和完整路径不进入持久化或 RPC。
 - Health/Data Health 区分 provider 业务状态和 transport connection；provider recovery command key 只读展示，不映射为另一套 RPC。独立的全局调度控制只允许 `pause_backfill|pause_all|resume|reconcile`，用户确认后消费生成 receipt 并刷新事实。
 - Settings 读取 editable metadata，以 authoritative revision 做 CAS；成功与结果不确定都 readback，revision 不一致显式呈现 conflict 并保留用户草稿，`applied_reconcile_required` 不写成普通成功，未知 receipt result fail closed。
 - Home switch、repair、正式 migration/release 保持禁用说明，不用 mock 冒充可执行能力。
-- 确定性 isolated App/Helper smoke 会让 RootView 依次消费七个共享 route、查询所有主要页面，并在隔离 preferences 上验证 Settings mutation、receipt/readback、stale revision conflict 和原值恢复。它继续作为 CI/contract regression，不冒充真实数据产品验收。
+- 确定性 isolated App/Helper smoke 会让 RootView 依次消费八个共享 route、查询所有主要页面（包含空调用统计），并在隔离 preferences 上验证 Settings mutation、receipt/readback、stale revision conflict 和原值恢复。它继续作为 CI/contract regression，不冒充真实数据产品验收。
 - 本机 live App/Helper smoke 复用已配置私有 runtime，把 App Server 子进程的 `CODEX_HOME` 固定为 confirmed 真实 Home，允许正常状态库、WAL、锁和日志写入；提交版只记录非零计数、稳定状态和 clean Shutdown，不记录用户内容、名称、真实路径或原始日志。该 render marker仍不冒充 XCUITest/视觉断言。
 - 测试真相见 [`docs/test/native-primary-pages.md`](../../../test/native-primary-pages.md)。
 

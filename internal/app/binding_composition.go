@@ -7,10 +7,12 @@ import (
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
+	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -24,6 +26,10 @@ func composeCoreService(
 	}
 	repository := store.NewRepository(database)
 	usageService, err := usagecost.NewService(repository)
+	if err != nil {
+		return nil, errors.Join(core.ErrService, err)
+	}
+	invocationService, err := invocationusage.NewService(storelight.NewRepository(database))
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
@@ -42,7 +48,7 @@ func composeCoreService(
 		return nil, errors.Join(core.ErrService, err)
 	}
 	return core.NewService(core.ServiceConfig{
-		UsageCost: usageService, PricingCatalog: pricingService,
+		UsageCost: usageService, InvocationUsage: invocationService, PricingCatalog: pricingService,
 		RuntimeInfo: runtimeService, QueryObserver: queryObserver,
 	})
 }

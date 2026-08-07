@@ -474,11 +474,13 @@ func (runtime *Runtime) scanPending(
 			CandidateLines:     pending.Checkpoint.CandidateLines + scanResult.CandidateLines,
 			JSONDecoded:        pending.Checkpoint.JSONDecoded + scanResult.JSONDecoded,
 		}
+		checkpoint.LatestEventAtMS = latestLightEventAt(pending.Checkpoint.LatestEventAtMS, scanResult)
 		batch := storelight.LightTokenBatch{
 			SessionID: pending.SessionID, Generation: pending.Generation, Checkpoint: checkpoint,
 			DailyDeltas: dailyDeltasToStore(scanResult.DailyDeltas), Activate: checkpoint.Complete,
-			TimedDeltas: timedDeltasToStore(scanResult.TokenDeltas),
-			UpdatedAtMS: runtime.clock().UnixMilli(),
+			TimedDeltas:      timedDeltasToStore(scanResult.TokenDeltas),
+			InvocationDeltas: invocationDeltasToStore(scanResult.InvocationDeltas),
+			UpdatedAtMS:      runtime.clock().UnixMilli(),
 		}
 		if err := runtime.repository.CommitLightTokenBatch(ctx, batch); err != nil {
 			return false, err
@@ -658,4 +660,37 @@ func timedDeltasToStore(values []TimedTokenDelta) []storelight.LightTokenTimedDe
 		})
 	}
 	return output
+}
+
+func invocationDeltasToStore(values []InvocationDelta) []storelight.LightInvocationDelta {
+	output := make([]storelight.LightInvocationDelta, 0, len(values))
+	for _, value := range values {
+		output = append(output, storelight.LightInvocationDelta{
+			SourceOffset: value.SourceOffset, Ordinal: value.Ordinal, ObservedAtMS: value.ObservedAtMS,
+			Kind: string(value.Kind), Name: value.Name, Source: string(value.Source),
+			Outcome: string(value.Outcome), DurationMS: cloneInt64(value.DurationMS),
+		})
+	}
+	return output
+}
+
+func latestLightEventAt(previous *int64, result ScanResult) *int64 {
+	var latest *int64
+	if previous != nil {
+		value := *previous
+		latest = &value
+	}
+	for _, delta := range result.TokenDeltas {
+		if latest == nil || delta.ObservedAtMS > *latest {
+			value := delta.ObservedAtMS
+			latest = &value
+		}
+	}
+	for _, delta := range result.InvocationDeltas {
+		if latest == nil || delta.ObservedAtMS > *latest {
+			value := delta.ObservedAtMS
+			latest = &value
+		}
+	}
+	return latest
 }

@@ -349,6 +349,12 @@ public actor AppRuntime {
         try await performRead { try await $0.usageCost(request, retryPolicy: .transportDefault) }
     }
 
+    public func invocationUsage(
+        _ request: Codexpulse_Core_V1_InvocationUsageRequest
+    ) async throws -> Codexpulse_Core_V1_InvocationUsageResponse {
+        try await performRead { try await $0.invocationUsage(request, retryPolicy: .transportDefault) }
+    }
+
     public func pricingCatalogCurrent(
     ) async throws -> Codexpulse_Core_V1_PricingCatalogCurrentResponse {
         try await performRead {
@@ -494,6 +500,18 @@ public actor AppRuntime {
             } catch {
                 unavailableSteps.append(try acceptedSmokeFailure(step: step, error: error))
             }
+            step = "invocation_usage"
+            var invocation: Codexpulse_Core_V1_InvocationUsageResponse?
+            do {
+                invocation = try await invocationUsage(FeatureRequestFactory.invocationUsage(
+                    range: .sevenDays,
+                    sourceClass: "all",
+                    now: now,
+                    calendar: calendar
+                ))
+            } catch {
+                unavailableSteps.append(try acceptedSmokeFailure(step: step, error: error))
+            }
             step = "quota"
             var quota: Codexpulse_Core_V1_QuotaCurrentResponse?
             do {
@@ -626,6 +644,8 @@ public actor AppRuntime {
                     UsageModelTrendResolver.buckets($0).count(where: \.breakdownAvailable)
                 } ?? 0,
                 usageCostKnown: usage?.totals.estimatedUsdMicros.hasValue == true,
+                invocationToolCalls: invocation?.totals.toolCallCount.value ?? 0,
+                invocationSkillActivity: invocation?.totals.skillActivityCount.value ?? 0,
                 quotaWindows: quota?.current.windows.count ?? 0,
                 quotaPaceWindows: paceResponse?.pace.windows.count ?? 0,
                 projectDetailCostKnown: projectDetailCostKnown,

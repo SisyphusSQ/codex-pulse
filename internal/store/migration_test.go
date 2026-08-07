@@ -72,6 +72,13 @@ func TestApplicationSchemaV19ChecksumIsFrozen(t *testing.T) {
 	}
 }
 
+func TestApplicationSchemaV20ChecksumIsFrozen(t *testing.T) {
+	const want = "b9abe758f97cab952f4b22c8a7426780af428c9938d8e981e34a0b331c71ea43"
+	if got := applicationSchemaV20Checksum(); got != want {
+		t.Fatalf("applicationSchemaV20Checksum() = %q, want frozen %q", got, want)
+	}
+}
+
 func TestEnsureApplicationSchemaRecordsVersionedFreshMigration(t *testing.T) {
 	t.Parallel()
 
@@ -110,11 +117,11 @@ func TestApplicationMigrationAppendsIngestSchemaToFrozenV2(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 	if report.FromVersion != 2 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v2 to v19 with backup", report)
+		!equalInts(report.AppliedVersions, []int{3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v2 to v20 with backup", report)
 	}
-	if backupVersions != [2]int{2, 19} {
-		t.Fatalf("backup versions = %v, want [2 19]", backupVersions)
+	if backupVersions != [2]int{2, 20} {
+		t.Fatalf("backup versions = %v, want [2 20]", backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 
@@ -168,11 +175,11 @@ func TestApplicationMigrationAppendsRetentionIndexesToFrozenV1(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 	if report.FromVersion != 1 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v1 to v19 with backup", report)
+		!equalInts(report.AppliedVersions, []int{2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v1 to v20 with backup", report)
 	}
-	if backupVersions != [2]int{1, 19} {
-		t.Fatalf("backup versions = %v, want [1 19]", backupVersions)
+	if backupVersions != [2]int{1, 20} {
+		t.Fatalf("backup versions = %v, want [1 20]", backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 

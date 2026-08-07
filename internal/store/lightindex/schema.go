@@ -135,13 +135,61 @@ var lightIndexSchemaObjects = []storeschema.Object{
 	},
 }
 
+var lightInvocationSchemaObjects = []storeschema.Object{
+	{
+		ObjectType: "table",
+		Name:       "light_invocation_events",
+		Statement: `CREATE TABLE IF NOT EXISTS light_invocation_events (
+			session_id TEXT NOT NULL,
+			generation INTEGER NOT NULL CHECK (generation > 0),
+			source_offset INTEGER NOT NULL CHECK (source_offset > 0),
+			event_ordinal INTEGER NOT NULL CHECK (event_ordinal >= 0),
+			observed_at_ms INTEGER NOT NULL CHECK (observed_at_ms BETWEEN 0 AND 9007199254740991),
+			kind TEXT NOT NULL CHECK (kind IN ('tool','skill')),
+			name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 128),
+			source TEXT NOT NULL CHECK (source IN (
+				'response_function','response_custom','exec_nested','mcp','web_search','image_generation',
+				'skill_explicit','skill_file_loaded'
+			)),
+			outcome TEXT NOT NULL CHECK (outcome IN ('unknown','succeeded','failed')),
+			duration_ms INTEGER CHECK (duration_ms IS NULL OR duration_ms BETWEEN 0 AND 9007199254740991),
+			CHECK (
+				(kind = 'tool' AND source IN (
+					'response_function','response_custom','exec_nested','mcp','web_search','image_generation'
+				)) OR
+				(kind = 'skill' AND source IN ('skill_explicit','skill_file_loaded'))
+			),
+			PRIMARY KEY (session_id, generation, source_offset, event_ordinal),
+			FOREIGN KEY (session_id, generation)
+				REFERENCES light_token_scans(session_id, generation) ON DELETE CASCADE
+		) STRICT`,
+	},
+	{
+		ObjectType: "index",
+		Name:       "idx_light_invocation_observed",
+		Statement: `CREATE INDEX IF NOT EXISTS idx_light_invocation_observed
+			ON light_invocation_events(observed_at_ms, session_id, generation)`,
+	},
+	{
+		ObjectType: "index",
+		Name:       "idx_light_invocation_kind_name",
+		Statement: `CREATE INDEX IF NOT EXISTS idx_light_invocation_kind_name
+			ON light_invocation_events(kind, name, observed_at_ms DESC)`,
+	},
+}
+
 // SchemaObjects 返回 v16 冻结的轻量索引 schema 描述副本。
 func SchemaObjects() []storeschema.Object {
 	return append([]storeschema.Object(nil), lightIndexSchemaObjects...)
 }
 
-// CurrentSchemaObjects 返回应用当前版本所需的轻量索引 schema 描述。
-func CurrentSchemaObjects() []storeschema.Object {
+// InvocationSchemaObjects 返回 v20 新增的隐私安全 Tool/Skill 活动 schema。
+func InvocationSchemaObjects() []storeschema.Object {
+	return append([]storeschema.Object(nil), lightInvocationSchemaObjects...)
+}
+
+// SchemaObjectsThroughV19 返回 v17-v19 冻结的轻量索引 schema 描述。
+func SchemaObjectsThroughV19() []storeschema.Object {
 	objects := SchemaObjects()
 	for index := range objects {
 		switch objects[index].Name {
@@ -162,4 +210,9 @@ func CurrentSchemaObjects() []storeschema.Object {
 		}
 	}
 	return objects
+}
+
+// CurrentSchemaObjects 返回应用当前版本所需的轻量索引 schema 描述。
+func CurrentSchemaObjects() []storeschema.Object {
+	return append(SchemaObjectsThroughV19(), InvocationSchemaObjects()...)
 }

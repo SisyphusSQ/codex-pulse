@@ -50,6 +50,140 @@ func TestTokenScannerAttributesTimedDeltasToSafeCurrentModel(t *testing.T) {
 	}
 }
 
+func TestTokenScannerExtractsPrivacySafeToolInvocations(t *testing.T) {
+	t.Parallel()
+
+	content := strings.Join([]string{
+		`{"timestamp":"2026-08-07T01:00:00Z","type":"response_item","payload":{"type":"function_call","name":"wait","arguments":"{\"secret\":\"do-not-store\"}"}}`,
+		`{"timestamp":"2026-08-07T01:00:01Z","type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"await tools.exec_command({cmd: 'private command'}); await tools.mcp__linear__list_issues({team: 'secret'})"}}`,
+		`{"timestamp":"2026-08-07T01:00:02Z","type":"event_msg","payload":{"type":"mcp_tool_call_end","duration_ms":42,"invocation":{"server":"linear","tool":"list_issues","arguments":{"team":"secret"}},"result":{"Ok":{"content":[]}}}}`,
+	}, "\n") + "\n"
+
+	result, err := NewTokenScanner(TokenScannerOptions{ChunkBytes: 31}).Scan(
+		context.Background(), bytes.NewBufferString(content), ScanState{},
+	)
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	want := []InvocationDelta{
+		{Kind: InvocationKindTool, Name: "wait", Source: InvocationSourceResponseFunction, Outcome: InvocationOutcomeUnknown},
+		{Kind: InvocationKindTool, Name: "exec", Source: InvocationSourceResponseCustom, Outcome: InvocationOutcomeUnknown},
+		{Kind: InvocationKindTool, Name: "exec_command", Source: InvocationSourceExecNested, Outcome: InvocationOutcomeUnknown},
+		{Kind: InvocationKindTool, Name: "linear.list_issues", Source: InvocationSourceMCP, Outcome: InvocationOutcomeSucceeded},
+	}
+	if len(result.InvocationDeltas) != len(want) {
+		t.Fatalf("InvocationDeltas = %#v, want %d items", result.InvocationDeltas, len(want))
+	}
+	for index, expected := range want {
+		got := result.InvocationDeltas[index]
+		if got.Kind != expected.Kind || got.Name != expected.Name || got.Source != expected.Source ||
+			got.Outcome != expected.Outcome || got.SourceOffset <= 0 || got.ObservedAtMS <= 0 {
+			t.Fatalf("InvocationDeltas[%d] = %#v, want %#v with offsets", index, got, expected)
+		}
+	}
+	if result.InvocationDeltas[3].DurationMS == nil || *result.InvocationDeltas[3].DurationMS != 42 {
+		t.Fatalf("MCP duration = %#v, want 42", result.InvocationDeltas[3].DurationMS)
+	}
+	encoded, err := json.Marshal(result.InvocationDeltas)
+	if err != nil {
+		t.Fatalf("marshal invocation deltas: %v", err)
+	}
+	for _, forbidden := range []string{"do-not-store", "private command", "secret", "mcp__linear__list_issues"} {
+		if bytes.Contains(encoded, []byte(forbidden)) {
+			t.Fatalf("privacy-sensitive value %q leaked into deltas: %s", forbidden, encoded)
+		}
+	}
+}
+
+func TestTokenScannerKeepsAmbiguousToolEndOutcomesUnknown(t *testing.T) {
+	t.Parallel()
+
+	content := strings.Join([]string{
+		`{"timestamp":"2026-08-07T01:00:00Z","type":"event_msg","payload":{"type":"web_search_end","duration_ms":42}}`,
+		`{"timestamp":"2026-08-07T01:00:01Z","type":"event_msg","payload":{"type":"image_generation_end","duration_ms":58}}`,
+	}, "\n") + "\n"
+
+	result, err := NewTokenScanner(TokenScannerOptions{ChunkBytes: 31}).Scan(
+		context.Background(), bytes.NewBufferString(content), ScanState{},
+	)
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if len(result.InvocationDeltas) != 2 ||
+		result.InvocationDeltas[0].Outcome != InvocationOutcomeUnknown ||
+		result.InvocationDeltas[1].Outcome != InvocationOutcomeUnknown {
+		t.Fatalf("ambiguous end outcomes = %#v, want unknown", result.InvocationDeltas)
+	}
+}
+
+func TestTokenScannerSkipsInvocationOutsideSafeNumericRange(t *testing.T) {
+	t.Parallel()
+
+	content := strings.Join([]string{
+		`{"timestamp":"1969-12-31T23:59:59Z","type":"response_item","payload":{"type":"function_call","name":"wait"}}`,
+		`{"timestamp":"2026-08-07T01:00:00Z","type":"event_msg","payload":{"type":"web_search_end","duration_ms":9223372036854775807}}`,
+	}, "\n") + "\n"
+
+	result, err := NewTokenScanner(TokenScannerOptions{ChunkBytes: 31}).Scan(
+		context.Background(), bytes.NewBufferString(content), ScanState{},
+	)
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if len(result.InvocationDeltas) != 0 {
+		t.Fatalf("unsafe invocation values were retained: %#v", result.InvocationDeltas)
+	}
+	if len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "candidate_invalid_timestamp" {
+		t.Fatalf("diagnostics = %#v, want invalid timestamp", result.Diagnostics)
+	}
+}
+
+func TestTokenScannerDetectsSkillActivityWithoutPersistingContentOrPaths(t *testing.T) {
+	t.Parallel()
+
+	content := strings.Join([]string{
+		`{"timestamp":"2026-08-07T02:00:00Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<skill><name>personal-thin-skills:discuss-first</name><location>/private/skill.md</location></skill>"}]}}`,
+		`{"timestamp":"2026-08-07T02:00:01Z","type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"sed -n '1,200p' /Users/example/.codex/skills/go-code-style/SKILL.md && sed -n '1,200p' /Users/example/.codex/skills/go-code-style/SKILL.md && sed -n '1,200p' /Users/example/.codex/plugins/cache/sisyphus-private/personal-thin-skills/0.4.0/skills/discuss-first/SKILL.md"}}`,
+	}, "\n") + "\n"
+
+	result, err := NewTokenScanner(TokenScannerOptions{ChunkBytes: 29}).Scan(
+		context.Background(), bytes.NewBufferString(content), ScanState{},
+	)
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	var skills []InvocationDelta
+	for _, delta := range result.InvocationDeltas {
+		if delta.Kind == InvocationKindSkill {
+			skills = append(skills, delta)
+		}
+	}
+	want := []InvocationDelta{
+		{Kind: InvocationKindSkill, Name: "personal-thin-skills:discuss-first", Source: InvocationSourceSkillExplicit, Outcome: InvocationOutcomeUnknown},
+		{Kind: InvocationKindSkill, Name: "go-code-style", Source: InvocationSourceSkillFileLoaded, Outcome: InvocationOutcomeUnknown},
+		{Kind: InvocationKindSkill, Name: "personal-thin-skills:discuss-first", Source: InvocationSourceSkillFileLoaded, Outcome: InvocationOutcomeUnknown},
+	}
+	if len(skills) != len(want) {
+		t.Fatalf("skill deltas = %#v, want %#v", skills, want)
+	}
+	for index, expected := range want {
+		got := skills[index]
+		if got.Kind != expected.Kind || got.Name != expected.Name || got.Source != expected.Source ||
+			got.Outcome != expected.Outcome || got.SourceOffset <= 0 || got.ObservedAtMS <= 0 {
+			t.Fatalf("skills[%d] = %#v, want %#v with offsets", index, got, expected)
+		}
+	}
+	encoded, err := json.Marshal(skills)
+	if err != nil {
+		t.Fatalf("marshal skills: %v", err)
+	}
+	for _, forbidden := range []string{"/Users/example", "sed -n", "private/skill.md", "sisyphus-private"} {
+		if bytes.Contains(encoded, []byte(forbidden)) {
+			t.Fatalf("privacy-sensitive value %q leaked into skills: %s", forbidden, encoded)
+		}
+	}
+}
+
 func TestTokenScannerPrefiltersBeforeJSONDecode(t *testing.T) {
 	t.Parallel()
 

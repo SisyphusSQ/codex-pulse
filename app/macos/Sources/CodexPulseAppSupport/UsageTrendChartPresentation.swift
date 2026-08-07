@@ -56,6 +56,20 @@ public struct UsageTrendChartPresentation: Sendable {
         )
     }
 
+    public var rangeLabel: String {
+        let localization = AppLocalizationRegistry.shared.current
+        let format: String = if localization.language == .englishUS {
+            granularity == .hour ? "MMM d HH:mm" : "MMM d"
+        } else {
+            granularity == .hour ? "M月d日 HH:mm" : "M月d日"
+        }
+        let startLabel = localization.format("自 %@", formatted(firstBucketStart, format: format))
+        let granularityLabel = localization.textValue(
+            granularity == .hour ? "按小时" : "按天"
+        )
+        return localization.format("range.label.daily", startLabel, granularityLabel)
+    }
+
     public var axisTicks: [Date] {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = reportingTimeZone

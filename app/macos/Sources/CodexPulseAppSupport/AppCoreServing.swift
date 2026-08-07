@@ -21,6 +21,11 @@ public protocol AppCoreServing: Sendable {
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_UsageCostResponse
 
+    func invocationUsage(
+        _ request: Codexpulse_Core_V1_InvocationUsageRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_InvocationUsageResponse
+
     func pricingCatalogCurrent(
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_PricingCatalogCurrentResponse
@@ -128,6 +133,13 @@ public protocol AppCoreServing: Sendable {
 }
 
 public extension AppCoreServing {
+	func invocationUsage(
+		_ request: Codexpulse_Core_V1_InvocationUsageRequest,
+		retryPolicy: ReadRetryPolicy
+	) async throws -> Codexpulse_Core_V1_InvocationUsageResponse {
+		throw AppRuntimeError.unavailable
+	}
+
     func accountSnapshot(
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_AccountSnapshotResponse {

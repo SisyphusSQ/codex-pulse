@@ -61,13 +61,14 @@ type LightTokenDailyDelta struct {
 }
 
 type LightTokenBatch struct {
-	SessionID   string
-	Generation  int64
-	Checkpoint  LightTokenCheckpoint
-	DailyDeltas []LightTokenDailyDelta
-	TimedDeltas []LightTokenTimedDelta
-	Activate    bool
-	UpdatedAtMS int64
+	SessionID        string
+	Generation       int64
+	Checkpoint       LightTokenCheckpoint
+	DailyDeltas      []LightTokenDailyDelta
+	TimedDeltas      []LightTokenTimedDelta
+	InvocationDeltas []LightInvocationDelta
+	Activate         bool
+	UpdatedAtMS      int64
 }
 
 type LightTokenTimedDelta struct {
@@ -79,6 +80,30 @@ type LightTokenTimedDelta struct {
 	CachedInputTokens int64
 	OutputTokens      int64
 	ReasoningTokens   int64
+}
+
+type LightInvocationDelta struct {
+	SourceOffset int64
+	Ordinal      int
+	ObservedAtMS int64
+	Kind         string
+	Name         string
+	Source       string
+	Outcome      string
+	DurationMS   *int64
+}
+
+type LightInvocationEvent struct {
+	SessionID    string
+	Generation   int64
+	SourceOffset int64
+	Ordinal      int
+	ObservedAtMS int64
+	Kind         string
+	Name         string
+	Source       string
+	Outcome      string
+	DurationMS   *int64
 }
 
 type LightTokenScan struct {
@@ -186,6 +211,21 @@ type lightTokenTimedModel struct {
 }
 
 func (lightTokenTimedModel) TableName() string { return "light_token_timed" }
+
+type lightInvocationModel struct {
+	SessionID    string `gorm:"column:session_id;primaryKey"`
+	Generation   int64  `gorm:"column:generation;primaryKey"`
+	SourceOffset int64  `gorm:"column:source_offset;primaryKey"`
+	EventOrdinal int    `gorm:"column:event_ordinal;primaryKey"`
+	ObservedAtMS int64  `gorm:"column:observed_at_ms"`
+	Kind         string `gorm:"column:kind"`
+	Name         string `gorm:"column:name"`
+	Source       string `gorm:"column:source"`
+	Outcome      string `gorm:"column:outcome"`
+	DurationMS   *int64 `gorm:"column:duration_ms"`
+}
+
+func (lightInvocationModel) TableName() string { return "light_invocation_events" }
 
 func (repository *Repository) StartLightTokenRebuild(
 	ctx context.Context,
@@ -376,6 +416,23 @@ func (repository *Repository) CommitLightTokenBatch(ctx context.Context, batch L
 				ModelKey: cloneLightString(delta.ModelKey), ModelSource: string(lightModelSource(delta.ModelSource)),
 				InputTokens: delta.InputTokens, CachedInputTokens: delta.CachedInputTokens,
 				OutputTokens: delta.OutputTokens, ReasoningTokens: delta.ReasoningTokens,
+			}
+			result := transaction.WithContext(ctx).
+				Clauses(clause.OnConflict{DoNothing: true}).
+				Create(&model)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return ErrLightTokenConflict
+			}
+		}
+		for _, delta := range batch.InvocationDeltas {
+			model := lightInvocationModel{
+				SessionID: batch.SessionID, Generation: batch.Generation,
+				SourceOffset: delta.SourceOffset, EventOrdinal: delta.Ordinal,
+				ObservedAtMS: delta.ObservedAtMS, Kind: delta.Kind, Name: delta.Name,
+				Source: delta.Source, Outcome: delta.Outcome, DurationMS: cloneLightInt64(delta.DurationMS),
 			}
 			result := transaction.WithContext(ctx).
 				Clauses(clause.OnConflict{DoNothing: true}).
@@ -646,6 +703,38 @@ func (repository *Repository) LightSessionTokenTimed(
 	return output, nil
 }
 
+func (repository *Repository) ListLightInvocations(
+	ctx context.Context,
+	startAtMS int64,
+	endAtMS int64,
+) ([]LightInvocationEvent, error) {
+	if repository == nil || repository.database == nil || startAtMS < 0 || endAtMS <= startAtMS {
+		return nil, ErrInvalidRepository
+	}
+	var models []lightInvocationModel
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
+		return connection.WithContext(ctx).Table("light_invocation_events AS events").
+			Select("events.*").
+			Joins("JOIN light_sessions AS sessions ON sessions.session_id = events.session_id AND sessions.active_token_generation = events.generation").
+			Where("events.observed_at_ms >= ? AND events.observed_at_ms < ?", startAtMS, endAtMS).
+			Order("events.observed_at_ms, events.session_id, events.source_offset, events.event_ordinal").
+			Find(&models).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	output := make([]LightInvocationEvent, 0, len(models))
+	for _, model := range models {
+		output = append(output, LightInvocationEvent{
+			SessionID: model.SessionID, Generation: model.Generation,
+			SourceOffset: model.SourceOffset, Ordinal: model.EventOrdinal,
+			ObservedAtMS: model.ObservedAtMS, Kind: model.Kind, Name: model.Name,
+			Source: model.Source, Outcome: model.Outcome, DurationMS: cloneLightInt64(model.DurationMS),
+		})
+	}
+	return output, nil
+}
+
 func validateLightRolloutIdentity(sessionID string, identity LightRolloutIdentity, parserVersion string, timestampMS int64) error {
 	prefixDigest, prefixDigestErr := hex.DecodeString(identity.PrefixSHA256)
 	fingerprintDigest, fingerprintDigestErr := hex.DecodeString(identity.FingerprintSHA256)
@@ -688,6 +777,11 @@ func validateLightTokenBatch(batch LightTokenBatch) error {
 			delta.InputTokens < 0 || delta.CachedInputTokens < 0 || delta.OutputTokens < 0 || delta.ReasoningTokens < 0 ||
 			!validLightModelAttribution(delta.ModelKey, delta.ModelSource) {
 			return invalidRecord("invalid light token timed delta")
+		}
+	}
+	for _, delta := range batch.InvocationDeltas {
+		if !validLightInvocationDelta(delta, checkpoint.DurableOffset) {
+			return invalidRecord("invalid light invocation delta")
 		}
 	}
 	return nil
@@ -770,4 +864,37 @@ func cloneLightString(value *string) *string {
 	}
 	cloned := *value
 	return &cloned
+}
+
+func cloneLightInt64(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func validLightInvocationDelta(delta LightInvocationDelta, durableOffset int64) bool {
+	if delta.SourceOffset <= 0 || delta.SourceOffset > durableOffset || delta.Ordinal < 0 ||
+		delta.ObservedAtMS < 0 || delta.ObservedAtMS > 9_007_199_254_740_991 ||
+		len(delta.Name) == 0 || len(delta.Name) > 128 || strings.TrimSpace(delta.Name) != delta.Name ||
+		(delta.DurationMS != nil && (*delta.DurationMS < 0 || *delta.DurationMS > 9_007_199_254_740_991)) {
+		return false
+	}
+	if delta.Kind != "tool" && delta.Kind != "skill" {
+		return false
+	}
+	switch delta.Source {
+	case "response_function", "response_custom", "exec_nested", "mcp", "web_search", "image_generation":
+		if delta.Kind != "tool" {
+			return false
+		}
+	case "skill_explicit", "skill_file_loaded":
+		if delta.Kind != "skill" {
+			return false
+		}
+	default:
+		return false
+	}
+	return delta.Outcome == "unknown" || delta.Outcome == "succeeded" || delta.Outcome == "failed"
 }

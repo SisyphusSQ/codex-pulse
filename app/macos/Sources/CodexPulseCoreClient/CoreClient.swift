@@ -93,6 +93,17 @@ public actor CoreClient {
         }
     }
 
+    public func invocationUsage(
+        _ request: Codexpulse_Core_V1_InvocationUsageRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_InvocationUsageResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.invocationUsage(request, metadata: metadata)
+        }
+    }
+
     public func pricingCatalogCurrent(
         retryPolicy: ReadRetryPolicy = .transportDefault
     ) async throws -> Codexpulse_Core_V1_PricingCatalogCurrentResponse {

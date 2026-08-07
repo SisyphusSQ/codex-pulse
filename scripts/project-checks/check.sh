@@ -196,12 +196,12 @@ require_pattern scripts/macos/run-app-smoke.sh '--skip-live-lifecycle' SWIFT-002
 require_pattern scripts/macos/run-app-smoke.sh 'app smoke failed: timeout' SWIFT-002 docs/test/native-app-shell-overview.md
 require_pattern scripts/macos/run-app-smoke.sh 'isolated empty Home produced unexpected user facts' DATA-001 docs/test/native-app-shell-overview.md
 require_pattern scripts/macos/run-app-smoke.sh 'primary_pages=partial' SWIFT-003 docs/test/native-primary-pages.md
-require_pattern scripts/macos/run-app-smoke.sh 'ui_pages=7' SWIFT-003 docs/test/native-primary-pages.md
+require_pattern scripts/macos/run-app-smoke.sh 'ui_pages=8' SWIFT-003 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'CODEX_PULSE_APP_RUNTIME' SWIFT-004 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'confirmed Home is not the real Codex Home' SWIFT-004 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'standard_housekeeping=allowed' SWIFT-004 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'primary_pages=loaded' SWIFT-004 docs/test/native-primary-pages.md
-require_pattern scripts/macos/run-app-live-smoke.sh 'unavailable=none ui_pages=7' SWIFT-004 docs/test/native-primary-pages.md
+require_pattern scripts/macos/run-app-live-smoke.sh 'unavailable=none ui_pages=8' SWIFT-004 docs/test/native-primary-pages.md
 if grep -Eq 'mktemp -d' "$REPO_ROOT/scripts/macos/run-app-live-smoke.sh"; then
   fail SWIFT-004 AGENTS.md "real Home live smoke must reuse an existing runtime"
 fi

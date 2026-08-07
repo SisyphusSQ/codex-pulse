@@ -12,11 +12,11 @@ import (
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
-func TestApplicationSchemaVersionIncludesLightModelAttribution(t *testing.T) {
+func TestApplicationSchemaVersionIncludesLightInvocationIndex(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV19Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 19", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV20Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 20", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	seedApplicationSchemaV16(t, database)
@@ -30,21 +30,29 @@ func TestApplicationSchemaVersionIncludesLightModelAttribution(t *testing.T) {
 		_ func(storesqlite.BackupProgress),
 	) (string, error) {
 		backupVersions = [2]int{fromVersion, targetVersion}
-		return "/tmp/application-v16-before-v19.db", nil
+		return "/tmp/application-v16-before-v20.db", nil
 	}
 	report, err := runner.run(t.Context())
 	if err != nil {
-		t.Fatalf("run(v16->v19) error = %v", err)
+		t.Fatalf("run(v16->v20) error = %v", err)
 	}
-	if report.FromVersion != 16 || report.TargetVersion != 19 ||
-		!equalInts(report.AppliedVersions, []int{17, 18, 19}) || backupVersions != [2]int{16, 19} {
+	if report.FromVersion != 16 || report.TargetVersion != 20 ||
+		!equalInts(report.AppliedVersions, []int{17, 18, 19, 20}) || backupVersions != [2]int{16, 20} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 19, 19)
+	assertMigrationVersionAndHistory(t, database, 20, 20)
 	if err := database.View(t.Context(), func(_ context.Context, connection *gorm.DB) error {
 		for _, column := range lightModelMigrationColumns {
 			if !connection.Migrator().HasColumn(column.model, column.column) {
 				t.Errorf("v17 column %s.%s is missing", column.table, column.column)
+			}
+		}
+		if !connection.Migrator().HasTable("light_invocation_events") {
+			t.Error("v20 table light_invocation_events is missing")
+		}
+		for _, index := range []string{"idx_light_invocation_observed", "idx_light_invocation_kind_name"} {
+			if !connection.Migrator().HasIndex("light_invocation_events", index) {
+				t.Errorf("v20 index %q is missing", index)
 			}
 		}
 		return nil

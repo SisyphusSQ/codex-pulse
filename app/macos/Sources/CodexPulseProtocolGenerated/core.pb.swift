@@ -155,6 +155,8 @@ public nonisolated struct Codexpulse_Core_V1_ContractsResponse: Sendable {
 
   public var pricingCatalogVersion: String = String()
 
+  public var invocationUsageVersion: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1041,6 +1043,404 @@ public nonisolated struct Codexpulse_Core_V1_UsageCostResponse: @unchecked Senda
   public var hasActivityDistribution: Bool {_storage._activityDistribution != nil}
   /// Clears the value of `activityDistribution`. Subsequent reads from it will return its default value.
   public mutating func clearActivityDistribution() {_uniqueStorage()._activityDistribution = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+public nonisolated struct Codexpulse_Core_V1_InvocationUsageRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var range: Codexpulse_Core_V1_UTCTimeRange {
+    get {_range ?? Codexpulse_Core_V1_UTCTimeRange()}
+    set {_range = newValue}
+  }
+  /// Returns true if `range` has been explicitly set.
+  public var hasRange: Bool {self._range != nil}
+  /// Clears the value of `range`. Subsequent reads from it will return its default value.
+  public mutating func clearRange() {self._range = nil}
+
+  public var granularity: String = String()
+
+  public var sourceClass: String = String()
+
+  public var topLimit: Int32 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _range: Codexpulse_Core_V1_UTCTimeRange? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_InvocationTotals: @unchecked Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var toolCallCount: Codexpulse_Core_V1_NumericValue {
+    get {_storage._toolCallCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._toolCallCount = newValue}
+  }
+  /// Returns true if `toolCallCount` has been explicitly set.
+  public var hasToolCallCount: Bool {_storage._toolCallCount != nil}
+  /// Clears the value of `toolCallCount`. Subsequent reads from it will return its default value.
+  public mutating func clearToolCallCount() {_uniqueStorage()._toolCallCount = nil}
+
+  public var distinctToolCount: Codexpulse_Core_V1_NumericValue {
+    get {_storage._distinctToolCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._distinctToolCount = newValue}
+  }
+  /// Returns true if `distinctToolCount` has been explicitly set.
+  public var hasDistinctToolCount: Bool {_storage._distinctToolCount != nil}
+  /// Clears the value of `distinctToolCount`. Subsequent reads from it will return its default value.
+  public mutating func clearDistinctToolCount() {_uniqueStorage()._distinctToolCount = nil}
+
+  public var skillActivityCount: Codexpulse_Core_V1_NumericValue {
+    get {_storage._skillActivityCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._skillActivityCount = newValue}
+  }
+  /// Returns true if `skillActivityCount` has been explicitly set.
+  public var hasSkillActivityCount: Bool {_storage._skillActivityCount != nil}
+  /// Clears the value of `skillActivityCount`. Subsequent reads from it will return its default value.
+  public mutating func clearSkillActivityCount() {_uniqueStorage()._skillActivityCount = nil}
+
+  public var distinctSkillCount: Codexpulse_Core_V1_NumericValue {
+    get {_storage._distinctSkillCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._distinctSkillCount = newValue}
+  }
+  /// Returns true if `distinctSkillCount` has been explicitly set.
+  public var hasDistinctSkillCount: Bool {_storage._distinctSkillCount != nil}
+  /// Clears the value of `distinctSkillCount`. Subsequent reads from it will return its default value.
+  public mutating func clearDistinctSkillCount() {_uniqueStorage()._distinctSkillCount = nil}
+
+  public var toolFailureCount: Codexpulse_Core_V1_NumericValue {
+    get {_storage._toolFailureCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._toolFailureCount = newValue}
+  }
+  /// Returns true if `toolFailureCount` has been explicitly set.
+  public var hasToolFailureCount: Bool {_storage._toolFailureCount != nil}
+  /// Clears the value of `toolFailureCount`. Subsequent reads from it will return its default value.
+  public mutating func clearToolFailureCount() {_uniqueStorage()._toolFailureCount = nil}
+
+  public var sessionCount: Codexpulse_Core_V1_NumericValue {
+    get {_storage._sessionCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._sessionCount = newValue}
+  }
+  /// Returns true if `sessionCount` has been explicitly set.
+  public var hasSessionCount: Bool {_storage._sessionCount != nil}
+  /// Clears the value of `sessionCount`. Subsequent reads from it will return its default value.
+  public mutating func clearSessionCount() {_uniqueStorage()._sessionCount = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+public nonisolated struct Codexpulse_Core_V1_InvocationTrendPoint: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var key: String = String()
+
+  public var startAtMs: Codexpulse_Core_V1_NumericValue {
+    get {_startAtMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_startAtMs = newValue}
+  }
+  /// Returns true if `startAtMs` has been explicitly set.
+  public var hasStartAtMs: Bool {self._startAtMs != nil}
+  /// Clears the value of `startAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearStartAtMs() {self._startAtMs = nil}
+
+  public var endAtMs: Codexpulse_Core_V1_NumericValue {
+    get {_endAtMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_endAtMs = newValue}
+  }
+  /// Returns true if `endAtMs` has been explicitly set.
+  public var hasEndAtMs: Bool {self._endAtMs != nil}
+  /// Clears the value of `endAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearEndAtMs() {self._endAtMs = nil}
+
+  public var toolCallCount: Codexpulse_Core_V1_NumericValue {
+    get {_toolCallCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_toolCallCount = newValue}
+  }
+  /// Returns true if `toolCallCount` has been explicitly set.
+  public var hasToolCallCount: Bool {self._toolCallCount != nil}
+  /// Clears the value of `toolCallCount`. Subsequent reads from it will return its default value.
+  public mutating func clearToolCallCount() {self._toolCallCount = nil}
+
+  public var skillActivityCount: Codexpulse_Core_V1_NumericValue {
+    get {_skillActivityCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_skillActivityCount = newValue}
+  }
+  /// Returns true if `skillActivityCount` has been explicitly set.
+  public var hasSkillActivityCount: Bool {self._skillActivityCount != nil}
+  /// Clears the value of `skillActivityCount`. Subsequent reads from it will return its default value.
+  public mutating func clearSkillActivityCount() {self._skillActivityCount = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _startAtMs: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _endAtMs: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _toolCallCount: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _skillActivityCount: Codexpulse_Core_V1_NumericValue? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_ToolUsageItem: @unchecked Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var name: String {
+    get {_storage._name}
+    set {_uniqueStorage()._name = newValue}
+  }
+
+  public var callCount: Codexpulse_Core_V1_NumericValue {
+    get {_storage._callCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._callCount = newValue}
+  }
+  /// Returns true if `callCount` has been explicitly set.
+  public var hasCallCount: Bool {_storage._callCount != nil}
+  /// Clears the value of `callCount`. Subsequent reads from it will return its default value.
+  public mutating func clearCallCount() {_uniqueStorage()._callCount = nil}
+
+  public var sessionCount: Codexpulse_Core_V1_NumericValue {
+    get {_storage._sessionCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._sessionCount = newValue}
+  }
+  /// Returns true if `sessionCount` has been explicitly set.
+  public var hasSessionCount: Bool {_storage._sessionCount != nil}
+  /// Clears the value of `sessionCount`. Subsequent reads from it will return its default value.
+  public mutating func clearSessionCount() {_uniqueStorage()._sessionCount = nil}
+
+  public var succeededCount: Codexpulse_Core_V1_NumericValue {
+    get {_storage._succeededCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._succeededCount = newValue}
+  }
+  /// Returns true if `succeededCount` has been explicitly set.
+  public var hasSucceededCount: Bool {_storage._succeededCount != nil}
+  /// Clears the value of `succeededCount`. Subsequent reads from it will return its default value.
+  public mutating func clearSucceededCount() {_uniqueStorage()._succeededCount = nil}
+
+  public var failedCount: Codexpulse_Core_V1_NumericValue {
+    get {_storage._failedCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._failedCount = newValue}
+  }
+  /// Returns true if `failedCount` has been explicitly set.
+  public var hasFailedCount: Bool {_storage._failedCount != nil}
+  /// Clears the value of `failedCount`. Subsequent reads from it will return its default value.
+  public mutating func clearFailedCount() {_uniqueStorage()._failedCount = nil}
+
+  public var unknownCount: Codexpulse_Core_V1_NumericValue {
+    get {_storage._unknownCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._unknownCount = newValue}
+  }
+  /// Returns true if `unknownCount` has been explicitly set.
+  public var hasUnknownCount: Bool {_storage._unknownCount != nil}
+  /// Clears the value of `unknownCount`. Subsequent reads from it will return its default value.
+  public mutating func clearUnknownCount() {_uniqueStorage()._unknownCount = nil}
+
+  public var averageDurationMs: Codexpulse_Core_V1_NumericValue {
+    get {_storage._averageDurationMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._averageDurationMs = newValue}
+  }
+  /// Returns true if `averageDurationMs` has been explicitly set.
+  public var hasAverageDurationMs: Bool {_storage._averageDurationMs != nil}
+  /// Clears the value of `averageDurationMs`. Subsequent reads from it will return its default value.
+  public mutating func clearAverageDurationMs() {_uniqueStorage()._averageDurationMs = nil}
+
+  public var lastSeenAtMs: Codexpulse_Core_V1_NumericValue {
+    get {_storage._lastSeenAtMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._lastSeenAtMs = newValue}
+  }
+  /// Returns true if `lastSeenAtMs` has been explicitly set.
+  public var hasLastSeenAtMs: Bool {_storage._lastSeenAtMs != nil}
+  /// Clears the value of `lastSeenAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearLastSeenAtMs() {_uniqueStorage()._lastSeenAtMs = nil}
+
+  public var sources: [String] {
+    get {_storage._sources}
+    set {_uniqueStorage()._sources = newValue}
+  }
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+public nonisolated struct Codexpulse_Core_V1_SkillUsageItem: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var name: String = String()
+
+  public var activityCount: Codexpulse_Core_V1_NumericValue {
+    get {_activityCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_activityCount = newValue}
+  }
+  /// Returns true if `activityCount` has been explicitly set.
+  public var hasActivityCount: Bool {self._activityCount != nil}
+  /// Clears the value of `activityCount`. Subsequent reads from it will return its default value.
+  public mutating func clearActivityCount() {self._activityCount = nil}
+
+  public var sessionCount: Codexpulse_Core_V1_NumericValue {
+    get {_sessionCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_sessionCount = newValue}
+  }
+  /// Returns true if `sessionCount` has been explicitly set.
+  public var hasSessionCount: Bool {self._sessionCount != nil}
+  /// Clears the value of `sessionCount`. Subsequent reads from it will return its default value.
+  public mutating func clearSessionCount() {self._sessionCount = nil}
+
+  public var explicitCount: Codexpulse_Core_V1_NumericValue {
+    get {_explicitCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_explicitCount = newValue}
+  }
+  /// Returns true if `explicitCount` has been explicitly set.
+  public var hasExplicitCount: Bool {self._explicitCount != nil}
+  /// Clears the value of `explicitCount`. Subsequent reads from it will return its default value.
+  public mutating func clearExplicitCount() {self._explicitCount = nil}
+
+  public var fileLoadedCount: Codexpulse_Core_V1_NumericValue {
+    get {_fileLoadedCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_fileLoadedCount = newValue}
+  }
+  /// Returns true if `fileLoadedCount` has been explicitly set.
+  public var hasFileLoadedCount: Bool {self._fileLoadedCount != nil}
+  /// Clears the value of `fileLoadedCount`. Subsequent reads from it will return its default value.
+  public mutating func clearFileLoadedCount() {self._fileLoadedCount = nil}
+
+  public var lastSeenAtMs: Codexpulse_Core_V1_NumericValue {
+    get {_lastSeenAtMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_lastSeenAtMs = newValue}
+  }
+  /// Returns true if `lastSeenAtMs` has been explicitly set.
+  public var hasLastSeenAtMs: Bool {self._lastSeenAtMs != nil}
+  /// Clears the value of `lastSeenAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearLastSeenAtMs() {self._lastSeenAtMs = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _activityCount: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _sessionCount: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _explicitCount: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _fileLoadedCount: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _lastSeenAtMs: Codexpulse_Core_V1_NumericValue? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_InvocationCoverage: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var structuredEventCount: Codexpulse_Core_V1_NumericValue {
+    get {_structuredEventCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_structuredEventCount = newValue}
+  }
+  /// Returns true if `structuredEventCount` has been explicitly set.
+  public var hasStructuredEventCount: Bool {self._structuredEventCount != nil}
+  /// Clears the value of `structuredEventCount`. Subsequent reads from it will return its default value.
+  public mutating func clearStructuredEventCount() {self._structuredEventCount = nil}
+
+  public var detectedEventCount: Codexpulse_Core_V1_NumericValue {
+    get {_detectedEventCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_detectedEventCount = newValue}
+  }
+  /// Returns true if `detectedEventCount` has been explicitly set.
+  public var hasDetectedEventCount: Bool {self._detectedEventCount != nil}
+  /// Clears the value of `detectedEventCount`. Subsequent reads from it will return its default value.
+  public mutating func clearDetectedEventCount() {self._detectedEventCount = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _structuredEventCount: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _detectedEventCount: Codexpulse_Core_V1_NumericValue? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_InvocationUsageResponse: @unchecked Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var meta: Codexpulse_Core_V1_ResponseMeta {
+    get {_storage._meta ?? Codexpulse_Core_V1_ResponseMeta()}
+    set {_uniqueStorage()._meta = newValue}
+  }
+  /// Returns true if `meta` has been explicitly set.
+  public var hasMeta: Bool {_storage._meta != nil}
+  /// Clears the value of `meta`. Subsequent reads from it will return its default value.
+  public mutating func clearMeta() {_uniqueStorage()._meta = nil}
+
+  public var range: Codexpulse_Core_V1_UTCTimeRange {
+    get {_storage._range ?? Codexpulse_Core_V1_UTCTimeRange()}
+    set {_uniqueStorage()._range = newValue}
+  }
+  /// Returns true if `range` has been explicitly set.
+  public var hasRange: Bool {_storage._range != nil}
+  /// Clears the value of `range`. Subsequent reads from it will return its default value.
+  public mutating func clearRange() {_uniqueStorage()._range = nil}
+
+  public var granularity: String {
+    get {_storage._granularity}
+    set {_uniqueStorage()._granularity = newValue}
+  }
+
+  public var sourceClass: String {
+    get {_storage._sourceClass}
+    set {_uniqueStorage()._sourceClass = newValue}
+  }
+
+  public var totals: Codexpulse_Core_V1_InvocationTotals {
+    get {_storage._totals ?? Codexpulse_Core_V1_InvocationTotals()}
+    set {_uniqueStorage()._totals = newValue}
+  }
+  /// Returns true if `totals` has been explicitly set.
+  public var hasTotals: Bool {_storage._totals != nil}
+  /// Clears the value of `totals`. Subsequent reads from it will return its default value.
+  public mutating func clearTotals() {_uniqueStorage()._totals = nil}
+
+  public var trend: [Codexpulse_Core_V1_InvocationTrendPoint] {
+    get {_storage._trend}
+    set {_uniqueStorage()._trend = newValue}
+  }
+
+  public var tools: [Codexpulse_Core_V1_ToolUsageItem] {
+    get {_storage._tools}
+    set {_uniqueStorage()._tools = newValue}
+  }
+
+  public var skills: [Codexpulse_Core_V1_SkillUsageItem] {
+    get {_storage._skills}
+    set {_uniqueStorage()._skills = newValue}
+  }
+
+  public var coverage: Codexpulse_Core_V1_InvocationCoverage {
+    get {_storage._coverage ?? Codexpulse_Core_V1_InvocationCoverage()}
+    set {_uniqueStorage()._coverage = newValue}
+  }
+  /// Returns true if `coverage` has been explicitly set.
+  public var hasCoverage: Bool {_storage._coverage != nil}
+  /// Clears the value of `coverage`. Subsequent reads from it will return its default value.
+  public mutating func clearCoverage() {_uniqueStorage()._coverage = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -5757,7 +6157,7 @@ nonisolated extension Codexpulse_Core_V1_MethodInfo: SwiftProtobuf.Message, Swif
 
 nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ContractsResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}query_version\0\u{3}usage_cost_version\0\u{3}runtime_info_version\0\u{1}methods\0\u{3}command_methods\0\u{3}error_example\0\u{3}pricing_catalog_version\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}query_version\0\u{3}usage_cost_version\0\u{3}runtime_info_version\0\u{1}methods\0\u{3}command_methods\0\u{3}error_example\0\u{3}pricing_catalog_version\0\u{3}invocation_usage_version\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -5773,6 +6173,7 @@ nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Messag
       case 6: try { try decoder.decodeRepeatedStringField(value: &self.commandMethods) }()
       case 7: try { try decoder.decodeSingularMessageField(value: &self._errorExample) }()
       case 8: try { try decoder.decodeSingularStringField(value: &self.pricingCatalogVersion) }()
+      case 9: try { try decoder.decodeSingularStringField(value: &self.invocationUsageVersion) }()
       default: break
       }
     }
@@ -5807,6 +6208,9 @@ nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Messag
     if !self.pricingCatalogVersion.isEmpty {
       try visitor.visitSingularStringField(value: self.pricingCatalogVersion, fieldNumber: 8)
     }
+    if !self.invocationUsageVersion.isEmpty {
+      try visitor.visitSingularStringField(value: self.invocationUsageVersion, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -5819,6 +6223,7 @@ nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Messag
     if lhs.commandMethods != rhs.commandMethods {return false}
     if lhs._errorExample != rhs._errorExample {return false}
     if lhs.pricingCatalogVersion != rhs.pricingCatalogVersion {return false}
+    if lhs.invocationUsageVersion != rhs.invocationUsageVersion {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -7154,6 +7559,564 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
         if _storage._degradedReason != rhs_storage._degradedReason {return false}
         if _storage._models != rhs_storage._models {return false}
         if _storage._activityDistribution != rhs_storage._activityDistribution {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_InvocationUsageRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".InvocationUsageRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}range\0\u{1}granularity\0\u{3}source_class\0\u{3}top_limit\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._range) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.granularity) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.sourceClass) }()
+      case 4: try { try decoder.decodeSingularInt32Field(value: &self.topLimit) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._range {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if !self.granularity.isEmpty {
+      try visitor.visitSingularStringField(value: self.granularity, fieldNumber: 2)
+    }
+    if !self.sourceClass.isEmpty {
+      try visitor.visitSingularStringField(value: self.sourceClass, fieldNumber: 3)
+    }
+    if self.topLimit != 0 {
+      try visitor.visitSingularInt32Field(value: self.topLimit, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_InvocationUsageRequest, rhs: Codexpulse_Core_V1_InvocationUsageRequest) -> Bool {
+    if lhs._range != rhs._range {return false}
+    if lhs.granularity != rhs.granularity {return false}
+    if lhs.sourceClass != rhs.sourceClass {return false}
+    if lhs.topLimit != rhs.topLimit {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_InvocationTotals: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".InvocationTotals"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}tool_call_count\0\u{3}distinct_tool_count\0\u{3}skill_activity_count\0\u{3}distinct_skill_count\0\u{3}tool_failure_count\0\u{3}session_count\0")
+
+  fileprivate class _StorageClass {
+    var _toolCallCount: Codexpulse_Core_V1_NumericValue? = nil
+    var _distinctToolCount: Codexpulse_Core_V1_NumericValue? = nil
+    var _skillActivityCount: Codexpulse_Core_V1_NumericValue? = nil
+    var _distinctSkillCount: Codexpulse_Core_V1_NumericValue? = nil
+    var _toolFailureCount: Codexpulse_Core_V1_NumericValue? = nil
+    var _sessionCount: Codexpulse_Core_V1_NumericValue? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _toolCallCount = source._toolCallCount
+      _distinctToolCount = source._distinctToolCount
+      _skillActivityCount = source._skillActivityCount
+      _distinctSkillCount = source._distinctSkillCount
+      _toolFailureCount = source._toolFailureCount
+      _sessionCount = source._sessionCount
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularMessageField(value: &_storage._toolCallCount) }()
+        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._distinctToolCount) }()
+        case 3: try { try decoder.decodeSingularMessageField(value: &_storage._skillActivityCount) }()
+        case 4: try { try decoder.decodeSingularMessageField(value: &_storage._distinctSkillCount) }()
+        case 5: try { try decoder.decodeSingularMessageField(value: &_storage._toolFailureCount) }()
+        case 6: try { try decoder.decodeSingularMessageField(value: &_storage._sessionCount) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      try { if let v = _storage._toolCallCount {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+      } }()
+      try { if let v = _storage._distinctToolCount {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+      } }()
+      try { if let v = _storage._skillActivityCount {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+      } }()
+      try { if let v = _storage._distinctSkillCount {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+      } }()
+      try { if let v = _storage._toolFailureCount {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+      } }()
+      try { if let v = _storage._sessionCount {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+      } }()
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_InvocationTotals, rhs: Codexpulse_Core_V1_InvocationTotals) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._toolCallCount != rhs_storage._toolCallCount {return false}
+        if _storage._distinctToolCount != rhs_storage._distinctToolCount {return false}
+        if _storage._skillActivityCount != rhs_storage._skillActivityCount {return false}
+        if _storage._distinctSkillCount != rhs_storage._distinctSkillCount {return false}
+        if _storage._toolFailureCount != rhs_storage._toolFailureCount {return false}
+        if _storage._sessionCount != rhs_storage._sessionCount {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_InvocationTrendPoint: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".InvocationTrendPoint"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}key\0\u{3}start_at_ms\0\u{3}end_at_ms\0\u{3}tool_call_count\0\u{3}skill_activity_count\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.key) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._startAtMs) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._endAtMs) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._toolCallCount) }()
+      case 5: try { try decoder.decodeSingularMessageField(value: &self._skillActivityCount) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.key.isEmpty {
+      try visitor.visitSingularStringField(value: self.key, fieldNumber: 1)
+    }
+    try { if let v = self._startAtMs {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._endAtMs {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try { if let v = self._toolCallCount {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    try { if let v = self._skillActivityCount {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_InvocationTrendPoint, rhs: Codexpulse_Core_V1_InvocationTrendPoint) -> Bool {
+    if lhs.key != rhs.key {return false}
+    if lhs._startAtMs != rhs._startAtMs {return false}
+    if lhs._endAtMs != rhs._endAtMs {return false}
+    if lhs._toolCallCount != rhs._toolCallCount {return false}
+    if lhs._skillActivityCount != rhs._skillActivityCount {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ToolUsageItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ToolUsageItem"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{3}call_count\0\u{3}session_count\0\u{3}succeeded_count\0\u{3}failed_count\0\u{3}unknown_count\0\u{3}average_duration_ms\0\u{3}last_seen_at_ms\0\u{1}sources\0")
+
+  fileprivate class _StorageClass {
+    var _name: String = String()
+    var _callCount: Codexpulse_Core_V1_NumericValue? = nil
+    var _sessionCount: Codexpulse_Core_V1_NumericValue? = nil
+    var _succeededCount: Codexpulse_Core_V1_NumericValue? = nil
+    var _failedCount: Codexpulse_Core_V1_NumericValue? = nil
+    var _unknownCount: Codexpulse_Core_V1_NumericValue? = nil
+    var _averageDurationMs: Codexpulse_Core_V1_NumericValue? = nil
+    var _lastSeenAtMs: Codexpulse_Core_V1_NumericValue? = nil
+    var _sources: [String] = []
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _name = source._name
+      _callCount = source._callCount
+      _sessionCount = source._sessionCount
+      _succeededCount = source._succeededCount
+      _failedCount = source._failedCount
+      _unknownCount = source._unknownCount
+      _averageDurationMs = source._averageDurationMs
+      _lastSeenAtMs = source._lastSeenAtMs
+      _sources = source._sources
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._name) }()
+        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._callCount) }()
+        case 3: try { try decoder.decodeSingularMessageField(value: &_storage._sessionCount) }()
+        case 4: try { try decoder.decodeSingularMessageField(value: &_storage._succeededCount) }()
+        case 5: try { try decoder.decodeSingularMessageField(value: &_storage._failedCount) }()
+        case 6: try { try decoder.decodeSingularMessageField(value: &_storage._unknownCount) }()
+        case 7: try { try decoder.decodeSingularMessageField(value: &_storage._averageDurationMs) }()
+        case 8: try { try decoder.decodeSingularMessageField(value: &_storage._lastSeenAtMs) }()
+        case 9: try { try decoder.decodeRepeatedStringField(value: &_storage._sources) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if !_storage._name.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._name, fieldNumber: 1)
+      }
+      try { if let v = _storage._callCount {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+      } }()
+      try { if let v = _storage._sessionCount {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+      } }()
+      try { if let v = _storage._succeededCount {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+      } }()
+      try { if let v = _storage._failedCount {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+      } }()
+      try { if let v = _storage._unknownCount {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+      } }()
+      try { if let v = _storage._averageDurationMs {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
+      } }()
+      try { if let v = _storage._lastSeenAtMs {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 8)
+      } }()
+      if !_storage._sources.isEmpty {
+        try visitor.visitRepeatedStringField(value: _storage._sources, fieldNumber: 9)
+      }
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ToolUsageItem, rhs: Codexpulse_Core_V1_ToolUsageItem) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._name != rhs_storage._name {return false}
+        if _storage._callCount != rhs_storage._callCount {return false}
+        if _storage._sessionCount != rhs_storage._sessionCount {return false}
+        if _storage._succeededCount != rhs_storage._succeededCount {return false}
+        if _storage._failedCount != rhs_storage._failedCount {return false}
+        if _storage._unknownCount != rhs_storage._unknownCount {return false}
+        if _storage._averageDurationMs != rhs_storage._averageDurationMs {return false}
+        if _storage._lastSeenAtMs != rhs_storage._lastSeenAtMs {return false}
+        if _storage._sources != rhs_storage._sources {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_SkillUsageItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SkillUsageItem"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{3}activity_count\0\u{3}session_count\0\u{3}explicit_count\0\u{3}file_loaded_count\0\u{3}last_seen_at_ms\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._activityCount) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._sessionCount) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._explicitCount) }()
+      case 5: try { try decoder.decodeSingularMessageField(value: &self._fileLoadedCount) }()
+      case 6: try { try decoder.decodeSingularMessageField(value: &self._lastSeenAtMs) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 1)
+    }
+    try { if let v = self._activityCount {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._sessionCount {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try { if let v = self._explicitCount {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    try { if let v = self._fileLoadedCount {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+    } }()
+    try { if let v = self._lastSeenAtMs {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_SkillUsageItem, rhs: Codexpulse_Core_V1_SkillUsageItem) -> Bool {
+    if lhs.name != rhs.name {return false}
+    if lhs._activityCount != rhs._activityCount {return false}
+    if lhs._sessionCount != rhs._sessionCount {return false}
+    if lhs._explicitCount != rhs._explicitCount {return false}
+    if lhs._fileLoadedCount != rhs._fileLoadedCount {return false}
+    if lhs._lastSeenAtMs != rhs._lastSeenAtMs {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_InvocationCoverage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".InvocationCoverage"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}structured_event_count\0\u{3}detected_event_count\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._structuredEventCount) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._detectedEventCount) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._structuredEventCount {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try { if let v = self._detectedEventCount {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_InvocationCoverage, rhs: Codexpulse_Core_V1_InvocationCoverage) -> Bool {
+    if lhs._structuredEventCount != rhs._structuredEventCount {return false}
+    if lhs._detectedEventCount != rhs._detectedEventCount {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_InvocationUsageResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".InvocationUsageResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}range\0\u{1}granularity\0\u{3}source_class\0\u{1}totals\0\u{1}trend\0\u{1}tools\0\u{1}skills\0\u{1}coverage\0")
+
+  fileprivate class _StorageClass {
+    var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
+    var _range: Codexpulse_Core_V1_UTCTimeRange? = nil
+    var _granularity: String = String()
+    var _sourceClass: String = String()
+    var _totals: Codexpulse_Core_V1_InvocationTotals? = nil
+    var _trend: [Codexpulse_Core_V1_InvocationTrendPoint] = []
+    var _tools: [Codexpulse_Core_V1_ToolUsageItem] = []
+    var _skills: [Codexpulse_Core_V1_SkillUsageItem] = []
+    var _coverage: Codexpulse_Core_V1_InvocationCoverage? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _meta = source._meta
+      _range = source._range
+      _granularity = source._granularity
+      _sourceClass = source._sourceClass
+      _totals = source._totals
+      _trend = source._trend
+      _tools = source._tools
+      _skills = source._skills
+      _coverage = source._coverage
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularMessageField(value: &_storage._meta) }()
+        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._range) }()
+        case 3: try { try decoder.decodeSingularStringField(value: &_storage._granularity) }()
+        case 4: try { try decoder.decodeSingularStringField(value: &_storage._sourceClass) }()
+        case 5: try { try decoder.decodeSingularMessageField(value: &_storage._totals) }()
+        case 6: try { try decoder.decodeRepeatedMessageField(value: &_storage._trend) }()
+        case 7: try { try decoder.decodeRepeatedMessageField(value: &_storage._tools) }()
+        case 8: try { try decoder.decodeRepeatedMessageField(value: &_storage._skills) }()
+        case 9: try { try decoder.decodeSingularMessageField(value: &_storage._coverage) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      try { if let v = _storage._meta {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+      } }()
+      try { if let v = _storage._range {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+      } }()
+      if !_storage._granularity.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._granularity, fieldNumber: 3)
+      }
+      if !_storage._sourceClass.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._sourceClass, fieldNumber: 4)
+      }
+      try { if let v = _storage._totals {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+      } }()
+      if !_storage._trend.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._trend, fieldNumber: 6)
+      }
+      if !_storage._tools.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._tools, fieldNumber: 7)
+      }
+      if !_storage._skills.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._skills, fieldNumber: 8)
+      }
+      try { if let v = _storage._coverage {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
+      } }()
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_InvocationUsageResponse, rhs: Codexpulse_Core_V1_InvocationUsageResponse) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._meta != rhs_storage._meta {return false}
+        if _storage._range != rhs_storage._range {return false}
+        if _storage._granularity != rhs_storage._granularity {return false}
+        if _storage._sourceClass != rhs_storage._sourceClass {return false}
+        if _storage._totals != rhs_storage._totals {return false}
+        if _storage._trend != rhs_storage._trend {return false}
+        if _storage._tools != rhs_storage._tools {return false}
+        if _storage._skills != rhs_storage._skills {return false}
+        if _storage._coverage != rhs_storage._coverage {return false}
         return true
       }
       if !storagesAreEqual {return false}

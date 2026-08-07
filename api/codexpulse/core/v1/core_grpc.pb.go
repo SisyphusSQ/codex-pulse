@@ -24,6 +24,7 @@ const (
 	CoreService_Contracts_FullMethodName                 = "/codexpulse.core.v1.CoreService/Contracts"
 	CoreService_AccountSnapshot_FullMethodName           = "/codexpulse.core.v1.CoreService/AccountSnapshot"
 	CoreService_UsageCost_FullMethodName                 = "/codexpulse.core.v1.CoreService/UsageCost"
+	CoreService_InvocationUsage_FullMethodName           = "/codexpulse.core.v1.CoreService/InvocationUsage"
 	CoreService_PricingCatalogCurrent_FullMethodName     = "/codexpulse.core.v1.CoreService/PricingCatalogCurrent"
 	CoreService_ListSessions_FullMethodName              = "/codexpulse.core.v1.CoreService/ListSessions"
 	CoreService_SessionDetail_FullMethodName             = "/codexpulse.core.v1.CoreService/SessionDetail"
@@ -69,6 +70,7 @@ type CoreServiceClient interface {
 	Contracts(ctx context.Context, in *ContractsRequest, opts ...grpc.CallOption) (*ContractsResponse, error)
 	AccountSnapshot(ctx context.Context, in *AccountSnapshotRequest, opts ...grpc.CallOption) (*AccountSnapshotResponse, error)
 	UsageCost(ctx context.Context, in *UsageCostRequest, opts ...grpc.CallOption) (*UsageCostResponse, error)
+	InvocationUsage(ctx context.Context, in *InvocationUsageRequest, opts ...grpc.CallOption) (*InvocationUsageResponse, error)
 	PricingCatalogCurrent(ctx context.Context, in *PricingCatalogCurrentRequest, opts ...grpc.CallOption) (*PricingCatalogCurrentResponse, error)
 	ListSessions(ctx context.Context, in *ListSessionsRequest, opts ...grpc.CallOption) (*SessionListResponse, error)
 	SessionDetail(ctx context.Context, in *SessionDetailRequest, opts ...grpc.CallOption) (*SessionDetailResponse, error)
@@ -155,6 +157,16 @@ func (c *coreServiceClient) UsageCost(ctx context.Context, in *UsageCostRequest,
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(UsageCostResponse)
 	err := c.cc.Invoke(ctx, CoreService_UsageCost_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) InvocationUsage(ctx context.Context, in *InvocationUsageRequest, opts ...grpc.CallOption) (*InvocationUsageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InvocationUsageResponse)
+	err := c.cc.Invoke(ctx, CoreService_InvocationUsage_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -501,6 +513,7 @@ type CoreServiceServer interface {
 	Contracts(context.Context, *ContractsRequest) (*ContractsResponse, error)
 	AccountSnapshot(context.Context, *AccountSnapshotRequest) (*AccountSnapshotResponse, error)
 	UsageCost(context.Context, *UsageCostRequest) (*UsageCostResponse, error)
+	InvocationUsage(context.Context, *InvocationUsageRequest) (*InvocationUsageResponse, error)
 	PricingCatalogCurrent(context.Context, *PricingCatalogCurrentRequest) (*PricingCatalogCurrentResponse, error)
 	ListSessions(context.Context, *ListSessionsRequest) (*SessionListResponse, error)
 	SessionDetail(context.Context, *SessionDetailRequest) (*SessionDetailResponse, error)
@@ -557,6 +570,9 @@ func (UnimplementedCoreServiceServer) AccountSnapshot(context.Context, *AccountS
 }
 func (UnimplementedCoreServiceServer) UsageCost(context.Context, *UsageCostRequest) (*UsageCostResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UsageCost not implemented")
+}
+func (UnimplementedCoreServiceServer) InvocationUsage(context.Context, *InvocationUsageRequest) (*InvocationUsageResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InvocationUsage not implemented")
 }
 func (UnimplementedCoreServiceServer) PricingCatalogCurrent(context.Context, *PricingCatalogCurrentRequest) (*PricingCatalogCurrentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PricingCatalogCurrent not implemented")
@@ -761,6 +777,24 @@ func _CoreService_UsageCost_Handler(srv interface{}, ctx context.Context, dec fu
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CoreServiceServer).UsageCost(ctx, req.(*UsageCostRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_InvocationUsage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InvocationUsageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).InvocationUsage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_InvocationUsage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).InvocationUsage(ctx, req.(*InvocationUsageRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1360,6 +1394,10 @@ var CoreService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UsageCost",
 			Handler:    _CoreService_UsageCost_Handler,
+		},
+		{
+			MethodName: "InvocationUsage",
+			Handler:    _CoreService_InvocationUsage_Handler,
 		},
 		{
 			MethodName: "PricingCatalogCurrent",

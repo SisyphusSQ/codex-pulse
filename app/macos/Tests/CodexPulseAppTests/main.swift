@@ -89,6 +89,8 @@ private func testPrimaryPagesSmokeSummaryIncludesProjectDetailEvidence() throws 
         usageModelTrend: 0,
         usageModelReconciled: 0,
         usageCostKnown: false,
+        invocationToolCalls: 0,
+        invocationSkillActivity: 0,
         quotaWindows: 0,
         quotaPaceWindows: 0,
         detailsRead: 0,
@@ -97,7 +99,8 @@ private func testPrimaryPagesSmokeSummaryIncludesProjectDetailEvidence() throws 
     )
     try expect(
         summary.stableDescription.contains(
-            "quota_pace_windows=0 project_detail_cost=unknown project_detail_models=0"),
+            "invocation_tools=0 invocation_skills=0 quota_pace_windows=0 "
+                + "project_detail_cost=unknown project_detail_models=0"),
         "primary-page smoke summary must expose pace and project detail evidence"
     )
 }
@@ -194,6 +197,98 @@ private func testMainWindowCopyDoesNotExposeImplementationLanguage() throws {
             )
         }
     }
+}
+
+private func testInvocationUsageRequestUsesExactBoundedRange() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+    let now = ISO8601DateFormatter().date(from: "2026-08-07T07:43:00Z")!
+    let request = FeatureRequestFactory.invocationUsage(
+        range: .sevenDays,
+        sourceClass: "detected",
+        now: now,
+        calendar: calendar
+    )
+    try expect(request.range.timeZone == "Asia/Shanghai", "invocation request must carry IANA timezone")
+    try expect(request.range.endAtMs == Int64(now.timeIntervalSince1970 * 1_000), "invocation range must end at now")
+    try expect(request.granularity == "day", "seven-day invocation range must use daily buckets")
+    try expect(request.sourceClass == "detected", "invocation source filter must be preserved")
+    try expect(request.topLimit == 10, "invocation ranking must stay bounded to Top 10")
+}
+
+private func testInvocationUsageRequestUsesAuthoritativeQuotaWeek() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+    var quotaWeek = Codexpulse_Core_V1_UTCTimeRange()
+    quotaWeek.startAtMs = 1_753_059_600_000 - 10_080 * 60_000
+    quotaWeek.endAtMs = 1_753_056_000_000
+    quotaWeek.timeZone = "Asia/Shanghai"
+
+    let request = FeatureRequestFactory.invocationUsage(
+        range: .quotaWeek,
+        sourceClass: "all",
+        quotaWeekRange: quotaWeek,
+        calendar: calendar
+    )
+    try expect(request.range == quotaWeek, "invocation quota week must use the authoritative range")
+    try expect(request.granularity == "day", "invocation quota week must use daily buckets")
+    try expect(request.topLimit == 10, "invocation quota week ranking must stay Top 10")
+}
+
+private func testInvocationTrendBuildsOverlaidBarsForEachTimeBucket() throws {
+    var point = Codexpulse_Core_V1_InvocationTrendPoint()
+    point.key = "2026-08-07"
+    point.startAtMs.value = 1_786_048_200_000
+    point.toolCallCount.value = 120
+    point.skillActivityCount.value = 8
+
+    var response = Codexpulse_Core_V1_InvocationUsageResponse()
+    response.trend = [point]
+
+    let overviewBars = InvocationTrendBarPresentation.bars(
+        response: response,
+        includesTools: true,
+        includesSkills: true
+    )
+    try expect(overviewBars.count == 2, "overview must render one Tool bar and one Skill bar per bucket")
+    try expect(
+        overviewBars.map(\.series) == [.tool, .skill],
+        "overview bars must retain separate Tool and Skill grouping keys"
+    )
+    try expect(
+        overviewBars.map(\.count) == [120, 8]
+            && overviewBars[0].date == overviewBars[1].date,
+        "overlaid bars must preserve both values on the same time bucket"
+    )
+
+    let skillBars = InvocationTrendBarPresentation.bars(
+        response: response,
+        includesTools: false,
+        includesSkills: true
+    )
+    try expect(
+        skillBars.map(\.series) == [.skill] && skillBars.map(\.count) == [8],
+        "Skill mode must exclude Tool bars without merging their counts"
+    )
+    try expect(
+        InvocationTrendBarPresentation.barWidth(for: .today) == 7
+            && InvocationTrendBarPresentation.barWidth(for: .sevenDays) == 28
+            && InvocationTrendBarPresentation.barWidth(for: .quotaWeek) == 28
+            && InvocationTrendBarPresentation.barWidth(for: .thirtyDays) == 7,
+        "bar width must stay readable across hourly, weekly, and monthly ranges"
+    )
+}
+
+@MainActor
+private func testInvocationUsageAcceptsQuotaWeekSelection() async throws {
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in
+            FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+        })
+    )
+    model.selectInvocationRange(.quotaWeek)
+    try expect(model.invocationRange == .quotaWeek, "invocation page must keep quota week selected")
+    _ = await model.shutdown()
 }
 
 private func testReferencePriceFormattingPreservesPrecisionAndUnknown() throws {
@@ -485,6 +580,10 @@ private func testUsageTrendChartPresentationAdaptsRangeAndDensity() throws {
     }
     try expect(hourly.sectionTitle == "每小时趋势", "today must use an hourly chart title")
     try expect(
+        hourly.rangeLabel == "自 7月1日 00:00 · 按小时",
+        "today must show its real start time and hourly granularity"
+    )
+    try expect(
         hourly.axisTicks.map { hourly.axisText(for: $0) }
             == ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"],
         "today must expose a readable 24-hour axis"
@@ -503,6 +602,10 @@ private func testUsageTrendChartPresentationAdaptsRangeAndDensity() throws {
         throw TestFailure.mismatch("thirty-day usage chart presentation was rejected")
     }
     try expect(daily.sectionTitle == "每日趋势", "multi-day ranges must remain daily")
+    try expect(
+        daily.rangeLabel == "自 7月1日 · 按天",
+        "multi-day ranges must show their real start date and daily granularity"
+    )
     try expect(
         daily.axisTicks.count <= 7 && daily.axisTicks.first == start,
         "thirty-day charts must cap date labels while retaining the first day"
@@ -523,6 +626,18 @@ private func testUsageTrendChartPresentationAdaptsRangeAndDensity() throws {
     try expect(
         FeatureRequestFactory.usage(range: .thirtyDays, now: requestNow, calendar: calendar).granularity == "day",
         "thirty-day usage requests must remain daily"
+    )
+
+    let previousLocalization = AppLocalizationRegistry.shared.current
+    defer { AppLocalizationRegistry.shared.update(previousLocalization) }
+    AppLocalizationRegistry.shared.update(.englishUS)
+    try expect(
+        hourly.rangeLabel == "Since Jul 1 00:00 · hourly",
+        "English hourly range labels must not retain Chinese date glyphs"
+    )
+    try expect(
+        daily.rangeLabel == "Since Jul 1 · daily",
+        "English daily range labels must use the localized date format"
     )
 }
 
@@ -1364,6 +1479,14 @@ private func testSidebarSettingsUsesSystemRowSpacing() throws {
                 "AppFeature.settings.title(localization: model.localization)"
             ),
         "top-level page titles must share the sidebar's explicit App localization"
+    )
+}
+
+private func testUsageSidebarOrdersInvocationBeforeQuota() throws {
+    try expect(
+        Array(AppFeature.allCases.prefix(5))
+            == [.overview, .sessions, .projects, .invocationUsage, .quotaUsage],
+        "usage sidebar must place invocation statistics immediately before quota usage"
     )
 }
 
@@ -7784,6 +7907,10 @@ struct CodexPulseAppTestMain {
     static func main() async throws {
         try testPrimaryPagesSmokeSummaryIncludesProjectDetailEvidence()
         try testMainWindowCopyDoesNotExposeImplementationLanguage()
+        try testInvocationUsageRequestUsesExactBoundedRange()
+        try testInvocationUsageRequestUsesAuthoritativeQuotaWeek()
+        try testInvocationTrendBuildsOverlaidBarsForEachTimeBucket()
+        try await testInvocationUsageAcceptsQuotaWeekSelection()
         try testReferencePriceFormattingPreservesPrecisionAndUnknown()
         try testQuotaUsageShowsIndependentReferencePriceCatalogAndBillingBoundary()
         try testOverviewMergesAllOtherProjectUsage()
@@ -7816,6 +7943,7 @@ struct CodexPulseAppTestMain {
         try testPopoverScreenshotUsesLiveViewAndRedactsAccountCapsule()
         try testPopoverWeeklyTrendDoesNotFollowOverviewRange()
         try testTrendSelectionSnapsToNearestRealPoint()
+        try testUsageSidebarOrdersInvocationBeforeQuota()
         try testSidebarSettingsUsesSystemRowSpacing()
         try testOverviewHeaderAndBreakdownStayLocaleStable()
         try testLocaleSensitiveControlsAndPopoverCopyStayStable()

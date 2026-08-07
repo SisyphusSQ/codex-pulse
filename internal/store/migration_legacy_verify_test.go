@@ -18,7 +18,7 @@ func verifyApplicationSchemaV18(ctx context.Context, transaction *gorm.DB) error
 		schedulerSchemaObjects, lifecycleSchemaObjects,
 		quotaSchemaObjects, quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
 		metricsSchemaObjects, quotaPerformanceSchemaObjects,
-		storelight.CurrentSchemaObjects(),
+		storelight.SchemaObjectsThroughV19(),
 	} {
 		for _, object := range objects {
 			exists, err := storeschema.VerifyObject(ctx, transaction, object)

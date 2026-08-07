@@ -395,10 +395,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                             )
                         }
                     }
-                case .recovery(let phase, _, _):
+                case .recovery(let phase, let stage, let code):
                     finishSmoke(
                         success: false,
-                        summary: "app smoke failed: overview=recovery phase=\(Self.safeToken(phase)) lifecycle=not_executed"
+                        summary: "app smoke failed: overview=recovery phase=\(Self.safeToken(phase)) "
+                            + "stage=\(Self.safeToken(stage)) code=\(Self.safeToken(code)) "
+                            + "lifecycle=not_executed"
                     )
                 case .unavailable(let notice):
                     finishSmoke(
