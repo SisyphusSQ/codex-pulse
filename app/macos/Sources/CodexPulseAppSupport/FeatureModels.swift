@@ -81,6 +81,8 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
     public let usageModelTrend: Int
     public let usageModelReconciled: Int
     public let usageCostKnown: Bool
+    public let invocationToolCalls: Int64
+    public let invocationSkillActivity: Int64
     public let quotaWindows: Int
     public let quotaPaceWindows: Int
     public let projectDetailCostKnown: Bool
@@ -100,6 +102,8 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
         usageModelTrend: Int,
         usageModelReconciled: Int,
         usageCostKnown: Bool,
+        invocationToolCalls: Int64,
+        invocationSkillActivity: Int64,
         quotaWindows: Int,
         quotaPaceWindows: Int,
         projectDetailCostKnown: Bool = false,
@@ -118,6 +122,8 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
         self.usageModelTrend = usageModelTrend
         self.usageModelReconciled = usageModelReconciled
         self.usageCostKnown = usageCostKnown
+        self.invocationToolCalls = invocationToolCalls
+        self.invocationSkillActivity = invocationSkillActivity
         self.quotaWindows = quotaWindows
         self.quotaPaceWindows = quotaPaceWindows
         self.projectDetailCostKnown = projectDetailCostKnown
@@ -132,6 +138,7 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
             + "health_events=\(healthEvents) usage_trend=\(usageTrend) usage_models=\(usageModels) "
             + "usage_model_trend=\(usageModelTrend) usage_model_reconciled=\(usageModelReconciled) "
             + "usage_cost=\(usageCostKnown ? "known" : "unknown") quota_windows=\(quotaWindows) "
+            + "invocation_tools=\(invocationToolCalls) invocation_skills=\(invocationSkillActivity) "
             + "quota_pace_windows=\(quotaPaceWindows) "
             + "project_detail_cost=\(projectDetailCostKnown ? "known" : "unknown") "
             + "project_detail_models=\(projectDetailModels) "

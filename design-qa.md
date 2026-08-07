@@ -147,3 +147,149 @@ final result: passed
 - [ ] 当前工作树脱敏 Accessibility 读回
 
 final result: pending
+
+# Tool / Skill 调用统计 Design QA
+
+## 对照目标
+
+- 参考截图：`/var/folders/j1/blrv77y956q8d747sb8pqfvm0000gp/T/codex-clipboard-58cbf0b1-4a10-4e87-a26a-766797349548.png`
+- 实现截图：`/Users/suqing/Coding/golang/00_self/codex-pulse/.artifacts/design-qa/invocation-usage-real-home.png`
+- 同画布对照图：`/Users/suqing/Coding/golang/00_self/codex-pulse/.artifacts/design-qa/invocation-usage-reference-comparison.png`
+- source pixels: `1290 x 2796`；implementation pixels: `3104 x 2192`；comparison pixels: `3272 x 1400`
+- implementation viewport: `1440 x 984` points
+- state: 真实 Codex Home、近 7 天、全部来源、总览
+- 参考图来自手机视频画面，原始桌面 viewport 不可读，因此不能声称逐像素同视口复刻；本轮把它作为信息架构和密度参考，并以项目现有原生 macOS 设计语言为最终验收基线。
+
+## Full-view comparison evidence
+
+- 对照图将参考画面的统计面板和当前真实 Home 原生窗口放在同一画布，覆盖顶部摘要、时间/来源筛选、趋势、Tool/Skill 双排行。
+- 最终实现保留参考图的核心层级：四项摘要、范围切换、趋势和并列排行；同时沿用 Codex Pulse 现有 sidebar、SectionCard、系统字体和 SF Symbols。
+- `1440 x 984` 下四张摘要卡等宽铺满内容区，趋势和双排行无重叠、裁切或横向溢出。
+
+## Focused region comparison evidence
+
+- 趋势图最终使用线性插值，非负调用数据不再出现低于零轴的视觉误导。
+- Tool / Skill 通过语义色标生成可见图例；来源选择器完整显示“全部来源”。
+- Tool 与 Skill 排行使用一致的行高、进度条、计数对齐和可展开详情；长 Skill 名称在当前视口内可读。
+
+## Required fidelity surfaces
+
+- Fonts and typography: passed，使用原生系统字体和项目既有标题层级。
+- Spacing and layout rhythm: passed，四卡铺满、区块间距一致、双排行等宽。
+- Colors and visual tokens: passed，Tool 蓝、Skill 紫与趋势、卡片和排行保持一致。
+- Image quality and asset fidelity: passed，无新增位图资产；图标全部使用 SF Symbols。
+- Copy and content: passed，明确区分 Tool 调用和 Skill 检测活动，并说明隐私与非 Token 归因边界。
+
+## Comparison history
+
+1. 第一版真实窗口发现趋势 `.catmullRom` 在零值附近下探、图例缺失、来源筛选截断。
+2. 第二版改为线性插值、语义色标图例并加宽来源选择器；随后发现 adaptive grid 在宽屏只占半行。
+3. 最终版使用四个 flexible 列铺满摘要区；同画布复核未发现 P0、P1 或 P2 视觉问题。
+
+## Interaction checks
+
+- [x] 总览 / Tool / Skill 分段切换并读回对应趋势与排行
+- [x] 全部来源 / 结构化事件筛选并读回计数变化
+- [x] Tool 排行详情展开，读回成功、失败、未知结果、来源、最近时间和平均耗时
+- [x] 真实 Home 页面加载，当前动态计数非零
+
+## 2026-08-07 排行与时间范围细化
+
+- 本轮对照截图：`/var/folders/j1/blrv77y956q8d747sb8pqfvm0000gp/T/codex-clipboard-9d88aaff-61b7-4a7f-9753-90616d12914d.png`。
+- 近 7 天同状态截图：`/Users/suqing/Coding/golang/00_self/codex-pulse/.artifacts/design-qa/invocation-usage-refined-seven-days.png`（`3016 x 2104` pixels）。
+- 周额度截图：`/Users/suqing/Coding/golang/00_self/codex-pulse/.artifacts/design-qa/invocation-usage-refined-quota-week.png`（`3104 x 2192` pixels）。
+- 参考截图与最新近 7 天截图已在同一次视觉输入中对照；内容区 viewport 和交互状态一致，未复用旧截图替代当前工作树。
+- [resolved P1] “展示内容”分段控件原先因 Picker 自带标签占位产生额外缩进；当前标签与 segmented control 拆分，整组左边缘与摘要卡、趋势卡严格对齐。
+- [resolved P1] Tool 与 Skill 的 AreaMark / LineMark 原先缺少独立 series，双序列会被连成锯齿；当前分别声明 Tool、Skill series，面积、折线和点位各自连续。
+- [resolved P2] 顶部时间范围补齐“周额度”，并与既有图表共用 `UsageTrendChartPresentation`：真实 UI 读回周额度为“每日趋势 · 自 8月5日 · 按天”，今天为“每小时趋势 · 自 8月7日 00:00 · 按小时”；横轴刻度和悬停日期使用同一 IANA 时区格式。
+- [resolved P2] Tool / Skill 请求上限均为 10，UI 也限制 `prefix(10)`；Accessibility 读回总览中两列各 10 行，Tool 单列模式仅保留 Tool Top 10。
+- 真实周额度筛选将范围从近 7 天切换为额度重置边界，计数与趋势点同步变化；额度周期不可用时界面明确提示回退近 7 天。
+- 当前没有未解决的 P0、P1 或 P2 视觉问题。
+
+final result: passed
+
+## 2026-08-07 柱状图与重叠模式
+
+### 对照目标
+
+- source visual truth: `/var/folders/j1/blrv77y956q8d747sb8pqfvm0000gp/T/codex-clipboard-9d88aaff-61b7-4a7f-9753-90616d12914d.png`
+- implementation screenshot: `/var/folders/j1/blrv77y956q8d747sb8pqfvm0000gp/T/com.openai.sky.CUAService/Codex Pulse Screenshot 2026-08-07 at 17.58.39.jpeg`
+- source pixels: `1440 x 984`
+- implementation pixels / viewport: `1124 x 768`，原生窗口 1x 捕获
+- density normalization: 未做像素缩放；参考图和实现图在同一次视觉输入中按整体层级、控件位置、图表语义与密度对照，不声称逐像素复刻。
+- state: 真实 Codex Home、近 7 天、全部来源、总览、浅色外观。
+
+### Full-view comparison evidence
+
+- 最新实现保持四项摘要、贴左的“展示内容”、趋势区和双列 Top 10 排行，窗口内没有裁切、横向溢出或控件错位。
+- 趋势从折线/面积图改为柱状图；Tool 使用蓝色、Skill 使用紫色，图例、摘要卡和排行颜色保持一致。
+- 用户确认采用重叠模式后，两组柱共享同一时间桶中心；使用 `.unstacked` 保留独立真实值，不做加总堆叠。
+
+### Focused region comparison evidence
+
+- 图表在全窗口截图中占据完整内容宽度，柱体、零轴、图例和日期刻度均可直接辨认，因此无需额外裁切放大。
+- Accessibility 读回近 7 天为“每日趋势 · 自 8月1日 · 按天”，今天为“每小时趋势 · 自 8月7日 00:00 · 按小时”，周额度为“每日趋势 · 自 8月5日 · 按天”。
+- 悬停详情仍同时读出同一桶内 Tool 与 Skill 的独立计数；总览 / Tool / Skill 切换不会合并两类数值。
+
+### Findings
+
+- [resolved P1] 折线图在稀疏数据下只在末端形成陡升斜线，阅读效率低。
+  - fix: 改为按小时或按天的柱状图，并根据今天、周范围和近 30 天自适应柱宽。
+- [resolved P2] 第一轮柱状图采用左右并列，与用户最终确认的重叠展示不符。
+  - fix: 两组柱改为同一时间坐标并关闭数值堆叠，紫色 Skill 柱覆盖在蓝色 Tool 柱前方；单系列模式保持居中。
+- 当前没有未解决的 P0、P1 或 P2 视觉问题。
+
+### Required fidelity surfaces
+
+- Fonts and typography: passed，继续使用系统字体、现有字号和字重层级。
+- Spacing and layout rhythm: passed，摘要、分段控件、趋势和双排行左边缘及间距一致。
+- Colors and visual tokens: passed，Tool 蓝与 Skill 紫在柱体、图例、卡片和排行中语义统一。
+- Image quality and asset fidelity: passed，无新增位图或近似绘制资产；现有 SF Symbols 保持不变。
+- Copy and content: passed，时间范围、按小时/按天、Top 10 和统计边界文案均保持准确。
+
+### Comparison history
+
+1. 折线/面积趋势按用户反馈改为柱状图。
+2. 第一轮真机截图发现默认 BarMark 会产生加总堆叠，修正为 `.unstacked`。
+3. 第二轮按并列方案左右错开，真机截图确认两柱可分辨。
+4. 用户最终选择重叠展示；第三轮将两柱恢复同一桶中心并保留 `.unstacked`，同画面对照确认无新增 P0/P1/P2 问题。
+
+### Implementation checklist
+
+- [x] Tool / Skill 重叠柱状图且数值不累加
+- [x] 今天窄柱与每小时刻度
+- [x] 周额度、近 7 天宽柱与每日刻度
+- [x] 近 30 天窄柱与每日刻度
+- [x] 悬停详情保留 Tool / Skill 独立计数
+- [x] 总览 / Tool / Skill 单独模式
+- [x] 真实 Home 原生窗口视觉检查
+
+final result: passed
+
+## 2026-08-07 移除统计说明
+
+- source visual truth: `/var/folders/j1/blrv77y956q8d747sb8pqfvm0000gp/T/codex-clipboard-b024033a-1842-4657-a91f-11356392d31b.png`
+- implementation screenshot: `/var/folders/j1/blrv77y956q8d747sb8pqfvm0000gp/T/com.openai.sky.CUAService/Codex Pulse Screenshot 2026-08-07 at 18.05.01.jpeg`
+- implementation viewport: `1124 x 768`，真实 Codex Home、近 7 天、全部来源、总览、浅色外观，滚动条位于页面底部。
+- 参考图与实现图已在同一次视觉输入中对照：原先的“统计说明”卡片、说明正文和覆盖计数均已移除；Top 10 双排行成为页面最后一个内容区块。
+- Accessibility 读回不再包含“统计说明”“内容检测”或 `lock.shield`；排行末尾与页面底部间距沿用现有 `ScrollView` 的 18pt 内边距。
+- 当前没有未解决的 P0、P1 或 P2 视觉问题。
+
+final result: passed
+
+## 2026-08-07 侧栏调用统计顺序
+
+- source visual truth: `/var/folders/j1/blrv77y956q8d747sb8pqfvm0000gp/T/codex-clipboard-23bf0b97-1175-4414-9a87-602d447b5c6a.png`
+- implementation screenshot: `/var/folders/j1/blrv77y956q8d747sb8pqfvm0000gp/T/com.openai.sky.CUAService/Codex Pulse Screenshot 2026-08-07 at 18.09.09.jpeg`
+- source pixels: `504 x 490` focused crop；implementation pixels / viewport: `1124 x 768` native window capture；未做密度缩放。
+- state: 真实 Codex Home、调用统计选中、近 7 天、全部来源、总览、浅色外观。
+- full-view comparison: 调用统计页面内容、侧栏宽度、分组结构与选中态均保持不变；只调整“使用情况”分组内的入口顺序。
+- focused comparison: 参考图和实现图已在同一次视觉输入中对照；实现侧栏明确读作“概览 → 会话 → 项目 → 调用统计 → 额度与用量”，满足调用统计位于额度与用量上方的目标。
+- Fonts and typography: passed，系统字体、字号与字重未变。
+- Spacing and layout rhythm: passed，行高、内边距、分组间距与选中背景未变。
+- Colors and visual tokens: passed，蓝色选中态与浅色侧栏 token 未变。
+- Image quality and asset fidelity: passed，继续使用既有 SF Symbols，无新增图像资产。
+- Copy and content: passed，入口名称、图标和页面路由保持原义。
+- comparison history: 初始真实窗口 Accessibility 顺序为“项目 → 额度与用量 → 调用统计”；修复后读回为“项目 → 调用统计 → 额度与用量”，未发现 P0、P1 或 P2 问题。
+
+final result: passed

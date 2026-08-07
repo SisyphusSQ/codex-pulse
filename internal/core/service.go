@@ -10,6 +10,7 @@ import (
 	healthmodel "github.com/SisyphusSQ/codex-pulse/internal/health"
 	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
+	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
@@ -31,6 +32,10 @@ type usageCostQuery interface {
 	SessionDetail(context.Context, usagecost.SessionDetailRequest) (usagecost.SessionDetailResponse, error)
 	ListProjects(context.Context, basequery.Request) (usagecost.ProjectListResponse, error)
 	ProjectDetail(context.Context, usagecost.ProjectDetailRequest) (usagecost.ProjectDetailResponse, error)
+}
+
+type invocationUsageQuery interface {
+	InvocationUsage(context.Context, invocationusage.InvocationUsageRequest) (invocationusage.InvocationUsageResponse, error)
 }
 
 type runtimeInfoQuery interface {
@@ -72,6 +77,7 @@ type QueryObserver interface {
 
 type ServiceConfig struct {
 	UsageCost        usageCostQuery
+	InvocationUsage  invocationUsageQuery
 	PricingCatalog   pricingCatalogQuery
 	RuntimeInfo      runtimeInfoQuery
 	QuotaRefresh     quotaRefreshCommand
@@ -85,6 +91,7 @@ type ServiceConfig struct {
 // Service 是 Go Helper 唯一的业务 facade；未导出依赖阻止 Store、文件系统和凭据原语进入 RPC surface。
 type Service struct {
 	usageCost        usageCostQuery
+	invocationUsage  invocationUsageQuery
 	pricingCatalog   pricingCatalogQuery
 	runtimeInfo      runtimeInfoQuery
 	quotaMu          sync.RWMutex
@@ -101,11 +108,12 @@ type Service struct {
 }
 
 func NewService(config ServiceConfig) (*Service, error) {
-	if config.UsageCost == nil || config.PricingCatalog == nil || config.RuntimeInfo == nil {
+	if config.UsageCost == nil || config.InvocationUsage == nil || config.PricingCatalog == nil || config.RuntimeInfo == nil {
 		return nil, ErrService
 	}
 	return &Service{
 		usageCost:        config.UsageCost,
+		invocationUsage:  config.InvocationUsage,
 		pricingCatalog:   config.PricingCatalog,
 		runtimeInfo:      config.RuntimeInfo,
 		quotaRefresh:     config.QuotaRefresh,
@@ -229,20 +237,22 @@ type MethodInfo struct {
 }
 
 type ContractInfo struct {
-	Version               string                  `json:"version"`
-	QueryVersion          string                  `json:"queryVersion"`
-	UsageCostVersion      string                  `json:"usageCostVersion"`
-	PricingCatalogVersion string                  `json:"pricingCatalogVersion"`
-	RuntimeInfoVersion    string                  `json:"runtimeInfoVersion"`
-	Methods               []MethodInfo            `json:"methods"`
-	CommandMethods        []string                `json:"commandMethods"`
-	ErrorExample          basequery.ErrorEnvelope `json:"errorExample"`
+	Version                string                  `json:"version"`
+	QueryVersion           string                  `json:"queryVersion"`
+	UsageCostVersion       string                  `json:"usageCostVersion"`
+	InvocationUsageVersion string                  `json:"invocationUsageVersion"`
+	PricingCatalogVersion  string                  `json:"pricingCatalogVersion"`
+	RuntimeInfoVersion     string                  `json:"runtimeInfoVersion"`
+	Methods                []MethodInfo            `json:"methods"`
+	CommandMethods         []string                `json:"commandMethods"`
+	ErrorExample           basequery.ErrorEnvelope `json:"errorExample"`
 }
 
 var methodAllowlist = []MethodInfo{
 	{Name: "Contracts", Kind: MethodQuery},
 	{Name: "AccountSnapshot", Kind: MethodQuery},
 	{Name: "UsageCost", Kind: MethodQuery},
+	{Name: "InvocationUsage", Kind: MethodQuery},
 	{Name: "PricingCatalogCurrent", Kind: MethodQuery},
 	{Name: "ListSessions", Kind: MethodQuery},
 	{Name: "SessionDetail", Kind: MethodQuery},
@@ -273,10 +283,11 @@ func (service *Service) Contracts() ContractInfo {
 		errorExample, _ := basequery.ErrorEnvelopeFrom(ErrService)
 		return ContractInfo{
 			Version: ContractVersion, QueryVersion: basequery.ContractVersion,
-			UsageCostVersion:      usagecost.ContractVersion,
-			PricingCatalogVersion: pricingcatalog.ContractVersion,
-			RuntimeInfoVersion:    runtimeinfo.ContractVersion,
-			Methods:               append([]MethodInfo(nil), methodAllowlist...),
+			UsageCostVersion:       usagecost.ContractVersion,
+			InvocationUsageVersion: invocationusage.ContractVersion,
+			PricingCatalogVersion:  pricingcatalog.ContractVersion,
+			RuntimeInfoVersion:     runtimeinfo.ContractVersion,
+			Methods:                append([]MethodInfo(nil), methodAllowlist...),
 			CommandMethods: []string{
 				"RequestQuotaRefresh", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
 				"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
@@ -364,6 +375,18 @@ func (service *Service) UsageCost(
 	}
 	return serviceQueryCall(service, func() (usagecost.UsageCostResponse, error) {
 		return service.usageCost.UsageCost(ctx, request)
+	})
+}
+
+func (service *Service) InvocationUsage(
+	ctx context.Context,
+	request invocationusage.InvocationUsageRequest,
+) (invocationusage.InvocationUsageResponse, error) {
+	if service == nil || service.invocationUsage == nil {
+		return invocationusage.InvocationUsageResponse{}, newServiceFailure(ErrService)
+	}
+	return serviceQueryCall(service, func() (invocationusage.InvocationUsageResponse, error) {
+		return service.invocationUsage.InvocationUsage(ctx, request)
 	})
 }
 

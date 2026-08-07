@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
@@ -15,12 +17,63 @@ import (
 const (
 	DefaultTokenScanChunkBytes = 64 << 10
 	DefaultTokenScanMaxLine    = 64 << 20
+	maximumSafeInvocationInt   = int64(9_007_199_254_740_991)
 )
 
 var (
-	tokenCountNeedle  = []byte(`"token_count"`)
-	turnContextNeedle = []byte(`"turn_context"`)
+	tokenCountNeedle       = []byte(`"token_count"`)
+	turnContextNeedle      = []byte(`"turn_context"`)
+	functionCallNeedle     = []byte(`"function_call"`)
+	customToolCallNeedle   = []byte(`"custom_tool_call"`)
+	mcpToolCallEndNeedle   = []byte(`"mcp_tool_call_end"`)
+	webSearchEndNeedle     = []byte(`"web_search_end"`)
+	imageGenerationNeedle  = []byte(`"image_generation_end"`)
+	explicitSkillNeedle    = []byte(`<skill>`)
+	skillFileNeedle        = []byte(`SKILL.md`)
+	nestedToolPattern      = regexp.MustCompile(`tools\.([A-Za-z][A-Za-z0-9_]*)[[:space:]]*\(`)
+	explicitSkillPattern   = regexp.MustCompile(`(?s)<skill>.*?<name>[[:space:]]*([^<]{1,256})[[:space:]]*</name>`)
+	loadedSkillPathPattern = regexp.MustCompile(`(?:^|[/\\])(?:(?:plugins[/\\]cache[/\\][^/\\[:space:]'\"]+[/\\]([^/\\[:space:]'\"]+)[/\\][^/\\[:space:]'\"]+[/\\])?skills[/\\]([^/\\[:space:]'\"]{1,256})[/\\]SKILL\.md)`)
+	safeInvocationName     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$`)
 )
+
+type InvocationKind string
+
+const (
+	InvocationKindTool  InvocationKind = "tool"
+	InvocationKindSkill InvocationKind = "skill"
+)
+
+type InvocationSource string
+
+const (
+	InvocationSourceResponseFunction InvocationSource = "response_function"
+	InvocationSourceResponseCustom   InvocationSource = "response_custom"
+	InvocationSourceExecNested       InvocationSource = "exec_nested"
+	InvocationSourceMCP              InvocationSource = "mcp"
+	InvocationSourceWebSearch        InvocationSource = "web_search"
+	InvocationSourceImageGeneration  InvocationSource = "image_generation"
+	InvocationSourceSkillExplicit    InvocationSource = "skill_explicit"
+	InvocationSourceSkillFileLoaded  InvocationSource = "skill_file_loaded"
+)
+
+type InvocationOutcome string
+
+const (
+	InvocationOutcomeUnknown   InvocationOutcome = "unknown"
+	InvocationOutcomeSucceeded InvocationOutcome = "succeeded"
+	InvocationOutcomeFailed    InvocationOutcome = "failed"
+)
+
+type InvocationDelta struct {
+	SourceOffset int64
+	Ordinal      int
+	ObservedAtMS int64
+	Kind         InvocationKind
+	Name         string
+	Source       InvocationSource
+	Outcome      InvocationOutcome
+	DurationMS   *int64
+}
 
 type TokenTotals struct {
 	Input       int64
@@ -56,17 +109,18 @@ type ScanState struct {
 }
 
 type ScanResult struct {
-	State          ScanState
-	DurableOffset  int64
-	BytesRead      int64
-	LinesSeen      int64
-	CandidateLines int64
-	JSONDecoded    int64
-	TokenEvents    int64
-	Complete       bool
-	DailyDeltas    []DailyTokenDelta
-	TokenDeltas    []TimedTokenDelta
-	Diagnostics    []ScanDiagnostic
+	State            ScanState
+	DurableOffset    int64
+	BytesRead        int64
+	LinesSeen        int64
+	CandidateLines   int64
+	JSONDecoded      int64
+	TokenEvents      int64
+	Complete         bool
+	DailyDeltas      []DailyTokenDelta
+	TokenDeltas      []TimedTokenDelta
+	InvocationDeltas []InvocationDelta
+	Diagnostics      []ScanDiagnostic
 }
 
 type TokenScannerOptions struct {
@@ -160,7 +214,7 @@ func (scanner *TokenScanner) processLine(
 	dailyIndexes map[string]int,
 	result *ScanResult,
 ) {
-	if !bytes.Contains(line, tokenCountNeedle) && !bytes.Contains(line, turnContextNeedle) {
+	if !candidateLine(line) {
 		return
 	}
 	result.CandidateLines++
@@ -192,13 +246,20 @@ func (scanner *TokenScanner) processLine(
 		result.State.CurrentModelSource = decision.Source
 		return
 	}
+	if envelope.Type == "response_item" {
+		scanner.processResponseItem(envelope.Timestamp, envelope.Payload, startOffset, endOffset, result)
+		return
+	}
 	if envelope.Type != "event_msg" {
 		return
 	}
 
 	var payload struct {
-		Type string `json:"type"`
-		Info *struct {
+		Type       string          `json:"type"`
+		DurationMS *int64          `json:"duration_ms"`
+		Invocation json.RawMessage `json:"invocation"`
+		Result     json.RawMessage `json:"result"`
+		Info       *struct {
 			Total *struct {
 				Input       int64 `json:"input_tokens"`
 				CachedInput int64 `json:"cached_input_tokens"`
@@ -207,12 +268,16 @@ func (scanner *TokenScanner) processLine(
 			} `json:"total_token_usage"`
 		} `json:"info"`
 	}
-	if err := json.Unmarshal(envelope.Payload, &payload); err != nil || payload.Type != "token_count" {
+	if err := json.Unmarshal(envelope.Payload, &payload); err != nil {
 		if err != nil {
 			result.Diagnostics = append(result.Diagnostics, ScanDiagnostic{
 				Code: "candidate_invalid_payload", StartOffset: startOffset, EndOffset: endOffset,
 			})
 		}
+		return
+	}
+	if payload.Type != "token_count" {
+		scanner.processEventInvocation(envelope.Timestamp, payload.Type, payload.DurationMS, payload.Invocation, payload.Result, startOffset, endOffset, result)
 		return
 	}
 	if payload.Info == nil || payload.Info.Total == nil {
@@ -256,6 +321,215 @@ func (scanner *TokenScanner) processLine(
 	}
 	dailyIndexes[day] = len(result.DailyDeltas)
 	result.DailyDeltas = append(result.DailyDeltas, DailyTokenDelta{Day: day, Tokens: delta})
+}
+
+func candidateLine(line []byte) bool {
+	for _, needle := range [][]byte{
+		tokenCountNeedle, turnContextNeedle, functionCallNeedle, customToolCallNeedle,
+		mcpToolCallEndNeedle, webSearchEndNeedle, imageGenerationNeedle,
+		explicitSkillNeedle, skillFileNeedle,
+	} {
+		if bytes.Contains(line, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func (scanner *TokenScanner) processResponseItem(
+	timestamp string,
+	raw json.RawMessage,
+	startOffset int64,
+	endOffset int64,
+	result *ScanResult,
+) {
+	var payload struct {
+		Type    string `json:"type"`
+		Name    string `json:"name"`
+		Input   string `json:"input"`
+		Role    string `json:"role"`
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		result.Diagnostics = append(result.Diagnostics, ScanDiagnostic{
+			Code: "candidate_invalid_payload", StartOffset: startOffset, EndOffset: endOffset,
+		})
+		return
+	}
+	observedAtMS, ok := invocationTimestamp(timestamp, startOffset, endOffset, result)
+	if !ok {
+		return
+	}
+	switch payload.Type {
+	case "function_call":
+		appendInvocation(result, endOffset, observedAtMS, InvocationKindTool, payload.Name,
+			InvocationSourceResponseFunction, InvocationOutcomeUnknown, nil)
+	case "custom_tool_call":
+		appendInvocation(result, endOffset, observedAtMS, InvocationKindTool, payload.Name,
+			InvocationSourceResponseCustom, InvocationOutcomeUnknown, nil)
+		for _, match := range nestedToolPattern.FindAllStringSubmatch(payload.Input, -1) {
+			if len(match) != 2 || strings.Contains(match[1], "__") {
+				continue
+			}
+			appendInvocation(result, endOffset, observedAtMS, InvocationKindTool, match[1],
+				InvocationSourceExecNested, InvocationOutcomeUnknown, nil)
+		}
+		appendLoadedSkills(result, payload.Input, endOffset, observedAtMS)
+	case "message":
+		if payload.Role != "user" {
+			return
+		}
+		seen := make(map[string]struct{})
+		for _, content := range payload.Content {
+			if content.Type != "input_text" {
+				continue
+			}
+			for _, match := range explicitSkillPattern.FindAllStringSubmatch(content.Text, -1) {
+				if len(match) != 2 {
+					continue
+				}
+				name := strings.TrimSpace(match[1])
+				if _, duplicated := seen[name]; duplicated {
+					continue
+				}
+				seen[name] = struct{}{}
+				appendInvocation(result, endOffset, observedAtMS, InvocationKindSkill, name,
+					InvocationSourceSkillExplicit, InvocationOutcomeUnknown, nil)
+			}
+		}
+	}
+}
+
+func (scanner *TokenScanner) processEventInvocation(
+	timestamp string,
+	eventType string,
+	durationMS *int64,
+	invocationRaw json.RawMessage,
+	resultRaw json.RawMessage,
+	startOffset int64,
+	endOffset int64,
+	result *ScanResult,
+) {
+	if eventType != "mcp_tool_call_end" && eventType != "web_search_end" && eventType != "image_generation_end" {
+		return
+	}
+	observedAtMS, ok := invocationTimestamp(timestamp, startOffset, endOffset, result)
+	if !ok {
+		return
+	}
+	switch eventType {
+	case "mcp_tool_call_end":
+		var invocation struct {
+			Server string `json:"server"`
+			Tool   string `json:"tool"`
+		}
+		if err := json.Unmarshal(invocationRaw, &invocation); err != nil {
+			result.Diagnostics = append(result.Diagnostics, ScanDiagnostic{
+				Code: "candidate_invalid_payload", StartOffset: startOffset, EndOffset: endOffset,
+			})
+			return
+		}
+		outcome := InvocationOutcomeUnknown
+		var resultFields map[string]json.RawMessage
+		if json.Unmarshal(resultRaw, &resultFields) == nil {
+			switch {
+			case resultFields["Ok"] != nil:
+				outcome = InvocationOutcomeSucceeded
+			case resultFields["Err"] != nil:
+				outcome = InvocationOutcomeFailed
+			}
+		}
+		appendInvocation(result, endOffset, observedAtMS, InvocationKindTool,
+			strings.TrimSpace(invocation.Server)+"."+strings.TrimSpace(invocation.Tool),
+			InvocationSourceMCP, outcome, durationMS)
+	case "web_search_end":
+		appendInvocation(result, endOffset, observedAtMS, InvocationKindTool, "web_search",
+			InvocationSourceWebSearch, InvocationOutcomeUnknown, durationMS)
+	case "image_generation_end":
+		appendInvocation(result, endOffset, observedAtMS, InvocationKindTool, "image_generation",
+			InvocationSourceImageGeneration, InvocationOutcomeUnknown, durationMS)
+	}
+}
+
+func appendLoadedSkills(result *ScanResult, input string, sourceOffset int64, observedAtMS int64) {
+	seen := make(map[string]struct{})
+	for _, match := range loadedSkillPathPattern.FindAllStringSubmatch(input, -1) {
+		if len(match) != 3 {
+			continue
+		}
+		name := strings.TrimSpace(match[2])
+		if plugin := strings.TrimSpace(match[1]); plugin != "" {
+			name = plugin + ":" + name
+		}
+		if _, duplicated := seen[name]; duplicated {
+			continue
+		}
+		seen[name] = struct{}{}
+		appendInvocation(result, sourceOffset, observedAtMS, InvocationKindSkill, name,
+			InvocationSourceSkillFileLoaded, InvocationOutcomeUnknown, nil)
+	}
+}
+
+func invocationTimestamp(
+	timestamp string,
+	startOffset int64,
+	endOffset int64,
+	result *ScanResult,
+) (int64, bool) {
+	observedAt, err := time.Parse(time.RFC3339Nano, timestamp)
+	if err != nil {
+		result.Diagnostics = append(result.Diagnostics, ScanDiagnostic{
+			Code: "candidate_invalid_timestamp", StartOffset: startOffset, EndOffset: endOffset,
+		})
+		return 0, false
+	}
+	observedAtMS := observedAt.UnixMilli()
+	if observedAtMS < 0 || observedAtMS > maximumSafeInvocationInt {
+		result.Diagnostics = append(result.Diagnostics, ScanDiagnostic{
+			Code: "candidate_invalid_timestamp", StartOffset: startOffset, EndOffset: endOffset,
+		})
+		return 0, false
+	}
+	return observedAtMS, true
+}
+
+func appendInvocation(
+	result *ScanResult,
+	sourceOffset int64,
+	observedAtMS int64,
+	kind InvocationKind,
+	name string,
+	source InvocationSource,
+	outcome InvocationOutcome,
+	durationMS *int64,
+) {
+	name = strings.TrimSpace(name)
+	if !safeInvocationName.MatchString(name) ||
+		(durationMS != nil && (*durationMS < 0 || *durationMS > maximumSafeInvocationInt)) {
+		return
+	}
+	ordinal := 0
+	for index := len(result.InvocationDeltas) - 1; index >= 0; index-- {
+		if result.InvocationDeltas[index].SourceOffset != sourceOffset {
+			break
+		}
+		ordinal++
+	}
+	result.InvocationDeltas = append(result.InvocationDeltas, InvocationDelta{
+		SourceOffset: sourceOffset, Ordinal: ordinal, ObservedAtMS: observedAtMS,
+		Kind: kind, Name: name, Source: source, Outcome: outcome, DurationMS: cloneInt64(durationMS),
+	})
+}
+
+func cloneInt64(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func optionalString(value string) *string {

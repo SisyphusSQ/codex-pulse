@@ -76,6 +76,52 @@ public enum FeatureRequestFactory {
         return request
     }
 
+    public static func invocationUsage(
+        range preset: DateRangePreset,
+        sourceClass: String,
+        quotaWeekRange: Codexpulse_Core_V1_UTCTimeRange? = nil,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Codexpulse_Core_V1_InvocationUsageRequest {
+        let normalizedPreset: DateRangePreset = switch preset {
+        case .today, .sevenDays, .thirtyDays: preset
+        case .quotaWeek: .sevenDays
+        case .all: .thirtyDays
+        }
+        let exactRange: Codexpulse_Core_V1_UTCTimeRange
+        if preset == .quotaWeek,
+           let quotaWeekRange,
+           quotaWeekRange.startAtMs >= 0,
+           quotaWeekRange.endAtMs > quotaWeekRange.startAtMs,
+           !quotaWeekRange.timeZone.isEmpty,
+           quotaWeekRange.timeZone != "Local"
+        {
+            exactRange = quotaWeekRange
+        } else {
+            let startOfToday = calendar.startOfDay(for: now)
+            let dayOffset: Int = switch normalizedPreset {
+            case .today: 0
+            case .sevenDays: -6
+            case .thirtyDays: -29
+            case .quotaWeek, .all: 0
+            }
+            let start = calendar.date(byAdding: .day, value: dayOffset, to: startOfToday)
+                ?? startOfToday
+            var fallbackRange = Codexpulse_Core_V1_UTCTimeRange()
+            fallbackRange.startAtMs = Int64(start.timeIntervalSince1970 * 1_000)
+            fallbackRange.endAtMs = Int64(now.timeIntervalSince1970 * 1_000)
+            fallbackRange.timeZone = calendar.timeZone.identifier
+            exactRange = fallbackRange
+        }
+
+        var request = Codexpulse_Core_V1_InvocationUsageRequest()
+        request.range = exactRange
+        request.granularity = normalizedPreset == .today ? "hour" : "day"
+        request.sourceClass = ["structured", "detected"].contains(sourceClass) ? sourceClass : "all"
+        request.topLimit = 10
+        return request
+    }
+
     public static func quota(now: Date = Date()) -> Codexpulse_Core_V1_QuotaCurrentRequest {
         var request = Codexpulse_Core_V1_QuotaCurrentRequest()
         request.evaluatedAtMs = Int64(now.timeIntervalSince1970 * 1_000)

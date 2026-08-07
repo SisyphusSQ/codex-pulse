@@ -11,6 +11,7 @@ service CoreService {
   rpc Contracts(ContractsRequest) returns (ContractsResponse);
   rpc AccountSnapshot(AccountSnapshotRequest) returns (AccountSnapshotResponse);
   rpc UsageCost(UsageCostRequest) returns (UsageCostResponse);
+  rpc InvocationUsage(InvocationUsageRequest) returns (InvocationUsageResponse);
   rpc PricingCatalogCurrent(PricingCatalogCurrentRequest) returns (PricingCatalogCurrentResponse);
   rpc ListSessions(ListSessionsRequest) returns (SessionListResponse);
   rpc SessionDetail(SessionDetailRequest) returns (SessionDetailResponse);
@@ -86,6 +87,7 @@ message ContractsResponse {
   repeated string command_methods = 6;
   ErrorDetail error_example = 7;
   string pricing_catalog_version = 8;
+  string invocation_usage_version = 9;
 }
 
 // ErrorDetail 只承载稳定分类，不允许泄漏底层错误或请求值。
@@ -261,6 +263,68 @@ message UsageCostResponse {
   optional string degraded_reason = 10;
   repeated UsageModelItem models = 11;
   ActivityDistribution activity_distribution = 12;
+}
+
+message InvocationUsageRequest {
+  UTCTimeRange range = 1;
+  string granularity = 2;
+  string source_class = 3;
+  int32 top_limit = 4;
+}
+
+message InvocationTotals {
+  NumericValue tool_call_count = 1;
+  NumericValue distinct_tool_count = 2;
+  NumericValue skill_activity_count = 3;
+  NumericValue distinct_skill_count = 4;
+  NumericValue tool_failure_count = 5;
+  NumericValue session_count = 6;
+}
+
+message InvocationTrendPoint {
+  string key = 1;
+  NumericValue start_at_ms = 2;
+  NumericValue end_at_ms = 3;
+  NumericValue tool_call_count = 4;
+  NumericValue skill_activity_count = 5;
+}
+
+message ToolUsageItem {
+  string name = 1;
+  NumericValue call_count = 2;
+  NumericValue session_count = 3;
+  NumericValue succeeded_count = 4;
+  NumericValue failed_count = 5;
+  NumericValue unknown_count = 6;
+  NumericValue average_duration_ms = 7;
+  NumericValue last_seen_at_ms = 8;
+  repeated string sources = 9;
+}
+
+message SkillUsageItem {
+  string name = 1;
+  NumericValue activity_count = 2;
+  NumericValue session_count = 3;
+  NumericValue explicit_count = 4;
+  NumericValue file_loaded_count = 5;
+  NumericValue last_seen_at_ms = 6;
+}
+
+message InvocationCoverage {
+  NumericValue structured_event_count = 1;
+  NumericValue detected_event_count = 2;
+}
+
+message InvocationUsageResponse {
+  ResponseMeta meta = 1;
+  UTCTimeRange range = 2;
+  string granularity = 3;
+  string source_class = 4;
+  InvocationTotals totals = 5;
+  repeated InvocationTrendPoint trend = 6;
+  repeated ToolUsageItem tools = 7;
+  repeated SkillUsageItem skills = 8;
+  InvocationCoverage coverage = 9;
 }
 
 message PricingCatalogCurrentRequest {}

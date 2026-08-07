@@ -19,8 +19,8 @@ func TestApplicationSchemaV7ChecksumIsFrozen(t *testing.T) {
 func TestApplicationSchemaV7CreatesSchedulerAndLiveJobTables(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV19Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 19", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV20Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 20", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	repository := NewRepository(database)

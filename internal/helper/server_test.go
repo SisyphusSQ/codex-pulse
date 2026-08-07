@@ -15,6 +15,7 @@ import (
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
+	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
@@ -29,7 +30,7 @@ import (
 // 测试 gRPC server 对所有 unary 调用执行鉴权，并协商精确 contract。
 func TestGRPCServerAuthenticatesHandshakeAndNegotiatesContract(t *testing.T) {
 	business, err := core.NewService(core.ServiceConfig{
-		UsageCost: &helperUsageQueryStub{}, PricingCatalog: helperPricingCatalogQueryStub{},
+		UsageCost: &helperUsageQueryStub{}, InvocationUsage: &helperInvocationQueryStub{}, PricingCatalog: helperPricingCatalogQueryStub{},
 		RuntimeInfo: helperRuntimeQueryStub{},
 	})
 	if err != nil {
@@ -70,8 +71,68 @@ func TestGRPCServerAuthenticatesHandshakeAndNegotiatesContract(t *testing.T) {
 	}
 	if contracts.Version != "core-rpc-v2" ||
 		contracts.UsageCostVersion != "usage-cost-v2" ||
+		contracts.InvocationUsageVersion != "invocation-usage-v1" ||
 		contracts.PricingCatalogVersion != "pricing-catalog-v1" {
 		t.Fatalf("Contracts() versions = %#v", contracts)
+	}
+}
+
+func TestGRPCServerMapsInvocationUsageRequestAndResponse(t *testing.T) {
+	t.Parallel()
+
+	meta, err := basequery.NewResponseMeta(basequery.ResponseComplete, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := basequery.KnownNumeric(3, basequery.NumericCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zeroCount, err := basequery.KnownNumeric(0, basequery.NumericCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zeroMS, err := basequery.KnownNumeric(0, basequery.NumericMilliseconds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := &helperInvocationQueryStub{response: invocationusage.InvocationUsageResponse{
+		Meta: meta,
+		Totals: invocationusage.InvocationTotals{
+			ToolCallCount: count, DistinctToolCount: count,
+			SkillActivityCount: zeroCount, DistinctSkillCount: zeroCount,
+			ToolFailureCount: zeroCount, SessionCount: count,
+		},
+		Tools: []invocationusage.ToolUsageItem{{
+			Name: "exec_command", CallCount: count, SessionCount: count,
+			SucceededCount: zeroCount, FailedCount: zeroCount, UnknownCount: count,
+			AverageDurationMS: zeroMS, LastSeenAtMS: zeroMS,
+		}},
+		Coverage: invocationusage.InvocationCoverage{
+			StructuredEventCount: zeroCount, DetectedEventCount: count,
+		},
+	}}
+	business, err := core.NewService(core.ServiceConfig{
+		UsageCost: &helperUsageQueryStub{}, InvocationUsage: query,
+		PricingCatalog: helperPricingCatalogQueryStub{}, RuntimeInfo: helperRuntimeQueryStub{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, authorize := startConfiguredTestGRPCServer(t, func(config *ServerConfig) { config.Service = business })
+	response, err := client.InvocationUsage(authorize(t.Context()), &corev1.InvocationUsageRequest{
+		Range:       &corev1.UTCTimeRange{StartAtMs: 100, EndAtMs: 200, TimeZone: "UTC"},
+		Granularity: "hour", SourceClass: "detected", TopLimit: 17,
+	})
+	if err != nil {
+		t.Fatalf("InvocationUsage() error = %v", err)
+	}
+	if query.request.Range.StartAtMS != 100 || query.request.Range.EndAtMS != 200 ||
+		query.request.Range.TimeZone != "UTC" || query.request.Granularity != invocationusage.GranularityHour ||
+		query.request.SourceClass != invocationusage.SourceClassDetected || query.request.TopLimit != 17 ||
+		response.Totals.GetToolCallCount().GetValue() != 3 || len(response.Tools) != 1 ||
+		response.Tools[0].Name != "exec_command" {
+		t.Fatalf("request = %#v response = %#v", query.request, response)
 	}
 }
 
@@ -107,7 +168,7 @@ func TestGRPCServerMapsCurrentPricingCatalog(t *testing.T) {
 		}},
 	}}
 	business, err := core.NewService(core.ServiceConfig{
-		UsageCost: &helperUsageQueryStub{}, PricingCatalog: pricingQuery,
+		UsageCost: &helperUsageQueryStub{}, InvocationUsage: &helperInvocationQueryStub{}, PricingCatalog: pricingQuery,
 		RuntimeInfo: helperRuntimeQueryStub{},
 	})
 	if err != nil {
@@ -158,7 +219,7 @@ func TestGRPCAPIImplementsEveryFrozenRPC(t *testing.T) {
 	sort.Strings(got)
 	want := []string{
 		"AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DataHealth",
-		"Handshake", "Health", "HealthProjection", "Job", "ListHealth", "ListJobs", "ListProjects",
+		"Handshake", "Health", "HealthProjection", "InvocationUsage", "Job", "ListHealth", "ListJobs", "ListProjects",
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
 		"MigrationRecoveryExit", "MigrationRecoveryPrepare", "MigrationRecoveryRetry",
 		"MigrationRecoveryState", "NotifyLifecycle", "PlanHomeSwitch", "PricingCatalogCurrent", "ProjectDetail", "QuotaCurrent",
@@ -200,7 +261,7 @@ func TestGRPCServerMapsBusinessResponseAndTypedError(t *testing.T) {
 		PageTotals:    helperUsageTotals(unknownCount, unknownTokens, unknownCost, unknownTime),
 	}}
 	business, err := core.NewService(core.ServiceConfig{
-		UsageCost: usage, PricingCatalog: helperPricingCatalogQueryStub{},
+		UsageCost: usage, InvocationUsage: &helperInvocationQueryStub{}, PricingCatalog: helperPricingCatalogQueryStub{},
 		RuntimeInfo: helperRuntimeQueryStub{},
 	})
 	if err != nil {
@@ -310,6 +371,7 @@ func TestGRPCServerReturnsOnlyAccountDisplayFields(t *testing.T) {
 	}}
 	business, err := core.NewService(core.ServiceConfig{
 		UsageCost:       &helperUsageQueryStub{},
+		InvocationUsage: &helperInvocationQueryStub{},
 		PricingCatalog:  helperPricingCatalogQueryStub{},
 		RuntimeInfo:     helperRuntimeQueryStub{},
 		AccountSnapshot: account,
@@ -400,6 +462,19 @@ type helperUsageQueryStub struct {
 	request  basequery.Request
 	response usagecost.SessionListResponse
 	err      error
+}
+
+type helperInvocationQueryStub struct {
+	request  invocationusage.InvocationUsageRequest
+	response invocationusage.InvocationUsageResponse
+}
+
+func (stub *helperInvocationQueryStub) InvocationUsage(
+	_ context.Context,
+	request invocationusage.InvocationUsageRequest,
+) (invocationusage.InvocationUsageResponse, error) {
+	stub.request = request
+	return stub.response, nil
 }
 
 type helperPricingCatalogQueryStub struct {

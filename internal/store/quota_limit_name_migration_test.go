@@ -43,17 +43,17 @@ func TestApplicationMigrationV19AddsQuotaLimitNameWithoutChangingExistingFacts(t
 		_ func(storesqlite.BackupProgress),
 	) (string, error) {
 		backupVersions = [2]int{fromVersion, targetVersion}
-		return "/tmp/application-v18-before-v19.db", nil
+		return "/tmp/application-v18-before-v20.db", nil
 	}
 	report, err := runner.run(t.Context())
 	if err != nil {
-		t.Fatalf("run(v18->v19) error = %v", err)
+		t.Fatalf("run(v18->v20) error = %v", err)
 	}
-	if report.FromVersion != 18 || report.TargetVersion != 19 ||
-		!equalInts(report.AppliedVersions, []int{19}) || backupVersions != [2]int{18, 19} {
+	if report.FromVersion != 18 || report.TargetVersion != 20 ||
+		!equalInts(report.AppliedVersions, []int{19, 20}) || backupVersions != [2]int{18, 20} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 19, 19)
+	assertMigrationVersionAndHistory(t, database, 20, 20)
 
 	preserved, err := repository.QuotaObservation(t.Context(), existing.ObservationID)
 	if err != nil || preserved.LimitName != nil || preserved.UsedPercent != existing.UsedPercent {

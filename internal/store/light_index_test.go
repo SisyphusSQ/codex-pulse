@@ -239,6 +239,96 @@ func TestLightTokenRebuildPublishesOnlyAfterCompleteAndResumesCheckpoint(t *test
 	}
 }
 
+func TestLightTokenBatchPersistsOnlySafeInvocationFactsForActiveGeneration(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(context.Background(), "one", identity, "parser-v1", 2_000)
+	if err != nil {
+		t.Fatalf("StartLightTokenRebuild() error = %v", err)
+	}
+	duration := int64(42)
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
+		Checkpoint: storelight.LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true},
+		InvocationDeltas: []storelight.LightInvocationDelta{
+			{
+				SourceOffset: 3_900, Ordinal: 0, ObservedAtMS: 1_721_347_199_000,
+				Kind: "tool", Name: "linear.list_issues", Source: "mcp", Outcome: "succeeded", DurationMS: &duration,
+			},
+			{
+				SourceOffset: 3_900, Ordinal: 1, ObservedAtMS: 1_721_347_199_000,
+				Kind: "skill", Name: "go-code-style", Source: "skill_file_loaded", Outcome: "unknown",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("CommitLightTokenBatch() error = %v", err)
+	}
+
+	events, err := repository.ListLightInvocations(
+		context.Background(), 1_721_347_198_000, 1_721_347_200_000,
+	)
+	if err != nil || len(events) != 2 {
+		t.Fatalf("ListLightInvocations() = %#v, %v", events, err)
+	}
+	if events[0].SessionID != "one" || events[0].Generation != generation ||
+		events[0].Name != "linear.list_issues" || events[0].DurationMS == nil || *events[0].DurationMS != duration ||
+		events[1].Name != "go-code-style" {
+		t.Fatalf("events = %#v", events)
+	}
+}
+
+func TestLightTokenBatchRejectsDuplicateInvocationIdentityAtomically(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(context.Background(), "one", identity, "parser-v1", 2_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delta := storelight.LightInvocationDelta{
+		SourceOffset: 3_900, Ordinal: 0, ObservedAtMS: 1_721_347_199_000,
+		Kind: "tool", Name: "exec", Source: "response_custom", Outcome: "unknown",
+	}
+	err = repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100,
+		Checkpoint:       storelight.LightTokenCheckpoint{DurableOffset: 4_000},
+		InvocationDeltas: []storelight.LightInvocationDelta{delta, delta},
+	})
+	if !errors.Is(err, storelight.ErrLightTokenConflict) {
+		t.Fatalf("CommitLightTokenBatch(duplicate invocation) error = %v", err)
+	}
+	pending, pendingErr := repository.PendingLightTokenScan(context.Background(), "one")
+	if pendingErr != nil || pending.Checkpoint.DurableOffset != 0 {
+		t.Fatalf("duplicate invocation advanced checkpoint: %#v, %v", pending, pendingErr)
+	}
+}
+
+func TestLightTokenBatchRejectsUnsafeInvocationDuration(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(context.Background(), "one", identity, "parser-v1", 2_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unsafeDuration := int64(9_007_199_254_740_992)
+	err = repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100,
+		Checkpoint: storelight.LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true},
+		InvocationDeltas: []storelight.LightInvocationDelta{{
+			SourceOffset: 3_900, ObservedAtMS: 1_721_347_199_000,
+			Kind: "tool", Name: "web_search", Source: "web_search", Outcome: "unknown", DurationMS: &unsafeDuration,
+		}},
+	})
+	if !errors.Is(err, storelight.ErrInvalidRecord) {
+		t.Fatalf("CommitLightTokenBatch(unsafe duration) error = %v", err)
+	}
+}
+
 func TestCommitLightTokenBatchRejectsMissingTimedDeltaWithoutAdvancingCheckpoint(t *testing.T) {
 	t.Parallel()
 

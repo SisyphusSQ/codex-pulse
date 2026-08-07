@@ -12,7 +12,7 @@ struct RootView: View {
         NavigationSplitView {
             List(selection: selection) {
                 Section(localization.text("sidebar.section.usage")) {
-                    ForEach([AppFeature.overview, .sessions, .projects, .quotaUsage]) { section in
+                    ForEach(AppFeature.allCases.prefix(5)) { section in
                         Label(section.title(localization: localization), systemImage: section.symbol)
                             .tag(section)
                     }
@@ -141,6 +141,8 @@ struct RootView: View {
                 RuntimeAwarePage(model: model) { ProjectsView(model: model) }
             case .quotaUsage:
                 RuntimeAwarePage(model: model) { QuotaUsageView(model: model) }
+            case .invocationUsage:
+                RuntimeAwarePage(model: model) { InvocationUsageView(model: model) }
             case .localStatus:
                 RuntimeAwarePage(model: model) { LocalStatusView(model: model) }
             case .sourcesJobs:

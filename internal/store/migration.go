@@ -38,7 +38,8 @@ const (
 	applicationSchemaV17Version = 17
 	applicationSchemaV18Version = 18
 	applicationSchemaV19Version = 19
-	applicationSchemaVersion    = applicationSchemaV19Version
+	applicationSchemaV20Version = 20
+	applicationSchemaVersion    = applicationSchemaV20Version
 )
 
 var (
@@ -240,6 +241,14 @@ var applicationMigrations = []migrationDefinition{
 		name:     "quota-limit-display-name",
 		checksum: applicationSchemaV19Checksum(),
 		apply:    addQuotaLimitNameColumn,
+	},
+	{
+		version:  applicationSchemaV20Version,
+		name:     "lightweight-tool-skill-invocations",
+		checksum: applicationSchemaV20Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			return storeschema.EnsureObjects(ctx, transaction, storelight.InvocationSchemaObjects())
+		},
 	},
 }
 
@@ -1134,6 +1143,18 @@ func applicationSchemaV19Checksum() string {
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV19Version, "quota-limit-display-name")
 	for _, column := range quotaLimitNameMigrationColumns {
 		_, _ = fmt.Fprintln(hasher, column.table, column.column, column.definition)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV20Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV20Version, "lightweight-tool-skill-invocations")
+	for _, object := range storelight.InvocationSchemaObjects() {
+		_, _ = fmt.Fprintln(
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
+		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }

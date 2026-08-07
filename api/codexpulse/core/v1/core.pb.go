@@ -386,17 +386,18 @@ func (x *MethodInfo) GetKind() string {
 }
 
 type ContractsResponse struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	Version               string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
-	QueryVersion          string                 `protobuf:"bytes,2,opt,name=query_version,json=queryVersion,proto3" json:"query_version,omitempty"`
-	UsageCostVersion      string                 `protobuf:"bytes,3,opt,name=usage_cost_version,json=usageCostVersion,proto3" json:"usage_cost_version,omitempty"`
-	RuntimeInfoVersion    string                 `protobuf:"bytes,4,opt,name=runtime_info_version,json=runtimeInfoVersion,proto3" json:"runtime_info_version,omitempty"`
-	Methods               []*MethodInfo          `protobuf:"bytes,5,rep,name=methods,proto3" json:"methods,omitempty"`
-	CommandMethods        []string               `protobuf:"bytes,6,rep,name=command_methods,json=commandMethods,proto3" json:"command_methods,omitempty"`
-	ErrorExample          *ErrorDetail           `protobuf:"bytes,7,opt,name=error_example,json=errorExample,proto3" json:"error_example,omitempty"`
-	PricingCatalogVersion string                 `protobuf:"bytes,8,opt,name=pricing_catalog_version,json=pricingCatalogVersion,proto3" json:"pricing_catalog_version,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	Version                string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	QueryVersion           string                 `protobuf:"bytes,2,opt,name=query_version,json=queryVersion,proto3" json:"query_version,omitempty"`
+	UsageCostVersion       string                 `protobuf:"bytes,3,opt,name=usage_cost_version,json=usageCostVersion,proto3" json:"usage_cost_version,omitempty"`
+	RuntimeInfoVersion     string                 `protobuf:"bytes,4,opt,name=runtime_info_version,json=runtimeInfoVersion,proto3" json:"runtime_info_version,omitempty"`
+	Methods                []*MethodInfo          `protobuf:"bytes,5,rep,name=methods,proto3" json:"methods,omitempty"`
+	CommandMethods         []string               `protobuf:"bytes,6,rep,name=command_methods,json=commandMethods,proto3" json:"command_methods,omitempty"`
+	ErrorExample           *ErrorDetail           `protobuf:"bytes,7,opt,name=error_example,json=errorExample,proto3" json:"error_example,omitempty"`
+	PricingCatalogVersion  string                 `protobuf:"bytes,8,opt,name=pricing_catalog_version,json=pricingCatalogVersion,proto3" json:"pricing_catalog_version,omitempty"`
+	InvocationUsageVersion string                 `protobuf:"bytes,9,opt,name=invocation_usage_version,json=invocationUsageVersion,proto3" json:"invocation_usage_version,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *ContractsResponse) Reset() {
@@ -481,6 +482,13 @@ func (x *ContractsResponse) GetErrorExample() *ErrorDetail {
 func (x *ContractsResponse) GetPricingCatalogVersion() string {
 	if x != nil {
 		return x.PricingCatalogVersion
+	}
+	return ""
+}
+
+func (x *ContractsResponse) GetInvocationUsageVersion() string {
+	if x != nil {
+		return x.InvocationUsageVersion
 	}
 	return ""
 }
@@ -2215,6 +2223,586 @@ func (x *UsageCostResponse) GetActivityDistribution() *ActivityDistribution {
 	return nil
 }
 
+type InvocationUsageRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Range         *UTCTimeRange          `protobuf:"bytes,1,opt,name=range,proto3" json:"range,omitempty"`
+	Granularity   string                 `protobuf:"bytes,2,opt,name=granularity,proto3" json:"granularity,omitempty"`
+	SourceClass   string                 `protobuf:"bytes,3,opt,name=source_class,json=sourceClass,proto3" json:"source_class,omitempty"`
+	TopLimit      int32                  `protobuf:"varint,4,opt,name=top_limit,json=topLimit,proto3" json:"top_limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InvocationUsageRequest) Reset() {
+	*x = InvocationUsageRequest{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvocationUsageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvocationUsageRequest) ProtoMessage() {}
+
+func (x *InvocationUsageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvocationUsageRequest.ProtoReflect.Descriptor instead.
+func (*InvocationUsageRequest) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *InvocationUsageRequest) GetRange() *UTCTimeRange {
+	if x != nil {
+		return x.Range
+	}
+	return nil
+}
+
+func (x *InvocationUsageRequest) GetGranularity() string {
+	if x != nil {
+		return x.Granularity
+	}
+	return ""
+}
+
+func (x *InvocationUsageRequest) GetSourceClass() string {
+	if x != nil {
+		return x.SourceClass
+	}
+	return ""
+}
+
+func (x *InvocationUsageRequest) GetTopLimit() int32 {
+	if x != nil {
+		return x.TopLimit
+	}
+	return 0
+}
+
+type InvocationTotals struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	ToolCallCount      *NumericValue          `protobuf:"bytes,1,opt,name=tool_call_count,json=toolCallCount,proto3" json:"tool_call_count,omitempty"`
+	DistinctToolCount  *NumericValue          `protobuf:"bytes,2,opt,name=distinct_tool_count,json=distinctToolCount,proto3" json:"distinct_tool_count,omitempty"`
+	SkillActivityCount *NumericValue          `protobuf:"bytes,3,opt,name=skill_activity_count,json=skillActivityCount,proto3" json:"skill_activity_count,omitempty"`
+	DistinctSkillCount *NumericValue          `protobuf:"bytes,4,opt,name=distinct_skill_count,json=distinctSkillCount,proto3" json:"distinct_skill_count,omitempty"`
+	ToolFailureCount   *NumericValue          `protobuf:"bytes,5,opt,name=tool_failure_count,json=toolFailureCount,proto3" json:"tool_failure_count,omitempty"`
+	SessionCount       *NumericValue          `protobuf:"bytes,6,opt,name=session_count,json=sessionCount,proto3" json:"session_count,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *InvocationTotals) Reset() {
+	*x = InvocationTotals{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvocationTotals) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvocationTotals) ProtoMessage() {}
+
+func (x *InvocationTotals) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvocationTotals.ProtoReflect.Descriptor instead.
+func (*InvocationTotals) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *InvocationTotals) GetToolCallCount() *NumericValue {
+	if x != nil {
+		return x.ToolCallCount
+	}
+	return nil
+}
+
+func (x *InvocationTotals) GetDistinctToolCount() *NumericValue {
+	if x != nil {
+		return x.DistinctToolCount
+	}
+	return nil
+}
+
+func (x *InvocationTotals) GetSkillActivityCount() *NumericValue {
+	if x != nil {
+		return x.SkillActivityCount
+	}
+	return nil
+}
+
+func (x *InvocationTotals) GetDistinctSkillCount() *NumericValue {
+	if x != nil {
+		return x.DistinctSkillCount
+	}
+	return nil
+}
+
+func (x *InvocationTotals) GetToolFailureCount() *NumericValue {
+	if x != nil {
+		return x.ToolFailureCount
+	}
+	return nil
+}
+
+func (x *InvocationTotals) GetSessionCount() *NumericValue {
+	if x != nil {
+		return x.SessionCount
+	}
+	return nil
+}
+
+type InvocationTrendPoint struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Key                string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	StartAtMs          *NumericValue          `protobuf:"bytes,2,opt,name=start_at_ms,json=startAtMs,proto3" json:"start_at_ms,omitempty"`
+	EndAtMs            *NumericValue          `protobuf:"bytes,3,opt,name=end_at_ms,json=endAtMs,proto3" json:"end_at_ms,omitempty"`
+	ToolCallCount      *NumericValue          `protobuf:"bytes,4,opt,name=tool_call_count,json=toolCallCount,proto3" json:"tool_call_count,omitempty"`
+	SkillActivityCount *NumericValue          `protobuf:"bytes,5,opt,name=skill_activity_count,json=skillActivityCount,proto3" json:"skill_activity_count,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *InvocationTrendPoint) Reset() {
+	*x = InvocationTrendPoint{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvocationTrendPoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvocationTrendPoint) ProtoMessage() {}
+
+func (x *InvocationTrendPoint) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvocationTrendPoint.ProtoReflect.Descriptor instead.
+func (*InvocationTrendPoint) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *InvocationTrendPoint) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *InvocationTrendPoint) GetStartAtMs() *NumericValue {
+	if x != nil {
+		return x.StartAtMs
+	}
+	return nil
+}
+
+func (x *InvocationTrendPoint) GetEndAtMs() *NumericValue {
+	if x != nil {
+		return x.EndAtMs
+	}
+	return nil
+}
+
+func (x *InvocationTrendPoint) GetToolCallCount() *NumericValue {
+	if x != nil {
+		return x.ToolCallCount
+	}
+	return nil
+}
+
+func (x *InvocationTrendPoint) GetSkillActivityCount() *NumericValue {
+	if x != nil {
+		return x.SkillActivityCount
+	}
+	return nil
+}
+
+type ToolUsageItem struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Name              string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	CallCount         *NumericValue          `protobuf:"bytes,2,opt,name=call_count,json=callCount,proto3" json:"call_count,omitempty"`
+	SessionCount      *NumericValue          `protobuf:"bytes,3,opt,name=session_count,json=sessionCount,proto3" json:"session_count,omitempty"`
+	SucceededCount    *NumericValue          `protobuf:"bytes,4,opt,name=succeeded_count,json=succeededCount,proto3" json:"succeeded_count,omitempty"`
+	FailedCount       *NumericValue          `protobuf:"bytes,5,opt,name=failed_count,json=failedCount,proto3" json:"failed_count,omitempty"`
+	UnknownCount      *NumericValue          `protobuf:"bytes,6,opt,name=unknown_count,json=unknownCount,proto3" json:"unknown_count,omitempty"`
+	AverageDurationMs *NumericValue          `protobuf:"bytes,7,opt,name=average_duration_ms,json=averageDurationMs,proto3" json:"average_duration_ms,omitempty"`
+	LastSeenAtMs      *NumericValue          `protobuf:"bytes,8,opt,name=last_seen_at_ms,json=lastSeenAtMs,proto3" json:"last_seen_at_ms,omitempty"`
+	Sources           []string               `protobuf:"bytes,9,rep,name=sources,proto3" json:"sources,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ToolUsageItem) Reset() {
+	*x = ToolUsageItem{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ToolUsageItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ToolUsageItem) ProtoMessage() {}
+
+func (x *ToolUsageItem) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ToolUsageItem.ProtoReflect.Descriptor instead.
+func (*ToolUsageItem) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *ToolUsageItem) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ToolUsageItem) GetCallCount() *NumericValue {
+	if x != nil {
+		return x.CallCount
+	}
+	return nil
+}
+
+func (x *ToolUsageItem) GetSessionCount() *NumericValue {
+	if x != nil {
+		return x.SessionCount
+	}
+	return nil
+}
+
+func (x *ToolUsageItem) GetSucceededCount() *NumericValue {
+	if x != nil {
+		return x.SucceededCount
+	}
+	return nil
+}
+
+func (x *ToolUsageItem) GetFailedCount() *NumericValue {
+	if x != nil {
+		return x.FailedCount
+	}
+	return nil
+}
+
+func (x *ToolUsageItem) GetUnknownCount() *NumericValue {
+	if x != nil {
+		return x.UnknownCount
+	}
+	return nil
+}
+
+func (x *ToolUsageItem) GetAverageDurationMs() *NumericValue {
+	if x != nil {
+		return x.AverageDurationMs
+	}
+	return nil
+}
+
+func (x *ToolUsageItem) GetLastSeenAtMs() *NumericValue {
+	if x != nil {
+		return x.LastSeenAtMs
+	}
+	return nil
+}
+
+func (x *ToolUsageItem) GetSources() []string {
+	if x != nil {
+		return x.Sources
+	}
+	return nil
+}
+
+type SkillUsageItem struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Name            string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	ActivityCount   *NumericValue          `protobuf:"bytes,2,opt,name=activity_count,json=activityCount,proto3" json:"activity_count,omitempty"`
+	SessionCount    *NumericValue          `protobuf:"bytes,3,opt,name=session_count,json=sessionCount,proto3" json:"session_count,omitempty"`
+	ExplicitCount   *NumericValue          `protobuf:"bytes,4,opt,name=explicit_count,json=explicitCount,proto3" json:"explicit_count,omitempty"`
+	FileLoadedCount *NumericValue          `protobuf:"bytes,5,opt,name=file_loaded_count,json=fileLoadedCount,proto3" json:"file_loaded_count,omitempty"`
+	LastSeenAtMs    *NumericValue          `protobuf:"bytes,6,opt,name=last_seen_at_ms,json=lastSeenAtMs,proto3" json:"last_seen_at_ms,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *SkillUsageItem) Reset() {
+	*x = SkillUsageItem{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SkillUsageItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SkillUsageItem) ProtoMessage() {}
+
+func (x *SkillUsageItem) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SkillUsageItem.ProtoReflect.Descriptor instead.
+func (*SkillUsageItem) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *SkillUsageItem) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *SkillUsageItem) GetActivityCount() *NumericValue {
+	if x != nil {
+		return x.ActivityCount
+	}
+	return nil
+}
+
+func (x *SkillUsageItem) GetSessionCount() *NumericValue {
+	if x != nil {
+		return x.SessionCount
+	}
+	return nil
+}
+
+func (x *SkillUsageItem) GetExplicitCount() *NumericValue {
+	if x != nil {
+		return x.ExplicitCount
+	}
+	return nil
+}
+
+func (x *SkillUsageItem) GetFileLoadedCount() *NumericValue {
+	if x != nil {
+		return x.FileLoadedCount
+	}
+	return nil
+}
+
+func (x *SkillUsageItem) GetLastSeenAtMs() *NumericValue {
+	if x != nil {
+		return x.LastSeenAtMs
+	}
+	return nil
+}
+
+type InvocationCoverage struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	StructuredEventCount *NumericValue          `protobuf:"bytes,1,opt,name=structured_event_count,json=structuredEventCount,proto3" json:"structured_event_count,omitempty"`
+	DetectedEventCount   *NumericValue          `protobuf:"bytes,2,opt,name=detected_event_count,json=detectedEventCount,proto3" json:"detected_event_count,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *InvocationCoverage) Reset() {
+	*x = InvocationCoverage{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvocationCoverage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvocationCoverage) ProtoMessage() {}
+
+func (x *InvocationCoverage) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvocationCoverage.ProtoReflect.Descriptor instead.
+func (*InvocationCoverage) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *InvocationCoverage) GetStructuredEventCount() *NumericValue {
+	if x != nil {
+		return x.StructuredEventCount
+	}
+	return nil
+}
+
+func (x *InvocationCoverage) GetDetectedEventCount() *NumericValue {
+	if x != nil {
+		return x.DetectedEventCount
+	}
+	return nil
+}
+
+type InvocationUsageResponse struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Meta          *ResponseMeta           `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
+	Range         *UTCTimeRange           `protobuf:"bytes,2,opt,name=range,proto3" json:"range,omitempty"`
+	Granularity   string                  `protobuf:"bytes,3,opt,name=granularity,proto3" json:"granularity,omitempty"`
+	SourceClass   string                  `protobuf:"bytes,4,opt,name=source_class,json=sourceClass,proto3" json:"source_class,omitempty"`
+	Totals        *InvocationTotals       `protobuf:"bytes,5,opt,name=totals,proto3" json:"totals,omitempty"`
+	Trend         []*InvocationTrendPoint `protobuf:"bytes,6,rep,name=trend,proto3" json:"trend,omitempty"`
+	Tools         []*ToolUsageItem        `protobuf:"bytes,7,rep,name=tools,proto3" json:"tools,omitempty"`
+	Skills        []*SkillUsageItem       `protobuf:"bytes,8,rep,name=skills,proto3" json:"skills,omitempty"`
+	Coverage      *InvocationCoverage     `protobuf:"bytes,9,opt,name=coverage,proto3" json:"coverage,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InvocationUsageResponse) Reset() {
+	*x = InvocationUsageResponse{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvocationUsageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvocationUsageResponse) ProtoMessage() {}
+
+func (x *InvocationUsageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvocationUsageResponse.ProtoReflect.Descriptor instead.
+func (*InvocationUsageResponse) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *InvocationUsageResponse) GetMeta() *ResponseMeta {
+	if x != nil {
+		return x.Meta
+	}
+	return nil
+}
+
+func (x *InvocationUsageResponse) GetRange() *UTCTimeRange {
+	if x != nil {
+		return x.Range
+	}
+	return nil
+}
+
+func (x *InvocationUsageResponse) GetGranularity() string {
+	if x != nil {
+		return x.Granularity
+	}
+	return ""
+}
+
+func (x *InvocationUsageResponse) GetSourceClass() string {
+	if x != nil {
+		return x.SourceClass
+	}
+	return ""
+}
+
+func (x *InvocationUsageResponse) GetTotals() *InvocationTotals {
+	if x != nil {
+		return x.Totals
+	}
+	return nil
+}
+
+func (x *InvocationUsageResponse) GetTrend() []*InvocationTrendPoint {
+	if x != nil {
+		return x.Trend
+	}
+	return nil
+}
+
+func (x *InvocationUsageResponse) GetTools() []*ToolUsageItem {
+	if x != nil {
+		return x.Tools
+	}
+	return nil
+}
+
+func (x *InvocationUsageResponse) GetSkills() []*SkillUsageItem {
+	if x != nil {
+		return x.Skills
+	}
+	return nil
+}
+
+func (x *InvocationUsageResponse) GetCoverage() *InvocationCoverage {
+	if x != nil {
+		return x.Coverage
+	}
+	return nil
+}
+
 type PricingCatalogCurrentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -2223,7 +2811,7 @@ type PricingCatalogCurrentRequest struct {
 
 func (x *PricingCatalogCurrentRequest) Reset() {
 	*x = PricingCatalogCurrentRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[34]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2235,7 +2823,7 @@ func (x *PricingCatalogCurrentRequest) String() string {
 func (*PricingCatalogCurrentRequest) ProtoMessage() {}
 
 func (x *PricingCatalogCurrentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[34]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2248,7 +2836,7 @@ func (x *PricingCatalogCurrentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PricingCatalogCurrentRequest.ProtoReflect.Descriptor instead.
 func (*PricingCatalogCurrentRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{34}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{41}
 }
 
 type ModelReferencePrice struct {
@@ -2263,7 +2851,7 @@ type ModelReferencePrice struct {
 
 func (x *ModelReferencePrice) Reset() {
 	*x = ModelReferencePrice{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[35]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2275,7 +2863,7 @@ func (x *ModelReferencePrice) String() string {
 func (*ModelReferencePrice) ProtoMessage() {}
 
 func (x *ModelReferencePrice) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[35]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2288,7 +2876,7 @@ func (x *ModelReferencePrice) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelReferencePrice.ProtoReflect.Descriptor instead.
 func (*ModelReferencePrice) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{35}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ModelReferencePrice) GetModelId() string {
@@ -2338,7 +2926,7 @@ type PricingCatalogCurrentResponse struct {
 
 func (x *PricingCatalogCurrentResponse) Reset() {
 	*x = PricingCatalogCurrentResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[36]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2350,7 +2938,7 @@ func (x *PricingCatalogCurrentResponse) String() string {
 func (*PricingCatalogCurrentResponse) ProtoMessage() {}
 
 func (x *PricingCatalogCurrentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[36]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2363,7 +2951,7 @@ func (x *PricingCatalogCurrentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PricingCatalogCurrentResponse.ProtoReflect.Descriptor instead.
 func (*PricingCatalogCurrentResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{36}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *PricingCatalogCurrentResponse) GetMeta() *ResponseMeta {
@@ -2461,7 +3049,7 @@ type SessionItem struct {
 
 func (x *SessionItem) Reset() {
 	*x = SessionItem{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[37]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2473,7 +3061,7 @@ func (x *SessionItem) String() string {
 func (*SessionItem) ProtoMessage() {}
 
 func (x *SessionItem) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[37]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2486,7 +3074,7 @@ func (x *SessionItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionItem.ProtoReflect.Descriptor instead.
 func (*SessionItem) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{37}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *SessionItem) GetSessionId() string {
@@ -2575,7 +3163,7 @@ type SessionListResponse struct {
 
 func (x *SessionListResponse) Reset() {
 	*x = SessionListResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[38]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2587,7 +3175,7 @@ func (x *SessionListResponse) String() string {
 func (*SessionListResponse) ProtoMessage() {}
 
 func (x *SessionListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[38]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2600,7 +3188,7 @@ func (x *SessionListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionListResponse.ProtoReflect.Descriptor instead.
 func (*SessionListResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{38}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *SessionListResponse) GetMeta() *ResponseMeta {
@@ -2677,7 +3265,7 @@ type SessionTurnItem struct {
 
 func (x *SessionTurnItem) Reset() {
 	*x = SessionTurnItem{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[39]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2689,7 +3277,7 @@ func (x *SessionTurnItem) String() string {
 func (*SessionTurnItem) ProtoMessage() {}
 
 func (x *SessionTurnItem) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[39]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2702,7 +3290,7 @@ func (x *SessionTurnItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionTurnItem.ProtoReflect.Descriptor instead.
 func (*SessionTurnItem) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{39}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *SessionTurnItem) GetTimelineKey() string {
@@ -2795,7 +3383,7 @@ type SessionDetailResponse struct {
 
 func (x *SessionDetailResponse) Reset() {
 	*x = SessionDetailResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[40]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2807,7 +3395,7 @@ func (x *SessionDetailResponse) String() string {
 func (*SessionDetailResponse) ProtoMessage() {}
 
 func (x *SessionDetailResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[40]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2820,7 +3408,7 @@ func (x *SessionDetailResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionDetailResponse.ProtoReflect.Descriptor instead.
 func (*SessionDetailResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{40}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *SessionDetailResponse) GetMeta() *ResponseMeta {
@@ -2920,7 +3508,7 @@ type ProjectDailyPoint struct {
 
 func (x *ProjectDailyPoint) Reset() {
 	*x = ProjectDailyPoint{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[41]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2932,7 +3520,7 @@ func (x *ProjectDailyPoint) String() string {
 func (*ProjectDailyPoint) ProtoMessage() {}
 
 func (x *ProjectDailyPoint) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[41]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2945,7 +3533,7 @@ func (x *ProjectDailyPoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProjectDailyPoint.ProtoReflect.Descriptor instead.
 func (*ProjectDailyPoint) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{41}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ProjectDailyPoint) GetBucketStartAtMs() *NumericValue {
@@ -2996,7 +3584,7 @@ type ProjectItem struct {
 
 func (x *ProjectItem) Reset() {
 	*x = ProjectItem{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[42]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3008,7 +3596,7 @@ func (x *ProjectItem) String() string {
 func (*ProjectItem) ProtoMessage() {}
 
 func (x *ProjectItem) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[42]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3021,7 +3609,7 @@ func (x *ProjectItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProjectItem.ProtoReflect.Descriptor instead.
 func (*ProjectItem) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{42}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ProjectItem) GetDimensionKey() string {
@@ -3076,7 +3664,7 @@ type ProjectSessionItem struct {
 
 func (x *ProjectSessionItem) Reset() {
 	*x = ProjectSessionItem{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[43]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3088,7 +3676,7 @@ func (x *ProjectSessionItem) String() string {
 func (*ProjectSessionItem) ProtoMessage() {}
 
 func (x *ProjectSessionItem) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[43]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3101,7 +3689,7 @@ func (x *ProjectSessionItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProjectSessionItem.ProtoReflect.Descriptor instead.
 func (*ProjectSessionItem) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{43}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ProjectSessionItem) GetSessionId() string {
@@ -3178,7 +3766,7 @@ type ProjectModelItem struct {
 
 func (x *ProjectModelItem) Reset() {
 	*x = ProjectModelItem{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[44]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3190,7 +3778,7 @@ func (x *ProjectModelItem) String() string {
 func (*ProjectModelItem) ProtoMessage() {}
 
 func (x *ProjectModelItem) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[44]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3203,7 +3791,7 @@ func (x *ProjectModelItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProjectModelItem.ProtoReflect.Descriptor instead.
 func (*ProjectModelItem) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{44}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *ProjectModelItem) GetDimensionKey() string {
@@ -3246,7 +3834,7 @@ type ProjectListResponse struct {
 
 func (x *ProjectListResponse) Reset() {
 	*x = ProjectListResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[45]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3258,7 +3846,7 @@ func (x *ProjectListResponse) String() string {
 func (*ProjectListResponse) ProtoMessage() {}
 
 func (x *ProjectListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[45]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3271,7 +3859,7 @@ func (x *ProjectListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProjectListResponse.ProtoReflect.Descriptor instead.
 func (*ProjectListResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{45}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ProjectListResponse) GetMeta() *ResponseMeta {
@@ -3372,7 +3960,7 @@ type ProjectDetailResponse struct {
 
 func (x *ProjectDetailResponse) Reset() {
 	*x = ProjectDetailResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[46]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3384,7 +3972,7 @@ func (x *ProjectDetailResponse) String() string {
 func (*ProjectDetailResponse) ProtoMessage() {}
 
 func (x *ProjectDetailResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[46]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3397,7 +3985,7 @@ func (x *ProjectDetailResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProjectDetailResponse.ProtoReflect.Descriptor instead.
 func (*ProjectDetailResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{46}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ProjectDetailResponse) GetMeta() *ResponseMeta {
@@ -3500,7 +4088,7 @@ type QuotaCurrentRequest struct {
 
 func (x *QuotaCurrentRequest) Reset() {
 	*x = QuotaCurrentRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[47]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3512,7 +4100,7 @@ func (x *QuotaCurrentRequest) String() string {
 func (*QuotaCurrentRequest) ProtoMessage() {}
 
 func (x *QuotaCurrentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[47]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3525,7 +4113,7 @@ func (x *QuotaCurrentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuotaCurrentRequest.ProtoReflect.Descriptor instead.
 func (*QuotaCurrentRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{47}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *QuotaCurrentRequest) GetEvaluatedAtMs() int64 {
@@ -3555,7 +4143,7 @@ type CurrentExplanation struct {
 
 func (x *CurrentExplanation) Reset() {
 	*x = CurrentExplanation{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[48]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3567,7 +4155,7 @@ func (x *CurrentExplanation) String() string {
 func (*CurrentExplanation) ProtoMessage() {}
 
 func (x *CurrentExplanation) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[48]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3580,7 +4168,7 @@ func (x *CurrentExplanation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CurrentExplanation.ProtoReflect.Descriptor instead.
 func (*CurrentExplanation) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{48}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *CurrentExplanation) GetObservationId() string {
@@ -3692,7 +4280,7 @@ type CurrentWindow struct {
 
 func (x *CurrentWindow) Reset() {
 	*x = CurrentWindow{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[49]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3704,7 +4292,7 @@ func (x *CurrentWindow) String() string {
 func (*CurrentWindow) ProtoMessage() {}
 
 func (x *CurrentWindow) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[49]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3717,7 +4305,7 @@ func (x *CurrentWindow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CurrentWindow.ProtoReflect.Descriptor instead.
 func (*CurrentWindow) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{49}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *CurrentWindow) GetWindowKind() string {
@@ -3856,7 +4444,7 @@ type CurrentSource struct {
 
 func (x *CurrentSource) Reset() {
 	*x = CurrentSource{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[50]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3868,7 +4456,7 @@ func (x *CurrentSource) String() string {
 func (*CurrentSource) ProtoMessage() {}
 
 func (x *CurrentSource) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[50]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3881,7 +4469,7 @@ func (x *CurrentSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CurrentSource.ProtoReflect.Descriptor instead.
 func (*CurrentSource) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{50}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *CurrentSource) GetSource() string {
@@ -3959,7 +4547,7 @@ type CurrentNextReset struct {
 
 func (x *CurrentNextReset) Reset() {
 	*x = CurrentNextReset{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[51]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3971,7 +4559,7 @@ func (x *CurrentNextReset) String() string {
 func (*CurrentNextReset) ProtoMessage() {}
 
 func (x *CurrentNextReset) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[51]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3984,7 +4572,7 @@ func (x *CurrentNextReset) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CurrentNextReset.ProtoReflect.Descriptor instead.
 func (*CurrentNextReset) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{51}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *CurrentNextReset) GetAtMs() int64 {
@@ -4029,7 +4617,7 @@ type CurrentResetCreditItem struct {
 
 func (x *CurrentResetCreditItem) Reset() {
 	*x = CurrentResetCreditItem{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[52]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4041,7 +4629,7 @@ func (x *CurrentResetCreditItem) String() string {
 func (*CurrentResetCreditItem) ProtoMessage() {}
 
 func (x *CurrentResetCreditItem) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[52]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4054,7 +4642,7 @@ func (x *CurrentResetCreditItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CurrentResetCreditItem.ProtoReflect.Descriptor instead.
 func (*CurrentResetCreditItem) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{52}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *CurrentResetCreditItem) GetStatus() string {
@@ -4124,7 +4712,7 @@ type CurrentResetCredits struct {
 
 func (x *CurrentResetCredits) Reset() {
 	*x = CurrentResetCredits{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[53]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4136,7 +4724,7 @@ func (x *CurrentResetCredits) String() string {
 func (*CurrentResetCredits) ProtoMessage() {}
 
 func (x *CurrentResetCredits) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[53]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4149,7 +4737,7 @@ func (x *CurrentResetCredits) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CurrentResetCredits.ProtoReflect.Descriptor instead.
 func (*CurrentResetCredits) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{53}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *CurrentResetCredits) GetAvailableCount() int64 {
@@ -4247,7 +4835,7 @@ type CurrentRefreshStatus struct {
 
 func (x *CurrentRefreshStatus) Reset() {
 	*x = CurrentRefreshStatus{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[54]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4259,7 +4847,7 @@ func (x *CurrentRefreshStatus) String() string {
 func (*CurrentRefreshStatus) ProtoMessage() {}
 
 func (x *CurrentRefreshStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[54]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4272,7 +4860,7 @@ func (x *CurrentRefreshStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CurrentRefreshStatus.ProtoReflect.Descriptor instead.
 func (*CurrentRefreshStatus) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{54}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *CurrentRefreshStatus) GetState() string {
@@ -4341,7 +4929,7 @@ type CurrentRefresh struct {
 
 func (x *CurrentRefresh) Reset() {
 	*x = CurrentRefresh{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[55]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4353,7 +4941,7 @@ func (x *CurrentRefresh) String() string {
 func (*CurrentRefresh) ProtoMessage() {}
 
 func (x *CurrentRefresh) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[55]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4366,7 +4954,7 @@ func (x *CurrentRefresh) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CurrentRefresh.ProtoReflect.Descriptor instead.
 func (*CurrentRefresh) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{55}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *CurrentRefresh) GetQuota() *CurrentRefreshStatus {
@@ -4399,7 +4987,7 @@ type CurrentQuota struct {
 
 func (x *CurrentQuota) Reset() {
 	*x = CurrentQuota{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[56]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4411,7 +4999,7 @@ func (x *CurrentQuota) String() string {
 func (*CurrentQuota) ProtoMessage() {}
 
 func (x *CurrentQuota) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[56]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4424,7 +5012,7 @@ func (x *CurrentQuota) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CurrentQuota.ProtoReflect.Descriptor instead.
 func (*CurrentQuota) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{56}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *CurrentQuota) GetVersion() string {
@@ -4493,7 +5081,7 @@ type QuotaCurrentResponse struct {
 
 func (x *QuotaCurrentResponse) Reset() {
 	*x = QuotaCurrentResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[57]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4505,7 +5093,7 @@ func (x *QuotaCurrentResponse) String() string {
 func (*QuotaCurrentResponse) ProtoMessage() {}
 
 func (x *QuotaCurrentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[57]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4518,7 +5106,7 @@ func (x *QuotaCurrentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuotaCurrentResponse.ProtoReflect.Descriptor instead.
 func (*QuotaCurrentResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{57}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *QuotaCurrentResponse) GetMeta() *ResponseMeta {
@@ -4544,7 +5132,7 @@ type QuotaPaceRequest struct {
 
 func (x *QuotaPaceRequest) Reset() {
 	*x = QuotaPaceRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[58]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4556,7 +5144,7 @@ func (x *QuotaPaceRequest) String() string {
 func (*QuotaPaceRequest) ProtoMessage() {}
 
 func (x *QuotaPaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[58]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4569,7 +5157,7 @@ func (x *QuotaPaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuotaPaceRequest.ProtoReflect.Descriptor instead.
 func (*QuotaPaceRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{58}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *QuotaPaceRequest) GetEvaluatedAtMs() int64 {
@@ -4591,7 +5179,7 @@ type QuotaPacePoint struct {
 
 func (x *QuotaPacePoint) Reset() {
 	*x = QuotaPacePoint{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[59]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4603,7 +5191,7 @@ func (x *QuotaPacePoint) String() string {
 func (*QuotaPacePoint) ProtoMessage() {}
 
 func (x *QuotaPacePoint) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[59]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4616,7 +5204,7 @@ func (x *QuotaPacePoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuotaPacePoint.ProtoReflect.Descriptor instead.
 func (*QuotaPacePoint) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{59}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *QuotaPacePoint) GetObservedAtMs() int64 {
@@ -4660,7 +5248,7 @@ type QuotaPaceCycle struct {
 
 func (x *QuotaPaceCycle) Reset() {
 	*x = QuotaPaceCycle{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[60]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4672,7 +5260,7 @@ func (x *QuotaPaceCycle) String() string {
 func (*QuotaPaceCycle) ProtoMessage() {}
 
 func (x *QuotaPaceCycle) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[60]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4685,7 +5273,7 @@ func (x *QuotaPaceCycle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuotaPaceCycle.ProtoReflect.Descriptor instead.
 func (*QuotaPaceCycle) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{60}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *QuotaPaceCycle) GetWindowGeneration() int64 {
@@ -4736,7 +5324,7 @@ type QuotaPaceHistoryBandPoint struct {
 
 func (x *QuotaPaceHistoryBandPoint) Reset() {
 	*x = QuotaPaceHistoryBandPoint{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[61]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4748,7 +5336,7 @@ func (x *QuotaPaceHistoryBandPoint) String() string {
 func (*QuotaPaceHistoryBandPoint) ProtoMessage() {}
 
 func (x *QuotaPaceHistoryBandPoint) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[61]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4761,7 +5349,7 @@ func (x *QuotaPaceHistoryBandPoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuotaPaceHistoryBandPoint.ProtoReflect.Descriptor instead.
 func (*QuotaPaceHistoryBandPoint) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{61}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *QuotaPaceHistoryBandPoint) GetElapsedPercent() float64 {
@@ -4814,7 +5402,7 @@ type QuotaPaceForecast struct {
 
 func (x *QuotaPaceForecast) Reset() {
 	*x = QuotaPaceForecast{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[62]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4826,7 +5414,7 @@ func (x *QuotaPaceForecast) String() string {
 func (*QuotaPaceForecast) ProtoMessage() {}
 
 func (x *QuotaPaceForecast) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[62]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4839,7 +5427,7 @@ func (x *QuotaPaceForecast) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuotaPaceForecast.ProtoReflect.Descriptor instead.
 func (*QuotaPaceForecast) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{62}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *QuotaPaceForecast) GetState() string {
@@ -4918,7 +5506,7 @@ type QuotaPaceWindow struct {
 
 func (x *QuotaPaceWindow) Reset() {
 	*x = QuotaPaceWindow{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[63]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4930,7 +5518,7 @@ func (x *QuotaPaceWindow) String() string {
 func (*QuotaPaceWindow) ProtoMessage() {}
 
 func (x *QuotaPaceWindow) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[63]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4943,7 +5531,7 @@ func (x *QuotaPaceWindow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuotaPaceWindow.ProtoReflect.Descriptor instead.
 func (*QuotaPaceWindow) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{63}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *QuotaPaceWindow) GetWindowKind() string {
@@ -5091,7 +5679,7 @@ type CurrentQuotaPace struct {
 
 func (x *CurrentQuotaPace) Reset() {
 	*x = CurrentQuotaPace{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[64]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5103,7 +5691,7 @@ func (x *CurrentQuotaPace) String() string {
 func (*CurrentQuotaPace) ProtoMessage() {}
 
 func (x *CurrentQuotaPace) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[64]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5116,7 +5704,7 @@ func (x *CurrentQuotaPace) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CurrentQuotaPace.ProtoReflect.Descriptor instead.
 func (*CurrentQuotaPace) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{64}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *CurrentQuotaPace) GetVersion() string {
@@ -5157,7 +5745,7 @@ type QuotaPaceResponse struct {
 
 func (x *QuotaPaceResponse) Reset() {
 	*x = QuotaPaceResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[65]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5169,7 +5757,7 @@ func (x *QuotaPaceResponse) String() string {
 func (*QuotaPaceResponse) ProtoMessage() {}
 
 func (x *QuotaPaceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[65]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5182,7 +5770,7 @@ func (x *QuotaPaceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuotaPaceResponse.ProtoReflect.Descriptor instead.
 func (*QuotaPaceResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{65}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *QuotaPaceResponse) GetMeta() *ResponseMeta {
@@ -5208,7 +5796,7 @@ type QuotaRefreshRequest struct {
 
 func (x *QuotaRefreshRequest) Reset() {
 	*x = QuotaRefreshRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[66]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5220,7 +5808,7 @@ func (x *QuotaRefreshRequest) String() string {
 func (*QuotaRefreshRequest) ProtoMessage() {}
 
 func (x *QuotaRefreshRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[66]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5233,7 +5821,7 @@ func (x *QuotaRefreshRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuotaRefreshRequest.ProtoReflect.Descriptor instead.
 func (*QuotaRefreshRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{66}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *QuotaRefreshRequest) GetSource() string {
@@ -5255,7 +5843,7 @@ type QuotaRefreshReceipt struct {
 
 func (x *QuotaRefreshReceipt) Reset() {
 	*x = QuotaRefreshReceipt{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[67]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5267,7 +5855,7 @@ func (x *QuotaRefreshReceipt) String() string {
 func (*QuotaRefreshReceipt) ProtoMessage() {}
 
 func (x *QuotaRefreshReceipt) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[67]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5280,7 +5868,7 @@ func (x *QuotaRefreshReceipt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuotaRefreshReceipt.ProtoReflect.Descriptor instead.
 func (*QuotaRefreshReceipt) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{67}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *QuotaRefreshReceipt) GetSource() string {
@@ -5320,7 +5908,7 @@ type ListSourcesRequest struct {
 
 func (x *ListSourcesRequest) Reset() {
 	*x = ListSourcesRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[68]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5332,7 +5920,7 @@ func (x *ListSourcesRequest) String() string {
 func (*ListSourcesRequest) ProtoMessage() {}
 
 func (x *ListSourcesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[68]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5345,7 +5933,7 @@ func (x *ListSourcesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSourcesRequest.ProtoReflect.Descriptor instead.
 func (*ListSourcesRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{68}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *ListSourcesRequest) GetQuery() *QueryRequest {
@@ -5364,7 +5952,7 @@ type SourceRequest struct {
 
 func (x *SourceRequest) Reset() {
 	*x = SourceRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[69]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5376,7 +5964,7 @@ func (x *SourceRequest) String() string {
 func (*SourceRequest) ProtoMessage() {}
 
 func (x *SourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[69]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5389,7 +5977,7 @@ func (x *SourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceRequest.ProtoReflect.Descriptor instead.
 func (*SourceRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{69}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *SourceRequest) GetSourceKey() string {
@@ -5408,7 +5996,7 @@ type ListJobsRequest struct {
 
 func (x *ListJobsRequest) Reset() {
 	*x = ListJobsRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[70]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5420,7 +6008,7 @@ func (x *ListJobsRequest) String() string {
 func (*ListJobsRequest) ProtoMessage() {}
 
 func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[70]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5433,7 +6021,7 @@ func (x *ListJobsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListJobsRequest.ProtoReflect.Descriptor instead.
 func (*ListJobsRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{70}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *ListJobsRequest) GetQuery() *QueryRequest {
@@ -5452,7 +6040,7 @@ type JobRequest struct {
 
 func (x *JobRequest) Reset() {
 	*x = JobRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[71]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5464,7 +6052,7 @@ func (x *JobRequest) String() string {
 func (*JobRequest) ProtoMessage() {}
 
 func (x *JobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[71]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5477,7 +6065,7 @@ func (x *JobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobRequest.ProtoReflect.Descriptor instead.
 func (*JobRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{71}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *JobRequest) GetJobId() string {
@@ -5496,7 +6084,7 @@ type ListHealthRequest struct {
 
 func (x *ListHealthRequest) Reset() {
 	*x = ListHealthRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[72]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5508,7 +6096,7 @@ func (x *ListHealthRequest) String() string {
 func (*ListHealthRequest) ProtoMessage() {}
 
 func (x *ListHealthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[72]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5521,7 +6109,7 @@ func (x *ListHealthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListHealthRequest.ProtoReflect.Descriptor instead.
 func (*ListHealthRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{72}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *ListHealthRequest) GetQuery() *QueryRequest {
@@ -5540,7 +6128,7 @@ type HealthRequest struct {
 
 func (x *HealthRequest) Reset() {
 	*x = HealthRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[73]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5552,7 +6140,7 @@ func (x *HealthRequest) String() string {
 func (*HealthRequest) ProtoMessage() {}
 
 func (x *HealthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[73]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5565,7 +6153,7 @@ func (x *HealthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthRequest.ProtoReflect.Descriptor instead.
 func (*HealthRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{73}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *HealthRequest) GetEventId() string {
@@ -5583,7 +6171,7 @@ type HealthProjectionRequest struct {
 
 func (x *HealthProjectionRequest) Reset() {
 	*x = HealthProjectionRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[74]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5595,7 +6183,7 @@ func (x *HealthProjectionRequest) String() string {
 func (*HealthProjectionRequest) ProtoMessage() {}
 
 func (x *HealthProjectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[74]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5608,7 +6196,7 @@ func (x *HealthProjectionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthProjectionRequest.ProtoReflect.Descriptor instead.
 func (*HealthProjectionRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{74}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{81}
 }
 
 type DataHealthRequest struct {
@@ -5620,7 +6208,7 @@ type DataHealthRequest struct {
 
 func (x *DataHealthRequest) Reset() {
 	*x = DataHealthRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[75]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5632,7 +6220,7 @@ func (x *DataHealthRequest) String() string {
 func (*DataHealthRequest) ProtoMessage() {}
 
 func (x *DataHealthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[75]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5645,7 +6233,7 @@ func (x *DataHealthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataHealthRequest.ProtoReflect.Descriptor instead.
 func (*DataHealthRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{75}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *DataHealthRequest) GetEvaluatedAtMs() int64 {
@@ -5663,7 +6251,7 @@ type SettingsRequest struct {
 
 func (x *SettingsRequest) Reset() {
 	*x = SettingsRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[76]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5675,7 +6263,7 @@ func (x *SettingsRequest) String() string {
 func (*SettingsRequest) ProtoMessage() {}
 
 func (x *SettingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[76]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5688,7 +6276,7 @@ func (x *SettingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettingsRequest.ProtoReflect.Descriptor instead.
 func (*SettingsRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{76}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{83}
 }
 
 type RecoveryAction struct {
@@ -5701,7 +6289,7 @@ type RecoveryAction struct {
 
 func (x *RecoveryAction) Reset() {
 	*x = RecoveryAction{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[77]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5713,7 +6301,7 @@ func (x *RecoveryAction) String() string {
 func (*RecoveryAction) ProtoMessage() {}
 
 func (x *RecoveryAction) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[77]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5726,7 +6314,7 @@ func (x *RecoveryAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecoveryAction.ProtoReflect.Descriptor instead.
 func (*RecoveryAction) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{77}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *RecoveryAction) GetKind() string {
@@ -5767,7 +6355,7 @@ type SourceItem struct {
 
 func (x *SourceItem) Reset() {
 	*x = SourceItem{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[78]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5779,7 +6367,7 @@ func (x *SourceItem) String() string {
 func (*SourceItem) ProtoMessage() {}
 
 func (x *SourceItem) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[78]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5792,7 +6380,7 @@ func (x *SourceItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceItem.ProtoReflect.Descriptor instead.
 func (*SourceItem) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{78}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *SourceItem) GetSourceKey() string {
@@ -5919,7 +6507,7 @@ type SourceSummary struct {
 
 func (x *SourceSummary) Reset() {
 	*x = SourceSummary{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[79]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5931,7 +6519,7 @@ func (x *SourceSummary) String() string {
 func (*SourceSummary) ProtoMessage() {}
 
 func (x *SourceSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[79]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5944,7 +6532,7 @@ func (x *SourceSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceSummary.ProtoReflect.Descriptor instead.
 func (*SourceSummary) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{79}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *SourceSummary) GetTotal() *NumericValue {
@@ -5988,7 +6576,7 @@ type SourceListResponse struct {
 
 func (x *SourceListResponse) Reset() {
 	*x = SourceListResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[80]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6000,7 +6588,7 @@ func (x *SourceListResponse) String() string {
 func (*SourceListResponse) ProtoMessage() {}
 
 func (x *SourceListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[80]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6013,7 +6601,7 @@ func (x *SourceListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceListResponse.ProtoReflect.Descriptor instead.
 func (*SourceListResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{80}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *SourceListResponse) GetMeta() *ResponseMeta {
@@ -6061,7 +6649,7 @@ type SourceDetailResponse struct {
 
 func (x *SourceDetailResponse) Reset() {
 	*x = SourceDetailResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[81]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6073,7 +6661,7 @@ func (x *SourceDetailResponse) String() string {
 func (*SourceDetailResponse) ProtoMessage() {}
 
 func (x *SourceDetailResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[81]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6086,7 +6674,7 @@ func (x *SourceDetailResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceDetailResponse.ProtoReflect.Descriptor instead.
 func (*SourceDetailResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{81}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *SourceDetailResponse) GetMeta() *ResponseMeta {
@@ -6113,7 +6701,7 @@ type JobProgress struct {
 
 func (x *JobProgress) Reset() {
 	*x = JobProgress{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[82]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6125,7 +6713,7 @@ func (x *JobProgress) String() string {
 func (*JobProgress) ProtoMessage() {}
 
 func (x *JobProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[82]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6138,7 +6726,7 @@ func (x *JobProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobProgress.ProtoReflect.Descriptor instead.
 func (*JobProgress) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{82}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *JobProgress) GetCurrent() *NumericValue {
@@ -6179,7 +6767,7 @@ type JobItem struct {
 
 func (x *JobItem) Reset() {
 	*x = JobItem{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[83]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6191,7 +6779,7 @@ func (x *JobItem) String() string {
 func (*JobItem) ProtoMessage() {}
 
 func (x *JobItem) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[83]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6204,7 +6792,7 @@ func (x *JobItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobItem.ProtoReflect.Descriptor instead.
 func (*JobItem) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{83}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *JobItem) GetJobId() string {
@@ -6334,7 +6922,7 @@ type JobSummary struct {
 
 func (x *JobSummary) Reset() {
 	*x = JobSummary{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[84]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6346,7 +6934,7 @@ func (x *JobSummary) String() string {
 func (*JobSummary) ProtoMessage() {}
 
 func (x *JobSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[84]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6359,7 +6947,7 @@ func (x *JobSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobSummary.ProtoReflect.Descriptor instead.
 func (*JobSummary) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{84}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *JobSummary) GetTotal() *NumericValue {
@@ -6423,7 +7011,7 @@ type JobListResponse struct {
 
 func (x *JobListResponse) Reset() {
 	*x = JobListResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[85]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6435,7 +7023,7 @@ func (x *JobListResponse) String() string {
 func (*JobListResponse) ProtoMessage() {}
 
 func (x *JobListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[85]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6448,7 +7036,7 @@ func (x *JobListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobListResponse.ProtoReflect.Descriptor instead.
 func (*JobListResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{85}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *JobListResponse) GetMeta() *ResponseMeta {
@@ -6489,7 +7077,7 @@ type JobDetailResponse struct {
 
 func (x *JobDetailResponse) Reset() {
 	*x = JobDetailResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[86]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6501,7 +7089,7 @@ func (x *JobDetailResponse) String() string {
 func (*JobDetailResponse) ProtoMessage() {}
 
 func (x *JobDetailResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[86]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6514,7 +7102,7 @@ func (x *JobDetailResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobDetailResponse.ProtoReflect.Descriptor instead.
 func (*JobDetailResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{86}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *JobDetailResponse) GetMeta() *ResponseMeta {
@@ -6556,7 +7144,7 @@ type HealthItem struct {
 
 func (x *HealthItem) Reset() {
 	*x = HealthItem{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[87]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6568,7 +7156,7 @@ func (x *HealthItem) String() string {
 func (*HealthItem) ProtoMessage() {}
 
 func (x *HealthItem) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[87]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6581,7 +7169,7 @@ func (x *HealthItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthItem.ProtoReflect.Descriptor instead.
 func (*HealthItem) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{87}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *HealthItem) GetEventId() string {
@@ -6719,7 +7307,7 @@ type HealthSummary struct {
 
 func (x *HealthSummary) Reset() {
 	*x = HealthSummary{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[88]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6731,7 +7319,7 @@ func (x *HealthSummary) String() string {
 func (*HealthSummary) ProtoMessage() {}
 
 func (x *HealthSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[88]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6744,7 +7332,7 @@ func (x *HealthSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthSummary.ProtoReflect.Descriptor instead.
 func (*HealthSummary) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{88}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *HealthSummary) GetLevel() string {
@@ -6815,7 +7403,7 @@ type HealthListResponse struct {
 
 func (x *HealthListResponse) Reset() {
 	*x = HealthListResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[89]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6827,7 +7415,7 @@ func (x *HealthListResponse) String() string {
 func (*HealthListResponse) ProtoMessage() {}
 
 func (x *HealthListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[89]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6840,7 +7428,7 @@ func (x *HealthListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthListResponse.ProtoReflect.Descriptor instead.
 func (*HealthListResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{89}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *HealthListResponse) GetMeta() *ResponseMeta {
@@ -6881,7 +7469,7 @@ type HealthDetailResponse struct {
 
 func (x *HealthDetailResponse) Reset() {
 	*x = HealthDetailResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[90]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6893,7 +7481,7 @@ func (x *HealthDetailResponse) String() string {
 func (*HealthDetailResponse) ProtoMessage() {}
 
 func (x *HealthDetailResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[90]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6906,7 +7494,7 @@ func (x *HealthDetailResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthDetailResponse.ProtoReflect.Descriptor instead.
 func (*HealthDetailResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{90}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *HealthDetailResponse) GetMeta() *ResponseMeta {
@@ -6938,7 +7526,7 @@ type HealthComponentStatus struct {
 
 func (x *HealthComponentStatus) Reset() {
 	*x = HealthComponentStatus{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[91]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6950,7 +7538,7 @@ func (x *HealthComponentStatus) String() string {
 func (*HealthComponentStatus) ProtoMessage() {}
 
 func (x *HealthComponentStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[91]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6963,7 +7551,7 @@ func (x *HealthComponentStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthComponentStatus.ProtoReflect.Descriptor instead.
 func (*HealthComponentStatus) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{91}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *HealthComponentStatus) GetComponent() string {
@@ -7030,7 +7618,7 @@ type HealthProjectionResponse struct {
 
 func (x *HealthProjectionResponse) Reset() {
 	*x = HealthProjectionResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[92]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7042,7 +7630,7 @@ func (x *HealthProjectionResponse) String() string {
 func (*HealthProjectionResponse) ProtoMessage() {}
 
 func (x *HealthProjectionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[92]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7055,7 +7643,7 @@ func (x *HealthProjectionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthProjectionResponse.ProtoReflect.Descriptor instead.
 func (*HealthProjectionResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{92}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{99}
 }
 
 func (x *HealthProjectionResponse) GetHasValue() bool {
@@ -7117,7 +7705,7 @@ type DataHealthWindow struct {
 
 func (x *DataHealthWindow) Reset() {
 	*x = DataHealthWindow{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[93]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[100]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7129,7 +7717,7 @@ func (x *DataHealthWindow) String() string {
 func (*DataHealthWindow) ProtoMessage() {}
 
 func (x *DataHealthWindow) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[93]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[100]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7142,7 +7730,7 @@ func (x *DataHealthWindow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataHealthWindow.ProtoReflect.Descriptor instead.
 func (*DataHealthWindow) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{93}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{100}
 }
 
 func (x *DataHealthWindow) GetFromMs() *NumericValue {
@@ -7179,7 +7767,7 @@ type DataHealthRuntimePoint struct {
 
 func (x *DataHealthRuntimePoint) Reset() {
 	*x = DataHealthRuntimePoint{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[94]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[101]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7191,7 +7779,7 @@ func (x *DataHealthRuntimePoint) String() string {
 func (*DataHealthRuntimePoint) ProtoMessage() {}
 
 func (x *DataHealthRuntimePoint) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[94]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[101]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7204,7 +7792,7 @@ func (x *DataHealthRuntimePoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataHealthRuntimePoint.ProtoReflect.Descriptor instead.
 func (*DataHealthRuntimePoint) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{94}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *DataHealthRuntimePoint) GetCapturedAtMs() *NumericValue {
@@ -7310,7 +7898,7 @@ type DataHealthScheduler struct {
 
 func (x *DataHealthScheduler) Reset() {
 	*x = DataHealthScheduler{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[95]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7322,7 +7910,7 @@ func (x *DataHealthScheduler) String() string {
 func (*DataHealthScheduler) ProtoMessage() {}
 
 func (x *DataHealthScheduler) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[95]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7335,7 +7923,7 @@ func (x *DataHealthScheduler) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataHealthScheduler.ProtoReflect.Descriptor instead.
 func (*DataHealthScheduler) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{95}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *DataHealthScheduler) GetCycleCount() *NumericValue {
@@ -7432,7 +8020,7 @@ type DataHealthJobs struct {
 
 func (x *DataHealthJobs) Reset() {
 	*x = DataHealthJobs{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[96]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[103]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7444,7 +8032,7 @@ func (x *DataHealthJobs) String() string {
 func (*DataHealthJobs) ProtoMessage() {}
 
 func (x *DataHealthJobs) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[96]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[103]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7457,7 +8045,7 @@ func (x *DataHealthJobs) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataHealthJobs.ProtoReflect.Descriptor instead.
 func (*DataHealthJobs) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{96}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{103}
 }
 
 func (x *DataHealthJobs) GetQueued() *NumericValue {
@@ -7546,7 +8134,7 @@ type DataHealthSources struct {
 
 func (x *DataHealthSources) Reset() {
 	*x = DataHealthSources{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[97]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7558,7 +8146,7 @@ func (x *DataHealthSources) String() string {
 func (*DataHealthSources) ProtoMessage() {}
 
 func (x *DataHealthSources) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[97]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7571,7 +8159,7 @@ func (x *DataHealthSources) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataHealthSources.ProtoReflect.Descriptor instead.
 func (*DataHealthSources) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{97}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{104}
 }
 
 func (x *DataHealthSources) GetTotal() *NumericValue {
@@ -7699,7 +8287,7 @@ type DataHealthResponse struct {
 
 func (x *DataHealthResponse) Reset() {
 	*x = DataHealthResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[98]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7711,7 +8299,7 @@ func (x *DataHealthResponse) String() string {
 func (*DataHealthResponse) ProtoMessage() {}
 
 func (x *DataHealthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[98]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7724,7 +8312,7 @@ func (x *DataHealthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataHealthResponse.ProtoReflect.Descriptor instead.
 func (*DataHealthResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{98}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *DataHealthResponse) GetMeta() *ResponseMeta {
@@ -7825,7 +8413,7 @@ type EditableField struct {
 
 func (x *EditableField) Reset() {
 	*x = EditableField{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[99]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[106]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7837,7 +8425,7 @@ func (x *EditableField) String() string {
 func (*EditableField) ProtoMessage() {}
 
 func (x *EditableField) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[99]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[106]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7850,7 +8438,7 @@ func (x *EditableField) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditableField.ProtoReflect.Descriptor instead.
 func (*EditableField) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{99}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *EditableField) GetKey() string {
@@ -7907,7 +8495,7 @@ type SettingsHomeSnapshot struct {
 
 func (x *SettingsHomeSnapshot) Reset() {
 	*x = SettingsHomeSnapshot{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[100]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[107]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7919,7 +8507,7 @@ func (x *SettingsHomeSnapshot) String() string {
 func (*SettingsHomeSnapshot) ProtoMessage() {}
 
 func (x *SettingsHomeSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[100]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[107]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7932,7 +8520,7 @@ func (x *SettingsHomeSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettingsHomeSnapshot.ProtoReflect.Descriptor instead.
 func (*SettingsHomeSnapshot) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{100}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{107}
 }
 
 func (x *SettingsHomeSnapshot) GetConfigured() bool {
@@ -7973,7 +8561,7 @@ type SettingsOnlineSnapshot struct {
 
 func (x *SettingsOnlineSnapshot) Reset() {
 	*x = SettingsOnlineSnapshot{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[101]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[108]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7985,7 +8573,7 @@ func (x *SettingsOnlineSnapshot) String() string {
 func (*SettingsOnlineSnapshot) ProtoMessage() {}
 
 func (x *SettingsOnlineSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[101]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[108]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7998,7 +8586,7 @@ func (x *SettingsOnlineSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettingsOnlineSnapshot.ProtoReflect.Descriptor instead.
 func (*SettingsOnlineSnapshot) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{101}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{108}
 }
 
 func (x *SettingsOnlineSnapshot) GetQuotaEnabled() bool {
@@ -8027,7 +8615,7 @@ type SettingsRefreshSnapshot struct {
 
 func (x *SettingsRefreshSnapshot) Reset() {
 	*x = SettingsRefreshSnapshot{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[102]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[109]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8039,7 +8627,7 @@ func (x *SettingsRefreshSnapshot) String() string {
 func (*SettingsRefreshSnapshot) ProtoMessage() {}
 
 func (x *SettingsRefreshSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[102]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[109]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8052,7 +8640,7 @@ func (x *SettingsRefreshSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettingsRefreshSnapshot.ProtoReflect.Descriptor instead.
 func (*SettingsRefreshSnapshot) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{102}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{109}
 }
 
 func (x *SettingsRefreshSnapshot) GetQuotaIntervalSeconds() int64 {
@@ -8098,7 +8686,7 @@ type SettingsUpdateSnapshot struct {
 
 func (x *SettingsUpdateSnapshot) Reset() {
 	*x = SettingsUpdateSnapshot{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[103]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[110]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8110,7 +8698,7 @@ func (x *SettingsUpdateSnapshot) String() string {
 func (*SettingsUpdateSnapshot) ProtoMessage() {}
 
 func (x *SettingsUpdateSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[103]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[110]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8123,7 +8711,7 @@ func (x *SettingsUpdateSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettingsUpdateSnapshot.ProtoReflect.Descriptor instead.
 func (*SettingsUpdateSnapshot) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{103}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{110}
 }
 
 func (x *SettingsUpdateSnapshot) GetAutoCheckEnabled() bool {
@@ -8186,7 +8774,7 @@ type SettingsUISnapshot struct {
 
 func (x *SettingsUISnapshot) Reset() {
 	*x = SettingsUISnapshot{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[104]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[111]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8198,7 +8786,7 @@ func (x *SettingsUISnapshot) String() string {
 func (*SettingsUISnapshot) ProtoMessage() {}
 
 func (x *SettingsUISnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[104]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[111]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8211,7 +8799,7 @@ func (x *SettingsUISnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettingsUISnapshot.ProtoReflect.Descriptor instead.
 func (*SettingsUISnapshot) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{104}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{111}
 }
 
 func (x *SettingsUISnapshot) GetLocale() string {
@@ -8251,7 +8839,7 @@ type SettingsSnapshot struct {
 
 func (x *SettingsSnapshot) Reset() {
 	*x = SettingsSnapshot{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[105]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[112]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8263,7 +8851,7 @@ func (x *SettingsSnapshot) String() string {
 func (*SettingsSnapshot) ProtoMessage() {}
 
 func (x *SettingsSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[105]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[112]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8276,7 +8864,7 @@ func (x *SettingsSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettingsSnapshot.ProtoReflect.Descriptor instead.
 func (*SettingsSnapshot) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{105}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{112}
 }
 
 func (x *SettingsSnapshot) GetSchemaVersion() int32 {
@@ -8346,7 +8934,7 @@ type SettingsResponse struct {
 
 func (x *SettingsResponse) Reset() {
 	*x = SettingsResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[106]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[113]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8358,7 +8946,7 @@ func (x *SettingsResponse) String() string {
 func (*SettingsResponse) ProtoMessage() {}
 
 func (x *SettingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[106]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[113]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8371,7 +8959,7 @@ func (x *SettingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettingsResponse.ProtoReflect.Descriptor instead.
 func (*SettingsResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{106}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{113}
 }
 
 func (x *SettingsResponse) GetMeta() *ResponseMeta {
@@ -8405,7 +8993,7 @@ type SettingsOnlineUpdate struct {
 
 func (x *SettingsOnlineUpdate) Reset() {
 	*x = SettingsOnlineUpdate{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[107]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[114]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8417,7 +9005,7 @@ func (x *SettingsOnlineUpdate) String() string {
 func (*SettingsOnlineUpdate) ProtoMessage() {}
 
 func (x *SettingsOnlineUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[107]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[114]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8430,7 +9018,7 @@ func (x *SettingsOnlineUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettingsOnlineUpdate.ProtoReflect.Descriptor instead.
 func (*SettingsOnlineUpdate) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{107}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{114}
 }
 
 func (x *SettingsOnlineUpdate) GetQuotaEnabled() bool {
@@ -8459,7 +9047,7 @@ type SettingsRefreshUpdate struct {
 
 func (x *SettingsRefreshUpdate) Reset() {
 	*x = SettingsRefreshUpdate{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[108]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[115]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8471,7 +9059,7 @@ func (x *SettingsRefreshUpdate) String() string {
 func (*SettingsRefreshUpdate) ProtoMessage() {}
 
 func (x *SettingsRefreshUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[108]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[115]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8484,7 +9072,7 @@ func (x *SettingsRefreshUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettingsRefreshUpdate.ProtoReflect.Descriptor instead.
 func (*SettingsRefreshUpdate) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{108}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{115}
 }
 
 func (x *SettingsRefreshUpdate) GetQuotaIntervalSeconds() int64 {
@@ -8526,7 +9114,7 @@ type SettingsUpdatesUpdate struct {
 
 func (x *SettingsUpdatesUpdate) Reset() {
 	*x = SettingsUpdatesUpdate{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[109]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[116]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8538,7 +9126,7 @@ func (x *SettingsUpdatesUpdate) String() string {
 func (*SettingsUpdatesUpdate) ProtoMessage() {}
 
 func (x *SettingsUpdatesUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[109]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[116]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8551,7 +9139,7 @@ func (x *SettingsUpdatesUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettingsUpdatesUpdate.ProtoReflect.Descriptor instead.
 func (*SettingsUpdatesUpdate) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{109}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{116}
 }
 
 func (x *SettingsUpdatesUpdate) GetAutoCheckEnabled() bool {
@@ -8586,7 +9174,7 @@ type SettingsUIUpdate struct {
 
 func (x *SettingsUIUpdate) Reset() {
 	*x = SettingsUIUpdate{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[110]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[117]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8598,7 +9186,7 @@ func (x *SettingsUIUpdate) String() string {
 func (*SettingsUIUpdate) ProtoMessage() {}
 
 func (x *SettingsUIUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[110]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[117]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8611,7 +9199,7 @@ func (x *SettingsUIUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettingsUIUpdate.ProtoReflect.Descriptor instead.
 func (*SettingsUIUpdate) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{110}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *SettingsUIUpdate) GetLaunchBehavior() string {
@@ -8648,7 +9236,7 @@ type UpdateSettingsRequest struct {
 
 func (x *UpdateSettingsRequest) Reset() {
 	*x = UpdateSettingsRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[111]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[118]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8660,7 +9248,7 @@ func (x *UpdateSettingsRequest) String() string {
 func (*UpdateSettingsRequest) ProtoMessage() {}
 
 func (x *UpdateSettingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[111]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[118]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8673,7 +9261,7 @@ func (x *UpdateSettingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSettingsRequest.ProtoReflect.Descriptor instead.
 func (*UpdateSettingsRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{111}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *UpdateSettingsRequest) GetExpectedRevision() string {
@@ -8721,7 +9309,7 @@ type SettingsUpdateReceipt struct {
 
 func (x *SettingsUpdateReceipt) Reset() {
 	*x = SettingsUpdateReceipt{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[112]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[119]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8733,7 +9321,7 @@ func (x *SettingsUpdateReceipt) String() string {
 func (*SettingsUpdateReceipt) ProtoMessage() {}
 
 func (x *SettingsUpdateReceipt) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[112]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[119]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8746,7 +9334,7 @@ func (x *SettingsUpdateReceipt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SettingsUpdateReceipt.ProtoReflect.Descriptor instead.
 func (*SettingsUpdateReceipt) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{112}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *SettingsUpdateReceipt) GetRevision() string {
@@ -8773,7 +9361,7 @@ type PlanHomeSwitchRequest struct {
 
 func (x *PlanHomeSwitchRequest) Reset() {
 	*x = PlanHomeSwitchRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[113]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[120]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8785,7 +9373,7 @@ func (x *PlanHomeSwitchRequest) String() string {
 func (*PlanHomeSwitchRequest) ProtoMessage() {}
 
 func (x *PlanHomeSwitchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[113]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[120]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8798,7 +9386,7 @@ func (x *PlanHomeSwitchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanHomeSwitchRequest.ProtoReflect.Descriptor instead.
 func (*PlanHomeSwitchRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{113}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *PlanHomeSwitchRequest) GetTargetPath() string {
@@ -8827,7 +9415,7 @@ type HomeSwitchPlanReceipt struct {
 
 func (x *HomeSwitchPlanReceipt) Reset() {
 	*x = HomeSwitchPlanReceipt{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[114]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[121]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8839,7 +9427,7 @@ func (x *HomeSwitchPlanReceipt) String() string {
 func (*HomeSwitchPlanReceipt) ProtoMessage() {}
 
 func (x *HomeSwitchPlanReceipt) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[114]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[121]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8852,7 +9440,7 @@ func (x *HomeSwitchPlanReceipt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HomeSwitchPlanReceipt.ProtoReflect.Descriptor instead.
 func (*HomeSwitchPlanReceipt) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{114}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *HomeSwitchPlanReceipt) GetStrategy() string {
@@ -8891,7 +9479,7 @@ type ConfirmHomeSwitchRequest struct {
 
 func (x *ConfirmHomeSwitchRequest) Reset() {
 	*x = ConfirmHomeSwitchRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[115]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[122]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8903,7 +9491,7 @@ func (x *ConfirmHomeSwitchRequest) String() string {
 func (*ConfirmHomeSwitchRequest) ProtoMessage() {}
 
 func (x *ConfirmHomeSwitchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[115]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[122]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8916,7 +9504,7 @@ func (x *ConfirmHomeSwitchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmHomeSwitchRequest.ProtoReflect.Descriptor instead.
 func (*ConfirmHomeSwitchRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{115}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{122}
 }
 
 type RecoverHomeSwitchRequest struct {
@@ -8927,7 +9515,7 @@ type RecoverHomeSwitchRequest struct {
 
 func (x *RecoverHomeSwitchRequest) Reset() {
 	*x = RecoverHomeSwitchRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[116]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[123]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8939,7 +9527,7 @@ func (x *RecoverHomeSwitchRequest) String() string {
 func (*RecoverHomeSwitchRequest) ProtoMessage() {}
 
 func (x *RecoverHomeSwitchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[116]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[123]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8952,7 +9540,7 @@ func (x *RecoverHomeSwitchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecoverHomeSwitchRequest.ProtoReflect.Descriptor instead.
 func (*RecoverHomeSwitchRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{116}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{123}
 }
 
 type HomeSwitchReceipt struct {
@@ -8966,7 +9554,7 @@ type HomeSwitchReceipt struct {
 
 func (x *HomeSwitchReceipt) Reset() {
 	*x = HomeSwitchReceipt{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[117]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[124]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8978,7 +9566,7 @@ func (x *HomeSwitchReceipt) String() string {
 func (*HomeSwitchReceipt) ProtoMessage() {}
 
 func (x *HomeSwitchReceipt) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[117]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[124]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8991,7 +9579,7 @@ func (x *HomeSwitchReceipt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HomeSwitchReceipt.ProtoReflect.Descriptor instead.
 func (*HomeSwitchReceipt) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{117}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *HomeSwitchReceipt) GetRevision() string {
@@ -9024,7 +9612,7 @@ type RuntimeActionRequest struct {
 
 func (x *RuntimeActionRequest) Reset() {
 	*x = RuntimeActionRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[118]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9036,7 +9624,7 @@ func (x *RuntimeActionRequest) String() string {
 func (*RuntimeActionRequest) ProtoMessage() {}
 
 func (x *RuntimeActionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[118]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9049,7 +9637,7 @@ func (x *RuntimeActionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeActionRequest.ProtoReflect.Descriptor instead.
 func (*RuntimeActionRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{118}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *RuntimeActionRequest) GetAction() string {
@@ -9071,7 +9659,7 @@ type RuntimeActionReceipt struct {
 
 func (x *RuntimeActionReceipt) Reset() {
 	*x = RuntimeActionReceipt{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[119]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9083,7 +9671,7 @@ func (x *RuntimeActionReceipt) String() string {
 func (*RuntimeActionReceipt) ProtoMessage() {}
 
 func (x *RuntimeActionReceipt) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[119]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9096,7 +9684,7 @@ func (x *RuntimeActionReceipt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeActionReceipt.ProtoReflect.Descriptor instead.
 func (*RuntimeActionReceipt) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{119}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *RuntimeActionReceipt) GetAction() string {
@@ -9135,7 +9723,7 @@ type AnalyzeSessionIndexRepairRequest struct {
 
 func (x *AnalyzeSessionIndexRepairRequest) Reset() {
 	*x = AnalyzeSessionIndexRepairRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[120]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9147,7 +9735,7 @@ func (x *AnalyzeSessionIndexRepairRequest) String() string {
 func (*AnalyzeSessionIndexRepairRequest) ProtoMessage() {}
 
 func (x *AnalyzeSessionIndexRepairRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[120]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9160,7 +9748,7 @@ func (x *AnalyzeSessionIndexRepairRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnalyzeSessionIndexRepairRequest.ProtoReflect.Descriptor instead.
 func (*AnalyzeSessionIndexRepairRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{120}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{127}
 }
 
 type RepairDryRunReceipt struct {
@@ -9177,7 +9765,7 @@ type RepairDryRunReceipt struct {
 
 func (x *RepairDryRunReceipt) Reset() {
 	*x = RepairDryRunReceipt{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[121]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9189,7 +9777,7 @@ func (x *RepairDryRunReceipt) String() string {
 func (*RepairDryRunReceipt) ProtoMessage() {}
 
 func (x *RepairDryRunReceipt) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[121]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9202,7 +9790,7 @@ func (x *RepairDryRunReceipt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepairDryRunReceipt.ProtoReflect.Descriptor instead.
 func (*RepairDryRunReceipt) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{121}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{128}
 }
 
 func (x *RepairDryRunReceipt) GetAnalyzedAtMs() int64 {
@@ -9256,7 +9844,7 @@ type LifecycleNotificationRequest struct {
 
 func (x *LifecycleNotificationRequest) Reset() {
 	*x = LifecycleNotificationRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[122]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9268,7 +9856,7 @@ func (x *LifecycleNotificationRequest) String() string {
 func (*LifecycleNotificationRequest) ProtoMessage() {}
 
 func (x *LifecycleNotificationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[122]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9281,7 +9869,7 @@ func (x *LifecycleNotificationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LifecycleNotificationRequest.ProtoReflect.Descriptor instead.
 func (*LifecycleNotificationRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{122}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *LifecycleNotificationRequest) GetEvent() string {
@@ -9301,7 +9889,7 @@ type LifecycleNotificationReceipt struct {
 
 func (x *LifecycleNotificationReceipt) Reset() {
 	*x = LifecycleNotificationReceipt{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[123]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9313,7 +9901,7 @@ func (x *LifecycleNotificationReceipt) String() string {
 func (*LifecycleNotificationReceipt) ProtoMessage() {}
 
 func (x *LifecycleNotificationReceipt) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[123]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9326,7 +9914,7 @@ func (x *LifecycleNotificationReceipt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LifecycleNotificationReceipt.ProtoReflect.Descriptor instead.
 func (*LifecycleNotificationReceipt) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{123}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *LifecycleNotificationReceipt) GetEvent() string {
@@ -9351,7 +9939,7 @@ type MigrationRecoveryStateRequest struct {
 
 func (x *MigrationRecoveryStateRequest) Reset() {
 	*x = MigrationRecoveryStateRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[124]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9363,7 +9951,7 @@ func (x *MigrationRecoveryStateRequest) String() string {
 func (*MigrationRecoveryStateRequest) ProtoMessage() {}
 
 func (x *MigrationRecoveryStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[124]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9376,7 +9964,7 @@ func (x *MigrationRecoveryStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrationRecoveryStateRequest.ProtoReflect.Descriptor instead.
 func (*MigrationRecoveryStateRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{124}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{131}
 }
 
 type MigrationRecoveryRetryRequest struct {
@@ -9387,7 +9975,7 @@ type MigrationRecoveryRetryRequest struct {
 
 func (x *MigrationRecoveryRetryRequest) Reset() {
 	*x = MigrationRecoveryRetryRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[125]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[132]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9399,7 +9987,7 @@ func (x *MigrationRecoveryRetryRequest) String() string {
 func (*MigrationRecoveryRetryRequest) ProtoMessage() {}
 
 func (x *MigrationRecoveryRetryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[125]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[132]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9412,7 +10000,7 @@ func (x *MigrationRecoveryRetryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrationRecoveryRetryRequest.ProtoReflect.Descriptor instead.
 func (*MigrationRecoveryRetryRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{125}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{132}
 }
 
 type MigrationRecoveryCancelRequest struct {
@@ -9423,7 +10011,7 @@ type MigrationRecoveryCancelRequest struct {
 
 func (x *MigrationRecoveryCancelRequest) Reset() {
 	*x = MigrationRecoveryCancelRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[126]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[133]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9435,7 +10023,7 @@ func (x *MigrationRecoveryCancelRequest) String() string {
 func (*MigrationRecoveryCancelRequest) ProtoMessage() {}
 
 func (x *MigrationRecoveryCancelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[126]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[133]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9448,7 +10036,7 @@ func (x *MigrationRecoveryCancelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrationRecoveryCancelRequest.ProtoReflect.Descriptor instead.
 func (*MigrationRecoveryCancelRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{126}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{133}
 }
 
 type MigrationRecoveryExitRequest struct {
@@ -9459,7 +10047,7 @@ type MigrationRecoveryExitRequest struct {
 
 func (x *MigrationRecoveryExitRequest) Reset() {
 	*x = MigrationRecoveryExitRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[127]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[134]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9471,7 +10059,7 @@ func (x *MigrationRecoveryExitRequest) String() string {
 func (*MigrationRecoveryExitRequest) ProtoMessage() {}
 
 func (x *MigrationRecoveryExitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[127]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[134]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9484,7 +10072,7 @@ func (x *MigrationRecoveryExitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrationRecoveryExitRequest.ProtoReflect.Descriptor instead.
 func (*MigrationRecoveryExitRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{127}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{134}
 }
 
 type MigrationRecoveryPrepareRequest struct {
@@ -9496,7 +10084,7 @@ type MigrationRecoveryPrepareRequest struct {
 
 func (x *MigrationRecoveryPrepareRequest) Reset() {
 	*x = MigrationRecoveryPrepareRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[128]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[135]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9508,7 +10096,7 @@ func (x *MigrationRecoveryPrepareRequest) String() string {
 func (*MigrationRecoveryPrepareRequest) ProtoMessage() {}
 
 func (x *MigrationRecoveryPrepareRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[128]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[135]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9521,7 +10109,7 @@ func (x *MigrationRecoveryPrepareRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrationRecoveryPrepareRequest.ProtoReflect.Descriptor instead.
 func (*MigrationRecoveryPrepareRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{128}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{135}
 }
 
 func (x *MigrationRecoveryPrepareRequest) GetBackupName() string {
@@ -9540,7 +10128,7 @@ type MigrationRecoveryConfirmRequest struct {
 
 func (x *MigrationRecoveryConfirmRequest) Reset() {
 	*x = MigrationRecoveryConfirmRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[129]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[136]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9552,7 +10140,7 @@ func (x *MigrationRecoveryConfirmRequest) String() string {
 func (*MigrationRecoveryConfirmRequest) ProtoMessage() {}
 
 func (x *MigrationRecoveryConfirmRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[129]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[136]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9565,7 +10153,7 @@ func (x *MigrationRecoveryConfirmRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrationRecoveryConfirmRequest.ProtoReflect.Descriptor instead.
 func (*MigrationRecoveryConfirmRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{129}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{136}
 }
 
 func (x *MigrationRecoveryConfirmRequest) GetConfirmationToken() string {
@@ -9586,7 +10174,7 @@ type MigrationBackupInfo struct {
 
 func (x *MigrationBackupInfo) Reset() {
 	*x = MigrationBackupInfo{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[130]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[137]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9598,7 +10186,7 @@ func (x *MigrationBackupInfo) String() string {
 func (*MigrationBackupInfo) ProtoMessage() {}
 
 func (x *MigrationBackupInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[130]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[137]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9611,7 +10199,7 @@ func (x *MigrationBackupInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrationBackupInfo.ProtoReflect.Descriptor instead.
 func (*MigrationBackupInfo) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{130}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{137}
 }
 
 func (x *MigrationBackupInfo) GetName() string {
@@ -9654,7 +10242,7 @@ type MigrationRecoverySnapshot struct {
 
 func (x *MigrationRecoverySnapshot) Reset() {
 	*x = MigrationRecoverySnapshot{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[131]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[138]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9666,7 +10254,7 @@ func (x *MigrationRecoverySnapshot) String() string {
 func (*MigrationRecoverySnapshot) ProtoMessage() {}
 
 func (x *MigrationRecoverySnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[131]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[138]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9679,7 +10267,7 @@ func (x *MigrationRecoverySnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrationRecoverySnapshot.ProtoReflect.Descriptor instead.
 func (*MigrationRecoverySnapshot) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{131}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{138}
 }
 
 func (x *MigrationRecoverySnapshot) GetVersion() string {
@@ -9770,7 +10358,7 @@ type MigrationRecoveryReceipt struct {
 
 func (x *MigrationRecoveryReceipt) Reset() {
 	*x = MigrationRecoveryReceipt{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[132]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[139]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9782,7 +10370,7 @@ func (x *MigrationRecoveryReceipt) String() string {
 func (*MigrationRecoveryReceipt) ProtoMessage() {}
 
 func (x *MigrationRecoveryReceipt) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[132]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[139]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9795,7 +10383,7 @@ func (x *MigrationRecoveryReceipt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrationRecoveryReceipt.ProtoReflect.Descriptor instead.
 func (*MigrationRecoveryReceipt) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{132}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{139}
 }
 
 func (x *MigrationRecoveryReceipt) GetPhase() string {
@@ -9829,7 +10417,7 @@ type MigrationRestoreConfirmation struct {
 
 func (x *MigrationRestoreConfirmation) Reset() {
 	*x = MigrationRestoreConfirmation{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[133]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[140]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9841,7 +10429,7 @@ func (x *MigrationRestoreConfirmation) String() string {
 func (*MigrationRestoreConfirmation) ProtoMessage() {}
 
 func (x *MigrationRestoreConfirmation) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[133]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[140]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9854,7 +10442,7 @@ func (x *MigrationRestoreConfirmation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrationRestoreConfirmation.ProtoReflect.Descriptor instead.
 func (*MigrationRestoreConfirmation) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{133}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{140}
 }
 
 func (x *MigrationRestoreConfirmation) GetConfirmationToken() string {
@@ -9881,7 +10469,7 @@ type SubscribeInvalidationsRequest struct {
 
 func (x *SubscribeInvalidationsRequest) Reset() {
 	*x = SubscribeInvalidationsRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[134]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[141]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9893,7 +10481,7 @@ func (x *SubscribeInvalidationsRequest) String() string {
 func (*SubscribeInvalidationsRequest) ProtoMessage() {}
 
 func (x *SubscribeInvalidationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[134]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[141]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9906,7 +10494,7 @@ func (x *SubscribeInvalidationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeInvalidationsRequest.ProtoReflect.Descriptor instead.
 func (*SubscribeInvalidationsRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{134}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{141}
 }
 
 func (x *SubscribeInvalidationsRequest) GetDomains() []string {
@@ -9934,7 +10522,7 @@ type QueryInvalidationEvent struct {
 
 func (x *QueryInvalidationEvent) Reset() {
 	*x = QueryInvalidationEvent{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[135]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[142]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9946,7 +10534,7 @@ func (x *QueryInvalidationEvent) String() string {
 func (*QueryInvalidationEvent) ProtoMessage() {}
 
 func (x *QueryInvalidationEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[135]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[142]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9959,7 +10547,7 @@ func (x *QueryInvalidationEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryInvalidationEvent.ProtoReflect.Descriptor instead.
 func (*QueryInvalidationEvent) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{135}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{142}
 }
 
 func (x *QueryInvalidationEvent) GetVersion() string {
@@ -9992,7 +10580,7 @@ type ShutdownRequest struct {
 
 func (x *ShutdownRequest) Reset() {
 	*x = ShutdownRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[136]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[143]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10004,7 +10592,7 @@ func (x *ShutdownRequest) String() string {
 func (*ShutdownRequest) ProtoMessage() {}
 
 func (x *ShutdownRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[136]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[143]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10017,7 +10605,7 @@ func (x *ShutdownRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShutdownRequest.ProtoReflect.Descriptor instead.
 func (*ShutdownRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{136}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{143}
 }
 
 func (x *ShutdownRequest) GetReason() string {
@@ -10036,7 +10624,7 @@ type ShutdownResponse struct {
 
 func (x *ShutdownResponse) Reset() {
 	*x = ShutdownResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[137]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[144]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10048,7 +10636,7 @@ func (x *ShutdownResponse) String() string {
 func (*ShutdownResponse) ProtoMessage() {}
 
 func (x *ShutdownResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[137]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[144]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10061,7 +10649,7 @@ func (x *ShutdownResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShutdownResponse.ProtoReflect.Descriptor instead.
 func (*ShutdownResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{137}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{144}
 }
 
 func (x *ShutdownResponse) GetAccepted() bool {
@@ -10079,7 +10667,7 @@ type AccountSnapshotRequest struct {
 
 func (x *AccountSnapshotRequest) Reset() {
 	*x = AccountSnapshotRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[138]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[145]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10091,7 +10679,7 @@ func (x *AccountSnapshotRequest) String() string {
 func (*AccountSnapshotRequest) ProtoMessage() {}
 
 func (x *AccountSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[138]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[145]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10104,7 +10692,7 @@ func (x *AccountSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*AccountSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{138}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{145}
 }
 
 type CodexAccountIdentity struct {
@@ -10118,7 +10706,7 @@ type CodexAccountIdentity struct {
 
 func (x *CodexAccountIdentity) Reset() {
 	*x = CodexAccountIdentity{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[139]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[146]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10130,7 +10718,7 @@ func (x *CodexAccountIdentity) String() string {
 func (*CodexAccountIdentity) ProtoMessage() {}
 
 func (x *CodexAccountIdentity) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[139]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[146]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10143,7 +10731,7 @@ func (x *CodexAccountIdentity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CodexAccountIdentity.ProtoReflect.Descriptor instead.
 func (*CodexAccountIdentity) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{139}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{146}
 }
 
 func (x *CodexAccountIdentity) GetType() string {
@@ -10176,7 +10764,7 @@ type AccountSnapshotResponse struct {
 
 func (x *AccountSnapshotResponse) Reset() {
 	*x = AccountSnapshotResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[140]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[147]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10188,7 +10776,7 @@ func (x *AccountSnapshotResponse) String() string {
 func (*AccountSnapshotResponse) ProtoMessage() {}
 
 func (x *AccountSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[140]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[147]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10201,7 +10789,7 @@ func (x *AccountSnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountSnapshotResponse.ProtoReflect.Descriptor instead.
 func (*AccountSnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{140}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{147}
 }
 
 func (x *AccountSnapshotResponse) GetAccount() *CodexAccountIdentity {
@@ -10239,7 +10827,7 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\n" +
 	"MethodInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
-	"\x04kind\x18\x02 \x01(\tR\x04kind\"\x93\x03\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\"\xcd\x03\n" +
 	"\x11ContractsResponse\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12#\n" +
 	"\rquery_version\x18\x02 \x01(\tR\fqueryVersion\x12,\n" +
@@ -10248,7 +10836,8 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\amethods\x18\x05 \x03(\v2\x1e.codexpulse.core.v1.MethodInfoR\amethods\x12'\n" +
 	"\x0fcommand_methods\x18\x06 \x03(\tR\x0ecommandMethods\x12D\n" +
 	"\rerror_example\x18\a \x01(\v2\x1f.codexpulse.core.v1.ErrorDetailR\ferrorExample\x126\n" +
-	"\x17pricing_catalog_version\x18\b \x01(\tR\x15pricingCatalogVersion\"\x85\x01\n" +
+	"\x17pricing_catalog_version\x18\b \x01(\tR\x15pricingCatalogVersion\x128\n" +
+	"\x18invocation_usage_version\x18\t \x01(\tR\x16invocationUsageVersion\"\x85\x01\n" +
 	"\vErrorDetail\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x1f\n" +
 	"\vmessage_key\x18\x02 \x01(\tR\n" +
@@ -10405,7 +10994,56 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x15activity_distribution\x18\f \x01(\v2(.codexpulse.core.v1.ActivityDistributionR\x14activityDistributionB\x11\n" +
 	"\x0f_pricing_sourceB\v\n" +
 	"\t_currencyB\x12\n" +
-	"\x10_degraded_reason\"\x1e\n" +
+	"\x10_degraded_reason\"\xb2\x01\n" +
+	"\x16InvocationUsageRequest\x126\n" +
+	"\x05range\x18\x01 \x01(\v2 .codexpulse.core.v1.UTCTimeRangeR\x05range\x12 \n" +
+	"\vgranularity\x18\x02 \x01(\tR\vgranularity\x12!\n" +
+	"\fsource_class\x18\x03 \x01(\tR\vsourceClass\x12\x1b\n" +
+	"\ttop_limit\x18\x04 \x01(\x05R\btopLimit\"\xed\x03\n" +
+	"\x10InvocationTotals\x12H\n" +
+	"\x0ftool_call_count\x18\x01 \x01(\v2 .codexpulse.core.v1.NumericValueR\rtoolCallCount\x12P\n" +
+	"\x13distinct_tool_count\x18\x02 \x01(\v2 .codexpulse.core.v1.NumericValueR\x11distinctToolCount\x12R\n" +
+	"\x14skill_activity_count\x18\x03 \x01(\v2 .codexpulse.core.v1.NumericValueR\x12skillActivityCount\x12R\n" +
+	"\x14distinct_skill_count\x18\x04 \x01(\v2 .codexpulse.core.v1.NumericValueR\x12distinctSkillCount\x12N\n" +
+	"\x12tool_failure_count\x18\x05 \x01(\v2 .codexpulse.core.v1.NumericValueR\x10toolFailureCount\x12E\n" +
+	"\rsession_count\x18\x06 \x01(\v2 .codexpulse.core.v1.NumericValueR\fsessionCount\"\xc6\x02\n" +
+	"\x14InvocationTrendPoint\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12@\n" +
+	"\vstart_at_ms\x18\x02 \x01(\v2 .codexpulse.core.v1.NumericValueR\tstartAtMs\x12<\n" +
+	"\tend_at_ms\x18\x03 \x01(\v2 .codexpulse.core.v1.NumericValueR\aendAtMs\x12H\n" +
+	"\x0ftool_call_count\x18\x04 \x01(\v2 .codexpulse.core.v1.NumericValueR\rtoolCallCount\x12R\n" +
+	"\x14skill_activity_count\x18\x05 \x01(\v2 .codexpulse.core.v1.NumericValueR\x12skillActivityCount\"\xb7\x04\n" +
+	"\rToolUsageItem\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12?\n" +
+	"\n" +
+	"call_count\x18\x02 \x01(\v2 .codexpulse.core.v1.NumericValueR\tcallCount\x12E\n" +
+	"\rsession_count\x18\x03 \x01(\v2 .codexpulse.core.v1.NumericValueR\fsessionCount\x12I\n" +
+	"\x0fsucceeded_count\x18\x04 \x01(\v2 .codexpulse.core.v1.NumericValueR\x0esucceededCount\x12C\n" +
+	"\ffailed_count\x18\x05 \x01(\v2 .codexpulse.core.v1.NumericValueR\vfailedCount\x12E\n" +
+	"\runknown_count\x18\x06 \x01(\v2 .codexpulse.core.v1.NumericValueR\funknownCount\x12P\n" +
+	"\x13average_duration_ms\x18\a \x01(\v2 .codexpulse.core.v1.NumericValueR\x11averageDurationMs\x12G\n" +
+	"\x0flast_seen_at_ms\x18\b \x01(\v2 .codexpulse.core.v1.NumericValueR\flastSeenAtMs\x12\x18\n" +
+	"\asources\x18\t \x03(\tR\asources\"\x94\x03\n" +
+	"\x0eSkillUsageItem\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12G\n" +
+	"\x0eactivity_count\x18\x02 \x01(\v2 .codexpulse.core.v1.NumericValueR\ractivityCount\x12E\n" +
+	"\rsession_count\x18\x03 \x01(\v2 .codexpulse.core.v1.NumericValueR\fsessionCount\x12G\n" +
+	"\x0eexplicit_count\x18\x04 \x01(\v2 .codexpulse.core.v1.NumericValueR\rexplicitCount\x12L\n" +
+	"\x11file_loaded_count\x18\x05 \x01(\v2 .codexpulse.core.v1.NumericValueR\x0ffileLoadedCount\x12G\n" +
+	"\x0flast_seen_at_ms\x18\x06 \x01(\v2 .codexpulse.core.v1.NumericValueR\flastSeenAtMs\"\xc0\x01\n" +
+	"\x12InvocationCoverage\x12V\n" +
+	"\x16structured_event_count\x18\x01 \x01(\v2 .codexpulse.core.v1.NumericValueR\x14structuredEventCount\x12R\n" +
+	"\x14detected_event_count\x18\x02 \x01(\v2 .codexpulse.core.v1.NumericValueR\x12detectedEventCount\"\x83\x04\n" +
+	"\x17InvocationUsageResponse\x124\n" +
+	"\x04meta\x18\x01 \x01(\v2 .codexpulse.core.v1.ResponseMetaR\x04meta\x126\n" +
+	"\x05range\x18\x02 \x01(\v2 .codexpulse.core.v1.UTCTimeRangeR\x05range\x12 \n" +
+	"\vgranularity\x18\x03 \x01(\tR\vgranularity\x12!\n" +
+	"\fsource_class\x18\x04 \x01(\tR\vsourceClass\x12<\n" +
+	"\x06totals\x18\x05 \x01(\v2$.codexpulse.core.v1.InvocationTotalsR\x06totals\x12>\n" +
+	"\x05trend\x18\x06 \x03(\v2(.codexpulse.core.v1.InvocationTrendPointR\x05trend\x127\n" +
+	"\x05tools\x18\a \x03(\v2!.codexpulse.core.v1.ToolUsageItemR\x05tools\x12:\n" +
+	"\x06skills\x18\b \x03(\v2\".codexpulse.core.v1.SkillUsageItemR\x06skills\x12B\n" +
+	"\bcoverage\x18\t \x01(\v2&.codexpulse.core.v1.InvocationCoverageR\bcoverage\"\x1e\n" +
 	"\x1cPricingCatalogCurrentRequest\"\x8e\x02\n" +
 	"\x13ModelReferencePrice\x12\x19\n" +
 	"\bmodel_id\x18\x01 \x01(\tR\amodelId\x12C\n" +
@@ -11205,13 +11843,14 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x17AccountSnapshotResponse\x12G\n" +
 	"\aaccount\x18\x01 \x01(\v2(.codexpulse.core.v1.CodexAccountIdentityH\x00R\aaccount\x88\x01\x01B\n" +
 	"\n" +
-	"\b_account2\xe1\x1d\n" +
+	"\b_account2\xcd\x1e\n" +
 	"\vCoreService\x12X\n" +
 	"\tHandshake\x12$.codexpulse.core.v1.HandshakeRequest\x1a%.codexpulse.core.v1.HandshakeResponse\x12X\n" +
 	"\tBootstrap\x12$.codexpulse.core.v1.BootstrapRequest\x1a%.codexpulse.core.v1.BootstrapResponse\x12X\n" +
 	"\tContracts\x12$.codexpulse.core.v1.ContractsRequest\x1a%.codexpulse.core.v1.ContractsResponse\x12j\n" +
 	"\x0fAccountSnapshot\x12*.codexpulse.core.v1.AccountSnapshotRequest\x1a+.codexpulse.core.v1.AccountSnapshotResponse\x12X\n" +
-	"\tUsageCost\x12$.codexpulse.core.v1.UsageCostRequest\x1a%.codexpulse.core.v1.UsageCostResponse\x12|\n" +
+	"\tUsageCost\x12$.codexpulse.core.v1.UsageCostRequest\x1a%.codexpulse.core.v1.UsageCostResponse\x12j\n" +
+	"\x0fInvocationUsage\x12*.codexpulse.core.v1.InvocationUsageRequest\x1a+.codexpulse.core.v1.InvocationUsageResponse\x12|\n" +
 	"\x15PricingCatalogCurrent\x120.codexpulse.core.v1.PricingCatalogCurrentRequest\x1a1.codexpulse.core.v1.PricingCatalogCurrentResponse\x12`\n" +
 	"\fListSessions\x12'.codexpulse.core.v1.ListSessionsRequest\x1a'.codexpulse.core.v1.SessionListResponse\x12d\n" +
 	"\rSessionDetail\x12(.codexpulse.core.v1.SessionDetailRequest\x1a).codexpulse.core.v1.SessionDetailResponse\x12`\n" +
@@ -11259,7 +11898,7 @@ func file_api_codexpulse_core_v1_core_proto_rawDescGZIP() []byte {
 	return file_api_codexpulse_core_v1_core_proto_rawDescData
 }
 
-var file_api_codexpulse_core_v1_core_proto_msgTypes = make([]protoimpl.MessageInfo, 141)
+var file_api_codexpulse_core_v1_core_proto_msgTypes = make([]protoimpl.MessageInfo, 148)
 var file_api_codexpulse_core_v1_core_proto_goTypes = []any{
 	(*Empty)(nil),                            // 0: codexpulse.core.v1.Empty
 	(*HandshakeRequest)(nil),                 // 1: codexpulse.core.v1.HandshakeRequest
@@ -11295,116 +11934,123 @@ var file_api_codexpulse_core_v1_core_proto_goTypes = []any{
 	(*ActivityWeekdayHourPoint)(nil),         // 31: codexpulse.core.v1.ActivityWeekdayHourPoint
 	(*ActivityDistribution)(nil),             // 32: codexpulse.core.v1.ActivityDistribution
 	(*UsageCostResponse)(nil),                // 33: codexpulse.core.v1.UsageCostResponse
-	(*PricingCatalogCurrentRequest)(nil),     // 34: codexpulse.core.v1.PricingCatalogCurrentRequest
-	(*ModelReferencePrice)(nil),              // 35: codexpulse.core.v1.ModelReferencePrice
-	(*PricingCatalogCurrentResponse)(nil),    // 36: codexpulse.core.v1.PricingCatalogCurrentResponse
-	(*SessionItem)(nil),                      // 37: codexpulse.core.v1.SessionItem
-	(*SessionListResponse)(nil),              // 38: codexpulse.core.v1.SessionListResponse
-	(*SessionTurnItem)(nil),                  // 39: codexpulse.core.v1.SessionTurnItem
-	(*SessionDetailResponse)(nil),            // 40: codexpulse.core.v1.SessionDetailResponse
-	(*ProjectDailyPoint)(nil),                // 41: codexpulse.core.v1.ProjectDailyPoint
-	(*ProjectItem)(nil),                      // 42: codexpulse.core.v1.ProjectItem
-	(*ProjectSessionItem)(nil),               // 43: codexpulse.core.v1.ProjectSessionItem
-	(*ProjectModelItem)(nil),                 // 44: codexpulse.core.v1.ProjectModelItem
-	(*ProjectListResponse)(nil),              // 45: codexpulse.core.v1.ProjectListResponse
-	(*ProjectDetailResponse)(nil),            // 46: codexpulse.core.v1.ProjectDetailResponse
-	(*QuotaCurrentRequest)(nil),              // 47: codexpulse.core.v1.QuotaCurrentRequest
-	(*CurrentExplanation)(nil),               // 48: codexpulse.core.v1.CurrentExplanation
-	(*CurrentWindow)(nil),                    // 49: codexpulse.core.v1.CurrentWindow
-	(*CurrentSource)(nil),                    // 50: codexpulse.core.v1.CurrentSource
-	(*CurrentNextReset)(nil),                 // 51: codexpulse.core.v1.CurrentNextReset
-	(*CurrentResetCreditItem)(nil),           // 52: codexpulse.core.v1.CurrentResetCreditItem
-	(*CurrentResetCredits)(nil),              // 53: codexpulse.core.v1.CurrentResetCredits
-	(*CurrentRefreshStatus)(nil),             // 54: codexpulse.core.v1.CurrentRefreshStatus
-	(*CurrentRefresh)(nil),                   // 55: codexpulse.core.v1.CurrentRefresh
-	(*CurrentQuota)(nil),                     // 56: codexpulse.core.v1.CurrentQuota
-	(*QuotaCurrentResponse)(nil),             // 57: codexpulse.core.v1.QuotaCurrentResponse
-	(*QuotaPaceRequest)(nil),                 // 58: codexpulse.core.v1.QuotaPaceRequest
-	(*QuotaPacePoint)(nil),                   // 59: codexpulse.core.v1.QuotaPacePoint
-	(*QuotaPaceCycle)(nil),                   // 60: codexpulse.core.v1.QuotaPaceCycle
-	(*QuotaPaceHistoryBandPoint)(nil),        // 61: codexpulse.core.v1.QuotaPaceHistoryBandPoint
-	(*QuotaPaceForecast)(nil),                // 62: codexpulse.core.v1.QuotaPaceForecast
-	(*QuotaPaceWindow)(nil),                  // 63: codexpulse.core.v1.QuotaPaceWindow
-	(*CurrentQuotaPace)(nil),                 // 64: codexpulse.core.v1.CurrentQuotaPace
-	(*QuotaPaceResponse)(nil),                // 65: codexpulse.core.v1.QuotaPaceResponse
-	(*QuotaRefreshRequest)(nil),              // 66: codexpulse.core.v1.QuotaRefreshRequest
-	(*QuotaRefreshReceipt)(nil),              // 67: codexpulse.core.v1.QuotaRefreshReceipt
-	(*ListSourcesRequest)(nil),               // 68: codexpulse.core.v1.ListSourcesRequest
-	(*SourceRequest)(nil),                    // 69: codexpulse.core.v1.SourceRequest
-	(*ListJobsRequest)(nil),                  // 70: codexpulse.core.v1.ListJobsRequest
-	(*JobRequest)(nil),                       // 71: codexpulse.core.v1.JobRequest
-	(*ListHealthRequest)(nil),                // 72: codexpulse.core.v1.ListHealthRequest
-	(*HealthRequest)(nil),                    // 73: codexpulse.core.v1.HealthRequest
-	(*HealthProjectionRequest)(nil),          // 74: codexpulse.core.v1.HealthProjectionRequest
-	(*DataHealthRequest)(nil),                // 75: codexpulse.core.v1.DataHealthRequest
-	(*SettingsRequest)(nil),                  // 76: codexpulse.core.v1.SettingsRequest
-	(*RecoveryAction)(nil),                   // 77: codexpulse.core.v1.RecoveryAction
-	(*SourceItem)(nil),                       // 78: codexpulse.core.v1.SourceItem
-	(*SourceSummary)(nil),                    // 79: codexpulse.core.v1.SourceSummary
-	(*SourceListResponse)(nil),               // 80: codexpulse.core.v1.SourceListResponse
-	(*SourceDetailResponse)(nil),             // 81: codexpulse.core.v1.SourceDetailResponse
-	(*JobProgress)(nil),                      // 82: codexpulse.core.v1.JobProgress
-	(*JobItem)(nil),                          // 83: codexpulse.core.v1.JobItem
-	(*JobSummary)(nil),                       // 84: codexpulse.core.v1.JobSummary
-	(*JobListResponse)(nil),                  // 85: codexpulse.core.v1.JobListResponse
-	(*JobDetailResponse)(nil),                // 86: codexpulse.core.v1.JobDetailResponse
-	(*HealthItem)(nil),                       // 87: codexpulse.core.v1.HealthItem
-	(*HealthSummary)(nil),                    // 88: codexpulse.core.v1.HealthSummary
-	(*HealthListResponse)(nil),               // 89: codexpulse.core.v1.HealthListResponse
-	(*HealthDetailResponse)(nil),             // 90: codexpulse.core.v1.HealthDetailResponse
-	(*HealthComponentStatus)(nil),            // 91: codexpulse.core.v1.HealthComponentStatus
-	(*HealthProjectionResponse)(nil),         // 92: codexpulse.core.v1.HealthProjectionResponse
-	(*DataHealthWindow)(nil),                 // 93: codexpulse.core.v1.DataHealthWindow
-	(*DataHealthRuntimePoint)(nil),           // 94: codexpulse.core.v1.DataHealthRuntimePoint
-	(*DataHealthScheduler)(nil),              // 95: codexpulse.core.v1.DataHealthScheduler
-	(*DataHealthJobs)(nil),                   // 96: codexpulse.core.v1.DataHealthJobs
-	(*DataHealthSources)(nil),                // 97: codexpulse.core.v1.DataHealthSources
-	(*DataHealthResponse)(nil),               // 98: codexpulse.core.v1.DataHealthResponse
-	(*EditableField)(nil),                    // 99: codexpulse.core.v1.EditableField
-	(*SettingsHomeSnapshot)(nil),             // 100: codexpulse.core.v1.SettingsHomeSnapshot
-	(*SettingsOnlineSnapshot)(nil),           // 101: codexpulse.core.v1.SettingsOnlineSnapshot
-	(*SettingsRefreshSnapshot)(nil),          // 102: codexpulse.core.v1.SettingsRefreshSnapshot
-	(*SettingsUpdateSnapshot)(nil),           // 103: codexpulse.core.v1.SettingsUpdateSnapshot
-	(*SettingsUISnapshot)(nil),               // 104: codexpulse.core.v1.SettingsUISnapshot
-	(*SettingsSnapshot)(nil),                 // 105: codexpulse.core.v1.SettingsSnapshot
-	(*SettingsResponse)(nil),                 // 106: codexpulse.core.v1.SettingsResponse
-	(*SettingsOnlineUpdate)(nil),             // 107: codexpulse.core.v1.SettingsOnlineUpdate
-	(*SettingsRefreshUpdate)(nil),            // 108: codexpulse.core.v1.SettingsRefreshUpdate
-	(*SettingsUpdatesUpdate)(nil),            // 109: codexpulse.core.v1.SettingsUpdatesUpdate
-	(*SettingsUIUpdate)(nil),                 // 110: codexpulse.core.v1.SettingsUIUpdate
-	(*UpdateSettingsRequest)(nil),            // 111: codexpulse.core.v1.UpdateSettingsRequest
-	(*SettingsUpdateReceipt)(nil),            // 112: codexpulse.core.v1.SettingsUpdateReceipt
-	(*PlanHomeSwitchRequest)(nil),            // 113: codexpulse.core.v1.PlanHomeSwitchRequest
-	(*HomeSwitchPlanReceipt)(nil),            // 114: codexpulse.core.v1.HomeSwitchPlanReceipt
-	(*ConfirmHomeSwitchRequest)(nil),         // 115: codexpulse.core.v1.ConfirmHomeSwitchRequest
-	(*RecoverHomeSwitchRequest)(nil),         // 116: codexpulse.core.v1.RecoverHomeSwitchRequest
-	(*HomeSwitchReceipt)(nil),                // 117: codexpulse.core.v1.HomeSwitchReceipt
-	(*RuntimeActionRequest)(nil),             // 118: codexpulse.core.v1.RuntimeActionRequest
-	(*RuntimeActionReceipt)(nil),             // 119: codexpulse.core.v1.RuntimeActionReceipt
-	(*AnalyzeSessionIndexRepairRequest)(nil), // 120: codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
-	(*RepairDryRunReceipt)(nil),              // 121: codexpulse.core.v1.RepairDryRunReceipt
-	(*LifecycleNotificationRequest)(nil),     // 122: codexpulse.core.v1.LifecycleNotificationRequest
-	(*LifecycleNotificationReceipt)(nil),     // 123: codexpulse.core.v1.LifecycleNotificationReceipt
-	(*MigrationRecoveryStateRequest)(nil),    // 124: codexpulse.core.v1.MigrationRecoveryStateRequest
-	(*MigrationRecoveryRetryRequest)(nil),    // 125: codexpulse.core.v1.MigrationRecoveryRetryRequest
-	(*MigrationRecoveryCancelRequest)(nil),   // 126: codexpulse.core.v1.MigrationRecoveryCancelRequest
-	(*MigrationRecoveryExitRequest)(nil),     // 127: codexpulse.core.v1.MigrationRecoveryExitRequest
-	(*MigrationRecoveryPrepareRequest)(nil),  // 128: codexpulse.core.v1.MigrationRecoveryPrepareRequest
-	(*MigrationRecoveryConfirmRequest)(nil),  // 129: codexpulse.core.v1.MigrationRecoveryConfirmRequest
-	(*MigrationBackupInfo)(nil),              // 130: codexpulse.core.v1.MigrationBackupInfo
-	(*MigrationRecoverySnapshot)(nil),        // 131: codexpulse.core.v1.MigrationRecoverySnapshot
-	(*MigrationRecoveryReceipt)(nil),         // 132: codexpulse.core.v1.MigrationRecoveryReceipt
-	(*MigrationRestoreConfirmation)(nil),     // 133: codexpulse.core.v1.MigrationRestoreConfirmation
-	(*SubscribeInvalidationsRequest)(nil),    // 134: codexpulse.core.v1.SubscribeInvalidationsRequest
-	(*QueryInvalidationEvent)(nil),           // 135: codexpulse.core.v1.QueryInvalidationEvent
-	(*ShutdownRequest)(nil),                  // 136: codexpulse.core.v1.ShutdownRequest
-	(*ShutdownResponse)(nil),                 // 137: codexpulse.core.v1.ShutdownResponse
-	(*AccountSnapshotRequest)(nil),           // 138: codexpulse.core.v1.AccountSnapshotRequest
-	(*CodexAccountIdentity)(nil),             // 139: codexpulse.core.v1.CodexAccountIdentity
-	(*AccountSnapshotResponse)(nil),          // 140: codexpulse.core.v1.AccountSnapshotResponse
+	(*InvocationUsageRequest)(nil),           // 34: codexpulse.core.v1.InvocationUsageRequest
+	(*InvocationTotals)(nil),                 // 35: codexpulse.core.v1.InvocationTotals
+	(*InvocationTrendPoint)(nil),             // 36: codexpulse.core.v1.InvocationTrendPoint
+	(*ToolUsageItem)(nil),                    // 37: codexpulse.core.v1.ToolUsageItem
+	(*SkillUsageItem)(nil),                   // 38: codexpulse.core.v1.SkillUsageItem
+	(*InvocationCoverage)(nil),               // 39: codexpulse.core.v1.InvocationCoverage
+	(*InvocationUsageResponse)(nil),          // 40: codexpulse.core.v1.InvocationUsageResponse
+	(*PricingCatalogCurrentRequest)(nil),     // 41: codexpulse.core.v1.PricingCatalogCurrentRequest
+	(*ModelReferencePrice)(nil),              // 42: codexpulse.core.v1.ModelReferencePrice
+	(*PricingCatalogCurrentResponse)(nil),    // 43: codexpulse.core.v1.PricingCatalogCurrentResponse
+	(*SessionItem)(nil),                      // 44: codexpulse.core.v1.SessionItem
+	(*SessionListResponse)(nil),              // 45: codexpulse.core.v1.SessionListResponse
+	(*SessionTurnItem)(nil),                  // 46: codexpulse.core.v1.SessionTurnItem
+	(*SessionDetailResponse)(nil),            // 47: codexpulse.core.v1.SessionDetailResponse
+	(*ProjectDailyPoint)(nil),                // 48: codexpulse.core.v1.ProjectDailyPoint
+	(*ProjectItem)(nil),                      // 49: codexpulse.core.v1.ProjectItem
+	(*ProjectSessionItem)(nil),               // 50: codexpulse.core.v1.ProjectSessionItem
+	(*ProjectModelItem)(nil),                 // 51: codexpulse.core.v1.ProjectModelItem
+	(*ProjectListResponse)(nil),              // 52: codexpulse.core.v1.ProjectListResponse
+	(*ProjectDetailResponse)(nil),            // 53: codexpulse.core.v1.ProjectDetailResponse
+	(*QuotaCurrentRequest)(nil),              // 54: codexpulse.core.v1.QuotaCurrentRequest
+	(*CurrentExplanation)(nil),               // 55: codexpulse.core.v1.CurrentExplanation
+	(*CurrentWindow)(nil),                    // 56: codexpulse.core.v1.CurrentWindow
+	(*CurrentSource)(nil),                    // 57: codexpulse.core.v1.CurrentSource
+	(*CurrentNextReset)(nil),                 // 58: codexpulse.core.v1.CurrentNextReset
+	(*CurrentResetCreditItem)(nil),           // 59: codexpulse.core.v1.CurrentResetCreditItem
+	(*CurrentResetCredits)(nil),              // 60: codexpulse.core.v1.CurrentResetCredits
+	(*CurrentRefreshStatus)(nil),             // 61: codexpulse.core.v1.CurrentRefreshStatus
+	(*CurrentRefresh)(nil),                   // 62: codexpulse.core.v1.CurrentRefresh
+	(*CurrentQuota)(nil),                     // 63: codexpulse.core.v1.CurrentQuota
+	(*QuotaCurrentResponse)(nil),             // 64: codexpulse.core.v1.QuotaCurrentResponse
+	(*QuotaPaceRequest)(nil),                 // 65: codexpulse.core.v1.QuotaPaceRequest
+	(*QuotaPacePoint)(nil),                   // 66: codexpulse.core.v1.QuotaPacePoint
+	(*QuotaPaceCycle)(nil),                   // 67: codexpulse.core.v1.QuotaPaceCycle
+	(*QuotaPaceHistoryBandPoint)(nil),        // 68: codexpulse.core.v1.QuotaPaceHistoryBandPoint
+	(*QuotaPaceForecast)(nil),                // 69: codexpulse.core.v1.QuotaPaceForecast
+	(*QuotaPaceWindow)(nil),                  // 70: codexpulse.core.v1.QuotaPaceWindow
+	(*CurrentQuotaPace)(nil),                 // 71: codexpulse.core.v1.CurrentQuotaPace
+	(*QuotaPaceResponse)(nil),                // 72: codexpulse.core.v1.QuotaPaceResponse
+	(*QuotaRefreshRequest)(nil),              // 73: codexpulse.core.v1.QuotaRefreshRequest
+	(*QuotaRefreshReceipt)(nil),              // 74: codexpulse.core.v1.QuotaRefreshReceipt
+	(*ListSourcesRequest)(nil),               // 75: codexpulse.core.v1.ListSourcesRequest
+	(*SourceRequest)(nil),                    // 76: codexpulse.core.v1.SourceRequest
+	(*ListJobsRequest)(nil),                  // 77: codexpulse.core.v1.ListJobsRequest
+	(*JobRequest)(nil),                       // 78: codexpulse.core.v1.JobRequest
+	(*ListHealthRequest)(nil),                // 79: codexpulse.core.v1.ListHealthRequest
+	(*HealthRequest)(nil),                    // 80: codexpulse.core.v1.HealthRequest
+	(*HealthProjectionRequest)(nil),          // 81: codexpulse.core.v1.HealthProjectionRequest
+	(*DataHealthRequest)(nil),                // 82: codexpulse.core.v1.DataHealthRequest
+	(*SettingsRequest)(nil),                  // 83: codexpulse.core.v1.SettingsRequest
+	(*RecoveryAction)(nil),                   // 84: codexpulse.core.v1.RecoveryAction
+	(*SourceItem)(nil),                       // 85: codexpulse.core.v1.SourceItem
+	(*SourceSummary)(nil),                    // 86: codexpulse.core.v1.SourceSummary
+	(*SourceListResponse)(nil),               // 87: codexpulse.core.v1.SourceListResponse
+	(*SourceDetailResponse)(nil),             // 88: codexpulse.core.v1.SourceDetailResponse
+	(*JobProgress)(nil),                      // 89: codexpulse.core.v1.JobProgress
+	(*JobItem)(nil),                          // 90: codexpulse.core.v1.JobItem
+	(*JobSummary)(nil),                       // 91: codexpulse.core.v1.JobSummary
+	(*JobListResponse)(nil),                  // 92: codexpulse.core.v1.JobListResponse
+	(*JobDetailResponse)(nil),                // 93: codexpulse.core.v1.JobDetailResponse
+	(*HealthItem)(nil),                       // 94: codexpulse.core.v1.HealthItem
+	(*HealthSummary)(nil),                    // 95: codexpulse.core.v1.HealthSummary
+	(*HealthListResponse)(nil),               // 96: codexpulse.core.v1.HealthListResponse
+	(*HealthDetailResponse)(nil),             // 97: codexpulse.core.v1.HealthDetailResponse
+	(*HealthComponentStatus)(nil),            // 98: codexpulse.core.v1.HealthComponentStatus
+	(*HealthProjectionResponse)(nil),         // 99: codexpulse.core.v1.HealthProjectionResponse
+	(*DataHealthWindow)(nil),                 // 100: codexpulse.core.v1.DataHealthWindow
+	(*DataHealthRuntimePoint)(nil),           // 101: codexpulse.core.v1.DataHealthRuntimePoint
+	(*DataHealthScheduler)(nil),              // 102: codexpulse.core.v1.DataHealthScheduler
+	(*DataHealthJobs)(nil),                   // 103: codexpulse.core.v1.DataHealthJobs
+	(*DataHealthSources)(nil),                // 104: codexpulse.core.v1.DataHealthSources
+	(*DataHealthResponse)(nil),               // 105: codexpulse.core.v1.DataHealthResponse
+	(*EditableField)(nil),                    // 106: codexpulse.core.v1.EditableField
+	(*SettingsHomeSnapshot)(nil),             // 107: codexpulse.core.v1.SettingsHomeSnapshot
+	(*SettingsOnlineSnapshot)(nil),           // 108: codexpulse.core.v1.SettingsOnlineSnapshot
+	(*SettingsRefreshSnapshot)(nil),          // 109: codexpulse.core.v1.SettingsRefreshSnapshot
+	(*SettingsUpdateSnapshot)(nil),           // 110: codexpulse.core.v1.SettingsUpdateSnapshot
+	(*SettingsUISnapshot)(nil),               // 111: codexpulse.core.v1.SettingsUISnapshot
+	(*SettingsSnapshot)(nil),                 // 112: codexpulse.core.v1.SettingsSnapshot
+	(*SettingsResponse)(nil),                 // 113: codexpulse.core.v1.SettingsResponse
+	(*SettingsOnlineUpdate)(nil),             // 114: codexpulse.core.v1.SettingsOnlineUpdate
+	(*SettingsRefreshUpdate)(nil),            // 115: codexpulse.core.v1.SettingsRefreshUpdate
+	(*SettingsUpdatesUpdate)(nil),            // 116: codexpulse.core.v1.SettingsUpdatesUpdate
+	(*SettingsUIUpdate)(nil),                 // 117: codexpulse.core.v1.SettingsUIUpdate
+	(*UpdateSettingsRequest)(nil),            // 118: codexpulse.core.v1.UpdateSettingsRequest
+	(*SettingsUpdateReceipt)(nil),            // 119: codexpulse.core.v1.SettingsUpdateReceipt
+	(*PlanHomeSwitchRequest)(nil),            // 120: codexpulse.core.v1.PlanHomeSwitchRequest
+	(*HomeSwitchPlanReceipt)(nil),            // 121: codexpulse.core.v1.HomeSwitchPlanReceipt
+	(*ConfirmHomeSwitchRequest)(nil),         // 122: codexpulse.core.v1.ConfirmHomeSwitchRequest
+	(*RecoverHomeSwitchRequest)(nil),         // 123: codexpulse.core.v1.RecoverHomeSwitchRequest
+	(*HomeSwitchReceipt)(nil),                // 124: codexpulse.core.v1.HomeSwitchReceipt
+	(*RuntimeActionRequest)(nil),             // 125: codexpulse.core.v1.RuntimeActionRequest
+	(*RuntimeActionReceipt)(nil),             // 126: codexpulse.core.v1.RuntimeActionReceipt
+	(*AnalyzeSessionIndexRepairRequest)(nil), // 127: codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
+	(*RepairDryRunReceipt)(nil),              // 128: codexpulse.core.v1.RepairDryRunReceipt
+	(*LifecycleNotificationRequest)(nil),     // 129: codexpulse.core.v1.LifecycleNotificationRequest
+	(*LifecycleNotificationReceipt)(nil),     // 130: codexpulse.core.v1.LifecycleNotificationReceipt
+	(*MigrationRecoveryStateRequest)(nil),    // 131: codexpulse.core.v1.MigrationRecoveryStateRequest
+	(*MigrationRecoveryRetryRequest)(nil),    // 132: codexpulse.core.v1.MigrationRecoveryRetryRequest
+	(*MigrationRecoveryCancelRequest)(nil),   // 133: codexpulse.core.v1.MigrationRecoveryCancelRequest
+	(*MigrationRecoveryExitRequest)(nil),     // 134: codexpulse.core.v1.MigrationRecoveryExitRequest
+	(*MigrationRecoveryPrepareRequest)(nil),  // 135: codexpulse.core.v1.MigrationRecoveryPrepareRequest
+	(*MigrationRecoveryConfirmRequest)(nil),  // 136: codexpulse.core.v1.MigrationRecoveryConfirmRequest
+	(*MigrationBackupInfo)(nil),              // 137: codexpulse.core.v1.MigrationBackupInfo
+	(*MigrationRecoverySnapshot)(nil),        // 138: codexpulse.core.v1.MigrationRecoverySnapshot
+	(*MigrationRecoveryReceipt)(nil),         // 139: codexpulse.core.v1.MigrationRecoveryReceipt
+	(*MigrationRestoreConfirmation)(nil),     // 140: codexpulse.core.v1.MigrationRestoreConfirmation
+	(*SubscribeInvalidationsRequest)(nil),    // 141: codexpulse.core.v1.SubscribeInvalidationsRequest
+	(*QueryInvalidationEvent)(nil),           // 142: codexpulse.core.v1.QueryInvalidationEvent
+	(*ShutdownRequest)(nil),                  // 143: codexpulse.core.v1.ShutdownRequest
+	(*ShutdownResponse)(nil),                 // 144: codexpulse.core.v1.ShutdownResponse
+	(*AccountSnapshotRequest)(nil),           // 145: codexpulse.core.v1.AccountSnapshotRequest
+	(*CodexAccountIdentity)(nil),             // 146: codexpulse.core.v1.CodexAccountIdentity
+	(*AccountSnapshotResponse)(nil),          // 147: codexpulse.core.v1.AccountSnapshotResponse
 }
 var file_api_codexpulse_core_v1_core_proto_depIdxs = []int32{
-	131, // 0: codexpulse.core.v1.BootstrapResponse.recovery:type_name -> codexpulse.core.v1.MigrationRecoverySnapshot
+	138, // 0: codexpulse.core.v1.BootstrapResponse.recovery:type_name -> codexpulse.core.v1.MigrationRecoverySnapshot
 	6,   // 1: codexpulse.core.v1.ContractsResponse.methods:type_name -> codexpulse.core.v1.MethodInfo
 	8,   // 2: codexpulse.core.v1.ContractsResponse.error_example:type_name -> codexpulse.core.v1.ErrorDetail
 	11,  // 3: codexpulse.core.v1.ResponseMeta.page:type_name -> codexpulse.core.v1.PageInfo
@@ -11456,305 +12102,339 @@ var file_api_codexpulse_core_v1_core_proto_depIdxs = []int32{
 	26,  // 49: codexpulse.core.v1.UsageCostResponse.unpriced_reasons:type_name -> codexpulse.core.v1.ReasonCount
 	28,  // 50: codexpulse.core.v1.UsageCostResponse.models:type_name -> codexpulse.core.v1.UsageModelItem
 	32,  // 51: codexpulse.core.v1.UsageCostResponse.activity_distribution:type_name -> codexpulse.core.v1.ActivityDistribution
-	10,  // 52: codexpulse.core.v1.ModelReferencePrice.input_micros:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 53: codexpulse.core.v1.ModelReferencePrice.cached_input_micros:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 54: codexpulse.core.v1.ModelReferencePrice.output_micros:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 55: codexpulse.core.v1.PricingCatalogCurrentResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	10,  // 56: codexpulse.core.v1.PricingCatalogCurrentResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 57: codexpulse.core.v1.PricingCatalogCurrentResponse.unit_tokens:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 58: codexpulse.core.v1.PricingCatalogCurrentResponse.effective_from_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 59: codexpulse.core.v1.PricingCatalogCurrentResponse.verified_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	35,  // 60: codexpulse.core.v1.PricingCatalogCurrentResponse.items:type_name -> codexpulse.core.v1.ModelReferencePrice
-	24,  // 61: codexpulse.core.v1.SessionItem.project:type_name -> codexpulse.core.v1.AttributionValue
-	24,  // 62: codexpulse.core.v1.SessionItem.model:type_name -> codexpulse.core.v1.AttributionValue
-	10,  // 63: codexpulse.core.v1.SessionItem.last_activity_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	25,  // 64: codexpulse.core.v1.SessionItem.totals:type_name -> codexpulse.core.v1.UsageTotals
-	12,  // 65: codexpulse.core.v1.SessionListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	37,  // 66: codexpulse.core.v1.SessionListResponse.items:type_name -> codexpulse.core.v1.SessionItem
-	10,  // 67: codexpulse.core.v1.SessionListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
-	25,  // 68: codexpulse.core.v1.SessionListResponse.matched_totals:type_name -> codexpulse.core.v1.UsageTotals
-	25,  // 69: codexpulse.core.v1.SessionListResponse.page_totals:type_name -> codexpulse.core.v1.UsageTotals
-	24,  // 70: codexpulse.core.v1.SessionTurnItem.model:type_name -> codexpulse.core.v1.AttributionValue
-	10,  // 71: codexpulse.core.v1.SessionTurnItem.started_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 72: codexpulse.core.v1.SessionTurnItem.completed_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 73: codexpulse.core.v1.SessionTurnItem.observed_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	25,  // 74: codexpulse.core.v1.SessionTurnItem.totals:type_name -> codexpulse.core.v1.UsageTotals
-	12,  // 75: codexpulse.core.v1.SessionDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	26,  // 76: codexpulse.core.v1.SessionDetailResponse.unpriced_reasons:type_name -> codexpulse.core.v1.ReasonCount
-	37,  // 77: codexpulse.core.v1.SessionDetailResponse.item:type_name -> codexpulse.core.v1.SessionItem
-	11,  // 78: codexpulse.core.v1.SessionDetailResponse.turn_page:type_name -> codexpulse.core.v1.PageInfo
-	39,  // 79: codexpulse.core.v1.SessionDetailResponse.turns:type_name -> codexpulse.core.v1.SessionTurnItem
-	27,  // 80: codexpulse.core.v1.SessionDetailResponse.trend:type_name -> codexpulse.core.v1.TrendPoint
-	10,  // 81: codexpulse.core.v1.ProjectDailyPoint.bucket_start_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	25,  // 82: codexpulse.core.v1.ProjectDailyPoint.totals:type_name -> codexpulse.core.v1.UsageTotals
-	24,  // 83: codexpulse.core.v1.ProjectItem.project:type_name -> codexpulse.core.v1.AttributionValue
-	10,  // 84: codexpulse.core.v1.ProjectItem.session_count:type_name -> codexpulse.core.v1.NumericValue
-	41,  // 85: codexpulse.core.v1.ProjectItem.trend:type_name -> codexpulse.core.v1.ProjectDailyPoint
-	25,  // 86: codexpulse.core.v1.ProjectItem.totals:type_name -> codexpulse.core.v1.UsageTotals
-	24,  // 87: codexpulse.core.v1.ProjectSessionItem.model:type_name -> codexpulse.core.v1.AttributionValue
-	10,  // 88: codexpulse.core.v1.ProjectSessionItem.last_activity_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	25,  // 89: codexpulse.core.v1.ProjectSessionItem.totals:type_name -> codexpulse.core.v1.UsageTotals
-	24,  // 90: codexpulse.core.v1.ProjectModelItem.model:type_name -> codexpulse.core.v1.AttributionValue
-	25,  // 91: codexpulse.core.v1.ProjectModelItem.totals:type_name -> codexpulse.core.v1.UsageTotals
-	12,  // 92: codexpulse.core.v1.ProjectListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	17,  // 93: codexpulse.core.v1.ProjectListResponse.range:type_name -> codexpulse.core.v1.UTCTimeRange
-	42,  // 94: codexpulse.core.v1.ProjectListResponse.items:type_name -> codexpulse.core.v1.ProjectItem
-	10,  // 95: codexpulse.core.v1.ProjectListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
-	25,  // 96: codexpulse.core.v1.ProjectListResponse.global_totals:type_name -> codexpulse.core.v1.UsageTotals
-	25,  // 97: codexpulse.core.v1.ProjectListResponse.matched_totals:type_name -> codexpulse.core.v1.UsageTotals
-	25,  // 98: codexpulse.core.v1.ProjectListResponse.page_totals:type_name -> codexpulse.core.v1.UsageTotals
-	12,  // 99: codexpulse.core.v1.ProjectDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	17,  // 100: codexpulse.core.v1.ProjectDetailResponse.range:type_name -> codexpulse.core.v1.UTCTimeRange
-	42,  // 101: codexpulse.core.v1.ProjectDetailResponse.item:type_name -> codexpulse.core.v1.ProjectItem
-	41,  // 102: codexpulse.core.v1.ProjectDetailResponse.daily:type_name -> codexpulse.core.v1.ProjectDailyPoint
-	11,  // 103: codexpulse.core.v1.ProjectDetailResponse.session_page:type_name -> codexpulse.core.v1.PageInfo
-	43,  // 104: codexpulse.core.v1.ProjectDetailResponse.sessions:type_name -> codexpulse.core.v1.ProjectSessionItem
-	11,  // 105: codexpulse.core.v1.ProjectDetailResponse.model_page:type_name -> codexpulse.core.v1.PageInfo
-	44,  // 106: codexpulse.core.v1.ProjectDetailResponse.models:type_name -> codexpulse.core.v1.ProjectModelItem
-	25,  // 107: codexpulse.core.v1.ProjectDetailResponse.global_totals:type_name -> codexpulse.core.v1.UsageTotals
-	48,  // 108: codexpulse.core.v1.CurrentWindow.explanations:type_name -> codexpulse.core.v1.CurrentExplanation
-	52,  // 109: codexpulse.core.v1.CurrentResetCredits.items:type_name -> codexpulse.core.v1.CurrentResetCreditItem
-	54,  // 110: codexpulse.core.v1.CurrentRefresh.quota:type_name -> codexpulse.core.v1.CurrentRefreshStatus
-	54,  // 111: codexpulse.core.v1.CurrentRefresh.reset_credits:type_name -> codexpulse.core.v1.CurrentRefreshStatus
-	49,  // 112: codexpulse.core.v1.CurrentQuota.windows:type_name -> codexpulse.core.v1.CurrentWindow
-	50,  // 113: codexpulse.core.v1.CurrentQuota.sources:type_name -> codexpulse.core.v1.CurrentSource
-	51,  // 114: codexpulse.core.v1.CurrentQuota.next_reset:type_name -> codexpulse.core.v1.CurrentNextReset
-	53,  // 115: codexpulse.core.v1.CurrentQuota.reset_credits:type_name -> codexpulse.core.v1.CurrentResetCredits
-	55,  // 116: codexpulse.core.v1.CurrentQuota.refresh:type_name -> codexpulse.core.v1.CurrentRefresh
-	12,  // 117: codexpulse.core.v1.QuotaCurrentResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	56,  // 118: codexpulse.core.v1.QuotaCurrentResponse.current:type_name -> codexpulse.core.v1.CurrentQuota
-	59,  // 119: codexpulse.core.v1.QuotaPaceCycle.points:type_name -> codexpulse.core.v1.QuotaPacePoint
-	62,  // 120: codexpulse.core.v1.QuotaPaceWindow.forecast:type_name -> codexpulse.core.v1.QuotaPaceForecast
-	59,  // 121: codexpulse.core.v1.QuotaPaceWindow.current_points:type_name -> codexpulse.core.v1.QuotaPacePoint
-	60,  // 122: codexpulse.core.v1.QuotaPaceWindow.previous_cycle:type_name -> codexpulse.core.v1.QuotaPaceCycle
-	60,  // 123: codexpulse.core.v1.QuotaPaceWindow.historical_cycles:type_name -> codexpulse.core.v1.QuotaPaceCycle
-	61,  // 124: codexpulse.core.v1.QuotaPaceWindow.history_band:type_name -> codexpulse.core.v1.QuotaPaceHistoryBandPoint
-	63,  // 125: codexpulse.core.v1.CurrentQuotaPace.windows:type_name -> codexpulse.core.v1.QuotaPaceWindow
-	12,  // 126: codexpulse.core.v1.QuotaPaceResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	64,  // 127: codexpulse.core.v1.QuotaPaceResponse.pace:type_name -> codexpulse.core.v1.CurrentQuotaPace
-	18,  // 128: codexpulse.core.v1.ListSourcesRequest.query:type_name -> codexpulse.core.v1.QueryRequest
-	18,  // 129: codexpulse.core.v1.ListJobsRequest.query:type_name -> codexpulse.core.v1.QueryRequest
-	18,  // 130: codexpulse.core.v1.ListHealthRequest.query:type_name -> codexpulse.core.v1.QueryRequest
-	10,  // 131: codexpulse.core.v1.SourceItem.size_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 132: codexpulse.core.v1.SourceItem.parsed_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 133: codexpulse.core.v1.SourceItem.last_scanned_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 134: codexpulse.core.v1.SourceItem.last_attempt_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 135: codexpulse.core.v1.SourceItem.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 136: codexpulse.core.v1.SourceItem.next_due_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 137: codexpulse.core.v1.SourceItem.consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 138: codexpulse.core.v1.SourceItem.updated_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	77,  // 139: codexpulse.core.v1.SourceItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
-	10,  // 140: codexpulse.core.v1.SourceSummary.total:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 141: codexpulse.core.v1.SourceSummary.local_files:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 142: codexpulse.core.v1.SourceSummary.online_sources:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 143: codexpulse.core.v1.SourceSummary.attention:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 144: codexpulse.core.v1.SourceListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	78,  // 145: codexpulse.core.v1.SourceListResponse.items:type_name -> codexpulse.core.v1.SourceItem
-	10,  // 146: codexpulse.core.v1.SourceListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
-	79,  // 147: codexpulse.core.v1.SourceListResponse.summary:type_name -> codexpulse.core.v1.SourceSummary
-	12,  // 148: codexpulse.core.v1.SourceDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	78,  // 149: codexpulse.core.v1.SourceDetailResponse.item:type_name -> codexpulse.core.v1.SourceItem
-	10,  // 150: codexpulse.core.v1.JobProgress.current:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 151: codexpulse.core.v1.JobProgress.total:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 152: codexpulse.core.v1.JobItem.created_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 153: codexpulse.core.v1.JobItem.started_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 154: codexpulse.core.v1.JobItem.finished_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 155: codexpulse.core.v1.JobItem.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	82,  // 156: codexpulse.core.v1.JobItem.progress:type_name -> codexpulse.core.v1.JobProgress
-	10,  // 157: codexpulse.core.v1.JobItem.failure_count:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 158: codexpulse.core.v1.JobItem.next_retry_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 159: codexpulse.core.v1.JobItem.updated_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	77,  // 160: codexpulse.core.v1.JobItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
-	10,  // 161: codexpulse.core.v1.JobSummary.total:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 162: codexpulse.core.v1.JobSummary.queued:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 163: codexpulse.core.v1.JobSummary.running:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 164: codexpulse.core.v1.JobSummary.succeeded:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 165: codexpulse.core.v1.JobSummary.failed:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 166: codexpulse.core.v1.JobSummary.cancelled:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 167: codexpulse.core.v1.JobSummary.interrupted:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 168: codexpulse.core.v1.JobListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	83,  // 169: codexpulse.core.v1.JobListResponse.items:type_name -> codexpulse.core.v1.JobItem
-	10,  // 170: codexpulse.core.v1.JobListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
-	84,  // 171: codexpulse.core.v1.JobListResponse.summary:type_name -> codexpulse.core.v1.JobSummary
-	12,  // 172: codexpulse.core.v1.JobDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	83,  // 173: codexpulse.core.v1.JobDetailResponse.item:type_name -> codexpulse.core.v1.JobItem
-	10,  // 174: codexpulse.core.v1.HealthItem.first_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 175: codexpulse.core.v1.HealthItem.last_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 176: codexpulse.core.v1.HealthItem.resolved_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 177: codexpulse.core.v1.HealthItem.occurrence_count:type_name -> codexpulse.core.v1.NumericValue
-	77,  // 178: codexpulse.core.v1.HealthItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
-	10,  // 179: codexpulse.core.v1.HealthSummary.total:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 180: codexpulse.core.v1.HealthSummary.active:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 181: codexpulse.core.v1.HealthSummary.resolved:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 182: codexpulse.core.v1.HealthSummary.info:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 183: codexpulse.core.v1.HealthSummary.warnings:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 184: codexpulse.core.v1.HealthSummary.errors:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 185: codexpulse.core.v1.HealthSummary.critical:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 186: codexpulse.core.v1.HealthListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	87,  // 187: codexpulse.core.v1.HealthListResponse.items:type_name -> codexpulse.core.v1.HealthItem
-	10,  // 188: codexpulse.core.v1.HealthListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
-	88,  // 189: codexpulse.core.v1.HealthListResponse.summary:type_name -> codexpulse.core.v1.HealthSummary
-	12,  // 190: codexpulse.core.v1.HealthDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	87,  // 191: codexpulse.core.v1.HealthDetailResponse.item:type_name -> codexpulse.core.v1.HealthItem
-	10,  // 192: codexpulse.core.v1.HealthProjectionResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	91,  // 193: codexpulse.core.v1.HealthProjectionResponse.primary:type_name -> codexpulse.core.v1.HealthComponentStatus
-	91,  // 194: codexpulse.core.v1.HealthProjectionResponse.components:type_name -> codexpulse.core.v1.HealthComponentStatus
-	10,  // 195: codexpulse.core.v1.DataHealthWindow.from_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 196: codexpulse.core.v1.DataHealthWindow.until_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 197: codexpulse.core.v1.DataHealthRuntimePoint.captured_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 198: codexpulse.core.v1.DataHealthRuntimePoint.rss_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 199: codexpulse.core.v1.DataHealthRuntimePoint.peak_rss_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 200: codexpulse.core.v1.DataHealthRuntimePoint.db_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 201: codexpulse.core.v1.DataHealthRuntimePoint.wal_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 202: codexpulse.core.v1.DataHealthRuntimePoint.disk_free_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 203: codexpulse.core.v1.DataHealthRuntimePoint.live_queue_depth:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 204: codexpulse.core.v1.DataHealthRuntimePoint.backfill_queue_depth:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 205: codexpulse.core.v1.DataHealthRuntimePoint.oldest_live_wait_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 206: codexpulse.core.v1.DataHealthRuntimePoint.oldest_backfill_wait_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 207: codexpulse.core.v1.DataHealthRuntimePoint.dropped_samples:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 208: codexpulse.core.v1.DataHealthScheduler.cycle_count:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 209: codexpulse.core.v1.DataHealthScheduler.completed_cycles:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 210: codexpulse.core.v1.DataHealthScheduler.yielded_cycles:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 211: codexpulse.core.v1.DataHealthScheduler.failed_cycles:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 212: codexpulse.core.v1.DataHealthScheduler.interrupted_cycles:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 213: codexpulse.core.v1.DataHealthScheduler.files_scanned:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 214: codexpulse.core.v1.DataHealthScheduler.bytes_read:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 215: codexpulse.core.v1.DataHealthScheduler.active_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 216: codexpulse.core.v1.DataHealthScheduler.max_cycle_active_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 217: codexpulse.core.v1.DataHealthScheduler.last_progress_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 218: codexpulse.core.v1.DataHealthScheduler.last_backfill_progress_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 219: codexpulse.core.v1.DataHealthJobs.queued:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 220: codexpulse.core.v1.DataHealthJobs.running:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 221: codexpulse.core.v1.DataHealthJobs.interrupted:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 222: codexpulse.core.v1.DataHealthJobs.succeeded:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 223: codexpulse.core.v1.DataHealthJobs.failed:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 224: codexpulse.core.v1.DataHealthJobs.cancelled:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 225: codexpulse.core.v1.DataHealthJobs.duration_count:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 226: codexpulse.core.v1.DataHealthJobs.duration_total_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 227: codexpulse.core.v1.DataHealthJobs.duration_max_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 228: codexpulse.core.v1.DataHealthSources.total:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 229: codexpulse.core.v1.DataHealthSources.unknown:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 230: codexpulse.core.v1.DataHealthSources.current:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 231: codexpulse.core.v1.DataHealthSources.stale:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 232: codexpulse.core.v1.DataHealthSources.unavailable:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 233: codexpulse.core.v1.DataHealthSources.consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 234: codexpulse.core.v1.DataHealthSources.max_consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 235: codexpulse.core.v1.DataHealthSources.attempts:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 236: codexpulse.core.v1.DataHealthSources.succeeded_attempts:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 237: codexpulse.core.v1.DataHealthSources.failed_attempts:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 238: codexpulse.core.v1.DataHealthSources.cancelled_attempts:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 239: codexpulse.core.v1.DataHealthSources.response_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 240: codexpulse.core.v1.DataHealthSources.last_attempt_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 241: codexpulse.core.v1.DataHealthSources.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 242: codexpulse.core.v1.DataHealthSources.next_retry_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 243: codexpulse.core.v1.DataHealthResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	10,  // 244: codexpulse.core.v1.DataHealthResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	93,  // 245: codexpulse.core.v1.DataHealthResponse.window:type_name -> codexpulse.core.v1.DataHealthWindow
-	94,  // 246: codexpulse.core.v1.DataHealthResponse.runtime:type_name -> codexpulse.core.v1.DataHealthRuntimePoint
-	94,  // 247: codexpulse.core.v1.DataHealthResponse.latest:type_name -> codexpulse.core.v1.DataHealthRuntimePoint
-	95,  // 248: codexpulse.core.v1.DataHealthResponse.scheduler:type_name -> codexpulse.core.v1.DataHealthScheduler
-	96,  // 249: codexpulse.core.v1.DataHealthResponse.jobs:type_name -> codexpulse.core.v1.DataHealthJobs
-	97,  // 250: codexpulse.core.v1.DataHealthResponse.sources:type_name -> codexpulse.core.v1.DataHealthSources
-	83,  // 251: codexpulse.core.v1.DataHealthResponse.current_jobs:type_name -> codexpulse.core.v1.JobItem
-	83,  // 252: codexpulse.core.v1.DataHealthResponse.recent_jobs:type_name -> codexpulse.core.v1.JobItem
-	87,  // 253: codexpulse.core.v1.DataHealthResponse.open_events:type_name -> codexpulse.core.v1.HealthItem
-	87,  // 254: codexpulse.core.v1.DataHealthResponse.recent_events:type_name -> codexpulse.core.v1.HealthItem
-	10,  // 255: codexpulse.core.v1.SettingsUpdateSnapshot.snooze_until_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 256: codexpulse.core.v1.SettingsUpdateSnapshot.last_check_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	100, // 257: codexpulse.core.v1.SettingsSnapshot.home:type_name -> codexpulse.core.v1.SettingsHomeSnapshot
-	101, // 258: codexpulse.core.v1.SettingsSnapshot.online:type_name -> codexpulse.core.v1.SettingsOnlineSnapshot
-	102, // 259: codexpulse.core.v1.SettingsSnapshot.refresh:type_name -> codexpulse.core.v1.SettingsRefreshSnapshot
-	103, // 260: codexpulse.core.v1.SettingsSnapshot.updates:type_name -> codexpulse.core.v1.SettingsUpdateSnapshot
-	104, // 261: codexpulse.core.v1.SettingsSnapshot.ui:type_name -> codexpulse.core.v1.SettingsUISnapshot
-	12,  // 262: codexpulse.core.v1.SettingsResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	105, // 263: codexpulse.core.v1.SettingsResponse.snapshot:type_name -> codexpulse.core.v1.SettingsSnapshot
-	99,  // 264: codexpulse.core.v1.SettingsResponse.editable_fields:type_name -> codexpulse.core.v1.EditableField
-	107, // 265: codexpulse.core.v1.UpdateSettingsRequest.online:type_name -> codexpulse.core.v1.SettingsOnlineUpdate
-	108, // 266: codexpulse.core.v1.UpdateSettingsRequest.refresh:type_name -> codexpulse.core.v1.SettingsRefreshUpdate
-	109, // 267: codexpulse.core.v1.UpdateSettingsRequest.updates:type_name -> codexpulse.core.v1.SettingsUpdatesUpdate
-	110, // 268: codexpulse.core.v1.UpdateSettingsRequest.ui:type_name -> codexpulse.core.v1.SettingsUIUpdate
-	130, // 269: codexpulse.core.v1.MigrationRecoverySnapshot.backups:type_name -> codexpulse.core.v1.MigrationBackupInfo
-	130, // 270: codexpulse.core.v1.MigrationRestoreConfirmation.backup:type_name -> codexpulse.core.v1.MigrationBackupInfo
-	139, // 271: codexpulse.core.v1.AccountSnapshotResponse.account:type_name -> codexpulse.core.v1.CodexAccountIdentity
-	1,   // 272: codexpulse.core.v1.CoreService.Handshake:input_type -> codexpulse.core.v1.HandshakeRequest
-	3,   // 273: codexpulse.core.v1.CoreService.Bootstrap:input_type -> codexpulse.core.v1.BootstrapRequest
-	5,   // 274: codexpulse.core.v1.CoreService.Contracts:input_type -> codexpulse.core.v1.ContractsRequest
-	138, // 275: codexpulse.core.v1.CoreService.AccountSnapshot:input_type -> codexpulse.core.v1.AccountSnapshotRequest
-	19,  // 276: codexpulse.core.v1.CoreService.UsageCost:input_type -> codexpulse.core.v1.UsageCostRequest
-	34,  // 277: codexpulse.core.v1.CoreService.PricingCatalogCurrent:input_type -> codexpulse.core.v1.PricingCatalogCurrentRequest
-	20,  // 278: codexpulse.core.v1.CoreService.ListSessions:input_type -> codexpulse.core.v1.ListSessionsRequest
-	21,  // 279: codexpulse.core.v1.CoreService.SessionDetail:input_type -> codexpulse.core.v1.SessionDetailRequest
-	22,  // 280: codexpulse.core.v1.CoreService.ListProjects:input_type -> codexpulse.core.v1.ListProjectsRequest
-	23,  // 281: codexpulse.core.v1.CoreService.ProjectDetail:input_type -> codexpulse.core.v1.ProjectDetailRequest
-	47,  // 282: codexpulse.core.v1.CoreService.QuotaCurrent:input_type -> codexpulse.core.v1.QuotaCurrentRequest
-	58,  // 283: codexpulse.core.v1.CoreService.QuotaPace:input_type -> codexpulse.core.v1.QuotaPaceRequest
-	66,  // 284: codexpulse.core.v1.CoreService.RequestQuotaRefresh:input_type -> codexpulse.core.v1.QuotaRefreshRequest
-	68,  // 285: codexpulse.core.v1.CoreService.ListSources:input_type -> codexpulse.core.v1.ListSourcesRequest
-	69,  // 286: codexpulse.core.v1.CoreService.Source:input_type -> codexpulse.core.v1.SourceRequest
-	70,  // 287: codexpulse.core.v1.CoreService.ListJobs:input_type -> codexpulse.core.v1.ListJobsRequest
-	71,  // 288: codexpulse.core.v1.CoreService.Job:input_type -> codexpulse.core.v1.JobRequest
-	72,  // 289: codexpulse.core.v1.CoreService.ListHealth:input_type -> codexpulse.core.v1.ListHealthRequest
-	73,  // 290: codexpulse.core.v1.CoreService.Health:input_type -> codexpulse.core.v1.HealthRequest
-	74,  // 291: codexpulse.core.v1.CoreService.HealthProjection:input_type -> codexpulse.core.v1.HealthProjectionRequest
-	75,  // 292: codexpulse.core.v1.CoreService.DataHealth:input_type -> codexpulse.core.v1.DataHealthRequest
-	76,  // 293: codexpulse.core.v1.CoreService.Settings:input_type -> codexpulse.core.v1.SettingsRequest
-	111, // 294: codexpulse.core.v1.CoreService.UpdateSettings:input_type -> codexpulse.core.v1.UpdateSettingsRequest
-	113, // 295: codexpulse.core.v1.CoreService.PlanHomeSwitch:input_type -> codexpulse.core.v1.PlanHomeSwitchRequest
-	115, // 296: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:input_type -> codexpulse.core.v1.ConfirmHomeSwitchRequest
-	116, // 297: codexpulse.core.v1.CoreService.RecoverHomeSwitch:input_type -> codexpulse.core.v1.RecoverHomeSwitchRequest
-	118, // 298: codexpulse.core.v1.CoreService.RunRuntimeAction:input_type -> codexpulse.core.v1.RuntimeActionRequest
-	120, // 299: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:input_type -> codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
-	122, // 300: codexpulse.core.v1.CoreService.NotifyLifecycle:input_type -> codexpulse.core.v1.LifecycleNotificationRequest
-	124, // 301: codexpulse.core.v1.CoreService.MigrationRecoveryState:input_type -> codexpulse.core.v1.MigrationRecoveryStateRequest
-	125, // 302: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:input_type -> codexpulse.core.v1.MigrationRecoveryRetryRequest
-	128, // 303: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:input_type -> codexpulse.core.v1.MigrationRecoveryPrepareRequest
-	129, // 304: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:input_type -> codexpulse.core.v1.MigrationRecoveryConfirmRequest
-	126, // 305: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:input_type -> codexpulse.core.v1.MigrationRecoveryCancelRequest
-	127, // 306: codexpulse.core.v1.CoreService.MigrationRecoveryExit:input_type -> codexpulse.core.v1.MigrationRecoveryExitRequest
-	134, // 307: codexpulse.core.v1.CoreService.SubscribeInvalidations:input_type -> codexpulse.core.v1.SubscribeInvalidationsRequest
-	136, // 308: codexpulse.core.v1.CoreService.Shutdown:input_type -> codexpulse.core.v1.ShutdownRequest
-	2,   // 309: codexpulse.core.v1.CoreService.Handshake:output_type -> codexpulse.core.v1.HandshakeResponse
-	4,   // 310: codexpulse.core.v1.CoreService.Bootstrap:output_type -> codexpulse.core.v1.BootstrapResponse
-	7,   // 311: codexpulse.core.v1.CoreService.Contracts:output_type -> codexpulse.core.v1.ContractsResponse
-	140, // 312: codexpulse.core.v1.CoreService.AccountSnapshot:output_type -> codexpulse.core.v1.AccountSnapshotResponse
-	33,  // 313: codexpulse.core.v1.CoreService.UsageCost:output_type -> codexpulse.core.v1.UsageCostResponse
-	36,  // 314: codexpulse.core.v1.CoreService.PricingCatalogCurrent:output_type -> codexpulse.core.v1.PricingCatalogCurrentResponse
-	38,  // 315: codexpulse.core.v1.CoreService.ListSessions:output_type -> codexpulse.core.v1.SessionListResponse
-	40,  // 316: codexpulse.core.v1.CoreService.SessionDetail:output_type -> codexpulse.core.v1.SessionDetailResponse
-	45,  // 317: codexpulse.core.v1.CoreService.ListProjects:output_type -> codexpulse.core.v1.ProjectListResponse
-	46,  // 318: codexpulse.core.v1.CoreService.ProjectDetail:output_type -> codexpulse.core.v1.ProjectDetailResponse
-	57,  // 319: codexpulse.core.v1.CoreService.QuotaCurrent:output_type -> codexpulse.core.v1.QuotaCurrentResponse
-	65,  // 320: codexpulse.core.v1.CoreService.QuotaPace:output_type -> codexpulse.core.v1.QuotaPaceResponse
-	67,  // 321: codexpulse.core.v1.CoreService.RequestQuotaRefresh:output_type -> codexpulse.core.v1.QuotaRefreshReceipt
-	80,  // 322: codexpulse.core.v1.CoreService.ListSources:output_type -> codexpulse.core.v1.SourceListResponse
-	81,  // 323: codexpulse.core.v1.CoreService.Source:output_type -> codexpulse.core.v1.SourceDetailResponse
-	85,  // 324: codexpulse.core.v1.CoreService.ListJobs:output_type -> codexpulse.core.v1.JobListResponse
-	86,  // 325: codexpulse.core.v1.CoreService.Job:output_type -> codexpulse.core.v1.JobDetailResponse
-	89,  // 326: codexpulse.core.v1.CoreService.ListHealth:output_type -> codexpulse.core.v1.HealthListResponse
-	90,  // 327: codexpulse.core.v1.CoreService.Health:output_type -> codexpulse.core.v1.HealthDetailResponse
-	92,  // 328: codexpulse.core.v1.CoreService.HealthProjection:output_type -> codexpulse.core.v1.HealthProjectionResponse
-	98,  // 329: codexpulse.core.v1.CoreService.DataHealth:output_type -> codexpulse.core.v1.DataHealthResponse
-	106, // 330: codexpulse.core.v1.CoreService.Settings:output_type -> codexpulse.core.v1.SettingsResponse
-	112, // 331: codexpulse.core.v1.CoreService.UpdateSettings:output_type -> codexpulse.core.v1.SettingsUpdateReceipt
-	114, // 332: codexpulse.core.v1.CoreService.PlanHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchPlanReceipt
-	117, // 333: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
-	117, // 334: codexpulse.core.v1.CoreService.RecoverHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
-	119, // 335: codexpulse.core.v1.CoreService.RunRuntimeAction:output_type -> codexpulse.core.v1.RuntimeActionReceipt
-	121, // 336: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:output_type -> codexpulse.core.v1.RepairDryRunReceipt
-	123, // 337: codexpulse.core.v1.CoreService.NotifyLifecycle:output_type -> codexpulse.core.v1.LifecycleNotificationReceipt
-	131, // 338: codexpulse.core.v1.CoreService.MigrationRecoveryState:output_type -> codexpulse.core.v1.MigrationRecoverySnapshot
-	132, // 339: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
-	133, // 340: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:output_type -> codexpulse.core.v1.MigrationRestoreConfirmation
-	132, // 341: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
-	0,   // 342: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:output_type -> codexpulse.core.v1.Empty
-	0,   // 343: codexpulse.core.v1.CoreService.MigrationRecoveryExit:output_type -> codexpulse.core.v1.Empty
-	135, // 344: codexpulse.core.v1.CoreService.SubscribeInvalidations:output_type -> codexpulse.core.v1.QueryInvalidationEvent
-	137, // 345: codexpulse.core.v1.CoreService.Shutdown:output_type -> codexpulse.core.v1.ShutdownResponse
-	309, // [309:346] is the sub-list for method output_type
-	272, // [272:309] is the sub-list for method input_type
-	272, // [272:272] is the sub-list for extension type_name
-	272, // [272:272] is the sub-list for extension extendee
-	0,   // [0:272] is the sub-list for field type_name
+	17,  // 52: codexpulse.core.v1.InvocationUsageRequest.range:type_name -> codexpulse.core.v1.UTCTimeRange
+	10,  // 53: codexpulse.core.v1.InvocationTotals.tool_call_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 54: codexpulse.core.v1.InvocationTotals.distinct_tool_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 55: codexpulse.core.v1.InvocationTotals.skill_activity_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 56: codexpulse.core.v1.InvocationTotals.distinct_skill_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 57: codexpulse.core.v1.InvocationTotals.tool_failure_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 58: codexpulse.core.v1.InvocationTotals.session_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 59: codexpulse.core.v1.InvocationTrendPoint.start_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 60: codexpulse.core.v1.InvocationTrendPoint.end_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 61: codexpulse.core.v1.InvocationTrendPoint.tool_call_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 62: codexpulse.core.v1.InvocationTrendPoint.skill_activity_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 63: codexpulse.core.v1.ToolUsageItem.call_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 64: codexpulse.core.v1.ToolUsageItem.session_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 65: codexpulse.core.v1.ToolUsageItem.succeeded_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 66: codexpulse.core.v1.ToolUsageItem.failed_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 67: codexpulse.core.v1.ToolUsageItem.unknown_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 68: codexpulse.core.v1.ToolUsageItem.average_duration_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 69: codexpulse.core.v1.ToolUsageItem.last_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 70: codexpulse.core.v1.SkillUsageItem.activity_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 71: codexpulse.core.v1.SkillUsageItem.session_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 72: codexpulse.core.v1.SkillUsageItem.explicit_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 73: codexpulse.core.v1.SkillUsageItem.file_loaded_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 74: codexpulse.core.v1.SkillUsageItem.last_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 75: codexpulse.core.v1.InvocationCoverage.structured_event_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 76: codexpulse.core.v1.InvocationCoverage.detected_event_count:type_name -> codexpulse.core.v1.NumericValue
+	12,  // 77: codexpulse.core.v1.InvocationUsageResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	17,  // 78: codexpulse.core.v1.InvocationUsageResponse.range:type_name -> codexpulse.core.v1.UTCTimeRange
+	35,  // 79: codexpulse.core.v1.InvocationUsageResponse.totals:type_name -> codexpulse.core.v1.InvocationTotals
+	36,  // 80: codexpulse.core.v1.InvocationUsageResponse.trend:type_name -> codexpulse.core.v1.InvocationTrendPoint
+	37,  // 81: codexpulse.core.v1.InvocationUsageResponse.tools:type_name -> codexpulse.core.v1.ToolUsageItem
+	38,  // 82: codexpulse.core.v1.InvocationUsageResponse.skills:type_name -> codexpulse.core.v1.SkillUsageItem
+	39,  // 83: codexpulse.core.v1.InvocationUsageResponse.coverage:type_name -> codexpulse.core.v1.InvocationCoverage
+	10,  // 84: codexpulse.core.v1.ModelReferencePrice.input_micros:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 85: codexpulse.core.v1.ModelReferencePrice.cached_input_micros:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 86: codexpulse.core.v1.ModelReferencePrice.output_micros:type_name -> codexpulse.core.v1.NumericValue
+	12,  // 87: codexpulse.core.v1.PricingCatalogCurrentResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	10,  // 88: codexpulse.core.v1.PricingCatalogCurrentResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 89: codexpulse.core.v1.PricingCatalogCurrentResponse.unit_tokens:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 90: codexpulse.core.v1.PricingCatalogCurrentResponse.effective_from_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 91: codexpulse.core.v1.PricingCatalogCurrentResponse.verified_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	42,  // 92: codexpulse.core.v1.PricingCatalogCurrentResponse.items:type_name -> codexpulse.core.v1.ModelReferencePrice
+	24,  // 93: codexpulse.core.v1.SessionItem.project:type_name -> codexpulse.core.v1.AttributionValue
+	24,  // 94: codexpulse.core.v1.SessionItem.model:type_name -> codexpulse.core.v1.AttributionValue
+	10,  // 95: codexpulse.core.v1.SessionItem.last_activity_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	25,  // 96: codexpulse.core.v1.SessionItem.totals:type_name -> codexpulse.core.v1.UsageTotals
+	12,  // 97: codexpulse.core.v1.SessionListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	44,  // 98: codexpulse.core.v1.SessionListResponse.items:type_name -> codexpulse.core.v1.SessionItem
+	10,  // 99: codexpulse.core.v1.SessionListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
+	25,  // 100: codexpulse.core.v1.SessionListResponse.matched_totals:type_name -> codexpulse.core.v1.UsageTotals
+	25,  // 101: codexpulse.core.v1.SessionListResponse.page_totals:type_name -> codexpulse.core.v1.UsageTotals
+	24,  // 102: codexpulse.core.v1.SessionTurnItem.model:type_name -> codexpulse.core.v1.AttributionValue
+	10,  // 103: codexpulse.core.v1.SessionTurnItem.started_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 104: codexpulse.core.v1.SessionTurnItem.completed_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 105: codexpulse.core.v1.SessionTurnItem.observed_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	25,  // 106: codexpulse.core.v1.SessionTurnItem.totals:type_name -> codexpulse.core.v1.UsageTotals
+	12,  // 107: codexpulse.core.v1.SessionDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	26,  // 108: codexpulse.core.v1.SessionDetailResponse.unpriced_reasons:type_name -> codexpulse.core.v1.ReasonCount
+	44,  // 109: codexpulse.core.v1.SessionDetailResponse.item:type_name -> codexpulse.core.v1.SessionItem
+	11,  // 110: codexpulse.core.v1.SessionDetailResponse.turn_page:type_name -> codexpulse.core.v1.PageInfo
+	46,  // 111: codexpulse.core.v1.SessionDetailResponse.turns:type_name -> codexpulse.core.v1.SessionTurnItem
+	27,  // 112: codexpulse.core.v1.SessionDetailResponse.trend:type_name -> codexpulse.core.v1.TrendPoint
+	10,  // 113: codexpulse.core.v1.ProjectDailyPoint.bucket_start_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	25,  // 114: codexpulse.core.v1.ProjectDailyPoint.totals:type_name -> codexpulse.core.v1.UsageTotals
+	24,  // 115: codexpulse.core.v1.ProjectItem.project:type_name -> codexpulse.core.v1.AttributionValue
+	10,  // 116: codexpulse.core.v1.ProjectItem.session_count:type_name -> codexpulse.core.v1.NumericValue
+	48,  // 117: codexpulse.core.v1.ProjectItem.trend:type_name -> codexpulse.core.v1.ProjectDailyPoint
+	25,  // 118: codexpulse.core.v1.ProjectItem.totals:type_name -> codexpulse.core.v1.UsageTotals
+	24,  // 119: codexpulse.core.v1.ProjectSessionItem.model:type_name -> codexpulse.core.v1.AttributionValue
+	10,  // 120: codexpulse.core.v1.ProjectSessionItem.last_activity_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	25,  // 121: codexpulse.core.v1.ProjectSessionItem.totals:type_name -> codexpulse.core.v1.UsageTotals
+	24,  // 122: codexpulse.core.v1.ProjectModelItem.model:type_name -> codexpulse.core.v1.AttributionValue
+	25,  // 123: codexpulse.core.v1.ProjectModelItem.totals:type_name -> codexpulse.core.v1.UsageTotals
+	12,  // 124: codexpulse.core.v1.ProjectListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	17,  // 125: codexpulse.core.v1.ProjectListResponse.range:type_name -> codexpulse.core.v1.UTCTimeRange
+	49,  // 126: codexpulse.core.v1.ProjectListResponse.items:type_name -> codexpulse.core.v1.ProjectItem
+	10,  // 127: codexpulse.core.v1.ProjectListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
+	25,  // 128: codexpulse.core.v1.ProjectListResponse.global_totals:type_name -> codexpulse.core.v1.UsageTotals
+	25,  // 129: codexpulse.core.v1.ProjectListResponse.matched_totals:type_name -> codexpulse.core.v1.UsageTotals
+	25,  // 130: codexpulse.core.v1.ProjectListResponse.page_totals:type_name -> codexpulse.core.v1.UsageTotals
+	12,  // 131: codexpulse.core.v1.ProjectDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	17,  // 132: codexpulse.core.v1.ProjectDetailResponse.range:type_name -> codexpulse.core.v1.UTCTimeRange
+	49,  // 133: codexpulse.core.v1.ProjectDetailResponse.item:type_name -> codexpulse.core.v1.ProjectItem
+	48,  // 134: codexpulse.core.v1.ProjectDetailResponse.daily:type_name -> codexpulse.core.v1.ProjectDailyPoint
+	11,  // 135: codexpulse.core.v1.ProjectDetailResponse.session_page:type_name -> codexpulse.core.v1.PageInfo
+	50,  // 136: codexpulse.core.v1.ProjectDetailResponse.sessions:type_name -> codexpulse.core.v1.ProjectSessionItem
+	11,  // 137: codexpulse.core.v1.ProjectDetailResponse.model_page:type_name -> codexpulse.core.v1.PageInfo
+	51,  // 138: codexpulse.core.v1.ProjectDetailResponse.models:type_name -> codexpulse.core.v1.ProjectModelItem
+	25,  // 139: codexpulse.core.v1.ProjectDetailResponse.global_totals:type_name -> codexpulse.core.v1.UsageTotals
+	55,  // 140: codexpulse.core.v1.CurrentWindow.explanations:type_name -> codexpulse.core.v1.CurrentExplanation
+	59,  // 141: codexpulse.core.v1.CurrentResetCredits.items:type_name -> codexpulse.core.v1.CurrentResetCreditItem
+	61,  // 142: codexpulse.core.v1.CurrentRefresh.quota:type_name -> codexpulse.core.v1.CurrentRefreshStatus
+	61,  // 143: codexpulse.core.v1.CurrentRefresh.reset_credits:type_name -> codexpulse.core.v1.CurrentRefreshStatus
+	56,  // 144: codexpulse.core.v1.CurrentQuota.windows:type_name -> codexpulse.core.v1.CurrentWindow
+	57,  // 145: codexpulse.core.v1.CurrentQuota.sources:type_name -> codexpulse.core.v1.CurrentSource
+	58,  // 146: codexpulse.core.v1.CurrentQuota.next_reset:type_name -> codexpulse.core.v1.CurrentNextReset
+	60,  // 147: codexpulse.core.v1.CurrentQuota.reset_credits:type_name -> codexpulse.core.v1.CurrentResetCredits
+	62,  // 148: codexpulse.core.v1.CurrentQuota.refresh:type_name -> codexpulse.core.v1.CurrentRefresh
+	12,  // 149: codexpulse.core.v1.QuotaCurrentResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	63,  // 150: codexpulse.core.v1.QuotaCurrentResponse.current:type_name -> codexpulse.core.v1.CurrentQuota
+	66,  // 151: codexpulse.core.v1.QuotaPaceCycle.points:type_name -> codexpulse.core.v1.QuotaPacePoint
+	69,  // 152: codexpulse.core.v1.QuotaPaceWindow.forecast:type_name -> codexpulse.core.v1.QuotaPaceForecast
+	66,  // 153: codexpulse.core.v1.QuotaPaceWindow.current_points:type_name -> codexpulse.core.v1.QuotaPacePoint
+	67,  // 154: codexpulse.core.v1.QuotaPaceWindow.previous_cycle:type_name -> codexpulse.core.v1.QuotaPaceCycle
+	67,  // 155: codexpulse.core.v1.QuotaPaceWindow.historical_cycles:type_name -> codexpulse.core.v1.QuotaPaceCycle
+	68,  // 156: codexpulse.core.v1.QuotaPaceWindow.history_band:type_name -> codexpulse.core.v1.QuotaPaceHistoryBandPoint
+	70,  // 157: codexpulse.core.v1.CurrentQuotaPace.windows:type_name -> codexpulse.core.v1.QuotaPaceWindow
+	12,  // 158: codexpulse.core.v1.QuotaPaceResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	71,  // 159: codexpulse.core.v1.QuotaPaceResponse.pace:type_name -> codexpulse.core.v1.CurrentQuotaPace
+	18,  // 160: codexpulse.core.v1.ListSourcesRequest.query:type_name -> codexpulse.core.v1.QueryRequest
+	18,  // 161: codexpulse.core.v1.ListJobsRequest.query:type_name -> codexpulse.core.v1.QueryRequest
+	18,  // 162: codexpulse.core.v1.ListHealthRequest.query:type_name -> codexpulse.core.v1.QueryRequest
+	10,  // 163: codexpulse.core.v1.SourceItem.size_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 164: codexpulse.core.v1.SourceItem.parsed_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 165: codexpulse.core.v1.SourceItem.last_scanned_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 166: codexpulse.core.v1.SourceItem.last_attempt_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 167: codexpulse.core.v1.SourceItem.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 168: codexpulse.core.v1.SourceItem.next_due_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 169: codexpulse.core.v1.SourceItem.consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 170: codexpulse.core.v1.SourceItem.updated_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	84,  // 171: codexpulse.core.v1.SourceItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
+	10,  // 172: codexpulse.core.v1.SourceSummary.total:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 173: codexpulse.core.v1.SourceSummary.local_files:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 174: codexpulse.core.v1.SourceSummary.online_sources:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 175: codexpulse.core.v1.SourceSummary.attention:type_name -> codexpulse.core.v1.NumericValue
+	12,  // 176: codexpulse.core.v1.SourceListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	85,  // 177: codexpulse.core.v1.SourceListResponse.items:type_name -> codexpulse.core.v1.SourceItem
+	10,  // 178: codexpulse.core.v1.SourceListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
+	86,  // 179: codexpulse.core.v1.SourceListResponse.summary:type_name -> codexpulse.core.v1.SourceSummary
+	12,  // 180: codexpulse.core.v1.SourceDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	85,  // 181: codexpulse.core.v1.SourceDetailResponse.item:type_name -> codexpulse.core.v1.SourceItem
+	10,  // 182: codexpulse.core.v1.JobProgress.current:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 183: codexpulse.core.v1.JobProgress.total:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 184: codexpulse.core.v1.JobItem.created_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 185: codexpulse.core.v1.JobItem.started_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 186: codexpulse.core.v1.JobItem.finished_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 187: codexpulse.core.v1.JobItem.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	89,  // 188: codexpulse.core.v1.JobItem.progress:type_name -> codexpulse.core.v1.JobProgress
+	10,  // 189: codexpulse.core.v1.JobItem.failure_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 190: codexpulse.core.v1.JobItem.next_retry_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 191: codexpulse.core.v1.JobItem.updated_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	84,  // 192: codexpulse.core.v1.JobItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
+	10,  // 193: codexpulse.core.v1.JobSummary.total:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 194: codexpulse.core.v1.JobSummary.queued:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 195: codexpulse.core.v1.JobSummary.running:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 196: codexpulse.core.v1.JobSummary.succeeded:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 197: codexpulse.core.v1.JobSummary.failed:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 198: codexpulse.core.v1.JobSummary.cancelled:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 199: codexpulse.core.v1.JobSummary.interrupted:type_name -> codexpulse.core.v1.NumericValue
+	12,  // 200: codexpulse.core.v1.JobListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	90,  // 201: codexpulse.core.v1.JobListResponse.items:type_name -> codexpulse.core.v1.JobItem
+	10,  // 202: codexpulse.core.v1.JobListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
+	91,  // 203: codexpulse.core.v1.JobListResponse.summary:type_name -> codexpulse.core.v1.JobSummary
+	12,  // 204: codexpulse.core.v1.JobDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	90,  // 205: codexpulse.core.v1.JobDetailResponse.item:type_name -> codexpulse.core.v1.JobItem
+	10,  // 206: codexpulse.core.v1.HealthItem.first_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 207: codexpulse.core.v1.HealthItem.last_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 208: codexpulse.core.v1.HealthItem.resolved_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 209: codexpulse.core.v1.HealthItem.occurrence_count:type_name -> codexpulse.core.v1.NumericValue
+	84,  // 210: codexpulse.core.v1.HealthItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
+	10,  // 211: codexpulse.core.v1.HealthSummary.total:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 212: codexpulse.core.v1.HealthSummary.active:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 213: codexpulse.core.v1.HealthSummary.resolved:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 214: codexpulse.core.v1.HealthSummary.info:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 215: codexpulse.core.v1.HealthSummary.warnings:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 216: codexpulse.core.v1.HealthSummary.errors:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 217: codexpulse.core.v1.HealthSummary.critical:type_name -> codexpulse.core.v1.NumericValue
+	12,  // 218: codexpulse.core.v1.HealthListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	94,  // 219: codexpulse.core.v1.HealthListResponse.items:type_name -> codexpulse.core.v1.HealthItem
+	10,  // 220: codexpulse.core.v1.HealthListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
+	95,  // 221: codexpulse.core.v1.HealthListResponse.summary:type_name -> codexpulse.core.v1.HealthSummary
+	12,  // 222: codexpulse.core.v1.HealthDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	94,  // 223: codexpulse.core.v1.HealthDetailResponse.item:type_name -> codexpulse.core.v1.HealthItem
+	10,  // 224: codexpulse.core.v1.HealthProjectionResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	98,  // 225: codexpulse.core.v1.HealthProjectionResponse.primary:type_name -> codexpulse.core.v1.HealthComponentStatus
+	98,  // 226: codexpulse.core.v1.HealthProjectionResponse.components:type_name -> codexpulse.core.v1.HealthComponentStatus
+	10,  // 227: codexpulse.core.v1.DataHealthWindow.from_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 228: codexpulse.core.v1.DataHealthWindow.until_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 229: codexpulse.core.v1.DataHealthRuntimePoint.captured_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 230: codexpulse.core.v1.DataHealthRuntimePoint.rss_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 231: codexpulse.core.v1.DataHealthRuntimePoint.peak_rss_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 232: codexpulse.core.v1.DataHealthRuntimePoint.db_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 233: codexpulse.core.v1.DataHealthRuntimePoint.wal_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 234: codexpulse.core.v1.DataHealthRuntimePoint.disk_free_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 235: codexpulse.core.v1.DataHealthRuntimePoint.live_queue_depth:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 236: codexpulse.core.v1.DataHealthRuntimePoint.backfill_queue_depth:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 237: codexpulse.core.v1.DataHealthRuntimePoint.oldest_live_wait_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 238: codexpulse.core.v1.DataHealthRuntimePoint.oldest_backfill_wait_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 239: codexpulse.core.v1.DataHealthRuntimePoint.dropped_samples:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 240: codexpulse.core.v1.DataHealthScheduler.cycle_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 241: codexpulse.core.v1.DataHealthScheduler.completed_cycles:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 242: codexpulse.core.v1.DataHealthScheduler.yielded_cycles:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 243: codexpulse.core.v1.DataHealthScheduler.failed_cycles:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 244: codexpulse.core.v1.DataHealthScheduler.interrupted_cycles:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 245: codexpulse.core.v1.DataHealthScheduler.files_scanned:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 246: codexpulse.core.v1.DataHealthScheduler.bytes_read:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 247: codexpulse.core.v1.DataHealthScheduler.active_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 248: codexpulse.core.v1.DataHealthScheduler.max_cycle_active_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 249: codexpulse.core.v1.DataHealthScheduler.last_progress_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 250: codexpulse.core.v1.DataHealthScheduler.last_backfill_progress_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 251: codexpulse.core.v1.DataHealthJobs.queued:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 252: codexpulse.core.v1.DataHealthJobs.running:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 253: codexpulse.core.v1.DataHealthJobs.interrupted:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 254: codexpulse.core.v1.DataHealthJobs.succeeded:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 255: codexpulse.core.v1.DataHealthJobs.failed:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 256: codexpulse.core.v1.DataHealthJobs.cancelled:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 257: codexpulse.core.v1.DataHealthJobs.duration_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 258: codexpulse.core.v1.DataHealthJobs.duration_total_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 259: codexpulse.core.v1.DataHealthJobs.duration_max_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 260: codexpulse.core.v1.DataHealthSources.total:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 261: codexpulse.core.v1.DataHealthSources.unknown:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 262: codexpulse.core.v1.DataHealthSources.current:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 263: codexpulse.core.v1.DataHealthSources.stale:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 264: codexpulse.core.v1.DataHealthSources.unavailable:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 265: codexpulse.core.v1.DataHealthSources.consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 266: codexpulse.core.v1.DataHealthSources.max_consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 267: codexpulse.core.v1.DataHealthSources.attempts:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 268: codexpulse.core.v1.DataHealthSources.succeeded_attempts:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 269: codexpulse.core.v1.DataHealthSources.failed_attempts:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 270: codexpulse.core.v1.DataHealthSources.cancelled_attempts:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 271: codexpulse.core.v1.DataHealthSources.response_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 272: codexpulse.core.v1.DataHealthSources.last_attempt_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 273: codexpulse.core.v1.DataHealthSources.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 274: codexpulse.core.v1.DataHealthSources.next_retry_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	12,  // 275: codexpulse.core.v1.DataHealthResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	10,  // 276: codexpulse.core.v1.DataHealthResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	100, // 277: codexpulse.core.v1.DataHealthResponse.window:type_name -> codexpulse.core.v1.DataHealthWindow
+	101, // 278: codexpulse.core.v1.DataHealthResponse.runtime:type_name -> codexpulse.core.v1.DataHealthRuntimePoint
+	101, // 279: codexpulse.core.v1.DataHealthResponse.latest:type_name -> codexpulse.core.v1.DataHealthRuntimePoint
+	102, // 280: codexpulse.core.v1.DataHealthResponse.scheduler:type_name -> codexpulse.core.v1.DataHealthScheduler
+	103, // 281: codexpulse.core.v1.DataHealthResponse.jobs:type_name -> codexpulse.core.v1.DataHealthJobs
+	104, // 282: codexpulse.core.v1.DataHealthResponse.sources:type_name -> codexpulse.core.v1.DataHealthSources
+	90,  // 283: codexpulse.core.v1.DataHealthResponse.current_jobs:type_name -> codexpulse.core.v1.JobItem
+	90,  // 284: codexpulse.core.v1.DataHealthResponse.recent_jobs:type_name -> codexpulse.core.v1.JobItem
+	94,  // 285: codexpulse.core.v1.DataHealthResponse.open_events:type_name -> codexpulse.core.v1.HealthItem
+	94,  // 286: codexpulse.core.v1.DataHealthResponse.recent_events:type_name -> codexpulse.core.v1.HealthItem
+	10,  // 287: codexpulse.core.v1.SettingsUpdateSnapshot.snooze_until_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 288: codexpulse.core.v1.SettingsUpdateSnapshot.last_check_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	107, // 289: codexpulse.core.v1.SettingsSnapshot.home:type_name -> codexpulse.core.v1.SettingsHomeSnapshot
+	108, // 290: codexpulse.core.v1.SettingsSnapshot.online:type_name -> codexpulse.core.v1.SettingsOnlineSnapshot
+	109, // 291: codexpulse.core.v1.SettingsSnapshot.refresh:type_name -> codexpulse.core.v1.SettingsRefreshSnapshot
+	110, // 292: codexpulse.core.v1.SettingsSnapshot.updates:type_name -> codexpulse.core.v1.SettingsUpdateSnapshot
+	111, // 293: codexpulse.core.v1.SettingsSnapshot.ui:type_name -> codexpulse.core.v1.SettingsUISnapshot
+	12,  // 294: codexpulse.core.v1.SettingsResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	112, // 295: codexpulse.core.v1.SettingsResponse.snapshot:type_name -> codexpulse.core.v1.SettingsSnapshot
+	106, // 296: codexpulse.core.v1.SettingsResponse.editable_fields:type_name -> codexpulse.core.v1.EditableField
+	114, // 297: codexpulse.core.v1.UpdateSettingsRequest.online:type_name -> codexpulse.core.v1.SettingsOnlineUpdate
+	115, // 298: codexpulse.core.v1.UpdateSettingsRequest.refresh:type_name -> codexpulse.core.v1.SettingsRefreshUpdate
+	116, // 299: codexpulse.core.v1.UpdateSettingsRequest.updates:type_name -> codexpulse.core.v1.SettingsUpdatesUpdate
+	117, // 300: codexpulse.core.v1.UpdateSettingsRequest.ui:type_name -> codexpulse.core.v1.SettingsUIUpdate
+	137, // 301: codexpulse.core.v1.MigrationRecoverySnapshot.backups:type_name -> codexpulse.core.v1.MigrationBackupInfo
+	137, // 302: codexpulse.core.v1.MigrationRestoreConfirmation.backup:type_name -> codexpulse.core.v1.MigrationBackupInfo
+	146, // 303: codexpulse.core.v1.AccountSnapshotResponse.account:type_name -> codexpulse.core.v1.CodexAccountIdentity
+	1,   // 304: codexpulse.core.v1.CoreService.Handshake:input_type -> codexpulse.core.v1.HandshakeRequest
+	3,   // 305: codexpulse.core.v1.CoreService.Bootstrap:input_type -> codexpulse.core.v1.BootstrapRequest
+	5,   // 306: codexpulse.core.v1.CoreService.Contracts:input_type -> codexpulse.core.v1.ContractsRequest
+	145, // 307: codexpulse.core.v1.CoreService.AccountSnapshot:input_type -> codexpulse.core.v1.AccountSnapshotRequest
+	19,  // 308: codexpulse.core.v1.CoreService.UsageCost:input_type -> codexpulse.core.v1.UsageCostRequest
+	34,  // 309: codexpulse.core.v1.CoreService.InvocationUsage:input_type -> codexpulse.core.v1.InvocationUsageRequest
+	41,  // 310: codexpulse.core.v1.CoreService.PricingCatalogCurrent:input_type -> codexpulse.core.v1.PricingCatalogCurrentRequest
+	20,  // 311: codexpulse.core.v1.CoreService.ListSessions:input_type -> codexpulse.core.v1.ListSessionsRequest
+	21,  // 312: codexpulse.core.v1.CoreService.SessionDetail:input_type -> codexpulse.core.v1.SessionDetailRequest
+	22,  // 313: codexpulse.core.v1.CoreService.ListProjects:input_type -> codexpulse.core.v1.ListProjectsRequest
+	23,  // 314: codexpulse.core.v1.CoreService.ProjectDetail:input_type -> codexpulse.core.v1.ProjectDetailRequest
+	54,  // 315: codexpulse.core.v1.CoreService.QuotaCurrent:input_type -> codexpulse.core.v1.QuotaCurrentRequest
+	65,  // 316: codexpulse.core.v1.CoreService.QuotaPace:input_type -> codexpulse.core.v1.QuotaPaceRequest
+	73,  // 317: codexpulse.core.v1.CoreService.RequestQuotaRefresh:input_type -> codexpulse.core.v1.QuotaRefreshRequest
+	75,  // 318: codexpulse.core.v1.CoreService.ListSources:input_type -> codexpulse.core.v1.ListSourcesRequest
+	76,  // 319: codexpulse.core.v1.CoreService.Source:input_type -> codexpulse.core.v1.SourceRequest
+	77,  // 320: codexpulse.core.v1.CoreService.ListJobs:input_type -> codexpulse.core.v1.ListJobsRequest
+	78,  // 321: codexpulse.core.v1.CoreService.Job:input_type -> codexpulse.core.v1.JobRequest
+	79,  // 322: codexpulse.core.v1.CoreService.ListHealth:input_type -> codexpulse.core.v1.ListHealthRequest
+	80,  // 323: codexpulse.core.v1.CoreService.Health:input_type -> codexpulse.core.v1.HealthRequest
+	81,  // 324: codexpulse.core.v1.CoreService.HealthProjection:input_type -> codexpulse.core.v1.HealthProjectionRequest
+	82,  // 325: codexpulse.core.v1.CoreService.DataHealth:input_type -> codexpulse.core.v1.DataHealthRequest
+	83,  // 326: codexpulse.core.v1.CoreService.Settings:input_type -> codexpulse.core.v1.SettingsRequest
+	118, // 327: codexpulse.core.v1.CoreService.UpdateSettings:input_type -> codexpulse.core.v1.UpdateSettingsRequest
+	120, // 328: codexpulse.core.v1.CoreService.PlanHomeSwitch:input_type -> codexpulse.core.v1.PlanHomeSwitchRequest
+	122, // 329: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:input_type -> codexpulse.core.v1.ConfirmHomeSwitchRequest
+	123, // 330: codexpulse.core.v1.CoreService.RecoverHomeSwitch:input_type -> codexpulse.core.v1.RecoverHomeSwitchRequest
+	125, // 331: codexpulse.core.v1.CoreService.RunRuntimeAction:input_type -> codexpulse.core.v1.RuntimeActionRequest
+	127, // 332: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:input_type -> codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
+	129, // 333: codexpulse.core.v1.CoreService.NotifyLifecycle:input_type -> codexpulse.core.v1.LifecycleNotificationRequest
+	131, // 334: codexpulse.core.v1.CoreService.MigrationRecoveryState:input_type -> codexpulse.core.v1.MigrationRecoveryStateRequest
+	132, // 335: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:input_type -> codexpulse.core.v1.MigrationRecoveryRetryRequest
+	135, // 336: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:input_type -> codexpulse.core.v1.MigrationRecoveryPrepareRequest
+	136, // 337: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:input_type -> codexpulse.core.v1.MigrationRecoveryConfirmRequest
+	133, // 338: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:input_type -> codexpulse.core.v1.MigrationRecoveryCancelRequest
+	134, // 339: codexpulse.core.v1.CoreService.MigrationRecoveryExit:input_type -> codexpulse.core.v1.MigrationRecoveryExitRequest
+	141, // 340: codexpulse.core.v1.CoreService.SubscribeInvalidations:input_type -> codexpulse.core.v1.SubscribeInvalidationsRequest
+	143, // 341: codexpulse.core.v1.CoreService.Shutdown:input_type -> codexpulse.core.v1.ShutdownRequest
+	2,   // 342: codexpulse.core.v1.CoreService.Handshake:output_type -> codexpulse.core.v1.HandshakeResponse
+	4,   // 343: codexpulse.core.v1.CoreService.Bootstrap:output_type -> codexpulse.core.v1.BootstrapResponse
+	7,   // 344: codexpulse.core.v1.CoreService.Contracts:output_type -> codexpulse.core.v1.ContractsResponse
+	147, // 345: codexpulse.core.v1.CoreService.AccountSnapshot:output_type -> codexpulse.core.v1.AccountSnapshotResponse
+	33,  // 346: codexpulse.core.v1.CoreService.UsageCost:output_type -> codexpulse.core.v1.UsageCostResponse
+	40,  // 347: codexpulse.core.v1.CoreService.InvocationUsage:output_type -> codexpulse.core.v1.InvocationUsageResponse
+	43,  // 348: codexpulse.core.v1.CoreService.PricingCatalogCurrent:output_type -> codexpulse.core.v1.PricingCatalogCurrentResponse
+	45,  // 349: codexpulse.core.v1.CoreService.ListSessions:output_type -> codexpulse.core.v1.SessionListResponse
+	47,  // 350: codexpulse.core.v1.CoreService.SessionDetail:output_type -> codexpulse.core.v1.SessionDetailResponse
+	52,  // 351: codexpulse.core.v1.CoreService.ListProjects:output_type -> codexpulse.core.v1.ProjectListResponse
+	53,  // 352: codexpulse.core.v1.CoreService.ProjectDetail:output_type -> codexpulse.core.v1.ProjectDetailResponse
+	64,  // 353: codexpulse.core.v1.CoreService.QuotaCurrent:output_type -> codexpulse.core.v1.QuotaCurrentResponse
+	72,  // 354: codexpulse.core.v1.CoreService.QuotaPace:output_type -> codexpulse.core.v1.QuotaPaceResponse
+	74,  // 355: codexpulse.core.v1.CoreService.RequestQuotaRefresh:output_type -> codexpulse.core.v1.QuotaRefreshReceipt
+	87,  // 356: codexpulse.core.v1.CoreService.ListSources:output_type -> codexpulse.core.v1.SourceListResponse
+	88,  // 357: codexpulse.core.v1.CoreService.Source:output_type -> codexpulse.core.v1.SourceDetailResponse
+	92,  // 358: codexpulse.core.v1.CoreService.ListJobs:output_type -> codexpulse.core.v1.JobListResponse
+	93,  // 359: codexpulse.core.v1.CoreService.Job:output_type -> codexpulse.core.v1.JobDetailResponse
+	96,  // 360: codexpulse.core.v1.CoreService.ListHealth:output_type -> codexpulse.core.v1.HealthListResponse
+	97,  // 361: codexpulse.core.v1.CoreService.Health:output_type -> codexpulse.core.v1.HealthDetailResponse
+	99,  // 362: codexpulse.core.v1.CoreService.HealthProjection:output_type -> codexpulse.core.v1.HealthProjectionResponse
+	105, // 363: codexpulse.core.v1.CoreService.DataHealth:output_type -> codexpulse.core.v1.DataHealthResponse
+	113, // 364: codexpulse.core.v1.CoreService.Settings:output_type -> codexpulse.core.v1.SettingsResponse
+	119, // 365: codexpulse.core.v1.CoreService.UpdateSettings:output_type -> codexpulse.core.v1.SettingsUpdateReceipt
+	121, // 366: codexpulse.core.v1.CoreService.PlanHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchPlanReceipt
+	124, // 367: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
+	124, // 368: codexpulse.core.v1.CoreService.RecoverHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
+	126, // 369: codexpulse.core.v1.CoreService.RunRuntimeAction:output_type -> codexpulse.core.v1.RuntimeActionReceipt
+	128, // 370: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:output_type -> codexpulse.core.v1.RepairDryRunReceipt
+	130, // 371: codexpulse.core.v1.CoreService.NotifyLifecycle:output_type -> codexpulse.core.v1.LifecycleNotificationReceipt
+	138, // 372: codexpulse.core.v1.CoreService.MigrationRecoveryState:output_type -> codexpulse.core.v1.MigrationRecoverySnapshot
+	139, // 373: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
+	140, // 374: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:output_type -> codexpulse.core.v1.MigrationRestoreConfirmation
+	139, // 375: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
+	0,   // 376: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:output_type -> codexpulse.core.v1.Empty
+	0,   // 377: codexpulse.core.v1.CoreService.MigrationRecoveryExit:output_type -> codexpulse.core.v1.Empty
+	142, // 378: codexpulse.core.v1.CoreService.SubscribeInvalidations:output_type -> codexpulse.core.v1.QueryInvalidationEvent
+	144, // 379: codexpulse.core.v1.CoreService.Shutdown:output_type -> codexpulse.core.v1.ShutdownResponse
+	342, // [342:380] is the sub-list for method output_type
+	304, // [304:342] is the sub-list for method input_type
+	304, // [304:304] is the sub-list for extension type_name
+	304, // [304:304] is the sub-list for extension extendee
+	0,   // [0:304] is the sub-list for field type_name
 }
 
 func init() { file_api_codexpulse_core_v1_core_proto_init() }
@@ -11774,40 +12454,40 @@ func file_api_codexpulse_core_v1_core_proto_init() {
 	file_api_codexpulse_core_v1_core_proto_msgTypes[23].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[24].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[33].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[36].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[38].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[39].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[40].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[43].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[45].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[46].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[48].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[49].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[50].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[51].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[47].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[52].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[53].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[54].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[62].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[63].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[67].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[77].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[78].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[83].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[87].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[92].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[98].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[55].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[56].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[57].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[58].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[59].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[60].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[61].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[69].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[70].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[74].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[84].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[85].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[90].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[94].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[99].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[100].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[103].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[139].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[140].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[105].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[106].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[107].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[110].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[146].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[147].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_codexpulse_core_v1_core_proto_rawDesc), len(file_api_codexpulse_core_v1_core_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   141,
+			NumMessages:   148,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
+	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
@@ -23,7 +24,7 @@ func TestServiceExposesExactBusinessSurface(t *testing.T) {
 	sort.Strings(got)
 	want := []string{
 		"AccountSnapshot", "AnalyzeSessionIndexRepair", "ConfirmHomeSwitch", "Contracts", "DataHealth", "Health",
-		"HealthProjection", "Job", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
+		"HealthProjection", "InvocationUsage", "Job", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
 		"PlanHomeSwitch", "PricingCatalogCurrent", "ProjectDetail", "QuotaCurrent", "QuotaPace", "RecoverHomeSwitch", "RequestQuotaRefresh",
 		"RunRuntimeAction", "SessionDetail", "Settings", "Source", "UpdateSettings", "UsageCost",
 	}
@@ -33,13 +34,33 @@ func TestServiceExposesExactBusinessSurface(t *testing.T) {
 	}
 }
 
+func TestServiceDelegatesInvocationUsage(t *testing.T) {
+	t.Parallel()
+
+	query := &invocationUsageQueryStub{}
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageQueryStub{}, InvocationUsage: query,
+		PricingCatalog: pricingCatalogQueryStub{}, RuntimeInfo: runtimeQueryStub{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := invocationusage.InvocationUsageRequest{TopLimit: 17}
+	if _, err := service.InvocationUsage(context.Background(), request); err != nil {
+		t.Fatalf("InvocationUsage() error = %v", err)
+	}
+	if query.request.TopLimit != 17 {
+		t.Fatalf("delegated request = %#v", query.request)
+	}
+}
+
 func TestServiceDelegatesEphemeralAccountSnapshot(t *testing.T) {
 	email, planType := "person@example.com", "pro"
 	account := &accountSnapshotQueryStub{snapshot: AccountSnapshot{
 		Account: &AccountIdentity{Type: "chatgpt", Email: &email, PlanType: &planType},
 	}}
 	service, err := NewService(ServiceConfig{
-		UsageCost: &usageQueryStub{}, PricingCatalog: pricingCatalogQueryStub{},
+		UsageCost: &usageQueryStub{}, InvocationUsage: &invocationUsageQueryStub{}, PricingCatalog: pricingCatalogQueryStub{},
 		RuntimeInfo:     runtimeQueryStub{},
 		AccountSnapshot: account,
 	})
@@ -61,7 +82,7 @@ func TestServiceDelegatesEphemeralAccountSnapshot(t *testing.T) {
 // 测试 Contracts 的命令清单与方法 kind 一致，且不会向 client 发布重复能力。
 func TestServiceContractsExposeUniqueCommandMethods(t *testing.T) {
 	service, err := NewService(ServiceConfig{
-		UsageCost: &usageQueryStub{}, PricingCatalog: pricingCatalogQueryStub{},
+		UsageCost: &usageQueryStub{}, InvocationUsage: &invocationUsageQueryStub{}, PricingCatalog: pricingCatalogQueryStub{},
 		RuntimeInfo: runtimeQueryStub{},
 	})
 	if err != nil {
@@ -70,6 +91,7 @@ func TestServiceContractsExposeUniqueCommandMethods(t *testing.T) {
 	contract := service.Contracts()
 	if contract.Version != "core-rpc-v2" ||
 		contract.UsageCostVersion != "usage-cost-v2" ||
+		contract.InvocationUsageVersion != "invocation-usage-v1" ||
 		contract.PricingCatalogVersion != "pricing-catalog-v1" {
 		t.Fatalf("Contracts() versions = %#v", contract)
 	}
@@ -93,7 +115,7 @@ func TestServiceDelegatesSessionQuery(t *testing.T) {
 		Meta: basequery.ResponseMeta{Version: usagecost.ContractVersion, Status: basequery.ResponsePartial},
 	}}
 	service, err := NewService(ServiceConfig{
-		UsageCost: usage, PricingCatalog: pricingCatalogQueryStub{},
+		UsageCost: usage, InvocationUsage: &invocationUsageQueryStub{}, PricingCatalog: pricingCatalogQueryStub{},
 		RuntimeInfo: runtimeQueryStub{},
 	})
 	if err != nil {
@@ -112,6 +134,18 @@ func TestServiceDelegatesSessionQuery(t *testing.T) {
 type usageQueryStub struct {
 	request  basequery.Request
 	sessions usagecost.SessionListResponse
+}
+
+type invocationUsageQueryStub struct {
+	request invocationusage.InvocationUsageRequest
+}
+
+func (stub *invocationUsageQueryStub) InvocationUsage(
+	_ context.Context,
+	request invocationusage.InvocationUsageRequest,
+) (invocationusage.InvocationUsageResponse, error) {
+	stub.request = request
+	return invocationusage.InvocationUsageResponse{}, nil
 }
 
 func (*usageQueryStub) UsageCost(context.Context, usagecost.UsageCostRequest) (usagecost.UsageCostResponse, error) {
