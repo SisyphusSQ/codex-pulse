@@ -119,8 +119,7 @@ func (policy RefreshPolicy) Plan(input RefreshPlanInput) (RefreshDecision, error
 			return immediateRefreshDecision(input.NowMS, reason), nil
 		}
 		// auth.json 可能在应用停止期间恢复，或旧版 Home 身份已在本次启动迁移。
-		// 每次进程启动先做一次即时探测；已记录的 401 由调度器提供有限恢复窗口，
-		// 超出窗口后仍由 auth_required 暂停自动刷新。
+		// 每次进程启动先做一次即时探测，不等待上次持久化的普通退避窗口。
 		if input.Trigger == store.RefreshTriggerStartup &&
 			input.SourceState.LastFailureCode != nil &&
 			*input.SourceState.LastFailureCode == store.SourceFailureAuthRequired {
@@ -160,12 +159,8 @@ func (policy RefreshPolicy) Plan(input RefreshPlanInput) (RefreshDecision, error
 func (policy RefreshPolicy) nextDecision(input RefreshPlanInput) (RefreshDecision, error) {
 	if input.SourceState != nil && input.SourceState.LastFailureCode != nil {
 		switch *input.SourceState.LastFailureCode {
-		case store.SourceFailureAuthRequired:
-			return RefreshDecision{Reason: store.RefreshReasonAuthRequired}, nil
-		case store.SourceFailureSchemaIncompatible:
-			return RefreshDecision{Reason: store.RefreshReasonSchemaIncompatible}, nil
-		case store.SourceFailureNetworkUnavailable, store.SourceFailureTimeout, store.SourceFailureServerError,
-			store.SourceFailureHTTP429:
+		case store.SourceFailureNetworkUnavailable, store.SourceFailureTimeout, store.SourceFailureAuthRequired,
+			store.SourceFailureHTTP429, store.SourceFailureServerError, store.SourceFailureSchemaIncompatible:
 			backoffAtMS, err := policy.networkBackoffAt(input.NowMS, input.SourceState.ConsecutiveFailures)
 			if err != nil {
 				return RefreshDecision{}, err
@@ -356,8 +351,7 @@ func durableFailureRestartDecision(
 }
 
 func schedulePausesAutomaticRefresh(schedule *store.SourceRefreshSchedule, nowMS int64) bool {
-	return schedule != nil && (schedule.Reason == store.RefreshReasonAuthRequired ||
-		schedule.Reason == store.RefreshReasonSchemaIncompatible || schedule.Reason == store.RefreshReasonDisabled ||
+	return schedule != nil && (schedule.Reason == store.RefreshReasonDisabled ||
 		(schedule.Reason == store.RefreshReasonNetworkBackoff || schedule.Reason == store.RefreshReasonRetryAfter) &&
 			schedule.NextDueAtMS != nil && *schedule.NextDueAtMS > nowMS)
 }
