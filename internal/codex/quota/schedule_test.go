@@ -62,7 +62,7 @@ func TestCalculateQuotaResetSummaryUsesOnlyTrustedCrossWindowResets(t *testing.T
 	}
 }
 
-func TestRefreshPolicyClassifiesBackoffRetryAfterAndStops(t *testing.T) {
+func TestRefreshPolicyClassifiesContinuousBackoffAndRetryAfter(t *testing.T) {
 	t.Parallel()
 
 	const now = int64(2_000_000)
@@ -80,8 +80,8 @@ func TestRefreshPolicyClassifiesBackoffRetryAfterAndStops(t *testing.T) {
 		{name: "server capped", failure: store.SourceFailureServerError, failures: 9, wantDue: int64Pointer(now + 1_800_000), wantReason: store.RefreshReasonNetworkBackoff},
 		{name: "retry after later", failure: store.SourceFailureHTTP429, failures: 1, retryAtMS: int64Pointer(now + 900_000), wantDue: int64Pointer(now + 900_000), wantReason: store.RefreshReasonRetryAfter},
 		{name: "retry after missing", failure: store.SourceFailureHTTP429, failures: 1, wantDue: int64Pointer(now + 300_000), wantReason: store.RefreshReasonNetworkBackoff},
-		{name: "auth pauses", failure: store.SourceFailureAuthRequired, failures: 1, wantReason: store.RefreshReasonAuthRequired},
-		{name: "schema pauses", failure: store.SourceFailureSchemaIncompatible, failures: 1, wantReason: store.RefreshReasonSchemaIncompatible},
+		{name: "auth retries", failure: store.SourceFailureAuthRequired, failures: 1, wantDue: int64Pointer(now + 300_000), wantReason: store.RefreshReasonNetworkBackoff},
+		{name: "schema retries capped", failure: store.SourceFailureSchemaIncompatible, failures: 9, wantDue: int64Pointer(now + 1_800_000), wantReason: store.RefreshReasonNetworkBackoff},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -202,6 +202,20 @@ func TestRefreshPolicyRevalidatesStartupAndDisabledState(t *testing.T) {
 	if err != nil || !decision.ShouldFetch || decision.NextDueAtMS == nil ||
 		*decision.NextDueAtMS != now || decision.Reason != store.RefreshReasonStartup {
 		t.Fatalf("startup auth recovery = %#v, %v", decision, err)
+	}
+	schemaIncompatible := store.SourceFailureSchemaIncompatible
+	decision, err = policy.Plan(RefreshPlanInput{
+		Source: RefreshSourceQuota, Trigger: store.RefreshTriggerStartup,
+		Enabled: true, NowMS: now, IntervalSeconds: 300,
+		Schedule: &store.SourceRefreshSchedule{Reason: store.RefreshReasonSchemaIncompatible},
+		SourceState: &store.SourceState{
+			LastAttemptAtMS: &lastAttempt, LastFailureCode: &schemaIncompatible,
+			ConsecutiveFailures: 9, FreshnessState: store.SourceFreshnessStale,
+		},
+	})
+	if err != nil || decision.ShouldFetch || decision.NextDueAtMS == nil ||
+		*decision.NextDueAtMS != now+1_800_000 || decision.Reason != store.RefreshReasonNetworkBackoff {
+		t.Fatalf("startup schema backoff recovery = %#v, %v", decision, err)
 	}
 	future := now + 3_600_000
 	decision, err = policy.Plan(RefreshPlanInput{

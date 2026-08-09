@@ -13,7 +13,7 @@ Codex Runway 实际运行中观察到：网络不佳时，5 小时和周窗口�
 
 不启动或复用 `codex app-server`，也不作为兜底。v0.1 只支持当前单账号，固定 `account_scope = default`；运行期间切换 Codex 账号不属于支持场景。
 
-在线 quota 或 reset credits 启用时，只从 Preferences 当前 confirmed Codex Home 下的固定 `auth.json` 将 access token 读入调用期内存。应用不保存 token、refresh token、Authorization header 或 auth 文件内容；不使用 refresh token 主动刷新，也不修改 `auth.json`。401/403 后标记 `auth_required` 并停止自动重试，等待 Codex 恢复登录或用户手动重试。用户关闭对应能力后立即停止该能力的在线调度；已有非敏感 observation history 保留。
+在线 quota 或 reset credits 启用时，只从 Preferences 当前 confirmed Codex Home 下的固定 `auth.json` 将 access token 读入调用期内存。应用不保存 token、refresh token、Authorization header 或 auth 文件内容；不使用 refresh token 主动刷新，也不修改 `auth.json`。401/403 后标记 `auth_required`，保留 last-known-good，并进入有上限的持久退避；凭据恢复后自动或手动请求都可恢复来源。只有用户关闭对应能力时才停止该能力的在线调度；已有非敏感 observation history 保留。
 
 ## Observation
 
@@ -150,11 +150,11 @@ freshness 与 conflict 分开：current 可以同时是 `fresh + conflict` 或 `
 - 到达 reset：`reset + 3 秒`尝试一次。
 - 手动刷新：立即请求，绕过退避但不绕过校验。
 - 系统唤醒：只刷新 stale 来源。
-- 网络失败：5、10、20、30 分钟带 jitter 退避。
+- 网络、timeout、auth、5xx 与 schema 失败：5、10、20、30 分钟带 jitter 退避，达到 30 分钟后持续重试，不按连续失败次数停更。
 
 失败分类：`network_unavailable`、`timeout`、`auth_required`、`http_429`、`server_error`、`schema_incompatible`、`cancelled`。
 
-网络、timeout、5xx 保留 last-known-good；401/403 停止自动请求；429 使用 `Retry-After` 或退避；schema 不兼容时停止接受在线响应。本地来源继续可用，任何失败都不能生成 `used_percent = 0`。
+网络、timeout、5xx、401/403 和 schema 不兼容都保留 last-known-good 并持续退避；429 使用 `Retry-After` 与本地退避中更晚者。schema 不兼容的响应继续 fail closed，不会因重试而接受异常事实。本地来源继续可用，任何失败都不能生成 `used_percent = 0`。
 
 ### Reset Credits 与持久刷新计划（TOO-265）
 
@@ -164,7 +164,7 @@ application schema v12 新增 `reset_credit_snapshots`、`reset_credits`、`sour
 
 `CalculateQuotaResetSummary` 从所有 `quota_current` 窗口计算最近可信 reset、剩余毫秒和可信窗口数；只有带 selected observation 且 freshness 为 `fresh/stale`、reset 仍在未来的窗口参与。Reset Credits inventory 与 quota reset summary 是两个独立事实，后续 query/UI 只组合，不互相推导。
 
-quota 与 reset credits 各有一行 durable refresh schedule，保存 `next_due_at_ms`、固定 reason、last manual time、claim lease、revision 和更新时间；每次领取同时追加一行 claim fence，完成标记 `completed`，确认没有 durable attempt 的过期 claim 标记 `abandoned`。cron 只扫描 due row；领取、完成和过期恢复都使用 Store CAS，陈旧 completion 不能覆盖新 revision。attempt 写入与 claim finalize 共用串行 writer：attempt 先提交时恢复按成功/失败事实计算正常周期或 Retry-After；release 先提交时，迟到 attempt 被 fence 拒绝，不能更新 source state 或越过服务端限流。正常 quota 使用 preference 周期；remaining 不高于 20% 或 reset 不超过 10 分钟时使用 2 分钟，若 `reset + 3 秒` 更早则精确选它。reset credits 使用独立 preference 周期。网络/timeout/5xx 跨请求按 5/10/20/30 分钟 capped exponential 加 jitter；429 取本地退避与合法 Retry-After 中更晚者；401/403 与 schema incompatible 的 next due 为空。manual 可以越过普通退避，但 Store 与 policy 双层保证 60 秒最小间隔，且不能越过未来 Retry-After；foreground 只在上次成功超过 60 秒时立即刷新，wake 只刷新 stale 来源。cancelled 不增加 failure count，coordinator 使用 detached bounded context 释放 claim 并写下一计划；durability unknown 则保留 claim，待 lease 到期后重新校验当前时钟与事实。
+quota 与 reset credits 各有一行 durable refresh schedule，保存 `next_due_at_ms`、固定 reason、last manual time、claim lease、revision 和更新时间；每次领取同时追加一行 claim fence，完成标记 `completed`，确认没有 durable attempt 的过期 claim 标记 `abandoned`。cron 只扫描 due row；领取、完成和过期恢复都使用 Store CAS，陈旧 completion 不能覆盖新 revision。attempt 写入与 claim finalize 共用串行 writer：attempt 先提交时恢复按成功/失败事实计算正常周期或 Retry-After；release 先提交时，迟到 attempt 被 fence 拒绝，不能更新 source state 或越过服务端限流。正常 quota 使用 preference 周期；remaining 不高于 20% 或 reset 不超过 10 分钟时使用 2 分钟，若 `reset + 3 秒` 更早则精确选它。reset credits 使用独立 preference 周期。网络、timeout、401/403、5xx 与 schema incompatible 跨请求统一按 5/10/20/30 分钟 capped exponential 加 jitter，连续失败超过三次后保持 30 分钟上限并无限期产生下一次 due；429 取本地退避与合法 Retry-After 中更晚者。manual 可以越过普通退避，但 Store 与 policy 双层保证 60 秒最小间隔，且不能越过未来 Retry-After；foreground 只在上次成功超过 60 秒时立即刷新，wake 只刷新 stale 来源。cancelled 不增加 failure count，coordinator 使用 detached bounded context 释放 claim 并写下一计划；只有显式 disabled 才把 next due 置空。durability unknown 则保留 claim，待 lease 到期后重新校验当前时钟与事实。
 
 settings commit 调用 `ReconcilePreferences`：关闭能力立即把 next due 置空并保留历史，重新开启 never-loaded 来源会安排启动请求。进程启动与每个 cron cycle 都回收已经到期的遗留 claim；即使 claim 在启动检查之后才到期，也不会永久卡住。周期 trigger 固定复用 `github.com/robfig/cron/v3 v3.0.1` 的 `@every 1s`、`SkipIfStillRunning` 和 `Recover`，生产代码不新增 ticker/timer/sleep loop。可复用 synthetic-only 验证入口见 [`docs/test/reset-credits-quota.md`](../../../test/reset-credits-quota.md)。
 
@@ -174,9 +174,9 @@ settings commit 调用 `ReconcilePreferences`：关闭能力立即把 next due �
 
 credential provider 不缓存 token。每次 lease 都重新读取当前 confirmed Home，从文件系统根目录逐段以 no-follow directory FD 打开 Home，核对保存的 device/inode，再以 no-follow 方式打开固定 `auth.json`；只接受 1 MiB 内的普通文件，并在读取前后同时核对打开 FD 和目录 entry 的 device、inode、mode、size、mtime、ctime。打开后读中 rename/replace 会因打开 FD 与当前目录 entry 不一致而 fail closed，确定性 barrier test 同时证明 callback 不执行且错误不含新旧 token marker。内容使用有深度上限的 duplicate-key 检查，所有 JSON value 保持为可清零的 byte/`RawMessage`；只复制 `tokens.access_token` 给一次 callback，未知字段和 refresh token 不进入 domain result。callback 前再次读回 Preferences 并核对 `CodexHome`，因此 Home 在读取窗口切换时 fail closed，不会把旧 Home token 租给新来源。文件内容、RawMessage 和 token lease 在返回前清零；错误统一归一为 content-free `credential unavailable` 或 context 取消，不携带路径、字段值或底层正文。
 
-缺失、畸形或被替换的 credential 会形成 `auth_required` attempt 和空 next due，不阻止 local-only Helper 启动。后续同一 confirmed Home 恢复有效 credential 后，manual refresh 可以重新进入既有 claim/policy；每次 Helper 进程启动也只允许一次 `startup` 重探，使停机期间恢复的凭据或本次启动完成的旧 Home 身份迁移能够自动解除暂停。若该次重探仍失败，新的 `auth_required` 会继续保持空 next due，不形成进程内轮询。settings application contract 使用真实 `Preferences.Service` 先完成 CAS，再调用 quota reconcile。CAS 已提交而 reconcile 失败时返回包含 committed snapshot 的 typed post-commit error，不能把持久成功谎报为未提交。Core RPC 只传来源给同一个 coordinator，继续受 Store 的 60 秒节流、Retry-After、revision 和 active claim fence 约束，不重写这些语义。
+缺失、畸形或被替换的 credential 会形成 `auth_required` attempt 和普通持久退避，不阻止 local-only Helper 启动，也不会在任意失败次数后停更。后续同一 confirmed Home 恢复有效 credential 后，自动 due、manual refresh 或每次 Helper 进程启动的一次 `startup` 重探都可以重新进入既有 claim/policy；quota 成功恢复还会立即唤醒同样因 credential 退避的 Reset Credits。settings application contract 使用真实 `Preferences.Service` 先完成 CAS，再调用 quota reconcile。CAS 已提交而 reconcile 失败时返回包含 committed snapshot 的 typed post-commit error，不能把持久成功谎报为未提交。Core RPC 只传来源给同一个 coordinator，继续受 Store 的 60 秒节流、Retry-After、revision 和 active claim fence 约束，不重写这些语义。
 
-Swift client 通过 `NotifyLifecycle` RPC 只提交有限 sleep/wake/foreground 枚举。Helper adapter 先处理本地 lifecycle，再对两个在线来源发 wake 或 foreground request，由 policy 判断是否 stale、是否处于 backoff、是否需要真正发起 HTTP。Home switch 的 `pending_resume` guard 持久化后，组合 HomeRuntime 先让 local lifecycle 写入 blocked/draining fence 并调用 scheduler `Drain(all)` 等待 active live/backfill slice，再封闭 quota generation admission、取消 cron/request、等待所有旧 token lease/recorder，最后 drain bootstrap generation；只有全部旧 writer 退出后 Preferences 才能提交 target generation。resolution 完成后 lifecycle `HomeChanged` CAS durable generation、保留用户 pause/system sleep 并 reconcile 新 Home，quota runner 最后对已提交 generation 幂等 Resume。旧 generation queued task保留审计但不再 runnable，新 generation task 才能进入选择。
+Swift client 通过 `NotifyLifecycle` RPC 只提交有限 sleep/wake/foreground 枚举。收到 system sleep 后，Helper adapter 先封闭 quota generation admission、取消并 drain cron/request，使睡眠取消按 `cancelled` 收口且不累计 failure count，再进入本地 lifecycle 的 `Drain(all)`；system wake 先完成本地 reconcile，再按同一 Home generation 恢复 quota runner 并触发现有 wake policy。foreground 继续只由 policy 判断是否 stale、是否处于 backoff、是否需要真正发起 HTTP。Home switch 的 `pending_resume` guard 持久化后，组合 HomeRuntime 先让 local lifecycle 写入 blocked/draining fence 并调用 scheduler `Drain(all)` 等待 active live/backfill slice，再封闭 quota generation admission、取消 cron/request、等待所有旧 token lease/recorder，最后 drain bootstrap generation；只有全部旧 writer 退出后 Preferences 才能提交 target generation。resolution 完成后 lifecycle `HomeChanged` CAS durable generation、保留用户 pause/system sleep 并 reconcile 新 Home，quota runner 最后对已提交 generation 幂等 Resume。旧 generation queued task 保留审计但不再 runnable，新 generation task 才能进入选择。
 
 settings 固定先在 application control admission 内完成 Preferences CAS、释放 Service mutex，再进入 quota reconcile admission；这样 Home Confirm 的 Service mutex -> generation drain 不会与 settings 的反向锁顺序形成环。generation Drain/Resume 使用可取消的串行 transition，Resume 同 generation 幂等；runner fatal 会同步 seal/cancel 当前 generation，使 fatal 前已登记操作也能退出并被 drain。
 

@@ -277,13 +277,25 @@ func (runtime *applicationQuotaRuntime) DrainGeneration(ctx context.Context, gen
 	if runtime == nil || ctx == nil || generation == 0 {
 		return ErrApplicationQuotaRuntime
 	}
+	return runtime.drainGeneration(ctx, generation)
+}
+
+func (runtime *applicationQuotaRuntime) suspend(ctx context.Context) error {
+	if runtime == nil || ctx == nil {
+		return ErrApplicationQuotaRuntime
+	}
+	return runtime.drainGeneration(ctx, 0)
+}
+
+func (runtime *applicationQuotaRuntime) drainGeneration(ctx context.Context, expectedGeneration uint64) error {
 	finishTransition, err := runtime.beginGenerationTransition(ctx)
 	if err != nil {
 		return err
 	}
 	defer finishTransition()
 	runtime.mu.Lock()
-	if runtime.closed || runtime.generation != generation {
+	if runtime.closed || runtime.generation == 0 ||
+		(expectedGeneration != 0 && runtime.generation != expectedGeneration) {
 		runtime.mu.Unlock()
 		return ErrApplicationQuotaRuntime
 	}
@@ -482,7 +494,9 @@ func (coordinator applicationQuotaLifecycleCoordinator) SystemWillSleep(
 	if coordinator.local == nil || coordinator.quota == nil {
 		return store.SchedulerLifecycle{}, ErrApplicationQuotaRuntime
 	}
-	return coordinator.local.SystemWillSleep(ctx, eventID)
+	quotaErr := coordinator.quota.suspend(ctx)
+	state, localErr := coordinator.local.SystemWillSleep(ctx, eventID)
+	return state, errors.Join(quotaErr, localErr)
 }
 
 func (coordinator applicationQuotaLifecycleCoordinator) SystemDidWake(
@@ -493,7 +507,12 @@ func (coordinator applicationQuotaLifecycleCoordinator) SystemDidWake(
 		return store.SchedulerLifecycle{}, ErrApplicationQuotaRuntime
 	}
 	state, localErr := coordinator.local.SystemDidWake(ctx, eventID)
-	quotaErr := coordinator.quota.requestLifecycleRefresh(ctx, store.RefreshTriggerWake)
+	var quotaErr error
+	if state.HomeGeneration <= 0 {
+		quotaErr = ErrApplicationQuotaRuntime
+	} else if quotaErr = coordinator.quota.ResumeGeneration(ctx, uint64(state.HomeGeneration)); quotaErr == nil {
+		quotaErr = coordinator.quota.requestLifecycleRefresh(ctx, store.RefreshTriggerWake)
+	}
 	return state, errors.Join(localErr, quotaErr)
 }
 
