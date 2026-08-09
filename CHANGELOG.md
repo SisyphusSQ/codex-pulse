@@ -1,5 +1,7 @@
 ## Unreleased
 
+## v0.4.1 - 2026-08-09
+
 #### bugFix:
 1. 修复在线额度来源在认证或响应 schema 连续失败后永久停更，以及系统睡眠期间在途请求被误记为超时的问题；所有非禁用失败改为 30 分钟封顶的持续退避，sleep 先取消并 drain 额度任务且不累计失败，wake 恢复同一 Home generation 后继续刷新
 2. 修复 Codex 主动重置 7 天额度后，Wham 零用量阶段持续前移的 `reset_at` 被误判为多个空周期、挤掉真实上一周期趋势的问题；`quota-arbiter-v7` 将同一 provisional 阶段及首个非零用量归并为一个 generation，节奏查询统一采用仲裁后的 `window_generation`，保留未完整消耗的上一周期且不将其计入完整历史基线
