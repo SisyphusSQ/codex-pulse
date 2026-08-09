@@ -975,7 +975,7 @@ func TestRebuildQuotaProjectionRecoversStableWeeklyResetCreditCorrection(t *test
 		*current.ObservationID != "rebuild-reset-credit-correction-confirmed" ||
 		current.ResetsAtMS == nil || *current.ResetsAtMS != stableReset ||
 		current.FreshnessState != QuotaCurrentFresh ||
-		current.RuleVersion != "quota-arbiter-v6" {
+		current.RuleVersion != "quota-arbiter-v7" {
 		t.Fatalf("recovered reset-credit current = %#v, %v", current, err)
 	}
 }
@@ -1067,8 +1067,8 @@ func TestQuotaProjectionRebuildRestoresFiveHourPrimaryAndKeepsWeeklySecondaryDet
 				*primary.ObservationID != restoredFiveHour.ObservationID ||
 				primary.WindowMinutes == nil ||
 				*primary.WindowMinutes != 300 ||
-				primary.RuleVersion != "quota-arbiter-v6" {
-				t.Fatalf("primary current = %#v, %v; want restored five-hour v6", primary, err)
+				primary.RuleVersion != "quota-arbiter-v7" {
+				t.Fatalf("primary current = %#v, %v; want restored five-hour v7", primary, err)
 			}
 			secondary, err := repository.QuotaCurrent(
 				ctx, QuotaAccountScopeDefault, QuotaWindowSecondary, "codex", evaluatedAtMS,

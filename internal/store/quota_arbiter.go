@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	quotaArbitrationRuleV6       = "quota-arbiter-v6"
+	quotaArbitrationRuleV7       = "quota-arbiter-v7"
 	quotaFreshForMS              = int64(10 * 60 * 1000)
 	quotaMaxClockSkewMS          = int64(2 * 60 * 1000)
 	quotaMaxRuleClockSkewMS      = int64(24 * 60 * 60 * 1000)
@@ -43,7 +43,7 @@ func defaultQuotaArbitrationRule() QuotaArbitrationRule {
 // DefaultQuotaArbitrationRule returns the current versioned production rule.
 func DefaultQuotaArbitrationRule() QuotaArbitrationRule {
 	return QuotaArbitrationRule{
-		Version: quotaArbitrationRuleV6, FreshForMS: quotaFreshForMS, MaxClockSkewMS: quotaMaxClockSkewMS,
+		Version: quotaArbitrationRuleV7, FreshForMS: quotaFreshForMS, MaxClockSkewMS: quotaMaxClockSkewMS,
 	}
 }
 
@@ -447,6 +447,28 @@ func classifyQuotaGenerations(
 			setQuotaCandidateReason(candidate, QuotaEvidenceSuspicious, QuotaReasonResetRegression)
 			candidate.eligible = false
 			continue
+		case observation.ResetsAtMS > activeReset &&
+			activeProvisional &&
+			observation.Source == activeSource &&
+			(quotaWeeklyResetLooksObservationAnchored(observation, rule) ||
+				quotaWeeklyUsageAnchorsProvisionalPhase(observation)):
+			// 零用量周窗口尚未形成稳定 reset 时，Wham 会持续返回“本次观测 + 7 天”。
+			// 这些前移值属于同一未锚定阶段；current 跟随最新事实，但不能为历史节奏制造新周期。
+			activeAnchorReset = observation.ResetsAtMS
+			activeReset = observation.ResetsAtMS
+			activeGeneration.anchorReset = activeReset
+			activeGeneration.canonicalReset = activeReset
+			for _, activeIndex := range activeIndexes {
+				candidates[activeIndex].observation.ResetsAtMS = activeReset
+			}
+			candidate.observation.ResetsAtMS = activeReset
+			if observation.FirstObservedAtMS > activeLatestFirstObserved {
+				activeLatestFirstObserved = observation.FirstObservedAtMS
+			}
+			if observation.UsedPercent > 0 {
+				activeProvisional = false
+			}
+			belongsToActiveGeneration = true
 		case observation.ResetsAtMS > activeReset:
 			// 滑动窗口可在旧 reset 尚未到达时提前重置，并给出更晚的新 reset。
 			// 基础校验已保证新 reset 位于观测后的窗口时长内，不能再用旧 reset 作为准入门槛。
@@ -542,6 +564,12 @@ func quotaWeeklyResetLooksObservationAnchored(
 	}
 	expectedReset := observation.LastObservedAtMS + windowMS
 	return quotaResetsEquivalentWithin(expectedReset, observation.ResetsAtMS, rule.MaxClockSkewMS)
+}
+
+func quotaWeeklyUsageAnchorsProvisionalPhase(observation QuotaObservation) bool {
+	return observation.Source == QuotaSourceWham &&
+		observation.WindowMinutes == quotaWeeklyWindowMinutes &&
+		observation.UsedPercent > 0
 }
 
 func quotaWeeklyResetCorrectionIsConfirmed(

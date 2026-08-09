@@ -79,7 +79,7 @@ application schema v11 新增 `quota_current` 与 `quota_arbitration_evidence`�
 
 - `used_percent` 必须在 `0..100`；
 - window duration 和 reset 时间必须合理；
-- primary 必须存在，字段类型和 observation 时间不能明显倒退；默认允许的系统时钟偏差为 2 分钟，规则版本为 `quota-arbiter-v6`；
+- primary 必须存在，字段类型和 observation 时间不能明显倒退；默认允许的系统时钟偏差为 2 分钟，规则版本为 `quota-arbiter-v7`；
 - secondary 暂时缺失不能删除上一条 weekly；
 - partial response 只更新通过校验的 window。
 
@@ -115,12 +115,12 @@ freshness 与 conflict 分开：current 可以同时是 `fresh + conflict` 或 `
 1. 同一代际内，同一来源的合法 used 观测按时间原样参与 current 与节奏曲线；服务端用量下降同样是可展示事实，不按历史峰值压平，也不写 `suspicious/used_regression` evidence。跨来源仍比较各来源最新观测并取最大的 `used_percent`，避免把来源差异误当成单条时间线。
 2. 同代际有多个 accepted 来源时，取最大的 `used_percent`，即采用最保守的 remaining。
 3. 较新 observation 的 reset 向未来前移，且新 reset 晚于 observation、不超过 `window_minutes + skew` 时，接受为新 generation，允许 used 重新从低值开始；滑动窗口无需等待上一 reset 到期，中间未观测到的窗口也可以跳过。generation 先做基础有效性分类，再做代际排序；若新代际零值被更晚 Local 旧窗口否定，会隔离该零值并重新分类旧窗口候选，确保首次观测也不会暴露 false-zero，已有历史时选更新的 Local last-known-good 而不是更旧值。
-4. 同一 `window_minutes` 的逻辑窗口出现有界 reset 抖动时，将其归一到该代际已见的最大 reset；默认容差为 5 秒，Wham 7 天窗口容差为 120 秒，Local 7 天窗口仍保持 5 秒。每个 generation 使用首个 reset 作为固定锚点，不允许通过相邻 observation 链式放大容差。Wham 重置卡触发的首个零用量周窗口若精确近似“观测时刻 + 7 天”，只作为临时锚点；同来源后续回拨必须连续两次稳定一致、仍严格晚于上一代 reset，才允许重新锚定当前 generation。单次异常、跨来源值和上一代迟到继续保留 last-known-good，并写入 `reset_regression` evidence；超过边界地向未来推进则进入新 generation，旧 reset 到期后进入 expired_unknown。
+4. 同一 `window_minutes` 的逻辑窗口出现有界 reset 抖动时，将其归一到该代际已见的最大 reset；默认容差为 5 秒，Wham 7 天窗口容差为 120 秒，Local 7 天窗口仍保持 5 秒。每个稳定 generation 使用首个 reset 作为固定锚点，不允许通过相邻 observation 链式放大容差。Wham 重置卡触发的首个零用量周窗口若精确近似“观测时刻 + 7 天”，只作为临时锚点；同来源后续仍满足该形态的前移 reset 归并到同一个 provisional generation，current 跟随最新服务端事实，首个非零用量也继续锚定该阶段，不得为节奏历史制造空周期。同来源后续回拨必须连续两次稳定一致、仍严格晚于上一代 reset，才允许重新锚定当前 generation。单次异常、跨来源值和上一代迟到继续保留 last-known-good，并写入 `reset_regression` evidence；稳定 generation 超过边界地向未来推进才进入新 generation，旧 reset 到期后进入 expired_unknown。
 5. 本地 JSONL 到来只重新仲裁，不触发在线请求；较新的本地高值可以更新旧 wham，较新的 wham 低值不能覆盖同代际本地高值。旧 generation 晚到只保留 `reset_regression` evidence，不能回退 current。
 
 例：同一 reset 下本地已用 45%、在线已用 41%，current 采用 45%，UI 显示“剩余最多 55%”；41% 保留为 conflict evidence。之后在线返回 47% 时，47% 成为 current。
 
-节奏曲线按时间保留同一来源的每次用量变化，包括 used 下降所形成的剩余额度上跳。连续相同 used 的平台区间只保留首尾两个形状点，不再把整个周期均匀抽成固定 96 点，因此平台时长、变化发生位置和双向跳变都不会因抽样被删除。Swift 只在本周期与上一周期各自的最后一个点绘制着色端点；`(0%, 100%)` 仅作为连线起点，不伪装成真实采样点。
+节奏曲线使用 arbitration evidence 中的 `window_generation` 聚合 observation，而不是重新采用原始 `resets_at_ms` 划分周期；因此 provisional reset 的多个原始别名不会挤掉真实的上一周期，也不会进入完整历史基线。曲线按时间保留同一来源的每次用量变化，包括 used 下降所形成的剩余额度上跳。连续相同 used 的平台区间只保留首尾两个形状点，不再把整个周期均匀抽成固定 96 点，因此平台时长、变化发生位置和双向跳变都不会因抽样被删除。Swift 只在本周期与上一周期各自的最后一个点绘制着色端点；`(0%, 100%)` 仅作为连线起点，不伪装成真实采样点。
 
 ## 100% 防误判
 

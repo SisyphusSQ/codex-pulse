@@ -1,5 +1,8 @@
 ## Unreleased
 
+#### bugFix:
+1. 修复 Codex 主动重置 7 天额度后，Wham 零用量阶段持续前移的 `reset_at` 被误判为多个空周期、挤掉真实上一周期趋势的问题；`quota-arbiter-v7` 将同一 provisional 阶段及首个非零用量归并为一个 generation，节奏查询统一采用仲裁后的 `window_generation`，保留未完整消耗的上一周期且不将其计入完整历史基线
+
 ## v0.4.0 - 2026-08-07
 
 #### feature:

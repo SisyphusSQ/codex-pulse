@@ -241,20 +241,25 @@ func paceObservationsAllowedByArbitration(
 	if len(evidence) == 0 {
 		return observations
 	}
-	allowed := make(map[string]struct{}, len(evidence))
+	allowed := make(map[string]*int64, len(evidence))
 	for _, item := range evidence {
 		switch item.Disposition {
 		case store.QuotaEvidenceSelected,
 			store.QuotaEvidenceEligible,
 			store.QuotaEvidenceSuperseded:
-			allowed[item.ObservationID] = struct{}{}
+			allowed[item.ObservationID] = cloneInt64(item.WindowGeneration)
 		}
 	}
 	filtered := make([]store.QuotaObservation, 0, len(observations))
 	for _, observation := range observations {
-		if _, found := allowed[observation.ObservationID]; found {
-			filtered = append(filtered, observation)
+		generation, found := allowed[observation.ObservationID]
+		if !found {
+			continue
 		}
+		if generation != nil {
+			observation.ResetsAtMS = *generation
+		}
+		filtered = append(filtered, observation)
 	}
 	return filtered
 }
