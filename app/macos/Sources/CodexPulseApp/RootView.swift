@@ -212,7 +212,13 @@ struct OverviewStateView: View {
             overview: overview,
             selectedRange: model.overviewRange,
             onSelectRange: model.selectOverviewRange,
-            onNavigate: onNavigate,
+            onNavigate: { feature in
+                if feature == .invocationUsage {
+                    model.navigateToInvocationUsageFromOverview()
+                } else {
+                    onNavigate(feature)
+                }
+            },
             onSelectProject: { projectKey in
                 model.projectOptions.range = model.overviewRange
                 model.projectOptions.exactRange = overview.contentRange
@@ -262,6 +268,7 @@ private struct OverviewContentView: View {
                 tokenActivitySection
                 consumptionSection
                 activityAndSessionsSection
+                invocationProfileSection
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -638,6 +645,15 @@ private struct OverviewContentView: View {
         }
     }
 
+    private var invocationProfileSection: some View {
+        OverviewInvocationProfileCard(
+            profile: overview.invocationProfile,
+            rangeLabel: overview.usageRangeLabel,
+            onNavigate: { onNavigate(.invocationUsage) },
+            localization: localization
+        )
+    }
+
     private func activityDistributionCard(fillsProposedHeight: Bool) -> some View {
         OverviewActivityCard(
             activity: overview.activityDistribution,
@@ -827,6 +843,338 @@ private struct OverviewContentView: View {
         }
     }
 
+}
+
+private struct OverviewInvocationProfileCard: View {
+    let profile: OverviewInvocationProfilePresentation
+    let rangeLabel: String
+    let onNavigate: () -> Void
+    let localization: AppLocalization
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 16) {
+                Text(localization.textValue("调用画像"))
+                    .font(.headline)
+                Spacer()
+                Button(localization.textValue("查看完整调用统计"), action: onNavigate)
+                    .buttonStyle(.link)
+            }
+            Text(localization.format(
+                "%@ · %@",
+                rangeLabel,
+                localization.textValue("全部来源")
+            ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            invocationContent
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(.quaternary, lineWidth: 1)
+        }
+        .accessibilityIdentifier("overview.invocation-profile")
+    }
+
+    @ViewBuilder
+    private var invocationContent: some View {
+        switch profile.availability {
+        case .unavailable:
+            ContentUnavailableView(
+                localization.textValue("调用统计暂时不可用"),
+                systemImage: "wrench.and.screwdriver"
+            )
+            .frame(height: 170)
+        case .available, .partial:
+            if profile.isEmpty {
+                ContentUnavailableView(
+                    localization.textValue("当前范围没有调用活动"),
+                    systemImage: "wrench.and.screwdriver"
+                )
+                .frame(height: 170)
+            } else {
+                if profile.availability == .partial {
+                    Label(
+                        localization.textValue("调用数据仍在整理"),
+                        systemImage: "circle.dotted"
+                    )
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.orange)
+                }
+                summaryGrid
+                rankings
+            }
+        }
+    }
+
+    private var summaryGrid: some View {
+        ViewThatFits(in: .horizontal) {
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4),
+                alignment: .leading,
+                spacing: 12
+            ) {
+                summaryMetrics
+            }
+            .frame(minWidth: 616)
+
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 145), spacing: 12)],
+                alignment: .leading,
+                spacing: 12
+            ) {
+                summaryMetrics
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var summaryMetrics: some View {
+        OverviewInvocationSummaryMetric(
+            title: localization.textValue("Tool 调用"),
+            value: metricText(profile.toolCallCount, localization: localization),
+            detail: localization.format(
+                "%@ 种 Tool",
+                metricText(profile.distinctToolCount, localization: localization)
+            ),
+            symbol: "wrench.adjustable",
+            tint: .blue
+        )
+        OverviewInvocationSummaryMetric(
+            title: localization.textValue("Skill 检测活动"),
+            value: metricText(profile.skillActivityCount, localization: localization),
+            detail: localization.format(
+                "%@ 种 Skill",
+                metricText(profile.distinctSkillCount, localization: localization)
+            ),
+            symbol: "puzzlepiece.extension",
+            tint: .purple
+        )
+        OverviewInvocationSummaryMetric(
+            title: localization.textValue("相关会话"),
+            value: metricText(profile.sessionCount, localization: localization),
+            detail: localization.textValue("当前概览范围"),
+            symbol: "text.bubble",
+            tint: .teal
+        )
+        OverviewInvocationSummaryMetric(
+            title: localization.textValue("明确失败"),
+            value: metricText(profile.toolFailureCount, localization: localization),
+            detail: localization.textValue("仅带结果的 Tool 事件"),
+            symbol: "exclamationmark.triangle",
+            tint: failureTint
+        )
+    }
+
+    @ViewBuilder
+    private var rankings: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 20) {
+                toolRanking.frame(maxWidth: .infinity, alignment: .topLeading)
+                Divider()
+                skillRanking.frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .frame(minWidth: 620)
+
+            VStack(alignment: .leading, spacing: 16) {
+                toolRanking
+                Divider()
+                skillRanking
+            }
+        }
+    }
+
+    private var toolRanking: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(localization.textValue("常用 Tool"))
+                .font(.subheadline.weight(.semibold))
+            if profile.tools.isEmpty {
+                Text(localization.textValue("当前范围没有 Tool 调用"))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 8)
+            } else {
+                let maximum = profile.tools.compactMap { knownValue($0.callCount) }.max() ?? 0
+                ForEach(profile.tools) { item in
+                    OverviewInvocationRankingRow(
+                        name: item.name,
+                        value: metricText(item.callCount, localization: localization),
+                        count: knownValue(item.callCount),
+                        maximum: maximum,
+                        tint: .blue,
+                        help: toolHelp(item)
+                    )
+                }
+            }
+        }
+    }
+
+    private var skillRanking: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(localization.textValue("常用 Skill"))
+                .font(.subheadline.weight(.semibold))
+            if profile.skills.isEmpty {
+                Text(localization.textValue("当前范围没有 Skill 活动"))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 8)
+            } else {
+                let maximum = profile.skills.compactMap { knownValue($0.activityCount) }.max() ?? 0
+                ForEach(profile.skills) { item in
+                    OverviewInvocationRankingRow(
+                        name: item.name,
+                        value: metricText(item.activityCount, localization: localization),
+                        count: knownValue(item.activityCount),
+                        maximum: maximum,
+                        tint: .purple,
+                        help: skillHelp(item)
+                    )
+                }
+            }
+        }
+    }
+
+    private var failureTint: Color {
+        guard let count = knownValue(profile.toolFailureCount) else { return .secondary }
+        return count > 0 ? .orange : .green
+    }
+
+    private func knownValue(_ metric: DisplayMetric) -> Int64? {
+        guard case .known(let value, _) = metric else { return nil }
+        return value
+    }
+
+    private func toolHelp(_ item: OverviewInvocationToolPresentation) -> String {
+        var lines = [
+            localization.format("%@ 次调用", metricText(item.callCount, localization: localization)),
+            localization.format(
+                "相关会话：%@",
+                metricText(item.sessionCount, localization: localization)
+            ),
+            localization.format(
+                "成功 %@ · 失败 %@ · 结果未知 %@",
+                metricText(item.succeededCount, localization: localization),
+                metricText(item.failedCount, localization: localization),
+                metricText(item.unknownCount, localization: localization)
+            ),
+        ]
+        if let duration = durationText(item.averageDurationMS) {
+            lines.append(localization.format("平均耗时：%@", duration))
+        }
+        if let lastSeen = dateText(item.lastSeenAtMS) {
+            lines.append(localization.format("最近：%@", lastSeen))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func skillHelp(_ item: OverviewInvocationSkillPresentation) -> String {
+        var lines = [
+            localization.format(
+                "%@ 次活动",
+                metricText(item.activityCount, localization: localization)
+            ),
+            localization.format(
+                "相关会话：%@",
+                metricText(item.sessionCount, localization: localization)
+            ),
+            localization.format(
+                "显式引用 %@ · 文件加载 %@",
+                metricText(item.explicitCount, localization: localization),
+                metricText(item.fileLoadedCount, localization: localization)
+            ),
+        ]
+        if let lastSeen = dateText(item.lastSeenAtMS) {
+            lines.append(localization.format("最近：%@", lastSeen))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func durationText(_ metric: DisplayMetric) -> String? {
+        guard case .known(let milliseconds, _) = metric else { return nil }
+        if milliseconds < 1_000 { return "\(milliseconds) ms" }
+        return String(
+            format: "%.2f s",
+            locale: localization.locale,
+            Double(milliseconds) / 1_000
+        )
+    }
+
+    private func dateText(_ metric: DisplayMetric) -> String? {
+        guard case .known(let milliseconds, _) = metric else { return nil }
+        return timestampText(milliseconds)
+    }
+}
+
+private struct OverviewInvocationSummaryMetric: View {
+    let title: String
+    let value: String
+    let detail: String
+    let symbol: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Label(title, systemImage: symbol)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(tint)
+            Text(value)
+                .font(.title3.bold())
+                .monospacedDigit()
+            Text(detail)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(tint.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct OverviewInvocationRankingRow: View {
+    let name: String
+    let value: String
+    let count: Int64?
+    let maximum: Int64
+    let tint: Color
+    let help: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 12) {
+                Text(name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 12)
+                Text(value)
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+            }
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(tint.opacity(0.12))
+                    Capsule()
+                        .fill(tint)
+                        .frame(width: geometry.size.width * fraction)
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(.vertical, 3)
+        .help(help)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(name)
+        .accessibilityValue(help)
+    }
+
+    private var fraction: Double {
+        guard let count, maximum > 0 else { return 0 }
+        return min(max(Double(count) / Double(maximum), 0), 1)
+    }
 }
 
 private struct OverviewActivityCard: View {

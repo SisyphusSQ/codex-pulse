@@ -279,15 +279,76 @@ private func testInvocationTrendBuildsOverlaidBarsForEachTimeBucket() throws {
     )
 }
 
+private func testOverviewInvocationProfilePreservesBoundedHelperRankings() throws {
+    let response = makeInvocationProfileResponse(status: "partial", itemCount: 7)
+    let presentation = OverviewInvocationProfilePresentation(response)
+
+    try expect(
+        presentation.availability == .partial,
+        "overview invocation profile must preserve partial response semantics"
+    )
+    try expect(
+        presentation.tools.map(\.name) == ["tool-1", "tool-2", "tool-3", "tool-4", "tool-5"]
+            && presentation.skills.map(\.name)
+                == ["skill-1", "skill-2", "skill-3", "skill-4", "skill-5"],
+        "overview invocation profile must preserve Helper order and expose only Top 5 per column"
+    )
+    try expect(
+        presentation.toolCallCount == .known(1_248, unit: "count")
+            && presentation.skillActivityCount == .known(86, unit: "count")
+            && presentation.toolFailureCount == .known(3, unit: "count"),
+        "overview invocation profile must preserve summary counts without recomputing them"
+    )
+    try expect(
+        presentation.tools.first?.averageDurationMS == .known(850, unit: "milliseconds")
+            && presentation.skills.first?.explicitCount == .known(30, unit: "count"),
+        "overview invocation rows must retain bounded hover-detail facts"
+    )
+}
+
+private func testOverviewInvocationProfileUsesResponsiveIndependentRankings() throws {
+    let source = try mainWindowSource("RootView.swift")
+    try expect(
+        source.contains("OverviewInvocationProfileCard(")
+            && source.contains("overview.invocation-profile")
+            && source.contains("查看完整调用统计")
+            && source.contains("model.navigateToInvocationUsageFromOverview()"),
+        "overview must append a navigable invocation profile card"
+    )
+    try expect(
+        source.contains("Text(localization.textValue(\"常用 Tool\"))")
+            && source.contains("Text(localization.textValue(\"常用 Skill\"))")
+            && source.contains("ViewThatFits(in: .horizontal)"),
+        "overview invocation rankings must adapt between independent Tool and Skill columns"
+    )
+    try expect(
+        source.contains("Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)")
+            && source.contains("GridItem(.adaptive(minimum: 145), spacing: 12)"),
+        "overview invocation summary must fill wide rows with four equal cards and wrap on narrow widths"
+    )
+    try expect(
+        source.contains("geometry.size.width * fraction")
+            && source.contains("maximum: maximum"),
+        "each invocation ranking must scale bars against its own maximum"
+    )
+}
+
 @MainActor
-private func testInvocationUsageAcceptsQuotaWeekSelection() async throws {
+private func testOverviewInvocationDeepLinkAlignsTheDetailContext() async throws {
     let model = AppModel(
         runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in
             FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
         })
     )
-    model.selectInvocationRange(.quotaWeek)
-    try expect(model.invocationRange == .quotaWeek, "invocation page must keep quota week selected")
+    model.selectInvocationRange(.today)
+    model.selectInvocationSourceClass("detected")
+    model.navigateToInvocationUsageFromOverview()
+    try expect(
+        model.selectedFeature == .invocationUsage
+            && model.invocationRange == .quotaWeek
+            && model.invocationSourceClass == "all",
+        "overview deep link must align invocation filters with its quota-week all-source profile"
+    )
     _ = await model.shutdown()
 }
 
@@ -2349,6 +2410,7 @@ private actor FakeCore: AppCoreServing {
     private var failOverview = false
     private var failOverviewProjects = false
     private var failTokenActivity = false
+    private var failOverviewInvocation = false
     private var failAccount = false
     private var handshakeFailure = false
     private var handshakeError: CoreClientError?
@@ -2360,6 +2422,7 @@ private actor FakeCore: AppCoreServing {
     private var calls: [String] = []
     private var usageRequests: [Codexpulse_Core_V1_UsageCostRequest] = []
     private var tokenActivityRequests: [Codexpulse_Core_V1_UsageCostRequest] = []
+    private var invocationRequests: [Codexpulse_Core_V1_InvocationUsageRequest] = []
     private var sessionRequests: [Codexpulse_Core_V1_ListSessionsRequest] = []
     private var projectRequests: [Codexpulse_Core_V1_ListProjectsRequest] = []
     private var featureSessionPlans: [SessionPagePlan] = []
@@ -2415,6 +2478,7 @@ private actor FakeCore: AppCoreServing {
     func setOverviewFailure(_ value: Bool) { failOverview = value }
     func setOverviewProjectFailure(_ value: Bool) { failOverviewProjects = value }
     func setTokenActivityFailure(_ value: Bool) { failTokenActivity = value }
+    func setOverviewInvocationFailure(_ value: Bool) { failOverviewInvocation = value }
     func setAccountFailure(_ value: Bool) { failAccount = value }
     func setHandshakeFailure(_ value: Bool) { handshakeFailure = value }
     func setHandshakeError(_ value: CoreClientError?) { handshakeError = value }
@@ -2558,6 +2622,9 @@ private actor FakeCore: AppCoreServing {
     func recordedTokenActivityRequests() -> [Codexpulse_Core_V1_UsageCostRequest] {
         tokenActivityRequests
     }
+    func recordedInvocationRequests() -> [Codexpulse_Core_V1_InvocationUsageRequest] {
+        invocationRequests
+    }
     func recordedSessionRequests() -> [Codexpulse_Core_V1_ListSessionsRequest] { sessionRequests }
     func recordedProjectRequests() -> [Codexpulse_Core_V1_ListProjectsRequest] { projectRequests }
     func recordedCompletedAccountCalls() -> Int { completedAccountCalls }
@@ -2613,6 +2680,19 @@ private actor FakeCore: AppCoreServing {
         if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
         if shouldFail { throw FakeFailure.unavailable }
         return responses.usage
+    }
+
+    func invocationUsage(
+        _ request: Codexpulse_Core_V1_InvocationUsageRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_InvocationUsageResponse {
+        calls.append("invocation")
+        invocationRequests.append(request)
+        let shouldFail = failOverview || (request.topLimit == 5 && failOverviewInvocation)
+        await waitForOverviewBarrier()
+        if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
+        if shouldFail { throw FakeFailure.unavailable }
+        return responses.invocationUsage
     }
 
     func pricingCatalogCurrent(
@@ -2934,6 +3014,65 @@ private func makeTokenActivityResponse() -> Codexpulse_Core_V1_UsageCostResponse
     return response
 }
 
+private func makeInvocationProfileResponse(
+    status: String = "complete",
+    itemCount: Int = 2
+) -> Codexpulse_Core_V1_InvocationUsageResponse {
+    var response = Codexpulse_Core_V1_InvocationUsageResponse()
+    response.meta = completeMeta()
+    response.meta.status = status
+    response.sourceClass = "all"
+    response.granularity = "day"
+    response.totals.toolCallCount.value = 1_248
+    response.totals.toolCallCount.unit = "count"
+    response.totals.distinctToolCount.value = 23
+    response.totals.distinctToolCount.unit = "count"
+    response.totals.skillActivityCount.value = 86
+    response.totals.skillActivityCount.unit = "count"
+    response.totals.distinctSkillCount.value = 12
+    response.totals.distinctSkillCount.unit = "count"
+    response.totals.sessionCount.value = 42
+    response.totals.sessionCount.unit = "count"
+    response.totals.toolFailureCount.value = 3
+    response.totals.toolFailureCount.unit = "count"
+    response.tools = (0..<itemCount).map { index in
+        var item = Codexpulse_Core_V1_ToolUsageItem()
+        item.name = "tool-\(index + 1)"
+        item.callCount.value = Int64(500 - index * 40)
+        item.callCount.unit = "count"
+        item.sessionCount.value = Int64(30 - index)
+        item.sessionCount.unit = "count"
+        item.succeededCount.value = Int64(200 - index * 10)
+        item.succeededCount.unit = "count"
+        item.failedCount.value = Int64(index == 0 ? 3 : 0)
+        item.failedCount.unit = "count"
+        item.unknownCount.value = Int64(297 - index * 30)
+        item.unknownCount.unit = "count"
+        item.averageDurationMs.value = 850 + Int64(index * 100)
+        item.averageDurationMs.unit = "milliseconds"
+        item.lastSeenAtMs.value = 1_786_048_200_000 - Int64(index * 60_000)
+        item.lastSeenAtMs.unit = "unix_ms"
+        item.sources = ["response_function"]
+        return item
+    }
+    response.skills = (0..<itemCount).map { index in
+        var item = Codexpulse_Core_V1_SkillUsageItem()
+        item.name = "skill-\(index + 1)"
+        item.activityCount.value = Int64(80 - index * 7)
+        item.activityCount.unit = "count"
+        item.sessionCount.value = Int64(20 - index)
+        item.sessionCount.unit = "count"
+        item.explicitCount.value = Int64(30 - index * 2)
+        item.explicitCount.unit = "count"
+        item.fileLoadedCount.value = Int64(50 - index * 5)
+        item.fileLoadedCount.unit = "count"
+        item.lastSeenAtMs.value = 1_786_048_200_000 - Int64(index * 60_000)
+        item.lastSeenAtMs.unit = "unix_ms"
+        return item
+    }
+    return response
+}
+
 private func makeTokenActivityPoint(
     date: String,
     tokens: Int64,
@@ -3075,7 +3214,8 @@ private func makeResponses(
         sessions: sessions,
         projects: projects,
         health: health,
-        tokenActivityUsage: tokenActivity
+        tokenActivityUsage: tokenActivity,
+        invocationUsage: makeInvocationProfileResponse()
     )
 }
 
@@ -5411,6 +5551,62 @@ private func testAppRuntimeKeepsTokenActivityFailureLocal() async throws {
     _ = await model.shutdown()
 }
 
+@MainActor
+private func testAppRuntimeLoadsOverviewInvocationProfileForTheExactContentRange() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+
+    model.start()
+    try await waitUntil("overview invocation profile") {
+        await MainActor.run {
+            model.presentation?.invocationProfile.availability == .available
+        }
+    }
+
+    let invocationRequests = await core.recordedInvocationRequests()
+    let usageRequests = await core.recordedUsageRequests()
+    try expect(
+        invocationRequests.count == 1 && usageRequests.count == 1,
+        "overview must issue one invocation profile request beside current-range usage"
+    )
+    try expect(
+        invocationRequests[0].range == usageRequests[0].exactRange
+            && invocationRequests[0].granularity == usageRequests[0].granularity,
+        "overview invocation profile must use the exact authoritative content range"
+    )
+    try expect(
+        invocationRequests[0].sourceClass == "all" && invocationRequests[0].topLimit == 5,
+        "overview invocation profile must stay all-source and bounded to Top 5"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testAppRuntimeKeepsOverviewInvocationFailureLocal() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setOverviewInvocationFailure(true)
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+
+    model.start()
+    try await waitUntil("locally unavailable overview invocation profile") {
+        await MainActor.run { model.presentation != nil }
+    }
+
+    try expect(
+        model.presentation?.invocationProfile.availability == .unavailable,
+        "a failed overview invocation request must stay unavailable in its own card"
+    )
+    try expect(
+        model.presentation?.usageAvailable == true
+            && model.presentation?.quotaAvailable == true
+            && model.presentation?.isPartial == false,
+        "overview invocation failure must not downgrade quota or current-range usage"
+    )
+    _ = await model.shutdown()
+}
+
 private func testOverviewMergesAllOtherProjectUsage() throws {
     let base = makeResponses()
     var projects = base.projects
@@ -6744,8 +6940,15 @@ private func testOverviewRangeResolutionDrivesEveryContentRequest() throws {
         "overview usage must request the current-range activity distribution")
     try expect(requests.sessions.query.exactTimeRange.startAtMs == weekly.startAtMS, "session range start")
     try expect(requests.projects.query.exactTimeRange.startAtMs == weekly.startAtMS, "project range start")
+    try expect(requests.invocationUsage.range.startAtMs == weekly.startAtMS, "invocation range start")
     try expect(requests.sessions.query.page.limit == 5, "overview sessions must stay bounded")
     try expect(requests.projects.query.page.limit == 5, "overview projects must stay bounded")
+    try expect(
+        requests.invocationUsage.topLimit == 5
+            && requests.invocationUsage.sourceClass == "all"
+            && requests.invocationUsage.granularity == weekly.granularity,
+        "overview invocation profile must stay bounded, all-source, and range-aligned"
+    )
     try expect(requests.sessions.query.sort.first?.field == "totalTokens", "sessions sort by Token")
     try expect(requests.projects.query.sort.first?.field == "totalTokens", "projects sort by Token")
 
@@ -6939,7 +7142,7 @@ private func testUnavailableRecoveryRefreshesOpenForegroundSurfaces() async thro
     }
     await core.releaseNextOverviewBarrierWaiter()
     try await waitUntil("initial unavailable Overview sections are in flight") {
-        await core.overviewBarrierWaiterCount() == 6
+        await core.overviewBarrierWaiterCount() == 7
     }
     await core.publishOverviewInvalidations(count: 3, recovered: true)
     await core.releaseOverviewBarrier()
@@ -6999,7 +7202,7 @@ private func testRecoveryDuringDisconnectedStreamRefreshesAfterReconnectWithoutR
     }
     await core.releaseNextOverviewBarrierWaiter()
     try await waitUntil("disconnected recovery Overview sections are in flight") {
-        await core.overviewBarrierWaiterCount() == 6
+        await core.overviewBarrierWaiterCount() == 7
     }
     await core.releaseOverviewBarrier()
     try await waitUntil("disconnected recovery starts unavailable") {
@@ -7066,7 +7269,7 @@ private func testInitialInFlightReconnectQueuesOneRecoveryRefresh() async throws
     }
     await core.releaseNextOverviewBarrierWaiter()
     try await waitUntil("initial unavailable Overview sections are in flight before reconnect") {
-        await core.overviewBarrierWaiterCount() == 6
+        await core.overviewBarrierWaiterCount() == 7
     }
     try await waitUntil("initial stream can disconnect during the first Overview") {
         await core.initialStreamDisconnectWaiterCount() == 1
@@ -7426,7 +7629,7 @@ private func testUnavailableRecoveryFailureDoesNotPublishSuccess() async throws 
     }
     await core.releaseNextOverviewBarrierWaiter()
     try await waitUntil("failed recovery Overview sections are in flight") {
-        await core.overviewBarrierWaiterCount() == 6
+        await core.overviewBarrierWaiterCount() == 7
     }
     await core.publishOverviewInvalidations(count: 2, recovered: false)
     await core.releaseOverviewBarrier()
@@ -7910,7 +8113,9 @@ struct CodexPulseAppTestMain {
         try testInvocationUsageRequestUsesExactBoundedRange()
         try testInvocationUsageRequestUsesAuthoritativeQuotaWeek()
         try testInvocationTrendBuildsOverlaidBarsForEachTimeBucket()
-        try await testInvocationUsageAcceptsQuotaWeekSelection()
+        try testOverviewInvocationProfilePreservesBoundedHelperRankings()
+        try testOverviewInvocationProfileUsesResponsiveIndependentRankings()
+        try await testOverviewInvocationDeepLinkAlignsTheDetailContext()
         try testReferencePriceFormattingPreservesPrecisionAndUnknown()
         try testQuotaUsageShowsIndependentReferencePriceCatalogAndBillingBoundary()
         try testOverviewMergesAllOtherProjectUsage()
@@ -7999,6 +8204,8 @@ struct CodexPulseAppTestMain {
         try testActivityHeatmapSelectionMovesWithoutHundredsOfAccessibilityChildren()
         try await testAppRuntimeLoadsTokenActivityThroughAnIndependentAnnualRequest()
         try await testAppRuntimeKeepsTokenActivityFailureLocal()
+        try await testAppRuntimeLoadsOverviewInvocationProfileForTheExactContentRange()
+        try await testAppRuntimeKeepsOverviewInvocationFailureLocal()
         try await testAppRuntimeUsesWeeklyQuotaRangeForOverview()
         try await testAppRuntimeLoadsQuotaPaceWithOverview()
         try await testQuotaUsageFeatureReloadsQuotaPace()
