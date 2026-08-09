@@ -6236,6 +6236,19 @@ private func testQuotaPacePlotBorderShapeStaysInsideThePlotArea() throws {
     )
 }
 
+private func testQuotaPaceXAxisKeepsBoundaryLabelsWithoutBoundaryGridLines() throws {
+    let axis = QuotaPaceChartXAxisPresentation.percentage
+
+    try expect(
+        axis.labelValues == [0, 25, 50, 75, 100],
+        "quota pace must keep both boundary percentage labels"
+    )
+    try expect(
+        axis.gridLineValues == [25, 50, 75],
+        "quota pace must draw only internal vertical grid lines beside its plot border"
+    )
+}
+
 private func testQuotaPaceChartOnlyColorsSeriesEndpoints() throws {
     let source = try mainWindowSource("QuotaPaceViews.swift")
     let pointMarkCount = source.components(separatedBy: "PointMark(").count - 1
@@ -8217,6 +8230,7 @@ struct CodexPulseAppTestMain {
         try testQuotaPacePresentationExplainsPaceForecastAndEvidence()
         try testQuotaPaceIdealReferenceShapeRunsFromTopLeftToBottomRight()
         try testQuotaPacePlotBorderShapeStaysInsideThePlotArea()
+        try testQuotaPaceXAxisKeepsBoundaryLabelsWithoutBoundaryGridLines()
         try testQuotaPaceChartOnlyColorsSeriesEndpoints()
         try testEnglishQuotaPaceComparisonPreservesArgumentTypesWhenWordOrderChanges()
         try testQuotaPaceForecastUsesCoarseRelativeUnitsAndHonestFallbacks()

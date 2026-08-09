@@ -491,6 +491,20 @@ func buildPaceCycle(
 	if len(points) == 0 {
 		return PaceCycle{}, false
 	}
+	cycleStartIndex := 0
+	seenPositiveUsage := false
+	for index, point := range points {
+		switch {
+		case point.UsedPercent == 0 && seenPositiveUsage:
+			cycleStartIndex = index
+			seenPositiveUsage = false
+		case point.UsedPercent > 0:
+			seenPositiveUsage = true
+		}
+	}
+	if cycleStartIndex > 0 {
+		points = points[cycleStartIndex:]
+	}
 	points = compactPacePoints(points)
 	complete := points[0].ElapsedPercent <= 10 &&
 		points[len(points)-1].ElapsedPercent >= 90

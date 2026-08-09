@@ -2,6 +2,20 @@ import CodexPulseProtocolGenerated
 import Foundation
 import SwiftUI
 
+public struct QuotaPaceChartXAxisPresentation: Equatable, Sendable {
+    public let labelValues: [Double]
+    public let gridLineValues: [Double]
+
+    public static let percentage = QuotaPaceChartXAxisPresentation(
+        labelValues: [0, 25, 50, 75, 100]
+    )
+
+    private init(labelValues: [Double]) {
+        self.labelValues = labelValues
+        self.gridLineValues = Array(labelValues.dropFirst().dropLast())
+    }
+}
+
 public struct QuotaPaceIdealReferenceShape: Shape {
     public init() {}
 
