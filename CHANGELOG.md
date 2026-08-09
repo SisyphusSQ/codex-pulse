@@ -1,5 +1,10 @@
 ## Unreleased
 
+## v0.5.1 - 2026-08-09
+
+#### bugFix:
+1. 修复正式发行包的 Sparkle build number 回退和固定 appcast 未同步问题，恢复 stable 与 preview 频道的单调递增更新序列，并补齐 v0.5.1 exact ZIP 签名与更新源
+
 ## v0.5.0 - 2026-08-09
 
 #### feature:
