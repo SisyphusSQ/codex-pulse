@@ -148,6 +148,8 @@ func TestApplicationQuotaRuntimeRecordsMissingCredentialAndManualRecovery(t *tes
 		snapshot: enabledQuotaRuntimePreferences(t, home),
 	}
 	transportCalls := make(chan string, 2)
+	var nowMS atomic.Int64
+	nowMS.Store(quotaRuntimeNowMS)
 	runtime, err := startApplicationQuotaRuntime(context.Background(), ApplicationQuotaRuntimeConfig{
 		Repository:  repository,
 		Preferences: loader,
@@ -158,9 +160,7 @@ func TestApplicationQuotaRuntimeRecordsMissingCredentialAndManualRecovery(t *tes
 			}
 			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
 		}),
-		Clock: func() time.Time {
-			return time.UnixMilli(quotaRuntimeNowMS).UTC()
-		},
+		Clock: func() time.Time { return time.UnixMilli(nowMS.Load()).UTC() },
 	})
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationQuotaRuntime() = %#v, %v", runtime, err)
@@ -174,8 +174,9 @@ func TestApplicationQuotaRuntimeRecordsMissingCredentialAndManualRecovery(t *tes
 			return state.LastFailureCode != nil && *state.LastFailureCode == store.SourceFailureAuthRequired
 		})
 		waitForQuotaRuntimeSchedule(t, repository, sourceInstanceID, func(schedule store.SourceRefreshSchedule) bool {
-			return schedule.NextDueAtMS == nil && schedule.ActiveClaimID == nil &&
-				schedule.Reason == store.RefreshReasonAuthRequired
+			return schedule.NextDueAtMS != nil && *schedule.NextDueAtMS > quotaRuntimeNowMS &&
+				*schedule.NextDueAtMS <= quotaRuntimeNowMS+330_000 && schedule.ActiveClaimID == nil &&
+				schedule.Reason == store.RefreshReasonNetworkBackoff
 		})
 	}
 	select {
@@ -190,13 +191,11 @@ func TestApplicationQuotaRuntimeRecordsMissingCredentialAndManualRecovery(t *tes
 	); err != nil {
 		t.Fatalf("os.WriteFile(recovered auth.json) error = %v", err)
 	}
-	for _, source := range []quotaonline.RefreshSource{
-		quotaonline.RefreshSourceQuota,
-		quotaonline.RefreshSourceResetCredits,
-	} {
-		if _, err := runtime.RequestRefresh(context.Background(), source, store.RefreshTriggerManual); err != nil {
-			t.Fatalf("RequestRefresh(%q) error = %v", source, err)
-		}
+	nowMS.Store(quotaRuntimeNowMS + 61_000)
+	if _, err := runtime.RequestRefresh(
+		context.Background(), quotaonline.RefreshSourceQuota, store.RefreshTriggerManual,
+	); err != nil {
+		t.Fatalf("RequestRefresh(quota) error = %v", err)
 	}
 	waitForQuotaRuntimeRequests(t, transportCalls, 2)
 	waitForQuotaRuntimeState(t, repository, store.QuotaSourceInstanceWhamDefault, func(state store.SourceState) bool {
@@ -728,6 +727,172 @@ func TestApplicationLifecycleRuntimeComposesQuotaControlHooksAndForeground(t *te
 	if err := database.Close(closeContext); err != nil {
 		t.Fatalf("database.Close() error = %v", err)
 	}
+}
+
+func TestApplicationQuotaLifecycleCoordinatorSuspendsRequestsAcrossSleepAndResumesOnWake(t *testing.T) {
+	t.Parallel()
+
+	database, repository := openQuotaRuntimeStore(t)
+	home := writeSyntheticAuthHome(t, "synthetic-sleep-access-token")
+	snapshot := enabledQuotaRuntimePreferences(t, home)
+	snapshot.Online.ResetCreditsEnabled = false
+	loader := &quotaRuntimePreferencesLoader{snapshot: snapshot}
+	requests := make(chan string, 4)
+	blockedRequests := make(chan *http.Request, 1)
+	var blockRequests atomic.Bool
+	var nowMS atomic.Int64
+	nowMS.Store(quotaRuntimeNowMS)
+	transport := quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
+		requests <- request.URL.String()
+		if blockRequests.Load() {
+			blockedRequests <- request
+			<-request.Context().Done()
+			return nil, request.Context().Err()
+		}
+		return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
+	})
+	quotaRuntime, err := startApplicationQuotaRuntime(context.Background(), ApplicationQuotaRuntimeConfig{
+		Repository: repository, Preferences: loader, Transport: transport,
+		Clock: func() time.Time { return time.UnixMilli(nowMS.Load()).UTC() },
+	})
+	if err != nil || quotaRuntime == nil {
+		t.Fatalf("startApplicationQuotaRuntime() = %#v, %v", quotaRuntime, err)
+	}
+	t.Cleanup(func() {
+		closeContext, cancelClose := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancelClose()
+		_ = quotaRuntime.Close(closeContext)
+		_ = database.Close(closeContext)
+	})
+	waitForQuotaRuntimeRequest(t, requests, quotaonline.WhamUsageEndpoint)
+	waitForQuotaRuntimeState(t, repository, store.QuotaSourceInstanceWhamDefault, func(state store.SourceState) bool {
+		return state.LastSuccessAtMS != nil && state.LastFailureCode == nil
+	})
+	waitForQuotaRuntimeSchedule(t, repository, store.QuotaSourceInstanceWhamDefault, func(schedule store.SourceRefreshSchedule) bool {
+		return schedule.NextDueAtMS != nil && schedule.ActiveClaimID == nil
+	})
+
+	nowMS.Store(quotaRuntimeNowMS + 61_000)
+	blockRequests.Store(true)
+	refreshDone := make(chan error, 1)
+	go func() {
+		_, refreshErr := quotaRuntime.RequestRefresh(
+			context.Background(), quotaonline.RefreshSourceQuota, store.RefreshTriggerManual,
+		)
+		refreshDone <- refreshErr
+	}()
+	var blockedRequest *http.Request
+	select {
+	case blockedRequest = <-blockedRequests:
+	case <-time.After(2 * time.Second):
+		t.Fatal("manual quota request did not reach the blocking transport")
+	}
+	waitForQuotaRuntimeRequest(t, requests, quotaonline.WhamUsageEndpoint)
+
+	generation := int64(snapshot.CodexHome.Generation)
+	local := &quotaLifecycleCoordinatorStub{
+		state:        store.SchedulerLifecycle{HomeGeneration: generation},
+		sleepEntered: make(chan struct{}, 1),
+		releaseSleep: make(chan struct{}, 1),
+	}
+	t.Cleanup(func() {
+		select {
+		case local.releaseSleep <- struct{}{}:
+		default:
+		}
+	})
+	lifecycle := applicationQuotaLifecycleCoordinator{local: local, quota: quotaRuntime}
+	sleepContext, cancelSleep := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancelSleep()
+	sleepDone := make(chan error, 1)
+	go func() {
+		_, sleepErr := lifecycle.SystemWillSleep(sleepContext, "sleep:quota-runtime")
+		sleepDone <- sleepErr
+	}()
+	select {
+	case <-local.sleepEntered:
+	case <-time.After(time.Second):
+		t.Fatal("SystemWillSleep did not reach the local lifecycle coordinator")
+	}
+	quotaRuntime.mu.Lock()
+	acceptingWhileSleeping := quotaRuntime.accepting
+	quotaRuntime.mu.Unlock()
+	if acceptingWhileSleeping {
+		t.Fatal("quota runtime still accepted work after local sleep handling began")
+	}
+	select {
+	case <-blockedRequest.Context().Done():
+	case <-time.After(time.Second):
+		t.Fatal("SystemWillSleep did not cancel the in-flight quota request")
+	}
+	local.releaseSleep <- struct{}{}
+	select {
+	case sleepErr := <-sleepDone:
+		if sleepErr != nil {
+			t.Fatalf("SystemWillSleep() error = %v", sleepErr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("SystemWillSleep did not finish after the local drain completed")
+	}
+	select {
+	case refreshErr := <-refreshDone:
+		if refreshErr != nil {
+			t.Fatalf("cancelled manual refresh error = %v", refreshErr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("cancelled manual refresh did not drain")
+	}
+	waitForQuotaRuntimeState(t, repository, store.QuotaSourceInstanceWhamDefault, func(state store.SourceState) bool {
+		return state.ConsecutiveFailures == 0 && state.LastFailureCode != nil &&
+			*state.LastFailureCode == store.SourceFailureCancelled
+	})
+
+	blockRequests.Store(false)
+	nowMS.Store(quotaRuntimeNowMS + 10*time.Minute.Milliseconds())
+	if _, err := lifecycle.SystemDidWake(context.Background(), "wake:quota-runtime"); err != nil {
+		t.Fatalf("SystemDidWake() error = %v", err)
+	}
+	waitForQuotaRuntimeRequest(t, requests, quotaonline.WhamUsageEndpoint)
+	waitForQuotaRuntimeState(t, repository, store.QuotaSourceInstanceWhamDefault, func(state store.SourceState) bool {
+		return state.LastSuccessAtMS != nil && *state.LastSuccessAtMS == nowMS.Load() &&
+			state.ConsecutiveFailures == 0 && state.LastFailureCode == nil
+	})
+}
+
+type quotaLifecycleCoordinatorStub struct {
+	state        store.SchedulerLifecycle
+	sleepEntered chan struct{}
+	releaseSleep chan struct{}
+}
+
+func (coordinator *quotaLifecycleCoordinatorStub) SystemWillSleep(
+	context.Context,
+	string,
+) (store.SchedulerLifecycle, error) {
+	if coordinator.sleepEntered != nil {
+		coordinator.sleepEntered <- struct{}{}
+	}
+	if coordinator.releaseSleep != nil {
+		<-coordinator.releaseSleep
+	}
+	coordinator.state.SystemState = store.LifecycleSystemSleeping
+	return coordinator.state, nil
+}
+
+func (coordinator *quotaLifecycleCoordinatorStub) SystemDidWake(
+	context.Context,
+	string,
+) (store.SchedulerLifecycle, error) {
+	coordinator.state.SystemState = store.LifecycleSystemAwake
+	return coordinator.state, nil
+}
+
+func (coordinator *quotaLifecycleCoordinatorStub) SourceChanged(
+	context.Context,
+	string,
+	bool,
+) (store.SchedulerLifecycle, error) {
+	return coordinator.state, nil
 }
 
 func TestApplicationLifecycleRuntimeCommitsSettingsBeforeQuotaReconcile(t *testing.T) {
@@ -1470,7 +1635,7 @@ func TestApplicationLifecycleRuntimeDrainsQuotaBeforeHomeSwitch(t *testing.T) {
 	}
 }
 
-func TestApplicationLifecycleRuntimeHomeSwitchRearmsCredentialPausedQuotaSources(t *testing.T) {
+func TestApplicationLifecycleRuntimeHomeSwitchRearmsCredentialBackedOffQuotaSources(t *testing.T) {
 	database, repository := openQuotaRuntimeStore(t)
 	homeWithoutCredentials := t.TempDir()
 	homeWithCredentials := writeSyntheticAuthHome(t, "synthetic-home-switch-recovery-token")
@@ -1512,8 +1677,9 @@ func TestApplicationLifecycleRuntimeHomeSwitchRearmsCredentialPausedQuotaSources
 				*state.LastFailureCode == store.SourceFailureAuthRequired
 		})
 		waitForQuotaRuntimeSchedule(t, repository, sourceInstanceID, func(schedule store.SourceRefreshSchedule) bool {
-			return schedule.NextDueAtMS == nil && schedule.ActiveClaimID == nil &&
-				schedule.Reason == store.RefreshReasonAuthRequired
+			return schedule.NextDueAtMS != nil && *schedule.NextDueAtMS > quotaRuntimeNowMS &&
+				*schedule.NextDueAtMS <= quotaRuntimeNowMS+330_000 && schedule.ActiveClaimID == nil &&
+				schedule.Reason == store.RefreshReasonNetworkBackoff
 		})
 	}
 
@@ -1835,6 +2001,18 @@ func waitForQuotaRuntimeRequests(t testing.TB, requests <-chan string, count int
 	}
 	if seen[quotaonline.WhamUsageEndpoint] != 1 || seen[quotaonline.WhamResetCreditsEndpoint] != 1 {
 		t.Fatalf("quota runtime requests = %#v", seen)
+	}
+}
+
+func waitForQuotaRuntimeRequest(t testing.TB, requests <-chan string, want string) {
+	t.Helper()
+	select {
+	case endpoint := <-requests:
+		if endpoint != want {
+			t.Fatalf("quota runtime request = %q, want %q", endpoint, want)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("quota runtime did not request %q", want)
 	}
 }
 
