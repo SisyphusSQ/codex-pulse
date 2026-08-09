@@ -664,6 +664,16 @@
 "range.label.daily" = "%@ · %@";
 "按小时" = "hourly";
 "当前范围没有调用活动" = "No invocation activity in this range";
+"调用画像" = "Invocation profile";
+"查看完整调用统计" = "View full invocation statistics";
+"调用统计暂时不可用" = "Invocation statistics are temporarily unavailable";
+"调用数据仍在整理" = "Invocation data is still being indexed";
+"当前概览范围" = "Current overview range";
+"相关会话" = "Related sessions";
+"常用 Tool" = "Top tools";
+"常用 Skill" = "Top detected skills";
+"当前范围没有 Tool 调用" = "No tool calls in this range";
+"当前范围没有 Skill 活动" = "No detected skill activity in this range";
 "查看 Tool 调用与 Skill 检测活动，不关联 Token 用量" = "Review tool calls and detected skill activity without attributing token usage";
 "时间范围" = "Time range";
 "全部来源" = "All sources";

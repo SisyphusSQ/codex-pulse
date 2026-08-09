@@ -324,6 +324,17 @@ public final class AppModel: ObservableObject {
         load(feature)
     }
 
+    public func navigateToInvocationUsageFromOverview() {
+        let contextChanged = invocationRange != overviewRange || invocationSourceClass != "all"
+        invocationRange = overviewRange
+        invocationSourceClass = "all"
+        selectedFeature = .invocationUsage
+        guard canRefreshOrRestart else { return }
+        if contextChanged || invocationUsageState.shouldReloadOnNavigation {
+            loadInvocationUsage()
+        }
+    }
+
     public func markFeatureRendered(_ feature: AppFeature) {
         renderedFeatures.insert(feature)
     }

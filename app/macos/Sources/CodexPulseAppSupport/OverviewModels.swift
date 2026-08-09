@@ -7,6 +7,7 @@ public struct OverviewResponses: Sendable {
     public let usage: Codexpulse_Core_V1_UsageCostResponse
     public let weeklyUsage: Codexpulse_Core_V1_UsageCostResponse
     public let tokenActivityUsage: Codexpulse_Core_V1_UsageCostResponse
+    public let invocationUsage: Codexpulse_Core_V1_InvocationUsageResponse
     public let quota: Codexpulse_Core_V1_QuotaCurrentResponse
     public let quotaPace: Codexpulse_Core_V1_QuotaPaceResponse
     public let sessions: Codexpulse_Core_V1_SessionListResponse
@@ -28,6 +29,7 @@ public struct OverviewResponses: Sendable {
         rangeResolution: OverviewRangeResolution? = nil,
         weeklyUsage: Codexpulse_Core_V1_UsageCostResponse? = nil,
         tokenActivityUsage: Codexpulse_Core_V1_UsageCostResponse = .init(),
+        invocationUsage: Codexpulse_Core_V1_InvocationUsageResponse = .init(),
         weeklyProjects: Codexpulse_Core_V1_ProjectListResponse? = nil,
         weeklyProjectRange: OverviewRangeResolution? = nil,
         additionalNotices: [AppNotice] = []
@@ -36,6 +38,7 @@ public struct OverviewResponses: Sendable {
         self.usage = usage
         self.weeklyUsage = weeklyUsage ?? usage
         self.tokenActivityUsage = tokenActivityUsage
+        self.invocationUsage = invocationUsage
         self.quota = quota
         self.quotaPace = quotaPace
         self.sessions = sessions
@@ -61,6 +64,7 @@ public struct OverviewResponses: Sendable {
             rangeResolution: rangeResolution,
             weeklyUsage: weeklyUsage,
             tokenActivityUsage: tokenActivityUsage,
+            invocationUsage: invocationUsage,
             weeklyProjects: weeklyProjects,
             weeklyProjectRange: weeklyProjectRange,
             additionalNotices: additionalNotices
@@ -1959,6 +1963,92 @@ public struct HealthPresentation: Equatable, Sendable {
     }
 }
 
+public enum OverviewInvocationAvailability: Equatable, Sendable {
+    case available
+    case partial
+    case unavailable
+}
+
+public struct OverviewInvocationToolPresentation: Equatable, Sendable, Identifiable {
+    public let id: String
+    public let name: String
+    public let callCount: DisplayMetric
+    public let sessionCount: DisplayMetric
+    public let succeededCount: DisplayMetric
+    public let failedCount: DisplayMetric
+    public let unknownCount: DisplayMetric
+    public let averageDurationMS: DisplayMetric
+    public let lastSeenAtMS: DisplayMetric
+
+    public init(_ item: Codexpulse_Core_V1_ToolUsageItem) {
+        self.id = item.name
+        self.name = item.name
+        self.callCount = DisplayMetric(item.callCount)
+        self.sessionCount = DisplayMetric(item.sessionCount)
+        self.succeededCount = DisplayMetric(item.succeededCount)
+        self.failedCount = DisplayMetric(item.failedCount)
+        self.unknownCount = DisplayMetric(item.unknownCount)
+        self.averageDurationMS = DisplayMetric(item.averageDurationMs)
+        self.lastSeenAtMS = DisplayMetric(item.lastSeenAtMs)
+    }
+}
+
+public struct OverviewInvocationSkillPresentation: Equatable, Sendable, Identifiable {
+    public let id: String
+    public let name: String
+    public let activityCount: DisplayMetric
+    public let sessionCount: DisplayMetric
+    public let explicitCount: DisplayMetric
+    public let fileLoadedCount: DisplayMetric
+    public let lastSeenAtMS: DisplayMetric
+
+    public init(_ item: Codexpulse_Core_V1_SkillUsageItem) {
+        self.id = item.name
+        self.name = item.name
+        self.activityCount = DisplayMetric(item.activityCount)
+        self.sessionCount = DisplayMetric(item.sessionCount)
+        self.explicitCount = DisplayMetric(item.explicitCount)
+        self.fileLoadedCount = DisplayMetric(item.fileLoadedCount)
+        self.lastSeenAtMS = DisplayMetric(item.lastSeenAtMs)
+    }
+}
+
+public struct OverviewInvocationProfilePresentation: Equatable, Sendable {
+    private static let maximumRows = 5
+
+    public let availability: OverviewInvocationAvailability
+    public let toolCallCount: DisplayMetric
+    public let distinctToolCount: DisplayMetric
+    public let skillActivityCount: DisplayMetric
+    public let distinctSkillCount: DisplayMetric
+    public let sessionCount: DisplayMetric
+    public let toolFailureCount: DisplayMetric
+    public let tools: [OverviewInvocationToolPresentation]
+    public let skills: [OverviewInvocationSkillPresentation]
+
+    public init(_ response: Codexpulse_Core_V1_InvocationUsageResponse) {
+        self.availability = switch ResponseDisposition(status: response.meta.status) {
+        case .complete: .available
+        case .partial: .partial
+        case .unavailable, .unsupported: .unavailable
+        }
+        self.toolCallCount = DisplayMetric(response.totals.toolCallCount)
+        self.distinctToolCount = DisplayMetric(response.totals.distinctToolCount)
+        self.skillActivityCount = DisplayMetric(response.totals.skillActivityCount)
+        self.distinctSkillCount = DisplayMetric(response.totals.distinctSkillCount)
+        self.sessionCount = DisplayMetric(response.totals.sessionCount)
+        self.toolFailureCount = DisplayMetric(response.totals.toolFailureCount)
+        self.tools = Array(
+            response.tools.map(OverviewInvocationToolPresentation.init).prefix(Self.maximumRows)
+        )
+        self.skills = Array(
+            response.skills.map(OverviewInvocationSkillPresentation.init).prefix(Self.maximumRows)
+        )
+    }
+
+    public var isEmpty: Bool { tools.isEmpty && skills.isEmpty }
+}
+
 public struct OverviewPresentation: Equatable, Sendable {
     private static let maximumSessionRows = 5
     private static let maximumProjectRows = 5
@@ -1975,6 +2065,7 @@ public struct OverviewPresentation: Equatable, Sendable {
     public let tokenBreakdown: TokenBreakdownPresentation
     public let weeklyTokenBreakdown: TokenBreakdownPresentation
     public let tokenActivity: TokenActivityPresentation
+    public let invocationProfile: OverviewInvocationProfilePresentation
     public let activityDistribution: OverviewActivityPresentation
     public let trend: [TrendPresentation]
     public let usageModelTrend: [UsageModelTrendBucket]
@@ -2025,6 +2116,7 @@ public struct OverviewPresentation: Equatable, Sendable {
         self.tokenBreakdown = TokenBreakdownPresentation(responses.usage.totals)
         self.weeklyTokenBreakdown = TokenBreakdownPresentation(responses.weeklyUsage.totals)
         self.tokenActivity = TokenActivityPresentation(responses.tokenActivityUsage)
+        self.invocationProfile = OverviewInvocationProfilePresentation(responses.invocationUsage)
         self.activityDistribution = OverviewActivityPresentation(responses.usage)
         self.trend = responses.usage.trend.map(TrendPresentation.init)
         self.usageModelTrend = UsageModelTrendResolver.buckets(responses.usage)
@@ -2359,7 +2451,8 @@ public struct OverviewRequestSet: Sendable {
     public static func content(
         range: OverviewRangeResolution,
         sessionLimit: Int32 = 5,
-        projectLimit: Int32 = 5
+        projectLimit: Int32 = 5,
+        invocationLimit: Int32 = 5
     ) -> OverviewContentRequestSet {
         var exactRange = Codexpulse_Core_V1_UTCTimeRange()
         exactRange.startAtMs = range.startAtMS
@@ -2395,7 +2488,18 @@ public struct OverviewRequestSet: Sendable {
         var projects = Codexpulse_Core_V1_ListProjectsRequest()
         projects.query = projectQuery
 
-        return OverviewContentRequestSet(usage: usage, sessions: sessions, projects: projects)
+        var invocationUsage = Codexpulse_Core_V1_InvocationUsageRequest()
+        invocationUsage.range = exactRange
+        invocationUsage.granularity = range.granularity
+        invocationUsage.sourceClass = "all"
+        invocationUsage.topLimit = min(max(invocationLimit, 1), 50)
+
+        return OverviewContentRequestSet(
+            usage: usage,
+            sessions: sessions,
+            projects: projects,
+            invocationUsage: invocationUsage
+        )
     }
 
     public static func weeklyProjectRanking(
@@ -2468,4 +2572,5 @@ public struct OverviewContentRequestSet: Sendable {
     public let usage: Codexpulse_Core_V1_UsageCostRequest
     public let sessions: Codexpulse_Core_V1_ListSessionsRequest
     public let projects: Codexpulse_Core_V1_ListProjectsRequest
+    public let invocationUsage: Codexpulse_Core_V1_InvocationUsageRequest
 }

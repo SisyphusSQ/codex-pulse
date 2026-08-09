@@ -80,6 +80,17 @@ private func unavailableUsage(
     return response
 }
 
+private func unavailableInvocationUsage(
+    for request: Codexpulse_Core_V1_InvocationUsageRequest
+) -> Codexpulse_Core_V1_InvocationUsageResponse {
+    var response = Codexpulse_Core_V1_InvocationUsageResponse()
+    response.meta = unavailableMeta()
+    response.range = request.range
+    response.granularity = request.granularity
+    response.sourceClass = request.sourceClass
+    return response
+}
+
 private func unavailableSessions() -> Codexpulse_Core_V1_SessionListResponse {
     var response = Codexpulse_Core_V1_SessionListResponse()
     response.meta = unavailableMeta()
@@ -1064,10 +1075,14 @@ public actor AppRuntime {
                 try await client.usageCost(
                     tokenActivityRequest, retryPolicy: .transportDefault)
             }
+            async let invocationUsageResult = captureOverviewSection {
+                try await client.invocationUsage(
+                    content.invocationUsage, retryPolicy: .transportDefault)
+            }
             let sectionResults = await (
                 quotaPaceResult,
                 usageResult, sessionResult, projectResult, weeklyProjectResult,
-                weeklyUsageResult, healthResult, tokenActivityResult)
+                weeklyUsageResult, healthResult, tokenActivityResult, invocationUsageResult)
             let mandatoryNotices = [
                 quotaResult.notice,
                 sectionResults.1.notice,
@@ -1122,6 +1137,12 @@ public actor AppRuntime {
             case .value(let response): quotaPaceResponse = response
             case .failure: quotaPaceResponse = unavailableQuotaPace(at: quotaNow)
             }
+            let invocationUsageResponse: Codexpulse_Core_V1_InvocationUsageResponse
+            switch sectionResults.8 {
+            case .value(let response): invocationUsageResponse = response
+            case .failure:
+                invocationUsageResponse = unavailableInvocationUsage(for: content.invocationUsage)
+            }
             return OverviewResponses(
                 usage: usageResponse,
                 quota: quotaResponse,
@@ -1133,6 +1154,7 @@ public actor AppRuntime {
                 rangeResolution: range,
                 weeklyUsage: weeklyUsageResponse,
                 tokenActivityUsage: tokenActivityResponse,
+                invocationUsage: invocationUsageResponse,
                 weeklyProjects: weeklyProjectResponse,
                 weeklyProjectRange: weeklyProjectRange,
                 additionalNotices: notices
