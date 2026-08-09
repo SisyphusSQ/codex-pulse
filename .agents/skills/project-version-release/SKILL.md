@@ -15,7 +15,20 @@ Release。Swift App 与 Go Helper 不得独立发版。
    [Codex Pulse release policy](references/codex-pulse-release-policy.md)。
 3. 涉及 tag、GitHub Release 或资产上传时，再读取
    [GitHub release workflow](references/github-release.md)。
-4. 先运行只读检查：
+4. 发版前必须先同步远端主分支。在仓库根目录确认当前分支为 `main` 且工作树干净，
+   然后执行：
+
+```bash
+git pull --ff-only origin main
+```
+
+不得使用 `--rebase`、`--autostash`、强制更新或自动 stash 来绕过该门禁。
+如果工作树不干净、当前分支不是 `main`、`pull` 失败或无法 fast-forward，停止发版。
+同步完成后重新读回 `HEAD`、`origin/main` 和工作树状态，要求工作树干净且
+`git rev-parse HEAD` 等于 `git rev-parse origin/main`；只有此时才能冻结
+`RELEASE_SHA` 并继续后续发版步骤。同步后若代码再次变化，必须重新执行本门禁。
+
+5. 再运行只读检查：
 
 ```bash
 python3 .agents/skills/project-version-release/scripts/project_version_release.py \
