@@ -182,7 +182,7 @@ func TestQuotaArbiterKeepsEverySameGenerationUsageChangeEligible(t *testing.T) {
 		projection.Current.EffectiveUsedPercent == nil ||
 		*projection.Current.EffectiveUsedPercent != beyond.UsedPercent ||
 		projection.Current.FreshnessState != QuotaCurrentFresh ||
-		projection.Current.RuleVersion != "quota-arbiter-v6" {
+		projection.Current.RuleVersion != "quota-arbiter-v7" {
 		t.Fatalf("usage change current = %#v, want latest observed value", projection.Current)
 	}
 	assertQuotaEvidence(t, projection.Evidence, peak.ObservationID, QuotaEvidenceEligible, "")
@@ -460,11 +460,112 @@ func TestQuotaArbiterAcceptsEarlySlidingWindowReset(t *testing.T) {
 		projection.Current.EffectiveUsedPercent == nil || *projection.Current.EffectiveUsedPercent != 0 ||
 		projection.Current.WindowGeneration == nil || *projection.Current.WindowGeneration != resetAt ||
 		projection.Current.FreshnessState != QuotaCurrentFresh ||
-		projection.Current.RuleVersion != "quota-arbiter-v6" {
+		projection.Current.RuleVersion != "quota-arbiter-v7" {
 		t.Fatalf("sliding-window current = %#v, want trusted reset observation", projection.Current)
 	}
 	assertQuotaEvidence(t, projection.Evidence, exhausted.ObservationID, QuotaEvidenceSuperseded, "")
 	assertQuotaEvidence(t, projection.Evidence, reset.ObservationID, QuotaEvidenceSelected, "")
+}
+
+func TestQuotaArbiterKeepsMovingObservationAnchoredZerosInOneProvisionalGeneration(t *testing.T) {
+	t.Parallel()
+
+	rule := defaultQuotaArbitrationRule()
+	firstObserved := int64(680 * quotaTestHourMS)
+	resetObserved := firstObserved + 2*quotaTestHourMS
+	previousReset := resetObserved + 3*24*quotaTestHourMS
+	previous := quotaArbiterObservation(
+		"wham-before-provisional-zero-phase", QuotaSourceWham, 33,
+		resetObserved-quotaTestMinuteMS, previousReset,
+	)
+	first := quotaArbiterObservation(
+		"wham-provisional-zero-first", QuotaSourceWham, 0,
+		resetObserved, resetObserved+7*24*quotaTestHourMS,
+	)
+	secondObserved := resetObserved + 5*quotaTestMinuteMS
+	second := quotaArbiterObservation(
+		"wham-provisional-zero-second", QuotaSourceWham, 0,
+		secondObserved, secondObserved+7*24*quotaTestHourMS,
+	)
+	latestObserved := resetObserved + 10*quotaTestMinuteMS
+	latest := quotaArbiterObservation(
+		"wham-provisional-zero-latest", QuotaSourceWham, 0,
+		latestObserved, latestObserved+7*24*quotaTestHourMS,
+	)
+	for _, observation := range []*QuotaObservation{&previous, &first, &second, &latest} {
+		observation.WindowMinutes = quotaWeeklyWindowMinutes
+	}
+
+	projection, err := arbitrateQuotaWindow(
+		[]QuotaObservation{previous, first, second, latest},
+		latestObserved+quotaTestMinuteMS,
+		rule,
+	)
+	if err != nil {
+		t.Fatalf("moving provisional zero arbitration error = %v", err)
+	}
+	if projection.Current.ObservationID == nil ||
+		*projection.Current.ObservationID != latest.ObservationID ||
+		projection.Current.ResetsAtMS == nil || *projection.Current.ResetsAtMS != latest.ResetsAtMS ||
+		projection.Current.WindowGeneration == nil ||
+		*projection.Current.WindowGeneration != latest.ResetsAtMS {
+		t.Fatalf("moving provisional zero current = %#v, want latest server fact", projection.Current)
+	}
+	assertQuotaEvidenceGeneration(t, projection.Evidence, previous.ObservationID, previousReset)
+	assertQuotaEvidenceGeneration(t, projection.Evidence, first.ObservationID, latest.ResetsAtMS)
+	assertQuotaEvidenceGeneration(t, projection.Evidence, second.ObservationID, latest.ResetsAtMS)
+	assertQuotaEvidenceGeneration(t, projection.Evidence, latest.ObservationID, latest.ResetsAtMS)
+}
+
+func TestQuotaArbiterAnchorsFirstUsageInProvisionalZeroGeneration(t *testing.T) {
+	t.Parallel()
+
+	rule := defaultQuotaArbitrationRule()
+	firstObserved := int64(690 * quotaTestHourMS)
+	resetObserved := firstObserved + 2*quotaTestHourMS
+	previousReset := resetObserved + 3*24*quotaTestHourMS
+	previous := quotaArbiterObservation(
+		"wham-before-first-usage", QuotaSourceWham, 33,
+		resetObserved-quotaTestMinuteMS, previousReset,
+	)
+	first := quotaArbiterObservation(
+		"wham-provisional-before-first-usage", QuotaSourceWham, 0,
+		resetObserved, resetObserved+7*24*quotaTestHourMS,
+	)
+	secondObserved := resetObserved + 5*quotaTestMinuteMS
+	second := quotaArbiterObservation(
+		"wham-provisional-latest-before-usage", QuotaSourceWham, 0,
+		secondObserved, secondObserved+7*24*quotaTestHourMS,
+	)
+	usageObserved := resetObserved + 10*quotaTestMinuteMS
+	firstUsage := quotaArbiterObservation(
+		"wham-first-usage-after-provisional", QuotaSourceWham, 1,
+		usageObserved, usageObserved+7*24*quotaTestHourMS,
+	)
+	for _, observation := range []*QuotaObservation{&previous, &first, &second, &firstUsage} {
+		observation.WindowMinutes = quotaWeeklyWindowMinutes
+	}
+
+	projection, err := arbitrateQuotaWindow(
+		[]QuotaObservation{previous, first, second, firstUsage},
+		usageObserved+quotaTestMinuteMS,
+		rule,
+	)
+	if err != nil {
+		t.Fatalf("first usage after provisional zero arbitration error = %v", err)
+	}
+	if projection.Current.ObservationID == nil ||
+		*projection.Current.ObservationID != firstUsage.ObservationID ||
+		projection.Current.EffectiveUsedPercent == nil ||
+		*projection.Current.EffectiveUsedPercent != firstUsage.UsedPercent ||
+		projection.Current.WindowGeneration == nil ||
+		*projection.Current.WindowGeneration != firstUsage.ResetsAtMS {
+		t.Fatalf("first usage after provisional zero current = %#v, want anchored usage", projection.Current)
+	}
+	assertQuotaEvidenceGeneration(t, projection.Evidence, previous.ObservationID, previousReset)
+	assertQuotaEvidenceGeneration(t, projection.Evidence, first.ObservationID, firstUsage.ResetsAtMS)
+	assertQuotaEvidenceGeneration(t, projection.Evidence, second.ObservationID, firstUsage.ResetsAtMS)
+	assertQuotaEvidenceGeneration(t, projection.Evidence, firstUsage.ObservationID, firstUsage.ResetsAtMS)
 }
 
 // 测试 QuotaArbiter 在重置卡触发周窗口换代后，接受服务端对临时 reset_at 的稳定回拨。
@@ -527,7 +628,7 @@ func TestQuotaArbiterReanchorsProvisionalWeeklyResetAfterStableCorrection(t *tes
 		projection.Current.ResetsAtMS == nil ||
 		*projection.Current.ResetsAtMS != stableReset ||
 		projection.Current.FreshnessState != QuotaCurrentFresh ||
-		projection.Current.RuleVersion != "quota-arbiter-v6" {
+		projection.Current.RuleVersion != "quota-arbiter-v7" {
 		t.Fatalf("corrected weekly reset current = %#v, want latest confirmed stable reset", projection.Current)
 	}
 	assertQuotaEvidence(t, projection.Evidence, exhausted.ObservationID, QuotaEvidenceSuperseded, "")
@@ -1187,7 +1288,7 @@ func TestQuotaArbiterRestoresFiveHourRoleWithoutRevivingRetiredWeeklyGeneration(
 		want.Current.ResetsAtMS == nil ||
 		*want.Current.ResetsAtMS != restoredFiveHour.ResetsAtMS ||
 		want.Current.FreshnessState != QuotaCurrentFresh ||
-		want.Current.RuleVersion != "quota-arbiter-v6" {
+		want.Current.RuleVersion != "quota-arbiter-v7" {
 		t.Fatalf("role-switch current = %#v, want restored five-hour observation", want.Current)
 	}
 	assertQuotaEvidence(
@@ -1432,6 +1533,25 @@ func assertQuotaEvidence(
 			(reason == "" && item.Reason != nil) ||
 			(reason != "" && (item.Reason == nil || *item.Reason != reason)) {
 			t.Fatalf("evidence[%s] = %#v, want %s/%s", observationID, item, disposition, reason)
+		}
+		return
+	}
+	t.Fatalf("evidence[%s] missing in %#v", observationID, evidence)
+}
+
+func assertQuotaEvidenceGeneration(
+	t *testing.T,
+	evidence []QuotaArbitrationEvidence,
+	observationID string,
+	want int64,
+) {
+	t.Helper()
+	for _, item := range evidence {
+		if item.ObservationID != observationID {
+			continue
+		}
+		if item.WindowGeneration == nil || *item.WindowGeneration != want {
+			t.Fatalf("evidence[%s] generation = %v, want %d", observationID, item.WindowGeneration, want)
 		}
 		return
 	}

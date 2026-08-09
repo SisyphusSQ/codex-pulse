@@ -479,6 +479,87 @@ func TestBuildPaceWindowComparesPreviousAndFourHistoricalCyclesAtSameProgress(t 
 	}
 }
 
+func TestBuildPaceWindowUsesArbitratedGenerationToKeepInterruptedPreviousCycle(t *testing.T) {
+	t.Parallel()
+
+	const (
+		windowMinutes = int64(7 * 24 * 60)
+		durationMS    = windowMinutes * 60_000
+		resetObserved = int64(2_000_000_000)
+		previousReset = resetObserved + 3*24*60*60*1_000
+		firstReset    = resetObserved + durationMS
+		secondReset   = firstReset + 5*60*1_000
+		currentReset  = secondReset + 5*60*1_000
+		evaluatedAtMS = resetObserved + 10*60*1_000
+	)
+	usedPercent := 0.0
+	source := store.QuotaSourceWham
+	currentID := "provisional-zero-current"
+	previousStart := previousReset - durationMS + durationMS/100
+	previousEnd := resetObserved - 5*60*1_000
+	facts := store.QuotaCurrentWindowSnapshot{
+		Current: store.QuotaCurrent{
+			AccountScope:         store.QuotaAccountScopeDefault,
+			WindowKind:           store.QuotaWindowPrimary,
+			LimitID:              "codex",
+			ObservationID:        &currentID,
+			EffectiveUsedPercent: &usedPercent,
+			WindowMinutes:        int64Pointer(windowMinutes),
+			ResetsAtMS:           int64Pointer(currentReset),
+			WindowGeneration:     int64Pointer(currentReset),
+			SelectedSource:       &source,
+			FreshnessState:       store.QuotaCurrentFresh,
+			ConflictState:        store.QuotaConflictNone,
+			ExplanationCode:      store.QuotaExplanationTrusted,
+			EvaluatedAtMS:        evaluatedAtMS,
+		},
+		Observations: []store.QuotaObservation{
+			paceObservation("previous-start", source, 0, previousStart, previousReset, windowMinutes),
+			paceObservation("previous-interrupted", source, 33, previousEnd, previousReset, windowMinutes),
+			paceObservation("provisional-zero-first", source, 0, resetObserved, firstReset, windowMinutes),
+			paceObservation("provisional-zero-second", source, 0, resetObserved+5*60*1_000, secondReset, windowMinutes),
+			paceObservation(currentID, source, 0, evaluatedAtMS, currentReset, windowMinutes),
+		},
+		Evidence: []store.QuotaArbitrationEvidence{
+			{
+				ObservationID: "previous-start", WindowGeneration: int64Pointer(previousReset),
+				Disposition: store.QuotaEvidenceSuperseded,
+			},
+			{
+				ObservationID: "previous-interrupted", WindowGeneration: int64Pointer(previousReset),
+				Disposition: store.QuotaEvidenceSuperseded,
+			},
+			{
+				ObservationID: "provisional-zero-first", WindowGeneration: int64Pointer(currentReset),
+				Disposition: store.QuotaEvidenceEligible,
+			},
+			{
+				ObservationID: "provisional-zero-second", WindowGeneration: int64Pointer(currentReset),
+				Disposition: store.QuotaEvidenceEligible,
+			},
+			{
+				ObservationID: currentID, WindowGeneration: int64Pointer(currentReset),
+				Disposition: store.QuotaEvidenceSelected,
+			},
+		},
+	}
+
+	got, err := buildPaceWindow(facts, evaluatedAtMS)
+	if err != nil {
+		t.Fatalf("buildPaceWindow() error = %v", err)
+	}
+	if got.PreviousCycle == nil ||
+		got.PreviousCycle.WindowGeneration != previousReset ||
+		got.PreviousCycle.Complete ||
+		len(got.PreviousCycle.Points) != 2 ||
+		got.PreviousCycle.Points[1].UsedPercent != 33 {
+		t.Fatalf("buildPaceWindow().PreviousCycle = %#v, want interrupted 33%% cycle", got.PreviousCycle)
+	}
+	if got.HistoryCycleCount != 0 || len(got.HistoricalCycles) != 0 {
+		t.Fatalf("buildPaceWindow() history = %#v, want no complete baseline", got.HistoricalCycles)
+	}
+}
+
 func TestHistoricalPaceCyclesMergeJitterWithoutTreatingCurrentAsPrevious(t *testing.T) {
 	t.Parallel()
 
