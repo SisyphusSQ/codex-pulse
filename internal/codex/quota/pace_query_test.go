@@ -742,6 +742,75 @@ func TestHistoricalPaceCyclesKeepUsageDecreaseInCompleteBaseline(t *testing.T) {
 	}
 }
 
+func TestHistoricalPaceCyclesStartAfterZeroResetWithinCanonicalGeneration(t *testing.T) {
+	t.Parallel()
+
+	const (
+		evaluatedAtMS       = int64(26_520_000)
+		resetAtMS           = int64(30_000_000)
+		windowMinutes       = int64(100)
+		durationMS          = int64(6_000_000)
+		previousGeneration  = resetAtMS - durationMS
+		previousWindowStart = previousGeneration - durationMS
+	)
+	usedPercent := 61.0
+	source := store.QuotaSourceWham
+	current := store.QuotaCurrent{
+		AccountScope:         store.QuotaAccountScopeDefault,
+		WindowKind:           store.QuotaWindowPrimary,
+		LimitID:              "codex",
+		EffectiveUsedPercent: &usedPercent,
+		WindowMinutes:        int64Pointer(windowMinutes),
+		ResetsAtMS:           int64Pointer(resetAtMS),
+		WindowGeneration:     int64Pointer(resetAtMS),
+		SelectedSource:       &source,
+		FreshnessState:       store.QuotaCurrentFresh,
+		ConflictState:        store.QuotaConflictNone,
+		EvaluatedAtMS:        evaluatedAtMS,
+	}
+	observations := []store.QuotaObservation{
+		paceObservation(
+			"superseded-exhausted-tail",
+			source,
+			100,
+			previousWindowStart+10_000,
+			previousGeneration,
+			windowMinutes,
+		),
+		paceObservation(
+			"canonical-generation-reset",
+			source,
+			0,
+			previousWindowStart+20_000,
+			previousGeneration,
+			windowMinutes,
+		),
+		paceObservation(
+			"canonical-generation-progress",
+			source,
+			50,
+			previousWindowStart+durationMS/2,
+			previousGeneration,
+			windowMinutes,
+		),
+	}
+
+	previous, historical := historicalPaceCycles(current, observations)
+	if previous == nil || len(previous.Points) != 2 ||
+		previous.Points[0].UsedPercent != 0 || previous.Points[1].UsedPercent != 50 {
+		t.Fatalf(
+			"historicalPaceCycles() previous = %#v, want the cycle starting at the confirmed zero reset",
+			previous,
+		)
+	}
+	if previous.Complete || len(historical) != 0 {
+		t.Fatalf(
+			"historicalPaceCycles() history = %#v, want an incomplete post-reset cycle",
+			historical,
+		)
+	}
+}
+
 func TestCurrentQueryServiceReturnsVersionedPaceWindowsFromOneSnapshot(t *testing.T) {
 	t.Parallel()
 

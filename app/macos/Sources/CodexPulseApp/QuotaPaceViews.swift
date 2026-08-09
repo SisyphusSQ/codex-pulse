@@ -128,6 +128,7 @@ private struct QuotaPaceCenterView: View {
 private struct QuotaPaceWindowView: View {
     let presentation: QuotaPaceWindowPresentation
     let title: String
+    private let xAxis = QuotaPaceChartXAxisPresentation.percentage
     private var localization: AppLocalization { AppLocalizationRegistry.shared.current }
 
     var body: some View {
@@ -266,8 +267,10 @@ private struct QuotaPaceWindowView: View {
                     }
             }
             .chartXAxis {
-                AxisMarks(values: [0, 25, 50, 75, 100]) { value in
+                AxisMarks(values: xAxis.gridLineValues) { _ in
                     AxisGridLine().foregroundStyle(Color.secondary.opacity(0.10))
+                }
+                AxisMarks(values: xAxis.labelValues) { value in
                     AxisValueLabel {
                         if let value = value.as(Double.self) {
                             Text("\(Int(value))%")
