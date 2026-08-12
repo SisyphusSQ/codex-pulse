@@ -1,5 +1,7 @@
 ## Unreleased
 
+## v0.5.3 - 2026-08-12
+
 #### optimization:
 1. 优化概览页年度 Token 活动刷新：新增 token-only Usage 查询与 v21 覆盖索引，按 IANA 本地自然日直接聚合 token，避免每 30 秒加载全年逐事件明细和无用的价格、模型拆分
 
