@@ -31,6 +31,7 @@ type UsageCostRequest struct {
 	ExactRange                  *basequery.UTCTimeRange  `json:"exactRange"`
 	Granularity                 TrendGranularity         `json:"granularity"`
 	IncludeActivityDistribution bool                     `json:"includeActivityDistribution"`
+	TokenTotalsOnly             bool                     `json:"tokenTotalsOnly"`
 }
 
 type UsageTotals struct {

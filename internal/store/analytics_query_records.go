@@ -28,11 +28,13 @@ const (
 
 // AnalyticsRange 是已由业务 query 归一化的 UTC 半开区间。
 type AnalyticsRange struct {
-	ReportingTimezone           string
-	StartAtMS                   int64
-	EndAtMS                     int64
-	Exact                       bool
-	Granularity                 AnalyticsGranularity
+	ReportingTimezone string
+	StartAtMS         int64
+	EndAtMS           int64
+	Exact             bool
+	Granularity       AnalyticsGranularity
+	// LightTokenTotalsOnly 是 light-index 的只读查询提示；响应裁剪仍由 query service 负责。
+	LightTokenTotalsOnly        bool
 	ActivityBucketMinutes       int
 	IncludeActivityDistribution bool
 }

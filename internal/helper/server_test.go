@@ -403,12 +403,13 @@ func TestFromProtoUsageCostRequestPreservesExactRange(t *testing.T) {
 	request := fromProtoUsageCostRequest(&corev1.UsageCostRequest{
 		Granularity:                 "day",
 		IncludeActivityDistribution: true,
+		TokenTotalsOnly:             true,
 		ExactRange: &corev1.UTCTimeRange{
 			StartAtMs: 1_753_056_000_000, EndAtMs: 1_753_059_600_000, TimeZone: "Asia/Shanghai",
 		},
 	})
 	if request.Granularity != usagecost.TrendDay || request.ExactRange == nil ||
-		!request.IncludeActivityDistribution ||
+		!request.IncludeActivityDistribution || !request.TokenTotalsOnly ||
 		request.ExactRange.StartAtMS != 1_753_056_000_000 || request.ExactRange.EndAtMS != 1_753_059_600_000 ||
 		request.ExactRange.TimeZone != "Asia/Shanghai" || request.Range != (basequery.LocalDateRange{}) {
 		t.Fatalf("mapped exact usage request = %#v", request)

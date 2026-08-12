@@ -1082,6 +1082,19 @@ func TestUsageCostRangePricesAndGroupsLightTimedDeltasByModel(t *testing.T) {
 		modelRow.EstimatedUSDMicros == nil || *modelRow.EstimatedUSDMicros != 1_290_000 {
 		t.Fatalf("light model row = %#v", modelRow)
 	}
+	tokenSummary, err := repository.UsageCostRange(context.Background(), AnalyticsRange{
+		ReportingTimezone:    "UTC",
+		StartAtMS:            time.Date(2025, 7, 20, 0, 0, 0, 0, time.UTC).UnixMilli(),
+		EndAtMS:              time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC).UnixMilli(),
+		LightTokenTotalsOnly: true,
+	})
+	if err != nil || len(tokenSummary.Daily) != 1 ||
+		tokenSummary.Daily[0].TotalTokens == nil || *tokenSummary.Daily[0].TotalTokens != 1_150_000 ||
+		tokenSummary.Daily[0].EstimatedUSDMicros != nil || len(tokenSummary.Models) != 0 ||
+		tokenSummary.PricingSource != "" || tokenSummary.Currency != "" ||
+		len(tokenSummary.PricingVersions) != 0 {
+		t.Fatalf("light token summary = %#v, %v", tokenSummary, err)
+	}
 	rangeStart := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC).UnixMilli()
 	rangeEnd := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC).UnixMilli()
 	sessionPage, err := repository.ListSessionAnalytics(context.Background(), SessionAnalyticsFilter{
@@ -1103,6 +1116,120 @@ func TestUsageCostRangePricesAndGroupsLightTimedDeltasByModel(t *testing.T) {
 		detail.Record.Rollup == nil || detail.Record.Rollup.EstimatedUSDMicros == nil ||
 		*detail.Record.Rollup.EstimatedUSDMicros != 1_290_000 {
 		t.Fatalf("priced light session detail = %#v, %v", detail, err)
+	}
+}
+
+func TestUsageCostRangePreservesLightPricingTransitionsWithinLocalDay(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	transitionAtMS := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC).UnixMilli()
+	for _, catalog := range []pricing.CatalogVersion{
+		{
+			PricingVersion: "openai-api-segment-v1", Source: "openai-api", Currency: "USD",
+			EffectiveFromMS: 0, CreatedAtMS: 1,
+			Models: []pricing.ModelPrice{{
+				MatchKind: pricing.ModelMatchExact, ModelPattern: "gpt-5.4", Priority: 100,
+				InputMicrosPerMillion: pointerTo(int64(1_000_000)),
+			}},
+		},
+		{
+			PricingVersion: "openai-api-segment-v2", Source: "openai-api", Currency: "USD",
+			EffectiveFromMS: transitionAtMS, CreatedAtMS: transitionAtMS,
+			Models: []pricing.ModelPrice{{
+				MatchKind: pricing.ModelMatchExact, ModelPattern: "gpt-5.4", Priority: 100,
+				InputMicrosPerMillion: pointerTo(int64(2_000_000)),
+			}},
+		},
+	} {
+		if err := repository.AddPricingVersion(context.Background(), catalog); err != nil {
+			t.Fatalf("AddPricingVersion(%s) error = %v", catalog.PricingVersion, err)
+		}
+	}
+
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(context.Background(), "one", identity, "parser-v2", 2_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := "gpt-5.4"
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: transitionAtMS + 1, Activate: true,
+		Checkpoint: storelight.LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 3_000_000,
+			CurrentModelKey: &model, CurrentModelSource: attribution.SourceModelCanonical,
+		},
+		TimedDeltas: []storelight.LightTokenTimedDelta{
+			{
+				SourceOffset: 4_000, ObservedAtMS: transitionAtMS - int64(time.Hour/time.Millisecond),
+				ModelKey: &model, ModelSource: attribution.SourceModelCanonical, InputTokens: 1_000_000,
+			},
+			{
+				SourceOffset: 5_000, ObservedAtMS: transitionAtMS + int64(time.Hour/time.Millisecond),
+				ModelKey: &model, ModelSource: attribution.SourceModelCanonical, InputTokens: 2_000_000,
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := repository.UsageCostRange(context.Background(), AnalyticsRange{
+		ReportingTimezone: "UTC",
+		StartAtMS:         time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC).UnixMilli(),
+		EndAtMS:           time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC).UnixMilli(),
+	})
+	if err != nil {
+		t.Fatalf("UsageCostRange(pricing transition) error = %v", err)
+	}
+	if !reflect.DeepEqual(snapshot.PricingVersions, []string{
+		"openai-api-segment-v1", "openai-api-segment-v2",
+	}) || len(snapshot.Daily) != 1 || snapshot.Daily[0].EstimatedUSDMicros == nil ||
+		*snapshot.Daily[0].EstimatedUSDMicros != 5_000_000 || len(snapshot.Models) != 1 ||
+		snapshot.Models[0].EstimatedUSDMicros == nil ||
+		*snapshot.Models[0].EstimatedUSDMicros != 5_000_000 {
+		t.Fatalf("pricing transition snapshot = %#v", snapshot)
+	}
+}
+
+func TestUsageCostRangeAggregatesRepeatedDSTHourIntoOneLightDay(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(context.Background(), "one", identity, "parser-v2", 2_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstHour := time.Date(2026, 11, 1, 5, 30, 0, 0, time.UTC).UnixMilli()
+	secondHour := time.Date(2026, 11, 1, 6, 30, 0, 0, time.UTC).UnixMilli()
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: secondHour + 1, Activate: true,
+		Checkpoint: storelight.LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 300,
+		},
+		TimedDeltas: []storelight.LightTokenTimedDelta{
+			{SourceOffset: 4_000, ObservedAtMS: firstHour, InputTokens: 100},
+			{SourceOffset: 5_000, ObservedAtMS: secondHour, InputTokens: 200},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	location, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	startAtMS := time.Date(2026, 11, 1, 0, 0, 0, 0, location).UTC().UnixMilli()
+	endAtMS := time.Date(2026, 11, 2, 0, 0, 0, 0, location).UTC().UnixMilli()
+	if got := endAtMS - startAtMS; got != int64(25*time.Hour/time.Millisecond) {
+		t.Fatalf("DST fixture duration = %dms", got)
+	}
+	snapshot, err := repository.UsageCostRange(context.Background(), AnalyticsRange{
+		ReportingTimezone: "America/New_York", StartAtMS: startAtMS, EndAtMS: endAtMS,
+	})
+	if err != nil || len(snapshot.Daily) != 1 || snapshot.Daily[0].BucketStartMS != startAtMS ||
+		snapshot.Daily[0].InputTokens == nil || *snapshot.Daily[0].InputTokens != 300 {
+		t.Fatalf("UsageCostRange(repeated DST hour) = %#v, %v", snapshot, err)
 	}
 }
 

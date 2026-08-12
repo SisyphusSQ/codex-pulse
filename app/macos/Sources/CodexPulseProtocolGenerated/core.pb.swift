@@ -450,6 +450,10 @@ public nonisolated struct Codexpulse_Core_V1_UsageCostRequest: Sendable {
 
   public var includeActivityDistribution: Bool = false
 
+  /// Requests only token totals and trend. Cost, pricing, model breakdown, and
+  /// activity distribution are intentionally omitted from the response.
+  public var tokenTotalsOnly: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -6705,7 +6709,7 @@ nonisolated extension Codexpulse_Core_V1_QueryRequest: SwiftProtobuf.Message, Sw
 
 nonisolated extension Codexpulse_Core_V1_UsageCostRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".UsageCostRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}range\0\u{1}granularity\0\u{3}exact_range\0\u{3}include_activity_distribution\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}range\0\u{1}granularity\0\u{3}exact_range\0\u{3}include_activity_distribution\0\u{3}token_totals_only\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -6717,6 +6721,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostRequest: SwiftProtobuf.Message
       case 2: try { try decoder.decodeSingularStringField(value: &self.granularity) }()
       case 3: try { try decoder.decodeSingularMessageField(value: &self._exactRange) }()
       case 4: try { try decoder.decodeSingularBoolField(value: &self.includeActivityDistribution) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.tokenTotalsOnly) }()
       default: break
       }
     }
@@ -6739,6 +6744,9 @@ nonisolated extension Codexpulse_Core_V1_UsageCostRequest: SwiftProtobuf.Message
     if self.includeActivityDistribution != false {
       try visitor.visitSingularBoolField(value: self.includeActivityDistribution, fieldNumber: 4)
     }
+    if self.tokenTotalsOnly != false {
+      try visitor.visitSingularBoolField(value: self.tokenTotalsOnly, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -6747,6 +6755,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostRequest: SwiftProtobuf.Message
     if lhs.granularity != rhs.granularity {return false}
     if lhs._exactRange != rhs._exactRange {return false}
     if lhs.includeActivityDistribution != rhs.includeActivityDistribution {return false}
+    if lhs.tokenTotalsOnly != rhs.tokenTotalsOnly {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

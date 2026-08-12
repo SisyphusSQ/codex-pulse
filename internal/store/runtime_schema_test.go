@@ -308,6 +308,7 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"idx_light_sessions_updated",
 		"idx_light_token_daily_day",
 		"idx_light_token_timed_observed",
+		"idx_light_token_timed_usage_summary",
 		"idx_live_scan_jobs_generation",
 		"idx_model_prices_match",
 		"idx_pricing_versions_effective",

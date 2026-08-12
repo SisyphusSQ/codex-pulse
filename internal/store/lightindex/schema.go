@@ -178,6 +178,23 @@ var lightInvocationSchemaObjects = []storeschema.Object{
 	},
 }
 
+var lightUsageSummarySchemaObjects = []storeschema.Object{
+	{
+		ObjectType: "index",
+		Name:       "idx_light_token_timed_usage_summary",
+		Statement: `CREATE INDEX IF NOT EXISTS idx_light_token_timed_usage_summary
+			ON light_token_timed(
+				observed_at_ms,
+				session_id,
+				generation,
+				input_tokens,
+				cached_input_tokens,
+				output_tokens,
+				reasoning_tokens
+			)`,
+	},
+}
+
 // SchemaObjects 返回 v16 冻结的轻量索引 schema 描述副本。
 func SchemaObjects() []storeschema.Object {
 	return append([]storeschema.Object(nil), lightIndexSchemaObjects...)
@@ -186,6 +203,11 @@ func SchemaObjects() []storeschema.Object {
 // InvocationSchemaObjects 返回 v20 新增的隐私安全 Tool/Skill 活动 schema。
 func InvocationSchemaObjects() []storeschema.Object {
 	return append([]storeschema.Object(nil), lightInvocationSchemaObjects...)
+}
+
+// UsageSummarySchemaObjects 返回 v21 新增的年度 token 汇总覆盖索引。
+func UsageSummarySchemaObjects() []storeschema.Object {
+	return append([]storeschema.Object(nil), lightUsageSummarySchemaObjects...)
 }
 
 // SchemaObjectsThroughV19 返回 v17-v19 冻结的轻量索引 schema 描述。
@@ -214,5 +236,6 @@ func SchemaObjectsThroughV19() []storeschema.Object {
 
 // CurrentSchemaObjects 返回应用当前版本所需的轻量索引 schema 描述。
 func CurrentSchemaObjects() []storeschema.Object {
-	return append(SchemaObjectsThroughV19(), InvocationSchemaObjects()...)
+	objects := append(SchemaObjectsThroughV19(), InvocationSchemaObjects()...)
+	return append(objects, UsageSummarySchemaObjects()...)
 }
