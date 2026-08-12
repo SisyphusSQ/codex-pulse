@@ -39,7 +39,8 @@ const (
 	applicationSchemaV18Version = 18
 	applicationSchemaV19Version = 19
 	applicationSchemaV20Version = 20
-	applicationSchemaVersion    = applicationSchemaV20Version
+	applicationSchemaV21Version = 21
+	applicationSchemaVersion    = applicationSchemaV21Version
 )
 
 var (
@@ -248,6 +249,14 @@ var applicationMigrations = []migrationDefinition{
 		checksum: applicationSchemaV20Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
 			return storeschema.EnsureObjects(ctx, transaction, storelight.InvocationSchemaObjects())
+		},
+	},
+	{
+		version:  applicationSchemaV21Version,
+		name:     "lightweight-token-usage-summary-index",
+		checksum: applicationSchemaV21Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			return storeschema.EnsureObjects(ctx, transaction, storelight.UsageSummarySchemaObjects())
 		},
 	},
 }
@@ -1151,6 +1160,18 @@ func applicationSchemaV20Checksum() string {
 	hasher := sha256.New()
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV20Version, "lightweight-tool-skill-invocations")
 	for _, object := range storelight.InvocationSchemaObjects() {
+		_, _ = fmt.Fprintln(
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV21Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV21Version, "lightweight-token-usage-summary-index")
+	for _, object := range storelight.UsageSummarySchemaObjects() {
 		_, _ = fmt.Fprintln(
 			hasher, object.ObjectType, object.Name,
 			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),

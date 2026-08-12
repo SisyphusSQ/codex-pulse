@@ -2403,6 +2403,7 @@ public struct OverviewRequestSet: Sendable {
         var request = Codexpulse_Core_V1_UsageCostRequest()
         request.exactRange = exactRange
         request.granularity = "day"
+        request.tokenTotalsOnly = true
         return request
     }
 

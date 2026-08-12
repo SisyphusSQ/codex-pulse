@@ -164,6 +164,9 @@ message UsageCostRequest {
   string granularity = 2;
   optional UTCTimeRange exact_range = 3;
   bool include_activity_distribution = 4;
+  // Requests only token totals and trend. Cost, pricing, model breakdown, and
+  // activity distribution are intentionally omitted from the response.
+  bool token_totals_only = 5;
 }
 
 message ListSessionsRequest { QueryRequest query = 1; }

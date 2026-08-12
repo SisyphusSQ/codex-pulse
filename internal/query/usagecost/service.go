@@ -122,6 +122,10 @@ func (service *Service) UsageCost(
 	if !validGranularity(request.Granularity) {
 		return UsageCostResponse{}, fmt.Errorf("%w: usage granularity", basequery.ErrValidation)
 	}
+	if request.TokenTotalsOnly &&
+		(request.Granularity != TrendDay || request.IncludeActivityDistribution) {
+		return UsageCostResponse{}, fmt.Errorf("%w: token totals only", basequery.ErrValidation)
+	}
 	validatedRange, exact, err := service.validateUsageRange(ctx, request)
 	if err != nil {
 		return UsageCostResponse{}, err
@@ -136,6 +140,7 @@ func (service *Service) UsageCost(
 		EndAtMS:                     validatedRange.EndAtMS,
 		Exact:                       exact,
 		Granularity:                 store.AnalyticsGranularityDay,
+		LightTokenTotalsOnly:        request.TokenTotalsOnly,
 		ActivityBucketMinutes:       activityBucketMinutes,
 		IncludeActivityDistribution: request.IncludeActivityDistribution,
 	}
@@ -159,7 +164,63 @@ func (service *Service) UsageCost(
 	if err != nil {
 		return UsageCostResponse{}, basequery.NewUnavailableFailure(err)
 	}
+	if request.TokenTotalsOnly {
+		response, err = retainTokenTotalsOnly(response)
+		if err != nil {
+			return UsageCostResponse{}, basequery.NewUnavailableFailure(err)
+		}
+	}
 	return response, nil
+}
+
+func retainTokenTotalsOnly(response UsageCostResponse) (UsageCostResponse, error) {
+	response.PricingSource = nil
+	response.Currency = nil
+	response.PricingVersions = make([]string, 0)
+	response.UnpricedReasons = make([]ReasonCount, 0)
+	response.Models = make([]UsageModelItem, 0)
+	response.ActivityDistribution = nil
+
+	var err error
+	response.Totals, err = tokenTotalsOnly(response.Totals)
+	if err != nil {
+		return UsageCostResponse{}, err
+	}
+	for index := range response.Trend {
+		response.Trend[index].Totals, err = tokenTotalsOnly(response.Trend[index].Totals)
+		if err != nil {
+			return UsageCostResponse{}, err
+		}
+	}
+	return response, nil
+}
+
+func tokenTotalsOnly(input UsageTotals) (UsageTotals, error) {
+	result := UsageTotals{
+		InputTokens:       input.InputTokens,
+		CachedInputTokens: input.CachedInputTokens,
+		OutputTokens:      input.OutputTokens,
+		ReasoningTokens:   input.ReasoningTokens,
+		TotalTokens:       input.TotalTokens,
+	}
+	var err error
+	for _, target := range []struct {
+		value *basequery.NumericValue
+		unit  basequery.NumericUnit
+	}{
+		{&result.TurnCount, basequery.NumericCount},
+		{&result.EstimatedUSDMicros, basequery.NumericMicroUSD},
+		{&result.PricedTurnCount, basequery.NumericCount},
+		{&result.UnpricedTurnCount, basequery.NumericCount},
+		{&result.FirstActivityAtMS, basequery.NumericMilliseconds},
+		{&result.LastActivityAtMS, basequery.NumericMilliseconds},
+	} {
+		*target.value, err = basequery.UnknownNumeric(target.unit, basequery.UnknownNotComputed)
+		if err != nil {
+			return UsageTotals{}, err
+		}
+	}
+	return result, nil
 }
 
 func (service *Service) validateUsageRange(

@@ -1176,8 +1176,11 @@ type UsageCostRequest struct {
 	Granularity                 string                 `protobuf:"bytes,2,opt,name=granularity,proto3" json:"granularity,omitempty"`
 	ExactRange                  *UTCTimeRange          `protobuf:"bytes,3,opt,name=exact_range,json=exactRange,proto3,oneof" json:"exact_range,omitempty"`
 	IncludeActivityDistribution bool                   `protobuf:"varint,4,opt,name=include_activity_distribution,json=includeActivityDistribution,proto3" json:"include_activity_distribution,omitempty"`
-	unknownFields               protoimpl.UnknownFields
-	sizeCache                   protoimpl.SizeCache
+	// Requests only token totals and trend. Cost, pricing, model breakdown, and
+	// activity distribution are intentionally omitted from the response.
+	TokenTotalsOnly bool `protobuf:"varint,5,opt,name=token_totals_only,json=tokenTotalsOnly,proto3" json:"token_totals_only,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *UsageCostRequest) Reset() {
@@ -1234,6 +1237,13 @@ func (x *UsageCostRequest) GetExactRange() *UTCTimeRange {
 func (x *UsageCostRequest) GetIncludeActivityDistribution() bool {
 	if x != nil {
 		return x.IncludeActivityDistribution
+	}
+	return false
+}
+
+func (x *UsageCostRequest) GetTokenTotalsOnly() bool {
+	if x != nil {
+		return x.TokenTotalsOnly
 	}
 	return false
 }
@@ -10897,13 +10907,14 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"time_range\x18\x04 \x01(\v2\".codexpulse.core.v1.LocalDateRangeH\x00R\ttimeRange\x88\x01\x01\x12O\n" +
 	"\x10exact_time_range\x18\x05 \x01(\v2 .codexpulse.core.v1.UTCTimeRangeH\x01R\x0eexactTimeRange\x88\x01\x01B\r\n" +
 	"\v_time_rangeB\x13\n" +
-	"\x11_exact_time_range\"\x8a\x02\n" +
+	"\x11_exact_time_range\"\xb6\x02\n" +
 	"\x10UsageCostRequest\x128\n" +
 	"\x05range\x18\x01 \x01(\v2\".codexpulse.core.v1.LocalDateRangeR\x05range\x12 \n" +
 	"\vgranularity\x18\x02 \x01(\tR\vgranularity\x12F\n" +
 	"\vexact_range\x18\x03 \x01(\v2 .codexpulse.core.v1.UTCTimeRangeH\x00R\n" +
 	"exactRange\x88\x01\x01\x12B\n" +
-	"\x1dinclude_activity_distribution\x18\x04 \x01(\bR\x1bincludeActivityDistributionB\x0e\n" +
+	"\x1dinclude_activity_distribution\x18\x04 \x01(\bR\x1bincludeActivityDistribution\x12*\n" +
+	"\x11token_totals_only\x18\x05 \x01(\bR\x0ftokenTotalsOnlyB\x0e\n" +
 	"\f_exact_range\"M\n" +
 	"\x13ListSessionsRequest\x126\n" +
 	"\x05query\x18\x01 \x01(\v2 .codexpulse.core.v1.QueryRequestR\x05query\"\xbe\x01\n" +

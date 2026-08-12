@@ -408,6 +408,7 @@ func fromProtoUsageCostRequest(request *corev1.UsageCostRequest) usagecost.Usage
 	result := usagecost.UsageCostRequest{
 		Range: fromProtoDateRange(request.GetRange()), Granularity: usagecost.TrendGranularity(request.GetGranularity()),
 		IncludeActivityDistribution: request.GetIncludeActivityDistribution(),
+		TokenTotalsOnly:             request.GetTokenTotalsOnly(),
 	}
 	if request.ExactRange != nil {
 		result.ExactRange = &basequery.UTCTimeRange{

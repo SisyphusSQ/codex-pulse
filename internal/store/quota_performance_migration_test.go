@@ -13,8 +13,8 @@ import (
 
 func TestApplicationSchemaV15AddsQuotaProjectionPerformanceIndex(t *testing.T) {
 	t.Parallel()
-	if applicationSchemaVersion != applicationSchemaV20Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 20", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV21Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 21", applicationSchemaVersion)
 	}
 	const wantChecksum = "e0d74e9fea57fd72ee4a96e45f60ebb60db2d1dd291168fd7b2fcf74021e10f2"
 	if got := applicationSchemaV15Checksum(); got != wantChecksum {

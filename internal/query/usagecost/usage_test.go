@@ -100,6 +100,60 @@ func TestUsageCostGroupsDayWeekMonthAndPreservesLedgerEvidence(t *testing.T) {
 	}
 }
 
+func TestUsageCostTokenTotalsOnlyPreservesTokensAndOmitsOtherDimensions(t *testing.T) {
+	t.Parallel()
+
+	one := int64(1)
+	zero := int64(0)
+	cost := int64(25)
+	var received store.AnalyticsRange
+	reader := usageReaderFunc(func(
+		_ context.Context,
+		filter store.AnalyticsRange,
+	) (store.UsageCostRangeSnapshot, error) {
+		received = filter
+		return store.UsageCostRangeSnapshot{
+			Mode: store.AnalyticsReadActiveRollup,
+			Generation: &store.CostRollupGeneration{
+				GenerationID: "token-summary-generation", ReportingTimezone: "UTC",
+				PricingSource: "openai-api", Currency: "USD", RollupVersion: 1,
+			},
+			Daily: []store.UsageDaily{{
+				GenerationID: "token-summary-generation", BucketStartMS: 0, ReportingTimezone: "UTC",
+				RollupTotals: store.RollupTotals{
+					TurnCount: 1, InputTokens: &one, CachedInputTokens: &zero,
+					OutputTokens: &zero, ReasoningTokens: &zero, TotalTokens: &one,
+					EstimatedUSDMicros: &cost, PricedTurnCount: 1,
+					FirstActivityAtMS: 1, LastActivityAtMS: 1,
+				},
+			}},
+			PricingVersions: []string{"openai-api-token-summary"},
+			UnpricedReasons: make([]store.CostReasonCount, 0),
+		}, nil
+	})
+	service := newUsageService(t, reader)
+	response, err := service.UsageCost(context.Background(), UsageCostRequest{
+		Range: basequery.LocalDateRange{
+			StartDate: "1970-01-01", EndDateExclusive: "1970-01-02", TimeZone: "UTC",
+		},
+		Granularity: TrendDay, TokenTotalsOnly: true,
+	})
+	if err != nil {
+		t.Fatalf("UsageCost(token totals only) error = %v", err)
+	}
+	if !received.LightTokenTotalsOnly || response.PricingSource != nil || response.Currency != nil ||
+		len(response.PricingVersions) != 0 || len(response.UnpricedReasons) != 0 ||
+		len(response.Models) != 0 || response.ActivityDistribution != nil || len(response.Trend) != 1 {
+		t.Fatalf("token totals only response = %#v, filter = %#v", response, received)
+	}
+	assertKnownNumeric(t, response.Totals.InputTokens, 1, basequery.NumericTokens)
+	assertKnownNumeric(t, response.Totals.TotalTokens, 1, basequery.NumericTokens)
+	assertUnknownNumeric(t, response.Totals.TurnCount, basequery.UnknownNotComputed)
+	assertUnknownNumeric(t, response.Totals.EstimatedUSDMicros, basequery.UnknownNotComputed)
+	assertKnownNumeric(t, response.Trend[0].Totals.TotalTokens, 1, basequery.NumericTokens)
+	assertUnknownNumeric(t, response.Trend[0].Totals.TurnCount, basequery.UnknownNotComputed)
+}
+
 func TestUsageCostGroupsHourlyTrend(t *testing.T) {
 	t.Parallel()
 
@@ -488,6 +542,8 @@ func TestUsageCostRejectsInvalidInputCancellationAndUnsafeStoredInteger(t *testi
 	for _, request := range []UsageCostRequest{
 		{Range: validRange, Granularity: "quarter"},
 		{Range: basequery.LocalDateRange{StartDate: "2026-01-01", EndDateExclusive: "2027-02-01", TimeZone: "UTC"}, Granularity: TrendDay},
+		{Range: validRange, Granularity: TrendWeek, TokenTotalsOnly: true},
+		{Range: validRange, Granularity: TrendDay, TokenTotalsOnly: true, IncludeActivityDistribution: true},
 	} {
 		if _, err := service.UsageCost(context.Background(), request); !errors.Is(err, basequery.ErrValidation) {
 			t.Fatalf("UsageCost(%#v) error = %v, want validation", request, err)

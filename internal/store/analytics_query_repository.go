@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -91,6 +92,20 @@ type lightTimedRangeProjection struct {
 	ReasoningTokens   int64   `gorm:"column:reasoning_tokens"`
 }
 
+type lightTimedAggregateProjection struct {
+	BucketStartMS     int64 `gorm:"column:bucket_start_ms"`
+	InputTokens       int64 `gorm:"column:input_tokens"`
+	CachedInputTokens int64 `gorm:"column:cached_input_tokens"`
+	OutputTokens      int64 `gorm:"column:output_tokens"`
+	ReasoningTokens   int64 `gorm:"column:reasoning_tokens"`
+}
+
+type lightUsageSegment struct {
+	bucketStartMS int64
+	startAtMS     int64
+	endAtMS       int64
+}
+
 type lightPricingCatalog struct {
 	version pricingVersionModel
 	models  map[string]modelPriceModel
@@ -127,17 +142,13 @@ func loadLightUsageCostRange(
 	if sessionCount == 0 {
 		return false, nil
 	}
-	var rows []lightTimedRangeProjection
-	if err := database.Table("light_token_timed AS timed").
-		Select("timed.session_id, timed.observed_at_ms, timed.model_key, timed.model_source, timed.input_tokens, timed.cached_input_tokens, timed.output_tokens, timed.reasoning_tokens").
-		Joins("JOIN light_sessions AS session ON session.session_id = timed.session_id AND session.active_token_generation = timed.generation").
-		Where("timed.observed_at_ms >= ? AND timed.observed_at_ms < ?", filter.StartAtMS, filter.EndAtMS).
-		Order("timed.observed_at_ms, timed.session_id, timed.source_offset").Find(&rows).Error; err != nil {
-		return false, err
-	}
-	catalogs, err := loadLightPricingCatalogs(database, filter.EndAtMS)
-	if err != nil {
-		return false, err
+	catalogs := make([]lightPricingCatalog, 0)
+	if !filter.LightTokenTotalsOnly {
+		var err error
+		catalogs, err = loadLightPricingCatalogs(database, filter.EndAtMS)
+		if err != nil {
+			return false, err
+		}
 	}
 	catalogByVersion := make(map[string]lightPricingCatalog, len(catalogs))
 	for _, catalog := range catalogs {
@@ -145,26 +156,68 @@ func loadLightUsageCostRange(
 	}
 	groups := make(map[lightCostGroupKey]*lightCostGroup)
 	usedVersions := make(map[string]struct{})
-	for _, row := range rows {
-		if err := ctx.Err(); err != nil {
+	hasRows := false
+	if filter.LightTokenTotalsOnly {
+		rows, err := loadLightTimedTokenDailyAggregates(ctx, database, filter, location)
+		if err != nil {
 			return false, err
 		}
-		bucket := analyticsBucketStart(row.ObservedAtMS, filter, location)
-		dimension := lightModelDimension(row.ModelKey, row.ModelSource)
-		catalog := effectiveLightPricingCatalog(catalogs, row.ObservedAtMS)
-		version := ""
-		if catalog != nil {
-			version = catalog.version.PricingVersion
-			usedVersions[version] = struct{}{}
+		hasRows = len(rows) > 0
+		dimension := lightModelDimension(nil, "")
+		for _, row := range rows {
+			if err := ctx.Err(); err != nil {
+				return false, err
+			}
+			if err := addLightCostGroup(
+				groups,
+				lightCostGroupKey{
+					bucketStartMS: row.BucketStartMS,
+					dimensionKey:  dimension.key,
+				},
+				dimension,
+				row.InputTokens,
+				row.CachedInputTokens,
+				row.OutputTokens,
+				row.ReasoningTokens,
+			); err != nil {
+				return false, err
+			}
 		}
-		key := lightCostGroupKey{bucketStartMS: bucket, dimensionKey: dimension.key, pricingVersion: version}
-		group := groups[key]
-		if group == nil {
-			group = &lightCostGroup{dimension: dimension}
-			groups[key] = group
-		}
-		if err := addLightTokens(group, row.InputTokens, row.CachedInputTokens, row.OutputTokens, row.ReasoningTokens); err != nil {
+	} else {
+		var rows []lightTimedRangeProjection
+		if err := database.Table("light_token_timed AS timed").
+			Select("timed.session_id, timed.observed_at_ms, timed.model_key, timed.model_source, timed.input_tokens, timed.cached_input_tokens, timed.output_tokens, timed.reasoning_tokens").
+			Joins("JOIN light_sessions AS session ON session.session_id = timed.session_id AND session.active_token_generation = timed.generation").
+			Where("timed.observed_at_ms >= ? AND timed.observed_at_ms < ?", filter.StartAtMS, filter.EndAtMS).
+			Order("timed.observed_at_ms, timed.session_id, timed.source_offset").Find(&rows).Error; err != nil {
 			return false, err
+		}
+		hasRows = len(rows) > 0
+		for _, row := range rows {
+			if err := ctx.Err(); err != nil {
+				return false, err
+			}
+			version := ""
+			if catalog := effectiveLightPricingCatalog(catalogs, row.ObservedAtMS); catalog != nil {
+				version = catalog.version.PricingVersion
+				usedVersions[version] = struct{}{}
+			}
+			dimension := lightModelDimension(row.ModelKey, row.ModelSource)
+			if err := addLightCostGroup(
+				groups,
+				lightCostGroupKey{
+					bucketStartMS:  analyticsBucketStart(row.ObservedAtMS, filter, location),
+					dimensionKey:   dimension.key,
+					pricingVersion: version,
+				},
+				dimension,
+				row.InputTokens,
+				row.CachedInputTokens,
+				row.OutputTokens,
+				row.ReasoningTokens,
+			); err != nil {
+				return false, err
+			}
 		}
 	}
 	byDay := make(map[int64]*lightRollupAccumulator)
@@ -177,6 +230,9 @@ func loadLightUsageCostRange(
 		}
 		if err := accumulatorForLight(byDay, key.bucketStartMS).add(group, estimated); err != nil {
 			return false, err
+		}
+		if filter.LightTokenTotalsOnly {
+			continue
 		}
 		modelKey := dimensionBucketKey{bucketStartMS: key.bucketStartMS, dimensionKey: key.dimensionKey}
 		if err := recordCostDimension(modelDimensions, modelKey, group.dimension); err != nil {
@@ -196,7 +252,7 @@ func loadLightUsageCostRange(
 	snapshot.Models = make([]ModelUsageDaily, 0, len(byModel))
 	snapshot.PricingVersions = make([]string, 0, len(usedVersions))
 	snapshot.UnpricedReasons = make([]CostReasonCount, 0)
-	if len(rows) > 0 && len(catalogs) > 0 {
+	if !filter.LightTokenTotalsOnly && hasRows && len(catalogs) > 0 {
 		snapshot.PricingSource = "openai-api"
 		snapshot.Currency = "USD"
 	}
@@ -231,6 +287,99 @@ func loadLightUsageCostRange(
 		})
 	}
 	return true, nil
+}
+
+func loadLightTimedTokenDailyAggregates(
+	ctx context.Context,
+	database *gorm.DB,
+	filter AnalyticsRange,
+	location *time.Location,
+) ([]lightTimedAggregateProjection, error) {
+	segments, err := buildLightUsageSegments(filter, location)
+	if err != nil || len(segments) == 0 {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	var query strings.Builder
+	query.WriteString(`WITH segments(bucket_start_ms, start_at_ms, end_at_ms) AS (VALUES `)
+	arguments := make([]any, 0, len(segments)*3)
+	for index, segment := range segments {
+		if index > 0 {
+			query.WriteByte(',')
+		}
+		query.WriteString("(?, ?, ?)")
+		arguments = append(
+			arguments,
+			segment.bucketStartMS,
+			segment.startAtMS,
+			segment.endAtMS,
+		)
+	}
+	query.WriteString(`)
+		SELECT
+			segments.bucket_start_ms,
+			SUM(timed.input_tokens) AS input_tokens,
+			SUM(timed.cached_input_tokens) AS cached_input_tokens,
+			SUM(timed.output_tokens) AS output_tokens,
+			SUM(timed.reasoning_tokens) AS reasoning_tokens
+		FROM segments
+		CROSS JOIN light_token_timed AS timed INDEXED BY idx_light_token_timed_usage_summary
+		JOIN light_sessions AS session
+			ON session.session_id = timed.session_id
+			AND session.active_token_generation = timed.generation
+		WHERE timed.observed_at_ms >= segments.start_at_ms
+			AND timed.observed_at_ms < segments.end_at_ms
+		GROUP BY segments.bucket_start_ms
+		ORDER BY segments.bucket_start_ms`)
+
+	var rows []lightTimedAggregateProjection
+	if err := database.Raw(query.String(), arguments...).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func buildLightUsageSegments(
+	filter AnalyticsRange,
+	location *time.Location,
+) ([]lightUsageSegment, error) {
+	segments := make([]lightUsageSegment, 0, analyticsHardMaxRangeDays)
+	for cursor := filter.StartAtMS; cursor < filter.EndAtMS; {
+		bucketStartMS := analyticsBucketStart(cursor, filter, location)
+		bucketEndMS := analyticsActivityBucketEnd(
+			bucketStartMS,
+			filter,
+			location,
+			1_440,
+		)
+		if bucketEndMS <= cursor {
+			return nil, invalidRecord("light analytics bucket boundary is invalid")
+		}
+
+		segments = append(segments, lightUsageSegment{
+			bucketStartMS: bucketStartMS,
+			startAtMS:     cursor,
+			endAtMS:       bucketEndMS,
+		})
+		cursor = bucketEndMS
+	}
+	return segments, nil
+}
+func addLightCostGroup(
+	groups map[lightCostGroupKey]*lightCostGroup,
+	key lightCostGroupKey,
+	dimension safeDimension,
+	input, cached, output, reasoning int64,
+) error {
+	group := groups[key]
+	if group == nil {
+		group = &lightCostGroup{dimension: dimension}
+		groups[key] = group
+	}
+	return addLightTokens(group, input, cached, output, reasoning)
 }
 
 type usageActivityFact struct {
@@ -608,6 +757,10 @@ func validateAnalyticsRange(filter AnalyticsRange) (*time.Location, error) {
 	}
 	if filter.Granularity != AnalyticsGranularityDay && filter.Granularity != AnalyticsGranularityHour {
 		return nil, invalidRecord("analytics granularity is invalid")
+	}
+	if filter.LightTokenTotalsOnly &&
+		(filter.Granularity == AnalyticsGranularityHour || filter.IncludeActivityDistribution) {
+		return nil, invalidRecord("light token summary range is invalid")
 	}
 	if filter.ActivityBucketMinutes != 0 && !filter.IncludeActivityDistribution {
 		return nil, invalidRecord("analytics activity bucket was not requested")

@@ -12,11 +12,11 @@ import (
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
-func TestApplicationSchemaVersionIncludesLightInvocationIndex(t *testing.T) {
+func TestApplicationSchemaVersionIncludesLightUsageSummaryIndex(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV20Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 20", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV21Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 21", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	seedApplicationSchemaV16(t, database)
@@ -30,17 +30,17 @@ func TestApplicationSchemaVersionIncludesLightInvocationIndex(t *testing.T) {
 		_ func(storesqlite.BackupProgress),
 	) (string, error) {
 		backupVersions = [2]int{fromVersion, targetVersion}
-		return "/tmp/application-v16-before-v20.db", nil
+		return "/tmp/application-v16-before-v21.db", nil
 	}
 	report, err := runner.run(t.Context())
 	if err != nil {
-		t.Fatalf("run(v16->v20) error = %v", err)
+		t.Fatalf("run(v16->v21) error = %v", err)
 	}
-	if report.FromVersion != 16 || report.TargetVersion != 20 ||
-		!equalInts(report.AppliedVersions, []int{17, 18, 19, 20}) || backupVersions != [2]int{16, 20} {
+	if report.FromVersion != 16 || report.TargetVersion != 21 ||
+		!equalInts(report.AppliedVersions, []int{17, 18, 19, 20, 21}) || backupVersions != [2]int{16, 21} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 20, 20)
+	assertMigrationVersionAndHistory(t, database, 21, 21)
 	if err := database.View(t.Context(), func(_ context.Context, connection *gorm.DB) error {
 		for _, column := range lightModelMigrationColumns {
 			if !connection.Migrator().HasColumn(column.model, column.column) {
@@ -54,6 +54,12 @@ func TestApplicationSchemaVersionIncludesLightInvocationIndex(t *testing.T) {
 			if !connection.Migrator().HasIndex("light_invocation_events", index) {
 				t.Errorf("v20 index %q is missing", index)
 			}
+		}
+		if !connection.Migrator().HasIndex(
+			"light_token_timed",
+			"idx_light_token_timed_usage_summary",
+		) {
+			t.Error("v21 index idx_light_token_timed_usage_summary is missing")
 		}
 		return nil
 	}); err != nil {

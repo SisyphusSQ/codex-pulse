@@ -4818,6 +4818,9 @@ private func testTokenActivityRequestUsesAnIndependentRollingYear() throws {
     try expect(
         !request.includeActivityDistribution,
         "the independent annual request must not scan the current-range activity distribution")
+    try expect(
+        request.tokenTotalsOnly,
+        "the annual heatmap request must skip pricing and model breakdowns")
 }
 
 private func testOverviewActivityPresentationBuildsTimelineAndCompleteHeatmap() throws {
@@ -5522,6 +5525,7 @@ private func testAppRuntimeLoadsTokenActivityThroughAnIndependentAnnualRequest()
     try expect(requests.count == 1, "overview must issue one independent annual activity request")
     try expect(
         requests[0].granularity == "day"
+            && requests[0].tokenTotalsOnly
             && requests[0].exactRange.endAtMs - requests[0].exactRange.startAtMs
                 > 300 * 86_400_000,
         "the annual activity request must stay daily and independent of the selected overview range")
