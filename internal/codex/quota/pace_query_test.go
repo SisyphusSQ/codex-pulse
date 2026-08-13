@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -557,6 +558,107 @@ func TestBuildPaceWindowUsesArbitratedGenerationToKeepInterruptedPreviousCycle(t
 	}
 	if got.HistoryCycleCount != 0 || len(got.HistoricalCycles) != 0 {
 		t.Fatalf("buildPaceWindow() history = %#v, want no complete baseline", got.HistoricalCycles)
+	}
+}
+
+func TestPaceRebuildKeepsStableResetUsageAsPreviousCycle(t *testing.T) {
+	t.Parallel()
+
+	_, repository, service := newCurrentQueryTestRuntime(t)
+	evaluatedAtMS := time.Now().UnixMilli()
+	resetObserved := evaluatedAtMS - 3*60*60*1_000
+	stableReset := resetObserved + 7*24*60*60*1_000
+	nextResetObserved := evaluatedAtMS - 10*60*1_000
+	nextReset := nextResetObserved + 7*24*60*60*1_000
+	for _, sample := range []struct {
+		id           string
+		observedAtMS int64
+		usedPercent  float64
+		resetAtMS    int64
+	}{
+		{id: "stable-reset-zero", observedAtMS: resetObserved, usedPercent: 0, resetAtMS: stableReset},
+		{id: "stable-reset-first-usage", observedAtMS: resetObserved + 5*60*1_000, usedPercent: 1, resetAtMS: stableReset},
+		{id: "stable-reset-latest-usage", observedAtMS: evaluatedAtMS - 70*60*1_000, usedPercent: 70, resetAtMS: stableReset},
+		{id: "next-reset-zero", observedAtMS: nextResetObserved, usedPercent: 0, resetAtMS: nextReset},
+		{id: "next-reset-usage", observedAtMS: evaluatedAtMS - 5*60*1_000, usedPercent: 5, resetAtMS: nextReset},
+	} {
+		recordPaceQueryWhamWeekly(
+			t, repository, sample.id, sample.observedAtMS, sample.usedPercent, sample.resetAtMS,
+		)
+	}
+	if err := repository.RebuildQuotaProjection(
+		context.Background(), store.DefaultQuotaArbitrationRule(),
+	); err != nil {
+		t.Fatalf("RebuildQuotaProjection() error = %v", err)
+	}
+
+	response, err := service.Pace(context.Background(), evaluatedAtMS)
+	if err != nil {
+		t.Fatalf("Pace() error = %v", err)
+	}
+	if len(response.Windows) != 1 {
+		t.Fatalf("Pace().Windows = %#v, want one weekly window", response.Windows)
+	}
+	window := response.Windows[0]
+	if window.WindowGeneration == nil || *window.WindowGeneration != nextReset ||
+		len(window.CurrentPoints) == 0 ||
+		window.CurrentPoints[0].UsedPercent != 0 ||
+		window.CurrentPoints[len(window.CurrentPoints)-1].UsedPercent != 5 {
+		t.Fatalf("Pace().Current = %#v, want next 0%% to 5%% generation", window)
+	}
+	if window.PreviousCycle == nil ||
+		window.PreviousCycle.WindowGeneration != stableReset ||
+		window.PreviousCycle.Complete ||
+		len(window.PreviousCycle.Points) == 0 ||
+		window.PreviousCycle.Points[0].UsedPercent != 0 ||
+		window.PreviousCycle.Points[len(window.PreviousCycle.Points)-1].UsedPercent != 70 {
+		t.Fatalf("Pace().PreviousCycle = %#v, want stable-reset 0%% to 70%% cycle", window.PreviousCycle)
+	}
+	if window.HistoryCycleCount != 0 || len(window.HistoricalCycles) != 0 {
+		t.Fatalf("Pace().HistoricalCycles = %#v, want no complete baseline", window.HistoricalCycles)
+	}
+}
+
+func recordPaceQueryWhamWeekly(
+	t *testing.T,
+	repository *store.Repository,
+	requestID string,
+	observedAtMS int64,
+	usedPercent float64,
+	resetAtMS int64,
+) {
+	t.Helper()
+	limitID := "codex"
+	request := requestID
+	plan := "pro"
+	status := int64(200)
+	digest := store.SHA256DigestOf([]byte("synthetic weekly quota response " + requestID))
+	if err := repository.RecordQuotaFetch(context.Background(), store.QuotaFetchRecord{
+		SourceInstanceID: store.QuotaSourceInstanceWhamDefault,
+		SourceType:       store.QuotaSourceTypeWham,
+		ScopeKey:         store.QuotaAccountScopeDefault,
+		Attempt: store.SourceAttempt{
+			RequestID: requestID, SourceInstanceID: store.QuotaSourceInstanceWhamDefault,
+			StartedAtMS: observedAtMS, FinishedAtMS: observedAtMS,
+			Outcome: store.SourceAttemptSucceeded, HTTPStatus: &status, PayloadSHA256: &digest,
+			AttemptCount: 1, ResponseBytes: 256,
+		},
+		Observations: []store.QuotaObservationSample{{
+			ObservationID: "pace-" + requestID + "-weekly",
+			AccountScope:  store.QuotaAccountScopeDefault,
+			Source:        store.QuotaSourceWham,
+			LimitID:       &limitID,
+			WindowKind:    store.QuotaWindowPrimary,
+			UsedPercent:   usedPercent,
+			WindowMinutes: 7 * 24 * 60,
+			ResetsAtMS:    resetAtMS,
+			PlanType:      &plan,
+			ObservedAtMS:  observedAtMS,
+			Validity:      store.QuotaValidityAccepted,
+			RequestID:     &request,
+		}},
+	}); err != nil {
+		t.Fatalf("RecordQuotaFetch(%s) error = %v", requestID, err)
 	}
 }
 
