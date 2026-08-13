@@ -1,6 +1,6 @@
 ---
 name: project-version-release
-description: 为 Codex Pulse 准备、检查和执行版本发布。用于版本规划、CHANGELOG 归档、macOS 发行资产检查、签名与公证门禁、Git signed tag、GitHub Draft Release、Release Notes、首次安装说明、发布读回和发版证据汇总；也用于判断当前仓库为什么不能发布 stable 或 prerelease。
+description: 为 Codex Pulse 准备、检查和执行版本发布。用于版本规划、CHANGELOG 归档、macOS 发行资产检查、签名与公证门禁、Git signed tag、GitHub Release、Release Notes、首次安装说明、发布读回和发版证据汇总；也用于判断当前仓库为什么不能发布 stable 或 prerelease。
 ---
 
 # Codex Pulse Version Release
@@ -89,10 +89,10 @@ python3 .agents/skills/project-version-release/scripts/project_version_release.p
 
 ## 远端副作用边界
 
-- 创建和推送 tag、创建 Draft Release、上传资产分别先确认目标与授权。
-- 发布 Draft 前再次取得明确授权。
+- 创建和推送 tag、直接创建公开 Release、上传资产分别先确认目标与授权。
+- GitHub Release 创建成功后立即公开，不再经过 Draft 中间态；执行创建命令前必须确认 tag、Release Notes 和全部发行资产已完成最终检查。
 - 使用 signed annotated tag；签名不可用时停止，不静默降级。
-- 使用 `gh release create --verify-tag --draft`，不允许 CLI 隐式创建 tag。
+- 使用 `gh release create --verify-tag`，不允许 CLI 隐式创建 tag。
 - 已推送 tag 不得强制移动。删除 tag、Release 或资产需要单独明确授权。
 - 每次远端变更后读回 tag target、Release 状态、正文、资产与 SHA-256。
 

@@ -4,9 +4,9 @@
 
 1. 前置条件
 2. Signed tag
-3. Draft Release
+3. Public Release
 4. 资产验证
-5. 发布和读回
+5. 公开 Release 读回
 6. 禁止操作
 
 ## 1. 前置条件
@@ -55,7 +55,11 @@ git ls-remote --tags origin \
 annotated tag 第一行是 tag object；`^{}` 行的 commit 必须等于
 `RELEASE_SHA`。
 
-## 3. Draft Release
+## 3. Public Release
+
+GitHub Release 创建成功后立即公开，不存在 Draft 中间态。执行创建命令前，必须
+确认前置条件中的 tag、Release Notes 和全部发行资产已经完成最终检查，并取得
+本次远端发版授权。
 
 Stable：
 
@@ -66,7 +70,6 @@ gh release create "$TAG" \
   "$RELEASE_DIR/SHA256SUMS" \
   --repo "$REPO" \
   --verify-tag \
-  --draft \
   --title "Codex Pulse $TAG" \
   --notes-file "$RELEASE_DIR/release-notes.md"
 ```
@@ -81,7 +84,7 @@ Preview 额外添加：
 
 ## 4. 资产验证
 
-创建 Draft 后读回：
+创建公开 Release 后立即读回：
 
 ```bash
 gh release view "$TAG" \
@@ -112,15 +115,10 @@ Release Notes 必须包含“不要移到废纸篓”及“系统设置 → 隐�
 `gh release verify-asset` 作为额外证据；它不能替代 SHA-256 和 macOS
 签名、公证读回。
 
-## 5. 发布和读回
+## 5. 公开 Release 读回
 
-确认 Draft 的正文、首次打开说明、资产和校验值后，取得发布授权，再执行：
-
-```bash
-gh release edit "$TAG" --repo "$REPO" --draft=false
-```
-
-再次运行 `gh release view`，确认：
+`gh release create` 成功后，不再执行 `gh release edit --draft=false`。完成资产
+验证后，再次运行 `gh release view`，确认：
 
 - `isDraft=false`；
 - stable 的 `isPrerelease=false`，preview 的值为 `true`；
@@ -131,8 +129,8 @@ gh release edit "$TAG" --repo "$REPO" --draft=false
 ## 6. 禁止操作
 
 - 不使用 `git tag -f` 移动已推送 tag。
-- 不因 Draft 内容错误自动删除 Release 或远端 tag。
+- 不因公开 Release 内容错误自动删除 Release 或远端 tag。
 - 不覆盖同名资产来隐藏差异。
 - 不把 GitHub 自动生成的 Source code archive 当作 App artifact。
-- 不把“Draft 已创建”描述成“Release 已发布”。
+- 不把 tag 或资产命令成功描述成 Release 已完成，必须完成公开状态、正文、资产和 tag 的读回。
 - 删除、重打 tag、撤回或替换已发布资产必须单独取得明确授权。

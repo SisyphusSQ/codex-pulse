@@ -865,7 +865,6 @@ def release_plan(
         "--repo",
         EXPECTED_REPOSITORY,
         "--verify-tag",
-        "--draft",
         "--title",
         f"Codex Pulse {version.tag}",
         "--notes-file",
@@ -927,13 +926,13 @@ def release_plan(
             ],
         },
         {
-            "name": "create_draft_release",
+            "name": "create_public_release",
             "scope": "github",
             "requires_approval": True,
             "commands": [shell_command(create_arguments)],
         },
         {
-            "name": "verify_draft_release",
+            "name": "verify_public_release",
             "scope": "github_readback",
             "requires_approval": False,
             "commands": [
@@ -950,25 +949,6 @@ def release_plan(
                             "tagName,targetCommitish,isDraft,"
                             "isPrerelease,name,body,assets,url"
                         ),
-                    ]
-                ),
-            ],
-        },
-        {
-            "name": "publish_release",
-            "scope": "github",
-            "requires_approval": True,
-            "requires_separate_approval": True,
-            "commands": [
-                shell_command(
-                    [
-                        "gh",
-                        "release",
-                        "edit",
-                        version.tag,
-                        "--repo",
-                        EXPECTED_REPOSITORY,
-                        "--draft=false",
                     ]
                 ),
             ],

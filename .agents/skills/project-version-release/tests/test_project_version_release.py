@@ -566,7 +566,7 @@ class RepositoryCheckTests(unittest.TestCase):
 
 
 class ReleasePlanTests(unittest.TestCase):
-    def test_preview_plan_is_draft_and_verifies_existing_tag(self) -> None:
+    def test_preview_plan_creates_public_release_without_draft(self) -> None:
         result = release.release_plan(
             release.parse_version("v0.1.0-beta.1"),
             "preview",
@@ -580,16 +580,25 @@ class ReleasePlanTests(unittest.TestCase):
 
         self.assertIn("git tag -s", commands)
         self.assertIn("--verify-tag", commands)
-        self.assertIn("--draft", commands)
+        self.assertNotIn("--draft", commands)
         self.assertIn("--prerelease", commands)
-        self.assertIn("--draft=false", commands)
+        self.assertNotIn("--draft=false", commands)
         self.assertIn(
             "Codex-Pulse-v0.1.0-beta.1-macos-arm64.dmg",
             commands,
         )
-        publish_phase = result["phases"][-1]
+        create_phase = next(
+            phase
+            for phase in result["phases"]
+            if phase["name"] == "create_public_release"
+        )
         self.assertTrue(
-            publish_phase["requires_separate_approval"]
+            create_phase["requires_approval"]
+        )
+        self.assertNotIn("requires_separate_approval", create_phase)
+        self.assertEqual(
+            result["phases"][-1]["name"],
+            "verify_public_release",
         )
 
     def test_release_sha_must_be_full_lowercase_hash(self) -> None:
