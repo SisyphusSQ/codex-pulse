@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	quotaArbitrationRuleV7       = "quota-arbiter-v7"
+	quotaArbitrationRuleV8       = "quota-arbiter-v8"
 	quotaFreshForMS              = int64(10 * 60 * 1000)
 	quotaMaxClockSkewMS          = int64(2 * 60 * 1000)
 	quotaMaxRuleClockSkewMS      = int64(24 * 60 * 60 * 1000)
@@ -43,7 +43,7 @@ func defaultQuotaArbitrationRule() QuotaArbitrationRule {
 // DefaultQuotaArbitrationRule returns the current versioned production rule.
 func DefaultQuotaArbitrationRule() QuotaArbitrationRule {
 	return QuotaArbitrationRule{
-		Version: quotaArbitrationRuleV7, FreshForMS: quotaFreshForMS, MaxClockSkewMS: quotaMaxClockSkewMS,
+		Version: quotaArbitrationRuleV8, FreshForMS: quotaFreshForMS, MaxClockSkewMS: quotaMaxClockSkewMS,
 	}
 }
 
@@ -432,6 +432,13 @@ func classifyQuotaGenerations(
 			candidate.observation.ResetsAtMS = activeReset
 			if observation.FirstObservedAtMS > activeLatestFirstObserved {
 				activeLatestFirstObserved = observation.FirstObservedAtMS
+			}
+			if activeProvisional &&
+				observation.Source == activeSource &&
+				quotaWeeklyUsageAnchorsProvisionalPhase(observation) {
+				// 首次正用量可能继续沿用 provisional 阶段最后一次 reset。
+				// 即使 reset 没有前移，它也已经把当前 generation 锚定为真实用量周期。
+				activeProvisional = false
 			}
 			belongsToActiveGeneration = true
 		case observation.ResetsAtMS > activeReset &&
