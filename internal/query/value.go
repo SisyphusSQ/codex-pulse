@@ -111,6 +111,12 @@ func normalizeLocalDateRange(input LocalDateRange, maxDays int) (*UTCTimeRange, 
 	}, nil
 }
 
+// NormalizeLocalDateRange validates a provider query range without exposing
+// source-specific storage semantics.
+func NormalizeLocalDateRange(input LocalDateRange, maxDays int) (*UTCTimeRange, error) {
+	return normalizeLocalDateRange(input, maxDays)
+}
+
 func normalizeExactTimeRange(input UTCTimeRange, maxDays int) (*UTCTimeRange, error) {
 	if input.TimeZone == "" || input.TimeZone == "Local" || input.StartAtMS < 0 ||
 		input.EndAtMS <= input.StartAtMS || input.EndAtMS > JavaScriptMaxSafeInteger {
@@ -130,6 +136,11 @@ func normalizeExactTimeRange(input UTCTimeRange, maxDays int) (*UTCTimeRange, er
 	}
 	result := input
 	return &result, nil
+}
+
+// NormalizeExactTimeRange validates an already-normalized provider range.
+func NormalizeExactTimeRange(input UTCTimeRange, maxDays int) (*UTCTimeRange, error) {
+	return normalizeExactTimeRange(input, maxDays)
 }
 
 func parseLocalDate(value string, location *time.Location) (time.Time, error) {

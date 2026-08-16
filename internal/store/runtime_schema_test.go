@@ -24,10 +24,21 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 	}
 
 	wantTables := []string{
+		"agent_provider_snapshots",
+		"agent_provider_sources",
 		"app_runtime_samples",
 		"bootstrap_jobs",
 		"bootstrap_plan_items",
 		"cost_rollup_generations",
+		"cursor_ai_edit_events",
+		"cursor_dashboard_quota_observations",
+		"cursor_dashboard_snapshots",
+		"cursor_dashboard_usage_events",
+		"cursor_request_events",
+		"cursor_session_lineage",
+		"cursor_sessions",
+		"cursor_tool_events",
+		"cursor_usage_events",
 		"health_events",
 		"job_runs",
 		"light_index_state",
@@ -98,6 +109,14 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 	}
 
 	wantColumns := map[string][]string{
+		"agent_provider_snapshots": {
+			"provider", "generation", "collected_at_ms",
+		},
+		"agent_provider_sources": {
+			"provider", "source_key", "source_type", "state", "coverage_state", "schema_version",
+			"checkpoint_kind", "checkpoint_value", "row_count", "last_attempt_at_ms",
+			"last_success_at_ms", "failure_code", "updated_at_ms",
+		},
 		"app_runtime_samples": {
 			"captured_at_ms", "cpu_percent", "cpu_user_ms", "cpu_system_ms", "rss_bytes",
 			"peak_rss_bytes", "goroutine_count", "db_bytes", "wal_bytes", "disk_free_bytes",
@@ -122,6 +141,43 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 			"current_size_bytes", "current_mtime_ns", "current_prefix_bytes", "current_prefix_sha256",
 			"current_fingerprint_sha256", "state", "source_generation", "progress_current",
 			"progress_total", "updated_at_ms",
+		},
+		"cursor_ai_edit_events": {
+			"event_id", "external_session_id", "occurred_at_ms", "model_key", "edit_count",
+			"provenance", "updated_at_ms",
+		},
+		"cursor_dashboard_quota_observations": {
+			"provider", "generation", "limit_id", "used_percent", "cycle_start_at_ms",
+			"cycle_end_at_ms", "observed_at_ms",
+		},
+		"cursor_dashboard_snapshots": {
+			"provider", "generation", "collected_at_ms", "window_start_ms", "window_end_ms", "billing_cycle_end_ms",
+			"plan_total_spend_micros", "plan_included_spend_micros", "plan_bonus_spend_micros",
+			"plan_remaining_micros", "plan_limit_micros", "event_count",
+		},
+		"cursor_dashboard_usage_events": {
+			"event_fingerprint", "occurrence_count", "external_session_id", "occurred_at_ms", "model_key",
+			"kind", "token_based", "input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens",
+			"reported_charge_micros", "cursor_token_fee_micros", "updated_at_ms",
+		},
+		"cursor_request_events": {
+			"event_id", "external_session_id", "occurred_at_ms", "provenance", "updated_at_ms",
+		},
+		"cursor_session_lineage": {
+			"session_id", "source_key", "lineage_key", "content_digest", "observed_at_ms",
+		},
+		"cursor_sessions": {
+			"id", "provider", "external_session_id", "project_key", "project_display_name",
+			"created_at_ms", "last_activity_at_ms", "model_key", "request_count", "tool_call_count",
+			"ai_edit_count", "ai_lines_added", "ai_lines_removed", "lineage_conflict", "coverage_state", "updated_at_ms",
+			"display_title", "title_source",
+		},
+		"cursor_tool_events": {
+			"event_id", "external_session_id", "occurred_at_ms", "tool_name", "outcome", "provenance", "updated_at_ms",
+		},
+		"cursor_usage_events": {
+			"event_id", "external_session_id", "occurred_at_ms", "model_key", "input_tokens", "output_tokens",
+			"provenance", "updated_at_ms",
 		},
 		"light_index_state": {
 			"state_id", "home_path", "home_device_id", "home_inode", "metadata_generation",
@@ -257,6 +313,7 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 	wantForeignKeys := []string{
 		"bootstrap_jobs.job_id->job_runs.job_id/CASCADE",
 		"bootstrap_plan_items.job_id->bootstrap_jobs.job_id/CASCADE",
+		"cursor_session_lineage.session_id->cursor_sessions.id/CASCADE",
 		"health_events.job_id->job_runs.job_id/SET NULL",
 		"health_events.source_file_id->source_files.source_file_id/SET NULL",
 		"job_runs.resume_of_job_id->job_runs.job_id/SET NULL",
@@ -291,6 +348,15 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"idx_app_runtime_samples_retention",
 		"idx_bootstrap_jobs_generation_status",
 		"idx_bootstrap_plan_items_pending",
+		"idx_cursor_ai_edits_time",
+		"idx_cursor_dashboard_quota_history",
+		"idx_cursor_dashboard_usage_session",
+		"idx_cursor_dashboard_usage_time",
+		"idx_cursor_requests_time",
+		"idx_cursor_sessions_activity",
+		"idx_cursor_sessions_project",
+		"idx_cursor_tools_time",
+		"idx_cursor_usage_time",
 		"idx_health_events_active",
 		"idx_health_events_history",
 		"idx_health_events_job",

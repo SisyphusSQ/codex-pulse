@@ -55,7 +55,7 @@ public enum InvocationTrendBarPresentation {
         switch preset {
         case .quotaWeek, .sevenDays:
             28
-        case .today, .thirtyDays:
+        case .today, .quotaMonth, .thirtyDays:
             7
         default:
             12

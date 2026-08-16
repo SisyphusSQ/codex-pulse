@@ -1,8 +1,29 @@
 import CodexPulseProtocolGenerated
 import Foundation
 
+public enum AgentProvider: String, CaseIterable, Identifiable, Sendable {
+    case codex
+    case cursor
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .codex: "Codex"
+        case .cursor: "Cursor"
+        }
+    }
+
+    var scope: Codexpulse_Core_V1_ProviderScope {
+        var value = Codexpulse_Core_V1_ProviderScope()
+        value.provider = rawValue
+        return value
+    }
+}
+
 public enum DateRangePreset: String, CaseIterable, Hashable, Identifiable, Sendable {
     case quotaWeek = "quota_week"
+	case quotaMonth = "quota_month"
     case today = "today"
     case sevenDays = "seven_days"
     case thirtyDays = "thirty_days"
@@ -13,6 +34,7 @@ public enum DateRangePreset: String, CaseIterable, Hashable, Identifiable, Senda
     public var title: String {
         let value: String = switch self {
         case .quotaWeek: "周额度"
+		case .quotaMonth: "月额度"
         case .today: "今天"
         case .sevenDays: "近 7 天"
         case .thirtyDays: "近 30 天"
@@ -67,10 +89,12 @@ public struct RuntimeQueryOptions: Equatable, Sendable {
 public enum FeatureRequestFactory {
     public static func usage(
         range preset: DateRangePreset,
+        provider: AgentProvider = .codex,
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> Codexpulse_Core_V1_UsageCostRequest {
         var request = Codexpulse_Core_V1_UsageCostRequest()
+		request.provider = provider.scope
         request.range = localDateRange(preset == .all ? .thirtyDays : preset, now: now, calendar: calendar)
         request.granularity = preset == .today ? "hour" : "day"
         return request
@@ -79,31 +103,33 @@ public enum FeatureRequestFactory {
     public static func invocationUsage(
         range preset: DateRangePreset,
         sourceClass: String,
-        quotaWeekRange: Codexpulse_Core_V1_UTCTimeRange? = nil,
+        provider: AgentProvider = .codex,
+        quotaCycleRange: Codexpulse_Core_V1_UTCTimeRange? = nil,
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> Codexpulse_Core_V1_InvocationUsageRequest {
         let normalizedPreset: DateRangePreset = switch preset {
         case .today, .sevenDays, .thirtyDays: preset
         case .quotaWeek: .sevenDays
+		case .quotaMonth: .thirtyDays
         case .all: .thirtyDays
         }
         let exactRange: Codexpulse_Core_V1_UTCTimeRange
-        if preset == .quotaWeek,
-           let quotaWeekRange,
-           quotaWeekRange.startAtMs >= 0,
-           quotaWeekRange.endAtMs > quotaWeekRange.startAtMs,
-           !quotaWeekRange.timeZone.isEmpty,
-           quotaWeekRange.timeZone != "Local"
+        if [.quotaWeek, .quotaMonth].contains(preset),
+           let quotaCycleRange,
+           quotaCycleRange.startAtMs >= 0,
+           quotaCycleRange.endAtMs > quotaCycleRange.startAtMs,
+           !quotaCycleRange.timeZone.isEmpty,
+           quotaCycleRange.timeZone != "Local"
         {
-            exactRange = quotaWeekRange
+            exactRange = quotaCycleRange
         } else {
             let startOfToday = calendar.startOfDay(for: now)
             let dayOffset: Int = switch normalizedPreset {
             case .today: 0
             case .sevenDays: -6
             case .thirtyDays: -29
-            case .quotaWeek, .all: 0
+			case .quotaWeek, .quotaMonth, .all: 0
             }
             let start = calendar.date(byAdding: .day, value: dayOffset, to: startOfToday)
                 ?? startOfToday
@@ -115,6 +141,7 @@ public enum FeatureRequestFactory {
         }
 
         var request = Codexpulse_Core_V1_InvocationUsageRequest()
+		request.provider = provider.scope
         request.range = exactRange
         request.granularity = normalizedPreset == .today ? "hour" : "day"
         request.sourceClass = ["structured", "detected"].contains(sourceClass) ? sourceClass : "all"
@@ -122,20 +149,37 @@ public enum FeatureRequestFactory {
         return request
     }
 
-    public static func quota(now: Date = Date()) -> Codexpulse_Core_V1_QuotaCurrentRequest {
+    public static func pricingCatalog(
+		provider: AgentProvider = .codex
+	) -> Codexpulse_Core_V1_PricingCatalogCurrentRequest {
+		var request = Codexpulse_Core_V1_PricingCatalogCurrentRequest()
+		request.provider = provider.scope
+		return request
+	}
+
+    public static func quota(
+		provider: AgentProvider = .codex,
+		now: Date = Date()
+	) -> Codexpulse_Core_V1_QuotaCurrentRequest {
         var request = Codexpulse_Core_V1_QuotaCurrentRequest()
+		request.provider = provider.scope
         request.evaluatedAtMs = Int64(now.timeIntervalSince1970 * 1_000)
         return request
     }
 
-    public static func quotaPace(now: Date = Date()) -> Codexpulse_Core_V1_QuotaPaceRequest {
+    public static func quotaPace(
+		provider: AgentProvider = .codex,
+		now: Date = Date()
+	) -> Codexpulse_Core_V1_QuotaPaceRequest {
         var request = Codexpulse_Core_V1_QuotaPaceRequest()
+		request.provider = provider.scope
         request.evaluatedAtMs = Int64(now.timeIntervalSince1970 * 1_000)
         return request
     }
 
     public static func sessions(
         options: SessionQueryOptions,
+        provider: AgentProvider = .codex,
         cursor: String? = nil,
         limit: Int32 = 50,
         now: Date = Date(),
@@ -156,6 +200,7 @@ public enum FeatureRequestFactory {
         let direction = options.sortDirection == "asc" ? "asc" : "desc"
         var request = Codexpulse_Core_V1_ListSessionsRequest()
         request.query = query(
+			provider: provider,
             cursor: cursor,
             limit: limit,
             sortField: sortField,
@@ -172,11 +217,13 @@ public enum FeatureRequestFactory {
 
     public static func sessionDetail(
         sessionID: String,
+        provider: AgentProvider = .codex,
         turnCursor: String? = nil,
         turnLimit: Int32 = 30,
         reportingTimeZone: TimeZone = .current
     ) -> Codexpulse_Core_V1_SessionDetailRequest {
         var request = Codexpulse_Core_V1_SessionDetailRequest()
+		request.provider = provider.scope
         request.sessionID = sessionID
         request.reportingTimezone = reportingTimeZone.identifier
         request.turnPage = page(cursor: turnCursor, limit: turnLimit)
@@ -185,6 +232,7 @@ public enum FeatureRequestFactory {
 
     public static func projects(
         options: ProjectQueryOptions,
+        provider: AgentProvider = .codex,
         cursor: String? = nil,
         limit: Int32 = 50,
         now: Date = Date(),
@@ -202,6 +250,7 @@ public enum FeatureRequestFactory {
         let direction = options.sortDirection == "asc" ? "asc" : "desc"
         var request = Codexpulse_Core_V1_ListProjectsRequest()
         request.query = query(
+			provider: provider,
             cursor: cursor,
             limit: limit,
             sortField: sortField,
@@ -219,6 +268,7 @@ public enum FeatureRequestFactory {
     public static func projectDetail(
         dimensionKey: String,
         range: DateRangePreset,
+        provider: AgentProvider = .codex,
         exactRange: Codexpulse_Core_V1_UTCTimeRange? = nil,
         sessionCursor: String? = nil,
         modelCursor: String? = nil,
@@ -227,6 +277,7 @@ public enum FeatureRequestFactory {
         calendar: Calendar = .current
     ) -> Codexpulse_Core_V1_ProjectDetailRequest {
         var request = Codexpulse_Core_V1_ProjectDetailRequest()
+		request.provider = provider.scope
         request.dimensionKey = dimensionKey
         if let exactRange {
             request.exactRange = exactRange
@@ -308,6 +359,7 @@ public enum FeatureRequestFactory {
     }
 
     private static func query(
+        provider: AgentProvider = .codex,
         cursor: String?,
         limit: Int32,
         sortField: String? = nil,
@@ -316,6 +368,7 @@ public enum FeatureRequestFactory {
         timeRange: Codexpulse_Core_V1_LocalDateRange? = nil
     ) -> Codexpulse_Core_V1_QueryRequest {
         var request = Codexpulse_Core_V1_QueryRequest()
+		request.provider = provider.scope
         request.page = page(cursor: cursor, limit: min(max(limit, 1), 100))
         if let sortField {
             var sort = Codexpulse_Core_V1_SortTerm()
@@ -361,6 +414,7 @@ public enum FeatureRequestFactory {
         let days: Int
         switch preset {
         case .quotaWeek: days = 7
+		case .quotaMonth: days = 30
         case .today: days = 1
         case .sevenDays: days = 7
         case .thirtyDays, .all: days = 30

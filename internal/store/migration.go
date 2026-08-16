@@ -40,7 +40,12 @@ const (
 	applicationSchemaV19Version = 19
 	applicationSchemaV20Version = 20
 	applicationSchemaV21Version = 21
-	applicationSchemaVersion    = applicationSchemaV21Version
+	applicationSchemaV22Version = 22
+	applicationSchemaV23Version = 23
+	applicationSchemaV24Version = 24
+	applicationSchemaV25Version = 25
+	applicationSchemaV26Version = 26
+	applicationSchemaVersion    = applicationSchemaV26Version
 )
 
 var (
@@ -257,6 +262,45 @@ var applicationMigrations = []migrationDefinition{
 		checksum: applicationSchemaV21Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
 			return storeschema.EnsureObjects(ctx, transaction, storelight.UsageSummarySchemaObjects())
+		},
+	},
+	{
+		version:  applicationSchemaV22Version,
+		name:     "cursor-provider-snapshots",
+		checksum: applicationSchemaV22Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			return storeschema.EnsureObjects(ctx, transaction, cursorProviderSchemaObjects)
+		},
+	},
+	{
+		version:  applicationSchemaV23Version,
+		name:     "cursor-dashboard-snapshots",
+		checksum: applicationSchemaV23Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			if err := migrateCursorProviderSourcesForV23(ctx, transaction); err != nil {
+				return err
+			}
+			return storeschema.EnsureObjects(ctx, transaction, cursorDashboardV23SchemaObjects)
+		},
+	},
+	{
+		version:  applicationSchemaV24Version,
+		name:     "cursor-dashboard-billing-summary",
+		checksum: applicationSchemaV24Checksum(),
+		apply:    migrateCursorDashboardBillingForV24,
+	},
+	{
+		version:  applicationSchemaV25Version,
+		name:     "cursor-session-presentation-metadata",
+		checksum: applicationSchemaV25Checksum(),
+		apply:    addCursorSessionMetadataColumns,
+	},
+	{
+		version:  applicationSchemaV26Version,
+		name:     "cursor-dashboard-quota-history",
+		checksum: applicationSchemaV26Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			return storeschema.EnsureObjects(ctx, transaction, cursorDashboardQuotaSchemaObjects)
 		},
 	},
 }
@@ -816,6 +860,9 @@ func verifyApplicationSchema(ctx context.Context, transaction *gorm.DB) error {
 		currentQuotaSchemaObjects(), quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
 		metricsSchemaObjects, quotaPerformanceSchemaObjects,
 		storelight.CurrentSchemaObjects(),
+		currentCursorProviderSchemaObjects(),
+		cursorDashboardSchemaObjects,
+		cursorDashboardQuotaSchemaObjects,
 	} {
 		for _, object := range objects {
 			exists, err := storeschema.VerifyObject(ctx, transaction, object)
@@ -836,7 +883,10 @@ func verifyApplicationSchema(ctx context.Context, transaction *gorm.DB) error {
 	if err := verifyLightModelAttributionColumns(transaction); err != nil {
 		return err
 	}
-	return verifyQuotaLimitNameColumn(transaction)
+	if err := verifyQuotaLimitNameColumn(transaction); err != nil {
+		return err
+	}
+	return verifyCursorSessionMetadataColumns(transaction)
 }
 
 func runtimeSchemaObjectsThroughV12() []storeschema.Object {
@@ -1178,6 +1228,176 @@ func applicationSchemaV21Checksum() string {
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV22Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV22Version, "cursor-provider-snapshots")
+	for _, object := range cursorProviderSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV23Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV23Version, "cursor-dashboard-snapshots")
+	for _, object := range currentCursorProviderSchemaObjects() {
+		if object.Name == "agent_provider_sources" {
+			_, _ = fmt.Fprintln(
+				hasher, object.ObjectType, object.Name,
+				strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
+			)
+		}
+	}
+	for _, object := range cursorDashboardV23SchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV24Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV24Version, "cursor-dashboard-billing-summary")
+	for _, object := range cursorDashboardSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV25Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV25Version, "cursor-session-presentation-metadata")
+	for _, column := range cursorSessionMetadataMigrationColumns {
+		_, _ = fmt.Fprintln(hasher, column.column, column.definition)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV26Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV26Version, "cursor-dashboard-quota-history")
+	for _, object := range cursorDashboardQuotaSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func addCursorSessionMetadataColumns(ctx context.Context, transaction *gorm.DB) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: invalid cursor session metadata migration database", ErrMigrationContract)
+	}
+	database := transaction.WithContext(ctx)
+	for _, column := range cursorSessionMetadataMigrationColumns {
+		if database.Migrator().HasColumn(&cursorSessionModel{}, column.column) {
+			continue
+		}
+		statement := "ALTER TABLE cursor_sessions ADD COLUMN `" + column.column + "` " + column.definition
+		if err := database.Exec(statement).Error; err != nil {
+			return fmt.Errorf("%w: add cursor_sessions.%s: %v", ErrMigrationContract, column.column, err)
+		}
+	}
+	return nil
+}
+
+func verifyCursorSessionMetadataColumns(transaction *gorm.DB) error {
+	for _, column := range cursorSessionMetadataMigrationColumns {
+		if !transaction.Migrator().HasColumn(&cursorSessionModel{}, column.column) {
+			return fmt.Errorf("%w: missing column cursor_sessions.%s", storeschema.ErrContract, column.column)
+		}
+	}
+	return nil
+}
+
+type cursorDashboardV23SnapshotModel struct {
+	Provider      string `gorm:"column:provider;primaryKey"`
+	Generation    int64  `gorm:"column:generation"`
+	CollectedAtMS int64  `gorm:"column:collected_at_ms"`
+	WindowStartMS int64  `gorm:"column:window_start_ms"`
+	WindowEndMS   int64  `gorm:"column:window_end_ms"`
+	EventCount    int64  `gorm:"column:event_count"`
+}
+
+func (cursorDashboardV23SnapshotModel) TableName() string { return "cursor_dashboard_snapshots" }
+
+func migrateCursorDashboardBillingForV24(ctx context.Context, transaction *gorm.DB) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: invalid cursor dashboard billing migration database", ErrMigrationContract)
+	}
+	database := transaction.WithContext(ctx)
+	var snapshot cursorDashboardV23SnapshotModel
+	err := database.Where("provider = ?", "cursor").Take(&snapshot).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("%w: read cursor dashboard v23 snapshot: %v", ErrMigrationContract, err)
+	}
+	hasSnapshot := err == nil
+	if err := database.Exec(`ALTER TABLE cursor_dashboard_snapshots RENAME TO cursor_dashboard_snapshots_v23`).Error; err != nil {
+		return fmt.Errorf("%w: rename cursor dashboard v23 snapshot: %v", ErrMigrationContract, err)
+	}
+	if err := storeschema.EnsureObjects(ctx, database, cursorDashboardSchemaObjects[:1]); err != nil {
+		return err
+	}
+	if hasSnapshot {
+		if err := database.Create(&cursorDashboardSnapshotModel{
+			Provider: snapshot.Provider, Generation: snapshot.Generation, CollectedAtMS: snapshot.CollectedAtMS,
+			WindowStartMS: snapshot.WindowStartMS, WindowEndMS: snapshot.WindowEndMS,
+			BillingCycleEndMS: snapshot.WindowEndMS, EventCount: snapshot.EventCount,
+		}).Error; err != nil {
+			return fmt.Errorf("%w: restore cursor dashboard v24 snapshot: %v", ErrMigrationContract, err)
+		}
+	}
+	if err := database.Exec(`DROP TABLE cursor_dashboard_snapshots_v23`).Error; err != nil {
+		return fmt.Errorf("%w: drop cursor dashboard v23 snapshot: %v", ErrMigrationContract, err)
+	}
+	return storeschema.EnsureObjects(ctx, database, cursorDashboardSchemaObjects[1:])
+}
+
+func migrateCursorProviderSourcesForV23(ctx context.Context, transaction *gorm.DB) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: invalid cursor source migration database", ErrMigrationContract)
+	}
+	database := transaction.WithContext(ctx)
+	var sources []cursorSourceModel
+	if err := database.Order("provider, source_key").Find(&sources).Error; err != nil {
+		return fmt.Errorf("%w: read cursor provider sources: %v", ErrMigrationContract, err)
+	}
+	if err := database.Exec(`ALTER TABLE agent_provider_sources RENAME TO agent_provider_sources_v22`).Error; err != nil {
+		return fmt.Errorf("%w: rename cursor provider sources: %v", ErrMigrationContract, err)
+	}
+	var sourceObject storeschema.Object
+	for _, object := range currentCursorProviderSchemaObjects() {
+		if object.Name == "agent_provider_sources" {
+			sourceObject = object
+			break
+		}
+	}
+	if sourceObject.Name == "" {
+		return fmt.Errorf("%w: current cursor source schema missing", ErrMigrationContract)
+	}
+	if err := storeschema.EnsureObjects(ctx, database, []storeschema.Object{sourceObject}); err != nil {
+		return err
+	}
+	for index := range sources {
+		if err := database.Create(&sources[index]).Error; err != nil {
+			return fmt.Errorf("%w: restore cursor provider source: %v", ErrMigrationContract, err)
+		}
+	}
+	if err := database.Exec(`DROP TABLE agent_provider_sources_v22`).Error; err != nil {
+		return fmt.Errorf("%w: drop old cursor provider sources: %v", ErrMigrationContract, err)
+	}
+	return nil
 }
 
 func migrateProjectIdentityRuleV2(ctx context.Context, transaction *gorm.DB) error {

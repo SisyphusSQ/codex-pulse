@@ -1,6 +1,7 @@
 import AppKit
 import Charts
 import CodexPulseAppSupport
+import CodexPulseProtocolGenerated
 import Combine
 import SwiftUI
 
@@ -17,6 +18,7 @@ final class StatusItemController: NSObject {
     private var smokeFocusedControl: PopoverFocusTarget?
     private var smokeActionResults: [PopoverQuickActionKind: PopoverQuickActionResult] = [:]
     private var smokeOpenedProjectURL: URL?
+	private var smokeCursorUsageSummary = "cursor_requests=unknown cursor_tokens=unknown cursor_reported_cost=unknown cursor_estimated_cost=unknown cursor_spending=unknown cursor_data_as_of=unknown cursor_dashboard=missing"
     private var lastPopoverCaptureFailure = "none"
 
     init(
@@ -100,6 +102,12 @@ final class StatusItemController: NSObject {
             }
             .store(in: &cancellables)
 
+		model.$statusProvider
+			.combineLatest(model.$statusUsageState, model.$statusInvocationState)
+			.receive(on: RunLoop.main)
+			.sink { [weak self] _ in self?.updateStatusBarView() }
+			.store(in: &cancellables)
+
         model.$localization
             .removeDuplicates()
             .receive(on: RunLoop.main)
@@ -117,7 +125,9 @@ final class StatusItemController: NSObject {
 
     private func updateStatusBarView() {
         let title = model.statusItemTitle
-        let summary = model.presentation.flatMap(StatusBarQuotaPresentation.init)
+		let summary = model.statusProvider == .codex
+			? model.presentation.flatMap(StatusBarQuotaPresentation.init)
+			: nil
         statusBarView.update(
             summary: summary,
             fallbackText: title,
@@ -267,15 +277,66 @@ final class StatusItemController: NSObject {
         else {
             return (false, "unavailable step=keyboard_focus_chain")
         }
+		popover.performClose(nil)
+		guard await verifyCursorStatusProviderForSmoke() else {
+			return (false, "unavailable step=cursor_status_provider")
+		}
 
         return (
             true,
             "window+status_item+popover actions=project+copy "
                 + "keyboard=tab+shift-tab+return+space "
                 + "focus_escape=open-overview+refresh+reset-credits+settings+quit "
-                + "clipboard=single_item_string+png"
+				+ "clipboard=single_item_string+png "
+				+ "status_provider=cursor status_label=verified cursor_popover=rendered "
+				+ smokeCursorUsageSummary
         )
     }
+
+	private func verifyCursorStatusProviderForSmoke() async -> Bool {
+		let originalProvider = model.statusProvider
+		model.selectStatusProvider(.cursor)
+		defer {
+			model.selectStatusProvider(originalProvider)
+			updateStatusBarView()
+		}
+		guard await waitForNativeSmoke({
+			self.model.statusUsageState.value?.providerContext.effectiveProvider
+				== AgentProvider.cursor.rawValue
+		}, maximumAttempts: 3_000) else { return false }
+		if let usage = model.statusUsageState.value {
+			let dashboard = usage.providerContext.coverage.first { $0.source == "cursor.dashboard" }
+			let dashboardState = dashboard?.state == "available" ? "available"
+				: dashboard == nil ? "missing" : "unavailable"
+			smokeCursorUsageSummary = [
+				"cursor_requests=\(usage.totals.turnCount.hasValue ? "known" : "unknown")",
+				"cursor_tokens=\(usage.totals.totalTokens.hasValue ? "known" : "unknown")",
+				"cursor_reported_cost=\(usage.hasReportedUsdMicros && usage.reportedUsdMicros.hasValue ? "known" : "unknown")",
+				"cursor_estimated_cost=\(usage.totals.estimatedUsdMicros.hasValue ? "known" : "unknown")",
+				"cursor_spending=\(usage.hasCursorBilling && usage.cursorBilling.totalSpendUsdMicros.hasValue ? "known" : "unknown")",
+				"cursor_data_as_of=\(usage.hasDataAsOfMs && usage.dataAsOfMs.hasValue ? "known" : "unknown")",
+				"cursor_dashboard=\(dashboardState)",
+			].joined(separator: " ")
+		}
+		updateStatusBarView()
+		let title = model.statusItemTitle
+		guard title.hasPrefix("今日 "), title.contains(" 次 · "),
+			!title.contains("Cursor"), !title.contains("Codex"),
+			statusItem.button?.accessibilityLabel() == "Codex Pulse · \(title)",
+			statusBarView.hasSummary == false,
+			let button = statusItem.button,
+			popover.contentViewController != nil
+		else { return false }
+		popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+		guard await waitForNativeSmoke({ self.popover.isShown }),
+			let rootView = popover.contentViewController?.view
+		else { return false }
+		rootView.layoutSubtreeIfNeeded()
+		rootView.displayIfNeeded()
+		guard rootView.bounds.width > 0, rootView.bounds.height > 0 else { return false }
+		popover.performClose(nil)
+		return true
+	}
 
     private func moveNativeSmokeFocus(
         to target: PopoverFocusTarget,
@@ -334,9 +395,10 @@ final class StatusItemController: NSObject {
     }
 
     private func waitForNativeSmoke(
-        _ predicate: @escaping @MainActor () -> Bool
+		_ predicate: @escaping @MainActor () -> Bool,
+		maximumAttempts: Int = 100
     ) async -> Bool {
-        for _ in 0..<100 {
+		for _ in 0..<maximumAttempts {
             if predicate() { return true }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
@@ -503,23 +565,41 @@ private struct MenuBarPopoverView: View {
 
     private var mainContent: some View {
         VStack(spacing: 0) {
+			Picker("客户端", selection: Binding(
+				get: { model.statusProvider },
+				set: { provider in model.selectStatusProvider(provider) }
+			)) {
+				ForEach(AgentProvider.allCases) { provider in Text(provider.title).tag(provider) }
+			}
+			.pickerStyle(.segmented)
+			.padding(.horizontal, 18)
+			.padding(.vertical, 10)
+			.accessibilityIdentifier("popover.provider-picker")
+			Divider()
             PopoverHeader(
                 title: "Codex Pulse",
-                accountSummary: model.presentation?.popoverAccountSummary,
+				accountSummary: model.statusProvider == .codex ? model.presentation?.popoverAccountSummary : nil,
                 captureSource: captureSource,
                 isPrivacyHidden: captureSource.isPrivacyHidden,
                 screenshotFeedback: screenshotFeedback,
                 onOpenProject: openProject,
                 onCopyPopoverScreenshot: copyPopoverScreenshot,
                 focusedControl: $focusedControl,
-                onOpen: onOpenOverview,
-                onRefresh: model.refreshOrRestart,
+				onOpen: {
+					model.openMainWindowProvider(model.statusProvider)
+					onOpenOverview()
+				},
+				onRefresh: model.refreshStatusProvider,
                 canRefresh: model.canRefreshOrRestart,
-                isRefreshing: model.isOverviewRefreshing
+				isRefreshing: model.statusProvider == .cursor
+					? model.statusUsageState.isLoading || model.statusInvocationState.isLoading
+					: model.isOverviewRefreshing
             )
 
             ScrollView {
-                if let overview = model.presentation {
+				if model.statusProvider == .cursor {
+					cursorContent
+				} else if let overview = model.presentation {
                     VStack(alignment: .leading, spacing: 18) {
                         quotaSection(overview)
                         dailyTrendSection(overview)
@@ -553,6 +633,70 @@ private struct MenuBarPopoverView: View {
             onPopoverFocusChanged(control)
         }
     }
+
+	private var cursorContent: some View {
+		let usage = model.statusUsageState.value
+		let invocation = model.statusInvocationState.value
+		let requests = usage.map { numericStatusText($0.totals.turnCount) } ?? "--"
+		let tokens = usage.map { numericStatusText($0.totals.totalTokens) } ?? "--"
+		let reportedCost = usage?.hasReportedUsdMicros == true
+			? costText(usage?.reportedUsdMicros ?? .init()) : "--"
+		let estimatedCost = usage.map { costText($0.totals.estimatedUsdMicros) } ?? "--"
+		let cursorTokenFee = usage?.hasCursorTokenFeeUsdMicros == true
+			? costText(usage?.cursorTokenFeeUsdMicros ?? .init()) : "--"
+		let tools = invocation.map { numericStatusText($0.totals.toolCallCount) } ?? "--"
+		let coverage = usage?.providerContext.coverage ?? []
+		let aiEdits = coverage.first(where: { $0.capability == "ai_edits" })
+		let aiEditText = aiEdits?.hasItemCount == true
+			? String(aiEdits?.itemCount ?? 0)
+			: "数据源未提供"
+		return VStack(alignment: .leading, spacing: 16) {
+			PopoverSectionTitle(title: "今日", systemImage: "clock", localization: model.localization)
+			SectionCard(title: "Cursor 用量") {
+				KeyValueRow(key: "请求数", value: requests)
+				KeyValueRow(key: "Token", value: tokens == "--" ? "数据源未提供" : tokens)
+				KeyValueRow(key: "Cursor 上报费用", value: reportedCost == "--" ? "数据源未提供" : reportedCost)
+				KeyValueRow(key: "Cursor Token fee", value: cursorTokenFee == "--" ? "数据源未提供" : cursorTokenFee)
+				KeyValueRow(key: "文档价目估算", value: estimatedCost == "--" ? "数据源未提供" : estimatedCost)
+				if let usage, usage.hasCursorBilling {
+					KeyValueRow(key: "本账期消费", value: costText(usage.cursorBilling.totalSpendUsdMicros))
+					KeyValueRow(key: "账期包含", value: costText(usage.cursorBilling.includedUsdMicros))
+					KeyValueRow(key: "Bonus", value: costText(usage.cursorBilling.bonusUsdMicros))
+					KeyValueRow(key: "账期剩余", value: costText(usage.cursorBilling.remainingUsdMicros))
+					KeyValueRow(key: "账期上限", value: costText(usage.cursorBilling.limitUsdMicros))
+				}
+				if let usage, usage.hasDataAsOfMs, usage.dataAsOfMs.hasValue {
+					KeyValueRow(key: "数据截至", value: cursorStatusDateText(usage.dataAsOfMs.value, timeZone: usage.reportingTimeZone))
+				}
+				KeyValueRow(key: "工具调用", value: tools)
+				KeyValueRow(key: "AI edits", value: aiEditText)
+			}
+			PopoverSectionTitle(title: "覆盖度", systemImage: "externaldrive", localization: model.localization)
+			SectionCard(title: "Cursor 内部来源") {
+				ForEach(coverage, id: \.source) { item in
+					KeyValueRow(key: item.source, value: item.state == "available" ? "可用 · \(item.reason)" : item.state)
+				}
+			}
+		}
+		.padding(.horizontal, 18)
+		.padding(.vertical, 16)
+		.background(PopoverCaptureDocumentProbe(source: captureSource).allowsHitTesting(false))
+	}
+
+	private func numericStatusText(_ value: Codexpulse_Core_V1_NumericValue) -> String {
+		guard value.hasValue else { return "--" }
+		return value.unit == "tokens"
+			? TokenQuantityFormatter.compactString(value.value)
+			: model.localization.number(value.value)
+	}
+
+	private func cursorStatusDateText(_ milliseconds: Int64, timeZone: String) -> String {
+		let formatter = DateFormatter()
+		formatter.locale = model.localization.locale
+		formatter.timeZone = TimeZone(identifier: timeZone) ?? .current
+		formatter.dateFormat = "M-d HH:mm"
+		return formatter.string(from: Date(timeIntervalSince1970: Double(milliseconds) / 1_000))
+	}
 
     private func openProject() {
         let result = PopoverQuickActions.openProject(using: openProjectURL)

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	healthmodel "github.com/SisyphusSQ/codex-pulse/internal/health"
 	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
@@ -52,7 +53,12 @@ type runtimeInfoQuery interface {
 }
 
 type pricingCatalogQuery interface {
-	Current(context.Context) (pricingcatalog.CurrentResponse, error)
+	Current(context.Context, agentprovider.Scope) (pricingcatalog.CurrentResponse, error)
+}
+
+type agentQuotaQuery interface {
+	QuotaCurrent(context.Context, agentprovider.Scope, int64) (runtimeinfo.QuotaCurrentResponse, error)
+	QuotaPace(context.Context, agentprovider.Scope, int64) (runtimeinfo.QuotaPaceResponse, error)
 }
 
 type quotaRefreshCommand interface {
@@ -80,6 +86,7 @@ type ServiceConfig struct {
 	InvocationUsage  invocationUsageQuery
 	PricingCatalog   pricingCatalogQuery
 	RuntimeInfo      runtimeInfoQuery
+	QuotaInfo        agentQuotaQuery
 	QuotaRefresh     quotaRefreshCommand
 	RuntimeControls  runtimeControlCommand
 	HealthProjection healthProjectionQuery
@@ -94,6 +101,7 @@ type Service struct {
 	invocationUsage  invocationUsageQuery
 	pricingCatalog   pricingCatalogQuery
 	runtimeInfo      runtimeInfoQuery
+	quotaInfo        agentQuotaQuery
 	quotaMu          sync.RWMutex
 	quotaRefresh     quotaRefreshCommand
 	runtimeMu        sync.RWMutex
@@ -116,6 +124,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 		invocationUsage:  config.InvocationUsage,
 		pricingCatalog:   config.PricingCatalog,
 		runtimeInfo:      config.RuntimeInfo,
+		quotaInfo:        config.QuotaInfo,
 		quotaRefresh:     config.QuotaRefresh,
 		runtimeControls:  config.RuntimeControls,
 		sessionDeepIndex: config.SessionDeepIndex,
@@ -392,12 +401,13 @@ func (service *Service) InvocationUsage(
 
 func (service *Service) PricingCatalogCurrent(
 	ctx context.Context,
+	provider agentprovider.Scope,
 ) (pricingcatalog.CurrentResponse, error) {
 	if service == nil || service.pricingCatalog == nil {
 		return pricingcatalog.CurrentResponse{}, newServiceFailure(ErrService)
 	}
 	return serviceQueryCall(service, func() (pricingcatalog.CurrentResponse, error) {
-		return service.pricingCatalog.Current(ctx)
+		return service.pricingCatalog.Current(ctx, provider)
 	})
 }
 
@@ -422,7 +432,8 @@ func (service *Service) SessionDetail(
 	}
 	return serviceQueryCall(service, func() (usagecost.SessionDetailResponse, error) {
 		response, err := service.usageCost.SessionDetail(ctx, request)
-		if err != nil || len(response.Turns) != 0 {
+		provider, providerErr := agentprovider.Normalize(request.Provider.Provider)
+		if err != nil || providerErr != nil || provider != agentprovider.Codex || len(response.Turns) != 0 {
 			return response, err
 		}
 		service.deepMu.RLock()
@@ -467,25 +478,45 @@ func (service *Service) ProjectDetail(
 
 func (service *Service) QuotaCurrent(
 	ctx context.Context,
+	scope agentprovider.Scope,
 	evaluatedAtMS int64,
 ) (runtimeinfo.QuotaCurrentResponse, error) {
 	if service == nil || service.runtimeInfo == nil {
 		return runtimeinfo.QuotaCurrentResponse{}, newServiceFailure(ErrService)
 	}
 	return serviceQueryCall(service, func() (runtimeinfo.QuotaCurrentResponse, error) {
-		return service.runtimeInfo.QuotaCurrent(ctx, evaluatedAtMS)
+		if service.quotaInfo != nil {
+			return service.quotaInfo.QuotaCurrent(ctx, scope, evaluatedAtMS)
+		}
+		provider, err := agentprovider.Normalize(scope.Provider)
+		if err != nil || provider != agentprovider.Codex {
+			return runtimeinfo.QuotaCurrentResponse{}, basequery.NewValidationFailure("provider", err)
+		}
+		response, err := service.runtimeInfo.QuotaCurrent(ctx, evaluatedAtMS)
+		response.ProviderContext = agentprovider.CodexContext()
+		return response, err
 	})
 }
 
 func (service *Service) QuotaPace(
 	ctx context.Context,
+	scope agentprovider.Scope,
 	evaluatedAtMS int64,
 ) (runtimeinfo.QuotaPaceResponse, error) {
 	if service == nil || service.runtimeInfo == nil {
 		return runtimeinfo.QuotaPaceResponse{}, newServiceFailure(ErrService)
 	}
 	return serviceQueryCall(service, func() (runtimeinfo.QuotaPaceResponse, error) {
-		return service.runtimeInfo.QuotaPace(ctx, evaluatedAtMS)
+		if service.quotaInfo != nil {
+			return service.quotaInfo.QuotaPace(ctx, scope, evaluatedAtMS)
+		}
+		provider, err := agentprovider.Normalize(scope.Provider)
+		if err != nil || provider != agentprovider.Codex {
+			return runtimeinfo.QuotaPaceResponse{}, basequery.NewValidationFailure("provider", err)
+		}
+		response, err := service.runtimeInfo.QuotaPace(ctx, evaluatedAtMS)
+		response.ProviderContext = agentprovider.CodexContext()
+		return response, err
 	})
 }
 

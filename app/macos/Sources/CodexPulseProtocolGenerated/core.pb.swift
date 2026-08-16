@@ -414,6 +414,15 @@ public nonisolated struct Codexpulse_Core_V1_QueryRequest: Sendable {
   /// Clears the value of `exactTimeRange`. Subsequent reads from it will return its default value.
   public mutating func clearExactTimeRange() {self._exactTimeRange = nil}
 
+  public var provider: Codexpulse_Core_V1_ProviderScope {
+    get {_provider ?? Codexpulse_Core_V1_ProviderScope()}
+    set {_provider = newValue}
+  }
+  /// Returns true if `provider` has been explicitly set.
+  public var hasProvider: Bool {self._provider != nil}
+  /// Clears the value of `provider`. Subsequent reads from it will return its default value.
+  public mutating func clearProvider() {self._provider = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -421,6 +430,66 @@ public nonisolated struct Codexpulse_Core_V1_QueryRequest: Sendable {
   fileprivate var _page: Codexpulse_Core_V1_PageRequest? = nil
   fileprivate var _timeRange: Codexpulse_Core_V1_LocalDateRange? = nil
   fileprivate var _exactTimeRange: Codexpulse_Core_V1_UTCTimeRange? = nil
+  fileprivate var _provider: Codexpulse_Core_V1_ProviderScope? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_ProviderScope: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var provider: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_ProviderCoverage: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var capability: String = String()
+
+  public var state: String = String()
+
+  public var source: String = String()
+
+  public var reason: String = String()
+
+  public var itemCount: Int64 {
+    get {_itemCount ?? 0}
+    set {_itemCount = newValue}
+  }
+  /// Returns true if `itemCount` has been explicitly set.
+  public var hasItemCount: Bool {self._itemCount != nil}
+  /// Clears the value of `itemCount`. Subsequent reads from it will return its default value.
+  public mutating func clearItemCount() {self._itemCount = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _itemCount: Int64? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_ProviderContext: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var effectiveProvider: String = String()
+
+  public var sources: [String] = []
+
+  public var capabilities: [String] = []
+
+  public var coverage: [Codexpulse_Core_V1_ProviderCoverage] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
 }
 
 public nonisolated struct Codexpulse_Core_V1_UsageCostRequest: Sendable {
@@ -454,12 +523,22 @@ public nonisolated struct Codexpulse_Core_V1_UsageCostRequest: Sendable {
   /// activity distribution are intentionally omitted from the response.
   public var tokenTotalsOnly: Bool = false
 
+  public var provider: Codexpulse_Core_V1_ProviderScope {
+    get {_provider ?? Codexpulse_Core_V1_ProviderScope()}
+    set {_provider = newValue}
+  }
+  /// Returns true if `provider` has been explicitly set.
+  public var hasProvider: Bool {self._provider != nil}
+  /// Clears the value of `provider`. Subsequent reads from it will return its default value.
+  public mutating func clearProvider() {self._provider = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _range: Codexpulse_Core_V1_LocalDateRange? = nil
   fileprivate var _exactRange: Codexpulse_Core_V1_UTCTimeRange? = nil
+  fileprivate var _provider: Codexpulse_Core_V1_ProviderScope? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_ListSessionsRequest: Sendable {
@@ -508,12 +587,22 @@ public nonisolated struct Codexpulse_Core_V1_SessionDetailRequest: Sendable {
   /// Clears the value of `turnPage`. Subsequent reads from it will return its default value.
   public mutating func clearTurnPage() {self._turnPage = nil}
 
+  public var provider: Codexpulse_Core_V1_ProviderScope {
+    get {_provider ?? Codexpulse_Core_V1_ProviderScope()}
+    set {_provider = newValue}
+  }
+  /// Returns true if `provider` has been explicitly set.
+  public var hasProvider: Bool {self._provider != nil}
+  /// Clears the value of `provider`. Subsequent reads from it will return its default value.
+  public mutating func clearProvider() {self._provider = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _reportingTimezone: String? = nil
   fileprivate var _turnPage: Codexpulse_Core_V1_PageRequest? = nil
+  fileprivate var _provider: Codexpulse_Core_V1_ProviderScope? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_ListProjectsRequest: Sendable {
@@ -580,6 +669,15 @@ public nonisolated struct Codexpulse_Core_V1_ProjectDetailRequest: Sendable {
   /// Clears the value of `exactRange`. Subsequent reads from it will return its default value.
   public mutating func clearExactRange() {self._exactRange = nil}
 
+  public var provider: Codexpulse_Core_V1_ProviderScope {
+    get {_provider ?? Codexpulse_Core_V1_ProviderScope()}
+    set {_provider = newValue}
+  }
+  /// Returns true if `provider` has been explicitly set.
+  public var hasProvider: Bool {self._provider != nil}
+  /// Clears the value of `provider`. Subsequent reads from it will return its default value.
+  public mutating func clearProvider() {self._provider = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -588,6 +686,7 @@ public nonisolated struct Codexpulse_Core_V1_ProjectDetailRequest: Sendable {
   fileprivate var _sessionPage: Codexpulse_Core_V1_PageRequest? = nil
   fileprivate var _modelPage: Codexpulse_Core_V1_PageRequest? = nil
   fileprivate var _exactRange: Codexpulse_Core_V1_UTCTimeRange? = nil
+  fileprivate var _provider: Codexpulse_Core_V1_ProviderScope? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_AttributionValue: Sendable {
@@ -955,6 +1054,81 @@ public nonisolated struct Codexpulse_Core_V1_ActivityDistribution: Sendable {
   public init() {}
 }
 
+public nonisolated struct Codexpulse_Core_V1_CursorBillingSummary: @unchecked Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var billingCycleStartAtMs: Codexpulse_Core_V1_NumericValue {
+    get {_storage._billingCycleStartAtMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._billingCycleStartAtMs = newValue}
+  }
+  /// Returns true if `billingCycleStartAtMs` has been explicitly set.
+  public var hasBillingCycleStartAtMs: Bool {_storage._billingCycleStartAtMs != nil}
+  /// Clears the value of `billingCycleStartAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearBillingCycleStartAtMs() {_uniqueStorage()._billingCycleStartAtMs = nil}
+
+  public var billingCycleEndAtMs: Codexpulse_Core_V1_NumericValue {
+    get {_storage._billingCycleEndAtMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._billingCycleEndAtMs = newValue}
+  }
+  /// Returns true if `billingCycleEndAtMs` has been explicitly set.
+  public var hasBillingCycleEndAtMs: Bool {_storage._billingCycleEndAtMs != nil}
+  /// Clears the value of `billingCycleEndAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearBillingCycleEndAtMs() {_uniqueStorage()._billingCycleEndAtMs = nil}
+
+  public var totalSpendUsdMicros: Codexpulse_Core_V1_NumericValue {
+    get {_storage._totalSpendUsdMicros ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._totalSpendUsdMicros = newValue}
+  }
+  /// Returns true if `totalSpendUsdMicros` has been explicitly set.
+  public var hasTotalSpendUsdMicros: Bool {_storage._totalSpendUsdMicros != nil}
+  /// Clears the value of `totalSpendUsdMicros`. Subsequent reads from it will return its default value.
+  public mutating func clearTotalSpendUsdMicros() {_uniqueStorage()._totalSpendUsdMicros = nil}
+
+  public var includedUsdMicros: Codexpulse_Core_V1_NumericValue {
+    get {_storage._includedUsdMicros ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._includedUsdMicros = newValue}
+  }
+  /// Returns true if `includedUsdMicros` has been explicitly set.
+  public var hasIncludedUsdMicros: Bool {_storage._includedUsdMicros != nil}
+  /// Clears the value of `includedUsdMicros`. Subsequent reads from it will return its default value.
+  public mutating func clearIncludedUsdMicros() {_uniqueStorage()._includedUsdMicros = nil}
+
+  public var bonusUsdMicros: Codexpulse_Core_V1_NumericValue {
+    get {_storage._bonusUsdMicros ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._bonusUsdMicros = newValue}
+  }
+  /// Returns true if `bonusUsdMicros` has been explicitly set.
+  public var hasBonusUsdMicros: Bool {_storage._bonusUsdMicros != nil}
+  /// Clears the value of `bonusUsdMicros`. Subsequent reads from it will return its default value.
+  public mutating func clearBonusUsdMicros() {_uniqueStorage()._bonusUsdMicros = nil}
+
+  public var remainingUsdMicros: Codexpulse_Core_V1_NumericValue {
+    get {_storage._remainingUsdMicros ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._remainingUsdMicros = newValue}
+  }
+  /// Returns true if `remainingUsdMicros` has been explicitly set.
+  public var hasRemainingUsdMicros: Bool {_storage._remainingUsdMicros != nil}
+  /// Clears the value of `remainingUsdMicros`. Subsequent reads from it will return its default value.
+  public mutating func clearRemainingUsdMicros() {_uniqueStorage()._remainingUsdMicros = nil}
+
+  public var limitUsdMicros: Codexpulse_Core_V1_NumericValue {
+    get {_storage._limitUsdMicros ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._limitUsdMicros = newValue}
+  }
+  /// Returns true if `limitUsdMicros` has been explicitly set.
+  public var hasLimitUsdMicros: Bool {_storage._limitUsdMicros != nil}
+  /// Clears the value of `limitUsdMicros`. Subsequent reads from it will return its default value.
+  public mutating func clearLimitUsdMicros() {_uniqueStorage()._limitUsdMicros = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
+}
+
 public nonisolated struct Codexpulse_Core_V1_UsageCostResponse: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -1048,6 +1222,62 @@ public nonisolated struct Codexpulse_Core_V1_UsageCostResponse: @unchecked Senda
   /// Clears the value of `activityDistribution`. Subsequent reads from it will return its default value.
   public mutating func clearActivityDistribution() {_uniqueStorage()._activityDistribution = nil}
 
+  public var providerContext: Codexpulse_Core_V1_ProviderContext {
+    get {_storage._providerContext ?? Codexpulse_Core_V1_ProviderContext()}
+    set {_uniqueStorage()._providerContext = newValue}
+  }
+  /// Returns true if `providerContext` has been explicitly set.
+  public var hasProviderContext: Bool {_storage._providerContext != nil}
+  /// Clears the value of `providerContext`. Subsequent reads from it will return its default value.
+  public mutating func clearProviderContext() {_uniqueStorage()._providerContext = nil}
+
+  /// Cursor Dashboard 返回的官方账单金额；与 API 折算成本分开表达。
+  public var reportedUsdMicros: Codexpulse_Core_V1_NumericValue {
+    get {_storage._reportedUsdMicros ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._reportedUsdMicros = newValue}
+  }
+  /// Returns true if `reportedUsdMicros` has been explicitly set.
+  public var hasReportedUsdMicros: Bool {_storage._reportedUsdMicros != nil}
+  /// Clears the value of `reportedUsdMicros`. Subsequent reads from it will return its default value.
+  public mutating func clearReportedUsdMicros() {_uniqueStorage()._reportedUsdMicros = nil}
+
+  /// 当来源降级时，回显 last-known 快照覆盖到的时间。
+  public var dataAsOfMs: Codexpulse_Core_V1_NumericValue {
+    get {_storage._dataAsOfMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._dataAsOfMs = newValue}
+  }
+  /// Returns true if `dataAsOfMs` has been explicitly set.
+  public var hasDataAsOfMs: Bool {_storage._dataAsOfMs != nil}
+  /// Clears the value of `dataAsOfMs`. Subsequent reads from it will return its default value.
+  public mutating func clearDataAsOfMs() {_uniqueStorage()._dataAsOfMs = nil}
+
+  public var reportedCostSource: String {
+    get {_storage._reportedCostSource ?? String()}
+    set {_uniqueStorage()._reportedCostSource = newValue}
+  }
+  /// Returns true if `reportedCostSource` has been explicitly set.
+  public var hasReportedCostSource: Bool {_storage._reportedCostSource != nil}
+  /// Clears the value of `reportedCostSource`. Subsequent reads from it will return its default value.
+  public mutating func clearReportedCostSource() {_uniqueStorage()._reportedCostSource = nil}
+
+  public var cursorTokenFeeUsdMicros: Codexpulse_Core_V1_NumericValue {
+    get {_storage._cursorTokenFeeUsdMicros ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._cursorTokenFeeUsdMicros = newValue}
+  }
+  /// Returns true if `cursorTokenFeeUsdMicros` has been explicitly set.
+  public var hasCursorTokenFeeUsdMicros: Bool {_storage._cursorTokenFeeUsdMicros != nil}
+  /// Clears the value of `cursorTokenFeeUsdMicros`. Subsequent reads from it will return its default value.
+  public mutating func clearCursorTokenFeeUsdMicros() {_uniqueStorage()._cursorTokenFeeUsdMicros = nil}
+
+  public var cursorBilling: Codexpulse_Core_V1_CursorBillingSummary {
+    get {_storage._cursorBilling ?? Codexpulse_Core_V1_CursorBillingSummary()}
+    set {_uniqueStorage()._cursorBilling = newValue}
+  }
+  /// Returns true if `cursorBilling` has been explicitly set.
+  public var hasCursorBilling: Bool {_storage._cursorBilling != nil}
+  /// Clears the value of `cursorBilling`. Subsequent reads from it will return its default value.
+  public mutating func clearCursorBilling() {_uniqueStorage()._cursorBilling = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1075,11 +1305,21 @@ public nonisolated struct Codexpulse_Core_V1_InvocationUsageRequest: Sendable {
 
   public var topLimit: Int32 = 0
 
+  public var provider: Codexpulse_Core_V1_ProviderScope {
+    get {_provider ?? Codexpulse_Core_V1_ProviderScope()}
+    set {_provider = newValue}
+  }
+  /// Returns true if `provider` has been explicitly set.
+  public var hasProvider: Bool {self._provider != nil}
+  /// Clears the value of `provider`. Subsequent reads from it will return its default value.
+  public mutating func clearProvider() {self._provider = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _range: Codexpulse_Core_V1_UTCTimeRange? = nil
+  fileprivate var _provider: Codexpulse_Core_V1_ProviderScope? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_InvocationTotals: @unchecked Sendable {
@@ -1140,6 +1380,15 @@ public nonisolated struct Codexpulse_Core_V1_InvocationTotals: @unchecked Sendab
   public var hasSessionCount: Bool {_storage._sessionCount != nil}
   /// Clears the value of `sessionCount`. Subsequent reads from it will return its default value.
   public mutating func clearSessionCount() {_uniqueStorage()._sessionCount = nil}
+
+  public var aiEditCount: Codexpulse_Core_V1_NumericValue {
+    get {_storage._aiEditCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._aiEditCount = newValue}
+  }
+  /// Returns true if `aiEditCount` has been explicitly set.
+  public var hasAiEditCount: Bool {_storage._aiEditCount != nil}
+  /// Clears the value of `aiEditCount`. Subsequent reads from it will return its default value.
+  public mutating func clearAiEditCount() {_uniqueStorage()._aiEditCount = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1446,6 +1695,15 @@ public nonisolated struct Codexpulse_Core_V1_InvocationUsageResponse: @unchecked
   /// Clears the value of `coverage`. Subsequent reads from it will return its default value.
   public mutating func clearCoverage() {_uniqueStorage()._coverage = nil}
 
+  public var providerContext: Codexpulse_Core_V1_ProviderContext {
+    get {_storage._providerContext ?? Codexpulse_Core_V1_ProviderContext()}
+    set {_uniqueStorage()._providerContext = newValue}
+  }
+  /// Returns true if `providerContext` has been explicitly set.
+  public var hasProviderContext: Bool {_storage._providerContext != nil}
+  /// Clears the value of `providerContext`. Subsequent reads from it will return its default value.
+  public mutating func clearProviderContext() {_uniqueStorage()._providerContext = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1458,9 +1716,20 @@ public nonisolated struct Codexpulse_Core_V1_PricingCatalogCurrentRequest: Senda
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
+  public var provider: Codexpulse_Core_V1_ProviderScope {
+    get {_provider ?? Codexpulse_Core_V1_ProviderScope()}
+    set {_provider = newValue}
+  }
+  /// Returns true if `provider` has been explicitly set.
+  public var hasProvider: Bool {self._provider != nil}
+  /// Clears the value of `provider`. Subsequent reads from it will return its default value.
+  public mutating func clearProvider() {self._provider = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+
+  fileprivate var _provider: Codexpulse_Core_V1_ProviderScope? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_ModelReferencePrice: Sendable {
@@ -1497,6 +1766,15 @@ public nonisolated struct Codexpulse_Core_V1_ModelReferencePrice: Sendable {
   /// Clears the value of `outputMicros`. Subsequent reads from it will return its default value.
   public mutating func clearOutputMicros() {self._outputMicros = nil}
 
+  public var cacheWriteMicros: Codexpulse_Core_V1_NumericValue {
+    get {_cacheWriteMicros ?? Codexpulse_Core_V1_NumericValue()}
+    set {_cacheWriteMicros = newValue}
+  }
+  /// Returns true if `cacheWriteMicros` has been explicitly set.
+  public var hasCacheWriteMicros: Bool {self._cacheWriteMicros != nil}
+  /// Clears the value of `cacheWriteMicros`. Subsequent reads from it will return its default value.
+  public mutating func clearCacheWriteMicros() {self._cacheWriteMicros = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1504,6 +1782,7 @@ public nonisolated struct Codexpulse_Core_V1_ModelReferencePrice: Sendable {
   fileprivate var _inputMicros: Codexpulse_Core_V1_NumericValue? = nil
   fileprivate var _cachedInputMicros: Codexpulse_Core_V1_NumericValue? = nil
   fileprivate var _outputMicros: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _cacheWriteMicros: Codexpulse_Core_V1_NumericValue? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_PricingCatalogCurrentResponse: @unchecked Sendable {
@@ -1590,6 +1869,15 @@ public nonisolated struct Codexpulse_Core_V1_PricingCatalogCurrentResponse: @unc
     set {_uniqueStorage()._items = newValue}
   }
 
+  public var providerContext: Codexpulse_Core_V1_ProviderContext {
+    get {_storage._providerContext ?? Codexpulse_Core_V1_ProviderContext()}
+    set {_uniqueStorage()._providerContext = newValue}
+  }
+  /// Returns true if `providerContext` has been explicitly set.
+  public var hasProviderContext: Bool {_storage._providerContext != nil}
+  /// Clears the value of `providerContext`. Subsequent reads from it will return its default value.
+  public mutating func clearProviderContext() {_uniqueStorage()._providerContext = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1675,87 +1963,93 @@ public nonisolated struct Codexpulse_Core_V1_SessionItem: @unchecked Sendable {
   fileprivate var _storage = _StorageClass.defaultInstance
 }
 
-public nonisolated struct Codexpulse_Core_V1_SessionListResponse: Sendable {
+public nonisolated struct Codexpulse_Core_V1_SessionListResponse: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   public var meta: Codexpulse_Core_V1_ResponseMeta {
-    get {_meta ?? Codexpulse_Core_V1_ResponseMeta()}
-    set {_meta = newValue}
+    get {_storage._meta ?? Codexpulse_Core_V1_ResponseMeta()}
+    set {_uniqueStorage()._meta = newValue}
   }
   /// Returns true if `meta` has been explicitly set.
-  public var hasMeta: Bool {self._meta != nil}
+  public var hasMeta: Bool {_storage._meta != nil}
   /// Clears the value of `meta`. Subsequent reads from it will return its default value.
-  public mutating func clearMeta() {self._meta = nil}
+  public mutating func clearMeta() {_uniqueStorage()._meta = nil}
 
   public var pricingSource: String {
-    get {_pricingSource ?? String()}
-    set {_pricingSource = newValue}
+    get {_storage._pricingSource ?? String()}
+    set {_uniqueStorage()._pricingSource = newValue}
   }
   /// Returns true if `pricingSource` has been explicitly set.
-  public var hasPricingSource: Bool {self._pricingSource != nil}
+  public var hasPricingSource: Bool {_storage._pricingSource != nil}
   /// Clears the value of `pricingSource`. Subsequent reads from it will return its default value.
-  public mutating func clearPricingSource() {self._pricingSource = nil}
+  public mutating func clearPricingSource() {_uniqueStorage()._pricingSource = nil}
 
   public var currency: String {
-    get {_currency ?? String()}
-    set {_currency = newValue}
+    get {_storage._currency ?? String()}
+    set {_uniqueStorage()._currency = newValue}
   }
   /// Returns true if `currency` has been explicitly set.
-  public var hasCurrency: Bool {self._currency != nil}
+  public var hasCurrency: Bool {_storage._currency != nil}
   /// Clears the value of `currency`. Subsequent reads from it will return its default value.
-  public mutating func clearCurrency() {self._currency = nil}
+  public mutating func clearCurrency() {_uniqueStorage()._currency = nil}
 
-  public var items: [Codexpulse_Core_V1_SessionItem] = []
+  public var items: [Codexpulse_Core_V1_SessionItem] {
+    get {_storage._items}
+    set {_uniqueStorage()._items = newValue}
+  }
 
   public var matchedCount: Codexpulse_Core_V1_NumericValue {
-    get {_matchedCount ?? Codexpulse_Core_V1_NumericValue()}
-    set {_matchedCount = newValue}
+    get {_storage._matchedCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._matchedCount = newValue}
   }
   /// Returns true if `matchedCount` has been explicitly set.
-  public var hasMatchedCount: Bool {self._matchedCount != nil}
+  public var hasMatchedCount: Bool {_storage._matchedCount != nil}
   /// Clears the value of `matchedCount`. Subsequent reads from it will return its default value.
-  public mutating func clearMatchedCount() {self._matchedCount = nil}
+  public mutating func clearMatchedCount() {_uniqueStorage()._matchedCount = nil}
 
   public var matchedTotals: Codexpulse_Core_V1_UsageTotals {
-    get {_matchedTotals ?? Codexpulse_Core_V1_UsageTotals()}
-    set {_matchedTotals = newValue}
+    get {_storage._matchedTotals ?? Codexpulse_Core_V1_UsageTotals()}
+    set {_uniqueStorage()._matchedTotals = newValue}
   }
   /// Returns true if `matchedTotals` has been explicitly set.
-  public var hasMatchedTotals: Bool {self._matchedTotals != nil}
+  public var hasMatchedTotals: Bool {_storage._matchedTotals != nil}
   /// Clears the value of `matchedTotals`. Subsequent reads from it will return its default value.
-  public mutating func clearMatchedTotals() {self._matchedTotals = nil}
+  public mutating func clearMatchedTotals() {_uniqueStorage()._matchedTotals = nil}
 
   public var pageTotals: Codexpulse_Core_V1_UsageTotals {
-    get {_pageTotals ?? Codexpulse_Core_V1_UsageTotals()}
-    set {_pageTotals = newValue}
+    get {_storage._pageTotals ?? Codexpulse_Core_V1_UsageTotals()}
+    set {_uniqueStorage()._pageTotals = newValue}
   }
   /// Returns true if `pageTotals` has been explicitly set.
-  public var hasPageTotals: Bool {self._pageTotals != nil}
+  public var hasPageTotals: Bool {_storage._pageTotals != nil}
   /// Clears the value of `pageTotals`. Subsequent reads from it will return its default value.
-  public mutating func clearPageTotals() {self._pageTotals = nil}
+  public mutating func clearPageTotals() {_uniqueStorage()._pageTotals = nil}
 
   public var degradedReason: String {
-    get {_degradedReason ?? String()}
-    set {_degradedReason = newValue}
+    get {_storage._degradedReason ?? String()}
+    set {_uniqueStorage()._degradedReason = newValue}
   }
   /// Returns true if `degradedReason` has been explicitly set.
-  public var hasDegradedReason: Bool {self._degradedReason != nil}
+  public var hasDegradedReason: Bool {_storage._degradedReason != nil}
   /// Clears the value of `degradedReason`. Subsequent reads from it will return its default value.
-  public mutating func clearDegradedReason() {self._degradedReason = nil}
+  public mutating func clearDegradedReason() {_uniqueStorage()._degradedReason = nil}
+
+  public var providerContext: Codexpulse_Core_V1_ProviderContext {
+    get {_storage._providerContext ?? Codexpulse_Core_V1_ProviderContext()}
+    set {_uniqueStorage()._providerContext = newValue}
+  }
+  /// Returns true if `providerContext` has been explicitly set.
+  public var hasProviderContext: Bool {_storage._providerContext != nil}
+  /// Clears the value of `providerContext`. Subsequent reads from it will return its default value.
+  public mutating func clearProviderContext() {_uniqueStorage()._providerContext = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
-  fileprivate var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
-  fileprivate var _pricingSource: String? = nil
-  fileprivate var _currency: String? = nil
-  fileprivate var _matchedCount: Codexpulse_Core_V1_NumericValue? = nil
-  fileprivate var _matchedTotals: Codexpulse_Core_V1_UsageTotals? = nil
-  fileprivate var _pageTotals: Codexpulse_Core_V1_UsageTotals? = nil
-  fileprivate var _degradedReason: String? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 public nonisolated struct Codexpulse_Core_V1_SessionTurnItem: @unchecked Sendable {
@@ -1935,6 +2229,20 @@ public nonisolated struct Codexpulse_Core_V1_SessionDetailResponse: @unchecked S
   public var trendGranularity: String {
     get {_storage._trendGranularity}
     set {_uniqueStorage()._trendGranularity = newValue}
+  }
+
+  public var providerContext: Codexpulse_Core_V1_ProviderContext {
+    get {_storage._providerContext ?? Codexpulse_Core_V1_ProviderContext()}
+    set {_uniqueStorage()._providerContext = newValue}
+  }
+  /// Returns true if `providerContext` has been explicitly set.
+  public var hasProviderContext: Bool {_storage._providerContext != nil}
+  /// Clears the value of `providerContext`. Subsequent reads from it will return its default value.
+  public mutating func clearProviderContext() {_uniqueStorage()._providerContext = nil}
+
+  public var models: [Codexpulse_Core_V1_UsageModelItem] {
+    get {_storage._models}
+    set {_uniqueStorage()._models = newValue}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -2204,6 +2512,15 @@ public nonisolated struct Codexpulse_Core_V1_ProjectListResponse: @unchecked Sen
   /// Clears the value of `pageTotals`. Subsequent reads from it will return its default value.
   public mutating func clearPageTotals() {_uniqueStorage()._pageTotals = nil}
 
+  public var providerContext: Codexpulse_Core_V1_ProviderContext {
+    get {_storage._providerContext ?? Codexpulse_Core_V1_ProviderContext()}
+    set {_uniqueStorage()._providerContext = newValue}
+  }
+  /// Returns true if `providerContext` has been explicitly set.
+  public var hasProviderContext: Bool {_storage._providerContext != nil}
+  /// Clears the value of `providerContext`. Subsequent reads from it will return its default value.
+  public mutating func clearProviderContext() {_uniqueStorage()._providerContext = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -2313,6 +2630,15 @@ public nonisolated struct Codexpulse_Core_V1_ProjectDetailResponse: @unchecked S
   /// Clears the value of `globalTotals`. Subsequent reads from it will return its default value.
   public mutating func clearGlobalTotals() {_uniqueStorage()._globalTotals = nil}
 
+  public var providerContext: Codexpulse_Core_V1_ProviderContext {
+    get {_storage._providerContext ?? Codexpulse_Core_V1_ProviderContext()}
+    set {_uniqueStorage()._providerContext = newValue}
+  }
+  /// Returns true if `providerContext` has been explicitly set.
+  public var hasProviderContext: Bool {_storage._providerContext != nil}
+  /// Clears the value of `providerContext`. Subsequent reads from it will return its default value.
+  public mutating func clearProviderContext() {_uniqueStorage()._providerContext = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -2327,9 +2653,20 @@ public nonisolated struct Codexpulse_Core_V1_QuotaCurrentRequest: Sendable {
 
   public var evaluatedAtMs: Int64 = 0
 
+  public var provider: Codexpulse_Core_V1_ProviderScope {
+    get {_provider ?? Codexpulse_Core_V1_ProviderScope()}
+    set {_provider = newValue}
+  }
+  /// Returns true if `provider` has been explicitly set.
+  public var hasProvider: Bool {self._provider != nil}
+  /// Clears the value of `provider`. Subsequent reads from it will return its default value.
+  public mutating func clearProvider() {self._provider = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+
+  fileprivate var _provider: Codexpulse_Core_V1_ProviderScope? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_CurrentExplanation: Sendable {
@@ -3019,12 +3356,22 @@ public nonisolated struct Codexpulse_Core_V1_QuotaCurrentResponse: Sendable {
   /// Clears the value of `current`. Subsequent reads from it will return its default value.
   public mutating func clearCurrent() {self._current = nil}
 
+  public var providerContext: Codexpulse_Core_V1_ProviderContext {
+    get {_providerContext ?? Codexpulse_Core_V1_ProviderContext()}
+    set {_providerContext = newValue}
+  }
+  /// Returns true if `providerContext` has been explicitly set.
+  public var hasProviderContext: Bool {self._providerContext != nil}
+  /// Clears the value of `providerContext`. Subsequent reads from it will return its default value.
+  public mutating func clearProviderContext() {self._providerContext = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
   fileprivate var _current: Codexpulse_Core_V1_CurrentQuota? = nil
+  fileprivate var _providerContext: Codexpulse_Core_V1_ProviderContext? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_QuotaPaceRequest: Sendable {
@@ -3034,9 +3381,20 @@ public nonisolated struct Codexpulse_Core_V1_QuotaPaceRequest: Sendable {
 
   public var evaluatedAtMs: Int64 = 0
 
+  public var provider: Codexpulse_Core_V1_ProviderScope {
+    get {_provider ?? Codexpulse_Core_V1_ProviderScope()}
+    set {_provider = newValue}
+  }
+  /// Returns true if `provider` has been explicitly set.
+  public var hasProvider: Bool {self._provider != nil}
+  /// Clears the value of `provider`. Subsequent reads from it will return its default value.
+  public mutating func clearProvider() {self._provider = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+
+  fileprivate var _provider: Codexpulse_Core_V1_ProviderScope? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_QuotaPacePoint: Sendable {
@@ -3346,12 +3704,22 @@ public nonisolated struct Codexpulse_Core_V1_QuotaPaceResponse: Sendable {
   /// Clears the value of `pace`. Subsequent reads from it will return its default value.
   public mutating func clearPace() {self._pace = nil}
 
+  public var providerContext: Codexpulse_Core_V1_ProviderContext {
+    get {_providerContext ?? Codexpulse_Core_V1_ProviderContext()}
+    set {_providerContext = newValue}
+  }
+  /// Returns true if `providerContext` has been explicitly set.
+  public var hasProviderContext: Bool {self._providerContext != nil}
+  /// Clears the value of `providerContext`. Subsequent reads from it will return its default value.
+  public mutating func clearProviderContext() {self._providerContext = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
   fileprivate var _pace: Codexpulse_Core_V1_CurrentQuotaPace? = nil
+  fileprivate var _providerContext: Codexpulse_Core_V1_ProviderContext? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_QuotaRefreshRequest: Sendable {
@@ -3692,6 +4060,42 @@ public nonisolated struct Codexpulse_Core_V1_SourceItem: @unchecked Sendable {
   /// Clears the value of `recoveryAction`. Subsequent reads from it will return its default value.
   public mutating func clearRecoveryAction() {_uniqueStorage()._recoveryAction = nil}
 
+  public var coverageState: String {
+    get {_storage._coverageState ?? String()}
+    set {_uniqueStorage()._coverageState = newValue}
+  }
+  /// Returns true if `coverageState` has been explicitly set.
+  public var hasCoverageState: Bool {_storage._coverageState != nil}
+  /// Clears the value of `coverageState`. Subsequent reads from it will return its default value.
+  public mutating func clearCoverageState() {_uniqueStorage()._coverageState = nil}
+
+  public var rowCount: Codexpulse_Core_V1_NumericValue {
+    get {_storage._rowCount ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._rowCount = newValue}
+  }
+  /// Returns true if `rowCount` has been explicitly set.
+  public var hasRowCount: Bool {_storage._rowCount != nil}
+  /// Clears the value of `rowCount`. Subsequent reads from it will return its default value.
+  public mutating func clearRowCount() {_uniqueStorage()._rowCount = nil}
+
+  public var schemaVersion: Codexpulse_Core_V1_NumericValue {
+    get {_storage._schemaVersion ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._schemaVersion = newValue}
+  }
+  /// Returns true if `schemaVersion` has been explicitly set.
+  public var hasSchemaVersion: Bool {_storage._schemaVersion != nil}
+  /// Clears the value of `schemaVersion`. Subsequent reads from it will return its default value.
+  public mutating func clearSchemaVersion() {_uniqueStorage()._schemaVersion = nil}
+
+  public var checkpointKind: String {
+    get {_storage._checkpointKind ?? String()}
+    set {_uniqueStorage()._checkpointKind = newValue}
+  }
+  /// Returns true if `checkpointKind` has been explicitly set.
+  public var hasCheckpointKind: Bool {_storage._checkpointKind != nil}
+  /// Clears the value of `checkpointKind`. Subsequent reads from it will return its default value.
+  public mutating func clearCheckpointKind() {_uniqueStorage()._checkpointKind = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -3740,6 +4144,15 @@ public nonisolated struct Codexpulse_Core_V1_SourceSummary: Sendable {
   /// Clears the value of `attention`. Subsequent reads from it will return its default value.
   public mutating func clearAttention() {self._attention = nil}
 
+  public var providerSources: Codexpulse_Core_V1_NumericValue {
+    get {_providerSources ?? Codexpulse_Core_V1_NumericValue()}
+    set {_providerSources = newValue}
+  }
+  /// Returns true if `providerSources` has been explicitly set.
+  public var hasProviderSources: Bool {self._providerSources != nil}
+  /// Clears the value of `providerSources`. Subsequent reads from it will return its default value.
+  public mutating func clearProviderSources() {self._providerSources = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -3748,6 +4161,7 @@ public nonisolated struct Codexpulse_Core_V1_SourceSummary: Sendable {
   fileprivate var _localFiles: Codexpulse_Core_V1_NumericValue? = nil
   fileprivate var _onlineSources: Codexpulse_Core_V1_NumericValue? = nil
   fileprivate var _attention: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _providerSources: Codexpulse_Core_V1_NumericValue? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_SourceListResponse: @unchecked Sendable {
@@ -6655,7 +7069,7 @@ nonisolated extension Codexpulse_Core_V1_UTCTimeRange: SwiftProtobuf.Message, Sw
 
 nonisolated extension Codexpulse_Core_V1_QueryRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".QueryRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}page\0\u{1}sort\0\u{1}filters\0\u{3}time_range\0\u{3}exact_time_range\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}page\0\u{1}sort\0\u{1}filters\0\u{3}time_range\0\u{3}exact_time_range\0\u{1}provider\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -6668,6 +7082,7 @@ nonisolated extension Codexpulse_Core_V1_QueryRequest: SwiftProtobuf.Message, Sw
       case 3: try { try decoder.decodeRepeatedMessageField(value: &self.filters) }()
       case 4: try { try decoder.decodeSingularMessageField(value: &self._timeRange) }()
       case 5: try { try decoder.decodeSingularMessageField(value: &self._exactTimeRange) }()
+      case 6: try { try decoder.decodeSingularMessageField(value: &self._provider) }()
       default: break
       }
     }
@@ -6693,6 +7108,9 @@ nonisolated extension Codexpulse_Core_V1_QueryRequest: SwiftProtobuf.Message, Sw
     try { if let v = self._exactTimeRange {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
     } }()
+    try { if let v = self._provider {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -6702,6 +7120,136 @@ nonisolated extension Codexpulse_Core_V1_QueryRequest: SwiftProtobuf.Message, Sw
     if lhs.filters != rhs.filters {return false}
     if lhs._timeRange != rhs._timeRange {return false}
     if lhs._exactTimeRange != rhs._exactTimeRange {return false}
+    if lhs._provider != rhs._provider {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ProviderScope: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ProviderScope"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}provider\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.provider) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.provider.isEmpty {
+      try visitor.visitSingularStringField(value: self.provider, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ProviderScope, rhs: Codexpulse_Core_V1_ProviderScope) -> Bool {
+    if lhs.provider != rhs.provider {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ProviderCoverage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ProviderCoverage"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}capability\0\u{1}state\0\u{1}source\0\u{1}reason\0\u{3}item_count\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.capability) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.state) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.source) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.reason) }()
+      case 5: try { try decoder.decodeSingularInt64Field(value: &self._itemCount) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.capability.isEmpty {
+      try visitor.visitSingularStringField(value: self.capability, fieldNumber: 1)
+    }
+    if !self.state.isEmpty {
+      try visitor.visitSingularStringField(value: self.state, fieldNumber: 2)
+    }
+    if !self.source.isEmpty {
+      try visitor.visitSingularStringField(value: self.source, fieldNumber: 3)
+    }
+    if !self.reason.isEmpty {
+      try visitor.visitSingularStringField(value: self.reason, fieldNumber: 4)
+    }
+    try { if let v = self._itemCount {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 5)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ProviderCoverage, rhs: Codexpulse_Core_V1_ProviderCoverage) -> Bool {
+    if lhs.capability != rhs.capability {return false}
+    if lhs.state != rhs.state {return false}
+    if lhs.source != rhs.source {return false}
+    if lhs.reason != rhs.reason {return false}
+    if lhs._itemCount != rhs._itemCount {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ProviderContext: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ProviderContext"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}effective_provider\0\u{1}sources\0\u{1}capabilities\0\u{1}coverage\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.effectiveProvider) }()
+      case 2: try { try decoder.decodeRepeatedStringField(value: &self.sources) }()
+      case 3: try { try decoder.decodeRepeatedStringField(value: &self.capabilities) }()
+      case 4: try { try decoder.decodeRepeatedMessageField(value: &self.coverage) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.effectiveProvider.isEmpty {
+      try visitor.visitSingularStringField(value: self.effectiveProvider, fieldNumber: 1)
+    }
+    if !self.sources.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.sources, fieldNumber: 2)
+    }
+    if !self.capabilities.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.capabilities, fieldNumber: 3)
+    }
+    if !self.coverage.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.coverage, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ProviderContext, rhs: Codexpulse_Core_V1_ProviderContext) -> Bool {
+    if lhs.effectiveProvider != rhs.effectiveProvider {return false}
+    if lhs.sources != rhs.sources {return false}
+    if lhs.capabilities != rhs.capabilities {return false}
+    if lhs.coverage != rhs.coverage {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -6709,7 +7257,7 @@ nonisolated extension Codexpulse_Core_V1_QueryRequest: SwiftProtobuf.Message, Sw
 
 nonisolated extension Codexpulse_Core_V1_UsageCostRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".UsageCostRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}range\0\u{1}granularity\0\u{3}exact_range\0\u{3}include_activity_distribution\0\u{3}token_totals_only\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}range\0\u{1}granularity\0\u{3}exact_range\0\u{3}include_activity_distribution\0\u{3}token_totals_only\0\u{1}provider\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -6722,6 +7270,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostRequest: SwiftProtobuf.Message
       case 3: try { try decoder.decodeSingularMessageField(value: &self._exactRange) }()
       case 4: try { try decoder.decodeSingularBoolField(value: &self.includeActivityDistribution) }()
       case 5: try { try decoder.decodeSingularBoolField(value: &self.tokenTotalsOnly) }()
+      case 6: try { try decoder.decodeSingularMessageField(value: &self._provider) }()
       default: break
       }
     }
@@ -6747,6 +7296,9 @@ nonisolated extension Codexpulse_Core_V1_UsageCostRequest: SwiftProtobuf.Message
     if self.tokenTotalsOnly != false {
       try visitor.visitSingularBoolField(value: self.tokenTotalsOnly, fieldNumber: 5)
     }
+    try { if let v = self._provider {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -6756,6 +7308,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostRequest: SwiftProtobuf.Message
     if lhs._exactRange != rhs._exactRange {return false}
     if lhs.includeActivityDistribution != rhs.includeActivityDistribution {return false}
     if lhs.tokenTotalsOnly != rhs.tokenTotalsOnly {return false}
+    if lhs._provider != rhs._provider {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -6797,7 +7350,7 @@ nonisolated extension Codexpulse_Core_V1_ListSessionsRequest: SwiftProtobuf.Mess
 
 nonisolated extension Codexpulse_Core_V1_SessionDetailRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SessionDetailRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}reporting_timezone\0\u{3}turn_page\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}reporting_timezone\0\u{3}turn_page\0\u{1}provider\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -6808,6 +7361,7 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailRequest: SwiftProtobuf.Mes
       case 1: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self._reportingTimezone) }()
       case 3: try { try decoder.decodeSingularMessageField(value: &self._turnPage) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._provider) }()
       default: break
       }
     }
@@ -6827,6 +7381,9 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailRequest: SwiftProtobuf.Mes
     try { if let v = self._turnPage {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
     } }()
+    try { if let v = self._provider {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -6834,6 +7391,7 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailRequest: SwiftProtobuf.Mes
     if lhs.sessionID != rhs.sessionID {return false}
     if lhs._reportingTimezone != rhs._reportingTimezone {return false}
     if lhs._turnPage != rhs._turnPage {return false}
+    if lhs._provider != rhs._provider {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -6875,7 +7433,7 @@ nonisolated extension Codexpulse_Core_V1_ListProjectsRequest: SwiftProtobuf.Mess
 
 nonisolated extension Codexpulse_Core_V1_ProjectDetailRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ProjectDetailRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}dimension_key\0\u{1}range\0\u{3}session_page\0\u{3}model_page\0\u{3}exact_range\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}dimension_key\0\u{1}range\0\u{3}session_page\0\u{3}model_page\0\u{3}exact_range\0\u{1}provider\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -6888,6 +7446,7 @@ nonisolated extension Codexpulse_Core_V1_ProjectDetailRequest: SwiftProtobuf.Mes
       case 3: try { try decoder.decodeSingularMessageField(value: &self._sessionPage) }()
       case 4: try { try decoder.decodeSingularMessageField(value: &self._modelPage) }()
       case 5: try { try decoder.decodeSingularMessageField(value: &self._exactRange) }()
+      case 6: try { try decoder.decodeSingularMessageField(value: &self._provider) }()
       default: break
       }
     }
@@ -6913,6 +7472,9 @@ nonisolated extension Codexpulse_Core_V1_ProjectDetailRequest: SwiftProtobuf.Mes
     try { if let v = self._exactRange {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
     } }()
+    try { if let v = self._provider {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -6922,6 +7484,7 @@ nonisolated extension Codexpulse_Core_V1_ProjectDetailRequest: SwiftProtobuf.Mes
     if lhs._sessionPage != rhs._sessionPage {return false}
     if lhs._modelPage != rhs._modelPage {return false}
     if lhs._exactRange != rhs._exactRange {return false}
+    if lhs._provider != rhs._provider {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -7430,9 +7993,121 @@ nonisolated extension Codexpulse_Core_V1_ActivityDistribution: SwiftProtobuf.Mes
   }
 }
 
+nonisolated extension Codexpulse_Core_V1_CursorBillingSummary: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CursorBillingSummary"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}billing_cycle_start_at_ms\0\u{3}billing_cycle_end_at_ms\0\u{3}total_spend_usd_micros\0\u{3}included_usd_micros\0\u{3}bonus_usd_micros\0\u{3}remaining_usd_micros\0\u{3}limit_usd_micros\0")
+
+  fileprivate class _StorageClass {
+    var _billingCycleStartAtMs: Codexpulse_Core_V1_NumericValue? = nil
+    var _billingCycleEndAtMs: Codexpulse_Core_V1_NumericValue? = nil
+    var _totalSpendUsdMicros: Codexpulse_Core_V1_NumericValue? = nil
+    var _includedUsdMicros: Codexpulse_Core_V1_NumericValue? = nil
+    var _bonusUsdMicros: Codexpulse_Core_V1_NumericValue? = nil
+    var _remainingUsdMicros: Codexpulse_Core_V1_NumericValue? = nil
+    var _limitUsdMicros: Codexpulse_Core_V1_NumericValue? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _billingCycleStartAtMs = source._billingCycleStartAtMs
+      _billingCycleEndAtMs = source._billingCycleEndAtMs
+      _totalSpendUsdMicros = source._totalSpendUsdMicros
+      _includedUsdMicros = source._includedUsdMicros
+      _bonusUsdMicros = source._bonusUsdMicros
+      _remainingUsdMicros = source._remainingUsdMicros
+      _limitUsdMicros = source._limitUsdMicros
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularMessageField(value: &_storage._billingCycleStartAtMs) }()
+        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._billingCycleEndAtMs) }()
+        case 3: try { try decoder.decodeSingularMessageField(value: &_storage._totalSpendUsdMicros) }()
+        case 4: try { try decoder.decodeSingularMessageField(value: &_storage._includedUsdMicros) }()
+        case 5: try { try decoder.decodeSingularMessageField(value: &_storage._bonusUsdMicros) }()
+        case 6: try { try decoder.decodeSingularMessageField(value: &_storage._remainingUsdMicros) }()
+        case 7: try { try decoder.decodeSingularMessageField(value: &_storage._limitUsdMicros) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      try { if let v = _storage._billingCycleStartAtMs {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+      } }()
+      try { if let v = _storage._billingCycleEndAtMs {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+      } }()
+      try { if let v = _storage._totalSpendUsdMicros {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+      } }()
+      try { if let v = _storage._includedUsdMicros {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+      } }()
+      try { if let v = _storage._bonusUsdMicros {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+      } }()
+      try { if let v = _storage._remainingUsdMicros {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+      } }()
+      try { if let v = _storage._limitUsdMicros {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
+      } }()
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_CursorBillingSummary, rhs: Codexpulse_Core_V1_CursorBillingSummary) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._billingCycleStartAtMs != rhs_storage._billingCycleStartAtMs {return false}
+        if _storage._billingCycleEndAtMs != rhs_storage._billingCycleEndAtMs {return false}
+        if _storage._totalSpendUsdMicros != rhs_storage._totalSpendUsdMicros {return false}
+        if _storage._includedUsdMicros != rhs_storage._includedUsdMicros {return false}
+        if _storage._bonusUsdMicros != rhs_storage._bonusUsdMicros {return false}
+        if _storage._remainingUsdMicros != rhs_storage._remainingUsdMicros {return false}
+        if _storage._limitUsdMicros != rhs_storage._limitUsdMicros {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".UsageCostResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}range\0\u{3}reporting_time_zone\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{1}totals\0\u{1}trend\0\u{3}unpriced_reasons\0\u{3}degraded_reason\0\u{1}models\0\u{3}activity_distribution\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}range\0\u{3}reporting_time_zone\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{1}totals\0\u{1}trend\0\u{3}unpriced_reasons\0\u{3}degraded_reason\0\u{1}models\0\u{3}activity_distribution\0\u{3}provider_context\0\u{3}reported_usd_micros\0\u{3}data_as_of_ms\0\u{3}reported_cost_source\0\u{3}cursor_token_fee_usd_micros\0\u{3}cursor_billing\0")
 
   fileprivate class _StorageClass {
     var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
@@ -7447,6 +8122,12 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
     var _degradedReason: String? = nil
     var _models: [Codexpulse_Core_V1_UsageModelItem] = []
     var _activityDistribution: Codexpulse_Core_V1_ActivityDistribution? = nil
+    var _providerContext: Codexpulse_Core_V1_ProviderContext? = nil
+    var _reportedUsdMicros: Codexpulse_Core_V1_NumericValue? = nil
+    var _dataAsOfMs: Codexpulse_Core_V1_NumericValue? = nil
+    var _reportedCostSource: String? = nil
+    var _cursorTokenFeeUsdMicros: Codexpulse_Core_V1_NumericValue? = nil
+    var _cursorBilling: Codexpulse_Core_V1_CursorBillingSummary? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -7469,6 +8150,12 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
       _degradedReason = source._degradedReason
       _models = source._models
       _activityDistribution = source._activityDistribution
+      _providerContext = source._providerContext
+      _reportedUsdMicros = source._reportedUsdMicros
+      _dataAsOfMs = source._dataAsOfMs
+      _reportedCostSource = source._reportedCostSource
+      _cursorTokenFeeUsdMicros = source._cursorTokenFeeUsdMicros
+      _cursorBilling = source._cursorBilling
     }
   }
 
@@ -7499,6 +8186,12 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
         case 10: try { try decoder.decodeSingularStringField(value: &_storage._degradedReason) }()
         case 11: try { try decoder.decodeRepeatedMessageField(value: &_storage._models) }()
         case 12: try { try decoder.decodeSingularMessageField(value: &_storage._activityDistribution) }()
+        case 13: try { try decoder.decodeSingularMessageField(value: &_storage._providerContext) }()
+        case 14: try { try decoder.decodeSingularMessageField(value: &_storage._reportedUsdMicros) }()
+        case 15: try { try decoder.decodeSingularMessageField(value: &_storage._dataAsOfMs) }()
+        case 16: try { try decoder.decodeSingularStringField(value: &_storage._reportedCostSource) }()
+        case 17: try { try decoder.decodeSingularMessageField(value: &_storage._cursorTokenFeeUsdMicros) }()
+        case 18: try { try decoder.decodeSingularMessageField(value: &_storage._cursorBilling) }()
         default: break
         }
       }
@@ -7547,6 +8240,24 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
       try { if let v = _storage._activityDistribution {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 12)
       } }()
+      try { if let v = _storage._providerContext {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 13)
+      } }()
+      try { if let v = _storage._reportedUsdMicros {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 14)
+      } }()
+      try { if let v = _storage._dataAsOfMs {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 15)
+      } }()
+      try { if let v = _storage._reportedCostSource {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 16)
+      } }()
+      try { if let v = _storage._cursorTokenFeeUsdMicros {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 17)
+      } }()
+      try { if let v = _storage._cursorBilling {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 18)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -7568,6 +8279,12 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
         if _storage._degradedReason != rhs_storage._degradedReason {return false}
         if _storage._models != rhs_storage._models {return false}
         if _storage._activityDistribution != rhs_storage._activityDistribution {return false}
+        if _storage._providerContext != rhs_storage._providerContext {return false}
+        if _storage._reportedUsdMicros != rhs_storage._reportedUsdMicros {return false}
+        if _storage._dataAsOfMs != rhs_storage._dataAsOfMs {return false}
+        if _storage._reportedCostSource != rhs_storage._reportedCostSource {return false}
+        if _storage._cursorTokenFeeUsdMicros != rhs_storage._cursorTokenFeeUsdMicros {return false}
+        if _storage._cursorBilling != rhs_storage._cursorBilling {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -7579,7 +8296,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
 
 nonisolated extension Codexpulse_Core_V1_InvocationUsageRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".InvocationUsageRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}range\0\u{1}granularity\0\u{3}source_class\0\u{3}top_limit\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}range\0\u{1}granularity\0\u{3}source_class\0\u{3}top_limit\0\u{1}provider\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -7591,6 +8308,7 @@ nonisolated extension Codexpulse_Core_V1_InvocationUsageRequest: SwiftProtobuf.M
       case 2: try { try decoder.decodeSingularStringField(value: &self.granularity) }()
       case 3: try { try decoder.decodeSingularStringField(value: &self.sourceClass) }()
       case 4: try { try decoder.decodeSingularInt32Field(value: &self.topLimit) }()
+      case 5: try { try decoder.decodeSingularMessageField(value: &self._provider) }()
       default: break
       }
     }
@@ -7613,6 +8331,9 @@ nonisolated extension Codexpulse_Core_V1_InvocationUsageRequest: SwiftProtobuf.M
     if self.topLimit != 0 {
       try visitor.visitSingularInt32Field(value: self.topLimit, fieldNumber: 4)
     }
+    try { if let v = self._provider {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -7621,6 +8342,7 @@ nonisolated extension Codexpulse_Core_V1_InvocationUsageRequest: SwiftProtobuf.M
     if lhs.granularity != rhs.granularity {return false}
     if lhs.sourceClass != rhs.sourceClass {return false}
     if lhs.topLimit != rhs.topLimit {return false}
+    if lhs._provider != rhs._provider {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -7628,7 +8350,7 @@ nonisolated extension Codexpulse_Core_V1_InvocationUsageRequest: SwiftProtobuf.M
 
 nonisolated extension Codexpulse_Core_V1_InvocationTotals: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".InvocationTotals"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}tool_call_count\0\u{3}distinct_tool_count\0\u{3}skill_activity_count\0\u{3}distinct_skill_count\0\u{3}tool_failure_count\0\u{3}session_count\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}tool_call_count\0\u{3}distinct_tool_count\0\u{3}skill_activity_count\0\u{3}distinct_skill_count\0\u{3}tool_failure_count\0\u{3}session_count\0\u{3}ai_edit_count\0")
 
   fileprivate class _StorageClass {
     var _toolCallCount: Codexpulse_Core_V1_NumericValue? = nil
@@ -7637,6 +8359,7 @@ nonisolated extension Codexpulse_Core_V1_InvocationTotals: SwiftProtobuf.Message
     var _distinctSkillCount: Codexpulse_Core_V1_NumericValue? = nil
     var _toolFailureCount: Codexpulse_Core_V1_NumericValue? = nil
     var _sessionCount: Codexpulse_Core_V1_NumericValue? = nil
+    var _aiEditCount: Codexpulse_Core_V1_NumericValue? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -7653,6 +8376,7 @@ nonisolated extension Codexpulse_Core_V1_InvocationTotals: SwiftProtobuf.Message
       _distinctSkillCount = source._distinctSkillCount
       _toolFailureCount = source._toolFailureCount
       _sessionCount = source._sessionCount
+      _aiEditCount = source._aiEditCount
     }
   }
 
@@ -7677,6 +8401,7 @@ nonisolated extension Codexpulse_Core_V1_InvocationTotals: SwiftProtobuf.Message
         case 4: try { try decoder.decodeSingularMessageField(value: &_storage._distinctSkillCount) }()
         case 5: try { try decoder.decodeSingularMessageField(value: &_storage._toolFailureCount) }()
         case 6: try { try decoder.decodeSingularMessageField(value: &_storage._sessionCount) }()
+        case 7: try { try decoder.decodeSingularMessageField(value: &_storage._aiEditCount) }()
         default: break
         }
       }
@@ -7707,6 +8432,9 @@ nonisolated extension Codexpulse_Core_V1_InvocationTotals: SwiftProtobuf.Message
       try { if let v = _storage._sessionCount {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
       } }()
+      try { if let v = _storage._aiEditCount {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -7722,6 +8450,7 @@ nonisolated extension Codexpulse_Core_V1_InvocationTotals: SwiftProtobuf.Message
         if _storage._distinctSkillCount != rhs_storage._distinctSkillCount {return false}
         if _storage._toolFailureCount != rhs_storage._toolFailureCount {return false}
         if _storage._sessionCount != rhs_storage._sessionCount {return false}
+        if _storage._aiEditCount != rhs_storage._aiEditCount {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -8011,7 +8740,7 @@ nonisolated extension Codexpulse_Core_V1_InvocationCoverage: SwiftProtobuf.Messa
 
 nonisolated extension Codexpulse_Core_V1_InvocationUsageResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".InvocationUsageResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}range\0\u{1}granularity\0\u{3}source_class\0\u{1}totals\0\u{1}trend\0\u{1}tools\0\u{1}skills\0\u{1}coverage\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}range\0\u{1}granularity\0\u{3}source_class\0\u{1}totals\0\u{1}trend\0\u{1}tools\0\u{1}skills\0\u{1}coverage\0\u{3}provider_context\0")
 
   fileprivate class _StorageClass {
     var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
@@ -8023,6 +8752,7 @@ nonisolated extension Codexpulse_Core_V1_InvocationUsageResponse: SwiftProtobuf.
     var _tools: [Codexpulse_Core_V1_ToolUsageItem] = []
     var _skills: [Codexpulse_Core_V1_SkillUsageItem] = []
     var _coverage: Codexpulse_Core_V1_InvocationCoverage? = nil
+    var _providerContext: Codexpulse_Core_V1_ProviderContext? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -8042,6 +8772,7 @@ nonisolated extension Codexpulse_Core_V1_InvocationUsageResponse: SwiftProtobuf.
       _tools = source._tools
       _skills = source._skills
       _coverage = source._coverage
+      _providerContext = source._providerContext
     }
   }
 
@@ -8069,6 +8800,7 @@ nonisolated extension Codexpulse_Core_V1_InvocationUsageResponse: SwiftProtobuf.
         case 7: try { try decoder.decodeRepeatedMessageField(value: &_storage._tools) }()
         case 8: try { try decoder.decodeRepeatedMessageField(value: &_storage._skills) }()
         case 9: try { try decoder.decodeSingularMessageField(value: &_storage._coverage) }()
+        case 10: try { try decoder.decodeSingularMessageField(value: &_storage._providerContext) }()
         default: break
         }
       }
@@ -8108,6 +8840,9 @@ nonisolated extension Codexpulse_Core_V1_InvocationUsageResponse: SwiftProtobuf.
       try { if let v = _storage._coverage {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
       } }()
+      try { if let v = _storage._providerContext {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 10)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -8126,6 +8861,7 @@ nonisolated extension Codexpulse_Core_V1_InvocationUsageResponse: SwiftProtobuf.
         if _storage._tools != rhs_storage._tools {return false}
         if _storage._skills != rhs_storage._skills {return false}
         if _storage._coverage != rhs_storage._coverage {return false}
+        if _storage._providerContext != rhs_storage._providerContext {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -8137,18 +8873,33 @@ nonisolated extension Codexpulse_Core_V1_InvocationUsageResponse: SwiftProtobuf.
 
 nonisolated extension Codexpulse_Core_V1_PricingCatalogCurrentRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".PricingCatalogCurrentRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}provider\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    // Load everything into unknown fields
-    while try decoder.nextFieldNumber() != nil {}
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._provider) }()
+      default: break
+      }
+    }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._provider {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Codexpulse_Core_V1_PricingCatalogCurrentRequest, rhs: Codexpulse_Core_V1_PricingCatalogCurrentRequest) -> Bool {
+    if lhs._provider != rhs._provider {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -8156,7 +8907,7 @@ nonisolated extension Codexpulse_Core_V1_PricingCatalogCurrentRequest: SwiftProt
 
 nonisolated extension Codexpulse_Core_V1_ModelReferencePrice: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ModelReferencePrice"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}model_id\0\u{3}input_micros\0\u{3}cached_input_micros\0\u{3}output_micros\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}model_id\0\u{3}input_micros\0\u{3}cached_input_micros\0\u{3}output_micros\0\u{3}cache_write_micros\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -8168,6 +8919,7 @@ nonisolated extension Codexpulse_Core_V1_ModelReferencePrice: SwiftProtobuf.Mess
       case 2: try { try decoder.decodeSingularMessageField(value: &self._inputMicros) }()
       case 3: try { try decoder.decodeSingularMessageField(value: &self._cachedInputMicros) }()
       case 4: try { try decoder.decodeSingularMessageField(value: &self._outputMicros) }()
+      case 5: try { try decoder.decodeSingularMessageField(value: &self._cacheWriteMicros) }()
       default: break
       }
     }
@@ -8190,6 +8942,9 @@ nonisolated extension Codexpulse_Core_V1_ModelReferencePrice: SwiftProtobuf.Mess
     try { if let v = self._outputMicros {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
     } }()
+    try { if let v = self._cacheWriteMicros {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -8198,6 +8953,7 @@ nonisolated extension Codexpulse_Core_V1_ModelReferencePrice: SwiftProtobuf.Mess
     if lhs._inputMicros != rhs._inputMicros {return false}
     if lhs._cachedInputMicros != rhs._cachedInputMicros {return false}
     if lhs._outputMicros != rhs._outputMicros {return false}
+    if lhs._cacheWriteMicros != rhs._cacheWriteMicros {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -8205,7 +8961,7 @@ nonisolated extension Codexpulse_Core_V1_ModelReferencePrice: SwiftProtobuf.Mess
 
 nonisolated extension Codexpulse_Core_V1_PricingCatalogCurrentResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".PricingCatalogCurrentResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{3}evaluated_at_ms\0\u{3}pricing_version\0\u{1}source\0\u{1}currency\0\u{1}basis\0\u{3}unit_tokens\0\u{3}effective_from_ms\0\u{3}verified_at_ms\0\u{3}source_url\0\u{1}items\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{3}evaluated_at_ms\0\u{3}pricing_version\0\u{1}source\0\u{1}currency\0\u{1}basis\0\u{3}unit_tokens\0\u{3}effective_from_ms\0\u{3}verified_at_ms\0\u{3}source_url\0\u{1}items\0\u{3}provider_context\0")
 
   fileprivate class _StorageClass {
     var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
@@ -8219,6 +8975,7 @@ nonisolated extension Codexpulse_Core_V1_PricingCatalogCurrentResponse: SwiftPro
     var _verifiedAtMs: Codexpulse_Core_V1_NumericValue? = nil
     var _sourceURL: String? = nil
     var _items: [Codexpulse_Core_V1_ModelReferencePrice] = []
+    var _providerContext: Codexpulse_Core_V1_ProviderContext? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -8240,6 +8997,7 @@ nonisolated extension Codexpulse_Core_V1_PricingCatalogCurrentResponse: SwiftPro
       _verifiedAtMs = source._verifiedAtMs
       _sourceURL = source._sourceURL
       _items = source._items
+      _providerContext = source._providerContext
     }
   }
 
@@ -8269,6 +9027,7 @@ nonisolated extension Codexpulse_Core_V1_PricingCatalogCurrentResponse: SwiftPro
         case 9: try { try decoder.decodeSingularMessageField(value: &_storage._verifiedAtMs) }()
         case 10: try { try decoder.decodeSingularStringField(value: &_storage._sourceURL) }()
         case 11: try { try decoder.decodeRepeatedMessageField(value: &_storage._items) }()
+        case 12: try { try decoder.decodeSingularMessageField(value: &_storage._providerContext) }()
         default: break
         }
       }
@@ -8314,6 +9073,9 @@ nonisolated extension Codexpulse_Core_V1_PricingCatalogCurrentResponse: SwiftPro
       if !_storage._items.isEmpty {
         try visitor.visitRepeatedMessageField(value: _storage._items, fieldNumber: 11)
       }
+      try { if let v = _storage._providerContext {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 12)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -8334,6 +9096,7 @@ nonisolated extension Codexpulse_Core_V1_PricingCatalogCurrentResponse: SwiftPro
         if _storage._verifiedAtMs != rhs_storage._verifiedAtMs {return false}
         if _storage._sourceURL != rhs_storage._sourceURL {return false}
         if _storage._items != rhs_storage._items {return false}
+        if _storage._providerContext != rhs_storage._providerContext {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -8478,68 +9241,125 @@ nonisolated extension Codexpulse_Core_V1_SessionItem: SwiftProtobuf.Message, Swi
 
 nonisolated extension Codexpulse_Core_V1_SessionListResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SessionListResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{3}pricing_source\0\u{1}currency\0\u{1}items\0\u{3}matched_count\0\u{3}matched_totals\0\u{3}page_totals\0\u{3}degraded_reason\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{3}pricing_source\0\u{1}currency\0\u{1}items\0\u{3}matched_count\0\u{3}matched_totals\0\u{3}page_totals\0\u{3}degraded_reason\0\u{3}provider_context\0")
+
+  fileprivate class _StorageClass {
+    var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
+    var _pricingSource: String? = nil
+    var _currency: String? = nil
+    var _items: [Codexpulse_Core_V1_SessionItem] = []
+    var _matchedCount: Codexpulse_Core_V1_NumericValue? = nil
+    var _matchedTotals: Codexpulse_Core_V1_UsageTotals? = nil
+    var _pageTotals: Codexpulse_Core_V1_UsageTotals? = nil
+    var _degradedReason: String? = nil
+    var _providerContext: Codexpulse_Core_V1_ProviderContext? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _meta = source._meta
+      _pricingSource = source._pricingSource
+      _currency = source._currency
+      _items = source._items
+      _matchedCount = source._matchedCount
+      _matchedTotals = source._matchedTotals
+      _pageTotals = source._pageTotals
+      _degradedReason = source._degradedReason
+      _providerContext = source._providerContext
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularMessageField(value: &self._meta) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self._pricingSource) }()
-      case 3: try { try decoder.decodeSingularStringField(value: &self._currency) }()
-      case 4: try { try decoder.decodeRepeatedMessageField(value: &self.items) }()
-      case 5: try { try decoder.decodeSingularMessageField(value: &self._matchedCount) }()
-      case 6: try { try decoder.decodeSingularMessageField(value: &self._matchedTotals) }()
-      case 7: try { try decoder.decodeSingularMessageField(value: &self._pageTotals) }()
-      case 8: try { try decoder.decodeSingularStringField(value: &self._degradedReason) }()
-      default: break
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularMessageField(value: &_storage._meta) }()
+        case 2: try { try decoder.decodeSingularStringField(value: &_storage._pricingSource) }()
+        case 3: try { try decoder.decodeSingularStringField(value: &_storage._currency) }()
+        case 4: try { try decoder.decodeRepeatedMessageField(value: &_storage._items) }()
+        case 5: try { try decoder.decodeSingularMessageField(value: &_storage._matchedCount) }()
+        case 6: try { try decoder.decodeSingularMessageField(value: &_storage._matchedTotals) }()
+        case 7: try { try decoder.decodeSingularMessageField(value: &_storage._pageTotals) }()
+        case 8: try { try decoder.decodeSingularStringField(value: &_storage._degradedReason) }()
+        case 9: try { try decoder.decodeSingularMessageField(value: &_storage._providerContext) }()
+        default: break
+        }
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    // The use of inline closures is to circumvent an issue where the compiler
-    // allocates stack space for every if/case branch local when no optimizations
-    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-    // https://github.com/apple/swift-protobuf/issues/1182
-    try { if let v = self._meta {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
-    } }()
-    try { if let v = self._pricingSource {
-      try visitor.visitSingularStringField(value: v, fieldNumber: 2)
-    } }()
-    try { if let v = self._currency {
-      try visitor.visitSingularStringField(value: v, fieldNumber: 3)
-    } }()
-    if !self.items.isEmpty {
-      try visitor.visitRepeatedMessageField(value: self.items, fieldNumber: 4)
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      try { if let v = _storage._meta {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+      } }()
+      try { if let v = _storage._pricingSource {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 2)
+      } }()
+      try { if let v = _storage._currency {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 3)
+      } }()
+      if !_storage._items.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._items, fieldNumber: 4)
+      }
+      try { if let v = _storage._matchedCount {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+      } }()
+      try { if let v = _storage._matchedTotals {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+      } }()
+      try { if let v = _storage._pageTotals {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
+      } }()
+      try { if let v = _storage._degradedReason {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 8)
+      } }()
+      try { if let v = _storage._providerContext {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
+      } }()
     }
-    try { if let v = self._matchedCount {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
-    } }()
-    try { if let v = self._matchedTotals {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
-    } }()
-    try { if let v = self._pageTotals {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
-    } }()
-    try { if let v = self._degradedReason {
-      try visitor.visitSingularStringField(value: v, fieldNumber: 8)
-    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Codexpulse_Core_V1_SessionListResponse, rhs: Codexpulse_Core_V1_SessionListResponse) -> Bool {
-    if lhs._meta != rhs._meta {return false}
-    if lhs._pricingSource != rhs._pricingSource {return false}
-    if lhs._currency != rhs._currency {return false}
-    if lhs.items != rhs.items {return false}
-    if lhs._matchedCount != rhs._matchedCount {return false}
-    if lhs._matchedTotals != rhs._matchedTotals {return false}
-    if lhs._pageTotals != rhs._pageTotals {return false}
-    if lhs._degradedReason != rhs._degradedReason {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._meta != rhs_storage._meta {return false}
+        if _storage._pricingSource != rhs_storage._pricingSource {return false}
+        if _storage._currency != rhs_storage._currency {return false}
+        if _storage._items != rhs_storage._items {return false}
+        if _storage._matchedCount != rhs_storage._matchedCount {return false}
+        if _storage._matchedTotals != rhs_storage._matchedTotals {return false}
+        if _storage._pageTotals != rhs_storage._pageTotals {return false}
+        if _storage._degradedReason != rhs_storage._degradedReason {return false}
+        if _storage._providerContext != rhs_storage._providerContext {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -8680,7 +9500,7 @@ nonisolated extension Codexpulse_Core_V1_SessionTurnItem: SwiftProtobuf.Message,
 
 nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SessionDetailResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{3}unpriced_reasons\0\u{1}item\0\u{3}turn_page\0\u{1}turns\0\u{3}degraded_reason\0\u{3}reporting_time_zone\0\u{2}\u{2}trend\0\u{3}trend_granularity\0\u{b}daily\0\u{c}\u{b}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{3}unpriced_reasons\0\u{1}item\0\u{3}turn_page\0\u{1}turns\0\u{3}degraded_reason\0\u{3}reporting_time_zone\0\u{2}\u{2}trend\0\u{3}trend_granularity\0\u{3}provider_context\0\u{1}models\0\u{b}daily\0\u{c}\u{b}\u{1}")
 
   fileprivate class _StorageClass {
     var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
@@ -8695,6 +9515,8 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Me
     var _reportingTimeZone: String = String()
     var _trend: [Codexpulse_Core_V1_TrendPoint] = []
     var _trendGranularity: String = String()
+    var _providerContext: Codexpulse_Core_V1_ProviderContext? = nil
+    var _models: [Codexpulse_Core_V1_UsageModelItem] = []
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -8717,6 +9539,8 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Me
       _reportingTimeZone = source._reportingTimeZone
       _trend = source._trend
       _trendGranularity = source._trendGranularity
+      _providerContext = source._providerContext
+      _models = source._models
     }
   }
 
@@ -8747,6 +9571,8 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Me
         case 10: try { try decoder.decodeSingularStringField(value: &_storage._reportingTimeZone) }()
         case 12: try { try decoder.decodeRepeatedMessageField(value: &_storage._trend) }()
         case 13: try { try decoder.decodeSingularStringField(value: &_storage._trendGranularity) }()
+        case 14: try { try decoder.decodeSingularMessageField(value: &_storage._providerContext) }()
+        case 15: try { try decoder.decodeRepeatedMessageField(value: &_storage._models) }()
         default: break
         }
       }
@@ -8795,6 +9621,12 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Me
       if !_storage._trendGranularity.isEmpty {
         try visitor.visitSingularStringField(value: _storage._trendGranularity, fieldNumber: 13)
       }
+      try { if let v = _storage._providerContext {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 14)
+      } }()
+      if !_storage._models.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._models, fieldNumber: 15)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -8816,6 +9648,8 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Me
         if _storage._reportingTimeZone != rhs_storage._reportingTimeZone {return false}
         if _storage._trend != rhs_storage._trend {return false}
         if _storage._trendGranularity != rhs_storage._trendGranularity {return false}
+        if _storage._providerContext != rhs_storage._providerContext {return false}
+        if _storage._models != rhs_storage._models {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -9053,7 +9887,7 @@ nonisolated extension Codexpulse_Core_V1_ProjectModelItem: SwiftProtobuf.Message
 
 nonisolated extension Codexpulse_Core_V1_ProjectListResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ProjectListResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}range\0\u{3}reporting_time_zone\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{1}items\0\u{3}matched_count\0\u{3}global_totals\0\u{3}matched_totals\0\u{3}page_totals\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}range\0\u{3}reporting_time_zone\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{1}items\0\u{3}matched_count\0\u{3}global_totals\0\u{3}matched_totals\0\u{3}page_totals\0\u{3}provider_context\0")
 
   fileprivate class _StorageClass {
     var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
@@ -9067,6 +9901,7 @@ nonisolated extension Codexpulse_Core_V1_ProjectListResponse: SwiftProtobuf.Mess
     var _globalTotals: Codexpulse_Core_V1_UsageTotals? = nil
     var _matchedTotals: Codexpulse_Core_V1_UsageTotals? = nil
     var _pageTotals: Codexpulse_Core_V1_UsageTotals? = nil
+    var _providerContext: Codexpulse_Core_V1_ProviderContext? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -9088,6 +9923,7 @@ nonisolated extension Codexpulse_Core_V1_ProjectListResponse: SwiftProtobuf.Mess
       _globalTotals = source._globalTotals
       _matchedTotals = source._matchedTotals
       _pageTotals = source._pageTotals
+      _providerContext = source._providerContext
     }
   }
 
@@ -9117,6 +9953,7 @@ nonisolated extension Codexpulse_Core_V1_ProjectListResponse: SwiftProtobuf.Mess
         case 9: try { try decoder.decodeSingularMessageField(value: &_storage._globalTotals) }()
         case 10: try { try decoder.decodeSingularMessageField(value: &_storage._matchedTotals) }()
         case 11: try { try decoder.decodeSingularMessageField(value: &_storage._pageTotals) }()
+        case 12: try { try decoder.decodeSingularMessageField(value: &_storage._providerContext) }()
         default: break
         }
       }
@@ -9162,6 +9999,9 @@ nonisolated extension Codexpulse_Core_V1_ProjectListResponse: SwiftProtobuf.Mess
       try { if let v = _storage._pageTotals {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 11)
       } }()
+      try { if let v = _storage._providerContext {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 12)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -9182,6 +10022,7 @@ nonisolated extension Codexpulse_Core_V1_ProjectListResponse: SwiftProtobuf.Mess
         if _storage._globalTotals != rhs_storage._globalTotals {return false}
         if _storage._matchedTotals != rhs_storage._matchedTotals {return false}
         if _storage._pageTotals != rhs_storage._pageTotals {return false}
+        if _storage._providerContext != rhs_storage._providerContext {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -9193,7 +10034,7 @@ nonisolated extension Codexpulse_Core_V1_ProjectListResponse: SwiftProtobuf.Mess
 
 nonisolated extension Codexpulse_Core_V1_ProjectDetailResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ProjectDetailResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}range\0\u{3}reporting_time_zone\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{1}item\0\u{1}daily\0\u{3}session_page\0\u{1}sessions\0\u{3}model_page\0\u{1}models\0\u{3}global_totals\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}range\0\u{3}reporting_time_zone\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{1}item\0\u{1}daily\0\u{3}session_page\0\u{1}sessions\0\u{3}model_page\0\u{1}models\0\u{3}global_totals\0\u{3}provider_context\0")
 
   fileprivate class _StorageClass {
     var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
@@ -9209,6 +10050,7 @@ nonisolated extension Codexpulse_Core_V1_ProjectDetailResponse: SwiftProtobuf.Me
     var _modelPage: Codexpulse_Core_V1_PageInfo? = nil
     var _models: [Codexpulse_Core_V1_ProjectModelItem] = []
     var _globalTotals: Codexpulse_Core_V1_UsageTotals? = nil
+    var _providerContext: Codexpulse_Core_V1_ProviderContext? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -9232,6 +10074,7 @@ nonisolated extension Codexpulse_Core_V1_ProjectDetailResponse: SwiftProtobuf.Me
       _modelPage = source._modelPage
       _models = source._models
       _globalTotals = source._globalTotals
+      _providerContext = source._providerContext
     }
   }
 
@@ -9263,6 +10106,7 @@ nonisolated extension Codexpulse_Core_V1_ProjectDetailResponse: SwiftProtobuf.Me
         case 11: try { try decoder.decodeSingularMessageField(value: &_storage._modelPage) }()
         case 12: try { try decoder.decodeRepeatedMessageField(value: &_storage._models) }()
         case 13: try { try decoder.decodeSingularMessageField(value: &_storage._globalTotals) }()
+        case 14: try { try decoder.decodeSingularMessageField(value: &_storage._providerContext) }()
         default: break
         }
       }
@@ -9314,6 +10158,9 @@ nonisolated extension Codexpulse_Core_V1_ProjectDetailResponse: SwiftProtobuf.Me
       try { if let v = _storage._globalTotals {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 13)
       } }()
+      try { if let v = _storage._providerContext {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 14)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -9336,6 +10183,7 @@ nonisolated extension Codexpulse_Core_V1_ProjectDetailResponse: SwiftProtobuf.Me
         if _storage._modelPage != rhs_storage._modelPage {return false}
         if _storage._models != rhs_storage._models {return false}
         if _storage._globalTotals != rhs_storage._globalTotals {return false}
+        if _storage._providerContext != rhs_storage._providerContext {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -9347,7 +10195,7 @@ nonisolated extension Codexpulse_Core_V1_ProjectDetailResponse: SwiftProtobuf.Me
 
 nonisolated extension Codexpulse_Core_V1_QuotaCurrentRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".QuotaCurrentRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}evaluated_at_ms\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}evaluated_at_ms\0\u{1}provider\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -9356,20 +10204,29 @@ nonisolated extension Codexpulse_Core_V1_QuotaCurrentRequest: SwiftProtobuf.Mess
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularInt64Field(value: &self.evaluatedAtMs) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._provider) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
     if self.evaluatedAtMs != 0 {
       try visitor.visitSingularInt64Field(value: self.evaluatedAtMs, fieldNumber: 1)
     }
+    try { if let v = self._provider {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Codexpulse_Core_V1_QuotaCurrentRequest, rhs: Codexpulse_Core_V1_QuotaCurrentRequest) -> Bool {
     if lhs.evaluatedAtMs != rhs.evaluatedAtMs {return false}
+    if lhs._provider != rhs._provider {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -10141,7 +10998,7 @@ nonisolated extension Codexpulse_Core_V1_CurrentQuota: SwiftProtobuf.Message, Sw
 
 nonisolated extension Codexpulse_Core_V1_QuotaCurrentResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".QuotaCurrentResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}current\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}current\0\u{3}provider_context\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -10151,6 +11008,7 @@ nonisolated extension Codexpulse_Core_V1_QuotaCurrentResponse: SwiftProtobuf.Mes
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularMessageField(value: &self._meta) }()
       case 2: try { try decoder.decodeSingularMessageField(value: &self._current) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._providerContext) }()
       default: break
       }
     }
@@ -10167,12 +11025,16 @@ nonisolated extension Codexpulse_Core_V1_QuotaCurrentResponse: SwiftProtobuf.Mes
     try { if let v = self._current {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
     } }()
+    try { if let v = self._providerContext {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Codexpulse_Core_V1_QuotaCurrentResponse, rhs: Codexpulse_Core_V1_QuotaCurrentResponse) -> Bool {
     if lhs._meta != rhs._meta {return false}
     if lhs._current != rhs._current {return false}
+    if lhs._providerContext != rhs._providerContext {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -10180,7 +11042,7 @@ nonisolated extension Codexpulse_Core_V1_QuotaCurrentResponse: SwiftProtobuf.Mes
 
 nonisolated extension Codexpulse_Core_V1_QuotaPaceRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".QuotaPaceRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}evaluated_at_ms\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}evaluated_at_ms\0\u{1}provider\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -10189,20 +11051,29 @@ nonisolated extension Codexpulse_Core_V1_QuotaPaceRequest: SwiftProtobuf.Message
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularInt64Field(value: &self.evaluatedAtMs) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._provider) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
     if self.evaluatedAtMs != 0 {
       try visitor.visitSingularInt64Field(value: self.evaluatedAtMs, fieldNumber: 1)
     }
+    try { if let v = self._provider {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Codexpulse_Core_V1_QuotaPaceRequest, rhs: Codexpulse_Core_V1_QuotaPaceRequest) -> Bool {
     if lhs.evaluatedAtMs != rhs.evaluatedAtMs {return false}
+    if lhs._provider != rhs._provider {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -10660,7 +11531,7 @@ nonisolated extension Codexpulse_Core_V1_CurrentQuotaPace: SwiftProtobuf.Message
 
 nonisolated extension Codexpulse_Core_V1_QuotaPaceResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".QuotaPaceResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}pace\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}pace\0\u{3}provider_context\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -10670,6 +11541,7 @@ nonisolated extension Codexpulse_Core_V1_QuotaPaceResponse: SwiftProtobuf.Messag
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularMessageField(value: &self._meta) }()
       case 2: try { try decoder.decodeSingularMessageField(value: &self._pace) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._providerContext) }()
       default: break
       }
     }
@@ -10686,12 +11558,16 @@ nonisolated extension Codexpulse_Core_V1_QuotaPaceResponse: SwiftProtobuf.Messag
     try { if let v = self._pace {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
     } }()
+    try { if let v = self._providerContext {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Codexpulse_Core_V1_QuotaPaceResponse, rhs: Codexpulse_Core_V1_QuotaPaceResponse) -> Bool {
     if lhs._meta != rhs._meta {return false}
     if lhs._pace != rhs._pace {return false}
+    if lhs._providerContext != rhs._providerContext {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -11077,7 +11953,7 @@ nonisolated extension Codexpulse_Core_V1_RecoveryAction: SwiftProtobuf.Message, 
 
 nonisolated extension Codexpulse_Core_V1_SourceItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SourceItem"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}source_key\0\u{1}kind\0\u{1}provider\0\u{3}source_type\0\u{1}state\0\u{3}size_bytes\0\u{3}parsed_bytes\0\u{3}last_scanned_at_ms\0\u{3}last_attempt_at_ms\0\u{3}last_success_at_ms\0\u{3}next_due_at_ms\0\u{3}consecutive_failures\0\u{3}error_class\0\u{3}failure_code\0\u{3}updated_at_ms\0\u{3}recovery_action\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}source_key\0\u{1}kind\0\u{1}provider\0\u{3}source_type\0\u{1}state\0\u{3}size_bytes\0\u{3}parsed_bytes\0\u{3}last_scanned_at_ms\0\u{3}last_attempt_at_ms\0\u{3}last_success_at_ms\0\u{3}next_due_at_ms\0\u{3}consecutive_failures\0\u{3}error_class\0\u{3}failure_code\0\u{3}updated_at_ms\0\u{3}recovery_action\0\u{3}coverage_state\0\u{3}row_count\0\u{3}schema_version\0\u{3}checkpoint_kind\0")
 
   fileprivate class _StorageClass {
     var _sourceKey: String = String()
@@ -11096,6 +11972,10 @@ nonisolated extension Codexpulse_Core_V1_SourceItem: SwiftProtobuf.Message, Swif
     var _failureCode: String? = nil
     var _updatedAtMs: Codexpulse_Core_V1_NumericValue? = nil
     var _recoveryAction: Codexpulse_Core_V1_RecoveryAction? = nil
+    var _coverageState: String? = nil
+    var _rowCount: Codexpulse_Core_V1_NumericValue? = nil
+    var _schemaVersion: Codexpulse_Core_V1_NumericValue? = nil
+    var _checkpointKind: String? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -11122,6 +12002,10 @@ nonisolated extension Codexpulse_Core_V1_SourceItem: SwiftProtobuf.Message, Swif
       _failureCode = source._failureCode
       _updatedAtMs = source._updatedAtMs
       _recoveryAction = source._recoveryAction
+      _coverageState = source._coverageState
+      _rowCount = source._rowCount
+      _schemaVersion = source._schemaVersion
+      _checkpointKind = source._checkpointKind
     }
   }
 
@@ -11156,6 +12040,10 @@ nonisolated extension Codexpulse_Core_V1_SourceItem: SwiftProtobuf.Message, Swif
         case 14: try { try decoder.decodeSingularStringField(value: &_storage._failureCode) }()
         case 15: try { try decoder.decodeSingularMessageField(value: &_storage._updatedAtMs) }()
         case 16: try { try decoder.decodeSingularMessageField(value: &_storage._recoveryAction) }()
+        case 17: try { try decoder.decodeSingularStringField(value: &_storage._coverageState) }()
+        case 18: try { try decoder.decodeSingularMessageField(value: &_storage._rowCount) }()
+        case 19: try { try decoder.decodeSingularMessageField(value: &_storage._schemaVersion) }()
+        case 20: try { try decoder.decodeSingularStringField(value: &_storage._checkpointKind) }()
         default: break
         }
       }
@@ -11216,6 +12104,18 @@ nonisolated extension Codexpulse_Core_V1_SourceItem: SwiftProtobuf.Message, Swif
       try { if let v = _storage._recoveryAction {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 16)
       } }()
+      try { if let v = _storage._coverageState {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 17)
+      } }()
+      try { if let v = _storage._rowCount {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 18)
+      } }()
+      try { if let v = _storage._schemaVersion {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 19)
+      } }()
+      try { if let v = _storage._checkpointKind {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 20)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -11241,6 +12141,10 @@ nonisolated extension Codexpulse_Core_V1_SourceItem: SwiftProtobuf.Message, Swif
         if _storage._failureCode != rhs_storage._failureCode {return false}
         if _storage._updatedAtMs != rhs_storage._updatedAtMs {return false}
         if _storage._recoveryAction != rhs_storage._recoveryAction {return false}
+        if _storage._coverageState != rhs_storage._coverageState {return false}
+        if _storage._rowCount != rhs_storage._rowCount {return false}
+        if _storage._schemaVersion != rhs_storage._schemaVersion {return false}
+        if _storage._checkpointKind != rhs_storage._checkpointKind {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -11252,7 +12156,7 @@ nonisolated extension Codexpulse_Core_V1_SourceItem: SwiftProtobuf.Message, Swif
 
 nonisolated extension Codexpulse_Core_V1_SourceSummary: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SourceSummary"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}total\0\u{3}local_files\0\u{3}online_sources\0\u{1}attention\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}total\0\u{3}local_files\0\u{3}online_sources\0\u{1}attention\0\u{3}provider_sources\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -11264,6 +12168,7 @@ nonisolated extension Codexpulse_Core_V1_SourceSummary: SwiftProtobuf.Message, S
       case 2: try { try decoder.decodeSingularMessageField(value: &self._localFiles) }()
       case 3: try { try decoder.decodeSingularMessageField(value: &self._onlineSources) }()
       case 4: try { try decoder.decodeSingularMessageField(value: &self._attention) }()
+      case 5: try { try decoder.decodeSingularMessageField(value: &self._providerSources) }()
       default: break
       }
     }
@@ -11286,6 +12191,9 @@ nonisolated extension Codexpulse_Core_V1_SourceSummary: SwiftProtobuf.Message, S
     try { if let v = self._attention {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
     } }()
+    try { if let v = self._providerSources {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -11294,6 +12202,7 @@ nonisolated extension Codexpulse_Core_V1_SourceSummary: SwiftProtobuf.Message, S
     if lhs._localFiles != rhs._localFiles {return false}
     if lhs._onlineSources != rhs._onlineSources {return false}
     if lhs._attention != rhs._attention {return false}
+    if lhs._providerSources != rhs._providerSources {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

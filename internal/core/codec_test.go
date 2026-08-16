@@ -24,6 +24,15 @@ func TestEncodeResponsePreservesNumericPresenceAndPartialStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	reported, err := basequery.KnownNumeric(1_500_000, basequery.NumericMicroUSD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataAsOf, err := basequery.KnownNumeric(1_753_056_000_000, basequery.NumericMilliseconds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reportedSource := "cursor.dashboard"
 	meta, err := basequery.NewResponseMeta(basequery.ResponsePartial, nil, []basequery.ErrorCode{basequery.ErrorPartial})
 	if err != nil {
 		t.Fatal(err)
@@ -31,8 +40,8 @@ func TestEncodeResponsePreservesNumericPresenceAndPartialStatus(t *testing.T) {
 
 	got := &corev1.UsageCostResponse{}
 	err = EncodeResponse(usagecost.UsageCostResponse{
-		Meta:   meta,
-		Totals: withUsageTotals(t, zero, unknown),
+		Meta: meta, Totals: withUsageTotals(t, zero, unknown),
+		ReportedUSDMicros: &reported, ReportedCostSource: &reportedSource, DataAsOfMS: &dataAsOf,
 	}, got)
 	if err != nil {
 		t.Fatalf("encodeResponse() error = %v", err)
@@ -49,6 +58,11 @@ func TestEncodeResponsePreservesNumericPresenceAndPartialStatus(t *testing.T) {
 		got.Totals.EstimatedUsdMicros.UnknownReason == nil ||
 		*got.Totals.EstimatedUsdMicros.UnknownReason != "not_computed" {
 		t.Fatalf("estimated_usd_micros = %#v, want unknown not_computed", got.Totals.EstimatedUsdMicros)
+	}
+	if got.ReportedUsdMicros == nil || got.ReportedUsdMicros.GetValue() != 1_500_000 ||
+		got.GetReportedCostSource() != reportedSource || got.DataAsOfMs == nil ||
+		got.DataAsOfMs.GetValue() != 1_753_056_000_000 {
+		t.Fatalf("reported cost metadata = %#v, %#v, %#v", got.ReportedUsdMicros, got.ReportedCostSource, got.DataAsOfMs)
 	}
 }
 
@@ -257,6 +271,7 @@ func TestEncodeResponseMapsAdaptiveSessionTrend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	modelName := "cursor-model"
 	response := usagecost.SessionDetailResponse{
 		Item: usagecost.SessionItem{
 			LastActivityAt: timestamp,
@@ -266,6 +281,11 @@ func TestEncodeResponseMapsAdaptiveSessionTrend(t *testing.T) {
 		Trend: []usagecost.TrendPoint{{
 			Key: "1970-01-01T00:00", StartAtMS: timestamp, EndAtMS: timestamp,
 			Totals: withUsageTotals(t, tokens, unknownCost),
+		}},
+		Models: []usagecost.UsageModelItem{{
+			DimensionKey: "cursor-model",
+			Model:        usagecost.AttributionValue{DisplayName: &modelName},
+			Totals:       withUsageTotals(t, tokens, unknownCost),
 		}},
 	}
 	target := &corev1.SessionDetailResponse{}
@@ -277,7 +297,8 @@ func TestEncodeResponseMapsAdaptiveSessionTrend(t *testing.T) {
 		t.Fatalf("protojson.Marshal(SessionDetailResponse) error = %v", err)
 	}
 	if !strings.Contains(string(encoded), `"trendGranularity":"hour"`) ||
-		!strings.Contains(string(encoded), `"trend":[`) {
+		!strings.Contains(string(encoded), `"trend":[`) ||
+		!strings.Contains(string(encoded), `"models":[`) {
 		t.Fatalf("SessionDetailResponse contract = %s", encoded)
 	}
 }

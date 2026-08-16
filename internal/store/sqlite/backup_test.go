@@ -68,6 +68,13 @@ func TestBackupCopiesCommittedWALDataWithPrivatePermissionsAndProgress(t *testin
 	if got := fileInfo.Mode().Perm(); got != 0o600 {
 		t.Fatalf("backup mode = %#o, want 0600", got)
 	}
+	partials, err := filepath.Glob(filepath.Join(filepath.Dir(destination), ".before-v1.db.partial-*"))
+	if err != nil {
+		t.Fatalf("glob successful partial backups: %v", err)
+	}
+	if len(partials) != 0 {
+		t.Fatalf("successful backup left partial artifacts: %v", partials)
+	}
 
 	backupDatabase, err := sql.Open(driverName, destination)
 	if err != nil {

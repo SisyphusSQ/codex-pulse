@@ -498,7 +498,7 @@ func TestSessionDetailExposesBoundedTurnRequestResponseContract(t *testing.T) {
 		t.Fatal("SessionDetailRequest missing TurnPage")
 	}
 	response := reflect.TypeOf(SessionDetailResponse{})
-	for _, field := range []string{"TurnPage", "Turns"} {
+	for _, field := range []string{"TurnPage", "Turns", "Models"} {
 		if _, found := response.FieldByName(field); !found {
 			t.Fatalf("SessionDetailResponse missing %s", field)
 		}

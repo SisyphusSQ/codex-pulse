@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
@@ -51,6 +52,29 @@ func TestServiceDelegatesInvocationUsage(t *testing.T) {
 	}
 	if query.request.TopLimit != 17 {
 		t.Fatalf("delegated request = %#v", query.request)
+	}
+}
+
+func TestServiceDelegatesProviderScopedQuota(t *testing.T) {
+	t.Parallel()
+
+	quota := &agentQuotaQueryStub{}
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageQueryStub{}, InvocationUsage: &invocationUsageQueryStub{},
+		PricingCatalog: pricingCatalogQueryStub{}, RuntimeInfo: runtimeQueryStub{}, QuotaInfo: quota,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := service.QuotaCurrent(
+		context.Background(), agentprovider.Scope{Provider: agentprovider.Cursor}, 123,
+	)
+	if err != nil {
+		t.Fatalf("QuotaCurrent() error = %v", err)
+	}
+	if quota.scope.Provider != agentprovider.Cursor || quota.atMS != 123 ||
+		response.ProviderContext.EffectiveProvider != agentprovider.Cursor {
+		t.Fatalf("delegated quota = scope %#v, at %d, response %#v", quota.scope, quota.atMS, response)
 	}
 }
 
@@ -176,7 +200,7 @@ type accountSnapshotQueryStub struct {
 
 type pricingCatalogQueryStub struct{}
 
-func (pricingCatalogQueryStub) Current(context.Context) (pricingcatalog.CurrentResponse, error) {
+func (pricingCatalogQueryStub) Current(context.Context, agentprovider.Scope) (pricingcatalog.CurrentResponse, error) {
 	return pricingcatalog.CurrentResponse{}, nil
 }
 
@@ -193,6 +217,33 @@ func (runtimeQueryStub) QuotaCurrent(context.Context, int64) (runtimeinfo.QuotaC
 
 func (runtimeQueryStub) QuotaPace(context.Context, int64) (runtimeinfo.QuotaPaceResponse, error) {
 	return runtimeinfo.QuotaPaceResponse{}, nil
+}
+
+type agentQuotaQueryStub struct {
+	scope agentprovider.Scope
+	atMS  int64
+}
+
+func (stub *agentQuotaQueryStub) QuotaCurrent(
+	_ context.Context,
+	scope agentprovider.Scope,
+	atMS int64,
+) (runtimeinfo.QuotaCurrentResponse, error) {
+	stub.scope, stub.atMS = scope, atMS
+	return runtimeinfo.QuotaCurrentResponse{
+		ProviderContext: agentprovider.Context{EffectiveProvider: scope.Provider},
+	}, nil
+}
+
+func (stub *agentQuotaQueryStub) QuotaPace(
+	_ context.Context,
+	scope agentprovider.Scope,
+	atMS int64,
+) (runtimeinfo.QuotaPaceResponse, error) {
+	stub.scope, stub.atMS = scope, atMS
+	return runtimeinfo.QuotaPaceResponse{
+		ProviderContext: agentprovider.Context{EffectiveProvider: scope.Provider},
+	}, nil
 }
 
 func (runtimeQueryStub) ListSources(context.Context, basequery.Request) (runtimeinfo.SourceListResponse, error) {

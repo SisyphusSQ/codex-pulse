@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 )
@@ -31,7 +32,7 @@ func NewService(reader Reader, now func() time.Time) (*Service, error) {
 }
 
 // Current 返回当前完整 API 参考价格目录；它不表示 Codex 订阅的实际账单。
-func (service *Service) Current(ctx context.Context) (CurrentResponse, error) {
+func (service *Service) Current(ctx context.Context, scope agentprovider.Scope) (CurrentResponse, error) {
 	if service == nil || service.reader == nil || service.now == nil {
 		return CurrentResponse{}, ErrInvalidService
 	}
@@ -41,11 +42,18 @@ func (service *Service) Current(ctx context.Context) (CurrentResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return CurrentResponse{}, err
 	}
+	provider, err := agentprovider.Normalize(scope.Provider)
+	if err != nil {
+		return CurrentResponse{}, basequery.NewValidationFailure("provider", err)
+	}
 	evaluatedAtMS := service.now().UnixMilli()
 	if evaluatedAtMS < 0 || evaluatedAtMS > basequery.JavaScriptMaxSafeInteger {
 		return CurrentResponse{}, basequery.NewUnavailableFailure(
 			fmt.Errorf("pricing catalog clock is outside supported range"),
 		)
+	}
+	if provider == agentprovider.Cursor {
+		return currentCursorResponse(evaluatedAtMS)
 	}
 	catalog, err := service.reader.PricingCatalogAt(
 		ctx,
@@ -94,9 +102,13 @@ func currentResponse(catalog pricing.CatalogVersion, evaluatedAtMS int64) (Curre
 		if err != nil {
 			return CurrentResponse{}, err
 		}
+		cacheWrite, err := referenceRate(nil)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
 		items = append(items, ModelReferencePrice{
 			ModelID: model.ModelPattern, InputMicros: input,
-			CachedInputMicros: cached, OutputMicros: output,
+			CachedInputMicros: cached, OutputMicros: output, CacheWriteMicros: cacheWrite,
 		})
 	}
 	sort.Slice(items, func(left, right int) bool {
@@ -124,11 +136,81 @@ func currentResponse(catalog pricing.CatalogVersion, evaluatedAtMS int64) (Curre
 		return CurrentResponse{}, err
 	}
 	return CurrentResponse{
-		Meta: meta, EvaluatedAtMS: evaluated, PricingVersion: catalog.PricingVersion,
+		ProviderContext: pricingProviderContext(agentprovider.Codex, SourceOpenAIAPI, int64(len(items))),
+		Meta:            meta, EvaluatedAtMS: evaluated, PricingVersion: catalog.PricingVersion,
 		Source: catalog.Source, Currency: catalog.Currency, Basis: BasisStandard,
 		UnitTokens: unitTokens, EffectiveFromMS: effective, VerifiedAtMS: verified,
 		SourceURL: sourceURL, Items: items,
 	}, nil
+}
+
+func currentCursorResponse(evaluatedAtMS int64) (CurrentResponse, error) {
+	rates := pricing.BuiltinCursorModelRates()
+	items := make([]ModelReferencePrice, 0, len(rates))
+	for _, rate := range rates {
+		input, err := referenceRate(&rate.InputMicros)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		cacheWrite, err := referenceRate(rate.CacheWriteMicros)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		cacheRead, err := referenceRate(&rate.CacheReadMicros)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		output, err := referenceRate(&rate.OutputMicros)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		items = append(items, ModelReferencePrice{
+			ModelID: rate.ModelID, InputMicros: input, CacheWriteMicros: cacheWrite,
+			CachedInputMicros: cacheRead, OutputMicros: output,
+		})
+	}
+	sort.Slice(items, func(left, right int) bool { return items[left].ModelID < items[right].ModelID })
+
+	meta, err := basequery.NewResponseMeta(basequery.ResponseComplete, nil, nil)
+	if err != nil {
+		return CurrentResponse{}, err
+	}
+	evaluated, err := basequery.KnownNumeric(evaluatedAtMS, basequery.NumericMilliseconds)
+	if err != nil {
+		return CurrentResponse{}, unavailableCatalog()
+	}
+	unitTokens, err := basequery.KnownNumeric(UnitTokens, basequery.NumericTokens)
+	if err != nil {
+		return CurrentResponse{}, unavailableCatalog()
+	}
+	effective, err := basequery.KnownNumeric(0, basequery.NumericMilliseconds)
+	if err != nil {
+		return CurrentResponse{}, unavailableCatalog()
+	}
+	verified, err := basequery.KnownNumeric(pricing.CursorPricingVerifiedAtMS, basequery.NumericMilliseconds)
+	if err != nil {
+		return CurrentResponse{}, unavailableCatalog()
+	}
+	sourceURL := pricing.CursorPricingSourceURL
+	return CurrentResponse{
+		ProviderContext: pricingProviderContext(agentprovider.Cursor, SourceCursorDocs, int64(len(items))),
+		Meta:            meta, EvaluatedAtMS: evaluated, PricingVersion: pricing.CursorPricingVersion,
+		Source: SourceCursorDocs, Currency: CurrencyUSD, Basis: BasisCursor,
+		UnitTokens: unitTokens, EffectiveFromMS: effective, VerifiedAtMS: verified,
+		SourceURL: &sourceURL, Items: items,
+	}, nil
+}
+
+func pricingProviderContext(provider, source string, itemCount int64) agentprovider.Context {
+	return agentprovider.Context{
+		EffectiveProvider: provider,
+		Sources:           []string{source},
+		Capabilities:      []string{"model_reference_pricing"},
+		Coverage: []agentprovider.Coverage{{
+			Capability: "model_reference_pricing", State: "available", Source: source,
+			Reason: "published_model_rates", ItemCount: &itemCount,
+		}},
+	}
 }
 
 func referenceRate(value *int64) (basequery.NumericValue, error) {

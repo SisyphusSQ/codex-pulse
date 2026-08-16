@@ -22,6 +22,11 @@ func (service *Service) ListSources(
 	if err != nil {
 		return SourceListResponse{}, err
 	}
+	if service.providerSources != nil {
+		if err := service.providerSources.Refresh(ctx); err != nil {
+			return SourceListResponse{}, runtimeReadFailure(err)
+		}
+	}
 	validated, err := validateRuntimeRequest(ctx, service.sourceSpec, request, "updatedAt")
 	if err != nil {
 		return SourceListResponse{}, err
@@ -59,6 +64,11 @@ func (service *Service) Source(
 	ctx, err := queryContext(ctx)
 	if err != nil {
 		return SourceDetailResponse{}, err
+	}
+	if service.providerSources != nil {
+		if err := service.providerSources.Refresh(ctx); err != nil {
+			return SourceDetailResponse{}, runtimeReadFailure(err)
+		}
 	}
 	if !validSourceKey(request.SourceKey) {
 		return SourceDetailResponse{}, basequery.NewValidationFailure("sourceKey", nil)
@@ -104,6 +114,12 @@ func applySourceFilters(filters []basequery.FilterTerm, target *store.RuntimeSou
 					}
 					seenKinds[store.RuntimeSourceOnline] = struct{}{}
 					target.Kinds = append(target.Kinds, store.RuntimeSourceOnline)
+				case SourceProvider:
+					if _, exists := seenKinds[store.RuntimeSourceProvider]; exists {
+						return basequery.NewValidationFailure("filters.values", nil)
+					}
+					seenKinds[store.RuntimeSourceProvider] = struct{}{}
+					target.Kinds = append(target.Kinds, store.RuntimeSourceProvider)
 				default:
 					return basequery.NewValidationFailure("filters.values", nil)
 				}
@@ -131,7 +147,8 @@ func validSourceState(value string) bool {
 	case string(store.SourceFileDiscovered), string(store.SourceFileActive),
 		string(store.SourceFileCompleted), string(store.SourceFileUnavailable),
 		string(store.SourceFileFailed), string(store.SourceFreshnessUnknown),
-		string(store.SourceFreshnessCurrent), string(store.SourceFreshnessStale):
+		string(store.SourceFreshnessCurrent), string(store.SourceFreshnessStale),
+		"available", "partial", "not_configured":
 		return true
 	default:
 		return false
@@ -142,7 +159,7 @@ func validSourceKey(value string) bool {
 	if len(value) < 2 || len(value) > 512 {
 		return false
 	}
-	for _, prefix := range []string{"local_file:", "online:"} {
+	for _, prefix := range []string{"local_file:", "online:", "provider_source:"} {
 		if strings.HasPrefix(value, prefix) && len(value) > len(prefix) {
 			return validOpaqueIdentity(strings.TrimPrefix(value, prefix))
 		}
@@ -158,9 +175,9 @@ func mapSourceList(
 	if page.MatchedCount < 0 || page.MatchedCount != page.Summary.Total ||
 		page.Summary.LocalFiles < 0 || page.Summary.OnlineSources < 0 ||
 		page.Summary.Attention < 0 || page.Summary.Attention > page.Summary.Total ||
-		page.Summary.LocalFiles+page.Summary.OnlineSources != page.Summary.Total ||
+		page.Summary.LocalFiles+page.Summary.OnlineSources+page.Summary.ProviderSources != page.Summary.Total ||
 		len(page.Records) > limit || (page.NextCursor != nil && len(page.Records) == 0) ||
-		len(page.UnavailableKinds) > 2 {
+		len(page.UnavailableKinds) > 3 {
 		return SourceListResponse{}, basequery.NewUnavailableFailure(errors.New("source page is inconsistent"))
 	}
 	unavailableKinds, err := mapUnavailableSourceKinds(page.UnavailableKinds)
@@ -219,6 +236,8 @@ func mapUnavailableSourceKinds(values []store.RuntimeSourceKind) ([]SourceKind, 
 			mapped = SourceLocalFile
 		case store.RuntimeSourceOnline:
 			mapped = SourceOnline
+		case store.RuntimeSourceProvider:
+			mapped = SourceProvider
 		default:
 			return nil, errors.New("source unavailable kind is invalid")
 		}
@@ -244,9 +263,13 @@ func mapSourceSummary(value store.RuntimeSourceSummary) (SourceSummary, error) {
 	if err != nil {
 		return SourceSummary{}, err
 	}
+	providerSources, err := knownNumeric(value.ProviderSources, basequery.NumericCount)
+	if err != nil {
+		return SourceSummary{}, err
+	}
 	attention, err := knownNumeric(value.Attention, basequery.NumericCount)
 	return SourceSummary{
-		Total: total, LocalFiles: local, OnlineSources: online, Attention: attention,
+		Total: total, LocalFiles: local, OnlineSources: online, ProviderSources: providerSources, Attention: attention,
 	}, err
 }
 
@@ -275,7 +298,8 @@ func mapSourceItem(record store.RuntimeSourceRecord) (SourceItem, bool, error) {
 		SizeBytes: notApplicableBytes, ParsedBytes: notApplicableBytes,
 		LastScannedAtMS: notApplicableMS, LastAttemptAtMS: notApplicableMS,
 		LastSuccessAtMS: notApplicableMS, NextDueAtMS: notApplicableMS,
-		ConsecutiveFailures: notApplicableCount, RecoveryAction: noRecovery(),
+		ConsecutiveFailures: notApplicableCount, RowCount: notApplicableCount,
+		SchemaVersion: notApplicableCount, RecoveryAction: noRecovery(),
 	}
 	switch record.Kind {
 	case store.RuntimeSourceLocalFile:
@@ -361,6 +385,40 @@ func mapSourceItem(record store.RuntimeSourceRecord) (SourceItem, bool, error) {
 		item.RecoveryAction = sourceRecovery(
 			record.Online.LastErrorClass, record.Online.LastFailureCode, attention,
 		)
+		return item, attention, nil
+	case store.RuntimeSourceProvider:
+		if record.ProviderSource == nil || record.Local != nil || record.Online != nil ||
+			record.ProviderSource.Provider == "" || record.ProviderSource.SourceKey == "" ||
+			record.SourceKey != "provider_source:"+record.ProviderSource.Provider+":"+record.ProviderSource.SourceKey ||
+			record.ProviderSource.UpdatedAtMS != record.UpdatedAtMS {
+			return SourceItem{}, false, errors.New("provider source record is inconsistent")
+		}
+		value := record.ProviderSource
+		item.Kind = SourceProvider
+		item.Provider = cloneString(value.Provider)
+		item.SourceType = cloneString(value.SourceType)
+		item.State = value.State
+		item.CoverageState = cloneString(value.CoverageState)
+		item.CheckpointKind = cloneString(value.CheckpointKind)
+		item.RowCount, err = knownNumeric(value.RowCount, basequery.NumericCount)
+		if err != nil {
+			return SourceItem{}, false, err
+		}
+		item.SchemaVersion, err = optionalNumeric(value.SchemaVersion, basequery.NumericCount, basequery.UnknownNotComputed)
+		if err != nil {
+			return SourceItem{}, false, err
+		}
+		item.LastAttemptAtMS, err = knownNumeric(value.LastAttemptAtMS, basequery.NumericMilliseconds)
+		if err != nil {
+			return SourceItem{}, false, err
+		}
+		item.LastSuccessAtMS, err = optionalNumeric(value.LastSuccessAtMS, basequery.NumericMilliseconds, basequery.UnknownNeverLoaded)
+		if err != nil {
+			return SourceItem{}, false, err
+		}
+		item.FailureCode = cloneStringPointer(value.FailureCode)
+		attention := value.State != "available"
+		item.RecoveryAction = sourceRecovery(nil, nil, attention)
 		return item, attention, nil
 	default:
 		return SourceItem{}, false, errors.New("source kind is invalid")

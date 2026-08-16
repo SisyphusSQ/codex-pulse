@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	runtimeLocalSourcePrefix  = "local_file:"
-	runtimeOnlineSourcePrefix = "online:"
+	runtimeLocalSourcePrefix    = "local_file:"
+	runtimeOnlineSourcePrefix   = "online:"
+	runtimeProviderSourcePrefix = "provider_source:"
 )
 
 func (repository *Repository) RuntimeSourcePage(
@@ -28,7 +29,7 @@ func (repository *Repository) RuntimeSourcePage(
 	var page RuntimeSourcePage
 	err = repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
-			candidates := make([]RuntimeSourceRecord, 0, 2*(limit+1))
+			candidates := make([]RuntimeSourceRecord, 0, 3*(limit+1))
 			selectedKinds := 0
 			kindErrors := make([]error, 0, 2)
 			if runtimeSourceKindSelected(filter.Kinds, RuntimeSourceLocalFile) {
@@ -65,10 +66,27 @@ func (repository *Repository) RuntimeSourcePage(
 					candidates = append(candidates, records...)
 				}
 			}
+			if runtimeSourceKindSelected(filter.Kinds, RuntimeSourceProvider) {
+				selectedKinds++
+				records, count, attention, sourceErr := repository.runtimeProviderSources(
+					ctx, transaction, filter, limit,
+				)
+				if sourceErr != nil {
+					if runtimeQueryMustStop(ctx, sourceErr) {
+						return sourceErr
+					}
+					page.UnavailableKinds = append(page.UnavailableKinds, RuntimeSourceProvider)
+					kindErrors = append(kindErrors, sourceErr)
+				} else {
+					page.Summary.ProviderSources = count
+					page.Summary.Attention += attention
+					candidates = append(candidates, records...)
+				}
+			}
 			if selectedKinds == 0 || len(kindErrors) == selectedKinds {
 				return errors.Join(kindErrors...)
 			}
-			page.Summary.Total = page.Summary.LocalFiles + page.Summary.OnlineSources
+			page.Summary.Total = page.Summary.LocalFiles + page.Summary.OnlineSources + page.Summary.ProviderSources
 			page.MatchedCount = page.Summary.Total
 			sortRuntimeSourceRecords(candidates, filter.Direction)
 			if len(candidates) > limit {
@@ -169,6 +187,60 @@ func (repository *Repository) runtimeOnlineSources(
 	return records, count, attention, nil
 }
 
+func (repository *Repository) runtimeProviderSources(
+	ctx context.Context,
+	transaction *gorm.DB,
+	filter RuntimeSourceQuery,
+	limit int,
+) ([]RuntimeSourceRecord, int64, int64, error) {
+	newQuery := func() *gorm.DB {
+		query := transaction.WithContext(ctx).Model(&cursorSourceModel{})
+		if len(filter.States) > 0 {
+			query = query.Where("state IN ?", filter.States)
+		}
+		return query
+	}
+	var count, attention int64
+	if err := newQuery().Count(&count).Error; err != nil {
+		return nil, 0, 0, err
+	}
+	if err := newQuery().Where("state <> ?", "available").Count(&attention).Error; err != nil {
+		return nil, 0, 0, err
+	}
+	identityColumn := "provider || ':' || source_key"
+	query, err := applyRuntimeSourceCursor(
+		newQuery(), identityColumn, runtimeProviderSourcePrefix, filter.After, filter.Direction,
+	)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	var models []cursorSourceModel
+	if err := runtimeOrder(query, "updated_at_ms", identityColumn, filter.Direction).
+		Limit(limit + 1).Find(&models).Error; err != nil {
+		return nil, 0, 0, err
+	}
+	records := make([]RuntimeSourceRecord, 0, len(models))
+	for _, model := range models {
+		value := cursorSourceStatusFromModel(model)
+		records = append(records, RuntimeSourceRecord{
+			SourceKey: runtimeProviderSourcePrefix + value.Provider + ":" + value.SourceKey,
+			Kind:      RuntimeSourceProvider, UpdatedAtMS: value.UpdatedAtMS, ProviderSource: &value,
+		})
+	}
+	return records, count, attention, nil
+}
+
+func cursorSourceStatusFromModel(model cursorSourceModel) CursorSourceStatus {
+	return CursorSourceStatus{
+		Provider: model.Provider, SourceKey: model.SourceKey, SourceType: model.SourceType,
+		State: model.State, CoverageState: model.CoverageState, SchemaVersion: model.SchemaVersion,
+		CheckpointKind: model.CheckpointKind, CheckpointValue: model.CheckpointValue,
+		RowCount: model.RowCount, LastAttemptAtMS: model.LastAttemptAtMS,
+		LastSuccessAtMS: model.LastSuccessAtMS, FailureCode: model.FailureCode,
+		UpdatedAtMS: model.UpdatedAtMS,
+	}
+}
+
 func sortRuntimeSourceRecords(records []RuntimeSourceRecord, direction RuntimeQueryDirection) {
 	sort.Slice(records, func(left, right int) bool {
 		if records[left].UpdatedAtMS != records[right].UpdatedAtMS {
@@ -208,6 +280,24 @@ func (repository *Repository) RuntimeSource(
 		file, err := repository.SourceFile(ctx, identity)
 		return RuntimeSourceRecord{
 			SourceKey: sourceKey, Kind: kind, UpdatedAtMS: file.UpdatedAtMS, Local: &file,
+		}, err
+	}
+	if kind == RuntimeSourceProvider {
+		parts := strings.SplitN(identity, ":", 2)
+		if len(parts) != 2 {
+			return RuntimeSourceRecord{}, ErrInvalidRepository
+		}
+		var model cursorSourceModel
+		err := repository.database.View(ctx, func(ctx context.Context, database *gorm.DB) error {
+			return database.WithContext(ctx).
+				Where("provider = ? AND source_key = ?", parts[0], parts[1]).Take(&model).Error
+		})
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			err = ErrNotFound
+		}
+		value := cursorSourceStatusFromModel(model)
+		return RuntimeSourceRecord{
+			SourceKey: sourceKey, Kind: kind, UpdatedAtMS: value.UpdatedAtMS, ProviderSource: &value,
 		}, err
 	}
 	state, err := repository.SourceState(ctx, identity)
@@ -468,7 +558,7 @@ func validRuntimeHealthFilter(filter RuntimeHealthQuery) bool {
 func uniqueRuntimeSourceKinds(kinds []RuntimeSourceKind) bool {
 	seen := make(map[RuntimeSourceKind]struct{}, len(kinds))
 	for _, kind := range kinds {
-		if kind != RuntimeSourceLocalFile && kind != RuntimeSourceOnline {
+		if kind != RuntimeSourceLocalFile && kind != RuntimeSourceOnline && kind != RuntimeSourceProvider {
 			return false
 		}
 		if _, exists := seen[kind]; exists {
@@ -480,7 +570,8 @@ func uniqueRuntimeSourceKinds(kinds []RuntimeSourceKind) bool {
 }
 
 func validRuntimeSourceState(value string) bool {
-	return validSourceFileState(SourceFileState(value)) || validSourceFreshness(SourceFreshness(value))
+	return validSourceFileState(SourceFileState(value)) || validSourceFreshness(SourceFreshness(value)) ||
+		value == "available" || value == "partial" || value == "not_configured"
 }
 
 func runtimeSourceKindSelected(kinds []RuntimeSourceKind, target RuntimeSourceKind) bool {
@@ -601,8 +692,9 @@ func applyRuntimeSourceCursor(
 
 func parseRuntimeSourceKey(value string) (RuntimeSourceKind, string, bool) {
 	for prefix, kind := range map[string]RuntimeSourceKind{
-		runtimeLocalSourcePrefix:  RuntimeSourceLocalFile,
-		runtimeOnlineSourcePrefix: RuntimeSourceOnline,
+		runtimeLocalSourcePrefix:    RuntimeSourceLocalFile,
+		runtimeOnlineSourcePrefix:   RuntimeSourceOnline,
+		runtimeProviderSourcePrefix: RuntimeSourceProvider,
 	} {
 		if strings.HasPrefix(value, prefix) {
 			identity := strings.TrimPrefix(value, prefix)

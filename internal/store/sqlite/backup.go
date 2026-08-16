@@ -110,6 +110,7 @@ func (store *Store) Backup(ctx context.Context, options BackupOptions) (BackupRe
 	if err := verifyBackupFile(ctx, temporaryPath); err != nil {
 		return BackupReport{}, err
 	}
+	cleanupBackupSidecars(temporaryPath)
 	if err := secureAndSyncBackup(temporaryPath); err != nil {
 		return BackupReport{}, err
 	}
@@ -301,7 +302,12 @@ func syncDirectory(path string) error {
 }
 
 func cleanupBackupArtifacts(path string) {
-	for _, candidate := range []string{path, path + "-journal", path + "-wal", path + "-shm"} {
+	_ = os.Remove(path)
+	cleanupBackupSidecars(path)
+}
+
+func cleanupBackupSidecars(path string) {
+	for _, candidate := range []string{path + "-journal", path + "-wal", path + "-shm"} {
 		_ = os.Remove(candidate)
 	}
 }

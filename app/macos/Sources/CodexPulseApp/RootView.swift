@@ -11,6 +11,17 @@ struct RootView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: selection) {
+				Section {
+					Picker("客户端", selection: providerSelection) {
+						ForEach(AgentProvider.allCases) { provider in
+							Text(provider.title).tag(provider)
+						}
+					}
+					.pickerStyle(.segmented)
+					.accessibilityIdentifier("sidebar.provider-picker")
+				} header: {
+					Text("客户端")
+				}
                 Section(localization.text("sidebar.section.usage")) {
                     ForEach(AppFeature.allCases.prefix(5)) { section in
                         Label(section.title(localization: localization), systemImage: section.symbol)
@@ -29,7 +40,7 @@ struct RootView: View {
             .frame(minWidth: 190)
         } detail: {
             featureContent
-                .navigationTitle(model.selectedFeature.title(localization: localization))
+				.navigationTitle("\(model.selectedFeature.title(localization: localization)) · \(model.selectedProvider.title)")
                 .toolbar {
                     ToolbarItemGroup(placement: .primaryAction) {
                         Button {
@@ -80,6 +91,13 @@ struct RootView: View {
         Binding(
             get: { model.selectedFeature },
             set: { if let feature = $0 { model.navigate(to: feature) } }
+        )
+    }
+
+    private var providerSelection: Binding<AgentProvider> {
+        Binding(
+            get: { model.selectedProvider },
+            set: { provider in model.selectProvider(provider) }
         )
     }
 
@@ -153,7 +171,7 @@ struct RootView: View {
                 }
             }
         }
-        .id(model.selectedFeature)
+        .id("\(model.selectedFeature.id):\(model.selectedProvider.rawValue)")
         .onAppear { model.markFeatureRendered(model.selectedFeature) }
     }
 }
@@ -207,8 +225,36 @@ struct OverviewStateView: View {
         }
     }
 
+    @ViewBuilder
     private func overviewContent(_ overview: OverviewPresentation) -> some View {
-        OverviewContentView(
+        if model.selectedProvider == .cursor {
+            CursorOverviewContentView(
+                overview: overview,
+				selectedRange: model.overviewRange,
+				onSelectRange: model.selectOverviewRange,
+				onNavigate: { feature in
+					if feature == .invocationUsage {
+						model.navigateToInvocationUsageFromOverview()
+					} else {
+						onNavigate(feature)
+					}
+				},
+				onSelectProject: { projectKey in
+					model.projectOptions.range = model.overviewRange
+					model.projectOptions.exactRange = overview.contentRange
+					model.navigate(to: .projects)
+					model.selectProject(projectKey)
+				},
+				onSelectSession: { sessionID in
+					model.sessionOptions.range = model.overviewRange
+					model.sessionOptions.exactRange = overview.contentRange
+					model.navigate(to: .sessions)
+					model.selectSession(sessionID)
+				},
+				localization: model.localization
+            )
+        } else {
+            OverviewContentView(
             overview: overview,
             selectedRange: model.overviewRange,
             onSelectRange: model.selectOverviewRange,
@@ -231,8 +277,9 @@ struct OverviewStateView: View {
                 model.navigate(to: .sessions)
                 model.selectSession(sessionID)
             },
-            localization: model.localization
-        )
+                localization: model.localization
+            )
+        }
     }
 
     private func loading(_ text: String) -> some View {
@@ -245,6 +292,555 @@ struct OverviewStateView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
     }
+}
+
+private struct CursorOverviewContentView: View {
+	let overview: OverviewPresentation
+	let selectedRange: DateRangePreset
+	let onSelectRange: (DateRangePreset) -> Void
+	let onNavigate: (AppFeature) -> Void
+	let onSelectProject: (String) -> Void
+	let onSelectSession: (String) -> Void
+	let localization: AppLocalization
+	@State private var selectedTrendDate: Date?
+
+	private let ranges: [DateRangePreset] = [.quotaMonth, .today, .sevenDays, .thirtyDays]
+
+	var body: some View {
+		let summary = CursorOverviewSummaryPresentation(overview)
+		ScrollView {
+			VStack(alignment: .leading, spacing: 16) {
+				pageHeader
+				if overview.requestedRange == .quotaMonth && overview.effectiveRange != .quotaMonth {
+					monthlyQuotaFallbackNotice
+				}
+				if summary.showsRecentActivityFallback || summary.usesLastKnownTodayData {
+					activityNotice(summary)
+				}
+				cursorQuotaStatusStrip
+				tokenActivitySection
+				consumptionSection(summary)
+				modelSection(summary, fillsProposedHeight: false)
+				activityAndSessionsSection
+				OverviewInvocationProfileCard(
+					profile: overview.invocationProfile,
+					rangeLabel: overview.usageRangeLabel,
+					onNavigate: { onNavigate(.invocationUsage) },
+					localization: localization,
+					showsSkillActivity: false,
+					showsAIEditActivity: true
+				)
+				.accessibilityIdentifier("cursor.overview.invocations")
+			}
+			.padding(24)
+			.frame(maxWidth: .infinity, alignment: .leading)
+		}
+		.accessibilityIdentifier("page.overview.cursor")
+	}
+
+	private var monthlyQuotaFallbackNotice: some View {
+		Label(
+			"暂未获取到月额度周期，当前显示最近 30 天。",
+			systemImage: "arrow.trianglehead.2.clockwise.rotate.90"
+		)
+		.font(.caption.weight(.medium))
+		.foregroundStyle(.orange)
+		.padding(.horizontal, 12)
+		.padding(.vertical, 8)
+		.background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 9))
+	}
+
+	private var pageHeader: some View {
+		HStack(alignment: .center, spacing: 20) {
+			VStack(alignment: .leading, spacing: 4) {
+				Text("Cursor 概览").font(.largeTitle.bold())
+				Text("今日状态、近期趋势与工作归属").foregroundStyle(.secondary)
+			}
+			Spacer()
+			VStack(alignment: .trailing, spacing: 6) {
+				HStack(spacing: 8) {
+					Text("分析范围").font(.subheadline).foregroundStyle(.secondary)
+					Picker("分析范围", selection: rangeBinding) {
+						ForEach(ranges) { range in
+							Text(verbatim: localization.textValue(range.title)).tag(range)
+						}
+					}
+					.labelsHidden()
+					.pickerStyle(.segmented)
+					.frame(width: 340)
+				}
+				if let dataAsOf = overview.dataAsOfMS {
+					Label("数据截至 \(dateTimeText(dataAsOf))", systemImage: "clock")
+						.font(.caption)
+						.foregroundStyle(.secondary)
+				}
+			}
+		}
+	}
+
+	private var rangeBinding: Binding<DateRangePreset> {
+		Binding(
+			get: { selectedRange },
+			set: { value in onSelectRange(value) }
+		)
+	}
+
+	private func activityNotice(_ summary: CursorOverviewSummaryPresentation) -> some View {
+		let message: String
+		if summary.usesLastKnownTodayData {
+			message = summary.dataAsOfMS.map { "今日数据截至 \(dateTimeText($0))，会在下次同步后更新。" }
+				?? "今日数据会在下次同步后更新。"
+		} else if let latest = summary.recentActivityAtMS {
+			message = "今日暂无新活动，最近一次活动在 \(dateTimeText(latest))。"
+		} else {
+			message = "今日暂无新活动。"
+		}
+		return Label(message, systemImage: summary.usesLastKnownTodayData ? "clock" : "moon.stars")
+			.font(.caption.weight(.medium))
+			.foregroundStyle(.secondary)
+			.padding(.horizontal, 12)
+			.padding(.vertical, 8)
+			.background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
+			.accessibilityIdentifier("cursor.overview.activity-notice")
+	}
+
+	private var cursorQuotaStatusStrip: some View {
+		HStack(spacing: 18) {
+			Label("额度状态", systemImage: "gauge.with.dots.needle.67percent")
+				.font(.headline)
+			if !overview.quotaAvailable || overview.quotaWindows.isEmpty {
+				Text("暂时无法获取额度").foregroundStyle(.secondary)
+			} else {
+				ForEach(Array(overview.quotaWindows.prefix(2).enumerated()), id: \.element.id) {
+					index, window in
+					let reset = QuotaResetPresentation(
+						resetsAtMS: window.resetsAtMS,
+						resetRemainingMS: window.resetRemainingMS
+					)
+					if index > 0 { Divider().frame(height: 64) }
+					VStack(alignment: .leading, spacing: 5) {
+						HStack(spacing: 8) {
+							Text(window.title).font(.subheadline.weight(.medium))
+							Spacer(minLength: 10)
+							Text("已使用")
+								.font(.caption)
+								.foregroundStyle(.secondary)
+							Text(window.usedPercent.map { localization.percent($0) } ?? "--")
+								.font(.subheadline.bold())
+								.monospacedDigit()
+						}
+						ProgressView(value: (window.usedPercent ?? 0) / 100)
+							.tint(.blue)
+						Text(reset.compactText)
+							.font(.caption)
+							.foregroundStyle(.secondary)
+							.lineLimit(1)
+						if let pace = overview.quotaPaceWindows.first(where: { $0.id == window.id }) {
+							Text(pace.forecastText)
+								.font(.caption.weight(.medium))
+								.foregroundStyle(pace.forecastState == "at_risk" ? .orange : .secondary)
+								.lineLimit(1)
+						}
+					}
+					.frame(minWidth: 210, idealWidth: 250, maxWidth: 290)
+				}
+			}
+			Spacer(minLength: 12)
+			Button("额度详情") { onNavigate(.quotaUsage) }.buttonStyle(.link)
+		}
+		.padding(.horizontal, 16)
+		.padding(.vertical, 12)
+		.background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+		.overlay {
+			RoundedRectangle(cornerRadius: 12, style: .continuous)
+				.stroke(.quaternary, lineWidth: 1)
+		}
+		.accessibilityIdentifier("cursor.overview.quota")
+	}
+
+	private func consumptionSection(_ summary: CursorOverviewSummaryPresentation) -> some View {
+		SectionCard(title: "消耗概览") {
+			HStack(alignment: .top, spacing: 22) {
+				VStack(alignment: .leading, spacing: 18) {
+					usageSummary(summary)
+						.fixedSize(horizontal: false, vertical: true)
+					Divider()
+					trendChart
+				}
+				.frame(maxWidth: .infinity, alignment: .leading)
+				Divider()
+				projectBreakdown
+					.frame(minWidth: 220, idealWidth: 270, maxWidth: 310)
+			}
+		}
+		.accessibilityIdentifier("cursor.overview.range")
+	}
+
+	private var tokenActivitySection: some View {
+		TokenActivityCard(
+			card: TokenActivityCardPresentation(
+				overview.tokenActivity,
+				localization: localization,
+				partialNotice: localization.textValue("仅展示当前已采集数据")
+			),
+			localization: localization
+		)
+		.accessibilityIdentifier("cursor.overview.token-activity")
+	}
+
+	private var activityAndSessionsSection: some View {
+		ViewThatFits(in: .horizontal) {
+			HStack(alignment: .top, spacing: 16) {
+				activityDistributionCard(fillsProposedHeight: true)
+					.frame(minWidth: 560)
+					.frame(maxHeight: .infinity, alignment: .top)
+				recentSessionsSection(fillsProposedHeight: true)
+					.frame(minWidth: 320, idealWidth: 360, maxWidth: 420)
+					.frame(maxHeight: .infinity, alignment: .top)
+			}
+			VStack(alignment: .leading, spacing: 16) {
+				activityDistributionCard(fillsProposedHeight: false)
+				recentSessionsSection(fillsProposedHeight: false)
+			}
+		}
+	}
+
+	private func activityDistributionCard(fillsProposedHeight: Bool) -> some View {
+		OverviewActivityCard(
+			activity: overview.activityDistribution,
+			rangeLabel: overview.usageRangeLabel,
+			fillsProposedHeight: fillsProposedHeight,
+			localization: localization
+		)
+		.accessibilityIdentifier("cursor.overview.activity-distribution")
+	}
+
+	private func modelSection(
+		_ summary: CursorOverviewSummaryPresentation,
+		fillsProposedHeight: Bool
+	) -> some View {
+		SectionCard(title: "模型用量", fillsProposedHeight: fillsProposedHeight) {
+			Text("\(localization.textValue(selectedRange.title)) · 按 Token 排序")
+				.font(.caption)
+				.foregroundStyle(.secondary)
+			if summary.models.isEmpty {
+				Text("当前范围没有模型用量。")
+					.foregroundStyle(.secondary)
+			} else {
+				let maximum = summary.models.compactMap { metricValue($0.tokens.total) }.max() ?? 0
+				ForEach(Array(summary.models.prefix(5).enumerated()), id: \.element.id) { index, item in
+					VStack(alignment: .leading, spacing: 4) {
+						HStack {
+							Text("\(index + 1)").font(.caption.bold()).foregroundStyle(.secondary)
+							Text(item.title).font(.subheadline.weight(.medium)).lineLimit(1)
+							Spacer()
+							Text(item.tokens.total.formatted).monospacedDigit().foregroundStyle(.tint)
+						}
+						HStack(spacing: 8) {
+							ProgressView(value: modelFraction(item, maximum: maximum))
+							Text("\(item.requestCount.formatted) 次")
+								.font(.caption2)
+								.foregroundStyle(.secondary)
+						}
+					}
+					if item.id != summary.models.prefix(5).last?.id { Divider() }
+				}
+			}
+		}
+		.accessibilityIdentifier("cursor.overview.models")
+	}
+
+	private func recentSessionsSection(fillsProposedHeight: Bool) -> some View {
+		SectionCard(title: "最近会话", fillsProposedHeight: fillsProposedHeight) {
+			Text("\(localization.textValue(selectedRange.title)) · 按最近活动排序")
+				.font(.caption)
+				.foregroundStyle(.secondary)
+			if !overview.sessionsAvailable {
+				Text("会话数据暂时不可用。").foregroundStyle(.secondary)
+			} else if overview.sessions.isEmpty {
+				Text("当前范围没有会话。可切换到更长时间范围。")
+					.foregroundStyle(.secondary)
+			} else {
+				ForEach(Array(overview.sessions.enumerated()), id: \.element.id) { index, session in
+					Button { onSelectSession(session.id) } label: {
+						HStack(spacing: 10) {
+							VStack(alignment: .leading, spacing: 3) {
+								Text(session.title).lineLimit(1)
+								Text(sessionSecondaryText(session))
+									.font(.caption).foregroundStyle(.secondary).lineLimit(1)
+							}
+							Spacer()
+							if session.tokens.isKnown {
+								Text(session.tokens.formatted).monospacedDigit().foregroundStyle(.tint)
+							}
+							Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+						}
+						.contentShape(Rectangle())
+					}
+					.buttonStyle(.plain)
+					.padding(.vertical, 6)
+					if index < overview.sessions.count - 1 { Divider() }
+				}
+				Button("查看全部会话") { onNavigate(.sessions) }.buttonStyle(.link)
+			}
+		}
+		.accessibilityIdentifier("cursor.overview.sessions")
+	}
+
+	private func usageSummary(_ summary: CursorOverviewSummaryPresentation) -> some View {
+		HStack(alignment: .top, spacing: 24) {
+			VStack(alignment: .leading, spacing: 10) {
+				Text("Token 总量")
+					.font(.subheadline.weight(.medium))
+					.foregroundStyle(.secondary)
+				Text(summary.rangeTotalTokens.formatted)
+					.font(.system(size: 25, weight: .semibold, design: .rounded))
+					.monospacedDigit()
+				HStack(alignment: .top, spacing: 22) {
+					usageBreakdownMetric(
+						title: "输入",
+						value: overview.tokenBreakdown.input,
+						detailTitle: "缓存",
+						detailValue: overview.tokenBreakdown.cachedInput
+					)
+					usageBreakdownMetric(
+						title: "输出",
+						value: overview.tokenBreakdown.output,
+						detailTitle: nil,
+						detailValue: nil
+					)
+				}
+			}
+			.frame(maxWidth: .infinity, alignment: .leading)
+
+			Divider()
+
+			VStack(alignment: .leading, spacing: 5) {
+				Text(summary.rangeCostBasis == .reported ? "Cursor 上报费用" : "文档价目估算")
+					.font(.subheadline.weight(.medium))
+					.foregroundStyle(.secondary)
+				Text(metricText(summary.rangePrimaryCost, cost: true))
+					.font(.system(size: 25, weight: .semibold, design: .rounded))
+					.monospacedDigit()
+				Text(summary.rangeCostBasis == .reported ? "Dashboard 实际上报" : "仅在可定价模型上计算")
+					.font(.caption2)
+					.foregroundStyle(.tertiary)
+			}
+			.frame(minWidth: 180, idealWidth: 210, maxWidth: 240, alignment: .leading)
+		}
+	}
+
+	private func usageBreakdownMetric(
+		title: String,
+		value: DisplayMetric,
+		detailTitle: String?,
+		detailValue: DisplayMetric?
+	) -> some View {
+		VStack(alignment: .leading, spacing: 3) {
+			Text(title).font(.caption).foregroundStyle(.secondary)
+			Text(value.formatted).font(.headline).monospacedDigit()
+			if let detailTitle, let detailValue {
+				Text("\(detailTitle) \(detailValue.formatted)")
+					.font(.caption2)
+					.foregroundStyle(.tertiary)
+			}
+		}
+		.frame(minWidth: 108, alignment: .leading)
+		.accessibilityElement(children: .combine)
+	}
+
+	@ViewBuilder
+	private var trendChart: some View {
+		VStack(alignment: .leading, spacing: 10) {
+			HStack(alignment: .firstTextBaseline) {
+				Text("Token 趋势").font(.subheadline.weight(.semibold))
+				Text(overview.usageRangeLabel).font(.caption).foregroundStyle(.secondary)
+			}
+			if trendPoints.isEmpty {
+				ContentUnavailableView(
+					"当前范围暂无用量",
+					systemImage: "chart.xyaxis.line",
+					description: Text("可切换到更长时间范围查看最近数据。")
+				)
+				.frame(height: 180)
+			} else {
+				Chart {
+					ForEach(trendPoints) { point in
+						AreaMark(x: .value("时间", point.date), y: .value("Token", point.tokens))
+							.interpolationMethod(.monotone)
+							.foregroundStyle(LinearGradient(
+								colors: [Color.blue.opacity(0.28), Color.blue.opacity(0.03)],
+								startPoint: .top, endPoint: .bottom))
+						LineMark(x: .value("时间", point.date), y: .value("Token", point.tokens))
+							.interpolationMethod(.monotone)
+							.foregroundStyle(.blue)
+							.lineStyle(StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+						PointMark(x: .value("时间", point.date), y: .value("Token", point.tokens))
+							.foregroundStyle(.blue)
+							.symbolSize(selectedTrendPoint?.id == point.id ? 70 : 28)
+					}
+					if let selected = selectedTrendPoint {
+						RuleMark(x: .value("选中时间", selected.date))
+							.foregroundStyle(Color.secondary.opacity(0.55))
+							.lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+							.annotation(
+								position: .top,
+								alignment: .leading,
+								spacing: 8,
+								overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
+							) {
+								VStack(alignment: .leading, spacing: 3) {
+									Text(dateTimeText(Int64(selected.date.timeIntervalSince1970 * 1_000)))
+										.font(.caption).foregroundStyle(.secondary)
+									Text(TokenQuantityFormatter.stringWithUnit(selected.tokens))
+										.font(.caption.bold()).monospacedDigit()
+								}
+								.padding(8)
+								.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+							}
+					}
+				}
+				.chartYAxis {
+					AxisMarks(position: .leading) { value in
+						AxisGridLine().foregroundStyle(.quaternary)
+						AxisValueLabel {
+							if let value = value.as(Int64.self) {
+								Text(TokenQuantityFormatter.string(value))
+							}
+						}
+					}
+				}
+				.chartXAxis { AxisMarks(values: .automatic(desiredCount: 6)) }
+				.chartXSelection(value: $selectedTrendDate)
+				.frame(height: trendPoints.count <= 1 ? 170 : 230)
+				.onChange(of: selectedRange) { _, _ in selectedTrendDate = nil }
+				.accessibilityIdentifier("cursor.overview.trend")
+			}
+		}
+	}
+
+	private var projectBreakdown: some View {
+		VStack(alignment: .leading, spacing: 12) {
+			HStack {
+				Text("项目归属").font(.subheadline.weight(.semibold))
+				Spacer()
+				Button("全部项目") { onNavigate(.projects) }.buttonStyle(.link)
+			}
+			if !overview.projectsAvailable {
+				Text("项目数据暂时不可用。").foregroundStyle(.secondary)
+			} else if overview.projects.isEmpty {
+				Text("当前范围没有项目活动。").foregroundStyle(.secondary)
+			} else {
+				ForEach(Array(overview.projects.enumerated()), id: \.element.id) { index, project in
+					if project.isOther {
+						projectBreakdownRow(project, rank: index + 1)
+					} else {
+						Button { onSelectProject(project.id) } label: {
+							projectBreakdownRow(project, rank: index + 1)
+						}
+						.buttonStyle(.plain)
+					}
+				}
+			}
+		}
+		.accessibilityIdentifier("cursor.overview.projects")
+	}
+
+	private func projectBreakdownRow(_ project: ProjectPresentation, rank: Int) -> some View {
+		VStack(alignment: .leading, spacing: 5) {
+			HStack(spacing: 8) {
+				Text("\(rank)").font(.caption.bold()).foregroundStyle(.secondary).frame(width: 18)
+				Text(project.title).lineLimit(1)
+				Spacer()
+				Text(project.tokens.isKnown ? project.tokens.formatted : "\(project.sessionCount.formatted) 会话")
+					.font(.subheadline.weight(.semibold))
+					.monospacedDigit()
+					.foregroundStyle(.tint)
+			}
+			ProgressView(value: projectFraction(project))
+		}
+		.padding(.vertical, 4)
+		.contentShape(Rectangle())
+	}
+
+	private var trendPoints: [CursorOverviewTrendPoint] {
+		overview.trend.compactMap { point in
+			guard let at = point.startAtMS, let tokens = metricValue(point.tokens) else { return nil }
+			return CursorOverviewTrendPoint(
+				id: point.id,
+				date: Date(timeIntervalSince1970: Double(at) / 1_000),
+				tokens: tokens
+			)
+		}
+	}
+
+	private var selectedTrendPoint: CursorOverviewTrendPoint? {
+		guard let selected = TrendSelectionResolver.nearest(
+			to: selectedTrendDate,
+			in: overview.trend
+		),
+		let at = selected.startAtMS,
+		let tokens = metricValue(selected.tokens)
+		else { return nil }
+		return CursorOverviewTrendPoint(
+			id: selected.id,
+			date: Date(timeIntervalSince1970: Double(at) / 1_000),
+			tokens: tokens
+		)
+	}
+
+	private func modelFraction(_ item: OverviewUsageModelPresentation, maximum: Int64) -> Double {
+		guard let value = metricValue(item.tokens.total), maximum > 0 else { return 0 }
+		return min(max(Double(value) / Double(maximum), 0), 1)
+	}
+
+	private func projectFraction(_ project: ProjectPresentation) -> Double {
+		if let value = metricValue(project.tokens) {
+			let maximum = overview.projects.compactMap { metricValue($0.tokens) }.max() ?? 0
+			guard maximum > 0 else { return 0 }
+			return min(max(Double(value) / Double(maximum), 0), 1)
+		}
+		guard let sessions = metricValue(project.sessionCount) else { return 0 }
+		let maximum = overview.projects.compactMap { metricValue($0.sessionCount) }.max() ?? 0
+		guard maximum > 0 else { return 0 }
+		return min(max(Double(sessions) / Double(maximum), 0), 1)
+	}
+
+	private func sessionSecondaryText(_ session: SessionPresentation) -> String {
+		let pieces = [
+			session.project,
+			session.lastActivityAtMS.map(dateTimeText),
+		].compactMap { $0 }
+		return pieces.isEmpty ? session.activity : pieces.joined(separator: " · ")
+	}
+
+	private func dateMetricText(_ metric: DisplayMetric) -> String {
+		guard let value = metricValue(metric) else { return "--" }
+		return dateTimeText(value)
+	}
+
+	private func dateTimeText(_ milliseconds: Int64) -> String {
+		let formatter = DateFormatter()
+		formatter.locale = localization.locale
+		formatter.timeZone = TimeZone(identifier: overview.usageRange.timeZone) ?? .current
+		formatter.dateFormat = "M-d HH:mm"
+		return formatter.string(from: Date(timeIntervalSince1970: Double(milliseconds) / 1_000))
+	}
+}
+
+private struct CursorOverviewTrendPoint: Identifiable {
+	let id: String
+	let date: Date
+	let tokens: Int64
+}
+
+private func cursorDataAsOfText(_ milliseconds: Int64?, timeZone: String) -> String? {
+	guard let milliseconds else { return nil }
+	let formatter = DateFormatter()
+	formatter.locale = AppLocalizationRegistry.shared.current.locale
+	formatter.timeZone = TimeZone(identifier: timeZone) ?? .current
+	formatter.dateFormat = "M-d HH:mm"
+	return formatter.string(from: Date(timeIntervalSince1970: Double(milliseconds) / 1_000))
 }
 
 private struct OverviewContentView: View {
@@ -850,6 +1446,24 @@ private struct OverviewInvocationProfileCard: View {
     let rangeLabel: String
     let onNavigate: () -> Void
     let localization: AppLocalization
+	let showsSkillActivity: Bool
+	let showsAIEditActivity: Bool
+
+	init(
+		profile: OverviewInvocationProfilePresentation,
+		rangeLabel: String,
+		onNavigate: @escaping () -> Void,
+		localization: AppLocalization,
+		showsSkillActivity: Bool = true,
+		showsAIEditActivity: Bool = false
+	) {
+		self.profile = profile
+		self.rangeLabel = rangeLabel
+		self.onNavigate = onNavigate
+		self.localization = localization
+		self.showsSkillActivity = showsSkillActivity
+		self.showsAIEditActivity = showsAIEditActivity
+	}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -890,7 +1504,7 @@ private struct OverviewInvocationProfileCard: View {
             )
             .frame(height: 170)
         case .available, .partial:
-            if profile.isEmpty {
+            if profile.isEmpty && !hasAIEditActivity {
                 ContentUnavailableView(
                     localization.textValue("当前范围没有调用活动"),
                     systemImage: "wrench.and.screwdriver"
@@ -944,16 +1558,26 @@ private struct OverviewInvocationProfileCard: View {
             symbol: "wrench.adjustable",
             tint: .blue
         )
-        OverviewInvocationSummaryMetric(
-            title: localization.textValue("Skill 检测活动"),
-            value: metricText(profile.skillActivityCount, localization: localization),
-            detail: localization.format(
-                "%@ 种 Skill",
-                metricText(profile.distinctSkillCount, localization: localization)
-            ),
-            symbol: "puzzlepiece.extension",
-            tint: .purple
-        )
+		if showsSkillActivity {
+			OverviewInvocationSummaryMetric(
+				title: localization.textValue("Skill 检测活动"),
+				value: metricText(profile.skillActivityCount, localization: localization),
+				detail: localization.format(
+					"%@ 种 Skill",
+					metricText(profile.distinctSkillCount, localization: localization)
+				),
+				symbol: "puzzlepiece.extension",
+				tint: .purple
+			)
+		} else if showsAIEditActivity {
+			OverviewInvocationSummaryMetric(
+				title: "AI edits",
+				value: metricText(profile.aiEditCount, localization: localization),
+				detail: localization.textValue("当前概览范围"),
+				symbol: "pencil.and.list.clipboard",
+				tint: .purple
+			)
+		}
         OverviewInvocationSummaryMetric(
             title: localization.textValue("相关会话"),
             value: metricText(profile.sessionCount, localization: localization),
@@ -972,21 +1596,30 @@ private struct OverviewInvocationProfileCard: View {
 
     @ViewBuilder
     private var rankings: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 20) {
-                toolRanking.frame(maxWidth: .infinity, alignment: .topLeading)
-                Divider()
-                skillRanking.frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-            .frame(minWidth: 620)
+		if showsSkillActivity {
+			ViewThatFits(in: .horizontal) {
+				HStack(alignment: .top, spacing: 20) {
+					toolRanking.frame(maxWidth: .infinity, alignment: .topLeading)
+					Divider()
+					skillRanking.frame(maxWidth: .infinity, alignment: .topLeading)
+				}
+				.frame(minWidth: 620)
 
-            VStack(alignment: .leading, spacing: 16) {
-                toolRanking
-                Divider()
-                skillRanking
-            }
-        }
+				VStack(alignment: .leading, spacing: 16) {
+					toolRanking
+					Divider()
+					skillRanking
+				}
+			}
+		} else {
+			toolRanking
+		}
     }
+
+	private var hasAIEditActivity: Bool {
+		guard showsAIEditActivity, let count = knownValue(profile.aiEditCount) else { return false }
+		return count > 0
+	}
 
     private var toolRanking: some View {
         VStack(alignment: .leading, spacing: 10) {

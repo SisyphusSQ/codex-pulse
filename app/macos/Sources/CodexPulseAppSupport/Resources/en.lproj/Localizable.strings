@@ -40,6 +40,7 @@
 "仅显示菜单栏" = "Menu bar only";
 "今天" = "Today";
 "周额度" = "Quota week";
+"月额度" = "Monthly quota";
 "最近 7 天" = "Last 7 days";
 "最近 30 天" = "Last 30 days";
 "稳定版" = "Stable";
@@ -132,6 +133,7 @@
 "Token 活动" = "Token activity";
 "过去 365 天" = "Last 365 days";
 "仅统计本机现有数据" = "Only existing local data is included";
+"仅展示当前已采集数据" = "Only currently collected data is shown";
 "年度活动暂时不可用" = "Annual activity is temporarily unavailable";
 "近 365 天 Token" = "Tokens in the last 365 days";
 "峰值日 Token" = "Peak daily tokens";

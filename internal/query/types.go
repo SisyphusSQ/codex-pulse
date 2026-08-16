@@ -1,5 +1,7 @@
 package query
 
+import "github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
+
 const (
 	// ContractVersion 是所有 M6 公共 query DTO 的版本。
 	ContractVersion = "query-v1"
@@ -74,11 +76,12 @@ type UTCTimeRange struct {
 
 // Request 是跨页面公共查询输入 envelope。
 type Request struct {
-	Page           PageRequest     `json:"page"`
-	Sort           []SortTerm      `json:"sort"`
-	Filters        []FilterTerm    `json:"filters"`
-	TimeRange      *LocalDateRange `json:"timeRange"`
-	ExactTimeRange *UTCTimeRange   `json:"exactTimeRange"`
+	Provider       agentprovider.Scope `json:"provider"`
+	Page           PageRequest         `json:"page"`
+	Sort           []SortTerm          `json:"sort"`
+	Filters        []FilterTerm        `json:"filters"`
+	TimeRange      *LocalDateRange     `json:"timeRange"`
+	ExactTimeRange *UTCTimeRange       `json:"exactTimeRange"`
 }
 
 // ValidatedRequest 只由 Specification 生成，供后续业务 query service 消费。

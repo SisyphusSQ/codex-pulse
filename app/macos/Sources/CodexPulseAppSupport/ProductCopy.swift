@@ -81,6 +81,7 @@ public enum ProductCopy {
         case "tray", "menu_bar": "仅显示菜单栏"
         case "today": "今天"
         case "quota_week": "周额度"
+		case "quota_month": "月额度"
         case "7d", "seven_days": "最近 7 天"
         case "30d", "thirty_days": "最近 30 天"
         case "stable": "稳定版"

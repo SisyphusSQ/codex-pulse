@@ -27,6 +27,7 @@ public protocol AppCoreServing: Sendable {
     ) async throws -> Codexpulse_Core_V1_InvocationUsageResponse
 
     func pricingCatalogCurrent(
+		_ request: Codexpulse_Core_V1_PricingCatalogCurrentRequest,
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_PricingCatalogCurrentResponse
 
@@ -147,6 +148,7 @@ public extension AppCoreServing {
     }
 
     func pricingCatalogCurrent(
+		_ request: Codexpulse_Core_V1_PricingCatalogCurrentRequest,
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_PricingCatalogCurrentResponse {
         throw AppRuntimeError.unavailable
