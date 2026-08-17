@@ -5078,7 +5078,7 @@ private func testPageProviderSwitchDoesNotReloadIndependentCursorStatus() async 
 	model.selectStatusProvider(.cursor)
 	try await waitUntil("independent Cursor status load") {
 		await MainActor.run {
-			model.statusUsageState.value != nil && model.statusInvocationState.value != nil
+			model.statusUsageState.value != nil
 		}
 	}
 
@@ -5193,6 +5193,137 @@ private func testRuntimeCursorSwitchRequestsMonthlyOverviewAndIndependentTodaySu
 		"Cursor provider switch must load both official quota windows and monthly pace"
 	)
 	_ = await runtime.shutdown()
+}
+
+private func testCursorStatusOverviewSkipsUnusedInvocationAndProjectQueries() async throws {
+	let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+	let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+	await runtime.start()
+	let invocationBefore = await core.recordedInvocationRequests().count
+	let projectsBefore = await core.recordedProjectRequests().count
+
+	_ = try await runtime.statusOverview(provider: .cursor)
+
+	let invocationAfter = await core.recordedInvocationRequests().count
+	let projectsAfter = await core.recordedProjectRequests().count
+	try expect(
+		invocationAfter == invocationBefore && projectsAfter == projectsBefore,
+		"Cursor status overview must not wait for invocation or project queries that the popover does not render"
+	)
+	_ = await runtime.shutdown()
+}
+
+@MainActor
+private func testStatusProviderReusesTargetCacheWhileRefreshing() async throws {
+	let suiteName = "CodexPulseAppTests.StatusProviderCache.\(UUID().uuidString)"
+	guard let defaults = UserDefaults(suiteName: suiteName) else {
+		throw TestFailure.mismatch("status provider cache defaults suite unavailable")
+	}
+	defer { defaults.removePersistentDomain(forName: suiteName) }
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+	let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+	let model = AppModel(
+		runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+		providerDefaults: defaults
+	)
+	model.start()
+	try await waitUntil("initial Codex status cache") {
+		await MainActor.run { model.statusPresentation?.provider == .codex }
+	}
+	model.selectStatusProvider(.cursor)
+	try await waitUntil("Cursor status cache") {
+		await MainActor.run { model.statusPresentation?.provider == .cursor }
+	}
+
+	await core.prepareOverviewBarrier()
+	model.selectStatusProvider(.codex)
+	try await sleepForTest(.milliseconds(40))
+	let reusedTargetCache = model.statusPresentation?.provider == .codex
+	await core.releaseOverviewBarrier()
+	try expect(
+		reusedTargetCache,
+		"switching status Provider must reuse that Provider's last successful snapshot while refresh is pending"
+	)
+	_ = await model.shutdown()
+}
+
+@MainActor
+private func testPageProviderSwitchLoadsSelectedFeatureBeforeOverviewCompletes() async throws {
+	let suiteName = "CodexPulseAppTests.PageProviderParallel.\(UUID().uuidString)"
+	guard let defaults = UserDefaults(suiteName: suiteName) else {
+		throw TestFailure.mismatch("page provider parallel defaults suite unavailable")
+	}
+	defer { defaults.removePersistentDomain(forName: suiteName) }
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+	let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+	var cursorPage = makeSessionPage(id: "cursor-page", title: "Cursor page")
+	cursorPage.providerContext.effectiveProvider = AgentProvider.cursor.rawValue
+	await core.setFeatureSessionPlans([
+		SessionPagePlan(delay: .zero, response: makeSessionPage(id: "codex-page", title: "Codex page")),
+		SessionPagePlan(delay: .zero, response: cursorPage),
+	])
+	let model = AppModel(
+		runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+		providerDefaults: defaults
+	)
+	model.start()
+	try await waitUntil("overview before page Provider switch") {
+		await MainActor.run { model.presentation?.provider == .codex }
+	}
+	model.navigate(to: .sessions)
+	try await waitUntil("initial Codex Sessions page") {
+		await MainActor.run { model.sessionsState.value?.items.first?.sessionID == "codex-page" }
+	}
+
+	await core.prepareOverviewBarrier()
+	model.selectProvider(.cursor)
+	try await sleepForTest(.milliseconds(80))
+	let pageLoadedBeforeOverview = model.sessionsState.value?.items.first?.sessionID == "cursor-page"
+	await core.releaseOverviewBarrier()
+	try expect(
+		pageLoadedBeforeOverview,
+		"switching Provider on a detail page must load that page without waiting for the full Overview"
+	)
+	_ = await model.shutdown()
+}
+
+@MainActor
+private func testMainProviderReusesTargetOverviewWhileRefreshing() async throws {
+	let suiteName = "CodexPulseAppTests.MainProviderCache.\(UUID().uuidString)"
+	guard let defaults = UserDefaults(suiteName: suiteName) else {
+		throw TestFailure.mismatch("main provider cache defaults suite unavailable")
+	}
+	defer { defaults.removePersistentDomain(forName: suiteName) }
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+	let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+	let model = AppModel(
+		runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+		providerDefaults: defaults
+	)
+	model.start()
+	try await waitUntil("initial Codex Overview cache") {
+		await MainActor.run {
+			model.presentation?.provider == .codex && model.statusPresentation?.provider == .codex
+		}
+	}
+	model.selectProvider(.cursor)
+	try await waitUntil("Cursor Overview cache") {
+		await MainActor.run { model.presentation?.provider == .cursor }
+	}
+
+	await core.prepareOverviewBarrier()
+	model.selectProvider(.codex)
+	try await sleepForTest(.milliseconds(40))
+	let reusedTargetCache = model.presentation?.provider == .codex
+	await core.releaseOverviewBarrier()
+	try expect(
+		reusedTargetCache,
+		"switching main Provider must reuse that Provider's last successful Overview while refresh is pending"
+	)
+	_ = await model.shutdown()
 }
 
 private func testRequestFactoryAndPresentation() throws {
@@ -9131,6 +9262,10 @@ struct CodexPulseAppTestMain {
 		try await testCodexStatusRequestsRemainIndependentFromCursorPage()
 		try await testProviderSwitchDiscardsInFlightOverview()
 		try await testRuntimeCursorSwitchRequestsMonthlyOverviewAndIndependentTodaySummary()
+		try await testCursorStatusOverviewSkipsUnusedInvocationAndProjectQueries()
+		try await testStatusProviderReusesTargetCacheWhileRefreshing()
+		try await testPageProviderSwitchLoadsSelectedFeatureBeforeOverviewCompletes()
+		try await testMainProviderReusesTargetOverviewWhileRefreshing()
         try await testInvalidationRefreshesActivePage()
         try await testIndexInvalidationRefreshesSelectedSessionDetail()
         try await testForegroundRecoveryRefreshesSelectedSessionOnce()

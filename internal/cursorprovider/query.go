@@ -3,6 +3,7 @@ package cursorprovider
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -41,14 +42,19 @@ type conditionalRefresher interface {
 }
 
 type QueryService struct {
-	collector          *Collector
-	dashboard          Refresher
-	reader             SnapshotReader
-	sessions           basequery.Specification
-	projects           basequery.Specification
-	refreshMu          sync.Mutex
-	refreshing         bool
-	onDashboardRefresh func()
+	collector       *Collector
+	dashboard       Refresher
+	reader          SnapshotReader
+	sessions        basequery.Specification
+	projects        basequery.Specification
+	snapshotMu      sync.RWMutex
+	snapshotLoadMu  sync.Mutex
+	snapshotCache   *store.CursorSnapshot
+	snapshotEpoch   uint64
+	refreshMu       sync.Mutex
+	localRefreshing bool
+	refreshing      bool
+	onRefresh       func()
 }
 
 func NewQueryService(collector *Collector, reader SnapshotReader, dashboard ...Refresher) (*QueryService, error) {
@@ -93,8 +99,12 @@ func (service *QueryService) Refresh(ctx context.Context) error {
 	if service == nil || service.collector == nil || service.reader == nil {
 		return ErrCollector
 	}
-	if err := service.collector.Refresh(ctx); err != nil {
+	performed, err := service.collector.RefreshIfDue(ctx)
+	if err != nil {
 		return err
+	}
+	if performed {
+		service.invalidateSnapshot()
 	}
 	service.scheduleDashboardRefresh()
 	return nil
@@ -104,26 +114,95 @@ func (service *QueryService) snapshot(ctx context.Context) (store.CursorSnapshot
 	if service == nil || service.collector == nil || service.reader == nil {
 		return store.CursorSnapshot{}, ErrCollector
 	}
-	if err := service.collector.Refresh(ctx); err != nil {
-		return store.CursorSnapshot{}, err
-	}
-	snapshot, err := service.reader.CursorSnapshot(ctx)
+	snapshot, err := service.loadSnapshot(ctx)
 	if err != nil {
 		return store.CursorSnapshot{}, err
 	}
+	service.scheduleLocalRefresh()
 	service.scheduleDashboardRefresh()
 	return snapshot, nil
 }
 
-// SetDashboardRefreshNotifier registers a lightweight invalidation callback.
-// Dashboard credentials and results stay inside the Helper; the callback only
-// tells clients to re-query the committed local snapshot.
-func (service *QueryService) SetDashboardRefreshNotifier(notifier func()) {
+func (service *QueryService) loadSnapshot(ctx context.Context) (store.CursorSnapshot, error) {
+	service.snapshotMu.RLock()
+	if service.snapshotCache != nil {
+		snapshot := *service.snapshotCache
+		service.snapshotMu.RUnlock()
+		return snapshot, nil
+	}
+	service.snapshotMu.RUnlock()
+
+	service.snapshotLoadMu.Lock()
+	defer service.snapshotLoadMu.Unlock()
+	service.snapshotMu.RLock()
+	if service.snapshotCache != nil {
+		snapshot := *service.snapshotCache
+		service.snapshotMu.RUnlock()
+		return snapshot, nil
+	}
+	epoch := service.snapshotEpoch
+	service.snapshotMu.RUnlock()
+
+	snapshot, err := service.reader.CursorSnapshot(ctx)
+	if errors.Is(err, store.ErrNotFound) {
+		if refreshErr := service.collector.Refresh(ctx); refreshErr != nil {
+			return store.CursorSnapshot{}, refreshErr
+		}
+		snapshot, err = service.reader.CursorSnapshot(ctx)
+	}
+	if err != nil {
+		return store.CursorSnapshot{}, err
+	}
+	service.snapshotMu.Lock()
+	if service.snapshotEpoch == epoch {
+		service.snapshotCache = &snapshot
+	}
+	service.snapshotMu.Unlock()
+	return snapshot, nil
+}
+
+func (service *QueryService) invalidateSnapshot() {
+	service.snapshotMu.Lock()
+	service.snapshotCache = nil
+	service.snapshotEpoch++
+	service.snapshotMu.Unlock()
+}
+
+func (service *QueryService) scheduleLocalRefresh() {
+	service.refreshMu.Lock()
+	if service.localRefreshing {
+		service.refreshMu.Unlock()
+		return
+	}
+	service.localRefreshing = true
+	service.refreshMu.Unlock()
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		performed, err := service.collector.RefreshIfDue(ctx)
+		service.refreshMu.Lock()
+		service.localRefreshing = false
+		notifier := service.onRefresh
+		service.refreshMu.Unlock()
+		if performed && err == nil {
+			service.invalidateSnapshot()
+			if notifier != nil {
+				notifier()
+			}
+		}
+	}()
+}
+
+// SetRefreshNotifier registers a lightweight invalidation callback. Source
+// credentials and results stay inside the Helper; the callback only tells
+// clients to re-query the committed local snapshot.
+func (service *QueryService) SetRefreshNotifier(notifier func()) {
 	if service == nil {
 		return
 	}
 	service.refreshMu.Lock()
-	service.onDashboardRefresh = notifier
+	service.onRefresh = notifier
 	service.refreshMu.Unlock()
 }
 
@@ -151,10 +230,13 @@ func (service *QueryService) scheduleDashboardRefresh() {
 		}
 		service.refreshMu.Lock()
 		service.refreshing = false
-		notifier := service.onDashboardRefresh
+		notifier := service.onRefresh
 		service.refreshMu.Unlock()
-		if performed && err == nil && notifier != nil {
-			notifier()
+		if performed && err == nil {
+			service.invalidateSnapshot()
+			if notifier != nil {
+				notifier()
+			}
 		}
 	}()
 }
