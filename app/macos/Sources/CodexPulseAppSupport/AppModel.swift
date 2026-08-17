@@ -138,6 +138,9 @@ public final class AppModel: ObservableObject {
     private var refreshAllPendingTasks: Set<FeatureTaskKey> = []
     private var refreshAllWaitsForOverview = false
     private var latestRuntimeState: CoreConnectionState = .idle
+	private var statusOverviewCache: [AgentProvider: OverviewPresentation] = [:]
+	private var statusUsageCache:
+		[AgentProvider: Codexpulse_Core_V1_UsageCostResponse] = [:]
 
     public init(configuration: AppLaunchConfiguration) {
         runtime = AppRuntime(configuration: configuration)
@@ -288,7 +291,11 @@ public final class AppModel: ObservableObject {
 		overviewRefreshTask = nil
 		cancelPageFeatureTasks()
 		resetProviderFeatureState()
-		state = .loading(localization.textValue("正在切换客户端…"))
+		if selectedFeature == .overview {
+			state = .loading(localization.textValue("正在切换客户端…"))
+		} else {
+			load(selectedFeature)
+		}
 		Task { [weak self, runtime] in
 			await runtime.selectProvider(provider)
 			guard let self, self.selectedProvider == provider else { return }
@@ -302,8 +309,10 @@ public final class AppModel: ObservableObject {
 		if persistsProviderSelection {
 			providerDefaults.set(provider.rawValue, forKey: Self.statusProviderKey)
 		}
-		statusOverviewState = .idle
-		statusUsageState = .idle
+		statusOverviewState = .loading(previous: statusOverviewCache[provider])
+		statusUsageState = provider == .cursor
+			? .loading(previous: statusUsageCache[provider])
+			: .idle
 		statusInvocationState = .idle
 		loadStatusOverview()
 	}
@@ -1504,8 +1513,8 @@ public final class AppModel: ObservableObject {
 		statusOverviewState = .loading(previous: previous)
 		if provider == .cursor {
 			statusUsageState = .loading(previous: statusUsageState.value)
-			statusInvocationState = .loading(previous: statusInvocationState.value)
 		}
+		statusInvocationState = .idle
 		launch(
 			.statusOverview,
 			operation: { [runtime] in try await runtime.statusOverview(provider: provider) }
@@ -1515,34 +1524,26 @@ public final class AppModel: ObservableObject {
 				responses.provider == provider
 			else { return }
 			let presentation = OverviewPresentation(responses)
+			statusOverviewCache[provider] = presentation
 			statusOverviewState = presentation.isPartial
 				? .partial(presentation, notices: presentation.notices)
 				: .ready(presentation)
 			loadStatusAccount(for: responses, provider: provider)
 			if provider == .cursor {
+				statusUsageCache[provider] = responses.todayUsage
 				statusUsageState = loadState(
 					value: responses.todayUsage,
 					meta: responses.todayUsage.meta,
 					isEmpty: false
 				)
-				statusInvocationState = loadState(
-					value: responses.todayInvocationUsage,
-					meta: responses.todayInvocationUsage.meta,
-					isEmpty: false
-				)
 			} else {
 				statusUsageState = .idle
-				statusInvocationState = .idle
 			}
 		} failure: { [weak self] error in
 			guard let self, statusProvider == provider else { return }
 			statusOverviewState = failedLoadState(previous: previous, error: error)
 			if provider == .cursor {
 				statusUsageState = failedLoadState(previous: statusUsageState.value, error: error)
-				statusInvocationState = failedLoadState(
-					previous: statusInvocationState.value,
-					error: error
-				)
 			}
 		}
 	}
@@ -1554,6 +1555,7 @@ public final class AppModel: ObservableObject {
 		) { [weak self] account in
 			guard let self, statusProvider == provider else { return }
 			let presentation = OverviewPresentation(responses.replacingAccount(account))
+			statusOverviewCache[provider] = presentation
 			statusOverviewState = presentation.isPartial
 				? .partial(presentation, notices: presentation.notices)
 				: .ready(presentation)

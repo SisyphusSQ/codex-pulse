@@ -93,42 +93,49 @@ func NewCollector(writer SnapshotWriter, config Config) (*Collector, error) {
 }
 
 func (collector *Collector) Refresh(ctx context.Context) error {
+	_, err := collector.RefreshIfDue(ctx)
+	return err
+}
+
+// RefreshIfDue rebuilds the committed snapshot when the refresh interval has
+// elapsed and reports whether a rebuild was attempted.
+func (collector *Collector) RefreshIfDue(ctx context.Context) (bool, error) {
 	if collector == nil || collector.writer == nil || ctx == nil {
-		return ErrCollector
+		return false, ErrCollector
 	}
 	collector.mu.Lock()
 	defer collector.mu.Unlock()
 	now := collector.config.Now()
 	if !collector.last.IsZero() && now.Sub(collector.last) < collector.config.MinimumRefresh {
-		return nil
+		return false, nil
 	}
 	snapshot := newSnapshot(now.UnixMilli())
 	mergeTranscripts(ctx, collector.config.ProjectsRoot, &snapshot)
 	if err := ctx.Err(); err != nil {
-		return err
+		return true, err
 	}
 	mergeStateDatabase(ctx, collector.config.StateDatabase, &snapshot)
 	if err := ctx.Err(); err != nil {
-		return err
+		return true, err
 	}
 	mergeConversationDatabase(ctx, collector.config.ConversationDatabase, &snapshot)
 	if err := ctx.Err(); err != nil {
-		return err
+		return true, err
 	}
 	mergeAITrackingDatabase(ctx, collector.config.AITrackingDatabase, &snapshot)
 	if err := ctx.Err(); err != nil {
-		return err
+		return true, err
 	}
 	snapshot.Sources = append(snapshot.Sources, notConfiguredSource(SourceHooks, "hooks", snapshot.CollectedAtMS))
 	snapshot.finalize()
 	if err := ctx.Err(); err != nil {
-		return err
+		return true, err
 	}
 	if err := collector.writer.ReplaceCursorSnapshot(ctx, snapshot.CursorSnapshot); err != nil {
-		return fmt.Errorf("%w: persist snapshot: %w", ErrCollector, err)
+		return true, fmt.Errorf("%w: persist snapshot: %w", ErrCollector, err)
 	}
 	collector.last = now
-	return nil
+	return true, nil
 }
 
 type collectedSnapshot struct {

@@ -72,7 +72,7 @@ func composeCoreService(
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
-	cursorService.SetDashboardRefreshNotifier(func() {
+	cursorService.SetRefreshNotifier(func() {
 		notifyQueryInvalidation(invalidation, context.Background(), core.InvalidationIndex)
 	})
 	providerRouter, err := agentrouter.New(usageService, invocationService, cursorService, cursorService)

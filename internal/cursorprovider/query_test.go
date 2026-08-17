@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -22,6 +23,26 @@ func (discardSnapshotWriter) ReplaceCursorSnapshot(context.Context, store.Cursor
 	return nil
 }
 
+type blockingSnapshotWriter struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+	commit  func()
+}
+
+func (writer *blockingSnapshotWriter) ReplaceCursorSnapshot(ctx context.Context, _ store.CursorSnapshot) error {
+	writer.once.Do(func() { close(writer.started) })
+	select {
+	case <-writer.release:
+		if writer.commit != nil {
+			writer.commit()
+		}
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 type fixedSnapshotReader struct{ snapshot store.CursorSnapshot }
 
 func (reader fixedSnapshotReader) CursorSnapshot(context.Context) (store.CursorSnapshot, error) {
@@ -31,6 +52,53 @@ func (reader fixedSnapshotReader) CursorSnapshot(context.Context) (store.CursorS
 type mutableSnapshotReader struct{ snapshot store.CursorSnapshot }
 
 func (reader *mutableSnapshotReader) CursorSnapshot(context.Context) (store.CursorSnapshot, error) {
+	return reader.snapshot, nil
+}
+
+type countingSnapshotReader struct {
+	snapshot store.CursorSnapshot
+	reads    atomic.Int64
+}
+
+type blockingMutableSnapshotReader struct {
+	mu       sync.Mutex
+	snapshot store.CursorSnapshot
+	reads    int
+	started  chan struct{}
+	release  chan struct{}
+}
+
+func (reader *blockingMutableSnapshotReader) CursorSnapshot(ctx context.Context) (store.CursorSnapshot, error) {
+	reader.mu.Lock()
+	reader.reads++
+	reads := reader.reads
+	snapshot := reader.snapshot
+	reader.mu.Unlock()
+	if reads == 1 {
+		close(reader.started)
+		select {
+		case <-reader.release:
+		case <-ctx.Done():
+			return store.CursorSnapshot{}, ctx.Err()
+		}
+	}
+	return snapshot, nil
+}
+
+func (reader *blockingMutableSnapshotReader) update(snapshot store.CursorSnapshot) {
+	reader.mu.Lock()
+	reader.snapshot = snapshot
+	reader.mu.Unlock()
+}
+
+func (reader *blockingMutableSnapshotReader) readCount() int {
+	reader.mu.Lock()
+	defer reader.mu.Unlock()
+	return reader.reads
+}
+
+func (reader *countingSnapshotReader) CursorSnapshot(context.Context) (store.CursorSnapshot, error) {
+	reader.reads.Add(1)
 	return reader.snapshot, nil
 }
 
@@ -63,6 +131,297 @@ func (refresher *blockingDashboardRefresher) Refresh(ctx context.Context) error 
 	}
 }
 
+func TestQueryServiceReturnsExistingSnapshotBeforeLocalRefreshCompletes(t *testing.T) {
+	root := t.TempDir()
+	writer := &blockingSnapshotWriter{started: make(chan struct{}), release: make(chan struct{})}
+	t.Cleanup(func() {
+		select {
+		case <-writer.release:
+		default:
+			close(writer.release)
+		}
+	})
+	collector, err := NewCollector(writer, Config{
+		ProjectsRoot: filepath.Join(root, "projects"), StateDatabase: filepath.Join(root, "state.vscdb"),
+		ConversationDatabase: filepath.Join(root, "conversation.db"), AITrackingDatabase: filepath.Join(root, "tracking.db"),
+		MinimumRefresh: time.Hour, Now: func() time.Time { return time.UnixMilli(5_000) },
+	})
+	if err != nil {
+		t.Fatalf("NewCollector() error = %v", err)
+	}
+	service, err := NewQueryService(collector, fixedSnapshotReader{snapshot: cursorQuerySnapshot("partial")})
+	if err != nil {
+		t.Fatalf("NewQueryService() error = %v", err)
+	}
+
+	rangeValue := basequery.UTCTimeRange{StartAtMS: 1_000, EndAtMS: 5_000, TimeZone: "UTC"}
+	completed := make(chan error, 1)
+	go func() {
+		_, queryErr := service.UsageCost(context.Background(), usagecost.UsageCostRequest{
+			ExactRange: &rangeValue, Granularity: usagecost.TrendDay,
+		})
+		completed <- queryErr
+	}()
+
+	select {
+	case err := <-completed:
+		if err != nil {
+			t.Fatalf("UsageCost() error = %v", err)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("UsageCost() waited for the local Cursor refresh despite an existing snapshot")
+	}
+	select {
+	case <-writer.started:
+	case <-time.After(time.Second):
+		t.Fatal("local Cursor refresh did not start in the background")
+	}
+}
+
+func TestQueryServiceReturnsExistingQuotaBeforeLocalRefreshCompletes(t *testing.T) {
+	root := t.TempDir()
+	writer := &blockingSnapshotWriter{started: make(chan struct{}), release: make(chan struct{})}
+	t.Cleanup(func() {
+		select {
+		case <-writer.release:
+		default:
+			close(writer.release)
+		}
+	})
+	collector, err := NewCollector(writer, Config{
+		ProjectsRoot: filepath.Join(root, "projects"), StateDatabase: filepath.Join(root, "state.vscdb"),
+		ConversationDatabase: filepath.Join(root, "conversation.db"), AITrackingDatabase: filepath.Join(root, "tracking.db"),
+		MinimumRefresh: time.Hour, Now: func() time.Time { return time.UnixMilli(5_000) },
+	})
+	if err != nil {
+		t.Fatalf("NewCollector() error = %v", err)
+	}
+	service, err := NewQueryService(collector, fixedSnapshotReader{snapshot: cursorQuerySnapshot("partial")})
+	if err != nil {
+		t.Fatalf("NewQueryService() error = %v", err)
+	}
+
+	completed := make(chan error, 1)
+	go func() {
+		_, queryErr := service.QuotaCurrent(context.Background(), 5_000)
+		completed <- queryErr
+	}()
+	select {
+	case err := <-completed:
+		if err != nil {
+			t.Fatalf("QuotaCurrent() error = %v", err)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("QuotaCurrent() waited for the local Cursor refresh despite an existing snapshot")
+	}
+	select {
+	case <-writer.started:
+	case <-time.After(time.Second):
+		t.Fatal("local Cursor refresh did not start in the background")
+	}
+}
+
+func TestQueryServiceConcurrentQueriesHydrateSnapshotOnce(t *testing.T) {
+	root := t.TempDir()
+	collector, err := NewCollector(discardSnapshotWriter{}, Config{
+		ProjectsRoot: filepath.Join(root, "projects"), StateDatabase: filepath.Join(root, "state.vscdb"),
+		ConversationDatabase: filepath.Join(root, "conversation.db"), AITrackingDatabase: filepath.Join(root, "tracking.db"),
+		MinimumRefresh: time.Hour, Now: func() time.Time { return time.UnixMilli(5_000) },
+	})
+	if err != nil {
+		t.Fatalf("NewCollector() error = %v", err)
+	}
+	if err := collector.Refresh(context.Background()); err != nil {
+		t.Fatalf("Refresh(test fixture) error = %v", err)
+	}
+	reader := &countingSnapshotReader{snapshot: cursorQuerySnapshot("partial")}
+	service, err := NewQueryService(collector, reader)
+	if err != nil {
+		t.Fatalf("NewQueryService() error = %v", err)
+	}
+
+	rangeValue := basequery.UTCTimeRange{StartAtMS: 1_000, EndAtMS: 5_000, TimeZone: "UTC"}
+	start := make(chan struct{})
+	errors := make(chan error, 8)
+	for range 8 {
+		go func() {
+			<-start
+			_, queryErr := service.UsageCost(context.Background(), usagecost.UsageCostRequest{
+				ExactRange: &rangeValue, Granularity: usagecost.TrendDay,
+			})
+			errors <- queryErr
+		}()
+	}
+	close(start)
+	for range 8 {
+		if err := <-errors; err != nil {
+			t.Fatalf("UsageCost() error = %v", err)
+		}
+	}
+	if got := reader.reads.Load(); got != 1 {
+		t.Fatalf("CursorSnapshot() reads = %d, want 1 shared hydration", got)
+	}
+}
+
+func TestQueryServiceDoesNotCacheSnapshotLoadedAcrossInvalidation(t *testing.T) {
+	root := t.TempDir()
+	collector, err := NewCollector(discardSnapshotWriter{}, Config{
+		ProjectsRoot: filepath.Join(root, "projects"), StateDatabase: filepath.Join(root, "state.vscdb"),
+		ConversationDatabase: filepath.Join(root, "conversation.db"), AITrackingDatabase: filepath.Join(root, "tracking.db"),
+		MinimumRefresh: time.Hour, Now: func() time.Time { return time.UnixMilli(5_000) },
+	})
+	if err != nil {
+		t.Fatalf("NewCollector() error = %v", err)
+	}
+	first := cursorQuerySnapshot("partial")
+	first.Generation = 1
+	reader := &blockingMutableSnapshotReader{
+		snapshot: first,
+		started:  make(chan struct{}),
+		release:  make(chan struct{}),
+	}
+	service, err := NewQueryService(collector, reader)
+	if err != nil {
+		t.Fatalf("NewQueryService() error = %v", err)
+	}
+
+	loaded := make(chan error, 1)
+	go func() {
+		_, loadErr := service.loadSnapshot(context.Background())
+		loaded <- loadErr
+	}()
+	<-reader.started
+	service.invalidateSnapshot()
+	close(reader.release)
+	if err := <-loaded; err != nil {
+		t.Fatalf("loadSnapshot() error = %v", err)
+	}
+	second := first
+	second.Generation = 2
+	reader.update(second)
+
+	snapshot, err := service.loadSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("loadSnapshot(after invalidation) error = %v", err)
+	}
+	if snapshot.Generation != 2 || reader.readCount() != 2 {
+		t.Fatalf(
+			"snapshot generation = %d, reads = %d; want generation 2 from a second hydration",
+			snapshot.Generation,
+			reader.readCount(),
+		)
+	}
+}
+
+func TestQueryServiceExplicitRefreshInvalidatesCachedSnapshot(t *testing.T) {
+	root := t.TempDir()
+	reader := &mutableSnapshotReader{snapshot: cursorQuerySnapshot("partial")}
+	reader.snapshot.Generation = 1
+	release := make(chan struct{})
+	close(release)
+	writer := &blockingSnapshotWriter{
+		started: make(chan struct{}),
+		release: release,
+		commit: func() {
+			reader.snapshot.Generation = 2
+		},
+	}
+	collector, err := NewCollector(writer, Config{
+		ProjectsRoot: filepath.Join(root, "projects"), StateDatabase: filepath.Join(root, "state.vscdb"),
+		ConversationDatabase: filepath.Join(root, "conversation.db"), AITrackingDatabase: filepath.Join(root, "tracking.db"),
+		MinimumRefresh: time.Hour, Now: func() time.Time { return time.UnixMilli(5_000) },
+	})
+	if err != nil {
+		t.Fatalf("NewCollector() error = %v", err)
+	}
+	service, err := NewQueryService(collector, reader)
+	if err != nil {
+		t.Fatalf("NewQueryService() error = %v", err)
+	}
+	initial, err := service.loadSnapshot(context.Background())
+	if err != nil || initial.Generation != 1 {
+		t.Fatalf("loadSnapshot(initial) = (%d, %v), want generation 1", initial.Generation, err)
+	}
+
+	if err := service.Refresh(context.Background()); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+	refreshed, err := service.loadSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("loadSnapshot(after Refresh) error = %v", err)
+	}
+	if refreshed.Generation != 2 {
+		t.Fatalf("snapshot generation after Refresh = %d, want 2", refreshed.Generation)
+	}
+}
+
+func TestQueryServiceInvalidatesCachedSnapshotAfterLocalRefresh(t *testing.T) {
+	root := t.TempDir()
+	reader := &mutableSnapshotReader{snapshot: cursorQuerySnapshot("partial")}
+	writer := &blockingSnapshotWriter{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+		commit: func() {
+			reader.snapshot.Sources = append(reader.snapshot.Sources, store.CursorSourceStatus{
+				Provider: "cursor", SourceKey: SourceHooks, SourceType: "hooks",
+				State: "available", CoverageState: "exact", LastSuccessAtMS: pointerInt64ForQueryTest(5_000),
+			})
+		},
+	}
+	t.Cleanup(func() {
+		select {
+		case <-writer.release:
+		default:
+			close(writer.release)
+		}
+	})
+	collector, err := NewCollector(writer, Config{
+		ProjectsRoot: filepath.Join(root, "projects"), StateDatabase: filepath.Join(root, "state.vscdb"),
+		ConversationDatabase: filepath.Join(root, "conversation.db"), AITrackingDatabase: filepath.Join(root, "tracking.db"),
+		MinimumRefresh: time.Hour, Now: func() time.Time { return time.UnixMilli(5_000) },
+	})
+	if err != nil {
+		t.Fatalf("NewCollector() error = %v", err)
+	}
+	service, err := NewQueryService(collector, reader)
+	if err != nil {
+		t.Fatalf("NewQueryService() error = %v", err)
+	}
+	invalidated := make(chan struct{}, 1)
+	service.SetRefreshNotifier(func() { invalidated <- struct{}{} })
+
+	rangeValue := basequery.UTCTimeRange{StartAtMS: 1_000, EndAtMS: 5_000, TimeZone: "UTC"}
+	response, err := service.UsageCost(context.Background(), usagecost.UsageCostRequest{
+		ExactRange: &rangeValue, Granularity: usagecost.TrendDay,
+	})
+	if err != nil {
+		t.Fatalf("UsageCost() error = %v", err)
+	}
+	if testContainsString(response.ProviderContext.Sources, SourceHooks) {
+		t.Fatalf("initial provider sources = %v, want committed snapshot before refresh", response.ProviderContext.Sources)
+	}
+	select {
+	case <-writer.started:
+	case <-time.After(time.Second):
+		t.Fatal("local Cursor refresh did not start")
+	}
+	close(writer.release)
+	select {
+	case <-invalidated:
+	case <-time.After(time.Second):
+		t.Fatal("local Cursor refresh did not publish an invalidation")
+	}
+	response, err = service.UsageCost(context.Background(), usagecost.UsageCostRequest{
+		ExactRange: &rangeValue, Granularity: usagecost.TrendDay,
+	})
+	if err != nil {
+		t.Fatalf("UsageCost(after refresh) error = %v", err)
+	}
+	if !testContainsString(response.ProviderContext.Sources, SourceHooks) {
+		t.Fatalf("refreshed provider sources = %v", response.ProviderContext.Sources)
+	}
+}
+
 func TestQueryServiceReturnsLocalSnapshotBeforeDashboardRefreshCompletes(t *testing.T) {
 	root := t.TempDir()
 	collector, err := NewCollector(discardSnapshotWriter{}, Config{
@@ -79,7 +438,7 @@ func TestQueryServiceReturnsLocalSnapshotBeforeDashboardRefreshCompletes(t *test
 		t.Fatalf("NewQueryService() error = %v", err)
 	}
 	var invalidations atomic.Int64
-	service.SetDashboardRefreshNotifier(func() { invalidations.Add(1) })
+	service.SetRefreshNotifier(func() { invalidations.Add(1) })
 
 	rangeValue := basequery.UTCTimeRange{StartAtMS: 1_000, EndAtMS: 5_000, TimeZone: "UTC"}
 	completed := make(chan error, 1)
@@ -105,11 +464,11 @@ func TestQueryServiceReturnsLocalSnapshotBeforeDashboardRefreshCompletes(t *test
 	}
 	close(refresher.release)
 	deadline := time.Now().Add(time.Second)
-	for invalidations.Load() != 1 && time.Now().Before(deadline) {
+	for invalidations.Load() != 2 && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
-	if invalidations.Load() != 1 {
-		t.Fatalf("dashboard completion invalidations = %d, want 1", invalidations.Load())
+	if invalidations.Load() != 2 {
+		t.Fatalf("local and dashboard completion invalidations = %d, want 2", invalidations.Load())
 	}
 }
 
@@ -130,7 +489,7 @@ func TestQueryServicePublishesDashboardSourceAfterBackgroundRefresh(t *testing.T
 	}
 	rangeValue := basequery.UTCTimeRange{StartAtMS: 1_000, EndAtMS: 5_000, TimeZone: "UTC"}
 	refreshed := make(chan struct{}, 1)
-	service.SetDashboardRefreshNotifier(func() { refreshed <- struct{}{} })
+	service.SetRefreshNotifier(func() { refreshed <- struct{}{} })
 	response, err := service.UsageCost(context.Background(), usagecost.UsageCostRequest{
 		ExactRange: &rangeValue, Granularity: usagecost.TrendDay,
 	})

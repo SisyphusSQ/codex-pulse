@@ -111,15 +111,11 @@ func (service *QueryService) QuotaPace(
 func (service *QueryService) quotaSnapshot(
 	ctx context.Context,
 ) (store.CursorSnapshot, bool, error) {
-	refreshErr := service.Refresh(ctx)
-	snapshot, readErr := service.reader.CursorSnapshot(ctx)
-	if readErr != nil {
-		return store.CursorSnapshot{}, false, readErr
+	snapshot, err := service.snapshot(ctx)
+	if err != nil {
+		return store.CursorSnapshot{}, false, err
 	}
-	if refreshErr != nil && len(snapshot.DashboardQuotaObservations) == 0 {
-		return store.CursorSnapshot{}, false, refreshErr
-	}
-	return snapshot, refreshErr != nil, nil
+	return snapshot, false, nil
 }
 
 func cursorQuotaSnapshot(

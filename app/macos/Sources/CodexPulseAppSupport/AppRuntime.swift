@@ -20,6 +20,11 @@ private enum InitialOverviewRefreshState: Equatable, Sendable {
     case completed
 }
 
+private struct OverviewCacheKey: Hashable, Sendable {
+	let provider: AgentProvider
+	let range: DateRangePreset
+}
+
 private enum OverviewSectionResult<Value: Sendable>: Sendable {
     case value(Value)
     case failure(AppNotice)
@@ -228,6 +233,7 @@ public actor AppRuntime {
     private var refreshTask: Task<OverviewResponses, any Error>?
     private var accountRefreshTask: Task<Void, Never>?
     private var lastResponses: OverviewResponses?
+	private var overviewCache: [OverviewCacheKey: OverviewResponses] = [:]
 	private var overviewRange: DateRangePreset = .quotaWeek
 	private var selectedProvider: AgentProvider = .codex
     private var runtimeGeneration: UInt64 = 0
@@ -348,6 +354,7 @@ public actor AppRuntime {
             case .recovery(let snapshot):
                 readyForOverview = false
                 lastResponses = nil
+				overviewCache.removeAll()
                 await emit(.recovery(snapshot))
             case .unsupported:
                 throw AppRuntimeError.invalidBootstrap
@@ -377,8 +384,13 @@ public actor AppRuntime {
 		refreshTask?.cancel()
 		refreshTask = nil
 		cancelAccountRefresh()
-		lastResponses = nil
-		if readyForOverview { await refresh(showLoading: true) }
+		lastResponses = overviewCache[OverviewCacheKey(provider: provider, range: overviewRange)]
+		if readyForOverview {
+			if let lastResponses {
+				await publishOverview(lastResponses)
+			}
+			await refresh(showLoading: lastResponses == nil)
+		}
 	}
 
     public func refresh(range: DateRangePreset) async {
@@ -445,30 +457,12 @@ public actor AppRuntime {
 			async let usageResult = captureOverviewSection {
 				try await client.usageCost(content.usage, retryPolicy: .transportDefault)
 			}
-			async let invocationResult = captureOverviewSection {
-				try await client.invocationUsage(
-					content.invocationUsage,
-					retryPolicy: .transportDefault
-				)
-			}
 			async let todayUsageResult = captureOverviewSection {
 				guard provider == .cursor else {
 					return unavailableUsage(for: todayContent.usage, provider: provider)
 				}
 				return try await client.usageCost(
 					todayContent.usage,
-					retryPolicy: .transportDefault
-				)
-			}
-			async let todayInvocationResult = captureOverviewSection {
-				guard provider == .cursor else {
-					return unavailableInvocationUsage(
-						for: todayContent.invocationUsage,
-						provider: provider
-					)
-				}
-				return try await client.invocationUsage(
-					todayContent.invocationUsage,
 					retryPolicy: .transportDefault
 				)
 			}
@@ -484,9 +478,7 @@ public actor AppRuntime {
 			let results = await (
 				quotaPaceResult,
 				usageResult,
-				invocationResult,
 				todayUsageResult,
-				todayInvocationResult,
 				projectsResult
 			)
 			let usage: Codexpulse_Core_V1_UsageCostResponse
@@ -494,31 +486,21 @@ public actor AppRuntime {
 			case .value(let response): usage = response
 			case .failure: usage = unavailableUsage(for: content.usage, provider: provider)
 			}
-			let invocation: Codexpulse_Core_V1_InvocationUsageResponse
-			switch results.2 {
-			case .value(let response): invocation = response
-			case .failure:
-				invocation = unavailableInvocationUsage(
-					for: content.invocationUsage,
-					provider: provider
-				)
-			}
+			let invocation = unavailableInvocationUsage(
+				for: content.invocationUsage,
+				provider: provider
+			)
 			let todayUsage: Codexpulse_Core_V1_UsageCostResponse
-			switch results.3 {
+			switch results.2 {
 			case .value(let response): todayUsage = response
 			case .failure: todayUsage = unavailableUsage(for: todayContent.usage, provider: provider)
 			}
-			let todayInvocation: Codexpulse_Core_V1_InvocationUsageResponse
-			switch results.4 {
-			case .value(let response): todayInvocation = response
-			case .failure:
-				todayInvocation = unavailableInvocationUsage(
-					for: todayContent.invocationUsage,
-					provider: provider
-				)
-			}
+			let todayInvocation = unavailableInvocationUsage(
+				for: todayContent.invocationUsage,
+				provider: provider
+			)
 			let projects: Codexpulse_Core_V1_ProjectListResponse
-			switch results.5 {
+			switch results.3 {
 			case .value(let response): projects = response
 			case .failure: projects = unavailableProjects(provider: provider)
 			}
@@ -558,8 +540,6 @@ public actor AppRuntime {
 					results.1.notice,
 					results.2.notice,
 					results.3.notice,
-					results.4.notice,
-					results.5.notice,
 				].compactMap { $0 }
 			)
 		}
@@ -1435,6 +1415,7 @@ public actor AppRuntime {
 			else { throw AppRuntimeError.providerMismatch }
             refreshTask = nil
             lastResponses = responses
+			overviewCache[OverviewCacheKey(provider: provider, range: requestedRange)] = responses
             await publishOverview(responses)
             completeInitialOverviewRefreshIfNeeded()
             await drainPendingInvalidationRefresh()
@@ -1513,6 +1494,8 @@ public actor AppRuntime {
         guard let response, let responses = lastResponses else { return }
         let updated = responses.replacingAccount(response)
         lastResponses = updated
+		let requestedRange = updated.rangeResolution?.requestedPreset ?? overviewRange
+		overviewCache[OverviewCacheKey(provider: updated.provider, range: requestedRange)] = updated
         await publishOverview(updated)
     }
 
@@ -1816,6 +1799,7 @@ public actor AppRuntime {
             self.streamController = nil
         }
         lastResponses = nil
+		overviewCache.removeAll()
 
         guard let client else {
             await supervisor.stop(mode: .terminate)
