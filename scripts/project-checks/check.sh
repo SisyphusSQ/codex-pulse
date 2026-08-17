@@ -175,7 +175,7 @@ require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift '\.co
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift '\.onHover' SWIFT-002 docs/design/details/native-macos-client/README.md
 reject_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift '\.accentColor\.opacity' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'controlActiveState' SWIFT-002 docs/design/details/native-macos-client/README.md
-require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'model\.isOverviewRefreshing' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'model\.statusOverviewState\.isLoading' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift '正在刷新本地数据' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'private struct RefreshArrowSymbol' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'TimelineView\(\.animation' SWIFT-002 docs/design/details/native-macos-client/README.md

@@ -12,6 +12,7 @@ type RuntimeSourceKind string
 const (
 	RuntimeSourceLocalFile RuntimeSourceKind = "local_file"
 	RuntimeSourceOnline    RuntimeSourceKind = "online"
+	RuntimeSourceProvider  RuntimeSourceKind = "provider_source"
 )
 
 type RuntimeSourceCursor struct {
@@ -28,18 +29,20 @@ type RuntimeSourceQuery struct {
 }
 
 type RuntimeSourceRecord struct {
-	SourceKey   string
-	Kind        RuntimeSourceKind
-	UpdatedAtMS int64
-	Local       *SourceFile
-	Online      *SourceState
+	SourceKey      string
+	Kind           RuntimeSourceKind
+	UpdatedAtMS    int64
+	Local          *SourceFile
+	Online         *SourceState
+	ProviderSource *CursorSourceStatus
 }
 
 type RuntimeSourceSummary struct {
-	Total         int64
-	LocalFiles    int64
-	OnlineSources int64
-	Attention     int64
+	Total           int64
+	LocalFiles      int64
+	OnlineSources   int64
+	ProviderSources int64
+	Attention       int64
 }
 
 type RuntimeSourcePage struct {

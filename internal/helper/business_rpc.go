@@ -4,6 +4,7 @@ import (
 	"context"
 
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
@@ -47,12 +48,15 @@ func (api *grpcAPI) Contracts(ctx context.Context, _ *corev1.ContractsRequest) (
 
 func (api *grpcAPI) AccountSnapshot(
 	ctx context.Context,
-	_ *corev1.AccountSnapshotRequest,
+	request *corev1.AccountSnapshotRequest,
 ) (*corev1.AccountSnapshotResponse, error) {
 	if api == nil || api.service == nil {
 		return nil, coreServiceUnavailable()
 	}
-	response, err := api.service.AccountSnapshot(ctx)
+	response, err := api.service.AccountSnapshot(
+		ctx,
+		agentprovider.Scope{Provider: request.GetProvider().GetProvider()},
+	)
 	return encodeRPC(response, &corev1.AccountSnapshotResponse{}, err)
 }
 
@@ -80,12 +84,15 @@ func (api *grpcAPI) InvocationUsage(
 
 func (api *grpcAPI) PricingCatalogCurrent(
 	ctx context.Context,
-	_ *corev1.PricingCatalogCurrentRequest,
+	request *corev1.PricingCatalogCurrentRequest,
 ) (*corev1.PricingCatalogCurrentResponse, error) {
 	if api == nil || api.service == nil {
 		return nil, coreServiceUnavailable()
 	}
-	response, err := api.service.PricingCatalogCurrent(ctx)
+	response, err := api.service.PricingCatalogCurrent(
+		ctx,
+		agentprovider.Scope{Provider: request.GetProvider().GetProvider()},
+	)
 	return encodeRPC(response, &corev1.PricingCatalogCurrentResponse{}, err)
 }
 
@@ -97,6 +104,7 @@ func (api *grpcAPI) SessionDetail(
 		return nil, coreServiceUnavailable()
 	}
 	query := usagecost.SessionDetailRequest{
+		Provider:  agentprovider.Scope{Provider: request.GetProvider().GetProvider()},
 		SessionID: request.GetSessionId(), TurnPage: fromProtoPage(request.GetTurnPage()),
 	}
 	if request != nil && request.ReportingTimezone != nil {
@@ -126,6 +134,7 @@ func (api *grpcAPI) ProjectDetail(
 		return nil, coreServiceUnavailable()
 	}
 	query := usagecost.ProjectDetailRequest{
+		Provider:     agentprovider.Scope{Provider: request.GetProvider().GetProvider()},
 		DimensionKey: request.GetDimensionKey(), Range: fromProtoDateRange(request.GetRange()),
 		SessionPage: fromProtoPage(request.GetSessionPage()), ModelPage: fromProtoPage(request.GetModelPage()),
 	}
@@ -144,7 +153,11 @@ func (api *grpcAPI) QuotaCurrent(
 	if api == nil || api.service == nil {
 		return nil, coreServiceUnavailable()
 	}
-	response, err := api.service.QuotaCurrent(ctx, request.GetEvaluatedAtMs())
+	response, err := api.service.QuotaCurrent(
+		ctx,
+		agentprovider.Scope{Provider: request.GetProvider().GetProvider()},
+		request.GetEvaluatedAtMs(),
+	)
 	return encodeRPC(response, &corev1.QuotaCurrentResponse{}, err)
 }
 
@@ -155,7 +168,11 @@ func (api *grpcAPI) QuotaPace(
 	if api == nil || api.service == nil {
 		return nil, coreServiceUnavailable()
 	}
-	response, err := api.service.QuotaPace(ctx, request.GetEvaluatedAtMs())
+	response, err := api.service.QuotaPace(
+		ctx,
+		agentprovider.Scope{Provider: request.GetProvider().GetProvider()},
+		request.GetEvaluatedAtMs(),
+	)
 	return encodeRPC(response, &corev1.QuotaPaceResponse{}, err)
 }
 
@@ -406,7 +423,8 @@ func fromProtoUsageCostRequest(request *corev1.UsageCostRequest) usagecost.Usage
 		return usagecost.UsageCostRequest{}
 	}
 	result := usagecost.UsageCostRequest{
-		Range: fromProtoDateRange(request.GetRange()), Granularity: usagecost.TrendGranularity(request.GetGranularity()),
+		Provider: agentprovider.Scope{Provider: request.GetProvider().GetProvider()},
+		Range:    fromProtoDateRange(request.GetRange()), Granularity: usagecost.TrendGranularity(request.GetGranularity()),
 		IncludeActivityDistribution: request.GetIncludeActivityDistribution(),
 		TokenTotalsOnly:             request.GetTokenTotalsOnly(),
 	}
@@ -425,6 +443,7 @@ func fromProtoInvocationUsageRequest(request *corev1.InvocationUsageRequest) inv
 		return invocationusage.InvocationUsageRequest{}
 	}
 	return invocationusage.InvocationUsageRequest{
+		Provider:    agentprovider.Scope{Provider: request.GetProvider().GetProvider()},
 		Range:       fromProtoExactTimeRange(request.GetRange()),
 		Granularity: invocationusage.Granularity(request.GetGranularity()),
 		SourceClass: invocationusage.SourceClass(request.GetSourceClass()),

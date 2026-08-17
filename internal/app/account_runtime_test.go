@@ -8,8 +8,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
+	"github.com/SisyphusSQ/codex-pulse/internal/cursorprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 )
 
@@ -37,12 +39,34 @@ func TestAccountSnapshotDoesNotStartReaderAfterConfirmedHomeSwitch(t *testing.T)
 		},
 	}
 
-	account, err := runtime.AccountSnapshot(context.Background())
+	account, err := runtime.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Codex})
 	if !errors.Is(err, ErrApplicationLifecycleRuntime) || account.Account != nil {
 		t.Fatalf("AccountSnapshot(switched before launch) = %#v, %v", account, err)
 	}
 	if readerCalls != 0 {
 		t.Fatalf("account reader calls = %d, want 0", readerCalls)
+	}
+}
+
+func TestAccountSnapshotReadsCursorIdentityFromDesktopState(t *testing.T) {
+	runtime := &applicationLifecycleRuntime{
+		cursorAccountReader: func(context.Context) (cursorprovider.DesktopAccountSnapshot, error) {
+			return cursorprovider.DesktopAccountSnapshot{
+				Email: "person@example.com", MembershipType: "pro", SubscriptionStatus: "active",
+			}, nil
+		},
+	}
+	account, err := runtime.AccountSnapshot(
+		context.Background(),
+		agentprovider.Scope{Provider: agentprovider.Cursor},
+	)
+	if err != nil {
+		t.Fatalf("AccountSnapshot(cursor) error = %v", err)
+	}
+	if account.Account == nil || account.Account.Type != agentprovider.Cursor ||
+		account.Account.Email == nil || *account.Account.Email != "person@example.com" ||
+		account.Account.PlanType == nil || *account.Account.PlanType != "pro" {
+		t.Fatalf("AccountSnapshot(cursor) = %#v", account)
 	}
 }
 
@@ -74,7 +98,7 @@ func TestAccountSnapshotStartGuardRechecksConfirmedHome(t *testing.T) {
 		},
 	}
 
-	account, err := runtime.AccountSnapshot(context.Background())
+	account, err := runtime.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Codex})
 	if !errors.Is(err, ErrApplicationLifecycleRuntime) || account.Account != nil {
 		t.Fatalf("AccountSnapshot(switched at start guard) = %#v, %v", account, err)
 	}
@@ -119,7 +143,7 @@ func TestAccountSnapshotDiscardsResultAfterConcurrentConfirmedHomeSwitch(t *test
 	}
 	done := make(chan result, 1)
 	go func() {
-		account, err := runtime.AccountSnapshot(context.Background())
+		account, err := runtime.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Codex})
 		done <- result{hasAccount: account.Account != nil, err: err}
 	}()
 	startedHome := <-readerStarted

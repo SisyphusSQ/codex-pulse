@@ -54,6 +54,9 @@ struct SourcesJobsView: View {
                     Text("过期").tag("stale")
                     Text("不可用").tag("unavailable")
                     Text("未知").tag("unknown")
+					Text("可用").tag("available")
+					Text("部分可用").tag("partial")
+					Text("未配置").tag("not_configured")
                 }
                 .labelsHidden()
                 .frame(width: 145)
@@ -168,14 +171,20 @@ private struct SourceSplitView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(10)
-                List(response.items, id: \.sourceKey, selection: $selected) { item in
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack {
-                            Text(ProductCopy.sourceName(item.kind)).font(.headline).lineLimit(1)
-                            Spacer()
-                            StatusPill(text: item.state)
-                        }
-                        Text("已整理 \(bytesText(item.parsedBytes))")
+				List(selection: $selected) {
+					ForEach(providerGroups(response.items), id: \.provider) { group in
+						Section(group.provider.title) {
+							ForEach(group.items, id: \.sourceKey) { item in
+					VStack(alignment: .leading, spacing: 5) {
+						HStack {
+							Text(item.hasSourceType ? item.sourceType : ProductCopy.sourceName(item.kind)).font(.headline).lineLimit(1)
+							Spacer()
+							StatusPill(text: item.state)
+						}
+					let detailText = item.hasProvider
+						? "记录 \(numericText(item.rowCount)) · 覆盖度 \(item.hasCoverageState ? item.coverageState : "unknown")"
+						: "已整理 \(bytesText(item.parsedBytes))"
+					Text(detailText)
                             .font(.caption).foregroundStyle(.secondary)
                         if item.hasFailureCode {
                             Text("最近一次更新未完成").font(.caption2).foregroundStyle(.orange)
@@ -183,6 +192,9 @@ private struct SourceSplitView: View {
                     }
                     .tag(item.sourceKey)
                     .accessibilityIdentifier("source.\(item.sourceKey)")
+							}
+						}
+					}
                 }
                 if pageHasMore(response.meta) {
                     Button(isLoading ? "正在加载…" : "加载更多") { loadMore() }.padding(8)
@@ -199,6 +211,16 @@ private struct SourceSplitView: View {
             .frame(minWidth: 340, idealWidth: 470)
         }
     }
+
+	private func providerGroups(_ items: [Codexpulse_Core_V1_SourceItem]) -> [(provider: AgentProvider, items: [Codexpulse_Core_V1_SourceItem])] {
+		AgentProvider.allCases.compactMap { provider in
+			let matches = items.filter {
+				let raw = $0.hasProvider ? $0.provider : AgentProvider.codex.rawValue
+				return raw == provider.rawValue
+			}
+			return matches.isEmpty ? nil : (provider, matches)
+		}
+	}
 }
 
 private struct SourceDetailView: View {
@@ -208,11 +230,19 @@ private struct SourceDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Text(ProductCopy.sourceName(item.kind)).font(.title2.bold())
+					Text(item.hasSourceType ? item.sourceType : ProductCopy.sourceName(item.kind)).font(.title2.bold())
                     Spacer()
                     StatusPill(text: item.state)
                 }
                 SectionCard(title: "数据概览") {
+					KeyValueRow(key: "客户端", value: item.hasProvider ? item.provider.capitalized : "Codex")
+					if item.hasSourceType { KeyValueRow(key: "内部来源", value: item.sourceType) }
+					if item.hasCoverageState { KeyValueRow(key: "覆盖度", value: item.coverageState) }
+					if item.hasCheckpointKind { KeyValueRow(key: "Checkpoint", value: item.checkpointKind) }
+					if item.hasProvider {
+						KeyValueRow(key: "记录数", value: numericText(item.rowCount))
+						KeyValueRow(key: "Schema 版本", value: numericText(item.schemaVersion))
+					}
                     KeyValueRow(key: "状态", value: ProductCopy.status(item.state))
                     KeyValueRow(key: "大小", value: bytesText(item.sizeBytes))
                     KeyValueRow(key: "已整理", value: bytesText(item.parsedBytes))
@@ -244,7 +274,9 @@ private struct JobSplitView: View {
                     Text("运行中 \(numericText(response.summary.running))")
                 }
                 .font(.caption).foregroundStyle(.secondary).padding(10)
-                List(response.items, id: \.jobID, selection: $selected) { item in
+				List(selection: $selected) {
+					Section("Codex") {
+						ForEach(response.items, id: \.jobID) { item in
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
                             Text(ProductCopy.jobName(item.jobType)).font(.headline).lineLimit(1)
@@ -256,9 +288,11 @@ private struct JobSplitView: View {
                         Text("更新：\(timestampText(item.updatedAtMs))")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
-                    .tag(item.jobID)
-                    .accessibilityIdentifier("job.\(item.jobID)")
-                }
+					.tag(item.jobID)
+					.accessibilityIdentifier("job.\(item.jobID)")
+						}
+					}
+				}
                 if pageHasMore(response.meta) {
                     Button(isLoading ? "正在加载…" : "加载更多") { loadMore() }.padding(8)
                         .disabled(isLoading)

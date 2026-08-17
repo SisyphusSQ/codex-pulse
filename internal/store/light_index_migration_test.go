@@ -15,8 +15,8 @@ import (
 func TestApplicationSchemaVersionIncludesLightUsageSummaryIndex(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV21Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 21", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV26Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 26", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	seedApplicationSchemaV16(t, database)
@@ -36,11 +36,11 @@ func TestApplicationSchemaVersionIncludesLightUsageSummaryIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run(v16->v21) error = %v", err)
 	}
-	if report.FromVersion != 16 || report.TargetVersion != 21 ||
-		!equalInts(report.AppliedVersions, []int{17, 18, 19, 20, 21}) || backupVersions != [2]int{16, 21} {
+	if report.FromVersion != 16 || report.TargetVersion != 26 ||
+		!equalInts(report.AppliedVersions, []int{17, 18, 19, 20, 21, 22, 23, 24, 25, 26}) || backupVersions != [2]int{16, 26} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 21, 21)
+	assertMigrationVersionAndHistory(t, database, 26, 26)
 	if err := database.View(t.Context(), func(_ context.Context, connection *gorm.DB) error {
 		for _, column := range lightModelMigrationColumns {
 			if !connection.Migrator().HasColumn(column.model, column.column) {

@@ -67,14 +67,18 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		`(?s)message UsageCostResponse\s*\{.*repeated UsageModelItem models\s*=\s*11\s*;.*ActivityDistribution activity_distribution\s*=\s*12\s*;`,
 		`(?s)message InvocationUsageRequest\s*\{.*UTCTimeRange range\s*=\s*1\s*;.*string source_class\s*=\s*3\s*;.*int32 top_limit\s*=\s*4\s*;`,
 		`(?s)message InvocationUsageResponse\s*\{.*InvocationTotals totals\s*=\s*5\s*;.*repeated ToolUsageItem tools\s*=\s*7\s*;.*repeated SkillUsageItem skills\s*=\s*8\s*;.*InvocationCoverage coverage\s*=\s*9\s*;`,
-		`(?s)message ModelReferencePrice\s*\{.*string model_id\s*=\s*1\s*;.*NumericValue input_micros\s*=\s*2\s*;.*NumericValue cached_input_micros\s*=\s*3\s*;.*NumericValue output_micros\s*=\s*4\s*;`,
-		`(?s)message PricingCatalogCurrentResponse\s*\{.*NumericValue evaluated_at_ms\s*=\s*2\s*;.*string pricing_version\s*=\s*3\s*;.*string basis\s*=\s*6\s*;.*NumericValue unit_tokens\s*=\s*7\s*;.*optional string source_url\s*=\s*10\s*;.*repeated ModelReferencePrice items\s*=\s*11\s*;`,
+		`(?s)message PricingCatalogCurrentRequest\s*\{.*ProviderScope provider\s*=\s*1\s*;.*\}`,
+		`(?s)message ModelReferencePrice\s*\{.*string model_id\s*=\s*1\s*;.*NumericValue input_micros\s*=\s*2\s*;.*NumericValue cached_input_micros\s*=\s*3\s*;.*NumericValue output_micros\s*=\s*4\s*;.*NumericValue cache_write_micros\s*=\s*5\s*;`,
+		`(?s)message PricingCatalogCurrentResponse\s*\{.*NumericValue evaluated_at_ms\s*=\s*2\s*;.*string pricing_version\s*=\s*3\s*;.*string basis\s*=\s*6\s*;.*NumericValue unit_tokens\s*=\s*7\s*;.*optional string source_url\s*=\s*10\s*;.*repeated ModelReferencePrice items\s*=\s*11\s*;.*ProviderContext provider_context\s*=\s*12\s*;`,
 		`(?s)message SessionDetailResponse\s*\{.*reserved 11\s*;.*reserved "daily"\s*;.*repeated TrendPoint trend\s*=\s*12\s*;.*string trend_granularity\s*=\s*13\s*;`,
 		`(?s)message CodexAccountIdentity\s*\{\s*string type\s*=\s*1\s*;\s*optional string email\s*=\s*2\s*;\s*optional string plan_type\s*=\s*3\s*;\s*\}`,
 		`(?s)message AccountSnapshotResponse\s*\{\s*optional CodexAccountIdentity account\s*=\s*1\s*;\s*\}`,
 		`(?s)message QuotaPaceForecast\s*\{.*string state\s*=\s*1\s*;.*optional int64 exhaust_at_ms\s*=\s*3\s*;.*optional int64 lead_before_reset_ms\s*=\s*4\s*;`,
 		`(?s)message QuotaPaceWindow\s*\{.*optional double pace_delta_pp\s*=\s*10\s*;.*QuotaPaceForecast forecast\s*=\s*11\s*;.*repeated QuotaPaceCycle historical_cycles\s*=\s*14\s*;.*repeated QuotaPaceHistoryBandPoint history_band\s*=\s*15\s*;`,
-		`(?s)message QuotaPaceResponse\s*\{\s*ResponseMeta meta\s*=\s*1\s*;\s*CurrentQuotaPace pace\s*=\s*2\s*;\s*\}`,
+		`(?s)message QuotaCurrentRequest\s*\{.*int64 evaluated_at_ms\s*=\s*1\s*;.*ProviderScope provider\s*=\s*2\s*;`,
+		`(?s)message QuotaCurrentResponse\s*\{.*ResponseMeta meta\s*=\s*1\s*;.*CurrentQuota current\s*=\s*2\s*;.*ProviderContext provider_context\s*=\s*3\s*;`,
+		`(?s)message QuotaPaceRequest\s*\{.*int64 evaluated_at_ms\s*=\s*1\s*;.*ProviderScope provider\s*=\s*2\s*;`,
+		`(?s)message QuotaPaceResponse\s*\{.*ResponseMeta meta\s*=\s*1\s*;.*CurrentQuotaPace pace\s*=\s*2\s*;.*ProviderContext provider_context\s*=\s*3\s*;`,
 	} {
 		if !regexp.MustCompile(pattern).MatchString(content) {
 			t.Fatalf("core.proto does not satisfy contract pattern %q", pattern)

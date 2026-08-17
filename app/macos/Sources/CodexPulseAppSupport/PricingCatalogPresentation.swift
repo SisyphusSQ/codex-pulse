@@ -43,7 +43,8 @@ public enum ReferencePriceFormatter {
         guard response.hasSourceURL,
               let url = URL(string: response.sourceURL),
               url.scheme == "https",
-              url.host == "developers.openai.com",
+			  let host = url.host,
+			  ["developers.openai.com", "cursor.com"].contains(host),
               url.user == nil,
               url.password == nil
         else {

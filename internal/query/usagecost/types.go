@@ -3,6 +3,7 @@ package usagecost
 import (
 	"errors"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 )
@@ -27,6 +28,7 @@ const DegradedRollupMissing DegradedReason = "rollup_missing"
 const DegradedRollupAmbiguous DegradedReason = "rollup_ambiguous"
 
 type UsageCostRequest struct {
+	Provider                    agentprovider.Scope      `json:"provider"`
 	Range                       basequery.LocalDateRange `json:"range"`
 	ExactRange                  *basequery.UTCTimeRange  `json:"exactRange"`
 	Granularity                 TrendGranularity         `json:"granularity"`
@@ -92,19 +94,35 @@ type ActivityDistribution struct {
 	TimelineBucketMinutes int32                      `json:"timelineBucketMinutes"`
 }
 
+type CursorBillingSummary struct {
+	BillingCycleStartAtMS basequery.NumericValue `json:"billingCycleStartAtMs"`
+	BillingCycleEndAtMS   basequery.NumericValue `json:"billingCycleEndAtMs"`
+	TotalSpendUSDMicros   basequery.NumericValue `json:"totalSpendUsdMicros"`
+	IncludedUSDMicros     basequery.NumericValue `json:"includedUsdMicros"`
+	BonusUSDMicros        basequery.NumericValue `json:"bonusUsdMicros"`
+	RemainingUSDMicros    basequery.NumericValue `json:"remainingUsdMicros"`
+	LimitUSDMicros        basequery.NumericValue `json:"limitUsdMicros"`
+}
+
 type UsageCostResponse struct {
-	Meta                 basequery.ResponseMeta `json:"meta"`
-	Range                basequery.UTCTimeRange `json:"range"`
-	ReportingTimeZone    string                 `json:"reportingTimeZone"`
-	PricingSource        *string                `json:"pricingSource"`
-	Currency             *string                `json:"currency"`
-	PricingVersions      []string               `json:"pricingVersions"`
-	Totals               UsageTotals            `json:"totals"`
-	Trend                []TrendPoint           `json:"trend"`
-	UnpricedReasons      []ReasonCount          `json:"unpricedReasons"`
-	DegradedReason       *DegradedReason        `json:"degradedReason"`
-	Models               []UsageModelItem       `json:"models"`
-	ActivityDistribution *ActivityDistribution  `json:"activityDistribution,omitempty"`
+	ProviderContext         agentprovider.Context   `json:"providerContext"`
+	Meta                    basequery.ResponseMeta  `json:"meta"`
+	Range                   basequery.UTCTimeRange  `json:"range"`
+	ReportingTimeZone       string                  `json:"reportingTimeZone"`
+	PricingSource           *string                 `json:"pricingSource"`
+	Currency                *string                 `json:"currency"`
+	PricingVersions         []string                `json:"pricingVersions"`
+	Totals                  UsageTotals             `json:"totals"`
+	Trend                   []TrendPoint            `json:"trend"`
+	UnpricedReasons         []ReasonCount           `json:"unpricedReasons"`
+	DegradedReason          *DegradedReason         `json:"degradedReason"`
+	Models                  []UsageModelItem        `json:"models"`
+	ActivityDistribution    *ActivityDistribution   `json:"activityDistribution,omitempty"`
+	ReportedUSDMicros       *basequery.NumericValue `json:"reportedUsdMicros,omitempty"`
+	ReportedCostSource      *string                 `json:"reportedCostSource,omitempty"`
+	DataAsOfMS              *basequery.NumericValue `json:"dataAsOfMs,omitempty"`
+	CursorTokenFeeUSDMicros *basequery.NumericValue `json:"cursorTokenFeeUsdMicros,omitempty"`
+	CursorBilling           *CursorBillingSummary   `json:"cursorBilling,omitempty"`
 }
 
 type AttributionValue struct {
@@ -129,17 +147,19 @@ type SessionItem struct {
 }
 
 type SessionListResponse struct {
-	Meta           basequery.ResponseMeta `json:"meta"`
-	PricingSource  *string                `json:"pricingSource"`
-	Currency       *string                `json:"currency"`
-	Items          []SessionItem          `json:"items"`
-	MatchedCount   basequery.NumericValue `json:"matchedCount"`
-	MatchedTotals  UsageTotals            `json:"matchedTotals"`
-	PageTotals     UsageTotals            `json:"pageTotals"`
-	DegradedReason *DegradedReason        `json:"degradedReason"`
+	ProviderContext agentprovider.Context  `json:"providerContext"`
+	Meta            basequery.ResponseMeta `json:"meta"`
+	PricingSource   *string                `json:"pricingSource"`
+	Currency        *string                `json:"currency"`
+	Items           []SessionItem          `json:"items"`
+	MatchedCount    basequery.NumericValue `json:"matchedCount"`
+	MatchedTotals   UsageTotals            `json:"matchedTotals"`
+	PageTotals      UsageTotals            `json:"pageTotals"`
+	DegradedReason  *DegradedReason        `json:"degradedReason"`
 }
 
 type SessionDetailRequest struct {
+	Provider          agentprovider.Scope   `json:"provider"`
 	SessionID         string                `json:"sessionId"`
 	ReportingTimezone *string               `json:"reportingTimezone"`
 	TurnPage          basequery.PageRequest `json:"turnPage"`
@@ -177,6 +197,7 @@ type SessionTurnItem struct {
 }
 
 type SessionDetailResponse struct {
+	ProviderContext   agentprovider.Context  `json:"providerContext"`
 	Meta              basequery.ResponseMeta `json:"meta"`
 	PricingSource     *string                `json:"pricingSource"`
 	Currency          *string                `json:"currency"`
@@ -189,6 +210,7 @@ type SessionDetailResponse struct {
 	ReportingTimeZone string                 `json:"reportingTimeZone"`
 	TrendGranularity  TrendGranularity       `json:"trendGranularity"`
 	Trend             []TrendPoint           `json:"trend"`
+	Models            []UsageModelItem       `json:"models"`
 }
 
 type ProjectItem struct {
@@ -208,6 +230,7 @@ type ProjectDailyPoint struct {
 }
 
 type ProjectListResponse struct {
+	ProviderContext   agentprovider.Context  `json:"providerContext"`
 	Meta              basequery.ResponseMeta `json:"meta"`
 	Range             basequery.UTCTimeRange `json:"range"`
 	ReportingTimeZone string                 `json:"reportingTimeZone"`
@@ -222,6 +245,7 @@ type ProjectListResponse struct {
 }
 
 type ProjectDetailRequest struct {
+	Provider     agentprovider.Scope      `json:"provider"`
 	DimensionKey string                   `json:"dimensionKey"`
 	Range        basequery.LocalDateRange `json:"range"`
 	ExactRange   *basequery.UTCTimeRange  `json:"exactRange"`
@@ -248,6 +272,7 @@ type ProjectModelItem struct {
 }
 
 type ProjectDetailResponse struct {
+	ProviderContext   agentprovider.Context  `json:"providerContext"`
 	Meta              basequery.ResponseMeta `json:"meta"`
 	Range             basequery.UTCTimeRange `json:"range"`
 	ReportingTimeZone string                 `json:"reportingTimeZone"`

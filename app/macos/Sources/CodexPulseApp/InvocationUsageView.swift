@@ -8,7 +8,11 @@ struct InvocationUsageView: View {
     @State private var mode: InvocationUsageMode = .overview
     @State private var selectedTrendDate: Date?
 
-    private let ranges: [DateRangePreset] = [.quotaWeek, .today, .sevenDays, .thirtyDays]
+    private var ranges: [DateRangePreset] {
+        model.selectedProvider == .cursor
+            ? [.quotaMonth, .today, .sevenDays, .thirtyDays]
+            : [.quotaWeek, .today, .sevenDays, .thirtyDays]
+    }
 
     var body: some View {
         VStack(spacing: 0) {

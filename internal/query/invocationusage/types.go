@@ -3,6 +3,7 @@ package invocationusage
 import (
 	"errors"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 )
 
@@ -26,6 +27,7 @@ const (
 )
 
 type InvocationUsageRequest struct {
+	Provider    agentprovider.Scope    `json:"provider"`
 	Range       basequery.UTCTimeRange `json:"range"`
 	Granularity Granularity            `json:"granularity"`
 	SourceClass SourceClass            `json:"sourceClass"`
@@ -39,6 +41,7 @@ type InvocationTotals struct {
 	DistinctSkillCount basequery.NumericValue `json:"distinctSkillCount"`
 	ToolFailureCount   basequery.NumericValue `json:"toolFailureCount"`
 	SessionCount       basequery.NumericValue `json:"sessionCount"`
+	AIEditCount        basequery.NumericValue `json:"aiEditCount"`
 }
 
 type InvocationTrendPoint struct {
@@ -76,13 +79,14 @@ type InvocationCoverage struct {
 }
 
 type InvocationUsageResponse struct {
-	Meta        basequery.ResponseMeta `json:"meta"`
-	Range       basequery.UTCTimeRange `json:"range"`
-	Granularity Granularity            `json:"granularity"`
-	SourceClass SourceClass            `json:"sourceClass"`
-	Totals      InvocationTotals       `json:"totals"`
-	Trend       []InvocationTrendPoint `json:"trend"`
-	Tools       []ToolUsageItem        `json:"tools"`
-	Skills      []SkillUsageItem       `json:"skills"`
-	Coverage    InvocationCoverage     `json:"coverage"`
+	ProviderContext agentprovider.Context  `json:"providerContext"`
+	Meta            basequery.ResponseMeta `json:"meta"`
+	Range           basequery.UTCTimeRange `json:"range"`
+	Granularity     Granularity            `json:"granularity"`
+	SourceClass     SourceClass            `json:"sourceClass"`
+	Totals          InvocationTotals       `json:"totals"`
+	Trend           []InvocationTrendPoint `json:"trend"`
+	Tools           []ToolUsageItem        `json:"tools"`
+	Skills          []SkillUsageItem       `json:"skills"`
+	Coverage        InvocationCoverage     `json:"coverage"`
 }

@@ -30,8 +30,9 @@ const (
 type CurrentSourceKind string
 
 const (
-	CurrentSourceLocal CurrentSourceKind = "local_jsonl"
-	CurrentSourceWham  CurrentSourceKind = "wham"
+	CurrentSourceLocal           CurrentSourceKind = "local_jsonl"
+	CurrentSourceWham            CurrentSourceKind = "wham"
+	CurrentSourceCursorDashboard CurrentSourceKind = "cursor_dashboard"
 )
 
 type CurrentRefreshState string

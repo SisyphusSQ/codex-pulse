@@ -2,9 +2,9 @@
 
 English | [简体中文](README_CN.md)
 
-**Understand how Codex is being used on your Mac, how much quota remains, and whether the underlying data is reliable.**
+**Understand how Codex and Cursor are being used on your Mac, how much quota or exact usage is available, and whether the underlying data is reliable.**
 
-Codex Pulse is a local-first, native macOS app. It turns Codex sessions, usage records, and quota windows scattered across your machine into a menu bar status view and a drill-down analytics interface, while making data freshness, completeness, and health explicit.
+Codex Pulse is a local-first, native macOS app. It turns Codex and Cursor sessions, usage records, and source health scattered across your machine into a menu bar status view and a drill-down analytics interface, while making data freshness, completeness, and health explicit.
 
 ![Quota, annual activity heatmap, and project usage in the Codex Pulse overview; dynamic data has been redacted](docs/assets/codex-pulse-overview-redacted.png)
 
@@ -12,9 +12,10 @@ Codex Pulse is a local-first, native macOS app. It turns Codex sessions, usage r
 
 ## Key features
 
-- **Menu bar:** Check quota, reset times, and health alerts at a glance.
+- **Menu bar:** Pin Codex quota or Cursor's exact daily request/token status without changing the provider selected in the main window.
 - **Usage analytics:** Explore tokens, models, API-equivalent cost, and activity distribution across overview, session, and project pages.
-- **Data status:** Inspect quota sources, local indexing, and background jobs to understand whether reported results are complete.
+- **Provider context:** Switch the main window between Codex and Cursor; every query remains scoped to one provider and unsupported metrics stay explicitly unavailable.
+- **Data status:** Inspect provider-grouped sources, local indexing, and background jobs to understand whether reported results are complete.
 
 ## Feature overview
 
@@ -56,13 +57,13 @@ The most misleading failure mode for quota and usage tools is not missing data�
 
 ## Local-first and privacy
 
-All analytics run locally:
+All indexing and analytics run locally. Cursor usage and spending can additionally be refreshed from Cursor's authenticated Dashboard service by reusing the current Cursor Desktop session:
 
-- Local sessions are discovered read-only and indexed incrementally. Structured results stay in local SQLite; full conversation bodies are not copied, and tokens, Authorization headers, and RPC tokens are not persisted.
-- Online quota and reset-credit retrieval can be disabled. Credentials enter memory only for the duration of a request; there is no cloud sync or public network endpoint.
+- Local Codex and Cursor sessions are discovered read-only. Structured results stay in local SQLite; conversation bodies, prompts, responses, thoughts, tool payloads, tracked file content, raw paths, credentials, and RPC tokens are not persisted.
+- Online quota, reset-credit, and Cursor Dashboard requests use credentials only in memory for the duration of a request. Dashboard access tokens are read from Cursor's WAL-aware state database and are never copied to preferences, logs, RPC responses, or Codex Pulse SQLite. There is no Codex Pulse cloud sync or public network endpoint.
 - The Swift app and Go Helper communicate only over a private Unix Domain Socket. Logs, errors, and UI responses exclude raw payloads, full paths, and underlying error details.
 
-The original Codex files remain managed by Codex itself. Codex Pulse stores only the indexes, aggregates, and runtime state required by the product, and never modifies original session content.
+The original Codex and Cursor files remain managed by their applications. Codex Pulse stores only the allowlisted indexes, aggregates, lineage digests, and runtime state required by the product, and never modifies original session content.
 
 On first launch, the Go Helper performs a metadata-only safety probe of `${CODEX_HOME:-$HOME/.codex}` without reading session bodies, then stores a stable identity for that directory. If the directory does not exist or the probe fails, Codex Pulse remains unconfigured and does not start indexing. Changing Codex Home later still requires explicit confirmation in Settings.
 
@@ -98,6 +99,8 @@ make verify-live
 ```
 
 `make verify-live` builds the development app, reuses a confirmed private runtime, and launches the app against the real Home. CI, unit tests, and deterministic smoke tests use a synthetic or empty Home so they do not read personal data.
+
+The Development bundle and an unbundled `swift run` executable refuse the installed product runtime at `~/Library/Application Support/Codex Pulse/runtime`. Development launches must pass an isolated `/private/tmp/cp-*` runtime explicitly; only the installed production bundle may use the persistent product database by default.
 
 ## Development and verification
 

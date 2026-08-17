@@ -86,6 +86,85 @@ func TestApplicationSchemaV21ChecksumIsFrozen(t *testing.T) {
 	}
 }
 
+func TestApplicationSchemaV23ChecksumIsFrozen(t *testing.T) {
+	const want = "0a7440c220de79f1421a55f8de1cfa4847b2a91f922062f0e8c75f50b2675015"
+	if got := applicationSchemaV23Checksum(); got != want {
+		t.Fatalf("applicationSchemaV23Checksum() = %q, want frozen %q", got, want)
+	}
+}
+
+func TestApplicationMigrationUpgradesCursorDashboardV23WithoutLosingLastGood(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	v23Runner := migrationRunner{
+		repository: NewRepository(database), catalog: applicationMigrations[:applicationSchemaV23Version],
+		now:           func() time.Time { return time.UnixMilli(123) },
+		verifyCurrent: func(context.Context, *gorm.DB) error { return nil },
+	}
+	if _, err := v23Runner.run(context.Background()); err != nil {
+		t.Fatalf("run(v23) error = %v", err)
+	}
+	model := "cursor-model"
+	if err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
+		if err := transaction.WithContext(ctx).Create(&cursorDashboardV23SnapshotModel{
+			Provider: "cursor", Generation: 7, CollectedAtMS: 2_000,
+			WindowStartMS: 1_000, WindowEndMS: 3_000, EventCount: 1,
+		}).Error; err != nil {
+			return err
+		}
+		return transaction.WithContext(ctx).Create(&cursorDashboardUsageModel{
+			EventFingerprint: strings.Repeat("d", 64), OccurrenceCount: 1,
+			OccurredAtMS: 1_500, ModelKey: &model, TokenBased: true,
+			InputTokens: 10, OutputTokens: 20, ReportedChargeMicros: 30,
+			CursorTokenFeeMicros: 4, UpdatedAtMS: 2_000,
+		}).Error
+	}); err != nil {
+		t.Fatalf("seed cursor dashboard v23: %v", err)
+	}
+
+	var backupVersions [2]int
+	runner := applicationMigrationRunnerForTest(database)
+	runner.catalog = applicationMigrations[:applicationSchemaV24Version]
+	runner.verifyCurrent = func(context.Context, *gorm.DB) error { return nil }
+	runner.spaceCheck = func(context.Context, string, int64) error { return nil }
+	runner.backup = func(
+		_ context.Context, fromVersion int, targetVersion int, _ func(storesqlite.BackupProgress),
+	) (string, error) {
+		backupVersions = [2]int{fromVersion, targetVersion}
+		return "/tmp/application-v23-before-v24.db", nil
+	}
+	report, err := runner.run(context.Background())
+	if err != nil {
+		t.Fatalf("run(v24) error = %v", err)
+	}
+	if report.FromVersion != 23 || report.TargetVersion != 24 ||
+		!equalInts(report.AppliedVersions, []int{24}) || backupVersions != [2]int{23, 24} {
+		t.Fatalf("run(v24) report = %#v backup=%v", report, backupVersions)
+	}
+
+	if err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
+		var snapshot cursorDashboardSnapshotModel
+		if err := connection.WithContext(ctx).Where("provider = ?", "cursor").Take(&snapshot).Error; err != nil {
+			return err
+		}
+		if snapshot.Generation != 7 || snapshot.BillingCycleEndMS != 3_000 ||
+			snapshot.PlanTotalSpendMicros != nil || snapshot.EventCount != 1 {
+			t.Errorf("migrated cursor dashboard snapshot = %#v", snapshot)
+		}
+		var event cursorDashboardUsageModel
+		if err := connection.WithContext(ctx).Take(&event).Error; err != nil {
+			return err
+		}
+		if event.InputTokens != 10 || event.CursorTokenFeeMicros != 4 {
+			t.Errorf("migrated cursor dashboard event = %#v", event)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("read migrated cursor dashboard data: %v", err)
+	}
+}
+
 func TestEnsureApplicationSchemaRecordsVersionedFreshMigration(t *testing.T) {
 	t.Parallel()
 
@@ -124,11 +203,11 @@ func TestApplicationMigrationAppendsIngestSchemaToFrozenV2(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 	if report.FromVersion != 2 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v2 to v21 with backup", report)
+		!equalInts(report.AppliedVersions, []int{3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v2 to v26 with backup", report)
 	}
-	if backupVersions != [2]int{2, 21} {
-		t.Fatalf("backup versions = %v, want [2 21]", backupVersions)
+	if backupVersions != [2]int{2, 26} {
+		t.Fatalf("backup versions = %v, want [2 25]", backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 
@@ -182,11 +261,11 @@ func TestApplicationMigrationAppendsRetentionIndexesToFrozenV1(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 	if report.FromVersion != 1 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v1 to v21 with backup", report)
+		!equalInts(report.AppliedVersions, []int{2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v1 to v26 with backup", report)
 	}
-	if backupVersions != [2]int{1, 21} {
-		t.Fatalf("backup versions = %v, want [1 21]", backupVersions)
+	if backupVersions != [2]int{1, 26} {
+		t.Fatalf("backup versions = %v, want [1 25]", backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 

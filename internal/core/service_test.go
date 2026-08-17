@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
@@ -54,6 +55,29 @@ func TestServiceDelegatesInvocationUsage(t *testing.T) {
 	}
 }
 
+func TestServiceDelegatesProviderScopedQuota(t *testing.T) {
+	t.Parallel()
+
+	quota := &agentQuotaQueryStub{}
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageQueryStub{}, InvocationUsage: &invocationUsageQueryStub{},
+		PricingCatalog: pricingCatalogQueryStub{}, RuntimeInfo: runtimeQueryStub{}, QuotaInfo: quota,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := service.QuotaCurrent(
+		context.Background(), agentprovider.Scope{Provider: agentprovider.Cursor}, 123,
+	)
+	if err != nil {
+		t.Fatalf("QuotaCurrent() error = %v", err)
+	}
+	if quota.scope.Provider != agentprovider.Cursor || quota.atMS != 123 ||
+		response.ProviderContext.EffectiveProvider != agentprovider.Cursor {
+		t.Fatalf("delegated quota = scope %#v, at %d, response %#v", quota.scope, quota.atMS, response)
+	}
+}
+
 func TestServiceDelegatesEphemeralAccountSnapshot(t *testing.T) {
 	email, planType := "person@example.com", "pro"
 	account := &accountSnapshotQueryStub{snapshot: AccountSnapshot{
@@ -68,14 +92,14 @@ func TestServiceDelegatesEphemeralAccountSnapshot(t *testing.T) {
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	got, err := service.AccountSnapshot(context.Background())
+	got, err := service.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Cursor})
 	if err != nil {
 		t.Fatalf("AccountSnapshot() error = %v", err)
 	}
 	if got.Account == nil || got.Account.Type != "chatgpt" || got.Account.Email == nil ||
 		*got.Account.Email != email || got.Account.PlanType == nil ||
-		*got.Account.PlanType != planType || account.calls != 1 {
-		t.Fatalf("AccountSnapshot() = %#v, calls = %d", got, account.calls)
+		*got.Account.PlanType != planType || account.calls != 1 || account.scope.Provider != agentprovider.Cursor {
+		t.Fatalf("AccountSnapshot() = %#v, calls = %d, scope = %#v", got, account.calls, account.scope)
 	}
 }
 
@@ -172,16 +196,18 @@ func (*usageQueryStub) ProjectDetail(context.Context, usagecost.ProjectDetailReq
 type accountSnapshotQueryStub struct {
 	snapshot AccountSnapshot
 	calls    int
+	scope    agentprovider.Scope
 }
 
 type pricingCatalogQueryStub struct{}
 
-func (pricingCatalogQueryStub) Current(context.Context) (pricingcatalog.CurrentResponse, error) {
+func (pricingCatalogQueryStub) Current(context.Context, agentprovider.Scope) (pricingcatalog.CurrentResponse, error) {
 	return pricingcatalog.CurrentResponse{}, nil
 }
 
-func (stub *accountSnapshotQueryStub) AccountSnapshot(context.Context) (AccountSnapshot, error) {
+func (stub *accountSnapshotQueryStub) AccountSnapshot(_ context.Context, scope agentprovider.Scope) (AccountSnapshot, error) {
 	stub.calls++
+	stub.scope = scope
 	return stub.snapshot, nil
 }
 
@@ -193,6 +219,33 @@ func (runtimeQueryStub) QuotaCurrent(context.Context, int64) (runtimeinfo.QuotaC
 
 func (runtimeQueryStub) QuotaPace(context.Context, int64) (runtimeinfo.QuotaPaceResponse, error) {
 	return runtimeinfo.QuotaPaceResponse{}, nil
+}
+
+type agentQuotaQueryStub struct {
+	scope agentprovider.Scope
+	atMS  int64
+}
+
+func (stub *agentQuotaQueryStub) QuotaCurrent(
+	_ context.Context,
+	scope agentprovider.Scope,
+	atMS int64,
+) (runtimeinfo.QuotaCurrentResponse, error) {
+	stub.scope, stub.atMS = scope, atMS
+	return runtimeinfo.QuotaCurrentResponse{
+		ProviderContext: agentprovider.Context{EffectiveProvider: scope.Provider},
+	}, nil
+}
+
+func (stub *agentQuotaQueryStub) QuotaPace(
+	_ context.Context,
+	scope agentprovider.Scope,
+	atMS int64,
+) (runtimeinfo.QuotaPaceResponse, error) {
+	stub.scope, stub.atMS = scope, atMS
+	return runtimeinfo.QuotaPaceResponse{
+		ProviderContext: agentprovider.Context{EffectiveProvider: scope.Provider},
+	}, nil
 }
 
 func (runtimeQueryStub) ListSources(context.Context, basequery.Request) (runtimeinfo.SourceListResponse, error) {

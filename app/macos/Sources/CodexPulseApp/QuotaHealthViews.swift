@@ -11,8 +11,8 @@ struct QuotaUsageView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .center, spacing: 16) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("额度与用量").font(.largeTitle.bold())
-                        Text("跟踪额度窗口、Token 趋势、API 折算成本和参考价格")
+						Text(model.selectedProvider == .cursor ? "Cursor 额度与用量" : "Codex 额度与用量").font(.largeTitle.bold())
+						Text(model.selectedProvider == .cursor ? "跟踪月度模型额度、Token 趋势、费用明细和参考价格" : "跟踪额度窗口、Token 趋势、API 折算成本和参考价格")
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -21,7 +21,9 @@ struct QuotaUsageView: View {
                     Text("用量范围")
                         .foregroundStyle(.secondary)
                     Picker("用量范围", selection: $model.usageRange) {
-                        ForEach(DateRangePreset.allCases.filter { $0 != .all && $0 != .quotaWeek }) {
+                        ForEach(DateRangePreset.allCases.filter {
+                            $0 != .all && $0 != .quotaWeek && $0 != .quotaMonth
+                        }) {
                             Text($0.title).tag($0)
                         }
                     }
@@ -36,8 +38,8 @@ struct QuotaUsageView: View {
                         ProgressView().controlSize(.small)
                     }
                 }
-                quotaSection
-                pricingSection
+				quotaSection
+				pricingSection
                 usageSection
             }
             .padding(20)
@@ -52,6 +54,7 @@ struct QuotaUsageView: View {
         ) {
             QuotaContentView(
                 response: $0,
+				provider: model.selectedProvider,
                 paceState: model.quotaPaceState,
                 quotaRefreshState: model.quotaRefreshState,
                 resetCreditsRefreshState: model.resetCreditsRefreshState,
@@ -64,7 +67,7 @@ struct QuotaUsageView: View {
         FeatureStateView(
             state: model.usageState, emptyTitle: "当前范围暂无用量记录", emptySystemImage: "chart.xyaxis.line"
         ) {
-            UsageContentView(response: $0, preset: model.usageRange)
+			UsageContentView(response: $0, preset: model.usageRange, provider: model.selectedProvider)
         }
     }
 
@@ -81,6 +84,7 @@ struct QuotaUsageView: View {
 
 private struct QuotaContentView: View {
     let response: Codexpulse_Core_V1_QuotaCurrentResponse
+	let provider: AgentProvider
     let paceState: FeatureLoadState<Codexpulse_Core_V1_QuotaPaceResponse>
     let quotaRefreshState: ActionState
     let resetCreditsRefreshState: ActionState
@@ -94,17 +98,21 @@ private struct QuotaContentView: View {
         let localization = AppLocalizationRegistry.shared.current
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("额度窗口").font(.title2.bold())
+				Text(provider == .cursor ? "月度额度" : "额度窗口").font(.title2.bold())
                 Spacer()
-                Menu("刷新数据", systemImage: "arrow.clockwise") {
-                    Button("刷新额度") { refresh("quota") }
-                    Button("刷新重置次数") { refresh("reset_credits") }
-                }
-                .disabled(isRefreshing)
-                .accessibilityIdentifier("quota.refresh")
+				if provider == .codex {
+					Menu("刷新数据", systemImage: "arrow.clockwise") {
+						Button("刷新额度") { refresh("quota") }
+						Button("刷新重置次数") { refresh("reset_credits") }
+					}
+					.disabled(isRefreshing)
+					.accessibilityIdentifier("quota.refresh")
+				}
             }
-            refreshStatus(title: "额度", state: quotaRefreshState)
-            refreshStatus(title: "重置次数", state: resetCreditsRefreshState)
+			if provider == .codex {
+				refreshStatus(title: "额度", state: quotaRefreshState)
+				refreshStatus(title: "重置次数", state: resetCreditsRefreshState)
+			}
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], spacing: 12) {
                 ForEach(Array(displayWindows.enumerated()), id: \.offset) { _, window in
                     let presentation = QuotaWindowPresentation(window)
@@ -114,20 +122,19 @@ private struct QuotaContentView: View {
                     )
                     SectionCard(title: presentation.title) {
                         HStack(alignment: .firstTextBaseline) {
-                            Text("剩余")
+							Text(provider == .cursor ? "已使用" : "剩余")
                                 .foregroundStyle(.secondary)
                             Spacer()
                             Text(
-                                window.hasRemainingPercent
-                                    ? AppLocalizationRegistry.shared.current.percent(window.remainingPercent) : "--"
+								quotaPercentText(window)
                             )
                             .font(.system(size: 28, weight: .semibold, design: .rounded))
                             .monospacedDigit()
                         }
-                        ProgressView(value: window.hasRemainingPercent ? window.remainingPercent / 100 : 0)
-                            .tint(quotaRemainingColor(
-                                window.hasRemainingPercent ? window.remainingPercent : nil
-                            ))
+						ProgressView(value: quotaProgressValue(window))
+							.tint(provider == .cursor ? .blue : quotaRemainingColor(
+								window.hasRemainingPercent ? window.remainingPercent : nil
+							))
                         KeyValueRow(
                             key: "距离重置",
                             value: reset.remainingText
@@ -152,7 +159,7 @@ private struct QuotaContentView: View {
                 state: paceState,
                 currentWindows: displayWindows
             )
-            SectionCard(title: "重置次数") {
+			if provider == .codex { SectionCard(title: "重置次数") {
                 let credits = response.current.resetCredits
                 KeyValueRow(
                     key: "可用",
@@ -167,9 +174,21 @@ private struct QuotaContentView: View {
                 if credits.hasUnknownReason {
                     Text("重置次数暂时无法获取。").font(.caption).foregroundStyle(.orange)
                 }
-            }
+			} }
         }
     }
+
+	private func quotaPercentText(_ window: Codexpulse_Core_V1_CurrentWindow) -> String {
+		if provider == .cursor {
+			return window.hasUsedPercent ? AppLocalizationRegistry.shared.current.percent(window.usedPercent) : "--"
+		}
+		return window.hasRemainingPercent ? AppLocalizationRegistry.shared.current.percent(window.remainingPercent) : "--"
+	}
+
+	private func quotaProgressValue(_ window: Codexpulse_Core_V1_CurrentWindow) -> Double {
+		if provider == .cursor { return window.hasUsedPercent ? window.usedPercent / 100 : 0 }
+		return window.hasRemainingPercent ? window.remainingPercent / 100 : 0
+	}
 
     private var isRefreshing: Bool {
         if case .running = quotaRefreshState { return true }
@@ -214,6 +233,7 @@ private struct DatedTrendBucket: Identifiable {
 private struct UsageContentView: View {
     let response: Codexpulse_Core_V1_UsageCostResponse
     let preset: DateRangePreset
+	let provider: AgentProvider
     @State private var selectedTrendDate: Date?
 
     private var trendBuckets: [UsageModelTrendBucket] {
@@ -248,17 +268,35 @@ private struct UsageContentView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 12)], spacing: 12) {
                 MetricCard(
                     title: "Token 用量", value: numericText(response.totals.totalTokens),
-                    detail: "当前范围总量", systemImage: "number")
-                MetricCard(
+					detail: response.totals.totalTokens.hasValue ? "当前范围精确总量" : "数据源未提供", systemImage: "number")
+				if provider == .codex { MetricCard(
                     title: "API 折算成本", value: costText(response.totals.estimatedUsdMicros),
-                    detail: "按 API 价格折算", systemImage: "dollarsign.circle")
-                MetricCard(
-                    title: "活动轮次", value: numericText(response.totals.turnCount), detail: "已整理的活动记录",
-                    systemImage: "arrow.triangle.2.circlepath")
-                MetricCard(
+					detail: "按 API 价格折算", systemImage: "dollarsign.circle") }
+				if provider == .cursor { MetricCard(
+					title: "Cursor 上报费用", value: response.hasReportedUsdMicros ? costText(response.reportedUsdMicros) : "--",
+					detail: response.hasReportedUsdMicros ? "Cursor Dashboard 实际上报" : "数据源未提供", systemImage: "dollarsign.circle") }
+				if provider == .cursor { MetricCard(
+					title: "文档价目估算", value: costText(response.totals.estimatedUsdMicros),
+					detail: response.totals.estimatedUsdMicros.hasValue ? "固定版本模型价目" : "当前模型未列入价目", systemImage: "function") }
+				if provider == .cursor, response.hasCursorBilling { MetricCard(
+					title: "本账期消费", value: costText(response.cursorBilling.totalSpendUsdMicros),
+					detail: "Cursor Dashboard spending", systemImage: "calendar") }
+				if provider == .codex { MetricCard(
+					title: provider == .cursor ? "请求数" : "活动轮次", value: numericText(response.totals.turnCount), detail: provider == .cursor ? "按 generation_id 去重" : "已整理的活动记录",
+					systemImage: "arrow.triangle.2.circlepath") }
+				if provider == .codex { MetricCard(
                     title: "暂未折算", value: numericText(response.totals.unpricedTurnCount), detail: "等待价格信息",
-                    systemImage: "questionmark.circle")
-            }
+					systemImage: "questionmark.circle") }
+			}
+			if provider == .cursor, response.hasCursorBilling {
+				SectionCard(title: "Cursor 账期") {
+					KeyValueRow(key: "已消费", value: costText(response.cursorBilling.totalSpendUsdMicros))
+					KeyValueRow(key: "套餐包含", value: costText(response.cursorBilling.includedUsdMicros))
+					KeyValueRow(key: "Bonus", value: costText(response.cursorBilling.bonusUsdMicros))
+					KeyValueRow(key: "剩余", value: costText(response.cursorBilling.remainingUsdMicros))
+					KeyValueRow(key: "上限", value: costText(response.cursorBilling.limitUsdMicros))
+				}
+			}
             SectionCard(title: "按模型统计") {
                 if response.models.isEmpty {
                     Text("当前范围没有模型用量。")
@@ -273,9 +311,11 @@ private struct UsageContentView: View {
                             tokens: TokenBreakdownPresentation(item.totals),
                             style: .compact
                         )
-                        Text("API 折算成本 \(costText(item.totals.estimatedUsdMicros))")
+						if item.totals.estimatedUsdMicros.hasValue { Text(provider == .cursor
+							? "文档价目估算 \(costText(item.totals.estimatedUsdMicros))"
+							: "API 折算成本 \(costText(item.totals.estimatedUsdMicros))")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+							.foregroundStyle(.secondary) }
                     }
                     .accessibilityIdentifier("usage.model.\(item.dimensionKey)")
                     Divider()
@@ -391,7 +431,7 @@ private struct UsageContentView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            if !response.unpricedReasons.isEmpty {
+            if provider == .codex, !response.unpricedReasons.isEmpty {
                 SectionCard(title: "未计价原因") {
                     ForEach(response.unpricedReasons, id: \.reason) { reason in
                         KeyValueRow(key: "等待价格信息", value: numericText(reason.count))
@@ -456,9 +496,13 @@ private struct UsageContentView: View {
 private struct PricingCatalogView: View {
     let response: Codexpulse_Core_V1_PricingCatalogCurrentResponse
 
+	private var isCursor: Bool {
+		response.providerContext.effectiveProvider == AgentProvider.cursor.rawValue
+	}
+
     private var rows: [ReferencePriceTableRow] {
         response.items
-            .filter { ReferencePriceFormatter.shouldDisplay(modelID: $0.modelID) }
+			.filter { isCursor || ReferencePriceFormatter.shouldDisplay(modelID: $0.modelID) }
             .sorted { $0.modelID < $1.modelID }
             .map { ReferencePriceTableRow(item: $0, currency: response.currency) }
     }
@@ -469,9 +513,9 @@ private struct PricingCatalogView: View {
 
     var body: some View {
         SectionCard(title: "模型参考价格") {
-            Text("OpenAI API Standard 基础文本参考价 · \(response.currency) / 100 万 Token")
+			Text(referencePriceTitle)
                 .font(.subheadline.weight(.medium))
-            Text("仅用于 API 等价折算，不是 Codex 订阅账单。长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理等可能适用不同费率。")
+			Text(referencePriceNotice)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -487,7 +531,13 @@ private struct PricingCatalogView: View {
                     priceText(row.input)
                 }
                 .width(min: 72, ideal: 90)
-                TableColumn("缓存输入") { row in
+				if isCursor {
+					TableColumn("缓存写入") { row in
+						priceText(row.cacheWrite)
+					}
+					.width(min: 88, ideal: 105)
+				}
+				TableColumn(isCursor ? "缓存读取" : "缓存输入") { row in
                     priceText(row.cachedInput)
                 }
                 .width(min: 88, ideal: 110)
@@ -507,13 +557,27 @@ private struct PricingCatalogView: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                 if let sourceURL = ReferencePriceFormatter.sourceURL(response) {
-                    Link("OpenAI 官方价格", destination: sourceURL)
+					Link(isCursor ? "Cursor 官方价格" : "OpenAI 官方价格", destination: sourceURL)
                         .font(.caption)
                 }
             }
         }
         .accessibilityIdentifier("pricing.catalog")
     }
+
+	private var referencePriceTitle: String {
+		if isCursor {
+			return "Cursor 模型参考价 · \(response.currency) / 100 万 Token"
+		}
+		return "OpenAI API Standard 基础文本参考价 · \(response.currency) / 100 万 Token"
+	}
+
+	private var referencePriceNotice: String {
+		if isCursor {
+			return "来自 Cursor 官方 Models & Pricing。实际费用优先使用 Dashboard 上报值；Grok 4.6 在 2026-08-12 至 2026-08-19 的限时折扣仅用于对应时间内的费用估算。"
+		}
+		return "仅用于 API 等价折算，不是 Codex 订阅账单。长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理等可能适用不同费率。"
+	}
 
     private var snapshotText: String {
         let localization = AppLocalizationRegistry.shared.current
@@ -537,6 +601,7 @@ private struct ReferencePriceTableRow: Identifiable {
     let id: String
     let modelID: String
     let input: String
+	let cacheWrite: String
     let cachedInput: String
     let output: String
 
@@ -544,6 +609,7 @@ private struct ReferencePriceTableRow: Identifiable {
         id = item.modelID
         modelID = item.modelID
         input = ReferencePriceFormatter.rate(item.inputMicros, currency: currency)
+		cacheWrite = ReferencePriceFormatter.rate(item.cacheWriteMicros, currency: currency)
         cachedInput = ReferencePriceFormatter.rate(item.cachedInputMicros, currency: currency)
         output = ReferencePriceFormatter.rate(item.outputMicros, currency: currency)
     }

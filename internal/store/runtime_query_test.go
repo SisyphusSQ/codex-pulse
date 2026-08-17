@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -98,6 +99,40 @@ func TestRuntimeSourceQueryMergesKindsWithStableCursorAndExactSummary(t *testing
 	if err != nil || len(ascendingNext.Records) != 1 ||
 		ascendingNext.Records[0].SourceKey != "online:quota-b" {
 		t.Fatalf("RuntimeSourcePage(ascending second) = %#v, %v", ascendingNext, err)
+	}
+}
+
+func TestRuntimeSourceQueryReturnsAvailableAndAttentionProviderSources(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	ctx := context.Background()
+	snapshot := CursorSnapshot{Generation: 1, CollectedAtMS: 1_000}
+	for index, state := range []string{"available", "available", "available", "available", "not_configured", "not_configured"} {
+		coverage, checkpoint := "exact", "snapshot"
+		if state == "not_configured" {
+			coverage, checkpoint = "unknown", "not_configured"
+		}
+		snapshot.Sources = append(snapshot.Sources, CursorSourceStatus{
+			Provider: "cursor", SourceKey: fmt.Sprintf("cursor.source_%d", index),
+			SourceType: "test", State: state, CoverageState: coverage,
+			CheckpointKind: checkpoint, RowCount: int64(index),
+			LastAttemptAtMS: 1_000, UpdatedAtMS: 1_000,
+		})
+	}
+	if err := repository.ReplaceCursorSnapshot(ctx, snapshot); err != nil {
+		t.Fatalf("ReplaceCursorSnapshot() error = %v", err)
+	}
+	page, err := repository.RuntimeSourcePage(ctx, RuntimeSourceQuery{
+		Kinds: []RuntimeSourceKind{RuntimeSourceProvider}, Limit: 20,
+		Direction: RuntimeQueryDescending,
+	})
+	if err != nil {
+		t.Fatalf("RuntimeSourcePage() error = %v", err)
+	}
+	if len(page.Records) != 6 || page.MatchedCount != 6 || page.Summary.ProviderSources != 6 ||
+		page.Summary.Attention != 2 || page.NextCursor != nil {
+		t.Fatalf("RuntimeSourcePage() = %#v", page)
 	}
 }
 
@@ -352,6 +387,7 @@ func TestRuntimeSourceQueryPreservesSuccessfulKindAsPartial(t *testing.T) {
 		return nil
 	}
 	if _, err := repository.RuntimeSourcePage(ctx, RuntimeSourceQuery{
+		Kinds: []RuntimeSourceKind{RuntimeSourceLocalFile, RuntimeSourceOnline},
 		Limit: 10, Direction: RuntimeQueryDescending,
 	}); err == nil {
 		t.Fatal("RuntimeSourcePage(all selected kinds failed) error = nil")

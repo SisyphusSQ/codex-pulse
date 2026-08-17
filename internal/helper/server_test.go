@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
@@ -101,7 +102,7 @@ func TestGRPCServerMapsInvocationUsageRequestAndResponse(t *testing.T) {
 		Totals: invocationusage.InvocationTotals{
 			ToolCallCount: count, DistinctToolCount: count,
 			SkillActivityCount: zeroCount, DistinctSkillCount: zeroCount,
-			ToolFailureCount: zeroCount, SessionCount: count,
+			ToolFailureCount: zeroCount, SessionCount: count, AIEditCount: zeroCount,
 		},
 		Tools: []invocationusage.ToolUsageItem{{
 			Name: "exec_command", CallCount: count, SessionCount: count,
@@ -159,12 +160,13 @@ func TestGRPCServerMapsCurrentPricingCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	pricingQuery := helperPricingCatalogQueryStub{response: pricingcatalog.CurrentResponse{
-		Meta: meta, EvaluatedAtMS: evaluated, PricingVersion: "openai-api-test",
+		ProviderContext: agentprovider.Context{EffectiveProvider: agentprovider.Cursor},
+		Meta:            meta, EvaluatedAtMS: evaluated, PricingVersion: "openai-api-test",
 		Source: "openai-api", Currency: "USD", Basis: pricingcatalog.BasisStandard,
 		UnitTokens: unit, EffectiveFromMS: evaluated, VerifiedAtMS: evaluated,
 		Items: []pricingcatalog.ModelReferencePrice{{
 			ModelID: "model-a", InputMicros: zero,
-			CachedInputMicros: unknown, OutputMicros: zero,
+			CachedInputMicros: unknown, OutputMicros: zero, CacheWriteMicros: zero,
 		}},
 	}}
 	business, err := core.NewService(core.ServiceConfig{
@@ -180,17 +182,50 @@ func TestGRPCServerMapsCurrentPricingCatalog(t *testing.T) {
 
 	response, err := client.PricingCatalogCurrent(
 		authorize(t.Context()),
-		&corev1.PricingCatalogCurrentRequest{},
+		&corev1.PricingCatalogCurrentRequest{
+			Provider: &corev1.ProviderScope{Provider: agentprovider.Cursor},
+		},
 	)
 	if err != nil {
 		t.Fatalf("PricingCatalogCurrent() error = %v", err)
 	}
 	if response.PricingVersion != "openai-api-test" || response.UnitTokens.GetValue() != 1_000_000 ||
+		response.ProviderContext.GetEffectiveProvider() != agentprovider.Cursor ||
 		len(response.Items) != 1 || response.Items[0].InputMicros.Value == nil ||
 		response.Items[0].InputMicros.GetValue() != 0 ||
+		response.Items[0].CacheWriteMicros.GetValue() != 0 ||
 		response.Items[0].CachedInputMicros.Value != nil ||
 		response.Items[0].CachedInputMicros.GetUnknownReason() != "unavailable" {
 		t.Fatalf("PricingCatalogCurrent() = %#v", response)
+	}
+}
+
+func TestGRPCServerScopesQuotaAndEchoesEffectiveProvider(t *testing.T) {
+	quota := &helperAgentQuotaQueryStub{}
+	business, err := core.NewService(core.ServiceConfig{
+		UsageCost: &helperUsageQueryStub{}, InvocationUsage: &helperInvocationQueryStub{},
+		PricingCatalog: helperPricingCatalogQueryStub{}, RuntimeInfo: helperRuntimeQueryStub{},
+		QuotaInfo: quota,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, authorize := startConfiguredTestGRPCServer(t, func(config *ServerConfig) {
+		config.Service = business
+	})
+	response, err := client.QuotaCurrent(
+		authorize(t.Context()),
+		&corev1.QuotaCurrentRequest{
+			EvaluatedAtMs: 123,
+			Provider:      &corev1.ProviderScope{Provider: agentprovider.Cursor},
+		},
+	)
+	if err != nil {
+		t.Fatalf("QuotaCurrent() error = %v", err)
+	}
+	if quota.scope.Provider != agentprovider.Cursor ||
+		response.GetProviderContext().GetEffectiveProvider() != agentprovider.Cursor {
+		t.Fatalf("quota scope = %#v, response = %#v", quota.scope, response)
 	}
 }
 
@@ -385,7 +420,7 @@ func TestGRPCServerReturnsOnlyAccountDisplayFields(t *testing.T) {
 
 	response, err := client.AccountSnapshot(
 		authorize(t.Context()),
-		&corev1.AccountSnapshotRequest{},
+		&corev1.AccountSnapshotRequest{Provider: &corev1.ProviderScope{Provider: agentprovider.Cursor}},
 	)
 	if err != nil {
 		t.Fatalf("AccountSnapshot() error = %v", err)
@@ -393,8 +428,8 @@ func TestGRPCServerReturnsOnlyAccountDisplayFields(t *testing.T) {
 	if response.GetAccount() == nil || response.Account.Type != "chatgpt" ||
 		response.Account.Email == nil || response.Account.GetEmail() != email ||
 		response.Account.PlanType == nil || response.Account.GetPlanType() != planType ||
-		account.calls != 1 {
-		t.Fatalf("AccountSnapshot() = %#v, calls = %d", response, account.calls)
+		account.calls != 1 || account.scope.Provider != agentprovider.Cursor {
+		t.Fatalf("AccountSnapshot() = %#v, calls = %d, scope = %#v", response, account.calls, account.scope)
 	}
 }
 
@@ -483,7 +518,8 @@ type helperPricingCatalogQueryStub struct {
 }
 
 func (stub helperPricingCatalogQueryStub) Current(
-	context.Context,
+	_ context.Context,
+	_ agentprovider.Scope,
 ) (pricingcatalog.CurrentResponse, error) {
 	return stub.response, nil
 }
@@ -491,12 +527,15 @@ func (stub helperPricingCatalogQueryStub) Current(
 type helperAccountSnapshotStub struct {
 	snapshot core.AccountSnapshot
 	calls    int
+	scope    agentprovider.Scope
 }
 
 func (stub *helperAccountSnapshotStub) AccountSnapshot(
-	context.Context,
+	_ context.Context,
+	scope agentprovider.Scope,
 ) (core.AccountSnapshot, error) {
 	stub.calls++
+	stub.scope = scope
 	return stub.snapshot, nil
 }
 
@@ -546,6 +585,32 @@ func (helperRuntimeQueryStub) QuotaCurrent(context.Context, int64) (runtimeinfo.
 }
 func (helperRuntimeQueryStub) QuotaPace(context.Context, int64) (runtimeinfo.QuotaPaceResponse, error) {
 	return runtimeinfo.QuotaPaceResponse{}, nil
+}
+
+type helperAgentQuotaQueryStub struct {
+	scope agentprovider.Scope
+}
+
+func (stub *helperAgentQuotaQueryStub) QuotaCurrent(
+	_ context.Context,
+	scope agentprovider.Scope,
+	_ int64,
+) (runtimeinfo.QuotaCurrentResponse, error) {
+	stub.scope = scope
+	return runtimeinfo.QuotaCurrentResponse{
+		ProviderContext: agentprovider.Context{EffectiveProvider: scope.Provider},
+	}, nil
+}
+
+func (stub *helperAgentQuotaQueryStub) QuotaPace(
+	_ context.Context,
+	scope agentprovider.Scope,
+	_ int64,
+) (runtimeinfo.QuotaPaceResponse, error) {
+	stub.scope = scope
+	return runtimeinfo.QuotaPaceResponse{
+		ProviderContext: agentprovider.Context{EffectiveProvider: scope.Provider},
+	}, nil
 }
 func (helperRuntimeQueryStub) ListSources(context.Context, basequery.Request) (runtimeinfo.SourceListResponse, error) {
 	return runtimeinfo.SourceListResponse{}, nil

@@ -53,7 +53,8 @@ public struct AppLaunchConfiguration: Sendable {
 
     public static func parse(
         arguments: [String],
-        bundleURL: URL = Bundle.main.bundleURL
+		bundleURL: URL = Bundle.main.bundleURL,
+		bundleIdentifier: String? = nil
     ) throws -> Self {
         var helperPath: String?
         var runtimeDirectory: String?
@@ -97,7 +98,13 @@ public struct AppLaunchConfiguration: Sendable {
             .appendingPathComponent("codex-pulse", isDirectory: false)
             .path
         let resolvedHelper = helperPath ?? bundledHelper
-        let resolvedRuntime = runtimeDirectory ?? defaultRuntimeDirectory()
+		let resolvedRuntime = runtimeDirectory ?? defaultRuntimeDirectory()
+		let resolvedBundleIdentifier = bundleIdentifier ?? Bundle(url: bundleURL)?.bundleIdentifier
+		if resolvedBundleIdentifier != "com.sisyphussq.codexpulse",
+		   resolvedRuntime == defaultRuntimeDirectory()
+		{
+			throw AppLaunchConfigurationError.runtimeDirectoryUnavailable
+		}
         return try Self(
             helperExecutablePath: resolvedHelper,
             runtimeDirectory: resolvedRuntime,

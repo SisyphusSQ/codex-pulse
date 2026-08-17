@@ -165,6 +165,14 @@ func TestListSourcesMapsBothKindsRedactsAndRoundTripsCursor(t *testing.T) {
 		first.Items[1].FailureCode == nil || *first.Items[1].FailureCode != "auth_required" {
 		t.Fatalf("ListSources(first) = %#v", first)
 	}
+	for _, item := range first.Items {
+		if err := item.RowCount.Validate(); err != nil {
+			t.Fatalf("ListSources() row count presence = %#v, %v", item.RowCount, err)
+		}
+		if err := item.SchemaVersion.Validate(); err != nil {
+			t.Fatalf("ListSources() schema version presence = %#v, %v", item.SchemaVersion, err)
+		}
+	}
 	encoded, _ := json.Marshal(first)
 	for _, forbidden := range []string{"/private/a.jsonl", "private-device", "private-scope", "inode", "currentPath", "scopeKey"} {
 		if strings.Contains(string(encoded), forbidden) {

@@ -64,6 +64,7 @@ public actor CoreClient {
     }
 
     public func accountSnapshot(
+		_ request: Codexpulse_Core_V1_AccountSnapshotRequest,
         retryPolicy: ReadRetryPolicy = .none
     ) async throws -> Codexpulse_Core_V1_AccountSnapshotResponse {
         let service = service
@@ -75,7 +76,7 @@ public actor CoreClient {
         }()
         return try await retryPolicy.execute {
             try await service.accountSnapshot(
-                Codexpulse_Core_V1_AccountSnapshotRequest(),
+				request,
                 metadata: metadata,
                 options: options
             )
@@ -105,13 +106,14 @@ public actor CoreClient {
     }
 
     public func pricingCatalogCurrent(
+		_ request: Codexpulse_Core_V1_PricingCatalogCurrentRequest,
         retryPolicy: ReadRetryPolicy = .transportDefault
     ) async throws -> Codexpulse_Core_V1_PricingCatalogCurrentResponse {
         let service = service
         let metadata = metadata
         return try await retryPolicy.execute {
             try await service.pricingCatalogCurrent(
-                Codexpulse_Core_V1_PricingCatalogCurrentRequest(),
+				request,
                 metadata: metadata
             )
         }

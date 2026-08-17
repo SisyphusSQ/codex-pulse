@@ -227,12 +227,28 @@ private func testInvocationUsageRequestUsesAuthoritativeQuotaWeek() throws {
     let request = FeatureRequestFactory.invocationUsage(
         range: .quotaWeek,
         sourceClass: "all",
-        quotaWeekRange: quotaWeek,
+        quotaCycleRange: quotaWeek,
         calendar: calendar
     )
     try expect(request.range == quotaWeek, "invocation quota week must use the authoritative range")
     try expect(request.granularity == "day", "invocation quota week must use daily buckets")
     try expect(request.topLimit == 10, "invocation quota week ranking must stay Top 10")
+
+    var quotaMonth = Codexpulse_Core_V1_UTCTimeRange()
+    quotaMonth.startAtMs = 1_750_377_600_000
+    quotaMonth.endAtMs = 1_753_056_000_000
+    quotaMonth.timeZone = "Asia/Shanghai"
+    let monthlyRequest = FeatureRequestFactory.invocationUsage(
+        range: .quotaMonth,
+        sourceClass: "all",
+        quotaCycleRange: quotaMonth,
+        calendar: calendar
+    )
+    try expect(
+        monthlyRequest.range == quotaMonth,
+        "invocation monthly quota must use the authoritative billing-cycle range"
+    )
+    try expect(monthlyRequest.granularity == "day", "invocation monthly quota must use daily buckets")
 }
 
 private func testInvocationTrendBuildsOverlaidBarsForEachTimeBucket() throws {
@@ -274,6 +290,7 @@ private func testInvocationTrendBuildsOverlaidBarsForEachTimeBucket() throws {
         InvocationTrendBarPresentation.barWidth(for: .today) == 7
             && InvocationTrendBarPresentation.barWidth(for: .sevenDays) == 28
             && InvocationTrendBarPresentation.barWidth(for: .quotaWeek) == 28
+            && InvocationTrendBarPresentation.barWidth(for: .quotaMonth) == 7
             && InvocationTrendBarPresentation.barWidth(for: .thirtyDays) == 7,
         "bar width must stay readable across hourly, weekly, and monthly ranges"
     )
@@ -335,10 +352,18 @@ private func testOverviewInvocationProfileUsesResponsiveIndependentRankings() th
 
 @MainActor
 private func testOverviewInvocationDeepLinkAlignsTheDetailContext() async throws {
+    let suiteName = "CodexPulseAppTests.InvocationDeepLink.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("invocation deep link defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let model = AppModel(
         runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in
             FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
-        })
+        }),
+        providerDefaults: defaults
     )
     model.selectInvocationRange(.today)
     model.selectInvocationSourceClass("detected")
@@ -388,6 +413,11 @@ private func testReferencePriceFormattingPreservesPrecisionAndUnknown() throws {
         ReferencePriceFormatter.sourceURL(response)?.host == "developers.openai.com",
         "official HTTPS source URL must remain linkable"
     )
+	response.sourceURL = "https://cursor.com/docs/models-and-pricing"
+	try expect(
+		ReferencePriceFormatter.sourceURL(response)?.host == "cursor.com",
+		"official Cursor pricing source URL must remain linkable"
+	)
     for hiddenModel in [
         "gpt-5",
         "gpt-5-codex",
@@ -524,6 +554,60 @@ private func testOverviewUsesOneNavigationAndARealTrendChart() throws {
     try expect(
         source.contains("onSelectProject") && source.contains("onSelectSession"),
         "overview rankings must navigate to their details")
+}
+
+private func testCursorOverviewTrendAnnotationDoesNotResizeConsumptionCard() throws {
+	let source = try mainWindowSource("RootView.swift")
+	guard let cursorStart = source.range(of: "private struct CursorOverviewContentView"),
+		let codexStart = source.range(of: "private struct OverviewContentView")
+	else {
+		throw TestFailure.mismatch("overview provider sections are unavailable")
+	}
+	let cursorSource = source[cursorStart.lowerBound..<codexStart.lowerBound]
+	try expect(
+		cursorSource.contains("overflowResolution: .init(x: .fit(to: .chart), y: .disabled)"),
+		"Cursor trend selection detail must fit inside the chart instead of resizing the consumption card"
+	)
+}
+
+private func testCursorOverviewOmitsDataStatusCard() throws {
+	let source = try mainWindowSource("RootView.swift")
+	guard let cursorStart = source.range(of: "private struct CursorOverviewContentView"),
+		let codexStart = source.range(of: "private struct OverviewContentView")
+	else {
+		throw TestFailure.mismatch("overview provider sections are unavailable")
+	}
+	let cursorSource = source[cursorStart.lowerBound..<codexStart.lowerBound]
+	try expect(
+		!cursorSource.contains("coverageSection(")
+			&& !cursorSource.contains("SectionCard(title: \"数据状态\")"),
+		"Cursor overview must not render the data status card"
+	)
+}
+
+private func testCursorQuotaSurfacesUseOfficialMonthlyWindows() throws {
+	let overview = try mainWindowSource("RootView.swift")
+	let quota = try mainWindowSource("QuotaHealthViews.swift")
+	try expect(
+		overview.contains("cursorQuotaStatusStrip")
+			&& overview.contains("Text(\"已使用\")")
+			&& !overview.contains("billingStatusStrip")
+			&& !overview.contains("cursor.overview.billing"),
+		"Cursor Overview must use official model percentages instead of a spending-limit bar"
+	)
+	try expect(
+		overview.contains("overview.requestedRange == .quotaMonth")
+			&& overview.contains("当前显示最近 30 天"),
+		"Cursor Overview must disclose when the authoritative monthly cycle falls back to 30 days"
+	)
+	try expect(
+		quota.contains("Cursor 额度与用量")
+			&& quota.contains("provider: model.selectedProvider")
+			&& quota.contains("provider == .cursor ? \"已使用\" : \"剩余\"")
+			&& quota.contains("if provider == .codex")
+			&& !quota.contains("if model.selectedProvider == .codex {\n\t\t\t\t\tquotaSection"),
+		"Cursor quota detail must share the Codex layout while hiding Codex-only reset controls"
+	)
 }
 
 private func testToolbarSeparatesCurrentReloadFromGlobalReload() throws {
@@ -1084,6 +1168,28 @@ private func testPopoverAccountSummaryShowsSessionNestAccountFieldsOnly() throws
             && !summary.accessibilityLabel.contains("/Users/private"),
         "account summary must not fall back to the unrelated quota account scope"
     )
+}
+
+private func testCursorPopoverShowsLocalAccountAndOmitsTodayActivity() throws {
+	var account = Codexpulse_Core_V1_AccountSnapshotResponse()
+	account.account.type = "cursor"
+	account.account.email = "person@example.com"
+	account.account.planType = "pro_plus"
+	let summary = PopoverAccountSummaryPresentation(account: CodexAccountPresentation(account))
+	try expect(summary.availability == .available, "Cursor account facts must be available")
+	try expect(summary.planText == "Pro+", "Cursor membership type must use the shared plan badge")
+	try expect(summary.emailText == "person@example.com", "Cursor email must remain user-visible")
+
+	let source = try mainWindowSource("StatusItemController.swift")
+	try expect(
+		!source.contains("cursorActivitySection") && !source.contains("今日活动"),
+		"Cursor popover must omit the redundant today activity section"
+	)
+	try expect(
+		!source.contains("accountSummary: model.statusProvider == .codex")
+			&& !source.contains("if selectedProvider == .codex {\n\t\t\t\t\tPopoverAccountCapsule"),
+		"the account capsule must be available for Cursor as well as Codex"
+	)
 }
 
 private func testPopoverAccountSummaryDistinguishesEmptyAndUnavailableData() throws {
@@ -2015,8 +2121,10 @@ private func testStatusItemRefreshReadsCommittedState() throws {
     try expect(
         source.contains(
             "func verifyNativeSurfacesForSmoke(\n        requireSummary: Bool\n"
-                + "    ) async -> (passed: Bool, summary: String) {\n        updateStatusBarView()"
+				+ "    ) async -> (passed: Bool, summary: String) {"
         )
+			&& source.contains("await waitForNativeSmoke({ self.model.statusPresentation != nil })")
+			&& source.contains("updateStatusBarView()")
             && source.contains("statusBarView.superview === button")
             && source.contains("statusBarView.preferredWidth > 0")
             && source.contains("if requireSummary && !statusBarView.hasSummary {"),
@@ -2243,6 +2351,15 @@ private func testSettingsIntervalsUseAuthoritativeBounds() throws {
 }
 
 private func testOverviewRangeIncludesQuotaWeek() throws {
+	try expect(
+		DateRangePreset.allCases.map(\.rawValue).contains("quota_month"),
+		"overview ranges must expose a distinct Cursor monthly quota preset"
+	)
+	try expect(
+		DateRangePreset.quotaMonth.title == "月额度"
+			&& ProductCopy.settingOption("quota_month") == "月额度",
+		"Cursor monthly quota range must use the same user-facing copy everywhere"
+	)
     guard let quotaWeek = DateRangePreset.allCases.first(where: { $0.rawValue == "quota_week" }) else {
         throw TestFailure.mismatch("overview ranges must include quota_week")
     }
@@ -2421,6 +2538,7 @@ private actor FakeCore: AppCoreServing {
     private var shutdownDelay: Duration = .zero
     private var calls: [String] = []
     private var usageRequests: [Codexpulse_Core_V1_UsageCostRequest] = []
+    private var quotaRequests: [Codexpulse_Core_V1_QuotaCurrentRequest] = []
     private var tokenActivityRequests: [Codexpulse_Core_V1_UsageCostRequest] = []
     private var invocationRequests: [Codexpulse_Core_V1_InvocationUsageRequest] = []
     private var sessionRequests: [Codexpulse_Core_V1_ListSessionsRequest] = []
@@ -2619,6 +2737,7 @@ private actor FakeCore: AppCoreServing {
     }
     func recordedCalls() -> [String] { calls }
     func recordedUsageRequests() -> [Codexpulse_Core_V1_UsageCostRequest] { usageRequests }
+    func recordedQuotaRequests() -> [Codexpulse_Core_V1_QuotaCurrentRequest] { quotaRequests }
     func recordedTokenActivityRequests() -> [Codexpulse_Core_V1_UsageCostRequest] {
         tokenActivityRequests
     }
@@ -2665,7 +2784,9 @@ private actor FakeCore: AppCoreServing {
             await waitForOverviewBarrier()
             if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
             if shouldFail { throw FakeFailure.unavailable }
-            return responses.tokenActivityUsage
+            var response = responses.tokenActivityUsage
+            response.providerContext.effectiveProvider = request.provider.provider
+            return response
         }
         calls.append("usage")
         usageRequests.append(request)
@@ -2679,7 +2800,9 @@ private actor FakeCore: AppCoreServing {
         await waitForOverviewBarrier()
         if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
         if shouldFail { throw FakeFailure.unavailable }
-        return responses.usage
+        var response = responses.usage
+        response.providerContext.effectiveProvider = request.provider.provider
+        return response
     }
 
     func invocationUsage(
@@ -2692,14 +2815,19 @@ private actor FakeCore: AppCoreServing {
         await waitForOverviewBarrier()
         if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
         if shouldFail { throw FakeFailure.unavailable }
-        return responses.invocationUsage
+        var response = responses.invocationUsage
+        response.providerContext.effectiveProvider = request.provider.provider
+        return response
     }
 
     func pricingCatalogCurrent(
+		_ request: Codexpulse_Core_V1_PricingCatalogCurrentRequest,
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_PricingCatalogCurrentResponse {
         pricingCatalogCalls += 1
-        return pricingCatalogResponse
+		var response = pricingCatalogResponse
+		response.providerContext.effectiveProvider = request.provider.provider
+		return response
     }
 
     func quotaCurrent(
@@ -2707,11 +2835,14 @@ private actor FakeCore: AppCoreServing {
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_QuotaCurrentResponse {
         calls.append("quota")
+        quotaRequests.append(request)
         let shouldFail = failOverview
         await waitForOverviewBarrier()
         if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
         if shouldFail { throw FakeFailure.unavailable }
-        return responses.quota
+		var response = responses.quota
+		response.providerContext.effectiveProvider = request.provider.provider
+		return response
     }
 
     func quotaPace(
@@ -2723,10 +2854,13 @@ private actor FakeCore: AppCoreServing {
         await waitForOverviewBarrier()
         if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
         if shouldFail { throw FakeFailure.unavailable }
-        return responses.quotaPace
+		var response = responses.quotaPace
+		response.providerContext.effectiveProvider = request.provider.provider
+		return response
     }
 
     func accountSnapshot(
+		_ request: Codexpulse_Core_V1_AccountSnapshotRequest,
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_AccountSnapshotResponse {
         calls.append("account")
@@ -2755,7 +2889,9 @@ private actor FakeCore: AppCoreServing {
         await waitForOverviewBarrier()
         if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
         if shouldFail { throw FakeFailure.unavailable }
-        return responses.sessions
+        var response = responses.sessions
+        response.providerContext.effectiveProvider = request.query.provider.provider
+        return response
     }
 
     func sessionDetail(
@@ -2782,10 +2918,14 @@ private actor FakeCore: AppCoreServing {
         if request.query.page.limit == 5, failOverviewProjects { throw FakeFailure.unavailable }
         if shouldFail { throw FakeFailure.unavailable }
         if request.query.filters.contains(where: { $0.field == "confidence" }) {
-            return responses.weeklyProjects
+            var response = responses.weeklyProjects
+            response.providerContext.effectiveProvider = request.query.provider.provider
+            return response
         }
         var response = Codexpulse_Core_V1_ProjectListResponse()
         response.meta = completeMeta()
+        response.providerContext = responses.projects.providerContext
+        response.providerContext.effectiveProvider = request.query.provider.provider
         return response
     }
 
@@ -3093,6 +3233,14 @@ private func makeNormalBootstrap() -> Codexpulse_Core_V1_BootstrapResponse {
     return response
 }
 
+private func makeProviderContext(
+    _ provider: AgentProvider = .codex
+) -> Codexpulse_Core_V1_ProviderContext {
+    var context = Codexpulse_Core_V1_ProviderContext()
+    context.effectiveProvider = provider.rawValue
+    return context
+}
+
 private func makeResponses(
     partial: Bool = false,
     includeWeeklyQuota: Bool = true,
@@ -3105,6 +3253,7 @@ private func makeResponses(
     accountEmail: String? = "person@example.com",
     accountPlanType: String? = "pro"
 ) -> OverviewResponses {
+    let providerContext = makeProviderContext()
     var accountResponse: Codexpulse_Core_V1_AccountSnapshotResponse?
     if includeAccountResponse {
         var response = Codexpulse_Core_V1_AccountSnapshotResponse()
@@ -3119,6 +3268,7 @@ private func makeResponses(
     }
     var usage = Codexpulse_Core_V1_UsageCostResponse()
     usage.meta = completeMeta()
+    usage.providerContext = providerContext
     usage.totals.totalTokens.value = 0
     usage.totals.totalTokens.unit = "tokens"
     usage.totals.estimatedUsdMicros.unknownReason = "pricing_missing"
@@ -3167,6 +3317,7 @@ private func makeResponses(
 
     var sessions = Codexpulse_Core_V1_SessionListResponse()
     sessions.meta = completeMeta()
+    sessions.providerContext = providerContext
     var session = Codexpulse_Core_V1_SessionItem()
     session.sessionID = "session-test"
     session.displayTitle = "真实生成类型会话"
@@ -3188,6 +3339,7 @@ private func makeResponses(
 
     var projects = Codexpulse_Core_V1_ProjectListResponse()
     projects.meta = completeMeta()
+    projects.providerContext = providerContext
     var project = Codexpulse_Core_V1_ProjectItem()
     project.project.id = "project-test"
     project.project.displayName = "Codex Pulse"
@@ -3203,8 +3355,12 @@ private func makeResponses(
     health.level = "healthy"
 
     var tokenActivity = makeTokenActivityResponse()
+    tokenActivity.providerContext = providerContext
     tokenActivity.totals.totalTokens.value = 0
     tokenActivity.totals.totalTokens.unit = "tokens"
+
+    var invocationUsage = makeInvocationProfileResponse()
+    invocationUsage.providerContext = providerContext
 
     return OverviewResponses(
         usage: usage,
@@ -3215,7 +3371,7 @@ private func makeResponses(
         projects: projects,
         health: health,
         tokenActivityUsage: tokenActivity,
-        invocationUsage: makeInvocationProfileResponse()
+        invocationUsage: invocationUsage
     )
 }
 
@@ -3226,6 +3382,7 @@ private func makeSessionPage(
 ) -> Codexpulse_Core_V1_SessionListResponse {
     var response = Codexpulse_Core_V1_SessionListResponse()
     response.meta = completeMeta()
+    response.providerContext = makeProviderContext()
     var item = Codexpulse_Core_V1_SessionItem()
     item.sessionID = id
     item.displayTitle = title
@@ -3245,6 +3402,7 @@ private func makeSessionDetail(
 ) -> Codexpulse_Core_V1_SessionDetailResponse {
     var response = Codexpulse_Core_V1_SessionDetailResponse()
     response.meta = completeMeta()
+    response.providerContext = makeProviderContext()
     response.item.sessionID = id
     response.item.displayTitle = title
     return response
@@ -3255,6 +3413,7 @@ private func makeProjectDetail(
 ) -> Codexpulse_Core_V1_ProjectDetailResponse {
     var response = Codexpulse_Core_V1_ProjectDetailResponse()
     response.meta = completeMeta()
+    response.providerContext = makeProviderContext()
     response.item.dimensionKey = key
     return response
 }
@@ -3496,6 +3655,13 @@ private func testPricingCatalogLoadsWithoutUsageModels() async throws {
 
 @MainActor
 private func testInvalidationRefreshesActivePage() async throws {
+    let suiteName = "CodexPulseAppTests.InvalidationRefresh.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("invalidation refresh defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.setFeatureSessionPlans([
         SessionPagePlan(delay: .zero, response: makeSessionPage(id: "before", title: "before")),
@@ -3503,7 +3669,7 @@ private func testInvalidationRefreshesActivePage() async throws {
     ])
     await core.setInvalidation(domain: "index", delay: .milliseconds(150))
     let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
-    let model = AppModel(runtime: runtime)
+    let model = AppModel(runtime: runtime, providerDefaults: defaults)
     model.start()
     try await waitUntil("overview before invalidation") {
         await MainActor.run { model.presentation != nil }
@@ -3530,6 +3696,13 @@ private func testInvalidationRefreshesActivePage() async throws {
 
 @MainActor
 private func testIndexInvalidationRefreshesSelectedSessionDetail() async throws {
+    let suiteName = "CodexPulseAppTests.SelectedSessionInvalidation.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("selected session invalidation defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.setFeatureSessionPlans([
         SessionPagePlan(
@@ -3553,7 +3726,8 @@ private func testIndexInvalidationRefreshesSelectedSessionDetail() async throws 
     ])
     await core.setInvalidation(domain: "index", delay: .milliseconds(250))
     let model = AppModel(
-        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
     )
 
     model.start()
@@ -3595,6 +3769,13 @@ private func testIndexInvalidationRefreshesSelectedSessionDetail() async throws 
 
 @MainActor
 private func testForegroundRecoveryRefreshesSelectedSessionOnce() async throws {
+    let suiteName = "CodexPulseAppTests.ForegroundRecovery.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("foreground recovery defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.setFeatureSessionPlans([
         SessionPagePlan(
@@ -3621,7 +3802,8 @@ private func testForegroundRecoveryRefreshesSelectedSessionOnce() async throws {
         ),
     ])
     let model = AppModel(
-        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
     )
 
     model.start()
@@ -3670,6 +3852,13 @@ private func testForegroundRecoveryRefreshesSelectedSessionOnce() async throws {
 
 @MainActor
 private func testLoadingActiveSessionsRetriesUnavailableSelectedDetail() async throws {
+    let suiteName = "CodexPulseAppTests.ActiveSessions.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("active sessions defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.setFeatureSessionPlans([
         SessionPagePlan(
@@ -3689,7 +3878,8 @@ private func testLoadingActiveSessionsRetriesUnavailableSelectedDetail() async t
         ),
     ])
     let model = AppModel(
-        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
     )
 
     model.start()
@@ -3727,13 +3917,21 @@ private func testLoadingActiveSessionsRetriesUnavailableSelectedDetail() async t
 
 @MainActor
 private func testLoadingActiveProjectsRetriesUnavailableSelectedDetail() async throws {
+    let suiteName = "CodexPulseAppTests.ActiveProjects.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("active projects defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.setFeatureProjectDetailPlans([
         ProjectDetailPlan(response: makeProjectDetail(key: "project"), fails: true),
         ProjectDetailPlan(response: makeProjectDetail(key: "project"), fails: false),
     ])
     let model = AppModel(
-        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
     )
 
     model.start()
@@ -3765,13 +3963,21 @@ private func testLoadingActiveProjectsRetriesUnavailableSelectedDetail() async t
 
 @MainActor
 private func testRefreshingProjectsRetriesUnavailableSelectedDetail() async throws {
+    let suiteName = "CodexPulseAppTests.RefreshProjects.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("refresh projects defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.setFeatureProjectDetailPlans([
         ProjectDetailPlan(response: makeProjectDetail(key: "project"), fails: true),
         ProjectDetailPlan(response: makeProjectDetail(key: "project"), fails: false),
     ])
     let model = AppModel(
-        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
     )
 
     model.start()
@@ -3977,6 +4183,13 @@ private func testLoadingActiveLocalStatusRetriesUnavailableSelectedHealthDetail(
 
 @MainActor
 private func testRefreshAllRetriesEveryUnavailableSelectedDetail() async throws {
+    let suiteName = "CodexPulseAppTests.RefreshAll.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("refresh all defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.setFeatureSessionDetailPlans([
         SessionDetailPlan(
@@ -4006,7 +4219,8 @@ private func testRefreshAllRetriesEveryUnavailableSelectedDetail() async throws 
         HealthDetailPlan(response: makeHealthDetail(id: "health"), fails: false),
     ])
     let model = AppModel(
-        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
     )
 
     model.start()
@@ -4066,6 +4280,13 @@ private func testRefreshAllRetriesEveryUnavailableSelectedDetail() async throws 
 
 @MainActor
 private func testRefreshAllReportsGlobalProgressUntilEveryReadCompletes() async throws {
+    let suiteName = "CodexPulseAppTests.RefreshAllProgress.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("refresh all progress defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.setFeatureSessionPlans([
         SessionPagePlan(
@@ -4074,7 +4295,8 @@ private func testRefreshAllReportsGlobalProgressUntilEveryReadCompletes() async 
         )
     ])
     let model = AppModel(
-        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
     )
 
     model.start()
@@ -4118,6 +4340,13 @@ private func testIndexInvalidationRefreshesStatusWhileApplicationIsInactive() as
 
 @MainActor
 private func testRepeatedCursorStopsPagination() async throws {
+    let suiteName = "CodexPulseAppTests.RepeatedCursor.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("repeated cursor defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.setFeatureSessionPlans([
         SessionPagePlan(
@@ -4126,7 +4355,8 @@ private func testRepeatedCursorStopsPagination() async throws {
             delay: .zero, response: makeSessionPage(id: "page-2", title: "page 2", nextCursor: "repeat")),
     ])
     let model = AppModel(
-        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults)
     model.start()
     try await waitUntil("pagination overview") { await MainActor.run { model.presentation != nil } }
     model.loadSessions(reset: true)
@@ -4152,6 +4382,13 @@ private func testRepeatedCursorStopsPagination() async throws {
 
 @MainActor
 private func testTransientCursorFailureCanRetry() async throws {
+    let suiteName = "CodexPulseAppTests.TransientCursor.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("transient cursor defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.setFeatureSessionPlans([
         SessionPagePlan(
@@ -4161,7 +4398,8 @@ private func testTransientCursorFailureCanRetry() async throws {
         SessionPagePlan(delay: .zero, response: makeSessionPage(id: "page-2", title: "page 2")),
     ])
     let model = AppModel(
-        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults)
     model.start()
     try await waitUntil("cursor retry overview") { await MainActor.run { model.presentation != nil } }
     model.loadSessions(reset: true)
@@ -4186,10 +4424,18 @@ private func testTransientCursorFailureCanRetry() async throws {
 
 @MainActor
 private func testQuotaMutationIsSingleFlight() async throws {
+    let suiteName = "CodexPulseAppTests.QuotaSingleFlight.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("quota single flight defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.setQuotaRefreshDelay(.milliseconds(100))
     let model = AppModel(
-        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults)
     model.start()
     try await waitUntil("quota singleflight overview") {
         await MainActor.run { model.presentation != nil }
@@ -4662,6 +4908,13 @@ private func testAppModelPublishesConfiguredUpdatePolicyForSparkle() async throw
 
 @MainActor
 private func testFeatureGenerationPreventsStaleOverwrite() async throws {
+    let suiteName = "CodexPulseAppTests.FeatureGeneration.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("feature generation defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let supervisor = FakeSupervisor()
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.setFeatureSessionPlans([
@@ -4670,7 +4923,7 @@ private func testFeatureGenerationPreventsStaleOverwrite() async throws {
         SessionPagePlan(delay: .zero, response: makeSessionPage(id: "new", title: "new request")),
     ])
     let runtime = AppRuntime(supervisor: supervisor, clientFactory: { _ in core })
-    let model = AppModel(runtime: runtime)
+    let model = AppModel(runtime: runtime, providerDefaults: defaults)
     model.start()
     try await waitUntil("AppModel reaches overview") {
         await MainActor.run { model.presentation != nil }
@@ -4687,6 +4940,259 @@ private func testFeatureGenerationPreventsStaleOverwrite() async throws {
         model.sessionsState.value?.items.first?.sessionID == "new",
         "cancelled old generation overwrote replacement")
     _ = await model.shutdown()
+}
+
+@MainActor
+private func testAgentProviderScopesAndIndependentPersistence() async throws {
+    let usage = FeatureRequestFactory.usage(range: .today, provider: .cursor)
+	let pricing = FeatureRequestFactory.pricingCatalog(provider: .cursor)
+	let quota = FeatureRequestFactory.quota(provider: .cursor)
+	let quotaPace = FeatureRequestFactory.quotaPace(provider: .cursor)
+    var options = SessionQueryOptions()
+    options.range = .today
+    let sessions = FeatureRequestFactory.sessions(options: options, provider: .cursor)
+    try expect(
+        usage.provider.provider == AgentProvider.cursor.rawValue
+			&& pricing.provider.provider == AgentProvider.cursor.rawValue
+			&& quota.provider.provider == AgentProvider.cursor.rawValue
+			&& quotaPace.provider.provider == AgentProvider.cursor.rawValue
+            && sessions.query.provider.provider == AgentProvider.cursor.rawValue,
+        "every provider-owned request must carry an explicit Cursor scope"
+    )
+
+    let suiteName = "CodexPulseAppTests.Provider.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("provider defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.cursor.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let runtime = AppRuntime(
+        supervisor: FakeSupervisor(),
+        clientFactory: { _ in FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses()) }
+    )
+    let model = AppModel(runtime: runtime, providerDefaults: defaults)
+    try expect(
+        model.selectedProvider == .cursor
+            && model.statusProvider == .codex
+			&& model.overviewRange == .quotaMonth,
+		"Cursor main-window overview must restore with its monthly quota range while the menu bar stays independent"
+    )
+    model.selectStatusProvider(.cursor)
+    try expect(
+        model.selectedProvider == .cursor && model.statusProvider == .cursor,
+        "temporarily selecting the menu-bar provider must not mutate the main-window provider"
+    )
+    model.selectProvider(.codex)
+    try expect(
+        model.selectedProvider == .codex && model.statusProvider == .cursor,
+        "main-window switching must not change the pinned menu-bar provider"
+    )
+	model.navigate(to: .quotaUsage)
+	model.selectProvider(.cursor)
+	try expect(
+		model.selectedProvider == .cursor && model.selectedFeature == .quotaUsage,
+		"provider switching must preserve the supported quota page context"
+	)
+
+    defaults.set(AgentProvider.cursor.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.cursor.rawValue, forKey: "CodexPulse.statusProvider")
+    let smokeModel = AppModel(
+        runtime: AppRuntime(
+            supervisor: FakeSupervisor(),
+            clientFactory: { _ in FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses()) }
+        ),
+        providerDefaults: defaults,
+        persistsProviderSelection: false
+    )
+    try expect(
+        smokeModel.selectedProvider == .codex && smokeModel.statusProvider == .codex,
+        "smoke validation must start from Codex without inheriting user provider preferences"
+    )
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    smokeModel.selectProvider(.cursor)
+    smokeModel.selectStatusProvider(.cursor)
+    try expect(
+		defaults.string(forKey: "CodexPulse.selectedProvider") == AgentProvider.codex.rawValue
+			&& defaults.string(forKey: "CodexPulse.statusProvider") == AgentProvider.codex.rawValue,
+        "smoke-only provider changes must not rewrite user preferences"
+    )
+}
+
+@MainActor
+private func testStatusProviderRejectsLateResponseFromPreviousSelection() async throws {
+	let suiteName = "CodexPulseAppTests.StatusRace.\(UUID().uuidString)"
+	guard let defaults = UserDefaults(suiteName: suiteName) else {
+		throw TestFailure.mismatch("status race defaults suite unavailable")
+	}
+	defer { defaults.removePersistentDomain(forName: suiteName) }
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+	let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+	let model = AppModel(
+		runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+		providerDefaults: defaults
+	)
+	model.start()
+	try await waitUntil("initial overview before status provider race") {
+		await MainActor.run { model.presentation != nil }
+	}
+
+	await core.prepareOverviewBarrier()
+	model.selectStatusProvider(.cursor)
+	try await waitUntil("blocked Cursor status requests") {
+		await core.overviewBarrierWaiterCount() >= 1
+	}
+	model.selectStatusProvider(.codex)
+	await core.releaseOverviewBarrier()
+	try await sleepForTest(.milliseconds(80))
+
+	try expect(
+		model.statusProvider == .codex
+			&& model.statusUsageState.value == nil
+			&& model.statusInvocationState.value == nil,
+		"a late Cursor status response must not repopulate the Codex status selection"
+	)
+	_ = await model.shutdown()
+}
+
+@MainActor
+private func testPageProviderSwitchDoesNotReloadIndependentCursorStatus() async throws {
+	let suiteName = "CodexPulseAppTests.PageStatusIsolation.\(UUID().uuidString)"
+	guard let defaults = UserDefaults(suiteName: suiteName) else {
+		throw TestFailure.mismatch("page status isolation defaults suite unavailable")
+	}
+	defer { defaults.removePersistentDomain(forName: suiteName) }
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+	let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+	let model = AppModel(
+		runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+		providerDefaults: defaults
+	)
+	model.start()
+	try await waitUntil("initial Codex overview before independent status load") {
+		await MainActor.run { model.presentation?.provider == .codex }
+	}
+	model.selectStatusProvider(.cursor)
+	try await waitUntil("independent Cursor status load") {
+		await MainActor.run {
+			model.statusUsageState.value != nil && model.statusInvocationState.value != nil
+		}
+	}
+
+	model.selectProvider(.cursor)
+	try await waitUntil("Cursor page after independent status load") {
+		await MainActor.run { model.presentation?.provider == .cursor }
+	}
+	try await sleepForTest(.milliseconds(40))
+	let cursorTodayRequests = await core.recordedUsageRequests().filter { request in
+		guard request.provider.provider == AgentProvider.cursor.rawValue,
+			request.hasExactRange
+		else { return false }
+		let span = request.exactRange.endAtMs - request.exactRange.startAtMs
+		return span > 0 && span < 2 * 86_400_000
+	}
+	try expect(
+		cursorTodayRequests.count == 2,
+		"page switching must issue its own today request without reloading the completed status snapshot"
+	)
+	_ = await model.shutdown()
+}
+
+@MainActor
+private func testCodexStatusRequestsRemainIndependentFromCursorPage() async throws {
+	let suiteName = "CodexPulseAppTests.StatusProvider.\(UUID().uuidString)"
+	guard let defaults = UserDefaults(suiteName: suiteName) else {
+		throw TestFailure.mismatch("status provider defaults suite unavailable")
+	}
+	defer { defaults.removePersistentDomain(forName: suiteName) }
+	defaults.set(AgentProvider.cursor.rawValue, forKey: "CodexPulse.selectedProvider")
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+	let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+	let model = AppModel(
+		runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+		providerDefaults: defaults
+	)
+	model.start()
+	try await waitUntil("Cursor page overview") {
+		await MainActor.run { model.presentation?.provider == .cursor }
+	}
+	try await waitUntil("independent Codex status quota request") {
+		await core.recordedQuotaRequests().contains {
+			$0.provider.provider == AgentProvider.codex.rawValue
+		}
+	}
+	let providers = Set(await core.recordedQuotaRequests().map(\.provider.provider))
+	try expect(
+		providers == Set([AgentProvider.codex.rawValue, AgentProvider.cursor.rawValue]),
+		"Cursor page and Codex status must each issue an explicitly scoped quota request"
+	)
+	_ = await model.shutdown()
+}
+
+@MainActor
+private func testProviderSwitchDiscardsInFlightOverview() async throws {
+    let suiteName = "CodexPulseAppTests.ProviderSwitch.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("provider switch defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("initial Codex provider overview") {
+        await MainActor.run { model.presentation?.provider == .codex }
+    }
+    await core.setOverviewDelay(.milliseconds(120))
+    model.selectProvider(.cursor)
+    try await sleepForTest(.milliseconds(15))
+    model.selectProvider(.codex)
+    try await waitUntil("replacement Codex provider overview") {
+        await MainActor.run {
+            model.selectedProvider == .codex && model.presentation?.provider == .codex
+        }
+    }
+    try await sleepForTest(.milliseconds(160))
+    try expect(
+        model.selectedProvider == .codex && model.presentation?.provider == .codex,
+        "a cancelled Cursor response must not overwrite the restored Codex context"
+    )
+    _ = await model.shutdown()
+}
+
+private func testRuntimeCursorSwitchRequestsMonthlyOverviewAndIndependentTodaySummary() async throws {
+	let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+	let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+	await runtime.start()
+	await runtime.selectProvider(.cursor)
+
+	let cursorUsageRequests = await core.recordedUsageRequests().filter {
+		$0.provider.provider == AgentProvider.cursor.rawValue
+	}
+	try expect(
+		cursorUsageRequests.count == 2,
+		"Cursor overview must request one selected range and one independent today summary"
+	)
+	let spans = cursorUsageRequests.map { $0.exactRange.endAtMs - $0.exactRange.startAtMs }
+	try expect(
+		spans.contains(where: { $0 > 28 * 86_400_000 })
+			&& spans.contains(where: { $0 > 0 && $0 < 2 * 86_400_000 }),
+		"Cursor provider switch must keep a monthly overview while today remains independently scoped"
+	)
+	let quotaCalls = await core.recordedCalls().filter { $0 == "quota" }
+	let paceCalls = await core.recordedCalls().filter { $0 == "quota-pace" }
+	try expect(
+		quotaCalls.count >= 2 && paceCalls.count >= 2,
+		"Cursor provider switch must load both official quota windows and monthly pace"
+	)
+	_ = await runtime.shutdown()
 }
 
 private func testRequestFactoryAndPresentation() throws {
@@ -4750,12 +5256,170 @@ private func testRequestFactoryAndPresentation() throws {
         presentation.estimatedCost == .unknown(reason: "pricing_missing", unit: "usd_micros"),
         "unknown cost must keep reason"
     )
+
+	var cursorUsage = base.usage
+	cursorUsage.providerContext = makeProviderContext(.cursor)
+	cursorUsage.reportedUsdMicros.value = 1_500_000
+	cursorUsage.reportedUsdMicros.unit = "usd_micros"
+	cursorUsage.reportedCostSource = "cursor.dashboard"
+	cursorUsage.dataAsOfMs.value = 1_753_056_000_000
+	cursorUsage.dataAsOfMs.unit = "milliseconds"
+	let cursorPresentation = OverviewPresentation(OverviewResponses(
+		provider: .cursor,
+		usage: cursorUsage,
+		quota: base.quota,
+		sessions: base.sessions,
+		projects: base.projects,
+		health: base.health
+	))
+	try expect(
+		cursorPresentation.reportedCost == .known(1_500_000, unit: "usd_micros")
+			&& cursorPresentation.reportedCostSource == "cursor.dashboard"
+			&& cursorPresentation.dataAsOfMS == 1_753_056_000_000,
+		"Cursor reported cost and last-known timestamp must remain separate from estimated cost"
+	)
     if case .partial = AppViewState(.normal(makeResponses(partial: true))) {
         // Expected: state mapper refuses to present partial data as fully normal.
     } else {
         throw TestFailure.mismatch(
             "normal runtime response with partial meta was presented as complete")
     }
+}
+
+private func testCursorOverviewSummarySeparatesTodayFromSelectedRange() throws {
+    var rangeUsage = Codexpulse_Core_V1_UsageCostResponse()
+    rangeUsage.meta = completeMeta()
+    rangeUsage.providerContext = makeProviderContext(.cursor)
+	var dashboardCoverage = Codexpulse_Core_V1_ProviderCoverage()
+	dashboardCoverage.capability = "exact_token_usage"
+	dashboardCoverage.state = "available"
+	dashboardCoverage.source = "cursor.dashboard"
+	dashboardCoverage.reason = "reported_usage"
+	rangeUsage.providerContext.coverage = [dashboardCoverage]
+    rangeUsage.totals.turnCount.value = 18
+    rangeUsage.totals.turnCount.unit = "count"
+    rangeUsage.totals.totalTokens.value = 1_200_000
+    rangeUsage.totals.totalTokens.unit = "tokens"
+    rangeUsage.totals.lastActivityAtMs.value = 1_786_778_340_000
+    rangeUsage.totals.lastActivityAtMs.unit = "unix_ms"
+    rangeUsage.reportedUsdMicros.value = 420_000
+    rangeUsage.reportedUsdMicros.unit = "usd_micros"
+	rangeUsage.totals.estimatedUsdMicros.value = 900_000
+	rangeUsage.totals.estimatedUsdMicros.unit = "usd_micros"
+    rangeUsage.dataAsOfMs.value = 1_786_778_400_000
+    rangeUsage.dataAsOfMs.unit = "unix_ms"
+    rangeUsage.cursorBilling.totalSpendUsdMicros.value = 2_500_000
+    rangeUsage.cursorBilling.totalSpendUsdMicros.unit = "usd_micros"
+	rangeUsage.cursorBilling.limitUsdMicros.value = 5_000_000
+	rangeUsage.cursorBilling.limitUsdMicros.unit = "usd_micros"
+    var lowerModel = Codexpulse_Core_V1_UsageModelItem()
+    lowerModel.dimensionKey = "model-low"
+    lowerModel.model.displayName = "Model Low"
+    lowerModel.totals.totalTokens.value = 100
+    lowerModel.totals.totalTokens.unit = "tokens"
+    var higherModel = Codexpulse_Core_V1_UsageModelItem()
+    higherModel.dimensionKey = "model-high"
+    higherModel.model.displayName = "Model High"
+    higherModel.totals.totalTokens.value = 900
+    higherModel.totals.totalTokens.unit = "tokens"
+    rangeUsage.models = [lowerModel, higherModel]
+
+    var todayUsage = Codexpulse_Core_V1_UsageCostResponse()
+	todayUsage.meta.status = "partial"
+    todayUsage.providerContext = makeProviderContext(.cursor)
+    todayUsage.totals.turnCount.value = 0
+    todayUsage.totals.turnCount.unit = "count"
+    todayUsage.totals.totalTokens.value = 0
+    todayUsage.totals.totalTokens.unit = "tokens"
+    todayUsage.reportedUsdMicros.value = 0
+    todayUsage.reportedUsdMicros.unit = "usd_micros"
+
+    var rangeInvocation = Codexpulse_Core_V1_InvocationUsageResponse()
+    rangeInvocation.meta = completeMeta()
+    rangeInvocation.providerContext = makeProviderContext(.cursor)
+    rangeInvocation.totals.toolCallCount.value = 32
+    rangeInvocation.totals.toolCallCount.unit = "count"
+    rangeInvocation.totals.aiEditCount.value = 11
+    rangeInvocation.totals.aiEditCount.unit = "count"
+    var todayInvocation = Codexpulse_Core_V1_InvocationUsageResponse()
+    todayInvocation.meta = completeMeta()
+    todayInvocation.providerContext = makeProviderContext(.cursor)
+    todayInvocation.totals.toolCallCount.value = 0
+    todayInvocation.totals.toolCallCount.unit = "count"
+    todayInvocation.totals.aiEditCount.value = 0
+    todayInvocation.totals.aiEditCount.unit = "count"
+
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+    let range = OverviewRequestSet.resolveRange(
+        .sevenDays,
+        quota: .init(),
+        now: Date(timeIntervalSince1970: 1_786_780_800),
+        calendar: calendar
+    )
+    let overview = OverviewPresentation(OverviewResponses(
+        provider: .cursor,
+        usage: rangeUsage,
+        quota: .init(),
+        sessions: .init(),
+        projects: .init(),
+        health: .init(),
+        rangeResolution: range,
+        todayUsage: todayUsage,
+        invocationUsage: rangeInvocation,
+        todayInvocationUsage: todayInvocation
+    ))
+    let summary = CursorOverviewSummaryPresentation(overview)
+
+    try expect(
+        summary.todayRequestCount == .known(0, unit: "count")
+            && summary.todayTotalTokens == .known(0, unit: "tokens")
+            && summary.todayToolCallCount == .known(0, unit: "count")
+            && summary.todayAIEditCount == .known(0, unit: "count"),
+        "Cursor Overview top cards must use the independent today responses"
+    )
+    try expect(
+        summary.rangeRequestCount == .known(18, unit: "count")
+            && summary.rangeTotalTokens == .known(1_200_000, unit: "tokens")
+            && summary.selectedRange == .sevenDays,
+        "Cursor Overview body must retain the selected seven-day range"
+    )
+    try expect(
+        summary.recentActivityAtMS == 1_786_778_340_000
+			&& summary.showsRecentActivityFallback
+			&& !summary.usesLastKnownTodayData,
+		"an empty partial today backed by an available Dashboard must explain recent activity without claiming that synchronization failed"
+    )
+    try expect(
+        summary.billing?.totalSpend == .known(2_500_000, unit: "usd_micros")
+            && summary.models.map(\.title) == ["Model High", "Model Low"],
+        "Cursor Overview must preserve billing and rank model usage from the selected range"
+    )
+	try expect(
+		summary.rangePrimaryCost == .known(420_000, unit: "usd_micros")
+			&& summary.rangeCostBasis == .reported,
+		"Cursor Overview must prefer Dashboard reported cost without treating spending as quota progress"
+	)
+
+	todayUsage.totals.turnCount.value = 1
+	todayUsage.totals.totalTokens.value = 162_000
+	let activeTodayOverview = OverviewPresentation(OverviewResponses(
+		provider: .cursor,
+		usage: rangeUsage,
+		quota: .init(),
+		sessions: .init(),
+		projects: .init(),
+		health: .init(),
+		rangeResolution: range,
+		todayUsage: todayUsage,
+		invocationUsage: rangeInvocation,
+		todayInvocationUsage: todayInvocation
+	))
+	let activeTodaySummary = CursorOverviewSummaryPresentation(activeTodayOverview)
+	try expect(
+		!activeTodaySummary.showsRecentActivityFallback,
+		"known non-zero today usage must not be contradicted by an empty-activity fallback notice"
+	)
 }
 
 private func testResetCreditsInventoryStateSeparatesUnknownFromKnownEmpty() throws {
@@ -5570,17 +6234,24 @@ private func testAppRuntimeLoadsOverviewInvocationProfileForTheExactContentRange
 
     let invocationRequests = await core.recordedInvocationRequests()
     let usageRequests = await core.recordedUsageRequests()
+    guard let matchedRequest = invocationRequests.first(where: { invocationRequest in
+        usageRequests.contains(where: { usageRequest in
+            invocationRequest.range == usageRequest.exactRange
+                && invocationRequest.granularity == usageRequest.granularity
+        })
+    }) else {
+        throw TestFailure.mismatch(
+            "overview must issue a range-aligned invocation profile request beside current-range usage")
+    }
     try expect(
-        invocationRequests.count == 1 && usageRequests.count == 1,
-        "overview must issue one invocation profile request beside current-range usage"
-    )
-    try expect(
-        invocationRequests[0].range == usageRequests[0].exactRange
-            && invocationRequests[0].granularity == usageRequests[0].granularity,
+        usageRequests.contains(where: {
+            matchedRequest.range == $0.exactRange
+                && matchedRequest.granularity == $0.granularity
+        }),
         "overview invocation profile must use the exact authoritative content range"
     )
     try expect(
-        invocationRequests[0].sourceClass == "all" && invocationRequests[0].topLimit == 5,
+        matchedRequest.sourceClass == "all" && matchedRequest.topLimit == 5,
         "overview invocation profile must stay all-source and bounded to Top 5"
     )
     _ = await model.shutdown()
@@ -5892,6 +6563,13 @@ private func testQuotaUsageFeatureReloadsQuotaPace() async throws {
 
 @MainActor
 private func testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess() async throws {
+    let suiteName = "CodexPulseAppTests.OptionalAccount.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("optional account defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let hangingCore = FakeCore(
         bootstrap: makeNormalBootstrap(),
         responses: makeResponses()
@@ -5901,16 +6579,22 @@ private func testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess() async
     let hangingModel = AppModel(runtime: AppRuntime(
         supervisor: FakeSupervisor(),
         clientFactory: { _ in hangingCore }
-    ))
+    ), providerDefaults: defaults)
     hangingModel.start()
     try await waitUntil("hanging account/read initial Overview") {
         await MainActor.run {
-            hangingModel.presentation != nil && !hangingModel.isOverviewRefreshing
+            hangingModel.presentation != nil
+                && hangingModel.statusPresentation != nil
+                && !hangingModel.isOverviewRefreshing
         }
     }
     try expect(
         hangingModel.presentation?.account.availability == .unavailable,
         "a hanging initial account/read must publish Overview with unavailable account semantics"
+    )
+    try expect(
+        hangingModel.statusPresentation?.account.availability == .unavailable,
+        "a hanging account/read must not delay the independent status overview"
     )
     try await waitUntil("hanging account/read invalidation Overview") {
         let usageCalls = await hangingCore.recordedUsageRequests().count
@@ -5936,7 +6620,7 @@ private func testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess() async
         supervisor: FakeSupervisor(),
         clientFactory: { _ in failingCore }
     )
-    let failingModel = AppModel(runtime: failingRuntime)
+    let failingModel = AppModel(runtime: failingRuntime, providerDefaults: defaults)
     failingModel.start()
     try await waitUntil("optional account/read failure") {
         let completed = await failingCore.recordedCompletedAccountCalls()
@@ -5959,7 +6643,7 @@ private func testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess() async
         supervisor: FakeSupervisor(),
         clientFactory: { _ in core }
     )
-    let model = AppModel(runtime: runtime)
+    let model = AppModel(runtime: runtime, providerDefaults: defaults)
     model.start()
     try await waitUntil("initial account/read success") {
         await MainActor.run { model.presentation?.account.planText == "Pro" }
@@ -6013,31 +6697,42 @@ private func testAppRuntimeFallsBackWhenWeeklyQuotaIsUnavailable() async throws 
 
 @MainActor
 private func testOverviewRangeSelectionRefreshesAllContent() async throws {
+    let suiteName = "CodexPulseAppTests.OverviewRange.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("overview range defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     let model = AppModel(
-        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults)
     try expect(model.overviewRange == .quotaWeek, "overview must default to the quota week")
     model.start()
     try await waitUntil("initial quota-week overview") {
-        await core.recordedUsageRequests().count == 1
+        await core.recordedUsageRequests().count >= 2
     }
 
     model.selectOverviewRange(.today)
     try await waitUntil("today overview") {
-        await core.recordedUsageRequests().count == 3
+        await core.recordedUsageRequests().contains(where: { $0.granularity == "hour" })
     }
 
-    let refreshedUsageRequests = Array(await core.recordedUsageRequests().suffix(2))
-    guard let usage = refreshedUsageRequests.first(where: { $0.granularity == "hour" }),
-          let weeklyUsage = refreshedUsageRequests.first(where: { $0.granularity == "day" })
+    let refreshedUsageRequests = await core.recordedUsageRequests()
+    guard let usage = refreshedUsageRequests.last(where: { $0.granularity == "hour" }),
+          let weeklyUsage = refreshedUsageRequests.first(where: {
+              $0.granularity == "day"
+                  && $0.exactRange.startAtMs == 1_753_059_600_000 - 10_080 * 60_000
+          })
     else {
         throw TestFailure.mismatch("today and status-popover usage requests were not separated")
     }
     let sessions = await core.recordedSessionRequests()[1]
     let projectRequests = await core.recordedProjectRequests()
     try expect(
-        projectRequests.count == 4,
-        "each overview refresh must keep a separate current-range project request and weekly ranking request")
+        projectRequests.count >= 5,
+        "page and status overview refreshes must keep their independent project requests")
     guard let projects = projectRequests.first(where: {
         $0.query.filters.isEmpty
             && $0.query.exactTimeRange.startAtMs == usage.exactRange.startAtMs
@@ -6097,6 +6792,9 @@ private func testQuotaWindowPresentationUsesActualDuration() throws {
         ("secondary", "codex", nil, 90, "通用额度 · 90 分钟"),
         ("primary", "codex", nil, nil, "通用额度"),
         ("primary", "codex_bengalfox", nil, 10_080, "模型专属额度 · 7 天"),
+		("primary", "cursor.models", "Cursor Models", 44_640, "Cursor Models · 月额度"),
+		("secondary", "cursor.other_models", "Other Models", 43_200, "Other Models · 月额度"),
+		("primary", "cursor.models", "Cursor Models", nil, "Cursor Models · 月额度"),
     ]
 
     for item in cases {
@@ -6768,6 +7466,75 @@ private func testStatusBarQuotaPresentationUsesOnlyMatchingPeriodUsage() throws 
     )
 }
 
+private func testCursorStatusBarQuotaPresentationUsesMonthlyQuotaAndTokens() throws {
+	let base = makeResponses()
+	var usage = base.usage
+	usage.totals.totalTokens.value = 210_000_000
+	usage.totals.totalTokens.unit = "tokens"
+
+	var quota = base.quota
+	let evaluatedAtMS = quota.current.evaluatedAtMs
+	var cursorModels = Codexpulse_Core_V1_CurrentWindow()
+	cursorModels.windowKind = "primary"
+	cursorModels.limitID = "cursor.models"
+	cursorModels.limitName = "Cursor Models"
+	cursorModels.windowMinutes = 44_640
+	cursorModels.remainingPercent = 90
+	cursorModels.usedPercent = 10
+	cursorModels.resetsAtMs = evaluatedAtMS + 28 * 24 * 60 * 60 * 1_000
+	cursorModels.freshness = "fresh"
+	var otherModels = Codexpulse_Core_V1_CurrentWindow()
+	otherModels.windowKind = "secondary"
+	otherModels.limitID = "cursor.other_models"
+	otherModels.limitName = "Other Models"
+	otherModels.windowMinutes = 43_200
+	otherModels.remainingPercent = 100
+	otherModels.usedPercent = 0
+	otherModels.resetsAtMs = cursorModels.resetsAtMs
+	otherModels.freshness = "fresh"
+	quota.current.windows = [cursorModels, otherModels]
+
+	var calendar = Calendar(identifier: .gregorian)
+	calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+	let range = OverviewRequestSet.resolveRange(
+		.quotaMonth,
+		quota: quota,
+		now: Date(timeIntervalSince1970: TimeInterval(evaluatedAtMS) / 1_000),
+		calendar: calendar
+	)
+	usage.range.startAtMs = range.startAtMS
+	usage.range.endAtMs = range.endAtMS
+	usage.range.timeZone = range.timeZone
+
+	let overview = OverviewPresentation(OverviewResponses(
+		provider: .cursor,
+		usage: usage,
+		quota: quota,
+		sessions: base.sessions,
+		projects: base.projects,
+		health: base.health,
+		rangeResolution: range,
+		weeklyUsage: usage
+	))
+	guard let summary = StatusBarQuotaPresentation(overview) else {
+		throw TestFailure.mismatch("Cursor monthly status bar summary was unavailable")
+	}
+	try expect(summary.periodLabel == "月剩", "Cursor status bar must name the monthly cycle")
+	try expect(
+		summary.remainingText == "月剩 90% · 100%",
+		"Cursor status bar must show both official monthly remaining percentages"
+	)
+	try expect(
+		summary.usageText == "已用 2.1亿",
+		"Cursor status bar must show the monthly total Token usage with Codex wording"
+	)
+	try expect(
+		summary.accessibilityLabel.contains("月剩 90% · 100%")
+			&& summary.accessibilityLabel.contains("已用 2.1亿 Token"),
+		"Cursor status bar accessibility must expose both monthly quota and Token usage"
+	)
+}
+
 private func testStatusBarStyleSelectionAndLegacyFallback() throws {
     try expect(
         StatusBarStyle.allCases.map(\.rawValue)
@@ -6950,6 +7717,20 @@ private func testOverviewRangeResolutionDrivesEveryContentRequest() throws {
     try expect(weekly.endAtMS == evaluatedAtMS, "weekly quota range must end at evaluation time")
     try expect(weekly.granularity == "day", "weekly quota trend must stay daily")
 
+	var monthlyWindow = Codexpulse_Core_V1_CurrentWindow()
+	monthlyWindow.limitID = "cursor.models"
+	monthlyWindow.windowMinutes = 44_640
+	monthlyWindow.resetsAtMs = resetAtMS
+	quota.current.windows = [monthlyWindow]
+	let monthly = OverviewRequestSet.resolveRange(
+		.quotaMonth, quota: quota, now: now, calendar: calendar)
+	try expect(monthly.effectivePreset == .quotaMonth, "Cursor monthly quota range must remain selected")
+	try expect(
+		monthly.startAtMS == resetAtMS - 44_640 * 60_000,
+		"Cursor monthly quota range must start at its authoritative Dashboard boundary")
+	try expect(monthly.endAtMS == evaluatedAtMS, "Cursor monthly quota range must end at evaluation time")
+	try expect(monthly.granularity == "day", "Cursor monthly quota trend must stay daily")
+
     let requests = OverviewRequestSet.content(range: weekly)
     try expect(requests.usage.exactRange.startAtMs == weekly.startAtMS, "usage range start")
     try expect(
@@ -6977,6 +7758,11 @@ private func testOverviewRangeResolutionDrivesEveryContentRequest() throws {
         .quotaWeek, quota: .init(), now: now, calendar: calendar)
     try expect(fallback.effectivePreset == .sevenDays, "missing quota week must fall back to seven days")
     try expect(fallback.fellBackFromQuotaWeek, "weekly fallback must remain explicit")
+	let monthlyFallback = OverviewRequestSet.resolveRange(
+		.quotaMonth, quota: .init(), now: now, calendar: calendar)
+	try expect(
+		monthlyFallback.effectivePreset == .thirtyDays,
+		"missing Cursor monthly quota must explicitly fall back to the last 30 days")
 }
 
 private func testLaunchConfigurationBoundaries() throws {
@@ -6999,6 +7785,39 @@ private func testLaunchConfigurationBoundaries() throws {
     )
     try expect(
         parsed.helperExecutablePath == "/usr/bin/true", "LaunchServices argument must be ignored")
+
+	for bundleIdentifier: String? in ["com.sisyphussq.codex-pulse.development", nil] {
+		for arguments in [
+			["codex-pulse-app", "--helper", "/usr/bin/true"],
+			[
+				"codex-pulse-app", "--helper", "/usr/bin/true",
+				"--runtime-directory", FileManager.default.homeDirectoryForCurrentUser
+					.appendingPathComponent("Library/Application Support/Codex Pulse/runtime").path,
+			],
+		] {
+			do {
+				_ = try AppLaunchConfiguration.parse(
+					arguments: arguments,
+					bundleURL: URL(fileURLWithPath: "/private/tmp/not-an-app-bundle"),
+					bundleIdentifier: bundleIdentifier
+				)
+				throw TestFailure.mismatch("non-product App accepted the installed product runtime")
+			} catch AppLaunchConfigurationError.runtimeDirectoryUnavailable {
+				// Expected.
+			}
+		}
+	}
+	let development = try AppLaunchConfiguration.parse(
+		arguments: [
+			"codex-pulse-app", "--helper", "/usr/bin/true",
+			"--runtime-directory", "/private/tmp/cp-development-launch",
+		],
+		bundleIdentifier: "com.sisyphussq.codex-pulse.development"
+	)
+	try expect(
+		development.runtimeDirectory == "/private/tmp/cp-development-launch",
+		"development App must accept an explicitly isolated runtime"
+	)
 }
 
 private func testLaunchConfigurationUsesPersistentProductDefaults() throws {
@@ -7012,7 +7831,8 @@ private func testLaunchConfigurationUsesPersistentProductDefaults() throws {
         arguments: [
             "codex-pulse-app",
             "--helper", "/usr/bin/true",
-        ]
+		],
+		bundleIdentifier: "com.sisyphussq.codexpulse"
     )
 
     try expect(
@@ -7136,13 +7956,20 @@ private func testStaleAndUnavailable() async throws {
 
 @MainActor
 private func testUnavailableRecoveryRefreshesOpenForegroundSurfaces() async throws {
+    let suiteName = "CodexPulseAppTests.UnavailableRecovery.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("unavailable recovery defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.prepareUnavailableOverviewRecovery()
     await core.setOverviewDelay(.milliseconds(80))
     let model = AppModel(runtime: AppRuntime(
         supervisor: FakeSupervisor(),
         clientFactory: { _ in core }
-    ))
+    ), providerDefaults: defaults)
     let mainWindow = ForegroundSurfaceRecorder()
     let statusPopover = ForegroundSurfaceRecorder()
     var cancellables: Set<AnyCancellable> = []
@@ -7178,12 +8005,12 @@ private func testUnavailableRecoveryRefreshesOpenForegroundSurfaces() async thro
     }
     let stats = await core.overviewRecoveryStats()
     try expect(
-        stats.usageCalls == 2,
-        "coalesced recovery invalidations must schedule exactly one follow-up Overview refresh"
+        stats.usageCalls == 3,
+        "coalesced recovery invalidations must schedule one page recovery and one independent status refresh"
     )
     try expect(
-        stats.completedUsageCalls == 2,
-        "recovered Overview follow-up must complete before foreground success is asserted"
+        stats.completedUsageCalls == 3,
+        "recovered page and status overviews must complete before foreground success is asserted"
     )
     try expect(
         stats.maximumConcurrentUsageCalls == 1,
@@ -7196,13 +8023,20 @@ private func testUnavailableRecoveryRefreshesOpenForegroundSurfaces() async thro
 
 @MainActor
 private func testRecoveryDuringDisconnectedStreamRefreshesAfterReconnectWithoutReplay() async throws {
+    let suiteName = "CodexPulseAppTests.DisconnectedRecovery.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("disconnected recovery defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.prepareUnavailableOverviewRecovery()
     await core.prepareReconnectWithoutInvalidationReplay()
     let model = AppModel(runtime: AppRuntime(
         supervisor: FakeSupervisor(),
         clientFactory: { _ in core }
-    ))
+    ), providerDefaults: defaults)
     let mainWindow = ForegroundSurfaceRecorder()
     let statusPopover = ForegroundSurfaceRecorder()
     var cancellables: Set<AnyCancellable> = []
@@ -7249,8 +8083,8 @@ private func testRecoveryDuringDisconnectedStreamRefreshesAfterReconnectWithoutR
     }
     let stats = await core.overviewRecoveryStats()
     try expect(
-        stats.usageCalls == 2 && stats.completedUsageCalls == 2,
-        "stream ready after a disconnected recovery must schedule one completed authoritative refresh"
+        stats.usageCalls == 3 && stats.completedUsageCalls == 3,
+        "stream ready after a disconnected recovery must complete the page recovery and independent status refresh"
     )
     try expect(
         stats.maximumConcurrentUsageCalls == 1,
@@ -7263,13 +8097,20 @@ private func testRecoveryDuringDisconnectedStreamRefreshesAfterReconnectWithoutR
 
 @MainActor
 private func testInitialInFlightReconnectQueuesOneRecoveryRefresh() async throws {
+    let suiteName = "CodexPulseAppTests.InFlightReconnect.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("in-flight reconnect defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.prepareUnavailableOverviewRecovery()
     await core.prepareReconnectWithoutInvalidationReplay()
     let model = AppModel(runtime: AppRuntime(
         supervisor: FakeSupervisor(),
         clientFactory: { _ in core }
-    ))
+    ), providerDefaults: defaults)
     let mainWindow = ForegroundSurfaceRecorder()
     let statusPopover = ForegroundSurfaceRecorder()
     var cancellables: Set<AnyCancellable> = []
@@ -7316,8 +8157,8 @@ private func testInitialInFlightReconnectQueuesOneRecoveryRefresh() async throws
     }
     let stats = await core.overviewRecoveryStats()
     try expect(
-        stats.usageCalls == 2 && stats.completedUsageCalls == 2,
-        "reconnect after the first Overview starts must complete one serial authoritative follow-up"
+        stats.usageCalls == 3 && stats.completedUsageCalls == 3,
+        "reconnect after the first Overview starts must complete one page follow-up and one independent status refresh"
     )
     try expect(
         stats.maximumConcurrentUsageCalls == 1,
@@ -7628,12 +8469,19 @@ private func testShutdownDuringLoadingAdmissionKeepsStoppedTerminal() async thro
 
 @MainActor
 private func testUnavailableRecoveryFailureDoesNotPublishSuccess() async throws {
+    let suiteName = "CodexPulseAppTests.FailedRecovery.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("failed recovery defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.prepareUnavailableOverviewRecovery()
     let model = AppModel(runtime: AppRuntime(
         supervisor: FakeSupervisor(),
         clientFactory: { _ in core }
-    ))
+    ), providerDefaults: defaults)
     let foreground = ForegroundSurfaceRecorder()
     var cancellables: Set<AnyCancellable> = []
     model.$state.sink { state in
@@ -7653,7 +8501,7 @@ private func testUnavailableRecoveryFailureDoesNotPublishSuccess() async throws 
 
     try await waitUntil("failed recovery follow-up completes") {
         let stats = await core.overviewRecoveryStats()
-        return stats.completedUsageCalls == 2
+        return stats.completedUsageCalls == 3
     }
     try await waitUntil("failed recovery publishes its second unavailable result") {
         await foreground.unavailableCountValue() == 2
@@ -7661,8 +8509,8 @@ private func testUnavailableRecoveryFailureDoesNotPublishSuccess() async throws 
     try await sleepForTest(.milliseconds(100))
     let stats = await core.overviewRecoveryStats()
     try expect(
-        stats.usageCalls == 2 && stats.completedUsageCalls == 2,
-        "failed recovery must stop after exactly one completed follow-up Overview refresh"
+        stats.usageCalls == 3 && stats.completedUsageCalls == 3,
+        "failed recovery must stop after one page follow-up and one independent status refresh"
     )
     try expect(
         stats.maximumConcurrentUsageCalls == 1,
@@ -8066,6 +8914,13 @@ private func testHelperExitBecomesStale() async throws {
 
 @MainActor
 private func testHelperExitCannotBecomeFeatureCancelled() async throws {
+    let suiteName = "CodexPulseAppTests.HelperExitFeature.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("helper exit feature defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     await core.setFeatureSessionPlans([
         SessionPagePlan(delay: .zero, response: makeSessionPage(id: "last-good", title: "last good")),
@@ -8080,7 +8935,7 @@ private func testHelperExitCannotBecomeFeatureCancelled() async throws {
         },
         clientFactory: { _ in core }
     )
-    let model = AppModel(runtime: runtime)
+    let model = AppModel(runtime: runtime, providerDefaults: defaults)
     model.start()
     try await waitUntil("feature terminal overview") {
         await MainActor.run { model.presentation != nil }
@@ -8140,6 +8995,9 @@ struct CodexPulseAppTestMain {
         try testOverviewLimitsHighConsumptionSessionsToFive()
         try testWeeklyProjectRankingFailureStaysLocal()
         try testOverviewUsesOneNavigationAndARealTrendChart()
+		try testCursorOverviewOmitsDataStatusCard()
+		try testCursorQuotaSurfacesUseOfficialMonthlyWindows()
+		try testCursorOverviewTrendAnnotationDoesNotResizeConsumptionCard()
         try testToolbarSeparatesCurrentReloadFromGlobalReload()
         try testWeeklyOverviewTrendUsesDailyAxisAndRangeCopy()
         try testUsageChartStacksModelsWithLocalizedHoverDetails()
@@ -8152,6 +9010,7 @@ struct CodexPulseAppTestMain {
         try testStatusPopoverShowsLocalizedModelDailyTrend()
         try testPopoverHeaderMatchesSessionNestLayoutAndNeutralFocus()
         try testPopoverAccountSummaryShowsSessionNestAccountFieldsOnly()
+		try testCursorPopoverShowsLocalAccountAndOmitsTodayActivity()
         try testPopoverAccountSummaryDistinguishesEmptyAndUnavailableData()
         try testPopoverScreenshotClipboardTextHidesAccountAndPlan()
         try testPopoverProjectActionUsesExactPublicRepositoryURL()
@@ -8196,6 +9055,7 @@ struct CodexPulseAppTestMain {
         try testSettingsIntervalsUseAuthoritativeBounds()
         try testOverviewRangeIncludesQuotaWeek()
         try testRequestFactoryAndPresentation()
+		try testCursorOverviewSummarySeparatesTodayFromSelectedRange()
         try testResetCreditsInventoryStateSeparatesUnknownFromKnownEmpty()
         try testResetCreditsDetailUsesInventoryState()
         try testTokenActivityRequestUsesAnIndependentRollingYear()
@@ -8245,6 +9105,7 @@ struct CodexPulseAppTestMain {
         try testTokenBreakdownPresentationPreservesInputOutputSemantics()
         try testUsageModelTrendResolverUsesOnlyReconciledDailyFacts()
         try testStatusBarQuotaPresentationUsesOnlyMatchingPeriodUsage()
+		try testCursorStatusBarQuotaPresentationUsesMonthlyQuotaAndTokens()
         try testStatusBarStyleSelectionAndLegacyFallback()
         try testQuotaRemainingLevelUsesGreenYellowRedThresholds()
         try testStatusBarQuotaDataStateSeparatesRemainingColorFromTrust()
@@ -8264,6 +9125,12 @@ struct CodexPulseAppTestMain {
         try testLaunchConfigurationUsesPersistentProductDefaults()
         try await testPricingCatalogLoadsWithoutUsageModels()
         try await testFeatureGenerationPreventsStaleOverwrite()
+		try await testAgentProviderScopesAndIndependentPersistence()
+		try await testStatusProviderRejectsLateResponseFromPreviousSelection()
+		try await testPageProviderSwitchDoesNotReloadIndependentCursorStatus()
+		try await testCodexStatusRequestsRemainIndependentFromCursorPage()
+		try await testProviderSwitchDiscardsInFlightOverview()
+		try await testRuntimeCursorSwitchRequestsMonthlyOverviewAndIndependentTodaySummary()
         try await testInvalidationRefreshesActivePage()
         try await testIndexInvalidationRefreshesSelectedSessionDetail()
         try await testForegroundRecoveryRefreshesSelectedSessionOnce()

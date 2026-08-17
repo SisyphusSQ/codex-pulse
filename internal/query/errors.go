@@ -175,7 +175,7 @@ func errorDetail(code ErrorCode) ErrorDetail {
 
 func validFailureField(value string) bool {
 	switch value {
-	case "page.limit", "page.cursor",
+	case "provider", "page.limit", "page.cursor",
 		"turnPage.limit", "turnPage.cursor",
 		"sessionPage.limit", "sessionPage.cursor",
 		"modelPage.limit", "modelPage.cursor",

@@ -1,6 +1,7 @@
 package runtimeinfo
 
 import (
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 )
@@ -36,13 +37,15 @@ type RecoveryAction struct {
 }
 
 type QuotaCurrentResponse struct {
-	Meta    basequery.ResponseMeta     `json:"meta"`
-	Current quotaquery.CurrentResponse `json:"current"`
+	Meta            basequery.ResponseMeta     `json:"meta"`
+	Current         quotaquery.CurrentResponse `json:"current"`
+	ProviderContext agentprovider.Context      `json:"providerContext"`
 }
 
 type QuotaPaceResponse struct {
-	Meta basequery.ResponseMeta  `json:"meta"`
-	Pace quotaquery.PaceResponse `json:"pace"`
+	Meta            basequery.ResponseMeta  `json:"meta"`
+	Pace            quotaquery.PaceResponse `json:"pace"`
+	ProviderContext agentprovider.Context   `json:"providerContext"`
 }
 
 type SourceKind string
@@ -50,6 +53,7 @@ type SourceKind string
 const (
 	SourceLocalFile SourceKind = "local_file"
 	SourceOnline    SourceKind = "online"
+	SourceProvider  SourceKind = "provider_source"
 )
 
 type SourceItem struct {
@@ -69,13 +73,18 @@ type SourceItem struct {
 	FailureCode         *string                `json:"failureCode"`
 	UpdatedAtMS         basequery.NumericValue `json:"updatedAtMs"`
 	RecoveryAction      RecoveryAction         `json:"recoveryAction"`
+	CoverageState       *string                `json:"coverageState"`
+	RowCount            basequery.NumericValue `json:"rowCount"`
+	SchemaVersion       basequery.NumericValue `json:"schemaVersion"`
+	CheckpointKind      *string                `json:"checkpointKind"`
 }
 
 type SourceSummary struct {
-	Total         basequery.NumericValue `json:"total"`
-	LocalFiles    basequery.NumericValue `json:"localFiles"`
-	OnlineSources basequery.NumericValue `json:"onlineSources"`
-	Attention     basequery.NumericValue `json:"attention"`
+	Total           basequery.NumericValue `json:"total"`
+	LocalFiles      basequery.NumericValue `json:"localFiles"`
+	OnlineSources   basequery.NumericValue `json:"onlineSources"`
+	ProviderSources basequery.NumericValue `json:"providerSources"`
+	Attention       basequery.NumericValue `json:"attention"`
 }
 
 type SourceListResponse struct {

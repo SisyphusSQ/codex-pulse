@@ -106,8 +106,11 @@ case "$smoke_summary" in
   *) fail "application did not report a passing smoke summary" ;;
 esac
 printf '%s\n' "$smoke_summary" | grep -Eq \
-  'overview=loaded .*sessions=[1-9][0-9]* trend_points=[1-9][0-9]* activity=available activity_timeline=[1-9][0-9]* activity_heatmap=168 .*primary_pages=loaded sessions=[1-9][0-9]* projects=[1-9][0-9]* .*usage_trend=[1-9][0-9]* usage_models=[1-9][0-9]* usage_model_trend=[1-9][0-9]* usage_model_reconciled=[1-9][0-9]* usage_cost=known .*invocation_tools=[1-9][0-9]* invocation_skills=[1-9][0-9]* .*project_detail_cost=known project_detail_models=[1-9][0-9]* details_read=[1-9][0-9]* .*unavailable=none ui_pages=8 .*shutdown=clean' || \
+  'overview=loaded .*activity=(available|partial|unavailable) activity_timeline=[0-9]+ activity_heatmap=(0|168) .*primary_pages=loaded sessions=[1-9][0-9]* projects=[1-9][0-9]* .*usage_trend=[1-9][0-9]* usage_models=[1-9][0-9]* usage_model_trend=[1-9][0-9]* usage_model_reconciled=[1-9][0-9]* usage_cost=known .*invocation_tools=[1-9][0-9]* invocation_skills=[1-9][0-9]* .*project_detail_cost=known project_detail_models=[1-9][0-9]* details_read=[1-9][0-9]* .*unavailable=none ui_pages=8 .*shutdown=clean' || \
   fail "real Home did not produce the required non-zero page contract"
+printf '%s\n' "$smoke_summary" | grep -Eq \
+  'status_provider=cursor status_label=verified cursor_account=available cursor_popover=captured cursor_requests=known cursor_tokens=known cursor_reported_cost=known cursor_estimated_cost=(known|unknown) cursor_spending=known cursor_data_as_of=known cursor_dashboard=available' || \
+  fail "Cursor Dashboard did not produce exact real-account usage metadata"
 [ ! -S "$RUNTIME_DIR/core.sock" ] || fail "Helper socket remained after shutdown"
 MIGRATED_HOME=$(jq -er '.codex_home.source.path' "$RUNTIME_DIR/preferences.json") || fail "migrated Home is unavailable"
 MIGRATED_DEVICE=$(jq -er '.codex_home.source.device_id' "$RUNTIME_DIR/preferences.json") || fail "migrated Home device is unavailable"

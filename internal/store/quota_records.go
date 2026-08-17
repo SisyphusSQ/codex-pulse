@@ -5,9 +5,10 @@ const maxQuotaWindowMinutes int64 = 525600
 type QuotaSource string
 
 const (
-	QuotaAccountScopeDefault             = "default"
-	QuotaSourceLocalJSONL    QuotaSource = "local_jsonl"
-	QuotaSourceWham          QuotaSource = "wham"
+	QuotaAccountScopeDefault               = "default"
+	QuotaSourceLocalJSONL      QuotaSource = "local_jsonl"
+	QuotaSourceWham            QuotaSource = "wham"
+	QuotaSourceCursorDashboard QuotaSource = "cursor_dashboard"
 )
 
 type QuotaWindowKind string

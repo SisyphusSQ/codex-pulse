@@ -47,32 +47,50 @@ private func unavailableMeta() -> Codexpulse_Core_V1_ResponseMeta {
     return meta
 }
 
-private func unavailableQuota(at date: Date) -> Codexpulse_Core_V1_QuotaCurrentResponse {
+private func unavailableQuota(
+	at date: Date,
+	provider: AgentProvider
+) -> Codexpulse_Core_V1_QuotaCurrentResponse {
     var response = Codexpulse_Core_V1_QuotaCurrentResponse()
     response.meta = unavailableMeta()
     response.current.evaluatedAtMs = Int64(date.timeIntervalSince1970 * 1_000)
+	response.providerContext = providerContext(for: provider)
     return response
 }
 
 private func unavailableQuotaPace(
-    at date: Date
+    at date: Date,
+	provider: AgentProvider
 ) -> Codexpulse_Core_V1_QuotaPaceResponse {
     var response = Codexpulse_Core_V1_QuotaPaceResponse()
     response.meta = unavailableMeta()
     response.pace.evaluatedAtMs = Int64(date.timeIntervalSince1970 * 1_000)
+	response.providerContext = providerContext(for: provider)
     return response
 }
 
-private func unavailableUsage() -> Codexpulse_Core_V1_UsageCostResponse {
+private func providerContext(
+    for provider: AgentProvider
+) -> Codexpulse_Core_V1_ProviderContext {
+    var context = Codexpulse_Core_V1_ProviderContext()
+    context.effectiveProvider = provider.rawValue
+    return context
+}
+
+private func unavailableUsage(
+    provider: AgentProvider
+) -> Codexpulse_Core_V1_UsageCostResponse {
     var response = Codexpulse_Core_V1_UsageCostResponse()
     response.meta = unavailableMeta()
+    response.providerContext = providerContext(for: provider)
     return response
 }
 
 private func unavailableUsage(
-    for request: Codexpulse_Core_V1_UsageCostRequest
+    for request: Codexpulse_Core_V1_UsageCostRequest,
+    provider: AgentProvider
 ) -> Codexpulse_Core_V1_UsageCostResponse {
-    var response = unavailableUsage()
+    var response = unavailableUsage(provider: provider)
     if request.hasExactRange {
         response.range = request.exactRange
         response.reportingTimeZone = request.exactRange.timeZone
@@ -81,25 +99,33 @@ private func unavailableUsage(
 }
 
 private func unavailableInvocationUsage(
-    for request: Codexpulse_Core_V1_InvocationUsageRequest
+    for request: Codexpulse_Core_V1_InvocationUsageRequest,
+    provider: AgentProvider
 ) -> Codexpulse_Core_V1_InvocationUsageResponse {
     var response = Codexpulse_Core_V1_InvocationUsageResponse()
     response.meta = unavailableMeta()
+    response.providerContext = providerContext(for: provider)
     response.range = request.range
     response.granularity = request.granularity
     response.sourceClass = request.sourceClass
     return response
 }
 
-private func unavailableSessions() -> Codexpulse_Core_V1_SessionListResponse {
+private func unavailableSessions(
+    provider: AgentProvider
+) -> Codexpulse_Core_V1_SessionListResponse {
     var response = Codexpulse_Core_V1_SessionListResponse()
     response.meta = unavailableMeta()
+    response.providerContext = providerContext(for: provider)
     return response
 }
 
-private func unavailableProjects() -> Codexpulse_Core_V1_ProjectListResponse {
+private func unavailableProjects(
+    provider: AgentProvider
+) -> Codexpulse_Core_V1_ProjectListResponse {
     var response = Codexpulse_Core_V1_ProjectListResponse()
     response.meta = unavailableMeta()
+    response.providerContext = providerContext(for: provider)
     return response
 }
 
@@ -146,6 +172,7 @@ public enum AppRuntimeError: Error, Equatable, Sendable {
     case unavailable
     case invalidBootstrap
     case weeklyQuotaRangeUnavailable
+	case providerMismatch
 }
 
 public enum ShutdownOutcome: Equatable, Sendable {
@@ -201,7 +228,8 @@ public actor AppRuntime {
     private var refreshTask: Task<OverviewResponses, any Error>?
     private var accountRefreshTask: Task<Void, Never>?
     private var lastResponses: OverviewResponses?
-    private var overviewRange: DateRangePreset = .quotaWeek
+	private var overviewRange: DateRangePreset = .quotaWeek
+	private var selectedProvider: AgentProvider = .codex
     private var runtimeGeneration: UInt64 = 0
     private var refreshGeneration: UInt64 = 0
     private var refreshAdmissionGeneration: UInt64?
@@ -339,6 +367,20 @@ public actor AppRuntime {
         await refresh(showLoading: false)
     }
 
+	public func selectProvider(_ provider: AgentProvider) async {
+		guard provider != selectedProvider else { return }
+		selectedProvider = provider
+		overviewRange = provider == .cursor ? .quotaMonth : .quotaWeek
+		refreshGeneration &+= 1
+		refreshAdmissionGeneration = nil
+		invalidationRefreshPending = false
+		refreshTask?.cancel()
+		refreshTask = nil
+		cancelAccountRefresh()
+		lastResponses = nil
+		if readyForOverview { await refresh(showLoading: true) }
+	}
+
     public func refresh(range: DateRangePreset) async {
         guard range != .all else { return }
         if range != overviewRange {
@@ -366,10 +408,175 @@ public actor AppRuntime {
         try await performRead { try await $0.invocationUsage(request, retryPolicy: .transportDefault) }
     }
 
+	public func statusOverview(
+		provider: AgentProvider
+	) async throws -> OverviewResponses {
+		try await performRead { client in
+			let now = Date()
+			let requests = OverviewRequestSet.make(provider: provider, now: now)
+			let quotaResult = await captureOverviewSection {
+				try await client.quotaCurrent(requests.quota, retryPolicy: .transportDefault)
+			}
+			let quota: Codexpulse_Core_V1_QuotaCurrentResponse
+			switch quotaResult {
+			case .value(let response): quota = response
+			case .failure: quota = unavailableQuota(at: now, provider: provider)
+			}
+			let evaluatedAt = quota.current.evaluatedAtMs > 0
+				? Date(timeIntervalSince1970: Double(quota.current.evaluatedAtMs) / 1_000)
+				: now
+			let preset: DateRangePreset = provider == .cursor ? .quotaMonth : .quotaWeek
+			let range = OverviewRequestSet.resolveRange(
+				preset,
+				quota: quota,
+				now: evaluatedAt
+			)
+			let content = OverviewRequestSet.content(range: range, provider: provider)
+			let todayRange = OverviewRequestSet.resolveRange(.today, quota: quota, now: evaluatedAt)
+			let todayContent = OverviewRequestSet.content(range: todayRange, provider: provider)
+			let projectRequest = OverviewRequestSet.weeklyProjectRanking(
+				range: range,
+				provider: provider
+			)
+
+			async let quotaPaceResult = captureOverviewSection {
+				try await client.quotaPace(requests.quotaPace, retryPolicy: .transportDefault)
+			}
+			async let usageResult = captureOverviewSection {
+				try await client.usageCost(content.usage, retryPolicy: .transportDefault)
+			}
+			async let invocationResult = captureOverviewSection {
+				try await client.invocationUsage(
+					content.invocationUsage,
+					retryPolicy: .transportDefault
+				)
+			}
+			async let todayUsageResult = captureOverviewSection {
+				guard provider == .cursor else {
+					return unavailableUsage(for: todayContent.usage, provider: provider)
+				}
+				return try await client.usageCost(
+					todayContent.usage,
+					retryPolicy: .transportDefault
+				)
+			}
+			async let todayInvocationResult = captureOverviewSection {
+				guard provider == .cursor else {
+					return unavailableInvocationUsage(
+						for: todayContent.invocationUsage,
+						provider: provider
+					)
+				}
+				return try await client.invocationUsage(
+					todayContent.invocationUsage,
+					retryPolicy: .transportDefault
+				)
+			}
+			async let projectsResult = captureOverviewSection {
+				guard let projectRequest else {
+					return unavailableProjects(provider: provider)
+				}
+				return try await client.listProjects(
+					projectRequest,
+					retryPolicy: .transportDefault
+				)
+			}
+			let results = await (
+				quotaPaceResult,
+				usageResult,
+				invocationResult,
+				todayUsageResult,
+				todayInvocationResult,
+				projectsResult
+			)
+			let usage: Codexpulse_Core_V1_UsageCostResponse
+			switch results.1 {
+			case .value(let response): usage = response
+			case .failure: usage = unavailableUsage(for: content.usage, provider: provider)
+			}
+			let invocation: Codexpulse_Core_V1_InvocationUsageResponse
+			switch results.2 {
+			case .value(let response): invocation = response
+			case .failure:
+				invocation = unavailableInvocationUsage(
+					for: content.invocationUsage,
+					provider: provider
+				)
+			}
+			let todayUsage: Codexpulse_Core_V1_UsageCostResponse
+			switch results.3 {
+			case .value(let response): todayUsage = response
+			case .failure: todayUsage = unavailableUsage(for: todayContent.usage, provider: provider)
+			}
+			let todayInvocation: Codexpulse_Core_V1_InvocationUsageResponse
+			switch results.4 {
+			case .value(let response): todayInvocation = response
+			case .failure:
+				todayInvocation = unavailableInvocationUsage(
+					for: todayContent.invocationUsage,
+					provider: provider
+				)
+			}
+			let projects: Codexpulse_Core_V1_ProjectListResponse
+			switch results.5 {
+			case .value(let response): projects = response
+			case .failure: projects = unavailableProjects(provider: provider)
+			}
+			let quotaPace: Codexpulse_Core_V1_QuotaPaceResponse
+			switch results.0 {
+			case .value(let response): quotaPace = response
+			case .failure: quotaPace = unavailableQuotaPace(at: evaluatedAt, provider: provider)
+			}
+			guard usage.providerContext.effectiveProvider == provider.rawValue,
+				quota.providerContext.effectiveProvider == provider.rawValue,
+				quotaPace.providerContext.effectiveProvider == provider.rawValue,
+				invocation.providerContext.effectiveProvider == provider.rawValue,
+				todayUsage.providerContext.effectiveProvider == provider.rawValue,
+				todayInvocation.providerContext.effectiveProvider == provider.rawValue,
+				projects.providerContext.effectiveProvider == provider.rawValue
+			else { throw AppRuntimeError.providerMismatch }
+
+			return OverviewResponses(
+				provider: provider,
+				usage: usage,
+				quota: quota,
+				quotaPace: quotaPace,
+				account: nil,
+				sessions: unavailableSessions(provider: provider),
+				projects: projects,
+				health: unavailableHealth(),
+				rangeResolution: range,
+				todayUsage: todayUsage,
+				weeklyUsage: usage,
+				invocationUsage: invocation,
+				todayInvocationUsage: todayInvocation,
+				weeklyProjects: projects,
+				weeklyProjectRange: range,
+				additionalNotices: [
+					quotaResult.notice,
+					results.0.notice,
+					results.1.notice,
+					results.2.notice,
+					results.3.notice,
+					results.4.notice,
+					results.5.notice,
+				].compactMap { $0 }
+			)
+		}
+	}
+
+	public func accountSnapshot(provider: AgentProvider) async throws -> Codexpulse_Core_V1_AccountSnapshotResponse {
+		var request = Codexpulse_Core_V1_AccountSnapshotRequest()
+		request.provider.provider = provider.rawValue
+		let preparedRequest = request
+		return try await performRead { try await $0.accountSnapshot(preparedRequest, retryPolicy: .none) }
+	}
+
     public func pricingCatalogCurrent(
+		_ request: Codexpulse_Core_V1_PricingCatalogCurrentRequest
     ) async throws -> Codexpulse_Core_V1_PricingCatalogCurrentResponse {
         try await performRead {
-            try await $0.pricingCatalogCurrent(retryPolicy: .transportDefault)
+			try await $0.pricingCatalogCurrent(request, retryPolicy: .transportDefault)
         }
     }
 
@@ -1010,43 +1217,46 @@ public actor AppRuntime {
             }
             return
         }
-        let requests = OverviewRequestSet.make()
+		let provider = selectedProvider
+		let requests = OverviewRequestSet.make(provider: provider)
         let requestedRange = overviewRange
         let previousAccount = lastResponses?.account
         if initialOverviewRefreshState == .pending {
             initialOverviewRefreshState = .inFlight
         }
-        let task = Task<OverviewResponses, any Error> {
-            let quotaResult = await captureOverviewSection {
-                try await client.quotaCurrent(requests.quota, retryPolicy: .transportDefault)
-            }
+		let task = Task<OverviewResponses, any Error> {
+			let quotaResult = await captureOverviewSection {
+				return try await client.quotaCurrent(requests.quota, retryPolicy: .transportDefault)
+			}
             let quotaResponse: Codexpulse_Core_V1_QuotaCurrentResponse
             switch quotaResult {
             case .value(let response): quotaResponse = response
-            case .failure: quotaResponse = unavailableQuota(at: Date())
+            case .failure: quotaResponse = unavailableQuota(at: Date(), provider: provider)
             }
             let quotaNow = quotaResponse.current.evaluatedAtMs > 0
                 ? Date(timeIntervalSince1970: TimeInterval(quotaResponse.current.evaluatedAtMs) / 1_000)
                 : Date()
-            let rangeNow = requestedRange == .quotaWeek ? quotaNow : Date()
+			let rangeNow = [.quotaWeek, .quotaMonth].contains(requestedRange) ? quotaNow : Date()
             let range = OverviewRequestSet.resolveRange(
                 requestedRange, quota: quotaResponse, now: rangeNow)
             let weeklyProjectRange = OverviewRequestSet.resolveRange(
                 .quotaWeek, quota: quotaResponse, now: quotaNow)
-            let content = OverviewRequestSet.content(range: range)
+			let content = OverviewRequestSet.content(range: range, provider: provider)
             let sharesWeeklyUsage = !weeklyProjectRange.fellBackFromQuotaWeek
                 && range.startAtMS == weeklyProjectRange.startAtMS
                 && range.endAtMS == weeklyProjectRange.endAtMS
                 && range.timeZone == weeklyProjectRange.timeZone
                 && range.granularity == weeklyProjectRange.granularity
-            let weeklyUsageRequest = sharesWeeklyUsage
-                ? nil
-                : OverviewRequestSet.weeklyUsageRequest(quota: quotaResponse)
-            let weeklyProjectRequest = OverviewRequestSet.weeklyProjectRanking(
-                range: weeklyProjectRange)
-            let tokenActivityRequest = OverviewRequestSet.tokenActivityRequest()
-            async let quotaPaceResult = captureOverviewSection {
-                try await client.quotaPace(
+			let weeklyUsageRequest = sharesWeeklyUsage || provider == .cursor
+				? nil
+				: OverviewRequestSet.weeklyUsageRequest(quota: quotaResponse, provider: provider)
+			let weeklyProjectRequest = OverviewRequestSet.weeklyProjectRanking(
+				range: weeklyProjectRange, provider: provider)
+			let tokenActivityRequest = OverviewRequestSet.tokenActivityRequest(provider: provider)
+			let todayRange = OverviewRequestSet.resolveRange(.today, quota: quotaResponse, now: rangeNow)
+			let todayContent = OverviewRequestSet.content(range: todayRange, provider: provider)
+			async let quotaPaceResult = captureOverviewSection {
+				return try await client.quotaPace(
                     requests.quotaPace, retryPolicy: .transportDefault)
             }
             async let usageResult = captureOverviewSection {
@@ -1059,12 +1269,16 @@ public actor AppRuntime {
                 try await client.listProjects(content.projects, retryPolicy: .transportDefault)
             }
             async let weeklyProjectResult = captureOverviewSection {
-                guard let weeklyProjectRequest else { return unavailableProjects() }
+                guard let weeklyProjectRequest else {
+                    return unavailableProjects(provider: provider)
+                }
                 return try await client.listProjects(
                     weeklyProjectRequest, retryPolicy: .transportDefault)
             }
             async let weeklyUsageResult = captureOverviewSection {
-                guard let weeklyUsageRequest else { return unavailableUsage() }
+                guard let weeklyUsageRequest else {
+                    return unavailableUsage(provider: provider)
+                }
                 return try await client.usageCost(
                     weeklyUsageRequest, retryPolicy: .transportDefault)
             }
@@ -1079,12 +1293,28 @@ public actor AppRuntime {
                 try await client.invocationUsage(
                     content.invocationUsage, retryPolicy: .transportDefault)
             }
+			async let todayUsageResult = captureOverviewSection {
+				guard provider == .cursor else {
+					return unavailableUsage(for: todayContent.usage, provider: provider)
+				}
+				return try await client.usageCost(
+					todayContent.usage, retryPolicy: .transportDefault)
+			}
+			async let todayInvocationResult = captureOverviewSection {
+				guard provider == .cursor else {
+					return unavailableInvocationUsage(
+						for: todayContent.invocationUsage, provider: provider)
+				}
+				return try await client.invocationUsage(
+					todayContent.invocationUsage, retryPolicy: .transportDefault)
+			}
             let sectionResults = await (
                 quotaPaceResult,
                 usageResult, sessionResult, projectResult, weeklyProjectResult,
                 weeklyUsageResult, healthResult, tokenActivityResult, invocationUsageResult)
-            let mandatoryNotices = [
-                quotaResult.notice,
+			let cursorTodayResults = await (todayUsageResult, todayInvocationResult)
+			let mandatoryNotices = [
+				provider == .codex ? quotaResult.notice : nil,
                 sectionResults.1.notice,
                 sectionResults.2.notice,
                 sectionResults.3.notice,
@@ -1096,30 +1326,30 @@ public actor AppRuntime {
             let usageResponse: Codexpulse_Core_V1_UsageCostResponse
             switch sectionResults.1 {
             case .value(let response): usageResponse = response
-            case .failure: usageResponse = unavailableUsage()
+            case .failure: usageResponse = unavailableUsage(provider: provider)
             }
             let sessionResponse: Codexpulse_Core_V1_SessionListResponse
             switch sectionResults.2 {
             case .value(let response): sessionResponse = response
-            case .failure: sessionResponse = unavailableSessions()
+            case .failure: sessionResponse = unavailableSessions(provider: provider)
             }
             let projectResponse: Codexpulse_Core_V1_ProjectListResponse
             switch sectionResults.3 {
             case .value(let response): projectResponse = response
-            case .failure: projectResponse = unavailableProjects()
+            case .failure: projectResponse = unavailableProjects(provider: provider)
             }
             let weeklyProjectResponse: Codexpulse_Core_V1_ProjectListResponse
             switch sectionResults.4 {
             case .value(let response): weeklyProjectResponse = response
-            case .failure: weeklyProjectResponse = unavailableProjects()
+            case .failure: weeklyProjectResponse = unavailableProjects(provider: provider)
             }
             let weeklyUsageResponse: Codexpulse_Core_V1_UsageCostResponse
-            if sharesWeeklyUsage {
+			if sharesWeeklyUsage || provider == .cursor {
                 weeklyUsageResponse = usageResponse
             } else {
                 switch sectionResults.5 {
                 case .value(let response): weeklyUsageResponse = response
-                case .failure: weeklyUsageResponse = unavailableUsage()
+                case .failure: weeklyUsageResponse = unavailableUsage(provider: provider)
                 }
             }
             let healthResponse: Codexpulse_Core_V1_HealthProjectionResponse
@@ -1130,20 +1360,46 @@ public actor AppRuntime {
             let tokenActivityResponse: Codexpulse_Core_V1_UsageCostResponse
             switch sectionResults.7 {
             case .value(let response): tokenActivityResponse = response
-            case .failure: tokenActivityResponse = unavailableUsage(for: tokenActivityRequest)
+            case .failure:
+                tokenActivityResponse = unavailableUsage(
+                    for: tokenActivityRequest,
+                    provider: provider
+                )
             }
             let quotaPaceResponse: Codexpulse_Core_V1_QuotaPaceResponse
             switch sectionResults.0 {
             case .value(let response): quotaPaceResponse = response
-            case .failure: quotaPaceResponse = unavailableQuotaPace(at: quotaNow)
+            case .failure: quotaPaceResponse = unavailableQuotaPace(at: quotaNow, provider: provider)
             }
             let invocationUsageResponse: Codexpulse_Core_V1_InvocationUsageResponse
             switch sectionResults.8 {
             case .value(let response): invocationUsageResponse = response
             case .failure:
-                invocationUsageResponse = unavailableInvocationUsage(for: content.invocationUsage)
+                invocationUsageResponse = unavailableInvocationUsage(
+                    for: content.invocationUsage,
+                    provider: provider
+                )
             }
-            return OverviewResponses(
+			let todayUsageResponse: Codexpulse_Core_V1_UsageCostResponse
+			switch cursorTodayResults.0 {
+			case .value(let response): todayUsageResponse = response
+			case .failure:
+				todayUsageResponse = unavailableUsage(
+					for: todayContent.usage,
+					provider: provider
+				)
+			}
+			let todayInvocationResponse: Codexpulse_Core_V1_InvocationUsageResponse
+			switch cursorTodayResults.1 {
+			case .value(let response): todayInvocationResponse = response
+			case .failure:
+				todayInvocationResponse = unavailableInvocationUsage(
+					for: todayContent.invocationUsage,
+					provider: provider
+				)
+			}
+			return OverviewResponses(
+				provider: provider,
                 usage: usageResponse,
                 quota: quotaResponse,
                 quotaPace: quotaPaceResponse,
@@ -1152,9 +1408,11 @@ public actor AppRuntime {
                 projects: projectResponse,
                 health: healthResponse,
                 rangeResolution: range,
+				todayUsage: todayUsageResponse,
                 weeklyUsage: weeklyUsageResponse,
                 tokenActivityUsage: tokenActivityResponse,
                 invocationUsage: invocationUsageResponse,
+				todayInvocationUsage: todayInvocationResponse,
                 weeklyProjects: weeklyProjectResponse,
                 weeklyProjectRange: weeklyProjectRange,
                 additionalNotices: notices
@@ -1164,7 +1422,17 @@ public actor AppRuntime {
         refreshAdmissionGeneration = nil
         do {
             let responses = try await task.value
-            guard generation == refreshGeneration, refreshTask != nil, !shuttingDown else { return }
+			guard generation == refreshGeneration, refreshTask != nil, !shuttingDown,
+				responses.provider == selectedProvider,
+				responses.usage.providerContext.effectiveProvider == selectedProvider.rawValue,
+				responses.sessions.providerContext.effectiveProvider == selectedProvider.rawValue,
+				responses.projects.providerContext.effectiveProvider == selectedProvider.rawValue,
+				responses.invocationUsage.providerContext.effectiveProvider == selectedProvider.rawValue,
+				responses.todayUsage.providerContext.effectiveProvider == selectedProvider.rawValue,
+				responses.todayInvocationUsage.providerContext.effectiveProvider == selectedProvider.rawValue,
+				responses.quota.providerContext.effectiveProvider == selectedProvider.rawValue,
+				responses.quotaPace.providerContext.effectiveProvider == selectedProvider.rawValue
+			else { throw AppRuntimeError.providerMismatch }
             refreshTask = nil
             lastResponses = responses
             await publishOverview(responses)
@@ -1173,11 +1441,12 @@ public actor AppRuntime {
             guard generation == refreshGeneration, !shuttingDown else { return }
             // Account data is optional and has its own bounded RPC/task lifecycle,
             // so it cannot delay the primary Overview publication above.
-            startAccountRefresh(
-                client: client,
-                runtimeGeneration: runtimeGeneration,
-                overviewGeneration: generation
-            )
+			startAccountRefresh(
+				client: client,
+				provider: selectedProvider,
+				runtimeGeneration: runtimeGeneration,
+				overviewGeneration: generation
+			)
         } catch is CancellationError {
             guard generation == refreshGeneration else { return }
             refreshTask = nil
@@ -1195,6 +1464,7 @@ public actor AppRuntime {
 
     private func startAccountRefresh(
         client: any AppCoreServing,
+		provider: AgentProvider,
         runtimeGeneration: UInt64,
         overviewGeneration: UInt64
     ) {
@@ -1206,7 +1476,9 @@ public actor AppRuntime {
         let generation = accountRefreshGeneration
         accountRefreshTask = Task { [weak self] in
             do {
-                let response = try await client.accountSnapshot(retryPolicy: .none)
+				var request = Codexpulse_Core_V1_AccountSnapshotRequest()
+				request.provider.provider = provider.rawValue
+				let response = try await client.accountSnapshot(request, retryPolicy: .none)
                 try Task.checkCancellation()
                 await self?.finishAccountRefresh(
                     response,

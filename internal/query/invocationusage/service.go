@@ -236,6 +236,7 @@ func aggregateResponse(
 			ToolCallCount: knownCount(toolCount), DistinctToolCount: knownCount(int64(len(tools))),
 			SkillActivityCount: knownCount(skillCount), DistinctSkillCount: knownCount(int64(len(skills))),
 			ToolFailureCount: knownCount(failureCount), SessionCount: knownCount(int64(len(sessions))),
+			AIEditCount: unknownCount(),
 		},
 		Trend: buildTrend(request, location, trendCounts),
 		Tools: buildToolItems(tools, request.TopLimit), Skills: buildSkillItems(skills, request.TopLimit),
@@ -352,6 +353,11 @@ func buildSkillItems(values map[string]*skillAggregate, limit int) []SkillUsageI
 
 func knownCount(value int64) basequery.NumericValue {
 	numeric, _ := basequery.KnownNumeric(value, basequery.NumericCount)
+	return numeric
+}
+
+func unknownCount() basequery.NumericValue {
+	numeric, _ := basequery.UnknownNumeric(basequery.NumericCount, basequery.UnknownUnavailable)
 	return numeric
 }
 

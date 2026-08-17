@@ -11,7 +11,7 @@ flowchart LR
     RPC --> Core["internal/core"]
     Core --> Query["internal/query"]
     Core --> Runtime["internal/app runtime"]
-    Query --> Store["SQLite"]
+Query --> Store["SQLite"]
     Runtime --> Store
     Runtime --> Broker["InvalidationBroker"]
     Broker -->|"server stream"| Swift
@@ -27,6 +27,8 @@ flowchart LR
 | `internal/app` | 后台 runtime 装配与逆序 drain | window/tray/updater |
 | `internal/query` / `internal/store` | 查询、聚合、SQLite 真相 | 跨进程 transport |
 | Swift client（后续） | AppKit/SwiftUI、窗口、菜单栏、更新、Helper 托管 | 重定义 Go 业务事实 |
+
+客户端维度通过窄 `AgentProvider` seam 路由；Cursor 的多种本地或可选在线来源只在 Helper 内部合并，不暴露成多个业务 Provider。详细契约见 [Agent Provider 与 Cursor](../providers/README.md)。
 
 ## 安全与停止
 

@@ -389,9 +389,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                             )
                         } catch {
                             let step = (error as? PrimaryPagesSmokeError)?.step ?? "unknown"
+							let code = AppNotice.from(error).code
                             finishSmoke(
                                 success: false,
-                                summary: "app smoke failed: primary_pages=unavailable step=\(Self.safeToken(step)) native_surfaces=\(surfaces.summary) lifecycle=not_executed"
+								summary: "app smoke failed: primary_pages=unavailable step=\(Self.safeToken(step)) code=\(Self.safeToken(code)) native_surfaces=\(surfaces.summary) lifecycle=not_executed"
                             )
                         }
                     }

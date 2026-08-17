@@ -32,16 +32,22 @@ type PreferencesReader interface {
 	LoadPreferences(context.Context) (preferences.Snapshot, error)
 }
 
+type ProviderSourceRefresher interface {
+	Refresh(context.Context) error
+}
+
 type Dependencies struct {
 	Quota       QuotaReader
 	Runtime     RuntimeReader
 	Preferences PreferencesReader
+	ProviderSources ProviderSourceRefresher
 }
 
 type Service struct {
 	quota       QuotaReader
 	runtime     RuntimeReader
 	preferences PreferencesReader
+	providerSources ProviderSourceRefresher
 	sourceSpec  basequery.Specification
 	jobSpec     basequery.Specification
 	healthSpec  basequery.Specification
@@ -84,7 +90,8 @@ func NewService(dependencies Dependencies) (*Service, error) {
 	}
 	return &Service{
 		quota: dependencies.Quota, runtime: dependencies.Runtime,
-		preferences: dependencies.Preferences, sourceSpec: sourceSpec, jobSpec: jobSpec,
+		preferences: dependencies.Preferences, providerSources: dependencies.ProviderSources,
+		sourceSpec: sourceSpec, jobSpec: jobSpec,
 		healthSpec: healthSpec,
 	}, nil
 }

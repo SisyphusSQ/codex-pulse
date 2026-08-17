@@ -5,17 +5,20 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/bootstrap"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
 	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
+	"github.com/SisyphusSQ/codex-pulse/internal/cursorprovider"
 	appLifecycle "github.com/SisyphusSQ/codex-pulse/internal/lifecycle"
 	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/liveindex"
@@ -59,6 +62,8 @@ type applicationAccountReader func(
 	appserver.ProcessOptions,
 ) (*appserver.AccountSnapshot, error)
 
+type cursorAccountReader func(context.Context) (cursorprovider.DesktopAccountSnapshot, error)
+
 type ApplicationLifecycleRuntimeConfig struct {
 	Database             *storesqlite.Store
 	Preferences          confirmedPreferencesLoader
@@ -74,24 +79,25 @@ type ApplicationLifecycleRuntimeConfig struct {
 }
 
 type applicationLifecycleRuntime struct {
-	adapter         *LifecycleEventAdapter
-	coordinator     *appLifecycle.Coordinator
-	scheduler       *scheduler.Service
-	repository      *store.Repository
-	lightRepository *storelight.Repository
-	quota           *applicationQuotaRuntime
-	preferences     *preferences.Service
-	settingsLoader  confirmedPreferencesLoader
-	accountReader   applicationAccountReader
-	database        *storesqlite.Store
-	invalidation    queryInvalidationNotifier
-	cancel          context.CancelFunc
-	workerDone      chan error
-	lightRuntime    *lightindex.Runtime
-	lightRun        *lightindex.Run
-	lightMu         sync.Mutex
-	controlCtx      context.Context
-	controlStop     context.CancelFunc
+	adapter             *LifecycleEventAdapter
+	coordinator         *appLifecycle.Coordinator
+	scheduler           *scheduler.Service
+	repository          *store.Repository
+	lightRepository     *storelight.Repository
+	quota               *applicationQuotaRuntime
+	preferences         *preferences.Service
+	settingsLoader      confirmedPreferencesLoader
+	accountReader       applicationAccountReader
+	cursorAccountReader cursorAccountReader
+	database            *storesqlite.Store
+	invalidation        queryInvalidationNotifier
+	cancel              context.CancelFunc
+	workerDone          chan error
+	lightRuntime        *lightindex.Runtime
+	lightRun            *lightindex.Run
+	lightMu             sync.Mutex
+	controlCtx          context.Context
+	controlStop         context.CancelFunc
 
 	controlMu        sync.Mutex
 	controlAccepting bool
@@ -355,6 +361,11 @@ func startApplicationLifecycleRuntime(
 		controlAccepting: true, controlDone: closedApplicationLifecycleSignal(),
 		drainDone: make(chan struct{}),
 		closeDone: make(chan struct{}),
+	}
+	if cursorConfig, configErr := cursorprovider.DefaultConfig(); configErr == nil {
+		if cursorAuth, authErr := cursorprovider.NewDesktopAuthReader(cursorConfig.StateDatabase, time.Now); authErr == nil {
+			runtime.cursorAccountReader = cursorAuth.ReadAccountSnapshot
+		}
 	}
 	if useLightIndex {
 		runtime.workerDone <- nil
@@ -919,8 +930,33 @@ func (provider fileConfirmedHomeProvider) CurrentHome(ctx context.Context) (appL
 
 func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 	ctx context.Context,
+	scope agentprovider.Scope,
 ) (core.AccountSnapshot, error) {
-	if runtime == nil || runtime.settingsLoader == nil || ctx == nil {
+	if runtime == nil || ctx == nil {
+		return core.AccountSnapshot{}, ErrApplicationLifecycleRuntime
+	}
+	if scope.Provider == agentprovider.Cursor {
+		if runtime.cursorAccountReader == nil {
+			return core.AccountSnapshot{}, nil
+		}
+		account, err := runtime.cursorAccountReader(ctx)
+		if err != nil {
+			return core.AccountSnapshot{}, err
+		}
+		email, plan := strings.TrimSpace(account.Email), strings.TrimSpace(account.MembershipType)
+		if email == "" && plan == "" {
+			return core.AccountSnapshot{}, nil
+		}
+		identity := &core.AccountIdentity{Type: agentprovider.Cursor}
+		if email != "" {
+			identity.Email = &email
+		}
+		if plan != "" {
+			identity.PlanType = &plan
+		}
+		return core.AccountSnapshot{Account: identity}, nil
+	}
+	if (scope.Provider != "" && scope.Provider != agentprovider.Codex) || runtime.settingsLoader == nil {
 		return core.AccountSnapshot{}, ErrApplicationLifecycleRuntime
 	}
 	reader := runtime.accountReader

@@ -3,11 +3,14 @@ import CodexPulseProtocolGenerated
 import Foundation
 
 public struct OverviewResponses: Sendable {
+	public let provider: AgentProvider
     public let account: Codexpulse_Core_V1_AccountSnapshotResponse?
     public let usage: Codexpulse_Core_V1_UsageCostResponse
+	public let todayUsage: Codexpulse_Core_V1_UsageCostResponse
     public let weeklyUsage: Codexpulse_Core_V1_UsageCostResponse
     public let tokenActivityUsage: Codexpulse_Core_V1_UsageCostResponse
     public let invocationUsage: Codexpulse_Core_V1_InvocationUsageResponse
+	public let todayInvocationUsage: Codexpulse_Core_V1_InvocationUsageResponse
     public let quota: Codexpulse_Core_V1_QuotaCurrentResponse
     public let quotaPace: Codexpulse_Core_V1_QuotaPaceResponse
     public let sessions: Codexpulse_Core_V1_SessionListResponse
@@ -19,6 +22,7 @@ public struct OverviewResponses: Sendable {
     public let additionalNotices: [AppNotice]
 
     public init(
+		provider: AgentProvider = .codex,
         usage: Codexpulse_Core_V1_UsageCostResponse,
         quota: Codexpulse_Core_V1_QuotaCurrentResponse,
         quotaPace: Codexpulse_Core_V1_QuotaPaceResponse = .init(),
@@ -27,18 +31,23 @@ public struct OverviewResponses: Sendable {
         projects: Codexpulse_Core_V1_ProjectListResponse,
         health: Codexpulse_Core_V1_HealthProjectionResponse,
         rangeResolution: OverviewRangeResolution? = nil,
+		todayUsage: Codexpulse_Core_V1_UsageCostResponse? = nil,
         weeklyUsage: Codexpulse_Core_V1_UsageCostResponse? = nil,
         tokenActivityUsage: Codexpulse_Core_V1_UsageCostResponse = .init(),
         invocationUsage: Codexpulse_Core_V1_InvocationUsageResponse = .init(),
+		todayInvocationUsage: Codexpulse_Core_V1_InvocationUsageResponse? = nil,
         weeklyProjects: Codexpulse_Core_V1_ProjectListResponse? = nil,
         weeklyProjectRange: OverviewRangeResolution? = nil,
         additionalNotices: [AppNotice] = []
     ) {
+		self.provider = provider
         self.account = account
         self.usage = usage
+		self.todayUsage = todayUsage ?? usage
         self.weeklyUsage = weeklyUsage ?? usage
         self.tokenActivityUsage = tokenActivityUsage
         self.invocationUsage = invocationUsage
+		self.todayInvocationUsage = todayInvocationUsage ?? invocationUsage
         self.quota = quota
         self.quotaPace = quotaPace
         self.sessions = sessions
@@ -54,6 +63,7 @@ public struct OverviewResponses: Sendable {
         _ account: Codexpulse_Core_V1_AccountSnapshotResponse?
     ) -> OverviewResponses {
         OverviewResponses(
+			provider: provider,
             usage: usage,
             quota: quota,
             quotaPace: quotaPace,
@@ -62,9 +72,11 @@ public struct OverviewResponses: Sendable {
             projects: projects,
             health: health,
             rangeResolution: rangeResolution,
+			todayUsage: todayUsage,
             weeklyUsage: weeklyUsage,
             tokenActivityUsage: tokenActivityUsage,
             invocationUsage: invocationUsage,
+			todayInvocationUsage: todayInvocationUsage,
             weeklyProjects: weeklyProjects,
             weeklyProjectRange: weeklyProjectRange,
             additionalNotices: additionalNotices
@@ -119,7 +131,7 @@ public struct CodexAccountPresentation: Equatable, Sendable {
         email = normalizedEmail
         planType = normalizedPlan
 
-        guard normalizedType == "chatgpt" else {
+		guard normalizedType == "chatgpt" || normalizedType == "cursor" else {
             planText = "--"
             emailText = "--"
             accessibilityLabel = localization.format(
@@ -138,11 +150,12 @@ public struct CodexAccountPresentation: Equatable, Sendable {
     }
 
     private static func planDisplayName(_ value: String?) -> String {
-        switch value {
+		switch value?.lowercased() {
         case "free": "Free"
         case "go": "Go"
         case "plus": "Plus"
         case "pro": "Pro"
+		case "pro_plus": "Pro+"
         case "prolite": "Pro Lite"
         case "team": "Team"
         case "self_serve_business_usage_based", "business": "Business"
@@ -210,6 +223,38 @@ public enum DisplayMetric: Equatable, Sendable {
         case .absent(let unit): self = .absent(unit: unit)
         }
     }
+
+	public var isKnown: Bool {
+		if case .known = self { return true }
+		return false
+	}
+
+	public var formatted: String {
+		switch self {
+		case .known(let value, let unit):
+			return unit == "tokens"
+				? TokenQuantityFormatter.compactString(value)
+				: AppLocalizationRegistry.shared.current.number(value)
+		case .unknown, .absent:
+			return "--"
+		}
+	}
+}
+
+public struct ProviderCoveragePresentation: Equatable, Sendable {
+	public let capability: String
+	public let state: String
+	public let source: String
+	public let reason: String
+	public let itemCount: Int64?
+
+	public init(_ value: Codexpulse_Core_V1_ProviderCoverage) {
+		capability = value.capability
+		state = value.state
+		source = value.source
+		reason = value.reason
+		itemCount = value.hasItemCount ? value.itemCount : nil
+	}
 }
 
 public enum TokenQuantityFormatter {
@@ -507,6 +552,7 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
     public let limitID: String
     public let limitName: String?
     public let title: String
+	public let usedPercent: Double?
     public let remainingPercent: Double?
     public let freshness: String
     public let unknownReason: String?
@@ -522,7 +568,9 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
         let quotaName = Self.quotaName(
             limitID: window.limitID, limitName: limitName, localization: localization
         )
-        if let duration = Self.durationTitle(
+        if Self.isCursorMonthlyLimit(window.limitID) {
+			self.title = "\(quotaName) · \(localization.textValue("月额度"))"
+		} else if let duration = Self.durationTitle(
             windowMinutes: window.hasWindowMinutes ? window.windowMinutes : nil,
             localization: localization
         ) {
@@ -530,6 +578,7 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
         } else {
             self.title = quotaName
         }
+		self.usedPercent = window.hasUsedPercent ? window.usedPercent : nil
         self.remainingPercent = window.hasRemainingPercent ? window.remainingPercent : nil
         self.freshness = window.freshness
         self.unknownReason = window.hasUnknownReason ? window.unknownReason : nil
@@ -568,6 +617,10 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
         }
         return localization.quantity("copy.count.minute", count: windowMinutes)
     }
+
+	private static func isCursorMonthlyLimit(_ limitID: String) -> Bool {
+		limitID == "cursor.models" || limitID == "cursor.other_models"
+	}
 }
 
 public enum QuotaWindowDisplayResolver {
@@ -623,6 +676,7 @@ public enum QuotaWindowDisplayResolver {
 public struct StatusBarQuotaPresentation: Equatable, Sendable {
     public let periodLabel: String
     public let remainingPercent: Double?
+    public let remainingText: String
     public let usageText: String
     public let freshness: String
     public let dataState: StatusBarQuotaDataState
@@ -630,6 +684,42 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
 
     public init?(_ overview: OverviewPresentation) {
         let localization = AppLocalizationRegistry.shared.current
+		if overview.provider == .cursor {
+			let windows = ["cursor.models", "cursor.other_models"].compactMap { limitID in
+				overview.quotaWindows.first(where: { $0.limitID == limitID })
+			}
+			guard let primaryWindow = windows.first else { return nil }
+			let remainingValues = windows.map {
+				$0.remainingPercent.map { localization.percent($0) } ?? "--"
+			}
+			let remainingSummary = remainingValues.joined(separator: " · ")
+			let periodLabel = localization.textValue("月剩")
+			self.periodLabel = periodLabel
+			self.remainingPercent = primaryWindow.remainingPercent
+			self.remainingText = "\(periodLabel) \(remainingSummary)"
+			self.freshness = primaryWindow.freshness
+			self.dataState = StatusBarQuotaDataState(freshness: primaryWindow.freshness)
+
+			if overview.usageAvailable,
+			   overview.requestedRange == .quotaMonth,
+			   overview.effectiveRange == .quotaMonth
+			{
+				let total = Self.compact(overview.totalTokens)
+				self.usageText = localization.format("status.used", total)
+				self.accessibilityLabel = localization.format(
+					"status.accessibility.used",
+					periodLabel,
+					remainingSummary,
+					Self.compactWithUnit(overview.totalTokens, localization: localization)
+				) + dataState.accessibilitySuffix
+			} else {
+				self.usageText = localization.textValue("已用 --")
+				self.accessibilityLabel = localization.format(
+					"status.accessibility.unavailable", periodLabel, remainingSummary
+				) + dataState.accessibilitySuffix
+			}
+			return
+		}
         guard let window = Self.preferredWindow(overview.quotaWindows) else { return nil }
         let periodLabel = Self.periodLabel(window.windowMinutes, localization: localization)
         self.periodLabel = periodLabel
@@ -638,6 +728,7 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
         self.dataState = StatusBarQuotaDataState(freshness: window.freshness)
 
         let remainingText = window.remainingPercent.map { localization.percent($0) } ?? "--"
+		self.remainingText = "\(periodLabel) \(remainingText)"
         let baseAccessibilityLabel: String
         if let tokens = Self.matchingPeriodTokens(window: window, overview: overview) {
             let total = Self.compact(tokens.total)
@@ -655,12 +746,6 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
             )
         }
         self.accessibilityLabel = baseAccessibilityLabel + dataState.accessibilitySuffix
-    }
-
-    public var remainingText: String {
-        let localization = AppLocalizationRegistry.shared.current
-        let percent = remainingPercent.map { localization.percent($0) } ?? "--"
-        return "\(periodLabel) \(percent)"
     }
 
     private static func preferredWindow(_ windows: [QuotaWindowPresentation]) -> QuotaWindowPresentation? {
@@ -1775,7 +1860,8 @@ public struct TokenActivityCardPresentation: Equatable, Sendable {
 
     public init(
         _ activity: TokenActivityPresentation,
-        localization: AppLocalization = AppLocalizationRegistry.shared.current
+        localization: AppLocalization = AppLocalizationRegistry.shared.current,
+        partialNotice: String? = nil
     ) {
         title = localization.textValue("Token 活动")
         scope = localization.textValue("过去 365 天")
@@ -1799,7 +1885,8 @@ public struct TokenActivityCardPresentation: Equatable, Sendable {
             })
         switch activity.availability {
         case .available: notice = nil
-        case .partial: notice = localization.textValue("仅统计本机现有数据")
+        case .partial:
+            notice = partialNotice ?? localization.textValue("仅统计本机现有数据")
         case .unavailable: notice = localization.textValue("年度活动暂时不可用")
         }
         metrics = [
@@ -1923,6 +2010,7 @@ public struct ProjectPresentation: Equatable, Sendable, Identifiable {
     public let tokens: DisplayMetric
     public let tokenBreakdown: TokenBreakdownPresentation
     public let estimatedCost: DisplayMetric
+	public let sessionCount: DisplayMetric
     public let isOther: Bool
 
     public init(_ item: Codexpulse_Core_V1_ProjectItem) {
@@ -1934,6 +2022,7 @@ public struct ProjectPresentation: Equatable, Sendable, Identifiable {
         self.tokens = DisplayMetric(item.totals.totalTokens)
         self.tokenBreakdown = TokenBreakdownPresentation(item.totals)
         self.estimatedCost = DisplayMetric(item.totals.estimatedUsdMicros)
+		self.sessionCount = DisplayMetric(item.sessionCount)
         self.isOther = !hasDisplayName
     }
 
@@ -1943,8 +2032,51 @@ public struct ProjectPresentation: Equatable, Sendable, Identifiable {
         self.tokens = otherBreakdown.total
         self.tokenBreakdown = otherBreakdown
         self.estimatedCost = .absent(unit: "usd_micros")
+		self.sessionCount = .absent(unit: "count")
         self.isOther = true
     }
+}
+
+public struct OverviewUsageModelPresentation: Equatable, Sendable, Identifiable {
+	public let id: String
+	public let title: String
+	public let requestCount: DisplayMetric
+	public let tokens: TokenBreakdownPresentation
+	public let estimatedCost: DisplayMetric
+
+	public init(_ item: Codexpulse_Core_V1_UsageModelItem) {
+		id = item.dimensionKey
+		if item.model.hasDisplayName, !item.model.displayName.isEmpty {
+			title = item.model.displayName
+		} else if !item.dimensionKey.isEmpty, item.dimensionKey != "unknown" {
+			title = item.dimensionKey
+		} else {
+			title = AppLocalizationRegistry.shared.current.textValue("未知模型")
+		}
+		requestCount = DisplayMetric(item.totals.turnCount)
+		tokens = TokenBreakdownPresentation(item.totals)
+		estimatedCost = DisplayMetric(item.totals.estimatedUsdMicros)
+	}
+}
+
+public struct CursorBillingPresentation: Equatable, Sendable {
+	public let billingCycleStartAtMS: DisplayMetric
+	public let billingCycleEndAtMS: DisplayMetric
+	public let totalSpend: DisplayMetric
+	public let included: DisplayMetric
+	public let bonus: DisplayMetric
+	public let remaining: DisplayMetric
+	public let limit: DisplayMetric
+
+	public init(_ value: Codexpulse_Core_V1_CursorBillingSummary) {
+		billingCycleStartAtMS = DisplayMetric(value.billingCycleStartAtMs)
+		billingCycleEndAtMS = DisplayMetric(value.billingCycleEndAtMs)
+		totalSpend = DisplayMetric(value.totalSpendUsdMicros)
+		included = DisplayMetric(value.includedUsdMicros)
+		bonus = DisplayMetric(value.bonusUsdMicros)
+		remaining = DisplayMetric(value.remainingUsdMicros)
+		limit = DisplayMetric(value.limitUsdMicros)
+	}
 }
 
 public struct HealthPresentation: Equatable, Sendable {
@@ -2023,6 +2155,7 @@ public struct OverviewInvocationProfilePresentation: Equatable, Sendable {
     public let distinctSkillCount: DisplayMetric
     public let sessionCount: DisplayMetric
     public let toolFailureCount: DisplayMetric
+	public let aiEditCount: DisplayMetric
     public let tools: [OverviewInvocationToolPresentation]
     public let skills: [OverviewInvocationSkillPresentation]
 
@@ -2038,6 +2171,7 @@ public struct OverviewInvocationProfilePresentation: Equatable, Sendable {
         self.distinctSkillCount = DisplayMetric(response.totals.distinctSkillCount)
         self.sessionCount = DisplayMetric(response.totals.sessionCount)
         self.toolFailureCount = DisplayMetric(response.totals.toolFailureCount)
+		self.aiEditCount = DisplayMetric(response.totals.aiEditCount)
         self.tools = Array(
             response.tools.map(OverviewInvocationToolPresentation.init).prefix(Self.maximumRows)
         )
@@ -2053,6 +2187,10 @@ public struct OverviewPresentation: Equatable, Sendable {
     private static let maximumSessionRows = 5
     private static let maximumProjectRows = 5
 
+	public let provider: AgentProvider
+	public let requestCount: DisplayMetric
+	public let todayRequestCount: DisplayMetric
+	public let providerCoverage: [ProviderCoveragePresentation]
     public let account: CodexAccountPresentation
     public let quotaWindows: [QuotaWindowPresentation]
     public let quotaPaceWindows: [QuotaPaceWindowPresentation]
@@ -2061,11 +2199,25 @@ public struct OverviewPresentation: Equatable, Sendable {
     public let usageRangeLabel: String
     public let weeklyUsageRangeLabel: String
     public let estimatedCost: DisplayMetric
+	public let reportedCost: DisplayMetric
+	public let todayReportedCost: DisplayMetric
+	public let reportedCostSource: String?
+	public let dataAsOfMS: Int64?
+	public let todayDataAsOfMS: Int64?
     public let totalTokens: DisplayMetric
+	public let todayTotalTokens: DisplayMetric
+	public let todayEstimatedCost: DisplayMetric
+	public let todayCursorTokenFee: DisplayMetric
+	public let lastActivityAtMS: Int64?
+	public let todayLastActivityAtMS: Int64?
+	public let todayUsageIsPartial: Bool
+	public let cursorBilling: CursorBillingPresentation?
+	public let usageModels: [OverviewUsageModelPresentation]
     public let tokenBreakdown: TokenBreakdownPresentation
     public let weeklyTokenBreakdown: TokenBreakdownPresentation
     public let tokenActivity: TokenActivityPresentation
     public let invocationProfile: OverviewInvocationProfilePresentation
+	public let todayInvocationProfile: OverviewInvocationProfilePresentation
     public let activityDistribution: OverviewActivityPresentation
     public let trend: [TrendPresentation]
     public let usageModelTrend: [UsageModelTrendBucket]
@@ -2091,6 +2243,10 @@ public struct OverviewPresentation: Equatable, Sendable {
     public let isPartial: Bool
 
     public init(_ responses: OverviewResponses) {
+		self.provider = responses.provider
+		self.requestCount = DisplayMetric(responses.usage.totals.turnCount)
+		self.todayRequestCount = DisplayMetric(responses.todayUsage.totals.turnCount)
+		self.providerCoverage = responses.usage.providerContext.coverage.map(ProviderCoveragePresentation.init)
         let requestedRange = responses.rangeResolution?.requestedPreset ?? .quotaWeek
         let isWeeklyQuotaRange = requestedRange == .quotaWeek
         self.account = CodexAccountPresentation(responses.account)
@@ -2112,11 +2268,36 @@ public struct OverviewPresentation: Equatable, Sendable {
             isDailyWeeklyRange: true
         )
         self.estimatedCost = DisplayMetric(responses.usage.totals.estimatedUsdMicros)
+		self.reportedCost = DisplayMetric(responses.usage.reportedUsdMicros)
+		self.todayReportedCost = DisplayMetric(responses.todayUsage.reportedUsdMicros)
+		self.reportedCostSource = responses.usage.hasReportedCostSource
+			? responses.usage.reportedCostSource : nil
+		self.dataAsOfMS = responses.usage.hasDataAsOfMs && responses.usage.dataAsOfMs.hasValue
+			? responses.usage.dataAsOfMs.value : nil
+		self.todayDataAsOfMS = responses.todayUsage.hasDataAsOfMs && responses.todayUsage.dataAsOfMs.hasValue
+			? responses.todayUsage.dataAsOfMs.value : nil
         self.totalTokens = DisplayMetric(responses.usage.totals.totalTokens)
+		self.todayTotalTokens = DisplayMetric(responses.todayUsage.totals.totalTokens)
+		self.todayEstimatedCost = DisplayMetric(responses.todayUsage.totals.estimatedUsdMicros)
+		self.todayCursorTokenFee = DisplayMetric(responses.todayUsage.cursorTokenFeeUsdMicros)
+		self.lastActivityAtMS = responses.usage.totals.lastActivityAtMs.hasValue
+			? responses.usage.totals.lastActivityAtMs.value : nil
+		self.todayLastActivityAtMS = responses.todayUsage.totals.lastActivityAtMs.hasValue
+			? responses.todayUsage.totals.lastActivityAtMs.value : nil
+		self.todayUsageIsPartial = switch ResponseDisposition(status: responses.todayUsage.meta.status) {
+		case .complete: false
+		case .partial, .unavailable, .unsupported: true
+		}
+		self.cursorBilling = responses.usage.hasCursorBilling
+			? CursorBillingPresentation(responses.usage.cursorBilling) : nil
+		self.usageModels = responses.usage.models.map(OverviewUsageModelPresentation.init).sorted {
+			Self.metricValue($0.tokens.total) > Self.metricValue($1.tokens.total)
+		}
         self.tokenBreakdown = TokenBreakdownPresentation(responses.usage.totals)
         self.weeklyTokenBreakdown = TokenBreakdownPresentation(responses.weeklyUsage.totals)
         self.tokenActivity = TokenActivityPresentation(responses.tokenActivityUsage)
         self.invocationProfile = OverviewInvocationProfilePresentation(responses.invocationUsage)
+		self.todayInvocationProfile = OverviewInvocationProfilePresentation(responses.todayInvocationUsage)
         self.activityDistribution = OverviewActivityPresentation(responses.usage)
         self.trend = responses.usage.trend.map(TrendPresentation.init)
         self.usageModelTrend = UsageModelTrendResolver.buckets(responses.usage)
@@ -2206,6 +2387,11 @@ public struct OverviewPresentation: Equatable, Sendable {
             ? localization.format("range.label.daily", label, localization.textValue("按天"))
             : label
     }
+
+	private static func metricValue(_ value: DisplayMetric) -> Int64 {
+		if case .known(let number, _) = value { return number }
+		return -1
+	}
 
     private static func projectOtherBreakdown(
         matched: TokenBreakdownPresentation,
@@ -2313,6 +2499,90 @@ public struct OverviewPresentation: Equatable, Sendable {
     }
 }
 
+public enum CursorOverviewCostBasis: Equatable, Sendable {
+	case reported
+	case estimated
+	case unavailable
+}
+
+public struct CursorOverviewSummaryPresentation: Equatable, Sendable {
+	public let todayRequestCount: DisplayMetric
+	public let todayTotalTokens: DisplayMetric
+	public let todayReportedCost: DisplayMetric
+	public let todayEstimatedCost: DisplayMetric
+	public let todayCursorTokenFee: DisplayMetric
+	public let todayToolCallCount: DisplayMetric
+	public let todayAIEditCount: DisplayMetric
+	public let rangeRequestCount: DisplayMetric
+	public let rangeTotalTokens: DisplayMetric
+	public let rangePrimaryCost: DisplayMetric
+	public let rangeCostBasis: CursorOverviewCostBasis
+	public let selectedRange: DateRangePreset
+	public let recentActivityAtMS: Int64?
+	public let showsRecentActivityFallback: Bool
+	public let usesLastKnownTodayData: Bool
+	public let dataAsOfMS: Int64?
+	public let billing: CursorBillingPresentation?
+	public let models: [OverviewUsageModelPresentation]
+
+	public init(_ overview: OverviewPresentation) {
+		todayRequestCount = overview.todayRequestCount
+		todayTotalTokens = overview.todayTotalTokens
+		todayReportedCost = overview.todayReportedCost
+		todayEstimatedCost = overview.todayEstimatedCost
+		todayCursorTokenFee = overview.todayCursorTokenFee
+		todayToolCallCount = overview.todayInvocationProfile.toolCallCount
+		todayAIEditCount = overview.todayInvocationProfile.aiEditCount
+		rangeRequestCount = overview.requestCount
+		rangeTotalTokens = overview.totalTokens
+		if overview.reportedCost.isKnown {
+			rangePrimaryCost = overview.reportedCost
+			rangeCostBasis = .reported
+		} else if overview.estimatedCost.isKnown {
+			rangePrimaryCost = overview.estimatedCost
+			rangeCostBasis = .estimated
+		} else {
+			rangePrimaryCost = .absent(unit: "usd_micros")
+			rangeCostBasis = .unavailable
+		}
+		selectedRange = overview.requestedRange
+		recentActivityAtMS = overview.todayLastActivityAtMS ?? overview.lastActivityAtMS
+		let dashboardUsageAvailable = overview.providerCoverage.contains {
+			$0.source == "cursor.dashboard" && $0.state == "available"
+		}
+		usesLastKnownTodayData = overview.todayUsageIsPartial && !dashboardUsageAvailable
+		dataAsOfMS = overview.todayDataAsOfMS ?? overview.dataAsOfMS
+		billing = overview.cursorBilling
+		models = overview.usageModels
+
+		let todayIsExactlyEmpty = Self.isZero(todayRequestCount) && Self.isZero(todayTotalTokens)
+		let todayHasKnownActivity = [
+			todayRequestCount,
+			todayTotalTokens,
+			todayToolCallCount,
+			todayAIEditCount,
+		].contains(where: Self.isPositive)
+		showsRecentActivityFallback = recentActivityAtMS != nil
+			&& !todayHasKnownActivity
+			&& (todayIsExactlyEmpty || overview.todayUsageIsPartial)
+	}
+
+	private static func isZero(_ metric: DisplayMetric) -> Bool {
+		if case .known(let value, _) = metric { return value == 0 }
+		return false
+	}
+
+	private static func isPositive(_ metric: DisplayMetric) -> Bool {
+		if case .known(let value, _) = metric { return value > 0 }
+		return false
+	}
+
+	private static func knownValue(_ metric: DisplayMetric) -> Int64? {
+		guard case .known(let value, _) = metric else { return nil }
+		return value
+	}
+}
+
 public enum AppViewState: Equatable, Sendable {
     case idle
     case loading(String)
@@ -2358,17 +2628,21 @@ public struct OverviewRequestSet: Sendable {
     public let sessions: Codexpulse_Core_V1_ListSessionsRequest
 
     public static func make(
+        provider: AgentProvider = .codex,
         now: Date = Date(),
         sessionLimit: Int32 = 5
     ) -> Self {
         var quota = Codexpulse_Core_V1_QuotaCurrentRequest()
+		quota.provider = provider.scope
         quota.evaluatedAtMs = Int64(now.timeIntervalSince1970 * 1_000)
         var quotaPace = Codexpulse_Core_V1_QuotaPaceRequest()
+		quotaPace.provider = provider.scope
         quotaPace.evaluatedAtMs = quota.evaluatedAtMs
 
         var page = Codexpulse_Core_V1_PageRequest()
         page.limit = sessionLimit
         var query = Codexpulse_Core_V1_QueryRequest()
+		query.provider = provider.scope
         query.page = page
         var sessions = Codexpulse_Core_V1_ListSessionsRequest()
         sessions.query = query
@@ -2378,15 +2652,17 @@ public struct OverviewRequestSet: Sendable {
 
     public static func weeklyUsageRequest(
         quota: Codexpulse_Core_V1_QuotaCurrentResponse,
+        provider: AgentProvider = .codex,
         calendar inputCalendar: Calendar = .current
     ) -> Codexpulse_Core_V1_UsageCostRequest? {
         let now = Date(timeIntervalSince1970: TimeInterval(quota.current.evaluatedAtMs) / 1_000)
         let range = resolveRange(.quotaWeek, quota: quota, now: now, calendar: inputCalendar)
         guard !range.fellBackFromQuotaWeek else { return nil }
-        return content(range: range).usage
+        return content(range: range, provider: provider).usage
     }
 
     public static func tokenActivityRequest(
+        provider: AgentProvider = .codex,
         now: Date = Date(),
         calendar inputCalendar: Calendar = .current
     ) -> Codexpulse_Core_V1_UsageCostRequest {
@@ -2401,6 +2677,7 @@ public struct OverviewRequestSet: Sendable {
         exactRange.timeZone = calendar.timeZone.identifier
 
         var request = Codexpulse_Core_V1_UsageCostRequest()
+		request.provider = provider.scope
         request.exactRange = exactRange
         request.granularity = "day"
         request.tokenTotalsOnly = true
@@ -2428,13 +2705,29 @@ public struct OverviewRequestSet: Sendable {
                 fellBackFromQuotaWeek: false
             )
         }
+		if requestedPreset == .quotaMonth,
+		   let exact = monthlyQuotaRange(quota: quota, timeZone: calendar.timeZone) {
+			return OverviewRangeResolution(
+				requestedPreset: requestedPreset,
+				effectivePreset: .quotaMonth,
+				startAtMS: exact.startAtMs,
+				endAtMS: exact.endAtMs,
+				timeZone: exact.timeZone,
+				granularity: "day",
+				fellBackFromQuotaWeek: false
+			)
+		}
 
-        let effectivePreset: DateRangePreset = requestedPreset == .quotaWeek ? .sevenDays : requestedPreset
+		let effectivePreset: DateRangePreset = switch requestedPreset {
+		case .quotaWeek: .sevenDays
+		case .quotaMonth: .thirtyDays
+		default: requestedPreset
+		}
         let days: Int
         switch effectivePreset {
         case .today: days = 1
         case .sevenDays, .quotaWeek: days = 7
-        case .thirtyDays, .all: days = 30
+		case .quotaMonth, .thirtyDays, .all: days = 30
         }
         let today = calendar.startOfDay(for: now)
         let start = calendar.date(byAdding: .day, value: -(days - 1), to: today) ?? today
@@ -2451,6 +2744,7 @@ public struct OverviewRequestSet: Sendable {
 
     public static func content(
         range: OverviewRangeResolution,
+        provider: AgentProvider = .codex,
         sessionLimit: Int32 = 5,
         projectLimit: Int32 = 5,
         invocationLimit: Int32 = 5
@@ -2461,6 +2755,7 @@ public struct OverviewRequestSet: Sendable {
         exactRange.timeZone = range.timeZone
 
         var usage = Codexpulse_Core_V1_UsageCostRequest()
+		usage.provider = provider.scope
         usage.exactRange = exactRange
         usage.granularity = range.granularity
         usage.includeActivityDistribution = true
@@ -2468,9 +2763,10 @@ public struct OverviewRequestSet: Sendable {
         var sessionPage = Codexpulse_Core_V1_PageRequest()
         sessionPage.limit = sessionLimit
         var sessionSort = Codexpulse_Core_V1_SortTerm()
-        sessionSort.field = "totalTokens"
+		sessionSort.field = provider == .cursor ? "lastActivityAt" : "totalTokens"
         sessionSort.direction = "desc"
         var sessionQuery = Codexpulse_Core_V1_QueryRequest()
+		sessionQuery.provider = provider.scope
         sessionQuery.page = sessionPage
         sessionQuery.sort = [sessionSort]
         sessionQuery.exactTimeRange = exactRange
@@ -2480,9 +2776,10 @@ public struct OverviewRequestSet: Sendable {
         var projectPage = Codexpulse_Core_V1_PageRequest()
         projectPage.limit = projectLimit
         var projectSort = Codexpulse_Core_V1_SortTerm()
-        projectSort.field = "totalTokens"
+		projectSort.field = provider == .cursor ? "lastActivityAt" : "totalTokens"
         projectSort.direction = "desc"
         var projectQuery = Codexpulse_Core_V1_QueryRequest()
+		projectQuery.provider = provider.scope
         projectQuery.page = projectPage
         projectQuery.sort = [projectSort]
         projectQuery.exactTimeRange = exactRange
@@ -2490,6 +2787,7 @@ public struct OverviewRequestSet: Sendable {
         projects.query = projectQuery
 
         var invocationUsage = Codexpulse_Core_V1_InvocationUsageRequest()
+		invocationUsage.provider = provider.scope
         invocationUsage.range = exactRange
         invocationUsage.granularity = range.granularity
         invocationUsage.sourceClass = "all"
@@ -2505,6 +2803,7 @@ public struct OverviewRequestSet: Sendable {
 
     public static func weeklyProjectRanking(
         range: OverviewRangeResolution,
+        provider: AgentProvider = .codex,
         limit: Int32 = 5
     ) -> Codexpulse_Core_V1_ListProjectsRequest? {
         guard range.effectivePreset == .quotaWeek, !range.fellBackFromQuotaWeek else { return nil }
@@ -2525,6 +2824,7 @@ public struct OverviewRequestSet: Sendable {
         classified.values = ["high", "medium", "low"]
 
         var query = Codexpulse_Core_V1_QueryRequest()
+		query.provider = provider.scope
         query.page = page
         query.sort = [sort]
         query.filters = [classified]
@@ -2557,6 +2857,30 @@ public struct OverviewRequestSet: Sendable {
         range.timeZone = timeZone.identifier
         return range
     }
+
+	private static func monthlyQuotaRange(
+		quota: Codexpulse_Core_V1_QuotaCurrentResponse,
+		timeZone: TimeZone
+	) -> Codexpulse_Core_V1_UTCTimeRange? {
+		let windows = quota.current.windows.filter {
+			["cursor.models", "cursor.other_models"].contains($0.limitID)
+				&& $0.hasWindowMinutes && $0.windowMinutes > 0 && $0.hasResetsAtMs
+		}
+		guard let window = windows.first(where: { $0.limitID == "cursor.models" })
+			?? windows.first
+		else { return nil }
+		let (durationMS, durationOverflow) = window.windowMinutes.multipliedReportingOverflow(by: 60_000)
+		let (startAtMS, startOverflow) = window.resetsAtMs.subtractingReportingOverflow(durationMS)
+		let endAtMS = quota.current.evaluatedAtMs
+		guard !durationOverflow, !startOverflow, startAtMS >= 0,
+			  endAtMS > startAtMS, endAtMS <= window.resetsAtMs
+		else { return nil }
+		var range = Codexpulse_Core_V1_UTCTimeRange()
+		range.startAtMs = startAtMS
+		range.endAtMs = endAtMS
+		range.timeZone = timeZone.identifier
+		return range
+	}
 }
 
 public struct OverviewRangeResolution: Equatable, Sendable {

@@ -196,7 +196,14 @@ struct SessionsView: View {
                 SessionFilterField(title: "范围") {
                     Picker("范围", selection: $model.sessionOptions.range) {
                         ForEach(DateRangePreset.allCases.filter {
-                            $0 != .quotaWeek || model.sessionOptions.exactRange != nil
+                            switch $0 {
+                            case .quotaWeek:
+                                model.selectedProvider == .codex && model.sessionOptions.exactRange != nil
+                            case .quotaMonth:
+                                model.selectedProvider == .cursor && model.sessionOptions.exactRange != nil
+                            default:
+                                true
+                            }
                         }) { Text($0.title).tag($0) }
                     }
                     .labelsHidden()
@@ -228,7 +235,9 @@ struct SessionsView: View {
                     Picker("排序", selection: $model.sessionOptions.sortField) {
                         Text("最近活动").tag("lastActivityAt")
                         Text("Token").tag("totalTokens")
-                        Text("API 折算成本").tag("estimatedCost")
+						if model.selectedProvider == .codex {
+							Text("API 折算成本").tag("estimatedCost")
+						}
                     }
                     .labelsHidden()
                     .frame(maxWidth: .infinity)
@@ -384,8 +393,37 @@ private struct SessionDetailView: View {
                     KeyValueRow(key: "模型", value: attributionText(response.item.model))
                     KeyValueRow(key: "状态", value: ProductCopy.status(response.item.activity))
                     TokenBreakdownView(tokens: TokenBreakdownPresentation(response.item.totals))
-                    KeyValueRow(key: "API 折算成本", value: costText(response.item.totals.estimatedUsdMicros))
+					if response.providerContext.effectiveProvider != AgentProvider.cursor.rawValue ||
+						response.item.totals.estimatedUsdMicros.hasValue {
+						KeyValueRow(
+							key: response.providerContext.effectiveProvider == AgentProvider.cursor.rawValue
+								? "文档价目估算" : "API 折算成本",
+							value: costText(response.item.totals.estimatedUsdMicros)
+						)
+					}
                 }
+				if !response.models.isEmpty {
+					SectionCard(title: "模型用量") {
+						ForEach(Array(response.models.enumerated()), id: \.element.dimensionKey) { index, model in
+							VStack(alignment: .leading, spacing: 6) {
+								HStack {
+									Text(attributionText(model.model))
+										.font(.subheadline.weight(.medium))
+									Spacer()
+									Text("\(numericText(model.totals.turnCount)) 次")
+										.font(.caption)
+										.foregroundStyle(.secondary)
+								}
+								TokenBreakdownView(
+									tokens: TokenBreakdownPresentation(model.totals),
+									style: .compact
+								)
+							}
+							if index < response.models.count - 1 { Divider() }
+						}
+					}
+					.accessibilityIdentifier("session.detail.models")
+				}
                 SectionCard(title: trendPresentation?.sectionTitle ?? "用量趋势") {
                     if let trendPresentation {
                         TokenTrendView(points: response.trend, presentation: trendPresentation)
@@ -488,7 +526,15 @@ struct ProjectsView: View {
         HStack(spacing: 10) {
             Picker("范围", selection: $model.projectOptions.range) {
                 ForEach(DateRangePreset.allCases.filter {
-                    $0 != .all && ($0 != .quotaWeek || model.projectOptions.exactRange != nil)
+                    guard $0 != .all else { return false }
+                    switch $0 {
+                    case .quotaWeek:
+                        return model.selectedProvider == .codex && model.projectOptions.exactRange != nil
+                    case .quotaMonth:
+                        return model.selectedProvider == .cursor && model.projectOptions.exactRange != nil
+                    default:
+                        return true
+                    }
                 }) { Text($0.title).tag($0) }
             }
             .frame(width: 120)
@@ -508,7 +554,9 @@ struct ProjectsView: View {
             Picker("排序", selection: $model.projectOptions.sortField) {
                 Text("最近活动").tag("lastActivityAt")
                 Text("Token").tag("totalTokens")
-                Text("API 折算成本").tag("estimatedCost")
+				if model.selectedProvider == .codex {
+					Text("API 折算成本").tag("estimatedCost")
+				}
                 Text("名称").tag("displayName")
             }
             .frame(width: 130)
@@ -603,7 +651,14 @@ private struct ProjectDetailView: View {
                     )
                     KeyValueRow(key: "会话", value: numericText(response.item.sessionCount))
                     TokenBreakdownView(tokens: TokenBreakdownPresentation(response.item.totals))
-                    KeyValueRow(key: "API 折算成本", value: costText(response.item.totals.estimatedUsdMicros))
+					if response.providerContext.effectiveProvider != AgentProvider.cursor.rawValue ||
+						response.item.totals.estimatedUsdMicros.hasValue {
+						KeyValueRow(
+							key: response.providerContext.effectiveProvider == AgentProvider.cursor.rawValue
+								? "文档价目估算" : "API 折算成本",
+							value: costText(response.item.totals.estimatedUsdMicros)
+						)
+					}
                 }
                 SectionCard(title: "每日趋势") {
                     if let trendPresentation {

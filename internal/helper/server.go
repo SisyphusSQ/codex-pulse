@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"google.golang.org/grpc"
@@ -88,9 +89,10 @@ func fromProtoQuery(request *corev1.QueryRequest) basequery.Request {
 		return basequery.Request{}
 	}
 	result := basequery.Request{
-		Page:    basequery.PageRequest{Limit: int(request.GetPage().GetLimit())},
-		Sort:    make([]basequery.SortTerm, 0, len(request.Sort)),
-		Filters: make([]basequery.FilterTerm, 0, len(request.Filters)),
+		Provider: agentprovider.Scope{Provider: request.GetProvider().GetProvider()},
+		Page:     basequery.PageRequest{Limit: int(request.GetPage().GetLimit())},
+		Sort:     make([]basequery.SortTerm, 0, len(request.Sort)),
+		Filters:  make([]basequery.FilterTerm, 0, len(request.Filters)),
 	}
 	if request.Page != nil && request.Page.Cursor != nil {
 		cursor := request.Page.GetCursor()

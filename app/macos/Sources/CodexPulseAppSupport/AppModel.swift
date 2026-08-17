@@ -43,7 +43,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
 }
 
 private enum FeatureTaskKey: Hashable {
-    case usage, invocationUsage, pricingCatalog, quota, quotaPace, quotaRefresh, resetCreditsRefresh
+    case usage, statusOverview, statusAccount, invocationUsage, pricingCatalog, quota, quotaPace, quotaRefresh, resetCreditsRefresh
     case runtimeAction
     case sessions, sessionDetail
     case projects, projectDetail
@@ -69,6 +69,8 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var isOverviewRefreshing = false
     @Published public private(set) var isRefreshingAll = false
     @Published public var selectedFeature: AppFeature = .overview
+	@Published public private(set) var selectedProvider: AgentProvider = .codex
+	@Published public private(set) var statusProvider: AgentProvider = .codex
     @Published public private(set) var renderedFeatures: Set<AppFeature> = []
 
     @Published public var sessionOptions = SessionQueryOptions()
@@ -83,6 +85,9 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var overviewRange: DateRangePreset = .quotaWeek
 
     @Published public private(set) var usageState: FeatureLoadState<Codexpulse_Core_V1_UsageCostResponse> = .idle
+	@Published public private(set) var statusUsageState: FeatureLoadState<Codexpulse_Core_V1_UsageCostResponse> = .idle
+	@Published public private(set) var statusInvocationState: FeatureLoadState<Codexpulse_Core_V1_InvocationUsageResponse> = .idle
+	@Published public private(set) var statusOverviewState: FeatureLoadState<OverviewPresentation> = .idle
     @Published public private(set) var invocationUsageState:
         FeatureLoadState<Codexpulse_Core_V1_InvocationUsageResponse> = .idle
     @Published public private(set) var pricingCatalogState:
@@ -119,6 +124,10 @@ public final class AppModel: ObservableObject {
 
     private let runtime: AppRuntime
     private let observesUpdatePolicy: Bool
+	private let providerDefaults: UserDefaults
+	private let persistsProviderSelection: Bool
+	private static let selectedProviderKey = "CodexPulse.selectedProvider"
+	private static let statusProviderKey = "CodexPulse.statusProvider"
     private var startTask: Task<Void, Never>?
     private var updatePolicyTask: Task<Void, Never>?
     private var overviewRefreshTask: Task<Void, Never>?
@@ -133,19 +142,42 @@ public final class AppModel: ObservableObject {
     public init(configuration: AppLaunchConfiguration) {
         runtime = AppRuntime(configuration: configuration)
         observesUpdatePolicy = !configuration.smokeMode
+		providerDefaults = .standard
+		persistsProviderSelection = !configuration.smokeMode
+		selectedProvider = configuration.smokeMode
+			? .codex
+			: AgentProvider(rawValue: providerDefaults.string(forKey: Self.selectedProviderKey) ?? "") ?? .codex
+		statusProvider = configuration.smokeMode
+			? .codex
+			: AgentProvider(rawValue: providerDefaults.string(forKey: Self.statusProviderKey) ?? "") ?? .codex
+		overviewRange = selectedProvider == .cursor ? .quotaMonth : .quotaWeek
     }
 
     public init(
         runtime: AppRuntime,
-        observesUpdatePolicy: Bool = false
+        observesUpdatePolicy: Bool = false,
+		providerDefaults: UserDefaults = .standard,
+		persistsProviderSelection: Bool = true
     ) {
         self.runtime = runtime
         self.observesUpdatePolicy = observesUpdatePolicy
+		self.providerDefaults = providerDefaults
+		self.persistsProviderSelection = persistsProviderSelection
+		selectedProvider = persistsProviderSelection
+			? AgentProvider(rawValue: providerDefaults.string(forKey: Self.selectedProviderKey) ?? "") ?? .codex
+			: .codex
+		statusProvider = persistsProviderSelection
+			? AgentProvider(rawValue: providerDefaults.string(forKey: Self.statusProviderKey) ?? "") ?? .codex
+			: .codex
+		overviewRange = selectedProvider == .cursor ? .quotaMonth : .quotaWeek
     }
 
     public var statusItemTitle: String {
+		if statusProvider == .cursor {
+			return "月剩 -- · 已用 --"
+		}
         let currentLocalization = localization
-        switch presentation {
+		switch statusPresentation {
         case .some(let overview):
             let values = overview.quotaWindows.prefix(2).map { window in
                 let percent = window.remainingPercent.map { currentLocalization.percent($0) } ?? "--"
@@ -163,6 +195,10 @@ public final class AppModel: ObservableObject {
             }
         }
     }
+
+	public var statusPresentation: OverviewPresentation? {
+		statusOverviewState.value
+	}
 
     public var presentation: OverviewPresentation? {
         switch state {
@@ -225,6 +261,7 @@ public final class AppModel: ObservableObject {
             await runtime.setInvalidationSink { [weak self] domain in
                 await self?.receiveInvalidation(domain: domain)
             }
+			await runtime.selectProvider(self.selectedProvider)
             await runtime.start()
             if self.observesUpdatePolicy {
                 self.loadSettings()
@@ -232,6 +269,53 @@ public final class AppModel: ObservableObject {
             self.startTask = nil
         }
     }
+
+	public func selectProvider(_ provider: AgentProvider) {
+		guard provider != selectedProvider else { return }
+		selectedProvider = provider
+		if persistsProviderSelection {
+			providerDefaults.set(provider.rawValue, forKey: Self.selectedProviderKey)
+		}
+		if provider == .cursor, sessionOptions.sortField == "estimatedCost" {
+			sessionOptions.sortField = "lastActivityAt"
+		}
+		if provider == .cursor, projectOptions.sortField == "estimatedCost" {
+			projectOptions.sortField = "lastActivityAt"
+		}
+		overviewRange = provider == .cursor ? .quotaMonth : .quotaWeek
+		overviewRefreshGeneration &+= 1
+		overviewRefreshTask?.cancel()
+		overviewRefreshTask = nil
+		cancelPageFeatureTasks()
+		resetProviderFeatureState()
+		state = .loading(localization.textValue("正在切换客户端…"))
+		Task { [weak self, runtime] in
+			await runtime.selectProvider(provider)
+			guard let self, self.selectedProvider == provider else { return }
+		}
+	}
+
+	public func selectStatusProvider(_ provider: AgentProvider) {
+		guard provider != statusProvider else { return }
+		invalidateTasks([.statusOverview, .statusAccount])
+		statusProvider = provider
+		if persistsProviderSelection {
+			providerDefaults.set(provider.rawValue, forKey: Self.statusProviderKey)
+		}
+		statusOverviewState = .idle
+		statusUsageState = .idle
+		statusInvocationState = .idle
+		loadStatusOverview()
+	}
+
+	public func refreshStatusProvider() {
+		loadStatusOverview()
+	}
+
+	public func openMainWindowProvider(_ provider: AgentProvider) {
+		selectProvider(provider)
+		selectedFeature = .overview
+	}
 
     public func applyLocalePreference(_ rawValue: String) {
         let preference = AppLanguagePreference(rawValue: rawValue)
@@ -486,9 +570,10 @@ public final class AppModel: ObservableObject {
             return
         }
         sessionsState = .loading(previous: previous)
-        let request = FeatureRequestFactory.sessions(options: sessionOptions, cursor: cursor)
+		let provider = selectedProvider
+		let request = FeatureRequestFactory.sessions(options: sessionOptions, provider: provider, cursor: cursor)
         launch(.sessions, operation: { [runtime] in try await runtime.listSessions(request) }) { [weak self] response in
-            guard let self else { return }
+			guard let self, response.providerContext.effectiveProvider == provider.rawValue else { return }
             completePage(.sessions, cursor: cursor)
             let merged = FeatureResponseMerge.sessions(previous, response, append: !reset)
             sessionsState = loadState(value: merged, meta: merged.meta, isEmpty: merged.items.isEmpty)
@@ -518,9 +603,11 @@ public final class AppModel: ObservableObject {
             return
         }
         sessionDetailState = .loading(previous: previous)
-        let request = FeatureRequestFactory.sessionDetail(sessionID: sessionID, turnCursor: cursor)
+		let provider = selectedProvider
+		let request = FeatureRequestFactory.sessionDetail(sessionID: sessionID, provider: provider, turnCursor: cursor)
         launch(.sessionDetail, operation: { [runtime] in try await runtime.sessionDetail(request) }) { [weak self] response in
-            guard let self, selectedSessionID == sessionID else { return }
+			guard let self, selectedSessionID == sessionID,
+				response.providerContext.effectiveProvider == provider.rawValue else { return }
             completePage(.sessionDetail, cursor: cursor)
             let merged = FeatureResponseMerge.sessionDetail(previous, response, append: !reset)
             sessionDetailState = loadState(value: merged, meta: merged.meta, isEmpty: false)
@@ -547,9 +634,10 @@ public final class AppModel: ObservableObject {
             return
         }
         projectsState = .loading(previous: previous)
-        let request = FeatureRequestFactory.projects(options: projectOptions, cursor: cursor)
+		let provider = selectedProvider
+		let request = FeatureRequestFactory.projects(options: projectOptions, provider: provider, cursor: cursor)
         launch(.projects, operation: { [runtime] in try await runtime.listProjects(request) }) { [weak self] response in
-            guard let self else { return }
+			guard let self, response.providerContext.effectiveProvider == provider.rawValue else { return }
             completePage(.projects, cursor: cursor)
             let merged = FeatureResponseMerge.projects(previous, response, append: !reset)
             projectsState = loadState(value: merged, meta: merged.meta, isEmpty: merged.items.isEmpty)
@@ -600,12 +688,15 @@ public final class AppModel: ObservableObject {
         let request = FeatureRequestFactory.projectDetail(
             dimensionKey: dimensionKey,
             range: projectOptions.range,
+			provider: selectedProvider,
             exactRange: projectOptions.exactRange,
             sessionCursor: sessionCursor,
             modelCursor: modelCursor
         )
-        launch(.projectDetail, operation: { [runtime] in try await runtime.projectDetail(request) }) { [weak self] response in
-            guard let self, selectedProjectKey == dimensionKey else { return }
+		let provider = selectedProvider
+		launch(.projectDetail, operation: { [runtime] in try await runtime.projectDetail(request) }) { [weak self] response in
+			guard let self, selectedProjectKey == dimensionKey,
+				response.providerContext.effectiveProvider == provider.rawValue else { return }
             cursorKeys.forEach { completePage(.projectDetail, cursor: $0) }
             let merged = FeatureResponseMerge.projectDetail(
                 previous,
@@ -623,10 +714,10 @@ public final class AppModel: ObservableObject {
         }
     }
 
-    public func loadQuotaAndUsage() {
-        let now = Date()
-        loadUsage()
-        loadPricingCatalog()
+	public func loadQuotaAndUsage() {
+		let now = Date()
+		loadUsage()
+		loadPricingCatalog()
         loadQuota(now: now)
         loadQuotaPace(now: now)
     }
@@ -634,16 +725,18 @@ public final class AppModel: ObservableObject {
     public func loadUsage() {
         let previous = usageState.value
         usageState = .loading(previous: previous)
-        let request = FeatureRequestFactory.usage(range: usageRange)
+		let provider = selectedProvider
+		let request = FeatureRequestFactory.usage(range: usageRange, provider: provider)
         launch(.usage, operation: { [runtime] in try await runtime.usageCost(request) }) { [weak self] response in
-            self?.usageState = loadState(value: response, meta: response.meta, isEmpty: false)
+			guard response.providerContext.effectiveProvider == provider.rawValue else { return }
+			self?.usageState = loadState(value: response, meta: response.meta, isEmpty: false)
         } failure: { [weak self] error in
             self?.usageState = failedLoadState(previous: previous, error: error)
         }
     }
 
     public func selectInvocationRange(_ range: DateRangePreset) {
-        guard [.quotaWeek, .today, .sevenDays, .thirtyDays].contains(range),
+        guard [.quotaWeek, .quotaMonth, .today, .sevenDays, .thirtyDays].contains(range),
               range != invocationRange
         else { return }
         invocationRange = range
@@ -660,17 +753,21 @@ public final class AppModel: ObservableObject {
     public func loadInvocationUsage() {
         let previous = invocationUsageState.value
         invocationUsageState = .loading(previous: previous)
-        let quotaWeekRange = invocationRange == .quotaWeek ? availableInvocationQuotaWeekRange : nil
-        invocationRangeFellBackFromQuotaWeek = invocationRange == .quotaWeek && quotaWeekRange == nil
+        let quotaCycleRange = [.quotaWeek, .quotaMonth].contains(invocationRange)
+            ? availableInvocationQuotaCycleRange : nil
+        invocationRangeFellBackFromQuotaWeek = invocationRange == .quotaWeek && quotaCycleRange == nil
         let request = FeatureRequestFactory.invocationUsage(
             range: invocationRange,
             sourceClass: invocationSourceClass,
-            quotaWeekRange: quotaWeekRange
+			provider: selectedProvider,
+            quotaCycleRange: quotaCycleRange
         )
-        launch(
+		let provider = selectedProvider
+		launch(
             .invocationUsage,
             operation: { [runtime] in try await runtime.invocationUsage(request) }
         ) { [weak self] response in
+			guard response.providerContext.effectiveProvider == provider.rawValue else { return }
             self?.invocationUsageState = loadState(
                 value: response,
                 meta: response.meta,
@@ -681,14 +778,15 @@ public final class AppModel: ObservableObject {
         }
     }
 
-    private var availableInvocationQuotaWeekRange: Codexpulse_Core_V1_UTCTimeRange? {
+    private var availableInvocationQuotaCycleRange: Codexpulse_Core_V1_UTCTimeRange? {
         guard let presentation else { return nil }
-        if presentation.requestedRange == .quotaWeek,
-           presentation.effectiveRange == .quotaWeek,
+        if presentation.requestedRange == invocationRange,
+           presentation.effectiveRange == invocationRange,
            !presentation.fellBackFromQuotaWeek
         {
             return presentation.contentRange
         }
+        guard invocationRange == .quotaWeek else { return nil }
         guard presentation.weeklyUsageAvailable else { return nil }
         return presentation.weeklyUsageRange
     }
@@ -696,10 +794,13 @@ public final class AppModel: ObservableObject {
     public func loadPricingCatalog() {
         let previous = pricingCatalogState.value
         pricingCatalogState = .loading(previous: previous)
+		let provider = selectedProvider
+		let request = FeatureRequestFactory.pricingCatalog(provider: provider)
         launch(
             .pricingCatalog,
-            operation: { [runtime] in try await runtime.pricingCatalogCurrent() }
+			operation: { [runtime] in try await runtime.pricingCatalogCurrent(request) }
         ) { [weak self] response in
+			guard response.providerContext.effectiveProvider == provider.rawValue else { return }
             self?.pricingCatalogState = loadState(
                 value: response,
                 meta: response.meta,
@@ -713,8 +814,10 @@ public final class AppModel: ObservableObject {
     public func loadQuota(now: Date = Date()) {
         let previous = quotaState.value
         quotaState = .loading(previous: previous)
-        let request = FeatureRequestFactory.quota(now: now)
+		let provider = selectedProvider
+		let request = FeatureRequestFactory.quota(provider: provider, now: now)
         launch(.quota, operation: { [runtime] in try await runtime.quotaCurrent(request) }) { [weak self] response in
+			guard response.providerContext.effectiveProvider == provider.rawValue else { return }
             self?.quotaState = loadState(
                 value: response,
                 meta: response.meta,
@@ -728,8 +831,10 @@ public final class AppModel: ObservableObject {
     public func loadQuotaPace(now: Date = Date()) {
         let previous = quotaPaceState.value
         quotaPaceState = .loading(previous: previous)
-        let request = FeatureRequestFactory.quotaPace(now: now)
+		let provider = selectedProvider
+		let request = FeatureRequestFactory.quotaPace(provider: provider, now: now)
         launch(.quotaPace, operation: { [runtime] in try await runtime.quotaPace(request) }) { [weak self] response in
+			guard response.providerContext.effectiveProvider == provider.rawValue else { return }
             self?.quotaPaceState = loadState(
                 value: response,
                 meta: response.meta,
@@ -1125,6 +1230,18 @@ public final class AppModel: ObservableObject {
         cancelRefreshAll()
     }
 
+	private func cancelPageFeatureTasks() {
+		let statusKeys: Set<FeatureTaskKey> = [.statusOverview, .statusAccount]
+		let keys = featureTasks.keys.filter { !statusKeys.contains($0) }
+		for key in keys {
+			featureTasks[key]?.cancel()
+			featureTasks[key] = nil
+			featureGenerations[key, default: 0] &+= 1
+			refreshAllPendingTasks.remove(key)
+		}
+		cancelRefreshAll()
+	}
+
     private func cancelFeatureReadTasks() {
         let mutationKeys: Set<FeatureTaskKey> = [
             .quotaRefresh, .resetCreditsRefresh, .runtimeAction, .settingsSave,
@@ -1150,6 +1267,9 @@ public final class AppModel: ObservableObject {
         switch runtimeState {
         case .normal, .partial:
             startUpdatePolicyObservationIfNeeded()
+				if statusOverviewState.shouldReloadOnNavigation {
+					loadStatusOverview()
+				}
             if selectedFeature != .overview { load(selectedFeature) }
         case .stale(_, let notice), .unavailable(let notice):
             cancelUpdatePolicyObservation()
@@ -1261,6 +1381,7 @@ public final class AppModel: ObservableObject {
             retryable: true
         )
         let affected: Set<AppFeature>
+		let refreshesStatus: Bool
         switch domain {
         case "index":
             invalidateTasks([
@@ -1273,11 +1394,13 @@ public final class AppModel: ObservableObject {
             projectsState = stale(projectsState, notice)
             projectDetailState = stale(projectDetailState, notice)
             affected = [.sessions, .projects, .quotaUsage, .invocationUsage]
+			refreshesStatus = true
         case "quota":
             invalidateTasks([.quota, .quotaPace])
             quotaState = stale(quotaState, notice)
             quotaPaceState = stale(quotaPaceState, notice)
             affected = [.quotaUsage]
+			refreshesStatus = true
         case "health":
             invalidateTasks([.healthProjection, .dataHealth, .healthList, .healthDetail, .sources, .sourceDetail, .jobs, .jobDetail])
             healthProjectionState = stale(healthProjectionState, notice)
@@ -1289,20 +1412,30 @@ public final class AppModel: ObservableObject {
             jobsState = stale(jobsState, notice)
             jobDetailState = stale(jobDetailState, notice)
             affected = [.localStatus, .sourcesJobs]
+			refreshesStatus = false
         case "settings":
             invalidateTasks([.settings])
             settingsState = stale(settingsState, notice)
             affected = [.settings]
+			refreshesStatus = false
         case "lifecycle":
             cancelFeatureReadTasks()
             markFeatureStatesStale(notice)
             affected = Set(AppFeature.allCases.filter { $0 != .overview })
+			refreshesStatus = false
         default:
             return
         }
-        if affected.contains(selectedFeature), !requiresCoreRestart {
-            refresh(selectedFeature)
-        }
+		if affected.contains(selectedFeature), !requiresCoreRestart {
+			refresh(selectedFeature)
+		}
+		if refreshesStatus, !requiresCoreRestart {
+			if !statusOverviewState.isLoading {
+				invalidateTasks([.statusOverview, .statusAccount])
+				statusOverviewState = stale(statusOverviewState, notice)
+				loadStatusOverview()
+			}
+		}
     }
 
     private func invalidateTasks(_ keys: Set<FeatureTaskKey>) {
@@ -1316,6 +1449,9 @@ public final class AppModel: ObservableObject {
     }
 
     private func resetFeatureState() {
+		statusOverviewState = .idle
+		statusUsageState = .idle
+		statusInvocationState = .idle
         usageState = .idle
         invocationUsageState = .idle
         pricingCatalogState = .idle
@@ -1345,6 +1481,86 @@ public final class AppModel: ObservableObject {
         selectedHealthEventID = nil
         consumedCursors.removeAll()
     }
+
+	private func resetProviderFeatureState() {
+		usageState = .idle
+		invocationUsageState = .idle
+		pricingCatalogState = .idle
+		quotaState = .idle
+		quotaPaceState = .idle
+		sessionsState = .idle
+		sessionDetailState = .idle
+		projectsState = .idle
+		projectDetailState = .idle
+		selectedSessionID = nil
+		selectedProjectKey = nil
+		consumedCursors.removeAll()
+	}
+
+	private func loadStatusOverview() {
+		let provider = statusProvider
+		let previous = statusOverviewState.value
+		invalidateTasks([.statusAccount])
+		statusOverviewState = .loading(previous: previous)
+		if provider == .cursor {
+			statusUsageState = .loading(previous: statusUsageState.value)
+			statusInvocationState = .loading(previous: statusInvocationState.value)
+		}
+		launch(
+			.statusOverview,
+			operation: { [runtime] in try await runtime.statusOverview(provider: provider) }
+		) { [weak self] responses in
+			guard let self,
+				self.statusProvider == provider,
+				responses.provider == provider
+			else { return }
+			let presentation = OverviewPresentation(responses)
+			statusOverviewState = presentation.isPartial
+				? .partial(presentation, notices: presentation.notices)
+				: .ready(presentation)
+			loadStatusAccount(for: responses, provider: provider)
+			if provider == .cursor {
+				statusUsageState = loadState(
+					value: responses.todayUsage,
+					meta: responses.todayUsage.meta,
+					isEmpty: false
+				)
+				statusInvocationState = loadState(
+					value: responses.todayInvocationUsage,
+					meta: responses.todayInvocationUsage.meta,
+					isEmpty: false
+				)
+			} else {
+				statusUsageState = .idle
+				statusInvocationState = .idle
+			}
+		} failure: { [weak self] error in
+			guard let self, statusProvider == provider else { return }
+			statusOverviewState = failedLoadState(previous: previous, error: error)
+			if provider == .cursor {
+				statusUsageState = failedLoadState(previous: statusUsageState.value, error: error)
+				statusInvocationState = failedLoadState(
+					previous: statusInvocationState.value,
+					error: error
+				)
+			}
+		}
+	}
+
+	private func loadStatusAccount(for responses: OverviewResponses, provider: AgentProvider) {
+		launch(
+			.statusAccount,
+			operation: { [runtime] in try await runtime.accountSnapshot(provider: provider) }
+		) { [weak self] account in
+			guard let self, statusProvider == provider else { return }
+			let presentation = OverviewPresentation(responses.replacingAccount(account))
+			statusOverviewState = presentation.isPartial
+				? .partial(presentation, notices: presentation.notices)
+				: .ready(presentation)
+		} failure: { _ in
+			// Account data is optional; retain the already-published status overview.
+		}
+	}
 
     private func beginPage(_ key: FeatureTaskKey, cursor: String?, reset: Bool) -> Bool {
         if reset {
@@ -1438,6 +1654,7 @@ public final class AppModel: ObservableObject {
     }
 
     private func markFeatureStatesStale(_ notice: AppNotice) {
+		statusOverviewState = stale(statusOverviewState, notice)
         usageState = stale(usageState, notice)
         invocationUsageState = stale(invocationUsageState, notice)
         pricingCatalogState = stale(pricingCatalogState, notice)
