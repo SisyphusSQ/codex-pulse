@@ -64,6 +64,7 @@ public actor CoreClient {
     }
 
     public func accountSnapshot(
+		_ request: Codexpulse_Core_V1_AccountSnapshotRequest,
         retryPolicy: ReadRetryPolicy = .none
     ) async throws -> Codexpulse_Core_V1_AccountSnapshotResponse {
         let service = service
@@ -75,7 +76,7 @@ public actor CoreClient {
         }()
         return try await retryPolicy.execute {
             try await service.accountSnapshot(
-                Codexpulse_Core_V1_AccountSnapshotRequest(),
+				request,
                 metadata: metadata,
                 options: options
             )

@@ -22,6 +22,14 @@ type DesktopAccessToken struct {
 	ExpiresAt time.Time
 }
 
+// DesktopAccountSnapshot contains only user-facing identity and subscription
+// facts. Tokens and other credential material are deliberately excluded.
+type DesktopAccountSnapshot struct {
+	Email              string
+	MembershipType     string
+	SubscriptionStatus string
+}
+
 // DesktopAuthReader reads Cursor's current access token from its WAL-aware state database.
 type DesktopAuthReader struct {
 	path string
@@ -64,6 +72,48 @@ func (reader *DesktopAuthReader) ReadAccessToken(ctx context.Context) (DesktopAc
 		return DesktopAccessToken{}, ErrDesktopAuthExpired
 	}
 	return DesktopAccessToken{Token: token, ExpiresAt: expiresAt}, nil
+}
+
+func (reader *DesktopAuthReader) ReadAccountSnapshot(ctx context.Context) (DesktopAccountSnapshot, error) {
+	if reader == nil || ctx == nil {
+		return DesktopAccountSnapshot{}, ErrDesktopAuthUnavailable
+	}
+	database, transaction, _, err := openReadSnapshot(ctx, reader.path)
+	if err != nil {
+		return DesktopAccountSnapshot{}, fmt.Errorf("%w: open state database", ErrDesktopAuthUnavailable)
+	}
+	defer database.Close()
+	defer transaction.Rollback()
+	if !hasColumns(ctx, transaction, "ItemTable", "key", "value") {
+		return DesktopAccountSnapshot{}, fmt.Errorf("%w: incompatible state schema", ErrDesktopAuthUnavailable)
+	}
+	values := make(map[string]string, 3)
+	rows, err := transaction.QueryContext(ctx, `
+		SELECT key, value FROM ItemTable
+		WHERE key IN (
+			'cursorAuth/cachedEmail',
+			'cursorAuth/stripeMembershipType',
+			'cursorAuth/stripeSubscriptionStatus'
+		)`)
+	if err != nil {
+		return DesktopAccountSnapshot{}, fmt.Errorf("%w: account fields unavailable", ErrDesktopAuthUnavailable)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var key, value string
+		if err := rows.Scan(&key, &value); err != nil {
+			return DesktopAccountSnapshot{}, fmt.Errorf("%w: read account fields", ErrDesktopAuthUnavailable)
+		}
+		values[key] = strings.TrimSpace(value)
+	}
+	if err := rows.Err(); err != nil {
+		return DesktopAccountSnapshot{}, fmt.Errorf("%w: read account fields", ErrDesktopAuthUnavailable)
+	}
+	return DesktopAccountSnapshot{
+		Email:              values["cursorAuth/cachedEmail"],
+		MembershipType:     values["cursorAuth/stripeMembershipType"],
+		SubscriptionStatus: values["cursorAuth/stripeSubscriptionStatus"],
+	}, nil
 }
 
 func jwtExpiration(token string) (time.Time, error) {

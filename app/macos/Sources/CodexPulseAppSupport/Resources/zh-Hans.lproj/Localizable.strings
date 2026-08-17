@@ -45,6 +45,7 @@
 "当前没有 Codex 账户信息" = "当前没有 Codex 账户信息";
 "account.type" = "Codex 账户类型 %@";
 "account.plan" = "Codex 套餐 %@，账号 %@";
+"月剩" = "月剩";
 "status.period" = "%@剩";
 "status.used" = "已用 %@";
 "已用 --" = "已用 --";

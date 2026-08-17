@@ -103,7 +103,7 @@ func openNormalRuntime(
 		_ = database.Close(context.Background())
 		return nil, fmt.Errorf("configure default Codex Home: %w", err)
 	}
-	service, err := composeCoreService(database, preferenceStore, metricsRuntime.Observer())
+	service, err := composeCoreService(database, preferenceStore, metricsRuntime.Observer(), config.Broker)
 	if err != nil {
 		_ = metricsRuntime.Close(context.Background())
 		_ = database.Close(context.Background())

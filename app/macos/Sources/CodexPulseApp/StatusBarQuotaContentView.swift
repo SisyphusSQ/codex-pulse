@@ -9,11 +9,18 @@ final class StatusBarQuotaContentView: NSView {
     private var summary: StatusBarQuotaPresentation?
     private var fallbackText = "Codex Pulse --"
     private var style: StatusBarStyle = .ringSummary
+    private var provider: AgentProvider = .codex
 
     var hasSummary: Bool { summary != nil }
 
     var preferredWidth: CGFloat {
         guard let summary else {
+            if provider == .cursor, let lines = cursorFallbackLines {
+                let detailWidth = lines.reduce(CGFloat.zero) {
+                    max($0, textWidth($1, font: $1 == lines.first ? primaryFont : secondaryFont))
+                }
+                return ceil(horizontalPadding * 2 + iconDiameter + iconTextSpacing + detailWidth)
+            }
             return min(132, max(72, textWidth(fallbackText, font: fallbackFont) + horizontalPadding * 2))
         }
         let summaryWidth = max(
@@ -27,14 +34,18 @@ final class StatusBarQuotaContentView: NSView {
     func update(
         summary: StatusBarQuotaPresentation?,
         fallbackText: String,
-        style: StatusBarStyle
+        style: StatusBarStyle,
+        provider: AgentProvider
     ) -> Bool {
-        guard self.summary != summary || self.fallbackText != fallbackText || self.style != style else {
+        guard self.summary != summary || self.fallbackText != fallbackText || self.style != style
+            || self.provider != provider
+        else {
             return false
         }
         self.summary = summary
         self.fallbackText = fallbackText
         self.style = style
+        self.provider = provider
         invalidateIntrinsicContentSize()
         needsDisplay = true
         return true
@@ -77,7 +88,16 @@ final class StatusBarQuotaContentView: NSView {
     private var secondaryFont: NSFont { .systemFont(ofSize: 9, weight: .semibold) }
     private var fallbackFont: NSFont { .systemFont(ofSize: 11, weight: .medium) }
 
+    private var cursorFallbackLines: [String]? {
+        let lines = fallbackText.components(separatedBy: " · ")
+        return lines.count == 2 ? lines : nil
+    }
+
     private func drawFallback() {
+        if provider == .cursor, let lines = cursorFallbackLines {
+            drawCursorFallback(lines)
+            return
+        }
         let attributes: [NSAttributedString.Key: Any] = [
             .font: fallbackFont,
             .foregroundColor: NSColor.secondaryLabelColor,
@@ -86,6 +106,38 @@ final class StatusBarQuotaContentView: NSView {
         fallbackText.draw(
             at: NSPoint(x: max(horizontalPadding, bounds.midX - size.width / 2), y: bounds.midY - size.height / 2),
             withAttributes: attributes
+        )
+    }
+
+    private func drawCursorFallback(_ lines: [String]) {
+        let iconRect = NSRect(
+            x: horizontalPadding,
+            y: floor(bounds.midY - iconDiameter / 2),
+            width: iconDiameter,
+            height: iconDiameter
+        )
+        let symbol = NSImage(systemSymbolName: "terminal.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
+        symbol?.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 0.78)
+
+        let leadingX = iconRect.maxX + iconTextSpacing
+        let primaryAttributes: [NSAttributedString.Key: Any] = [
+            .font: primaryFont,
+            .foregroundColor: NSColor.labelColor,
+        ]
+        let secondaryAttributes: [NSAttributedString.Key: Any] = [
+            .font: secondaryFont,
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ]
+        let primaryHeight = lines[0].size(withAttributes: primaryAttributes).height
+        let secondaryHeight = lines[1].size(withAttributes: secondaryAttributes).height
+        let rowOverlap: CGFloat = 1
+        let totalHeight = primaryHeight + secondaryHeight - rowOverlap
+        let bottomY = floor(bounds.midY - totalHeight / 2)
+        lines[1].draw(at: NSPoint(x: leadingX, y: bottomY), withAttributes: secondaryAttributes)
+        lines[0].draw(
+            at: NSPoint(x: leadingX, y: bottomY + secondaryHeight - rowOverlap),
+            withAttributes: primaryAttributes
         )
     }
 

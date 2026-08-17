@@ -17,7 +17,9 @@ struct RootView: View {
 							Text(provider.title).tag(provider)
 						}
 					}
-					.pickerStyle(.segmented)
+					.labelsHidden()
+					.pickerStyle(.menu)
+					.frame(maxWidth: .infinity, alignment: .leading)
 					.accessibilityIdentifier("sidebar.provider-picker")
 				} header: {
 					Text("客户端")
@@ -430,7 +432,7 @@ private struct CursorOverviewContentView: View {
 								.monospacedDigit()
 						}
 						ProgressView(value: (window.usedPercent ?? 0) / 100)
-							.tint(.blue)
+							.tint(.green)
 						Text(reset.compactText)
 							.font(.caption)
 							.foregroundStyle(.secondary)

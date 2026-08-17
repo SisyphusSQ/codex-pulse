@@ -32,7 +32,7 @@ func TestApplicationMetricsRuntimeComposesPersistsAndCloses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileStore() error = %v", err)
 	}
-	coreService, err := composeCoreService(database, preferenceStore, runtime.Observer())
+	coreService, err := composeCoreService(database, preferenceStore, runtime.Observer(), nil)
 	if err != nil {
 		t.Fatalf("composeCoreService() error = %v", err)
 	}

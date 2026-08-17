@@ -66,7 +66,7 @@ type quotaRefreshCommand interface {
 }
 
 type accountSnapshotQuery interface {
-	AccountSnapshot(context.Context) (AccountSnapshot, error)
+	AccountSnapshot(context.Context, agentprovider.Scope) (AccountSnapshot, error)
 }
 
 type sessionDeepIndexCommand interface {
@@ -315,7 +315,7 @@ type AccountSnapshot struct {
 	Account *AccountIdentity `json:"account,omitempty"`
 }
 
-func (service *Service) AccountSnapshot(ctx context.Context) (AccountSnapshot, error) {
+func (service *Service) AccountSnapshot(ctx context.Context, scope agentprovider.Scope) (AccountSnapshot, error) {
 	if service == nil {
 		return AccountSnapshot{}, newServiceFailure(ErrService)
 	}
@@ -326,7 +326,7 @@ func (service *Service) AccountSnapshot(ctx context.Context) (AccountSnapshot, e
 		return AccountSnapshot{}, newServiceFailure(ErrService)
 	}
 	return serviceQueryCall(service, func() (AccountSnapshot, error) {
-		return query.AccountSnapshot(ctx)
+		return query.AccountSnapshot(ctx, scope)
 	})
 }
 

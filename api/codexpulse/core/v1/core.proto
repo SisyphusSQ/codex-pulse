@@ -1167,7 +1167,7 @@ message ShutdownRequest { string reason = 1; }
 
 message ShutdownResponse { bool accepted = 1; }
 
-message AccountSnapshotRequest {}
+message AccountSnapshotRequest { ProviderScope provider = 1; }
 
 message CodexAccountIdentity {
   string type = 1;

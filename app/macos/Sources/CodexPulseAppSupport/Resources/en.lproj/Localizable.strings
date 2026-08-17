@@ -117,6 +117,7 @@
 "额度剩" = "Quota left";
 "周剩" = "Week left";
 "日剩" = "Day left";
+"月剩" = "Month left";
 "status.period" = "%@ left";
 "Token 消耗" = "Token usage";
 "会话数量" = "Session count";

@@ -420,7 +420,7 @@ func TestGRPCServerReturnsOnlyAccountDisplayFields(t *testing.T) {
 
 	response, err := client.AccountSnapshot(
 		authorize(t.Context()),
-		&corev1.AccountSnapshotRequest{},
+		&corev1.AccountSnapshotRequest{Provider: &corev1.ProviderScope{Provider: agentprovider.Cursor}},
 	)
 	if err != nil {
 		t.Fatalf("AccountSnapshot() error = %v", err)
@@ -428,8 +428,8 @@ func TestGRPCServerReturnsOnlyAccountDisplayFields(t *testing.T) {
 	if response.GetAccount() == nil || response.Account.Type != "chatgpt" ||
 		response.Account.Email == nil || response.Account.GetEmail() != email ||
 		response.Account.PlanType == nil || response.Account.GetPlanType() != planType ||
-		account.calls != 1 {
-		t.Fatalf("AccountSnapshot() = %#v, calls = %d", response, account.calls)
+		account.calls != 1 || account.scope.Provider != agentprovider.Cursor {
+		t.Fatalf("AccountSnapshot() = %#v, calls = %d, scope = %#v", response, account.calls, account.scope)
 	}
 }
 
@@ -527,12 +527,15 @@ func (stub helperPricingCatalogQueryStub) Current(
 type helperAccountSnapshotStub struct {
 	snapshot core.AccountSnapshot
 	calls    int
+	scope    agentprovider.Scope
 }
 
 func (stub *helperAccountSnapshotStub) AccountSnapshot(
-	context.Context,
+	_ context.Context,
+	scope agentprovider.Scope,
 ) (core.AccountSnapshot, error) {
 	stub.calls++
+	stub.scope = scope
 	return stub.snapshot, nil
 }
 

@@ -103,7 +103,7 @@ final class StatusItemController: NSObject {
             .store(in: &cancellables)
 
 		model.$statusProvider
-			.combineLatest(model.$statusUsageState, model.$statusInvocationState)
+			.combineLatest(model.$statusOverviewState)
 			.receive(on: RunLoop.main)
 			.sink { [weak self] _ in self?.updateStatusBarView() }
 			.store(in: &cancellables)
@@ -125,13 +125,12 @@ final class StatusItemController: NSObject {
 
     private func updateStatusBarView() {
         let title = model.statusItemTitle
-		let summary = model.statusProvider == .codex
-			? model.presentation.flatMap(StatusBarQuotaPresentation.init)
-			: nil
+		let summary = model.statusPresentation.flatMap(StatusBarQuotaPresentation.init)
         statusBarView.update(
             summary: summary,
             fallbackText: title,
-            style: displayPreferences.style
+            style: displayPreferences.style,
+            provider: model.statusProvider
         )
         statusItem.length = statusBarView.preferredWidth
         let summaryLabel = summary?.accessibilityLabel ?? title
@@ -199,6 +198,11 @@ final class StatusItemController: NSObject {
     func verifyNativeSurfacesForSmoke(
         requireSummary: Bool
     ) async -> (passed: Bool, summary: String) {
+		if requireSummary {
+			guard await waitForNativeSmoke({ self.model.statusPresentation != nil }) else {
+				return (false, "unavailable step=status_overview")
+			}
+		}
         updateStatusBarView()
         guard let button = statusItem.button,
               popover.contentViewController != nil,
@@ -288,7 +292,7 @@ final class StatusItemController: NSObject {
                 + "keyboard=tab+shift-tab+return+space "
                 + "focus_escape=open-overview+refresh+reset-credits+settings+quit "
 				+ "clipboard=single_item_string+png "
-				+ "status_provider=cursor status_label=verified cursor_popover=rendered "
+				+ "status_provider=cursor status_label=verified cursor_account=available cursor_popover=captured "
 				+ smokeCursorUsageSummary
         )
     }
@@ -303,6 +307,7 @@ final class StatusItemController: NSObject {
 		guard await waitForNativeSmoke({
 			self.model.statusUsageState.value?.providerContext.effectiveProvider
 				== AgentProvider.cursor.rawValue
+				&& self.model.statusPresentation?.account.availability == .available
 		}, maximumAttempts: 3_000) else { return false }
 		if let usage = model.statusUsageState.value {
 			let dashboard = usage.providerContext.coverage.first { $0.source == "cursor.dashboard" }
@@ -319,11 +324,15 @@ final class StatusItemController: NSObject {
 			].joined(separator: " ")
 		}
 		updateStatusBarView()
-		let title = model.statusItemTitle
-		guard title.hasPrefix("今日 "), title.contains(" 次 · "),
-			!title.contains("Cursor"), !title.contains("Codex"),
-			statusItem.button?.accessibilityLabel() == "Codex Pulse · \(title)",
-			statusBarView.hasSummary == false,
+		guard let summary = model.statusPresentation.flatMap(StatusBarQuotaPresentation.init),
+			summary.remainingText.hasPrefix("月剩 "),
+			summary.remainingText.contains(" · "),
+			summary.usageText.hasPrefix("已用 "),
+			!summary.accessibilityLabel.contains("Cursor"),
+			!summary.accessibilityLabel.contains("Codex"),
+			statusItem.button?.accessibilityLabel()
+				== "Codex Pulse · \(summary.accessibilityLabel)",
+			statusBarView.hasSummary,
 			let button = statusItem.button,
 			popover.contentViewController != nil
 		else { return false }
@@ -333,7 +342,14 @@ final class StatusItemController: NSObject {
 		else { return false }
 		rootView.layoutSubtreeIfNeeded()
 		rootView.displayIfNeeded()
-		guard rootView.bounds.width > 0, rootView.bounds.height > 0 else { return false }
+		guard rootView.bounds.width > 0, rootView.bounds.height > 0,
+			let png = await captureCurrentPopoverPNG(),
+			PopoverPasteboardPayload.write(
+				text: PopoverScreenshotClipboardText.plainText,
+				png: png,
+				to: .general
+			)
+		else { return false }
 		popover.performClose(nil)
 		return true
 	}
@@ -534,7 +550,7 @@ private struct MenuBarPopoverView: View {
             case .main:
                 mainContent
             case .resetCredits:
-                ResetCreditsDetailView(overview: model.presentation) { route = .main }
+				ResetCreditsDetailView(overview: model.statusPresentation) { route = .main }
             case .displaySettings:
                 StatusDisplaySettingsView(
                     preferences: preferences,
@@ -565,41 +581,45 @@ private struct MenuBarPopoverView: View {
 
     private var mainContent: some View {
         VStack(spacing: 0) {
-			Picker("客户端", selection: Binding(
-				get: { model.statusProvider },
-				set: { provider in model.selectStatusProvider(provider) }
-			)) {
-				ForEach(AgentProvider.allCases) { provider in Text(provider.title).tag(provider) }
-			}
-			.pickerStyle(.segmented)
-			.padding(.horizontal, 18)
-			.padding(.vertical, 10)
-			.accessibilityIdentifier("popover.provider-picker")
-			Divider()
             PopoverHeader(
-                title: "Codex Pulse",
-				accountSummary: model.statusProvider == .codex ? model.presentation?.popoverAccountSummary : nil,
+				selectedProvider: model.statusProvider,
+				onSelectProvider: model.selectStatusProvider,
+				accountSummary: model.statusPresentation?.popoverAccountSummary,
                 captureSource: captureSource,
                 isPrivacyHidden: captureSource.isPrivacyHidden,
                 screenshotFeedback: screenshotFeedback,
                 onOpenProject: openProject,
                 onCopyPopoverScreenshot: copyPopoverScreenshot,
                 focusedControl: $focusedControl,
-				onOpen: {
-					model.openMainWindowProvider(model.statusProvider)
-					onOpenOverview()
-				},
+				onOpen: onOpenOverview,
 				onRefresh: model.refreshStatusProvider,
-                canRefresh: model.canRefreshOrRestart,
-				isRefreshing: model.statusProvider == .cursor
-					? model.statusUsageState.isLoading || model.statusInvocationState.isLoading
-					: model.isOverviewRefreshing
+				canRefresh: model.canRefreshOrRestart,
+				isRefreshing: model.statusOverviewState.isLoading
             )
 
             ScrollView {
-				if model.statusProvider == .cursor {
-					cursorContent
-				} else if let overview = model.presentation {
+				providerContent
+            }
+            .scrollIndicators(.hidden)
+
+            PopoverFooter(
+				onSettings: { route = .displaySettings },
+				onQuit: onQuit,
+				focusedControl: $focusedControl
+			)
+        }
+        .onChange(of: focusedControl) { _, control in
+			onPopoverFocusChanged(control)
+		}
+    }
+
+	@ViewBuilder
+	private var providerContent: some View {
+		switch model.statusProvider {
+		case .cursor:
+			cursorContent
+		case .codex:
+			if let overview = model.statusPresentation {
                     VStack(alignment: .leading, spacing: 18) {
                         quotaSection(overview)
                         dailyTrendSection(overview)
@@ -613,87 +633,134 @@ private struct MenuBarPopoverView: View {
                         PopoverCaptureDocumentProbe(source: captureSource)
                             .allowsHitTesting(false)
                     )
-                } else {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                        Text(model.statusItemTitle).foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 440)
-                }
-            }
-            .scrollIndicators(.hidden)
-
-            PopoverFooter(
-                onSettings: { route = .displaySettings },
-                onQuit: onQuit,
-                focusedControl: $focusedControl
-            )
-        }
-        .onChange(of: focusedControl) { _, control in
-            onPopoverFocusChanged(control)
-        }
-    }
-
-	private var cursorContent: some View {
-		let usage = model.statusUsageState.value
-		let invocation = model.statusInvocationState.value
-		let requests = usage.map { numericStatusText($0.totals.turnCount) } ?? "--"
-		let tokens = usage.map { numericStatusText($0.totals.totalTokens) } ?? "--"
-		let reportedCost = usage?.hasReportedUsdMicros == true
-			? costText(usage?.reportedUsdMicros ?? .init()) : "--"
-		let estimatedCost = usage.map { costText($0.totals.estimatedUsdMicros) } ?? "--"
-		let cursorTokenFee = usage?.hasCursorTokenFeeUsdMicros == true
-			? costText(usage?.cursorTokenFeeUsdMicros ?? .init()) : "--"
-		let tools = invocation.map { numericStatusText($0.totals.toolCallCount) } ?? "--"
-		let coverage = usage?.providerContext.coverage ?? []
-		let aiEdits = coverage.first(where: { $0.capability == "ai_edits" })
-		let aiEditText = aiEdits?.hasItemCount == true
-			? String(aiEdits?.itemCount ?? 0)
-			: "数据源未提供"
-		return VStack(alignment: .leading, spacing: 16) {
-			PopoverSectionTitle(title: "今日", systemImage: "clock", localization: model.localization)
-			SectionCard(title: "Cursor 用量") {
-				KeyValueRow(key: "请求数", value: requests)
-				KeyValueRow(key: "Token", value: tokens == "--" ? "数据源未提供" : tokens)
-				KeyValueRow(key: "Cursor 上报费用", value: reportedCost == "--" ? "数据源未提供" : reportedCost)
-				KeyValueRow(key: "Cursor Token fee", value: cursorTokenFee == "--" ? "数据源未提供" : cursorTokenFee)
-				KeyValueRow(key: "文档价目估算", value: estimatedCost == "--" ? "数据源未提供" : estimatedCost)
-				if let usage, usage.hasCursorBilling {
-					KeyValueRow(key: "本账期消费", value: costText(usage.cursorBilling.totalSpendUsdMicros))
-					KeyValueRow(key: "账期包含", value: costText(usage.cursorBilling.includedUsdMicros))
-					KeyValueRow(key: "Bonus", value: costText(usage.cursorBilling.bonusUsdMicros))
-					KeyValueRow(key: "账期剩余", value: costText(usage.cursorBilling.remainingUsdMicros))
-					KeyValueRow(key: "账期上限", value: costText(usage.cursorBilling.limitUsdMicros))
-				}
-				if let usage, usage.hasDataAsOfMs, usage.dataAsOfMs.hasValue {
-					KeyValueRow(key: "数据截至", value: cursorStatusDateText(usage.dataAsOfMs.value, timeZone: usage.reportingTimeZone))
-				}
-				KeyValueRow(key: "工具调用", value: tools)
-				KeyValueRow(key: "AI edits", value: aiEditText)
+			} else {
+				statusLoadingContent
 			}
-			PopoverSectionTitle(title: "覆盖度", systemImage: "externaldrive", localization: model.localization)
-			SectionCard(title: "Cursor 内部来源") {
-				ForEach(coverage, id: \.source) { item in
-					KeyValueRow(key: item.source, value: item.state == "available" ? "可用 · \(item.reason)" : item.state)
+		}
+	}
+
+	private var statusLoadingContent: some View {
+		VStack(spacing: 12) {
+			ProgressView()
+			Text(model.statusItemTitle).foregroundStyle(.secondary)
+		}
+		.frame(maxWidth: .infinity, minHeight: 440)
+	}
+
+	@ViewBuilder
+	private var cursorContent: some View {
+		if let overview = model.statusPresentation {
+			let summary = CursorOverviewSummaryPresentation(overview)
+			VStack(alignment: .leading, spacing: 18) {
+				quotaSection(overview)
+				cursorTodaySection(summary)
+				dailyTrendSection(overview, title: "本月每日 Token")
+				if let billing = summary.billing {
+					cursorBillingSection(billing)
+				}
+				if summary.usesLastKnownTodayData, let dataAsOf = summary.dataAsOfMS {
+					Label(
+						"今日数据截至 \(cursorStatusDateText(dataAsOf))",
+						systemImage: "clock"
+					)
+					.font(.caption)
+					.foregroundStyle(.secondary)
+				}
+			}
+			.padding(.horizontal, 18)
+			.padding(.vertical, 16)
+			.background(PopoverCaptureDocumentProbe(source: captureSource).allowsHitTesting(false))
+		} else {
+			statusLoadingContent
+		}
+	}
+
+	private func cursorTodaySection(_ summary: CursorOverviewSummaryPresentation) -> some View {
+		VStack(alignment: .leading, spacing: 10) {
+			PopoverSectionTitle(
+				title: "今日使用",
+				systemImage: "clock",
+				localization: model.localization
+			)
+			PulseCard {
+				HStack(spacing: 0) {
+					cursorMetric(title: "请求", value: metricText(summary.todayRequestCount))
+					Divider().frame(height: 42).padding(.horizontal, 14)
+					cursorMetric(
+						title: "Token",
+						value: metricText(summary.todayTotalTokens)
+					)
 				}
 			}
 		}
-		.padding(.horizontal, 18)
-		.padding(.vertical, 16)
-		.background(PopoverCaptureDocumentProbe(source: captureSource).allowsHitTesting(false))
 	}
 
-	private func numericStatusText(_ value: Codexpulse_Core_V1_NumericValue) -> String {
-		guard value.hasValue else { return "--" }
-		return value.unit == "tokens"
-			? TokenQuantityFormatter.compactString(value.value)
-			: model.localization.number(value.value)
+	private func cursorBillingSection(_ billing: CursorBillingPresentation) -> some View {
+		let fraction = cursorBillingFraction(billing)
+		return VStack(alignment: .leading, spacing: 10) {
+			PopoverSectionTitle(
+				title: "本账期消费",
+				systemImage: "creditcard.fill",
+				localization: model.localization
+			)
+			PulseCard {
+				VStack(alignment: .leading, spacing: 10) {
+					HStack(alignment: .firstTextBaseline) {
+						Text(metricText(billing.totalSpend, cost: true))
+							.font(.system(size: 20, weight: .bold, design: .rounded))
+							.monospacedDigit()
+						Spacer()
+						Text("剩余 \(metricText(billing.remaining, cost: true))")
+							.font(.caption)
+							.foregroundStyle(.secondary)
+					}
+					GeometryReader { geometry in
+						ZStack(alignment: .leading) {
+							Capsule().fill(.quaternary)
+							Capsule().fill(.blue).frame(width: geometry.size.width * fraction)
+						}
+					}
+					.frame(height: 9)
+					HStack {
+						Text("套餐包含 \(metricText(billing.included, cost: true))")
+						Spacer()
+						Text("Bonus \(metricText(billing.bonus, cost: true))")
+					}
+					.font(.caption)
+					.foregroundStyle(.secondary)
+				}
+			}
+		}
 	}
 
-	private func cursorStatusDateText(_ milliseconds: Int64, timeZone: String) -> String {
+	private func cursorMetric(title: String, value: String) -> some View {
+		VStack(alignment: .leading, spacing: 3) {
+			Text(title).font(.caption).foregroundStyle(.secondary)
+			Text(value == "--" ? "数据源未提供" : value)
+				.font(.system(size: value == "--" ? 12 : 18, weight: .semibold, design: .rounded))
+				.monospacedDigit()
+				.lineLimit(1)
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+	}
+
+	private func cursorBillingFraction(_ billing: CursorBillingPresentation) -> CGFloat {
+		guard let spent = statusMetricValue(billing.totalSpend),
+			let limit = statusMetricValue(billing.limit),
+			limit > 0
+		else { return 0 }
+		return CGFloat(max(0, min(1, Double(spent) / Double(limit))))
+	}
+
+	private func statusMetricValue(_ metric: DisplayMetric) -> Int64? {
+		guard case .known(let value, _) = metric else { return nil }
+		return value
+	}
+
+	private func cursorStatusDateText(_ milliseconds: Int64) -> String {
 		let formatter = DateFormatter()
 		formatter.locale = model.localization.locale
-		formatter.timeZone = TimeZone(identifier: timeZone) ?? .current
+		formatter.timeZone = .current
 		formatter.dateFormat = "M-d HH:mm"
 		return formatter.string(from: Date(timeIntervalSince1970: Double(milliseconds) / 1_000))
 	}
@@ -708,7 +775,7 @@ private struct MenuBarPopoverView: View {
         guard !isCapturingScreenshot else { return }
         isCapturingScreenshot = true
         Task { @MainActor in
-            let png = model.presentation == nil ? nil : await capturePopoverPNG()
+			let png = model.statusPresentation == nil ? nil : await capturePopoverPNG()
             let result = PopoverQuickActions.copyPopoverScreenshot(
                 png: png,
                 writeClipboard: writePopoverScreenshotClipboard
@@ -832,14 +899,17 @@ private struct MenuBarPopoverView: View {
         }
     }
 
-    private func dailyTrendSection(_ overview: OverviewPresentation) -> some View {
+    private func dailyTrendSection(
+		_ overview: OverviewPresentation,
+		title: String = "本周每日 Token"
+	) -> some View {
         let buckets = overview.weeklyUsageModelTrend
         let modelNames = dailyTrendModelNames(buckets)
         let colors = dailyTrendColors(count: modelNames.count)
         let selectedBucket = buckets.first { $0.key == selectedDailyTrendKey }
         return VStack(alignment: .leading, spacing: 10) {
             PopoverSectionTitle(
-                title: "本周每日 Token",
+				title: title,
                 systemImage: "chart.bar.fill",
                 localization: model.localization
             )
@@ -965,19 +1035,20 @@ private struct MenuBarPopoverView: View {
                             .transition(.opacity)
                         } else {
                             LazyVGrid(
-                                columns: [GridItem(.adaptive(minimum: 108), spacing: 8)],
+								columns: [GridItem(.flexible())],
                                 alignment: .leading,
                                 spacing: 6
                             ) {
                                 ForEach(Array(modelNames.enumerated()), id: \.element) { index, name in
                                     HStack(spacing: 5) {
-                                        Image(systemName: "circle.fill")
-                                            .font(.system(size: 7))
-                                            .foregroundStyle(colors[index])
+										Circle()
+											.fill(colors[index])
+											.frame(width: 7, height: 7)
                                         Text(name)
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                             .lineLimit(1)
+											.minimumScaleFactor(0.8)
                                     }
                                 }
                             }
@@ -1240,7 +1311,8 @@ private struct RefreshArrowSymbol: View {
 }
 
 private struct PopoverHeader: View {
-    let title: String
+	let selectedProvider: AgentProvider
+	let onSelectProvider: (AgentProvider) -> Void
     let accountSummary: PopoverAccountSummaryPresentation?
     let captureSource: PopoverCaptureSource
     let isPrivacyHidden: Bool
@@ -1254,16 +1326,27 @@ private struct PopoverHeader: View {
     let isRefreshing: Bool
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title)
-                    .font(.headline)
-                PopoverAccountCapsule(
-                    summary: accountSummary,
-                    captureSource: captureSource,
-                    isPrivacyHidden: isPrivacyHidden
-                )
-            }
+		HStack(alignment: .top, spacing: 0) {
+			VStack(alignment: .leading, spacing: 6) {
+				Picker("客户端", selection: Binding(
+					get: { selectedProvider },
+					set: { provider in onSelectProvider(provider) }
+				)) {
+					ForEach(AgentProvider.allCases) { provider in
+						Text(provider.title).tag(provider)
+					}
+				}
+				.labelsHidden()
+				.pickerStyle(.menu)
+				.controlSize(.small)
+				.fixedSize()
+				.accessibilityIdentifier("popover.provider-picker")
+				PopoverAccountCapsule(
+					summary: accountSummary,
+					captureSource: captureSource,
+					isPrivacyHidden: isPrivacyHidden
+				)
+			}
             Spacer(minLength: 12)
             HStack(spacing: 4) {
                 PopoverHeaderButton(

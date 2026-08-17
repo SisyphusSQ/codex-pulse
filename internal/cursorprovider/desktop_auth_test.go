@@ -50,6 +50,42 @@ func TestDesktopAuthReaderReadsCommittedWALAccessToken(t *testing.T) {
 	}
 }
 
+func TestDesktopAuthReaderReadsLocalAccountAndSubscription(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "state.vscdb")
+	database, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if _, err := database.Exec(`CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT NOT NULL)`); err != nil {
+		t.Fatalf("create ItemTable error = %v", err)
+	}
+	for key, value := range map[string]string{
+		"cursorAuth/cachedEmail":              " person@example.com ",
+		"cursorAuth/stripeMembershipType":     "pro",
+		"cursorAuth/stripeSubscriptionStatus": "active",
+		"cursorAuth/accessToken":              "must-not-be-returned",
+	} {
+		if _, err := database.Exec(`INSERT INTO ItemTable(key, value) VALUES (?, ?)`, key, value); err != nil {
+			t.Fatalf("insert %s error = %v", key, err)
+		}
+	}
+
+	reader, err := NewDesktopAuthReader(path, time.Now)
+	if err != nil {
+		t.Fatalf("NewDesktopAuthReader() error = %v", err)
+	}
+	account, err := reader.ReadAccountSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("ReadAccountSnapshot() error = %v", err)
+	}
+	if account.Email != "person@example.com" || account.MembershipType != "pro" || account.SubscriptionStatus != "active" {
+		t.Fatalf("ReadAccountSnapshot() = %#v", account)
+	}
+}
+
 func unsignedJWT(t *testing.T, expiresAt int64) string {
 	t.Helper()
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))

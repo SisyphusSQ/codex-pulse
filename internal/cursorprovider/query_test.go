@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -47,7 +48,72 @@ type failingDashboardRefresher struct{}
 
 func (failingDashboardRefresher) Refresh(context.Context) error { return ErrDesktopAuthExpired }
 
-func TestQueryServiceRefreshesDashboardBeforeReadingProviderContext(t *testing.T) {
+type blockingDashboardRefresher struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (refresher *blockingDashboardRefresher) Refresh(ctx context.Context) error {
+	close(refresher.started)
+	select {
+	case <-refresher.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func TestQueryServiceReturnsLocalSnapshotBeforeDashboardRefreshCompletes(t *testing.T) {
+	root := t.TempDir()
+	collector, err := NewCollector(discardSnapshotWriter{}, Config{
+		ProjectsRoot: filepath.Join(root, "projects"), StateDatabase: filepath.Join(root, "state.vscdb"),
+		ConversationDatabase: filepath.Join(root, "conversation.db"), AITrackingDatabase: filepath.Join(root, "tracking.db"),
+		MinimumRefresh: time.Hour, Now: func() time.Time { return time.UnixMilli(5_000) },
+	})
+	if err != nil {
+		t.Fatalf("NewCollector() error = %v", err)
+	}
+	refresher := &blockingDashboardRefresher{started: make(chan struct{}), release: make(chan struct{})}
+	service, err := NewQueryService(collector, fixedSnapshotReader{snapshot: cursorQuerySnapshot("partial")}, refresher)
+	if err != nil {
+		t.Fatalf("NewQueryService() error = %v", err)
+	}
+	var invalidations atomic.Int64
+	service.SetDashboardRefreshNotifier(func() { invalidations.Add(1) })
+
+	rangeValue := basequery.UTCTimeRange{StartAtMS: 1_000, EndAtMS: 5_000, TimeZone: "UTC"}
+	completed := make(chan error, 1)
+	go func() {
+		_, queryErr := service.UsageCost(context.Background(), usagecost.UsageCostRequest{
+			ExactRange: &rangeValue, Granularity: usagecost.TrendDay,
+		})
+		completed <- queryErr
+	}()
+
+	select {
+	case err := <-completed:
+		if err != nil {
+			t.Fatalf("UsageCost() error = %v", err)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("UsageCost() waited for the remote dashboard refresh")
+	}
+	select {
+	case <-refresher.started:
+	case <-time.After(time.Second):
+		t.Fatal("dashboard refresh did not start in the background")
+	}
+	close(refresher.release)
+	deadline := time.Now().Add(time.Second)
+	for invalidations.Load() != 1 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if invalidations.Load() != 1 {
+		t.Fatalf("dashboard completion invalidations = %d, want 1", invalidations.Load())
+	}
+}
+
+func TestQueryServicePublishesDashboardSourceAfterBackgroundRefresh(t *testing.T) {
 	root := t.TempDir()
 	collector, err := NewCollector(discardSnapshotWriter{}, Config{
 		ProjectsRoot: filepath.Join(root, "projects"), StateDatabase: filepath.Join(root, "state.vscdb"),
@@ -63,14 +129,30 @@ func TestQueryServiceRefreshesDashboardBeforeReadingProviderContext(t *testing.T
 		t.Fatalf("NewQueryService() error = %v", err)
 	}
 	rangeValue := basequery.UTCTimeRange{StartAtMS: 1_000, EndAtMS: 5_000, TimeZone: "UTC"}
+	refreshed := make(chan struct{}, 1)
+	service.SetDashboardRefreshNotifier(func() { refreshed <- struct{}{} })
 	response, err := service.UsageCost(context.Background(), usagecost.UsageCostRequest{
 		ExactRange: &rangeValue, Granularity: usagecost.TrendDay,
 	})
 	if err != nil {
 		t.Fatalf("UsageCost() error = %v", err)
 	}
+	if testContainsString(response.ProviderContext.Sources, SourceDashboard) {
+		t.Fatalf("initial provider sources = %v, remote refresh must not delay the local response", response.ProviderContext.Sources)
+	}
+	select {
+	case <-refreshed:
+	case <-time.After(time.Second):
+		t.Fatal("dashboard refresh did not publish an invalidation")
+	}
+	response, err = service.UsageCost(context.Background(), usagecost.UsageCostRequest{
+		ExactRange: &rangeValue, Granularity: usagecost.TrendDay,
+	})
+	if err != nil {
+		t.Fatalf("UsageCost(after refresh) error = %v", err)
+	}
 	if !testContainsString(response.ProviderContext.Sources, SourceDashboard) {
-		t.Fatalf("provider sources = %v", response.ProviderContext.Sources)
+		t.Fatalf("refreshed provider sources = %v", response.ProviderContext.Sources)
 	}
 }
 
@@ -159,6 +241,35 @@ func TestCursorUsagePrefersDashboardWindowOverPartialLocalUsage(t *testing.T) {
 	}
 }
 
+func TestCursorDashboardUsageIncludesPerModelTrendBuckets(t *testing.T) {
+	snapshot := cursorQuerySnapshot("partial")
+	snapshot.DashboardGeneration = 9
+	snapshot.DashboardCollectedAtMS = 172_800_000
+	snapshot.DashboardWindowStartMS = 0
+	snapshot.DashboardWindowEndMS = 172_800_000
+	firstModel, secondModel := "cursor-grok-4.6-xhigh", "cursor-grok-4.6-xhigh-fast"
+	snapshot.DashboardUsageEvents = []store.CursorDashboardUsageEvent{
+		{EventFingerprint: "first", OccurrenceCount: 1, OccurredAtMS: 10_000, ModelKey: &firstModel, InputTokens: 10, OutputTokens: 20},
+		{EventFingerprint: "second", OccurrenceCount: 1, OccurredAtMS: 86_410_000, ModelKey: &secondModel, InputTokens: 30, OutputTokens: 40},
+	}
+	service := cursorQueryFixture(t, snapshot)
+	rangeValue := basequery.UTCTimeRange{StartAtMS: 0, EndAtMS: 172_800_000, TimeZone: "UTC"}
+	response, err := service.UsageCost(context.Background(), usagecost.UsageCostRequest{
+		ExactRange: &rangeValue, Granularity: usagecost.TrendDay,
+	})
+	if err != nil {
+		t.Fatalf("UsageCost() error = %v", err)
+	}
+	if len(response.Models) != 2 {
+		t.Fatalf("models = %#v, want two model groups", response.Models)
+	}
+	for _, model := range response.Models {
+		if len(model.Trend) != 1 || model.Trend[0].Totals.TotalTokens.Value == nil {
+			t.Fatalf("model %q trend = %#v, want one real daily bucket", model.DimensionKey, model.Trend)
+		}
+	}
+}
+
 func TestCursorQuotaUsesOfficialModelPercentagesAndMonthlyCycle(t *testing.T) {
 	const month = int64(30 * 24 * time.Hour / time.Millisecond)
 	cycleStart := int64(1_780_000_000_000)
@@ -226,7 +337,7 @@ func TestCursorQuotaUsesOfficialModelPercentagesAndMonthlyCycle(t *testing.T) {
 	}
 }
 
-func TestCursorQuotaKeepsLastKnownPercentagesWhenDashboardRefreshFails(t *testing.T) {
+func TestCursorQuotaReturnsLastKnownPercentagesBeforeDashboardRefreshCompletes(t *testing.T) {
 	cycleStart, evaluatedAt, cycleEnd := int64(1_000), int64(2_000), int64(3_000)
 	snapshot := cursorQuerySnapshot("partial")
 	snapshot.DashboardQuotaObservations = []store.CursorDashboardQuotaObservation{{
@@ -250,9 +361,9 @@ func TestCursorQuotaKeepsLastKnownPercentagesWhenDashboardRefreshFails(t *testin
 	if err != nil {
 		t.Fatalf("QuotaCurrent() error = %v", err)
 	}
-	if response.Meta.Status != basequery.ResponsePartial || len(response.Current.Windows) != 1 ||
+	if response.Meta.Status != basequery.ResponseComplete || len(response.Current.Windows) != 1 ||
 		response.Current.Windows[0].UsedPercent == nil || *response.Current.Windows[0].UsedPercent != 7 ||
-		response.Current.Windows[0].Freshness != store.QuotaCurrentStale {
+		response.Current.Windows[0].Freshness != store.QuotaCurrentFresh {
 		t.Fatalf("last-known quota = %#v", response)
 	}
 }

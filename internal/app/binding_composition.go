@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -23,6 +24,7 @@ func composeCoreService(
 	database *storesqlite.Store,
 	preferenceStore *preferences.FileStore,
 	queryObserver core.QueryObserver,
+	invalidation queryInvalidationNotifier,
 ) (*core.Service, error) {
 	if database == nil || preferenceStore == nil {
 		return nil, core.ErrService
@@ -70,6 +72,9 @@ func composeCoreService(
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
+	cursorService.SetDashboardRefreshNotifier(func() {
+		notifyQueryInvalidation(invalidation, context.Background(), core.InvalidationIndex)
+	})
 	providerRouter, err := agentrouter.New(usageService, invocationService, cursorService, cursorService)
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)

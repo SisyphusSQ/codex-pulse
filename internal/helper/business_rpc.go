@@ -48,12 +48,15 @@ func (api *grpcAPI) Contracts(ctx context.Context, _ *corev1.ContractsRequest) (
 
 func (api *grpcAPI) AccountSnapshot(
 	ctx context.Context,
-	_ *corev1.AccountSnapshotRequest,
+	request *corev1.AccountSnapshotRequest,
 ) (*corev1.AccountSnapshotResponse, error) {
 	if api == nil || api.service == nil {
 		return nil, coreServiceUnavailable()
 	}
-	response, err := api.service.AccountSnapshot(ctx)
+	response, err := api.service.AccountSnapshot(
+		ctx,
+		agentprovider.Scope{Provider: request.GetProvider().GetProvider()},
+	)
 	return encodeRPC(response, &corev1.AccountSnapshotResponse{}, err)
 }
 

@@ -131,7 +131,7 @@ public struct CodexAccountPresentation: Equatable, Sendable {
         email = normalizedEmail
         planType = normalizedPlan
 
-        guard normalizedType == "chatgpt" else {
+		guard normalizedType == "chatgpt" || normalizedType == "cursor" else {
             planText = "--"
             emailText = "--"
             accessibilityLabel = localization.format(
@@ -150,11 +150,12 @@ public struct CodexAccountPresentation: Equatable, Sendable {
     }
 
     private static func planDisplayName(_ value: String?) -> String {
-        switch value {
+		switch value?.lowercased() {
         case "free": "Free"
         case "go": "Go"
         case "plus": "Plus"
         case "pro": "Pro"
+		case "pro_plus": "Pro+"
         case "prolite": "Pro Lite"
         case "team": "Team"
         case "self_serve_business_usage_based", "business": "Business"
@@ -675,6 +676,7 @@ public enum QuotaWindowDisplayResolver {
 public struct StatusBarQuotaPresentation: Equatable, Sendable {
     public let periodLabel: String
     public let remainingPercent: Double?
+    public let remainingText: String
     public let usageText: String
     public let freshness: String
     public let dataState: StatusBarQuotaDataState
@@ -682,6 +684,42 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
 
     public init?(_ overview: OverviewPresentation) {
         let localization = AppLocalizationRegistry.shared.current
+		if overview.provider == .cursor {
+			let windows = ["cursor.models", "cursor.other_models"].compactMap { limitID in
+				overview.quotaWindows.first(where: { $0.limitID == limitID })
+			}
+			guard let primaryWindow = windows.first else { return nil }
+			let remainingValues = windows.map {
+				$0.remainingPercent.map { localization.percent($0) } ?? "--"
+			}
+			let remainingSummary = remainingValues.joined(separator: " · ")
+			let periodLabel = localization.textValue("月剩")
+			self.periodLabel = periodLabel
+			self.remainingPercent = primaryWindow.remainingPercent
+			self.remainingText = "\(periodLabel) \(remainingSummary)"
+			self.freshness = primaryWindow.freshness
+			self.dataState = StatusBarQuotaDataState(freshness: primaryWindow.freshness)
+
+			if overview.usageAvailable,
+			   overview.requestedRange == .quotaMonth,
+			   overview.effectiveRange == .quotaMonth
+			{
+				let total = Self.compact(overview.totalTokens)
+				self.usageText = localization.format("status.used", total)
+				self.accessibilityLabel = localization.format(
+					"status.accessibility.used",
+					periodLabel,
+					remainingSummary,
+					Self.compactWithUnit(overview.totalTokens, localization: localization)
+				) + dataState.accessibilitySuffix
+			} else {
+				self.usageText = localization.textValue("已用 --")
+				self.accessibilityLabel = localization.format(
+					"status.accessibility.unavailable", periodLabel, remainingSummary
+				) + dataState.accessibilitySuffix
+			}
+			return
+		}
         guard let window = Self.preferredWindow(overview.quotaWindows) else { return nil }
         let periodLabel = Self.periodLabel(window.windowMinutes, localization: localization)
         self.periodLabel = periodLabel
@@ -690,6 +728,7 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
         self.dataState = StatusBarQuotaDataState(freshness: window.freshness)
 
         let remainingText = window.remainingPercent.map { localization.percent($0) } ?? "--"
+		self.remainingText = "\(periodLabel) \(remainingText)"
         let baseAccessibilityLabel: String
         if let tokens = Self.matchingPeriodTokens(window: window, overview: overview) {
             let total = Self.compact(tokens.total)
@@ -707,12 +746,6 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
             )
         }
         self.accessibilityLabel = baseAccessibilityLabel + dataState.accessibilitySuffix
-    }
-
-    public var remainingText: String {
-        let localization = AppLocalizationRegistry.shared.current
-        let percent = remainingPercent.map { localization.percent($0) } ?? "--"
-        return "\(periodLabel) \(percent)"
     }
 
     private static func preferredWindow(_ windows: [QuotaWindowPresentation]) -> QuotaWindowPresentation? {

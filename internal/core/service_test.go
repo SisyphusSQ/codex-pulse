@@ -92,14 +92,14 @@ func TestServiceDelegatesEphemeralAccountSnapshot(t *testing.T) {
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	got, err := service.AccountSnapshot(context.Background())
+	got, err := service.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Cursor})
 	if err != nil {
 		t.Fatalf("AccountSnapshot() error = %v", err)
 	}
 	if got.Account == nil || got.Account.Type != "chatgpt" || got.Account.Email == nil ||
 		*got.Account.Email != email || got.Account.PlanType == nil ||
-		*got.Account.PlanType != planType || account.calls != 1 {
-		t.Fatalf("AccountSnapshot() = %#v, calls = %d", got, account.calls)
+		*got.Account.PlanType != planType || account.calls != 1 || account.scope.Provider != agentprovider.Cursor {
+		t.Fatalf("AccountSnapshot() = %#v, calls = %d, scope = %#v", got, account.calls, account.scope)
 	}
 }
 
@@ -196,6 +196,7 @@ func (*usageQueryStub) ProjectDetail(context.Context, usagecost.ProjectDetailReq
 type accountSnapshotQueryStub struct {
 	snapshot AccountSnapshot
 	calls    int
+	scope    agentprovider.Scope
 }
 
 type pricingCatalogQueryStub struct{}
@@ -204,8 +205,9 @@ func (pricingCatalogQueryStub) Current(context.Context, agentprovider.Scope) (pr
 	return pricingcatalog.CurrentResponse{}, nil
 }
 
-func (stub *accountSnapshotQueryStub) AccountSnapshot(context.Context) (AccountSnapshot, error) {
+func (stub *accountSnapshotQueryStub) AccountSnapshot(_ context.Context, scope agentprovider.Scope) (AccountSnapshot, error) {
 	stub.calls++
+	stub.scope = scope
 	return stub.snapshot, nil
 }
 

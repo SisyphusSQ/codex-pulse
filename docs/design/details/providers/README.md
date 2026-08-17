@@ -23,6 +23,8 @@ Cursor 在业务页面中始终是一个完整客户端。Go Helper 在内部合
 
 DashboardService 使用 Cursor Desktop 已登录态在 `state.vscdb` 中维护的 access token。Helper 只在内存中读取并校验 JWT 有效期，按 Cursor Desktop 自身的 Bearer RPC 方式访问固定的 `api2.cursor.sh/aiserver.v1.DashboardService`；token 不进入 Codex Pulse SQLite、preferences、日志或 RPC。Dashboard 返回的 owner/email 等展示字段在解析边界即丢弃。
 
+Cursor 页面查询始终先刷新并读取本地 snapshot，再以 single-flight 后台任务按最小刷新间隔请求 DashboardService。远端成功或失败状态提交后只发送 query invalidation，Swift 随后重查本地 snapshot；网络延迟不阻塞首屏或菜单栏展开。账号胶囊同样不依赖 DashboardService：Helper 只从本地 `state.vscdb` 白名单读取 `cachedEmail`、`stripeMembershipType` 与订阅状态，绝不返回 token、refresh token 或 profile 原文。
+
 ## 身份、合并与持久化
 
 application schema v22 新增 Provider snapshot/source 表和 Cursor 本地事实表；v23 增加独立 Dashboard snapshot/usage event 表；v24 在保留 v23 last-good usage event 的前提下增加账期与 plan spending 摘要；v25 为 Cursor Session 增加安全的 `display_title` 与 `title_source`。Cursor Session 使用内部 surrogate key，并以 `(provider, external_session_id)` 唯一；所有查询身份都包含 Provider。
@@ -37,6 +39,7 @@ Snapshot 采用事务性全量替换：先验证所有白名单记录，再在�
 
 - Codex 保留 quota、reset、account/plan、Token、API-equivalent cost、Session 与 Project 能力。
 - Cursor 提供 Session、Project、Model、Tool、AI edits 和今日请求数；只有来源提供稳定精确事件时才提供 Token。
+- Cursor usage model 按官方事件中的 model key 分组，并为每个模型返回与总趋势相同粒度的 bucket；UI 只有在模型 bucket 无法与总量核对时才使用诚实的聚合降级，不把可识别模型压成“全部模型”。
 - 今日使用 App reporting timezone 的 `[00:00, now)`。
 - 只要观察到的请求存在缺失或冲突 Token，相关 Token 聚合就是 unknown；Cursor state 中 request 对应的 `0/0` tokenCount 是未提供值，不作为精确零持久化。不得按 transcript 长度、context usage 或其他指标估算。
 - Cursor Dashboard 的 `charged_cents`、Cursor Token fee 与 plan spending 作为 reported 数据分别回显，不进入 Codex/OpenAI pricing catalog。按 Cursor 官方 Models & Pricing 固定版本计算的费用只标记为 estimated；reported 与 estimated 在 contract 和 UI 中分开展示。
@@ -45,9 +48,9 @@ Snapshot 采用事务性全量替换：先验证所有白名单记录，再在�
 
 ## Swift 状态与竞态
 
-主窗口 `selectedProvider` 与菜单栏 `statusProvider` 独立持久化。主窗口切换客户端时清空详情、分页和错误状态，推进 request generation 并取消旧任务；只有 provider 与 generation 都匹配的响应才能落入 presentation state。Popover 切换只改变长期状态监控，显式“打开主窗口”才把对应客户端带到 Overview。
+主窗口 `selectedProvider` 与菜单栏 `statusProvider` 独立持久化，并分别由下拉框选择；Popover 的下拉框位于原产品标题位置。主窗口切换客户端时清空详情、分页和错误状态，推进 request generation 并取消旧页面任务，但不取消或重载菜单栏任务；只有 provider 与 generation 都匹配的响应才能落入对应 presentation state。Popover 使用独立的 `statusOverviewState` 请求完整状态快照，切换和刷新都不改变主窗口客户端，“打开主窗口”也只负责打开现有页面。连续 invalidation 期间状态栏刷新保持 single-flight，避免重复取消和重启同一批请求。
 
-菜单栏在 Codex 下保持既有额度展示；Cursor 下显示“今日请求数 · 今日 Token”。没有成功 Dashboard 快照和可靠本地 Token 时显示 `Token --`；有 last-known 时显示最后成功值，并在 Popover 标注数据截至时间。系统页可以同时观察所有客户端，但来源按 Codex/Cursor 分组，Cursor 内部来源只在该分组展开。
+菜单栏在 Codex 下保持既有额度展示；Cursor 下用与 Codex 相同的图标加双行摘要显示“今日请求数 · 今日 Token”，Popover 则复用账号/套餐胶囊、额度卡片、趋势卡片和消费进度卡片的视觉结构，不再直接罗列内部来源字段，也不重复展示“今日活动”卡片。没有成功 Dashboard 快照和可靠本地 Token 时显示 `Token --`；有 last-known 时显示最后成功值，并在 Popover 标注数据截至时间。系统页可以同时观察所有客户端，但来源按 Codex/Cursor 分组，Cursor 内部来源只在该分组展开。
 
 ## 隐私与验证
 

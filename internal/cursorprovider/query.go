@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
@@ -35,12 +36,19 @@ type Refresher interface {
 	Refresh(context.Context) error
 }
 
+type conditionalRefresher interface {
+	RefreshIfDue(context.Context) (bool, error)
+}
+
 type QueryService struct {
-	collector *Collector
-	dashboard Refresher
-	reader    SnapshotReader
-	sessions  basequery.Specification
-	projects  basequery.Specification
+	collector          *Collector
+	dashboard          Refresher
+	reader             SnapshotReader
+	sessions           basequery.Specification
+	projects           basequery.Specification
+	refreshMu          sync.Mutex
+	refreshing         bool
+	onDashboardRefresh func()
 }
 
 func NewQueryService(collector *Collector, reader SnapshotReader, dashboard ...Refresher) (*QueryService, error) {
@@ -88,19 +96,67 @@ func (service *QueryService) Refresh(ctx context.Context) error {
 	if err := service.collector.Refresh(ctx); err != nil {
 		return err
 	}
-	if service.dashboard != nil {
-		if err := service.dashboard.Refresh(ctx); err != nil {
-			return err
-		}
-	}
+	service.scheduleDashboardRefresh()
 	return nil
 }
 
 func (service *QueryService) snapshot(ctx context.Context) (store.CursorSnapshot, error) {
-	if err := service.Refresh(ctx); err != nil {
+	if service == nil || service.collector == nil || service.reader == nil {
+		return store.CursorSnapshot{}, ErrCollector
+	}
+	if err := service.collector.Refresh(ctx); err != nil {
 		return store.CursorSnapshot{}, err
 	}
-	return service.reader.CursorSnapshot(ctx)
+	snapshot, err := service.reader.CursorSnapshot(ctx)
+	if err != nil {
+		return store.CursorSnapshot{}, err
+	}
+	service.scheduleDashboardRefresh()
+	return snapshot, nil
+}
+
+// SetDashboardRefreshNotifier registers a lightweight invalidation callback.
+// Dashboard credentials and results stay inside the Helper; the callback only
+// tells clients to re-query the committed local snapshot.
+func (service *QueryService) SetDashboardRefreshNotifier(notifier func()) {
+	if service == nil {
+		return
+	}
+	service.refreshMu.Lock()
+	service.onDashboardRefresh = notifier
+	service.refreshMu.Unlock()
+}
+
+func (service *QueryService) scheduleDashboardRefresh() {
+	if service == nil || service.dashboard == nil {
+		return
+	}
+	service.refreshMu.Lock()
+	if service.refreshing {
+		service.refreshMu.Unlock()
+		return
+	}
+	service.refreshing = true
+	service.refreshMu.Unlock()
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		performed := true
+		var err error
+		if refresher, ok := service.dashboard.(conditionalRefresher); ok {
+			performed, err = refresher.RefreshIfDue(ctx)
+		} else {
+			err = service.dashboard.Refresh(ctx)
+		}
+		service.refreshMu.Lock()
+		service.refreshing = false
+		notifier := service.onDashboardRefresh
+		service.refreshMu.Unlock()
+		if performed && err == nil && notifier != nil {
+			notifier()
+		}
+	}()
 }
 
 func (service *QueryService) UsageCost(ctx context.Context, request usagecost.UsageCostRequest) (usagecost.UsageCostResponse, error) {
@@ -163,9 +219,9 @@ func (service *QueryService) UsageCost(ctx context.Context, request usagecost.Us
 	}
 	if !request.TokenTotalsOnly {
 		if dashboardAvailable {
-			response.Models = dashboardUsageModels(dashboardEvents)
+			response.Models = dashboardUsageModels(dashboardEvents, *rangeValue, request.Granularity)
 		} else {
-			response.Models = usageModels(events, exactUsage)
+			response.Models = usageModels(events, *rangeValue, request.Granularity, exactUsage)
 		}
 		if !dashboardAvailable && len(events) > 0 {
 			response.UnpricedReasons = []usagecost.ReasonCount{{
@@ -330,14 +386,14 @@ func (service *QueryService) SessionDetail(ctx context.Context, request usagecos
 		digestString("session-turns:" + session.ExternalSessionID)[:16],
 	)
 	item := sessionItem(*session, events, exactUsage)
-	models := usageModels(events, exactUsage)
+	models := usageModels(events, rangeValue, usagecost.TrendDay, exactUsage)
 	trend := usageTrend(events, rangeValue, usagecost.TrendDay, exactUsage)
 	meta := completeMeta(nil)
 	pricingVersions := []string{}
 	var pricingSource, currency *string
 	if useDashboard {
 		item = dashboardSessionItem(*session, sessionDashboardEvents)
-		models = dashboardUsageModels(sessionDashboardEvents)
+		models = dashboardUsageModels(sessionDashboardEvents, rangeValue, usagecost.TrendDay)
 		trend = dashboardUsageTrend(sessionDashboardEvents, rangeValue, usagecost.TrendDay)
 		if dashboardPartial || !dashboardAttributable {
 			meta = partialMeta(nil)
@@ -476,9 +532,9 @@ func (service *QueryService) ProjectDetail(ctx context.Context, request usagecos
 			Activity: item.Activity, LastActivityAt: item.LastActivityAt, Totals: item.Totals,
 		})
 	}
-	models := usageModels(selected.events, exactUsage)
+	models := usageModels(selected.events, *rangeValue, usagecost.TrendDay, exactUsage)
 	if useDashboard {
-		models = dashboardUsageModels(selected.dashboardEvents)
+		models = dashboardUsageModels(selected.dashboardEvents, *rangeValue, usagecost.TrendDay)
 	}
 	modelItems := make([]usagecost.ProjectModelItem, 0)
 	for _, item := range slicePage(models, modelOffset, modelLimit) {
@@ -926,7 +982,11 @@ func adaptiveCursorActivityBucketMinutes(rangeValue basequery.UTCTimeRange) int 
 	return activityBucketMinuteOptions[len(activityBucketMinuteOptions)-1]
 }
 
-func dashboardUsageModels(events []store.CursorDashboardUsageEvent) []usagecost.UsageModelItem {
+func dashboardUsageModels(
+	events []store.CursorDashboardUsageEvent,
+	rangeValue basequery.UTCTimeRange,
+	granularity usagecost.TrendGranularity,
+) []usagecost.UsageModelItem {
 	groups := make(map[string][]store.CursorDashboardUsageEvent)
 	for _, event := range events {
 		key := "unknown"
@@ -948,7 +1008,8 @@ func dashboardUsageModels(events []store.CursorDashboardUsageEvent) []usagecost.
 			model = &value
 		}
 		result = append(result, usagecost.UsageModelItem{
-			DimensionKey: key, Model: modelAttribution(model), Totals: totalsForDashboardEvents(groups[key]), Trend: []usagecost.TrendPoint{},
+			DimensionKey: key, Model: modelAttribution(model), Totals: totalsForDashboardEvents(groups[key]),
+			Trend: dashboardUsageTrend(groups[key], rangeValue, granularity),
 		})
 	}
 	return result
@@ -1090,7 +1151,12 @@ func cursorTrendKey(value time.Time, granularity usagecost.TrendGranularity) str
 	}
 }
 
-func usageModels(events []store.CursorUsageEvent, exact ...bool) []usagecost.UsageModelItem {
+func usageModels(
+	events []store.CursorUsageEvent,
+	rangeValue basequery.UTCTimeRange,
+	granularity usagecost.TrendGranularity,
+	exact ...bool,
+) []usagecost.UsageModelItem {
 	groups := make(map[string][]store.CursorUsageEvent)
 	for _, event := range events {
 		key := "unknown"
@@ -1111,7 +1177,10 @@ func usageModels(events []store.CursorUsageEvent, exact ...bool) []usagecost.Usa
 			value := key
 			model = &value
 		}
-		result = append(result, usagecost.UsageModelItem{DimensionKey: key, Model: modelAttribution(model), Totals: totalsForUsageEvents(groups[key], exact...), Trend: []usagecost.TrendPoint{}})
+		result = append(result, usagecost.UsageModelItem{
+			DimensionKey: key, Model: modelAttribution(model), Totals: totalsForUsageEvents(groups[key], exact...),
+			Trend: usageTrend(groups[key], rangeValue, granularity, exact...),
+		})
 	}
 	return result
 }

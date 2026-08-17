@@ -13,6 +13,7 @@ public protocol AppCoreServing: Sendable {
     ) async throws -> Codexpulse_Core_V1_BootstrapResponse
 
     func accountSnapshot(
+		_ request: Codexpulse_Core_V1_AccountSnapshotRequest,
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_AccountSnapshotResponse
 
@@ -142,6 +143,7 @@ public extension AppCoreServing {
 	}
 
     func accountSnapshot(
+		_ request: Codexpulse_Core_V1_AccountSnapshotRequest,
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_AccountSnapshotResponse {
         throw AppRuntimeError.unavailable
