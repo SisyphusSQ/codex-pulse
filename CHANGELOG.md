@@ -1,5 +1,14 @@
 ## Unreleased
 
+## v0.6.1 - 2026-08-17
+
+#### optimization:
+1. [PR #120] 优化主窗口与状态栏的 Provider 切换体验：复用目标 Provider 的已知概览与今日用量快照，允许独立页面先于完整 Overview 加载，并在刷新期间保留可用数据
+2. [PR #120] 优化 Cursor Provider 本地 snapshot 查询：进程内共享已提交快照，将本地扫描与 Dashboard 更新改为后台 single-flight 刷新，成功提交后失效缓存并发送统一 query invalidation
+
+#### bugFix:
+1. [PR #120] 修复状态栏概览仍等待不展示的 invocation/project 查询导致首屏延迟的问题，并补齐 Provider 切换、快照复用和刷新竞态回归覆盖
+
 ## v0.6.0 - 2026-08-17
 
 #### feature:
