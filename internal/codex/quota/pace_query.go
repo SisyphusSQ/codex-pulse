@@ -394,9 +394,9 @@ func paceObservationMatchesWindow(
 	observation store.QuotaObservation,
 ) bool {
 	durationMatches := current.WindowMinutes != nil && observation.WindowMinutes == *current.WindowMinutes
-	if observation.Source == store.QuotaSourceCursorDashboard && observation.WindowMinutes > 0 {
-		durationMatches = current.SelectedSource != nil &&
-			*current.SelectedSource == store.QuotaSourceCursorDashboard
+	if (observation.Source == store.QuotaSourceCursorDashboard ||
+		observation.Source == store.QuotaSourceGrokBilling) && observation.WindowMinutes > 0 {
+		durationMatches = current.SelectedSource != nil && *current.SelectedSource == observation.Source
 	}
 	return durationMatches &&
 		observation.AccountScope == current.AccountScope &&
@@ -452,7 +452,7 @@ func buildPaceCycle(
 		return PaceCycle{}, false
 	}
 	windowMinutes := *current.WindowMinutes
-	if source == store.QuotaSourceCursorDashboard {
+	if source == store.QuotaSourceCursorDashboard || source == store.QuotaSourceGrokBilling {
 		for _, observation := range observations {
 			if observation.Source == source && observation.ResetsAtMS == generation &&
 				observation.WindowMinutes > 0 {

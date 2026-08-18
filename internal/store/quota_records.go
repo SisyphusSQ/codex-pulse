@@ -9,6 +9,7 @@ const (
 	QuotaSourceLocalJSONL      QuotaSource = "local_jsonl"
 	QuotaSourceWham            QuotaSource = "wham"
 	QuotaSourceCursorDashboard QuotaSource = "cursor_dashboard"
+	QuotaSourceGrokBilling     QuotaSource = "grok_billing"
 )
 
 type QuotaWindowKind string

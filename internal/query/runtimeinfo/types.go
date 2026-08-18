@@ -308,6 +308,7 @@ type SettingsHomeSnapshot struct {
 type SettingsOnlineSnapshot struct {
 	QuotaEnabled        bool `json:"quotaEnabled"`
 	ResetCreditsEnabled bool `json:"resetCreditsEnabled"`
+	GrokQuotaEnabled    bool `json:"grokQuotaEnabled"`
 }
 
 type SettingsRefreshSnapshot struct {

@@ -298,6 +298,7 @@ func (api *grpcAPI) UpdateSettings(
 		Online: core.SettingsOnlineUpdate{
 			QuotaEnabled:        request.GetOnline().GetQuotaEnabled(),
 			ResetCreditsEnabled: request.GetOnline().GetResetCreditsEnabled(),
+			GrokQuotaEnabled:    request.GetOnline().GetGrokQuotaEnabled(),
 		},
 		Refresh: core.SettingsRefreshUpdate{
 			QuotaIntervalSeconds:        request.GetRefresh().GetQuotaIntervalSeconds(),

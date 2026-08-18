@@ -1,5 +1,7 @@
 package preferences
 
+import "encoding/json"
+
 const (
 	CurrentPreferencesSchemaVersion = 2
 	DefaultDataStoreKey             = "default"
@@ -62,6 +64,29 @@ type CodexHomePreferences struct {
 type OnlinePreferences struct {
 	QuotaEnabled        bool `json:"quota_enabled"`
 	ResetCreditsEnabled bool `json:"reset_credits_enabled"`
+	GrokQuotaEnabled    bool `json:"grok_quota_enabled"`
+}
+
+func (value *OnlinePreferences) UnmarshalJSON(content []byte) error {
+	var raw struct {
+		QuotaEnabled        *bool `json:"quota_enabled"`
+		ResetCreditsEnabled *bool `json:"reset_credits_enabled"`
+		GrokQuotaEnabled    *bool `json:"grok_quota_enabled"`
+	}
+	if err := json.Unmarshal(content, &raw); err != nil {
+		return err
+	}
+	if raw.QuotaEnabled == nil || raw.ResetCreditsEnabled == nil {
+		return ErrInvalidPreferences
+	}
+	value.QuotaEnabled = *raw.QuotaEnabled
+	value.ResetCreditsEnabled = *raw.ResetCreditsEnabled
+	if raw.GrokQuotaEnabled == nil {
+		value.GrokQuotaEnabled = true
+		return nil
+	}
+	value.GrokQuotaEnabled = *raw.GrokQuotaEnabled
+	return nil
 }
 
 type RefreshPreferences struct {

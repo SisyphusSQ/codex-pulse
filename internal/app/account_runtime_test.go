@@ -12,6 +12,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
 	"github.com/SisyphusSQ/codex-pulse/internal/cursorprovider"
+	"github.com/SisyphusSQ/codex-pulse/internal/grokprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 )
 
@@ -45,6 +46,26 @@ func TestAccountSnapshotDoesNotStartReaderAfterConfirmedHomeSwitch(t *testing.T)
 	}
 	if readerCalls != 0 {
 		t.Fatalf("account reader calls = %d, want 0", readerCalls)
+	}
+}
+
+func TestAccountSnapshotReadsGrokIdentityFromAuthWhitelist(t *testing.T) {
+	runtime := &applicationLifecycleRuntime{
+		grokAccountReader: func() (grokprovider.AccountSnapshot, error) {
+			return grokprovider.AccountSnapshot{Email: "person@example.com", PrincipalType: "User"}, nil
+		},
+	}
+	account, err := runtime.AccountSnapshot(
+		context.Background(),
+		agentprovider.Scope{Provider: agentprovider.Grok},
+	)
+	if err != nil {
+		t.Fatalf("AccountSnapshot(grok) error = %v", err)
+	}
+	if account.Account == nil || account.Account.Type != agentprovider.Grok ||
+		account.Account.Email == nil || *account.Account.Email != "person@example.com" ||
+		account.Account.PlanType == nil || *account.Account.PlanType != "User" {
+		t.Fatalf("AccountSnapshot(grok) = %#v", account)
 	}
 }
 

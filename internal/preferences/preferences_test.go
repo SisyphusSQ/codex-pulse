@@ -46,7 +46,7 @@ func TestFileStoreConfirmCreatesCurrentTypedPreferences(t *testing.T) {
 		t.Fatalf("CodexHome = %#v, want source=%#v generation=1 data-store=%q",
 			got.CodexHome, onboarding.CodexHome, DefaultDataStoreKey)
 	}
-	if got.Online != (OnlinePreferences{QuotaEnabled: true, ResetCreditsEnabled: false}) {
+	if got.Online != (OnlinePreferences{QuotaEnabled: true, ResetCreditsEnabled: false, GrokQuotaEnabled: true}) {
 		t.Fatalf("Online = %#v", got.Online)
 	}
 	if got.Refresh != DefaultRefreshPreferences() || got.Updates != DefaultUpdatePreferences() ||

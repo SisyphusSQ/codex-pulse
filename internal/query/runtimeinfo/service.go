@@ -37,20 +37,20 @@ type ProviderSourceRefresher interface {
 }
 
 type Dependencies struct {
-	Quota       QuotaReader
-	Runtime     RuntimeReader
-	Preferences PreferencesReader
+	Quota           QuotaReader
+	Runtime         RuntimeReader
+	Preferences     PreferencesReader
 	ProviderSources ProviderSourceRefresher
 }
 
 type Service struct {
-	quota       QuotaReader
-	runtime     RuntimeReader
-	preferences PreferencesReader
+	quota           QuotaReader
+	runtime         RuntimeReader
+	preferences     PreferencesReader
 	providerSources ProviderSourceRefresher
-	sourceSpec  basequery.Specification
-	jobSpec     basequery.Specification
-	healthSpec  basequery.Specification
+	sourceSpec      basequery.Specification
+	jobSpec         basequery.Specification
+	healthSpec      basequery.Specification
 }
 
 func NewService(dependencies Dependencies) (*Service, error) {

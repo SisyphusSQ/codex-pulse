@@ -8,8 +8,10 @@ const (
 	ContractVersion  = "pricing-catalog-v1"
 	BasisStandard    = "openai_api_standard_short_context_text"
 	BasisCursor      = "cursor_published_model_token_rates"
+	BasisGrok        = "xai_published_model_token_rates"
 	SourceOpenAIAPI  = "openai-api"
 	SourceCursorDocs = "cursor_pricing_docs"
+	SourceXAIDocs    = "xai_pricing_docs"
 	CurrencyUSD      = "USD"
 	UnitTokens       = int64(1_000_000)
 )

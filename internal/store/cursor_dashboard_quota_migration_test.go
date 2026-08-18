@@ -44,9 +44,9 @@ func TestApplicationMigrationV26AddsCursorQuotaHistoryWithoutLosingDashboardSnap
 	if err != nil {
 		t.Fatalf("run(v26) error = %v", err)
 	}
-	if report.FromVersion != 25 || report.TargetVersion != 26 ||
-		!equalInts(report.AppliedVersions, []int{26}) || backupVersions != [2]int{25, 26} {
-		t.Fatalf("run(v26) report = %#v backup=%v", report, backupVersions)
+	if report.FromVersion != 25 || report.TargetVersion != 27 ||
+		!equalInts(report.AppliedVersions, []int{26, 27}) || backupVersions != [2]int{25, 27} {
+		t.Fatalf("run(v27) report = %#v backup=%v", report, backupVersions)
 	}
 
 	if err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {

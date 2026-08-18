@@ -9087,6 +9087,7 @@ type SettingsOnlineSnapshot struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	QuotaEnabled        bool                   `protobuf:"varint,1,opt,name=quota_enabled,json=quotaEnabled,proto3" json:"quota_enabled,omitempty"`
 	ResetCreditsEnabled bool                   `protobuf:"varint,2,opt,name=reset_credits_enabled,json=resetCreditsEnabled,proto3" json:"reset_credits_enabled,omitempty"`
+	GrokQuotaEnabled    bool                   `protobuf:"varint,3,opt,name=grok_quota_enabled,json=grokQuotaEnabled,proto3" json:"grok_quota_enabled,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -9131,6 +9132,13 @@ func (x *SettingsOnlineSnapshot) GetQuotaEnabled() bool {
 func (x *SettingsOnlineSnapshot) GetResetCreditsEnabled() bool {
 	if x != nil {
 		return x.ResetCreditsEnabled
+	}
+	return false
+}
+
+func (x *SettingsOnlineSnapshot) GetGrokQuotaEnabled() bool {
+	if x != nil {
+		return x.GrokQuotaEnabled
 	}
 	return false
 }
@@ -9519,6 +9527,7 @@ type SettingsOnlineUpdate struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	QuotaEnabled        bool                   `protobuf:"varint,1,opt,name=quota_enabled,json=quotaEnabled,proto3" json:"quota_enabled,omitempty"`
 	ResetCreditsEnabled bool                   `protobuf:"varint,2,opt,name=reset_credits_enabled,json=resetCreditsEnabled,proto3" json:"reset_credits_enabled,omitempty"`
+	GrokQuotaEnabled    bool                   `protobuf:"varint,3,opt,name=grok_quota_enabled,json=grokQuotaEnabled,proto3" json:"grok_quota_enabled,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -9563,6 +9572,13 @@ func (x *SettingsOnlineUpdate) GetQuotaEnabled() bool {
 func (x *SettingsOnlineUpdate) GetResetCreditsEnabled() bool {
 	if x != nil {
 		return x.ResetCreditsEnabled
+	}
+	return false
+}
+
+func (x *SettingsOnlineUpdate) GetGrokQuotaEnabled() bool {
+	if x != nil {
+		return x.GrokQuotaEnabled
 	}
 	return false
 }
@@ -12288,10 +12304,11 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"generation\x12#\n" +
 	"\rswitch_status\x18\x03 \x01(\tR\fswitchStatus\x123\n" +
 	"\x13last_switch_outcome\x18\x04 \x01(\tH\x00R\x11lastSwitchOutcome\x88\x01\x01B\x16\n" +
-	"\x14_last_switch_outcome\"q\n" +
+	"\x14_last_switch_outcome\"\x9f\x01\n" +
 	"\x16SettingsOnlineSnapshot\x12#\n" +
 	"\rquota_enabled\x18\x01 \x01(\bR\fquotaEnabled\x122\n" +
-	"\x15reset_credits_enabled\x18\x02 \x01(\bR\x13resetCreditsEnabled\"\x92\x02\n" +
+	"\x15reset_credits_enabled\x18\x02 \x01(\bR\x13resetCreditsEnabled\x12,\n" +
+	"\x12grok_quota_enabled\x18\x03 \x01(\bR\x10grokQuotaEnabled\"\x92\x02\n" +
 	"\x17SettingsRefreshSnapshot\x124\n" +
 	"\x16quota_interval_seconds\x18\x01 \x01(\x03R\x14quotaIntervalSeconds\x12C\n" +
 	"\x1ereset_credits_interval_seconds\x18\x02 \x01(\x03R\x1bresetCreditsIntervalSeconds\x12<\n" +
@@ -12322,10 +12339,11 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x10SettingsResponse\x124\n" +
 	"\x04meta\x18\x01 \x01(\v2 .codexpulse.core.v1.ResponseMetaR\x04meta\x12@\n" +
 	"\bsnapshot\x18\x02 \x01(\v2$.codexpulse.core.v1.SettingsSnapshotR\bsnapshot\x12J\n" +
-	"\x0feditable_fields\x18\x03 \x03(\v2!.codexpulse.core.v1.EditableFieldR\x0eeditableFields\"o\n" +
+	"\x0feditable_fields\x18\x03 \x03(\v2!.codexpulse.core.v1.EditableFieldR\x0eeditableFields\"\x9d\x01\n" +
 	"\x14SettingsOnlineUpdate\x12#\n" +
 	"\rquota_enabled\x18\x01 \x01(\bR\fquotaEnabled\x122\n" +
-	"\x15reset_credits_enabled\x18\x02 \x01(\bR\x13resetCreditsEnabled\"\x90\x02\n" +
+	"\x15reset_credits_enabled\x18\x02 \x01(\bR\x13resetCreditsEnabled\x12,\n" +
+	"\x12grok_quota_enabled\x18\x03 \x01(\bR\x10grokQuotaEnabled\"\x90\x02\n" +
 	"\x15SettingsRefreshUpdate\x124\n" +
 	"\x16quota_interval_seconds\x18\x01 \x01(\x03R\x14quotaIntervalSeconds\x12C\n" +
 	"\x1ereset_credits_interval_seconds\x18\x02 \x01(\x03R\x1bresetCreditsIntervalSeconds\x12<\n" +

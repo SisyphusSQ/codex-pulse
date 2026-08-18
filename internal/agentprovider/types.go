@@ -10,6 +10,7 @@ import (
 const (
 	Codex  = "codex"
 	Cursor = "cursor"
+	Grok   = "grok"
 )
 
 var ErrInvalidProvider = errors.New("agent provider is invalid")
@@ -24,6 +25,8 @@ func Normalize(value string) (string, error) {
 		return Codex, nil
 	case Cursor:
 		return Cursor, nil
+	case Grok:
+		return Grok, nil
 	default:
 		return "", ErrInvalidProvider
 	}
@@ -55,6 +58,21 @@ func CodexContext() Context {
 			{Capability: "sessions", State: "available", Source: "codex_local_jsonl", Reason: "structured_events"},
 			{Capability: "tokens", State: "available", Source: "codex_local_jsonl", Reason: "usage_events"},
 			{Capability: "quota", State: "available", Source: "codex_app_server", Reason: "provider_quota"},
+		},
+	}
+}
+
+func GrokContext() Context {
+	return Context{
+		EffectiveProvider: Grok,
+		Sources:           []string{"grok.summary", "grok.updates", "grok.billing"},
+		Capabilities: []string{
+			"account", "quota", "sessions", "projects", "models", "tools", "tokens", "reported_cost", "estimated_cost",
+		},
+		Coverage: []Coverage{
+			{Capability: "sessions", State: "available", Source: "grok.summary", Reason: "summary_json"},
+			{Capability: "tokens", State: "available", Source: "grok.updates", Reason: "turn_completed_usage"},
+			{Capability: "quota", State: "available", Source: "grok.billing", Reason: "cli_proxy_credits"},
 		},
 	}
 }

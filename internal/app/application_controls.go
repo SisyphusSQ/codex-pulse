@@ -35,6 +35,7 @@ func (runtime *applicationLifecycleRuntime) UpdateSettings(
 		Online: preferences.OnlinePreferences{
 			QuotaEnabled:        request.Online.QuotaEnabled,
 			ResetCreditsEnabled: request.Online.ResetCreditsEnabled,
+			GrokQuotaEnabled:    request.Online.GrokQuotaEnabled,
 		},
 		Refresh: preferences.RefreshPreferences{
 			QuotaIntervalSeconds:        request.Refresh.QuotaIntervalSeconds,
