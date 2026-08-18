@@ -18,6 +18,7 @@ var ErrBillingProtocol = errors.New("grok billing protocol is unavailable")
 const (
 	maxBillingResponseBytes = 1 << 20
 	grokCreditsLimitID      = "grok.included_credits"
+	grokOnDemandLimitID     = "grok.on_demand"
 )
 
 type TokenSource interface {
@@ -104,15 +105,15 @@ func (client *BillingClient) GetCredits(ctx context.Context) (BillingCredits, er
 }
 
 type billingCreditsDTO struct {
-	CreditUsagePercent   *float64       `json:"creditUsagePercent"`
-	CurrentPeriod        *billingPeriod `json:"currentPeriod"`
-	OnDemandUsed         *float64       `json:"onDemandUsed"`
-	OnDemandCap          *float64       `json:"onDemandCap"`
-	PrepaidBalance       *float64       `json:"prepaidBalance"`
-	SubscriptionTier     *string        `json:"subscriptionTier"`
-	IsUnifiedBillingUser *bool          `json:"isUnifiedBillingUser"`
-	MonthlyLimit         *float64       `json:"monthlyLimit"`
-	Used                 *float64       `json:"used"`
+	CreditUsagePercent   json.RawMessage `json:"creditUsagePercent"`
+	CurrentPeriod        *billingPeriod  `json:"currentPeriod"`
+	OnDemandUsed         json.RawMessage `json:"onDemandUsed"`
+	OnDemandCap          json.RawMessage `json:"onDemandCap"`
+	PrepaidBalance       json.RawMessage `json:"prepaidBalance"`
+	SubscriptionTier     *string         `json:"subscriptionTier"`
+	IsUnifiedBillingUser *bool           `json:"isUnifiedBillingUser"`
+	MonthlyLimit         json.RawMessage `json:"monthlyLimit"`
+	Used                 json.RawMessage `json:"used"`
 }
 
 type billingPeriod struct {
@@ -122,9 +123,9 @@ type billingPeriod struct {
 }
 
 func decodeBillingCredits(body []byte) (BillingCredits, error) {
-	var payload billingCreditsDTO
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return BillingCredits{}, fmt.Errorf("%w: decode credits", ErrBillingProtocol)
+	payload, tier, err := unwrapBillingPayload(body)
+	if err != nil {
+		return BillingCredits{}, err
 	}
 	used, ok := creditUsedPercent(payload)
 	if !ok {
@@ -134,14 +135,17 @@ func decodeBillingCredits(body []byte) (BillingCredits, error) {
 	if !ok {
 		return BillingCredits{}, fmt.Errorf("%w: billing period missing", ErrBillingProtocol)
 	}
+	if payload.SubscriptionTier != nil {
+		tier = payload.SubscriptionTier
+	}
 	result := BillingCredits{
 		UsedPercent: used, PeriodType: periodType, PeriodStartMS: startMS, PeriodEndMS: endMS,
-		OnDemandUsed:   finiteOptional(payload.OnDemandUsed),
-		OnDemandCap:    finiteOptional(payload.OnDemandCap),
-		PrepaidBalance: finiteOptional(payload.PrepaidBalance),
+		OnDemandUsed:   decodeFlexibleAmount(payload.OnDemandUsed),
+		OnDemandCap:    decodeFlexibleAmount(payload.OnDemandCap),
+		PrepaidBalance: decodeFlexibleAmount(payload.PrepaidBalance),
 	}
-	if payload.SubscriptionTier != nil {
-		if label := normalizeLabel(*payload.SubscriptionTier); label != "" {
+	if tier != nil {
+		if label := normalizeLabel(*tier); label != "" {
 			result.SubscriptionTier = &label
 		}
 	}
@@ -151,16 +155,56 @@ func decodeBillingCredits(body []byte) (BillingCredits, error) {
 	return result, nil
 }
 
-func creditUsedPercent(payload billingCreditsDTO) (float64, bool) {
-	if payload.CreditUsagePercent != nil {
-		return finitePercent(*payload.CreditUsagePercent)
+func unwrapBillingPayload(body []byte) (billingCreditsDTO, *string, error) {
+	var envelope struct {
+		Config           json.RawMessage `json:"config"`
+		SubscriptionTier *string         `json:"subscriptionTier"`
 	}
-	if payload.MonthlyLimit != nil && payload.Used != nil && *payload.MonthlyLimit > 0 &&
-		!math.IsNaN(*payload.MonthlyLimit) && !math.IsInf(*payload.MonthlyLimit, 0) &&
-		!math.IsNaN(*payload.Used) && !math.IsInf(*payload.Used, 0) && *payload.Used >= 0 {
-		return finitePercent(*payload.Used / *payload.MonthlyLimit * 100)
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return billingCreditsDTO{}, nil, fmt.Errorf("%w: decode credits", ErrBillingProtocol)
+	}
+	payloadBytes := body
+	if len(envelope.Config) > 0 && string(envelope.Config) != "null" {
+		payloadBytes = envelope.Config
+	}
+	var payload billingCreditsDTO
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		return billingCreditsDTO{}, nil, fmt.Errorf("%w: decode credits", ErrBillingProtocol)
+	}
+	return payload, envelope.SubscriptionTier, nil
+}
+
+func creditUsedPercent(payload billingCreditsDTO) (float64, bool) {
+	if percent := decodeFlexibleNumber(payload.CreditUsagePercent); percent != nil {
+		return finitePercent(*percent)
+	}
+	limit := decodeFlexibleNumber(payload.MonthlyLimit)
+	used := decodeFlexibleNumber(payload.Used)
+	if limit != nil && used != nil && *limit > 0 && *used >= 0 {
+		return finitePercent(*used / *limit * 100)
 	}
 	return 0, false
+}
+
+func decodeFlexibleNumber(raw json.RawMessage) *float64 {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var number float64
+	if json.Unmarshal(raw, &number) == nil {
+		return &number
+	}
+	var object struct {
+		Val float64 `json:"val"`
+	}
+	if json.Unmarshal(raw, &object) == nil {
+		return &object.Val
+	}
+	return nil
+}
+
+func decodeFlexibleAmount(raw json.RawMessage) *float64 {
+	return finiteOptional(decodeFlexibleNumber(raw))
 }
 
 func decodeBillingPeriod(period *billingPeriod) (string, int64, int64, bool) {

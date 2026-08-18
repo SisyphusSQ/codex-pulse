@@ -28,10 +28,21 @@ type SnapshotWriter interface {
 }
 
 type Collector struct {
-	writer SnapshotWriter
-	config Config
-	mu     sync.Mutex
-	last   time.Time
+	writer         SnapshotWriter
+	config         Config
+	mu             sync.Mutex
+	last           time.Time
+	updatesCursors map[string]updatesFileCursor
+}
+
+type updatesFileCursor struct {
+	size     int64
+	modNano  int64
+	offset   int64
+	usage    []store.GrokUsageEvent
+	tools    []store.GrokToolEvent
+	turns    map[string]int64
+	newTools map[string]int64
 }
 
 func NewCollector(writer SnapshotWriter, config Config) (*Collector, error) {
@@ -44,7 +55,7 @@ func NewCollector(writer SnapshotWriter, config Config) (*Collector, error) {
 	if config.MinimumRefresh < 0 {
 		return nil, ErrCollector
 	}
-	return &Collector{writer: writer, config: config}, nil
+	return &Collector{writer: writer, config: config, updatesCursors: map[string]updatesFileCursor{}}, nil
 }
 
 func (collector *Collector) Refresh(ctx context.Context) error {
@@ -62,13 +73,14 @@ func (collector *Collector) RefreshIfDue(ctx context.Context) (bool, error) {
 	if !collector.last.IsZero() && now.Sub(collector.last) < collector.config.MinimumRefresh {
 		return false, nil
 	}
-	snapshot := collectGrokHome(ctx, collector.config, now.UnixMilli())
+	snapshot, cursors := collectGrokHome(ctx, collector.config, collector.updatesCursors, now.UnixMilli())
 	if err := ctx.Err(); err != nil {
 		return true, err
 	}
 	if err := collector.writer.ReplaceGrokSnapshot(ctx, snapshot); err != nil {
 		return true, fmt.Errorf("%w: persist snapshot: %w", ErrCollector, err)
 	}
+	collector.updatesCursors = cursors
 	collector.last = now
 	return true, nil
 }
@@ -81,7 +93,12 @@ type collectedSnapshot struct {
 	tools    map[string]store.GrokToolEvent
 }
 
-func collectGrokHome(ctx context.Context, config Config, atMS int64) store.GrokSnapshot {
+func collectGrokHome(
+	ctx context.Context,
+	config Config,
+	previous map[string]updatesFileCursor,
+	atMS int64,
+) (store.GrokSnapshot, map[string]updatesFileCursor) {
 	snapshot := collectedSnapshot{
 		GrokSnapshot: store.GrokSnapshot{Generation: atMS, CollectedAtMS: atMS},
 		sessions:     make(map[string]*store.GrokSession),
@@ -90,14 +107,14 @@ func collectGrokHome(ctx context.Context, config Config, atMS int64) store.GrokS
 		tools:        make(map[string]store.GrokToolEvent),
 	}
 	summaryState := scanSummaries(ctx, config.SessionsRoot, &snapshot, atMS)
-	updatesState := scanUpdates(ctx, config.SessionsRoot, &snapshot, atMS)
+	updatesState, cursors := scanUpdates(ctx, config.SessionsRoot, previous, &snapshot, atMS)
 	snapshot.Sources = []store.CursorSourceStatus{
 		summaryState,
 		updatesState,
 		notConfiguredSource(SourceSessionSearch, "sqlite_fts", atMS),
 	}
 	snapshot.finalize()
-	return snapshot.GrokSnapshot
+	return snapshot.GrokSnapshot, cursors
 }
 
 func scanSummaries(ctx context.Context, root string, snapshot *collectedSnapshot, atMS int64) store.CursorSourceStatus {
@@ -218,15 +235,22 @@ func mergeSummary(path string, snapshot *collectedSnapshot, atMS int64) bool {
 	return true
 }
 
-func scanUpdates(ctx context.Context, root string, snapshot *collectedSnapshot, atMS int64) store.CursorSourceStatus {
+func scanUpdates(
+	ctx context.Context,
+	root string,
+	previous map[string]updatesFileCursor,
+	snapshot *collectedSnapshot,
+	atMS int64,
+) (store.CursorSourceStatus, map[string]updatesFileCursor) {
 	status := store.CursorSourceStatus{
 		Provider: "grok", SourceKey: SourceUpdates, SourceType: "filesystem_scan",
 		State: "unavailable", CoverageState: "unknown", CheckpointKind: "filesystem_scan",
 		LastAttemptAtMS: atMS, UpdatedAtMS: atMS,
 	}
+	cursors := map[string]updatesFileCursor{}
 	if _, err := os.Stat(root); err != nil {
 		status.FailureCode = pointerString(filesystemFailure(err))
-		return status
+		return status, cursors
 	}
 	count := 0
 	walkErr := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkError error) error {
@@ -236,26 +260,31 @@ func scanUpdates(ctx context.Context, root string, snapshot *collectedSnapshot, 
 		if walkError != nil || entry.IsDir() || entry.Name() != "updates.jsonl" {
 			return nil
 		}
-		count += mergeUpdates(path, snapshot, atMS)
+		accepted, cursor := mergeUpdates(path, previous[path], snapshot, atMS)
+		cursors[path] = cursor
+		count += accepted
 		return nil
 	})
 	status.RowCount = int64(len(snapshot.usage) + len(snapshot.tools))
+	if digest := updatesCheckpointDigest(cursors); digest != "" {
+		status.CheckpointValue = &digest
+	}
 	if walkErr != nil && !errors.Is(walkErr, context.Canceled) {
 		status.FailureCode = pointerString("read_failed")
 		status.State = "partial"
 		status.CoverageState = "partial"
-		return status
+		return status, cursors
 	}
 	if count == 0 && len(snapshot.usage) == 0 && len(snapshot.tools) == 0 {
 		status.State = "available"
 		status.CoverageState = "unknown"
 		status.LastSuccessAtMS = &atMS
-		return status
+		return status, cursors
 	}
 	status.State = "available"
 	status.CoverageState = "exact"
 	status.LastSuccessAtMS = &atMS
-	return status
+	return status, cursors
 }
 
 type updatesEnvelope struct {
@@ -289,21 +318,46 @@ type grokUsageDTO struct {
 	ModelUsage          map[string]grokUsageDTO `json:"modelUsage"`
 }
 
-func mergeUpdates(path string, snapshot *collectedSnapshot, atMS int64) int {
+func mergeUpdates(
+	path string,
+	previous updatesFileCursor,
+	snapshot *collectedSnapshot,
+	atMS int64,
+) (int, updatesFileCursor) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, updatesFileCursor{}
+	}
+	unchanged := previous.size > 0 && previous.size == info.Size() && previous.modNano == info.ModTime().UnixNano()
+	if unchanged {
+		replayUpdatesCursor(previous, snapshot)
+		return len(previous.usage) + len(previous.tools), previous
+	}
 	file, err := os.Open(path)
 	if err != nil {
-		return 0
+		return 0, updatesFileCursor{}
 	}
 	defer file.Close()
+	canAppend := previous.offset > 0 && info.Size() > previous.size && previous.offset <= info.Size()
+	if canAppend {
+		if _, err := file.Seek(previous.offset, io.SeekStart); err != nil {
+			canAppend = false
+			if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
+				return 0, updatesFileCursor{}
+			}
+		}
+	}
+	if canAppend {
+		replayUpdatesCursor(previous, snapshot)
+	}
 	sessionID := normalizeID(filepath.Base(filepath.Dir(path)))
+	beforeRequests, beforeTools := sessionCounts(snapshot, sessionID)
 	reader := bufio.NewReaderSize(file, 64*1024)
 	accepted := 0
 	for {
 		line, err := readLimitedLine(reader, maxUpdatesLineBytes)
-		if len(line) > 0 {
-			if mergeUpdatesLine(line, sessionID, snapshot, atMS) {
-				accepted++
-			}
+		if len(line) > 0 && mergeUpdatesLine(line, sessionID, snapshot, atMS) {
+			accepted++
 		}
 		if errors.Is(err, io.EOF) {
 			break
@@ -312,7 +366,111 @@ func mergeUpdates(path string, snapshot *collectedSnapshot, atMS int64) int {
 			break
 		}
 	}
-	return accepted
+	offset, _ := file.Seek(0, io.SeekCurrent)
+	afterRequests, afterTools := sessionCounts(snapshot, sessionID)
+	cursor := updatesFileCursor{
+		size: info.Size(), modNano: info.ModTime().UnixNano(), offset: offset,
+		usage: fileUsageEvents(snapshot, sessionID), tools: fileToolEvents(snapshot, sessionID),
+		turns:    map[string]int64{},
+		newTools: map[string]int64{},
+	}
+	if canAppend {
+		cursor.turns = cloneInt64Map(previous.turns)
+		cursor.newTools = cloneInt64Map(previous.newTools)
+	}
+	if afterRequests > beforeRequests {
+		cursor.turns[sessionID] += afterRequests - beforeRequests
+	}
+	if afterTools > beforeTools {
+		cursor.newTools[sessionID] += afterTools - beforeTools
+	}
+	if canAppend {
+		accepted += len(previous.usage) + len(previous.tools)
+	}
+	return accepted, cursor
+}
+
+func replayUpdatesCursor(cursor updatesFileCursor, snapshot *collectedSnapshot) {
+	for _, event := range cursor.usage {
+		snapshot.usage[event.EventID] = event
+		session := snapshot.session(event.ExternalSessionID, event.OccurredAtMS, event.OccurredAtMS)
+		if event.ModelKey != nil {
+			session.ModelKey = event.ModelKey
+		}
+	}
+	for _, event := range cursor.tools {
+		if _, exists := snapshot.tools[event.EventID]; !exists {
+			snapshot.tools[event.EventID] = event
+		}
+	}
+	for sessionID, count := range cursor.turns {
+		snapshot.session(sessionID, 0, 0).RequestCount += count
+	}
+	for sessionID, count := range cursor.newTools {
+		snapshot.session(sessionID, 0, 0).ToolCallCount += count
+	}
+}
+
+func sessionCounts(snapshot *collectedSnapshot, sessionID string) (int64, int64) {
+	session := snapshot.sessions[sessionID]
+	if session == nil {
+		return 0, 0
+	}
+	return session.RequestCount, session.ToolCallCount
+}
+
+func fileUsageEvents(snapshot *collectedSnapshot, sessionID string) []store.GrokUsageEvent {
+	events := make([]store.GrokUsageEvent, 0)
+	for _, event := range snapshot.usage {
+		if event.ExternalSessionID == sessionID {
+			events = append(events, event)
+		}
+	}
+	return events
+}
+
+func fileToolEvents(snapshot *collectedSnapshot, sessionID string) []store.GrokToolEvent {
+	events := make([]store.GrokToolEvent, 0)
+	for _, event := range snapshot.tools {
+		if event.ExternalSessionID == sessionID {
+			events = append(events, event)
+		}
+	}
+	return events
+}
+
+func cloneInt64Map(values map[string]int64) map[string]int64 {
+	cloned := make(map[string]int64, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func updatesCheckpointDigest(cursors map[string]updatesFileCursor) string {
+	if len(cursors) == 0 {
+		return ""
+	}
+	paths := make([]string, 0, len(cursors))
+	for path := range cursors {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	builder := strings.Builder{}
+	for _, path := range paths {
+		cursor := cursors[path]
+		builder.WriteString(filepath.Base(filepath.Dir(path)))
+		builder.WriteByte(':')
+		builder.WriteString(strconv.FormatInt(cursor.size, 10))
+		builder.WriteByte(':')
+		builder.WriteString(strconv.FormatInt(cursor.offset, 10))
+		builder.WriteByte(';')
+	}
+	digest := digestString(builder.String())
+	if len(digest) > 128 {
+		return digest[:128]
+	}
+	return digest
 }
 
 func mergeUpdatesLine(line []byte, fallbackSession string, snapshot *collectedSnapshot, atMS int64) bool {

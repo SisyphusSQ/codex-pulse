@@ -129,16 +129,38 @@ func grokQuotaSnapshot(snapshot store.GrokSnapshot, evaluatedAtMS int64, stale b
 	minutes := (billing.PeriodEndMS - billing.PeriodStartMS) / 60_000
 	reset := billing.PeriodEndMS
 	used := billing.UsedPercent
+	result.Windows = append(result.Windows, grokQuotaWindow(
+		billing, limitID, name, used, minutes, reset, evaluatedAtMS, stale,
+	))
+	if percent, ok := onDemandUsedPercent(BillingCredits{
+		OnDemandUsed: billing.OnDemandUsed, OnDemandCap: billing.OnDemandCap,
+	}); ok {
+		onDemandName := grokQuotaLimitName(grokOnDemandLimitID, snapshot)
+		result.Windows = append(result.Windows, grokQuotaWindow(
+			billing, grokOnDemandLimitID, onDemandName, percent, minutes, reset, evaluatedAtMS, stale,
+		))
+	}
+	return result
+}
+
+func grokQuotaWindow(
+	billing *store.GrokBillingSnapshot,
+	limitID, name string,
+	used float64,
+	minutes, reset, evaluatedAtMS int64,
+	stale bool,
+) store.QuotaCurrentWindowSnapshot {
 	source := store.QuotaSourceGrokBilling
 	freshness := store.QuotaCurrentFresh
 	if stale {
 		freshness = store.QuotaCurrentStale
 	}
 	observationID := fmt.Sprintf("grok-billing:%d:%s", billing.Generation, limitID)
-	result.Windows = append(result.Windows, store.QuotaCurrentWindowSnapshot{
+	usedCopy := used
+	return store.QuotaCurrentWindowSnapshot{
 		Current: store.QuotaCurrent{
 			AccountScope: store.QuotaAccountScopeDefault, WindowKind: grokQuotaWindowKind(billing.PeriodType),
-			LimitID: limitID, ObservationID: &observationID, EffectiveUsedPercent: &used,
+			LimitID: limitID, ObservationID: &observationID, EffectiveUsedPercent: &usedCopy,
 			WindowMinutes: &minutes, ResetsAtMS: &reset, WindowGeneration: &reset,
 			SelectedSource: &source, FreshnessState: freshness,
 			ConflictState: store.QuotaConflictNone, LastSuccessAtMS: &billing.CollectedAtMS,
@@ -154,8 +176,7 @@ func grokQuotaSnapshot(snapshot store.GrokSnapshot, evaluatedAtMS int64, stale b
 			SampleCount: 1, FirstSourceGeneration: billing.Generation, SourceGeneration: billing.Generation,
 		}},
 		Evidence: []store.QuotaArbitrationEvidence{},
-	})
-	return result
+	}
 }
 
 func grokQuotaWindowKind(periodType string) store.QuotaWindowKind {
@@ -166,6 +187,9 @@ func grokQuotaWindowKind(periodType string) store.QuotaWindowKind {
 }
 
 func grokQuotaLimitName(limitID string, snapshot store.GrokSnapshot) string {
+	if limitID == grokOnDemandLimitID {
+		return "Grok On-Demand"
+	}
 	if snapshot.Billing != nil && snapshot.Billing.PeriodType == "monthly" {
 		return "Grok 月额度"
 	}

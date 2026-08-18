@@ -122,6 +122,58 @@ func TestCollectorReadsSummaryAndWhitelistedUpdatesOnly(t *testing.T) {
 	}
 }
 
+func TestCollectorReusesUpdatesOffsetWhenFileUnchanged(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	sessionDir := filepath.Join(home, "sessions", "demo", "session-2")
+	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeJSON(t, filepath.Join(sessionDir, "summary.json"), map[string]any{
+		"generated_title": "Reuse cursor",
+		"created_at":      "2026-08-18T01:00:00Z",
+		"updated_at":      "2026-08-18T02:00:00Z",
+		"info":            map[string]any{"id": "session-2", "cwd": "/tmp/demo"},
+	})
+	writeJSONL(t, filepath.Join(sessionDir, "updates.jsonl"), []map[string]any{{
+		"method":    "session/update",
+		"timestamp": 1787014800,
+		"params": map[string]any{
+			"sessionId": "session-2",
+			"update": map[string]any{
+				"sessionUpdate": "turn_completed",
+				"prompt_id":     "prompt-keep",
+				"usage":         map[string]any{"inputTokens": 10, "outputTokens": 2, "totalTokens": 12},
+			},
+		},
+	}})
+	capture := &snapshotCapture{}
+	now := time.UnixMilli(3_000)
+	collector, err := NewCollector(capture, Config{
+		Home: home, SessionsRoot: filepath.Join(home, "sessions"),
+		MinimumRefresh: 0, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := collector.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	firstOffset := collector.updatesCursors[filepath.Join(sessionDir, "updates.jsonl")].offset
+	if firstOffset <= 0 || len(capture.snapshot.UsageEvents) != 1 {
+		t.Fatalf("first cursor = %#v usage=%#v", collector.updatesCursors, capture.snapshot.UsageEvents)
+	}
+	now = now.Add(time.Second)
+	if err := collector.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	second := collector.updatesCursors[filepath.Join(sessionDir, "updates.jsonl")]
+	if second.offset != firstOffset || len(capture.snapshot.UsageEvents) != 1 ||
+		capture.snapshot.UsageEvents[0].EventID != "prompt-keep" {
+		t.Fatalf("second cursor = %#v usage=%#v", second, capture.snapshot.UsageEvents)
+	}
+}
+
 func TestDefaultConfigUsesIsolatedTestHomeOnly(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("CODEX_PULSE_GROK_HOME", home)

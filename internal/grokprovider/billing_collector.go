@@ -82,14 +82,32 @@ func (collector *BillingCollector) RefreshIfDue(ctx context.Context) (bool, erro
 		UsedPercent: credits.UsedPercent, OnDemandUsed: credits.OnDemandUsed,
 		OnDemandCap: credits.OnDemandCap, PrepaidBalance: credits.PrepaidBalance,
 		SubscriptionTier: credits.SubscriptionTier, IsUnifiedBilling: credits.IsUnifiedBilling,
-		QuotaObservations: []store.GrokBillingQuotaObservation{{
-			Generation: atMS, LimitID: grokCreditsLimitID, UsedPercent: credits.UsedPercent,
-			CycleStartAtMS: credits.PeriodStartMS, CycleEndAtMS: credits.PeriodEndMS, ObservedAtMS: atMS,
-		}},
+		QuotaObservations: grokBillingObservations(atMS, credits),
 	}
 	if err := collector.writer.CommitGrokBillingSnapshot(ctx, snapshot); err != nil {
 		return true, err
 	}
 	collector.last = now
 	return true, nil
+}
+
+func grokBillingObservations(atMS int64, credits BillingCredits) []store.GrokBillingQuotaObservation {
+	observations := []store.GrokBillingQuotaObservation{{
+		Generation: atMS, LimitID: grokCreditsLimitID, UsedPercent: credits.UsedPercent,
+		CycleStartAtMS: credits.PeriodStartMS, CycleEndAtMS: credits.PeriodEndMS, ObservedAtMS: atMS,
+	}}
+	if percent, ok := onDemandUsedPercent(credits); ok {
+		observations = append(observations, store.GrokBillingQuotaObservation{
+			Generation: atMS, LimitID: grokOnDemandLimitID, UsedPercent: percent,
+			CycleStartAtMS: credits.PeriodStartMS, CycleEndAtMS: credits.PeriodEndMS, ObservedAtMS: atMS,
+		})
+	}
+	return observations
+}
+
+func onDemandUsedPercent(credits BillingCredits) (float64, bool) {
+	if credits.OnDemandCap == nil || *credits.OnDemandCap <= 0 || credits.OnDemandUsed == nil {
+		return 0, false
+	}
+	return finitePercent(*credits.OnDemandUsed / *credits.OnDemandCap * 100)
 }

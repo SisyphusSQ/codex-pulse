@@ -107,4 +107,38 @@ func TestBillingDecoderFailClosedOnDrift(t *testing.T) {
 	}
 }
 
+func TestBillingDecoderAcceptsOfficialConfigEnvelope(t *testing.T) {
+	t.Parallel()
+	credits, err := decodeBillingCredits([]byte(`{
+		"config": {
+			"creditUsagePercent": 42.5,
+			"currentPeriod": {
+				"type": "USAGE_PERIOD_TYPE_MONTHLY",
+				"start": "2026-08-01T00:00:00Z",
+				"end": "2026-09-01T00:00:00Z"
+			},
+			"onDemandCap": {"val": 5000},
+			"onDemandUsed": {"val": 1250},
+			"prepaidBalance": {"val": 300},
+			"isUnifiedBillingUser": true
+		},
+		"subscriptionTier": "SuperGrok Heavy"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if credits.PeriodType != "monthly" || credits.UsedPercent != 42.5 ||
+		credits.OnDemandCap == nil || *credits.OnDemandCap != 5000 ||
+		credits.OnDemandUsed == nil || *credits.OnDemandUsed != 1250 ||
+		credits.PrepaidBalance == nil || *credits.PrepaidBalance != 300 ||
+		!credits.IsUnifiedBilling || credits.SubscriptionTier == nil ||
+		*credits.SubscriptionTier != "SuperGrok Heavy" {
+		t.Fatalf("credits = %#v", credits)
+	}
+	percent, ok := onDemandUsedPercent(credits)
+	if !ok || percent != 25 {
+		t.Fatalf("on-demand percent = %v, %t", percent, ok)
+	}
+}
+
 func pointerInt64(value int64) *int64 { return &value }
