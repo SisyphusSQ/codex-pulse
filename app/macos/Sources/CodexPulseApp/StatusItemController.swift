@@ -616,7 +616,7 @@ private struct MenuBarPopoverView: View {
 	@ViewBuilder
 	private var providerContent: some View {
 		switch model.statusProvider {
-		case .cursor:
+		case .cursor, .grok:
 			cursorContent
 		case .codex:
 			if let overview = model.statusPresentation {

@@ -480,6 +480,8 @@ struct SettingsView: View {
                 .disabled(!editable("online.quotaEnabled", response) || settingsAreBusy)
             Toggle("启用重置额度采集", isOn: draftBinding(\.resetCreditsEnabled))
                 .disabled(!editable("online.resetCreditsEnabled", response) || settingsAreBusy)
+            Toggle("启用 Grok 额度采集", isOn: draftBinding(\.grokQuotaEnabled))
+                .disabled(!editable("online.grokQuotaEnabled", response) || settingsAreBusy)
         }
     }
 

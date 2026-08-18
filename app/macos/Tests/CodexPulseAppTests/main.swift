@@ -418,6 +418,11 @@ private func testReferencePriceFormattingPreservesPrecisionAndUnknown() throws {
 		ReferencePriceFormatter.sourceURL(response)?.host == "cursor.com",
 		"official Cursor pricing source URL must remain linkable"
 	)
+	response.sourceURL = "https://docs.x.ai/developers/pricing"
+	try expect(
+		ReferencePriceFormatter.sourceURL(response)?.host == "docs.x.ai",
+		"official xAI pricing source URL must remain linkable"
+	)
     for hiddenModel in [
         "gpt-5",
         "gpt-5-codex",
@@ -603,10 +608,11 @@ private func testCursorQuotaSurfacesUseOfficialMonthlyWindows() throws {
 	try expect(
 		quota.contains("Cursor 额度与用量")
 			&& quota.contains("provider: model.selectedProvider")
-			&& quota.contains("provider == .cursor ? \"已使用\" : \"剩余\"")
+			&& quota.contains("quotaUsageLabel")
 			&& quota.contains("if provider == .codex")
+			&& quota.contains("case .grok:")
 			&& !quota.contains("if model.selectedProvider == .codex {\n\t\t\t\t\tquotaSection"),
-		"Cursor quota detail must share the Codex layout while hiding Codex-only reset controls"
+		"Quota detail must share the Codex layout, support Grok, and hide Codex-only reset controls"
 	)
 }
 
@@ -4959,6 +4965,13 @@ private func testAgentProviderScopesAndIndependentPersistence() async throws {
             && sessions.query.provider.provider == AgentProvider.cursor.rawValue,
         "every provider-owned request must carry an explicit Cursor scope"
     )
+	let grokUsage = FeatureRequestFactory.usage(range: .today, provider: .grok)
+	try expect(
+		AgentProvider.allCases.map(\.rawValue) == ["codex", "cursor", "grok"]
+			&& AgentProvider.grok.title == "Grok"
+			&& grokUsage.provider.provider == AgentProvider.grok.rawValue,
+		"Grok must be an explicit third client, not a Cursor model alias"
+	)
 
     let suiteName = "CodexPulseAppTests.Provider.\(UUID().uuidString)"
     guard let defaults = UserDefaults(suiteName: suiteName) else {
@@ -8286,10 +8299,14 @@ private func testInitialInFlightReconnectQueuesOneRecoveryRefresh() async throws
     try await waitUntil("reconnect follow-up updates the status Popover without replay") {
         await statusPopover.latestOverviewTimestamp() != nil
     }
+    try await waitUntil("independent status usage refresh completes after in-flight reconnect") {
+        let stats = await core.overviewRecoveryStats()
+        return stats.usageCalls >= 3 && stats.completedUsageCalls >= 3
+    }
     let stats = await core.overviewRecoveryStats()
     try expect(
         stats.usageCalls == 3 && stats.completedUsageCalls == 3,
-        "reconnect after the first Overview starts must complete one page follow-up and one independent status refresh"
+        "reconnect after the first Overview starts must complete one page follow-up and one independent status refresh, got usage=\(stats.usageCalls) completed=\(stats.completedUsageCalls)"
     )
     try expect(
         stats.maximumConcurrentUsageCalls == 1,

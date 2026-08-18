@@ -4,6 +4,7 @@ import Foundation
 public enum AgentProvider: String, CaseIterable, Identifiable, Sendable {
     case codex
     case cursor
+    case grok
 
     public var id: String { rawValue }
 
@@ -11,6 +12,36 @@ public enum AgentProvider: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .codex: "Codex"
         case .cursor: "Cursor"
+        case .grok: "Grok"
+        }
+    }
+
+    public var usesOfficialPeriodRing: Bool {
+        self == .cursor || self == .grok
+    }
+
+    public var supportsResetCredits: Bool {
+        self == .codex
+    }
+
+    public var defaultOverviewRange: DateRangePreset {
+        switch self {
+        case .cursor: .quotaMonth
+        case .grok, .codex: .quotaWeek
+        }
+    }
+
+    public func officialPeriodPreset(windowMinutes: Int64?) -> DateRangePreset {
+        switch self {
+        case .cursor:
+            return .quotaMonth
+        case .grok:
+            if let windowMinutes, windowMinutes >= 28 * 24 * 60 {
+                return .quotaMonth
+            }
+            return .quotaWeek
+        case .codex:
+            return .quotaWeek
         }
     }
 

@@ -279,13 +279,13 @@ public final class AppModel: ObservableObject {
 		if persistsProviderSelection {
 			providerDefaults.set(provider.rawValue, forKey: Self.selectedProviderKey)
 		}
-		if provider == .cursor, sessionOptions.sortField == "estimatedCost" {
+		if provider.usesOfficialPeriodRing, sessionOptions.sortField == "estimatedCost" {
 			sessionOptions.sortField = "lastActivityAt"
 		}
-		if provider == .cursor, projectOptions.sortField == "estimatedCost" {
+		if provider.usesOfficialPeriodRing, projectOptions.sortField == "estimatedCost" {
 			projectOptions.sortField = "lastActivityAt"
 		}
-		overviewRange = provider == .cursor ? .quotaMonth : .quotaWeek
+		overviewRange = provider.defaultOverviewRange
 		overviewRefreshGeneration &+= 1
 		overviewRefreshTask?.cancel()
 		overviewRefreshTask = nil
@@ -310,7 +310,7 @@ public final class AppModel: ObservableObject {
 			providerDefaults.set(provider.rawValue, forKey: Self.statusProviderKey)
 		}
 		statusOverviewState = .loading(previous: statusOverviewCache[provider])
-		statusUsageState = provider == .cursor
+		statusUsageState = provider.usesOfficialPeriodRing
 			? .loading(previous: statusUsageCache[provider])
 			: .idle
 		statusInvocationState = .idle
@@ -1511,7 +1511,7 @@ public final class AppModel: ObservableObject {
 		let previous = statusOverviewState.value
 		invalidateTasks([.statusAccount])
 		statusOverviewState = .loading(previous: previous)
-		if provider == .cursor {
+		if provider.usesOfficialPeriodRing {
 			statusUsageState = .loading(previous: statusUsageState.value)
 		}
 		statusInvocationState = .idle
@@ -1529,11 +1529,11 @@ public final class AppModel: ObservableObject {
 				? .partial(presentation, notices: presentation.notices)
 				: .ready(presentation)
 			loadStatusAccount(for: responses, provider: provider)
-			if provider == .cursor {
-				statusUsageCache[provider] = responses.todayUsage
+			if provider.usesOfficialPeriodRing {
+				statusUsageCache[provider] = responses.usage
 				statusUsageState = loadState(
-					value: responses.todayUsage,
-					meta: responses.todayUsage.meta,
+					value: responses.usage,
+					meta: responses.usage.meta,
 					isEmpty: false
 				)
 			} else {
@@ -1542,7 +1542,7 @@ public final class AppModel: ObservableObject {
 		} failure: { [weak self] error in
 			guard let self, statusProvider == provider else { return }
 			statusOverviewState = failedLoadState(previous: previous, error: error)
-			if provider == .cursor {
+			if provider.usesOfficialPeriodRing {
 				statusUsageState = failedLoadState(previous: statusUsageState.value, error: error)
 			}
 		}

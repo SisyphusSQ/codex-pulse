@@ -98,7 +98,7 @@ private struct QuotaContentView: View {
         let localization = AppLocalizationRegistry.shared.current
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-				Text(provider == .cursor ? "月度额度" : "额度窗口").font(.title2.bold())
+				Text(quotaTitle).font(.title2.bold())
                 Spacer()
 				if provider == .codex {
 					Menu("刷新数据", systemImage: "arrow.clockwise") {
@@ -122,7 +122,7 @@ private struct QuotaContentView: View {
                     )
                     SectionCard(title: presentation.title) {
                         HStack(alignment: .firstTextBaseline) {
-							Text(provider == .cursor ? "已使用" : "剩余")
+							Text(quotaUsageLabel)
                                 .foregroundStyle(.secondary)
                             Spacer()
                             Text(
@@ -132,7 +132,7 @@ private struct QuotaContentView: View {
                             .monospacedDigit()
                         }
 						ProgressView(value: quotaProgressValue(window))
-							.tint(provider == .cursor ? .blue : quotaRemainingColor(
+							.tint(provider.usesOfficialPeriodRing ? .blue : quotaRemainingColor(
 								window.hasRemainingPercent ? window.remainingPercent : nil
 							))
                         KeyValueRow(
@@ -178,15 +178,27 @@ private struct QuotaContentView: View {
         }
     }
 
+	private var quotaTitle: String {
+		switch provider {
+		case .cursor: "月度额度"
+		case .grok: "额度窗口"
+		case .codex: "额度窗口"
+		}
+	}
+
+	private var quotaUsageLabel: String {
+		provider.usesOfficialPeriodRing ? "已使用" : "剩余"
+	}
+
 	private func quotaPercentText(_ window: Codexpulse_Core_V1_CurrentWindow) -> String {
-		if provider == .cursor {
+		if provider.usesOfficialPeriodRing {
 			return window.hasUsedPercent ? AppLocalizationRegistry.shared.current.percent(window.usedPercent) : "--"
 		}
 		return window.hasRemainingPercent ? AppLocalizationRegistry.shared.current.percent(window.remainingPercent) : "--"
 	}
 
 	private func quotaProgressValue(_ window: Codexpulse_Core_V1_CurrentWindow) -> Double {
-		if provider == .cursor { return window.hasUsedPercent ? window.usedPercent / 100 : 0 }
+		if provider.usesOfficialPeriodRing { return window.hasUsedPercent ? window.usedPercent / 100 : 0 }
 		return window.hasRemainingPercent ? window.remainingPercent / 100 : 0
 	}
 
@@ -262,6 +274,14 @@ private struct UsageContentView: View {
         }?.bucket
     }
 
+	private func estimatedCostCaption(_ value: Codexpulse_Core_V1_NumericValue) -> String {
+		switch provider {
+		case .cursor: "文档价目估算 \(costText(value))"
+		case .grok: "xAI 参考价估算 \(costText(value))"
+		case .codex: "API 折算成本 \(costText(value))"
+		}
+	}
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("用量与趋势").font(.title2.bold())
@@ -275,14 +295,26 @@ private struct UsageContentView: View {
 				if provider == .cursor { MetricCard(
 					title: "Cursor 上报费用", value: response.hasReportedUsdMicros ? costText(response.reportedUsdMicros) : "--",
 					detail: response.hasReportedUsdMicros ? "Cursor Dashboard 实际上报" : "数据源未提供", systemImage: "dollarsign.circle") }
+				if provider == .grok { MetricCard(
+					title: "Grok 上报费用", value: response.hasReportedUsdMicros ? costText(response.reportedUsdMicros) : "--",
+					detail: response.hasReportedUsdMicros ? "turn_completed 完整 ticks" : "来源未提供完整成本", systemImage: "dollarsign.circle") }
 				if provider == .cursor { MetricCard(
 					title: "文档价目估算", value: costText(response.totals.estimatedUsdMicros),
 					detail: response.totals.estimatedUsdMicros.hasValue ? "固定版本模型价目" : "当前模型未列入价目", systemImage: "function") }
+				if provider == .grok { MetricCard(
+					title: "xAI 参考价估算", value: costText(response.totals.estimatedUsdMicros),
+					detail: response.totals.estimatedUsdMicros.hasValue ? "固定版本 xAI 价目" : "当前模型未列入价目", systemImage: "function") }
 				if provider == .cursor, response.hasCursorBilling { MetricCard(
 					title: "本账期消费", value: costText(response.cursorBilling.totalSpendUsdMicros),
 					detail: "Cursor Dashboard spending", systemImage: "calendar") }
 				if provider == .codex { MetricCard(
-					title: provider == .cursor ? "请求数" : "活动轮次", value: numericText(response.totals.turnCount), detail: provider == .cursor ? "按 generation_id 去重" : "已整理的活动记录",
+					title: "活动轮次", value: numericText(response.totals.turnCount), detail: "已整理的活动记录",
+					systemImage: "arrow.triangle.2.circlepath") }
+				if provider == .cursor { MetricCard(
+					title: "请求数", value: numericText(response.totals.turnCount), detail: "按 generation_id 去重",
+					systemImage: "arrow.triangle.2.circlepath") }
+				if provider == .grok { MetricCard(
+					title: "完成轮次", value: numericText(response.totals.turnCount), detail: "turn_completed 计数",
 					systemImage: "arrow.triangle.2.circlepath") }
 				if provider == .codex { MetricCard(
                     title: "暂未折算", value: numericText(response.totals.unpricedTurnCount), detail: "等待价格信息",
@@ -311,9 +343,7 @@ private struct UsageContentView: View {
                             tokens: TokenBreakdownPresentation(item.totals),
                             style: .compact
                         )
-						if item.totals.estimatedUsdMicros.hasValue { Text(provider == .cursor
-							? "文档价目估算 \(costText(item.totals.estimatedUsdMicros))"
-							: "API 折算成本 \(costText(item.totals.estimatedUsdMicros))")
+						if item.totals.estimatedUsdMicros.hasValue { Text(estimatedCostCaption(item.totals.estimatedUsdMicros))
                             .font(.caption)
 							.foregroundStyle(.secondary) }
                     }
@@ -496,13 +526,17 @@ private struct UsageContentView: View {
 private struct PricingCatalogView: View {
     let response: Codexpulse_Core_V1_PricingCatalogCurrentResponse
 
-	private var isCursor: Bool {
-		response.providerContext.effectiveProvider == AgentProvider.cursor.rawValue
+	private var catalogProvider: AgentProvider {
+		AgentProvider(rawValue: response.providerContext.effectiveProvider) ?? .codex
+	}
+
+	private var usesPublishedCatalog: Bool {
+		catalogProvider.usesOfficialPeriodRing
 	}
 
     private var rows: [ReferencePriceTableRow] {
         response.items
-			.filter { isCursor || ReferencePriceFormatter.shouldDisplay(modelID: $0.modelID) }
+			.filter { usesPublishedCatalog || ReferencePriceFormatter.shouldDisplay(modelID: $0.modelID) }
             .sorted { $0.modelID < $1.modelID }
             .map { ReferencePriceTableRow(item: $0, currency: response.currency) }
     }
@@ -531,13 +565,13 @@ private struct PricingCatalogView: View {
                     priceText(row.input)
                 }
                 .width(min: 72, ideal: 90)
-				if isCursor {
+				if catalogProvider == .cursor {
 					TableColumn("缓存写入") { row in
 						priceText(row.cacheWrite)
 					}
 					.width(min: 88, ideal: 105)
 				}
-				TableColumn(isCursor ? "缓存读取" : "缓存输入") { row in
+				TableColumn(catalogProvider == .cursor ? "缓存读取" : "缓存输入") { row in
                     priceText(row.cachedInput)
                 }
                 .width(min: 88, ideal: 110)
@@ -557,7 +591,7 @@ private struct PricingCatalogView: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                 if let sourceURL = ReferencePriceFormatter.sourceURL(response) {
-					Link(isCursor ? "Cursor 官方价格" : "OpenAI 官方价格", destination: sourceURL)
+					Link(catalogSourceLinkTitle, destination: sourceURL)
                         .font(.caption)
                 }
             }
@@ -566,17 +600,33 @@ private struct PricingCatalogView: View {
     }
 
 	private var referencePriceTitle: String {
-		if isCursor {
+		switch catalogProvider {
+		case .cursor:
 			return "Cursor 模型参考价 · \(response.currency) / 100 万 Token"
+		case .grok:
+			return "xAI 模型参考价 · \(response.currency) / 100 万 Token"
+		case .codex:
+			return "OpenAI API Standard 基础文本参考价 · \(response.currency) / 100 万 Token"
 		}
-		return "OpenAI API Standard 基础文本参考价 · \(response.currency) / 100 万 Token"
 	}
 
 	private var referencePriceNotice: String {
-		if isCursor {
+		switch catalogProvider {
+		case .cursor:
 			return "来自 Cursor 官方 Models & Pricing。实际费用优先使用 Dashboard 上报值；Grok 4.6 在 2026-08-12 至 2026-08-19 的限时折扣仅用于对应时间内的费用估算。"
+		case .grok:
+			return "来自 xAI 官方定价页的固定版本参考价。reported cost 与 estimated cost 分开展示，不进入 Codex 或 Cursor catalog。"
+		case .codex:
+			return "仅用于 API 等价折算，不是 Codex 订阅账单。长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理等可能适用不同费率。"
 		}
-		return "仅用于 API 等价折算，不是 Codex 订阅账单。长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理等可能适用不同费率。"
+	}
+
+	private var catalogSourceLinkTitle: String {
+		switch catalogProvider {
+		case .cursor: "Cursor 官方价格"
+		case .grok: "xAI 官方价格"
+		case .codex: "OpenAI 官方价格"
+		}
 	}
 
     private var snapshotText: String {

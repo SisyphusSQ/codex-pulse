@@ -396,8 +396,7 @@ private struct SessionDetailView: View {
 					if response.providerContext.effectiveProvider != AgentProvider.cursor.rawValue ||
 						response.item.totals.estimatedUsdMicros.hasValue {
 						KeyValueRow(
-							key: response.providerContext.effectiveProvider == AgentProvider.cursor.rawValue
-								? "文档价目估算" : "API 折算成本",
+							key: estimatedCostLabel(response.providerContext.effectiveProvider),
 							value: costText(response.item.totals.estimatedUsdMicros)
 						)
 					}
@@ -654,8 +653,7 @@ private struct ProjectDetailView: View {
 					if response.providerContext.effectiveProvider != AgentProvider.cursor.rawValue ||
 						response.item.totals.estimatedUsdMicros.hasValue {
 						KeyValueRow(
-							key: response.providerContext.effectiveProvider == AgentProvider.cursor.rawValue
-								? "文档价目估算" : "API 折算成本",
+							key: estimatedCostLabel(response.providerContext.effectiveProvider),
 							value: costText(response.item.totals.estimatedUsdMicros)
 						)
 					}
@@ -836,4 +834,12 @@ private struct TokenTrendView: View {
                 < abs($1.date.timeIntervalSince1970 - selectedDate.timeIntervalSince1970)
         }
     }
+}
+
+private func estimatedCostLabel(_ provider: String) -> String {
+	switch provider {
+	case AgentProvider.cursor.rawValue: "文档价目估算"
+	case AgentProvider.grok.rawValue: "xAI 参考价估算"
+	default: "API 折算成本"
+	}
 }

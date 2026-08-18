@@ -5589,6 +5589,8 @@ public nonisolated struct Codexpulse_Core_V1_SettingsOnlineSnapshot: Sendable {
 
   public var resetCreditsEnabled: Bool = false
 
+  public var grokQuotaEnabled: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -5790,6 +5792,8 @@ public nonisolated struct Codexpulse_Core_V1_SettingsOnlineUpdate: Sendable {
   public var quotaEnabled: Bool = false
 
   public var resetCreditsEnabled: Bool = false
+
+  public var grokQuotaEnabled: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -14160,7 +14164,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsHomeSnapshot: SwiftProtobuf.Mes
 
 nonisolated extension Codexpulse_Core_V1_SettingsOnlineSnapshot: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SettingsOnlineSnapshot"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}quota_enabled\0\u{3}reset_credits_enabled\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}quota_enabled\0\u{3}reset_credits_enabled\0\u{3}grok_quota_enabled\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -14170,6 +14174,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineSnapshot: SwiftProtobuf.M
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularBoolField(value: &self.quotaEnabled) }()
       case 2: try { try decoder.decodeSingularBoolField(value: &self.resetCreditsEnabled) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.grokQuotaEnabled) }()
       default: break
       }
     }
@@ -14182,12 +14187,16 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineSnapshot: SwiftProtobuf.M
     if self.resetCreditsEnabled != false {
       try visitor.visitSingularBoolField(value: self.resetCreditsEnabled, fieldNumber: 2)
     }
+    if self.grokQuotaEnabled != false {
+      try visitor.visitSingularBoolField(value: self.grokQuotaEnabled, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Codexpulse_Core_V1_SettingsOnlineSnapshot, rhs: Codexpulse_Core_V1_SettingsOnlineSnapshot) -> Bool {
     if lhs.quotaEnabled != rhs.quotaEnabled {return false}
     if lhs.resetCreditsEnabled != rhs.resetCreditsEnabled {return false}
+    if lhs.grokQuotaEnabled != rhs.grokQuotaEnabled {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -14507,7 +14516,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsResponse: SwiftProtobuf.Message
 
 nonisolated extension Codexpulse_Core_V1_SettingsOnlineUpdate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SettingsOnlineUpdate"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}quota_enabled\0\u{3}reset_credits_enabled\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}quota_enabled\0\u{3}reset_credits_enabled\0\u{3}grok_quota_enabled\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -14517,6 +14526,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineUpdate: SwiftProtobuf.Mes
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularBoolField(value: &self.quotaEnabled) }()
       case 2: try { try decoder.decodeSingularBoolField(value: &self.resetCreditsEnabled) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.grokQuotaEnabled) }()
       default: break
       }
     }
@@ -14529,12 +14539,16 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineUpdate: SwiftProtobuf.Mes
     if self.resetCreditsEnabled != false {
       try visitor.visitSingularBoolField(value: self.resetCreditsEnabled, fieldNumber: 2)
     }
+    if self.grokQuotaEnabled != false {
+      try visitor.visitSingularBoolField(value: self.grokQuotaEnabled, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Codexpulse_Core_V1_SettingsOnlineUpdate, rhs: Codexpulse_Core_V1_SettingsOnlineUpdate) -> Bool {
     if lhs.quotaEnabled != rhs.quotaEnabled {return false}
     if lhs.resetCreditsEnabled != rhs.resetCreditsEnabled {return false}
+    if lhs.grokQuotaEnabled != rhs.grokQuotaEnabled {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

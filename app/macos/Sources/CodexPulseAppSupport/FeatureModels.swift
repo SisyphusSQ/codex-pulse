@@ -158,6 +158,7 @@ public struct PrimaryPagesSmokeError: Error, Equatable, Sendable {
 public struct SettingsDraft: Equatable, Sendable {
     public var quotaEnabled: Bool
     public var resetCreditsEnabled: Bool
+    public var grokQuotaEnabled: Bool
     public var quotaIntervalSeconds: Int64
     public var resetCreditsIntervalSeconds: Int64
     public var reconcileIntervalSeconds: Int64
@@ -173,6 +174,7 @@ public struct SettingsDraft: Equatable, Sendable {
         let snapshot = response.snapshot
         quotaEnabled = snapshot.online.quotaEnabled
         resetCreditsEnabled = snapshot.online.resetCreditsEnabled
+        grokQuotaEnabled = snapshot.online.grokQuotaEnabled
         quotaIntervalSeconds = snapshot.refresh.quotaIntervalSeconds
         resetCreditsIntervalSeconds = snapshot.refresh.resetCreditsIntervalSeconds
         reconcileIntervalSeconds = snapshot.refresh.reconcileIntervalSeconds
@@ -197,6 +199,8 @@ public struct SettingsDraft: Equatable, Sendable {
         online.quotaEnabled = editable.contains("online.quotaEnabled") ? quotaEnabled : current.quotaEnabled
         online.resetCreditsEnabled = editable.contains("online.resetCreditsEnabled")
             ? resetCreditsEnabled : current.resetCreditsEnabled
+        online.grokQuotaEnabled = editable.contains("online.grokQuotaEnabled")
+            ? grokQuotaEnabled : current.grokQuotaEnabled
         request.online = online
 
         var refresh = Codexpulse_Core_V1_SettingsRefreshUpdate()

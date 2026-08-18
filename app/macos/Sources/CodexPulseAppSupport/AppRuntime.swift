@@ -377,7 +377,7 @@ public actor AppRuntime {
 	public func selectProvider(_ provider: AgentProvider) async {
 		guard provider != selectedProvider else { return }
 		selectedProvider = provider
-		overviewRange = provider == .cursor ? .quotaMonth : .quotaWeek
+		overviewRange = provider.defaultOverviewRange
 		refreshGeneration &+= 1
 		refreshAdmissionGeneration = nil
 		invalidationRefreshPending = false
@@ -437,7 +437,9 @@ public actor AppRuntime {
 			let evaluatedAt = quota.current.evaluatedAtMs > 0
 				? Date(timeIntervalSince1970: Double(quota.current.evaluatedAtMs) / 1_000)
 				: now
-			let preset: DateRangePreset = provider == .cursor ? .quotaMonth : .quotaWeek
+			let preset = provider.officialPeriodPreset(
+				windowMinutes: quota.current.windows.first(where: \.hasWindowMinutes)?.windowMinutes
+			)
 			let range = OverviewRequestSet.resolveRange(
 				preset,
 				quota: quota,
