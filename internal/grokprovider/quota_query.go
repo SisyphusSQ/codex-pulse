@@ -179,10 +179,7 @@ func grokQuotaWindow(
 	}
 }
 
-func grokQuotaWindowKind(periodType string) store.QuotaWindowKind {
-	if periodType == "monthly" {
-		return store.QuotaWindowPrimary
-	}
+func grokQuotaWindowKind(string) store.QuotaWindowKind {
 	return store.QuotaWindowPrimary
 }
 

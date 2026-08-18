@@ -306,7 +306,23 @@ func activityDistribution(events []store.GrokUsageEvent, rangeValue basequery.UT
 }
 
 func sessionItem(session store.GrokSession, events []store.GrokUsageEvent) usagecost.SessionItem {
-	totals, _ := totalsForUsageEvents(events)
+	var totals usagecost.UsageTotals
+	if len(events) == 0 {
+		totals = usagecost.UsageTotals{
+			InputTokens:        unknown(basequery.NumericTokens, basequery.UnknownUnavailable),
+			CachedInputTokens:  unknown(basequery.NumericTokens, basequery.UnknownUnavailable),
+			OutputTokens:       unknown(basequery.NumericTokens, basequery.UnknownUnavailable),
+			ReasoningTokens:    unknown(basequery.NumericTokens, basequery.UnknownUnavailable),
+			TotalTokens:        unknown(basequery.NumericTokens, basequery.UnknownUnavailable),
+			EstimatedUSDMicros: unknown(basequery.NumericMicroUSD, basequery.UnknownUnavailable),
+			PricedTurnCount:    known(0, basequery.NumericCount),
+			UnpricedTurnCount:  known(0, basequery.NumericCount),
+			FirstActivityAtMS:  unknown(basequery.NumericMilliseconds, basequery.UnknownNotApplicable),
+			LastActivityAtMS:   known(session.LastActivityAtMS, basequery.NumericMilliseconds),
+		}
+	} else {
+		totals, _ = totalsForUsageEvents(events)
+	}
 	totals.TurnCount = known(session.RequestCount, basequery.NumericCount)
 	title, source, confidence, reason := sessionTitlePresentation(session)
 	return usagecost.SessionItem{

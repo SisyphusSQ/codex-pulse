@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -44,6 +45,30 @@ type QueryService struct {
 	localRefreshing bool
 	refreshing      bool
 	onRefresh       func()
+}
+
+type discardSnapshotWriter struct{}
+
+func (discardSnapshotWriter) ReplaceGrokSnapshot(context.Context, store.GrokSnapshot) error {
+	return nil
+}
+
+type emptySnapshotReader struct{}
+
+func (emptySnapshotReader) GrokSnapshot(context.Context) (store.GrokSnapshot, error) {
+	return store.GrokSnapshot{}, nil
+}
+
+func NewDisabledQueryService() (*QueryService, error) {
+	collector, err := NewCollector(discardSnapshotWriter{}, Config{
+		SessionsRoot:   os.TempDir(),
+		MinimumRefresh: time.Hour,
+		Now:            time.Now,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return NewQueryService(collector, emptySnapshotReader{})
 }
 
 func NewQueryService(collector *Collector, reader SnapshotReader, billing ...Refresher) (*QueryService, error) {

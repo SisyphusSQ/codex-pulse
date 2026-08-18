@@ -64,7 +64,7 @@ func TestAccountSnapshotReadsGrokIdentityFromAuthWhitelist(t *testing.T) {
 	}
 	if account.Account == nil || account.Account.Type != agentprovider.Grok ||
 		account.Account.Email == nil || *account.Account.Email != "person@example.com" ||
-		account.Account.PlanType == nil || *account.Account.PlanType != "User" {
+		account.Account.PlanType != nil {
 		t.Fatalf("AccountSnapshot(grok) = %#v", account)
 	}
 }

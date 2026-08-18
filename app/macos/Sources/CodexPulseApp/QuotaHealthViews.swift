@@ -6,13 +6,29 @@ import SwiftUI
 struct QuotaUsageView: View {
     @ObservedObject var model: AppModel
 
+	private var quotaPageTitle: String {
+		switch model.selectedProvider {
+		case .cursor: "Cursor 额度与用量"
+		case .grok: "Grok 额度与用量"
+		case .codex: "Codex 额度与用量"
+		}
+	}
+
+	private var quotaPageSubtitle: String {
+		switch model.selectedProvider {
+		case .cursor: "跟踪月度模型额度、Token 趋势、费用明细和参考价格"
+		case .grok: "跟踪 credits 周期、Token 趋势、上报费用和 xAI 参考价"
+		case .codex: "跟踪额度窗口、Token 趋势、API 折算成本和参考价格"
+		}
+	}
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .center, spacing: 16) {
                     VStack(alignment: .leading, spacing: 3) {
-						Text(model.selectedProvider == .cursor ? "Cursor 额度与用量" : "Codex 额度与用量").font(.largeTitle.bold())
-						Text(model.selectedProvider == .cursor ? "跟踪月度模型额度、Token 趋势、费用明细和参考价格" : "跟踪额度窗口、Token 趋势、API 折算成本和参考价格")
+						Text(quotaPageTitle).font(.largeTitle.bold())
+						Text(quotaPageSubtitle)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()

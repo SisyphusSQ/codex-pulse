@@ -279,10 +279,10 @@ public final class AppModel: ObservableObject {
 		if persistsProviderSelection {
 			providerDefaults.set(provider.rawValue, forKey: Self.selectedProviderKey)
 		}
-		if provider.usesOfficialPeriodRing, sessionOptions.sortField == "estimatedCost" {
+		if provider == .cursor, sessionOptions.sortField == "estimatedCost" {
 			sessionOptions.sortField = "lastActivityAt"
 		}
-		if provider.usesOfficialPeriodRing, projectOptions.sortField == "estimatedCost" {
+		if provider == .cursor, projectOptions.sortField == "estimatedCost" {
 			projectOptions.sortField = "lastActivityAt"
 		}
 		overviewRange = provider.defaultOverviewRange

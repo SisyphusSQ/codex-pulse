@@ -41,14 +41,25 @@ func BuiltinGrokModelRates() []GrokModelRate {
 func GrokRateForModel(model string) (GrokModelRate, bool) {
 	normalized := strings.ToLower(strings.TrimSpace(model))
 	normalized = strings.NewReplacer("_", "-", " ", "-", "/", "-").Replace(normalized)
+	best, bestLen := GrokModelRate{}, -1
 	for _, rate := range builtinGrokModelRates {
 		for _, pattern := range rate.Patterns {
-			if normalized == pattern || strings.HasPrefix(normalized, pattern) || strings.Contains(normalized, pattern) {
-				return rate, true
+			if !grokPatternMatches(normalized, pattern) {
+				continue
+			}
+			if len(pattern) > bestLen {
+				best, bestLen = rate, len(pattern)
 			}
 		}
 	}
-	return GrokModelRate{}, false
+	if bestLen < 0 {
+		return GrokModelRate{}, false
+	}
+	return best, true
+}
+
+func grokPatternMatches(model, pattern string) bool {
+	return model == pattern || strings.HasPrefix(model, pattern+"-")
 }
 
 func EstimateGrokUsageCost(model string, input, cachedRead, cacheCreation, output int64) (int64, bool) {

@@ -937,6 +937,17 @@ func (provider fileConfirmedHomeProvider) CurrentHome(ctx context.Context) (appL
 	}, nil
 }
 
+func grokSubscriptionPlan(ctx context.Context, runtime *applicationLifecycleRuntime) string {
+	if runtime == nil || runtime.repository == nil {
+		return ""
+	}
+	snapshot, err := runtime.repository.GrokSnapshot(ctx)
+	if err != nil || snapshot.Billing == nil || snapshot.BillingStale || snapshot.Billing.SubscriptionTier == nil {
+		return ""
+	}
+	return strings.TrimSpace(*snapshot.Billing.SubscriptionTier)
+}
+
 func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 	ctx context.Context,
 	scope agentprovider.Scope,
@@ -977,7 +988,8 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 		if err != nil {
 			return core.AccountSnapshot{}, nil
 		}
-		email, plan := strings.TrimSpace(account.Email), strings.TrimSpace(account.PrincipalType)
+		email := strings.TrimSpace(account.Email)
+		plan := grokSubscriptionPlan(ctx, runtime)
 		if email == "" && plan == "" {
 			return core.AccountSnapshot{}, nil
 		}

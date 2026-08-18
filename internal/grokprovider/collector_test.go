@@ -109,7 +109,7 @@ func TestCollectorReadsSummaryAndWhitelistedUpdatesOnly(t *testing.T) {
 	}
 	event := capture.snapshot.UsageEvents[0]
 	if event.InputTokens != 100 || event.CachedReadTokens != 40 || event.ReportedCostMicros == nil ||
-		*event.ReportedCostMicros != 1500 {
+		*event.ReportedCostMicros != 150 {
 		t.Fatalf("usage event = %#v", event)
 	}
 	if len(capture.snapshot.ToolEvents) != 1 || capture.snapshot.ToolEvents[0].ToolName != "read_file" ||
@@ -119,6 +119,44 @@ func TestCollectorReadsSummaryAndWhitelistedUpdatesOnly(t *testing.T) {
 	payload, _ := json.Marshal(capture.snapshot)
 	if containsAny(string(payload), "/secret/path", "secret prompt", "system_prompt") {
 		t.Fatalf("snapshot leaked private content: %s", payload)
+	}
+}
+
+func TestCollectorDoesNotCreateSessionWithoutSummary(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	sessionDir := filepath.Join(home, "sessions", "demo", "session-orphan")
+	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeJSONL(t, filepath.Join(sessionDir, "updates.jsonl"), []map[string]any{{
+		"method":    "session/update",
+		"timestamp": 1787014800,
+		"params": map[string]any{
+			"sessionId": "session-orphan",
+			"update": map[string]any{
+				"sessionUpdate": "turn_completed",
+				"prompt_id":     "prompt-orphan",
+				"usage":         map[string]any{"inputTokens": 3, "outputTokens": 1, "totalTokens": 4},
+			},
+		},
+	}})
+	capture := &snapshotCapture{}
+	collector, err := NewCollector(capture, Config{
+		Home: home, SessionsRoot: filepath.Join(home, "sessions"),
+		Now: func() time.Time { return time.UnixMilli(4_000) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := collector.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(capture.snapshot.Sessions) != 0 {
+		t.Fatalf("sessions without summary = %#v", capture.snapshot.Sessions)
+	}
+	if len(capture.snapshot.UsageEvents) != 1 {
+		t.Fatalf("detached usage = %#v", capture.snapshot.UsageEvents)
 	}
 }
 

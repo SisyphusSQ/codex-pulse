@@ -693,7 +693,7 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
 			self.remainingText = "\(periodLabel) \(remainingSummary)"
 			self.freshness = window.freshness
 			self.dataState = StatusBarQuotaDataState(freshness: window.freshness)
-			if overview.usageAvailable, overview.totalTokens != nil {
+			if overview.usageAvailable, overview.totalTokens != nil, Self.grokUsageAlignedToBillingPeriod(overview) {
 				let total = Self.compact(overview.totalTokens)
 				self.usageText = localization.format("status.used", total)
 				self.accessibilityLabel = localization.format(
@@ -773,6 +773,16 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
         }
         self.accessibilityLabel = baseAccessibilityLabel + dataState.accessibilitySuffix
     }
+
+	private static func grokUsageAlignedToBillingPeriod(_ overview: OverviewPresentation) -> Bool {
+		if overview.requestedRange == .quotaWeek {
+			return overview.effectiveRange == .quotaWeek && !overview.fellBackFromQuotaWeek
+		}
+		if overview.requestedRange == .quotaMonth {
+			return overview.effectiveRange == .quotaMonth
+		}
+		return false
+	}
 
 	private static func grokPeriodLabel(
 		_ window: QuotaWindowPresentation,
@@ -2882,7 +2892,10 @@ public struct OverviewRequestSet: Sendable {
     ) -> Codexpulse_Core_V1_UTCTimeRange? {
         let weeklyMinutes: Int64 = 7 * 24 * 60
         let weeklyWindows = quota.current.windows.filter {
-            $0.hasWindowMinutes && $0.windowMinutes == weeklyMinutes && $0.hasResetsAtMs
+            $0.hasWindowMinutes && $0.hasResetsAtMs && (
+				$0.windowMinutes == weeklyMinutes ||
+				($0.limitID == "grok.included_credits" && $0.windowMinutes >= 6 * 24 * 60 && $0.windowMinutes <= 8 * 24 * 60)
+			)
         }
         guard let window = weeklyWindows.first(where: { $0.limitID == "codex" })
             ?? weeklyWindows.first(where: { $0.limitID == "grok.included_credits" })

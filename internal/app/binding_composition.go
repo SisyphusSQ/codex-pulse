@@ -76,47 +76,7 @@ func composeCoreService(
 	cursorService.SetRefreshNotifier(func() {
 		notifyQueryInvalidation(invalidation, context.Background(), core.InvalidationIndex)
 	})
-	grokConfig, err := grokprovider.DefaultConfig()
-	if err != nil {
-		return nil, errors.Join(core.ErrService, err)
-	}
-	grokCollector, err := grokprovider.NewCollector(repository, grokConfig)
-	if err != nil {
-		return nil, errors.Join(core.ErrService, err)
-	}
-	grokAuth, err := grokprovider.NewAuthReader(grokConfig.AuthPath, time.Now)
-	if err != nil {
-		return nil, errors.Join(core.ErrService, err)
-	}
-	grokBillingClient, err := grokprovider.NewBillingClient(grokprovider.BillingClientConfig{
-		BaseURL: grokConfig.BillingBaseURL,
-		HTTPClient: &http.Client{
-			Timeout: 15 * time.Second,
-		},
-		TokenSource: grokAuth,
-	})
-	if err != nil {
-		return nil, errors.Join(core.ErrService, err)
-	}
-	grokBillingCollector, err := grokprovider.NewBillingCollector(
-		grokBillingClient,
-		repository,
-		grokprovider.BillingCollectorConfig{
-			MinimumRefresh: 5 * time.Minute,
-			Now:            time.Now,
-			Enabled: func() bool {
-				snapshot, loadErr := preferenceStore.LoadPreferences(context.Background())
-				if loadErr != nil {
-					return true
-				}
-				return snapshot.Online.GrokQuotaEnabled
-			},
-		},
-	)
-	if err != nil {
-		return nil, errors.Join(core.ErrService, err)
-	}
-	grokService, err := grokprovider.NewQueryService(grokCollector, repository, grokBillingCollector)
+	grokService, err := composeGrokQueryService(repository, preferenceStore)
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
@@ -152,6 +112,69 @@ func composeCoreService(
 		UsageCost: providerRouter, InvocationUsage: providerRouter, PricingCatalog: pricingService,
 		RuntimeInfo: runtimeService, QuotaInfo: quotaRouter, QueryObserver: queryObserver,
 	})
+}
+
+func composeGrokQueryService(
+	repository *store.Repository,
+	preferenceStore *preferences.FileStore,
+) (*grokprovider.QueryService, error) {
+	disabled, err := grokprovider.NewDisabledQueryService()
+	if err != nil {
+		return nil, err
+	}
+	config, err := grokprovider.DefaultConfig()
+	if err != nil {
+		return disabled, nil
+	}
+	collector, err := grokprovider.NewCollector(repository, config)
+	if err != nil {
+		return disabled, nil
+	}
+	auth, err := grokprovider.NewAuthReader(config.AuthPath, time.Now)
+	if err != nil {
+		return disabled, nil
+	}
+	billingClient, err := grokprovider.NewBillingClient(grokprovider.BillingClientConfig{
+		BaseURL: config.BillingBaseURL,
+		HTTPClient: &http.Client{
+			Timeout: 15 * time.Second,
+		},
+		TokenSource: auth,
+	})
+	if err != nil {
+		service, queryErr := grokprovider.NewQueryService(collector, repository)
+		if queryErr != nil {
+			return disabled, nil
+		}
+		return service, nil
+	}
+	billingCollector, err := grokprovider.NewBillingCollector(
+		billingClient,
+		repository,
+		grokprovider.BillingCollectorConfig{
+			MinimumRefresh: 5 * time.Minute,
+			Now:            time.Now,
+			Enabled: func() bool {
+				snapshot, loadErr := preferenceStore.LoadPreferences(context.Background())
+				if loadErr != nil {
+					return true
+				}
+				return snapshot.Online.GrokQuotaEnabled
+			},
+		},
+	)
+	if err != nil {
+		service, queryErr := grokprovider.NewQueryService(collector, repository)
+		if queryErr != nil {
+			return disabled, nil
+		}
+		return service, nil
+	}
+	service, err := grokprovider.NewQueryService(collector, repository, billingCollector)
+	if err != nil {
+		return disabled, nil
+	}
+	return service, nil
 }
 
 type combinedProviderRefresher struct {

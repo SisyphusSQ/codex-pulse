@@ -229,8 +229,9 @@ struct OverviewStateView: View {
 
     @ViewBuilder
     private func overviewContent(_ overview: OverviewPresentation) -> some View {
-        if model.selectedProvider == .cursor {
+        if model.selectedProvider == .cursor || model.selectedProvider == .grok {
             CursorOverviewContentView(
+                provider: model.selectedProvider,
                 overview: overview,
 				selectedRange: model.overviewRange,
 				onSelectRange: model.selectOverviewRange,
@@ -297,6 +298,7 @@ struct OverviewStateView: View {
 }
 
 private struct CursorOverviewContentView: View {
+	let provider: AgentProvider
 	let overview: OverviewPresentation
 	let selectedRange: DateRangePreset
 	let onSelectRange: (DateRangePreset) -> Void
@@ -306,14 +308,20 @@ private struct CursorOverviewContentView: View {
 	let localization: AppLocalization
 	@State private var selectedTrendDate: Date?
 
-	private let ranges: [DateRangePreset] = [.quotaMonth, .today, .sevenDays, .thirtyDays]
+	private var ranges: [DateRangePreset] {
+		switch provider {
+		case .grok: [.quotaWeek, .quotaMonth, .today, .sevenDays, .thirtyDays]
+		case .cursor: [.quotaMonth, .today, .sevenDays, .thirtyDays]
+		case .codex: [.quotaWeek, .today, .sevenDays, .thirtyDays]
+		}
+	}
 
 	var body: some View {
 		let summary = CursorOverviewSummaryPresentation(overview)
 		ScrollView {
 			VStack(alignment: .leading, spacing: 16) {
 				pageHeader
-				if overview.requestedRange == .quotaMonth && overview.effectiveRange != .quotaMonth {
+				if officialPeriodFellBack {
 					monthlyQuotaFallbackNotice
 				}
 				if summary.showsRecentActivityFallback || summary.usesLastKnownTodayData {
@@ -330,19 +338,31 @@ private struct CursorOverviewContentView: View {
 					onNavigate: { onNavigate(.invocationUsage) },
 					localization: localization,
 					showsSkillActivity: false,
-					showsAIEditActivity: true
+					showsAIEditActivity: provider == .cursor
 				)
-				.accessibilityIdentifier("cursor.overview.invocations")
+				.accessibilityIdentifier(provider == .grok ? "grok.overview.invocations" : "cursor.overview.invocations")
 			}
 			.padding(24)
 			.frame(maxWidth: .infinity, alignment: .leading)
 		}
-		.accessibilityIdentifier("page.overview.cursor")
+		.accessibilityIdentifier(provider == .grok ? "page.overview.grok" : "page.overview.cursor")
+	}
+
+	private var officialPeriodFellBack: Bool {
+		switch overview.requestedRange {
+		case .quotaMonth: overview.effectiveRange != .quotaMonth
+		case .quotaWeek: overview.effectiveRange != .quotaWeek || overview.fellBackFromQuotaWeek
+		default: false
+		}
 	}
 
 	private var monthlyQuotaFallbackNotice: some View {
 		Label(
-			"暂未获取到月额度周期，当前显示最近 30 天。",
+			provider == .grok
+				? (overview.requestedRange == .quotaMonth
+					? "暂未获取到月额度周期，当前显示最近 30 天。"
+					: "暂未获取到额度周期，当前显示最近 7 天。")
+				: "暂未获取到月额度周期，当前显示最近 30 天。",
 			systemImage: "arrow.trianglehead.2.clockwise.rotate.90"
 		)
 		.font(.caption.weight(.medium))
@@ -355,8 +375,8 @@ private struct CursorOverviewContentView: View {
 	private var pageHeader: some View {
 		HStack(alignment: .center, spacing: 20) {
 			VStack(alignment: .leading, spacing: 4) {
-				Text("Cursor 概览").font(.largeTitle.bold())
-				Text("今日状态、近期趋势与工作归属").foregroundStyle(.secondary)
+				Text(provider == .grok ? "Grok 概览" : "Cursor 概览").font(.largeTitle.bold())
+				Text(provider == .grok ? "额度周期、近期趋势与工作归属" : "今日状态、近期趋势与工作归属").foregroundStyle(.secondary)
 			}
 			Spacer()
 			VStack(alignment: .trailing, spacing: 6) {
@@ -618,7 +638,9 @@ private struct CursorOverviewContentView: View {
 			Divider()
 
 			VStack(alignment: .leading, spacing: 5) {
-				Text(summary.rangeCostBasis == .reported ? "Cursor 上报费用" : "文档价目估算")
+				Text(summary.rangeCostBasis == .reported
+					? (provider == .grok ? "Grok 上报费用" : "Cursor 上报费用")
+					: (provider == .grok ? "xAI 参考价估算" : "文档价目估算"))
 					.font(.subheadline.weight(.medium))
 					.foregroundStyle(.secondary)
 				Text(metricText(summary.rangePrimaryCost, cost: true))

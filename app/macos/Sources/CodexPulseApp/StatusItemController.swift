@@ -616,8 +616,10 @@ private struct MenuBarPopoverView: View {
 	@ViewBuilder
 	private var providerContent: some View {
 		switch model.statusProvider {
-		case .cursor, .grok:
+		case .cursor:
 			cursorContent
+		case .grok:
+			grokContent
 		case .codex:
 			if let overview = model.statusPresentation {
                     VStack(alignment: .leading, spacing: 18) {
@@ -645,6 +647,32 @@ private struct MenuBarPopoverView: View {
 			Text(model.statusItemTitle).foregroundStyle(.secondary)
 		}
 		.frame(maxWidth: .infinity, minHeight: 440)
+	}
+
+	@ViewBuilder
+	private var grokContent: some View {
+		if let overview = model.statusPresentation {
+			VStack(alignment: .leading, spacing: 18) {
+				quotaSection(overview)
+				dailyTrendSection(overview, title: grokTrendTitle(overview))
+				if preferences.showCostSummary { costSection(overview) }
+			}
+			.padding(.horizontal, 18)
+			.padding(.vertical, 16)
+			.background(PopoverCaptureDocumentProbe(source: captureSource).allowsHitTesting(false))
+		} else {
+			statusLoadingContent
+		}
+	}
+
+	private func grokTrendTitle(_ overview: OverviewPresentation) -> String {
+		if overview.requestedRange == .quotaMonth, overview.effectiveRange == .quotaMonth {
+			return "本月每日 Token"
+		}
+		if overview.requestedRange == .quotaWeek, overview.effectiveRange == .quotaWeek, !overview.fellBackFromQuotaWeek {
+			return "本周每日 Token"
+		}
+		return "每日 Token"
 	}
 
 	@ViewBuilder

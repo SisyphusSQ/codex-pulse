@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -39,6 +40,8 @@ type updatesFileCursor struct {
 	size     int64
 	modNano  int64
 	offset   int64
+	device   uint64
+	inode    uint64
 	usage    []store.GrokUsageEvent
 	tools    []store.GrokToolEvent
 	turns    map[string]int64
@@ -328,7 +331,9 @@ func mergeUpdates(
 	if err != nil {
 		return 0, updatesFileCursor{}
 	}
-	unchanged := previous.size > 0 && previous.size == info.Size() && previous.modNano == info.ModTime().UnixNano()
+	device, inode, hasIdentity := fileIdentity(info)
+	sameFile := hasIdentity && previous.inode != 0 && previous.device == device && previous.inode == inode
+	unchanged := sameFile && previous.size == info.Size()
 	if unchanged {
 		replayUpdatesCursor(previous, snapshot)
 		return len(previous.usage) + len(previous.tools), previous
@@ -338,7 +343,7 @@ func mergeUpdates(
 		return 0, updatesFileCursor{}
 	}
 	defer file.Close()
-	canAppend := previous.offset > 0 && info.Size() > previous.size && previous.offset <= info.Size()
+	canAppend := sameFile && previous.offset > 0 && info.Size() > previous.size && previous.offset <= info.Size()
 	if canAppend {
 		if _, err := file.Seek(previous.offset, io.SeekStart); err != nil {
 			canAppend = false
@@ -370,6 +375,7 @@ func mergeUpdates(
 	afterRequests, afterTools := sessionCounts(snapshot, sessionID)
 	cursor := updatesFileCursor{
 		size: info.Size(), modNano: info.ModTime().UnixNano(), offset: offset,
+		device: device, inode: inode,
 		usage: fileUsageEvents(snapshot, sessionID), tools: fileToolEvents(snapshot, sessionID),
 		turns:    map[string]int64{},
 		newTools: map[string]int64{},
@@ -393,9 +399,13 @@ func mergeUpdates(
 func replayUpdatesCursor(cursor updatesFileCursor, snapshot *collectedSnapshot) {
 	for _, event := range cursor.usage {
 		snapshot.usage[event.EventID] = event
-		session := snapshot.session(event.ExternalSessionID, event.OccurredAtMS, event.OccurredAtMS)
-		if event.ModelKey != nil {
-			session.ModelKey = event.ModelKey
+		if session := snapshot.existingSession(event.ExternalSessionID); session != nil {
+			if event.OccurredAtMS > session.LastActivityAtMS {
+				session.LastActivityAtMS = event.OccurredAtMS
+			}
+			if event.ModelKey != nil {
+				session.ModelKey = event.ModelKey
+			}
 		}
 	}
 	for _, event := range cursor.tools {
@@ -404,11 +414,23 @@ func replayUpdatesCursor(cursor updatesFileCursor, snapshot *collectedSnapshot) 
 		}
 	}
 	for sessionID, count := range cursor.turns {
-		snapshot.session(sessionID, 0, 0).RequestCount += count
+		if session := snapshot.existingSession(sessionID); session != nil {
+			session.RequestCount += count
+		}
 	}
 	for sessionID, count := range cursor.newTools {
-		snapshot.session(sessionID, 0, 0).ToolCallCount += count
+		if session := snapshot.existingSession(sessionID); session != nil {
+			session.ToolCallCount += count
+		}
 	}
+}
+
+func fileIdentity(info os.FileInfo) (uint64, uint64, bool) {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, 0, false
+	}
+	return uint64(stat.Dev), uint64(stat.Ino), true
 }
 
 func sessionCounts(snapshot *collectedSnapshot, sessionID string) (int64, int64) {
@@ -511,16 +533,24 @@ func mergeTurnCompleted(
 	snapshot *collectedSnapshot,
 	atMS int64,
 ) bool {
-	session := snapshot.session(sessionID, occurred, occurred)
-	session.RequestCount++
+	session := snapshot.existingSession(sessionID)
+	if session != nil {
+		session.RequestCount++
+		if lastAt := occurred; lastAt > session.LastActivityAtMS {
+			session.LastActivityAtMS = lastAt
+		}
+		if usage == nil {
+			session.CoverageState = "partial"
+		}
+	}
 	if usage == nil {
-		session.CoverageState = "partial"
-		return true
+		return session != nil
 	}
 	models := usage.ModelUsage
 	if len(models) == 0 {
 		models = map[string]grokUsageDTO{"": *usage}
 	}
+	parentTicksAssigned := false
 	for model, item := range models {
 		eventID := normalizeID(promptID)
 		if eventID == "" {
@@ -540,7 +570,9 @@ func mergeTurnCompleted(
 		var modelPtr *string
 		if modelKey != "" {
 			modelPtr = &modelKey
-			session.ModelKey = modelPtr
+			if session != nil {
+				session.ModelKey = modelPtr
+			}
 		}
 		total := item.TotalTokens
 		if total == 0 {
@@ -554,32 +586,31 @@ func mergeTurnCompleted(
 			ReasoningTokens:     maxInt64(item.ReasoningTokens, 0),
 			TotalTokens:         maxInt64(total, 0), UpdatedAtMS: atMS,
 		}
-		if micros, ok := reportedCostMicros(item, usage); ok {
+		if micros, ok := reportedCostMicros(item); ok {
 			event.ReportedCostMicros = &micros
+		} else if !parentTicksAssigned {
+			if micros, ok := reportedCostMicros(*usage); ok {
+				event.ReportedCostMicros = &micros
+				parentTicksAssigned = true
+			}
 		}
 		snapshot.usage[eventID] = event
 	}
-	if session.CoverageState != "partial" {
+	if session != nil && session.CoverageState != "partial" {
 		session.CoverageState = "exact"
 	}
 	return true
 }
 
-func reportedCostMicros(item grokUsageDTO, parent *grokUsageDTO) (int64, bool) {
-	ticks := item.CostUsdTicks
-	partial := item.CostIsPartial
-	if ticks == nil && parent != nil {
-		ticks = parent.CostUsdTicks
-		partial = parent.CostIsPartial
-	}
-	if ticks == nil || *ticks < 0 || (partial != nil && *partial) {
+func reportedCostMicros(item grokUsageDTO) (int64, bool) {
+	if item.CostUsdTicks == nil || *item.CostUsdTicks < 0 || (item.CostIsPartial != nil && *item.CostIsPartial) {
 		return 0, false
 	}
-	// 1 USD = 1e9 ticks; 1 USD = 1e6 micros.
-	if *ticks > (1<<62)/1 && *ticks/1000 > (1<<62) {
+	const ticksPerMicro int64 = 10_000
+	if *item.CostUsdTicks > (1<<62)/1 && *item.CostUsdTicks/ticksPerMicro > (1<<62) {
 		return 0, false
 	}
-	return *ticks / 1000, true
+	return *item.CostUsdTicks / ticksPerMicro, true
 }
 
 func mergeToolEvent(
@@ -589,7 +620,10 @@ func mergeToolEvent(
 	snapshot *collectedSnapshot,
 	atMS int64,
 ) bool {
-	session := snapshot.session(sessionID, occurred, occurred)
+	session := snapshot.existingSession(sessionID)
+	if session != nil && occurred > session.LastActivityAtMS {
+		session.LastActivityAtMS = occurred
+	}
 	name := toolNameFromMeta(meta)
 	if name == "" {
 		name = firstToken(title)
@@ -613,7 +647,7 @@ func mergeToolEvent(
 	if seen && rankOutcome(existing.Outcome) > rankOutcome(outcome) {
 		outcome = existing.Outcome
 	}
-	if !seen {
+	if !seen && session != nil {
 		session.ToolCallCount++
 	}
 	snapshot.tools[eventID] = store.GrokToolEvent{
@@ -621,6 +655,10 @@ func mergeToolEvent(
 		ToolName: name, Outcome: outcome, UpdatedAtMS: atMS,
 	}
 	return true
+}
+
+func (snapshot *collectedSnapshot) existingSession(externalID string) *store.GrokSession {
+	return snapshot.sessions[externalID]
 }
 
 func (snapshot *collectedSnapshot) session(externalID string, createdAtMS, lastAtMS int64) *store.GrokSession {
