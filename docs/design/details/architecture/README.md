@@ -28,7 +28,7 @@ Query --> Store["SQLite"]
 | `internal/query` / `internal/store` | 查询、聚合、SQLite 真相 | 跨进程 transport |
 | Swift client（后续） | AppKit/SwiftUI、窗口、菜单栏、更新、Helper 托管 | 重定义 Go 业务事实 |
 
-客户端维度通过窄 `AgentProvider` seam 路由；Cursor 的多种本地或可选在线来源只在 Helper 内部合并，不暴露成多个业务 Provider。详细契约见 [Agent Provider 与 Cursor](../providers/README.md)。
+客户端维度通过窄 `AgentProvider` seam 路由；当前客户端是 `codex`、`cursor` 和 `grok`。Cursor 或 Grok 的多种本地或可选在线来源只在 Helper 内部合并，不暴露成多个业务 Provider，也不并进 Codex 索引器。详细契约见 [Agent Provider、Cursor 与 Grok](../providers/README.md)。
 
 ## 安全与停止
 

@@ -42,6 +42,7 @@
 ### 本地 transcript / usage
 
 - Codex：`~/.codex/sessions/`、`~/.codex/archived_sessions/` 和 `session_index.jsonl`。
+- Grok Build：`${GROK_HOME:-~/.grok}/sessions/<urlencoded-cwd>/<session-id>/`，索引入口是 `summary.json`，用量在 `updates.jsonl` 的 `turn_completed.usage`。`session_search.sqlite` 含 FTS 正文，不能当账本。
 - Claude Code：`~/.claude/projects/`，部分实现支持 `CLAUDE_CONFIG_DIR`。
 - OpenCode：`~/.local/share/opencode/`，可能是 JSON 或 SQLite。
 - Gemini/Qwen/Copilot：目录不同，可参考 ccusage/agentsview 的 provider 实现。
@@ -67,6 +68,8 @@ Codex 常见三条路径：
 3. `codex app-server` 的 `account/rateLimits/read`：可实时读，但已有实现提示 initialize 可能影响 5h window。
 
 因此 v0.1 只采用 1 + 可由用户关闭的 `wham/usage`，明确排除 app-server。
+
+Grok Build 的 `/usage` 走 CLI chat proxy 的 `GET /billing?format=credits`，语义是 included credits 百分比、周/月 `currentPeriod`、on-demand 与 prepaid。它和 `wham` 同类：可做、必须可关、协议漂移 fail closed，不能写成稳定公共 API。产品契约见 [Agent Provider、Cursor 与 Grok](../providers/README.md)。
 
 ## Codex Runway 快照
 

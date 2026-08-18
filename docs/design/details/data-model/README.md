@@ -89,6 +89,8 @@ session 累计计数器的 previous 只取自同一 checkpoint 的 projector sta
 | 当前与聚合投影 | 可重建，服务 UI 快速查询 | `session_current`、`session_attributions`、`turn_attributions`、`quota_current`、daily usage |
 | 运行状态 | 游标、调度、采集健康与价格目录 | `source_files`、`source_state`、`source_attempts`、`job_runs`、`health_events`、`pricing_versions` |
 
+Cursor 与 Grok 的外部事实和持久账本不进入上表的 Codex `sessions` / `source_files` 增量索引。它们共用 `agent_provider_snapshots` / `agent_provider_sources` 登记行，但分别写入 `cursor_*` 与 `grok_*` 事实表。Grok 第一期 schema 为 v27，详见 [Agent Provider、Cursor 与 Grok](../providers/README.md)。
+
 ## Session 与 Turn
 
 TOO-247 固化六张 `STRICT` 核心表。所有时间为 UTC epoch milliseconds，来源 offset 和 generation 为非负整数。
