@@ -46,7 +46,10 @@ func TestFileStoreConfirmCreatesCurrentTypedPreferences(t *testing.T) {
 		t.Fatalf("CodexHome = %#v, want source=%#v generation=1 data-store=%q",
 			got.CodexHome, onboarding.CodexHome, DefaultDataStoreKey)
 	}
-	if got.Online != (OnlinePreferences{QuotaEnabled: true, ResetCreditsEnabled: false, GrokQuotaEnabled: true}) {
+	if got.Online != (OnlinePreferences{
+		QuotaEnabled: true, ResetCreditsEnabled: false,
+		GrokQuotaEnabled: true, GrokAutoRefreshEnabled: true,
+	}) {
 		t.Fatalf("Online = %#v", got.Online)
 	}
 	if got.Refresh != DefaultRefreshPreferences() || got.Updates != DefaultUpdatePreferences() ||
@@ -69,6 +72,38 @@ func TestFileStoreConfirmCreatesCurrentTypedPreferences(t *testing.T) {
 	}
 	if envelope.SchemaVersion != CurrentPreferencesSchemaVersion {
 		t.Fatalf("persisted schema = %d, want %d", envelope.SchemaVersion, CurrentPreferencesSchemaVersion)
+	}
+}
+
+func TestCurrentPreferencesDefaultsMissingGrokAutoRefreshToEnabled(t *testing.T) {
+	t.Parallel()
+	value, err := preferencesFromOnboarding(validSnapshot(filepath.Join(t.TempDir(), "current-home")))
+	if err != nil {
+		t.Fatalf("preferencesFromOnboarding() error = %v", err)
+	}
+	content, err := marshalPreferences(value)
+	if err != nil {
+		t.Fatalf("marshalPreferences() error = %v", err)
+	}
+	content = removeNestedJSONField(t, content, "online", "grok_auto_refresh_enabled")
+	decoded, migrated, err := decodePreferences(content)
+	if err != nil {
+		t.Fatalf("decodePreferences() error = %v", err)
+	}
+	if migrated {
+		t.Fatal("current preferences unexpectedly reported a schema migration")
+	}
+	if !decoded.Online.GrokAutoRefreshEnabled {
+		t.Fatalf("GrokAutoRefreshEnabled = false, want true for an existing preferences file")
+	}
+	decoded.Online.GrokAutoRefreshEnabled = false
+	content, err = marshalPreferences(decoded)
+	if err != nil {
+		t.Fatalf("marshalPreferences(opt out) error = %v", err)
+	}
+	decoded, _, err = decodePreferences(content)
+	if err != nil || decoded.Online.GrokAutoRefreshEnabled {
+		t.Fatalf("explicit Grok auto-refresh opt-out = %#v, %v", decoded.Online, err)
 	}
 }
 

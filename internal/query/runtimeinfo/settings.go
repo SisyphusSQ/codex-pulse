@@ -79,9 +79,10 @@ func mapSettings(snapshot preferences.Snapshot) (SettingsSnapshot, error) {
 			SwitchStatus: switchStatus, LastSwitchOutcome: lastOutcome,
 		},
 		Online: SettingsOnlineSnapshot{
-			QuotaEnabled:        snapshot.Online.QuotaEnabled,
-			ResetCreditsEnabled: snapshot.Online.ResetCreditsEnabled,
-			GrokQuotaEnabled:    snapshot.Online.GrokQuotaEnabled,
+			QuotaEnabled:           snapshot.Online.QuotaEnabled,
+			ResetCreditsEnabled:    snapshot.Online.ResetCreditsEnabled,
+			GrokQuotaEnabled:       snapshot.Online.GrokQuotaEnabled,
+			GrokAutoRefreshEnabled: snapshot.Online.GrokAutoRefreshEnabled,
 		},
 		Refresh: SettingsRefreshSnapshot{
 			QuotaIntervalSeconds:        snapshot.Refresh.QuotaIntervalSeconds,
@@ -138,6 +139,7 @@ func settingsEditableFields() []EditableField {
 		booleanField("online.quotaEnabled", true),
 		booleanField("online.resetCreditsEnabled", true),
 		booleanField("online.grokQuotaEnabled", true),
+		booleanField("online.grokAutoRefreshEnabled", true),
 		integerField("refresh.quotaIntervalSeconds", true, 60, 1800),
 		integerField("refresh.resetCreditsIntervalSeconds", true, 60, 86400),
 		integerField("refresh.reconcileIntervalSeconds", true, 60, 86400),

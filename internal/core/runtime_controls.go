@@ -27,9 +27,10 @@ type SettingsUpdateRequest struct {
 }
 
 type SettingsOnlineUpdate struct {
-	QuotaEnabled        bool `json:"quotaEnabled"`
-	ResetCreditsEnabled bool `json:"resetCreditsEnabled"`
-	GrokQuotaEnabled    bool `json:"grokQuotaEnabled"`
+	QuotaEnabled           bool `json:"quotaEnabled"`
+	ResetCreditsEnabled    bool `json:"resetCreditsEnabled"`
+	GrokQuotaEnabled       bool `json:"grokQuotaEnabled"`
+	GrokAutoRefreshEnabled bool `json:"grokAutoRefreshEnabled"`
 }
 
 type SettingsRefreshUpdate struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
@@ -130,7 +131,17 @@ func composeGrokQueryService(
 	if err != nil {
 		return disabled, nil
 	}
-	auth, err := grokprovider.NewAuthReader(config.AuthPath, time.Now)
+	var lastKnownAutoRefresh atomic.Bool
+	lastKnownAutoRefresh.Store(true)
+	auth, err := grokprovider.NewAuthReader(config.AuthPath, time.Now, grokprovider.AuthReaderConfig{
+		RefreshEnabled: func() bool {
+			snapshot, loadErr := preferenceStore.LoadPreferences(context.Background())
+			if loadErr == nil {
+				lastKnownAutoRefresh.Store(snapshot.Online.GrokAutoRefreshEnabled)
+			}
+			return lastKnownAutoRefresh.Load()
+		},
+	})
 	if err != nil {
 		return disabled, nil
 	}

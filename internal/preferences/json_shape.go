@@ -46,7 +46,7 @@ func validateCurrentJSONShape(content []byte) error {
 	}
 	if _, err := decodeObjectFieldExact(root, "online",
 		[]string{"quota_enabled", "reset_credits_enabled"},
-		[]string{"grok_quota_enabled"},
+		[]string{"grok_quota_enabled", "grok_auto_refresh_enabled"},
 	); err != nil {
 		return err
 	}

@@ -40,6 +40,12 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .settings: "gearshape"
         }
     }
+
+	public static func usageFeatures(for provider: AgentProvider) -> [AppFeature] {
+		let features = Array(allCases.prefix(5))
+		guard !provider.supportsInvocationStatistics else { return features }
+		return features.filter { $0 != .invocationUsage }
+	}
 }
 
 private enum FeatureTaskKey: Hashable {
@@ -285,6 +291,9 @@ public final class AppModel: ObservableObject {
 		if provider == .cursor, projectOptions.sortField == "estimatedCost" {
 			projectOptions.sortField = "lastActivityAt"
 		}
+		if !provider.supportsInvocationStatistics, selectedFeature == .invocationUsage {
+			selectedFeature = .overview
+		}
 		overviewRange = provider.defaultOverviewRange
 		overviewRefreshGeneration &+= 1
 		overviewRefreshTask?.cancel()
@@ -413,11 +422,16 @@ public final class AppModel: ObservableObject {
     }
 
     public func navigate(to feature: AppFeature) {
+		guard feature != .invocationUsage || selectedProvider.supportsInvocationStatistics else {
+			selectedFeature = .overview
+			return
+		}
         selectedFeature = feature
         load(feature)
     }
 
     public func navigateToInvocationUsageFromOverview() {
+		guard selectedProvider.supportsInvocationStatistics else { return }
         let contextChanged = invocationRange != overviewRange || invocationSourceClass != "all"
         invocationRange = overviewRange
         invocationSourceClass = "all"
@@ -444,7 +458,9 @@ public final class AppModel: ObservableObject {
         loadSessions(reset: true)
         loadProjects(reset: true)
         loadQuotaAndUsage()
-        loadInvocationUsage()
+		if selectedProvider.supportsInvocationStatistics {
+			loadInvocationUsage()
+		}
         loadLocalStatus()
         loadSourcesAndJobs(reset: true)
         loadSettings()
@@ -760,6 +776,10 @@ public final class AppModel: ObservableObject {
     }
 
     public func loadInvocationUsage() {
+		guard selectedProvider.supportsInvocationStatistics else {
+			invocationUsageState = .idle
+			return
+		}
         let previous = invocationUsageState.value
         invocationUsageState = .loading(previous: previous)
         let quotaCycleRange = [.quotaWeek, .quotaMonth].contains(invocationRange)

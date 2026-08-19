@@ -88,6 +88,47 @@ func TestQueryServiceReturnsGrokProviderContextAndSeparateCosts(t *testing.T) {
 	}
 }
 
+func TestGrokActivityDistributionClipsPartialHourBucketsToExactRange(t *testing.T) {
+	t.Parallel()
+	rangeStart := time.Date(2026, time.August, 18, 10, 39, 0, 0, time.UTC).UnixMilli()
+	rangeEnd := time.Date(2026, time.August, 18, 11, 15, 0, 0, time.UTC).UnixMilli()
+	distribution := activityDistribution([]store.GrokUsageEvent{
+		{
+			ExternalSessionID: "session-1",
+			OccurredAtMS:      time.Date(2026, time.August, 18, 10, 42, 0, 0, time.UTC).UnixMilli(),
+			TotalTokens:       10,
+		},
+		{
+			ExternalSessionID: "session-2",
+			OccurredAtMS:      time.Date(2026, time.August, 18, 11, 5, 0, 0, time.UTC).UnixMilli(),
+			TotalTokens:       20,
+		},
+	}, basequery.UTCTimeRange{
+		StartAtMS: rangeStart, EndAtMS: rangeEnd, TimeZone: "UTC",
+	})
+	if distribution == nil || len(distribution.Timeline) != 2 {
+		t.Fatalf("activity distribution = %#v, want two timeline buckets", distribution)
+	}
+	first, second := distribution.Timeline[0], distribution.Timeline[1]
+	if first.StartAtMS.Value == nil || *first.StartAtMS.Value != rangeStart ||
+		first.EndAtMS.Value == nil || *first.EndAtMS.Value != time.Date(2026, time.August, 18, 11, 0, 0, 0, time.UTC).UnixMilli() {
+		t.Fatalf("first bucket = %#v, want clipped start at range boundary", first)
+	}
+	if second.StartAtMS.Value == nil || *second.StartAtMS.Value != time.Date(2026, time.August, 18, 11, 0, 0, 0, time.UTC).UnixMilli() ||
+		second.EndAtMS.Value == nil || *second.EndAtMS.Value != rangeEnd {
+		t.Fatalf("second bucket = %#v, want clipped end at range boundary", second)
+	}
+	if first.Metrics.TotalTokens.Value == nil || *first.Metrics.TotalTokens.Value != 10 ||
+		first.Metrics.SessionCount.Value == nil || *first.Metrics.SessionCount.Value != 1 ||
+		second.Metrics.TotalTokens.Value == nil || *second.Metrics.TotalTokens.Value != 20 ||
+		second.Metrics.SessionCount.Value == nil || *second.Metrics.SessionCount.Value != 1 {
+		t.Fatalf("timeline metrics = %#v, want reconciled token and session counts", distribution.Timeline)
+	}
+	if len(distribution.WeekdayHours) != 2 {
+		t.Fatalf("weekday-hour cells = %#v, want both populated UTC hours", distribution.WeekdayHours)
+	}
+}
+
 func TestBillingDecoderFailClosedOnDrift(t *testing.T) {
 	t.Parallel()
 	if _, err := decodeBillingCredits([]byte(`{"creditUsagePercent":-1}`)); err == nil {

@@ -23,7 +23,7 @@ func preferencesFromOnboarding(onboarding OnboardingSnapshot) (Snapshot, error) 
 		},
 		Online: OnlinePreferences{
 			QuotaEnabled: onboarding.OnlineQuotaEnabled, ResetCreditsEnabled: onboarding.ResetCreditsEnabled,
-			GrokQuotaEnabled: true,
+			GrokQuotaEnabled: true, GrokAutoRefreshEnabled: true,
 		},
 		Refresh: DefaultRefreshPreferences(), Updates: DefaultUpdatePreferences(), UI: DefaultUIPreferences(),
 	}

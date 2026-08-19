@@ -13,9 +13,9 @@ Codex Runway 实际运行中观察到：网络不佳时，5 小时和周窗口�
 
 不启动或复用 `codex app-server`，也不作为兜底。v0.1 只支持当前单账号，固定 `account_scope = default`；运行期间切换 Codex 账号不属于支持场景。
 
-Grok 客户端的额度是独立来源，不写入 Codex `quota_observations` / `quota_current`，也不复用 Cursor Dashboard 表。Helper 在用户开启 `online.grok_quota_enabled` 时，用调用期内存中的 `~/.grok/auth.json` Bearer 请求 CLI proxy `GET /billing?format=credits`，把 `creditUsagePercent` 与 `currentPeriod` 映射为 Grok 自己的 window snapshot。该接口与 `wham` 同类：默认开启、可关、last-known-good、协议漂移 fail closed。Grok 没有 Reset Credits；prepaid 余额只作摘要。字段、周期和失败语义见 [Agent Provider、Cursor 与 Grok](../providers/README.md)。
+Grok 客户端的额度是独立来源，不写入 Codex `quota_observations` / `quota_current`，也不复用 Cursor Dashboard 表。Helper 在用户开启 `online.grok_quota_enabled` 时，用调用期内存中的 `~/.grok/auth.json` Bearer 请求 CLI proxy `GET /billing?format=credits`，把 `creditUsagePercent` 与 `currentPeriod` 映射为 Grok 自己的 window snapshot。该接口与 `wham` 同类：默认开启、可关、last-known-good、协议漂移 fail closed。独立的 `online.grok_auto_refresh_enabled` 也默认开启：OIDC token 临近到期或 billing 返回 401/403 时，Helper 通过共用锁与 mode `0600` 原子替换安全续期；关闭后完全不改写 Grok 凭据。Grok 没有 Reset Credits；prepaid 余额只作摘要。字段、周期和失败语义见 [Agent Provider、Cursor 与 Grok](../providers/README.md)。
 
-在线 quota 或 reset credits 启用时，只从 Preferences 当前 confirmed Codex Home 下的固定 `auth.json` 将 access token 读入调用期内存。应用不保存 token、refresh token、Authorization header 或 auth 文件内容；不使用 refresh token 主动刷新，也不修改 `auth.json`。401/403 后标记 `auth_required`，保留 last-known-good，并进入有上限的持久退避；凭据恢复后自动或手动请求都可恢复来源。只有用户关闭对应能力时才停止该能力的在线调度；已有非敏感 observation history 保留。
+Codex 在线 quota 或 reset credits 启用时，只从 Preferences 当前 confirmed Codex Home 下的固定 `auth.json` 将 access token 读入调用期内存。Codex 凭据链不保存 token、refresh token、Authorization header 或 auth 文件内容，不主动刷新或修改 Codex `auth.json`；401/403 后标记 `auth_required`，保留 last-known-good，并进入有上限的持久退避。Grok 的 OIDC 主动续期是单独、可关闭的能力，严格限定在 Grok `auth.json`，不得复用到 Codex Home。凭据恢复后自动或手动请求都可恢复来源；只有用户关闭对应能力时才停止该能力的在线调度，已有非敏感 observation history 保留。
 
 ## Observation
 

@@ -46,7 +46,7 @@ func TestQuotaCurrentAndSettingsReturnVersionedRedactedFacts(t *testing.T) {
 	if settings.Meta.Status != basequery.ResponseComplete || settings.Snapshot.Revision != "7" ||
 		settings.Snapshot.Home.Generation != "3" || !settings.Snapshot.Home.Configured ||
 		settings.Snapshot.Home.SwitchStatus != HomeSwitchPending ||
-		len(settings.EditableFields) < 10 {
+		!settings.Snapshot.Online.GrokAutoRefreshEnabled || len(settings.EditableFields) < 10 {
 		t.Fatalf("Settings() = %#v", settings)
 	}
 	encoded, err := json.Marshal(settings)
@@ -63,6 +63,7 @@ func TestQuotaCurrentAndSettingsReturnVersionedRedactedFacts(t *testing.T) {
 	}
 	assertEditableField(t, settings.EditableFields, "refresh.quotaIntervalSeconds", true, int64Pointer(60), int64Pointer(1800))
 	assertEditableField(t, settings.EditableFields, "updates.channel", true, nil, nil)
+	assertEditableField(t, settings.EditableFields, "online.grokAutoRefreshEnabled", true, nil, nil)
 	assertEditableOptions(
 		t, settings.EditableFields, "updates.channel",
 		[]string{"stable", "prerelease"},
@@ -769,8 +770,10 @@ func validSensitivePreferences() preferences.Snapshot {
 		Onboarding: preferences.OnboardingPreferences{
 			Version: preferences.CurrentOnboardingVersion, Completed: true,
 		},
-		CodexHome:     active,
-		Online:        preferences.OnlinePreferences{QuotaEnabled: true, ResetCreditsEnabled: true},
+		CodexHome: active,
+		Online: preferences.OnlinePreferences{
+			QuotaEnabled: true, ResetCreditsEnabled: true, GrokAutoRefreshEnabled: true,
+		},
 		Refresh:       preferences.DefaultRefreshPreferences(),
 		Updates:       preferences.DefaultUpdatePreferences(),
 		UI:            preferences.DefaultUIPreferences(),

@@ -25,6 +25,14 @@ type TokenSource interface {
 	ReadAccessToken() (AccessToken, error)
 }
 
+type contextualTokenSource interface {
+	ReadAccessTokenContext(context.Context) (AccessToken, error)
+}
+
+type refreshingTokenSource interface {
+	RefreshAccessToken(context.Context, string) (AccessToken, error)
+}
+
 type BillingClientConfig struct {
 	BaseURL     string
 	HTTPClient  *http.Client
@@ -63,10 +71,30 @@ func (client *BillingClient) GetCredits(ctx context.Context) (BillingCredits, er
 	if client == nil || ctx == nil {
 		return BillingCredits{}, ErrBillingProtocol
 	}
-	credential, err := client.tokenSource.ReadAccessToken()
+	credential, err := client.accessToken(ctx)
 	if err != nil {
 		return BillingCredits{}, err
 	}
+	credits, err := client.getCredits(ctx, credential)
+	if !errors.Is(err, ErrAuthExpired) {
+		return credits, err
+	}
+	refresher, ok := client.tokenSource.(refreshingTokenSource)
+	if !ok {
+		return BillingCredits{}, err
+	}
+	credential, err = refresher.RefreshAccessToken(ctx, credential.Token)
+	if err != nil {
+		return BillingCredits{}, err
+	}
+	return client.getCredits(ctx, credential)
+}
+
+func (client *BillingClient) accessToken(ctx context.Context) (AccessToken, error) {
+	return accessTokenFromSource(ctx, client.tokenSource)
+}
+
+func (client *BillingClient) getCredits(ctx context.Context, credential AccessToken) (BillingCredits, error) {
 	target := *client.baseURL
 	target.Path += "/billing"
 	query := target.Query()
@@ -111,6 +139,7 @@ type billingCreditsDTO struct {
 	OnDemandCap          json.RawMessage `json:"onDemandCap"`
 	PrepaidBalance       json.RawMessage `json:"prepaidBalance"`
 	SubscriptionTier     *string         `json:"subscriptionTier"`
+	SubscriptionTierWire *string         `json:"subscription_tier"`
 	IsUnifiedBillingUser *bool           `json:"isUnifiedBillingUser"`
 	MonthlyLimit         json.RawMessage `json:"monthlyLimit"`
 	Used                 json.RawMessage `json:"used"`
@@ -135,8 +164,11 @@ func decodeBillingCredits(body []byte) (BillingCredits, error) {
 	if !ok {
 		return BillingCredits{}, fmt.Errorf("%w: billing period missing", ErrBillingProtocol)
 	}
-	if payload.SubscriptionTier != nil {
-		tier = payload.SubscriptionTier
+	if payloadTier := firstBillingSubscriptionTier(
+		payload.SubscriptionTierWire,
+		payload.SubscriptionTier,
+	); payloadTier != nil {
+		tier = payloadTier
 	}
 	result := BillingCredits{
 		UsedPercent: used, PeriodType: periodType, PeriodStartMS: startMS, PeriodEndMS: endMS,
@@ -157,8 +189,9 @@ func decodeBillingCredits(body []byte) (BillingCredits, error) {
 
 func unwrapBillingPayload(body []byte) (billingCreditsDTO, *string, error) {
 	var envelope struct {
-		Config           json.RawMessage `json:"config"`
-		SubscriptionTier *string         `json:"subscriptionTier"`
+		Config               json.RawMessage `json:"config"`
+		SubscriptionTier     *string         `json:"subscriptionTier"`
+		SubscriptionTierWire *string         `json:"subscription_tier"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return billingCreditsDTO{}, nil, fmt.Errorf("%w: decode credits", ErrBillingProtocol)
@@ -171,7 +204,19 @@ func unwrapBillingPayload(body []byte) (billingCreditsDTO, *string, error) {
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 		return billingCreditsDTO{}, nil, fmt.Errorf("%w: decode credits", ErrBillingProtocol)
 	}
-	return payload, envelope.SubscriptionTier, nil
+	return payload, firstBillingSubscriptionTier(
+		envelope.SubscriptionTierWire,
+		envelope.SubscriptionTier,
+	), nil
+}
+
+func firstBillingSubscriptionTier(values ...*string) *string {
+	for _, value := range values {
+		if value != nil && strings.TrimSpace(*value) != "" {
+			return value
+		}
+	}
+	return nil
 }
 
 func creditUsedPercent(payload billingCreditsDTO) (float64, bool) {

@@ -25,7 +25,7 @@ struct RootView: View {
 					Text("客户端")
 				}
                 Section(localization.text("sidebar.section.usage")) {
-                    ForEach(AppFeature.allCases.prefix(5)) { section in
+					ForEach(AppFeature.usageFeatures(for: model.selectedProvider)) { section in
                         Label(section.title(localization: localization), systemImage: section.symbol)
                             .tag(section)
                     }
@@ -332,15 +332,17 @@ private struct CursorOverviewContentView: View {
 				consumptionSection(summary)
 				modelSection(summary, fillsProposedHeight: false)
 				activityAndSessionsSection
-				OverviewInvocationProfileCard(
-					profile: overview.invocationProfile,
-					rangeLabel: overview.usageRangeLabel,
-					onNavigate: { onNavigate(.invocationUsage) },
-					localization: localization,
-					showsSkillActivity: false,
-					showsAIEditActivity: provider == .cursor
-				)
-				.accessibilityIdentifier(provider == .grok ? "grok.overview.invocations" : "cursor.overview.invocations")
+				if provider.supportsInvocationStatistics {
+					OverviewInvocationProfileCard(
+						profile: overview.invocationProfile,
+						rangeLabel: overview.usageRangeLabel,
+						onNavigate: { onNavigate(.invocationUsage) },
+						localization: localization,
+						showsSkillActivity: false,
+						showsAIEditActivity: provider == .cursor
+					)
+					.accessibilityIdentifier("cursor.overview.invocations")
+				}
 			}
 			.padding(24)
 			.frame(maxWidth: .infinity, alignment: .leading)

@@ -24,6 +24,10 @@ public enum AgentProvider: String, CaseIterable, Identifiable, Sendable {
         self == .codex
     }
 
+	public var supportsInvocationStatistics: Bool {
+		self != .grok
+	}
+
     public var defaultOverviewRange: DateRangePreset {
         switch self {
         case .cursor: .quotaMonth

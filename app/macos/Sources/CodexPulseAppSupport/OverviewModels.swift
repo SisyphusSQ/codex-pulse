@@ -131,7 +131,7 @@ public struct CodexAccountPresentation: Equatable, Sendable {
         email = normalizedEmail
         planType = normalizedPlan
 
-		guard normalizedType == "chatgpt" || normalizedType == "cursor" else {
+		guard normalizedType == "chatgpt" || normalizedType == "cursor" || normalizedType == "grok" else {
             planText = "--"
             emailText = "--"
             accessibilityLabel = localization.format(
@@ -157,6 +157,10 @@ public struct CodexAccountPresentation: Equatable, Sendable {
         case "pro": "Pro"
 		case "pro_plus": "Pro+"
         case "prolite": "Pro Lite"
+		case "grokpro": "Grok Pro"
+		case "supergrok": "SuperGrok"
+		case "supergrokplus", "supergrok_plus": "SuperGrok Plus"
+		case "supergrokheavy", "supergrok_heavy": "SuperGrok Heavy"
         case "team": "Team"
         case "self_serve_business_usage_based", "business": "Business"
         case "enterprise_cbp_usage_based", "enterprise": "Enterprise"
@@ -693,7 +697,7 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
 			self.remainingText = "\(periodLabel) \(remainingSummary)"
 			self.freshness = window.freshness
 			self.dataState = StatusBarQuotaDataState(freshness: window.freshness)
-			if overview.usageAvailable, overview.totalTokens != nil, Self.grokUsageAlignedToBillingPeriod(overview) {
+			if overview.usageAvailable, Self.grokUsageAlignedToBillingPeriod(overview) {
 				let total = Self.compact(overview.totalTokens)
 				self.usageText = localization.format("status.used", total)
 				self.accessibilityLabel = localization.format(
@@ -2859,6 +2863,17 @@ public struct OverviewRequestSet: Sendable {
         limit: Int32 = 5
     ) -> Codexpulse_Core_V1_ListProjectsRequest? {
         guard range.effectivePreset == .quotaWeek, !range.fellBackFromQuotaWeek else { return nil }
+		return periodProjectRanking(range: range, provider: provider, limit: limit)
+	}
+
+	public static func periodProjectRanking(
+		range: OverviewRangeResolution,
+		provider: AgentProvider = .codex,
+		limit: Int32 = 5
+	) -> Codexpulse_Core_V1_ListProjectsRequest? {
+		guard [.quotaWeek, .quotaMonth].contains(range.effectivePreset),
+			!range.fellBackFromQuotaWeek
+		else { return nil }
 
         var exactRange = Codexpulse_Core_V1_UTCTimeRange()
         exactRange.startAtMs = range.startAtMS

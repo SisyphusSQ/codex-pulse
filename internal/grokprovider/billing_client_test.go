@@ -60,6 +60,40 @@ func TestBillingClientGetCreditsUsesOfficialEnvelope(t *testing.T) {
 	}
 }
 
+func TestBillingClientGetCreditsReadsOfficialSnakeCaseSubscriptionTier(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/billing" || request.URL.Query().Get("format") != "credits" {
+			http.NotFound(writer, request)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{
+			"config": {
+				"creditUsagePercent": 12,
+				"currentPeriod": {
+					"type": "USAGE_PERIOD_TYPE_WEEKLY",
+					"start": "2026-08-10T00:00:00Z",
+					"end": "2026-08-17T00:00:00Z"
+				}
+			},
+			"subscription_tier": "SuperGrok Heavy"
+		}`))
+	}))
+	t.Cleanup(server.Close)
+	client, err := NewBillingClient(BillingClientConfig{
+		BaseURL: server.URL, HTTPClient: server.Client(),
+		TokenSource: staticTokenSource{token: AccessToken{Token: "secret", UserID: "user-1"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credits, err := client.GetCredits(context.Background())
+	if err != nil || credits.SubscriptionTier == nil || *credits.SubscriptionTier != "SuperGrok Heavy" {
+		t.Fatalf("credits = %#v, %v", credits, err)
+	}
+}
+
 func TestBillingClientFailClosedOnUnauthorized(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {

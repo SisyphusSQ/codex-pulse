@@ -67,6 +67,8 @@ type cursorAccountReader func(context.Context) (cursorprovider.DesktopAccountSna
 
 type grokAccountReader func() (grokprovider.AccountSnapshot, error)
 
+type grokProfileReader func(context.Context) (grokprovider.AccountSnapshot, error)
+
 type ApplicationLifecycleRuntimeConfig struct {
 	Database             *storesqlite.Store
 	Preferences          confirmedPreferencesLoader
@@ -93,6 +95,7 @@ type applicationLifecycleRuntime struct {
 	accountReader       applicationAccountReader
 	cursorAccountReader cursorAccountReader
 	grokAccountReader   grokAccountReader
+	grokProfileReader   grokProfileReader
 	database            *storesqlite.Store
 	invalidation        queryInvalidationNotifier
 	cancel              context.CancelFunc
@@ -372,8 +375,24 @@ func startApplicationLifecycleRuntime(
 		}
 	}
 	if grokConfig, configErr := grokprovider.DefaultConfig(); configErr == nil {
-		if grokAuth, authErr := grokprovider.NewAuthReader(grokConfig.AuthPath, time.Now); authErr == nil {
+		if grokAuth, authErr := grokprovider.NewAuthReader(
+			grokConfig.AuthPath,
+			time.Now,
+			grokprovider.AuthReaderConfig{RefreshEnabled: func() bool {
+				current, loadErr := loader.LoadPreferences(context.Background())
+				return loadErr != nil || current.Online.GrokAutoRefreshEnabled
+			}},
+		); authErr == nil {
 			runtime.grokAccountReader = grokAuth.ReadAccountSnapshot
+			if accountClient, accountErr := grokprovider.NewAccountClient(grokprovider.AccountClientConfig{
+				BaseURL: grokConfig.BillingBaseURL,
+				HTTPClient: &http.Client{
+					Timeout: 15 * time.Second,
+				},
+				TokenSource: grokAuth,
+			}); accountErr == nil {
+				runtime.grokProfileReader = accountClient.GetAccount
+			}
 		}
 	}
 	if useLightIndex {
@@ -981,15 +1000,26 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 		}
 		return core.AccountSnapshot{Account: identity}, nil
 	case agentprovider.Grok:
-		if runtime.grokAccountReader == nil {
-			return core.AccountSnapshot{}, nil
+		var cached grokprovider.AccountSnapshot
+		if runtime.grokAccountReader != nil {
+			if account, readErr := runtime.grokAccountReader(); readErr == nil {
+				cached = account
+			}
 		}
-		account, err := runtime.grokAccountReader()
-		if err != nil {
-			return core.AccountSnapshot{}, nil
+		var profile grokprovider.AccountSnapshot
+		if runtime.grokProfileReader != nil {
+			if account, readErr := runtime.grokProfileReader(ctx); readErr == nil {
+				profile = account
+			}
 		}
-		email := strings.TrimSpace(account.Email)
-		plan := grokSubscriptionPlan(ctx, runtime)
+		email := strings.TrimSpace(profile.Email)
+		if email == "" {
+			email = strings.TrimSpace(cached.Email)
+		}
+		plan := strings.TrimSpace(profile.Subscription)
+		if plan == "" {
+			plan = grokSubscriptionPlan(ctx, runtime)
+		}
 		if email == "" && plan == "" {
 			return core.AccountSnapshot{}, nil
 		}

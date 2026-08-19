@@ -448,10 +448,9 @@ public actor AppRuntime {
 			let content = OverviewRequestSet.content(range: range, provider: provider)
 			let todayRange = OverviewRequestSet.resolveRange(.today, quota: quota, now: evaluatedAt)
 			let todayContent = OverviewRequestSet.content(range: todayRange, provider: provider)
-			let projectRequest = OverviewRequestSet.weeklyProjectRanking(
-				range: range,
-				provider: provider
-			)
+			let projectRequest = provider == .cursor
+				? nil
+				: OverviewRequestSet.periodProjectRanking(range: range, provider: provider)
 
 			async let quotaPaceResult = captureOverviewSection {
 				try await client.quotaPace(requests.quotaPace, retryPolicy: .transportDefault)
@@ -1272,7 +1271,13 @@ public actor AppRuntime {
                     tokenActivityRequest, retryPolicy: .transportDefault)
             }
             async let invocationUsageResult = captureOverviewSection {
-                try await client.invocationUsage(
+				guard provider.supportsInvocationStatistics else {
+					return unavailableInvocationUsage(
+						for: content.invocationUsage,
+						provider: provider
+					)
+				}
+				return try await client.invocationUsage(
                     content.invocationUsage, retryPolicy: .transportDefault)
             }
 			async let todayUsageResult = captureOverviewSection {

@@ -62,16 +62,18 @@ type CodexHomePreferences struct {
 }
 
 type OnlinePreferences struct {
-	QuotaEnabled        bool `json:"quota_enabled"`
-	ResetCreditsEnabled bool `json:"reset_credits_enabled"`
-	GrokQuotaEnabled    bool `json:"grok_quota_enabled"`
+	QuotaEnabled           bool `json:"quota_enabled"`
+	ResetCreditsEnabled    bool `json:"reset_credits_enabled"`
+	GrokQuotaEnabled       bool `json:"grok_quota_enabled"`
+	GrokAutoRefreshEnabled bool `json:"grok_auto_refresh_enabled"`
 }
 
 func (value *OnlinePreferences) UnmarshalJSON(content []byte) error {
 	var raw struct {
-		QuotaEnabled        *bool `json:"quota_enabled"`
-		ResetCreditsEnabled *bool `json:"reset_credits_enabled"`
-		GrokQuotaEnabled    *bool `json:"grok_quota_enabled"`
+		QuotaEnabled           *bool `json:"quota_enabled"`
+		ResetCreditsEnabled    *bool `json:"reset_credits_enabled"`
+		GrokQuotaEnabled       *bool `json:"grok_quota_enabled"`
+		GrokAutoRefreshEnabled *bool `json:"grok_auto_refresh_enabled"`
 	}
 	if err := json.Unmarshal(content, &raw); err != nil {
 		return err
@@ -81,11 +83,14 @@ func (value *OnlinePreferences) UnmarshalJSON(content []byte) error {
 	}
 	value.QuotaEnabled = *raw.QuotaEnabled
 	value.ResetCreditsEnabled = *raw.ResetCreditsEnabled
-	if raw.GrokQuotaEnabled == nil {
-		value.GrokQuotaEnabled = true
-		return nil
+	value.GrokQuotaEnabled = true
+	if raw.GrokQuotaEnabled != nil {
+		value.GrokQuotaEnabled = *raw.GrokQuotaEnabled
 	}
-	value.GrokQuotaEnabled = *raw.GrokQuotaEnabled
+	value.GrokAutoRefreshEnabled = true
+	if raw.GrokAutoRefreshEnabled != nil {
+		value.GrokAutoRefreshEnabled = *raw.GrokAutoRefreshEnabled
+	}
 	return nil
 }
 

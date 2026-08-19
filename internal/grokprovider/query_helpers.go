@@ -244,9 +244,13 @@ func activityDistribution(events []store.GrokUsageEvent, rangeValue basequery.UT
 	for _, event := range events {
 		at := time.UnixMilli(event.OccurredAtMS).In(location)
 		start := time.Date(at.Year(), at.Month(), at.Day(), at.Hour(), 0, 0, 0, location)
-		key := start.UnixMilli()
+		key := maxInt64(start.UnixMilli(), rangeValue.StartAtMS)
+		end := start.Add(time.Hour).UnixMilli()
+		if end > rangeValue.EndAtMS {
+			end = rangeValue.EndAtMS
+		}
 		if timeline[key] == nil {
-			timeline[key] = &bucket{start: key, end: start.Add(time.Hour).UnixMilli(), sessions: map[string]struct{}{}}
+			timeline[key] = &bucket{start: key, end: end, sessions: map[string]struct{}{}}
 		}
 		timeline[key].tokens += event.TotalTokens
 		if event.TotalTokens == 0 {
