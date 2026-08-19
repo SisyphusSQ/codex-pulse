@@ -8,6 +8,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
     case projects
     case invocationUsage
     case quotaUsage
+    case apiSubscriptions
     case localStatus
     case sourcesJobs
     case settings
@@ -21,6 +22,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .projects: "feature.projects"
         case .quotaUsage: "feature.quotaUsage"
         case .invocationUsage: "feature.invocationUsage"
+        case .apiSubscriptions: "feature.apiSubscriptions"
         case .localStatus: "feature.localStatus"
         case .sourcesJobs: "feature.sourcesJobs"
         case .settings: "feature.settings"
@@ -35,6 +37,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .projects: "folder"
         case .quotaUsage: "chart.xyaxis.line"
         case .invocationUsage: "wrench.and.screwdriver"
+        case .apiSubscriptions: "creditcard.and.123"
         case .localStatus: "heart.text.square"
         case .sourcesJobs: "externaldrive.connected.to.line.below"
         case .settings: "gearshape"
@@ -50,6 +53,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
 
 private enum FeatureTaskKey: Hashable {
     case usage, statusOverview, statusAccount, invocationUsage, pricingCatalog, quota, quotaPace, quotaRefresh, resetCreditsRefresh
+    case apiSubscriptions, apiCredentialStatus, apiCredentialSave
     case runtimeAction
     case sessions, sessionDetail
     case projects, projectDetail
@@ -60,7 +64,7 @@ private enum FeatureTaskKey: Hashable {
 
     var isRead: Bool {
         switch self {
-        case .quotaRefresh, .resetCreditsRefresh, .runtimeAction, .settingsSave:
+        case .quotaRefresh, .resetCreditsRefresh, .runtimeAction, .settingsSave, .apiCredentialSave:
             false
         default:
             true
@@ -101,6 +105,12 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var quotaState: FeatureLoadState<Codexpulse_Core_V1_QuotaCurrentResponse> = .idle
     @Published public private(set) var quotaPaceState:
         FeatureLoadState<Codexpulse_Core_V1_QuotaPaceResponse> = .idle
+    @Published public private(set) var apiSubscriptionsState:
+        FeatureLoadState<Codexpulse_Core_V1_APISubscriptionsCurrentResponse> = .idle
+    @Published public private(set) var apiCredentialStatus: APISubscriptionCredentialStatus?
+    @Published public private(set) var apiCredentialActionState: ActionState = .idle
+    @Published public var deepSeekAPIKeyDraft = ""
+    @Published public var openCodeGoAPIKeyDraft = ""
     @Published public private(set) var quotaRefreshState: ActionState = .idle
     @Published public private(set) var resetCreditsRefreshState: ActionState = .idle
     @Published public private(set) var runtimeActionState: ActionState = .idle
@@ -246,6 +256,8 @@ public final class AppModel: ObservableObject {
         case .quotaUsage:
             quotaState.isLoading || quotaPaceState.isLoading ||
                 usageState.isLoading || pricingCatalogState.isLoading
+        case .apiSubscriptions:
+            apiSubscriptionsState.isLoading
         case .invocationUsage:
             invocationUsageState.isLoading
         case .localStatus:
@@ -383,6 +395,7 @@ public final class AppModel: ObservableObject {
         case .sessions: loadSessions(reset: true)
         case .projects: loadProjects(reset: true)
         case .quotaUsage: loadQuotaAndUsage()
+        case .apiSubscriptions: loadAPISubscriptions()
         case .invocationUsage: loadInvocationUsage()
         case .localStatus: loadLocalStatus()
         case .sourcesJobs: loadSourcesAndJobs(reset: true)
@@ -407,6 +420,8 @@ public final class AppModel: ObservableObject {
             {
                 loadQuotaAndUsage()
             }
+        case .apiSubscriptions:
+            if apiSubscriptionsState.shouldReloadOnNavigation { loadAPISubscriptions() }
         case .invocationUsage:
             if invocationUsageState.shouldReloadOnNavigation { loadInvocationUsage() }
         case .localStatus:
@@ -458,6 +473,7 @@ public final class AppModel: ObservableObject {
         loadSessions(reset: true)
         loadProjects(reset: true)
         loadQuotaAndUsage()
+		loadAPISubscriptions()
 		if selectedProvider.supportsInvocationStatistics {
 			loadInvocationUsage()
 		}
@@ -502,7 +518,7 @@ public final class AppModel: ObservableObject {
             {
                 loadJobDetail(jobID: selectedJobID)
             }
-        case .overview, .quotaUsage, .invocationUsage, .settings:
+        case .overview, .quotaUsage, .invocationUsage, .apiSubscriptions, .settings:
             break
         }
     }
@@ -757,6 +773,69 @@ public final class AppModel: ObservableObject {
 			self?.usageState = loadState(value: response, meta: response.meta, isEmpty: false)
         } failure: { [weak self] error in
             self?.usageState = failedLoadState(previous: previous, error: error)
+        }
+    }
+
+    public func loadAPISubscriptions() {
+        let previous = apiSubscriptionsState.value
+        apiSubscriptionsState = .loading(previous: previous)
+        launch(
+            .apiSubscriptions,
+            operation: { [runtime] in try await runtime.apiSubscriptionsCurrent() }
+        ) { [weak self] response in
+            self?.apiSubscriptionsState = .ready(response)
+        } failure: { [weak self] error in
+            self?.apiSubscriptionsState = failedLoadState(previous: previous, error: error)
+        }
+    }
+
+    public func loadAPICredentialStatus() {
+        launch(
+            .apiCredentialStatus,
+            operation: { [runtime] in try await runtime.apiCredentialStatus() }
+        ) { [weak self] status in
+            self?.apiCredentialStatus = status
+        } failure: { [weak self] error in
+            self?.apiCredentialActionState = .unavailable(AppNotice.from(error))
+        }
+    }
+
+    public func saveAPICredential(_ service: APISubscriptionCredentialService) {
+        let key = switch service {
+        case .deepSeek: deepSeekAPIKeyDraft
+        case .openCodeGo: openCodeGoAPIKeyDraft
+        }
+        guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        updateAPICredential(service, key: key)
+    }
+
+    public func deleteAPICredential(_ service: APISubscriptionCredentialService) {
+        updateAPICredential(service, key: nil)
+    }
+
+    private func updateAPICredential(
+        _ service: APISubscriptionCredentialService,
+        key: String?
+    ) {
+        guard canRefreshOrRestart, !requiresCoreRestart else { return }
+        apiCredentialActionState = .running
+        launch(
+            .apiCredentialSave,
+            operation: { [runtime] in
+                try await runtime.updateAPICredential(service: service, key: key)
+            }
+        ) { [weak self] status in
+            guard let self else { return }
+            apiCredentialStatus = status
+            switch service {
+            case .deepSeek: deepSeekAPIKeyDraft = ""
+            case .openCodeGo: openCodeGoAPIKeyDraft = ""
+            }
+            apiCredentialActionState = .succeeded(key == nil ? "deleted" : "saved")
+            apiSubscriptionsState = .idle
+            if selectedFeature == .apiSubscriptions { loadAPISubscriptions() }
+        } failure: { [weak self] error in
+            self?.apiCredentialActionState = .unavailable(AppNotice.from(error))
         }
     }
 
@@ -1116,6 +1195,7 @@ public final class AppModel: ObservableObject {
 
     public func loadSettings() {
         if case .saving = settingsSaveState { return }
+        loadAPICredentialStatus()
         let previous = settingsState.value
         let draftAtStart = settingsDraft
         let hadUnsavedChanges = draftAtStart != nil && previous.map(SettingsDraft.init) != draftAtStart
@@ -1273,7 +1353,7 @@ public final class AppModel: ObservableObject {
 
     private func cancelFeatureReadTasks() {
         let mutationKeys: Set<FeatureTaskKey> = [
-            .quotaRefresh, .resetCreditsRefresh, .runtimeAction, .settingsSave,
+            .quotaRefresh, .resetCreditsRefresh, .runtimeAction, .settingsSave, .apiCredentialSave,
         ]
         let keys = featureTasks.keys.filter { !mutationKeys.contains($0) }
         for key in keys {
@@ -1401,6 +1481,7 @@ public final class AppModel: ObservableObject {
         if case .running = resetCreditsRefreshState { resetCreditsRefreshState = .unavailable(notice) }
         if case .running = runtimeActionState { runtimeActionState = .unavailable(notice) }
         if case .saving = settingsSaveState { settingsSaveState = .unavailable(notice) }
+        if case .running = apiCredentialActionState { apiCredentialActionState = .unavailable(notice) }
     }
 
     private func receiveInvalidation(domain: String) {
@@ -1486,6 +1567,9 @@ public final class AppModel: ObservableObject {
         pricingCatalogState = .idle
         quotaState = .idle
         quotaPaceState = .idle
+        apiSubscriptionsState = .idle
+        apiCredentialStatus = nil
+        apiCredentialActionState = .idle
         quotaRefreshState = .idle
         resetCreditsRefreshState = .idle
         runtimeActionState = .idle
@@ -1682,6 +1766,7 @@ public final class AppModel: ObservableObject {
         pricingCatalogState = stale(pricingCatalogState, notice)
         quotaState = stale(quotaState, notice)
         quotaPaceState = stale(quotaPaceState, notice)
+        apiSubscriptionsState = stale(apiSubscriptionsState, notice)
         sessionsState = stale(sessionsState, notice)
         sessionDetailState = stale(sessionDetailState, notice)
         projectsState = stale(projectsState, notice)

@@ -2,6 +2,7 @@ package helper
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,24 @@ import (
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/metadata"
 )
+
+type readSizeRecorder struct {
+	data       []byte
+	offset     int
+	maxRequest int
+}
+
+func (reader *readSizeRecorder) Read(buffer []byte) (int, error) {
+	if len(buffer) > reader.maxRequest {
+		reader.maxRequest = len(buffer)
+	}
+	if reader.offset >= len(reader.data) {
+		return 0, io.EOF
+	}
+	count := copy(buffer, reader.data[reader.offset:])
+	reader.offset += count
+	return count, nil
+}
 
 func TestApplicationConfigPreservesDefaultAndExplicitPaths(t *testing.T) {
 	broker, err := core.NewInvalidationBroker(1)
@@ -89,7 +108,7 @@ func TestRunStartsWithExplicitIsolatedPaths(t *testing.T) {
 			DefaultCodexHome: codexHome,
 		})
 	}()
-	if _, err := writer.WriteString("abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-token\n"); err != nil {
+	if err := writeAuthTokenForTest(writer, "abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-token"); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)
@@ -145,7 +164,7 @@ func TestReadAuthPipeConsumesTokenAndSignalsOnlyParentEOF(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = reader.Close(); _ = writer.Close() })
 	token := strings.Repeat("a", 43)
-	if _, err := writer.WriteString(token + "\n"); err != nil {
+	if err := writeAuthTokenForTest(writer, token); err != nil {
 		t.Fatal(err)
 	}
 	authenticator, parentEOF, err := readAuthPipe(reader)
@@ -171,6 +190,22 @@ func TestReadAuthPipeConsumesTokenAndSignalsOnlyParentEOF(t *testing.T) {
 	}
 }
 
+func TestReadBearerTokenDoesNotBufferFollowingPipeBytes(t *testing.T) {
+	token := strings.Repeat("a", 43)
+	reader := &readSizeRecorder{data: []byte(token + "\nparent-liveness-bytes")}
+	got, err := readBearerToken(reader)
+	if err != nil {
+		t.Fatalf("readBearerToken() error = %v", err)
+	}
+	defer clear(got)
+	if string(got) != token {
+		t.Fatalf("readBearerToken() = %q", got)
+	}
+	if reader.maxRequest != 1 || reader.offset != len(token)+1 {
+		t.Fatalf("token reader requested %d bytes and consumed %d, want bytewise token only", reader.maxRequest, reader.offset)
+	}
+}
+
 func TestReadAuthPipeRejectsUnframedAndNonBearerSafeTokens(t *testing.T) {
 	for name, payload := range map[string]string{
 		"unframed": strings.Repeat("a", 43),
@@ -192,6 +227,11 @@ func TestReadAuthPipeRejectsUnframedAndNonBearerSafeTokens(t *testing.T) {
 			}
 		})
 	}
+}
+
+func writeAuthTokenForTest(writer *os.File, token string) error {
+	_, err := writer.WriteString(token + "\n")
+	return err
 }
 
 func TestGracefulStopHonorsTimeout(t *testing.T) {

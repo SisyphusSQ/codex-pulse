@@ -26,6 +26,8 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 	wantTables := []string{
 		"agent_provider_snapshots",
 		"agent_provider_sources",
+		"api_subscription_balance_observations",
+		"api_subscription_quota_observations",
 		"app_runtime_samples",
 		"bootstrap_jobs",
 		"bootstrap_plan_items",
@@ -117,6 +119,14 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 	wantColumns := map[string][]string{
 		"agent_provider_snapshots": {
 			"provider", "generation", "collected_at_ms",
+		},
+		"api_subscription_balance_observations": {
+			"service", "credential_epoch", "observed_at_ms", "currency", "is_available",
+			"total_balance", "granted_balance", "topped_up_balance",
+		},
+		"api_subscription_quota_observations": {
+			"service", "credential_epoch", "observed_at_ms", "window_kind", "status",
+			"used_percent", "remaining_percent", "resets_at_ms",
 		},
 		"agent_provider_sources": {
 			"provider", "source_key", "source_type", "state", "coverage_state", "schema_version",
@@ -377,6 +387,8 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"source_refresh_claims.source_instance_id->source_refresh_schedules.source_instance_id/CASCADE",
 	}
 	wantIndexes := []string{
+		"idx_api_subscription_balance_period",
+		"idx_api_subscription_quota_period",
 		"idx_app_runtime_samples_retention",
 		"idx_bootstrap_jobs_generation_status",
 		"idx_bootstrap_plan_items_pending",

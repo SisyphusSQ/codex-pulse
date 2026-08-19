@@ -18,6 +18,9 @@ service CoreService {
   rpc ListProjects(ListProjectsRequest) returns (ProjectListResponse);
   rpc ProjectDetail(ProjectDetailRequest) returns (ProjectDetailResponse);
   rpc QuotaCurrent(QuotaCurrentRequest) returns (QuotaCurrentResponse);
+  rpc APISubscriptionsCurrent(APISubscriptionsCurrentRequest) returns (APISubscriptionsCurrentResponse);
+  rpc APICredentialStatus(APICredentialStatusRequest) returns (APICredentialStatusResponse);
+  rpc UpdateAPICredential(UpdateAPICredentialRequest) returns (APICredentialStatusResponse);
   rpc QuotaPace(QuotaPaceRequest) returns (QuotaPaceResponse);
   rpc RequestQuotaRefresh(QuotaRefreshRequest) returns (QuotaRefreshReceipt);
   rpc ListSources(ListSourcesRequest) returns (SourceListResponse);
@@ -1181,4 +1184,129 @@ message CodexAccountIdentity {
 
 message AccountSnapshotResponse {
   optional CodexAccountIdentity account = 1;
+}
+
+message APISubscriptionsCurrentRequest {
+  int64 evaluated_at_ms = 1;
+}
+
+message APICredentialStatusRequest {}
+
+message APICredentialStatusResponse {
+  bool deep_seek_configured = 1;
+  bool open_code_go_configured = 2;
+}
+
+message UpdateAPICredentialRequest {
+  string service = 1;
+  oneof action {
+    bytes secret = 2;
+    bool delete = 3;
+  }
+}
+
+message APISubscriptionSourceStatus {
+  string state = 1;
+  optional int64 last_success_at_ms = 2;
+  optional string failure_code = 3;
+}
+
+message APISubscriptionCurrencyBalance {
+  string currency = 1;
+  string total = 2;
+  string granted = 3;
+  string topped_up = 4;
+}
+
+message DeepSeekAPIBalance {
+  bool is_available = 1;
+  repeated APISubscriptionCurrencyBalance balances = 2;
+}
+
+message APISubscriptionCurrencyBalanceChange {
+  string currency = 1;
+  string starting_total = 2;
+  string total_delta = 3;
+  string starting_granted = 4;
+  string granted_delta = 5;
+  string starting_topped_up = 6;
+  string topped_up_delta = 7;
+  string total_recharged = 8;
+  string total_consumed = 9;
+}
+
+message APISubscriptionBalanceTrendPoint {
+  int64 observed_at_ms = 1;
+  string total = 2;
+  string granted = 3;
+  string topped_up = 4;
+}
+
+message APISubscriptionCurrencyBalanceSeries {
+  string currency = 1;
+  repeated APISubscriptionBalanceTrendPoint points = 2;
+}
+
+message APISubscriptionBalancePeriod {
+  string kind = 1;
+  int64 starts_at_ms = 2;
+  optional int64 baseline_at_ms = 3;
+  repeated APISubscriptionCurrencyBalanceChange changes = 4;
+  repeated APISubscriptionCurrencyBalanceSeries series = 5;
+}
+
+message DeepSeekAPISubscriptionSnapshot {
+  APISubscriptionSourceStatus status = 1;
+  optional DeepSeekAPIBalance balance = 2;
+  repeated APISubscriptionBalancePeriod periods = 3;
+}
+
+message OpenCodeGoQuotaWindow {
+  string kind = 1;
+  string status = 2;
+  double used_percent = 3;
+  double remaining_percent = 4;
+  int64 resets_at_ms = 5;
+}
+
+message OpenCodeGoQuota {
+  repeated OpenCodeGoQuotaWindow windows = 1;
+}
+
+message OpenCodeGoSubscriptionSnapshot {
+  APISubscriptionSourceStatus status = 1;
+  optional OpenCodeGoQuota quota = 2;
+}
+
+message DeepSeekDailyActivity {
+  string currency = 1;
+  string total_recharged = 2;
+  string total_consumed = 3;
+  int32 sample_count = 4;
+}
+
+message OpenCodeGoFiveHourDailyActivity {
+  double max_five_hour_used_percent = 1;
+  double latest_five_hour_used_percent = 2;
+  double latest_five_hour_remaining_percent = 3;
+  int32 sample_count = 4;
+}
+
+message APISubscriptionActivityDay {
+  string date_key = 1;
+  int64 starts_at_ms = 2;
+  repeated DeepSeekDailyActivity deep_seek = 3;
+  optional OpenCodeGoFiveHourDailyActivity open_code_go = 4;
+}
+
+message APISubscriptionActivityCalendar {
+  string reporting_time_zone = 1;
+  repeated APISubscriptionActivityDay days = 2;
+}
+
+message APISubscriptionsCurrentResponse {
+  int64 evaluated_at_ms = 1;
+  DeepSeekAPISubscriptionSnapshot deep_seek = 2;
+  OpenCodeGoSubscriptionSnapshot open_code_go = 3;
+  APISubscriptionActivityCalendar activity_calendar = 4;
 }

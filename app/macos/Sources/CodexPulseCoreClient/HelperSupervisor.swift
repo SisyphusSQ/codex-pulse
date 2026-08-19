@@ -121,7 +121,7 @@ public actor HelperSupervisor {
             processID = childPID
             authWriteDescriptor = writeDescriptor
             parentOwnsWriteDescriptor = false
-            try writeToken(token, to: writeDescriptor)
+            try writeStartupToken(token, to: writeDescriptor)
             try await waitForSocket(
                 paths.socket,
                 replacing: previousSocketIdentity,
@@ -316,12 +316,16 @@ public actor HelperSupervisor {
         }
     }
 
-    private func writeToken(_ token: String, to descriptor: Int32) throws {
-        let bytes = Array((token + "\n").utf8)
+    private func writeStartupToken(_ token: String, to descriptor: Int32) throws {
+        let payload = Self.startupPipePayload(token: token)
         var written = 0
-        while written < bytes.count {
-            let count = bytes.withUnsafeBytes { buffer in
-                Darwin.write(descriptor, buffer.baseAddress!.advanced(by: written), bytes.count - written)
+        while written < payload.count {
+            let count = payload.withUnsafeBytes { buffer in
+                Darwin.write(
+                    descriptor,
+                    buffer.baseAddress!.advanced(by: written),
+                    payload.count - written
+                )
             }
             if count < 0 {
                 if errno == EINTR { continue }
@@ -330,6 +334,10 @@ public actor HelperSupervisor {
             if count == 0 { throw HelperSupervisorError.tokenWrite(EIO) }
             written += count
         }
+    }
+
+    nonisolated static func startupPipePayload(token: String) -> Data {
+        Data((token + "\n").utf8)
     }
 
     private func waitForSocket(

@@ -31,6 +31,9 @@ const (
 	CoreService_ListProjects_FullMethodName              = "/codexpulse.core.v1.CoreService/ListProjects"
 	CoreService_ProjectDetail_FullMethodName             = "/codexpulse.core.v1.CoreService/ProjectDetail"
 	CoreService_QuotaCurrent_FullMethodName              = "/codexpulse.core.v1.CoreService/QuotaCurrent"
+	CoreService_APISubscriptionsCurrent_FullMethodName   = "/codexpulse.core.v1.CoreService/APISubscriptionsCurrent"
+	CoreService_APICredentialStatus_FullMethodName       = "/codexpulse.core.v1.CoreService/APICredentialStatus"
+	CoreService_UpdateAPICredential_FullMethodName       = "/codexpulse.core.v1.CoreService/UpdateAPICredential"
 	CoreService_QuotaPace_FullMethodName                 = "/codexpulse.core.v1.CoreService/QuotaPace"
 	CoreService_RequestQuotaRefresh_FullMethodName       = "/codexpulse.core.v1.CoreService/RequestQuotaRefresh"
 	CoreService_ListSources_FullMethodName               = "/codexpulse.core.v1.CoreService/ListSources"
@@ -77,6 +80,9 @@ type CoreServiceClient interface {
 	ListProjects(ctx context.Context, in *ListProjectsRequest, opts ...grpc.CallOption) (*ProjectListResponse, error)
 	ProjectDetail(ctx context.Context, in *ProjectDetailRequest, opts ...grpc.CallOption) (*ProjectDetailResponse, error)
 	QuotaCurrent(ctx context.Context, in *QuotaCurrentRequest, opts ...grpc.CallOption) (*QuotaCurrentResponse, error)
+	APISubscriptionsCurrent(ctx context.Context, in *APISubscriptionsCurrentRequest, opts ...grpc.CallOption) (*APISubscriptionsCurrentResponse, error)
+	APICredentialStatus(ctx context.Context, in *APICredentialStatusRequest, opts ...grpc.CallOption) (*APICredentialStatusResponse, error)
+	UpdateAPICredential(ctx context.Context, in *UpdateAPICredentialRequest, opts ...grpc.CallOption) (*APICredentialStatusResponse, error)
 	QuotaPace(ctx context.Context, in *QuotaPaceRequest, opts ...grpc.CallOption) (*QuotaPaceResponse, error)
 	RequestQuotaRefresh(ctx context.Context, in *QuotaRefreshRequest, opts ...grpc.CallOption) (*QuotaRefreshReceipt, error)
 	ListSources(ctx context.Context, in *ListSourcesRequest, opts ...grpc.CallOption) (*SourceListResponse, error)
@@ -227,6 +233,36 @@ func (c *coreServiceClient) QuotaCurrent(ctx context.Context, in *QuotaCurrentRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QuotaCurrentResponse)
 	err := c.cc.Invoke(ctx, CoreService_QuotaCurrent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) APISubscriptionsCurrent(ctx context.Context, in *APISubscriptionsCurrentRequest, opts ...grpc.CallOption) (*APISubscriptionsCurrentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(APISubscriptionsCurrentResponse)
+	err := c.cc.Invoke(ctx, CoreService_APISubscriptionsCurrent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) APICredentialStatus(ctx context.Context, in *APICredentialStatusRequest, opts ...grpc.CallOption) (*APICredentialStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(APICredentialStatusResponse)
+	err := c.cc.Invoke(ctx, CoreService_APICredentialStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) UpdateAPICredential(ctx context.Context, in *UpdateAPICredentialRequest, opts ...grpc.CallOption) (*APICredentialStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(APICredentialStatusResponse)
+	err := c.cc.Invoke(ctx, CoreService_UpdateAPICredential_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -520,6 +556,9 @@ type CoreServiceServer interface {
 	ListProjects(context.Context, *ListProjectsRequest) (*ProjectListResponse, error)
 	ProjectDetail(context.Context, *ProjectDetailRequest) (*ProjectDetailResponse, error)
 	QuotaCurrent(context.Context, *QuotaCurrentRequest) (*QuotaCurrentResponse, error)
+	APISubscriptionsCurrent(context.Context, *APISubscriptionsCurrentRequest) (*APISubscriptionsCurrentResponse, error)
+	APICredentialStatus(context.Context, *APICredentialStatusRequest) (*APICredentialStatusResponse, error)
+	UpdateAPICredential(context.Context, *UpdateAPICredentialRequest) (*APICredentialStatusResponse, error)
 	QuotaPace(context.Context, *QuotaPaceRequest) (*QuotaPaceResponse, error)
 	RequestQuotaRefresh(context.Context, *QuotaRefreshRequest) (*QuotaRefreshReceipt, error)
 	ListSources(context.Context, *ListSourcesRequest) (*SourceListResponse, error)
@@ -591,6 +630,15 @@ func (UnimplementedCoreServiceServer) ProjectDetail(context.Context, *ProjectDet
 }
 func (UnimplementedCoreServiceServer) QuotaCurrent(context.Context, *QuotaCurrentRequest) (*QuotaCurrentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method QuotaCurrent not implemented")
+}
+func (UnimplementedCoreServiceServer) APISubscriptionsCurrent(context.Context, *APISubscriptionsCurrentRequest) (*APISubscriptionsCurrentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method APISubscriptionsCurrent not implemented")
+}
+func (UnimplementedCoreServiceServer) APICredentialStatus(context.Context, *APICredentialStatusRequest) (*APICredentialStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method APICredentialStatus not implemented")
+}
+func (UnimplementedCoreServiceServer) UpdateAPICredential(context.Context, *UpdateAPICredentialRequest) (*APICredentialStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateAPICredential not implemented")
 }
 func (UnimplementedCoreServiceServer) QuotaPace(context.Context, *QuotaPaceRequest) (*QuotaPaceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method QuotaPace not implemented")
@@ -903,6 +951,60 @@ func _CoreService_QuotaCurrent_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CoreServiceServer).QuotaCurrent(ctx, req.(*QuotaCurrentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_APISubscriptionsCurrent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(APISubscriptionsCurrentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).APISubscriptionsCurrent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_APISubscriptionsCurrent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).APISubscriptionsCurrent(ctx, req.(*APISubscriptionsCurrentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_APICredentialStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(APICredentialStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).APICredentialStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_APICredentialStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).APICredentialStatus(ctx, req.(*APICredentialStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_UpdateAPICredential_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateAPICredentialRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).UpdateAPICredential(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_UpdateAPICredential_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).UpdateAPICredential(ctx, req.(*UpdateAPICredentialRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1422,6 +1524,18 @@ var CoreService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "QuotaCurrent",
 			Handler:    _CoreService_QuotaCurrent_Handler,
+		},
+		{
+			MethodName: "APISubscriptionsCurrent",
+			Handler:    _CoreService_APISubscriptionsCurrent_Handler,
+		},
+		{
+			MethodName: "APICredentialStatus",
+			Handler:    _CoreService_APICredentialStatus_Handler,
+		},
+		{
+			MethodName: "UpdateAPICredential",
+			Handler:    _CoreService_UpdateAPICredential_Handler,
 		},
 		{
 			MethodName: "QuotaPace",

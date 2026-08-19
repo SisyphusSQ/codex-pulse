@@ -212,6 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         quitItem.target = NSApp
         applicationMenu.addItem(quitItem)
 
+        mainMenu.addItem(NativeEditMenu.make(localization: localization))
         NSApp.mainMenu = mainMenu
     }
 
@@ -294,6 +295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let statusItemController = StatusItemController(
             model: model,
             nativeAcceptanceEnabled: configuration.nativeSurfaceSmoke,
+            cursorProviderSmokeEnabled: configuration.cursorProviderSmoke,
             onOpenOverview: { [weak self] in self?.showOverviewWindow() },
             onOpenSettings: { [weak self] in self?.showSettings(nil) },
             onQuit: { NSApp.terminate(nil) }

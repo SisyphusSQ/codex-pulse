@@ -8,6 +8,11 @@
 // For information on using the generated types, please see the documentation:
 //   https://github.com/apple/swift-protobuf/
 
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 import SwiftProtobuf
 
 // If the compiler emits an error on this type, it is because this file
@@ -6355,6 +6360,448 @@ public nonisolated struct Codexpulse_Core_V1_AccountSnapshotResponse: Sendable {
   public init() {}
 
   fileprivate var _account: Codexpulse_Core_V1_CodexAccountIdentity? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_APISubscriptionsCurrentRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var evaluatedAtMs: Int64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_APICredentialStatusRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_APICredentialStatusResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var deepSeekConfigured: Bool = false
+
+  public var openCodeGoConfigured: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_UpdateAPICredentialRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var service: String = String()
+
+  public var action: Codexpulse_Core_V1_UpdateAPICredentialRequest.OneOf_Action? = nil
+
+  public var secret: Data {
+    get {
+      if case .secret(let v)? = action {return v}
+      return Data()
+    }
+    set {action = .secret(newValue)}
+  }
+
+  public var delete: Bool {
+    get {
+      if case .delete(let v)? = action {return v}
+      return false
+    }
+    set {action = .delete(newValue)}
+  }
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public nonisolated enum OneOf_Action: Equatable, Sendable {
+    case secret(Data)
+    case delete(Bool)
+
+  }
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_APISubscriptionSourceStatus: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var state: String = String()
+
+  public var lastSuccessAtMs: Int64 {
+    get {_lastSuccessAtMs ?? 0}
+    set {_lastSuccessAtMs = newValue}
+  }
+  /// Returns true if `lastSuccessAtMs` has been explicitly set.
+  public var hasLastSuccessAtMs: Bool {self._lastSuccessAtMs != nil}
+  /// Clears the value of `lastSuccessAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearLastSuccessAtMs() {self._lastSuccessAtMs = nil}
+
+  public var failureCode: String {
+    get {_failureCode ?? String()}
+    set {_failureCode = newValue}
+  }
+  /// Returns true if `failureCode` has been explicitly set.
+  public var hasFailureCode: Bool {self._failureCode != nil}
+  /// Clears the value of `failureCode`. Subsequent reads from it will return its default value.
+  public mutating func clearFailureCode() {self._failureCode = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _lastSuccessAtMs: Int64? = nil
+  fileprivate var _failureCode: String? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_APISubscriptionCurrencyBalance: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var currency: String = String()
+
+  public var total: String = String()
+
+  public var granted: String = String()
+
+  public var toppedUp: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_DeepSeekAPIBalance: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var isAvailable: Bool = false
+
+  public var balances: [Codexpulse_Core_V1_APISubscriptionCurrencyBalance] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_APISubscriptionCurrencyBalanceChange: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var currency: String = String()
+
+  public var startingTotal: String = String()
+
+  public var totalDelta: String = String()
+
+  public var startingGranted: String = String()
+
+  public var grantedDelta: String = String()
+
+  public var startingToppedUp: String = String()
+
+  public var toppedUpDelta: String = String()
+
+  public var totalRecharged: String = String()
+
+  public var totalConsumed: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_APISubscriptionBalanceTrendPoint: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var observedAtMs: Int64 = 0
+
+  public var total: String = String()
+
+  public var granted: String = String()
+
+  public var toppedUp: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_APISubscriptionCurrencyBalanceSeries: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var currency: String = String()
+
+  public var points: [Codexpulse_Core_V1_APISubscriptionBalanceTrendPoint] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_APISubscriptionBalancePeriod: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var kind: String = String()
+
+  public var startsAtMs: Int64 = 0
+
+  public var baselineAtMs: Int64 {
+    get {_baselineAtMs ?? 0}
+    set {_baselineAtMs = newValue}
+  }
+  /// Returns true if `baselineAtMs` has been explicitly set.
+  public var hasBaselineAtMs: Bool {self._baselineAtMs != nil}
+  /// Clears the value of `baselineAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearBaselineAtMs() {self._baselineAtMs = nil}
+
+  public var changes: [Codexpulse_Core_V1_APISubscriptionCurrencyBalanceChange] = []
+
+  public var series: [Codexpulse_Core_V1_APISubscriptionCurrencyBalanceSeries] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _baselineAtMs: Int64? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_DeepSeekAPISubscriptionSnapshot: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var status: Codexpulse_Core_V1_APISubscriptionSourceStatus {
+    get {_status ?? Codexpulse_Core_V1_APISubscriptionSourceStatus()}
+    set {_status = newValue}
+  }
+  /// Returns true if `status` has been explicitly set.
+  public var hasStatus: Bool {self._status != nil}
+  /// Clears the value of `status`. Subsequent reads from it will return its default value.
+  public mutating func clearStatus() {self._status = nil}
+
+  public var balance: Codexpulse_Core_V1_DeepSeekAPIBalance {
+    get {_balance ?? Codexpulse_Core_V1_DeepSeekAPIBalance()}
+    set {_balance = newValue}
+  }
+  /// Returns true if `balance` has been explicitly set.
+  public var hasBalance: Bool {self._balance != nil}
+  /// Clears the value of `balance`. Subsequent reads from it will return its default value.
+  public mutating func clearBalance() {self._balance = nil}
+
+  public var periods: [Codexpulse_Core_V1_APISubscriptionBalancePeriod] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _status: Codexpulse_Core_V1_APISubscriptionSourceStatus? = nil
+  fileprivate var _balance: Codexpulse_Core_V1_DeepSeekAPIBalance? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_OpenCodeGoQuotaWindow: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var kind: String = String()
+
+  public var status: String = String()
+
+  public var usedPercent: Double = 0
+
+  public var remainingPercent: Double = 0
+
+  public var resetsAtMs: Int64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_OpenCodeGoQuota: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var windows: [Codexpulse_Core_V1_OpenCodeGoQuotaWindow] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_OpenCodeGoSubscriptionSnapshot: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var status: Codexpulse_Core_V1_APISubscriptionSourceStatus {
+    get {_status ?? Codexpulse_Core_V1_APISubscriptionSourceStatus()}
+    set {_status = newValue}
+  }
+  /// Returns true if `status` has been explicitly set.
+  public var hasStatus: Bool {self._status != nil}
+  /// Clears the value of `status`. Subsequent reads from it will return its default value.
+  public mutating func clearStatus() {self._status = nil}
+
+  public var quota: Codexpulse_Core_V1_OpenCodeGoQuota {
+    get {_quota ?? Codexpulse_Core_V1_OpenCodeGoQuota()}
+    set {_quota = newValue}
+  }
+  /// Returns true if `quota` has been explicitly set.
+  public var hasQuota: Bool {self._quota != nil}
+  /// Clears the value of `quota`. Subsequent reads from it will return its default value.
+  public mutating func clearQuota() {self._quota = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _status: Codexpulse_Core_V1_APISubscriptionSourceStatus? = nil
+  fileprivate var _quota: Codexpulse_Core_V1_OpenCodeGoQuota? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_DeepSeekDailyActivity: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var currency: String = String()
+
+  public var totalRecharged: String = String()
+
+  public var totalConsumed: String = String()
+
+  public var sampleCount: Int32 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_OpenCodeGoFiveHourDailyActivity: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var maxFiveHourUsedPercent: Double = 0
+
+  public var latestFiveHourUsedPercent: Double = 0
+
+  public var latestFiveHourRemainingPercent: Double = 0
+
+  public var sampleCount: Int32 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_APISubscriptionActivityDay: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var dateKey: String = String()
+
+  public var startsAtMs: Int64 = 0
+
+  public var deepSeek: [Codexpulse_Core_V1_DeepSeekDailyActivity] = []
+
+  public var openCodeGo: Codexpulse_Core_V1_OpenCodeGoFiveHourDailyActivity {
+    get {_openCodeGo ?? Codexpulse_Core_V1_OpenCodeGoFiveHourDailyActivity()}
+    set {_openCodeGo = newValue}
+  }
+  /// Returns true if `openCodeGo` has been explicitly set.
+  public var hasOpenCodeGo: Bool {self._openCodeGo != nil}
+  /// Clears the value of `openCodeGo`. Subsequent reads from it will return its default value.
+  public mutating func clearOpenCodeGo() {self._openCodeGo = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _openCodeGo: Codexpulse_Core_V1_OpenCodeGoFiveHourDailyActivity? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_APISubscriptionActivityCalendar: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var reportingTimeZone: String = String()
+
+  public var days: [Codexpulse_Core_V1_APISubscriptionActivityDay] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_APISubscriptionsCurrentResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var evaluatedAtMs: Int64 = 0
+
+  public var deepSeek: Codexpulse_Core_V1_DeepSeekAPISubscriptionSnapshot {
+    get {_deepSeek ?? Codexpulse_Core_V1_DeepSeekAPISubscriptionSnapshot()}
+    set {_deepSeek = newValue}
+  }
+  /// Returns true if `deepSeek` has been explicitly set.
+  public var hasDeepSeek: Bool {self._deepSeek != nil}
+  /// Clears the value of `deepSeek`. Subsequent reads from it will return its default value.
+  public mutating func clearDeepSeek() {self._deepSeek = nil}
+
+  public var openCodeGo: Codexpulse_Core_V1_OpenCodeGoSubscriptionSnapshot {
+    get {_openCodeGo ?? Codexpulse_Core_V1_OpenCodeGoSubscriptionSnapshot()}
+    set {_openCodeGo = newValue}
+  }
+  /// Returns true if `openCodeGo` has been explicitly set.
+  public var hasOpenCodeGo: Bool {self._openCodeGo != nil}
+  /// Clears the value of `openCodeGo`. Subsequent reads from it will return its default value.
+  public mutating func clearOpenCodeGo() {self._openCodeGo = nil}
+
+  public var activityCalendar: Codexpulse_Core_V1_APISubscriptionActivityCalendar {
+    get {_activityCalendar ?? Codexpulse_Core_V1_APISubscriptionActivityCalendar()}
+    set {_activityCalendar = newValue}
+  }
+  /// Returns true if `activityCalendar` has been explicitly set.
+  public var hasActivityCalendar: Bool {self._activityCalendar != nil}
+  /// Clears the value of `activityCalendar`. Subsequent reads from it will return its default value.
+  public mutating func clearActivityCalendar() {self._activityCalendar = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _deepSeek: Codexpulse_Core_V1_DeepSeekAPISubscriptionSnapshot? = nil
+  fileprivate var _openCodeGo: Codexpulse_Core_V1_OpenCodeGoSubscriptionSnapshot? = nil
+  fileprivate var _activityCalendar: Codexpulse_Core_V1_APISubscriptionActivityCalendar? = nil
 }
 
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
@@ -15731,6 +16178,866 @@ nonisolated extension Codexpulse_Core_V1_AccountSnapshotResponse: SwiftProtobuf.
 
   public static func ==(lhs: Codexpulse_Core_V1_AccountSnapshotResponse, rhs: Codexpulse_Core_V1_AccountSnapshotResponse) -> Bool {
     if lhs._account != rhs._account {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_APISubscriptionsCurrentRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".APISubscriptionsCurrentRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}evaluated_at_ms\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt64Field(value: &self.evaluatedAtMs) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.evaluatedAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.evaluatedAtMs, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_APISubscriptionsCurrentRequest, rhs: Codexpulse_Core_V1_APISubscriptionsCurrentRequest) -> Bool {
+    if lhs.evaluatedAtMs != rhs.evaluatedAtMs {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_APICredentialStatusRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".APICredentialStatusRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_APICredentialStatusRequest, rhs: Codexpulse_Core_V1_APICredentialStatusRequest) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_APICredentialStatusResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".APICredentialStatusResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}deep_seek_configured\0\u{3}open_code_go_configured\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBoolField(value: &self.deepSeekConfigured) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.openCodeGoConfigured) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.deepSeekConfigured != false {
+      try visitor.visitSingularBoolField(value: self.deepSeekConfigured, fieldNumber: 1)
+    }
+    if self.openCodeGoConfigured != false {
+      try visitor.visitSingularBoolField(value: self.openCodeGoConfigured, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_APICredentialStatusResponse, rhs: Codexpulse_Core_V1_APICredentialStatusResponse) -> Bool {
+    if lhs.deepSeekConfigured != rhs.deepSeekConfigured {return false}
+    if lhs.openCodeGoConfigured != rhs.openCodeGoConfigured {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_UpdateAPICredentialRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".UpdateAPICredentialRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}service\0\u{1}secret\0\u{1}delete\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.service) }()
+      case 2: try {
+        var v: Data?
+        try decoder.decodeSingularBytesField(value: &v)
+        if let v = v {
+          if self.action != nil {try decoder.handleConflictingOneOf()}
+          self.action = .secret(v)
+        }
+      }()
+      case 3: try {
+        var v: Bool?
+        try decoder.decodeSingularBoolField(value: &v)
+        if let v = v {
+          if self.action != nil {try decoder.handleConflictingOneOf()}
+          self.action = .delete(v)
+        }
+      }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.service.isEmpty {
+      try visitor.visitSingularStringField(value: self.service, fieldNumber: 1)
+    }
+    switch self.action {
+    case .secret?: try {
+      guard case .secret(let v)? = self.action else { preconditionFailure() }
+      try visitor.visitSingularBytesField(value: v, fieldNumber: 2)
+    }()
+    case .delete?: try {
+      guard case .delete(let v)? = self.action else { preconditionFailure() }
+      try visitor.visitSingularBoolField(value: v, fieldNumber: 3)
+    }()
+    case nil: break
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_UpdateAPICredentialRequest, rhs: Codexpulse_Core_V1_UpdateAPICredentialRequest) -> Bool {
+    if lhs.service != rhs.service {return false}
+    if lhs.action != rhs.action {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_APISubscriptionSourceStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".APISubscriptionSourceStatus"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}state\0\u{3}last_success_at_ms\0\u{3}failure_code\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.state) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self._lastSuccessAtMs) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self._failureCode) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.state.isEmpty {
+      try visitor.visitSingularStringField(value: self.state, fieldNumber: 1)
+    }
+    try { if let v = self._lastSuccessAtMs {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._failureCode {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 3)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_APISubscriptionSourceStatus, rhs: Codexpulse_Core_V1_APISubscriptionSourceStatus) -> Bool {
+    if lhs.state != rhs.state {return false}
+    if lhs._lastSuccessAtMs != rhs._lastSuccessAtMs {return false}
+    if lhs._failureCode != rhs._failureCode {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_APISubscriptionCurrencyBalance: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".APISubscriptionCurrencyBalance"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}currency\0\u{1}total\0\u{1}granted\0\u{3}topped_up\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.currency) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.total) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.granted) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.toppedUp) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.currency.isEmpty {
+      try visitor.visitSingularStringField(value: self.currency, fieldNumber: 1)
+    }
+    if !self.total.isEmpty {
+      try visitor.visitSingularStringField(value: self.total, fieldNumber: 2)
+    }
+    if !self.granted.isEmpty {
+      try visitor.visitSingularStringField(value: self.granted, fieldNumber: 3)
+    }
+    if !self.toppedUp.isEmpty {
+      try visitor.visitSingularStringField(value: self.toppedUp, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_APISubscriptionCurrencyBalance, rhs: Codexpulse_Core_V1_APISubscriptionCurrencyBalance) -> Bool {
+    if lhs.currency != rhs.currency {return false}
+    if lhs.total != rhs.total {return false}
+    if lhs.granted != rhs.granted {return false}
+    if lhs.toppedUp != rhs.toppedUp {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_DeepSeekAPIBalance: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".DeepSeekAPIBalance"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}is_available\0\u{1}balances\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBoolField(value: &self.isAvailable) }()
+      case 2: try { try decoder.decodeRepeatedMessageField(value: &self.balances) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.isAvailable != false {
+      try visitor.visitSingularBoolField(value: self.isAvailable, fieldNumber: 1)
+    }
+    if !self.balances.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.balances, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_DeepSeekAPIBalance, rhs: Codexpulse_Core_V1_DeepSeekAPIBalance) -> Bool {
+    if lhs.isAvailable != rhs.isAvailable {return false}
+    if lhs.balances != rhs.balances {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_APISubscriptionCurrencyBalanceChange: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".APISubscriptionCurrencyBalanceChange"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}currency\0\u{3}starting_total\0\u{3}total_delta\0\u{3}starting_granted\0\u{3}granted_delta\0\u{3}starting_topped_up\0\u{3}topped_up_delta\0\u{3}total_recharged\0\u{3}total_consumed\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.currency) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.startingTotal) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.totalDelta) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.startingGranted) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.grantedDelta) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.startingToppedUp) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.toppedUpDelta) }()
+      case 8: try { try decoder.decodeSingularStringField(value: &self.totalRecharged) }()
+      case 9: try { try decoder.decodeSingularStringField(value: &self.totalConsumed) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.currency.isEmpty {
+      try visitor.visitSingularStringField(value: self.currency, fieldNumber: 1)
+    }
+    if !self.startingTotal.isEmpty {
+      try visitor.visitSingularStringField(value: self.startingTotal, fieldNumber: 2)
+    }
+    if !self.totalDelta.isEmpty {
+      try visitor.visitSingularStringField(value: self.totalDelta, fieldNumber: 3)
+    }
+    if !self.startingGranted.isEmpty {
+      try visitor.visitSingularStringField(value: self.startingGranted, fieldNumber: 4)
+    }
+    if !self.grantedDelta.isEmpty {
+      try visitor.visitSingularStringField(value: self.grantedDelta, fieldNumber: 5)
+    }
+    if !self.startingToppedUp.isEmpty {
+      try visitor.visitSingularStringField(value: self.startingToppedUp, fieldNumber: 6)
+    }
+    if !self.toppedUpDelta.isEmpty {
+      try visitor.visitSingularStringField(value: self.toppedUpDelta, fieldNumber: 7)
+    }
+    if !self.totalRecharged.isEmpty {
+      try visitor.visitSingularStringField(value: self.totalRecharged, fieldNumber: 8)
+    }
+    if !self.totalConsumed.isEmpty {
+      try visitor.visitSingularStringField(value: self.totalConsumed, fieldNumber: 9)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_APISubscriptionCurrencyBalanceChange, rhs: Codexpulse_Core_V1_APISubscriptionCurrencyBalanceChange) -> Bool {
+    if lhs.currency != rhs.currency {return false}
+    if lhs.startingTotal != rhs.startingTotal {return false}
+    if lhs.totalDelta != rhs.totalDelta {return false}
+    if lhs.startingGranted != rhs.startingGranted {return false}
+    if lhs.grantedDelta != rhs.grantedDelta {return false}
+    if lhs.startingToppedUp != rhs.startingToppedUp {return false}
+    if lhs.toppedUpDelta != rhs.toppedUpDelta {return false}
+    if lhs.totalRecharged != rhs.totalRecharged {return false}
+    if lhs.totalConsumed != rhs.totalConsumed {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_APISubscriptionBalanceTrendPoint: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".APISubscriptionBalanceTrendPoint"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}observed_at_ms\0\u{1}total\0\u{1}granted\0\u{3}topped_up\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt64Field(value: &self.observedAtMs) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.total) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.granted) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.toppedUp) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.observedAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.observedAtMs, fieldNumber: 1)
+    }
+    if !self.total.isEmpty {
+      try visitor.visitSingularStringField(value: self.total, fieldNumber: 2)
+    }
+    if !self.granted.isEmpty {
+      try visitor.visitSingularStringField(value: self.granted, fieldNumber: 3)
+    }
+    if !self.toppedUp.isEmpty {
+      try visitor.visitSingularStringField(value: self.toppedUp, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_APISubscriptionBalanceTrendPoint, rhs: Codexpulse_Core_V1_APISubscriptionBalanceTrendPoint) -> Bool {
+    if lhs.observedAtMs != rhs.observedAtMs {return false}
+    if lhs.total != rhs.total {return false}
+    if lhs.granted != rhs.granted {return false}
+    if lhs.toppedUp != rhs.toppedUp {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_APISubscriptionCurrencyBalanceSeries: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".APISubscriptionCurrencyBalanceSeries"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}currency\0\u{1}points\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.currency) }()
+      case 2: try { try decoder.decodeRepeatedMessageField(value: &self.points) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.currency.isEmpty {
+      try visitor.visitSingularStringField(value: self.currency, fieldNumber: 1)
+    }
+    if !self.points.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.points, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_APISubscriptionCurrencyBalanceSeries, rhs: Codexpulse_Core_V1_APISubscriptionCurrencyBalanceSeries) -> Bool {
+    if lhs.currency != rhs.currency {return false}
+    if lhs.points != rhs.points {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_APISubscriptionBalancePeriod: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".APISubscriptionBalancePeriod"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{3}starts_at_ms\0\u{3}baseline_at_ms\0\u{1}changes\0\u{1}series\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.kind) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.startsAtMs) }()
+      case 3: try { try decoder.decodeSingularInt64Field(value: &self._baselineAtMs) }()
+      case 4: try { try decoder.decodeRepeatedMessageField(value: &self.changes) }()
+      case 5: try { try decoder.decodeRepeatedMessageField(value: &self.series) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.kind.isEmpty {
+      try visitor.visitSingularStringField(value: self.kind, fieldNumber: 1)
+    }
+    if self.startsAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.startsAtMs, fieldNumber: 2)
+    }
+    try { if let v = self._baselineAtMs {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 3)
+    } }()
+    if !self.changes.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.changes, fieldNumber: 4)
+    }
+    if !self.series.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.series, fieldNumber: 5)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_APISubscriptionBalancePeriod, rhs: Codexpulse_Core_V1_APISubscriptionBalancePeriod) -> Bool {
+    if lhs.kind != rhs.kind {return false}
+    if lhs.startsAtMs != rhs.startsAtMs {return false}
+    if lhs._baselineAtMs != rhs._baselineAtMs {return false}
+    if lhs.changes != rhs.changes {return false}
+    if lhs.series != rhs.series {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_DeepSeekAPISubscriptionSnapshot: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".DeepSeekAPISubscriptionSnapshot"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}status\0\u{1}balance\0\u{1}periods\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._status) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._balance) }()
+      case 3: try { try decoder.decodeRepeatedMessageField(value: &self.periods) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._status {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try { if let v = self._balance {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    if !self.periods.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.periods, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_DeepSeekAPISubscriptionSnapshot, rhs: Codexpulse_Core_V1_DeepSeekAPISubscriptionSnapshot) -> Bool {
+    if lhs._status != rhs._status {return false}
+    if lhs._balance != rhs._balance {return false}
+    if lhs.periods != rhs.periods {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_OpenCodeGoQuotaWindow: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".OpenCodeGoQuotaWindow"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{1}status\0\u{3}used_percent\0\u{3}remaining_percent\0\u{3}resets_at_ms\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.kind) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.status) }()
+      case 3: try { try decoder.decodeSingularDoubleField(value: &self.usedPercent) }()
+      case 4: try { try decoder.decodeSingularDoubleField(value: &self.remainingPercent) }()
+      case 5: try { try decoder.decodeSingularInt64Field(value: &self.resetsAtMs) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.kind.isEmpty {
+      try visitor.visitSingularStringField(value: self.kind, fieldNumber: 1)
+    }
+    if !self.status.isEmpty {
+      try visitor.visitSingularStringField(value: self.status, fieldNumber: 2)
+    }
+    if self.usedPercent.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.usedPercent, fieldNumber: 3)
+    }
+    if self.remainingPercent.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.remainingPercent, fieldNumber: 4)
+    }
+    if self.resetsAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.resetsAtMs, fieldNumber: 5)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_OpenCodeGoQuotaWindow, rhs: Codexpulse_Core_V1_OpenCodeGoQuotaWindow) -> Bool {
+    if lhs.kind != rhs.kind {return false}
+    if lhs.status != rhs.status {return false}
+    if lhs.usedPercent != rhs.usedPercent {return false}
+    if lhs.remainingPercent != rhs.remainingPercent {return false}
+    if lhs.resetsAtMs != rhs.resetsAtMs {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_OpenCodeGoQuota: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".OpenCodeGoQuota"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}windows\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.windows) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.windows.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.windows, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_OpenCodeGoQuota, rhs: Codexpulse_Core_V1_OpenCodeGoQuota) -> Bool {
+    if lhs.windows != rhs.windows {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_OpenCodeGoSubscriptionSnapshot: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".OpenCodeGoSubscriptionSnapshot"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}status\0\u{1}quota\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._status) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._quota) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._status {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try { if let v = self._quota {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_OpenCodeGoSubscriptionSnapshot, rhs: Codexpulse_Core_V1_OpenCodeGoSubscriptionSnapshot) -> Bool {
+    if lhs._status != rhs._status {return false}
+    if lhs._quota != rhs._quota {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_DeepSeekDailyActivity: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".DeepSeekDailyActivity"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}currency\0\u{3}total_recharged\0\u{3}total_consumed\0\u{3}sample_count\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.currency) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.totalRecharged) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.totalConsumed) }()
+      case 4: try { try decoder.decodeSingularInt32Field(value: &self.sampleCount) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.currency.isEmpty {
+      try visitor.visitSingularStringField(value: self.currency, fieldNumber: 1)
+    }
+    if !self.totalRecharged.isEmpty {
+      try visitor.visitSingularStringField(value: self.totalRecharged, fieldNumber: 2)
+    }
+    if !self.totalConsumed.isEmpty {
+      try visitor.visitSingularStringField(value: self.totalConsumed, fieldNumber: 3)
+    }
+    if self.sampleCount != 0 {
+      try visitor.visitSingularInt32Field(value: self.sampleCount, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_DeepSeekDailyActivity, rhs: Codexpulse_Core_V1_DeepSeekDailyActivity) -> Bool {
+    if lhs.currency != rhs.currency {return false}
+    if lhs.totalRecharged != rhs.totalRecharged {return false}
+    if lhs.totalConsumed != rhs.totalConsumed {return false}
+    if lhs.sampleCount != rhs.sampleCount {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_OpenCodeGoFiveHourDailyActivity: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".OpenCodeGoFiveHourDailyActivity"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}max_five_hour_used_percent\0\u{3}latest_five_hour_used_percent\0\u{3}latest_five_hour_remaining_percent\0\u{3}sample_count\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularDoubleField(value: &self.maxFiveHourUsedPercent) }()
+      case 2: try { try decoder.decodeSingularDoubleField(value: &self.latestFiveHourUsedPercent) }()
+      case 3: try { try decoder.decodeSingularDoubleField(value: &self.latestFiveHourRemainingPercent) }()
+      case 4: try { try decoder.decodeSingularInt32Field(value: &self.sampleCount) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.maxFiveHourUsedPercent.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.maxFiveHourUsedPercent, fieldNumber: 1)
+    }
+    if self.latestFiveHourUsedPercent.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.latestFiveHourUsedPercent, fieldNumber: 2)
+    }
+    if self.latestFiveHourRemainingPercent.bitPattern != 0 {
+      try visitor.visitSingularDoubleField(value: self.latestFiveHourRemainingPercent, fieldNumber: 3)
+    }
+    if self.sampleCount != 0 {
+      try visitor.visitSingularInt32Field(value: self.sampleCount, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_OpenCodeGoFiveHourDailyActivity, rhs: Codexpulse_Core_V1_OpenCodeGoFiveHourDailyActivity) -> Bool {
+    if lhs.maxFiveHourUsedPercent != rhs.maxFiveHourUsedPercent {return false}
+    if lhs.latestFiveHourUsedPercent != rhs.latestFiveHourUsedPercent {return false}
+    if lhs.latestFiveHourRemainingPercent != rhs.latestFiveHourRemainingPercent {return false}
+    if lhs.sampleCount != rhs.sampleCount {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_APISubscriptionActivityDay: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".APISubscriptionActivityDay"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}date_key\0\u{3}starts_at_ms\0\u{3}deep_seek\0\u{3}open_code_go\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.dateKey) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.startsAtMs) }()
+      case 3: try { try decoder.decodeRepeatedMessageField(value: &self.deepSeek) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._openCodeGo) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.dateKey.isEmpty {
+      try visitor.visitSingularStringField(value: self.dateKey, fieldNumber: 1)
+    }
+    if self.startsAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.startsAtMs, fieldNumber: 2)
+    }
+    if !self.deepSeek.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.deepSeek, fieldNumber: 3)
+    }
+    try { if let v = self._openCodeGo {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_APISubscriptionActivityDay, rhs: Codexpulse_Core_V1_APISubscriptionActivityDay) -> Bool {
+    if lhs.dateKey != rhs.dateKey {return false}
+    if lhs.startsAtMs != rhs.startsAtMs {return false}
+    if lhs.deepSeek != rhs.deepSeek {return false}
+    if lhs._openCodeGo != rhs._openCodeGo {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_APISubscriptionActivityCalendar: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".APISubscriptionActivityCalendar"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}reporting_time_zone\0\u{1}days\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.reportingTimeZone) }()
+      case 2: try { try decoder.decodeRepeatedMessageField(value: &self.days) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.reportingTimeZone.isEmpty {
+      try visitor.visitSingularStringField(value: self.reportingTimeZone, fieldNumber: 1)
+    }
+    if !self.days.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.days, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_APISubscriptionActivityCalendar, rhs: Codexpulse_Core_V1_APISubscriptionActivityCalendar) -> Bool {
+    if lhs.reportingTimeZone != rhs.reportingTimeZone {return false}
+    if lhs.days != rhs.days {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_APISubscriptionsCurrentResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".APISubscriptionsCurrentResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}evaluated_at_ms\0\u{3}deep_seek\0\u{3}open_code_go\0\u{3}activity_calendar\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt64Field(value: &self.evaluatedAtMs) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._deepSeek) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._openCodeGo) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._activityCalendar) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.evaluatedAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.evaluatedAtMs, fieldNumber: 1)
+    }
+    try { if let v = self._deepSeek {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._openCodeGo {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try { if let v = self._activityCalendar {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_APISubscriptionsCurrentResponse, rhs: Codexpulse_Core_V1_APISubscriptionsCurrentResponse) -> Bool {
+    if lhs.evaluatedAtMs != rhs.evaluatedAtMs {return false}
+    if lhs._deepSeek != rhs._deepSeek {return false}
+    if lhs._openCodeGo != rhs._openCodeGo {return false}
+    if lhs._activityCalendar != rhs._activityCalendar {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -1,5 +1,16 @@
 ## Unreleased
 
+## v0.7.0 - 2026-08-19
+
+#### feature:
+1. 新增原生“API 与订阅”页面，贯通 DeepSeek 余额、OpenCode Go 5 小时/周/月额度、365 日活动热力图与余额趋势，并通过独立 Core RPC、私有凭据库和只读采样持久化保持真实零值与未配置语义。
+
+#### bugFix:
+1. 修复隔离空 Home UI smoke 误等待真实 Cursor 账号校验导致超时的问题；synthetic smoke 仅验证原生窗口、状态栏、Popover 和交互链，真实 Home live smoke 继续验证 Cursor provider。
+
+#### script:
+1. 更新原生 App smoke、项目静态检查和验证文档，固定第九页、来源数量及 API 订阅未配置的空数据契约。
+
 ## v0.6.1 - 2026-08-17
 
 #### optimization:

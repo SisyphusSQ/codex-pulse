@@ -93,6 +93,7 @@ private func testPrimaryPagesSmokeSummaryIncludesProjectDetailEvidence() throws 
         invocationSkillActivity: 0,
         quotaWindows: 0,
         quotaPaceWindows: 0,
+        apiSubscriptions: "deepseek_unconfigured+opencode_go_unconfigured",
         detailsRead: 0,
         settingsMutation: "skipped",
         unavailableSteps: []
@@ -100,8 +101,9 @@ private func testPrimaryPagesSmokeSummaryIncludesProjectDetailEvidence() throws 
     try expect(
         summary.stableDescription.contains(
             "invocation_tools=0 invocation_skills=0 quota_pace_windows=0 "
+                + "api_subscriptions=deepseek_unconfigured+opencode_go_unconfigured "
                 + "project_detail_cost=unknown project_detail_models=0"),
-        "primary-page smoke summary must expose pace and project detail evidence"
+        "primary-page smoke summary must expose pace, API subscription, and project detail evidence"
     )
 }
 
@@ -126,6 +128,18 @@ private func appSupportSource(_ fileName: String) throws -> String {
         packageRoot
         .appendingPathComponent("Sources/CodexPulseAppSupport", isDirectory: true)
         .appendingPathComponent(fileName)
+    return try String(contentsOf: fileURL, encoding: .utf8)
+}
+
+private func appSupportLocalization(_ language: String) throws -> String {
+    let packageRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+    let fileURL = packageRoot
+        .appendingPathComponent("Sources/CodexPulseAppSupport/Resources", isDirectory: true)
+        .appendingPathComponent("\(language).lproj", isDirectory: true)
+        .appendingPathComponent("Localizable.strings")
     return try String(contentsOf: fileURL, encoding: .utf8)
 }
 
@@ -1704,6 +1718,210 @@ private func testUsageSidebarOrdersInvocationBeforeQuota() throws {
 			== [.overview, .sessions, .projects, .quotaUsage],
 		"Grok usage sidebar must omit invocation statistics"
 	)
+	try expect(
+		!AppFeature.usageFeatures(for: .codex).contains(.apiSubscriptions)
+			&& AppFeature.allCases.contains(.apiSubscriptions),
+		"API 与订阅 must be an independent feature outside the AgentProvider usage list"
+	)
+}
+
+private func testAPISubscriptionsPageKeepsIndependentProductScope() throws {
+    let rootSource = try mainWindowSource("RootView.swift")
+    let pageSource = try mainWindowSource("APISubscriptionsView.swift")
+    let settingsSource = try mainWindowSource("SourcesJobsSettingsViews.swift")
+    let credentialSource = try appSupportSource("APISubscriptionCredentials.swift")
+    let runtimeSource = try appSupportSource("AppRuntime.swift")
+    let heatmapSource = try mainWindowSource("APISubscriptionActivityHeatmapView.swift")
+    let english = try appSupportLocalization("en")
+    let chinese = try appSupportLocalization("zh-Hans")
+    try expect(
+        rootSource.contains("Section(localization.text(\"sidebar.section.apiSubscriptions\"))")
+            && rootSource.contains("case .apiSubscriptions:")
+            && rootSource.contains("model.selectedFeature == .apiSubscriptions"),
+        "API 与订阅 must have an independent sidebar row, page, and title"
+    )
+    try expect(
+        pageSource.contains("deepSeekCard(response.deepSeek)")
+            && pageSource.contains("openCodeGoCard(response.openCodeGo)")
+            && pageSource.contains("APISubscriptionActivityHeatmapView(")
+            && pageSource.contains("import Charts")
+            && pageSource.contains("VStack(alignment: .leading, spacing: 16) {")
+            && pageSource.contains("Picker(localization.textValue(\"余额周期\")")
+            && pageSource.contains("localization.textValue(\"余额趋势\")")
+            && pageSource.contains("LineMark(")
+            && pageSource.contains(".interpolationMethod(.stepEnd)")
+            && pageSource.contains("RuleMark(y:")
+            && pageSource.contains(".chartXScale(range: .plotDimension(")
+            && pageSource.contains(".onContinuousHover")
+            && pageSource.contains("localization.textValue(\"期初记录\")")
+            && pageSource.contains("localization.textValue(\"当前余额\")")
+            && pageSource.contains("localization.textValue(\"余额变化\")")
+            && pageSource.contains("localization.textValue(\"总充值（采样估算）\")")
+            && pageSource.contains("localization.textValue(\"总消耗（采样估算）\")")
+            && pageSource.contains("localization.format(\"本周期首次记录于 %@\"")
+            && !pageSource.contains("HStack(alignment: .top, spacing: 16)")
+            && pageSource.contains("case \"five_hour\": localization.textValue(\"5 小时额度\")")
+            && pageSource.contains("case \"weekly\": localization.textValue(\"周额度\")")
+            && pageSource.contains("case \"monthly\": localization.textValue(\"月额度\")")
+            && pageSource.contains("failureTitle(status.failureCode)")
+            && pageSource.contains("localization.format(\"更新于 %@\"")
+            && !pageSource.contains("Session")
+            && !pageSource.contains("Token"),
+        "API 与订阅 must use full-width provider rows and show DeepSeek natural-period balance changes"
+    )
+    try expect(
+        heatmapSource.contains("APISubscriptionActivityCalendarPresentation(")
+            && heatmapSource.contains("activityHeatmapColor(for: day.intensity, tint: .blue)")
+            && heatmapSource.contains(".onContinuousHover")
+            && heatmapSource.contains("DeepSeek 总充值")
+            && heatmapSource.contains("OpenCode Go 5 小时峰值已用")
+            && !heatmapSource.contains("净变化")
+            && !heatmapSource.contains("Text(\"Token")
+            && !heatmapSource.contains("localization.textValue(\"Token"),
+        "all API and subscription activity must share one Codex-blue heatmap without net-change or Token copy"
+    )
+    try expect(
+        settingsSource.contains("SecureField(localizedCopy(\"输入新 key\")")
+            && settingsSource.contains("service: .deepSeek")
+            && settingsSource.contains("service: .openCodeGo")
+            && settingsSource.contains("localizedCopy(\"密钥保存在本机私有凭据库中")
+            && credentialSource.contains("Codexpulse_Core_V1_APICredentialStatusResponse")
+            && credentialSource.contains("response.deepSeekConfigured")
+            && credentialSource.contains("response.openCodeGoConfigured")
+            && !credentialSource.contains("import Security")
+            && !credentialSource.contains("Keychain")
+            && runtimeSource.contains("$0.apiCredentialStatus")
+            && runtimeSource.contains("$0.updateAPICredential")
+            && !runtimeSource.contains("KeychainAPISubscriptionCredentialStore")
+            && !runtimeSource.contains("secretsProvider")
+            && english.contains("\"网络连接失败\" = \"Network connection failed\";")
+            && english.contains("\"5 小时额度\" = \"5-hour quota\";")
+            && chinese.contains("\"网络连接失败\" = \"网络连接失败\";")
+            && chinese.contains("\"5 小时额度\" = \"5 小时额度\";"),
+        "API keys must be managed through the Helper-owned private credential database"
+    )
+}
+
+private func testAPISubscriptionBalanceTrendPresentationKeepsContinuousExactSamples() throws {
+    var series = Codexpulse_Core_V1_APISubscriptionCurrencyBalanceSeries()
+    series.currency = "CNY"
+    for sample in [
+        (1_000 as Int64, "50.00", "0.00", "50.00"),
+        (4_000 as Int64, "43.60", "0.00", "43.60"),
+    ] {
+        var point = Codexpulse_Core_V1_APISubscriptionBalanceTrendPoint()
+        point.observedAtMs = sample.0
+        point.total = sample.1
+        point.granted = sample.2
+        point.toppedUp = sample.3
+        series.points.append(point)
+    }
+
+    guard let presentation = APISubscriptionBalanceTrendPresentation(series: series) else {
+        throw TestFailure.mismatch("valid exact balance samples must build a trend presentation")
+    }
+    try expect(
+        presentation.currency == "CNY"
+            && presentation.points.map(\.totalText) == ["50.00", "43.60"]
+            && presentation.points.map(\.date) == [
+                Date(timeIntervalSince1970: 1),
+                Date(timeIntervalSince1970: 4),
+            ],
+        "trend presentation must preserve exact labels and every sample across time gaps"
+    )
+    try expect(
+        presentation.direction == .decrease
+            && abs(presentation.yDomain.lowerBound - 42.96) < 0.000_001
+            && abs(presentation.yDomain.upperBound - 50.64) < 0.000_001,
+        "trend presentation must derive direction and a readable adaptive y-domain"
+    )
+    try expect(
+        presentation.nearest(to: Date(timeIntervalSince1970: 2.5))?.observedAtMs == 1_000,
+        "equal-distance trend selection must prefer the earlier sample"
+    )
+
+    series.points[1].total = "invalid"
+    try expect(
+        APISubscriptionBalanceTrendPresentation(series: series) == nil,
+        "invalid decimal geometry must not render as a misleading balance trend"
+    )
+}
+
+private func testAPISubscriptionActivityCalendarUsesSharedBlueIntensityLevels() throws {
+    var response = Codexpulse_Core_V1_APISubscriptionActivityCalendar()
+    response.reportingTimeZone = "UTC"
+    for sample in [
+        ("2026-08-15", nil as String?, nil as Double?),
+        ("2026-08-16", "1.00", 10),
+        ("2026-08-17", "2.00", 62.5),
+        ("2026-08-18", "4.00", 40),
+        ("2026-08-19", "8.00", 80),
+    ] {
+        var day = Codexpulse_Core_V1_APISubscriptionActivityDay()
+        day.dateKey = sample.0
+        day.startsAtMs = Int64(DateFormatter.apiSubscriptionTest.date(from: sample.0)!.timeIntervalSince1970 * 1_000)
+        if let consumption = sample.1 {
+            var activity = Codexpulse_Core_V1_DeepSeekDailyActivity()
+            activity.currency = "CNY"
+            activity.totalRecharged = "0.00"
+            activity.totalConsumed = consumption
+            activity.sampleCount = 2
+            day.deepSeek = [activity]
+        }
+        if let usedPercent = sample.2 {
+            var activity = Codexpulse_Core_V1_OpenCodeGoFiveHourDailyActivity()
+            activity.maxFiveHourUsedPercent = usedPercent
+            activity.latestFiveHourUsedPercent = usedPercent
+            activity.latestFiveHourRemainingPercent = 100 - usedPercent
+            activity.sampleCount = 2
+            day.openCodeGo = activity
+        }
+        response.days.append(day)
+    }
+
+    guard let presentation = APISubscriptionActivityCalendarPresentation(
+        response,
+        currency: "CNY"
+    ) else {
+        throw TestFailure.mismatch("valid unified activity facts must build a calendar presentation")
+    }
+    let levels = Dictionary(uniqueKeysWithValues: presentation.days.map { ($0.id, $0.intensity) })
+    try expect(
+        presentation.currency == "CNY"
+            && levels["2026-08-15"] == .unknown
+            && levels["2026-08-16"] == .low
+            && levels["2026-08-17"] == .high
+            && levels["2026-08-18"] == .high
+            && levels["2026-08-19"] == .veryHigh,
+        "API subscription activity must reuse Codex intensity levels and let either provider drive one cell"
+    )
+    let selected = presentation.days.last
+    try expect(
+        selected?.deepSeekTotalConsumed == "8.00"
+            && selected?.deepSeekTotalRecharged == "0.00"
+            && selected?.openCodeGoMaxUsedPercent == 80,
+        "selected-day details must keep DeepSeek and OpenCode Go facts separate from cell color"
+    )
+}
+
+private extension DateFormatter {
+    static let apiSubscriptionTest: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+}
+
+private func testAPISubscriptionCredentialStatusMapsRPCBooleans() throws {
+    var response = Codexpulse_Core_V1_APICredentialStatusResponse()
+    response.deepSeekConfigured = true
+    response.openCodeGoConfigured = false
+    let status = APISubscriptionCredentialStatus(response)
+    try expect(status.deepSeekConfigured, "DeepSeek credential status")
+    try expect(!status.openCodeGoConfigured, "OpenCode Go credential status")
 }
 
 private func testOverviewHeaderAndBreakdownStayLocaleStable() throws {
@@ -2224,6 +2442,25 @@ private func testApplicationMenuRegistersNativeCommands() throws {
     try expect(
         source.contains("NSApp.orderFrontStandardAboutPanel(sender)"),
         "About must use the native standard About panel"
+    )
+}
+
+@MainActor
+private func testNativeEditMenuRoutesPasteThroughTheResponderChain() throws {
+    let editItem = NativeEditMenu.make(localization: .englishUS)
+    guard let editMenu = editItem.submenu,
+          let pasteItem = editMenu.items.first(where: {
+              $0.action == #selector(NSText.paste(_:))
+          })
+    else {
+        throw TestFailure.mismatch("Edit menu must register the standard paste: command")
+    }
+    try expect(editMenu.title == "Edit", "Edit menu title must be localized")
+    try expect(pasteItem.target == nil, "Paste must route through the current first responder")
+    try expect(pasteItem.keyEquivalent == "v", "Paste must use the V key equivalent")
+    try expect(
+        pasteItem.keyEquivalentModifierMask == .command,
+        "Paste must use the standard Command-V shortcut"
     )
 }
 
@@ -8082,10 +8319,15 @@ private func testLaunchConfigurationBoundaries() throws {
             "-psn_0_12345",
             "--helper", "/usr/bin/true",
             "--runtime-directory", "/private/tmp/cp-test-launch",
+            "--skip-cursor-provider-smoke",
         ]
     )
     try expect(
         parsed.helperExecutablePath == "/usr/bin/true", "LaunchServices argument must be ignored")
+    try expect(
+        parsed.cursorProviderSmoke == false,
+        "isolated UI smoke must be able to skip the real Cursor provider contract"
+    )
 
 	for bundleIdentifier: String? in ["com.sisyphussq.codex-pulse.development", nil] {
 		for arguments in [
@@ -8142,6 +8384,10 @@ private func testLaunchConfigurationUsesPersistentProductDefaults() throws {
     try expect(
         !parsed.clientVersion.isEmpty && parsed.clientVersion != "dev",
         "ordinary App launch must send product metadata instead of dev")
+    try expect(
+        parsed.cursorProviderSmoke,
+        "ordinary App launch must retain the Cursor provider smoke contract"
+    )
     _ = try AppLaunchConfiguration(
         helperExecutablePath: "/usr/bin/true",
         runtimeDirectory: expectedRuntime
@@ -9331,6 +9577,10 @@ struct CodexPulseAppTestMain {
         try testPopoverWeeklyTrendDoesNotFollowOverviewRange()
         try testTrendSelectionSnapsToNearestRealPoint()
         try testUsageSidebarOrdersInvocationBeforeQuota()
+        try testAPISubscriptionsPageKeepsIndependentProductScope()
+        try testAPISubscriptionBalanceTrendPresentationKeepsContinuousExactSamples()
+        try testAPISubscriptionActivityCalendarUsesSharedBlueIntensityLevels()
+        try testAPISubscriptionCredentialStatusMapsRPCBooleans()
         try testSidebarSettingsUsesSystemRowSpacing()
         try testOverviewHeaderAndBreakdownStayLocaleStable()
         try testLocaleSensitiveControlsAndPopoverCopyStayStable()
@@ -9348,6 +9598,7 @@ struct CodexPulseAppTestMain {
         try testQuotaResetPresentationIsUsedByEveryQuotaSurface()
         try testStatusItemRefreshReadsCommittedState()
         try testApplicationMenuRegistersNativeCommands()
+        try testNativeEditMenuRoutesPasteThroughTheResponderChain()
         try testApplicationMenuSettingsShowsTheExistingSettingsPage()
         try testMainWindowReopenPreservesTheCurrentFeature()
         try testExplicitMainWindowNavigationUsesTheRequestedFeature()

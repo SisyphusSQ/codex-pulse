@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
 	"github.com/SisyphusSQ/codex-pulse/internal/metrics"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -32,12 +33,20 @@ func TestApplicationMetricsRuntimeComposesPersistsAndCloses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileStore() error = %v", err)
 	}
-	coreService, err := composeCoreService(database, preferenceStore, runtime.Observer(), nil)
+	coreService, err := composeCoreService(database, preferenceStore, runtime.Observer(), nil, nil)
 	if err != nil {
 		t.Fatalf("composeCoreService() error = %v", err)
 	}
 	if coreService == nil {
 		t.Fatal("composeCoreService() returned nil")
+	}
+	apiSnapshot, err := coreService.APISubscriptionsCurrent(t.Context(), 123)
+	if err != nil {
+		t.Fatalf("APISubscriptionsCurrent() error = %v", err)
+	}
+	if apiSnapshot.DeepSeek.Status.State != apisubscriptions.StateUnconfigured ||
+		apiSnapshot.OpenCodeGo.Status.State != apisubscriptions.StateUnconfigured {
+		t.Fatalf("API subscription states = %#v", apiSnapshot)
 	}
 
 	time.Sleep(2 * time.Millisecond)

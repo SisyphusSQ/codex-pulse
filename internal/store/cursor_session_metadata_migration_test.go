@@ -52,8 +52,8 @@ func TestApplicationMigrationAddsCursorSessionMetadataWithoutLosingSessions(t *t
 	if err != nil {
 		t.Fatalf("run(v26) error = %v", err)
 	}
-	if report.FromVersion != 24 || report.TargetVersion != 27 ||
-		!equalInts(report.AppliedVersions, []int{25, 26, 27}) || backupVersions != [2]int{24, 27} {
+	if report.FromVersion != 24 || report.TargetVersion != 29 ||
+		!equalInts(report.AppliedVersions, []int{25, 26, 27, 28, 29}) || backupVersions != [2]int{24, 29} {
 		t.Fatalf("run(v27) report = %#v backup=%v", report, backupVersions)
 	}
 

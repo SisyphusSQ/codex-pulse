@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sync"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/metrics"
@@ -103,8 +105,34 @@ func openNormalRuntime(
 		_ = database.Close(context.Background())
 		return nil, fmt.Errorf("configure default Codex Home: %w", err)
 	}
-	service, err := composeCoreService(database, preferenceStore, metricsRuntime.Observer(), config.Broker)
+	credentialStore, err := apisubscriptions.OpenSQLiteCredentialStore(
+		ctx,
+		apisubscriptions.SQLiteCredentialStoreConfig{Store: storesqlite.Config{
+			Path:               filepath.Join(filepath.Dir(database.Config().Path), "credentials.db"),
+			WriteQueueCapacity: 8,
+			MaxReadConnections: 1,
+		}},
+	)
 	if err != nil {
+		_ = metricsRuntime.Close(context.Background())
+		_ = database.Close(context.Background())
+		return nil, err
+	}
+	composition, err := composeCoreGraph(
+		database, preferenceStore, metricsRuntime.Observer(), config.Broker, credentialStore, credentialStore,
+	)
+	if err != nil {
+		_ = credentialStore.Close(context.Background())
+		_ = metricsRuntime.Close(context.Background())
+		_ = database.Close(context.Background())
+		return nil, err
+	}
+	service := composition.service
+	apiSamplingRuntime, err := startAPISubscriptionSamplingRuntime(ctx, apiSubscriptionSamplingRuntimeConfig{
+		Source: composition.apiSubscriptions,
+	})
+	if err != nil {
+		_ = credentialStore.Close(context.Background())
 		_ = metricsRuntime.Close(context.Background())
 		_ = database.Close(context.Background())
 		return nil, err
@@ -114,6 +142,8 @@ func openNormalRuntime(
 		Invalidation: config.Broker,
 	})
 	if err != nil {
+		_ = apiSamplingRuntime.Close(context.Background())
+		_ = credentialStore.Close(context.Background())
 		_ = metricsRuntime.Close(context.Background())
 		_ = database.Close(context.Background())
 		return nil, err
@@ -125,6 +155,8 @@ func openNormalRuntime(
 		})
 		if err != nil {
 			_ = lifecycleRuntime.Close(context.Background())
+			_ = apiSamplingRuntime.Close(context.Background())
+			_ = credentialStore.Close(context.Background())
 			_ = metricsRuntime.Close(context.Background())
 			_ = database.Close(context.Background())
 			return nil, err
@@ -132,18 +164,18 @@ func openNormalRuntime(
 	}
 	healthRuntime, err := startApplicationHealthRuntime(ctx, database)
 	if err != nil {
-		closeNormalPartial(lifecycleRuntime, metricsRuntime, database)
+		closeNormalPartial(lifecycleRuntime, apiSamplingRuntime, credentialStore, metricsRuntime, database)
 		return nil, err
 	}
 	if err := core.BindDependencies(service, core.ServiceConfig{HealthProjection: healthRuntime}); err != nil {
 		_ = healthRuntime.Close(context.Background())
-		closeNormalPartial(lifecycleRuntime, metricsRuntime, database)
+		closeNormalPartial(lifecycleRuntime, apiSamplingRuntime, credentialStore, metricsRuntime, database)
 		return nil, err
 	}
 	retentionRuntime, err := startApplicationRetentionRuntime(ctx, database)
 	if err != nil {
 		_ = healthRuntime.Close(context.Background())
-		closeNormalPartial(lifecycleRuntime, metricsRuntime, database)
+		closeNormalPartial(lifecycleRuntime, apiSamplingRuntime, credentialStore, metricsRuntime, database)
 		return nil, err
 	}
 
@@ -152,6 +184,7 @@ func openNormalRuntime(
 		components = append(components, shutdownComponent{Name: "scheduler-admission", Close: lifecycleRuntime.BeginDrain})
 	}
 	components = append(components,
+		shutdownComponent{Name: "api-subscription-sampling", Close: apiSamplingRuntime.Close},
 		shutdownComponent{Name: "invalidation", Close: func(context.Context) error { config.Broker.Close(); return nil }},
 		shutdownComponent{Name: "retention", Close: retentionRuntime.Close},
 		shutdownComponent{Name: "health", Close: healthRuntime.Close},
@@ -161,13 +194,14 @@ func openNormalRuntime(
 	}
 	components = append(components,
 		shutdownComponent{Name: "metrics", Close: metricsRuntime.Close},
+		shutdownComponent{Name: "api-subscription-credentials", Close: credentialStore.Close},
 		shutdownComponent{Name: "sqlite", Close: database.Close},
 	)
 	shutdown, err := newApplicationShutdownCoordinator(components...)
 	if err != nil {
 		_ = retentionRuntime.Close(context.Background())
 		_ = healthRuntime.Close(context.Background())
-		closeNormalPartial(lifecycleRuntime, metricsRuntime, database)
+		closeNormalPartial(lifecycleRuntime, apiSamplingRuntime, credentialStore, metricsRuntime, database)
 		return nil, err
 	}
 	runtime := &Runtime{
@@ -181,11 +215,19 @@ func openNormalRuntime(
 
 func closeNormalPartial(
 	lifecycle *applicationLifecycleRuntime,
+	apiSampling *apiSubscriptionSamplingRuntime,
+	credentialStore *apisubscriptions.SQLiteCredentialStore,
 	metricsRuntime *applicationMetricsRuntime,
 	database *storesqlite.Store,
 ) {
 	if lifecycle != nil {
 		_ = lifecycle.Close(context.Background())
+	}
+	if apiSampling != nil {
+		_ = apiSampling.Close(context.Background())
+	}
+	if credentialStore != nil {
+		_ = credentialStore.Close(context.Background())
 	}
 	_ = metricsRuntime.Close(context.Background())
 	_ = database.Close(context.Background())

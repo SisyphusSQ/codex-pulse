@@ -1836,14 +1836,6 @@ public struct TokenActivityCalendarPresentation: Equatable, Sendable {
         _ activity: TokenActivityPresentation,
         localization: AppLocalization = AppLocalizationRegistry.shared.current
     ) {
-        guard let first = activity.days.first,
-              let timeZone = TimeZone(identifier: activity.reportingTimeZone)
-        else {
-            weeks = []
-            monthLabels = []
-            return
-        }
-
         let thresholds = ActivityIntensityScale.thresholds(
             for: activity.days.compactMap(\.tokens)
         )
@@ -1855,6 +1847,26 @@ public struct TokenActivityCalendarPresentation: Equatable, Sendable {
                     thresholds: thresholds
                 )
             )
+        }
+
+        self.init(
+            days: calendarDays,
+            reportingTimeZone: activity.reportingTimeZone,
+            localization: localization
+        )
+    }
+
+    public init(
+        days calendarDays: [TokenActivityCalendarDay],
+        reportingTimeZone: String,
+        localization: AppLocalization = AppLocalizationRegistry.shared.current
+    ) {
+        guard let first = calendarDays.first?.day,
+              let timeZone = TimeZone(identifier: reportingTimeZone)
+        else {
+            weeks = []
+            monthLabels = []
+            return
         }
 
         var calendar = Calendar(identifier: .gregorian)
@@ -1876,7 +1888,8 @@ public struct TokenActivityCalendarPresentation: Equatable, Sendable {
         }
         weeks = resolvedWeeks
 
-        monthLabels = activity.days.enumerated().compactMap { offset, day in
+        monthLabels = calendarDays.enumerated().compactMap { offset, value in
+            let day = value.day
             guard calendar.component(.day, from: day.date) == 1 else { return nil }
             let month = calendar.component(.month, from: day.date)
             let monthTitle = localization.language == .englishUS

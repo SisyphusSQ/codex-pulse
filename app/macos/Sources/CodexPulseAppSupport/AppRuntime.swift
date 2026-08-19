@@ -567,6 +567,46 @@ public actor AppRuntime {
         try await performRead { try await $0.quotaCurrent(request, retryPolicy: .transportDefault) }
     }
 
+    public func apiSubscriptionsCurrent(
+        now: Date = Date()
+    ) async throws -> Codexpulse_Core_V1_APISubscriptionsCurrentResponse {
+        var request = Codexpulse_Core_V1_APISubscriptionsCurrentRequest()
+        request.evaluatedAtMs = Int64(now.timeIntervalSince1970 * 1_000)
+        let preparedRequest = request
+        return try await performRead {
+            try await $0.apiSubscriptionsCurrent(preparedRequest, retryPolicy: .transportDefault)
+        }
+    }
+
+    public func apiCredentialStatus() async throws -> APISubscriptionCredentialStatus {
+        let response = try await performRead {
+            try await $0.apiCredentialStatus(
+                Codexpulse_Core_V1_APICredentialStatusRequest(),
+                retryPolicy: .transportDefault
+            )
+        }
+        return APISubscriptionCredentialStatus(response)
+    }
+
+    public func updateAPICredential(
+        service: APISubscriptionCredentialService,
+        key: String?
+    ) async throws -> APISubscriptionCredentialStatus {
+        var request = Codexpulse_Core_V1_UpdateAPICredentialRequest()
+        request.service = service.rawValue
+        if let key {
+            request.secret = Data(key.trimmingCharacters(in: .whitespacesAndNewlines).utf8)
+        } else {
+            request.delete = true
+        }
+        let preparedRequest = request
+        let response = try await performMutation {
+            try await $0.updateAPICredential(preparedRequest)
+        }
+        await restart()
+        return APISubscriptionCredentialStatus(response)
+    }
+
     public func quotaPace(
         _ request: Codexpulse_Core_V1_QuotaPaceRequest
     ) async throws -> Codexpulse_Core_V1_QuotaPaceResponse {
@@ -725,6 +765,15 @@ public actor AppRuntime {
             } catch {
                 unavailableSteps.append(try acceptedSmokeFailure(step: step, error: error))
             }
+            step = "api_subscriptions"
+            var apiSubscriptions = "unavailable"
+            do {
+                let response = try await apiSubscriptionsCurrent(now: now)
+                apiSubscriptions = "deepseek_\(response.deepSeek.status.state)"
+                    + "+opencode_go_\(response.openCodeGo.status.state)"
+            } catch {
+                unavailableSteps.append(try acceptedSmokeFailure(step: step, error: error))
+            }
             step = "sessions"
             var sessions: Codexpulse_Core_V1_SessionListResponse?
             do {
@@ -847,6 +896,7 @@ public actor AppRuntime {
                 invocationSkillActivity: invocation?.totals.skillActivityCount.value ?? 0,
                 quotaWindows: quota?.current.windows.count ?? 0,
                 quotaPaceWindows: paceResponse?.pace.windows.count ?? 0,
+                apiSubscriptions: apiSubscriptions,
                 projectDetailCostKnown: projectDetailCostKnown,
                 projectDetailModels: projectDetailModels,
                 detailsRead: detailsRead,

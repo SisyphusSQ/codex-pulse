@@ -44,8 +44,8 @@ func TestApplicationMigrationV26AddsCursorQuotaHistoryWithoutLosingDashboardSnap
 	if err != nil {
 		t.Fatalf("run(v26) error = %v", err)
 	}
-	if report.FromVersion != 25 || report.TargetVersion != 27 ||
-		!equalInts(report.AppliedVersions, []int{26, 27}) || backupVersions != [2]int{25, 27} {
+	if report.FromVersion != 25 || report.TargetVersion != 29 ||
+		!equalInts(report.AppliedVersions, []int{26, 27, 28, 29}) || backupVersions != [2]int{25, 29} {
 		t.Fatalf("run(v27) report = %#v backup=%v", report, backupVersions)
 	}
 

@@ -164,6 +164,7 @@ Codex Home 更换是独立的两步确认，不属于普通设置保存：先 me
 - 一页隐私说明、Codex home 探测、fast bootstrap、live/backfill 双队列、可续传初始索引和安全错误恢复。
 - 最近 24 小时资源与故障观测和 Data Health。
 - Tray、Popover、概览、Sessions、Projects、Quota、本机状态、Settings。
+- 独立的“API 与订阅”页面：DeepSeek 显示官方余额、余额趋势和采样估算的总充值/总消耗，OpenCode Go 显示 5 小时、周、月额度；两者还共享一个使用 Codex 蓝色档位的 365 天活动热力图，但不进入 Agent Provider 选择器。
 - 本地版本化 pricing catalog。
 - 在线 quota / reset credits 作为默认开启、可随时关闭的实验性能力；始终显示来源、更新时间和失败降级状态。
 - session index repair 仅 dry-run + 显式确认。
