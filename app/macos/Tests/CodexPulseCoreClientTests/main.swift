@@ -40,6 +40,11 @@ private func waitUntil(
     throw TestFailure.mismatch("timed out: \(context)")
 }
 
+private func testStartupPipePayloadContainsOnlyBearerToken() throws {
+    let payload = HelperSupervisor.startupPipePayload(token: "auth-token")
+    try expect(payload, Data("auth-token\n".utf8), "startup auth pipe payload")
+}
+
 private actor StreamRaceHarness {
     private var calls = 0
     private var waiters: [Int: CheckedContinuation<Void, Never>] = [:]
@@ -305,7 +310,17 @@ private func makeProbeScript(
         except OSError:
             pass
     auth_fd = int(value("--auth-fd"))
-    token = os.read(auth_fd, 256)
+    def read_exact(size):
+        result = b""
+        while len(result) < size:
+            chunk = os.read(auth_fd, size - len(result))
+            if not chunk:
+                sys.exit(72)
+            result += chunk
+        return result
+    token = b""
+    while not token.endswith(b"\\n") and len(token) <= 4096:
+        token += read_exact(1)
     if not token.endswith(b"\\n"):
         sys.exit(72)
     time.sleep(\(startupDelay))
@@ -590,6 +605,7 @@ struct ContractTestMain {
         try await testReconnectBudget()
         try await testReadRetryPolicy()
         try await testLifecycleTransitionReentrancy()
+        try testStartupPipePayloadContainsOnlyBearerToken()
         try await testSupervisorSecurityAndCancellation()
         try await testCrossLanguageCancellation()
 

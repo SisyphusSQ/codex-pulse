@@ -446,6 +446,7 @@ struct SettingsView: View {
             .padding(.vertical, 16)
             Divider()
             Form {
+                apiCredentialsSection
                 if model.settingsDraft != nil {
                     onlineSection(response)
                     refreshSection(response)
@@ -472,6 +473,79 @@ struct SettingsView: View {
             .id(model.localization.preference.rawValue)
             .formStyle(.grouped)
         }
+    }
+
+    private var apiCredentialsSection: some View {
+        Section(localizedCopy("API 与订阅")) {
+            apiCredentialRow(
+                title: "DeepSeek API key",
+                service: .deepSeek,
+                configured: model.apiCredentialStatus?.deepSeekConfigured == true,
+                draft: $model.deepSeekAPIKeyDraft
+            )
+            apiCredentialRow(
+                title: "OpenCode Go key",
+                service: .openCodeGo,
+                configured: model.apiCredentialStatus?.openCodeGoConfigured == true,
+                draft: $model.openCodeGoAPIKeyDraft
+            )
+            Text(localizedCopy("密钥保存在本机私有凭据库中。保存或删除后会重新连接本地数据，以加载新配置。"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            apiCredentialActionStatus
+        }
+    }
+
+    private func apiCredentialRow(
+        title: String,
+        service: APISubscriptionCredentialService,
+        configured: Bool,
+        draft: Binding<String>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(localizedCopy(configured ? "已配置" : "未配置"))
+                    .font(.caption)
+                    .foregroundStyle(configured ? .green : .secondary)
+            }
+            HStack {
+                SecureField(localizedCopy("输入新 key"), text: draft)
+                    .textContentType(.password)
+                Button(localizedCopy("保存")) { model.saveAPICredential(service) }
+                    .disabled(
+                        apiCredentialActionIsRunning
+                            || draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+                Button(localizedCopy("删除"), role: .destructive) { model.deleteAPICredential(service) }
+                    .disabled(apiCredentialActionIsRunning || !configured)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var apiCredentialActionStatus: some View {
+        switch model.apiCredentialActionState {
+        case .idle:
+            EmptyView()
+        case .running:
+            HStack { ProgressView().controlSize(.small); Text(localizedCopy("正在更新安全配置…")) }
+                .font(.caption)
+        case .succeeded(let result):
+            Label(localizedCopy(result == "deleted" ? "密钥已删除" : "密钥已保存"), systemImage: "checkmark.circle")
+                .font(.caption)
+                .foregroundStyle(.green)
+        case .unavailable:
+            Label(localizedCopy("密钥更新失败"), systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        }
+    }
+
+    private var apiCredentialActionIsRunning: Bool {
+        if case .running = model.apiCredentialActionState { return true }
+        return false
     }
 
     private func onlineSection(_ response: Codexpulse_Core_V1_SettingsResponse) -> some View {

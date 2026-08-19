@@ -37,6 +37,20 @@ public protocol AppCoreServing: Sendable {
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_QuotaCurrentResponse
 
+    func apiSubscriptionsCurrent(
+        _ request: Codexpulse_Core_V1_APISubscriptionsCurrentRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_APISubscriptionsCurrentResponse
+
+    func apiCredentialStatus(
+        _ request: Codexpulse_Core_V1_APICredentialStatusRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_APICredentialStatusResponse
+
+    func updateAPICredential(
+        _ request: Codexpulse_Core_V1_UpdateAPICredentialRequest
+    ) async throws -> Codexpulse_Core_V1_APICredentialStatusResponse
+
     func quotaPace(
         _ request: Codexpulse_Core_V1_QuotaPaceRequest,
         retryPolicy: ReadRetryPolicy
@@ -135,6 +149,26 @@ public protocol AppCoreServing: Sendable {
 }
 
 public extension AppCoreServing {
+	func apiCredentialStatus(
+		_ request: Codexpulse_Core_V1_APICredentialStatusRequest,
+		retryPolicy: ReadRetryPolicy
+	) async throws -> Codexpulse_Core_V1_APICredentialStatusResponse {
+		throw AppRuntimeError.unavailable
+	}
+
+	func updateAPICredential(
+		_ request: Codexpulse_Core_V1_UpdateAPICredentialRequest
+	) async throws -> Codexpulse_Core_V1_APICredentialStatusResponse {
+		throw AppRuntimeError.unavailable
+	}
+
+	func apiSubscriptionsCurrent(
+		_ request: Codexpulse_Core_V1_APISubscriptionsCurrentRequest,
+		retryPolicy: ReadRetryPolicy
+	) async throws -> Codexpulse_Core_V1_APISubscriptionsCurrentResponse {
+		throw AppRuntimeError.unavailable
+	}
+
 	func invocationUsage(
 		_ request: Codexpulse_Core_V1_InvocationUsageRequest,
 		retryPolicy: ReadRetryPolicy

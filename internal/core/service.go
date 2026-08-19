@@ -1,12 +1,14 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"sync"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
+	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	healthmodel "github.com/SisyphusSQ/codex-pulse/internal/health"
 	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
@@ -69,6 +71,16 @@ type accountSnapshotQuery interface {
 	AccountSnapshot(context.Context, agentprovider.Scope) (AccountSnapshot, error)
 }
 
+type apiSubscriptionsQuery interface {
+	Current(context.Context, int64) (apisubscriptions.CurrentSnapshot, error)
+}
+
+type apiCredentialStore interface {
+	Status(context.Context) (apisubscriptions.CredentialStatus, error)
+	Save(context.Context, string, []byte) error
+	Delete(context.Context, string) error
+}
+
 type sessionDeepIndexCommand interface {
 	DeepIndexSession(context.Context, string) (lightindex.DeepIndexResult, error)
 }
@@ -91,6 +103,8 @@ type ServiceConfig struct {
 	RuntimeControls  runtimeControlCommand
 	HealthProjection healthProjectionQuery
 	AccountSnapshot  accountSnapshotQuery
+	APISubscriptions apiSubscriptionsQuery
+	APICredentials   apiCredentialStore
 	QueryObserver    QueryObserver
 	SessionDeepIndex sessionDeepIndexCommand
 }
@@ -112,6 +126,8 @@ type Service struct {
 	healthProjection healthProjectionQuery
 	accountMu        sync.RWMutex
 	accountSnapshot  accountSnapshotQuery
+	apiSubscriptions apiSubscriptionsQuery
+	apiCredentials   apiCredentialStore
 	queryObserver    QueryObserver
 }
 
@@ -131,6 +147,8 @@ func NewService(config ServiceConfig) (*Service, error) {
 		queryObserver:    config.QueryObserver,
 		healthProjection: config.HealthProjection,
 		accountSnapshot:  config.AccountSnapshot,
+		apiSubscriptions: config.APISubscriptions,
+		apiCredentials:   config.APICredentials,
 	}, nil
 }
 
@@ -260,6 +278,8 @@ type ContractInfo struct {
 var methodAllowlist = []MethodInfo{
 	{Name: "Contracts", Kind: MethodQuery},
 	{Name: "AccountSnapshot", Kind: MethodQuery},
+	{Name: "APISubscriptionsCurrent", Kind: MethodQuery},
+	{Name: "APICredentialStatus", Kind: MethodQuery},
 	{Name: "UsageCost", Kind: MethodQuery},
 	{Name: "InvocationUsage", Kind: MethodQuery},
 	{Name: "PricingCatalogCurrent", Kind: MethodQuery},
@@ -270,6 +290,7 @@ var methodAllowlist = []MethodInfo{
 	{Name: "QuotaCurrent", Kind: MethodQuery},
 	{Name: "QuotaPace", Kind: MethodQuery},
 	{Name: "RequestQuotaRefresh", Kind: MethodCommand},
+	{Name: "UpdateAPICredential", Kind: MethodCommand},
 	{Name: "UpdateSettings", Kind: MethodCommand},
 	{Name: "PlanHomeSwitch", Kind: MethodCommand},
 	{Name: "ConfirmHomeSwitch", Kind: MethodCommand},
@@ -298,7 +319,7 @@ func (service *Service) Contracts() ContractInfo {
 			RuntimeInfoVersion:     runtimeinfo.ContractVersion,
 			Methods:                append([]MethodInfo(nil), methodAllowlist...),
 			CommandMethods: []string{
-				"RequestQuotaRefresh", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
+				"RequestQuotaRefresh", "UpdateAPICredential", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
 				"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
 			}, ErrorExample: errorExample,
 		}
@@ -327,6 +348,85 @@ func (service *Service) AccountSnapshot(ctx context.Context, scope agentprovider
 	}
 	return serviceQueryCall(service, func() (AccountSnapshot, error) {
 		return query.AccountSnapshot(ctx, scope)
+	})
+}
+
+func (service *Service) APISubscriptionsCurrent(
+	ctx context.Context,
+	evaluatedAtMS int64,
+) (apisubscriptions.CurrentSnapshot, error) {
+	if service == nil || service.apiSubscriptions == nil {
+		return apisubscriptions.CurrentSnapshot{}, newServiceFailure(ErrService)
+	}
+	if evaluatedAtMS <= 0 {
+		return apisubscriptions.CurrentSnapshot{}, newServiceFailure(
+			basequery.NewValidationFailure("evaluatedAtMS", nil),
+		)
+	}
+	return serviceQueryCall(service, func() (apisubscriptions.CurrentSnapshot, error) {
+		return service.apiSubscriptions.Current(ctx, evaluatedAtMS)
+	})
+}
+
+// APICredentialUpdateRequest describes one explicit save or delete operation.
+type APICredentialUpdateRequest struct {
+	Service string
+	Secret  []byte
+	Delete  bool
+}
+
+func (service *Service) APICredentialStatus(
+	ctx context.Context,
+) (apisubscriptions.CredentialStatus, error) {
+	if service == nil || service.apiCredentials == nil {
+		return apisubscriptions.CredentialStatus{}, newServiceFailure(ErrService)
+	}
+	return serviceQueryCall(service, func() (apisubscriptions.CredentialStatus, error) {
+		status, err := service.apiCredentials.Status(ctx)
+		if err != nil {
+			return apisubscriptions.CredentialStatus{}, basequery.NewUnavailableFailure(err)
+		}
+		return status, nil
+	})
+}
+
+func (service *Service) UpdateAPICredential(
+	ctx context.Context,
+	request APICredentialUpdateRequest,
+) (apisubscriptions.CredentialStatus, error) {
+	if service == nil || service.apiCredentials == nil {
+		return apisubscriptions.CredentialStatus{}, newServiceFailure(ErrService)
+	}
+	if request.Service != apisubscriptions.ServiceDeepSeek &&
+		request.Service != apisubscriptions.ServiceOpenCodeGo {
+		return apisubscriptions.CredentialStatus{}, newServiceFailure(
+			basequery.NewValidationFailure("service", nil),
+		)
+	}
+	hasSecret := len(bytes.TrimSpace(request.Secret)) > 0
+	if hasSecret == request.Delete {
+		return apisubscriptions.CredentialStatus{}, newServiceFailure(
+			basequery.NewValidationFailure("secret", nil),
+		)
+	}
+	return serviceQueryCall(service, func() (apisubscriptions.CredentialStatus, error) {
+		var err error
+		if request.Delete {
+			err = service.apiCredentials.Delete(ctx, request.Service)
+		} else {
+			err = service.apiCredentials.Save(ctx, request.Service, request.Secret)
+		}
+		if errors.Is(err, apisubscriptions.ErrInvalidCredential) {
+			return apisubscriptions.CredentialStatus{}, basequery.NewValidationFailure("secret", err)
+		}
+		if err != nil {
+			return apisubscriptions.CredentialStatus{}, basequery.NewUnavailableFailure(err)
+		}
+		status, err := service.apiCredentials.Status(ctx)
+		if err != nil {
+			return apisubscriptions.CredentialStatus{}, basequery.NewUnavailableFailure(err)
+		}
+		return status, nil
 	})
 }
 

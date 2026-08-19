@@ -192,16 +192,17 @@ require_pattern app/macos/Sources/CodexPulseAppSupport/HelperProcessMonitor.swif
 require_pattern internal/codex/appserver/process.go 'command.Env = isolatedCodexEnvironment' DATA-001 docs/design/details/native-macos-client/README.md
 require_pattern scripts/macos/build-dev-app.sh 'Contents/Helpers' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern scripts/macos/run-app-smoke.sh '--ui-smoke' SWIFT-002 docs/test/native-app-shell-overview.md
+require_pattern scripts/macos/run-app-smoke.sh '--skip-cursor-provider-smoke' SWIFT-002 docs/test/native-app-shell-overview.md
 require_pattern scripts/macos/run-app-smoke.sh '--skip-live-lifecycle' SWIFT-002 docs/test/native-app-shell-overview.md
 require_pattern scripts/macos/run-app-smoke.sh 'app smoke failed: timeout' SWIFT-002 docs/test/native-app-shell-overview.md
 require_pattern scripts/macos/run-app-smoke.sh 'isolated empty Home produced unexpected user facts' DATA-001 docs/test/native-app-shell-overview.md
 require_pattern scripts/macos/run-app-smoke.sh 'primary_pages=partial' SWIFT-003 docs/test/native-primary-pages.md
-require_pattern scripts/macos/run-app-smoke.sh 'ui_pages=8' SWIFT-003 docs/test/native-primary-pages.md
+require_pattern scripts/macos/run-app-smoke.sh 'sources=9 .*api_subscriptions=deepseek_unconfigured\\\+opencode_go_unconfigured .*ui_pages=9' SWIFT-003 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'CODEX_PULSE_APP_RUNTIME' SWIFT-004 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'confirmed Home is not the real Codex Home' SWIFT-004 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'standard_housekeeping=allowed' SWIFT-004 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'primary_pages=loaded' SWIFT-004 docs/test/native-primary-pages.md
-require_pattern scripts/macos/run-app-live-smoke.sh 'unavailable=none ui_pages=8' SWIFT-004 docs/test/native-primary-pages.md
+require_pattern scripts/macos/run-app-live-smoke.sh 'api_subscriptions=[^ ]+ .*unavailable=none ui_pages=9' SWIFT-004 docs/test/native-primary-pages.md
 if grep -Eq 'mktemp -d' "$REPO_ROOT/scripts/macos/run-app-live-smoke.sh"; then
   fail SWIFT-004 AGENTS.md "real Home live smoke must reuse an existing runtime"
 fi

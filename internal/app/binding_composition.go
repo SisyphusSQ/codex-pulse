@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/cursorprovider"
@@ -22,12 +25,35 @@ import (
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
+type coreComposition struct {
+	service          *core.Service
+	apiSubscriptions *apisubscriptions.Service
+}
+
 func composeCoreService(
 	database *storesqlite.Store,
 	preferenceStore *preferences.FileStore,
 	queryObserver core.QueryObserver,
 	invalidation queryInvalidationNotifier,
+	apiKeys apisubscriptions.APIKeyProvider,
 ) (*core.Service, error) {
+	composition, err := composeCoreGraph(
+		database, preferenceStore, queryObserver, invalidation, apiKeys, nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return composition.service, nil
+}
+
+func composeCoreGraph(
+	database *storesqlite.Store,
+	preferenceStore *preferences.FileStore,
+	queryObserver core.QueryObserver,
+	invalidation queryInvalidationNotifier,
+	apiKeys apisubscriptions.APIKeyProvider,
+	apiCredentials *apisubscriptions.SQLiteCredentialStore,
+) (*coreComposition, error) {
 	if database == nil || preferenceStore == nil {
 		return nil, core.ErrService
 	}
@@ -109,11 +135,56 @@ func composeCoreService(
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
-	return core.NewService(core.ServiceConfig{
+	if apiKeys == nil {
+		apiKeys = emptyAPIKeyProvider{}
+	}
+	deepSeekClient, err := apisubscriptions.NewDeepSeekClient(apisubscriptions.ClientConfig{Credentials: apiKeys})
+	if err != nil {
+		return nil, errors.Join(core.ErrService, err)
+	}
+	openCodeGoClient, err := apisubscriptions.NewOpenCodeGoClient(apisubscriptions.ClientConfig{Credentials: apiKeys})
+	if err != nil {
+		return nil, errors.Join(core.ErrService, err)
+	}
+	balanceHistory, err := apisubscriptions.NewSQLiteBalanceHistory(database)
+	if err != nil {
+		return nil, errors.Join(core.ErrService, err)
+	}
+	apiSubscriptions, err := apisubscriptions.NewService(apisubscriptions.ServiceConfig{
+		DeepSeek: deepSeekClient, OpenCodeGo: openCodeGoClient,
+		History: balanceHistory, Location: localReportingLocation(),
+	})
+	if err != nil {
+		return nil, errors.Join(core.ErrService, err)
+	}
+	service, err := core.NewService(core.ServiceConfig{
 		UsageCost: providerRouter, InvocationUsage: providerRouter, PricingCatalog: pricingService,
 		RuntimeInfo: runtimeService, QuotaInfo: quotaRouter, QueryObserver: queryObserver,
+		APISubscriptions: apiSubscriptions,
+		APICredentials:   apiCredentials,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return &coreComposition{service: service, apiSubscriptions: apiSubscriptions}, nil
 }
+
+func localReportingLocation() *time.Location {
+	resolved, err := filepath.EvalSymlinks("/etc/localtime")
+	if err == nil {
+		const marker = "/zoneinfo/"
+		if index := strings.LastIndex(resolved, marker); index >= 0 {
+			if location, loadErr := time.LoadLocation(resolved[index+len(marker):]); loadErr == nil {
+				return location
+			}
+		}
+	}
+	return time.Local
+}
+
+type emptyAPIKeyProvider struct{}
+
+func (emptyAPIKeyProvider) APIKey(string) ([]byte, bool) { return nil, false }
 
 func composeGrokQueryService(
 	repository *store.Repository,

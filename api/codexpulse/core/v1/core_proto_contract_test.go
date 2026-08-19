@@ -25,13 +25,13 @@ func TestCoreProtoExposesExactRPCSurface(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
-		"AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DataHealth",
+		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DataHealth",
 		"Handshake", "Health", "HealthProjection", "InvocationUsage", "Job", "ListHealth", "ListJobs", "ListProjects",
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
 		"MigrationRecoveryExit", "MigrationRecoveryPrepare", "MigrationRecoveryRetry",
 		"MigrationRecoveryState", "NotifyLifecycle", "PlanHomeSwitch", "ProjectDetail", "QuotaCurrent",
 		"PricingCatalogCurrent", "QuotaPace", "RecoverHomeSwitch", "RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings",
-		"Shutdown", "Source", "SubscribeInvalidations", "UpdateSettings", "UsageCost",
+		"Shutdown", "Source", "SubscribeInvalidations", "UpdateAPICredential", "UpdateSettings", "UsageCost",
 	}
 	sort.Strings(want)
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
@@ -120,6 +120,45 @@ func TestSessionDetailDescriptorReservesLegacyDailyField(t *testing.T) {
 			trend,
 			granularity,
 		)
+	}
+}
+
+func TestAPISubscriptionBalancePeriodDescriptorCarriesExactTrendSeries(t *testing.T) {
+	t.Parallel()
+
+	period := (&corev1.APISubscriptionBalancePeriod{}).ProtoReflect().Descriptor()
+	series := period.Fields().ByName("series")
+	if series == nil || series.Number() != 5 || !series.IsList() ||
+		series.Message().Name() != "APISubscriptionCurrencyBalanceSeries" {
+		t.Fatalf("APISubscriptionBalancePeriod series field = %v", series)
+	}
+	point := period.ParentFile().Messages().ByName("APISubscriptionBalanceTrendPoint")
+	if point == nil || point.Fields().ByName("observed_at_ms").Number() != 1 ||
+		point.Fields().ByName("total").Number() != 2 ||
+		point.Fields().ByName("granted").Number() != 3 ||
+		point.Fields().ByName("topped_up").Number() != 4 {
+		t.Fatalf("APISubscriptionBalanceTrendPoint descriptor = %v", point)
+	}
+}
+
+func TestAPISubscriptionDescriptorCarriesObservedTotalsAndUnifiedCalendar(t *testing.T) {
+	t.Parallel()
+
+	change := (&corev1.APISubscriptionCurrencyBalanceChange{}).ProtoReflect().Descriptor()
+	if field := change.Fields().ByName("total_recharged"); field == nil || field.Number() != 8 {
+		t.Fatalf("total_recharged field = %v", field)
+	}
+	if field := change.Fields().ByName("total_consumed"); field == nil || field.Number() != 9 {
+		t.Fatalf("total_consumed field = %v", field)
+	}
+	response := (&corev1.APISubscriptionsCurrentResponse{}).ProtoReflect().Descriptor()
+	calendar := response.Fields().ByName("activity_calendar")
+	if calendar == nil || calendar.Number() != 4 || calendar.Message().Name() != "APISubscriptionActivityCalendar" {
+		t.Fatalf("activity_calendar field = %v", calendar)
+	}
+	day := response.ParentFile().Messages().ByName("APISubscriptionActivityDay")
+	if day == nil || day.Fields().ByName("deep_seek") == nil || day.Fields().ByName("open_code_go") == nil {
+		t.Fatalf("APISubscriptionActivityDay descriptor = %v", day)
 	}
 }
 

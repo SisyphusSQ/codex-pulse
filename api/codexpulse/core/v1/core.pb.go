@@ -11371,6 +11371,1268 @@ func (x *AccountSnapshotResponse) GetAccount() *CodexAccountIdentity {
 	return nil
 }
 
+type APISubscriptionsCurrentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EvaluatedAtMs int64                  `protobuf:"varint,1,opt,name=evaluated_at_ms,json=evaluatedAtMs,proto3" json:"evaluated_at_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *APISubscriptionsCurrentRequest) Reset() {
+	*x = APISubscriptionsCurrentRequest{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[152]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *APISubscriptionsCurrentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*APISubscriptionsCurrentRequest) ProtoMessage() {}
+
+func (x *APISubscriptionsCurrentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[152]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use APISubscriptionsCurrentRequest.ProtoReflect.Descriptor instead.
+func (*APISubscriptionsCurrentRequest) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{152}
+}
+
+func (x *APISubscriptionsCurrentRequest) GetEvaluatedAtMs() int64 {
+	if x != nil {
+		return x.EvaluatedAtMs
+	}
+	return 0
+}
+
+type APICredentialStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *APICredentialStatusRequest) Reset() {
+	*x = APICredentialStatusRequest{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[153]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *APICredentialStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*APICredentialStatusRequest) ProtoMessage() {}
+
+func (x *APICredentialStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[153]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use APICredentialStatusRequest.ProtoReflect.Descriptor instead.
+func (*APICredentialStatusRequest) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{153}
+}
+
+type APICredentialStatusResponse struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	DeepSeekConfigured   bool                   `protobuf:"varint,1,opt,name=deep_seek_configured,json=deepSeekConfigured,proto3" json:"deep_seek_configured,omitempty"`
+	OpenCodeGoConfigured bool                   `protobuf:"varint,2,opt,name=open_code_go_configured,json=openCodeGoConfigured,proto3" json:"open_code_go_configured,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *APICredentialStatusResponse) Reset() {
+	*x = APICredentialStatusResponse{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[154]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *APICredentialStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*APICredentialStatusResponse) ProtoMessage() {}
+
+func (x *APICredentialStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[154]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use APICredentialStatusResponse.ProtoReflect.Descriptor instead.
+func (*APICredentialStatusResponse) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{154}
+}
+
+func (x *APICredentialStatusResponse) GetDeepSeekConfigured() bool {
+	if x != nil {
+		return x.DeepSeekConfigured
+	}
+	return false
+}
+
+func (x *APICredentialStatusResponse) GetOpenCodeGoConfigured() bool {
+	if x != nil {
+		return x.OpenCodeGoConfigured
+	}
+	return false
+}
+
+type UpdateAPICredentialRequest struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Service string                 `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
+	// Types that are valid to be assigned to Action:
+	//
+	//	*UpdateAPICredentialRequest_Secret
+	//	*UpdateAPICredentialRequest_Delete
+	Action        isUpdateAPICredentialRequest_Action `protobuf_oneof:"action"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateAPICredentialRequest) Reset() {
+	*x = UpdateAPICredentialRequest{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[155]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateAPICredentialRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateAPICredentialRequest) ProtoMessage() {}
+
+func (x *UpdateAPICredentialRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[155]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateAPICredentialRequest.ProtoReflect.Descriptor instead.
+func (*UpdateAPICredentialRequest) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{155}
+}
+
+func (x *UpdateAPICredentialRequest) GetService() string {
+	if x != nil {
+		return x.Service
+	}
+	return ""
+}
+
+func (x *UpdateAPICredentialRequest) GetAction() isUpdateAPICredentialRequest_Action {
+	if x != nil {
+		return x.Action
+	}
+	return nil
+}
+
+func (x *UpdateAPICredentialRequest) GetSecret() []byte {
+	if x != nil {
+		if x, ok := x.Action.(*UpdateAPICredentialRequest_Secret); ok {
+			return x.Secret
+		}
+	}
+	return nil
+}
+
+func (x *UpdateAPICredentialRequest) GetDelete() bool {
+	if x != nil {
+		if x, ok := x.Action.(*UpdateAPICredentialRequest_Delete); ok {
+			return x.Delete
+		}
+	}
+	return false
+}
+
+type isUpdateAPICredentialRequest_Action interface {
+	isUpdateAPICredentialRequest_Action()
+}
+
+type UpdateAPICredentialRequest_Secret struct {
+	Secret []byte `protobuf:"bytes,2,opt,name=secret,proto3,oneof"`
+}
+
+type UpdateAPICredentialRequest_Delete struct {
+	Delete bool `protobuf:"varint,3,opt,name=delete,proto3,oneof"`
+}
+
+func (*UpdateAPICredentialRequest_Secret) isUpdateAPICredentialRequest_Action() {}
+
+func (*UpdateAPICredentialRequest_Delete) isUpdateAPICredentialRequest_Action() {}
+
+type APISubscriptionSourceStatus struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	State           string                 `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
+	LastSuccessAtMs *int64                 `protobuf:"varint,2,opt,name=last_success_at_ms,json=lastSuccessAtMs,proto3,oneof" json:"last_success_at_ms,omitempty"`
+	FailureCode     *string                `protobuf:"bytes,3,opt,name=failure_code,json=failureCode,proto3,oneof" json:"failure_code,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *APISubscriptionSourceStatus) Reset() {
+	*x = APISubscriptionSourceStatus{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[156]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *APISubscriptionSourceStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*APISubscriptionSourceStatus) ProtoMessage() {}
+
+func (x *APISubscriptionSourceStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[156]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use APISubscriptionSourceStatus.ProtoReflect.Descriptor instead.
+func (*APISubscriptionSourceStatus) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{156}
+}
+
+func (x *APISubscriptionSourceStatus) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *APISubscriptionSourceStatus) GetLastSuccessAtMs() int64 {
+	if x != nil && x.LastSuccessAtMs != nil {
+		return *x.LastSuccessAtMs
+	}
+	return 0
+}
+
+func (x *APISubscriptionSourceStatus) GetFailureCode() string {
+	if x != nil && x.FailureCode != nil {
+		return *x.FailureCode
+	}
+	return ""
+}
+
+type APISubscriptionCurrencyBalance struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Currency      string                 `protobuf:"bytes,1,opt,name=currency,proto3" json:"currency,omitempty"`
+	Total         string                 `protobuf:"bytes,2,opt,name=total,proto3" json:"total,omitempty"`
+	Granted       string                 `protobuf:"bytes,3,opt,name=granted,proto3" json:"granted,omitempty"`
+	ToppedUp      string                 `protobuf:"bytes,4,opt,name=topped_up,json=toppedUp,proto3" json:"topped_up,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *APISubscriptionCurrencyBalance) Reset() {
+	*x = APISubscriptionCurrencyBalance{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[157]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *APISubscriptionCurrencyBalance) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*APISubscriptionCurrencyBalance) ProtoMessage() {}
+
+func (x *APISubscriptionCurrencyBalance) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[157]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use APISubscriptionCurrencyBalance.ProtoReflect.Descriptor instead.
+func (*APISubscriptionCurrencyBalance) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{157}
+}
+
+func (x *APISubscriptionCurrencyBalance) GetCurrency() string {
+	if x != nil {
+		return x.Currency
+	}
+	return ""
+}
+
+func (x *APISubscriptionCurrencyBalance) GetTotal() string {
+	if x != nil {
+		return x.Total
+	}
+	return ""
+}
+
+func (x *APISubscriptionCurrencyBalance) GetGranted() string {
+	if x != nil {
+		return x.Granted
+	}
+	return ""
+}
+
+func (x *APISubscriptionCurrencyBalance) GetToppedUp() string {
+	if x != nil {
+		return x.ToppedUp
+	}
+	return ""
+}
+
+type DeepSeekAPIBalance struct {
+	state         protoimpl.MessageState            `protogen:"open.v1"`
+	IsAvailable   bool                              `protobuf:"varint,1,opt,name=is_available,json=isAvailable,proto3" json:"is_available,omitempty"`
+	Balances      []*APISubscriptionCurrencyBalance `protobuf:"bytes,2,rep,name=balances,proto3" json:"balances,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeepSeekAPIBalance) Reset() {
+	*x = DeepSeekAPIBalance{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[158]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeepSeekAPIBalance) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeepSeekAPIBalance) ProtoMessage() {}
+
+func (x *DeepSeekAPIBalance) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[158]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeepSeekAPIBalance.ProtoReflect.Descriptor instead.
+func (*DeepSeekAPIBalance) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{158}
+}
+
+func (x *DeepSeekAPIBalance) GetIsAvailable() bool {
+	if x != nil {
+		return x.IsAvailable
+	}
+	return false
+}
+
+func (x *DeepSeekAPIBalance) GetBalances() []*APISubscriptionCurrencyBalance {
+	if x != nil {
+		return x.Balances
+	}
+	return nil
+}
+
+type APISubscriptionCurrencyBalanceChange struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Currency         string                 `protobuf:"bytes,1,opt,name=currency,proto3" json:"currency,omitempty"`
+	StartingTotal    string                 `protobuf:"bytes,2,opt,name=starting_total,json=startingTotal,proto3" json:"starting_total,omitempty"`
+	TotalDelta       string                 `protobuf:"bytes,3,opt,name=total_delta,json=totalDelta,proto3" json:"total_delta,omitempty"`
+	StartingGranted  string                 `protobuf:"bytes,4,opt,name=starting_granted,json=startingGranted,proto3" json:"starting_granted,omitempty"`
+	GrantedDelta     string                 `protobuf:"bytes,5,opt,name=granted_delta,json=grantedDelta,proto3" json:"granted_delta,omitempty"`
+	StartingToppedUp string                 `protobuf:"bytes,6,opt,name=starting_topped_up,json=startingToppedUp,proto3" json:"starting_topped_up,omitempty"`
+	ToppedUpDelta    string                 `protobuf:"bytes,7,opt,name=topped_up_delta,json=toppedUpDelta,proto3" json:"topped_up_delta,omitempty"`
+	TotalRecharged   string                 `protobuf:"bytes,8,opt,name=total_recharged,json=totalRecharged,proto3" json:"total_recharged,omitempty"`
+	TotalConsumed    string                 `protobuf:"bytes,9,opt,name=total_consumed,json=totalConsumed,proto3" json:"total_consumed,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *APISubscriptionCurrencyBalanceChange) Reset() {
+	*x = APISubscriptionCurrencyBalanceChange{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[159]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *APISubscriptionCurrencyBalanceChange) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*APISubscriptionCurrencyBalanceChange) ProtoMessage() {}
+
+func (x *APISubscriptionCurrencyBalanceChange) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[159]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use APISubscriptionCurrencyBalanceChange.ProtoReflect.Descriptor instead.
+func (*APISubscriptionCurrencyBalanceChange) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{159}
+}
+
+func (x *APISubscriptionCurrencyBalanceChange) GetCurrency() string {
+	if x != nil {
+		return x.Currency
+	}
+	return ""
+}
+
+func (x *APISubscriptionCurrencyBalanceChange) GetStartingTotal() string {
+	if x != nil {
+		return x.StartingTotal
+	}
+	return ""
+}
+
+func (x *APISubscriptionCurrencyBalanceChange) GetTotalDelta() string {
+	if x != nil {
+		return x.TotalDelta
+	}
+	return ""
+}
+
+func (x *APISubscriptionCurrencyBalanceChange) GetStartingGranted() string {
+	if x != nil {
+		return x.StartingGranted
+	}
+	return ""
+}
+
+func (x *APISubscriptionCurrencyBalanceChange) GetGrantedDelta() string {
+	if x != nil {
+		return x.GrantedDelta
+	}
+	return ""
+}
+
+func (x *APISubscriptionCurrencyBalanceChange) GetStartingToppedUp() string {
+	if x != nil {
+		return x.StartingToppedUp
+	}
+	return ""
+}
+
+func (x *APISubscriptionCurrencyBalanceChange) GetToppedUpDelta() string {
+	if x != nil {
+		return x.ToppedUpDelta
+	}
+	return ""
+}
+
+func (x *APISubscriptionCurrencyBalanceChange) GetTotalRecharged() string {
+	if x != nil {
+		return x.TotalRecharged
+	}
+	return ""
+}
+
+func (x *APISubscriptionCurrencyBalanceChange) GetTotalConsumed() string {
+	if x != nil {
+		return x.TotalConsumed
+	}
+	return ""
+}
+
+type APISubscriptionBalanceTrendPoint struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ObservedAtMs  int64                  `protobuf:"varint,1,opt,name=observed_at_ms,json=observedAtMs,proto3" json:"observed_at_ms,omitempty"`
+	Total         string                 `protobuf:"bytes,2,opt,name=total,proto3" json:"total,omitempty"`
+	Granted       string                 `protobuf:"bytes,3,opt,name=granted,proto3" json:"granted,omitempty"`
+	ToppedUp      string                 `protobuf:"bytes,4,opt,name=topped_up,json=toppedUp,proto3" json:"topped_up,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *APISubscriptionBalanceTrendPoint) Reset() {
+	*x = APISubscriptionBalanceTrendPoint{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[160]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *APISubscriptionBalanceTrendPoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*APISubscriptionBalanceTrendPoint) ProtoMessage() {}
+
+func (x *APISubscriptionBalanceTrendPoint) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[160]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use APISubscriptionBalanceTrendPoint.ProtoReflect.Descriptor instead.
+func (*APISubscriptionBalanceTrendPoint) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{160}
+}
+
+func (x *APISubscriptionBalanceTrendPoint) GetObservedAtMs() int64 {
+	if x != nil {
+		return x.ObservedAtMs
+	}
+	return 0
+}
+
+func (x *APISubscriptionBalanceTrendPoint) GetTotal() string {
+	if x != nil {
+		return x.Total
+	}
+	return ""
+}
+
+func (x *APISubscriptionBalanceTrendPoint) GetGranted() string {
+	if x != nil {
+		return x.Granted
+	}
+	return ""
+}
+
+func (x *APISubscriptionBalanceTrendPoint) GetToppedUp() string {
+	if x != nil {
+		return x.ToppedUp
+	}
+	return ""
+}
+
+type APISubscriptionCurrencyBalanceSeries struct {
+	state         protoimpl.MessageState              `protogen:"open.v1"`
+	Currency      string                              `protobuf:"bytes,1,opt,name=currency,proto3" json:"currency,omitempty"`
+	Points        []*APISubscriptionBalanceTrendPoint `protobuf:"bytes,2,rep,name=points,proto3" json:"points,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *APISubscriptionCurrencyBalanceSeries) Reset() {
+	*x = APISubscriptionCurrencyBalanceSeries{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[161]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *APISubscriptionCurrencyBalanceSeries) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*APISubscriptionCurrencyBalanceSeries) ProtoMessage() {}
+
+func (x *APISubscriptionCurrencyBalanceSeries) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[161]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use APISubscriptionCurrencyBalanceSeries.ProtoReflect.Descriptor instead.
+func (*APISubscriptionCurrencyBalanceSeries) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{161}
+}
+
+func (x *APISubscriptionCurrencyBalanceSeries) GetCurrency() string {
+	if x != nil {
+		return x.Currency
+	}
+	return ""
+}
+
+func (x *APISubscriptionCurrencyBalanceSeries) GetPoints() []*APISubscriptionBalanceTrendPoint {
+	if x != nil {
+		return x.Points
+	}
+	return nil
+}
+
+type APISubscriptionBalancePeriod struct {
+	state         protoimpl.MessageState                  `protogen:"open.v1"`
+	Kind          string                                  `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	StartsAtMs    int64                                   `protobuf:"varint,2,opt,name=starts_at_ms,json=startsAtMs,proto3" json:"starts_at_ms,omitempty"`
+	BaselineAtMs  *int64                                  `protobuf:"varint,3,opt,name=baseline_at_ms,json=baselineAtMs,proto3,oneof" json:"baseline_at_ms,omitempty"`
+	Changes       []*APISubscriptionCurrencyBalanceChange `protobuf:"bytes,4,rep,name=changes,proto3" json:"changes,omitempty"`
+	Series        []*APISubscriptionCurrencyBalanceSeries `protobuf:"bytes,5,rep,name=series,proto3" json:"series,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *APISubscriptionBalancePeriod) Reset() {
+	*x = APISubscriptionBalancePeriod{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[162]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *APISubscriptionBalancePeriod) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*APISubscriptionBalancePeriod) ProtoMessage() {}
+
+func (x *APISubscriptionBalancePeriod) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[162]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use APISubscriptionBalancePeriod.ProtoReflect.Descriptor instead.
+func (*APISubscriptionBalancePeriod) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{162}
+}
+
+func (x *APISubscriptionBalancePeriod) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *APISubscriptionBalancePeriod) GetStartsAtMs() int64 {
+	if x != nil {
+		return x.StartsAtMs
+	}
+	return 0
+}
+
+func (x *APISubscriptionBalancePeriod) GetBaselineAtMs() int64 {
+	if x != nil && x.BaselineAtMs != nil {
+		return *x.BaselineAtMs
+	}
+	return 0
+}
+
+func (x *APISubscriptionBalancePeriod) GetChanges() []*APISubscriptionCurrencyBalanceChange {
+	if x != nil {
+		return x.Changes
+	}
+	return nil
+}
+
+func (x *APISubscriptionBalancePeriod) GetSeries() []*APISubscriptionCurrencyBalanceSeries {
+	if x != nil {
+		return x.Series
+	}
+	return nil
+}
+
+type DeepSeekAPISubscriptionSnapshot struct {
+	state         protoimpl.MessageState          `protogen:"open.v1"`
+	Status        *APISubscriptionSourceStatus    `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	Balance       *DeepSeekAPIBalance             `protobuf:"bytes,2,opt,name=balance,proto3,oneof" json:"balance,omitempty"`
+	Periods       []*APISubscriptionBalancePeriod `protobuf:"bytes,3,rep,name=periods,proto3" json:"periods,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeepSeekAPISubscriptionSnapshot) Reset() {
+	*x = DeepSeekAPISubscriptionSnapshot{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[163]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeepSeekAPISubscriptionSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeepSeekAPISubscriptionSnapshot) ProtoMessage() {}
+
+func (x *DeepSeekAPISubscriptionSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[163]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeepSeekAPISubscriptionSnapshot.ProtoReflect.Descriptor instead.
+func (*DeepSeekAPISubscriptionSnapshot) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{163}
+}
+
+func (x *DeepSeekAPISubscriptionSnapshot) GetStatus() *APISubscriptionSourceStatus {
+	if x != nil {
+		return x.Status
+	}
+	return nil
+}
+
+func (x *DeepSeekAPISubscriptionSnapshot) GetBalance() *DeepSeekAPIBalance {
+	if x != nil {
+		return x.Balance
+	}
+	return nil
+}
+
+func (x *DeepSeekAPISubscriptionSnapshot) GetPeriods() []*APISubscriptionBalancePeriod {
+	if x != nil {
+		return x.Periods
+	}
+	return nil
+}
+
+type OpenCodeGoQuotaWindow struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Kind             string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	Status           string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	UsedPercent      float64                `protobuf:"fixed64,3,opt,name=used_percent,json=usedPercent,proto3" json:"used_percent,omitempty"`
+	RemainingPercent float64                `protobuf:"fixed64,4,opt,name=remaining_percent,json=remainingPercent,proto3" json:"remaining_percent,omitempty"`
+	ResetsAtMs       int64                  `protobuf:"varint,5,opt,name=resets_at_ms,json=resetsAtMs,proto3" json:"resets_at_ms,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *OpenCodeGoQuotaWindow) Reset() {
+	*x = OpenCodeGoQuotaWindow{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[164]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenCodeGoQuotaWindow) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenCodeGoQuotaWindow) ProtoMessage() {}
+
+func (x *OpenCodeGoQuotaWindow) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[164]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenCodeGoQuotaWindow.ProtoReflect.Descriptor instead.
+func (*OpenCodeGoQuotaWindow) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{164}
+}
+
+func (x *OpenCodeGoQuotaWindow) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *OpenCodeGoQuotaWindow) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *OpenCodeGoQuotaWindow) GetUsedPercent() float64 {
+	if x != nil {
+		return x.UsedPercent
+	}
+	return 0
+}
+
+func (x *OpenCodeGoQuotaWindow) GetRemainingPercent() float64 {
+	if x != nil {
+		return x.RemainingPercent
+	}
+	return 0
+}
+
+func (x *OpenCodeGoQuotaWindow) GetResetsAtMs() int64 {
+	if x != nil {
+		return x.ResetsAtMs
+	}
+	return 0
+}
+
+type OpenCodeGoQuota struct {
+	state         protoimpl.MessageState   `protogen:"open.v1"`
+	Windows       []*OpenCodeGoQuotaWindow `protobuf:"bytes,1,rep,name=windows,proto3" json:"windows,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OpenCodeGoQuota) Reset() {
+	*x = OpenCodeGoQuota{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[165]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenCodeGoQuota) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenCodeGoQuota) ProtoMessage() {}
+
+func (x *OpenCodeGoQuota) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[165]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenCodeGoQuota.ProtoReflect.Descriptor instead.
+func (*OpenCodeGoQuota) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{165}
+}
+
+func (x *OpenCodeGoQuota) GetWindows() []*OpenCodeGoQuotaWindow {
+	if x != nil {
+		return x.Windows
+	}
+	return nil
+}
+
+type OpenCodeGoSubscriptionSnapshot struct {
+	state         protoimpl.MessageState       `protogen:"open.v1"`
+	Status        *APISubscriptionSourceStatus `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	Quota         *OpenCodeGoQuota             `protobuf:"bytes,2,opt,name=quota,proto3,oneof" json:"quota,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OpenCodeGoSubscriptionSnapshot) Reset() {
+	*x = OpenCodeGoSubscriptionSnapshot{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[166]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenCodeGoSubscriptionSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenCodeGoSubscriptionSnapshot) ProtoMessage() {}
+
+func (x *OpenCodeGoSubscriptionSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[166]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenCodeGoSubscriptionSnapshot.ProtoReflect.Descriptor instead.
+func (*OpenCodeGoSubscriptionSnapshot) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{166}
+}
+
+func (x *OpenCodeGoSubscriptionSnapshot) GetStatus() *APISubscriptionSourceStatus {
+	if x != nil {
+		return x.Status
+	}
+	return nil
+}
+
+func (x *OpenCodeGoSubscriptionSnapshot) GetQuota() *OpenCodeGoQuota {
+	if x != nil {
+		return x.Quota
+	}
+	return nil
+}
+
+type DeepSeekDailyActivity struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Currency       string                 `protobuf:"bytes,1,opt,name=currency,proto3" json:"currency,omitempty"`
+	TotalRecharged string                 `protobuf:"bytes,2,opt,name=total_recharged,json=totalRecharged,proto3" json:"total_recharged,omitempty"`
+	TotalConsumed  string                 `protobuf:"bytes,3,opt,name=total_consumed,json=totalConsumed,proto3" json:"total_consumed,omitempty"`
+	SampleCount    int32                  `protobuf:"varint,4,opt,name=sample_count,json=sampleCount,proto3" json:"sample_count,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *DeepSeekDailyActivity) Reset() {
+	*x = DeepSeekDailyActivity{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[167]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeepSeekDailyActivity) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeepSeekDailyActivity) ProtoMessage() {}
+
+func (x *DeepSeekDailyActivity) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[167]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeepSeekDailyActivity.ProtoReflect.Descriptor instead.
+func (*DeepSeekDailyActivity) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{167}
+}
+
+func (x *DeepSeekDailyActivity) GetCurrency() string {
+	if x != nil {
+		return x.Currency
+	}
+	return ""
+}
+
+func (x *DeepSeekDailyActivity) GetTotalRecharged() string {
+	if x != nil {
+		return x.TotalRecharged
+	}
+	return ""
+}
+
+func (x *DeepSeekDailyActivity) GetTotalConsumed() string {
+	if x != nil {
+		return x.TotalConsumed
+	}
+	return ""
+}
+
+func (x *DeepSeekDailyActivity) GetSampleCount() int32 {
+	if x != nil {
+		return x.SampleCount
+	}
+	return 0
+}
+
+type OpenCodeGoFiveHourDailyActivity struct {
+	state                          protoimpl.MessageState `protogen:"open.v1"`
+	MaxFiveHourUsedPercent         float64                `protobuf:"fixed64,1,opt,name=max_five_hour_used_percent,json=maxFiveHourUsedPercent,proto3" json:"max_five_hour_used_percent,omitempty"`
+	LatestFiveHourUsedPercent      float64                `protobuf:"fixed64,2,opt,name=latest_five_hour_used_percent,json=latestFiveHourUsedPercent,proto3" json:"latest_five_hour_used_percent,omitempty"`
+	LatestFiveHourRemainingPercent float64                `protobuf:"fixed64,3,opt,name=latest_five_hour_remaining_percent,json=latestFiveHourRemainingPercent,proto3" json:"latest_five_hour_remaining_percent,omitempty"`
+	SampleCount                    int32                  `protobuf:"varint,4,opt,name=sample_count,json=sampleCount,proto3" json:"sample_count,omitempty"`
+	unknownFields                  protoimpl.UnknownFields
+	sizeCache                      protoimpl.SizeCache
+}
+
+func (x *OpenCodeGoFiveHourDailyActivity) Reset() {
+	*x = OpenCodeGoFiveHourDailyActivity{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[168]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenCodeGoFiveHourDailyActivity) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenCodeGoFiveHourDailyActivity) ProtoMessage() {}
+
+func (x *OpenCodeGoFiveHourDailyActivity) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[168]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenCodeGoFiveHourDailyActivity.ProtoReflect.Descriptor instead.
+func (*OpenCodeGoFiveHourDailyActivity) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{168}
+}
+
+func (x *OpenCodeGoFiveHourDailyActivity) GetMaxFiveHourUsedPercent() float64 {
+	if x != nil {
+		return x.MaxFiveHourUsedPercent
+	}
+	return 0
+}
+
+func (x *OpenCodeGoFiveHourDailyActivity) GetLatestFiveHourUsedPercent() float64 {
+	if x != nil {
+		return x.LatestFiveHourUsedPercent
+	}
+	return 0
+}
+
+func (x *OpenCodeGoFiveHourDailyActivity) GetLatestFiveHourRemainingPercent() float64 {
+	if x != nil {
+		return x.LatestFiveHourRemainingPercent
+	}
+	return 0
+}
+
+func (x *OpenCodeGoFiveHourDailyActivity) GetSampleCount() int32 {
+	if x != nil {
+		return x.SampleCount
+	}
+	return 0
+}
+
+type APISubscriptionActivityDay struct {
+	state         protoimpl.MessageState           `protogen:"open.v1"`
+	DateKey       string                           `protobuf:"bytes,1,opt,name=date_key,json=dateKey,proto3" json:"date_key,omitempty"`
+	StartsAtMs    int64                            `protobuf:"varint,2,opt,name=starts_at_ms,json=startsAtMs,proto3" json:"starts_at_ms,omitempty"`
+	DeepSeek      []*DeepSeekDailyActivity         `protobuf:"bytes,3,rep,name=deep_seek,json=deepSeek,proto3" json:"deep_seek,omitempty"`
+	OpenCodeGo    *OpenCodeGoFiveHourDailyActivity `protobuf:"bytes,4,opt,name=open_code_go,json=openCodeGo,proto3,oneof" json:"open_code_go,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *APISubscriptionActivityDay) Reset() {
+	*x = APISubscriptionActivityDay{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[169]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *APISubscriptionActivityDay) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*APISubscriptionActivityDay) ProtoMessage() {}
+
+func (x *APISubscriptionActivityDay) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[169]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use APISubscriptionActivityDay.ProtoReflect.Descriptor instead.
+func (*APISubscriptionActivityDay) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{169}
+}
+
+func (x *APISubscriptionActivityDay) GetDateKey() string {
+	if x != nil {
+		return x.DateKey
+	}
+	return ""
+}
+
+func (x *APISubscriptionActivityDay) GetStartsAtMs() int64 {
+	if x != nil {
+		return x.StartsAtMs
+	}
+	return 0
+}
+
+func (x *APISubscriptionActivityDay) GetDeepSeek() []*DeepSeekDailyActivity {
+	if x != nil {
+		return x.DeepSeek
+	}
+	return nil
+}
+
+func (x *APISubscriptionActivityDay) GetOpenCodeGo() *OpenCodeGoFiveHourDailyActivity {
+	if x != nil {
+		return x.OpenCodeGo
+	}
+	return nil
+}
+
+type APISubscriptionActivityCalendar struct {
+	state             protoimpl.MessageState        `protogen:"open.v1"`
+	ReportingTimeZone string                        `protobuf:"bytes,1,opt,name=reporting_time_zone,json=reportingTimeZone,proto3" json:"reporting_time_zone,omitempty"`
+	Days              []*APISubscriptionActivityDay `protobuf:"bytes,2,rep,name=days,proto3" json:"days,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *APISubscriptionActivityCalendar) Reset() {
+	*x = APISubscriptionActivityCalendar{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[170]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *APISubscriptionActivityCalendar) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*APISubscriptionActivityCalendar) ProtoMessage() {}
+
+func (x *APISubscriptionActivityCalendar) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[170]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use APISubscriptionActivityCalendar.ProtoReflect.Descriptor instead.
+func (*APISubscriptionActivityCalendar) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{170}
+}
+
+func (x *APISubscriptionActivityCalendar) GetReportingTimeZone() string {
+	if x != nil {
+		return x.ReportingTimeZone
+	}
+	return ""
+}
+
+func (x *APISubscriptionActivityCalendar) GetDays() []*APISubscriptionActivityDay {
+	if x != nil {
+		return x.Days
+	}
+	return nil
+}
+
+type APISubscriptionsCurrentResponse struct {
+	state            protoimpl.MessageState           `protogen:"open.v1"`
+	EvaluatedAtMs    int64                            `protobuf:"varint,1,opt,name=evaluated_at_ms,json=evaluatedAtMs,proto3" json:"evaluated_at_ms,omitempty"`
+	DeepSeek         *DeepSeekAPISubscriptionSnapshot `protobuf:"bytes,2,opt,name=deep_seek,json=deepSeek,proto3" json:"deep_seek,omitempty"`
+	OpenCodeGo       *OpenCodeGoSubscriptionSnapshot  `protobuf:"bytes,3,opt,name=open_code_go,json=openCodeGo,proto3" json:"open_code_go,omitempty"`
+	ActivityCalendar *APISubscriptionActivityCalendar `protobuf:"bytes,4,opt,name=activity_calendar,json=activityCalendar,proto3" json:"activity_calendar,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *APISubscriptionsCurrentResponse) Reset() {
+	*x = APISubscriptionsCurrentResponse{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[171]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *APISubscriptionsCurrentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*APISubscriptionsCurrentResponse) ProtoMessage() {}
+
+func (x *APISubscriptionsCurrentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[171]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use APISubscriptionsCurrentResponse.ProtoReflect.Descriptor instead.
+func (*APISubscriptionsCurrentResponse) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{171}
+}
+
+func (x *APISubscriptionsCurrentResponse) GetEvaluatedAtMs() int64 {
+	if x != nil {
+		return x.EvaluatedAtMs
+	}
+	return 0
+}
+
+func (x *APISubscriptionsCurrentResponse) GetDeepSeek() *DeepSeekAPISubscriptionSnapshot {
+	if x != nil {
+		return x.DeepSeek
+	}
+	return nil
+}
+
+func (x *APISubscriptionsCurrentResponse) GetOpenCodeGo() *OpenCodeGoSubscriptionSnapshot {
+	if x != nil {
+		return x.OpenCodeGo
+	}
+	return nil
+}
+
+func (x *APISubscriptionsCurrentResponse) GetActivityCalendar() *APISubscriptionActivityCalendar {
+	if x != nil {
+		return x.ActivityCalendar
+	}
+	return nil
+}
+
 var File_api_codexpulse_core_v1_core_proto protoreflect.FileDescriptor
 
 const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
@@ -12481,7 +13743,105 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x17AccountSnapshotResponse\x12G\n" +
 	"\aaccount\x18\x01 \x01(\v2(.codexpulse.core.v1.CodexAccountIdentityH\x00R\aaccount\x88\x01\x01B\n" +
 	"\n" +
-	"\b_account2\xcd\x1e\n" +
+	"\b_account\"H\n" +
+	"\x1eAPISubscriptionsCurrentRequest\x12&\n" +
+	"\x0fevaluated_at_ms\x18\x01 \x01(\x03R\revaluatedAtMs\"\x1c\n" +
+	"\x1aAPICredentialStatusRequest\"\x86\x01\n" +
+	"\x1bAPICredentialStatusResponse\x120\n" +
+	"\x14deep_seek_configured\x18\x01 \x01(\bR\x12deepSeekConfigured\x125\n" +
+	"\x17open_code_go_configured\x18\x02 \x01(\bR\x14openCodeGoConfigured\"t\n" +
+	"\x1aUpdateAPICredentialRequest\x12\x18\n" +
+	"\aservice\x18\x01 \x01(\tR\aservice\x12\x18\n" +
+	"\x06secret\x18\x02 \x01(\fH\x00R\x06secret\x12\x18\n" +
+	"\x06delete\x18\x03 \x01(\bH\x00R\x06deleteB\b\n" +
+	"\x06action\"\xb5\x01\n" +
+	"\x1bAPISubscriptionSourceStatus\x12\x14\n" +
+	"\x05state\x18\x01 \x01(\tR\x05state\x120\n" +
+	"\x12last_success_at_ms\x18\x02 \x01(\x03H\x00R\x0flastSuccessAtMs\x88\x01\x01\x12&\n" +
+	"\ffailure_code\x18\x03 \x01(\tH\x01R\vfailureCode\x88\x01\x01B\x15\n" +
+	"\x13_last_success_at_msB\x0f\n" +
+	"\r_failure_code\"\x89\x01\n" +
+	"\x1eAPISubscriptionCurrencyBalance\x12\x1a\n" +
+	"\bcurrency\x18\x01 \x01(\tR\bcurrency\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\tR\x05total\x12\x18\n" +
+	"\agranted\x18\x03 \x01(\tR\agranted\x12\x1b\n" +
+	"\ttopped_up\x18\x04 \x01(\tR\btoppedUp\"\x87\x01\n" +
+	"\x12DeepSeekAPIBalance\x12!\n" +
+	"\fis_available\x18\x01 \x01(\bR\visAvailable\x12N\n" +
+	"\bbalances\x18\x02 \x03(\v22.codexpulse.core.v1.APISubscriptionCurrencyBalanceR\bbalances\"\x80\x03\n" +
+	"$APISubscriptionCurrencyBalanceChange\x12\x1a\n" +
+	"\bcurrency\x18\x01 \x01(\tR\bcurrency\x12%\n" +
+	"\x0estarting_total\x18\x02 \x01(\tR\rstartingTotal\x12\x1f\n" +
+	"\vtotal_delta\x18\x03 \x01(\tR\n" +
+	"totalDelta\x12)\n" +
+	"\x10starting_granted\x18\x04 \x01(\tR\x0fstartingGranted\x12#\n" +
+	"\rgranted_delta\x18\x05 \x01(\tR\fgrantedDelta\x12,\n" +
+	"\x12starting_topped_up\x18\x06 \x01(\tR\x10startingToppedUp\x12&\n" +
+	"\x0ftopped_up_delta\x18\a \x01(\tR\rtoppedUpDelta\x12'\n" +
+	"\x0ftotal_recharged\x18\b \x01(\tR\x0etotalRecharged\x12%\n" +
+	"\x0etotal_consumed\x18\t \x01(\tR\rtotalConsumed\"\x95\x01\n" +
+	" APISubscriptionBalanceTrendPoint\x12$\n" +
+	"\x0eobserved_at_ms\x18\x01 \x01(\x03R\fobservedAtMs\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\tR\x05total\x12\x18\n" +
+	"\agranted\x18\x03 \x01(\tR\agranted\x12\x1b\n" +
+	"\ttopped_up\x18\x04 \x01(\tR\btoppedUp\"\x90\x01\n" +
+	"$APISubscriptionCurrencyBalanceSeries\x12\x1a\n" +
+	"\bcurrency\x18\x01 \x01(\tR\bcurrency\x12L\n" +
+	"\x06points\x18\x02 \x03(\v24.codexpulse.core.v1.APISubscriptionBalanceTrendPointR\x06points\"\xb8\x02\n" +
+	"\x1cAPISubscriptionBalancePeriod\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12 \n" +
+	"\fstarts_at_ms\x18\x02 \x01(\x03R\n" +
+	"startsAtMs\x12)\n" +
+	"\x0ebaseline_at_ms\x18\x03 \x01(\x03H\x00R\fbaselineAtMs\x88\x01\x01\x12R\n" +
+	"\achanges\x18\x04 \x03(\v28.codexpulse.core.v1.APISubscriptionCurrencyBalanceChangeR\achanges\x12P\n" +
+	"\x06series\x18\x05 \x03(\v28.codexpulse.core.v1.APISubscriptionCurrencyBalanceSeriesR\x06seriesB\x11\n" +
+	"\x0f_baseline_at_ms\"\x89\x02\n" +
+	"\x1fDeepSeekAPISubscriptionSnapshot\x12G\n" +
+	"\x06status\x18\x01 \x01(\v2/.codexpulse.core.v1.APISubscriptionSourceStatusR\x06status\x12E\n" +
+	"\abalance\x18\x02 \x01(\v2&.codexpulse.core.v1.DeepSeekAPIBalanceH\x00R\abalance\x88\x01\x01\x12J\n" +
+	"\aperiods\x18\x03 \x03(\v20.codexpulse.core.v1.APISubscriptionBalancePeriodR\aperiodsB\n" +
+	"\n" +
+	"\b_balance\"\xb5\x01\n" +
+	"\x15OpenCodeGoQuotaWindow\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12!\n" +
+	"\fused_percent\x18\x03 \x01(\x01R\vusedPercent\x12+\n" +
+	"\x11remaining_percent\x18\x04 \x01(\x01R\x10remainingPercent\x12 \n" +
+	"\fresets_at_ms\x18\x05 \x01(\x03R\n" +
+	"resetsAtMs\"V\n" +
+	"\x0fOpenCodeGoQuota\x12C\n" +
+	"\awindows\x18\x01 \x03(\v2).codexpulse.core.v1.OpenCodeGoQuotaWindowR\awindows\"\xb3\x01\n" +
+	"\x1eOpenCodeGoSubscriptionSnapshot\x12G\n" +
+	"\x06status\x18\x01 \x01(\v2/.codexpulse.core.v1.APISubscriptionSourceStatusR\x06status\x12>\n" +
+	"\x05quota\x18\x02 \x01(\v2#.codexpulse.core.v1.OpenCodeGoQuotaH\x00R\x05quota\x88\x01\x01B\b\n" +
+	"\x06_quota\"\xa6\x01\n" +
+	"\x15DeepSeekDailyActivity\x12\x1a\n" +
+	"\bcurrency\x18\x01 \x01(\tR\bcurrency\x12'\n" +
+	"\x0ftotal_recharged\x18\x02 \x01(\tR\x0etotalRecharged\x12%\n" +
+	"\x0etotal_consumed\x18\x03 \x01(\tR\rtotalConsumed\x12!\n" +
+	"\fsample_count\x18\x04 \x01(\x05R\vsampleCount\"\x8e\x02\n" +
+	"\x1fOpenCodeGoFiveHourDailyActivity\x12:\n" +
+	"\x1amax_five_hour_used_percent\x18\x01 \x01(\x01R\x16maxFiveHourUsedPercent\x12@\n" +
+	"\x1dlatest_five_hour_used_percent\x18\x02 \x01(\x01R\x19latestFiveHourUsedPercent\x12J\n" +
+	"\"latest_five_hour_remaining_percent\x18\x03 \x01(\x01R\x1elatestFiveHourRemainingPercent\x12!\n" +
+	"\fsample_count\x18\x04 \x01(\x05R\vsampleCount\"\x8e\x02\n" +
+	"\x1aAPISubscriptionActivityDay\x12\x19\n" +
+	"\bdate_key\x18\x01 \x01(\tR\adateKey\x12 \n" +
+	"\fstarts_at_ms\x18\x02 \x01(\x03R\n" +
+	"startsAtMs\x12F\n" +
+	"\tdeep_seek\x18\x03 \x03(\v2).codexpulse.core.v1.DeepSeekDailyActivityR\bdeepSeek\x12Z\n" +
+	"\fopen_code_go\x18\x04 \x01(\v23.codexpulse.core.v1.OpenCodeGoFiveHourDailyActivityH\x00R\n" +
+	"openCodeGo\x88\x01\x01B\x0f\n" +
+	"\r_open_code_go\"\x95\x01\n" +
+	"\x1fAPISubscriptionActivityCalendar\x12.\n" +
+	"\x13reporting_time_zone\x18\x01 \x01(\tR\x11reportingTimeZone\x12B\n" +
+	"\x04days\x18\x02 \x03(\v2..codexpulse.core.v1.APISubscriptionActivityDayR\x04days\"\xd3\x02\n" +
+	"\x1fAPISubscriptionsCurrentResponse\x12&\n" +
+	"\x0fevaluated_at_ms\x18\x01 \x01(\x03R\revaluatedAtMs\x12P\n" +
+	"\tdeep_seek\x18\x02 \x01(\v23.codexpulse.core.v1.DeepSeekAPISubscriptionSnapshotR\bdeepSeek\x12T\n" +
+	"\fopen_code_go\x18\x03 \x01(\v22.codexpulse.core.v1.OpenCodeGoSubscriptionSnapshotR\n" +
+	"openCodeGo\x12`\n" +
+	"\x11activity_calendar\x18\x04 \x01(\v23.codexpulse.core.v1.APISubscriptionActivityCalendarR\x10activityCalendar2\xc2!\n" +
 	"\vCoreService\x12X\n" +
 	"\tHandshake\x12$.codexpulse.core.v1.HandshakeRequest\x1a%.codexpulse.core.v1.HandshakeResponse\x12X\n" +
 	"\tBootstrap\x12$.codexpulse.core.v1.BootstrapRequest\x1a%.codexpulse.core.v1.BootstrapResponse\x12X\n" +
@@ -12494,7 +13854,10 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\rSessionDetail\x12(.codexpulse.core.v1.SessionDetailRequest\x1a).codexpulse.core.v1.SessionDetailResponse\x12`\n" +
 	"\fListProjects\x12'.codexpulse.core.v1.ListProjectsRequest\x1a'.codexpulse.core.v1.ProjectListResponse\x12d\n" +
 	"\rProjectDetail\x12(.codexpulse.core.v1.ProjectDetailRequest\x1a).codexpulse.core.v1.ProjectDetailResponse\x12a\n" +
-	"\fQuotaCurrent\x12'.codexpulse.core.v1.QuotaCurrentRequest\x1a(.codexpulse.core.v1.QuotaCurrentResponse\x12X\n" +
+	"\fQuotaCurrent\x12'.codexpulse.core.v1.QuotaCurrentRequest\x1a(.codexpulse.core.v1.QuotaCurrentResponse\x12\x82\x01\n" +
+	"\x17APISubscriptionsCurrent\x122.codexpulse.core.v1.APISubscriptionsCurrentRequest\x1a3.codexpulse.core.v1.APISubscriptionsCurrentResponse\x12v\n" +
+	"\x13APICredentialStatus\x12..codexpulse.core.v1.APICredentialStatusRequest\x1a/.codexpulse.core.v1.APICredentialStatusResponse\x12v\n" +
+	"\x13UpdateAPICredential\x12..codexpulse.core.v1.UpdateAPICredentialRequest\x1a/.codexpulse.core.v1.APICredentialStatusResponse\x12X\n" +
 	"\tQuotaPace\x12$.codexpulse.core.v1.QuotaPaceRequest\x1a%.codexpulse.core.v1.QuotaPaceResponse\x12g\n" +
 	"\x13RequestQuotaRefresh\x12'.codexpulse.core.v1.QuotaRefreshRequest\x1a'.codexpulse.core.v1.QuotaRefreshReceipt\x12]\n" +
 	"\vListSources\x12&.codexpulse.core.v1.ListSourcesRequest\x1a&.codexpulse.core.v1.SourceListResponse\x12U\n" +
@@ -12536,160 +13899,180 @@ func file_api_codexpulse_core_v1_core_proto_rawDescGZIP() []byte {
 	return file_api_codexpulse_core_v1_core_proto_rawDescData
 }
 
-var file_api_codexpulse_core_v1_core_proto_msgTypes = make([]protoimpl.MessageInfo, 152)
+var file_api_codexpulse_core_v1_core_proto_msgTypes = make([]protoimpl.MessageInfo, 172)
 var file_api_codexpulse_core_v1_core_proto_goTypes = []any{
-	(*Empty)(nil),                            // 0: codexpulse.core.v1.Empty
-	(*HandshakeRequest)(nil),                 // 1: codexpulse.core.v1.HandshakeRequest
-	(*HandshakeResponse)(nil),                // 2: codexpulse.core.v1.HandshakeResponse
-	(*BootstrapRequest)(nil),                 // 3: codexpulse.core.v1.BootstrapRequest
-	(*BootstrapResponse)(nil),                // 4: codexpulse.core.v1.BootstrapResponse
-	(*ContractsRequest)(nil),                 // 5: codexpulse.core.v1.ContractsRequest
-	(*MethodInfo)(nil),                       // 6: codexpulse.core.v1.MethodInfo
-	(*ContractsResponse)(nil),                // 7: codexpulse.core.v1.ContractsResponse
-	(*ErrorDetail)(nil),                      // 8: codexpulse.core.v1.ErrorDetail
-	(*Issue)(nil),                            // 9: codexpulse.core.v1.Issue
-	(*NumericValue)(nil),                     // 10: codexpulse.core.v1.NumericValue
-	(*PageInfo)(nil),                         // 11: codexpulse.core.v1.PageInfo
-	(*ResponseMeta)(nil),                     // 12: codexpulse.core.v1.ResponseMeta
-	(*PageRequest)(nil),                      // 13: codexpulse.core.v1.PageRequest
-	(*SortTerm)(nil),                         // 14: codexpulse.core.v1.SortTerm
-	(*FilterTerm)(nil),                       // 15: codexpulse.core.v1.FilterTerm
-	(*LocalDateRange)(nil),                   // 16: codexpulse.core.v1.LocalDateRange
-	(*UTCTimeRange)(nil),                     // 17: codexpulse.core.v1.UTCTimeRange
-	(*QueryRequest)(nil),                     // 18: codexpulse.core.v1.QueryRequest
-	(*ProviderScope)(nil),                    // 19: codexpulse.core.v1.ProviderScope
-	(*ProviderCoverage)(nil),                 // 20: codexpulse.core.v1.ProviderCoverage
-	(*ProviderContext)(nil),                  // 21: codexpulse.core.v1.ProviderContext
-	(*UsageCostRequest)(nil),                 // 22: codexpulse.core.v1.UsageCostRequest
-	(*ListSessionsRequest)(nil),              // 23: codexpulse.core.v1.ListSessionsRequest
-	(*SessionDetailRequest)(nil),             // 24: codexpulse.core.v1.SessionDetailRequest
-	(*ListProjectsRequest)(nil),              // 25: codexpulse.core.v1.ListProjectsRequest
-	(*ProjectDetailRequest)(nil),             // 26: codexpulse.core.v1.ProjectDetailRequest
-	(*AttributionValue)(nil),                 // 27: codexpulse.core.v1.AttributionValue
-	(*UsageTotals)(nil),                      // 28: codexpulse.core.v1.UsageTotals
-	(*ReasonCount)(nil),                      // 29: codexpulse.core.v1.ReasonCount
-	(*TrendPoint)(nil),                       // 30: codexpulse.core.v1.TrendPoint
-	(*UsageModelItem)(nil),                   // 31: codexpulse.core.v1.UsageModelItem
-	(*ActivityMetrics)(nil),                  // 32: codexpulse.core.v1.ActivityMetrics
-	(*ActivityTimelinePoint)(nil),            // 33: codexpulse.core.v1.ActivityTimelinePoint
-	(*ActivityWeekdayHourPoint)(nil),         // 34: codexpulse.core.v1.ActivityWeekdayHourPoint
-	(*ActivityDistribution)(nil),             // 35: codexpulse.core.v1.ActivityDistribution
-	(*CursorBillingSummary)(nil),             // 36: codexpulse.core.v1.CursorBillingSummary
-	(*UsageCostResponse)(nil),                // 37: codexpulse.core.v1.UsageCostResponse
-	(*InvocationUsageRequest)(nil),           // 38: codexpulse.core.v1.InvocationUsageRequest
-	(*InvocationTotals)(nil),                 // 39: codexpulse.core.v1.InvocationTotals
-	(*InvocationTrendPoint)(nil),             // 40: codexpulse.core.v1.InvocationTrendPoint
-	(*ToolUsageItem)(nil),                    // 41: codexpulse.core.v1.ToolUsageItem
-	(*SkillUsageItem)(nil),                   // 42: codexpulse.core.v1.SkillUsageItem
-	(*InvocationCoverage)(nil),               // 43: codexpulse.core.v1.InvocationCoverage
-	(*InvocationUsageResponse)(nil),          // 44: codexpulse.core.v1.InvocationUsageResponse
-	(*PricingCatalogCurrentRequest)(nil),     // 45: codexpulse.core.v1.PricingCatalogCurrentRequest
-	(*ModelReferencePrice)(nil),              // 46: codexpulse.core.v1.ModelReferencePrice
-	(*PricingCatalogCurrentResponse)(nil),    // 47: codexpulse.core.v1.PricingCatalogCurrentResponse
-	(*SessionItem)(nil),                      // 48: codexpulse.core.v1.SessionItem
-	(*SessionListResponse)(nil),              // 49: codexpulse.core.v1.SessionListResponse
-	(*SessionTurnItem)(nil),                  // 50: codexpulse.core.v1.SessionTurnItem
-	(*SessionDetailResponse)(nil),            // 51: codexpulse.core.v1.SessionDetailResponse
-	(*ProjectDailyPoint)(nil),                // 52: codexpulse.core.v1.ProjectDailyPoint
-	(*ProjectItem)(nil),                      // 53: codexpulse.core.v1.ProjectItem
-	(*ProjectSessionItem)(nil),               // 54: codexpulse.core.v1.ProjectSessionItem
-	(*ProjectModelItem)(nil),                 // 55: codexpulse.core.v1.ProjectModelItem
-	(*ProjectListResponse)(nil),              // 56: codexpulse.core.v1.ProjectListResponse
-	(*ProjectDetailResponse)(nil),            // 57: codexpulse.core.v1.ProjectDetailResponse
-	(*QuotaCurrentRequest)(nil),              // 58: codexpulse.core.v1.QuotaCurrentRequest
-	(*CurrentExplanation)(nil),               // 59: codexpulse.core.v1.CurrentExplanation
-	(*CurrentWindow)(nil),                    // 60: codexpulse.core.v1.CurrentWindow
-	(*CurrentSource)(nil),                    // 61: codexpulse.core.v1.CurrentSource
-	(*CurrentNextReset)(nil),                 // 62: codexpulse.core.v1.CurrentNextReset
-	(*CurrentResetCreditItem)(nil),           // 63: codexpulse.core.v1.CurrentResetCreditItem
-	(*CurrentResetCredits)(nil),              // 64: codexpulse.core.v1.CurrentResetCredits
-	(*CurrentRefreshStatus)(nil),             // 65: codexpulse.core.v1.CurrentRefreshStatus
-	(*CurrentRefresh)(nil),                   // 66: codexpulse.core.v1.CurrentRefresh
-	(*CurrentQuota)(nil),                     // 67: codexpulse.core.v1.CurrentQuota
-	(*QuotaCurrentResponse)(nil),             // 68: codexpulse.core.v1.QuotaCurrentResponse
-	(*QuotaPaceRequest)(nil),                 // 69: codexpulse.core.v1.QuotaPaceRequest
-	(*QuotaPacePoint)(nil),                   // 70: codexpulse.core.v1.QuotaPacePoint
-	(*QuotaPaceCycle)(nil),                   // 71: codexpulse.core.v1.QuotaPaceCycle
-	(*QuotaPaceHistoryBandPoint)(nil),        // 72: codexpulse.core.v1.QuotaPaceHistoryBandPoint
-	(*QuotaPaceForecast)(nil),                // 73: codexpulse.core.v1.QuotaPaceForecast
-	(*QuotaPaceWindow)(nil),                  // 74: codexpulse.core.v1.QuotaPaceWindow
-	(*CurrentQuotaPace)(nil),                 // 75: codexpulse.core.v1.CurrentQuotaPace
-	(*QuotaPaceResponse)(nil),                // 76: codexpulse.core.v1.QuotaPaceResponse
-	(*QuotaRefreshRequest)(nil),              // 77: codexpulse.core.v1.QuotaRefreshRequest
-	(*QuotaRefreshReceipt)(nil),              // 78: codexpulse.core.v1.QuotaRefreshReceipt
-	(*ListSourcesRequest)(nil),               // 79: codexpulse.core.v1.ListSourcesRequest
-	(*SourceRequest)(nil),                    // 80: codexpulse.core.v1.SourceRequest
-	(*ListJobsRequest)(nil),                  // 81: codexpulse.core.v1.ListJobsRequest
-	(*JobRequest)(nil),                       // 82: codexpulse.core.v1.JobRequest
-	(*ListHealthRequest)(nil),                // 83: codexpulse.core.v1.ListHealthRequest
-	(*HealthRequest)(nil),                    // 84: codexpulse.core.v1.HealthRequest
-	(*HealthProjectionRequest)(nil),          // 85: codexpulse.core.v1.HealthProjectionRequest
-	(*DataHealthRequest)(nil),                // 86: codexpulse.core.v1.DataHealthRequest
-	(*SettingsRequest)(nil),                  // 87: codexpulse.core.v1.SettingsRequest
-	(*RecoveryAction)(nil),                   // 88: codexpulse.core.v1.RecoveryAction
-	(*SourceItem)(nil),                       // 89: codexpulse.core.v1.SourceItem
-	(*SourceSummary)(nil),                    // 90: codexpulse.core.v1.SourceSummary
-	(*SourceListResponse)(nil),               // 91: codexpulse.core.v1.SourceListResponse
-	(*SourceDetailResponse)(nil),             // 92: codexpulse.core.v1.SourceDetailResponse
-	(*JobProgress)(nil),                      // 93: codexpulse.core.v1.JobProgress
-	(*JobItem)(nil),                          // 94: codexpulse.core.v1.JobItem
-	(*JobSummary)(nil),                       // 95: codexpulse.core.v1.JobSummary
-	(*JobListResponse)(nil),                  // 96: codexpulse.core.v1.JobListResponse
-	(*JobDetailResponse)(nil),                // 97: codexpulse.core.v1.JobDetailResponse
-	(*HealthItem)(nil),                       // 98: codexpulse.core.v1.HealthItem
-	(*HealthSummary)(nil),                    // 99: codexpulse.core.v1.HealthSummary
-	(*HealthListResponse)(nil),               // 100: codexpulse.core.v1.HealthListResponse
-	(*HealthDetailResponse)(nil),             // 101: codexpulse.core.v1.HealthDetailResponse
-	(*HealthComponentStatus)(nil),            // 102: codexpulse.core.v1.HealthComponentStatus
-	(*HealthProjectionResponse)(nil),         // 103: codexpulse.core.v1.HealthProjectionResponse
-	(*DataHealthWindow)(nil),                 // 104: codexpulse.core.v1.DataHealthWindow
-	(*DataHealthRuntimePoint)(nil),           // 105: codexpulse.core.v1.DataHealthRuntimePoint
-	(*DataHealthScheduler)(nil),              // 106: codexpulse.core.v1.DataHealthScheduler
-	(*DataHealthJobs)(nil),                   // 107: codexpulse.core.v1.DataHealthJobs
-	(*DataHealthSources)(nil),                // 108: codexpulse.core.v1.DataHealthSources
-	(*DataHealthResponse)(nil),               // 109: codexpulse.core.v1.DataHealthResponse
-	(*EditableField)(nil),                    // 110: codexpulse.core.v1.EditableField
-	(*SettingsHomeSnapshot)(nil),             // 111: codexpulse.core.v1.SettingsHomeSnapshot
-	(*SettingsOnlineSnapshot)(nil),           // 112: codexpulse.core.v1.SettingsOnlineSnapshot
-	(*SettingsRefreshSnapshot)(nil),          // 113: codexpulse.core.v1.SettingsRefreshSnapshot
-	(*SettingsUpdateSnapshot)(nil),           // 114: codexpulse.core.v1.SettingsUpdateSnapshot
-	(*SettingsUISnapshot)(nil),               // 115: codexpulse.core.v1.SettingsUISnapshot
-	(*SettingsSnapshot)(nil),                 // 116: codexpulse.core.v1.SettingsSnapshot
-	(*SettingsResponse)(nil),                 // 117: codexpulse.core.v1.SettingsResponse
-	(*SettingsOnlineUpdate)(nil),             // 118: codexpulse.core.v1.SettingsOnlineUpdate
-	(*SettingsRefreshUpdate)(nil),            // 119: codexpulse.core.v1.SettingsRefreshUpdate
-	(*SettingsUpdatesUpdate)(nil),            // 120: codexpulse.core.v1.SettingsUpdatesUpdate
-	(*SettingsUIUpdate)(nil),                 // 121: codexpulse.core.v1.SettingsUIUpdate
-	(*UpdateSettingsRequest)(nil),            // 122: codexpulse.core.v1.UpdateSettingsRequest
-	(*SettingsUpdateReceipt)(nil),            // 123: codexpulse.core.v1.SettingsUpdateReceipt
-	(*PlanHomeSwitchRequest)(nil),            // 124: codexpulse.core.v1.PlanHomeSwitchRequest
-	(*HomeSwitchPlanReceipt)(nil),            // 125: codexpulse.core.v1.HomeSwitchPlanReceipt
-	(*ConfirmHomeSwitchRequest)(nil),         // 126: codexpulse.core.v1.ConfirmHomeSwitchRequest
-	(*RecoverHomeSwitchRequest)(nil),         // 127: codexpulse.core.v1.RecoverHomeSwitchRequest
-	(*HomeSwitchReceipt)(nil),                // 128: codexpulse.core.v1.HomeSwitchReceipt
-	(*RuntimeActionRequest)(nil),             // 129: codexpulse.core.v1.RuntimeActionRequest
-	(*RuntimeActionReceipt)(nil),             // 130: codexpulse.core.v1.RuntimeActionReceipt
-	(*AnalyzeSessionIndexRepairRequest)(nil), // 131: codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
-	(*RepairDryRunReceipt)(nil),              // 132: codexpulse.core.v1.RepairDryRunReceipt
-	(*LifecycleNotificationRequest)(nil),     // 133: codexpulse.core.v1.LifecycleNotificationRequest
-	(*LifecycleNotificationReceipt)(nil),     // 134: codexpulse.core.v1.LifecycleNotificationReceipt
-	(*MigrationRecoveryStateRequest)(nil),    // 135: codexpulse.core.v1.MigrationRecoveryStateRequest
-	(*MigrationRecoveryRetryRequest)(nil),    // 136: codexpulse.core.v1.MigrationRecoveryRetryRequest
-	(*MigrationRecoveryCancelRequest)(nil),   // 137: codexpulse.core.v1.MigrationRecoveryCancelRequest
-	(*MigrationRecoveryExitRequest)(nil),     // 138: codexpulse.core.v1.MigrationRecoveryExitRequest
-	(*MigrationRecoveryPrepareRequest)(nil),  // 139: codexpulse.core.v1.MigrationRecoveryPrepareRequest
-	(*MigrationRecoveryConfirmRequest)(nil),  // 140: codexpulse.core.v1.MigrationRecoveryConfirmRequest
-	(*MigrationBackupInfo)(nil),              // 141: codexpulse.core.v1.MigrationBackupInfo
-	(*MigrationRecoverySnapshot)(nil),        // 142: codexpulse.core.v1.MigrationRecoverySnapshot
-	(*MigrationRecoveryReceipt)(nil),         // 143: codexpulse.core.v1.MigrationRecoveryReceipt
-	(*MigrationRestoreConfirmation)(nil),     // 144: codexpulse.core.v1.MigrationRestoreConfirmation
-	(*SubscribeInvalidationsRequest)(nil),    // 145: codexpulse.core.v1.SubscribeInvalidationsRequest
-	(*QueryInvalidationEvent)(nil),           // 146: codexpulse.core.v1.QueryInvalidationEvent
-	(*ShutdownRequest)(nil),                  // 147: codexpulse.core.v1.ShutdownRequest
-	(*ShutdownResponse)(nil),                 // 148: codexpulse.core.v1.ShutdownResponse
-	(*AccountSnapshotRequest)(nil),           // 149: codexpulse.core.v1.AccountSnapshotRequest
-	(*CodexAccountIdentity)(nil),             // 150: codexpulse.core.v1.CodexAccountIdentity
-	(*AccountSnapshotResponse)(nil),          // 151: codexpulse.core.v1.AccountSnapshotResponse
+	(*Empty)(nil),                                // 0: codexpulse.core.v1.Empty
+	(*HandshakeRequest)(nil),                     // 1: codexpulse.core.v1.HandshakeRequest
+	(*HandshakeResponse)(nil),                    // 2: codexpulse.core.v1.HandshakeResponse
+	(*BootstrapRequest)(nil),                     // 3: codexpulse.core.v1.BootstrapRequest
+	(*BootstrapResponse)(nil),                    // 4: codexpulse.core.v1.BootstrapResponse
+	(*ContractsRequest)(nil),                     // 5: codexpulse.core.v1.ContractsRequest
+	(*MethodInfo)(nil),                           // 6: codexpulse.core.v1.MethodInfo
+	(*ContractsResponse)(nil),                    // 7: codexpulse.core.v1.ContractsResponse
+	(*ErrorDetail)(nil),                          // 8: codexpulse.core.v1.ErrorDetail
+	(*Issue)(nil),                                // 9: codexpulse.core.v1.Issue
+	(*NumericValue)(nil),                         // 10: codexpulse.core.v1.NumericValue
+	(*PageInfo)(nil),                             // 11: codexpulse.core.v1.PageInfo
+	(*ResponseMeta)(nil),                         // 12: codexpulse.core.v1.ResponseMeta
+	(*PageRequest)(nil),                          // 13: codexpulse.core.v1.PageRequest
+	(*SortTerm)(nil),                             // 14: codexpulse.core.v1.SortTerm
+	(*FilterTerm)(nil),                           // 15: codexpulse.core.v1.FilterTerm
+	(*LocalDateRange)(nil),                       // 16: codexpulse.core.v1.LocalDateRange
+	(*UTCTimeRange)(nil),                         // 17: codexpulse.core.v1.UTCTimeRange
+	(*QueryRequest)(nil),                         // 18: codexpulse.core.v1.QueryRequest
+	(*ProviderScope)(nil),                        // 19: codexpulse.core.v1.ProviderScope
+	(*ProviderCoverage)(nil),                     // 20: codexpulse.core.v1.ProviderCoverage
+	(*ProviderContext)(nil),                      // 21: codexpulse.core.v1.ProviderContext
+	(*UsageCostRequest)(nil),                     // 22: codexpulse.core.v1.UsageCostRequest
+	(*ListSessionsRequest)(nil),                  // 23: codexpulse.core.v1.ListSessionsRequest
+	(*SessionDetailRequest)(nil),                 // 24: codexpulse.core.v1.SessionDetailRequest
+	(*ListProjectsRequest)(nil),                  // 25: codexpulse.core.v1.ListProjectsRequest
+	(*ProjectDetailRequest)(nil),                 // 26: codexpulse.core.v1.ProjectDetailRequest
+	(*AttributionValue)(nil),                     // 27: codexpulse.core.v1.AttributionValue
+	(*UsageTotals)(nil),                          // 28: codexpulse.core.v1.UsageTotals
+	(*ReasonCount)(nil),                          // 29: codexpulse.core.v1.ReasonCount
+	(*TrendPoint)(nil),                           // 30: codexpulse.core.v1.TrendPoint
+	(*UsageModelItem)(nil),                       // 31: codexpulse.core.v1.UsageModelItem
+	(*ActivityMetrics)(nil),                      // 32: codexpulse.core.v1.ActivityMetrics
+	(*ActivityTimelinePoint)(nil),                // 33: codexpulse.core.v1.ActivityTimelinePoint
+	(*ActivityWeekdayHourPoint)(nil),             // 34: codexpulse.core.v1.ActivityWeekdayHourPoint
+	(*ActivityDistribution)(nil),                 // 35: codexpulse.core.v1.ActivityDistribution
+	(*CursorBillingSummary)(nil),                 // 36: codexpulse.core.v1.CursorBillingSummary
+	(*UsageCostResponse)(nil),                    // 37: codexpulse.core.v1.UsageCostResponse
+	(*InvocationUsageRequest)(nil),               // 38: codexpulse.core.v1.InvocationUsageRequest
+	(*InvocationTotals)(nil),                     // 39: codexpulse.core.v1.InvocationTotals
+	(*InvocationTrendPoint)(nil),                 // 40: codexpulse.core.v1.InvocationTrendPoint
+	(*ToolUsageItem)(nil),                        // 41: codexpulse.core.v1.ToolUsageItem
+	(*SkillUsageItem)(nil),                       // 42: codexpulse.core.v1.SkillUsageItem
+	(*InvocationCoverage)(nil),                   // 43: codexpulse.core.v1.InvocationCoverage
+	(*InvocationUsageResponse)(nil),              // 44: codexpulse.core.v1.InvocationUsageResponse
+	(*PricingCatalogCurrentRequest)(nil),         // 45: codexpulse.core.v1.PricingCatalogCurrentRequest
+	(*ModelReferencePrice)(nil),                  // 46: codexpulse.core.v1.ModelReferencePrice
+	(*PricingCatalogCurrentResponse)(nil),        // 47: codexpulse.core.v1.PricingCatalogCurrentResponse
+	(*SessionItem)(nil),                          // 48: codexpulse.core.v1.SessionItem
+	(*SessionListResponse)(nil),                  // 49: codexpulse.core.v1.SessionListResponse
+	(*SessionTurnItem)(nil),                      // 50: codexpulse.core.v1.SessionTurnItem
+	(*SessionDetailResponse)(nil),                // 51: codexpulse.core.v1.SessionDetailResponse
+	(*ProjectDailyPoint)(nil),                    // 52: codexpulse.core.v1.ProjectDailyPoint
+	(*ProjectItem)(nil),                          // 53: codexpulse.core.v1.ProjectItem
+	(*ProjectSessionItem)(nil),                   // 54: codexpulse.core.v1.ProjectSessionItem
+	(*ProjectModelItem)(nil),                     // 55: codexpulse.core.v1.ProjectModelItem
+	(*ProjectListResponse)(nil),                  // 56: codexpulse.core.v1.ProjectListResponse
+	(*ProjectDetailResponse)(nil),                // 57: codexpulse.core.v1.ProjectDetailResponse
+	(*QuotaCurrentRequest)(nil),                  // 58: codexpulse.core.v1.QuotaCurrentRequest
+	(*CurrentExplanation)(nil),                   // 59: codexpulse.core.v1.CurrentExplanation
+	(*CurrentWindow)(nil),                        // 60: codexpulse.core.v1.CurrentWindow
+	(*CurrentSource)(nil),                        // 61: codexpulse.core.v1.CurrentSource
+	(*CurrentNextReset)(nil),                     // 62: codexpulse.core.v1.CurrentNextReset
+	(*CurrentResetCreditItem)(nil),               // 63: codexpulse.core.v1.CurrentResetCreditItem
+	(*CurrentResetCredits)(nil),                  // 64: codexpulse.core.v1.CurrentResetCredits
+	(*CurrentRefreshStatus)(nil),                 // 65: codexpulse.core.v1.CurrentRefreshStatus
+	(*CurrentRefresh)(nil),                       // 66: codexpulse.core.v1.CurrentRefresh
+	(*CurrentQuota)(nil),                         // 67: codexpulse.core.v1.CurrentQuota
+	(*QuotaCurrentResponse)(nil),                 // 68: codexpulse.core.v1.QuotaCurrentResponse
+	(*QuotaPaceRequest)(nil),                     // 69: codexpulse.core.v1.QuotaPaceRequest
+	(*QuotaPacePoint)(nil),                       // 70: codexpulse.core.v1.QuotaPacePoint
+	(*QuotaPaceCycle)(nil),                       // 71: codexpulse.core.v1.QuotaPaceCycle
+	(*QuotaPaceHistoryBandPoint)(nil),            // 72: codexpulse.core.v1.QuotaPaceHistoryBandPoint
+	(*QuotaPaceForecast)(nil),                    // 73: codexpulse.core.v1.QuotaPaceForecast
+	(*QuotaPaceWindow)(nil),                      // 74: codexpulse.core.v1.QuotaPaceWindow
+	(*CurrentQuotaPace)(nil),                     // 75: codexpulse.core.v1.CurrentQuotaPace
+	(*QuotaPaceResponse)(nil),                    // 76: codexpulse.core.v1.QuotaPaceResponse
+	(*QuotaRefreshRequest)(nil),                  // 77: codexpulse.core.v1.QuotaRefreshRequest
+	(*QuotaRefreshReceipt)(nil),                  // 78: codexpulse.core.v1.QuotaRefreshReceipt
+	(*ListSourcesRequest)(nil),                   // 79: codexpulse.core.v1.ListSourcesRequest
+	(*SourceRequest)(nil),                        // 80: codexpulse.core.v1.SourceRequest
+	(*ListJobsRequest)(nil),                      // 81: codexpulse.core.v1.ListJobsRequest
+	(*JobRequest)(nil),                           // 82: codexpulse.core.v1.JobRequest
+	(*ListHealthRequest)(nil),                    // 83: codexpulse.core.v1.ListHealthRequest
+	(*HealthRequest)(nil),                        // 84: codexpulse.core.v1.HealthRequest
+	(*HealthProjectionRequest)(nil),              // 85: codexpulse.core.v1.HealthProjectionRequest
+	(*DataHealthRequest)(nil),                    // 86: codexpulse.core.v1.DataHealthRequest
+	(*SettingsRequest)(nil),                      // 87: codexpulse.core.v1.SettingsRequest
+	(*RecoveryAction)(nil),                       // 88: codexpulse.core.v1.RecoveryAction
+	(*SourceItem)(nil),                           // 89: codexpulse.core.v1.SourceItem
+	(*SourceSummary)(nil),                        // 90: codexpulse.core.v1.SourceSummary
+	(*SourceListResponse)(nil),                   // 91: codexpulse.core.v1.SourceListResponse
+	(*SourceDetailResponse)(nil),                 // 92: codexpulse.core.v1.SourceDetailResponse
+	(*JobProgress)(nil),                          // 93: codexpulse.core.v1.JobProgress
+	(*JobItem)(nil),                              // 94: codexpulse.core.v1.JobItem
+	(*JobSummary)(nil),                           // 95: codexpulse.core.v1.JobSummary
+	(*JobListResponse)(nil),                      // 96: codexpulse.core.v1.JobListResponse
+	(*JobDetailResponse)(nil),                    // 97: codexpulse.core.v1.JobDetailResponse
+	(*HealthItem)(nil),                           // 98: codexpulse.core.v1.HealthItem
+	(*HealthSummary)(nil),                        // 99: codexpulse.core.v1.HealthSummary
+	(*HealthListResponse)(nil),                   // 100: codexpulse.core.v1.HealthListResponse
+	(*HealthDetailResponse)(nil),                 // 101: codexpulse.core.v1.HealthDetailResponse
+	(*HealthComponentStatus)(nil),                // 102: codexpulse.core.v1.HealthComponentStatus
+	(*HealthProjectionResponse)(nil),             // 103: codexpulse.core.v1.HealthProjectionResponse
+	(*DataHealthWindow)(nil),                     // 104: codexpulse.core.v1.DataHealthWindow
+	(*DataHealthRuntimePoint)(nil),               // 105: codexpulse.core.v1.DataHealthRuntimePoint
+	(*DataHealthScheduler)(nil),                  // 106: codexpulse.core.v1.DataHealthScheduler
+	(*DataHealthJobs)(nil),                       // 107: codexpulse.core.v1.DataHealthJobs
+	(*DataHealthSources)(nil),                    // 108: codexpulse.core.v1.DataHealthSources
+	(*DataHealthResponse)(nil),                   // 109: codexpulse.core.v1.DataHealthResponse
+	(*EditableField)(nil),                        // 110: codexpulse.core.v1.EditableField
+	(*SettingsHomeSnapshot)(nil),                 // 111: codexpulse.core.v1.SettingsHomeSnapshot
+	(*SettingsOnlineSnapshot)(nil),               // 112: codexpulse.core.v1.SettingsOnlineSnapshot
+	(*SettingsRefreshSnapshot)(nil),              // 113: codexpulse.core.v1.SettingsRefreshSnapshot
+	(*SettingsUpdateSnapshot)(nil),               // 114: codexpulse.core.v1.SettingsUpdateSnapshot
+	(*SettingsUISnapshot)(nil),                   // 115: codexpulse.core.v1.SettingsUISnapshot
+	(*SettingsSnapshot)(nil),                     // 116: codexpulse.core.v1.SettingsSnapshot
+	(*SettingsResponse)(nil),                     // 117: codexpulse.core.v1.SettingsResponse
+	(*SettingsOnlineUpdate)(nil),                 // 118: codexpulse.core.v1.SettingsOnlineUpdate
+	(*SettingsRefreshUpdate)(nil),                // 119: codexpulse.core.v1.SettingsRefreshUpdate
+	(*SettingsUpdatesUpdate)(nil),                // 120: codexpulse.core.v1.SettingsUpdatesUpdate
+	(*SettingsUIUpdate)(nil),                     // 121: codexpulse.core.v1.SettingsUIUpdate
+	(*UpdateSettingsRequest)(nil),                // 122: codexpulse.core.v1.UpdateSettingsRequest
+	(*SettingsUpdateReceipt)(nil),                // 123: codexpulse.core.v1.SettingsUpdateReceipt
+	(*PlanHomeSwitchRequest)(nil),                // 124: codexpulse.core.v1.PlanHomeSwitchRequest
+	(*HomeSwitchPlanReceipt)(nil),                // 125: codexpulse.core.v1.HomeSwitchPlanReceipt
+	(*ConfirmHomeSwitchRequest)(nil),             // 126: codexpulse.core.v1.ConfirmHomeSwitchRequest
+	(*RecoverHomeSwitchRequest)(nil),             // 127: codexpulse.core.v1.RecoverHomeSwitchRequest
+	(*HomeSwitchReceipt)(nil),                    // 128: codexpulse.core.v1.HomeSwitchReceipt
+	(*RuntimeActionRequest)(nil),                 // 129: codexpulse.core.v1.RuntimeActionRequest
+	(*RuntimeActionReceipt)(nil),                 // 130: codexpulse.core.v1.RuntimeActionReceipt
+	(*AnalyzeSessionIndexRepairRequest)(nil),     // 131: codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
+	(*RepairDryRunReceipt)(nil),                  // 132: codexpulse.core.v1.RepairDryRunReceipt
+	(*LifecycleNotificationRequest)(nil),         // 133: codexpulse.core.v1.LifecycleNotificationRequest
+	(*LifecycleNotificationReceipt)(nil),         // 134: codexpulse.core.v1.LifecycleNotificationReceipt
+	(*MigrationRecoveryStateRequest)(nil),        // 135: codexpulse.core.v1.MigrationRecoveryStateRequest
+	(*MigrationRecoveryRetryRequest)(nil),        // 136: codexpulse.core.v1.MigrationRecoveryRetryRequest
+	(*MigrationRecoveryCancelRequest)(nil),       // 137: codexpulse.core.v1.MigrationRecoveryCancelRequest
+	(*MigrationRecoveryExitRequest)(nil),         // 138: codexpulse.core.v1.MigrationRecoveryExitRequest
+	(*MigrationRecoveryPrepareRequest)(nil),      // 139: codexpulse.core.v1.MigrationRecoveryPrepareRequest
+	(*MigrationRecoveryConfirmRequest)(nil),      // 140: codexpulse.core.v1.MigrationRecoveryConfirmRequest
+	(*MigrationBackupInfo)(nil),                  // 141: codexpulse.core.v1.MigrationBackupInfo
+	(*MigrationRecoverySnapshot)(nil),            // 142: codexpulse.core.v1.MigrationRecoverySnapshot
+	(*MigrationRecoveryReceipt)(nil),             // 143: codexpulse.core.v1.MigrationRecoveryReceipt
+	(*MigrationRestoreConfirmation)(nil),         // 144: codexpulse.core.v1.MigrationRestoreConfirmation
+	(*SubscribeInvalidationsRequest)(nil),        // 145: codexpulse.core.v1.SubscribeInvalidationsRequest
+	(*QueryInvalidationEvent)(nil),               // 146: codexpulse.core.v1.QueryInvalidationEvent
+	(*ShutdownRequest)(nil),                      // 147: codexpulse.core.v1.ShutdownRequest
+	(*ShutdownResponse)(nil),                     // 148: codexpulse.core.v1.ShutdownResponse
+	(*AccountSnapshotRequest)(nil),               // 149: codexpulse.core.v1.AccountSnapshotRequest
+	(*CodexAccountIdentity)(nil),                 // 150: codexpulse.core.v1.CodexAccountIdentity
+	(*AccountSnapshotResponse)(nil),              // 151: codexpulse.core.v1.AccountSnapshotResponse
+	(*APISubscriptionsCurrentRequest)(nil),       // 152: codexpulse.core.v1.APISubscriptionsCurrentRequest
+	(*APICredentialStatusRequest)(nil),           // 153: codexpulse.core.v1.APICredentialStatusRequest
+	(*APICredentialStatusResponse)(nil),          // 154: codexpulse.core.v1.APICredentialStatusResponse
+	(*UpdateAPICredentialRequest)(nil),           // 155: codexpulse.core.v1.UpdateAPICredentialRequest
+	(*APISubscriptionSourceStatus)(nil),          // 156: codexpulse.core.v1.APISubscriptionSourceStatus
+	(*APISubscriptionCurrencyBalance)(nil),       // 157: codexpulse.core.v1.APISubscriptionCurrencyBalance
+	(*DeepSeekAPIBalance)(nil),                   // 158: codexpulse.core.v1.DeepSeekAPIBalance
+	(*APISubscriptionCurrencyBalanceChange)(nil), // 159: codexpulse.core.v1.APISubscriptionCurrencyBalanceChange
+	(*APISubscriptionBalanceTrendPoint)(nil),     // 160: codexpulse.core.v1.APISubscriptionBalanceTrendPoint
+	(*APISubscriptionCurrencyBalanceSeries)(nil), // 161: codexpulse.core.v1.APISubscriptionCurrencyBalanceSeries
+	(*APISubscriptionBalancePeriod)(nil),         // 162: codexpulse.core.v1.APISubscriptionBalancePeriod
+	(*DeepSeekAPISubscriptionSnapshot)(nil),      // 163: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot
+	(*OpenCodeGoQuotaWindow)(nil),                // 164: codexpulse.core.v1.OpenCodeGoQuotaWindow
+	(*OpenCodeGoQuota)(nil),                      // 165: codexpulse.core.v1.OpenCodeGoQuota
+	(*OpenCodeGoSubscriptionSnapshot)(nil),       // 166: codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot
+	(*DeepSeekDailyActivity)(nil),                // 167: codexpulse.core.v1.DeepSeekDailyActivity
+	(*OpenCodeGoFiveHourDailyActivity)(nil),      // 168: codexpulse.core.v1.OpenCodeGoFiveHourDailyActivity
+	(*APISubscriptionActivityDay)(nil),           // 169: codexpulse.core.v1.APISubscriptionActivityDay
+	(*APISubscriptionActivityCalendar)(nil),      // 170: codexpulse.core.v1.APISubscriptionActivityCalendar
+	(*APISubscriptionsCurrentResponse)(nil),      // 171: codexpulse.core.v1.APISubscriptionsCurrentResponse
 }
 var file_api_codexpulse_core_v1_core_proto_depIdxs = []int32{
 	142, // 0: codexpulse.core.v1.BootstrapResponse.recovery:type_name -> codexpulse.core.v1.MigrationRecoverySnapshot
@@ -13032,87 +14415,109 @@ var file_api_codexpulse_core_v1_core_proto_depIdxs = []int32{
 	141, // 337: codexpulse.core.v1.MigrationRestoreConfirmation.backup:type_name -> codexpulse.core.v1.MigrationBackupInfo
 	19,  // 338: codexpulse.core.v1.AccountSnapshotRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
 	150, // 339: codexpulse.core.v1.AccountSnapshotResponse.account:type_name -> codexpulse.core.v1.CodexAccountIdentity
-	1,   // 340: codexpulse.core.v1.CoreService.Handshake:input_type -> codexpulse.core.v1.HandshakeRequest
-	3,   // 341: codexpulse.core.v1.CoreService.Bootstrap:input_type -> codexpulse.core.v1.BootstrapRequest
-	5,   // 342: codexpulse.core.v1.CoreService.Contracts:input_type -> codexpulse.core.v1.ContractsRequest
-	149, // 343: codexpulse.core.v1.CoreService.AccountSnapshot:input_type -> codexpulse.core.v1.AccountSnapshotRequest
-	22,  // 344: codexpulse.core.v1.CoreService.UsageCost:input_type -> codexpulse.core.v1.UsageCostRequest
-	38,  // 345: codexpulse.core.v1.CoreService.InvocationUsage:input_type -> codexpulse.core.v1.InvocationUsageRequest
-	45,  // 346: codexpulse.core.v1.CoreService.PricingCatalogCurrent:input_type -> codexpulse.core.v1.PricingCatalogCurrentRequest
-	23,  // 347: codexpulse.core.v1.CoreService.ListSessions:input_type -> codexpulse.core.v1.ListSessionsRequest
-	24,  // 348: codexpulse.core.v1.CoreService.SessionDetail:input_type -> codexpulse.core.v1.SessionDetailRequest
-	25,  // 349: codexpulse.core.v1.CoreService.ListProjects:input_type -> codexpulse.core.v1.ListProjectsRequest
-	26,  // 350: codexpulse.core.v1.CoreService.ProjectDetail:input_type -> codexpulse.core.v1.ProjectDetailRequest
-	58,  // 351: codexpulse.core.v1.CoreService.QuotaCurrent:input_type -> codexpulse.core.v1.QuotaCurrentRequest
-	69,  // 352: codexpulse.core.v1.CoreService.QuotaPace:input_type -> codexpulse.core.v1.QuotaPaceRequest
-	77,  // 353: codexpulse.core.v1.CoreService.RequestQuotaRefresh:input_type -> codexpulse.core.v1.QuotaRefreshRequest
-	79,  // 354: codexpulse.core.v1.CoreService.ListSources:input_type -> codexpulse.core.v1.ListSourcesRequest
-	80,  // 355: codexpulse.core.v1.CoreService.Source:input_type -> codexpulse.core.v1.SourceRequest
-	81,  // 356: codexpulse.core.v1.CoreService.ListJobs:input_type -> codexpulse.core.v1.ListJobsRequest
-	82,  // 357: codexpulse.core.v1.CoreService.Job:input_type -> codexpulse.core.v1.JobRequest
-	83,  // 358: codexpulse.core.v1.CoreService.ListHealth:input_type -> codexpulse.core.v1.ListHealthRequest
-	84,  // 359: codexpulse.core.v1.CoreService.Health:input_type -> codexpulse.core.v1.HealthRequest
-	85,  // 360: codexpulse.core.v1.CoreService.HealthProjection:input_type -> codexpulse.core.v1.HealthProjectionRequest
-	86,  // 361: codexpulse.core.v1.CoreService.DataHealth:input_type -> codexpulse.core.v1.DataHealthRequest
-	87,  // 362: codexpulse.core.v1.CoreService.Settings:input_type -> codexpulse.core.v1.SettingsRequest
-	122, // 363: codexpulse.core.v1.CoreService.UpdateSettings:input_type -> codexpulse.core.v1.UpdateSettingsRequest
-	124, // 364: codexpulse.core.v1.CoreService.PlanHomeSwitch:input_type -> codexpulse.core.v1.PlanHomeSwitchRequest
-	126, // 365: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:input_type -> codexpulse.core.v1.ConfirmHomeSwitchRequest
-	127, // 366: codexpulse.core.v1.CoreService.RecoverHomeSwitch:input_type -> codexpulse.core.v1.RecoverHomeSwitchRequest
-	129, // 367: codexpulse.core.v1.CoreService.RunRuntimeAction:input_type -> codexpulse.core.v1.RuntimeActionRequest
-	131, // 368: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:input_type -> codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
-	133, // 369: codexpulse.core.v1.CoreService.NotifyLifecycle:input_type -> codexpulse.core.v1.LifecycleNotificationRequest
-	135, // 370: codexpulse.core.v1.CoreService.MigrationRecoveryState:input_type -> codexpulse.core.v1.MigrationRecoveryStateRequest
-	136, // 371: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:input_type -> codexpulse.core.v1.MigrationRecoveryRetryRequest
-	139, // 372: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:input_type -> codexpulse.core.v1.MigrationRecoveryPrepareRequest
-	140, // 373: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:input_type -> codexpulse.core.v1.MigrationRecoveryConfirmRequest
-	137, // 374: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:input_type -> codexpulse.core.v1.MigrationRecoveryCancelRequest
-	138, // 375: codexpulse.core.v1.CoreService.MigrationRecoveryExit:input_type -> codexpulse.core.v1.MigrationRecoveryExitRequest
-	145, // 376: codexpulse.core.v1.CoreService.SubscribeInvalidations:input_type -> codexpulse.core.v1.SubscribeInvalidationsRequest
-	147, // 377: codexpulse.core.v1.CoreService.Shutdown:input_type -> codexpulse.core.v1.ShutdownRequest
-	2,   // 378: codexpulse.core.v1.CoreService.Handshake:output_type -> codexpulse.core.v1.HandshakeResponse
-	4,   // 379: codexpulse.core.v1.CoreService.Bootstrap:output_type -> codexpulse.core.v1.BootstrapResponse
-	7,   // 380: codexpulse.core.v1.CoreService.Contracts:output_type -> codexpulse.core.v1.ContractsResponse
-	151, // 381: codexpulse.core.v1.CoreService.AccountSnapshot:output_type -> codexpulse.core.v1.AccountSnapshotResponse
-	37,  // 382: codexpulse.core.v1.CoreService.UsageCost:output_type -> codexpulse.core.v1.UsageCostResponse
-	44,  // 383: codexpulse.core.v1.CoreService.InvocationUsage:output_type -> codexpulse.core.v1.InvocationUsageResponse
-	47,  // 384: codexpulse.core.v1.CoreService.PricingCatalogCurrent:output_type -> codexpulse.core.v1.PricingCatalogCurrentResponse
-	49,  // 385: codexpulse.core.v1.CoreService.ListSessions:output_type -> codexpulse.core.v1.SessionListResponse
-	51,  // 386: codexpulse.core.v1.CoreService.SessionDetail:output_type -> codexpulse.core.v1.SessionDetailResponse
-	56,  // 387: codexpulse.core.v1.CoreService.ListProjects:output_type -> codexpulse.core.v1.ProjectListResponse
-	57,  // 388: codexpulse.core.v1.CoreService.ProjectDetail:output_type -> codexpulse.core.v1.ProjectDetailResponse
-	68,  // 389: codexpulse.core.v1.CoreService.QuotaCurrent:output_type -> codexpulse.core.v1.QuotaCurrentResponse
-	76,  // 390: codexpulse.core.v1.CoreService.QuotaPace:output_type -> codexpulse.core.v1.QuotaPaceResponse
-	78,  // 391: codexpulse.core.v1.CoreService.RequestQuotaRefresh:output_type -> codexpulse.core.v1.QuotaRefreshReceipt
-	91,  // 392: codexpulse.core.v1.CoreService.ListSources:output_type -> codexpulse.core.v1.SourceListResponse
-	92,  // 393: codexpulse.core.v1.CoreService.Source:output_type -> codexpulse.core.v1.SourceDetailResponse
-	96,  // 394: codexpulse.core.v1.CoreService.ListJobs:output_type -> codexpulse.core.v1.JobListResponse
-	97,  // 395: codexpulse.core.v1.CoreService.Job:output_type -> codexpulse.core.v1.JobDetailResponse
-	100, // 396: codexpulse.core.v1.CoreService.ListHealth:output_type -> codexpulse.core.v1.HealthListResponse
-	101, // 397: codexpulse.core.v1.CoreService.Health:output_type -> codexpulse.core.v1.HealthDetailResponse
-	103, // 398: codexpulse.core.v1.CoreService.HealthProjection:output_type -> codexpulse.core.v1.HealthProjectionResponse
-	109, // 399: codexpulse.core.v1.CoreService.DataHealth:output_type -> codexpulse.core.v1.DataHealthResponse
-	117, // 400: codexpulse.core.v1.CoreService.Settings:output_type -> codexpulse.core.v1.SettingsResponse
-	123, // 401: codexpulse.core.v1.CoreService.UpdateSettings:output_type -> codexpulse.core.v1.SettingsUpdateReceipt
-	125, // 402: codexpulse.core.v1.CoreService.PlanHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchPlanReceipt
-	128, // 403: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
-	128, // 404: codexpulse.core.v1.CoreService.RecoverHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
-	130, // 405: codexpulse.core.v1.CoreService.RunRuntimeAction:output_type -> codexpulse.core.v1.RuntimeActionReceipt
-	132, // 406: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:output_type -> codexpulse.core.v1.RepairDryRunReceipt
-	134, // 407: codexpulse.core.v1.CoreService.NotifyLifecycle:output_type -> codexpulse.core.v1.LifecycleNotificationReceipt
-	142, // 408: codexpulse.core.v1.CoreService.MigrationRecoveryState:output_type -> codexpulse.core.v1.MigrationRecoverySnapshot
-	143, // 409: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
-	144, // 410: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:output_type -> codexpulse.core.v1.MigrationRestoreConfirmation
-	143, // 411: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
-	0,   // 412: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:output_type -> codexpulse.core.v1.Empty
-	0,   // 413: codexpulse.core.v1.CoreService.MigrationRecoveryExit:output_type -> codexpulse.core.v1.Empty
-	146, // 414: codexpulse.core.v1.CoreService.SubscribeInvalidations:output_type -> codexpulse.core.v1.QueryInvalidationEvent
-	148, // 415: codexpulse.core.v1.CoreService.Shutdown:output_type -> codexpulse.core.v1.ShutdownResponse
-	378, // [378:416] is the sub-list for method output_type
-	340, // [340:378] is the sub-list for method input_type
-	340, // [340:340] is the sub-list for extension type_name
-	340, // [340:340] is the sub-list for extension extendee
-	0,   // [0:340] is the sub-list for field type_name
+	157, // 340: codexpulse.core.v1.DeepSeekAPIBalance.balances:type_name -> codexpulse.core.v1.APISubscriptionCurrencyBalance
+	160, // 341: codexpulse.core.v1.APISubscriptionCurrencyBalanceSeries.points:type_name -> codexpulse.core.v1.APISubscriptionBalanceTrendPoint
+	159, // 342: codexpulse.core.v1.APISubscriptionBalancePeriod.changes:type_name -> codexpulse.core.v1.APISubscriptionCurrencyBalanceChange
+	161, // 343: codexpulse.core.v1.APISubscriptionBalancePeriod.series:type_name -> codexpulse.core.v1.APISubscriptionCurrencyBalanceSeries
+	156, // 344: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot.status:type_name -> codexpulse.core.v1.APISubscriptionSourceStatus
+	158, // 345: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot.balance:type_name -> codexpulse.core.v1.DeepSeekAPIBalance
+	162, // 346: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot.periods:type_name -> codexpulse.core.v1.APISubscriptionBalancePeriod
+	164, // 347: codexpulse.core.v1.OpenCodeGoQuota.windows:type_name -> codexpulse.core.v1.OpenCodeGoQuotaWindow
+	156, // 348: codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot.status:type_name -> codexpulse.core.v1.APISubscriptionSourceStatus
+	165, // 349: codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot.quota:type_name -> codexpulse.core.v1.OpenCodeGoQuota
+	167, // 350: codexpulse.core.v1.APISubscriptionActivityDay.deep_seek:type_name -> codexpulse.core.v1.DeepSeekDailyActivity
+	168, // 351: codexpulse.core.v1.APISubscriptionActivityDay.open_code_go:type_name -> codexpulse.core.v1.OpenCodeGoFiveHourDailyActivity
+	169, // 352: codexpulse.core.v1.APISubscriptionActivityCalendar.days:type_name -> codexpulse.core.v1.APISubscriptionActivityDay
+	163, // 353: codexpulse.core.v1.APISubscriptionsCurrentResponse.deep_seek:type_name -> codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot
+	166, // 354: codexpulse.core.v1.APISubscriptionsCurrentResponse.open_code_go:type_name -> codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot
+	170, // 355: codexpulse.core.v1.APISubscriptionsCurrentResponse.activity_calendar:type_name -> codexpulse.core.v1.APISubscriptionActivityCalendar
+	1,   // 356: codexpulse.core.v1.CoreService.Handshake:input_type -> codexpulse.core.v1.HandshakeRequest
+	3,   // 357: codexpulse.core.v1.CoreService.Bootstrap:input_type -> codexpulse.core.v1.BootstrapRequest
+	5,   // 358: codexpulse.core.v1.CoreService.Contracts:input_type -> codexpulse.core.v1.ContractsRequest
+	149, // 359: codexpulse.core.v1.CoreService.AccountSnapshot:input_type -> codexpulse.core.v1.AccountSnapshotRequest
+	22,  // 360: codexpulse.core.v1.CoreService.UsageCost:input_type -> codexpulse.core.v1.UsageCostRequest
+	38,  // 361: codexpulse.core.v1.CoreService.InvocationUsage:input_type -> codexpulse.core.v1.InvocationUsageRequest
+	45,  // 362: codexpulse.core.v1.CoreService.PricingCatalogCurrent:input_type -> codexpulse.core.v1.PricingCatalogCurrentRequest
+	23,  // 363: codexpulse.core.v1.CoreService.ListSessions:input_type -> codexpulse.core.v1.ListSessionsRequest
+	24,  // 364: codexpulse.core.v1.CoreService.SessionDetail:input_type -> codexpulse.core.v1.SessionDetailRequest
+	25,  // 365: codexpulse.core.v1.CoreService.ListProjects:input_type -> codexpulse.core.v1.ListProjectsRequest
+	26,  // 366: codexpulse.core.v1.CoreService.ProjectDetail:input_type -> codexpulse.core.v1.ProjectDetailRequest
+	58,  // 367: codexpulse.core.v1.CoreService.QuotaCurrent:input_type -> codexpulse.core.v1.QuotaCurrentRequest
+	152, // 368: codexpulse.core.v1.CoreService.APISubscriptionsCurrent:input_type -> codexpulse.core.v1.APISubscriptionsCurrentRequest
+	153, // 369: codexpulse.core.v1.CoreService.APICredentialStatus:input_type -> codexpulse.core.v1.APICredentialStatusRequest
+	155, // 370: codexpulse.core.v1.CoreService.UpdateAPICredential:input_type -> codexpulse.core.v1.UpdateAPICredentialRequest
+	69,  // 371: codexpulse.core.v1.CoreService.QuotaPace:input_type -> codexpulse.core.v1.QuotaPaceRequest
+	77,  // 372: codexpulse.core.v1.CoreService.RequestQuotaRefresh:input_type -> codexpulse.core.v1.QuotaRefreshRequest
+	79,  // 373: codexpulse.core.v1.CoreService.ListSources:input_type -> codexpulse.core.v1.ListSourcesRequest
+	80,  // 374: codexpulse.core.v1.CoreService.Source:input_type -> codexpulse.core.v1.SourceRequest
+	81,  // 375: codexpulse.core.v1.CoreService.ListJobs:input_type -> codexpulse.core.v1.ListJobsRequest
+	82,  // 376: codexpulse.core.v1.CoreService.Job:input_type -> codexpulse.core.v1.JobRequest
+	83,  // 377: codexpulse.core.v1.CoreService.ListHealth:input_type -> codexpulse.core.v1.ListHealthRequest
+	84,  // 378: codexpulse.core.v1.CoreService.Health:input_type -> codexpulse.core.v1.HealthRequest
+	85,  // 379: codexpulse.core.v1.CoreService.HealthProjection:input_type -> codexpulse.core.v1.HealthProjectionRequest
+	86,  // 380: codexpulse.core.v1.CoreService.DataHealth:input_type -> codexpulse.core.v1.DataHealthRequest
+	87,  // 381: codexpulse.core.v1.CoreService.Settings:input_type -> codexpulse.core.v1.SettingsRequest
+	122, // 382: codexpulse.core.v1.CoreService.UpdateSettings:input_type -> codexpulse.core.v1.UpdateSettingsRequest
+	124, // 383: codexpulse.core.v1.CoreService.PlanHomeSwitch:input_type -> codexpulse.core.v1.PlanHomeSwitchRequest
+	126, // 384: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:input_type -> codexpulse.core.v1.ConfirmHomeSwitchRequest
+	127, // 385: codexpulse.core.v1.CoreService.RecoverHomeSwitch:input_type -> codexpulse.core.v1.RecoverHomeSwitchRequest
+	129, // 386: codexpulse.core.v1.CoreService.RunRuntimeAction:input_type -> codexpulse.core.v1.RuntimeActionRequest
+	131, // 387: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:input_type -> codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
+	133, // 388: codexpulse.core.v1.CoreService.NotifyLifecycle:input_type -> codexpulse.core.v1.LifecycleNotificationRequest
+	135, // 389: codexpulse.core.v1.CoreService.MigrationRecoveryState:input_type -> codexpulse.core.v1.MigrationRecoveryStateRequest
+	136, // 390: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:input_type -> codexpulse.core.v1.MigrationRecoveryRetryRequest
+	139, // 391: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:input_type -> codexpulse.core.v1.MigrationRecoveryPrepareRequest
+	140, // 392: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:input_type -> codexpulse.core.v1.MigrationRecoveryConfirmRequest
+	137, // 393: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:input_type -> codexpulse.core.v1.MigrationRecoveryCancelRequest
+	138, // 394: codexpulse.core.v1.CoreService.MigrationRecoveryExit:input_type -> codexpulse.core.v1.MigrationRecoveryExitRequest
+	145, // 395: codexpulse.core.v1.CoreService.SubscribeInvalidations:input_type -> codexpulse.core.v1.SubscribeInvalidationsRequest
+	147, // 396: codexpulse.core.v1.CoreService.Shutdown:input_type -> codexpulse.core.v1.ShutdownRequest
+	2,   // 397: codexpulse.core.v1.CoreService.Handshake:output_type -> codexpulse.core.v1.HandshakeResponse
+	4,   // 398: codexpulse.core.v1.CoreService.Bootstrap:output_type -> codexpulse.core.v1.BootstrapResponse
+	7,   // 399: codexpulse.core.v1.CoreService.Contracts:output_type -> codexpulse.core.v1.ContractsResponse
+	151, // 400: codexpulse.core.v1.CoreService.AccountSnapshot:output_type -> codexpulse.core.v1.AccountSnapshotResponse
+	37,  // 401: codexpulse.core.v1.CoreService.UsageCost:output_type -> codexpulse.core.v1.UsageCostResponse
+	44,  // 402: codexpulse.core.v1.CoreService.InvocationUsage:output_type -> codexpulse.core.v1.InvocationUsageResponse
+	47,  // 403: codexpulse.core.v1.CoreService.PricingCatalogCurrent:output_type -> codexpulse.core.v1.PricingCatalogCurrentResponse
+	49,  // 404: codexpulse.core.v1.CoreService.ListSessions:output_type -> codexpulse.core.v1.SessionListResponse
+	51,  // 405: codexpulse.core.v1.CoreService.SessionDetail:output_type -> codexpulse.core.v1.SessionDetailResponse
+	56,  // 406: codexpulse.core.v1.CoreService.ListProjects:output_type -> codexpulse.core.v1.ProjectListResponse
+	57,  // 407: codexpulse.core.v1.CoreService.ProjectDetail:output_type -> codexpulse.core.v1.ProjectDetailResponse
+	68,  // 408: codexpulse.core.v1.CoreService.QuotaCurrent:output_type -> codexpulse.core.v1.QuotaCurrentResponse
+	171, // 409: codexpulse.core.v1.CoreService.APISubscriptionsCurrent:output_type -> codexpulse.core.v1.APISubscriptionsCurrentResponse
+	154, // 410: codexpulse.core.v1.CoreService.APICredentialStatus:output_type -> codexpulse.core.v1.APICredentialStatusResponse
+	154, // 411: codexpulse.core.v1.CoreService.UpdateAPICredential:output_type -> codexpulse.core.v1.APICredentialStatusResponse
+	76,  // 412: codexpulse.core.v1.CoreService.QuotaPace:output_type -> codexpulse.core.v1.QuotaPaceResponse
+	78,  // 413: codexpulse.core.v1.CoreService.RequestQuotaRefresh:output_type -> codexpulse.core.v1.QuotaRefreshReceipt
+	91,  // 414: codexpulse.core.v1.CoreService.ListSources:output_type -> codexpulse.core.v1.SourceListResponse
+	92,  // 415: codexpulse.core.v1.CoreService.Source:output_type -> codexpulse.core.v1.SourceDetailResponse
+	96,  // 416: codexpulse.core.v1.CoreService.ListJobs:output_type -> codexpulse.core.v1.JobListResponse
+	97,  // 417: codexpulse.core.v1.CoreService.Job:output_type -> codexpulse.core.v1.JobDetailResponse
+	100, // 418: codexpulse.core.v1.CoreService.ListHealth:output_type -> codexpulse.core.v1.HealthListResponse
+	101, // 419: codexpulse.core.v1.CoreService.Health:output_type -> codexpulse.core.v1.HealthDetailResponse
+	103, // 420: codexpulse.core.v1.CoreService.HealthProjection:output_type -> codexpulse.core.v1.HealthProjectionResponse
+	109, // 421: codexpulse.core.v1.CoreService.DataHealth:output_type -> codexpulse.core.v1.DataHealthResponse
+	117, // 422: codexpulse.core.v1.CoreService.Settings:output_type -> codexpulse.core.v1.SettingsResponse
+	123, // 423: codexpulse.core.v1.CoreService.UpdateSettings:output_type -> codexpulse.core.v1.SettingsUpdateReceipt
+	125, // 424: codexpulse.core.v1.CoreService.PlanHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchPlanReceipt
+	128, // 425: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
+	128, // 426: codexpulse.core.v1.CoreService.RecoverHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
+	130, // 427: codexpulse.core.v1.CoreService.RunRuntimeAction:output_type -> codexpulse.core.v1.RuntimeActionReceipt
+	132, // 428: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:output_type -> codexpulse.core.v1.RepairDryRunReceipt
+	134, // 429: codexpulse.core.v1.CoreService.NotifyLifecycle:output_type -> codexpulse.core.v1.LifecycleNotificationReceipt
+	142, // 430: codexpulse.core.v1.CoreService.MigrationRecoveryState:output_type -> codexpulse.core.v1.MigrationRecoverySnapshot
+	143, // 431: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
+	144, // 432: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:output_type -> codexpulse.core.v1.MigrationRestoreConfirmation
+	143, // 433: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
+	0,   // 434: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:output_type -> codexpulse.core.v1.Empty
+	0,   // 435: codexpulse.core.v1.CoreService.MigrationRecoveryExit:output_type -> codexpulse.core.v1.Empty
+	146, // 436: codexpulse.core.v1.CoreService.SubscribeInvalidations:output_type -> codexpulse.core.v1.QueryInvalidationEvent
+	148, // 437: codexpulse.core.v1.CoreService.Shutdown:output_type -> codexpulse.core.v1.ShutdownResponse
+	397, // [397:438] is the sub-list for method output_type
+	356, // [356:397] is the sub-list for method input_type
+	356, // [356:356] is the sub-list for extension type_name
+	356, // [356:356] is the sub-list for extension extendee
+	0,   // [0:356] is the sub-list for field type_name
 }
 
 func init() { file_api_codexpulse_core_v1_core_proto_init() }
@@ -13160,13 +14565,22 @@ func file_api_codexpulse_core_v1_core_proto_init() {
 	file_api_codexpulse_core_v1_core_proto_msgTypes[114].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[150].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[151].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[155].OneofWrappers = []any{
+		(*UpdateAPICredentialRequest_Secret)(nil),
+		(*UpdateAPICredentialRequest_Delete)(nil),
+	}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[156].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[162].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[163].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[166].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[169].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_codexpulse_core_v1_core_proto_rawDesc), len(file_api_codexpulse_core_v1_core_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   152,
+			NumMessages:   172,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

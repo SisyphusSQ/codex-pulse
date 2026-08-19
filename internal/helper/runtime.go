@@ -1,7 +1,6 @@
 package helper
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -110,7 +109,10 @@ func Run(ctx context.Context, config RuntimeConfig) error {
 	return errors.Join(stopCause, closeErr)
 }
 
-func applicationConfig(config RuntimeConfig, broker *core.InvalidationBroker) app.Config {
+func applicationConfig(
+	config RuntimeConfig,
+	broker *core.InvalidationBroker,
+) app.Config {
 	return app.Config{
 		Broker:           broker,
 		Store:            storesqlite.Config{Path: config.DatabasePath},
@@ -123,15 +125,8 @@ func readAuthPipe(pipe *os.File) (*Authenticator, <-chan struct{}, error) {
 	if pipe == nil {
 		return nil, nil, ErrAuthPipe
 	}
-	reader := bufio.NewReaderSize(pipe, maximumAuthTokenBytes+2)
-	token, err := reader.ReadBytes('\n')
-	if err != nil || len(token) < 2 || len(token) > maximumAuthTokenBytes+1 {
-		clear(token)
-		return nil, nil, ErrAuthPipe
-	}
-	token = token[:len(token)-1]
-	if !bearerSafeToken(token) {
-		clear(token)
+	token, err := readBearerToken(pipe)
+	if err != nil {
 		return nil, nil, ErrAuthPipe
 	}
 	authenticator, err := NewAuthenticator(token)
@@ -140,10 +135,34 @@ func readAuthPipe(pipe *os.File) (*Authenticator, <-chan struct{}, error) {
 	}
 	parentEOF := make(chan struct{})
 	go func() {
-		_, _ = io.Copy(io.Discard, reader)
+		_, _ = io.Copy(io.Discard, pipe)
 		close(parentEOF)
 	}()
 	return authenticator, parentEOF, nil
+}
+
+func readBearerToken(reader io.Reader) ([]byte, error) {
+	if reader == nil {
+		return nil, ErrAuthPipe
+	}
+	token := make([]byte, 0, 64)
+	var next [1]byte
+	for len(token) <= maximumAuthTokenBytes {
+		if _, err := io.ReadFull(reader, next[:]); err != nil {
+			clear(token)
+			return nil, ErrAuthPipe
+		}
+		if next[0] == '\n' {
+			if !bearerSafeToken(token) {
+				clear(token)
+				return nil, ErrAuthPipe
+			}
+			return token, nil
+		}
+		token = append(token, next[0])
+	}
+	clear(token)
+	return nil, ErrAuthPipe
 }
 
 func bearerSafeToken(token []byte) bool {

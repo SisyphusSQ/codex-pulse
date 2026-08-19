@@ -77,7 +77,7 @@ CODEX_PULSE_APP_RUNTIME=<existing-configured-private-runtime> \
 - 服务：启动一个临时 Swift App 进程及其 Go Helper 子进程；只监听私有 UDS，无 TCP；结束时执行 `Shutdown` 并读回 Helper 退出。
 - 文件：写入 SwiftPM `.build`、Go build cache、ignored `bin/codex-pulse`；临时 development `.app` 和 runtime root 在退出时删除。
 - 外部系统：不调用生产 API、不使用签名/公证服务；真实 Home live E2E 会读取 session metadata/JSONL token facts，并允许 App Server 写标准 housekeeping，但不提交用户内容或真实路径。
-- UI：`--ui-smoke` 在当前桌面会话短暂创建原生窗口、状态栏项和 Popover，读回后自动关闭。
+- UI：`--ui-smoke` 在当前桌面会话短暂创建原生窗口、状态栏项和 Popover，读回后自动关闭；隔离空 Home 额外传入 `--skip-cursor-provider-smoke`，不把真实 Cursor 账号校验混入 synthetic smoke，真实 Home live smoke 仍强制执行该校验。
 
 ## 前置条件
 

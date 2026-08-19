@@ -14,6 +14,7 @@ import (
 
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
+	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
@@ -229,6 +230,154 @@ func TestGRPCServerScopesQuotaAndEchoesEffectiveProvider(t *testing.T) {
 	}
 }
 
+func TestGRPCServerMapsAPISubscriptionsWithoutProviderScope(t *testing.T) {
+	t.Parallel()
+
+	failure := apisubscriptions.FailureServer
+	baselineAtMS := int64(110)
+	query := &helperAPISubscriptionsQueryStub{response: apisubscriptions.CurrentSnapshot{
+		EvaluatedAtMS: 123,
+		DeepSeek: apisubscriptions.DeepSeekSnapshot{
+			Status: apisubscriptions.SourceStatus{State: apisubscriptions.StateCurrent},
+			Balance: &apisubscriptions.Balance{IsAvailable: true, Balances: []apisubscriptions.CurrencyBalance{{
+				Currency: "CNY", Total: "43.60", Granted: "0.00", ToppedUp: "43.60",
+			}},
+			},
+			Periods: []apisubscriptions.BalancePeriod{{
+				Kind: apisubscriptions.PeriodMonth, StartsAtMS: 100, BaselineAtMS: &baselineAtMS,
+				Changes: []apisubscriptions.CurrencyBalanceChange{{
+					Currency: "CNY", StartingTotal: "50.00", TotalDelta: "-6.40",
+					StartingGranted: "0.00", GrantedDelta: "0.00",
+					StartingToppedUp: "50.00", ToppedUpDelta: "-6.40",
+					TotalRecharged: "0.00", TotalConsumed: "6.40",
+				}},
+				Series: []apisubscriptions.CurrencyBalanceSeries{{
+					Currency: "CNY",
+					Points: []apisubscriptions.BalanceTrendPoint{{
+						ObservedAtMS: 110, Total: "50.00", Granted: "0.00", ToppedUp: "50.00",
+					}, {
+						ObservedAtMS: 123, Total: "43.60", Granted: "0.00", ToppedUp: "43.60",
+					}},
+				}},
+			}},
+		},
+		OpenCodeGo: apisubscriptions.OpenCodeGoSnapshot{
+			Status: apisubscriptions.SourceStatus{State: apisubscriptions.StateStale, FailureCode: &failure},
+			Quota: &apisubscriptions.Quota{Windows: []apisubscriptions.QuotaWindow{{
+				Kind: apisubscriptions.WindowFiveHour, Status: apisubscriptions.StatusOK,
+				UsedPercent: 25, RemainingPercent: 75, ResetsAtMS: 456,
+			}},
+			},
+		},
+		ActivityCalendar: apisubscriptions.APISubscriptionActivityCalendar{
+			ReportingTimeZone: "UTC",
+			Days: []apisubscriptions.APISubscriptionActivityDay{{
+				DateKey: "1970-01-01", StartsAtMS: 1,
+				DeepSeek: []apisubscriptions.DeepSeekDailyActivity{{
+					Currency: "CNY", TotalRecharged: "0.00", TotalConsumed: "6.40", SampleCount: 2,
+				}},
+				OpenCodeGo: &apisubscriptions.OpenCodeGoFiveHourDailyActivity{
+					MaxFiveHourUsedPercent: 25, LatestFiveHourUsedPercent: 25,
+					LatestFiveHourRemainingPercent: 75, SampleCount: 1,
+				},
+			}},
+		},
+	}}
+	business, err := core.NewService(core.ServiceConfig{
+		UsageCost: &helperUsageQueryStub{}, InvocationUsage: &helperInvocationQueryStub{},
+		PricingCatalog: helperPricingCatalogQueryStub{}, RuntimeInfo: helperRuntimeQueryStub{},
+		APISubscriptions: query,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, authorize := startConfiguredTestGRPCServer(t, func(config *ServerConfig) { config.Service = business })
+	response, err := client.APISubscriptionsCurrent(
+		authorize(t.Context()),
+		&corev1.APISubscriptionsCurrentRequest{EvaluatedAtMs: 123},
+	)
+	if err != nil {
+		t.Fatalf("APISubscriptionsCurrent() error = %v", err)
+	}
+	if query.atMS != 123 || response.GetDeepSeek().GetBalance().GetBalances()[0].GetTotal() != "43.60" ||
+		response.GetDeepSeek().GetPeriods()[0].GetBaselineAtMs() != 110 ||
+		response.GetDeepSeek().GetPeriods()[0].GetChanges()[0].GetTotalDelta() != "-6.40" ||
+		response.GetDeepSeek().GetPeriods()[0].GetChanges()[0].GetTotalConsumed() != "6.40" ||
+		response.GetDeepSeek().GetPeriods()[0].GetSeries()[0].GetPoints()[1].GetTotal() != "43.60" ||
+		response.GetDeepSeek().GetPeriods()[0].GetSeries()[0].GetPoints()[1].GetObservedAtMs() != 123 ||
+		response.GetOpenCodeGo().GetStatus().GetFailureCode() != apisubscriptions.FailureServer ||
+		response.GetOpenCodeGo().GetQuota().GetWindows()[0].GetKind() != apisubscriptions.WindowFiveHour ||
+		response.GetActivityCalendar().GetReportingTimeZone() != "UTC" ||
+		response.GetActivityCalendar().GetDays()[0].GetOpenCodeGo().GetMaxFiveHourUsedPercent() != 25 {
+		t.Fatalf("query at = %d, response = %#v", query.atMS, response)
+	}
+}
+
+func TestGRPCServerManagesAPICredentialsWithoutReturningSecrets(t *testing.T) {
+	t.Parallel()
+
+	credentials := &helperAPICredentialStoreStub{}
+	business, err := core.NewService(core.ServiceConfig{
+		UsageCost: &helperUsageQueryStub{}, InvocationUsage: &helperInvocationQueryStub{},
+		PricingCatalog: helperPricingCatalogQueryStub{}, RuntimeInfo: helperRuntimeQueryStub{},
+		APICredentials: credentials,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, authorize := startConfiguredTestGRPCServer(t, func(config *ServerConfig) { config.Service = business })
+	statusResponse, err := client.APICredentialStatus(
+		authorize(t.Context()),
+		&corev1.APICredentialStatusRequest{},
+	)
+	if err != nil {
+		t.Fatalf("APICredentialStatus() error = %v", err)
+	}
+	if statusResponse.GetDeepSeekConfigured() || statusResponse.GetOpenCodeGoConfigured() {
+		t.Fatalf("APICredentialStatus() = %#v", statusResponse)
+	}
+
+	updateResponse, err := client.UpdateAPICredential(
+		authorize(t.Context()),
+		&corev1.UpdateAPICredentialRequest{
+			Service: apisubscriptions.ServiceDeepSeek,
+			Action: &corev1.UpdateAPICredentialRequest_Secret{
+				Secret: []byte("deepseek-secret"),
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("UpdateAPICredential(save) error = %v", err)
+	}
+	if !updateResponse.GetDeepSeekConfigured() || updateResponse.GetOpenCodeGoConfigured() ||
+		credentials.savedService != apisubscriptions.ServiceDeepSeek ||
+		string(credentials.savedSecret) != "deepseek-secret" {
+		t.Fatalf("UpdateAPICredential(save) = %#v, store = %#v", updateResponse, credentials)
+	}
+
+	deleteResponse, err := client.UpdateAPICredential(
+		authorize(t.Context()),
+		&corev1.UpdateAPICredentialRequest{
+			Service: apisubscriptions.ServiceDeepSeek,
+			Action:  &corev1.UpdateAPICredentialRequest_Delete{Delete: true},
+		},
+	)
+	if err != nil {
+		t.Fatalf("UpdateAPICredential(delete) error = %v", err)
+	}
+	if deleteResponse.GetDeepSeekConfigured() || credentials.deletedService != apisubscriptions.ServiceDeepSeek {
+		t.Fatalf("UpdateAPICredential(delete) = %#v, store = %#v", deleteResponse, credentials)
+	}
+
+	_, err = client.UpdateAPICredential(
+		authorize(t.Context()),
+		&corev1.UpdateAPICredentialRequest{Service: apisubscriptions.ServiceDeepSeek},
+	)
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("UpdateAPICredential(missing action) error = %v", err)
+	}
+}
+
 // 测试 grpcAPI 显式实现每个冻结 RPC，不能落入 generated Unimplemented 默认实现。
 func TestGRPCAPIImplementsEveryFrozenRPC(t *testing.T) {
 	entries, err := os.ReadDir(".")
@@ -253,14 +402,14 @@ func TestGRPCAPIImplementsEveryFrozenRPC(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
-		"AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DataHealth",
+		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DataHealth",
 		"Handshake", "Health", "HealthProjection", "InvocationUsage", "Job", "ListHealth", "ListJobs", "ListProjects",
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
 		"MigrationRecoveryExit", "MigrationRecoveryPrepare", "MigrationRecoveryRetry",
 		"MigrationRecoveryState", "NotifyLifecycle", "PlanHomeSwitch", "PricingCatalogCurrent", "ProjectDetail", "QuotaCurrent",
 		"QuotaPace",
 		"RecoverHomeSwitch", "RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings",
-		"Shutdown", "Source", "SubscribeInvalidations", "UpdateSettings", "UsageCost",
+		"Shutdown", "Source", "SubscribeInvalidations", "UpdateAPICredential", "UpdateSettings", "UsageCost",
 	}
 	sort.Strings(want)
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
@@ -503,6 +652,53 @@ type helperUsageQueryStub struct {
 type helperInvocationQueryStub struct {
 	request  invocationusage.InvocationUsageRequest
 	response invocationusage.InvocationUsageResponse
+}
+
+type helperAPISubscriptionsQueryStub struct {
+	atMS     int64
+	response apisubscriptions.CurrentSnapshot
+}
+
+type helperAPICredentialStoreStub struct {
+	status         apisubscriptions.CredentialStatus
+	savedService   string
+	savedSecret    []byte
+	deletedService string
+}
+
+func (stub *helperAPICredentialStoreStub) Status(context.Context) (apisubscriptions.CredentialStatus, error) {
+	return stub.status, nil
+}
+
+func (stub *helperAPICredentialStoreStub) Save(_ context.Context, service string, secret []byte) error {
+	stub.savedService = service
+	stub.savedSecret = append([]byte(nil), secret...)
+	switch service {
+	case apisubscriptions.ServiceDeepSeek:
+		stub.status.DeepSeekConfigured = true
+	case apisubscriptions.ServiceOpenCodeGo:
+		stub.status.OpenCodeGoConfigured = true
+	}
+	return nil
+}
+
+func (stub *helperAPICredentialStoreStub) Delete(_ context.Context, service string) error {
+	stub.deletedService = service
+	switch service {
+	case apisubscriptions.ServiceDeepSeek:
+		stub.status.DeepSeekConfigured = false
+	case apisubscriptions.ServiceOpenCodeGo:
+		stub.status.OpenCodeGoConfigured = false
+	}
+	return nil
+}
+
+func (stub *helperAPISubscriptionsQueryStub) Current(
+	_ context.Context,
+	atMS int64,
+) (apisubscriptions.CurrentSnapshot, error) {
+	stub.atMS = atMS
+	return stub.response, nil
 }
 
 func (stub *helperInvocationQueryStub) InvocationUsage(

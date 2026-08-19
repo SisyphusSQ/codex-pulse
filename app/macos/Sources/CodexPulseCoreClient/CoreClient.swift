@@ -130,6 +130,34 @@ public actor CoreClient {
         }
     }
 
+    public func apiSubscriptionsCurrent(
+        _ request: Codexpulse_Core_V1_APISubscriptionsCurrentRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_APISubscriptionsCurrentResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.apiSubscriptionsCurrent(request, metadata: metadata)
+        }
+    }
+
+    public func apiCredentialStatus(
+        _ request: Codexpulse_Core_V1_APICredentialStatusRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_APICredentialStatusResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.apiCredentialStatus(request, metadata: metadata)
+        }
+    }
+
+    public func updateAPICredential(
+        _ request: Codexpulse_Core_V1_UpdateAPICredentialRequest
+    ) async throws -> Codexpulse_Core_V1_APICredentialStatusResponse {
+        try await service.updateAPICredential(request, metadata: metadata)
+    }
+
     public func quotaPace(
         _ request: Codexpulse_Core_V1_QuotaPaceRequest,
         retryPolicy: ReadRetryPolicy = .transportDefault

@@ -186,7 +186,7 @@ func validFailureField(value string) bool {
 		"response.status", "response.issues",
 		"response.page.limit", "response.page.hasMore", "response.page.nextCursor",
 		"sessionId", "reportingTimezone", "projectKey",
-		"source", "sourceKey", "jobId", "eventId", "evaluatedAtMS",
+		"source", "sourceKey", "jobId", "eventId", "evaluatedAtMS", "service", "secret",
 		"settings", "targetPath", "strategy", "action", "version", "seconds":
 		return true
 	default:

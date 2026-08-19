@@ -1,9 +1,17 @@
 # 原生主要页面与共享数据闭环验证记录
 
+## 2026-08-19 API 与订阅增量
+
+- 新增第九个原生导航页面“API 与订阅”，独立于 Agent Provider；DeepSeek 只展示 `/user/balance` 余额，OpenCode Go 只展示 5 小时、周、月额度。
+- 页面后续增加一个合并两个来源的 365 天蓝色热力图；方块不展示净变化或 Token，悬停详情分别显示 DeepSeek 采样估算的总充值/总消耗与 OpenCode Go 5 小时峰值已用/最新剩余。DeepSeek 周期卡片同步增加总充值和总消耗，OpenCode Go 5 小时成功采样持久化到独立的凭据代次表。
+- isolated smoke 的稳定契约新增 `sources=9 api_subscriptions=deepseek_unconfigured+opencode_go_unconfigured ui_pages=9`，并显式传入 `--skip-cursor-provider-smoke`；这证明空凭据时仍打通 App、RPC 与 Helper，同时不发起线上请求，真实 Cursor provider 校验则由 live smoke 负责。
+- 切换独立 `credentials.db` 之前，真实 Home gate 曾读回 `api_subscriptions=deepseek_current+opencode_go_current unavailable=none ui_pages=9 shutdown=clean`，并人工读回统一热力图、四项选中日指标、蓝色余额趋势和 DeepSeek 两个采样估算字段。该历史结果证明当时的只读查询与 UI 闭环，不作为新凭据存储、无系统授权弹窗或当前凭据配置状态的验证证据。
+- 切换后使用显式真实 Codex Home 和既有私有 development runtime 重跑 gate，读回 `api_subscriptions=deepseek_unconfigured+opencode_go_unconfigured unavailable=none ui_pages=9 native_surfaces=window+status_item+popover shutdown=clean`。`credentials.db` 与 `codex-pulse.db` 是不同 inode，目录为 `0700`、两个数据库均为 `0600`，新凭据表记录数为 `0`；App/Helper 正常启动且 socket ready，Swift 生产代码不再导入 `Security` 或访问 Keychain。旧 Keychain item 未读取、迁移或删除，因此该次验收没有调用 DeepSeek/OpenCode Go 线上接口，用户需要在新设置页重新录入一次。
+
 ## 2026-08-07 Tool / Skill 调用统计增量
 
 - 新增第八个原生导航页面“调用统计”，通过 `InvocationUsage` RPC 查询今天/最近 7 天/最近 30 天的 Tool 调用与 Skill 检测活动；支持全部来源、结构化事件和内容检测筛选。
-- isolated smoke 的新稳定边界为 `invocation_tools=0 invocation_skills=0 ui_pages=8`；真实 Home gate 要求两类统计均非零且 `unavailable=none ui_pages=8`。历史七页记录继续作为当时证据，不回写成当前结果。
+- 该增量当时的稳定边界为 `invocation_tools=0 invocation_skills=0 ui_pages=8`；真实 Home gate 当时要求两类统计均非零且 `unavailable=none ui_pages=8`。这些八页与七页记录继续作为当时证据，不回写成当前结果。
 - privacy contract 只允许名称、时间、来源、有限结果和可空耗时，不保存参数、命令、正文、输出或完整路径；Skill 统计不声称精确执行，也不与 Token 归因。
 - 当前工作树已通过真实 Home gate：`invocation_tools=1004 invocation_skills=76 unavailable=none ui_pages=8 shutdown=clean`。原生窗口在 `1440 x 984` 视口完成总览、Tool、Skill、来源筛选和排行详情交互读回；当前截图因同一活跃会话继续产生事件，显示值为 `1200 / 81`，不把动态值冒充固定断言。视觉证据保存在 `.artifacts/design-qa/invocation-usage-real-home.png`，结论记录在 `design-qa.md`。
 

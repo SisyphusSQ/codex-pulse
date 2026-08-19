@@ -5,6 +5,7 @@ import (
 
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
+	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
@@ -159,6 +160,65 @@ func (api *grpcAPI) QuotaCurrent(
 		request.GetEvaluatedAtMs(),
 	)
 	return encodeRPC(response, &corev1.QuotaCurrentResponse{}, err)
+}
+
+func (api *grpcAPI) APISubscriptionsCurrent(
+	ctx context.Context,
+	request *corev1.APISubscriptionsCurrentRequest,
+) (*corev1.APISubscriptionsCurrentResponse, error) {
+	if api == nil || api.service == nil {
+		return nil, coreServiceUnavailable()
+	}
+	response, err := api.service.APISubscriptionsCurrent(ctx, request.GetEvaluatedAtMs())
+	return encodeRPC(response, &corev1.APISubscriptionsCurrentResponse{}, err)
+}
+
+func (api *grpcAPI) APICredentialStatus(
+	ctx context.Context,
+	_ *corev1.APICredentialStatusRequest,
+) (*corev1.APICredentialStatusResponse, error) {
+	if api == nil || api.service == nil {
+		return nil, coreServiceUnavailable()
+	}
+	credentialStatus, err := api.service.APICredentialStatus(ctx)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return toProtoAPICredentialStatus(credentialStatus), nil
+}
+
+func (api *grpcAPI) UpdateAPICredential(
+	ctx context.Context,
+	request *corev1.UpdateAPICredentialRequest,
+) (*corev1.APICredentialStatusResponse, error) {
+	if api == nil || api.service == nil {
+		return nil, coreServiceUnavailable()
+	}
+	update := core.APICredentialUpdateRequest{}
+	if request != nil {
+		update.Service = request.GetService()
+		switch action := request.GetAction().(type) {
+		case *corev1.UpdateAPICredentialRequest_Secret:
+			update.Secret = append([]byte(nil), action.Secret...)
+			defer clear(update.Secret)
+		case *corev1.UpdateAPICredentialRequest_Delete:
+			update.Delete = action.Delete
+		}
+	}
+	credentialStatus, err := api.service.UpdateAPICredential(ctx, update)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	return toProtoAPICredentialStatus(credentialStatus), nil
+}
+
+func toProtoAPICredentialStatus(
+	status apisubscriptions.CredentialStatus,
+) *corev1.APICredentialStatusResponse {
+	return &corev1.APICredentialStatusResponse{
+		DeepSeekConfigured:   status.DeepSeekConfigured,
+		OpenCodeGoConfigured: status.OpenCodeGoConfigured,
+	}
 }
 
 func (api *grpcAPI) QuotaPace(

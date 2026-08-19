@@ -14,6 +14,7 @@ final class StatusItemController: NSObject {
     private let displayPreferences = StatusBarDisplayPreferences()
     private let captureSource = PopoverCaptureSource()
     private let nativeAcceptanceEnabled: Bool
+    private let cursorProviderSmokeEnabled: Bool
     private var cancellables: Set<AnyCancellable> = []
     private var smokeFocusedControl: PopoverFocusTarget?
     private var smokeActionResults: [PopoverQuickActionKind: PopoverQuickActionResult] = [:]
@@ -24,12 +25,14 @@ final class StatusItemController: NSObject {
     init(
         model: AppModel,
         nativeAcceptanceEnabled: Bool = false,
+        cursorProviderSmokeEnabled: Bool = true,
         onOpenOverview: @escaping @MainActor () -> Void,
         onOpenSettings: @escaping @MainActor () -> Void,
         onQuit: @escaping @MainActor () -> Void
     ) {
         self.model = model
         self.nativeAcceptanceEnabled = nativeAcceptanceEnabled
+        self.cursorProviderSmokeEnabled = cursorProviderSmokeEnabled
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
 
@@ -281,20 +284,22 @@ final class StatusItemController: NSObject {
         else {
             return (false, "unavailable step=keyboard_focus_chain")
         }
-		popover.performClose(nil)
-		guard await verifyCursorStatusProviderForSmoke() else {
-			return (false, "unavailable step=cursor_status_provider")
+		var summary =
+			"window+status_item+popover actions=project+copy "
+				+ "keyboard=tab+shift-tab+return+space "
+				+ "focus_escape=open-overview+refresh+reset-credits+settings+quit "
+				+ "clipboard=single_item_string+png"
+		if cursorProviderSmokeEnabled {
+			popover.performClose(nil)
+			guard await verifyCursorStatusProviderForSmoke() else {
+				return (false, "unavailable step=cursor_status_provider")
+			}
+			summary +=
+				" status_provider=cursor status_label=verified cursor_account=available cursor_popover=captured "
+					+ smokeCursorUsageSummary
 		}
 
-        return (
-            true,
-            "window+status_item+popover actions=project+copy "
-                + "keyboard=tab+shift-tab+return+space "
-                + "focus_escape=open-overview+refresh+reset-credits+settings+quit "
-				+ "clipboard=single_item_string+png "
-				+ "status_provider=cursor status_label=verified cursor_account=available cursor_popover=captured "
-				+ smokeCursorUsageSummary
-        )
+		return (true, summary)
     }
 
 	private func verifyCursorStatusProviderForSmoke() async -> Bool {

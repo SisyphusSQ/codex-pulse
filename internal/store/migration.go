@@ -46,7 +46,9 @@ const (
 	applicationSchemaV25Version = 25
 	applicationSchemaV26Version = 26
 	applicationSchemaV27Version = 27
-	applicationSchemaVersion    = applicationSchemaV27Version
+	applicationSchemaV28Version = 28
+	applicationSchemaV29Version = 29
+	applicationSchemaVersion    = applicationSchemaV29Version
 )
 
 var (
@@ -309,6 +311,22 @@ var applicationMigrations = []migrationDefinition{
 		name:     "grok-independent-provider",
 		checksum: applicationSchemaV27Checksum(),
 		apply:    migrateGrokProviderForV27,
+	},
+	{
+		version:  applicationSchemaV28Version,
+		name:     "api-subscription-balance-history",
+		checksum: applicationSchemaV28Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			return storeschema.EnsureObjects(ctx, transaction, apiSubscriptionSchemaObjects)
+		},
+	},
+	{
+		version:  applicationSchemaV29Version,
+		name:     "api-subscription-quota-history",
+		checksum: applicationSchemaV29Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			return storeschema.EnsureObjects(ctx, transaction, apiSubscriptionQuotaSchemaObjects)
+		},
 	},
 }
 
@@ -870,6 +888,8 @@ func verifyApplicationSchema(ctx context.Context, transaction *gorm.DB) error {
 		currentProviderSchemaObjects(),
 		cursorDashboardSchemaObjects,
 		cursorDashboardQuotaSchemaObjects,
+		apiSubscriptionSchemaObjects,
+		apiSubscriptionQuotaSchemaObjects,
 	} {
 		for _, object := range objects {
 			exists, err := storeschema.VerifyObject(ctx, transaction, object)
@@ -1308,6 +1328,30 @@ func applicationSchemaV27Checksum() string {
 	_, _ = fmt.Fprintln(hasher, currentAgentProviderSnapshotStatement())
 	_, _ = fmt.Fprintln(hasher, currentAgentProviderSourceStatement())
 	for _, object := range grokProviderSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV28Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV28Version, "api-subscription-balance-history")
+	for _, object := range apiSubscriptionSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV29Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV29Version, "api-subscription-quota-history")
+	for _, object := range apiSubscriptionQuotaSchemaObjects {
 		_, _ = fmt.Fprintln(
 			hasher, object.ObjectType, object.Name,
 			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),

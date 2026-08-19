@@ -85,6 +85,7 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
     public let invocationSkillActivity: Int64
     public let quotaWindows: Int
     public let quotaPaceWindows: Int
+    public let apiSubscriptions: String
     public let projectDetailCostKnown: Bool
     public let projectDetailModels: Int
     public let detailsRead: Int
@@ -106,6 +107,7 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
         invocationSkillActivity: Int64,
         quotaWindows: Int,
         quotaPaceWindows: Int,
+        apiSubscriptions: String,
         projectDetailCostKnown: Bool = false,
         projectDetailModels: Int = 0,
         detailsRead: Int,
@@ -126,6 +128,7 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
         self.invocationSkillActivity = invocationSkillActivity
         self.quotaWindows = quotaWindows
         self.quotaPaceWindows = quotaPaceWindows
+        self.apiSubscriptions = apiSubscriptions
         self.projectDetailCostKnown = projectDetailCostKnown
         self.projectDetailModels = projectDetailModels
         self.detailsRead = detailsRead
@@ -140,6 +143,7 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
             + "usage_cost=\(usageCostKnown ? "known" : "unknown") quota_windows=\(quotaWindows) "
             + "invocation_tools=\(invocationToolCalls) invocation_skills=\(invocationSkillActivity) "
             + "quota_pace_windows=\(quotaPaceWindows) "
+            + "api_subscriptions=\(apiSubscriptions) "
             + "project_detail_cost=\(projectDetailCostKnown ? "known" : "unknown") "
             + "project_detail_models=\(projectDetailModels) "
             + "details_read=\(detailsRead) settings=\(settingsMutation) "

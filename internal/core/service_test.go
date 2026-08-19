@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
+	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
@@ -24,14 +25,134 @@ func TestServiceExposesExactBusinessSurface(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
-		"AccountSnapshot", "AnalyzeSessionIndexRepair", "ConfirmHomeSwitch", "Contracts", "DataHealth", "Health",
+		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "ConfirmHomeSwitch", "Contracts", "DataHealth", "Health",
 		"HealthProjection", "InvocationUsage", "Job", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
 		"PlanHomeSwitch", "PricingCatalogCurrent", "ProjectDetail", "QuotaCurrent", "QuotaPace", "RecoverHomeSwitch", "RequestQuotaRefresh",
-		"RunRuntimeAction", "SessionDetail", "Settings", "Source", "UpdateSettings", "UsageCost",
+		"RunRuntimeAction", "SessionDetail", "Settings", "Source", "UpdateAPICredential", "UpdateSettings", "UsageCost",
 	}
 	sort.Strings(want)
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("Service methods = %v, want %v", got, want)
+	}
+}
+
+func TestServiceDelegatesAPICredentialStatusAndMutationsWithoutReturningSecrets(t *testing.T) {
+	t.Parallel()
+
+	credentials := &apiCredentialStoreStub{
+		status: apisubscriptions.CredentialStatus{DeepSeekConfigured: true},
+	}
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageQueryStub{}, InvocationUsage: &invocationUsageQueryStub{},
+		PricingCatalog: pricingCatalogQueryStub{}, RuntimeInfo: runtimeQueryStub{},
+		APICredentials: credentials,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := service.APICredentialStatus(t.Context())
+	if err != nil {
+		t.Fatalf("APICredentialStatus() error = %v", err)
+	}
+	if status != credentials.status || credentials.statusCalls != 1 {
+		t.Fatalf("APICredentialStatus() = %#v, calls = %d", status, credentials.statusCalls)
+	}
+
+	status, err = service.UpdateAPICredential(t.Context(), APICredentialUpdateRequest{
+		Service: apisubscriptions.ServiceOpenCodeGo,
+		Secret:  []byte("new-secret"),
+	})
+	if err != nil {
+		t.Fatalf("UpdateAPICredential(save) error = %v", err)
+	}
+	if credentials.savedService != apisubscriptions.ServiceOpenCodeGo ||
+		string(credentials.savedSecret) != "new-secret" || credentials.deletedService != "" ||
+		status != credentials.status {
+		t.Fatalf("save delegation = %#v, status = %#v", credentials, status)
+	}
+
+	status, err = service.UpdateAPICredential(t.Context(), APICredentialUpdateRequest{
+		Service: apisubscriptions.ServiceDeepSeek,
+		Delete:  true,
+	})
+	if err != nil {
+		t.Fatalf("UpdateAPICredential(delete) error = %v", err)
+	}
+	if credentials.deletedService != apisubscriptions.ServiceDeepSeek || status != credentials.status {
+		t.Fatalf("delete delegation = %#v, status = %#v", credentials, status)
+	}
+}
+
+func TestServiceRejectsAmbiguousAPICredentialMutations(t *testing.T) {
+	t.Parallel()
+
+	credentials := &apiCredentialStoreStub{}
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageQueryStub{}, InvocationUsage: &invocationUsageQueryStub{},
+		PricingCatalog: pricingCatalogQueryStub{}, RuntimeInfo: runtimeQueryStub{},
+		APICredentials: credentials,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, request := range map[string]APICredentialUpdateRequest{
+		"unknown service": {Service: "unknown", Secret: []byte("secret")},
+		"missing action":  {Service: apisubscriptions.ServiceDeepSeek},
+		"conflicting action": {
+			Service: apisubscriptions.ServiceDeepSeek, Secret: []byte("secret"), Delete: true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := service.UpdateAPICredential(t.Context(), request); err == nil {
+				t.Fatal("UpdateAPICredential() accepted invalid request")
+			} else if envelope, ok := basequery.ErrorEnvelopeFrom(err); !ok || envelope.Error.Code != basequery.ErrorValidation {
+				t.Fatalf("UpdateAPICredential() error = %v", err)
+			}
+		})
+	}
+	if credentials.saveCalls != 0 || credentials.deleteCalls != 0 {
+		t.Fatalf("invalid mutations reached credential store: %#v", credentials)
+	}
+}
+
+func TestServiceDelegatesAPISubscriptionsOutsideAgentProviderRouting(t *testing.T) {
+	t.Parallel()
+
+	query := &apiSubscriptionsQueryStub{}
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageQueryStub{}, InvocationUsage: &invocationUsageQueryStub{},
+		PricingCatalog: pricingCatalogQueryStub{}, RuntimeInfo: runtimeQueryStub{}, APISubscriptions: query,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := service.APISubscriptionsCurrent(t.Context(), 123)
+	if err != nil {
+		t.Fatalf("APISubscriptionsCurrent() error = %v", err)
+	}
+	if query.atMS != 123 || response.EvaluatedAtMS != 123 {
+		t.Fatalf("delegated at = %d, response = %#v", query.atMS, response)
+	}
+}
+
+func TestServiceRejectsInvalidAPISubscriptionsEvaluationTime(t *testing.T) {
+	t.Parallel()
+
+	query := &apiSubscriptionsQueryStub{}
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageQueryStub{}, InvocationUsage: &invocationUsageQueryStub{},
+		PricingCatalog: pricingCatalogQueryStub{}, RuntimeInfo: runtimeQueryStub{}, APISubscriptions: query,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.APISubscriptionsCurrent(t.Context(), 0); err == nil {
+		t.Fatal("APISubscriptionsCurrent() accepted a zero evaluation time")
+	} else if envelope, ok := basequery.ErrorEnvelopeFrom(err); !ok || envelope.Error.Code != basequery.ErrorValidation {
+		t.Fatalf("APISubscriptionsCurrent() error = %v", err)
+	}
+	if query.calls != 0 {
+		t.Fatalf("invalid request reached query %d times", query.calls)
 	}
 }
 
@@ -162,6 +283,48 @@ type usageQueryStub struct {
 
 type invocationUsageQueryStub struct {
 	request invocationusage.InvocationUsageRequest
+}
+
+type apiSubscriptionsQueryStub struct {
+	atMS  int64
+	calls int
+}
+
+type apiCredentialStoreStub struct {
+	status         apisubscriptions.CredentialStatus
+	statusCalls    int
+	savedService   string
+	savedSecret    []byte
+	saveCalls      int
+	deletedService string
+	deleteCalls    int
+}
+
+func (stub *apiCredentialStoreStub) Status(context.Context) (apisubscriptions.CredentialStatus, error) {
+	stub.statusCalls++
+	return stub.status, nil
+}
+
+func (stub *apiCredentialStoreStub) Save(_ context.Context, service string, secret []byte) error {
+	stub.savedService = service
+	stub.savedSecret = append([]byte(nil), secret...)
+	stub.saveCalls++
+	return nil
+}
+
+func (stub *apiCredentialStoreStub) Delete(_ context.Context, service string) error {
+	stub.deletedService = service
+	stub.deleteCalls++
+	return nil
+}
+
+func (stub *apiSubscriptionsQueryStub) Current(
+	_ context.Context,
+	atMS int64,
+) (apisubscriptions.CurrentSnapshot, error) {
+	stub.atMS = atMS
+	stub.calls++
+	return apisubscriptions.CurrentSnapshot{EvaluatedAtMS: atMS}, nil
 }
 
 func (stub *invocationUsageQueryStub) InvocationUsage(

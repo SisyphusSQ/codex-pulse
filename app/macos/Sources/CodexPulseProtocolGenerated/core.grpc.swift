@@ -176,6 +176,45 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
                 type: .unary
             )
         }
+        /// Namespace for "APISubscriptionsCurrent" metadata.
+        public enum APISubscriptionsCurrent: Sendable {
+            /// Request type for "APISubscriptionsCurrent".
+            public typealias Input = Codexpulse_Core_V1_APISubscriptionsCurrentRequest
+            /// Response type for "APISubscriptionsCurrent".
+            public typealias Output = Codexpulse_Core_V1_APISubscriptionsCurrentResponse
+            /// Descriptor for "APISubscriptionsCurrent".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "APISubscriptionsCurrent",
+                type: .unary
+            )
+        }
+        /// Namespace for "APICredentialStatus" metadata.
+        public enum APICredentialStatus: Sendable {
+            /// Request type for "APICredentialStatus".
+            public typealias Input = Codexpulse_Core_V1_APICredentialStatusRequest
+            /// Response type for "APICredentialStatus".
+            public typealias Output = Codexpulse_Core_V1_APICredentialStatusResponse
+            /// Descriptor for "APICredentialStatus".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "APICredentialStatus",
+                type: .unary
+            )
+        }
+        /// Namespace for "UpdateAPICredential" metadata.
+        public enum UpdateAPICredential: Sendable {
+            /// Request type for "UpdateAPICredential".
+            public typealias Input = Codexpulse_Core_V1_UpdateAPICredentialRequest
+            /// Response type for "UpdateAPICredential".
+            public typealias Output = Codexpulse_Core_V1_APICredentialStatusResponse
+            /// Descriptor for "UpdateAPICredential".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "UpdateAPICredential",
+                type: .unary
+            )
+        }
         /// Namespace for "QuotaPace" metadata.
         public enum QuotaPace: Sendable {
             /// Request type for "QuotaPace".
@@ -528,6 +567,9 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
             ListProjects.descriptor,
             ProjectDetail.descriptor,
             QuotaCurrent.descriptor,
+            APISubscriptionsCurrent.descriptor,
+            APICredentialStatus.descriptor,
+            UpdateAPICredential.descriptor,
             QuotaPace.descriptor,
             RequestQuotaRefresh.descriptor,
             ListSources.descriptor,
@@ -803,6 +845,63 @@ extension Codexpulse_Core_V1_CoreService {
             deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_QuotaCurrentResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_QuotaCurrentResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "APISubscriptionsCurrent" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_APISubscriptionsCurrentRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_APISubscriptionsCurrentRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_APISubscriptionsCurrentResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func apiSubscriptionsCurrent<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_APISubscriptionsCurrentRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_APISubscriptionsCurrentRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_APISubscriptionsCurrentResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_APISubscriptionsCurrentResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "APICredentialStatus" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_APICredentialStatusRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_APICredentialStatusRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_APICredentialStatusResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func apiCredentialStatus<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_APICredentialStatusRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_APICredentialStatusRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_APICredentialStatusResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_APICredentialStatusResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "UpdateAPICredential" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_UpdateAPICredentialRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_UpdateAPICredentialRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_APICredentialStatusResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func updateAPICredential<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_UpdateAPICredentialRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_UpdateAPICredentialRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_APICredentialStatusResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_APICredentialStatusResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
         /// Call the "QuotaPace" method.
@@ -1673,6 +1772,96 @@ extension Codexpulse_Core_V1_CoreService {
             try await self.client.unary(
                 request: request,
                 descriptor: Codexpulse_Core_V1_CoreService.Method.QuotaCurrent.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "APISubscriptionsCurrent" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_APISubscriptionsCurrentRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_APISubscriptionsCurrentRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_APISubscriptionsCurrentResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func apiSubscriptionsCurrent<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_APISubscriptionsCurrentRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_APISubscriptionsCurrentRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_APISubscriptionsCurrentResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_APISubscriptionsCurrentResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.APISubscriptionsCurrent.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "APICredentialStatus" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_APICredentialStatusRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_APICredentialStatusRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_APICredentialStatusResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func apiCredentialStatus<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_APICredentialStatusRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_APICredentialStatusRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_APICredentialStatusResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_APICredentialStatusResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.APICredentialStatus.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "UpdateAPICredential" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_UpdateAPICredentialRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_UpdateAPICredentialRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_APICredentialStatusResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func updateAPICredential<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_UpdateAPICredentialRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_UpdateAPICredentialRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_APICredentialStatusResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_APICredentialStatusResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.UpdateAPICredential.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -2763,6 +2952,81 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
         )
     }
 
+    /// Call the "APISubscriptionsCurrent" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_APISubscriptionsCurrentRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func apiSubscriptionsCurrent<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_APISubscriptionsCurrentRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_APISubscriptionsCurrentResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.apiSubscriptionsCurrent(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_APISubscriptionsCurrentRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_APISubscriptionsCurrentResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "APICredentialStatus" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_APICredentialStatusRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func apiCredentialStatus<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_APICredentialStatusRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_APICredentialStatusResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.apiCredentialStatus(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_APICredentialStatusRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_APICredentialStatusResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "UpdateAPICredential" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_UpdateAPICredentialRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func updateAPICredential<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_UpdateAPICredentialRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_APICredentialStatusResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.updateAPICredential(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_UpdateAPICredentialRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_APICredentialStatusResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "QuotaPace" method.
     ///
     /// - Parameters:
@@ -3757,6 +4021,93 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
             metadata: metadata
         )
         return try await self.quotaCurrent(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "APISubscriptionsCurrent" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func apiSubscriptionsCurrent<Result>(
+        _ message: Codexpulse_Core_V1_APISubscriptionsCurrentRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_APISubscriptionsCurrentResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_APISubscriptionsCurrentRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.apiSubscriptionsCurrent(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "APICredentialStatus" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func apiCredentialStatus<Result>(
+        _ message: Codexpulse_Core_V1_APICredentialStatusRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_APICredentialStatusResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_APICredentialStatusRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.apiCredentialStatus(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "UpdateAPICredential" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func updateAPICredential<Result>(
+        _ message: Codexpulse_Core_V1_UpdateAPICredentialRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_APICredentialStatusResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_UpdateAPICredentialRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.updateAPICredential(
             request: request,
             options: options,
             onResponse: handleResponse

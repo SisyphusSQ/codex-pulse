@@ -30,6 +30,13 @@ struct RootView: View {
                             .tag(section)
                     }
                 }
+                Section(localization.text("sidebar.section.apiSubscriptions")) {
+                    Label(
+                        AppFeature.apiSubscriptions.title(localization: localization),
+                        systemImage: AppFeature.apiSubscriptions.symbol
+                    )
+                    .tag(AppFeature.apiSubscriptions)
+                }
                 Section(localization.text("sidebar.section.system")) {
                     ForEach([AppFeature.localStatus, .sourcesJobs, .settings]) { section in
                         Label(section.title(localization: localization), systemImage: section.symbol)
@@ -42,7 +49,7 @@ struct RootView: View {
             .frame(minWidth: 190)
         } detail: {
             featureContent
-				.navigationTitle("\(model.selectedFeature.title(localization: localization)) · \(model.selectedProvider.title)")
+				.navigationTitle(navigationTitle)
                 .toolbar {
                     ToolbarItemGroup(placement: .primaryAction) {
                         Button {
@@ -101,6 +108,13 @@ struct RootView: View {
             get: { model.selectedProvider },
             set: { provider in model.selectProvider(provider) }
         )
+    }
+
+    private var navigationTitle: String {
+        let featureTitle = model.selectedFeature.title(localization: localization)
+        return model.selectedFeature == .apiSubscriptions
+            ? featureTitle
+            : "\(featureTitle) · \(model.selectedProvider.title)"
     }
 
     @ViewBuilder
@@ -163,6 +177,8 @@ struct RootView: View {
                 RuntimeAwarePage(model: model) { QuotaUsageView(model: model) }
             case .invocationUsage:
                 RuntimeAwarePage(model: model) { InvocationUsageView(model: model) }
+            case .apiSubscriptions:
+                RuntimeAwarePage(model: model) { APISubscriptionsView(model: model) }
             case .localStatus:
                 RuntimeAwarePage(model: model) { LocalStatusView(model: model) }
             case .sourcesJobs:
@@ -2585,7 +2601,7 @@ private struct TokenActivityCard: View {
     }
 }
 
-private func activityHeatmapColor(
+func activityHeatmapColor(
     for intensity: TokenActivityIntensity,
     tint: Color
 ) -> Color {
