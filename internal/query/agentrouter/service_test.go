@@ -62,11 +62,12 @@ func (stub routingStub) InvocationUsage(context.Context, invocationusage.Invocat
 	return invocationusage.InvocationUsageResponse{ProviderContext: agentprovider.Context{EffectiveProvider: stub.provider}}, nil
 }
 
-func TestRouterDefaultsToCodexAndRoutesExplicitCursor(t *testing.T) {
+func TestRouterDefaultsToCodexAndRoutesExplicitCursorAndGrok(t *testing.T) {
 	calls := []string{}
 	codex := routingStub{provider: agentprovider.Codex, calls: &calls}
 	cursor := routingStub{provider: agentprovider.Cursor, calls: &calls}
-	service, err := New(codex, codex, cursor, cursor)
+	grok := routingStub{provider: agentprovider.Grok, calls: &calls}
+	service, err := New(codex, codex, cursor, cursor, grok, grok)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -80,7 +81,13 @@ func TestRouterDefaultsToCodexAndRoutesExplicitCursor(t *testing.T) {
 	if err != nil || sessions.ProviderContext.EffectiveProvider != agentprovider.Cursor {
 		t.Fatalf("cursor sessions = %#v, %v", sessions, err)
 	}
-	if len(calls) != 2 || calls[0] != "codex:usage" || calls[1] != "cursor:sessions" {
+	projects, err := service.ListProjects(context.Background(), basequery.Request{
+		Provider: agentprovider.Scope{Provider: agentprovider.Grok},
+	})
+	if err != nil || projects.ProviderContext.EffectiveProvider != agentprovider.Grok {
+		t.Fatalf("grok projects = %#v, %v", projects, err)
+	}
+	if len(calls) != 3 || calls[0] != "codex:usage" || calls[1] != "cursor:sessions" || calls[2] != "grok:projects" {
 		t.Fatalf("calls = %#v", calls)
 	}
 }
@@ -88,7 +95,7 @@ func TestRouterDefaultsToCodexAndRoutesExplicitCursor(t *testing.T) {
 func TestRouterRejectsUnknownProviderBeforeCallingBackend(t *testing.T) {
 	calls := []string{}
 	stub := routingStub{provider: agentprovider.Codex, calls: &calls}
-	service, err := New(stub, stub, stub, stub)
+	service, err := New(stub, stub, stub, stub, stub, stub)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -104,7 +111,8 @@ func TestQuotaRouterScopesRequestsAndEchoesEffectiveProvider(t *testing.T) {
 	calls := []string{}
 	codex := quotaRoutingStub{provider: agentprovider.Codex, calls: &calls}
 	cursor := quotaRoutingStub{provider: agentprovider.Cursor, calls: &calls}
-	service, err := NewQuota(codex, cursor)
+	grok := quotaRoutingStub{provider: agentprovider.Grok, calls: &calls}
+	service, err := NewQuota(codex, cursor, grok)
 	if err != nil {
 		t.Fatalf("NewQuota() error = %v", err)
 	}
@@ -114,12 +122,18 @@ func TestQuotaRouterScopesRequestsAndEchoesEffectiveProvider(t *testing.T) {
 	if err != nil || current.ProviderContext.EffectiveProvider != agentprovider.Cursor {
 		t.Fatalf("cursor current = %#v, %v", current, err)
 	}
+	grokCurrent, err := service.QuotaCurrent(
+		context.Background(), agentprovider.Scope{Provider: agentprovider.Grok}, 100,
+	)
+	if err != nil || grokCurrent.ProviderContext.EffectiveProvider != agentprovider.Grok {
+		t.Fatalf("grok current = %#v, %v", grokCurrent, err)
+	}
 	pace, err := service.QuotaPace(context.Background(), agentprovider.Scope{}, 100)
 	if err != nil || pace.ProviderContext.EffectiveProvider != agentprovider.Codex ||
 		len(pace.ProviderContext.Sources) == 0 || len(pace.ProviderContext.Capabilities) == 0 {
 		t.Fatalf("default pace = %#v, %v", pace, err)
 	}
-	if want := []string{"cursor:quota-current", "codex:quota-pace"}; !reflect.DeepEqual(calls, want) {
+	if want := []string{"cursor:quota-current", "grok:quota-current", "codex:quota-pace"}; !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v, want %#v", calls, want)
 	}
 }

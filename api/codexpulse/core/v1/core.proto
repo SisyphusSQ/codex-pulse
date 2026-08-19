@@ -985,6 +985,8 @@ message SettingsHomeSnapshot {
 message SettingsOnlineSnapshot {
   bool quota_enabled = 1;
   bool reset_credits_enabled = 2;
+  bool grok_quota_enabled = 3;
+  bool grok_auto_refresh_enabled = 4;
 }
 
 message SettingsRefreshSnapshot {
@@ -1030,6 +1032,8 @@ message SettingsResponse {
 message SettingsOnlineUpdate {
   bool quota_enabled = 1;
   bool reset_credits_enabled = 2;
+  bool grok_quota_enabled = 3;
+  bool grok_auto_refresh_enabled = 4;
 }
 
 message SettingsRefreshUpdate {

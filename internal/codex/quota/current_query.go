@@ -33,6 +33,7 @@ const (
 	CurrentSourceLocal           CurrentSourceKind = "local_jsonl"
 	CurrentSourceWham            CurrentSourceKind = "wham"
 	CurrentSourceCursorDashboard CurrentSourceKind = "cursor_dashboard"
+	CurrentSourceGrokBilling     CurrentSourceKind = "grok_billing"
 )
 
 type CurrentRefreshState string

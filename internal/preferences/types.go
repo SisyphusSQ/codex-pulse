@@ -1,5 +1,7 @@
 package preferences
 
+import "encoding/json"
+
 const (
 	CurrentPreferencesSchemaVersion = 2
 	DefaultDataStoreKey             = "default"
@@ -60,8 +62,36 @@ type CodexHomePreferences struct {
 }
 
 type OnlinePreferences struct {
-	QuotaEnabled        bool `json:"quota_enabled"`
-	ResetCreditsEnabled bool `json:"reset_credits_enabled"`
+	QuotaEnabled           bool `json:"quota_enabled"`
+	ResetCreditsEnabled    bool `json:"reset_credits_enabled"`
+	GrokQuotaEnabled       bool `json:"grok_quota_enabled"`
+	GrokAutoRefreshEnabled bool `json:"grok_auto_refresh_enabled"`
+}
+
+func (value *OnlinePreferences) UnmarshalJSON(content []byte) error {
+	var raw struct {
+		QuotaEnabled           *bool `json:"quota_enabled"`
+		ResetCreditsEnabled    *bool `json:"reset_credits_enabled"`
+		GrokQuotaEnabled       *bool `json:"grok_quota_enabled"`
+		GrokAutoRefreshEnabled *bool `json:"grok_auto_refresh_enabled"`
+	}
+	if err := json.Unmarshal(content, &raw); err != nil {
+		return err
+	}
+	if raw.QuotaEnabled == nil || raw.ResetCreditsEnabled == nil {
+		return ErrInvalidPreferences
+	}
+	value.QuotaEnabled = *raw.QuotaEnabled
+	value.ResetCreditsEnabled = *raw.ResetCreditsEnabled
+	value.GrokQuotaEnabled = true
+	if raw.GrokQuotaEnabled != nil {
+		value.GrokQuotaEnabled = *raw.GrokQuotaEnabled
+	}
+	value.GrokAutoRefreshEnabled = true
+	if raw.GrokAutoRefreshEnabled != nil {
+		value.GrokAutoRefreshEnabled = *raw.GrokAutoRefreshEnabled
+	}
+	return nil
 }
 
 type RefreshPreferences struct {

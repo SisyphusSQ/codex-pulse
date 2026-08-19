@@ -131,7 +131,7 @@ public struct CodexAccountPresentation: Equatable, Sendable {
         email = normalizedEmail
         planType = normalizedPlan
 
-		guard normalizedType == "chatgpt" || normalizedType == "cursor" else {
+		guard normalizedType == "chatgpt" || normalizedType == "cursor" || normalizedType == "grok" else {
             planText = "--"
             emailText = "--"
             accessibilityLabel = localization.format(
@@ -157,6 +157,10 @@ public struct CodexAccountPresentation: Equatable, Sendable {
         case "pro": "Pro"
 		case "pro_plus": "Pro+"
         case "prolite": "Pro Lite"
+		case "grokpro": "Grok Pro"
+		case "supergrok": "SuperGrok"
+		case "supergrokplus", "supergrok_plus": "SuperGrok Plus"
+		case "supergrokheavy", "supergrok_heavy": "SuperGrok Heavy"
         case "team": "Team"
         case "self_serve_business_usage_based", "business": "Business"
         case "enterprise_cbp_usage_based", "enterprise": "Enterprise"
@@ -684,6 +688,32 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
 
     public init?(_ overview: OverviewPresentation) {
         let localization = AppLocalizationRegistry.shared.current
+		if overview.provider == .grok {
+			guard let window = overview.quotaWindows.first else { return nil }
+			let periodLabel = Self.grokPeriodLabel(window, localization: localization)
+			let remainingSummary = window.remainingPercent.map { localization.percent($0) } ?? "--"
+			self.periodLabel = periodLabel
+			self.remainingPercent = window.remainingPercent
+			self.remainingText = "\(periodLabel) \(remainingSummary)"
+			self.freshness = window.freshness
+			self.dataState = StatusBarQuotaDataState(freshness: window.freshness)
+			if overview.usageAvailable, Self.grokUsageAlignedToBillingPeriod(overview) {
+				let total = Self.compact(overview.totalTokens)
+				self.usageText = localization.format("status.used", total)
+				self.accessibilityLabel = localization.format(
+					"status.accessibility.used",
+					periodLabel,
+					remainingSummary,
+					Self.compactWithUnit(overview.totalTokens, localization: localization)
+				) + dataState.accessibilitySuffix
+			} else {
+				self.usageText = localization.textValue("已用 --")
+				self.accessibilityLabel = localization.format(
+					"status.accessibility.unavailable", periodLabel, remainingSummary
+				) + dataState.accessibilitySuffix
+			}
+			return
+		}
 		if overview.provider == .cursor {
 			let windows = ["cursor.models", "cursor.other_models"].compactMap { limitID in
 				overview.quotaWindows.first(where: { $0.limitID == limitID })
@@ -747,6 +777,32 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
         }
         self.accessibilityLabel = baseAccessibilityLabel + dataState.accessibilitySuffix
     }
+
+	private static func grokUsageAlignedToBillingPeriod(_ overview: OverviewPresentation) -> Bool {
+		if overview.requestedRange == .quotaWeek {
+			return overview.effectiveRange == .quotaWeek && !overview.fellBackFromQuotaWeek
+		}
+		if overview.requestedRange == .quotaMonth {
+			return overview.effectiveRange == .quotaMonth
+		}
+		return false
+	}
+
+	private static func grokPeriodLabel(
+		_ window: QuotaWindowPresentation,
+		localization: AppLocalization
+	) -> String {
+		if let name = window.limitName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+			if name.contains("月") { return localization.textValue("月剩") }
+			if name.contains("周") { return localization.textValue("周剩") }
+			return name
+		}
+		if let minutes = window.windowMinutes {
+			if minutes >= 28 * 24 * 60 { return localization.textValue("月剩") }
+			if minutes >= 6 * 24 * 60 { return localization.textValue("周剩") }
+		}
+		return localization.textValue("额度剩")
+	}
 
     private static func preferredWindow(_ windows: [QuotaWindowPresentation]) -> QuotaWindowPresentation? {
         windows.first(where: { $0.limitID == "codex" && $0.windowMinutes == 7 * 24 * 60 })
@@ -2807,6 +2863,17 @@ public struct OverviewRequestSet: Sendable {
         limit: Int32 = 5
     ) -> Codexpulse_Core_V1_ListProjectsRequest? {
         guard range.effectivePreset == .quotaWeek, !range.fellBackFromQuotaWeek else { return nil }
+		return periodProjectRanking(range: range, provider: provider, limit: limit)
+	}
+
+	public static func periodProjectRanking(
+		range: OverviewRangeResolution,
+		provider: AgentProvider = .codex,
+		limit: Int32 = 5
+	) -> Codexpulse_Core_V1_ListProjectsRequest? {
+		guard [.quotaWeek, .quotaMonth].contains(range.effectivePreset),
+			!range.fellBackFromQuotaWeek
+		else { return nil }
 
         var exactRange = Codexpulse_Core_V1_UTCTimeRange()
         exactRange.startAtMs = range.startAtMS
@@ -2840,9 +2907,13 @@ public struct OverviewRequestSet: Sendable {
     ) -> Codexpulse_Core_V1_UTCTimeRange? {
         let weeklyMinutes: Int64 = 7 * 24 * 60
         let weeklyWindows = quota.current.windows.filter {
-            $0.hasWindowMinutes && $0.windowMinutes == weeklyMinutes && $0.hasResetsAtMs
+            $0.hasWindowMinutes && $0.hasResetsAtMs && (
+				$0.windowMinutes == weeklyMinutes ||
+				($0.limitID == "grok.included_credits" && $0.windowMinutes >= 6 * 24 * 60 && $0.windowMinutes <= 8 * 24 * 60)
+			)
         }
         guard let window = weeklyWindows.first(where: { $0.limitID == "codex" })
+            ?? weeklyWindows.first(where: { $0.limitID == "grok.included_credits" })
             ?? weeklyWindows.first
         else { return nil }
         let (durationMS, durationOverflow) = window.windowMinutes.multipliedReportingOverflow(by: 60_000)
@@ -2863,7 +2934,7 @@ public struct OverviewRequestSet: Sendable {
 		timeZone: TimeZone
 	) -> Codexpulse_Core_V1_UTCTimeRange? {
 		let windows = quota.current.windows.filter {
-			["cursor.models", "cursor.other_models"].contains($0.limitID)
+			["cursor.models", "cursor.other_models", "grok.included_credits"].contains($0.limitID)
 				&& $0.hasWindowMinutes && $0.windowMinutes > 0 && $0.hasResetsAtMs
 		}
 		guard let window = windows.first(where: { $0.limitID == "cursor.models" })

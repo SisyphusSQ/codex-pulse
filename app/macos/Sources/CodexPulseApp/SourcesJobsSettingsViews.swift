@@ -480,6 +480,13 @@ struct SettingsView: View {
                 .disabled(!editable("online.quotaEnabled", response) || settingsAreBusy)
             Toggle("启用重置额度采集", isOn: draftBinding(\.resetCreditsEnabled))
                 .disabled(!editable("online.resetCreditsEnabled", response) || settingsAreBusy)
+            Toggle("启用 Grok 额度采集", isOn: draftBinding(\.grokQuotaEnabled))
+                .disabled(!editable("online.grokQuotaEnabled", response) || settingsAreBusy)
+            Toggle("自动续期 Grok 登录凭据", isOn: draftBinding(\.grokAutoRefreshEnabled))
+                .disabled(!editable("online.grokAutoRefreshEnabled", response) || settingsAreBusy)
+            Text("临近到期时安全更新本机 ~/.grok/auth.json；关闭后不会改写 Grok 凭据。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

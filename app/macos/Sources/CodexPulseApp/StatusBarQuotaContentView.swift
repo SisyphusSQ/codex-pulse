@@ -15,7 +15,7 @@ final class StatusBarQuotaContentView: NSView {
 
     var preferredWidth: CGFloat {
         guard let summary else {
-            if provider == .cursor, let lines = cursorFallbackLines {
+            if provider.usesOfficialPeriodRing, let lines = cursorFallbackLines {
                 let detailWidth = lines.reduce(CGFloat.zero) {
                     max($0, textWidth($1, font: $1 == lines.first ? primaryFont : secondaryFont))
                 }
@@ -94,7 +94,7 @@ final class StatusBarQuotaContentView: NSView {
     }
 
     private func drawFallback() {
-        if provider == .cursor, let lines = cursorFallbackLines {
+        if provider.usesOfficialPeriodRing, let lines = cursorFallbackLines {
             drawCursorFallback(lines)
             return
         }

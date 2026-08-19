@@ -618,6 +618,8 @@ private struct MenuBarPopoverView: View {
 		switch model.statusProvider {
 		case .cursor:
 			cursorContent
+		case .grok:
+			grokContent
 		case .codex:
 			if let overview = model.statusPresentation {
                     VStack(alignment: .leading, spacing: 18) {
@@ -648,13 +650,57 @@ private struct MenuBarPopoverView: View {
 	}
 
 	@ViewBuilder
+	private var grokContent: some View {
+		if let overview = model.statusPresentation {
+			VStack(alignment: .leading, spacing: 18) {
+				quotaSection(overview)
+				dailyTrendSection(overview, copy: grokDailyTrendCopy(overview))
+				if preferences.showCostSummary { costSection(overview) }
+				if preferences.showProjectRanking {
+					projectRankingSection(overview, copy: grokProjectRankingCopy(overview))
+				}
+			}
+			.padding(.horizontal, 18)
+			.padding(.vertical, 16)
+			.background(PopoverCaptureDocumentProbe(source: captureSource).allowsHitTesting(false))
+		} else {
+			statusLoadingContent
+		}
+	}
+
+	private func grokDailyTrendCopy(_ overview: OverviewPresentation) -> DailyTrendCopy {
+		if overview.requestedRange == .quotaMonth, overview.effectiveRange == .quotaMonth {
+			return .monthly
+		}
+		if overview.requestedRange == .quotaWeek, overview.effectiveRange == .quotaWeek, !overview.fellBackFromQuotaWeek {
+			return .weekly
+		}
+		return .currentPeriod
+	}
+
+	private func grokProjectRankingCopy(
+		_ overview: OverviewPresentation
+	) -> ProjectRankingCopy {
+		if overview.requestedRange == .quotaMonth, overview.effectiveRange == .quotaMonth {
+			return .monthly
+		}
+		if overview.requestedRange == .quotaWeek,
+			overview.effectiveRange == .quotaWeek,
+			!overview.fellBackFromQuotaWeek
+		{
+			return .weekly
+		}
+		return .currentPeriod
+	}
+
+	@ViewBuilder
 	private var cursorContent: some View {
 		if let overview = model.statusPresentation {
 			let summary = CursorOverviewSummaryPresentation(overview)
 			VStack(alignment: .leading, spacing: 18) {
 				quotaSection(overview)
 				cursorTodaySection(summary)
-				dailyTrendSection(overview, title: "本月每日 Token")
+				dailyTrendSection(overview, copy: .monthly)
 				if let billing = summary.billing {
 					cursorBillingSection(billing)
 				}
@@ -901,7 +947,7 @@ private struct MenuBarPopoverView: View {
 
     private func dailyTrendSection(
 		_ overview: OverviewPresentation,
-		title: String = "本周每日 Token"
+		copy: DailyTrendCopy = .weekly
 	) -> some View {
         let buckets = overview.weeklyUsageModelTrend
         let modelNames = dailyTrendModelNames(buckets)
@@ -909,16 +955,16 @@ private struct MenuBarPopoverView: View {
         let selectedBucket = buckets.first { $0.key == selectedDailyTrendKey }
         return VStack(alignment: .leading, spacing: 10) {
             PopoverSectionTitle(
-				title: title,
+				title: copy.title,
                 systemImage: "chart.bar.fill",
                 localization: model.localization
             )
             PulseCard {
                 if !overview.weeklyUsageAvailable {
-                    Text("本周用量趋势暂时不可用")
+					Text(verbatim: model.localization.textValue(copy.unavailableText))
                         .foregroundStyle(.secondary)
                 } else if buckets.isEmpty {
-                    Text("本周还没有每日用量")
+					Text(verbatim: model.localization.textValue(copy.emptyText))
                         .foregroundStyle(.secondary)
                 } else {
                     VStack(alignment: .leading, spacing: 10) {
@@ -1197,20 +1243,23 @@ private struct MenuBarPopoverView: View {
         }
     }
 
-    private func projectRankingSection(_ overview: OverviewPresentation) -> some View {
+    private func projectRankingSection(
+		_ overview: OverviewPresentation,
+		copy: ProjectRankingCopy = .weekly
+	) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             PopoverSectionTitle(
-                title: "本周项目 Token 排行",
+                title: copy.title,
                 systemImage: "chart.bar.xaxis",
                 localization: model.localization
             )
             PulseCard(padding: 0) {
                 if !overview.weeklyProjectRankingAvailable {
-                    Text("周额度项目排行暂时不可用")
+					Text(verbatim: model.localization.textValue(copy.unavailableText))
                         .foregroundStyle(.secondary)
                         .padding(12)
                 } else if overview.weeklyProjectRanking.isEmpty {
-                    Text("本周暂无已归类项目用量")
+					Text(verbatim: model.localization.textValue(copy.emptyText))
                         .foregroundStyle(.secondary)
                         .padding(12)
                 } else {
@@ -1223,7 +1272,7 @@ private struct MenuBarPopoverView: View {
                                     .frame(width: 18)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(project.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                                    Text("周额度周期")
+									Text(verbatim: model.localization.textValue(copy.periodLabel))
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
@@ -1252,6 +1301,54 @@ private struct MenuBarPopoverView: View {
             ? localization.textValue("无近期到期")
             : localization.format("最近到期 %@", minimumRemainingText(credits))
     }
+}
+
+private struct DailyTrendCopy {
+	let title: String
+	let unavailableText: String
+	let emptyText: String
+
+	static let weekly = Self(
+		title: "本周每日 Token",
+		unavailableText: "本周用量趋势暂时不可用",
+		emptyText: "本周还没有每日用量"
+	)
+	static let monthly = Self(
+		title: "本月每日 Token",
+		unavailableText: "本月用量趋势暂时不可用",
+		emptyText: "本月还没有每日用量"
+	)
+	static let currentPeriod = Self(
+		title: "每日 Token",
+		unavailableText: "当前额度周期用量趋势暂时不可用",
+		emptyText: "当前额度周期还没有每日用量"
+	)
+}
+
+private struct ProjectRankingCopy {
+	let title: String
+	let periodLabel: String
+	let unavailableText: String
+	let emptyText: String
+
+	static let weekly = Self(
+		title: "本周项目 Token 排行",
+		periodLabel: "周额度周期",
+		unavailableText: "周额度项目排行暂时不可用",
+		emptyText: "本周暂无已归类项目用量"
+	)
+	static let monthly = Self(
+		title: "本月项目 Token 排行",
+		periodLabel: "月额度周期",
+		unavailableText: "月额度项目排行暂时不可用",
+		emptyText: "本月暂无已归类项目用量"
+	)
+	static let currentPeriod = Self(
+		title: "项目 Token 排行",
+		periodLabel: "当前额度周期",
+		unavailableText: "当前额度周期项目排行暂时不可用",
+		emptyText: "当前额度周期暂无已归类项目用量"
+	)
 }
 
 private enum PopoverRoute {
@@ -1550,7 +1647,7 @@ private struct StatusDisplaySettingsView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         SettingsToggle(identifier: "cost-summary", title: "显示 API 成本摘要", subtitle: "当前周额度周期的本地 API 等价估算", value: $preferences.showCostSummary)
                         Divider()
-                        SettingsToggle(identifier: "project-ranking", title: "显示项目排行", subtitle: "按周额度周期展示 Token 前 5 的已归类项目", value: $preferences.showProjectRanking)
+                        SettingsToggle(identifier: "project-ranking", title: "显示项目排行", subtitle: "按当前额度周期展示 Token 前 5 的已归类项目", value: $preferences.showProjectRanking)
                     }
                 }
                 Button(action: onOpenSettings) {

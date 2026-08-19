@@ -183,7 +183,8 @@ GitHub Actions 当前按用户要求停用；最终验收使用本地 gate 并�
 1. Codex-only 本地账本和工作台。
 2. live 运行态：进程、端口、Git 状态和 PID 到 JSONL 的映射；不扩展成 Waiting/Blocked/Done Session 状态机。
 3. 配额提醒：阈值、burn rate 和可信度状态栏文案。
-4. 个人工作流：项目别名、Obsidian 摘要、高成本 Session 诊断、Tailscale 只读视图和多 agent provider。
+4. 个人工作流：项目别名、Obsidian 摘要、高成本 Session 诊断、Tailscale 只读视图。
+5. Grok 作为第三个独立客户端：本地 Session / Project / Token / Tool、账号胶囊与非稳定 credits 额度；显示名为“Grok”，不与 Cursor 内 Grok 模型对账。详见 [Agent Provider、Cursor 与 Grok](../providers/README.md)。
 
 ## 明确不做
 

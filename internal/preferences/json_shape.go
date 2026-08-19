@@ -44,7 +44,10 @@ func validateCurrentJSONShape(content []byte) error {
 	if err := validateCodexHomeJSON(root["codex_home"]); err != nil {
 		return err
 	}
-	if _, err := decodeObjectField(root, "online", "quota_enabled", "reset_credits_enabled"); err != nil {
+	if _, err := decodeObjectFieldExact(root, "online",
+		[]string{"quota_enabled", "reset_credits_enabled"},
+		[]string{"grok_quota_enabled", "grok_auto_refresh_enabled"},
+	); err != nil {
 		return err
 	}
 	if _, err := decodeObjectField(root, "refresh",

@@ -418,6 +418,11 @@ private func testReferencePriceFormattingPreservesPrecisionAndUnknown() throws {
 		ReferencePriceFormatter.sourceURL(response)?.host == "cursor.com",
 		"official Cursor pricing source URL must remain linkable"
 	)
+	response.sourceURL = "https://docs.x.ai/developers/pricing"
+	try expect(
+		ReferencePriceFormatter.sourceURL(response)?.host == "docs.x.ai",
+		"official xAI pricing source URL must remain linkable"
+	)
     for hiddenModel in [
         "gpt-5",
         "gpt-5-codex",
@@ -603,10 +608,11 @@ private func testCursorQuotaSurfacesUseOfficialMonthlyWindows() throws {
 	try expect(
 		quota.contains("Cursor 额度与用量")
 			&& quota.contains("provider: model.selectedProvider")
-			&& quota.contains("provider == .cursor ? \"已使用\" : \"剩余\"")
+			&& quota.contains("quotaUsageLabel")
 			&& quota.contains("if provider == .codex")
+			&& quota.contains("case .grok:")
 			&& !quota.contains("if model.selectedProvider == .codex {\n\t\t\t\t\tquotaSection"),
-		"Cursor quota detail must share the Codex layout while hiding Codex-only reset controls"
+		"Quota detail must share the Codex layout, support Grok, and hide Codex-only reset controls"
 	)
 }
 
@@ -1115,6 +1121,33 @@ private func testStatusPopoverShowsLocalizedModelDailyTrend() throws {
     )
 }
 
+private func testGrokStatusPopoverShowsPeriodTokenTrendAndProjectRanking() throws {
+    let source = try mainWindowSource("StatusItemController.swift")
+    guard let grokStart = source.range(of: "private var grokContent"),
+          let cursorStart = source.range(
+              of: "private var cursorContent",
+              range: grokStart.upperBound..<source.endIndex
+          )
+    else {
+        throw TestFailure.mismatch("Grok popover content was unavailable")
+    }
+    let grokContent = source[grokStart.lowerBound..<cursorStart.lowerBound]
+    guard let quota = grokContent.range(of: "quotaSection(overview)"),
+          let trend = grokContent.range(
+              of: "dailyTrendSection(overview, copy: grokDailyTrendCopy(overview))"
+          ),
+          let projects = grokContent.range(of: "projectRankingSection(overview")
+    else {
+        throw TestFailure.mismatch(
+            "Grok popover must expose quota, daily Token trend, and project Token ranking"
+        )
+    }
+    try expect(
+        quota.lowerBound < trend.lowerBound && trend.lowerBound < projects.lowerBound,
+        "Grok popover must place the two period Token cards below quota in reading order"
+    )
+}
+
 private func testPopoverHeaderMatchesSessionNestLayoutAndNeutralFocus() throws {
     let source = try mainWindowSource("StatusItemController.swift")
     let regularSize = MenuBarPopoverLayout.contentSize(availableScreenHeight: 900)
@@ -1190,6 +1223,17 @@ private func testCursorPopoverShowsLocalAccountAndOmitsTodayActivity() throws {
 			&& !source.contains("if selectedProvider == .codex {\n\t\t\t\t\tPopoverAccountCapsule"),
 		"the account capsule must be available for Cursor as well as Codex"
 	)
+}
+
+private func testGrokPopoverShowsAccountAndSubscriptionPlan() throws {
+	var account = Codexpulse_Core_V1_AccountSnapshotResponse()
+	account.account.type = "grok"
+	account.account.email = "person@example.com"
+	account.account.planType = "GrokPro"
+	let summary = PopoverAccountSummaryPresentation(account: CodexAccountPresentation(account))
+	try expect(summary.availability == .available, "Grok account facts must be available")
+	try expect(summary.planText == "Grok Pro", "Grok subscription tier must use product copy")
+	try expect(summary.emailText == "person@example.com", "Grok email must remain user-visible")
 }
 
 private func testPopoverAccountSummaryDistinguishesEmptyAndUnavailableData() throws {
@@ -1651,10 +1695,15 @@ private func testSidebarSettingsUsesSystemRowSpacing() throws {
 
 private func testUsageSidebarOrdersInvocationBeforeQuota() throws {
     try expect(
-        Array(AppFeature.allCases.prefix(5))
+        AppFeature.usageFeatures(for: .codex)
             == [.overview, .sessions, .projects, .invocationUsage, .quotaUsage],
         "usage sidebar must place invocation statistics immediately before quota usage"
     )
+	try expect(
+		AppFeature.usageFeatures(for: .grok)
+			== [.overview, .sessions, .projects, .quotaUsage],
+		"Grok usage sidebar must omit invocation statistics"
+	)
 }
 
 private func testOverviewHeaderAndBreakdownStayLocaleStable() throws {
@@ -4603,6 +4652,7 @@ private func testSettingsRevisionRequest() throws {
     response.snapshot.revision = "revision-1"
     response.snapshot.online.quotaEnabled = false
     response.snapshot.online.resetCreditsEnabled = true
+    response.snapshot.online.grokAutoRefreshEnabled = true
     response.snapshot.refresh.quotaIntervalSeconds = 300
     response.snapshot.refresh.resetCreditsIntervalSeconds = 600
     response.snapshot.refresh.reconcileIntervalSeconds = 900
@@ -4624,10 +4674,14 @@ private func testSettingsRevisionRequest() throws {
     localeEditable.key = "ui.locale"
     localeEditable.editable = true
     localeEditable.options = ["system", "zh-CN", "en-US"]
-    response.editableFields = [editable, updateChannelEditable, localeEditable]
+    var grokAutoRefreshEditable = Codexpulse_Core_V1_EditableField()
+    grokAutoRefreshEditable.key = "online.grokAutoRefreshEnabled"
+    grokAutoRefreshEditable.editable = true
+    response.editableFields = [editable, updateChannelEditable, localeEditable, grokAutoRefreshEditable]
 
     var draft = SettingsDraft(response)
     draft.quotaEnabled = true
+    draft.grokAutoRefreshEnabled = false
     draft.resetCreditsEnabled = false
     draft.quotaIntervalSeconds = 1
     draft.updateChannel = "prerelease"
@@ -4636,6 +4690,9 @@ private func testSettingsRevisionRequest() throws {
     try expect(
         request.expectedRevision == "revision-1", "settings write must carry authoritative revision")
     try expect(request.online.quotaEnabled, "editable field must carry the draft")
+    try expect(
+        !request.online.grokAutoRefreshEnabled,
+        "editable Grok auto-refresh field must carry the user's explicit opt-out")
     try expect(
         request.online.resetCreditsEnabled, "non-editable field must preserve authoritative truth")
     try expect(
@@ -4959,6 +5016,13 @@ private func testAgentProviderScopesAndIndependentPersistence() async throws {
             && sessions.query.provider.provider == AgentProvider.cursor.rawValue,
         "every provider-owned request must carry an explicit Cursor scope"
     )
+	let grokUsage = FeatureRequestFactory.usage(range: .today, provider: .grok)
+	try expect(
+		AgentProvider.allCases.map(\.rawValue) == ["codex", "cursor", "grok"]
+			&& AgentProvider.grok.title == "Grok"
+			&& grokUsage.provider.provider == AgentProvider.grok.rawValue,
+		"Grok must be an explicit third client, not a Cursor model alias"
+	)
 
     let suiteName = "CodexPulseAppTests.Provider.\(UUID().uuidString)"
     guard let defaults = UserDefaults(suiteName: suiteName) else {
@@ -5195,8 +5259,67 @@ private func testRuntimeCursorSwitchRequestsMonthlyOverviewAndIndependentTodaySu
 	_ = await runtime.shutdown()
 }
 
-private func testCursorStatusOverviewSkipsUnusedInvocationAndProjectQueries() async throws {
+@MainActor
+private func testGrokProviderDoesNotExposeOrRequestInvocationStatistics() async throws {
+	let suiteName = "CodexPulseAppTests.GrokInvocationStatistics.\(UUID().uuidString)"
+	guard let defaults = UserDefaults(suiteName: suiteName) else {
+		throw TestFailure.mismatch("Grok invocation statistics defaults suite unavailable")
+	}
+	defer { defaults.removePersistentDomain(forName: suiteName) }
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
 	let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+	let model = AppModel(
+		runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+		providerDefaults: defaults
+	)
+
+	model.start()
+	try await waitUntil("initial Codex overview before Grok invocation removal") {
+		await MainActor.run { model.presentation?.provider == .codex }
+	}
+	model.navigate(to: .invocationUsage)
+	model.selectProvider(.grok)
+	try await waitUntil("Grok overview without invocation statistics") {
+		await MainActor.run { model.presentation?.provider == .grok }
+	}
+	model.navigate(to: .invocationUsage)
+	model.loadInvocationUsage()
+	try await sleepForTest(.milliseconds(40))
+
+	let grokInvocationRequests = await core.recordedInvocationRequests().filter {
+		$0.provider.provider == AgentProvider.grok.rawValue
+	}
+	try expect(
+		model.selectedFeature == .overview && grokInvocationRequests.isEmpty,
+		"Grok must return to its overview and never request invocation statistics"
+	)
+	_ = await model.shutdown()
+}
+
+private func testCursorStatusOverviewSkipsUnusedInvocationAndProjectQueries() async throws {
+	let base = makeResponses()
+	var quota = base.quota
+	var monthly = quota.current.windows[0]
+	monthly.windowKind = "monthly"
+	monthly.limitID = "cursor.models"
+	monthly.windowMinutes = 30 * 24 * 60
+	monthly.resetsAtMs = quota.current.evaluatedAtMs + 3_600_000
+	quota.current.windows = [monthly]
+	let responses = OverviewResponses(
+		provider: .cursor,
+		usage: base.usage,
+		quota: quota,
+		quotaPace: base.quotaPace,
+		account: base.account,
+		sessions: base.sessions,
+		projects: base.projects,
+		health: base.health,
+		tokenActivityUsage: base.tokenActivityUsage,
+		invocationUsage: base.invocationUsage,
+		weeklyProjects: base.weeklyProjects
+	)
+	let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: responses)
 	let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
 	await runtime.start()
 	let invocationBefore = await core.recordedInvocationRequests().count
@@ -5211,6 +5334,53 @@ private func testCursorStatusOverviewSkipsUnusedInvocationAndProjectQueries() as
 		"Cursor status overview must not wait for invocation or project queries that the popover does not render"
 	)
 	_ = await runtime.shutdown()
+}
+
+private func testGrokStatusOverviewLoadsMonthlyPeriodProjectRanking() async throws {
+    let base = makeResponses()
+    var quota = base.quota
+    let evaluatedAtMS = quota.current.evaluatedAtMs
+    let resetAtMS = evaluatedAtMS + 3_600_000
+    var monthly = quota.current.windows[0]
+    monthly.windowKind = "monthly"
+    monthly.limitID = "grok.included_credits"
+    monthly.windowMinutes = 30 * 24 * 60
+    monthly.resetsAtMs = resetAtMS
+    quota.current.windows = [monthly]
+    let responses = OverviewResponses(
+        provider: .grok,
+        usage: base.usage,
+        quota: quota,
+        quotaPace: base.quotaPace,
+        account: base.account,
+        sessions: base.sessions,
+        projects: base.projects,
+        health: base.health,
+        tokenActivityUsage: base.tokenActivityUsage,
+        invocationUsage: base.invocationUsage,
+        weeklyProjects: base.weeklyProjects
+    )
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: responses)
+    let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    await runtime.start()
+
+    let overview = try await runtime.statusOverview(provider: .grok)
+    let rankingRequests = await core.recordedProjectRequests().filter {
+        $0.query.provider.provider == AgentProvider.grok.rawValue
+            && $0.query.filters.contains { $0.field == "confidence" }
+    }
+    let expectedStartAtMS = resetAtMS - monthly.windowMinutes * 60_000
+    try expect(
+        rankingRequests.count == 1
+            && rankingRequests[0].query.exactTimeRange.startAtMs == expectedStartAtMS
+            && rankingRequests[0].query.exactTimeRange.endAtMs == evaluatedAtMS,
+        "Grok monthly status must query the project ranking over the same official period"
+    )
+    try expect(
+        !OverviewPresentation(overview).weeklyProjectRanking.isEmpty,
+        "Grok monthly status must publish the returned period project ranking"
+    )
+    _ = await runtime.shutdown()
 }
 
 @MainActor
@@ -8286,10 +8456,14 @@ private func testInitialInFlightReconnectQueuesOneRecoveryRefresh() async throws
     try await waitUntil("reconnect follow-up updates the status Popover without replay") {
         await statusPopover.latestOverviewTimestamp() != nil
     }
+    try await waitUntil("independent status usage refresh completes after in-flight reconnect") {
+        let stats = await core.overviewRecoveryStats()
+        return stats.usageCalls >= 3 && stats.completedUsageCalls >= 3
+    }
     let stats = await core.overviewRecoveryStats()
     try expect(
         stats.usageCalls == 3 && stats.completedUsageCalls == 3,
-        "reconnect after the first Overview starts must complete one page follow-up and one independent status refresh"
+        "reconnect after the first Overview starts must complete one page follow-up and one independent status refresh, got usage=\(stats.usageCalls) completed=\(stats.completedUsageCalls)"
     )
     try expect(
         stats.maximumConcurrentUsageCalls == 1,
@@ -9140,8 +9314,9 @@ struct CodexPulseAppTestMain {
         try testEveryTokenSurfaceUsesInputOutputBreakdown()
         try testStatusPopoverShowsLocalizedModelDailyTrend()
         try testPopoverHeaderMatchesSessionNestLayoutAndNeutralFocus()
-        try testPopoverAccountSummaryShowsSessionNestAccountFieldsOnly()
+		try testPopoverAccountSummaryShowsSessionNestAccountFieldsOnly()
 		try testCursorPopoverShowsLocalAccountAndOmitsTodayActivity()
+		try testGrokPopoverShowsAccountAndSubscriptionPlan()
         try testPopoverAccountSummaryDistinguishesEmptyAndUnavailableData()
         try testPopoverScreenshotClipboardTextHidesAccountAndPlan()
         try testPopoverProjectActionUsesExactPublicRepositoryURL()
@@ -9262,7 +9437,10 @@ struct CodexPulseAppTestMain {
 		try await testCodexStatusRequestsRemainIndependentFromCursorPage()
 		try await testProviderSwitchDiscardsInFlightOverview()
 		try await testRuntimeCursorSwitchRequestsMonthlyOverviewAndIndependentTodaySummary()
+		try await testGrokProviderDoesNotExposeOrRequestInvocationStatistics()
 		try await testCursorStatusOverviewSkipsUnusedInvocationAndProjectQueries()
+		try await testGrokStatusOverviewLoadsMonthlyPeriodProjectRanking()
+		try testGrokStatusPopoverShowsPeriodTokenTrendAndProjectRanking()
 		try await testStatusProviderReusesTargetCacheWhileRefreshing()
 		try await testPageProviderSwitchLoadsSelectedFeatureBeforeOverviewCompletes()
 		try await testMainProviderReusesTargetOverviewWhileRefreshing()

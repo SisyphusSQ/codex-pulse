@@ -12,7 +12,10 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
 	"github.com/SisyphusSQ/codex-pulse/internal/cursorprovider"
+	"github.com/SisyphusSQ/codex-pulse/internal/grokprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/store"
+	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 func TestAccountSnapshotDoesNotStartReaderAfterConfirmedHomeSwitch(t *testing.T) {
@@ -45,6 +48,108 @@ func TestAccountSnapshotDoesNotStartReaderAfterConfirmedHomeSwitch(t *testing.T)
 	}
 	if readerCalls != 0 {
 		t.Fatalf("account reader calls = %d, want 0", readerCalls)
+	}
+}
+
+func TestAccountSnapshotReadsGrokIdentityFromAuthWhitelist(t *testing.T) {
+	runtime := &applicationLifecycleRuntime{
+		grokAccountReader: func() (grokprovider.AccountSnapshot, error) {
+			return grokprovider.AccountSnapshot{Email: "person@example.com", PrincipalType: "User"}, nil
+		},
+	}
+	account, err := runtime.AccountSnapshot(
+		context.Background(),
+		agentprovider.Scope{Provider: agentprovider.Grok},
+	)
+	if err != nil {
+		t.Fatalf("AccountSnapshot(grok) error = %v", err)
+	}
+	if account.Account == nil || account.Account.Type != agentprovider.Grok ||
+		account.Account.Email == nil || *account.Account.Email != "person@example.com" ||
+		account.Account.PlanType != nil {
+		t.Fatalf("AccountSnapshot(grok) = %#v", account)
+	}
+}
+
+func TestAccountSnapshotUsesGrokSubscriptionProfile(t *testing.T) {
+	runtime := &applicationLifecycleRuntime{
+		grokAccountReader: func() (grokprovider.AccountSnapshot, error) {
+			return grokprovider.AccountSnapshot{Email: "cached@example.com", PrincipalType: "User"}, nil
+		},
+		grokProfileReader: func(context.Context) (grokprovider.AccountSnapshot, error) {
+			return grokprovider.AccountSnapshot{
+				Email: "person@example.com", PrincipalType: "User", Subscription: "GrokPro",
+			}, nil
+		},
+	}
+	account, err := runtime.AccountSnapshot(
+		context.Background(),
+		agentprovider.Scope{Provider: agentprovider.Grok},
+	)
+	if err != nil {
+		t.Fatalf("AccountSnapshot(grok) error = %v", err)
+	}
+	if account.Account == nil || account.Account.Type != agentprovider.Grok ||
+		account.Account.Email == nil || *account.Account.Email != "person@example.com" ||
+		account.Account.PlanType == nil || *account.Account.PlanType != "GrokPro" {
+		t.Fatalf("AccountSnapshot(grok) = %#v", account.Account)
+	}
+}
+
+func TestAccountSnapshotCombinesGrokIdentityAndBillingPlan(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatalf("secure temp directory: %v", err)
+	}
+	database, err := storesqlite.Open(context.Background(), storesqlite.Config{
+		Path: filepath.Join(directory, "codex-pulse-test.db"),
+	})
+	if err != nil {
+		t.Fatalf("sqlite.Open() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := database.Close(context.Background()); err != nil {
+			t.Errorf("Store.Close() error = %v", err)
+		}
+	})
+	repository := store.NewRepository(database)
+	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
+		t.Fatalf("EnsureApplicationSchema() error = %v", err)
+	}
+	if err := repository.ReplaceGrokSnapshot(context.Background(), store.GrokSnapshot{
+		Generation:    1,
+		CollectedAtMS: 2_000,
+	}); err != nil {
+		t.Fatalf("ReplaceGrokSnapshot() error = %v", err)
+	}
+	plan := "SuperGrok Heavy"
+	if err := repository.CommitGrokBillingSnapshot(context.Background(), store.GrokBillingSnapshot{
+		Generation: 1, CollectedAtMS: 2_000, PeriodType: "weekly",
+		PeriodStartMS: 1_000, PeriodEndMS: 8_000, UsedPercent: 12,
+		SubscriptionTier: &plan,
+	}); err != nil {
+		t.Fatalf("CommitGrokBillingSnapshot() error = %v", err)
+	}
+	runtime := &applicationLifecycleRuntime{
+		repository: repository,
+		grokAccountReader: func() (grokprovider.AccountSnapshot, error) {
+			return grokprovider.AccountSnapshot{Email: "person@example.com", PrincipalType: "User"}, nil
+		},
+		grokProfileReader: func(context.Context) (grokprovider.AccountSnapshot, error) {
+			return grokprovider.AccountSnapshot{}, errors.New("profile unavailable")
+		},
+	}
+	account, err := runtime.AccountSnapshot(
+		context.Background(),
+		agentprovider.Scope{Provider: agentprovider.Grok},
+	)
+	if err != nil {
+		t.Fatalf("AccountSnapshot(grok) error = %v", err)
+	}
+	if account.Account == nil || account.Account.Type != agentprovider.Grok ||
+		account.Account.Email == nil || *account.Account.Email != "person@example.com" ||
+		account.Account.PlanType == nil || *account.Account.PlanType != plan {
+		t.Fatalf("AccountSnapshot(grok) = %#v", account.Account)
 	}
 }
 

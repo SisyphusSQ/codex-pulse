@@ -11,8 +11,10 @@
 | 数据 | 后台刷新 | 前台打开或手动刷新 |
 | --- | --- | --- |
 | 5h / weekly quota | 正常 5 分钟；低于 20% 或临近 reset 时 2 分钟 | 上次成功超过 60 秒则立即获取 |
+| Cursor Dashboard / Grok billing | 正常 5 分钟；单 flight，最小间隔不短于各 collector 配置 | 打开对应客户端页面或菜单栏、且距上次成功超过 60 秒则立即获取 |
 | reset credits | 30 分钟 | 打开对应页面或手动刷新时，距上次同类请求已满 60 秒才立即获取 |
 | App Server metadata / JSONL 轻量索引 | 常驻 Helper 每 30 秒 coalesced reconcile；相同 metadata 不推进 generation，未变化 rollout 不读正文 | 前台激活或系统唤醒立即触发；增长文件从 durable offset 追平 |
+| Grok 本地 `summary.json` / `updates.jsonl` | 后台 single-flight，最小 15 秒；已有 snapshot 时不阻塞查询 | 切到 Grok 或手动刷新时若已到期则重建；首次无 snapshot 才同步建立基线 |
 | Session 完整目录对账 | 30 分钟 | 仅显式重建索引时满速 |
 | 进程 / 端口状态 | 30～60 秒 | 前台 5～10 秒 |
 | 活跃项目 Git 状态 | 2～5 分钟 | 打开项目时立即获取 |

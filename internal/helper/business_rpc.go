@@ -296,8 +296,10 @@ func (api *grpcAPI) UpdateSettings(
 	response, err := api.service.UpdateSettings(ctx, core.SettingsUpdateRequest{
 		ExpectedRevision: request.GetExpectedRevision(),
 		Online: core.SettingsOnlineUpdate{
-			QuotaEnabled:        request.GetOnline().GetQuotaEnabled(),
-			ResetCreditsEnabled: request.GetOnline().GetResetCreditsEnabled(),
+			QuotaEnabled:           request.GetOnline().GetQuotaEnabled(),
+			ResetCreditsEnabled:    request.GetOnline().GetResetCreditsEnabled(),
+			GrokQuotaEnabled:       request.GetOnline().GetGrokQuotaEnabled(),
+			GrokAutoRefreshEnabled: request.GetOnline().GetGrokAutoRefreshEnabled(),
 		},
 		Refresh: core.SettingsRefreshUpdate{
 			QuotaIntervalSeconds:        request.GetRefresh().GetQuotaIntervalSeconds(),

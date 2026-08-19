@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/cursorprovider"
+	"github.com/SisyphusSQ/codex-pulse/internal/grokprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/agentrouter"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
@@ -75,7 +77,16 @@ func composeCoreService(
 	cursorService.SetRefreshNotifier(func() {
 		notifyQueryInvalidation(invalidation, context.Background(), core.InvalidationIndex)
 	})
-	providerRouter, err := agentrouter.New(usageService, invocationService, cursorService, cursorService)
+	grokService, err := composeGrokQueryService(repository, preferenceStore)
+	if err != nil {
+		return nil, errors.Join(core.ErrService, err)
+	}
+	grokService.SetRefreshNotifier(func() {
+		notifyQueryInvalidation(invalidation, context.Background(), core.InvalidationIndex)
+	})
+	providerRouter, err := agentrouter.New(
+		usageService, invocationService, cursorService, cursorService, grokService, grokService,
+	)
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
@@ -89,12 +100,12 @@ func composeCoreService(
 	}
 	runtimeService, err := runtimeinfo.NewService(runtimeinfo.Dependencies{
 		Quota: quotaService, Runtime: repository, Preferences: preferenceStore,
-		ProviderSources: cursorService,
+		ProviderSources: combinedProviderRefresher{cursor: cursorService, grok: grokService},
 	})
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
-	quotaRouter, err := agentrouter.NewQuota(runtimeService, cursorService)
+	quotaRouter, err := agentrouter.NewQuota(runtimeService, cursorService, grokService)
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
@@ -102,6 +113,97 @@ func composeCoreService(
 		UsageCost: providerRouter, InvocationUsage: providerRouter, PricingCatalog: pricingService,
 		RuntimeInfo: runtimeService, QuotaInfo: quotaRouter, QueryObserver: queryObserver,
 	})
+}
+
+func composeGrokQueryService(
+	repository *store.Repository,
+	preferenceStore *preferences.FileStore,
+) (*grokprovider.QueryService, error) {
+	disabled, err := grokprovider.NewDisabledQueryService()
+	if err != nil {
+		return nil, err
+	}
+	config, err := grokprovider.DefaultConfig()
+	if err != nil {
+		return disabled, nil
+	}
+	collector, err := grokprovider.NewCollector(repository, config)
+	if err != nil {
+		return disabled, nil
+	}
+	var lastKnownAutoRefresh atomic.Bool
+	lastKnownAutoRefresh.Store(true)
+	auth, err := grokprovider.NewAuthReader(config.AuthPath, time.Now, grokprovider.AuthReaderConfig{
+		RefreshEnabled: func() bool {
+			snapshot, loadErr := preferenceStore.LoadPreferences(context.Background())
+			if loadErr == nil {
+				lastKnownAutoRefresh.Store(snapshot.Online.GrokAutoRefreshEnabled)
+			}
+			return lastKnownAutoRefresh.Load()
+		},
+	})
+	if err != nil {
+		return disabled, nil
+	}
+	billingClient, err := grokprovider.NewBillingClient(grokprovider.BillingClientConfig{
+		BaseURL: config.BillingBaseURL,
+		HTTPClient: &http.Client{
+			Timeout: 15 * time.Second,
+		},
+		TokenSource: auth,
+	})
+	if err != nil {
+		service, queryErr := grokprovider.NewQueryService(collector, repository)
+		if queryErr != nil {
+			return disabled, nil
+		}
+		return service, nil
+	}
+	billingCollector, err := grokprovider.NewBillingCollector(
+		billingClient,
+		repository,
+		grokprovider.BillingCollectorConfig{
+			MinimumRefresh: 5 * time.Minute,
+			Now:            time.Now,
+			Enabled: func() bool {
+				snapshot, loadErr := preferenceStore.LoadPreferences(context.Background())
+				if loadErr != nil {
+					return true
+				}
+				return snapshot.Online.GrokQuotaEnabled
+			},
+		},
+	)
+	if err != nil {
+		service, queryErr := grokprovider.NewQueryService(collector, repository)
+		if queryErr != nil {
+			return disabled, nil
+		}
+		return service, nil
+	}
+	service, err := grokprovider.NewQueryService(collector, repository, billingCollector)
+	if err != nil {
+		return disabled, nil
+	}
+	return service, nil
+}
+
+type combinedProviderRefresher struct {
+	cursor runtimeinfo.ProviderSourceRefresher
+	grok   runtimeinfo.ProviderSourceRefresher
+}
+
+func (refresher combinedProviderRefresher) Refresh(ctx context.Context) error {
+	var first error
+	if refresher.cursor != nil {
+		if err := refresher.cursor.Refresh(ctx); err != nil && first == nil {
+			first = err
+		}
+	}
+	if refresher.grok != nil {
+		_ = refresher.grok.Refresh(ctx)
+	}
+	return first
 }
 
 func openApplicationPreferences() (*preferences.FileStore, error) {

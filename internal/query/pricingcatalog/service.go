@@ -52,8 +52,14 @@ func (service *Service) Current(ctx context.Context, scope agentprovider.Scope) 
 			fmt.Errorf("pricing catalog clock is outside supported range"),
 		)
 	}
-	if provider == agentprovider.Cursor {
+	switch provider {
+	case agentprovider.Cursor:
 		return currentCursorResponse(evaluatedAtMS)
+	case agentprovider.Grok:
+		return currentGrokResponse(evaluatedAtMS)
+	case agentprovider.Codex:
+	default:
+		return CurrentResponse{}, basequery.NewValidationFailure("provider", agentprovider.ErrInvalidProvider)
 	}
 	catalog, err := service.reader.PricingCatalogAt(
 		ctx,
@@ -196,6 +202,62 @@ func currentCursorResponse(evaluatedAtMS int64) (CurrentResponse, error) {
 		ProviderContext: pricingProviderContext(agentprovider.Cursor, SourceCursorDocs, int64(len(items))),
 		Meta:            meta, EvaluatedAtMS: evaluated, PricingVersion: pricing.CursorPricingVersion,
 		Source: SourceCursorDocs, Currency: CurrencyUSD, Basis: BasisCursor,
+		UnitTokens: unitTokens, EffectiveFromMS: effective, VerifiedAtMS: verified,
+		SourceURL: &sourceURL, Items: items,
+	}, nil
+}
+
+func currentGrokResponse(evaluatedAtMS int64) (CurrentResponse, error) {
+	rates := pricing.BuiltinGrokModelRates()
+	items := make([]ModelReferencePrice, 0, len(rates))
+	for _, rate := range rates {
+		input, err := referenceRate(&rate.InputMicros)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		cached, err := referenceRate(&rate.CachedMicros)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		output, err := referenceRate(&rate.OutputMicros)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		cacheWrite, err := referenceRate(nil)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		items = append(items, ModelReferencePrice{
+			ModelID: rate.ModelID, InputMicros: input, CachedInputMicros: cached,
+			OutputMicros: output, CacheWriteMicros: cacheWrite,
+		})
+	}
+	sort.Slice(items, func(left, right int) bool { return items[left].ModelID < items[right].ModelID })
+	meta, err := basequery.NewResponseMeta(basequery.ResponseComplete, nil, nil)
+	if err != nil {
+		return CurrentResponse{}, err
+	}
+	evaluated, err := basequery.KnownNumeric(evaluatedAtMS, basequery.NumericMilliseconds)
+	if err != nil {
+		return CurrentResponse{}, unavailableCatalog()
+	}
+	unitTokens, err := basequery.KnownNumeric(UnitTokens, basequery.NumericTokens)
+	if err != nil {
+		return CurrentResponse{}, unavailableCatalog()
+	}
+	effective, err := basequery.KnownNumeric(0, basequery.NumericMilliseconds)
+	if err != nil {
+		return CurrentResponse{}, unavailableCatalog()
+	}
+	verified, err := basequery.KnownNumeric(pricing.GrokPricingVerifiedAtMS, basequery.NumericMilliseconds)
+	if err != nil {
+		return CurrentResponse{}, unavailableCatalog()
+	}
+	sourceURL := pricing.GrokPricingSourceURL
+	return CurrentResponse{
+		ProviderContext: pricingProviderContext(agentprovider.Grok, SourceXAIDocs, int64(len(items))),
+		Meta:            meta, EvaluatedAtMS: evaluated, PricingVersion: pricing.GrokPricingVersion,
+		Source: SourceXAIDocs, Currency: CurrencyUSD, Basis: BasisGrok,
 		UnitTokens: unitTokens, EffectiveFromMS: effective, VerifiedAtMS: verified,
 		SourceURL: &sourceURL, Items: items,
 	}, nil

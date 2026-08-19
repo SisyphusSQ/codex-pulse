@@ -45,7 +45,8 @@ const (
 	applicationSchemaV24Version = 24
 	applicationSchemaV25Version = 25
 	applicationSchemaV26Version = 26
-	applicationSchemaVersion    = applicationSchemaV26Version
+	applicationSchemaV27Version = 27
+	applicationSchemaVersion    = applicationSchemaV27Version
 )
 
 var (
@@ -302,6 +303,12 @@ var applicationMigrations = []migrationDefinition{
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
 			return storeschema.EnsureObjects(ctx, transaction, cursorDashboardQuotaSchemaObjects)
 		},
+	},
+	{
+		version:  applicationSchemaV27Version,
+		name:     "grok-independent-provider",
+		checksum: applicationSchemaV27Checksum(),
+		apply:    migrateGrokProviderForV27,
 	},
 }
 
@@ -860,7 +867,7 @@ func verifyApplicationSchema(ctx context.Context, transaction *gorm.DB) error {
 		currentQuotaSchemaObjects(), quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
 		metricsSchemaObjects, quotaPerformanceSchemaObjects,
 		storelight.CurrentSchemaObjects(),
-		currentCursorProviderSchemaObjects(),
+		currentProviderSchemaObjects(),
 		cursorDashboardSchemaObjects,
 		cursorDashboardQuotaSchemaObjects,
 	} {
@@ -1293,6 +1300,76 @@ func applicationSchemaV26Checksum() string {
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV27Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV27Version, "grok-independent-provider")
+	_, _ = fmt.Fprintln(hasher, currentAgentProviderSnapshotStatement())
+	_, _ = fmt.Fprintln(hasher, currentAgentProviderSourceStatement())
+	for _, object := range grokProviderSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func migrateGrokProviderForV27(ctx context.Context, transaction *gorm.DB) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: invalid grok provider migration database", ErrMigrationContract)
+	}
+	if err := rebuildAgentProviderRegistryForV27(ctx, transaction); err != nil {
+		return err
+	}
+	return storeschema.EnsureObjects(ctx, transaction, grokProviderSchemaObjects)
+}
+
+func rebuildAgentProviderRegistryForV27(ctx context.Context, transaction *gorm.DB) error {
+	database := transaction.WithContext(ctx)
+	var snapshots []cursorSnapshotModel
+	if err := database.Order("provider").Find(&snapshots).Error; err != nil {
+		return fmt.Errorf("%w: read provider snapshots: %v", ErrMigrationContract, err)
+	}
+	if err := database.Exec(`ALTER TABLE agent_provider_snapshots RENAME TO agent_provider_snapshots_v26`).Error; err != nil {
+		return fmt.Errorf("%w: rename provider snapshots: %v", ErrMigrationContract, err)
+	}
+	if err := storeschema.EnsureObjects(ctx, database, []storeschema.Object{{
+		ObjectType: "table", Name: "agent_provider_snapshots", Statement: currentAgentProviderSnapshotStatement(),
+	}}); err != nil {
+		return err
+	}
+	for _, snapshot := range snapshots {
+		if err := database.Create(&snapshot).Error; err != nil {
+			return fmt.Errorf("%w: restore provider snapshot: %v", ErrMigrationContract, err)
+		}
+	}
+	if err := database.Exec(`DROP TABLE agent_provider_snapshots_v26`).Error; err != nil {
+		return fmt.Errorf("%w: drop provider snapshots v26: %v", ErrMigrationContract, err)
+	}
+
+	var sources []cursorSourceModel
+	if err := database.Order("provider, source_key").Find(&sources).Error; err != nil {
+		return fmt.Errorf("%w: read provider sources: %v", ErrMigrationContract, err)
+	}
+	if err := database.Exec(`ALTER TABLE agent_provider_sources RENAME TO agent_provider_sources_v26`).Error; err != nil {
+		return fmt.Errorf("%w: rename provider sources: %v", ErrMigrationContract, err)
+	}
+	if err := storeschema.EnsureObjects(ctx, database, []storeschema.Object{{
+		ObjectType: "table", Name: "agent_provider_sources", Statement: currentAgentProviderSourceStatement(),
+	}}); err != nil {
+		return err
+	}
+	for _, source := range sources {
+		if err := database.Create(&source).Error; err != nil {
+			return fmt.Errorf("%w: restore provider source: %v", ErrMigrationContract, err)
+		}
+	}
+	if err := database.Exec(`DROP TABLE agent_provider_sources_v26`).Error; err != nil {
+		return fmt.Errorf("%w: drop provider sources v26: %v", ErrMigrationContract, err)
+	}
+	return nil
 }
 
 func addCursorSessionMetadataColumns(ctx context.Context, transaction *gorm.DB) error {

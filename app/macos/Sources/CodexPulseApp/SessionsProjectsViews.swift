@@ -198,9 +198,9 @@ struct SessionsView: View {
                         ForEach(DateRangePreset.allCases.filter {
                             switch $0 {
                             case .quotaWeek:
-                                model.selectedProvider == .codex && model.sessionOptions.exactRange != nil
+                                (model.selectedProvider == .codex || model.selectedProvider == .grok) && model.sessionOptions.exactRange != nil
                             case .quotaMonth:
-                                model.selectedProvider == .cursor && model.sessionOptions.exactRange != nil
+                                (model.selectedProvider == .cursor || model.selectedProvider == .grok) && model.sessionOptions.exactRange != nil
                             default:
                                 true
                             }
@@ -235,8 +235,8 @@ struct SessionsView: View {
                     Picker("排序", selection: $model.sessionOptions.sortField) {
                         Text("最近活动").tag("lastActivityAt")
                         Text("Token").tag("totalTokens")
-						if model.selectedProvider == .codex {
-							Text("API 折算成本").tag("estimatedCost")
+						if model.selectedProvider != .cursor {
+							Text(model.selectedProvider == .grok ? "xAI 参考价" : "API 折算成本").tag("estimatedCost")
 						}
                     }
                     .labelsHidden()
@@ -396,8 +396,7 @@ private struct SessionDetailView: View {
 					if response.providerContext.effectiveProvider != AgentProvider.cursor.rawValue ||
 						response.item.totals.estimatedUsdMicros.hasValue {
 						KeyValueRow(
-							key: response.providerContext.effectiveProvider == AgentProvider.cursor.rawValue
-								? "文档价目估算" : "API 折算成本",
+							key: estimatedCostLabel(response.providerContext.effectiveProvider),
 							value: costText(response.item.totals.estimatedUsdMicros)
 						)
 					}
@@ -529,9 +528,9 @@ struct ProjectsView: View {
                     guard $0 != .all else { return false }
                     switch $0 {
                     case .quotaWeek:
-                        return model.selectedProvider == .codex && model.projectOptions.exactRange != nil
+                        return (model.selectedProvider == .codex || model.selectedProvider == .grok) && model.projectOptions.exactRange != nil
                     case .quotaMonth:
-                        return model.selectedProvider == .cursor && model.projectOptions.exactRange != nil
+                        return (model.selectedProvider == .cursor || model.selectedProvider == .grok) && model.projectOptions.exactRange != nil
                     default:
                         return true
                     }
@@ -554,8 +553,8 @@ struct ProjectsView: View {
             Picker("排序", selection: $model.projectOptions.sortField) {
                 Text("最近活动").tag("lastActivityAt")
                 Text("Token").tag("totalTokens")
-				if model.selectedProvider == .codex {
-					Text("API 折算成本").tag("estimatedCost")
+				if model.selectedProvider != .cursor {
+					Text(model.selectedProvider == .grok ? "xAI 参考价" : "API 折算成本").tag("estimatedCost")
 				}
                 Text("名称").tag("displayName")
             }
@@ -654,8 +653,7 @@ private struct ProjectDetailView: View {
 					if response.providerContext.effectiveProvider != AgentProvider.cursor.rawValue ||
 						response.item.totals.estimatedUsdMicros.hasValue {
 						KeyValueRow(
-							key: response.providerContext.effectiveProvider == AgentProvider.cursor.rawValue
-								? "文档价目估算" : "API 折算成本",
+							key: estimatedCostLabel(response.providerContext.effectiveProvider),
 							value: costText(response.item.totals.estimatedUsdMicros)
 						)
 					}
@@ -836,4 +834,12 @@ private struct TokenTrendView: View {
                 < abs($1.date.timeIntervalSince1970 - selectedDate.timeIntervalSince1970)
         }
     }
+}
+
+private func estimatedCostLabel(_ provider: String) -> String {
+	switch provider {
+	case AgentProvider.cursor.rawValue: "文档价目估算"
+	case AgentProvider.grok.rawValue: "xAI 参考价估算"
+	default: "API 折算成本"
+	}
 }
