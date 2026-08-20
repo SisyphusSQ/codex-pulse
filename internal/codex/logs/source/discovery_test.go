@@ -209,9 +209,9 @@ func TestDiscovererFDEnumerationRejectsDirectorySymlinkRace(t *testing.T) {
 		home:       home,
 		outside:    outside,
 	}
-	discoverer, err := newDiscoverer(home, racedFS)
+	discoverer, err := newDiscovererWithIdentity(home, racedFS, nil)
 	if err != nil {
-		t.Fatalf("newDiscoverer(race) error = %v", err)
+		t.Fatalf("newDiscovererWithIdentity(race) error = %v", err)
 	}
 	current, err := discoverer.DiscoverAgainst(context.Background(), previous.Snapshots)
 	if err != nil {
@@ -251,11 +251,11 @@ func TestDiscovererRecursiveDirectoryDisappearanceProducesSubtreeIssue(t *testin
 		t.Fatalf("Discover(baseline) error = %v", err)
 	}
 
-	discoverer, err := newDiscoverer(home, &directoryDisappearFileSystem{
+	discoverer, err := newDiscovererWithIdentity(home, &directoryDisappearFileSystem{
 		fileSystem: osFileSystem{}, home: home,
-	})
+	}, nil)
 	if err != nil {
-		t.Fatalf("newDiscoverer(disappear) error = %v", err)
+		t.Fatalf("newDiscovererWithIdentity(disappear) error = %v", err)
 	}
 	current, err := discoverer.DiscoverAgainst(context.Background(), previous.Snapshots)
 	if err != nil {
@@ -426,15 +426,15 @@ func TestDiscovererReportsProbeFailuresWithoutPartialSnapshot(t *testing.T) {
 	home := t.TempDir()
 	permissionPath := writeJSONLFixture(t, home, "sessions/permission.jsonl", "private\n")
 	changedPath := writeJSONLFixture(t, home, "sessions/changed.jsonl", "changing\n")
-	discoverer, err := newDiscoverer(home, faultFileSystem{
+	discoverer, err := newDiscovererWithIdentity(home, faultFileSystem{
 		fileSystem: osFileSystem{},
 		probeErrors: map[string]error{
 			permissionPath: fs.ErrPermission,
 			changedPath:    ErrChangedDuringScan,
 		},
-	})
+	}, nil)
 	if err != nil {
-		t.Fatalf("newDiscoverer() error = %v", err)
+		t.Fatalf("newDiscovererWithIdentity() error = %v", err)
 	}
 	result, err := discoverer.Discover(context.Background())
 	if err != nil {

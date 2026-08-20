@@ -30,22 +30,6 @@ type coreComposition struct {
 	apiSubscriptions *apisubscriptions.Service
 }
 
-func composeCoreService(
-	database *storesqlite.Store,
-	preferenceStore *preferences.FileStore,
-	queryObserver core.QueryObserver,
-	invalidation queryInvalidationNotifier,
-	apiKeys apisubscriptions.APIKeyProvider,
-) (*core.Service, error) {
-	composition, err := composeCoreGraph(
-		database, preferenceStore, queryObserver, invalidation, apiKeys, nil,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return composition.service, nil
-}
-
 func composeCoreGraph(
 	database *storesqlite.Store,
 	preferenceStore *preferences.FileStore,

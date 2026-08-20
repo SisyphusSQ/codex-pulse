@@ -3,8 +3,8 @@ package preferences
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"io"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/jsonshape"
 )
 
 func validateLegacyJSONShape(content []byte) error {
@@ -124,60 +124,7 @@ func validateCodexHomeJSON(raw json.RawMessage) error {
 }
 
 func validateJSONDocument(content []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(content))
-	if err := scanJSONValue(decoder); err != nil {
-		return ErrInvalidPreferences
-	}
-	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
-		return ErrInvalidPreferences
-	}
-	return nil
-}
-
-func scanJSONValue(decoder *json.Decoder) error {
-	token, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	delimiter, structured := token.(json.Delim)
-	if !structured {
-		return nil
-	}
-	switch delimiter {
-	case '{':
-		seen := make(map[string]struct{})
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := keyToken.(string)
-			if !ok {
-				return ErrInvalidPreferences
-			}
-			if _, exists := seen[key]; exists {
-				return ErrInvalidPreferences
-			}
-			seen[key] = struct{}{}
-			if err := scanJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		end, err := decoder.Token()
-		if err != nil || end != json.Delim('}') {
-			return ErrInvalidPreferences
-		}
-	case '[':
-		for decoder.More() {
-			if err := scanJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		end, err := decoder.Token()
-		if err != nil || end != json.Delim(']') {
-			return ErrInvalidPreferences
-		}
-	default:
+	if jsonshape.ValidateDocument(content) != nil {
 		return ErrInvalidPreferences
 	}
 	return nil

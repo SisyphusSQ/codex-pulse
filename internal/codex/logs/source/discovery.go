@@ -22,10 +22,6 @@ func NewDiscoverer(home string) (*Discoverer, error) {
 	return newDiscovererWithIdentity(home, osFileSystem{}, nil)
 }
 
-func newDiscoverer(home string, filesystem fileSystem) (*Discoverer, error) {
-	return newDiscovererWithIdentity(home, filesystem, nil)
-}
-
 // NewConfirmedDiscoverer binds discovery to a previously confirmed physical
 // Codex Home identity instead of trusting whichever directory currently owns
 // the path.

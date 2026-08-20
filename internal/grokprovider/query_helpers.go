@@ -746,10 +746,6 @@ func pageInfo(offset, limit, total int, generation int64, fingerprint string) *b
 	return &basequery.PageInfo{Limit: limit, HasMore: hasMore, NextCursor: next}
 }
 
-func nextPage(offset, limit, total int, generation int64, fingerprint string) *basequery.PageInfo {
-	return pageInfo(offset, limit, total, generation, fingerprint)
-}
-
 func queryFingerprint(request basequery.ValidatedRequest) string {
 	var builder strings.Builder
 	for _, term := range request.Sort {

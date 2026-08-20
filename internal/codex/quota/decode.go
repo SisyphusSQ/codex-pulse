@@ -3,13 +3,12 @@ package quota
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"math"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/jsonshape"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -240,68 +239,7 @@ func cloneOptionalString(value *string) *string {
 }
 
 func validateUniqueJSONKeys(content []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(content))
-	decoder.UseNumber()
-	if err := validateJSONValue(decoder); err != nil {
-		return err
-	}
-	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return errors.New("multiple JSON values")
-		}
-		return err
-	}
-	return nil
-}
-
-func validateJSONValue(decoder *json.Decoder) error {
-	token, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	delimiter, composite := token.(json.Delim)
-	if !composite {
-		return nil
-	}
-	switch delimiter {
-	case '{':
-		seen := make(map[string]struct{})
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := keyToken.(string)
-			if !ok {
-				return errors.New("JSON object key is not a string")
-			}
-			if _, duplicate := seen[key]; duplicate {
-				return errors.New("duplicate JSON object key")
-			}
-			seen[key] = struct{}{}
-			if err := validateJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		closing, err := decoder.Token()
-		if err != nil || closing != json.Delim('}') {
-			return errors.New("unterminated JSON object")
-		}
-		return nil
-	case '[':
-		for decoder.More() {
-			if err := validateJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		closing, err := decoder.Token()
-		if err != nil || closing != json.Delim(']') {
-			return errors.New("unterminated JSON array")
-		}
-		return nil
-	default:
-		return errors.New("invalid JSON delimiter")
-	}
+	return jsonshape.ValidateDocument(content)
 }
 
 func isNullJSON(raw json.RawMessage) bool {

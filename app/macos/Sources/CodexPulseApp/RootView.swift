@@ -868,11 +868,6 @@ private struct CursorOverviewContentView: View {
 		return pieces.isEmpty ? session.activity : pieces.joined(separator: " · ")
 	}
 
-	private func dateMetricText(_ metric: DisplayMetric) -> String {
-		guard let value = metricValue(metric) else { return "--" }
-		return dateTimeText(value)
-	}
-
 	private func dateTimeText(_ milliseconds: Int64) -> String {
 		let formatter = DateFormatter()
 		formatter.locale = localization.locale
@@ -886,15 +881,6 @@ private struct CursorOverviewTrendPoint: Identifiable {
 	let id: String
 	let date: Date
 	let tokens: Int64
-}
-
-private func cursorDataAsOfText(_ milliseconds: Int64?, timeZone: String) -> String? {
-	guard let milliseconds else { return nil }
-	let formatter = DateFormatter()
-	formatter.locale = AppLocalizationRegistry.shared.current.locale
-	formatter.timeZone = TimeZone(identifier: timeZone) ?? .current
-	formatter.dateFormat = "M-d HH:mm"
-	return formatter.string(from: Date(timeIntervalSince1970: Double(milliseconds) / 1_000))
 }
 
 private struct OverviewContentView: View {

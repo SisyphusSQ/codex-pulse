@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strings"
 
 	"gorm.io/gorm"
 )
@@ -498,8 +497,4 @@ func normalizeGrokSessionPresentation(session *GrokSession) {
 
 func validGrokTitleSource(value string) bool {
 	return value == "grok_summary" || value == "fallback"
-}
-
-func safeGrokLabel(value string) bool {
-	return safeCursorLabel(strings.TrimSpace(value))
 }

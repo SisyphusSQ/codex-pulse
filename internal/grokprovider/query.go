@@ -342,7 +342,7 @@ func (service *QueryService) ListSessions(ctx context.Context, request basequery
 	matchedTotals.TurnCount = known(sessionRequestCount(sessions), basequery.NumericCount)
 	pageTotals.TurnCount = known(sessionRequestCount(slicePage(sessions, offset, limit)), basequery.NumericCount)
 	return usagecost.SessionListResponse{
-		ProviderContext: contextFor(snapshot), Meta: completeMeta(nextPage(offset, limit, len(sessions), snapshot.Generation, queryFingerprint(validated))),
+		ProviderContext: contextFor(snapshot), Meta: completeMeta(pageInfo(offset, limit, len(sessions), snapshot.Generation, queryFingerprint(validated))),
 		Items: items, MatchedCount: known(int64(len(sessions)), basequery.NumericCount),
 		MatchedTotals: matchedTotals, PageTotals: pageTotals,
 	}, nil
@@ -450,7 +450,7 @@ func (service *QueryService) ListProjects(ctx context.Context, request basequery
 	globalTotals, _ := totalsForUsageEvents(rangeEvents)
 	pageTotals, _ := totalsForUsageEvents(pageEvents)
 	return usagecost.ProjectListResponse{
-		ProviderContext: contextFor(snapshot), Meta: completeMeta(nextPage(offset, limit, len(groups), snapshot.Generation, queryFingerprint(validated))),
+		ProviderContext: contextFor(snapshot), Meta: completeMeta(pageInfo(offset, limit, len(groups), snapshot.Generation, queryFingerprint(validated))),
 		Range: *validated.TimeRange, ReportingTimeZone: validated.TimeRange.TimeZone, PricingVersions: []string{},
 		Items: items, MatchedCount: known(int64(len(groups)), basequery.NumericCount),
 		GlobalTotals: globalTotals, MatchedTotals: globalTotals, PageTotals: pageTotals,

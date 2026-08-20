@@ -228,7 +228,7 @@ func TestHomeProbeRejectsAncestorReplacementBetweenCanonicalizeAndOpen(t *testin
 		fileSystem: osFileSystem{}, ancestor: ancestor,
 		original: filepath.Join(root, "original"), outside: outside,
 	}
-	if _, err := newHomeProbe(filesystem).Probe(context.Background(), home); !errors.Is(err, ErrUnsafeHome) {
+	if _, err := (&HomeProbe{filesystem: filesystem}).Probe(context.Background(), home); !errors.Is(err, ErrUnsafeHome) {
 		t.Fatalf("Probe(ancestor replacement) error = %v, want ErrUnsafeHome", err)
 	}
 }
@@ -250,7 +250,7 @@ func TestHomeProbeRejectsRealDirectoryReplacementBetweenCanonicalizeAndOpen(t *t
 		fileSystem: osFileSystem{}, ancestor: ancestor,
 		original: filepath.Join(root, "original"), replacement: replacement,
 	}
-	probe := newHomeProbe(filesystem)
+	probe := &HomeProbe{filesystem: filesystem}
 	for attempt := 0; attempt < 2; attempt++ {
 		metadata, err := probe.Probe(context.Background(), home)
 		if !errors.Is(err, ErrHomeChanged) {
@@ -272,7 +272,7 @@ func TestHomeProbeRejectsDeterministicDirectoryRaces(t *testing.T) {
 		writeJSONLFixture(t, home, "sessions/nested/original.jsonl", "original\n")
 		writeJSONLFixture(t, home, "replacement/replaced.jsonl", "replaced\n")
 		filesystem := &homeDirectoryReplaceFileSystem{fileSystem: osFileSystem{}, home: home}
-		if _, err := newHomeProbe(filesystem).Probe(context.Background(), home); !errors.Is(err, ErrChangedDuringScan) {
+		if _, err := (&HomeProbe{filesystem: filesystem}).Probe(context.Background(), home); !errors.Is(err, ErrChangedDuringScan) {
 			t.Fatalf("Probe(directory replacement) error = %v, want ErrChangedDuringScan", err)
 		}
 	})
@@ -284,7 +284,7 @@ func TestHomeProbeRejectsDeterministicDirectoryRaces(t *testing.T) {
 		filesystem := &homeEntryAddFileSystem{
 			fileSystem: osFileSystem{}, home: home, outside: outside,
 		}
-		if _, err := newHomeProbe(filesystem).Probe(context.Background(), home); !errors.Is(err, ErrChangedDuringScan) {
+		if _, err := (&HomeProbe{filesystem: filesystem}).Probe(context.Background(), home); !errors.Is(err, ErrChangedDuringScan) {
 			t.Fatalf("Probe(entry added) error = %v, want ErrChangedDuringScan", err)
 		}
 	})
@@ -293,7 +293,7 @@ func TestHomeProbeRejectsDeterministicDirectoryRaces(t *testing.T) {
 		home := t.TempDir()
 		writeJSONLFixture(t, home, "sessions/nested/original.jsonl", "original\n")
 		filesystem := &directoryDisappearFileSystem{fileSystem: osFileSystem{}, home: home}
-		if _, err := newHomeProbe(filesystem).Probe(context.Background(), home); !errors.Is(err, ErrChangedDuringScan) {
+		if _, err := (&HomeProbe{filesystem: filesystem}).Probe(context.Background(), home); !errors.Is(err, ErrChangedDuringScan) {
 			t.Fatalf("Probe(child removed) error = %v, want ErrChangedDuringScan", err)
 		}
 	})
