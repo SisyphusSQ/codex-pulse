@@ -1,26 +1,5 @@
 import Foundation
 
-public enum QuotaRemainingLevel: Equatable, Sendable {
-    case healthy
-    case warning
-    case critical
-    case unavailable
-
-    public init(remainingPercent: Double?) {
-        guard let remainingPercent, remainingPercent.isFinite else {
-            self = .unavailable
-            return
-        }
-        if remainingPercent <= 20 {
-            self = .critical
-        } else if remainingPercent <= 40 {
-            self = .warning
-        } else {
-            self = .healthy
-        }
-    }
-}
-
 public enum StatusBarQuotaDataState: Equatable, Sendable {
     case fresh
     case stale

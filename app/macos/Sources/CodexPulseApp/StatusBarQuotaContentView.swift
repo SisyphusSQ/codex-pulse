@@ -290,7 +290,7 @@ final class StatusBarQuotaContentView: NSView {
 
     private func accentColor(_ summary: StatusBarQuotaPresentation) -> NSColor {
         guard summary.dataState.preservesRemainingColor else { return .secondaryLabelColor }
-        switch QuotaRemainingLevel(remainingPercent: summary.remainingPercent) {
+        switch QuotaLevel(remainingPercent: summary.remainingPercent) {
         case .healthy: return NSColor.systemGreen
         case .warning: return NSColor.systemYellow
         case .critical: return NSColor.systemRed

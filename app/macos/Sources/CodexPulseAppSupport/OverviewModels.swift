@@ -627,6 +627,14 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
 	}
 }
 
+public enum OverviewQuotaWindowResolver {
+    public static func visibleWindows(
+        _ windows: [QuotaWindowPresentation]
+    ) -> [QuotaWindowPresentation] {
+        Array(windows.prefix(4))
+    }
+}
+
 public enum QuotaWindowDisplayResolver {
     private struct WindowKey: Hashable {
         let limitID: String

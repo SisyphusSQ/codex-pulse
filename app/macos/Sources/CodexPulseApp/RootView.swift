@@ -451,11 +451,20 @@ private struct CursorOverviewContentView: View {
 			if !overview.quotaAvailable || overview.quotaWindows.isEmpty {
 				Text("暂时无法获取额度").foregroundStyle(.secondary)
 			} else {
-				ForEach(Array(overview.quotaWindows.prefix(2).enumerated()), id: \.element.id) {
-					index, window in
+				ForEach(
+					Array(
+						OverviewQuotaWindowResolver.visibleWindows(overview.quotaWindows)
+							.enumerated()
+					),
+					id: \.element.id
+				) { index, window in
 					let reset = QuotaResetPresentation(
 						resetsAtMS: window.resetsAtMS,
 						resetRemainingMS: window.resetRemainingMS
+					)
+					let progress = QuotaProgressPresentation(
+						usedPercent: window.usedPercent,
+						localization: localization
 					)
 					if index > 0 { Divider().frame(height: 64) }
 					VStack(alignment: .leading, spacing: 5) {
@@ -465,12 +474,15 @@ private struct CursorOverviewContentView: View {
 							Text("已使用")
 								.font(.caption)
 								.foregroundStyle(.secondary)
-							Text(window.usedPercent.map { localization.percent($0) } ?? "--")
+							Text(progress.percentText)
 								.font(.subheadline.bold())
 								.monospacedDigit()
+								.foregroundStyle(quotaLevelColor(progress.level))
 						}
-						ProgressView(value: (window.usedPercent ?? 0) / 100)
-							.tint(.green)
+						ProgressView(value: progress.fraction)
+							.tint(quotaLevelColor(progress.level))
+							.accessibilityLabel(localization.textValue("已使用"))
+							.accessibilityValue(progress.accessibilityValue)
 						Text(reset.compactText)
 							.font(.caption)
 							.foregroundStyle(.secondary)
@@ -970,24 +982,35 @@ private struct OverviewContentView: View {
                 Text("暂时无法获取额度")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(Array(overview.quotaWindows.prefix(2).enumerated()), id: \.element.id) {
-                    index, window in
+                ForEach(
+                    Array(
+                        OverviewQuotaWindowResolver.visibleWindows(overview.quotaWindows)
+                            .enumerated()
+                    ),
+                    id: \.element.id
+                ) { index, window in
                     let reset = QuotaResetPresentation(
                         resetsAtMS: window.resetsAtMS,
                         resetRemainingMS: window.resetRemainingMS
+                    )
+                    let progress = QuotaProgressPresentation(
+                        remainingPercent: window.remainingPercent,
+                        localization: localization
                     )
                     if index > 0 { Divider().frame(height: 48) }
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 8) {
                             Text(window.title).font(.subheadline.weight(.medium))
-                            Text(percentText(window.remainingPercent))
+                            Text(progress.percentText)
                                 .font(.subheadline.bold())
                                 .monospacedDigit()
-                                .foregroundStyle(quotaColor(window.remainingPercent))
+                                .foregroundStyle(quotaLevelColor(progress.level))
                         }
-                        ProgressView(value: quotaProgress(window.remainingPercent))
-                            .tint(quotaColor(window.remainingPercent))
+                        ProgressView(value: progress.fraction)
+                            .tint(quotaLevelColor(progress.level))
                             .frame(width: 132)
+                            .accessibilityLabel(localization.textValue("剩余"))
+                            .accessibilityValue(progress.accessibilityValue)
                         Text(reset.compactText)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -1462,23 +1485,6 @@ private struct OverviewContentView: View {
     private func projectFraction(_ metric: DisplayMetric) -> Double? {
         guard let total = projectTokenTotal, let value = metricValue(metric) else { return nil }
         return min(max(Double(value) / Double(total), 0), 1)
-    }
-
-    private func percentText(_ value: Double?) -> String {
-        value.map { localization.percent($0) } ?? "--"
-    }
-
-    private func quotaProgress(_ value: Double?) -> Double {
-        min(max((value ?? 0) / 100, 0), 1)
-    }
-
-    private func quotaColor(_ value: Double?) -> Color {
-        switch QuotaRemainingLevel(remainingPercent: value) {
-        case .healthy: .green
-        case .warning: .yellow
-        case .critical: .red
-        case .unavailable: .secondary
-        }
     }
 
 }

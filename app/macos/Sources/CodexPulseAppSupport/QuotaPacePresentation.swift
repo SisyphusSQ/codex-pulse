@@ -16,6 +16,15 @@ public struct QuotaPaceChartXAxisPresentation: Equatable, Sendable {
     }
 }
 
+public enum QuotaPaceWindowPickerLayout {
+    public static func width(
+        availableWidth: CGFloat,
+        segmentedIdealWidth: CGFloat
+    ) -> CGFloat {
+        min(availableWidth, segmentedIdealWidth)
+    }
+}
+
 public struct QuotaPaceIdealReferenceShape: Shape {
     public init() {}
 
