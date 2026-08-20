@@ -33,13 +33,14 @@ func TestApplicationMetricsRuntimeComposesPersistsAndCloses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileStore() error = %v", err)
 	}
-	coreService, err := composeCoreService(database, preferenceStore, runtime.Observer(), nil, nil)
+	composition, err := composeCoreGraph(database, preferenceStore, runtime.Observer(), nil, nil, nil)
 	if err != nil {
-		t.Fatalf("composeCoreService() error = %v", err)
+		t.Fatalf("composeCoreGraph() error = %v", err)
 	}
-	if coreService == nil {
-		t.Fatal("composeCoreService() returned nil")
+	if composition == nil || composition.service == nil {
+		t.Fatal("composeCoreGraph() returned nil service")
 	}
+	coreService := composition.service
 	apiSnapshot, err := coreService.APISubscriptionsCurrent(t.Context(), 123)
 	if err != nil {
 		t.Fatalf("APISubscriptionsCurrent() error = %v", err)
@@ -69,11 +70,11 @@ func TestApplicationMetricsRuntimeComposesPersistsAndCloses(t *testing.T) {
 
 func TestApplicationMetricsRuntimeCloseHonorsCallerCancellation(t *testing.T) {
 	_, cancelRuntime := context.WithCancel(context.Background())
-	workerDone := make(chan error, 1)
+	workerDone := make(chan struct{})
 	runtime := &applicationMetricsRuntime{
-		cancel: cancelRuntime, workerDone: workerDone, closeDone: make(chan struct{}),
+		worker: &backgroundWorker{cancel: cancelRuntime, done: workerDone},
 	}
-	defer func() { workerDone <- nil }()
+	defer close(workerDone)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := runtime.Close(ctx); !errors.Is(err, context.Canceled) {

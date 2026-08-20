@@ -3,19 +3,18 @@ package parser
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/jsonshape"
 )
 
 const (
 	maxIdentifierBytes = 512
 	maxMetadataBytes   = 4096
 )
-
-var errDuplicateJSONKey = errors.New("duplicate JSON key")
 
 type decodedLineKind uint8
 
@@ -103,8 +102,8 @@ func decodeRolloutLine(frame lineFrame) decodeResult {
 	if !utf8.Valid(frame.Content) {
 		return decodeDiagnostic(frame, DiagnosticClassFraming, DiagnosticInvalidUTF8)
 	}
-	if err := validateJSON(frame.Content); err != nil {
-		if errors.Is(err, errDuplicateJSONKey) {
+	if err := jsonshape.ValidateDocument(frame.Content); err != nil {
+		if errors.Is(err, jsonshape.ErrDuplicateKey) {
 			return decodeDiagnostic(frame, DiagnosticClassSyntax, DiagnosticDuplicateJSONKey)
 		}
 		return decodeDiagnostic(frame, DiagnosticClassSyntax, DiagnosticBadJSON)
@@ -495,71 +494,6 @@ func decodeQuotaPlanType(raw json.RawMessage) (*string, bool, bool) {
 	default:
 		return stringPointer(QuotaPlanUnknown), true, true
 	}
-}
-
-func validateJSON(content []byte) error {
-	decoder := json.NewDecoder(strings.NewReader(string(content)))
-	decoder.UseNumber()
-	if err := validateJSONValue(decoder); err != nil {
-		return err
-	}
-	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return errors.New("multiple JSON values")
-		}
-		return err
-	}
-	return nil
-}
-
-func validateJSONValue(decoder *json.Decoder) error {
-	token, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	delimiter, ok := token.(json.Delim)
-	if !ok {
-		return nil
-	}
-
-	switch delimiter {
-	case '{':
-		seen := make(map[string]struct{})
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := keyToken.(string)
-			if !ok {
-				return errors.New("invalid object key")
-			}
-			if _, exists := seen[key]; exists {
-				return errDuplicateJSONKey
-			}
-			seen[key] = struct{}{}
-			if err := validateJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		closing, err := decoder.Token()
-		if err != nil || closing != json.Delim('}') {
-			return errors.New("invalid object closing delimiter")
-		}
-	case '[':
-		for decoder.More() {
-			if err := validateJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		closing, err := decoder.Token()
-		if err != nil || closing != json.Delim(']') {
-			return errors.New("invalid array closing delimiter")
-		}
-	default:
-		return errors.New("unexpected closing delimiter")
-	}
-	return nil
 }
 
 func decodeTimestamp(raw json.RawMessage) (int64, bool) {

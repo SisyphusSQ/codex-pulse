@@ -3,13 +3,13 @@ package index
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"io"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/jsonshape"
 )
 
 type wireEntry struct {
@@ -48,7 +48,7 @@ func Parse(content []byte) (ParsedIndex, error) {
 			parsed.Diagnostics = append(parsed.Diagnostics, Diagnostic{Line: lineNumber, Code: DiagnosticMalformedJSON})
 			continue
 		}
-		if err := validateUniqueJSONKeys(trimmed); err != nil {
+		if err := jsonshape.ValidateDocument(trimmed); err != nil {
 			parsed.Diagnostics = append(parsed.Diagnostics, Diagnostic{Line: lineNumber, Code: DiagnosticMalformedJSON})
 			continue
 		}
@@ -94,69 +94,4 @@ func Parse(content []byte) (ParsedIndex, error) {
 		parsed.history[entry.ID]++
 	}
 	return parsed, nil
-}
-
-func validateUniqueJSONKeys(content []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(content))
-	decoder.UseNumber()
-	if err := validateJSONValue(decoder); err != nil {
-		return err
-	}
-	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return errors.New("multiple JSON values")
-		}
-		return err
-	}
-	return nil
-}
-
-func validateJSONValue(decoder *json.Decoder) error {
-	token, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	delimiter, ok := token.(json.Delim)
-	if !ok {
-		return nil
-	}
-
-	switch delimiter {
-	case '{':
-		seen := make(map[string]struct{})
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := keyToken.(string)
-			if !ok {
-				return errors.New("invalid object key")
-			}
-			if _, exists := seen[key]; exists {
-				return errors.New("duplicate JSON key")
-			}
-			seen[key] = struct{}{}
-			if err := validateJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		closing, err := decoder.Token()
-		if err != nil || closing != json.Delim('}') {
-			return errors.New("invalid object closing delimiter")
-		}
-	case '[':
-		for decoder.More() {
-			if err := validateJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		closing, err := decoder.Token()
-		if err != nil || closing != json.Delim(']') {
-			return errors.New("invalid array closing delimiter")
-		}
-	default:
-		return errors.New("unexpected closing delimiter")
-	}
-	return nil
 }

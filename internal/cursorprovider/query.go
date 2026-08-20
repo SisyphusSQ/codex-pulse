@@ -347,7 +347,7 @@ func (service *QueryService) ListSessions(ctx context.Context, request basequery
 			items = append(items, sessionItem(session, usageBySession[session.ExternalSessionID], exactUsage))
 		}
 	}
-	next := nextPage(offset, limit, len(sessions), snapshot.Generation, queryFingerprint(validated))
+	next := pageInfo(offset, limit, len(sessions), snapshot.Generation, queryFingerprint(validated))
 	allEvents := make([]store.CursorUsageEvent, 0)
 	pageEvents := make([]store.CursorUsageEvent, 0)
 	for _, session := range sessions {
@@ -547,7 +547,7 @@ func (service *QueryService) ListProjects(ctx context.Context, request basequery
 		globalTotals.TurnCount = known(int64(len(globalRequests)), basequery.NumericCount)
 		pageTotals.TurnCount = known(int64(len(pageRequests)), basequery.NumericCount)
 	}
-	meta := completeMeta(nextPage(offset, limit, len(groups), snapshot.Generation, queryFingerprint(validated)))
+	meta := completeMeta(pageInfo(offset, limit, len(groups), snapshot.Generation, queryFingerprint(validated)))
 	if useDashboard && dashboardPartial {
 		meta = partialMeta(meta.Page)
 	}
@@ -1872,10 +1872,6 @@ func pageInfo(offset, limit, total int, generation int64, fingerprint string) *b
 	}
 	return &basequery.PageInfo{Limit: limit, HasMore: hasMore, NextCursor: next}
 }
-func nextPage(offset, limit, total int, generation int64, fingerprint string) *basequery.PageInfo {
-	return pageInfo(offset, limit, total, generation, fingerprint)
-}
-
 func queryFingerprint(request basequery.ValidatedRequest) string {
 	var builder strings.Builder
 	for _, term := range request.Sort {
@@ -1930,12 +1926,6 @@ func unknown(unit basequery.NumericUnit, reason basequery.UnknownReason) baseque
 	return result
 }
 func pointerCostReason(value pricing.CostReason) *pricing.CostReason { return &value }
-func shortID(value string) string {
-	if len(value) <= 8 {
-		return value
-	}
-	return value[:8]
-}
 func sessionRange(session store.CursorSession, timezone string) basequery.UTCTimeRange {
 	start := session.CreatedAtMS
 	end := session.LastActivityAtMS + 1

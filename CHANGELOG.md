@@ -1,5 +1,9 @@
 ## Unreleased
 
+#### optimization:
+1. [Issue #127] 简化 health、metrics、retention 三类后台 runtime 的 worker 生命周期与停止等待逻辑，移除已由生产路径替代的重复 helper 和测试包装。
+2. [Issue #127] 将 JSON 文档完整性与重复 key 校验集中到共享模块，供索引、日志解析、额度和偏好设置复用，并保持 malformed/duplicate 输入的 fail-closed 语义。
+
 ## v0.7.1 - 2026-08-20
 
 #### optimization:

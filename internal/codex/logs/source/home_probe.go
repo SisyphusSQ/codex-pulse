@@ -35,10 +35,6 @@ func NewHomeProbe() *HomeProbe {
 	return &HomeProbe{filesystem: osFileSystem{}}
 }
 
-func newHomeProbe(filesystem fileSystem) *HomeProbe {
-	return &HomeProbe{filesystem: filesystem}
-}
-
 func (probe *HomeProbe) Probe(ctx context.Context, home string) (HomeMetadata, error) {
 	if probe == nil || probe.filesystem == nil || !filepath.IsAbs(home) {
 		return HomeMetadata{}, ErrInvalidHome

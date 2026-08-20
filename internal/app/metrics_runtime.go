@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	gort "runtime"
-	"sync"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/metrics"
@@ -17,14 +16,9 @@ import (
 var ErrApplicationMetricsRuntime = errors.New("application metrics runtime is unavailable")
 
 type applicationMetricsRuntime struct {
-	observer   *metrics.QueryAccumulator
-	collector  *metrics.Collector
-	cancel     context.CancelFunc
-	workerDone chan error
-
-	closeOnce sync.Once
-	closeDone chan struct{}
-	closeErr  error
+	observer  *metrics.QueryAccumulator
+	collector *metrics.Collector
+	worker    *backgroundWorker
 }
 
 func startApplicationMetricsRuntime(
@@ -56,18 +50,10 @@ func startApplicationMetricsRuntime(
 	if err != nil {
 		return nil, errors.Join(ErrApplicationMetricsRuntime, err)
 	}
-	runCtx, cancel := context.WithCancel(ctx)
 	runtime := &applicationMetricsRuntime{
-		observer: observer, collector: collector, cancel: cancel,
-		workerDone: make(chan error, 1), closeDone: make(chan struct{}),
+		observer: observer, collector: collector,
+		worker: startBackgroundWorker(ctx, service.Run),
 	}
-	go func() {
-		runErr := service.Run(runCtx)
-		if errors.Is(runErr, context.Canceled) {
-			runErr = nil
-		}
-		runtime.workerDone <- runErr
-	}()
 	return runtime, nil
 }
 
@@ -79,23 +65,15 @@ func (runtime *applicationMetricsRuntime) Observer() *metrics.QueryAccumulator {
 }
 
 func (runtime *applicationMetricsRuntime) Close(ctx context.Context) error {
-	if runtime == nil || runtime.cancel == nil || runtime.workerDone == nil || runtime.closeDone == nil || ctx == nil {
+	if runtime == nil || !runtime.worker.valid() || ctx == nil {
 		return ErrApplicationMetricsRuntime
 	}
-	runtime.closeOnce.Do(func() {
-		runtime.cancel()
-		go func() {
-			runtime.closeErr = <-runtime.workerDone
-			close(runtime.closeDone)
-		}()
-	})
-	select {
-	case <-runtime.closeDone:
-		if runtime.closeErr != nil {
-			return fmt.Errorf("%w: stop metrics worker: %w", ErrApplicationMetricsRuntime, runtime.closeErr)
-		}
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
+	runErr, terminal := runtime.worker.stopAndWait(ctx)
+	if !terminal {
+		return runErr
 	}
+	if runErr != nil {
+		return fmt.Errorf("%w: stop metrics worker: %w", ErrApplicationMetricsRuntime, runErr)
+	}
+	return nil
 }

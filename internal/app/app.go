@@ -21,10 +21,6 @@ var (
 	ErrRuntime = errors.New("application runtime is unavailable")
 )
 
-type lifecycleStore interface {
-	Close(context.Context) error
-}
-
 type Config struct {
 	Broker           *core.InvalidationBroker
 	Store            storesqlite.Config
@@ -327,27 +323,6 @@ func openApplicationStartup(
 	return database, nil, nil
 }
 
-func openConfiguredStore(ctx context.Context, config storesqlite.Config) (lifecycleStore, error) {
-	database, err := openBootstrappedStore(
-		ctx,
-		func(ctx context.Context) (*storesqlite.Store, error) { return storesqlite.Open(ctx, config) },
-		func(ctx context.Context, database *storesqlite.Store) error {
-			repository := factstore.NewRepository(database)
-			if err := repository.EnsureApplicationSchema(ctx); err != nil {
-				return fmt.Errorf("ensure application schema: %w", err)
-			}
-			if err := installBuiltinPricingCatalog(ctx, repository); err != nil {
-				return fmt.Errorf("install builtin pricing catalog: %w", err)
-			}
-			return nil
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-	return database, nil
-}
-
 func installBuiltinPricingCatalog(ctx context.Context, repository *factstore.Repository) error {
 	for _, catalog := range pricing.BuiltinOpenAICatalog() {
 		if err := repository.AddPricingVersion(ctx, catalog); err != nil {
@@ -355,24 +330,4 @@ func installBuiltinPricingCatalog(ctx context.Context, repository *factstore.Rep
 		}
 	}
 	return nil
-}
-
-func openBootstrappedStore[T lifecycleStore](
-	ctx context.Context,
-	open func(context.Context) (T, error),
-	bootstrap func(context.Context, T) error,
-) (T, error) {
-	var zero T
-	store, err := open(ctx)
-	if err != nil {
-		return zero, err
-	}
-	if err := bootstrap(ctx, store); err != nil {
-		closeErr := store.Close(context.WithoutCancel(ctx))
-		if closeErr != nil {
-			closeErr = fmt.Errorf("close application SQLite store after schema failure: %w", closeErr)
-		}
-		return zero, errors.Join(err, closeErr)
-	}
-	return store, nil
 }

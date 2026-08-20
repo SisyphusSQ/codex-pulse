@@ -3,9 +3,9 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -76,14 +76,14 @@ func TestApplicationLightIndexDoesNotRunLegacySchedulerWorker(t *testing.T) {
 		t.Fatalf("secure database directory: %v", err)
 	}
 	databasePath := filepath.Join(databaseDirectory, "light-index.db")
-	database, err := openConfiguredStore(ctx, storesqlite.Config{Path: databasePath})
+	database, err := openTestConfiguredStore(ctx, storesqlite.Config{Path: databasePath})
 	if err != nil {
-		t.Fatalf("openConfiguredStore() error = %v", err)
+		t.Fatalf("openTestConfiguredStore() error = %v", err)
 	}
 	defer func() { _ = database.Close(context.Background()) }()
-	repository := factstore.NewRepository(database.(*storesqlite.Store))
+	repository := factstore.NewRepository(database)
 	runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
-		Database: database.(*storesqlite.Store), Preferences: preferenceStore,
+		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second,
 		LightMetadata: applicationLightMetadataFunc(func(context.Context, string) (appserver.ThreadList, error) {
 			return appserver.ThreadList{Threads: []appserver.ThreadMetadata{}}, nil
@@ -134,13 +134,12 @@ func TestApplicationLightIndexUpgradesQuotaProjectionRuleBeforeServing(t *testin
 	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
 		t.Fatalf("secure database directory: %v", err)
 	}
-	opened, err := openConfiguredStore(ctx, storesqlite.Config{
+	database, err := openTestConfiguredStore(ctx, storesqlite.Config{
 		Path: filepath.Join(databaseDirectory, "quota-rule-upgrade.db"),
 	})
 	if err != nil {
-		t.Fatalf("openConfiguredStore() error = %v", err)
+		t.Fatalf("openTestConfiguredStore() error = %v", err)
 	}
-	database := opened.(*storesqlite.Store)
 	defer func() { _ = database.Close(context.Background()) }()
 	repository := factstore.NewRepository(database)
 	nowMS := time.Now().UnixMilli()
@@ -246,13 +245,12 @@ func TestApplicationLightIndexRefreshesTitleWhenAppBecomesActive(t *testing.T) {
 	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	opened, err := openConfiguredStore(ctx, storesqlite.Config{
+	database, err := openTestConfiguredStore(ctx, storesqlite.Config{
 		Path: filepath.Join(databaseDirectory, "dynamic-title.db"),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	database := opened.(*storesqlite.Store)
 	defer func() { _ = database.Close(context.Background()) }()
 
 	var metadataMu sync.Mutex
@@ -354,11 +352,10 @@ func TestApplicationLightIndexHomeSwitchRestartsMetadataWithoutLegacyBootstrap(t
 	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	opened, err := openConfiguredStore(ctx, storesqlite.Config{Path: filepath.Join(databaseDirectory, "switch.db")})
+	database, err := openTestConfiguredStore(ctx, storesqlite.Config{Path: filepath.Join(databaseDirectory, "switch.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	database := opened.(*storesqlite.Store)
 	defer func() { _ = database.Close(context.Background()) }()
 	provider := applicationLightMetadataFunc(func(_ context.Context, home string) (appserver.ThreadList, error) {
 		sessionID := "home-a"
@@ -440,11 +437,10 @@ func TestApplicationLifecycleRuntimeComposesConfiguredHomeAndReleasesWorker(t *t
 		t.Fatalf("secure database directory: %v", err)
 	}
 	databasePath := filepath.Join(databaseDirectory, "app.db")
-	lifecycleStore, err := openConfiguredStore(ctx, storesqlite.Config{Path: databasePath})
+	database, err := openTestConfiguredStore(ctx, storesqlite.Config{Path: databasePath})
 	if err != nil {
-		t.Fatalf("openConfiguredStore() error = %v", err)
+		t.Fatalf("openTestConfiguredStore() error = %v", err)
 	}
-	database := lifecycleStore.(*storesqlite.Store)
 	t.Cleanup(func() { _ = database.Close(context.Background()) })
 	runtime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
 		Database: database, Preferences: preferenceStore,
@@ -534,13 +530,12 @@ func TestApplicationLifecycleRuntimeValidatesPhysicalHomeBeforeRecoveringTargets
 	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
 		t.Fatalf("secure database directory: %v", err)
 	}
-	lifecycleStore, err := openConfiguredStore(ctx, storesqlite.Config{
+	database, err := openTestConfiguredStore(ctx, storesqlite.Config{
 		Path: filepath.Join(databaseDirectory, "startup-recovery.db"),
 	})
 	if err != nil {
-		t.Fatalf("openConfiguredStore() error = %v", err)
+		t.Fatalf("openTestConfiguredStore() error = %v", err)
 	}
-	database := lifecycleStore.(*storesqlite.Store)
 	t.Cleanup(func() { _ = database.Close(context.Background()) })
 	repository := factstore.NewRepository(database)
 	discoverer, err := logsource.NewConfirmedDiscoverer(metadata.Path, metadata.DeviceID, metadata.Inode)
@@ -643,13 +638,12 @@ func TestApplicationBootstrapIsDurablyEnqueuedWithInteractiveBudget(t *testing.T
 	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
 		t.Fatalf("secure database directory: %v", err)
 	}
-	configured, err := openConfiguredStore(ctx, storesqlite.Config{
+	database, err := openTestConfiguredStore(ctx, storesqlite.Config{
 		Path: filepath.Join(databaseDirectory, "bootstrap-enqueue.db"),
 	})
 	if err != nil {
-		t.Fatalf("openConfiguredStore() error = %v", err)
+		t.Fatalf("openTestConfiguredStore() error = %v", err)
 	}
-	database := configured.(*storesqlite.Store)
 	t.Cleanup(func() { _ = database.Close(context.Background()) })
 	repository := factstore.NewRepository(database)
 	bootstrapRuntime, err := bootstrap.NewRuntime(bootstrap.RuntimeConfig{Repository: repository})
@@ -759,8 +753,31 @@ func waitForAppCondition(t *testing.T, condition func() bool, message string) {
 	}
 }
 
-// 测试 openConfiguredStore 在新建和重开场景下先完成 Application Schema bootstrap。
-func TestOpenConfiguredStoreBootstrapsApplicationSchemaAndReopens(t *testing.T) {
+func openTestConfiguredStore(ctx context.Context, config storesqlite.Config) (*storesqlite.Store, error) {
+	database, err := storesqlite.Open(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	repository := factstore.NewRepository(database)
+	if err := repository.EnsureApplicationSchema(ctx); err != nil {
+		closeErr := database.Close(context.WithoutCancel(ctx))
+		if closeErr != nil {
+			closeErr = fmt.Errorf("close application SQLite store after schema failure: %w", closeErr)
+		}
+		return nil, errors.Join(fmt.Errorf("ensure application schema: %w", err), closeErr)
+	}
+	if err := installBuiltinPricingCatalog(ctx, repository); err != nil {
+		closeErr := database.Close(context.WithoutCancel(ctx))
+		if closeErr != nil {
+			closeErr = fmt.Errorf("close application SQLite store after schema failure: %w", closeErr)
+		}
+		return nil, errors.Join(fmt.Errorf("install builtin pricing catalog: %w", err), closeErr)
+	}
+	return database, nil
+}
+
+// 测试 openTestConfiguredStore 在新建和重开场景下先完成 Application Schema bootstrap。
+func TestOpenTestConfiguredStoreBootstrapsApplicationSchemaAndReopens(t *testing.T) {
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
 		t.Fatalf("secure temp directory: %v", err)
@@ -768,13 +785,9 @@ func TestOpenConfiguredStoreBootstrapsApplicationSchemaAndReopens(t *testing.T) 
 	config := storesqlite.Config{Path: filepath.Join(directory, "app.db")}
 
 	for attempt := 0; attempt < 2; attempt++ {
-		lifecycle, err := openConfiguredStore(context.Background(), config)
+		database, err := openTestConfiguredStore(context.Background(), config)
 		if err != nil {
-			t.Fatalf("openConfiguredStore() attempt %d error = %v", attempt+1, err)
-		}
-		database, ok := lifecycle.(*storesqlite.Store)
-		if !ok {
-			t.Fatalf("openConfiguredStore() type = %T, want *sqlite.Store", lifecycle)
+			t.Fatalf("openTestConfiguredStore() attempt %d error = %v", attempt+1, err)
 		}
 
 		var tables int
@@ -810,13 +823,13 @@ func TestOpenConfiguredStoreBootstrapsApplicationSchemaAndReopens(t *testing.T) 
 			len(stored.Models) != len(builtin.Models) {
 			t.Fatalf("builtin pricing catalog attempt %d = %#v, want %#v", attempt+1, stored, builtin)
 		}
-		if err := lifecycle.Close(context.Background()); err != nil {
+		if err := database.Close(context.Background()); err != nil {
 			t.Fatalf("Close() attempt %d error = %v", attempt+1, err)
 		}
 	}
 }
 
-func TestOpenConfiguredStoreRejectsConflictingBuiltinCatalogAndClosesStore(t *testing.T) {
+func TestOpenTestConfiguredStoreRejectsConflictingBuiltinCatalogAndClosesStore(t *testing.T) {
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
 		t.Fatalf("secure temp directory: %v", err)
@@ -840,12 +853,12 @@ func TestOpenConfiguredStoreRejectsConflictingBuiltinCatalogAndClosesStore(t *te
 		t.Fatalf("Close(setup) error = %v", err)
 	}
 
-	lifecycle, err := openConfiguredStore(context.Background(), config)
-	if lifecycle != nil {
-		t.Fatalf("openConfiguredStore() lifecycle = %T, want nil", lifecycle)
+	opened, err := openTestConfiguredStore(context.Background(), config)
+	if opened != nil {
+		t.Fatalf("openTestConfiguredStore() store = %T, want nil", opened)
 	}
 	if !errors.Is(err, factstore.ErrInvalidRecord) {
-		t.Fatalf("openConfiguredStore() error = %v, want ErrInvalidRecord", err)
+		t.Fatalf("openTestConfiguredStore() error = %v, want ErrInvalidRecord", err)
 	}
 	reopened, err := storesqlite.Open(context.Background(), config)
 	if err != nil {
@@ -856,8 +869,8 @@ func TestOpenConfiguredStoreRejectsConflictingBuiltinCatalogAndClosesStore(t *te
 	}
 }
 
-// 测试 openConfiguredStore 在 Schema Contract 不兼容场景下拒绝启动。
-func TestOpenConfiguredStoreRejectsIncompatibleSchema(t *testing.T) {
+// 测试 openTestConfiguredStore 在 Schema Contract 不兼容场景下拒绝启动。
+func TestOpenTestConfiguredStoreRejectsIncompatibleSchema(t *testing.T) {
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
 		t.Fatalf("secure temp directory: %v", err)
@@ -878,12 +891,12 @@ func TestOpenConfiguredStoreRejectsIncompatibleSchema(t *testing.T) {
 		t.Fatalf("close setup database: %v", err)
 	}
 
-	lifecycle, err := openConfiguredStore(context.Background(), config)
-	if lifecycle != nil {
-		t.Fatalf("openConfiguredStore() lifecycle = %T, want nil", lifecycle)
+	opened, err := openTestConfiguredStore(context.Background(), config)
+	if opened != nil {
+		t.Fatalf("openTestConfiguredStore() store = %T, want nil", opened)
 	}
 	if !errors.Is(err, storeschema.ErrContract) {
-		t.Fatalf("openConfiguredStore() error = %v, want ErrSchemaContract", err)
+		t.Fatalf("openTestConfiguredStore() error = %v, want ErrSchemaContract", err)
 	}
 }
 
@@ -920,8 +933,8 @@ func TestOpenApplicationStartupReturnsRecoveryGraphForMigrationFailure(t *testin
 	}
 }
 
-// 测试 openConfiguredStore 在 core 已存在但 runtime contract 不兼容时拒绝启动。
-func TestOpenConfiguredStoreRejectsIncompatibleRuntimeSchema(t *testing.T) {
+// 测试 openTestConfiguredStore 在 core 已存在但 runtime contract 不兼容时拒绝启动。
+func TestOpenTestConfiguredStoreRejectsIncompatibleRuntimeSchema(t *testing.T) {
 	directory := t.TempDir()
 	if err := os.Chmod(directory, 0o700); err != nil {
 		t.Fatalf("secure temp directory: %v", err)
@@ -945,56 +958,11 @@ func TestOpenConfiguredStoreRejectsIncompatibleRuntimeSchema(t *testing.T) {
 		t.Fatalf("close setup database: %v", err)
 	}
 
-	lifecycle, err := openConfiguredStore(context.Background(), config)
-	if lifecycle != nil {
-		t.Fatalf("openConfiguredStore() lifecycle = %T, want nil", lifecycle)
+	opened, err := openTestConfiguredStore(context.Background(), config)
+	if opened != nil {
+		t.Fatalf("openTestConfiguredStore() store = %T, want nil", opened)
 	}
 	if !errors.Is(err, storeschema.ErrContract) {
-		t.Fatalf("openConfiguredStore() error = %v, want ErrSchemaContract", err)
+		t.Fatalf("openTestConfiguredStore() error = %v, want ErrSchemaContract", err)
 	}
-}
-
-func TestOpenBootstrappedStoreClosesAfterBootstrapFailure(t *testing.T) {
-	errBootstrap := errors.New("bootstrap failed")
-	errClose := errors.New("close failed")
-	var events []string
-	store := &fakeLifecycleStore{events: &events, closeErr: errClose}
-
-	got, err := openBootstrappedStore(
-		context.Background(),
-		func(context.Context) (*fakeLifecycleStore, error) {
-			events = append(events, "open")
-			return store, nil
-		},
-		func(context.Context, *fakeLifecycleStore) error {
-			events = append(events, "bootstrap")
-			return errBootstrap
-		},
-	)
-	if got != nil {
-		t.Fatalf("openBootstrappedStore() store = %T, want nil", got)
-	}
-	if !errors.Is(err, errBootstrap) || !errors.Is(err, errClose) {
-		t.Fatalf("openBootstrappedStore() error = %v, want bootstrap and close errors", err)
-	}
-	if store.closeCalls != 1 {
-		t.Fatalf("close calls = %d, want 1", store.closeCalls)
-	}
-	if want := []string{"open", "bootstrap", "close"}; !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
-}
-
-type fakeLifecycleStore struct {
-	events     *[]string
-	closeErr   error
-	closeCalls int
-}
-
-func (store *fakeLifecycleStore) Close(context.Context) error {
-	store.closeCalls++
-	if store.events != nil {
-		*store.events = append(*store.events, "close")
-	}
-	return store.closeErr
 }

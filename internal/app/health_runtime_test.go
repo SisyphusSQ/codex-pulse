@@ -53,11 +53,11 @@ func TestApplicationHealthRuntimeEvaluatesPersistsAndCloses(t *testing.T) {
 
 func TestApplicationHealthRuntimeCloseHonorsCallerCancellation(t *testing.T) {
 	_, cancelRuntime := context.WithCancel(context.Background())
-	workerDone := make(chan error, 1)
+	workerDone := make(chan struct{})
 	runtime := &applicationHealthRuntime{
-		cancel: cancelRuntime, workerDone: workerDone, closeDone: make(chan struct{}),
+		worker: &backgroundWorker{cancel: cancelRuntime, done: workerDone},
 	}
-	defer func() { workerDone <- nil }()
+	defer close(workerDone)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := runtime.Close(ctx); !errors.Is(err, context.Canceled) {
