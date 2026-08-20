@@ -9,6 +9,15 @@ func localizedCopy(
     localization.textValue(value)
 }
 
+func quotaLevelColor(_ level: QuotaLevel) -> Color {
+    switch level {
+    case .healthy: .green
+    case .warning: .yellow
+    case .critical: .red
+    case .unavailable: .secondary
+    }
+}
+
 struct RuntimeAwarePage<Content: View>: View {
     @ObservedObject var model: AppModel
     @ViewBuilder let content: () -> Content

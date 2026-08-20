@@ -136,21 +136,30 @@ private struct QuotaContentView: View {
                         resetsAtMS: presentation.resetsAtMS,
                         resetRemainingMS: presentation.resetRemainingMS
                     )
+                    let progress = provider.usesOfficialPeriodRing
+                        ? QuotaProgressPresentation(
+                            usedPercent: window.hasUsedPercent ? window.usedPercent : nil,
+                            localization: localization
+                        )
+                        : QuotaProgressPresentation(
+                            remainingPercent: window.hasRemainingPercent
+                                ? window.remainingPercent : nil,
+                            localization: localization
+                        )
                     SectionCard(title: presentation.title) {
                         HStack(alignment: .firstTextBaseline) {
 							Text(quotaUsageLabel)
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Text(
-								quotaPercentText(window)
-                            )
-                            .font(.system(size: 28, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
+                            Text(progress.percentText)
+                                .font(.system(size: 28, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(quotaLevelColor(progress.level))
                         }
-						ProgressView(value: quotaProgressValue(window))
-							.tint(provider.usesOfficialPeriodRing ? .blue : quotaRemainingColor(
-								window.hasRemainingPercent ? window.remainingPercent : nil
-							))
+                        ProgressView(value: progress.fraction)
+                            .tint(quotaLevelColor(progress.level))
+                            .accessibilityLabel(quotaUsageLabel)
+                            .accessibilityValue(progress.accessibilityValue)
                         KeyValueRow(
                             key: "距离重置",
                             value: reset.remainingText
@@ -206,18 +215,6 @@ private struct QuotaContentView: View {
 		provider.usesOfficialPeriodRing ? "已使用" : "剩余"
 	}
 
-	private func quotaPercentText(_ window: Codexpulse_Core_V1_CurrentWindow) -> String {
-		if provider.usesOfficialPeriodRing {
-			return window.hasUsedPercent ? AppLocalizationRegistry.shared.current.percent(window.usedPercent) : "--"
-		}
-		return window.hasRemainingPercent ? AppLocalizationRegistry.shared.current.percent(window.remainingPercent) : "--"
-	}
-
-	private func quotaProgressValue(_ window: Codexpulse_Core_V1_CurrentWindow) -> Double {
-		if provider.usesOfficialPeriodRing { return window.hasUsedPercent ? window.usedPercent / 100 : 0 }
-		return window.hasRemainingPercent ? window.remainingPercent / 100 : 0
-	}
-
     private var isRefreshing: Bool {
         if case .running = quotaRefreshState { return true }
         if case .running = resetCreditsRefreshState { return true }
@@ -239,15 +236,6 @@ private struct QuotaContentView: View {
             Label("\(title)暂时无法更新", systemImage: "exclamationmark.triangle")
                 .font(.caption).foregroundStyle(.orange)
         }
-    }
-}
-
-private func quotaRemainingColor(_ value: Double?) -> Color {
-    switch QuotaRemainingLevel(remainingPercent: value) {
-    case .healthy: .green
-    case .warning: .yellow
-    case .critical: .red
-    case .unavailable: .secondary
     }
 }
 

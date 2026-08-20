@@ -2411,7 +2411,7 @@ private func testStatusItemRefreshReadsCommittedState() throws {
         "native surface smoke must derive summary strictness from authoritative overview quota data"
     )
     try expect(
-        contentSource.contains("QuotaRemainingLevel(remainingPercent: summary.remainingPercent)")
+        contentSource.contains("QuotaLevel(remainingPercent: summary.remainingPercent)")
             && contentSource.contains("case .healthy: return NSColor.systemGreen")
             && contentSource.contains("case .warning: return NSColor.systemYellow")
             && contentSource.contains("case .critical: return NSColor.systemRed"),
@@ -7476,6 +7476,26 @@ private func testQuotaPacePlotBorderShapeStaysInsideThePlotArea() throws {
     )
 }
 
+private func testQuotaPaceWindowPickerUsesIntrinsicWidthOnDedicatedRow() throws {
+    try expect(
+        QuotaPaceWindowPickerLayout.width(
+            availableWidth: 620,
+            segmentedIdealWidth: 511
+        ) == 511,
+        "quota pace must give the segmented picker its full intrinsic width on a dedicated row"
+    )
+}
+
+private func testQuotaPaceWindowPickerNeverExceedsDedicatedRowWidth() throws {
+    try expect(
+        QuotaPaceWindowPickerLayout.width(
+            availableWidth: 360,
+            segmentedIdealWidth: 511
+        ) == 360,
+        "quota pace must keep the segmented picker inside its dedicated row"
+    )
+}
+
 private func testQuotaPaceXAxisKeepsBoundaryLabelsWithoutBoundaryGridLines() throws {
     let axis = QuotaPaceChartXAxisPresentation.percentage
 
@@ -7691,6 +7711,38 @@ private func testOverviewPresentationCarriesQuotaPaceWindows() throws {
     try expect(
         presentation.quotaPaceWindows.first?.forecastText == "预计约 3 小时后耗尽",
         "overview must calculate exhaustion from the Helper evaluation clock"
+    )
+}
+
+private func testOverviewQuotaWindowResolverKeepsEveryAvailableWindowUpToFour() throws {
+    let windows = (1...3).map { index in
+        var window = Codexpulse_Core_V1_CurrentWindow()
+        window.windowKind = "primary"
+        window.limitID = "quota-\(index)"
+        window.remainingPercent = 50
+        return QuotaWindowPresentation(window)
+    }
+
+    let visible = OverviewQuotaWindowResolver.visibleWindows(windows)
+    try expect(
+        visible.map(\.limitID) == ["quota-1", "quota-2", "quota-3"],
+        "overview must show every available quota window when there are four or fewer"
+    )
+}
+
+private func testOverviewQuotaWindowResolverCapsTheStripAtFour() throws {
+    let windows = (1...5).map { index in
+        var window = Codexpulse_Core_V1_CurrentWindow()
+        window.windowKind = "primary"
+        window.limitID = "quota-\(index)"
+        window.remainingPercent = 50
+        return QuotaWindowPresentation(window)
+    }
+
+    let visible = OverviewQuotaWindowResolver.visibleWindows(windows)
+    try expect(
+        visible.map(\.limitID) == ["quota-1", "quota-2", "quota-3", "quota-4"],
+        "overview must preserve source order while limiting the quota strip to four windows"
     )
 }
 
@@ -8096,23 +8148,109 @@ private func testStatusBarStyleSelectionAndLegacyFallback() throws {
     }
 }
 
-private func testQuotaRemainingLevelUsesGreenYellowRedThresholds() throws {
+private func testQuotaLevelPreservesRemainingThresholds() throws {
     try expect(
-        QuotaRemainingLevel(remainingPercent: 98) == .healthy,
+        QuotaLevel(remainingPercent: 98) == .healthy,
         "98% remaining must be healthy/green"
     )
     try expect(
-        QuotaRemainingLevel(remainingPercent: 40) == .warning,
+        QuotaLevel(remainingPercent: 40) == .warning,
         "40% remaining must be warning/yellow"
     )
     try expect(
-        QuotaRemainingLevel(remainingPercent: 20) == .critical,
+        QuotaLevel(remainingPercent: 20) == .critical,
         "20% remaining must be critical/red"
     )
+}
+
+private func testQuotaLevelMapsUsedPercentToComplementaryThresholds() throws {
     try expect(
-        QuotaRemainingLevel(remainingPercent: nil) == .unavailable
-            && QuotaRemainingLevel(remainingPercent: .nan) == .unavailable,
-        "missing or invalid remaining quota must stay unavailable"
+        QuotaLevel(usedPercent: 59.99) == .healthy,
+        "usage below 60% must be healthy/green"
+    )
+    try expect(
+        QuotaLevel(usedPercent: 60) == .warning,
+        "usage at 60% must enter warning/yellow"
+    )
+    try expect(
+        QuotaLevel(usedPercent: 79.99) == .warning,
+        "usage below 80% must remain warning/yellow"
+    )
+    try expect(
+        QuotaLevel(usedPercent: 80) == .critical,
+        "usage at 80% must enter critical/red"
+    )
+}
+
+private func testQuotaLevelTreatsMissingAndInvalidPercentAsUnavailable() throws {
+    try expect(
+        QuotaLevel(remainingPercent: nil) == .unavailable
+            && QuotaLevel(remainingPercent: .nan) == .unavailable
+            && QuotaLevel(usedPercent: nil) == .unavailable
+            && QuotaLevel(usedPercent: .nan) == .unavailable,
+        "missing or invalid quota percentages must stay unavailable"
+    )
+}
+
+private func testQuotaLevelProvidesLocalizedAccessibilityStatus() throws {
+    let english = AppLocalization.englishUS
+    let chinese = AppLocalization.chineseSimplified
+    try expect(
+        QuotaLevel.healthy.accessibilityStatus(localization: english) == "Normal"
+            && QuotaLevel.warning.accessibilityStatus(localization: english) == "Needs attention"
+            && QuotaLevel.critical.accessibilityStatus(localization: chinese) == "需要处理"
+            && QuotaLevel.unavailable.accessibilityStatus(localization: chinese) == "暂不可用",
+        "quota levels must expose localized non-color status for assistive technologies"
+    )
+}
+
+private func testQuotaProgressPresentationNormalizesUsedAndRemainingValues() throws {
+    let used = QuotaProgressPresentation(
+        usedPercent: 60,
+        localization: .englishUS
+    )
+    let remaining = QuotaProgressPresentation(
+        remainingPercent: 20,
+        localization: .chineseSimplified
+    )
+    try expect(
+        abs(used.fraction - 0.6) < 0.000_001
+            && used.level == .warning
+            && used.percentText == "60%"
+            && used.accessibilityValue == "60% · Needs attention",
+        "used quota progress must expose normalized fraction, warning level, and accessible copy"
+    )
+    try expect(
+        abs(remaining.fraction - 0.2) < 0.000_001
+            && remaining.level == .critical
+            && remaining.percentText == "20%"
+            && remaining.accessibilityValue == "20% · 需要处理",
+        "remaining quota progress must use the same semantic presentation"
+    )
+}
+
+private func testQuotaProgressPresentationKeepsUnknownAndExplicitCriticalStates() throws {
+    let unknown = QuotaProgressPresentation(
+        usedPercent: nil,
+        localization: .chineseSimplified
+    )
+    let rateLimited = QuotaProgressPresentation(
+        usedPercent: 10,
+        levelOverride: .critical,
+        localization: .englishUS
+    )
+    try expect(
+        unknown.fraction == 0
+            && unknown.level == .unavailable
+            && unknown.percentText == "--"
+            && unknown.accessibilityValue == "-- · 暂不可用",
+        "unknown quota progress must remain empty, gray, and explicit"
+    )
+    try expect(
+        abs(rateLimited.fraction - 0.1) < 0.000_001
+            && rateLimited.level == .critical
+            && rateLimited.accessibilityValue == "10% · Needs action",
+        "an explicit rate-limit state must override percentage-derived color and accessibility"
     )
 }
 
@@ -9648,9 +9786,13 @@ struct CodexPulseAppTestMain {
         try await testOverviewRangeSelectionRefreshesAllContent()
         try await testOverviewProjectFailureDoesNotHideUsageAndSessions()
         try testQuotaWindowPresentationUsesActualDuration()
+        try testOverviewQuotaWindowResolverKeepsEveryAvailableWindowUpToFour()
+        try testOverviewQuotaWindowResolverCapsTheStripAtFour()
         try testQuotaPacePresentationExplainsPaceForecastAndEvidence()
         try testQuotaPaceIdealReferenceShapeRunsFromTopLeftToBottomRight()
         try testQuotaPacePlotBorderShapeStaysInsideThePlotArea()
+        try testQuotaPaceWindowPickerUsesIntrinsicWidthOnDedicatedRow()
+        try testQuotaPaceWindowPickerNeverExceedsDedicatedRowWidth()
         try testQuotaPaceXAxisKeepsBoundaryLabelsWithoutBoundaryGridLines()
         try testQuotaPaceChartOnlyColorsSeriesEndpoints()
         try testEnglishQuotaPaceComparisonPreservesArgumentTypesWhenWordOrderChanges()
@@ -9664,7 +9806,12 @@ struct CodexPulseAppTestMain {
         try testStatusBarQuotaPresentationUsesOnlyMatchingPeriodUsage()
 		try testCursorStatusBarQuotaPresentationUsesMonthlyQuotaAndTokens()
         try testStatusBarStyleSelectionAndLegacyFallback()
-        try testQuotaRemainingLevelUsesGreenYellowRedThresholds()
+        try testQuotaLevelPreservesRemainingThresholds()
+        try testQuotaLevelMapsUsedPercentToComplementaryThresholds()
+        try testQuotaLevelTreatsMissingAndInvalidPercentAsUnavailable()
+        try testQuotaLevelProvidesLocalizedAccessibilityStatus()
+        try testQuotaProgressPresentationNormalizesUsedAndRemainingValues()
+        try testQuotaProgressPresentationKeepsUnknownAndExplicitCriticalStates()
         try testStatusBarQuotaDataStateSeparatesRemainingColorFromTrust()
         try testStatusBarQuotaPresentationDescribesLastKnownGoodState()
         try testMainWindowLayoutPrefersFullOverviewWithoutLeavingTheScreen()

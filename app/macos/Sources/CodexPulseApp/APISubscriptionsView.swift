@@ -331,16 +331,23 @@ struct APISubscriptionsView: View {
             sourceStatus(snapshot.status)
             if snapshot.hasQuota, !snapshot.quota.windows.isEmpty {
                 ForEach(snapshot.quota.windows, id: \.kind) { window in
+                    let progress = QuotaProgressPresentation(
+                        usedPercent: window.usedPercent,
+                        levelOverride: window.status == "rate-limited" ? .critical : nil,
+                        localization: localization
+                    )
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text(windowTitle(window.kind)).font(.headline)
                             Spacer()
-                            Text(localization.format("%@ 已用", localization.percent(window.usedPercent)))
+                            Text(localization.format("%@ 已用", progress.percentText))
                                 .monospacedDigit()
-                                .foregroundStyle(window.status == "rate-limited" ? .red : .primary)
+                                .foregroundStyle(quotaLevelColor(progress.level))
                         }
-                        ProgressView(value: window.usedPercent, total: 100)
-                            .tint(window.status == "rate-limited" ? .red : .accentColor)
+                        ProgressView(value: progress.fraction)
+                            .tint(quotaLevelColor(progress.level))
+                            .accessibilityLabel(localization.textValue("已使用"))
+                            .accessibilityValue(progress.accessibilityValue)
                         HStack {
                             Text(localization.format("剩余 %@", localization.percent(window.remainingPercent)))
                             Spacer()

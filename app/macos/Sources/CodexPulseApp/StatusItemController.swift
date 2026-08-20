@@ -747,7 +747,10 @@ private struct MenuBarPopoverView: View {
 	}
 
 	private func cursorBillingSection(_ billing: CursorBillingPresentation) -> some View {
-		let fraction = cursorBillingFraction(billing)
+		let progress = QuotaProgressPresentation(
+			usedPercent: cursorBillingUsedPercent(billing),
+			localization: model.localization
+		)
 		return VStack(alignment: .leading, spacing: 10) {
 			PopoverSectionTitle(
 				title: "本账期消费",
@@ -768,10 +771,14 @@ private struct MenuBarPopoverView: View {
 					GeometryReader { geometry in
 						ZStack(alignment: .leading) {
 							Capsule().fill(.quaternary)
-							Capsule().fill(.blue).frame(width: geometry.size.width * fraction)
+							Capsule()
+								.fill(quotaLevelColor(progress.level))
+								.frame(width: geometry.size.width * CGFloat(progress.fraction))
 						}
 					}
 					.frame(height: 9)
+					.accessibilityLabel(model.localization.textValue("本账期已使用"))
+					.accessibilityValue(progress.accessibilityValue)
 					HStack {
 						Text("套餐包含 \(metricText(billing.included, cost: true))")
 						Spacer()
@@ -795,12 +802,12 @@ private struct MenuBarPopoverView: View {
 		.frame(maxWidth: .infinity, alignment: .leading)
 	}
 
-	private func cursorBillingFraction(_ billing: CursorBillingPresentation) -> CGFloat {
+	private func cursorBillingUsedPercent(_ billing: CursorBillingPresentation) -> Double? {
 		guard let spent = statusMetricValue(billing.totalSpend),
 			let limit = statusMetricValue(billing.limit),
 			limit > 0
-		else { return 0 }
-		return CGFloat(max(0, min(1, Double(spent) / Double(limit))))
+		else { return nil }
+		return Double(spent) / Double(limit) * 100
 	}
 
 	private func statusMetricValue(_ metric: DisplayMetric) -> Int64? {
@@ -859,27 +866,34 @@ private struct MenuBarPopoverView: View {
                         resetsAtMS: window.resetsAtMS,
                         resetRemainingMS: window.resetRemainingMS
                     )
+                    let progress = QuotaProgressPresentation(
+                        remainingPercent: window.remainingPercent,
+                        localization: localization
+                    )
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(alignment: .firstTextBaseline) {
                             Text(window.title).font(.system(size: 15, weight: .semibold))
                             Spacer()
-                            Text(percentText(window.remainingPercent))
+                            Text(progress.percentText)
                                 .font(.system(size: 14, weight: .bold, design: .rounded))
                                 .monospacedDigit()
+                                .foregroundStyle(quotaLevelColor(progress.level))
                         }
                         GeometryReader { geometry in
                             ZStack(alignment: .leading) {
                                 Capsule().fill(.quaternary)
                                 Capsule()
-                                    .fill(quotaColor(window.remainingPercent))
-                                    .frame(width: geometry.size.width * progress(window.remainingPercent))
+                                    .fill(quotaLevelColor(progress.level))
+                                    .frame(width: geometry.size.width * CGFloat(progress.fraction))
                             }
                         }
                         .frame(height: 9)
+                        .accessibilityLabel(localization.textValue("剩余"))
+                        .accessibilityValue(progress.accessibilityValue)
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(alignment: .firstTextBaseline) {
                                 Text(localization.format(
-                                    "%@ 剩余", percentText(window.remainingPercent)
+                                    "%@ 剩余", progress.percentText
                                 ))
                                 Spacer(minLength: 12)
                                 Text(localization.format("距离重置：%@", reset.remainingText))
@@ -2165,23 +2179,6 @@ private extension View {
 @MainActor
 private func writePopoverScreenshotClipboard(_ text: String, _ png: Data) -> Bool {
     PopoverPasteboardPayload.write(text: text, png: png, to: .general)
-}
-
-private func percentText(_ value: Double?) -> String {
-    value.map { AppLocalizationRegistry.shared.current.percent($0) } ?? "--"
-}
-
-private func progress(_ value: Double?) -> CGFloat {
-    CGFloat(max(0, min(100, value ?? 0))) / 100
-}
-
-private func quotaColor(_ value: Double?) -> Color {
-    switch QuotaRemainingLevel(remainingPercent: value) {
-    case .healthy: .green
-    case .warning: .yellow
-    case .critical: .red
-    case .unavailable: .gray
-    }
 }
 
 private func optionalCount(

@@ -1,3 +1,4 @@
+import AppKit
 import Charts
 import CodexPulseAppSupport
 import CodexPulseProtocolGenerated
@@ -68,23 +69,7 @@ private struct QuotaPaceCenterView: View {
     var body: some View {
         SectionCard(title: "配额节奏中心") {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Text("把本周期用量和时间进度放在一起看，并参考最近四个完整周期。")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if windows.count > 1 {
-                        Picker("额度窗口", selection: selectedWindowBinding) {
-                            ForEach(windows) { window in
-                                Text(localizedCopy(title(for: window))).tag(window.id)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .frame(maxWidth: 360)
-                        .accessibilityIdentifier("quota.pace.window-picker")
-                    }
-                }
+                windowPickerHeader
 
                 if let selectedWindow {
                     QuotaPaceWindowView(
@@ -103,6 +88,61 @@ private struct QuotaPaceCenterView: View {
         .accessibilityIdentifier("quota.pace.center")
         .onAppear { normalizeSelection() }
         .onChange(of: windows.map(\.id)) { _, _ in normalizeSelection() }
+    }
+
+    @ViewBuilder
+    private var windowPickerHeader: some View {
+        if windows.count > 1 {
+            VStack(alignment: .leading, spacing: 10) {
+                headerDescription
+                windowPicker
+            }
+        } else {
+            headerDescription
+        }
+    }
+
+    private var headerDescription: some View {
+        Text("把本周期用量和时间进度放在一起看，并参考最近四个完整周期。")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+    }
+
+    private var windowPicker: some View {
+        GeometryReader { geometry in
+            let width = QuotaPaceWindowPickerLayout.width(
+                availableWidth: geometry.size.width,
+                segmentedIdealWidth: segmentedPickerIdealWidth
+            )
+            picker
+                .pickerStyle(.segmented)
+                .tint(.blue)
+                .frame(width: width, height: 26)
+                .clipped()
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .labelsHidden()
+        }
+        .frame(height: 26)
+        .accessibilityIdentifier("quota.pace.window-picker")
+    }
+
+    private var picker: some View {
+        Picker("额度窗口", selection: selectedWindowBinding) {
+            ForEach(windows) { window in
+                Text(localizedCopy(title(for: window))).tag(window.id)
+            }
+        }
+    }
+
+    private var segmentedPickerIdealWidth: CGFloat {
+        let control = NSSegmentedControl(
+            labels: windows.map { localizedCopy(title(for: $0)) },
+            trackingMode: .selectOne,
+            target: nil,
+            action: nil
+        )
+        control.controlSize = .regular
+        return control.fittingSize.width
     }
 
     private var selectedWindowBinding: Binding<String> {
