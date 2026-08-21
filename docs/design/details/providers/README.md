@@ -82,7 +82,7 @@ params.update.usage = {
 
 以及同文件中的 `tool_call` / `tool_call_update` 元数据。`rawInput`、`rawOutput`、`content`、thought / message chunk、`chat_history.jsonl`、`system_prompt.txt` 和未知字段在解析边界丢弃。`signals.json` 只描述 context window 与延迟，不是计费 Token，不得写入 usage 事件。
 
-页面查询优先读取已提交 Grok snapshot，并在进程内按 generation 共享同一份只读快照；只有首次没有任何 snapshot 时才同步建立本地基线。已有数据时，本地 collector 与 billing 都以 single-flight 后台任务按各自最小刷新间隔更新；成功提交后先失效内存快照，再发送 query invalidation。全量扫描和网络延迟都不阻塞首屏或菜单栏展开。
+页面查询优先读取已提交 Grok snapshot，并在进程内按 generation 共享同一份只读快照；只有首次没有任何 snapshot 时才同步建立本地基线。已有数据时，本地 collector 与 billing 都以 single-flight 后台任务按各自最小刷新间隔更新；成功提交后先失效内存快照，再发送 query invalidation。billing 当前摘要采用 latest-wins，额度 observation 则按真实采样 generation 追加并有界保留当前及最近四个周期，供节奏曲线按观测时间还原平台与下降位置。全量扫描和网络延迟都不阻塞首屏或菜单栏展开。
 
 ## Grok 身份、合并与持久化
 
@@ -120,6 +120,8 @@ billing 响应优先消费新 credits 形状，旧 `monthlyLimit` / `used` 只�
 账号胶囊使用与 Grok CLI 一致的 `GET /user?include=subscription` 读取 `email`、`principalType` 与 `subscriptionTier`，成功时返回在线账号画像；接口失败时仍可使用 `auth.json` 白名单中的本地邮箱，以及最近一次非 stale billing 套餐。完整账号标识、team / organization 字段、token、refresh token、OIDC 字段和原始 profile 响应不得返回或落库。Swift 必须显式接受 `type = grok`，并把 `GrokPro`、`SuperGrok`、`SuperGrok Plus`、`SuperGrok Heavy` 映射为产品套餐文案。邮箱展示继续遵循 Popover 截图隐藏规则。
 
 额度刷新失败时，当前周期已有成功快照继续作为 last-known 返回，响应标记 `partial` 并回显 `dataAsOfMs`。跨过 `currentPeriod.end` 后，旧快照不得冒充新周期；无新成功值时显示 `--`。协议漂移、缺字段或百分比越界 fail closed，不写 `used_percent=0`。Grok 没有 Reset Credits，对应模块按 capability 隐藏。
+
+Grok 配额节奏只使用 billing API 的百分比 observation，不用本地 Token、reported cost 或活动时间反推额度下降。`(0%, 100%)` 只作为与 Codex 一致的周期视觉起点，不计入 observation 证据；若当前周期首个已保存 observation 已经存在用量，下降线段在该 observation 的真实周期进度结束，后续相同 observation 呈现为平台。升级前已经被覆盖的历史采样不做猜测性回填，后续刷新开始积累真实趋势。
 
 Preferences 提供两个独立开关：`online.grok_quota_enabled` 控制 billing 调度，`online.grok_auto_refresh_enabled` 控制 OIDC 凭据续期；两者都默认开启、可关。关闭 billing 后保留已有非敏感 last-known；关闭凭据续期后不再改写 `auth.json`。两个开关都不影响 Codex `wham` / reset credits 或 Cursor Dashboard。
 

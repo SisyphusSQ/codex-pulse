@@ -102,6 +102,8 @@ func (grokBillingQuotaObservationModel) TableName() string {
 	return "grok_billing_quota_observations"
 }
 
+const grokBillingQuotaHistoryCycleLimit = 5
+
 func (repository *Repository) ReplaceGrokSnapshot(ctx context.Context, snapshot GrokSnapshot) error {
 	if repository == nil || repository.database == nil || ctx == nil {
 		return ErrInvalidRepository
@@ -207,9 +209,6 @@ func (repository *Repository) CommitGrokBillingSnapshot(ctx context.Context, sna
 	}
 	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		database := transaction.WithContext(ctx)
-		if err := database.Exec("DELETE FROM grok_billing_quota_observations").Error; err != nil {
-			return err
-		}
 		if err := database.Save(&grokBillingSnapshotModel{
 			Provider: "grok", Generation: snapshot.Generation, CollectedAtMS: snapshot.CollectedAtMS,
 			PeriodType: snapshot.PeriodType, PeriodStartMS: snapshot.PeriodStartMS, PeriodEndMS: snapshot.PeriodEndMS,
@@ -225,6 +224,21 @@ func (repository *Repository) CommitGrokBillingSnapshot(ctx context.Context, sna
 				UsedPercent: observation.UsedPercent, CycleStartAtMS: observation.CycleStartAtMS,
 				CycleEndAtMS: observation.CycleEndAtMS, ObservedAtMS: observation.ObservedAtMS,
 			}).Error; err != nil {
+				return err
+			}
+		}
+		if len(snapshot.QuotaObservations) > 0 {
+			if err := database.Exec(`
+				DELETE FROM grok_billing_quota_observations
+				WHERE provider = ?
+				  AND cycle_end_at_ms NOT IN (
+					SELECT cycle_end_at_ms
+					FROM grok_billing_quota_observations
+					WHERE provider = ?
+					GROUP BY cycle_end_at_ms
+					ORDER BY cycle_end_at_ms DESC
+					LIMIT ?
+				  )`, "grok", "grok", grokBillingQuotaHistoryCycleLimit).Error; err != nil {
 				return err
 			}
 		}
