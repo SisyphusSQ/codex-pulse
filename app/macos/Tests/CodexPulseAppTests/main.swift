@@ -7436,6 +7436,29 @@ private func testQuotaPacePresentationExplainsPaceForecastAndEvidence() throws {
     )
 }
 
+private func testQuotaPacePresentationAnchorsSingleUsedObservationAtCycleStart() throws {
+    var window = Codexpulse_Core_V1_QuotaPaceWindow()
+    window.windowKind = "primary"
+    window.limitID = "grok.included_credits"
+    var point = Codexpulse_Core_V1_QuotaPacePoint()
+    point.observedAtMs = 3_000
+    point.elapsedPercent = 43
+    point.remainingPercent = 56
+    window.currentPoints = [point]
+
+    let presentation = QuotaPaceWindowPresentation(window, evaluatedAtMS: 3_000)
+    try expect(
+        presentation.currentPoints.count == 2
+            && presentation.currentPoints[0].isCycleStart
+            && presentation.currentPoints[0].elapsedPercent == 0
+            && presentation.currentPoints[0].remainingPercent == 100
+            && !presentation.currentPoints[1].isCycleStart
+            && presentation.currentPoints[1].elapsedPercent == 43
+            && presentation.currentPoints[1].remainingPercent == 56,
+        "a used snapshot must retain the cycle-start anchor before its real observation point"
+    )
+}
+
 private func testQuotaPaceIdealReferenceShapeRunsFromTopLeftToBottomRight() throws {
     let rect = CGRect(x: 0, y: 0, width: 200, height: 100)
     let path = QuotaPaceIdealReferenceShape().path(in: rect).cgPath
@@ -9789,6 +9812,7 @@ struct CodexPulseAppTestMain {
         try testOverviewQuotaWindowResolverKeepsEveryAvailableWindowUpToFour()
         try testOverviewQuotaWindowResolverCapsTheStripAtFour()
         try testQuotaPacePresentationExplainsPaceForecastAndEvidence()
+        try testQuotaPacePresentationAnchorsSingleUsedObservationAtCycleStart()
         try testQuotaPaceIdealReferenceShapeRunsFromTopLeftToBottomRight()
         try testQuotaPacePlotBorderShapeStaysInsideThePlotArea()
         try testQuotaPaceWindowPickerUsesIntrinsicWidthOnDedicatedRow()

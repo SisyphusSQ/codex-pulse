@@ -122,7 +122,7 @@ freshness 与 conflict 分开：current 可以同时是 `fresh + conflict` 或 `
 
 例：同一 reset 下本地已用 45%、在线已用 41%，current 采用 45%，UI 显示“剩余最多 55%”；41% 保留为 conflict evidence。之后在线返回 47% 时，47% 成为 current。
 
-节奏曲线使用 arbitration evidence 中的 `window_generation` 聚合 observation，而不是重新采用原始 `resets_at_ms` 划分周期；因此 provisional reset 的多个原始别名不会挤掉真实的上一周期，也不会进入完整历史基线。曲线按时间保留同一来源的每次用量变化，包括 used 下降所形成的剩余额度上跳。连续相同 used 的平台区间只保留首尾两个形状点，不再把整个周期均匀抽成固定 96 点，因此平台时长、变化发生位置和双向跳变都不会因抽样被删除。Swift 只在本周期与上一周期各自的最后一个点绘制着色端点；`(0%, 100%)` 仅作为连线起点，不伪装成真实采样点。
+节奏曲线使用 arbitration evidence 中的 `window_generation` 聚合 observation，而不是重新采用原始 `resets_at_ms` 划分周期；因此 provisional reset 的多个原始别名不会挤掉真实的上一周期，也不会进入完整历史基线。曲线按时间保留同一来源的每次用量变化，包括 used 下降所形成的剩余额度上跳。连续相同 used 的平台区间只保留首尾两个形状点，不再把整个周期均匀抽成固定 96 点，因此平台时长、变化发生位置和双向跳变都不会因抽样被删除。Swift 只在本周期与上一周期各自的最后一个点绘制着色端点；`(0%, 100%)` 仅作为连线起点，不伪装成真实采样点。首个 observation 已有用量时，下降应在该 observation 的真实周期进度结束，再由后续 observation 还原平台，不能把周期起点直接连到当前采样。
 
 ## 100% 防误判
 

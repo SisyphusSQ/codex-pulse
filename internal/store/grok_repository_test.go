@@ -84,3 +84,98 @@ func TestGrokBillingFailurePreservesLastSuccess(t *testing.T) {
 		t.Fatalf("failure flags = stale=%v code=%v", readback.BillingStale, readback.BillingFailureCode)
 	}
 }
+
+func TestGrokBillingRefreshPreservesEarlierQuotaObservations(t *testing.T) {
+	t.Parallel()
+	repository := openRuntimeRepository(t)
+	ctx := context.Background()
+	cycleStart := int64(1_780_000_000_000)
+	cycleEnd := cycleStart + int64(7*24*60*60*1_000)
+	firstObservedAt := cycleStart + int64(2*60*60*1_000)
+	latestObservedAt := cycleStart + int64(3*24*60*60*1_000)
+	if err := repository.ReplaceGrokSnapshot(ctx, GrokSnapshot{
+		Generation: 1, CollectedAtMS: cycleStart,
+	}); err != nil {
+		t.Fatalf("ReplaceGrokSnapshot() error = %v", err)
+	}
+
+	for _, snapshot := range []GrokBillingSnapshot{
+		{
+			Generation: firstObservedAt, CollectedAtMS: firstObservedAt,
+			PeriodType: "weekly", PeriodStartMS: cycleStart, PeriodEndMS: cycleEnd,
+			UsedPercent: 44,
+			QuotaObservations: []GrokBillingQuotaObservation{{
+				Generation: firstObservedAt, LimitID: "grok.included_credits", UsedPercent: 44,
+				CycleStartAtMS: cycleStart, CycleEndAtMS: cycleEnd, ObservedAtMS: firstObservedAt,
+			}},
+		},
+		{
+			Generation: latestObservedAt, CollectedAtMS: latestObservedAt,
+			PeriodType: "weekly", PeriodStartMS: cycleStart, PeriodEndMS: cycleEnd,
+			UsedPercent: 44,
+			QuotaObservations: []GrokBillingQuotaObservation{{
+				Generation: latestObservedAt, LimitID: "grok.included_credits", UsedPercent: 44,
+				CycleStartAtMS: cycleStart, CycleEndAtMS: cycleEnd, ObservedAtMS: latestObservedAt,
+			}},
+		},
+	} {
+		if err := repository.CommitGrokBillingSnapshot(ctx, snapshot); err != nil {
+			t.Fatalf("CommitGrokBillingSnapshot() error = %v", err)
+		}
+	}
+
+	readback, err := repository.GrokSnapshot(ctx)
+	if err != nil {
+		t.Fatalf("GrokSnapshot() error = %v", err)
+	}
+	if readback.Billing == nil || len(readback.Billing.QuotaObservations) != 2 {
+		t.Fatalf("quota observations = %#v, want both refresh samples", readback.Billing)
+	}
+	if readback.Billing.QuotaObservations[0].ObservedAtMS != firstObservedAt ||
+		readback.Billing.QuotaObservations[1].ObservedAtMS != latestObservedAt {
+		t.Fatalf("quota observation times = %#v", readback.Billing.QuotaObservations)
+	}
+}
+
+func TestGrokBillingRefreshRetainsOnlyFiveQuotaCycles(t *testing.T) {
+	t.Parallel()
+	repository := openRuntimeRepository(t)
+	ctx := context.Background()
+	firstCycleStart := int64(1_780_000_000_000)
+	weekMS := int64(7 * 24 * 60 * 60 * 1_000)
+	if err := repository.ReplaceGrokSnapshot(ctx, GrokSnapshot{
+		Generation: 1, CollectedAtMS: firstCycleStart,
+	}); err != nil {
+		t.Fatalf("ReplaceGrokSnapshot() error = %v", err)
+	}
+
+	for cycle := int64(0); cycle < 6; cycle++ {
+		cycleStart := firstCycleStart + cycle*weekMS
+		cycleEnd := cycleStart + weekMS
+		observedAt := cycleStart + int64(60*60*1_000)
+		snapshot := GrokBillingSnapshot{
+			Generation: observedAt, CollectedAtMS: observedAt,
+			PeriodType: "weekly", PeriodStartMS: cycleStart, PeriodEndMS: cycleEnd,
+			UsedPercent: float64(cycle),
+			QuotaObservations: []GrokBillingQuotaObservation{{
+				Generation: observedAt, LimitID: "grok.included_credits", UsedPercent: float64(cycle),
+				CycleStartAtMS: cycleStart, CycleEndAtMS: cycleEnd, ObservedAtMS: observedAt,
+			}},
+		}
+		if err := repository.CommitGrokBillingSnapshot(ctx, snapshot); err != nil {
+			t.Fatalf("CommitGrokBillingSnapshot() error = %v", err)
+		}
+	}
+
+	readback, err := repository.GrokSnapshot(ctx)
+	if err != nil {
+		t.Fatalf("GrokSnapshot() error = %v", err)
+	}
+	if readback.Billing == nil || len(readback.Billing.QuotaObservations) != 5 {
+		t.Fatalf("quota observations = %#v, want five retained cycles", readback.Billing)
+	}
+	if readback.Billing.QuotaObservations[0].CycleStartAtMS != firstCycleStart+weekMS ||
+		readback.Billing.QuotaObservations[4].CycleStartAtMS != firstCycleStart+5*weekMS {
+		t.Fatalf("retained quota cycles = %#v", readback.Billing.QuotaObservations)
+	}
+}

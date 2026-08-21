@@ -167,16 +167,51 @@ func grokQuotaWindow(
 			LastAttemptAtMS: &billing.CollectedAtMS, RuleVersion: "grok-billing-v1",
 			ExplanationCode: store.QuotaExplanationTrusted, EvaluatedAtMS: evaluatedAtMS,
 		},
-		Observations: []store.QuotaObservation{{
+		Observations: grokQuotaObservations(billing, limitID, name, used, minutes, reset),
+		Evidence:     []store.QuotaArbitrationEvidence{},
+	}
+}
+
+func grokQuotaObservations(
+	billing *store.GrokBillingSnapshot,
+	limitID, name string,
+	used float64,
+	minutes, reset int64,
+) []store.QuotaObservation {
+	observations := make([]store.QuotaObservation, 0, len(billing.QuotaObservations))
+	for _, observation := range billing.QuotaObservations {
+		if observation.LimitID != limitID {
+			continue
+		}
+		windowMinutes := (observation.CycleEndAtMS - observation.CycleStartAtMS) / 60_000
+		if windowMinutes <= 0 {
+			continue
+		}
+		observationID := fmt.Sprintf("grok-billing:%d:%s", observation.Generation, limitID)
+		observations = append(observations, store.QuotaObservation{
 			ObservationID: observationID, AccountScope: store.QuotaAccountScopeDefault,
 			Source: store.QuotaSourceGrokBilling, LimitID: &limitID, LimitName: &name,
-			WindowKind: grokQuotaWindowKind(billing.PeriodType), UsedPercent: used,
-			WindowMinutes: minutes, ResetsAtMS: reset, Validity: store.QuotaValidityAccepted,
-			FirstObservedAtMS: billing.CollectedAtMS, LastObservedAtMS: billing.CollectedAtMS,
-			SampleCount: 1, FirstSourceGeneration: billing.Generation, SourceGeneration: billing.Generation,
-		}},
-		Evidence: []store.QuotaArbitrationEvidence{},
+			WindowKind: grokQuotaWindowKind(billing.PeriodType), UsedPercent: observation.UsedPercent,
+			WindowMinutes: windowMinutes, ResetsAtMS: observation.CycleEndAtMS,
+			Validity:          store.QuotaValidityAccepted,
+			FirstObservedAtMS: observation.ObservedAtMS, LastObservedAtMS: observation.ObservedAtMS,
+			SampleCount: 1, FirstSourceGeneration: observation.Generation,
+			SourceGeneration: observation.Generation,
+		})
 	}
+	if len(observations) > 0 {
+		return observations
+	}
+	observationID := fmt.Sprintf("grok-billing:%d:%s", billing.Generation, limitID)
+	return []store.QuotaObservation{{
+		ObservationID: observationID, AccountScope: store.QuotaAccountScopeDefault,
+		Source: store.QuotaSourceGrokBilling, LimitID: &limitID, LimitName: &name,
+		WindowKind: grokQuotaWindowKind(billing.PeriodType), UsedPercent: used,
+		WindowMinutes: minutes, ResetsAtMS: reset, Validity: store.QuotaValidityAccepted,
+		FirstObservedAtMS: billing.CollectedAtMS, LastObservedAtMS: billing.CollectedAtMS,
+		SampleCount: 1, FirstSourceGeneration: billing.Generation,
+		SourceGeneration: billing.Generation,
+	}}
 }
 
 func grokQuotaWindowKind(string) store.QuotaWindowKind {

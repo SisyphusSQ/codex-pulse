@@ -88,6 +88,59 @@ func TestQueryServiceReturnsGrokProviderContextAndSeparateCosts(t *testing.T) {
 	}
 }
 
+func TestGrokQuotaPaceUsesPersistedBillingObservationTimes(t *testing.T) {
+	t.Parallel()
+	cycleStart := int64(1_780_000_000_000)
+	cycleEnd := cycleStart + int64(7*24*60*60*1_000)
+	consumedAt := cycleStart + int64(2*60*60*1_000)
+	evaluatedAt := cycleStart + int64(3*24*60*60*1_000)
+	snapshot := store.GrokSnapshot{
+		Generation: evaluatedAt, CollectedAtMS: evaluatedAt,
+		Billing: &store.GrokBillingSnapshot{
+			Generation: evaluatedAt, CollectedAtMS: evaluatedAt,
+			PeriodType: "weekly", PeriodStartMS: cycleStart, PeriodEndMS: cycleEnd,
+			UsedPercent: 44,
+			QuotaObservations: []store.GrokBillingQuotaObservation{
+				{
+					Generation: consumedAt, LimitID: grokCreditsLimitID, UsedPercent: 44,
+					CycleStartAtMS: cycleStart, CycleEndAtMS: cycleEnd, ObservedAtMS: consumedAt,
+				},
+				{
+					Generation: evaluatedAt, LimitID: grokCreditsLimitID, UsedPercent: 44,
+					CycleStartAtMS: cycleStart, CycleEndAtMS: cycleEnd, ObservedAtMS: evaluatedAt,
+				},
+			},
+		},
+	}
+	collector, err := NewCollector(&snapshotCapture{snapshot: snapshot}, Config{
+		SessionsRoot: t.TempDir(), Now: func() time.Time { return time.UnixMilli(evaluatedAt) },
+		MinimumRefresh: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewQueryService(collector, staticSnapshot{snapshot: snapshot})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response, err := service.QuotaPace(context.Background(), evaluatedAt)
+	if err != nil {
+		t.Fatalf("QuotaPace() error = %v", err)
+	}
+	if len(response.Pace.Windows) != 1 {
+		t.Fatalf("pace windows = %#v", response.Pace.Windows)
+	}
+	points := response.Pace.Windows[0].CurrentPoints
+	if len(points) != 2 {
+		t.Fatalf("current pace points = %#v, want first and latest 44%% samples", points)
+	}
+	if points[0].ObservedAtMS != consumedAt || points[0].RemainingPercent != 56 ||
+		points[1].ObservedAtMS != evaluatedAt || points[1].RemainingPercent != 56 {
+		t.Fatalf("current pace points = %#v", points)
+	}
+}
+
 func TestGrokActivityDistributionClipsPartialHourBucketsToExactRange(t *testing.T) {
 	t.Parallel()
 	rangeStart := time.Date(2026, time.August, 18, 10, 39, 0, 0, time.UTC).UnixMilli()
