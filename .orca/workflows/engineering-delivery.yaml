@@ -1,0 +1,165 @@
+schema_version: 1
+name: engineering-delivery
+
+coordinator:
+  surface: codex-app
+
+run_driver:
+  type: deterministic
+  runtime: orca-terminal
+  protocol: jsonl-v1
+  progression: coordinator-controlled
+
+workspace:
+  mode: current
+  allow_new_worktree: false
+
+agent_profiles:
+  codex-sol-yolo:
+    runtime: codex
+    model: gpt-5.6-sol
+    effort: xhigh
+    speed: standard
+    permission_mode: yolo
+    apps_mode: disabled
+    mcp_servers_disabled: []
+
+  codex-luna-yolo:
+    runtime: codex
+    model: gpt-5.6-luna
+    effort: max
+    speed: standard
+    permission_mode: yolo
+    apps_mode: disabled
+    mcp_servers_disabled: []
+
+  cursor-grok-4-6-yolo:
+    runtime: cursor
+    model: grok-4.6
+    effort: xhigh
+    speed: standard
+    permission_mode: yolo
+    sandbox_mode: enabled
+
+flow:
+  - plan
+  - develop
+  - review
+  - fix_if_needed
+  - verify
+  - ship
+
+stages:
+  plan:
+    tracked_mutation: forbidden
+    agent:
+      primary: cursor-grok-4-6-yolo
+  develop:
+    tracked_mutation: allowed
+    agent:
+      primary: cursor-grok-4-6-yolo
+  review:
+    tracked_mutation: forbidden
+    agent:
+      primary: codex-sol-yolo
+  fix_if_needed:
+    tracked_mutation: allowed
+    agent:
+      primary: cursor-grok-4-6-yolo
+      reuse_from: develop
+  verify:
+    tracked_mutation: forbidden
+    agent:
+      primary: codex-sol-yolo
+  ship:
+    tracked_mutation: delivery-only
+    agent:
+      primary: codex-luna-yolo
+
+context:
+  linear:
+    include: [description, comments, attachments, children, relations]
+    refresh: [run_start, before_review, before_ship]
+    propagation: coordinator_summary
+
+limits:
+  review_fix_rounds: 2
+
+liveness:
+  heartbeat:
+    enabled: true
+    interval_seconds: 60
+    missed_before_probe: 3
+    timeout_is_completion: false
+    completion_signal: worker_done
+
+worker_lifecycle:
+  default_on_settled: release
+  reuse_requires_same_profile: true
+  terminal_retention:
+    mode: retain_until_explicit_cleanup
+    max_retained: 20
+    on_limit: require_cleanup
+  develop:
+    on_success: retain_until_review
+  fix_if_needed:
+    prefer_reuse_from: develop
+    on_success: retain_until_review
+  review:
+    on_settled: release
+  verify:
+    on_settled: release
+  ship:
+    on_start: release_incompatible_retained
+    on_settled: release
+  pause:
+    retain_while_coordinator_active: true
+    release_on_long_pause: true
+  debug:
+    retain_only_when_user_requested: true
+
+stage_results:
+  schema: stage-result-v1
+  live_e2e_schema: live-e2e-result-v1
+  control_result: worker_done
+  report:
+    required: true
+    directory: .orca/runtime/<run-id>/reports
+    version_controlled: false
+
+verification:
+  live_e2e:
+    mode: ask
+    placement: before_pull_request
+    evidence_identity: committed_sha
+    cleanup_evidence: required
+    options: [orca-task, codex-app-task]
+    when_user_requests_full_auto: orca-task
+    orca_task:
+      agent:
+        primary: codex-sol-yolo
+
+ship:
+  approval:
+    mode: single_gate
+    before: commit
+    covers: [local_commit, push_if_required, live_e2e, pull_request]
+  commit:
+    mode: local
+    only_in_ship: true
+  push:
+    mode: when_required
+    before_live_e2e_if_environment_requires: true
+  live_e2e:
+    placement: before_pull_request
+    requires: committed_sha
+  pull_request:
+    requires: [live_e2e_passed]
+  merge:
+    approval: separate_gate
+
+updates:
+  linear:
+    mode: milestones
+    milestones: [plan_completed, blocked, review_completed, ship_completed]
+    use_comment_thread: true
