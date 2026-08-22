@@ -22,6 +22,7 @@ type CurrentUnknownReason string
 
 const (
 	CurrentUnknownNeverLoaded       CurrentUnknownReason = "never_loaded"
+	CurrentUnknownNotApplicable     CurrentUnknownReason = "not_applicable"
 	CurrentUnknownNoTrustedReset    CurrentUnknownReason = "no_trusted_reset"
 	CurrentUnknownSourceUnavailable CurrentUnknownReason = "source_unavailable"
 	CurrentUnknownScheduleMissing   CurrentUnknownReason = "schedule_unavailable"
@@ -30,10 +31,11 @@ const (
 type CurrentSourceKind string
 
 const (
-	CurrentSourceLocal           CurrentSourceKind = "local_jsonl"
-	CurrentSourceWham            CurrentSourceKind = "wham"
-	CurrentSourceCursorDashboard CurrentSourceKind = "cursor_dashboard"
-	CurrentSourceGrokBilling     CurrentSourceKind = "grok_billing"
+	CurrentSourceLocal                  CurrentSourceKind = "local_jsonl"
+	CurrentSourceWham                   CurrentSourceKind = "wham"
+	CurrentSourceCursorDashboard        CurrentSourceKind = "cursor_dashboard"
+	CurrentSourceCursorDashboardGrokBot CurrentSourceKind = "cursor.dashboard.grok_bot"
+	CurrentSourceGrokBilling            CurrentSourceKind = "grok_billing"
 )
 
 type CurrentRefreshState string

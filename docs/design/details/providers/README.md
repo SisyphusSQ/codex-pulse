@@ -19,17 +19,29 @@ Cursor 在业务页面中始终是一个完整客户端。Go Helper 在内部合
 | conversation-search SQLite | 会话存在性与来源健康 | `snapshot` | 不读取 FTS conversation body |
 | AI Code Tracking SQLite | 官方 request ID、model、时间与编辑归因 | `snapshot` | 不读取 tracked file content |
 | Hooks | 未来实时来源 | `not_configured` | 当前明确显示未配置 |
-| DashboardService | 个人账号官方 usage event、精确 Token、reported charge | `snapshot` | 复用 Cursor Desktop Bearer；鉴权过期、协议漂移或网络失败时保留 last-good 并标记 unavailable |
+| DashboardService | 个人账号官方 usage event、精确 Token、reported charge，以及独立的 Grok Bot 周额度 | `snapshot` | 复用 Cursor Desktop Bearer；月额度走 `GetCurrentPeriodUsage` + `GetFilteredUsageEvents`，Grok Bot 周额度走 `GetSandUsageStatus`。两路独立刷新、独立 last-good；鉴权过期、协议漂移或网络失败时只标记对应 source unavailable，不得互相覆盖 |
 
 活跃 SQLite 使用只读连接、`query_only`、schema/version gate 和一致 read transaction；不得裸复制单个数据库文件。每类来源保存自己的 source instance、coverage、health 与 checkpoint 语义，SQLite/API snapshot 不进入 Codex JSONL 的 `source_generations` byte-offset 状态机。
 
 DashboardService 使用 Cursor Desktop 已登录态在 `state.vscdb` 中维护的 access token。Helper 只在内存中读取并校验 JWT 有效期，按 Cursor Desktop 自身的 Bearer RPC 方式访问固定的 `api2.cursor.sh/aiserver.v1.DashboardService`；token 不进入 Codex Pulse SQLite、preferences、日志或 RPC。Dashboard 返回的 owner/email 等展示字段在解析边界即丢弃。
 
-Cursor 页面查询优先读取已提交 snapshot，并在进程内按 generation 共享同一份只读快照；只有首次没有任何 snapshot 时才同步建立本地基线。已有数据时，本地 collector 与 DashboardService 都以 single-flight 后台任务按各自最小刷新间隔更新；成功提交后先失效内存快照，再发送 query invalidation，Swift 随后重查新 generation。全量本地扫描、SQLite 替换和网络延迟都不阻塞首屏或菜单栏展开。账号胶囊同样不依赖 DashboardService：Helper 只从本地 `state.vscdb` 白名单读取 `cachedEmail`、`stripeMembershipType` 与订阅状态，绝不返回 token、refresh token 或 profile 原文。
+Cursor 页面查询优先读取已提交 snapshot，并在进程内按 generation 共享同一份只读快照；只有首次没有任何 snapshot 时才同步建立本地基线。已有数据时，本地 collector、月度 Dashboard collector 与 Grok Bot collector 都以互不共享的 single-flight 后台任务按各自最小刷新间隔更新；成功提交后先失效内存快照，再发送 query invalidation，Swift 随后重查新 generation。全量本地扫描、SQLite 替换和网络延迟都不阻塞首屏或菜单栏展开。账号胶囊同样不依赖 DashboardService：Helper 只从本地 `state.vscdb` 白名单读取 `cachedEmail`、`stripeMembershipType` 与订阅状态，绝不返回 token、refresh token 或 profile 原文。
+
+## 三组不得混淆的 Grok 语义
+
+产品里出现的 “Grok” 有三组独立身份，禁止互相并桶或共用 freshness：
+
+| 身份 | 所属客户端 | 额度口径 | 不得解释成 |
+| --- | --- | --- | --- |
+| Grok Bot 周额度 | Cursor（`limit_id=cursor.grok_bot`，`window_kind=additional:grok_bot`） | Cursor Dashboard `GetSandUsageStatus` 的官方周账期百分比与 reset | 独立 Grok 客户端，或 Cursor Models 里的 `cursor-grok-*` 模型用量 |
+| Cursor 内 `cursor-grok-*` 模型 | Cursor Models 月额度桶 | `GetCurrentPeriodUsage` / usage event 的月账期 | Grok Bot 周额度，或 Grok 客户端 billing credits |
+| 独立 Grok 客户端 | `grok` Agent Provider | CLI proxy `GET /billing?format=credits` | Cursor Dashboard 任一窗口 |
+
+当前产品仍然只有三个 Agent Provider：`codex` / `cursor` / `grok`。Grok Bot 不是第四个客户端。
 
 ## 身份、合并与持久化
 
-application schema v22 新增 Provider snapshot/source 表和 Cursor 本地事实表；v23 增加独立 Dashboard snapshot/usage event 表；v24 在保留 v23 last-good usage event 的前提下增加账期与 plan spending 摘要；v25 为 Cursor Session 增加安全的 `display_title` 与 `title_source`。Cursor Session 使用内部 surrogate key，并以 `(provider, external_session_id)` 唯一；所有查询身份都包含 Provider。
+application schema v22 新增 Provider snapshot/source 表和 Cursor 本地事实表；v23 增加独立 Dashboard snapshot/usage event 表；v24 在保留 v23 last-good usage event 的前提下增加账期与 plan spending 摘要；v25 为 Cursor Session 增加安全的 `display_title` 与 `title_source`；v30 扩展 `cursor_dashboard_quota_observations` 允许 `cursor.grok_bot` 持有独立周周期，并要求本地 replace 同时保留 `cursor.dashboard` 与 `cursor.dashboard.grok_bot`。Cursor Session 使用内部 surrogate key，并以 `(provider, external_session_id)` 唯一；所有查询身份都包含 Provider。
 
 同一个 `conversation_id` 可能出现在多个 project bucket。collector 以 `provider + external ID` 合并业务 Session，同时保留每条来源 lineage 的脱敏 key 与 content digest；digest 不一致时标记 conflict，不按路径重复计数，也不采用 largest-wins。request 只按稳定的 `generation_id` 或官方 usage event 去重。AI edits 按官方 request ID 去重；来源间 model/conversation 冲突时不任取一份。
 

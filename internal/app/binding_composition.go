@@ -80,10 +80,19 @@ func composeCoreGraph(
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
+	cursorGrokBotCollector, err := cursorprovider.NewGrokBotCollector(
+		cursorDashboardClient,
+		repository,
+		cursorprovider.GrokBotCollectorConfig{MinimumRefresh: 5 * time.Minute, Now: time.Now},
+	)
+	if err != nil {
+		return nil, errors.Join(core.ErrService, err)
+	}
 	cursorService, err := cursorprovider.NewQueryService(cursorCollector, repository, cursorDashboardCollector)
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
+	cursorService.SetGrokBotRefresher(cursorGrokBotCollector)
 	cursorService.SetRefreshNotifier(func() {
 		notifyQueryInvalidation(invalidation, context.Background(), core.InvalidationIndex)
 	})

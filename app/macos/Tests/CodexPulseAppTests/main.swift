@@ -625,8 +625,18 @@ private func testCursorQuotaSurfacesUseOfficialMonthlyWindows() throws {
 			&& quota.contains("quotaUsageLabel")
 			&& quota.contains("if provider == .codex")
 			&& quota.contains("case .grok:")
+			&& quota.contains("case .cursor: \"额度窗口\"")
+			&& !quota.contains("月度额度")
+			&& quota.contains("presentation.unknownMessage")
 			&& !quota.contains("if model.selectedProvider == .codex {\n\t\t\t\t\tquotaSection"),
-		"Quota detail must share the Codex layout, support Grok, and hide Codex-only reset controls"
+		"Quota detail must share the Codex layout, support mixed Cursor windows, and hide Codex-only reset controls"
+	)
+	let popover = try mainWindowSource("StatusItemController.swift")
+	try expect(
+		popover.contains("overview.provider == .cursor")
+			&& popover.contains("? overview.quotaWindows")
+			&& popover.contains("overview.quotaWindows.prefix(2)"),
+		"Cursor popover must keep every quota window while Codex/Grok may still cap the compact strip"
 	)
 }
 
@@ -2818,6 +2828,8 @@ private actor FakeCore: AppCoreServing {
     private var handshakeFailure = false
     private var handshakeError: CoreClientError?
     private var overviewDelay: Duration = .zero
+    private var cursorQuota: Codexpulse_Core_V1_QuotaCurrentResponse?
+    private var cursorQuotaDelay: Duration = .zero
     private var accountDelay: Duration = .zero
     private var handshakeDelay: Duration = .zero
     private var bootstrapDelay: Duration = .zero
@@ -2887,6 +2899,8 @@ private actor FakeCore: AppCoreServing {
     func setHandshakeFailure(_ value: Bool) { handshakeFailure = value }
     func setHandshakeError(_ value: CoreClientError?) { handshakeError = value }
     func setOverviewDelay(_ value: Duration) { overviewDelay = value }
+    func setCursorQuota(_ value: Codexpulse_Core_V1_QuotaCurrentResponse?) { cursorQuota = value }
+    func setCursorQuotaDelay(_ value: Duration) { cursorQuotaDelay = value }
     func setAccountDelay(_ value: Duration) { accountDelay = value }
     func setHandshakeDelay(_ value: Duration) { handshakeDelay = value }
     func setBootstrapDelay(_ value: Duration) { bootstrapDelay = value }
@@ -3125,8 +3139,10 @@ private actor FakeCore: AppCoreServing {
         let shouldFail = failOverview
         await waitForOverviewBarrier()
         if overviewDelay != .zero { try await sleepForTest(overviewDelay) }
+        let isCursor = request.provider.provider == AgentProvider.cursor.rawValue
+        if isCursor, cursorQuotaDelay != .zero { try await sleepForTest(cursorQuotaDelay) }
         if shouldFail { throw FakeFailure.unavailable }
-		var response = responses.quota
+		var response = isCursor ? (cursorQuota ?? responses.quota) : responses.quota
 		response.providerContext.effectiveProvider = request.provider.provider
 		return response
     }
@@ -3525,6 +3541,55 @@ private func makeProviderContext(
     var context = Codexpulse_Core_V1_ProviderContext()
     context.effectiveProvider = provider.rawValue
     return context
+}
+
+private func makeCursorMixedQuotaResponse(
+    evaluatedAtMS: Int64 = 1_753_056_000_000,
+    grokBotUsedPercent: Double? = 20,
+    grokBotUnknownReason: String? = nil,
+    grokBotWindowMinutes: Int64 = 8_640
+) -> Codexpulse_Core_V1_QuotaCurrentResponse {
+    var models = Codexpulse_Core_V1_CurrentWindow()
+    models.windowKind = "primary"
+    models.limitID = "cursor.models"
+    models.limitName = "Cursor Models"
+    models.windowMinutes = 44_640
+    models.usedPercent = 10
+    models.remainingPercent = 90
+    models.resetsAtMs = evaluatedAtMS + 20 * 24 * 60 * 60 * 1_000
+    models.freshness = "fresh"
+
+    var other = Codexpulse_Core_V1_CurrentWindow()
+    other.windowKind = "secondary"
+    other.limitID = "cursor.other_models"
+    other.limitName = "Other Models"
+    other.windowMinutes = 43_200
+    other.usedPercent = 0
+    other.remainingPercent = 100
+    other.resetsAtMs = models.resetsAtMs
+    other.freshness = "fresh"
+
+    var grokBot = Codexpulse_Core_V1_CurrentWindow()
+    grokBot.windowKind = "additional:grok_bot"
+    grokBot.limitID = "cursor.grok_bot"
+    grokBot.limitName = "Grok Bot"
+    grokBot.windowMinutes = grokBotWindowMinutes
+    grokBot.resetsAtMs = evaluatedAtMS + 3 * 24 * 60 * 60 * 1_000
+    grokBot.freshness = grokBotUnknownReason == "never_loaded" ? "never_loaded" : "fresh"
+    if let grokBotUsedPercent {
+        grokBot.usedPercent = grokBotUsedPercent
+        grokBot.remainingPercent = 100 - grokBotUsedPercent
+    }
+    if let grokBotUnknownReason {
+        grokBot.unknownReason = grokBotUnknownReason
+    }
+
+    var quota = Codexpulse_Core_V1_QuotaCurrentResponse()
+    quota.meta = completeMeta()
+    quota.providerContext = makeProviderContext(.cursor)
+    quota.current.evaluatedAtMs = evaluatedAtMS
+    quota.current.windows = [models, other, grokBot]
+    return quota
 }
 
 private func makeResponses(
@@ -5027,6 +5092,15 @@ private func testAppLocalizationResolvesSystemAndFormatsBothLanguages() throws {
         "dynamic overview range values must follow the explicitly selected language"
     )
     try expect(
+        english.textValue("Grok Bot") == "Grok Bot"
+            && english.textValue("这项额度不适用于当前套餐。")
+            == "This quota does not apply to the current plan."
+            && english.textValue("这项额度尚未加载。") == "This quota has not loaded yet."
+            && chinese.textValue("Grok Bot") == "Grok Bot"
+            && chinese.textValue("这项额度不适用于当前套餐。") == "这项额度不适用于当前套餐。",
+        "Grok Bot weekly quota copy must stay distinct from the independent Grok client"
+    )
+    try expect(
         AppViewState(.starting, localization: english) == .loading("Starting core components…"),
         "connection state copy must use the requested language")
 
@@ -5729,6 +5803,60 @@ private func testMainProviderReusesTargetOverviewWhileRefreshing() async throws 
 	try expect(
 		reusedTargetCache,
 		"switching main Provider must reuse that Provider's last successful Overview while refresh is pending"
+	)
+	_ = await model.shutdown()
+}
+
+@MainActor
+private func testLateCursorGrokBotQuotaDoesNotOverwriteSwitchedProvider() async throws {
+	let suiteName = "CodexPulseAppTests.LateGrokBot.\(UUID().uuidString)"
+	guard let defaults = UserDefaults(suiteName: suiteName) else {
+		throw TestFailure.mismatch("late Grok Bot defaults suite unavailable")
+	}
+	defer { defaults.removePersistentDomain(forName: suiteName) }
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+	let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+	await core.setCursorQuota(makeCursorMixedQuotaResponse())
+	let model = AppModel(
+		runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+		providerDefaults: defaults
+	)
+	model.start()
+	try await waitUntil("initial Codex overview before Cursor Grok Bot") {
+		await MainActor.run {
+			model.presentation?.provider == .codex
+				&& model.presentation?.quotaWindows.contains(where: { $0.limitID == "cursor.grok_bot" }) != true
+		}
+	}
+	model.selectProvider(.cursor)
+	try await waitUntil("Cursor overview includes Grok Bot") {
+		await MainActor.run {
+			model.presentation?.provider == .cursor
+				&& model.presentation?.quotaWindows.contains(where: { $0.limitID == "cursor.grok_bot" }) == true
+		}
+	}
+	model.navigate(to: .quotaUsage)
+	try await waitUntil("Cursor quota page includes Grok Bot") {
+		await MainActor.run {
+			model.quotaState.value?.current.windows.contains(where: { $0.limitID == "cursor.grok_bot" }) == true
+		}
+	}
+	await core.setCursorQuotaDelay(.milliseconds(250))
+	model.loadQuota()
+	try await sleepForTest(.milliseconds(40))
+	model.selectProvider(.codex)
+	try await waitUntil("Codex overview after leaving Cursor") {
+		await MainActor.run { model.presentation?.provider == .codex }
+	}
+	try await sleepForTest(.milliseconds(300))
+	try expect(
+		model.presentation?.quotaWindows.contains(where: { $0.limitID == "cursor.grok_bot" }) != true,
+		"a late Cursor Grok Bot quota must not overwrite the switched Codex overview"
+	)
+	try expect(
+		model.quotaState.value?.current.windows.contains(where: { $0.limitID == "cursor.grok_bot" }) != true,
+		"a late Cursor Grok Bot quota must not overwrite the switched Codex quota page"
 	)
 	_ = await model.shutdown()
 }
@@ -7333,6 +7461,9 @@ private func testQuotaWindowPresentationUsesActualDuration() throws {
 		("primary", "cursor.models", "Cursor Models", 44_640, "Cursor Models · 月额度"),
 		("secondary", "cursor.other_models", "Other Models", 43_200, "Other Models · 月额度"),
 		("primary", "cursor.models", "Cursor Models", nil, "Cursor Models · 月额度"),
+		("additional:grok_bot", "cursor.grok_bot", "Grok Bot", 10_080, "Grok Bot · 周额度"),
+		("additional:grok_bot", "cursor.grok_bot", nil, 8_640, "Grok Bot · 周额度"),
+		("additional:grok_bot", "cursor.grok_bot", "Grok Bot", nil, "Grok Bot · 周额度"),
     ]
 
     for item in cases {
@@ -7350,6 +7481,24 @@ private func testQuotaWindowPresentationUsesActualDuration() throws {
             "quota window \(item.id)/\(item.minutes.map(String.init) ?? "nil") must be titled \(item.expected), got \(presentation.title)"
         )
     }
+
+    try expect(
+        QuotaWindowPresentation.unknownMessage(reason: "not_applicable")
+            == "这项额度不适用于当前套餐。"
+            && QuotaWindowPresentation.unknownMessage(reason: "never_loaded")
+            == "这项额度尚未加载。"
+            && QuotaWindowPresentation.unknownMessage(reason: "source_unavailable")
+            == "这项额度暂时无法获取。"
+            && QuotaWindowPresentation.unknownMessage(reason: nil) == nil,
+        "quota unknown copy must separate not applicable, never loaded, and unavailable"
+    )
+    try expect(
+        QuotaWindowPresentation.paceFallbackTitle(
+            windowKind: "additional:grok_bot",
+            limitID: "cursor.grok_bot"
+        ) == "Grok Bot · 周额度",
+        "quota pace must reuse the Grok Bot weekly title instead of the secondary-window fallback"
+    )
 }
 
 private func testQuotaPacePresentationExplainsPaceForecastAndEvidence() throws {
@@ -7751,6 +7900,15 @@ private func testOverviewQuotaWindowResolverKeepsEveryAvailableWindowUpToFour() 
         visible.map(\.limitID) == ["quota-1", "quota-2", "quota-3"],
         "overview must show every available quota window when there are four or fewer"
     )
+
+	let mixed = makeCursorMixedQuotaResponse()
+	let mixedWindows = mixed.current.windows.map(QuotaWindowPresentation.init)
+	try expect(
+		OverviewQuotaWindowResolver.visibleWindows(mixedWindows).map(\.limitID)
+			== ["cursor.models", "cursor.other_models", "cursor.grok_bot"]
+			&& mixedWindows.last?.title == "Grok Bot · 周额度",
+		"Cursor Overview must keep all three mixed monthly and weekly quota windows"
+	)
 }
 
 private func testOverviewQuotaWindowResolverCapsTheStripAtFour() throws {
@@ -8107,6 +8265,17 @@ private func testCursorStatusBarQuotaPresentationUsesMonthlyQuotaAndTokens() thr
 	otherModels.freshness = "fresh"
 	quota.current.windows = [cursorModels, otherModels]
 
+	var grokBot = Codexpulse_Core_V1_CurrentWindow()
+	grokBot.windowKind = "additional:grok_bot"
+	grokBot.limitID = "cursor.grok_bot"
+	grokBot.limitName = "Grok Bot"
+	grokBot.windowMinutes = 8_640
+	grokBot.remainingPercent = 40
+	grokBot.usedPercent = 60
+	grokBot.resetsAtMs = evaluatedAtMS + 3 * 24 * 60 * 60 * 1_000
+	grokBot.freshness = "fresh"
+	quota.current.windows = [cursorModels, otherModels, grokBot]
+
 	var calendar = Calendar(identifier: .gregorian)
 	calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
 	let range = OverviewRequestSet.resolveRange(
@@ -8145,6 +8314,15 @@ private func testCursorStatusBarQuotaPresentationUsesMonthlyQuotaAndTokens() thr
 		summary.accessibilityLabel.contains("月剩 90% · 100%")
 			&& summary.accessibilityLabel.contains("已用 2.1亿 Token"),
 		"Cursor status bar accessibility must expose both monthly quota and Token usage"
+	)
+
+	try expect(
+		summary.remainingText == "月剩 90% · 100%",
+		"Cursor status bar compact remaining text must omit the Grok Bot weekly percent"
+	)
+	try expect(
+		!summary.remainingText.contains("40%") && !summary.accessibilityLabel.contains("40%"),
+		"Cursor status bar must keep the Grok Bot weekly window out of the compact monthly summary"
 	)
 }
 
@@ -8268,6 +8446,14 @@ private func testQuotaProgressPresentationKeepsUnknownAndExplicitCriticalStates(
             && unknown.percentText == "--"
             && unknown.accessibilityValue == "-- · 暂不可用",
         "unknown quota progress must remain empty, gray, and explicit"
+    )
+    let confirmedZero = QuotaProgressPresentation(
+        usedPercent: 0,
+        localization: .chineseSimplified
+    )
+    try expect(
+        confirmedZero.percentText == "0%" && confirmedZero.level == .healthy,
+        "a confirmed 0% used value must stay numeric and must not collapse to --"
     )
     try expect(
         abs(rateLimited.fraction - 0.1) < 0.000_001
@@ -8429,6 +8615,22 @@ private func testOverviewRangeResolutionDrivesEveryContentRequest() throws {
 		"Cursor monthly quota range must start at its authoritative Dashboard boundary")
 	try expect(monthly.endAtMS == evaluatedAtMS, "Cursor monthly quota range must end at evaluation time")
 	try expect(monthly.granularity == "day", "Cursor monthly quota trend must stay daily")
+
+	var grokBotWindow = Codexpulse_Core_V1_CurrentWindow()
+	grokBotWindow.limitID = "cursor.grok_bot"
+	grokBotWindow.windowMinutes = 10_080
+	grokBotWindow.resetsAtMs = evaluatedAtMS + 2 * 24 * 60 * 60 * 1_000
+	quota.current.windows = [monthlyWindow, grokBotWindow]
+	let mixedMonthly = OverviewRequestSet.resolveRange(
+		.quotaMonth, quota: quota, now: now, calendar: calendar)
+	try expect(
+		mixedMonthly.startAtMS == monthly.startAtMS && mixedMonthly.endAtMS == monthly.endAtMS,
+		"a Grok Bot weekly window must not change the Cursor Overview monthly exact range")
+	let mixedWeekly = OverviewRequestSet.resolveRange(
+		.quotaWeek, quota: quota, now: now, calendar: calendar)
+	try expect(
+		mixedWeekly.fellBackFromQuotaWeek && mixedWeekly.effectivePreset == .sevenDays,
+		"Cursor Grok Bot must not be treated as the Codex/Grok weekly analysis range")
 
     let requests = OverviewRequestSet.content(range: weekly)
     try expect(requests.usage.exactRange.startAtMs == weekly.startAtMS, "usage range start")
@@ -9866,6 +10068,7 @@ struct CodexPulseAppTestMain {
 		try await testStatusProviderReusesTargetCacheWhileRefreshing()
 		try await testPageProviderSwitchLoadsSelectedFeatureBeforeOverviewCompletes()
 		try await testMainProviderReusesTargetOverviewWhileRefreshing()
+		try await testLateCursorGrokBotQuotaDoesNotOverwriteSwitchedProvider()
         try await testInvalidationRefreshesActivePage()
         try await testIndexInvalidationRefreshesSelectedSessionDetail()
         try await testForegroundRecoveryRefreshesSelectedSessionOnce()

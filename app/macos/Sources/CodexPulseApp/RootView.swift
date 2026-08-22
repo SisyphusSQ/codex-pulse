@@ -493,6 +493,12 @@ private struct CursorOverviewContentView: View {
 								.foregroundStyle(pace.forecastState == "at_risk" ? .orange : .secondary)
 								.lineLimit(1)
 						}
+						if let message = window.unknownMessage {
+							Text(message)
+								.font(.caption2)
+								.foregroundStyle(.orange)
+								.lineLimit(2)
+						}
 					}
 					.frame(minWidth: 210, idealWidth: 250, maxWidth: 290)
 				}
@@ -1012,6 +1018,12 @@ private struct OverviewContentView: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.75)
                                 .accessibilityIdentifier("overview.quota.pace.\(window.id)")
+                        }
+                        if let message = window.unknownMessage {
+                            Text(message)
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                                .lineLimit(2)
                         }
                     }
                 }

@@ -78,7 +78,7 @@ func (collector *DashboardCollector) RefreshIfDue(ctx context.Context) (bool, er
 	if err != nil {
 		return true, collector.recordFailure(ctx, atMS, err)
 	}
-	quotaWindows, err := dashboardQuotaWindows(current.PlanUsage)
+	quotaWindows, err := dashboardQuotaWindows(current.PlanUsage, current.BillingCycleStartMS, current.BillingCycleEndMS)
 	if err != nil {
 		return true, collector.recordFailure(ctx, atMS, err)
 	}
@@ -102,7 +102,7 @@ func (collector *DashboardCollector) RefreshIfDue(ctx context.Context) (bool, er
 	return true, nil
 }
 
-func dashboardQuotaWindows(value *CurrentPlanUsage) ([]store.CursorDashboardQuotaWindow, error) {
+func dashboardQuotaWindows(value *CurrentPlanUsage, cycleStartMS, cycleEndMS int64) ([]store.CursorDashboardQuotaWindow, error) {
 	if value == nil {
 		return nil, nil
 	}
@@ -123,6 +123,7 @@ func dashboardQuotaWindows(value *CurrentPlanUsage) ([]store.CursorDashboardQuot
 		}
 		windows = append(windows, store.CursorDashboardQuotaWindow{
 			LimitID: candidate.limitID, UsedPercent: *candidate.percent,
+			CycleStartAtMS: cycleStartMS, CycleEndAtMS: cycleEndMS,
 		})
 	}
 	return windows, nil

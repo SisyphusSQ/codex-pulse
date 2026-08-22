@@ -44,6 +44,7 @@ type conditionalRefresher interface {
 type QueryService struct {
 	collector       *Collector
 	dashboard       Refresher
+	grokBot         Refresher
 	reader          SnapshotReader
 	sessions        basequery.Specification
 	projects        basequery.Specification
@@ -54,6 +55,7 @@ type QueryService struct {
 	refreshMu       sync.Mutex
 	localRefreshing bool
 	refreshing      bool
+	grokRefreshing  bool
 	onRefresh       func()
 }
 
@@ -107,6 +109,7 @@ func (service *QueryService) Refresh(ctx context.Context) error {
 		service.invalidateSnapshot()
 	}
 	service.scheduleDashboardRefresh()
+	service.scheduleGrokBotRefresh()
 	return nil
 }
 
@@ -120,6 +123,7 @@ func (service *QueryService) snapshot(ctx context.Context) (store.CursorSnapshot
 	}
 	service.scheduleLocalRefresh()
 	service.scheduleDashboardRefresh()
+	service.scheduleGrokBotRefresh()
 	return snapshot, nil
 }
 
@@ -194,6 +198,15 @@ func (service *QueryService) scheduleLocalRefresh() {
 	}()
 }
 
+func (service *QueryService) SetGrokBotRefresher(refresher Refresher) {
+	if service == nil {
+		return
+	}
+	service.refreshMu.Lock()
+	service.grokBot = refresher
+	service.refreshMu.Unlock()
+}
+
 // SetRefreshNotifier registers a lightweight invalidation callback. Source
 // credentials and results stay inside the Helper; the callback only tells
 // clients to re-query the committed local snapshot.
@@ -230,6 +243,42 @@ func (service *QueryService) scheduleDashboardRefresh() {
 		}
 		service.refreshMu.Lock()
 		service.refreshing = false
+		notifier := service.onRefresh
+		service.refreshMu.Unlock()
+		if performed && err == nil {
+			service.invalidateSnapshot()
+			if notifier != nil {
+				notifier()
+			}
+		}
+	}()
+}
+
+func (service *QueryService) scheduleGrokBotRefresh() {
+	if service == nil {
+		return
+	}
+	service.refreshMu.Lock()
+	if service.grokBot == nil || service.grokRefreshing {
+		service.refreshMu.Unlock()
+		return
+	}
+	service.grokRefreshing = true
+	refresher := service.grokBot
+	service.refreshMu.Unlock()
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		performed := true
+		var err error
+		if conditional, ok := refresher.(conditionalRefresher); ok {
+			performed, err = conditional.RefreshIfDue(ctx)
+		} else {
+			err = refresher.Refresh(ctx)
+		}
+		service.refreshMu.Lock()
+		service.grokRefreshing = false
 		notifier := service.onRefresh
 		service.refreshMu.Unlock()
 		if performed && err == nil {
@@ -687,6 +736,9 @@ func contextFor(snapshot store.CursorSnapshot) agentprovider.Context {
 		if source.SourceKey == SourceState && source.State == "available" {
 			tokensAvailable = true
 		}
+		if source.SourceKey == SourceDashboardGrokBot && !containsString(context.Capabilities, "quota") {
+			context.Capabilities = append(context.Capabilities, "quota")
+		}
 		if source.SourceKey == SourceDashboard && source.LastSuccessAtMS != nil {
 			tokensAvailable = true
 			if !containsString(context.Capabilities, "reported_cost") {
@@ -715,6 +767,8 @@ func sourceCapability(source string) string {
 		return "realtime"
 	case SourceDashboard:
 		return "reported_cost"
+	case SourceDashboardGrokBot:
+		return "quota"
 	default:
 		return "unknown"
 	}

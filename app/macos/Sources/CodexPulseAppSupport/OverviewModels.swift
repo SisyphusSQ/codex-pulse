@@ -572,7 +572,9 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
         let quotaName = Self.quotaName(
             limitID: window.limitID, limitName: limitName, localization: localization
         )
-        if Self.isCursorMonthlyLimit(window.limitID) {
+        if Self.isCursorGrokBotLimit(window.limitID) {
+            self.title = "\(quotaName) · \(localization.textValue("周额度"))"
+        } else if Self.isCursorMonthlyLimit(window.limitID) {
 			self.title = "\(quotaName) · \(localization.textValue("月额度"))"
 		} else if let duration = Self.durationTitle(
             windowMinutes: window.hasWindowMinutes ? window.windowMinutes : nil,
@@ -591,11 +593,47 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
         self.resetRemainingMS = window.hasResetRemainingMs ? window.resetRemainingMs : nil
     }
 
+    public var unknownMessage: String? {
+        Self.unknownMessage(reason: unknownReason)
+    }
+
+    public static func unknownMessage(
+        reason: String?,
+        localization: AppLocalization = AppLocalizationRegistry.shared.current
+    ) -> String? {
+        guard let reason, !reason.isEmpty else { return nil }
+        switch reason {
+        case "not_applicable":
+            return localization.textValue("这项额度不适用于当前套餐。")
+        case "never_loaded":
+            return localization.textValue("这项额度尚未加载。")
+        default:
+            return localization.textValue("这项额度暂时无法获取。")
+        }
+    }
+
+    public static func paceFallbackTitle(
+        windowKind: String,
+        limitID: String,
+        localization: AppLocalization = AppLocalizationRegistry.shared.current
+    ) -> String {
+        if isCursorGrokBotLimit(limitID) || windowKind == "additional:grok_bot" {
+            var window = Codexpulse_Core_V1_CurrentWindow()
+            window.windowKind = windowKind.isEmpty ? "additional:grok_bot" : windowKind
+            window.limitID = limitID.isEmpty ? "cursor.grok_bot" : limitID
+            return QuotaWindowPresentation(window).title
+        }
+        return localization.textValue(windowKind == "primary" ? "主额度窗口" : "次额度窗口")
+    }
+
     private static func quotaName(
         limitID: String,
         limitName: String?,
         localization: AppLocalization
     ) -> String {
+        if isCursorGrokBotLimit(limitID) {
+            return localization.textValue("Grok Bot")
+        }
         let trimmedName = limitName?.trimmingCharacters(in: .whitespacesAndNewlines)
         if limitID == "codex" {
             if trimmedName == nil || trimmedName?.isEmpty == true || trimmedName?.lowercased() == "codex" {
@@ -624,6 +662,10 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
 
 	private static func isCursorMonthlyLimit(_ limitID: String) -> Bool {
 		limitID == "cursor.models" || limitID == "cursor.other_models"
+	}
+
+	private static func isCursorGrokBotLimit(_ limitID: String) -> Bool {
+		limitID == "cursor.grok_bot"
 	}
 }
 
@@ -2928,7 +2970,7 @@ public struct OverviewRequestSet: Sendable {
     ) -> Codexpulse_Core_V1_UTCTimeRange? {
         let weeklyMinutes: Int64 = 7 * 24 * 60
         let weeklyWindows = quota.current.windows.filter {
-            $0.hasWindowMinutes && $0.hasResetsAtMs && (
+            $0.limitID != "cursor.grok_bot" && $0.hasWindowMinutes && $0.hasResetsAtMs && (
 				$0.windowMinutes == weeklyMinutes ||
 				($0.limitID == "grok.included_credits" && $0.windowMinutes >= 6 * 24 * 60 && $0.windowMinutes <= 8 * 24 * 60)
 			)

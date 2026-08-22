@@ -1,5 +1,11 @@
 # 在线 Quota Application Runtime Runbook
 
+## 2026-08-22 TOO-349 与 Cursor Grok Bot collector
+
+- Cursor 月 Dashboard collector 与 Grok Bot collector 独立 single-flight、独立 last-refresh 时钟；一侧失败不得改写另一侧 last-good、usage event 或月 observation。
+- Grok Bot 不进入 Codex `source_refresh_schedules` / `wham` runtime。装配点仍是 Helper binding composition，不是本 runbook 的 TOO-306 Wham coordinator。
+- 开发期入口：`go test ./internal/cursorprovider ./internal/app`。真实 Home 与 commit identity / cleanup 见 [`native-primary-pages.md`](native-primary-pages.md)。本页历史 TOO-306 PASS 不表示 TOO-349 live E2E 已执行。
+
 ## 当前验证结果
 
 - 记录时间：2026-07-16（Asia/Shanghai）

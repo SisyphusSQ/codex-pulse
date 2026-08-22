@@ -5,18 +5,20 @@ const maxQuotaWindowMinutes int64 = 525600
 type QuotaSource string
 
 const (
-	QuotaAccountScopeDefault               = "default"
-	QuotaSourceLocalJSONL      QuotaSource = "local_jsonl"
-	QuotaSourceWham            QuotaSource = "wham"
-	QuotaSourceCursorDashboard QuotaSource = "cursor_dashboard"
-	QuotaSourceGrokBilling     QuotaSource = "grok_billing"
+	QuotaAccountScopeDefault                      = "default"
+	QuotaSourceLocalJSONL             QuotaSource = "local_jsonl"
+	QuotaSourceWham                   QuotaSource = "wham"
+	QuotaSourceCursorDashboard        QuotaSource = "cursor_dashboard"
+	QuotaSourceCursorDashboardGrokBot QuotaSource = "cursor.dashboard.grok_bot"
+	QuotaSourceGrokBilling            QuotaSource = "grok_billing"
 )
 
 type QuotaWindowKind string
 
 const (
-	QuotaWindowPrimary   QuotaWindowKind = "primary"
-	QuotaWindowSecondary QuotaWindowKind = "secondary"
+	QuotaWindowPrimary           QuotaWindowKind = "primary"
+	QuotaWindowSecondary         QuotaWindowKind = "secondary"
+	QuotaWindowAdditionalGrokBot QuotaWindowKind = "additional:grok_bot"
 )
 
 type QuotaValidity string

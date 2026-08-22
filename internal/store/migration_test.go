@@ -203,11 +203,11 @@ func TestApplicationMigrationAppendsIngestSchemaToFrozenV2(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 	if report.FromVersion != 2 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v2 to v29 with backup", report)
+		!equalInts(report.AppliedVersions, []int{3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v2 to v30 with backup", report)
 	}
-	if backupVersions != [2]int{2, 29} {
-		t.Fatalf("backup versions = %v, want [2 29]", backupVersions)
+	if backupVersions != [2]int{2, 30} {
+		t.Fatalf("backup versions = %v, want [2 30]", backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 
@@ -261,11 +261,11 @@ func TestApplicationMigrationAppendsRetentionIndexesToFrozenV1(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 	if report.FromVersion != 1 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v1 to v29 with backup", report)
+		!equalInts(report.AppliedVersions, []int{2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v1 to v30 with backup", report)
 	}
-	if backupVersions != [2]int{1, 29} {
-		t.Fatalf("backup versions = %v, want [1 29]", backupVersions)
+	if backupVersions != [2]int{1, 30} {
+		t.Fatalf("backup versions = %v, want [1 30]", backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 

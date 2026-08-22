@@ -1,5 +1,13 @@
 # Quota Current 查询与可信场景 Runbook
 
+## 2026-08-22 TOO-349 Cursor 混合窗口入口
+
+- Cursor QuotaCurrent 必须稳定返回三个窗口：`cursor.models`（月）、`cursor.other_models`（月）、`cursor.grok_bot`（周）。
+- nearest reset 从全部 `fresh/stale` 且仍在未来的窗口计算；周 reset 早于月 reset 时必须选周。
+- `not_applicable` / `never_loaded` / 真实 `0%` / 缺字段 fail closed 不得互相冒充。
+- 开发期 Go 入口：`go test ./internal/cursorprovider ./internal/codex/quota ./internal/store`。
+- 真实 Home 读回与 cleanup 契约见 [`native-primary-pages.md`](native-primary-pages.md) 的 TOO-349 节与仓库 `AGENTS.md` 的 `make verify-live`。本文件历史 TOO-266 结论不冒充 TOO-349 live E2E。
+
 ## 当前验证结果
 
 - 记录时间：2026-07-16（Asia/Shanghai）

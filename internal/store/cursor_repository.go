@@ -187,7 +187,10 @@ func (repository *Repository) ReplaceCursorSnapshot(ctx context.Context, snapsho
 				return err
 			}
 		}
-		if err := database.Where("provider = ? AND source_key <> ?", "cursor", "cursor.dashboard").Delete(&cursorSourceModel{}).Error; err != nil {
+		if err := database.Where(
+			"provider = ? AND source_key <> ? AND source_key <> ?",
+			"cursor", "cursor.dashboard", "cursor.dashboard.grok_bot",
+		).Delete(&cursorSourceModel{}).Error; err != nil {
 			return err
 		}
 		if err := database.Save(&cursorSnapshotModel{
@@ -316,8 +319,8 @@ func (repository *Repository) CommitCursorDashboardSnapshot(ctx context.Context,
 		for _, window := range snapshot.QuotaWindows {
 			if err := database.Save(&cursorDashboardQuotaObservationModel{
 				Provider: "cursor", Generation: snapshot.Generation, LimitID: window.LimitID,
-				UsedPercent: window.UsedPercent, CycleStartAtMS: snapshot.WindowStartMS,
-				CycleEndAtMS: snapshot.BillingCycleEndMS, ObservedAtMS: snapshot.CollectedAtMS,
+				UsedPercent: window.UsedPercent, CycleStartAtMS: window.CycleStartAtMS,
+				CycleEndAtMS: window.CycleEndAtMS, ObservedAtMS: snapshot.CollectedAtMS,
 			}).Error; err != nil {
 				return err
 			}
@@ -335,6 +338,67 @@ func (repository *Repository) CommitCursorDashboardSnapshot(ctx context.Context,
 			LastAttemptAtMS: snapshot.CollectedAtMS, LastSuccessAtMS: &lastSuccess,
 			UpdatedAtMS: snapshot.CollectedAtMS,
 		}).Error
+	})
+}
+
+func (repository *Repository) CommitCursorGrokBotObservation(ctx context.Context, commit CursorGrokBotCommit) error {
+	if repository == nil || repository.database == nil || ctx == nil {
+		return ErrInvalidRepository
+	}
+	if err := validateCursorGrokBotCommit(commit); err != nil {
+		return err
+	}
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+		database := transaction.WithContext(ctx)
+		if commit.Included {
+			if err := database.Save(&cursorDashboardQuotaObservationModel{
+				Provider: "cursor", Generation: commit.Generation, LimitID: "cursor.grok_bot",
+				UsedPercent: *commit.UsedPercent, CycleStartAtMS: commit.CycleStartAtMS,
+				CycleEndAtMS: commit.CycleEndAtMS, ObservedAtMS: commit.CollectedAtMS,
+			}).Error; err != nil {
+				return err
+			}
+		}
+		checkpoint := fmt.Sprintf("%d", commit.Generation)
+		lastSuccess := commit.CollectedAtMS
+		var rowCount int64
+		if commit.Included {
+			rowCount = 1
+		}
+		return database.Save(&cursorSourceModel{
+			Provider: "cursor", SourceKey: "cursor.dashboard.grok_bot", SourceType: "desktop_authenticated_rpc",
+			State: "available", CoverageState: "exact", CheckpointKind: "snapshot",
+			CheckpointValue: &checkpoint, RowCount: rowCount,
+			LastAttemptAtMS: commit.CollectedAtMS, LastSuccessAtMS: &lastSuccess,
+			UpdatedAtMS: commit.CollectedAtMS,
+		}).Error
+	})
+}
+
+func (repository *Repository) RecordCursorGrokBotFailure(ctx context.Context, atMS int64, failureCode string) error {
+	if repository == nil || repository.database == nil || ctx == nil || atMS < 0 ||
+		(failureCode != "auth_expired" && failureCode != "schema_incompatible" && failureCode != "read_failed") {
+		return ErrInvalidRepository
+	}
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+		database := transaction.WithContext(ctx)
+		var source cursorSourceModel
+		err := database.Where("provider = ? AND source_key = ?", "cursor", "cursor.dashboard.grok_bot").Take(&source).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			source = cursorSourceModel{
+				Provider: "cursor", SourceKey: "cursor.dashboard.grok_bot", SourceType: "desktop_authenticated_rpc",
+				CheckpointKind: "snapshot",
+			}
+		}
+		source.State = "unavailable"
+		source.CoverageState = "unknown"
+		source.LastAttemptAtMS = atMS
+		source.FailureCode = &failureCode
+		source.UpdatedAtMS = atMS
+		return database.Save(&source).Error
 	})
 }
 
@@ -593,6 +657,25 @@ func validateCursorSnapshot(snapshot CursorSnapshot) error {
 	return nil
 }
 
+func validateCursorGrokBotCommit(commit CursorGrokBotCommit) error {
+	if commit.Generation < 0 || commit.CollectedAtMS < 0 || commit.CycleStartAtMS < 0 ||
+		commit.CycleEndAtMS <= commit.CycleStartAtMS ||
+		commit.CollectedAtMS < commit.CycleStartAtMS || commit.CollectedAtMS > commit.CycleEndAtMS {
+		return invalidRecord("cursor grok bot observation is invalid")
+	}
+	if commit.Included {
+		if commit.UsedPercent == nil || math.IsNaN(*commit.UsedPercent) || math.IsInf(*commit.UsedPercent, 0) ||
+			*commit.UsedPercent < 0 || *commit.UsedPercent > 100 {
+			return invalidRecord("cursor grok bot percent is invalid")
+		}
+		return nil
+	}
+	if commit.UsedPercent != nil {
+		return invalidRecord("cursor grok bot not-applicable observation must omit percent")
+	}
+	return nil
+}
+
 func normalizeCursorSessionPresentation(session *CursorSession) {
 	if session.DisplayTitle == "" {
 		session.DisplayTitle = "未命名会话"
@@ -615,7 +698,9 @@ func validateCursorDashboardSnapshot(snapshot CursorDashboardSnapshot) error {
 	for _, window := range snapshot.QuotaWindows {
 		if (window.LimitID != "cursor.models" && window.LimitID != "cursor.other_models") ||
 			math.IsNaN(window.UsedPercent) || math.IsInf(window.UsedPercent, 0) ||
-			window.UsedPercent < 0 || window.UsedPercent > 100 {
+			window.UsedPercent < 0 || window.UsedPercent > 100 ||
+			window.CycleStartAtMS < 0 || window.CycleEndAtMS <= window.CycleStartAtMS ||
+			snapshot.CollectedAtMS < window.CycleStartAtMS || snapshot.CollectedAtMS > window.CycleEndAtMS {
 			return invalidRecord("cursor dashboard quota window is invalid")
 		}
 		if _, exists := quotaWindows[window.LimitID]; exists {

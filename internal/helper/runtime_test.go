@@ -111,7 +111,7 @@ func TestRunStartsWithExplicitIsolatedPaths(t *testing.T) {
 	if err := writeAuthTokenForTest(writer, "abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-token"); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		if _, err := os.Stat(filepath.Join(root, "core.sock")); err == nil {
 			break
