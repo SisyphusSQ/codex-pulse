@@ -35,9 +35,9 @@ agent_profiles:
 
   cursor-grok-4-6-yolo:
     runtime: cursor
-    model: grok-4.6
-    effort: xhigh
-    speed: standard
+    model: cursor-grok-4.6-xhigh
+    effort: provider-default
+    speed: provider-default
     permission_mode: yolo
     sandbox_mode: enabled
 
