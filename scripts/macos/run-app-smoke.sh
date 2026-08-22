@@ -89,7 +89,7 @@ case "$smoke_summary" in
     ;;
 esac
 printf '%s\n' "$smoke_summary" | grep -Eq \
-  'overview=loaded quota_windows=0 sessions=0 trend_points=0 activity=(available|partial|unavailable) activity_timeline=0 activity_heatmap=(0|168) health=(empty|healthy) primary_pages=partial sessions=0 projects=0 sources=9 jobs=0 health_events=0 .*invocation_tools=0 invocation_skills=0 .*api_subscriptions=deepseek_unconfigured\+opencode_go_unconfigured .*unavailable=projects_unavailable ui_pages=9 native_surfaces=window\+status_item\+popover actions=project\+copy keyboard=tab\+shift-tab\+return\+space focus_escape=open-overview\+refresh\+reset-credits\+settings\+quit clipboard=single_item_string\+png' || {
+  'overview=loaded quota_windows=0 sessions=0 trend_points=0 activity=(available|partial|unavailable) activity_timeline=0 activity_heatmap=(0|168) health=(empty|healthy) primary_pages=partial sessions=0 projects=0 sources=11 jobs=0 health_events=0 .*invocation_tools=0 invocation_skills=0 .*api_subscriptions=deepseek_unconfigured\+opencode_go_unconfigured .*unavailable=projects_unavailable ui_pages=9 native_surfaces=window\+status_item\+popover actions=project\+copy keyboard=tab\+shift-tab\+return\+space focus_escape=open-overview\+refresh\+reset-credits\+settings\+quit clipboard=single_item_string\+png' || {
   echo "app smoke failed: isolated empty Home produced unexpected user facts" >&2
   exit 1
 }

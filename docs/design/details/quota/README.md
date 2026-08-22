@@ -15,6 +15,16 @@ Codex Runway 实际运行中观察到：网络不佳时，5 小时和周窗口�
 
 Grok 客户端的额度是独立来源，不写入 Codex `quota_observations` / `quota_current`，也不复用 Cursor Dashboard 表。Helper 在用户开启 `online.grok_quota_enabled` 时，用调用期内存中的 `~/.grok/auth.json` Bearer 请求 CLI proxy `GET /billing?format=credits`，把 `creditUsagePercent` 与 `currentPeriod` 映射为 Grok 自己的 window snapshot。该接口与 `wham` 同类：默认开启、可关、last-known-good、协议漂移 fail closed。独立的 `online.grok_auto_refresh_enabled` 也默认开启：OIDC token 临近到期或 billing 返回 401/403 时，Helper 通过共用锁与 mode `0600` 原子替换安全续期；关闭后完全不改写 Grok 凭据。Grok 没有 Reset Credits；prepaid 余额只作摘要。字段、周期和失败语义见 [Agent Provider、Cursor 与 Grok](../providers/README.md)。
 
+Cursor Provider 在 TOO-349 起同时持有两类 Dashboard 额度，且不得共用 freshness 或账期：
+
+- Cursor Models / Other Models：`GetCurrentPeriodUsage` 的月账期，source `cursor.dashboard`。
+- Grok Bot：`GetSandUsageStatus` 的官方周账期，`limit_id=cursor.grok_bot`，source `cursor.dashboard.grok_bot`。
+- QuotaCurrent 稳定返回三个窗口；`nextReset` 取全部 `fresh/stale` 且仍在未来的窗口中最早的 reset，因此周 reset 可以早于月 reset。
+- 周 `window_minutes` 只来自官方 `current_period_start` 与 `next_reset_timestamp_utc` 的差值，禁止硬编码 10080。
+- 套餐不含 included Grok Bot 时第三窗 `unknown_reason=not_applicable`，无百分比；从未成功观测为 `never_loaded`。缺 percent 不得写成真实 `0%`。
+- 越过官方周 reset 且尚无新周期 observation 时，该周窗不回显旧百分比，客户端显示 `--`，freshness 为 `expired_unknown`。这与下方 Codex last-known-good 过期仍显示百分比的语义不同。
+- Cursor Overview / Session / Project 分析范围只使用 `cursor.models` / `cursor.other_models` 的月边界；Grok Bot 周窗不得带偏 `quotaMonth`。
+
 Codex 在线 quota 或 reset credits 启用时，只从 Preferences 当前 confirmed Codex Home 下的固定 `auth.json` 将 access token 读入调用期内存。Codex 凭据链不保存 token、refresh token、Authorization header 或 auth 文件内容，不主动刷新或修改 Codex `auth.json`；401/403 后标记 `auth_required`，保留 last-known-good，并进入有上限的持久退避。Grok 的 OIDC 主动续期是单独、可关闭的能力，严格限定在 Grok `auth.json`，不得复用到 Codex Home。凭据恢复后自动或手动请求都可恢复来源；只有用户关闭对应能力时才停止该能力的在线调度，已有非敏感 observation history 保留。
 
 ## Observation
@@ -205,11 +215,13 @@ Local-only、Wham-only、双源一致、双源冲突、expired last-known-good�
 ```text
 fresh:           5h 剩余 62% · 2 分钟前 · 在线
 stale:           5h 剩余 62%
-expired_unknown: 5h 剩余 62%
+expired_unknown: 5h 剩余 62%          # Codex / 仍有 last-known-good 百分比的窗口
 conflict:        5h 剩余 55%
 ```
 
-Tray 和 Popover 始终使用普通百分比，不用 `≤`、`?`、状态胶囊或说明文案向用户区分 fresh、stale、expired_unknown 与 conflict。存在 last-known-good 时继续显示当前选定值；从未取得 accepted observation 时才显示 `--`。Quota 详情页仍可展示各来源 observation、时间、generation、原始 validity 与派生 disposition/reason/explanation，供诊断 current 的选择依据。`trusted`、`stale`、`expired_unknown`、`suspicious_candidate`、`source_conflict`、`unavailable` 是固定、无上游正文的 explanation code；UI 文案在后续卡映射，不读取数据库外的日志文本。
+Cursor Grok Bot 过期周窗不套用上面的 “expired 仍显示百分比”：没有当前官方周 observation 时显示 `--`，不能把上一周百分比冒充新周。`0%` 只表示确认已用 0；`--` 只表示未知、不适用或尚未加载。不适用文案为「这项额度不适用于当前套餐。」，从未加载为「这项额度尚未加载。」，其它 unknown 为「这项额度暂时无法获取。」
+
+Tray 和 Popover 始终使用普通百分比，不用 `≤`、`?`、状态胶囊或说明文案向用户区分 fresh、stale、expired_unknown 与 conflict。存在 last-known-good 时继续显示当前选定值；从未取得 accepted observation 时才显示 `--`。Cursor 菜单栏紧凑行只保留两个模型月额度（`月剩 a% · b%`），Grok Bot 周额度出现在展开 Popover、Overview 条带和额度详情，避免标题过长。Quota 详情页仍可展示各来源 observation、时间、generation、原始 validity 与派生 disposition/reason/explanation，供诊断 current 的选择依据。`trusted`、`stale`、`expired_unknown`、`suspicious_candidate`、`source_conflict`、`unavailable` 是固定、无上游正文的 explanation code；UI 文案在后续卡映射，不读取数据库外的日志文本。
 
 ## 验收场景
 

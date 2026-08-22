@@ -1,10 +1,24 @@
 # 原生主要页面与共享数据闭环验证记录
 
+## 2026-08-22 TOO-349 Cursor 混合月/周额度入口
+
+- Issue：TOO-349。Cursor Provider 在现有月额度之外增加 Grok Bot 周额度；产品仍只有 `codex` / `cursor` / `grok` 三个 Agent Provider。
+- 开发期验证入口（synthetic / empty Home，不代替真实产品结论）：
+
+```bash
+go test ./internal/cursorprovider ./internal/store ./internal/codex/quota ./internal/core ./internal/app
+swift run --package-path app/macos codex-pulse-app-tests
+```
+
+- 真实 Home 产品验收入口仍是 `make verify-live`（或等价显式真实 Home + mode `0700` 私有 runtime）。运行前须说明会只读 Session/JSONL，并可能写入应用 runtime、SQLite、偏好及 App Server 标准 housekeeping。
+- 真实验收读回：Preferences / App / Helper 的 `CODEX_HOME` 物理身份、runtime mode `0700`、Cursor QuotaCurrent 三个 `limit_id`（`cursor.models`、`cursor.other_models`、`cursor.grok_bot`）与各自 reset、被测 commit 身份、进程清理且 `residuals=[]`。脱敏证据只进 `.artifacts/`，不提交路径、token、邮箱或原始 proto。
+- 本 Develop 任务**未**执行 `make verify-live`、签名、公证、CI、commit、push 或 PR。未跑项不得写成已完成。账号若无 Grok Bot included usage，live 数值路径应标 Unavailable，不得伪造通过。
+
 ## 2026-08-19 API 与订阅增量
 
 - 新增第九个原生导航页面“API 与订阅”，独立于 Agent Provider；DeepSeek 只展示 `/user/balance` 余额，OpenCode Go 只展示 5 小时、周、月额度。
 - 页面后续增加一个合并两个来源的 365 天蓝色热力图；方块不展示净变化或 Token，悬停详情分别显示 DeepSeek 采样估算的总充值/总消耗与 OpenCode Go 5 小时峰值已用/最新剩余。DeepSeek 周期卡片同步增加总充值和总消耗，OpenCode Go 5 小时成功采样持久化到独立的凭据代次表。
-- isolated smoke 的稳定契约新增 `sources=9 api_subscriptions=deepseek_unconfigured+opencode_go_unconfigured ui_pages=9`，并显式传入 `--skip-cursor-provider-smoke`；这证明空凭据时仍打通 App、RPC 与 Helper，同时不发起线上请求，真实 Cursor provider 校验则由 live smoke 负责。
+- isolated smoke 的稳定契约为 `sources=11 api_subscriptions=deepseek_unconfigured+opencode_go_unconfigured ui_pages=9`；TOO-349 接入独立的 Cursor Grok Bot source/quota source 后，同步提升了空 Home 的稳定 source 基线。脚本仍显式传入 `--skip-cursor-provider-smoke`，证明空凭据时打通 App、RPC 与 Helper 且不发起线上请求；真实 Cursor provider 校验由 live smoke 负责。
 - 切换独立 `credentials.db` 之前，真实 Home gate 曾读回 `api_subscriptions=deepseek_current+opencode_go_current unavailable=none ui_pages=9 shutdown=clean`，并人工读回统一热力图、四项选中日指标、蓝色余额趋势和 DeepSeek 两个采样估算字段。该历史结果证明当时的只读查询与 UI 闭环，不作为新凭据存储、无系统授权弹窗或当前凭据配置状态的验证证据。
 - 切换后使用显式真实 Codex Home 和既有私有 development runtime 重跑 gate，读回 `api_subscriptions=deepseek_unconfigured+opencode_go_unconfigured unavailable=none ui_pages=9 native_surfaces=window+status_item+popover shutdown=clean`。`credentials.db` 与 `codex-pulse.db` 是不同 inode，目录为 `0700`、两个数据库均为 `0600`，新凭据表记录数为 `0`；App/Helper 正常启动且 socket ready，Swift 生产代码不再导入 `Security` 或访问 Keychain。旧 Keychain item 未读取、迁移或删除，因此该次验收没有调用 DeepSeek/OpenCode Go 线上接口，用户需要在新设置页重新录入一次。
 

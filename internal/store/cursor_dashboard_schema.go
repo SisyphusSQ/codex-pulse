@@ -34,11 +34,26 @@ var cursorDashboardSchemaObjects = append([]storeschema.Object{{
 	) STRICT`,
 }}, cursorDashboardUsageSchemaObjects...)
 
-var cursorDashboardQuotaSchemaObjects = []storeschema.Object{
+var cursorDashboardQuotaV26SchemaObjects = []storeschema.Object{
 	{ObjectType: "table", Name: "cursor_dashboard_quota_observations", Statement: `CREATE TABLE IF NOT EXISTS cursor_dashboard_quota_observations (
 		provider TEXT NOT NULL CHECK (provider = 'cursor'),
 		generation INTEGER NOT NULL CHECK (generation >= 0),
 		limit_id TEXT NOT NULL CHECK (limit_id IN ('cursor.models', 'cursor.other_models')),
+		used_percent REAL NOT NULL CHECK (used_percent >= 0.0 AND used_percent <= 100.0),
+		cycle_start_at_ms INTEGER NOT NULL CHECK (cycle_start_at_ms >= 0),
+		cycle_end_at_ms INTEGER NOT NULL CHECK (cycle_end_at_ms > cycle_start_at_ms),
+		observed_at_ms INTEGER NOT NULL CHECK (observed_at_ms >= cycle_start_at_ms AND observed_at_ms <= cycle_end_at_ms),
+		PRIMARY KEY (provider, generation, limit_id)
+	) STRICT`},
+	{ObjectType: "index", Name: "idx_cursor_dashboard_quota_history", Statement: `CREATE INDEX IF NOT EXISTS idx_cursor_dashboard_quota_history
+		ON cursor_dashboard_quota_observations(provider, limit_id, cycle_start_at_ms, observed_at_ms, generation)`},
+}
+
+var cursorDashboardQuotaSchemaObjects = []storeschema.Object{
+	{ObjectType: "table", Name: "cursor_dashboard_quota_observations", Statement: `CREATE TABLE IF NOT EXISTS cursor_dashboard_quota_observations (
+		provider TEXT NOT NULL CHECK (provider = 'cursor'),
+		generation INTEGER NOT NULL CHECK (generation >= 0),
+		limit_id TEXT NOT NULL CHECK (limit_id IN ('cursor.models', 'cursor.other_models', 'cursor.grok_bot')),
 		used_percent REAL NOT NULL CHECK (used_percent >= 0.0 AND used_percent <= 100.0),
 		cycle_start_at_ms INTEGER NOT NULL CHECK (cycle_start_at_ms >= 0),
 		cycle_end_at_ms INTEGER NOT NULL CHECK (cycle_end_at_ms > cycle_start_at_ms),

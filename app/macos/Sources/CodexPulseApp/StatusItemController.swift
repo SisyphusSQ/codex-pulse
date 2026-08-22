@@ -861,7 +861,10 @@ private struct MenuBarPopoverView: View {
             if overview.quotaWindows.isEmpty {
                 PulseCard { Text("尚未取得可信额度数据").foregroundStyle(.secondary) }
             } else {
-                ForEach(overview.quotaWindows.prefix(2)) { window in
+                let windows = overview.provider == .cursor
+                    ? overview.quotaWindows
+                    : Array(overview.quotaWindows.prefix(2))
+                ForEach(windows) { window in
                     let reset = QuotaResetPresentation(
                         resetsAtMS: window.resetsAtMS,
                         resetRemainingMS: window.resetRemainingMS
@@ -919,6 +922,12 @@ private struct MenuBarPopoverView: View {
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        if let message = window.unknownMessage {
+                            Text(message)
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
             }

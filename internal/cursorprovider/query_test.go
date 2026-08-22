@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
@@ -49,10 +50,28 @@ func (reader fixedSnapshotReader) CursorSnapshot(context.Context) (store.CursorS
 	return reader.snapshot, nil
 }
 
-type mutableSnapshotReader struct{ snapshot store.CursorSnapshot }
+type mutableSnapshotReader struct {
+	mu       sync.RWMutex
+	snapshot store.CursorSnapshot
+}
 
 func (reader *mutableSnapshotReader) CursorSnapshot(context.Context) (store.CursorSnapshot, error) {
+	reader.mu.RLock()
+	defer reader.mu.RUnlock()
 	return reader.snapshot, nil
+}
+
+func (reader *mutableSnapshotReader) setGeneration(generation int64) {
+	reader.mu.Lock()
+	defer reader.mu.Unlock()
+	reader.snapshot.Generation = generation
+}
+
+func (reader *mutableSnapshotReader) appendSource(source store.CursorSourceStatus) {
+	reader.mu.Lock()
+	defer reader.mu.Unlock()
+	sources := append([]store.CursorSourceStatus(nil), reader.snapshot.Sources...)
+	reader.snapshot.Sources = append(sources, source)
 }
 
 type countingSnapshotReader struct {
@@ -105,7 +124,7 @@ func (reader *countingSnapshotReader) CursorSnapshot(context.Context) (store.Cur
 type snapshotPublishingRefresher struct{ reader *mutableSnapshotReader }
 
 func (refresher snapshotPublishingRefresher) Refresh(context.Context) error {
-	refresher.reader.snapshot.Sources = append(refresher.reader.snapshot.Sources, store.CursorSourceStatus{
+	refresher.reader.appendSource(store.CursorSourceStatus{
 		Provider: "cursor", SourceKey: SourceDashboard, SourceType: "desktop_authenticated_rpc",
 		State: "available", CoverageState: "exact", LastSuccessAtMS: pointerInt64ForQueryTest(5_000),
 	})
@@ -316,14 +335,14 @@ func TestQueryServiceDoesNotCacheSnapshotLoadedAcrossInvalidation(t *testing.T) 
 func TestQueryServiceExplicitRefreshInvalidatesCachedSnapshot(t *testing.T) {
 	root := t.TempDir()
 	reader := &mutableSnapshotReader{snapshot: cursorQuerySnapshot("partial")}
-	reader.snapshot.Generation = 1
+	reader.setGeneration(1)
 	release := make(chan struct{})
 	close(release)
 	writer := &blockingSnapshotWriter{
 		started: make(chan struct{}),
 		release: release,
 		commit: func() {
-			reader.snapshot.Generation = 2
+			reader.setGeneration(2)
 		},
 	}
 	collector, err := NewCollector(writer, Config{
@@ -362,7 +381,7 @@ func TestQueryServiceInvalidatesCachedSnapshotAfterLocalRefresh(t *testing.T) {
 		started: make(chan struct{}),
 		release: make(chan struct{}),
 		commit: func() {
-			reader.snapshot.Sources = append(reader.snapshot.Sources, store.CursorSourceStatus{
+			reader.appendSource(store.CursorSourceStatus{
 				Provider: "cursor", SourceKey: SourceHooks, SourceType: "hooks",
 				State: "available", CoverageState: "exact", LastSuccessAtMS: pointerInt64ForQueryTest(5_000),
 			})
@@ -470,6 +489,51 @@ func TestQueryServiceReturnsLocalSnapshotBeforeDashboardRefreshCompletes(t *test
 	if invalidations.Load() != 2 {
 		t.Fatalf("local and dashboard completion invalidations = %d, want 2", invalidations.Load())
 	}
+}
+
+func TestQueryServiceGrokBotRefreshDoesNotShareDashboardSingleFlight(t *testing.T) {
+	root := t.TempDir()
+	collector, err := NewCollector(discardSnapshotWriter{}, Config{
+		ProjectsRoot: filepath.Join(root, "projects"), StateDatabase: filepath.Join(root, "state.vscdb"),
+		ConversationDatabase: filepath.Join(root, "conversation.db"), AITrackingDatabase: filepath.Join(root, "tracking.db"),
+		MinimumRefresh: time.Hour, Now: func() time.Time { return time.UnixMilli(5_000) },
+	})
+	if err != nil {
+		t.Fatalf("NewCollector() error = %v", err)
+	}
+	dashboard := &blockingDashboardRefresher{started: make(chan struct{}), release: make(chan struct{})}
+	service, err := NewQueryService(collector, fixedSnapshotReader{snapshot: cursorQuerySnapshot("partial")}, dashboard)
+	if err != nil {
+		t.Fatalf("NewQueryService() error = %v", err)
+	}
+	grokBot := &countingRefresher{}
+	service.SetGrokBotRefresher(grokBot)
+	rangeValue := basequery.UTCTimeRange{StartAtMS: 1_000, EndAtMS: 5_000, TimeZone: "UTC"}
+	go func() {
+		_, _ = service.UsageCost(context.Background(), usagecost.UsageCostRequest{
+			ExactRange: &rangeValue, Granularity: usagecost.TrendDay,
+		})
+	}()
+	select {
+	case <-dashboard.started:
+	case <-time.After(time.Second):
+		t.Fatal("dashboard refresh did not start")
+	}
+	deadline := time.Now().Add(time.Second)
+	for grokBot.calls.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if grokBot.calls.Load() == 0 {
+		t.Fatal("grok bot refresh waited for the dashboard single-flight")
+	}
+	close(dashboard.release)
+}
+
+type countingRefresher struct{ calls atomic.Int64 }
+
+func (refresher *countingRefresher) Refresh(context.Context) error {
+	refresher.calls.Add(1)
+	return nil
 }
 
 func TestQueryServicePublishesDashboardSourceAfterBackgroundRefresh(t *testing.T) {
@@ -664,7 +728,7 @@ func TestCursorQuotaUsesOfficialModelPercentagesAndMonthlyCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("QuotaCurrent() error = %v", err)
 	}
-	if len(current.Current.Windows) != 2 {
+	if len(current.Current.Windows) != 3 {
 		t.Fatalf("current windows = %#v", current.Current.Windows)
 	}
 	if current.ProviderContext.EffectiveProvider != "cursor" ||
@@ -672,7 +736,7 @@ func TestCursorQuotaUsesOfficialModelPercentagesAndMonthlyCycle(t *testing.T) {
 		!testContainsString(current.ProviderContext.Capabilities, "quota") {
 		t.Fatalf("quota provider context = %#v", current.ProviderContext)
 	}
-	models, other := current.Current.Windows[0], current.Current.Windows[1]
+	models, other, grokBot := current.Current.Windows[0], current.Current.Windows[1], current.Current.Windows[2]
 	if models.LimitName == nil || *models.LimitName != "Cursor Models" ||
 		models.UsedPercent == nil || *models.UsedPercent != 7 ||
 		models.RemainingPercent == nil || *models.RemainingPercent != 93 {
@@ -683,12 +747,16 @@ func TestCursorQuotaUsesOfficialModelPercentagesAndMonthlyCycle(t *testing.T) {
 		other.ResetsAtMS == nil || *other.ResetsAtMS != cycleEnd {
 		t.Fatalf("Other Models quota = %#v", other)
 	}
+	if grokBot.LimitID != grokBotLimitID || grokBot.UsedPercent != nil ||
+		grokBot.UnknownReason == nil || *grokBot.UnknownReason != quotaquery.CurrentUnknownNeverLoaded {
+		t.Fatalf("Grok Bot placeholder = %#v", grokBot)
+	}
 
 	pace, err := service.QuotaPace(context.Background(), evaluatedAt)
 	if err != nil {
 		t.Fatalf("QuotaPace() error = %v", err)
 	}
-	if len(pace.Pace.Windows) != 2 || pace.Pace.Windows[0].UsedPercent == nil ||
+	if len(pace.Pace.Windows) != 3 || pace.Pace.Windows[0].UsedPercent == nil ||
 		*pace.Pace.Windows[0].UsedPercent != 7 || pace.Pace.Windows[0].ElapsedPercent == nil ||
 		*pace.Pace.Windows[0].ElapsedPercent != 50 || pace.Pace.Windows[1].UsedPercent == nil ||
 		*pace.Pace.Windows[1].UsedPercent != 0 {
@@ -720,7 +788,7 @@ func TestCursorQuotaReturnsLastKnownPercentagesBeforeDashboardRefreshCompletes(t
 	if err != nil {
 		t.Fatalf("QuotaCurrent() error = %v", err)
 	}
-	if response.Meta.Status != basequery.ResponseComplete || len(response.Current.Windows) != 1 ||
+	if response.Meta.Status != basequery.ResponseComplete || len(response.Current.Windows) != 3 ||
 		response.Current.Windows[0].UsedPercent == nil || *response.Current.Windows[0].UsedPercent != 7 ||
 		response.Current.Windows[0].Freshness != store.QuotaCurrentFresh {
 		t.Fatalf("last-known quota = %#v", response)
@@ -750,9 +818,257 @@ func TestCursorQuotaPaceKeepsCalendarMonthsWithDifferentDurations(t *testing.T) 
 	if err != nil {
 		t.Fatalf("QuotaPace() error = %v", err)
 	}
-	if len(response.Pace.Windows) != 1 || response.Pace.Windows[0].PreviousCycle == nil ||
+	if len(response.Pace.Windows) != 3 || response.Pace.Windows[0].PreviousCycle == nil ||
 		response.Pace.Windows[0].PreviousCycle.WindowStartAtMS != previousStart {
 		t.Fatalf("calendar-month history = %#v", response.Pace.Windows)
+	}
+}
+
+func TestCursorQuotaKeepsGrokBotWeeklyCycleAndNearestReset(t *testing.T) {
+	t.Parallel()
+	const day = int64(24 * time.Hour / time.Millisecond)
+	monthStart := int64(1_780_000_000_000)
+	monthEnd := monthStart + 31*day
+	weekStart := monthStart + 20*day
+	weekEnd := weekStart + 6*day + 12*time.Hour.Milliseconds()
+	evaluatedAt := weekStart + day
+	snapshot := cursorQuerySnapshot("partial")
+	snapshot.DashboardQuotaObservations = []store.CursorDashboardQuotaObservation{
+		{
+			Generation: 1, LimitID: "cursor.models", UsedPercent: 40,
+			CycleStartAtMS: monthStart, CycleEndAtMS: monthEnd, ObservedAtMS: evaluatedAt,
+		},
+		{
+			Generation: 1, LimitID: "cursor.other_models", UsedPercent: 10,
+			CycleStartAtMS: monthStart, CycleEndAtMS: monthEnd, ObservedAtMS: evaluatedAt,
+		},
+		{
+			Generation: 2, LimitID: grokBotLimitID, UsedPercent: 0,
+			CycleStartAtMS: weekStart, CycleEndAtMS: weekEnd, ObservedAtMS: evaluatedAt,
+		},
+	}
+	snapshot.Sources = append(snapshot.Sources,
+		store.CursorSourceStatus{
+			Provider: "cursor", SourceKey: SourceDashboard, SourceType: "desktop_authenticated_rpc",
+			State: "available", CoverageState: "exact", LastSuccessAtMS: pointerInt64ForQueryTest(evaluatedAt),
+			LastAttemptAtMS: evaluatedAt,
+		},
+		store.CursorSourceStatus{
+			Provider: "cursor", SourceKey: SourceDashboardGrokBot, SourceType: "desktop_authenticated_rpc",
+			State: "available", CoverageState: "exact", RowCount: 1,
+			LastSuccessAtMS: pointerInt64ForQueryTest(evaluatedAt),
+			LastAttemptAtMS: evaluatedAt,
+		},
+	)
+	service := cursorQueryFixture(t, snapshot)
+	current, err := service.QuotaCurrent(context.Background(), evaluatedAt)
+	if err != nil {
+		t.Fatalf("QuotaCurrent() error = %v", err)
+	}
+	if len(current.Current.Windows) != 3 || current.Current.Windows[2].LimitID != grokBotLimitID ||
+		current.Current.Windows[2].UsedPercent == nil || *current.Current.Windows[2].UsedPercent != 0 ||
+		current.Current.Windows[2].WindowMinutes == nil ||
+		*current.Current.Windows[2].WindowMinutes != (weekEnd-weekStart)/60_000 ||
+		*current.Current.Windows[2].WindowMinutes == 10_080 {
+		t.Fatalf("weekly grok bot window = %#v", current.Current.Windows[2])
+	}
+	if current.Current.NextReset.AtMS == nil || *current.Current.NextReset.AtMS != weekEnd ||
+		current.Current.NextReset.TrustedWindowCount != 3 {
+		t.Fatalf("nearest reset = %#v", current.Current.NextReset)
+	}
+	if len(current.Current.Sources) != 2 || current.Meta.Status != basequery.ResponseComplete {
+		t.Fatalf("quota sources = %#v meta=%#v", current.Current.Sources, current.Meta)
+	}
+
+	previousWeekStart := weekStart - 7*day
+	snapshot.DashboardQuotaObservations = append(snapshot.DashboardQuotaObservations, store.CursorDashboardQuotaObservation{
+		Generation: 1, LimitID: grokBotLimitID, UsedPercent: 88,
+		CycleStartAtMS: previousWeekStart, CycleEndAtMS: weekStart, ObservedAtMS: previousWeekStart + day,
+	})
+	service = cursorQueryFixture(t, snapshot)
+	pace, err := service.QuotaPace(context.Background(), evaluatedAt)
+	if err != nil {
+		t.Fatalf("QuotaPace() error = %v", err)
+	}
+	if len(pace.Pace.Windows) != 3 || pace.Pace.Windows[2].UsedPercent == nil ||
+		*pace.Pace.Windows[2].UsedPercent != 0 || pace.Pace.Windows[2].PreviousCycle == nil ||
+		pace.Pace.Windows[2].PreviousCycle.WindowStartAtMS != previousWeekStart {
+		t.Fatalf("grok bot weekly pace = %#v", pace.Pace.Windows[2])
+	}
+}
+
+func TestCursorQuotaMarksGrokBotNotApplicableAndPartialFailureIndependently(t *testing.T) {
+	t.Parallel()
+	evaluatedAt := int64(2_000)
+	snapshot := cursorQuerySnapshot("partial")
+	snapshot.DashboardQuotaObservations = []store.CursorDashboardQuotaObservation{{
+		Generation: 1, LimitID: "cursor.models", UsedPercent: 7,
+		CycleStartAtMS: 1_000, CycleEndAtMS: 9_000, ObservedAtMS: 1_500,
+	}}
+	snapshot.Sources = append(snapshot.Sources,
+		store.CursorSourceStatus{
+			Provider: "cursor", SourceKey: SourceDashboard, SourceType: "desktop_authenticated_rpc",
+			State: "available", CoverageState: "exact", LastSuccessAtMS: pointerInt64ForQueryTest(1_500),
+			LastAttemptAtMS: 1_500,
+		},
+		store.CursorSourceStatus{
+			Provider: "cursor", SourceKey: SourceDashboardGrokBot, SourceType: "desktop_authenticated_rpc",
+			State: "available", CoverageState: "exact", RowCount: 0,
+			LastSuccessAtMS: pointerInt64ForQueryTest(1_800),
+			LastAttemptAtMS: 1_800,
+		},
+	)
+	service := cursorQueryFixture(t, snapshot)
+	current, err := service.QuotaCurrent(context.Background(), evaluatedAt)
+	if err != nil {
+		t.Fatalf("QuotaCurrent() error = %v", err)
+	}
+	grokBot := current.Current.Windows[2]
+	if grokBot.UsedPercent != nil || grokBot.UnknownReason == nil ||
+		*grokBot.UnknownReason != quotaquery.CurrentUnknownNotApplicable ||
+		grokBot.Freshness != store.QuotaCurrentFresh {
+		t.Fatalf("not_applicable grok bot = %#v", grokBot)
+	}
+
+	failure := "schema_incompatible"
+	snapshot.Sources[len(snapshot.Sources)-1].State = "unavailable"
+	snapshot.Sources[len(snapshot.Sources)-1].FailureCode = &failure
+	snapshot.Sources[len(snapshot.Sources)-1].LastAttemptAtMS = 2_000
+	service = cursorQueryFixture(t, snapshot)
+	partial, err := service.QuotaCurrent(context.Background(), evaluatedAt)
+	if err != nil {
+		t.Fatalf("QuotaCurrent(partial) error = %v", err)
+	}
+	if partial.Meta.Status != basequery.ResponsePartial ||
+		partial.Current.Windows[0].UsedPercent == nil || *partial.Current.Windows[0].UsedPercent != 7 ||
+		partial.Current.Sources[1].FailureCode == nil ||
+		string(*partial.Current.Sources[1].FailureCode) != failure {
+		t.Fatalf("partial grok bot failure = meta=%#v current=%#v", partial.Meta, partial.Current)
+	}
+}
+
+func TestCursorQuotaNotApplicableOverridesCurrentCycleAndSurvivesFailure(t *testing.T) {
+	t.Parallel()
+	const day = int64(24 * time.Hour / time.Millisecond)
+	monthStart := int64(1_780_000_000_000)
+	monthEnd := monthStart + 31*day
+	weekStart := monthStart + 20*day
+	weekEnd := weekStart + 6*day + 12*time.Hour.Milliseconds()
+	evaluatedAt := weekStart + day
+	snapshot := cursorQuerySnapshot("partial")
+	snapshot.DashboardQuotaObservations = []store.CursorDashboardQuotaObservation{
+		{
+			Generation: 1, LimitID: "cursor.models", UsedPercent: 40,
+			CycleStartAtMS: monthStart, CycleEndAtMS: monthEnd, ObservedAtMS: evaluatedAt,
+		},
+		{
+			Generation: 1, LimitID: "cursor.other_models", UsedPercent: 10,
+			CycleStartAtMS: monthStart, CycleEndAtMS: monthEnd, ObservedAtMS: evaluatedAt,
+		},
+		{
+			Generation: 2, LimitID: grokBotLimitID, UsedPercent: 40,
+			CycleStartAtMS: weekStart, CycleEndAtMS: weekEnd, ObservedAtMS: evaluatedAt,
+		},
+	}
+	snapshot.Sources = append(snapshot.Sources,
+		store.CursorSourceStatus{
+			Provider: "cursor", SourceKey: SourceDashboard, SourceType: "desktop_authenticated_rpc",
+			State: "available", CoverageState: "exact", RowCount: 2,
+			LastSuccessAtMS: pointerInt64ForQueryTest(evaluatedAt), LastAttemptAtMS: evaluatedAt,
+		},
+		store.CursorSourceStatus{
+			Provider: "cursor", SourceKey: SourceDashboardGrokBot, SourceType: "desktop_authenticated_rpc",
+			State: "available", CoverageState: "exact", RowCount: 0,
+			LastSuccessAtMS: pointerInt64ForQueryTest(evaluatedAt), LastAttemptAtMS: evaluatedAt,
+		},
+	)
+	service := cursorQueryFixture(t, snapshot)
+	current, err := service.QuotaCurrent(context.Background(), evaluatedAt)
+	if err != nil {
+		t.Fatalf("QuotaCurrent() error = %v", err)
+	}
+	grokBot := current.Current.Windows[2]
+	if grokBot.UsedPercent != nil || grokBot.UnknownReason == nil ||
+		*grokBot.UnknownReason != quotaquery.CurrentUnknownNotApplicable ||
+		grokBot.Freshness != store.QuotaCurrentFresh {
+		t.Fatalf("not_applicable must beat current-cycle observation = %#v", grokBot)
+	}
+	if current.Current.NextReset.AtMS == nil || *current.Current.NextReset.AtMS != monthEnd ||
+		current.Current.NextReset.TrustedWindowCount != 2 {
+		t.Fatalf("not_applicable must not own nearest reset = %#v", current.Current.NextReset)
+	}
+	if current.Current.Sources[1].UnknownReason == nil ||
+		*current.Current.Sources[1].UnknownReason != quotaquery.CurrentUnknownNotApplicable {
+		t.Fatalf("grok bot source = %#v", current.Current.Sources[1])
+	}
+
+	pace, err := service.QuotaPace(context.Background(), evaluatedAt)
+	if err != nil {
+		t.Fatalf("QuotaPace() error = %v", err)
+	}
+	if len(pace.Pace.Windows) != 3 || pace.Pace.Windows[2].UsedPercent != nil ||
+		pace.Pace.Windows[2].PreviousCycle != nil || pace.Pace.Windows[2].UnknownReason == nil ||
+		*pace.Pace.Windows[2].UnknownReason != quotaquery.PaceUnknownWindowUnavailable {
+		t.Fatalf("not_applicable pace must drop old curve = %#v", pace.Pace.Windows[2])
+	}
+
+	failure := "read_failed"
+	snapshot.Sources[len(snapshot.Sources)-1].State = "unavailable"
+	snapshot.Sources[len(snapshot.Sources)-1].FailureCode = &failure
+	snapshot.Sources[len(snapshot.Sources)-1].LastAttemptAtMS = evaluatedAt + 1
+	service = cursorQueryFixture(t, snapshot)
+	partial, err := service.QuotaCurrent(context.Background(), evaluatedAt)
+	if err != nil {
+		t.Fatalf("QuotaCurrent(partial) error = %v", err)
+	}
+	if partial.Meta.Status != basequery.ResponsePartial ||
+		partial.Current.Windows[2].UsedPercent != nil ||
+		partial.Current.Windows[2].UnknownReason == nil ||
+		*partial.Current.Windows[2].UnknownReason != quotaquery.CurrentUnknownNotApplicable ||
+		partial.Current.Windows[2].Freshness != store.QuotaCurrentStale ||
+		partial.Current.NextReset.AtMS == nil || *partial.Current.NextReset.AtMS != monthEnd ||
+		partial.Current.Sources[1].FailureCode == nil ||
+		string(*partial.Current.Sources[1].FailureCode) != failure {
+		t.Fatalf("failure must not revive old grok bot percent = meta=%#v current=%#v", partial.Meta, partial.Current)
+	}
+}
+
+func TestCursorQuotaNotApplicableOverridesExpiredGrokBotHistory(t *testing.T) {
+	t.Parallel()
+	evaluatedAt := int64(2_000)
+	snapshot := cursorQuerySnapshot("partial")
+	snapshot.DashboardQuotaObservations = []store.CursorDashboardQuotaObservation{
+		{
+			Generation: 1, LimitID: "cursor.models", UsedPercent: 7,
+			CycleStartAtMS: 1_000, CycleEndAtMS: 9_000, ObservedAtMS: 1_500,
+		},
+		{
+			Generation: 2, LimitID: grokBotLimitID, UsedPercent: 88,
+			CycleStartAtMS: 100, CycleEndAtMS: 900, ObservedAtMS: 800,
+		},
+	}
+	snapshot.Sources = append(snapshot.Sources,
+		store.CursorSourceStatus{
+			Provider: "cursor", SourceKey: SourceDashboard, SourceType: "desktop_authenticated_rpc",
+			State: "available", CoverageState: "exact", RowCount: 1,
+			LastSuccessAtMS: pointerInt64ForQueryTest(1_500), LastAttemptAtMS: 1_500,
+		},
+		store.CursorSourceStatus{
+			Provider: "cursor", SourceKey: SourceDashboardGrokBot, SourceType: "desktop_authenticated_rpc",
+			State: "available", CoverageState: "exact", RowCount: 0,
+			LastSuccessAtMS: pointerInt64ForQueryTest(1_800), LastAttemptAtMS: 1_800,
+		},
+	)
+	service := cursorQueryFixture(t, snapshot)
+	current, err := service.QuotaCurrent(context.Background(), evaluatedAt)
+	if err != nil {
+		t.Fatalf("QuotaCurrent() error = %v", err)
+	}
+	grokBot := current.Current.Windows[2]
+	if grokBot.UsedPercent != nil || grokBot.UnknownReason == nil ||
+		*grokBot.UnknownReason != quotaquery.CurrentUnknownNotApplicable ||
+		grokBot.Freshness != store.QuotaCurrentFresh {
+		t.Fatalf("expired history after not_applicable = %#v", grokBot)
 	}
 }
 

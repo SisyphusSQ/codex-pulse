@@ -161,7 +161,10 @@ private struct QuotaPaceCenterView: View {
 
     private func title(for window: QuotaPaceWindowPresentation) -> String {
         if let title = titleByID[window.id] { return title }
-        return localizedCopy(window.windowKind == "primary" ? "主额度窗口" : "次额度窗口")
+        return QuotaWindowPresentation.paceFallbackTitle(
+            windowKind: window.windowKind,
+            limitID: window.limitID
+        )
     }
 }
 

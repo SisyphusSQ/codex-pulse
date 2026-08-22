@@ -346,7 +346,8 @@
 "警告" = "Warning";
 "趋势时间范围不可用。" = "Trend time range is unavailable.";
 "距离重置" = "Until reset";
-"跟踪额度窗口、Token 趋势、API 折算成本和参考价格" = "Track quota windows, token trends, API-equivalent costs, and reference pricing";
+"Grok Bot" = "Grok Bot";
+"跟踪月度模型额度、Grok Bot 周额度、Token 趋势、费用明细和参考价格" = "Track monthly model quota, Grok Bot weekly quota, token trends, reported spend, and reference pricing";
 "输入" = "Input";
 "输出" = "Output";
 "过期" = "Expired";
@@ -356,6 +357,8 @@
 "近四周期中位数" = "Last-four-cycle median";
 "返回" = "Back";
 "这项额度暂时无法获取。" = "This quota is temporarily unavailable.";
+"这项额度不适用于当前套餐。" = "This quota does not apply to the current plan.";
+"这项额度尚未加载。" = "This quota has not loaded yet.";
 "进度" = "Progress";
 "连接已取消" = "Connection cancelled";
 "连续失败" = "Consecutive failures";

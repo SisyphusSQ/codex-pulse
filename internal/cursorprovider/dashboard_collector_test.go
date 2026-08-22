@@ -99,8 +99,12 @@ func TestDashboardCollectorCommitsCompleteWindowAndPreservesDuplicateMultiplicit
 		t.Fatalf("billing summary = %#v", capture.snapshot.PlanUsage)
 	}
 	if len(capture.snapshot.QuotaWindows) != 2 ||
-		capture.snapshot.QuotaWindows[0] != (store.CursorDashboardQuotaWindow{LimitID: "cursor.models", UsedPercent: 7}) ||
-		capture.snapshot.QuotaWindows[1] != (store.CursorDashboardQuotaWindow{LimitID: "cursor.other_models", UsedPercent: 0}) {
+		capture.snapshot.QuotaWindows[0] != (store.CursorDashboardQuotaWindow{
+			LimitID: "cursor.models", UsedPercent: 7, CycleStartAtMS: 1_000, CycleEndAtMS: 9_000,
+		}) ||
+		capture.snapshot.QuotaWindows[1] != (store.CursorDashboardQuotaWindow{
+			LimitID: "cursor.other_models", UsedPercent: 0, CycleStartAtMS: 1_000, CycleEndAtMS: 9_000,
+		}) {
 		t.Fatalf("quota windows = %#v", capture.snapshot.QuotaWindows)
 	}
 	stored := capture.snapshot.Events[0]

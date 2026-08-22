@@ -95,6 +95,140 @@ func TestCursorDashboardFailurePreservesLastSuccessAndEvents(t *testing.T) {
 	t.Fatal("dashboard source is missing")
 }
 
+func TestCursorGrokBotWriterKeepsIndependentCycleAndCrossFailureIsolation(t *testing.T) {
+	t.Parallel()
+	repository := openRuntimeRepository(t)
+	ctx := context.Background()
+	percent := 12.5
+	if err := repository.CommitCursorDashboardSnapshot(ctx, CursorDashboardSnapshot{
+		Generation: 1, CollectedAtMS: 2_000, WindowStartMS: 1_000, WindowEndMS: 2_000, BillingCycleEndMS: 30_000,
+		QuotaWindows: []CursorDashboardQuotaWindow{{
+			LimitID: "cursor.models", UsedPercent: 7, CycleStartAtMS: 1_000, CycleEndAtMS: 30_000,
+		}},
+		Events: []CursorDashboardUsageEvent{{
+			EventFingerprint: strings.Repeat("d", 64), OccurrenceCount: 1,
+			OccurredAtMS: 1_500, InputTokens: 10, UpdatedAtMS: 2_000,
+		}},
+	}); err != nil {
+		t.Fatalf("CommitCursorDashboardSnapshot() error = %v", err)
+	}
+	if err := repository.CommitCursorGrokBotObservation(ctx, CursorGrokBotCommit{
+		Generation: 2, CollectedAtMS: 3_000, Included: true, UsedPercent: &percent,
+		CycleStartAtMS: 2_500, CycleEndAtMS: 9_000,
+	}); err != nil {
+		t.Fatalf("CommitCursorGrokBotObservation() error = %v", err)
+	}
+	if err := repository.RecordCursorGrokBotFailure(ctx, 4_000, "read_failed"); err != nil {
+		t.Fatalf("RecordCursorGrokBotFailure() error = %v", err)
+	}
+	if err := repository.RecordCursorDashboardFailure(ctx, 4_100, "auth_expired"); err != nil {
+		t.Fatalf("RecordCursorDashboardFailure() error = %v", err)
+	}
+	if err := repository.ReplaceCursorSnapshot(ctx, CursorSnapshot{
+		Generation: 3, CollectedAtMS: 4_200,
+		Sources: []CursorSourceStatus{{
+			Provider: "cursor", SourceKey: "cursor.state", SourceType: "sqlite_snapshot",
+			State: "available", CoverageState: "exact", CheckpointKind: "snapshot",
+			LastAttemptAtMS: 4_200, LastSuccessAtMS: pointerInt64ForCursorTest(4_200), UpdatedAtMS: 4_200,
+		}},
+	}); err != nil {
+		t.Fatalf("ReplaceCursorSnapshot() error = %v", err)
+	}
+
+	readback, err := repository.CursorSnapshot(ctx)
+	if err != nil {
+		t.Fatalf("CursorSnapshot() error = %v", err)
+	}
+	if len(readback.DashboardUsageEvents) != 1 {
+		t.Fatalf("monthly usage events = %#v", readback.DashboardUsageEvents)
+	}
+	var grokBot *CursorDashboardQuotaObservation
+	var models *CursorDashboardQuotaObservation
+	for index := range readback.DashboardQuotaObservations {
+		observation := &readback.DashboardQuotaObservations[index]
+		switch observation.LimitID {
+		case "cursor.grok_bot":
+			grokBot = observation
+		case "cursor.models":
+			models = observation
+		}
+	}
+	if models == nil || models.UsedPercent != 7 || models.CycleStartAtMS != 1_000 || models.CycleEndAtMS != 30_000 {
+		t.Fatalf("monthly observation after grok bot writes = %#v", models)
+	}
+	if grokBot == nil || grokBot.UsedPercent != 12.5 || grokBot.CycleStartAtMS != 2_500 || grokBot.CycleEndAtMS != 9_000 {
+		t.Fatalf("grok bot weekly observation = %#v", grokBot)
+	}
+	sources := map[string]CursorSourceStatus{}
+	for _, source := range readback.Sources {
+		sources[source.SourceKey] = source
+	}
+	dashboard := sources["cursor.dashboard"]
+	grokSource := sources["cursor.dashboard.grok_bot"]
+	if dashboard.State != "unavailable" || dashboard.FailureCode == nil || *dashboard.FailureCode != "auth_expired" ||
+		dashboard.LastSuccessAtMS == nil || *dashboard.LastSuccessAtMS != 2_000 {
+		t.Fatalf("dashboard source after independent failure = %#v", dashboard)
+	}
+	if grokSource.State != "unavailable" || grokSource.FailureCode == nil || *grokSource.FailureCode != "read_failed" ||
+		grokSource.LastSuccessAtMS == nil || *grokSource.LastSuccessAtMS != 3_000 {
+		t.Fatalf("grok bot source after independent failure = %#v", grokSource)
+	}
+	if _, ok := sources["cursor.state"]; !ok {
+		t.Fatal("local source missing after replacement")
+	}
+}
+
+func TestCursorGrokBotNotApplicableOmitsPercentAndMonthlySnapshotRejectsGrokBotWindow(t *testing.T) {
+	t.Parallel()
+	repository := openRuntimeRepository(t)
+	ctx := context.Background()
+	if err := repository.CommitCursorGrokBotObservation(ctx, CursorGrokBotCommit{
+		Generation: 8, CollectedAtMS: 4_000, Included: false,
+		CycleStartAtMS: 1_000, CycleEndAtMS: 8_000,
+	}); err != nil {
+		t.Fatalf("CommitCursorGrokBotObservation(not_applicable) error = %v", err)
+	}
+	if err := repository.ReplaceCursorSnapshot(ctx, CursorSnapshot{Generation: 1, CollectedAtMS: 4_200}); err != nil {
+		t.Fatalf("ReplaceCursorSnapshot() error = %v", err)
+	}
+	zero := 0.0
+	if err := repository.CommitCursorGrokBotObservation(ctx, CursorGrokBotCommit{
+		Generation: 9, CollectedAtMS: 4_100, Included: false, UsedPercent: &zero,
+		CycleStartAtMS: 1_000, CycleEndAtMS: 8_000,
+	}); !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("not_applicable with percent error = %v, want invalid record", err)
+	}
+	if err := repository.CommitCursorDashboardSnapshot(ctx, CursorDashboardSnapshot{
+		Generation: 10, CollectedAtMS: 5_000, WindowStartMS: 1_000, WindowEndMS: 5_000, BillingCycleEndMS: 30_000,
+		QuotaWindows: []CursorDashboardQuotaWindow{{
+			LimitID: "cursor.grok_bot", UsedPercent: 1, CycleStartAtMS: 1_000, CycleEndAtMS: 8_000,
+		}},
+	}); !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("monthly snapshot with grok_bot window error = %v, want invalid record", err)
+	}
+	readback, err := repository.CursorSnapshot(ctx)
+	if err != nil {
+		t.Fatalf("CursorSnapshot() error = %v", err)
+	}
+	for _, observation := range readback.DashboardQuotaObservations {
+		if observation.LimitID == "cursor.grok_bot" {
+			t.Fatalf("not_applicable wrote grok_bot observation = %#v", observation)
+		}
+	}
+	var grokSource *CursorSourceStatus
+	for index := range readback.Sources {
+		if readback.Sources[index].SourceKey == "cursor.dashboard.grok_bot" {
+			grokSource = &readback.Sources[index]
+		}
+	}
+	if grokSource == nil || grokSource.State != "available" || grokSource.LastSuccessAtMS == nil ||
+		*grokSource.LastSuccessAtMS != 4_000 {
+		t.Fatalf("not_applicable grok bot source = %#v", grokSource)
+	}
+}
+
+func pointerInt64ForCursorTest(value int64) *int64 { return &value }
+
 func TestCursorDashboardQuotaHistoryRetainsZeroAndMultipleSnapshots(t *testing.T) {
 	t.Parallel()
 	repository := openRuntimeRepository(t)
@@ -104,16 +238,16 @@ func TestCursorDashboardQuotaHistoryRetainsZeroAndMultipleSnapshots(t *testing.T
 			Generation: 1, CollectedAtMS: 2_000, WindowStartMS: 1_000,
 			WindowEndMS: 2_000, BillingCycleEndMS: 4_000,
 			QuotaWindows: []CursorDashboardQuotaWindow{
-				{LimitID: "cursor.models", UsedPercent: 7},
-				{LimitID: "cursor.other_models", UsedPercent: 0},
+				{LimitID: "cursor.models", UsedPercent: 7, CycleStartAtMS: 1_000, CycleEndAtMS: 4_000},
+				{LimitID: "cursor.other_models", UsedPercent: 0, CycleStartAtMS: 1_000, CycleEndAtMS: 4_000},
 			},
 		},
 		{
 			Generation: 2, CollectedAtMS: 3_000, WindowStartMS: 1_000,
 			WindowEndMS: 3_000, BillingCycleEndMS: 4_000,
 			QuotaWindows: []CursorDashboardQuotaWindow{
-				{LimitID: "cursor.models", UsedPercent: 9},
-				{LimitID: "cursor.other_models", UsedPercent: 0},
+				{LimitID: "cursor.models", UsedPercent: 9, CycleStartAtMS: 1_000, CycleEndAtMS: 4_000},
+				{LimitID: "cursor.other_models", UsedPercent: 0, CycleStartAtMS: 1_000, CycleEndAtMS: 4_000},
 			},
 		},
 	} {
@@ -139,8 +273,6 @@ func TestCursorDashboardQuotaHistoryRetainsZeroAndMultipleSnapshots(t *testing.T
 		t.Fatalf("latest zero-percent quota observation = %#v", latest)
 	}
 }
-
-func pointerInt64ForCursorTest(value int64) *int64 { return &value }
 
 func TestCursorSnapshotRejectsRawPathBeforeAtomicReplacement(t *testing.T) {
 	t.Parallel()

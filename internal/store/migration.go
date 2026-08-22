@@ -48,7 +48,8 @@ const (
 	applicationSchemaV27Version = 27
 	applicationSchemaV28Version = 28
 	applicationSchemaV29Version = 29
-	applicationSchemaVersion    = applicationSchemaV29Version
+	applicationSchemaV30Version = 30
+	applicationSchemaVersion    = applicationSchemaV30Version
 )
 
 var (
@@ -303,7 +304,7 @@ var applicationMigrations = []migrationDefinition{
 		name:     "cursor-dashboard-quota-history",
 		checksum: applicationSchemaV26Checksum(),
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
-			return storeschema.EnsureObjects(ctx, transaction, cursorDashboardQuotaSchemaObjects)
+			return storeschema.EnsureObjects(ctx, transaction, cursorDashboardQuotaV26SchemaObjects)
 		},
 	},
 	{
@@ -327,6 +328,12 @@ var applicationMigrations = []migrationDefinition{
 		apply: func(ctx context.Context, transaction *gorm.DB) error {
 			return storeschema.EnsureObjects(ctx, transaction, apiSubscriptionQuotaSchemaObjects)
 		},
+	},
+	{
+		version:  applicationSchemaV30Version,
+		name:     "cursor-dashboard-grok-bot-quota",
+		checksum: applicationSchemaV30Checksum(),
+		apply:    migrateCursorDashboardGrokBotQuotaForV30,
 	},
 }
 
@@ -1313,7 +1320,7 @@ func applicationSchemaV25Checksum() string {
 func applicationSchemaV26Checksum() string {
 	hasher := sha256.New()
 	_, _ = fmt.Fprintln(hasher, applicationSchemaV26Version, "cursor-dashboard-quota-history")
-	for _, object := range cursorDashboardQuotaSchemaObjects {
+	for _, object := range cursorDashboardQuotaV26SchemaObjects {
 		_, _ = fmt.Fprintln(
 			hasher, object.ObjectType, object.Name,
 			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
@@ -1358,6 +1365,61 @@ func applicationSchemaV29Checksum() string {
 		)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV30Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV30Version, "cursor-dashboard-grok-bot-quota")
+	for _, object := range cursorDashboardQuotaSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
+		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func migrateCursorDashboardGrokBotQuotaForV30(ctx context.Context, transaction *gorm.DB) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: invalid cursor grok bot quota migration database", ErrMigrationContract)
+	}
+	var observations []cursorDashboardQuotaObservationModel
+	if err := transaction.WithContext(ctx).Order("provider, generation, limit_id").Find(&observations).Error; err != nil {
+		return fmt.Errorf("%w: read cursor dashboard quota observations: %v", ErrMigrationContract, err)
+	}
+	if err := transaction.WithContext(ctx).Exec("DROP INDEX IF EXISTS idx_cursor_dashboard_quota_history").Error; err != nil {
+		return fmt.Errorf("%w: drop cursor dashboard quota history index: %v", ErrMigrationContract, err)
+	}
+	if err := transaction.WithContext(ctx).Exec(
+		"ALTER TABLE cursor_dashboard_quota_observations RENAME TO cursor_dashboard_quota_observations_v29",
+	).Error; err != nil {
+		return fmt.Errorf("%w: rename cursor dashboard quota observations: %v", ErrMigrationContract, err)
+	}
+	var table storeschema.Object
+	var indexes []storeschema.Object
+	for _, object := range cursorDashboardQuotaSchemaObjects {
+		switch object.ObjectType {
+		case "table":
+			table = object
+		case "index":
+			indexes = append(indexes, object)
+		}
+	}
+	if table.Name == "" {
+		return fmt.Errorf("%w: cursor dashboard grok bot quota table is missing", ErrMigrationContract)
+	}
+	if err := storeschema.EnsureObjects(ctx, transaction, []storeschema.Object{table}); err != nil {
+		return err
+	}
+	if len(observations) > 0 {
+		if err := transaction.WithContext(ctx).CreateInBatches(&observations, 100).Error; err != nil {
+			return fmt.Errorf("%w: restore cursor dashboard quota observations: %v", ErrMigrationContract, err)
+		}
+	}
+	if err := transaction.WithContext(ctx).Exec("DROP TABLE cursor_dashboard_quota_observations_v29").Error; err != nil {
+		return fmt.Errorf("%w: drop cursor dashboard quota observations v29: %v", ErrMigrationContract, err)
+	}
+	return storeschema.EnsureObjects(ctx, transaction, indexes)
 }
 
 func migrateGrokProviderForV27(ctx context.Context, transaction *gorm.DB) error {

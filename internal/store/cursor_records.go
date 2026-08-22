@@ -79,8 +79,19 @@ type CursorDashboardPlanUsage struct {
 }
 
 type CursorDashboardQuotaWindow struct {
-	LimitID     string
-	UsedPercent float64
+	LimitID        string
+	UsedPercent    float64
+	CycleStartAtMS int64
+	CycleEndAtMS   int64
+}
+
+type CursorGrokBotCommit struct {
+	Generation     int64
+	CollectedAtMS  int64
+	Included       bool
+	UsedPercent    *float64
+	CycleStartAtMS int64
+	CycleEndAtMS   int64
 }
 
 type CursorDashboardQuotaObservation struct {

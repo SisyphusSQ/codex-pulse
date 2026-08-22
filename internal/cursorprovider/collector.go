@@ -31,6 +31,7 @@ const (
 	SourceAITracking         = "cursor.ai_tracking"
 	SourceHooks              = "cursor.hooks"
 	SourceDashboard          = "cursor.dashboard"
+	SourceDashboardGrokBot   = "cursor.dashboard.grok_bot"
 
 	maxTranscriptLineBytes = 16 << 20
 )

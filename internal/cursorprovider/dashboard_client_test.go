@@ -2,10 +2,12 @@ package cursorprovider
 
 import (
 	"context"
+	"errors"
 	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -141,6 +143,263 @@ func TestDashboardClientEncodesUsageWindowAndDropsPrivateDisplayFields(t *testin
 		t.Fatal("usage event must retain token-based semantics")
 	}
 }
+
+func TestDashboardClientGetSandUsageStatusAuthenticatesAndDecodesAllowlistedFields(t *testing.T) {
+	t.Parallel()
+
+	const token = "fixture-access-token"
+	var requestFailure string
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if got, want := request.URL.Path, "/aiserver.v1.DashboardService/GetSandUsageStatus"; got != want {
+			requestFailure = "path = " + got
+		}
+		if got, want := request.Header.Get("Authorization"), "Bearer "+token; got != want {
+			requestFailure = "authorization header mismatch"
+		}
+		if got, want := request.Header.Get("Content-Type"), "application/proto"; got != want {
+			requestFailure = "content type = " + got
+		}
+		if got, want := request.Header.Get("Connect-Protocol-Version"), "1"; got != want {
+			requestFailure = "connect protocol version = " + got
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			requestFailure = "read request body"
+		}
+		if len(body) != 0 {
+			requestFailure = "request body was not empty"
+		}
+		response.Header().Set("Content-Type", "application/proto")
+		_, _ = response.Write(sandUsageFixture(sandUsageFixtureOptions{
+			included: true, percent: pointerFloat64ForDashboardClientTest(0),
+		}))
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := NewDashboardClient(DashboardClientConfig{
+		BaseURL:    server.URL,
+		HTTPClient: server.Client(),
+		TokenSource: fixedAccessTokenSource{credential: DesktopAccessToken{
+			Token: token, ExpiresAt: time.Unix(1_800_000_000, 0),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDashboardClient() error = %v", err)
+	}
+	status, err := client.GetSandUsageStatus(context.Background())
+	if err != nil {
+		t.Fatalf("GetSandUsageStatus() error = %v", err)
+	}
+	if requestFailure != "" {
+		t.Fatal(requestFailure)
+	}
+	if !status.Included || status.UsagePercent == nil || *status.UsagePercent != 0 {
+		t.Fatalf("zero percent status = %#v", status)
+	}
+	if status.PeriodStartMS != 1_780_000_000_000 || status.NextResetAtMS != 1_780_561_600_000 {
+		t.Fatalf("sand period = %d..%d", status.PeriodStartMS, status.NextResetAtMS)
+	}
+}
+
+func TestDecodeSandUsageStatusFixtureMatrix(t *testing.T) {
+	t.Parallel()
+
+	zero := sandUsageFixture(sandUsageFixtureOptions{included: true, percent: pointerFloat64ForDashboardClientTest(0)})
+	full := sandUsageFixture(sandUsageFixtureOptions{included: true, percent: pointerFloat64ForDashboardClientTest(100)})
+	missing := sandUsageFixture(sandUsageFixtureOptions{included: true})
+	excluded := sandUsageFixture(sandUsageFixtureOptions{included: false, includedLimitZero: true})
+	malformedNanos := sandUsageFixture(sandUsageFixtureOptions{
+		included: true, percent: pointerFloat64ForDashboardClientTest(12), nanos: 1_000_000_000,
+	})
+	outOfRange := sandUsageFixture(sandUsageFixtureOptions{
+		included: true, percent: pointerFloat64ForDashboardClientTest(100.1),
+	})
+	nanBits := math.Float64bits(math.NaN())
+	nanMessage := sandUsageTimestamps(nil, 0)
+	nanMessage = appendFixed64Field(nanMessage, 3, nanBits)
+	nanMessage = appendVarintField(nanMessage, 8, 1)
+	duplicate := append(zero, zero...)
+	nonProto := []byte("not-a-proto-body")
+
+	status, err := decodeSandUsageStatus(zero)
+	if err != nil || status.UsagePercent == nil || *status.UsagePercent != 0 || !status.Included {
+		t.Fatalf("decode 0%% = %#v, %v", status, err)
+	}
+	status, err = decodeSandUsageStatus(full)
+	if err != nil || status.UsagePercent == nil || *status.UsagePercent != 100 {
+		t.Fatalf("decode 100%% = %#v, %v", status, err)
+	}
+	status, err = decodeSandUsageStatus(missing)
+	if err != nil || !status.Included || status.UsagePercent != nil {
+		t.Fatalf("missing percent must stay nil, got %#v, %v", status, err)
+	}
+	status, err = decodeSandUsageStatus(excluded)
+	if err != nil || status.Included || status.UsagePercent != nil {
+		t.Fatalf("excluded plan = %#v, %v", status, err)
+	}
+	if _, err = decodeSandUsageStatus(malformedNanos); err == nil {
+		t.Fatal("malformed timestamp nanos must fail closed")
+	}
+	if _, err = decodeSandUsageStatus(outOfRange); err == nil {
+		t.Fatal("out of range percent must fail closed")
+	}
+	if _, err = decodeSandUsageStatus(nanMessage); err == nil {
+		t.Fatal("NaN percent must fail closed")
+	}
+	if _, err = decodeSandUsageStatus(duplicate); err == nil {
+		t.Fatal("duplicate protobuf fields must fail closed")
+	}
+	if _, err = decodeSandUsageStatus(nonProto); err == nil {
+		t.Fatal("non-proto body must fail closed")
+	}
+
+	repeatedUnknown := sandUsageFixture(sandUsageFixtureOptions{
+		included: true, percent: pointerFloat64ForDashboardClientTest(0),
+	})
+	repeatedUnknown = appendMessageField(repeatedUnknown, 12, []byte{0x08, 0x01})
+	repeatedUnknown = appendMessageField(repeatedUnknown, 12, []byte{0x08, 0x02})
+	status, err = decodeSandUsageStatus(repeatedUnknown)
+	if err != nil || !status.Included || status.UsagePercent == nil || *status.UsagePercent != 0 {
+		t.Fatalf("repeated unknown field 12 must be skipped, got %#v, %v", status, err)
+	}
+}
+
+func TestDashboardClientGetSandUsageStatusMapsAuthFailureWithoutLeakingToken(t *testing.T) {
+	t.Parallel()
+
+	const token = "secret-sand-token"
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+	client, err := NewDashboardClient(DashboardClientConfig{
+		BaseURL:    server.URL,
+		HTTPClient: server.Client(),
+		TokenSource: fixedAccessTokenSource{credential: DesktopAccessToken{
+			Token: token, ExpiresAt: time.Unix(1_800_000_000, 0),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDashboardClient() error = %v", err)
+	}
+	_, err = client.GetSandUsageStatus(context.Background())
+	if err == nil || !errors.Is(err, ErrDesktopAuthExpired) {
+		t.Fatalf("GetSandUsageStatus() error = %v, want auth expired", err)
+	}
+	if strings.Contains(err.Error(), token) {
+		t.Fatalf("auth error leaked token: %v", err)
+	}
+}
+
+func TestDashboardClientGetSandUsageStatusRejectsNonProtoResponse(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"usage_percent":0}`))
+	}))
+	t.Cleanup(server.Close)
+	client, err := NewDashboardClient(DashboardClientConfig{
+		BaseURL:    server.URL,
+		HTTPClient: server.Client(),
+		TokenSource: fixedAccessTokenSource{credential: DesktopAccessToken{
+			Token: "fixture-access-token", ExpiresAt: time.Unix(1_800_000_000, 0),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDashboardClient() error = %v", err)
+	}
+	_, err = client.GetSandUsageStatus(context.Background())
+	if err == nil || !errors.Is(err, ErrDashboardTransport) || errors.Is(err, ErrDashboardProtocol) {
+		t.Fatalf("GetSandUsageStatus() error = %v, want transport error", err)
+	}
+	if strings.Contains(err.Error(), "fixture-access-token") {
+		t.Fatalf("transport error leaked token: %v", err)
+	}
+}
+
+func TestDashboardClientGetSandUsageStatusMapsServerErrorAsTransport(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(server.Close)
+	client, err := NewDashboardClient(DashboardClientConfig{
+		BaseURL:    server.URL,
+		HTTPClient: server.Client(),
+		TokenSource: fixedAccessTokenSource{credential: DesktopAccessToken{
+			Token: "fixture-access-token", ExpiresAt: time.Unix(1_800_000_000, 0),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDashboardClient() error = %v", err)
+	}
+	_, err = client.GetSandUsageStatus(context.Background())
+	if err == nil || !errors.Is(err, ErrDashboardTransport) || errors.Is(err, ErrDashboardProtocol) {
+		t.Fatalf("GetSandUsageStatus() error = %v, want transport error", err)
+	}
+}
+
+func TestDashboardClientGetSandUsageStatusMapsTimeoutAsTransport(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		<-request.Context().Done()
+	}))
+	t.Cleanup(server.Close)
+	httpClient := server.Client()
+	httpClient.Timeout = 40 * time.Millisecond
+	client, err := NewDashboardClient(DashboardClientConfig{
+		BaseURL:    server.URL,
+		HTTPClient: httpClient,
+		TokenSource: fixedAccessTokenSource{credential: DesktopAccessToken{
+			Token: "fixture-access-token", ExpiresAt: time.Unix(1_800_000_000, 0),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewDashboardClient() error = %v", err)
+	}
+	_, err = client.GetSandUsageStatus(context.Background())
+	if err == nil || !errors.Is(err, ErrDashboardTransport) || errors.Is(err, ErrDashboardProtocol) {
+		t.Fatalf("GetSandUsageStatus() error = %v, want transport error", err)
+	}
+}
+
+type sandUsageFixtureOptions struct {
+	included          bool
+	includedLimitZero bool
+	percent           *float64
+	nanos             uint64
+}
+
+func sandUsageFixture(options sandUsageFixtureOptions) []byte {
+	message := sandUsageTimestamps(nil, options.nanos)
+	if options.percent != nil {
+		message = appendFixed64Field(message, 3, math.Float64bits(*options.percent))
+	}
+	if options.includedLimitZero {
+		message = appendVarintField(message, 4, 1)
+	}
+	if options.included {
+		message = appendVarintField(message, 8, 1)
+	}
+	message = appendVarintField(message, 5, 2)
+	message = appendVarintField(message, 7, 1)
+	return message
+}
+
+func sandUsageTimestamps(message []byte, nanos uint64) []byte {
+	start := appendVarintField(nil, 1, 1_780_000_000)
+	reset := appendVarintField(nil, 1, 1_780_561_600)
+	if nanos != 0 {
+		reset = appendVarintField(reset, 2, nanos)
+	}
+	message = appendMessageField(message, 1, start)
+	return appendMessageField(message, 2, reset)
+}
+
+func pointerFloat64ForDashboardClientTest(value float64) *float64 { return &value }
 
 func currentPeriodFixture() []byte {
 	plan := protowire.AppendTag(nil, 1, protowire.VarintType)

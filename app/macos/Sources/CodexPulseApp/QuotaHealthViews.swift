@@ -16,7 +16,7 @@ struct QuotaUsageView: View {
 
 	private var quotaPageSubtitle: String {
 		switch model.selectedProvider {
-		case .cursor: "跟踪月度模型额度、Token 趋势、费用明细和参考价格"
+		case .cursor: "跟踪月度模型额度、Grok Bot 周额度、Token 趋势、费用明细和参考价格"
 		case .grok: "跟踪 credits 周期、Token 趋势、上报费用和 xAI 参考价"
 		case .codex: "跟踪额度窗口、Token 趋势、API 折算成本和参考价格"
 		}
@@ -114,7 +114,7 @@ private struct QuotaContentView: View {
         let localization = AppLocalizationRegistry.shared.current
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-				Text(quotaTitle).font(.title2.bold())
+				Text(localization.textValue(quotaTitle)).font(.title2.bold())
                 Spacer()
 				if provider == .codex {
 					Menu("刷新数据", systemImage: "arrow.clockwise") {
@@ -168,8 +168,8 @@ private struct QuotaContentView: View {
                             .accessibilityIdentifier(
                                 "quota.window.reset-time.\(presentation.id)"
                             )
-                        if window.hasUnknownReason {
-                            Text("这项额度暂时无法获取。")
+                        if let message = presentation.unknownMessage {
+                            Text(message)
                                 .font(.caption)
                                 .foregroundStyle(.orange)
                         }
@@ -205,7 +205,7 @@ private struct QuotaContentView: View {
 
 	private var quotaTitle: String {
 		switch provider {
-		case .cursor: "月度额度"
+		case .cursor: "额度窗口"
 		case .grok: "额度窗口"
 		case .codex: "额度窗口"
 		}
