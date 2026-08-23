@@ -536,6 +536,37 @@ func (refresher *countingRefresher) Refresh(context.Context) error {
 	return nil
 }
 
+func TestQueryServiceRefreshQuotaWaitsForDashboardAndPublishesInvalidation(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	collector, err := NewCollector(discardSnapshotWriter{}, Config{
+		ProjectsRoot: filepath.Join(root, "projects"), StateDatabase: filepath.Join(root, "state.vscdb"),
+		ConversationDatabase: filepath.Join(root, "conversation.db"), AITrackingDatabase: filepath.Join(root, "tracking.db"),
+		MinimumRefresh: time.Hour, Now: func() time.Time { return time.UnixMilli(5_000) },
+	})
+	if err != nil {
+		t.Fatalf("NewCollector() error = %v", err)
+	}
+	refresher := &countingRefresher{}
+	service, err := NewQueryService(collector, fixedSnapshotReader{snapshot: cursorQuerySnapshot("partial")}, refresher)
+	if err != nil {
+		t.Fatalf("NewQueryService() error = %v", err)
+	}
+	invalidated := make(chan struct{}, 1)
+	service.SetRefreshNotifier(func() { invalidated <- struct{}{} })
+	if err := service.RefreshQuota(context.Background()); err != nil {
+		t.Fatalf("RefreshQuota() error = %v", err)
+	}
+	if refresher.calls.Load() != 1 {
+		t.Fatalf("dashboard refreshes = %d, want 1", refresher.calls.Load())
+	}
+	select {
+	case <-invalidated:
+	default:
+		t.Fatal("RefreshQuota() did not publish an invalidation")
+	}
+}
+
 func TestQueryServicePublishesDashboardSourceAfterBackgroundRefresh(t *testing.T) {
 	root := t.TempDir()
 	collector, err := NewCollector(discardSnapshotWriter{}, Config{

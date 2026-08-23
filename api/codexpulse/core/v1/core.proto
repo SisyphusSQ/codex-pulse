@@ -713,13 +713,17 @@ message QuotaPaceResponse {
   ProviderContext provider_context = 3;
 }
 
-message QuotaRefreshRequest { string source = 1; }
+message QuotaRefreshRequest {
+  string source = 1;
+  ProviderScope provider = 2;
+}
 
 message QuotaRefreshReceipt {
   string source = 1;
   optional int64 next_due_at_ms = 2;
   string reason = 3;
   optional int64 last_manual_at_ms = 4;
+  ProviderContext provider_context = 5;
 }
 
 message ListSourcesRequest { QueryRequest query = 1; }

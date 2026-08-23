@@ -957,11 +957,18 @@ public final class AppModel: ObservableObject {
         guard let taskKey = refreshTaskKey(source: source) else { return }
         guard canRefreshOrRestart else { return }
         if isRefreshRunning(source: source) { return }
+		let provider = selectedProvider
+		guard source == "quota" || provider.supportsResetCredits else { return }
         setRefreshState(.running, source: source)
         launch(taskKey, operation: { [runtime] in
-            try await runtime.requestQuotaRefresh(source: source)
+			let receipt = try await runtime.requestQuotaRefresh(source: source, provider: provider)
+			guard receipt.providerContext.effectiveProvider == provider.rawValue else {
+				throw AppRuntimeError.unavailable
+			}
+			return receipt
         }) { [weak self] receipt in
             guard let self else { return }
+			guard selectedProvider == provider else { return }
             setRefreshState(.succeeded(receipt.reason), source: source)
             let now = Date()
             loadQuota(now: now)
@@ -1601,6 +1608,8 @@ public final class AppModel: ObservableObject {
 		pricingCatalogState = .idle
 		quotaState = .idle
 		quotaPaceState = .idle
+		quotaRefreshState = .idle
+		resetCreditsRefreshState = .idle
 		sessionsState = .idle
 		sessionDetailState = .idle
 		projectsState = .idle

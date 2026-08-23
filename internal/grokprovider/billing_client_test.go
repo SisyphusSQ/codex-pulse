@@ -133,11 +133,51 @@ func TestBillingCollectorRecordsOnDemandObservation(t *testing.T) {
 	}
 }
 
+func TestBillingCollectorManualRefreshUsesInteractiveInterval(t *testing.T) {
+	t.Parallel()
+	now := time.UnixMilli(5_000)
+	client := &countingCreditsClient{credits: BillingCredits{
+		UsedPercent: 40, PeriodType: "weekly", PeriodStartMS: 1_000,
+		PeriodEndMS: time.Unix(1_000, 0).UnixMilli(),
+	}}
+	collector, err := NewBillingCollector(client, &billingSnapshotCapture{}, BillingCollectorConfig{
+		MinimumRefresh: 5 * time.Minute,
+		Now:            func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("NewBillingCollector() error = %v", err)
+	}
+	if performed, err := collector.RefreshIfDue(context.Background()); err != nil || !performed {
+		t.Fatalf("first RefreshIfDue() = %v, %v", performed, err)
+	}
+
+	now = now.Add(61 * time.Second)
+	if performed, err := collector.RefreshIfDue(context.Background()); err != nil || performed {
+		t.Fatalf("second RefreshIfDue() = %v, %v", performed, err)
+	}
+	if err := collector.Refresh(context.Background()); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+	if client.calls != 2 {
+		t.Fatalf("billing requests = %d, want 2", client.calls)
+	}
+}
+
 type staticCreditsClient struct {
 	credits BillingCredits
 }
 
 func (client staticCreditsClient) GetCredits(context.Context) (BillingCredits, error) {
+	return client.credits, nil
+}
+
+type countingCreditsClient struct {
+	credits BillingCredits
+	calls   int
+}
+
+func (client *countingCreditsClient) GetCredits(context.Context) (BillingCredits, error) {
+	client.calls++
 	return client.credits, nil
 }
 

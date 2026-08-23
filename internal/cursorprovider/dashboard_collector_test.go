@@ -12,13 +12,15 @@ import (
 )
 
 type dashboardClientFixture struct {
-	current CurrentPeriodUsage
-	pages   []UsageEventsPage
-	err     error
-	calls   int
+	current      CurrentPeriodUsage
+	pages        []UsageEventsPage
+	err          error
+	calls        int
+	currentCalls int
 }
 
 func (fixture *dashboardClientFixture) GetCurrentPeriodUsage(context.Context) (CurrentPeriodUsage, error) {
+	fixture.currentCalls++
 	return fixture.current, fixture.err
 }
 
@@ -119,9 +121,42 @@ func TestDashboardCollectorCommitsCompleteWindowAndPreservesDuplicateMultiplicit
 	}
 }
 
+func TestDashboardCollectorManualRefreshUsesInteractiveInterval(t *testing.T) {
+	t.Parallel()
+	now := time.UnixMilli(5_000)
+	client := &dashboardClientFixture{
+		current: CurrentPeriodUsage{
+			BillingCycleStartMS: 1_000,
+			BillingCycleEndMS:   time.Unix(1_000, 0).UnixMilli(),
+		},
+		pages: []UsageEventsPage{{TotalCount: 0}, {TotalCount: 0}},
+	}
+	collector, err := NewDashboardCollector(client, &dashboardSnapshotCapture{}, DashboardCollectorConfig{
+		MinimumRefresh: 5 * time.Minute,
+		Now:            func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("NewDashboardCollector() error = %v", err)
+	}
+	if performed, err := collector.RefreshIfDue(context.Background()); err != nil || !performed {
+		t.Fatalf("first RefreshIfDue() = %v, %v", performed, err)
+	}
+
+	now = now.Add(61 * time.Second)
+	if performed, err := collector.RefreshIfDue(context.Background()); err != nil || performed {
+		t.Fatalf("second RefreshIfDue() = %v, %v", performed, err)
+	}
+	if err := collector.Refresh(context.Background()); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+	if client.currentCalls != 2 {
+		t.Fatalf("dashboard requests = %d, want 2", client.currentCalls)
+	}
+}
+
 func pointerFloat64ForDashboardTest(value float64) *float64 { return &value }
 
-func TestDashboardCollectorRecordsAuthFailureWithoutReplacingLastSuccess(t *testing.T) {
+func TestDashboardCollectorManualRefreshReportsAuthFailureWithoutReplacingLastSuccess(t *testing.T) {
 	t.Parallel()
 	client := &dashboardClientFixture{err: ErrDesktopAuthExpired}
 	capture := &dashboardSnapshotCapture{}
@@ -132,14 +167,33 @@ func TestDashboardCollectorRecordsAuthFailureWithoutReplacingLastSuccess(t *test
 	if err != nil {
 		t.Fatalf("NewDashboardCollector() error = %v", err)
 	}
-	if err := collector.Refresh(context.Background()); err != nil {
-		t.Fatalf("Refresh() error = %v", err)
+	if err := collector.Refresh(context.Background()); !errors.Is(err, ErrDesktopAuthExpired) {
+		t.Fatalf("Refresh() error = %v, want auth failure", err)
 	}
 	if capture.commits != 0 || len(capture.failures) != 1 || capture.failures[0] != "auth_expired" {
 		t.Fatalf("writes = commits:%d failures:%v", capture.commits, capture.failures)
 	}
 	if !errors.Is(client.err, ErrDesktopAuthExpired) {
 		t.Fatal("fixture must retain auth failure")
+	}
+}
+
+func TestDashboardCollectorBackgroundRefreshRecordsAuthFailure(t *testing.T) {
+	t.Parallel()
+	client := &dashboardClientFixture{err: ErrDesktopAuthExpired}
+	capture := &dashboardSnapshotCapture{}
+	collector, err := NewDashboardCollector(client, capture, DashboardCollectorConfig{
+		MinimumRefresh: 0,
+		Now:            func() time.Time { return time.UnixMilli(5_000) },
+	})
+	if err != nil {
+		t.Fatalf("NewDashboardCollector() error = %v", err)
+	}
+	if performed, err := collector.RefreshIfDue(context.Background()); err != nil || !performed {
+		t.Fatalf("RefreshIfDue() = %v, %v", performed, err)
+	}
+	if capture.commits != 0 || len(capture.failures) != 1 || capture.failures[0] != "auth_expired" {
+		t.Fatalf("writes = commits:%d failures:%v", capture.commits, capture.failures)
 	}
 }
 
@@ -157,8 +211,8 @@ func TestDashboardCollectorRejectsPageThatExceedsOfficialTotal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDashboardCollector() error = %v", err)
 	}
-	if err := collector.Refresh(context.Background()); err != nil {
-		t.Fatalf("Refresh() error = %v", err)
+	if err := collector.Refresh(context.Background()); !errors.Is(err, ErrDashboardProtocol) {
+		t.Fatalf("Refresh() error = %v, want protocol failure", err)
 	}
 	if capture.commits != 0 || len(capture.failures) != 1 || capture.failures[0] != "schema_incompatible" {
 		t.Fatalf("writes = commits:%d failures:%v", capture.commits, capture.failures)
@@ -181,8 +235,8 @@ func TestDashboardCollectorRejectsAggregateThatCannotCrossRPCExactly(t *testing.
 	if err != nil {
 		t.Fatalf("NewDashboardCollector() error = %v", err)
 	}
-	if err := collector.Refresh(context.Background()); err != nil {
-		t.Fatalf("Refresh() error = %v", err)
+	if err := collector.Refresh(context.Background()); !errors.Is(err, ErrDashboardProtocol) {
+		t.Fatalf("Refresh() error = %v, want protocol failure", err)
 	}
 	if capture.commits != 0 || len(capture.failures) != 1 || capture.failures[0] != "schema_incompatible" {
 		t.Fatalf("writes = commits:%d failures:%v", capture.commits, capture.failures)

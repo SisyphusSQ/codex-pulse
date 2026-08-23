@@ -16,8 +16,45 @@ type staticSnapshot struct {
 	snapshot store.GrokSnapshot
 }
 
+type quotaRefreshRecorder struct {
+	calls int
+}
+
+func (recorder *quotaRefreshRecorder) Refresh(context.Context) error {
+	recorder.calls++
+	return nil
+}
+
 func (reader staticSnapshot) GrokSnapshot(context.Context) (store.GrokSnapshot, error) {
 	return reader.snapshot, nil
+}
+
+func TestQueryServiceRefreshQuotaWaitsForBillingAndPublishesInvalidation(t *testing.T) {
+	t.Parallel()
+	collector, err := NewCollector(discardSnapshotWriter{}, Config{
+		SessionsRoot: t.TempDir(), MinimumRefresh: time.Hour, Now: func() time.Time { return time.UnixMilli(5_000) },
+	})
+	if err != nil {
+		t.Fatalf("NewCollector() error = %v", err)
+	}
+	refresher := &quotaRefreshRecorder{}
+	service, err := NewQueryService(collector, staticSnapshot{}, refresher)
+	if err != nil {
+		t.Fatalf("NewQueryService() error = %v", err)
+	}
+	invalidated := make(chan struct{}, 1)
+	service.SetRefreshNotifier(func() { invalidated <- struct{}{} })
+	if err := service.RefreshQuota(context.Background()); err != nil {
+		t.Fatalf("RefreshQuota() error = %v", err)
+	}
+	if refresher.calls != 1 {
+		t.Fatalf("billing refreshes = %d, want 1", refresher.calls)
+	}
+	select {
+	case <-invalidated:
+	default:
+		t.Fatal("RefreshQuota() did not publish an invalidation")
+	}
 }
 
 func TestQueryServiceReturnsGrokProviderContextAndSeparateCosts(t *testing.T) {

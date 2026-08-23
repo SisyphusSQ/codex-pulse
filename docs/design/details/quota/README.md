@@ -25,6 +25,8 @@ Cursor Provider 在 TOO-349 起同时持有两类 Dashboard 额度，且不得�
 - 越过官方周 reset 且尚无新周期 observation 时，该周窗不回显旧百分比，客户端显示 `--`，freshness 为 `expired_unknown`。这与下方 Codex last-known-good 过期仍显示百分比的语义不同。
 - Cursor Overview / Session / Project 分析范围只使用 `cursor.models` / `cursor.other_models` 的月边界；Grok Bot 周窗不得带偏 `quotaMonth`。
 
+Cursor/Grok 的用户手动额度刷新不进入 Codex `QuotaRefreshCoordinator`。Helper 根据请求中的 Provider scope 路由到 Cursor Dashboard 或 Grok billing collector；后台入口保持各 collector 的 5 分钟最小间隔，手动入口在距同一 collector 上次尝试已满 60 秒时同步请求。collector 自身互斥提供 single-flight；成功后先提交 provider 独立表，再失效内存 snapshot 并发送 invalidation。网络、认证或协议失败保留 last-known-good；手动调用把失败返回给 Swift，后台调用只提交有限 failure code 并通知查询重读来源状态。回执中的 effective provider 不匹配时 Swift 不得发布成功状态。
+
 Codex 在线 quota 或 reset credits 启用时，只从 Preferences 当前 confirmed Codex Home 下的固定 `auth.json` 将 access token 读入调用期内存。Codex 凭据链不保存 token、refresh token、Authorization header 或 auth 文件内容，不主动刷新或修改 Codex `auth.json`；401/403 后标记 `auth_required`，保留 last-known-good，并进入有上限的持久退避。Grok 的 OIDC 主动续期是单独、可关闭的能力，严格限定在 Grok `auth.json`，不得复用到 Codex Home。凭据恢复后自动或手动请求都可恢复来源；只有用户关闭对应能力时才停止该能力的在线调度，已有非敏感 observation history 保留。
 
 ## Observation

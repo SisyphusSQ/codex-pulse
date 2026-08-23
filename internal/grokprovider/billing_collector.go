@@ -8,6 +8,8 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
+const billingInteractiveRefreshInterval = time.Minute
+
 type BillingSnapshotWriter interface {
 	CommitGrokBillingSnapshot(context.Context, store.GrokBillingSnapshot) error
 	RecordGrokBillingFailure(context.Context, int64, string) error
@@ -52,11 +54,21 @@ func NewBillingCollector(
 }
 
 func (collector *BillingCollector) Refresh(ctx context.Context) error {
-	_, err := collector.RefreshIfDue(ctx)
+	if collector == nil {
+		return ErrCollector
+	}
+	_, err := collector.refresh(ctx, min(collector.config.MinimumRefresh, billingInteractiveRefreshInterval))
 	return err
 }
 
 func (collector *BillingCollector) RefreshIfDue(ctx context.Context) (bool, error) {
+	if collector == nil {
+		return false, ErrCollector
+	}
+	return collector.refresh(ctx, collector.config.MinimumRefresh)
+}
+
+func (collector *BillingCollector) refresh(ctx context.Context, minimumRefresh time.Duration) (bool, error) {
 	if collector == nil || collector.client == nil || collector.writer == nil || ctx == nil {
 		return false, ErrCollector
 	}
@@ -66,7 +78,7 @@ func (collector *BillingCollector) RefreshIfDue(ctx context.Context) (bool, erro
 	collector.mu.Lock()
 	defer collector.mu.Unlock()
 	now := collector.config.Now()
-	if !collector.last.IsZero() && now.Sub(collector.last) < collector.config.MinimumRefresh {
+	if !collector.last.IsZero() && now.Sub(collector.last) < minimumRefresh {
 		return false, nil
 	}
 	atMS := now.UnixMilli()

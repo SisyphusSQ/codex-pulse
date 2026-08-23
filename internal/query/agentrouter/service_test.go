@@ -33,6 +33,11 @@ func (stub quotaRoutingStub) QuotaPace(context.Context, int64) (runtimeinfo.Quot
 	return runtimeinfo.QuotaPaceResponse{}, nil
 }
 
+func (stub quotaRoutingStub) RefreshQuota(context.Context) error {
+	*stub.calls = append(*stub.calls, stub.provider+":quota-refresh")
+	return nil
+}
+
 func (stub routingStub) record(name string) {
 	*stub.calls = append(*stub.calls, stub.provider+":"+name)
 }
@@ -134,6 +139,32 @@ func TestQuotaRouterScopesRequestsAndEchoesEffectiveProvider(t *testing.T) {
 		t.Fatalf("default pace = %#v, %v", pace, err)
 	}
 	if want := []string{"cursor:quota-current", "grok:quota-current", "codex:quota-pace"}; !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestQuotaRouterRefreshesOnlyExplicitExternalProvider(t *testing.T) {
+	t.Parallel()
+	calls := []string{}
+	codex := quotaRoutingStub{provider: agentprovider.Codex, calls: &calls}
+	cursor := quotaRoutingStub{provider: agentprovider.Cursor, calls: &calls}
+	grok := quotaRoutingStub{provider: agentprovider.Grok, calls: &calls}
+	service, err := NewQuota(codex, cursor, grok)
+	if err != nil {
+		t.Fatalf("NewQuota() error = %v", err)
+	}
+	for _, provider := range []string{agentprovider.Cursor, agentprovider.Grok} {
+		providerContext, err := service.RefreshQuota(
+			context.Background(), agentprovider.Scope{Provider: provider},
+		)
+		if err != nil || providerContext.EffectiveProvider != provider {
+			t.Fatalf("RefreshQuota(%q) = %#v, %v", provider, providerContext, err)
+		}
+	}
+	if _, err := service.RefreshQuota(context.Background(), agentprovider.Scope{}); !errors.Is(err, basequery.ErrValidation) {
+		t.Fatalf("RefreshQuota(default Codex) error = %v", err)
+	}
+	if want := []string{"cursor:quota-refresh", "grok:quota-refresh"}; !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %#v, want %#v", calls, want)
 	}
 }

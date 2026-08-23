@@ -8,6 +8,8 @@ Codex Pulse 以一个明确的客户端上下文查询和展示数据。产品 U
 
 空 `ProviderScope` 仍归一为 `codex`，以兼容旧请求；未知非空值必须失败，不得默认成 Codex 或 Cursor。Router、AccountSnapshot、PricingCatalog 和 Swift 展示必须显式三路分发，禁止 `if cursor else Codex` 把 Grok 漏进另一家客户端。
 
+额度手动刷新沿用同一个 `RequestQuotaRefresh` RPC，并与额度查询一样携带 `ProviderScope`；回执必须回显 `ProviderContext.effective_provider`，Swift 只接受与发起请求时客户端一致的回执。空 scope 继续走 Codex durable quota coordinator；Cursor 与 Grok 只接受 `source=quota`，分别同步触发 Cursor Dashboard 月额度与 Grok billing credits collector，成功提交后失效对应只读快照并通知客户端重查。Cursor/Grok 不支持 `reset_credits`，不得把外部客户端刷新误送给 Codex。界面上 Codex 保留“刷新数据”菜单及额度/重置次数两项，Cursor 与 Grok 在同一位置显示直接“刷新额度”按钮。
+
 ## Cursor 来源边界
 
 Cursor 在业务页面中始终是一个完整客户端。Go Helper 在内部合并以下来源：

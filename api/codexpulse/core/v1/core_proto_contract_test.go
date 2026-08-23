@@ -79,6 +79,8 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		`(?s)message QuotaCurrentResponse\s*\{.*ResponseMeta meta\s*=\s*1\s*;.*CurrentQuota current\s*=\s*2\s*;.*ProviderContext provider_context\s*=\s*3\s*;`,
 		`(?s)message QuotaPaceRequest\s*\{.*int64 evaluated_at_ms\s*=\s*1\s*;.*ProviderScope provider\s*=\s*2\s*;`,
 		`(?s)message QuotaPaceResponse\s*\{.*ResponseMeta meta\s*=\s*1\s*;.*CurrentQuotaPace pace\s*=\s*2\s*;.*ProviderContext provider_context\s*=\s*3\s*;`,
+		`(?s)message QuotaRefreshRequest\s*\{.*string source\s*=\s*1\s*;.*ProviderScope provider\s*=\s*2\s*;`,
+		`(?s)message QuotaRefreshReceipt\s*\{.*string source\s*=\s*1\s*;.*ProviderContext provider_context\s*=\s*5\s*;`,
 	} {
 		if !regexp.MustCompile(pattern).MatchString(content) {
 			t.Fatalf("core.proto does not satisfy contract pattern %q", pattern)
