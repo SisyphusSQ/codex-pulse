@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "plugin": "personal-orca",
-  "pluginVersion": "0.5.3",
+  "pluginVersion": "0.7.0",
   "workflow": "engineering-delivery",
-  "workflowSchemaVersion": 1,
-  "templateSha256": "c66e125b1c73c4aecf37d1b6c0509575905d6d04f790dd87942961fc7fc9174f"
+  "workflowSchemaVersion": 2,
+  "templateSha256": "82461516f67720849d63dd832a8d3742a5393c45e0ed731d836204685bdded27"
 }

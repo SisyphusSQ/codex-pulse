@@ -1,30 +1,45 @@
-schema_version: 1
+schema_version: 2
 name: engineering-delivery
 
 coordinator:
   surface: codex-app
+  heartbeat:
+    kind: heartbeat
+    create_after: first_dispatch_started
+    interval_seconds: 120
+    target: current-thread
+    model: inherit-current-thread
+    stop_on: verified_handoff
 
 run_driver:
   type: deterministic
   runtime: orca-terminal
   protocol: jsonl-v1
-  progression: coordinator-controlled
+  progression: heartbeat-supervised
+  worker_start_timeout_ms: 120000
 
 workspace:
   mode: current
   allow_new_worktree: false
+  branch:
+    mode: repository-policy
+    default_name_template: suqing/{issue_id_lower}-{slug}
+    base: remote-default
+    sync: ff-only
+    repository_policy_precedence: true
+
+preflight:
+  providers:
+    mode: exact-profile-probe
+    update_prompt: fail-before-run
+    trust_prompt: fail-before-run
+    close_probe_terminal: true
+  repository:
+    read_back: [status, branch, upstream, remote]
+    branch_before_orca: true
 
 agent_profiles:
-  codex-sol-yolo:
-    runtime: codex
-    model: gpt-5.6-sol
-    effort: xhigh
-    speed: standard
-    permission_mode: yolo
-    apps_mode: disabled
-    mcp_servers_disabled: []
-
-  codex-luna-yolo:
+  codex-luna-max-yolo:
     runtime: codex
     model: gpt-5.6-luna
     effort: max
@@ -33,57 +48,62 @@ agent_profiles:
     apps_mode: disabled
     mcp_servers_disabled: []
 
-  cursor-grok-4-6-yolo:
+  cursor-composer-review-fix:
     runtime: cursor
-    model: cursor-grok-4.6-xhigh
+    model: composer-2.5
     effort: provider-default
-    speed: provider-default
+    speed: standard
     permission_mode: yolo
     sandbox_mode: enabled
 
 flow:
   - plan
   - develop
-  - review
-  - fix_if_needed
+  - review_fix
   - verify
-  - ship
 
 stages:
   plan:
+    kind: agent
     tracked_mutation: forbidden
+    fresh_terminal: always
     agent:
-      primary: cursor-grok-4-6-yolo
+      primary: codex-luna-max-yolo
   develop:
+    kind: agent
     tracked_mutation: allowed
+    fresh_terminal: always
     agent:
-      primary: cursor-grok-4-6-yolo
-  review:
-    tracked_mutation: forbidden
-    agent:
-      primary: codex-sol-yolo
-  fix_if_needed:
+      primary: codex-luna-max-yolo
+  review_fix:
+    kind: agent
     tracked_mutation: allowed
+    fresh_terminal: always
     agent:
-      primary: cursor-grok-4-6-yolo
-      reuse_from: develop
+      primary: cursor-composer-review-fix
   verify:
+    kind: command
     tracked_mutation: forbidden
+    command:
+      argv: [git, diff, --check]
+      timeout_seconds: 1200
+      no_output_probe_seconds: 120
+  verify_fix:
+    kind: agent
+    tracked_mutation: allowed
+    fresh_terminal: always
     agent:
-      primary: codex-sol-yolo
-  ship:
-    tracked_mutation: delivery-only
-    agent:
-      primary: codex-luna-yolo
+      primary: codex-luna-max-yolo
 
 context:
   linear:
     include: [description, comments, attachments, children, relations]
-    refresh: [run_start, before_review, before_ship]
+    refresh: [run_start, before_review, before_verified_handoff]
     propagation: coordinator_summary
 
 limits:
-  review_fix_rounds: 2
+  review_fix_agents: 3
+  verify_repair_rounds: 2
 
 liveness:
   heartbeat:
@@ -94,72 +114,71 @@ liveness:
     completion_signal: worker_done
 
 worker_lifecycle:
-  default_on_settled: release
+  default_on_settled: retain
   reuse_requires_same_profile: true
   terminal_retention:
     mode: retain_until_explicit_cleanup
     max_retained: 20
     on_limit: require_cleanup
+  plan:
+    on_settled: retain
   develop:
-    on_success: retain_until_review
-  fix_if_needed:
-    prefer_reuse_from: develop
-    on_success: retain_until_review
-  review:
-    on_settled: release
-  verify:
-    on_settled: release
-  ship:
-    on_start: release_incompatible_retained
-    on_settled: release
+    on_settled: retain
+  review_fix:
+    on_settled: retain
+  verify_fix:
+    on_settled: retain
   pause:
     retain_while_coordinator_active: true
-    release_on_long_pause: true
+    release_on_long_pause: false
   debug:
     retain_only_when_user_requested: true
 
 stage_results:
   schema: stage-result-v1
-  live_e2e_schema: live-e2e-result-v1
   control_result: worker_done
   report:
     required: true
-    directory: .orca/runtime/<run-id>/reports
+    directory: .orca/runtime/<runtime-id>/reports
     version_controlled: false
 
-verification:
+repairs:
+  review_fix:
+    fresh_agent_each_round: true
+    repeat_when: tracked_changes
+    exit_requires: [approved, clean_tracked_state]
+  verify:
+    stage: verify_fix
+    return_to: review_fix
+    fresh_review_after_fix: true
+
+post_orca:
+  handoff:
+    mode: verified-handoff
+    executor: codex-app
+    requires: [verify_passed, exact_git_identity, reports_persisted]
+  checkpoint:
+    executor: codex-app
+    mode: local-commit
+    before: live_e2e
+    evidence_identity: committed_sha
   live_e2e:
-    mode: ask
-    placement: before_pull_request
+    executor: codex-app
+    placement: after_orca_verify
+    default_gate: user-required
+    explicit_full_auto_gate: none
     evidence_identity: committed_sha
     cleanup_evidence: required
-    options: [orca-task, codex-app-task]
-    when_user_requests_full_auto: orca-task
-    orca_task:
-      agent:
-        primary: codex-sol-yolo
-
-ship:
-  approval:
-    mode: single_gate
-    before: commit
-    covers: [local_commit, push_if_required, live_e2e, pull_request]
-  commit:
-    mode: local
-    only_in_ship: true
-  push:
-    mode: when_required
-    before_live_e2e_if_environment_requires: true
-  live_e2e:
-    placement: before_pull_request
-    requires: committed_sha
-  pull_request:
-    requires: [live_e2e_passed]
-  merge:
-    approval: separate_gate
+    pause_on_failure: true
+    continue_on_pass: true
+  ship:
+    executor: codex-app
+    skill: personal-thin-skills:ship-current-branch
+    after: live_e2e_passed
+    repository_policy_precedence: true
 
 updates:
   linear:
     mode: milestones
-    milestones: [plan_completed, blocked, review_completed, ship_completed]
+    milestones: [plan_completed, blocked, review_completed, verified_handoff]
     use_comment_thread: true

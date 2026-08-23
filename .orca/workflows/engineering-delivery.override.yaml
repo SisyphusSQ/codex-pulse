@@ -1,3 +1,4 @@
-# Project-specific workflow overrides belong here.
-# Keep the baseline unchanged until the Agent/Profile choices are finalized.
-{}
+stages:
+  verify:
+    command:
+      argv: [make, verify]
