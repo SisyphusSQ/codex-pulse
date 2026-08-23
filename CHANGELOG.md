@@ -1,5 +1,7 @@
 ## Unreleased
 
+## v0.8.0 - 2026-08-23
+
 #### feature:
 1. 新增按 Provider 的额度手动刷新闭环：复用 `RequestQuotaRefresh` RPC 携带 `ProviderScope`，Codex 保持 Quota/Reset Credits 语义，Cursor 与 Grok 触发各自额度采集器，并在成功后失效快照、通知客户端重查，同时回显并校验有效 Provider 上下文。
 
