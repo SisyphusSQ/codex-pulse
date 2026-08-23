@@ -6282,6 +6282,7 @@ func (x *QuotaPaceResponse) GetProviderContext() *ProviderContext {
 type QuotaRefreshRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Provider      *ProviderScope         `protobuf:"bytes,2,opt,name=provider,proto3" json:"provider,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6323,14 +6324,22 @@ func (x *QuotaRefreshRequest) GetSource() string {
 	return ""
 }
 
+func (x *QuotaRefreshRequest) GetProvider() *ProviderScope {
+	if x != nil {
+		return x.Provider
+	}
+	return nil
+}
+
 type QuotaRefreshReceipt struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Source         string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
-	NextDueAtMs    *int64                 `protobuf:"varint,2,opt,name=next_due_at_ms,json=nextDueAtMs,proto3,oneof" json:"next_due_at_ms,omitempty"`
-	Reason         string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
-	LastManualAtMs *int64                 `protobuf:"varint,4,opt,name=last_manual_at_ms,json=lastManualAtMs,proto3,oneof" json:"last_manual_at_ms,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Source          string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	NextDueAtMs     *int64                 `protobuf:"varint,2,opt,name=next_due_at_ms,json=nextDueAtMs,proto3,oneof" json:"next_due_at_ms,omitempty"`
+	Reason          string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	LastManualAtMs  *int64                 `protobuf:"varint,4,opt,name=last_manual_at_ms,json=lastManualAtMs,proto3,oneof" json:"last_manual_at_ms,omitempty"`
+	ProviderContext *ProviderContext       `protobuf:"bytes,5,opt,name=provider_context,json=providerContext,proto3" json:"provider_context,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *QuotaRefreshReceipt) Reset() {
@@ -6389,6 +6398,13 @@ func (x *QuotaRefreshReceipt) GetLastManualAtMs() int64 {
 		return *x.LastManualAtMs
 	}
 	return 0
+}
+
+func (x *QuotaRefreshReceipt) GetProviderContext() *ProviderContext {
+	if x != nil {
+		return x.ProviderContext
+	}
+	return nil
 }
 
 type ListSourcesRequest struct {
@@ -13294,14 +13310,16 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x11QuotaPaceResponse\x124\n" +
 	"\x04meta\x18\x01 \x01(\v2 .codexpulse.core.v1.ResponseMetaR\x04meta\x128\n" +
 	"\x04pace\x18\x02 \x01(\v2$.codexpulse.core.v1.CurrentQuotaPaceR\x04pace\x12N\n" +
-	"\x10provider_context\x18\x03 \x01(\v2#.codexpulse.core.v1.ProviderContextR\x0fproviderContext\"-\n" +
+	"\x10provider_context\x18\x03 \x01(\v2#.codexpulse.core.v1.ProviderContextR\x0fproviderContext\"l\n" +
 	"\x13QuotaRefreshRequest\x12\x16\n" +
-	"\x06source\x18\x01 \x01(\tR\x06source\"\xc8\x01\n" +
+	"\x06source\x18\x01 \x01(\tR\x06source\x12=\n" +
+	"\bprovider\x18\x02 \x01(\v2!.codexpulse.core.v1.ProviderScopeR\bprovider\"\x98\x02\n" +
 	"\x13QuotaRefreshReceipt\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12(\n" +
 	"\x0enext_due_at_ms\x18\x02 \x01(\x03H\x00R\vnextDueAtMs\x88\x01\x01\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\x12.\n" +
-	"\x11last_manual_at_ms\x18\x04 \x01(\x03H\x01R\x0elastManualAtMs\x88\x01\x01B\x11\n" +
+	"\x11last_manual_at_ms\x18\x04 \x01(\x03H\x01R\x0elastManualAtMs\x88\x01\x01\x12N\n" +
+	"\x10provider_context\x18\x05 \x01(\v2#.codexpulse.core.v1.ProviderContextR\x0fproviderContextB\x11\n" +
 	"\x0f_next_due_at_msB\x14\n" +
 	"\x12_last_manual_at_ms\"L\n" +
 	"\x12ListSourcesRequest\x126\n" +
@@ -14267,257 +14285,259 @@ var file_api_codexpulse_core_v1_core_proto_depIdxs = []int32{
 	12,  // 189: codexpulse.core.v1.QuotaPaceResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
 	75,  // 190: codexpulse.core.v1.QuotaPaceResponse.pace:type_name -> codexpulse.core.v1.CurrentQuotaPace
 	21,  // 191: codexpulse.core.v1.QuotaPaceResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
-	18,  // 192: codexpulse.core.v1.ListSourcesRequest.query:type_name -> codexpulse.core.v1.QueryRequest
-	18,  // 193: codexpulse.core.v1.ListJobsRequest.query:type_name -> codexpulse.core.v1.QueryRequest
-	18,  // 194: codexpulse.core.v1.ListHealthRequest.query:type_name -> codexpulse.core.v1.QueryRequest
-	10,  // 195: codexpulse.core.v1.SourceItem.size_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 196: codexpulse.core.v1.SourceItem.parsed_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 197: codexpulse.core.v1.SourceItem.last_scanned_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 198: codexpulse.core.v1.SourceItem.last_attempt_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 199: codexpulse.core.v1.SourceItem.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 200: codexpulse.core.v1.SourceItem.next_due_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 201: codexpulse.core.v1.SourceItem.consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 202: codexpulse.core.v1.SourceItem.updated_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	88,  // 203: codexpulse.core.v1.SourceItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
-	10,  // 204: codexpulse.core.v1.SourceItem.row_count:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 205: codexpulse.core.v1.SourceItem.schema_version:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 206: codexpulse.core.v1.SourceSummary.total:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 207: codexpulse.core.v1.SourceSummary.local_files:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 208: codexpulse.core.v1.SourceSummary.online_sources:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 209: codexpulse.core.v1.SourceSummary.attention:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 210: codexpulse.core.v1.SourceSummary.provider_sources:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 211: codexpulse.core.v1.SourceListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	89,  // 212: codexpulse.core.v1.SourceListResponse.items:type_name -> codexpulse.core.v1.SourceItem
-	10,  // 213: codexpulse.core.v1.SourceListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
-	90,  // 214: codexpulse.core.v1.SourceListResponse.summary:type_name -> codexpulse.core.v1.SourceSummary
-	12,  // 215: codexpulse.core.v1.SourceDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	89,  // 216: codexpulse.core.v1.SourceDetailResponse.item:type_name -> codexpulse.core.v1.SourceItem
-	10,  // 217: codexpulse.core.v1.JobProgress.current:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 218: codexpulse.core.v1.JobProgress.total:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 219: codexpulse.core.v1.JobItem.created_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 220: codexpulse.core.v1.JobItem.started_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 221: codexpulse.core.v1.JobItem.finished_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 222: codexpulse.core.v1.JobItem.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	93,  // 223: codexpulse.core.v1.JobItem.progress:type_name -> codexpulse.core.v1.JobProgress
-	10,  // 224: codexpulse.core.v1.JobItem.failure_count:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 225: codexpulse.core.v1.JobItem.next_retry_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 226: codexpulse.core.v1.JobItem.updated_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	88,  // 227: codexpulse.core.v1.JobItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
-	10,  // 228: codexpulse.core.v1.JobSummary.total:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 229: codexpulse.core.v1.JobSummary.queued:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 230: codexpulse.core.v1.JobSummary.running:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 231: codexpulse.core.v1.JobSummary.succeeded:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 232: codexpulse.core.v1.JobSummary.failed:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 233: codexpulse.core.v1.JobSummary.cancelled:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 234: codexpulse.core.v1.JobSummary.interrupted:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 235: codexpulse.core.v1.JobListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	94,  // 236: codexpulse.core.v1.JobListResponse.items:type_name -> codexpulse.core.v1.JobItem
-	10,  // 237: codexpulse.core.v1.JobListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
-	95,  // 238: codexpulse.core.v1.JobListResponse.summary:type_name -> codexpulse.core.v1.JobSummary
-	12,  // 239: codexpulse.core.v1.JobDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	94,  // 240: codexpulse.core.v1.JobDetailResponse.item:type_name -> codexpulse.core.v1.JobItem
-	10,  // 241: codexpulse.core.v1.HealthItem.first_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 242: codexpulse.core.v1.HealthItem.last_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 243: codexpulse.core.v1.HealthItem.resolved_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 244: codexpulse.core.v1.HealthItem.occurrence_count:type_name -> codexpulse.core.v1.NumericValue
-	88,  // 245: codexpulse.core.v1.HealthItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
-	10,  // 246: codexpulse.core.v1.HealthSummary.total:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 247: codexpulse.core.v1.HealthSummary.active:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 248: codexpulse.core.v1.HealthSummary.resolved:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 249: codexpulse.core.v1.HealthSummary.info:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 250: codexpulse.core.v1.HealthSummary.warnings:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 251: codexpulse.core.v1.HealthSummary.errors:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 252: codexpulse.core.v1.HealthSummary.critical:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 253: codexpulse.core.v1.HealthListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	98,  // 254: codexpulse.core.v1.HealthListResponse.items:type_name -> codexpulse.core.v1.HealthItem
-	10,  // 255: codexpulse.core.v1.HealthListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
-	99,  // 256: codexpulse.core.v1.HealthListResponse.summary:type_name -> codexpulse.core.v1.HealthSummary
-	12,  // 257: codexpulse.core.v1.HealthDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	98,  // 258: codexpulse.core.v1.HealthDetailResponse.item:type_name -> codexpulse.core.v1.HealthItem
-	10,  // 259: codexpulse.core.v1.HealthProjectionResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	102, // 260: codexpulse.core.v1.HealthProjectionResponse.primary:type_name -> codexpulse.core.v1.HealthComponentStatus
-	102, // 261: codexpulse.core.v1.HealthProjectionResponse.components:type_name -> codexpulse.core.v1.HealthComponentStatus
-	10,  // 262: codexpulse.core.v1.DataHealthWindow.from_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 263: codexpulse.core.v1.DataHealthWindow.until_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 264: codexpulse.core.v1.DataHealthRuntimePoint.captured_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 265: codexpulse.core.v1.DataHealthRuntimePoint.rss_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 266: codexpulse.core.v1.DataHealthRuntimePoint.peak_rss_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 267: codexpulse.core.v1.DataHealthRuntimePoint.db_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 268: codexpulse.core.v1.DataHealthRuntimePoint.wal_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 269: codexpulse.core.v1.DataHealthRuntimePoint.disk_free_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 270: codexpulse.core.v1.DataHealthRuntimePoint.live_queue_depth:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 271: codexpulse.core.v1.DataHealthRuntimePoint.backfill_queue_depth:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 272: codexpulse.core.v1.DataHealthRuntimePoint.oldest_live_wait_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 273: codexpulse.core.v1.DataHealthRuntimePoint.oldest_backfill_wait_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 274: codexpulse.core.v1.DataHealthRuntimePoint.dropped_samples:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 275: codexpulse.core.v1.DataHealthScheduler.cycle_count:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 276: codexpulse.core.v1.DataHealthScheduler.completed_cycles:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 277: codexpulse.core.v1.DataHealthScheduler.yielded_cycles:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 278: codexpulse.core.v1.DataHealthScheduler.failed_cycles:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 279: codexpulse.core.v1.DataHealthScheduler.interrupted_cycles:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 280: codexpulse.core.v1.DataHealthScheduler.files_scanned:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 281: codexpulse.core.v1.DataHealthScheduler.bytes_read:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 282: codexpulse.core.v1.DataHealthScheduler.active_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 283: codexpulse.core.v1.DataHealthScheduler.max_cycle_active_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 284: codexpulse.core.v1.DataHealthScheduler.last_progress_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 285: codexpulse.core.v1.DataHealthScheduler.last_backfill_progress_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 286: codexpulse.core.v1.DataHealthJobs.queued:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 287: codexpulse.core.v1.DataHealthJobs.running:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 288: codexpulse.core.v1.DataHealthJobs.interrupted:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 289: codexpulse.core.v1.DataHealthJobs.succeeded:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 290: codexpulse.core.v1.DataHealthJobs.failed:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 291: codexpulse.core.v1.DataHealthJobs.cancelled:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 292: codexpulse.core.v1.DataHealthJobs.duration_count:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 293: codexpulse.core.v1.DataHealthJobs.duration_total_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 294: codexpulse.core.v1.DataHealthJobs.duration_max_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 295: codexpulse.core.v1.DataHealthSources.total:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 296: codexpulse.core.v1.DataHealthSources.unknown:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 297: codexpulse.core.v1.DataHealthSources.current:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 298: codexpulse.core.v1.DataHealthSources.stale:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 299: codexpulse.core.v1.DataHealthSources.unavailable:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 300: codexpulse.core.v1.DataHealthSources.consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 301: codexpulse.core.v1.DataHealthSources.max_consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 302: codexpulse.core.v1.DataHealthSources.attempts:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 303: codexpulse.core.v1.DataHealthSources.succeeded_attempts:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 304: codexpulse.core.v1.DataHealthSources.failed_attempts:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 305: codexpulse.core.v1.DataHealthSources.cancelled_attempts:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 306: codexpulse.core.v1.DataHealthSources.response_bytes:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 307: codexpulse.core.v1.DataHealthSources.last_attempt_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 308: codexpulse.core.v1.DataHealthSources.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 309: codexpulse.core.v1.DataHealthSources.next_retry_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 310: codexpulse.core.v1.DataHealthResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	10,  // 311: codexpulse.core.v1.DataHealthResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	104, // 312: codexpulse.core.v1.DataHealthResponse.window:type_name -> codexpulse.core.v1.DataHealthWindow
-	105, // 313: codexpulse.core.v1.DataHealthResponse.runtime:type_name -> codexpulse.core.v1.DataHealthRuntimePoint
-	105, // 314: codexpulse.core.v1.DataHealthResponse.latest:type_name -> codexpulse.core.v1.DataHealthRuntimePoint
-	106, // 315: codexpulse.core.v1.DataHealthResponse.scheduler:type_name -> codexpulse.core.v1.DataHealthScheduler
-	107, // 316: codexpulse.core.v1.DataHealthResponse.jobs:type_name -> codexpulse.core.v1.DataHealthJobs
-	108, // 317: codexpulse.core.v1.DataHealthResponse.sources:type_name -> codexpulse.core.v1.DataHealthSources
-	94,  // 318: codexpulse.core.v1.DataHealthResponse.current_jobs:type_name -> codexpulse.core.v1.JobItem
-	94,  // 319: codexpulse.core.v1.DataHealthResponse.recent_jobs:type_name -> codexpulse.core.v1.JobItem
-	98,  // 320: codexpulse.core.v1.DataHealthResponse.open_events:type_name -> codexpulse.core.v1.HealthItem
-	98,  // 321: codexpulse.core.v1.DataHealthResponse.recent_events:type_name -> codexpulse.core.v1.HealthItem
-	10,  // 322: codexpulse.core.v1.SettingsUpdateSnapshot.snooze_until_ms:type_name -> codexpulse.core.v1.NumericValue
-	10,  // 323: codexpulse.core.v1.SettingsUpdateSnapshot.last_check_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	111, // 324: codexpulse.core.v1.SettingsSnapshot.home:type_name -> codexpulse.core.v1.SettingsHomeSnapshot
-	112, // 325: codexpulse.core.v1.SettingsSnapshot.online:type_name -> codexpulse.core.v1.SettingsOnlineSnapshot
-	113, // 326: codexpulse.core.v1.SettingsSnapshot.refresh:type_name -> codexpulse.core.v1.SettingsRefreshSnapshot
-	114, // 327: codexpulse.core.v1.SettingsSnapshot.updates:type_name -> codexpulse.core.v1.SettingsUpdateSnapshot
-	115, // 328: codexpulse.core.v1.SettingsSnapshot.ui:type_name -> codexpulse.core.v1.SettingsUISnapshot
-	12,  // 329: codexpulse.core.v1.SettingsResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	116, // 330: codexpulse.core.v1.SettingsResponse.snapshot:type_name -> codexpulse.core.v1.SettingsSnapshot
-	110, // 331: codexpulse.core.v1.SettingsResponse.editable_fields:type_name -> codexpulse.core.v1.EditableField
-	118, // 332: codexpulse.core.v1.UpdateSettingsRequest.online:type_name -> codexpulse.core.v1.SettingsOnlineUpdate
-	119, // 333: codexpulse.core.v1.UpdateSettingsRequest.refresh:type_name -> codexpulse.core.v1.SettingsRefreshUpdate
-	120, // 334: codexpulse.core.v1.UpdateSettingsRequest.updates:type_name -> codexpulse.core.v1.SettingsUpdatesUpdate
-	121, // 335: codexpulse.core.v1.UpdateSettingsRequest.ui:type_name -> codexpulse.core.v1.SettingsUIUpdate
-	141, // 336: codexpulse.core.v1.MigrationRecoverySnapshot.backups:type_name -> codexpulse.core.v1.MigrationBackupInfo
-	141, // 337: codexpulse.core.v1.MigrationRestoreConfirmation.backup:type_name -> codexpulse.core.v1.MigrationBackupInfo
-	19,  // 338: codexpulse.core.v1.AccountSnapshotRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
-	150, // 339: codexpulse.core.v1.AccountSnapshotResponse.account:type_name -> codexpulse.core.v1.CodexAccountIdentity
-	157, // 340: codexpulse.core.v1.DeepSeekAPIBalance.balances:type_name -> codexpulse.core.v1.APISubscriptionCurrencyBalance
-	160, // 341: codexpulse.core.v1.APISubscriptionCurrencyBalanceSeries.points:type_name -> codexpulse.core.v1.APISubscriptionBalanceTrendPoint
-	159, // 342: codexpulse.core.v1.APISubscriptionBalancePeriod.changes:type_name -> codexpulse.core.v1.APISubscriptionCurrencyBalanceChange
-	161, // 343: codexpulse.core.v1.APISubscriptionBalancePeriod.series:type_name -> codexpulse.core.v1.APISubscriptionCurrencyBalanceSeries
-	156, // 344: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot.status:type_name -> codexpulse.core.v1.APISubscriptionSourceStatus
-	158, // 345: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot.balance:type_name -> codexpulse.core.v1.DeepSeekAPIBalance
-	162, // 346: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot.periods:type_name -> codexpulse.core.v1.APISubscriptionBalancePeriod
-	164, // 347: codexpulse.core.v1.OpenCodeGoQuota.windows:type_name -> codexpulse.core.v1.OpenCodeGoQuotaWindow
-	156, // 348: codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot.status:type_name -> codexpulse.core.v1.APISubscriptionSourceStatus
-	165, // 349: codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot.quota:type_name -> codexpulse.core.v1.OpenCodeGoQuota
-	167, // 350: codexpulse.core.v1.APISubscriptionActivityDay.deep_seek:type_name -> codexpulse.core.v1.DeepSeekDailyActivity
-	168, // 351: codexpulse.core.v1.APISubscriptionActivityDay.open_code_go:type_name -> codexpulse.core.v1.OpenCodeGoFiveHourDailyActivity
-	169, // 352: codexpulse.core.v1.APISubscriptionActivityCalendar.days:type_name -> codexpulse.core.v1.APISubscriptionActivityDay
-	163, // 353: codexpulse.core.v1.APISubscriptionsCurrentResponse.deep_seek:type_name -> codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot
-	166, // 354: codexpulse.core.v1.APISubscriptionsCurrentResponse.open_code_go:type_name -> codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot
-	170, // 355: codexpulse.core.v1.APISubscriptionsCurrentResponse.activity_calendar:type_name -> codexpulse.core.v1.APISubscriptionActivityCalendar
-	1,   // 356: codexpulse.core.v1.CoreService.Handshake:input_type -> codexpulse.core.v1.HandshakeRequest
-	3,   // 357: codexpulse.core.v1.CoreService.Bootstrap:input_type -> codexpulse.core.v1.BootstrapRequest
-	5,   // 358: codexpulse.core.v1.CoreService.Contracts:input_type -> codexpulse.core.v1.ContractsRequest
-	149, // 359: codexpulse.core.v1.CoreService.AccountSnapshot:input_type -> codexpulse.core.v1.AccountSnapshotRequest
-	22,  // 360: codexpulse.core.v1.CoreService.UsageCost:input_type -> codexpulse.core.v1.UsageCostRequest
-	38,  // 361: codexpulse.core.v1.CoreService.InvocationUsage:input_type -> codexpulse.core.v1.InvocationUsageRequest
-	45,  // 362: codexpulse.core.v1.CoreService.PricingCatalogCurrent:input_type -> codexpulse.core.v1.PricingCatalogCurrentRequest
-	23,  // 363: codexpulse.core.v1.CoreService.ListSessions:input_type -> codexpulse.core.v1.ListSessionsRequest
-	24,  // 364: codexpulse.core.v1.CoreService.SessionDetail:input_type -> codexpulse.core.v1.SessionDetailRequest
-	25,  // 365: codexpulse.core.v1.CoreService.ListProjects:input_type -> codexpulse.core.v1.ListProjectsRequest
-	26,  // 366: codexpulse.core.v1.CoreService.ProjectDetail:input_type -> codexpulse.core.v1.ProjectDetailRequest
-	58,  // 367: codexpulse.core.v1.CoreService.QuotaCurrent:input_type -> codexpulse.core.v1.QuotaCurrentRequest
-	152, // 368: codexpulse.core.v1.CoreService.APISubscriptionsCurrent:input_type -> codexpulse.core.v1.APISubscriptionsCurrentRequest
-	153, // 369: codexpulse.core.v1.CoreService.APICredentialStatus:input_type -> codexpulse.core.v1.APICredentialStatusRequest
-	155, // 370: codexpulse.core.v1.CoreService.UpdateAPICredential:input_type -> codexpulse.core.v1.UpdateAPICredentialRequest
-	69,  // 371: codexpulse.core.v1.CoreService.QuotaPace:input_type -> codexpulse.core.v1.QuotaPaceRequest
-	77,  // 372: codexpulse.core.v1.CoreService.RequestQuotaRefresh:input_type -> codexpulse.core.v1.QuotaRefreshRequest
-	79,  // 373: codexpulse.core.v1.CoreService.ListSources:input_type -> codexpulse.core.v1.ListSourcesRequest
-	80,  // 374: codexpulse.core.v1.CoreService.Source:input_type -> codexpulse.core.v1.SourceRequest
-	81,  // 375: codexpulse.core.v1.CoreService.ListJobs:input_type -> codexpulse.core.v1.ListJobsRequest
-	82,  // 376: codexpulse.core.v1.CoreService.Job:input_type -> codexpulse.core.v1.JobRequest
-	83,  // 377: codexpulse.core.v1.CoreService.ListHealth:input_type -> codexpulse.core.v1.ListHealthRequest
-	84,  // 378: codexpulse.core.v1.CoreService.Health:input_type -> codexpulse.core.v1.HealthRequest
-	85,  // 379: codexpulse.core.v1.CoreService.HealthProjection:input_type -> codexpulse.core.v1.HealthProjectionRequest
-	86,  // 380: codexpulse.core.v1.CoreService.DataHealth:input_type -> codexpulse.core.v1.DataHealthRequest
-	87,  // 381: codexpulse.core.v1.CoreService.Settings:input_type -> codexpulse.core.v1.SettingsRequest
-	122, // 382: codexpulse.core.v1.CoreService.UpdateSettings:input_type -> codexpulse.core.v1.UpdateSettingsRequest
-	124, // 383: codexpulse.core.v1.CoreService.PlanHomeSwitch:input_type -> codexpulse.core.v1.PlanHomeSwitchRequest
-	126, // 384: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:input_type -> codexpulse.core.v1.ConfirmHomeSwitchRequest
-	127, // 385: codexpulse.core.v1.CoreService.RecoverHomeSwitch:input_type -> codexpulse.core.v1.RecoverHomeSwitchRequest
-	129, // 386: codexpulse.core.v1.CoreService.RunRuntimeAction:input_type -> codexpulse.core.v1.RuntimeActionRequest
-	131, // 387: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:input_type -> codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
-	133, // 388: codexpulse.core.v1.CoreService.NotifyLifecycle:input_type -> codexpulse.core.v1.LifecycleNotificationRequest
-	135, // 389: codexpulse.core.v1.CoreService.MigrationRecoveryState:input_type -> codexpulse.core.v1.MigrationRecoveryStateRequest
-	136, // 390: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:input_type -> codexpulse.core.v1.MigrationRecoveryRetryRequest
-	139, // 391: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:input_type -> codexpulse.core.v1.MigrationRecoveryPrepareRequest
-	140, // 392: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:input_type -> codexpulse.core.v1.MigrationRecoveryConfirmRequest
-	137, // 393: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:input_type -> codexpulse.core.v1.MigrationRecoveryCancelRequest
-	138, // 394: codexpulse.core.v1.CoreService.MigrationRecoveryExit:input_type -> codexpulse.core.v1.MigrationRecoveryExitRequest
-	145, // 395: codexpulse.core.v1.CoreService.SubscribeInvalidations:input_type -> codexpulse.core.v1.SubscribeInvalidationsRequest
-	147, // 396: codexpulse.core.v1.CoreService.Shutdown:input_type -> codexpulse.core.v1.ShutdownRequest
-	2,   // 397: codexpulse.core.v1.CoreService.Handshake:output_type -> codexpulse.core.v1.HandshakeResponse
-	4,   // 398: codexpulse.core.v1.CoreService.Bootstrap:output_type -> codexpulse.core.v1.BootstrapResponse
-	7,   // 399: codexpulse.core.v1.CoreService.Contracts:output_type -> codexpulse.core.v1.ContractsResponse
-	151, // 400: codexpulse.core.v1.CoreService.AccountSnapshot:output_type -> codexpulse.core.v1.AccountSnapshotResponse
-	37,  // 401: codexpulse.core.v1.CoreService.UsageCost:output_type -> codexpulse.core.v1.UsageCostResponse
-	44,  // 402: codexpulse.core.v1.CoreService.InvocationUsage:output_type -> codexpulse.core.v1.InvocationUsageResponse
-	47,  // 403: codexpulse.core.v1.CoreService.PricingCatalogCurrent:output_type -> codexpulse.core.v1.PricingCatalogCurrentResponse
-	49,  // 404: codexpulse.core.v1.CoreService.ListSessions:output_type -> codexpulse.core.v1.SessionListResponse
-	51,  // 405: codexpulse.core.v1.CoreService.SessionDetail:output_type -> codexpulse.core.v1.SessionDetailResponse
-	56,  // 406: codexpulse.core.v1.CoreService.ListProjects:output_type -> codexpulse.core.v1.ProjectListResponse
-	57,  // 407: codexpulse.core.v1.CoreService.ProjectDetail:output_type -> codexpulse.core.v1.ProjectDetailResponse
-	68,  // 408: codexpulse.core.v1.CoreService.QuotaCurrent:output_type -> codexpulse.core.v1.QuotaCurrentResponse
-	171, // 409: codexpulse.core.v1.CoreService.APISubscriptionsCurrent:output_type -> codexpulse.core.v1.APISubscriptionsCurrentResponse
-	154, // 410: codexpulse.core.v1.CoreService.APICredentialStatus:output_type -> codexpulse.core.v1.APICredentialStatusResponse
-	154, // 411: codexpulse.core.v1.CoreService.UpdateAPICredential:output_type -> codexpulse.core.v1.APICredentialStatusResponse
-	76,  // 412: codexpulse.core.v1.CoreService.QuotaPace:output_type -> codexpulse.core.v1.QuotaPaceResponse
-	78,  // 413: codexpulse.core.v1.CoreService.RequestQuotaRefresh:output_type -> codexpulse.core.v1.QuotaRefreshReceipt
-	91,  // 414: codexpulse.core.v1.CoreService.ListSources:output_type -> codexpulse.core.v1.SourceListResponse
-	92,  // 415: codexpulse.core.v1.CoreService.Source:output_type -> codexpulse.core.v1.SourceDetailResponse
-	96,  // 416: codexpulse.core.v1.CoreService.ListJobs:output_type -> codexpulse.core.v1.JobListResponse
-	97,  // 417: codexpulse.core.v1.CoreService.Job:output_type -> codexpulse.core.v1.JobDetailResponse
-	100, // 418: codexpulse.core.v1.CoreService.ListHealth:output_type -> codexpulse.core.v1.HealthListResponse
-	101, // 419: codexpulse.core.v1.CoreService.Health:output_type -> codexpulse.core.v1.HealthDetailResponse
-	103, // 420: codexpulse.core.v1.CoreService.HealthProjection:output_type -> codexpulse.core.v1.HealthProjectionResponse
-	109, // 421: codexpulse.core.v1.CoreService.DataHealth:output_type -> codexpulse.core.v1.DataHealthResponse
-	117, // 422: codexpulse.core.v1.CoreService.Settings:output_type -> codexpulse.core.v1.SettingsResponse
-	123, // 423: codexpulse.core.v1.CoreService.UpdateSettings:output_type -> codexpulse.core.v1.SettingsUpdateReceipt
-	125, // 424: codexpulse.core.v1.CoreService.PlanHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchPlanReceipt
-	128, // 425: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
-	128, // 426: codexpulse.core.v1.CoreService.RecoverHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
-	130, // 427: codexpulse.core.v1.CoreService.RunRuntimeAction:output_type -> codexpulse.core.v1.RuntimeActionReceipt
-	132, // 428: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:output_type -> codexpulse.core.v1.RepairDryRunReceipt
-	134, // 429: codexpulse.core.v1.CoreService.NotifyLifecycle:output_type -> codexpulse.core.v1.LifecycleNotificationReceipt
-	142, // 430: codexpulse.core.v1.CoreService.MigrationRecoveryState:output_type -> codexpulse.core.v1.MigrationRecoverySnapshot
-	143, // 431: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
-	144, // 432: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:output_type -> codexpulse.core.v1.MigrationRestoreConfirmation
-	143, // 433: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
-	0,   // 434: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:output_type -> codexpulse.core.v1.Empty
-	0,   // 435: codexpulse.core.v1.CoreService.MigrationRecoveryExit:output_type -> codexpulse.core.v1.Empty
-	146, // 436: codexpulse.core.v1.CoreService.SubscribeInvalidations:output_type -> codexpulse.core.v1.QueryInvalidationEvent
-	148, // 437: codexpulse.core.v1.CoreService.Shutdown:output_type -> codexpulse.core.v1.ShutdownResponse
-	397, // [397:438] is the sub-list for method output_type
-	356, // [356:397] is the sub-list for method input_type
-	356, // [356:356] is the sub-list for extension type_name
-	356, // [356:356] is the sub-list for extension extendee
-	0,   // [0:356] is the sub-list for field type_name
+	19,  // 192: codexpulse.core.v1.QuotaRefreshRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
+	21,  // 193: codexpulse.core.v1.QuotaRefreshReceipt.provider_context:type_name -> codexpulse.core.v1.ProviderContext
+	18,  // 194: codexpulse.core.v1.ListSourcesRequest.query:type_name -> codexpulse.core.v1.QueryRequest
+	18,  // 195: codexpulse.core.v1.ListJobsRequest.query:type_name -> codexpulse.core.v1.QueryRequest
+	18,  // 196: codexpulse.core.v1.ListHealthRequest.query:type_name -> codexpulse.core.v1.QueryRequest
+	10,  // 197: codexpulse.core.v1.SourceItem.size_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 198: codexpulse.core.v1.SourceItem.parsed_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 199: codexpulse.core.v1.SourceItem.last_scanned_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 200: codexpulse.core.v1.SourceItem.last_attempt_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 201: codexpulse.core.v1.SourceItem.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 202: codexpulse.core.v1.SourceItem.next_due_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 203: codexpulse.core.v1.SourceItem.consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 204: codexpulse.core.v1.SourceItem.updated_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	88,  // 205: codexpulse.core.v1.SourceItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
+	10,  // 206: codexpulse.core.v1.SourceItem.row_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 207: codexpulse.core.v1.SourceItem.schema_version:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 208: codexpulse.core.v1.SourceSummary.total:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 209: codexpulse.core.v1.SourceSummary.local_files:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 210: codexpulse.core.v1.SourceSummary.online_sources:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 211: codexpulse.core.v1.SourceSummary.attention:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 212: codexpulse.core.v1.SourceSummary.provider_sources:type_name -> codexpulse.core.v1.NumericValue
+	12,  // 213: codexpulse.core.v1.SourceListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	89,  // 214: codexpulse.core.v1.SourceListResponse.items:type_name -> codexpulse.core.v1.SourceItem
+	10,  // 215: codexpulse.core.v1.SourceListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
+	90,  // 216: codexpulse.core.v1.SourceListResponse.summary:type_name -> codexpulse.core.v1.SourceSummary
+	12,  // 217: codexpulse.core.v1.SourceDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	89,  // 218: codexpulse.core.v1.SourceDetailResponse.item:type_name -> codexpulse.core.v1.SourceItem
+	10,  // 219: codexpulse.core.v1.JobProgress.current:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 220: codexpulse.core.v1.JobProgress.total:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 221: codexpulse.core.v1.JobItem.created_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 222: codexpulse.core.v1.JobItem.started_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 223: codexpulse.core.v1.JobItem.finished_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 224: codexpulse.core.v1.JobItem.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	93,  // 225: codexpulse.core.v1.JobItem.progress:type_name -> codexpulse.core.v1.JobProgress
+	10,  // 226: codexpulse.core.v1.JobItem.failure_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 227: codexpulse.core.v1.JobItem.next_retry_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 228: codexpulse.core.v1.JobItem.updated_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	88,  // 229: codexpulse.core.v1.JobItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
+	10,  // 230: codexpulse.core.v1.JobSummary.total:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 231: codexpulse.core.v1.JobSummary.queued:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 232: codexpulse.core.v1.JobSummary.running:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 233: codexpulse.core.v1.JobSummary.succeeded:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 234: codexpulse.core.v1.JobSummary.failed:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 235: codexpulse.core.v1.JobSummary.cancelled:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 236: codexpulse.core.v1.JobSummary.interrupted:type_name -> codexpulse.core.v1.NumericValue
+	12,  // 237: codexpulse.core.v1.JobListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	94,  // 238: codexpulse.core.v1.JobListResponse.items:type_name -> codexpulse.core.v1.JobItem
+	10,  // 239: codexpulse.core.v1.JobListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
+	95,  // 240: codexpulse.core.v1.JobListResponse.summary:type_name -> codexpulse.core.v1.JobSummary
+	12,  // 241: codexpulse.core.v1.JobDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	94,  // 242: codexpulse.core.v1.JobDetailResponse.item:type_name -> codexpulse.core.v1.JobItem
+	10,  // 243: codexpulse.core.v1.HealthItem.first_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 244: codexpulse.core.v1.HealthItem.last_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 245: codexpulse.core.v1.HealthItem.resolved_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 246: codexpulse.core.v1.HealthItem.occurrence_count:type_name -> codexpulse.core.v1.NumericValue
+	88,  // 247: codexpulse.core.v1.HealthItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
+	10,  // 248: codexpulse.core.v1.HealthSummary.total:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 249: codexpulse.core.v1.HealthSummary.active:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 250: codexpulse.core.v1.HealthSummary.resolved:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 251: codexpulse.core.v1.HealthSummary.info:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 252: codexpulse.core.v1.HealthSummary.warnings:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 253: codexpulse.core.v1.HealthSummary.errors:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 254: codexpulse.core.v1.HealthSummary.critical:type_name -> codexpulse.core.v1.NumericValue
+	12,  // 255: codexpulse.core.v1.HealthListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	98,  // 256: codexpulse.core.v1.HealthListResponse.items:type_name -> codexpulse.core.v1.HealthItem
+	10,  // 257: codexpulse.core.v1.HealthListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
+	99,  // 258: codexpulse.core.v1.HealthListResponse.summary:type_name -> codexpulse.core.v1.HealthSummary
+	12,  // 259: codexpulse.core.v1.HealthDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	98,  // 260: codexpulse.core.v1.HealthDetailResponse.item:type_name -> codexpulse.core.v1.HealthItem
+	10,  // 261: codexpulse.core.v1.HealthProjectionResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	102, // 262: codexpulse.core.v1.HealthProjectionResponse.primary:type_name -> codexpulse.core.v1.HealthComponentStatus
+	102, // 263: codexpulse.core.v1.HealthProjectionResponse.components:type_name -> codexpulse.core.v1.HealthComponentStatus
+	10,  // 264: codexpulse.core.v1.DataHealthWindow.from_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 265: codexpulse.core.v1.DataHealthWindow.until_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 266: codexpulse.core.v1.DataHealthRuntimePoint.captured_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 267: codexpulse.core.v1.DataHealthRuntimePoint.rss_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 268: codexpulse.core.v1.DataHealthRuntimePoint.peak_rss_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 269: codexpulse.core.v1.DataHealthRuntimePoint.db_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 270: codexpulse.core.v1.DataHealthRuntimePoint.wal_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 271: codexpulse.core.v1.DataHealthRuntimePoint.disk_free_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 272: codexpulse.core.v1.DataHealthRuntimePoint.live_queue_depth:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 273: codexpulse.core.v1.DataHealthRuntimePoint.backfill_queue_depth:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 274: codexpulse.core.v1.DataHealthRuntimePoint.oldest_live_wait_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 275: codexpulse.core.v1.DataHealthRuntimePoint.oldest_backfill_wait_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 276: codexpulse.core.v1.DataHealthRuntimePoint.dropped_samples:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 277: codexpulse.core.v1.DataHealthScheduler.cycle_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 278: codexpulse.core.v1.DataHealthScheduler.completed_cycles:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 279: codexpulse.core.v1.DataHealthScheduler.yielded_cycles:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 280: codexpulse.core.v1.DataHealthScheduler.failed_cycles:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 281: codexpulse.core.v1.DataHealthScheduler.interrupted_cycles:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 282: codexpulse.core.v1.DataHealthScheduler.files_scanned:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 283: codexpulse.core.v1.DataHealthScheduler.bytes_read:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 284: codexpulse.core.v1.DataHealthScheduler.active_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 285: codexpulse.core.v1.DataHealthScheduler.max_cycle_active_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 286: codexpulse.core.v1.DataHealthScheduler.last_progress_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 287: codexpulse.core.v1.DataHealthScheduler.last_backfill_progress_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 288: codexpulse.core.v1.DataHealthJobs.queued:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 289: codexpulse.core.v1.DataHealthJobs.running:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 290: codexpulse.core.v1.DataHealthJobs.interrupted:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 291: codexpulse.core.v1.DataHealthJobs.succeeded:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 292: codexpulse.core.v1.DataHealthJobs.failed:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 293: codexpulse.core.v1.DataHealthJobs.cancelled:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 294: codexpulse.core.v1.DataHealthJobs.duration_count:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 295: codexpulse.core.v1.DataHealthJobs.duration_total_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 296: codexpulse.core.v1.DataHealthJobs.duration_max_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 297: codexpulse.core.v1.DataHealthSources.total:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 298: codexpulse.core.v1.DataHealthSources.unknown:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 299: codexpulse.core.v1.DataHealthSources.current:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 300: codexpulse.core.v1.DataHealthSources.stale:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 301: codexpulse.core.v1.DataHealthSources.unavailable:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 302: codexpulse.core.v1.DataHealthSources.consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 303: codexpulse.core.v1.DataHealthSources.max_consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 304: codexpulse.core.v1.DataHealthSources.attempts:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 305: codexpulse.core.v1.DataHealthSources.succeeded_attempts:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 306: codexpulse.core.v1.DataHealthSources.failed_attempts:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 307: codexpulse.core.v1.DataHealthSources.cancelled_attempts:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 308: codexpulse.core.v1.DataHealthSources.response_bytes:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 309: codexpulse.core.v1.DataHealthSources.last_attempt_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 310: codexpulse.core.v1.DataHealthSources.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 311: codexpulse.core.v1.DataHealthSources.next_retry_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	12,  // 312: codexpulse.core.v1.DataHealthResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	10,  // 313: codexpulse.core.v1.DataHealthResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	104, // 314: codexpulse.core.v1.DataHealthResponse.window:type_name -> codexpulse.core.v1.DataHealthWindow
+	105, // 315: codexpulse.core.v1.DataHealthResponse.runtime:type_name -> codexpulse.core.v1.DataHealthRuntimePoint
+	105, // 316: codexpulse.core.v1.DataHealthResponse.latest:type_name -> codexpulse.core.v1.DataHealthRuntimePoint
+	106, // 317: codexpulse.core.v1.DataHealthResponse.scheduler:type_name -> codexpulse.core.v1.DataHealthScheduler
+	107, // 318: codexpulse.core.v1.DataHealthResponse.jobs:type_name -> codexpulse.core.v1.DataHealthJobs
+	108, // 319: codexpulse.core.v1.DataHealthResponse.sources:type_name -> codexpulse.core.v1.DataHealthSources
+	94,  // 320: codexpulse.core.v1.DataHealthResponse.current_jobs:type_name -> codexpulse.core.v1.JobItem
+	94,  // 321: codexpulse.core.v1.DataHealthResponse.recent_jobs:type_name -> codexpulse.core.v1.JobItem
+	98,  // 322: codexpulse.core.v1.DataHealthResponse.open_events:type_name -> codexpulse.core.v1.HealthItem
+	98,  // 323: codexpulse.core.v1.DataHealthResponse.recent_events:type_name -> codexpulse.core.v1.HealthItem
+	10,  // 324: codexpulse.core.v1.SettingsUpdateSnapshot.snooze_until_ms:type_name -> codexpulse.core.v1.NumericValue
+	10,  // 325: codexpulse.core.v1.SettingsUpdateSnapshot.last_check_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	111, // 326: codexpulse.core.v1.SettingsSnapshot.home:type_name -> codexpulse.core.v1.SettingsHomeSnapshot
+	112, // 327: codexpulse.core.v1.SettingsSnapshot.online:type_name -> codexpulse.core.v1.SettingsOnlineSnapshot
+	113, // 328: codexpulse.core.v1.SettingsSnapshot.refresh:type_name -> codexpulse.core.v1.SettingsRefreshSnapshot
+	114, // 329: codexpulse.core.v1.SettingsSnapshot.updates:type_name -> codexpulse.core.v1.SettingsUpdateSnapshot
+	115, // 330: codexpulse.core.v1.SettingsSnapshot.ui:type_name -> codexpulse.core.v1.SettingsUISnapshot
+	12,  // 331: codexpulse.core.v1.SettingsResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	116, // 332: codexpulse.core.v1.SettingsResponse.snapshot:type_name -> codexpulse.core.v1.SettingsSnapshot
+	110, // 333: codexpulse.core.v1.SettingsResponse.editable_fields:type_name -> codexpulse.core.v1.EditableField
+	118, // 334: codexpulse.core.v1.UpdateSettingsRequest.online:type_name -> codexpulse.core.v1.SettingsOnlineUpdate
+	119, // 335: codexpulse.core.v1.UpdateSettingsRequest.refresh:type_name -> codexpulse.core.v1.SettingsRefreshUpdate
+	120, // 336: codexpulse.core.v1.UpdateSettingsRequest.updates:type_name -> codexpulse.core.v1.SettingsUpdatesUpdate
+	121, // 337: codexpulse.core.v1.UpdateSettingsRequest.ui:type_name -> codexpulse.core.v1.SettingsUIUpdate
+	141, // 338: codexpulse.core.v1.MigrationRecoverySnapshot.backups:type_name -> codexpulse.core.v1.MigrationBackupInfo
+	141, // 339: codexpulse.core.v1.MigrationRestoreConfirmation.backup:type_name -> codexpulse.core.v1.MigrationBackupInfo
+	19,  // 340: codexpulse.core.v1.AccountSnapshotRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
+	150, // 341: codexpulse.core.v1.AccountSnapshotResponse.account:type_name -> codexpulse.core.v1.CodexAccountIdentity
+	157, // 342: codexpulse.core.v1.DeepSeekAPIBalance.balances:type_name -> codexpulse.core.v1.APISubscriptionCurrencyBalance
+	160, // 343: codexpulse.core.v1.APISubscriptionCurrencyBalanceSeries.points:type_name -> codexpulse.core.v1.APISubscriptionBalanceTrendPoint
+	159, // 344: codexpulse.core.v1.APISubscriptionBalancePeriod.changes:type_name -> codexpulse.core.v1.APISubscriptionCurrencyBalanceChange
+	161, // 345: codexpulse.core.v1.APISubscriptionBalancePeriod.series:type_name -> codexpulse.core.v1.APISubscriptionCurrencyBalanceSeries
+	156, // 346: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot.status:type_name -> codexpulse.core.v1.APISubscriptionSourceStatus
+	158, // 347: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot.balance:type_name -> codexpulse.core.v1.DeepSeekAPIBalance
+	162, // 348: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot.periods:type_name -> codexpulse.core.v1.APISubscriptionBalancePeriod
+	164, // 349: codexpulse.core.v1.OpenCodeGoQuota.windows:type_name -> codexpulse.core.v1.OpenCodeGoQuotaWindow
+	156, // 350: codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot.status:type_name -> codexpulse.core.v1.APISubscriptionSourceStatus
+	165, // 351: codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot.quota:type_name -> codexpulse.core.v1.OpenCodeGoQuota
+	167, // 352: codexpulse.core.v1.APISubscriptionActivityDay.deep_seek:type_name -> codexpulse.core.v1.DeepSeekDailyActivity
+	168, // 353: codexpulse.core.v1.APISubscriptionActivityDay.open_code_go:type_name -> codexpulse.core.v1.OpenCodeGoFiveHourDailyActivity
+	169, // 354: codexpulse.core.v1.APISubscriptionActivityCalendar.days:type_name -> codexpulse.core.v1.APISubscriptionActivityDay
+	163, // 355: codexpulse.core.v1.APISubscriptionsCurrentResponse.deep_seek:type_name -> codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot
+	166, // 356: codexpulse.core.v1.APISubscriptionsCurrentResponse.open_code_go:type_name -> codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot
+	170, // 357: codexpulse.core.v1.APISubscriptionsCurrentResponse.activity_calendar:type_name -> codexpulse.core.v1.APISubscriptionActivityCalendar
+	1,   // 358: codexpulse.core.v1.CoreService.Handshake:input_type -> codexpulse.core.v1.HandshakeRequest
+	3,   // 359: codexpulse.core.v1.CoreService.Bootstrap:input_type -> codexpulse.core.v1.BootstrapRequest
+	5,   // 360: codexpulse.core.v1.CoreService.Contracts:input_type -> codexpulse.core.v1.ContractsRequest
+	149, // 361: codexpulse.core.v1.CoreService.AccountSnapshot:input_type -> codexpulse.core.v1.AccountSnapshotRequest
+	22,  // 362: codexpulse.core.v1.CoreService.UsageCost:input_type -> codexpulse.core.v1.UsageCostRequest
+	38,  // 363: codexpulse.core.v1.CoreService.InvocationUsage:input_type -> codexpulse.core.v1.InvocationUsageRequest
+	45,  // 364: codexpulse.core.v1.CoreService.PricingCatalogCurrent:input_type -> codexpulse.core.v1.PricingCatalogCurrentRequest
+	23,  // 365: codexpulse.core.v1.CoreService.ListSessions:input_type -> codexpulse.core.v1.ListSessionsRequest
+	24,  // 366: codexpulse.core.v1.CoreService.SessionDetail:input_type -> codexpulse.core.v1.SessionDetailRequest
+	25,  // 367: codexpulse.core.v1.CoreService.ListProjects:input_type -> codexpulse.core.v1.ListProjectsRequest
+	26,  // 368: codexpulse.core.v1.CoreService.ProjectDetail:input_type -> codexpulse.core.v1.ProjectDetailRequest
+	58,  // 369: codexpulse.core.v1.CoreService.QuotaCurrent:input_type -> codexpulse.core.v1.QuotaCurrentRequest
+	152, // 370: codexpulse.core.v1.CoreService.APISubscriptionsCurrent:input_type -> codexpulse.core.v1.APISubscriptionsCurrentRequest
+	153, // 371: codexpulse.core.v1.CoreService.APICredentialStatus:input_type -> codexpulse.core.v1.APICredentialStatusRequest
+	155, // 372: codexpulse.core.v1.CoreService.UpdateAPICredential:input_type -> codexpulse.core.v1.UpdateAPICredentialRequest
+	69,  // 373: codexpulse.core.v1.CoreService.QuotaPace:input_type -> codexpulse.core.v1.QuotaPaceRequest
+	77,  // 374: codexpulse.core.v1.CoreService.RequestQuotaRefresh:input_type -> codexpulse.core.v1.QuotaRefreshRequest
+	79,  // 375: codexpulse.core.v1.CoreService.ListSources:input_type -> codexpulse.core.v1.ListSourcesRequest
+	80,  // 376: codexpulse.core.v1.CoreService.Source:input_type -> codexpulse.core.v1.SourceRequest
+	81,  // 377: codexpulse.core.v1.CoreService.ListJobs:input_type -> codexpulse.core.v1.ListJobsRequest
+	82,  // 378: codexpulse.core.v1.CoreService.Job:input_type -> codexpulse.core.v1.JobRequest
+	83,  // 379: codexpulse.core.v1.CoreService.ListHealth:input_type -> codexpulse.core.v1.ListHealthRequest
+	84,  // 380: codexpulse.core.v1.CoreService.Health:input_type -> codexpulse.core.v1.HealthRequest
+	85,  // 381: codexpulse.core.v1.CoreService.HealthProjection:input_type -> codexpulse.core.v1.HealthProjectionRequest
+	86,  // 382: codexpulse.core.v1.CoreService.DataHealth:input_type -> codexpulse.core.v1.DataHealthRequest
+	87,  // 383: codexpulse.core.v1.CoreService.Settings:input_type -> codexpulse.core.v1.SettingsRequest
+	122, // 384: codexpulse.core.v1.CoreService.UpdateSettings:input_type -> codexpulse.core.v1.UpdateSettingsRequest
+	124, // 385: codexpulse.core.v1.CoreService.PlanHomeSwitch:input_type -> codexpulse.core.v1.PlanHomeSwitchRequest
+	126, // 386: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:input_type -> codexpulse.core.v1.ConfirmHomeSwitchRequest
+	127, // 387: codexpulse.core.v1.CoreService.RecoverHomeSwitch:input_type -> codexpulse.core.v1.RecoverHomeSwitchRequest
+	129, // 388: codexpulse.core.v1.CoreService.RunRuntimeAction:input_type -> codexpulse.core.v1.RuntimeActionRequest
+	131, // 389: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:input_type -> codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
+	133, // 390: codexpulse.core.v1.CoreService.NotifyLifecycle:input_type -> codexpulse.core.v1.LifecycleNotificationRequest
+	135, // 391: codexpulse.core.v1.CoreService.MigrationRecoveryState:input_type -> codexpulse.core.v1.MigrationRecoveryStateRequest
+	136, // 392: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:input_type -> codexpulse.core.v1.MigrationRecoveryRetryRequest
+	139, // 393: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:input_type -> codexpulse.core.v1.MigrationRecoveryPrepareRequest
+	140, // 394: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:input_type -> codexpulse.core.v1.MigrationRecoveryConfirmRequest
+	137, // 395: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:input_type -> codexpulse.core.v1.MigrationRecoveryCancelRequest
+	138, // 396: codexpulse.core.v1.CoreService.MigrationRecoveryExit:input_type -> codexpulse.core.v1.MigrationRecoveryExitRequest
+	145, // 397: codexpulse.core.v1.CoreService.SubscribeInvalidations:input_type -> codexpulse.core.v1.SubscribeInvalidationsRequest
+	147, // 398: codexpulse.core.v1.CoreService.Shutdown:input_type -> codexpulse.core.v1.ShutdownRequest
+	2,   // 399: codexpulse.core.v1.CoreService.Handshake:output_type -> codexpulse.core.v1.HandshakeResponse
+	4,   // 400: codexpulse.core.v1.CoreService.Bootstrap:output_type -> codexpulse.core.v1.BootstrapResponse
+	7,   // 401: codexpulse.core.v1.CoreService.Contracts:output_type -> codexpulse.core.v1.ContractsResponse
+	151, // 402: codexpulse.core.v1.CoreService.AccountSnapshot:output_type -> codexpulse.core.v1.AccountSnapshotResponse
+	37,  // 403: codexpulse.core.v1.CoreService.UsageCost:output_type -> codexpulse.core.v1.UsageCostResponse
+	44,  // 404: codexpulse.core.v1.CoreService.InvocationUsage:output_type -> codexpulse.core.v1.InvocationUsageResponse
+	47,  // 405: codexpulse.core.v1.CoreService.PricingCatalogCurrent:output_type -> codexpulse.core.v1.PricingCatalogCurrentResponse
+	49,  // 406: codexpulse.core.v1.CoreService.ListSessions:output_type -> codexpulse.core.v1.SessionListResponse
+	51,  // 407: codexpulse.core.v1.CoreService.SessionDetail:output_type -> codexpulse.core.v1.SessionDetailResponse
+	56,  // 408: codexpulse.core.v1.CoreService.ListProjects:output_type -> codexpulse.core.v1.ProjectListResponse
+	57,  // 409: codexpulse.core.v1.CoreService.ProjectDetail:output_type -> codexpulse.core.v1.ProjectDetailResponse
+	68,  // 410: codexpulse.core.v1.CoreService.QuotaCurrent:output_type -> codexpulse.core.v1.QuotaCurrentResponse
+	171, // 411: codexpulse.core.v1.CoreService.APISubscriptionsCurrent:output_type -> codexpulse.core.v1.APISubscriptionsCurrentResponse
+	154, // 412: codexpulse.core.v1.CoreService.APICredentialStatus:output_type -> codexpulse.core.v1.APICredentialStatusResponse
+	154, // 413: codexpulse.core.v1.CoreService.UpdateAPICredential:output_type -> codexpulse.core.v1.APICredentialStatusResponse
+	76,  // 414: codexpulse.core.v1.CoreService.QuotaPace:output_type -> codexpulse.core.v1.QuotaPaceResponse
+	78,  // 415: codexpulse.core.v1.CoreService.RequestQuotaRefresh:output_type -> codexpulse.core.v1.QuotaRefreshReceipt
+	91,  // 416: codexpulse.core.v1.CoreService.ListSources:output_type -> codexpulse.core.v1.SourceListResponse
+	92,  // 417: codexpulse.core.v1.CoreService.Source:output_type -> codexpulse.core.v1.SourceDetailResponse
+	96,  // 418: codexpulse.core.v1.CoreService.ListJobs:output_type -> codexpulse.core.v1.JobListResponse
+	97,  // 419: codexpulse.core.v1.CoreService.Job:output_type -> codexpulse.core.v1.JobDetailResponse
+	100, // 420: codexpulse.core.v1.CoreService.ListHealth:output_type -> codexpulse.core.v1.HealthListResponse
+	101, // 421: codexpulse.core.v1.CoreService.Health:output_type -> codexpulse.core.v1.HealthDetailResponse
+	103, // 422: codexpulse.core.v1.CoreService.HealthProjection:output_type -> codexpulse.core.v1.HealthProjectionResponse
+	109, // 423: codexpulse.core.v1.CoreService.DataHealth:output_type -> codexpulse.core.v1.DataHealthResponse
+	117, // 424: codexpulse.core.v1.CoreService.Settings:output_type -> codexpulse.core.v1.SettingsResponse
+	123, // 425: codexpulse.core.v1.CoreService.UpdateSettings:output_type -> codexpulse.core.v1.SettingsUpdateReceipt
+	125, // 426: codexpulse.core.v1.CoreService.PlanHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchPlanReceipt
+	128, // 427: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
+	128, // 428: codexpulse.core.v1.CoreService.RecoverHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
+	130, // 429: codexpulse.core.v1.CoreService.RunRuntimeAction:output_type -> codexpulse.core.v1.RuntimeActionReceipt
+	132, // 430: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:output_type -> codexpulse.core.v1.RepairDryRunReceipt
+	134, // 431: codexpulse.core.v1.CoreService.NotifyLifecycle:output_type -> codexpulse.core.v1.LifecycleNotificationReceipt
+	142, // 432: codexpulse.core.v1.CoreService.MigrationRecoveryState:output_type -> codexpulse.core.v1.MigrationRecoverySnapshot
+	143, // 433: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
+	144, // 434: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:output_type -> codexpulse.core.v1.MigrationRestoreConfirmation
+	143, // 435: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
+	0,   // 436: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:output_type -> codexpulse.core.v1.Empty
+	0,   // 437: codexpulse.core.v1.CoreService.MigrationRecoveryExit:output_type -> codexpulse.core.v1.Empty
+	146, // 438: codexpulse.core.v1.CoreService.SubscribeInvalidations:output_type -> codexpulse.core.v1.QueryInvalidationEvent
+	148, // 439: codexpulse.core.v1.CoreService.Shutdown:output_type -> codexpulse.core.v1.ShutdownResponse
+	399, // [399:440] is the sub-list for method output_type
+	358, // [358:399] is the sub-list for method input_type
+	358, // [358:358] is the sub-list for extension type_name
+	358, // [358:358] is the sub-list for extension extendee
+	0,   // [0:358] is the sub-list for field type_name
 }
 
 func init() { file_api_codexpulse_core_v1_core_proto_init() }

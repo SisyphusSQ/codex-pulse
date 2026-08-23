@@ -614,13 +614,18 @@ public actor AppRuntime {
     }
 
     public func requestQuotaRefresh(
-        source: String
+        source: String,
+		provider: AgentProvider
     ) async throws -> Codexpulse_Core_V1_QuotaRefreshReceipt {
         guard source == "quota" || source == "reset_credits" else {
             throw AppRuntimeError.unavailable
         }
+		guard source == "quota" || provider.supportsResetCredits else {
+			throw AppRuntimeError.unavailable
+		}
         var request = Codexpulse_Core_V1_QuotaRefreshRequest()
         request.source = source
+		request.provider = provider.scope
         let preparedRequest = request
         return try await performMutation { try await $0.requestQuotaRefresh(preparedRequest) }
     }

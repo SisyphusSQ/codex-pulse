@@ -243,7 +243,11 @@ func (api *grpcAPI) RequestQuotaRefresh(
 	if api == nil || api.service == nil {
 		return nil, coreServiceUnavailable()
 	}
-	response, err := api.service.RequestQuotaRefresh(ctx, quotaonline.RefreshSource(request.GetSource()))
+	response, err := api.service.RequestQuotaRefresh(
+		ctx,
+		agentprovider.Scope{Provider: request.GetProvider().GetProvider()},
+		quotaonline.RefreshSource(request.GetSource()),
+	)
 	return encodeRPC(response, &corev1.QuotaRefreshReceipt{}, err)
 }
 

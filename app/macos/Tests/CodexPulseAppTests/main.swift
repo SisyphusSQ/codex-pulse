@@ -640,6 +640,17 @@ private func testCursorQuotaSurfacesUseOfficialMonthlyWindows() throws {
 	)
 }
 
+private func testQuotaRefreshControlsCoverEveryProvider() throws {
+	let source = try mainWindowSource("QuotaHealthViews.swift")
+	try expect(
+		source.contains("if provider.supportsResetCredits")
+			&& source.contains("Menu(\"刷新数据\", systemImage: \"arrow.clockwise\")")
+			&& source.contains("Button(\"刷新额度\", systemImage: \"arrow.clockwise\")")
+			&& source.contains("refreshStatus(title: \"额度\", state: quotaRefreshState)"),
+		"Codex must keep its refresh menu while Cursor and Grok expose a direct quota refresh button"
+	)
+}
+
 private func testToolbarSeparatesCurrentReloadFromGlobalReload() throws {
     let source = try mainWindowSource("RootView.swift")
     try expect(
@@ -3290,11 +3301,12 @@ private actor FakeCore: AppCoreServing {
     func requestQuotaRefresh(
         _ request: Codexpulse_Core_V1_QuotaRefreshRequest
     ) async throws -> Codexpulse_Core_V1_QuotaRefreshReceipt {
-        calls.append("quota_refresh:\(request.source)")
+        calls.append("quota_refresh:\(request.provider.provider):\(request.source)")
         if quotaRefreshDelay != .zero { try await sleepForTest(quotaRefreshDelay) }
         var receipt = Codexpulse_Core_V1_QuotaRefreshReceipt()
         receipt.source = request.source
         receipt.reason = "accepted"
+		receipt.providerContext.effectiveProvider = request.provider.provider
         return receipt
     }
 
@@ -4799,9 +4811,48 @@ private func testQuotaMutationIsSingleFlight() async throws {
             return false
         }
     }
-    let calls = await core.recordedCalls().filter { $0 == "quota_refresh:quota" }
+    let calls = await core.recordedCalls().filter {
+		$0.hasPrefix("quota_refresh:") && $0.hasSuffix(":quota")
+	}
     try expect(calls.count == 1, "quota mutation must not be cancelled and replayed")
     _ = await model.shutdown()
+}
+
+@MainActor
+private func testQuotaMutationCarriesSelectedProviderAndSwitchClearsState() async throws {
+	let suiteName = "CodexPulseAppTests.ProviderQuotaRefresh.\(UUID().uuidString)"
+	guard let defaults = UserDefaults(suiteName: suiteName) else {
+		throw TestFailure.mismatch("provider quota refresh defaults suite unavailable")
+	}
+	defer { defaults.removePersistentDomain(forName: suiteName) }
+	defaults.set(AgentProvider.cursor.rawValue, forKey: "CodexPulse.selectedProvider")
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+	let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+	await core.setQuotaRefreshDelay(.milliseconds(150))
+	let model = AppModel(
+		runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+		providerDefaults: defaults)
+	model.start()
+	try await waitUntil("provider quota refresh overview") {
+		await MainActor.run { model.presentation != nil }
+	}
+	model.requestQuotaRefresh(source: "quota")
+	try await waitUntil("provider quota refresh running") {
+		await MainActor.run {
+			if case .running = model.quotaRefreshState { return true }
+			return false
+		}
+	}
+	try await waitUntil("provider quota refresh sent") {
+		await core.recordedCalls().contains("quota_refresh:cursor:quota")
+	}
+	model.selectProvider(.grok)
+	try expect(model.quotaRefreshState == .idle, "provider switch must clear the previous refresh state")
+	try await Task.sleep(for: .milliseconds(250))
+	try expect(model.quotaRefreshState == .idle, "late Cursor receipt must not overwrite Grok state")
+	let calls = await core.recordedCalls().filter { $0 == "quota_refresh:cursor:quota" }
+	try expect(calls.count == 1, "quota mutation must carry the selected Cursor provider")
+	_ = await model.shutdown()
 }
 
 @MainActor
@@ -4822,7 +4873,9 @@ private func testLifecycleInvalidationPreservesMutation() async throws {
             return false
         }
     }
-    let calls = await core.recordedCalls().filter { $0 == "quota_refresh:quota" }
+    let calls = await core.recordedCalls().filter {
+		$0.hasPrefix("quota_refresh:") && $0.hasSuffix(":quota")
+	}
     try expect(calls.count == 1, "active/wake invalidation must not cancel an in-flight mutation")
     _ = await model.shutdown()
 }
@@ -9911,6 +9964,7 @@ struct CodexPulseAppTestMain {
         try testOverviewUsesOneNavigationAndARealTrendChart()
 		try testCursorOverviewOmitsDataStatusCard()
 		try testCursorQuotaSurfacesUseOfficialMonthlyWindows()
+		try testQuotaRefreshControlsCoverEveryProvider()
 		try testCursorOverviewTrendAnnotationDoesNotResizeConsumptionCard()
         try testToolbarSeparatesCurrentReloadFromGlobalReload()
         try testWeeklyOverviewTrendUsesDailyAxisAndRangeCopy()
@@ -10085,6 +10139,7 @@ struct CodexPulseAppTestMain {
         try await testRepeatedCursorStopsPagination()
         try await testTransientCursorFailureCanRetry()
         try await testQuotaMutationIsSingleFlight()
+		try await testQuotaMutationCarriesSelectedProviderAndSwitchClearsState()
         try await testLifecycleInvalidationPreservesMutation()
         try await testSettingsConflictPreservesDraft()
         try await testSettingsEditDuringSaveIsPreserved()

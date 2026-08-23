@@ -67,6 +67,10 @@ type quotaRefreshCommand interface {
 	RequestQuotaRefresh(context.Context, quotaonline.RefreshSource) (store.SourceRefreshSchedule, error)
 }
 
+type providerQuotaRefreshCommand interface {
+	RefreshQuota(context.Context, agentprovider.Scope) (agentprovider.Context, error)
+}
+
 type accountSnapshotQuery interface {
 	AccountSnapshot(context.Context, agentprovider.Scope) (AccountSnapshot, error)
 }
@@ -94,41 +98,43 @@ type QueryObserver interface {
 }
 
 type ServiceConfig struct {
-	UsageCost        usageCostQuery
-	InvocationUsage  invocationUsageQuery
-	PricingCatalog   pricingCatalogQuery
-	RuntimeInfo      runtimeInfoQuery
-	QuotaInfo        agentQuotaQuery
-	QuotaRefresh     quotaRefreshCommand
-	RuntimeControls  runtimeControlCommand
-	HealthProjection healthProjectionQuery
-	AccountSnapshot  accountSnapshotQuery
-	APISubscriptions apiSubscriptionsQuery
-	APICredentials   apiCredentialStore
-	QueryObserver    QueryObserver
-	SessionDeepIndex sessionDeepIndexCommand
+	UsageCost            usageCostQuery
+	InvocationUsage      invocationUsageQuery
+	PricingCatalog       pricingCatalogQuery
+	RuntimeInfo          runtimeInfoQuery
+	QuotaInfo            agentQuotaQuery
+	QuotaRefresh         quotaRefreshCommand
+	ProviderQuotaRefresh providerQuotaRefreshCommand
+	RuntimeControls      runtimeControlCommand
+	HealthProjection     healthProjectionQuery
+	AccountSnapshot      accountSnapshotQuery
+	APISubscriptions     apiSubscriptionsQuery
+	APICredentials       apiCredentialStore
+	QueryObserver        QueryObserver
+	SessionDeepIndex     sessionDeepIndexCommand
 }
 
 // Service 是 Go Helper 唯一的业务 facade；未导出依赖阻止 Store、文件系统和凭据原语进入 RPC surface。
 type Service struct {
-	usageCost        usageCostQuery
-	invocationUsage  invocationUsageQuery
-	pricingCatalog   pricingCatalogQuery
-	runtimeInfo      runtimeInfoQuery
-	quotaInfo        agentQuotaQuery
-	quotaMu          sync.RWMutex
-	quotaRefresh     quotaRefreshCommand
-	runtimeMu        sync.RWMutex
-	runtimeControls  runtimeControlCommand
-	deepMu           sync.RWMutex
-	sessionDeepIndex sessionDeepIndexCommand
-	healthMu         sync.RWMutex
-	healthProjection healthProjectionQuery
-	accountMu        sync.RWMutex
-	accountSnapshot  accountSnapshotQuery
-	apiSubscriptions apiSubscriptionsQuery
-	apiCredentials   apiCredentialStore
-	queryObserver    QueryObserver
+	usageCost            usageCostQuery
+	invocationUsage      invocationUsageQuery
+	pricingCatalog       pricingCatalogQuery
+	runtimeInfo          runtimeInfoQuery
+	quotaInfo            agentQuotaQuery
+	quotaMu              sync.RWMutex
+	quotaRefresh         quotaRefreshCommand
+	providerQuotaRefresh providerQuotaRefreshCommand
+	runtimeMu            sync.RWMutex
+	runtimeControls      runtimeControlCommand
+	deepMu               sync.RWMutex
+	sessionDeepIndex     sessionDeepIndexCommand
+	healthMu             sync.RWMutex
+	healthProjection     healthProjectionQuery
+	accountMu            sync.RWMutex
+	accountSnapshot      accountSnapshotQuery
+	apiSubscriptions     apiSubscriptionsQuery
+	apiCredentials       apiCredentialStore
+	queryObserver        QueryObserver
 }
 
 func NewService(config ServiceConfig) (*Service, error) {
@@ -136,19 +142,20 @@ func NewService(config ServiceConfig) (*Service, error) {
 		return nil, ErrService
 	}
 	return &Service{
-		usageCost:        config.UsageCost,
-		invocationUsage:  config.InvocationUsage,
-		pricingCatalog:   config.PricingCatalog,
-		runtimeInfo:      config.RuntimeInfo,
-		quotaInfo:        config.QuotaInfo,
-		quotaRefresh:     config.QuotaRefresh,
-		runtimeControls:  config.RuntimeControls,
-		sessionDeepIndex: config.SessionDeepIndex,
-		queryObserver:    config.QueryObserver,
-		healthProjection: config.HealthProjection,
-		accountSnapshot:  config.AccountSnapshot,
-		apiSubscriptions: config.APISubscriptions,
-		apiCredentials:   config.APICredentials,
+		usageCost:            config.UsageCost,
+		invocationUsage:      config.InvocationUsage,
+		pricingCatalog:       config.PricingCatalog,
+		runtimeInfo:          config.RuntimeInfo,
+		quotaInfo:            config.QuotaInfo,
+		quotaRefresh:         config.QuotaRefresh,
+		providerQuotaRefresh: config.ProviderQuotaRefresh,
+		runtimeControls:      config.RuntimeControls,
+		sessionDeepIndex:     config.SessionDeepIndex,
+		queryObserver:        config.QueryObserver,
+		healthProjection:     config.HealthProjection,
+		accountSnapshot:      config.AccountSnapshot,
+		apiSubscriptions:     config.APISubscriptions,
+		apiCredentials:       config.APICredentials,
 	}, nil
 }
 
@@ -431,29 +438,59 @@ func (service *Service) UpdateAPICredential(
 }
 
 type QuotaRefreshReceipt struct {
-	Source         quotaonline.RefreshSource `json:"source"`
-	NextDueAtMS    *int64                    `json:"nextDueAtMs"`
-	Reason         store.SourceRefreshReason `json:"reason"`
-	LastManualAtMS *int64                    `json:"lastManualAtMs"`
+	Source          quotaonline.RefreshSource `json:"source"`
+	NextDueAtMS     *int64                    `json:"nextDueAtMs"`
+	Reason          store.SourceRefreshReason `json:"reason"`
+	LastManualAtMS  *int64                    `json:"lastManualAtMs"`
+	ProviderContext agentprovider.Context     `json:"providerContext"`
 }
 
 func (service *Service) RequestQuotaRefresh(
 	ctx context.Context,
+	scope agentprovider.Scope,
 	source quotaonline.RefreshSource,
 ) (QuotaRefreshReceipt, error) {
 	if service == nil {
-		return QuotaRefreshReceipt{}, newServiceFailure(ErrService)
-	}
-	service.quotaMu.RLock()
-	command := service.quotaRefresh
-	service.quotaMu.RUnlock()
-	if command == nil {
 		return QuotaRefreshReceipt{}, newServiceFailure(ErrService)
 	}
 	if source != quotaonline.RefreshSourceQuota && source != quotaonline.RefreshSourceResetCredits {
 		return QuotaRefreshReceipt{}, newServiceFailure(
 			basequery.NewValidationFailure("source", nil),
 		)
+	}
+	provider, err := agentprovider.Normalize(scope.Provider)
+	if err != nil {
+		return QuotaRefreshReceipt{}, newServiceFailure(
+			basequery.NewValidationFailure("provider", err),
+		)
+	}
+	if provider != agentprovider.Codex && source != quotaonline.RefreshSourceQuota {
+		return QuotaRefreshReceipt{}, newServiceFailure(
+			basequery.NewValidationFailure("source", nil),
+		)
+	}
+	if provider != agentprovider.Codex {
+		if service.providerQuotaRefresh == nil {
+			return QuotaRefreshReceipt{}, newServiceFailure(ErrService)
+		}
+		return serviceCall(func() (QuotaRefreshReceipt, error) {
+			providerContext, err := service.providerQuotaRefresh.RefreshQuota(
+				ctx, agentprovider.Scope{Provider: provider},
+			)
+			if err != nil {
+				return QuotaRefreshReceipt{}, err
+			}
+			return QuotaRefreshReceipt{
+				Source: source, Reason: store.RefreshReasonManual, ProviderContext: providerContext,
+			}, nil
+		})
+	}
+
+	service.quotaMu.RLock()
+	command := service.quotaRefresh
+	service.quotaMu.RUnlock()
+	if command == nil {
+		return QuotaRefreshReceipt{}, newServiceFailure(ErrService)
 	}
 	return serviceCall(func() (QuotaRefreshReceipt, error) {
 		schedule, err := command.RequestQuotaRefresh(ctx, source)
@@ -463,6 +500,7 @@ func (service *Service) RequestQuotaRefresh(
 		return QuotaRefreshReceipt{
 			Source: source, NextDueAtMS: cloneInt64(schedule.NextDueAtMS),
 			Reason: schedule.Reason, LastManualAtMS: cloneInt64(schedule.LastManualAtMS),
+			ProviderContext: agentprovider.CodexContext(),
 		}, nil
 	})
 }

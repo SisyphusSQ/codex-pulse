@@ -152,7 +152,8 @@ func composeCoreGraph(
 	}
 	service, err := core.NewService(core.ServiceConfig{
 		UsageCost: providerRouter, InvocationUsage: providerRouter, PricingCatalog: pricingService,
-		RuntimeInfo: runtimeService, QuotaInfo: quotaRouter, QueryObserver: queryObserver,
+		RuntimeInfo: runtimeService, QuotaInfo: quotaRouter, ProviderQuotaRefresh: quotaRouter,
+		QueryObserver:    queryObserver,
 		APISubscriptions: apiSubscriptions,
 		APICredentials:   apiCredentials,
 	})

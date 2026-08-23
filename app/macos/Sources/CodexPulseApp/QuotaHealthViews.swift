@@ -116,17 +116,21 @@ private struct QuotaContentView: View {
             HStack {
 				Text(localization.textValue(quotaTitle)).font(.title2.bold())
                 Spacer()
-				if provider == .codex {
+				if provider.supportsResetCredits {
 					Menu("刷新数据", systemImage: "arrow.clockwise") {
 						Button("刷新额度") { refresh("quota") }
 						Button("刷新重置次数") { refresh("reset_credits") }
 					}
 					.disabled(isRefreshing)
 					.accessibilityIdentifier("quota.refresh")
+				} else {
+					Button("刷新额度", systemImage: "arrow.clockwise") { refresh("quota") }
+						.disabled(isRefreshing)
+						.accessibilityIdentifier("quota.refresh")
 				}
             }
-			if provider == .codex {
-				refreshStatus(title: "额度", state: quotaRefreshState)
+			refreshStatus(title: "额度", state: quotaRefreshState)
+			if provider.supportsResetCredits {
 				refreshStatus(title: "重置次数", state: resetCreditsRefreshState)
 			}
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], spacing: 12) {

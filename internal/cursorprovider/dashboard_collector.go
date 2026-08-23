@@ -17,6 +17,8 @@ import (
 
 const dashboardPageSize int32 = 100
 
+const dashboardInteractiveRefreshInterval = time.Minute
+
 type DashboardUsageClient interface {
 	GetCurrentPeriodUsage(context.Context) (CurrentPeriodUsage, error)
 	GetFilteredUsageEvents(context.Context, UsageEventsRequest) (UsageEventsPage, error)
@@ -48,7 +50,14 @@ func NewDashboardCollector(client DashboardUsageClient, writer DashboardSnapshot
 }
 
 func (collector *DashboardCollector) Refresh(ctx context.Context) error {
-	_, err := collector.RefreshIfDue(ctx)
+	if collector == nil {
+		return ErrDashboardProtocol
+	}
+	_, err := collector.refresh(
+		ctx,
+		min(collector.config.MinimumRefresh, dashboardInteractiveRefreshInterval),
+		true,
+	)
 	return err
 }
 
@@ -56,39 +65,50 @@ func (collector *DashboardCollector) Refresh(ctx context.Context) error {
 // lets the local-first query path avoid invalidation loops when the dashboard
 // collector is still inside its minimum refresh interval.
 func (collector *DashboardCollector) RefreshIfDue(ctx context.Context) (bool, error) {
+	if collector == nil {
+		return false, ErrDashboardProtocol
+	}
+	return collector.refresh(ctx, collector.config.MinimumRefresh, false)
+}
+
+func (collector *DashboardCollector) refresh(
+	ctx context.Context,
+	minimumRefresh time.Duration,
+	reportFailure bool,
+) (bool, error) {
 	if collector == nil || ctx == nil {
 		return false, ErrDashboardProtocol
 	}
 	collector.mu.Lock()
 	defer collector.mu.Unlock()
 	now := collector.config.Now()
-	if !collector.last.IsZero() && now.Sub(collector.last) < collector.config.MinimumRefresh {
+	if !collector.last.IsZero() && now.Sub(collector.last) < minimumRefresh {
 		return false, nil
 	}
 	atMS := now.UnixMilli()
 	current, err := collector.client.GetCurrentPeriodUsage(ctx)
 	if err != nil {
-		return true, collector.recordFailure(ctx, atMS, err)
+		return collector.handleFailure(ctx, atMS, err, reportFailure)
 	}
 	if current.BillingCycleStartMS <= 0 || current.BillingCycleStartMS >= atMS ||
 		current.BillingCycleEndMS <= current.BillingCycleStartMS {
-		return true, collector.recordFailure(ctx, atMS, ErrDashboardProtocol)
+		return collector.handleFailure(ctx, atMS, ErrDashboardProtocol, reportFailure)
 	}
 	planUsage, err := dashboardPlanUsage(current.PlanUsage)
 	if err != nil {
-		return true, collector.recordFailure(ctx, atMS, err)
+		return collector.handleFailure(ctx, atMS, err, reportFailure)
 	}
 	quotaWindows, err := dashboardQuotaWindows(current.PlanUsage, current.BillingCycleStartMS, current.BillingCycleEndMS)
 	if err != nil {
-		return true, collector.recordFailure(ctx, atMS, err)
+		return collector.handleFailure(ctx, atMS, err, reportFailure)
 	}
 
 	events, err := collector.readUsageEvents(ctx, current.BillingCycleStartMS, atMS)
 	if err != nil {
-		return true, collector.recordFailure(ctx, atMS, err)
+		return collector.handleFailure(ctx, atMS, err, reportFailure)
 	}
 	if err := validateDashboardAggregate(events); err != nil {
-		return true, collector.recordFailure(ctx, atMS, err)
+		return collector.handleFailure(ctx, atMS, err, reportFailure)
 	}
 	if err := collector.writer.CommitCursorDashboardSnapshot(ctx, store.CursorDashboardSnapshot{
 		Generation: atMS, CollectedAtMS: atMS,
@@ -99,6 +119,21 @@ func (collector *DashboardCollector) RefreshIfDue(ctx context.Context) (bool, er
 		return true, fmt.Errorf("%w: persist dashboard snapshot", ErrDashboardProtocol)
 	}
 	collector.last = now
+	return true, nil
+}
+
+func (collector *DashboardCollector) handleFailure(
+	ctx context.Context,
+	atMS int64,
+	cause error,
+	reportFailure bool,
+) (bool, error) {
+	if err := collector.recordFailure(ctx, atMS, cause); err != nil {
+		return true, err
+	}
+	if reportFailure {
+		return true, cause
+	}
 	return true, nil
 }
 

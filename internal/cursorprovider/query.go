@@ -113,6 +113,23 @@ func (service *QueryService) Refresh(ctx context.Context) error {
 	return nil
 }
 
+func (service *QueryService) RefreshQuota(ctx context.Context) error {
+	if service == nil || service.dashboard == nil || ctx == nil {
+		return ErrCollector
+	}
+	if err := service.dashboard.Refresh(ctx); err != nil {
+		return err
+	}
+	service.invalidateSnapshot()
+	service.refreshMu.Lock()
+	notifier := service.onRefresh
+	service.refreshMu.Unlock()
+	if notifier != nil {
+		notifier()
+	}
+	return nil
+}
+
 func (service *QueryService) snapshot(ctx context.Context) (store.CursorSnapshot, error) {
 	if service == nil || service.collector == nil || service.reader == nil {
 		return store.CursorSnapshot{}, ErrCollector

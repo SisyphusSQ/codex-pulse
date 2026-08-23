@@ -79,6 +79,36 @@ func TestGRPCServerAuthenticatesHandshakeAndNegotiatesContract(t *testing.T) {
 	}
 }
 
+func TestGRPCServerMapsProviderScopedQuotaRefresh(t *testing.T) {
+	t.Parallel()
+	refresh := &helperProviderQuotaRefreshStub{}
+	business, err := core.NewService(core.ServiceConfig{
+		UsageCost: &helperUsageQueryStub{}, InvocationUsage: &helperInvocationQueryStub{},
+		PricingCatalog: helperPricingCatalogQueryStub{}, RuntimeInfo: helperRuntimeQueryStub{},
+		ProviderQuotaRefresh: refresh,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, authorize := startConfiguredTestGRPCServer(t, func(config *ServerConfig) {
+		config.Service = business
+	})
+	response, err := client.RequestQuotaRefresh(
+		authorize(t.Context()),
+		&corev1.QuotaRefreshRequest{
+			Source: "quota", Provider: &corev1.ProviderScope{Provider: agentprovider.Cursor},
+		},
+	)
+	if err != nil {
+		t.Fatalf("RequestQuotaRefresh() error = %v", err)
+	}
+	if refresh.scope.Provider != agentprovider.Cursor ||
+		response.GetProviderContext().GetEffectiveProvider() != agentprovider.Cursor ||
+		response.GetReason() != "manual" {
+		t.Fatalf("RequestQuotaRefresh() = %#v, scope = %#v", response, refresh.scope)
+	}
+}
+
 func TestGRPCServerMapsInvocationUsageRequestAndResponse(t *testing.T) {
 	t.Parallel()
 
@@ -785,6 +815,18 @@ func (helperRuntimeQueryStub) QuotaPace(context.Context, int64) (runtimeinfo.Quo
 
 type helperAgentQuotaQueryStub struct {
 	scope agentprovider.Scope
+}
+
+type helperProviderQuotaRefreshStub struct {
+	scope agentprovider.Scope
+}
+
+func (stub *helperProviderQuotaRefreshStub) RefreshQuota(
+	_ context.Context,
+	scope agentprovider.Scope,
+) (agentprovider.Context, error) {
+	stub.scope = scope
+	return agentprovider.Context{EffectiveProvider: scope.Provider}, nil
 }
 
 func (stub *helperAgentQuotaQueryStub) QuotaCurrent(

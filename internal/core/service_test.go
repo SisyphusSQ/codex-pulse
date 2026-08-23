@@ -9,11 +9,13 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
+	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
+	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
 // 测试 Service 只暴露 Go Helper 的业务方法，不继续携带 updater 平台职责。
@@ -199,6 +201,53 @@ func TestServiceDelegatesProviderScopedQuota(t *testing.T) {
 	}
 }
 
+func TestServiceRoutesQuotaRefreshByProvider(t *testing.T) {
+	t.Parallel()
+	nextDueAtMS := int64(456)
+	codex := &quotaRefreshCommandStub{schedule: store.SourceRefreshSchedule{
+		NextDueAtMS: &nextDueAtMS, Reason: store.RefreshReasonManual,
+	}}
+	providers := &providerQuotaRefreshStub{}
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageQueryStub{}, InvocationUsage: &invocationUsageQueryStub{},
+		PricingCatalog: pricingCatalogQueryStub{}, RuntimeInfo: runtimeQueryStub{},
+		QuotaRefresh: codex, ProviderQuotaRefresh: providers,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cursorReceipt, err := service.RequestQuotaRefresh(
+		context.Background(), agentprovider.Scope{Provider: agentprovider.Cursor}, quotaonline.RefreshSourceQuota,
+	)
+	if err != nil || cursorReceipt.ProviderContext.EffectiveProvider != agentprovider.Cursor ||
+		cursorReceipt.Reason != store.RefreshReasonManual || providers.scope.Provider != agentprovider.Cursor {
+		t.Fatalf("Cursor RequestQuotaRefresh() = %#v, scope %#v, %v", cursorReceipt, providers.scope, err)
+	}
+	if codex.calls != 0 {
+		t.Fatalf("Cursor refresh reached Codex command %d times", codex.calls)
+	}
+
+	codexReceipt, err := service.RequestQuotaRefresh(
+		context.Background(), agentprovider.Scope{}, quotaonline.RefreshSourceResetCredits,
+	)
+	if err != nil || codexReceipt.ProviderContext.EffectiveProvider != agentprovider.Codex ||
+		codexReceipt.NextDueAtMS == nil || *codexReceipt.NextDueAtMS != nextDueAtMS || codex.calls != 1 {
+		t.Fatalf("default RequestQuotaRefresh() = %#v, calls %d, %v", codexReceipt, codex.calls, err)
+	}
+
+	if _, err := service.RequestQuotaRefresh(
+		context.Background(), agentprovider.Scope{Provider: agentprovider.Grok}, quotaonline.RefreshSourceResetCredits,
+	); err == nil {
+		t.Fatal("Grok reset-credits refresh was accepted")
+	} else if envelope, ok := basequery.ErrorEnvelopeFrom(err); !ok || envelope.Error.Code != basequery.ErrorValidation {
+		t.Fatalf("Grok reset-credits error = %v", err)
+	}
+	if providers.calls != 1 {
+		t.Fatalf("invalid Grok request reached provider command; calls = %d", providers.calls)
+	}
+}
+
 func TestServiceDelegatesEphemeralAccountSnapshot(t *testing.T) {
 	email, planType := "person@example.com", "pro"
 	account := &accountSnapshotQueryStub{snapshot: AccountSnapshot{
@@ -360,6 +409,33 @@ type accountSnapshotQueryStub struct {
 	snapshot AccountSnapshot
 	calls    int
 	scope    agentprovider.Scope
+}
+
+type quotaRefreshCommandStub struct {
+	schedule store.SourceRefreshSchedule
+	calls    int
+}
+
+func (stub *quotaRefreshCommandStub) RequestQuotaRefresh(
+	context.Context,
+	quotaonline.RefreshSource,
+) (store.SourceRefreshSchedule, error) {
+	stub.calls++
+	return stub.schedule, nil
+}
+
+type providerQuotaRefreshStub struct {
+	scope agentprovider.Scope
+	calls int
+}
+
+func (stub *providerQuotaRefreshStub) RefreshQuota(
+	_ context.Context,
+	scope agentprovider.Scope,
+) (agentprovider.Context, error) {
+	stub.scope = scope
+	stub.calls++
+	return agentprovider.Context{EffectiveProvider: scope.Provider}, nil
 }
 
 type pricingCatalogQueryStub struct{}

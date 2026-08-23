@@ -148,8 +148,8 @@ func TestGrokBotAndDashboardCollectorsRefreshIndependently(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewGrokBotCollector() error = %v", err)
 	}
-	if err := dashboard.Refresh(context.Background()); err != nil {
-		t.Fatalf("dashboard Refresh() error = %v", err)
+	if performed, err := dashboard.RefreshIfDue(context.Background()); err != nil || !performed {
+		t.Fatalf("dashboard RefreshIfDue() = %v, %v", performed, err)
 	}
 	if err := grokBot.Refresh(context.Background()); err != nil {
 		t.Fatalf("grok bot Refresh() error = %v", err)

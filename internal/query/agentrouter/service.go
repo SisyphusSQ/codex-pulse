@@ -30,17 +30,45 @@ type QuotaService interface {
 	QuotaPace(context.Context, int64) (runtimeinfo.QuotaPaceResponse, error)
 }
 
-type QuotaRouter struct {
-	codex  QuotaService
-	cursor QuotaService
-	grok   QuotaService
+type ProviderQuotaService interface {
+	QuotaService
+	RefreshQuota(context.Context) error
 }
 
-func NewQuota(codex QuotaService, cursor QuotaService, grok QuotaService) (*QuotaRouter, error) {
+type QuotaRouter struct {
+	codex  QuotaService
+	cursor ProviderQuotaService
+	grok   ProviderQuotaService
+}
+
+func NewQuota(codex QuotaService, cursor ProviderQuotaService, grok ProviderQuotaService) (*QuotaRouter, error) {
 	if codex == nil || cursor == nil || grok == nil {
 		return nil, ErrInvalidService
 	}
 	return &QuotaRouter{codex: codex, cursor: cursor, grok: grok}, nil
+}
+
+func (service *QuotaRouter) RefreshQuota(
+	ctx context.Context,
+	scope agentprovider.Scope,
+) (agentprovider.Context, error) {
+	provider, err := normalized(scope)
+	if err != nil {
+		return agentprovider.Context{}, err
+	}
+	var backend ProviderQuotaService
+	switch provider {
+	case agentprovider.Cursor:
+		backend = service.cursor
+	case agentprovider.Grok:
+		backend = service.grok
+	default:
+		return agentprovider.Context{}, basequery.NewValidationFailure("provider", agentprovider.ErrInvalidProvider)
+	}
+	if err := backend.RefreshQuota(ctx); err != nil {
+		return agentprovider.Context{}, err
+	}
+	return quotaProviderContext(provider, agentprovider.Context{}), nil
 }
 
 func (service *QuotaRouter) QuotaCurrent(

@@ -124,6 +124,23 @@ func (service *QueryService) Refresh(ctx context.Context) error {
 	return nil
 }
 
+func (service *QueryService) RefreshQuota(ctx context.Context) error {
+	if service == nil || service.billing == nil || ctx == nil {
+		return ErrCollector
+	}
+	if err := service.billing.Refresh(ctx); err != nil {
+		return err
+	}
+	service.invalidateSnapshot()
+	service.refreshMu.Lock()
+	notifier := service.onRefresh
+	service.refreshMu.Unlock()
+	if notifier != nil {
+		notifier()
+	}
+	return nil
+}
+
 func (service *QueryService) SetRefreshNotifier(notifier func()) {
 	if service == nil {
 		return
