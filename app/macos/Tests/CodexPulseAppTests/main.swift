@@ -1309,6 +1309,29 @@ private func testPopoverDismissRuleCoversEveryEventOrigin() throws {
         "global mouse must dismiss"
     )
     try expect(
+        PopoverDismissRule.decideGlobalMouse(hitsStatusItem: true) == .ignore,
+        "global mouse on the status item must not dismiss"
+    )
+    try expect(
+        PopoverDismissRule.origin(
+            eventWindow: nil,
+            popoverWindow: nil,
+            statusItemWindow: nil,
+            hitsStatusItem: true
+        ) == .statusItemWindow,
+        "screen-frame status item hits must win over a missing event window"
+    )
+    try expect(
+        PopoverDismissRule.hitsStatusItem(
+            screenPoint: NSPoint(x: 12, y: 12),
+            statusItemFrame: NSRect(x: 0, y: 0, width: 40, height: 24)
+        ) && !PopoverDismissRule.hitsStatusItem(
+            screenPoint: NSPoint(x: 80, y: 12),
+            statusItemFrame: NSRect(x: 0, y: 0, width: 40, height: 24)
+        ),
+        "status item hit testing must use the screen frame"
+    )
+    try expect(
         PopoverDismissRule.decideMenuTracking(
             belongsToApplicationMainMenu: true
         ) == .dismiss,
@@ -1350,6 +1373,37 @@ private func testPopoverDismissRuleKeepsModalAndSmokePopoverOpen() throws {
             isNativeAcceptanceSmoke: false
         ) == .dismiss,
         "ordinary resign-active must dismiss the popover"
+    )
+}
+
+private func testPopoverDismissRuleSuppressesShowAfterStatusItemDismiss() throws {
+    try expect(
+        PopoverDismissRule.shouldSuppressNextShow(
+            decision: .dismiss,
+            isStatusItemClickInProgress: true
+        ),
+        "dismissing during a status item click must suppress the following show"
+    )
+    try expect(
+        PopoverDismissRule.shouldSuppressNextShow(
+            decision: .dismissAndConsume,
+            isStatusItemClickInProgress: true
+        ),
+        "consumed dismiss during a status item click must also suppress the following show"
+    )
+    try expect(
+        !PopoverDismissRule.shouldSuppressNextShow(
+            decision: .dismiss,
+            isStatusItemClickInProgress: false
+        ),
+        "outside dismiss must not suppress the next status item open"
+    )
+    try expect(
+        !PopoverDismissRule.shouldSuppressNextShow(
+            decision: .ignore,
+            isStatusItemClickInProgress: true
+        ),
+        "ignored status item mouse-down must leave toggle free to close on mouse-up"
     )
 }
 
@@ -1495,8 +1549,9 @@ private func testStatusItemClickOrderingKeepsDownAndUpSeparated() throws {
     try expect(
         !toggleSource.contains("installDismissMonitors")
             && !toggleSource.contains("removeDismissMonitors")
-            && toggleSource.contains("closePopover()"),
-        "toggle must not install or remove monitors; down closes elsewhere, up toggles"
+            && toggleSource.contains("closePopover()")
+            && toggleSource.contains("consumeSuppressNextShow()"),
+        "toggle must not install or remove monitors; down closes elsewhere, up toggles or consumes a suppressed show"
     )
 }
 
@@ -1509,8 +1564,10 @@ private func testPopoverUsesApplicationDefinedBehaviorWithDelegateClose() throws
             && source.contains("guard installDismissMonitors() else {")
             && source.contains("NSMenu.didBeginTrackingNotification")
             && source.contains("belongsToApplicationMainMenu")
-            && source.contains("closePopover()"),
-        "popover must own event and main-menu dismissal, fail closed on setup, and unload on did-close"
+            && source.contains("closePopover()")
+            && source.contains("decideGlobalMouse(hitsStatusItem:")
+            && source.contains("consumeSuppressNextShow()"),
+        "popover must own event and main-menu dismissal, fail closed on setup, suppress status-item reopen, and unload on did-close"
     )
     try expect(
         !source.contains(".transient"),
@@ -10275,6 +10332,7 @@ struct CodexPulseAppTestMain {
         try testPopoverHeaderMatchesSessionNestLayoutAndNeutralFocus()
         try testPopoverDismissRuleCoversEveryEventOrigin()
         try testPopoverDismissRuleKeepsModalAndSmokePopoverOpen()
+        try testPopoverDismissRuleSuppressesShowAfterStatusItemDismiss()
         try await testPopoverMonitorLifecycleStaysBalancedAcrossRepeatedToggles()
         try await testPopoverMonitorInstallFailureRollsBackAtomically()
         try testPopoverDoesNotRegisterGlobalKeyboardMonitor()

@@ -40,6 +40,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private var smokeOpenedProjectURL: URL?
 	private var smokeCursorUsageSummary = "cursor_requests=unknown cursor_tokens=unknown cursor_reported_cost=unknown cursor_estimated_cost=unknown cursor_spending=unknown cursor_data_as_of=unknown cursor_dashboard=missing"
     private var lastPopoverCaptureFailure = "none"
+    private var suppressNextShow = false
+    private var leftoverSuppressLocalMonitor: Any?
+    private var leftoverSuppressGlobalMonitor: Any?
 
     init(
         model: AppModel,
@@ -167,9 +170,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         guard statusItem.button != nil else { return }
         if popover.isShown {
             closePopover()
-        } else {
-            showPopover()
+            return
         }
+        if consumeSuppressNextShow() {
+            return
+        }
+        showPopover()
     }
 
     private func showPopover() {
@@ -204,6 +210,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     func teardownPopoverMonitors() {
         closePopover()
         removeDismissMonitors()
+        removeLeftoverSuppressClear()
+        suppressNextShow = false
     }
 
     private func installDismissMonitors() -> Bool {
@@ -279,7 +287,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func handleGlobalEvent(_ event: NSEvent) {
-        applyDismissDecision(PopoverDismissRule.decideGlobalMouse())
+        applyDismissDecision(
+            PopoverDismissRule.decideGlobalMouse(hitsStatusItem: hitsStatusItem(event))
+        )
     }
 
     private func handleMenuDidBeginTracking(_ menu: NSMenu) {
@@ -300,6 +310,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func applyDismissDecision(_ decision: PopoverDismissDecision) {
+        if PopoverDismissRule.shouldSuppressNextShow(
+            decision: decision,
+            isStatusItemClickInProgress: isStatusItemClickInProgress()
+        ) {
+            armSuppressNextShow()
+        }
         switch decision {
         case .ignore:
             break
@@ -312,8 +328,85 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         PopoverDismissRule.origin(
             eventWindow: event.window,
             popoverWindow: popover.contentViewController?.view.window,
-            statusItemWindow: statusItem.button?.window
+            statusItemWindow: statusItem.button?.window,
+            hitsStatusItem: hitsStatusItem(event)
         )
+    }
+
+    private func hitsStatusItem(_ event: NSEvent) -> Bool {
+        guard let frame = statusItemScreenFrame() else { return false }
+        return PopoverDismissRule.hitsStatusItem(
+            screenPoint: screenPoint(for: event),
+            statusItemFrame: frame
+        )
+    }
+
+    private func isStatusItemClickInProgress() -> Bool {
+        guard NSEvent.pressedMouseButtons & (1 << 0) != 0 else { return false }
+        guard let frame = statusItemScreenFrame() else { return false }
+        return PopoverDismissRule.hitsStatusItem(
+            screenPoint: NSEvent.mouseLocation,
+            statusItemFrame: frame
+        )
+    }
+
+    private func statusItemScreenFrame() -> NSRect? {
+        guard let button = statusItem.button, let window = button.window else { return nil }
+        return window.convertToScreen(button.convert(button.bounds, to: nil))
+    }
+
+    private func screenPoint(for event: NSEvent) -> NSPoint {
+        guard let window = event.window else { return event.locationInWindow }
+        let rect = NSRect(origin: event.locationInWindow, size: .zero)
+        return window.convertToScreen(rect).origin
+    }
+
+    private func armSuppressNextShow() {
+        suppressNextShow = true
+        installLeftoverSuppressClear()
+    }
+
+    @discardableResult
+    private func consumeSuppressNextShow() -> Bool {
+        guard suppressNextShow else { return false }
+        suppressNextShow = false
+        removeLeftoverSuppressClear()
+        return true
+    }
+
+    private func installLeftoverSuppressClear() {
+        removeLeftoverSuppressClear()
+        leftoverSuppressLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self?.clearLeftoverSuppress()
+                }
+            }
+            return event
+        }
+        leftoverSuppressGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] _ in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self?.clearLeftoverSuppress()
+                }
+            }
+        }
+    }
+
+    private func clearLeftoverSuppress() {
+        suppressNextShow = false
+        removeLeftoverSuppressClear()
+    }
+
+    private func removeLeftoverSuppressClear() {
+        if let leftoverSuppressLocalMonitor {
+            NSEvent.removeMonitor(leftoverSuppressLocalMonitor)
+            self.leftoverSuppressLocalMonitor = nil
+        }
+        if let leftoverSuppressGlobalMonitor {
+            NSEvent.removeMonitor(leftoverSuppressGlobalMonitor)
+            self.leftoverSuppressGlobalMonitor = nil
+        }
     }
 
     private func belongsToApplicationMainMenu(_ menu: NSMenu) -> Bool {
