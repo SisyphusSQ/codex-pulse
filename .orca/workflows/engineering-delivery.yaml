@@ -48,9 +48,26 @@ agent_profiles:
     apps_mode: disabled
     mcp_servers_disabled: []
 
-  cursor-composer-review-fix:
+  codex-sol-xhigh-yolo:
+    runtime: codex
+    model: gpt-5.6-sol
+    effort: xhigh
+    speed: standard
+    permission_mode: yolo
+    apps_mode: disabled
+    mcp_servers_disabled: []
+
+  cursor-grok-4-6-xhigh-yolo:
     runtime: cursor
-    model: composer-2.5
+    model: cursor-grok-4.6-xhigh
+    effort: provider-default
+    speed: standard
+    permission_mode: yolo
+    sandbox_mode: enabled
+
+  cursor-opus-5-xhigh-yolo:
+    runtime: cursor
+    model: claude-opus-5-thinking-xhigh
     effort: provider-default
     speed: standard
     permission_mode: yolo
@@ -68,19 +85,19 @@ stages:
     tracked_mutation: forbidden
     fresh_terminal: always
     agent:
-      primary: codex-luna-max-yolo
+      primary: cursor-opus-5-xhigh-yolo
   develop:
     kind: agent
     tracked_mutation: allowed
     fresh_terminal: always
     agent:
-      primary: codex-luna-max-yolo
+      primary: cursor-grok-4-6-xhigh-yolo
   review_fix:
     kind: agent
     tracked_mutation: allowed
     fresh_terminal: always
     agent:
-      primary: cursor-composer-review-fix
+      primary: codex-sol-xhigh-yolo
   verify:
     kind: command
     tracked_mutation: forbidden
@@ -93,7 +110,7 @@ stages:
     tracked_mutation: allowed
     fresh_terminal: always
     agent:
-      primary: codex-luna-max-yolo
+      primary: codex-sol-xhigh-yolo
 
 context:
   linear:
