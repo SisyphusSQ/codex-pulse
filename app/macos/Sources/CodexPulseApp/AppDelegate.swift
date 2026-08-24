@@ -122,6 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let center = NSWorkspace.shared.notificationCenter
         workspaceObservers.forEach(center.removeObserver)
         workspaceObservers.removeAll()
+        statusItemController?.teardownPopoverMonitors()
     }
 
     func applicationShouldHandleReopen(

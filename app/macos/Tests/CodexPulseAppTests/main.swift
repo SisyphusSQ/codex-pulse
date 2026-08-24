@@ -1222,6 +1222,302 @@ private func testPopoverHeaderMatchesSessionNestLayoutAndNeutralFocus() throws {
     )
 }
 
+@MainActor
+private final class FakePopoverEventMonitor: PopoverEventMonitoring {
+    private(set) var localInstallCount = 0
+    private(set) var globalInstallCount = 0
+    private(set) var removeCount = 0
+    private(set) var duplicateRemoveCount = 0
+    var failNextLocalInstall = false
+    var failNextGlobalInstall = false
+    private var nextID = 1
+    private var live: Set<Int> = []
+
+    func addLocal(
+        matching mask: NSEvent.EventTypeMask,
+        handler: @escaping (NSEvent) -> NSEvent?
+    ) -> Any? {
+        localInstallCount += 1
+        if failNextLocalInstall {
+            failNextLocalInstall = false
+            return nil
+        }
+        return allocate()
+    }
+
+    func addGlobal(
+        matching mask: NSEvent.EventTypeMask,
+        handler: @escaping (NSEvent) -> Void
+    ) -> Any? {
+        globalInstallCount += 1
+        if failNextGlobalInstall {
+            failNextGlobalInstall = false
+            return nil
+        }
+        return allocate()
+    }
+
+    func remove(_ token: Any) {
+        removeCount += 1
+        if let id = token as? Int {
+            if live.remove(id) == nil {
+                duplicateRemoveCount += 1
+            }
+        }
+    }
+
+    var liveCount: Int { live.count }
+
+    private func allocate() -> Int {
+        let id = nextID
+        nextID += 1
+        live.insert(id)
+        return id
+    }
+}
+
+private func testPopoverDismissRuleCoversEveryEventOrigin() throws {
+    let mouseCases: [(PopoverEventOrigin, Bool, PopoverDismissDecision)] = [
+        (.popoverWindow, false, .ignore),
+        (.popoverWindow, true, .ignore),
+        (.statusItemWindow, false, .ignore),
+        (.statusItemWindow, true, .dismiss),
+        (.otherApplicationWindow, false, .dismiss),
+        (.otherApplicationWindow, true, .dismiss),
+        (.unknownWindow, false, .ignore),
+        (.unknownWindow, true, .ignore),
+    ]
+    for (origin, isRightOrOther, expected) in mouseCases {
+        try expect(
+            PopoverDismissRule.decideLocalMouse(
+                origin: origin,
+                isRightOrOther: isRightOrOther
+            ) == expected,
+            "local mouse origin=\(origin) isRightOrOther=\(isRightOrOther) must be \(expected)"
+        )
+    }
+    try expect(
+        PopoverDismissRule.decideLocalKey(isEscape: true) == .dismissAndConsume,
+        "Escape must dismiss and consume"
+    )
+    try expect(
+        PopoverDismissRule.decideLocalKey(isEscape: false) == .ignore,
+        "non-Escape keys must not be swallowed"
+    )
+    try expect(
+        PopoverDismissRule.decideGlobalMouse() == .dismiss,
+        "global mouse must dismiss"
+    )
+    try expect(
+        PopoverDismissRule.decideMenuTracking(
+            belongsToApplicationMainMenu: true
+        ) == .dismiss,
+        "application main-menu tracking must dismiss"
+    )
+    try expect(
+        PopoverDismissRule.decideMenuTracking(
+            belongsToApplicationMainMenu: false
+        ) == .ignore,
+        "popover and contextual menu tracking must remain interactive"
+    )
+}
+
+private func testPopoverDismissRuleKeepsModalAndSmokePopoverOpen() throws {
+    try expect(
+        PopoverDismissRule.decideResignActive(
+            hasModalSession: true,
+            isNativeAcceptanceSmoke: false
+        ) == .ignore,
+        "modal sessions must not dismiss the popover via resign-active"
+    )
+    try expect(
+        PopoverDismissRule.decideResignActive(
+            hasModalSession: false,
+            isNativeAcceptanceSmoke: true
+        ) == .ignore,
+        "native acceptance smoke must not dismiss the popover via resign-active"
+    )
+    try expect(
+        PopoverDismissRule.decideResignActive(
+            hasModalSession: true,
+            isNativeAcceptanceSmoke: true
+        ) == .ignore,
+        "modal plus smoke must still keep the popover open"
+    )
+    try expect(
+        PopoverDismissRule.decideResignActive(
+            hasModalSession: false,
+            isNativeAcceptanceSmoke: false
+        ) == .dismiss,
+        "ordinary resign-active must dismiss the popover"
+    )
+}
+
+private func testPopoverMonitorLifecycleStaysBalancedAcrossRepeatedToggles() async throws {
+    try await MainActor.run {
+        let monitor = FakePopoverEventMonitor()
+        let session = PopoverDismissMonitorSession(eventMonitor: monitor)
+        let localHandler: (NSEvent) -> NSEvent? = { $0 }
+        let globalHandler: (NSEvent) -> Void = { _ in }
+        let show: @MainActor () -> Void = {
+            _ = session.install(
+                localMask: PopoverDismissRule.localEventMask,
+                globalMask: PopoverDismissRule.globalEventMask,
+                localHandler: localHandler,
+                globalHandler: globalHandler
+            )
+        }
+        let close: @MainActor () -> Void = {
+            session.remove()
+        }
+
+        show()
+        close()
+        show()
+        close()
+        try expect(
+            monitor.localInstallCount == 2 && monitor.globalInstallCount == 2,
+            "show/close/show/close must install each monitor twice"
+        )
+        try expect(
+            monitor.removeCount == 4 && monitor.liveCount == 0 && session.liveTokenCount == 0,
+            "each installed token must be removed exactly once after paired closes"
+        )
+
+        show()
+        show()
+        show()
+        try expect(
+            monitor.liveCount == 2 && session.liveTokenCount == 2,
+            "repeated show must replace tokens instead of stacking them"
+        )
+        close()
+        try expect(
+            monitor.localInstallCount == monitor.globalInstallCount
+                && monitor.localInstallCount + monitor.globalInstallCount == monitor.removeCount
+                && monitor.liveCount == 0
+                && session.liveTokenCount == 0
+                && monitor.duplicateRemoveCount == 0,
+            "install and remove counts must stay paired with zero live tokens"
+        )
+    }
+}
+
+private func testPopoverMonitorInstallFailureRollsBackAtomically() async throws {
+    try await MainActor.run {
+        let localHandler: (NSEvent) -> NSEvent? = { $0 }
+        let globalHandler: (NSEvent) -> Void = { _ in }
+
+        let localFailureMonitor = FakePopoverEventMonitor()
+        localFailureMonitor.failNextLocalInstall = true
+        let localFailureSession = PopoverDismissMonitorSession(
+            eventMonitor: localFailureMonitor
+        )
+        let localInstallSucceeded = localFailureSession.install(
+            localMask: PopoverDismissRule.localEventMask,
+            globalMask: PopoverDismissRule.globalEventMask,
+            localHandler: localHandler,
+            globalHandler: globalHandler
+        )
+        localFailureSession.remove()
+        try expect(
+            !localInstallSucceeded
+                && localFailureMonitor.localInstallCount == 1
+                && localFailureMonitor.globalInstallCount == 0
+                && localFailureMonitor.removeCount == 0
+                && localFailureMonitor.liveCount == 0
+                && localFailureSession.liveTokenCount == 0,
+            "a local monitor registration failure must leave the session empty"
+        )
+
+        let globalFailureMonitor = FakePopoverEventMonitor()
+        globalFailureMonitor.failNextGlobalInstall = true
+        let globalFailureSession = PopoverDismissMonitorSession(
+            eventMonitor: globalFailureMonitor
+        )
+        let globalInstallSucceeded = globalFailureSession.install(
+            localMask: PopoverDismissRule.localEventMask,
+            globalMask: PopoverDismissRule.globalEventMask,
+            localHandler: localHandler,
+            globalHandler: globalHandler
+        )
+        globalFailureSession.remove()
+        try expect(
+            !globalInstallSucceeded
+                && globalFailureMonitor.localInstallCount == 1
+                && globalFailureMonitor.globalInstallCount == 1
+                && globalFailureMonitor.removeCount == 1
+                && globalFailureMonitor.liveCount == 0
+                && globalFailureSession.liveTokenCount == 0
+                && globalFailureMonitor.duplicateRemoveCount == 0,
+            "a global monitor registration failure must roll back the local token exactly once"
+        )
+    }
+}
+
+private func testPopoverDoesNotRegisterGlobalKeyboardMonitor() throws {
+    let source = try mainWindowSource("StatusItemController.swift")
+    let support = try appSupportSource("PopoverDismissal.swift")
+    try expect(
+        !source.contains("addGlobalMonitorForEvents(matching: [.keyDown")
+            && !support.contains("addGlobalMonitorForEvents(matching: [.keyDown"),
+        "must not register a global keyboard monitor"
+    )
+    try expect(
+        source.contains("PopoverDismissRule.globalEventMask")
+            && !PopoverDismissRule.globalEventMask.contains(.keyDown)
+            && PopoverDismissRule.globalEventMask.contains(.leftMouseDown)
+            && PopoverDismissRule.globalEventMask.contains(.rightMouseDown)
+            && PopoverDismissRule.globalEventMask.contains(.otherMouseDown),
+        "global dismiss mask must contain only the three mouse-down events"
+    )
+    try expect(
+        PopoverDismissRule.localEventMask.contains(.keyDown),
+        "Escape handling must stay on the local monitor"
+    )
+}
+
+private func testStatusItemClickOrderingKeepsDownAndUpSeparated() throws {
+    let source = try mainWindowSource("StatusItemController.swift")
+    try expect(
+        source.contains("sendAction(on: [.leftMouseUp])"),
+        "status item must keep toggle on leftMouseUp"
+    )
+    guard let toggleStart = source.range(of: "@objc private func togglePopover"),
+          let showStart = source.range(
+              of: "private func showPopover",
+              range: toggleStart.upperBound..<source.endIndex
+          )
+    else {
+        throw TestFailure.mismatch("popover toggle source was unavailable")
+    }
+    let toggleSource = source[toggleStart.lowerBound..<showStart.lowerBound]
+    try expect(
+        !toggleSource.contains("installDismissMonitors")
+            && !toggleSource.contains("removeDismissMonitors")
+            && toggleSource.contains("closePopover()"),
+        "toggle must not install or remove monitors; down closes elsewhere, up toggles"
+    )
+}
+
+private func testPopoverUsesApplicationDefinedBehaviorWithDelegateClose() throws {
+    let source = try mainWindowSource("StatusItemController.swift")
+    try expect(
+        source.contains("behavior = .applicationDefined")
+            && source.contains("popover.delegate = self")
+            && source.contains("func popoverDidClose")
+            && source.contains("guard installDismissMonitors() else {")
+            && source.contains("NSMenu.didBeginTrackingNotification")
+            && source.contains("belongsToApplicationMainMenu")
+            && source.contains("closePopover()"),
+        "popover must own event and main-menu dismissal, fail closed on setup, and unload on did-close"
+    )
+    try expect(
+        !source.contains(".transient"),
+        "StatusItemController must not keep transient popover behavior"
+    )
+}
+
 private func testPopoverAccountSummaryShowsSessionNestAccountFieldsOnly() throws {
     let overview = OverviewPresentation(makeResponses(
         accountScope: "account-token-/Users/private/example@example.com"
@@ -9977,6 +10273,13 @@ struct CodexPulseAppTestMain {
         try testEveryTokenSurfaceUsesInputOutputBreakdown()
         try testStatusPopoverShowsLocalizedModelDailyTrend()
         try testPopoverHeaderMatchesSessionNestLayoutAndNeutralFocus()
+        try testPopoverDismissRuleCoversEveryEventOrigin()
+        try testPopoverDismissRuleKeepsModalAndSmokePopoverOpen()
+        try await testPopoverMonitorLifecycleStaysBalancedAcrossRepeatedToggles()
+        try await testPopoverMonitorInstallFailureRollsBackAtomically()
+        try testPopoverDoesNotRegisterGlobalKeyboardMonitor()
+        try testStatusItemClickOrderingKeepsDownAndUpSeparated()
+        try testPopoverUsesApplicationDefinedBehaviorWithDelegateClose()
 		try testPopoverAccountSummaryShowsSessionNestAccountFieldsOnly()
 		try testCursorPopoverShowsLocalAccountAndOmitsTodayActivity()
 		try testGrokPopoverShowsAccountAndSubscriptionPlan()
