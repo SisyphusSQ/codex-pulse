@@ -32,8 +32,12 @@ public enum PopoverDismissRule {
     public static func origin(
         eventWindow: NSWindow?,
         popoverWindow: NSWindow?,
-        statusItemWindow: NSWindow?
+        statusItemWindow: NSWindow?,
+        hitsStatusItem: Bool = false
     ) -> PopoverEventOrigin {
+        if hitsStatusItem {
+            return .statusItemWindow
+        }
         guard let eventWindow else { return .unknownWindow }
         if eventWindow === popoverWindow {
             return .popoverWindow
@@ -42,6 +46,13 @@ public enum PopoverDismissRule {
             return .statusItemWindow
         }
         return .otherApplicationWindow
+    }
+
+    public static func hitsStatusItem(
+        screenPoint: NSPoint,
+        statusItemFrame: NSRect
+    ) -> Bool {
+        statusItemFrame.contains(screenPoint)
     }
 
     public static func decideLocalMouse(
@@ -64,8 +75,22 @@ public enum PopoverDismissRule {
         isEscape ? .dismissAndConsume : .ignore
     }
 
-    public static func decideGlobalMouse() -> PopoverDismissDecision {
-        .dismiss
+    public static func decideGlobalMouse(
+        hitsStatusItem: Bool = false
+    ) -> PopoverDismissDecision {
+        hitsStatusItem ? .ignore : .dismiss
+    }
+
+    public static func shouldSuppressNextShow(
+        decision: PopoverDismissDecision,
+        isStatusItemClickInProgress: Bool
+    ) -> Bool {
+        switch decision {
+        case .ignore:
+            return false
+        case .dismiss, .dismissAndConsume:
+            return isStatusItemClickInProgress
+        }
     }
 
     public static func decideMenuTracking(

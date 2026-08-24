@@ -7,16 +7,16 @@
 - 记录时间：2026-08-24
 - 记录目录：docs/test
 - 本轮任务性质：实现 + 确定性验证
-- 当前结论：`确定性通过；人工验收未执行`
+- 当前结论：`确定性通过；第 6、7 项真实 Home 人工验收通过`
 - 自动化入口：`make verify-swift-app` 与 `make verify-architecture`
-- 对应计划 / issue：菜单栏 Popover 外部点击关闭
-- 结果说明：Develop 与两轮 Review+Fix 均执行了 `make verify-swift-app`，确定性测试与 `codex-pulse-app` 构建通过；首轮 Review+Fix 补 monitor 注册半成功的原子回滚与无重复 remove 断言，第二轮 Review+Fix 根据 AppKit local monitor 不接收 menu tracking 事件的契约，补齐本 App 主菜单关闭与 Popover 内菜单忽略路径。完整 `make verify-architecture` 在 Develop 阶段被既有 en.lproj 重复 localization key 挡住，与本改动无关；Review+Fix 未重复运行该已知失败的全量入口，新增 SWIFT-002 文件/pattern 已单独核对。外部点击关闭的 12 项真实 Home 人工验收未执行。
+- 对应计划 / issue：TOO-351 状态栏二次点击应收起 Popover
+- 结果说明：TOO-351 本轮补齐状态项 screen-frame 命中与 suppress-next-show：`make verify-swift-app` 确定性测试与 `codex-pulse-app` 构建通过。用户确认真实 Home 下第 6、7 项通过：再次点击状态栏收回且不重开，连点行为符合 toggle。其余 10 项外部点击/失活/VoiceOver 场景仍未执行。
 
 ### 本次执行结果
 
 - 执行时间：2026-08-24
 - 执行目录：仓库根目录
-- 本次结论：`确定性通过；人工验收未执行`
+- 本次结论：`确定性通过；第 6、7 项真实 Home 人工验收通过`
 - 影响范围：Swift App 菜单栏 Popover 关闭生命周期、确定性测试、架构门禁、设计契约与本 runbook
 - 清理结果：未创建独立 runtime；SwiftPM `app/macos/.build` 缓存按工具链惯例保留
 - 敏感信息处理：未写入真实凭据、token、cookie、数据库主机、连接串、行主键、临时目录、完整下载 URL、原始响应或其它机器本地痕迹。
@@ -26,14 +26,14 @@
 | 步骤 | 结果 | 备注 |
 | --- | --- | --- |
 | 前置检查 | 通过 | 新文件与 StatusItemController 契约字符串已核对 |
-| 主路径验证 | 通过 | Develop 与两轮 Review+Fix 的 `make verify-swift-app` 均 PASS；Review+Fix 覆盖 monitor 注册失败原子回滚与主菜单 tracking 分流；架构全量门禁在 Develop 被既有 I18N duplicate key 挡住，新增 pattern 单独核对通过 |
-| 真实 Home 人工验收 | 未执行 | 12 项外部点击/失活/VoiceOver 场景；`xcodebuild`/XCTest/XCUITest 为 toolchain_blocker |
+| 主路径验证 | 通过 | TOO-351 本轮 `make verify-swift-app` PASS，覆盖 global 命中状态项 ignore 与 suppress-next-show 真值表；未跑 `make verify-architecture` 全量 |
+| 真实 Home 人工验收 | 部分通过 | 第 6、7 项由用户确认通过；其余 10 项外部点击/失活/VoiceOver 未执行 |
 | 清理 | 通过 | 无额外运行时产物 |
 
 ## 目标
 
 - 验证目标：点击其它 App、桌面、其它菜单栏 extra 或系统菜单时 Popover 关闭；本 App 主菜单的嵌套 tracking 也能关闭，同时 Popover 内 Picker/上下文菜单不被误关；再次点击状态栏图标关闭且不重开；Popover 内部点击不关闭；Escape 关闭且不吞其它按键；Cmd-Tab / Spotlight / Mission Control / 切换 Space 关闭；modal alert 期间不关闭；monitor 安装与卸载配对，关闭后存活 token 为 0；任一 monitor 注册失败时原子回滚并关闭；不注册 keyboard global monitor。
-- 成功标准：`PopoverDismissRule` 真值表全部命中；fake monitor 的 show/close 配对与重复 show 不堆积 token，local/global 注册失败均保持 0 个 live token 且没有重复 remove；源码扫描确认 `.applicationDefined`、`popoverDidClose`、`NSMenu.didBeginTrackingNotification`、`sendAction(on: [.leftMouseUp])` 以及 global mask 不含 `keyDown`；`make verify-swift-app` 通过。完整 `make verify-architecture` 的既有 localization blocker 与外部点击关闭的 12 项人工场景仍须分别解决或执行后才能记为通过。
+- 成功标准：`PopoverDismissRule` 真值表全部命中，含 global 命中状态项为 ignore、状态项点击进行中的 dismiss 必须 suppress-next-show；fake monitor 的 show/close 配对与重复 show 不堆积 token，local/global 注册失败均保持 0 个 live token 且没有重复 remove；源码扫描确认 `.applicationDefined`、`popoverDidClose`、`NSMenu.didBeginTrackingNotification`、`sendAction(on: [.leftMouseUp])`、`consumeSuppressNextShow()` 以及 global mask 不含 `keyDown`；`make verify-swift-app` 通过。完整 `make verify-architecture` 的既有 localization blocker 与外部点击关闭的 12 项人工场景仍须分别解决或执行后才能记为通过。第 6、7 项为 TOO-351 必做手测。
 - 本 runbook 是给 agent 或工程师直接执行的步骤文档，不是泛化 QA 说明。
 
 ## 执行副作用
