@@ -46,6 +46,7 @@ require_file app/macos/Sources/CodexPulseApp/AppMain.swift SWIFT-002 docs/design
 require_file app/macos/Sources/CodexPulseApp/AppDelegate.swift SWIFT-002 docs/design/details/native-macos-client/README.md
 require_file app/macos/Sources/CodexPulseApp/RootView.swift SWIFT-002 docs/design/details/native-macos-client/README.md
 require_file app/macos/Sources/CodexPulseApp/StatusItemController.swift SWIFT-002 docs/design/details/native-macos-client/README.md
+require_file app/macos/Sources/CodexPulseAppSupport/PopoverDismissal.swift SWIFT-002 docs/design/details/native-macos-client/README.md
 require_file app/macos/Sources/CodexPulseAppSupport/AppRuntime.swift SWIFT-002 docs/design/details/native-macos-client/README.md
 require_file app/macos/Sources/CodexPulseAppSupport/HelperProcessMonitor.swift SWIFT-002 docs/design/details/native-macos-client/README.md
 require_file app/macos/Sources/CodexPulseAppSupport/OverviewModels.swift SWIFT-002 docs/design/details/native-macos-client/README.md
@@ -163,6 +164,9 @@ require_pattern app/macos/Sources/CodexPulseApp/AppDelegate.swift 'NSWindow' SWI
 require_pattern app/macos/Sources/CodexPulseApp/AppDelegate.swift 'applicationWillResignActive' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/RootView.swift 'NavigationSplitView' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'NSStatusBar.system.statusItem' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'applicationDefined' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'NSMenu.didBeginTrackingNotification' SWIFT-002 docs/design/details/native-macos-client/README.md
+reject_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'behavior = \.transient' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'minimumHitTarget: CGFloat = 44' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'headerButtonDiameter: CGFloat = 30' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'headerIconSize: CGFloat = 16' SWIFT-002 docs/design/details/native-macos-client/README.md
@@ -197,7 +201,7 @@ require_pattern scripts/macos/run-app-smoke.sh '--skip-live-lifecycle' SWIFT-002
 require_pattern scripts/macos/run-app-smoke.sh 'app smoke failed: timeout' SWIFT-002 docs/test/native-app-shell-overview.md
 require_pattern scripts/macos/run-app-smoke.sh 'isolated empty Home produced unexpected user facts' DATA-001 docs/test/native-app-shell-overview.md
 require_pattern scripts/macos/run-app-smoke.sh 'primary_pages=partial' SWIFT-003 docs/test/native-primary-pages.md
-require_pattern scripts/macos/run-app-smoke.sh 'sources=11 .*api_subscriptions=deepseek_unconfigured\\\+opencode_go_unconfigured .*ui_pages=9' SWIFT-003 docs/test/native-primary-pages.md
+require_pattern scripts/macos/run-app-smoke.sh 'sources=10 .*api_subscriptions=deepseek_unconfigured\\\+opencode_go_unconfigured .*ui_pages=9' SWIFT-003 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'CODEX_PULSE_APP_RUNTIME' SWIFT-004 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'confirmed Home is not the real Codex Home' SWIFT-004 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'standard_housekeeping=allowed' SWIFT-004 docs/test/native-primary-pages.md

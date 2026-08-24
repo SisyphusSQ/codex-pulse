@@ -5,8 +5,24 @@ import CodexPulseProtocolGenerated
 import Combine
 import SwiftUI
 
+// The observer is registered on the main queue. Keep Notification and NSMenu
+// on that synchronous callback while making the actor assumption explicit.
+private final class MenuTrackingNotificationHandlerBox: @unchecked Sendable {
+    let handler: (NSMenu) -> Void
+
+    init(_ handler: @escaping (NSMenu) -> Void) {
+        self.handler = handler
+    }
+
+    func call(_ notification: Notification) {
+        MainActor.preconditionIsolated()
+        guard let menu = notification.object as? NSMenu else { return }
+        handler(menu)
+    }
+}
+
 @MainActor
-final class StatusItemController: NSObject {
+final class StatusItemController: NSObject, NSPopoverDelegate {
     private let statusItem: NSStatusItem
     private let statusBarView = StatusBarQuotaContentView()
     private let popover = NSPopover()
@@ -15,6 +31,9 @@ final class StatusItemController: NSObject {
     private let captureSource = PopoverCaptureSource()
     private let nativeAcceptanceEnabled: Bool
     private let cursorProviderSmokeEnabled: Bool
+    private let dismissSession: PopoverDismissMonitorSession
+    private var resignObserver: NSObjectProtocol?
+    private var menuTrackingObserver: NSObjectProtocol?
     private var cancellables: Set<AnyCancellable> = []
     private var smokeFocusedControl: PopoverFocusTarget?
     private var smokeActionResults: [PopoverQuickActionKind: PopoverQuickActionResult] = [:]
@@ -26,6 +45,7 @@ final class StatusItemController: NSObject {
         model: AppModel,
         nativeAcceptanceEnabled: Bool = false,
         cursorProviderSmokeEnabled: Bool = true,
+        eventMonitor: any PopoverEventMonitoring = SystemPopoverEventMonitor(),
         onOpenOverview: @escaping @MainActor () -> Void,
         onOpenSettings: @escaping @MainActor () -> Void,
         onQuit: @escaping @MainActor () -> Void
@@ -34,6 +54,7 @@ final class StatusItemController: NSObject {
         self.nativeAcceptanceEnabled = nativeAcceptanceEnabled
         self.cursorProviderSmokeEnabled = cursorProviderSmokeEnabled
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        self.dismissSession = PopoverDismissMonitorSession(eventMonitor: eventMonitor)
         super.init()
 
         if let button = statusItem.button {
@@ -53,8 +74,9 @@ final class StatusItemController: NSObject {
         }
         updateStatusBarView()
 
-        popover.behavior = .transient
+        popover.behavior = .applicationDefined
         popover.animates = true
+        popover.delegate = self
         let popoverContentSize = MenuBarPopoverLayout.contentSize(
             availableScreenHeight: statusItem.button?.window?.screen?.visibleFrame.height
                 ?? NSScreen.main?.visibleFrame.height
@@ -85,12 +107,12 @@ final class StatusItemController: NSObject {
                 guard self?.nativeAcceptanceEnabled == true else { return }
                 self?.smokeFocusedControl = control
             },
-            onOpenOverview: {
-                self.popover.performClose(nil)
+            onOpenOverview: { [weak self] in
+                self?.closePopover()
                 onOpenOverview()
             },
-            onOpenSettings: {
-                self.popover.performClose(nil)
+            onOpenSettings: { [weak self] in
+                self?.closePopover()
                 onOpenSettings()
             },
             onQuit: onQuit
@@ -144,15 +166,166 @@ final class StatusItemController: NSObject {
     @objc private func togglePopover(_ sender: Any?) {
         guard statusItem.button != nil else { return }
         if popover.isShown {
-            popover.performClose(sender)
+            closePopover()
         } else {
             showPopover()
         }
     }
 
     private func showPopover() {
+        guard !popover.isShown else { return }
         guard let button = statusItem.button else { return }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        NSApp.activate(ignoringOtherApps: true)
+        popover.contentViewController?.view.window?.makeKey()
+        removeDismissMonitors()
+        guard installDismissMonitors() else {
+            closePopover()
+            return
+        }
+    }
+
+    private func closePopover() {
+        if popover.isShown {
+            let animates = popover.animates
+            popover.animates = false
+            popover.close()
+            popover.animates = animates
+        }
+        // AppKit's delegate callback is asynchronous in the native smoke path;
+        // closePopover is the synchronous ownership boundary for the monitors.
+        removeDismissMonitors()
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        removeDismissMonitors()
+    }
+
+    func teardownPopoverMonitors() {
+        closePopover()
+        removeDismissMonitors()
+    }
+
+    private func installDismissMonitors() -> Bool {
+        guard dismissSession.install(
+            localMask: PopoverDismissRule.localEventMask,
+            globalMask: PopoverDismissRule.globalEventMask,
+            localHandler: { [weak self] event in
+                guard let self else { return event }
+                return self.handleLocalEvent(event)
+            },
+            globalHandler: { [weak self] event in
+                self?.handleGlobalEvent(event)
+            }
+        ) else {
+            return false
+        }
+        if resignObserver == nil {
+            resignObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didResignActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.handleResignActive()
+                }
+            }
+        }
+        if menuTrackingObserver == nil {
+            let handlerBox = MenuTrackingNotificationHandlerBox { [weak self] menu in
+                self?.handleMenuDidBeginTracking(menu)
+            }
+            menuTrackingObserver = NotificationCenter.default.addObserver(
+                forName: NSMenu.didBeginTrackingNotification,
+                object: nil,
+                queue: .main
+            ) { notification in
+                handlerBox.call(notification)
+            }
+        }
+        return true
+    }
+
+    private func removeDismissMonitors() {
+        dismissSession.remove()
+        if let resignObserver {
+            NotificationCenter.default.removeObserver(resignObserver)
+            self.resignObserver = nil
+        }
+        if let menuTrackingObserver {
+            NotificationCenter.default.removeObserver(menuTrackingObserver)
+            self.menuTrackingObserver = nil
+        }
+    }
+
+    private func handleLocalEvent(_ event: NSEvent) -> NSEvent? {
+        switch event.type {
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            let decision = PopoverDismissRule.decideLocalMouse(
+                origin: currentEventOrigin(event),
+                isRightOrOther: event.type != .leftMouseDown
+            )
+            applyDismissDecision(decision)
+            return decision == .dismissAndConsume ? nil : event
+        case .keyDown:
+            let isEscape = event.keyCode == PopoverDismissRule.escapeKeyCode
+                && currentEventOrigin(event) == .popoverWindow
+            let decision = PopoverDismissRule.decideLocalKey(isEscape: isEscape)
+            applyDismissDecision(decision)
+            return decision == .dismissAndConsume ? nil : event
+        default:
+            return event
+        }
+    }
+
+    private func handleGlobalEvent(_ event: NSEvent) {
+        applyDismissDecision(PopoverDismissRule.decideGlobalMouse())
+    }
+
+    private func handleMenuDidBeginTracking(_ menu: NSMenu) {
+        applyDismissDecision(
+            PopoverDismissRule.decideMenuTracking(
+                belongsToApplicationMainMenu: belongsToApplicationMainMenu(menu)
+            )
+        )
+    }
+
+    private func handleResignActive() {
+        applyDismissDecision(
+            PopoverDismissRule.decideResignActive(
+                hasModalSession: NSApp.modalWindow != nil,
+                isNativeAcceptanceSmoke: nativeAcceptanceEnabled
+            )
+        )
+    }
+
+    private func applyDismissDecision(_ decision: PopoverDismissDecision) {
+        switch decision {
+        case .ignore:
+            break
+        case .dismiss, .dismissAndConsume:
+            closePopover()
+        }
+    }
+
+    private func currentEventOrigin(_ event: NSEvent) -> PopoverEventOrigin {
+        PopoverDismissRule.origin(
+            eventWindow: event.window,
+            popoverWindow: popover.contentViewController?.view.window,
+            statusItemWindow: statusItem.button?.window
+        )
+    }
+
+    private func belongsToApplicationMainMenu(_ menu: NSMenu) -> Bool {
+        guard let mainMenu = NSApp.mainMenu else { return false }
+        var candidate: NSMenu? = menu
+        while let current = candidate {
+            if current === mainMenu {
+                return true
+            }
+            candidate = current.supermenu
+        }
+        return false
     }
 
     private func captureCurrentPopoverPNG() async -> Data? {
@@ -222,8 +395,8 @@ final class StatusItemController: NSObject {
         smokeFocusedControl = nil
         smokeActionResults.removeAll()
         smokeOpenedProjectURL = nil
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        defer { popover.performClose(nil) }
+        showPopover()
+        defer { closePopover() }
 
         guard await waitForNativeSmoke({ self.popover.isShown }) else {
             return (false, "unavailable step=popover_focus")
@@ -290,14 +463,15 @@ final class StatusItemController: NSObject {
 				+ "focus_escape=open-overview+refresh+reset-credits+settings+quit "
 				+ "clipboard=single_item_string+png"
 		if cursorProviderSmokeEnabled {
-			popover.performClose(nil)
+			closePopover()
 			guard await verifyCursorStatusProviderForSmoke() else {
 				return (false, "unavailable step=cursor_status_provider")
 			}
 			summary +=
 				" status_provider=cursor status_label=verified cursor_account=available cursor_popover=captured "
 					+ smokeCursorUsageSummary
-		}
+        }
+        closePopover()
 
 		return (true, summary)
     }
@@ -338,10 +512,11 @@ final class StatusItemController: NSObject {
 			statusItem.button?.accessibilityLabel()
 				== "Codex Pulse · \(summary.accessibilityLabel)",
 			statusBarView.hasSummary,
-			let button = statusItem.button,
+			statusItem.button != nil,
 			popover.contentViewController != nil
 		else { return false }
-		popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+		guard await waitForNativeSmoke({ !self.popover.isShown }) else { return false }
+		showPopover()
 		guard await waitForNativeSmoke({ self.popover.isShown }),
 			let rootView = popover.contentViewController?.view
 		else { return false }
@@ -355,7 +530,7 @@ final class StatusItemController: NSObject {
 				to: .general
 			)
 		else { return false }
-		popover.performClose(nil)
+		closePopover()
 		return true
 	}
 
