@@ -166,6 +166,9 @@ require_pattern app/macos/Sources/CodexPulseApp/RootView.swift 'NavigationSplitV
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'NSStatusBar.system.statusItem' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'applicationDefined' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'NSMenu.didBeginTrackingNotification' SWIFT-002 docs/design/details/native-macos-client/README.md
+reject_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'NSApp.activate' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'isSuppressingMainWindowReopen' SWIFT-002 docs/design/details/native-macos-client/README.md
+require_pattern app/macos/Sources/CodexPulseApp/AppDelegate.swift 'isSuppressingMainWindowReopen' SWIFT-002 docs/design/details/native-macos-client/README.md
 reject_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'behavior = \.transient' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'minimumHitTarget: CGFloat = 44' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseApp/StatusItemController.swift 'headerButtonDiameter: CGFloat = 30' SWIFT-002 docs/design/details/native-macos-client/README.md
