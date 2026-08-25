@@ -129,6 +129,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
     ) -> Bool {
+        if statusItemController?.isSuppressingMainWindowReopen == true {
+            return false
+        }
         presentMainWindow(.revealCurrent, sender: sender)
         return true
     }

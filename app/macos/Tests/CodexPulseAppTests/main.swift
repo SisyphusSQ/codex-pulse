@@ -1555,6 +1555,72 @@ private func testStatusItemClickOrderingKeepsDownAndUpSeparated() throws {
     )
 }
 
+private func testStatusItemPopoverDoesNotFrontMainWindow() throws {
+    let source = try mainWindowSource("StatusItemController.swift")
+    let delegate = try mainWindowSource("AppDelegate.swift")
+    guard let showStart = source.range(of: "private func showPopover"),
+          let closeStart = source.range(
+              of: "private func closePopover",
+              range: showStart.upperBound..<source.endIndex
+          )
+    else {
+        throw TestFailure.mismatch("popover show source was unavailable")
+    }
+    let showSource = source[showStart.lowerBound..<closeStart.lowerBound]
+    try expect(
+        !showSource.contains("NSApp.activate")
+            && !showSource.contains("ignoringOtherApps")
+            && !showSource.contains("showOverviewWindow")
+            && !showSource.contains("onOpenOverview")
+            && !showSource.contains("presentMainWindow")
+            && !showSource.contains("clickCount"),
+        "showing the status popover must not activate the app or open the main window"
+    )
+    try expect(
+        showSource.contains("if NSApp.isActive")
+            && showSource.contains("makeKey()"),
+        "an already-active app may still make the popover key"
+    )
+    guard let toggleStart = source.range(of: "@objc private func togglePopover"),
+          let showFromToggle = source.range(
+              of: "private func showPopover",
+              range: toggleStart.upperBound..<source.endIndex
+          )
+    else {
+        throw TestFailure.mismatch("popover toggle source was unavailable")
+    }
+    let toggleSource = source[toggleStart.lowerBound..<showFromToggle.lowerBound]
+    try expect(
+        !toggleSource.contains("onOpenOverview")
+            && !toggleSource.contains("showOverviewWindow")
+            && !toggleSource.contains("presentMainWindow")
+            && !toggleSource.contains("clickCount")
+            && toggleSource.contains("withMainWindowReopenSuppressed")
+            && toggleSource.contains("consumeSuppressNextShow()"),
+        "status-item toggle must keep TOO-351 dismiss semantics and must not open the main window"
+    )
+    guard let reopenStart = delegate.range(of: "func applicationShouldHandleReopen"),
+          let reopenEnd = delegate.range(
+              of: "private func installApplicationMenu",
+              range: reopenStart.upperBound..<delegate.endIndex
+          )
+    else {
+        throw TestFailure.mismatch("applicationShouldHandleReopen source was unavailable")
+    }
+    let reopenSource = delegate[reopenStart.lowerBound..<reopenEnd.lowerBound]
+    try expect(
+        reopenSource.contains("isSuppressingMainWindowReopen")
+            && reopenSource.contains("return false")
+            && reopenSource.contains("presentMainWindow(.revealCurrent, sender: sender)"),
+        "Dock reopen must still show the main window, but status-item interaction must suppress it"
+    )
+    try expect(
+        source.contains("isSuppressingMainWindowReopen")
+            && !source.contains("NSApp.activate"),
+        "status item controller must own reopen suppression and must not activate the app"
+    )
+}
+
 private func testPopoverUsesApplicationDefinedBehaviorWithDelegateClose() throws {
     let source = try mainWindowSource("StatusItemController.swift")
     try expect(
@@ -10337,6 +10403,7 @@ struct CodexPulseAppTestMain {
         try await testPopoverMonitorInstallFailureRollsBackAtomically()
         try testPopoverDoesNotRegisterGlobalKeyboardMonitor()
         try testStatusItemClickOrderingKeepsDownAndUpSeparated()
+        try testStatusItemPopoverDoesNotFrontMainWindow()
         try testPopoverUsesApplicationDefinedBehaviorWithDelegateClose()
 		try testPopoverAccountSummaryShowsSessionNestAccountFieldsOnly()
 		try testCursorPopoverShowsLocalAccountAndOmitsTodayActivity()

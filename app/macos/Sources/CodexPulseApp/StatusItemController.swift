@@ -43,6 +43,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private var suppressNextShow = false
     private var leftoverSuppressLocalMonitor: Any?
     private var leftoverSuppressGlobalMonitor: Any?
+    private var reopenSuppressionDepth = 0
+    private(set) var isSuppressingMainWindowReopen = false
 
     init(
         model: AppModel,
@@ -167,40 +169,62 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     @objc private func togglePopover(_ sender: Any?) {
-        guard statusItem.button != nil else { return }
-        if popover.isShown {
-            closePopover()
-            return
+        withMainWindowReopenSuppressed {
+            guard statusItem.button != nil else { return }
+            if popover.isShown {
+                closePopover()
+                return
+            }
+            if consumeSuppressNextShow() {
+                return
+            }
+            showPopover()
         }
-        if consumeSuppressNextShow() {
-            return
-        }
-        showPopover()
     }
 
     private func showPopover() {
-        guard !popover.isShown else { return }
-        guard let button = statusItem.button else { return }
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        NSApp.activate(ignoringOtherApps: true)
-        popover.contentViewController?.view.window?.makeKey()
-        removeDismissMonitors()
-        guard installDismissMonitors() else {
-            closePopover()
-            return
+        withMainWindowReopenSuppressed {
+            guard !popover.isShown else { return }
+            guard let button = statusItem.button else { return }
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            if NSApp.isActive {
+                popover.contentViewController?.view.window?.makeKey()
+            }
+            removeDismissMonitors()
+            guard installDismissMonitors() else {
+                closePopover()
+                return
+            }
         }
     }
 
     private func closePopover() {
-        if popover.isShown {
-            let animates = popover.animates
-            popover.animates = false
-            popover.close()
-            popover.animates = animates
+        withMainWindowReopenSuppressed {
+            if popover.isShown {
+                let animates = popover.animates
+                popover.animates = false
+                popover.close()
+                popover.animates = animates
+            }
+            // AppKit's delegate callback is asynchronous in the native smoke path;
+            // closePopover is the synchronous ownership boundary for the monitors.
+            removeDismissMonitors()
         }
-        // AppKit's delegate callback is asynchronous in the native smoke path;
-        // closePopover is the synchronous ownership boundary for the monitors.
-        removeDismissMonitors()
+    }
+
+    private func withMainWindowReopenSuppressed(_ body: () -> Void) {
+        reopenSuppressionDepth += 1
+        isSuppressingMainWindowReopen = true
+        body()
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.reopenSuppressionDepth = max(0, self.reopenSuppressionDepth - 1)
+                if self.reopenSuppressionDepth == 0 {
+                    self.isSuppressingMainWindowReopen = false
+                }
+            }
+        }
     }
 
     func popoverDidClose(_ notification: Notification) {
