@@ -182,9 +182,26 @@ func cursorQuotaWindowSnapshot(
 	source := cursorSourceByKey(snapshot, cursorQuotaSourceKey(limitID))
 	selected := -1
 	mapped := make([]store.QuotaObservation, 0, len(observations))
+	// GetSandUsageStatus can move period_start forward after an in-cycle
+	// allowance reset while leaving the official weekly reset unchanged.
+	// Preserve the earliest observed start for that reset boundary so the
+	// usage reset stays inside one pace cycle instead of restarting its x-axis.
+	canonicalCycleStartByEnd := make(map[int64]int64)
+	if limitID == grokBotLimitID {
+		for _, observation := range observations {
+			start, found := canonicalCycleStartByEnd[observation.CycleEndAtMS]
+			if !found || observation.CycleStartAtMS < start {
+				canonicalCycleStartByEnd[observation.CycleEndAtMS] = observation.CycleStartAtMS
+			}
+		}
+	}
 	for index, observation := range observations {
 		if observation.CycleStartAtMS <= evaluatedAtMS && evaluatedAtMS < observation.CycleEndAtMS {
 			selected = index
+		}
+		cycleStartAtMS := observation.CycleStartAtMS
+		if canonicalStart, found := canonicalCycleStartByEnd[observation.CycleEndAtMS]; found {
+			cycleStartAtMS = canonicalStart
 		}
 		limit := observation.LimitID
 		name := cursorQuotaLimitNames[limit]
@@ -193,7 +210,7 @@ func cursorQuotaWindowSnapshot(
 			AccountScope:  store.QuotaAccountScopeDefault, Source: sourceKind,
 			LimitID: &limit, LimitName: &name, WindowKind: cursorQuotaWindowKind(limit),
 			UsedPercent:   observation.UsedPercent,
-			WindowMinutes: (observation.CycleEndAtMS - observation.CycleStartAtMS) / 60_000,
+			WindowMinutes: (observation.CycleEndAtMS - cycleStartAtMS) / 60_000,
 			ResetsAtMS:    observation.CycleEndAtMS, Validity: store.QuotaValidityAccepted,
 			FirstObservedAtMS: observation.ObservedAtMS, LastObservedAtMS: observation.ObservedAtMS,
 			SampleCount: 1, FirstSourceGeneration: observation.Generation,
