@@ -65,6 +65,13 @@ agent_profiles:
     permission_mode: yolo
     sandbox_mode: enabled
 
+  grok-build-grok-4-6-xhigh-yolo:
+    runtime: grok
+    model: grok-4.6
+    effort: xhigh
+    speed: provider-default
+    permission_mode: yolo
+
   cursor-opus-5-xhigh-yolo:
     runtime: cursor
     model: claude-opus-5-thinking-xhigh
@@ -91,7 +98,7 @@ stages:
     tracked_mutation: allowed
     fresh_terminal: always
     agent:
-      primary: cursor-grok-4-6-xhigh-yolo
+      primary: grok-build-grok-4-6-xhigh-yolo
   review_fix:
     kind: agent
     tracked_mutation: allowed
