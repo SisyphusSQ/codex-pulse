@@ -329,9 +329,11 @@ func (service *QueryService) UsageCost(ctx context.Context, request usagecost.Us
 		Trend:             []usagecost.TrendPoint{},
 		Models:            []usagecost.UsageModelItem{},
 		UnpricedReasons:   []usagecost.ReasonCount{},
+		CursorUsagePools:  []usagecost.CursorUsagePoolSummary{},
 	}
 	if dashboardAvailable {
 		response.Totals = totalsForDashboardEvents(dashboardEvents)
+		response.CursorUsagePools = cursorUsagePoolSummaries(dashboardEvents)
 		response.Trend = dashboardUsageTrend(dashboardEvents, *rangeValue, request.Granularity)
 		if request.IncludeActivityDistribution {
 			response.ActivityDistribution = dashboardActivityDistribution(dashboardEvents, *rangeValue)
@@ -845,6 +847,35 @@ func cursorTokenFeeTotalForDashboardEvents(events []store.CursorDashboardUsageEv
 		total += event.CursorTokenFeeMicros * event.OccurrenceCount
 	}
 	return total
+}
+
+func cursorUsagePoolSummaries(events []store.CursorDashboardUsageEvent) []usagecost.CursorUsagePoolSummary {
+	eventsByPool := map[string][]store.CursorDashboardUsageEvent{
+		pricing.CursorUsagePoolModels:      {},
+		pricing.CursorUsagePoolOtherModels: {},
+	}
+	for _, event := range events {
+		poolID := pricing.CursorUsagePoolUnknown
+		if event.ModelKey != nil {
+			poolID = pricing.CursorUsagePoolForModel(*event.ModelKey, event.OccurredAtMS)
+		}
+		eventsByPool[poolID] = append(eventsByPool[poolID], event)
+	}
+	poolIDs := []string{pricing.CursorUsagePoolModels, pricing.CursorUsagePoolOtherModels}
+	if len(eventsByPool[pricing.CursorUsagePoolUnknown]) > 0 {
+		poolIDs = append(poolIDs, pricing.CursorUsagePoolUnknown)
+	}
+	result := make([]usagecost.CursorUsagePoolSummary, 0, len(poolIDs))
+	for _, poolID := range poolIDs {
+		poolEvents := eventsByPool[poolID]
+		result = append(result, usagecost.CursorUsagePoolSummary{
+			PoolID:                  poolID,
+			Totals:                  totalsForDashboardEvents(poolEvents),
+			ReportedUSDMicros:       known(reportedTotalForDashboardEvents(poolEvents), basequery.NumericMicroUSD),
+			CursorTokenFeeUSDMicros: known(cursorTokenFeeTotalForDashboardEvents(poolEvents), basequery.NumericMicroUSD),
+		})
+	}
+	return result
 }
 
 func cursorBillingSummary(snapshot store.CursorSnapshot) *usagecost.CursorBillingSummary {

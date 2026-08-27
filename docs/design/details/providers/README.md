@@ -27,6 +27,8 @@ Cursor 在业务页面中始终是一个完整客户端。Go Helper 在内部合
 
 DashboardService 使用 Cursor Desktop 已登录态在 `state.vscdb` 中维护的 access token。Helper 只在内存中读取并校验 JWT 有效期，按 Cursor Desktop 自身的 Bearer RPC 方式访问固定的 `api2.cursor.sh/aiserver.v1.DashboardService`；token 不进入 Codex Pulse SQLite、preferences、日志或 RPC。Dashboard 返回的 owner/email 等展示字段在解析边界即丢弃。
 
+Dashboard usage event 由 Helper 按版本化模型目录归入 `cursor.models`、`cursor.other_models` 或 `cursor.unknown`。`Cursor Models` 只包含可确认的 Cursor Grok 4.6、Grok 4.5 与 Composer 2.5；已确认的第三方模型家族归入 `Other Models`，即使历史版本已不在当前参考价格表中也不得误判为未归类。无法确认实际路由模型的 Auto、缺失 model key 与未知模型必须保留为 `cursor.unknown`，不得为了凑齐两列静默并入 `Other Models`。`UsageCostResponse.cursor_usage_pools` 固定先返回 Cursor Models、Other Models，确有未归类事件时再追加 unknown；每池独立返回 Token、Dashboard reported charge、估算费用与 Cursor Token fee，所有池加总必须能与原合并汇总核对。`charged_cents` 已包含适用的 Cursor Token Rate，展示 fee 只作组成说明，不得再次相加。
+
 Cursor 页面查询优先读取已提交 snapshot，并在进程内按 generation 共享同一份只读快照；只有首次没有任何 snapshot 时才同步建立本地基线。已有数据时，本地 collector、月度 Dashboard collector 与 Grok Bot collector 都以互不共享的 single-flight 后台任务按各自最小刷新间隔更新；成功提交后先失效内存快照，再发送 query invalidation，Swift 随后重查新 generation。全量本地扫描、SQLite 替换和网络延迟都不阻塞首屏或菜单栏展开。账号胶囊同样不依赖 DashboardService：Helper 只从本地 `state.vscdb` 白名单读取 `cachedEmail`、`stripeMembershipType` 与订阅状态，绝不返回 token、refresh token 或 profile 原文。
 
 ## 三组不得混淆的 Grok 语义
@@ -142,20 +144,20 @@ Preferences 提供两个独立开关：`online.grok_quota_enabled` 控制 billin
 ## 精确度与 capability
 
 - Codex 保留 quota、reset、account/plan、Token、API-equivalent cost、Session 与 Project 能力。
-- Cursor 提供 Session、Project、Model、Tool、AI edits 和今日请求数；只有来源提供稳定精确事件时才提供 Token。
+- Cursor 提供 Session、Project、Model 和今日请求数；只有来源提供稳定精确事件时才提供 Token。产品界面不提供调用画像或调用统计，兼容的 Helper 查询实现不作为 Cursor 产品能力暴露。
 - Grok 提供 Session、Project、Model、Token、account 和 quota；有完整 `costUsdTicks` 时提供 `reported_cost`，有 xAI 参考价时提供 `estimated_cost`。不提供调用画像、调用统计、Reset Credits 或 AI edits。
 - Cursor / Grok usage model 都按事件中的 model key 分组，并为每个模型返回与总趋势相同粒度的 bucket；UI 只有在模型 bucket 无法与总量核对时才使用诚实的聚合降级，不把可识别模型压成“全部模型”。
 - 今日使用 App reporting timezone 的 `[00:00, now)`。Grok 状态栏“已用 Token”优先对齐当前 billing `currentPeriod`；周期边界未知时显示 `已用 --`，不得拿今天、自然周或最近 7 天冒充本周期用量。
 - 只要观察到的请求存在缺失或冲突 Token，相关 Token 聚合就是 unknown；Cursor state 中 request 对应的 `0/0` tokenCount，以及 Grok 没有 `turn_completed.usage` 的 Session，都是未提供值，不作为精确零持久化。不得按 transcript 长度、`signals.json` context usage 或其他指标估算。
-- Cursor Dashboard 的 `charged_cents`、Cursor Token fee 与 plan spending，以及 Grok 的 `costUsdTicks`，作为 reported 数据分别回显，不进入另一家客户端的 pricing catalog。按各客户端官方/参考价固定版本计算的费用只标记为 estimated；reported 与 estimated 在 contract 和 UI 中分开展示。
+- Cursor Dashboard 的 `charged_cents`、Cursor Token fee 与 plan spending，以及 Grok 的 `costUsdTicks`，作为 reported 数据分别回显，不进入另一家客户端的 pricing catalog。Cursor Overview 的 reported charge 按 Cursor Models / Other Models 分列，未归类 Token 另行提示；按各客户端官方/参考价固定版本计算的费用只标记为 estimated，不能与 reported 混成两个用量池。
 - Dashboard 或 Grok billing 刷新失败时，当前周期已有成功快照继续作为 last-known 返回，响应标记 `partial` 并回显 `dataAsOfMs`；跨周期后旧快照不冒充当前数据。
 - UI 按 capability 隐藏不适用模块，不能用一屏 `--` 伪装支持。所有 `if cursor else Codex` 展示分支必须改成显式三路或 capability 驱动，避免 Grok 误用 Codex 周环、Reset Credits 或 Cursor 月额度文案。
 
 ## Swift 状态与竞态
 
-主窗口 `selectedProvider` 与菜单栏 `statusProvider` 独立持久化，并分别由下拉框选择；Popover 的下拉框位于原产品标题位置。主窗口切换客户端时清空详情、分页和错误状态，推进 request generation 并取消旧页面任务，但不取消或重载菜单栏任务；非 Overview 页面立即发起自己的 Provider 请求，不等待 Overview 聚合完成。主窗口按 `provider + range`、Popover 按 provider 保留进程内 last-success 展示缓存，切回已加载客户端时先呈现目标客户端缓存并后台刷新，绝不沿用另一客户端的数据；只有 provider 与 generation 都匹配的响应才能落入对应 presentation state。Popover 使用独立的 `statusOverviewState`，只请求当前界面会展示的额度、用量、今日摘要，以及 Codex / Grok 当前官方额度周期的已归类项目排行；Cursor 不展示项目排行，因此不得为它增加对应首屏 RPC。三家都不为未渲染的 invocation 区块增加首屏 RPC。切换和刷新都不改变主窗口客户端，“打开主窗口”也只负责打开现有页面。连续 invalidation 期间状态栏刷新保持 single-flight，避免重复取消和重启同一批请求。
+主窗口 `selectedProvider` 与菜单栏 `statusProvider` 独立持久化，并分别由下拉框选择；Popover 的下拉框位于原产品标题位置。主窗口切换客户端时清空详情、分页和错误状态，推进 request generation 并取消旧页面任务，但不取消或重载菜单栏任务；非 Overview 页面立即发起自己的 Provider 请求，不等待 Overview 聚合完成。主窗口按 `provider + range`、Popover 按 provider 保留进程内 last-success 展示缓存，切回已加载客户端时先呈现目标客户端缓存并后台刷新，绝不沿用另一客户端的数据；只有 provider 与 generation 都匹配的响应才能落入对应 presentation state。Popover 使用独立的 `statusOverviewState`，只请求当前界面会展示的额度、用量、今日摘要，以及 Codex / Grok 当前官方额度周期的已归类项目排行。Cursor 不展示项目排行，也不得为该区块增加状态首屏 RPC。Cursor 与 Grok 都不为未渲染的 invocation 区块增加首屏 RPC；Cursor 主窗口还必须隐藏调用统计入口、拒绝旧路由并跳过范围与今日两类 `InvocationUsage` 请求。切换和刷新都不改变主窗口客户端，“打开主窗口”也只负责打开现有页面。连续 invalidation 期间状态栏刷新保持 single-flight，避免重复取消和重启同一批请求。
 
-菜单栏在 Codex 下保持既有额度展示。Cursor 与 Grok 复用同一套图标和双行额度摘要：顶行是当前官方周期的剩余百分比，底行是同一周期内的累计 Token；没有成功额度快照时顶行为 `--`，没有可靠本地 Token 时底行为 `已用 --`。有 last-known 时显示最后成功值，并在 Popover 标注数据截至时间。Grok 的周期标签必须来自 billing `currentPeriod`，不得固定写成“周剩”或“月剩”。Popover 复用账号/套餐胶囊、额度卡片、每日模型 Token 趋势卡片和消费进度卡片的视觉结构；Grok 还展示同一官方额度周期内的项目 Token 前五排行，周/月标题、行内周期和空态文案必须保持一致。Grok 不展示 Reset Credits，也不把 prepaid 余额画成 Reset Credits。系统页可以同时观察所有客户端，但来源按 Codex / Cursor / Grok 分组，各客户端内部来源只在该分组展开。
+菜单栏在 Codex 下保持既有额度展示。Cursor 与 Grok 复用同一套图标和双行额度摘要：顶行是当前官方周期的剩余百分比；Grok 底行是同一周期内的累计 Token，Cursor 底行固定按 `Cursor Models · Other Models` 顺序显示为 `已用 A · B`。没有成功额度快照时顶行为 `--`，没有可靠 Token 时底行为 `已用 --`。有 last-known 时显示最后成功值，并在 Popover 标注数据截至时间。Grok 的周期标签必须来自 billing `currentPeriod`，不得固定写成“周剩”或“月剩”。Popover 复用账号/套餐胶囊、额度卡片与每日模型 Token 趋势卡片；Codex 与 Grok 展示同一官方额度周期内的已归类项目 Token 前五排行，周/月标题、行内周期和空态文案必须保持一致。Cursor 因 Dashboard 账号级用量无法完整关联本地项目，不展示项目排行或“本账期消费”卡。Grok 不展示 Reset Credits，也不把 prepaid 余额画成 Reset Credits。系统页可以同时观察所有客户端，但来源按 Codex / Cursor / Grok 分组，各客户端内部来源只在该分组展开。
 
 ## 隐私与验证
 

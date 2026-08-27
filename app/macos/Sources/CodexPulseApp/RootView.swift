@@ -668,26 +668,75 @@ private struct CursorOverviewContentView: View {
 						detailValue: nil
 					)
 				}
+				if let unclassified = metricValue(summary.unclassifiedTokens), unclassified > 0 {
+					Label(
+						"另有 \(TokenQuantityFormatter.stringWithUnit(unclassified)) 未归类",
+						systemImage: "questionmark.circle"
+					)
+					.font(.caption2)
+					.foregroundStyle(.secondary)
+				}
 			}
 			.frame(maxWidth: .infinity, alignment: .leading)
 
-			Divider()
+			if provider == .cursor {
+				Divider()
+				cursorPoolCostMetric(
+					title: "Cursor Models",
+					value: summary.cursorModelsCost,
+					cursorTokenFee: nil
+				)
+				Divider()
+				cursorPoolCostMetric(
+					title: "Other Models",
+					value: summary.otherModelsCost,
+					cursorTokenFee: summary.otherModelsCursorTokenFee
+				)
+			} else {
+				Divider()
+				VStack(alignment: .leading, spacing: 5) {
+					Text(summary.rangeCostBasis == .reported
+						? "Grok 上报费用" : "xAI 参考价估算")
+						.font(.subheadline.weight(.medium))
+						.foregroundStyle(.secondary)
+					Text(metricText(summary.rangePrimaryCost, cost: true))
+						.font(.system(size: 25, weight: .semibold, design: .rounded))
+						.monospacedDigit()
+					Text(summary.rangeCostBasis == .reported
+						? "Dashboard 实际上报" : "仅在可定价模型上计算")
+						.font(.caption2)
+						.foregroundStyle(.tertiary)
+				}
+				.frame(minWidth: 180, idealWidth: 210, maxWidth: 240, alignment: .leading)
+			}
+		}
+	}
 
-			VStack(alignment: .leading, spacing: 5) {
-				Text(summary.rangeCostBasis == .reported
-					? (provider == .grok ? "Grok 上报费用" : "Cursor 上报费用")
-					: (provider == .grok ? "xAI 参考价估算" : "文档价目估算"))
-					.font(.subheadline.weight(.medium))
-					.foregroundStyle(.secondary)
-				Text(metricText(summary.rangePrimaryCost, cost: true))
-					.font(.system(size: 25, weight: .semibold, design: .rounded))
-					.monospacedDigit()
-				Text(summary.rangeCostBasis == .reported ? "Dashboard 实际上报" : "仅在可定价模型上计算")
+	private func cursorPoolCostMetric(
+		title: String,
+		value: DisplayMetric,
+		cursorTokenFee: DisplayMetric?
+	) -> some View {
+		VStack(alignment: .leading, spacing: 5) {
+			Text(title)
+				.font(.subheadline.weight(.medium))
+				.foregroundStyle(.secondary)
+			Text(metricText(value, cost: true))
+				.font(.system(size: 25, weight: .semibold, design: .rounded))
+				.monospacedDigit()
+			Text("Dashboard 实际上报")
+				.font(.caption2)
+				.foregroundStyle(.tertiary)
+			if let cursorTokenFee,
+				let fee = metricValue(cursorTokenFee),
+				fee > 0
+			{
+				Text("含 Cursor Token Rate \(metricText(cursorTokenFee, cost: true))")
 					.font(.caption2)
 					.foregroundStyle(.tertiary)
 			}
-			.frame(minWidth: 180, idealWidth: 210, maxWidth: 240, alignment: .leading)
 		}
+		.frame(minWidth: 145, idealWidth: 175, maxWidth: 200, alignment: .leading)
 	}
 
 	private func usageBreakdownMetric(

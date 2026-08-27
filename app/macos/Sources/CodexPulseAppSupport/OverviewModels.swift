@@ -782,16 +782,34 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
 
 			if overview.usageAvailable,
 			   overview.requestedRange == .quotaMonth,
-			   overview.effectiveRange == .quotaMonth
+			   overview.effectiveRange == .quotaMonth,
+			   let cursorModels = overview.cursorUsagePools.first(where: { $0.id == "cursor.models" }),
+			   let otherModels = overview.cursorUsagePools.first(where: { $0.id == "cursor.other_models" })
 			{
-				let total = Self.compact(overview.totalTokens)
-				self.usageText = localization.format("status.used", total)
-				self.accessibilityLabel = localization.format(
-					"status.accessibility.used",
-					periodLabel,
-					remainingSummary,
-					Self.compactWithUnit(overview.totalTokens, localization: localization)
-				) + dataState.accessibilitySuffix
+				let cursorModelsText = Self.compact(cursorModels.tokens)
+				let otherModelsText = Self.compact(otherModels.tokens)
+				self.usageText = localization.format(
+					"status.used", "\(cursorModelsText) · \(otherModelsText)"
+				)
+				let cursorModelsAccessibility = localization.format(
+					"status.used",
+					Self.compactWithUnit(cursorModels.tokens, localization: localization)
+				)
+				let otherModelsAccessibility = localization.format(
+					"status.used",
+					Self.compactWithUnit(otherModels.tokens, localization: localization)
+				)
+				var accessibility = "\(periodLabel) \(remainingSummary)，"
+				accessibility += "Cursor Models \(cursorModelsAccessibility)，"
+				accessibility += "Other Models \(otherModelsAccessibility)"
+				if let unclassified = overview.cursorUsagePools.first(where: { $0.id == "cursor.unknown" }) {
+					let unclassifiedAccessibility = localization.format(
+						"status.used",
+						Self.compactWithUnit(unclassified.tokens, localization: localization)
+					)
+					accessibility += "，未归类 \(unclassifiedAccessibility)"
+				}
+				self.accessibilityLabel = accessibility + dataState.accessibilitySuffix
 			} else {
 				self.usageText = localization.textValue("已用 --")
 				self.accessibilityLabel = localization.format(
@@ -2331,6 +2349,7 @@ public struct OverviewPresentation: Equatable, Sendable {
 	public let todayLastActivityAtMS: Int64?
 	public let todayUsageIsPartial: Bool
 	public let cursorBilling: CursorBillingPresentation?
+	public let cursorUsagePools: [CursorUsagePoolPresentation]
 	public let usageModels: [OverviewUsageModelPresentation]
     public let tokenBreakdown: TokenBreakdownPresentation
     public let weeklyTokenBreakdown: TokenBreakdownPresentation
@@ -2409,6 +2428,7 @@ public struct OverviewPresentation: Equatable, Sendable {
 		}
 		self.cursorBilling = responses.usage.hasCursorBilling
 			? CursorBillingPresentation(responses.usage.cursorBilling) : nil
+		self.cursorUsagePools = responses.usage.cursorUsagePools.map(CursorUsagePoolPresentation.init)
 		self.usageModels = responses.usage.models.map(OverviewUsageModelPresentation.init).sorted {
 			Self.metricValue($0.tokens.total) > Self.metricValue($1.tokens.total)
 		}
@@ -2624,6 +2644,22 @@ public enum CursorOverviewCostBasis: Equatable, Sendable {
 	case unavailable
 }
 
+public struct CursorUsagePoolPresentation: Equatable, Sendable, Identifiable {
+	public let id: String
+	public let tokens: DisplayMetric
+	public let reportedCost: DisplayMetric
+	public let estimatedCost: DisplayMetric
+	public let cursorTokenFee: DisplayMetric
+
+	public init(_ pool: Codexpulse_Core_V1_CursorUsagePoolSummary) {
+		id = pool.poolID
+		tokens = DisplayMetric(pool.totals.totalTokens)
+		reportedCost = DisplayMetric(pool.reportedUsdMicros)
+		estimatedCost = DisplayMetric(pool.totals.estimatedUsdMicros)
+		cursorTokenFee = DisplayMetric(pool.cursorTokenFeeUsdMicros)
+	}
+}
+
 public struct CursorOverviewSummaryPresentation: Equatable, Sendable {
 	public let todayRequestCount: DisplayMetric
 	public let todayTotalTokens: DisplayMetric
@@ -2636,6 +2672,12 @@ public struct CursorOverviewSummaryPresentation: Equatable, Sendable {
 	public let rangeTotalTokens: DisplayMetric
 	public let rangePrimaryCost: DisplayMetric
 	public let rangeCostBasis: CursorOverviewCostBasis
+	public let cursorModelsCost: DisplayMetric
+	public let otherModelsCost: DisplayMetric
+	public let cursorModelsTokens: DisplayMetric
+	public let otherModelsTokens: DisplayMetric
+	public let otherModelsCursorTokenFee: DisplayMetric
+	public let unclassifiedTokens: DisplayMetric
 	public let selectedRange: DateRangePreset
 	public let recentActivityAtMS: Int64?
 	public let showsRecentActivityFallback: Bool
@@ -2664,6 +2706,15 @@ public struct CursorOverviewSummaryPresentation: Equatable, Sendable {
 			rangePrimaryCost = .absent(unit: "usd_micros")
 			rangeCostBasis = .unavailable
 		}
+		let cursorModels = overview.cursorUsagePools.first { $0.id == "cursor.models" }
+		let otherModels = overview.cursorUsagePools.first { $0.id == "cursor.other_models" }
+		let unclassified = overview.cursorUsagePools.first { $0.id == "cursor.unknown" }
+		cursorModelsCost = cursorModels?.reportedCost ?? .absent(unit: "usd_micros")
+		otherModelsCost = otherModels?.reportedCost ?? .absent(unit: "usd_micros")
+		cursorModelsTokens = cursorModels?.tokens ?? .absent(unit: "tokens")
+		otherModelsTokens = otherModels?.tokens ?? .absent(unit: "tokens")
+		otherModelsCursorTokenFee = otherModels?.cursorTokenFee ?? .absent(unit: "usd_micros")
+		unclassifiedTokens = unclassified?.tokens ?? .absent(unit: "tokens")
 		selectedRange = overview.requestedRange
 		recentActivityAtMS = overview.todayLastActivityAtMS ?? overview.lastActivityAtMS
 		let dashboardUsageAvailable = overview.providerCoverage.contains {

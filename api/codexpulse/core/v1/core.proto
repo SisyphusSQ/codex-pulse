@@ -308,6 +308,7 @@ message UsageCostResponse {
   optional string reported_cost_source = 16;
   NumericValue cursor_token_fee_usd_micros = 17;
   CursorBillingSummary cursor_billing = 18;
+  repeated CursorUsagePoolSummary cursor_usage_pools = 19;
 }
 
 message InvocationUsageRequest {
@@ -1313,4 +1314,11 @@ message APISubscriptionsCurrentResponse {
   DeepSeekAPISubscriptionSnapshot deep_seek = 2;
   OpenCodeGoSubscriptionSnapshot open_code_go = 3;
   APISubscriptionActivityCalendar activity_calendar = 4;
+}
+
+message CursorUsagePoolSummary {
+  string pool_id = 1;
+  UsageTotals totals = 2;
+  NumericValue reported_usd_micros = 3;
+  NumericValue cursor_token_fee_usd_micros = 4;
 }

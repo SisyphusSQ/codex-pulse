@@ -25,7 +25,7 @@ public enum AgentProvider: String, CaseIterable, Identifiable, Sendable {
     }
 
 	public var supportsInvocationStatistics: Bool {
-		self != .grok
+		self == .codex
 	}
 
     public var defaultOverviewRange: DateRangePreset {

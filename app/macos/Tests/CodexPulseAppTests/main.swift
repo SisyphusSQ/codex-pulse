@@ -602,6 +602,14 @@ private func testCursorOverviewOmitsDataStatusCard() throws {
 			&& !cursorSource.contains("SectionCard(title: \"数据状态\")"),
 		"Cursor overview must not render the data status card"
 	)
+	try expect(
+		cursorSource.contains("title: \"Cursor Models\"")
+			&& cursorSource.contains("value: summary.cursorModelsCost")
+			&& cursorSource.contains("title: \"Other Models\"")
+			&& cursorSource.contains("value: summary.otherModelsCost")
+			&& !cursorSource.contains("Cursor 上报费用"),
+		"Cursor overview must render separate Cursor Models and Other Models costs"
+	)
 }
 
 private func testCursorQuotaSurfacesUseOfficialMonthlyWindows() throws {
@@ -1156,7 +1164,7 @@ private func testStatusPopoverShowsLocalizedModelDailyTrend() throws {
     )
 }
 
-private func testGrokStatusPopoverShowsPeriodTokenTrendAndProjectRanking() throws {
+private func testStatusPopoversOnlyShowSupportedProjectRankings() throws {
     let source = try mainWindowSource("StatusItemController.swift")
     guard let grokStart = source.range(of: "private var grokContent"),
           let cursorStart = source.range(
@@ -1177,10 +1185,27 @@ private func testGrokStatusPopoverShowsPeriodTokenTrendAndProjectRanking() throw
             "Grok popover must expose quota, daily Token trend, and project Token ranking"
         )
     }
-    try expect(
-        quota.lowerBound < trend.lowerBound && trend.lowerBound < projects.lowerBound,
-        "Grok popover must place the two period Token cards below quota in reading order"
-    )
+	try expect(
+		quota.lowerBound < trend.lowerBound && trend.lowerBound < projects.lowerBound,
+		"Grok popover must place the two period Token cards below quota in reading order"
+	)
+
+	let cursorContent = source[cursorStart.lowerBound..<source.endIndex]
+	guard let cursorTodayStart = cursorContent.range(of: "private func cursorTodaySection"),
+		let cursorQuota = cursorContent.range(of: "quotaSection(overview)"),
+		let cursorTrend = cursorContent.range(of: "dailyTrendSection(overview, copy: .monthly)")
+	else {
+		throw TestFailure.mismatch(
+			"Cursor popover must expose quota and its monthly Token trend"
+		)
+	}
+	try expect(
+		cursorQuota.lowerBound < cursorTrend.lowerBound
+			&& cursorTrend.upperBound < cursorTodayStart.lowerBound
+			&& !cursorContent[cursorTrend.upperBound..<cursorTodayStart.lowerBound]
+				.contains("projectRankingSection"),
+		"Cursor popover must omit project ranking when complete Token attribution is unavailable"
+	)
 }
 
 private func testPopoverHeaderMatchesSessionNestLayoutAndNeutralFocus() throws {
@@ -1671,6 +1696,10 @@ private func testCursorPopoverShowsLocalAccountAndOmitsTodayActivity() throws {
 	try expect(
 		!source.contains("cursorActivitySection") && !source.contains("今日活动"),
 		"Cursor popover must omit the redundant today activity section"
+	)
+	try expect(
+		!source.contains("cursorBillingSection") && !source.contains("本账期消费"),
+		"Cursor popover must omit the billing-cycle spending section"
 	)
 	try expect(
 		!source.contains("accountSummary: model.statusProvider == .codex")
@@ -6080,7 +6109,45 @@ private func testGrokProviderDoesNotExposeOrRequestInvocationStatistics() async 
 	_ = await model.shutdown()
 }
 
-private func testCursorStatusOverviewSkipsUnusedInvocationAndProjectQueries() async throws {
+@MainActor
+private func testCursorProviderDoesNotExposeOrRequestInvocationStatistics() async throws {
+	let suiteName = "CodexPulseAppTests.CursorInvocationStatistics.\(UUID().uuidString)"
+	guard let defaults = UserDefaults(suiteName: suiteName) else {
+		throw TestFailure.mismatch("Cursor invocation statistics defaults suite unavailable")
+	}
+	defer { defaults.removePersistentDomain(forName: suiteName) }
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+	let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+	let model = AppModel(
+		runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+		providerDefaults: defaults
+	)
+
+	model.start()
+	try await waitUntil("initial Codex overview before Cursor invocation removal") {
+		await MainActor.run { model.presentation?.provider == .codex }
+	}
+	model.navigate(to: .invocationUsage)
+	model.selectProvider(.cursor)
+	try await waitUntil("Cursor overview without invocation statistics") {
+		await MainActor.run { model.presentation?.provider == .cursor }
+	}
+	model.navigate(to: .invocationUsage)
+	model.loadInvocationUsage()
+	try await sleepForTest(.milliseconds(40))
+
+	let cursorInvocationRequests = await core.recordedInvocationRequests().filter {
+		$0.provider.provider == AgentProvider.cursor.rawValue
+	}
+	try expect(
+		model.selectedFeature == .overview && cursorInvocationRequests.isEmpty,
+		"Cursor must return to its overview and never request invocation statistics"
+	)
+	_ = await model.shutdown()
+}
+
+private func testCursorStatusOverviewSkipsProjectAndInvocationQueries() async throws {
 	let base = makeResponses()
 	var quota = base.quota
 	var monthly = quota.current.windows[0]
@@ -6114,7 +6181,7 @@ private func testCursorStatusOverviewSkipsUnusedInvocationAndProjectQueries() as
 	let projectsAfter = await core.recordedProjectRequests().count
 	try expect(
 		invocationAfter == invocationBefore && projectsAfter == projectsBefore,
-		"Cursor status overview must not wait for invocation or project queries that the popover does not render"
+		"Cursor status overview must skip unsupported project and invocation statistics"
 	)
 	_ = await runtime.shutdown()
 }
@@ -6444,6 +6511,25 @@ private func testCursorOverviewSummarySeparatesTodayFromSelectedRange() throws {
     rangeUsage.reportedUsdMicros.unit = "usd_micros"
 	rangeUsage.totals.estimatedUsdMicros.value = 900_000
 	rangeUsage.totals.estimatedUsdMicros.unit = "usd_micros"
+	var cursorModelsPool = Codexpulse_Core_V1_CursorUsagePoolSummary()
+	cursorModelsPool.poolID = "cursor.models"
+	cursorModelsPool.totals.totalTokens.value = 320_000_000
+	cursorModelsPool.totals.totalTokens.unit = "tokens"
+	cursorModelsPool.reportedUsdMicros.value = 120_000
+	cursorModelsPool.reportedUsdMicros.unit = "usd_micros"
+	var otherModelsPool = Codexpulse_Core_V1_CursorUsagePoolSummary()
+	otherModelsPool.poolID = "cursor.other_models"
+	otherModelsPool.totals.totalTokens.value = 530_000_000
+	otherModelsPool.totals.totalTokens.unit = "tokens"
+	otherModelsPool.reportedUsdMicros.value = 300_000
+	otherModelsPool.reportedUsdMicros.unit = "usd_micros"
+	otherModelsPool.cursorTokenFeeUsdMicros.value = 10_000
+	otherModelsPool.cursorTokenFeeUsdMicros.unit = "usd_micros"
+	var unclassifiedPool = Codexpulse_Core_V1_CursorUsagePoolSummary()
+	unclassifiedPool.poolID = "cursor.unknown"
+	unclassifiedPool.totals.totalTokens.value = 5_000_000
+	unclassifiedPool.totals.totalTokens.unit = "tokens"
+	rangeUsage.cursorUsagePools = [cursorModelsPool, otherModelsPool, unclassifiedPool]
     rangeUsage.dataAsOfMs.value = 1_786_778_400_000
     rangeUsage.dataAsOfMs.unit = "unix_ms"
     rangeUsage.cursorBilling.totalSpendUsdMicros.value = 2_500_000
@@ -6537,6 +6623,14 @@ private func testCursorOverviewSummarySeparatesTodayFromSelectedRange() throws {
 		summary.rangePrimaryCost == .known(420_000, unit: "usd_micros")
 			&& summary.rangeCostBasis == .reported,
 		"Cursor Overview must prefer Dashboard reported cost without treating spending as quota progress"
+	)
+	try expect(
+		summary.cursorModelsCost == .known(120_000, unit: "usd_micros")
+			&& summary.otherModelsCost == .known(300_000, unit: "usd_micros")
+			&& summary.cursorModelsTokens == .known(320_000_000, unit: "tokens")
+			&& summary.otherModelsTokens == .known(530_000_000, unit: "tokens")
+			&& summary.unclassifiedTokens == .known(5_000_000, unit: "tokens"),
+		"Cursor Overview must expose separate Cursor Models and Other Models costs and tokens"
 	)
 
 	todayUsage.totals.turnCount.value = 1
@@ -7359,9 +7453,18 @@ private func testAppRuntimeKeepsTokenActivityFailureLocal() async throws {
 
 @MainActor
 private func testAppRuntimeLoadsOverviewInvocationProfileForTheExactContentRange() async throws {
-    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
-    let model = AppModel(
-        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+	let suiteName = "CodexPulseAppTests.CodexOverviewInvocation.\(UUID().uuidString)"
+	guard let defaults = UserDefaults(suiteName: suiteName) else {
+		throw TestFailure.mismatch("Codex overview invocation defaults suite unavailable")
+	}
+	defer { defaults.removePersistentDomain(forName: suiteName) }
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+	let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+	let model = AppModel(
+		runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+		providerDefaults: defaults
+	)
 
     model.start()
     try await waitUntil("overview invocation profile") {
@@ -7397,10 +7500,19 @@ private func testAppRuntimeLoadsOverviewInvocationProfileForTheExactContentRange
 
 @MainActor
 private func testAppRuntimeKeepsOverviewInvocationFailureLocal() async throws {
-    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
-    await core.setOverviewInvocationFailure(true)
-    let model = AppModel(
-        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+	let suiteName = "CodexPulseAppTests.CodexOverviewInvocationFailure.\(UUID().uuidString)"
+	guard let defaults = UserDefaults(suiteName: suiteName) else {
+		throw TestFailure.mismatch("Codex overview invocation failure defaults suite unavailable")
+	}
+	defer { defaults.removePersistentDomain(forName: suiteName) }
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+	defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+	let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+	await core.setOverviewInvocationFailure(true)
+	let model = AppModel(
+		runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+		providerDefaults: defaults
+	)
 
     model.start()
     try await waitUntil("locally unavailable overview invocation profile") {
@@ -8712,8 +8824,17 @@ private func testStatusBarQuotaPresentationUsesOnlyMatchingPeriodUsage() throws 
 private func testCursorStatusBarQuotaPresentationUsesMonthlyQuotaAndTokens() throws {
 	let base = makeResponses()
 	var usage = base.usage
-	usage.totals.totalTokens.value = 210_000_000
+	usage.totals.totalTokens.value = 850_000_000
 	usage.totals.totalTokens.unit = "tokens"
+	var cursorModelsUsage = Codexpulse_Core_V1_CursorUsagePoolSummary()
+	cursorModelsUsage.poolID = "cursor.models"
+	cursorModelsUsage.totals.totalTokens.value = 320_000_000
+	cursorModelsUsage.totals.totalTokens.unit = "tokens"
+	var otherModelsUsage = Codexpulse_Core_V1_CursorUsagePoolSummary()
+	otherModelsUsage.poolID = "cursor.other_models"
+	otherModelsUsage.totals.totalTokens.value = 530_000_000
+	otherModelsUsage.totals.totalTokens.unit = "tokens"
+	usage.cursorUsagePools = [cursorModelsUsage, otherModelsUsage]
 
 	var quota = base.quota
 	let evaluatedAtMS = quota.current.evaluatedAtMs
@@ -8779,13 +8900,14 @@ private func testCursorStatusBarQuotaPresentationUsesMonthlyQuotaAndTokens() thr
 		"Cursor status bar must show both official monthly remaining percentages"
 	)
 	try expect(
-		summary.usageText == "已用 2.1亿",
-		"Cursor status bar must show the monthly total Token usage with Codex wording"
+		summary.usageText == "已用 3.2亿 · 5.3亿",
+		"Cursor status bar must show Cursor Models and Other Models Token usage separately"
 	)
 	try expect(
 		summary.accessibilityLabel.contains("月剩 90% · 100%")
-			&& summary.accessibilityLabel.contains("已用 2.1亿 Token"),
-		"Cursor status bar accessibility must expose both monthly quota and Token usage"
+			&& summary.accessibilityLabel.contains("Cursor Models 已用 3.2亿 Token")
+			&& summary.accessibilityLabel.contains("Other Models 已用 5.3亿 Token"),
+		"Cursor status bar accessibility must name both monthly Token pools"
 	)
 
 	try expect(
@@ -10544,9 +10666,10 @@ struct CodexPulseAppTestMain {
 		try await testProviderSwitchDiscardsInFlightOverview()
 		try await testRuntimeCursorSwitchRequestsMonthlyOverviewAndIndependentTodaySummary()
 		try await testGrokProviderDoesNotExposeOrRequestInvocationStatistics()
-		try await testCursorStatusOverviewSkipsUnusedInvocationAndProjectQueries()
+		try await testCursorProviderDoesNotExposeOrRequestInvocationStatistics()
+		try await testCursorStatusOverviewSkipsProjectAndInvocationQueries()
 		try await testGrokStatusOverviewLoadsMonthlyPeriodProjectRanking()
-		try testGrokStatusPopoverShowsPeriodTokenTrendAndProjectRanking()
+		try testStatusPopoversOnlyShowSupportedProjectRankings()
 		try await testStatusProviderReusesTargetCacheWhileRefreshing()
 		try await testPageProviderSwitchLoadsSelectedFeatureBeforeOverviewCompletes()
 		try await testMainProviderReusesTargetOverviewWhileRefreshing()

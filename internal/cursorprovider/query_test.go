@@ -695,6 +695,87 @@ func TestCursorUsagePrefersDashboardWindowOverPartialLocalUsage(t *testing.T) {
 	}
 }
 
+func TestCursorUsageSeparatesDashboardUsagePoolsAndKeepsUnknownVisible(t *testing.T) {
+	snapshot := cursorQuerySnapshot("partial")
+	snapshot.DashboardGeneration = 9
+	snapshot.DashboardCollectedAtMS = 5_000
+	snapshot.DashboardWindowStartMS = 1_000
+	snapshot.DashboardWindowEndMS = 5_000
+	cursorModel := "cursor-grok-4.6-xhigh"
+	otherModel := "gemini-2.5-flash"
+	unknownModel := "auto-cost"
+	snapshot.DashboardUsageEvents = []store.CursorDashboardUsageEvent{
+		{
+			EventFingerprint: "cursor-model", OccurrenceCount: 2, OccurredAtMS: 2_000,
+			ModelKey: &cursorModel, TokenBased: true, InputTokens: 10, OutputTokens: 20,
+			ReportedChargeMicros: 1_000,
+		},
+		{
+			EventFingerprint: "other-model", OccurrenceCount: 1, OccurredAtMS: 3_000,
+			ModelKey: &otherModel, TokenBased: true, InputTokens: 30, OutputTokens: 40,
+			CacheReadTokens: 5, ReportedChargeMicros: 3_000, CursorTokenFeeMicros: 500,
+		},
+		{
+			EventFingerprint: "unknown-model", OccurrenceCount: 1, OccurredAtMS: 4_000,
+			ModelKey: &unknownModel, TokenBased: true, InputTokens: 2, OutputTokens: 3,
+			ReportedChargeMicros: 700,
+		},
+	}
+	service := cursorQueryFixture(t, snapshot)
+	rangeValue := basequery.UTCTimeRange{StartAtMS: 1_000, EndAtMS: 5_000, TimeZone: "UTC"}
+	response, err := service.UsageCost(context.Background(), usagecost.UsageCostRequest{
+		ExactRange: &rangeValue, Granularity: usagecost.TrendDay,
+	})
+	if err != nil {
+		t.Fatalf("UsageCost() error = %v", err)
+	}
+
+	content, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("marshal UsageCost() response: %v", err)
+	}
+	var boundary struct {
+		CursorUsagePools []struct {
+			PoolID string `json:"poolId"`
+			Totals struct {
+				TotalTokens basequery.NumericValue `json:"totalTokens"`
+			} `json:"totals"`
+			ReportedUSDMicros       basequery.NumericValue `json:"reportedUsdMicros"`
+			CursorTokenFeeUSDMicros basequery.NumericValue `json:"cursorTokenFeeUsdMicros"`
+		} `json:"cursorUsagePools"`
+	}
+	if err := json.Unmarshal(content, &boundary); err != nil {
+		t.Fatalf("unmarshal UsageCost() boundary: %v", err)
+	}
+	if len(boundary.CursorUsagePools) != 3 {
+		t.Fatalf("cursor usage pools = %#v, want Cursor Models, Other Models, and unknown", boundary.CursorUsagePools)
+	}
+	if response.Totals.TotalTokens.Value == nil || *response.Totals.TotalTokens.Value != 140 ||
+		response.ReportedUSDMicros == nil || response.ReportedUSDMicros.Value == nil ||
+		*response.ReportedUSDMicros.Value != 5_700 ||
+		response.CursorTokenFeeUSDMicros == nil || response.CursorTokenFeeUSDMicros.Value == nil ||
+		*response.CursorTokenFeeUSDMicros.Value != 500 {
+		t.Fatalf("aggregate usage = %#v, want pool sums", response)
+	}
+	want := []struct {
+		poolID            string
+		tokens, cost, fee int64
+	}{
+		{poolID: "cursor.models", tokens: 60, cost: 2_000},
+		{poolID: "cursor.other_models", tokens: 75, cost: 3_000, fee: 500},
+		{poolID: "cursor.unknown", tokens: 5, cost: 700},
+	}
+	for index, expected := range want {
+		pool := boundary.CursorUsagePools[index]
+		if pool.PoolID != expected.poolID || pool.Totals.TotalTokens.Value == nil ||
+			*pool.Totals.TotalTokens.Value != expected.tokens ||
+			pool.ReportedUSDMicros.Value == nil || *pool.ReportedUSDMicros.Value != expected.cost ||
+			pool.CursorTokenFeeUSDMicros.Value == nil || *pool.CursorTokenFeeUSDMicros.Value != expected.fee {
+			t.Fatalf("cursor usage pool[%d] = %#v, want %#v", index, pool, expected)
+		}
+	}
+}
+
 func TestCursorDashboardUsageIncludesPerModelTrendBuckets(t *testing.T) {
 	snapshot := cursorQuerySnapshot("partial")
 	snapshot.DashboardGeneration = 9
