@@ -928,6 +928,46 @@ func TestCursorQuotaKeepsGrokBotWeeklyCycleAndNearestReset(t *testing.T) {
 	}
 }
 
+func TestCursorQuotaPaceKeepsOfficialWeekAcrossInCycleGrokBotReset(t *testing.T) {
+	t.Parallel()
+	const day = int64(24 * time.Hour / time.Millisecond)
+	weekStart := int64(1_780_000_000_000)
+	weekEnd := weekStart + 7*day
+	resetAt := weekStart + 4*day
+	evaluatedAt := weekStart + 5*day + 6*time.Hour.Milliseconds()
+	snapshot := cursorQuerySnapshot("partial")
+	snapshot.DashboardQuotaObservations = []store.CursorDashboardQuotaObservation{
+		{
+			Generation: 1, LimitID: grokBotLimitID, UsedPercent: 30,
+			CycleStartAtMS: weekStart, CycleEndAtMS: weekEnd, ObservedAtMS: weekStart + 3*day,
+		},
+		{
+			Generation: 2, LimitID: grokBotLimitID, UsedPercent: 0,
+			CycleStartAtMS: resetAt, CycleEndAtMS: weekEnd, ObservedAtMS: resetAt + time.Hour.Milliseconds(),
+		},
+		{
+			Generation: 3, LimitID: grokBotLimitID, UsedPercent: 4,
+			CycleStartAtMS: resetAt, CycleEndAtMS: weekEnd, ObservedAtMS: evaluatedAt,
+		},
+	}
+	service := cursorQueryFixture(t, snapshot)
+
+	response, err := service.QuotaPace(context.Background(), evaluatedAt)
+	if err != nil {
+		t.Fatalf("QuotaPace() error = %v", err)
+	}
+	if len(response.Pace.Windows) != 3 {
+		t.Fatalf("pace windows = %#v", response.Pace.Windows)
+	}
+	grokBot := response.Pace.Windows[2]
+	if grokBot.WindowStartAtMS == nil || *grokBot.WindowStartAtMS != weekStart ||
+		grokBot.WindowMinutes == nil || *grokBot.WindowMinutes != 10_080 ||
+		grokBot.ElapsedPercent == nil || *grokBot.ElapsedPercent != 75 ||
+		len(grokBot.CurrentPoints) == 0 || grokBot.CurrentPoints[len(grokBot.CurrentPoints)-1].ElapsedPercent != 75 {
+		t.Fatalf("grok bot pace after in-cycle reset = %#v", grokBot)
+	}
+}
+
 func TestCursorQuotaMarksGrokBotNotApplicableAndPartialFailureIndependently(t *testing.T) {
 	t.Parallel()
 	evaluatedAt := int64(2_000)

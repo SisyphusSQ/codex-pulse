@@ -20,7 +20,7 @@ Cursor Provider 在 TOO-349 起同时持有两类 Dashboard 额度，且不得�
 - Cursor Models / Other Models：`GetCurrentPeriodUsage` 的月账期，source `cursor.dashboard`。
 - Grok Bot：`GetSandUsageStatus` 的官方周账期，`limit_id=cursor.grok_bot`，source `cursor.dashboard.grok_bot`。
 - QuotaCurrent 稳定返回三个窗口；`nextReset` 取全部 `fresh/stale` 且仍在未来的窗口中最早的 reset，因此周 reset 可以早于月 reset。
-- 周 `window_minutes` 只来自官方 `current_period_start` 与 `next_reset_timestamp_utc` 的差值，禁止硬编码 10080。
+- 周 `window_minutes` 来自已观测到的官方周期边界，禁止硬编码 10080。Grok Bot 在周内重置额度时可能推进 `current_period_start` 但保持 `next_reset_timestamp_utc` 不变；相同 reset 边界必须复用已观测到的最早起点，后续起点只表示用量基线重置，并在同一节奏周期内保留剩余额度上跳。
 - 套餐不含 included Grok Bot 时第三窗 `unknown_reason=not_applicable`，无百分比；从未成功观测为 `never_loaded`。缺 percent 不得写成真实 `0%`。
 - 越过官方周 reset 且尚无新周期 observation 时，该周窗不回显旧百分比，客户端显示 `--`，freshness 为 `expired_unknown`。这与下方 Codex last-known-good 过期仍显示百分比的语义不同。
 - Cursor Overview / Session / Project 分析范围只使用 `cursor.models` / `cursor.other_models` 的月边界；Grok Bot 周窗不得带偏 `quotaMonth`。

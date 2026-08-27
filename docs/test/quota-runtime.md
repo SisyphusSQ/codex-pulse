@@ -4,6 +4,7 @@
 
 - Cursor 月 Dashboard collector 与 Grok Bot collector 独立 single-flight、独立 last-refresh 时钟；一侧失败不得改写另一侧 last-good、usage event 或月 observation。
 - Grok Bot 不进入 Codex `source_refresh_schedules` / `wham` runtime。装配点仍是 Helper binding composition，不是本 runbook 的 TOO-306 Wham coordinator。
+- `TestCursorQuotaPaceKeepsOfficialWeekAcrossInCycleGrokBotReset` 覆盖 Grok Bot 周内额度重置：`next_reset` 不变而 `period_start` 推进时，节奏横轴仍沿用同一周已观测到的最早起点，重置只形成同周期内的用量跳变。
 - 开发期入口：`go test ./internal/cursorprovider ./internal/app`。真实 Home 与 commit identity / cleanup 见 [`native-primary-pages.md`](native-primary-pages.md)。本页历史 TOO-306 PASS 不表示 TOO-349 live E2E 已执行。
 
 ## 当前验证结果
