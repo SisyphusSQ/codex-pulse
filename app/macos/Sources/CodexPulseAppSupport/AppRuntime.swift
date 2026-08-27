@@ -1343,7 +1343,7 @@ public actor AppRuntime {
 					todayContent.usage, retryPolicy: .transportDefault)
 			}
 			async let todayInvocationResult = captureOverviewSection {
-				guard provider == .cursor else {
+				guard provider == .cursor, provider.supportsInvocationStatistics else {
 					return unavailableInvocationUsage(
 						for: todayContent.invocationUsage, provider: provider)
 				}

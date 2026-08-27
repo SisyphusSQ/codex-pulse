@@ -104,25 +104,33 @@ type CursorBillingSummary struct {
 	LimitUSDMicros        basequery.NumericValue `json:"limitUsdMicros"`
 }
 
+type CursorUsagePoolSummary struct {
+	PoolID                  string                 `json:"poolId"`
+	Totals                  UsageTotals            `json:"totals"`
+	ReportedUSDMicros       basequery.NumericValue `json:"reportedUsdMicros"`
+	CursorTokenFeeUSDMicros basequery.NumericValue `json:"cursorTokenFeeUsdMicros"`
+}
+
 type UsageCostResponse struct {
-	ProviderContext         agentprovider.Context   `json:"providerContext"`
-	Meta                    basequery.ResponseMeta  `json:"meta"`
-	Range                   basequery.UTCTimeRange  `json:"range"`
-	ReportingTimeZone       string                  `json:"reportingTimeZone"`
-	PricingSource           *string                 `json:"pricingSource"`
-	Currency                *string                 `json:"currency"`
-	PricingVersions         []string                `json:"pricingVersions"`
-	Totals                  UsageTotals             `json:"totals"`
-	Trend                   []TrendPoint            `json:"trend"`
-	UnpricedReasons         []ReasonCount           `json:"unpricedReasons"`
-	DegradedReason          *DegradedReason         `json:"degradedReason"`
-	Models                  []UsageModelItem        `json:"models"`
-	ActivityDistribution    *ActivityDistribution   `json:"activityDistribution,omitempty"`
-	ReportedUSDMicros       *basequery.NumericValue `json:"reportedUsdMicros,omitempty"`
-	ReportedCostSource      *string                 `json:"reportedCostSource,omitempty"`
-	DataAsOfMS              *basequery.NumericValue `json:"dataAsOfMs,omitempty"`
-	CursorTokenFeeUSDMicros *basequery.NumericValue `json:"cursorTokenFeeUsdMicros,omitempty"`
-	CursorBilling           *CursorBillingSummary   `json:"cursorBilling,omitempty"`
+	ProviderContext         agentprovider.Context    `json:"providerContext"`
+	Meta                    basequery.ResponseMeta   `json:"meta"`
+	Range                   basequery.UTCTimeRange   `json:"range"`
+	ReportingTimeZone       string                   `json:"reportingTimeZone"`
+	PricingSource           *string                  `json:"pricingSource"`
+	Currency                *string                  `json:"currency"`
+	PricingVersions         []string                 `json:"pricingVersions"`
+	Totals                  UsageTotals              `json:"totals"`
+	Trend                   []TrendPoint             `json:"trend"`
+	UnpricedReasons         []ReasonCount            `json:"unpricedReasons"`
+	DegradedReason          *DegradedReason          `json:"degradedReason"`
+	Models                  []UsageModelItem         `json:"models"`
+	ActivityDistribution    *ActivityDistribution    `json:"activityDistribution,omitempty"`
+	ReportedUSDMicros       *basequery.NumericValue  `json:"reportedUsdMicros,omitempty"`
+	ReportedCostSource      *string                  `json:"reportedCostSource,omitempty"`
+	DataAsOfMS              *basequery.NumericValue  `json:"dataAsOfMs,omitempty"`
+	CursorTokenFeeUSDMicros *basequery.NumericValue  `json:"cursorTokenFeeUsdMicros,omitempty"`
+	CursorBilling           *CursorBillingSummary    `json:"cursorBilling,omitempty"`
+	CursorUsagePools        []CursorUsagePoolSummary `json:"cursorUsagePools"`
 }
 
 type AttributionValue struct {

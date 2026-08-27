@@ -66,6 +66,53 @@ func TestEncodeResponsePreservesNumericPresenceAndPartialStatus(t *testing.T) {
 	}
 }
 
+func TestEncodeResponsePreservesCursorUsagePools(t *testing.T) {
+	t.Parallel()
+
+	tokens, err := basequery.KnownNumeric(320_000_000, basequery.NumericTokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reported, err := basequery.KnownNumeric(4_200_000, basequery.NumericMicroUSD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fee, err := basequery.KnownNumeric(200_000, basequery.NumericMicroUSD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	estimated, err := basequery.UnknownNumeric(
+		basequery.NumericMicroUSD,
+		basequery.UnknownNotComputed,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	target := &corev1.UsageCostResponse{}
+	if err := EncodeResponse(usagecost.UsageCostResponse{
+		Totals: withUsageTotals(t, tokens, estimated),
+		CursorUsagePools: []usagecost.CursorUsagePoolSummary{{
+			PoolID:                  "cursor.other_models",
+			Totals:                  withUsageTotals(t, tokens, estimated),
+			ReportedUSDMicros:       reported,
+			CursorTokenFeeUSDMicros: fee,
+		}},
+	}, target); err != nil {
+		t.Fatalf("EncodeResponse(cursor usage pools) error = %v", err)
+	}
+	if len(target.CursorUsagePools) != 1 {
+		t.Fatalf("cursor usage pools = %#v, want one pool", target.CursorUsagePools)
+	}
+	pool := target.CursorUsagePools[0]
+	if pool.PoolId != "cursor.other_models" || pool.Totals == nil ||
+		pool.Totals.TotalTokens == nil || pool.Totals.TotalTokens.GetValue() != 320_000_000 ||
+		pool.ReportedUsdMicros == nil || pool.ReportedUsdMicros.GetValue() != 4_200_000 ||
+		pool.CursorTokenFeeUsdMicros == nil || pool.CursorTokenFeeUsdMicros.GetValue() != 200_000 {
+		t.Fatalf("cursor usage pool = %#v", pool)
+	}
+}
+
 // 测试 encodeResponse 拒绝 value 与 unknown_reason 同时出现的非法数值。
 func TestEncodeResponseRejectsInvalidNumericPresence(t *testing.T) {
 	zero := int64(0)

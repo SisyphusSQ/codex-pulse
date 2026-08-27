@@ -1283,6 +1283,11 @@ public nonisolated struct Codexpulse_Core_V1_UsageCostResponse: @unchecked Senda
   /// Clears the value of `cursorBilling`. Subsequent reads from it will return its default value.
   public mutating func clearCursorBilling() {_uniqueStorage()._cursorBilling = nil}
 
+  public var cursorUsagePools: [Codexpulse_Core_V1_CursorUsagePoolSummary] {
+    get {_storage._cursorUsagePools}
+    set {_uniqueStorage()._cursorUsagePools = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -6825,6 +6830,49 @@ public nonisolated struct Codexpulse_Core_V1_APISubscriptionsCurrentResponse: Se
   fileprivate var _activityCalendar: Codexpulse_Core_V1_APISubscriptionActivityCalendar? = nil
 }
 
+public nonisolated struct Codexpulse_Core_V1_CursorUsagePoolSummary: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var poolID: String = String()
+
+  public var totals: Codexpulse_Core_V1_UsageTotals {
+    get {_totals ?? Codexpulse_Core_V1_UsageTotals()}
+    set {_totals = newValue}
+  }
+  /// Returns true if `totals` has been explicitly set.
+  public var hasTotals: Bool {self._totals != nil}
+  /// Clears the value of `totals`. Subsequent reads from it will return its default value.
+  public mutating func clearTotals() {self._totals = nil}
+
+  public var reportedUsdMicros: Codexpulse_Core_V1_NumericValue {
+    get {_reportedUsdMicros ?? Codexpulse_Core_V1_NumericValue()}
+    set {_reportedUsdMicros = newValue}
+  }
+  /// Returns true if `reportedUsdMicros` has been explicitly set.
+  public var hasReportedUsdMicros: Bool {self._reportedUsdMicros != nil}
+  /// Clears the value of `reportedUsdMicros`. Subsequent reads from it will return its default value.
+  public mutating func clearReportedUsdMicros() {self._reportedUsdMicros = nil}
+
+  public var cursorTokenFeeUsdMicros: Codexpulse_Core_V1_NumericValue {
+    get {_cursorTokenFeeUsdMicros ?? Codexpulse_Core_V1_NumericValue()}
+    set {_cursorTokenFeeUsdMicros = newValue}
+  }
+  /// Returns true if `cursorTokenFeeUsdMicros` has been explicitly set.
+  public var hasCursorTokenFeeUsdMicros: Bool {self._cursorTokenFeeUsdMicros != nil}
+  /// Clears the value of `cursorTokenFeeUsdMicros`. Subsequent reads from it will return its default value.
+  public mutating func clearCursorTokenFeeUsdMicros() {self._cursorTokenFeeUsdMicros = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _totals: Codexpulse_Core_V1_UsageTotals? = nil
+  fileprivate var _reportedUsdMicros: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _cursorTokenFeeUsdMicros: Codexpulse_Core_V1_NumericValue? = nil
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "codexpulse.core.v1"
@@ -8594,7 +8642,7 @@ nonisolated extension Codexpulse_Core_V1_CursorBillingSummary: SwiftProtobuf.Mes
 
 nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".UsageCostResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}range\0\u{3}reporting_time_zone\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{1}totals\0\u{1}trend\0\u{3}unpriced_reasons\0\u{3}degraded_reason\0\u{1}models\0\u{3}activity_distribution\0\u{3}provider_context\0\u{3}reported_usd_micros\0\u{3}data_as_of_ms\0\u{3}reported_cost_source\0\u{3}cursor_token_fee_usd_micros\0\u{3}cursor_billing\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{1}range\0\u{3}reporting_time_zone\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{1}totals\0\u{1}trend\0\u{3}unpriced_reasons\0\u{3}degraded_reason\0\u{1}models\0\u{3}activity_distribution\0\u{3}provider_context\0\u{3}reported_usd_micros\0\u{3}data_as_of_ms\0\u{3}reported_cost_source\0\u{3}cursor_token_fee_usd_micros\0\u{3}cursor_billing\0\u{3}cursor_usage_pools\0")
 
   fileprivate class _StorageClass {
     var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
@@ -8615,6 +8663,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
     var _reportedCostSource: String? = nil
     var _cursorTokenFeeUsdMicros: Codexpulse_Core_V1_NumericValue? = nil
     var _cursorBilling: Codexpulse_Core_V1_CursorBillingSummary? = nil
+    var _cursorUsagePools: [Codexpulse_Core_V1_CursorUsagePoolSummary] = []
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -8643,6 +8692,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
       _reportedCostSource = source._reportedCostSource
       _cursorTokenFeeUsdMicros = source._cursorTokenFeeUsdMicros
       _cursorBilling = source._cursorBilling
+      _cursorUsagePools = source._cursorUsagePools
     }
   }
 
@@ -8679,6 +8729,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
         case 16: try { try decoder.decodeSingularStringField(value: &_storage._reportedCostSource) }()
         case 17: try { try decoder.decodeSingularMessageField(value: &_storage._cursorTokenFeeUsdMicros) }()
         case 18: try { try decoder.decodeSingularMessageField(value: &_storage._cursorBilling) }()
+        case 19: try { try decoder.decodeRepeatedMessageField(value: &_storage._cursorUsagePools) }()
         default: break
         }
       }
@@ -8745,6 +8796,9 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
       try { if let v = _storage._cursorBilling {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 18)
       } }()
+      if !_storage._cursorUsagePools.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._cursorUsagePools, fieldNumber: 19)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -8772,6 +8826,7 @@ nonisolated extension Codexpulse_Core_V1_UsageCostResponse: SwiftProtobuf.Messag
         if _storage._reportedCostSource != rhs_storage._reportedCostSource {return false}
         if _storage._cursorTokenFeeUsdMicros != rhs_storage._cursorTokenFeeUsdMicros {return false}
         if _storage._cursorBilling != rhs_storage._cursorBilling {return false}
+        if _storage._cursorUsagePools != rhs_storage._cursorUsagePools {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -17073,6 +17128,55 @@ nonisolated extension Codexpulse_Core_V1_APISubscriptionsCurrentResponse: SwiftP
     if lhs._deepSeek != rhs._deepSeek {return false}
     if lhs._openCodeGo != rhs._openCodeGo {return false}
     if lhs._activityCalendar != rhs._activityCalendar {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_CursorUsagePoolSummary: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CursorUsagePoolSummary"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pool_id\0\u{1}totals\0\u{3}reported_usd_micros\0\u{3}cursor_token_fee_usd_micros\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.poolID) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._totals) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._reportedUsdMicros) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._cursorTokenFeeUsdMicros) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.poolID.isEmpty {
+      try visitor.visitSingularStringField(value: self.poolID, fieldNumber: 1)
+    }
+    try { if let v = self._totals {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._reportedUsdMicros {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try { if let v = self._cursorTokenFeeUsdMicros {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_CursorUsagePoolSummary, rhs: Codexpulse_Core_V1_CursorUsagePoolSummary) -> Bool {
+    if lhs.poolID != rhs.poolID {return false}
+    if lhs._totals != rhs._totals {return false}
+    if lhs._reportedUsdMicros != rhs._reportedUsdMicros {return false}
+    if lhs._cursorTokenFeeUsdMicros != rhs._cursorTokenFeeUsdMicros {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

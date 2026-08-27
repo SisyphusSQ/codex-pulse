@@ -998,9 +998,6 @@ private struct MenuBarPopoverView: View {
 				quotaSection(overview)
 				cursorTodaySection(summary)
 				dailyTrendSection(overview, copy: .monthly)
-				if let billing = summary.billing {
-					cursorBillingSection(billing)
-				}
 				if summary.usesLastKnownTodayData, let dataAsOf = summary.dataAsOfMS {
 					Label(
 						"今日数据截至 \(cursorStatusDateText(dataAsOf))",
@@ -1038,51 +1035,6 @@ private struct MenuBarPopoverView: View {
 		}
 	}
 
-	private func cursorBillingSection(_ billing: CursorBillingPresentation) -> some View {
-		let progress = QuotaProgressPresentation(
-			usedPercent: cursorBillingUsedPercent(billing),
-			localization: model.localization
-		)
-		return VStack(alignment: .leading, spacing: 10) {
-			PopoverSectionTitle(
-				title: "本账期消费",
-				systemImage: "creditcard.fill",
-				localization: model.localization
-			)
-			PulseCard {
-				VStack(alignment: .leading, spacing: 10) {
-					HStack(alignment: .firstTextBaseline) {
-						Text(metricText(billing.totalSpend, cost: true))
-							.font(.system(size: 20, weight: .bold, design: .rounded))
-							.monospacedDigit()
-						Spacer()
-						Text("剩余 \(metricText(billing.remaining, cost: true))")
-							.font(.caption)
-							.foregroundStyle(.secondary)
-					}
-					GeometryReader { geometry in
-						ZStack(alignment: .leading) {
-							Capsule().fill(.quaternary)
-							Capsule()
-								.fill(quotaLevelColor(progress.level))
-								.frame(width: geometry.size.width * CGFloat(progress.fraction))
-						}
-					}
-					.frame(height: 9)
-					.accessibilityLabel(model.localization.textValue("本账期已使用"))
-					.accessibilityValue(progress.accessibilityValue)
-					HStack {
-						Text("套餐包含 \(metricText(billing.included, cost: true))")
-						Spacer()
-						Text("Bonus \(metricText(billing.bonus, cost: true))")
-					}
-					.font(.caption)
-					.foregroundStyle(.secondary)
-				}
-			}
-		}
-	}
-
 	private func cursorMetric(title: String, value: String) -> some View {
 		VStack(alignment: .leading, spacing: 3) {
 			Text(title).font(.caption).foregroundStyle(.secondary)
@@ -1092,19 +1044,6 @@ private struct MenuBarPopoverView: View {
 				.lineLimit(1)
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
-	}
-
-	private func cursorBillingUsedPercent(_ billing: CursorBillingPresentation) -> Double? {
-		guard let spent = statusMetricValue(billing.totalSpend),
-			let limit = statusMetricValue(billing.limit),
-			limit > 0
-		else { return nil }
-		return Double(spent) / Double(limit) * 100
-	}
-
-	private func statusMetricValue(_ metric: DisplayMetric) -> Int64? {
-		guard case .known(let value, _) = metric else { return nil }
-		return value
 	}
 
 	private func cursorStatusDateText(_ milliseconds: Int64) -> String {

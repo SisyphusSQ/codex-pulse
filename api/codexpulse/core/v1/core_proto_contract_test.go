@@ -95,6 +95,30 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 	}
 }
 
+func TestUsageCostDescriptorExposesCursorUsagePools(t *testing.T) {
+	descriptor := (&corev1.UsageCostResponse{}).ProtoReflect().Descriptor()
+	field := descriptor.Fields().ByName("cursor_usage_pools")
+	if field == nil {
+		t.Fatal("UsageCostResponse must expose cursor_usage_pools")
+	}
+	if field.Cardinality() != protoreflect.Repeated || field.Kind() != protoreflect.MessageKind {
+		t.Fatalf("cursor_usage_pools = %v %v, want repeated message", field.Cardinality(), field.Kind())
+	}
+	pool := field.Message()
+	want := map[protoreflect.Name]protoreflect.FieldNumber{
+		"pool_id":                     1,
+		"totals":                      2,
+		"reported_usd_micros":         3,
+		"cursor_token_fee_usd_micros": 4,
+	}
+	for name, number := range want {
+		got := pool.Fields().ByName(name)
+		if got == nil || got.Number() != number {
+			t.Fatalf("CursorUsagePoolSummary.%s = %v, want field %d", name, got, number)
+		}
+	}
+}
+
 // 测试破坏性 Session 趋势演进永久隔离旧 daily wire tag，避免绕过握手时静默错读。
 func TestSessionDetailDescriptorReservesLegacyDailyField(t *testing.T) {
 	t.Parallel()
