@@ -1,5 +1,10 @@
 ## Unreleased
 
+## v0.9.0 - 2026-08-27
+
+#### feature:
+1. 将 Cursor Dashboard 用量按 Cursor Models、Other Models 和 unknown 分池展示，分别回显 Token、Dashboard 上报费用与 Cursor Token Rate，保持总量可对账；移除 Cursor 不支持的调用统计、项目排行和账期消费入口，并同步 Core RPC、原生 macOS UI、回归覆盖与 Provider 设计说明。
+
 ## v0.8.4 - 2026-08-27
 
 #### bugFix:
