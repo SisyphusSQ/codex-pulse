@@ -231,6 +231,7 @@ public actor AppRuntime {
     private var streamController: InvalidationStreamController?
     private var helperProcessMonitor: (any HelperProcessMonitoring)?
     private var refreshTask: Task<OverviewResponses, any Error>?
+    private var providerRefreshTask: Task<Codexpulse_Core_V1_ProviderRefreshReceipt, any Error>?
     private var accountRefreshTask: Task<Void, Never>?
     private var lastResponses: OverviewResponses?
 	private var overviewCache: [OverviewCacheKey: OverviewResponses] = [:]
@@ -628,6 +629,23 @@ public actor AppRuntime {
 		request.provider = provider.scope
         let preparedRequest = request
         return try await performMutation { try await $0.requestQuotaRefresh(preparedRequest) }
+    }
+
+    public func requestProviderRefresh(
+        trigger: String
+    ) async throws -> Codexpulse_Core_V1_ProviderRefreshReceipt {
+        if let existing = providerRefreshTask {
+            return try await existing.value
+        }
+        let task = Task<Codexpulse_Core_V1_ProviderRefreshReceipt, any Error> {
+            var request = Codexpulse_Core_V1_ProviderRefreshRequest()
+            request.trigger = trigger
+            let preparedRequest = request
+            return try await self.performMutation { try await $0.requestProviderRefresh(preparedRequest) }
+        }
+        providerRefreshTask = task
+        defer { providerRefreshTask = nil }
+        return try await task.value
     }
 
     public func runRuntimeAction(

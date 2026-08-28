@@ -225,3 +225,5 @@
 "这项额度不适用于当前套餐。" = "这项额度不适用于当前套餐。";
 "这项额度尚未加载。" = "这项额度尚未加载。";
 "跟踪月度模型额度、Grok Bot 周额度、Token 趋势、费用明细和参考价格" = "跟踪月度模型额度、Grok Bot 周额度、Token 趋势、费用明细和参考价格";
+"app.global_refresh.summary" = "已刷新 %d 个，跳过 %d 个";
+"app.global_refresh.partial" = "已刷新 %d 个，跳过 %d 个，失败 %d 个";

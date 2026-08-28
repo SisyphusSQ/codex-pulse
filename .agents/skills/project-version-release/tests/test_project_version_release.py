@@ -146,21 +146,35 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertIn("仍要打开", rendered)
         self.assertIn("不是 Gatekeeper trusted", rendered)
 
-    def test_stable_manual_gates_keep_distribution_and_test_boundaries(
+    def test_stable_manual_gates_skip_validation_by_default(
         self,
     ) -> None:
         gates = release.manual_gates("stable")
         rendered = "\n".join(gates)
 
         self.assertIn("stable defaults to unsigned", rendered)
+        self.assertIn("skipped by default", rendered)
         self.assertIn("explicit user authorization", rendered)
+        self.assertIn("make verify", rendered)
         self.assertIn("make check", rendered)
         self.assertIn("make test-go", rendered)
         self.assertIn("make test-swift", rendered)
+        self.assertIn("make verify-live", rendered)
+        self.assertIn("real Codex Home", rendered)
+        self.assertIn("fresh macOS user", rendered)
         self.assertNotIn(
             "unless explicitly waived for unsigned stable",
             rendered,
         )
+
+    def test_preview_manual_gates_skip_validation_by_default(self) -> None:
+        gates = release.manual_gates("preview")
+        rendered = "\n".join(gates)
+
+        self.assertIn("skipped by default", rendered)
+        self.assertIn("make verify", rendered)
+        self.assertIn("make verify-live", rendered)
+        self.assertIn("explicit user authorization", rendered)
 
     def test_signed_preview_uses_standard_first_open(self) -> None:
         rendered = release.render_release_notes(

@@ -36,6 +36,7 @@ const (
 	CoreService_UpdateAPICredential_FullMethodName       = "/codexpulse.core.v1.CoreService/UpdateAPICredential"
 	CoreService_QuotaPace_FullMethodName                 = "/codexpulse.core.v1.CoreService/QuotaPace"
 	CoreService_RequestQuotaRefresh_FullMethodName       = "/codexpulse.core.v1.CoreService/RequestQuotaRefresh"
+	CoreService_RequestProviderRefresh_FullMethodName    = "/codexpulse.core.v1.CoreService/RequestProviderRefresh"
 	CoreService_ListSources_FullMethodName               = "/codexpulse.core.v1.CoreService/ListSources"
 	CoreService_Source_FullMethodName                    = "/codexpulse.core.v1.CoreService/Source"
 	CoreService_ListJobs_FullMethodName                  = "/codexpulse.core.v1.CoreService/ListJobs"
@@ -85,6 +86,7 @@ type CoreServiceClient interface {
 	UpdateAPICredential(ctx context.Context, in *UpdateAPICredentialRequest, opts ...grpc.CallOption) (*APICredentialStatusResponse, error)
 	QuotaPace(ctx context.Context, in *QuotaPaceRequest, opts ...grpc.CallOption) (*QuotaPaceResponse, error)
 	RequestQuotaRefresh(ctx context.Context, in *QuotaRefreshRequest, opts ...grpc.CallOption) (*QuotaRefreshReceipt, error)
+	RequestProviderRefresh(ctx context.Context, in *ProviderRefreshRequest, opts ...grpc.CallOption) (*ProviderRefreshReceipt, error)
 	ListSources(ctx context.Context, in *ListSourcesRequest, opts ...grpc.CallOption) (*SourceListResponse, error)
 	Source(ctx context.Context, in *SourceRequest, opts ...grpc.CallOption) (*SourceDetailResponse, error)
 	ListJobs(ctx context.Context, in *ListJobsRequest, opts ...grpc.CallOption) (*JobListResponse, error)
@@ -283,6 +285,16 @@ func (c *coreServiceClient) RequestQuotaRefresh(ctx context.Context, in *QuotaRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QuotaRefreshReceipt)
 	err := c.cc.Invoke(ctx, CoreService_RequestQuotaRefresh_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) RequestProviderRefresh(ctx context.Context, in *ProviderRefreshRequest, opts ...grpc.CallOption) (*ProviderRefreshReceipt, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProviderRefreshReceipt)
+	err := c.cc.Invoke(ctx, CoreService_RequestProviderRefresh_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -561,6 +573,7 @@ type CoreServiceServer interface {
 	UpdateAPICredential(context.Context, *UpdateAPICredentialRequest) (*APICredentialStatusResponse, error)
 	QuotaPace(context.Context, *QuotaPaceRequest) (*QuotaPaceResponse, error)
 	RequestQuotaRefresh(context.Context, *QuotaRefreshRequest) (*QuotaRefreshReceipt, error)
+	RequestProviderRefresh(context.Context, *ProviderRefreshRequest) (*ProviderRefreshReceipt, error)
 	ListSources(context.Context, *ListSourcesRequest) (*SourceListResponse, error)
 	Source(context.Context, *SourceRequest) (*SourceDetailResponse, error)
 	ListJobs(context.Context, *ListJobsRequest) (*JobListResponse, error)
@@ -645,6 +658,9 @@ func (UnimplementedCoreServiceServer) QuotaPace(context.Context, *QuotaPaceReque
 }
 func (UnimplementedCoreServiceServer) RequestQuotaRefresh(context.Context, *QuotaRefreshRequest) (*QuotaRefreshReceipt, error) {
 	return nil, status.Error(codes.Unimplemented, "method RequestQuotaRefresh not implemented")
+}
+func (UnimplementedCoreServiceServer) RequestProviderRefresh(context.Context, *ProviderRefreshRequest) (*ProviderRefreshReceipt, error) {
+	return nil, status.Error(codes.Unimplemented, "method RequestProviderRefresh not implemented")
 }
 func (UnimplementedCoreServiceServer) ListSources(context.Context, *ListSourcesRequest) (*SourceListResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListSources not implemented")
@@ -1041,6 +1057,24 @@ func _CoreService_RequestQuotaRefresh_Handler(srv interface{}, ctx context.Conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CoreServiceServer).RequestQuotaRefresh(ctx, req.(*QuotaRefreshRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_RequestProviderRefresh_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProviderRefreshRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).RequestProviderRefresh(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_RequestProviderRefresh_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).RequestProviderRefresh(ctx, req.(*ProviderRefreshRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1544,6 +1578,10 @@ var CoreService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RequestQuotaRefresh",
 			Handler:    _CoreService_RequestQuotaRefresh_Handler,
+		},
+		{
+			MethodName: "RequestProviderRefresh",
+			Handler:    _CoreService_RequestProviderRefresh_Handler,
 		},
 		{
 			MethodName: "ListSources",

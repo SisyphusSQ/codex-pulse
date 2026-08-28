@@ -736,6 +736,23 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
     public let dataState: StatusBarQuotaDataState
     public let accessibilityLabel: String
 
+	public var compactTextOmitsProviderNames: Bool {
+		Self.compactTextOmitsProviderNames(
+			remainingText: remainingText,
+			usageText: usageText
+		)
+	}
+
+	public static func compactTextOmitsProviderNames(
+		remainingText: String,
+		usageText: String
+	) -> Bool {
+		let compactText = remainingText + " " + usageText
+		return AgentProvider.allCases.allSatisfy {
+			!compactText.localizedCaseInsensitiveContains($0.title)
+		}
+	}
+
     public init?(_ overview: OverviewPresentation) {
         let localization = AppLocalizationRegistry.shared.current
 		if overview.provider == .grok {

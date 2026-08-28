@@ -624,8 +624,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 			summary.remainingText.hasPrefix("月剩 "),
 			summary.remainingText.contains(" · "),
 			summary.usageText.hasPrefix("已用 "),
-			!summary.accessibilityLabel.contains("Cursor"),
-			!summary.accessibilityLabel.contains("Codex"),
+			summary.compactTextOmitsProviderNames,
 			statusItem.button?.accessibilityLabel()
 				== "Codex Pulse · \(summary.accessibilityLabel)",
 			statusBarView.hasSummary,

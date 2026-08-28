@@ -307,50 +307,62 @@ func (coordinator *QuotaRefreshCoordinator) RequestRefresh(
 	source quotaonline.RefreshSource,
 	trigger store.SourceRefreshTrigger,
 ) (store.SourceRefreshSchedule, error) {
+	schedule, _, err := coordinator.RequestRefreshResult(ctx, source, trigger)
+	return schedule, err
+}
+
+func (coordinator *QuotaRefreshCoordinator) RequestRefreshResult(
+	ctx context.Context,
+	source quotaonline.RefreshSource,
+	trigger store.SourceRefreshTrigger,
+) (store.SourceRefreshSchedule, bool, error) {
 	if coordinator == nil || ctx == nil ||
 		(trigger != store.RefreshTriggerManual && trigger != store.RefreshTriggerForeground &&
-			trigger != store.RefreshTriggerWake) {
-		return store.SourceRefreshSchedule{}, ErrInvalidQuotaRefreshCoordinator
+			trigger != store.RefreshTriggerWake && trigger != store.RefreshTriggerStartup &&
+			trigger != store.RefreshTriggerScheduled) {
+		return store.SourceRefreshSchedule{}, false, ErrInvalidQuotaRefreshCoordinator
 	}
 	coordinator.cycleMu.Lock()
 	defer coordinator.cycleMu.Unlock()
 	snapshot, err := coordinator.preferences.LoadPreferences(ctx)
 	if err != nil {
-		return store.SourceRefreshSchedule{}, err
+		return store.SourceRefreshSchedule{}, false, err
 	}
 	descriptor, found := coordinator.descriptor(snapshot, source)
 	if !found {
-		return store.SourceRefreshSchedule{}, ErrInvalidQuotaRefreshCoordinator
+		return store.SourceRefreshSchedule{}, false, ErrInvalidQuotaRefreshCoordinator
 	}
 	nowMS := coordinator.clock().UnixMilli()
 	schedule, decision, err := coordinator.planSource(ctx, descriptor, trigger, nowMS)
 	if err != nil {
-		return store.SourceRefreshSchedule{}, err
+		return store.SourceRefreshSchedule{}, false, err
 	}
 	if !decision.ShouldFetch {
 		if schedule == nil {
-			return coordinator.persistDecision(ctx, descriptor, nil, decision, nowMS)
+			persisted, persistErr := coordinator.persistDecision(ctx, descriptor, nil, decision, nowMS)
+			return persisted, false, persistErr
 		}
-		return *schedule, nil
+		return *schedule, false, nil
 	}
 	persisted, err := coordinator.persistDecision(ctx, descriptor, schedule, decision, nowMS)
 	if err != nil {
-		return store.SourceRefreshSchedule{}, err
+		return store.SourceRefreshSchedule{}, false, err
 	}
 	requestID, err := coordinator.newRequestID(source)
 	if err != nil || requestID == "" {
 		if err == nil {
 			err = ErrInvalidQuotaRefreshCoordinator
 		}
-		return persisted, err
+		return persisted, false, err
 	}
 	claimed, ok, err := coordinator.repository.ClaimSourceRefresh(
 		ctx, descriptor.sourceInstanceID, persisted.Revision, requestID, trigger, nowMS, coordinator.claimLeaseMS,
 	)
 	if err != nil || !ok {
-		return claimed, err
+		return claimed, false, err
 	}
-	return coordinator.executeClaim(ctx, snapshot, descriptor, claimed, requestID)
+	completed, execErr := coordinator.executeClaim(ctx, snapshot, descriptor, claimed, requestID)
+	return completed, true, execErr
 }
 
 func (coordinator *QuotaRefreshCoordinator) runDueCycleLocked(

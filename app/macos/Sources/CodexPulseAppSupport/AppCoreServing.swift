@@ -60,6 +60,10 @@ public protocol AppCoreServing: Sendable {
         _ request: Codexpulse_Core_V1_QuotaRefreshRequest
     ) async throws -> Codexpulse_Core_V1_QuotaRefreshReceipt
 
+    func requestProviderRefresh(
+        _ request: Codexpulse_Core_V1_ProviderRefreshRequest
+    ) async throws -> Codexpulse_Core_V1_ProviderRefreshReceipt
+
     func runRuntimeAction(
         _ request: Codexpulse_Core_V1_RuntimeActionRequest
     ) async throws -> Codexpulse_Core_V1_RuntimeActionReceipt
@@ -200,6 +204,12 @@ public extension AppCoreServing {
     func requestQuotaRefresh(
         _ request: Codexpulse_Core_V1_QuotaRefreshRequest
     ) async throws -> Codexpulse_Core_V1_QuotaRefreshReceipt {
+        throw AppRuntimeError.unavailable
+    }
+
+    func requestProviderRefresh(
+        _ request: Codexpulse_Core_V1_ProviderRefreshRequest
+    ) async throws -> Codexpulse_Core_V1_ProviderRefreshReceipt {
         throw AppRuntimeError.unavailable
     }
 

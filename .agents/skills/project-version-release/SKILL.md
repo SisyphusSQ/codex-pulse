@@ -42,10 +42,12 @@ appcast 和公开读回，并在 Release Notes 如实披露 macOS 信任边界�
 `signed-notarized`，且现场签名、公证、Gatekeeper 和最终资产 readback 全部通过时，
 才允许按可信分发路径继续。保留并报告已有改动，不执行 reset、restore 或自动 stash。
 
-分发模式与测试策略分开判断。`unsigned stable` 不代表跳过测试；默认仍执行
-`make verify`、`make check`、`make test-go`、`make test-swift` 和真实 Codex Home
-验收的现行规则。只有用户明确要求跳过某一项时，才能省略该项，并仍保留发行构建、
-资产完整性、Sparkle、signed tag、Release、appcast 和公开读回。
+分发模式与测试策略分开判断。默认不主动执行测试或产品验收，包括
+`make verify`、`make check`、`make test-go`、`make test-swift`、`make verify-live`、
+真实 Codex Home 验收和全新 macOS 用户首次打开/重启验收；只有用户明确授权时才
+执行指定项目。每次发版必须逐项列出未执行的测试/验收 gate，不得将其描述为已完成；
+仍必须保留发行构建、Bundle 元数据、签名、资产完整性、Sparkle、signed tag、
+Release、appcast 和公开读回。
 
 ## 选择动作
 
@@ -116,6 +118,7 @@ python3 .agents/skills/project-version-release/scripts/project_version_release.p
 
 ## 交付证据
 
-分别报告 source/readback、local gate、isolated smoke、真实 Home 验收、
-codesign、notarization、tag、GitHub Release 和资产校验。未实际执行的
-CI、签名、公证、发布或最终用户首启不得描述为已完成。
+分别报告 source/readback、local non-test gate，以及 isolated smoke、真实 Home
+验收、codesign、notarization、tag、GitHub Release 和资产校验；对默认跳过的
+测试/验收逐项标注“未执行”。未实际执行的 CI、签名、公证、发布或最终用户首启
+不得描述为已完成。

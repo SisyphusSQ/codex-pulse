@@ -76,7 +76,7 @@ func (client *BillingClient) GetCredits(ctx context.Context) (BillingCredits, er
 		return BillingCredits{}, err
 	}
 	credits, err := client.getCredits(ctx, credential)
-	if !errors.Is(err, ErrAuthExpired) {
+	if !errors.Is(err, ErrBillingAuthRejected) && !errors.Is(err, ErrAuthExpired) {
 		return credits, err
 	}
 	refresher, ok := client.tokenSource.(refreshingTokenSource)
@@ -120,7 +120,7 @@ func (client *BillingClient) getCredits(ctx context.Context, credential AccessTo
 		return BillingCredits{}, fmt.Errorf("%w: response too large", ErrBillingProtocol)
 	}
 	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
-		return BillingCredits{}, ErrAuthExpired
+		return BillingCredits{}, ErrBillingAuthRejected
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return BillingCredits{}, fmt.Errorf("%w: unexpected status", ErrBillingProtocol)
@@ -290,7 +290,8 @@ func finiteOptional(value *float64) *float64 {
 }
 
 func billingFailureCode(err error) string {
-	if errors.Is(err, ErrAuthExpired) || errors.Is(err, ErrAuthUnavailable) {
+	if errors.Is(err, ErrAuthExpired) || errors.Is(err, ErrAuthUnavailable) ||
+		errors.Is(err, ErrBillingAuthRejected) {
 		return "auth_expired"
 	}
 	if errors.Is(err, ErrBillingProtocol) {

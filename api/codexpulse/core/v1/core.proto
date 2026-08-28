@@ -23,6 +23,7 @@ service CoreService {
   rpc UpdateAPICredential(UpdateAPICredentialRequest) returns (APICredentialStatusResponse);
   rpc QuotaPace(QuotaPaceRequest) returns (QuotaPaceResponse);
   rpc RequestQuotaRefresh(QuotaRefreshRequest) returns (QuotaRefreshReceipt);
+  rpc RequestProviderRefresh(ProviderRefreshRequest) returns (ProviderRefreshReceipt);
   rpc ListSources(ListSourcesRequest) returns (SourceListResponse);
   rpc Source(SourceRequest) returns (SourceDetailResponse);
   rpc ListJobs(ListJobsRequest) returns (JobListResponse);
@@ -725,6 +726,32 @@ message QuotaRefreshReceipt {
   string reason = 3;
   optional int64 last_manual_at_ms = 4;
   ProviderContext provider_context = 5;
+}
+
+// ProviderRefreshRequest 是 Helper 聚合的全局刷新命令，不复用 QuotaRefreshRequest.provider。
+// trigger 必须是 startup、foreground、wake、scheduled、manual 之一。
+message ProviderRefreshRequest {
+  string trigger = 1;
+}
+
+message ProviderRefreshComponentResult {
+  string component = 1;
+  string status = 2;
+  string reason_code = 3;
+  bool attempted = 4;
+  optional int64 committed_at_ms = 5;
+  optional int64 observed_at_ms = 6;
+}
+
+message ProviderRefreshResult {
+  string provider = 1;
+  string status = 2;
+  repeated ProviderRefreshComponentResult components = 3;
+}
+
+message ProviderRefreshReceipt {
+  string trigger = 1;
+  repeated ProviderRefreshResult providers = 2;
 }
 
 message ListSourcesRequest { QueryRequest query = 1; }

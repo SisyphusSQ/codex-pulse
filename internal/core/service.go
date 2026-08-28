@@ -71,6 +71,30 @@ type providerQuotaRefreshCommand interface {
 	RefreshQuota(context.Context, agentprovider.Scope) (agentprovider.Context, error)
 }
 
+type providerRefreshCommand interface {
+	Refresh(context.Context, string) (ProviderRefreshReceipt, error)
+}
+
+type ProviderRefreshComponentResult struct {
+	Component     string `json:"component"`
+	Status        string `json:"status"`
+	ReasonCode    string `json:"reasonCode"`
+	Attempted     bool   `json:"attempted"`
+	CommittedAtMS *int64 `json:"committedAtMs,omitempty"`
+	ObservedAtMS  *int64 `json:"observedAtMs,omitempty"`
+}
+
+type ProviderRefreshResult struct {
+	Provider   string                           `json:"provider"`
+	Status     string                           `json:"status"`
+	Components []ProviderRefreshComponentResult `json:"components"`
+}
+
+type ProviderRefreshReceipt struct {
+	Trigger   string                  `json:"trigger"`
+	Providers []ProviderRefreshResult `json:"providers"`
+}
+
 type accountSnapshotQuery interface {
 	AccountSnapshot(context.Context, agentprovider.Scope) (AccountSnapshot, error)
 }
@@ -105,6 +129,7 @@ type ServiceConfig struct {
 	QuotaInfo            agentQuotaQuery
 	QuotaRefresh         quotaRefreshCommand
 	ProviderQuotaRefresh providerQuotaRefreshCommand
+	ProviderRefresh      providerRefreshCommand
 	RuntimeControls      runtimeControlCommand
 	HealthProjection     healthProjectionQuery
 	AccountSnapshot      accountSnapshotQuery
@@ -124,6 +149,8 @@ type Service struct {
 	quotaMu              sync.RWMutex
 	quotaRefresh         quotaRefreshCommand
 	providerQuotaRefresh providerQuotaRefreshCommand
+	providerRefreshMu    sync.RWMutex
+	providerRefresh      providerRefreshCommand
 	runtimeMu            sync.RWMutex
 	runtimeControls      runtimeControlCommand
 	deepMu               sync.RWMutex
@@ -149,6 +176,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 		quotaInfo:            config.QuotaInfo,
 		quotaRefresh:         config.QuotaRefresh,
 		providerQuotaRefresh: config.ProviderQuotaRefresh,
+		providerRefresh:      config.ProviderRefresh,
 		runtimeControls:      config.RuntimeControls,
 		sessionDeepIndex:     config.SessionDeepIndex,
 		queryObserver:        config.QueryObserver,
@@ -255,6 +283,24 @@ func BindDependencies(service *Service, config ServiceConfig) error {
 			return err
 		}
 	}
+	if config.ProviderRefresh != nil {
+		if err := service.bindProviderRefresh(config.ProviderRefresh); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (service *Service) bindProviderRefresh(command providerRefreshCommand) error {
+	if service == nil || command == nil {
+		return ErrService
+	}
+	service.providerRefreshMu.Lock()
+	defer service.providerRefreshMu.Unlock()
+	if service.providerRefresh != nil {
+		return ErrService
+	}
+	service.providerRefresh = command
 	return nil
 }
 
@@ -297,6 +343,7 @@ var methodAllowlist = []MethodInfo{
 	{Name: "QuotaCurrent", Kind: MethodQuery},
 	{Name: "QuotaPace", Kind: MethodQuery},
 	{Name: "RequestQuotaRefresh", Kind: MethodCommand},
+	{Name: "RequestProviderRefresh", Kind: MethodCommand},
 	{Name: "UpdateAPICredential", Kind: MethodCommand},
 	{Name: "UpdateSettings", Kind: MethodCommand},
 	{Name: "PlanHomeSwitch", Kind: MethodCommand},
@@ -326,7 +373,7 @@ func (service *Service) Contracts() ContractInfo {
 			RuntimeInfoVersion:     runtimeinfo.ContractVersion,
 			Methods:                append([]MethodInfo(nil), methodAllowlist...),
 			CommandMethods: []string{
-				"RequestQuotaRefresh", "UpdateAPICredential", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
+				"RequestQuotaRefresh", "RequestProviderRefresh", "UpdateAPICredential", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
 				"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
 			}, ErrorExample: errorExample,
 		}
@@ -511,6 +558,24 @@ func cloneInt64(value *int64) *int64 {
 	}
 	cloned := *value
 	return &cloned
+}
+
+func (service *Service) RequestProviderRefresh(
+	ctx context.Context,
+	trigger string,
+) (ProviderRefreshReceipt, error) {
+	if service == nil {
+		return ProviderRefreshReceipt{}, newServiceFailure(ErrService)
+	}
+	service.providerRefreshMu.RLock()
+	command := service.providerRefresh
+	service.providerRefreshMu.RUnlock()
+	if command == nil {
+		return ProviderRefreshReceipt{}, newServiceFailure(ErrService)
+	}
+	return serviceCall(func() (ProviderRefreshReceipt, error) {
+		return command.Refresh(ctx, trigger)
+	})
 }
 
 func (service *Service) UsageCost(

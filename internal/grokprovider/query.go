@@ -120,7 +120,6 @@ func (service *QueryService) Refresh(ctx context.Context) error {
 	if performed {
 		service.invalidateSnapshot()
 	}
-	service.scheduleBillingRefresh()
 	return nil
 }
 
@@ -159,7 +158,6 @@ func (service *QueryService) snapshot(ctx context.Context) (store.GrokSnapshot, 
 		return store.GrokSnapshot{}, err
 	}
 	service.scheduleLocalRefresh()
-	service.scheduleBillingRefresh()
 	return snapshot, nil
 }
 

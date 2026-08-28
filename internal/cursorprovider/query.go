@@ -41,6 +41,10 @@ type conditionalRefresher interface {
 	RefreshIfDue(context.Context) (bool, error)
 }
 
+type classifiedOnlineRefresher interface {
+	RefreshClassified(context.Context, bool) OnlineRefreshClass
+}
+
 type QueryService struct {
 	collector       *Collector
 	dashboard       Refresher
@@ -108,8 +112,6 @@ func (service *QueryService) Refresh(ctx context.Context) error {
 	if performed {
 		service.invalidateSnapshot()
 	}
-	service.scheduleDashboardRefresh()
-	service.scheduleGrokBotRefresh()
 	return nil
 }
 
@@ -139,8 +141,6 @@ func (service *QueryService) snapshot(ctx context.Context) (store.CursorSnapshot
 		return store.CursorSnapshot{}, err
 	}
 	service.scheduleLocalRefresh()
-	service.scheduleDashboardRefresh()
-	service.scheduleGrokBotRefresh()
 	return snapshot, nil
 }
 

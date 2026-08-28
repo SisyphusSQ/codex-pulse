@@ -175,6 +175,12 @@ public actor CoreClient {
         try await service.requestQuotaRefresh(request, metadata: metadata)
     }
 
+    public func requestProviderRefresh(
+        _ request: Codexpulse_Core_V1_ProviderRefreshRequest
+    ) async throws -> Codexpulse_Core_V1_ProviderRefreshReceipt {
+        try await service.requestProviderRefresh(request, metadata: metadata)
+    }
+
     public func runRuntimeAction(
         _ request: Codexpulse_Core_V1_RuntimeActionRequest
     ) async throws -> Codexpulse_Core_V1_RuntimeActionReceipt {

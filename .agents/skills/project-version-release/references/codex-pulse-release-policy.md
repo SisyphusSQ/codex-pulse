@@ -32,11 +32,9 @@ Release 段和创建版本 tag。
 Stable 表示产品 SemVer 与 GitHub Release 已进入非 prerelease 渠道；macOS
 发行信任等级另行记录为 `unsigned` 或 `signed-notarized`，两者不能混为一谈。
 
-默认 stable 使用 `unsigned`，并满足：
+默认 stable 使用 `unsigned`，并满足以下非测试发布 gate：
 
 - clean release commit，且发布 commit 已冻结；
-- `make verify`、`make check`、`make test-go`、`make test-swift` 和真实
-  Codex Home 验收按现行规则执行；默认不因发行模式而跳过；
 - production Bundle identifier、显示名、版本和 build number 正确；
 - App 内所有可执行代码按 inside-out 顺序完成 ad-hoc 签名，证明最终 Bundle
   完整性；
@@ -44,14 +42,14 @@ Stable 表示产品 SemVer 与 GitHub Release 已进入非 prerelease 渠道；m
   Gatekeeper；公证和 stapling 明确记录为未执行；
 - 挂载后的首次安装 DMG 只包含 App 与 `/Applications` 链接，且其中 App
   通过 `codesign`；
-- 持久 runtime、Codex Home 首次确认和重启读回闭环；
-- 在全新 macOS 用户环境完成首次安装、打开、索引和再次启动验证；
 - 使用正式 Sparkle Ed25519 公钥构建，私钥只经 stdin 参与 exact ZIP 签名；
 - fixed HTTPS appcast 已完成 stable/prerelease 选路、远端下载和 N-1 替换重启；
 - Git tag、GitHub Release、资产 SHA-256 和发布状态远端读回一致。
 
-只有用户明确要求跳过对应测试或真实验收时，才可以省略该项，并逐项报告未执行
-的证据。发行模式本身不能成为测试豁免。
+测试和产品验收默认不执行，包括 `make verify`、`make check`、`make test-go`、
+`make test-swift`、`make verify-live`、真实 Codex Home 验收、持久 runtime 与
+全新 macOS 用户首次打开/重启验收。只有用户明确授权时才执行指定项目，并逐项
+报告未执行的证据；发行模式本身不改变这一测试策略。
 
 `signed-notarized` 是显式 opt-in，不是 stable 的默认值。只有现场完成并读回
 以下全部 gate 后才允许使用该分发等级：
@@ -76,6 +74,11 @@ Release Notes 必须按实际产物明确：
 Preview 使用 prerelease SemVer，例如 `v0.1.0-beta.1`，并在 GitHub 标记
 Prerelease。未签名、未公证资产只有在用户明确授权后才能发布；Release
 Notes 必须写清风险和 Gatekeeper 打开步骤。
+
+Preview 默认不执行测试和产品验收，包括 `make verify`、`make check`、
+`make test-go`、`make test-swift`、`make verify-live`、真实 Codex Home 验收和
+全新 macOS 用户首次打开/重启验收；只有用户明确授权时才执行指定项目，并逐项
+报告未执行的证据。
 
 Preview 不能被描述为 stable，也不能把 isolated smoke 当作最终用户验收。
 
@@ -159,8 +162,8 @@ Sparkle Ed25519 私钥必须从该命令的 stdin 输入。脚本使用官方
 
 | 证据面 | 最低入口 |
 | --- | --- |
-| 项目完整验证 | `make verify` |
-| 真实 Home 产品验收 | `make verify-live` 或等价显式真实 Home 启动 |
+| 项目完整验证（用户明确授权时） | `make verify` |
+| 真实 Home 产品验收（用户明确授权时） | `make verify-live` 或等价显式真实 Home 启动 |
 | Bundle metadata | `plutil` 读回最终 App 的 Info.plist |
 | 嵌套签名 | `codesign --verify --deep --strict --verbose=2` |
 | Gatekeeper | signed-notarized 要求 acceptance；unsigned 必须记录预期拒绝并在 notes 披露 |
@@ -173,7 +176,7 @@ Sparkle Ed25519 私钥必须从该命令的 stdin 输入。脚本使用官方
 | SHA-256 | 本地生成、GitHub 下载后重新比对 |
 | tag | 远端 tag object 与 peeled commit readback |
 | Release | `gh release view --json ...` |
-| 首次使用 | 全新 macOS 用户安装、首次打开、Codex Home 确认和重启 |
+| 首次使用（用户明确授权时） | 全新 macOS 用户安装、首次打开、Codex Home 确认和重启 |
 
 真实 Home 验收会读取 Session/JSONL，并可能写入私有 runtime、SQLite、
 preferences 和标准 housekeeping。执行前按根级 `AGENTS.md` 说明副作用。

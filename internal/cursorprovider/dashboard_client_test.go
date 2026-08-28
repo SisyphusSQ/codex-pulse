@@ -283,8 +283,8 @@ func TestDashboardClientGetSandUsageStatusMapsAuthFailureWithoutLeakingToken(t *
 		t.Fatalf("NewDashboardClient() error = %v", err)
 	}
 	_, err = client.GetSandUsageStatus(context.Background())
-	if err == nil || !errors.Is(err, ErrDesktopAuthExpired) {
-		t.Fatalf("GetSandUsageStatus() error = %v, want auth expired", err)
+	if err == nil || !errors.Is(err, ErrDashboardAuthRejected) {
+		t.Fatalf("GetSandUsageStatus() error = %v, want auth rejected", err)
 	}
 	if strings.Contains(err.Error(), token) {
 		t.Fatalf("auth error leaked token: %v", err)
