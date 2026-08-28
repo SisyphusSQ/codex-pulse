@@ -251,6 +251,17 @@ func (api *grpcAPI) RequestQuotaRefresh(
 	return encodeRPC(response, &corev1.QuotaRefreshReceipt{}, err)
 }
 
+func (api *grpcAPI) RequestProviderRefresh(
+	ctx context.Context,
+	request *corev1.ProviderRefreshRequest,
+) (*corev1.ProviderRefreshReceipt, error) {
+	if api == nil || api.service == nil {
+		return nil, coreServiceUnavailable()
+	}
+	response, err := api.service.RequestProviderRefresh(ctx, request.GetTrigger())
+	return encodeRPC(response, &corev1.ProviderRefreshReceipt{}, err)
+}
+
 func (api *grpcAPI) ListSources(
 	ctx context.Context,
 	request *corev1.ListSourcesRequest,

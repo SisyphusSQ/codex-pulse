@@ -3800,6 +3800,89 @@ public nonisolated struct Codexpulse_Core_V1_QuotaRefreshReceipt: Sendable {
   fileprivate var _providerContext: Codexpulse_Core_V1_ProviderContext? = nil
 }
 
+/// ProviderRefreshRequest 是 Helper 聚合的全局刷新命令，不复用 QuotaRefreshRequest.provider。
+/// trigger 必须是 startup、foreground、wake、scheduled、manual 之一。
+public nonisolated struct Codexpulse_Core_V1_ProviderRefreshRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var trigger: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_ProviderRefreshComponentResult: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var component: String = String()
+
+  public var status: String = String()
+
+  public var reasonCode: String = String()
+
+  public var attempted: Bool = false
+
+  public var committedAtMs: Int64 {
+    get {_committedAtMs ?? 0}
+    set {_committedAtMs = newValue}
+  }
+  /// Returns true if `committedAtMs` has been explicitly set.
+  public var hasCommittedAtMs: Bool {self._committedAtMs != nil}
+  /// Clears the value of `committedAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearCommittedAtMs() {self._committedAtMs = nil}
+
+  public var observedAtMs: Int64 {
+    get {_observedAtMs ?? 0}
+    set {_observedAtMs = newValue}
+  }
+  /// Returns true if `observedAtMs` has been explicitly set.
+  public var hasObservedAtMs: Bool {self._observedAtMs != nil}
+  /// Clears the value of `observedAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearObservedAtMs() {self._observedAtMs = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _committedAtMs: Int64? = nil
+  fileprivate var _observedAtMs: Int64? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_ProviderRefreshResult: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var provider: String = String()
+
+  public var status: String = String()
+
+  public var components: [Codexpulse_Core_V1_ProviderRefreshComponentResult] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_ProviderRefreshReceipt: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var trigger: String = String()
+
+  public var providers: [Codexpulse_Core_V1_ProviderRefreshResult] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 public nonisolated struct Codexpulse_Core_V1_ListSourcesRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -12203,6 +12286,170 @@ nonisolated extension Codexpulse_Core_V1_QuotaRefreshReceipt: SwiftProtobuf.Mess
     if lhs.reason != rhs.reason {return false}
     if lhs._lastManualAtMs != rhs._lastManualAtMs {return false}
     if lhs._providerContext != rhs._providerContext {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ProviderRefreshRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ProviderRefreshRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}trigger\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.trigger) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.trigger.isEmpty {
+      try visitor.visitSingularStringField(value: self.trigger, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ProviderRefreshRequest, rhs: Codexpulse_Core_V1_ProviderRefreshRequest) -> Bool {
+    if lhs.trigger != rhs.trigger {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ProviderRefreshComponentResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ProviderRefreshComponentResult"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}component\0\u{1}status\0\u{3}reason_code\0\u{1}attempted\0\u{3}committed_at_ms\0\u{3}observed_at_ms\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.component) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.status) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.reasonCode) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.attempted) }()
+      case 5: try { try decoder.decodeSingularInt64Field(value: &self._committedAtMs) }()
+      case 6: try { try decoder.decodeSingularInt64Field(value: &self._observedAtMs) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.component.isEmpty {
+      try visitor.visitSingularStringField(value: self.component, fieldNumber: 1)
+    }
+    if !self.status.isEmpty {
+      try visitor.visitSingularStringField(value: self.status, fieldNumber: 2)
+    }
+    if !self.reasonCode.isEmpty {
+      try visitor.visitSingularStringField(value: self.reasonCode, fieldNumber: 3)
+    }
+    if self.attempted != false {
+      try visitor.visitSingularBoolField(value: self.attempted, fieldNumber: 4)
+    }
+    try { if let v = self._committedAtMs {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 5)
+    } }()
+    try { if let v = self._observedAtMs {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 6)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ProviderRefreshComponentResult, rhs: Codexpulse_Core_V1_ProviderRefreshComponentResult) -> Bool {
+    if lhs.component != rhs.component {return false}
+    if lhs.status != rhs.status {return false}
+    if lhs.reasonCode != rhs.reasonCode {return false}
+    if lhs.attempted != rhs.attempted {return false}
+    if lhs._committedAtMs != rhs._committedAtMs {return false}
+    if lhs._observedAtMs != rhs._observedAtMs {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ProviderRefreshResult: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ProviderRefreshResult"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}provider\0\u{1}status\0\u{1}components\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.provider) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.status) }()
+      case 3: try { try decoder.decodeRepeatedMessageField(value: &self.components) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.provider.isEmpty {
+      try visitor.visitSingularStringField(value: self.provider, fieldNumber: 1)
+    }
+    if !self.status.isEmpty {
+      try visitor.visitSingularStringField(value: self.status, fieldNumber: 2)
+    }
+    if !self.components.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.components, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ProviderRefreshResult, rhs: Codexpulse_Core_V1_ProviderRefreshResult) -> Bool {
+    if lhs.provider != rhs.provider {return false}
+    if lhs.status != rhs.status {return false}
+    if lhs.components != rhs.components {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ProviderRefreshReceipt: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ProviderRefreshReceipt"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}trigger\0\u{1}providers\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.trigger) }()
+      case 2: try { try decoder.decodeRepeatedMessageField(value: &self.providers) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.trigger.isEmpty {
+      try visitor.visitSingularStringField(value: self.trigger, fieldNumber: 1)
+    }
+    if !self.providers.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.providers, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ProviderRefreshReceipt, rhs: Codexpulse_Core_V1_ProviderRefreshReceipt) -> Bool {
+    if lhs.trigger != rhs.trigger {return false}
+    if lhs.providers != rhs.providers {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

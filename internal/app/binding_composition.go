@@ -15,6 +15,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/cursorprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/grokprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/providerrefresh"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/agentrouter"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
@@ -28,6 +29,7 @@ import (
 type coreComposition struct {
 	service          *core.Service
 	apiSubscriptions *apisubscriptions.Service
+	providerRefresh  *providerrefresh.Orchestrator
 }
 
 func composeCoreGraph(
@@ -119,7 +121,6 @@ func composeCoreGraph(
 	}
 	runtimeService, err := runtimeinfo.NewService(runtimeinfo.Dependencies{
 		Quota: quotaService, Runtime: repository, Preferences: preferenceStore,
-		ProviderSources: combinedProviderRefresher{cursor: cursorService, grok: grokService},
 	})
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
@@ -150,9 +151,19 @@ func composeCoreGraph(
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
+	orchestrator, err := providerrefresh.New(providerrefresh.Config{
+		Cursor:       providerrefresh.NewCursorAdapter(cursorService, time.Now),
+		Grok:         providerrefresh.NewGrokAdapter(grokService, time.Now),
+		Invalidation: invalidationAdapter{notifier: invalidation},
+		Now:          time.Now,
+	})
+	if err != nil {
+		return nil, errors.Join(core.ErrService, err)
+	}
 	service, err := core.NewService(core.ServiceConfig{
 		UsageCost: providerRouter, InvocationUsage: providerRouter, PricingCatalog: pricingService,
 		RuntimeInfo: runtimeService, QuotaInfo: quotaRouter, ProviderQuotaRefresh: quotaRouter,
+		ProviderRefresh:  coreProviderRefresh{inner: orchestrator},
 		QueryObserver:    queryObserver,
 		APISubscriptions: apiSubscriptions,
 		APICredentials:   apiCredentials,
@@ -160,7 +171,56 @@ func composeCoreGraph(
 	if err != nil {
 		return nil, err
 	}
-	return &coreComposition{service: service, apiSubscriptions: apiSubscriptions}, nil
+	return &coreComposition{
+		service: service, apiSubscriptions: apiSubscriptions, providerRefresh: orchestrator,
+	}, nil
+}
+
+type invalidationAdapter struct {
+	notifier queryInvalidationNotifier
+}
+
+func (adapter invalidationAdapter) Notify(ctx context.Context, domain core.InvalidationDomain) error {
+	if adapter.notifier == nil {
+		return nil
+	}
+	return adapter.notifier.Notify(ctx, domain)
+}
+
+type coreProviderRefresh struct {
+	inner *providerrefresh.Orchestrator
+}
+
+func (command coreProviderRefresh) Refresh(
+	ctx context.Context,
+	trigger string,
+) (core.ProviderRefreshReceipt, error) {
+	if command.inner == nil {
+		return core.ProviderRefreshReceipt{}, core.ErrService
+	}
+	receipt, err := command.inner.Refresh(ctx, trigger)
+	if err != nil {
+		return core.ProviderRefreshReceipt{}, err
+	}
+	return mapProviderRefreshReceipt(receipt), nil
+}
+
+func mapProviderRefreshReceipt(value providerrefresh.Receipt) core.ProviderRefreshReceipt {
+	providers := make([]core.ProviderRefreshResult, 0, len(value.Providers))
+	for _, provider := range value.Providers {
+		components := make([]core.ProviderRefreshComponentResult, 0, len(provider.Components))
+		for _, component := range provider.Components {
+			components = append(components, core.ProviderRefreshComponentResult{
+				Component: component.Component, Status: component.Status, ReasonCode: component.ReasonCode,
+				Attempted: component.Attempted, CommittedAtMS: component.CommittedAtMS,
+				ObservedAtMS: component.ObservedAtMS,
+			})
+		}
+		providers = append(providers, core.ProviderRefreshResult{
+			Provider: provider.Provider, Status: provider.Status, Components: components,
+		})
+	}
+	return core.ProviderRefreshReceipt{Trigger: value.Trigger, Providers: providers}
 }
 
 func localReportingLocation() *time.Location {
@@ -251,24 +311,6 @@ func composeGrokQueryService(
 		return disabled, nil
 	}
 	return service, nil
-}
-
-type combinedProviderRefresher struct {
-	cursor runtimeinfo.ProviderSourceRefresher
-	grok   runtimeinfo.ProviderSourceRefresher
-}
-
-func (refresher combinedProviderRefresher) Refresh(ctx context.Context) error {
-	var first error
-	if refresher.cursor != nil {
-		if err := refresher.cursor.Refresh(ctx); err != nil && first == nil {
-			first = err
-		}
-	}
-	if refresher.grok != nil {
-		_ = refresher.grok.Refresh(ctx)
-	}
-	return first
 }
 
 func openApplicationPreferences() (*preferences.FileStore, error) {

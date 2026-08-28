@@ -424,6 +424,43 @@ func TestRuntimeFiltersRejectDuplicateFieldsAndValuesBeforeReader(t *testing.T) 
 	}
 }
 
+func TestListSourcesDoesNotInvokeProviderRefresher(t *testing.T) {
+	t.Parallel()
+	refresher := &countingProviderRefresher{}
+	service, err := NewService(Dependencies{
+		Quota: &quotaStub{}, Runtime: &runtimeStub{sourcePage: func(
+			context.Context, store.RuntimeSourceQuery,
+		) (store.RuntimeSourcePage, error) {
+			return store.RuntimeSourcePage{
+				MatchedCount: 0, Summary: store.RuntimeSourceSummary{},
+			}, nil
+		}},
+		Preferences: &preferencesStub{}, ProviderSources: refresher,
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	if _, err := service.ListSources(context.Background(), basequery.Request{}); err != nil {
+		t.Fatalf("ListSources() error = %v", err)
+	}
+	if refresher.calls != 0 {
+		t.Fatalf("ListSources() refresher calls = %d, want 0", refresher.calls)
+	}
+	if _, err := service.Source(context.Background(), SourceDetailRequest{SourceKey: "local_file:missing"}); err == nil {
+		t.Fatal("Source() expected read error")
+	}
+	if refresher.calls != 0 {
+		t.Fatalf("Source() refresher calls = %d, want 0", refresher.calls)
+	}
+}
+
+type countingProviderRefresher struct{ calls int }
+
+func (refresher *countingProviderRefresher) Refresh(context.Context) error {
+	refresher.calls++
+	return nil
+}
+
 func TestSettingsRejectsJavaScriptUnsafeTimestamps(t *testing.T) {
 	t.Parallel()
 

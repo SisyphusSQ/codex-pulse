@@ -174,7 +174,7 @@ func (client *DashboardClient) call(ctx context.Context, method string, payload 
 	}
 	defer response.Body.Close()
 	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
-		return nil, ErrDesktopAuthExpired
+		return nil, ErrDashboardAuthRejected
 	}
 	if response.StatusCode != http.StatusOK || !strings.HasPrefix(response.Header.Get("Content-Type"), "application/proto") {
 		return nil, fmt.Errorf("%w: unexpected response status %d", ErrDashboardTransport, response.StatusCode)

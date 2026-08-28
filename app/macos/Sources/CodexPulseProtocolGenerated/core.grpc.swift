@@ -241,6 +241,19 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
                 type: .unary
             )
         }
+        /// Namespace for "RequestProviderRefresh" metadata.
+        public enum RequestProviderRefresh: Sendable {
+            /// Request type for "RequestProviderRefresh".
+            public typealias Input = Codexpulse_Core_V1_ProviderRefreshRequest
+            /// Response type for "RequestProviderRefresh".
+            public typealias Output = Codexpulse_Core_V1_ProviderRefreshReceipt
+            /// Descriptor for "RequestProviderRefresh".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "RequestProviderRefresh",
+                type: .unary
+            )
+        }
         /// Namespace for "ListSources" metadata.
         public enum ListSources: Sendable {
             /// Request type for "ListSources".
@@ -572,6 +585,7 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
             UpdateAPICredential.descriptor,
             QuotaPace.descriptor,
             RequestQuotaRefresh.descriptor,
+            RequestProviderRefresh.descriptor,
             ListSources.descriptor,
             Source.descriptor,
             ListJobs.descriptor,
@@ -940,6 +954,25 @@ extension Codexpulse_Core_V1_CoreService {
             deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_QuotaRefreshReceipt>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_QuotaRefreshReceipt>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "RequestProviderRefresh" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_ProviderRefreshRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_ProviderRefreshRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_ProviderRefreshReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func requestProviderRefresh<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_ProviderRefreshRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_ProviderRefreshRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_ProviderRefreshReceipt>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_ProviderRefreshReceipt>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
         /// Call the "ListSources" method.
@@ -1922,6 +1955,36 @@ extension Codexpulse_Core_V1_CoreService {
             try await self.client.unary(
                 request: request,
                 descriptor: Codexpulse_Core_V1_CoreService.Method.RequestQuotaRefresh.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "RequestProviderRefresh" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_ProviderRefreshRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_ProviderRefreshRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_ProviderRefreshReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func requestProviderRefresh<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_ProviderRefreshRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_ProviderRefreshRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_ProviderRefreshReceipt>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_ProviderRefreshReceipt>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.RequestProviderRefresh.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -3077,6 +3140,31 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
         )
     }
 
+    /// Call the "RequestProviderRefresh" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_ProviderRefreshRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func requestProviderRefresh<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_ProviderRefreshRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_ProviderRefreshReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.requestProviderRefresh(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_ProviderRefreshRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_ProviderRefreshReceipt>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "ListSources" method.
     ///
     /// - Parameters:
@@ -4166,6 +4254,35 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
             metadata: metadata
         )
         return try await self.requestQuotaRefresh(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "RequestProviderRefresh" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func requestProviderRefresh<Result>(
+        _ message: Codexpulse_Core_V1_ProviderRefreshRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_ProviderRefreshReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_ProviderRefreshRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.requestProviderRefresh(
             request: request,
             options: options,
             onResponse: handleResponse

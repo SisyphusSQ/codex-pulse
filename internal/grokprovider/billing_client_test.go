@@ -107,7 +107,7 @@ func TestBillingClientFailClosedOnUnauthorized(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.GetCredits(context.Background()); !errors.Is(err, ErrAuthExpired) {
+	if _, err := client.GetCredits(context.Background()); !errors.Is(err, ErrBillingAuthRejected) {
 		t.Fatalf("unauthorized error = %v", err)
 	}
 }

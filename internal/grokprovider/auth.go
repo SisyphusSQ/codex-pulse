@@ -15,8 +15,9 @@ import (
 )
 
 var (
-	ErrAuthUnavailable = errors.New("grok authentication is unavailable")
-	ErrAuthExpired     = errors.New("grok authentication is expired")
+	ErrAuthUnavailable     = errors.New("grok authentication is unavailable")
+	ErrAuthExpired         = errors.New("grok authentication is expired")
+	ErrBillingAuthRejected = errors.New("grok billing rejected credentials")
 )
 
 type AccountSnapshot struct {

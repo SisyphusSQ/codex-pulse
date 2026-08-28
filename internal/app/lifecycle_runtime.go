@@ -24,6 +24,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/liveindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/providerrefresh"
 	"github.com/SisyphusSQ/codex-pulse/internal/scheduler"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
@@ -116,6 +117,9 @@ type applicationLifecycleRuntime struct {
 	drainOnce  sync.Once
 	drainDone  chan struct{}
 	drainErr   error
+
+	globalRefreshMu sync.Mutex
+	globalRefresh   *providerrefresh.Orchestrator
 
 	closeOnce sync.Once
 	closeDone chan struct{}
@@ -343,9 +347,10 @@ func startApplicationLifecycleRuntime(
 			return nil, applicationLifecycleDependencyError(ctx, err)
 		}
 	}
+	globalOwner := &globalRefreshOwner{}
 	adapter, err := NewLifecycleEventAdapter(LifecycleEventAdapterConfig{
 		Coordinator: applicationQuotaLifecycleCoordinator{
-			local: coordinator, quota: quotaRuntime,
+			local: coordinator, quota: quotaRuntime, global: globalOwner,
 		},
 		EventTimeout: config.EventTimeout,
 		DidWake:      config.UpdateWake,
@@ -369,6 +374,7 @@ func startApplicationLifecycleRuntime(
 		drainDone: make(chan struct{}),
 		closeDone: make(chan struct{}),
 	}
+	globalOwner.runtime = runtime
 	if cursorConfig, configErr := cursorprovider.DefaultConfig(); configErr == nil {
 		if cursorAuth, authErr := cursorprovider.NewDesktopAuthReader(cursorConfig.StateDatabase, time.Now); authErr == nil {
 			runtime.cursorAccountReader = cursorAuth.ReadAccountSnapshot

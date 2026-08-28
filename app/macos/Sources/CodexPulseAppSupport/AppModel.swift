@@ -78,6 +78,8 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var lastShutdownOutcome: ShutdownOutcome?
     @Published public private(set) var isOverviewRefreshing = false
     @Published public private(set) var isRefreshingAll = false
+    @Published public private(set) var isGlobalRefreshing = false
+    @Published public private(set) var globalRefreshPresentation: ProviderRefreshPresentation?
     @Published public var selectedFeature: AppFeature = .overview
 	@Published public private(set) var selectedProvider: AgentProvider = .codex
 	@Published public private(set) var statusProvider: AgentProvider = .codex
@@ -153,6 +155,7 @@ public final class AppModel: ObservableObject {
     private var consumedCursors: [FeatureTaskKey: Set<String>] = [:]
     private var refreshAllPendingTasks: Set<FeatureTaskKey> = []
     private var refreshAllWaitsForOverview = false
+    private var globalRefreshTask: Task<Void, Never>?
     private var latestRuntimeState: CoreConnectionState = .idle
 	private var statusOverviewCache: [AgentProvider: OverviewPresentation] = [:]
 	private var statusUsageCache:
@@ -246,7 +249,8 @@ public final class AppModel: ObservableObject {
     }
 
     public func isRefreshing(_ feature: AppFeature) -> Bool {
-        switch feature {
+        if isGlobalRefreshing { return true }
+        return switch feature {
         case .overview:
             isOverviewRefreshing
         case .sessions:
@@ -339,7 +343,9 @@ public final class AppModel: ObservableObject {
 	}
 
 	public func refreshStatusProvider() {
-		loadStatusOverview()
+		runGlobalManualRefresh { [weak self] in
+			self?.loadStatusOverview()
+		}
 	}
 
 	public func openMainWindowProvider(_ provider: AgentProvider) {
@@ -390,6 +396,12 @@ public final class AppModel: ObservableObject {
             restartCore()
             return
         }
+        runGlobalManualRefresh { [weak self] in
+            self?.reloadFeature(feature)
+        }
+    }
+
+    private func reloadFeature(_ feature: AppFeature) {
         switch feature {
         case .overview: refreshOrRestart()
         case .sessions: loadSessions(reset: true)
@@ -468,23 +480,27 @@ public final class AppModel: ObservableObject {
             return
         }
         isRefreshingAll = true
-        refreshAllPendingTasks.removeAll()
         refreshAllWaitsForOverview = true
-        loadSessions(reset: true)
-        loadProjects(reset: true)
-        loadQuotaAndUsage()
-		loadAPISubscriptions()
-		if selectedProvider.supportsInvocationStatistics {
-			loadInvocationUsage()
-		}
-        loadLocalStatus()
-        loadSourcesAndJobs(reset: true)
-        loadSettings()
-        for feature in [AppFeature.sessions, .projects, .localStatus, .sourcesJobs] {
-            reloadSelectedDetails(for: feature, onlyIfNeeded: false)
+        runGlobalManualRefresh { [weak self] in
+            guard let self else { return }
+            self.refreshAllPendingTasks.removeAll()
+            self.refreshAllWaitsForOverview = true
+            self.loadSessions(reset: true)
+            self.loadProjects(reset: true)
+            self.loadQuotaAndUsage()
+            self.loadAPISubscriptions()
+            if self.selectedProvider.supportsInvocationStatistics {
+                self.loadInvocationUsage()
+            }
+            self.loadLocalStatus()
+            self.loadSourcesAndJobs(reset: true)
+            self.loadSettings()
+            for feature in [AppFeature.sessions, .projects, .localStatus, .sourcesJobs] {
+                self.reloadSelectedDetails(for: feature, onlyIfNeeded: false)
+            }
+            self.refresh()
+            self.finishRefreshAllIfPossible()
         }
-        refresh()
-        finishRefreshAllIfPossible()
     }
 
     private func reloadSelectedDetails(for feature: AppFeature, onlyIfNeeded: Bool) {
@@ -1470,7 +1486,8 @@ public final class AppModel: ObservableObject {
     private func finishRefreshAllIfPossible() {
         guard isRefreshingAll,
               refreshAllPendingTasks.isEmpty,
-              !refreshAllWaitsForOverview
+              !refreshAllWaitsForOverview,
+              !isGlobalRefreshing
         else {
             return
         }
@@ -1481,6 +1498,35 @@ public final class AppModel: ObservableObject {
         isRefreshingAll = false
         refreshAllPendingTasks.removeAll()
         refreshAllWaitsForOverview = false
+        isGlobalRefreshing = false
+        globalRefreshTask = nil
+    }
+
+    private func runGlobalManualRefresh(then reload: @escaping () -> Void) {
+        if let existing = globalRefreshTask {
+            Task { @MainActor [weak self] in
+                await existing.value
+                guard let self, self.canRefreshOrRestart else { return }
+                reload()
+            }
+            return
+        }
+        isGlobalRefreshing = true
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let receipt = try await self.runtime.requestProviderRefresh(trigger: "manual")
+                self.globalRefreshPresentation = ProviderRefreshPresentation(receipt)
+            } catch {
+                // Keep last committed presentation; do not mark the whole app unavailable.
+            }
+            self.isGlobalRefreshing = false
+            self.globalRefreshTask = nil
+            guard self.canRefreshOrRestart else { return }
+            reload()
+            self.finishRefreshAllIfPossible()
+        }
+        globalRefreshTask = task
     }
 
     private func markMutationsUncertain(_ notice: AppNotice) {
@@ -1544,7 +1590,7 @@ public final class AppModel: ObservableObject {
             return
         }
 		if affected.contains(selectedFeature), !requiresCoreRestart {
-			refresh(selectedFeature)
+			reloadFeature(selectedFeature)
 		}
 		if refreshesStatus, !requiresCoreRestart {
 			if !statusOverviewState.isLoading {

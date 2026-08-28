@@ -14,6 +14,7 @@ import (
 var (
 	ErrDesktopAuthUnavailable = errors.New("cursor desktop authentication is unavailable")
 	ErrDesktopAuthExpired     = errors.New("cursor desktop authentication is expired")
+	ErrDashboardAuthRejected  = errors.New("cursor dashboard rejected credentials")
 )
 
 // DesktopAccessToken is a validated Cursor Desktop credential kept only in memory.

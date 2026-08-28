@@ -145,6 +145,9 @@ func openNormalRuntime(
 		return nil, err
 	}
 	if lifecycleRuntime != nil {
+		if composition.providerRefresh != nil {
+			lifecycleRuntime.SetGlobalRefresh(composition.providerRefresh)
+		}
 		err = core.BindDependencies(service, core.ServiceConfig{
 			QuotaRefresh: lifecycleRuntime, RuntimeControls: lifecycleRuntime, SessionDeepIndex: lifecycleRuntime,
 			AccountSnapshot: lifecycleRuntime,

@@ -9,6 +9,7 @@ import (
 
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
+	"github.com/SisyphusSQ/codex-pulse/internal/providerrefresh"
 	"github.com/SisyphusSQ/codex-pulse/internal/scheduler"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -63,8 +64,9 @@ type applicationQuotaRuntime struct {
 }
 
 type applicationQuotaLifecycleCoordinator struct {
-	local systemLifecycleCoordinator
-	quota *applicationQuotaRuntime
+	local  systemLifecycleCoordinator
+	quota  *applicationQuotaRuntime
+	global *globalRefreshOwner
 }
 
 func startApplicationQuotaRuntime(
@@ -195,12 +197,21 @@ func (runtime *applicationQuotaRuntime) RequestRefresh(
 	source quotaonline.RefreshSource,
 	trigger store.SourceRefreshTrigger,
 ) (store.SourceRefreshSchedule, error) {
+	schedule, _, err := runtime.RequestRefreshResult(ctx, source, trigger)
+	return schedule, err
+}
+
+func (runtime *applicationQuotaRuntime) RequestRefreshResult(
+	ctx context.Context,
+	source quotaonline.RefreshSource,
+	trigger store.SourceRefreshTrigger,
+) (store.SourceRefreshSchedule, bool, error) {
 	operationContext, finish, err := runtime.beginAdmission(ctx)
 	if err != nil {
-		return store.SourceRefreshSchedule{}, err
+		return store.SourceRefreshSchedule{}, false, err
 	}
 	defer finish()
-	return runtime.coordinator.RequestRefresh(operationContext, source, trigger)
+	return runtime.coordinator.RequestRefreshResult(operationContext, source, trigger)
 }
 
 func (runtime *applicationQuotaRuntime) requestLifecycleRefresh(
@@ -511,7 +522,11 @@ func (coordinator applicationQuotaLifecycleCoordinator) SystemDidWake(
 	if state.HomeGeneration <= 0 {
 		quotaErr = ErrApplicationQuotaRuntime
 	} else if quotaErr = coordinator.quota.ResumeGeneration(ctx, uint64(state.HomeGeneration)); quotaErr == nil {
-		quotaErr = coordinator.quota.requestLifecycleRefresh(ctx, store.RefreshTriggerWake)
+		if coordinator.global != nil {
+			coordinator.global.Refresh(ctx, providerrefresh.TriggerWake)
+		} else {
+			quotaErr = coordinator.quota.requestLifecycleRefresh(ctx, store.RefreshTriggerWake)
+		}
 	}
 	return state, errors.Join(localErr, quotaErr)
 }
@@ -526,6 +541,10 @@ func (coordinator applicationQuotaLifecycleCoordinator) SourceChanged(
 	}
 	state, localErr := coordinator.local.SourceChanged(ctx, eventID, available)
 	if !available {
+		return state, localErr
+	}
+	if coordinator.global != nil {
+		coordinator.global.Refresh(ctx, providerrefresh.TriggerForeground)
 		return state, localErr
 	}
 	quotaErr := coordinator.quota.requestLifecycleRefresh(ctx, store.RefreshTriggerForeground)

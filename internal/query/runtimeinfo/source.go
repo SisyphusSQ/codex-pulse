@@ -22,11 +22,6 @@ func (service *Service) ListSources(
 	if err != nil {
 		return SourceListResponse{}, err
 	}
-	if service.providerSources != nil {
-		if err := service.providerSources.Refresh(ctx); err != nil {
-			return SourceListResponse{}, runtimeReadFailure(err)
-		}
-	}
 	validated, err := validateRuntimeRequest(ctx, service.sourceSpec, request, "updatedAt")
 	if err != nil {
 		return SourceListResponse{}, err
@@ -64,11 +59,6 @@ func (service *Service) Source(
 	ctx, err := queryContext(ctx)
 	if err != nil {
 		return SourceDetailResponse{}, err
-	}
-	if service.providerSources != nil {
-		if err := service.providerSources.Refresh(ctx); err != nil {
-			return SourceDetailResponse{}, runtimeReadFailure(err)
-		}
 	}
 	if !validSourceKey(request.SourceKey) {
 		return SourceDetailResponse{}, basequery.NewValidationFailure("sourceKey", nil)

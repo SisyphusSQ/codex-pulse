@@ -30,7 +30,7 @@ func TestCoreProtoExposesExactRPCSurface(t *testing.T) {
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
 		"MigrationRecoveryExit", "MigrationRecoveryPrepare", "MigrationRecoveryRetry",
 		"MigrationRecoveryState", "NotifyLifecycle", "PlanHomeSwitch", "ProjectDetail", "QuotaCurrent",
-		"PricingCatalogCurrent", "QuotaPace", "RecoverHomeSwitch", "RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings",
+		"PricingCatalogCurrent", "QuotaPace", "RecoverHomeSwitch", "RequestProviderRefresh", "RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings",
 		"Shutdown", "Source", "SubscribeInvalidations", "UpdateAPICredential", "UpdateSettings", "UsageCost",
 	}
 	sort.Strings(want)
@@ -81,6 +81,10 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		`(?s)message QuotaPaceResponse\s*\{.*ResponseMeta meta\s*=\s*1\s*;.*CurrentQuotaPace pace\s*=\s*2\s*;.*ProviderContext provider_context\s*=\s*3\s*;`,
 		`(?s)message QuotaRefreshRequest\s*\{.*string source\s*=\s*1\s*;.*ProviderScope provider\s*=\s*2\s*;`,
 		`(?s)message QuotaRefreshReceipt\s*\{.*string source\s*=\s*1\s*;.*ProviderContext provider_context\s*=\s*5\s*;`,
+		`(?s)message ProviderRefreshRequest\s*\{.*string trigger\s*=\s*1\s*;`,
+		`(?s)message ProviderRefreshReceipt\s*\{.*string trigger\s*=\s*1\s*;.*repeated ProviderRefreshResult providers\s*=\s*2\s*;`,
+		`(?s)message ProviderRefreshResult\s*\{.*string provider\s*=\s*1\s*;.*string status\s*=\s*2\s*;.*repeated ProviderRefreshComponentResult components\s*=\s*3\s*;`,
+		`(?s)message ProviderRefreshComponentResult\s*\{.*string component\s*=\s*1\s*;.*string status\s*=\s*2\s*;.*string reason_code\s*=\s*3\s*;.*bool attempted\s*=\s*4\s*;`,
 	} {
 		if !regexp.MustCompile(pattern).MatchString(content) {
 			t.Fatalf("core.proto does not satisfy contract pattern %q", pattern)

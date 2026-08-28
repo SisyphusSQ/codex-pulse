@@ -3758,6 +3758,26 @@ private actor FakeCore: AppCoreServing {
         return receipt
     }
 
+    func requestProviderRefresh(
+        _ request: Codexpulse_Core_V1_ProviderRefreshRequest
+    ) async throws -> Codexpulse_Core_V1_ProviderRefreshReceipt {
+        calls.append("provider_refresh:\(request.trigger)")
+        var receipt = Codexpulse_Core_V1_ProviderRefreshReceipt()
+        receipt.trigger = request.trigger
+        for provider in ["codex", "cursor", "grok"] {
+            var result = Codexpulse_Core_V1_ProviderRefreshResult()
+            result.provider = provider
+            result.status = "skipped_unavailable"
+            var component = Codexpulse_Core_V1_ProviderRefreshComponentResult()
+            component.component = "local"
+            component.status = "skipped_unavailable"
+            component.reasonCode = "unavailable"
+            result.components = [component]
+            receipt.providers.append(result)
+        }
+        return receipt
+    }
+
     func settings(
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_SettingsResponse {
@@ -5118,9 +5138,12 @@ private func testRefreshAllReportsGlobalProgressUntilEveryReadCompletes() async 
     model.refreshAllFeatures()
 
     try expect(model.isRefreshingAll, "Refresh All must expose global progress immediately")
+    try await waitUntil("refresh-all page read after global refresh") {
+        await MainActor.run { model.sessionsState.isLoading || model.sessionsState.value != nil }
+    }
     try expect(
-        model.sessionsState.isLoading,
-        "Refresh All progress must begin while the delayed page read is still running"
+        model.isRefreshingAll || model.sessionsState.isLoading,
+        "Refresh All progress must remain visible while the delayed page read is still running"
     )
     try await waitUntil("refresh-all progress completion") {
         await MainActor.run { !model.isRefreshingAll }
@@ -5230,6 +5253,123 @@ private func testTransientCursorFailureCanRetry() async throws {
             model.sessionsState.value?.items.map(\.sessionID) == ["page-1", "page-2"]
         }
     }
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testGlobalRefreshMapsThreeProviderReceipt() async throws {
+    let suiteName = "CodexPulseAppTests.GlobalRefreshMap.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("global refresh map defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("global refresh map overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.refreshAllFeatures()
+    try await waitUntil("global refresh mapped") {
+        await MainActor.run { model.globalRefreshPresentation?.providers.count == 3 }
+    }
+    let presentation = model.globalRefreshPresentation
+    try expect(presentation?.providers.map(\.provider) == ["codex", "cursor", "grok"], "receipt must keep stable provider order")
+    try expect(presentation?.skippedCount == 3, "expected skip summary must not clear presentation")
+    try expect(!(model.state.isUnavailable), "skipped providers must not mark the app unavailable")
+    _ = await model.shutdown()
+}
+
+private extension AppViewState {
+    var isUnavailable: Bool {
+        if case .unavailable = self { return true }
+        return false
+    }
+}
+
+@MainActor
+private func testGlobalRefreshEntriesShareInFlightState() async throws {
+    let suiteName = "CodexPulseAppTests.GlobalRefreshSingleFlight.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("global refresh single-flight defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("global refresh single-flight overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.refresh(.sessions)
+    model.refreshAllFeatures()
+    model.refreshStatusProvider()
+    try await waitUntil("global refresh single-flight done") {
+        await MainActor.run { !model.isGlobalRefreshing && !model.isRefreshingAll }
+    }
+    let calls = await core.recordedCalls().filter { $0 == "provider_refresh:manual" }
+    try expect(calls.count == 1, "toolbar, reload-all, and status refresh must share one in-flight global refresh")
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testProviderSwitchDoesNotRequestGlobalRefresh() async throws {
+    let suiteName = "CodexPulseAppTests.ProviderSwitchNoGlobalRefresh.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("provider switch global refresh defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("provider switch overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    let before = await core.recordedCalls().filter { $0.hasPrefix("provider_refresh:") }
+    model.selectProvider(.cursor)
+    model.selectStatusProvider(.grok)
+    try await Task.sleep(for: .milliseconds(80))
+    let after = await core.recordedCalls().filter { $0.hasPrefix("provider_refresh:") }
+    try expect(before == after, "provider switch must not request a global refresh")
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testInvalidationDoesNotRequestGlobalRefresh() async throws {
+    let suiteName = "CodexPulseAppTests.InvalidationNoGlobalRefresh.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("invalidation global refresh defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setInvalidation(domain: "index", delay: .milliseconds(40))
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("invalidation overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    try await Task.sleep(for: .milliseconds(120))
+    let calls = await core.recordedCalls().filter { $0.hasPrefix("provider_refresh:") }
+    try expect(calls.isEmpty, "invalidation readback must not start a global refresh")
     _ = await model.shutdown()
 }
 
@@ -8909,6 +9049,15 @@ private func testCursorStatusBarQuotaPresentationUsesMonthlyQuotaAndTokens() thr
 			&& summary.accessibilityLabel.contains("Other Models 已用 5.3亿 Token"),
 		"Cursor status bar accessibility must name both monthly Token pools"
 	)
+	try expect(
+		summary.compactTextOmitsProviderNames
+			&& summary.accessibilityLabel.contains("Cursor Models")
+			&& !StatusBarQuotaPresentation.compactTextOmitsProviderNames(
+				remainingText: "Cursor 月剩 90% · 100%",
+				usageText: "已用 3.2亿 · 5.3亿"
+			),
+		"Cursor native status validation must keep visible compact text provider-neutral while allowing semantic pool names in accessibility copy"
+	)
 
 	try expect(
 		summary.remainingText == "月剩 90% · 100%",
@@ -10689,6 +10838,10 @@ struct CodexPulseAppTestMain {
         try await testIndexInvalidationRefreshesStatusWhileApplicationIsInactive()
         try await testRepeatedCursorStopsPagination()
         try await testTransientCursorFailureCanRetry()
+        try await testGlobalRefreshMapsThreeProviderReceipt()
+        try await testGlobalRefreshEntriesShareInFlightState()
+        try await testProviderSwitchDoesNotRequestGlobalRefresh()
+        try await testInvalidationDoesNotRequestGlobalRefresh()
         try await testQuotaMutationIsSingleFlight()
 		try await testQuotaMutationCarriesSelectedProviderAndSwitchClearsState()
         try await testLifecycleInvalidationPreservesMutation()

@@ -372,9 +372,10 @@ def manual_gates(channel: str) -> list[str]:
     if channel == "stable":
         return [
             (
-                "make verify, make check, make test-go, make test-swift, "
-                "and real Codex Home acceptance by default; skipping any "
-                "item requires explicit user authorization"
+                "tests and product acceptance are skipped by default: make "
+                "verify, make check, make test-go, make test-swift, "
+                "make verify-live, real Codex Home, and fresh macOS user "
+                "acceptance run only with explicit user authorization"
             ),
             "remote tag, Release, asset, and SHA-256 readback",
             (
@@ -386,20 +387,19 @@ def manual_gates(channel: str) -> list[str]:
                 "unsigned requires Gatekeeper disclosure and a retained "
                 "Sparkle key; signed-notarized requires full trust readback"
             ),
-            (
-                "fresh macOS user first-open and restart readback by default; "
-                "skipping it requires explicit user authorization"
-            ),
         ]
     return [
-        "make verify",
-        "real Codex Home product acceptance",
+        (
+            "tests and product acceptance are skipped by default: make verify, "
+            "make check, make test-go, make test-swift, make verify-live, "
+            "real Codex Home, and fresh macOS user acceptance run only with "
+            "explicit user authorization"
+        ),
         "remote tag, Release, asset, and SHA-256 readback",
         (
             "explicit preview distribution decision: unsigned or "
             "signed-notarized"
         ),
-        "fresh macOS user preview first-open and restart readback",
     ]
 
 

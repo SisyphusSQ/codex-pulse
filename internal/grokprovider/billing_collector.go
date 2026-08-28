@@ -2,6 +2,7 @@ package grokprovider
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -66,6 +67,79 @@ func (collector *BillingCollector) RefreshIfDue(ctx context.Context) (bool, erro
 		return false, ErrCollector
 	}
 	return collector.refresh(ctx, collector.config.MinimumRefresh)
+}
+
+// BillingRefreshClass is the settled outcome of one Grok billing collector call.
+type BillingRefreshClass struct {
+	Attempted bool
+	Remote    bool
+	Disabled  bool
+	Err       error
+}
+
+func (collector *BillingCollector) RefreshClassified(ctx context.Context, interactive bool) BillingRefreshClass {
+	if collector == nil {
+		return BillingRefreshClass{Err: ErrCollector}
+	}
+	minimum := collector.config.MinimumRefresh
+	if interactive {
+		minimum = min(minimum, billingInteractiveRefreshInterval)
+	}
+	return collector.refreshClassified(ctx, minimum)
+}
+
+func (collector *BillingCollector) refreshClassified(
+	ctx context.Context,
+	minimumRefresh time.Duration,
+) BillingRefreshClass {
+	if collector == nil || collector.client == nil || collector.writer == nil || ctx == nil {
+		return BillingRefreshClass{Err: ErrCollector}
+	}
+	if !collector.config.Enabled() {
+		return BillingRefreshClass{Disabled: true}
+	}
+	collector.mu.Lock()
+	defer collector.mu.Unlock()
+	now := collector.config.Now()
+	if !collector.last.IsZero() && now.Sub(collector.last) < minimumRefresh {
+		return BillingRefreshClass{}
+	}
+	atMS := now.UnixMilli()
+	credits, err := collector.client.GetCredits(ctx)
+	if err != nil {
+		result := classifyGrokBillingError(err)
+		if result.Remote || result.Attempted {
+			_ = collector.writer.RecordGrokBillingFailure(ctx, atMS, billingFailureCode(err))
+			collector.last = now
+		}
+		return result
+	}
+	snapshot := store.GrokBillingSnapshot{
+		Generation: atMS, CollectedAtMS: atMS, PeriodType: credits.PeriodType,
+		PeriodStartMS: credits.PeriodStartMS, PeriodEndMS: credits.PeriodEndMS,
+		UsedPercent: credits.UsedPercent, OnDemandUsed: credits.OnDemandUsed,
+		OnDemandCap: credits.OnDemandCap, PrepaidBalance: credits.PrepaidBalance,
+		SubscriptionTier: credits.SubscriptionTier, IsUnifiedBilling: credits.IsUnifiedBilling,
+		QuotaObservations: grokBillingObservations(atMS, credits),
+	}
+	if err := collector.writer.CommitGrokBillingSnapshot(ctx, snapshot); err != nil {
+		return BillingRefreshClass{Attempted: true, Remote: true, Err: err}
+	}
+	collector.last = now
+	return BillingRefreshClass{Attempted: true, Remote: true}
+}
+
+func classifyGrokBillingError(err error) BillingRefreshClass {
+	if err == nil {
+		return BillingRefreshClass{Attempted: true, Remote: true}
+	}
+	if errors.Is(err, ErrAuthUnavailable) || errors.Is(err, ErrAuthExpired) {
+		return BillingRefreshClass{Err: err}
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return BillingRefreshClass{Err: err}
+	}
+	return BillingRefreshClass{Attempted: true, Remote: true, Err: err}
 }
 
 func (collector *BillingCollector) refresh(ctx context.Context, minimumRefresh time.Duration) (bool, error) {

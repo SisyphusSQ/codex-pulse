@@ -800,3 +800,5 @@
 "一" = "Mon";
 "三" = "Wed";
 "五" = "Fri";
+"app.global_refresh.summary" = "Refreshed %d, skipped %d";
+"app.global_refresh.partial" = "Refreshed %d, skipped %d, failed %d";

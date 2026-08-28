@@ -456,9 +456,6 @@ func TestQueryServiceReturnsLocalSnapshotBeforeDashboardRefreshCompletes(t *test
 	if err != nil {
 		t.Fatalf("NewQueryService() error = %v", err)
 	}
-	var invalidations atomic.Int64
-	service.SetRefreshNotifier(func() { invalidations.Add(1) })
-
 	rangeValue := basequery.UTCTimeRange{StartAtMS: 1_000, EndAtMS: 5_000, TimeZone: "UTC"}
 	completed := make(chan error, 1)
 	go func() {
@@ -478,17 +475,10 @@ func TestQueryServiceReturnsLocalSnapshotBeforeDashboardRefreshCompletes(t *test
 	}
 	select {
 	case <-refresher.started:
-	case <-time.After(time.Second):
-		t.Fatal("dashboard refresh did not start in the background")
+		t.Fatal("UsageCost() started a remote dashboard refresh")
+	case <-time.After(50 * time.Millisecond):
 	}
 	close(refresher.release)
-	deadline := time.Now().Add(time.Second)
-	for invalidations.Load() != 2 && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
-	if invalidations.Load() != 2 {
-		t.Fatalf("local and dashboard completion invalidations = %d, want 2", invalidations.Load())
-	}
 }
 
 func TestQueryServiceGrokBotRefreshDoesNotShareDashboardSingleFlight(t *testing.T) {
@@ -508,11 +498,10 @@ func TestQueryServiceGrokBotRefreshDoesNotShareDashboardSingleFlight(t *testing.
 	}
 	grokBot := &countingRefresher{}
 	service.SetGrokBotRefresher(grokBot)
-	rangeValue := basequery.UTCTimeRange{StartAtMS: 1_000, EndAtMS: 5_000, TimeZone: "UTC"}
+	done := make(chan struct{})
 	go func() {
-		_, _ = service.UsageCost(context.Background(), usagecost.UsageCostRequest{
-			ExactRange: &rangeValue, Granularity: usagecost.TrendDay,
-		})
+		defer close(done)
+		_ = service.RefreshForGlobal(context.Background(), false)
 	}()
 	select {
 	case <-dashboard.started:
@@ -527,6 +516,7 @@ func TestQueryServiceGrokBotRefreshDoesNotShareDashboardSingleFlight(t *testing.
 		t.Fatal("grok bot refresh waited for the dashboard single-flight")
 	}
 	close(dashboard.release)
+	<-done
 }
 
 type countingRefresher struct{ calls atomic.Int64 }
@@ -583,8 +573,6 @@ func TestQueryServicePublishesDashboardSourceAfterBackgroundRefresh(t *testing.T
 		t.Fatalf("NewQueryService() error = %v", err)
 	}
 	rangeValue := basequery.UTCTimeRange{StartAtMS: 1_000, EndAtMS: 5_000, TimeZone: "UTC"}
-	refreshed := make(chan struct{}, 1)
-	service.SetRefreshNotifier(func() { refreshed <- struct{}{} })
 	response, err := service.UsageCost(context.Background(), usagecost.UsageCostRequest{
 		ExactRange: &rangeValue, Granularity: usagecost.TrendDay,
 	})
@@ -594,10 +582,9 @@ func TestQueryServicePublishesDashboardSourceAfterBackgroundRefresh(t *testing.T
 	if testContainsString(response.ProviderContext.Sources, SourceDashboard) {
 		t.Fatalf("initial provider sources = %v, remote refresh must not delay the local response", response.ProviderContext.Sources)
 	}
-	select {
-	case <-refreshed:
-	case <-time.After(time.Second):
-		t.Fatal("dashboard refresh did not publish an invalidation")
+	report := service.RefreshForGlobal(context.Background(), false)
+	if report.Dashboard.Err != nil {
+		t.Fatalf("RefreshForGlobal() dashboard error = %v", report.Dashboard.Err)
 	}
 	response, err = service.UsageCost(context.Background(), usagecost.UsageCostRequest{
 		ExactRange: &rangeValue, Granularity: usagecost.TrendDay,

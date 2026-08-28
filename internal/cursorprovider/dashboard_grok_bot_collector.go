@@ -82,7 +82,8 @@ func (collector *GrokBotCollector) RefreshIfDue(ctx context.Context) (bool, erro
 
 func (collector *GrokBotCollector) recordFailure(ctx context.Context, atMS int64, cause error) error {
 	failureCode := "read_failed"
-	if errors.Is(cause, ErrDesktopAuthExpired) || errors.Is(cause, ErrDesktopAuthUnavailable) {
+	if errors.Is(cause, ErrDesktopAuthExpired) || errors.Is(cause, ErrDesktopAuthUnavailable) ||
+		errors.Is(cause, ErrDashboardAuthRejected) {
 		failureCode = "auth_expired"
 	} else if errors.Is(cause, ErrDashboardProtocol) {
 		failureCode = "schema_incompatible"
