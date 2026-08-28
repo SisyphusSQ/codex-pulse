@@ -1,5 +1,10 @@
 ## Unreleased
 
+## v0.9.1 - 2026-08-28
+
+#### feature:
+1. 新增跨 Provider 全局刷新：统一支持启动、唤醒、前台和定时场景下的 Codex、Cursor 与 Grok 本地/在线额度刷新，回显各组件的刷新、跳过和失败结果，并通过新的 Core RPC 贯通 Go Helper 与原生 macOS App。
+
 ## v0.9.0 - 2026-08-27
 
 #### feature:
