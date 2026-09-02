@@ -109,5 +109,5 @@ go run ./scripts/lightindex-e2e \
 ## 残余边界
 
 - App Server 缺失或拒绝某个 rollout path 时，会话 metadata 仍可展示，Token 状态标记为 deferred；不会回退到全量 rollout metadata 解析。
-- 轻量 range query 可返回 safe model/token/cost 统计；没有模型或 exact 价格的 bucket 保持 unknown/unpriced。精确 Turn timeline 仍需要用户打开单会话后执行严格深索引。
+- 轻量 range query 可返回 safe model/token/cost 统计；没有模型或 exact 价格的 bucket 保持 unknown/unpriced。跨日期或 model 分组后，独立高水位增量可能使单个 timed/daily 分桶出现 `cached_input_tokens > input_tokens`（累计 checkpoint 仍合法）。此时该分桶费用为 unknown/not computed，不得记为 0 或 clamp 后参与总额，也不得把整个 Project/Usage/Session 查询变成 unavailable。Turn 级 `cached_input_tokens > input_tokens` 以及 `ErrCostOverflow`、负数仍 fail closed。精确 Turn timeline 仍需要用户打开单会话后执行严格深索引。
 - 旧约 823MB 数据库不会在 startup 自动 `VACUUM` 或删除。历史空间回收应作为独立、显式维护动作设计。

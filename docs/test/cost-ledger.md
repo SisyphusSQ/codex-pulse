@@ -64,7 +64,7 @@ numerator = (input_tokens - cached_input_tokens) × input_rate
 estimated_usd_micros = round_half_up(numerator / 1_000_000)
 ```
 
-所有 component numerator 先精确求和，最后只 round 一次。cached input 是 input 的子集，先从 input 扣除；`cached_input_tokens > input_tokens` 拒绝计算。Codex JSONL 的 reasoning 是独立于 output 的计数，两者使用同一个公开 output rate，不重复包含。
+所有 component numerator 先精确求和，最后只 round 一次。cached input 是 input 的子集，先从 input 扣除；Turn 级 `cached_input_tokens > input_tokens` 拒绝计算。轻量索引 timed/daily 增量按 input 与 cached 独立高水位计算：累计 checkpoint 仍可合法，但跨日期或 model 分桶后单个增量可能出现 `cached > input`。该分桶费用保持 unknown/not computed，token 与项目行继续返回；不得记为已知 0、clamp 后再计入总额，也不得把整个 Usage/Project/Session 查询变成 unavailable。`pricing.Calculate` 对负数和 `ErrCostOverflow` 仍 fail closed。Codex JSONL 的 reasoning 是独立于 output 的计数，两者使用同一个公开 output rate，不重复包含。
 
 | 场景 | 结果 |
 | --- | --- |
@@ -75,6 +75,7 @@ estimated_usd_micros = round_half_up(numerator / 1_000_000)
 | 版本存在但 exact key 未列出 | `unpriced/model_not_listed` |
 | model attribution 缺失/冲突/非法 | `missing_model` / `conflict_model` / `invalid_model` |
 | 没有 attribution row | `unpriced/missing_attribution` |
+| 轻量索引分桶 `cached_input_tokens > input_tokens`（累计 checkpoint 仍合法） | 该分桶费用 unknown；查询成功返回精确 token；包含它的项目、Session 与页面级汇总费用同样 unknown；合法分桶费用不变 |
 
 rollup 中任一成员缺失某 token component 时，该 component 与 `total_tokens` 为 `NULL`；其他完整 component 仍保持整数和。只要存在 priced turn，金额保存 priced subtotal 并同时返回 unpriced count；完全没有 priced turn 时金额为 `NULL`。
 

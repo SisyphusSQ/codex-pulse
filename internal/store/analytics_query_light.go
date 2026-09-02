@@ -39,8 +39,9 @@ type lightSessionPricingGroupKey struct {
 }
 
 type lightSessionPricingEvidence struct {
-	source, currency string
-	versions         []string
+	source, currency   string
+	versions           []string
+	incompleteSessions map[string]bool
 }
 
 func listLightSessionAnalytics(
@@ -59,7 +60,7 @@ func listLightSessionAnalytics(
 	}
 	if len(filter.ModelKeys) > 0 ||
 		(filter.Activity != nil && *filter.Activity == SessionActivityActive) {
-		empty := lightTotalsForRecords(nil)
+		empty := lightTotalsForRecords(nil, nil)
 		page.MatchedTotals = &empty
 		page.PageTotals = &empty
 		return page, true, nil
@@ -127,7 +128,7 @@ func listLightSessionAnalytics(
 	page.Currency = pricingEvidence.currency
 	sortLightSessionRecords(records, filter)
 	page.MatchedCount = int64(len(records))
-	matchedTotals := lightTotalsForRecords(records)
+	matchedTotals := lightTotalsForRecords(records, pricingEvidence.incompleteSessions)
 	page.MatchedTotals = &matchedTotals
 	if filter.Cursor != nil {
 		filtered := records[:0]
@@ -143,7 +144,7 @@ func listLightSessionAnalytics(
 		records = records[:filter.Limit]
 	}
 	page.Records = records
-	pageTotals := lightTotalsForRecords(records)
+	pageTotals := lightTotalsForRecords(records, pricingEvidence.incompleteSessions)
 	page.PageTotals = &pageTotals
 	if hasMore && len(records) > 0 {
 		page.NextCursor = sessionCursorForRecord(records[len(records)-1], filter.SortField)
@@ -269,10 +270,10 @@ func loadLightSessionDaily(
 			input: model.InputTokens, cached: model.CachedInputTokens,
 			output: model.OutputTokens, reasoning: model.ReasoningTokens,
 		}
-		if err := accumulatorForLight(groups, bucket).add(group, nil); err != nil {
+		if err := accumulatorForLight(groups, bucket).add(group, lightCalculatedCost{}); err != nil {
 			return nil, err
 		}
-		if err := reconciled.add(group, nil); err != nil {
+		if err := reconciled.add(group, lightCalculatedCost{}); err != nil {
 			return nil, err
 		}
 	}
@@ -368,11 +369,16 @@ func cloneStringIfPresent(value string) *string {
 	return &cloned
 }
 
-func lightTotalsForRecords(records []SessionAnalyticsRecord) RollupTotals {
+func lightTotalsForRecords(
+	records []SessionAnalyticsRecord,
+	incompleteSessions map[string]bool,
+) RollupTotals {
 	input, cached, output, reasoning, total, estimated := int64(0), int64(0), int64(0), int64(0), int64(0), int64(0)
 	hasEstimated := false
 	complete := true
+	costIncomplete := false
 	for _, record := range records {
+		costIncomplete = costIncomplete || incompleteSessions[record.SessionID]
 		if record.Rollup == nil || record.Rollup.InputTokens == nil || record.Rollup.CachedInputTokens == nil ||
 			record.Rollup.OutputTokens == nil || record.Rollup.ReasoningTokens == nil || record.Rollup.TotalTokens == nil {
 			complete = false
@@ -395,7 +401,7 @@ func lightTotalsForRecords(records []SessionAnalyticsRecord) RollupTotals {
 		InputTokens: &input, CachedInputTokens: &cached, OutputTokens: &output,
 		ReasoningTokens: &reasoning, TotalTokens: &total,
 	}
-	if hasEstimated {
+	if hasEstimated && !costIncomplete {
 		result.EstimatedUSDMicros = &estimated
 	}
 	return result
@@ -489,7 +495,9 @@ func attachLightSessionPricing(
 	if err != nil {
 		return lightSessionPricingEvidence{}, err
 	}
-	evidence := lightSessionPricingEvidence{versions: make([]string, 0)}
+	evidence := lightSessionPricingEvidence{
+		versions: make([]string, 0), incompleteSessions: make(map[string]bool),
+	}
 	if len(catalogs) == 0 {
 		return evidence, nil
 	}
@@ -524,12 +532,17 @@ func attachLightSessionPricing(
 	}
 	bySession := make(map[string]*lightRollupAccumulator)
 	for key, group := range groups {
-		estimated, err := calculateLightGroupCost(group, catalogByVersion, key.pricingVersion)
+		cost, err := calculateLightGroupCost(group, catalogByVersion, key.pricingVersion)
 		if err != nil {
 			return lightSessionPricingEvidence{}, err
 		}
-		if err := accumulatorForLight(bySession, key.sessionID).add(group, estimated); err != nil {
+		if err := accumulatorForLight(bySession, key.sessionID).add(group, cost); err != nil {
 			return lightSessionPricingEvidence{}, err
+		}
+	}
+	for sessionID, aggregate := range bySession {
+		if aggregate.costIncomplete {
+			evidence.incompleteSessions[sessionID] = true
 		}
 	}
 	for version := range usedVersions {

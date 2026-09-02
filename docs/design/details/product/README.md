@@ -117,7 +117,7 @@ api_equivalent_cost =
 + (output_tokens + reasoning_tokens) / 1_000_000 * output_price
 ```
 
-Codex JSONL 的 cached input 是 input 的子集，必须先从 input 扣除，不能按完整 input 价格重复计费；`cached_input_tokens > input_tokens` 视为非法事实并 fail closed。reasoning token 单独展示，并按模型公开 output 价格折算。无法匹配模型时必须显示 `unpriced` 或明确 fallback，不能静默乱算。
+Codex JSONL 的 cached input 是 input 的子集，必须先从 input 扣除，不能按完整 input 价格重复计费；Turn 级 `cached_input_tokens > input_tokens` 视为非法事实并 fail closed。轻量索引对累计 `input_tokens` 与 `cached_input_tokens` 分别取正增量，因此累计 checkpoint 仍可合法，但跨日期或 model 分桶后单个增量可能无法做定价分解。此时该分桶费用保持 unknown，项目行和精确 token 继续返回；不得把整页打成 unavailable，也不得 clamp、改写历史增量或把未知费用记为确定总额。reasoning token 单独展示，并按模型公开 output 价格折算。无法匹配模型时必须显示 `unpriced` 或明确 fallback，不能静默乱算。
 
 Pricing Catalog 本地版本化，每条记录包含 model、input/cached/output price、currency、effective date 和 source。历史 turn 使用当时选定的 pricing version，避免价格变化导致历史报表漂移。`PricingCatalogCurrent` 独立返回当前生效的 exact-only 完整目录、每百万 Token 单位、基础计价口径和官方来源，不得从历史 `UsageCost` 反推当前单价；v0.1 不自动联网更新价格。
 

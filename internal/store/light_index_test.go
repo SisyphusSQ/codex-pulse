@@ -1345,6 +1345,152 @@ func TestProjectAnalyticsUsesExactPartialDayBoundaries(t *testing.T) {
 	}
 }
 
+func TestProjectAnalyticsKeepsTokensWhenCachedDeltaExceedsInputAfterBucketing(t *testing.T) {
+	t.Parallel()
+
+	t.Run("dateBoundary", func(t *testing.T) {
+		t.Parallel()
+		repository := lightIndexRepositoryFixture(t)
+		installBuiltinLightPricing(t, repository)
+		mini := "gpt-5.4-mini"
+		firstAtMS := time.Date(2026, 7, 19, 1, 0, 0, 0, time.UTC).UnixMilli()
+		secondAtMS := time.Date(2026, 7, 20, 1, 0, 0, 0, time.UTC).UnixMilli()
+		seedLightHighWaterBoundaryTokens(t, repository, firstAtMS, secondAtMS, mini, mini)
+
+		weekStart := time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC).UnixMilli()
+		weekEnd := time.Date(2026, 7, 21, 0, 0, 0, 0, time.UTC).UnixMilli()
+		monthStart := time.Date(2026, 6, 21, 0, 0, 0, 0, time.UTC).UnixMilli()
+		page, err := repository.ListProjectAnalytics(context.Background(), ProjectAnalyticsFilter{
+			Range: AnalyticsRange{ReportingTimezone: "UTC", StartAtMS: weekStart, EndAtMS: weekEnd},
+			Limit: 20, SortField: ProjectAnalyticsSortTotalTokens, SortDirection: AnalyticsSortDescending,
+		})
+		if err != nil {
+			t.Fatalf("ListProjectAnalytics(7d) error = %v", err)
+		}
+		assertLightIndecomposableProjectPage(t, page, 2)
+		monthPage, err := repository.ListProjectAnalytics(context.Background(), ProjectAnalyticsFilter{
+			Range: AnalyticsRange{ReportingTimezone: "UTC", StartAtMS: monthStart, EndAtMS: weekEnd},
+			Limit: 20, SortField: ProjectAnalyticsSortEstimatedCost, SortDirection: AnalyticsSortDescending,
+		})
+		if err != nil {
+			t.Fatalf("ListProjectAnalytics(30d) error = %v", err)
+		}
+		assertLightIndecomposableProjectPage(t, monthPage, 2)
+
+		dayStart := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC).UnixMilli()
+		dayTwoStart := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC).UnixMilli()
+		if page.Records[0].Trend[0].BucketStartMS != dayStart ||
+			page.Records[0].Trend[0].EstimatedUSDMicros == nil ||
+			*page.Records[0].Trend[0].EstimatedUSDMicros != 75 ||
+			page.Records[0].Trend[1].BucketStartMS != dayTwoStart ||
+			page.Records[0].Trend[1].EstimatedUSDMicros != nil {
+			t.Fatalf("7d trend costs = %#v", page.Records[0].Trend)
+		}
+
+		today, err := repository.ListProjectAnalytics(context.Background(), ProjectAnalyticsFilter{
+			Range: AnalyticsRange{ReportingTimezone: "UTC", StartAtMS: dayStart, EndAtMS: dayTwoStart},
+			Limit: 5, SortField: ProjectAnalyticsSortTotalTokens, SortDirection: AnalyticsSortDescending,
+		})
+		if err != nil || len(today.Records) != 1 ||
+			today.Records[0].Totals.EstimatedUSDMicros == nil ||
+			*today.Records[0].Totals.EstimatedUSDMicros != 75 ||
+			today.Records[0].Totals.InputTokens == nil || *today.Records[0].Totals.InputTokens != 100 {
+			t.Fatalf("ListProjectAnalytics(today legal) = %#v, %v", today, err)
+		}
+		onlyBadDay, err := repository.ListProjectAnalytics(context.Background(), ProjectAnalyticsFilter{
+			Range: AnalyticsRange{ReportingTimezone: "UTC", StartAtMS: dayTwoStart, EndAtMS: weekEnd},
+			Limit: 5, SortField: ProjectAnalyticsSortTotalTokens, SortDirection: AnalyticsSortDescending,
+		})
+		if err != nil || len(onlyBadDay.Records) != 1 ||
+			onlyBadDay.Records[0].Totals.EstimatedUSDMicros != nil ||
+			onlyBadDay.Records[0].Totals.InputTokens == nil || *onlyBadDay.Records[0].Totals.InputTokens != 10 ||
+			onlyBadDay.Records[0].Totals.CachedInputTokens == nil ||
+			*onlyBadDay.Records[0].Totals.CachedInputTokens != 20 {
+			t.Fatalf("ListProjectAnalytics(bad day) = %#v, %v", onlyBadDay, err)
+		}
+
+		detail, err := repository.ProjectAnalytics(context.Background(), ProjectAnalyticsDetailFilter{
+			Range:        AnalyticsRange{ReportingTimezone: "UTC", StartAtMS: weekStart, EndAtMS: weekEnd},
+			DimensionKey: page.Records[0].DimensionKey, SessionLimit: 20, ModelLimit: 20,
+		})
+		if err != nil || detail.Record.DimensionKey != page.Records[0].DimensionKey ||
+			len(detail.Sessions) != 1 || detail.Sessions[0].SessionID != "one" ||
+			len(detail.Models) != 1 || detail.Models[0].Totals.EstimatedUSDMicros != nil ||
+			detail.Models[0].Totals.InputTokens == nil || *detail.Models[0].Totals.InputTokens != 110 {
+			t.Fatalf("ProjectAnalytics(7d) = %#v, %v", detail, err)
+		}
+
+		snapshot, err := repository.UsageCostRange(context.Background(), AnalyticsRange{
+			ReportingTimezone: "UTC", StartAtMS: weekStart, EndAtMS: weekEnd,
+		})
+		if err != nil || len(snapshot.Daily) != 2 ||
+			snapshot.Daily[0].EstimatedUSDMicros == nil || *snapshot.Daily[0].EstimatedUSDMicros != 75 ||
+			snapshot.Daily[1].EstimatedUSDMicros != nil ||
+			snapshot.Daily[1].InputTokens == nil || *snapshot.Daily[1].InputTokens != 10 ||
+			snapshot.Daily[1].CachedInputTokens == nil || *snapshot.Daily[1].CachedInputTokens != 20 {
+			t.Fatalf("UsageCostRange(7d) = %#v, %v", snapshot, err)
+		}
+
+		sessionPage, err := repository.ListSessionAnalytics(context.Background(), SessionAnalyticsFilter{
+			ReportingTimezone: pointerTo("UTC"), Limit: 10,
+			SortField: SessionAnalyticsSortTotalTokens, SortDirection: AnalyticsSortDescending,
+		})
+		if err != nil || len(sessionPage.Records) != 1 || sessionPage.Records[0].Rollup == nil ||
+			sessionPage.Records[0].Rollup.InputTokens == nil || *sessionPage.Records[0].Rollup.InputTokens != 110 ||
+			sessionPage.Records[0].Rollup.CachedInputTokens == nil || *sessionPage.Records[0].Rollup.CachedInputTokens != 20 ||
+			sessionPage.Records[0].Rollup.EstimatedUSDMicros == nil ||
+			*sessionPage.Records[0].Rollup.EstimatedUSDMicros != 69 {
+			t.Fatalf("ListSessionAnalytics(full session) = %#v, %v", sessionPage, err)
+		}
+	})
+
+	t.Run("modelBoundary", func(t *testing.T) {
+		t.Parallel()
+		repository := lightIndexRepositoryFixture(t)
+		installBuiltinLightPricing(t, repository)
+		mini, full := "gpt-5.4-mini", "gpt-5.4"
+		observedAtMS := time.Date(2026, 7, 19, 1, 0, 0, 0, time.UTC).UnixMilli()
+		seedLightHighWaterBoundaryTokens(
+			t, repository, observedAtMS, observedAtMS+int64(time.Hour/time.Millisecond), mini, full,
+		)
+		startAtMS := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC).UnixMilli()
+		endAtMS := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC).UnixMilli()
+		page, err := repository.ListProjectAnalytics(context.Background(), ProjectAnalyticsFilter{
+			Range: AnalyticsRange{ReportingTimezone: "UTC", StartAtMS: startAtMS, EndAtMS: endAtMS},
+			Limit: 20, SortField: ProjectAnalyticsSortTotalTokens, SortDirection: AnalyticsSortDescending,
+		})
+		if err != nil {
+			t.Fatalf("ListProjectAnalytics(model boundary) error = %v", err)
+		}
+		assertLightIndecomposableProjectPage(t, page, 1)
+		if len(page.Records[0].Trend) != 1 || page.Records[0].Trend[0].EstimatedUSDMicros != nil {
+			t.Fatalf("same-day mixed model trend = %#v", page.Records[0].Trend)
+		}
+
+		detail, err := repository.ProjectAnalytics(context.Background(), ProjectAnalyticsDetailFilter{
+			Range:        AnalyticsRange{ReportingTimezone: "UTC", StartAtMS: startAtMS, EndAtMS: endAtMS},
+			DimensionKey: page.Records[0].DimensionKey, SessionLimit: 20, ModelLimit: 20,
+		})
+		if err != nil || len(detail.Models) != 2 {
+			t.Fatalf("ProjectAnalytics(model boundary) = %#v, %v", detail, err)
+		}
+		byModel := make(map[string]RollupTotals, 2)
+		for _, model := range detail.Models {
+			if model.Model.ModelKey == nil {
+				t.Fatalf("model key missing: %#v", model)
+			}
+			byModel[*model.Model.ModelKey] = model.Totals
+		}
+		if byModel[mini].EstimatedUSDMicros == nil || *byModel[mini].EstimatedUSDMicros != 75 ||
+			byModel[mini].InputTokens == nil || *byModel[mini].InputTokens != 100 ||
+			byModel[full].EstimatedUSDMicros != nil ||
+			byModel[full].InputTokens == nil || *byModel[full].InputTokens != 10 ||
+			byModel[full].CachedInputTokens == nil || *byModel[full].CachedInputTokens != 20 {
+			t.Fatalf("model totals = %#v", detail.Models)
+		}
+	})
+}
+
 func TestLightAnalyticsGroupsCodexWorktreesAndKeepsScratchUsageAsOther(t *testing.T) {
 	t.Parallel()
 
@@ -1468,6 +1614,68 @@ func TestLightAnalyticsGroupsCodexWorktreesAndKeepsScratchUsageAsOther(t *testin
 	if projectIDs["worktree-one"] == nil || projectIDs["worktree-two"] == nil ||
 		*projectIDs["worktree-one"] != *projectIDs["worktree-two"] || projectIDs["scratch"] != nil {
 		t.Fatalf("session project identities = %#v", projectIDs)
+	}
+}
+
+func installBuiltinLightPricing(t *testing.T, repository *lightTestRepository) {
+	t.Helper()
+	for _, catalog := range pricing.BuiltinOpenAICatalog() {
+		if err := repository.AddPricingVersion(context.Background(), catalog); err != nil {
+			t.Fatalf("AddPricingVersion(%s) error = %v", catalog.PricingVersion, err)
+		}
+	}
+}
+
+func seedLightHighWaterBoundaryTokens(
+	t *testing.T,
+	repository *lightTestRepository,
+	firstAtMS, secondAtMS int64,
+	firstModel, secondModel string,
+) {
+	t.Helper()
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(context.Background(), "one", identity, "parser-v2", 2_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: secondAtMS + 1, Activate: true,
+		Checkpoint: storelight.LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes, Complete: true,
+			InputTokens: 110, CachedInputTokens: 20,
+			CurrentModelKey: &secondModel, CurrentModelSource: attribution.SourceModelCanonical,
+		},
+		TimedDeltas: []storelight.LightTokenTimedDelta{
+			{
+				SourceOffset: 4_000, ObservedAtMS: firstAtMS,
+				ModelKey: &firstModel, ModelSource: attribution.SourceModelCanonical,
+				InputTokens: 100,
+			},
+			{
+				SourceOffset: 5_000, ObservedAtMS: secondAtMS,
+				ModelKey: &secondModel, ModelSource: attribution.SourceModelCanonical,
+				InputTokens: 10, CachedInputTokens: 20,
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertLightIndecomposableProjectPage(t *testing.T, page ProjectAnalyticsPage, trendDays int) {
+	t.Helper()
+	if page.Mode != AnalyticsReadLightIndex || len(page.Records) != 1 || page.MatchedCount != 1 {
+		t.Fatalf("project page = %#v, want one light-index project", page)
+	}
+	record := page.Records[0]
+	if record.ProjectDisplayName == nil || *record.ProjectDisplayName != "workspace" ||
+		record.SessionCount != 1 || record.Totals.InputTokens == nil || *record.Totals.InputTokens != 110 ||
+		record.Totals.CachedInputTokens == nil || *record.Totals.CachedInputTokens != 20 ||
+		record.Totals.TotalTokens == nil || *record.Totals.TotalTokens != 110 ||
+		record.Totals.EstimatedUSDMicros != nil ||
+		page.GlobalTotals.EstimatedUSDMicros != nil ||
+		len(record.Trend) != trendDays {
+		t.Fatalf("project tokens/cost = %#v / %#v", record, page)
 	}
 }
 

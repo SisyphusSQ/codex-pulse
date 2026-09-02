@@ -303,6 +303,34 @@ func TestTokenScannerCancellationDoesNotAdvanceOffset(t *testing.T) {
 	}
 }
 
+func TestTokenScannerEmitsIndecomposableDailyDeltasFromLegalCumulativeCheckpoints(t *testing.T) {
+	t.Parallel()
+
+	content := strings.Join([]string{
+		tokenLine("2026-07-19T23:00:00Z", 100, 0, 0, 0),
+		tokenLine("2026-07-20T01:00:00Z", 110, 20, 0, 0),
+	}, "\n") + "\n"
+	result, err := NewTokenScanner(TokenScannerOptions{ChunkBytes: 32}).Scan(
+		context.Background(), bytes.NewBufferString(content), ScanState{},
+	)
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	assertTotals(t, result.State.HighWater, TokenTotals{Input: 110, CachedInput: 20})
+	if len(result.TokenDeltas) != 2 ||
+		result.TokenDeltas[0].Tokens != (TokenTotals{Input: 100}) ||
+		result.TokenDeltas[1].Tokens != (TokenTotals{Input: 10, CachedInput: 20}) {
+		t.Fatalf("timed deltas = %#v, want date-boundary 100/0 then 10/20", result.TokenDeltas)
+	}
+	if len(result.DailyDeltas) != 2 ||
+		result.DailyDeltas[0].Day != "2026-07-19" ||
+		result.DailyDeltas[0].Tokens != (TokenTotals{Input: 100}) ||
+		result.DailyDeltas[1].Day != "2026-07-20" ||
+		result.DailyDeltas[1].Tokens != (TokenTotals{Input: 10, CachedInput: 20}) {
+		t.Fatalf("daily deltas = %#v, want cached increment isolated to the new day", result.DailyDeltas)
+	}
+}
+
 func tokenLine(timestamp string, input, cached, output, reasoning int64) string {
 	return `{"timestamp":"` + timestamp + `","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{` +
 		`"input_tokens":` + intString(input) + `,"cached_input_tokens":` + intString(cached) +
