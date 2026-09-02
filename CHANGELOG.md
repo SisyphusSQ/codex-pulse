@@ -1,5 +1,10 @@
 ## Unreleased
 
+## v0.9.2 - 2026-09-02
+
+#### bugFix:
+1. 修复轻量索引在跨日期或 model 分桶后独立高水位增量出现 `cached_input_tokens > input_tokens` 时的查询与费用语义；保留精确 Token 与查询结果，将不可分解费用保持为 unknown，并补齐边界测试与设计说明。
+
 ## v0.9.1 - 2026-08-28
 
 #### feature:
