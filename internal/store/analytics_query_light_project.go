@@ -24,10 +24,11 @@ type lightProjectDeltaProjection struct {
 }
 
 type lightProjectGroup struct {
-	record   ProjectAnalyticsRecord
-	sessions map[string]struct{}
-	daily    map[int64]*RollupTotals
-	pricing  map[lightCostGroupKey]*lightCostGroup
+	record         ProjectAnalyticsRecord
+	sessions       map[string]struct{}
+	daily          map[int64]*RollupTotals
+	pricing        map[lightCostGroupKey]*lightCostGroup
+	costIncomplete bool
 }
 
 func listLightProjectAnalytics(
@@ -124,20 +125,27 @@ func listLightProjectAnalytics(
 		}
 	}
 	all := make([]ProjectAnalyticsRecord, 0, len(groups))
+	incompleteProjects := make(map[string]bool)
 	for _, group := range groups {
+		dailyUnknown := make(map[int64]bool, len(group.daily))
 		for key, pricingGroup := range group.pricing {
-			estimated, err := calculateLightGroupCost(
+			cost, err := calculateLightGroupCost(
 				pricingGroup, catalogByVersion, key.pricingVersion,
 			)
 			if err != nil {
 				return ProjectAnalyticsPage{}, true, err
 			}
-			if err := addLightProjectEstimatedCost(&group.record.Totals, estimated); err != nil {
+			if err := applyLightCalculatedCost(&group.record.Totals, cost, &group.costIncomplete); err != nil {
 				return ProjectAnalyticsPage{}, true, err
 			}
-			if err := addLightProjectEstimatedCost(group.daily[key.bucketStartMS], estimated); err != nil {
+			dayUnknown := dailyUnknown[key.bucketStartMS]
+			if err := applyLightCalculatedCost(group.daily[key.bucketStartMS], cost, &dayUnknown); err != nil {
 				return ProjectAnalyticsPage{}, true, err
 			}
+			dailyUnknown[key.bucketStartMS] = dayUnknown
+		}
+		if group.costIncomplete {
+			incompleteProjects[group.record.DimensionKey] = true
 		}
 		group.record.SessionCount = int64(len(group.sessions))
 		buckets := make([]int64, 0, len(group.daily))
@@ -153,7 +161,7 @@ func listLightProjectAnalytics(
 		}
 		all = append(all, group.record)
 	}
-	global, err := sumLightProjectRecords(all)
+	global, err := sumLightProjectRecords(all, incompleteProjects)
 	if err != nil {
 		return ProjectAnalyticsPage{}, true, err
 	}
@@ -164,7 +172,7 @@ func listLightProjectAnalytics(
 		}
 	}
 	sortLightProjectRecords(matched, filter)
-	matchedTotals, err := sumLightProjectRecords(matched)
+	matchedTotals, err := sumLightProjectRecords(matched, incompleteProjects)
 	if err != nil {
 		return ProjectAnalyticsPage{}, true, err
 	}
@@ -182,7 +190,7 @@ func listLightProjectAnalytics(
 	if hasMore {
 		matched = matched[:filter.Limit]
 	}
-	pageTotals, err := sumLightProjectRecords(matched)
+	pageTotals, err := sumLightProjectRecords(matched, incompleteProjects)
 	if err != nil {
 		return ProjectAnalyticsPage{}, true, err
 	}
@@ -337,14 +345,14 @@ func lightProjectAnalytics(
 	modelTotals := make(map[string]*lightRollupAccumulator)
 	modelDimensions := make(map[string]safeDimension)
 	for key, pricingGroup := range modelPricing {
-		estimated, err := calculateLightGroupCost(
+		cost, err := calculateLightGroupCost(
 			pricingGroup, catalogByVersion, key.pricingVersion,
 		)
 		if err != nil {
 			return ProjectAnalyticsSnapshot{}, true, err
 		}
 		modelDimensions[key.dimensionKey] = pricingGroup.dimension
-		if err := accumulatorForLight(modelTotals, key.dimensionKey).add(pricingGroup, estimated); err != nil {
+		if err := accumulatorForLight(modelTotals, key.dimensionKey).add(pricingGroup, cost); err != nil {
 			return ProjectAnalyticsSnapshot{}, true, err
 		}
 	}
@@ -514,13 +522,18 @@ func lightProjectDimensionIncluded(dimensionKey string, allowed []string) bool {
 	return false
 }
 
-func sumLightProjectRecords(records []ProjectAnalyticsRecord) (RollupTotals, error) {
+func sumLightProjectRecords(
+	records []ProjectAnalyticsRecord,
+	incompleteProjects map[string]bool,
+) (RollupTotals, error) {
 	zero := int64(0)
 	result := RollupTotals{
 		InputTokens: &zero, CachedInputTokens: cloneInt64Pointer(&zero), OutputTokens: cloneInt64Pointer(&zero),
 		ReasoningTokens: cloneInt64Pointer(&zero), TotalTokens: cloneInt64Pointer(&zero),
 	}
+	costIncomplete := false
 	for _, record := range records {
+		costIncomplete = costIncomplete || incompleteProjects[record.DimensionKey]
 		for _, pair := range []struct{ target, value *int64 }{
 			{result.InputTokens, record.Totals.InputTokens}, {result.CachedInputTokens, record.Totals.CachedInputTokens},
 			{result.OutputTokens, record.Totals.OutputTokens}, {result.ReasoningTokens, record.Totals.ReasoningTokens},
@@ -537,7 +550,7 @@ func sumLightProjectRecords(records []ProjectAnalyticsRecord) (RollupTotals, err
 		}
 		if record.Totals.EstimatedUSDMicros != nil {
 			if result.EstimatedUSDMicros == nil {
-				result.EstimatedUSDMicros = cloneInt64Pointer(&zero)
+				result.EstimatedUSDMicros = new(int64)
 			}
 			next, err := checkedAdd(*result.EstimatedUSDMicros, *record.Totals.EstimatedUSDMicros)
 			if err != nil {
@@ -551,6 +564,9 @@ func sumLightProjectRecords(records []ProjectAnalyticsRecord) (RollupTotals, err
 		if record.Totals.LastActivityAtMS > result.LastActivityAtMS {
 			result.LastActivityAtMS = record.Totals.LastActivityAtMS
 		}
+	}
+	if costIncomplete {
+		result.EstimatedUSDMicros = nil
 	}
 	result.UpdatedAtMS = result.LastActivityAtMS
 	return result, nil

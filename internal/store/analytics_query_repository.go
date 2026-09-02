@@ -126,6 +126,15 @@ type lightRollupAccumulator struct {
 	input, cached, output, reasoning, total int64
 	estimatedUSDMicros                      int64
 	hasPricedCost                           bool
+	costIncomplete                          bool
+}
+
+// lightCalculatedCost 是轻量索引分桶的计价结果。
+// incomplete 表示独立高水位增量在日期/model 分桶后无法满足 cached <= input，
+// 该分桶费用必须保持 unknown，不得记为 0、clamp 后再计价，或让整个查询失败。
+type lightCalculatedCost struct {
+	estimated  *int64
+	incomplete bool
 }
 
 func loadLightUsageCostRange(
@@ -224,11 +233,11 @@ func loadLightUsageCostRange(
 	byModel := make(map[dimensionBucketKey]*lightRollupAccumulator)
 	modelDimensions := make(map[dimensionBucketKey]safeDimension)
 	for key, group := range groups {
-		estimated, err := calculateLightGroupCost(group, catalogByVersion, key.pricingVersion)
+		cost, err := calculateLightGroupCost(group, catalogByVersion, key.pricingVersion)
 		if err != nil {
 			return false, err
 		}
-		if err := accumulatorForLight(byDay, key.bucketStartMS).add(group, estimated); err != nil {
+		if err := accumulatorForLight(byDay, key.bucketStartMS).add(group, cost); err != nil {
 			return false, err
 		}
 		if filter.LightTokenTotalsOnly {
@@ -238,7 +247,7 @@ func loadLightUsageCostRange(
 		if err := recordCostDimension(modelDimensions, modelKey, group.dimension); err != nil {
 			return false, err
 		}
-		if err := accumulatorForLight(byModel, modelKey).add(group, estimated); err != nil {
+		if err := accumulatorForLight(byModel, modelKey).add(group, cost); err != nil {
 			return false, err
 		}
 	}
@@ -665,17 +674,20 @@ func calculateLightGroupCost(
 	group *lightCostGroup,
 	catalogs map[string]lightPricingCatalog,
 	pricingVersion string,
-) (*int64, error) {
+) (lightCalculatedCost, error) {
 	if group == nil || pricingVersion == "" || group.dimension.identity == nil {
-		return nil, nil
+		return lightCalculatedCost{}, nil
 	}
 	catalog, found := catalogs[pricingVersion]
 	if !found {
-		return nil, invalidRecord("light pricing version is missing")
+		return lightCalculatedCost{}, invalidRecord("light pricing version is missing")
 	}
 	model, found := catalog.models[*group.dimension.identity]
 	if !found {
-		return nil, nil
+		return lightCalculatedCost{}, nil
+	}
+	if lightIndexBucketNotDecomposable(group) {
+		return lightCalculatedCost{incomplete: true}, nil
 	}
 	calculation, err := pricing.Calculate(pricing.Usage{
 		InputTokens: &group.input, CachedInputTokens: &group.cached,
@@ -686,9 +698,33 @@ func calculateLightGroupCost(
 		OutputMicrosPerMillion:      model.OutputMicrosPerMillion,
 	})
 	if err != nil {
-		return nil, err
+		return lightCalculatedCost{}, err
 	}
-	return calculation.EstimatedUSDMicros, nil
+	return lightCalculatedCost{estimated: calculation.EstimatedUSDMicros}, nil
+}
+
+func lightIndexBucketNotDecomposable(group *lightCostGroup) bool {
+	return group != nil &&
+		group.input >= 0 && group.cached >= 0 &&
+		group.output >= 0 && group.reasoning >= 0 &&
+		group.cached > group.input
+}
+
+func applyLightCalculatedCost(total *RollupTotals, cost lightCalculatedCost, incomplete *bool) error {
+	if total == nil {
+		return nil
+	}
+	if cost.incomplete {
+		if incomplete != nil {
+			*incomplete = true
+		}
+		total.EstimatedUSDMicros = nil
+		return nil
+	}
+	if incomplete != nil && *incomplete {
+		return nil
+	}
+	return addLightProjectEstimatedCost(total, cost.estimated)
 }
 
 func accumulatorForLight[K comparable](groups map[K]*lightRollupAccumulator, key K) *lightRollupAccumulator {
@@ -698,7 +734,7 @@ func accumulatorForLight[K comparable](groups map[K]*lightRollupAccumulator, key
 	return groups[key]
 }
 
-func (aggregate *lightRollupAccumulator) add(group *lightCostGroup, estimated *int64) error {
+func (aggregate *lightRollupAccumulator) add(group *lightCostGroup, cost lightCalculatedCost) error {
 	var err error
 	if aggregate.input, err = checkedAdd(aggregate.input, group.input); err != nil {
 		return err
@@ -722,8 +758,17 @@ func (aggregate *lightRollupAccumulator) add(group *lightCostGroup, estimated *i
 	if aggregate.total, err = checkedAdd(aggregate.total, groupTotal); err != nil {
 		return err
 	}
-	if estimated != nil {
-		aggregate.estimatedUSDMicros, err = checkedAdd(aggregate.estimatedUSDMicros, *estimated)
+	if cost.incomplete {
+		aggregate.costIncomplete = true
+		aggregate.hasPricedCost = false
+		aggregate.estimatedUSDMicros = 0
+		return nil
+	}
+	if aggregate.costIncomplete {
+		return nil
+	}
+	if cost.estimated != nil {
+		aggregate.estimatedUSDMicros, err = checkedAdd(aggregate.estimatedUSDMicros, *cost.estimated)
 		aggregate.hasPricedCost = err == nil
 	}
 	return err
@@ -733,7 +778,7 @@ func (aggregate *lightRollupAccumulator) totals() RollupTotals {
 	input, cached, output, reasoning := aggregate.input, aggregate.cached, aggregate.output, aggregate.reasoning
 	total := aggregate.total
 	var estimated *int64
-	if aggregate.hasPricedCost {
+	if !aggregate.costIncomplete && aggregate.hasPricedCost {
 		value := aggregate.estimatedUSDMicros
 		estimated = &value
 	}
