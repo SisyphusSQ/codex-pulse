@@ -15,8 +15,8 @@ func TestApplicationMigrationAddsAPISubscriptionBalanceHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MigrateApplicationSchema() error = %v", err)
 	}
-	if report.TargetVersion != 30 {
-		t.Fatalf("migration target = %d, want 30", report.TargetVersion)
+	if report.TargetVersion != 31 {
+		t.Fatalf("migration target = %d, want 31", report.TargetVersion)
 	}
 	if err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		if !connection.WithContext(ctx).Migrator().HasTable("api_subscription_balance_observations") {
@@ -52,5 +52,13 @@ func TestApplicationSchemaV30ChecksumIsFrozen(t *testing.T) {
 	const want = "1dff5679bb5c23d03a8c585805f10c73fe82b8af536a90e57ea6c8d2fd5229c4"
 	if got := applicationSchemaV30Checksum(); got != want {
 		t.Fatalf("applicationSchemaV30Checksum() = %q, want frozen %q", got, want)
+	}
+}
+
+func TestApplicationSchemaV31ChecksumIsFrozen(t *testing.T) {
+	t.Parallel()
+	const want = "2ad86dfc7e17ca34217875545af500d9cd0607bfd4da36859f7b5e184757bc63"
+	if got := applicationSchemaV31Checksum(); got != want {
+		t.Fatalf("applicationSchemaV31Checksum() = %q, want frozen %q", got, want)
 	}
 }

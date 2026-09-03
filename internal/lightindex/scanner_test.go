@@ -208,7 +208,8 @@ func TestTokenScannerPrefiltersBeforeJSONDecode(t *testing.T) {
 	if result.DurableOffset != int64(len(content)) || !result.Complete {
 		t.Fatalf("unexpected completion: offset=%d complete=%t", result.DurableOffset, result.Complete)
 	}
-	assertTotals(t, result.State.HighWater, TokenTotals{Input: 10, CachedInput: 2, Output: 3, Reasoning: 1})
+	assertTotals(t, result.State.Aggregates, TokenTotals{Input: 10, CachedInput: 2, Output: 3, Reasoning: 1})
+	assertCounterSnapshot(t, result.State.LastRaw, presentCounters(10, 2, 3, 1))
 }
 
 func TestTokenScannerKeepsTrailingPartialLineBehindDurableOffset(t *testing.T) {
@@ -230,10 +231,11 @@ func TestTokenScannerKeepsTrailingPartialLineBehindDurableOffset(t *testing.T) {
 	if result.BytesRead != int64(len(content)) || result.LinesSeen != 1 || result.TokenEvents != 1 {
 		t.Fatalf("unexpected partial-tail counters: %+v", result)
 	}
-	assertTotals(t, result.State.HighWater, TokenTotals{Input: 10})
+	assertTotals(t, result.State.Aggregates, TokenTotals{Input: 10})
+	assertCounterSnapshot(t, result.State.LastRaw, TokenCounterSnapshot{Input: OptionalCounter{Value: 10, Present: true}})
 }
 
-func TestTokenScannerUsesComponentHighWaterAndPositiveDailyDeltas(t *testing.T) {
+func TestTokenScannerOpensNewEpochWhenAnyKnownCounterDecreases(t *testing.T) {
 	t.Parallel()
 
 	content := strings.Join([]string{
@@ -248,7 +250,11 @@ func TestTokenScannerUsesComponentHighWaterAndPositiveDailyDeltas(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Scan() error = %v", err)
 	}
-	assertTotals(t, result.State.HighWater, TokenTotals{Input: 130, CachedInput: 25, Output: 15, Reasoning: 4})
+	if result.State.CounterEpoch != 1 {
+		t.Fatalf("counter epoch = %d, want 1 after reset", result.State.CounterEpoch)
+	}
+	assertCounterSnapshot(t, result.State.LastRaw, presentCounters(130, 25, 15, 4))
+	assertTotals(t, result.State.Aggregates, TokenTotals{Input: 230, CachedInput: 45, Output: 25, Reasoning: 6})
 	if len(result.DailyDeltas) != 2 {
 		t.Fatalf("daily delta count = %d, want 2: %+v", len(result.DailyDeltas), result.DailyDeltas)
 	}
@@ -256,17 +262,21 @@ func TestTokenScannerUsesComponentHighWaterAndPositiveDailyDeltas(t *testing.T) 
 		result.TokenDeltas[0].SourceOffset <= 0 {
 		t.Fatalf("timed deltas = %+v", result.TokenDeltas)
 	}
+	assertTotals(t, result.TokenDeltas[0].Tokens, TokenTotals{Input: 100, CachedInput: 20, Output: 10, Reasoning: 2})
+	assertTotals(t, result.TokenDeltas[1].Tokens, TokenTotals{Input: 90, CachedInput: 25, Output: 10, Reasoning: 1})
+	assertTotals(t, result.TokenDeltas[2].Tokens, TokenTotals{Input: 40, Output: 5, Reasoning: 3})
 	assertDailyDelta(t, result.DailyDeltas[0], "2026-07-18", TokenTotals{Input: 100, CachedInput: 20, Output: 10, Reasoning: 2})
-	assertDailyDelta(t, result.DailyDeltas[1], "2026-07-19", TokenTotals{Input: 30, CachedInput: 5, Output: 5, Reasoning: 2})
+	assertDailyDelta(t, result.DailyDeltas[1], "2026-07-19", TokenTotals{Input: 130, CachedInput: 25, Output: 15, Reasoning: 4})
 }
 
-func TestTokenScannerResumesFromSeedOffsetAndHighWater(t *testing.T) {
+func TestTokenScannerResumesFromSeedOffsetAndLastRawCounters(t *testing.T) {
 	t.Parallel()
 
 	appendContent := tokenLine("2026-07-19T01:00:00Z", 130, 30, 15, 4) + "\n"
 	seed := ScanState{
 		DurableOffset: 4096,
-		HighWater:     TokenTotals{Input: 100, CachedInput: 20, Output: 10, Reasoning: 2},
+		LastRaw:       presentCounters(100, 20, 10, 2),
+		Aggregates:    TokenTotals{Input: 100, CachedInput: 20, Output: 10, Reasoning: 2},
 	}
 
 	result, err := NewTokenScanner(TokenScannerOptions{ChunkBytes: 64}).Scan(
@@ -278,7 +288,8 @@ func TestTokenScannerResumesFromSeedOffsetAndHighWater(t *testing.T) {
 	if result.DurableOffset != seed.DurableOffset+int64(len(appendContent)) {
 		t.Fatalf("durable offset = %d, want %d", result.DurableOffset, seed.DurableOffset+int64(len(appendContent)))
 	}
-	assertTotals(t, result.State.HighWater, TokenTotals{Input: 130, CachedInput: 30, Output: 15, Reasoning: 4})
+	assertTotals(t, result.State.Aggregates, TokenTotals{Input: 130, CachedInput: 30, Output: 15, Reasoning: 4})
+	assertCounterSnapshot(t, result.State.LastRaw, presentCounters(130, 30, 15, 4))
 	if len(result.DailyDeltas) != 1 {
 		t.Fatalf("daily delta count = %d, want 1", len(result.DailyDeltas))
 	}
@@ -290,7 +301,11 @@ func TestTokenScannerCancellationDoesNotAdvanceOffset(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	seed := ScanState{DurableOffset: 123, HighWater: TokenTotals{Input: 10}}
+	seed := ScanState{
+		DurableOffset: 123,
+		LastRaw:       TokenCounterSnapshot{Input: OptionalCounter{Value: 10, Present: true}},
+		Aggregates:    TokenTotals{Input: 10},
+	}
 
 	result, err := NewTokenScanner(TokenScannerOptions{ChunkBytes: 64}).Scan(
 		ctx, bytes.NewBufferString(tokenLine("2026-07-19T01:00:00Z", 20, 0, 0, 0)+"\n"), seed,
@@ -316,7 +331,8 @@ func TestTokenScannerEmitsIndecomposableDailyDeltasFromLegalCumulativeCheckpoint
 	if err != nil {
 		t.Fatalf("Scan() error = %v", err)
 	}
-	assertTotals(t, result.State.HighWater, TokenTotals{Input: 110, CachedInput: 20})
+	assertTotals(t, result.State.Aggregates, TokenTotals{Input: 110, CachedInput: 20})
+	assertCounterSnapshot(t, result.State.LastRaw, presentCounters(110, 20, 0, 0))
 	if len(result.TokenDeltas) != 2 ||
 		result.TokenDeltas[0].Tokens != (TokenTotals{Input: 100}) ||
 		result.TokenDeltas[1].Tokens != (TokenTotals{Input: 10, CachedInput: 20}) {
@@ -329,6 +345,93 @@ func TestTokenScannerEmitsIndecomposableDailyDeltasFromLegalCumulativeCheckpoint
 		result.DailyDeltas[1].Tokens != (TokenTotals{Input: 10, CachedInput: 20}) {
 		t.Fatalf("daily deltas = %#v, want cached increment isolated to the new day", result.DailyDeltas)
 	}
+}
+
+func TestTokenScannerTreatsMissingCountersAsAbsentNotZero(t *testing.T) {
+	t.Parallel()
+
+	content := strings.Join([]string{
+		`{"timestamp":"2026-07-19T01:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"output_tokens":10}}}}`,
+		`{"timestamp":"2026-07-19T01:00:01Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":0,"cached_input_tokens":5,"output_tokens":10}}}}`,
+		`{"timestamp":"2026-07-19T01:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"cached_input_tokens":8,"output_tokens":12}}}}`,
+	}, "\n") + "\n"
+
+	result, err := NewTokenScanner(TokenScannerOptions{ChunkBytes: 64}).Scan(
+		context.Background(), bytes.NewBufferString(content), ScanState{},
+	)
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if result.State.CounterEpoch != 1 {
+		t.Fatalf("counter epoch = %d, want 1 after explicit zero reset", result.State.CounterEpoch)
+	}
+	assertTotals(t, result.TokenDeltas[0].Tokens, TokenTotals{Input: 100, Output: 10})
+	assertTotals(t, result.TokenDeltas[1].Tokens, TokenTotals{Input: 0, CachedInput: 5, Output: 10})
+	assertTotals(t, result.TokenDeltas[2].Tokens, TokenTotals{CachedInput: 3, Output: 2})
+	assertTotals(t, result.State.Aggregates, TokenTotals{Input: 100, CachedInput: 8, Output: 22})
+	assertCounterSnapshot(t, result.State.LastRaw, TokenCounterSnapshot{
+		Input:       OptionalCounter{Value: 0, Present: true},
+		CachedInput: OptionalCounter{Value: 8, Present: true},
+		Output:      OptionalCounter{Value: 12, Present: true},
+	})
+}
+
+func TestTokenScannerOneComponentDecreaseRestartsWholeEpoch(t *testing.T) {
+	t.Parallel()
+
+	content := strings.Join([]string{
+		tokenLine("2026-07-19T01:00:00Z", 50, 10, 20, 4),
+		tokenLine("2026-07-19T01:00:01Z", 80, 4, 30, 6),
+	}, "\n") + "\n"
+
+	result, err := NewTokenScanner(TokenScannerOptions{}).Scan(
+		context.Background(), bytes.NewBufferString(content), ScanState{},
+	)
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if result.State.CounterEpoch != 1 {
+		t.Fatalf("counter epoch = %d, want 1 when cached input decreases", result.State.CounterEpoch)
+	}
+	assertTotals(t, result.TokenDeltas[1].Tokens, TokenTotals{Input: 80, CachedInput: 4, Output: 30, Reasoning: 6})
+	assertTotals(t, result.State.Aggregates, TokenTotals{Input: 130, CachedInput: 14, Output: 50, Reasoning: 10})
+}
+
+func TestTokenScannerCrossDayMonotonicGrowthKeepsSameEpoch(t *testing.T) {
+	t.Parallel()
+
+	content := strings.Join([]string{
+		tokenLine("2026-07-18T23:59:59Z", 100, 20, 10, 2),
+		tokenLine("2026-07-19T00:00:01Z", 130, 25, 15, 4),
+	}, "\n") + "\n"
+
+	result, err := NewTokenScanner(TokenScannerOptions{}).Scan(
+		context.Background(), bytes.NewBufferString(content), ScanState{},
+	)
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if result.State.CounterEpoch != 0 {
+		t.Fatalf("counter epoch = %d, want 0 for monotonic growth", result.State.CounterEpoch)
+	}
+	assertDailyDelta(t, result.DailyDeltas[0], "2026-07-18", TokenTotals{Input: 100, CachedInput: 20, Output: 10, Reasoning: 2})
+	assertDailyDelta(t, result.DailyDeltas[1], "2026-07-19", TokenTotals{Input: 30, CachedInput: 5, Output: 5, Reasoning: 2})
+	assertTotals(t, result.State.Aggregates, TokenTotals{Input: 130, CachedInput: 25, Output: 15, Reasoning: 4})
+}
+
+func TestTokenScannerResumeWithoutLastRawTreatsCurrentAsFirstIncrement(t *testing.T) {
+	t.Parallel()
+
+	appendContent := tokenLine("2026-07-19T01:00:00Z", 130, 30, 15, 4) + "\n"
+	result, err := NewTokenScanner(TokenScannerOptions{}).Scan(
+		context.Background(), bytes.NewBufferString(appendContent),
+		ScanState{DurableOffset: 4096, Aggregates: TokenTotals{Input: 100, CachedInput: 20, Output: 10, Reasoning: 2}},
+	)
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	assertTotals(t, result.TokenDeltas[0].Tokens, TokenTotals{Input: 130, CachedInput: 30, Output: 15, Reasoning: 4})
+	assertTotals(t, result.State.Aggregates, TokenTotals{Input: 230, CachedInput: 50, Output: 25, Reasoning: 6})
 }
 
 func tokenLine(timestamp string, input, cached, output, reasoning int64) string {
@@ -352,5 +455,21 @@ func assertDailyDelta(t *testing.T, got DailyTokenDelta, wantDay string, want To
 	t.Helper()
 	if got.Day != wantDay || got.Tokens != want {
 		t.Fatalf("daily delta = %+v, want day=%s tokens=%+v", got, wantDay, want)
+	}
+}
+
+func presentCounters(input, cached, output, reasoning int64) TokenCounterSnapshot {
+	return TokenCounterSnapshot{
+		Input:       OptionalCounter{Value: input, Present: true},
+		CachedInput: OptionalCounter{Value: cached, Present: true},
+		Output:      OptionalCounter{Value: output, Present: true},
+		Reasoning:   OptionalCounter{Value: reasoning, Present: true},
+	}
+}
+
+func assertCounterSnapshot(t *testing.T, got, want TokenCounterSnapshot) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("last raw = %+v, want %+v", got, want)
 	}
 }

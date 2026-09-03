@@ -148,6 +148,17 @@ Preferences 提供两个独立开关：`online.grok_quota_enabled` 控制 billin
 - Grok 提供 Session、Project、Model、Token、account 和 quota；有完整 `costUsdTicks` 时提供 `reported_cost`，有 xAI 参考价时提供 `estimated_cost`。不提供调用画像、调用统计、Reset Credits 或 AI edits。
 - Cursor / Grok usage model 都按事件中的 model key 分组，并为每个模型返回与总趋势相同粒度的 bucket；UI 只有在模型 bucket 无法与总量核对时才使用诚实的聚合降级，不把可识别模型压成“全部模型”。
 - 今日使用 App reporting timezone 的 `[00:00, now)`。Grok 状态栏“已用 Token”优先对齐当前 billing `currentPeriod`；周期边界未知时显示 `已用 --`，不得拿今天、自然周或最近 7 天冒充本周期用量。
+
+## 跨日 Usage 归属
+
+三个 Provider 共用同一产品契约，但不得把 Codex 累计计数器修复套到 Cursor/Grok 的离散事件模型上。
+
+- UsageCost、日趋势和可归因项目用量按 usage/token 事件发生时间归属，使用请求 IANA timezone；今日区间为当地 `[00:00, now)`。
+- Codex 累计快照之间的 delta 归属到当前快照的发生时间；跨过零点后的新快照增量计入新的一天。任一双方已知的 counter 下降会开启新 `counter_epoch`，新 epoch 的第一个已知值作为增量；缺失字段不参与下降判断，也不能被当成零。
+- Session 列表继续按 `LastActivityAt` 做时间筛选；列表和详情中的 Session token 总量继续表示完整生命周期总量，不改成查询区间增量。
+- Cursor / Grok 官方 billing period、quota window 与“今日”查询相互独立，不得用自然日冒充账期。
+- 覆盖不足或不可归因的数据继续明确为 `partial` / `unknown`，不得伪造成零、完整数据或虚构项目归因。
+- 不新增跨 Provider 合计或 `all` 视图；空 Provider scope 继续默认 Codex，未知 scope 必须失败。一个 Provider 的查询错误不得污染另外两个。
 - 只要观察到的请求存在缺失或冲突 Token，相关 Token 聚合就是 unknown；Cursor state 中 request 对应的 `0/0` tokenCount，以及 Grok 没有 `turn_completed.usage` 的 Session，都是未提供值，不作为精确零持久化。不得按 transcript 长度、`signals.json` context usage 或其他指标估算。
 - Cursor Dashboard 的 `charged_cents`、Cursor Token fee 与 plan spending，以及 Grok 的 `costUsdTicks`，作为 reported 数据分别回显，不进入另一家客户端的 pricing catalog。Cursor Overview 的 reported charge 按 Cursor Models / Other Models 分列，未归类 Token 另行提示；按各客户端官方/参考价固定版本计算的费用只标记为 estimated，不能与 reported 混成两个用量池。
 - Dashboard 或 Grok billing 刷新失败时，当前周期已有成功快照继续作为 last-known 返回，响应标记 `partial` 并回显 `dataAsOfMs`；跨周期后旧快照不冒充当前数据。

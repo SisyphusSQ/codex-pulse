@@ -237,5 +237,29 @@ func SchemaObjectsThroughV19() []storeschema.Object {
 // CurrentSchemaObjects 返回应用当前版本所需的轻量索引 schema 描述。
 func CurrentSchemaObjects() []storeschema.Object {
 	objects := append(SchemaObjectsThroughV19(), InvocationSchemaObjects()...)
-	return append(objects, UsageSummarySchemaObjects()...)
+	objects = append(objects, UsageSummarySchemaObjects()...)
+	return SchemaObjectsThroughV31(objects)
+}
+
+// SchemaObjectsThroughV31 为 light_token_scans 追加 v31 原始 counter checkpoint 列。
+func SchemaObjectsThroughV31(objects []storeschema.Object) []storeschema.Object {
+	for index := range objects {
+		if objects[index].Name != "light_token_scans" {
+			continue
+		}
+		objects[index].Statement = appendMigratedColumns(
+			objects[index].Statement,
+			"\n\t\t\tPRIMARY KEY",
+			"`last_raw_input_tokens` INTEGER CHECK (last_raw_input_tokens IS NULL OR last_raw_input_tokens >= 0)",
+			"`last_raw_input_present` INTEGER NOT NULL DEFAULT 0 CHECK (last_raw_input_present IN (0, 1))",
+			"`last_raw_cached_input_tokens` INTEGER CHECK (last_raw_cached_input_tokens IS NULL OR last_raw_cached_input_tokens >= 0)",
+			"`last_raw_cached_input_present` INTEGER NOT NULL DEFAULT 0 CHECK (last_raw_cached_input_present IN (0, 1))",
+			"`last_raw_output_tokens` INTEGER CHECK (last_raw_output_tokens IS NULL OR last_raw_output_tokens >= 0)",
+			"`last_raw_output_present` INTEGER NOT NULL DEFAULT 0 CHECK (last_raw_output_present IN (0, 1))",
+			"`last_raw_reasoning_tokens` INTEGER CHECK (last_raw_reasoning_tokens IS NULL OR last_raw_reasoning_tokens >= 0)",
+			"`last_raw_reasoning_present` INTEGER NOT NULL DEFAULT 0 CHECK (last_raw_reasoning_present IN (0, 1))",
+			"`counter_epoch` INTEGER NOT NULL DEFAULT 0 CHECK (counter_epoch >= 0)",
+		)
+	}
+	return objects
 }

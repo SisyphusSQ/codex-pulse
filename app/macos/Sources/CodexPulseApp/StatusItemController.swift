@@ -530,6 +530,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             return (false, "unavailable step=project_keyboard_action")
         }
 
+        guard await ensurePopoverForNativeSmoke() else {
+            return (false, "unavailable step=popover_after_project")
+        }
         guard await moveNativeSmokeFocus(to: .copyPopoverScreenshot) else {
             return (false, "unavailable step=clipboard_keyboard_focus")
         }
@@ -561,6 +564,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             return (false, "unavailable step=clipboard_payload")
         }
 
+        guard await ensurePopoverForNativeSmoke() else {
+            return (false, "unavailable step=popover_before_focus_chain")
+        }
         guard await moveNativeSmokeFocus(to: .resetCredits),
               await moveNativeSmokeFocus(to: .settings),
               await moveNativeSmokeFocus(to: .quit),
@@ -591,6 +597,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         closePopover()
 
 		return (true, summary)
+    }
+
+    private func ensurePopoverForNativeSmoke() async -> Bool {
+        if !popover.isShown {
+            showPopover()
+        }
+        return await waitForNativeSmoke({
+            self.popover.isShown && self.popover.contentViewController?.view.window != nil
+        })
     }
 
 	private func verifyCursorStatusProviderForSmoke() async -> Bool {
@@ -653,7 +668,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func moveNativeSmokeFocus(
         to target: PopoverFocusTarget,
         backward: Bool = false,
-        maximumSteps: Int = 12
+        maximumSteps: Int = 16
     ) async -> Bool {
         let modifierFlags: NSEvent.ModifierFlags = backward ? [.shift] : []
         for _ in 0..<maximumSteps {
@@ -662,7 +677,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 keyCode: 48,
                 modifierFlags: modifierFlags
             ) else { return false }
-            try? await Task.sleep(nanoseconds: 20_000_000)
+            try? await Task.sleep(nanoseconds: 40_000_000)
             if smokeFocusedControl == target { return true }
         }
         return false

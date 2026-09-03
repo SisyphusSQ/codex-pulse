@@ -15,8 +15,8 @@ import (
 func TestApplicationSchemaVersionIncludesLightUsageSummaryIndex(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV30Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 30", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV31Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 31", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	seedApplicationSchemaV16(t, database)
@@ -36,11 +36,11 @@ func TestApplicationSchemaVersionIncludesLightUsageSummaryIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run(v16->v21) error = %v", err)
 	}
-	if report.FromVersion != 16 || report.TargetVersion != 30 ||
-		!equalInts(report.AppliedVersions, []int{17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30}) || backupVersions != [2]int{16, 30} {
+	if report.FromVersion != 16 || report.TargetVersion != 31 ||
+		!equalInts(report.AppliedVersions, []int{17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31}) || backupVersions != [2]int{16, 31} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 30, 30)
+	assertMigrationVersionAndHistory(t, database, 31, 31)
 	if err := database.View(t.Context(), func(_ context.Context, connection *gorm.DB) error {
 		for _, column := range lightModelMigrationColumns {
 			if !connection.Migrator().HasColumn(column.model, column.column) {
@@ -160,6 +160,97 @@ func seedApplicationSchemaV15(t *testing.T, database *storesqlite.Store) {
 		t.Fatalf("seed application schema v15 = %#v, %v", report, err)
 	}
 	assertMigrationVersionAndHistory(t, database, 15, 15)
+}
+
+func TestApplicationSchemaV31AddsLightTokenCounterCheckpoints(t *testing.T) {
+	t.Parallel()
+
+	database := openTestDatabase(t)
+	v30Runner := applicationMigrationRunnerForTest(database)
+	v30Runner.catalog = applicationMigrations[:applicationSchemaV30Version]
+	v30Runner.verifyCurrent = func(context.Context, *gorm.DB) error { return nil }
+	if report, err := v30Runner.run(t.Context()); err != nil || report.TargetVersion != 30 {
+		t.Fatalf("seed application schema v30 = %#v, %v", report, err)
+	}
+	if err := database.Write(t.Context(), func(ctx context.Context, transaction *gorm.DB) error {
+		if err := transaction.WithContext(ctx).Exec(`
+			INSERT INTO light_index_state (
+				state_id, home_path, home_device_id, home_inode, metadata_generation, token_scan_generation,
+				token_scan_state, updated_at_ms
+			) VALUES (1, '/confirmed-home', '1', 2, 1, 1, 'running', 1000)
+		`).Error; err != nil {
+			return err
+		}
+		if err := transaction.WithContext(ctx).Exec(`
+			INSERT INTO light_sessions (
+				session_id, cwd, rollout_path, created_at_ms, updated_at_ms, metadata_generation,
+				active_token_generation, pending_token_generation, scan_state, row_updated_at_ms
+			) VALUES (
+				'pending-one', '/workspace', '/confirmed-home/sessions/one.jsonl', 100, 200, 1,
+				1, 1, 'scanning', 1000
+			)
+		`).Error; err != nil {
+			return err
+		}
+		return transaction.WithContext(ctx).Exec(`
+			INSERT INTO light_token_scans (
+				session_id, generation, rollout_path, source_file_id, home_path, home_device_id, home_inode,
+				file_device_id, file_inode, file_size_bytes, file_mtime_ns, prefix_bytes, prefix_sha256,
+				fingerprint_sha256, parser_version, durable_offset, complete, input_tokens, cached_input_tokens,
+				output_tokens, reasoning_tokens, current_model_source, physical_bytes_read, lines_seen,
+				candidate_lines, json_decoded, state, updated_at_ms
+			) VALUES (
+				'pending-one', 1, '/confirmed-home/sessions/one.jsonl', 'codex:test', '/confirmed-home', '1', 2,
+				'3', 4, 8192, 100, 4096, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+				'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+				'codex-token-model-invocation-v3', 4096, 0, 100, 20, 10, 2, 'missing', 4096, 10, 1, 1,
+				'building', 1000
+			)
+		`).Error
+	}); err != nil {
+		t.Fatalf("seed v30 pending scan: %v", err)
+	}
+
+	var backupVersions [2]int
+	runner := applicationMigrationRunnerForTest(database)
+	runner.spaceCheck = func(context.Context, string, int64) error { return nil }
+	runner.backup = func(
+		_ context.Context, fromVersion int, targetVersion int, _ func(storesqlite.BackupProgress),
+	) (string, error) {
+		backupVersions = [2]int{fromVersion, targetVersion}
+		return "/tmp/application-v30-before-v31.db", nil
+	}
+	report, err := runner.run(t.Context())
+	if err != nil {
+		t.Fatalf("run(v30->v31) error = %v", err)
+	}
+	if report.FromVersion != 30 || report.TargetVersion != 31 ||
+		!equalInts(report.AppliedVersions, []int{31}) || backupVersions != [2]int{30, 31} {
+		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
+	}
+	assertMigrationVersionAndHistory(t, database, 31, 31)
+
+	repository := storelight.NewRepository(database)
+	pending, err := repository.PendingLightTokenScan(t.Context(), "pending-one")
+	if err != nil {
+		t.Fatalf("PendingLightTokenScan() error = %v", err)
+	}
+	if pending.State != "building" || pending.Checkpoint.DurableOffset != 4096 ||
+		pending.Checkpoint.InputTokens != 100 || pending.Checkpoint.LastRawInputPresent ||
+		pending.Checkpoint.LastRawInputTokens != nil || pending.Checkpoint.CounterEpoch != 0 ||
+		pending.ParserVersion != "codex-token-model-invocation-v3" {
+		t.Fatalf("migrated pending scan = %#v", pending)
+	}
+	if err := database.View(t.Context(), func(_ context.Context, connection *gorm.DB) error {
+		for _, column := range lightTokenCounterCheckpointMigrationColumns {
+			if !connection.Migrator().HasColumn(column.model, column.column) {
+				t.Errorf("v31 column %s.%s is missing", column.table, column.column)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("inspect v31 schema: %v", err)
+	}
 }
 
 func seedApplicationSchemaV16(t *testing.T, database *storesqlite.Store) {

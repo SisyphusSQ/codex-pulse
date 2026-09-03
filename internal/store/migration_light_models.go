@@ -13,3 +13,17 @@ type lightTokenTimedMigrationModel struct {
 }
 
 func (lightTokenTimedMigrationModel) TableName() string { return "light_token_timed" }
+
+type lightTokenCounterCheckpointMigrationModel struct {
+	LastRawInputTokens        *int64 `gorm:"column:last_raw_input_tokens;type:INTEGER CHECK (last_raw_input_tokens IS NULL OR last_raw_input_tokens >= 0)"`
+	LastRawInputPresent       bool   `gorm:"column:last_raw_input_present;type:INTEGER NOT NULL DEFAULT 0 CHECK (last_raw_input_present IN (0, 1))"`
+	LastRawCachedInputTokens  *int64 `gorm:"column:last_raw_cached_input_tokens;type:INTEGER CHECK (last_raw_cached_input_tokens IS NULL OR last_raw_cached_input_tokens >= 0)"`
+	LastRawCachedInputPresent bool   `gorm:"column:last_raw_cached_input_present;type:INTEGER NOT NULL DEFAULT 0 CHECK (last_raw_cached_input_present IN (0, 1))"`
+	LastRawOutputTokens       *int64 `gorm:"column:last_raw_output_tokens;type:INTEGER CHECK (last_raw_output_tokens IS NULL OR last_raw_output_tokens >= 0)"`
+	LastRawOutputPresent      bool   `gorm:"column:last_raw_output_present;type:INTEGER NOT NULL DEFAULT 0 CHECK (last_raw_output_present IN (0, 1))"`
+	LastRawReasoningTokens    *int64 `gorm:"column:last_raw_reasoning_tokens;type:INTEGER CHECK (last_raw_reasoning_tokens IS NULL OR last_raw_reasoning_tokens >= 0)"`
+	LastRawReasoningPresent   bool   `gorm:"column:last_raw_reasoning_present;type:INTEGER NOT NULL DEFAULT 0 CHECK (last_raw_reasoning_present IN (0, 1))"`
+	CounterEpoch              int64  `gorm:"column:counter_epoch;type:INTEGER NOT NULL DEFAULT 0 CHECK (counter_epoch >= 0)"`
+}
+
+func (lightTokenCounterCheckpointMigrationModel) TableName() string { return "light_token_scans" }
