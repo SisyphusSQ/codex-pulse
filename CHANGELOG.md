@@ -1,5 +1,10 @@
 ## Unreleased
 
+## v0.9.3 - 2026-09-03
+
+#### bugFix:
+1. 修复 Codex lightweight Token 计数器跨日、reset、缺失字段、文件追加与 parser 重建时的增量和恢复语义，并让 Cursor/Grok 按 Usage 事件时间归属日用量，保持 Session 生命周期总量、项目归因、partial/unknown 与 billing period 边界。
+
 ## v0.9.2 - 2026-09-02
 
 #### bugFix:
