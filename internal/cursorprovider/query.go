@@ -401,16 +401,20 @@ func (service *QueryService) ListSessions(ctx context.Context, request basequery
 	dashboardRange := dereferenceRange(validated.TimeRange, snapshot)
 	dashboardEvents, dashboardAvailable, dashboardPartial := dashboardEventsInRange(snapshot, dashboardRange)
 	dashboardBySession, dashboardAttributable := attributableDashboardEvents(snapshot.Sessions, dashboardEvents)
+	lifecycleDashboardBySession, _ := attributableDashboardEvents(snapshot.Sessions, snapshot.DashboardUsageEvents)
 	useDashboard := dashboardAvailable && dashboardAttributable
-	sortCursorSessions(sessions, validated.Sort[0], usageBySession, exactUsage, dashboardBySession, useDashboard)
+	sortCursorSessions(sessions, validated.Sort[0], usageBySession, exactUsage, lifecycleDashboardBySession, dashboardAvailable)
+	lifecycleDashboardPartial := dashboardSessionLifecyclePartial(
+		snapshot, sessions, lifecycleDashboardBySession, dashboardAvailable,
+	)
 	offset, limit, err := page(validated.Page, snapshot.Generation, queryFingerprint(validated))
 	if err != nil {
 		return usagecost.SessionListResponse{}, err
 	}
 	items := make([]usagecost.SessionItem, 0, minInt(limit, maxInt(0, len(sessions)-offset)))
 	for _, session := range slicePage(sessions, offset, limit) {
-		if dashboardAvailable && len(dashboardBySession[session.ExternalSessionID]) > 0 {
-			items = append(items, dashboardSessionItem(session, dashboardBySession[session.ExternalSessionID]))
+		if dashboardAvailable && len(lifecycleDashboardBySession[session.ExternalSessionID]) > 0 {
+			items = append(items, dashboardSessionItem(session, lifecycleDashboardBySession[session.ExternalSessionID]))
 		} else {
 			items = append(items, sessionItem(session, usageBySession[session.ExternalSessionID], exactUsage))
 		}
@@ -435,7 +439,7 @@ func (service *QueryService) ListSessions(ctx context.Context, request basequery
 		pageTotals.TurnCount = known(cursorSessionRequestCount(pageSessions), basequery.NumericCount)
 	}
 	meta := completeMeta(next)
-	if dashboardAvailable && (dashboardPartial || !dashboardAttributable) {
+	if dashboardAvailable && (dashboardPartial || !dashboardAttributable || lifecycleDashboardPartial) {
 		meta = partialMeta(next)
 	}
 	return usagecost.SessionListResponse{
@@ -1543,10 +1547,19 @@ func sortCursorSessions(
 		case "lastActivityAt":
 			comparison = compareInt64(left.LastActivityAtMS, right.LastActivityAtMS)
 		case "totalTokens":
-			if useDashboard {
-				comparison = compareInt64(dashboardTokenTotal(dashboard[left.ExternalSessionID]), dashboardTokenTotal(dashboard[right.ExternalSessionID]))
-			} else if exactUsage {
-				comparison = compareInt64(cursorTokenTotal(usage[left.ExternalSessionID]), cursorTokenTotal(usage[right.ExternalSessionID]))
+			leftTotal, leftKnown := cursorSessionTokenTotal(
+				left.ExternalSessionID, usage, exactUsage, dashboard, useDashboard,
+			)
+			rightTotal, rightKnown := cursorSessionTokenTotal(
+				right.ExternalSessionID, usage, exactUsage, dashboard, useDashboard,
+			)
+			switch {
+			case leftKnown && rightKnown:
+				comparison = compareInt64(leftTotal, rightTotal)
+			case leftKnown:
+				comparison = 1
+			case rightKnown:
+				comparison = -1
 			}
 		case "estimatedCost":
 			// Session-scoped Dashboard cost attribution is not yet projected onto local
@@ -1563,6 +1576,43 @@ func sortCursorSessions(
 		}
 		return comparison > 0
 	})
+}
+
+func cursorSessionTokenTotal(
+	sessionID string,
+	usage map[string][]store.CursorUsageEvent,
+	exactUsage bool,
+	dashboard map[string][]store.CursorDashboardUsageEvent,
+	useDashboard bool,
+) (int64, bool) {
+	if events := dashboard[sessionID]; useDashboard && len(events) > 0 {
+		return dashboardTokenTotal(events), true
+	}
+	if exactUsage {
+		return cursorTokenTotal(usage[sessionID]), true
+	}
+	return 0, false
+}
+
+func dashboardSessionLifecyclePartial(
+	snapshot store.CursorSnapshot,
+	sessions []store.CursorSession,
+	dashboard map[string][]store.CursorDashboardUsageEvent,
+	useDashboard bool,
+) bool {
+	if !useDashboard {
+		return false
+	}
+	for _, session := range sessions {
+		if len(dashboard[session.ExternalSessionID]) == 0 {
+			continue
+		}
+		if snapshot.DashboardWindowStartMS > session.CreatedAtMS ||
+			snapshot.DashboardWindowEndMS <= session.LastActivityAtMS {
+			return true
+		}
+	}
+	return false
 }
 
 func sortCursorProjects(

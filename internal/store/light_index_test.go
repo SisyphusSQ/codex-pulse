@@ -1679,6 +1679,211 @@ func assertLightIndecomposableProjectPage(t *testing.T, page ProjectAnalyticsPag
 	}
 }
 
+func TestLightTokenPendingIdentityUpdateContinuesSameGeneration(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	identity.SizeBytes = 1_024
+	identity.PrefixBytes = identity.SizeBytes
+	generation, err := repository.StartLightTokenRebuild(context.Background(), "one", identity, "parser-v1", 2_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
+		Checkpoint: storelight.LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100},
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
+			SourceOffset: identity.SizeBytes, ObservedAtMS: 100, InputTokens: 100,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	grown := identity
+	grown.SizeBytes += 1_024
+	grown.MTimeNS++
+	grown.PrefixBytes = grown.SizeBytes
+	grown.PrefixSHA256 = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	grown.FingerprintSHA256 = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	grown.Comparison = &storelight.LightPrefixComparison{
+		PrefixBytes: identity.PrefixBytes, PrefixSHA256: identity.PrefixSHA256,
+	}
+	if _, err := repository.StartLightTokenAppend(context.Background(), "one", grown, "parser-v1", 3_000); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := repository.PendingLightTokenScan(context.Background(), "one")
+	if err != nil || pending.Identity.PrefixBytes != grown.PrefixBytes ||
+		pending.Identity.PrefixSHA256 != grown.PrefixSHA256 {
+		t.Fatalf("pending append prefix = %#v, %v", pending.Identity, err)
+	}
+	grownAgain := grown
+	grownAgain.Comparison = &storelight.LightPrefixComparison{
+		PrefixBytes: grown.PrefixBytes, PrefixSHA256: grown.PrefixSHA256,
+	}
+	grownAgain.SizeBytes += 512
+	grownAgain.MTimeNS++
+	grownAgain.PrefixBytes = grownAgain.SizeBytes
+	grownAgain.PrefixSHA256 = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+	grownAgain.FingerprintSHA256 = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+	invalidProof := grownAgain
+	invalidProof.Comparison = &storelight.LightPrefixComparison{
+		PrefixBytes:  grown.PrefixBytes,
+		PrefixSHA256: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+	}
+	if err := repository.UpdateLightTokenPendingIdentity(
+		context.Background(), "one", pending.Identity, invalidProof, "parser-v1", 3_050,
+	); !errors.Is(err, storelight.ErrLightTokenConflict) {
+		t.Fatalf("invalid append proof error = %v, want conflict", err)
+	}
+	if err := repository.UpdateLightTokenPendingIdentity(
+		context.Background(), "one", pending.Identity, grownAgain, "parser-v1", 3_100,
+	); err != nil {
+		t.Fatalf("UpdateLightTokenPendingIdentity() error = %v", err)
+	}
+	pending, err = repository.PendingLightTokenScan(context.Background(), "one")
+	if err != nil || pending.Generation != generation || pending.Identity.SizeBytes != grownAgain.SizeBytes ||
+		pending.Identity.PrefixBytes != grownAgain.PrefixBytes || pending.Identity.PrefixSHA256 != grownAgain.PrefixSHA256 ||
+		pending.Checkpoint.InputTokens != 100 || pending.Checkpoint.DurableOffset != identity.SizeBytes {
+		t.Fatalf("pending after identity update = %#v, %v", pending, err)
+	}
+	if err := repository.UpdateLightTokenPendingIdentity(
+		context.Background(), "one", identity, grownAgain, "parser-v1", 3_200,
+	); !errors.Is(err, storelight.ErrLightTokenConflict) {
+		t.Fatalf("stale identity CAS error = %v, want conflict", err)
+	}
+}
+
+func TestLightTokenBatchRejectsCounterEpochRollback(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(context.Background(), "one", identity, "parser-v4", 2_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := int64(100)
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100,
+		Checkpoint: storelight.LightTokenCheckpoint{
+			DurableOffset: 4_000, InputTokens: 100, LastRawInputTokens: &raw,
+			LastRawInputPresent: true, CounterEpoch: 2,
+		},
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
+			SourceOffset: 4_000, ObservedAtMS: 100, InputTokens: 100,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	err = repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_200,
+		Checkpoint: storelight.LightTokenCheckpoint{
+			DurableOffset: 4_000, InputTokens: 100, LastRawInputTokens: &raw,
+			LastRawInputPresent: true, CounterEpoch: 1,
+		},
+	})
+	if !errors.Is(err, storelight.ErrLightTokenConflict) {
+		t.Fatalf("CommitLightTokenBatch(epoch rollback) error = %v, want conflict", err)
+	}
+	active, err := repository.PendingLightTokenScan(context.Background(), "one")
+	if err != nil || active.Checkpoint.CounterEpoch != 2 {
+		t.Fatalf("pending checkpoint changed after rejected epoch rollback: %#v, %v", active.Checkpoint, err)
+	}
+}
+
+func TestLightTokenPendingRebuildKeepsOldActiveReadable(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(context.Background(), "one", identity, "parser-v1", 2_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
+		Checkpoint: storelight.LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 100},
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
+			SourceOffset: 4_000, ObservedAtMS: 100, InputTokens: 100,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	grown := identity
+	grown.SizeBytes += 1_024
+	grown.MTimeNS++
+	grown.FingerprintSHA256 = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	if _, err := repository.StartLightTokenAppend(context.Background(), "one", grown, "parser-v1", 3_000); err != nil {
+		t.Fatal(err)
+	}
+	replaced := grown
+	replaced.SizeBytes = grown.SizeBytes + 2_048
+	replaced.MTimeNS += 5
+	replaced.PrefixSHA256 = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	replaced.FingerprintSHA256 = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+	nextGeneration, err := repository.RestartLightTokenPendingRebuild(
+		context.Background(), "one", grown, replaced, "parser-v4", 4_000,
+	)
+	if err != nil || nextGeneration != generation+1 {
+		t.Fatalf("RestartLightTokenPendingRebuild() = %d, %v", nextGeneration, err)
+	}
+	active, err := repository.ActiveLightTokenScan(context.Background(), "one")
+	if err != nil || active.Generation != generation || active.Checkpoint.InputTokens != 100 ||
+		active.ParserVersion != "parser-v1" {
+		t.Fatalf("old active disappeared during rebuild: %#v, %v", active, err)
+	}
+	pending, err := repository.PendingLightTokenScan(context.Background(), "one")
+	if err != nil || pending.Generation != nextGeneration || pending.ParserVersion != "parser-v4" ||
+		pending.Checkpoint.InputTokens != 0 {
+		t.Fatalf("new pending = %#v, %v", pending, err)
+	}
+}
+
+func TestLightTokenBatchReconcilesAggregateTotalsNotRawCounters(t *testing.T) {
+	t.Parallel()
+
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(context.Background(), "one", identity, "parser-v4", 2_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw100 := int64(100)
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100,
+		Checkpoint: storelight.LightTokenCheckpoint{
+			DurableOffset: 4_000, InputTokens: 100, LastRawInputTokens: &raw100, LastRawInputPresent: true,
+		},
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
+			SourceOffset: 4_000, ObservedAtMS: 100, InputTokens: 100,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	raw90 := int64(90)
+	if err := repository.CommitLightTokenBatch(context.Background(), storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_200, Activate: true,
+		Checkpoint: storelight.LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 190,
+			LastRawInputTokens: &raw90, LastRawInputPresent: true, CounterEpoch: 1,
+		},
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
+			SourceOffset: identity.SizeBytes, ObservedAtMS: 200, InputTokens: 90,
+		}},
+	}); err != nil {
+		t.Fatalf("CommitLightTokenBatch(epoch reset aggregates) error = %v", err)
+	}
+	usage, err := repository.LightSessionTokenUsage(context.Background(), "one")
+	if err != nil || usage.InputTokens != 190 {
+		t.Fatalf("usage = %#v, %v", usage, err)
+	}
+	active, err := repository.ActiveLightTokenScan(context.Background(), "one")
+	if err != nil || !active.Checkpoint.LastRawInputPresent || active.Checkpoint.LastRawInputTokens == nil ||
+		*active.Checkpoint.LastRawInputTokens != 90 || active.Checkpoint.CounterEpoch != 1 {
+		t.Fatalf("active checkpoint = %#v, %v", active, err)
+	}
+}
+
 func lightIndexRepositoryFixture(t *testing.T) *lightTestRepository {
 	t.Helper()
 	repository := openLightRuntimeRepository(t)

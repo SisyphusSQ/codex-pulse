@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -13,9 +14,15 @@ import (
 	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
+	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
-const defaultScanBatchBytes int64 = 8 << 20
+const (
+	defaultScanBatchBytes  int64 = 8 << 20
+	maxSessionScanAttempts       = 8
+)
+
+var errTokenScanLineTooLong = errors.New("token scan line exceeds maximum")
 
 type MetadataProvider interface {
 	List(context.Context, string) (appserver.ThreadList, error)
@@ -271,6 +278,39 @@ func fatalRefreshError(err error) bool {
 		errors.Is(err, logsource.ErrInvalidHome) || errors.Is(err, logsource.ErrUnsafeHome)
 }
 
+func recoverableSessionScanError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+		fatalRefreshError(err) || errors.Is(err, storelight.ErrInvalidRepository) ||
+		errors.Is(err, storelight.ErrInvalidRecord) || sqliteScanError(err) {
+		return false
+	}
+	return errors.Is(err, storelight.ErrLightTokenConflict) ||
+		errors.Is(err, storelight.ErrNotFound) ||
+		errors.Is(err, logsource.ErrChangedDuringScan) ||
+		errors.Is(err, logsource.ErrUnsafeSource) ||
+		errors.Is(err, logsource.ErrUnsupportedFile) ||
+		errors.Is(err, fs.ErrNotExist) ||
+		errors.Is(err, fs.ErrPermission) ||
+		errors.Is(err, errTokenScanLineTooLong)
+}
+
+func sqliteScanError(err error) bool {
+	return errors.Is(err, storesqlite.ErrInvalidConfig) ||
+		errors.Is(err, storesqlite.ErrInvalidPath) ||
+		errors.Is(err, storesqlite.ErrQueueFull) ||
+		errors.Is(err, storesqlite.ErrClosing) ||
+		errors.Is(err, storesqlite.ErrClosed) ||
+		errors.Is(err, storesqlite.ErrCanceled) ||
+		errors.Is(err, storesqlite.ErrBusy) ||
+		errors.Is(err, storesqlite.ErrOwnerLeaseBusy) ||
+		errors.Is(err, storesqlite.ErrDiskFull) ||
+		errors.Is(err, storesqlite.ErrReadOnly) ||
+		errors.Is(err, storesqlite.ErrPermission) ||
+		errors.Is(err, storesqlite.ErrIO) ||
+		errors.Is(err, storesqlite.ErrCorrupt) ||
+		errors.Is(err, storesqlite.ErrCallbackPanic)
+}
+
 func (run *Run) Cancel() {
 	if run == nil || run.cancel == nil {
 		return
@@ -345,6 +385,9 @@ func (runtime *Runtime) scanAll(
 		sessionPublished, err := runtime.scanSession(ctx, home, session, discoverer, reader)
 		published = published || sessionPublished
 		if err != nil {
+			if recoverableSessionScanError(err) {
+				continue
+			}
 			if published {
 				runtime.notifyRefreshCommitted()
 			}
@@ -364,17 +407,30 @@ func (runtime *Runtime) scanSession(
 	discoverer *logsource.Discoverer,
 	reader *logsource.SnapshotReader,
 ) (bool, error) {
+	var lastErr error
+	for attempt := 0; attempt < maxSessionScanAttempts; attempt++ {
+		published, err := runtime.scanSessionOnce(ctx, home, session, discoverer, reader)
+		if err == nil {
+			return published, nil
+		}
+		lastErr = err
+		if !errors.Is(err, storelight.ErrLightTokenConflict) {
+			return published, err
+		}
+	}
+	return false, lastErr
+}
+
+func (runtime *Runtime) scanSessionOnce(
+	ctx context.Context,
+	home storelight.LightHomeIdentity,
+	session storelight.LightSessionMetadata,
+	discoverer *logsource.Discoverer,
+	reader *logsource.SnapshotReader,
+) (bool, error) {
 	pending, pendingErr := runtime.repository.PendingLightTokenScan(ctx, session.SessionID)
 	if pendingErr == nil {
-		previous := snapshotFromStoredScan(pending)
-		current, err := discoverer.Inspect(ctx, *session.RolloutPath, &previous)
-		if err != nil {
-			return false, err
-		}
-		if !sameStoredSnapshot(pending, current) {
-			return false, storelight.ErrLightTokenConflict
-		}
-		return runtime.scanPending(ctx, pending, current, reader)
+		return runtime.scanExistingPending(ctx, home, session, pending, discoverer, reader)
 	}
 	if !errors.Is(pendingErr, storelight.ErrNotFound) {
 		return false, pendingErr
@@ -442,6 +498,68 @@ func (runtime *Runtime) scanSession(
 	return runtime.scanPending(ctx, pending, current, reader)
 }
 
+func (runtime *Runtime) scanExistingPending(
+	ctx context.Context,
+	home storelight.LightHomeIdentity,
+	session storelight.LightSessionMetadata,
+	pending storelight.LightTokenScan,
+	discoverer *logsource.Discoverer,
+	reader *logsource.SnapshotReader,
+) (bool, error) {
+	previous := snapshotFromStoredScan(pending)
+	inspectPrevious := &previous
+	if previous.Path != *session.RolloutPath {
+		inspectPrevious = nil
+	}
+	current, err := discoverer.Inspect(ctx, *session.RolloutPath, inspectPrevious)
+	if err != nil {
+		return false, err
+	}
+	identity := identityFromSnapshot(home, current)
+	decision := DecideRefresh(
+		checkpointFromStoredScan(pending), homeIdentity(pending.Identity.Home), fileIdentity(identity), TokenParserVersion,
+	)
+	switch decision.Kind {
+	case RefreshReuse:
+		return runtime.scanPending(ctx, pending, current, reader)
+	case RefreshAppend:
+		if pendingNeedsIdentityUpdate(pending, identity) {
+			if err := runtime.repository.UpdateLightTokenPendingIdentity(
+				ctx, session.SessionID, pending.Identity, identity, TokenParserVersion, runtime.clock().UnixMilli(),
+			); err != nil {
+				return false, err
+			}
+			pending, err = runtime.repository.PendingLightTokenScan(ctx, session.SessionID)
+			if err != nil {
+				return false, errors.Join(storelight.ErrLightTokenConflict, err)
+			}
+		}
+		return runtime.scanPending(ctx, pending, current, reader)
+	case RefreshDefer:
+		return false, storelight.ErrLightHomeFence
+	case RefreshRebuild:
+		generation, err := runtime.repository.RestartLightTokenPendingRebuild(
+			ctx, session.SessionID, pending.Identity, identity, TokenParserVersion, runtime.clock().UnixMilli(),
+		)
+		if err != nil {
+			return false, err
+		}
+		pending, err = runtime.repository.PendingLightTokenScan(ctx, session.SessionID)
+		if err != nil || pending.Generation != generation {
+			return false, errors.Join(storelight.ErrLightTokenConflict, err)
+		}
+		return runtime.scanPending(ctx, pending, current, reader)
+	default:
+		return false, storelight.ErrLightTokenConflict
+	}
+}
+
+func pendingNeedsIdentityUpdate(pending storelight.LightTokenScan, identity storelight.LightRolloutIdentity) bool {
+	return identity.SizeBytes != pending.Identity.SizeBytes ||
+		identity.MTimeNS != pending.Identity.MTimeNS ||
+		identity.FingerprintSHA256 != pending.Identity.FingerprintSHA256
+}
+
 func (runtime *Runtime) scanPending(
 	ctx context.Context,
 	pending storelight.LightTokenScan,
@@ -465,14 +583,23 @@ func (runtime *Runtime) scanPending(
 		checkpoint := storelight.LightTokenCheckpoint{
 			DurableOffset: scanResult.DurableOffset,
 			Complete:      readResult.EOF && scanResult.Complete,
-			InputTokens:   scanResult.State.HighWater.Input, CachedInputTokens: scanResult.State.HighWater.CachedInput,
-			OutputTokens: scanResult.State.HighWater.Output, ReasoningTokens: scanResult.State.HighWater.Reasoning,
-			CurrentModelKey:    scanResult.State.CurrentModelKey,
-			CurrentModelSource: scanResult.State.CurrentModelSource,
-			PhysicalBytesRead:  pending.Checkpoint.PhysicalBytesRead + readResult.BytesRead,
-			LinesSeen:          pending.Checkpoint.LinesSeen + scanResult.LinesSeen,
-			CandidateLines:     pending.Checkpoint.CandidateLines + scanResult.CandidateLines,
-			JSONDecoded:        pending.Checkpoint.JSONDecoded + scanResult.JSONDecoded,
+			InputTokens:   scanResult.State.Aggregates.Input, CachedInputTokens: scanResult.State.Aggregates.CachedInput,
+			OutputTokens: scanResult.State.Aggregates.Output, ReasoningTokens: scanResult.State.Aggregates.Reasoning,
+			LastRawInputTokens:        presentCounterPointer(scanResult.State.LastRaw.Input),
+			LastRawInputPresent:       scanResult.State.LastRaw.Input.Present,
+			LastRawCachedInputTokens:  presentCounterPointer(scanResult.State.LastRaw.CachedInput),
+			LastRawCachedInputPresent: scanResult.State.LastRaw.CachedInput.Present,
+			LastRawOutputTokens:       presentCounterPointer(scanResult.State.LastRaw.Output),
+			LastRawOutputPresent:      scanResult.State.LastRaw.Output.Present,
+			LastRawReasoningTokens:    presentCounterPointer(scanResult.State.LastRaw.Reasoning),
+			LastRawReasoningPresent:   scanResult.State.LastRaw.Reasoning.Present,
+			CounterEpoch:              scanResult.State.CounterEpoch,
+			CurrentModelKey:           scanResult.State.CurrentModelKey,
+			CurrentModelSource:        scanResult.State.CurrentModelSource,
+			PhysicalBytesRead:         pending.Checkpoint.PhysicalBytesRead + readResult.BytesRead,
+			LinesSeen:                 pending.Checkpoint.LinesSeen + scanResult.LinesSeen,
+			CandidateLines:            pending.Checkpoint.CandidateLines + scanResult.CandidateLines,
+			JSONDecoded:               pending.Checkpoint.JSONDecoded + scanResult.JSONDecoded,
 		}
 		checkpoint.LatestEventAtMS = latestLightEventAt(pending.Checkpoint.LatestEventAtMS, scanResult)
 		batch := storelight.LightTokenBatch{
@@ -504,7 +631,7 @@ func (runtime *Runtime) scanPending(
 		}
 		if pending.Checkpoint.DurableOffset == startOffset {
 			if budget >= int64(DefaultTokenScanMaxLine)+snapshot.Fingerprint.PrefixBytes {
-				return false, errors.New("token scan line exceeds maximum")
+				return false, errTokenScanLineTooLong
 			}
 			budget *= 2
 			if limit := int64(DefaultTokenScanMaxLine) + snapshot.Fingerprint.PrefixBytes; budget > limit {
@@ -548,7 +675,9 @@ func scanSnapshotBatch(
 		DurableOffset:      pending.Checkpoint.DurableOffset,
 		CurrentModelKey:    pending.Checkpoint.CurrentModelKey,
 		CurrentModelSource: pending.Checkpoint.CurrentModelSource,
-		HighWater: TokenTotals{
+		LastRaw:            lastRawFromCheckpoint(pending.Checkpoint),
+		CounterEpoch:       pending.Checkpoint.CounterEpoch,
+		Aggregates: TokenTotals{
 			Input: pending.Checkpoint.InputTokens, CachedInput: pending.Checkpoint.CachedInputTokens,
 			Output: pending.Checkpoint.OutputTokens, Reasoning: pending.Checkpoint.ReasoningTokens,
 		},
@@ -596,15 +725,6 @@ func snapshotFromStoredScan(scan storelight.LightTokenScan) logsource.Snapshot {
 	}
 }
 
-func sameStoredSnapshot(scan storelight.LightTokenScan, snapshot logsource.Snapshot) bool {
-	identity := scan.Identity
-	return identity.Path == snapshot.Path && identity.SourceFileID == snapshot.SourceFileID &&
-		identity.DeviceID == snapshot.Fingerprint.DeviceID && identity.Inode == snapshot.Fingerprint.Inode &&
-		identity.SizeBytes == snapshot.Fingerprint.SizeBytes && identity.MTimeNS == snapshot.Fingerprint.MTimeNS &&
-		identity.PrefixBytes == snapshot.Fingerprint.PrefixBytes && identity.PrefixSHA256 == snapshot.Fingerprint.PrefixSHA256 &&
-		identity.FingerprintSHA256 == snapshot.Fingerprint.Digest && scan.ParserVersion == TokenParserVersion
-}
-
 func checkpointFromStoredScan(scan storelight.LightTokenScan) *ScanCheckpoint {
 	return &ScanCheckpoint{
 		Home: homeIdentity(scan.Identity.Home), File: fileIdentity(scan.Identity), ParserVersion: scan.ParserVersion,
@@ -614,6 +734,30 @@ func checkpointFromStoredScan(scan storelight.LightTokenScan) *ScanCheckpoint {
 			Output: scan.Checkpoint.OutputTokens, Reasoning: scan.Checkpoint.ReasoningTokens,
 		},
 	}
+}
+
+func lastRawFromCheckpoint(checkpoint storelight.LightTokenCheckpoint) TokenCounterSnapshot {
+	return TokenCounterSnapshot{
+		Input:       optionalCounterFromStored(checkpoint.LastRawInputPresent, checkpoint.LastRawInputTokens),
+		CachedInput: optionalCounterFromStored(checkpoint.LastRawCachedInputPresent, checkpoint.LastRawCachedInputTokens),
+		Output:      optionalCounterFromStored(checkpoint.LastRawOutputPresent, checkpoint.LastRawOutputTokens),
+		Reasoning:   optionalCounterFromStored(checkpoint.LastRawReasoningPresent, checkpoint.LastRawReasoningTokens),
+	}
+}
+
+func optionalCounterFromStored(present bool, value *int64) OptionalCounter {
+	if !present || value == nil {
+		return OptionalCounter{}
+	}
+	return OptionalCounter{Value: *value, Present: true}
+}
+
+func presentCounterPointer(value OptionalCounter) *int64 {
+	if !value.Present {
+		return nil
+	}
+	cloned := value.Value
+	return &cloned
 }
 
 func homeIdentity(value storelight.LightHomeIdentity) HomeIdentity {

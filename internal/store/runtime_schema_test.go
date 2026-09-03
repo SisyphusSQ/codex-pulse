@@ -241,6 +241,10 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 			"cached_input_tokens", "output_tokens", "reasoning_tokens", "latest_event_at_ms",
 			"physical_bytes_read", "lines_seen", "candidate_lines", "json_decoded", "state", "updated_at_ms",
 			"current_model_key", "current_model_source",
+			"last_raw_input_tokens", "last_raw_input_present",
+			"last_raw_cached_input_tokens", "last_raw_cached_input_present",
+			"last_raw_output_tokens", "last_raw_output_present",
+			"last_raw_reasoning_tokens", "last_raw_reasoning_present", "counter_epoch",
 		},
 		"light_token_daily": {
 			"session_id", "generation", "day_start_ms", "input_tokens", "cached_input_tokens",

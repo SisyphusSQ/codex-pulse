@@ -49,7 +49,8 @@ const (
 	applicationSchemaV28Version = 28
 	applicationSchemaV29Version = 29
 	applicationSchemaV30Version = 30
-	applicationSchemaVersion    = applicationSchemaV30Version
+	applicationSchemaV31Version = 31
+	applicationSchemaVersion    = applicationSchemaV31Version
 )
 
 var (
@@ -335,6 +336,12 @@ var applicationMigrations = []migrationDefinition{
 		checksum: applicationSchemaV30Checksum(),
 		apply:    migrateCursorDashboardGrokBotQuotaForV30,
 	},
+	{
+		version:  applicationSchemaV31Version,
+		name:     "lightweight-token-counter-epochs",
+		checksum: applicationSchemaV31Checksum(),
+		apply:    addLightTokenCounterCheckpointColumns,
+	},
 }
 
 type sourceFailureMigrationColumn struct {
@@ -491,6 +498,78 @@ func addLightModelAttributionColumns(ctx context.Context, transaction *gorm.DB) 
 
 func verifyLightModelAttributionColumns(transaction *gorm.DB) error {
 	for _, column := range lightModelMigrationColumns {
+		if !transaction.Migrator().HasColumn(column.model, column.column) {
+			return fmt.Errorf("%w: missing column %s.%s", storeschema.ErrContract, column.table, column.column)
+		}
+	}
+	return nil
+}
+
+type lightTokenCounterCheckpointMigrationColumn struct {
+	model      any
+	field      string
+	table      string
+	column     string
+	definition string
+}
+
+var lightTokenCounterCheckpointMigrationColumns = []lightTokenCounterCheckpointMigrationColumn{
+	{
+		model: &lightTokenCounterCheckpointMigrationModel{}, field: "LastRawInputTokens", table: "light_token_scans",
+		column: "last_raw_input_tokens", definition: "INTEGER nullable last observed raw input counter",
+	},
+	{
+		model: &lightTokenCounterCheckpointMigrationModel{}, field: "LastRawInputPresent", table: "light_token_scans",
+		column: "last_raw_input_present", definition: "INTEGER NOT NULL default 0 presence flag for last raw input counter",
+	},
+	{
+		model: &lightTokenCounterCheckpointMigrationModel{}, field: "LastRawCachedInputTokens", table: "light_token_scans",
+		column: "last_raw_cached_input_tokens", definition: "INTEGER nullable last observed raw cached input counter",
+	},
+	{
+		model: &lightTokenCounterCheckpointMigrationModel{}, field: "LastRawCachedInputPresent", table: "light_token_scans",
+		column: "last_raw_cached_input_present", definition: "INTEGER NOT NULL default 0 presence flag for last raw cached input counter",
+	},
+	{
+		model: &lightTokenCounterCheckpointMigrationModel{}, field: "LastRawOutputTokens", table: "light_token_scans",
+		column: "last_raw_output_tokens", definition: "INTEGER nullable last observed raw output counter",
+	},
+	{
+		model: &lightTokenCounterCheckpointMigrationModel{}, field: "LastRawOutputPresent", table: "light_token_scans",
+		column: "last_raw_output_present", definition: "INTEGER NOT NULL default 0 presence flag for last raw output counter",
+	},
+	{
+		model: &lightTokenCounterCheckpointMigrationModel{}, field: "LastRawReasoningTokens", table: "light_token_scans",
+		column: "last_raw_reasoning_tokens", definition: "INTEGER nullable last observed raw reasoning counter",
+	},
+	{
+		model: &lightTokenCounterCheckpointMigrationModel{}, field: "LastRawReasoningPresent", table: "light_token_scans",
+		column: "last_raw_reasoning_present", definition: "INTEGER NOT NULL default 0 presence flag for last raw reasoning counter",
+	},
+	{
+		model: &lightTokenCounterCheckpointMigrationModel{}, field: "CounterEpoch", table: "light_token_scans",
+		column: "counter_epoch", definition: "INTEGER NOT NULL default 0 session counter epoch",
+	},
+}
+
+func addLightTokenCounterCheckpointColumns(ctx context.Context, transaction *gorm.DB) error {
+	if transaction == nil {
+		return fmt.Errorf("%w: invalid light token counter checkpoint migration database", ErrMigrationContract)
+	}
+	database := transaction.WithContext(ctx)
+	for _, column := range lightTokenCounterCheckpointMigrationColumns {
+		if database.Migrator().HasColumn(column.model, column.column) {
+			continue
+		}
+		if err := database.Migrator().AddColumn(column.model, column.field); err != nil {
+			return fmt.Errorf("%w: add %s.%s: %v", ErrMigrationContract, column.table, column.column, err)
+		}
+	}
+	return nil
+}
+
+func verifyLightTokenCounterCheckpointColumns(transaction *gorm.DB) error {
+	for _, column := range lightTokenCounterCheckpointMigrationColumns {
 		if !transaction.Migrator().HasColumn(column.model, column.column) {
 			return fmt.Errorf("%w: missing column %s.%s", storeschema.ErrContract, column.table, column.column)
 		}
@@ -920,7 +999,10 @@ func verifyApplicationSchema(ctx context.Context, transaction *gorm.DB) error {
 	if err := verifyQuotaLimitNameColumn(transaction); err != nil {
 		return err
 	}
-	return verifyCursorSessionMetadataColumns(transaction)
+	if err := verifyCursorSessionMetadataColumns(transaction); err != nil {
+		return err
+	}
+	return verifyLightTokenCounterCheckpointColumns(transaction)
 }
 
 func runtimeSchemaObjectsThroughV12() []storeschema.Object {
@@ -1375,6 +1457,15 @@ func applicationSchemaV30Checksum() string {
 			hasher, object.ObjectType, object.Name,
 			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
 		)
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV31Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV31Version, "lightweight-token-counter-epochs")
+	for _, column := range lightTokenCounterCheckpointMigrationColumns {
+		_, _ = fmt.Fprintln(hasher, column.table, column.column, column.definition)
 	}
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }

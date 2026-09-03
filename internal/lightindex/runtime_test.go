@@ -3,6 +3,7 @@ package lightindex
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -785,7 +786,8 @@ func TestRuntimeMonitorAppendsShortRolloutUsingPreviousPrefixProof(t *testing.T)
 	}
 	updatedScan := waitLightRuntimeSignal(t, commits, "short rollout append")
 	if updatedScan.Generation != initialScan.Generation || updatedScan.Checkpoint.JSONDecoded != 2 ||
-		updatedScan.Checkpoint.InputTokens != 20 || updatedScan.Checkpoint.DurableOffset != int64(len(initialContent)+len(appendLine)) {
+		updatedScan.Checkpoint.InputTokens != 20 || updatedScan.Checkpoint.DurableOffset != int64(len(initialContent)+len(appendLine)) ||
+		updatedScan.Identity.PrefixBytes != int64(len(initialContent)+len(appendLine)) {
 		cancelRun()
 		t.Fatalf("short rollout initial=%#v updated=%#v", initialScan, updatedScan)
 	}
@@ -933,6 +935,334 @@ func TestRuntimeStartRecoversAfterInitialMetadataFailure(t *testing.T) {
 	cancelRun()
 	if err := run.Wait(context.Background()); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Wait(cancel recovered monitor) error = %v, want context.Canceled", err)
+	}
+}
+
+func TestRuntimeContinuesPendingScanWhenFileGrows(t *testing.T) {
+	t.Parallel()
+
+	homePath := t.TempDir()
+	rollout := filepath.Join(homePath, "sessions", "pending-grow.jsonl")
+	if err := os.MkdirAll(filepath.Dir(rollout), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := ""
+	for index := int64(1); index <= 80; index++ {
+		content += tokenLine("2026-07-19T01:00:00Z", index*10, index, index*2, index) + "\n"
+	}
+	if err := os.WriteFile(rollout, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	homeMetadata, err := logsource.NewHomeProbe().Probe(context.Background(), homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalRollout, err := filepath.EvalSymlinks(rollout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, deepRepository, repository := openLightRuntimeRepository(t)
+	path := canonicalRollout
+	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
+			SessionID: "pending-grow", CWD: "/workspace", RolloutPath: &path, CreatedAtMS: 100, UpdatedAtMS: 200,
+		}}}, nil
+	})
+	firstCtx, cancelFirst := context.WithCancel(context.Background())
+	firstRuntime, err := NewRuntime(RuntimeConfig{
+		Repository: repository, DeepRepository: deepRepository, Metadata: provider, ScanBatchBytes: 4_600,
+		BatchCommitted: func(storelight.LightTokenScan) { cancelFirst() },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstRun, err := firstRuntime.Start(firstCtx, storelight.LightHomeIdentity{
+		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := firstRun.Wait(context.Background()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Wait(first) error = %v, want canceled", err)
+	}
+	pending, err := repository.PendingLightTokenScan(context.Background(), "pending-grow")
+	if err != nil || pending.Checkpoint.DurableOffset <= 0 {
+		t.Fatalf("pending after cancel = %#v, %v", pending, err)
+	}
+	appendLine := tokenLine("2026-07-20T01:00:00Z", 900, 90, 180, 90) + "\n"
+	file, err := os.OpenFile(rollout, os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString(appendLine); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	secondRuntime, err := NewRuntime(RuntimeConfig{
+		Repository: repository, DeepRepository: deepRepository, Metadata: provider, ScanBatchBytes: 8 << 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondRun, err := secondRuntime.Start(context.Background(), storelight.LightHomeIdentity{
+		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := secondRun.Wait(context.Background()); err != nil {
+		t.Fatalf("Wait(pending growth) error = %v", err)
+	}
+	active, err := repository.ActiveLightTokenScan(context.Background(), "pending-grow")
+	if err != nil || active.Generation != pending.Generation || active.Checkpoint.InputTokens != 900 ||
+		active.Checkpoint.CounterEpoch != 0 {
+		t.Fatalf("active after pending growth = %#v, %v", active, err)
+	}
+	daily, err := repository.LightSessionTokenDaily(context.Background(), "pending-grow")
+	if err != nil || len(daily) != 2 {
+		t.Fatalf("daily after cross-day append = %#v, %v", daily, err)
+	}
+}
+
+func TestRuntimeResumesIncompleteJSONLTail(t *testing.T) {
+	t.Parallel()
+
+	homePath := t.TempDir()
+	rollout := filepath.Join(homePath, "sessions", "partial-tail.jsonl")
+	if err := os.MkdirAll(filepath.Dir(rollout), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	complete := tokenLine("2026-07-19T01:00:00Z", 40, 4, 8, 2) + "\n"
+	partial := tokenLine("2026-07-19T01:00:01Z", 70, 7, 14, 3)
+	if err := os.WriteFile(rollout, []byte(complete+partial), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	homeMetadata, err := logsource.NewHomeProbe().Probe(context.Background(), homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalRollout, err := filepath.EvalSymlinks(rollout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, deepRepository, repository := openLightRuntimeRepository(t)
+	path := canonicalRollout
+	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
+			SessionID: "partial-tail", CWD: "/workspace", RolloutPath: &path, CreatedAtMS: 100, UpdatedAtMS: 200,
+		}}}, nil
+	})
+	home := storelight.LightHomeIdentity{Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode}
+	firstRuntime, err := NewRuntime(RuntimeConfig{Repository: repository, DeepRepository: deepRepository, Metadata: provider})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstRun, err := firstRuntime.Start(context.Background(), home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := firstRun.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := repository.PendingLightTokenScan(context.Background(), "partial-tail")
+	if err != nil || pending.Checkpoint.Complete || pending.Checkpoint.InputTokens != 40 {
+		t.Fatalf("incomplete tail pending = %#v, %v", pending, err)
+	}
+	file, err := os.OpenFile(rollout, os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("\n"); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	secondRuntime, err := NewRuntime(RuntimeConfig{Repository: repository, DeepRepository: deepRepository, Metadata: provider})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondRun, err := secondRuntime.Start(context.Background(), home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := secondRun.Wait(context.Background()); err != nil {
+		t.Fatalf("Wait(completed tail) error = %v", err)
+	}
+	active, err := repository.ActiveLightTokenScan(context.Background(), "partial-tail")
+	if err != nil || !active.Checkpoint.Complete || active.Checkpoint.InputTokens != 70 ||
+		active.Generation != pending.Generation {
+		t.Fatalf("active after tail completion = %#v, %v", active, err)
+	}
+}
+
+func TestRuntimeParserV4RebuildKeepsOldActiveReadable(t *testing.T) {
+	t.Parallel()
+
+	homePath := t.TempDir()
+	rollout := filepath.Join(homePath, "sessions", "parser-readable.jsonl")
+	if err := os.MkdirAll(filepath.Dir(rollout), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := tokenLine("2026-07-19T01:00:00Z", 100, 20, 10, 2) + "\n"
+	if err := os.WriteFile(rollout, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	homeMetadata, err := logsource.NewHomeProbe().Probe(context.Background(), homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalRollout, err := filepath.EvalSymlinks(rollout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	database, deepRepository, repository := openLightRuntimeRepository(t)
+	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
+			SessionID: "parser-readable", CWD: "/workspace", RolloutPath: &canonicalRollout,
+			CreatedAtMS: 100, UpdatedAtMS: 200,
+		}}}, nil
+	})
+	home := storelight.LightHomeIdentity{Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode}
+	firstRuntime, err := NewRuntime(RuntimeConfig{Repository: repository, DeepRepository: deepRepository, Metadata: provider})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstRun, err := firstRuntime.Start(context.Background(), home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := firstRun.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	initial, err := repository.ActiveLightTokenScan(context.Background(), "parser-readable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
+		return transaction.WithContext(ctx).Table("light_token_scans").
+			Where("session_id = ? AND generation = ?", "parser-readable", initial.Generation).
+			Update("parser_version", "codex-token-model-invocation-v3").Error
+	}); err != nil {
+		t.Fatal(err)
+	}
+	blocked := make(chan struct{})
+	release := make(chan struct{})
+	secondRuntime, err := NewRuntime(RuntimeConfig{
+		Repository: repository, DeepRepository: deepRepository, Metadata: provider,
+		BeforeTokenScan: func(ctx context.Context) error {
+			close(blocked)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-release:
+				return nil
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondRun, err := secondRuntime.Start(context.Background(), home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-blocked
+	usage, err := repository.LightSessionTokenUsage(context.Background(), "parser-readable")
+	if err != nil || usage.Generation != initial.Generation || usage.InputTokens != 100 {
+		close(release)
+		t.Fatalf("old active not readable during rebuild: %#v, %v", usage, err)
+	}
+	close(release)
+	if err := secondRun.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	active, err := repository.ActiveLightTokenScan(context.Background(), "parser-readable")
+	if err != nil || active.Generation <= initial.Generation || active.ParserVersion != TokenParserVersion {
+		t.Fatalf("parser v4 rebuild = %#v, initial=%#v, %v", active, initial, err)
+	}
+}
+
+func TestRuntimeRecoverableSessionErrorDoesNotStarveLaterSessions(t *testing.T) {
+	t.Parallel()
+
+	homePath := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(homePath, "sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	goodRollout := filepath.Join(homePath, "sessions", "good.jsonl")
+	if err := os.WriteFile(goodRollout, []byte(tokenLine("2026-07-19T01:00:00Z", 15, 1, 2, 0)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	homeMetadata, err := logsource.NewHomeProbe().Probe(context.Background(), homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalGood, err := filepath.EvalSymlinks(goodRollout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(homePath, "sessions", "missing.jsonl")
+	_, deepRepository, repository := openLightRuntimeRepository(t)
+	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{
+			{SessionID: "zzz-missing", CWD: "/workspace", RolloutPath: &missing, CreatedAtMS: 100, UpdatedAtMS: 400},
+			{SessionID: "aaa-good", CWD: "/workspace", RolloutPath: &canonicalGood, CreatedAtMS: 100, UpdatedAtMS: 200},
+		}}, nil
+	})
+	runtime, err := NewRuntime(RuntimeConfig{Repository: repository, DeepRepository: deepRepository, Metadata: provider})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := runtime.Start(context.Background(), storelight.LightHomeIdentity{
+		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := run.Wait(context.Background()); err != nil {
+		t.Fatalf("Wait() error = %v, recoverable session should not fail the scan", err)
+	}
+	usage, err := repository.LightSessionTokenUsage(context.Background(), "aaa-good")
+	if err != nil || usage.InputTokens != 15 {
+		t.Fatalf("later session starved = %#v, %v", usage, err)
+	}
+}
+
+func TestRecoverableSessionScanErrorClassification(t *testing.T) {
+	t.Parallel()
+
+	for _, err := range []error{
+		storelight.ErrLightTokenConflict,
+		storelight.ErrNotFound,
+		logsource.ErrChangedDuringScan,
+		logsource.ErrUnsafeSource,
+		logsource.ErrUnsupportedFile,
+		fs.ErrNotExist,
+		fs.ErrPermission,
+		errTokenScanLineTooLong,
+	} {
+		if !recoverableSessionScanError(err) {
+			t.Fatalf("%v should be isolated to its session", err)
+		}
+	}
+	for _, err := range []error{
+		storelight.ErrLightHomeFence,
+		storelight.ErrInvalidRepository,
+		storelight.ErrInvalidRecord,
+		storesqlite.ErrBusy,
+		storesqlite.ErrCorrupt,
+		errors.Join(storesqlite.ErrPermission, fs.ErrPermission),
+		context.Canceled,
+		errors.New("unexpected runtime failure"),
+	} {
+		if recoverableSessionScanError(err) {
+			t.Fatalf("%v must abort the scan", err)
+		}
 	}
 }
 

@@ -92,22 +92,30 @@ func TestOrchestratorReturnsStableProviderOrderAndPartialResults(t *testing.T) {
 
 func TestOrchestratorDoesNotCancelSiblingsOnFailure(t *testing.T) {
 	t.Parallel()
-	started := make(chan struct{})
+	codexStarted := make(chan struct{})
+	cursorStarted := make(chan struct{})
+	grokStarted := make(chan struct{})
 	release := make(chan struct{})
 	codex := &stubProvider{
 		result: ProviderResult{Provider: agentprovider.Codex, Status: StatusFailed,
 			Components: []ComponentResult{{Component: ComponentCodexQuota, Status: StatusFailed}}},
-		started: started,
+		started: codexStarted,
 		release: release,
 	}
-	cursor := &stubProvider{result: ProviderResult{
-		Provider: agentprovider.Cursor, Status: StatusRefreshed,
-		Components: []ComponentResult{{Component: ComponentCursorLocal, Status: StatusRefreshed, Attempted: true}},
-	}}
-	grok := &stubProvider{result: ProviderResult{
-		Provider: agentprovider.Grok, Status: StatusRefreshed,
-		Components: []ComponentResult{{Component: ComponentGrokLocal, Status: StatusRefreshed, Attempted: true}},
-	}}
+	cursor := &stubProvider{
+		result: ProviderResult{
+			Provider: agentprovider.Cursor, Status: StatusRefreshed,
+			Components: []ComponentResult{{Component: ComponentCursorLocal, Status: StatusRefreshed, Attempted: true}},
+		},
+		started: cursorStarted,
+	}
+	grok := &stubProvider{
+		result: ProviderResult{
+			Provider: agentprovider.Grok, Status: StatusRefreshed,
+			Components: []ComponentResult{{Component: ComponentGrokLocal, Status: StatusRefreshed, Attempted: true}},
+		},
+		started: grokStarted,
+	}
 	orchestrator, err := New(Config{Codex: codex, Cursor: cursor, Grok: grok})
 	if err != nil {
 		t.Fatal(err)
@@ -117,13 +125,17 @@ func TestOrchestratorDoesNotCancelSiblingsOnFailure(t *testing.T) {
 		receipt, _ := orchestrator.Refresh(context.Background(), TriggerScheduled)
 		done <- receipt
 	}()
-	<-started
-	if cursor.calls.Load() == 0 && grok.calls.Load() == 0 {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if cursor.calls.Load() == 0 || grok.calls.Load() == 0 {
-		close(release)
-		t.Fatal("sibling providers were not started while Codex was blocked")
+	<-codexStarted
+	for name, siblingStarted := range map[string]<-chan struct{}{
+		agentprovider.Cursor: cursorStarted,
+		agentprovider.Grok:   grokStarted,
+	} {
+		select {
+		case <-siblingStarted:
+		case <-time.After(time.Second):
+			close(release)
+			t.Fatalf("%s provider was not started while Codex was blocked", name)
+		}
 	}
 	close(release)
 	receipt := <-done

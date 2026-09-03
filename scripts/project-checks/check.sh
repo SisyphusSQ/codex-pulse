@@ -204,7 +204,7 @@ require_pattern scripts/macos/run-app-smoke.sh '--skip-live-lifecycle' SWIFT-002
 require_pattern scripts/macos/run-app-smoke.sh 'app smoke failed: timeout' SWIFT-002 docs/test/native-app-shell-overview.md
 require_pattern scripts/macos/run-app-smoke.sh 'isolated empty Home produced unexpected user facts' DATA-001 docs/test/native-app-shell-overview.md
 require_pattern scripts/macos/run-app-smoke.sh 'primary_pages=partial' SWIFT-003 docs/test/native-primary-pages.md
-require_pattern scripts/macos/run-app-smoke.sh 'sources=10 .*api_subscriptions=deepseek_unconfigured\\\+opencode_go_unconfigured .*ui_pages=9' SWIFT-003 docs/test/native-primary-pages.md
+require_pattern scripts/macos/run-app-smoke.sh 'sources=9 .*api_subscriptions=deepseek_unconfigured\\\+opencode_go_unconfigured .*ui_pages=9' SWIFT-003 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'CODEX_PULSE_APP_RUNTIME' SWIFT-004 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'confirmed Home is not the real Codex Home' SWIFT-004 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'standard_housekeeping=allowed' SWIFT-004 docs/test/native-primary-pages.md

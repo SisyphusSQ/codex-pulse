@@ -12,6 +12,14 @@
 
 Token scanner 以 64KiB 分块读取，只有包含精确字节串 `"token_count"` 或 `"turn_context"` 的行才做 JSON decode。parser v2 从 `turn_context.model` 提取最长 128 bytes 的安全 normalized key/source，并把当前模型 checkpoint 与每个 timed token delta 一起持久化；raw/非法 model 不落库。每个 rollout 保存 Home/file identity、size、mtime、parser version、prefix proof 和完整行 offset；无变化复用、同文件追加扫描、截断/替换/parser bump 重建均有自动化测试。Turn timeline 保留为打开单会话详情时的按需严格深索引；它复用原 parser 与 checkpoint/generation fence、跳过历史 quota facts，并通过 lifecycle drain fence 支持取消和退出恢复。
 
+## 2026-09-03 跨日 Token 与 counter epoch
+
+- 产品契约：UsageCost / 日趋势 / 可归因项目按事件发生时间与请求 IANA timezone 归属；Session 列表仍按 `LastActivityAt` 筛选，Session token 总量保持生命周期合计；Cursor/Grok billing period 不随“今日”查询改写；`partial` / `unknown` 不得伪造成零。
+- Codex lightweight scanner 不再用 component high-water 丢弃 reset 后的 epoch。持久化 checkpoint 同时保存 last-raw counters、presence 与 `counter_epoch`；批次 reconcile 仍只用 aggregate totals 差值，避免把 raw counters 误当累计总量。
+- pending generation 对正常 append / incomplete tail 复用 `DecideRefresh`，不再把文件增长当成永久 conflict。parser 升到 `codex-token-model-invocation-v4` 触发受控 rebuild；旧 active 在新 generation 激活前保持可读。
+- application schema v31 为上述 checkpoint 列做 append-only migration；v30 checksum 保持冻结。
+- 本轮只跑 synthetic/isolated 定向测试，不作为 Live E2E 或可 Ship 证据。
+
 ## 2026-07-24 会话标题与 JSONL 动态刷新
 
 - 常驻 Helper 每 30 秒执行一次 coalesced 轻量 refresh；`application_did_become_active` 与 `system_did_wake` 通过既有 lifecycle reconcile 立即发送一次非阻塞 trigger。同一 worker 串行拉取 App Server metadata 和检查 rollout，不会为周期、前台和唤醒事件并发启动多份扫描。

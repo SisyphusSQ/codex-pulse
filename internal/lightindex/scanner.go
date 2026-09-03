@@ -101,9 +101,23 @@ type ScanDiagnostic struct {
 	EndOffset   int64
 }
 
+type OptionalCounter struct {
+	Value   int64
+	Present bool
+}
+
+type TokenCounterSnapshot struct {
+	Input       OptionalCounter
+	CachedInput OptionalCounter
+	Output      OptionalCounter
+	Reasoning   OptionalCounter
+}
+
 type ScanState struct {
 	DurableOffset      int64
-	HighWater          TokenTotals
+	LastRaw            TokenCounterSnapshot
+	CounterEpoch       int64
+	Aggregates         TokenTotals
 	CurrentModelKey    *string
 	CurrentModelSource attribution.Source
 }
@@ -261,10 +275,10 @@ func (scanner *TokenScanner) processLine(
 		Result     json.RawMessage `json:"result"`
 		Info       *struct {
 			Total *struct {
-				Input       int64 `json:"input_tokens"`
-				CachedInput int64 `json:"cached_input_tokens"`
-				Output      int64 `json:"output_tokens"`
-				Reasoning   int64 `json:"reasoning_output_tokens"`
+				Input       *int64 `json:"input_tokens"`
+				CachedInput *int64 `json:"cached_input_tokens"`
+				Output      *int64 `json:"output_tokens"`
+				Reasoning   *int64 `json:"reasoning_output_tokens"`
 			} `json:"total_token_usage"`
 		} `json:"info"`
 	}
@@ -290,21 +304,17 @@ func (scanner *TokenScanner) processLine(
 		})
 		return
 	}
-	current := TokenTotals{
-		Input:       payload.Info.Total.Input,
-		CachedInput: payload.Info.Total.CachedInput,
-		Output:      payload.Info.Total.Output,
-		Reasoning:   payload.Info.Total.Reasoning,
-	}
-	if current.Input < 0 || current.CachedInput < 0 || current.Output < 0 || current.Reasoning < 0 {
+	current, ok := tokenCounterSnapshotFromPointers(
+		payload.Info.Total.Input, payload.Info.Total.CachedInput, payload.Info.Total.Output, payload.Info.Total.Reasoning,
+	)
+	if !ok {
 		result.Diagnostics = append(result.Diagnostics, ScanDiagnostic{
 			Code: "candidate_invalid_counter", StartOffset: startOffset, EndOffset: endOffset,
 		})
 		return
 	}
 
-	delta := positiveDelta(result.State.HighWater, current)
-	result.State.HighWater = componentMaximum(result.State.HighWater, current)
+	delta := applySessionCounterDelta(&result.State, current)
 	result.TokenEvents++
 	if delta == (TokenTotals{}) {
 		return
@@ -547,29 +557,121 @@ func cloneString(value *string) *string {
 	return &cloned
 }
 
-func positiveDelta(previous, current TokenTotals) TokenTotals {
+func tokenCounterSnapshotFromPointers(input, cached, output, reasoning *int64) (TokenCounterSnapshot, bool) {
+	if invalidOptionalCounter(input) || invalidOptionalCounter(cached) ||
+		invalidOptionalCounter(output) || invalidOptionalCounter(reasoning) {
+		return TokenCounterSnapshot{}, false
+	}
+	return TokenCounterSnapshot{
+		Input:       optionalCounterFromPointer(input),
+		CachedInput: optionalCounterFromPointer(cached),
+		Output:      optionalCounterFromPointer(output),
+		Reasoning:   optionalCounterFromPointer(reasoning),
+	}, true
+}
+
+func invalidOptionalCounter(value *int64) bool {
+	return value != nil && *value < 0
+}
+
+func optionalCounterFromPointer(value *int64) OptionalCounter {
+	if value == nil {
+		return OptionalCounter{}
+	}
+	return OptionalCounter{Value: *value, Present: true}
+}
+
+func applySessionCounterDelta(state *ScanState, current TokenCounterSnapshot) TokenTotals {
+	if state == nil {
+		return TokenTotals{}
+	}
+	if !state.LastRaw.anyPresent() {
+		state.LastRaw = current
+		delta := current.knownTotals()
+		state.Aggregates = addTotals(state.Aggregates, delta)
+		return delta
+	}
+	if knownCountersDecrease(state.LastRaw, current) {
+		state.CounterEpoch++
+		state.LastRaw = current
+		delta := current.knownTotals()
+		state.Aggregates = addTotals(state.Aggregates, delta)
+		return delta
+	}
+	delta := knownCounterDelta(state.LastRaw, current)
+	state.LastRaw = overlayCounters(state.LastRaw, current)
+	state.Aggregates = addTotals(state.Aggregates, delta)
+	return delta
+}
+
+func (snapshot TokenCounterSnapshot) anyPresent() bool {
+	return snapshot.Input.Present || snapshot.CachedInput.Present ||
+		snapshot.Output.Present || snapshot.Reasoning.Present
+}
+
+func (snapshot TokenCounterSnapshot) knownTotals() TokenTotals {
 	return TokenTotals{
-		Input:       positiveDifference(previous.Input, current.Input),
-		CachedInput: positiveDifference(previous.CachedInput, current.CachedInput),
-		Output:      positiveDifference(previous.Output, current.Output),
-		Reasoning:   positiveDifference(previous.Reasoning, current.Reasoning),
+		Input:       presentCounterValue(snapshot.Input),
+		CachedInput: presentCounterValue(snapshot.CachedInput),
+		Output:      presentCounterValue(snapshot.Output),
+		Reasoning:   presentCounterValue(snapshot.Reasoning),
 	}
 }
 
-func positiveDifference(previous, current int64) int64 {
-	if current <= previous {
+func presentCounterValue(value OptionalCounter) int64 {
+	if !value.Present {
 		return 0
 	}
-	return current - previous
+	return value.Value
 }
 
-func componentMaximum(left, right TokenTotals) TokenTotals {
+func knownCountersDecrease(previous, current TokenCounterSnapshot) bool {
+	return knownCounterDecreases(previous.Input, current.Input) ||
+		knownCounterDecreases(previous.CachedInput, current.CachedInput) ||
+		knownCounterDecreases(previous.Output, current.Output) ||
+		knownCounterDecreases(previous.Reasoning, current.Reasoning)
+}
+
+func knownCounterDecreases(previous, current OptionalCounter) bool {
+	return previous.Present && current.Present && current.Value < previous.Value
+}
+
+func knownCounterDelta(previous, current TokenCounterSnapshot) TokenTotals {
 	return TokenTotals{
-		Input:       max(left.Input, right.Input),
-		CachedInput: max(left.CachedInput, right.CachedInput),
-		Output:      max(left.Output, right.Output),
-		Reasoning:   max(left.Reasoning, right.Reasoning),
+		Input:       knownComponentDelta(previous.Input, current.Input),
+		CachedInput: knownComponentDelta(previous.CachedInput, current.CachedInput),
+		Output:      knownComponentDelta(previous.Output, current.Output),
+		Reasoning:   knownComponentDelta(previous.Reasoning, current.Reasoning),
 	}
+}
+
+func knownComponentDelta(previous, current OptionalCounter) int64 {
+	if !current.Present {
+		return 0
+	}
+	if !previous.Present {
+		return current.Value
+	}
+	if current.Value < previous.Value {
+		return 0
+	}
+	return current.Value - previous.Value
+}
+
+func overlayCounters(previous, current TokenCounterSnapshot) TokenCounterSnapshot {
+	return TokenCounterSnapshot{
+		Input:       overlayCounter(previous.Input, current.Input),
+		CachedInput: overlayCounter(previous.CachedInput, current.CachedInput),
+		Output:      overlayCounter(previous.Output, current.Output),
+		Reasoning:   overlayCounter(previous.Reasoning, current.Reasoning),
+	}
+}
+
+func overlayCounter(previous, current OptionalCounter) OptionalCounter {
+	if current.Present {
+		return current
+	}
+	return previous
 }
 
 func addTotals(left, right TokenTotals) TokenTotals {
