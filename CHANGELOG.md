@@ -1,5 +1,10 @@
 ## Unreleased
 
+## v0.10.0 - 2026-09-04
+
+#### feature:
+1. [TOO-418] 新增跨客户端 Dashboard 汇总视图：通过 `DashboardSummary` RPC 统一展示 Codex、Cursor、Grok 的 Token、API 等价估算成本、趋势、分布、模型 Top、独立额度状态与 365 天活动，并保留客户端覆盖度、partial/unknown 和客户端模型命名空间语义。
+
 ## v0.9.3 - 2026-09-03
 
 #### bugFix:
