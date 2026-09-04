@@ -211,6 +211,11 @@ field 11 的每日桶与新趋势互相解码。
 Tool“逐事件计数”、Skill“检测活动”、结构化/内容检测来源分组以及 unknown 结果语义；
 客户端不得把 Skill 活动或 unknown Tool 结果改写为精确执行/成功次数。
 
+跨客户端汇总使用 `dashboard-summary-v2`。当前 Today / 7D / 30D 查询范围与独立
+365 天活动范围在同一请求中分别传递；Helper 返回当前汇总 coverage、年度活动 coverage
+和逐客户端年度 coverage。Swift 只负责格式化、筛选和交互展示，不从三份 Provider
+响应或年度日桶重算另一套业务真相。
+
 ### 5.2 RPC 分类
 
 当前 `CoreService` 覆盖以下边界：
@@ -218,7 +223,7 @@ Tool“逐事件计数”、Skill“检测活动”、结构化/内容检测来�
 | 分类 | RPC |
 | --- | --- |
 | 握手与启动 | `Handshake`、`Bootstrap`、`Contracts` |
-| 用量、价格与主实体 | `AccountSnapshot`、`UsageCost`、`InvocationUsage`、`PricingCatalogCurrent`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail` |
+| 用量、价格与主实体 | `AccountSnapshot`、`UsageCost`、`DashboardSummary`、`InvocationUsage`、`PricingCatalogCurrent`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail` |
 | Quota | `QuotaCurrent`、`RequestQuotaRefresh` |
 | 数据源、任务与健康 | `ListSources`、`Source`、`ListJobs`、`Job`、`ListHealth`、`Health`、`HealthProjection`、`DataHealth` |
 | 设置与 Home | `Settings`、`UpdateSettings`、`PlanHomeSwitch`、`ConfirmHomeSwitch`、`RecoverHomeSwitch` |
@@ -283,7 +288,7 @@ Swift 根据 `message_key` 使用本地资源映射文案；未知 code 必须�
 ### 5.6 分页和消息大小
 
 - 列表继续使用 opaque cursor 和服务端限制，不允许客户端解析 cursor。
-- 页面应请求聚合 DTO 和有界 page，不做逐行 RPC。
+- 页面应请求聚合 DTO 和有界 page，不做逐行 RPC。跨客户端汇总只消费 `DashboardSummary`，不得并行请求三份 `UsageCost` 后在 Swift 侧重算总量。
 - Helper 与 Swift client 对齐限制单条 gRPC message 最大 16 MiB；Swift 不沿用 grpc-swift 默认的 4 MiB response 上限，否则合法的完整 Quota explanation response 会在客户端被拒收。未来调整必须同时提供内存、延迟和大响应测试证据。
 - 任何“为了省 RPC 次数”而返回无界 Session、Turn 或趋势数组的改动都应被拒绝。
 

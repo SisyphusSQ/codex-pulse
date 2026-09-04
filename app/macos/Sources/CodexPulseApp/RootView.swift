@@ -11,6 +11,14 @@ struct RootView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: selection) {
+				Section(localization.text("sidebar.section.summary")) {
+					Label(
+						AppFeature.dashboardSummary.title(localization: localization),
+						systemImage: AppFeature.dashboardSummary.symbol
+					)
+					.tag(AppFeature.dashboardSummary)
+					.accessibilityIdentifier("sidebar.dashboard-summary")
+				}
 				Section {
 					Picker("客户端", selection: providerSelection) {
 						ForEach(AgentProvider.allCases) { provider in
@@ -113,6 +121,7 @@ struct RootView: View {
     private var navigationTitle: String {
         let featureTitle = model.selectedFeature.title(localization: localization)
         return model.selectedFeature == .apiSubscriptions
+            || model.selectedFeature == .dashboardSummary
             ? featureTitle
             : "\(featureTitle) · \(model.selectedProvider.title)"
     }
@@ -167,6 +176,8 @@ struct RootView: View {
     private var featureContent: some View {
         Group {
             switch model.selectedFeature {
+            case .dashboardSummary:
+                RuntimeAwarePage(model: model) { DashboardSummaryView(model: model) }
             case .overview:
                 OverviewStateView(model: model) { model.navigate(to: $0) }
             case .sessions:

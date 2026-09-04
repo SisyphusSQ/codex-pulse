@@ -1,5 +1,13 @@
 # 原生主要页面与共享数据闭环验证记录
 
+## 2026-09-04 TOO-418 跨客户端汇总
+
+- 新增第十个原生导航页面“汇总”和 `DashboardSummary` RPC；isolated / live primary-pages smoke 都会实际调用该 RPC，并记录 `dashboard_providers`、`dashboard_known_providers`、`dashboard_tokens`。
+- `dashboard-summary-v2` 增加独立 365 天年度活动范围、总活动 coverage、逐客户端活动 coverage 与 Provider 模型数；Swift 汇总页按“状态 / KPI → 年度热力图 → Token 趋势 → 三张分布卡 → 各客户端额度”展示，并为趋势、热力图、构成条和环图提供 pointer hover 详情。
+- isolated smoke 同时显式绑定空的 `CODEX_PULSE_CURSOR_HOME` 与 `CODEX_PULSE_GROK_HOME`。当前稳定空环境契约为 `sources=8 dashboard_providers=3 dashboard_tokens=0 ui_pages=10`；`dashboard_tokens=unknown` 仍是所有 Provider 都不可用时允许的 fail-closed 结果，正数会被视为误读用户数据。
+- live gate 更新为十页，并要求三个固定 Provider slice、至少一个已知 Provider 与正的七日汇总 Token。该 live gate 在本次开发审查中未执行，不能据此声称真实 Home 已验收。
+- 本次只在 mode `0700` 的私有 runtime 中复制线上 SQLite，并绑定真实 Codex Home 打开 Development App 做人工视觉验收；该过程不修改线上数据库，也不替代 `make verify-live` 的完整 gate。
+
 ## 2026-08-22 TOO-349 Cursor 混合月/周额度入口
 
 - Issue：TOO-349。Cursor Provider 在现有月额度之外增加 Grok Bot 周额度；产品仍只有 `codex` / `cursor` / `grok` 三个 Agent Provider。

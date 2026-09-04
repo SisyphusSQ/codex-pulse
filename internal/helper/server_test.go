@@ -74,7 +74,8 @@ func TestGRPCServerAuthenticatesHandshakeAndNegotiatesContract(t *testing.T) {
 	if contracts.Version != "core-rpc-v2" ||
 		contracts.UsageCostVersion != "usage-cost-v2" ||
 		contracts.InvocationUsageVersion != "invocation-usage-v1" ||
-		contracts.PricingCatalogVersion != "pricing-catalog-v1" {
+		contracts.PricingCatalogVersion != "pricing-catalog-v1" ||
+		contracts.DashboardSummaryVersion != "dashboard-summary-v2" {
 		t.Fatalf("Contracts() versions = %#v", contracts)
 	}
 }
@@ -432,7 +433,7 @@ func TestGRPCAPIImplementsEveryFrozenRPC(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
-		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DataHealth",
+		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DashboardSummary", "DataHealth",
 		"Handshake", "Health", "HealthProjection", "InvocationUsage", "Job", "ListHealth", "ListJobs", "ListProjects",
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
 		"MigrationRecoveryExit", "MigrationRecoveryPrepare", "MigrationRecoveryRetry",

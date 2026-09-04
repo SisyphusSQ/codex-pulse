@@ -26,6 +26,7 @@ func TestCoreProtoExposesExactRPCSurface(t *testing.T) {
 	sort.Strings(got)
 	want := []string{
 		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DataHealth",
+		"DashboardSummary",
 		"Handshake", "Health", "HealthProjection", "InvocationUsage", "Job", "ListHealth", "ListJobs", "ListProjects",
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
 		"MigrationRecoveryExit", "MigrationRecoveryPrepare", "MigrationRecoveryRetry",
@@ -65,6 +66,11 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		`(?s)message ActivityWeekdayHourPoint\s*\{.*int32 weekday\s*=\s*1\s*;.*int32 hour\s*=\s*2\s*;.*ActivityMetrics metrics\s*=\s*3\s*;`,
 		`(?s)message ActivityDistribution\s*\{.*string timeline_granularity\s*=\s*1\s*;.*repeated ActivityTimelinePoint timeline\s*=\s*2\s*;.*repeated ActivityWeekdayHourPoint weekday_hours\s*=\s*3\s*;.*int32 timeline_bucket_minutes\s*=\s*4\s*;`,
 		`(?s)message UsageCostResponse\s*\{.*repeated UsageModelItem models\s*=\s*11\s*;.*ActivityDistribution activity_distribution\s*=\s*12\s*;`,
+		`(?s)message DashboardSummaryRequest\s*\{.*LocalDateRange range\s*=\s*1\s*;.*string granularity\s*=\s*2\s*;.*optional UTCTimeRange exact_range\s*=\s*3\s*;.*LocalDateRange activity_range\s*=\s*5\s*;`,
+		`(?s)message DashboardSummaryResponse\s*\{.*DashboardSummaryCoverage coverage\s*=\s*4\s*;.*repeated DashboardSummaryProviderSlice providers\s*=\s*6\s*;.*repeated DashboardSummaryQuotaCard quotas\s*=\s*10\s*;.*UTCTimeRange activity_range\s*=\s*13\s*;.*repeated DashboardSummaryTrendPoint activity\s*=\s*15\s*;.*repeated DashboardSummaryActivityProviderCoverage activity_provider_coverage\s*=\s*16\s*;`,
+		`(?s)message DashboardSummaryCoverage\s*\{.*int32 known_provider_count\s*=\s*1\s*;.*int32 known_cost_provider_count\s*=\s*6\s*;`,
+		`(?s)message DashboardSummaryProviderSlice\s*\{.*string provider\s*=\s*1\s*;.*ProviderContext provider_context\s*=\s*2\s*;.*string coverage_state\s*=\s*3\s*;.*NumericValue reported_usd_micros\s*=\s*7\s*;.*int32 model_count\s*=\s*12\s*;`,
+		`(?s)message ContractsResponse\s*\{.*string dashboard_summary_version\s*=\s*10\s*;`,
 		`(?s)message InvocationUsageRequest\s*\{.*UTCTimeRange range\s*=\s*1\s*;.*string source_class\s*=\s*3\s*;.*int32 top_limit\s*=\s*4\s*;`,
 		`(?s)message InvocationUsageResponse\s*\{.*InvocationTotals totals\s*=\s*5\s*;.*repeated ToolUsageItem tools\s*=\s*7\s*;.*repeated SkillUsageItem skills\s*=\s*8\s*;.*InvocationCoverage coverage\s*=\s*9\s*;`,
 		`(?s)message PricingCatalogCurrentRequest\s*\{.*ProviderScope provider\s*=\s*1\s*;.*\}`,

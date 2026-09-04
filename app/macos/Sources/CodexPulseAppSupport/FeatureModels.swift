@@ -81,6 +81,9 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
     public let usageModelTrend: Int
     public let usageModelReconciled: Int
     public let usageCostKnown: Bool
+    public let dashboardProviders: Int
+    public let dashboardKnownProviders: Int32
+    public let dashboardTotalTokens: Int64?
     public let invocationToolCalls: Int64
     public let invocationSkillActivity: Int64
     public let quotaWindows: Int
@@ -103,6 +106,9 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
         usageModelTrend: Int,
         usageModelReconciled: Int,
         usageCostKnown: Bool,
+        dashboardProviders: Int,
+        dashboardKnownProviders: Int32,
+        dashboardTotalTokens: Int64?,
         invocationToolCalls: Int64,
         invocationSkillActivity: Int64,
         quotaWindows: Int,
@@ -124,6 +130,9 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
         self.usageModelTrend = usageModelTrend
         self.usageModelReconciled = usageModelReconciled
         self.usageCostKnown = usageCostKnown
+        self.dashboardProviders = dashboardProviders
+        self.dashboardKnownProviders = dashboardKnownProviders
+        self.dashboardTotalTokens = dashboardTotalTokens
         self.invocationToolCalls = invocationToolCalls
         self.invocationSkillActivity = invocationSkillActivity
         self.quotaWindows = quotaWindows
@@ -141,6 +150,9 @@ public struct PrimaryPagesSmokeSummary: Equatable, Sendable {
             + "health_events=\(healthEvents) usage_trend=\(usageTrend) usage_models=\(usageModels) "
             + "usage_model_trend=\(usageModelTrend) usage_model_reconciled=\(usageModelReconciled) "
             + "usage_cost=\(usageCostKnown ? "known" : "unknown") quota_windows=\(quotaWindows) "
+            + "dashboard_providers=\(dashboardProviders) "
+            + "dashboard_known_providers=\(dashboardKnownProviders) "
+            + "dashboard_tokens=\(dashboardTotalTokens.map(String.init) ?? "unknown") "
             + "invocation_tools=\(invocationToolCalls) invocation_skills=\(invocationSkillActivity) "
             + "quota_pace_windows=\(quotaPaceWindows) "
             + "api_subscriptions=\(apiSubscriptions) "

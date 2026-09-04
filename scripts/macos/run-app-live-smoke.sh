@@ -106,7 +106,7 @@ case "$smoke_summary" in
   *) fail "application did not report a passing smoke summary" ;;
 esac
 printf '%s\n' "$smoke_summary" | grep -Eq \
-  'overview=loaded .*activity=(available|partial|unavailable) activity_timeline=[0-9]+ activity_heatmap=(0|168) .*primary_pages=loaded sessions=[1-9][0-9]* projects=[1-9][0-9]* .*usage_trend=[1-9][0-9]* usage_models=[1-9][0-9]* usage_model_trend=[1-9][0-9]* usage_model_reconciled=[1-9][0-9]* usage_cost=known .*invocation_tools=[1-9][0-9]* invocation_skills=[1-9][0-9]* .*api_subscriptions=[a-z_+]+ .*project_detail_cost=known project_detail_models=[1-9][0-9]* details_read=[1-9][0-9]* .*unavailable=none ui_pages=9 .*shutdown=clean' || \
+  'overview=loaded .*activity=(available|partial|unavailable) activity_timeline=[0-9]+ activity_heatmap=(0|168) .*primary_pages=loaded sessions=[1-9][0-9]* projects=[1-9][0-9]* .*usage_trend=[1-9][0-9]* usage_models=[1-9][0-9]* usage_model_trend=[1-9][0-9]* usage_model_reconciled=[1-9][0-9]* usage_cost=known .*dashboard_providers=3 dashboard_known_providers=[1-3] dashboard_tokens=[1-9][0-9]* .*invocation_tools=[1-9][0-9]* invocation_skills=[1-9][0-9]* .*api_subscriptions=[a-z_+]+ .*project_detail_cost=known project_detail_models=[1-9][0-9]* details_read=[1-9][0-9]* .*unavailable=none ui_pages=10 .*shutdown=clean' || \
   fail "real Home did not produce the required non-zero page contract"
 printf '%s\n' "$smoke_summary" | grep -Eq \
   'status_provider=cursor status_label=verified cursor_account=available cursor_popover=captured cursor_requests=known cursor_tokens=known cursor_reported_cost=known cursor_estimated_cost=(known|unknown) cursor_spending=known cursor_data_as_of=known cursor_dashboard=available' || \

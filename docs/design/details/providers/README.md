@@ -2,9 +2,9 @@
 
 ## 产品与代码语义
 
-Codex Pulse 以一个明确的客户端上下文查询和展示数据。产品 UI 使用“客户端”；代码使用 `AgentProvider` / `ProviderScope`，避免与 OpenAI、Anthropic、Grok 等模型供应方混淆。当前客户端是 `codex`、`cursor` 和 `grok`，没有跨客户端“全部”视图。Grok 在 UI 中的显示名固定为“Grok”，代码身份为 `grok`；它指 Grok Build TUI / CLI，不是 Cursor 或其它客户端里出现的 Grok 模型。
+Codex Pulse 以一个明确的客户端上下文查询和展示数据。产品 UI 使用“客户端”；代码使用 `AgentProvider` / `ProviderScope`，避免与 OpenAI、Anthropic、Grok 等模型供应方混淆。当前客户端仍是 `codex`、`cursor` 和 `grok`，不引入 `AgentProvider.all`，也不让空 `ProviderScope` 承担汇总语义。另有专用跨客户端汇总 read model（`DashboardSummary`），只聚合可比总量、当前范围趋势、分布、模型 Top、各客户端额度状态和独立 365 天 Token 活动，不合并 Session / Project identity。Grok 在 UI 中的显示名固定为“Grok”，代码身份为 `grok`；它指 Grok Build TUI / CLI，不是 Cursor 或其它客户端里出现的 Grok 模型。
 
-这是一条窄而明确的扩展缝，不是通用插件框架：Codex 原有 parser、collector、quota 与 pricing 路径保持不变；Cursor 与 Grok 各自使用独立 collector、事实表和查询实现。Core RPC 的使用量、调用、Session、Project、Quota 与 Account 请求显式携带 Provider scope，响应回显 effective provider、source、capabilities 和 coverage。Overview、菜单栏和账号胶囊都按客户端路由，不把 Codex、Cursor、Grok 的 account / quota / usage 合并，也不把 Cursor 内的 `grok-*` 模型用量并进 Grok 客户端。
+这是一条窄而明确的扩展缝，不是通用插件框架：Codex 原有 parser、collector、quota 与 pricing 路径保持不变；Cursor 与 Grok 各自使用独立 collector、事实表和查询实现。Core RPC 的使用量、调用、Session、Project、Quota 与 Account 请求显式携带 Provider scope，响应回显 effective provider、source、capabilities 和 coverage。Overview、菜单栏和账号胶囊都按客户端路由；客户端页面不把 Codex、Cursor、Grok 的 account / quota / usage 合并，也不把 Cursor 内的 `grok-*` 模型用量并进 Grok 客户端。跨客户端汇总由 Helper 的 `DashboardSummary` 独立聚合，模型维度必须带客户端命名空间，Cursor Grok Bot、Cursor 内 `cursor-grok-*` 与独立 Grok 客户端保持三组身份。
 
 空 `ProviderScope` 仍归一为 `codex`，以兼容旧请求；未知非空值必须失败，不得默认成 Codex 或 Cursor。Router、AccountSnapshot、PricingCatalog 和 Swift 展示必须显式三路分发，禁止 `if cursor else Codex` 把 Grok 漏进另一家客户端。
 
@@ -64,7 +64,7 @@ Grok 第一期交付一个完整独立客户端，与 Codex、Cursor 能力面�
 - reported / estimated 成本分开展示
 - 本机状态里按客户端分组的来源健康
 
-第一期不做：三家合并视图、与 Cursor 内 Grok 模型对账、Codex Home 那种两步切换、Reset Credits、AI edits、通用插件框架，以及把 `signals.json` 或 transcript 长度估成 Token。
+第一期不做：把三个 Provider 合成第四个 `all` 客户端、与 Cursor 内 Grok 模型对账、Codex Home 那种两步切换、Reset Credits、AI edits、通用插件框架，以及把 `signals.json` 或 transcript 长度估成 Token。跨客户端可比总量改由专用 `DashboardSummary` read model 提供，Provider 仍保持独立。
 
 Grok 产品界面不提供“调用画像”或“调用统计”：侧栏隐藏调用统计入口，Overview 不渲染调用画像，Swift Runtime 也不发起 Grok `InvocationUsage` 请求。已有通用 Core contract 与兼容查询实现不作为 Grok 产品能力暴露。
 

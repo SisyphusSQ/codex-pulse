@@ -36,11 +36,16 @@ chmod 0700 "$RUNTIME_DIR"
 CURSOR_HOME="$RUNTIME_DIR/cursor-home"
 mkdir -p "$CURSOR_HOME"
 chmod 0700 "$CURSOR_HOME"
+ISOLATED_GROK_HOME="$RUNTIME_DIR/grok-home"
+mkdir -p "$ISOLATED_GROK_HOME"
+chmod 0700 "$ISOLATED_GROK_HOME"
 go run "$SCRIPT_DIR/smoke-seed" \
   --preferences "$RUNTIME_DIR/preferences.json" \
   --home "$RUNTIME_DIR/codex-home"
 
-CODEX_PULSE_CURSOR_HOME="$CURSOR_HOME" "$APP_DIR/Contents/MacOS/Codex Pulse" \
+CODEX_PULSE_CURSOR_HOME="$CURSOR_HOME" \
+  CODEX_PULSE_GROK_HOME="$ISOLATED_GROK_HOME" \
+  "$APP_DIR/Contents/MacOS/Codex Pulse" \
   --ui-smoke \
   --runtime-directory "$RUNTIME_DIR" \
   --skip-cursor-provider-smoke \
@@ -89,7 +94,7 @@ case "$smoke_summary" in
     ;;
 esac
 printf '%s\n' "$smoke_summary" | grep -Eq \
-  'overview=loaded quota_windows=0 sessions=0 trend_points=0 activity=(available|partial|unavailable) activity_timeline=0 activity_heatmap=(0|168) health=(empty|healthy) primary_pages=partial sessions=0 projects=0 sources=9 jobs=0 health_events=0 .*invocation_tools=0 invocation_skills=0 .*api_subscriptions=deepseek_unconfigured\+opencode_go_unconfigured .*unavailable=projects_unavailable ui_pages=9 native_surfaces=window\+status_item\+popover actions=project\+copy keyboard=tab\+shift-tab\+return\+space focus_escape=open-overview\+refresh\+reset-credits\+settings\+quit clipboard=single_item_string\+png' || {
+  'overview=loaded quota_windows=0 sessions=0 trend_points=0 activity=(available|partial|unavailable) activity_timeline=0 activity_heatmap=(0|168) health=(empty|healthy) primary_pages=partial sessions=0 projects=0 sources=8 jobs=0 health_events=0 .*dashboard_providers=3 dashboard_known_providers=[0-3] dashboard_tokens=(0|unknown) .*invocation_tools=0 invocation_skills=0 .*api_subscriptions=deepseek_unconfigured\+opencode_go_unconfigured .*unavailable=projects_unavailable ui_pages=10 native_surfaces=window\+status_item\+popover actions=project\+copy keyboard=tab\+shift-tab\+return\+space focus_escape=open-overview\+refresh\+reset-credits\+settings\+quit clipboard=single_item_string\+png' || {
   echo "app smoke failed: isolated empty Home produced unexpected user facts" >&2
   exit 1
 }
@@ -103,4 +108,4 @@ fi
   exit 1
 }
 
-printf 'app smoke cleanup passed: isolated_runtime=yes user_codex_home=no user_cursor_home=no rollout_data=no\n'
+printf 'app smoke cleanup passed: isolated_runtime=yes user_codex_home=no user_cursor_home=no user_grok_home=no rollout_data=no\n'

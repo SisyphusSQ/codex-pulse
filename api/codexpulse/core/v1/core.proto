@@ -11,6 +11,7 @@ service CoreService {
   rpc Contracts(ContractsRequest) returns (ContractsResponse);
   rpc AccountSnapshot(AccountSnapshotRequest) returns (AccountSnapshotResponse);
   rpc UsageCost(UsageCostRequest) returns (UsageCostResponse);
+  rpc DashboardSummary(DashboardSummaryRequest) returns (DashboardSummaryResponse);
   rpc InvocationUsage(InvocationUsageRequest) returns (InvocationUsageResponse);
   rpc PricingCatalogCurrent(PricingCatalogCurrentRequest) returns (PricingCatalogCurrentResponse);
   rpc ListSessions(ListSessionsRequest) returns (SessionListResponse);
@@ -92,6 +93,7 @@ message ContractsResponse {
   ErrorDetail error_example = 7;
   string pricing_catalog_version = 8;
   string invocation_usage_version = 9;
+  string dashboard_summary_version = 10;
 }
 
 // ErrorDetail 只承载稳定分类，不允许泄漏底层错误或请求值。
@@ -310,6 +312,99 @@ message UsageCostResponse {
   NumericValue cursor_token_fee_usd_micros = 17;
   CursorBillingSummary cursor_billing = 18;
   repeated CursorUsagePoolSummary cursor_usage_pools = 19;
+}
+
+message DashboardSummaryRequest {
+  LocalDateRange range = 1;
+  string granularity = 2;
+  optional UTCTimeRange exact_range = 3;
+  optional int64 evaluated_at_ms = 4;
+  // 独立于顶部范围筛选的年度活动窗口，固定按日聚合 Token。
+  LocalDateRange activity_range = 5;
+}
+
+message DashboardSummaryCoverage {
+  int32 known_provider_count = 1;
+  int32 total_provider_count = 2;
+  string token_state = 3;
+  string cost_state = 4;
+  string overall_state = 5;
+  int32 known_cost_provider_count = 6;
+}
+
+message DashboardSummaryTotals {
+  NumericValue total_tokens = 1;
+  NumericValue estimated_usd_micros = 2;
+  NumericValue active_provider_count = 3;
+}
+
+message DashboardSummaryProviderSlice {
+  string provider = 1;
+  ProviderContext provider_context = 2;
+  string coverage_state = 3;
+  UsageTotals totals = 4;
+  repeated TrendPoint trend = 5;
+  repeated UsageModelItem models = 6;
+  NumericValue reported_usd_micros = 7;
+  optional string reported_cost_source = 8;
+  NumericValue data_as_of_ms = 9;
+  optional string degraded_reason = 10;
+  string cost_state = 11;
+  int32 model_count = 12;
+}
+
+message DashboardSummaryActivityProviderCoverage {
+  string provider = 1;
+  string coverage_state = 2;
+}
+
+message DashboardSummaryProviderShare {
+  string provider = 1;
+  NumericValue total_tokens = 2;
+  NumericValue estimated_usd_micros = 3;
+}
+
+message DashboardSummaryTrendPoint {
+  string key = 1;
+  NumericValue start_at_ms = 2;
+  NumericValue end_at_ms = 3;
+  NumericValue total_tokens = 4;
+  NumericValue estimated_usd_micros = 5;
+  repeated DashboardSummaryProviderShare shares = 6;
+}
+
+message DashboardSummaryModelItem {
+  string provider = 1;
+  string dimension_key = 2;
+  AttributionValue model = 3;
+  UsageTotals totals = 4;
+}
+
+message DashboardSummaryQuotaCard {
+  string provider = 1;
+  ProviderContext provider_context = 2;
+  string coverage_state = 3;
+  ResponseMeta meta = 4;
+  CurrentQuota current = 5;
+}
+
+message DashboardSummaryResponse {
+  ResponseMeta meta = 1;
+  UTCTimeRange range = 2;
+  string reporting_time_zone = 3;
+  DashboardSummaryCoverage coverage = 4;
+  DashboardSummaryTotals totals = 5;
+  repeated DashboardSummaryProviderSlice providers = 6;
+  repeated DashboardSummaryTrendPoint trend = 7;
+  repeated DashboardSummaryProviderShare distribution = 8;
+  repeated DashboardSummaryModelItem models = 9;
+  repeated DashboardSummaryQuotaCard quotas = 10;
+  uint64 usage_generation = 11;
+  uint64 quota_generation = 12;
+  UTCTimeRange activity_range = 13;
+  string activity_coverage_state = 14;
+  repeated DashboardSummaryTrendPoint activity = 15;
+  repeated DashboardSummaryActivityProviderCoverage activity_provider_coverage = 16;
 }
 
 message InvocationUsageRequest {

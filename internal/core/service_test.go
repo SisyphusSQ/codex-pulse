@@ -27,7 +27,7 @@ func TestServiceExposesExactBusinessSurface(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
-		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "ConfirmHomeSwitch", "Contracts", "DataHealth", "Health",
+		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "ConfirmHomeSwitch", "Contracts", "DashboardSummary", "DataHealth", "Health",
 		"HealthProjection", "InvocationUsage", "Job", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
 		"PlanHomeSwitch", "PricingCatalogCurrent", "ProjectDetail", "QuotaCurrent", "QuotaPace", "RecoverHomeSwitch", "RequestProviderRefresh", "RequestQuotaRefresh",
 		"RunRuntimeAction", "SessionDetail", "Settings", "Source", "UpdateAPICredential", "UpdateSettings", "UsageCost",
@@ -286,7 +286,8 @@ func TestServiceContractsExposeUniqueCommandMethods(t *testing.T) {
 	if contract.Version != "core-rpc-v2" ||
 		contract.UsageCostVersion != "usage-cost-v2" ||
 		contract.InvocationUsageVersion != "invocation-usage-v1" ||
-		contract.PricingCatalogVersion != "pricing-catalog-v1" {
+		contract.PricingCatalogVersion != "pricing-catalog-v1" ||
+		contract.DashboardSummaryVersion != "dashboard-summary-v2" {
 		t.Fatalf("Contracts() versions = %#v", contract)
 	}
 	commandsFromMethods := make([]string, 0)

@@ -85,6 +85,19 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
                 type: .unary
             )
         }
+        /// Namespace for "DashboardSummary" metadata.
+        public enum DashboardSummary: Sendable {
+            /// Request type for "DashboardSummary".
+            public typealias Input = Codexpulse_Core_V1_DashboardSummaryRequest
+            /// Response type for "DashboardSummary".
+            public typealias Output = Codexpulse_Core_V1_DashboardSummaryResponse
+            /// Descriptor for "DashboardSummary".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "DashboardSummary",
+                type: .unary
+            )
+        }
         /// Namespace for "InvocationUsage" metadata.
         public enum InvocationUsage: Sendable {
             /// Request type for "InvocationUsage".
@@ -573,6 +586,7 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
             Contracts.descriptor,
             AccountSnapshot.descriptor,
             UsageCost.descriptor,
+            DashboardSummary.descriptor,
             InvocationUsage.descriptor,
             PricingCatalogCurrent.descriptor,
             ListSessions.descriptor,
@@ -726,6 +740,25 @@ extension Codexpulse_Core_V1_CoreService {
             deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_UsageCostResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_UsageCostResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "DashboardSummary" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_DashboardSummaryRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_DashboardSummaryRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_DashboardSummaryResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func dashboardSummary<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_DashboardSummaryRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_DashboardSummaryRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_DashboardSummaryResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_DashboardSummaryResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
         /// Call the "InvocationUsage" method.
@@ -1595,6 +1628,36 @@ extension Codexpulse_Core_V1_CoreService {
             try await self.client.unary(
                 request: request,
                 descriptor: Codexpulse_Core_V1_CoreService.Method.UsageCost.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "DashboardSummary" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_DashboardSummaryRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_DashboardSummaryRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_DashboardSummaryResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func dashboardSummary<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_DashboardSummaryRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_DashboardSummaryRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_DashboardSummaryResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_DashboardSummaryResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.DashboardSummary.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -2840,6 +2903,31 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
         )
     }
 
+    /// Call the "DashboardSummary" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_DashboardSummaryRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func dashboardSummary<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_DashboardSummaryRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_DashboardSummaryResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.dashboardSummary(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_DashboardSummaryRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_DashboardSummaryResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "InvocationUsage" method.
     ///
     /// - Parameters:
@@ -3906,6 +3994,35 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
             metadata: metadata
         )
         return try await self.usageCost(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "DashboardSummary" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func dashboardSummary<Result>(
+        _ message: Codexpulse_Core_V1_DashboardSummaryRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_DashboardSummaryResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_DashboardSummaryRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.dashboardSummary(
             request: request,
             options: options,
             onResponse: handleResponse

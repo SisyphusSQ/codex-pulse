@@ -94,6 +94,17 @@ public actor CoreClient {
         }
     }
 
+    public func dashboardSummary(
+        _ request: Codexpulse_Core_V1_DashboardSummaryRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_DashboardSummaryResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.dashboardSummary(request, metadata: metadata)
+        }
+    }
+
     public func invocationUsage(
         _ request: Codexpulse_Core_V1_InvocationUsageRequest,
         retryPolicy: ReadRetryPolicy = .transportDefault

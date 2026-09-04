@@ -8,6 +8,7 @@ import (
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
+	"github.com/SisyphusSQ/codex-pulse/internal/query/dashboardsummary"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -211,6 +212,61 @@ func TestEncodeResponsePreservesQuotaPacePresenceAndHistory(t *testing.T) {
 		window.PreviousRemainingAtElapsed == nil ||
 		window.HistoryMedianRemainingAtElapsed == nil {
 		t.Fatalf("QuotaPaceResponse window = %#v", window)
+	}
+}
+
+func TestEncodeResponseMapsDashboardSummaryCoverageAndGenerations(t *testing.T) {
+	t.Parallel()
+
+	tokens, err := basequery.KnownNumeric(12, basequery.NumericTokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cost, err := basequery.KnownNumeric(3, basequery.NumericMicroUSD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	active, err := basequery.KnownNumeric(2, basequery.NumericCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := basequery.NewResponseMeta(basequery.ResponsePartial, nil, []basequery.ErrorCode{basequery.ErrorPartial})
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta.Version = dashboardsummary.ContractVersion
+	target := &corev1.DashboardSummaryResponse{}
+	if err := EncodeResponse(dashboardsummary.Response{
+		Meta: meta,
+		Range: basequery.UTCTimeRange{
+			StartAtMS: 1, EndAtMS: 2, TimeZone: "Asia/Shanghai",
+		},
+		ReportingTimeZone: "Asia/Shanghai",
+		Coverage: dashboardsummary.Coverage{
+			KnownProviderCount: 2, KnownCostProviderCount: 1, TotalProviderCount: 3,
+			TokenState: dashboardsummary.CoveragePartial, CostState: dashboardsummary.CoverageUnknown,
+			OverallState: dashboardsummary.CoveragePartial,
+		},
+		Totals: dashboardsummary.Totals{
+			TotalTokens: tokens, EstimatedUSDMicros: cost, ActiveProviderCount: active,
+		},
+		Providers: []dashboardsummary.ProviderSlice{{
+			Provider: "codex", CoverageState: dashboardsummary.CoverageComplete,
+			Totals:    withUsageTotals(t, tokens, cost),
+			CostState: dashboardsummary.CoverageComplete,
+		}},
+		UsageGeneration: 4, QuotaGeneration: 5,
+	}, target); err != nil {
+		t.Fatalf("EncodeResponse(DashboardSummaryResponse) error = %v", err)
+	}
+	if target.GetMeta().GetVersion() != dashboardsummary.ContractVersion ||
+		target.GetCoverage().GetKnownProviderCount() != 2 ||
+		target.GetCoverage().GetKnownCostProviderCount() != 1 ||
+		target.GetCoverage().GetTokenState() != "partial" ||
+		target.GetTotals().GetTotalTokens().GetValue() != 12 ||
+		target.GetUsageGeneration() != 4 || target.GetQuotaGeneration() != 5 ||
+		len(target.GetProviders()) != 1 || target.GetProviders()[0].GetProvider() != "codex" {
+		t.Fatalf("DashboardSummaryResponse = %#v", target)
 	}
 }
 

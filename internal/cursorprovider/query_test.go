@@ -12,6 +12,7 @@ import (
 	"time"
 
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
@@ -679,6 +680,56 @@ func TestCursorUsagePrefersDashboardWindowOverPartialLocalUsage(t *testing.T) {
 	}
 	if !testContainsString(response.ProviderContext.Capabilities, "reported_cost") {
 		t.Fatalf("dashboard capabilities = %v", response.ProviderContext.Capabilities)
+	}
+}
+
+func TestCursorDashboardCostKeepsKnownSubtotalWhenSomeEventsAreUnpriced(t *testing.T) {
+	snapshot := cursorQuerySnapshot("partial")
+	snapshot.DashboardGeneration = 9
+	snapshot.DashboardCollectedAtMS = 5_000
+	snapshot.DashboardWindowStartMS = 1_000
+	snapshot.DashboardWindowEndMS = 5_000
+	pricedModel := "gpt-5.6-luna"
+	unpricedModel := "future-unlisted-model"
+	snapshot.DashboardUsageEvents = []store.CursorDashboardUsageEvent{
+		{
+			EventFingerprint: "priced", OccurrenceCount: 2, OccurredAtMS: 2_000,
+			ModelKey: &pricedModel, TokenBased: true, InputTokens: 1_000_000,
+		},
+		{
+			EventFingerprint: "unlisted", OccurrenceCount: 1, OccurredAtMS: 3_000,
+			ModelKey: &unpricedModel, TokenBased: true, InputTokens: 1_000_000,
+		},
+		{
+			EventFingerprint: "non-token", OccurrenceCount: 3, OccurredAtMS: 4_000,
+		},
+	}
+	service := cursorQueryFixture(t, snapshot)
+	rangeValue := basequery.UTCTimeRange{StartAtMS: 1_000, EndAtMS: 5_000, TimeZone: "UTC"}
+	response, err := service.UsageCost(context.Background(), usagecost.UsageCostRequest{
+		ExactRange: &rangeValue, Granularity: usagecost.TrendDay,
+	})
+	if err != nil {
+		t.Fatalf("UsageCost() error = %v", err)
+	}
+	if response.Totals.EstimatedUSDMicros.Value == nil ||
+		*response.Totals.EstimatedUSDMicros.Value != 400_000 {
+		t.Fatalf("estimated cost = %#v, want known $0.40 subtotal", response.Totals.EstimatedUSDMicros)
+	}
+	if response.Totals.PricedTurnCount.Value == nil || *response.Totals.PricedTurnCount.Value != 2 ||
+		response.Totals.UnpricedTurnCount.Value == nil || *response.Totals.UnpricedTurnCount.Value != 4 {
+		t.Fatalf("pricing coverage = priced %#v, unpriced %#v", response.Totals.PricedTurnCount, response.Totals.UnpricedTurnCount)
+	}
+	if response.PricingSource == nil || *response.PricingSource != cursorPricingSourceURL ||
+		!reflect.DeepEqual(response.PricingVersions, []string{cursorPricingVersion}) {
+		t.Fatalf("pricing identity = source %#v, versions %v", response.PricingSource, response.PricingVersions)
+	}
+	wantReasons := []usagecost.ReasonCount{
+		{Reason: pricing.CostReasonMissingToken, Count: known(3, basequery.NumericCount)},
+		{Reason: pricing.CostReasonModelNotListed, Count: known(1, basequery.NumericCount)},
+	}
+	if !reflect.DeepEqual(response.UnpricedReasons, wantReasons) {
+		t.Fatalf("unpriced reasons = %#v, want %#v", response.UnpricedReasons, wantReasons)
 	}
 }
 
