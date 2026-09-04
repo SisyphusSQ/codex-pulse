@@ -89,6 +89,9 @@ private func testPrimaryPagesSmokeSummaryIncludesProjectDetailEvidence() throws 
         usageModelTrend: 0,
         usageModelReconciled: 0,
         usageCostKnown: false,
+        dashboardProviders: 3,
+        dashboardKnownProviders: 2,
+        dashboardTotalTokens: 0,
         invocationToolCalls: 0,
         invocationSkillActivity: 0,
         quotaWindows: 0,
@@ -104,6 +107,12 @@ private func testPrimaryPagesSmokeSummaryIncludesProjectDetailEvidence() throws 
                 + "api_subscriptions=deepseek_unconfigured+opencode_go_unconfigured "
                 + "project_detail_cost=unknown project_detail_models=0"),
         "primary-page smoke summary must expose pace, API subscription, and project detail evidence"
+    )
+    try expect(
+        summary.stableDescription.contains(
+            "dashboard_providers=3 dashboard_known_providers=2 dashboard_tokens=0"
+        ),
+        "primary-page smoke summary must expose cross-client dashboard evidence"
     )
 }
 
@@ -162,6 +171,7 @@ private func testMainWindowCopyDoesNotExposeImplementationLanguage() throws {
         "SessionsProjectsViews.swift",
         "QuotaHealthViews.swift",
         "SourcesJobsSettingsViews.swift",
+        "DashboardSummaryView.swift",
     ]
     let forbiddenFragments = [
         "\"估算值",
@@ -2157,9 +2167,12 @@ private func testSidebarSettingsUsesSystemRowSpacing() throws {
     let settingsSource = try mainWindowSource("SourcesJobsSettingsViews.swift")
     try expect(
         source.contains("ForEach([AppFeature.localStatus, .sourcesJobs, .settings])")
+            && source.contains("Section(localization.text(\"sidebar.section.summary\"))")
             && source.contains("Section(localization.text(\"sidebar.section.usage\"))")
             && source.contains("Section(localization.text(\"sidebar.section.system\"))")
-            && source.contains("section.title(localization: localization)"),
+            && source.contains("section.title(localization: localization)")
+            && source.contains(".tag(AppFeature.dashboardSummary)")
+            && source.contains("accessibilityIdentifier(\"sidebar.dashboard-summary\")"),
         "sidebar rows and section titles must share the explicit App localization"
     )
     try expect(
@@ -2189,9 +2202,334 @@ private func testUsageSidebarOrdersInvocationBeforeQuota() throws {
 	)
 	try expect(
 		!AppFeature.usageFeatures(for: .codex).contains(.apiSubscriptions)
-			&& AppFeature.allCases.contains(.apiSubscriptions),
+			&& AppFeature.allCases.contains(.apiSubscriptions)
+			&& !AppFeature.usageFeatures(for: .codex).contains(.dashboardSummary)
+			&& AppFeature.allCases.contains(.dashboardSummary),
 		"API 与订阅 must be an independent feature outside the AgentProvider usage list"
 	)
+}
+
+@MainActor
+private func testDashboardSummaryIsIndependentOfProviderSelector() async throws {
+    let appModelSource = try appSupportSource("AppModel.swift")
+    try expect(
+        appModelSource.contains(".statusOverview, .statusAccount, .dashboardSummary"),
+        "changing the provider must not cancel the provider-independent summary request"
+    )
+    let suiteName = "CodexPulseAppTests.DashboardSummaryNav.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("dashboard summary defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let newUser = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in
+            FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+        }),
+        providerDefaults: defaults
+    )
+    try expect(
+        newUser.selectedFeature == .dashboardSummary
+            && AgentProvider.allCases.map(\.rawValue) == ["codex", "cursor", "grok"]
+            && !AgentProvider.allCases.map(\.rawValue).contains("all"),
+        "new users must land on the summary page without adding a fourth provider"
+    )
+    newUser.navigate(to: .projects)
+    try expect(
+        defaults.string(forKey: "CodexPulse.selectedFeature") == AppFeature.projects.rawValue,
+        "navigating away from summary must persist the selected feature"
+    )
+    _ = await newUser.shutdown()
+
+    defaults.set(AgentProvider.cursor.rawValue, forKey: "CodexPulse.selectedProvider")
+    let existing = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in
+            FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+        }),
+        providerDefaults: defaults
+    )
+    try expect(
+        existing.selectedFeature == .projects && existing.selectedProvider == .cursor,
+        "persisted navigation must not be overwritten by the new-user summary default"
+    )
+    existing.openMainWindowProvider(.grok)
+    try expect(
+        existing.selectedFeature == .overview && existing.selectedProvider == .grok,
+        "summary provider cards must drill into the matching client overview"
+    )
+    _ = await existing.shutdown()
+}
+
+private func testDashboardSummaryCopyAndAccessibilityAreLocalized() throws {
+    let source = try mainWindowSource("DashboardSummaryView.swift")
+    let appModelSource = try appSupportSource("AppModel.swift")
+    let english = try appSupportLocalization("en")
+    let chinese = try appSupportLocalization("zh-Hans")
+    try expect(
+        source.contains("accessibilityIdentifier(\"page.dashboard-summary\")")
+            && source.contains("accessibilityIdentifier(\"dashboard.summary.range\")")
+            && source.contains("accessibilityID: \"dashboard.summary.distribution\"")
+            && source.contains("accessibilityIdentifier(\"dashboard.summary.activity\")")
+            && source.contains("accessibilityIdentifier(\"dashboard.summary.activity-scope\")")
+            && source.contains("presentation.distribution")
+            && source.contains(".keyboardShortcut(shortcut(for: card.provider)")
+            && source.contains("localization.quantity(\"copy.count.client\""),
+        "summary page must expose range, keyboard drill-down, and VoiceOver identifiers"
+    )
+    try expect(
+        source.contains("VStack(spacing: 0)")
+            && source.contains(".font(.title.bold())")
+            && source.contains("ViewThatFits(in: .horizontal)")
+            && source.contains("ProgressView(value:")
+            && source.contains("SectorMark(")
+            && source.contains("DashboardUsageCompositionBar(")
+            && source.contains("ActivityHeatmapGridLayout(")
+            && source.contains("DashboardActivityMetricStrip(metrics: card.metrics)")
+            && source.contains("accessibilityIdentifier(\"dashboard.summary.activity-metrics\")")
+            && source.contains("presentation.tokenActivity(provider:")
+            && source.contains("hoveredTrendKey")
+            && source.contains("hoveredItemID")
+            && source.contains(".onContinuousHover")
+            && source.contains("width: .fixed(trendBarWidth)")
+            && source.contains(".frame(height: 28)")
+            && !source.contains("private var providerCards")
+            && appModelSource.contains(
+                "dashboardTrendMode: DashboardTrendMode = .total"
+            ),
+        "summary page must reuse the native hierarchy for responsive donut, composition, and annual heatmap cards"
+    )
+    try expect(
+        english.contains("\"feature.dashboardSummary\" = \"Summary\";")
+            && english.contains("\"copy.count.client.one\" = \"%lld client\";")
+            && english.contains("\"copy.count.client.other\" = \"%lld clients\";")
+            && english.contains("\"copy.count.model.other\" = \"%lld models\";")
+            && english.contains("\"部分数据\" = \"Partial data\";")
+            && english.contains("\"工具分布\" = \"Client distribution\";")
+            && english.contains("\"模型分布\" = \"Model distribution\";")
+            && english.contains(
+                "\"跨 Codex、Cursor 和 Grok 查看 Token、成本与额度\" = \"Review tokens, cost, and quota across Codex, Cursor, and Grok\";"
+            )
+            && chinese.contains("\"feature.dashboardSummary\" = \"汇总\";")
+            && chinese.contains(
+                "\"跨 Codex、Cursor 和 Grok 查看 Token、成本与额度\" = \"跨 Codex、Cursor 和 Grok 查看 Token、成本与额度\";"
+            )
+            && chinese.contains("\"copy.count.client.other\" = \"%lld 个客户端\";")
+            && chinese.contains("\"copy.count.model.other\" = \"%lld 个模型\";"),
+        "summary copy must exist in English and Chinese with English plural rules"
+    )
+    let englishLocalization = AppLocalization(preference: .englishUS)
+    try expect(
+        englishLocalization.quantity("copy.count.client", count: 1) == "1 client"
+            && englishLocalization.quantity("copy.count.client", count: 2) == "2 clients"
+            && englishLocalization.quantity("copy.count.model", count: 1) == "1 model"
+            && englishLocalization.quantity("copy.count.model", count: 2) == "2 models",
+        "English client and model count copy must keep singular and plural forms"
+    )
+}
+
+private func testDashboardSummaryPresentationPreservesCoverageAndDisplayRange() throws {
+    var response = Codexpulse_Core_V1_DashboardSummaryResponse()
+    response.meta = completeMeta()
+    response.range.startAtMs = 1_000
+    response.range.endAtMs = 86_401_000
+    response.range.timeZone = "UTC"
+    response.reportingTimeZone = "UTC"
+    response.coverage.knownProviderCount = 3
+    response.coverage.knownCostProviderCount = 2
+    response.coverage.totalProviderCount = 3
+    response.coverage.tokenState = "complete"
+    response.coverage.costState = "partial"
+    response.coverage.overallState = "partial"
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "UTC")!
+    let activityStart = calendar.date(from: DateComponents(year: 2025, month: 3, day: 6))!
+    let activityEnd = calendar.date(from: DateComponents(year: 2026, month: 3, day: 6))!
+    response.activityRange.startAtMs = Int64(activityStart.timeIntervalSince1970 * 1_000)
+    response.activityRange.endAtMs = Int64(activityEnd.timeIntervalSince1970 * 1_000)
+    response.activityRange.timeZone = "UTC"
+    response.activityCoverageState = "complete"
+    var share = Codexpulse_Core_V1_DashboardSummaryProviderShare()
+    share.provider = "cursor"
+    share.totalTokens.value = 42
+    share.totalTokens.unit = "tokens"
+    response.distribution = [share]
+    var activityProvider = Codexpulse_Core_V1_DashboardSummaryActivityProviderCoverage()
+    activityProvider.provider = "cursor"
+    activityProvider.coverageState = "complete"
+    response.activityProviderCoverage = [activityProvider]
+    var activityPoint = Codexpulse_Core_V1_DashboardSummaryTrendPoint()
+    activityPoint.key = "2026-03-05"
+    activityPoint.startAtMs.value = Int64(activityEnd.addingTimeInterval(-86_400).timeIntervalSince1970 * 1_000)
+    activityPoint.startAtMs.unit = "milliseconds"
+    activityPoint.endAtMs.value = Int64(activityEnd.timeIntervalSince1970 * 1_000)
+    activityPoint.endAtMs.unit = "milliseconds"
+    activityPoint.totalTokens.value = 42
+    activityPoint.totalTokens.unit = "tokens"
+    activityPoint.shares = [share]
+    response.activity = [activityPoint]
+
+    let presentation = DashboardSummaryPresentation(response)
+    try expect(
+        presentation.coverage.knownProviderCount == 3
+            && presentation.coverage.knownCostProviderCount == 2
+            && presentation.isPartial
+            && presentation.distribution.first?.provider == .cursor,
+        "summary presentation must preserve independent token/cost coverage and distribution"
+    )
+    let displayedEndMS = presentation.rangeEnd.map {
+        Int64(($0.timeIntervalSince1970 * 1_000).rounded())
+    }
+    try expect(
+        displayedEndMS == response.range.endAtMs - 1,
+        "summary caption must display the final included instant, not the exclusive next day"
+    )
+    let cursorActivity = presentation.tokenActivity(provider: .cursor)
+    try expect(
+        cursorActivity.availability == .available
+            && cursorActivity.days.count == 365
+            && cursorActivity.days.first?.tokens == 0
+            && cursorActivity.days.last?.tokens == 42,
+        "summary activity must preserve the independent 365-day range and fill known-zero days"
+    )
+
+    var malformed = response
+    malformed.meta = completeMeta()
+    malformed.coverage.tokenState = "complete"
+    malformed.coverage.costState = "complete"
+    malformed.coverage.overallState = "complete"
+    var unknownProvider = Codexpulse_Core_V1_DashboardSummaryProviderSlice()
+    unknownProvider.provider = "future-client"
+    malformed.providers = [unknownProvider]
+    let malformedPresentation = DashboardSummaryPresentation(malformed)
+    try expect(
+        malformedPresentation.providers.isEmpty && malformedPresentation.isPartial,
+        "an unknown client identity must be dropped and surfaced as partial, never relabeled as Codex"
+    )
+}
+
+private func testDashboardSummarySeparatesPartialEstimateFromCursorReportedCost() throws {
+    var response = Codexpulse_Core_V1_DashboardSummaryResponse()
+    response.coverage.knownCostProviderCount = 3
+    response.coverage.totalProviderCount = 3
+    response.coverage.costState = "partial"
+    response.totals.estimatedUsdMicros.value = 400_000
+    response.totals.estimatedUsdMicros.unit = "usd_micros"
+
+    var cursor = Codexpulse_Core_V1_DashboardSummaryProviderSlice()
+    cursor.provider = "cursor"
+    cursor.costState = "partial"
+    cursor.totals.estimatedUsdMicros.value = 400_000
+    cursor.totals.estimatedUsdMicros.unit = "usd_micros"
+    cursor.reportedUsdMicros.value = 4_940_000
+    cursor.reportedUsdMicros.unit = "usd_micros"
+    cursor.reportedCostSource = "cursor.dashboard"
+    response.providers = [cursor]
+
+    let localization = AppLocalization(preference: .chineseSimplified)
+    let presentation = DashboardSummaryPresentation(response)
+    try expect(
+        presentation.costCoverageCaption(localization: localization)
+            == "部分可估算 · 覆盖 3 / 3 个客户端",
+        "summary KPI must identify a known partial API-equivalent subtotal"
+    )
+    guard let cursorCard = presentation.providers.first else {
+        throw TestFailure.mismatch("Cursor summary provider is missing")
+    }
+    let cursorCost = cursorCard.costDetails(localization: localization)
+    try expect(
+        cursorCost.estimatedText == "$0.40 · 部分可估算"
+            && cursorCost.reportedText == "实际上报 $4.94",
+        "Cursor partial estimate and official reported charge must remain visibly separate"
+    )
+    let english = AppLocalization(preference: .englishUS)
+    let englishCost = cursorCard.costDetails(localization: english)
+    try expect(
+        presentation.costCoverageCaption(localization: english)
+            == "Partial estimate · 3 / 3 clients covered"
+            && englishCost.estimatedText == "$0.40 · Partial estimate"
+            && englishCost.reportedText == "Reported $4.94",
+        "partial estimate and reported cost copy must remain explicit in English"
+    )
+
+    cursor.provider = "codex"
+    cursor.costState = "complete"
+    response.providers = [cursor]
+    guard let codexCard = DashboardSummaryPresentation(response).providers.first else {
+        throw TestFailure.mismatch("Codex summary provider is missing")
+    }
+    let codexCost = codexCard.costDetails(localization: localization)
+    try expect(
+        codexCost.estimatedText == "$0.40" && codexCost.reportedText == nil,
+        "reported charge copy must stay Cursor-specific"
+    )
+}
+
+private func testDashboardSummaryRequestUsesSharedLocalDayRange() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "America/New_York")!
+    let now = calendar.date(from: DateComponents(timeZone: calendar.timeZone, year: 2026, month: 3, day: 5, hour: 15))!
+    let today = FeatureRequestFactory.dashboardSummary(range: .today, now: now, calendar: calendar)
+    let week = FeatureRequestFactory.dashboardSummary(range: .sevenDays, now: now, calendar: calendar)
+    try expect(
+        today.range.timeZone == "America/New_York"
+            && today.granularity == "hour"
+            && today.range.startDate == "2026-03-05"
+            && today.range.endDateExclusive == "2026-03-06"
+            && today.activityRange.timeZone == "America/New_York"
+            && today.activityRange.startDate == "2025-03-06"
+            && today.activityRange.endDateExclusive == "2026-03-06"
+            && week.granularity == "day"
+            && week.range.startDate == "2026-02-27"
+            && week.range.endDateExclusive == "2026-03-06"
+            && week.activityRange == today.activityRange,
+        "summary Today/7D/30D must share one IANA timezone range and an independent trailing 365-day activity range"
+    )
+}
+
+private func testDashboardSummaryTrendLayoutKeepsEndpointBarsInsidePlot() throws {
+    let viewSource = try mainWindowSource("DashboardSummaryView.swift")
+    let cases: [(DateRangePreset, Double, Double)] = [
+        (.today, 24, 16),
+        (.sevenDays, 64, 36),
+        (.thirtyDays, 20, 14),
+    ]
+    for (range, expectedBarWidth, expectedPadding) in cases {
+        let layout = DashboardSummaryTrendChartLayout(range: range)
+        try expect(
+            layout.barWidth == expectedBarWidth
+                && layout.horizontalPlotPadding == expectedPadding,
+            "dashboard trend layout must preserve the reviewed density for \(range.rawValue)"
+        )
+        try expect(
+            layout.horizontalPlotPadding > layout.barWidth / 2,
+            "dashboard trend endpoint bars must fit inside the plot for \(range.rawValue)"
+        )
+    }
+
+    try expect(
+        DashboardSummaryTrendChartLayout(range: .sevenDays).axisTickIndices(pointCount: 7)
+            == [0, 1, 2, 3, 4, 5, 6],
+        "seven-day trend labels must use every real daily bucket, including both endpoints"
+    )
+    try expect(
+        DashboardSummaryTrendChartLayout(range: .thirtyDays).axisTickIndices(pointCount: 30)
+            == [0, 5, 10, 15, 19, 24, 29],
+        "thirty-day trend labels must stay sparse while retaining both endpoints"
+    )
+    try expect(
+        DashboardSummaryTrendChartLayout(range: .today).axisTickIndices(pointCount: 19)
+            == [0, 4, 7, 11, 14, 18],
+        "today trend labels must sample real hourly buckets while retaining both endpoints"
+    )
+    try expect(
+        DashboardSummaryTrendChartLayout(range: .sevenDays).axisTickIndices(pointCount: 0).isEmpty
+            && DashboardSummaryTrendChartLayout(range: .sevenDays).axisTickIndices(pointCount: 1) == [0],
+        "trend label selection must handle empty and single-point series"
+    )
+    try expect(
+        viewSource.contains("AxisMarks(values: trendAxisTicks)")
+            && viewSource.contains("AxisValueLabel(anchor: .top)"),
+        "dashboard trend date labels must be centered on explicit real-bucket ticks"
+    )
 }
 
 private func testAPISubscriptionsPageKeepsIndependentProductScope() throws {
@@ -5661,7 +5999,10 @@ private func testAppLocalizationResolvesSystemAndFormatsBothLanguages() throws {
     try expect(chinese.textValue("正常") == "正常", "Chinese resources must preserve Chinese shared status copy")
     try expect(
         english.text("sidebar.section.usage") == "Usage"
+            && english.text("sidebar.section.summary") == "Summary"
             && AppFeature.overview.title(localization: english) == "Overview"
+            && AppFeature.dashboardSummary.title(localization: english) == "Summary"
+            && AppFeature.dashboardSummary.title(localization: chinese) == "汇总"
             && AppFeature.settings.title(localization: chinese) == "设置",
         "sidebar and feature titles must use the explicit language resource")
     try expect(
@@ -10693,6 +11034,12 @@ struct CodexPulseAppTestMain {
         try testPopoverWeeklyTrendDoesNotFollowOverviewRange()
         try testTrendSelectionSnapsToNearestRealPoint()
         try testUsageSidebarOrdersInvocationBeforeQuota()
+        try await testDashboardSummaryIsIndependentOfProviderSelector()
+        try testDashboardSummaryCopyAndAccessibilityAreLocalized()
+        try testDashboardSummaryRequestUsesSharedLocalDayRange()
+        try testDashboardSummaryTrendLayoutKeepsEndpointBarsInsidePlot()
+        try testDashboardSummaryPresentationPreservesCoverageAndDisplayRange()
+        try testDashboardSummarySeparatesPartialEstimateFromCursorReportedCost()
         try testAPISubscriptionsPageKeepsIndependentProductScope()
         try testAPISubscriptionBalanceTrendPresentationKeepsContinuousExactSamples()
         try testAPISubscriptionActivityCalendarUsesSharedBlueIntensityLevels()

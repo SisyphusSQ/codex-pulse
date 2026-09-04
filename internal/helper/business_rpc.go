@@ -9,6 +9,7 @@ import (
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
+	"github.com/SisyphusSQ/codex-pulse/internal/query/dashboardsummary"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
@@ -39,11 +40,12 @@ func (api *grpcAPI) Contracts(ctx context.Context, _ *corev1.ContractsRequest) (
 	}
 	return &corev1.ContractsResponse{
 		Version: contract.Version, QueryVersion: contract.QueryVersion,
-		UsageCostVersion:       contract.UsageCostVersion,
-		InvocationUsageVersion: contract.InvocationUsageVersion,
-		PricingCatalogVersion:  contract.PricingCatalogVersion,
-		RuntimeInfoVersion:     contract.RuntimeInfoVersion,
-		Methods:                methods, CommandMethods: append([]string(nil), contract.CommandMethods...), ErrorExample: detail,
+		UsageCostVersion:        contract.UsageCostVersion,
+		InvocationUsageVersion:  contract.InvocationUsageVersion,
+		PricingCatalogVersion:   contract.PricingCatalogVersion,
+		RuntimeInfoVersion:      contract.RuntimeInfoVersion,
+		DashboardSummaryVersion: contract.DashboardSummaryVersion,
+		Methods:                 methods, CommandMethods: append([]string(nil), contract.CommandMethods...), ErrorExample: detail,
 	}, nil
 }
 
@@ -70,6 +72,17 @@ func (api *grpcAPI) UsageCost(
 	}
 	response, err := api.service.UsageCost(ctx, fromProtoUsageCostRequest(request))
 	return encodeRPC(response, &corev1.UsageCostResponse{}, err)
+}
+
+func (api *grpcAPI) DashboardSummary(
+	ctx context.Context,
+	request *corev1.DashboardSummaryRequest,
+) (*corev1.DashboardSummaryResponse, error) {
+	if api == nil || api.service == nil {
+		return nil, coreServiceUnavailable()
+	}
+	response, err := api.service.DashboardSummary(ctx, fromProtoDashboardSummaryRequest(request))
+	return encodeRPC(response, &corev1.DashboardSummaryResponse{}, err)
 }
 
 func (api *grpcAPI) InvocationUsage(
@@ -493,6 +506,26 @@ func fromProtoExactTimeRange(timeRange *corev1.UTCTimeRange) basequery.UTCTimeRa
 	return basequery.UTCTimeRange{
 		StartAtMS: timeRange.StartAtMs, EndAtMS: timeRange.EndAtMs, TimeZone: timeRange.TimeZone,
 	}
+}
+
+func fromProtoDashboardSummaryRequest(request *corev1.DashboardSummaryRequest) dashboardsummary.Request {
+	if request == nil {
+		return dashboardsummary.Request{}
+	}
+	result := dashboardsummary.Request{
+		Range:         fromProtoDateRange(request.GetRange()),
+		ActivityRange: fromProtoDateRange(request.GetActivityRange()),
+		Granularity:   usagecost.TrendGranularity(request.GetGranularity()),
+	}
+	if request.ExactRange != nil {
+		rangeValue := fromProtoExactTimeRange(request.GetExactRange())
+		result.ExactRange = &rangeValue
+	}
+	if request.EvaluatedAtMs != nil {
+		evaluated := request.GetEvaluatedAtMs()
+		result.EvaluatedAtMS = &evaluated
+	}
+	return result
 }
 
 func fromProtoUsageCostRequest(request *corev1.UsageCostRequest) usagecost.UsageCostRequest {

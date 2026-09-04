@@ -12,6 +12,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
     case localStatus
     case sourcesJobs
     case settings
+    case dashboardSummary
 
     public var id: String { rawValue }
 
@@ -26,6 +27,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .localStatus: "feature.localStatus"
         case .sourcesJobs: "feature.sourcesJobs"
         case .settings: "feature.settings"
+        case .dashboardSummary: "feature.dashboardSummary"
         }
         return localization.text(key)
     }
@@ -41,18 +43,19 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .localStatus: "heart.text.square"
         case .sourcesJobs: "externaldrive.connected.to.line.below"
         case .settings: "gearshape"
+        case .dashboardSummary: "square.grid.2x2"
         }
     }
 
 	public static func usageFeatures(for provider: AgentProvider) -> [AppFeature] {
-		let features = Array(allCases.prefix(5))
+		let features: [AppFeature] = [.overview, .sessions, .projects, .invocationUsage, .quotaUsage]
 		guard !provider.supportsInvocationStatistics else { return features }
 		return features.filter { $0 != .invocationUsage }
 	}
 }
 
 private enum FeatureTaskKey: Hashable {
-    case usage, statusOverview, statusAccount, invocationUsage, pricingCatalog, quota, quotaPace, quotaRefresh, resetCreditsRefresh
+    case usage, statusOverview, statusAccount, invocationUsage, pricingCatalog, quota, quotaPace, quotaRefresh, resetCreditsRefresh, dashboardSummary
     case apiSubscriptions, apiCredentialStatus, apiCredentialSave
     case runtimeAction
     case sessions, sessionDetail
@@ -80,7 +83,7 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var isRefreshingAll = false
     @Published public private(set) var isGlobalRefreshing = false
     @Published public private(set) var globalRefreshPresentation: ProviderRefreshPresentation?
-    @Published public var selectedFeature: AppFeature = .overview
+    @Published public var selectedFeature: AppFeature = .dashboardSummary
 	@Published public private(set) var selectedProvider: AgentProvider = .codex
 	@Published public private(set) var statusProvider: AgentProvider = .codex
     @Published public private(set) var renderedFeatures: Set<AppFeature> = []
@@ -95,7 +98,11 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var invocationSourceClass = "all"
     @Published public private(set) var invocationRangeFellBackFromQuotaWeek = false
     @Published public private(set) var overviewRange: DateRangePreset = .quotaWeek
+    @Published public private(set) var dashboardRange: DateRangePreset = .today
+    @Published public private(set) var dashboardTrendMode: DashboardTrendMode = .total
 
+    @Published public private(set) var dashboardSummaryState:
+        FeatureLoadState<Codexpulse_Core_V1_DashboardSummaryResponse> = .idle
     @Published public private(set) var usageState: FeatureLoadState<Codexpulse_Core_V1_UsageCostResponse> = .idle
 	@Published public private(set) var statusUsageState: FeatureLoadState<Codexpulse_Core_V1_UsageCostResponse> = .idle
 	@Published public private(set) var statusInvocationState: FeatureLoadState<Codexpulse_Core_V1_InvocationUsageResponse> = .idle
@@ -146,6 +153,7 @@ public final class AppModel: ObservableObject {
 	private let persistsProviderSelection: Bool
 	private static let selectedProviderKey = "CodexPulse.selectedProvider"
 	private static let statusProviderKey = "CodexPulse.statusProvider"
+	private static let selectedFeatureKey = "CodexPulse.selectedFeature"
     private var startTask: Task<Void, Never>?
     private var updatePolicyTask: Task<Void, Never>?
     private var overviewRefreshTask: Task<Void, Never>?
@@ -173,13 +181,29 @@ public final class AppModel: ObservableObject {
 			? .codex
 			: AgentProvider(rawValue: providerDefaults.string(forKey: Self.statusProviderKey) ?? "") ?? .codex
 		overviewRange = selectedProvider == .cursor ? .quotaMonth : .quotaWeek
+		selectedFeature = Self.restoredFeature(
+			defaults: providerDefaults,
+			persists: persistsProviderSelection
+		)
+    }
+
+    public convenience init(
+        runtime: AppRuntime,
+        observesUpdatePolicy: Bool = false
+    ) {
+        self.init(
+            runtime: runtime,
+            observesUpdatePolicy: observesUpdatePolicy,
+            providerDefaults: .standard,
+            persistsProviderSelection: false
+        )
     }
 
     public init(
         runtime: AppRuntime,
         observesUpdatePolicy: Bool = false,
-		providerDefaults: UserDefaults = .standard,
-		persistsProviderSelection: Bool = true
+			providerDefaults: UserDefaults,
+			persistsProviderSelection: Bool = true
     ) {
         self.runtime = runtime
         self.observesUpdatePolicy = observesUpdatePolicy
@@ -192,7 +216,29 @@ public final class AppModel: ObservableObject {
 			? AgentProvider(rawValue: providerDefaults.string(forKey: Self.statusProviderKey) ?? "") ?? .codex
 			: .codex
 		overviewRange = selectedProvider == .cursor ? .quotaMonth : .quotaWeek
+		selectedFeature = Self.restoredFeature(
+			defaults: providerDefaults,
+			persists: persistsProviderSelection
+		)
     }
+
+	private static func restoredFeature(defaults: UserDefaults, persists: Bool) -> AppFeature {
+		guard persists else { return .dashboardSummary }
+		if let raw = defaults.string(forKey: selectedFeatureKey),
+		   let feature = AppFeature(rawValue: raw)
+		{
+			return feature
+		}
+		if defaults.object(forKey: selectedProviderKey) != nil {
+			return .overview
+		}
+		return .dashboardSummary
+	}
+
+	private func persistSelectedFeature() {
+		guard persistsProviderSelection else { return }
+		providerDefaults.set(selectedFeature.rawValue, forKey: Self.selectedFeatureKey)
+	}
 
     public var statusItemTitle: String {
 		if statusProvider == .cursor {
@@ -272,6 +318,8 @@ public final class AppModel: ObservableObject {
                 jobsState.isLoading || jobDetailState.isLoading
         case .settings:
             settingsState.isLoading
+        case .dashboardSummary:
+            dashboardSummaryState.isLoading
         }
     }
 
@@ -309,6 +357,7 @@ public final class AppModel: ObservableObject {
 		}
 		if !provider.supportsInvocationStatistics, selectedFeature == .invocationUsage {
 			selectedFeature = .overview
+			persistSelectedFeature()
 		}
 		overviewRange = provider.defaultOverviewRange
 		overviewRefreshGeneration &+= 1
@@ -351,6 +400,7 @@ public final class AppModel: ObservableObject {
 	public func openMainWindowProvider(_ provider: AgentProvider) {
 		selectProvider(provider)
 		selectedFeature = .overview
+		persistSelectedFeature()
 	}
 
     public func applyLocalePreference(_ rawValue: String) {
@@ -412,6 +462,7 @@ public final class AppModel: ObservableObject {
         case .localStatus: loadLocalStatus()
         case .sourcesJobs: loadSourcesAndJobs(reset: true)
         case .settings: loadSettings()
+        case .dashboardSummary: loadDashboardSummary()
         }
         reloadSelectedDetails(for: feature, onlyIfNeeded: false)
     }
@@ -444,6 +495,8 @@ public final class AppModel: ObservableObject {
             }
         case .settings:
             if settingsState.shouldReloadOnNavigation { loadSettings() }
+        case .dashboardSummary:
+            if dashboardSummaryState.shouldReloadOnNavigation { loadDashboardSummary() }
         }
         reloadSelectedDetails(for: feature, onlyIfNeeded: true)
     }
@@ -451,10 +504,48 @@ public final class AppModel: ObservableObject {
     public func navigate(to feature: AppFeature) {
 		guard feature != .invocationUsage || selectedProvider.supportsInvocationStatistics else {
 			selectedFeature = .overview
+			persistSelectedFeature()
 			return
 		}
         selectedFeature = feature
+		persistSelectedFeature()
         load(feature)
+    }
+
+    public func selectDashboardRange(_ range: DateRangePreset) {
+        guard [.today, .sevenDays, .thirtyDays].contains(range),
+              range != dashboardRange,
+              canRefreshOrRestart
+        else { return }
+        dashboardRange = range
+        loadDashboardSummary()
+    }
+
+    public func selectDashboardTrendMode(_ mode: DashboardTrendMode) {
+        dashboardTrendMode = mode
+    }
+
+    public func loadDashboardSummary() {
+        let previous = dashboardSummaryState.value
+        dashboardSummaryState = .loading(previous: previous)
+        let range = dashboardRange
+        launch(
+            .dashboardSummary,
+            operation: { [runtime] in
+                try await runtime.dashboardSummary(
+                    FeatureRequestFactory.dashboardSummary(range: range)
+                )
+            }
+        ) { [weak self] response in
+            guard let self, self.dashboardRange == range else { return }
+            self.dashboardSummaryState = loadState(
+                value: response,
+                meta: response.meta,
+                isEmpty: false
+            )
+        } failure: { [weak self] error in
+            self?.dashboardSummaryState = failedLoadState(previous: previous, error: error)
+        }
     }
 
     public func navigateToInvocationUsageFromOverview() {
@@ -463,6 +554,7 @@ public final class AppModel: ObservableObject {
         invocationRange = overviewRange
         invocationSourceClass = "all"
         selectedFeature = .invocationUsage
+		persistSelectedFeature()
         guard canRefreshOrRestart else { return }
         if contextChanged || invocationUsageState.shouldReloadOnNavigation {
             loadInvocationUsage()
@@ -495,6 +587,7 @@ public final class AppModel: ObservableObject {
             self.loadLocalStatus()
             self.loadSourcesAndJobs(reset: true)
             self.loadSettings()
+            self.loadDashboardSummary()
             for feature in [AppFeature.sessions, .projects, .localStatus, .sourcesJobs] {
                 self.reloadSelectedDetails(for: feature, onlyIfNeeded: false)
             }
@@ -534,7 +627,7 @@ public final class AppModel: ObservableObject {
             {
                 loadJobDetail(jobID: selectedJobID)
             }
-        case .overview, .quotaUsage, .invocationUsage, .apiSubscriptions, .settings:
+        case .overview, .quotaUsage, .invocationUsage, .apiSubscriptions, .settings, .dashboardSummary:
             break
         }
     }
@@ -1363,8 +1456,10 @@ public final class AppModel: ObservableObject {
     }
 
 	private func cancelPageFeatureTasks() {
-		let statusKeys: Set<FeatureTaskKey> = [.statusOverview, .statusAccount]
-		let keys = featureTasks.keys.filter { !statusKeys.contains($0) }
+			let providerIndependentKeys: Set<FeatureTaskKey> = [
+				.statusOverview, .statusAccount, .dashboardSummary,
+			]
+			let keys = featureTasks.keys.filter { !providerIndependentKeys.contains($0) }
 		for key in keys {
 			featureTasks[key]?.cancel()
 			featureTasks[key] = nil
@@ -1549,6 +1644,7 @@ public final class AppModel: ObservableObject {
         case "index":
             invalidateTasks([
                 .usage, .invocationUsage, .sessions, .sessionDetail, .projects, .projectDetail,
+                .dashboardSummary,
             ])
             usageState = stale(usageState, notice)
             invocationUsageState = stale(invocationUsageState, notice)
@@ -1556,13 +1652,15 @@ public final class AppModel: ObservableObject {
             sessionDetailState = stale(sessionDetailState, notice)
             projectsState = stale(projectsState, notice)
             projectDetailState = stale(projectDetailState, notice)
-            affected = [.sessions, .projects, .quotaUsage, .invocationUsage]
+            dashboardSummaryState = stale(dashboardSummaryState, notice)
+            affected = [.sessions, .projects, .quotaUsage, .invocationUsage, .dashboardSummary]
 			refreshesStatus = true
         case "quota":
-            invalidateTasks([.quota, .quotaPace])
+            invalidateTasks([.quota, .quotaPace, .dashboardSummary])
             quotaState = stale(quotaState, notice)
             quotaPaceState = stale(quotaPaceState, notice)
-            affected = [.quotaUsage]
+            dashboardSummaryState = stale(dashboardSummaryState, notice)
+            affected = [.quotaUsage, .dashboardSummary]
 			refreshesStatus = true
         case "health":
             invalidateTasks([.healthProjection, .dataHealth, .healthList, .healthDetail, .sources, .sourceDetail, .jobs, .jobDetail])
@@ -1615,6 +1713,7 @@ public final class AppModel: ObservableObject {
 		statusOverviewState = .idle
 		statusUsageState = .idle
 		statusInvocationState = .idle
+        dashboardSummaryState = .idle
         usageState = .idle
         invocationUsageState = .idle
         pricingCatalogState = .idle
@@ -1816,6 +1915,7 @@ public final class AppModel: ObservableObject {
 
     private func markFeatureStatesStale(_ notice: AppNotice) {
 		statusOverviewState = stale(statusOverviewState, notice)
+        dashboardSummaryState = stale(dashboardSummaryState, notice)
         usageState = stale(usageState, notice)
         invocationUsageState = stale(invocationUsageState, notice)
         pricingCatalogState = stale(pricingCatalogState, notice)

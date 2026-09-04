@@ -122,6 +122,23 @@ public struct RuntimeQueryOptions: Equatable, Sendable {
 }
 
 public enum FeatureRequestFactory {
+    public static func dashboardSummary(
+        range preset: DateRangePreset,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Codexpulse_Core_V1_DashboardSummaryRequest {
+        let normalized: DateRangePreset = switch preset {
+        case .today, .sevenDays, .thirtyDays: preset
+        case .quotaWeek: .sevenDays
+        case .quotaMonth, .all: .thirtyDays
+        }
+        var request = Codexpulse_Core_V1_DashboardSummaryRequest()
+        request.range = localDateRange(normalized, now: now, calendar: calendar)
+        request.activityRange = localDateRange(days: 365, now: now, calendar: calendar)
+        request.granularity = normalized == .today ? "hour" : "day"
+        return request
+    }
+
     public static func usage(
         range preset: DateRangePreset,
         provider: AgentProvider = .codex,
@@ -443,9 +460,6 @@ public enum FeatureRequestFactory {
         now: Date,
         calendar inputCalendar: Calendar
     ) -> Codexpulse_Core_V1_LocalDateRange {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = inputCalendar.timeZone
-        let today = calendar.startOfDay(for: now)
         let days: Int
         switch preset {
         case .quotaWeek: days = 7
@@ -454,7 +468,19 @@ public enum FeatureRequestFactory {
         case .sevenDays: days = 7
         case .thirtyDays, .all: days = 30
         }
-        let start = calendar.date(byAdding: .day, value: -(days - 1), to: today) ?? today
+        return localDateRange(days: days, now: now, calendar: inputCalendar)
+    }
+
+    private static func localDateRange(
+        days: Int,
+        now: Date,
+        calendar inputCalendar: Calendar
+    ) -> Codexpulse_Core_V1_LocalDateRange {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = inputCalendar.timeZone
+        let today = calendar.startOfDay(for: now)
+        let normalizedDays = max(days, 1)
+        let start = calendar.date(byAdding: .day, value: -(normalizedDays - 1), to: today) ?? today
         let end = calendar.date(byAdding: .day, value: 1, to: today) ?? now
         let formatter = DateFormatter()
         formatter.calendar = calendar

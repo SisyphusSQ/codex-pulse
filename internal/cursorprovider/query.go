@@ -331,8 +331,10 @@ func (service *QueryService) UsageCost(ctx context.Context, request usagecost.Us
 		UnpricedReasons:   []usagecost.ReasonCount{},
 		CursorUsagePools:  []usagecost.CursorUsagePoolSummary{},
 	}
+	var dashboardEstimate cursorDashboardCostEstimate
 	if dashboardAvailable {
-		response.Totals = totalsForDashboardEvents(dashboardEvents)
+		dashboardEstimate = summarizeCursorDashboardCost(dashboardEvents)
+		response.Totals = totalsForDashboardEventsWithEstimate(dashboardEvents, dashboardEstimate)
 		response.CursorUsagePools = cursorUsagePoolSummaries(dashboardEvents)
 		response.Trend = dashboardUsageTrend(dashboardEvents, *rangeValue, request.Granularity)
 		if request.IncludeActivityDistribution {
@@ -370,6 +372,7 @@ func (service *QueryService) UsageCost(ctx context.Context, request usagecost.Us
 	if !request.TokenTotalsOnly {
 		if dashboardAvailable {
 			response.Models = dashboardUsageModels(dashboardEvents, *rangeValue, request.Granularity)
+			response.UnpricedReasons = cursorDashboardUnpricedReasons(dashboardEstimate)
 		} else {
 			response.Models = usageModels(events, *rangeValue, request.Granularity, exactUsage)
 		}
@@ -899,6 +902,13 @@ func cursorBillingSummary(snapshot store.CursorSnapshot) *usagecost.CursorBillin
 }
 
 func totalsForDashboardEvents(events []store.CursorDashboardUsageEvent) usagecost.UsageTotals {
+	return totalsForDashboardEventsWithEstimate(events, summarizeCursorDashboardCost(events))
+}
+
+func totalsForDashboardEventsWithEstimate(
+	events []store.CursorDashboardUsageEvent,
+	estimate cursorDashboardCostEstimate,
+) usagecost.UsageTotals {
 	var turns, input, output, cacheWrite, cacheRead, first, last int64
 	for _, event := range events {
 		turns += event.OccurrenceCount
@@ -910,10 +920,8 @@ func totalsForDashboardEvents(events []store.CursorDashboardUsageEvent) usagecos
 		last = maxInt64(last, event.OccurredAtMS)
 	}
 	estimated := unknown(basequery.NumericMicroUSD, basequery.UnknownUnavailable)
-	pricedTurns, unpricedTurns := int64(0), turns
-	if value, _, ok := estimateCursorDashboardCost(events); ok {
-		estimated = known(value, basequery.NumericMicroUSD)
-		pricedTurns, unpricedTurns = turns, 0
+	if estimate.hasKnownEstimate {
+		estimated = known(estimate.estimatedUSDMicros, basequery.NumericMicroUSD)
 	}
 	firstActivity, lastActivity := activityBoundaries(turns, first, last)
 	return usagecost.UsageTotals{
@@ -922,9 +930,31 @@ func totalsForDashboardEvents(events []store.CursorDashboardUsageEvent) usagecos
 		ReasoningTokens:    unknown(basequery.NumericTokens, basequery.UnknownUnavailable),
 		TotalTokens:        known(input+output+cacheWrite+cacheRead, basequery.NumericTokens),
 		EstimatedUSDMicros: estimated,
-		PricedTurnCount:    known(pricedTurns, basequery.NumericCount), UnpricedTurnCount: known(unpricedTurns, basequery.NumericCount),
-		FirstActivityAtMS: firstActivity, LastActivityAtMS: lastActivity,
+		PricedTurnCount:    known(estimate.pricedTurnCount, basequery.NumericCount),
+		UnpricedTurnCount:  known(estimate.unpricedTurnCount, basequery.NumericCount),
+		FirstActivityAtMS:  firstActivity, LastActivityAtMS: lastActivity,
 	}
+}
+
+func cursorDashboardUnpricedReasons(estimate cursorDashboardCostEstimate) []usagecost.ReasonCount {
+	order := []pricing.CostReason{
+		pricing.CostReasonMissingToken,
+		pricing.CostReasonMissingModel,
+		pricing.CostReasonModelNotListed,
+		pricing.CostReasonMissingPriceComponent,
+	}
+	result := make([]usagecost.ReasonCount, 0, len(estimate.unpricedReasonCount))
+	for _, reason := range order {
+		count := estimate.unpricedReasonCount[reason]
+		if count <= 0 {
+			continue
+		}
+		result = append(result, usagecost.ReasonCount{
+			Reason: reason,
+			Count:  known(count, basequery.NumericCount),
+		})
+	}
+	return result
 }
 
 func dashboardUsageTrend(events []store.CursorDashboardUsageEvent, rangeValue basequery.UTCTimeRange, granularity usagecost.TrendGranularity) []usagecost.TrendPoint {

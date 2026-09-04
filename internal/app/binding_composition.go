@@ -17,6 +17,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/providerrefresh"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/agentrouter"
+	"github.com/SisyphusSQ/codex-pulse/internal/query/dashboardsummary"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
@@ -43,6 +44,8 @@ func composeCoreGraph(
 	if database == nil || preferenceStore == nil {
 		return nil, core.ErrService
 	}
+	awareInvalidation := &dashboardAwareInvalidation{inner: invalidation}
+	invalidation = awareInvalidation
 	repository := store.NewRepository(database)
 	usageService, err := usagecost.NewService(repository)
 	if err != nil {
@@ -95,16 +98,10 @@ func composeCoreGraph(
 		return nil, errors.Join(core.ErrService, err)
 	}
 	cursorService.SetGrokBotRefresher(cursorGrokBotCollector)
-	cursorService.SetRefreshNotifier(func() {
-		notifyQueryInvalidation(invalidation, context.Background(), core.InvalidationIndex)
-	})
 	grokService, err := composeGrokQueryService(repository, preferenceStore)
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
-	grokService.SetRefreshNotifier(func() {
-		notifyQueryInvalidation(invalidation, context.Background(), core.InvalidationIndex)
-	})
 	providerRouter, err := agentrouter.New(
 		usageService, invocationService, cursorService, cursorService, grokService, grokService,
 	)
@@ -129,6 +126,17 @@ func composeCoreGraph(
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
+	summaryService, err := dashboardsummary.New(providerRouter, quotaRouter, time.Now)
+	if err != nil {
+		return nil, errors.Join(core.ErrService, err)
+	}
+	awareInvalidation.summary = summaryService
+	cursorService.SetRefreshNotifier(func() {
+		notifyQueryInvalidation(invalidation, context.Background(), core.InvalidationIndex)
+	})
+	grokService.SetRefreshNotifier(func() {
+		notifyQueryInvalidation(invalidation, context.Background(), core.InvalidationIndex)
+	})
 	if apiKeys == nil {
 		apiKeys = emptyAPIKeyProvider{}
 	}
@@ -161,8 +169,9 @@ func composeCoreGraph(
 		return nil, errors.Join(core.ErrService, err)
 	}
 	service, err := core.NewService(core.ServiceConfig{
-		UsageCost: providerRouter, InvocationUsage: providerRouter, PricingCatalog: pricingService,
-		RuntimeInfo: runtimeService, QuotaInfo: quotaRouter, ProviderQuotaRefresh: quotaRouter,
+		UsageCost: providerRouter, InvocationUsage: providerRouter, DashboardSummary: summaryService,
+		PricingCatalog: pricingService,
+		RuntimeInfo:    runtimeService, QuotaInfo: quotaRouter, ProviderQuotaRefresh: quotaRouter,
 		ProviderRefresh:  coreProviderRefresh{inner: orchestrator},
 		QueryObserver:    queryObserver,
 		APISubscriptions: apiSubscriptions,

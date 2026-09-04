@@ -415,6 +415,12 @@ public actor AppRuntime {
         try await performRead { try await $0.usageCost(request, retryPolicy: .transportDefault) }
     }
 
+    public func dashboardSummary(
+        _ request: Codexpulse_Core_V1_DashboardSummaryRequest
+    ) async throws -> Codexpulse_Core_V1_DashboardSummaryResponse {
+        try await performRead { try await $0.dashboardSummary(request, retryPolicy: .transportDefault) }
+    }
+
     public func invocationUsage(
         _ request: Codexpulse_Core_V1_InvocationUsageRequest
     ) async throws -> Codexpulse_Core_V1_InvocationUsageResponse {
@@ -762,6 +768,15 @@ public actor AppRuntime {
             } catch {
                 unavailableSteps.append(try acceptedSmokeFailure(step: step, error: error))
             }
+            step = "dashboard_summary"
+            var dashboard: Codexpulse_Core_V1_DashboardSummaryResponse?
+            do {
+                dashboard = try await dashboardSummary(
+                    FeatureRequestFactory.dashboardSummary(range: .sevenDays, now: now, calendar: calendar)
+                )
+            } catch {
+                unavailableSteps.append(try acceptedSmokeFailure(step: step, error: error))
+            }
             step = "invocation_usage"
             var invocation: Codexpulse_Core_V1_InvocationUsageResponse?
             do {
@@ -915,6 +930,11 @@ public actor AppRuntime {
                     UsageModelTrendResolver.buckets($0).count(where: \.breakdownAvailable)
                 } ?? 0,
                 usageCostKnown: usage?.totals.estimatedUsdMicros.hasValue == true,
+                dashboardProviders: dashboard?.providers.count ?? 0,
+                dashboardKnownProviders: dashboard?.coverage.knownProviderCount ?? 0,
+                dashboardTotalTokens: dashboard?.totals.totalTokens.hasValue == true
+                    ? dashboard?.totals.totalTokens.value
+                    : nil,
                 invocationToolCalls: invocation?.totals.toolCallCount.value ?? 0,
                 invocationSkillActivity: invocation?.totals.skillActivityCount.value ?? 0,
                 quotaWindows: quota?.current.windows.count ?? 0,

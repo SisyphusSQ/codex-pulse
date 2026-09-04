@@ -6,10 +6,10 @@
 
 | 区域 | 内容 |
 | --- | --- |
-| [details/product](details/product/README.md) | 产品目标、页面信息架构、用量与成本口径、v0.1 范围和实施阶段 |
-| [details/providers](details/providers/README.md) | Codex / Cursor / Grok 三个独立客户端、来源边界、capability 与隐私 |
+| [details/product](details/product/README.md) | 产品目标、页面信息架构、跨客户端汇总与单客户端概览、用量与成本口径、v0.1 范围和实施阶段 |
+| [details/providers](details/providers/README.md) | Codex / Cursor / Grok 三个独立客户端、专用 DashboardSummary read model、来源边界、capability 与隐私 |
 | [details/api-subscriptions](details/api-subscriptions/README.md) | 非 Agent 的 API 余额与订阅额度、凭据边界和独立失败语义 |
-| [details/architecture](details/architecture/README.md) | 当前 Go Helper 与目标 Swift native client 分层、RPC 边界与本机安全 |
+| [details/architecture](details/architecture/README.md) | 当前 Go Helper 与目标 Swift native client 分层、RPC 边界、DashboardSummary 聚合与本机安全 |
 | [details/native-macos-client](details/native-macos-client/README.md) | 原生 macOS 客户端与 Go Helper 重构决策、RPC contract、生命周期、迁移阶段和切换门槛 |
 | [details/data-model](details/data-model/README.md) | JSONL 增量索引、SQLite schema、幂等事务、日聚合与保留策略 |
 | [details/quota](details/quota/README.md) | 配额来源、可信状态、仲裁、失败降级和验收场景 |

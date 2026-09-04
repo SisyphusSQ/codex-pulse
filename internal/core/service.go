@@ -13,6 +13,7 @@ import (
 	healthmodel "github.com/SisyphusSQ/codex-pulse/internal/health"
 	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
+	"github.com/SisyphusSQ/codex-pulse/internal/query/dashboardsummary"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
@@ -39,6 +40,10 @@ type usageCostQuery interface {
 
 type invocationUsageQuery interface {
 	InvocationUsage(context.Context, invocationusage.InvocationUsageRequest) (invocationusage.InvocationUsageResponse, error)
+}
+
+type dashboardSummaryQuery interface {
+	DashboardSummary(context.Context, dashboardsummary.Request) (dashboardsummary.Response, error)
 }
 
 type runtimeInfoQuery interface {
@@ -124,6 +129,7 @@ type QueryObserver interface {
 type ServiceConfig struct {
 	UsageCost            usageCostQuery
 	InvocationUsage      invocationUsageQuery
+	DashboardSummary     dashboardSummaryQuery
 	PricingCatalog       pricingCatalogQuery
 	RuntimeInfo          runtimeInfoQuery
 	QuotaInfo            agentQuotaQuery
@@ -143,6 +149,7 @@ type ServiceConfig struct {
 type Service struct {
 	usageCost            usageCostQuery
 	invocationUsage      invocationUsageQuery
+	dashboardSummary     dashboardSummaryQuery
 	pricingCatalog       pricingCatalogQuery
 	runtimeInfo          runtimeInfoQuery
 	quotaInfo            agentQuotaQuery
@@ -171,6 +178,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 	return &Service{
 		usageCost:            config.UsageCost,
 		invocationUsage:      config.InvocationUsage,
+		dashboardSummary:     config.DashboardSummary,
 		pricingCatalog:       config.PricingCatalog,
 		runtimeInfo:          config.RuntimeInfo,
 		quotaInfo:            config.QuotaInfo,
@@ -317,15 +325,16 @@ type MethodInfo struct {
 }
 
 type ContractInfo struct {
-	Version                string                  `json:"version"`
-	QueryVersion           string                  `json:"queryVersion"`
-	UsageCostVersion       string                  `json:"usageCostVersion"`
-	InvocationUsageVersion string                  `json:"invocationUsageVersion"`
-	PricingCatalogVersion  string                  `json:"pricingCatalogVersion"`
-	RuntimeInfoVersion     string                  `json:"runtimeInfoVersion"`
-	Methods                []MethodInfo            `json:"methods"`
-	CommandMethods         []string                `json:"commandMethods"`
-	ErrorExample           basequery.ErrorEnvelope `json:"errorExample"`
+	Version                 string                  `json:"version"`
+	QueryVersion            string                  `json:"queryVersion"`
+	UsageCostVersion        string                  `json:"usageCostVersion"`
+	InvocationUsageVersion  string                  `json:"invocationUsageVersion"`
+	PricingCatalogVersion   string                  `json:"pricingCatalogVersion"`
+	RuntimeInfoVersion      string                  `json:"runtimeInfoVersion"`
+	DashboardSummaryVersion string                  `json:"dashboardSummaryVersion"`
+	Methods                 []MethodInfo            `json:"methods"`
+	CommandMethods          []string                `json:"commandMethods"`
+	ErrorExample            basequery.ErrorEnvelope `json:"errorExample"`
 }
 
 var methodAllowlist = []MethodInfo{
@@ -334,6 +343,7 @@ var methodAllowlist = []MethodInfo{
 	{Name: "APISubscriptionsCurrent", Kind: MethodQuery},
 	{Name: "APICredentialStatus", Kind: MethodQuery},
 	{Name: "UsageCost", Kind: MethodQuery},
+	{Name: "DashboardSummary", Kind: MethodQuery},
 	{Name: "InvocationUsage", Kind: MethodQuery},
 	{Name: "PricingCatalogCurrent", Kind: MethodQuery},
 	{Name: "ListSessions", Kind: MethodQuery},
@@ -367,11 +377,12 @@ func (service *Service) Contracts() ContractInfo {
 		errorExample, _ := basequery.ErrorEnvelopeFrom(ErrService)
 		return ContractInfo{
 			Version: ContractVersion, QueryVersion: basequery.ContractVersion,
-			UsageCostVersion:       usagecost.ContractVersion,
-			InvocationUsageVersion: invocationusage.ContractVersion,
-			PricingCatalogVersion:  pricingcatalog.ContractVersion,
-			RuntimeInfoVersion:     runtimeinfo.ContractVersion,
-			Methods:                append([]MethodInfo(nil), methodAllowlist...),
+			UsageCostVersion:        usagecost.ContractVersion,
+			InvocationUsageVersion:  invocationusage.ContractVersion,
+			PricingCatalogVersion:   pricingcatalog.ContractVersion,
+			RuntimeInfoVersion:      runtimeinfo.ContractVersion,
+			DashboardSummaryVersion: dashboardsummary.ContractVersion,
+			Methods:                 append([]MethodInfo(nil), methodAllowlist...),
 			CommandMethods: []string{
 				"RequestQuotaRefresh", "RequestProviderRefresh", "UpdateAPICredential", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
 				"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
@@ -587,6 +598,18 @@ func (service *Service) UsageCost(
 	}
 	return serviceQueryCall(service, func() (usagecost.UsageCostResponse, error) {
 		return service.usageCost.UsageCost(ctx, request)
+	})
+}
+
+func (service *Service) DashboardSummary(
+	ctx context.Context,
+	request dashboardsummary.Request,
+) (dashboardsummary.Response, error) {
+	if service == nil || service.dashboardSummary == nil {
+		return dashboardsummary.Response{}, newServiceFailure(ErrService)
+	}
+	return serviceQueryCall(service, func() (dashboardsummary.Response, error) {
+		return service.dashboardSummary.DashboardSummary(ctx, request)
 	})
 }
 
