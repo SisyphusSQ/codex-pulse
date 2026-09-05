@@ -569,7 +569,7 @@ func decodeEffort(raw json.RawMessage) (*string, bool) {
 		return value, ok
 	}
 	switch *value {
-	case "none", "minimal", "low", "medium", "high", "xhigh", "ultra":
+	case "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra":
 		return value, true
 	default:
 		return stringPointer("custom"), true

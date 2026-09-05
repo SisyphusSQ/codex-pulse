@@ -314,7 +314,7 @@ func validCheckpointEffort(value *string) bool {
 		return true
 	}
 	switch *value {
-	case "none", "minimal", "low", "medium", "high", "xhigh", "ultra", "custom":
+	case "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "custom":
 		return true
 	default:
 		return false

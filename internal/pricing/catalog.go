@@ -15,6 +15,8 @@ const (
 	builtinPricing20260731Version       = "openai-api-2026-07-31"
 	builtinPricing20260731EffectiveAtMS = int64(1_785_464_448_000)
 	builtinPricing20260731VerifiedAtMS  = int64(1_785_464_448_000)
+	builtinPricing20260903EffectiveAtMS = int64(1_788_393_600_000)
+	builtinPricing20260905VerifiedAtMS  = int64(1_788_573_994_000)
 )
 
 type builtinModelRate struct {
@@ -97,6 +99,33 @@ func builtinOpenAI20260731Rates() []builtinModelRate {
 	return rates
 }
 
+// BuiltinOpenAI20260903 从 Astra 发布日（UTC 日界）增补基础参考价格；
+// 发布日粒度用于本地估算，不声称精确 API 开放时刻。其它历史费率保持不变。
+func BuiltinOpenAI20260903() CatalogVersion {
+	rates := append(builtinOpenAI20260731Rates(), builtinModelRate{
+		model: "gpt-6-astra", input: 10_000_000, cached: 1_000_000, output: 50_000_000,
+	})
+	return catalogFromRates("openai-api-2026-09-03", builtinPricing20260903EffectiveAtMS,
+		builtinPricing20260905VerifiedAtMS, builtinPricingURL, rates)
+}
+
+// BuiltinOpenAI20260905 从官方核验时刻应用 Sol 及其官方 alias 的促销价；
+// 未知的历史降价日期不回填，促销结束后也不猜测恢复价格。
+func BuiltinOpenAI20260905() CatalogVersion {
+	catalog := BuiltinOpenAI20260903()
+	catalog.PricingVersion = "openai-api-2026-09-05"
+	catalog.EffectiveFromMS = builtinPricing20260905VerifiedAtMS
+	for index := range catalog.Models {
+		model := &catalog.Models[index]
+		if model.ModelPattern == "gpt-5.6-sol" || model.ModelPattern == "gpt-5.6" {
+			*model.InputMicrosPerMillion = 4_000_000
+			*model.CachedInputMicrosPerMillion = 400_000
+			*model.OutputMicrosPerMillion = 20_000_000
+		}
+	}
+	return catalog
+}
+
 // BuiltinOpenAICatalog 返回按生效时间升序排列的完整内置价格历史。
 func BuiltinOpenAICatalog() []CatalogVersion {
 	return []CatalogVersion{
@@ -104,6 +133,8 @@ func BuiltinOpenAICatalog() []CatalogVersion {
 		BuiltinOpenAI20260722(),
 		BuiltinOpenAI20260729(),
 		BuiltinOpenAI20260731(),
+		BuiltinOpenAI20260903(),
+		BuiltinOpenAI20260905(),
 	}
 }
 

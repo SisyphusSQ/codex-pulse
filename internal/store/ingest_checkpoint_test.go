@@ -12,7 +12,7 @@ func TestParserCheckpointCodecRoundTripsCompleteSafeState(t *testing.T) {
 
 	zero := int64(0)
 	ten := int64(10)
-	effort := "ultra"
+	effort := "max"
 	activeTurnID := "turn-open"
 	checkpoint := ParserCheckpoint{
 		Version: ParserCheckpointVersion, ParserVersion: "codex-rollout-v1", CommittedOffset: 500,

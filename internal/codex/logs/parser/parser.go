@@ -153,7 +153,7 @@ func validSeedEffort(effort *string) bool {
 		return true
 	}
 	switch *effort {
-	case "none", "minimal", "low", "medium", "high", "xhigh", "ultra", "custom":
+	case "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "custom":
 		return true
 	default:
 		return false
