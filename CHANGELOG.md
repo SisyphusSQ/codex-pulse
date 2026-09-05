@@ -1,5 +1,10 @@
 ## Unreleased
 
+## v0.11.0 - 2026-09-05
+
+#### feature:
+1. [TOO-419] 新增 GPT-6 Astra exact-only 模型归因、展示名与 API 等价价格，同步 GPT-5.6 Sol 及官方 `gpt-5.6` alias 参考价格，补齐 `max` reasoning effort、不可变价格目录历史和已有用量升级计价。
+
 ## v0.10.0 - 2026-09-04
 
 #### feature:
