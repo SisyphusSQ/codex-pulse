@@ -588,8 +588,8 @@ private func testOverviewUsesOneNavigationAndARealTrendChart() throws {
 
 private func testCursorOverviewTrendAnnotationDoesNotResizeConsumptionCard() throws {
 	let source = try mainWindowSource("RootView.swift")
-	guard let cursorStart = source.range(of: "private struct CursorOverviewContentView"),
-		let codexStart = source.range(of: "private struct OverviewContentView")
+	guard let cursorStart = source.range(of: "private struct CursorOverviewTrendChart"),
+		let codexStart = source.range(of: "private struct OverviewTrendChart")
 	else {
 		throw TestFailure.mismatch("overview provider sections are unavailable")
 	}
@@ -3783,14 +3783,15 @@ private actor FakeCore: AppCoreServing {
     }
     func publishOverviewInvalidations(
         count: Int,
-        recovered: Bool
+        recovered: Bool,
+        domain: String = "index"
     ) async {
         if recovered { failOverview = false }
         guard let invalidationHandler else { return }
         for _ in 0..<count {
             var event = Codexpulse_Core_V1_QueryInvalidationEvent()
             event.version = CodexPulseTransportContract.invalidationVersion
-            event.domain = "index"
+            event.domain = domain
             event.sequence = nextInvalidationSequence
             nextInvalidationSequence += 1
             try? await invalidationHandler(event)
@@ -5685,6 +5686,43 @@ private func testProviderSwitchDoesNotRequestGlobalRefresh() async throws {
     let after = await core.recordedCalls().filter { $0.hasPrefix("provider_refresh:") }
     try expect(before == after, "provider switch must not request a global refresh")
     _ = await model.shutdown()
+}
+
+private func testHealthInvalidationDoesNotReloadUsage() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    let recorder = StateRecorder()
+    await runtime.setStateSink { state in await recorder.append(state) }
+    await runtime.start()
+    await runtime.refresh()
+    let before = await core.recordedCalls()
+    await core.publishOverviewInvalidations(count: 3, recovered: false, domain: "health")
+    let after = await core.recordedCalls()
+    try expect(
+        after.filter { $0 == "health" }.count == before.filter { $0 == "health" }.count + 3,
+        "health invalidations must still read fresh health")
+    let phasesBefore = await recorder.snapshot()
+    await core.setOverviewFailure(true)
+    await core.publishOverviewInvalidations(count: 1, recovered: false, domain: "health")
+    let failedPhases = await recorder.snapshot()
+    try expect(failedPhases.count == phasesBefore.count + 1 && failedPhases.last == "partial",
+        "failed health read must publish partial overview without discarding usage")
+    await core.setOverviewFailure(false)
+    await core.publishOverviewInvalidations(count: 1, recovered: false, domain: "health")
+    let recoveredPhases = await recorder.snapshot()
+    try expect(recoveredPhases.count == failedPhases.count + 1,
+        "health recovery must publish updated overview")
+    let afterRecovery = await core.recordedCalls()
+    try expect(afterRecovery.filter { $0 == "usage" }.count == before.filter { $0 == "usage" }.count,
+        "health failure and recovery must not reload usage")
+    let usageBefore = await core.overviewRecoveryStats().usageCalls
+    await core.publishOverviewInvalidations(count: 1, recovered: false, domain: "index")
+    let usageAfter = await core.overviewRecoveryStats().usageCalls
+    try expect(usageAfter > usageBefore, "index invalidation must still reload usage")
+    try expect(
+        after.filter { $0 == "usage" }.count == before.filter { $0 == "usage" }.count,
+        "health invalidations must not reload usage")
+    _ = await runtime.shutdown()
 }
 
 @MainActor
@@ -11189,6 +11227,7 @@ struct CodexPulseAppTestMain {
         try await testGlobalRefreshMapsThreeProviderReceipt()
         try await testGlobalRefreshEntriesShareInFlightState()
         try await testProviderSwitchDoesNotRequestGlobalRefresh()
+        try await testHealthInvalidationDoesNotReloadUsage()
         try await testInvalidationDoesNotRequestGlobalRefresh()
         try await testQuotaMutationIsSingleFlight()
 		try await testQuotaMutationCarriesSelectedProviderAndSwitchClearsState()

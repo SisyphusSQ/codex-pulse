@@ -16,7 +16,7 @@ public struct OverviewResponses: Sendable {
     public let sessions: Codexpulse_Core_V1_SessionListResponse
     public let projects: Codexpulse_Core_V1_ProjectListResponse
     public let weeklyProjects: Codexpulse_Core_V1_ProjectListResponse
-    public let health: Codexpulse_Core_V1_HealthProjectionResponse
+    public private(set) var health: Codexpulse_Core_V1_HealthProjectionResponse
     public let rangeResolution: OverviewRangeResolution?
     public let weeklyProjectRange: OverviewRangeResolution?
     public let additionalNotices: [AppNotice]
@@ -57,6 +57,12 @@ public struct OverviewResponses: Sendable {
         self.rangeResolution = rangeResolution
         self.weeklyProjectRange = weeklyProjectRange ?? rangeResolution
         self.additionalNotices = additionalNotices
+    }
+
+    func replacingHealth(_ health: Codexpulse_Core_V1_HealthProjectionResponse) -> OverviewResponses {
+        var updated = self
+        updated.health = health
+        return updated
     }
 
     func replacingAccount(

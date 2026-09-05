@@ -17,14 +17,13 @@ struct DashboardSummaryView: View {
                 emptyTitle: "当前范围暂无跨客户端用量",
                 emptySystemImage: "square.grid.2x2"
             ) { response in
-                DashboardSummaryContentView(
-                    presentation: DashboardSummaryPresentation(response),
+                DashboardResponseContent(
+                    response: response,
                     selectedRange: model.dashboardRange,
                     trendMode: model.dashboardTrendMode,
-                    onSelectTrendMode: model.selectDashboardTrendMode,
-                    onOpenProvider: model.openMainWindowProvider,
-                    localization: model.localization
-                )
+                    localization: model.localization,
+                    model: model
+                ).equatable()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -345,9 +344,7 @@ private struct DashboardAnnualActivityHeatmap: View {
     let localization: AppLocalization
     @State private var hoverState = TokenActivityHoverState()
 
-    private var card: TokenActivityCardPresentation {
-        TokenActivityCardPresentation(activity, localization: localization)
-    }
+    let card: TokenActivityCardPresentation
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -649,18 +646,19 @@ private struct DashboardSummaryContentView: View {
     @State private var providerDistributionMetric = DashboardDistributionMetric.tokens
     @State private var modelDistributionMetric = DashboardDistributionMetric.tokens
     @State private var activityScope = DashboardActivityScope.all
-    @State private var hoveredTrendKey: String?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                summaryGrid
-                activitySection
-                trendSection
-                distributionSections
+        GeometryReader { geometry in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    summaryGrid
+                    activitySection
+                    trendSection
+                    distributionSections(availableWidth: geometry.size.width - 36)
+                }
+                .padding(18)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier("dashboard.summary.content")
     }
@@ -731,176 +729,18 @@ private struct DashboardSummaryContentView: View {
                     )
                     .frame(height: 220)
                 } else {
-                    trendChart
+                    DashboardTrendChart(
+                        presentation: presentation, selectedRange: selectedRange,
+                        trendMode: trendMode, localization: localization
+                    )
                 }
             }
         }
     }
 
-    private var trendChart: some View {
-        Chart {
-            if trendMode == .total {
-                ForEach(presentation.trend) { point in
-                    AreaMark(
-                        x: .value(localization.textValue("时间"), point.date),
-                        y: .value("Token", chartValue(point.tokens))
-                    )
-                    .interpolationMethod(.monotone)
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                Color.accentColor.opacity(0.28),
-                                Color.accentColor.opacity(0.03),
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    LineMark(
-                        x: .value(localization.textValue("时间"), point.date),
-                        y: .value("Token", chartValue(point.tokens))
-                    )
-                    .interpolationMethod(.monotone)
-                    .foregroundStyle(Color.accentColor)
-                    .lineStyle(StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                    PointMark(
-                        x: .value(localization.textValue("时间"), point.date),
-                        y: .value("Token", chartValue(point.tokens))
-                    )
-                    .foregroundStyle(Color.accentColor)
-                    .symbolSize(hoveredTrendKey == point.key ? 70 : 28)
-                    .accessibilityLabel(axisText(for: point.date))
-                    .accessibilityValue(metricText(point.tokens, localization: localization))
-                }
-            } else {
-                ForEach(presentation.trend) { point in
-                    ForEach(point.shares) { share in
-                        BarMark(
-                            x: .value(localization.textValue("时间"), point.date),
-                            y: .value("Token", chartValue(share.tokens)),
-                            width: .fixed(trendBarWidth)
-                        )
-                        .foregroundStyle(by: .value(
-                            localization.textValue("客户端"),
-                            share.provider.title
-                        ))
-                        .cornerRadius(3)
-                    }
-                }
-            }
-            if let selected = presentation.trend.first(where: { $0.key == hoveredTrendKey }) {
-                RuleMark(x: .value(localization.textValue("时间"), selected.date))
-                    .foregroundStyle(.secondary.opacity(0.45))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                    .annotation(
-                        position: .top,
-                        alignment: .leading,
-                        spacing: 8,
-                        overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
-                    ) {
-                        trendTooltip(selected)
-                    }
-            }
-        }
-        .chartForegroundStyleScale([
-            AgentProvider.codex.title: providerColor(.codex),
-            AgentProvider.cursor.title: providerColor(.cursor),
-            AgentProvider.grok.title: providerColor(.grok),
-        ])
-        .chartLegend(.hidden)
-        .chartXScale(
-            range: .plotDimension(
-                startPadding: CGFloat(trendLayout.horizontalPlotPadding),
-                endPadding: CGFloat(trendLayout.horizontalPlotPadding)
-            )
-        )
-        .chartYScale(domain: .automatic(includesZero: true))
-        .chartYAxis {
-            AxisMarks(position: .leading) { value in
-                AxisGridLine().foregroundStyle(.quaternary)
-                AxisValueLabel {
-                    if let value = value.as(Int64.self) {
-                        Text(TokenQuantityFormatter.compactString(value))
-                    }
-                }
-            }
-        }
-        .chartXAxis {
-            AxisMarks(values: trendAxisTicks) { value in
-                AxisTick()
-                AxisValueLabel(anchor: .top) {
-                    if let date = value.as(Date.self) {
-                        Text(axisText(for: date))
-                    }
-                }
-            }
-        }
-        .chartOverlay { proxy in
-            GeometryReader { geometry in
-                Rectangle()
-                    .fill(.clear)
-                    .contentShape(Rectangle())
-                    .onContinuousHover { phase in
-                        switch phase {
-                        case .active(let location):
-                            guard let plotFrame = proxy.plotFrame else {
-                                hoveredTrendKey = nil
-                                return
-                            }
-                            let frame = geometry[plotFrame]
-                            let plotX = location.x - frame.minX
-                            guard plotX >= 0, plotX <= frame.width,
-                                  let date: Date = proxy.value(atX: plotX)
-                            else {
-                                hoveredTrendKey = nil
-                                return
-                            }
-                            hoveredTrendKey = presentation.trend.min(by: {
-                                abs($0.date.timeIntervalSince(date))
-                                    < abs($1.date.timeIntervalSince(date))
-                            })?.key
-                        case .ended:
-                            hoveredTrendKey = nil
-                        }
-                    }
-            }
-        }
-        .frame(height: 240)
-        .accessibilityLabel(localization.textValue("Token 趋势"))
-    }
 
-    private func trendTooltip(
-        _ point: DashboardSummaryPresentation.TrendPoint
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(axisText(for: point.date))
-                .font(.caption.weight(.semibold))
-            Text(metricText(point.tokens, localization: localization))
-                .font(.caption)
-                .monospacedDigit()
-            if trendMode == .stacked {
-                ForEach(point.shares) { share in
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(providerColor(share.provider))
-                            .frame(width: 6, height: 6)
-                        Text(share.provider.title)
-                        Text(metricText(share.tokens, localization: localization))
-                            .monospacedDigit()
-                    }
-                    .font(.caption2)
-                }
-            }
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 7))
-        .overlay {
-            RoundedRectangle(cornerRadius: 7)
-                .stroke(.separator.opacity(0.5), lineWidth: 0.5)
-        }
-        .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
-    }
+
+
 
     private var providerLegend: some View {
         HStack(spacing: 10) {
@@ -921,19 +761,11 @@ private struct DashboardSummaryContentView: View {
         Binding(get: { trendMode }, set: { onSelectTrendMode($0) })
     }
 
-    private var trendLayout: DashboardSummaryTrendChartLayout {
-        DashboardSummaryTrendChartLayout(range: selectedRange)
-    }
 
-    private var trendBarWidth: CGFloat {
-        CGFloat(trendLayout.barWidth)
-    }
 
-    private var trendAxisTicks: [Date] {
-        trendLayout.axisTickIndices(pointCount: presentation.trend.count).map {
-            presentation.trend[$0].date
-        }
-    }
+
+
+
 
     private var activitySection: some View {
         SectionCard(title: "Token 活动") {
@@ -960,18 +792,17 @@ private struct DashboardSummaryContentView: View {
                     )
                     .frame(height: 150)
                 } else {
-                    DashboardAnnualActivityHeatmap(
-                        activity: activity,
-                        localization: localization
-                    )
+                    DashboardActivityCard(activity: activity, localization: localization)
+                        .equatable()
                 }
             }
         }
         .accessibilityIdentifier("dashboard.summary.activity")
     }
 
-    private var distributionSections: some View {
-        ViewThatFits(in: .horizontal) {
+    @ViewBuilder
+    private func distributionSections(availableWidth: CGFloat) -> some View {
+        if availableWidth >= 460 + 400 + 16 {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top, spacing: 16) {
                     toolAndModelUsageSection(fillsProposedHeight: true)
@@ -986,6 +817,7 @@ private struct DashboardSummaryContentView: View {
                         .frame(minWidth: 400)
                 }
             }
+        } else {
             VStack(alignment: .leading, spacing: 16) {
                 toolAndModelUsageSection(fillsProposedHeight: false)
                 providerDistributionSection(fillsProposedHeight: false)
@@ -1393,13 +1225,7 @@ private struct DashboardSummaryContentView: View {
         state == .empty ? localization.textValue("暂无额度数据") : coverageLabel(state)
     }
 
-    private func providerColor(_ provider: AgentProvider) -> Color {
-        switch provider {
-        case .codex: .blue
-        case .cursor: .orange
-        case .grok: .purple
-        }
-    }
+
 
     private func shortcut(for provider: AgentProvider) -> KeyEquivalent {
         switch provider {
@@ -1409,22 +1235,11 @@ private struct DashboardSummaryContentView: View {
         }
     }
 
-    private func chartValue(_ metric: DisplayMetric) -> Int64 {
-        knownChartValue(metric) ?? 0
-    }
 
-    private func knownChartValue(_ metric: DisplayMetric) -> Int64? {
-        if case .known(let value, _) = metric { return value }
-        return nil
-    }
 
-    private func axisText(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = localization.locale
-        formatter.timeZone = reportingTimeZone
-        formatter.setLocalizedDateFormatFromTemplate(selectedRange == .today ? "HHmm" : "Md")
-        return formatter.string(from: date)
-    }
+
+
+
 
     private func formatted(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -1433,5 +1248,253 @@ private struct DashboardSummaryContentView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
         return formatter.string(from: date)
+    }
+}
+
+private struct DashboardActivityCard: View, Equatable {
+    let activity: TokenActivityPresentation
+    let localization: AppLocalization
+
+    var body: some View {
+        DashboardAnnualActivityHeatmap(
+            activity: activity,
+            localization: localization,
+            card: TokenActivityCardPresentation(activity, localization: localization)
+        )
+    }
+}
+
+private func providerColor(_ provider: AgentProvider) -> Color {
+        switch provider {
+        case .codex: .blue
+        case .cursor: .orange
+        case .grok: .purple
+        }
+    }
+
+private func chartValue(_ metric: DisplayMetric) -> Int64 {
+        knownChartValue(metric) ?? 0
+    }
+
+private func knownChartValue(_ metric: DisplayMetric) -> Int64? {
+        if case .known(let value, _) = metric { return value }
+        return nil
+    }
+
+private struct DashboardTrendChart: View {
+    let presentation: DashboardSummaryPresentation
+    let selectedRange: DateRangePreset
+    let trendMode: DashboardTrendMode
+    let localization: AppLocalization
+    @State private var hoveredTrendKey: String?
+    private var reportingTimeZone: TimeZone {
+        TimeZone(identifier: presentation.reportingTimeZone) ?? .current
+    }
+    var body: some View {
+        Chart {
+            if trendMode == .total {
+                ForEach(presentation.trend) { point in
+                    AreaMark(
+                        x: .value(localization.textValue("时间"), point.date),
+                        y: .value("Token", chartValue(point.tokens))
+                    )
+                    .interpolationMethod(.monotone)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                Color.accentColor.opacity(0.28),
+                                Color.accentColor.opacity(0.03),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    LineMark(
+                        x: .value(localization.textValue("时间"), point.date),
+                        y: .value("Token", chartValue(point.tokens))
+                    )
+                    .interpolationMethod(.monotone)
+                    .foregroundStyle(Color.accentColor)
+                    .lineStyle(StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                    PointMark(
+                        x: .value(localization.textValue("时间"), point.date),
+                        y: .value("Token", chartValue(point.tokens))
+                    )
+                    .foregroundStyle(Color.accentColor)
+                    .symbolSize(hoveredTrendKey == point.key ? 70 : 28)
+                    .accessibilityLabel(axisText(for: point.date))
+                    .accessibilityValue(metricText(point.tokens, localization: localization))
+                }
+            } else {
+                ForEach(presentation.trend) { point in
+                    ForEach(point.shares) { share in
+                        BarMark(
+                            x: .value(localization.textValue("时间"), point.date),
+                            y: .value("Token", chartValue(share.tokens)),
+                            width: .fixed(trendBarWidth)
+                        )
+                        .foregroundStyle(by: .value(
+                            localization.textValue("客户端"),
+                            share.provider.title
+                        ))
+                        .cornerRadius(3)
+                    }
+                }
+            }
+            if let selected = presentation.trend.first(where: { $0.key == hoveredTrendKey }) {
+                RuleMark(x: .value(localization.textValue("时间"), selected.date))
+                    .foregroundStyle(.secondary.opacity(0.45))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .annotation(
+                        position: .top,
+                        alignment: .leading,
+                        spacing: 8,
+                        overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
+                    ) {
+                        trendTooltip(selected)
+                    }
+            }
+        }
+        .chartForegroundStyleScale([
+            AgentProvider.codex.title: providerColor(.codex),
+            AgentProvider.cursor.title: providerColor(.cursor),
+            AgentProvider.grok.title: providerColor(.grok),
+        ])
+        .chartLegend(.hidden)
+        .chartXScale(
+            range: .plotDimension(
+                startPadding: CGFloat(trendLayout.horizontalPlotPadding),
+                endPadding: CGFloat(trendLayout.horizontalPlotPadding)
+            )
+        )
+        .chartYScale(domain: .automatic(includesZero: true))
+        .chartYAxis {
+            AxisMarks(position: .leading) { value in
+                AxisGridLine().foregroundStyle(.quaternary)
+                AxisValueLabel {
+                    if let value = value.as(Int64.self) {
+                        Text(TokenQuantityFormatter.compactString(value))
+                    }
+                }
+            }
+        }
+        .chartXAxis {
+            AxisMarks(values: trendAxisTicks) { value in
+                AxisTick()
+                AxisValueLabel(anchor: .top) {
+                    if let date = value.as(Date.self) {
+                        Text(axisText(for: date))
+                    }
+                }
+            }
+        }
+        .chartOverlay { proxy in
+            GeometryReader { geometry in
+                Rectangle()
+                    .fill(.clear)
+                    .contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            guard let plotFrame = proxy.plotFrame else {
+                                hoveredTrendKey = nil
+                                return
+                            }
+                            let frame = geometry[plotFrame]
+                            let plotX = location.x - frame.minX
+                            guard plotX >= 0, plotX <= frame.width,
+                                  let date: Date = proxy.value(atX: plotX)
+                            else {
+                                hoveredTrendKey = nil
+                                return
+                            }
+                            hoveredTrendKey = presentation.trend.min(by: {
+                                abs($0.date.timeIntervalSince(date))
+                                    < abs($1.date.timeIntervalSince(date))
+                            })?.key
+                        case .ended:
+                            hoveredTrendKey = nil
+                        }
+                    }
+            }
+        }
+        .frame(height: 240)
+        .accessibilityLabel(localization.textValue("Token 趋势"))
+    }
+    private func trendTooltip(
+        _ point: DashboardSummaryPresentation.TrendPoint
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(axisText(for: point.date))
+                .font(.caption.weight(.semibold))
+            Text(metricText(point.tokens, localization: localization))
+                .font(.caption)
+                .monospacedDigit()
+            if trendMode == .stacked {
+                ForEach(point.shares) { share in
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(providerColor(share.provider))
+                            .frame(width: 6, height: 6)
+                        Text(share.provider.title)
+                        Text(metricText(share.tokens, localization: localization))
+                            .monospacedDigit()
+                    }
+                    .font(.caption2)
+                }
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 7))
+        .overlay {
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(.separator.opacity(0.5), lineWidth: 0.5)
+        }
+        .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+    }
+    private var trendLayout: DashboardSummaryTrendChartLayout {
+        DashboardSummaryTrendChartLayout(range: selectedRange)
+    }
+    private var trendBarWidth: CGFloat {
+        CGFloat(trendLayout.barWidth)
+    }
+    private var trendAxisTicks: [Date] {
+        trendLayout.axisTickIndices(pointCount: presentation.trend.count).map {
+            presentation.trend[$0].date
+        }
+    }
+    private func axisText(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = localization.locale
+        formatter.timeZone = reportingTimeZone
+        formatter.setLocalizedDateFormatFromTemplate(selectedRange == .today ? "HHmm" : "Md")
+        return formatter.string(from: date)
+    }
+}
+
+// AppModel also publishes unrelated job, status-menu and detail state.
+// Only actual dashboard inputs should rebuild the presentation and page.
+private struct DashboardResponseContent: View, Equatable {
+    let response: Codexpulse_Core_V1_DashboardSummaryResponse
+    let selectedRange: DateRangePreset
+    let trendMode: DashboardTrendMode
+    let localization: AppLocalization
+    let model: AppModel
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.model === rhs.model && lhs.response == rhs.response
+            && lhs.selectedRange == rhs.selectedRange && lhs.trendMode == rhs.trendMode
+            && lhs.localization == rhs.localization
+    }
+
+    var body: some View {
+        DashboardSummaryContentView(
+            presentation: DashboardSummaryPresentation(response),
+            selectedRange: selectedRange, trendMode: trendMode,
+            onSelectTrendMode: model.selectDashboardTrendMode,
+            onOpenProvider: model.openMainWindowProvider,
+            localization: localization
+        )
     }
 }

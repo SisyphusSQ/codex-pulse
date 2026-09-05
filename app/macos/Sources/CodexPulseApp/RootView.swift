@@ -333,7 +333,6 @@ private struct CursorOverviewContentView: View {
 	let onSelectProject: (String) -> Void
 	let onSelectSession: (String) -> Void
 	let localization: AppLocalization
-	@State private var selectedTrendDate: Date?
 
 	private var ranges: [DateRangePreset] {
 		switch provider {
@@ -345,34 +344,36 @@ private struct CursorOverviewContentView: View {
 
 	var body: some View {
 		let summary = CursorOverviewSummaryPresentation(overview)
-		ScrollView {
-			VStack(alignment: .leading, spacing: 16) {
-				pageHeader
-				if officialPeriodFellBack {
-					monthlyQuotaFallbackNotice
+		GeometryReader { geometry in
+			ScrollView {
+				LazyVStack(alignment: .leading, spacing: 16) {
+					pageHeader
+					if officialPeriodFellBack {
+						monthlyQuotaFallbackNotice
+					}
+					if summary.showsRecentActivityFallback || summary.usesLastKnownTodayData {
+						activityNotice(summary)
+					}
+					cursorQuotaStatusStrip
+					tokenActivitySection
+					consumptionSection(summary)
+					modelSection(summary, fillsProposedHeight: false)
+					activityAndSessionsSection(availableWidth: geometry.size.width - 48)
+					if provider.supportsInvocationStatistics {
+						OverviewInvocationProfileCard(
+							profile: overview.invocationProfile,
+							rangeLabel: overview.usageRangeLabel,
+							onNavigate: { onNavigate(.invocationUsage) },
+							localization: localization,
+							showsSkillActivity: false,
+							showsAIEditActivity: provider == .cursor
+						)
+						.accessibilityIdentifier("cursor.overview.invocations")
+					}
 				}
-				if summary.showsRecentActivityFallback || summary.usesLastKnownTodayData {
-					activityNotice(summary)
-				}
-				cursorQuotaStatusStrip
-				tokenActivitySection
-				consumptionSection(summary)
-				modelSection(summary, fillsProposedHeight: false)
-				activityAndSessionsSection
-				if provider.supportsInvocationStatistics {
-					OverviewInvocationProfileCard(
-						profile: overview.invocationProfile,
-						rangeLabel: overview.usageRangeLabel,
-						onNavigate: { onNavigate(.invocationUsage) },
-						localization: localization,
-						showsSkillActivity: false,
-						showsAIEditActivity: provider == .cursor
-					)
-					.accessibilityIdentifier("cursor.overview.invocations")
-				}
+				.padding(24)
+				.frame(maxWidth: .infinity, alignment: .leading)
 			}
-			.padding(24)
-			.frame(maxWidth: .infinity, alignment: .leading)
 		}
 		.accessibilityIdentifier(provider == .grok ? "page.overview.grok" : "page.overview.cursor")
 	}
@@ -534,7 +535,7 @@ private struct CursorOverviewContentView: View {
 					usageSummary(summary)
 						.fixedSize(horizontal: false, vertical: true)
 					Divider()
-					trendChart
+					CursorOverviewTrendChart(overview: overview, selectedRange: selectedRange, localization: localization)
 				}
 				.frame(maxWidth: .infinity, alignment: .leading)
 				Divider()
@@ -546,19 +547,17 @@ private struct CursorOverviewContentView: View {
 	}
 
 	private var tokenActivitySection: some View {
-		TokenActivityCard(
-			card: TokenActivityCardPresentation(
-				overview.tokenActivity,
-				localization: localization,
-				partialNotice: localization.textValue("仅展示当前已采集数据")
-			),
-			localization: localization
-		)
+		OverviewTokenActivityCard(
+            activity: overview.tokenActivity,
+            localization: localization,
+            partialNotice: localization.textValue("仅展示当前已采集数据")
+        ).equatable()
 		.accessibilityIdentifier("cursor.overview.token-activity")
 	}
 
-	private var activityAndSessionsSection: some View {
-		ViewThatFits(in: .horizontal) {
+	@ViewBuilder
+	private func activityAndSessionsSection(availableWidth: CGFloat) -> some View {
+		if availableWidth >= 560 + 320 + 16 {
 			HStack(alignment: .top, spacing: 16) {
 				activityDistributionCard(fillsProposedHeight: true)
 					.frame(minWidth: 560)
@@ -567,6 +566,7 @@ private struct CursorOverviewContentView: View {
 					.frame(minWidth: 320, idealWidth: 360, maxWidth: 420)
 					.frame(maxHeight: .infinity, alignment: .top)
 			}
+		} else {
 			VStack(alignment: .leading, spacing: 16) {
 				activityDistributionCard(fillsProposedHeight: false)
 				recentSessionsSection(fillsProposedHeight: false)
@@ -769,76 +769,6 @@ private struct CursorOverviewContentView: View {
 		.accessibilityElement(children: .combine)
 	}
 
-	@ViewBuilder
-	private var trendChart: some View {
-		VStack(alignment: .leading, spacing: 10) {
-			HStack(alignment: .firstTextBaseline) {
-				Text("Token 趋势").font(.subheadline.weight(.semibold))
-				Text(overview.usageRangeLabel).font(.caption).foregroundStyle(.secondary)
-			}
-			if trendPoints.isEmpty {
-				ContentUnavailableView(
-					"当前范围暂无用量",
-					systemImage: "chart.xyaxis.line",
-					description: Text("可切换到更长时间范围查看最近数据。")
-				)
-				.frame(height: 180)
-			} else {
-				Chart {
-					ForEach(trendPoints) { point in
-						AreaMark(x: .value("时间", point.date), y: .value("Token", point.tokens))
-							.interpolationMethod(.monotone)
-							.foregroundStyle(LinearGradient(
-								colors: [Color.blue.opacity(0.28), Color.blue.opacity(0.03)],
-								startPoint: .top, endPoint: .bottom))
-						LineMark(x: .value("时间", point.date), y: .value("Token", point.tokens))
-							.interpolationMethod(.monotone)
-							.foregroundStyle(.blue)
-							.lineStyle(StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-						PointMark(x: .value("时间", point.date), y: .value("Token", point.tokens))
-							.foregroundStyle(.blue)
-							.symbolSize(selectedTrendPoint?.id == point.id ? 70 : 28)
-					}
-					if let selected = selectedTrendPoint {
-						RuleMark(x: .value("选中时间", selected.date))
-							.foregroundStyle(Color.secondary.opacity(0.55))
-							.lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-							.annotation(
-								position: .top,
-								alignment: .leading,
-								spacing: 8,
-								overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
-							) {
-								VStack(alignment: .leading, spacing: 3) {
-									Text(dateTimeText(Int64(selected.date.timeIntervalSince1970 * 1_000)))
-										.font(.caption).foregroundStyle(.secondary)
-									Text(TokenQuantityFormatter.stringWithUnit(selected.tokens))
-										.font(.caption.bold()).monospacedDigit()
-								}
-								.padding(8)
-								.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-							}
-					}
-				}
-				.chartYAxis {
-					AxisMarks(position: .leading) { value in
-						AxisGridLine().foregroundStyle(.quaternary)
-						AxisValueLabel {
-							if let value = value.as(Int64.self) {
-								Text(TokenQuantityFormatter.string(value))
-							}
-						}
-					}
-				}
-				.chartXAxis { AxisMarks(values: .automatic(desiredCount: 6)) }
-				.chartXSelection(value: $selectedTrendDate)
-				.frame(height: trendPoints.count <= 1 ? 170 : 230)
-				.onChange(of: selectedRange) { _, _ in selectedTrendDate = nil }
-				.accessibilityIdentifier("cursor.overview.trend")
-			}
-		}
-	}
-
 	private var projectBreakdown: some View {
 		VStack(alignment: .leading, spacing: 12) {
 			HStack {
@@ -881,32 +811,6 @@ private struct CursorOverviewContentView: View {
 		}
 		.padding(.vertical, 4)
 		.contentShape(Rectangle())
-	}
-
-	private var trendPoints: [CursorOverviewTrendPoint] {
-		overview.trend.compactMap { point in
-			guard let at = point.startAtMS, let tokens = metricValue(point.tokens) else { return nil }
-			return CursorOverviewTrendPoint(
-				id: point.id,
-				date: Date(timeIntervalSince1970: Double(at) / 1_000),
-				tokens: tokens
-			)
-		}
-	}
-
-	private var selectedTrendPoint: CursorOverviewTrendPoint? {
-		guard let selected = TrendSelectionResolver.nearest(
-			to: selectedTrendDate,
-			in: overview.trend
-		),
-		let at = selected.startAtMS,
-		let tokens = metricValue(selected.tokens)
-		else { return nil }
-		return CursorOverviewTrendPoint(
-			id: selected.id,
-			date: Date(timeIntervalSince1970: Double(at) / 1_000),
-			tokens: tokens
-		)
 	}
 
 	private func modelFraction(_ item: OverviewUsageModelPresentation, maximum: Int64) -> Double {
@@ -957,23 +861,24 @@ private struct OverviewContentView: View {
     let onSelectProject: (String) -> Void
     let onSelectSession: (String) -> Void
     let localization: AppLocalization
-    @State private var selectedTrendDate: Date?
 
     private let ranges: [DateRangePreset] = [.quotaWeek, .today, .sevenDays, .thirtyDays]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                pageHeader
-                if overview.fellBackFromQuotaWeek { fallbackNotice }
-                quotaStatusStrip
-                tokenActivitySection
-                consumptionSection
-                activityAndSessionsSection
-                invocationProfileSection
+        GeometryReader { geometry in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    pageHeader
+                    if overview.fellBackFromQuotaWeek { fallbackNotice }
+                    quotaStatusStrip
+                    tokenActivitySection
+                    consumptionSection
+                    activityAndSessionsSection(availableWidth: geometry.size.width - 48)
+                    invocationProfileSection
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(24)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier("page.overview")
     }
@@ -1107,7 +1012,7 @@ private struct OverviewContentView: View {
                     usageSummary
                         .fixedSize(horizontal: false, vertical: true)
                     Divider()
-                    trendChart
+                    OverviewTrendChart(overview: overview, selectedRange: selectedRange, localization: localization)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Divider()
@@ -1118,13 +1023,10 @@ private struct OverviewContentView: View {
     }
 
     private var tokenActivitySection: some View {
-        TokenActivityCard(
-            card: TokenActivityCardPresentation(
-                overview.tokenActivity,
-                localization: localization
-            ),
+        OverviewTokenActivityCard(
+            activity: overview.tokenActivity,
             localization: localization
-        )
+        ).equatable()
     }
 
     private var usageSummary: some View {
@@ -1198,105 +1100,6 @@ private struct OverviewContentView: View {
     }
 
     @ViewBuilder
-    private var trendChart: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Token 趋势").font(.subheadline.weight(.semibold))
-                Text(overview.usageRangeLabel).font(.caption).foregroundStyle(.secondary)
-            }
-            if !overview.usageAvailable {
-                ContentUnavailableView(
-                    "Token 用量暂时不可用",
-                    systemImage: "chart.xyaxis.line",
-                    description: Text("额度与其他区域仍可继续查看。")
-                )
-                .frame(height: 220)
-            } else if chartPoints.isEmpty {
-                ContentUnavailableView(
-                    "当前范围暂无用量",
-                    systemImage: "chart.xyaxis.line",
-                    description: Text("产生新的会话后，趋势会显示在这里。")
-                )
-                .frame(height: 220)
-            } else {
-                Chart {
-                    ForEach(chartPoints) { point in
-                        AreaMark(
-                            x: .value("时间", point.date),
-                            y: .value("Token", point.tokens)
-                        )
-                        .interpolationMethod(.monotone)
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [Color.blue.opacity(0.30), Color.blue.opacity(0.03)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        LineMark(
-                            x: .value("时间", point.date),
-                            y: .value("Token", point.tokens)
-                        )
-                        .interpolationMethod(.monotone)
-                        .foregroundStyle(Color.blue)
-                        .lineStyle(
-                            StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                        PointMark(
-                            x: .value("时间", point.date),
-                            y: .value("Token", point.tokens)
-                        )
-                        .foregroundStyle(Color.blue)
-                        .symbolSize(selectedTrendPoint?.id == point.id ? 70 : 28)
-                        .accessibilityLabel(trendPointTimeText(point.date))
-                        .accessibilityValue(
-                            TokenQuantityFormatter.stringWithUnit(point.tokens)
-                        )
-                    }
-                    if let selected = selectedTrendPoint {
-                        RuleMark(x: .value("选中时间", selected.date))
-                            .foregroundStyle(Color.secondary.opacity(0.55))
-                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                            .annotation(
-                                position: .top,
-                                alignment: .leading,
-                                spacing: 8,
-                                overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
-                            ) {
-                                selectedTrendDetail(selected)
-                            }
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks(position: .leading) { value in
-                        AxisGridLine().foregroundStyle(.quaternary)
-                        AxisValueLabel {
-                            if let value = value.as(Int64.self) {
-                                Text(TokenQuantityFormatter.string(value))
-                            }
-                        }
-                    }
-                }
-                .chartXAxis {
-                    if selectedRange == .quotaWeek {
-                        AxisMarks(values: .stride(by: .day)) { value in
-                            AxisGridLine().foregroundStyle(.quaternary)
-                            AxisTick()
-                            AxisValueLabel {
-                                if let date = value.as(Date.self) {
-                                    Text(trendPointDateText(date))
-                                }
-                            }
-                        }
-                    } else {
-                        AxisMarks(values: .automatic(desiredCount: 6))
-                    }
-                }
-                .chartXSelection(value: $selectedTrendDate)
-                .frame(height: 230)
-                .onChange(of: selectedRange) { _, _ in selectedTrendDate = nil }
-            }
-        }
-    }
 
     private var projectBreakdown: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1347,8 +1150,9 @@ private struct OverviewContentView: View {
         }
     }
 
-    private var activityAndSessionsSection: some View {
-        ViewThatFits(in: .horizontal) {
+    @ViewBuilder
+    private func activityAndSessionsSection(availableWidth: CGFloat) -> some View {
+        if availableWidth >= 560 + 320 + 16 {
             HStack(alignment: .top, spacing: 16) {
                 activityDistributionCard(fillsProposedHeight: true)
                     .frame(minWidth: 560)
@@ -1357,6 +1161,7 @@ private struct OverviewContentView: View {
                     .frame(minWidth: 320, idealWidth: 360, maxWidth: 420)
                     .frame(maxHeight: .infinity, alignment: .top)
             }
+        } else {
             VStack(alignment: .leading, spacing: 16) {
                 activityDistributionCard(fillsProposedHeight: false)
                 highConsumptionSessions(fillsProposedHeight: false)
@@ -1450,82 +1255,6 @@ private struct OverviewContentView: View {
         return TokenQuantityFormatter.stringWithUnit(
             value, compact: true, localization: localization
         )
-    }
-
-    private var chartPoints: [OverviewChartPoint] {
-        overview.trend.compactMap { point in
-            guard let startAtMS = point.startAtMS,
-                  let tokens = metricValue(point.tokens)
-            else { return nil }
-            return OverviewChartPoint(
-                id: point.id,
-                date: Date(timeIntervalSince1970: Double(startAtMS) / 1_000),
-                tokens: tokens,
-                tokenBreakdown: point.tokenBreakdown,
-                estimatedCost: point.estimatedCost)
-        }
-    }
-
-    private var selectedTrendPoint: OverviewChartPoint? {
-        guard let selected = TrendSelectionResolver.nearest(
-            to: selectedTrendDate,
-            in: overview.trend
-        ),
-            let startAtMS = selected.startAtMS,
-            let tokens = metricValue(selected.tokens)
-        else { return nil }
-        return OverviewChartPoint(
-            id: selected.id,
-            date: Date(timeIntervalSince1970: Double(startAtMS) / 1_000),
-            tokens: tokens,
-            tokenBreakdown: selected.tokenBreakdown,
-            estimatedCost: selected.estimatedCost
-        )
-    }
-
-    private func selectedTrendDetail(_ point: OverviewChartPoint) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(trendPointTimeText(point.date))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TokenBreakdownView(
-                tokens: point.tokenBreakdown,
-                style: .compact,
-                localization: localization
-            )
-            if case .known = point.estimatedCost {
-                Text(localization.format(
-                    "API 等价成本 %@",
-                    metricText(
-                        point.estimatedCost,
-                        cost: true,
-                        localization: localization
-                    )
-                ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(.quaternary, lineWidth: 1)
-        }
-    }
-
-    private func trendPointTimeText(_ date: Date) -> String {
-        if selectedRange == .today {
-            return date.formatted(
-                .dateTime.month().day().hour().minute().locale(localization.locale)
-            )
-        }
-        return date.formatted(.dateTime.year().month().day().locale(localization.locale))
-    }
-
-    private func trendPointDateText(_ date: Date) -> String {
-        date.formatted(.dateTime.month().day().locale(localization.locale))
     }
 
     private var projectTokenTotal: Int64? {
@@ -1979,6 +1708,11 @@ private struct OverviewActivityCard: View {
 
     @ViewBuilder
     private var timelineChart: some View {
+        let timelinePoints = self.timelinePoints
+        let timelineAxisTicks = self.timelineAxisTicks
+        let selectedTimelinePoint = self.selectedTimelinePoint
+        let timeFormatter = activityTimeFormatter()
+        let shortTimeFormatter = activityTimeFormatter(short: true)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 Text("时段活动")
@@ -2006,9 +1740,9 @@ private struct OverviewActivityCard: View {
                         yStart: .value("基线", Int64.zero),
                         yEnd: .value(selectedMetric.title, point.value)
                     )
-                    .foregroundStyle(metricColor.opacity(barOpacity(point)))
+                    .foregroundStyle(metricColor.opacity(selectedTimelinePoint.map { $0.id == point.id ? 0.96 : 0.26 } ?? 0.72))
                     .cornerRadius(6)
-                    .accessibilityLabel(activityTimeRangeText(point))
+                    .accessibilityLabel(activityTimeRangeText(point, formatter: timeFormatter, shortFormatter: shortTimeFormatter))
                     .accessibilityValue(activityValueText(point.value))
                 }
                 .chartXScale(domain: timelineDomain)
@@ -2259,30 +1993,31 @@ private struct OverviewActivityCard: View {
         ]
     }
 
-    private func barOpacity(_ point: OverviewActivityChartPoint) -> Double {
-        guard let selectedTimelinePoint else { return 0.72 }
-        return selectedTimelinePoint.id == point.id ? 0.96 : 0.26
-    }
-
-    private func activityTimeRangeText(_ point: OverviewActivityChartPoint) -> String {
+    private func activityTimeFormatter(short: Bool = false) -> DateFormatter {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: activity.reportingTimeZone) ?? .current
-        let startFormatter = DateFormatter()
-        startFormatter.calendar = calendar
-        startFormatter.locale = localization.locale
-        startFormatter.timeZone = TimeZone(identifier: activity.reportingTimeZone)
-        startFormatter.dateFormat = localization.language == .englishUS ? "MMM d H:mm" : "M月d日 H:mm"
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = localization.locale
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = short ? "H:mm" : (localization.language == .englishUS ? "MMM d H:mm" : "M月d日 H:mm")
+        return formatter
+    }
 
-        let endFormatter = DateFormatter()
-        endFormatter.calendar = calendar
-        endFormatter.locale = localization.locale
-        endFormatter.timeZone = TimeZone(identifier: activity.reportingTimeZone)
-        endFormatter.dateFormat = calendar.isDate(
-            point.startDate,
-            inSameDayAs: point.endDate
-        ) ? "H:mm" : (localization.language == .englishUS ? "MMM d H:mm" : "M月d日 H:mm")
-        let start = startFormatter.string(from: point.startDate)
-        let end = endFormatter.string(from: point.endDate)
+    private func activityTimeRangeText(
+        _ point: OverviewActivityChartPoint,
+        formatter: DateFormatter? = nil,
+        shortFormatter: DateFormatter? = nil
+    ) -> String {
+        let formatter = formatter ?? activityTimeFormatter()
+        let start = formatter.string(from: point.startDate)
+        let end: String
+        if formatter.calendar.isDate(point.startDate, inSameDayAs: point.endDate) {
+            let shortFormatter = shortFormatter ?? activityTimeFormatter(short: true)
+            end = shortFormatter.string(from: point.endDate)
+        } else {
+            end = formatter.string(from: point.endDate)
+        }
         return "\(start)–\(end)"
     }
 
@@ -2772,5 +2507,317 @@ func metricText(
         return localization.number(value)
     case .unknown, .absent:
         return "--"
+    }
+}
+
+private struct CursorOverviewTrendChart: View {
+    let overview: OverviewPresentation
+    let selectedRange: DateRangePreset
+    let localization: AppLocalization
+    @State private var selectedTrendDate: Date?
+	private func dateTimeText(_ milliseconds: Int64) -> String {
+		let formatter = DateFormatter()
+		formatter.locale = localization.locale
+		formatter.timeZone = TimeZone(identifier: overview.usageRange.timeZone) ?? .current
+		formatter.dateFormat = "M-d HH:mm"
+		return formatter.string(from: Date(timeIntervalSince1970: Double(milliseconds) / 1_000))
+	}
+
+    var body: some View {
+        let trendPoints = self.trendPoints
+        let selectedTrendPoint = self.selectedTrendPoint
+		VStack(alignment: .leading, spacing: 10) {
+			HStack(alignment: .firstTextBaseline) {
+				Text("Token 趋势").font(.subheadline.weight(.semibold))
+				Text(overview.usageRangeLabel).font(.caption).foregroundStyle(.secondary)
+			}
+			if trendPoints.isEmpty {
+				ContentUnavailableView(
+					"当前范围暂无用量",
+					systemImage: "chart.xyaxis.line",
+					description: Text("可切换到更长时间范围查看最近数据。")
+				)
+				.frame(height: 180)
+			} else {
+				Chart {
+					ForEach(trendPoints) { point in
+						AreaMark(x: .value("时间", point.date), y: .value("Token", point.tokens))
+							.interpolationMethod(.monotone)
+							.foregroundStyle(LinearGradient(
+								colors: [Color.blue.opacity(0.28), Color.blue.opacity(0.03)],
+								startPoint: .top, endPoint: .bottom))
+						LineMark(x: .value("时间", point.date), y: .value("Token", point.tokens))
+							.interpolationMethod(.monotone)
+							.foregroundStyle(.blue)
+							.lineStyle(StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+						PointMark(x: .value("时间", point.date), y: .value("Token", point.tokens))
+							.foregroundStyle(.blue)
+							.symbolSize(selectedTrendPoint?.id == point.id ? 70 : 28)
+					}
+					if let selected = selectedTrendPoint {
+						RuleMark(x: .value("选中时间", selected.date))
+							.foregroundStyle(Color.secondary.opacity(0.55))
+							.lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+							.annotation(
+								position: .top,
+								alignment: .leading,
+								spacing: 8,
+								overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
+							) {
+								VStack(alignment: .leading, spacing: 3) {
+									Text(dateTimeText(Int64(selected.date.timeIntervalSince1970 * 1_000)))
+										.font(.caption).foregroundStyle(.secondary)
+									Text(TokenQuantityFormatter.stringWithUnit(selected.tokens))
+										.font(.caption.bold()).monospacedDigit()
+								}
+								.padding(8)
+								.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+							}
+					}
+				}
+				.chartYAxis {
+					AxisMarks(position: .leading) { value in
+						AxisGridLine().foregroundStyle(.quaternary)
+						AxisValueLabel {
+							if let value = value.as(Int64.self) {
+								Text(TokenQuantityFormatter.string(value))
+							}
+						}
+					}
+				}
+				.chartXAxis { AxisMarks(values: .automatic(desiredCount: 6)) }
+				.chartXSelection(value: $selectedTrendDate)
+				.frame(height: trendPoints.count <= 1 ? 170 : 230)
+				.onChange(of: selectedRange) { _, _ in selectedTrendDate = nil }
+				.accessibilityIdentifier("cursor.overview.trend")
+			}
+		}
+	}
+
+private var trendPoints: [CursorOverviewTrendPoint] {
+		overview.trend.compactMap { point in
+			guard let at = point.startAtMS, let tokens = metricValue(point.tokens) else { return nil }
+			return CursorOverviewTrendPoint(
+				id: point.id,
+				date: Date(timeIntervalSince1970: Double(at) / 1_000),
+				tokens: tokens
+			)
+		}
+	}
+
+private var selectedTrendPoint: CursorOverviewTrendPoint? {
+		guard let selected = TrendSelectionResolver.nearest(
+			to: selectedTrendDate,
+			in: overview.trend
+		),
+		let at = selected.startAtMS,
+		let tokens = metricValue(selected.tokens)
+		else { return nil }
+		return CursorOverviewTrendPoint(
+			id: selected.id,
+			date: Date(timeIntervalSince1970: Double(at) / 1_000),
+			tokens: tokens
+		)
+	}
+}
+
+private struct OverviewTrendChart: View {
+    let overview: OverviewPresentation
+    let selectedRange: DateRangePreset
+    let localization: AppLocalization
+    @State private var selectedTrendDate: Date?
+
+    var body: some View {
+        let chartPoints = self.chartPoints
+        let selectedTrendPoint = self.selectedTrendPoint
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Token 趋势").font(.subheadline.weight(.semibold))
+                Text(overview.usageRangeLabel).font(.caption).foregroundStyle(.secondary)
+            }
+            if !overview.usageAvailable {
+                ContentUnavailableView(
+                    "Token 用量暂时不可用",
+                    systemImage: "chart.xyaxis.line",
+                    description: Text("额度与其他区域仍可继续查看。")
+                )
+                .frame(height: 220)
+            } else if chartPoints.isEmpty {
+                ContentUnavailableView(
+                    "当前范围暂无用量",
+                    systemImage: "chart.xyaxis.line",
+                    description: Text("产生新的会话后，趋势会显示在这里。")
+                )
+                .frame(height: 220)
+            } else {
+                Chart {
+                    ForEach(chartPoints) { point in
+                        AreaMark(
+                            x: .value("时间", point.date),
+                            y: .value("Token", point.tokens)
+                        )
+                        .interpolationMethod(.monotone)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Color.blue.opacity(0.30), Color.blue.opacity(0.03)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        LineMark(
+                            x: .value("时间", point.date),
+                            y: .value("Token", point.tokens)
+                        )
+                        .interpolationMethod(.monotone)
+                        .foregroundStyle(Color.blue)
+                        .lineStyle(
+                            StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                        PointMark(
+                            x: .value("时间", point.date),
+                            y: .value("Token", point.tokens)
+                        )
+                        .foregroundStyle(Color.blue)
+                        .symbolSize(selectedTrendPoint?.id == point.id ? 70 : 28)
+                        .accessibilityLabel(trendPointTimeText(point.date))
+                        .accessibilityValue(
+                            TokenQuantityFormatter.stringWithUnit(point.tokens)
+                        )
+                    }
+                    if let selected = selectedTrendPoint {
+                        RuleMark(x: .value("选中时间", selected.date))
+                            .foregroundStyle(Color.secondary.opacity(0.55))
+                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                            .annotation(
+                                position: .top,
+                                alignment: .leading,
+                                spacing: 8,
+                                overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
+                            ) {
+                                selectedTrendDetail(selected)
+                            }
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(position: .leading) { value in
+                        AxisGridLine().foregroundStyle(.quaternary)
+                        AxisValueLabel {
+                            if let value = value.as(Int64.self) {
+                                Text(TokenQuantityFormatter.string(value))
+                            }
+                        }
+                    }
+                }
+                .chartXAxis {
+                    if selectedRange == .quotaWeek {
+                        AxisMarks(values: .stride(by: .day)) { value in
+                            AxisGridLine().foregroundStyle(.quaternary)
+                            AxisTick()
+                            AxisValueLabel {
+                                if let date = value.as(Date.self) {
+                                    Text(trendPointDateText(date))
+                                }
+                            }
+                        }
+                    } else {
+                        AxisMarks(values: .automatic(desiredCount: 6))
+                    }
+                }
+                .chartXSelection(value: $selectedTrendDate)
+                .frame(height: 230)
+                .onChange(of: selectedRange) { _, _ in selectedTrendDate = nil }
+            }
+        }
+    }
+
+private var chartPoints: [OverviewChartPoint] {
+        overview.trend.compactMap { point in
+            guard let startAtMS = point.startAtMS,
+                  let tokens = metricValue(point.tokens)
+            else { return nil }
+            return OverviewChartPoint(
+                id: point.id,
+                date: Date(timeIntervalSince1970: Double(startAtMS) / 1_000),
+                tokens: tokens,
+                tokenBreakdown: point.tokenBreakdown,
+                estimatedCost: point.estimatedCost)
+        }
+    }
+
+private var selectedTrendPoint: OverviewChartPoint? {
+        guard let selected = TrendSelectionResolver.nearest(
+            to: selectedTrendDate,
+            in: overview.trend
+        ),
+            let startAtMS = selected.startAtMS,
+            let tokens = metricValue(selected.tokens)
+        else { return nil }
+        return OverviewChartPoint(
+            id: selected.id,
+            date: Date(timeIntervalSince1970: Double(startAtMS) / 1_000),
+            tokens: tokens,
+            tokenBreakdown: selected.tokenBreakdown,
+            estimatedCost: selected.estimatedCost
+        )
+    }
+
+private func selectedTrendDetail(_ point: OverviewChartPoint) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(trendPointTimeText(point.date))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TokenBreakdownView(
+                tokens: point.tokenBreakdown,
+                style: .compact,
+                localization: localization
+            )
+            if case .known = point.estimatedCost {
+                Text(localization.format(
+                    "API 等价成本 %@",
+                    metricText(
+                        point.estimatedCost,
+                        cost: true,
+                        localization: localization
+                    )
+                ))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(.quaternary, lineWidth: 1)
+        }
+    }
+
+private func trendPointTimeText(_ date: Date) -> String {
+        if selectedRange == .today {
+            return date.formatted(
+                .dateTime.month().day().hour().minute().locale(localization.locale)
+            )
+        }
+        return date.formatted(.dateTime.year().month().day().locale(localization.locale))
+    }
+
+private func trendPointDateText(_ date: Date) -> String {
+        date.formatted(.dateTime.month().day().locale(localization.locale))
+    }
+}
+
+// Keep date formatting outside the hover-driven view and reuse it for unchanged input.
+private struct OverviewTokenActivityCard: View, Equatable {
+    let activity: TokenActivityPresentation
+    let localization: AppLocalization
+    var partialNotice: String? = nil
+
+    var body: some View {
+        TokenActivityCard(
+            card: TokenActivityCardPresentation(
+                activity, localization: localization, partialNotice: partialNotice
+            ),
+            localization: localization
+        )
     }
 }
