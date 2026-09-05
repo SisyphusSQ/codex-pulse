@@ -77,6 +77,13 @@ func TestDecodeRolloutLineSupportedRecords(t *testing.T) {
 			t.Fatalf("ultra effort = %#v", ultra)
 		}
 
+		maxEffort := decodeFixture(t, `{"timestamp":"2026-09-05T01:02:03Z","type":"turn_context","payload":{"cwd":"/tmp/project","model":"gpt-6-astra","effort":"max"}}`)
+		if maxEffort.Diagnostic != nil || maxEffort.Record == nil || maxEffort.Record.TurnContext == nil ||
+			maxEffort.Record.TurnContext.Effort == nil || *maxEffort.Record.TurnContext.Effort != "max" ||
+			!validSeedEffort(maxEffort.Record.TurnContext.Effort) {
+			t.Fatalf("max effort cannot resume: %#v", maxEffort)
+		}
+
 		const privateMarker = "PRIVATE_FUTURE_EFFORT_MARKER"
 		future := decodeFixture(t, `{"timestamp":"2026-07-14T01:02:03Z","type":"turn_context","payload":{"turn_id":"turn-1","cwd":"/tmp/project","model":"gpt-5.2-codex","effort":"`+privateMarker+`"}}`)
 		if future.Diagnostic != nil || future.Record == nil || future.Record.TurnContext == nil ||

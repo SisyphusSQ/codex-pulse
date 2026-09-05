@@ -33,7 +33,7 @@
 | Rollout family | 当前消费字段 |
 | --- | --- |
 | `session_meta` | thread `id` 作为 domain session ID；legacy `session_id` 缺失时回退 `id`；created time、source kind、cwd、originator、CLI version、session source、model provider |
-| `turn_context` | optional turn ID、observed time、cwd、model、reasoning effort；当前官方值含 `ultra`，未知非空未来值只归一为 `custom`，不回显原文 |
+| `turn_context` | optional turn ID、observed time、cwd、model、reasoning effort；当前官方值含 `max`、`ultra`，未知非空未来值只归一为 `custom`，不回显原文 |
 | `event_msg.task_started/turn_started` | turn ID、explicit/fallback started time、optional context window |
 | `event_msg.task_complete/turn_complete` | turn ID、explicit/fallback completed time、`completed` outcome |
 | `event_msg.turn_aborted` | optional turn ID、explicit/fallback completed time、四种 allowlisted abort outcome |
@@ -188,6 +188,8 @@ v3→v4 migration 在创建 attribution schema 后，使用同一个 GORM writer
 Pricing Catalog 以 `(source, currency, effective_from_ms)` 形成不可变时间线。同 source/currency 的版本生效区间由相邻版本推导为 `[effective_from_ms, next_effective_from_ms)`，最后一个版本的结束时间为 `NULL`；新增版本不更新上一版本。通用查询允许 `exact`、`prefix`、`default`，但成本重建只接受 normalized model key 的 `exact` 规则，不能用相似名称或 fallback 猜价。没有生效版本记为 `unpriced/catalog_not_effective`；版本存在但没有 exact rule 记为 `unpriced/model_not_listed`。版本、全部规则和可选来源 metadata 在同一 writer transaction 追加；完全一致重放 no-op，同 version、metadata 或生效边界冲突全部回滚。
 
 应用启动在 schema 完成后按生效时间升序幂等安装不可变 catalog 历史：`openai-api-2026-07-14` 保持 `effective_from_ms=0`，`openai-api-2026-07-22` 自 `2026-03-17T00:00:00Z` 生效并增补 `gpt-5.4-mini` 的官方 input/cached/output 价格，`openai-api-2026-07-29` 自 `2026-07-29T00:00:00+08:00`（`2026-07-28T16:00:00Z`）生效并把相同完整费率集合固定到通用 [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing) 来源快照。`openai-api-2026-07-31` 自本次官方页面验证时间 `2026-07-31T10:20:48+08:00`（`2026-07-31T02:20:48Z`）生效，只把 `gpt-5.6-terra` 下调为 `$2.00 / $0.20 / $12.00`、`gpt-5.6-luna` 下调为 `$0.20 / $0.02 / $1.20`，其它 exact 规则保持不变。`2026-07-22` 版本继续保留 [GPT-5.4 mini model page](https://developers.openai.com/api/docs/models/gpt-5.4-mini) 来源，既有 version metadata 不原地修改；运行时不联网刷新。没有完整逐模型事实输入的 key 继续保持 unpriced，不能用相似模型猜价。金额是 API 等价估算，不是真实账单或 Codex 订阅额度。
+
+2026-09-05（TOO-419）追加两版完整目录：`openai-api-2026-09-03` 从 Astra 发布日的 UTC 日界 `2026-09-03T00:00:00Z`（`1788393600000`）增补 `gpt-6-astra` 的 `$10 / $1 / $50` 基础价格；日粒度只作为本地估算边界，不代表精确开放时刻。`openai-api-2026-09-05` 从官方核验时间 `2026-09-05T02:06:34Z`（`1788573994000`）将 `gpt-5.6-sol` 与其官方 `gpt-5.6` alias 下调为 `$4 / $0.4 / $20`，不回填未知的促销起始时间，也不猜测促销结束后费率。两版核验时间相同，来源为通用官方价格页，旧目录不变。轻量索引查询按已存 timed delta 的时间选 catalog，升级后已有 Astra 数据无需重扫即可获得费用。`max` 补入 parser 与 durable checkpoint 的允许值；历史 `custom` 不追溯改写，不触发全量 parser rebuild。未来未知模型仍允许安全归因但无价。
 
 单 turn 公式为：先精确求和 `(input_tokens - cached_input_tokens) × input_rate + cached_input_tokens × cached_rate + (output_tokens + reasoning_tokens) × output_rate`，再统一除以 `1_000_000` 并只做一次 round-half-up；全程使用整数和 `math/big`，不使用 float。Codex JSONL 的 cached input 是 input 子集，不能重复按 input rate 计费，`cached_input_tokens > input_tokens` 直接拒绝；reasoning 是 output 之外的独立计数，因此两者都使用公开 output rate且不能重复包含。任一 token 为 `NULL` 时记为 `unpriced/missing_token`；某个正 token 类别缺少 rate 时记为 `unpriced/missing_price_component`；全零 token 可以得到真实的 priced `0`。模型归因缺失、冲突或非法分别保留 `missing_model`、`conflict_model`、`invalid_model`，完整 reason 集合由 STRICT CHECK 固定。
 

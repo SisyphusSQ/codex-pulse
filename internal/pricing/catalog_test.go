@@ -77,7 +77,7 @@ func TestBuiltinOpenAI20260722AddsGPT54MiniWithoutMutatingPriorCatalog(t *testin
 		t.Fatalf("gpt-5.4-mini catalog entry = %#v", mini)
 	}
 	versions := BuiltinOpenAICatalog()
-	if len(versions) != 4 || versions[0].PricingVersion != "openai-api-2026-07-14" ||
+	if len(versions) != 6 || versions[0].PricingVersion != "openai-api-2026-07-14" ||
 		versions[1].PricingVersion != "openai-api-2026-07-22" ||
 		versions[2].PricingVersion != "openai-api-2026-07-29" ||
 		versions[3].PricingVersion != "openai-api-2026-07-31" ||
@@ -107,8 +107,8 @@ func TestBuiltinOpenAICatalogApplies20260731PriceCutsWithoutMutatingHistory(t *t
 	t.Parallel()
 
 	versions := BuiltinOpenAICatalog()
-	if len(versions) != 4 {
-		t.Fatalf("BuiltinOpenAICatalog() versions = %d, want 4", len(versions))
+	if len(versions) != 6 {
+		t.Fatalf("BuiltinOpenAICatalog() versions = %d, want 6", len(versions))
 	}
 	current := versions[3]
 	if current.PricingVersion != "openai-api-2026-07-31" ||
@@ -162,4 +162,45 @@ func selectedCatalogRates(t *testing.T, catalog CatalogVersion, modelIDs ...stri
 		}
 	}
 	return got
+}
+
+func TestAstraCatalogPreservesHistoryAndSolVerificationBoundary(t *testing.T) {
+	t.Parallel()
+	versions := BuiltinOpenAICatalog()
+	astra, current := versions[4], versions[5]
+	if astra.PricingVersion != "openai-api-2026-09-03" || astra.EffectiveFromMS != 1_788_393_600_000 ||
+		current.PricingVersion != "openai-api-2026-09-05" || current.EffectiveFromMS != 1_788_573_994_000 ||
+		astra.VerifiedAtMS != current.EffectiveFromMS || current.VerifiedAtMS != current.EffectiveFromMS {
+		t.Fatalf("unexpected new catalog metadata: %#v %#v", astra, current)
+	}
+	want := map[string][3]int64{
+		"gpt-6-astra": {10_000_000, 1_000_000, 50_000_000},
+		"gpt-5.6-sol": {4_000_000, 400_000, 20_000_000},
+		"gpt-5.6":     {4_000_000, 400_000, 20_000_000},
+	}
+	if got := selectedCatalogRates(t, current, "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("current rates = %#v", got)
+	}
+	for _, previous := range versions[:5] {
+		for _, model := range previous.Models {
+			if model.ModelPattern == "gpt-5.6-sol" && *model.InputMicrosPerMillion != 5_000_000 {
+				t.Fatalf("Sol history changed: %#v", previous)
+			}
+		}
+	}
+	if !reflect.DeepEqual(astra.Models[:len(astra.Models)-1], versions[3].Models) {
+		t.Fatal("Astra addition changed prior rates")
+	}
+	for _, model := range current.Models {
+		if model.MatchKind != ModelMatchExact {
+			t.Fatal("non-exact rule")
+		}
+	}
+	if len(current.Models) != len(astra.Models) {
+		t.Fatal("lost existing model")
+	}
+	*current.Models[0].InputMicrosPerMillion = 0
+	if *BuiltinOpenAI20260905().Models[0].InputMicrosPerMillion == 0 {
+		t.Fatal("mutable template leaked")
+	}
 }

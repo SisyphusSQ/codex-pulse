@@ -473,3 +473,43 @@ func assertCounterSnapshot(t *testing.T, got, want TokenCounterSnapshot) {
 		t.Fatalf("last raw = %+v, want %+v", got, want)
 	}
 }
+
+func TestTokenScannerResumesAstraModelAcrossChunks(t *testing.T) {
+	t.Parallel()
+
+	content := strings.Join([]string{
+		`{"timestamp":"2026-07-19T01:00:00Z","type":"turn_context","payload":{"model":" OpenAI/GPT-6-Astra "}}`,
+		tokenLine("2026-07-19T01:00:01Z", 10, 2, 3, 1),
+	}, "\n") + "\n"
+	result, err := NewTokenScanner(TokenScannerOptions{ChunkBytes: 32}).Scan(
+		context.Background(), bytes.NewBufferString(content), ScanState{},
+	)
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	encoded, err := json.Marshal(struct {
+		State  ScanState
+		Deltas []TimedTokenDelta
+	}{State: result.State, Deltas: result.TokenDeltas})
+	if err != nil {
+		t.Fatalf("marshal scanner result: %v", err)
+	}
+	if !bytes.Contains(encoded, []byte(`"gpt-6-astra"`)) ||
+		!bytes.Contains(encoded, []byte(`"model_alias"`)) {
+		t.Fatalf("scanner result does not preserve normalized model attribution: %s", encoded)
+	}
+	if result.State.CurrentModelKey == nil || *result.State.CurrentModelKey != "gpt-6-astra" ||
+		result.State.CurrentModelSource != "model_alias" || len(result.TokenDeltas) != 1 ||
+		result.TokenDeltas[0].ModelKey == nil || *result.TokenDeltas[0].ModelKey != "gpt-6-astra" {
+		t.Fatalf("typed model attribution = %#v, deltas=%#v", result.State, result.TokenDeltas)
+	}
+	resumed, err := NewTokenScanner(TokenScannerOptions{ChunkBytes: 32}).Scan(
+		context.Background(),
+		bytes.NewBufferString(tokenLine("2026-07-19T01:00:02Z", 20, 4, 6, 2)+"\n"),
+		result.State,
+	)
+	if err != nil || len(resumed.TokenDeltas) != 1 || resumed.TokenDeltas[0].ModelKey == nil ||
+		*resumed.TokenDeltas[0].ModelKey != "gpt-6-astra" || resumed.TokenDeltas[0].ModelSource != "model_alias" {
+		t.Fatalf("resumed model attribution = %#v, %v", resumed, err)
+	}
+}

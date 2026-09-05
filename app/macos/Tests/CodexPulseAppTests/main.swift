@@ -467,6 +467,7 @@ private func testReferencePriceFormattingPreservesPrecisionAndUnknown() throws {
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.10-codex",
+        "gpt-6-astra",
     ] {
         try expect(
             ReferencePriceFormatter.shouldDisplay(modelID: visibleModel),

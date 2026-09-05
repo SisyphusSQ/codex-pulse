@@ -43,15 +43,37 @@
 | `gpt-5.4` | 2,500,000 | 250,000 | 15,000,000 | [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4) |
 | `gpt-5.4-mini` | 750,000 | 75,000 | 4,500,000 | [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini) |
 | `gpt-5.5` | 5,000,000 | 500,000 | 30,000,000 | [GPT-5.5](https://developers.openai.com/api/docs/models/gpt-5.5) |
-| `gpt-5.6` / `gpt-5.6-sol` | 5,000,000 | 500,000 | 30,000,000 | [GPT-5.6 Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol) |
+| `gpt-5.6` / `gpt-5.6-sol` | 4,000,000 | 400,000 | 20,000,000 | [GPT-5.6 Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol) |
 | `gpt-5.6-terra` | 2,000,000 | 200,000 | 12,000,000 | [GPT-5.6 Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra) |
 | `gpt-5.6-luna` | 200,000 | 20,000 | 1,200,000 | [GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) |
+| `gpt-6-astra` | 10,000,000 | 1,000,000 | 50,000,000 | [GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra) |
 
 初始和当前目录 source URL 为 [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing)，`2026-07-22` 增补版本对 `gpt-5.4-mini` 保留其官方 model page 来源。`gpt-5.2-codex-max`、`gpt-5.3-codex-spark`、Pro、日期 snapshot 和其它未逐项确认的 key 保持 `unpriced/model_not_listed`；不借 prefix/default 或相似名字猜价。长上下文、regional、cache-write、Batch/Flex/Fast mode 倍率不在当前 JSONL 事实 contract 中，也不参与估算。
 
 `PricingCatalogCurrent` 只读查询与历史 `UsageCost` pricing evidence 分离，返回当前 exact-only 完整目录、基础计价口径、单位和来源。原生“额度与用量”页在无用量时仍默认显示四列价格表，只展示 `gpt-5.3` 及后续有效模型，不在模型用量行重复价格；`gpt-5`、`gpt-5.1`、`gpt-5.2` 家族不展示，无后缀 `gpt-5.6` 作为 `gpt-5.6-sol` 的官方 alias 也为避免重复而隐藏，但这些 exact 规则继续保留在 catalog 中供历史成本折算；带 `luna` / `sol` / `terra` 后缀的 `gpt-5.6` 模型正常展示。unknown 保持“暂无”，真实零仍是 `$0.00`。这组数值仅用于 API 等价折算，不代表 Codex 订阅账单。
 
 所有金额只是公开 API 单价下的本地等价估算，不代表 OpenAI/Codex 实际账单、订阅配额或应付款。
+
+### 2026-09-05 Astra 与 Sol 价格更新（TOO-419）
+
+- `openai-api-2026-09-03` 只新增 `gpt-6-astra`，继承 7 月 31 日的完整费率。以 [Astra 发布说明](https://openai.com/index/gpt-6-astra/) 的发布日按 UTC 日界 `2026-09-03T00:00:00Z` 生效；这是本地基础估算的日粒度边界，不声称 API 精确开放时刻。
+- `openai-api-2026-09-05` 在本次官方核验时刻 `2026-09-05T02:06:34Z` 生效，将 Sol 与官方 `gpt-5.6` alias 同步下调为 `$4 / $0.4 / $20`。未知的历史促销起点不回填。官方说明促销至少持续到 2026-11-21，不能据此自动猜测结束后的价格。
+- 两版 `verified_at_ms` 均为 `1788573994000`，source URL 使用通用官方价格页；旧四版及已发生的历史价格保持不变。当前共六版 catalog。
+- 轻量成本查询按每个 timed delta 的时间选择已安装目录；因此升级后已有 Astra 用量可直接从 unknown 变为有价，不改 token/checkpoint，不需要重扫 JSONL。模型展示名为 `GPT-6 Astra`，价目表沿用现有动态可见性规则。
+- `max` 与 `ultra` 为可保存及恢复的 reasoning effort；其它未知值仍映射 `custom`。不升级 parser version 触发历史全量重扫；过去已存为 `custom` 的档位不追溯改写。
+- 继续只估算 Standard 短上下文基础 input/cached/output（reasoning 使用 output 单价）；长上下文、cache-write、regional 和其它服务层级均不扩展。
+- 新回归：`TestAstraCatalogUpgradePricesExistingTokensWithoutRescan` 证明已有 1M input、200k cached、100k output、50k reasoning 从无价变为 `$15.70`，Session 与模型成本一致且 checkpoint 不变；生效前 1ms、exact 边界、Sol alias 与未知近似 key 单独覆盖。
+
+### TOO-419 真实 Home 验收结果
+
+2026-09-05 定向 Go 回归与完整 `make verify` 均通过，覆盖全仓 Go race/vet、Proto 一致性、Swift client/transport/App tests 与 isolated Home smoke。
+
+2026-09-05 已完成 Codex 定向 Live E2E：显式真实 `CODEX_HOME`、本卡新建 `0700` 私有 runtime；preferences 的 canonical path/device/inode 与 HomeProbe 一致，App/Helper 环境和 Helper 参数读回匹配，鉴权仍走继承 pipe。
+
+- 原生“额度与用量”页可见 Astra `$10 / $1 / $50`、Sol `$4 / $0.4 / $20` 与当前 `openai-api-2026-09-05` 快照；真实 Astra 模型展示名正确、Token 为正且费用可计算。
+- 等价 Codex 定向 `--ui-smoke --skip-cursor-provider-smoke --skip-live-lifecycle` 通过：`primary_pages=loaded`、`usage_models=3`、`usage_model_reconciled=7`、`usage_cost=known`、`project_detail_cost=known`、`details_read=3`、`unavailable=none`、`ui_pages=10`、`shutdown=clean`。
+- Go typed repository 在 App 退出后回读其派生库：物理 Home 身份匹配，三条 Astra/Sol exact 价格匹配，真实 Astra 用量为正且估算成本为已知正数。App/Helper 退出且 UDS 清理。
+- Cursor/Grok 的真实数据与 Dashboard 不在本卡验收范围；用独立空目录隔离。系统睡眠/唤醒 lifecycle、远端 CI、合并、正式签名/公证与发版未执行。这里只保存脱敏结论，原始证据在 ignored `.artifacts/too-419/`。
 
 ## 固定公式与 unknown 语义
 
