@@ -128,6 +128,14 @@ make verify-swift-app
 bash scripts/macos/build-dev-app.sh --output <isolated-development-app-path>
 ```
 
+滚动、悬停等性能验收使用优化构建，避免把 Debug 编译开销当成发布版本的表现：
+
+```bash
+bash scripts/macos/build-dev-app.sh --configuration release --output <isolated-development-app-path>
+```
+
+默认仍为 `debug`；`release` 只选择 Swift 优化构建，保留 Development bundle 身份和私有 runtime 边界，不执行分发、正式签名或公证。对照实验应使用相同页面、窗口尺寸、真实 Home 和私有 runtime，并等待构建完成后再采样；页面 smoke 通过不等于滚动帧率验收通过。
+
 当前结果：PASS。
 
 读回：

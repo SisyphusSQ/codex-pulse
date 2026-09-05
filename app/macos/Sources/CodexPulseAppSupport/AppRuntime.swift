@@ -1711,7 +1711,37 @@ public actor AppRuntime {
             invalidationRefreshPending = true
             return
         }
+        if domain == "health", lastResponses != nil {
+            await refreshOverviewHealth()
+            return
+        }
         await refresh(showLoading: false)
+    }
+
+    // Health/job notifications do not change usage, project rankings or the annual activity.
+    private func refreshOverviewHealth() async {
+        guard readyForOverview, !shuttingDown, let client else { return }
+        let admittedRuntime = runtimeGeneration
+        let admittedRefresh = refreshGeneration
+        let result = await captureOverviewSection {
+            try await client.healthProjection(retryPolicy: .transportDefault)
+        }
+        guard admittedRuntime == runtimeGeneration,
+              admittedRefresh == refreshGeneration,
+              !systemIsSleeping, !shuttingDown,
+              let responses = lastResponses
+        else { return }
+        let health: Codexpulse_Core_V1_HealthProjectionResponse
+        switch result {
+        case .value(let response): health = response
+        case .failure: health = unavailableHealth()
+        }
+        guard health != responses.health else { return }
+        let updated = responses.replacingHealth(health)
+        lastResponses = updated
+        let range = updated.rangeResolution?.requestedPreset ?? overviewRange
+        overviewCache[OverviewCacheKey(provider: updated.provider, range: range)] = updated
+        await publishOverview(updated)
     }
 
     private func drainPendingInvalidationRefresh() async {

@@ -6,6 +6,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 APP_DIR="$REPO_ROOT/build/dev/Codex Pulse.app"
 REQUIRE_LAYERED_ICON=0
+BUILD_CONFIGURATION=debug
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -17,6 +18,14 @@ while [ "$#" -gt 0 ]; do
     --require-layered-icon)
       REQUIRE_LAYERED_ICON=1
       shift
+      ;;
+    --configuration)
+      [ "$#" -ge 2 ] || { echo "missing value for --configuration" >&2; exit 2; }
+      case "$2" in
+        debug|release) BUILD_CONFIGURATION=$2 ;;
+        *) echo "configuration must be debug or release" >&2; exit 2 ;;
+      esac
+      shift 2
       ;;
     *)
       echo "unknown argument: $1" >&2
@@ -39,10 +48,10 @@ case "$APP_DIR" in
     ;;
 esac
 
-swift build --package-path "$REPO_ROOT/app/macos" --product codex-pulse-app
+swift build --package-path "$REPO_ROOT/app/macos" --configuration "$BUILD_CONFIGURATION" --product codex-pulse-app
 make -C "$REPO_ROOT" verify-helper
 
-SWIFT_BIN_DIR=$(swift build --package-path "$REPO_ROOT/app/macos" --show-bin-path)
+SWIFT_BIN_DIR=$(swift build --package-path "$REPO_ROOT/app/macos" --configuration "$BUILD_CONFIGURATION" --show-bin-path)
 APP_EXECUTABLE="$SWIFT_BIN_DIR/codex-pulse-app"
 SPARKLE_FRAMEWORK="$SWIFT_BIN_DIR/Sparkle.framework"
 LOCALIZATION_BUNDLE=$(find "$SWIFT_BIN_DIR" -maxdepth 1 -type d -name '*CodexPulseAppSupport*.bundle' -print -quit)
@@ -160,4 +169,4 @@ plutil -lint "$APP_DIR/Contents/Info.plist" >/dev/null
   exit 1
 }
 
-printf 'development app assembled: executable=present helper=present sparkle=embedded icon_pipeline=%s signed=no distribution=no\n' "$ICON_PIPELINE"
+printf 'development app assembled: executable=present helper=present sparkle=embedded icon_pipeline=%s configuration=%s signed=no distribution=no\n' "$ICON_PIPELINE" "$BUILD_CONFIGURATION"
