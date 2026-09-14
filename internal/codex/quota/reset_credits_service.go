@@ -2,6 +2,7 @@ package quota
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -15,6 +16,9 @@ type ResetCreditsService struct {
 	client        *ResetCreditsClient
 	recorder      ResetCreditsRecorder
 	recordTimeout time.Duration
+
+	mu      sync.Mutex
+	binding AccountBindingFence
 }
 
 func NewResetCreditsService(
@@ -32,22 +36,48 @@ func (service *ResetCreditsService) Fetch(ctx context.Context, requestID string)
 	if service == nil {
 		return ResetCreditsResult{}, ErrInvalidClientConfig
 	}
+	service.mu.Lock()
+	binding := service.binding
+	service.mu.Unlock()
+	return service.FetchBound(ctx, BoundRefreshRequest{RequestID: requestID, Binding: binding})
+}
+
+func (service *ResetCreditsService) SetBinding(binding AccountBindingFence) {
+	if service == nil {
+		return
+	}
+	service.mu.Lock()
+	service.binding = binding
+	service.mu.Unlock()
+}
+
+func (service *ResetCreditsService) FetchBound(ctx context.Context, request BoundRefreshRequest) (ResetCreditsResult, error) {
+	if service == nil {
+		return ResetCreditsResult{}, ErrInvalidClientConfig
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	result, err := service.client.Fetch(ctx, requestID)
+	result, err := service.client.Fetch(ctx, request)
 	if err != nil {
 		return result, err
 	}
-	record := resetCreditsFetchRecord(requestID, result)
+	service.mu.Lock()
+	current := service.binding
+	service.mu.Unlock()
+	if current != request.Binding {
+		return ResetCreditsResult{}, store.ErrCodexAccountBindingChanged
+	}
+	record := resetCreditsFetchRecord(request, result)
 	recordContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), service.recordTimeout)
 	defer cancel()
 	return result, service.recorder.RecordResetCreditsFetch(recordContext, record)
 }
 
-func resetCreditsFetchRecord(requestID string, result ResetCreditsResult) store.ResetCreditsFetchRecord {
+func resetCreditsFetchRecord(request BoundRefreshRequest, result ResetCreditsResult) store.ResetCreditsFetchRecord {
+	sourceInstanceID := store.ResetCreditsSourceInstanceAppServer(request.Binding.AccountScope)
 	attempt := store.SourceAttempt{
-		RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
+		RequestID: request.RequestID, SourceInstanceID: sourceInstanceID,
 		StartedAtMS: result.StartedAtMS, FinishedAtMS: result.FinishedAtMS,
 		HTTPStatus: cloneInt64(result.HTTPStatus), PayloadSHA256: result.PayloadSHA256,
 		AttemptCount: result.AttemptCount, ResponseBytes: result.ResponseBytes,
@@ -67,11 +97,13 @@ func resetCreditsFetchRecord(requestID string, result ResetCreditsResult) store.
 		}
 	}
 	return store.ResetCreditsFetchRecord{
-		SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-		SourceType:       store.ResetCreditsSourceTypeWham,
-		ScopeKey:         store.QuotaAccountScopeDefault,
-		Attempt:          attempt,
-		Snapshot:         storeResetCreditsSnapshotClone(result.Snapshot),
+		AccountScope:      request.Binding.AccountScope,
+		BindingGeneration: request.Binding.BindingGeneration,
+		SourceInstanceID:  sourceInstanceID,
+		SourceType:        store.ResetCreditsSourceTypeAppServer,
+		ScopeKey:          request.Binding.AccountScope,
+		Attempt:           attempt,
+		Snapshot:          storeResetCreditsSnapshotClone(result.Snapshot),
 	}
 }
 
@@ -83,6 +115,10 @@ func storeResetCreditsSnapshotClone(value *store.ResetCreditsSnapshot) *store.Re
 	cloned.Credits = make([]store.ResetCredit, len(value.Credits))
 	for index, credit := range value.Credits {
 		cloned.Credits[index] = credit
+		if credit.ExpiresAtMS != nil {
+			expiresAt := *credit.ExpiresAtMS
+			cloned.Credits[index].ExpiresAtMS = &expiresAt
+		}
 		if credit.RedeemedAtMS != nil {
 			redeemedAt := *credit.RedeemedAtMS
 			cloned.Credits[index].RedeemedAtMS = &redeemedAt

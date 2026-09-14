@@ -1,9 +1,16 @@
 # 在线 Quota Application Runtime Runbook
 
+## 2026-09-14 TOO-442 当前口径
+
+- Codex 在线额度与 Reset Credits 的当前入口是 App Server `account/rateLimits/read`，按 `(account_scope, binding_generation)` 隔离。
+- TOO-306 Wham coordinator、`quota:wham:default` 与从 Codex `auth.json` 读取 access token 都是 **legacy**。当前实现不得再走这些路径，也不得在 capability 失败时 fallback。
+- 账号切换隔离的 targeted / live 步骤见 [`codex-account-switching.md`](codex-account-switching.md)。本页历史 TOO-306 PASS 不表示 TOO-442 live A-B-A 已执行。
+- Cursor / Grok Bot collector 仍不进入 Codex App Server schedule。
+
 ## 2026-08-22 TOO-349 与 Cursor Grok Bot collector
 
 - Cursor 月 Dashboard collector 与 Grok Bot collector 独立 single-flight、独立 last-refresh 时钟；一侧失败不得改写另一侧 last-good、usage event 或月 observation。
-- Grok Bot 不进入 Codex `source_refresh_schedules` / `wham` runtime。装配点仍是 Helper binding composition，不是本 runbook 的 TOO-306 Wham coordinator。
+- Grok Bot 不进入 Codex `source_refresh_schedules`，也不进入当前 App Server 账号 schedule。历史句子里的 `wham` runtime 是 **legacy** 名称；装配点仍是 Helper binding composition，不是 TOO-306 Wham coordinator。
 - `TestCursorQuotaPaceKeepsOfficialWeekAcrossInCycleGrokBotReset` 覆盖 Grok Bot 周内额度重置：`next_reset` 不变而 `period_start` 推进时，节奏横轴仍沿用同一周已观测到的最早起点，重置只形成同周期内的用量跳变。
 - 开发期入口：`go test ./internal/cursorprovider ./internal/app`。真实 Home 与 commit identity / cleanup 见 [`native-primary-pages.md`](native-primary-pages.md)。本页历史 TOO-306 PASS 不表示 TOO-349 live E2E 已执行。
 
@@ -54,7 +61,7 @@
 - 证明 credential 只来自当前 confirmed Home 的固定 `auth.json`，路径/文件替换和 Home 切换 fail closed，调用结束后可写副本清零。
 - 证明 startup、disable/re-enable、auth recovery、foreground、manual、restart 与 shutdown 都复用 durable coordinator/Store truth。
 - 证明 callback 不直接做文件、SQLite 或 HTTP，周期唤醒只使用 `github.com/robfig/cron/v3 v3.0.1`。
-- 本 runbook 是 synthetic app integration，不是 live auth/Wham E2E。
+- 本 runbook 的 TOO-306 正文是 **legacy** Wham credential lease 的 synthetic app integration，不是当前 App Server 账号隔离，也不是 live A-B-A。
 
 ## 执行副作用
 

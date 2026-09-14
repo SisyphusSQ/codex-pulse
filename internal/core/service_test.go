@@ -268,8 +268,37 @@ func TestServiceDelegatesEphemeralAccountSnapshot(t *testing.T) {
 	}
 	if got.Account == nil || got.Account.Type != "chatgpt" || got.Account.Email == nil ||
 		*got.Account.Email != email || got.Account.PlanType == nil ||
-		*got.Account.PlanType != planType || account.calls != 1 || account.scope.Provider != agentprovider.Cursor {
+		*got.Account.PlanType != planType || got.Binding != nil ||
+		account.calls != 1 || account.scope.Provider != agentprovider.Cursor {
 		t.Fatalf("AccountSnapshot() = %#v, calls = %d, scope = %#v", got, account.calls, account.scope)
+	}
+}
+
+func TestServiceDelegatesAccountSnapshotBinding(t *testing.T) {
+	scope := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	binding := store.CodexAccountBinding{
+		State:             store.CodexAccountBindingPending,
+		BindingGeneration: 2,
+		ObservedAtMS:      1_784_000_000_300,
+		Reason:            store.CodexAccountBindingReasonAccountChanged,
+	}
+	account := &accountSnapshotQueryStub{snapshot: AccountSnapshot{Binding: &binding}}
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageQueryStub{}, InvocationUsage: &invocationUsageQueryStub{}, PricingCatalog: pricingCatalogQueryStub{},
+		RuntimeInfo:     runtimeQueryStub{},
+		AccountSnapshot: account,
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	got, err := service.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Codex})
+	if err != nil || got.Account != nil || got.Binding == nil || got.Binding.State != store.CodexAccountBindingPending ||
+		got.Binding.BindingGeneration != 2 || account.scope.Provider != agentprovider.Codex {
+		t.Fatalf("AccountSnapshot(binding) = %#v, %v", got, err)
+	}
+	if got.Binding.AccountScope != nil && *got.Binding.AccountScope == scope {
+		t.Fatal("pending snapshot unexpectedly carried a confirmed scope")
 	}
 }
 

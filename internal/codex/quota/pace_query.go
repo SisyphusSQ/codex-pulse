@@ -21,13 +21,14 @@ var (
 type PaceUnknownReason string
 
 const (
-	PaceUnknownWindowUnavailable PaceUnknownReason = "window_unavailable"
-	PaceUnknownWindowInvalid     PaceUnknownReason = "window_invalid"
-	PaceUnknownEvidenceStale     PaceUnknownReason = "evidence_stale"
-	PaceUnknownSourceConflict    PaceUnknownReason = "source_conflict"
-	PaceUnknownEvidenceSparse    PaceUnknownReason = "evidence_sparse"
-	PaceUnknownEvidenceFlat      PaceUnknownReason = "evidence_flat"
-	PaceUnknownEvidenceInvalid   PaceUnknownReason = "evidence_invalid"
+	PaceUnknownWindowUnavailable  PaceUnknownReason = "window_unavailable"
+	PaceUnknownWindowInvalid      PaceUnknownReason = "window_invalid"
+	PaceUnknownEvidenceStale      PaceUnknownReason = "evidence_stale"
+	PaceUnknownSourceConflict     PaceUnknownReason = "source_conflict"
+	PaceUnknownEvidenceSparse     PaceUnknownReason = "evidence_sparse"
+	PaceUnknownEvidenceFlat       PaceUnknownReason = "evidence_flat"
+	PaceUnknownEvidenceInvalid    PaceUnknownReason = "evidence_invalid"
+	PaceUnknownBindingUnavailable PaceUnknownReason = "binding_unavailable"
 )
 
 type PaceForecastState string
@@ -102,10 +103,12 @@ type PaceWindow struct {
 }
 
 type PaceResponse struct {
-	Version       string       `json:"version"`
-	AccountScope  string       `json:"accountScope"`
-	EvaluatedAtMS int64        `json:"evaluatedAtMs"`
-	Windows       []PaceWindow `json:"windows"`
+	Version       string                     `json:"version"`
+	AccountScope  string                     `json:"accountScope"`
+	EvaluatedAtMS int64                      `json:"evaluatedAtMs"`
+	Binding       *store.CodexAccountBinding `json:"binding,omitempty"`
+	Windows       []PaceWindow               `json:"windows"`
+	UnknownReason *PaceUnknownReason         `json:"unknownReason,omitempty"`
 }
 
 func (service *CurrentQueryService) Pace(
@@ -133,7 +136,18 @@ func (service *CurrentQueryService) Pace(
 	if err != nil {
 		return PaceResponse{}, err
 	}
-	if snapshot.AccountScope != store.QuotaAccountScopeDefault ||
+	if snapshot.Binding.State != "" && snapshot.Binding.State != store.CodexAccountBindingConfirmed {
+		reason := PaceUnknownBindingUnavailable
+		return PaceResponse{
+			Version: PaceContractVersion, EvaluatedAtMS: evaluatedAtMS, Binding: publishedBinding(snapshot.Binding),
+			Windows: []PaceWindow{}, UnknownReason: &reason,
+		}, nil
+	}
+	expectedScope := store.QuotaAccountScopeDefault
+	if snapshot.Binding.State == store.CodexAccountBindingConfirmed && snapshot.Binding.AccountScope != nil {
+		expectedScope = *snapshot.Binding.AccountScope
+	}
+	if snapshot.AccountScope != expectedScope ||
 		snapshot.EvaluatedAtMS != evaluatedAtMS {
 		return PaceResponse{}, fmt.Errorf("%w: snapshot identity is inconsistent", ErrInvalidPaceQuery)
 	}
@@ -148,10 +162,11 @@ func (service *CurrentQueryService) Pace(
 	})
 	response := PaceResponse{
 		Version: PaceContractVersion, AccountScope: snapshot.AccountScope,
-		EvaluatedAtMS: evaluatedAtMS, Windows: make([]PaceWindow, 0, len(windows)),
+		EvaluatedAtMS: evaluatedAtMS, Binding: publishedBinding(snapshot.Binding),
+		Windows: make([]PaceWindow, 0, len(windows)),
 	}
 	for _, facts := range windows {
-		window, buildErr := buildPaceWindow(facts, evaluatedAtMS)
+		window, buildErr := buildPaceWindow(facts, expectedScope, evaluatedAtMS)
 		if buildErr != nil {
 			return PaceResponse{}, buildErr
 		}
@@ -162,11 +177,12 @@ func (service *CurrentQueryService) Pace(
 
 func buildPaceWindow(
 	facts store.QuotaCurrentWindowSnapshot,
+	expectedScope string,
 	evaluatedAtMS int64,
 ) (PaceWindow, error) {
 	current := facts.Current
 	window := PaceWindow{WindowKind: current.WindowKind, LimitID: current.LimitID}
-	if current.AccountScope != store.QuotaAccountScopeDefault || current.LimitID == "" ||
+	if current.AccountScope != expectedScope || current.LimitID == "" ||
 		current.EvaluatedAtMS != evaluatedAtMS || evaluatedAtMS < 0 ||
 		evaluatedAtMS > runtimeclock.MaxTimestampMS {
 		return PaceWindow{}, fmt.Errorf("%w: current window identity is inconsistent", ErrInvalidPaceQuery)

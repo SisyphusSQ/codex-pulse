@@ -8,6 +8,7 @@ const (
 	QuotaAccountScopeDefault                      = "default"
 	QuotaSourceLocalJSONL             QuotaSource = "local_jsonl"
 	QuotaSourceWham                   QuotaSource = "wham"
+	QuotaSourceAppServer              QuotaSource = "app_server"
 	QuotaSourceCursorDashboard        QuotaSource = "cursor_dashboard"
 	QuotaSourceCursorDashboardGrokBot QuotaSource = "cursor.dashboard.grok_bot"
 	QuotaSourceGrokBilling            QuotaSource = "grok_billing"

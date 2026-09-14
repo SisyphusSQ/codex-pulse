@@ -1862,7 +1862,7 @@ private struct ResetCreditsDetailView: View {
                                     HStack(alignment: .top) {
                                         VStack(alignment: .leading, spacing: 4) {
                                             Text("次数 \(index + 1)").font(.system(size: 13, weight: .semibold))
-                                            Text("到期：\(absoluteTimestamp(item.expiresAtMS))")
+                                            Text(item.expiresAtMS.map { "到期：\(absoluteTimestamp($0))" } ?? "到期：--")
                                                 .font(.caption).foregroundStyle(.secondary)
                                         }
                                         Spacer()

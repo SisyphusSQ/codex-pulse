@@ -1007,6 +1007,12 @@ private struct OverviewContentView: View {
 
     private var consumptionSection: some View {
         SectionCard(title: "消耗概览") {
+            VStack(alignment: .leading, spacing: 10) {
+                if overview.provider == .codex {
+                    Text(localization.textValue("当前 Codex Home 已采集"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             HStack(alignment: .top, spacing: 22) {
                 VStack(alignment: .leading, spacing: 18) {
                     usageSummary
@@ -1018,6 +1024,7 @@ private struct OverviewContentView: View {
                 Divider()
                 projectBreakdown
                     .frame(minWidth: 220, idealWidth: 270, maxWidth: 310)
+            }
             }
         }
     }
@@ -1192,7 +1199,9 @@ private struct OverviewContentView: View {
             title: "高消耗会话",
             fillsProposedHeight: fillsProposedHeight
         ) {
-            Text("当前范围 · 按 Token 总量排序")
+            Text(overview.provider == .codex
+                ? localization.textValue("当前 Codex Home 已采集")
+                : "当前范围 · 按 Token 总量排序")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if !overview.sessionsAvailable {

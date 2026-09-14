@@ -16,7 +16,7 @@ type resetCreditModel struct {
 	Status       string `gorm:"column:status"`
 	ResetType    string `gorm:"column:reset_type"`
 	GrantedAtMS  int64  `gorm:"column:granted_at_ms"`
-	ExpiresAtMS  int64  `gorm:"column:expires_at_ms"`
+	ExpiresAtMS  *int64 `gorm:"column:expires_at_ms"`
 	RedeemedAtMS *int64 `gorm:"column:redeemed_at_ms"`
 }
 

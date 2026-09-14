@@ -8,11 +8,29 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
 // ErrCodexBinaryUnavailable 表示当前环境没有可执行的 Codex CLI。
 var ErrCodexBinaryUnavailable = errors.New("Codex binary unavailable")
+
+type CodexCapabilityState string
+
+const (
+	CodexCapabilityAccountRateLimits CodexCapabilityState = "account_rate_limits"
+	CodexCapabilityUnsupported       CodexCapabilityState = "unsupported"
+	CodexCapabilityUnavailable       CodexCapabilityState = "unavailable"
+)
+
+type CodexBinaryInspection struct {
+	Path            string
+	Version         string
+	CapabilityState CodexCapabilityState
+}
+
+var codexCLIVersionPattern = regexp.MustCompile(`(?i)(?:codex-cli[[:space:]]+)?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?`)
 
 type ProcessOptions struct {
 	CodexBinary string
@@ -149,26 +167,101 @@ func withInitializedLocalRPC[T any](
 	return operation(ctx, rpc, canonicalHome)
 }
 
+func InspectCodexBinary(path string) (CodexBinaryInspection, error) {
+	if path == "" {
+		return CodexBinaryInspection{CapabilityState: CodexCapabilityUnavailable}, ErrCodexBinaryUnavailable
+	}
+	resolved, err := executablePath(path)
+	if err != nil {
+		return CodexBinaryInspection{CapabilityState: CodexCapabilityUnavailable}, ErrCodexBinaryUnavailable
+	}
+	return inspectCodexBinary(resolved), nil
+}
+
 func resolveCodexBinary(explicit string, fallbacks []string) (string, error) {
 	if explicit != "" {
 		path, err := executablePath(explicit)
 		if err != nil {
 			return "", fmt.Errorf("%w: configured executable", ErrCodexBinaryUnavailable)
 		}
+		if inspectCodexBinary(path).CapabilityState != CodexCapabilityAccountRateLimits {
+			return "", ErrCapabilityUnavailable
+		}
 		return path, nil
 	}
+	seenExecutable := false
 	if path, err := executablePath("codex"); err == nil {
-		return path, nil
+		seenExecutable = true
+		if inspectCodexBinary(path).CapabilityState == CodexCapabilityAccountRateLimits {
+			return path, nil
+		}
 	}
 	for _, candidate := range fallbacks {
 		if candidate == "" {
 			continue
 		}
-		if path, err := executablePath(candidate); err == nil {
+		path, err := executablePath(candidate)
+		if err != nil {
+			continue
+		}
+		seenExecutable = true
+		if inspectCodexBinary(path).CapabilityState == CodexCapabilityAccountRateLimits {
 			return path, nil
 		}
 	}
+	if seenExecutable {
+		return "", ErrCapabilityUnavailable
+	}
 	return "", fmt.Errorf("%w: searched PATH and known installation locations", ErrCodexBinaryUnavailable)
+}
+
+func inspectCodexBinary(path string) CodexBinaryInspection {
+	inspection := CodexBinaryInspection{Path: path, CapabilityState: CodexCapabilityUnavailable}
+	output, err := exec.Command(path, "--version").Output()
+	if err != nil {
+		return inspection
+	}
+	version, capable := parseCodexCLIVersion(string(output))
+	inspection.Version = version
+	if version == "" {
+		inspection.CapabilityState = CodexCapabilityUnsupported
+		return inspection
+	}
+	if capable {
+		inspection.CapabilityState = CodexCapabilityAccountRateLimits
+		return inspection
+	}
+	inspection.CapabilityState = CodexCapabilityUnsupported
+	return inspection
+}
+
+func parseCodexCLIVersion(output string) (string, bool) {
+	match := codexCLIVersionPattern.FindStringSubmatch(strings.TrimSpace(output))
+	if match == nil {
+		return "", false
+	}
+	display := match[1] + "." + match[2] + "." + match[3]
+	if match[4] != "" {
+		return display + "-" + match[4], false
+	}
+	major, errMajor := strconv.Atoi(match[1])
+	minor, errMinor := strconv.Atoi(match[2])
+	patch, errPatch := strconv.Atoi(match[3])
+	if errMajor != nil || errMinor != nil || errPatch != nil {
+		return display, false
+	}
+	return display, compareCodexVersion(major, minor, patch, 0, 154, 0) >= 0
+}
+
+func compareCodexVersion(major, minor, patch, minMajor, minMinor, minPatch int) int {
+	switch {
+	case major != minMajor:
+		return major - minMajor
+	case minor != minMinor:
+		return minor - minMinor
+	default:
+		return patch - minPatch
+	}
 }
 
 func executablePath(candidate string) (string, error) {
@@ -180,13 +273,17 @@ func executablePath(candidate string) (string, error) {
 }
 
 func defaultCodexBinaryCandidates() []string {
-	candidates := []string{
+	var candidates []string
+	home, err := os.UserHomeDir()
+	if err == nil && home != "" {
+		candidates = append(candidates, filepath.Join(home, ".local", "bin", "codex"))
+	}
+	candidates = append(candidates,
 		"/Applications/ChatGPT.app/Contents/Resources/codex",
 		"/Applications/Codex.app/Contents/Resources/codex",
 		"/opt/homebrew/bin/codex",
 		"/usr/local/bin/codex",
-	}
-	home, err := os.UserHomeDir()
+	)
 	if err != nil || home == "" {
 		return candidates
 	}

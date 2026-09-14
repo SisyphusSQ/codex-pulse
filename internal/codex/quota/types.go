@@ -3,21 +3,28 @@ package quota
 import (
 	"context"
 	"errors"
-	"net/http"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
-const WhamUsageEndpoint = "https://chatgpt.com/backend-api/wham/usage"
-
 var (
-	ErrCredentialUnavailable = errors.New("quota credential is unavailable")
-	ErrInvalidClientConfig   = errors.New("quota client config is invalid")
+	ErrInvalidClientConfig = errors.New("quota client config is invalid")
 )
 
-type CredentialProvider interface {
-	WithAccessToken(context.Context, func([]byte) error) error
+type AccountBindingFence struct {
+	AccountScope      string
+	BindingGeneration int64
+}
+
+type BoundRefreshRequest struct {
+	RequestID string
+	Binding   AccountBindingFence
+}
+
+type AccountRateLimitsReader interface {
+	Read(context.Context, bool) (appserver.AccountRateLimitsSnapshot, error)
 }
 
 type RetryPolicy interface {
@@ -25,14 +32,13 @@ type RetryPolicy interface {
 }
 
 type ClientConfig struct {
-	Transport        http.RoundTripper
-	Credentials      CredentialProvider
-	Now              func() time.Time
-	Timeout          time.Duration
-	MaxAttempts      int
-	MaxResponseBytes int64
-	RetryPolicy      RetryPolicy
-	Wait             func(context.Context, time.Duration) error
+	Reader      AccountRateLimitsReader
+	ScopeKey    [32]byte
+	Now         func() time.Time
+	Timeout     time.Duration
+	MaxAttempts int
+	RetryPolicy RetryPolicy
+	Wait        func(context.Context, time.Duration) error
 }
 
 type Failure struct {

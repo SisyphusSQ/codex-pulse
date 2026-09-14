@@ -22,6 +22,9 @@ func (repository *Repository) RecordResetCreditsFetch(ctx context.Context, recor
 		return err
 	}
 	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+		if err := requireOnlineFetchAccountFence(ctx, transaction, record.AccountScope, record.ScopeKey, record.BindingGeneration); err != nil {
+			return err
+		}
 		database := transaction.WithContext(ctx)
 		existingAttempt, replay, err := sourceAttemptByID(ctx, database, record.Attempt.RequestID)
 		if err != nil {
@@ -104,7 +107,7 @@ func (repository *Repository) ResetCreditsSummary(
 	if repository == nil || repository.database == nil {
 		return ResetCreditsSummary{}, ErrInvalidRepository
 	}
-	if accountScope != QuotaAccountScopeDefault || evaluationAtMS < 0 ||
+	if !validCodexAccountScope(accountScope) || evaluationAtMS < 0 ||
 		evaluationAtMS > runtimeclock.MaxTimestampMS {
 		return ResetCreditsSummary{}, invalidRecord("reset credits summary input is invalid")
 	}
@@ -130,16 +133,21 @@ func resetCreditsSummaryFromDatabase(
 	summary := ResetCreditsSummary{
 		AccountScope: accountScope, FreshnessState: SourceFreshnessUnknown, EvaluationAtMS: evaluationAtMS,
 	}
-	if accountScope != QuotaAccountScopeDefault || evaluationAtMS < 0 ||
+	if !validCodexAccountScope(accountScope) || evaluationAtMS < 0 ||
 		evaluationAtMS > runtimeclock.MaxTimestampMS {
 		return ResetCreditsSummary{}, invalidRecord("reset credits summary input is invalid")
 	}
-	state, found, err := sourceStateByID(ctx, database, ResetCreditsSourceInstanceWhamDefault)
+	sourceInstanceID := ResetCreditsSourceInstanceWhamDefault
+	if validDerivedCodexAccountScope(accountScope) {
+		sourceInstanceID = ResetCreditsSourceInstanceAppServer(accountScope)
+	}
+	state, found, err := sourceStateByID(ctx, database, sourceInstanceID)
 	if err != nil {
 		return ResetCreditsSummary{}, err
 	}
 	if found {
-		if state.SourceType != ResetCreditsSourceTypeWham || state.ScopeKey != accountScope {
+		if !validSourceRefreshIdentity(state.SourceInstanceID, state.SourceType, state.ScopeKey) ||
+			(state.ScopeKey != accountScope && state.ScopeKey != QuotaAccountScopeDefault) {
 			return ResetCreditsSummary{}, invalidRecord("reset credits source state identity is invalid")
 		}
 		if err := validateSourceState(state); err != nil {
@@ -172,7 +180,7 @@ func resetCreditsSummaryFromDatabase(
 	if err != nil {
 		return ResetCreditsSummary{}, err
 	}
-	if !found || attempt.SourceInstanceID != ResetCreditsSourceInstanceWhamDefault ||
+	if !found || attempt.SourceInstanceID != sourceInstanceID ||
 		attempt.Outcome != SourceAttemptSucceeded || snapshot.ObservedAtMS < attempt.StartedAtMS ||
 		snapshot.ObservedAtMS > attempt.FinishedAtMS {
 		return ResetCreditsSummary{}, invalidRecord("reset credits snapshot attempt provenance is invalid")
@@ -185,8 +193,10 @@ func resetCreditsSummaryFromDatabase(
 }
 
 func validateResetCreditsFetchRecord(record ResetCreditsFetchRecord) error {
-	if record.SourceInstanceID != ResetCreditsSourceInstanceWhamDefault ||
-		record.SourceType != ResetCreditsSourceTypeWham || record.ScopeKey != QuotaAccountScopeDefault ||
+	if err := validateOnlineFetchAccountFence(record.AccountScope, record.ScopeKey, record.BindingGeneration); err != nil {
+		return err
+	}
+	if !validSourceRefreshIdentity(record.SourceInstanceID, record.SourceType, record.ScopeKey) ||
 		record.Attempt.SourceInstanceID != record.SourceInstanceID {
 		return invalidRecord("reset credits fetch source identity is invalid")
 	}
@@ -210,7 +220,7 @@ func validateResetCreditsFetchRecord(record ResetCreditsFetchRecord) error {
 		return nil
 	}
 	if record.Snapshot.RequestID != record.Attempt.RequestID ||
-		record.Snapshot.AccountScope != record.ScopeKey ||
+		!resetCreditsSnapshotScopeAllowed(record.Snapshot.AccountScope, record.ScopeKey) ||
 		record.Snapshot.ObservedAtMS < record.Attempt.StartedAtMS ||
 		record.Snapshot.ObservedAtMS > record.Attempt.FinishedAtMS {
 		return invalidRecord("reset credits snapshot provenance is invalid")
@@ -220,14 +230,13 @@ func validateResetCreditsFetchRecord(record ResetCreditsFetchRecord) error {
 
 func validateResetCreditsSnapshot(snapshot ResetCreditsSnapshot) error {
 	if snapshot.SnapshotID == "" || len(snapshot.SnapshotID) > 512 || snapshot.RequestID == "" ||
-		len(snapshot.RequestID) > 512 || snapshot.AccountScope != QuotaAccountScopeDefault ||
-		snapshot.AvailableCount < 0 || snapshot.AvailableCount > maxResetCreditsPerSnapshot ||
+		len(snapshot.RequestID) > 512 || !validCodexAccountScope(snapshot.AccountScope) ||
+		snapshot.AvailableCount < 0 || snapshot.AvailableCount > maxResetCreditsAvailableCount ||
 		len(snapshot.Credits) > maxResetCreditsPerSnapshot || snapshot.ObservedAtMS < 0 ||
 		snapshot.ObservedAtMS > runtimeclock.MaxTimestampMS {
 		return invalidRecord("reset credits snapshot is invalid")
 	}
 	seen := make(map[string]struct{}, len(snapshot.Credits))
-	available := int64(0)
 	for _, credit := range snapshot.Credits {
 		digest := credit.CreditIDHash.String()
 		if digest == "" {
@@ -238,28 +247,28 @@ func validateResetCreditsSnapshot(snapshot ResetCreditsSnapshot) error {
 		}
 		seen[digest] = struct{}{}
 		if !validResetCreditStatus(credit.Status) || !validResetCreditType(credit.Type) ||
-			credit.GrantedAtMS < 0 || credit.ExpiresAtMS < credit.GrantedAtMS ||
-			credit.ExpiresAtMS > runtimeclock.MaxTimestampMS {
+			credit.GrantedAtMS < 0 || (credit.ExpiresAtMS != nil &&
+			(*credit.ExpiresAtMS < credit.GrantedAtMS || *credit.ExpiresAtMS > runtimeclock.MaxTimestampMS)) {
 			return invalidRecord("reset credit fields are invalid")
 		}
 		if credit.RedeemedAtMS != nil && (*credit.RedeemedAtMS < credit.GrantedAtMS ||
-			*credit.RedeemedAtMS > credit.ExpiresAtMS) {
+			credit.ExpiresAtMS != nil && *credit.RedeemedAtMS > *credit.ExpiresAtMS) {
 			return invalidRecord("reset credit redeemed time is invalid")
 		}
 		switch credit.Status {
 		case ResetCreditAvailable:
-			if credit.RedeemedAtMS != nil || credit.ExpiresAtMS <= snapshot.ObservedAtMS {
+			if credit.RedeemedAtMS != nil ||
+				credit.ExpiresAtMS != nil && *credit.ExpiresAtMS <= snapshot.ObservedAtMS {
 				return invalidRecord("available reset credit is not currently usable")
 			}
-			available++
 		case ResetCreditRedeemed, ResetCreditUsed:
 			if credit.RedeemedAtMS == nil {
 				return invalidRecord("consumed reset credit lacks redeemed time")
 			}
 		}
 	}
-	if available != snapshot.AvailableCount {
-		return invalidRecord("reset credits available count conflicts with items")
+	if err := validateResetCreditsDetailsStatus(snapshot); err != nil {
+		return err
 	}
 	return nil
 }
@@ -295,6 +304,11 @@ func validateResetCreditsReplay(ctx context.Context, database *gorm.DB, record R
 	sort.Slice(incoming.Credits, func(left, right int) bool {
 		return incoming.Credits[left].CreditIDHash.String() < incoming.Credits[right].CreditIDHash.String()
 	})
+	normalizeResetCreditsDetailsStatus(&stored)
+	normalizeResetCreditsDetailsStatus(incoming)
+	if incoming.Credits == nil && len(stored.Credits) == 0 {
+		stored.Credits = nil
+	}
 	if !reflect.DeepEqual(stored, *incoming) {
 		return invalidRecord("reset credits fetch replay snapshot conflicts")
 	}
@@ -303,33 +317,53 @@ func validateResetCreditsReplay(ctx context.Context, database *gorm.DB, record R
 
 func populateResetCreditsSummary(summary *ResetCreditsSummary, snapshot ResetCreditsSnapshot, evaluationAtMS int64) {
 	snapshotID := snapshot.SnapshotID
+	summary.SnapshotID = &snapshotID
+	status := resetCreditsDetailsStatus(snapshot)
+	count := snapshot.AvailableCount
+	switch status {
+	case ResetCreditDetailsUnavailable:
+		summary.AvailableCount = &count
+		summary.Credits = nil
+		return
+	case ResetCreditDetailsPartial:
+		summary.AvailableCount = &count
+		summary.Credits = cloneResetCreditsSnapshot(&snapshot).Credits
+		return
+	}
 	available, cumulative := int64(0), int64(0)
 	var next *int64
+	unknownRemaining := false
 	for _, credit := range snapshot.Credits {
 		switch credit.Status {
 		case ResetCreditAvailable:
-			if credit.ExpiresAtMS <= evaluationAtMS {
+			if credit.ExpiresAtMS != nil && *credit.ExpiresAtMS <= evaluationAtMS {
 				continue
 			}
 			available++
-			remaining := credit.ExpiresAtMS - evaluationAtMS
+			if credit.ExpiresAtMS == nil {
+				unknownRemaining = true
+				continue
+			}
+			remaining := *credit.ExpiresAtMS - evaluationAtMS
 			if cumulative <= math.MaxInt64-remaining {
 				cumulative += remaining
 			} else {
 				cumulative = math.MaxInt64
 			}
-			if next == nil || credit.ExpiresAtMS < *next {
-				value := credit.ExpiresAtMS
+			if next == nil || *credit.ExpiresAtMS < *next {
+				value := *credit.ExpiresAtMS
 				next = &value
 			}
 		}
 	}
-	summary.SnapshotID = &snapshotID
 	summary.AvailableCount = &available
-	// Wham 返回的是当前库存：已兑换条目可以在后续响应中消失。
-	// 因此 len(Credits) 不是历史总量，也不能据此反推已使用数量。
-	summary.CumulativeRemainingMS = &cumulative
-	summary.NextExpiresAtMS = next
+	if unknownRemaining {
+		summary.CumulativeRemainingMS = nil
+		summary.NextExpiresAtMS = nil
+	} else {
+		summary.CumulativeRemainingMS = &cumulative
+		summary.NextExpiresAtMS = next
+	}
 	summary.Credits = cloneResetCreditsSnapshot(&snapshot).Credits
 }
 
@@ -359,6 +393,13 @@ func resetCreditsSnapshotFromModels(
 		AccountScope: snapshot.AccountScope, AvailableCount: snapshot.AvailableCount,
 		ObservedAtMS: snapshot.ObservedAtMS, Credits: make([]ResetCredit, len(credits)),
 	}
+	if len(credits) == 0 {
+		if snapshot.AvailableCount == 0 {
+			result.Credits = []ResetCredit{}
+		} else {
+			result.Credits = nil
+		}
+	}
 	for index, model := range credits {
 		if model.SnapshotID != snapshot.SnapshotID {
 			return ResetCreditsSnapshot{}, invalidRecord("reset credit snapshot reference is invalid")
@@ -373,12 +414,54 @@ func resetCreditsSnapshotFromModels(
 			RedeemedAtMS: cloneQuotaInt64Pointer(model.RedeemedAtMS),
 		}
 	}
+	normalizeResetCreditsDetailsStatus(&result)
 	return result, nil
 }
 
+func resetCreditsSnapshotScopeAllowed(accountScope, recordScopeKey string) bool {
+	return accountScope == recordScopeKey
+}
+
+func validateResetCreditsDetailsStatus(snapshot ResetCreditsSnapshot) error {
+	if snapshot.DetailsStatus == "" {
+		return nil
+	}
+	if snapshot.DetailsStatus != resetCreditsDetailsStatus(snapshot) {
+		return invalidRecord("reset credits details status conflicts with items")
+	}
+	return nil
+}
+
+func resetCreditsDetailsStatus(snapshot ResetCreditsSnapshot) ResetCreditDetailsStatus {
+	if snapshot.Credits == nil {
+		if snapshot.AvailableCount == 0 {
+			return ResetCreditDetailsComplete
+		}
+		return ResetCreditDetailsUnavailable
+	}
+	available := int64(0)
+	for _, credit := range snapshot.Credits {
+		if credit.Status == ResetCreditAvailable {
+			available++
+		}
+	}
+	if available < snapshot.AvailableCount {
+		return ResetCreditDetailsPartial
+	}
+	return ResetCreditDetailsComplete
+}
+
+func normalizeResetCreditsDetailsStatus(snapshot *ResetCreditsSnapshot) {
+	if snapshot == nil {
+		return
+	}
+	snapshot.DetailsStatus = resetCreditsDetailsStatus(*snapshot)
+}
+
 func validResetCreditStatus(value ResetCreditStatus) bool {
-	return value == ResetCreditAvailable || value == ResetCreditRedeemed ||
-		value == ResetCreditExpired || value == ResetCreditUsed
+	return value == ResetCreditAvailable || value == ResetCreditRedeeming ||
+		value == ResetCreditRedeemed || value == ResetCreditExpired ||
+		value == ResetCreditUsed || value == ResetCreditUnknown
 }
 
 func validResetCreditType(value ResetCreditType) bool {

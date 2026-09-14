@@ -81,7 +81,7 @@ func TestRefreshPolicyClassifiesContinuousBackoffAndRetryAfter(t *testing.T) {
 		{name: "retry after later", failure: store.SourceFailureHTTP429, failures: 1, retryAtMS: int64Pointer(now + 900_000), wantDue: int64Pointer(now + 900_000), wantReason: store.RefreshReasonRetryAfter},
 		{name: "retry after missing", failure: store.SourceFailureHTTP429, failures: 1, wantDue: int64Pointer(now + 300_000), wantReason: store.RefreshReasonNetworkBackoff},
 		{name: "auth retries", failure: store.SourceFailureAuthRequired, failures: 1, wantDue: int64Pointer(now + 300_000), wantReason: store.RefreshReasonNetworkBackoff},
-		{name: "schema retries capped", failure: store.SourceFailureSchemaIncompatible, failures: 9, wantDue: int64Pointer(now + 1_800_000), wantReason: store.RefreshReasonNetworkBackoff},
+		{name: "schema pauses automatic retry", failure: store.SourceFailureSchemaIncompatible, failures: 9, wantDue: nil, wantReason: store.RefreshReasonSchemaIncompatible},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -213,9 +213,9 @@ func TestRefreshPolicyRevalidatesStartupAndDisabledState(t *testing.T) {
 			ConsecutiveFailures: 9, FreshnessState: store.SourceFreshnessStale,
 		},
 	})
-	if err != nil || decision.ShouldFetch || decision.NextDueAtMS == nil ||
-		*decision.NextDueAtMS != now+1_800_000 || decision.Reason != store.RefreshReasonNetworkBackoff {
-		t.Fatalf("startup schema backoff recovery = %#v, %v", decision, err)
+	if err != nil || !decision.ShouldFetch || decision.NextDueAtMS == nil ||
+		*decision.NextDueAtMS != now || decision.Reason != store.RefreshReasonStartup {
+		t.Fatalf("startup schema identity recovery = %#v, %v", decision, err)
 	}
 	future := now + 3_600_000
 	decision, err = policy.Plan(RefreshPlanInput{

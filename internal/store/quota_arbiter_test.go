@@ -1570,7 +1570,7 @@ func quotaArbiterObservation(id string, source QuotaSource, used float64, observ
 		FirstObservedAtMS: observedAt, LastObservedAtMS: observedAt, SampleCount: 1,
 		FirstSourceGeneration: 1, SourceGeneration: 1, FirstSourceOffset: observedAt, SourceOffset: observedAt,
 	}
-	if source == QuotaSourceWham {
+	if source == QuotaSourceWham || source == QuotaSourceAppServer {
 		value.RequestID = &requestID
 	} else {
 		value.SourceFileID = &sourceFileID

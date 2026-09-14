@@ -2,6 +2,7 @@ package quota
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -15,6 +16,9 @@ type Service struct {
 	client        *Client
 	recorder      Recorder
 	recordTimeout time.Duration
+
+	mu      sync.Mutex
+	binding AccountBindingFence
 }
 
 func NewService(client *Client, recorder Recorder, recordTimeout time.Duration) (*Service, error) {
@@ -24,26 +28,52 @@ func NewService(client *Client, recorder Recorder, recordTimeout time.Duration) 
 	return &Service{client: client, recorder: recorder, recordTimeout: recordTimeout}, nil
 }
 
+func (service *Service) SetBinding(binding AccountBindingFence) {
+	if service == nil {
+		return
+	}
+	service.mu.Lock()
+	service.binding = binding
+	service.mu.Unlock()
+}
+
 func (service *Service) Fetch(ctx context.Context, requestID string) (Result, error) {
+	if service == nil {
+		return Result{}, ErrInvalidClientConfig
+	}
+	service.mu.Lock()
+	binding := service.binding
+	service.mu.Unlock()
+	return service.FetchBound(ctx, BoundRefreshRequest{RequestID: requestID, Binding: binding})
+}
+
+func (service *Service) FetchBound(ctx context.Context, request BoundRefreshRequest) (Result, error) {
 	if service == nil {
 		return Result{}, ErrInvalidClientConfig
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	result, err := service.client.Fetch(ctx, requestID)
+	result, err := service.client.Fetch(ctx, request)
 	if err != nil {
 		return result, err
 	}
-	record := quotaFetchRecord(requestID, result)
+	service.mu.Lock()
+	current := service.binding
+	service.mu.Unlock()
+	if current != request.Binding {
+		return Result{}, store.ErrCodexAccountBindingChanged
+	}
+	record := quotaFetchRecord(request, result)
 	recordContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), service.recordTimeout)
 	defer cancel()
 	return result, service.recorder.RecordQuotaFetch(recordContext, record)
 }
 
-func quotaFetchRecord(requestID string, result Result) store.QuotaFetchRecord {
+func quotaFetchRecord(request BoundRefreshRequest, result Result) store.QuotaFetchRecord {
+	sourceInstanceID := store.QuotaSourceInstanceAppServer(request.Binding.AccountScope)
 	attempt := store.SourceAttempt{
-		RequestID: requestID, SourceInstanceID: store.QuotaSourceInstanceWhamDefault,
+		RequestID: request.RequestID, SourceInstanceID: sourceInstanceID,
 		StartedAtMS: result.StartedAtMS, FinishedAtMS: result.FinishedAtMS,
 		HTTPStatus: cloneInt64(result.HTTPStatus), PayloadSHA256: result.PayloadSHA256,
 		AttemptCount: result.AttemptCount, ResponseBytes: result.ResponseBytes,
@@ -63,8 +93,10 @@ func quotaFetchRecord(requestID string, result Result) store.QuotaFetchRecord {
 		}
 	}
 	return store.QuotaFetchRecord{
-		SourceInstanceID: store.QuotaSourceInstanceWhamDefault,
-		SourceType:       store.QuotaSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+		AccountScope:      request.Binding.AccountScope,
+		BindingGeneration: request.Binding.BindingGeneration,
+		SourceInstanceID:  sourceInstanceID,
+		SourceType:        store.QuotaSourceTypeAppServerRateLimits, ScopeKey: request.Binding.AccountScope,
 		Attempt: attempt, Observations: append([]store.QuotaObservationSample(nil), result.Observations...),
 	}
 }

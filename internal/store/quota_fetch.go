@@ -18,6 +18,9 @@ func (repository *Repository) RecordQuotaFetch(ctx context.Context, record Quota
 		return err
 	}
 	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+		if err := requireOnlineFetchAccountFence(ctx, transaction, record.AccountScope, record.ScopeKey, record.BindingGeneration); err != nil {
+			return err
+		}
 		database := transaction.WithContext(ctx)
 		existingAttempt, replay, err := sourceAttemptByID(ctx, database, record.Attempt.RequestID)
 		if err != nil {
@@ -92,8 +95,11 @@ func (repository *Repository) RecordQuotaFetch(ctx context.Context, record Quota
 }
 
 func validateQuotaFetchRecord(record QuotaFetchRecord) error {
-	if record.SourceInstanceID != QuotaSourceInstanceWhamDefault || record.SourceType != QuotaSourceTypeWham ||
-		record.ScopeKey != QuotaAccountScopeDefault || record.Attempt.SourceInstanceID != record.SourceInstanceID {
+	if err := validateOnlineFetchAccountFence(record.AccountScope, record.ScopeKey, record.BindingGeneration); err != nil {
+		return err
+	}
+	if !validSourceRefreshIdentity(record.SourceInstanceID, record.SourceType, record.ScopeKey) ||
+		record.Attempt.SourceInstanceID != record.SourceInstanceID {
 		return invalidRecord("quota fetch source identity is invalid")
 	}
 	if err := validateSourceAttempt(record.Attempt); err != nil {
@@ -107,7 +113,8 @@ func validateQuotaFetchRecord(record QuotaFetchRecord) error {
 		if err := validateQuotaObservationSample(observation); err != nil {
 			return err
 		}
-		if observation.Source != QuotaSourceWham || observation.AccountScope != record.ScopeKey ||
+		if !quotaFetchObservationSourceAllowed(observation.Source) ||
+			!quotaFetchObservationScopeAllowed(observation.AccountScope, record.ScopeKey) ||
 			observation.RequestID == nil || *observation.RequestID != record.Attempt.RequestID ||
 			observation.SessionID != nil || observation.SourceFileID != nil ||
 			observation.ObservedAtMS < record.Attempt.StartedAtMS || observation.ObservedAtMS > record.Attempt.FinishedAtMS {
@@ -129,8 +136,8 @@ func validateQuotaFetchRecord(record QuotaFetchRecord) error {
 
 func validateQuotaFetchFailureMapping(attempt SourceAttempt) error {
 	if attempt.Outcome == SourceAttemptSucceeded {
-		if attempt.HTTPStatus == nil || *attempt.HTTPStatus != 200 {
-			return invalidRecord("successful quota fetch needs HTTP 200")
+		if attempt.HTTPStatus != nil && *attempt.HTTPStatus != 200 {
+			return invalidRecord("successful quota fetch HTTP status is invalid")
 		}
 		return nil
 	}
@@ -161,14 +168,11 @@ func validateQuotaFetchFailureMapping(attempt SourceAttempt) error {
 		}
 	case SourceFailureServerError:
 		wantClass = RuntimeErrorUnavailable
-		if attempt.HTTPStatus == nil || *attempt.HTTPStatus < 500 || *attempt.HTTPStatus > 599 {
+		if attempt.HTTPStatus != nil && (*attempt.HTTPStatus < 500 || *attempt.HTTPStatus > 599) {
 			return invalidRecord("server failure status is invalid")
 		}
 	case SourceFailureSchemaIncompatible:
 		wantClass = RuntimeErrorInvalid
-		if attempt.HTTPStatus == nil {
-			return invalidRecord("schema failure needs HTTP status")
-		}
 	case SourceFailureCancelled:
 		wantClass = RuntimeErrorCanceled
 		if attempt.Outcome != SourceAttemptCancelled || attempt.HTTPStatus != nil {
@@ -262,7 +266,7 @@ func quotaFetchHasAcceptedObservation(observations []QuotaObservationSample) boo
 func validateQuotaFetchReplay(database *gorm.DB, record QuotaFetchRecord) error {
 	var storedIDs []string
 	if err := database.Model(&quotaObservationModel{}).
-		Where("source = ? AND request_id = ?", string(QuotaSourceWham), record.Attempt.RequestID).
+		Where("source IN ? AND request_id = ?", []string{string(QuotaSourceWham), string(QuotaSourceAppServer)}, record.Attempt.RequestID).
 		Order("observation_id").Pluck("observation_id", &storedIDs).Error; err != nil {
 		return err
 	}
@@ -280,6 +284,55 @@ func validateQuotaFetchReplay(database *gorm.DB, record QuotaFetchRecord) error 
 		}
 	}
 	return nil
+}
+
+func quotaFetchObservationSourceAllowed(source QuotaSource) bool {
+	return source == QuotaSourceWham || source == QuotaSourceAppServer
+}
+
+func quotaFetchObservationScopeAllowed(accountScope, recordScopeKey string) bool {
+	return accountScope == recordScopeKey
+}
+
+func onlineFetchAccountScope(accountScope, scopeKey string) string {
+	if accountScope != "" {
+		return accountScope
+	}
+	return scopeKey
+}
+
+func validateOnlineFetchAccountFence(accountScope, scopeKey string, bindingGeneration int64) error {
+	scope := onlineFetchAccountScope(accountScope, scopeKey)
+	if validDerivedCodexAccountScope(scope) || bindingGeneration > 0 {
+		if accountScope != "" && accountScope != scopeKey {
+			return invalidRecord("online fetch account fence does not match scope key")
+		}
+		if !validDerivedCodexAccountScope(scope) || bindingGeneration <= 0 {
+			return invalidRecord("online fetch account fence is invalid")
+		}
+		return nil
+	}
+	if bindingGeneration != 0 {
+		return invalidRecord("legacy online fetch cannot carry a binding generation")
+	}
+	if accountScope != "" && accountScope != QuotaAccountScopeDefault {
+		return invalidRecord("legacy online fetch account scope is invalid")
+	}
+	return nil
+}
+
+func requireOnlineFetchAccountFence(
+	ctx context.Context,
+	transaction *gorm.DB,
+	accountScope string,
+	scopeKey string,
+	bindingGeneration int64,
+) error {
+	scope := onlineFetchAccountScope(accountScope, scopeKey)
+	if !validDerivedCodexAccountScope(scope) && bindingGeneration == 0 {
+		return nil
+	}
+	return requireCodexAccountFence(ctx, transaction, scope, bindingGeneration)
 }
 
 func cloneSourceFailureCode(value *SourceFailureCode) *SourceFailureCode {

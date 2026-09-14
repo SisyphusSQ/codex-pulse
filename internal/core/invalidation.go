@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-const InvalidationContractVersion = "query-invalidation-v2"
+const InvalidationContractVersion = "query-invalidation-v3"
 
 var ErrInvalidation = errors.New("core invalidation is invalid")
 
@@ -15,6 +15,7 @@ type InvalidationDomain string
 const (
 	InvalidationIndex    InvalidationDomain = "index"
 	InvalidationQuota    InvalidationDomain = "quota"
+	InvalidationAccount  InvalidationDomain = "account"
 	InvalidationHealth   InvalidationDomain = "health"
 	InvalidationSettings InvalidationDomain = "settings"
 )
@@ -169,7 +170,7 @@ func (subscriber *invalidationSubscriber) accepts(domain InvalidationDomain) boo
 
 func validInvalidationDomain(domain InvalidationDomain) bool {
 	switch domain {
-	case InvalidationIndex, InvalidationQuota, InvalidationHealth, InvalidationSettings:
+	case InvalidationIndex, InvalidationQuota, InvalidationAccount, InvalidationHealth, InvalidationSettings:
 		return true
 	default:
 		return false

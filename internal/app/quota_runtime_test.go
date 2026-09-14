@@ -3,9 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,32 +41,15 @@ func TestApplicationQuotaRuntimeStartsEnabledSourcesAndStops(t *testing.T) {
 	initialPreferences := enabledQuotaRuntimePreferences(t, home)
 	loader := &quotaRuntimePreferencesLoader{snapshot: initialPreferences}
 	requests := make(chan string, 2)
-	transportFailures := make(chan error, 1)
-	transport := quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-		requests <- request.URL.String()
-		if request.Header.Get("Authorization") != "Bearer synthetic-runtime-access-token" {
-			failure := errors.New("Authorization header was not sourced from the confirmed Home")
-			select {
-			case transportFailures <- failure:
-			default:
-			}
-			return nil, failure
-		}
-		body := validQuotaRuntimeUsagePayload()
-		if request.URL.String() == quotaonline.WhamResetCreditsEndpoint {
-			body = validQuotaRuntimeResetCreditsPayload()
-		}
-		return quotaRuntimeJSONResponse(body), nil
-	})
 
-	runtime, err := startApplicationQuotaRuntime(context.Background(), ApplicationQuotaRuntimeConfig{
+	runtime, err := startApplicationQuotaRuntime(context.Background(), withBoundQuotaRuntime(t, repository, ApplicationQuotaRuntimeConfig{
 		Repository:  repository,
 		Preferences: loader,
-		Transport:   transport,
+		Reader:      newQuotaRuntimeSuccessReader(requests),
 		Clock: func() time.Time {
 			return time.UnixMilli(quotaRuntimeNowMS).UTC()
 		},
-	})
+	}))
 	if err != nil {
 		t.Fatalf("startApplicationQuotaRuntime() error = %v", err)
 	}
@@ -86,10 +66,9 @@ func TestApplicationQuotaRuntimeStartsEnabledSourcesAndStops(t *testing.T) {
 			t.Fatalf("startup requests = %#v", seen)
 		}
 	}
-	if !seen[quotaonline.WhamUsageEndpoint] || !seen[quotaonline.WhamResetCreditsEndpoint] {
+	if !seen[quotaRuntimeReadQuota] || !seen[quotaRuntimeReadReset] {
 		t.Fatalf("startup requests = %#v", seen)
 	}
-	assertNoQuotaRuntimeTransportFailure(t, transportFailures)
 
 	waitForQuotaRuntimeState(t, repository, store.QuotaSourceInstanceWhamDefault, func(state store.SourceState) bool {
 		return state.LastSuccessAtMS != nil && state.LastFailureCode == nil
@@ -97,10 +76,7 @@ func TestApplicationQuotaRuntimeStartsEnabledSourcesAndStops(t *testing.T) {
 	waitForQuotaRuntimeState(t, repository, store.ResetCreditsSourceInstanceWhamDefault, func(state store.SourceState) bool {
 		return state.LastSuccessAtMS != nil && state.LastFailureCode == nil
 	})
-	for _, sourceInstanceID := range []string{
-		store.QuotaSourceInstanceWhamDefault,
-		store.ResetCreditsSourceInstanceWhamDefault,
-	} {
+	for _, sourceInstanceID := range quotaRuntimeInstances(t, repository) {
 		waitForQuotaRuntimeSchedule(t, repository, sourceInstanceID, func(schedule store.SourceRefreshSchedule) bool {
 			return schedule.NextDueAtMS != nil && schedule.ActiveClaimID == nil
 		})
@@ -114,10 +90,10 @@ func TestApplicationQuotaRuntimeStartsEnabledSourcesAndStops(t *testing.T) {
 	if err := runtime.Close(closeContext); err != nil {
 		t.Fatalf("Close(second) error = %v", err)
 	}
-	restarted, err := startApplicationQuotaRuntime(context.Background(), ApplicationQuotaRuntimeConfig{
-		Repository: repository, Preferences: loader, Transport: transport,
-		Clock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
-	})
+	restarted, err := startApplicationQuotaRuntime(context.Background(), withBoundQuotaRuntime(t, repository, ApplicationQuotaRuntimeConfig{
+		Repository: repository, Preferences: loader,
+		Reader: newQuotaRuntimeSuccessReader(nil), Clock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+	}))
 	if err != nil || restarted == nil {
 		t.Fatalf("startApplicationQuotaRuntime(restart) = %#v, %v", restarted, err)
 	}
@@ -139,71 +115,73 @@ func TestApplicationQuotaRuntimeStartsEnabledSourcesAndStops(t *testing.T) {
 	}
 }
 
-func TestApplicationQuotaRuntimeRecordsMissingCredentialAndManualRecovery(t *testing.T) {
+func TestApplicationQuotaRuntimeMarksMissingIdentityUnavailableAndManualRecovery(t *testing.T) {
 	t.Parallel()
 
+	ctx := t.Context()
 	database, repository := openQuotaRuntimeStore(t)
 	home := t.TempDir()
 	loader := &quotaRuntimePreferencesLoader{
 		snapshot: enabledQuotaRuntimePreferences(t, home),
 	}
-	transportCalls := make(chan string, 2)
+	calls := make(chan string, 8)
+	reader := newQuotaRuntimeSuccessReader(calls)
+	reader.missingID.Store(true)
 	var nowMS atomic.Int64
 	nowMS.Store(quotaRuntimeNowMS)
-	runtime, err := startApplicationQuotaRuntime(context.Background(), ApplicationQuotaRuntimeConfig{
+	config := withBoundQuotaRuntime(t, repository, ApplicationQuotaRuntimeConfig{
 		Repository:  repository,
 		Preferences: loader,
-		Transport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-			transportCalls <- request.URL.String()
-			if request.URL.String() == quotaonline.WhamResetCreditsEndpoint {
-				return quotaRuntimeJSONResponse(validQuotaRuntimeResetCreditsPayload()), nil
-			}
-			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-		}),
-		Clock: func() time.Time { return time.UnixMilli(nowMS.Load()).UTC() },
+		Reader:      reader,
+		Clock:       func() time.Time { return time.UnixMilli(nowMS.Load()).UTC() },
 	})
+	before, err := repository.CodexAccountBinding(ctx)
+	if err != nil || before.AccountScope == nil {
+		t.Fatalf("CodexAccountBinding(before missing identity) = %#v, %v", before, err)
+	}
+	oldScope := *before.AccountScope
+	runtime, err := startApplicationQuotaRuntime(ctx, config)
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationQuotaRuntime() = %#v, %v", runtime, err)
 	}
 
+	unavailable := waitForQuotaRuntimeBinding(t, repository, func(binding store.CodexAccountBinding) bool {
+		return binding.State == store.CodexAccountBindingIdentityUnavailable
+	})
+	if unavailable.AccountScope != nil || unavailable.BindingGeneration <= before.BindingGeneration {
+		t.Fatalf("CodexAccountBinding(missing identity) = %#v", unavailable)
+	}
 	for _, sourceInstanceID := range []string{
-		store.QuotaSourceInstanceWhamDefault,
-		store.ResetCreditsSourceInstanceWhamDefault,
+		store.QuotaSourceInstanceAppServer(oldScope),
+		store.ResetCreditsSourceInstanceAppServer(oldScope),
 	} {
-		waitForQuotaRuntimeState(t, repository, sourceInstanceID, func(state store.SourceState) bool {
-			return state.LastFailureCode != nil && *state.LastFailureCode == store.SourceFailureAuthRequired
-		})
-		waitForQuotaRuntimeSchedule(t, repository, sourceInstanceID, func(schedule store.SourceRefreshSchedule) bool {
-			return schedule.NextDueAtMS != nil && *schedule.NextDueAtMS > quotaRuntimeNowMS &&
-				*schedule.NextDueAtMS <= quotaRuntimeNowMS+330_000 && schedule.ActiveClaimID == nil &&
-				schedule.Reason == store.RefreshReasonNetworkBackoff
-		})
+		if _, err := repository.SourceState(ctx, sourceInstanceID); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("SourceState(%q) error = %v, want ErrNotFound", sourceInstanceID, err)
+		}
 	}
-	select {
-	case <-transportCalls:
-		t.Fatal("transport ran without credentials")
-	default:
-	}
-	if err := os.WriteFile(
-		filepath.Join(home, "auth.json"),
-		[]byte(`{"tokens":{"access_token":"synthetic-recovered-access-token"}}`),
-		0o600,
-	); err != nil {
-		t.Fatalf("os.WriteFile(recovered auth.json) error = %v", err)
-	}
+	reader.missingID.Store(false)
 	nowMS.Store(quotaRuntimeNowMS + 61_000)
-	if _, err := runtime.RequestRefresh(
-		context.Background(), quotaonline.RefreshSourceQuota, store.RefreshTriggerManual,
-	); err != nil {
-		t.Fatalf("RequestRefresh(quota) error = %v", err)
+	for _, source := range []quotaonline.RefreshSource{
+		quotaonline.RefreshSourceQuota,
+		quotaonline.RefreshSourceResetCredits,
+	} {
+		if _, err := runtime.RequestRefresh(ctx, source, store.RefreshTriggerManual); err != nil {
+			t.Fatalf("RequestRefresh(%s) error = %v", source, err)
+		}
 	}
-	waitForQuotaRuntimeRequests(t, transportCalls, 2)
 	waitForQuotaRuntimeState(t, repository, store.QuotaSourceInstanceWhamDefault, func(state store.SourceState) bool {
 		return state.LastSuccessAtMS != nil && state.LastFailureCode == nil
 	})
 	waitForQuotaRuntimeState(t, repository, store.ResetCreditsSourceInstanceWhamDefault, func(state store.SourceState) bool {
 		return state.LastSuccessAtMS != nil && state.LastFailureCode == nil
 	})
+	recovered := waitForQuotaRuntimeBinding(t, repository, func(binding store.CodexAccountBinding) bool {
+		return binding.State == store.CodexAccountBindingConfirmed
+	})
+	if recovered.AccountScope == nil || *recovered.AccountScope != oldScope ||
+		recovered.BindingGeneration <= before.BindingGeneration {
+		t.Fatalf("CodexAccountBinding(manual recovery) = %#v", recovered)
+	}
 
 	closeContext, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -223,36 +201,28 @@ func TestApplicationQuotaRuntimeCloseCancelsInflightRequestAndClearsAuthorizatio
 	snapshot := enabledQuotaRuntimePreferences(t, home)
 	snapshot.Online.ResetCreditsEnabled = false
 	loader := &quotaRuntimePreferencesLoader{snapshot: snapshot}
-	started := make(chan *http.Request, 1)
-	transport := quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-		started <- request
-		<-request.Context().Done()
-		return nil, request.Context().Err()
-	})
-	runtime, err := startApplicationQuotaRuntime(context.Background(), ApplicationQuotaRuntimeConfig{
-		Repository: repository, Preferences: loader, Transport: transport,
-		Clock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
-	})
+	started := make(chan struct{}, 1)
+	reader := newQuotaRuntimeSuccessReader(nil)
+	reader.started = started
+	reader.block = make(chan struct{})
+	runtime, err := startApplicationQuotaRuntime(context.Background(), withBoundQuotaRuntime(t, repository, ApplicationQuotaRuntimeConfig{
+		Repository: repository, Preferences: loader,
+		Reader: reader,
+		Clock:  func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationQuotaRuntime() = %#v, %v", runtime, err)
 	}
-	var retained *http.Request
 	select {
-	case retained = <-started:
-		if retained.Header.Get("Authorization") != "Bearer synthetic-cancel-access-token" {
-			t.Fatal("inflight request did not carry the leased credential")
-		}
+	case <-started:
 	case <-time.After(2 * time.Second):
-		t.Fatal("startup request did not reach transport")
+		t.Fatal("startup request did not reach App Server reader")
 	}
 
 	closeContext, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if err := runtime.Close(closeContext); err != nil {
 		t.Fatalf("runtime.Close() error = %v", err)
-	}
-	if retained.Header.Get("Authorization") != "" {
-		t.Fatal("Authorization header remained after cancellation")
 	}
 	rejectedContext, rejectCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer rejectCancel()
@@ -266,7 +236,7 @@ func TestApplicationQuotaRuntimeCloseCancelsInflightRequestAndClearsAuthorizatio
 	if err := runtime.ReconcilePreferences(rejectedContext); !errors.Is(err, ErrApplicationQuotaRuntime) {
 		t.Fatalf("ReconcilePreferences(after Close) error = %v, want ErrApplicationQuotaRuntime", err)
 	}
-	state, err := repository.SourceState(context.Background(), store.QuotaSourceInstanceWhamDefault)
+	state, err := repository.SourceState(context.Background(), quotaRuntimeInstance(t, repository, store.QuotaSourceInstanceWhamDefault))
 	if err != nil || state.LastFailureCode == nil || *state.LastFailureCode != store.SourceFailureCancelled {
 		t.Fatalf("SourceState(quota) = %#v, %v", state, err)
 	}
@@ -284,29 +254,20 @@ func TestApplicationQuotaRuntimeReconcilesEnableDisableAndPreservesHistory(t *te
 	snapshot.Online = preferences.OnlinePreferences{}
 	loader := &quotaRuntimePreferencesLoader{snapshot: snapshot}
 	requests := make(chan string, 1)
-	runtime, err := startApplicationQuotaRuntime(context.Background(), ApplicationQuotaRuntimeConfig{
+	runtime, err := startApplicationQuotaRuntime(context.Background(), withBoundQuotaRuntime(t, repository, ApplicationQuotaRuntimeConfig{
 		Repository: repository, Preferences: loader,
-		Transport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-			requests <- request.URL.String()
-			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-		}),
-		Clock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
-	})
+		Reader: newQuotaRuntimeSuccessReader(requests),
+		Clock:  func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationQuotaRuntime() = %#v, %v", runtime, err)
 	}
-	for _, sourceInstanceID := range []string{
-		store.QuotaSourceInstanceWhamDefault,
-		store.ResetCreditsSourceInstanceWhamDefault,
-	} {
+	for _, sourceInstanceID := range quotaRuntimeInstances(t, repository) {
 		waitForQuotaRuntimeSchedule(t, repository, sourceInstanceID, func(schedule store.SourceRefreshSchedule) bool {
 			return schedule.Reason == store.RefreshReasonDisabled && schedule.NextDueAtMS == nil
 		})
 	}
-	for _, sourceInstanceID := range []string{
-		store.QuotaSourceInstanceWhamDefault,
-		store.ResetCreditsSourceInstanceWhamDefault,
-	} {
+	for _, sourceInstanceID := range quotaRuntimeInstances(t, repository) {
 		schedule, scheduleErr := repository.SourceRefreshSchedule(context.Background(), sourceInstanceID)
 		if scheduleErr != nil || schedule.Reason != store.RefreshReasonDisabled || schedule.NextDueAtMS != nil {
 			t.Fatalf("SourceRefreshSchedule(%q) = %#v, %v", sourceInstanceID, schedule, scheduleErr)
@@ -327,18 +288,18 @@ func TestApplicationQuotaRuntimeReconcilesEnableDisableAndPreservesHistory(t *te
 	}
 	select {
 	case endpoint := <-requests:
-		if endpoint != quotaonline.WhamUsageEndpoint {
+		if endpoint != quotaRuntimeReadQuota {
 			t.Fatalf("enabled source endpoint = %q", endpoint)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("newly enabled Quota source did not enter startup due")
 	}
-	stateBeforeDisable, err := repository.SourceState(context.Background(), store.QuotaSourceInstanceWhamDefault)
+	stateBeforeDisable, err := repository.SourceState(context.Background(), quotaRuntimeInstance(t, repository, store.QuotaSourceInstanceWhamDefault))
 	if err != nil || stateBeforeDisable.LastSuccessAtMS == nil {
 		t.Fatalf("SourceState(before disable) = %#v, %v", stateBeforeDisable, err)
 	}
 	attemptsBeforeDisable, err := repository.ListSourceAttempts(
-		context.Background(), store.QuotaSourceInstanceWhamDefault, 10,
+		context.Background(), quotaRuntimeInstance(t, repository, store.QuotaSourceInstanceWhamDefault), 10,
 	)
 	if err != nil || len(attemptsBeforeDisable) != 1 {
 		t.Fatalf("ListSourceAttempts(before disable) = %#v, %v", attemptsBeforeDisable, err)
@@ -351,17 +312,17 @@ func TestApplicationQuotaRuntimeReconcilesEnableDisableAndPreservesHistory(t *te
 	if err := runtime.ReconcilePreferences(context.Background()); err != nil {
 		t.Fatalf("ReconcilePreferences(disable quota) error = %v", err)
 	}
-	schedule, err := repository.SourceRefreshSchedule(context.Background(), store.QuotaSourceInstanceWhamDefault)
+	schedule, err := repository.SourceRefreshSchedule(context.Background(), quotaRuntimeInstance(t, repository, store.QuotaSourceInstanceWhamDefault))
 	if err != nil || schedule.Reason != store.RefreshReasonDisabled || schedule.NextDueAtMS != nil {
 		t.Fatalf("SourceRefreshSchedule(disabled quota) = %#v, %v", schedule, err)
 	}
-	stateAfterDisable, err := repository.SourceState(context.Background(), store.QuotaSourceInstanceWhamDefault)
+	stateAfterDisable, err := repository.SourceState(context.Background(), quotaRuntimeInstance(t, repository, store.QuotaSourceInstanceWhamDefault))
 	if err != nil || stateAfterDisable.LastSuccessAtMS == nil ||
 		*stateAfterDisable.LastSuccessAtMS != *stateBeforeDisable.LastSuccessAtMS {
 		t.Fatalf("SourceState(after disable) = %#v, %v", stateAfterDisable, err)
 	}
 	attemptsAfterDisable, err := repository.ListSourceAttempts(
-		context.Background(), store.QuotaSourceInstanceWhamDefault, 10,
+		context.Background(), quotaRuntimeInstance(t, repository, store.QuotaSourceInstanceWhamDefault), 10,
 	)
 	if err != nil || len(attemptsAfterDisable) != len(attemptsBeforeDisable) {
 		t.Fatalf("ListSourceAttempts(after disable) = %#v, %v", attemptsAfterDisable, err)
@@ -389,12 +350,10 @@ func TestApplicationQuotaRuntimeCloseSealsAndDrainsAdmittedOperation(t *testing.
 	releaseAdmission := make(chan struct{})
 	admissionSealed := make(chan struct{})
 	var admissionOnce sync.Once
-	runtime, err := startApplicationQuotaRuntime(context.Background(), ApplicationQuotaRuntimeConfig{
+	runtime, err := startApplicationQuotaRuntime(context.Background(), withBoundQuotaRuntime(t, repository, ApplicationQuotaRuntimeConfig{
 		Repository: repository, Preferences: loader,
-		Transport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-		}),
-		Clock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+		Reader: newQuotaRuntimeSuccessReader(nil),
+		Clock:  func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
 		hooks: quotaRuntimeHooks{
 			afterAdmission: func() {
 				admissionOnce.Do(func() {
@@ -404,14 +363,11 @@ func TestApplicationQuotaRuntimeCloseSealsAndDrainsAdmittedOperation(t *testing.
 			},
 			afterAdmissionSealed: func() { close(admissionSealed) },
 		},
-	})
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationQuotaRuntime() = %#v, %v", runtime, err)
 	}
-	for _, sourceInstanceID := range []string{
-		store.QuotaSourceInstanceWhamDefault,
-		store.ResetCreditsSourceInstanceWhamDefault,
-	} {
+	for _, sourceInstanceID := range quotaRuntimeInstances(t, repository) {
 		waitForQuotaRuntimeSchedule(t, repository, sourceInstanceID, func(schedule store.SourceRefreshSchedule) bool {
 			return schedule.Reason == store.RefreshReasonDisabled && schedule.NextDueAtMS == nil
 		})
@@ -483,12 +439,10 @@ func TestApplicationQuotaRuntimeConcurrentResumeIsSerializedAndIdempotent(t *tes
 	secondResumeEntered := make(chan struct{})
 	releaseResume := make(chan struct{})
 	var resumeCount atomic.Int32
-	runtime, err := startApplicationQuotaRuntime(context.Background(), ApplicationQuotaRuntimeConfig{
+	runtime, err := startApplicationQuotaRuntime(context.Background(), withBoundQuotaRuntime(t, repository, ApplicationQuotaRuntimeConfig{
 		Repository: repository, Preferences: loader,
-		Transport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-		}),
-		Clock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+		Reader: newQuotaRuntimeSuccessReader(nil),
+		Clock:  func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
 		hooks: quotaRuntimeHooks{
 			beforeResumeReadback: func() {
 				switch resumeCount.Add(1) {
@@ -500,7 +454,7 @@ func TestApplicationQuotaRuntimeConcurrentResumeIsSerializedAndIdempotent(t *tes
 				<-releaseResume
 			},
 		},
-	})
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationQuotaRuntime() = %#v, %v", runtime, err)
 	}
@@ -555,12 +509,10 @@ func TestApplicationQuotaRuntimeFatalRunnerCancelsAdmittedOperation(t *testing.T
 	operationAdmitted := make(chan struct{})
 	runnerFailure := errors.New("synthetic quota runner fatal")
 	var admissionOnce sync.Once
-	runtime, err := startApplicationQuotaRuntime(context.Background(), ApplicationQuotaRuntimeConfig{
+	runtime, err := startApplicationQuotaRuntime(context.Background(), withBoundQuotaRuntime(t, repository, ApplicationQuotaRuntimeConfig{
 		Repository: repository, Preferences: loader,
-		Transport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-		}),
-		Clock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+		Reader: newQuotaRuntimeSuccessReader(nil),
+		Clock:  func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
 		hooks: quotaRuntimeHooks{
 			runRunner: func(context.Context) error {
 				close(runnerStarted)
@@ -572,7 +524,7 @@ func TestApplicationQuotaRuntimeFatalRunnerCancelsAdmittedOperation(t *testing.T
 				<-ctx.Done()
 			},
 		},
-	})
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationQuotaRuntime() = %#v, %v", runtime, err)
 	}
@@ -628,33 +580,17 @@ func TestApplicationLifecycleRuntimeComposesQuotaControlHooksAndForeground(t *te
 	initialPreferences := enabledQuotaRuntimePreferences(t, home)
 	loader := &quotaRuntimePreferencesLoader{snapshot: initialPreferences}
 	requests := make(chan string, 8)
-	transportFailures := make(chan error, 1)
-	transport := quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-		requests <- request.URL.String()
-		if request.Header.Get("Authorization") != "Bearer synthetic-lifecycle-access-token" {
-			failure := errors.New("Authorization header was not sourced from the confirmed Home")
-			select {
-			case transportFailures <- failure:
-			default:
-			}
-			return nil, failure
-		}
-		if request.URL.String() == quotaonline.WhamResetCreditsEndpoint {
-			return quotaRuntimeJSONResponse(validQuotaRuntimeResetCreditsPayload()), nil
-		}
-		return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-	})
 	var nowMS atomic.Int64
 	nowMS.Store(quotaRuntimeNowMS)
-	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+	runtime, err := startApplicationLifecycleRuntime(context.Background(), withBoundLifecycleQuota(t, repository, ApplicationLifecycleRuntimeConfig{
 		Database: database, Preferences: loader,
-		EventTimeout: time.Second, QuotaTransport: transport,
-		QuotaClock: func() time.Time { return time.UnixMilli(nowMS.Load()).UTC() },
-	})
+		QuotaReader:  newQuotaRuntimeSuccessReader(requests),
+		EventTimeout: time.Second, QuotaClock: func() time.Time { return time.UnixMilli(nowMS.Load()).UTC() },
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
 	}
-	waitForQuotaRuntimeRequests(t, requests, 2)
+	waitForQuotaRuntimeReads(t, requests, 2)
 	waitForQuotaRuntimeState(t, repository, store.QuotaSourceInstanceWhamDefault, func(state store.SourceState) bool {
 		return state.LastSuccessAtMS != nil && state.LastFailureCode == nil
 	})
@@ -672,11 +608,8 @@ func TestApplicationLifecycleRuntimeComposesQuotaControlHooksAndForeground(t *te
 	if err := runtime.adapter.NotifyLifecycle(t.Context(), "application_did_become_active"); err != nil {
 		t.Fatalf("NotifyLifecycle() error = %v", err)
 	}
-	waitForQuotaRuntimeRequests(t, requests, 2)
-	for _, sourceInstanceID := range []string{
-		store.QuotaSourceInstanceWhamDefault,
-		store.ResetCreditsSourceInstanceWhamDefault,
-	} {
+	waitForQuotaRuntimeReads(t, requests, 2)
+	for _, sourceInstanceID := range quotaRuntimeInstances(t, repository) {
 		waitForQuotaRuntimeState(t, repository, sourceInstanceID, func(state store.SourceState) bool {
 			return state.LastSuccessAtMS != nil && *state.LastSuccessAtMS == nowMS.Load() && state.LastFailureCode == nil
 		})
@@ -689,10 +622,7 @@ func TestApplicationLifecycleRuntimeComposesQuotaControlHooksAndForeground(t *te
 	if err := runtime.reconcileQuotaPreferencesForTest(context.Background()); err != nil {
 		t.Fatalf("reconcileQuotaPreferencesForTest(disabled) error = %v", err)
 	}
-	for _, sourceInstanceID := range []string{
-		store.QuotaSourceInstanceWhamDefault,
-		store.ResetCreditsSourceInstanceWhamDefault,
-	} {
+	for _, sourceInstanceID := range quotaRuntimeInstances(t, repository) {
 		schedule, scheduleErr := repository.SourceRefreshSchedule(context.Background(), sourceInstanceID)
 		if scheduleErr != nil || schedule.Reason != store.RefreshReasonDisabled || schedule.NextDueAtMS != nil {
 			t.Fatalf("SourceRefreshSchedule(%q) = %#v, %v", sourceInstanceID, schedule, scheduleErr)
@@ -711,13 +641,12 @@ func TestApplicationLifecycleRuntimeComposesQuotaControlHooksAndForeground(t *te
 	}
 	select {
 	case endpoint := <-requests:
-		if endpoint != quotaonline.WhamUsageEndpoint {
+		if endpoint != quotaRuntimeReadQuota {
 			t.Fatalf("manual refresh endpoint = %q", endpoint)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("manual refresh did not call Quota endpoint")
 	}
-	assertNoQuotaRuntimeTransportFailure(t, transportFailures)
 
 	closeContext, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -738,23 +667,13 @@ func TestApplicationQuotaLifecycleCoordinatorSuspendsRequestsAcrossSleepAndResum
 	snapshot.Online.ResetCreditsEnabled = false
 	loader := &quotaRuntimePreferencesLoader{snapshot: snapshot}
 	requests := make(chan string, 4)
-	blockedRequests := make(chan *http.Request, 1)
-	var blockRequests atomic.Bool
+	reader := newQuotaRuntimeSuccessReader(requests)
 	var nowMS atomic.Int64
 	nowMS.Store(quotaRuntimeNowMS)
-	transport := quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-		requests <- request.URL.String()
-		if blockRequests.Load() {
-			blockedRequests <- request
-			<-request.Context().Done()
-			return nil, request.Context().Err()
-		}
-		return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-	})
-	quotaRuntime, err := startApplicationQuotaRuntime(context.Background(), ApplicationQuotaRuntimeConfig{
-		Repository: repository, Preferences: loader, Transport: transport,
-		Clock: func() time.Time { return time.UnixMilli(nowMS.Load()).UTC() },
-	})
+	quotaRuntime, err := startApplicationQuotaRuntime(context.Background(), withBoundQuotaRuntime(t, repository, ApplicationQuotaRuntimeConfig{
+		Repository: repository, Preferences: loader,
+		Reader: reader, Clock: func() time.Time { return time.UnixMilli(nowMS.Load()).UTC() },
+	}))
 	if err != nil || quotaRuntime == nil {
 		t.Fatalf("startApplicationQuotaRuntime() = %#v, %v", quotaRuntime, err)
 	}
@@ -764,7 +683,7 @@ func TestApplicationQuotaLifecycleCoordinatorSuspendsRequestsAcrossSleepAndResum
 		_ = quotaRuntime.Close(closeContext)
 		_ = database.Close(closeContext)
 	})
-	waitForQuotaRuntimeRequest(t, requests, quotaonline.WhamUsageEndpoint)
+	waitForQuotaRuntimeRequest(t, requests, quotaRuntimeReadQuota)
 	waitForQuotaRuntimeState(t, repository, store.QuotaSourceInstanceWhamDefault, func(state store.SourceState) bool {
 		return state.LastSuccessAtMS != nil && state.LastFailureCode == nil
 	})
@@ -773,7 +692,10 @@ func TestApplicationQuotaLifecycleCoordinatorSuspendsRequestsAcrossSleepAndResum
 	})
 
 	nowMS.Store(quotaRuntimeNowMS + 61_000)
-	blockRequests.Store(true)
+	started := make(chan struct{}, 1)
+	block := make(chan struct{})
+	reader.started = started
+	reader.block = block
 	refreshDone := make(chan error, 1)
 	go func() {
 		_, refreshErr := quotaRuntime.RequestRefresh(
@@ -781,13 +703,12 @@ func TestApplicationQuotaLifecycleCoordinatorSuspendsRequestsAcrossSleepAndResum
 		)
 		refreshDone <- refreshErr
 	}()
-	var blockedRequest *http.Request
 	select {
-	case blockedRequest = <-blockedRequests:
+	case <-started:
 	case <-time.After(2 * time.Second):
-		t.Fatal("manual quota request did not reach the blocking transport")
+		t.Fatal("manual quota request did not reach the blocking App Server reader")
 	}
-	waitForQuotaRuntimeRequest(t, requests, quotaonline.WhamUsageEndpoint)
+	waitForQuotaRuntimeRequest(t, requests, quotaRuntimeReadQuota)
 
 	generation := int64(snapshot.CodexHome.Generation)
 	local := &quotaLifecycleCoordinatorStub{
@@ -821,7 +742,10 @@ func TestApplicationQuotaLifecycleCoordinatorSuspendsRequestsAcrossSleepAndResum
 		t.Fatal("quota runtime still accepted work after local sleep handling began")
 	}
 	select {
-	case <-blockedRequest.Context().Done():
+	case refreshErr := <-refreshDone:
+		if refreshErr != nil {
+			t.Fatalf("cancelled manual refresh error = %v", refreshErr)
+		}
 	case <-time.After(time.Second):
 		t.Fatal("SystemWillSleep did not cancel the in-flight quota request")
 	}
@@ -834,25 +758,17 @@ func TestApplicationQuotaLifecycleCoordinatorSuspendsRequestsAcrossSleepAndResum
 	case <-time.After(2 * time.Second):
 		t.Fatal("SystemWillSleep did not finish after the local drain completed")
 	}
-	select {
-	case refreshErr := <-refreshDone:
-		if refreshErr != nil {
-			t.Fatalf("cancelled manual refresh error = %v", refreshErr)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("cancelled manual refresh did not drain")
-	}
 	waitForQuotaRuntimeState(t, repository, store.QuotaSourceInstanceWhamDefault, func(state store.SourceState) bool {
 		return state.ConsecutiveFailures == 0 && state.LastFailureCode != nil &&
 			*state.LastFailureCode == store.SourceFailureCancelled
 	})
 
-	blockRequests.Store(false)
+	reader.block = nil
 	nowMS.Store(quotaRuntimeNowMS + 10*time.Minute.Milliseconds())
 	if _, err := lifecycle.SystemDidWake(context.Background(), "wake:quota-runtime"); err != nil {
 		t.Fatalf("SystemDidWake() error = %v", err)
 	}
-	waitForQuotaRuntimeRequest(t, requests, quotaonline.WhamUsageEndpoint)
+	waitForQuotaRuntimeRequest(t, requests, quotaRuntimeReadQuota)
 	waitForQuotaRuntimeState(t, repository, store.QuotaSourceInstanceWhamDefault, func(state store.SourceState) bool {
 		return state.LastSuccessAtMS != nil && *state.LastSuccessAtMS == nowMS.Load() &&
 			state.ConsecutiveFailures == 0 && state.LastFailureCode == nil
@@ -908,27 +824,18 @@ func TestApplicationLifecycleRuntimeCommitsSettingsBeforeQuotaReconcile(t *testi
 	preferenceStore := confirmedQuotaRuntimeFileStore(t, home, true, true)
 	requests := make(chan string, 2)
 	invalidation := &recordingQueryInvalidationNotifier{}
-	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+	runtime, err := startApplicationLifecycleRuntime(context.Background(), withBoundLifecycleQuota(t, repository, ApplicationLifecycleRuntimeConfig{
 		Database: database, Preferences: preferenceStore,
+		QuotaReader:  newQuotaRuntimeSuccessReader(requests),
 		Invalidation: invalidation,
 		EventTimeout: time.Second,
-		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-			requests <- request.URL.String()
-			if request.URL.String() == quotaonline.WhamResetCreditsEndpoint {
-				return quotaRuntimeJSONResponse(validQuotaRuntimeResetCreditsPayload()), nil
-			}
-			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-		}),
-		QuotaClock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
-	})
+		QuotaClock:   func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
 	}
-	waitForQuotaRuntimeRequests(t, requests, 2)
-	for _, sourceInstanceID := range []string{
-		store.QuotaSourceInstanceWhamDefault,
-		store.ResetCreditsSourceInstanceWhamDefault,
-	} {
+	waitForQuotaRuntimeReads(t, requests, 2)
+	for _, sourceInstanceID := range quotaRuntimeInstances(t, repository) {
 		waitForQuotaRuntimeSchedule(t, repository, sourceInstanceID, func(schedule store.SourceRefreshSchedule) bool {
 			return schedule.NextDueAtMS != nil && schedule.ActiveClaimID == nil
 		})
@@ -963,10 +870,7 @@ func TestApplicationLifecycleRuntimeCommitsSettingsBeforeQuotaReconcile(t *testi
 	if err != nil || readback.Revision != committed.Revision || readback.Online != committed.Online {
 		t.Fatalf("LoadPreferences(after settings) = %#v, %v", readback, err)
 	}
-	for _, sourceInstanceID := range []string{
-		store.QuotaSourceInstanceWhamDefault,
-		store.ResetCreditsSourceInstanceWhamDefault,
-	} {
+	for _, sourceInstanceID := range quotaRuntimeInstances(t, repository) {
 		schedule, scheduleErr := repository.SourceRefreshSchedule(context.Background(), sourceInstanceID)
 		if scheduleErr != nil || schedule.Reason != store.RefreshReasonDisabled || schedule.NextDueAtMS != nil {
 			t.Fatalf("SourceRefreshSchedule(%q) = %#v, %v", sourceInstanceID, schedule, scheduleErr)
@@ -995,22 +899,17 @@ func TestApplicationLifecycleRuntimeReturnsCommittedSettingsOnReconcileFailure(t
 	}
 	preferenceStore := confirmedQuotaRuntimeFileStore(t, home, false, false)
 	invalidation := &recordingQueryInvalidationNotifier{}
-	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+	runtime, err := startApplicationLifecycleRuntime(context.Background(), withBoundLifecycleQuota(t, repository, ApplicationLifecycleRuntimeConfig{
 		Database: database, Preferences: preferenceStore,
+		QuotaReader:  newQuotaRuntimeSuccessReader(nil),
 		Invalidation: invalidation,
 		EventTimeout: time.Second,
-		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-		}),
-		QuotaClock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
-	})
+		QuotaClock:   func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
 	}
-	for _, sourceInstanceID := range []string{
-		store.QuotaSourceInstanceWhamDefault,
-		store.ResetCreditsSourceInstanceWhamDefault,
-	} {
+	for _, sourceInstanceID := range quotaRuntimeInstances(t, repository) {
 		waitForQuotaRuntimeSchedule(t, repository, sourceInstanceID, func(schedule store.SourceRefreshSchedule) bool {
 			return schedule.Reason == store.RefreshReasonDisabled && schedule.NextDueAtMS == nil
 		})
@@ -1064,7 +963,7 @@ func TestApplicationLifecycleRuntimeReturnsCommittedSettingsOnReconcileFailure(t
 func TestApplicationLifecycleRuntimeBeginDrainSealsAdmissionAndDrainsSettingsUpdate(t *testing.T) {
 	t.Parallel()
 
-	database, _ := openQuotaRuntimeStore(t)
+	database, repository := openQuotaRuntimeStore(t)
 	home := writeSyntheticAuthHome(t, "synthetic-close-settings-access-token")
 	for _, directory := range []string{"sessions", "archived_sessions"} {
 		if err := os.Mkdir(filepath.Join(home, directory), 0o700); err != nil {
@@ -1072,14 +971,12 @@ func TestApplicationLifecycleRuntimeBeginDrainSealsAdmissionAndDrainsSettingsUpd
 		}
 	}
 	preferenceStore := confirmedQuotaRuntimeFileStore(t, home, false, false)
-	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+	runtime, err := startApplicationLifecycleRuntime(context.Background(), withBoundLifecycleQuota(t, repository, ApplicationLifecycleRuntimeConfig{
 		Database: database, Preferences: preferenceStore,
+		QuotaReader:  newQuotaRuntimeSuccessReader(nil),
 		EventTimeout: time.Second,
-		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-		}),
-		QuotaClock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
-	})
+		QuotaClock:   func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
 	}
@@ -1158,7 +1055,7 @@ func TestApplicationLifecycleRuntimeBeginDrainSealsAdmissionAndDrainsSettingsUpd
 func TestApplicationLifecycleRuntimeSettingsAndHomeConfirmDoNotDeadlock(t *testing.T) {
 	t.Parallel()
 
-	database, _ := openQuotaRuntimeStore(t)
+	database, repository := openQuotaRuntimeStore(t)
 	homeA := writeSyntheticAuthHome(t, "synthetic-settings-home-a-token")
 	homeB := writeSyntheticAuthHome(t, "synthetic-settings-home-b-token")
 	for _, home := range []string{homeA, homeB} {
@@ -1172,13 +1069,11 @@ func TestApplicationLifecycleRuntimeSettingsAndHomeConfirmDoNotDeadlock(t *testi
 	settingsAdmitted := make(chan struct{})
 	releaseSettings := make(chan struct{})
 	var admissionOnce sync.Once
-	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+	runtime, err := startApplicationLifecycleRuntime(context.Background(), withBoundLifecycleQuota(t, repository, ApplicationLifecycleRuntimeConfig{
 		Database: database, Preferences: preferenceStore,
+		QuotaReader:  newQuotaRuntimeSuccessReader(nil),
 		EventTimeout: time.Second,
-		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-		}),
-		QuotaClock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+		QuotaClock:   func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
 		quotaHooks: quotaRuntimeHooks{
 			afterAdmission: func() {
 				admissionOnce.Do(func() {
@@ -1187,7 +1082,7 @@ func TestApplicationLifecycleRuntimeSettingsAndHomeConfirmDoNotDeadlock(t *testi
 				})
 			},
 		},
-	})
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
 	}
@@ -1252,7 +1147,7 @@ func TestApplicationLifecycleRuntimeSettingsAndHomeConfirmDoNotDeadlock(t *testi
 func TestApplicationLifecycleRuntimeRecoversPendingResumeBeforeQuotaStart(t *testing.T) {
 	t.Parallel()
 
-	database, _ := openQuotaRuntimeStore(t)
+	database, repository := openQuotaRuntimeStore(t)
 	home := writeSyntheticAuthHome(t, "synthetic-pending-resume-token")
 	for _, directory := range []string{"sessions", "archived_sessions"} {
 		if err := os.Mkdir(filepath.Join(home, directory), 0o700); err != nil {
@@ -1262,18 +1157,12 @@ func TestApplicationLifecycleRuntimeRecoversPendingResumeBeforeQuotaStart(t *tes
 	preferenceStore := confirmedQuotaRuntimeFileStore(t, home, true, false)
 	installQuotaRuntimePendingResume(t, preferenceStore)
 	requests := make(chan quotaHomeRequestEvent, 2)
-	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+	runtime, err := startApplicationLifecycleRuntime(context.Background(), withBoundLifecycleQuota(t, repository, ApplicationLifecycleRuntimeConfig{
 		Database: database, Preferences: preferenceStore,
+		QuotaReader:  newQuotaRuntimeHomeReader(preferenceStore, requests),
 		EventTimeout: time.Second,
-		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-			requests <- quotaHomeRequestEvent{
-				authorization: request.Header.Get("Authorization"),
-				request:       request,
-			}
-			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-		}),
-		QuotaClock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
-	})
+		QuotaClock:   func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
 	}
@@ -1285,9 +1174,7 @@ func TestApplicationLifecycleRuntimeRecoversPendingResumeBeforeQuotaStart(t *tes
 	}
 	assertQuotaRuntimeLifecycleGeneration(t, database, 1)
 	request := waitForQuotaHomeRequest(t, requests)
-	if request.authorization != "Bearer synthetic-pending-resume-token" {
-		t.Fatalf("recovered Authorization = %q", request.authorization)
-	}
+	assertQuotaRuntimeHome(t, request, home)
 	if err := runtime.Close(context.Background()); err != nil {
 		t.Fatalf("runtime.Close() error = %v", err)
 	}
@@ -1299,7 +1186,7 @@ func TestApplicationLifecycleRuntimeRecoversPendingResumeBeforeQuotaStart(t *tes
 func TestApplicationLifecycleRuntimeRollsBackPendingSwitchBeforeQuotaStart(t *testing.T) {
 	t.Parallel()
 
-	database, _ := openQuotaRuntimeStore(t)
+	database, repository := openQuotaRuntimeStore(t)
 	homeA := writeSyntheticAuthHome(t, "synthetic-pending-old-token")
 	homeB := writeSyntheticAuthHome(t, "synthetic-pending-target-token")
 	for _, home := range []string{homeA, homeB} {
@@ -1312,18 +1199,12 @@ func TestApplicationLifecycleRuntimeRollsBackPendingSwitchBeforeQuotaStart(t *te
 	preferenceStore := confirmedQuotaRuntimeFileStore(t, homeA, true, false)
 	installQuotaRuntimePendingSwitch(t, preferenceStore, homeB)
 	requests := make(chan quotaHomeRequestEvent, 2)
-	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+	runtime, err := startApplicationLifecycleRuntime(context.Background(), withBoundLifecycleQuota(t, repository, ApplicationLifecycleRuntimeConfig{
 		Database: database, Preferences: preferenceStore,
+		QuotaReader:  newQuotaRuntimeHomeReader(preferenceStore, requests),
 		EventTimeout: time.Second,
-		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-			requests <- quotaHomeRequestEvent{
-				authorization: request.Header.Get("Authorization"),
-				request:       request,
-			}
-			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-		}),
-		QuotaClock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
-	})
+		QuotaClock:   func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
 	}
@@ -1335,9 +1216,7 @@ func TestApplicationLifecycleRuntimeRollsBackPendingSwitchBeforeQuotaStart(t *te
 	}
 	assertQuotaRuntimeLifecycleGeneration(t, database, 1)
 	request := waitForQuotaHomeRequest(t, requests)
-	if request.authorization != "Bearer synthetic-pending-old-token" {
-		t.Fatalf("rollback Authorization = %q", request.authorization)
-	}
+	assertQuotaRuntimeHome(t, request, homeA)
 	if err := runtime.Close(context.Background()); err != nil {
 		t.Fatalf("runtime.Close() error = %v", err)
 	}
@@ -1373,18 +1252,12 @@ func TestApplicationLifecycleRuntimeFinalizesPendingSwitchBeforeQuotaStart(t *te
 		t.Fatalf("StartBootstrap(pending target) error = %v", err)
 	}
 	requests := make(chan quotaHomeRequestEvent, 2)
-	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+	runtime, err := startApplicationLifecycleRuntime(context.Background(), withBoundLifecycleQuota(t, repository, ApplicationLifecycleRuntimeConfig{
 		Database: database, Preferences: preferenceStore,
+		QuotaReader:  newQuotaRuntimeHomeReader(preferenceStore, requests),
 		EventTimeout: time.Second,
-		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-			requests <- quotaHomeRequestEvent{
-				authorization: request.Header.Get("Authorization"),
-				request:       request,
-			}
-			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-		}),
-		QuotaClock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
-	})
+		QuotaClock:   func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
 	}
@@ -1408,9 +1281,7 @@ func TestApplicationLifecycleRuntimeFinalizesPendingSwitchBeforeQuotaStart(t *te
 	}
 	assertQuotaRuntimeLifecycleGeneration(t, database, 2)
 	request := waitForQuotaHomeRequest(t, requests)
-	if request.authorization != "Bearer synthetic-finalize-target-token" {
-		t.Fatalf("finalize Authorization = %q", request.authorization)
-	}
+	assertQuotaRuntimeHome(t, request, homeB)
 	if err := runtime.Close(context.Background()); err != nil {
 		t.Fatalf("runtime.Close() error = %v", err)
 	}
@@ -1422,7 +1293,7 @@ func TestApplicationLifecycleRuntimeFinalizesPendingSwitchBeforeQuotaStart(t *te
 func TestApplicationLifecycleRuntimeKeepsUnknownPendingSwitchSuspended(t *testing.T) {
 	t.Parallel()
 
-	database, _ := openQuotaRuntimeStore(t)
+	database, repository := openQuotaRuntimeStore(t)
 	homeA := writeSyntheticAuthHome(t, "synthetic-unknown-old-token")
 	homeB := writeSyntheticAuthHome(t, "synthetic-unknown-target-token")
 	for _, home := range []string{homeA, homeB} {
@@ -1436,19 +1307,16 @@ func TestApplicationLifecycleRuntimeKeepsUnknownPendingSwitchSuspended(t *testin
 	pending := installQuotaRuntimePendingSwitch(t, preferenceStore, homeB)
 	statusFailure := errors.New("synthetic bootstrap status unavailable")
 	transportCalls := make(chan struct{}, 1)
-	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+	runtime, err := startApplicationLifecycleRuntime(context.Background(), withBoundLifecycleQuota(t, repository, ApplicationLifecycleRuntimeConfig{
 		Database: database, Preferences: preferenceStore,
+		QuotaReader:  newQuotaRuntimeSuccessReader(nil),
 		EventTimeout: time.Second,
-		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-			transportCalls <- struct{}{}
-			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-		}),
-		QuotaClock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+		QuotaClock:   func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
 		homeRuntime: &quotaStartupHomeRuntime{
 			status: preferences.BootstrapStatusNotStarted,
 			err:    statusFailure,
 		},
-	})
+	}))
 	if runtime != nil || !errors.Is(err, ErrApplicationLifecycleRuntime) {
 		t.Fatalf("startApplicationLifecycleRuntime(unknown) = %#v, %v", runtime, err)
 	}
@@ -1486,30 +1354,19 @@ func TestApplicationLifecycleRuntimeDrainsQuotaBeforeHomeSwitch(t *testing.T) {
 	requests := make(chan quotaHomeRequestEvent, 8)
 	oldRequestStarted := make(chan struct{}, 1)
 	releaseOldRequest := make(chan struct{})
-	var blockOldRequest atomic.Bool
 	var nowMS atomic.Int64
 	nowMS.Store(quotaRuntimeNowMS)
-	transport := quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-		authorization := request.Header.Get("Authorization")
-		requests <- quotaHomeRequestEvent{authorization: authorization, request: request}
-		if blockOldRequest.Load() && authorization == "Bearer synthetic-home-a-access-token" {
-			oldRequestStarted <- struct{}{}
-			<-releaseOldRequest
-		}
-		return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-	})
-	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+	reader := newQuotaRuntimeHomeReader(preferenceStore, requests)
+	runtime, err := startApplicationLifecycleRuntime(context.Background(), withBoundLifecycleQuota(t, repository, ApplicationLifecycleRuntimeConfig{
 		Database: database, Preferences: preferenceStore,
-		EventTimeout: time.Second, QuotaTransport: transport,
-		QuotaClock: func() time.Time { return time.UnixMilli(nowMS.Load()).UTC() },
-	})
+		QuotaReader:  reader,
+		EventTimeout: time.Second, QuotaClock: func() time.Time { return time.UnixMilli(nowMS.Load()).UTC() },
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
 	}
 	initialRequest := waitForQuotaHomeRequest(t, requests)
-	if initialRequest.authorization != "Bearer synthetic-home-a-access-token" {
-		t.Fatalf("startup Authorization = %q", initialRequest.authorization)
-	}
+	assertQuotaRuntimeHome(t, initialRequest, homeA)
 	waitForQuotaRuntimeSchedule(t, repository, store.QuotaSourceInstanceWhamDefault, func(schedule store.SourceRefreshSchedule) bool {
 		return schedule.NextDueAtMS != nil && schedule.ActiveClaimID == nil
 	})
@@ -1519,16 +1376,15 @@ func TestApplicationLifecycleRuntimeDrainsQuotaBeforeHomeSwitch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PlanQuotaHomeSwitch() error = %v", err)
 	}
-	blockOldRequest.Store(true)
+	reader.started = oldRequestStarted
+	reader.block = releaseOldRequest
 	manualDone := make(chan error, 1)
 	go func() {
 		_, manualErr := runtime.RequestQuotaRefresh(context.Background(), quotaonline.RefreshSourceQuota)
 		manualDone <- manualErr
 	}()
 	oldRequest := waitForQuotaHomeRequest(t, requests)
-	if oldRequest.authorization != "Bearer synthetic-home-a-access-token" {
-		t.Fatalf("old manual Authorization = %q", oldRequest.authorization)
-	}
+	assertQuotaRuntimeHome(t, oldRequest, homeA)
 	select {
 	case <-oldRequestStarted:
 	case <-time.After(2 * time.Second):
@@ -1577,9 +1433,6 @@ func TestApplicationLifecycleRuntimeDrainsQuotaBeforeHomeSwitch(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("old manual request did not drain")
 	}
-	if oldRequest.request.Header.Get("Authorization") != "" {
-		t.Fatal("old request retained Authorization after drain")
-	}
 	var switched preferences.Snapshot
 	select {
 	case result := <-confirmDone:
@@ -1600,26 +1453,24 @@ func TestApplicationLifecycleRuntimeDrainsQuotaBeforeHomeSwitch(t *testing.T) {
 		lifecycleAfterSwitch.SourceState != store.LifecycleSourceAvailable {
 		t.Fatalf("lifecycle after switch = %#v, %v", lifecycleAfterSwitch, err)
 	}
-	blockOldRequest.Store(false)
+	reader.block = nil
 	nowMS.Store(quotaRuntimeNowMS + 61*time.Second.Milliseconds())
 	if _, err := runtime.RequestQuotaRefresh(context.Background(), quotaonline.RefreshSourceQuota); err != nil {
 		t.Fatalf("RequestQuotaRefresh(new Home) error = %v", err)
 	}
 	newRequest := waitForQuotaHomeRequest(t, requests)
-	if newRequest.authorization != "Bearer synthetic-home-b-access-token" {
-		t.Fatalf("new Home Authorization = %q", newRequest.authorization)
-	}
+	assertQuotaRuntimeHome(t, newRequest, homeB)
 
 	closeContext, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if err := runtime.Close(closeContext); err != nil {
 		t.Fatalf("runtime.Close() error = %v", err)
 	}
-	restarted, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+	restarted, err := startApplicationLifecycleRuntime(context.Background(), withBoundLifecycleQuota(t, repository, ApplicationLifecycleRuntimeConfig{
 		Database: database, Preferences: preferenceStore,
-		EventTimeout: time.Second, QuotaTransport: transport,
-		QuotaClock: func() time.Time { return time.UnixMilli(nowMS.Load()).UTC() },
-	})
+		QuotaReader:  newQuotaRuntimeHomeReader(preferenceStore, requests),
+		EventTimeout: time.Second, QuotaClock: func() time.Time { return time.UnixMilli(nowMS.Load()).UTC() },
+	}))
 	if err != nil || restarted == nil {
 		t.Fatalf("startApplicationLifecycleRuntime(restart) = %#v, %v", restarted, err)
 	}
@@ -1649,32 +1500,23 @@ func TestApplicationLifecycleRuntimeHomeSwitchRearmsCredentialBackedOffQuotaSour
 	preferenceStore := confirmedQuotaRuntimeFileStore(
 		t, homeWithoutCredentials, true, true,
 	)
-	requests := make(chan quotaHomeRequestEvent, 2)
-	transport := quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-		requests <- quotaHomeRequestEvent{
-			authorization: request.Header.Get("Authorization"),
-			request:       request,
-		}
-		if request.URL.String() == quotaonline.WhamResetCreditsEndpoint {
-			return quotaRuntimeJSONResponse(validQuotaRuntimeResetCreditsPayload()), nil
-		}
-		return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-	})
-	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+	requests := make(chan quotaHomeRequestEvent, 16)
+	reader := newQuotaRuntimeHomeReader(preferenceStore, requests)
+	reader.failWhenHome = func(path string) bool {
+		return path == quotaRuntimePreferencesForHome(t, homeWithoutCredentials).CodexHome.Source.Path
+	}
+	runtime, err := startApplicationLifecycleRuntime(context.Background(), withBoundLifecycleQuota(t, repository, ApplicationLifecycleRuntimeConfig{
 		Database: database, Preferences: preferenceStore,
-		EventTimeout: time.Second, QuotaTransport: transport,
-		QuotaClock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
-	})
+		QuotaReader:  reader,
+		EventTimeout: time.Second, QuotaClock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
 	}
-	for _, sourceInstanceID := range []string{
-		store.QuotaSourceInstanceWhamDefault,
-		store.ResetCreditsSourceInstanceWhamDefault,
-	} {
+	for _, sourceInstanceID := range quotaRuntimeInstances(t, repository) {
 		waitForQuotaRuntimeState(t, repository, sourceInstanceID, func(state store.SourceState) bool {
 			return state.LastFailureCode != nil &&
-				*state.LastFailureCode == store.SourceFailureAuthRequired
+				*state.LastFailureCode == store.SourceFailureNetworkUnavailable
 		})
 		waitForQuotaRuntimeSchedule(t, repository, sourceInstanceID, func(schedule store.SourceRefreshSchedule) bool {
 			return schedule.NextDueAtMS != nil && *schedule.NextDueAtMS > quotaRuntimeNowMS &&
@@ -1682,6 +1524,14 @@ func TestApplicationLifecycleRuntimeHomeSwitchRearmsCredentialBackedOffQuotaSour
 				schedule.Reason == store.RefreshReasonNetworkBackoff
 		})
 	}
+	for {
+		select {
+		case <-requests:
+		default:
+			goto drainedHomeFailureEvents
+		}
+	}
+drainedHomeFailureEvents:
 
 	plan, err := runtime.PlanQuotaHomeSwitch(
 		context.Background(), homeWithCredentials, preferences.HomeSwitchClearAndRebuild,
@@ -1696,18 +1546,13 @@ func TestApplicationLifecycleRuntimeHomeSwitchRearmsCredentialBackedOffQuotaSour
 	seen := make(map[string]bool, 2)
 	for len(seen) < 2 {
 		request := waitForQuotaHomeRequest(t, requests)
-		if request.authorization != "Bearer synthetic-home-switch-recovery-token" {
-			t.Fatalf("Home switch Authorization = %q", request.authorization)
-		}
-		seen[request.request.URL.String()] = true
+		assertQuotaRuntimeHome(t, request, homeWithCredentials)
+		seen[request.kind] = true
 	}
-	if !seen[quotaonline.WhamUsageEndpoint] || !seen[quotaonline.WhamResetCreditsEndpoint] {
+	if !seen[quotaRuntimeReadQuota] || !seen[quotaRuntimeReadReset] {
 		t.Fatalf("Home switch requests = %#v", seen)
 	}
-	for _, sourceInstanceID := range []string{
-		store.QuotaSourceInstanceWhamDefault,
-		store.ResetCreditsSourceInstanceWhamDefault,
-	} {
+	for _, sourceInstanceID := range quotaRuntimeInstances(t, repository) {
 		waitForQuotaRuntimeState(t, repository, sourceInstanceID, func(state store.SourceState) bool {
 			return state.LastSuccessAtMS != nil && state.LastFailureCode == nil
 		})
@@ -1739,30 +1584,21 @@ func TestApplicationLifecycleRuntimeHomeSwitchRollbackRearmsQuotaOnce(t *testing
 	}
 	preferenceStore := confirmedQuotaRuntimeFileStore(t, homeA, true, false)
 	requests := make(chan quotaHomeRequestEvent, 4)
-	transport := quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-		requests <- quotaHomeRequestEvent{
-			authorization: request.Header.Get("Authorization"),
-			request:       request,
-		}
-		return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-	})
 	startFailure := errors.New("synthetic Home bootstrap did not start")
-	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+	runtime, err := startApplicationLifecycleRuntime(context.Background(), withBoundLifecycleQuota(t, repository, ApplicationLifecycleRuntimeConfig{
 		Database: database, Preferences: preferenceStore,
-		EventTimeout: time.Second, QuotaTransport: transport,
-		QuotaClock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+		QuotaReader:  newQuotaRuntimeHomeReader(preferenceStore, requests),
+		EventTimeout: time.Second, QuotaClock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
 		homeRuntime: &quotaStartupHomeRuntime{
 			status:   preferences.BootstrapStatusNotStarted,
 			startErr: startFailure,
 		},
-	})
+	}))
 	if err != nil || runtime == nil {
 		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)
 	}
 	initialRequest := waitForQuotaHomeRequest(t, requests)
-	if initialRequest.authorization != "Bearer synthetic-home-switch-rollback-a-token" {
-		t.Fatalf("initial Authorization = %q", initialRequest.authorization)
-	}
+	assertQuotaRuntimeHome(t, initialRequest, homeA)
 	waitForQuotaRuntimeSchedule(t, repository, store.QuotaSourceInstanceWhamDefault, func(schedule store.SourceRefreshSchedule) bool {
 		return schedule.NextDueAtMS != nil && schedule.ActiveClaimID == nil
 	})
@@ -1782,12 +1618,10 @@ func TestApplicationLifecycleRuntimeHomeSwitchRollbackRearmsQuotaOnce(t *testing
 		t.Fatalf("rolled-back preferences = %#v", rolledBack)
 	}
 	recoveryRequest := waitForQuotaHomeRequest(t, requests)
-	if recoveryRequest.authorization != "Bearer synthetic-home-switch-rollback-a-token" {
-		t.Fatalf("rollback Authorization = %q", recoveryRequest.authorization)
-	}
+	assertQuotaRuntimeHome(t, recoveryRequest, homeA)
 	select {
 	case duplicate := <-requests:
-		t.Fatalf("rollback issued duplicate recovery request to %q", duplicate.request.URL.String())
+		t.Fatalf("rollback issued duplicate recovery request to %#v", duplicate)
 	case <-time.After(100 * time.Millisecond):
 	}
 
@@ -1799,11 +1633,9 @@ func TestApplicationLifecycleRuntimeHomeSwitchRollbackRearmsQuotaOnce(t *testing
 	}
 }
 
-type quotaRuntimeRoundTripper func(*http.Request) (*http.Response, error)
-
 type quotaHomeRequestEvent struct {
-	authorization string
-	request       *http.Request
+	home string
+	kind string
 }
 
 type quotaStartupHomeRuntime struct {
@@ -1833,10 +1665,6 @@ func (runtime *quotaStartupHomeRuntime) BootstrapStatus(
 
 func (runtime *quotaStartupHomeRuntime) Resume(context.Context, uint64) error {
 	return nil
-}
-
-func (roundTripper quotaRuntimeRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
-	return roundTripper(request)
 }
 
 func openQuotaRuntimeStore(t testing.TB) (*storesqlite.Store, *store.Repository) {
@@ -1954,6 +1782,7 @@ func waitForQuotaRuntimeState(
 	accepted func(store.SourceState) bool,
 ) {
 	t.Helper()
+	sourceInstanceID = quotaRuntimeInstance(t, repository, sourceInstanceID)
 	deadline := time.NewTimer(2 * time.Second)
 	defer deadline.Stop()
 	ticker := time.NewTicker(10 * time.Millisecond)
@@ -1974,6 +1803,32 @@ func waitForQuotaRuntimeState(
 	}
 }
 
+func waitForQuotaRuntimeBinding(
+	t testing.TB,
+	repository *store.Repository,
+	accepted func(store.CodexAccountBinding) bool,
+) store.CodexAccountBinding {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		binding, err := repository.CodexAccountBinding(t.Context())
+		if err != nil {
+			t.Fatalf("CodexAccountBinding() error = %v", err)
+		}
+		if accepted(binding) {
+			return binding
+		}
+		select {
+		case <-deadline.C:
+			t.Fatalf("CodexAccountBinding() did not reach expected state: %#v", binding)
+		case <-ticker.C:
+		}
+	}
+}
+
 func assertQuotaRuntimeLifecycleGeneration(
 	t testing.TB,
 	database *storesqlite.Store,
@@ -1985,22 +1840,6 @@ func assertQuotaRuntimeLifecycleGeneration(
 		lifecycle.Transition != store.LifecycleTransitionSteady ||
 		lifecycle.SourceState != store.LifecycleSourceAvailable {
 		t.Fatalf("SchedulerLifecycle(generation %d) = %#v, %v", wantGeneration, lifecycle, err)
-	}
-}
-
-func waitForQuotaRuntimeRequests(t testing.TB, requests <-chan string, count int) {
-	t.Helper()
-	seen := make(map[string]int, 2)
-	for received := 0; received < count; received++ {
-		select {
-		case endpoint := <-requests:
-			seen[endpoint]++
-		case <-time.After(2 * time.Second):
-			t.Fatalf("received %d/%d quota runtime requests: %#v", received, count, seen)
-		}
-	}
-	if seen[quotaonline.WhamUsageEndpoint] != 1 || seen[quotaonline.WhamResetCreditsEndpoint] != 1 {
-		t.Fatalf("quota runtime requests = %#v", seen)
 	}
 }
 
@@ -2023,6 +1862,7 @@ func waitForQuotaRuntimeSchedule(
 	accepted func(store.SourceRefreshSchedule) bool,
 ) {
 	t.Helper()
+	sourceInstanceID = quotaRuntimeInstance(t, repository, sourceInstanceID)
 	deadline := time.NewTimer(2 * time.Second)
 	defer deadline.Stop()
 	ticker := time.NewTicker(10 * time.Millisecond)
@@ -2043,15 +1883,6 @@ func waitForQuotaRuntimeSchedule(
 	}
 }
 
-func assertNoQuotaRuntimeTransportFailure(t testing.TB, failures <-chan error) {
-	t.Helper()
-	select {
-	case err := <-failures:
-		t.Fatalf("quota runtime transport error = %v", err)
-	default:
-	}
-}
-
 func waitForQuotaHomeRequest(
 	t testing.TB,
 	requests <-chan quotaHomeRequestEvent,
@@ -2064,50 +1895,4 @@ func waitForQuotaHomeRequest(
 		t.Fatal("quota Home request did not reach transport")
 		return quotaHomeRequestEvent{}
 	}
-}
-
-func quotaRuntimeJSONResponse(body string) *http.Response {
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header: http.Header{
-			"Content-Type": []string{"application/json"},
-		},
-		Body: io.NopCloser(strings.NewReader(body)),
-	}
-}
-
-func validQuotaRuntimeUsagePayload() string {
-	return fmt.Sprintf(`{
-  "plan_type": "team",
-  "rate_limit": {
-    "allowed": true,
-    "limit_reached": false,
-    "primary_window": {
-      "used_percent": 25,
-      "limit_window_seconds": 18000,
-      "reset_after_seconds": 3600,
-      "reset_at": %d
-    },
-    "secondary_window": {
-      "used_percent": 40,
-      "limit_window_seconds": 604800,
-      "reset_after_seconds": 604800,
-      "reset_at": %d
-    }
-  },
-  "credits": {"unlimited": false, "balance": "0"}
-}`, quotaRuntimeNowMS/1000+3600, quotaRuntimeNowMS/1000+604800)
-}
-
-func validQuotaRuntimeResetCreditsPayload() string {
-	return `{
-  "available_count": 1,
-  "credits": [{
-    "id": "RateLimitResetCredit_runtime-synthetic",
-    "status": "available",
-    "reset_type": "codex_rate_limits",
-    "granted_at": "2026-07-15T10:00:00Z",
-    "expires_at": "2026-07-30T13:00:00Z"
-  }]
-}`
 }

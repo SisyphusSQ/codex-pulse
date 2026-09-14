@@ -5,8 +5,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
@@ -17,6 +19,114 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
+
+func TestConfirmedApplicationAccountUsesBindingDisplay(t *testing.T) {
+	t.Parallel()
+
+	repository := openAccountBindingTestRepository(t)
+	key, _, _ := accountBindingTestScopes(t, repository)
+	email := "person@example.com"
+	plan := "team"
+	account, err := newAccountBindingRuntime(
+		repository,
+		&accountBindingScriptedReader{accountIDs: []string{"acct-test-a"}},
+		key,
+		func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+		&accountBindingTestQuota{},
+		nil,
+		func(context.Context) (appserver.AccountSandwich, error) {
+			return appserver.AccountSandwich{
+				BeforeID: appserver.SensitiveAccountID("acct-test-a"),
+				AfterID:  appserver.SensitiveAccountID("acct-test-a"),
+				Account:  &appserver.AccountSnapshot{Type: "chatgpt", Email: &email, PlanType: &plan},
+			}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("newAccountBindingRuntime() error = %v", err)
+	}
+	if err := account.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	runtime := &applicationLifecycleRuntime{
+		repository: repository,
+		quota:      &applicationQuotaRuntime{account: account},
+	}
+	snapshot, err := runtime.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Codex})
+	if err != nil || snapshot.Account == nil || snapshot.Account.Email == nil ||
+		*snapshot.Account.Email != email || snapshot.Account.PlanType == nil ||
+		*snapshot.Account.PlanType != plan || snapshot.Binding == nil ||
+		snapshot.Binding.State != store.CodexAccountBindingConfirmed ||
+		snapshot.Binding.AccountScope == nil ||
+		len(*snapshot.Binding.AccountScope) != 64 ||
+		strings.Contains(*snapshot.Binding.AccountScope, "acct-test-a") {
+		t.Fatalf("AccountSnapshot() = %#v, %v", snapshot, err)
+	}
+}
+
+func TestConfirmedAccountSnapshotProbesAndTransitionsToNewAccount(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	repository := openAccountBindingTestRepository(t)
+	key, _, scopeB := accountBindingTestScopes(t, repository)
+	email := "b@example.com"
+	plan := "pro"
+	account, err := newAccountBindingRuntime(
+		repository,
+		&accountBindingScriptedReader{accountIDs: []string{
+			"acct-test-a",
+			"acct-test-b", "acct-test-b",
+		}},
+		key,
+		func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+		&accountBindingTestQuota{},
+		nil,
+		func(context.Context) (appserver.AccountSandwich, error) {
+			return appserver.AccountSandwich{
+				BeforeID: appserver.SensitiveAccountID("acct-test-b"),
+				AfterID:  appserver.SensitiveAccountID("acct-test-b"),
+				Account:  &appserver.AccountSnapshot{Type: "chatgpt", Email: &email, PlanType: &plan},
+			}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("newAccountBindingRuntime() error = %v", err)
+	}
+	if err := account.Start(ctx); err != nil {
+		t.Fatalf("Start(A) error = %v", err)
+	}
+	runtime := &applicationLifecycleRuntime{
+		repository: repository,
+		quota:      &applicationQuotaRuntime{account: account},
+	}
+	snapshot, err := runtime.AccountSnapshot(ctx, agentprovider.Scope{Provider: agentprovider.Codex})
+	if err != nil || snapshot.Binding == nil || snapshot.Binding.AccountScope == nil ||
+		*snapshot.Binding.AccountScope != scopeB || snapshot.Account == nil ||
+		snapshot.Account.Email == nil || *snapshot.Account.Email != email {
+		t.Fatalf("AccountSnapshot(B) = %#v, %v", snapshot, err)
+	}
+}
+
+func TestAccountSnapshotPendingOmitsAccountKeepsBinding(t *testing.T) {
+	t.Parallel()
+
+	repository := openAccountBindingTestRepository(t)
+	pending, err := repository.MarkCodexAccountBindingPending(
+		context.Background(), quotaRuntimeNowMS, store.CodexAccountBindingReasonStartup,
+	)
+	if err != nil {
+		t.Fatalf("MarkCodexAccountBindingPending() error = %v", err)
+	}
+	runtime := &applicationLifecycleRuntime{repository: repository}
+	snapshot, err := runtime.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Codex})
+	if err != nil || snapshot.Account != nil || snapshot.Binding == nil ||
+		snapshot.Binding.State != store.CodexAccountBindingPending ||
+		snapshot.Binding.BindingGeneration != pending.BindingGeneration ||
+		snapshot.Binding.AccountScope != nil {
+		t.Fatalf("pending AccountSnapshot() = %#v, %v", snapshot, err)
+	}
+}
 
 func TestAccountSnapshotDoesNotStartReaderAfterConfirmedHomeSwitch(t *testing.T) {
 	t.Parallel()
@@ -66,7 +176,7 @@ func TestAccountSnapshotReadsGrokIdentityFromAuthWhitelist(t *testing.T) {
 	}
 	if account.Account == nil || account.Account.Type != agentprovider.Grok ||
 		account.Account.Email == nil || *account.Account.Email != "person@example.com" ||
-		account.Account.PlanType != nil {
+		account.Account.PlanType != nil || account.Binding != nil {
 		t.Fatalf("AccountSnapshot(grok) = %#v", account)
 	}
 }
@@ -170,7 +280,8 @@ func TestAccountSnapshotReadsCursorIdentityFromDesktopState(t *testing.T) {
 	}
 	if account.Account == nil || account.Account.Type != agentprovider.Cursor ||
 		account.Account.Email == nil || *account.Account.Email != "person@example.com" ||
-		account.Account.PlanType == nil || *account.Account.PlanType != "pro" {
+		account.Account.PlanType == nil || *account.Account.PlanType != "pro" ||
+		account.Binding != nil {
 		t.Fatalf("AccountSnapshot(cursor) = %#v", account)
 	}
 }

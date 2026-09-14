@@ -15,8 +15,8 @@ import (
 
 func TestApplicationSchemaV14CreatesHealthEvaluatorEventAllowlist(t *testing.T) {
 	t.Parallel()
-	if applicationSchemaVersion != applicationSchemaV31Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 31", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV32Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 32", applicationSchemaVersion)
 	}
 	const wantChecksum = "684650b2128c1aeb7db65433d6f6e3349111fff714804e694dfa98c097ed11af"
 	if got := applicationSchemaV14Checksum(); got != wantChecksum {
@@ -213,7 +213,7 @@ func verifyApplicationSchemaV13(ctx context.Context, transaction *gorm.DB) error
 
 func verifyApplicationSchemaV14(ctx context.Context, transaction *gorm.DB) error {
 	for _, objects := range [][]storeschema.Object{
-		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), storeretention.SchemaObjects(),
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV14(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects, quotaSchemaObjects, quotaProjectionSchemaObjects,
 		quotaScheduleSchemaObjects, metricsSchemaObjects,

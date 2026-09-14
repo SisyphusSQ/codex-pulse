@@ -121,3 +121,37 @@ func TestInvalidationBrokerUnsubscribeReleasesContextObserver(t *testing.T) {
 		t.Fatal("subscription channel remains open after unsubscribe")
 	}
 }
+
+func TestInvalidationBrokerAcceptsAccountDomainAndV3Version(t *testing.T) {
+	t.Parallel()
+
+	if InvalidationContractVersion != "query-invalidation-v3" {
+		t.Fatalf("InvalidationContractVersion = %q, want query-invalidation-v3", InvalidationContractVersion)
+	}
+	broker, err := NewInvalidationBroker(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(broker.Close)
+	events, unsubscribe, err := broker.Subscribe(
+		t.Context(),
+		[]InvalidationDomain{InvalidationAccount, InvalidationQuota},
+		0,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(unsubscribe)
+	if err := broker.Notify(t.Context(), InvalidationAccount); err != nil {
+		t.Fatal(err)
+	}
+	if err := broker.Notify(t.Context(), InvalidationQuota); err != nil {
+		t.Fatal(err)
+	}
+	first := <-events
+	second := <-events
+	if first.Domain != InvalidationAccount || first.Version != InvalidationContractVersion ||
+		second.Domain != InvalidationQuota || first.Sequence >= second.Sequence {
+		t.Fatalf("account/quota events = %#v %#v", first, second)
+	}
+}

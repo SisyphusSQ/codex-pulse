@@ -78,11 +78,15 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		`(?s)message PricingCatalogCurrentResponse\s*\{.*NumericValue evaluated_at_ms\s*=\s*2\s*;.*string pricing_version\s*=\s*3\s*;.*string basis\s*=\s*6\s*;.*NumericValue unit_tokens\s*=\s*7\s*;.*optional string source_url\s*=\s*10\s*;.*repeated ModelReferencePrice items\s*=\s*11\s*;.*ProviderContext provider_context\s*=\s*12\s*;`,
 		`(?s)message SessionDetailResponse\s*\{.*reserved 11\s*;.*reserved "daily"\s*;.*repeated TrendPoint trend\s*=\s*12\s*;.*string trend_granularity\s*=\s*13\s*;`,
 		`(?s)message CodexAccountIdentity\s*\{\s*string type\s*=\s*1\s*;\s*optional string email\s*=\s*2\s*;\s*optional string plan_type\s*=\s*3\s*;\s*\}`,
-		`(?s)message AccountSnapshotResponse\s*\{\s*optional CodexAccountIdentity account\s*=\s*1\s*;\s*\}`,
+		`(?s)message CodexAccountBinding\s*\{\s*string state\s*=\s*1\s*;\s*optional string account_scope\s*=\s*2\s*;\s*uint64 binding_generation\s*=\s*3\s*;\s*int64 observed_at_ms\s*=\s*4\s*;\s*optional string reason\s*=\s*5\s*;\s*\}`,
+		`(?s)message AccountSnapshotResponse\s*\{\s*optional CodexAccountIdentity account\s*=\s*1\s*;\s*optional CodexAccountBinding binding\s*=\s*2\s*;\s*\}`,
 		`(?s)message QuotaPaceForecast\s*\{.*string state\s*=\s*1\s*;.*optional int64 exhaust_at_ms\s*=\s*3\s*;.*optional int64 lead_before_reset_ms\s*=\s*4\s*;`,
 		`(?s)message QuotaPaceWindow\s*\{.*optional double pace_delta_pp\s*=\s*10\s*;.*QuotaPaceForecast forecast\s*=\s*11\s*;.*repeated QuotaPaceCycle historical_cycles\s*=\s*14\s*;.*repeated QuotaPaceHistoryBandPoint history_band\s*=\s*15\s*;`,
 		`(?s)message QuotaCurrentRequest\s*\{.*int64 evaluated_at_ms\s*=\s*1\s*;.*ProviderScope provider\s*=\s*2\s*;`,
-		`(?s)message QuotaCurrentResponse\s*\{.*ResponseMeta meta\s*=\s*1\s*;.*CurrentQuota current\s*=\s*2\s*;.*ProviderContext provider_context\s*=\s*3\s*;`,
+		`(?s)message CurrentQuota\s*\{.*CurrentRefresh refresh\s*=\s*8\s*;.*optional CodexAccountBinding binding\s*=\s*9\s*;`,
+		`(?s)message CurrentQuotaPace\s*\{.*repeated QuotaPaceWindow windows\s*=\s*4\s*;.*optional CodexAccountBinding binding\s*=\s*5\s*;.*optional string unknown_reason\s*=\s*6\s*;`,
+		`(?s)message CurrentResetCredits\s*\{.*repeated CurrentResetCreditItem items\s*=\s*11\s*;.*optional string details_state\s*=\s*12\s*;`,
+		`(?s)message CurrentResetCreditItem\s*\{.*int64 granted_at_ms\s*=\s*3\s*;.*optional int64 expires_at_ms\s*=\s*4\s*;`,
 		`(?s)message QuotaPaceRequest\s*\{.*int64 evaluated_at_ms\s*=\s*1\s*;.*ProviderScope provider\s*=\s*2\s*;`,
 		`(?s)message QuotaPaceResponse\s*\{.*ResponseMeta meta\s*=\s*1\s*;.*CurrentQuotaPace pace\s*=\s*2\s*;.*ProviderContext provider_context\s*=\s*3\s*;`,
 		`(?s)message QuotaRefreshRequest\s*\{.*string source\s*=\s*1\s*;.*ProviderScope provider\s*=\s*2\s*;`,
@@ -97,7 +101,7 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		}
 	}
 	for _, forbidden := range []string{
-		"raw_error", "error_message", "stack_trace", "auth_token", "access_token", "refresh_token", "authorization",
+		"raw_error", "error_message", "stack_trace", "auth_token", "access_token", "refresh_token", "authorization", "accountId", "account_id",
 	} {
 		if regexp.MustCompile(`(?i)\b` + forbidden + `\b`).MatchString(content) {
 			t.Fatalf("core.proto exposes forbidden error or credential field %q", forbidden)

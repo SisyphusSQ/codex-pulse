@@ -59,14 +59,31 @@ public struct OverviewResponses: Sendable {
         self.additionalNotices = additionalNotices
     }
 
+    public var codexAccountContextKey: CodexAccountContextKey? {
+        CodexAccountContext.key(fromQuota: quota)
+    }
+
     func replacingHealth(_ health: Codexpulse_Core_V1_HealthProjectionResponse) -> OverviewResponses {
         var updated = self
         updated.health = health
         return updated
     }
 
-    func replacingAccount(
+    public func replacingAccount(
         _ account: Codexpulse_Core_V1_AccountSnapshotResponse?
+    ) -> OverviewResponses {
+        replacing(account: account, quotaPace: quotaPace)
+    }
+
+    public func replacingPace(
+        _ quotaPace: Codexpulse_Core_V1_QuotaPaceResponse
+    ) -> OverviewResponses {
+        replacing(account: account, quotaPace: quotaPace)
+    }
+
+    private func replacing(
+        account: Codexpulse_Core_V1_AccountSnapshotResponse?,
+        quotaPace: Codexpulse_Core_V1_QuotaPaceResponse
     ) -> OverviewResponses {
         OverviewResponses(
 			provider: provider,
@@ -107,6 +124,30 @@ public struct CodexAccountPresentation: Equatable, Sendable {
 
     public init(_ response: Codexpulse_Core_V1_AccountSnapshotResponse?) {
         let localization = AppLocalizationRegistry.shared.current
+        if let response, response.hasBinding {
+            switch response.binding.state {
+            case "pending":
+                availability = .unavailable
+                type = nil
+                email = nil
+                planType = nil
+                planText = "--"
+                emailText = "--"
+                accessibilityLabel = localization.textValue("账号确认中")
+                return
+            case "signed_out", "identity_unavailable", "unknown":
+                availability = .unavailable
+                type = nil
+                email = nil
+                planType = nil
+                planText = "--"
+                emailText = "--"
+                accessibilityLabel = localization.textValue("当前账号额度暂不可用")
+                return
+            default:
+                break
+            }
+        }
         guard let response else {
             availability = .unavailable
             type = nil
@@ -965,16 +1006,17 @@ public struct ResetCreditItemPresentation: Equatable, Sendable, Identifiable {
     public let status: String
     public let type: String
     public let grantedAtMS: Int64
-    public let expiresAtMS: Int64
+    public let expiresAtMS: Int64?
     public let redeemedAtMS: Int64?
     public let remainingMS: Int64?
 
     public init(_ item: Codexpulse_Core_V1_CurrentResetCreditItem, index: Int) {
-        self.id = "\(index):\(item.grantedAtMs):\(item.expiresAtMs):\(item.status)"
+        let expiresAtMS = item.hasExpiresAtMs ? item.expiresAtMs : nil
+        self.id = "\(index):\(item.grantedAtMs):\(expiresAtMS.map(String.init) ?? "none"):\(item.status)"
         self.status = item.status
         self.type = item.type
         self.grantedAtMS = item.grantedAtMs
-        self.expiresAtMS = item.expiresAtMs
+        self.expiresAtMS = expiresAtMS
         self.redeemedAtMS = item.hasRedeemedAtMs ? item.redeemedAtMs : nil
         self.remainingMS = item.hasRemainingMs ? item.remainingMs : nil
     }

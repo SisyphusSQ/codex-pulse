@@ -398,7 +398,8 @@ type AccountIdentity struct {
 }
 
 type AccountSnapshot struct {
-	Account *AccountIdentity `json:"account,omitempty"`
+	Account *AccountIdentity           `json:"account,omitempty"`
+	Binding *store.CodexAccountBinding `json:"binding,omitempty"`
 }
 
 func (service *Service) AccountSnapshot(ctx context.Context, scope agentprovider.Scope) (AccountSnapshot, error) {

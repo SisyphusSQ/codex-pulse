@@ -12,6 +12,7 @@ import (
 )
 
 const CurrentContractVersion = "quota-current-v1"
+const maxLimitIdentityBytes = 512
 
 var (
 	ErrInvalidCurrentQuery     = errors.New("quota current query is invalid")
@@ -21,11 +22,12 @@ var (
 type CurrentUnknownReason string
 
 const (
-	CurrentUnknownNeverLoaded       CurrentUnknownReason = "never_loaded"
-	CurrentUnknownNotApplicable     CurrentUnknownReason = "not_applicable"
-	CurrentUnknownNoTrustedReset    CurrentUnknownReason = "no_trusted_reset"
-	CurrentUnknownSourceUnavailable CurrentUnknownReason = "source_unavailable"
-	CurrentUnknownScheduleMissing   CurrentUnknownReason = "schedule_unavailable"
+	CurrentUnknownNeverLoaded        CurrentUnknownReason = "never_loaded"
+	CurrentUnknownNotApplicable      CurrentUnknownReason = "not_applicable"
+	CurrentUnknownNoTrustedReset     CurrentUnknownReason = "no_trusted_reset"
+	CurrentUnknownSourceUnavailable  CurrentUnknownReason = "source_unavailable"
+	CurrentUnknownScheduleMissing    CurrentUnknownReason = "schedule_unavailable"
+	CurrentUnknownBindingUnavailable CurrentUnknownReason = "binding_unavailable"
 )
 
 type CurrentSourceKind string
@@ -33,6 +35,7 @@ type CurrentSourceKind string
 const (
 	CurrentSourceLocal                  CurrentSourceKind = "local_jsonl"
 	CurrentSourceWham                   CurrentSourceKind = "wham"
+	CurrentSourceAppServer              CurrentSourceKind = "app_server"
 	CurrentSourceCursorDashboard        CurrentSourceKind = "cursor_dashboard"
 	CurrentSourceCursorDashboardGrokBot CurrentSourceKind = "cursor.dashboard.grok_bot"
 	CurrentSourceGrokBilling            CurrentSourceKind = "grok_billing"
@@ -49,14 +52,23 @@ const (
 )
 
 type CurrentResponse struct {
-	Version       string              `json:"version"`
-	AccountScope  string              `json:"accountScope"`
-	EvaluatedAtMS int64               `json:"evaluatedAtMs"`
-	Windows       []CurrentWindow     `json:"windows"`
-	Sources       []CurrentSource     `json:"sources"`
-	NextReset     CurrentNextReset    `json:"nextReset"`
-	ResetCredits  CurrentResetCredits `json:"resetCredits"`
-	Refresh       CurrentRefresh      `json:"refresh"`
+	Version       string                     `json:"version"`
+	AccountScope  string                     `json:"accountScope"`
+	EvaluatedAtMS int64                      `json:"evaluatedAtMs"`
+	Binding       *store.CodexAccountBinding `json:"binding,omitempty"`
+	Windows       []CurrentWindow            `json:"windows"`
+	Sources       []CurrentSource            `json:"sources"`
+	NextReset     CurrentNextReset           `json:"nextReset"`
+	ResetCredits  CurrentResetCredits        `json:"resetCredits"`
+	Refresh       CurrentRefresh             `json:"refresh"`
+}
+
+func publishedBinding(binding store.CodexAccountBinding) *store.CodexAccountBinding {
+	if binding.State == "" {
+		return nil
+	}
+	published := binding
+	return &published
 }
 
 type CurrentWindow struct {
@@ -114,22 +126,23 @@ type CurrentNextReset struct {
 }
 
 type CurrentResetCredits struct {
-	AvailableCount        *int64                   `json:"availableCount"`
-	CumulativeRemainingMS *int64                   `json:"cumulativeRemainingMs"`
-	NextExpiresAtMS       *int64                   `json:"nextExpiresAtMs"`
-	LastSuccessAtMS       *int64                   `json:"lastSuccessAtMs"`
-	LastAttemptAtMS       *int64                   `json:"lastAttemptAtMs"`
-	Freshness             store.SourceFreshness    `json:"freshness"`
-	FailureCode           *store.SourceFailureCode `json:"failureCode"`
-	UnknownReason         *CurrentUnknownReason    `json:"unknownReason"`
-	Items                 []CurrentResetCreditItem `json:"items"`
+	AvailableCount        *int64                         `json:"availableCount"`
+	CumulativeRemainingMS *int64                         `json:"cumulativeRemainingMs"`
+	NextExpiresAtMS       *int64                         `json:"nextExpiresAtMs"`
+	LastSuccessAtMS       *int64                         `json:"lastSuccessAtMs"`
+	LastAttemptAtMS       *int64                         `json:"lastAttemptAtMs"`
+	Freshness             store.SourceFreshness          `json:"freshness"`
+	FailureCode           *store.SourceFailureCode       `json:"failureCode"`
+	DetailsState          store.ResetCreditDetailsStatus `json:"detailsState,omitempty"`
+	UnknownReason         *CurrentUnknownReason          `json:"unknownReason"`
+	Items                 []CurrentResetCreditItem       `json:"items"`
 }
 
 type CurrentResetCreditItem struct {
 	Status       store.ResetCreditStatus `json:"status"`
 	Type         store.ResetCreditType   `json:"type"`
 	GrantedAtMS  int64                   `json:"grantedAtMs"`
-	ExpiresAtMS  int64                   `json:"expiresAtMs"`
+	ExpiresAtMS  *int64                  `json:"expiresAtMs,omitempty"`
 	RedeemedAtMS *int64                  `json:"redeemedAtMs"`
 	RemainingMS  *int64                  `json:"remainingMs"`
 }
@@ -191,9 +204,56 @@ func (service *CurrentQueryService) Query(ctx context.Context, evaluatedAtMS int
 }
 
 func mapCurrentResponse(snapshot store.QuotaCurrentSnapshot, evaluatedAtMS int64) (CurrentResponse, error) {
+	if snapshot.Binding.State != "" {
+		return mapCodexBoundCurrentResponse(snapshot, evaluatedAtMS)
+	}
 	if snapshot.AccountScope != store.QuotaAccountScopeDefault || snapshot.EvaluatedAtMS != evaluatedAtMS {
 		return CurrentResponse{}, fmt.Errorf("%w: snapshot identity is inconsistent", ErrInvalidCurrentQuery)
 	}
+	return mapBoundCurrentResponse(snapshot, evaluatedAtMS, store.QuotaAccountScopeDefault, store.QuotaSourceInstanceWhamDefault, store.QuotaSourceTypeWham, store.ResetCreditsSourceInstanceWhamDefault, store.ResetCreditsSourceTypeWham)
+}
+
+func mapCodexBoundCurrentResponse(snapshot store.QuotaCurrentSnapshot, evaluatedAtMS int64) (CurrentResponse, error) {
+	if snapshot.EvaluatedAtMS != evaluatedAtMS {
+		return CurrentResponse{}, fmt.Errorf("%w: snapshot identity is inconsistent", ErrInvalidCurrentQuery)
+	}
+	if snapshot.Binding.State != store.CodexAccountBindingConfirmed || snapshot.Binding.AccountScope == nil {
+		reason := CurrentUnknownBindingUnavailable
+		return CurrentResponse{
+			Version: CurrentContractVersion, EvaluatedAtMS: evaluatedAtMS, Binding: publishedBinding(snapshot.Binding),
+			Windows: []CurrentWindow{},
+			Sources: []CurrentSource{{
+				Source: CurrentSourceAppServer, Freshness: store.SourceFreshnessUnknown,
+				UnknownReason: &reason,
+			}},
+			NextReset:    CurrentNextReset{UnknownReason: &reason},
+			ResetCredits: CurrentResetCredits{Freshness: store.SourceFreshnessUnknown, UnknownReason: &reason},
+			Refresh: CurrentRefresh{
+				Quota:        CurrentRefreshStatus{State: CurrentRefreshUnknown, UnknownReason: &reason},
+				ResetCredits: CurrentRefreshStatus{State: CurrentRefreshUnknown, UnknownReason: &reason},
+			},
+		}, nil
+	}
+	scope := *snapshot.Binding.AccountScope
+	if snapshot.AccountScope != scope || snapshot.BindingGeneration != snapshot.Binding.BindingGeneration {
+		return CurrentResponse{}, fmt.Errorf("%w: snapshot identity is inconsistent", ErrInvalidCurrentQuery)
+	}
+	return mapBoundCurrentResponse(
+		snapshot, evaluatedAtMS, scope,
+		store.QuotaSourceInstanceAppServer(scope), store.QuotaSourceTypeAppServerRateLimits,
+		store.ResetCreditsSourceInstanceAppServer(scope), store.ResetCreditsSourceTypeAppServer,
+	)
+}
+
+func mapBoundCurrentResponse(
+	snapshot store.QuotaCurrentSnapshot,
+	evaluatedAtMS int64,
+	expectedScope string,
+	quotaInstanceID string,
+	quotaSourceType string,
+	resetInstanceID string,
+	resetSourceType string,
+) (CurrentResponse, error) {
 	windows := append([]store.QuotaCurrentWindowSnapshot(nil), snapshot.Windows...)
 	sort.Slice(windows, func(left, right int) bool {
 		leftRank := currentWindowRank(windows[left].Current.WindowKind)
@@ -205,18 +265,21 @@ func mapCurrentResponse(snapshot store.QuotaCurrentSnapshot, evaluatedAtMS int64
 	})
 	response := CurrentResponse{
 		Version: CurrentContractVersion, AccountScope: snapshot.AccountScope,
-		EvaluatedAtMS: evaluatedAtMS, Windows: make([]CurrentWindow, 0, len(windows)),
+		EvaluatedAtMS: evaluatedAtMS, Binding: publishedBinding(snapshot.Binding),
+		Windows: make([]CurrentWindow, 0, len(windows)),
 	}
 	currents := make([]store.QuotaCurrent, 0, len(windows))
 	for _, facts := range windows {
-		window, err := mapCurrentWindow(facts, evaluatedAtMS)
+		window, err := mapCurrentWindow(facts, expectedScope, evaluatedAtMS)
 		if err != nil {
 			return CurrentResponse{}, err
 		}
 		response.Windows = append(response.Windows, window)
 		currents = append(currents, facts.Current)
 	}
-	response.Sources = mapCurrentSources(response.Windows, snapshot.WhamSourceState, evaluatedAtMS)
+	response.Sources = mapCurrentSources(
+		response.Windows, snapshot.OnlineSourceState, evaluatedAtMS, quotaSourceType,
+	)
 	resetSummary, err := CalculateQuotaResetSummary(currents, evaluatedAtMS)
 	if err != nil {
 		return CurrentResponse{}, err
@@ -228,33 +291,46 @@ func mapCurrentResponse(snapshot store.QuotaCurrentSnapshot, evaluatedAtMS int64
 	if response.NextReset.AtMS == nil {
 		response.NextReset.UnknownReason = currentUnknownPointer(CurrentUnknownNoTrustedReset)
 	}
-	response.ResetCredits, err = mapCurrentResetCredits(snapshot.ResetCredits, evaluatedAtMS)
+	response.ResetCredits, err = mapCurrentResetCredits(snapshot.ResetCredits, expectedScope, evaluatedAtMS)
 	if err != nil {
 		return CurrentResponse{}, err
 	}
 	quotaRefresh, err := mapCurrentRefreshStatus(
-		snapshot.QuotaRefresh, store.QuotaSourceInstanceWhamDefault, store.QuotaSourceTypeWham,
+		snapshot.QuotaRefresh, quotaInstanceID, quotaSourceType, expectedScope, snapshot.BindingGeneration,
 	)
 	if err != nil {
 		return CurrentResponse{}, err
 	}
 	resetRefresh, err := mapCurrentRefreshStatus(
-		snapshot.ResetCreditsRefresh, store.ResetCreditsSourceInstanceWhamDefault,
-		store.ResetCreditsSourceTypeWham,
+		snapshot.ResetCreditsRefresh, resetInstanceID, resetSourceType, expectedScope, snapshot.BindingGeneration,
 	)
 	if err != nil {
 		return CurrentResponse{}, err
 	}
 	response.Refresh = CurrentRefresh{Quota: quotaRefresh, ResetCredits: resetRefresh}
+	if snapshot.Binding.State != "" {
+		filtered := make([]CurrentSource, 0, len(response.Sources))
+		for _, source := range response.Sources {
+			if source.Source == CurrentSourceLocal {
+				continue
+			}
+			if source.Source == CurrentSourceWham {
+				source.Source = CurrentSourceAppServer
+			}
+			filtered = append(filtered, source)
+		}
+		response.Sources = filtered
+	}
 	return response, nil
 }
 
 func mapCurrentWindow(
 	facts store.QuotaCurrentWindowSnapshot,
+	expectedScope string,
 	evaluatedAtMS int64,
 ) (CurrentWindow, error) {
 	current := facts.Current
-	if current.AccountScope != store.QuotaAccountScopeDefault || current.LimitID == "" ||
+	if current.AccountScope != expectedScope || current.LimitID == "" ||
 		current.EvaluatedAtMS != evaluatedAtMS {
 		return CurrentWindow{}, fmt.Errorf("%w: window identity is inconsistent", ErrInvalidCurrentQuery)
 	}
@@ -397,8 +473,9 @@ func mapCurrentExplanations(
 
 func mapCurrentSources(
 	windows []CurrentWindow,
-	wham *store.SourceState,
+	onlineState *store.SourceState,
 	evaluatedAtMS int64,
+	onlineSourceType string,
 ) []CurrentSource {
 	local := CurrentSource{
 		Source: CurrentSourceLocal, Freshness: store.SourceFreshnessUnknown,
@@ -408,13 +485,19 @@ func mapCurrentSources(
 		Source: CurrentSourceWham, Freshness: store.SourceFreshnessUnknown,
 		UnknownReason: currentUnknownPointer(CurrentUnknownSourceUnavailable),
 	}
+	if onlineSourceType == store.QuotaSourceTypeAppServerRateLimits {
+		online.Source = CurrentSourceAppServer
+	}
 	localHasAccepted := false
 	localHasFresh := false
 	for _, window := range windows {
 		for _, explanation := range window.Explanations {
 			target := &local
-			if explanation.Source == store.QuotaSourceWham {
+			if explanation.Source == store.QuotaSourceWham || explanation.Source == store.QuotaSourceAppServer {
 				target = &online
+			}
+			if explanation.Source == store.QuotaSourceAppServer {
+				online.Source = CurrentSourceAppServer
 			}
 			if target.LastObservedAtMS == nil || explanation.ObservedAtMS > *target.LastObservedAtMS {
 				observedAt := explanation.ObservedAtMS
@@ -439,7 +522,7 @@ func mapCurrentSources(
 				}
 			}
 			for _, explanation := range window.Explanations {
-				if explanation.Source == store.QuotaSourceWham {
+				if explanation.Source == store.QuotaSourceWham || explanation.Source == store.QuotaSourceAppServer {
 					online.ConflictWindowCount++
 					break
 				}
@@ -453,11 +536,11 @@ func mapCurrentSources(
 		}
 		local.UnknownReason = nil
 	}
-	if wham != nil {
-		online.LastSuccessAtMS = cloneInt64(wham.LastSuccessAtMS)
-		online.LastAttemptAtMS = cloneInt64(wham.LastAttemptAtMS)
-		online.Freshness = wham.FreshnessState
-		online.FailureCode = cloneSourceFailureCode(wham.LastFailureCode)
+	if onlineState != nil {
+		online.LastSuccessAtMS = cloneInt64(onlineState.LastSuccessAtMS)
+		online.LastAttemptAtMS = cloneInt64(onlineState.LastAttemptAtMS)
+		online.Freshness = onlineState.FreshnessState
+		online.FailureCode = cloneSourceFailureCode(onlineState.LastFailureCode)
 		online.UnknownReason = nil
 	}
 	return []CurrentSource{local, online}
@@ -482,9 +565,10 @@ func currentLocalObservationIsFresh(explanation CurrentExplanation, evaluatedAtM
 
 func mapCurrentResetCredits(
 	summary store.ResetCreditsSummary,
+	expectedScope string,
 	evaluatedAtMS int64,
 ) (CurrentResetCredits, error) {
-	if summary.AccountScope != store.QuotaAccountScopeDefault ||
+	if summary.AccountScope != expectedScope ||
 		summary.EvaluationAtMS != evaluatedAtMS || !validCurrentSourceFreshness(summary.FreshnessState) ||
 		!validCurrentOptionalTimestamp(summary.LastSuccessAtMS) ||
 		!validCurrentOptionalTimestamp(summary.LastAttemptAtMS) {
@@ -493,57 +577,104 @@ func mapCurrentResetCredits(
 		)
 	}
 	loaded := summary.SnapshotID != nil
-	inventoryComplete := summary.AvailableCount != nil && summary.CumulativeRemainingMS != nil
-	if loaded != inventoryComplete || (!loaded && len(summary.Credits) != 0) {
-		return CurrentResetCredits{}, fmt.Errorf(
-			"%w: reset credits value shape is inconsistent", ErrInvalidCurrentQuery,
-		)
-	}
 	if !loaded {
-		if summary.NextExpiresAtMS != nil {
+		if summary.AvailableCount != nil || summary.CumulativeRemainingMS != nil ||
+			summary.NextExpiresAtMS != nil || len(summary.Credits) != 0 {
 			return CurrentResetCredits{}, fmt.Errorf(
 				"%w: reset credits unknown shape is inconsistent", ErrInvalidCurrentQuery,
 			)
 		}
-	} else if *summary.SnapshotID == "" || summary.LastSuccessAtMS == nil ||
-		summary.LastAttemptAtMS == nil || *summary.AvailableCount < 0 ||
-		*summary.CumulativeRemainingMS < 0 ||
+		return CurrentResetCredits{
+			LastSuccessAtMS: cloneInt64(summary.LastSuccessAtMS),
+			LastAttemptAtMS: cloneInt64(summary.LastAttemptAtMS), Freshness: summary.FreshnessState,
+			FailureCode:   cloneSourceFailureCode(summary.LastFailureCode),
+			UnknownReason: currentUnknownPointer(CurrentUnknownNeverLoaded),
+		}, nil
+	}
+	if *summary.SnapshotID == "" || summary.AvailableCount == nil || *summary.AvailableCount < 0 ||
+		summary.LastSuccessAtMS == nil || summary.LastAttemptAtMS == nil {
+		return CurrentResetCredits{}, fmt.Errorf(
+			"%w: reset credits values are inconsistent", ErrInvalidCurrentQuery,
+		)
+	}
+	result := CurrentResetCredits{
+		AvailableCount:  cloneInt64(summary.AvailableCount),
+		LastSuccessAtMS: cloneInt64(summary.LastSuccessAtMS),
+		LastAttemptAtMS: cloneInt64(summary.LastAttemptAtMS), Freshness: summary.FreshnessState,
+		FailureCode: cloneSourceFailureCode(summary.LastFailureCode),
+		Items:       mapCurrentResetCreditItems(summary.Credits, evaluatedAtMS),
+	}
+	if summary.Credits == nil && *summary.AvailableCount > 0 && summary.CumulativeRemainingMS == nil {
+		if summary.NextExpiresAtMS != nil {
+			return CurrentResetCredits{}, fmt.Errorf(
+				"%w: reset credits count-only shape is inconsistent", ErrInvalidCurrentQuery,
+			)
+		}
+		result.DetailsState = store.ResetCreditDetailsUnavailable
+		return result, nil
+	}
+	if summary.CumulativeRemainingMS == nil {
+		if len(summary.Credits) == 0 {
+			return CurrentResetCredits{}, fmt.Errorf(
+				"%w: reset credits value shape is inconsistent", ErrInvalidCurrentQuery,
+			)
+		}
+		if summary.NextExpiresAtMS != nil {
+			return CurrentResetCredits{}, fmt.Errorf(
+				"%w: reset credits partial shape is inconsistent", ErrInvalidCurrentQuery,
+			)
+		}
+		availableItems := resetCreditAvailableItemCount(summary.Credits, evaluatedAtMS)
+		if availableItems < *summary.AvailableCount {
+			result.DetailsState = store.ResetCreditDetailsPartial
+		} else {
+			result.DetailsState = store.ResetCreditDetailsComplete
+		}
+		return result, nil
+	}
+	if *summary.CumulativeRemainingMS < 0 ||
 		!validCurrentOptionalTimestamp(summary.NextExpiresAtMS) ||
 		!resetCreditInventorySummaryIsValid(summary, evaluatedAtMS) {
 		return CurrentResetCredits{}, fmt.Errorf(
 			"%w: reset credits values are inconsistent", ErrInvalidCurrentQuery,
 		)
 	}
-	result := CurrentResetCredits{
-		AvailableCount:        cloneInt64(summary.AvailableCount),
-		CumulativeRemainingMS: cloneInt64(summary.CumulativeRemainingMS),
-		NextExpiresAtMS:       cloneInt64(summary.NextExpiresAtMS), LastSuccessAtMS: cloneInt64(summary.LastSuccessAtMS),
-		LastAttemptAtMS: cloneInt64(summary.LastAttemptAtMS), Freshness: summary.FreshnessState,
-		FailureCode: cloneSourceFailureCode(summary.LastFailureCode),
-		Items:       mapCurrentResetCreditItems(summary.Credits, evaluatedAtMS),
-	}
-	if result.AvailableCount == nil {
-		result.UnknownReason = currentUnknownPointer(CurrentUnknownNeverLoaded)
-	}
+	result.DetailsState = store.ResetCreditDetailsComplete
+	result.CumulativeRemainingMS = cloneInt64(summary.CumulativeRemainingMS)
+	result.NextExpiresAtMS = cloneInt64(summary.NextExpiresAtMS)
 	return result, nil
+}
+
+func resetCreditAvailableItemCount(credits []store.ResetCredit, evaluatedAtMS int64) int64 {
+	available := int64(0)
+	for _, credit := range credits {
+		if credit.Status != store.ResetCreditAvailable {
+			continue
+		}
+		if credit.ExpiresAtMS != nil && *credit.ExpiresAtMS <= evaluatedAtMS {
+			continue
+		}
+		available++
+	}
+	return available
 }
 
 func resetCreditInventorySummaryIsValid(summary store.ResetCreditsSummary, evaluatedAtMS int64) bool {
 	available, cumulative := int64(0), int64(0)
 	var next *int64
 	for _, credit := range summary.Credits {
-		if credit.Status != store.ResetCreditAvailable || credit.ExpiresAtMS <= evaluatedAtMS {
+		if credit.Status != store.ResetCreditAvailable || credit.ExpiresAtMS == nil || *credit.ExpiresAtMS <= evaluatedAtMS {
 			continue
 		}
 		available++
-		remaining := credit.ExpiresAtMS - evaluatedAtMS
+		remaining := *credit.ExpiresAtMS - evaluatedAtMS
 		if cumulative <= math.MaxInt64-remaining {
 			cumulative += remaining
 		} else {
 			cumulative = math.MaxInt64
 		}
-		if next == nil || credit.ExpiresAtMS < *next {
-			value := credit.ExpiresAtMS
+		if next == nil || *credit.ExpiresAtMS < *next {
+			value := *credit.ExpiresAtMS
 			next = &value
 		}
 	}
@@ -566,22 +697,24 @@ func mapCurrentResetCreditItems(
 		status := credit.Status
 		var remaining *int64
 		if status == store.ResetCreditAvailable {
-			if credit.ExpiresAtMS <= evaluatedAtMS {
+			if credit.ExpiresAtMS != nil && *credit.ExpiresAtMS <= evaluatedAtMS {
 				status = store.ResetCreditExpired
-			} else {
-				value := credit.ExpiresAtMS - evaluatedAtMS
+			} else if credit.ExpiresAtMS != nil {
+				value := *credit.ExpiresAtMS - evaluatedAtMS
 				remaining = &value
 			}
 		}
 		items = append(items, CurrentResetCreditItem{
 			Status: status, Type: credit.Type, GrantedAtMS: credit.GrantedAtMS,
-			ExpiresAtMS: credit.ExpiresAtMS, RedeemedAtMS: cloneInt64(credit.RedeemedAtMS),
+			ExpiresAtMS: cloneInt64(credit.ExpiresAtMS), RedeemedAtMS: cloneInt64(credit.RedeemedAtMS),
 			RemainingMS: remaining,
 		})
 	}
 	sort.Slice(items, func(left, right int) bool {
-		if items[left].ExpiresAtMS != items[right].ExpiresAtMS {
-			return items[left].ExpiresAtMS < items[right].ExpiresAtMS
+		leftExpires := resetCreditExpiresAtMS(items[left].ExpiresAtMS)
+		rightExpires := resetCreditExpiresAtMS(items[right].ExpiresAtMS)
+		if leftExpires != rightExpires {
+			return leftExpires < rightExpires
 		}
 		if items[left].GrantedAtMS != items[right].GrantedAtMS {
 			return items[left].GrantedAtMS < items[right].GrantedAtMS
@@ -609,6 +742,8 @@ func mapCurrentRefreshStatus(
 	schedule *store.SourceRefreshSchedule,
 	expectedInstanceID string,
 	expectedSourceType string,
+	expectedScope string,
+	expectedGeneration int64,
 ) (CurrentRefreshStatus, error) {
 	if schedule == nil {
 		return CurrentRefreshStatus{
@@ -616,8 +751,13 @@ func mapCurrentRefreshStatus(
 		}, nil
 	}
 	if schedule.SourceInstanceID != expectedInstanceID || schedule.SourceType != expectedSourceType ||
-		schedule.ScopeKey != store.QuotaAccountScopeDefault {
+		schedule.ScopeKey != expectedScope {
 		return CurrentRefreshStatus{}, fmt.Errorf("%w: refresh identity is inconsistent", ErrInvalidCurrentQuery)
+	}
+	if schedule.BindingGeneration != expectedGeneration {
+		return CurrentRefreshStatus{
+			State: CurrentRefreshUnknown, UnknownReason: currentUnknownPointer(CurrentUnknownScheduleMissing),
+		}, nil
 	}
 	reason := schedule.Reason
 	result := CurrentRefreshStatus{
@@ -685,6 +825,13 @@ func cloneSourceFailureCode(value *store.SourceFailureCode) *store.SourceFailure
 	}
 	cloned := *value
 	return &cloned
+}
+
+func resetCreditExpiresAtMS(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 func cloneSourceRefreshTrigger(value *store.SourceRefreshTrigger) *store.SourceRefreshTrigger {

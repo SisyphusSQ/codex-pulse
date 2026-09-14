@@ -484,3 +484,180 @@ func withUsageTotals(
 		FirstActivityAtMS: unknownTime, LastActivityAtMS: unknownTime,
 	}
 }
+
+func TestEncodeResponseMapsCodexAccountBindingContext(t *testing.T) {
+	t.Parallel()
+
+	scope := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	reason := store.CodexAccountBindingReasonStartup
+	target := &corev1.QuotaCurrentResponse{}
+	if err := EncodeResponse(runtimeinfo.QuotaCurrentResponse{
+		Current: quotaquery.CurrentResponse{
+			Version:       quotaquery.CurrentContractVersion,
+			AccountScope:  scope,
+			EvaluatedAtMS: 1_784_000_000_000,
+			Binding: &store.CodexAccountBinding{
+				State:             store.CodexAccountBindingConfirmed,
+				AccountScope:      &scope,
+				BindingGeneration: 3,
+				ObservedAtMS:      1_784_000_000_000,
+				Reason:            reason,
+			},
+			Windows: []quotaquery.CurrentWindow{},
+			ResetCredits: quotaquery.CurrentResetCredits{
+				Freshness:    store.SourceFreshnessCurrent,
+				DetailsState: store.ResetCreditDetailsPartial,
+			},
+		},
+	}, target); err != nil {
+		t.Fatalf("EncodeResponse(Codex quota binding) error = %v", err)
+	}
+	binding := target.GetCurrent().GetBinding()
+	if binding == nil || binding.GetState() != "confirmed" || binding.GetAccountScope() != scope ||
+		binding.GetBindingGeneration() != 3 || binding.GetObservedAtMs() != 1_784_000_000_000 ||
+		binding.GetReason() != string(reason) {
+		t.Fatalf("quota binding = %#v", binding)
+	}
+	encoded, err := protojson.Marshal(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := string(encoded)
+	for _, leaked := range []string{"acct-test-a", "accountId", "account_id", "access_token"} {
+		if strings.Contains(payload, leaked) {
+			t.Fatalf("quota protobuf leaked %q: %s", leaked, payload)
+		}
+	}
+	if target.GetCurrent().GetResetCredits().GetDetailsState() != string(store.ResetCreditDetailsPartial) {
+		t.Fatalf("reset credit details_state = %q", target.GetCurrent().GetResetCredits().GetDetailsState())
+	}
+
+	pace := &corev1.QuotaPaceResponse{}
+	unknown := quotaquery.PaceUnknownBindingUnavailable
+	if err := EncodeResponse(runtimeinfo.QuotaPaceResponse{
+		Pace: quotaquery.PaceResponse{
+			Version:       quotaquery.PaceContractVersion,
+			EvaluatedAtMS: 1_784_000_000_000,
+			Binding: &store.CodexAccountBinding{
+				State:             store.CodexAccountBindingPending,
+				BindingGeneration: 4,
+				ObservedAtMS:      1_784_000_000_100,
+				Reason:            store.CodexAccountBindingReasonAccountChanged,
+			},
+			Windows:       []quotaquery.PaceWindow{},
+			UnknownReason: &unknown,
+		},
+	}, pace); err != nil {
+		t.Fatalf("EncodeResponse(pending pace binding) error = %v", err)
+	}
+	if pace.GetPace().GetBinding() == nil || pace.GetPace().GetBinding().GetState() != "pending" ||
+		pace.GetPace().GetBinding().AccountScope != nil || len(pace.GetPace().GetWindows()) != 0 ||
+		pace.GetPace().GetUnknownReason() != string(unknown) {
+		t.Fatalf("pending pace = %#v", pace.GetPace())
+	}
+}
+
+func TestEncodeResponseOmitsBindingForCursorQuotaAndPace(t *testing.T) {
+	t.Parallel()
+
+	quota := &corev1.QuotaCurrentResponse{}
+	if err := EncodeResponse(runtimeinfo.QuotaCurrentResponse{
+		Current: quotaquery.CurrentResponse{
+			Version:       quotaquery.CurrentContractVersion,
+			AccountScope:  store.QuotaAccountScopeDefault,
+			EvaluatedAtMS: 1,
+			Windows:       []quotaquery.CurrentWindow{},
+			ResetCredits: quotaquery.CurrentResetCredits{
+				Freshness: store.SourceFreshnessUnknown,
+			},
+		},
+	}, quota); err != nil {
+		t.Fatalf("EncodeResponse(Cursor quota) error = %v", err)
+	}
+	if quota.GetCurrent().GetBinding() != nil {
+		t.Fatalf("Cursor quota binding = %#v, want absent", quota.GetCurrent().GetBinding())
+	}
+
+	pace := &corev1.QuotaPaceResponse{}
+	if err := EncodeResponse(runtimeinfo.QuotaPaceResponse{
+		Pace: quotaquery.PaceResponse{
+			Version:       quotaquery.PaceContractVersion,
+			AccountScope:  store.QuotaAccountScopeDefault,
+			EvaluatedAtMS: 1,
+			Windows:       []quotaquery.PaceWindow{},
+		},
+	}, pace); err != nil {
+		t.Fatalf("EncodeResponse(Cursor pace) error = %v", err)
+	}
+	if pace.GetPace().GetBinding() != nil {
+		t.Fatalf("Cursor pace binding = %#v, want absent", pace.GetPace().GetBinding())
+	}
+}
+
+func TestEncodeResponseMapsPendingAccountSnapshotWithoutIdentity(t *testing.T) {
+	t.Parallel()
+
+	scope := "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+	target := &corev1.AccountSnapshotResponse{}
+	if err := EncodeResponse(AccountSnapshot{
+		Binding: &store.CodexAccountBinding{
+			State:             store.CodexAccountBindingPending,
+			BindingGeneration: 2,
+			ObservedAtMS:      1_784_000_000_300,
+			Reason:            store.CodexAccountBindingReasonAccountChanged,
+		},
+	}, target); err != nil {
+		t.Fatalf("EncodeResponse(pending account) error = %v", err)
+	}
+	if target.Account != nil || target.GetBinding() == nil || target.GetBinding().GetState() != "pending" ||
+		target.GetBinding().AccountScope != nil || target.GetBinding().GetBindingGeneration() != 2 {
+		t.Fatalf("pending account snapshot = %#v", target)
+	}
+
+	confirmed := &corev1.AccountSnapshotResponse{}
+	email, plan := "person@example.com", "pro"
+	if err := EncodeResponse(AccountSnapshot{
+		Account: &AccountIdentity{Type: "chatgpt", Email: &email, PlanType: &plan},
+		Binding: &store.CodexAccountBinding{
+			State:             store.CodexAccountBindingConfirmed,
+			AccountScope:      &scope,
+			BindingGeneration: 2,
+			ObservedAtMS:      1_784_000_000_400,
+			Reason:            store.CodexAccountBindingReasonAccountChanged,
+		},
+	}, confirmed); err != nil {
+		t.Fatalf("EncodeResponse(confirmed account) error = %v", err)
+	}
+	if confirmed.GetAccount() == nil || confirmed.GetBinding() == nil ||
+		confirmed.GetBinding().GetAccountScope() != scope ||
+		strings.Contains(confirmed.GetBinding().GetAccountScope(), "acct-") {
+		t.Fatalf("confirmed account snapshot leaked identity into scope: %#v", confirmed)
+	}
+}
+
+func TestEncodeResponseOmitsResetCreditExpiresAtWhenUnknown(t *testing.T) {
+	t.Parallel()
+
+	target := &corev1.QuotaCurrentResponse{}
+	if err := EncodeResponse(runtimeinfo.QuotaCurrentResponse{
+		Current: quotaquery.CurrentResponse{
+			Version:       quotaquery.CurrentContractVersion,
+			AccountScope:  store.QuotaAccountScopeDefault,
+			EvaluatedAtMS: 1,
+			ResetCredits: quotaquery.CurrentResetCredits{
+				Freshness: store.SourceFreshnessCurrent,
+				Items: []quotaquery.CurrentResetCreditItem{{
+					Status:      store.ResetCreditAvailable,
+					Type:        store.ResetCreditTypeCodexRateLimits,
+					GrantedAtMS: 1,
+				}},
+			},
+		},
+	}, target); err != nil {
+		t.Fatalf("EncodeResponse(reset credit without expiry) error = %v", err)
+	}
+	items := target.GetCurrent().GetResetCredits().GetItems()
+	if len(items) != 1 || items[0].ExpiresAtMs != nil {
+		t.Fatalf("reset credit item = %#v, want absent expires_at_ms", items)
+	}
+}

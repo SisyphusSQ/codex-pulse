@@ -62,10 +62,14 @@ func QuotaResetsEquivalentForWindow(
 	rightAtMS int64,
 ) bool {
 	jitterMS := quotaResetJitterMS
-	if source == QuotaSourceWham && windowMinutes == quotaWeeklyWindowMinutes {
+	if isCodexOnlineQuotaSource(source) && windowMinutes == quotaWeeklyWindowMinutes {
 		jitterMS = quotaWhamWeeklyResetJitterMS
 	}
 	return quotaResetsEquivalentWithin(leftAtMS, rightAtMS, jitterMS)
+}
+
+func isCodexOnlineQuotaSource(source QuotaSource) bool {
+	return source == QuotaSourceWham || source == QuotaSourceAppServer
 }
 
 func quotaResetsEquivalentWithin(leftAtMS, rightAtMS, jitterMS int64) bool {
@@ -560,7 +564,7 @@ func quotaWeeklyResetLooksObservationAnchored(
 	observation QuotaObservation,
 	rule QuotaArbitrationRule,
 ) bool {
-	if observation.Source != QuotaSourceWham ||
+	if !isCodexOnlineQuotaSource(observation.Source) ||
 		observation.WindowMinutes != quotaWeeklyWindowMinutes ||
 		observation.UsedPercent != 0 {
 		return false
@@ -574,7 +578,7 @@ func quotaWeeklyResetLooksObservationAnchored(
 }
 
 func quotaWeeklyUsageAnchorsProvisionalPhase(observation QuotaObservation) bool {
-	return observation.Source == QuotaSourceWham &&
+	return isCodexOnlineQuotaSource(observation.Source) &&
 		observation.WindowMinutes == quotaWeeklyWindowMinutes &&
 		observation.UsedPercent > 0
 }

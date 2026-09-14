@@ -219,6 +219,47 @@ func TestRecordQuotaFetchRollsBackStateAttemptAndObservationTogether(t *testing.
 	}
 }
 
+func TestRecordQuotaFetchAcceptsAppServerObservationsWithoutHTTPStatus(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	_, scope, generation := confirmSyntheticCodexAccount(t, repository, "acct-test-a", 1_784_000_000_000)
+	record := appServerQuotaFetchRecord("app-server-success", scope, generation, 1_784_000_000_000)
+	if err := repository.RecordQuotaFetch(context.Background(), record); err != nil {
+		t.Fatalf("RecordQuotaFetch(app_server) error = %v", err)
+	}
+	observations, err := repository.ListQuotaObservations(context.Background(), QuotaObservationFilter{
+		Source: pointerTo(QuotaSourceAppServer), Limit: 10,
+	})
+	if err != nil || len(observations) != 2 {
+		t.Fatalf("app_server observations = %#v, %v", observations, err)
+	}
+	for _, observation := range observations {
+		if observation.AccountScope != scope || observation.Source != QuotaSourceAppServer {
+			t.Fatalf("stored observation = %#v", observation)
+		}
+	}
+}
+
+func TestRecordQuotaFetchAcceptsAppServerServerErrorWithoutHTTPStatus(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	record := failedQuotaFetchRecord(
+		"app-server-rpc-error", 1_784_000_000_100,
+		SourceAttemptFailed, RuntimeErrorUnavailable, SourceFailureServerError, nil,
+	)
+	record.Attempt.HTTPStatus = nil
+	if err := repository.RecordQuotaFetch(context.Background(), record); err != nil {
+		t.Fatalf("RecordQuotaFetch(app_server server_error) error = %v", err)
+	}
+	attempts, err := repository.ListSourceAttempts(context.Background(), QuotaSourceInstanceWhamDefault, 10)
+	if err != nil || len(attempts) != 1 || attempts[0].HTTPStatus != nil ||
+		attempts[0].FailureCode == nil || *attempts[0].FailureCode != SourceFailureServerError {
+		t.Fatalf("attempts = %#v, %v", attempts, err)
+	}
+}
+
 func successfulQuotaFetchRecord(requestID string, finishedAtMS int64, primary, secondary float64) QuotaFetchRecord {
 	limitID := "codex"
 	requestIDPointer := requestID

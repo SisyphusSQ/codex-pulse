@@ -52,6 +52,59 @@ func TestReadAccountRequestsDisplayFieldsWithoutRefreshingToken(t *testing.T) {
 	}
 }
 
+func TestReadAccountSandwichRequiresMatchingAccountIDs(t *testing.T) {
+	t.Parallel()
+
+	rateLimits := `{"accountId":"acct-test-a","rateLimits":{"primary":{"usedPercent":3,"windowDurationMins":5,"resetsAt":1784008800}}}`
+	account := `{"account":{"type":"chatgpt","email":"a@example.com","planType":"plus"}}`
+	responses := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"result":` + rateLimits + `}`,
+		`{"jsonrpc":"2.0","id":2,"result":` + account + `}`,
+		`{"jsonrpc":"2.0","id":3,"result":` + rateLimits + `}`,
+	}, "\n") + "\n"
+	writes := &bytes.Buffer{}
+	rpc := newJSONLineRPC(nopWriteCloser{writes}, strings.NewReader(responses))
+	sandwich, err := readAccountSandwich(context.Background(), rpc)
+	if err != nil {
+		t.Fatalf("readAccountSandwich() error = %v", err)
+	}
+	if string(sandwich.BeforeID) != "acct-test-a" || string(sandwich.AfterID) != "acct-test-a" ||
+		sandwich.Account == nil || sandwich.Account.Email == nil || *sandwich.Account.Email != "a@example.com" {
+		t.Fatalf("readAccountSandwich() = %#v", sandwich)
+	}
+	written := writes.String()
+	if !strings.Contains(written, `"method":"account/rateLimits/read"`) ||
+		!strings.Contains(written, `"method":"account/read"`) ||
+		strings.Count(written, `"method":"account/rateLimits/read"`) != 2 {
+		t.Fatalf("sandwich methods = %q", written)
+	}
+	if strings.Contains(written, `"refreshToken":true`) {
+		t.Fatal("account/read refreshed token")
+	}
+}
+
+func TestReadAccountSandwichPreservesMismatchedIDsWithoutMixingDisplay(t *testing.T) {
+	t.Parallel()
+
+	before := `{"accountId":"acct-test-a","rateLimits":{"primary":{"usedPercent":3,"windowDurationMins":5,"resetsAt":1784008800}}}`
+	account := `{"account":{"type":"chatgpt","email":"b@example.com","planType":"plus"}}`
+	after := `{"accountId":"acct-test-b","rateLimits":{"primary":{"usedPercent":4,"windowDurationMins":5,"resetsAt":1784008800}}}`
+	responses := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"result":` + before + `}`,
+		`{"jsonrpc":"2.0","id":2,"result":` + account + `}`,
+		`{"jsonrpc":"2.0","id":3,"result":` + after + `}`,
+	}, "\n") + "\n"
+	rpc := newJSONLineRPC(nopWriteCloser{io.Discard}, strings.NewReader(responses))
+	sandwich, err := readAccountSandwich(context.Background(), rpc)
+	if err != nil {
+		t.Fatalf("readAccountSandwich(mismatch) error = %v", err)
+	}
+	if string(sandwich.BeforeID) != "acct-test-a" || string(sandwich.AfterID) != "acct-test-b" ||
+		sandwich.Account == nil || sandwich.Account.Email == nil || *sandwich.Account.Email != "b@example.com" {
+		t.Fatalf("mismatch sandwich = %#v", sandwich)
+	}
+}
+
 func TestReadAccountKeepsMissingAccountEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -108,7 +161,7 @@ while IFS= read -r line; do
   esac
 done
 `
-	if err := os.WriteFile(binary, []byte(script), 0o700); err != nil {
+	if err := os.WriteFile(binary, capableCodexScript(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("CODEX_PULSE_ACCOUNT_TEST_LOG", logPath)
@@ -151,7 +204,7 @@ func TestReadLocalAccountRejectsSamePathReplacementBeforeStartingProcess(t *test
 : > "$CODEX_PULSE_ACCOUNT_STARTED"
 exit 1
 `
-	if err := os.WriteFile(binary, []byte(script), 0o700); err != nil {
+	if err := os.WriteFile(binary, capableCodexScript(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("CODEX_PULSE_ACCOUNT_STARTED", startedPath)
@@ -219,7 +272,7 @@ while IFS= read -r line; do
   esac
 done
 `
-	if err := os.WriteFile(binary, []byte(script), 0o700); err != nil {
+	if err := os.WriteFile(binary, capableCodexScript(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("CODEX_PULSE_ACCOUNT_STARTED", startedPath)
@@ -330,7 +383,7 @@ while IFS= read -r line; do
   esac
 done
 `
-	if err := os.WriteFile(binary, []byte(script), 0o700); err != nil {
+	if err := os.WriteFile(binary, capableCodexScript(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 
@@ -367,7 +420,7 @@ done
 	}()
 	<-firstWrite
 
-	readContext, cancelRead := context.WithTimeout(t.Context(), 3*time.Second)
+	readContext, cancelRead := context.WithTimeout(t.Context(), 10*time.Second)
 	account, err := ReadLocalAccount(
 		readContext,
 		confirmedAccountTestHome(t, confirmedHome, 10),
@@ -384,6 +437,16 @@ done
 	if account == nil || account.Email == nil || *account.Email != "person@example.com" {
 		t.Fatalf("ReadLocalAccount(large active Session tree) = %#v", account)
 	}
+}
+
+func capableCodexScript(body string) []byte {
+	script := strings.TrimPrefix(body, "#!/bin/sh\n")
+	return []byte("#!/bin/sh\n" +
+		"if [ \"$1\" = \"--version\" ]; then\n" +
+		"  printf 'codex-cli 0.154.0\\n'\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		script)
 }
 
 func confirmedAccountTestHome(t testing.TB, path string, generation int64) ConfirmedHome {

@@ -29,24 +29,24 @@ type RefreshPreferencesReader interface {
 }
 
 type SourceRefreshFetcher interface {
-	Fetch(context.Context, string) error
+	Fetch(context.Context, quotaonline.BoundRefreshRequest) error
 }
 
-type SourceRefreshFunc func(context.Context, string) error
+type SourceRefreshFunc func(context.Context, quotaonline.BoundRefreshRequest) error
 
-func (function SourceRefreshFunc) Fetch(ctx context.Context, requestID string) error {
+func (function SourceRefreshFunc) Fetch(ctx context.Context, request quotaonline.BoundRefreshRequest) error {
 	if function == nil {
 		return ErrInvalidQuotaRefreshCoordinator
 	}
-	return function(ctx, requestID)
+	return function(ctx, request)
 }
 
 type QuotaFetchService interface {
-	Fetch(context.Context, string) (quotaonline.Result, error)
+	FetchBound(context.Context, quotaonline.BoundRefreshRequest) (quotaonline.Result, error)
 }
 
 type ResetCreditsFetchService interface {
-	Fetch(context.Context, string) (quotaonline.ResetCreditsResult, error)
+	FetchBound(context.Context, quotaonline.BoundRefreshRequest) (quotaonline.ResetCreditsResult, error)
 }
 
 // AdaptQuotaFetchService and AdaptResetCreditsFetchService bridge the typed
@@ -56,8 +56,8 @@ func AdaptQuotaFetchService(service QuotaFetchService) SourceRefreshFetcher {
 	if service == nil {
 		return nil
 	}
-	return SourceRefreshFunc(func(ctx context.Context, requestID string) error {
-		_, err := service.Fetch(ctx, requestID)
+	return SourceRefreshFunc(func(ctx context.Context, request quotaonline.BoundRefreshRequest) error {
+		_, err := service.FetchBound(ctx, request)
 		return err
 	})
 }
@@ -66,8 +66,8 @@ func AdaptResetCreditsFetchService(service ResetCreditsFetchService) SourceRefre
 	if service == nil {
 		return nil
 	}
-	return SourceRefreshFunc(func(ctx context.Context, requestID string) error {
-		_, err := service.Fetch(ctx, requestID)
+	return SourceRefreshFunc(func(ctx context.Context, request quotaonline.BoundRefreshRequest) error {
+		_, err := service.FetchBound(ctx, request)
 		return err
 	})
 }
@@ -143,13 +143,14 @@ func (cycleErrors *quotaRefreshCycleErrors) result() error {
 }
 
 type refreshSourceDescriptor struct {
-	source           quotaonline.RefreshSource
-	sourceInstanceID string
-	sourceType       string
-	scopeKey         string
-	enabled          bool
-	intervalSeconds  int64
-	fetcher          SourceRefreshFetcher
+	source            quotaonline.RefreshSource
+	sourceInstanceID  string
+	sourceType        string
+	scopeKey          string
+	bindingGeneration int64
+	enabled           bool
+	intervalSeconds   int64
+	fetcher           SourceRefreshFetcher
 }
 
 func NewQuotaRefreshCoordinator(config QuotaRefreshCoordinatorConfig) (*QuotaRefreshCoordinator, error) {
@@ -214,7 +215,12 @@ func (coordinator *QuotaRefreshCoordinator) Initialize(ctx context.Context) erro
 		cycleErrors.add(err, isPermanentQuotaRefreshCycleError(err))
 		return cycleErrors.result()
 	}
-	for _, descriptor := range coordinator.descriptors(snapshot) {
+	descriptors, err := coordinator.descriptors(ctx, snapshot)
+	if err != nil {
+		cycleErrors.add(err, isPermanentQuotaRefreshCycleError(err))
+		return cycleErrors.result()
+	}
+	for _, descriptor := range descriptors {
 		trigger := store.RefreshTriggerStartup
 		if _, found := recoveredIDs[descriptor.sourceInstanceID]; found {
 			trigger = store.RefreshTriggerRecovery
@@ -256,7 +262,11 @@ func (coordinator *QuotaRefreshCoordinator) ReconcilePreferences(ctx context.Con
 		return err
 	}
 	nowMS := coordinator.clock().UnixMilli()
-	for _, descriptor := range coordinator.descriptors(snapshot) {
+	descriptors, err := coordinator.descriptors(ctx, snapshot)
+	if err != nil {
+		return err
+	}
+	for _, descriptor := range descriptors {
 		if _, err := coordinator.replanSource(ctx, descriptor, store.RefreshTriggerStartup, nowMS); err != nil {
 			return err
 		}
@@ -278,7 +288,14 @@ func (coordinator *QuotaRefreshCoordinator) RearmAfterHomeChange(ctx context.Con
 		return err
 	}
 	nowMS := coordinator.clock().UnixMilli()
-	for _, descriptor := range coordinator.descriptors(snapshot) {
+	if err := coordinator.repository.ClearSourceRefreshGlobalFence(ctx); err != nil {
+		return err
+	}
+	descriptors, err := coordinator.descriptors(ctx, snapshot)
+	if err != nil {
+		return err
+	}
+	for _, descriptor := range descriptors {
 		schedule, err := coordinator.loadSchedule(ctx, descriptor.sourceInstanceID)
 		if err != nil {
 			return err
@@ -328,7 +345,10 @@ func (coordinator *QuotaRefreshCoordinator) RequestRefreshResult(
 	if err != nil {
 		return store.SourceRefreshSchedule{}, false, err
 	}
-	descriptor, found := coordinator.descriptor(snapshot, source)
+	descriptor, found, err := coordinator.descriptor(ctx, snapshot, source)
+	if err != nil {
+		return store.SourceRefreshSchedule{}, false, err
+	}
 	if !found {
 		return store.SourceRefreshSchedule{}, false, ErrInvalidQuotaRefreshCoordinator
 	}
@@ -357,11 +377,17 @@ func (coordinator *QuotaRefreshCoordinator) RequestRefreshResult(
 	}
 	claimed, ok, err := coordinator.repository.ClaimSourceRefresh(
 		ctx, descriptor.sourceInstanceID, persisted.Revision, requestID, trigger, nowMS, coordinator.claimLeaseMS,
+		descriptor.bindingGeneration,
 	)
 	if err != nil || !ok {
 		return claimed, false, err
 	}
 	completed, execErr := coordinator.executeClaim(ctx, snapshot, descriptor, claimed, requestID)
+	if execErr == nil {
+		if err := coordinator.raiseNetworkBackoffFence(ctx, completed, coordinator.clock().UnixMilli()); err != nil {
+			return completed, true, err
+		}
+	}
 	return completed, true, execErr
 }
 
@@ -380,7 +406,11 @@ func (coordinator *QuotaRefreshCoordinator) runDueCycleLocked(
 		return cycleErrors.result()
 	}
 	for sourceInstanceID := range recoveredIDs {
-		descriptor, found := coordinator.descriptorByInstance(snapshot, sourceInstanceID)
+		descriptor, found, err := coordinator.descriptorByInstance(ctx, snapshot, sourceInstanceID)
+		if err != nil {
+			cycleErrors.add(err, isPermanentQuotaRefreshCycleError(err))
+			continue
+		}
 		if !found {
 			cycleErrors.add(ErrInvalidQuotaRefreshCoordinator, true)
 			continue
@@ -398,7 +428,11 @@ func (coordinator *QuotaRefreshCoordinator) runDueCycleLocked(
 		return cycleErrors.result()
 	}
 	for _, schedule := range due {
-		descriptor, found := coordinator.descriptorByInstance(snapshot, schedule.SourceInstanceID)
+		descriptor, found, err := coordinator.descriptorByInstance(ctx, snapshot, schedule.SourceInstanceID)
+		if err != nil {
+			cycleErrors.add(err, isPermanentQuotaRefreshCycleError(err))
+			continue
+		}
 		if !found {
 			cycleErrors.add(ErrInvalidQuotaRefreshCoordinator, true)
 			continue
@@ -421,6 +455,7 @@ func (coordinator *QuotaRefreshCoordinator) runDueCycleLocked(
 		trigger := triggerForRefreshReason(schedule.Reason)
 		claimed, ok, err := coordinator.repository.ClaimSourceRefresh(
 			ctx, descriptor.sourceInstanceID, schedule.Revision, requestID, trigger, nowMS, coordinator.claimLeaseMS,
+			descriptor.bindingGeneration,
 		)
 		if err != nil {
 			cycleErrors.add(err, isPermanentQuotaRefreshCycleError(err))
@@ -432,6 +467,9 @@ func (coordinator *QuotaRefreshCoordinator) runDueCycleLocked(
 		if _, err := coordinator.executeClaim(ctx, snapshot, descriptor, claimed, requestID); err != nil {
 			cycleErrors.add(err, isPermanentQuotaRefreshCycleError(err))
 		}
+	}
+	if err := coordinator.raiseDueCycleBackoffFence(ctx, snapshot, nowMS); err != nil {
+		cycleErrors.add(err, isPermanentQuotaRefreshCycleError(err))
 	}
 	return cycleErrors.result()
 }
@@ -447,7 +485,10 @@ func (coordinator *QuotaRefreshCoordinator) recoverExpiredClaimsLocked(
 	}
 	unrecorded := make(map[string]struct{}, len(expired))
 	for _, claimed := range expired {
-		descriptor, found := coordinator.descriptorByInstance(snapshot, claimed.SourceInstanceID)
+		descriptor, found, err := coordinator.descriptorByInstance(ctx, snapshot, claimed.SourceInstanceID)
+		if err != nil {
+			return nil, err
+		}
 		if !found || claimed.ActiveClaimID == nil {
 			return nil, ErrInvalidQuotaRefreshCoordinator
 		}
@@ -497,7 +538,19 @@ func (coordinator *QuotaRefreshCoordinator) executeClaim(
 	claimed store.SourceRefreshSchedule,
 	requestID string,
 ) (store.SourceRefreshSchedule, error) {
-	if err := descriptor.fetcher.Fetch(ctx, requestID); err != nil {
+	if err := descriptor.fetcher.Fetch(ctx, quotaonline.BoundRefreshRequest{
+		RequestID: requestID,
+		Binding: quotaonline.AccountBindingFence{
+			AccountScope: descriptor.scopeKey, BindingGeneration: descriptor.bindingGeneration,
+		},
+	}); err != nil {
+		if errors.Is(err, store.ErrCodexAccountBindingChanged) {
+			abandoned, abandonErr := coordinator.repository.AbandonSourceRefreshClaim(ctx, store.SourceRefreshClaimRecovery{
+				SourceInstanceID: descriptor.sourceInstanceID, ClaimID: requestID,
+				ExpectedRevision: claimed.Revision, AtMS: coordinator.clock().UnixMilli(),
+			})
+			return abandoned, errors.Join(err, abandonErr)
+		}
 		// A recorder/storage error makes durability unknown. Keep the claim until
 		// its lease expires so recovery, rather than an immediate duplicate call,
 		// decides the next request.
@@ -516,11 +569,23 @@ func (coordinator *QuotaRefreshCoordinator) completeRecordedClaim(
 	completionCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), coordinator.completionTimeout)
 	defer cancel()
 	nowMS := coordinator.clock().UnixMilli()
+	binding, err := coordinator.repository.CodexAccountBinding(completionCtx)
+	if err != nil {
+		return claimed, err
+	}
+	if binding.State != store.CodexAccountBindingConfirmed || binding.AccountScope == nil ||
+		*binding.AccountScope != descriptor.scopeKey || binding.BindingGeneration != descriptor.bindingGeneration {
+		abandoned, abandonErr := coordinator.repository.AbandonSourceRefreshClaim(completionCtx, store.SourceRefreshClaimRecovery{
+			SourceInstanceID: descriptor.sourceInstanceID, ClaimID: requestID,
+			ExpectedRevision: claimed.Revision, AtMS: nowMS,
+		})
+		return abandoned, errors.Join(store.ErrCodexAccountBindingChanged, abandonErr)
+	}
 	state, err := coordinator.loadSourceState(completionCtx, descriptor.sourceInstanceID)
 	if err != nil {
 		return claimed, err
 	}
-	windows, err := coordinator.loadQuotaWindows(completionCtx, descriptor.source, nowMS)
+	windows, err := coordinator.loadQuotaWindows(completionCtx, descriptor, nowMS)
 	if err != nil {
 		return claimed, err
 	}
@@ -549,8 +614,14 @@ func (coordinator *QuotaRefreshCoordinator) rearmResetCreditsAfterQuotaRecovery(
 	snapshot preferences.Snapshot,
 	nowMS int64,
 ) error {
-	quotaDescriptor, quotaFound := coordinator.descriptor(snapshot, quotaonline.RefreshSourceQuota)
-	resetDescriptor, resetFound := coordinator.descriptor(snapshot, quotaonline.RefreshSourceResetCredits)
+	quotaDescriptor, quotaFound, err := coordinator.descriptor(ctx, snapshot, quotaonline.RefreshSourceQuota)
+	if err != nil {
+		return err
+	}
+	resetDescriptor, resetFound, err := coordinator.descriptor(ctx, snapshot, quotaonline.RefreshSourceResetCredits)
+	if err != nil {
+		return err
+	}
 	if !quotaFound || !resetFound || !quotaDescriptor.enabled || !resetDescriptor.enabled {
 		return nil
 	}
@@ -642,7 +713,7 @@ func (coordinator *QuotaRefreshCoordinator) planSource(
 	if err != nil {
 		return nil, quotaonline.RefreshDecision{}, err
 	}
-	windows, err := coordinator.loadQuotaWindows(ctx, descriptor.source, nowMS)
+	windows, err := coordinator.loadQuotaWindows(ctx, descriptor, nowMS)
 	if err != nil {
 		return nil, quotaonline.RefreshDecision{}, err
 	}
@@ -661,7 +732,8 @@ func (coordinator *QuotaRefreshCoordinator) persistDecision(
 	decision quotaonline.RefreshDecision,
 	atMS int64,
 ) (store.SourceRefreshSchedule, error) {
-	if schedule != nil && equalRefreshDecision(*schedule, decision) {
+	if schedule != nil && equalRefreshDecision(*schedule, decision) &&
+		schedule.BindingGeneration == descriptor.bindingGeneration {
 		return *schedule, nil
 	}
 	expectedRevision := int64(0)
@@ -670,8 +742,9 @@ func (coordinator *QuotaRefreshCoordinator) persistDecision(
 	}
 	return coordinator.repository.UpsertSourceRefreshSchedule(ctx, store.SourceRefreshScheduleUpdate{
 		SourceInstanceID: descriptor.sourceInstanceID, SourceType: descriptor.sourceType,
-		ScopeKey: descriptor.scopeKey, ExpectedRevision: expectedRevision,
-		NextDueAtMS: decision.NextDueAtMS, Reason: decision.Reason, AtMS: atMS,
+		ScopeKey: descriptor.scopeKey, BindingGeneration: descriptor.bindingGeneration,
+		ExpectedRevision: expectedRevision,
+		NextDueAtMS:      decision.NextDueAtMS, Reason: decision.Reason, AtMS: atMS,
 	})
 }
 
@@ -705,55 +778,171 @@ func (coordinator *QuotaRefreshCoordinator) loadSourceState(
 
 func (coordinator *QuotaRefreshCoordinator) loadQuotaWindows(
 	ctx context.Context,
-	source quotaonline.RefreshSource,
+	descriptor refreshSourceDescriptor,
 	nowMS int64,
 ) ([]store.QuotaCurrent, error) {
-	if source != quotaonline.RefreshSourceQuota {
+	if descriptor.source != quotaonline.RefreshSourceQuota || descriptor.scopeKey == "" {
 		return nil, nil
 	}
-	return coordinator.repository.ListQuotaCurrent(ctx, store.QuotaAccountScopeDefault, nowMS)
+	return coordinator.repository.ListQuotaCurrent(ctx, descriptor.scopeKey, nowMS)
 }
 
-func (coordinator *QuotaRefreshCoordinator) descriptors(snapshot preferences.Snapshot) []refreshSourceDescriptor {
+func (coordinator *QuotaRefreshCoordinator) descriptors(
+	ctx context.Context,
+	snapshot preferences.Snapshot,
+) ([]refreshSourceDescriptor, error) {
+	if coordinator == nil || coordinator.repository == nil {
+		return nil, ErrInvalidQuotaRefreshCoordinator
+	}
+	binding, err := coordinator.repository.CodexAccountBinding(ctx)
+	if err != nil {
+		return nil, err
+	}
+	nowMS := coordinator.clock().UnixMilli()
+	if binding.State != store.CodexAccountBindingConfirmed || binding.AccountScope == nil {
+		if err := coordinator.deactivateAccountSchedules(ctx, "", nowMS); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+	scope := *binding.AccountScope
+	if err := coordinator.deactivateAccountSchedules(ctx, scope, nowMS); err != nil {
+		return nil, err
+	}
+	generation := binding.BindingGeneration
 	return []refreshSourceDescriptor{
 		{
-			source: quotaonline.RefreshSourceQuota, sourceInstanceID: store.QuotaSourceInstanceWhamDefault,
-			sourceType: store.QuotaSourceTypeWham, scopeKey: store.QuotaAccountScopeDefault,
-			enabled: snapshot.Online.QuotaEnabled, intervalSeconds: snapshot.Refresh.QuotaIntervalSeconds,
+			source: quotaonline.RefreshSourceQuota, sourceInstanceID: store.QuotaSourceInstanceAppServer(scope),
+			sourceType: store.QuotaSourceTypeAppServerRateLimits, scopeKey: scope,
+			bindingGeneration: generation,
+			enabled:           snapshot.Online.QuotaEnabled, intervalSeconds: snapshot.Refresh.QuotaIntervalSeconds,
 			fetcher: coordinator.quotaFetcher,
 		},
 		{
-			source: quotaonline.RefreshSourceResetCredits, sourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-			sourceType: store.ResetCreditsSourceTypeWham, scopeKey: store.QuotaAccountScopeDefault,
-			enabled:         snapshot.Online.ResetCreditsEnabled,
-			intervalSeconds: snapshot.Refresh.ResetCreditsIntervalSeconds,
-			fetcher:         coordinator.resetCreditsFetcher,
+			source: quotaonline.RefreshSourceResetCredits, sourceInstanceID: store.ResetCreditsSourceInstanceAppServer(scope),
+			sourceType: store.ResetCreditsSourceTypeAppServer, scopeKey: scope,
+			bindingGeneration: generation,
+			enabled:           snapshot.Online.ResetCreditsEnabled,
+			intervalSeconds:   snapshot.Refresh.ResetCreditsIntervalSeconds,
+			fetcher:           coordinator.resetCreditsFetcher,
 		},
+	}, nil
+}
+
+func (coordinator *QuotaRefreshCoordinator) deactivateAccountSchedules(
+	ctx context.Context,
+	activeScope string,
+	nowMS int64,
+) error {
+	schedules, err := coordinator.repository.ListSourceRefreshSchedules(ctx)
+	if err != nil {
+		return err
 	}
+	for _, schedule := range schedules {
+		if !accountScopedRefreshSchedule(schedule) {
+			continue
+		}
+		if activeScope != "" && schedule.ScopeKey == activeScope {
+			continue
+		}
+		if schedule.Reason == store.RefreshReasonInactiveAccount && schedule.NextDueAtMS == nil &&
+			schedule.ActiveClaimID == nil {
+			continue
+		}
+		if schedule.ActiveClaimID != nil {
+			if _, err := coordinator.repository.AbandonSourceRefreshClaim(ctx, store.SourceRefreshClaimRecovery{
+				SourceInstanceID: schedule.SourceInstanceID, ClaimID: *schedule.ActiveClaimID,
+				ExpectedRevision: schedule.Revision, AtMS: nowMS,
+			}); err != nil && !errors.Is(err, store.ErrSourceRefreshConflict) {
+				return err
+			}
+			continue
+		}
+		if _, err := coordinator.repository.UpsertSourceRefreshSchedule(ctx, store.SourceRefreshScheduleUpdate{
+			SourceInstanceID: schedule.SourceInstanceID, SourceType: schedule.SourceType,
+			ScopeKey: schedule.ScopeKey, BindingGeneration: schedule.BindingGeneration,
+			ExpectedRevision: schedule.Revision, Reason: store.RefreshReasonInactiveAccount, AtMS: nowMS,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func accountScopedRefreshSchedule(schedule store.SourceRefreshSchedule) bool {
+	return schedule.SourceType == store.QuotaSourceTypeAppServerRateLimits ||
+		schedule.SourceType == store.ResetCreditsSourceTypeAppServer
+}
+
+func (coordinator *QuotaRefreshCoordinator) raiseDueCycleBackoffFence(
+	ctx context.Context,
+	snapshot preferences.Snapshot,
+	nowMS int64,
+) error {
+	descriptors, err := coordinator.descriptors(ctx, snapshot)
+	if err != nil {
+		return err
+	}
+	for _, descriptor := range descriptors {
+		schedule, err := coordinator.loadSchedule(ctx, descriptor.sourceInstanceID)
+		if err != nil {
+			return err
+		}
+		if schedule == nil {
+			continue
+		}
+		if err := coordinator.raiseNetworkBackoffFence(ctx, *schedule, nowMS); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (coordinator *QuotaRefreshCoordinator) raiseNetworkBackoffFence(
+	ctx context.Context,
+	schedule store.SourceRefreshSchedule,
+	nowMS int64,
+) error {
+	if schedule.Reason != store.RefreshReasonNetworkBackoff || schedule.NextDueAtMS == nil {
+		return nil
+	}
+	return coordinator.repository.RaiseSourceRefreshGlobalFence(
+		ctx, *schedule.NextDueAtMS, "network_backoff", nowMS,
+	)
 }
 
 func (coordinator *QuotaRefreshCoordinator) descriptor(
+	ctx context.Context,
 	snapshot preferences.Snapshot,
 	source quotaonline.RefreshSource,
-) (refreshSourceDescriptor, bool) {
-	for _, descriptor := range coordinator.descriptors(snapshot) {
+) (refreshSourceDescriptor, bool, error) {
+	descriptors, err := coordinator.descriptors(ctx, snapshot)
+	if err != nil {
+		return refreshSourceDescriptor{}, false, err
+	}
+	for _, descriptor := range descriptors {
 		if descriptor.source == source {
-			return descriptor, true
+			return descriptor, true, nil
 		}
 	}
-	return refreshSourceDescriptor{}, false
+	return refreshSourceDescriptor{}, false, nil
 }
 
 func (coordinator *QuotaRefreshCoordinator) descriptorByInstance(
+	ctx context.Context,
 	snapshot preferences.Snapshot,
 	sourceInstanceID string,
-) (refreshSourceDescriptor, bool) {
-	for _, descriptor := range coordinator.descriptors(snapshot) {
+) (refreshSourceDescriptor, bool, error) {
+	descriptors, err := coordinator.descriptors(ctx, snapshot)
+	if err != nil {
+		return refreshSourceDescriptor{}, false, err
+	}
+	for _, descriptor := range descriptors {
 		if descriptor.sourceInstanceID == sourceInstanceID {
-			return descriptor, true
+			return descriptor, true, nil
 		}
 	}
-	return refreshSourceDescriptor{}, false
+	return refreshSourceDescriptor{}, false, nil
 }
 
 func equalRefreshDecision(schedule store.SourceRefreshSchedule, decision quotaonline.RefreshDecision) bool {

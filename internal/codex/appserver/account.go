@@ -38,6 +38,65 @@ type accountReadResult struct {
 	Account *AccountSnapshot `json:"account"`
 }
 
+type AccountSandwich struct {
+	BeforeID SensitiveAccountID
+	AfterID  SensitiveAccountID
+	Account  *AccountSnapshot
+}
+
+func ReadLocalAccountSandwich(
+	ctx context.Context,
+	confirmedHome ConfirmedHome,
+	options ProcessOptions,
+) (AccountSandwich, error) {
+	binding, err := openConfirmedHomeBinding(ctx, confirmedHome)
+	if err != nil {
+		return AccountSandwich{}, err
+	}
+	defer func() { _ = binding.close() }()
+	beforeStart := options.BeforeStart
+	options.BeforeStart = func(startContext context.Context) error {
+		if beforeStart != nil {
+			if err := beforeStart(startContext); err != nil {
+				return err
+			}
+		}
+		return binding.validate(startContext)
+	}
+	options.homeBinding = binding
+	result, err := withInitializedLocalRPC(
+		ctx,
+		confirmedHome.Path,
+		options,
+		func(ctx context.Context, rpc *jsonLineRPC, _ string) (AccountSandwich, error) {
+			return readAccountSandwich(ctx, rpc)
+		},
+	)
+	if err != nil {
+		return AccountSandwich{}, err
+	}
+	if err := binding.validate(ctx); err != nil {
+		return AccountSandwich{}, err
+	}
+	return result, nil
+}
+
+func readAccountSandwich(ctx context.Context, rpc RPC) (AccountSandwich, error) {
+	before, err := readAccountRateLimits(ctx, rpc, true)
+	if err != nil {
+		return AccountSandwich{}, err
+	}
+	account, err := readAccount(ctx, rpc)
+	if err != nil {
+		return AccountSandwich{}, err
+	}
+	after, err := readAccountRateLimits(ctx, rpc, true)
+	if err != nil {
+		return AccountSandwich{}, err
+	}
+	return AccountSandwich{BeforeID: before.AccountID, AfterID: after.AccountID, Account: account}, nil
+}
+
 func ReadLocalAccount(
 	ctx context.Context,
 	confirmedHome ConfirmedHome,

@@ -38,7 +38,7 @@ func TestBuildPaceWindowComparesUsedWithElapsedTime(t *testing.T) {
 		},
 	}
 
-	got, err := buildPaceWindow(facts, evaluatedAtMS)
+	got, err := buildPaceWindow(facts, store.QuotaAccountScopeDefault, evaluatedAtMS)
 	if err != nil {
 		t.Fatalf("buildPaceWindow() error = %v", err)
 	}
@@ -193,7 +193,7 @@ func TestBuildPaceWindowForecastsEarlyExhaustionFromRecentAcceptedEvidence(t *te
 		},
 	}
 
-	got, err := buildPaceWindow(facts, evaluatedAtMS)
+	got, err := buildPaceWindow(facts, store.QuotaAccountScopeDefault, evaluatedAtMS)
 	if err != nil {
 		t.Fatalf("buildPaceWindow() error = %v", err)
 	}
@@ -247,7 +247,7 @@ func TestBuildPaceWindowExcludesArbitrationRejectedRegression(t *testing.T) {
 		},
 	}
 
-	got, err := buildPaceWindow(facts, evaluatedAtMS)
+	got, err := buildPaceWindow(facts, store.QuotaAccountScopeDefault, evaluatedAtMS)
 	if err != nil {
 		t.Fatalf("buildPaceWindow() error = %v", err)
 	}
@@ -310,7 +310,7 @@ func TestBuildPaceWindowMergesBoundedResetJitterWithoutMixingLimits(t *testing.T
 		},
 	}
 
-	got, err := buildPaceWindow(facts, evaluatedAtMS)
+	got, err := buildPaceWindow(facts, store.QuotaAccountScopeDefault, evaluatedAtMS)
 	if err != nil {
 		t.Fatalf("buildPaceWindow() error = %v", err)
 	}
@@ -362,7 +362,7 @@ func TestBuildPaceWindowMergesWhamWeeklyResetCorrection(t *testing.T) {
 		},
 	}
 
-	got, err := buildPaceWindow(facts, evaluatedAtMS)
+	got, err := buildPaceWindow(facts, store.QuotaAccountScopeDefault, evaluatedAtMS)
 	if err != nil {
 		t.Fatalf("buildPaceWindow() error = %v", err)
 	}
@@ -468,7 +468,7 @@ func TestBuildPaceWindowComparesPreviousAndFourHistoricalCyclesAtSameProgress(t 
 		)
 	}
 
-	got, err := buildPaceWindow(facts, evaluatedAtMS)
+	got, err := buildPaceWindow(facts, store.QuotaAccountScopeDefault, evaluatedAtMS)
 	if err != nil {
 		t.Fatalf("buildPaceWindow() error = %v", err)
 	}
@@ -545,7 +545,7 @@ func TestBuildPaceWindowUsesArbitratedGenerationToKeepInterruptedPreviousCycle(t
 		},
 	}
 
-	got, err := buildPaceWindow(facts, evaluatedAtMS)
+	got, err := buildPaceWindow(facts, store.QuotaAccountScopeDefault, evaluatedAtMS)
 	if err != nil {
 		t.Fatalf("buildPaceWindow() error = %v", err)
 	}
@@ -582,7 +582,7 @@ func TestPaceRebuildKeepsStableResetUsageAsPreviousCycle(t *testing.T) {
 		{id: "next-reset-zero", observedAtMS: nextResetObserved, usedPercent: 0, resetAtMS: nextReset},
 		{id: "next-reset-usage", observedAtMS: evaluatedAtMS - 5*60*1_000, usedPercent: 5, resetAtMS: nextReset},
 	} {
-		recordPaceQueryWhamWeekly(
+		recordPaceQueryAppServerWeekly(
 			t, repository, sample.id, sample.observedAtMS, sample.usedPercent, sample.resetAtMS,
 		)
 	}
@@ -619,7 +619,7 @@ func TestPaceRebuildKeepsStableResetUsageAsPreviousCycle(t *testing.T) {
 	}
 }
 
-func recordPaceQueryWhamWeekly(
+func recordPaceQueryAppServerWeekly(
 	t *testing.T,
 	repository *store.Repository,
 	requestID string,
@@ -628,25 +628,25 @@ func recordPaceQueryWhamWeekly(
 	resetAtMS int64,
 ) {
 	t.Helper()
+	scope, generation := currentQueryBindingAt(t, repository, observedAtMS)
 	limitID := "codex"
 	request := requestID
 	plan := "pro"
-	status := int64(200)
 	digest := store.SHA256DigestOf([]byte("synthetic weekly quota response " + requestID))
 	if err := repository.RecordQuotaFetch(context.Background(), store.QuotaFetchRecord{
-		SourceInstanceID: store.QuotaSourceInstanceWhamDefault,
-		SourceType:       store.QuotaSourceTypeWham,
-		ScopeKey:         store.QuotaAccountScopeDefault,
+		AccountScope: scope, BindingGeneration: generation,
+		SourceInstanceID: store.QuotaSourceInstanceAppServer(scope),
+		SourceType:       store.QuotaSourceTypeAppServerRateLimits, ScopeKey: scope,
 		Attempt: store.SourceAttempt{
-			RequestID: requestID, SourceInstanceID: store.QuotaSourceInstanceWhamDefault,
+			RequestID: requestID, SourceInstanceID: store.QuotaSourceInstanceAppServer(scope),
 			StartedAtMS: observedAtMS, FinishedAtMS: observedAtMS,
-			Outcome: store.SourceAttemptSucceeded, HTTPStatus: &status, PayloadSHA256: &digest,
+			Outcome: store.SourceAttemptSucceeded, PayloadSHA256: &digest,
 			AttemptCount: 1, ResponseBytes: 256,
 		},
 		Observations: []store.QuotaObservationSample{{
 			ObservationID: "pace-" + requestID + "-weekly",
-			AccountScope:  store.QuotaAccountScopeDefault,
-			Source:        store.QuotaSourceWham,
+			AccountScope:  scope,
+			Source:        store.QuotaSourceAppServer,
 			LimitID:       &limitID,
 			WindowKind:    store.QuotaWindowPrimary,
 			UsedPercent:   usedPercent,
@@ -1236,5 +1236,57 @@ func paceObservation(
 		FirstObservedAtMS: observedAtMS,
 		LastObservedAtMS:  observedAtMS,
 		SampleCount:       1,
+	}
+}
+
+func TestPaceQueryBindingUnavailableDoesNotFallbackDefault(t *testing.T) {
+	t.Parallel()
+
+	_, service := newCurrentQueryTestService(t)
+	evaluatedAtMS := time.Now().UnixMilli()
+	response, err := service.Pace(context.Background(), evaluatedAtMS)
+	if err != nil {
+		t.Fatalf("Pace() error = %v", err)
+	}
+	if response.Binding.State != store.CodexAccountBindingUnknown ||
+		response.UnknownReason == nil || *response.UnknownReason != PaceUnknownBindingUnavailable ||
+		len(response.Windows) != 0 || response.Windows == nil {
+		t.Fatalf("unconfirmed pace = %#v", response)
+	}
+}
+
+func TestPaceQueryAccountSwitchABARestoresOriginalHistory(t *testing.T) {
+	t.Parallel()
+
+	repository, service := newCurrentQueryTestService(t)
+	evaluatedAtMS := time.Now().UnixMilli()
+	resetA := evaluatedAtMS + 7*24*60*60*1_000
+	resetB := evaluatedAtMS + 5*24*60*60*1_000
+	scopeA, generationA := confirmCurrentQueryAccount(t, repository, "acct-test-a", evaluatedAtMS-2)
+	recordPaceQueryAppServerWeekly(t, repository, "pace-a", evaluatedAtMS-2, 40, resetA)
+	first, err := service.Pace(context.Background(), evaluatedAtMS)
+	if err != nil || first.AccountScope != scopeA || first.Binding.BindingGeneration != generationA ||
+		len(first.Windows) != 1 || first.Windows[0].UsedPercent == nil || *first.Windows[0].UsedPercent != 40 {
+		t.Fatalf("first A pace = %#v, %v", first, err)
+	}
+
+	scopeB, generationB := confirmCurrentQueryAccount(t, repository, "acct-test-b", evaluatedAtMS-1)
+	recordPaceQueryAppServerWeekly(t, repository, "pace-b", evaluatedAtMS-1, 70, resetB)
+	activeB, err := service.Pace(context.Background(), evaluatedAtMS)
+	if err != nil || activeB.AccountScope != scopeB || activeB.Binding.BindingGeneration != generationB ||
+		len(activeB.Windows) != 1 || activeB.Windows[0].UsedPercent == nil || *activeB.Windows[0].UsedPercent != 70 {
+		t.Fatalf("B pace leaked A: %#v, %v", activeB, err)
+	}
+
+	scopeA2, generationA2 := confirmCurrentQueryAccount(t, repository, "acct-test-a", evaluatedAtMS)
+	restored, err := service.Pace(context.Background(), evaluatedAtMS)
+	if err != nil || restored.AccountScope != scopeA2 || restored.Binding.BindingGeneration != generationA2 ||
+		generationA2 <= generationB || len(restored.Windows) != 1 ||
+		restored.Windows[0].UsedPercent == nil || *restored.Windows[0].UsedPercent != 40 {
+		t.Fatalf("restored A pace = %#v, %v", restored, err)
+	}
+	if len(restored.Windows[0].CurrentPoints) == 0 ||
+		restored.Windows[0].CurrentPoints[len(restored.Windows[0].CurrentPoints)-1].UsedPercent != 40 {
+		t.Fatalf("restored A pace points = %#v", restored.Windows[0].CurrentPoints)
 	}
 }

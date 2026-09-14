@@ -129,18 +129,19 @@ type sourceStateModel struct {
 func (sourceStateModel) TableName() string { return "source_state" }
 
 type sourceAttemptModel struct {
-	RequestID        string  `gorm:"column:request_id;primaryKey"`
-	SourceInstanceID string  `gorm:"column:source_instance_id"`
-	StartedAtMS      int64   `gorm:"column:started_at_ms"`
-	FinishedAtMS     int64   `gorm:"column:finished_at_ms"`
-	Outcome          string  `gorm:"column:outcome"`
-	HTTPStatus       *int64  `gorm:"column:http_status"`
-	ErrorClass       *string `gorm:"column:error_class"`
-	FailureCode      *string `gorm:"column:failure_code;type:TEXT CHECK (failure_code IS NULL OR failure_code IN ('network_unavailable','timeout','auth_required','http_429','server_error','schema_incompatible','cancelled'))"`
-	PayloadSHA256    *string `gorm:"column:payload_sha256"`
-	AttemptCount     int64   `gorm:"column:attempt_count;type:INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count BETWEEN 0 AND 3)"`
-	ResponseBytes    int64   `gorm:"column:response_bytes;type:INTEGER NOT NULL DEFAULT 0 CHECK (response_bytes >= 0)"`
-	RetryAtMS        *int64  `gorm:"column:retry_at_ms;type:INTEGER CHECK (retry_at_ms IS NULL OR retry_at_ms >= finished_at_ms)"`
+	RequestID         string  `gorm:"column:request_id;primaryKey"`
+	SourceInstanceID  string  `gorm:"column:source_instance_id"`
+	StartedAtMS       int64   `gorm:"column:started_at_ms"`
+	FinishedAtMS      int64   `gorm:"column:finished_at_ms"`
+	Outcome           string  `gorm:"column:outcome"`
+	HTTPStatus        *int64  `gorm:"column:http_status"`
+	ErrorClass        *string `gorm:"column:error_class"`
+	FailureCode       *string `gorm:"column:failure_code;type:TEXT CHECK (failure_code IS NULL OR failure_code IN ('network_unavailable','timeout','auth_required','http_429','server_error','schema_incompatible','cancelled'))"`
+	PayloadSHA256     *string `gorm:"column:payload_sha256"`
+	AttemptCount      int64   `gorm:"column:attempt_count;type:INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count BETWEEN 0 AND 3)"`
+	ResponseBytes     int64   `gorm:"column:response_bytes;type:INTEGER NOT NULL DEFAULT 0 CHECK (response_bytes >= 0)"`
+	RetryAtMS         *int64  `gorm:"column:retry_at_ms;type:INTEGER CHECK (retry_at_ms IS NULL OR retry_at_ms >= finished_at_ms)"`
+	BindingGeneration int64   `gorm:"column:binding_generation;type:INTEGER NOT NULL DEFAULT 0 CHECK (binding_generation >= 0)"`
 }
 
 func (sourceAttemptModel) TableName() string { return "source_attempts" }

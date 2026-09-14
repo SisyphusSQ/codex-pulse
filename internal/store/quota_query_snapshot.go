@@ -21,10 +21,12 @@ type QuotaCurrentWindowSnapshot struct {
 // QuotaCurrentSnapshot is the read-only fact boundary for the M5 quota query.
 // Every field is loaded from one explicit SQLite read transaction.
 type QuotaCurrentSnapshot struct {
+	Binding             CodexAccountBinding
 	AccountScope        string
+	BindingGeneration   int64
 	EvaluatedAtMS       int64
 	Windows             []QuotaCurrentWindowSnapshot
-	WhamSourceState     *SourceState
+	OnlineSourceState   *SourceState
 	QuotaRefresh        *SourceRefreshSchedule
 	ResetCredits        ResetCreditsSummary
 	ResetCreditsRefresh *SourceRefreshSchedule
@@ -34,6 +36,9 @@ type QuotaCurrentSnapshot struct {
 // keys and returns their query facts from one SQLite snapshot. A missing
 // projection is recoverable through explicit RebuildQuotaProjection, but this
 // query never writes or silently turns missing facts into an empty response.
+// Codex callers must not pass an arbitrary HMAC scope; this method reads the
+// current binding inside the same snapshot and ignores accountScope except for
+// Cursor/Grok adapters that still construct in-memory default snapshots.
 func (repository *Repository) QuotaCurrentSnapshot(
 	ctx context.Context,
 	accountScope string,
@@ -42,25 +47,40 @@ func (repository *Repository) QuotaCurrentSnapshot(
 	if repository == nil || repository.database == nil {
 		return QuotaCurrentSnapshot{}, ErrInvalidRepository
 	}
-	if accountScope != QuotaAccountScopeDefault || evaluatedAtMS < 0 ||
-		evaluatedAtMS > runtimeclock.MaxTimestampMS {
+	if evaluatedAtMS < 0 || evaluatedAtMS > runtimeclock.MaxTimestampMS {
 		return QuotaCurrentSnapshot{}, invalidRecord("quota current snapshot input is invalid")
 	}
-	snapshot := QuotaCurrentSnapshot{AccountScope: accountScope, EvaluatedAtMS: evaluatedAtMS}
+	snapshot := QuotaCurrentSnapshot{EvaluatedAtMS: evaluatedAtMS}
 	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
 		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
+			binding, err := loadStoredCodexAccountBinding(ctx, transaction)
+			if err != nil {
+				return err
+			}
+			snapshot.Binding = binding.CodexAccountBinding
+			snapshot.BindingGeneration = binding.BindingGeneration
+			if binding.State != CodexAccountBindingConfirmed || binding.AccountScope == nil {
+				snapshot.Windows = []QuotaCurrentWindowSnapshot{}
+				snapshot.ResetCredits = ResetCreditsSummary{AccountScope: ""}
+				return nil
+			}
+			scope := *binding.AccountScope
+			if accountScope != "" && accountScope != QuotaAccountScopeDefault && accountScope != scope {
+				return invalidRecord("quota current snapshot input is invalid")
+			}
+			snapshot.AccountScope = scope
 			observationKeys, err := quotaQueryProjectionKeys(
-				ctx, transaction, &quotaObservationModel{}, accountScope, "limit_id IS NOT NULL",
+				ctx, transaction, &quotaObservationModel{}, scope, "limit_id IS NOT NULL",
 			)
 			if err != nil {
 				return err
 			}
-			currentKeys, err := quotaQueryProjectionKeys(ctx, transaction, &quotaCurrentModel{}, accountScope, "")
+			currentKeys, err := quotaQueryProjectionKeys(ctx, transaction, &quotaCurrentModel{}, scope, "")
 			if err != nil {
 				return err
 			}
 			evidenceKeys, err := quotaQueryProjectionKeys(
-				ctx, transaction, &quotaArbitrationEvidenceModel{}, accountScope, "",
+				ctx, transaction, &quotaArbitrationEvidenceModel{}, scope, "",
 			)
 			if err != nil {
 				return err
@@ -85,21 +105,23 @@ func (repository *Repository) QuotaCurrentSnapshot(
 				})
 			}
 
-			state, found, err := sourceStateByID(ctx, transaction, QuotaSourceInstanceWhamDefault)
+			quotaInstanceID := QuotaSourceInstanceAppServer(scope)
+			resetInstanceID := ResetCreditsSourceInstanceAppServer(scope)
+			state, found, err := sourceStateByID(ctx, transaction, quotaInstanceID)
 			if err != nil {
 				return err
 			}
 			if found {
-				if state.SourceInstanceID != QuotaSourceInstanceWhamDefault ||
-					state.SourceType != QuotaSourceTypeWham || state.ScopeKey != accountScope {
+				if state.SourceInstanceID != quotaInstanceID ||
+					state.SourceType != QuotaSourceTypeAppServerRateLimits || state.ScopeKey != scope {
 					return invalidRecord("stored quota source state identity is invalid")
 				}
 				if err := validateSourceState(state); err != nil {
 					return invalidRecord("stored quota source state is invalid")
 				}
-				snapshot.WhamSourceState = cloneQuotaQuerySourceState(state)
+				snapshot.OnlineSourceState = cloneQuotaQuerySourceState(state)
 			}
-			quotaRefresh, found, err := sourceRefreshScheduleByID(ctx, transaction, QuotaSourceInstanceWhamDefault)
+			quotaRefresh, found, err := sourceRefreshScheduleByID(ctx, transaction, quotaInstanceID)
 			if err != nil {
 				return err
 			}
@@ -108,15 +130,13 @@ func (repository *Repository) QuotaCurrentSnapshot(
 			}
 
 			resetCredits, err := resetCreditsSummaryFromDatabase(
-				ctx, transaction, accountScope, evaluatedAtMS,
+				ctx, transaction, scope, evaluatedAtMS,
 			)
 			if err != nil {
 				return err
 			}
 			snapshot.ResetCredits = resetCredits
-			resetRefresh, found, err := sourceRefreshScheduleByID(
-				ctx, transaction, ResetCreditsSourceInstanceWhamDefault,
-			)
+			resetRefresh, found, err := sourceRefreshScheduleByID(ctx, transaction, resetInstanceID)
 			if err != nil {
 				return err
 			}

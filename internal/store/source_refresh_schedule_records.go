@@ -17,6 +17,7 @@ const (
 	RefreshReasonSchemaIncompatible SourceRefreshReason = "schema_incompatible"
 	RefreshReasonCancelled          SourceRefreshReason = "cancelled"
 	RefreshReasonDisabled           SourceRefreshReason = "disabled"
+	RefreshReasonInactiveAccount    SourceRefreshReason = "inactive_account"
 	RefreshReasonRecovery           SourceRefreshReason = "recovery"
 )
 
@@ -32,28 +33,30 @@ const (
 )
 
 type SourceRefreshSchedule struct {
-	SourceInstanceID string
-	SourceType       string
-	ScopeKey         string
-	NextDueAtMS      *int64
-	Reason           SourceRefreshReason
-	LastManualAtMS   *int64
-	ActiveClaimID    *string
-	ActiveTrigger    *SourceRefreshTrigger
-	ClaimStartedAtMS *int64
-	ClaimExpiresAtMS *int64
-	Revision         int64
-	UpdatedAtMS      int64
+	SourceInstanceID  string
+	SourceType        string
+	ScopeKey          string
+	BindingGeneration int64
+	NextDueAtMS       *int64
+	Reason            SourceRefreshReason
+	LastManualAtMS    *int64
+	ActiveClaimID     *string
+	ActiveTrigger     *SourceRefreshTrigger
+	ClaimStartedAtMS  *int64
+	ClaimExpiresAtMS  *int64
+	Revision          int64
+	UpdatedAtMS       int64
 }
 
 type SourceRefreshScheduleUpdate struct {
-	SourceInstanceID string
-	SourceType       string
-	ScopeKey         string
-	ExpectedRevision int64
-	NextDueAtMS      *int64
-	Reason           SourceRefreshReason
-	AtMS             int64
+	SourceInstanceID  string
+	SourceType        string
+	ScopeKey          string
+	BindingGeneration int64
+	ExpectedRevision  int64
+	NextDueAtMS       *int64
+	Reason            SourceRefreshReason
+	AtMS              int64
 }
 
 type SourceRefreshCompletion struct {

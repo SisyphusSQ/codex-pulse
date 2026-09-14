@@ -7,6 +7,8 @@ public enum ProductCopy {
         case "succeeded", "complete", "completed", "applied": "已完成"
         case "active", "running", "in_progress": "进行中"
         case "queued", "pending": "等待中"
+        case "confirming", "account_pending": "账号确认中"
+        case "identity_unavailable", "signed_out": "当前账号额度暂不可用"
         case "idle": "空闲"
         case "warning", "degraded", "partial", "interrupted", "stale": "需要关注"
         case "failed", "critical", "error", "blocked": "需要处理"
