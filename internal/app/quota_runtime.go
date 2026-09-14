@@ -2,11 +2,12 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
-	"net/http"
 	"sync"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/providerrefresh"
@@ -21,7 +22,9 @@ var ErrApplicationQuotaRuntime = errors.New("application quota runtime is unavai
 type ApplicationQuotaRuntimeConfig struct {
 	Repository   *store.Repository
 	Preferences  confirmedPreferencesLoader
-	Transport    http.RoundTripper
+	Reader       quotaonline.AccountRateLimitsReader
+	ScopeKey     [32]byte
+	Binding      quotaonline.AccountBindingFence
 	Clock        func() time.Time
 	suspended    bool
 	hooks        quotaRuntimeHooks
@@ -58,6 +61,11 @@ type applicationQuotaRuntime struct {
 	inflightDone      chan struct{}
 	transition        chan struct{}
 
+	quotaService        *quotaonline.Service
+	resetCreditsService *quotaonline.ResetCreditsService
+	account             *accountBindingRuntime
+	mismatch            *accountBindingHolder
+
 	closeOnce sync.Once
 	closeDone chan struct{}
 	closeErr  error
@@ -83,14 +91,26 @@ func startApplicationQuotaRuntime(
 	if err != nil || snapshot.CodexHome.Generation == 0 {
 		return nil, applicationQuotaDependencyError(ctx, err)
 	}
-	credentials, err := newAuthFileCredentialProvider(config.Preferences)
+	nowMS := time.Now().UnixMilli()
+	if config.Clock != nil {
+		nowMS = config.Clock().UnixMilli()
+	}
+	scopeKey := config.ScopeKey
+	if scopeKey == [32]byte{} {
+		if _, err := rand.Read(scopeKey[:]); err != nil {
+			return nil, applicationQuotaDependencyError(ctx, err)
+		}
+	}
+	storedKey, err := config.Repository.EnsureCodexAccountScopeKey(ctx, scopeKey, nowMS)
 	if err != nil {
 		return nil, applicationQuotaDependencyError(ctx, err)
 	}
+	reader := config.Reader
+	if reader == nil {
+		reader = preferencesAccountRateLimitsReader{preferences: config.Preferences}
+	}
 	clientConfig := quotaonline.ClientConfig{
-		Transport:   config.Transport,
-		Credentials: credentials,
-		Now:         config.Clock,
+		Reader: reader, ScopeKey: storedKey, Now: config.Clock,
 	}
 	quotaClient, err := quotaonline.NewClient(clientConfig)
 	if err != nil {
@@ -116,11 +136,15 @@ func startApplicationQuotaRuntime(
 	if err != nil {
 		return nil, applicationQuotaDependencyError(ctx, err)
 	}
+	binding := config.Binding
+	mismatch := &accountBindingHolder{}
+	quotaService.SetBinding(binding)
+	resetCreditsService.SetBinding(binding)
 	coordinator, err := scheduler.NewQuotaRefreshCoordinator(scheduler.QuotaRefreshCoordinatorConfig{
 		Repository:          config.Repository,
 		Preferences:         config.Preferences,
-		QuotaFetcher:        scheduler.AdaptQuotaFetchService(quotaService),
-		ResetCreditsFetcher: scheduler.AdaptResetCreditsFetchService(resetCreditsService),
+		QuotaFetcher:        wrapAccountMismatchFetcher(scheduler.AdaptQuotaFetchService(quotaService), mismatch),
+		ResetCreditsFetcher: wrapAccountMismatchFetcher(scheduler.AdaptResetCreditsFetchService(resetCreditsService), mismatch),
 		Clock:               config.Clock,
 		RefreshCommitted: func(ctx context.Context, _ quotaonline.RefreshSource) {
 			notifyQueryInvalidation(config.invalidation, ctx, core.InvalidationQuota)
@@ -138,8 +162,33 @@ func startApplicationQuotaRuntime(
 		coordinator: coordinator, runner: runner, preferences: config.Preferences,
 		reconcilePreferences: coordinator.ReconcilePreferences,
 		rootContext:          rootContext, rootCancel: rootCancel, hooks: config.hooks,
+		quotaService: quotaService, resetCreditsService: resetCreditsService, mismatch: mismatch,
 		inflightDone: closedQuotaRuntimeSignal(), closeDone: make(chan struct{}),
 		transition: make(chan struct{}, 1),
+	}
+	account, err := newAccountBindingRuntime(
+		config.Repository, reader, storedKey, config.Clock, runtime, config.invalidation,
+		func(ctx context.Context) (appserver.AccountSandwich, error) {
+			snapshot, loadErr := config.Preferences.LoadPreferences(ctx)
+			if loadErr != nil {
+				return appserver.AccountSandwich{}, loadErr
+			}
+			return appserver.ReadLocalAccountSandwich(ctx, appserver.ConfirmedHome{
+				Generation: int64(snapshot.CodexHome.Generation),
+				Path:       snapshot.CodexHome.Source.Path,
+				DeviceID:   snapshot.CodexHome.Source.DeviceID,
+				Inode:      snapshot.CodexHome.Source.Inode,
+			}, appserver.ProcessOptions{})
+		},
+	)
+	if err != nil {
+		rootCancel()
+		return nil, applicationQuotaDependencyError(ctx, err)
+	}
+	runtime.account = account
+	mismatch.runtime = account
+	if binding.BindingGeneration > 0 {
+		account.setActive(binding.AccountScope, binding.BindingGeneration)
 	}
 	runtime.transition <- struct{}{}
 	if config.suspended {
@@ -206,6 +255,12 @@ func (runtime *applicationQuotaRuntime) RequestRefreshResult(
 	source quotaonline.RefreshSource,
 	trigger store.SourceRefreshTrigger,
 ) (store.SourceRefreshSchedule, bool, error) {
+	if runtime != nil && runtime.account != nil && runtime.account.Active() == nil {
+		if err := runtime.discoverAccount(ctx, store.CodexAccountBindingReasonStable); err != nil &&
+			!errors.Is(err, store.ErrCodexAccountBindingChanged) {
+			return store.SourceRefreshSchedule{}, false, err
+		}
+	}
 	operationContext, finish, err := runtime.beginAdmission(ctx)
 	if err != nil {
 		return store.SourceRefreshSchedule{}, false, err
@@ -220,6 +275,10 @@ func (runtime *applicationQuotaRuntime) requestLifecycleRefresh(
 ) error {
 	if runtime == nil || ctx == nil {
 		return ErrApplicationQuotaRuntime
+	}
+	if err := runtime.discoverAccount(ctx, store.CodexAccountBindingReasonStable); err != nil &&
+		!errors.Is(err, store.ErrCodexAccountBindingChanged) {
+		return err
 	}
 	var refreshErr error
 	for _, source := range []quotaonline.RefreshSource{
@@ -522,11 +581,13 @@ func (coordinator applicationQuotaLifecycleCoordinator) SystemDidWake(
 	if state.HomeGeneration <= 0 {
 		quotaErr = ErrApplicationQuotaRuntime
 	} else if quotaErr = coordinator.quota.ResumeGeneration(ctx, uint64(state.HomeGeneration)); quotaErr == nil {
+		discoverErr := coordinator.quota.discoverAccount(ctx, store.CodexAccountBindingReasonStable)
 		if coordinator.global != nil {
 			coordinator.global.Refresh(ctx, providerrefresh.TriggerWake)
 		} else {
 			quotaErr = coordinator.quota.requestLifecycleRefresh(ctx, store.RefreshTriggerWake)
 		}
+		quotaErr = errors.Join(discoverErr, quotaErr)
 	}
 	return state, errors.Join(localErr, quotaErr)
 }
@@ -552,3 +613,93 @@ func (coordinator applicationQuotaLifecycleCoordinator) SourceChanged(
 }
 
 var _ systemLifecycleCoordinator = applicationQuotaLifecycleCoordinator{}
+
+type accountBindingHolder struct {
+	runtime *accountBindingRuntime
+}
+
+func wrapAccountMismatchFetcher(
+	inner scheduler.SourceRefreshFetcher,
+	holder *accountBindingHolder,
+) scheduler.SourceRefreshFetcher {
+	if inner == nil {
+		return nil
+	}
+	return scheduler.SourceRefreshFunc(func(ctx context.Context, request quotaonline.BoundRefreshRequest) error {
+		err := inner.Fetch(ctx, request)
+		if errors.Is(err, store.ErrCodexAccountBindingChanged) && holder != nil && holder.runtime != nil {
+			go func() {
+				_ = holder.runtime.HandleObservedScopeChange(context.Background())
+			}()
+		}
+		return err
+	})
+}
+
+func (runtime *applicationQuotaRuntime) SealAndDrain(ctx context.Context) error {
+	if runtime == nil {
+		return ErrApplicationQuotaRuntime
+	}
+	return runtime.drainGeneration(ctx, 0)
+}
+
+func (runtime *applicationQuotaRuntime) PublishBinding(
+	ctx context.Context,
+	fence quotaonline.AccountBindingFence,
+) error {
+	if runtime == nil {
+		return ErrApplicationQuotaRuntime
+	}
+	if runtime.quotaService != nil {
+		runtime.quotaService.SetBinding(fence)
+	}
+	if runtime.resetCreditsService != nil {
+		runtime.resetCreditsService.SetBinding(fence)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if runtime.preferences == nil {
+		return nil
+	}
+	snapshot, err := runtime.preferences.LoadPreferences(ctx)
+	if err != nil || snapshot.CodexHome.Generation == 0 {
+		return applicationQuotaDependencyError(ctx, err)
+	}
+	return runtime.ResumeGeneration(ctx, snapshot.CodexHome.Generation)
+}
+
+func (runtime *applicationQuotaRuntime) discoverAccount(ctx context.Context, reason store.CodexAccountBindingReason) error {
+	if runtime == nil || runtime.account == nil {
+		return nil
+	}
+	return runtime.account.Discover(ctx, reason)
+}
+
+type preferencesAccountRateLimitsReader struct {
+	preferences confirmedPreferencesLoader
+}
+
+func (reader preferencesAccountRateLimitsReader) Read(
+	ctx context.Context,
+	excludeResetCreditDetails bool,
+) (appserver.AccountRateLimitsSnapshot, error) {
+	if reader.preferences == nil {
+		return appserver.AccountRateLimitsSnapshot{}, ErrApplicationQuotaRuntime
+	}
+	snapshot, err := reader.preferences.LoadPreferences(ctx)
+	if err != nil {
+		return appserver.AccountRateLimitsSnapshot{}, err
+	}
+	return appserver.ReadLocalAccountRateLimits(
+		ctx,
+		appserver.ConfirmedHome{
+			Generation: int64(snapshot.CodexHome.Generation),
+			Path:       snapshot.CodexHome.Source.Path,
+			DeviceID:   snapshot.CodexHome.Source.DeviceID,
+			Inode:      snapshot.CodexHome.Source.Inode,
+		},
+		appserver.ProcessOptions{},
+		excludeResetCreditDetails,
+	)
+}

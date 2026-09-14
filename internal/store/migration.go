@@ -50,7 +50,8 @@ const (
 	applicationSchemaV29Version = 29
 	applicationSchemaV30Version = 30
 	applicationSchemaV31Version = 31
-	applicationSchemaVersion    = applicationSchemaV31Version
+	applicationSchemaV32Version = 32
+	applicationSchemaVersion    = applicationSchemaV32Version
 )
 
 var (
@@ -341,6 +342,12 @@ var applicationMigrations = []migrationDefinition{
 		name:     "lightweight-token-counter-epochs",
 		checksum: applicationSchemaV31Checksum(),
 		apply:    addLightTokenCounterCheckpointColumns,
+	},
+	{
+		version:  applicationSchemaV32Version,
+		name:     codexAccountBindingMigrationName,
+		checksum: applicationSchemaV32Checksum(),
+		apply:    migrateCodexAccountBindingForV32,
 	},
 }
 
@@ -968,7 +975,8 @@ func verifyApplicationSchema(ctx context.Context, transaction *gorm.DB) error {
 		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
-		currentQuotaSchemaObjects(), quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
+		currentQuotaSchemaObjects(), quotaProjectionSchemaObjectsV32, quotaScheduleSchemaObjectsV32,
+		accountBindingSchemaObjects,
 		metricsSchemaObjects, quotaPerformanceSchemaObjects,
 		storelight.CurrentSchemaObjects(),
 		currentProviderSchemaObjects(),
@@ -1029,11 +1037,25 @@ func runtimeSchemaObjectsThroughV12() []storeschema.Object {
 	return objects
 }
 
-func currentRuntimeSchemaObjects() []storeschema.Object {
+func runtimeSchemaObjectsThroughV14() []storeschema.Object {
 	objects := runtimeSchemaObjectsThroughV13()
 	for index := range objects {
 		if objects[index].Name == "health_events" {
 			objects[index] = healthEventsSchemaObjectV14(objects[index])
+		}
+	}
+	return objects
+}
+
+func currentRuntimeSchemaObjects() []storeschema.Object {
+	objects := runtimeSchemaObjectsThroughV14()
+	for index := range objects {
+		if objects[index].Name == "source_attempts" {
+			objects[index].Statement = appendSQLiteMigratedColumns(
+				objects[index].Statement,
+				"\n\t\tCHECK ((outcome",
+				"`binding_generation` INTEGER NOT NULL DEFAULT 0 CHECK (binding_generation >= 0)",
+			)
 		}
 	}
 	return objects
@@ -1080,17 +1102,7 @@ func appendSQLiteMigratedColumns(statement, before string, columns ...string) st
 }
 
 func currentQuotaSchemaObjects() []storeschema.Object {
-	objects := append([]storeschema.Object(nil), quotaSchemaObjects...)
-	for index := range objects {
-		if objects[index].Name == "quota_observations" {
-			objects[index].Statement = appendSQLiteMigratedColumns(
-				objects[index].Statement,
-				"\n\t\tCHECK ((validity",
-				"`limit_name` TEXT CHECK (limit_name IS NULL OR (length(limit_name) BETWEEN 1 AND 512))",
-			)
-		}
-	}
-	return objects
+	return append([]storeschema.Object(nil), quotaSchemaObjectsV32...)
 }
 
 func applicationSchemaV1Checksum() string {
@@ -1467,6 +1479,28 @@ func applicationSchemaV31Checksum() string {
 	for _, column := range lightTokenCounterCheckpointMigrationColumns {
 		_, _ = fmt.Fprintln(hasher, column.table, column.column, column.definition)
 	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV32Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV32Version, codexAccountBindingMigrationName)
+	for _, objects := range [][]storeschema.Object{
+		accountBindingSchemaObjects,
+		quotaSchemaObjectsV32,
+		quotaProjectionSchemaObjectsV32,
+		quotaScheduleSchemaObjectsV32,
+		{sourceAttemptsSchemaObjectV32()},
+		quotaPerformanceSchemaObjects,
+	} {
+		for _, object := range objects {
+			_, _ = fmt.Fprintln(
+				hasher, object.ObjectType, object.Name,
+				strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
+			)
+		}
+	}
+	_, _ = fmt.Fprintln(hasher, "repair", "abandon-active-claims", "disable-default-schedules", "foreign_key_check")
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 

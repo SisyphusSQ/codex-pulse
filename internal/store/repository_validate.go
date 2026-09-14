@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"gorm.io/gorm"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 )
 
 func validateTurnFilter(filter TurnFilter) (int, error) {
@@ -504,6 +506,51 @@ func equalInt64Pointer(left, right *int64) bool {
 
 func invalidRecord(message string) error {
 	return fmt.Errorf("%w: %s", ErrInvalidRecord, message)
+}
+
+func validDerivedCodexAccountScope(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for index := 0; index < len(value); index++ {
+		character := value[index]
+		if character < '0' || character > '9' {
+			if character < 'a' || character > 'f' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validCodexAccountBindingState(value CodexAccountBindingState) bool {
+	switch value {
+	case CodexAccountBindingUnknown, CodexAccountBindingPending, CodexAccountBindingConfirmed,
+		CodexAccountBindingSignedOut, CodexAccountBindingIdentityUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+func validCodexAccountBindingUnavailableState(value CodexAccountBindingState) bool {
+	return value == CodexAccountBindingSignedOut || value == CodexAccountBindingIdentityUnavailable
+}
+
+func validCodexAccountBindingReason(value CodexAccountBindingReason) bool {
+	switch value {
+	case CodexAccountBindingReasonStartup, CodexAccountBindingReasonStable,
+		CodexAccountBindingReasonAccountChanged, CodexAccountBindingReasonSignedOut,
+		CodexAccountBindingReasonMissingAccountID, CodexAccountBindingReasonConfirmationFailed,
+		CodexAccountBindingReasonUnsupportedAppServer:
+		return true
+	default:
+		return false
+	}
+}
+
+func validCodexAccountBindingTimestamp(value int64) bool {
+	return value >= 0 && value <= runtimeclock.MaxTimestampMS
 }
 
 func sourceRefreshConflict(message string) error {

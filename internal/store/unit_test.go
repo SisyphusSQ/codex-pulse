@@ -143,13 +143,13 @@ func TestWriteUnitPreservesStoreRollbackForCallbackErrorPanicAndCancel(t *testin
 
 func writeUnitFixtures() (Project, SourceFile) {
 	return Project{
-			ProjectID: "unit-project", DisplayName: "Unit Project", RootPath: "/synthetic/unit",
-			CreatedAtMS: 1, UpdatedAtMS: 1,
-		}, SourceFile{
-			SourceFileID: "unit-source", Provider: "codex", CurrentPath: "/synthetic/unit.jsonl",
-			DeviceID: "device", Inode: 1, SizeBytes: 10, MTimeNS: 1, ParsedOffset: 5,
-			ParserVersion: "v1", ActiveGeneration: 1, State: SourceFileActive, UpdatedAtMS: 1,
-		}
+		ProjectID: "unit-project", DisplayName: "Unit Project", RootPath: "/synthetic/unit",
+		CreatedAtMS: 1, UpdatedAtMS: 1,
+	}, SourceFile{
+		SourceFileID: "unit-source", Provider: "codex", CurrentPath: "/synthetic/unit.jsonl",
+		DeviceID: "device", Inode: 1, SizeBytes: 10, MTimeNS: 1, ParsedOffset: 5,
+		ParserVersion: "v1", ActiveGeneration: 1, State: SourceFileActive, UpdatedAtMS: 1,
+	}
 }
 
 func assertWriteUnitRows(t *testing.T, database *storesqlite.Store, wantProjects, wantSources int64) {

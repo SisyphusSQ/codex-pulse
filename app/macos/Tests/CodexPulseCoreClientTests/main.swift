@@ -502,6 +502,11 @@ struct ContractTestMain {
             16 * 1024 * 1024,
             "transport message boundary"
         )
+        try expect(
+            CodexPulseTransportContract.invalidationVersion,
+            "query-invalidation-v3",
+            "invalidation contract version"
+        )
         guard CodexPulseTransportContract.clientServiceConfig.methodConfig.count == 1,
               let messageConfig = CodexPulseTransportContract.clientServiceConfig.methodConfig.first,
               messageConfig.names == [MethodConfig.Name(service: "")]

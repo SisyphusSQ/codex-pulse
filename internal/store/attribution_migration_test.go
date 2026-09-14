@@ -56,11 +56,11 @@ func TestApplicationMigrationAppendsAttributionSchemaToFrozenV3(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 	if report.FromVersion != 3 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v3 to v31 with backup", report)
+		!equalInts(report.AppliedVersions, []int{4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v3 to v32 with backup", report)
 	}
-	if backupVersions != [2]int{3, 31} {
-		t.Fatalf("backup versions = %v, want [3 31]", backupVersions)
+	if backupVersions != [2]int{3, 32} {
+		t.Fatalf("backup versions = %v, want [3 32]", backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 

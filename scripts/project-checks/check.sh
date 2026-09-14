@@ -79,7 +79,17 @@ for localization_file in \
   app/macos/Sources/CodexPulseAppSupport/Resources/zh-Hans.lproj/Localizable.strings; do
   plutil -lint "$REPO_ROOT/$localization_file" >/dev/null ||
     fail I18N-001 "$localization_file" "invalid localization resource"
-  duplicate_key=$(awk -F '"' '/^"/ { print $2 }' "$REPO_ROOT/$localization_file" | sort | uniq -d | head -n 1)
+  duplicate_key=$(python3 -c '
+import re, sys
+from collections import Counter
+keys = []
+for line in open(sys.argv[1], encoding="utf-8"):
+    match = re.match(r"^\"((?:\\\\.|[^\"\\\\])*)\"\s*=", line)
+    if match:
+        keys.append(match.group(1))
+duplicates = [key for key, count in Counter(keys).items() if count > 1]
+print(duplicates[0] if duplicates else "")
+' "$REPO_ROOT/$localization_file")
   [ -z "$duplicate_key" ] ||
     fail I18N-001 "$localization_file" "duplicate localization key: $duplicate_key"
 done

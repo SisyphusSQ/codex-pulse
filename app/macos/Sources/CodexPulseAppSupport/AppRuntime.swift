@@ -23,6 +23,7 @@ private enum InitialOverviewRefreshState: Equatable, Sendable {
 private struct OverviewCacheKey: Hashable, Sendable {
 	let provider: AgentProvider
 	let range: DateRangePreset
+	let accountContext: CodexAccountContextKey?
 }
 
 private enum OverviewSectionResult<Value: Sendable>: Sendable {
@@ -231,10 +232,12 @@ public actor AppRuntime {
     private var streamController: InvalidationStreamController?
     private var helperProcessMonitor: (any HelperProcessMonitoring)?
     private var refreshTask: Task<OverviewResponses, any Error>?
+    private var refreshTaskGeneration: UInt64?
     private var providerRefreshTask: Task<Codexpulse_Core_V1_ProviderRefreshReceipt, any Error>?
     private var accountRefreshTask: Task<Void, Never>?
     private var lastResponses: OverviewResponses?
 	private var overviewCache: [OverviewCacheKey: OverviewResponses] = [:]
+	private var lastOverviewContext: [AgentProvider: CodexAccountContextKey?] = [:]
 	private var overviewRange: DateRangePreset = .quotaWeek
 	private var selectedProvider: AgentProvider = .codex
     private var runtimeGeneration: UInt64 = 0
@@ -251,6 +254,8 @@ public actor AppRuntime {
     private var readyForOverview = false
     private var activeRefreshPending = false
     private var invalidationRefreshPending = false
+    private var didScheduleConsistencyRefresh = false
+    private var scheduledConsistencyQuotaKey: CodexAccountContextKey?
     private var initialOverviewRefreshState: InitialOverviewRefreshState = .idle
     private var streamHasReachedReady = false
     private var suppressNextStreamReadyRefresh = false
@@ -311,6 +316,8 @@ public actor AppRuntime {
         readyForOverview = false
         refreshAdmissionGeneration = nil
         invalidationRefreshPending = false
+        didScheduleConsistencyRefresh = false
+        scheduledConsistencyQuotaKey = nil
         initialOverviewRefreshState = .idle
         sleepTransitionInFlight = false
         wakeAfterSleepPending = false
@@ -382,10 +389,9 @@ public actor AppRuntime {
 		refreshGeneration &+= 1
 		refreshAdmissionGeneration = nil
 		invalidationRefreshPending = false
-		refreshTask?.cancel()
-		refreshTask = nil
+		abandonRefreshTask()
 		cancelAccountRefresh()
-		lastResponses = overviewCache[OverviewCacheKey(provider: provider, range: overviewRange)]
+		lastResponses = overviewCache[overviewCacheKey(provider: provider, range: overviewRange)]
 		if readyForOverview {
 			if let lastResponses {
 				await publishOverview(lastResponses)
@@ -402,8 +408,7 @@ public actor AppRuntime {
             refreshAdmissionGeneration = nil
             invalidationRefreshPending = false
             restorePendingInitialOverviewAfterCancellation()
-            refreshTask?.cancel()
-            refreshTask = nil
+            abandonRefreshTask()
             cancelAccountRefresh()
         }
         await refresh(showLoading: false)
@@ -1037,8 +1042,7 @@ public actor AppRuntime {
         refreshAdmissionGeneration = nil
         invalidationRefreshPending = false
         restorePendingInitialOverviewAfterCancellation()
-        refreshTask?.cancel()
-        refreshTask = nil
+        abandonRefreshTask()
         cancelAccountRefresh()
         await emit(.cancelled)
     }
@@ -1101,8 +1105,7 @@ public actor AppRuntime {
         refreshAdmissionGeneration = nil
         invalidationRefreshPending = false
         restorePendingInitialOverviewAfterCancellation()
-        refreshTask?.cancel()
-        refreshTask = nil
+        abandonRefreshTask()
         cancelAccountRefresh()
         let generation = runtimeGeneration
         guard let streamController else {
@@ -1255,8 +1258,7 @@ public actor AppRuntime {
         refreshGeneration &+= 1
         refreshAdmissionGeneration = nil
         invalidationRefreshPending = false
-        refreshTask?.cancel()
-        refreshTask = nil
+        abandonRefreshTask()
         cancelAccountRefresh()
         await emit(.shuttingDown)
         let outcome = await stopCurrentCore(reason: reason.coreValue)
@@ -1478,12 +1480,17 @@ public actor AppRuntime {
 					provider: provider
 				)
 			}
+            let assembledAccount = CodexAccountContext.reusableAccount(
+                provider: provider,
+                quota: quotaResponse,
+                previousAccount: previousAccount
+            )
 			return OverviewResponses(
 				provider: provider,
                 usage: usageResponse,
                 quota: quotaResponse,
                 quotaPace: quotaPaceResponse,
-                account: previousAccount,
+                account: assembledAccount,
                 sessions: sessionResponse,
                 projects: projectResponse,
                 health: healthResponse,
@@ -1499,10 +1506,11 @@ public actor AppRuntime {
             )
         }
         refreshTask = task
+        refreshTaskGeneration = generation
         refreshAdmissionGeneration = nil
         do {
             let responses = try await task.value
-			guard generation == refreshGeneration, refreshTask != nil, !shuttingDown,
+			guard generation == refreshGeneration, refreshTaskGeneration == generation, !shuttingDown,
 				responses.provider == selectedProvider,
 				responses.usage.providerContext.effectiveProvider == selectedProvider.rawValue,
 				responses.sessions.providerContext.effectiveProvider == selectedProvider.rawValue,
@@ -1513,9 +1521,7 @@ public actor AppRuntime {
 				responses.quota.providerContext.effectiveProvider == selectedProvider.rawValue,
 				responses.quotaPace.providerContext.effectiveProvider == selectedProvider.rawValue
 			else { throw AppRuntimeError.providerMismatch }
-            refreshTask = nil
-            lastResponses = responses
-			overviewCache[OverviewCacheKey(provider: provider, range: requestedRange)] = responses
+            clearOwnedRefreshTask(generation)
             await publishOverview(responses)
             completeInitialOverviewRefreshIfNeeded()
             await drainPendingInvalidationRefresh()
@@ -1529,14 +1535,22 @@ public actor AppRuntime {
 				overviewGeneration: generation
 			)
         } catch is CancellationError {
-            guard generation == refreshGeneration else { return }
-            refreshTask = nil
+            if generation != refreshGeneration {
+                clearOwnedRefreshTask(generation)
+                await drainPendingInvalidationRefresh()
+                return
+            }
+            clearOwnedRefreshTask(generation)
             restorePendingInitialOverviewAfterCancellation()
             await emit(.cancelled)
             await drainPendingInvalidationRefresh()
         } catch {
-            guard generation == refreshGeneration else { return }
-            refreshTask = nil
+            if generation != refreshGeneration {
+                clearOwnedRefreshTask(generation)
+                await drainPendingInvalidationRefresh()
+                return
+            }
+            clearOwnedRefreshTask(generation)
             await emitRefreshFailure(error)
             completeInitialOverviewRefreshIfNeeded()
             await drainPendingInvalidationRefresh()
@@ -1592,11 +1606,32 @@ public actor AppRuntime {
         else { return }
         accountRefreshTask = nil
         guard let response, let responses = lastResponses else { return }
-        let updated = responses.replacingAccount(response)
-        lastResponses = updated
-		let requestedRange = updated.rangeResolution?.requestedPreset ?? overviewRange
-		overviewCache[OverviewCacheKey(provider: updated.provider, range: requestedRange)] = updated
-        await publishOverview(updated)
+        let mixed = responses.replacingAccount(response)
+        if mixed.provider == .codex {
+            let quotaKey = CodexAccountContext.key(fromQuota: mixed.quota)
+            let accountKey = CodexAccountContext.key(fromAccount: response)
+            guard quotaKey == accountKey else {
+                await publishOverview(mixed)
+                await scheduleAccountConsistentOverviewRefresh()
+                return
+            }
+        }
+        await publishOverview(mixed)
+    }
+
+    private func scheduleAccountConsistentOverviewRefresh() async {
+        let quotaKey = lastResponses.flatMap { CodexAccountContext.key(fromQuota: $0.quota) }
+        if didScheduleConsistencyRefresh, scheduledConsistencyQuotaKey == quotaKey {
+            return
+        }
+        didScheduleConsistencyRefresh = true
+        scheduledConsistencyQuotaKey = quotaKey
+        if refreshTask != nil {
+            invalidationRefreshPending = true
+            return
+        }
+        invalidationRefreshPending = false
+        await refresh(showLoading: false)
     }
 
     private func cancelAccountRefresh() {
@@ -1605,13 +1640,50 @@ public actor AppRuntime {
         accountRefreshTask = nil
     }
 
+    private func abandonRefreshTask() {
+        refreshTask?.cancel()
+        refreshTask = nil
+        refreshTaskGeneration = nil
+    }
+
+    private func clearOwnedRefreshTask(_ generation: UInt64) {
+        guard refreshTaskGeneration == generation else { return }
+        refreshTask = nil
+        refreshTaskGeneration = nil
+    }
+
     private func publishOverview(_ responses: OverviewResponses) async {
-        let presentation = OverviewPresentation(responses)
-        if presentation.isPartial {
-            await emit(.partial(responses, presentation.notices))
+        let validated = CodexAccountContext.validatePublishedOverview(responses)
+        if validated.needsConsistencyRefresh {
+            invalidationRefreshPending = true
         } else {
-            await emit(.normal(responses))
+            didScheduleConsistencyRefresh = false
+            scheduledConsistencyQuotaKey = nil
         }
+        lastResponses = validated.responses
+        lastOverviewContext[validated.responses.provider] = validated.responses.codexAccountContextKey
+        let requestedRange = validated.responses.rangeResolution?.requestedPreset ?? overviewRange
+        overviewCache[overviewCacheKey(
+            provider: validated.responses.provider,
+            range: requestedRange
+        )] = validated.responses
+        let presentation = OverviewPresentation(validated.responses)
+        if presentation.isPartial {
+            await emit(.partial(validated.responses, presentation.notices))
+        } else {
+            await emit(.normal(validated.responses))
+        }
+    }
+
+    private func overviewCacheKey(
+        provider: AgentProvider,
+        range: DateRangePreset
+    ) -> OverviewCacheKey {
+        OverviewCacheKey(
+            provider: provider,
+            range: range,
+            accountContext: lastOverviewContext[provider] ?? nil
+        )
     }
 
     private func startInvalidationStream(
@@ -1623,7 +1695,7 @@ public actor AppRuntime {
         streamHasReachedReady = false
         suppressNextStreamReadyRefresh = false
         let controller = InvalidationStreamController(
-            domains: ["index", "quota", "health", "settings"],
+            domains: ["index", "quota", "account", "health", "settings"],
             consumeInvalidations: { domains, afterSequence, onReady, onEvent in
                 try await client.consumeInvalidations(
                     domains: domains,
@@ -1707,6 +1779,21 @@ public actor AppRuntime {
         await invalidationSink(domain)
         guard !systemIsSleeping else { return }
         guard domain != "settings" else { return }
+        if domain == "account" {
+            cancelAccountRefresh()
+            overviewCache = overviewCache.filter { $0.key.provider != .codex }
+            lastOverviewContext[.codex] = nil
+            didScheduleConsistencyRefresh = false
+            scheduledConsistencyQuotaKey = nil
+            guard selectedProvider == .codex else { return }
+            refreshGeneration &+= 1
+            refreshAdmissionGeneration = nil
+            if let refreshTask {
+                refreshTask.cancel()
+                invalidationRefreshPending = true
+                return
+            }
+        }
         if refreshTask != nil {
             invalidationRefreshPending = true
             return
@@ -1737,11 +1824,7 @@ public actor AppRuntime {
         case .failure: health = unavailableHealth()
         }
         guard health != responses.health else { return }
-        let updated = responses.replacingHealth(health)
-        lastResponses = updated
-        let range = updated.rangeResolution?.requestedPreset ?? overviewRange
-        overviewCache[OverviewCacheKey(provider: updated.provider, range: range)] = updated
-        await publishOverview(updated)
+        await publishOverview(responses.replacingHealth(health))
     }
 
     private func drainPendingInvalidationRefresh() async {
@@ -1872,8 +1955,7 @@ public actor AppRuntime {
         refreshAdmissionGeneration = nil
         invalidationRefreshPending = false
         initialOverviewRefreshState = .idle
-        refreshTask?.cancel()
-        refreshTask = nil
+        abandonRefreshTask()
         cancelAccountRefresh()
         helperProcessMonitor?.cancel()
         helperProcessMonitor = nil
@@ -1921,8 +2003,7 @@ public actor AppRuntime {
         refreshAdmissionGeneration = nil
         invalidationRefreshPending = false
         initialOverviewRefreshState = .idle
-        refreshTask?.cancel()
-        refreshTask = nil
+        abandonRefreshTask()
         cancelAccountRefresh()
         if let streamController {
             await streamController.stop()
@@ -2008,8 +2089,7 @@ public actor AppRuntime {
         refreshAdmissionGeneration = nil
         invalidationRefreshPending = false
         initialOverviewRefreshState = .idle
-        refreshTask?.cancel()
-        refreshTask = nil
+        abandonRefreshTask()
         cancelAccountRefresh()
         await supervisor.stop(mode: .terminate)
     }

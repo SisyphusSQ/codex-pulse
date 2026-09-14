@@ -92,7 +92,7 @@ func verifyApplicationSchemaV13ForUpgradeE2E(ctx context.Context, transaction *g
 
 func verifyApplicationSchemaV14ForUpgradeE2E(ctx context.Context, transaction *gorm.DB) error {
 	for _, objects := range [][]storeschema.Object{
-		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), storeretention.SchemaObjects(),
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV14(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects, quotaSchemaObjects, quotaProjectionSchemaObjects,
 		quotaScheduleSchemaObjects, metricsSchemaObjects,

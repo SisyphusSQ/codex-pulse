@@ -1,5 +1,17 @@
 # Runtime Schema 验证 Runbook
 
+## 2026-09-14 TOO-442 schema v32
+
+当前 application schema 还包含 Codex account binding：
+
+- `codex_account_scope_key`：32 字节安装级 HMAC 密钥。
+- `codex_account_scopes`：64 位 lowercase hex scope。
+- `codex_account_binding`：单行 state / scope / `binding_generation`。
+- 在线 `source_refresh_schedules` / claims / attempts 必须带同一 `(account_scope, binding_generation)`。
+- `account_scope=default` 的历史 quota 行保持 unassigned。
+
+账号隔离行为与隐私扫描见 [`codex-account-switching.md`](codex-account-switching.md)。下方 TOO-248 历史步骤不覆盖这些表的产品语义。
+
 ## 目的
 
 验证 TOO-248 提供的 Source、Job Run、Health Event、Pricing Catalog/Version 运行事实 schema 与 typed repository，重点覆盖：

@@ -11,8 +11,8 @@
 | [details/api-subscriptions](details/api-subscriptions/README.md) | 非 Agent 的 API 余额与订阅额度、凭据边界和独立失败语义 |
 | [details/architecture](details/architecture/README.md) | 当前 Go Helper 与目标 Swift native client 分层、RPC 边界、DashboardSummary 聚合与本机安全 |
 | [details/native-macos-client](details/native-macos-client/README.md) | 原生 macOS 客户端与 Go Helper 重构决策、RPC contract、生命周期、迁移阶段和切换门槛 |
-| [details/data-model](details/data-model/README.md) | JSONL 增量索引、SQLite schema、幂等事务、日聚合与保留策略 |
-| [details/quota](details/quota/README.md) | 配额来源、可信状态、仲裁、失败降级和验收场景 |
+| [details/data-model](details/data-model/README.md) | JSONL 增量索引、SQLite schema、幂等事务、日聚合、账号 binding 与保留策略 |
+| [details/quota](details/quota/README.md) | 配额来源、App Server 当前账号隔离、可信状态、仲裁、失败降级和验收场景 |
 | [details/scheduling-and-bootstrap](details/scheduling-and-bootstrap/README.md) | 数据源刷新、前后台预算、首次启动和错误恢复 |
 | [details/updates-and-release](details/updates-and-release/README.md) | 自动更新、安全重启、数据库 migration 和发布可信链 |
 | [details/observability](details/observability/README.md) | 资源、队列、故障、健康分级与 Data Health |

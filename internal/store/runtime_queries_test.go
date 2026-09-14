@@ -12,6 +12,16 @@ const listSourceFilesBySessionStateQuery = `
 	ORDER BY last_scanned_at_ms, source_file_id
 	LIMIT ?`
 
+const currentCodexAccountBindingQuery = `
+	SELECT singleton_id, state, account_scope, binding_generation, observed_at_ms, reason
+	FROM codex_account_binding
+	WHERE singleton_id = ?`
+
+const currentCodexAccountScopeQuery = `
+	SELECT account_scope, first_seen_at_ms, last_seen_at_ms
+	FROM codex_account_scopes
+	WHERE account_scope = ?`
+
 const listDueSourcesQuery = `
 	SELECT source_instance_id, source_type, scope_key, last_attempt_at_ms,
 		last_success_at_ms, next_due_at_ms, consecutive_failures,

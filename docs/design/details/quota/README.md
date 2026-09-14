@@ -6,12 +6,40 @@ Codex Runway 实际运行中观察到：网络不佳时，5 小时和周窗口�
 
 数据库统一保存来源原始语义 `used_percent`；UI 的 `remaining_percent = 100 - used_percent` 只在展示层计算。每条 observation 必须携带来源、观测时间、窗口长度、reset 时间、有效性和 request。
 
-## v0.1 来源
+## 当前 Codex 在线额度入口（TOO-442）
 
-- `local_jsonl`：始终启用，只读 `event_msg.token_count.rate_limits`。无额外网络行为，但只在 Codex 产生新活动时更新。
-- `wham`：v0.1 默认开启，请求 `https://chatgpt.com/backend-api/wham/usage`，用户可随时关闭。更实时，但可能受到网络、认证和内部接口变化影响。
+Codex 在线额度和 Reset Credits 只能通过 Codex App Server 公开接口 `account/rateLimits/read` 获取。产品实现不得直连私有 WHAM endpoint，也不得自己读取 Codex access token、JWT、`auth.json` 内容或 Keychain credential。
 
-不启动或复用 `codex app-server`，也不作为兜底。v0.1 只支持当前单账号，固定 `account_scope = default`；运行期间切换 Codex 账号不属于支持场景。
+最低能力基线是包含 `account/rateLimits/read.accountId` 的稳定 Codex CLI；当前验证版本是 `0.154.0`。GUI resolver 必须能找到 `$HOME/.local/bin/codex`，并读回最终 binary path、version 和 capability state。旧版或缺 `accountId` 能力时 fail closed，不能 fallback 到旧 WHAM 实现。
+
+App Server 返回的原始 `accountId` 只短暂存在于内存。SQLite 只保存：
+
+```text
+HMAC-SHA256(安装级随机密钥, domain-separated accountId) → 64 位 lowercase hex account_scope
+```
+
+原始 `accountId`、token、JWT、Reset Credit 原始 ID 和真实邮箱不得进入数据库、日志、错误、Proto 或测试产物。所有在线 schedule、claim、attempt、writer、query、Proto 和 Swift 组合都必须携带并校验 `(account_scope, binding_generation)`。进入 `pending` / `signed_out` / `identity_unavailable` 时先递增 generation，使旧请求永久失效。writer fence 在最终 SQLite 写事务内部执行。
+
+本地 Session、Token、项目、趋势和成本继续按当前 Codex Home 聚合，不增加账号级归因或筛选。这是两条不同口径：
+
+| 对象 | 口径 |
+| --- | --- |
+| 在线 Quota、Pace、Reset Credits、账号邮箱/套餐 | 当前 confirmed `(account_scope, binding_generation)` |
+| 本地 Session、Token、项目、趋势、成本 | 当前 confirmed Codex Home |
+| 本地 JSONL quota 与 legacy `account_scope=default` 在线历史 | unassigned，不回填给第一个发现的账号 |
+
+`account/read` 的邮箱和套餐只能通过同一 App Server 会话夹读：`account/rateLimits/read → account/read → account/rateLimits/read`。前后账号 scope 一致且匹配当前 binding generation 时才允许发布。Swift 首次组装 Overview 也要校验同一 context key，禁止先发布“B 额度 + previousAccount A”。quota、pace、account 的 server context 不一致时，账号和不匹配的在线部分降为 unknown，并安排一致性刷新。
+
+账号切换保留现有 Home generation fence。锁顺序是：Home generation drain → account transition → quota admission → repository 写事务。A→B→A 恢复 A 的历史观察时间戳，但使用新的 binding generation。Cursor、Grok、API Subscription 的现有逻辑不得被 Codex binding 改动影响。
+
+账号切换隔离的 live runbook 见 [`docs/test/codex-account-switching.md`](../../../test/codex-account-switching.md)。
+
+## v0.1 来源（历史）
+
+- `local_jsonl`：始终启用，只读 `event_msg.token_count.rate_limits`。无额外网络行为，但只在 Codex 产生新活动时更新。该口径今天仍然有效，并继续写入 `account_scope=default` 的未归属本地观察。
+- `wham`：v0.1 默认开启，请求 `https://chatgpt.com/backend-api/wham/usage`。这是 **legacy** 入口；TOO-442 之后不再作为 Codex 在线额度或 Reset Credits 的产品路径，也不得作为 capability 失败时的 fallback。
+
+v0.1 曾写明“不启动或复用 `codex app-server`”“固定 `account_scope = default`”“运行期间切换 Codex 账号不属于支持场景”。这些句子只描述当时交付边界，不是当前产品真相。当前在线入口是 App Server；`account_scope=default` 只保留为 legacy/unassigned。
 
 Grok 客户端的额度是独立来源，不写入 Codex `quota_observations` / `quota_current`，也不复用 Cursor Dashboard 表。Helper 在用户开启 `online.grok_quota_enabled` 时，用调用期内存中的 `~/.grok/auth.json` Bearer 请求 CLI proxy `GET /billing?format=credits`，把 `creditUsagePercent` 与 `currentPeriod` 映射为 Grok 自己的 window snapshot。该接口与 `wham` 同类：默认开启、可关、last-known-good、协议漂移 fail closed。独立的 `online.grok_auto_refresh_enabled` 也默认开启：OIDC token 临近到期或 billing 返回 401/403 时，Helper 通过共用锁与 mode `0600` 原子替换安全续期；关闭后完全不改写 Grok 凭据。Grok 没有 Reset Credits；prepaid 余额只作摘要。字段、周期和失败语义见 [Agent Provider、Cursor 与 Grok](../providers/README.md)。
 
@@ -27,7 +55,7 @@ Cursor Provider 在 TOO-349 起同时持有两类 Dashboard 额度，且不得�
 
 Cursor/Grok 的用户手动额度刷新不进入 Codex `QuotaRefreshCoordinator`。Helper 根据请求中的 Provider scope 路由到 Cursor Dashboard 或 Grok billing collector；后台入口保持各 collector 的 5 分钟最小间隔，手动入口在距同一 collector 上次尝试已满 60 秒时同步请求。collector 自身互斥提供 single-flight；成功后先提交 provider 独立表，再失效内存 snapshot 并发送 invalidation。网络、认证或协议失败保留 last-known-good；手动调用把失败返回给 Swift，后台调用只提交有限 failure code 并通知查询重读来源状态。回执中的 effective provider 不匹配时 Swift 不得发布成功状态。
 
-Codex 在线 quota 或 reset credits 启用时，只从 Preferences 当前 confirmed Codex Home 下的固定 `auth.json` 将 access token 读入调用期内存。Codex 凭据链不保存 token、refresh token、Authorization header 或 auth 文件内容，不主动刷新或修改 Codex `auth.json`；401/403 后标记 `auth_required`，保留 last-known-good，并进入有上限的持久退避。Grok 的 OIDC 主动续期是单独、可关闭的能力，严格限定在 Grok `auth.json`，不得复用到 Codex Home。凭据恢复后自动或手动请求都可恢复来源；只有用户关闭对应能力时才停止该能力的在线调度，已有非敏感 observation history 保留。
+Codex 在线 quota 或 reset credits 启用时，由当前 confirmed Codex Home 下的受控 App Server 会话读取公开额度接口；Codex Pulse 不再把 Codex `auth.json` access token 读入调用期内存，也不再直连 WHAM。旧 TOO-306 Wham credential lease 是 **legacy**。Grok 的 OIDC 主动续期仍是单独、可关闭的能力，严格限定在 Grok `auth.json`，不得复用到 Codex Home。只有用户关闭对应能力时才停止该能力的在线调度，已有非敏感 observation history 保留。未确认账号或 capability unavailable 时显示 unknown，不得复用上一账号 last-known-good。
 
 ## Observation
 
@@ -35,7 +63,7 @@ Codex 在线 quota 或 reset credits 启用时，只从 Preferences 当前 confi
 
 ```text
 account_scope
-source                  local_jsonl / wham
+source                  local_jsonl / app_server / legacy wham
 limit_id
 limit_name             optional display name
 window_kind             primary / secondary
@@ -71,9 +99,11 @@ Indexer 使用 `(source_file_id, session_id, source_generation, line_start_offse
 
 可复用的 synthetic-only 验证入口见 [`docs/test/local-jsonl-quota.md`](../../../test/local-jsonl-quota.md)。
 
-### 在线 Wham 观测边界（TOO-263）
+### 在线 Wham 观测边界（TOO-263，legacy）
 
-TOO-263 交付 `CredentialProvider -> Wham client -> validated observation / typed failure -> atomic recorder`，但不读取真实 `auth.json`，不实现 refresh token、app-server、周期调度、窗口仲裁、`quota_current`、Reset Credits 或 UI。调用方只能把当前 access token 注入 `MemoryCredentialProvider`；provider 在 callback 期间提供独立副本，并在 callback、Replace 或 Close 后清零可写 buffer。客户端只向固定 Wham HTTPS endpoint 发 GET，请求完成后删除临时 Authorization header；token、header、response body 和底层 error text 都不得进入 Result、SQLite、日志或文档。
+TOO-263 的 WHAM HTTPS 客户端是 **legacy**。当前 Codex 在线观测走 App Server `account/rateLimits/read`，不得再调用该私有 endpoint，也不得在 capability 失败时回退到本节实现。
+
+TOO-263 当时交付 `CredentialProvider -> Wham client -> validated observation / typed failure -> atomic recorder`，但不读取真实 `auth.json`，不实现 refresh token、app-server、周期调度、窗口仲裁、`quota_current`、Reset Credits 或 UI。调用方只能把当前 access token 注入 `MemoryCredentialProvider`；provider 在 callback 期间提供独立副本，并在 callback、Replace 或 Close 后清零可写 buffer。客户端只向固定 Wham HTTPS endpoint 发 GET，请求完成后删除临时 Authorization header；token、header、response body 和底层 error text 都不得进入 Result、SQLite、日志或文档。
 
 每次 HTTP attempt 使用独立 timeout context，response body 有硬上限并始终关闭。401/403、429 和 schema failure 不做请求内重试；网络、timeout 与 5xx 使用 `internal/retry.Policy` 做最多三次短退避。429 不占用调用 goroutine 等待服务端窗口，只把合法 `Retry-After` 秒值、HTTP-date 或 `X-RateLimit-Reset` 安全转换为 `retry_at_ms`，供后续 durable scheduler 使用。取消优先于网络错误；在请求前已经取消或缺少凭证时 `attempt_count = 0`，仍记录一条无内容的 typed attempt。
 
@@ -172,7 +202,7 @@ freshness 与 conflict 分开：current 可以同时是 `fresh + conflict` 或 `
 
 ### Reset Credits 与持久刷新计划（TOO-265）
 
-Reset Credits inventory 来自独立的只读 `GET /backend-api/wham/rate-limit-reset-credits`，不能从 quota 百分比或 reset 时间猜测。客户端与 `wham/usage` 共用内存 credential lease、固定 HTTPS endpoint、redirect 禁止、逐 attempt timeout、response body 上限、duplicate JSON key 拒绝和 typed failure 分类；不调用 consume endpoint。响应只接受有界 `available_count + credits[]`，credit 的 `id` 进入 Store 前转成 SHA-256，`title`、`description`、`profile_user_id`、未知字段、token、header、body 和 raw error 全部丢弃。status 只接受 `available/redeemed/expired/used`，reset type 归一为 `codex_rate_limits/unknown`，时间必须是合法且自洽的 RFC3339；available count 与 items 不一致时整次响应按 `schema_incompatible` fail closed。
+Reset Credits inventory 当前与在线额度共用 App Server `account/rateLimits/read` 的 `rateLimitResetCredits`，不能从 quota 百分比或 reset 时间猜测。历史 TOO-265 路径 `GET /backend-api/wham/rate-limit-reset-credits` 是 **legacy**，不得作为当前产品入口或 capability 失败 fallback。不调用 consume endpoint。响应只接受有界 `available_count + credits[]`，credit 的 `id` 进入 Store 前转成 SHA-256，`title`、`description`、`profile_user_id`、未知字段、token、header、body 和 raw error 全部丢弃。status 只接受 `available/redeemed/expired/used`，reset type 归一为 `codex_rate_limits/unknown`，时间必须是合法且自洽的 RFC3339；available count 与 items 不一致时整次响应按 `schema_incompatible` fail closed。
 
 application schema v12 新增 `reset_credit_snapshots`、`reset_credits`、`source_refresh_schedules` 和 append-only `source_refresh_claims`。一次成功 Reset Credits 请求把 append-only source attempt、snapshot 与 hashed items 放在同一个 GORM writer transaction；失败/取消只写 attempt/source state，不生成 snapshot。exact request replay 是 no-op，同 request 不同事实拒绝；summary 在调用方 evaluation time 重新计算实际可用数、所有未过期 available credit 的累计剩余毫秒和最近到期时间，因此未加载、真实 0 与已自然过期不会混淆。Wham 响应是当前库存，已使用条目可能从后续 `credits[]` 消失，所以 `len(credits)` 不能解释为分配总量，也不能据此反推已使用数量；`total_count` 与 `redeemed_count` 保持 unknown，客户端只展示权威的当前可用数。reader 在同一 SQLite read snapshot 内对账 item、server count 与 source attempt provenance，篡改或跨来源 request 引用 fail closed。已有 last-known-good 在网络失败后保留。
 
@@ -182,9 +212,11 @@ quota 与 reset credits 各有一行 durable refresh schedule，保存 `next_due
 
 settings commit 调用 `ReconcilePreferences`：关闭能力立即把 next due 置空并保留历史，重新开启 never-loaded 来源会安排启动请求。进程启动与每个 cron cycle 都回收已经到期的遗留 claim；即使 claim 在启动检查之后才到期，也不会永久卡住。周期 trigger 固定复用 `github.com/robfig/cron/v3 v3.0.1` 的 `@every 1s`、`SkipIfStillRunning` 和 `Recover`，生产代码不新增 ticker/timer/sleep loop。可复用 synthetic-only 验证入口见 [`docs/test/reset-credits-quota.md`](../../../test/reset-credits-quota.md)。
 
-### 生产应用装配与凭据边界（TOO-306）
+### 生产应用装配与凭据边界（TOO-306，Codex 在线凭据段为 legacy）
 
-`startApplicationLifecycleRuntime` 是在线来源的 production composition root。它与 bootstrap/live scheduler 共享同一个 GORM Pure-Go Repository 和 Preferences loader，构造调用期 credential provider、Quota/Reset Credits clients 与 recorders、`QuotaRefreshCoordinator` 和 `QuotaRefreshRunner`。composition root 在开放 Core 查询和在线 runner 前先按当前仲裁规则重建额度派生投影；规则升级失败会阻止 Helper 启动，不能让 native light-index 路径继续服务旧版本 current。真实 PreferencesStore 启动时先让 quota runtime 保持 suspended：runner 与 generation admission 都不开放，组合 HomeRuntime 先恢复 `pending_resume` / `pending_switch`，只在 rollback 或 finalize 得到无 journal 的权威 snapshot 后 Resume 最终 generation；bootstrap status unknown/error 保留 journal、停止启动且不发 HTTP。随后 runner 从 Store 恢复 durable claim/schedule 并执行一次 due cycle，再由 robfig cron 唤醒；进程重启不复制尚未到期的请求，也不从 cron 内存恢复业务状态。开关关闭时只把对应 next due 置空，既有 observation、attempt、last-known-good 和 Reset Credits history 不删除。
+`startApplicationLifecycleRuntime` 仍是在线来源的 production composition root。TOO-442 之后，Codex Quota/Reset Credits clients 通过 App Server 公开接口读取，不再构造 Codex `auth.json` credential lease。下方 TOO-306 对 Codex token / `auth.json` 的描述只保留为历史装配说明。
+
+`startApplicationLifecycleRuntime` 与 bootstrap/live scheduler 共享同一个 GORM Pure-Go Repository 和 Preferences loader，构造当前账号 binding、App Server Quota/Reset Credits clients 与 recorders、`QuotaRefreshCoordinator` 和 `QuotaRefreshRunner`。composition root 在开放 Core 查询和在线 runner 前先按当前仲裁规则重建额度派生投影；规则升级失败会阻止 Helper 启动，不能让 native light-index 路径继续服务旧版本 current。真实 PreferencesStore 启动时先让 quota runtime 保持 suspended：runner 与 generation admission 都不开放，组合 HomeRuntime 先恢复 `pending_resume` / `pending_switch`，只在 rollback 或 finalize 得到无 journal 的权威 snapshot 后 Resume 最终 generation；bootstrap status unknown/error 保留 journal、停止启动且不发 HTTP。随后 runner 从 Store 恢复 durable claim/schedule 并执行一次 due cycle，再由 robfig cron 唤醒；进程重启不复制尚未到期的请求，也不从 cron 内存恢复业务状态。开关关闭时只把对应 next due 置空，既有 observation、attempt、last-known-good 和 Reset Credits history 不删除。
 
 credential provider 不缓存 token。每次 lease 都重新读取当前 confirmed Home，从文件系统根目录逐段以 no-follow directory FD 打开 Home，核对保存的 device/inode，再以 no-follow 方式打开固定 `auth.json`；只接受 1 MiB 内的普通文件，并在读取前后同时核对打开 FD 和目录 entry 的 device、inode、mode、size、mtime、ctime。打开后读中 rename/replace 会因打开 FD 与当前目录 entry 不一致而 fail closed，确定性 barrier test 同时证明 callback 不执行且错误不含新旧 token marker。内容使用有深度上限的 duplicate-key 检查，所有 JSON value 保持为可清零的 byte/`RawMessage`；只复制 `tokens.access_token` 给一次 callback，未知字段和 refresh token 不进入 domain result。callback 前再次读回 Preferences 并核对 `CodexHome`，因此 Home 在读取窗口切换时 fail closed，不会把旧 Home token 租给新来源。文件内容、RawMessage 和 token lease 在返回前清零；错误统一归一为 content-free `credential unavailable` 或 context 取消，不携带路径、字段值或底层正文。
 
@@ -198,7 +230,7 @@ shutdown 先停止接收 lifecycle，并封闭 application settings/manual/Home-
 
 ### Quota Current 只读查询合同（TOO-266）
 
-`quota-current-v1` 是只读 domain contract，不是 transport envelope。调用方提供 evaluation time，query 固定查询 `account_scope = default`，返回 `version/accountScope/evaluatedAtMs`、按 primary、secondary 稳定排序的 windows、固定顺序的 Local/Wham source summaries、nearest trusted reset、Reset Credits 动态汇总，以及 quota/reset-credits refresh status，随后由 Core adapter 映射为 Protobuf response。`remainingPercent` 只从选中事实的 `100 - usedPercent` 派生；真实 `usedPercent = 0` 返回真实 `remainingPercent = 100`，从未加载才返回 null 和固定 `never_loaded` reason。过期、stale、suspicious 或 conflict 仍保留 last-known-good 普通百分比；只有 freshness 为 fresh/stale 且 reset 晚于 evaluation time 时才返回 `resetRemainingMs` 或参与 nearest reset，suspicious/expired reset 只保留事实时间，不暴露可信倒计时。
+`quota-current-v1` 是只读 domain contract，不是 transport envelope。调用方提供 evaluation time。当前 Codex 在线查询只投影当前 confirmed `(account_scope, binding_generation)`；`account_scope = default` 的历史查询是 **legacy unassigned** 口径，不得把这些行归给第一个发现的账号。返回 `version/accountScope/evaluatedAtMs`、binding、按 primary、secondary 稳定排序的 windows、本地与当前在线 source summaries、nearest trusted reset、Reset Credits 动态汇总，以及 quota/reset-credits refresh status，随后由 Core adapter 映射为 Protobuf response。`remainingPercent` 只从选中事实的 `100 - usedPercent` 派生；真实 `usedPercent = 0` 返回真实 `remainingPercent = 100`，从未加载才返回 null 和固定 `never_loaded` reason。过期、stale、suspicious 或 conflict 仍保留 last-known-good 普通百分比；只有 freshness 为 fresh/stale 且 reset 晚于 evaluation time 时才返回 `resetRemainingMs` 或参与 nearest reset，suspicious/expired reset 只保留事实时间，不暴露可信倒计时。
 
 Repository 在一个显式 GORM read transaction、同一个 SQLite snapshot 内读取全部 `quota_current` logical keys、对应 raw observations、完整 arbitration evidence、Wham source state、两个 durable refresh schedule 与 Reset Credits summary。并发 writer 只能让整份 response 看到完整旧版本或完整新版本，不能混出跨表时序。observation/current/evidence logical key 集必须完全一致；projection 缺行、多行、identity/provenance/shape 漂移时 fail closed，query 返回可恢复的 projection unavailable，不在查询路径写库。恢复只能由已有的显式 maintenance `RebuildQuotaProjection` 执行，调用方不得把查询失败当作 rebuild 授权。
 

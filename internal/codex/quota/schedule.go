@@ -118,11 +118,12 @@ func (policy RefreshPolicy) Plan(input RefreshPlanInput) (RefreshDecision, error
 			}
 			return immediateRefreshDecision(input.NowMS, reason), nil
 		}
-		// auth.json 可能在应用停止期间恢复，或旧版 Home 身份已在本次启动迁移。
+		// App Server 登录态可能在应用停止期间恢复，或旧版 Home 身份已在本次启动迁移。
 		// 每次进程启动先做一次即时探测，不等待上次持久化的普通退避窗口。
 		if input.Trigger == store.RefreshTriggerStartup &&
 			input.SourceState.LastFailureCode != nil &&
-			*input.SourceState.LastFailureCode == store.SourceFailureAuthRequired {
+			(*input.SourceState.LastFailureCode == store.SourceFailureAuthRequired ||
+				*input.SourceState.LastFailureCode == store.SourceFailureSchemaIncompatible) {
 			return immediateRefreshDecision(input.NowMS, store.RefreshReasonStartup), nil
 		}
 		decision, durableFailureDue := durableFailureRestartDecision(
@@ -160,7 +161,7 @@ func (policy RefreshPolicy) nextDecision(input RefreshPlanInput) (RefreshDecisio
 	if input.SourceState != nil && input.SourceState.LastFailureCode != nil {
 		switch *input.SourceState.LastFailureCode {
 		case store.SourceFailureNetworkUnavailable, store.SourceFailureTimeout, store.SourceFailureAuthRequired,
-			store.SourceFailureHTTP429, store.SourceFailureServerError, store.SourceFailureSchemaIncompatible:
+			store.SourceFailureHTTP429, store.SourceFailureServerError:
 			backoffAtMS, err := policy.networkBackoffAt(input.NowMS, input.SourceState.ConsecutiveFailures)
 			if err != nil {
 				return RefreshDecision{}, err
@@ -172,6 +173,8 @@ func (policy RefreshPolicy) nextDecision(input RefreshPlanInput) (RefreshDecisio
 				reason = store.RefreshReasonRetryAfter
 			}
 			return scheduledRefreshDecision(backoffAtMS, reason), nil
+		case store.SourceFailureSchemaIncompatible:
+			return RefreshDecision{Reason: store.RefreshReasonSchemaIncompatible}, nil
 		case store.SourceFailureCancelled:
 			dueAtMS, ok := addScheduleDurationChecked(input.NowMS, input.IntervalSeconds*1_000)
 			if !ok {

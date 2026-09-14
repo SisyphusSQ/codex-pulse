@@ -1,6 +1,7 @@
 package quota
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/accountbinding"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -79,7 +81,7 @@ func TestCurrentQueryMapsStableNullZeroExplanationAndRefreshContract(t *testing.
 					},
 				},
 			},
-			WhamSourceState: &store.SourceState{
+			OnlineSourceState: &store.SourceState{
 				SourceInstanceID: store.QuotaSourceInstanceWhamDefault, SourceType: store.QuotaSourceTypeWham,
 				ScopeKey: store.QuotaAccountScopeDefault, LastAttemptAtMS: &secondaryAttempt,
 				LastSuccessAtMS: &secondaryAttempt, NextDueAtMS: &retryAtMS,
@@ -275,8 +277,8 @@ func TestCurrentQueryMapsResetCreditItemsWithoutIdentifiers(t *testing.T) {
 				LastSuccessAtMS: &last, LastAttemptAtMS: &last,
 				FreshnessState: store.SourceFreshnessCurrent, EvaluationAtMS: nowMS,
 				Credits: []store.ResetCredit{
-					{Status: store.ResetCreditRedeemed, Type: store.ResetCreditTypeCodexRateLimits, GrantedAtMS: nowMS - 20_000, ExpiresAtMS: nowMS + 7_200_000, RedeemedAtMS: &last},
-					{Status: store.ResetCreditAvailable, Type: store.ResetCreditTypeCodexRateLimits, GrantedAtMS: nowMS - 10_000, ExpiresAtMS: nowMS + remaining},
+					{Status: store.ResetCreditRedeemed, Type: store.ResetCreditTypeCodexRateLimits, GrantedAtMS: nowMS - 20_000, ExpiresAtMS: int64Pointer(nowMS + 7_200_000), RedeemedAtMS: &last},
+					{Status: store.ResetCreditAvailable, Type: store.ResetCreditTypeCodexRateLimits, GrantedAtMS: nowMS - 10_000, ExpiresAtMS: int64Pointer(nowMS + remaining)},
 				},
 			},
 		}, nil
@@ -303,6 +305,75 @@ func TestCurrentQueryMapsResetCreditItemsWithoutIdentifiers(t *testing.T) {
 		if strings.Contains(strings.ToLower(string(encoded)), strings.ToLower(forbidden)) {
 			t.Fatalf("reset credit items leak %q: %s", forbidden, encoded)
 		}
+	}
+}
+
+func TestCurrentQueryMapsCountOnlyAndPartialResetCreditsWithoutInventingRemaining(t *testing.T) {
+	t.Parallel()
+
+	const nowMS = int64(1_784_320_000_000)
+	three := int64(3)
+	four := int64(4)
+	last := nowMS - 1_000
+	countOnly := currentSnapshotReaderFunc(func(
+		context.Context, string, int64,
+	) (store.QuotaCurrentSnapshot, error) {
+		return store.QuotaCurrentSnapshot{
+			AccountScope: store.QuotaAccountScopeDefault, EvaluatedAtMS: nowMS,
+			ResetCredits: store.ResetCreditsSummary{
+				AccountScope: store.QuotaAccountScopeDefault, SnapshotID: stringPointer("private-count-only"),
+				AvailableCount: &three, LastSuccessAtMS: &last, LastAttemptAtMS: &last,
+				FreshnessState: store.SourceFreshnessCurrent, EvaluationAtMS: nowMS,
+			},
+		}, nil
+	})
+	countService, err := NewCurrentQueryService(countOnly)
+	if err != nil {
+		t.Fatalf("NewCurrentQueryService(count-only) error = %v", err)
+	}
+	countResponse, err := countService.Query(context.Background(), nowMS)
+	if err != nil {
+		t.Fatalf("Query(count-only) error = %v", err)
+	}
+	if countResponse.ResetCredits.AvailableCount == nil || *countResponse.ResetCredits.AvailableCount != 3 ||
+		countResponse.ResetCredits.CumulativeRemainingMS != nil ||
+		countResponse.ResetCredits.NextExpiresAtMS != nil ||
+		countResponse.ResetCredits.DetailsState != store.ResetCreditDetailsUnavailable ||
+		len(countResponse.ResetCredits.Items) != 0 {
+		t.Fatalf("count-only reset credits = %#v", countResponse.ResetCredits)
+	}
+
+	partial := currentSnapshotReaderFunc(func(
+		context.Context, string, int64,
+	) (store.QuotaCurrentSnapshot, error) {
+		return store.QuotaCurrentSnapshot{
+			AccountScope: store.QuotaAccountScopeDefault, EvaluatedAtMS: nowMS,
+			ResetCredits: store.ResetCreditsSummary{
+				AccountScope: store.QuotaAccountScopeDefault, SnapshotID: stringPointer("private-partial"),
+				AvailableCount: &four, LastSuccessAtMS: &last, LastAttemptAtMS: &last,
+				FreshnessState: store.SourceFreshnessCurrent, EvaluationAtMS: nowMS,
+				Credits: []store.ResetCredit{{
+					Status: store.ResetCreditAvailable, Type: store.ResetCreditTypeCodexRateLimits,
+					GrantedAtMS: nowMS - 10_000,
+				}},
+			},
+		}, nil
+	})
+	partialService, err := NewCurrentQueryService(partial)
+	if err != nil {
+		t.Fatalf("NewCurrentQueryService(partial) error = %v", err)
+	}
+	partialResponse, err := partialService.Query(context.Background(), nowMS)
+	if err != nil {
+		t.Fatalf("Query(partial) error = %v", err)
+	}
+	if partialResponse.ResetCredits.AvailableCount == nil || *partialResponse.ResetCredits.AvailableCount != 4 ||
+		partialResponse.ResetCredits.CumulativeRemainingMS != nil ||
+		partialResponse.ResetCredits.NextExpiresAtMS != nil ||
+		partialResponse.ResetCredits.DetailsState != store.ResetCreditDetailsPartial ||
+		len(partialResponse.ResetCredits.Items) != 1 ||
+		partialResponse.ResetCredits.Items[0].RemainingMS != nil {
+		t.Fatalf("partial reset credits = %#v", partialResponse.ResetCredits)
 	}
 }
 
@@ -351,13 +422,20 @@ func TestCurrentQueryEmptyRepositoryReturnsDeterministicUnknownContract(t *testi
 	if !reflect.DeepEqual(first, second) {
 		t.Fatalf("empty query is not deterministic:\nfirst=%#v\nsecond=%#v", first, second)
 	}
-	if first.Version != CurrentContractVersion || len(first.Windows) != 0 || len(first.Sources) != 2 ||
-		first.Sources[0].UnknownReason == nil || first.Sources[1].UnknownReason == nil ||
+	if first.Version != CurrentContractVersion || first.Binding.State != store.CodexAccountBindingUnknown ||
+		len(first.Windows) != 0 || len(first.Sources) != 1 || first.Sources[0].Source != CurrentSourceAppServer ||
+		first.Sources[0].UnknownReason == nil || *first.Sources[0].UnknownReason != CurrentUnknownBindingUnavailable ||
 		first.NextReset.AtMS != nil || first.NextReset.UnknownReason == nil ||
+		*first.NextReset.UnknownReason != CurrentUnknownBindingUnavailable ||
 		first.ResetCredits.AvailableCount != nil || first.ResetCredits.UnknownReason == nil ||
-		first.Refresh.Quota.State != CurrentRefreshUnknown ||
+		*first.ResetCredits.UnknownReason != CurrentUnknownBindingUnavailable ||
+		first.Refresh.Quota.State != CurrentRefreshUnknown || first.Refresh.Quota.UnknownReason == nil ||
+		*first.Refresh.Quota.UnknownReason != CurrentUnknownBindingUnavailable ||
 		first.Refresh.ResetCredits.State != CurrentRefreshUnknown {
 		t.Fatalf("empty response = %#v", first)
+	}
+	if first.Windows == nil {
+		t.Fatalf("empty windows = nil, want empty slice")
 	}
 }
 
@@ -400,8 +478,8 @@ func TestCurrentQueryKeepsLatestUsageDecreaseAndTrustedResetCountdown(t *testing
 	repository, service := newCurrentQueryTestService(t)
 	nowMS := time.Now().UnixMilli()
 	resetAtMS := nowMS + 5*60*60*1_000
-	recordCurrentQueryWham(t, repository, "usage-before-decrease", nowMS, 40, -1, resetAtMS, 0)
-	recordCurrentQueryWham(t, repository, "usage-after-decrease", nowMS+1, 20, -1, resetAtMS, 0)
+	recordCurrentQueryAppServer(t, repository, "usage-before-decrease", nowMS, 40, -1, resetAtMS, 0)
+	recordCurrentQueryAppServer(t, repository, "usage-after-decrease", nowMS+1, 20, -1, resetAtMS, 0)
 	response := queryCurrentAt(t, service, nowMS+2)
 	if len(response.Windows) != 1 || response.Windows[0].Freshness != store.QuotaCurrentFresh ||
 		response.Windows[0].UsedPercent == nil || *response.Windows[0].UsedPercent != 20 ||
@@ -427,23 +505,24 @@ func TestCurrentQuerySurvivesStoreRestartWithCompleteAggregateFacts(t *testing.T
 	nowMS := time.Now().UnixMilli()
 	primaryResetAtMS := nowMS + 5*60*60*1_000
 	secondaryResetAtMS := nowMS + 7*24*60*60*1_000
-	recordCurrentQueryWham(
+	recordCurrentQueryAppServer(
 		t, repository, "restart-quota", nowMS, 40, 20, primaryResetAtMS, secondaryResetAtMS,
 	)
 	creditExpiresAtMS := nowMS + 60_000
 	recordCurrentQueryResetCredits(t, repository, "restart-reset", nowMS, &creditExpiresAtMS)
+	scope, generation := currentQueryBindingAt(t, repository, nowMS)
 	quotaDueAtMS := nowMS + 300_000
 	if _, err := repository.UpsertSourceRefreshSchedule(context.Background(), store.SourceRefreshScheduleUpdate{
-		SourceInstanceID: store.QuotaSourceInstanceWhamDefault, SourceType: store.QuotaSourceTypeWham,
-		ScopeKey: store.QuotaAccountScopeDefault, NextDueAtMS: &quotaDueAtMS,
+		SourceInstanceID: store.QuotaSourceInstanceAppServer(scope), SourceType: store.QuotaSourceTypeAppServerRateLimits,
+		ScopeKey: scope, BindingGeneration: generation, NextDueAtMS: &quotaDueAtMS,
 		Reason: store.RefreshReasonNormalInterval, AtMS: nowMS,
 	}); err != nil {
 		t.Fatalf("UpsertSourceRefreshSchedule(quota) error = %v", err)
 	}
 	resetDueAtMS := nowMS + 1_800_000
 	if _, err := repository.UpsertSourceRefreshSchedule(context.Background(), store.SourceRefreshScheduleUpdate{
-		SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-		SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+		SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(scope),
+		SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: scope, BindingGeneration: generation,
 		NextDueAtMS: &resetDueAtMS, Reason: store.RefreshReasonNormalInterval, AtMS: nowMS,
 	}); err != nil {
 		t.Fatalf("UpsertSourceRefreshSchedule(reset credits) error = %v", err)
@@ -478,19 +557,16 @@ func TestCurrentQueryMapsTamperedProjectionToRecoverableDomainError(t *testing.T
 	database, repository, service := newCurrentQueryTestRuntime(t)
 	nowMS := time.Now().UnixMilli()
 	resetAtMS := nowMS + 5*60*60*1_000
-	recordCurrentQueryWham(t, repository, "tamper-wham", nowMS, 40, -1, resetAtMS, 0)
-	recordCurrentQueryLocal(
-		t, repository, "tamper-local", nowMS+1, resetAtMS, 40, store.QuotaWindowPrimary, 100,
-	)
+	recordCurrentQueryAppServer(t, repository, "tamper-app-server", nowMS, 40, -1, resetAtMS, 0)
 	if err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
 		return transaction.WithContext(ctx).
-			Where("observation_id = ?", "query-tamper-local-observation").
+			Where("observation_id = ?", "query-tamper-app-server-primary").
 			Delete(&currentQueryEvidenceFixture{}).Error
 	}); err != nil {
 		t.Fatalf("tamper projection evidence: %v", err)
 	}
 	if _, err := service.Query(context.Background(), nowMS+2); !errors.Is(err, ErrQuotaCurrentUnavailable) ||
-		!errors.Is(err, store.ErrInvalidRecord) {
+		!errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("Query(tampered projection) error = %v, want domain unavailable + Store cause", err)
 	}
 	if err := repository.RebuildQuotaProjection(
@@ -503,67 +579,65 @@ func TestCurrentQueryMapsTamperedProjectionToRecoverableDomainError(t *testing.T
 	}
 }
 
-func TestCurrentQueryLocalSourceFreshnessUsesAcceptedObservationAtEvaluationTime(t *testing.T) {
+func TestCurrentQueryLocalJSONLIsNotProjectedForConfirmedAccount(t *testing.T) {
 	t.Parallel()
 
 	repository, service := newCurrentQueryTestService(t)
 	nowMS := time.Now().UnixMilli()
 	resetAtMS := nowMS + 5*60*60*1_000
+	confirmCurrentQueryAccount(t, repository, "acct-test-a", nowMS)
 	recordCurrentQueryLocal(t, repository, "freshness-local", nowMS, resetAtMS, 40, store.QuotaWindowPrimary, 100)
-	fresh := queryCurrentAt(t, service, nowMS)
-	staleAtMS := nowMS + store.DefaultQuotaArbitrationRule().FreshForMS + 1
-	stale := queryCurrentAt(t, service, staleAtMS)
-	if fresh.Sources[0].Freshness != store.SourceFreshnessCurrent || fresh.Sources[0].UnknownReason != nil ||
-		stale.Sources[0].Freshness != store.SourceFreshnessStale || stale.Sources[0].UnknownReason != nil {
-		t.Fatalf("local source freshness fresh=%#v stale=%#v", fresh.Sources[0], stale.Sources[0])
+	response := queryCurrentAt(t, service, nowMS)
+	if response.Binding.State != store.CodexAccountBindingConfirmed || len(response.Windows) != 0 {
+		t.Fatalf("confirmed query projected local JSONL = %#v", response)
+	}
+	for _, source := range response.Sources {
+		if source.Source == CurrentSourceLocal {
+			t.Fatalf("confirmed sources still include local JSONL: %#v", response.Sources)
+		}
 	}
 }
 
-func TestCurrentQueryLocalSourceFreshnessDoesNotTrustSuspiciousOnlyObservation(t *testing.T) {
+func TestCurrentQuerySuspiciousLocalJSONLIsNotProjectedForConfirmedAccount(t *testing.T) {
 	t.Parallel()
 
 	repository, service := newCurrentQueryTestService(t)
 	nowMS := time.Now().UnixMilli()
 	resetAtMS := nowMS + 5*60*60*1_000
 	reason := store.QuotaReasonUnknownPlanType
+	confirmCurrentQueryAccount(t, repository, "acct-test-a", nowMS)
 	recordCurrentQueryLocalWithValidity(
 		t, repository, "suspicious-only-local", nowMS, resetAtMS, 40,
 		store.QuotaWindowPrimary, 100, store.QuotaValiditySuspicious, &reason,
 	)
 	response := queryCurrentAt(t, service, nowMS)
-	if response.Sources[0].LastObservedAtMS == nil ||
-		response.Sources[0].Freshness != store.SourceFreshnessUnknown ||
-		response.Sources[0].UnknownReason == nil ||
-		*response.Sources[0].UnknownReason != CurrentUnknownSourceUnavailable {
-		t.Fatalf("suspicious-only local source = %#v", response.Sources[0])
+	if len(response.Windows) != 0 {
+		t.Fatalf("suspicious local JSONL leaked into current windows = %#v", response)
 	}
 }
 
 func TestCurrentQueryTrustedScenarioMatrix(t *testing.T) {
 	t.Parallel()
 
-	t.Run("local only", func(t *testing.T) {
+	t.Run("local only stays off current account limits", func(t *testing.T) {
 		repository, service := newCurrentQueryTestService(t)
 		nowMS := time.Now().UnixMilli()
 		resetAtMS := nowMS + 5*60*60*1_000
+		confirmCurrentQueryAccount(t, repository, "acct-test-a", nowMS)
 		recordCurrentQueryLocal(t, repository, "local-only", nowMS, resetAtMS, 38, store.QuotaWindowPrimary, 100)
 		response := queryCurrentAt(t, service, nowMS)
-		if len(response.Windows) != 1 || response.Windows[0].SelectedSource == nil ||
-			*response.Windows[0].SelectedSource != store.QuotaSourceLocalJSONL ||
-			response.Windows[0].RemainingPercent == nil || *response.Windows[0].RemainingPercent != 62 ||
-			response.Sources[0].UnknownReason != nil || response.Sources[1].UnknownReason == nil ||
-			response.NextReset.AtMS == nil || *response.NextReset.AtMS != resetAtMS {
+		if len(response.Windows) != 0 || response.Binding.State != store.CodexAccountBindingConfirmed {
 			t.Fatalf("local-only response = %#v", response)
 		}
 	})
 
-	t.Run("wham only cross window and real zero reset credits", func(t *testing.T) {
+	t.Run("app server only cross window and real zero reset credits", func(t *testing.T) {
 		repository, service := newCurrentQueryTestService(t)
 		nowMS := time.Now().UnixMilli()
 		primaryReset := nowMS + 5*60*60*1_000
 		secondaryReset := nowMS + 7*24*60*60*1_000
-		recordCurrentQueryWham(
-			t, repository, "wham-only", nowMS, 40, 20, primaryReset, secondaryReset,
+		recordCurrentQueryAppServer(
+			t, repository, "app-server-only", nowMS, 40, 20, primaryReset, secondaryReset,
 		)
 		recordCurrentQueryResetCredits(t, repository, "zero-reset-credits", nowMS, nil)
 		response := queryCurrentAt(t, service, nowMS)
@@ -573,41 +647,41 @@ func TestCurrentQueryTrustedScenarioMatrix(t *testing.T) {
 			*response.NextReset.AtMS != primaryReset || response.NextReset.TrustedWindowCount != 2 ||
 			response.ResetCredits.AvailableCount == nil || *response.ResetCredits.AvailableCount != 0 ||
 			response.ResetCredits.UnknownReason != nil {
-			t.Fatalf("wham/cross-window response = %#v", response)
+			t.Fatalf("app-server/cross-window response = %#v", response)
 		}
 	})
 
-	t.Run("consistent sources", func(t *testing.T) {
+	t.Run("local JSONL does not mix into app server current", func(t *testing.T) {
 		repository, service := newCurrentQueryTestService(t)
 		nowMS := time.Now().UnixMilli()
 		resetAtMS := nowMS + 5*60*60*1_000
-		recordCurrentQueryWham(t, repository, "consistent-wham", nowMS, 45, -1, resetAtMS, 0)
+		recordCurrentQueryAppServer(t, repository, "consistent-app-server", nowMS, 45, -1, resetAtMS, 0)
 		recordCurrentQueryLocal(
 			t, repository, "consistent-local", nowMS+1, resetAtMS, 45, store.QuotaWindowPrimary, 100,
 		)
 		response := queryCurrentAt(t, service, nowMS+2)
 		if len(response.Windows) != 1 || response.Windows[0].Conflict != store.QuotaConflictNone ||
-			len(response.Windows[0].Explanations) != 2 || response.Windows[0].RemainingPercent == nil ||
-			*response.Windows[0].RemainingPercent != 55 {
-			t.Fatalf("consistent response = %#v", response)
+			len(response.Windows[0].Explanations) != 1 ||
+			response.Windows[0].Explanations[0].Source != store.QuotaSourceAppServer ||
+			response.Windows[0].RemainingPercent == nil || *response.Windows[0].RemainingPercent != 55 {
+			t.Fatalf("app-server isolation response = %#v", response)
 		}
 	})
 
-	t.Run("source conflict selects conservative remaining", func(t *testing.T) {
+	t.Run("local JSONL conflict cannot replace app server remaining", func(t *testing.T) {
 		repository, service := newCurrentQueryTestService(t)
 		nowMS := time.Now().UnixMilli()
 		resetAtMS := nowMS + 5*60*60*1_000
-		recordCurrentQueryWham(t, repository, "conflict-wham", nowMS, 41, -1, resetAtMS, 0)
+		recordCurrentQueryAppServer(t, repository, "conflict-app-server", nowMS, 41, -1, resetAtMS, 0)
 		recordCurrentQueryLocal(
 			t, repository, "conflict-local", nowMS+1, resetAtMS, 45, store.QuotaWindowPrimary, 100,
 		)
 		response := queryCurrentAt(t, service, nowMS+2)
 		window := response.Windows[0]
-		if window.Conflict != store.QuotaConflictPresent || window.SelectedSource == nil ||
-			*window.SelectedSource != store.QuotaSourceLocalJSONL || window.RemainingPercent == nil ||
-			*window.RemainingPercent != 55 || window.ExplanationCode != store.QuotaExplanationSourceConflict ||
-			len(window.Explanations) != 2 {
-			t.Fatalf("conflict response = %#v", response)
+		if window.Conflict != store.QuotaConflictNone || window.SelectedSource == nil ||
+			*window.SelectedSource != store.QuotaSourceAppServer || window.RemainingPercent == nil ||
+			*window.RemainingPercent != 59 || len(window.Explanations) != 1 {
+			t.Fatalf("local conflict leaked into current = %#v", response)
 		}
 	})
 
@@ -615,7 +689,7 @@ func TestCurrentQueryTrustedScenarioMatrix(t *testing.T) {
 		repository, service := newCurrentQueryTestService(t)
 		nowMS := time.Now().UnixMilli()
 		resetAtMS := nowMS + 1_000
-		recordCurrentQueryWham(t, repository, "expired-wham", nowMS, 40, -1, resetAtMS, 0)
+		recordCurrentQueryAppServer(t, repository, "expired-app-server", nowMS, 40, -1, resetAtMS, 0)
 		response := queryCurrentAt(t, service, nowMS+2_000)
 		window := response.Windows[0]
 		if window.Freshness != store.QuotaCurrentExpiredUnknown || window.RemainingPercent == nil ||
@@ -630,12 +704,14 @@ func TestCurrentQueryTrustedScenarioMatrix(t *testing.T) {
 		repository, service := newCurrentQueryTestService(t)
 		nowMS := time.Now().UnixMilli()
 		resetAtMS := nowMS + 5*60*60*1_000
-		recordCurrentQueryWham(t, repository, "rate-limit-success", nowMS-1_000, 38, -1, resetAtMS, 0)
+		recordCurrentQueryAppServer(t, repository, "rate-limit-success", nowMS-1_000, 38, -1, resetAtMS, 0)
 		retryAtMS := nowMS + 600_000
 		recordCurrentQueryRateLimit(t, repository, "rate-limit-failure", nowMS, retryAtMS)
+		scope, generation := currentQueryBindingAt(t, repository, nowMS)
 		if _, err := repository.UpsertSourceRefreshSchedule(context.Background(), store.SourceRefreshScheduleUpdate{
-			SourceInstanceID: store.QuotaSourceInstanceWhamDefault, SourceType: store.QuotaSourceTypeWham,
-			ScopeKey: store.QuotaAccountScopeDefault, NextDueAtMS: &retryAtMS,
+			SourceInstanceID: store.QuotaSourceInstanceAppServer(scope),
+			SourceType:       store.QuotaSourceTypeAppServerRateLimits, ScopeKey: scope,
+			BindingGeneration: generation, NextDueAtMS: &retryAtMS,
 			Reason: store.RefreshReasonRetryAfter, AtMS: nowMS,
 		}); err != nil {
 			t.Fatalf("UpsertSourceRefreshSchedule() error = %v", err)
@@ -643,8 +719,8 @@ func TestCurrentQueryTrustedScenarioMatrix(t *testing.T) {
 		response := queryCurrentAt(t, service, nowMS)
 		if len(response.Windows) != 1 || response.Windows[0].RemainingPercent == nil ||
 			*response.Windows[0].RemainingPercent != 62 || response.Windows[0].Freshness != store.QuotaCurrentStale ||
-			response.Sources[1].FailureCode == nil ||
-			*response.Sources[1].FailureCode != store.SourceFailureHTTP429 ||
+			response.Sources[0].FailureCode == nil ||
+			*response.Sources[0].FailureCode != store.SourceFailureHTTP429 ||
 			response.Refresh.Quota.State != CurrentRefreshScheduled || response.Refresh.Quota.NextDueAtMS == nil ||
 			*response.Refresh.Quota.NextDueAtMS != retryAtMS || response.Refresh.Quota.Reason == nil ||
 			*response.Refresh.Quota.Reason != store.RefreshReasonRetryAfter {
@@ -748,6 +824,96 @@ func queryCurrentAt(t *testing.T, service *CurrentQueryService, evaluatedAtMS in
 		t.Fatalf("Query() error = %v", err)
 	}
 	return response
+}
+
+func confirmCurrentQueryAccount(
+	t *testing.T,
+	repository *store.Repository,
+	accountID string,
+	atMS int64,
+) (string, int64) {
+	t.Helper()
+	var key [32]byte
+	copy(key[:], bytes.Repeat([]byte{0x51}, 32))
+	stored, err := repository.EnsureCodexAccountScopeKey(context.Background(), key, atMS)
+	if err != nil {
+		t.Fatalf("EnsureCodexAccountScopeKey() error = %v", err)
+	}
+	scope, err := accountbinding.DeriveScope(stored, []byte(accountID))
+	if err != nil {
+		t.Fatalf("DeriveScope(%s) error = %v", accountID, err)
+	}
+	binding, _, err := repository.ConfirmCodexAccountBinding(
+		context.Background(), scope, atMS, store.CodexAccountBindingReasonStartup,
+	)
+	if err != nil || binding.AccountScope == nil {
+		t.Fatalf("ConfirmCodexAccountBinding(%s) = %#v, %v", accountID, binding, err)
+	}
+	return *binding.AccountScope, binding.BindingGeneration
+}
+
+func currentQueryBindingAt(
+	t *testing.T,
+	repository *store.Repository,
+	atMS int64,
+) (string, int64) {
+	t.Helper()
+	binding, err := repository.CodexAccountBinding(context.Background())
+	if err != nil {
+		t.Fatalf("CodexAccountBinding() error = %v", err)
+	}
+	if binding.State == store.CodexAccountBindingConfirmed && binding.AccountScope != nil {
+		return *binding.AccountScope, binding.BindingGeneration
+	}
+	return confirmCurrentQueryAccount(t, repository, "acct-test-a", atMS)
+}
+
+func recordCurrentQueryAppServer(
+	t *testing.T,
+	repository *store.Repository,
+	requestID string,
+	observedAtMS int64,
+	primaryUsed float64,
+	secondaryUsed float64,
+	primaryResetAtMS int64,
+	secondaryResetAtMS int64,
+) {
+	t.Helper()
+	scope, generation := currentQueryBindingAt(t, repository, observedAtMS)
+	limitID := "codex"
+	request := requestID
+	plan := "pro"
+	digest := store.SHA256DigestOf([]byte("synthetic quota response " + requestID))
+	observations := []store.QuotaObservationSample{{
+		ObservationID: "query-" + requestID + "-primary", AccountScope: scope,
+		Source: store.QuotaSourceAppServer, LimitID: &limitID, WindowKind: store.QuotaWindowPrimary,
+		UsedPercent: primaryUsed, WindowMinutes: 300, ResetsAtMS: primaryResetAtMS,
+		PlanType: &plan, ObservedAtMS: observedAtMS, Validity: store.QuotaValidityAccepted,
+		RequestID: &request,
+	}}
+	if secondaryUsed >= 0 {
+		observations = append(observations, store.QuotaObservationSample{
+			ObservationID: "query-" + requestID + "-secondary", AccountScope: scope,
+			Source: store.QuotaSourceAppServer, LimitID: &limitID, WindowKind: store.QuotaWindowSecondary,
+			UsedPercent: secondaryUsed, WindowMinutes: 10_080, ResetsAtMS: secondaryResetAtMS,
+			PlanType: &plan, ObservedAtMS: observedAtMS, Validity: store.QuotaValidityAccepted,
+			RequestID: &request,
+		})
+	}
+	if err := repository.RecordQuotaFetch(context.Background(), store.QuotaFetchRecord{
+		AccountScope: scope, BindingGeneration: generation,
+		SourceInstanceID: store.QuotaSourceInstanceAppServer(scope),
+		SourceType:       store.QuotaSourceTypeAppServerRateLimits, ScopeKey: scope,
+		Attempt: store.SourceAttempt{
+			RequestID: requestID, SourceInstanceID: store.QuotaSourceInstanceAppServer(scope),
+			StartedAtMS: observedAtMS, FinishedAtMS: observedAtMS,
+			Outcome: store.SourceAttemptSucceeded, PayloadSHA256: &digest,
+			AttemptCount: 1, ResponseBytes: 256,
+		},
+		Observations: observations,
+	}); err != nil {
+		t.Fatalf("RecordQuotaFetch(%s) error = %v", requestID, err)
+	}
 }
 
 func recordCurrentQueryWham(
@@ -869,14 +1035,16 @@ func recordCurrentQueryRateLimit(
 	retryAtMS int64,
 ) {
 	t.Helper()
+	scope, generation := currentQueryBindingAt(t, repository, finishedAtMS)
 	status := int64(429)
 	errorClass := store.RuntimeErrorUnavailable
 	failure := store.SourceFailureHTTP429
 	if err := repository.RecordQuotaFetch(context.Background(), store.QuotaFetchRecord{
-		SourceInstanceID: store.QuotaSourceInstanceWhamDefault, SourceType: store.QuotaSourceTypeWham,
-		ScopeKey: store.QuotaAccountScopeDefault,
+		AccountScope: scope, BindingGeneration: generation,
+		SourceInstanceID: store.QuotaSourceInstanceAppServer(scope),
+		SourceType:       store.QuotaSourceTypeAppServerRateLimits, ScopeKey: scope,
 		Attempt: store.SourceAttempt{
-			RequestID: requestID, SourceInstanceID: store.QuotaSourceInstanceWhamDefault,
+			RequestID: requestID, SourceInstanceID: store.QuotaSourceInstanceAppServer(scope),
 			StartedAtMS: finishedAtMS, FinishedAtMS: finishedAtMS,
 			Outcome: store.SourceAttemptFailed, HTTPStatus: &status,
 			ErrorClass: &errorClass, FailureCode: &failure, RetryAtMS: &retryAtMS,
@@ -896,23 +1064,25 @@ func recordCurrentQueryResetCredits(
 ) {
 	t.Helper()
 	status := int64(200)
+	scope, generation := currentQueryBindingAt(t, repository, observedAtMS)
 	snapshot := &store.ResetCreditsSnapshot{
 		SnapshotID: "query-reset-" + requestID, RequestID: requestID,
-		AccountScope: store.QuotaAccountScopeDefault, ObservedAtMS: observedAtMS,
+		AccountScope: scope, ObservedAtMS: observedAtMS,
 	}
 	if expiresAtMS != nil {
 		snapshot.AvailableCount = 1
 		snapshot.Credits = []store.ResetCredit{{
 			CreditIDHash: store.SHA256DigestOf([]byte("raw-reset-credit-id")),
 			Status:       store.ResetCreditAvailable, Type: store.ResetCreditTypeCodexRateLimits,
-			GrantedAtMS: observedAtMS, ExpiresAtMS: *expiresAtMS,
+			GrantedAtMS: observedAtMS, ExpiresAtMS: expiresAtMS,
 		}}
 	}
 	if err := repository.RecordResetCreditsFetch(context.Background(), store.ResetCreditsFetchRecord{
-		SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-		SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+		AccountScope: scope, BindingGeneration: generation,
+		SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(scope),
+		SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: scope,
 		Attempt: store.SourceAttempt{
-			RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
+			RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(scope),
 			StartedAtMS: observedAtMS, FinishedAtMS: observedAtMS,
 			Outcome: store.SourceAttemptSucceeded, HTTPStatus: &status, AttemptCount: 1,
 		},

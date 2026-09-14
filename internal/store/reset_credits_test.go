@@ -86,6 +86,49 @@ func TestResetCreditsSummaryDoesNotInferHistoricalCountsFromEmptyInventory(t *te
 	}
 }
 
+func TestRecordResetCreditsFetchPreservesAuthoritativeCountWhenDetailsArePartial(t *testing.T) {
+	t.Parallel()
+
+	repository := NewRepository(openTestDatabase(t))
+	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
+		t.Fatalf("EnsureApplicationSchema() error = %v", err)
+	}
+	const observedAt = int64(1_784_000_000_000)
+	_, scope, generation := confirmSyntheticCodexAccount(t, repository, "acct-test-a", observedAt)
+	status := int64(200)
+	record := ResetCreditsFetchRecord{
+		AccountScope: scope, BindingGeneration: generation,
+		SourceInstanceID: ResetCreditsSourceInstanceAppServer(scope),
+		SourceType:       ResetCreditsSourceTypeAppServer,
+		ScopeKey:         scope,
+		Attempt: SourceAttempt{
+			RequestID: "reset-partial-details", SourceInstanceID: ResetCreditsSourceInstanceAppServer(scope),
+			StartedAtMS: observedAt, FinishedAtMS: observedAt, Outcome: SourceAttemptSucceeded,
+			HTTPStatus: &status, AttemptCount: 1, ResponseBytes: 80,
+		},
+		Snapshot: &ResetCreditsSnapshot{
+			SnapshotID: "reset-partial-details-snapshot", RequestID: "reset-partial-details",
+			AccountScope: scope, AvailableCount: 4, ObservedAtMS: observedAt,
+			DetailsStatus: ResetCreditDetailsPartial,
+			Credits: []ResetCredit{{
+				CreditIDHash: SHA256DigestOf([]byte("credit-partial")),
+				Status:       ResetCreditAvailable,
+				Type:         ResetCreditTypeCodexRateLimits,
+				GrantedAtMS:  observedAt - 3_600_000,
+			}},
+		},
+	}
+	if err := repository.RecordResetCreditsFetch(context.Background(), record); err != nil {
+		t.Fatalf("RecordResetCreditsFetch(partial) error = %v", err)
+	}
+	summary, err := repository.ResetCreditsSummary(context.Background(), scope, observedAt)
+	if err != nil || summary.AvailableCount == nil || *summary.AvailableCount != 4 ||
+		summary.CumulativeRemainingMS != nil || summary.NextExpiresAtMS != nil ||
+		len(summary.Credits) != 1 || summary.Credits[0].ExpiresAtMS != nil {
+		t.Fatalf("partial summary = %#v, %v", summary, err)
+	}
+}
+
 func TestResetCreditsSummaryRejectsSnapshotAttachedToAnotherSourceAttempt(t *testing.T) {
 	t.Parallel()
 
@@ -200,11 +243,11 @@ func successfulResetCreditsFetchRecord(requestID string, observedAt int64) Reset
 			AccountScope: QuotaAccountScopeDefault, AvailableCount: 2, ObservedAtMS: observedAt,
 			Credits: []ResetCredit{
 				{CreditIDHash: SHA256DigestOf([]byte("credit-a")), Status: statusAvailable, Type: typeCodex,
-					GrantedAtMS: observedAt - 3_600_000, ExpiresAtMS: observedAt + 3_600_000},
+					GrantedAtMS: observedAt - 3_600_000, ExpiresAtMS: pointerTo(observedAt + 3_600_000)},
 				{CreditIDHash: SHA256DigestOf([]byte("credit-b")), Status: statusAvailable, Type: typeCodex,
-					GrantedAtMS: observedAt - 3_600_000, ExpiresAtMS: observedAt + 7_200_000},
+					GrantedAtMS: observedAt - 3_600_000, ExpiresAtMS: pointerTo(observedAt + 7_200_000)},
 				{CreditIDHash: SHA256DigestOf([]byte("credit-c")), Status: statusRedeemed, Type: typeCodex,
-					GrantedAtMS: observedAt - 3_600_000, ExpiresAtMS: observedAt + 8_000_000, RedeemedAtMS: &redeemedAt},
+					GrantedAtMS: observedAt - 3_600_000, ExpiresAtMS: pointerTo(observedAt + 8_000_000), RedeemedAtMS: &redeemedAt},
 			},
 		},
 	}

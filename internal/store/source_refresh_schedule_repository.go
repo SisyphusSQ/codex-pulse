@@ -34,7 +34,8 @@ func (repository *Repository) UpsertSourceRefreshSchedule(
 			}
 			stored = SourceRefreshSchedule{
 				SourceInstanceID: update.SourceInstanceID, SourceType: update.SourceType, ScopeKey: update.ScopeKey,
-				NextDueAtMS: cloneQuotaInt64Pointer(update.NextDueAtMS), Reason: update.Reason,
+				BindingGeneration: update.BindingGeneration,
+				NextDueAtMS:       cloneQuotaInt64Pointer(update.NextDueAtMS), Reason: update.Reason,
 				Revision: 1, UpdatedAtMS: update.AtMS,
 			}
 			model := sourceRefreshScheduleModelFromDomain(stored)
@@ -55,6 +56,7 @@ func (repository *Repository) UpsertSourceRefreshSchedule(
 		stored = existing
 		stored.NextDueAtMS = cloneQuotaInt64Pointer(update.NextDueAtMS)
 		stored.Reason = update.Reason
+		stored.BindingGeneration = update.BindingGeneration
 		stored.Revision++
 		stored.UpdatedAtMS = monotonicScheduleAt(update.AtMS, existing.UpdatedAtMS)
 		model := sourceRefreshScheduleModelFromDomain(stored)
@@ -134,12 +136,13 @@ func (repository *Repository) ClaimSourceRefresh(
 	trigger SourceRefreshTrigger,
 	atMS int64,
 	leaseMS int64,
+	bindingGeneration int64,
 ) (SourceRefreshSchedule, bool, error) {
 	if repository == nil || repository.database == nil {
 		return SourceRefreshSchedule{}, false, ErrInvalidRepository
 	}
 	if sourceInstanceID == "" || claimID == "" || len(claimID) > 512 || !validSourceRefreshTrigger(trigger) ||
-		expectedRevision <= 0 || atMS < 0 || atMS > runtimeclock.MaxTimestampMS || leaseMS <= 0 ||
+		expectedRevision <= 0 || bindingGeneration < 0 || atMS < 0 || atMS > runtimeclock.MaxTimestampMS || leaseMS <= 0 ||
 		atMS > runtimeclock.MaxTimestampMS-leaseMS {
 		return SourceRefreshSchedule{}, false, invalidRecord("source refresh claim is invalid")
 	}
@@ -157,8 +160,29 @@ func (repository *Repository) ClaimSourceRefresh(
 		if existing.Revision != expectedRevision {
 			return sourceRefreshConflict("source refresh claim revision is stale")
 		}
+		if existing.BindingGeneration != bindingGeneration {
+			return nil
+		}
 		if existing.ActiveClaimID != nil || existing.NextDueAtMS == nil || *existing.NextDueAtMS > atMS {
 			return nil
+		}
+		blocked, reason, err := sourceRefreshGlobalFenceState(ctx, transaction, atMS)
+		if err != nil {
+			return err
+		}
+		if blocked {
+			companion := false
+			if reason == sourceRefreshGlobalFenceManual && trigger == RefreshTriggerManual {
+				companion, err = sourceRefreshSameAccountManualCompanion(
+					ctx, transaction, existing.ScopeKey, existing.SourceInstanceID, atMS,
+				)
+				if err != nil {
+					return err
+				}
+			}
+			if !companion {
+				return nil
+			}
 		}
 		if trigger == RefreshTriggerManual && existing.LastManualAtMS != nil &&
 			atMS < addSourceRefreshTimestamp(*existing.LastManualAtMS, sourceRefreshManualMinimumIntervalMS) {
@@ -181,12 +205,21 @@ func (repository *Repository) ClaimSourceRefresh(
 		stored.ClaimExpiresAtMS = &claimExpiresAtMS
 		if trigger == RefreshTriggerManual {
 			stored.LastManualAtMS = &claimStartedAtMS
+			if err := raiseSourceRefreshGlobalFence(
+				ctx, transaction, addSourceRefreshTimestamp(atMS, sourceRefreshManualMinimumIntervalMS),
+				sourceRefreshGlobalFenceManual, atMS,
+			); err != nil {
+				return err
+			}
 		}
 		stored.Revision++
 		stored.UpdatedAtMS = monotonicScheduleAt(atMS, existing.UpdatedAtMS)
 		model := sourceRefreshScheduleModelFromDomain(stored)
 		result := transaction.WithContext(ctx).Model(&sourceRefreshScheduleModel{}).
-			Where("source_instance_id = ? AND revision = ? AND active_claim_id IS NULL", sourceInstanceID, existing.Revision).
+			Where(
+				"source_instance_id = ? AND revision = ? AND active_claim_id IS NULL AND binding_generation = ?",
+				sourceInstanceID, existing.Revision, bindingGeneration,
+			).
 			Updates(sourceRefreshScheduleUpdates(model))
 		if result.Error != nil {
 			return result.Error
@@ -196,7 +229,8 @@ func (repository *Repository) ClaimSourceRefresh(
 		}
 		claim := sourceRefreshClaimModel{
 			ClaimID: claimID, SourceInstanceID: sourceInstanceID, ScheduleRevision: stored.Revision,
-			Trigger: string(trigger), StartedAtMS: claimStartedAtMS, ExpiresAtMS: claimExpiresAtMS,
+			BindingGeneration: bindingGeneration,
+			Trigger:           string(trigger), StartedAtMS: claimStartedAtMS, ExpiresAtMS: claimExpiresAtMS,
 			State: string(sourceRefreshClaimActive),
 		}
 		if err := transaction.WithContext(ctx).Create(&claim).Error; err != nil {
@@ -405,7 +439,8 @@ func (repository *Repository) ReleaseExpiredSourceRefreshClaim(
 func validateSourceRefreshScheduleUpdate(update SourceRefreshScheduleUpdate) error {
 	if update.SourceInstanceID == "" || len(update.SourceInstanceID) > 512 || update.SourceType == "" ||
 		len(update.SourceType) > 128 || update.ScopeKey == "" || len(update.ScopeKey) > 128 ||
-		update.ExpectedRevision < 0 || update.AtMS < 0 || update.AtMS > runtimeclock.MaxTimestampMS {
+		update.ExpectedRevision < 0 || update.BindingGeneration < 0 ||
+		update.AtMS < 0 || update.AtMS > runtimeclock.MaxTimestampMS {
 		return invalidRecord("source refresh schedule update is invalid")
 	}
 	if !validSourceRefreshIdentity(update.SourceInstanceID, update.SourceType, update.ScopeKey) {
@@ -420,7 +455,7 @@ func validateSourceRefreshDecision(nextDueAtMS *int64, reason SourceRefreshReaso
 		return invalidRecord("source refresh decision is invalid")
 	}
 	paused := reason == RefreshReasonAuthRequired || reason == RefreshReasonSchemaIncompatible ||
-		reason == RefreshReasonDisabled
+		reason == RefreshReasonDisabled || reason == RefreshReasonInactiveAccount
 	if paused != (nextDueAtMS == nil) {
 		return invalidRecord("source refresh decision due shape is invalid")
 	}
@@ -503,7 +538,8 @@ func validSourceRefreshClaimState(value sourceRefreshClaimState) bool {
 func sourceRefreshScheduleFromModel(model sourceRefreshScheduleModel) (SourceRefreshSchedule, error) {
 	value := SourceRefreshSchedule{
 		SourceInstanceID: model.SourceInstanceID, SourceType: model.SourceType, ScopeKey: model.ScopeKey,
-		NextDueAtMS: cloneQuotaInt64Pointer(model.NextDueAtMS), Reason: SourceRefreshReason(model.Reason),
+		BindingGeneration: model.BindingGeneration,
+		NextDueAtMS:       cloneQuotaInt64Pointer(model.NextDueAtMS), Reason: SourceRefreshReason(model.Reason),
 		LastManualAtMS:   cloneQuotaInt64Pointer(model.LastManualAtMS),
 		ActiveClaimID:    cloneQuotaString(model.ActiveClaimID),
 		ClaimStartedAtMS: cloneQuotaInt64Pointer(model.ClaimStartedAtMS),
@@ -523,7 +559,8 @@ func sourceRefreshScheduleFromModel(model sourceRefreshScheduleModel) (SourceRef
 func validateStoredSourceRefreshSchedule(value SourceRefreshSchedule) error {
 	if validateSourceRefreshScheduleUpdate(SourceRefreshScheduleUpdate{
 		SourceInstanceID: value.SourceInstanceID, SourceType: value.SourceType, ScopeKey: value.ScopeKey,
-		ExpectedRevision: value.Revision, NextDueAtMS: value.NextDueAtMS, Reason: value.Reason, AtMS: value.UpdatedAtMS,
+		BindingGeneration: value.BindingGeneration,
+		ExpectedRevision:  value.Revision, NextDueAtMS: value.NextDueAtMS, Reason: value.Reason, AtMS: value.UpdatedAtMS,
 	}) != nil || value.Revision <= 0 || value.LastManualAtMS != nil && (*value.LastManualAtMS < 0 ||
 		*value.LastManualAtMS > runtimeclock.MaxTimestampMS) {
 		return invalidRecord("stored source refresh schedule is invalid")
@@ -543,7 +580,8 @@ func validateStoredSourceRefreshSchedule(value SourceRefreshSchedule) error {
 func sourceRefreshScheduleModelFromDomain(value SourceRefreshSchedule) sourceRefreshScheduleModel {
 	model := sourceRefreshScheduleModel{
 		SourceInstanceID: value.SourceInstanceID, SourceType: value.SourceType, ScopeKey: value.ScopeKey,
-		NextDueAtMS: cloneQuotaInt64Pointer(value.NextDueAtMS), Reason: string(value.Reason),
+		BindingGeneration: value.BindingGeneration,
+		NextDueAtMS:       cloneQuotaInt64Pointer(value.NextDueAtMS), Reason: string(value.Reason),
 		LastManualAtMS:   cloneQuotaInt64Pointer(value.LastManualAtMS),
 		ActiveClaimID:    cloneQuotaString(value.ActiveClaimID),
 		ClaimStartedAtMS: cloneQuotaInt64Pointer(value.ClaimStartedAtMS),
@@ -559,7 +597,8 @@ func sourceRefreshScheduleModelFromDomain(value SourceRefreshSchedule) sourceRef
 
 func sourceRefreshScheduleUpdates(model sourceRefreshScheduleModel) map[string]any {
 	return map[string]any{
-		"next_due_at_ms": model.NextDueAtMS, "reason": model.Reason,
+		"binding_generation": model.BindingGeneration,
+		"next_due_at_ms":     model.NextDueAtMS, "reason": model.Reason,
 		"last_manual_at_ms": model.LastManualAtMS, "active_claim_id": model.ActiveClaimID,
 		"active_trigger": model.ActiveTrigger, "claim_started_at_ms": model.ClaimStartedAtMS,
 		"claim_expires_at_ms": model.ClaimExpiresAtMS, "revision": model.Revision,
@@ -573,7 +612,8 @@ func validSourceRefreshReason(value SourceRefreshReason) bool {
 		RefreshReasonNearReset, RefreshReasonResetGrace, RefreshReasonForeground,
 		RefreshReasonWakeStale, RefreshReasonManual, RefreshReasonNetworkBackoff,
 		RefreshReasonRetryAfter, RefreshReasonAuthRequired, RefreshReasonSchemaIncompatible,
-		RefreshReasonCancelled, RefreshReasonDisabled, RefreshReasonRecovery:
+		RefreshReasonCancelled, RefreshReasonDisabled, RefreshReasonInactiveAccount,
+		RefreshReasonRecovery:
 		return true
 	default:
 		return false
@@ -587,11 +627,228 @@ func validSourceRefreshTrigger(value SourceRefreshTrigger) bool {
 }
 
 func validSourceRefreshIdentity(sourceInstanceID, sourceType, scopeKey string) bool {
+	if validDerivedCodexAccountScope(scopeKey) {
+		return sourceInstanceID == QuotaSourceInstanceAppServer(scopeKey) &&
+			sourceType == QuotaSourceTypeAppServerRateLimits ||
+			sourceInstanceID == ResetCreditsSourceInstanceAppServer(scopeKey) &&
+				sourceType == ResetCreditsSourceTypeAppServer
+	}
 	if scopeKey != QuotaAccountScopeDefault {
 		return false
 	}
 	return sourceInstanceID == QuotaSourceInstanceWhamDefault && sourceType == QuotaSourceTypeWham ||
 		sourceInstanceID == ResetCreditsSourceInstanceWhamDefault && sourceType == ResetCreditsSourceTypeWham
+}
+
+const (
+	sourceRefreshGlobalFenceManual  = "manual_interval"
+	sourceRefreshGlobalFenceBackoff = "network_backoff"
+)
+
+func (repository *Repository) ListSourceRefreshSchedules(ctx context.Context) ([]SourceRefreshSchedule, error) {
+	if repository == nil || repository.database == nil {
+		return nil, ErrInvalidRepository
+	}
+	var schedules []SourceRefreshSchedule
+	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
+		var models []sourceRefreshScheduleModel
+		if err := connection.WithContext(ctx).Order("source_instance_id").Find(&models).Error; err != nil {
+			return err
+		}
+		schedules = make([]SourceRefreshSchedule, len(models))
+		for index, model := range models {
+			value, err := sourceRefreshScheduleFromModel(model)
+			if err != nil {
+				return err
+			}
+			schedules[index] = value
+		}
+		return nil
+	})
+	return schedules, err
+}
+
+func (repository *Repository) AbandonSourceRefreshClaim(
+	ctx context.Context,
+	recovery SourceRefreshClaimRecovery,
+) (SourceRefreshSchedule, error) {
+	if repository == nil || repository.database == nil {
+		return SourceRefreshSchedule{}, ErrInvalidRepository
+	}
+	if recovery.SourceInstanceID == "" || recovery.ClaimID == "" || len(recovery.ClaimID) > 512 ||
+		recovery.ExpectedRevision <= 0 || recovery.AtMS < 0 || recovery.AtMS > runtimeclock.MaxTimestampMS {
+		return SourceRefreshSchedule{}, invalidRecord("source refresh abandon is invalid")
+	}
+	var stored SourceRefreshSchedule
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+		existing, found, err := sourceRefreshScheduleByID(ctx, transaction, recovery.SourceInstanceID)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return ErrNotFound
+		}
+		if existing.Revision != recovery.ExpectedRevision || existing.ActiveClaimID == nil ||
+			*existing.ActiveClaimID != recovery.ClaimID {
+			return sourceRefreshConflict("source refresh abandon claim is stale")
+		}
+		claim, found, err := sourceRefreshClaimByID(ctx, transaction, recovery.ClaimID)
+		if err != nil {
+			return err
+		}
+		if !found || claim.SourceInstanceID != recovery.SourceInstanceID ||
+			claim.ScheduleRevision != recovery.ExpectedRevision {
+			return invalidRecord("source refresh abandon claim fence is invalid")
+		}
+		if sourceRefreshClaimState(claim.State) != sourceRefreshClaimActive {
+			return sourceRefreshConflict("source refresh abandon claim is finalized")
+		}
+		if existing.Revision == math.MaxInt64 {
+			return invalidRecord("source refresh schedule revision is exhausted")
+		}
+		stored = existing
+		stored.NextDueAtMS = nil
+		stored.Reason = RefreshReasonInactiveAccount
+		stored.ActiveClaimID = nil
+		stored.ActiveTrigger = nil
+		stored.ClaimStartedAtMS = nil
+		stored.ClaimExpiresAtMS = nil
+		stored.Revision++
+		stored.UpdatedAtMS = monotonicScheduleAt(recovery.AtMS, existing.UpdatedAtMS)
+		model := sourceRefreshScheduleModelFromDomain(stored)
+		result := transaction.WithContext(ctx).Model(&sourceRefreshScheduleModel{}).
+			Where("source_instance_id = ? AND revision = ? AND active_claim_id = ?", recovery.SourceInstanceID, existing.Revision, recovery.ClaimID).
+			Updates(sourceRefreshScheduleUpdates(model))
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return sourceRefreshConflict("source refresh schedule changed during abandon")
+		}
+		claimResult := transaction.WithContext(ctx).Model(&sourceRefreshClaimModel{}).
+			Where("claim_id = ? AND state = ? AND schedule_revision = ?", recovery.ClaimID, sourceRefreshClaimActive, recovery.ExpectedRevision).
+			Updates(map[string]any{"state": sourceRefreshClaimAbandoned, "finalized_at_ms": recovery.AtMS})
+		if claimResult.Error != nil {
+			return claimResult.Error
+		}
+		if claimResult.RowsAffected != 1 {
+			return sourceRefreshConflict("source refresh abandon lost claim fence")
+		}
+		return nil
+	})
+	return stored, err
+}
+
+func (repository *Repository) RaiseSourceRefreshGlobalFence(
+	ctx context.Context,
+	notBeforeMS int64,
+	reason string,
+	atMS int64,
+) error {
+	if repository == nil || repository.database == nil {
+		return ErrInvalidRepository
+	}
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+		return raiseSourceRefreshGlobalFence(ctx, transaction, notBeforeMS, reason, atMS)
+	})
+}
+
+func (repository *Repository) ClearSourceRefreshGlobalFence(ctx context.Context) error {
+	if repository == nil || repository.database == nil {
+		return ErrInvalidRepository
+	}
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+		return transaction.WithContext(ctx).
+			Where("source_group = ?", sourceRefreshGlobalFenceGroup).
+			Delete(&sourceRefreshGlobalFenceModel{}).Error
+	})
+}
+
+func sourceRefreshGlobalFenceState(
+	ctx context.Context,
+	transaction *gorm.DB,
+	atMS int64,
+) (bool, string, error) {
+	var model sourceRefreshGlobalFenceModel
+	err := transaction.WithContext(ctx).Where("source_group = ?", sourceRefreshGlobalFenceGroup).Take(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, "", nil
+	}
+	if err != nil {
+		return false, "", err
+	}
+	if model.NotBeforeMS <= atMS {
+		return false, model.Reason, nil
+	}
+	return true, model.Reason, nil
+}
+
+func sourceRefreshSameAccountManualCompanion(
+	ctx context.Context,
+	transaction *gorm.DB,
+	scopeKey string,
+	sourceInstanceID string,
+	atMS int64,
+) (bool, error) {
+	if scopeKey == "" || sourceInstanceID == "" {
+		return false, nil
+	}
+	var models []sourceRefreshScheduleModel
+	err := transaction.WithContext(ctx).
+		Where(
+			"scope_key = ? AND source_instance_id <> ? AND last_manual_at_ms IS NOT NULL AND source_type IN (?, ?)",
+			scopeKey, sourceInstanceID, QuotaSourceTypeAppServerRateLimits, ResetCreditsSourceTypeAppServer,
+		).
+		Find(&models).Error
+	if err != nil {
+		return false, err
+	}
+	for _, model := range models {
+		if model.LastManualAtMS == nil {
+			continue
+		}
+		if atMS < addSourceRefreshTimestamp(*model.LastManualAtMS, sourceRefreshManualMinimumIntervalMS) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func raiseSourceRefreshGlobalFence(
+	ctx context.Context,
+	transaction *gorm.DB,
+	notBeforeMS int64,
+	reason string,
+	atMS int64,
+) error {
+	if notBeforeMS < 0 || notBeforeMS > runtimeclock.MaxTimestampMS || atMS < 0 || atMS > runtimeclock.MaxTimestampMS ||
+		(reason != sourceRefreshGlobalFenceManual && reason != sourceRefreshGlobalFenceBackoff) {
+		return invalidRecord("source refresh global fence is invalid")
+	}
+	var current sourceRefreshGlobalFenceModel
+	err := transaction.WithContext(ctx).Where("source_group = ?", sourceRefreshGlobalFenceGroup).Take(&current).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if err == nil && current.NotBeforeMS >= notBeforeMS {
+		return nil
+	}
+	model := sourceRefreshGlobalFenceModel{
+		SourceGroup: sourceRefreshGlobalFenceGroup, NotBeforeMS: notBeforeMS, Reason: reason, UpdatedAtMS: atMS,
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return transaction.WithContext(ctx).Create(&model).Error
+	}
+	result := transaction.WithContext(ctx).Model(&sourceRefreshGlobalFenceModel{}).
+		Where("source_group = ? AND not_before_ms = ?", sourceRefreshGlobalFenceGroup, current.NotBeforeMS).
+		Updates(map[string]any{"not_before_ms": notBeforeMS, "reason": reason, "updated_at_ms": atMS})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return sourceRefreshConflict("source refresh global fence changed")
+	}
+	return nil
 }
 
 func monotonicScheduleAt(atMS, previousMS int64) int64 {

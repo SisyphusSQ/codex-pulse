@@ -683,7 +683,7 @@ message CurrentResetCreditItem {
   string status = 1;
   string type = 2;
   int64 granted_at_ms = 3;
-  int64 expires_at_ms = 4;
+  optional int64 expires_at_ms = 4;
   optional int64 redeemed_at_ms = 5;
   optional int64 remaining_ms = 6;
 }
@@ -702,6 +702,7 @@ message CurrentResetCredits {
   optional string failure_code = 9;
   optional string unknown_reason = 10;
   repeated CurrentResetCreditItem items = 11;
+  optional string details_state = 12;
 }
 
 message CurrentRefreshStatus {
@@ -729,6 +730,7 @@ message CurrentQuota {
   CurrentNextReset next_reset = 6;
   CurrentResetCredits reset_credits = 7;
   CurrentRefresh refresh = 8;
+  optional CodexAccountBinding binding = 9;
 }
 
 message QuotaCurrentResponse {
@@ -802,6 +804,8 @@ message CurrentQuotaPace {
   string account_scope = 2;
   int64 evaluated_at_ms = 3;
   repeated QuotaPaceWindow windows = 4;
+  optional CodexAccountBinding binding = 5;
+  optional string unknown_reason = 6;
 }
 
 message QuotaPaceResponse {
@@ -1309,8 +1313,17 @@ message CodexAccountIdentity {
   optional string plan_type = 3;
 }
 
+message CodexAccountBinding {
+  string state = 1;
+  optional string account_scope = 2;
+  uint64 binding_generation = 3;
+  int64 observed_at_ms = 4;
+  optional string reason = 5;
+}
+
 message AccountSnapshotResponse {
   optional CodexAccountIdentity account = 1;
+  optional CodexAccountBinding binding = 2;
 }
 
 message APISubscriptionsCurrentRequest {

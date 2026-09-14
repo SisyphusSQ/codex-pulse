@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/bootstrap"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/accountbinding"
 	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/liveindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
@@ -132,6 +134,14 @@ func TestSchedulerIntegrationRunsLiveBeforeBackfillAndStillAdvancesHistory(t *te
 	for _, sessionID := range []string{"session-scheduler-live", "session-scheduler-history"} {
 		if _, err := repository.Session(ctx, sessionID); err != nil {
 			t.Fatalf("Session(%q) error = %v", sessionID, err)
+		}
+	}
+	if err := confirmSchedulerTestAccountBinding(t, repository); err != nil {
+		t.Fatalf("ConfirmCodexAccountBinding() error = %v", err)
+	}
+	for _, sessionID := range []string{"session-scheduler-live", "session-scheduler-history"} {
+		if _, err := repository.Session(ctx, sessionID); err != nil {
+			t.Fatalf("Session(%q) after account binding error = %v", sessionID, err)
 		}
 	}
 }
@@ -346,6 +356,24 @@ func schedulerRollout(sessionID, turnID string) []byte {
 		`","started_at":1783990801,"model_context_window":258000}}` + "\n" +
 		`{"timestamp":"2026-07-14T01:00:02Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"` + turnID +
 		`","completed_at":1783990802}}` + "\n")
+}
+
+func confirmSchedulerTestAccountBinding(t testing.TB, repository *store.Repository) error {
+	t.Helper()
+	var key [32]byte
+	copy(key[:], bytes.Repeat([]byte{0x42}, 32))
+	stored, err := repository.EnsureCodexAccountScopeKey(context.Background(), key, time.Now().UnixMilli())
+	if err != nil {
+		return err
+	}
+	scope, err := accountbinding.DeriveScope(stored, []byte("acct-test-a"))
+	if err != nil {
+		return err
+	}
+	_, _, err = repository.ConfirmCodexAccountBinding(
+		context.Background(), scope, time.Now().UnixMilli(), store.CodexAccountBindingReasonStartup,
+	)
+	return err
 }
 
 func maxSchedulerInt64(left, right int64) int64 {

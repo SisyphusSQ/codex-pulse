@@ -399,6 +399,11 @@
 "额度状态" = "Quota status";
 "额度状态和消耗概览仍可继续查看。" = "Quota status and usage overview remain available.";
 "额度窗口" = "Quota window";
+"当前账号额度" = "Current account limits";
+"当前账号额度暂不可用" = "Current account limits are unavailable";
+"当前 Codex Home 已采集" = "Collected from current Codex Home";
+"账号确认中" = "Confirming account";
+"跟踪当前账号额度、Token 趋势、API 折算成本和参考价格" = "Track current account limits, token trends, API-equivalent cost, and reference prices";
 "额度详情" = "Quota details";
 "额度重置" = "Quota reset";
 "首次启动会自动使用默认 Codex Home，无需手动确认。" = "The first launch automatically uses the default Codex Home; no manual confirmation is needed.";

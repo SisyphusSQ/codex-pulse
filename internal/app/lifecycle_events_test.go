@@ -126,6 +126,12 @@ func (notifier *recordingQueryInvalidationNotifier) reset() {
 	notifier.mu.Unlock()
 }
 
+func (notifier *recordingQueryInvalidationNotifier) snapshot() []core.InvalidationDomain {
+	notifier.mu.Lock()
+	defer notifier.mu.Unlock()
+	return append([]core.InvalidationDomain(nil), notifier.domains...)
+}
+
 func (coordinator *fakeSystemLifecycleCoordinator) SystemWillSleep(
 	ctx context.Context,
 	_ string,

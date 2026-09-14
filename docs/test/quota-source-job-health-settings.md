@@ -1,5 +1,11 @@
 # Quota、Source、Job、Health 与 Settings 查询 Runbook
 
+## 2026-09-14 TOO-442 当前口径
+
+- Codex 当前在线 source instance 是 `quota:app_server:<account_scope>` / `reset_credits:app_server:<account_scope>`，绑定当前 confirmed generation。
+- 历史 `quota:wham:default` 与 `account_scope=default` 行是 **legacy unassigned**，查询不得把它们展示成当前账号额度。
+- 账号切换与隐私扫描见 [`codex-account-switching.md`](codex-account-switching.md)。本页 TOO-269 历史 PASS 不冒充 TOO-442 live 验收。
+
 ## 当前验证结果
 
 - 记录时间：2026-07-16（Asia/Shanghai）

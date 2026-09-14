@@ -47,9 +47,25 @@ func (repository *Repository) RebuildQuotaProjection(
 		return err
 	}
 	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
-		return repository.rebuildQuotaScopeProjectionInTransaction(
-			ctx, transaction.WithContext(ctx), QuotaAccountScopeDefault, evaluatedAtMS, rule,
-		)
+		database := transaction.WithContext(ctx)
+		var scopes []string
+		if err := database.Model(&quotaObservationModel{}).
+			Distinct("account_scope").
+			Order("account_scope").
+			Pluck("account_scope", &scopes).Error; err != nil {
+			return err
+		}
+		if len(scopes) == 0 {
+			return nil
+		}
+		for _, scope := range scopes {
+			if err := repository.rebuildQuotaScopeProjectionInTransaction(
+				ctx, database, scope, evaluatedAtMS, rule,
+			); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 
@@ -113,6 +129,13 @@ func (repository *Repository) rebuildQuotaWindowProjectionInTransaction(
 		return err
 	} else if found {
 		sourceStates[QuotaSourceWham] = state
+	}
+	if validDerivedCodexAccountScope(key.accountScope) {
+		if state, found, err := sourceStateByID(ctx, database, QuotaSourceInstanceAppServer(key.accountScope)); err != nil {
+			return err
+		} else if found {
+			sourceStates[QuotaSourceAppServer] = state
+		}
 	}
 	projection, err := arbitrateQuotaWindowWithSourceStates(observations, evaluatedAtMS, rule, sourceStates)
 	if err != nil {
@@ -258,7 +281,7 @@ func (repository *Repository) ListQuotaCurrent(
 	if repository == nil || repository.database == nil {
 		return nil, ErrInvalidRepository
 	}
-	if accountScope != QuotaAccountScopeDefault || evaluatedAtMS < 0 {
+	if !validCodexAccountScope(accountScope) || evaluatedAtMS < 0 {
 		return nil, invalidRecord("quota current list input is invalid")
 	}
 	var currents []QuotaCurrent
@@ -318,7 +341,7 @@ func (repository *Repository) ListQuotaArbitrationEvidence(
 }
 
 func validateQuotaProjectionKey(key quotaProjectionKey) error {
-	if key.accountScope != QuotaAccountScopeDefault || !validQuotaWindowKind(key.windowKind) ||
+	if !validCodexAccountScope(key.accountScope) || !validQuotaWindowKind(key.windowKind) ||
 		key.limitID == "" || len(key.limitID) > 512 {
 		return invalidRecord("quota projection key is invalid")
 	}
@@ -538,6 +561,13 @@ func (repository *Repository) readAndVerifyQuotaProjection(
 		return quotaWindowProjection{}, err
 	} else if found {
 		sourceStates[QuotaSourceWham] = state
+	}
+	if validDerivedCodexAccountScope(key.accountScope) {
+		if state, found, err := sourceStateByID(ctx, database, QuotaSourceInstanceAppServer(key.accountScope)); err != nil {
+			return quotaWindowProjection{}, err
+		} else if found {
+			sourceStates[QuotaSourceAppServer] = state
+		}
 	}
 	want, err := arbitrateQuotaWindowWithSourceStates(observations, current.EvaluatedAtMS, rule, sourceStates)
 	if err != nil {

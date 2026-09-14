@@ -14,8 +14,8 @@ import (
 func TestApplicationSchemaV12CreatesResetCreditsAndRefreshScheduling(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV31Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 31", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV32Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 32", applicationSchemaVersion)
 	}
 	const wantChecksum = "9ab44dccdb1467d2ad8bdca4cf3703158e09c80b23506247e66735c099912bd0"
 	if got := applicationSchemaV12Checksum(); got != wantChecksum {
@@ -27,7 +27,7 @@ func TestApplicationSchemaV12CreatesResetCreditsAndRefreshScheduling(t *testing.
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
-		for _, object := range quotaScheduleSchemaObjects {
+		for _, object := range quotaScheduleSchemaObjectsV32 {
 			exists, err := storeschema.VerifyObject(ctx, connection, object)
 			if err != nil {
 				return err
@@ -65,7 +65,7 @@ func TestApplicationMigrationUpgradesV11ThroughCurrentWithoutChangingQuotaFacts(
 		t.Fatalf("run(v11->v12) error = %v", err)
 	}
 	if report.FromVersion != 11 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31}) || backupVersions != [2]int{11, 31} {
+		!equalInts(report.AppliedVersions, []int{12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}) || backupVersions != [2]int{11, 32} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))

@@ -18,7 +18,7 @@ struct QuotaUsageView: View {
 		switch model.selectedProvider {
 		case .cursor: "跟踪月度模型额度、Grok Bot 周额度、Token 趋势、费用明细和参考价格"
 		case .grok: "跟踪 credits 周期、Token 趋势、上报费用和 xAI 参考价"
-		case .codex: "跟踪额度窗口、Token 趋势、API 折算成本和参考价格"
+		case .codex: "跟踪当前账号额度、Token 趋势、API 折算成本和参考价格"
 		}
 	}
 
@@ -211,7 +211,7 @@ private struct QuotaContentView: View {
 		switch provider {
 		case .cursor: "额度窗口"
 		case .grok: "额度窗口"
-		case .codex: "额度窗口"
+		case .codex: "当前账号额度"
 		}
 	}
 
@@ -293,6 +293,11 @@ private struct UsageContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("用量与趋势").font(.title2.bold())
+			if provider == .codex {
+				Text(localizedCopy("当前 Codex Home 已采集"))
+					.font(.caption)
+					.foregroundStyle(.secondary)
+			}
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 12)], spacing: 12) {
                 MetricCard(
                     title: "Token 用量", value: numericText(response.totals.totalTokens),

@@ -13,7 +13,7 @@ import (
 
 func verifyApplicationSchemaV18(ctx context.Context, transaction *gorm.DB) error {
 	for _, objects := range [][]storeschema.Object{
-		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), storeretention.SchemaObjects(),
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV14(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
 		quotaSchemaObjects, quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
@@ -41,7 +41,7 @@ func verifyApplicationSchemaV18(ctx context.Context, transaction *gorm.DB) error
 
 func verifyApplicationSchemaV16(ctx context.Context, transaction *gorm.DB) error {
 	for _, objects := range [][]storeschema.Object{
-		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), storeretention.SchemaObjects(),
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV14(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
 		quotaSchemaObjects, quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,
@@ -66,7 +66,7 @@ func verifyApplicationSchemaV16(ctx context.Context, transaction *gorm.DB) error
 
 func verifyApplicationSchemaV15(ctx context.Context, transaction *gorm.DB) error {
 	for _, objects := range [][]storeschema.Object{
-		migrationSchemaObjects, coreSchemaObjects, currentRuntimeSchemaObjects(), storeretention.SchemaObjects(),
+		migrationSchemaObjects, coreSchemaObjects, runtimeSchemaObjectsThroughV14(), storeretention.SchemaObjects(),
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
 		quotaSchemaObjects, quotaProjectionSchemaObjects, quotaScheduleSchemaObjects,

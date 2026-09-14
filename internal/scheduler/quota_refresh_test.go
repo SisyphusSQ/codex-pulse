@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/accountbinding"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -37,24 +39,25 @@ func TestQuotaRefreshCoordinatorPersistsStartupPlanAndManualThrottle(t *testing.
 			},
 		}},
 		Policy: &policy,
-		ResetCreditsFetcher: SourceRefreshFunc(func(ctx context.Context, requestID string) error {
+		ResetCreditsFetcher: SourceRefreshFunc(func(ctx context.Context, request quotaonline.BoundRefreshRequest) error {
+			requestID := request.RequestID
 			fetchCalls++
 			status := int64(200)
 			return repository.RecordResetCreditsFetch(ctx, store.ResetCreditsFetchRecord{
-				SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-				SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+				SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
+				SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: quotaRefreshScope(repository), BindingGeneration: 1,
 				Attempt: store.SourceAttempt{
-					RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
+					RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 					StartedAtMS: nowMS, FinishedAtMS: nowMS, Outcome: store.SourceAttemptSucceeded,
 					HTTPStatus: &status, AttemptCount: 1,
 				},
 				Snapshot: &store.ResetCreditsSnapshot{
 					SnapshotID: "scheduler-snapshot-" + requestID, RequestID: requestID,
-					AccountScope: store.QuotaAccountScopeDefault, ObservedAtMS: nowMS,
+					AccountScope: quotaRefreshScope(repository), ObservedAtMS: nowMS,
 				},
 			})
 		}),
-		QuotaFetcher: SourceRefreshFunc(func(context.Context, string) error {
+		QuotaFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error {
 			return fmt.Errorf("disabled quota fetcher must not run")
 		}),
 		Clock: func() time.Time { return time.UnixMilli(nowMS) },
@@ -73,7 +76,7 @@ func TestQuotaRefreshCoordinatorPersistsStartupPlanAndManualThrottle(t *testing.
 		t.Fatalf("startup fetch calls = %d, want 1", fetchCalls)
 	}
 	schedule, err := repository.SourceRefreshSchedule(
-		context.Background(), store.ResetCreditsSourceInstanceWhamDefault,
+		context.Background(), store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 	)
 	if err != nil || schedule.ActiveClaimID != nil || schedule.NextDueAtMS == nil ||
 		*schedule.NextDueAtMS != nowMS+1_800_000 || schedule.Reason != store.RefreshReasonNormalInterval {
@@ -119,20 +122,21 @@ func TestQuotaRefreshCommittedNotifiesOnlyAfterRefreshCommit(t *testing.T) {
 			},
 		}},
 		Policy:       &policy,
-		QuotaFetcher: SourceRefreshFunc(func(context.Context, string) error { return nil }),
-		ResetCreditsFetcher: SourceRefreshFunc(func(ctx context.Context, requestID string) error {
+		QuotaFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error { return nil }),
+		ResetCreditsFetcher: SourceRefreshFunc(func(ctx context.Context, request quotaonline.BoundRefreshRequest) error {
+			requestID := request.RequestID
 			status := int64(200)
 			return repository.RecordResetCreditsFetch(ctx, store.ResetCreditsFetchRecord{
-				SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-				SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+				SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
+				SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: quotaRefreshScope(repository), BindingGeneration: 1,
 				Attempt: store.SourceAttempt{
-					RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
+					RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 					StartedAtMS: nowMS, FinishedAtMS: nowMS, Outcome: store.SourceAttemptSucceeded,
 					HTTPStatus: &status, AttemptCount: 1,
 				},
 				Snapshot: &store.ResetCreditsSnapshot{
 					SnapshotID: "notify-" + requestID, RequestID: requestID,
-					AccountScope: store.QuotaAccountScopeDefault, ObservedAtMS: nowMS,
+					AccountScope: quotaRefreshScope(repository), ObservedAtMS: nowMS,
 				},
 			})
 		}),
@@ -163,8 +167,8 @@ func TestQuotaRefreshCommittedNotifiesOnlyAfterRefreshCommit(t *testing.T) {
 			},
 		}},
 		Policy:       &policy,
-		QuotaFetcher: SourceRefreshFunc(func(context.Context, string) error { return nil }),
-		ResetCreditsFetcher: SourceRefreshFunc(func(context.Context, string) error {
+		QuotaFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error { return nil }),
+		ResetCreditsFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error {
 			return errors.New("synthetic fetch failure")
 		}),
 		Clock:        func() time.Time { return time.UnixMilli(nowMS) },
@@ -193,10 +197,10 @@ func TestQuotaRefreshCoordinatorManualDoesNotBypassRetryAfterHiddenByLongerBacko
 	failure := store.SourceFailureHTTP429
 	class := store.RuntimeErrorUnavailable
 	if err := repository.RecordResetCreditsFetch(context.Background(), store.ResetCreditsFetchRecord{
-		SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-		SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+		SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
+		SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: quotaRefreshScope(repository), BindingGeneration: 1,
 		Attempt: store.SourceAttempt{
-			RequestID: "manual-retry-after-fence", SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
+			RequestID: "manual-retry-after-fence", SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 			StartedAtMS: nowMS - 1_000, FinishedAtMS: nowMS - 1_000,
 			Outcome: store.SourceAttemptFailed, HTTPStatus: &status, ErrorClass: &class,
 			FailureCode: &failure, RetryAtMS: &retryAtMS, AttemptCount: 1,
@@ -206,8 +210,8 @@ func TestQuotaRefreshCoordinatorManualDoesNotBypassRetryAfterHiddenByLongerBacko
 	}
 	backoffAtMS := nowMS + 300_000
 	seeded, err := repository.UpsertSourceRefreshSchedule(context.Background(), store.SourceRefreshScheduleUpdate{
-		SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-		SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+		SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
+		SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: quotaRefreshScope(repository), BindingGeneration: 1,
 		NextDueAtMS: &backoffAtMS, Reason: store.RefreshReasonNetworkBackoff, AtMS: nowMS - 1_000,
 	})
 	if err != nil {
@@ -227,8 +231,8 @@ func TestQuotaRefreshCoordinatorManualDoesNotBypassRetryAfterHiddenByLongerBacko
 			},
 		}},
 		Policy:       &policy,
-		QuotaFetcher: SourceRefreshFunc(func(context.Context, string) error { return nil }),
-		ResetCreditsFetcher: SourceRefreshFunc(func(context.Context, string) error {
+		QuotaFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error { return nil }),
+		ResetCreditsFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error {
 			fetchCalls++
 			return errors.New("fetch must remain fenced by Retry-After")
 		}),
@@ -255,10 +259,10 @@ func TestQuotaRefreshCoordinatorReconcilePreservesDurableNetworkBackoff(t *testi
 	failure := store.SourceFailureNetworkUnavailable
 	class := store.RuntimeErrorUnavailable
 	if err := repository.RecordResetCreditsFetch(context.Background(), store.ResetCreditsFetchRecord{
-		SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-		SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+		SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
+		SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: quotaRefreshScope(repository), BindingGeneration: 1,
 		Attempt: store.SourceAttempt{
-			RequestID: "reconcile-durable-backoff", SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
+			RequestID: "reconcile-durable-backoff", SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 			StartedAtMS: failureAtMS, FinishedAtMS: failureAtMS,
 			Outcome: store.SourceAttemptFailed, ErrorClass: &class, FailureCode: &failure, AttemptCount: 1,
 		},
@@ -267,8 +271,8 @@ func TestQuotaRefreshCoordinatorReconcilePreservesDurableNetworkBackoff(t *testi
 	}
 	backoffDueAtMS := failureAtMS + 300_000
 	seeded, err := repository.UpsertSourceRefreshSchedule(context.Background(), store.SourceRefreshScheduleUpdate{
-		SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-		SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+		SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
+		SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: quotaRefreshScope(repository), BindingGeneration: 1,
 		NextDueAtMS: &backoffDueAtMS, Reason: store.RefreshReasonNetworkBackoff, AtMS: failureAtMS,
 	})
 	if err != nil {
@@ -288,8 +292,8 @@ func TestQuotaRefreshCoordinatorReconcilePreservesDurableNetworkBackoff(t *testi
 			},
 		}},
 		Policy:       &policy,
-		QuotaFetcher: SourceRefreshFunc(func(context.Context, string) error { return nil }),
-		ResetCreditsFetcher: SourceRefreshFunc(func(context.Context, string) error {
+		QuotaFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error { return nil }),
+		ResetCreditsFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error {
 			fetchCalls++
 			return errors.New("durable backoff must not fetch before due")
 		}),
@@ -302,7 +306,7 @@ func TestQuotaRefreshCoordinatorReconcilePreservesDurableNetworkBackoff(t *testi
 		t.Fatalf("ReconcilePreferences() error = %v", err)
 	}
 	readback, err := repository.SourceRefreshSchedule(
-		context.Background(), store.ResetCreditsSourceInstanceWhamDefault,
+		context.Background(), store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 	)
 	if err != nil || fetchCalls != 0 || readback.Revision != seeded.Revision ||
 		readback.Reason != store.RefreshReasonNetworkBackoff || readback.NextDueAtMS == nil ||
@@ -328,8 +332,8 @@ func TestQuotaRefreshRunnerUsesInjectedRobfigCronLifecycle(t *testing.T) {
 			},
 		}},
 		Policy:              &policy,
-		QuotaFetcher:        SourceRefreshFunc(func(context.Context, string) error { return nil }),
-		ResetCreditsFetcher: SourceRefreshFunc(func(context.Context, string) error { return nil }),
+		QuotaFetcher:        SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error { return nil }),
+		ResetCreditsFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error { return nil }),
 	})
 	if err != nil {
 		t.Fatalf("NewQuotaRefreshCoordinator() error = %v", err)
@@ -364,16 +368,16 @@ func TestQuotaRefreshCoordinatorRecoversClaimThatExpiresAfterStartup(t *testing.
 	repository := newQuotaRefreshTestRepository(t)
 	dueAt := int64(100)
 	schedule, err := repository.UpsertSourceRefreshSchedule(context.Background(), store.SourceRefreshScheduleUpdate{
-		SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-		SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+		SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
+		SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: quotaRefreshScope(repository), BindingGeneration: 1,
 		NextDueAtMS: &dueAt, Reason: store.RefreshReasonStartup, AtMS: 90,
 	})
 	if err != nil {
 		t.Fatalf("create schedule: %v", err)
 	}
 	if _, ok, err := repository.ClaimSourceRefresh(
-		context.Background(), store.ResetCreditsSourceInstanceWhamDefault, schedule.Revision,
-		"crashed-claim", store.RefreshTriggerStartup, 100, 50,
+		context.Background(), store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)), schedule.Revision,
+		"crashed-claim", store.RefreshTriggerStartup, 100, 50, 1,
 	); err != nil || !ok {
 		t.Fatalf("seed crashed claim = %v, %v", ok, err)
 	}
@@ -392,21 +396,22 @@ func TestQuotaRefreshCoordinatorRecoversClaimThatExpiresAfterStartup(t *testing.
 			},
 		}},
 		Policy:       &policy,
-		QuotaFetcher: SourceRefreshFunc(func(context.Context, string) error { return nil }),
-		ResetCreditsFetcher: SourceRefreshFunc(func(ctx context.Context, requestID string) error {
+		QuotaFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error { return nil }),
+		ResetCreditsFetcher: SourceRefreshFunc(func(ctx context.Context, request quotaonline.BoundRefreshRequest) error {
+			requestID := request.RequestID
 			fetchCalls++
 			status := int64(200)
 			return repository.RecordResetCreditsFetch(ctx, store.ResetCreditsFetchRecord{
-				SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-				SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+				SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
+				SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: quotaRefreshScope(repository), BindingGeneration: 1,
 				Attempt: store.SourceAttempt{
-					RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
+					RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 					StartedAtMS: nowMS, FinishedAtMS: nowMS, Outcome: store.SourceAttemptSucceeded,
 					HTTPStatus: &status, AttemptCount: 1,
 				},
 				Snapshot: &store.ResetCreditsSnapshot{
 					SnapshotID: "recovered-" + requestID, RequestID: requestID,
-					AccountScope: store.QuotaAccountScopeDefault, ObservedAtMS: nowMS,
+					AccountScope: quotaRefreshScope(repository), ObservedAtMS: nowMS,
 				},
 			})
 		}),
@@ -426,7 +431,7 @@ func TestQuotaRefreshCoordinatorRecoversClaimThatExpiresAfterStartup(t *testing.
 		t.Fatalf("expiry recovery cycle calls=%d error=%v", fetchCalls, err)
 	}
 	readback, err := repository.SourceRefreshSchedule(
-		context.Background(), store.ResetCreditsSourceInstanceWhamDefault,
+		context.Background(), store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 	)
 	if err != nil || readback.ActiveClaimID != nil || readback.Reason != store.RefreshReasonNormalInterval ||
 		readback.NextDueAtMS == nil || *readback.NextDueAtMS != nowMS+1_800_000 {
@@ -459,8 +464,8 @@ func TestQuotaRefreshCoordinatorRecoversRecordedSuccessfulClaimWithoutRefetch(t 
 			},
 		}},
 		Policy:       &policy,
-		QuotaFetcher: SourceRefreshFunc(func(context.Context, string) error { return nil }),
-		ResetCreditsFetcher: SourceRefreshFunc(func(context.Context, string) error {
+		QuotaFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error { return nil }),
+		ResetCreditsFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error {
 			fetchCalls.Add(1)
 			return nil
 		}),
@@ -476,7 +481,7 @@ func TestQuotaRefreshCoordinatorRecoversRecordedSuccessfulClaimWithoutRefetch(t 
 		t.Fatalf("recovery fetch calls = %d, want 0", fetchCalls.Load())
 	}
 	schedule, err := repository.SourceRefreshSchedule(
-		context.Background(), store.ResetCreditsSourceInstanceWhamDefault,
+		context.Background(), store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 	)
 	if err != nil || schedule.ActiveClaimID != nil || schedule.Reason != store.RefreshReasonNormalInterval ||
 		schedule.NextDueAtMS == nil || *schedule.NextDueAtMS != recoveryAtMS+refreshDelay {
@@ -509,8 +514,8 @@ func TestQuotaRefreshCoordinatorRecoversRecordedRetryAfterWithoutEarlyFetch(t *t
 			},
 		}},
 		Policy:       &policy,
-		QuotaFetcher: SourceRefreshFunc(func(context.Context, string) error { return nil }),
-		ResetCreditsFetcher: SourceRefreshFunc(func(context.Context, string) error {
+		QuotaFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error { return nil }),
+		ResetCreditsFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error {
 			fetchCalls.Add(1)
 			return nil
 		}),
@@ -526,7 +531,7 @@ func TestQuotaRefreshCoordinatorRecoversRecordedRetryAfterWithoutEarlyFetch(t *t
 		t.Fatalf("recovery fetch calls = %d, want 0", fetchCalls.Load())
 	}
 	schedule, err := repository.SourceRefreshSchedule(
-		context.Background(), store.ResetCreditsSourceInstanceWhamDefault,
+		context.Background(), store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 	)
 	if err != nil || schedule.ActiveClaimID != nil || schedule.Reason != store.RefreshReasonRetryAfter ||
 		schedule.NextDueAtMS == nil || *schedule.NextDueAtMS != retryAtMS {
@@ -558,8 +563,9 @@ func TestQuotaRefreshRunnerSurvivesTransientFetcherFailureAndRecoversLease(t *te
 		}},
 		Policy:       &policy,
 		ClaimLease:   time.Second,
-		QuotaFetcher: SourceRefreshFunc(func(context.Context, string) error { return nil }),
-		ResetCreditsFetcher: SourceRefreshFunc(func(ctx context.Context, requestID string) error {
+		QuotaFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error { return nil }),
+		ResetCreditsFetcher: SourceRefreshFunc(func(ctx context.Context, request quotaonline.BoundRefreshRequest) error {
+			requestID := request.RequestID
 			call := fetchCalls.Add(1)
 			if call == 2 {
 				close(transientSeen)
@@ -568,16 +574,16 @@ func TestQuotaRefreshRunnerSurvivesTransientFetcherFailureAndRecoversLease(t *te
 			atMS := nowMS.Load()
 			status := int64(200)
 			err := repository.RecordResetCreditsFetch(ctx, store.ResetCreditsFetchRecord{
-				SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-				SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+				SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
+				SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: quotaRefreshScope(repository), BindingGeneration: 1,
 				Attempt: store.SourceAttempt{
-					RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
+					RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 					StartedAtMS: atMS, FinishedAtMS: atMS, Outcome: store.SourceAttemptSucceeded,
 					HTTPStatus: &status, AttemptCount: 1,
 				},
 				Snapshot: &store.ResetCreditsSnapshot{
 					SnapshotID: "runner-recovery-" + requestID, RequestID: requestID,
-					AccountScope: store.QuotaAccountScopeDefault, ObservedAtMS: atMS,
+					AccountScope: quotaRefreshScope(repository), ObservedAtMS: atMS,
 				},
 			})
 			if call == 3 && err == nil {
@@ -667,24 +673,25 @@ func TestQuotaRefreshRunnerStartsAfterTransientInitializeFailure(t *testing.T) {
 		}},
 		Policy:       &policy,
 		ClaimLease:   time.Second,
-		QuotaFetcher: SourceRefreshFunc(func(context.Context, string) error { return nil }),
-		ResetCreditsFetcher: SourceRefreshFunc(func(ctx context.Context, requestID string) error {
+		QuotaFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error { return nil }),
+		ResetCreditsFetcher: SourceRefreshFunc(func(ctx context.Context, request quotaonline.BoundRefreshRequest) error {
+			requestID := request.RequestID
 			if fetchCalls.Add(1) == 1 {
 				return errors.New("transient initialize recorder failure")
 			}
 			atMS := nowMS.Load()
 			status := int64(200)
 			err := repository.RecordResetCreditsFetch(ctx, store.ResetCreditsFetchRecord{
-				SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-				SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+				SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
+				SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: quotaRefreshScope(repository), BindingGeneration: 1,
 				Attempt: store.SourceAttempt{
-					RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
+					RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 					StartedAtMS: atMS, FinishedAtMS: atMS, Outcome: store.SourceAttemptSucceeded,
 					HTTPStatus: &status, AttemptCount: 1,
 				},
 				Snapshot: &store.ResetCreditsSnapshot{
 					SnapshotID: "initialize-recovery-" + requestID, RequestID: requestID,
-					AccountScope: store.QuotaAccountScopeDefault, ObservedAtMS: atMS,
+					AccountScope: quotaRefreshScope(repository), ObservedAtMS: atMS,
 				},
 			})
 			if err == nil {
@@ -759,27 +766,27 @@ func seedRecordedResetCreditsClaim(
 	t.Helper()
 	dueAtMS := claimedAtMS
 	schedule, err := repository.UpsertSourceRefreshSchedule(context.Background(), store.SourceRefreshScheduleUpdate{
-		SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-		SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+		SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
+		SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: quotaRefreshScope(repository), BindingGeneration: 1,
 		NextDueAtMS: &dueAtMS, Reason: store.RefreshReasonStartup, AtMS: claimedAtMS,
 	})
 	if err != nil {
 		t.Fatalf("seed schedule: %v", err)
 	}
 	if _, claimed, err := repository.ClaimSourceRefresh(
-		context.Background(), store.ResetCreditsSourceInstanceWhamDefault, schedule.Revision,
-		claimID, store.RefreshTriggerStartup, claimedAtMS, leaseMS,
+		context.Background(), store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)), schedule.Revision,
+		claimID, store.RefreshTriggerStartup, claimedAtMS, leaseMS, 1,
 	); err != nil || !claimed {
 		t.Fatalf("seed claim = %v, %v", claimed, err)
 	}
 	attempt := store.SourceAttempt{
-		RequestID: claimID, SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
+		RequestID: claimID, SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 		StartedAtMS: claimedAtMS, FinishedAtMS: claimedAtMS + 1,
 		AttemptCount: 1,
 	}
 	record := store.ResetCreditsFetchRecord{
-		SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-		SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+		SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
+		SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: quotaRefreshScope(repository), BindingGeneration: 1,
 		Attempt: attempt,
 	}
 	if retryAtMS == nil {
@@ -788,7 +795,7 @@ func seedRecordedResetCreditsClaim(
 		record.Attempt.HTTPStatus = &status
 		record.Snapshot = &store.ResetCreditsSnapshot{
 			SnapshotID: "recorded-" + claimID, RequestID: claimID,
-			AccountScope: store.QuotaAccountScopeDefault, ObservedAtMS: claimedAtMS + 1,
+			AccountScope: quotaRefreshScope(repository), ObservedAtMS: claimedAtMS + 1,
 		}
 	} else {
 		status := int64(429)
@@ -827,22 +834,23 @@ func TestQuotaRefreshCoordinatorCompletesCancelledAttemptWithDetachedContext(t *
 			},
 		}},
 		Policy:       &policy,
-		QuotaFetcher: SourceRefreshFunc(func(context.Context, string) error { return nil }),
-		ResetCreditsFetcher: SourceRefreshFunc(func(ctx context.Context, requestID string) error {
+		QuotaFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error { return nil }),
+		ResetCreditsFetcher: SourceRefreshFunc(func(ctx context.Context, request quotaonline.BoundRefreshRequest) error {
+			requestID := request.RequestID
 			fetchCalls++
 			if fetchCalls == 1 {
 				status := int64(200)
 				return repository.RecordResetCreditsFetch(ctx, store.ResetCreditsFetchRecord{
-					SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-					SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+					SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
+					SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: quotaRefreshScope(repository), BindingGeneration: 1,
 					Attempt: store.SourceAttempt{
-						RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
+						RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 						StartedAtMS: nowMS, FinishedAtMS: nowMS, Outcome: store.SourceAttemptSucceeded,
 						HTTPStatus: &status, AttemptCount: 1,
 					},
 					Snapshot: &store.ResetCreditsSnapshot{
 						SnapshotID: "cancel-setup-" + requestID, RequestID: requestID,
-						AccountScope: store.QuotaAccountScopeDefault, ObservedAtMS: nowMS,
+						AccountScope: quotaRefreshScope(repository), ObservedAtMS: nowMS,
 					},
 				})
 			}
@@ -850,10 +858,10 @@ func TestQuotaRefreshCoordinatorCompletesCancelledAttemptWithDetachedContext(t *
 			code := store.SourceFailureCancelled
 			class := store.RuntimeErrorCanceled
 			return repository.RecordResetCreditsFetch(context.Background(), store.ResetCreditsFetchRecord{
-				SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-				SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+				SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
+				SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: quotaRefreshScope(repository), BindingGeneration: 1,
 				Attempt: store.SourceAttempt{
-					RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
+					RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 					StartedAtMS: nowMS, FinishedAtMS: nowMS, Outcome: store.SourceAttemptCancelled,
 					ErrorClass: &class, FailureCode: &code,
 				},
@@ -880,7 +888,7 @@ func TestQuotaRefreshCoordinatorCompletesCancelledAttemptWithDetachedContext(t *
 		*schedule.NextDueAtMS != nowMS+1_800_000 {
 		t.Fatalf("cancelled refresh = %#v, ctx=%v, error=%v", schedule, requestCtx.Err(), err)
 	}
-	state, err := repository.SourceState(context.Background(), store.ResetCreditsSourceInstanceWhamDefault)
+	state, err := repository.SourceState(context.Background(), store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)))
 	if err != nil || state.ConsecutiveFailures != 0 || state.LastFailureCode == nil ||
 		*state.LastFailureCode != store.SourceFailureCancelled {
 		t.Fatalf("cancelled source state = %#v, %v", state, err)
@@ -905,21 +913,22 @@ func TestQuotaRefreshCoordinatorReconcilesDisabledPreferenceImmediately(t *testi
 	fetchCalls := 0
 	coordinator, err := NewQuotaRefreshCoordinator(QuotaRefreshCoordinatorConfig{
 		Repository: repository, Preferences: reader, Policy: &policy,
-		QuotaFetcher: SourceRefreshFunc(func(context.Context, string) error { return nil }),
-		ResetCreditsFetcher: SourceRefreshFunc(func(ctx context.Context, requestID string) error {
+		QuotaFetcher: SourceRefreshFunc(func(context.Context, quotaonline.BoundRefreshRequest) error { return nil }),
+		ResetCreditsFetcher: SourceRefreshFunc(func(ctx context.Context, request quotaonline.BoundRefreshRequest) error {
+			requestID := request.RequestID
 			fetchCalls++
 			status := int64(200)
 			return repository.RecordResetCreditsFetch(ctx, store.ResetCreditsFetchRecord{
-				SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
-				SourceType:       store.ResetCreditsSourceTypeWham, ScopeKey: store.QuotaAccountScopeDefault,
+				SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
+				SourceType:       store.ResetCreditsSourceTypeAppServer, ScopeKey: quotaRefreshScope(repository), BindingGeneration: 1,
 				Attempt: store.SourceAttempt{
-					RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceWhamDefault,
+					RequestID: requestID, SourceInstanceID: store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 					StartedAtMS: nowMS, FinishedAtMS: nowMS, Outcome: store.SourceAttemptSucceeded,
 					HTTPStatus: &status, AttemptCount: 1,
 				},
 				Snapshot: &store.ResetCreditsSnapshot{
 					SnapshotID: "disable-" + requestID, RequestID: requestID,
-					AccountScope: store.QuotaAccountScopeDefault, ObservedAtMS: nowMS,
+					AccountScope: quotaRefreshScope(repository), ObservedAtMS: nowMS,
 				},
 			})
 		}),
@@ -936,7 +945,7 @@ func TestQuotaRefreshCoordinatorReconcilesDisabledPreferenceImmediately(t *testi
 		t.Fatalf("ReconcilePreferences() error = %v", err)
 	}
 	schedule, err := repository.SourceRefreshSchedule(
-		context.Background(), store.ResetCreditsSourceInstanceWhamDefault,
+		context.Background(), store.ResetCreditsSourceInstanceAppServer(quotaRefreshScope(repository)),
 	)
 	if err != nil || schedule.NextDueAtMS != nil || schedule.Reason != store.RefreshReasonDisabled ||
 		fetchCalls != 1 {
@@ -988,5 +997,34 @@ func newQuotaRefreshTestRepository(t *testing.T) *store.Repository {
 	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
+	confirmQuotaRefreshTestBinding(t, repository)
 	return repository
+}
+
+func confirmQuotaRefreshTestBinding(t *testing.T, repository *store.Repository) string {
+	t.Helper()
+	var key [32]byte
+	copy(key[:], bytes.Repeat([]byte{0x11}, 32))
+	stored, err := repository.EnsureCodexAccountScopeKey(context.Background(), key, 1_784_000_000_000)
+	if err != nil {
+		t.Fatalf("EnsureCodexAccountScopeKey() error = %v", err)
+	}
+	scope, err := accountbinding.DeriveScope(stored, []byte("acct-test-a"))
+	if err != nil {
+		t.Fatalf("DeriveScope() error = %v", err)
+	}
+	if _, _, err := repository.ConfirmCodexAccountBinding(
+		context.Background(), scope, 1_784_000_000_000, store.CodexAccountBindingReasonStartup,
+	); err != nil {
+		t.Fatalf("ConfirmCodexAccountBinding() error = %v", err)
+	}
+	return scope
+}
+
+func quotaRefreshScope(repository *store.Repository) string {
+	binding, err := repository.CodexAccountBinding(context.Background())
+	if err != nil || binding.AccountScope == nil {
+		return quotaRefreshScope(repository)
+	}
+	return *binding.AccountScope
 }

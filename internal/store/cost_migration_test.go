@@ -79,11 +79,11 @@ func TestApplicationMigrationAppendsCostLedgerToFrozenV4(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 	if report.FromVersion != 4 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31}) || report.BackupPath == "" {
-		t.Fatalf("run() report = %#v, want v4 to v31", report)
+		!equalInts(report.AppliedVersions, []int{5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}) || report.BackupPath == "" {
+		t.Fatalf("run() report = %#v, want v4 to v32", report)
 	}
-	if backupVersions != [2]int{4, 31} {
-		t.Fatalf("backup versions = %v, want [4 31]", backupVersions)
+	if backupVersions != [2]int{4, 32} {
+		t.Fatalf("backup versions = %v, want [4 32]", backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
 }

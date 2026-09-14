@@ -50,7 +50,10 @@ The following screens were captured from a real Codex Home under the same redact
 The most misleading failure mode for quota and usage tools is not missing data—it is presenting fallback values as facts. Codex Pulse follows these display rules:
 
 - `0%` is shown only when exhaustion has been confirmed. Values that were never retrieved, have not been calculated, or do not apply are shown as `--`.
-- If an online refresh fails but a previous successful result exists, the last-known-good value remains visible instead of suddenly changing to 100%.
+- If an online refresh fails but a previous successful result exists, the last-known-good value remains visible instead of suddenly changing to 100%. Last-known-good stays inside the current confirmed ChatGPT account; switching accounts never reuses the previous account's percentage.
+- Codex online quota and Reset Credits come from the Codex App Server public method `account/rateLimits/read`. Pulse does not read Codex access tokens, JWT, `auth.json`, or Keychain credentials, and it does not call private WHAM endpoints. A CLI that lacks `accountId` capability fails closed instead of falling back to WHAM.
+- Unconfirmed, signed-out, or identity-unavailable Codex accounts show unknown / pending (`--`). The UI does not invent `0%` or `100%`, and it does not keep the previous account email or limits.
+- Local sessions, tokens, projects, trends, and API-equivalent cost stay aggregated for the current Codex Home. They are not filtered or attributed by ChatGPT account.
 - A time range that has not been fully indexed is marked as partial data rather than presented as a complete total.
 - Quota names and periods come from current data. For example, period labels are derived from the actual `window_minutes` value instead of hard-coding a "5-hour quota."
 - Currency values are always labeled as "API-equivalent cost." They help explain the public API price scale associated with token usage and do not represent an actual bill or charge.

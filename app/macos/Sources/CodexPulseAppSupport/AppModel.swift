@@ -1812,7 +1812,10 @@ public final class AppModel: ObservableObject {
 			operation: { [runtime] in try await runtime.accountSnapshot(provider: provider) }
 		) { [weak self] account in
 			guard let self, statusProvider == provider else { return }
-			let presentation = OverviewPresentation(responses.replacingAccount(account))
+			let validated = CodexAccountContext.validatePublishedOverview(
+				responses.replacingAccount(account)
+			)
+			let presentation = OverviewPresentation(validated.responses)
 			statusOverviewCache[provider] = presentation
 			statusOverviewState = presentation.isPartial
 				? .partial(presentation, notices: presentation.notices)

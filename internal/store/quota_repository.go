@@ -93,7 +93,7 @@ func validateQuotaObservationFilter(filter QuotaObservationFilter) (int, error) 
 	if limit < 0 || limit > 500 {
 		return 0, invalidRecord("quota observation filter limit must be between 1 and 500")
 	}
-	if filter.AccountScope != nil && *filter.AccountScope != QuotaAccountScopeDefault {
+	if filter.AccountScope != nil && !validCodexAccountScope(*filter.AccountScope) {
 		return 0, invalidRecord("quota observation account scope filter is invalid")
 	}
 	if filter.Source != nil && !validQuotaSource(*filter.Source) {
@@ -116,7 +116,7 @@ func validateQuotaObservationFilter(filter QuotaObservationFilter) (int, error) 
 
 func validateQuotaObservationSample(sample QuotaObservationSample) error {
 	if sample.ObservationID == "" || len(sample.ObservationID) > 512 ||
-		sample.AccountScope != QuotaAccountScopeDefault || !validQuotaSource(sample.Source) ||
+		!validCodexAccountScope(sample.AccountScope) || !validQuotaSource(sample.Source) ||
 		!validQuotaWindowKind(sample.WindowKind) || math.IsNaN(sample.UsedPercent) ||
 		math.IsInf(sample.UsedPercent, 0) || sample.UsedPercent < 0 || sample.UsedPercent > 100 ||
 		sample.WindowMinutes <= 0 || sample.WindowMinutes > maxQuotaWindowMinutes ||
@@ -145,7 +145,7 @@ func validateQuotaObservationSample(sample QuotaObservationSample) error {
 		if sample.SessionID == nil || sample.SourceFileID == nil || sample.RequestID != nil {
 			return invalidRecord("local quota observation provenance is invalid")
 		}
-	case QuotaSourceWham:
+	case QuotaSourceWham, QuotaSourceAppServer:
 		if sample.RequestID == nil || sample.SourceFileID != nil {
 			return invalidRecord("online quota observation request is missing")
 		}
@@ -289,7 +289,7 @@ func quotaObservationModelFromSample(sample QuotaObservationSample) *quotaObserv
 func quotaObservationFromModel(model quotaObservationModel) (QuotaObservation, error) {
 	source, window, validity := QuotaSource(model.Source), QuotaWindowKind(model.WindowKind), QuotaValidity(model.Validity)
 	if !validQuotaSource(source) || !validQuotaWindowKind(window) || !validQuotaValidity(validity) ||
-		model.AccountScope != QuotaAccountScopeDefault || model.ObservationID == "" ||
+		!validCodexAccountScope(model.AccountScope) || model.ObservationID == "" ||
 		math.IsNaN(model.UsedPercent) || math.IsInf(model.UsedPercent, 0) ||
 		model.UsedPercent < 0 || model.UsedPercent > 100 || model.WindowMinutes <= 0 ||
 		model.WindowMinutes > maxQuotaWindowMinutes ||
@@ -313,7 +313,8 @@ func quotaObservationFromModel(model quotaObservationModel) (QuotaObservation, e
 		return QuotaObservation{}, invalidRecord("stored quota observation trust state is invalid")
 	}
 	if source == QuotaSourceLocalJSONL && (model.SourceFileID == nil || model.RequestID != nil) ||
-		source == QuotaSourceWham && (model.SourceFileID != nil || model.RequestID == nil) {
+		(source == QuotaSourceWham || source == QuotaSourceAppServer) &&
+			(model.SourceFileID != nil || model.RequestID == nil) {
 		return QuotaObservation{}, invalidRecord("stored quota observation provenance is invalid")
 	}
 	return QuotaObservation{
@@ -347,7 +348,25 @@ func cloneQuotaString(value *string) *string {
 }
 
 func validQuotaSource(source QuotaSource) bool {
-	return source == QuotaSourceLocalJSONL || source == QuotaSourceWham
+	return source == QuotaSourceLocalJSONL || source == QuotaSourceWham || source == QuotaSourceAppServer
+}
+
+func validCodexAccountScope(value string) bool {
+	if value == QuotaAccountScopeDefault {
+		return true
+	}
+	if len(value) != 64 {
+		return false
+	}
+	for index := 0; index < len(value); index++ {
+		character := value[index]
+		if character < '0' || character > '9' {
+			if character < 'a' || character > 'f' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func validQuotaWindowKind(kind QuotaWindowKind) bool {

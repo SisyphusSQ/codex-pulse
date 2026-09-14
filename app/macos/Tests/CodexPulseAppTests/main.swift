@@ -3623,6 +3623,7 @@ private actor FakeCore: AppCoreServing {
     private var failTokenActivity = false
     private var failOverviewInvocation = false
     private var failAccount = false
+    private var accountOverride: Codexpulse_Core_V1_AccountSnapshotResponse?
     private var handshakeFailure = false
     private var handshakeError: CoreClientError?
     private var overviewDelay: Duration = .zero
@@ -3694,6 +3695,10 @@ private actor FakeCore: AppCoreServing {
     func setTokenActivityFailure(_ value: Bool) { failTokenActivity = value }
     func setOverviewInvocationFailure(_ value: Bool) { failOverviewInvocation = value }
     func setAccountFailure(_ value: Bool) { failAccount = value }
+    func setResponses(_ value: OverviewResponses) { responses = value }
+    func setAccountOverride(_ value: Codexpulse_Core_V1_AccountSnapshotResponse?) {
+        accountOverride = value
+    }
     func setHandshakeFailure(_ value: Bool) { handshakeFailure = value }
     func setHandshakeError(_ value: CoreClientError?) { handshakeError = value }
     func setOverviewDelay(_ value: Duration) { overviewDelay = value }
@@ -3968,7 +3973,7 @@ private actor FakeCore: AppCoreServing {
         defer { completedAccountCalls += 1 }
         if accountDelay != .zero { try await sleepForTest(accountDelay) }
         if failAccount { throw FakeFailure.unavailable }
-        return responses.account ?? .init()
+        return accountOverride ?? responses.account ?? .init()
     }
 
     func listSessions(
@@ -4412,6 +4417,21 @@ private func makeCursorMixedQuotaResponse(
     return quota
 }
 
+private func makeCodexBinding(
+    scope: String,
+    generation: UInt64,
+    state: String = "confirmed"
+) -> Codexpulse_Core_V1_CodexAccountBinding {
+    var binding = Codexpulse_Core_V1_CodexAccountBinding()
+    binding.state = state
+    if state == "confirmed" {
+        binding.accountScope = scope
+    }
+    binding.bindingGeneration = generation
+    binding.observedAtMs = 1_784_000_000_000
+    return binding
+}
+
 private func makeResponses(
     partial: Bool = false,
     includeWeeklyQuota: Bool = true,
@@ -4422,7 +4442,11 @@ private func makeResponses(
     includeAccountIdentity: Bool = true,
     accountType: String = "chatgpt",
     accountEmail: String? = "person@example.com",
-    accountPlanType: String? = "pro"
+    accountPlanType: String? = "pro",
+    accountBindingScope: String? = nil,
+    accountBindingGeneration: UInt64 = 1,
+    accountBindingState: String = "confirmed",
+    quotaRemainingPercent: Double = 0
 ) -> OverviewResponses {
     let providerContext = makeProviderContext()
     var accountResponse: Codexpulse_Core_V1_AccountSnapshotResponse?
@@ -4459,7 +4483,7 @@ private func makeResponses(
     primary.windowKind = "primary"
     primary.limitID = "codex"
     primary.windowMinutes = 10_080
-    primary.remainingPercent = 0
+    primary.remainingPercent = quotaRemainingPercent
     primary.resetsAtMs = 1_753_059_600_000
     primary.resetRemainingMs = 3_600_000
     primary.freshness = "fresh"
@@ -4485,6 +4509,23 @@ private func makeResponses(
     availableCredit.expiresAtMs = 1_753_059_600_000
     availableCredit.remainingMs = 3_600_000
     quota.current.resetCredits.items = [availableCredit]
+
+    var boundPace = quotaPace
+    if let accountBindingScope {
+        let binding = makeCodexBinding(
+            scope: accountBindingScope,
+            generation: accountBindingGeneration,
+            state: accountBindingState
+        )
+        quota.current.accountScope = accountBindingScope
+        quota.current.binding = binding
+        boundPace.pace.accountScope = accountBindingScope
+        boundPace.pace.binding = binding
+        if var account = accountResponse {
+            account.binding = binding
+            accountResponse = account
+        }
+    }
 
     var sessions = Codexpulse_Core_V1_SessionListResponse()
     sessions.meta = completeMeta()
@@ -4536,7 +4577,7 @@ private func makeResponses(
     return OverviewResponses(
         usage: usage,
         quota: quota,
-        quotaPace: quotaPace,
+        quotaPace: boundPace,
         account: accountResponse,
         sessions: sessions,
         projects: projects,
@@ -4859,8 +4900,8 @@ private func testInvalidationRefreshesActivePage() async throws {
     }
     let calls = await core.recordedCalls()
     try expect(
-        calls.contains(where: { $0 == "stream:index,quota,health,settings" }),
-        "invalidation stream must subscribe to settings as well as data domains"
+        calls.contains(where: { $0 == "stream:index,quota,account,health,settings" }),
+        "invalidation stream must subscribe to account, settings, and data domains"
     )
     _ = await model.shutdown()
 }
@@ -8331,6 +8372,435 @@ private func testQuotaUsageFeatureReloadsQuotaPace() async throws {
     _ = await model.shutdown()
 }
 
+private let testCodexScopeA = String(repeating: "a", count: 64)
+private let testCodexScopeB = String(repeating: "b", count: 64)
+
+private func testCodexAccountContextRejectsMismatchedQuotaAndAccount() throws {
+    let quotaA = makeResponses(
+        accountEmail: "a@example.com",
+        accountBindingScope: testCodexScopeA,
+        accountBindingGeneration: 1
+    )
+    var accountB = Codexpulse_Core_V1_AccountSnapshotResponse()
+    accountB.account.type = "chatgpt"
+    accountB.account.email = "b@example.com"
+    accountB.binding = makeCodexBinding(scope: testCodexScopeB, generation: 2)
+    let mixed = quotaA.replacingAccount(accountB)
+    let validated = CodexAccountContext.validatePublishedOverview(mixed)
+    try expect(validated.needsConsistencyRefresh, "mismatched B account must schedule a consistency refresh")
+    try expect(
+        validated.responses.account?.hasAccount != true,
+        "B identity must not publish beside A quota"
+    )
+    try expect(
+        CodexAccountPresentation(validated.responses.account).emailText == "--",
+        "mismatched account must not keep B email"
+    )
+}
+
+private func testCodexAccountContextDropsPreviousAccountWhenQuotaChanges() throws {
+    let previousA = makeResponses(
+        accountEmail: "a@example.com",
+        accountBindingScope: testCodexScopeA,
+        accountBindingGeneration: 1
+    ).account
+    let quotaB = makeResponses(
+        accountEmail: "b@example.com",
+        accountBindingScope: testCodexScopeB,
+        accountBindingGeneration: 2
+    )
+    let reused = CodexAccountContext.reusableAccount(
+        provider: .codex,
+        quota: quotaB.quota,
+        previousAccount: previousA
+    )
+    try expect(reused == nil, "first B quota publish must not reuse previous account A")
+    let cursorReused = CodexAccountContext.reusableAccount(
+        provider: .cursor,
+        quota: quotaB.quota,
+        previousAccount: previousA
+    )
+    try expect(
+        cursorReused?.account.email == "a@example.com",
+        "Cursor must keep existing account reuse behavior"
+    )
+}
+
+private func testCodexAccountContextReplacesMismatchedPace() throws {
+    let quotaB = makeResponses(
+        accountBindingScope: testCodexScopeB,
+        accountBindingGeneration: 2
+    )
+    var paceA = quotaB.quotaPace
+    paceA.pace.binding = makeCodexBinding(scope: testCodexScopeA, generation: 1)
+    var paceWindow = Codexpulse_Core_V1_QuotaPaceWindow()
+    paceWindow.windowKind = "primary"
+    paceWindow.limitID = "codex"
+    paceWindow.usedPercent = 88
+    paceA.pace.windows = [paceWindow]
+    let mixed = quotaB.replacingPace(paceA)
+    let validated = CodexAccountContext.validatePublishedOverview(mixed)
+    try expect(validated.needsConsistencyRefresh, "A pace beside B quota must schedule a refresh")
+    try expect(
+        validated.responses.quotaPace.pace.windows.isEmpty,
+        "A pace windows must not publish beside B quota"
+    )
+    try expect(
+        CodexAccountContext.key(fromPace: validated.responses.quotaPace)
+            == CodexAccountContext.key(fromQuota: quotaB.quota),
+        "replacement pace must align to the current quota context"
+    )
+}
+
+private func testCodexAccountContextLeavesCursorUnchanged() throws {
+    var responses = makeResponses(accountType: "cursor", accountEmail: "cursor@example.com")
+    responses = OverviewResponses(
+        provider: .cursor,
+        usage: responses.usage,
+        quota: responses.quota,
+        quotaPace: responses.quotaPace,
+        account: responses.account,
+        sessions: responses.sessions,
+        projects: responses.projects,
+        health: responses.health
+    )
+    let validated = CodexAccountContext.validatePublishedOverview(responses)
+    try expect(!validated.needsConsistencyRefresh, "Cursor overview must not enter Codex binding refresh")
+    try expect(
+        validated.responses.account?.account.email == "cursor@example.com",
+        "Cursor account identity must remain intact"
+    )
+}
+
+private func testCodexPendingAccountPresentationClearsEmail() throws {
+    var pending = Codexpulse_Core_V1_AccountSnapshotResponse()
+    pending.account.type = "chatgpt"
+    pending.account.email = "a@example.com"
+    pending.binding = makeCodexBinding(
+        scope: testCodexScopeA,
+        generation: 2,
+        state: "pending"
+    )
+    let presentation = CodexAccountPresentation(pending)
+    try expect(presentation.availability == .unavailable, "pending must not look like a confirmed account")
+    try expect(presentation.emailText == "--", "pending must not keep the previous email")
+    try expect(
+        presentation.accessibilityLabel == "账号确认中",
+        "pending must use confirming-account copy"
+    )
+}
+
+private func testQuotaCopyDistinguishesAccountLimitsFromHomeCollection() throws {
+    let quota = try mainWindowSource("QuotaHealthViews.swift")
+    let overview = try mainWindowSource("RootView.swift")
+    try expect(
+        quota.contains("case .codex: \"当前账号额度\"")
+            && quota.contains("当前 Codex Home 已采集")
+            && overview.contains("当前 Codex Home 已采集"),
+        "Codex quota copy must isolate account limits from Home-collected usage"
+    )
+    let english = try appSupportLocalization("en")
+    try expect(
+        english.contains("\"当前账号额度\" = \"Current account limits\";")
+            && english.contains(
+                "\"当前 Codex Home 已采集\" = \"Collected from current Codex Home\";"
+            ),
+        "account-limit copy must have English translations"
+    )
+}
+
+@MainActor
+private func testAppRuntimePendingBindingClearsPreviousAccountEmail() async throws {
+    let suiteName = "CodexPulseAppTests.AccountContextPending.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("pending-binding defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(
+            accountEmail: "a@example.com",
+            accountBindingScope: testCodexScopeA,
+            accountBindingGeneration: 1
+        )
+    )
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("A account before pending") {
+        await MainActor.run { model.presentation?.account.emailText == "a@example.com" }
+    }
+    await core.setResponses(
+        makeResponses(
+            accountEmail: "a@example.com",
+            accountBindingScope: testCodexScopeA,
+            accountBindingGeneration: 2,
+            accountBindingState: "pending"
+        )
+    )
+    model.refreshOrRestart()
+    try await waitUntil("pending binding clears A email") {
+        await MainActor.run {
+            model.presentation?.account.emailText == "--"
+                && model.presentation?.account.availability == .unavailable
+        }
+    }
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testAppRuntimeFirstOverviewPublishDropsPreviousAccountOnBQuota() async throws {
+    let suiteName = "CodexPulseAppTests.AccountContextFirstPublish.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("first-publish defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(
+            accountEmail: "a@example.com",
+            accountBindingScope: testCodexScopeA,
+            accountBindingGeneration: 1
+        )
+    )
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("A account overview") {
+        await MainActor.run { model.presentation?.account.emailText == "a@example.com" }
+    }
+    await core.setResponses(
+        makeResponses(
+            accountEmail: "b@example.com",
+            accountBindingScope: testCodexScopeB,
+            accountBindingGeneration: 2
+        )
+    )
+    await core.setAccountDelay(.seconds(60))
+    model.refreshOrRestart()
+    try await waitUntil("B quota overview without reused A") {
+        await MainActor.run {
+            model.presentation != nil && !model.isOverviewRefreshing
+        }
+    }
+    try expect(
+        model.presentation?.account.emailText != "a@example.com",
+        "first B quota publish must not keep previous account A"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testAppRuntimeDiscardsMismatchedAccountRefresh() async throws {
+    let suiteName = "CodexPulseAppTests.AccountContextMismatchRefresh.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("mismatch-refresh defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(
+            accountEmail: "a@example.com",
+            accountBindingScope: testCodexScopeA,
+            accountBindingGeneration: 1
+        )
+    )
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("A account before mismatched refresh") {
+        await MainActor.run { model.presentation?.account.emailText == "a@example.com" }
+    }
+    var accountB = Codexpulse_Core_V1_AccountSnapshotResponse()
+    accountB.account.type = "chatgpt"
+    accountB.account.email = "b@example.com"
+    accountB.account.planType = "pro"
+    accountB.binding = makeCodexBinding(scope: testCodexScopeB, generation: 2)
+    await core.setAccountOverride(accountB)
+    await core.publishOverviewInvalidations(count: 1, recovered: false, domain: "index")
+    try await waitUntil("mismatched B account refresh completed") {
+        await core.recordedCompletedAccountCalls() >= 2
+    }
+    try expect(
+        model.presentation?.account.emailText != "b@example.com",
+        "B account must not publish beside already-visible A quota"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testAppRuntimeAccountInvalidationCancelsInFlightAccountAndOverview() async throws {
+    let suiteName = "CodexPulseAppTests.AccountInvalidationCancel.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("account-invalidation defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(
+            accountEmail: "a@example.com",
+            accountBindingScope: testCodexScopeA,
+            accountBindingGeneration: 1
+        )
+    )
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("overview before account invalidation") {
+        await MainActor.run { model.presentation?.account.emailText == "a@example.com" }
+    }
+    let quotaCallsBefore = await core.recordedQuotaRequests().count
+    await core.setAccountDelay(.seconds(60))
+    await core.prepareOverviewBarrier()
+    model.refreshOrRestart()
+    try await waitUntil("overview blocked before account invalidation") {
+        await core.overviewBarrierWaiterCount() >= 1
+    }
+    await core.publishOverviewInvalidations(count: 1, recovered: true, domain: "account")
+    await core.releaseOverviewBarrier()
+    try await waitUntil("account invalidation starts a new overview") {
+        await core.recordedQuotaRequests().count >= quotaCallsBefore + 2
+    }
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testAppRuntimeAccountInvalidationClearsCodexCacheWhileCursorSelected() async throws {
+    let suiteName = "CodexPulseAppTests.AccountInvalidationOffProvider.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("off-provider account-invalidation defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.cursor.rawValue, forKey: "CodexPulse.statusProvider")
+    defaults.set(AppFeature.overview.rawValue, forKey: "CodexPulse.selectedFeature")
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(
+            accountEmail: "a@example.com",
+            accountBindingScope: testCodexScopeA,
+            accountBindingGeneration: 1
+        )
+    )
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("A account before off-provider invalidation") {
+        await MainActor.run { model.presentation?.account.emailText == "a@example.com" }
+    }
+    model.selectProvider(.cursor)
+    try await waitUntil("Cursor selected before account invalidation") {
+        await MainActor.run {
+            model.selectedProvider == .cursor && model.presentation?.provider == .cursor
+        }
+    }
+    await core.setResponses(
+        makeResponses(
+            accountEmail: "b@example.com",
+            accountBindingScope: testCodexScopeB,
+            accountBindingGeneration: 2
+        )
+    )
+    let cursorQuotaCallsBeforeInvalidation = await core.recordedQuotaRequests().filter {
+        $0.provider.provider == AgentProvider.cursor.rawValue
+    }.count
+    await core.publishOverviewInvalidations(count: 1, recovered: false, domain: "account")
+    let cursorQuotaCallsAfterInvalidation = await core.recordedQuotaRequests().filter {
+        $0.provider.provider == AgentProvider.cursor.rawValue
+    }.count
+    try expect(
+        cursorQuotaCallsAfterInvalidation == cursorQuotaCallsBeforeInvalidation,
+        "Codex account invalidation must not refresh the selected Cursor overview"
+    )
+    await core.prepareOverviewBarrier()
+    model.selectProvider(.codex)
+    try await waitUntil("Codex refresh blocked after off-provider invalidation") {
+        await core.overviewBarrierWaiterCount() >= 1
+    }
+    let leakedA = model.presentation?.account.emailText == "a@example.com"
+    await core.releaseOverviewBarrier()
+    try expect(!leakedA, "off-provider account invalidation must not publish cached account A")
+    try await waitUntil("B account after off-provider invalidation") {
+        await MainActor.run { model.presentation?.account.emailText == "b@example.com" }
+    }
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testAppRuntimeABACacheDoesNotReuseOldGeneration() async throws {
+    let suiteName = "CodexPulseAppTests.AccountContextABACache.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("aba-cache defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(
+            accountEmail: "a@example.com",
+            accountBindingScope: testCodexScopeA,
+            accountBindingGeneration: 1,
+            quotaRemainingPercent: 10
+        )
+    )
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("A generation 1 overview") {
+        await MainActor.run { model.presentation?.quotaWindows.first?.remainingPercent == 10 }
+    }
+    await core.setResponses(
+        makeResponses(
+            accountEmail: "b@example.com",
+            accountBindingScope: testCodexScopeB,
+            accountBindingGeneration: 2,
+            quotaRemainingPercent: 50
+        )
+    )
+    model.refreshOrRestart()
+    try await waitUntil("B generation 2 overview") {
+        await MainActor.run { model.presentation?.quotaWindows.first?.remainingPercent == 50 }
+    }
+    await core.setResponses(
+        makeResponses(
+            accountEmail: "a@example.com",
+            accountBindingScope: testCodexScopeA,
+            accountBindingGeneration: 3,
+            quotaRemainingPercent: 30
+        )
+    )
+    model.refreshOrRestart()
+    try await waitUntil("restored A uses new generation") {
+        await MainActor.run { model.presentation?.quotaWindows.first?.remainingPercent == 30 }
+    }
+    try expect(
+        model.presentation?.quotaWindows.first?.remainingPercent == 30,
+        "A→B→A must not reuse the old generation cache object"
+    )
+    _ = await model.shutdown()
+}
+
 @MainActor
 private func testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess() async throws {
     let suiteName = "CodexPulseAppTests.OptionalAccount.\(UUID().uuidString)"
@@ -11145,7 +11615,19 @@ struct CodexPulseAppTestMain {
         try await testAppRuntimeUsesWeeklyQuotaRangeForOverview()
         try await testAppRuntimeLoadsQuotaPaceWithOverview()
         try await testQuotaUsageFeatureReloadsQuotaPace()
+        try testCodexAccountContextRejectsMismatchedQuotaAndAccount()
+        try testCodexAccountContextDropsPreviousAccountWhenQuotaChanges()
+        try testCodexAccountContextReplacesMismatchedPace()
+        try testCodexAccountContextLeavesCursorUnchanged()
+        try testCodexPendingAccountPresentationClearsEmail()
+        try testQuotaCopyDistinguishesAccountLimitsFromHomeCollection()
+        try await testAppRuntimePendingBindingClearsPreviousAccountEmail()
         try await testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess()
+        try await testAppRuntimeFirstOverviewPublishDropsPreviousAccountOnBQuota()
+        try await testAppRuntimeDiscardsMismatchedAccountRefresh()
+        try await testAppRuntimeAccountInvalidationCancelsInFlightAccountAndOverview()
+        try await testAppRuntimeAccountInvalidationClearsCodexCacheWhileCursorSelected()
+        try await testAppRuntimeABACacheDoesNotReuseOldGeneration()
         try await testAppRuntimeFallsBackWhenWeeklyQuotaIsUnavailable()
         try await testOverviewRangeSelectionRefreshesAllContent()
         try await testOverviewProjectFailureDoesNotHideUsageAndSessions()

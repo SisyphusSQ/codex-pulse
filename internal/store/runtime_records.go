@@ -81,9 +81,14 @@ const (
 )
 
 const (
-	QuotaSourceInstanceWhamDefault = "quota:wham:default"
-	QuotaSourceTypeWham            = "wham_quota"
+	QuotaSourceInstanceWhamDefault     = "quota:wham:default"
+	QuotaSourceTypeWham                = "wham_quota"
+	QuotaSourceTypeAppServerRateLimits = "app_server_rate_limits"
 )
+
+func QuotaSourceInstanceAppServer(accountScope string) string {
+	return "quota:app_server:" + accountScope
+}
 
 type SourceFileState string
 
@@ -166,11 +171,13 @@ type SourceAttempt struct {
 // QuotaFetchRecord is the atomic persistence unit for one online quota fetch.
 // Observations and attempt metrics contain no response text or credentials.
 type QuotaFetchRecord struct {
-	SourceInstanceID string
-	SourceType       string
-	ScopeKey         string
-	Attempt          SourceAttempt
-	Observations     []QuotaObservationSample
+	AccountScope      string
+	BindingGeneration int64
+	SourceInstanceID  string
+	SourceType        string
+	ScopeKey          string
+	Attempt           SourceAttempt
+	Observations      []QuotaObservationSample
 }
 
 type JobState string

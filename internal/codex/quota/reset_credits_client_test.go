@@ -1,67 +1,56 @@
 package quota
 
 import (
-	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
 func TestResetCreditsClientFetchesTypedReadOnlySnapshot(t *testing.T) {
 	t.Parallel()
 
-	provider, err := NewMemoryCredentialProvider([]byte(syntheticAccessToken))
-	if err != nil {
-		t.Fatalf("NewMemoryCredentialProvider() error = %v", err)
-	}
-	t.Cleanup(provider.Close)
-	var retained *http.Request
-	client := mustResetCreditsClient(t, ClientConfig{
-		Credentials: provider, Now: fixedClock(1_784_000_000_000),
-		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
-			retained = request
-			if request.Method != http.MethodGet || request.URL.String() != WhamResetCreditsEndpoint {
-				t.Fatalf("request = %s %s", request.Method, request.URL)
-			}
-			if request.Header.Get("Authorization") != "Bearer "+syntheticAccessToken ||
-				request.Header.Get("Cache-Control") != "no-store" {
-				t.Fatalf("headers = %#v", request.Header)
-			}
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body: io.NopCloser(strings.NewReader(`{
-					"available_count": 2,
-					"credits": [
-						{"id":"RateLimitResetCredit_private-a","status":"available","reset_type":"codex_rate_limits","granted_at":"2026-07-15T10:00:00Z","expires_at":"2026-07-15T13:00:00Z","title":"private-title","profile_user_id":"private-user"},
-						{"id":"RateLimitResetCredit_private-b","status":"available","type":"codex_rate_limits","created_at":"2026-07-15T10:00:00Z","expires_at":"2026-07-15T14:00:00Z","description":"private-description"},
-						{"id":"RateLimitResetCredit_private-c","status":"redeemed","reset_type":"codex_rate_limits","granted_at":"2026-07-14T10:00:00Z","expires_at":"2026-07-16T10:00:00Z","redeemed_at":"2026-07-15T10:30:00Z"}
-					]
-				}`)),
-			}, nil
-		}),
+	key := testScopeKey(0x41)
+	request := testBoundRequest(t, key, "acct-test-a", "reset-client-success")
+	granted := int64(1_783_000_000)
+	expiresA := int64(1_783_010_800)
+	expiresB := int64(1_783_014_400)
+	expiresC := int64(1_784_000_000)
+	snapshot := testRateLimitsSnapshot("acct-test-a", 1, 1, &appserver.RateLimitResetCreditsSummary{
+		AvailableCount: 2,
+		Credits: []appserver.RateLimitResetCredit{
+			{
+				ID: "credit-private-a", Status: "available", ResetType: "codexRateLimits",
+				GrantedAtSeconds: granted, ExpiresAtSeconds: &expiresA,
+			},
+			{
+				ID: "credit-private-b", Status: "available", ResetType: "codexRateLimits",
+				GrantedAtSeconds: granted, ExpiresAtSeconds: &expiresB,
+			},
+			{
+				ID: "credit-private-c", Status: "redeemed", ResetType: "codexRateLimits",
+				GrantedAtSeconds: granted, ExpiresAtSeconds: &expiresC,
+			},
+		},
 	})
-	result, err := client.Fetch(context.Background(), "reset-client-success")
+	client := mustResetCreditsClient(t, key, &scriptedRateLimitsReader{snapshots: []appserver.AccountRateLimitsSnapshot{snapshot}})
+	result, err := client.Fetch(t.Context(), request)
 	if err != nil {
 		t.Fatalf("Fetch() error = %v", err)
 	}
 	if result.Failure != nil || result.Snapshot == nil || result.AttemptCount != 1 ||
-		result.HTTPStatus == nil || *result.HTTPStatus != 200 || len(result.Snapshot.Credits) != 3 ||
-		result.Snapshot.AvailableCount != 2 || result.PayloadSHA256 == nil {
+		result.HTTPStatus != nil || len(result.Snapshot.Credits) != 3 ||
+		result.Snapshot.AvailableCount != 2 || result.Snapshot.DetailsStatus != store.ResetCreditDetailsComplete ||
+		result.PayloadSHA256 == nil {
 		t.Fatalf("result = %#v", result)
 	}
 	if got := result.Snapshot.Credits[0].CreditIDHash.String(); got == "" || strings.Contains(got, "private") {
 		t.Fatalf("credit digest = %q", got)
 	}
-	if retained.Header.Get("Authorization") != "" {
-		t.Fatalf("Authorization retained after callback: %#v", retained.Header)
-	}
 	serialized := fmt.Sprintf("%#v", result)
-	for _, marker := range []string{"private-a", "private-b", "private-c", "private-title", "private-user", "private-description", syntheticAccessToken} {
+	for _, marker := range []string{"credit-private-a", "credit-private-b", "credit-private-c", "acct-test-a"} {
 		if strings.Contains(serialized, marker) {
 			t.Fatalf("result leaked %q: %s", marker, serialized)
 		}
@@ -71,52 +60,37 @@ func TestResetCreditsClientFetchesTypedReadOnlySnapshot(t *testing.T) {
 func TestResetCreditsClientFailsClosedOnInvalidPayloads(t *testing.T) {
 	t.Parallel()
 
+	key := testScopeKey(0x42)
+	request := testBoundRequest(t, key, "acct-test-a", "reset-invalid")
 	tests := []struct {
-		name string
-		body string
+		name     string
+		snapshot appserver.AccountRateLimitsSnapshot
 	}{
-		{name: "duplicate key", body: `{"available_count":0,"available_count":1,"credits":[]}`},
-		{name: "count mismatch", body: `{"available_count":1,"credits":[]}`},
-		{name: "missing id", body: `{"available_count":1,"credits":[{"status":"available","reset_type":"codex_rate_limits","granted_at":"2026-07-15T10:00:00Z","expires_at":"2026-07-16T10:00:00Z"}]}`},
-		{name: "invalid expiry", body: `{"available_count":1,"credits":[{"id":"a","status":"available","reset_type":"codex_rate_limits","granted_at":"2026-07-15T10:00:00Z","expires_at":"not-a-time"}]}`},
-		{name: "unknown status", body: `{"available_count":0,"credits":[{"id":"a","status":"private-future","reset_type":"codex_rate_limits","granted_at":"2026-07-15T10:00:00Z","expires_at":"2026-07-16T10:00:00Z"}]}`},
+		{
+			name: "missing credits object",
+			snapshot: func() appserver.AccountRateLimitsSnapshot {
+				value := testRateLimitsSnapshot("acct-test-a", 1, 1, nil)
+				return value
+			}(),
+		},
+		{
+			name: "missing credit id",
+			snapshot: testRateLimitsSnapshot("acct-test-a", 1, 1, &appserver.RateLimitResetCreditsSummary{
+				AvailableCount: 1,
+				Credits:        []appserver.RateLimitResetCredit{{Status: "available", ResetType: "codexRateLimits", GrantedAtSeconds: 1_783_000_000}},
+			}),
+		},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			client := resetCreditsClientForBody(t, testCase.body)
-			result, err := client.Fetch(context.Background(), "reset-invalid-"+strings.ReplaceAll(testCase.name, " ", "-"))
-			if err != nil || result.Snapshot != nil || result.Failure == nil ||
-				result.Failure.Code != store.SourceFailureSchemaIncompatible {
+			client := mustResetCreditsClient(t, key, &scriptedRateLimitsReader{
+				snapshots: []appserver.AccountRateLimitsSnapshot{testCase.snapshot},
+			})
+			result, err := client.Fetch(t.Context(), request)
+			if err != nil || result.Failure == nil || result.Failure.Code != store.SourceFailureSchemaIncompatible ||
+				result.Snapshot != nil {
 				t.Fatalf("Fetch() = %#v, %v", result, err)
 			}
 		})
 	}
-}
-
-func mustResetCreditsClient(t *testing.T, config ClientConfig) *ResetCreditsClient {
-	t.Helper()
-	client, err := NewResetCreditsClient(config)
-	if err != nil {
-		t.Fatalf("NewResetCreditsClient() error = %v", err)
-	}
-	return client
-}
-
-func resetCreditsClientForBody(t *testing.T, body string) *ResetCreditsClient {
-	t.Helper()
-	provider, err := NewMemoryCredentialProvider([]byte(syntheticAccessToken))
-	if err != nil {
-		t.Fatalf("NewMemoryCredentialProvider() error = %v", err)
-	}
-	t.Cleanup(provider.Close)
-	return mustResetCreditsClient(t, ClientConfig{
-		Credentials: provider, Now: fixedClock(1_784_000_000_000),
-		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       io.NopCloser(strings.NewReader(body)),
-			}, nil
-		}),
-	})
 }

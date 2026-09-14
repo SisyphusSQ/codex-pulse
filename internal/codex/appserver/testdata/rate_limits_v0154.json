@@ -1,0 +1,115 @@
+{
+  "single_bucket": {
+    "accountId": "acct-test-a",
+    "ordinaryUsageAllowed": true,
+    "rateLimits": {
+      "limitId": "codex",
+      "limitName": "Codex",
+      "planType": "pro",
+      "spendControlReached": false,
+      "primary": {
+        "usedPercent": 12,
+        "windowDurationMins": 300,
+        "resetsAt": 1784008800
+      },
+      "secondary": {
+        "usedPercent": 40,
+        "windowDurationMins": 10080,
+        "resetsAt": 1784613600
+      }
+    },
+    "rateLimitsByLimitId": null,
+    "rateLimitResetCredits": {
+      "availableCount": 2,
+      "credits": [
+        {
+          "id": "credit-test-a",
+          "status": "available",
+          "resetType": "codexRateLimits",
+          "grantedAt": 1781400000,
+          "expiresAt": 1784008800
+        },
+        {
+          "id": "credit-test-b",
+          "status": "redeeming",
+          "resetType": "codexRateLimits",
+          "grantedAt": 1781403600,
+          "expiresAt": null
+        }
+      ]
+    },
+    "rateLimitUpsell": {
+      "title": "ignore this banner",
+      "body": "must not be persisted"
+    }
+  },
+  "multi_bucket": {
+    "accountId": "acct-test-a",
+    "ordinaryUsageAllowed": false,
+    "rateLimits": {
+      "limitId": "codex",
+      "limitName": "Codex",
+      "planType": "plus",
+      "primary": {
+        "usedPercent": 8,
+        "windowDurationMins": 300,
+        "resetsAt": 1784008800
+      },
+      "secondary": null
+    },
+    "rateLimitsByLimitId": {
+      "codex": {
+        "limitId": "codex",
+        "limitName": "Codex",
+        "planType": "plus",
+        "primary": {
+          "usedPercent": 8,
+          "windowDurationMins": 300,
+          "resetsAt": 1784008800
+        }
+      },
+      "extra": {
+        "limitId": "extra",
+        "limitName": "Extra",
+        "planType": "plus",
+        "primary": {
+          "usedPercent": 90,
+          "windowDurationMins": 60,
+          "resetsAt": 1781407200
+        }
+      }
+    },
+    "rateLimitResetCredits": {
+      "availableCount": 0,
+      "credits": []
+    }
+  },
+  "credits_null": {
+    "accountId": "acct-test-a",
+    "ordinaryUsageAllowed": null,
+    "rateLimits": {
+      "limitId": "codex",
+      "primary": {
+        "usedPercent": 0,
+        "windowDurationMins": 300,
+        "resetsAt": 1784008800
+      }
+    },
+    "rateLimitsByLimitId": null,
+    "rateLimitResetCredits": {
+      "availableCount": 3,
+      "credits": null
+    }
+  },
+  "ordinary_usage_null": {
+    "accountId": "acct-test-a",
+    "ordinaryUsageAllowed": null,
+    "rateLimits": {
+      "primary": {
+        "usedPercent": 100,
+        "windowDurationMins": null,
+        "resetsAt": null
+      }
+    }
+  }
+}

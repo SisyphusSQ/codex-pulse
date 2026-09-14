@@ -4,7 +4,7 @@ import GRPCCore
 public enum CodexPulseTransportContract {
     public static let version = "core-rpc-v2"
     public static let transport = "grpc+unix"
-    public static let invalidationVersion = "query-invalidation-v2"
+    public static let invalidationVersion = "query-invalidation-v3"
     public static let maximumMessageBytes = 16 * 1024 * 1024
 
     public static func validateHandshake(

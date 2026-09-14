@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -282,18 +281,15 @@ func startApplicationControlsTestRuntime(
 	t testing.TB,
 ) (*applicationLifecycleRuntime, *storesqlite.Store, *preferences.FileStore) {
 	t.Helper()
-	database, _ := openQuotaRuntimeStore(t)
+	database, repository := openQuotaRuntimeStore(t)
 	home := writeSyntheticAuthHome(t, "synthetic-control-home-token")
 	prepareApplicationControlsHome(t, home)
 	preferenceStore := confirmedQuotaRuntimeFileStore(t, home, false, false)
-	runtime, err := startApplicationLifecycleRuntime(context.Background(), ApplicationLifecycleRuntimeConfig{
+	runtime, err := startApplicationLifecycleRuntime(context.Background(), withBoundLifecycleQuota(t, repository, ApplicationLifecycleRuntimeConfig{
 		Database: database, Preferences: preferenceStore,
 		EventTimeout: time.Second,
-		QuotaTransport: quotaRuntimeRoundTripper(func(request *http.Request) (*http.Response, error) {
-			return quotaRuntimeJSONResponse(validQuotaRuntimeUsagePayload()), nil
-		}),
-		QuotaClock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
-	})
+		QuotaClock:   func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+	}))
 	if err != nil || runtime == nil {
 		_ = database.Close(context.Background())
 		t.Fatalf("startApplicationLifecycleRuntime() = %#v, %v", runtime, err)

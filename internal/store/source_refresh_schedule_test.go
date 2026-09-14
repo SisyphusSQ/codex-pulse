@@ -24,13 +24,13 @@ func TestSourceRefreshScheduleClaimsDueWorkOnceAndRejectsStaleCompletion(t *test
 	}
 	if _, claimed, err := repository.ClaimSourceRefresh(
 		context.Background(), QuotaSourceInstanceWhamDefault, schedule.Revision,
-		"claim-too-early", RefreshTriggerScheduled, 999, 30_000,
+		"claim-too-early", RefreshTriggerScheduled, 999, 30_000, 0,
 	); err != nil || claimed {
 		t.Fatalf("early claim = %v, %v", claimed, err)
 	}
 	claimedSchedule, claimed, err := repository.ClaimSourceRefresh(
 		context.Background(), QuotaSourceInstanceWhamDefault, schedule.Revision,
-		"claim-1", RefreshTriggerScheduled, 1_000, 30_000,
+		"claim-1", RefreshTriggerScheduled, 1_000, 30_000, 0,
 	)
 	if err != nil || !claimed || claimedSchedule.ActiveClaimID == nil ||
 		*claimedSchedule.ActiveClaimID != "claim-1" || claimedSchedule.Revision != 2 {
@@ -38,7 +38,7 @@ func TestSourceRefreshScheduleClaimsDueWorkOnceAndRejectsStaleCompletion(t *test
 	}
 	if _, claimed, err := repository.ClaimSourceRefresh(
 		context.Background(), QuotaSourceInstanceWhamDefault, claimedSchedule.Revision,
-		"claim-2", RefreshTriggerScheduled, 1_001, 30_000,
+		"claim-2", RefreshTriggerScheduled, 1_001, 30_000, 0,
 	); err != nil || claimed {
 		t.Fatalf("overlapping claim = %v, %v", claimed, err)
 	}
@@ -80,7 +80,7 @@ func TestReleaseExpiredSourceRefreshClaimRevalidatesDueAtCurrentClock(t *testing
 	}
 	claimed, ok, err := repository.ClaimSourceRefresh(
 		context.Background(), ResetCreditsSourceInstanceWhamDefault, schedule.Revision,
-		"claim-crashed", RefreshTriggerScheduled, 100, 50,
+		"claim-crashed", RefreshTriggerScheduled, 100, 50, 0,
 	)
 	if err != nil || !ok {
 		t.Fatalf("claim = %#v, %v, %v", claimed, ok, err)
@@ -129,7 +129,7 @@ func TestAbandonedSourceRefreshClaimRejectsLateRetryAfterAttempt(t *testing.T) {
 	}
 	claimed, ok, err := repository.ClaimSourceRefresh(
 		context.Background(), ResetCreditsSourceInstanceWhamDefault, schedule.Revision,
-		claimID, RefreshTriggerScheduled, 100, 50,
+		claimID, RefreshTriggerScheduled, 100, 50, 0,
 	)
 	if err != nil || !ok {
 		t.Fatalf("claim = %#v, %v, %v", claimed, ok, err)
@@ -182,7 +182,7 @@ func TestSourceRefreshScheduleManualClaimPersistsThrottleTimestamp(t *testing.T)
 	}
 	claimed, ok, err := repository.ClaimSourceRefresh(
 		context.Background(), QuotaSourceInstanceWhamDefault, schedule.Revision,
-		"manual-claim", RefreshTriggerManual, 1_000, 30_000,
+		"manual-claim", RefreshTriggerManual, 1_000, 30_000, 0,
 	)
 	if err != nil || !ok || claimed.LastManualAtMS == nil || *claimed.LastManualAtMS != 1_000 {
 		t.Fatalf("manual claim = %#v, %v, %v", claimed, ok, err)
@@ -207,7 +207,7 @@ func TestSourceRefreshScheduleManualClaimPersistsThrottleTimestamp(t *testing.T)
 	}
 	if _, ok, err := repository.ClaimSourceRefresh(
 		context.Background(), QuotaSourceInstanceWhamDefault, early.Revision,
-		"manual-too-soon", RefreshTriggerManual, 31_000, 30_000,
+		"manual-too-soon", RefreshTriggerManual, 31_000, 30_000, 0,
 	); err != nil || ok {
 		t.Fatalf("manual claim inside durable throttle = %v, %v", ok, err)
 	}

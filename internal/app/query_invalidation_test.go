@@ -33,6 +33,23 @@ func TestDashboardAwareInvalidationRefreshesAllFactsChangedByQuotaDomain(t *test
 	}
 }
 
+func TestDashboardAwareInvalidationDoesNotInvalidateCursorCacheForAccountDomain(t *testing.T) {
+	t.Parallel()
+
+	cache := &recordingDashboardInvalidator{}
+	inner := &recordingInvalidationNotifier{}
+	notifier := &dashboardAwareInvalidation{inner: inner, summary: cache}
+	if err := notifier.Notify(context.Background(), core.InvalidationAccount); err != nil {
+		t.Fatalf("Notify(account) error = %v", err)
+	}
+	if cache.combined != 0 || cache.usage != 0 || inner.account != 1 || inner.quota != 0 {
+		t.Fatalf(
+			"account invalidation = cache(%d, combined %d), inner account=%d quota=%d",
+			cache.usage, cache.combined, inner.account, inner.quota,
+		)
+	}
+}
+
 type recordingDashboardInvalidator struct {
 	usage    int
 	combined int
@@ -44,8 +61,9 @@ func (invalidator *recordingDashboardInvalidator) InvalidateUsageAndQuota() {
 }
 
 type recordingInvalidationNotifier struct {
-	index int
-	quota int
+	index   int
+	quota   int
+	account int
 }
 
 func (notifier *recordingInvalidationNotifier) Notify(
@@ -57,6 +75,8 @@ func (notifier *recordingInvalidationNotifier) Notify(
 		notifier.index++
 	case core.InvalidationQuota:
 		notifier.quota++
+	case core.InvalidationAccount:
+		notifier.account++
 	}
 	return nil
 }

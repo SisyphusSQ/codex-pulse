@@ -31,6 +31,9 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 		"app_runtime_samples",
 		"bootstrap_jobs",
 		"bootstrap_plan_items",
+		"codex_account_binding",
+		"codex_account_scope_key",
+		"codex_account_scopes",
 		"cost_rollup_generations",
 		"cursor_ai_edit_events",
 		"cursor_dashboard_quota_observations",
@@ -85,6 +88,7 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 		"source_generation_batches",
 		"source_generations",
 		"source_refresh_claims",
+		"source_refresh_global_fences",
 		"source_refresh_schedules",
 		"source_state",
 		"turn_attributions",
@@ -297,7 +301,7 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"source_attempts": {
 			"request_id", "source_instance_id", "started_at_ms", "finished_at_ms",
 			"outcome", "http_status", "error_class", "payload_sha256", "failure_code",
-			"attempt_count", "response_bytes", "retry_at_ms",
+			"attempt_count", "response_bytes", "retry_at_ms", "binding_generation",
 		},
 		"job_runs": {
 			"job_id", "job_type", "requested_by", "priority", "state", "phase",
@@ -319,11 +323,11 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 			"output_micros_per_million",
 		},
 		"quota_observations": {
-			"observation_id", "account_scope", "source", "limit_id", "window_kind",
+			"observation_id", "account_scope", "source", "limit_id", "limit_name", "window_kind",
 			"used_percent", "window_minutes", "resets_at_ms", "plan_type", "validity",
 			"rejection_reason", "first_observed_at_ms", "last_observed_at_ms", "sample_count",
 			"request_id", "session_id", "source_file_id", "first_source_generation", "first_source_offset",
-			"source_generation", "source_offset", "limit_name",
+			"source_generation", "source_offset",
 		},
 		"quota_observation_receipts": {
 			"observation_id", "segment_observation_id", "sample_sha256",
@@ -346,18 +350,33 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 			"expires_at_ms", "redeemed_at_ms",
 		},
 		"source_refresh_schedules": {
-			"source_instance_id", "source_type", "scope_key", "next_due_at_ms", "reason",
+			"source_instance_id", "source_type", "scope_key", "binding_generation", "next_due_at_ms", "reason",
 			"last_manual_at_ms", "active_claim_id", "active_trigger", "claim_started_at_ms",
 			"claim_expires_at_ms", "revision", "updated_at_ms",
 		},
 		"source_refresh_claims": {
-			"claim_id", "source_instance_id", "schedule_revision", "trigger", "started_at_ms",
+			"claim_id", "source_instance_id", "schedule_revision", "binding_generation", "trigger", "started_at_ms",
 			"expires_at_ms", "state", "finalized_at_ms",
+		},
+		"source_refresh_global_fences": {
+			"source_group", "not_before_ms", "reason", "updated_at_ms",
+		},
+		"codex_account_scope_key": {
+			"singleton_id", "key_bytes", "created_at_ms",
+		},
+		"codex_account_scopes": {
+			"account_scope", "first_seen_at_ms", "last_seen_at_ms",
+		},
+		"codex_account_binding": {
+			"singleton_id", "state", "account_scope", "last_confirmed_scope",
+			"binding_generation", "observed_at_ms", "reason",
 		},
 	}
 	wantForeignKeys := []string{
 		"bootstrap_jobs.job_id->job_runs.job_id/CASCADE",
 		"bootstrap_plan_items.job_id->bootstrap_jobs.job_id/CASCADE",
+		"codex_account_binding.account_scope->codex_account_scopes.account_scope/RESTRICT",
+		"codex_account_binding.last_confirmed_scope->codex_account_scopes.account_scope/RESTRICT",
 		"cursor_session_lineage.session_id->cursor_sessions.id/CASCADE",
 		"grok_session_lineage.session_id->grok_sessions.id/CASCADE",
 		"health_events.job_id->job_runs.job_id/SET NULL",
@@ -597,6 +616,8 @@ func TestRuntimeSchemaRequiredIndexesServeQueries(t *testing.T) {
 	healthJobQuery, healthJobArguments := buildHealthEventsQuery(HealthEventFilter{JobID: &jobID}, 10)
 	queries := []queryPlanCase{
 		{"idx_source_files_session_state", listSourceFilesBySessionStateQuery, []any{"session-a", "active", 10}},
+		{"codex_account_binding", currentCodexAccountBindingQuery, []any{1}},
+		{"codex_account_scopes", currentCodexAccountScopeQuery, []any{strings.Repeat("a", 64)}},
 		{"idx_source_state_due", listDueSourcesQuery, []any{100, 10}},
 		{"idx_source_attempts_history", listSourceAttemptsQuery, []any{"source-a", 10}},
 		{"idx_quota_observations_projection", quotaProjectionObservationsQuery, []any{"default", "primary", "codex"}},
@@ -657,6 +678,7 @@ func TestRuntimeSchemaExcludesSensitiveContentColumns(t *testing.T) {
 	forbiddenFragments := []string{
 		"token", "cookie", "authorization", "raw_error", "error_message", "error_detail",
 		"stack", "prompt", "response_body", "tool_output", "jsonl", "payload_body",
+		"account_id", "email", "jwt",
 	}
 	err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {
 		rows, err := rawQueryRows(ctx, connection, `
@@ -665,7 +687,9 @@ func TestRuntimeSchemaExcludesSensitiveContentColumns(t *testing.T) {
 			JOIN pragma_table_info(m.name) AS p
 			WHERE m.type = 'table' AND m.name IN (
 				'source_files', 'source_state', 'source_attempts', 'job_runs',
-				'health_events', 'pricing_versions', 'model_prices'
+				'health_events', 'pricing_versions', 'model_prices',
+				'codex_account_scope_key', 'codex_account_scopes', 'codex_account_binding',
+				'source_refresh_global_fences'
 			)
 		`)
 		if err != nil {

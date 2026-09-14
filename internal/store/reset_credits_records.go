@@ -4,9 +4,11 @@ type ResetCreditStatus string
 
 const (
 	ResetCreditAvailable ResetCreditStatus = "available"
+	ResetCreditRedeeming ResetCreditStatus = "redeeming"
 	ResetCreditRedeemed  ResetCreditStatus = "redeemed"
 	ResetCreditExpired   ResetCreditStatus = "expired"
 	ResetCreditUsed      ResetCreditStatus = "used"
+	ResetCreditUnknown   ResetCreditStatus = "unknown"
 )
 
 type ResetCreditType string
@@ -19,8 +21,14 @@ const (
 const (
 	ResetCreditsSourceInstanceWhamDefault = "reset_credits:wham:default"
 	ResetCreditsSourceTypeWham            = "wham_reset_credits"
+	ResetCreditsSourceTypeAppServer       = "app_server_reset_credits"
 	maxResetCreditsPerSnapshot            = 100
+	maxResetCreditsAvailableCount         = 1_000_000
 )
+
+func ResetCreditsSourceInstanceAppServer(accountScope string) string {
+	return "reset_credits:app_server:" + accountScope
+}
 
 // ResetCredit is one content-free credit fact. CreditIDHash is the only
 // retained form of the upstream identifier; user/profile/title text is never
@@ -30,9 +38,17 @@ type ResetCredit struct {
 	Status       ResetCreditStatus
 	Type         ResetCreditType
 	GrantedAtMS  int64
-	ExpiresAtMS  int64
+	ExpiresAtMS  *int64
 	RedeemedAtMS *int64
 }
+
+type ResetCreditDetailsStatus string
+
+const (
+	ResetCreditDetailsUnavailable ResetCreditDetailsStatus = "unavailable"
+	ResetCreditDetailsPartial     ResetCreditDetailsStatus = "partial"
+	ResetCreditDetailsComplete    ResetCreditDetailsStatus = "complete"
+)
 
 // ResetCreditsSnapshot is one successful bounded response.
 type ResetCreditsSnapshot struct {
@@ -41,17 +57,20 @@ type ResetCreditsSnapshot struct {
 	AccountScope   string
 	AvailableCount int64
 	ObservedAtMS   int64
+	DetailsStatus  ResetCreditDetailsStatus
 	Credits        []ResetCredit
 }
 
 // ResetCreditsFetchRecord atomically records one attempt and, on success, its
 // typed snapshot. Failed and cancelled attempts never carry a snapshot.
 type ResetCreditsFetchRecord struct {
-	SourceInstanceID string
-	SourceType       string
-	ScopeKey         string
-	Attempt          SourceAttempt
-	Snapshot         *ResetCreditsSnapshot
+	AccountScope      string
+	BindingGeneration int64
+	SourceInstanceID  string
+	SourceType        string
+	ScopeKey          string
+	Attempt           SourceAttempt
+	Snapshot          *ResetCreditsSnapshot
 }
 
 // ResetCreditsSummary is recomputed at EvaluationAtMS so expired credits do
@@ -81,6 +100,10 @@ func cloneResetCreditsSnapshot(value *ResetCreditsSnapshot) *ResetCreditsSnapsho
 	cloned.Credits = make([]ResetCredit, len(value.Credits))
 	for index, credit := range value.Credits {
 		cloned.Credits[index] = credit
+		if credit.ExpiresAtMS != nil {
+			expiresAt := *credit.ExpiresAtMS
+			cloned.Credits[index].ExpiresAtMS = &expiresAt
+		}
 		if credit.RedeemedAtMS != nil {
 			redeemedAt := *credit.RedeemedAtMS
 			cloned.Credits[index].RedeemedAtMS = &redeemedAt

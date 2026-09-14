@@ -1,148 +1,112 @@
 package quota
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"math"
+	"sort"
 	"strings"
-	"unicode/utf8"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/jsonshape"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
-const (
-	maxWindowMinutes        int64 = 525600
-	maxLimitIdentityBytes         = 512
-	maxAdditionalRateLimits       = 49
-)
-
-type decodedWindow struct {
-	usedPercent  float64
-	windowMinute int64
-	resetsAtMS   int64
-}
-
-func decodeWhamUsage(
-	content []byte,
-	requestID string,
+func observationsFromRateLimits(
+	snapshot appserver.AccountRateLimitsSnapshot,
+	request BoundRefreshRequest,
 	observedAtMS int64,
 ) ([]store.QuotaObservationSample, bool) {
-	if validateUniqueJSONKeys(content) != nil {
+	buckets := rateLimitBuckets(snapshot)
+	if len(buckets) == 0 {
 		return nil, true
 	}
-	envelope, valid := decodeJSONObject(content)
-	if !valid {
-		return nil, true
-	}
-	plan, planTrusted, planValid := decodePlan(envelope["plan_type"])
-	if !planValid {
-		return nil, true
-	}
-	observations, schemaFailure := decodeRateLimitBucket(
-		envelope["rate_limit"], "codex", nil, requestID, plan, planTrusted, observedAtMS,
-	)
-	if len(observations) == 0 {
-		return nil, true
-	}
-
-	additionalRaw, present := envelope["additional_rate_limits"]
-	if !present || isNullJSON(additionalRaw) {
-		return observations, schemaFailure
-	}
-	var additional []json.RawMessage
-	if json.Unmarshal(additionalRaw, &additional) != nil || len(additional) > maxAdditionalRateLimits {
-		return observations, true
-	}
-	seenLimitIDs := map[string]struct{}{"codex": {}}
-	for _, raw := range additional {
-		details, valid := decodeJSONObject(raw)
-		if !valid {
+	var observations []store.QuotaObservationSample
+	schemaFailure := false
+	for _, bucket := range buckets {
+		if bucket.LimitID == nil || *bucket.LimitID == "" {
 			schemaFailure = true
 			continue
 		}
-		limitID, idValid := decodeLimitIdentity(details["metered_feature"])
-		limitName, nameValid := decodeLimitIdentity(details["limit_name"])
-		if !idValid || !nameValid {
+		limitID := *bucket.LimitID
+		plan, planTrusted, planValid := decodeAppServerPlan(bucket.PlanType)
+		if !planValid {
 			schemaFailure = true
 			continue
 		}
-		if _, duplicate := seenLimitIDs[limitID]; duplicate {
-			schemaFailure = true
-			continue
-		}
-		seenLimitIDs[limitID] = struct{}{}
-		if rateLimitRaw, present := details["rate_limit"]; !present || isNullJSON(rateLimitRaw) {
-			continue
-		}
-		name := limitName
-		bucket, bucketFailure := decodeRateLimitBucket(
-			details["rate_limit"], limitID, &name, requestID, plan, planTrusted, observedAtMS,
-		)
-		if len(bucket) == 0 || bucketFailure {
+		primary, primaryOK := decodeAppServerWindow(bucket.Primary)
+		secondary, secondaryOK := decodeAppServerWindow(bucket.Secondary)
+		if !primaryOK && bucket.Primary != nil {
 			schemaFailure = true
 		}
-		observations = append(observations, bucket...)
+		if !secondaryOK && bucket.Secondary != nil {
+			schemaFailure = true
+		}
+		if primaryOK {
+			observations = append(observations, newAppServerObservation(
+				request, limitID, bucket.LimitName, store.QuotaWindowPrimary,
+				primary, plan, planTrusted, false, observedAtMS,
+			))
+		}
+		if secondaryOK {
+			observations = append(observations, newAppServerObservation(
+				request, limitID, bucket.LimitName, store.QuotaWindowSecondary,
+				secondary, plan, planTrusted, !primaryOK, observedAtMS,
+			))
+		}
+		if !primaryOK {
+			schemaFailure = true
+		}
 	}
 	return observations, schemaFailure
 }
 
-func decodeRateLimitBucket(
-	raw json.RawMessage,
-	limitID string,
-	limitName *string,
-	requestID string,
-	plan string,
-	planTrusted bool,
-	observedAtMS int64,
-) ([]store.QuotaObservationSample, bool) {
-	rateLimit, valid := decodeJSONObject(raw)
-	if !valid {
-		return nil, true
+func rateLimitBuckets(snapshot appserver.AccountRateLimitsSnapshot) []appserver.RateLimitSnapshot {
+	if snapshot.RateLimitsByLimitID != nil {
+		limitIDs := make([]string, 0, len(snapshot.RateLimitsByLimitID))
+		for limitID := range snapshot.RateLimitsByLimitID {
+			limitIDs = append(limitIDs, limitID)
+		}
+		sort.Strings(limitIDs)
+		buckets := make([]appserver.RateLimitSnapshot, 0, len(limitIDs))
+		for _, limitID := range limitIDs {
+			bucket := snapshot.RateLimitsByLimitID[limitID]
+			if bucket.LimitID == nil {
+				copied := limitID
+				bucket.LimitID = &copied
+			}
+			buckets = append(buckets, bucket)
+		}
+		return buckets
 	}
-	primaryRaw := rateLimit["primary_window"]
-	secondaryRaw, secondaryKeyPresent := rateLimit["secondary_window"]
-	primary, primaryValid := decodeWindow(primaryRaw)
-	secondary, secondaryValid := decodeWindow(secondaryRaw)
-	secondaryPresent := secondaryKeyPresent && !isNullJSON(secondaryRaw)
-	schemaFailure := !primaryValid || secondaryPresent && !secondaryValid
-	observations := make([]store.QuotaObservationSample, 0, 2)
-	if primaryValid {
-		observations = append(observations, newObservation(
-			requestID, limitID, limitName, store.QuotaWindowPrimary,
-			primary, plan, planTrusted, false, observedAtMS,
-		))
+	bucket := snapshot.RateLimits
+	if bucket.LimitID == nil {
+		limitID := "codex"
+		bucket.LimitID = &limitID
 	}
-	if secondaryValid {
-		observations = append(observations, newObservation(
-			requestID, limitID, limitName, store.QuotaWindowSecondary,
-			secondary, plan, planTrusted, !primaryValid, observedAtMS,
-		))
-	}
-	if len(observations) == 0 {
-		return nil, true
-	}
-	return observations, schemaFailure
+	return []appserver.RateLimitSnapshot{bucket}
 }
 
-func decodeLimitIdentity(raw json.RawMessage) (string, bool) {
-	var value string
-	if !decodeRequiredScalar(raw, &value) {
-		return "", false
+func decodeAppServerWindow(window *appserver.RateLimitWindow) (decodedWindow, bool) {
+	if window == nil {
+		return decodedWindow{}, false
 	}
-	value = strings.TrimSpace(value)
-	return value, value != "" && len(value) <= maxLimitIdentityBytes && utf8.ValidString(value)
+	if window.WindowDurationMins == nil || *window.WindowDurationMins <= 0 ||
+		*window.WindowDurationMins > maxWindowMinutes || window.ResetsAtSeconds == nil ||
+		*window.ResetsAtSeconds < 0 {
+		return decodedWindow{}, false
+	}
+	return decodedWindow{
+		usedPercent:  float64(window.UsedPercent),
+		windowMinute: *window.WindowDurationMins,
+		resetsAtMS:   *window.ResetsAtSeconds * 1000,
+	}, true
 }
 
-func decodePlan(raw json.RawMessage) (string, bool, bool) {
-	var plan string
-	if !decodeRequiredScalar(raw, &plan) {
-		return "unknown", false, false
+func decodeAppServerPlan(value *string) (string, bool, bool) {
+	if value == nil {
+		return "unknown", false, true
 	}
-	plan = strings.ToLower(strings.TrimSpace(plan))
-	if plan == "" || len(plan) > 128 {
-		return "unknown", false, false
+	plan := strings.ToLower(strings.TrimSpace(*value))
+	if plan == "" {
+		return "unknown", false, true
 	}
 	switch plan {
 	case "free", "go", "plus", "pro", "prolite", "team", "self_serve_business_usage_based",
@@ -153,47 +117,8 @@ func decodePlan(raw json.RawMessage) (string, bool, bool) {
 	}
 }
 
-func decodeWindow(raw json.RawMessage) (decodedWindow, bool) {
-	if len(bytes.TrimSpace(raw)) == 0 || isNullJSON(raw) {
-		return decodedWindow{}, false
-	}
-	wire, valid := decodeJSONObject(raw)
-	if !valid {
-		return decodedWindow{}, false
-	}
-	var usedPercent float64
-	var windowSeconds int64
-	var resetAtSeconds int64
-	if !decodeRequiredScalar(wire["used_percent"], &usedPercent) || math.IsNaN(usedPercent) ||
-		math.IsInf(usedPercent, 0) || usedPercent < 0 || usedPercent > 100 ||
-		!decodeRequiredScalar(wire["limit_window_seconds"], &windowSeconds) || windowSeconds <= 0 ||
-		windowSeconds > maxWindowMinutes*60 || !decodeRequiredScalar(wire["reset_at"], &resetAtSeconds) ||
-		resetAtSeconds < 0 || resetAtSeconds > math.MaxInt64/1000 {
-		return decodedWindow{}, false
-	}
-	return decodedWindow{
-		usedPercent: usedPercent, windowMinute: (windowSeconds + 59) / 60,
-		resetsAtMS: resetAtSeconds * 1000,
-	}, true
-}
-
-func decodeJSONObject(raw []byte) (map[string]json.RawMessage, bool) {
-	if len(bytes.TrimSpace(raw)) == 0 || isNullJSON(raw) {
-		return nil, false
-	}
-	var object map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &object); err != nil || object == nil {
-		return nil, false
-	}
-	return object, true
-}
-
-func decodeRequiredScalar(raw json.RawMessage, target any) bool {
-	return len(bytes.TrimSpace(raw)) > 0 && !isNullJSON(raw) && json.Unmarshal(raw, target) == nil
-}
-
-func newObservation(
-	requestID string,
+func newAppServerObservation(
+	request BoundRefreshRequest,
 	limitID string,
 	limitName *string,
 	kind store.QuotaWindowKind,
@@ -203,7 +128,7 @@ func newObservation(
 	missingPrimary bool,
 	observedAtMS int64,
 ) store.QuotaObservationSample {
-	requestIDCopy := requestID
+	requestIDCopy := request.RequestID
 	planCopy := plan
 	validity := store.QuotaValidityAccepted
 	var reason *store.QuotaRejectionReason
@@ -218,10 +143,14 @@ func newObservation(
 		validity = store.QuotaValiditySuspicious
 		reason = quotaReason(store.QuotaReasonResetNotFuture)
 	}
-	identity := fmt.Sprintf("wham\x00%s\x00%s\x00%s\x00%d", requestID, limitID, kind, observedAtMS)
+	identity := fmt.Sprintf(
+		"app_server\x00%s\x00%d\x00%s\x00%s\x00%s\x00%d",
+		request.Binding.AccountScope, request.Binding.BindingGeneration, request.RequestID,
+		limitID, kind, observedAtMS,
+	)
 	return store.QuotaObservationSample{
-		ObservationID: "quota-wham-" + store.SHA256DigestOf([]byte(identity)).String(),
-		AccountScope:  store.QuotaAccountScopeDefault, Source: store.QuotaSourceWham,
+		ObservationID: "quota-app-server-" + store.SHA256DigestOf([]byte(identity)).String(),
+		AccountScope:  request.Binding.AccountScope, Source: store.QuotaSourceAppServer,
 		LimitID: &limitID, LimitName: cloneOptionalString(limitName),
 		WindowKind: kind, UsedPercent: window.usedPercent,
 		WindowMinutes: window.windowMinute, ResetsAtMS: window.resetsAtMS, PlanType: &planCopy,
@@ -230,20 +159,43 @@ func newObservation(
 	}
 }
 
+func quotaTypedDigest(
+	request BoundRefreshRequest,
+	observedAtMS int64,
+	observations []store.QuotaObservationSample,
+) store.SHA256Digest {
+	var builder strings.Builder
+	fmt.Fprintf(
+		&builder, "app_server\x00%s\x00%d\x00%s\x00%d",
+		request.Binding.AccountScope, request.Binding.BindingGeneration, request.RequestID, observedAtMS,
+	)
+	for _, observation := range observations {
+		limitID := ""
+		if observation.LimitID != nil {
+			limitID = *observation.LimitID
+		}
+		fmt.Fprintf(
+			&builder, "\x00%s\x00%s\x00%g\x00%d\x00%d",
+			limitID, observation.WindowKind, observation.UsedPercent, observation.WindowMinutes, observation.ResetsAtMS,
+		)
+	}
+	return store.SHA256DigestOf([]byte(builder.String()))
+}
+
+type decodedWindow struct {
+	usedPercent  float64
+	windowMinute int64
+	resetsAtMS   int64
+}
+
+const maxWindowMinutes int64 = 525600
+
 func cloneOptionalString(value *string) *string {
 	if value == nil {
 		return nil
 	}
 	cloned := *value
 	return &cloned
-}
-
-func validateUniqueJSONKeys(content []byte) error {
-	return jsonshape.ValidateDocument(content)
-}
-
-func isNullJSON(raw json.RawMessage) bool {
-	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
 }
 
 func quotaReason(value store.QuotaRejectionReason) *store.QuotaRejectionReason {

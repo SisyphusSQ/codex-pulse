@@ -74,7 +74,9 @@ type ApplicationLifecycleRuntimeConfig struct {
 	Database             *storesqlite.Store
 	Preferences          confirmedPreferencesLoader
 	EventTimeout         time.Duration
-	QuotaTransport       http.RoundTripper
+	QuotaReader          quotaonline.AccountRateLimitsReader
+	QuotaScopeKey        [32]byte
+	QuotaBinding         quotaonline.AccountBindingFence
 	QuotaClock           func() time.Time
 	Invalidation         queryInvalidationNotifier
 	UpdateWake           func(context.Context) error
@@ -177,7 +179,8 @@ func startApplicationLifecycleRuntime(
 	preferencesStore, hasPreferencesStore := loader.(preferences.PreferencesStore)
 	quotaRuntime, err := startApplicationQuotaRuntime(ctx, ApplicationQuotaRuntimeConfig{
 		Repository: repository, Preferences: loader,
-		Transport: config.QuotaTransport, Clock: config.QuotaClock,
+		Reader: config.QuotaReader, ScopeKey: config.QuotaScopeKey, Binding: config.QuotaBinding,
+		Clock:     config.QuotaClock,
 		suspended: hasPreferencesStore, hooks: config.quotaHooks,
 		invalidation: config.Invalidation,
 	})
@@ -341,6 +344,11 @@ func startApplicationLifecycleRuntime(
 	if quotaHomeRuntime != nil {
 		quotaHomeRuntime.lifecycle = coordinator
 		quotaHomeRuntime.resumeQuota = true
+		if config.QuotaBinding.BindingGeneration == 0 &&
+			(snapshot.Online.QuotaEnabled || snapshot.Online.ResetCreditsEnabled) &&
+			quotaRuntime.account != nil {
+			_ = quotaRuntime.account.Start(ctx)
+		}
 		if err := quotaRuntime.ResumeGeneration(ctx, snapshot.CodexHome.Generation); err != nil {
 			closeCoordinator()
 			closeQuotaRuntime()
@@ -1041,7 +1049,51 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 	default:
 		return core.AccountSnapshot{}, ErrApplicationLifecycleRuntime
 	}
+	var binding *store.CodexAccountBinding
+	if runtime.repository != nil {
+		stored, err := runtime.repository.CodexAccountBinding(ctx)
+		if err != nil {
+			return core.AccountSnapshot{}, err
+		}
+		copied := stored
+		binding = &copied
+	}
+	if runtime.quota != nil && runtime.quota.account != nil {
+		if err := runtime.quota.account.Discover(ctx, store.CodexAccountBindingReasonStable); err != nil &&
+			!errors.Is(err, store.ErrCodexAccountBindingChanged) {
+			return core.AccountSnapshot{}, err
+		}
+		if runtime.repository != nil {
+			stored, err := runtime.repository.CodexAccountBinding(ctx)
+			if err != nil {
+				return core.AccountSnapshot{}, err
+			}
+			copied := stored
+			binding = &copied
+		}
+		if binding != nil && binding.State != store.CodexAccountBindingConfirmed {
+			return core.AccountSnapshot{Binding: binding}, nil
+		}
+		display, err := runtime.quota.account.LoadDisplay(ctx)
+		if err != nil {
+			return core.AccountSnapshot{}, err
+		}
+		if display == nil {
+			return core.AccountSnapshot{Binding: binding}, nil
+		}
+		return core.AccountSnapshot{
+			Account: &core.AccountIdentity{
+				Type:     display.Type,
+				Email:    cloneApplicationAccountField(display.Email),
+				PlanType: cloneApplicationAccountField(display.PlanType),
+			},
+			Binding: binding,
+		}, nil
+	}
 	if runtime.settingsLoader == nil {
+		if binding != nil {
+			return core.AccountSnapshot{Binding: binding}, nil
+		}
 		return core.AccountSnapshot{}, ErrApplicationLifecycleRuntime
 	}
 	reader := runtime.accountReader
@@ -1057,13 +1109,16 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 		return core.AccountSnapshot{}, err
 	}
 	if account == nil {
-		return core.AccountSnapshot{}, nil
+		return core.AccountSnapshot{Binding: binding}, nil
 	}
-	return core.AccountSnapshot{Account: &core.AccountIdentity{
-		Type:     account.Type,
-		Email:    cloneApplicationAccountField(account.Email),
-		PlanType: cloneApplicationAccountField(account.PlanType),
-	}}, nil
+	return core.AccountSnapshot{
+		Account: &core.AccountIdentity{
+			Type:     account.Type,
+			Email:    cloneApplicationAccountField(account.Email),
+			PlanType: cloneApplicationAccountField(account.PlanType),
+		},
+		Binding: binding,
+	}, nil
 }
 
 func readConfirmedApplicationAccount(

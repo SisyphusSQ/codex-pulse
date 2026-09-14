@@ -10,7 +10,27 @@ import (
 	"sync"
 )
 
-const maxRPCLineBytes = 32 << 20
+const (
+	maxRPCLineBytes           = 32 << 20
+	jsonRPCMethodNotFoundCode = -32601
+)
+
+var ErrCapabilityUnavailable = errors.New("App Server capability unavailable")
+
+type RPCError struct {
+	Code int64
+}
+
+func (err RPCError) Error() string {
+	return fmt.Sprintf("App Server RPC error %d", err.Code)
+}
+
+func (err RPCError) Unwrap() error {
+	if err.Code == jsonRPCMethodNotFoundCode {
+		return ErrCapabilityUnavailable
+	}
+	return nil
+}
 
 type jsonLineRPC struct {
 	writer io.WriteCloser
@@ -71,7 +91,7 @@ func (rpc *jsonLineRPC) Call(ctx context.Context, method string, params any, res
 			return errors.New("App Server RPC response id mismatch")
 		}
 		if response.Error != nil {
-			return fmt.Errorf("App Server RPC error %d", response.Error.Code)
+			return RPCError{Code: response.Error.Code}
 		}
 		if len(response.Result) == 0 {
 			return errors.New("App Server RPC response missing result")
