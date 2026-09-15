@@ -94,6 +94,7 @@ message ContractsResponse {
   string pricing_catalog_version = 8;
   string invocation_usage_version = 9;
   string dashboard_summary_version = 10;
+  string codex_pro_tier_version = 11;
 }
 
 // ErrorDetail 只承载稳定分类，不允许泄漏底层错误或请求值。
@@ -1321,9 +1322,30 @@ message CodexAccountBinding {
   optional string reason = 5;
 }
 
+enum CodexProTier {
+  CODEX_PRO_TIER_UNSPECIFIED = 0;
+  CODEX_PRO_TIER_5X = 1;
+  CODEX_PRO_TIER_20X = 2;
+}
+
+enum CodexProTierState {
+  CODEX_PRO_TIER_STATE_UNSPECIFIED = 0;
+  CODEX_PRO_TIER_STATE_KNOWN = 1;
+  CODEX_PRO_TIER_STATE_PRO_UNKNOWN = 2;
+  CODEX_PRO_TIER_STATE_CONFLICT = 3;
+  CODEX_PRO_TIER_STATE_NOT_APPLICABLE = 4;
+}
+
+message CodexProTierSnapshot {
+  CodexProTierState state = 1;
+  optional CodexProTier tier = 2;
+  string reason = 3;
+}
+
 message AccountSnapshotResponse {
   optional CodexAccountIdentity account = 1;
   optional CodexAccountBinding binding = 2;
+  optional CodexProTierSnapshot pro_tier = 3;
 }
 
 message APISubscriptionsCurrentRequest {

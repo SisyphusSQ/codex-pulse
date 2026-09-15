@@ -13,6 +13,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptiontier"
 	"github.com/SisyphusSQ/codex-pulse/internal/cursorprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/grokprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
@@ -26,7 +27,7 @@ func TestConfirmedApplicationAccountUsesBindingDisplay(t *testing.T) {
 	repository := openAccountBindingTestRepository(t)
 	key, _, _ := accountBindingTestScopes(t, repository)
 	email := "person@example.com"
-	plan := "team"
+	plan := "prolite"
 	account, err := newAccountBindingRuntime(
 		repository,
 		&accountBindingScriptedReader{accountIDs: []string{"acct-test-a"}},
@@ -36,9 +37,11 @@ func TestConfirmedApplicationAccountUsesBindingDisplay(t *testing.T) {
 		nil,
 		func(context.Context) (appserver.AccountSandwich, error) {
 			return appserver.AccountSandwich{
-				BeforeID: appserver.SensitiveAccountID("acct-test-a"),
-				AfterID:  appserver.SensitiveAccountID("acct-test-a"),
-				Account:  &appserver.AccountSnapshot{Type: "chatgpt", Email: &email, PlanType: &plan},
+				BeforeID:                 appserver.SensitiveAccountID("acct-test-a"),
+				AfterID:                  appserver.SensitiveAccountID("acct-test-a"),
+				BeforeRateLimitPlanTypes: []string{plan},
+				AfterRateLimitPlanTypes:  []string{plan},
+				Account:                  &appserver.AccountSnapshot{Type: "chatgpt", Email: &email, PlanType: &plan},
 			}, nil
 		},
 	)
@@ -56,11 +59,20 @@ func TestConfirmedApplicationAccountUsesBindingDisplay(t *testing.T) {
 	if err != nil || snapshot.Account == nil || snapshot.Account.Email == nil ||
 		*snapshot.Account.Email != email || snapshot.Account.PlanType == nil ||
 		*snapshot.Account.PlanType != plan || snapshot.Binding == nil ||
+		snapshot.ProTier == nil || snapshot.ProTier.State != subscriptiontier.StateKnown ||
+		snapshot.ProTier.Tier == nil || *snapshot.ProTier.Tier != subscriptiontier.Tier5X ||
 		snapshot.Binding.State != store.CodexAccountBindingConfirmed ||
 		snapshot.Binding.AccountScope == nil ||
 		len(*snapshot.Binding.AccountScope) != 64 ||
 		strings.Contains(*snapshot.Binding.AccountScope, "acct-test-a") {
 		t.Fatalf("AccountSnapshot() = %#v, %v", snapshot, err)
+	}
+
+	plan = "pro"
+	refreshed, err := runtime.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Codex})
+	if err != nil || refreshed.ProTier == nil || refreshed.ProTier.Tier == nil ||
+		*refreshed.ProTier.Tier != subscriptiontier.Tier20X {
+		t.Fatalf("AccountSnapshot(refreshed tier) = %#v, %v", refreshed, err)
 	}
 }
 
@@ -84,9 +96,11 @@ func TestConfirmedAccountSnapshotProbesAndTransitionsToNewAccount(t *testing.T) 
 		nil,
 		func(context.Context) (appserver.AccountSandwich, error) {
 			return appserver.AccountSandwich{
-				BeforeID: appserver.SensitiveAccountID("acct-test-b"),
-				AfterID:  appserver.SensitiveAccountID("acct-test-b"),
-				Account:  &appserver.AccountSnapshot{Type: "chatgpt", Email: &email, PlanType: &plan},
+				BeforeID:                 appserver.SensitiveAccountID("acct-test-b"),
+				AfterID:                  appserver.SensitiveAccountID("acct-test-b"),
+				BeforeRateLimitPlanTypes: []string{plan},
+				AfterRateLimitPlanTypes:  []string{plan},
+				Account:                  &appserver.AccountSnapshot{Type: "chatgpt", Email: &email, PlanType: &plan},
 			}, nil
 		},
 	)
@@ -103,7 +117,9 @@ func TestConfirmedAccountSnapshotProbesAndTransitionsToNewAccount(t *testing.T) 
 	snapshot, err := runtime.AccountSnapshot(ctx, agentprovider.Scope{Provider: agentprovider.Codex})
 	if err != nil || snapshot.Binding == nil || snapshot.Binding.AccountScope == nil ||
 		*snapshot.Binding.AccountScope != scopeB || snapshot.Account == nil ||
-		snapshot.Account.Email == nil || *snapshot.Account.Email != email {
+		snapshot.Account.Email == nil || *snapshot.Account.Email != email ||
+		snapshot.ProTier == nil || snapshot.ProTier.Tier == nil ||
+		*snapshot.ProTier.Tier != subscriptiontier.Tier20X {
 		t.Fatalf("AccountSnapshot(B) = %#v, %v", snapshot, err)
 	}
 }

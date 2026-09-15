@@ -10,6 +10,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptiontier"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
@@ -250,8 +251,12 @@ func TestServiceRoutesQuotaRefreshByProvider(t *testing.T) {
 
 func TestServiceDelegatesEphemeralAccountSnapshot(t *testing.T) {
 	email, planType := "person@example.com", "pro"
+	tier := subscriptiontier.Tier20X
 	account := &accountSnapshotQueryStub{snapshot: AccountSnapshot{
 		Account: &AccountIdentity{Type: "chatgpt", Email: &email, PlanType: &planType},
+		ProTier: &subscriptiontier.Snapshot{
+			State: subscriptiontier.StateKnown, Tier: &tier, Reason: subscriptiontier.ReasonExact,
+		},
 	}}
 	service, err := NewService(ServiceConfig{
 		UsageCost: &usageQueryStub{}, InvocationUsage: &invocationUsageQueryStub{}, PricingCatalog: pricingCatalogQueryStub{},
@@ -268,7 +273,8 @@ func TestServiceDelegatesEphemeralAccountSnapshot(t *testing.T) {
 	}
 	if got.Account == nil || got.Account.Type != "chatgpt" || got.Account.Email == nil ||
 		*got.Account.Email != email || got.Account.PlanType == nil ||
-		*got.Account.PlanType != planType || got.Binding != nil ||
+		*got.Account.PlanType != planType || got.Binding != nil || got.ProTier == nil ||
+		got.ProTier.Tier == nil || *got.ProTier.Tier != subscriptiontier.Tier20X ||
 		account.calls != 1 || account.scope.Provider != agentprovider.Cursor {
 		t.Fatalf("AccountSnapshot() = %#v, calls = %d, scope = %#v", got, account.calls, account.scope)
 	}
@@ -312,11 +318,12 @@ func TestServiceContractsExposeUniqueCommandMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	contract := service.Contracts()
-	if contract.Version != "core-rpc-v2" ||
+	if contract.Version != "core-rpc-v3" ||
 		contract.UsageCostVersion != "usage-cost-v2" ||
 		contract.InvocationUsageVersion != "invocation-usage-v1" ||
 		contract.PricingCatalogVersion != "pricing-catalog-v1" ||
-		contract.DashboardSummaryVersion != "dashboard-summary-v2" {
+		contract.DashboardSummaryVersion != "dashboard-summary-v2" ||
+		contract.CodexProTierVersion != subscriptiontier.ContractVersion {
 		t.Fatalf("Contracts() versions = %#v", contract)
 	}
 	commandsFromMethods := make([]string, 0)

@@ -133,7 +133,7 @@ billing 响应优先消费新 credits 形状，旧 `monthlyLimit` / `used` 只�
 | 可选 `subscriptionTier` / `subscription_tier` | 仅作历史或协议兼容的套餐 fallback；当前账号套餐以 `/user?include=subscription` 为准 |
 | `isUnifiedBillingUser` | 只进入 coverage / 来源说明，不改 Token 账本 |
 
-账号胶囊使用与 Grok CLI 一致的 `GET /user?include=subscription` 读取 `email`、`principalType` 与 `subscriptionTier`，成功时返回在线账号画像；接口失败时仍可使用 `auth.json` 白名单中的本地邮箱，以及最近一次非 stale billing 套餐。完整账号标识、team / organization 字段、token、refresh token、OIDC 字段和原始 profile 响应不得返回或落库。Swift 必须显式接受 `type = grok`，并把 `GrokPro`、`SuperGrok`、`SuperGrok Plus`、`SuperGrok Heavy` 映射为产品套餐文案。邮箱展示继续遵循 Popover 截图隐藏规则。
+账号胶囊使用与 Grok CLI 一致的 `GET /user?include=subscription` 读取 `email`、`principalType` 与 `subscriptionTier`，成功时返回在线账号画像；接口失败时仍可使用 `auth.json` 白名单中的本地邮箱，以及最近一次非 stale billing 套餐。完整账号标识、team / organization 字段、token、refresh token、OIDC 字段和原始 profile 响应不得返回或落库。Swift 必须显式接受 `type = grok`，并把 `GrokPro`、`SuperGrok`、`SuperGrok Plus`、`SuperGrok Heavy` 映射为产品套餐文案。邮箱展示继续遵循 Popover 截图隐藏规则。Codex Pro 5×/20× 只适用于 Codex/`chatgpt` 路径的 typed `proTier`；Cursor `Pro+` 与 Grok 套餐文案不得改走 Codex 档位枚举。
 
 额度刷新失败时，当前周期已有成功快照继续作为 last-known 返回，响应标记 `partial` 并回显 `dataAsOfMs`。跨过 `currentPeriod.end` 后，旧快照不得冒充新周期；无新成功值时显示 `--`。协议漂移、缺字段或百分比越界 fail closed，不写 `used_percent=0`。Grok 没有 Reset Credits，对应模块按 capability 隐藏。
 

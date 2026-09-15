@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -102,6 +103,79 @@ func TestReadAccountSandwichPreservesMismatchedIDsWithoutMixingDisplay(t *testin
 	if string(sandwich.BeforeID) != "acct-test-a" || string(sandwich.AfterID) != "acct-test-b" ||
 		sandwich.Account == nil || sandwich.Account.Email == nil || *sandwich.Account.Email != "b@example.com" {
 		t.Fatalf("mismatch sandwich = %#v", sandwich)
+	}
+}
+
+func TestReadAccountSandwichCollectsDistinctPlanEvidence(t *testing.T) {
+	t.Parallel()
+
+	rateLimits := `{"accountId":"acct-test-a","rateLimits":{"planType":" ProLite ","primary":{"usedPercent":3,"windowDurationMins":5,"resetsAt":1784008800}},"rateLimitsByLimitId":{"codex":{"limitId":"codex","planType":"prolite","primary":{"usedPercent":3,"windowDurationMins":5,"resetsAt":1784008800}},"extra":{"limitId":"extra","planType":"PROLITE","primary":{"usedPercent":4,"windowDurationMins":5,"resetsAt":1784008800}},"empty":{"limitId":"empty","planType":"","primary":{"usedPercent":5,"windowDurationMins":5,"resetsAt":1784008800}}}}`
+	account := `{"account":{"type":"chatgpt","email":"a@example.com","planType":"plus"}}`
+	responses := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"result":` + rateLimits + `}`,
+		`{"jsonrpc":"2.0","id":2,"result":` + account + `}`,
+		`{"jsonrpc":"2.0","id":3,"result":` + rateLimits + `}`,
+	}, "\n") + "\n"
+	rpc := newJSONLineRPC(nopWriteCloser{io.Discard}, strings.NewReader(responses))
+	sandwich, err := readAccountSandwich(context.Background(), rpc)
+	if err != nil {
+		t.Fatalf("readAccountSandwich() error = %v", err)
+	}
+	if !slices.Equal(sandwich.BeforeRateLimitPlanTypes, []string{"prolite"}) ||
+		!slices.Equal(sandwich.AfterRateLimitPlanTypes, []string{"prolite"}) {
+		t.Fatalf("plan evidence = before %#v after %#v", sandwich.BeforeRateLimitPlanTypes, sandwich.AfterRateLimitPlanTypes)
+	}
+	if sandwich.Account == nil || sandwich.Account.PlanType == nil || *sandwich.Account.PlanType != "plus" {
+		t.Fatalf("account planType = %#v", sandwich.Account)
+	}
+}
+
+func TestReadAccountSandwichPreservesConflictingBucketPlans(t *testing.T) {
+	t.Parallel()
+
+	rateLimits := `{"accountId":"acct-test-a","rateLimits":{"planType":"pro","primary":{"usedPercent":3,"windowDurationMins":5,"resetsAt":1784008800}},"rateLimitsByLimitId":{"codex":{"limitId":"codex","planType":"pro","primary":{"usedPercent":3,"windowDurationMins":5,"resetsAt":1784008800}},"extra":{"limitId":"extra","planType":"prolite","primary":{"usedPercent":9,"windowDurationMins":5,"resetsAt":1784008800}}}}`
+	account := `{"account":{"type":"chatgpt","email":"a@example.com","planType":"pro"}}`
+	responses := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"result":` + rateLimits + `}`,
+		`{"jsonrpc":"2.0","id":2,"result":` + account + `}`,
+		`{"jsonrpc":"2.0","id":3,"result":` + rateLimits + `}`,
+	}, "\n") + "\n"
+	rpc := newJSONLineRPC(nopWriteCloser{io.Discard}, strings.NewReader(responses))
+	sandwich, err := readAccountSandwich(context.Background(), rpc)
+	if err != nil {
+		t.Fatalf("readAccountSandwich() error = %v", err)
+	}
+	want := []string{"pro", "prolite"}
+	if !slices.Equal(sandwich.BeforeRateLimitPlanTypes, want) ||
+		!slices.Equal(sandwich.AfterRateLimitPlanTypes, want) {
+		t.Fatalf("conflicting plan evidence = before %#v after %#v", sandwich.BeforeRateLimitPlanTypes, sandwich.AfterRateLimitPlanTypes)
+	}
+}
+
+func TestAccountSandwichErrorDoesNotLeakAccountID(t *testing.T) {
+	t.Parallel()
+
+	secretID := "acct-secret-sandwich"
+	rateLimits := `{"accountId":"` + secretID + `","rateLimits":{"planType":"prolite","primary":{"usedPercent":3,"windowDurationMins":5,"resetsAt":1784008800}}}`
+	oversizedPlan := strings.Repeat("p", maxAccountPlanBytes+1)
+	account := `{"account":{"type":"chatgpt","email":"a@example.com","planType":"` + oversizedPlan + `"}}`
+	responses := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"result":` + rateLimits + `}`,
+		`{"jsonrpc":"2.0","id":2,"result":` + account + `}`,
+	}, "\n") + "\n"
+	rpc := newJSONLineRPC(nopWriteCloser{io.Discard}, strings.NewReader(responses))
+	sandwich, err := readAccountSandwich(context.Background(), rpc)
+	if err == nil {
+		t.Fatalf("readAccountSandwich() = %#v, want error", sandwich)
+	}
+	if len(sandwich.BeforeID) != 0 || len(sandwich.AfterID) != 0 {
+		t.Fatal("failed sandwich retained account id bytes")
+	}
+	if sandwich.BeforeRateLimitPlanTypes != nil || sandwich.AfterRateLimitPlanTypes != nil {
+		t.Fatalf("failed sandwich retained plan evidence: %#v", sandwich)
+	}
+	if strings.Contains(err.Error(), secretID) || strings.Contains(fmt.Sprintf("%#v", err), secretID) {
+		t.Fatalf("sandwich error leaked account id: %v", err)
 	}
 }
 

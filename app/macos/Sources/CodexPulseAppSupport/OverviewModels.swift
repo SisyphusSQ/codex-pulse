@@ -186,7 +186,14 @@ public struct CodexAccountPresentation: Equatable, Sendable {
             )
             return
         }
-        planText = Self.planDisplayName(normalizedPlan)
+		if normalizedType == "chatgpt", response.hasProTier {
+			planText = Self.codexPlanDisplayName(
+				planType: normalizedPlan,
+				snapshot: response.proTier
+			)
+		} else {
+			planText = Self.planDisplayName(normalizedPlan)
+		}
         emailText = normalizedEmail ?? "--"
         accessibilityLabel = localization.format("account.plan", planText, emailText)
     }
@@ -215,6 +222,31 @@ public struct CodexAccountPresentation: Equatable, Sendable {
         default: "--"
         }
     }
+
+	private static func codexPlanDisplayName(
+		planType: String?,
+		snapshot: Codexpulse_Core_V1_CodexProTierSnapshot
+	) -> String {
+		let localization = AppLocalizationRegistry.shared.current
+		switch snapshot.state {
+		case .known:
+			guard snapshot.hasTier else { return "--" }
+			switch snapshot.tier {
+			case .codexProTier5X:
+				return localization.textValue("Pro 5×")
+			case .codexProTier20X:
+				return localization.textValue("Pro 20×")
+			case .unspecified, .UNRECOGNIZED:
+				return "--"
+			}
+		case .proUnknown, .conflict:
+			return localization.textValue("Pro · 档位未知")
+		case .notApplicable:
+			return planDisplayName(planType)
+		case .unspecified, .UNRECOGNIZED:
+			return "--"
+		}
+	}
 }
 
 public struct AppNotice: Equatable, Sendable {

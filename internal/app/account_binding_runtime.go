@@ -21,11 +21,13 @@ type activeCodexAccount struct {
 }
 
 type accountDisplayCache struct {
-	Scope      string
-	Generation int64
-	Type       string
-	Email      *string
-	PlanType   *string
+	Scope                    string
+	Generation               int64
+	Type                     string
+	Email                    *string
+	PlanType                 *string
+	BeforeRateLimitPlanTypes []string
+	AfterRateLimitPlanTypes  []string
 }
 
 type quotaAccountPublisher interface {
@@ -105,6 +107,8 @@ func (runtime *accountBindingRuntime) Display() *accountDisplayCache {
 		plan := *copy.PlanType
 		copy.PlanType = &plan
 	}
+	copy.BeforeRateLimitPlanTypes = cloneStringSlice(copy.BeforeRateLimitPlanTypes)
+	copy.AfterRateLimitPlanTypes = cloneStringSlice(copy.AfterRateLimitPlanTypes)
 	return &copy
 }
 
@@ -189,6 +193,7 @@ func (runtime *accountBindingRuntime) reconcileIdentity(
 	if mode == identityReconcileProbe && current.State == store.CodexAccountBindingConfirmed &&
 		current.AccountScope != nil && *current.AccountScope == firstScope {
 		runtime.setActive(*current.AccountScope, current.BindingGeneration)
+		runtime.clearDisplay()
 		return nil
 	}
 
@@ -325,7 +330,11 @@ func (runtime *accountBindingRuntime) refreshDisplay(
 		return nil, nil
 	}
 	display := &accountDisplayCache{
-		Scope: active.Scope, Generation: active.Generation, Type: "chatgpt",
+		Scope:                    active.Scope,
+		Generation:               active.Generation,
+		Type:                     "chatgpt",
+		BeforeRateLimitPlanTypes: cloneStringSlice(sandwich.BeforeRateLimitPlanTypes),
+		AfterRateLimitPlanTypes:  cloneStringSlice(sandwich.AfterRateLimitPlanTypes),
 	}
 	if sandwich.Account != nil {
 		display.Type = sandwich.Account.Type
@@ -403,4 +412,8 @@ func cloneOptionalString(value *string) *string {
 	}
 	copy := *value
 	return &copy
+}
+
+func cloneStringSlice(values []string) []string {
+	return append([]string(nil), values...)
 }

@@ -8490,6 +8490,41 @@ private func testCodexPendingAccountPresentationClearsEmail() throws {
     )
 }
 
+private func testCodexProTierPresentation() throws {
+	func presentation(
+		plan: String,
+		state: Codexpulse_Core_V1_CodexProTierState,
+		tier: Codexpulse_Core_V1_CodexProTier? = nil
+	) -> CodexAccountPresentation {
+		var response = Codexpulse_Core_V1_AccountSnapshotResponse()
+		response.account.type = "chatgpt"
+		response.account.email = "person@example.com"
+		response.account.planType = plan
+		response.proTier.state = state
+		if let tier {
+			response.proTier.tier = tier
+		}
+		return CodexAccountPresentation(response)
+	}
+
+	try expect(
+		presentation(plan: "prolite", state: .known, tier: .codexProTier5X).planText == "Pro 5×",
+		"Pro Lite must display the 5× tier"
+	)
+	try expect(
+		presentation(plan: "pro", state: .known, tier: .codexProTier20X).planText == "Pro 20×",
+		"Pro must display the 20× tier"
+	)
+	try expect(
+		presentation(plan: "pro", state: .conflict).planText == "Pro · 档位未知",
+		"conflicting evidence must not guess a tier"
+	)
+	try expect(
+		presentation(plan: "plus", state: .notApplicable).planText == "Plus",
+		"non-Pro plans must retain their existing display name"
+	)
+}
+
 private func testQuotaCopyDistinguishesAccountLimitsFromHomeCollection() throws {
     let quota = try mainWindowSource("QuotaHealthViews.swift")
     let overview = try mainWindowSource("RootView.swift")
@@ -11620,6 +11655,7 @@ struct CodexPulseAppTestMain {
         try testCodexAccountContextReplacesMismatchedPace()
         try testCodexAccountContextLeavesCursorUnchanged()
         try testCodexPendingAccountPresentationClearsEmail()
+        try testCodexProTierPresentation()
         try testQuotaCopyDistinguishesAccountLimitsFromHomeCollection()
         try await testAppRuntimePendingBindingClearsPreviousAccountEmail()
         try await testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess()

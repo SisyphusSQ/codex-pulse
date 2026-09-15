@@ -49,6 +49,9 @@
 "当前没有 Codex 账户信息" = "当前没有 Codex 账户信息";
 "account.type" = "Codex 账户类型 %@";
 "account.plan" = "Codex 套餐 %@，账号 %@";
+"Pro 5×" = "Pro 5×";
+"Pro 20×" = "Pro 20×";
+"Pro · 档位未知" = "Pro · 档位未知";
 "额度剩" = "额度剩";
 "周剩" = "周剩";
 "月剩" = "月剩";

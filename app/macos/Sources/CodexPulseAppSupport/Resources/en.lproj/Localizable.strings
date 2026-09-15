@@ -114,6 +114,9 @@
 "当前没有 Codex 账户信息" = "No Codex account information";
 "account.type" = "Codex account type %@";
 "account.plan" = "Codex plan %@, account %@";
+"Pro 5×" = "Pro 5×";
+"Pro 20×" = "Pro 20×";
+"Pro · 档位未知" = "Pro · Tier unknown";
 "额度剩" = "Quota left";
 "周剩" = "Week left";
 "日剩" = "Day left";

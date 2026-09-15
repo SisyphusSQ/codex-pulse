@@ -45,6 +45,7 @@ func (api *grpcAPI) Contracts(ctx context.Context, _ *corev1.ContractsRequest) (
 		PricingCatalogVersion:   contract.PricingCatalogVersion,
 		RuntimeInfoVersion:      contract.RuntimeInfoVersion,
 		DashboardSummaryVersion: contract.DashboardSummaryVersion,
+		CodexProTierVersion:     contract.CodexProTierVersion,
 		Methods:                 methods, CommandMethods: append([]string(nil), contract.CommandMethods...), ErrorExample: detail,
 	}, nil
 }

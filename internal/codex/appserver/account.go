@@ -3,6 +3,7 @@ package appserver
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -39,9 +40,11 @@ type accountReadResult struct {
 }
 
 type AccountSandwich struct {
-	BeforeID SensitiveAccountID
-	AfterID  SensitiveAccountID
-	Account  *AccountSnapshot
+	BeforeID                 SensitiveAccountID
+	AfterID                  SensitiveAccountID
+	BeforeRateLimitPlanTypes []string
+	AfterRateLimitPlanTypes  []string
+	Account                  *AccountSnapshot
 }
 
 func ReadLocalAccountSandwich(
@@ -88,13 +91,49 @@ func readAccountSandwich(ctx context.Context, rpc RPC) (AccountSandwich, error) 
 	}
 	account, err := readAccount(ctx, rpc)
 	if err != nil {
+		clear(before.AccountID)
 		return AccountSandwich{}, err
 	}
 	after, err := readAccountRateLimits(ctx, rpc, true)
 	if err != nil {
+		clear(before.AccountID)
+		clear(after.AccountID)
 		return AccountSandwich{}, err
 	}
-	return AccountSandwich{BeforeID: before.AccountID, AfterID: after.AccountID, Account: account}, nil
+	return AccountSandwich{
+		BeforeID:                 before.AccountID,
+		AfterID:                  after.AccountID,
+		BeforeRateLimitPlanTypes: collectRateLimitPlanTypes(before),
+		AfterRateLimitPlanTypes:  collectRateLimitPlanTypes(after),
+		Account:                  account,
+	}, nil
+}
+
+func collectRateLimitPlanTypes(snapshot AccountRateLimitsSnapshot) []string {
+	seen := make(map[string]struct{})
+	add := func(value *string) {
+		if value == nil {
+			return
+		}
+		normalized := strings.ToLower(strings.TrimSpace(*value))
+		if normalized == "" {
+			return
+		}
+		seen[normalized] = struct{}{}
+	}
+	add(snapshot.RateLimits.PlanType)
+	for _, bucket := range snapshot.RateLimitsByLimitID {
+		add(bucket.PlanType)
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	plans := make([]string, 0, len(seen))
+	for plan := range seen {
+		plans = append(plans, plan)
+	}
+	slices.Sort(plans)
+	return plans
 }
 
 func ReadLocalAccount(
