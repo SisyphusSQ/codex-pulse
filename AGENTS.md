@@ -28,7 +28,7 @@ Codex Pulse 是 local-first 的 Codex 使用量、额度、Session、项目归�
 
 ## 验证入口
 
-日常开发优先运行受影响的包或 Swift executable tests，不在每次迭代都跑完整验证。
+日常开发优先运行受影响的包或 Swift executable tests，不在每次迭代都跑完整验证。本地日常开发、代码审查和交付收尾不主动运行 `make verify` 或全仓 `go test -race ./...` 等长测；只有用户显式要求长测，或由 CI 环境执行时才运行。
 
 | 目标 | 用途 |
 | --- | --- |
@@ -54,5 +54,5 @@ Codex Pulse 是 local-first 的 Codex 使用量、额度、Session、项目归�
 
 - 分支名仅使用英文、数字、`-`、`_` 和 `/`。
 - 不重置、覆盖或删除无关改动。
-- 完成实现后运行与风险匹配的验证；PR/CI 收口运行 `make verify`。
+- 完成实现后运行与风险匹配的聚焦验证；本地不主动运行长测，`make verify` 仅在用户显式要求或 CI 环境中执行。
 - 未实际执行的 CI、live E2E、签名、公证、发布或外部回写不得描述为已完成。

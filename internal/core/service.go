@@ -10,6 +10,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptiontier"
 	healthmodel "github.com/SisyphusSQ/codex-pulse/internal/health"
 	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
@@ -22,7 +23,7 @@ import (
 )
 
 const (
-	ContractVersion = "core-rpc-v2"
+	ContractVersion = "core-rpc-v3"
 )
 
 var (
@@ -332,6 +333,7 @@ type ContractInfo struct {
 	PricingCatalogVersion   string                  `json:"pricingCatalogVersion"`
 	RuntimeInfoVersion      string                  `json:"runtimeInfoVersion"`
 	DashboardSummaryVersion string                  `json:"dashboardSummaryVersion"`
+	CodexProTierVersion     string                  `json:"codexProTierVersion"`
 	Methods                 []MethodInfo            `json:"methods"`
 	CommandMethods          []string                `json:"commandMethods"`
 	ErrorExample            basequery.ErrorEnvelope `json:"errorExample"`
@@ -382,6 +384,7 @@ func (service *Service) Contracts() ContractInfo {
 			PricingCatalogVersion:   pricingcatalog.ContractVersion,
 			RuntimeInfoVersion:      runtimeinfo.ContractVersion,
 			DashboardSummaryVersion: dashboardsummary.ContractVersion,
+			CodexProTierVersion:     subscriptiontier.ContractVersion,
 			Methods:                 append([]MethodInfo(nil), methodAllowlist...),
 			CommandMethods: []string{
 				"RequestQuotaRefresh", "RequestProviderRefresh", "UpdateAPICredential", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
@@ -400,6 +403,7 @@ type AccountIdentity struct {
 type AccountSnapshot struct {
 	Account *AccountIdentity           `json:"account,omitempty"`
 	Binding *store.CodexAccountBinding `json:"binding,omitempty"`
+	ProTier *subscriptiontier.Snapshot `json:"proTier,omitempty"`
 }
 
 func (service *Service) AccountSnapshot(ctx context.Context, scope agentprovider.Scope) (AccountSnapshot, error) {

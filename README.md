@@ -16,6 +16,7 @@ Codex Pulse is a local-first, native macOS app. It turns Codex and Cursor sessio
 - **Usage analytics:** Explore tokens, models, API-equivalent cost, and activity distribution across overview, session, and project pages.
 - **Provider context:** Switch the main window between Codex and Cursor; every query remains scoped to one provider and unsupported metrics stay explicitly unavailable.
 - **Data status:** Inspect provider-grouped sources, local indexing, and background jobs to understand whether reported results are complete.
+- **Codex Pro tier:** The current ChatGPT account maps App Server `prolite` to `Pro 5×` and `pro` to `Pro 20×`. Missing, unsupported, or conflicting plan evidence stays `Pro · 档位未知`.
 
 ## Feature overview
 
@@ -53,6 +54,7 @@ The most misleading failure mode for quota and usage tools is not missing data�
 - If an online refresh fails but a previous successful result exists, the last-known-good value remains visible instead of suddenly changing to 100%. Last-known-good stays inside the current confirmed ChatGPT account; switching accounts never reuses the previous account's percentage.
 - Codex online quota and Reset Credits come from the Codex App Server public method `account/rateLimits/read`. Pulse does not read Codex access tokens, JWT, `auth.json`, or Keychain credentials, and it does not call private WHAM endpoints. A CLI that lacks `accountId` capability fails closed instead of falling back to WHAM.
 - Unconfirmed, signed-out, or identity-unavailable Codex accounts show unknown / pending (`--`). The UI does not invent `0%` or `100%`, and it does not keep the previous account email or limits.
+- Codex Pro 5×/20× comes only from matching App Server `planType` evidence collected inside the account sandwich read. Pulse never infers a tier from remaining percent, tokens, windows, reset time, or Reset Credits.
 - Local sessions, tokens, projects, trends, and API-equivalent cost stay aggregated for the current Codex Home. They are not filtered or attributed by ChatGPT account.
 - A time range that has not been fully indexed is marked as partial data rather than presented as a complete total.
 - Quota names and periods come from current data. For example, period labels are derived from the actual `window_minutes` value instead of hard-coding a "5-hour quota."

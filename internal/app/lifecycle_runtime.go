@@ -17,6 +17,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
 	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptiontier"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/cursorprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/grokprovider"
@@ -1081,6 +1082,14 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 		if display == nil {
 			return core.AccountSnapshot{Binding: binding}, nil
 		}
+		tier := subscriptiontier.Resolve(subscriptiontier.Evidence{
+			AccountPlanType:          cloneApplicationAccountField(display.PlanType),
+			BeforeRateLimitPlanTypes: cloneStringSlice(display.BeforeRateLimitPlanTypes),
+			AfterRateLimitPlanTypes:  cloneStringSlice(display.AfterRateLimitPlanTypes),
+		})
+		if err := tier.Validate(); err != nil {
+			return core.AccountSnapshot{}, err
+		}
 		return core.AccountSnapshot{
 			Account: &core.AccountIdentity{
 				Type:     display.Type,
@@ -1088,6 +1097,7 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 				PlanType: cloneApplicationAccountField(display.PlanType),
 			},
 			Binding: binding,
+			ProTier: &tier,
 		}, nil
 	}
 	if runtime.settingsLoader == nil {

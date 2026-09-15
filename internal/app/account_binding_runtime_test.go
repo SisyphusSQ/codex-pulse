@@ -382,7 +382,7 @@ func TestAccountBindingLoadDisplayRequiresMatchingSandwich(t *testing.T) {
 	repository := openAccountBindingTestRepository(t)
 	key, scopeA, _ := accountBindingTestScopes(t, repository)
 	email := "person@example.com"
-	plan := "team"
+	plan := "prolite"
 	runtime, err := newAccountBindingRuntime(
 		repository,
 		&accountBindingScriptedReader{accountIDs: []string{"acct-test-a"}},
@@ -392,9 +392,11 @@ func TestAccountBindingLoadDisplayRequiresMatchingSandwich(t *testing.T) {
 		nil,
 		func(context.Context) (appserver.AccountSandwich, error) {
 			return appserver.AccountSandwich{
-				BeforeID: appserver.SensitiveAccountID("acct-test-a"),
-				AfterID:  appserver.SensitiveAccountID("acct-test-a"),
-				Account:  &appserver.AccountSnapshot{Type: "chatgpt", Email: &email, PlanType: &plan},
+				BeforeID:                 appserver.SensitiveAccountID("acct-test-a"),
+				AfterID:                  appserver.SensitiveAccountID("acct-test-a"),
+				BeforeRateLimitPlanTypes: []string{"prolite"},
+				AfterRateLimitPlanTypes:  []string{"prolite"},
+				Account:                  &appserver.AccountSnapshot{Type: "chatgpt", Email: &email, PlanType: &plan},
 			}, nil
 		},
 	)
@@ -406,7 +408,9 @@ func TestAccountBindingLoadDisplayRequiresMatchingSandwich(t *testing.T) {
 	}
 	display, err := runtime.LoadDisplay(context.Background())
 	if err != nil || display == nil || display.Email == nil || *display.Email != email ||
-		display.PlanType == nil || *display.PlanType != plan {
+		display.PlanType == nil || *display.PlanType != plan ||
+		len(display.BeforeRateLimitPlanTypes) != 1 || display.BeforeRateLimitPlanTypes[0] != "prolite" ||
+		len(display.AfterRateLimitPlanTypes) != 1 || display.AfterRateLimitPlanTypes[0] != "prolite" {
 		t.Fatalf("LoadDisplay() = %#v, %v", display, err)
 	}
 	cached, err := runtime.LoadDisplay(context.Background())

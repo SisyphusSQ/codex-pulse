@@ -30,6 +30,8 @@ HMAC-SHA256(安装级随机密钥, domain-separated accountId) → 64 位 lowerc
 
 `account/read` 的邮箱和套餐只能通过同一 App Server 会话夹读：`account/rateLimits/read → account/read → account/rateLimits/read`。前后账号 scope 一致且匹配当前 binding generation 时才允许发布。Swift 首次组装 Overview 也要校验同一 context key，禁止先发布“B 额度 + previousAccount A”。quota、pace、account 的 server context 不一致时，账号和不匹配的在线部分降为 unknown，并安排一致性刷新。
 
+套餐档位与额度窗口是不同概念。5×/20× 只来自夹读一致的明确 `planType`，不得用 remaining percent、Token、window_minutes、resets_at_ms 或 Reset Credits 推断。配额页继续只解释额度窗口。
+
 账号切换保留现有 Home generation fence。锁顺序是：Home generation drain → account transition → quota admission → repository 写事务。A→B→A 恢复 A 的历史观察时间戳，但使用新的 binding generation。Cursor、Grok、API Subscription 的现有逻辑不得被 Codex binding 改动影响。
 
 账号切换隔离的 live runbook 见 [`docs/test/codex-account-switching.md`](../../../test/codex-account-switching.md)。

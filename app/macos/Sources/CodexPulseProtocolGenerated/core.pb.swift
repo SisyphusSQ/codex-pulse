@@ -25,6 +25,90 @@ fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobu
   typealias Version = _2
 }
 
+public nonisolated enum Codexpulse_Core_V1_CodexProTier: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case codexProTier5X // = 1
+  case codexProTier20X // = 2
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .codexProTier5X
+    case 2: self = .codexProTier20X
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .codexProTier5X: return 1
+    case .codexProTier20X: return 2
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Codexpulse_Core_V1_CodexProTier] = [
+    .unspecified,
+    .codexProTier5X,
+    .codexProTier20X,
+  ]
+
+}
+
+public nonisolated enum Codexpulse_Core_V1_CodexProTierState: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case known // = 1
+  case proUnknown // = 2
+  case conflict // = 3
+  case notApplicable // = 4
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .known
+    case 2: self = .proUnknown
+    case 3: self = .conflict
+    case 4: self = .notApplicable
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .known: return 1
+    case .proUnknown: return 2
+    case .conflict: return 3
+    case .notApplicable: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Codexpulse_Core_V1_CodexProTierState] = [
+    .unspecified,
+    .known,
+    .proUnknown,
+    .conflict,
+    .notApplicable,
+  ]
+
+}
+
 public nonisolated struct Codexpulse_Core_V1_Empty: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -163,6 +247,8 @@ public nonisolated struct Codexpulse_Core_V1_ContractsResponse: Sendable {
   public var invocationUsageVersion: String = String()
 
   public var dashboardSummaryVersion: String = String()
+
+  public var codexProTierVersion: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -7042,6 +7128,31 @@ public nonisolated struct Codexpulse_Core_V1_CodexAccountBinding: Sendable {
   fileprivate var _reason: String? = nil
 }
 
+public nonisolated struct Codexpulse_Core_V1_CodexProTierSnapshot: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var state: Codexpulse_Core_V1_CodexProTierState = .unspecified
+
+  public var tier: Codexpulse_Core_V1_CodexProTier {
+    get {_tier ?? .unspecified}
+    set {_tier = newValue}
+  }
+  /// Returns true if `tier` has been explicitly set.
+  public var hasTier: Bool {self._tier != nil}
+  /// Clears the value of `tier`. Subsequent reads from it will return its default value.
+  public mutating func clearTier() {self._tier = nil}
+
+  public var reason: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _tier: Codexpulse_Core_V1_CodexProTier? = nil
+}
+
 public nonisolated struct Codexpulse_Core_V1_AccountSnapshotResponse: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -7065,12 +7176,22 @@ public nonisolated struct Codexpulse_Core_V1_AccountSnapshotResponse: Sendable {
   /// Clears the value of `binding`. Subsequent reads from it will return its default value.
   public mutating func clearBinding() {self._binding = nil}
 
+  public var proTier: Codexpulse_Core_V1_CodexProTierSnapshot {
+    get {_proTier ?? Codexpulse_Core_V1_CodexProTierSnapshot()}
+    set {_proTier = newValue}
+  }
+  /// Returns true if `proTier` has been explicitly set.
+  public var hasProTier: Bool {self._proTier != nil}
+  /// Clears the value of `proTier`. Subsequent reads from it will return its default value.
+  public mutating func clearProTier() {self._proTier = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _account: Codexpulse_Core_V1_CodexAccountIdentity? = nil
   fileprivate var _binding: Codexpulse_Core_V1_CodexAccountBinding? = nil
+  fileprivate var _proTier: Codexpulse_Core_V1_CodexProTierSnapshot? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_APISubscriptionsCurrentRequest: Sendable {
@@ -7562,6 +7683,14 @@ public nonisolated struct Codexpulse_Core_V1_CursorUsagePoolSummary: Sendable {
 
 fileprivate nonisolated let _protobuf_package = "codexpulse.core.v1"
 
+nonisolated extension Codexpulse_Core_V1_CodexProTier: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CODEX_PRO_TIER_UNSPECIFIED\0\u{1}CODEX_PRO_TIER_5X\0\u{1}CODEX_PRO_TIER_20X\0")
+}
+
+nonisolated extension Codexpulse_Core_V1_CodexProTierState: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CODEX_PRO_TIER_STATE_UNSPECIFIED\0\u{1}CODEX_PRO_TIER_STATE_KNOWN\0\u{1}CODEX_PRO_TIER_STATE_PRO_UNKNOWN\0\u{1}CODEX_PRO_TIER_STATE_CONFLICT\0\u{1}CODEX_PRO_TIER_STATE_NOT_APPLICABLE\0")
+}
+
 nonisolated extension Codexpulse_Core_V1_Empty: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Empty"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
@@ -7795,7 +7924,7 @@ nonisolated extension Codexpulse_Core_V1_MethodInfo: SwiftProtobuf.Message, Swif
 
 nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ContractsResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}query_version\0\u{3}usage_cost_version\0\u{3}runtime_info_version\0\u{1}methods\0\u{3}command_methods\0\u{3}error_example\0\u{3}pricing_catalog_version\0\u{3}invocation_usage_version\0\u{3}dashboard_summary_version\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}query_version\0\u{3}usage_cost_version\0\u{3}runtime_info_version\0\u{1}methods\0\u{3}command_methods\0\u{3}error_example\0\u{3}pricing_catalog_version\0\u{3}invocation_usage_version\0\u{3}dashboard_summary_version\0\u{3}codex_pro_tier_version\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -7813,6 +7942,7 @@ nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Messag
       case 8: try { try decoder.decodeSingularStringField(value: &self.pricingCatalogVersion) }()
       case 9: try { try decoder.decodeSingularStringField(value: &self.invocationUsageVersion) }()
       case 10: try { try decoder.decodeSingularStringField(value: &self.dashboardSummaryVersion) }()
+      case 11: try { try decoder.decodeSingularStringField(value: &self.codexProTierVersion) }()
       default: break
       }
     }
@@ -7853,6 +7983,9 @@ nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Messag
     if !self.dashboardSummaryVersion.isEmpty {
       try visitor.visitSingularStringField(value: self.dashboardSummaryVersion, fieldNumber: 10)
     }
+    if !self.codexProTierVersion.isEmpty {
+      try visitor.visitSingularStringField(value: self.codexProTierVersion, fieldNumber: 11)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -7867,6 +8000,7 @@ nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Messag
     if lhs.pricingCatalogVersion != rhs.pricingCatalogVersion {return false}
     if lhs.invocationUsageVersion != rhs.invocationUsageVersion {return false}
     if lhs.dashboardSummaryVersion != rhs.dashboardSummaryVersion {return false}
+    if lhs.codexProTierVersion != rhs.codexProTierVersion {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -17929,9 +18063,53 @@ nonisolated extension Codexpulse_Core_V1_CodexAccountBinding: SwiftProtobuf.Mess
   }
 }
 
+nonisolated extension Codexpulse_Core_V1_CodexProTierSnapshot: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CodexProTierSnapshot"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}state\0\u{1}tier\0\u{1}reason\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.state) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self._tier) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.reason) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.state != .unspecified {
+      try visitor.visitSingularEnumField(value: self.state, fieldNumber: 1)
+    }
+    try { if let v = self._tier {
+      try visitor.visitSingularEnumField(value: v, fieldNumber: 2)
+    } }()
+    if !self.reason.isEmpty {
+      try visitor.visitSingularStringField(value: self.reason, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_CodexProTierSnapshot, rhs: Codexpulse_Core_V1_CodexProTierSnapshot) -> Bool {
+    if lhs.state != rhs.state {return false}
+    if lhs._tier != rhs._tier {return false}
+    if lhs.reason != rhs.reason {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 nonisolated extension Codexpulse_Core_V1_AccountSnapshotResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AccountSnapshotResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}account\0\u{1}binding\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}account\0\u{1}binding\0\u{3}pro_tier\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -17941,6 +18119,7 @@ nonisolated extension Codexpulse_Core_V1_AccountSnapshotResponse: SwiftProtobuf.
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularMessageField(value: &self._account) }()
       case 2: try { try decoder.decodeSingularMessageField(value: &self._binding) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._proTier) }()
       default: break
       }
     }
@@ -17957,12 +18136,16 @@ nonisolated extension Codexpulse_Core_V1_AccountSnapshotResponse: SwiftProtobuf.
     try { if let v = self._binding {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
     } }()
+    try { if let v = self._proTier {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Codexpulse_Core_V1_AccountSnapshotResponse, rhs: Codexpulse_Core_V1_AccountSnapshotResponse) -> Bool {
     if lhs._account != rhs._account {return false}
     if lhs._binding != rhs._binding {return false}
+    if lhs._proTier != rhs._proTier {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -15,6 +15,7 @@ import (
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptiontier"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
@@ -71,11 +72,12 @@ func TestGRPCServerAuthenticatesHandshakeAndNegotiatesContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Contracts() error = %v", err)
 	}
-	if contracts.Version != "core-rpc-v2" ||
+	if contracts.Version != "core-rpc-v3" ||
 		contracts.UsageCostVersion != "usage-cost-v2" ||
 		contracts.InvocationUsageVersion != "invocation-usage-v1" ||
 		contracts.PricingCatalogVersion != "pricing-catalog-v1" ||
-		contracts.DashboardSummaryVersion != "dashboard-summary-v2" {
+		contracts.DashboardSummaryVersion != "dashboard-summary-v2" ||
+		contracts.CodexProTierVersion != subscriptiontier.ContractVersion {
 		t.Fatalf("Contracts() versions = %#v", contracts)
 	}
 }
@@ -581,8 +583,12 @@ func startTestGRPCServer(
 
 func TestGRPCServerReturnsOnlyAccountDisplayFields(t *testing.T) {
 	email, planType := "person@example.com", "pro"
+	tier := subscriptiontier.Tier20X
 	account := &helperAccountSnapshotStub{snapshot: core.AccountSnapshot{
 		Account: &core.AccountIdentity{Type: "chatgpt", Email: &email, PlanType: &planType},
+		ProTier: &subscriptiontier.Snapshot{
+			State: subscriptiontier.StateKnown, Tier: &tier, Reason: subscriptiontier.ReasonExact,
+		},
 	}}
 	business, err := core.NewService(core.ServiceConfig{
 		UsageCost:       &helperUsageQueryStub{},
@@ -608,6 +614,8 @@ func TestGRPCServerReturnsOnlyAccountDisplayFields(t *testing.T) {
 	if response.GetAccount() == nil || response.Account.Type != "chatgpt" ||
 		response.Account.Email == nil || response.Account.GetEmail() != email ||
 		response.Account.PlanType == nil || response.Account.GetPlanType() != planType ||
+		response.GetProTier().GetState() != corev1.CodexProTierState_CODEX_PRO_TIER_STATE_KNOWN ||
+		response.GetProTier().GetTier() != corev1.CodexProTier_CODEX_PRO_TIER_20X ||
 		account.calls != 1 || account.scope.Provider != agentprovider.Cursor {
 		t.Fatalf("AccountSnapshot() = %#v, calls = %d, scope = %#v", response, account.calls, account.scope)
 	}
