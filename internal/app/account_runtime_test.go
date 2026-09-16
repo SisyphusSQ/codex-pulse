@@ -14,6 +14,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptiontier"
+	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/cursorprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/grokprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
@@ -55,7 +56,7 @@ func TestConfirmedApplicationAccountUsesBindingDisplay(t *testing.T) {
 		repository: repository,
 		quota:      &applicationQuotaRuntime{account: account},
 	}
-	snapshot, err := runtime.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Codex})
+	snapshot, err := runtime.AccountSnapshot(context.Background(), lifecycleAccountQuery(agentprovider.Codex))
 	if err != nil || snapshot.Account == nil || snapshot.Account.Email == nil ||
 		*snapshot.Account.Email != email || snapshot.Account.PlanType == nil ||
 		*snapshot.Account.PlanType != plan || snapshot.Binding == nil ||
@@ -64,12 +65,14 @@ func TestConfirmedApplicationAccountUsesBindingDisplay(t *testing.T) {
 		snapshot.Binding.State != store.CodexAccountBindingConfirmed ||
 		snapshot.Binding.AccountScope == nil ||
 		len(*snapshot.Binding.AccountScope) != 64 ||
-		strings.Contains(*snapshot.Binding.AccountScope, "acct-test-a") {
+		strings.Contains(*snapshot.Binding.AccountScope, "acct-test-a") ||
+		snapshot.Subscription == nil || !snapshot.Subscription.Current ||
+		snapshot.Subscription.DisplayEmail == nil || *snapshot.Subscription.DisplayEmail != email {
 		t.Fatalf("AccountSnapshot() = %#v, %v", snapshot, err)
 	}
 
 	plan = "pro"
-	refreshed, err := runtime.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Codex})
+	refreshed, err := runtime.AccountSnapshot(context.Background(), lifecycleAccountQuery(agentprovider.Codex))
 	if err != nil || refreshed.ProTier == nil || refreshed.ProTier.Tier == nil ||
 		*refreshed.ProTier.Tier != subscriptiontier.Tier20X {
 		t.Fatalf("AccountSnapshot(refreshed tier) = %#v, %v", refreshed, err)
@@ -114,7 +117,7 @@ func TestConfirmedAccountSnapshotProbesAndTransitionsToNewAccount(t *testing.T) 
 		repository: repository,
 		quota:      &applicationQuotaRuntime{account: account},
 	}
-	snapshot, err := runtime.AccountSnapshot(ctx, agentprovider.Scope{Provider: agentprovider.Codex})
+	snapshot, err := runtime.AccountSnapshot(ctx, lifecycleAccountQuery(agentprovider.Codex))
 	if err != nil || snapshot.Binding == nil || snapshot.Binding.AccountScope == nil ||
 		*snapshot.Binding.AccountScope != scopeB || snapshot.Account == nil ||
 		snapshot.Account.Email == nil || *snapshot.Account.Email != email ||
@@ -135,7 +138,7 @@ func TestAccountSnapshotPendingOmitsAccountKeepsBinding(t *testing.T) {
 		t.Fatalf("MarkCodexAccountBindingPending() error = %v", err)
 	}
 	runtime := &applicationLifecycleRuntime{repository: repository}
-	snapshot, err := runtime.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Codex})
+	snapshot, err := runtime.AccountSnapshot(context.Background(), lifecycleAccountQuery(agentprovider.Codex))
 	if err != nil || snapshot.Account != nil || snapshot.Binding == nil ||
 		snapshot.Binding.State != store.CodexAccountBindingPending ||
 		snapshot.Binding.BindingGeneration != pending.BindingGeneration ||
@@ -168,7 +171,7 @@ func TestAccountSnapshotDoesNotStartReaderAfterConfirmedHomeSwitch(t *testing.T)
 		},
 	}
 
-	account, err := runtime.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Codex})
+	account, err := runtime.AccountSnapshot(context.Background(), lifecycleAccountQuery(agentprovider.Codex))
 	if !errors.Is(err, ErrApplicationLifecycleRuntime) || account.Account != nil {
 		t.Fatalf("AccountSnapshot(switched before launch) = %#v, %v", account, err)
 	}
@@ -185,7 +188,7 @@ func TestAccountSnapshotReadsGrokIdentityFromAuthWhitelist(t *testing.T) {
 	}
 	account, err := runtime.AccountSnapshot(
 		context.Background(),
-		agentprovider.Scope{Provider: agentprovider.Grok},
+		lifecycleAccountQuery(agentprovider.Grok),
 	)
 	if err != nil {
 		t.Fatalf("AccountSnapshot(grok) error = %v", err)
@@ -210,7 +213,7 @@ func TestAccountSnapshotUsesGrokSubscriptionProfile(t *testing.T) {
 	}
 	account, err := runtime.AccountSnapshot(
 		context.Background(),
-		agentprovider.Scope{Provider: agentprovider.Grok},
+		lifecycleAccountQuery(agentprovider.Grok),
 	)
 	if err != nil {
 		t.Fatalf("AccountSnapshot(grok) error = %v", err)
@@ -267,7 +270,7 @@ func TestAccountSnapshotCombinesGrokIdentityAndBillingPlan(t *testing.T) {
 	}
 	account, err := runtime.AccountSnapshot(
 		context.Background(),
-		agentprovider.Scope{Provider: agentprovider.Grok},
+		lifecycleAccountQuery(agentprovider.Grok),
 	)
 	if err != nil {
 		t.Fatalf("AccountSnapshot(grok) error = %v", err)
@@ -289,7 +292,7 @@ func TestAccountSnapshotReadsCursorIdentityFromDesktopState(t *testing.T) {
 	}
 	account, err := runtime.AccountSnapshot(
 		context.Background(),
-		agentprovider.Scope{Provider: agentprovider.Cursor},
+		lifecycleAccountQuery(agentprovider.Cursor),
 	)
 	if err != nil {
 		t.Fatalf("AccountSnapshot(cursor) error = %v", err)
@@ -330,7 +333,7 @@ func TestAccountSnapshotStartGuardRechecksConfirmedHome(t *testing.T) {
 		},
 	}
 
-	account, err := runtime.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Codex})
+	account, err := runtime.AccountSnapshot(context.Background(), lifecycleAccountQuery(agentprovider.Codex))
 	if !errors.Is(err, ErrApplicationLifecycleRuntime) || account.Account != nil {
 		t.Fatalf("AccountSnapshot(switched at start guard) = %#v, %v", account, err)
 	}
@@ -375,7 +378,7 @@ func TestAccountSnapshotDiscardsResultAfterConcurrentConfirmedHomeSwitch(t *test
 	}
 	done := make(chan result, 1)
 	go func() {
-		account, err := runtime.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Codex})
+		account, err := runtime.AccountSnapshot(context.Background(), lifecycleAccountQuery(agentprovider.Codex))
 		done <- result{hasAccount: account.Account != nil, err: err}
 	}()
 	startedHome := <-readerStarted
@@ -467,4 +470,12 @@ func accountRuntimePreferences(
 		Generation:   generation,
 		DataStoreKey: "synthetic",
 	}}
+}
+
+func lifecycleAccountQuery(provider string) core.AccountSnapshotQuery {
+	return core.AccountSnapshotQuery{
+		Scope:         agentprovider.Scope{Provider: provider},
+		EvaluatedAtMS: quotaRuntimeNowMS,
+		TimeZone:      "UTC",
+	}
 }

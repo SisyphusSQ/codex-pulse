@@ -12,6 +12,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/accountbinding"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -441,6 +442,245 @@ func TestAccountBindingLoadDisplayRequiresMatchingSandwich(t *testing.T) {
 	if err != nil || empty != nil {
 		t.Fatalf("mismatched sandwich LoadDisplay() = %#v, %v", empty, err)
 	}
+}
+
+func TestAccountBindingSameProfileRefreshDoesNotReinvalidateAccount(t *testing.T) {
+	t.Parallel()
+	repository := openAccountBindingTestRepository(t)
+	key, _, _ := accountBindingTestScopes(t, repository)
+	email := "person@example.com"
+	plan := "plus"
+	nowMS := int64(quotaRuntimeNowMS)
+	invalidation := &recordingQueryInvalidationNotifier{}
+	runtime, err := newAccountBindingRuntime(
+		repository,
+		&accountBindingScriptedReader{accountIDs: []string{"acct-test-a", "acct-test-a"}},
+		key,
+		func() time.Time { return time.UnixMilli(nowMS).UTC() },
+		&accountBindingTestQuota{},
+		invalidation,
+		func(context.Context) (appserver.AccountSandwich, error) {
+			return appserver.AccountSandwich{
+				BeforeID:                 appserver.SensitiveAccountID("acct-test-a"),
+				AfterID:                  appserver.SensitiveAccountID("acct-test-a"),
+				BeforeRateLimitPlanTypes: []string{plan},
+				AfterRateLimitPlanTypes:  []string{plan},
+				Account: &appserver.AccountSnapshot{
+					Type: "chatgpt", Email: &email, PlanType: &plan,
+				},
+			}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	invalidation.reset()
+	if _, err := runtime.LoadDisplay(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if invalidation.count(core.InvalidationAccount) != 1 {
+		t.Fatalf("first profile invalidations = %#v", invalidation.snapshot())
+	}
+	invalidation.reset()
+	nowMS++
+	if err := runtime.Discover(t.Context(), store.CodexAccountBindingReasonStable); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.LoadDisplay(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if got := invalidation.snapshot(); len(got) != 0 {
+		t.Fatalf("same profile re-invalidated account: %#v", got)
+	}
+}
+
+func TestAccountBindingLateDisplayDoesNotWriteAfterSwitch(t *testing.T) {
+	t.Parallel()
+	repository := openAccountBindingTestRepository(t)
+	key, scopeA, scopeB := accountBindingTestScopes(t, repository)
+	emailA := "a@example.com"
+	emailB := "b@example.com"
+	plan := "plus"
+	currentID := "acct-test-a"
+	runtime, err := newAccountBindingRuntime(
+		repository,
+		&accountBindingScriptedReader{accountIDs: []string{"acct-test-a", "acct-test-b", "acct-test-b"}},
+		key,
+		func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+		&accountBindingTestQuota{},
+		nil,
+		func(context.Context) (appserver.AccountSandwich, error) {
+			return appserver.AccountSandwich{
+				BeforeID:                 appserver.SensitiveAccountID(currentID),
+				AfterID:                  appserver.SensitiveAccountID(currentID),
+				BeforeRateLimitPlanTypes: []string{plan},
+				AfterRateLimitPlanTypes:  []string{plan},
+				Account:                  &appserver.AccountSnapshot{Type: "chatgpt", Email: &emailA, PlanType: &plan},
+			}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.LoadDisplay(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	generationA := runtime.Active().Generation
+	currentID = "acct-test-b"
+	runtime.sandwich = func(context.Context) (appserver.AccountSandwich, error) {
+		return appserver.AccountSandwich{
+			BeforeID:                 appserver.SensitiveAccountID("acct-test-b"),
+			AfterID:                  appserver.SensitiveAccountID("acct-test-b"),
+			BeforeRateLimitPlanTypes: []string{plan},
+			AfterRateLimitPlanTypes:  []string{plan},
+			Account:                  &appserver.AccountSnapshot{Type: "chatgpt", Email: &emailB, PlanType: &plan},
+		}, nil
+	}
+	if err := runtime.HandleObservedScopeChange(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.LoadDisplay(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	runtime.setActive(scopeA, generationA)
+	runtime.sandwich = func(context.Context) (appserver.AccountSandwich, error) {
+		return appserver.AccountSandwich{
+			BeforeID: appserver.SensitiveAccountID("acct-test-a"),
+			AfterID:  appserver.SensitiveAccountID("acct-test-a"),
+			Account:  &appserver.AccountSnapshot{Type: "chatgpt", Email: &emailA, PlanType: &plan},
+		}, nil
+	}
+	late, err := runtime.LoadDisplay(context.Background())
+	if err != nil || late != nil {
+		t.Fatalf("late A display = %#v %v", late, err)
+	}
+	records, err := repository.ListCodexSubscriptionRecords(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawA, sawB bool
+	for _, detected := range records.Detected {
+		switch detected.AccountScope {
+		case scopeA:
+			sawA = true
+			if detected.DetectedEmail == nil || *detected.DetectedEmail != emailA {
+				t.Fatalf("A profile lost: %#v", detected)
+			}
+		case scopeB:
+			sawB = true
+			if detected.DetectedEmail == nil || *detected.DetectedEmail != emailB {
+				t.Fatalf("B profile polluted: %#v", detected)
+			}
+		}
+	}
+	if !sawA || !sawB {
+		t.Fatalf("missing detected rows: %#v", records.Detected)
+	}
+}
+
+func TestAccountBindingABARestoresDetectedPublicIDWithoutCopyingB(t *testing.T) {
+	t.Parallel()
+	repository := openAccountBindingTestRepository(t)
+	key, _, _ := accountBindingTestScopes(t, repository)
+	emailA := "a@example.com"
+	emailB := "b@example.com"
+	planA := "plus"
+	planB := "pro"
+	currentID := "acct-test-a"
+	runtime, err := newAccountBindingRuntime(
+		repository,
+		&accountBindingScriptedReader{accountIDs: []string{
+			"acct-test-a",
+			"acct-test-b", "acct-test-b",
+			"acct-test-a", "acct-test-a",
+		}},
+		key,
+		func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+		&accountBindingTestQuota{},
+		nil,
+		func(context.Context) (appserver.AccountSandwich, error) {
+			email, plan := emailA, planA
+			if currentID == "acct-test-b" {
+				email, plan = emailB, planB
+			}
+			return appserver.AccountSandwich{
+				BeforeID:                 appserver.SensitiveAccountID(currentID),
+				AfterID:                  appserver.SensitiveAccountID(currentID),
+				BeforeRateLimitPlanTypes: []string{plan},
+				AfterRateLimitPlanTypes:  []string{plan},
+				Account:                  &appserver.AccountSnapshot{Type: "chatgpt", Email: &email, PlanType: &plan},
+			}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.LoadDisplay(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	idA := detectedPublicID(t, repository, runtime.Active().Scope)
+	currentID = "acct-test-b"
+	if err := runtime.HandleObservedScopeChange(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.LoadDisplay(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	idB := detectedPublicID(t, repository, runtime.Active().Scope)
+	if idA == idB {
+		t.Fatal("A and B reused the same public id")
+	}
+	currentID = "acct-test-a"
+	if err := runtime.HandleObservedScopeChange(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.LoadDisplay(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	restored := detectedPublicID(t, repository, runtime.Active().Scope)
+	if restored != idA {
+		t.Fatalf("restored public id = %q, want %q", restored, idA)
+	}
+	records, err := repository.ListCodexSubscriptionRecords(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := subscriptionaccounts.Project(records, quotaRuntimeNowMS, "UTC")
+	if err != nil || len(snapshot.Accounts) != 2 {
+		t.Fatalf("list = %#v %v", snapshot, err)
+	}
+	for _, account := range snapshot.Accounts {
+		if account.AccountID == idB && account.DetectedEmail != nil && *account.DetectedEmail == emailA {
+			t.Fatalf("B inherited A email: %#v", account)
+		}
+		if account.AccountID == idA && (account.DetectedEmail == nil || *account.DetectedEmail != emailA) {
+			t.Fatalf("A profile not restored: %#v", account)
+		}
+	}
+}
+
+func detectedPublicID(t *testing.T, repository *store.Repository, scope string) string {
+	t.Helper()
+	records, err := repository.ListCodexSubscriptionRecords(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, detected := range records.Detected {
+		if detected.AccountScope == scope {
+			return detected.DetectedAccountID
+		}
+	}
+	t.Fatalf("no detected row for current scope")
+	return ""
 }
 
 type accountBindingTestQuota struct {

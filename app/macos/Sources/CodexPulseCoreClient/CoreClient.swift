@@ -83,6 +83,47 @@ public actor CoreClient {
         }
     }
 
+    public func listCodexSubscriptionAccounts(
+        _ request: Codexpulse_Core_V1_CodexSubscriptionAccountsRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionAccountsResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.listCodexSubscriptionAccounts(request, metadata: metadata)
+        }
+    }
+
+    public func createCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        try await service.createCodexSubscriptionAccount(request, metadata: metadata)
+    }
+
+    public func updateCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        try await service.updateCodexSubscriptionAccount(request, metadata: metadata)
+    }
+
+    public func deleteCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        try await service.deleteCodexSubscriptionAccount(request, metadata: metadata)
+    }
+
+    public func linkCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        try await service.linkCodexSubscriptionAccount(request, metadata: metadata)
+    }
+
+    public func unlinkCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        try await service.unlinkCodexSubscriptionAccount(request, metadata: metadata)
+    }
+
     public func usageCost(
         _ request: Codexpulse_Core_V1_UsageCostRequest,
         retryPolicy: ReadRetryPolicy = .transportDefault

@@ -10,6 +10,12 @@ service CoreService {
   rpc Bootstrap(BootstrapRequest) returns (BootstrapResponse);
   rpc Contracts(ContractsRequest) returns (ContractsResponse);
   rpc AccountSnapshot(AccountSnapshotRequest) returns (AccountSnapshotResponse);
+  rpc ListCodexSubscriptionAccounts(CodexSubscriptionAccountsRequest) returns (CodexSubscriptionAccountsResponse);
+  rpc CreateCodexSubscriptionAccount(CreateCodexSubscriptionAccountRequest) returns (CodexSubscriptionMutationReceipt);
+  rpc UpdateCodexSubscriptionAccount(UpdateCodexSubscriptionAccountRequest) returns (CodexSubscriptionMutationReceipt);
+  rpc DeleteCodexSubscriptionAccount(DeleteCodexSubscriptionAccountRequest) returns (CodexSubscriptionMutationReceipt);
+  rpc LinkCodexSubscriptionAccount(LinkCodexSubscriptionAccountRequest) returns (CodexSubscriptionMutationReceipt);
+  rpc UnlinkCodexSubscriptionAccount(UnlinkCodexSubscriptionAccountRequest) returns (CodexSubscriptionMutationReceipt);
   rpc UsageCost(UsageCostRequest) returns (UsageCostResponse);
   rpc DashboardSummary(DashboardSummaryRequest) returns (DashboardSummaryResponse);
   rpc InvocationUsage(InvocationUsageRequest) returns (InvocationUsageResponse);
@@ -95,6 +101,7 @@ message ContractsResponse {
   string invocation_usage_version = 9;
   string dashboard_summary_version = 10;
   string codex_pro_tier_version = 11;
+  string codex_subscription_accounts_version = 12;
 }
 
 // ErrorDetail 只承载稳定分类，不允许泄漏底层错误或请求值。
@@ -1306,7 +1313,11 @@ message ShutdownRequest { string reason = 1; }
 
 message ShutdownResponse { bool accepted = 1; }
 
-message AccountSnapshotRequest { ProviderScope provider = 1; }
+message AccountSnapshotRequest {
+  ProviderScope provider = 1;
+  int64 evaluated_at_ms = 2;
+  string time_zone = 3;
+}
 
 message CodexAccountIdentity {
   string type = 1;
@@ -1346,6 +1357,167 @@ message AccountSnapshotResponse {
   optional CodexAccountIdentity account = 1;
   optional CodexAccountBinding binding = 2;
   optional CodexProTierSnapshot pro_tier = 3;
+  optional CodexSubscriptionAccount subscription = 4;
+}
+
+enum CodexSubscriptionPlan {
+  CODEX_SUBSCRIPTION_PLAN_UNSPECIFIED = 0;
+  CODEX_SUBSCRIPTION_PLAN_FREE = 1;
+  CODEX_SUBSCRIPTION_PLAN_GO = 2;
+  CODEX_SUBSCRIPTION_PLAN_PLUS = 3;
+  CODEX_SUBSCRIPTION_PLAN_PRO_5X = 4;
+  CODEX_SUBSCRIPTION_PLAN_PRO_20X = 5;
+  CODEX_SUBSCRIPTION_PLAN_TEAM = 6;
+  CODEX_SUBSCRIPTION_PLAN_BUSINESS = 7;
+  CODEX_SUBSCRIPTION_PLAN_ENTERPRISE = 8;
+  CODEX_SUBSCRIPTION_PLAN_EDU = 9;
+}
+
+enum CodexSubscriptionAutomaticPlanState {
+  CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNSPECIFIED = 0;
+  CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNAVAILABLE = 1;
+  CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_KNOWN = 2;
+  CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNKNOWN = 3;
+  CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_CONFLICT = 4;
+}
+
+enum CodexSubscriptionValueSource {
+  CODEX_SUBSCRIPTION_VALUE_SOURCE_UNSPECIFIED = 0;
+  CODEX_SUBSCRIPTION_VALUE_SOURCE_UNAVAILABLE = 1;
+  CODEX_SUBSCRIPTION_VALUE_SOURCE_AUTOMATIC = 2;
+  CODEX_SUBSCRIPTION_VALUE_SOURCE_MANUAL = 3;
+}
+
+enum CodexSubscriptionDateKind {
+  CODEX_SUBSCRIPTION_DATE_KIND_UNSPECIFIED = 0;
+  // membership_date contributes only its day component and recurs monthly.
+  CODEX_SUBSCRIPTION_DATE_KIND_NEXT_RENEWAL = 1;
+  // membership_date is an exact Gregorian civil date.
+  CODEX_SUBSCRIPTION_DATE_KIND_MEMBERSHIP_EXPIRY = 2;
+}
+
+enum CodexSubscriptionDateState {
+  CODEX_SUBSCRIPTION_DATE_STATE_UNSPECIFIED = 0;
+  CODEX_SUBSCRIPTION_DATE_STATE_UNAVAILABLE = 1;
+  CODEX_SUBSCRIPTION_DATE_STATE_FUTURE = 2;
+  CODEX_SUBSCRIPTION_DATE_STATE_TODAY = 3;
+  CODEX_SUBSCRIPTION_DATE_STATE_NEEDS_UPDATE = 4;
+}
+
+enum CodexSubscriptionAutomaticSource {
+  CODEX_SUBSCRIPTION_AUTOMATIC_SOURCE_UNSPECIFIED = 0;
+  CODEX_SUBSCRIPTION_AUTOMATIC_SOURCE_ACCOUNT_SANDWICH = 1;
+}
+
+enum CodexSubscriptionAutomaticDateCapability {
+  CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_UNSPECIFIED = 0;
+  CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_MANUAL_ONLY = 1;
+}
+
+enum CodexSubscriptionMutationResult {
+  CODEX_SUBSCRIPTION_MUTATION_RESULT_UNSPECIFIED = 0;
+  CODEX_SUBSCRIPTION_MUTATION_RESULT_APPLIED = 1;
+  CODEX_SUBSCRIPTION_MUTATION_RESULT_NOOP = 2;
+  CODEX_SUBSCRIPTION_MUTATION_RESULT_CONFLICT = 3;
+}
+
+message CodexSubscriptionAccount {
+  string account_id = 1;
+  optional string detected_account_id = 2;
+  optional string manual_entry_id = 3;
+  optional string alias = 4;
+  optional string display_email = 5;
+  optional string detected_email = 6;
+  optional string manual_email = 7;
+  bool current = 8;
+  bool detected = 9;
+  bool has_manual = 10;
+  bool linked = 11;
+  optional int64 detected_email_observed_at_ms = 12;
+  optional CodexSubscriptionPlan automatic_plan = 13;
+  CodexSubscriptionAutomaticPlanState automatic_plan_state = 14;
+  optional CodexSubscriptionAutomaticSource automatic_plan_source = 15;
+  optional int64 automatic_plan_observed_at_ms = 16;
+  optional CodexSubscriptionPlan manual_plan = 17;
+  optional CodexSubscriptionPlan resolved_plan = 18;
+  CodexSubscriptionValueSource resolved_plan_source = 19;
+  // NEXT_RENEWAL uses only DD as a monthly renewal day; MEMBERSHIP_EXPIRY uses YYYY-MM-DD.
+  optional string membership_date = 20;
+  optional CodexSubscriptionDateKind date_kind = 21;
+  CodexSubscriptionValueSource date_source = 22;
+  CodexSubscriptionDateState date_state = 23;
+  optional int32 day_delta = 24;
+  optional int64 detected_revision = 25;
+  optional int64 manual_revision = 26;
+  optional int64 link_revision = 27;
+}
+
+message CodexSubscriptionLinkCandidate {
+  string detected_account_id = 1;
+  string manual_entry_id = 2;
+  string reason = 3;
+}
+
+message CodexSubscriptionAccountsRequest {
+  int64 evaluated_at_ms = 1;
+  string time_zone = 2;
+}
+
+message CodexSubscriptionAccountsResponse {
+  string version = 1;
+  int64 evaluated_at_ms = 2;
+  string time_zone = 3;
+  CodexSubscriptionAutomaticDateCapability automatic_date_capability = 4;
+  repeated CodexSubscriptionAccount accounts = 5;
+  repeated CodexSubscriptionLinkCandidate link_candidates = 6;
+}
+
+message CodexSubscriptionManualFields {
+  optional string email = 1;
+  optional string alias = 2;
+  optional CodexSubscriptionPlan plan = 3;
+  // NEXT_RENEWAL uses only DD as a monthly renewal day; MEMBERSHIP_EXPIRY uses YYYY-MM-DD.
+  optional string membership_date = 4;
+  optional CodexSubscriptionDateKind date_kind = 5;
+}
+
+message CreateCodexSubscriptionAccountRequest {
+  string manual_entry_id = 1;
+  CodexSubscriptionManualFields manual = 2;
+}
+
+message UpdateCodexSubscriptionAccountRequest {
+  string account_id = 1;
+  CodexSubscriptionManualFields manual = 2;
+  optional string new_manual_entry_id = 3;
+  optional int64 expected_manual_revision = 4;
+  optional int64 expected_link_revision = 5;
+}
+
+message DeleteCodexSubscriptionAccountRequest {
+  string account_id = 1;
+  optional int64 expected_detected_revision = 2;
+  optional int64 expected_manual_revision = 3;
+  optional int64 expected_link_revision = 4;
+}
+
+message LinkCodexSubscriptionAccountRequest {
+  string detected_account_id = 1;
+  string manual_entry_id = 2;
+  int64 expected_manual_revision = 3;
+}
+
+message UnlinkCodexSubscriptionAccountRequest {
+  string detected_account_id = 1;
+  string manual_entry_id = 2;
+  int64 expected_manual_revision = 3;
+  int64 expected_link_revision = 4;
+}
+
+message CodexSubscriptionMutationReceipt {
+  CodexSubscriptionMutationResult result = 1;
+  optional string reason = 2;
+  optional CodexSubscriptionAccount account = 3;
 }
 
 message APISubscriptionsCurrentRequest {

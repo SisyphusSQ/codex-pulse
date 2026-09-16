@@ -17,6 +17,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/homeidentity"
 	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptiontier"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/cursorprovider"
@@ -984,12 +985,12 @@ func grokSubscriptionPlan(ctx context.Context, runtime *applicationLifecycleRunt
 
 func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 	ctx context.Context,
-	scope agentprovider.Scope,
+	query core.AccountSnapshotQuery,
 ) (core.AccountSnapshot, error) {
 	if runtime == nil || ctx == nil {
 		return core.AccountSnapshot{}, ErrApplicationLifecycleRuntime
 	}
-	provider, err := agentprovider.Normalize(scope.Provider)
+	provider, err := agentprovider.Normalize(query.Scope.Provider)
 	if err != nil {
 		return core.AccountSnapshot{}, err
 	}
@@ -1076,6 +1077,15 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 			return core.AccountSnapshot{Binding: binding}, nil
 		}
 		display, err := runtime.quota.account.LoadDisplay(ctx)
+		if errors.Is(err, store.ErrCodexAccountBindingChanged) {
+			runtime.quota.account.clearDisplay()
+			latest, bindErr := runtime.repository.CodexAccountBinding(ctx)
+			if bindErr != nil {
+				return core.AccountSnapshot{}, bindErr
+			}
+			copied := latest
+			return core.AccountSnapshot{Binding: &copied}, nil
+		}
 		if err != nil {
 			return core.AccountSnapshot{}, err
 		}
@@ -1090,7 +1100,7 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 		if err := tier.Validate(); err != nil {
 			return core.AccountSnapshot{}, err
 		}
-		return core.AccountSnapshot{
+		snapshot := core.AccountSnapshot{
 			Account: &core.AccountIdentity{
 				Type:     display.Type,
 				Email:    cloneApplicationAccountField(display.Email),
@@ -1098,7 +1108,37 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 			},
 			Binding: binding,
 			ProTier: &tier,
-		}, nil
+		}
+		if binding != nil && binding.AccountScope != nil {
+			records, err := runtime.repository.ListCodexSubscriptionRecords(ctx)
+			if err != nil {
+				return core.AccountSnapshot{}, err
+			}
+			subscription, err := subscriptionaccounts.CurrentAccount(
+				records,
+				subscriptionaccounts.AccountFence{
+					AccountScope:      display.Scope,
+					BindingGeneration: display.Generation,
+				},
+				query.EvaluatedAtMS,
+				query.TimeZone,
+			)
+			if errors.Is(err, subscriptionaccounts.ErrAccountBindingChanged) ||
+				errors.Is(err, store.ErrCodexAccountBindingChanged) {
+				runtime.quota.account.clearDisplay()
+				latest, bindErr := runtime.repository.CodexAccountBinding(ctx)
+				if bindErr != nil {
+					return core.AccountSnapshot{}, bindErr
+				}
+				copied := latest
+				return core.AccountSnapshot{Binding: &copied}, nil
+			}
+			if err != nil {
+				return core.AccountSnapshot{}, err
+			}
+			snapshot.Subscription = subscription
+		}
+		return snapshot, nil
 	}
 	if runtime.settingsLoader == nil {
 		if binding != nil {

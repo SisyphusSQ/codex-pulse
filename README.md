@@ -17,6 +17,7 @@ Codex Pulse is a local-first, native macOS app. It turns Codex and Cursor sessio
 - **Provider context:** Switch the main window between Codex and Cursor; every query remains scoped to one provider and unsupported metrics stay explicitly unavailable.
 - **Data status:** Inspect provider-grouped sources, local indexing, and background jobs to understand whether reported results are complete.
 - **Codex Pro tier:** The current ChatGPT account maps App Server `prolite` to `Pro 5×` and `pro` to `Pro 20×`. Missing, unsupported, or conflicting plan evidence stays `Pro · 档位未知`.
+- **Codex accounts:** Settings keeps detected and manual Codex accounts on this Mac, carries detected facts into the editor, and can delete local subscription records for non-current accounts. Email is only a link candidate. Membership dates are currently manual only. Popover screenshots hide email, alias, plan, date, and remaining days.
 
 ## Feature overview
 
@@ -55,6 +56,7 @@ The most misleading failure mode for quota and usage tools is not missing data�
 - Codex online quota and Reset Credits come from the Codex App Server public method `account/rateLimits/read`. Pulse does not read Codex access tokens, JWT, `auth.json`, or Keychain credentials, and it does not call private WHAM endpoints. A CLI that lacks `accountId` capability fails closed instead of falling back to WHAM.
 - Unconfirmed, signed-out, or identity-unavailable Codex accounts show unknown / pending (`--`). The UI does not invent `0%` or `100%`, and it does not keep the previous account email or limits.
 - Codex Pro 5×/20× comes only from matching App Server `planType` evidence collected inside the account sandwich read. Pulse never infers a tier from remaining percent, tokens, windows, reset time, or Reset Credits.
+- Codex monthly renewal days and membership expiry dates are manual only in this release. Pulse does not treat token expiry, quota reset time, or Reset Credit expiry as a membership date.
 - Local sessions, tokens, projects, trends, and API-equivalent cost stay aggregated for the current Codex Home. They are not filtered or attributed by ChatGPT account.
 - A time range that has not been fully indexed is marked as partial data rather than presented as a complete total.
 - Quota names and periods come from current data. For example, period labels are derived from the actual `window_minutes` value instead of hard-coding a "5-hour quota."

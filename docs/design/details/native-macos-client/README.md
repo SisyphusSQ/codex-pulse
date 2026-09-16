@@ -204,10 +204,14 @@ contract 不兼容时必须 fail closed，由客户端展示稳定的“核心�
 `SessionDetailResponse.daily` 的 wire field 11 与名称永久 reserved；新
 `trend`/`trend_granularity` 使用 field 12/13。
 
-当前 Helper 与 Swift App 的精确握手版本为 `core-rpc-v3`，`Contracts.codex_pro_tier_version`
-为 `codex-pro-tier-v1`。Go Helper 根据夹读得到的一致 `planType` 映射 `prolite → Pro 5×`、
-`pro → Pro 20×`；Swift 只消费类型化 `AccountSnapshot.pro_tier`，不得重复套餐映射。旧 App
-与新 Helper、新 App 与旧 Helper都必须在精确版本握手中拒绝。
+当前 Helper 与 Swift App 的精确握手版本为 `core-rpc-v4`。`Contracts.codex_pro_tier_version`
+为 `codex-pro-tier-v1`，`Contracts.codex_subscription_accounts_version` 为
+`codex-subscription-accounts-v1`。Go Helper 根据夹读得到的一致 `planType` 映射 `prolite → Pro 5×`、
+`pro → Pro 20×`，并把同一证据写入订阅列表的自动套餐；Swift 只消费类型化
+`AccountSnapshot.pro_tier` 与 `subscription`，不得重复套餐优先级或 day-delta 算法。
+旧 App 与新 Helper、新 App 与旧 Helper 都必须在精确版本握手中拒绝。invalidation 仍为
+`query-invalidation-v3`。Settings 列表状态不得混入全局 `settingsDraft`；mutation receipt
+后必须 authoritative List readback。Popover 截图与剪贴板须同时隐藏邮箱、备注、套餐、日期和剩余天数。
 
 调用统计使用 `Contracts.invocation_usage_version=invocation-usage-v1`。该版本冻结
 Tool“逐事件计数”、Skill“检测活动”、结构化/内容检测来源分组以及 unknown 结果语义；
@@ -226,6 +230,7 @@ Tool“逐事件计数”、Skill“检测活动”、结构化/内容检测来�
 | --- | --- |
 | 握手与启动 | `Handshake`、`Bootstrap`、`Contracts` |
 | 用量、价格与主实体 | `AccountSnapshot`、`UsageCost`、`DashboardSummary`、`InvocationUsage`、`PricingCatalogCurrent`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail` |
+| Codex 订阅 | `ListCodexSubscriptionAccounts`、`CreateCodexSubscriptionAccount`、`UpdateCodexSubscriptionAccount`、`LinkCodexSubscriptionAccount`、`UnlinkCodexSubscriptionAccount` |
 | Quota | `QuotaCurrent`、`RequestQuotaRefresh` |
 | 数据源、任务与健康 | `ListSources`、`Source`、`ListJobs`、`Job`、`ListHealth`、`Health`、`HealthProjection`、`DataHealth` |
 | 设置与 Home | `Settings`、`UpdateSettings`、`PlanHomeSwitch`、`ConfirmHomeSwitch`、`RecoverHomeSwitch` |

@@ -559,11 +559,66 @@ public actor AppRuntime {
 	}
 
 	public func accountSnapshot(provider: AgentProvider) async throws -> Codexpulse_Core_V1_AccountSnapshotResponse {
-		var request = Codexpulse_Core_V1_AccountSnapshotRequest()
-		request.provider.provider = provider.rawValue
-		let preparedRequest = request
+		let preparedRequest = Self.makeAccountSnapshotRequest(provider: provider)
 		return try await performRead { try await $0.accountSnapshot(preparedRequest, retryPolicy: .none) }
 	}
+
+    public func listCodexSubscriptionAccounts(
+        now: Date = Date(),
+        timeZone: TimeZone = .current
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionAccountsResponse {
+        var request = Codexpulse_Core_V1_CodexSubscriptionAccountsRequest()
+        let eval = CodexSubscriptionEvaluationContext.current(now: now, timeZone: timeZone)
+        request.evaluatedAtMs = eval.evaluatedAtMs
+        request.timeZone = eval.timeZone
+        let preparedRequest = request
+        return try await performRead {
+            try await $0.listCodexSubscriptionAccounts(preparedRequest, retryPolicy: .transportDefault)
+        }
+    }
+
+    public func createCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        try await performMutation { try await $0.createCodexSubscriptionAccount(request) }
+    }
+
+    public func updateCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        try await performMutation { try await $0.updateCodexSubscriptionAccount(request) }
+    }
+
+    public func deleteCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        try await performMutation { try await $0.deleteCodexSubscriptionAccount(request) }
+    }
+
+    public func linkCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        try await performMutation { try await $0.linkCodexSubscriptionAccount(request) }
+    }
+
+    public func unlinkCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        try await performMutation { try await $0.unlinkCodexSubscriptionAccount(request) }
+    }
+
+    private static func makeAccountSnapshotRequest(
+        provider: AgentProvider,
+        now: Date = Date(),
+        timeZone: TimeZone = .current
+    ) -> Codexpulse_Core_V1_AccountSnapshotRequest {
+        var request = Codexpulse_Core_V1_AccountSnapshotRequest()
+        request.provider.provider = provider.rawValue
+        let eval = CodexSubscriptionEvaluationContext.current(now: now, timeZone: timeZone)
+        request.evaluatedAtMs = eval.evaluatedAtMs
+        request.timeZone = eval.timeZone
+        return request
+    }
 
     public func pricingCatalogCurrent(
 		_ request: Codexpulse_Core_V1_PricingCatalogCurrentRequest
@@ -1571,8 +1626,7 @@ public actor AppRuntime {
         let generation = accountRefreshGeneration
         accountRefreshTask = Task { [weak self] in
             do {
-				var request = Codexpulse_Core_V1_AccountSnapshotRequest()
-				request.provider.provider = provider.rawValue
+				let request = Self.makeAccountSnapshotRequest(provider: provider)
 				let response = try await client.accountSnapshot(request, retryPolicy: .none)
                 try Task.checkCancellation()
                 await self?.finishAccountRefresh(

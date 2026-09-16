@@ -172,10 +172,11 @@ func composeCoreGraph(
 		UsageCost: providerRouter, InvocationUsage: providerRouter, DashboardSummary: summaryService,
 		PricingCatalog: pricingService,
 		RuntimeInfo:    runtimeService, QuotaInfo: quotaRouter, ProviderQuotaRefresh: quotaRouter,
-		ProviderRefresh:  coreProviderRefresh{inner: orchestrator},
-		QueryObserver:    queryObserver,
-		APISubscriptions: apiSubscriptions,
-		APICredentials:   apiCredentials,
+		ProviderRefresh:    coreProviderRefresh{inner: orchestrator},
+		QueryObserver:      queryObserver,
+		APISubscriptions:   apiSubscriptions,
+		APICredentials:     apiCredentials,
+		CodexSubscriptions: newCodexSubscriptionRuntime(repository, invalidation),
 	})
 	if err != nil {
 		return nil, err

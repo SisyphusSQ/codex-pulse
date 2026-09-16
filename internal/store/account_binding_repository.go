@@ -111,6 +111,9 @@ func (repository *Repository) ConfirmCodexAccountBinding(
 		if err := upsertCodexAccountScope(ctx, transaction, accountScope, observedAtMS); err != nil {
 			return err
 		}
+		if err := ensureDetectedCodexSubscriptionAccount(ctx, transaction, accountScope); err != nil {
+			return err
+		}
 		generation, err := confirmCodexAccountBindingGeneration(current, accountScope)
 		if err != nil {
 			return err

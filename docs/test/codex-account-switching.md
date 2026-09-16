@@ -23,7 +23,7 @@
 - 本次结论：`INCOMPLETE`
 - 影响范围：私有 runtime、SQLite、preferences、App Server housekeeping（仅 live 步骤）
 - 清理结果：
-- 敏感信息处理：不记录 token、原始 `accountId`、真实邮箱、Reset Credit 原始 ID 或原始 JSONL。
+- 敏感信息处理：不记录 token、原始 `accountId`、Reset Credit 原始 ID 或原始 JSONL。v33 专用订阅表可以保存 detected/manual email；binding、quota、日志、Proto private identity 和原始证据仍不得泄露邮箱或 raw account ID。提交物不得包含真实邮箱。
 
 ### 当前步骤状态
 
@@ -130,7 +130,8 @@ B 成功后：
 
 在不导出真实 Home 的前提下，检查本机 runtime SQLite、结构化日志和 Core/Proto 读回：
 
-- 不得出现原始 `accountId`、access token、JWT、Reset Credit 原始 ID、真实邮箱
+- 不得出现原始 `accountId`、access token、JWT、Reset Credit 原始 ID
+- binding、quota、日志和 Proto 仍不得出现真实邮箱；v33 专用订阅表允许保存 detected/manual email，但不得把这些邮箱写入提交物、日志或 Proto private identity
 - 只允许 64 位 hex `account_scope` 与 credit hash
 
 `.artifacts/` 与真实 Home 数据不得提交。

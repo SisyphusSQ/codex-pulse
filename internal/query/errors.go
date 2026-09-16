@@ -187,7 +187,10 @@ func validFailureField(value string) bool {
 		"response.page.limit", "response.page.hasMore", "response.page.nextCursor",
 		"sessionId", "reportingTimezone", "projectKey",
 		"source", "sourceKey", "jobId", "eventId", "evaluatedAtMS", "service", "secret",
-		"settings", "targetPath", "strategy", "action", "version", "seconds":
+		"settings", "targetPath", "strategy", "action", "version", "seconds",
+		"timeZone", "manual", "manual.email", "manual.alias", "manual.plan",
+		"manual.membershipDate", "manual.dateKind", "manualEntryId", "accountId",
+		"detectedAccountId", "newManualEntryId", "expectedManualRevision", "expectedLinkRevision":
 		return true
 	default:
 		return false

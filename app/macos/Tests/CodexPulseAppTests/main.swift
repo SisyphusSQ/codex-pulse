@@ -69,8 +69,35 @@ private struct JobDetailPlan: Sendable {
 }
 
 private struct HealthDetailPlan: Sendable {
+    let delay: Duration
     let response: Codexpulse_Core_V1_HealthDetailResponse
     let fails: Bool
+
+    init(
+        delay: Duration = .zero,
+        response: Codexpulse_Core_V1_HealthDetailResponse,
+        fails: Bool = false
+    ) {
+        self.delay = delay
+        self.response = response
+        self.fails = fails
+    }
+}
+
+private struct CodexSubscriptionListPlan: Sendable {
+    let delay: Duration
+    let response: Codexpulse_Core_V1_CodexSubscriptionAccountsResponse
+    let fails: Bool
+
+    init(
+        delay: Duration = .zero,
+        response: Codexpulse_Core_V1_CodexSubscriptionAccountsResponse,
+        fails: Bool = false
+    ) {
+        self.delay = delay
+        self.response = response
+        self.fails = fails
+    }
 }
 
 private func expect(_ condition: @autoclosure () -> Bool, _ message: String) throws {
@@ -171,6 +198,7 @@ private func testMainWindowCopyDoesNotExposeImplementationLanguage() throws {
         "SessionsProjectsViews.swift",
         "QuotaHealthViews.swift",
         "SourcesJobsSettingsViews.swift",
+        "CodexAccountsSettingsView.swift",
         "DashboardSummaryView.swift",
     ]
     let forbiddenFragments = [
@@ -489,6 +517,27 @@ private func testQuotaUsageShowsIndependentReferencePriceCatalogAndBillingBounda
             && source.contains("仅用于 API 等价折算，不是 Codex 订阅账单。")
             && source.contains("长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理"),
         "quota usage page must expose the independent catalog and its billing boundary"
+    )
+}
+
+private func testQuotaUsageShowsResponsiveCurrentCodexAccountCard() throws {
+    let source = try mainWindowSource("QuotaHealthViews.swift")
+    let appModel = try appSupportSource("AppModel.swift")
+    try expect(
+        source.contains("ViewThatFits(in: .horizontal)")
+            && source.contains("QuotaCurrentAccountCard")
+            && source.contains("CodexQuotaAccountSummaryCopy.summary")
+            && source.contains("model.selectedProvider == .codex")
+            && source.contains("model.navigate(to: .settings)")
+            && source.contains("quota.current-account")
+            && !source.contains("codexSubscriptionAccountsState"),
+        "quota header must show only the confirmed current Codex account and link to Settings"
+    )
+    try expect(
+        appModel.contains("quotaAccountState")
+            && appModel.contains("runtime.accountSnapshot(provider: provider)")
+            && !appModel.contains("CodexAccountContext.key(fromQuota:"),
+        "quota account loading must use its own bounded snapshot without duplicating identity rules"
     )
 }
 
@@ -1753,11 +1802,19 @@ private func testPopoverScreenshotClipboardTextHidesAccountAndPlan() throws {
     try expect(
         text == """
         Codex Pulse Popover 完整截图
-        账号与套餐信息已隐藏
+        账号、套餐与订阅日期信息已隐藏
         """,
         "Popover screenshot must expose one deterministic privacy notice"
     )
-    for canary in ["Pro", "person@example.com", "private-account-marker"] {
+    for canary in [
+        "Pro",
+        "person@example.com",
+        "private-account-marker",
+        "alias-canary",
+        "Pro 20×",
+        "2099-12-31",
+        "剩余 999 天",
+    ] {
         try expect(
             !text.contains(canary),
             "Popover screenshot clipboard text must exclude account canary \(canary)"
@@ -1864,7 +1921,7 @@ private func testPopoverCopyActionWritesOneSafeImageAndTextPayload() throws {
     try expect(
         result == .success(
             title: "已复制 Popover 完整截图",
-            message: "Popover 全部内容已复制，账号与套餐信息已隐藏。"
+            message: "Popover 全部内容已复制，账号、套餐与订阅日期信息已隐藏。"
         ),
         "copy action must expose a user-visible success result"
     )
@@ -2068,9 +2125,11 @@ private func testPopoverScreenshotUsesLiveViewAndRedactsAccountCapsule() throws 
     try expect(
         source.contains(".opacity(isPrivacyHidden ? 0 : 1)")
             && source.contains("Image(systemName: \"eye.slash\")")
-            && source.contains("截图中账号与套餐信息已隐藏")
+            && source.contains("截图中账号、套餐与订阅日期信息已隐藏")
             && source.contains("waitUntilPrivacyRendered(true)")
-            && source.contains("PopoverPrivacyRenderProbe"),
+            && source.contains("PopoverPrivacyRenderProbe")
+            && source.contains("summary?.secondaryText")
+            && source.contains(".opacity(isPrivacyHidden ? 0 : 1)"),
         "Popover screenshot must wait for the live account and plan capsule to be hidden"
     )
     try expect(
@@ -3655,6 +3714,11 @@ private actor FakeCore: AppCoreServing {
     private var settingsUpdateFailure = false
     private var settingsReadDelay: Duration = .zero
     private var settingsUpdateDelay: Duration = .zero
+    private var subscriptionListPlans: [CodexSubscriptionListPlan] = []
+    private var subscriptionMutationReceipt = Codexpulse_Core_V1_CodexSubscriptionMutationReceipt()
+    private var subscriptionMutationFails = false
+    private var subscriptionListRequests: [Codexpulse_Core_V1_CodexSubscriptionAccountsRequest] = []
+    private var accountSnapshotRequests: [Codexpulse_Core_V1_AccountSnapshotRequest] = []
     private var overviewBarrierClosed = false
     private var overviewBarrierWaiters: [CheckedContinuation<Void, Never>] = []
     private var invalidationHandler:
@@ -3734,6 +3798,22 @@ private actor FakeCore: AppCoreServing {
     func setSettingsResponses(_ values: [Codexpulse_Core_V1_SettingsResponse], updateFailure: Bool) {
         settingsResponses = values
         settingsUpdateFailure = updateFailure
+    }
+    func setCodexSubscriptionListPlans(_ plans: [CodexSubscriptionListPlan]) {
+        subscriptionListPlans = plans
+    }
+    func setCodexSubscriptionMutation(
+        result: Codexpulse_Core_V1_CodexSubscriptionMutationResult = .applied,
+        reason: String? = nil,
+        fails: Bool = false
+    ) {
+        var receipt = Codexpulse_Core_V1_CodexSubscriptionMutationReceipt()
+        receipt.result = result
+        if let reason {
+            receipt.reason = reason
+        }
+        subscriptionMutationReceipt = receipt
+        subscriptionMutationFails = fails
     }
     func setPricingCatalogResponse(_ value: Codexpulse_Core_V1_PricingCatalogCurrentResponse) {
         pricingCatalogResponse = value
@@ -3852,6 +3932,12 @@ private actor FakeCore: AppCoreServing {
     func recordedProjectRequests() -> [Codexpulse_Core_V1_ListProjectsRequest] { projectRequests }
     func recordedCompletedAccountCalls() -> Int { completedAccountCalls }
     func recordedPricingCatalogCalls() -> Int { pricingCatalogCalls }
+    func recordedAccountSnapshotRequests() -> [Codexpulse_Core_V1_AccountSnapshotRequest] {
+        accountSnapshotRequests
+    }
+    func recordedCodexSubscriptionListRequests() -> [Codexpulse_Core_V1_CodexSubscriptionAccountsRequest] {
+        subscriptionListRequests
+    }
 
     func handshake(
         clientName: String,
@@ -3970,10 +4056,64 @@ private actor FakeCore: AppCoreServing {
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_AccountSnapshotResponse {
         calls.append("account")
+        accountSnapshotRequests.append(request)
         defer { completedAccountCalls += 1 }
         if accountDelay != .zero { try await sleepForTest(accountDelay) }
         if failAccount { throw FakeFailure.unavailable }
         return accountOverride ?? responses.account ?? .init()
+    }
+
+    func listCodexSubscriptionAccounts(
+        _ request: Codexpulse_Core_V1_CodexSubscriptionAccountsRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionAccountsResponse {
+        calls.append("codex_subscription_list")
+        subscriptionListRequests.append(request)
+        guard !subscriptionListPlans.isEmpty else { throw FakeFailure.unavailable }
+        let plan = subscriptionListPlans.removeFirst()
+        if plan.delay != .zero { try await sleepForTest(plan.delay) }
+        if plan.fails { throw FakeFailure.unavailable }
+        return plan.response
+    }
+
+    func createCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        calls.append("codex_subscription_create:\(request.manualEntryID)")
+        if subscriptionMutationFails { throw FakeFailure.unavailable }
+        return subscriptionMutationReceipt
+    }
+
+    func updateCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        calls.append("codex_subscription_update:\(request.accountID)")
+        if subscriptionMutationFails { throw FakeFailure.unavailable }
+        return subscriptionMutationReceipt
+    }
+
+    func deleteCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        calls.append("codex_subscription_delete:\(request.accountID)")
+        if subscriptionMutationFails { throw FakeFailure.unavailable }
+        return subscriptionMutationReceipt
+    }
+
+    func linkCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        calls.append("codex_subscription_link:\(request.detectedAccountID)")
+        if subscriptionMutationFails { throw FakeFailure.unavailable }
+        return subscriptionMutationReceipt
+    }
+
+    func unlinkCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        calls.append("codex_subscription_unlink:\(request.detectedAccountID)")
+        if subscriptionMutationFails { throw FakeFailure.unavailable }
+        return subscriptionMutationReceipt
     }
 
     func listSessions(
@@ -6005,6 +6145,741 @@ private func testSettingsEditDuringRefreshIsPreserved() async throws {
         model.settingsDraft?.quotaEnabled == true, "an edit made during refresh must not be overwritten"
     )
     _ = await model.shutdown()
+}
+
+private func makeCodexSubscriptionAccount(
+    id: String,
+    current: Bool = false,
+    detected: Bool = true,
+    hasManual: Bool = false,
+    linked: Bool = false,
+    email: String? = nil,
+    alias: String? = nil,
+    plan: Codexpulse_Core_V1_CodexSubscriptionPlan? = nil,
+    membershipDate: String? = nil,
+    dateKind: Codexpulse_Core_V1_CodexSubscriptionDateKind? = nil,
+    dateState: Codexpulse_Core_V1_CodexSubscriptionDateState = .unavailable,
+    dayDelta: Int32? = nil,
+    manualRevision: Int64? = nil
+) -> Codexpulse_Core_V1_CodexSubscriptionAccount {
+    var account = Codexpulse_Core_V1_CodexSubscriptionAccount()
+    account.accountID = id
+    account.current = current
+    account.detected = detected
+    account.hasManual_p = hasManual
+    account.linked = linked
+    if detected {
+        account.detectedAccountID = id
+    }
+    if hasManual {
+        account.manualEntryID = id
+    }
+    if let email {
+        account.displayEmail = email
+        if hasManual {
+            account.manualEmail = email
+        }
+    }
+    if let alias {
+        account.alias = alias
+    }
+    if let plan {
+        account.resolvedPlan = plan
+        account.manualPlan = plan
+    }
+    if let membershipDate {
+        account.membershipDate = membershipDate
+    }
+    if let dateKind {
+        account.dateKind = dateKind
+    }
+    account.dateState = dateState
+    if let dayDelta {
+        account.dayDelta = dayDelta
+    }
+    if let manualRevision {
+        account.manualRevision = manualRevision
+    }
+    return account
+}
+
+private func makeCodexSubscriptionListResponse(
+    accounts: [Codexpulse_Core_V1_CodexSubscriptionAccount],
+    candidates: [Codexpulse_Core_V1_CodexSubscriptionLinkCandidate] = []
+) -> Codexpulse_Core_V1_CodexSubscriptionAccountsResponse {
+    var response = Codexpulse_Core_V1_CodexSubscriptionAccountsResponse()
+    response.version = "codex-subscription-accounts-v1"
+    response.evaluatedAtMs = 1_784_000_000_000
+    response.timeZone = "Asia/Shanghai"
+    response.automaticDateCapability = .manualOnly
+    response.accounts = accounts
+    response.linkCandidates = candidates
+    return response
+}
+
+private func testCodexSubscriptionCivilDateAndDayBoundaryHelpers() throws {
+    try expect(
+        CodexSubscriptionCivilDate.format(
+            CodexSubscriptionCivilDate.parse("2099-12-31") ?? DateComponents()
+        ) == "2099-12-31",
+        "civil dates must round-trip as YYYY-MM-DD"
+    )
+    try expect(
+        CodexSubscriptionCivilDate.parse("2026-02-29") == nil
+            && CodexSubscriptionCivilDate.parse("2026-04-31") == nil
+            && CodexSubscriptionCivilDate.parse("２０２６-01-01") == nil,
+        "civil dates must reject invalid calendars and non-ASCII shapes"
+    )
+    try expect(
+        CodexSubscriptionCivilDate.dayOfMonth(from: "2099-12-31") == 31
+            && CodexSubscriptionCivilDate.monthlyRenewalAnchor(dayOfMonth: 31) == "2000-01-31"
+            && CodexSubscriptionCivilDate.monthlyRenewalAnchor(dayOfMonth: 0).isEmpty,
+        "monthly renewal helpers must preserve only a valid day of month"
+    )
+    let losAngeles = TimeZone(identifier: "America/Los_Angeles")!
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = losAngeles
+    let now = calendar.date(
+        from: DateComponents(year: 2026, month: 3, day: 8, hour: 1, minute: 30)
+    )!
+    let next = CodexSubscriptionCalendar.nextLocalDayBoundary(now: now, timeZone: losAngeles)
+    let expected = calendar.date(
+        byAdding: .day,
+        value: 1,
+        to: calendar.startOfDay(for: now)
+    )!
+    try expect(next == expected, "the next local day boundary must use Gregorian date math")
+}
+
+private func testCodexSubscriptionRowPresentationKeepsServerOrderAndUnknownPlaceholders() throws {
+    let current = makeCodexSubscriptionAccount(
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        current: true,
+        email: "current@example.com",
+        plan: .pro20X,
+        membershipDate: "2099-12-31",
+        dateKind: .nextRenewal,
+        dateState: .future,
+        dayDelta: 999
+    )
+    let unknown = makeCodexSubscriptionAccount(
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        detected: false,
+        hasManual: true
+    )
+    let currentRow = CodexSubscriptionAccountRowPresentation(
+        current,
+        localization: .chineseSimplified
+    )
+    let unknownRow = CodexSubscriptionAccountRowPresentation(
+        unknown,
+        localization: .chineseSimplified
+    )
+    try expect(currentRow.title == "current@example.com", "title must prefer display email")
+    try expect(currentRow.planText == "Pro 20×", "resolved plan must use generated enum copy")
+    try expect(
+        currentRow.dateKindText == "每月续费" && currentRow.dateText == "每月 31 日",
+        "monthly renewal must display a recurring day instead of the anchor date"
+    )
+    let currentEnglishRow = CodexSubscriptionAccountRowPresentation(
+        current,
+        localization: .englishUS
+    )
+    try expect(
+        currentEnglishRow.dateKindText == "Monthly renewal"
+            && currentEnglishRow.dateText == "Day 31 of each month",
+        "monthly renewal must be localized without exposing the anchor date"
+    )
+    try expect(currentRow.remainingText == "剩余 999 天", "remaining days must come from the server delta")
+    try expect(currentRow.badges == [.current, .detected], "current detected badges must stay distinct")
+    try expect(!currentRow.canDelete, "the current account must not expose deletion")
+    try expect(unknownRow.canDelete, "a non-current account must expose deletion")
+    try expect(
+        unknownRow.title == "--" && unknownRow.planText == "--" && unknownRow.dateText == "--"
+            && unknownRow.remainingText == "--",
+        "unknown fields must render as --"
+    )
+}
+
+private func testCodexSubscriptionEditorCarriesDetectedFactsWithoutPersistingFallbacks() throws {
+    var account = Codexpulse_Core_V1_CodexSubscriptionAccount()
+    account.accountID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    account.detected = true
+    account.detectedAccountID = account.accountID
+    account.displayEmail = "detected@example.com"
+    account.detectedEmail = "detected@example.com"
+    account.automaticPlan = .pro20X
+    account.automaticPlanState = .known
+    account.resolvedPlan = .pro20X
+    account.resolvedPlanSource = .automatic
+
+    var draft = CodexSubscriptionManualDraft(account: account)
+    try expect(draft.email == "detected@example.com", "editor must display the detected email")
+    try expect(draft.plan == .pro20X, "editor must display the automatic plan")
+    let untouched = draft.makeFields()
+    try expect(
+        !untouched.hasEmail && !untouched.hasPlan,
+        "saving another field must not copy untouched automatic facts into manual storage"
+    )
+
+    draft.email = "manual@example.com"
+    draft.plan = .plus
+    let overridden = draft.makeFields()
+    try expect(
+        overridden.hasEmail && overridden.email == "manual@example.com"
+            && overridden.hasPlan && overridden.plan == .plus,
+        "editing an automatic fact must create an explicit manual override"
+    )
+
+    var refreshedAccount = account
+    refreshedAccount.detectedEmail = "refreshed@example.com"
+    refreshedAccount.displayEmail = "refreshed@example.com"
+    refreshedAccount.automaticPlan = .team
+    refreshedAccount.resolvedPlan = .team
+    let refreshed = CodexSubscriptionManualDraft(account: account)
+        .rebasedAutomaticValues(on: refreshedAccount)
+    try expect(
+        refreshed.email == "refreshed@example.com" && refreshed.plan == .team,
+        "conflict rebase must refresh automatic values that the user did not edit"
+    )
+    let preserved = draft.rebasedAutomaticValues(on: refreshedAccount)
+    try expect(
+        preserved.email == "manual@example.com" && preserved.plan == .plus,
+        "conflict rebase must preserve explicit manual edits"
+    )
+}
+
+private func testCodexAccountsSettingsSourceContract() throws {
+    let source = try mainWindowSource("CodexAccountsSettingsView.swift")
+    let settings = try mainWindowSource("SourcesJobsSettingsViews.swift")
+    try expect(
+        source.contains("Codex 账号与订阅")
+            && source.contains("自动识别账号与手动记录保存在本机；续费日与到期日仅支持手动维护")
+            && source.contains("邮箱相同不代表同一身份")
+            && source.contains("Calendar(identifier: .gregorian)")
+            && source.contains("CodexSubscriptionCivilDate.isoString")
+            && source.contains(".popover(isPresented: $isDatePickerPresented)")
+            && source.contains(".datePickerStyle(.graphical)")
+            && source.contains("Image(systemName: \"calendar\")")
+            && source.contains("CodexSubscriptionCivilDate.displayString")
+            && source.contains("Picker(localizedCopy(\"续费日\")")
+            && source.contains("CodexSubscriptionCivilDate.monthlyRenewalAnchor")
+            && source.contains("manualEntryID: session.id")
+            && source.contains("current.rebased(on: response.accounts)")
+            && source.contains("let detected = accounts.first")
+            && source.contains("确认删除账号")
+            && source.contains("settings.codex-accounts.delete.")
+            && source.contains("case .idle, .running, .applied, .noop:")
+            && !source.contains("Label(localizedCopy(\"已保存\")")
+            && !source.contains("Label(localizedCopy(\"正在保存…\")")
+            && !source.contains("settingsDraft")
+            && !source.contains("dayDelta +")
+            && !source.contains("86400"),
+        "Settings must own the account list, keep successful actions silent, and show only actionable failures"
+    )
+    try expect(
+        settings.contains("CodexAccountsSettingsSection(model: model)")
+            && settings.contains("localizedCopy(\"API 凭据\")")
+            && !settings.contains("Section(localizedCopy(\"API 与订阅\"))"),
+        "Settings must keep API credentials separate from the Codex account list"
+    )
+}
+
+@MainActor
+private func testAccountSnapshotSendsEvaluationContext() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+    model.start()
+    try await waitUntil("account snapshot overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    let requests = await core.recordedAccountSnapshotRequests()
+    try expect(!requests.isEmpty, "overview must request AccountSnapshot")
+    try expect(
+        requests.allSatisfy { $0.evaluatedAtMs > 0 && $0.timeZone != "Local" && !$0.timeZone.isEmpty },
+        "AccountSnapshot must send the current evaluation time and IANA time zone"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testCodexSubscriptionMutationRequiresAuthoritativeReadback() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setSettingsResponses(
+        [makeSettingsResponse(revision: "revision-1", quotaEnabled: false)],
+        updateFailure: false
+    )
+    let initial = makeCodexSubscriptionListResponse(accounts: [
+        makeCodexSubscriptionAccount(
+            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            email: "first@example.com"
+        )
+    ])
+    let readback = makeCodexSubscriptionListResponse(accounts: [
+        makeCodexSubscriptionAccount(
+            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            email: "first@example.com"
+        ),
+        makeCodexSubscriptionAccount(
+            id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            detected: false,
+            hasManual: true,
+            email: "manual@example.com"
+        )
+    ])
+    await core.setCodexSubscriptionListPlans([
+        CodexSubscriptionListPlan(response: initial),
+        CodexSubscriptionListPlan(response: readback),
+    ])
+    await core.setCodexSubscriptionMutation(result: .applied)
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+    model.start()
+    try await waitUntil("subscription mutation overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.navigate(to: .settings)
+    try await waitUntil("subscription mutation initial list") {
+        await MainActor.run {
+            model.codexSubscriptionAccountsState.value?.accounts.count == 1
+        }
+    }
+    let draftBefore = model.settingsDraft
+    model.createCodexSubscriptionAccount(
+        CodexSubscriptionManualDraft(email: "manual@example.com"),
+        manualEntryID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    )
+    try await waitUntil("subscription mutation applied") {
+        await MainActor.run {
+            if case .applied = model.codexSubscriptionActionState { return true }
+            return false
+        }
+    }
+    try expect(
+        model.codexSubscriptionAccountsState.value?.accounts.count == 2,
+        "success must come from the authoritative list readback"
+    )
+    try expect(model.settingsDraft == draftBefore, "account mutations must not touch settingsDraft")
+    let calls = await core.recordedCalls()
+    try expect(
+        calls.filter { $0.hasPrefix("codex_subscription_create:") }.count == 1
+            && calls.filter { $0 == "codex_subscription_list" }.count >= 2,
+        "create must be followed by a list readback"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testCodexSubscriptionDeleteRequiresAuthoritativeAbsenceReadback() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setSettingsResponses(
+        [makeSettingsResponse(revision: "revision-1", quotaEnabled: false)],
+        updateFailure: false
+    )
+    var account = makeCodexSubscriptionAccount(
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        hasManual: true,
+        linked: true,
+        email: "old@example.com",
+        manualRevision: 3
+    )
+    account.detectedAccountID = account.accountID
+    account.manualEntryID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    account.detectedRevision = 2
+    account.linkRevision = 4
+    await core.setCodexSubscriptionListPlans([
+        CodexSubscriptionListPlan(
+            response: makeCodexSubscriptionListResponse(accounts: [account])
+        ),
+        CodexSubscriptionListPlan(
+            response: makeCodexSubscriptionListResponse(accounts: [])
+        ),
+    ])
+    await core.setCodexSubscriptionMutation(result: .applied)
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+    model.start()
+    try await waitUntil("subscription delete overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.navigate(to: .settings)
+    try await waitUntil("subscription delete initial list") {
+        await MainActor.run {
+            model.codexSubscriptionAccountsState.value?.accounts.count == 1
+        }
+    }
+    model.deleteCodexSubscriptionAccount(account)
+    try await waitUntil("subscription delete applied") {
+        await MainActor.run {
+            if case .applied = model.codexSubscriptionActionState { return true }
+            return false
+        }
+    }
+    try expect(
+        model.codexSubscriptionAccountsState.value?.accounts.isEmpty == true,
+        "delete success must come from an authoritative list without the account"
+    )
+    let calls = await core.recordedCalls()
+    try expect(
+        calls.filter {
+            $0 == "codex_subscription_delete:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        }.count == 1 && calls.filter { $0 == "codex_subscription_list" }.count >= 2,
+        "delete must be followed by a list readback"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testCodexSubscriptionReadbackFailureDoesNotShowSuccess() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setSettingsResponses(
+        [makeSettingsResponse(revision: "revision-1", quotaEnabled: false)],
+        updateFailure: false
+    )
+    let initial = makeCodexSubscriptionListResponse(accounts: [
+        makeCodexSubscriptionAccount(id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+    ])
+    await core.setCodexSubscriptionListPlans([
+        CodexSubscriptionListPlan(response: initial),
+        CodexSubscriptionListPlan(response: initial, fails: true),
+    ])
+    await core.setCodexSubscriptionMutation(result: .applied)
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+    model.start()
+    try await waitUntil("subscription readback overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.navigate(to: .settings)
+    try await waitUntil("subscription readback initial list") {
+        await MainActor.run {
+            model.codexSubscriptionAccountsState.value?.accounts.count == 1
+        }
+    }
+    model.createCodexSubscriptionAccount(
+        CodexSubscriptionManualDraft(email: "manual@example.com"),
+        manualEntryID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    )
+    try await waitUntil("subscription readback failure") {
+        await MainActor.run {
+            if case .unavailable = model.codexSubscriptionActionState { return true }
+            return false
+        }
+    }
+    try expect(
+        {
+            if case .applied = model.codexSubscriptionActionState { return false }
+            return true
+        }(),
+        "a failed authoritative readback must not display success"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testCodexSubscriptionReadbackMismatchDoesNotShowSuccess() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setSettingsResponses(
+        [makeSettingsResponse(revision: "revision-1", quotaEnabled: false)],
+        updateFailure: false
+    )
+    let unchanged = makeCodexSubscriptionListResponse(accounts: [
+        makeCodexSubscriptionAccount(id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+    ])
+    await core.setCodexSubscriptionListPlans([
+        CodexSubscriptionListPlan(response: unchanged),
+        CodexSubscriptionListPlan(response: unchanged),
+    ])
+    await core.setCodexSubscriptionMutation(result: .applied)
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+    model.start()
+    try await waitUntil("subscription mismatch overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.navigate(to: .settings)
+    try await waitUntil("subscription mismatch initial list") {
+        await MainActor.run { model.codexSubscriptionAccountsState.value != nil }
+    }
+    model.createCodexSubscriptionAccount(
+        CodexSubscriptionManualDraft(email: "manual@example.com"),
+        manualEntryID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    )
+    try await waitUntil("subscription mismatch rejected") {
+        await MainActor.run {
+            if case .unavailable = model.codexSubscriptionActionState { return true }
+            return false
+        }
+    }
+    try expect(
+        model.codexSubscriptionAccountsState.value?.accounts.count == 1,
+        "an applied receipt must not be shown as success when readback misses the target state"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testCodexSubscriptionCreateRetryReusesManualEntryID() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setSettingsResponses(
+        [makeSettingsResponse(revision: "revision-1", quotaEnabled: false)],
+        updateFailure: false
+    )
+    await core.setCodexSubscriptionListPlans([
+        CodexSubscriptionListPlan(response: makeCodexSubscriptionListResponse(accounts: []))
+    ])
+    await core.setCodexSubscriptionMutation(fails: true)
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+    model.start()
+    try await waitUntil("subscription retry overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.navigate(to: .settings)
+    try await waitUntil("subscription retry initial list") {
+        await MainActor.run { model.codexSubscriptionAccountsState.value != nil }
+    }
+    let id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    let draft = CodexSubscriptionManualDraft(email: "manual@example.com")
+    model.createCodexSubscriptionAccount(draft, manualEntryID: id)
+    try await waitUntil("subscription first create failure") {
+        await MainActor.run {
+            if case .unavailable = model.codexSubscriptionActionState { return true }
+            return false
+        }
+    }
+    model.createCodexSubscriptionAccount(draft, manualEntryID: id)
+    try await waitUntil("subscription second create failure") {
+        await core.recordedCalls().filter { $0 == "codex_subscription_create:\(id)" }.count == 2
+    }
+    let calls = await core.recordedCalls()
+    try expect(
+        calls.filter { $0 == "codex_subscription_create:\(id)" }.count == 2,
+        "a create retry must reuse the editor session UUID"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testCodexSubscriptionStaleListIsDiscardedAfterAccountInvalidation() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setSettingsResponses(
+        [makeSettingsResponse(revision: "revision-1", quotaEnabled: false)],
+        updateFailure: false
+    )
+    let stale = makeCodexSubscriptionListResponse(accounts: [
+        makeCodexSubscriptionAccount(
+            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            email: "stale@example.com"
+        )
+    ])
+    let fresh = makeCodexSubscriptionListResponse(accounts: [
+        makeCodexSubscriptionAccount(
+            id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            email: "fresh@example.com"
+        )
+    ])
+    await core.setCodexSubscriptionListPlans([
+        CodexSubscriptionListPlan(delay: .milliseconds(150), response: stale),
+        CodexSubscriptionListPlan(response: fresh),
+    ])
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+    model.start()
+    try await waitUntil("subscription stale overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.navigate(to: .settings)
+    try await waitUntil("subscription stale list starts") {
+        await core.recordedCalls().contains("codex_subscription_list")
+    }
+    await core.publishOverviewInvalidations(count: 1, recovered: false, domain: "account")
+    try await waitUntil("subscription fresh list") {
+        await MainActor.run {
+            model.codexSubscriptionAccountsState.value?.accounts.first?.displayEmail
+                == "fresh@example.com"
+        }
+    }
+    try await sleepForTest(.milliseconds(200))
+    try expect(
+        model.codexSubscriptionAccountsState.value?.accounts.first?.displayEmail
+            == "fresh@example.com",
+        "a stale list response must not replace the newer generation"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testCodexSubscriptionTimezoneChangeReloadsList() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setSettingsResponses(
+        [makeSettingsResponse(revision: "revision-1", quotaEnabled: false)],
+        updateFailure: false
+    )
+    let first = makeCodexSubscriptionListResponse(accounts: [
+        makeCodexSubscriptionAccount(id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", dayDelta: 2)
+    ])
+    let second = makeCodexSubscriptionListResponse(accounts: [
+        makeCodexSubscriptionAccount(id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", dayDelta: 1)
+    ])
+    await core.setCodexSubscriptionListPlans([
+        CodexSubscriptionListPlan(response: first),
+        CodexSubscriptionListPlan(response: second),
+    ])
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+    model.start()
+    try await waitUntil("subscription timezone overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.navigate(to: .settings)
+    try await waitUntil("subscription timezone initial list") {
+        await MainActor.run {
+            model.codexSubscriptionAccountsState.value?.accounts.first?.dayDelta == 2
+        }
+    }
+    model.handleSystemTimeZoneChange()
+    try await waitUntil("subscription timezone reload") {
+        await MainActor.run {
+            model.codexSubscriptionAccountsState.value?.accounts.first?.dayDelta == 1
+        }
+    }
+    _ = await model.shutdown()
+}
+
+private func testPopoverAccountSummaryShowsSubscriptionDateLine() throws {
+    var snapshot = Codexpulse_Core_V1_AccountSnapshotResponse()
+    snapshot.account.type = "chatgpt"
+    snapshot.account.email = "person@example.com"
+    snapshot.account.planType = "pro"
+    snapshot.binding = makeCodexBinding(scope: testCodexScopeA, generation: 1)
+    let subscription = makeCodexSubscriptionAccount(
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        current: true,
+        email: "person@example.com",
+        alias: "alias-canary",
+        plan: .pro20X,
+        membershipDate: "2099-12-31",
+        dateKind: .nextRenewal,
+        dateState: .future,
+        dayDelta: 999
+    )
+    snapshot.subscription = subscription
+    let summary = PopoverAccountSummaryPresentation(
+        account: CodexAccountPresentation(snapshot),
+        snapshot: snapshot
+    )
+    try expect(summary.availability == .available, "confirmed current subscription must stay available")
+    try expect(summary.planText == "Pro 20×", "popover plan must use the resolved subscription plan")
+    try expect(summary.emailText == "person@example.com", "popover email must stay visible outside capture")
+    try expect(summary.dateText == "每月 31 日", "popover must show the recurring renewal day")
+    try expect(summary.remainingText == "剩余 999 天", "popover remaining text must use the server delta")
+    try expect(
+        summary.secondaryText == "每月 31 日 · 剩余 999 天",
+        "popover must combine date and remaining days on the second line"
+    )
+}
+
+private func testQuotaAccountSummaryRequiresMatchingQuotaBinding() throws {
+    let responses = makeResponses(
+        accountEmail: "person@example.com",
+        accountBindingScope: testCodexScopeA,
+        accountBindingGeneration: 1
+    )
+    guard var snapshot = responses.account else {
+        throw TestFailure.mismatch("quota account snapshot fixture missing")
+    }
+    snapshot.subscription = makeCodexSubscriptionAccount(
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        current: true,
+        email: "person@example.com",
+        plan: .pro20X,
+        membershipDate: "2000-01-11",
+        dateKind: .nextRenewal,
+        dateState: .future,
+        dayDelta: 25
+    )
+    let matching = CodexQuotaAccountSummaryCopy.summary(
+        quota: responses.quota,
+        snapshot: snapshot
+    )
+    try expect(
+        matching?.planText == "Pro 20×"
+            && matching?.emailText == "person@example.com"
+            && matching?.secondaryText == "每月 11 日 · 剩余 25 天",
+        "matching quota and account contexts must publish the current account summary"
+    )
+
+    snapshot.binding = makeCodexBinding(scope: testCodexScopeB, generation: 2)
+    try expect(
+        CodexQuotaAccountSummaryCopy.summary(quota: responses.quota, snapshot: snapshot) == nil,
+        "a mismatched account must not publish beside another account's quota"
+    )
+}
+
+private func testPopoverAccountSummaryShowsMembershipExpiryNeedsUpdate() throws {
+    var snapshot = Codexpulse_Core_V1_AccountSnapshotResponse()
+    snapshot.account.type = "chatgpt"
+    snapshot.account.email = "person@example.com"
+    snapshot.binding = makeCodexBinding(scope: testCodexScopeA, generation: 1)
+    snapshot.subscription = makeCodexSubscriptionAccount(
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        current: true,
+        plan: .plus,
+        membershipDate: "2026-01-01",
+        dateKind: .membershipExpiry,
+        dateState: .needsUpdate,
+        dayDelta: -14
+    )
+    let summary = PopoverAccountSummaryPresentation(
+        account: CodexAccountPresentation(snapshot),
+        snapshot: snapshot
+    )
+    try expect(
+        summary.dateText == "到期 2026年1月1日"
+            && summary.secondaryText == "到期 2026年1月1日 · 已过 14 天 · 需要更新",
+        "membership expiry must keep the exact date and elapsed day count"
+    )
+}
+
+private func testPopoverAccountSummaryRejectsNonCurrentSubscription() throws {
+    var snapshot = Codexpulse_Core_V1_AccountSnapshotResponse()
+    snapshot.account.type = "chatgpt"
+    snapshot.account.email = "person@example.com"
+    snapshot.binding = makeCodexBinding(scope: testCodexScopeA, generation: 1)
+    snapshot.subscription = makeCodexSubscriptionAccount(
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        current: false,
+        email: "other@example.com",
+        plan: .pro20X
+    )
+    let summary = PopoverAccountSummaryPresentation(
+        account: CodexAccountPresentation(snapshot),
+        snapshot: snapshot
+    )
+    try expect(
+        summary.availability == .unavailable && summary.dateText == nil,
+        "popover must not display a non-current subscription"
+    )
+}
+
+private func testPopoverPrivacyPayloadHidesSubscriptionCanaries() throws {
+    let text = PopoverScreenshotClipboardText.plainText
+    let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+    for canary in [
+        "person@example.com",
+        "alias-canary",
+        "Pro 20×",
+        "2099-12-31",
+        "剩余 999 天",
+    ] {
+        try expect(!text.contains(canary), "clipboard text must hide canary \(canary)")
+        try expect(
+            png.range(of: Data(canary.utf8)) == nil,
+            "PNG payload must hide canary \(canary)"
+        )
+    }
 }
 
 private func testSettingsRevisionRequest() throws {
@@ -8369,6 +9244,54 @@ private func testQuotaUsageFeatureReloadsQuotaPace() async throws {
     }
     let calls = await core.recordedCalls().filter { $0 == "quota-pace" }
     try expect(calls.count >= 2, "quota feature reload must issue its own quota pace query")
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testQuotaUsageLoadsAccountSnapshotAndClearsItForOtherProviders() async throws {
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(
+            accountEmail: "quota@example.com",
+            accountBindingScope: testCodexScopeA,
+            accountBindingGeneration: 1
+        )
+    )
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    )
+
+    model.start()
+    try await waitUntil("quota account overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.loadQuotaAndUsage()
+    try await waitUntil("quota account snapshot") {
+        await MainActor.run {
+            model.quotaState.value != nil && model.quotaAccountState.value != nil
+        }
+    }
+    guard let quota = model.quotaState.value,
+          let snapshot = model.quotaAccountState.value
+    else {
+        throw TestFailure.mismatch("quota account state missing")
+    }
+    try expect(
+        CodexQuotaAccountSummaryCopy.summary(quota: quota, snapshot: snapshot)?.emailText
+            == "quota@example.com",
+        "quota page must load an account snapshot aligned with its quota"
+    )
+    let requests = await core.recordedAccountSnapshotRequests()
+    try expect(
+        requests.contains { $0.provider.provider == AgentProvider.codex.rawValue },
+        "quota account snapshot must be explicitly scoped to Codex"
+    )
+
+    model.selectProvider(.cursor)
+    try expect(
+        model.quotaAccountState.value == nil,
+        "switching away from Codex must clear the page account summary immediately"
+    )
     _ = await model.shutdown()
 }
 
@@ -11532,6 +12455,7 @@ struct CodexPulseAppTestMain {
         try await testOverviewInvocationDeepLinkAlignsTheDetailContext()
         try testReferencePriceFormattingPreservesPrecisionAndUnknown()
         try testQuotaUsageShowsIndependentReferencePriceCatalogAndBillingBoundary()
+        try testQuotaUsageShowsResponsiveCurrentCodexAccountCard()
         try testOverviewMergesAllOtherProjectUsage()
         try testOverviewLimitsMergedProjectRowsToFive()
         try testOverviewLimitsHighConsumptionSessionsToFive()
@@ -11565,6 +12489,11 @@ struct CodexPulseAppTestMain {
 		try testCursorPopoverShowsLocalAccountAndOmitsTodayActivity()
 		try testGrokPopoverShowsAccountAndSubscriptionPlan()
         try testPopoverAccountSummaryDistinguishesEmptyAndUnavailableData()
+        try testPopoverAccountSummaryShowsSubscriptionDateLine()
+        try testQuotaAccountSummaryRequiresMatchingQuotaBinding()
+        try testPopoverAccountSummaryShowsMembershipExpiryNeedsUpdate()
+        try testPopoverAccountSummaryRejectsNonCurrentSubscription()
+        try testPopoverPrivacyPayloadHidesSubscriptionCanaries()
         try testPopoverScreenshotClipboardTextHidesAccountAndPlan()
         try testPopoverProjectActionUsesExactPublicRepositoryURL()
         try testPopoverProjectActionMakesSystemOpenFailureVisible()
@@ -11650,6 +12579,7 @@ struct CodexPulseAppTestMain {
         try await testAppRuntimeUsesWeeklyQuotaRangeForOverview()
         try await testAppRuntimeLoadsQuotaPaceWithOverview()
         try await testQuotaUsageFeatureReloadsQuotaPace()
+        try await testQuotaUsageLoadsAccountSnapshotAndClearsItForOtherProviders()
         try testCodexAccountContextRejectsMismatchedQuotaAndAccount()
         try testCodexAccountContextDropsPreviousAccountWhenQuotaChanges()
         try testCodexAccountContextReplacesMismatchedPace()
@@ -11753,6 +12683,18 @@ struct CodexPulseAppTestMain {
         try await testSettingsConflictPreservesDraft()
         try await testSettingsEditDuringSaveIsPreserved()
         try await testSettingsEditDuringRefreshIsPreserved()
+        try testCodexSubscriptionCivilDateAndDayBoundaryHelpers()
+        try testCodexSubscriptionRowPresentationKeepsServerOrderAndUnknownPlaceholders()
+        try testCodexSubscriptionEditorCarriesDetectedFactsWithoutPersistingFallbacks()
+        try testCodexAccountsSettingsSourceContract()
+        try await testAccountSnapshotSendsEvaluationContext()
+        try await testCodexSubscriptionMutationRequiresAuthoritativeReadback()
+        try await testCodexSubscriptionDeleteRequiresAuthoritativeAbsenceReadback()
+        try await testCodexSubscriptionReadbackFailureDoesNotShowSuccess()
+        try await testCodexSubscriptionReadbackMismatchDoesNotShowSuccess()
+        try await testCodexSubscriptionCreateRetryReusesManualEntryID()
+        try await testCodexSubscriptionStaleListIsDiscardedAfterAccountInvalidation()
+        try await testCodexSubscriptionTimezoneChangeReloadsList()
         try await testNormalLifecycleAndShutdown()
         try await testRecoveryAndRestartRequired()
         try await testStaleAndUnavailable()

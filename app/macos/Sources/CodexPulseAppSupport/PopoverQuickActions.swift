@@ -1,4 +1,5 @@
 import AppKit
+import CodexPulseProtocolGenerated
 import Foundation
 
 public enum MenuBarPopoverLayout {
@@ -42,9 +43,61 @@ public struct PopoverAccountSummaryPresentation: Equatable, Sendable {
     public let availability: PopoverAccountSummaryAvailability
     public let planText: String
     public let emailText: String
+    public let dateText: String?
+    public let remainingText: String?
     public let accessibilityLabel: String
 
+    public var secondaryText: String? {
+        switch (dateText, remainingText) {
+        case let (date?, remaining?): "\(date) · \(remaining)"
+        case let (date?, nil): date
+        case let (nil, remaining?): remaining
+        case (nil, nil): nil
+        }
+    }
+
     public init(account: CodexAccountPresentation) {
+        self.init(account: account, snapshot: nil)
+    }
+
+    public init(
+        account: CodexAccountPresentation,
+        snapshot: Codexpulse_Core_V1_AccountSnapshotResponse?
+    ) {
+        let localization = AppLocalizationRegistry.shared.current
+        if let snapshot {
+            switch CodexSubscriptionPopoverCopy.facts(
+                from: snapshot,
+                account: account,
+                localization: localization
+            ) {
+            case .unavailable:
+                self.availability = .unavailable
+                self.planText = "--"
+                self.emailText = "--"
+                self.dateText = nil
+                self.remainingText = nil
+                self.accessibilityLabel = localization.textValue("Codex 账户与套餐信息暂不可用")
+                return
+            case .facts(let facts):
+                if account.availability == .unavailable || account.availability == .empty {
+                    self.availability = account.availability == .empty ? .empty : .unavailable
+                    self.planText = account.planText
+                    self.emailText = account.emailText
+                    self.dateText = nil
+                    self.remainingText = nil
+                    self.accessibilityLabel = account.accessibilityLabel
+                    return
+                }
+                self.availability = .available
+                self.planText = facts.planText
+                self.emailText = facts.emailText
+                self.dateText = facts.dateText
+                self.remainingText = facts.remainingText
+                self.accessibilityLabel = facts.accessibilityLabel
+                return
+            }
+        }
         switch account.availability {
         case .available:
             self.availability = .available
@@ -55,20 +108,22 @@ public struct PopoverAccountSummaryPresentation: Equatable, Sendable {
         }
         self.planText = account.planText
         self.emailText = account.emailText
+        self.dateText = nil
+        self.remainingText = nil
         self.accessibilityLabel = account.accessibilityLabel
     }
 }
 
 public extension OverviewPresentation {
     var popoverAccountSummary: PopoverAccountSummaryPresentation {
-        PopoverAccountSummaryPresentation(account: account)
+        PopoverAccountSummaryPresentation(account: account, snapshot: accountSnapshot)
     }
 }
 
 public enum PopoverScreenshotClipboardText {
     public static let plainText = """
         Codex Pulse Popover 完整截图
-        账号与套餐信息已隐藏
+        账号、套餐与订阅日期信息已隐藏
         """
 }
 
@@ -411,7 +466,7 @@ public enum PopoverQuickActions {
         }
         return .success(
             title: localization.textValue("已复制 Popover 完整截图"),
-            message: localization.textValue("Popover 全部内容已复制，账号与套餐信息已隐藏。")
+            message: localization.textValue("Popover 全部内容已复制，账号、套餐与订阅日期信息已隐藏。")
         )
     }
 }

@@ -58,4 +58,5 @@ swift build --package-path app/macos --product codex-pulse-app-tests
 - 错误和 DTO 不得包含原始 `accountId`。
 - 不记录 token、Cookie、Authorization、原始 JSON-RPC 或真实邮箱。
 - resolver 输出只包含有限 state/tier/reason，不回显未知 plan token。
+- 自动套餐事实可被 TOO-447 订阅列表复用，但本 runbook 的 resolver v1 合同不变；不要把会员日期或账号列表验收写进 TOO-446 结论。
 - 截图和剪贴板继续复用现有账号胶囊隐藏逻辑。

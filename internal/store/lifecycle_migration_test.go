@@ -65,7 +65,7 @@ func TestApplicationMigrationUpgradesV7ThroughCurrentWithoutLosingSchedulerFacts
 		t.Fatalf("run() error = %v", err)
 	}
 	if report.FromVersion != 7 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}) || backupVersions != [2]int{7, 32} {
+		!equalInts(report.AppliedVersions, []int{8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33}) || backupVersions != [2]int{7, 33} {
 		t.Fatalf("run() report = %#v backup=%v, want v7 to v32", report, backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))
@@ -143,8 +143,8 @@ func verifyApplicationSchemaV7(ctx context.Context, transaction *gorm.DB) error 
 func TestCurrentApplicationSchemaIncludesV8LifecycleAndRetryFacts(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV32Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 32", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV33Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 33", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	repository := NewRepository(database)

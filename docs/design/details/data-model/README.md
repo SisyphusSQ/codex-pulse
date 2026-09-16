@@ -349,6 +349,16 @@ schema v32 增加 Codex 当前账号隔离所需的 binding 表，并让在线 s
 
 writer 必须在最终 SQLite 写事务内校验当前 binding generation。legacy `account_scope=default` 行原样保留。本地 Session/Token/项目/成本表不增加账号列或筛选。
 
+schema v33（`codex-subscription-accounts`）增加 Codex 订阅目录，不修改 v1–v32 SQL、名称或 checksum：
+
+| 表 | 职责 |
+| --- | --- |
+| `codex_subscription_detected_accounts` | 每个 HMAC scope 一条公开 UUID；保存 detected email 与自动套餐事实。 |
+| `codex_subscription_manual_entries` | 用户手动记录；standalone 必须有邮箱，linked supplement 允许清空邮箱。 |
+| `codex_subscription_links` | 显式一对一 detected↔manual link；邮箱从不作为唯一约束或静默合并键。 |
+
+v33 为既有 `codex_account_scopes` 回填公开 UUID detected row（`automatic_plan_state=unavailable`）。legacy `account_scope=default` 不回填。专用订阅表可以保存 detected/manual email；binding、quota、日志和 Proto 仍不得暴露 private scope、原始 accountId 或凭据。checksum 与验收见 [`docs/test/migrations.md`](../../../test/migrations.md)。
+
 Tool 事实来自结构化 `function_call` / `custom_tool_call`、MCP 完成事件、Web Search / Image Generation 完成事件，以及 `exec` 编排输入中可识别的内置 `tools.<name>(...)`。只有 MCP 结果明确携带 `Ok` / `Err` 时才记为 succeeded / failed；其它调用保持 unknown，不能把“出现 end 事件”猜成成功。Skill 事实只来自用户消息中的显式 `<skill><name>` 引用和编排输入中的 `skills/<name>/SKILL.md` 加载痕迹，因此页面统一称为“检测活动”，不声称是精确执行次数。
 
 该投影不保存 Tool 参数、命令、消息正文、返回内容、原始错误、完整 Skill 路径或原始 JSONL。名称只接受最长 128 字符的受限 token；时间与耗时必须是非负 JavaScript safe integer。统计按记录层级展示，编排调用与其内部 Tool 可以分别计数；Tool/Skill 活动不与 Token 用量建立归因关系。
