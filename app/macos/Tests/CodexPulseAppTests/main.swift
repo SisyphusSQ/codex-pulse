@@ -6303,6 +6303,51 @@ private func testCodexSubscriptionCivilDateAndDayBoundaryHelpers() throws {
     try expect(next == expected, "the next local day boundary must use Gregorian date math")
 }
 
+@MainActor
+private func testCodexSubscriptionDayBoundarySchedulerIsIdempotent() throws {
+    let scheduler = CodexSubscriptionDayBoundaryScheduler()
+    let firstBoundary = Date(timeIntervalSinceNow: 3_600)
+    let nextBoundary = firstBoundary.addingTimeInterval(86_400)
+
+    try expect(
+        scheduler.schedule(
+            at: firstBoundary,
+            timeZoneIdentifier: "Asia/Shanghai",
+            action: {}
+        ),
+        "the first day-boundary schedule must install a timer"
+    )
+    try expect(
+        !scheduler.schedule(
+            at: firstBoundary,
+            timeZoneIdentifier: "Asia/Shanghai",
+            action: {}
+        ),
+        "the same boundary and time zone must keep the existing timer"
+    )
+    try expect(
+        scheduler.schedule(
+            at: nextBoundary,
+            timeZoneIdentifier: "Asia/Shanghai",
+            action: {}
+        ),
+        "a new day boundary must replace the existing timer"
+    )
+    try expect(
+        scheduler.schedule(
+            at: nextBoundary,
+            timeZoneIdentifier: "UTC",
+            action: {}
+        ),
+        "a time-zone change must replace the existing timer"
+    )
+    scheduler.cancel()
+    try expect(
+        scheduler.deadline == nil && scheduler.timeZoneIdentifier == nil,
+        "cancel must clear the scheduled boundary"
+    )
+}
+
 private func testCodexSubscriptionRowPresentationKeepsServerOrderAndUnknownPlaceholders() throws {
     let current = makeCodexSubscriptionAccount(
         id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -12942,6 +12987,7 @@ struct CodexPulseAppTestMain {
         try await testSettingsEditDuringSaveIsPreserved()
         try await testSettingsEditDuringRefreshIsPreserved()
         try testCodexSubscriptionCivilDateAndDayBoundaryHelpers()
+        try testCodexSubscriptionDayBoundarySchedulerIsIdempotent()
         try testCodexSubscriptionRowPresentationKeepsServerOrderAndUnknownPlaceholders()
         try testCodexSubscriptionEditorCarriesDetectedFactsWithoutPersistingFallbacks()
         try testCodexAccountsSettingsSourceContract()
