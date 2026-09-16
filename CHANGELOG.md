@@ -1,5 +1,10 @@
 ## Unreleased
 
+## v0.12.0 - 2026-09-16
+
+#### feature:
+1. [PR #153] [TOO-445] 新增 Codex、Cursor、Grok 独立启停与 metadata-only 自动发现，贯通 Preferences、Go Helper、Core RPC、原生 macOS 设置/状态栏和禁用后的刷新、查询、凭据、账号及汇总隔离语义。
+
 ## v0.11.1 - 2026-09-05
 
 #### optimization:
