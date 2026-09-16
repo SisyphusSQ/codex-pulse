@@ -10,6 +10,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptiontier"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
@@ -28,10 +29,10 @@ func TestServiceExposesExactBusinessSurface(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
-		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "ConfirmHomeSwitch", "Contracts", "DashboardSummary", "DataHealth", "Health",
-		"HealthProjection", "InvocationUsage", "Job", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
+		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "ConfirmHomeSwitch", "Contracts", "CreateCodexSubscriptionAccount", "DashboardSummary", "DataHealth", "Health",
+		"HealthProjection", "InvocationUsage", "Job", "LinkCodexSubscriptionAccount", "ListCodexSubscriptionAccounts", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
 		"PlanHomeSwitch", "PricingCatalogCurrent", "ProjectDetail", "QuotaCurrent", "QuotaPace", "RecoverHomeSwitch", "RequestProviderRefresh", "RequestQuotaRefresh",
-		"RunRuntimeAction", "SessionDetail", "Settings", "Source", "UpdateAPICredential", "UpdateSettings", "UsageCost",
+		"RunRuntimeAction", "SessionDetail", "Settings", "Source", "UnlinkCodexSubscriptionAccount", "DeleteCodexSubscriptionAccount", "UpdateAPICredential", "UpdateCodexSubscriptionAccount", "UpdateSettings", "UsageCost",
 	}
 	sort.Strings(want)
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
@@ -267,7 +268,9 @@ func TestServiceDelegatesEphemeralAccountSnapshot(t *testing.T) {
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	got, err := service.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Cursor})
+	got, err := service.AccountSnapshot(context.Background(), AccountSnapshotQuery{
+		Scope: agentprovider.Scope{Provider: agentprovider.Cursor},
+	})
 	if err != nil {
 		t.Fatalf("AccountSnapshot() error = %v", err)
 	}
@@ -275,6 +278,7 @@ func TestServiceDelegatesEphemeralAccountSnapshot(t *testing.T) {
 		*got.Account.Email != email || got.Account.PlanType == nil ||
 		*got.Account.PlanType != planType || got.Binding != nil || got.ProTier == nil ||
 		got.ProTier.Tier == nil || *got.ProTier.Tier != subscriptiontier.Tier20X ||
+		got.Subscription != nil ||
 		account.calls != 1 || account.scope.Provider != agentprovider.Cursor {
 		t.Fatalf("AccountSnapshot() = %#v, calls = %d, scope = %#v", got, account.calls, account.scope)
 	}
@@ -298,7 +302,11 @@ func TestServiceDelegatesAccountSnapshotBinding(t *testing.T) {
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	got, err := service.AccountSnapshot(context.Background(), agentprovider.Scope{Provider: agentprovider.Codex})
+	got, err := service.AccountSnapshot(context.Background(), AccountSnapshotQuery{
+		Scope:         agentprovider.Scope{Provider: agentprovider.Codex},
+		EvaluatedAtMS: 1_700_000_000_000,
+		TimeZone:      "UTC",
+	})
 	if err != nil || got.Account != nil || got.Binding == nil || got.Binding.State != store.CodexAccountBindingPending ||
 		got.Binding.BindingGeneration != 2 || account.scope.Provider != agentprovider.Codex {
 		t.Fatalf("AccountSnapshot(binding) = %#v, %v", got, err)
@@ -318,12 +326,13 @@ func TestServiceContractsExposeUniqueCommandMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	contract := service.Contracts()
-	if contract.Version != "core-rpc-v3" ||
+	if contract.Version != "core-rpc-v4" ||
 		contract.UsageCostVersion != "usage-cost-v2" ||
 		contract.InvocationUsageVersion != "invocation-usage-v1" ||
 		contract.PricingCatalogVersion != "pricing-catalog-v1" ||
 		contract.DashboardSummaryVersion != "dashboard-summary-v2" ||
-		contract.CodexProTierVersion != subscriptiontier.ContractVersion {
+		contract.CodexProTierVersion != subscriptiontier.ContractVersion ||
+		contract.CodexSubscriptionAccountsVersion != subscriptionaccounts.ContractVersion {
 		t.Fatalf("Contracts() versions = %#v", contract)
 	}
 	commandsFromMethods := make([]string, 0)
@@ -481,9 +490,9 @@ func (pricingCatalogQueryStub) Current(context.Context, agentprovider.Scope) (pr
 	return pricingcatalog.CurrentResponse{}, nil
 }
 
-func (stub *accountSnapshotQueryStub) AccountSnapshot(_ context.Context, scope agentprovider.Scope) (AccountSnapshot, error) {
+func (stub *accountSnapshotQueryStub) AccountSnapshot(_ context.Context, query AccountSnapshotQuery) (AccountSnapshot, error) {
 	stub.calls++
-	stub.scope = scope
+	stub.scope = query.Scope
 	return stub.snapshot, nil
 }
 

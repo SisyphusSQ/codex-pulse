@@ -14,8 +14,8 @@ import (
 func TestAccountBindingMigrationPreservesLegacyDefaultAndSealsOldClaims(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV32Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 32", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV33Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 33", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	seedApplicationSchemaV31(t, database)
@@ -34,11 +34,11 @@ func TestAccountBindingMigrationPreservesLegacyDefaultAndSealsOldClaims(t *testi
 	if err != nil {
 		t.Fatalf("run(v31->v32) error = %v", err)
 	}
-	if report.FromVersion != 31 || report.TargetVersion != 32 ||
-		!equalInts(report.AppliedVersions, []int{32}) || backupVersions != [2]int{31, 32} {
+	if report.FromVersion != 31 || report.TargetVersion != 33 ||
+		!equalInts(report.AppliedVersions, []int{32, 33}) || backupVersions != [2]int{31, 33} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 32, 32)
+	assertMigrationVersionAndHistory(t, database, 33, 33)
 	assertLegacyDefaultQuotaPreserved(t, database, before)
 	assertAccountBindingSchemaContract(t, database)
 	if count := scalarCount(t, database, `SELECT COUNT(*) FROM codex_account_binding`); count != 0 {
@@ -96,18 +96,18 @@ func TestAccountBindingMigrationRollsBackAtomically(t *testing.T) {
 	}
 }
 
-func TestAccountBindingMigrationReopenKeepsSchemaVersion32(t *testing.T) {
+func TestAccountBindingMigrationReopenKeepsSchemaVersion33(t *testing.T) {
 	t.Parallel()
 
 	database := openTestDatabase(t)
 	if err := NewRepository(database).EnsureApplicationSchema(t.Context()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 32, 32)
+	assertMigrationVersionAndHistory(t, database, 33, 33)
 	if err := NewRepository(database).EnsureApplicationSchema(t.Context()); err != nil {
 		t.Fatalf("EnsureApplicationSchema(reopen) error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 32, 32)
+	assertMigrationVersionAndHistory(t, database, 33, 33)
 	assertAccountBindingSchemaContract(t, database)
 }
 

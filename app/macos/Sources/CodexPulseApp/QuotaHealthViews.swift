@@ -25,14 +25,7 @@ struct QuotaUsageView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .center, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 3) {
-						Text(quotaPageTitle).font(.largeTitle.bold())
-						Text(quotaPageSubtitle)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                }
+                pageHeader
                 HStack(spacing: 8) {
                     Text("用量范围")
                         .foregroundStyle(.secondary)
@@ -61,6 +54,66 @@ struct QuotaUsageView: View {
             .padding(20)
         }
         .accessibilityIdentifier("page.quota-usage")
+    }
+
+    @ViewBuilder
+    private var pageHeader: some View {
+        if model.selectedProvider == .codex {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 24) {
+                    pageHeaderCopy
+                    Spacer(minLength: 24)
+                    quotaAccountCard
+                        .frame(width: 340)
+                }
+                .frame(minWidth: 760)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    pageHeaderCopy
+                    quotaAccountCard
+                        .frame(maxWidth: 520, alignment: .leading)
+                }
+            }
+        } else {
+            pageHeaderCopy
+        }
+    }
+
+    private var pageHeaderCopy: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(quotaPageTitle).font(.largeTitle.bold())
+            Text(quotaPageSubtitle)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var quotaAccountCard: some View {
+        QuotaCurrentAccountCard(
+            summary: quotaAccountSummary,
+            fallbackText: quotaAccountFallbackText,
+            localization: model.localization,
+            onManage: { model.navigate(to: .settings) }
+        )
+    }
+
+    private var quotaAccountSummary: PopoverAccountSummaryPresentation? {
+        guard let quota = model.quotaState.value,
+              let snapshot = model.quotaAccountState.value
+        else { return nil }
+        return CodexQuotaAccountSummaryCopy.summary(quota: quota, snapshot: snapshot)
+    }
+
+    private var quotaAccountFallbackText: String {
+        if let snapshot = model.quotaAccountState.value {
+            let account = CodexAccountPresentation(snapshot)
+            if account.availability != .available {
+                return account.accessibilityLabel
+            }
+        }
+        if model.quotaAccountState.isLoading || model.quotaState.isLoading {
+            return model.localization.textValue("账号确认中")
+        }
+        return model.localization.textValue("Codex 账户与套餐信息暂不可用")
     }
 
     private var quotaSection: some View {
@@ -95,6 +148,88 @@ struct QuotaUsageView: View {
         ) {
             PricingCatalogView(response: $0)
         }
+    }
+}
+
+private struct QuotaCurrentAccountCard: View {
+    let summary: PopoverAccountSummaryPresentation?
+    let fallbackText: String
+    let localization: AppLocalization
+    let onManage: () -> Void
+
+    var body: some View {
+        Button(action: onManage) {
+            HStack(spacing: 12) {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+                accountContent
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(.primary.opacity(0.08), lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .help(localization.textValue("在设置中管理 Codex 账号"))
+        .accessibilityIdentifier("quota.current-account")
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(localization.textValue("在设置中管理 Codex 账号"))
+    }
+
+    @ViewBuilder
+    private var accountContent: some View {
+        if let summary, summary.availability == .available {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(localization.textValue("当前账号"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Text(summary.planText)
+                        .font(.headline)
+                    Text(summary.emailText)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                if let secondary = summary.secondaryText {
+                    Text(secondary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(localization.textValue("当前账号"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(statusText)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    private var statusText: String {
+        summary?.accessibilityLabel ?? fallbackText
+    }
+
+    private var accessibilityLabel: String {
+        if let summary, summary.availability == .available {
+            return summary.accessibilityLabel
+        }
+        return statusText
     }
 }
 

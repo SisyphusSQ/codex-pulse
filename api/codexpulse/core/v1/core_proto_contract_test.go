@@ -25,14 +25,14 @@ func TestCoreProtoExposesExactRPCSurface(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
-		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DataHealth",
-		"DashboardSummary",
-		"Handshake", "Health", "HealthProjection", "InvocationUsage", "Job", "ListHealth", "ListJobs", "ListProjects",
+		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "CreateCodexSubscriptionAccount", "DataHealth",
+		"DashboardSummary", "DeleteCodexSubscriptionAccount",
+		"Handshake", "Health", "HealthProjection", "InvocationUsage", "Job", "LinkCodexSubscriptionAccount", "ListCodexSubscriptionAccounts", "ListHealth", "ListJobs", "ListProjects",
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
 		"MigrationRecoveryExit", "MigrationRecoveryPrepare", "MigrationRecoveryRetry",
 		"MigrationRecoveryState", "NotifyLifecycle", "PlanHomeSwitch", "ProjectDetail", "QuotaCurrent",
 		"PricingCatalogCurrent", "QuotaPace", "RecoverHomeSwitch", "RequestProviderRefresh", "RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings",
-		"Shutdown", "Source", "SubscribeInvalidations", "UpdateAPICredential", "UpdateSettings", "UsageCost",
+		"Shutdown", "Source", "SubscribeInvalidations", "UnlinkCodexSubscriptionAccount", "UpdateAPICredential", "UpdateCodexSubscriptionAccount", "UpdateSettings", "UsageCost",
 	}
 	sort.Strings(want)
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
@@ -70,7 +70,7 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		`(?s)message DashboardSummaryResponse\s*\{.*DashboardSummaryCoverage coverage\s*=\s*4\s*;.*repeated DashboardSummaryProviderSlice providers\s*=\s*6\s*;.*repeated DashboardSummaryQuotaCard quotas\s*=\s*10\s*;.*UTCTimeRange activity_range\s*=\s*13\s*;.*repeated DashboardSummaryTrendPoint activity\s*=\s*15\s*;.*repeated DashboardSummaryActivityProviderCoverage activity_provider_coverage\s*=\s*16\s*;`,
 		`(?s)message DashboardSummaryCoverage\s*\{.*int32 known_provider_count\s*=\s*1\s*;.*int32 known_cost_provider_count\s*=\s*6\s*;`,
 		`(?s)message DashboardSummaryProviderSlice\s*\{.*string provider\s*=\s*1\s*;.*ProviderContext provider_context\s*=\s*2\s*;.*string coverage_state\s*=\s*3\s*;.*NumericValue reported_usd_micros\s*=\s*7\s*;.*int32 model_count\s*=\s*12\s*;`,
-		`(?s)message ContractsResponse\s*\{.*string dashboard_summary_version\s*=\s*10\s*;.*string codex_pro_tier_version\s*=\s*11\s*;`,
+		`(?s)message ContractsResponse\s*\{.*string dashboard_summary_version\s*=\s*10\s*;.*string codex_pro_tier_version\s*=\s*11\s*;.*string codex_subscription_accounts_version\s*=\s*12\s*;`,
 		`(?s)message InvocationUsageRequest\s*\{.*UTCTimeRange range\s*=\s*1\s*;.*string source_class\s*=\s*3\s*;.*int32 top_limit\s*=\s*4\s*;`,
 		`(?s)message InvocationUsageResponse\s*\{.*InvocationTotals totals\s*=\s*5\s*;.*repeated ToolUsageItem tools\s*=\s*7\s*;.*repeated SkillUsageItem skills\s*=\s*8\s*;.*InvocationCoverage coverage\s*=\s*9\s*;`,
 		`(?s)message PricingCatalogCurrentRequest\s*\{.*ProviderScope provider\s*=\s*1\s*;.*\}`,
@@ -82,7 +82,21 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		`(?s)enum CodexProTier\s*\{\s*CODEX_PRO_TIER_UNSPECIFIED\s*=\s*0\s*;\s*CODEX_PRO_TIER_5X\s*=\s*1\s*;\s*CODEX_PRO_TIER_20X\s*=\s*2\s*;\s*\}`,
 		`(?s)enum CodexProTierState\s*\{\s*CODEX_PRO_TIER_STATE_UNSPECIFIED\s*=\s*0\s*;\s*CODEX_PRO_TIER_STATE_KNOWN\s*=\s*1\s*;\s*CODEX_PRO_TIER_STATE_PRO_UNKNOWN\s*=\s*2\s*;\s*CODEX_PRO_TIER_STATE_CONFLICT\s*=\s*3\s*;\s*CODEX_PRO_TIER_STATE_NOT_APPLICABLE\s*=\s*4\s*;\s*\}`,
 		`(?s)message CodexProTierSnapshot\s*\{\s*CodexProTierState state\s*=\s*1\s*;\s*optional CodexProTier tier\s*=\s*2\s*;\s*string reason\s*=\s*3\s*;\s*\}`,
-		`(?s)message AccountSnapshotResponse\s*\{\s*optional CodexAccountIdentity account\s*=\s*1\s*;\s*optional CodexAccountBinding binding\s*=\s*2\s*;\s*optional CodexProTierSnapshot pro_tier\s*=\s*3\s*;\s*\}`,
+		`(?s)message AccountSnapshotRequest\s*\{\s*ProviderScope provider\s*=\s*1\s*;\s*int64 evaluated_at_ms\s*=\s*2\s*;\s*string time_zone\s*=\s*3\s*;\s*\}`,
+		`(?s)message AccountSnapshotResponse\s*\{\s*optional CodexAccountIdentity account\s*=\s*1\s*;\s*optional CodexAccountBinding binding\s*=\s*2\s*;\s*optional CodexProTierSnapshot pro_tier\s*=\s*3\s*;\s*optional CodexSubscriptionAccount subscription\s*=\s*4\s*;\s*\}`,
+		`(?s)enum CodexSubscriptionPlan\s*\{\s*CODEX_SUBSCRIPTION_PLAN_UNSPECIFIED\s*=\s*0\s*;.*CODEX_SUBSCRIPTION_PLAN_EDU\s*=\s*9\s*;`,
+		`(?s)enum CodexSubscriptionAutomaticPlanState\s*\{\s*CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNSPECIFIED\s*=\s*0\s*;.*CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_CONFLICT\s*=\s*4\s*;`,
+		`(?s)enum CodexSubscriptionValueSource\s*\{\s*CODEX_SUBSCRIPTION_VALUE_SOURCE_UNSPECIFIED\s*=\s*0\s*;.*CODEX_SUBSCRIPTION_VALUE_SOURCE_MANUAL\s*=\s*3\s*;`,
+		`(?s)enum CodexSubscriptionDateKind\s*\{\s*CODEX_SUBSCRIPTION_DATE_KIND_UNSPECIFIED\s*=\s*0\s*;.*CODEX_SUBSCRIPTION_DATE_KIND_MEMBERSHIP_EXPIRY\s*=\s*2\s*;`,
+		`(?s)enum CodexSubscriptionDateState\s*\{\s*CODEX_SUBSCRIPTION_DATE_STATE_UNSPECIFIED\s*=\s*0\s*;.*CODEX_SUBSCRIPTION_DATE_STATE_NEEDS_UPDATE\s*=\s*4\s*;`,
+		`(?s)enum CodexSubscriptionAutomaticSource\s*\{\s*CODEX_SUBSCRIPTION_AUTOMATIC_SOURCE_UNSPECIFIED\s*=\s*0\s*;\s*CODEX_SUBSCRIPTION_AUTOMATIC_SOURCE_ACCOUNT_SANDWICH\s*=\s*1\s*;`,
+		`(?s)enum CodexSubscriptionAutomaticDateCapability\s*\{\s*CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_UNSPECIFIED\s*=\s*0\s*;\s*CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_MANUAL_ONLY\s*=\s*1\s*;`,
+		`(?s)enum CodexSubscriptionMutationResult\s*\{\s*CODEX_SUBSCRIPTION_MUTATION_RESULT_UNSPECIFIED\s*=\s*0\s*;.*CODEX_SUBSCRIPTION_MUTATION_RESULT_CONFLICT\s*=\s*3\s*;`,
+		`(?s)message CodexSubscriptionAccount\s*\{\s*string account_id\s*=\s*1\s*;.*optional int64 link_revision\s*=\s*27\s*;`,
+		`(?s)message CodexSubscriptionAccountsResponse\s*\{\s*string version\s*=\s*1\s*;.*CodexSubscriptionAutomaticDateCapability automatic_date_capability\s*=\s*4\s*;.*repeated CodexSubscriptionLinkCandidate link_candidates\s*=\s*6\s*;`,
+		`(?s)message CodexSubscriptionManualFields\s*\{\s*optional string email\s*=\s*1\s*;.*optional CodexSubscriptionDateKind date_kind\s*=\s*5\s*;`,
+		`(?s)message DeleteCodexSubscriptionAccountRequest\s*\{\s*string account_id\s*=\s*1\s*;\s*optional int64 expected_detected_revision\s*=\s*2\s*;\s*optional int64 expected_manual_revision\s*=\s*3\s*;\s*optional int64 expected_link_revision\s*=\s*4\s*;\s*\}`,
+		`(?s)message CodexSubscriptionMutationReceipt\s*\{\s*CodexSubscriptionMutationResult result\s*=\s*1\s*;\s*optional string reason\s*=\s*2\s*;\s*optional CodexSubscriptionAccount account\s*=\s*3\s*;`,
 		`(?s)message QuotaPaceForecast\s*\{.*string state\s*=\s*1\s*;.*optional int64 exhaust_at_ms\s*=\s*3\s*;.*optional int64 lead_before_reset_ms\s*=\s*4\s*;`,
 		`(?s)message QuotaPaceWindow\s*\{.*optional double pace_delta_pp\s*=\s*10\s*;.*QuotaPaceForecast forecast\s*=\s*11\s*;.*repeated QuotaPaceCycle historical_cycles\s*=\s*14\s*;.*repeated QuotaPaceHistoryBandPoint history_band\s*=\s*15\s*;`,
 		`(?s)message QuotaCurrentRequest\s*\{.*int64 evaluated_at_ms\s*=\s*1\s*;.*ProviderScope provider\s*=\s*2\s*;`,
@@ -104,7 +118,7 @@ func TestCoreProtoPreservesPresenceAndContentFreeErrors(t *testing.T) {
 		}
 	}
 	for _, forbidden := range []string{
-		"raw_error", "error_message", "stack_trace", "auth_token", "access_token", "refresh_token", "authorization", "accountId", "account_id",
+		"raw_error", "error_message", "stack_trace", "auth_token", "access_token", "refresh_token", "authorization", "accountId", "chatgpt_account_id", "raw_account_id",
 	} {
 		if regexp.MustCompile(`(?i)\b` + forbidden + `\b`).MatchString(content) {
 			t.Fatalf("core.proto exposes forbidden error or credential field %q", forbidden)

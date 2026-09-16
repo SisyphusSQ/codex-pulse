@@ -15,6 +15,7 @@ import (
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptiontier"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
@@ -72,12 +73,13 @@ func TestGRPCServerAuthenticatesHandshakeAndNegotiatesContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Contracts() error = %v", err)
 	}
-	if contracts.Version != "core-rpc-v3" ||
+	if contracts.Version != "core-rpc-v4" ||
 		contracts.UsageCostVersion != "usage-cost-v2" ||
 		contracts.InvocationUsageVersion != "invocation-usage-v1" ||
 		contracts.PricingCatalogVersion != "pricing-catalog-v1" ||
 		contracts.DashboardSummaryVersion != "dashboard-summary-v2" ||
-		contracts.CodexProTierVersion != subscriptiontier.ContractVersion {
+		contracts.CodexProTierVersion != subscriptiontier.ContractVersion ||
+		contracts.CodexSubscriptionAccountsVersion != subscriptionaccounts.ContractVersion {
 		t.Fatalf("Contracts() versions = %#v", contracts)
 	}
 }
@@ -435,14 +437,14 @@ func TestGRPCAPIImplementsEveryFrozenRPC(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
-		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "DashboardSummary", "DataHealth",
-		"Handshake", "Health", "HealthProjection", "InvocationUsage", "Job", "ListHealth", "ListJobs", "ListProjects",
+		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "CreateCodexSubscriptionAccount", "DashboardSummary", "DataHealth", "DeleteCodexSubscriptionAccount",
+		"Handshake", "Health", "HealthProjection", "InvocationUsage", "Job", "LinkCodexSubscriptionAccount", "ListCodexSubscriptionAccounts", "ListHealth", "ListJobs", "ListProjects",
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
 		"MigrationRecoveryExit", "MigrationRecoveryPrepare", "MigrationRecoveryRetry",
 		"MigrationRecoveryState", "NotifyLifecycle", "PlanHomeSwitch", "PricingCatalogCurrent", "ProjectDetail", "QuotaCurrent",
 		"QuotaPace",
 		"RecoverHomeSwitch", "RequestProviderRefresh", "RequestQuotaRefresh", "RunRuntimeAction", "SessionDetail", "Settings",
-		"Shutdown", "Source", "SubscribeInvalidations", "UpdateAPICredential", "UpdateSettings", "UsageCost",
+		"Shutdown", "Source", "SubscribeInvalidations", "UnlinkCodexSubscriptionAccount", "UpdateAPICredential", "UpdateCodexSubscriptionAccount", "UpdateSettings", "UsageCost",
 	}
 	sort.Strings(want)
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
@@ -767,10 +769,10 @@ type helperAccountSnapshotStub struct {
 
 func (stub *helperAccountSnapshotStub) AccountSnapshot(
 	_ context.Context,
-	scope agentprovider.Scope,
+	query core.AccountSnapshotQuery,
 ) (core.AccountSnapshot, error) {
 	stub.calls++
-	stub.scope = scope
+	stub.scope = query.Scope
 	return stub.snapshot, nil
 }
 

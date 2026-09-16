@@ -19,49 +19,55 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	CoreService_Handshake_FullMethodName                 = "/codexpulse.core.v1.CoreService/Handshake"
-	CoreService_Bootstrap_FullMethodName                 = "/codexpulse.core.v1.CoreService/Bootstrap"
-	CoreService_Contracts_FullMethodName                 = "/codexpulse.core.v1.CoreService/Contracts"
-	CoreService_AccountSnapshot_FullMethodName           = "/codexpulse.core.v1.CoreService/AccountSnapshot"
-	CoreService_UsageCost_FullMethodName                 = "/codexpulse.core.v1.CoreService/UsageCost"
-	CoreService_DashboardSummary_FullMethodName          = "/codexpulse.core.v1.CoreService/DashboardSummary"
-	CoreService_InvocationUsage_FullMethodName           = "/codexpulse.core.v1.CoreService/InvocationUsage"
-	CoreService_PricingCatalogCurrent_FullMethodName     = "/codexpulse.core.v1.CoreService/PricingCatalogCurrent"
-	CoreService_ListSessions_FullMethodName              = "/codexpulse.core.v1.CoreService/ListSessions"
-	CoreService_SessionDetail_FullMethodName             = "/codexpulse.core.v1.CoreService/SessionDetail"
-	CoreService_ListProjects_FullMethodName              = "/codexpulse.core.v1.CoreService/ListProjects"
-	CoreService_ProjectDetail_FullMethodName             = "/codexpulse.core.v1.CoreService/ProjectDetail"
-	CoreService_QuotaCurrent_FullMethodName              = "/codexpulse.core.v1.CoreService/QuotaCurrent"
-	CoreService_APISubscriptionsCurrent_FullMethodName   = "/codexpulse.core.v1.CoreService/APISubscriptionsCurrent"
-	CoreService_APICredentialStatus_FullMethodName       = "/codexpulse.core.v1.CoreService/APICredentialStatus"
-	CoreService_UpdateAPICredential_FullMethodName       = "/codexpulse.core.v1.CoreService/UpdateAPICredential"
-	CoreService_QuotaPace_FullMethodName                 = "/codexpulse.core.v1.CoreService/QuotaPace"
-	CoreService_RequestQuotaRefresh_FullMethodName       = "/codexpulse.core.v1.CoreService/RequestQuotaRefresh"
-	CoreService_RequestProviderRefresh_FullMethodName    = "/codexpulse.core.v1.CoreService/RequestProviderRefresh"
-	CoreService_ListSources_FullMethodName               = "/codexpulse.core.v1.CoreService/ListSources"
-	CoreService_Source_FullMethodName                    = "/codexpulse.core.v1.CoreService/Source"
-	CoreService_ListJobs_FullMethodName                  = "/codexpulse.core.v1.CoreService/ListJobs"
-	CoreService_Job_FullMethodName                       = "/codexpulse.core.v1.CoreService/Job"
-	CoreService_ListHealth_FullMethodName                = "/codexpulse.core.v1.CoreService/ListHealth"
-	CoreService_Health_FullMethodName                    = "/codexpulse.core.v1.CoreService/Health"
-	CoreService_HealthProjection_FullMethodName          = "/codexpulse.core.v1.CoreService/HealthProjection"
-	CoreService_DataHealth_FullMethodName                = "/codexpulse.core.v1.CoreService/DataHealth"
-	CoreService_Settings_FullMethodName                  = "/codexpulse.core.v1.CoreService/Settings"
-	CoreService_UpdateSettings_FullMethodName            = "/codexpulse.core.v1.CoreService/UpdateSettings"
-	CoreService_PlanHomeSwitch_FullMethodName            = "/codexpulse.core.v1.CoreService/PlanHomeSwitch"
-	CoreService_ConfirmHomeSwitch_FullMethodName         = "/codexpulse.core.v1.CoreService/ConfirmHomeSwitch"
-	CoreService_RecoverHomeSwitch_FullMethodName         = "/codexpulse.core.v1.CoreService/RecoverHomeSwitch"
-	CoreService_RunRuntimeAction_FullMethodName          = "/codexpulse.core.v1.CoreService/RunRuntimeAction"
-	CoreService_AnalyzeSessionIndexRepair_FullMethodName = "/codexpulse.core.v1.CoreService/AnalyzeSessionIndexRepair"
-	CoreService_NotifyLifecycle_FullMethodName           = "/codexpulse.core.v1.CoreService/NotifyLifecycle"
-	CoreService_MigrationRecoveryState_FullMethodName    = "/codexpulse.core.v1.CoreService/MigrationRecoveryState"
-	CoreService_MigrationRecoveryRetry_FullMethodName    = "/codexpulse.core.v1.CoreService/MigrationRecoveryRetry"
-	CoreService_MigrationRecoveryPrepare_FullMethodName  = "/codexpulse.core.v1.CoreService/MigrationRecoveryPrepare"
-	CoreService_MigrationRecoveryConfirm_FullMethodName  = "/codexpulse.core.v1.CoreService/MigrationRecoveryConfirm"
-	CoreService_MigrationRecoveryCancel_FullMethodName   = "/codexpulse.core.v1.CoreService/MigrationRecoveryCancel"
-	CoreService_MigrationRecoveryExit_FullMethodName     = "/codexpulse.core.v1.CoreService/MigrationRecoveryExit"
-	CoreService_SubscribeInvalidations_FullMethodName    = "/codexpulse.core.v1.CoreService/SubscribeInvalidations"
-	CoreService_Shutdown_FullMethodName                  = "/codexpulse.core.v1.CoreService/Shutdown"
+	CoreService_Handshake_FullMethodName                      = "/codexpulse.core.v1.CoreService/Handshake"
+	CoreService_Bootstrap_FullMethodName                      = "/codexpulse.core.v1.CoreService/Bootstrap"
+	CoreService_Contracts_FullMethodName                      = "/codexpulse.core.v1.CoreService/Contracts"
+	CoreService_AccountSnapshot_FullMethodName                = "/codexpulse.core.v1.CoreService/AccountSnapshot"
+	CoreService_ListCodexSubscriptionAccounts_FullMethodName  = "/codexpulse.core.v1.CoreService/ListCodexSubscriptionAccounts"
+	CoreService_CreateCodexSubscriptionAccount_FullMethodName = "/codexpulse.core.v1.CoreService/CreateCodexSubscriptionAccount"
+	CoreService_UpdateCodexSubscriptionAccount_FullMethodName = "/codexpulse.core.v1.CoreService/UpdateCodexSubscriptionAccount"
+	CoreService_DeleteCodexSubscriptionAccount_FullMethodName = "/codexpulse.core.v1.CoreService/DeleteCodexSubscriptionAccount"
+	CoreService_LinkCodexSubscriptionAccount_FullMethodName   = "/codexpulse.core.v1.CoreService/LinkCodexSubscriptionAccount"
+	CoreService_UnlinkCodexSubscriptionAccount_FullMethodName = "/codexpulse.core.v1.CoreService/UnlinkCodexSubscriptionAccount"
+	CoreService_UsageCost_FullMethodName                      = "/codexpulse.core.v1.CoreService/UsageCost"
+	CoreService_DashboardSummary_FullMethodName               = "/codexpulse.core.v1.CoreService/DashboardSummary"
+	CoreService_InvocationUsage_FullMethodName                = "/codexpulse.core.v1.CoreService/InvocationUsage"
+	CoreService_PricingCatalogCurrent_FullMethodName          = "/codexpulse.core.v1.CoreService/PricingCatalogCurrent"
+	CoreService_ListSessions_FullMethodName                   = "/codexpulse.core.v1.CoreService/ListSessions"
+	CoreService_SessionDetail_FullMethodName                  = "/codexpulse.core.v1.CoreService/SessionDetail"
+	CoreService_ListProjects_FullMethodName                   = "/codexpulse.core.v1.CoreService/ListProjects"
+	CoreService_ProjectDetail_FullMethodName                  = "/codexpulse.core.v1.CoreService/ProjectDetail"
+	CoreService_QuotaCurrent_FullMethodName                   = "/codexpulse.core.v1.CoreService/QuotaCurrent"
+	CoreService_APISubscriptionsCurrent_FullMethodName        = "/codexpulse.core.v1.CoreService/APISubscriptionsCurrent"
+	CoreService_APICredentialStatus_FullMethodName            = "/codexpulse.core.v1.CoreService/APICredentialStatus"
+	CoreService_UpdateAPICredential_FullMethodName            = "/codexpulse.core.v1.CoreService/UpdateAPICredential"
+	CoreService_QuotaPace_FullMethodName                      = "/codexpulse.core.v1.CoreService/QuotaPace"
+	CoreService_RequestQuotaRefresh_FullMethodName            = "/codexpulse.core.v1.CoreService/RequestQuotaRefresh"
+	CoreService_RequestProviderRefresh_FullMethodName         = "/codexpulse.core.v1.CoreService/RequestProviderRefresh"
+	CoreService_ListSources_FullMethodName                    = "/codexpulse.core.v1.CoreService/ListSources"
+	CoreService_Source_FullMethodName                         = "/codexpulse.core.v1.CoreService/Source"
+	CoreService_ListJobs_FullMethodName                       = "/codexpulse.core.v1.CoreService/ListJobs"
+	CoreService_Job_FullMethodName                            = "/codexpulse.core.v1.CoreService/Job"
+	CoreService_ListHealth_FullMethodName                     = "/codexpulse.core.v1.CoreService/ListHealth"
+	CoreService_Health_FullMethodName                         = "/codexpulse.core.v1.CoreService/Health"
+	CoreService_HealthProjection_FullMethodName               = "/codexpulse.core.v1.CoreService/HealthProjection"
+	CoreService_DataHealth_FullMethodName                     = "/codexpulse.core.v1.CoreService/DataHealth"
+	CoreService_Settings_FullMethodName                       = "/codexpulse.core.v1.CoreService/Settings"
+	CoreService_UpdateSettings_FullMethodName                 = "/codexpulse.core.v1.CoreService/UpdateSettings"
+	CoreService_PlanHomeSwitch_FullMethodName                 = "/codexpulse.core.v1.CoreService/PlanHomeSwitch"
+	CoreService_ConfirmHomeSwitch_FullMethodName              = "/codexpulse.core.v1.CoreService/ConfirmHomeSwitch"
+	CoreService_RecoverHomeSwitch_FullMethodName              = "/codexpulse.core.v1.CoreService/RecoverHomeSwitch"
+	CoreService_RunRuntimeAction_FullMethodName               = "/codexpulse.core.v1.CoreService/RunRuntimeAction"
+	CoreService_AnalyzeSessionIndexRepair_FullMethodName      = "/codexpulse.core.v1.CoreService/AnalyzeSessionIndexRepair"
+	CoreService_NotifyLifecycle_FullMethodName                = "/codexpulse.core.v1.CoreService/NotifyLifecycle"
+	CoreService_MigrationRecoveryState_FullMethodName         = "/codexpulse.core.v1.CoreService/MigrationRecoveryState"
+	CoreService_MigrationRecoveryRetry_FullMethodName         = "/codexpulse.core.v1.CoreService/MigrationRecoveryRetry"
+	CoreService_MigrationRecoveryPrepare_FullMethodName       = "/codexpulse.core.v1.CoreService/MigrationRecoveryPrepare"
+	CoreService_MigrationRecoveryConfirm_FullMethodName       = "/codexpulse.core.v1.CoreService/MigrationRecoveryConfirm"
+	CoreService_MigrationRecoveryCancel_FullMethodName        = "/codexpulse.core.v1.CoreService/MigrationRecoveryCancel"
+	CoreService_MigrationRecoveryExit_FullMethodName          = "/codexpulse.core.v1.CoreService/MigrationRecoveryExit"
+	CoreService_SubscribeInvalidations_FullMethodName         = "/codexpulse.core.v1.CoreService/SubscribeInvalidations"
+	CoreService_Shutdown_FullMethodName                       = "/codexpulse.core.v1.CoreService/Shutdown"
 )
 
 // CoreServiceClient is the client API for CoreService service.
@@ -74,6 +80,12 @@ type CoreServiceClient interface {
 	Bootstrap(ctx context.Context, in *BootstrapRequest, opts ...grpc.CallOption) (*BootstrapResponse, error)
 	Contracts(ctx context.Context, in *ContractsRequest, opts ...grpc.CallOption) (*ContractsResponse, error)
 	AccountSnapshot(ctx context.Context, in *AccountSnapshotRequest, opts ...grpc.CallOption) (*AccountSnapshotResponse, error)
+	ListCodexSubscriptionAccounts(ctx context.Context, in *CodexSubscriptionAccountsRequest, opts ...grpc.CallOption) (*CodexSubscriptionAccountsResponse, error)
+	CreateCodexSubscriptionAccount(ctx context.Context, in *CreateCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error)
+	UpdateCodexSubscriptionAccount(ctx context.Context, in *UpdateCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error)
+	DeleteCodexSubscriptionAccount(ctx context.Context, in *DeleteCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error)
+	LinkCodexSubscriptionAccount(ctx context.Context, in *LinkCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error)
+	UnlinkCodexSubscriptionAccount(ctx context.Context, in *UnlinkCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error)
 	UsageCost(ctx context.Context, in *UsageCostRequest, opts ...grpc.CallOption) (*UsageCostResponse, error)
 	DashboardSummary(ctx context.Context, in *DashboardSummaryRequest, opts ...grpc.CallOption) (*DashboardSummaryResponse, error)
 	InvocationUsage(ctx context.Context, in *InvocationUsageRequest, opts ...grpc.CallOption) (*InvocationUsageResponse, error)
@@ -157,6 +169,66 @@ func (c *coreServiceClient) AccountSnapshot(ctx context.Context, in *AccountSnap
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AccountSnapshotResponse)
 	err := c.cc.Invoke(ctx, CoreService_AccountSnapshot_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) ListCodexSubscriptionAccounts(ctx context.Context, in *CodexSubscriptionAccountsRequest, opts ...grpc.CallOption) (*CodexSubscriptionAccountsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CodexSubscriptionAccountsResponse)
+	err := c.cc.Invoke(ctx, CoreService_ListCodexSubscriptionAccounts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) CreateCodexSubscriptionAccount(ctx context.Context, in *CreateCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CodexSubscriptionMutationReceipt)
+	err := c.cc.Invoke(ctx, CoreService_CreateCodexSubscriptionAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) UpdateCodexSubscriptionAccount(ctx context.Context, in *UpdateCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CodexSubscriptionMutationReceipt)
+	err := c.cc.Invoke(ctx, CoreService_UpdateCodexSubscriptionAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) DeleteCodexSubscriptionAccount(ctx context.Context, in *DeleteCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CodexSubscriptionMutationReceipt)
+	err := c.cc.Invoke(ctx, CoreService_DeleteCodexSubscriptionAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) LinkCodexSubscriptionAccount(ctx context.Context, in *LinkCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CodexSubscriptionMutationReceipt)
+	err := c.cc.Invoke(ctx, CoreService_LinkCodexSubscriptionAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) UnlinkCodexSubscriptionAccount(ctx context.Context, in *UnlinkCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CodexSubscriptionMutationReceipt)
+	err := c.cc.Invoke(ctx, CoreService_UnlinkCodexSubscriptionAccount_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -572,6 +644,12 @@ type CoreServiceServer interface {
 	Bootstrap(context.Context, *BootstrapRequest) (*BootstrapResponse, error)
 	Contracts(context.Context, *ContractsRequest) (*ContractsResponse, error)
 	AccountSnapshot(context.Context, *AccountSnapshotRequest) (*AccountSnapshotResponse, error)
+	ListCodexSubscriptionAccounts(context.Context, *CodexSubscriptionAccountsRequest) (*CodexSubscriptionAccountsResponse, error)
+	CreateCodexSubscriptionAccount(context.Context, *CreateCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error)
+	UpdateCodexSubscriptionAccount(context.Context, *UpdateCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error)
+	DeleteCodexSubscriptionAccount(context.Context, *DeleteCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error)
+	LinkCodexSubscriptionAccount(context.Context, *LinkCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error)
+	UnlinkCodexSubscriptionAccount(context.Context, *UnlinkCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error)
 	UsageCost(context.Context, *UsageCostRequest) (*UsageCostResponse, error)
 	DashboardSummary(context.Context, *DashboardSummaryRequest) (*DashboardSummaryResponse, error)
 	InvocationUsage(context.Context, *InvocationUsageRequest) (*InvocationUsageResponse, error)
@@ -632,6 +710,24 @@ func (UnimplementedCoreServiceServer) Contracts(context.Context, *ContractsReque
 }
 func (UnimplementedCoreServiceServer) AccountSnapshot(context.Context, *AccountSnapshotRequest) (*AccountSnapshotResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AccountSnapshot not implemented")
+}
+func (UnimplementedCoreServiceServer) ListCodexSubscriptionAccounts(context.Context, *CodexSubscriptionAccountsRequest) (*CodexSubscriptionAccountsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCodexSubscriptionAccounts not implemented")
+}
+func (UnimplementedCoreServiceServer) CreateCodexSubscriptionAccount(context.Context, *CreateCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateCodexSubscriptionAccount not implemented")
+}
+func (UnimplementedCoreServiceServer) UpdateCodexSubscriptionAccount(context.Context, *UpdateCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateCodexSubscriptionAccount not implemented")
+}
+func (UnimplementedCoreServiceServer) DeleteCodexSubscriptionAccount(context.Context, *DeleteCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteCodexSubscriptionAccount not implemented")
+}
+func (UnimplementedCoreServiceServer) LinkCodexSubscriptionAccount(context.Context, *LinkCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error) {
+	return nil, status.Error(codes.Unimplemented, "method LinkCodexSubscriptionAccount not implemented")
+}
+func (UnimplementedCoreServiceServer) UnlinkCodexSubscriptionAccount(context.Context, *UnlinkCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error) {
+	return nil, status.Error(codes.Unimplemented, "method UnlinkCodexSubscriptionAccount not implemented")
 }
 func (UnimplementedCoreServiceServer) UsageCost(context.Context, *UsageCostRequest) (*UsageCostResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UsageCost not implemented")
@@ -839,6 +935,114 @@ func _CoreService_AccountSnapshot_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CoreServiceServer).AccountSnapshot(ctx, req.(*AccountSnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_ListCodexSubscriptionAccounts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CodexSubscriptionAccountsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).ListCodexSubscriptionAccounts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_ListCodexSubscriptionAccounts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).ListCodexSubscriptionAccounts(ctx, req.(*CodexSubscriptionAccountsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_CreateCodexSubscriptionAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateCodexSubscriptionAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).CreateCodexSubscriptionAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_CreateCodexSubscriptionAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).CreateCodexSubscriptionAccount(ctx, req.(*CreateCodexSubscriptionAccountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_UpdateCodexSubscriptionAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateCodexSubscriptionAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).UpdateCodexSubscriptionAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_UpdateCodexSubscriptionAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).UpdateCodexSubscriptionAccount(ctx, req.(*UpdateCodexSubscriptionAccountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_DeleteCodexSubscriptionAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteCodexSubscriptionAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).DeleteCodexSubscriptionAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_DeleteCodexSubscriptionAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).DeleteCodexSubscriptionAccount(ctx, req.(*DeleteCodexSubscriptionAccountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_LinkCodexSubscriptionAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LinkCodexSubscriptionAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).LinkCodexSubscriptionAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_LinkCodexSubscriptionAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).LinkCodexSubscriptionAccount(ctx, req.(*LinkCodexSubscriptionAccountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_UnlinkCodexSubscriptionAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UnlinkCodexSubscriptionAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).UnlinkCodexSubscriptionAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_UnlinkCodexSubscriptionAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).UnlinkCodexSubscriptionAccount(ctx, req.(*UnlinkCodexSubscriptionAccountRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1560,6 +1764,30 @@ var CoreService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AccountSnapshot",
 			Handler:    _CoreService_AccountSnapshot_Handler,
+		},
+		{
+			MethodName: "ListCodexSubscriptionAccounts",
+			Handler:    _CoreService_ListCodexSubscriptionAccounts_Handler,
+		},
+		{
+			MethodName: "CreateCodexSubscriptionAccount",
+			Handler:    _CoreService_CreateCodexSubscriptionAccount_Handler,
+		},
+		{
+			MethodName: "UpdateCodexSubscriptionAccount",
+			Handler:    _CoreService_UpdateCodexSubscriptionAccount_Handler,
+		},
+		{
+			MethodName: "DeleteCodexSubscriptionAccount",
+			Handler:    _CoreService_DeleteCodexSubscriptionAccount_Handler,
+		},
+		{
+			MethodName: "LinkCodexSubscriptionAccount",
+			Handler:    _CoreService_LinkCodexSubscriptionAccount_Handler,
+		},
+		{
+			MethodName: "UnlinkCodexSubscriptionAccount",
+			Handler:    _CoreService_UnlinkCodexSubscriptionAccount_Handler,
 		},
 		{
 			MethodName: "UsageCost",

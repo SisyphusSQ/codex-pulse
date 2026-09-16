@@ -40,13 +40,14 @@ func (api *grpcAPI) Contracts(ctx context.Context, _ *corev1.ContractsRequest) (
 	}
 	return &corev1.ContractsResponse{
 		Version: contract.Version, QueryVersion: contract.QueryVersion,
-		UsageCostVersion:        contract.UsageCostVersion,
-		InvocationUsageVersion:  contract.InvocationUsageVersion,
-		PricingCatalogVersion:   contract.PricingCatalogVersion,
-		RuntimeInfoVersion:      contract.RuntimeInfoVersion,
-		DashboardSummaryVersion: contract.DashboardSummaryVersion,
-		CodexProTierVersion:     contract.CodexProTierVersion,
-		Methods:                 methods, CommandMethods: append([]string(nil), contract.CommandMethods...), ErrorExample: detail,
+		UsageCostVersion:                 contract.UsageCostVersion,
+		InvocationUsageVersion:           contract.InvocationUsageVersion,
+		PricingCatalogVersion:            contract.PricingCatalogVersion,
+		RuntimeInfoVersion:               contract.RuntimeInfoVersion,
+		DashboardSummaryVersion:          contract.DashboardSummaryVersion,
+		CodexProTierVersion:              contract.CodexProTierVersion,
+		CodexSubscriptionAccountsVersion: contract.CodexSubscriptionAccountsVersion,
+		Methods:                          methods, CommandMethods: append([]string(nil), contract.CommandMethods...), ErrorExample: detail,
 	}, nil
 }
 
@@ -59,7 +60,11 @@ func (api *grpcAPI) AccountSnapshot(
 	}
 	response, err := api.service.AccountSnapshot(
 		ctx,
-		agentprovider.Scope{Provider: request.GetProvider().GetProvider()},
+		core.AccountSnapshotQuery{
+			Scope:         agentprovider.Scope{Provider: request.GetProvider().GetProvider()},
+			EvaluatedAtMS: request.GetEvaluatedAtMs(),
+			TimeZone:      request.GetTimeZone(),
+		},
 	)
 	return encodeRPC(response, &corev1.AccountSnapshotResponse{}, err)
 }

@@ -9,6 +9,8 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/accountbinding"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptiontier"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -329,6 +331,30 @@ func (runtime *accountBindingRuntime) refreshDisplay(
 		runtime.clearDisplay()
 		return nil, nil
 	}
+	automatic := subscriptionaccounts.ResolveAutomaticPlan(subscriptiontier.Evidence{
+		AccountPlanType:          planTypeFromSandwich(sandwich.Account),
+		BeforeRateLimitPlanTypes: cloneStringSlice(sandwich.BeforeRateLimitPlanTypes),
+		AfterRateLimitPlanTypes:  cloneStringSlice(sandwich.AfterRateLimitPlanTypes),
+	})
+	profile := store.DetectedCodexSubscriptionProfile{
+		Automatic:    automatic,
+		ObservedAtMS: runtime.clock().UnixMilli(),
+	}
+	if sandwich.Account != nil {
+		profile.Email = cloneOptionalString(sandwich.Account.Email)
+	}
+	_, profileChanged, err := runtime.repository.RecordDetectedCodexSubscriptionProfile(
+		ctx,
+		store.CodexAccountFence{AccountScope: active.Scope, BindingGeneration: active.Generation},
+		profile,
+	)
+	if err != nil {
+		runtime.clearDisplay()
+		if errors.Is(err, store.ErrCodexAccountBindingChanged) {
+			return nil, err
+		}
+		return nil, err
+	}
 	display := &accountDisplayCache{
 		Scope:                    active.Scope,
 		Generation:               active.Generation,
@@ -342,7 +368,17 @@ func (runtime *accountBindingRuntime) refreshDisplay(
 		display.PlanType = cloneOptionalString(sandwich.Account.PlanType)
 	}
 	runtime.setDisplay(display)
+	if profileChanged {
+		notifyQueryInvalidation(runtime.invalidation, ctx, core.InvalidationAccount)
+	}
 	return display, nil
+}
+
+func planTypeFromSandwich(account *appserver.AccountSnapshot) *string {
+	if account == nil {
+		return nil
+	}
+	return cloneOptionalString(account.PlanType)
 }
 
 func (runtime *accountBindingRuntime) sealQuota(ctx context.Context) error {

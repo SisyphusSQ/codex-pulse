@@ -72,6 +72,84 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
                 type: .unary
             )
         }
+        /// Namespace for "ListCodexSubscriptionAccounts" metadata.
+        public enum ListCodexSubscriptionAccounts: Sendable {
+            /// Request type for "ListCodexSubscriptionAccounts".
+            public typealias Input = Codexpulse_Core_V1_CodexSubscriptionAccountsRequest
+            /// Response type for "ListCodexSubscriptionAccounts".
+            public typealias Output = Codexpulse_Core_V1_CodexSubscriptionAccountsResponse
+            /// Descriptor for "ListCodexSubscriptionAccounts".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "ListCodexSubscriptionAccounts",
+                type: .unary
+            )
+        }
+        /// Namespace for "CreateCodexSubscriptionAccount" metadata.
+        public enum CreateCodexSubscriptionAccount: Sendable {
+            /// Request type for "CreateCodexSubscriptionAccount".
+            public typealias Input = Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest
+            /// Response type for "CreateCodexSubscriptionAccount".
+            public typealias Output = Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
+            /// Descriptor for "CreateCodexSubscriptionAccount".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "CreateCodexSubscriptionAccount",
+                type: .unary
+            )
+        }
+        /// Namespace for "UpdateCodexSubscriptionAccount" metadata.
+        public enum UpdateCodexSubscriptionAccount: Sendable {
+            /// Request type for "UpdateCodexSubscriptionAccount".
+            public typealias Input = Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest
+            /// Response type for "UpdateCodexSubscriptionAccount".
+            public typealias Output = Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
+            /// Descriptor for "UpdateCodexSubscriptionAccount".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "UpdateCodexSubscriptionAccount",
+                type: .unary
+            )
+        }
+        /// Namespace for "DeleteCodexSubscriptionAccount" metadata.
+        public enum DeleteCodexSubscriptionAccount: Sendable {
+            /// Request type for "DeleteCodexSubscriptionAccount".
+            public typealias Input = Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest
+            /// Response type for "DeleteCodexSubscriptionAccount".
+            public typealias Output = Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
+            /// Descriptor for "DeleteCodexSubscriptionAccount".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "DeleteCodexSubscriptionAccount",
+                type: .unary
+            )
+        }
+        /// Namespace for "LinkCodexSubscriptionAccount" metadata.
+        public enum LinkCodexSubscriptionAccount: Sendable {
+            /// Request type for "LinkCodexSubscriptionAccount".
+            public typealias Input = Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest
+            /// Response type for "LinkCodexSubscriptionAccount".
+            public typealias Output = Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
+            /// Descriptor for "LinkCodexSubscriptionAccount".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "LinkCodexSubscriptionAccount",
+                type: .unary
+            )
+        }
+        /// Namespace for "UnlinkCodexSubscriptionAccount" metadata.
+        public enum UnlinkCodexSubscriptionAccount: Sendable {
+            /// Request type for "UnlinkCodexSubscriptionAccount".
+            public typealias Input = Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest
+            /// Response type for "UnlinkCodexSubscriptionAccount".
+            public typealias Output = Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
+            /// Descriptor for "UnlinkCodexSubscriptionAccount".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "UnlinkCodexSubscriptionAccount",
+                type: .unary
+            )
+        }
         /// Namespace for "UsageCost" metadata.
         public enum UsageCost: Sendable {
             /// Request type for "UsageCost".
@@ -585,6 +663,12 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
             Bootstrap.descriptor,
             Contracts.descriptor,
             AccountSnapshot.descriptor,
+            ListCodexSubscriptionAccounts.descriptor,
+            CreateCodexSubscriptionAccount.descriptor,
+            UpdateCodexSubscriptionAccount.descriptor,
+            DeleteCodexSubscriptionAccount.descriptor,
+            LinkCodexSubscriptionAccount.descriptor,
+            UnlinkCodexSubscriptionAccount.descriptor,
             UsageCost.descriptor,
             DashboardSummary.descriptor,
             InvocationUsage.descriptor,
@@ -721,6 +805,120 @@ extension Codexpulse_Core_V1_CoreService {
             deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_AccountSnapshotResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_AccountSnapshotResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "ListCodexSubscriptionAccounts" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_CodexSubscriptionAccountsRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_CodexSubscriptionAccountsRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionAccountsResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func listCodexSubscriptionAccounts<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_CodexSubscriptionAccountsRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_CodexSubscriptionAccountsRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionAccountsResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionAccountsResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "CreateCodexSubscriptionAccount" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionMutationReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func createCodexSubscriptionAccount<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "UpdateCodexSubscriptionAccount" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionMutationReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func updateCodexSubscriptionAccount<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "DeleteCodexSubscriptionAccount" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionMutationReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func deleteCodexSubscriptionAccount<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "LinkCodexSubscriptionAccount" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionMutationReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func linkCodexSubscriptionAccount<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "UnlinkCodexSubscriptionAccount" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionMutationReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func unlinkCodexSubscriptionAccount<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
         /// Call the "UsageCost" method.
@@ -1598,6 +1796,186 @@ extension Codexpulse_Core_V1_CoreService {
             try await self.client.unary(
                 request: request,
                 descriptor: Codexpulse_Core_V1_CoreService.Method.AccountSnapshot.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "ListCodexSubscriptionAccounts" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_CodexSubscriptionAccountsRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_CodexSubscriptionAccountsRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionAccountsResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func listCodexSubscriptionAccounts<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_CodexSubscriptionAccountsRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_CodexSubscriptionAccountsRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionAccountsResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionAccountsResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.ListCodexSubscriptionAccounts.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "CreateCodexSubscriptionAccount" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionMutationReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func createCodexSubscriptionAccount<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.CreateCodexSubscriptionAccount.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "UpdateCodexSubscriptionAccount" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionMutationReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func updateCodexSubscriptionAccount<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.UpdateCodexSubscriptionAccount.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "DeleteCodexSubscriptionAccount" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionMutationReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func deleteCodexSubscriptionAccount<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.DeleteCodexSubscriptionAccount.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "LinkCodexSubscriptionAccount" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionMutationReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func linkCodexSubscriptionAccount<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.LinkCodexSubscriptionAccount.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "UnlinkCodexSubscriptionAccount" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionMutationReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func unlinkCodexSubscriptionAccount<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.UnlinkCodexSubscriptionAccount.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -2878,6 +3256,156 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
         )
     }
 
+    /// Call the "ListCodexSubscriptionAccounts" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_CodexSubscriptionAccountsRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func listCodexSubscriptionAccounts<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_CodexSubscriptionAccountsRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionAccountsResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.listCodexSubscriptionAccounts(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_CodexSubscriptionAccountsRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_CodexSubscriptionAccountsResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "CreateCodexSubscriptionAccount" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func createCodexSubscriptionAccount<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.createCodexSubscriptionAccount(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "UpdateCodexSubscriptionAccount" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func updateCodexSubscriptionAccount<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.updateCodexSubscriptionAccount(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "DeleteCodexSubscriptionAccount" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func deleteCodexSubscriptionAccount<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.deleteCodexSubscriptionAccount(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "LinkCodexSubscriptionAccount" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func linkCodexSubscriptionAccount<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.linkCodexSubscriptionAccount(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "UnlinkCodexSubscriptionAccount" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func unlinkCodexSubscriptionAccount<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.unlinkCodexSubscriptionAccount(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "UsageCost" method.
     ///
     /// - Parameters:
@@ -3965,6 +4493,180 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
             metadata: metadata
         )
         return try await self.accountSnapshot(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "ListCodexSubscriptionAccounts" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func listCodexSubscriptionAccounts<Result>(
+        _ message: Codexpulse_Core_V1_CodexSubscriptionAccountsRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionAccountsResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_CodexSubscriptionAccountsRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.listCodexSubscriptionAccounts(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "CreateCodexSubscriptionAccount" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func createCodexSubscriptionAccount<Result>(
+        _ message: Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.createCodexSubscriptionAccount(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "UpdateCodexSubscriptionAccount" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func updateCodexSubscriptionAccount<Result>(
+        _ message: Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.updateCodexSubscriptionAccount(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "DeleteCodexSubscriptionAccount" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func deleteCodexSubscriptionAccount<Result>(
+        _ message: Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.deleteCodexSubscriptionAccount(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "LinkCodexSubscriptionAccount" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func linkCodexSubscriptionAccount<Result>(
+        _ message: Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.linkCodexSubscriptionAccount(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "UnlinkCodexSubscriptionAccount" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func unlinkCodexSubscriptionAccount<Result>(
+        _ message: Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.unlinkCodexSubscriptionAccount(
             request: request,
             options: options,
             onResponse: handleResponse

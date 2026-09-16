@@ -55,7 +55,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
 }
 
 private enum FeatureTaskKey: Hashable {
-    case usage, statusOverview, statusAccount, invocationUsage, pricingCatalog, quota, quotaPace, quotaRefresh, resetCreditsRefresh, dashboardSummary
+    case usage, statusOverview, statusAccount, invocationUsage, pricingCatalog, quota, quotaAccount, quotaPace, quotaRefresh, resetCreditsRefresh, dashboardSummary
     case apiSubscriptions, apiCredentialStatus, apiCredentialSave
     case runtimeAction
     case sessions, sessionDetail
@@ -64,10 +64,12 @@ private enum FeatureTaskKey: Hashable {
     case jobs, jobDetail
     case healthProjection, dataHealth, healthList, healthDetail
     case settings, settingsSave
+    case codexSubscriptionList, codexSubscriptionMutate
 
     var isRead: Bool {
         switch self {
-        case .quotaRefresh, .resetCreditsRefresh, .runtimeAction, .settingsSave, .apiCredentialSave:
+        case .quotaRefresh, .resetCreditsRefresh, .runtimeAction, .settingsSave, .apiCredentialSave,
+            .codexSubscriptionMutate:
             false
         default:
             true
@@ -112,6 +114,8 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var pricingCatalogState:
         FeatureLoadState<Codexpulse_Core_V1_PricingCatalogCurrentResponse> = .idle
     @Published public private(set) var quotaState: FeatureLoadState<Codexpulse_Core_V1_QuotaCurrentResponse> = .idle
+    @Published public private(set) var quotaAccountState:
+        FeatureLoadState<Codexpulse_Core_V1_AccountSnapshotResponse> = .idle
     @Published public private(set) var quotaPaceState:
         FeatureLoadState<Codexpulse_Core_V1_QuotaPaceResponse> = .idle
     @Published public private(set) var apiSubscriptionsState:
@@ -138,6 +142,9 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var settingsState: FeatureLoadState<Codexpulse_Core_V1_SettingsResponse> = .idle
     @Published public var settingsDraft: SettingsDraft?
     @Published public private(set) var settingsSaveState: SettingsSaveState = .idle
+    @Published public private(set) var codexSubscriptionAccountsState:
+        FeatureLoadState<Codexpulse_Core_V1_CodexSubscriptionAccountsResponse> = .idle
+    @Published public private(set) var codexSubscriptionActionState: CodexSubscriptionActionState = .idle
     @Published public private(set) var updatePolicy: AppUpdatePolicy = .disabled
     @Published public private(set) var localization: AppLocalization = .system
 
@@ -168,6 +175,10 @@ public final class AppModel: ObservableObject {
 	private var statusOverviewCache: [AgentProvider: OverviewPresentation] = [:]
 	private var statusUsageCache:
 		[AgentProvider: Codexpulse_Core_V1_UsageCostResponse] = [:]
+    private var codexSubscriptionDayBoundaryTask: Task<Void, Never>?
+    private var codexSubscriptionSnapshotGeneration: UInt64 = 0
+    private var timeZoneObserver: NSObjectProtocol?
+    private var observedTimeZoneIdentifier = TimeZone.current.identifier
 
     public init(configuration: AppLaunchConfiguration) {
         runtime = AppRuntime(configuration: configuration)
@@ -317,7 +328,7 @@ public final class AppModel: ObservableObject {
             sourcesState.isLoading || sourceDetailState.isLoading ||
                 jobsState.isLoading || jobDetailState.isLoading
         case .settings:
-            settingsState.isLoading
+            settingsState.isLoading || codexSubscriptionAccountsState.isLoading
         case .dashboardSummary:
             dashboardSummaryState.isLoading
         }
@@ -339,6 +350,7 @@ public final class AppModel: ObservableObject {
             if self.observesUpdatePolicy {
                 self.loadSettings()
             }
+            self.startTimeZoneObservationIfNeeded()
             self.startTask = nil
         }
     }
@@ -468,6 +480,9 @@ public final class AppModel: ObservableObject {
     }
 
     public func load(_ feature: AppFeature) {
+        if selectedFeature != feature {
+            cancelCodexSubscriptionDayBoundaryReload()
+        }
         selectedFeature = feature
         guard canRefreshOrRestart else { return }
         switch feature {
@@ -479,7 +494,8 @@ public final class AppModel: ObservableObject {
         case .quotaUsage:
             if quotaState.shouldReloadOnNavigation || quotaPaceState.shouldReloadOnNavigation ||
                 usageState.shouldReloadOnNavigation ||
-                pricingCatalogState.shouldReloadOnNavigation
+                pricingCatalogState.shouldReloadOnNavigation ||
+                (selectedProvider == .codex && quotaAccountState.shouldReloadOnNavigation)
             {
                 loadQuotaAndUsage()
             }
@@ -494,7 +510,11 @@ public final class AppModel: ObservableObject {
                 loadSourcesAndJobs(reset: true)
             }
         case .settings:
-            if settingsState.shouldReloadOnNavigation { loadSettings() }
+            if settingsState.shouldReloadOnNavigation {
+                loadSettings()
+            } else {
+                loadCodexSubscriptionAccountsIfNeeded()
+            }
         case .dashboardSummary:
             if dashboardSummaryState.shouldReloadOnNavigation { loadDashboardSummary() }
         }
@@ -507,6 +527,9 @@ public final class AppModel: ObservableObject {
 			persistSelectedFeature()
 			return
 		}
+        if selectedFeature != feature {
+            cancelCodexSubscriptionDayBoundaryReload()
+        }
         selectedFeature = feature
 		persistSelectedFeature()
         load(feature)
@@ -694,6 +717,7 @@ public final class AppModel: ObservableObject {
         overviewRefreshGeneration &+= 1
         isOverviewRefreshing = false
         cancelUpdatePolicyObservation()
+        cancelTimeZoneObservation()
         updatePolicy = .disabled
         cancelAllFeatureTasks()
         let outcome = await runtime.shutdown(reason: reason)
@@ -870,6 +894,11 @@ public final class AppModel: ObservableObject {
 		loadPricingCatalog()
         loadQuota(now: now)
         loadQuotaPace(now: now)
+        if selectedProvider == .codex {
+            loadQuotaAccount()
+        } else {
+            quotaAccountState = .idle
+        }
     }
 
     public func loadUsage() {
@@ -1062,6 +1091,27 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    public func loadQuotaAccount() {
+        guard selectedProvider == .codex else {
+            quotaAccountState = .idle
+            return
+        }
+        let previous = quotaAccountState.value
+        quotaAccountState = .loading(previous: previous)
+        let provider = selectedProvider
+        launch(
+            .quotaAccount,
+            operation: { [runtime] in try await runtime.accountSnapshot(provider: provider) }
+        ) { [weak self] response in
+            guard let self, selectedProvider == provider else { return }
+            quotaAccountState = .ready(response)
+            scheduleCodexSubscriptionDayBoundaryReloadIfNeeded()
+        } failure: { [weak self] error in
+            guard let self, selectedProvider == provider else { return }
+            quotaAccountState = failedLoadState(previous: previous, error: error)
+        }
+    }
+
     public func requestQuotaRefresh(source: String) {
         guard let taskKey = refreshTaskKey(source: source) else { return }
         guard canRefreshOrRestart else { return }
@@ -1082,6 +1132,9 @@ public final class AppModel: ObservableObject {
             let now = Date()
             loadQuota(now: now)
             loadQuotaPace(now: now)
+            if provider == .codex {
+                loadQuotaAccount()
+            }
         } failure: { [weak self] error in
             self?.setRefreshState(.unavailable(AppNotice.from(error)), source: source)
         }
@@ -1312,6 +1365,7 @@ public final class AppModel: ObservableObject {
     public func loadSettings() {
         if case .saving = settingsSaveState { return }
         loadAPICredentialStatus()
+        loadCodexSubscriptionAccounts()
         let previous = settingsState.value
         let draftAtStart = settingsDraft
         let hadUnsavedChanges = draftAtStart != nil && previous.map(SettingsDraft.init) != draftAtStart
@@ -1403,6 +1457,359 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    public func loadCodexSubscriptionAccounts() {
+        let previous = codexSubscriptionAccountsState.value
+        let snapshotGeneration = beginCodexSubscriptionSnapshotRead()
+        codexSubscriptionAccountsState = .loading(previous: previous)
+        launch(
+            .codexSubscriptionList,
+            operation: { [runtime] in try await runtime.listCodexSubscriptionAccounts() }
+        ) { [weak self] response in
+            guard let self,
+                  codexSubscriptionSnapshotGeneration == snapshotGeneration
+            else { return }
+            codexSubscriptionAccountsState = .ready(response)
+            scheduleCodexSubscriptionDayBoundaryReloadIfNeeded()
+        } failure: { [weak self] error in
+            guard let self,
+                  codexSubscriptionSnapshotGeneration == snapshotGeneration
+            else { return }
+            codexSubscriptionAccountsState = failedLoadState(previous: previous, error: error)
+        }
+    }
+
+    public func createCodexSubscriptionAccount(
+        _ draft: CodexSubscriptionManualDraft,
+        manualEntryID: String
+    ) {
+        guard !draft.standaloneEmailMissing else { return }
+        var request = Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest()
+        request.manualEntryID = manualEntryID
+        request.manual = draft.makeFields()
+        let preparedRequest = request
+        mutateCodexSubscription(
+            expectedReadback: {
+                CodexSubscriptionReadback.containsAccount(
+                    $0,
+                    manualEntryID: preparedRequest.manualEntryID,
+                    detected: false,
+                    hasManual: true,
+                    linked: false,
+                    fields: preparedRequest.manual
+                )
+            },
+            operation: { [runtime] in
+                try await runtime.createCodexSubscriptionAccount(preparedRequest)
+            }
+        )
+    }
+
+    public func updateCodexSubscriptionAccount(
+        _ account: Codexpulse_Core_V1_CodexSubscriptionAccount,
+        draft: CodexSubscriptionManualDraft
+    ) {
+        var request = Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest()
+        request.accountID = account.accountID
+        request.manual = draft.makeFields()
+        if let newManualEntryID = draft.newManualEntryID, !newManualEntryID.isEmpty {
+            request.newManualEntryID = newManualEntryID
+        }
+        if account.hasManualRevision {
+            request.expectedManualRevision = account.manualRevision
+        }
+        if account.hasLinkRevision {
+            request.expectedLinkRevision = account.linkRevision
+        }
+        let preparedRequest = request
+        let detectedAccountID = account.hasDetectedAccountID ? account.detectedAccountID : nil
+        let manualEntryID = account.hasManualEntryID ? account.manualEntryID : nil
+        let newManualEntryID = preparedRequest.hasNewManualEntryID
+            ? preparedRequest.newManualEntryID
+            : nil
+        mutateCodexSubscription(
+            expectedReadback: {
+                CodexSubscriptionReadback.containsAccount(
+                    $0,
+                    detectedAccountID: detectedAccountID,
+                    manualEntryID: newManualEntryID ?? manualEntryID,
+                    detected: account.detected,
+                    hasManual: true,
+                    linked: account.linked || newManualEntryID != nil,
+                    fields: preparedRequest.manual
+                )
+            },
+            operation: { [runtime] in
+                try await runtime.updateCodexSubscriptionAccount(preparedRequest)
+            }
+        )
+    }
+
+    public func deleteCodexSubscriptionAccount(
+        _ account: Codexpulse_Core_V1_CodexSubscriptionAccount
+    ) {
+        guard !account.current else { return }
+        var request = Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest()
+        request.accountID = account.accountID
+        if account.hasDetectedRevision {
+            request.expectedDetectedRevision = account.detectedRevision
+        }
+        if account.hasManualRevision {
+            request.expectedManualRevision = account.manualRevision
+        }
+        if account.hasLinkRevision {
+            request.expectedLinkRevision = account.linkRevision
+        }
+        let preparedRequest = request
+        mutateCodexSubscription(
+            expectedReadback: {
+                CodexSubscriptionReadback.excludesAccount(
+                    $0,
+                    accountID: preparedRequest.accountID
+                )
+            },
+            operation: { [runtime] in
+                try await runtime.deleteCodexSubscriptionAccount(preparedRequest)
+            }
+        )
+    }
+
+    public func linkCodexSubscriptionAccount(
+        detectedAccountID: String,
+        manualEntryID: String,
+        expectedManualRevision: Int64
+    ) {
+        var request = Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest()
+        request.detectedAccountID = detectedAccountID
+        request.manualEntryID = manualEntryID
+        request.expectedManualRevision = expectedManualRevision
+        let preparedRequest = request
+        mutateCodexSubscription(
+            expectedReadback: {
+                CodexSubscriptionReadback.containsAccount(
+                    $0,
+                    detectedAccountID: preparedRequest.detectedAccountID,
+                    manualEntryID: preparedRequest.manualEntryID,
+                    detected: true,
+                    hasManual: true,
+                    linked: true
+                )
+            },
+            operation: { [runtime] in
+                try await runtime.linkCodexSubscriptionAccount(preparedRequest)
+            }
+        )
+    }
+
+    public func unlinkCodexSubscriptionAccount(
+        _ account: Codexpulse_Core_V1_CodexSubscriptionAccount
+    ) {
+        guard account.hasDetectedAccountID, account.hasManualEntryID else { return }
+        if !account.hasManualEmail
+            || account.manualEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            return
+        }
+        var request = Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest()
+        request.detectedAccountID = account.detectedAccountID
+        request.manualEntryID = account.manualEntryID
+        if account.hasManualRevision {
+            request.expectedManualRevision = account.manualRevision
+        }
+        if account.hasLinkRevision {
+            request.expectedLinkRevision = account.linkRevision
+        }
+        let preparedRequest = request
+        mutateCodexSubscription(
+            expectedReadback: {
+                CodexSubscriptionReadback.containsAccount(
+                    $0, detectedAccountID: preparedRequest.detectedAccountID,
+                    detected: true, hasManual: false, linked: false
+                ) && CodexSubscriptionReadback.containsAccount(
+                    $0, manualEntryID: preparedRequest.manualEntryID,
+                    detected: false, hasManual: true, linked: false
+                )
+            },
+            operation: { [runtime] in
+                try await runtime.unlinkCodexSubscriptionAccount(preparedRequest)
+            }
+        )
+    }
+
+    public func handleSystemTimeZoneChange() {
+        let identifier = TimeZone.current.identifier
+        observedTimeZoneIdentifier = identifier
+        cancelCodexSubscriptionDayBoundaryReload()
+        switch selectedFeature {
+        case .settings:
+            loadCodexSubscriptionAccounts()
+        case .quotaUsage where selectedProvider == .codex:
+            loadQuotaAccount()
+        default:
+            break
+        }
+    }
+
+    private func mutateCodexSubscription(
+        expectedReadback: @escaping @Sendable (
+            Codexpulse_Core_V1_CodexSubscriptionAccountsResponse
+        ) -> Bool,
+        operation: @escaping @Sendable () async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
+    ) {
+        guard canRefreshOrRestart, !requiresCoreRestart else { return }
+        if case .running = codexSubscriptionActionState { return }
+        codexSubscriptionActionState = .running
+        let generation = beginTask(.codexSubscriptionMutate)
+        let runtime = runtime
+        featureTasks[.codexSubscriptionMutate] = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let receipt = try await operation()
+                invalidateTasks([.codexSubscriptionList])
+                let snapshotGeneration = beginCodexSubscriptionSnapshotRead()
+                let readback = try await runtime.listCodexSubscriptionAccounts()
+                try Task.checkCancellation()
+                guard isCurrent(.codexSubscriptionMutate, generation: generation) else { return }
+                finishTask(.codexSubscriptionMutate)
+                guard codexSubscriptionSnapshotGeneration == snapshotGeneration else {
+                    codexSubscriptionActionState = .unavailable(
+                        codexSubscriptionReadbackNotice(code: "mutation_readback_superseded")
+                    )
+                    return
+                }
+                applyCodexSubscriptionMutation(
+                    receipt,
+                    readback: readback,
+                    expectedReadback: expectedReadback
+                )
+            } catch {
+                guard isCurrent(.codexSubscriptionMutate, generation: generation) else { return }
+                finishTask(.codexSubscriptionMutate)
+                if error is CancellationError { return }
+                codexSubscriptionActionState = .unavailable(AppNotice.from(error))
+            }
+        }
+    }
+
+    private func applyCodexSubscriptionMutation(
+        _ receipt: Codexpulse_Core_V1_CodexSubscriptionMutationReceipt,
+        readback: Codexpulse_Core_V1_CodexSubscriptionAccountsResponse,
+        expectedReadback: (Codexpulse_Core_V1_CodexSubscriptionAccountsResponse) -> Bool
+    ) {
+        codexSubscriptionAccountsState = .ready(readback)
+        scheduleCodexSubscriptionDayBoundaryReloadIfNeeded()
+        switch receipt.result {
+        case .applied:
+            codexSubscriptionActionState = expectedReadback(readback)
+                ? .applied
+                : .unavailable(codexSubscriptionReadbackNotice(code: "mutation_readback_mismatch"))
+        case .noop:
+            codexSubscriptionActionState = expectedReadback(readback)
+                ? .noop
+                : .unavailable(codexSubscriptionReadbackNotice(code: "mutation_readback_mismatch"))
+        case .conflict:
+            let reason = receipt.hasReason ? receipt.reason : ""
+            codexSubscriptionActionState = .conflict(reason: reason)
+        case .unspecified, .UNRECOGNIZED:
+            codexSubscriptionActionState = .unavailable(
+                AppNotice(
+                    code: "mutation_result_unknown",
+                    messageKey: "app.error.mutation_result_unknown",
+                    retryable: true
+                )
+            )
+        }
+    }
+
+    private func beginCodexSubscriptionSnapshotRead() -> UInt64 {
+        codexSubscriptionSnapshotGeneration &+= 1
+        return codexSubscriptionSnapshotGeneration
+    }
+
+    private func codexSubscriptionReadbackNotice(code: String) -> AppNotice {
+        AppNotice(
+            code: code,
+            messageKey: "app.error.subscription_readback",
+            retryable: true
+        )
+    }
+
+    private func loadCodexSubscriptionAccountsIfNeeded() {
+        if codexSubscriptionAccountsState.shouldReloadOnNavigation {
+            loadCodexSubscriptionAccounts()
+        } else {
+            scheduleCodexSubscriptionDayBoundaryReloadIfNeeded()
+        }
+    }
+
+    private func scheduleCodexSubscriptionDayBoundaryReloadIfNeeded() {
+        guard selectedFeature == .settings ||
+            (selectedFeature == .quotaUsage && selectedProvider == .codex)
+        else { return }
+        cancelCodexSubscriptionDayBoundaryReload()
+        let timeZone = TimeZone.current
+        observedTimeZoneIdentifier = timeZone.identifier
+        let now = Date()
+        let next = CodexSubscriptionCalendar.nextLocalDayBoundary(now: now, timeZone: timeZone)
+        let delay = next.timeIntervalSince(now)
+        guard delay > 0 else {
+            reloadCodexSubscriptionDateStateForSelectedFeature()
+            return
+        }
+        codexSubscriptionDayBoundaryTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self else { return }
+                if TimeZone.current.identifier != self.observedTimeZoneIdentifier {
+                    self.handleSystemTimeZoneChange()
+                    return
+                }
+                self.reloadCodexSubscriptionDateStateForSelectedFeature()
+            }
+        }
+    }
+
+    private func reloadCodexSubscriptionDateStateForSelectedFeature() {
+        switch selectedFeature {
+        case .settings:
+            loadCodexSubscriptionAccounts()
+        case .quotaUsage where selectedProvider == .codex:
+            loadQuotaAccount()
+        default:
+            cancelCodexSubscriptionDayBoundaryReload()
+        }
+    }
+
+    private func cancelCodexSubscriptionDayBoundaryReload() {
+        codexSubscriptionDayBoundaryTask?.cancel()
+        codexSubscriptionDayBoundaryTask = nil
+    }
+
+    private func startTimeZoneObservationIfNeeded() {
+        guard timeZoneObserver == nil else { return }
+        timeZoneObserver = NotificationCenter.default.addObserver(
+            forName: .NSSystemTimeZoneDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleSystemTimeZoneChange()
+            }
+        }
+    }
+
+    private func cancelTimeZoneObservation() {
+        if let timeZoneObserver {
+            NotificationCenter.default.removeObserver(timeZoneObserver)
+            self.timeZoneObserver = nil
+        }
+        cancelCodexSubscriptionDayBoundaryReload()
+    }
+
     private func launch<Value: Sendable>(
         _ key: FeatureTaskKey,
         operation: @escaping @Sendable () async throws -> Value,
@@ -1447,6 +1854,7 @@ public final class AppModel: ObservableObject {
     }
 
     private func cancelAllFeatureTasks() {
+        cancelCodexSubscriptionDayBoundaryReload()
         for key in featureTasks.keys {
             featureTasks[key]?.cancel()
             featureGenerations[key, default: 0] &+= 1
@@ -1458,6 +1866,7 @@ public final class AppModel: ObservableObject {
 	private func cancelPageFeatureTasks() {
 			let providerIndependentKeys: Set<FeatureTaskKey> = [
 				.statusOverview, .statusAccount, .dashboardSummary,
+                .codexSubscriptionList, .codexSubscriptionMutate,
 			]
 			let keys = featureTasks.keys.filter { !providerIndependentKeys.contains($0) }
 		for key in keys {
@@ -1472,6 +1881,7 @@ public final class AppModel: ObservableObject {
     private func cancelFeatureReadTasks() {
         let mutationKeys: Set<FeatureTaskKey> = [
             .quotaRefresh, .resetCreditsRefresh, .runtimeAction, .settingsSave, .apiCredentialSave,
+            .codexSubscriptionMutate,
         ]
         let keys = featureTasks.keys.filter { !mutationKeys.contains($0) }
         for key in keys {
@@ -1630,6 +2040,9 @@ public final class AppModel: ObservableObject {
         if case .running = runtimeActionState { runtimeActionState = .unavailable(notice) }
         if case .saving = settingsSaveState { settingsSaveState = .unavailable(notice) }
         if case .running = apiCredentialActionState { apiCredentialActionState = .unavailable(notice) }
+        if case .running = codexSubscriptionActionState {
+            codexSubscriptionActionState = .unavailable(notice)
+        }
     }
 
     private func receiveInvalidation(domain: String) {
@@ -1656,8 +2069,9 @@ public final class AppModel: ObservableObject {
             affected = [.sessions, .projects, .quotaUsage, .invocationUsage, .dashboardSummary]
 			refreshesStatus = true
         case "quota":
-            invalidateTasks([.quota, .quotaPace, .dashboardSummary])
+            invalidateTasks([.quota, .quotaAccount, .quotaPace, .dashboardSummary])
             quotaState = stale(quotaState, notice)
+            quotaAccountState = stale(quotaAccountState, notice)
             quotaPaceState = stale(quotaPaceState, notice)
             dashboardSummaryState = stale(dashboardSummaryState, notice)
             affected = [.quotaUsage, .dashboardSummary]
@@ -1679,6 +2093,26 @@ public final class AppModel: ObservableObject {
             settingsState = stale(settingsState, notice)
             affected = [.settings]
 			refreshesStatus = false
+        case "account":
+            invalidateTasks([.codexSubscriptionList, .quota, .quotaAccount, .quotaPace, .statusAccount])
+            codexSubscriptionAccountsState = stale(codexSubscriptionAccountsState, notice)
+            quotaAccountState = stale(quotaAccountState, notice)
+            if selectedProvider == .codex {
+                quotaState = stale(quotaState, notice)
+                quotaPaceState = stale(quotaPaceState, notice)
+            }
+            if selectedFeature == .settings, !requiresCoreRestart {
+                loadCodexSubscriptionAccounts()
+            } else if selectedFeature == .quotaUsage, selectedProvider == .codex,
+                      !requiresCoreRestart
+            {
+                let now = Date()
+                loadQuota(now: now)
+                loadQuotaPace(now: now)
+                loadQuotaAccount()
+            }
+            affected = []
+			refreshesStatus = true
         case "lifecycle":
             cancelFeatureReadTasks()
             markFeatureStatesStale(notice)
@@ -1718,6 +2152,7 @@ public final class AppModel: ObservableObject {
         invocationUsageState = .idle
         pricingCatalogState = .idle
         quotaState = .idle
+        quotaAccountState = .idle
         quotaPaceState = .idle
         apiSubscriptionsState = .idle
         apiCredentialStatus = nil
@@ -1739,6 +2174,9 @@ public final class AppModel: ObservableObject {
         healthDetailState = .idle
         settingsState = .idle
         settingsSaveState = .idle
+        codexSubscriptionAccountsState = .idle
+        codexSubscriptionActionState = .idle
+        cancelCodexSubscriptionDayBoundaryReload()
         selectedSessionID = nil
         selectedProjectKey = nil
         selectedSourceKey = nil
@@ -1748,10 +2186,12 @@ public final class AppModel: ObservableObject {
     }
 
 	private func resetProviderFeatureState() {
+		cancelCodexSubscriptionDayBoundaryReload()
 		usageState = .idle
 		invocationUsageState = .idle
 		pricingCatalogState = .idle
 		quotaState = .idle
+		quotaAccountState = .idle
 		quotaPaceState = .idle
 		quotaRefreshState = .idle
 		resetCreditsRefreshState = .idle
@@ -1923,6 +2363,7 @@ public final class AppModel: ObservableObject {
         invocationUsageState = stale(invocationUsageState, notice)
         pricingCatalogState = stale(pricingCatalogState, notice)
         quotaState = stale(quotaState, notice)
+        quotaAccountState = stale(quotaAccountState, notice)
         quotaPaceState = stale(quotaPaceState, notice)
         apiSubscriptionsState = stale(apiSubscriptionsState, notice)
         sessionsState = stale(sessionsState, notice)
@@ -1938,6 +2379,7 @@ public final class AppModel: ObservableObject {
         healthState = stale(healthState, notice)
         healthDetailState = stale(healthDetailState, notice)
         settingsState = stale(settingsState, notice)
+        codexSubscriptionAccountsState = stale(codexSubscriptionAccountsState, notice)
     }
 
     private func stale<Value: Sendable>(

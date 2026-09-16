@@ -17,6 +17,31 @@ public protocol AppCoreServing: Sendable {
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_AccountSnapshotResponse
 
+    func listCodexSubscriptionAccounts(
+        _ request: Codexpulse_Core_V1_CodexSubscriptionAccountsRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionAccountsResponse
+
+    func createCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
+
+    func updateCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
+
+    func deleteCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
+
+    func linkCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
+
+    func unlinkCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
+
     func usageCost(
         _ request: Codexpulse_Core_V1_UsageCostRequest,
         retryPolicy: ReadRetryPolicy
@@ -196,6 +221,43 @@ public extension AppCoreServing {
 		_ request: Codexpulse_Core_V1_AccountSnapshotRequest,
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_AccountSnapshotResponse {
+        throw AppRuntimeError.unavailable
+    }
+
+    func listCodexSubscriptionAccounts(
+        _ request: Codexpulse_Core_V1_CodexSubscriptionAccountsRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionAccountsResponse {
+        throw AppRuntimeError.unavailable
+    }
+
+    func createCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        throw AppRuntimeError.unavailable
+    }
+
+    func updateCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        throw AppRuntimeError.unavailable
+    }
+
+    func deleteCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        throw AppRuntimeError.unavailable
+    }
+
+    func linkCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        throw AppRuntimeError.unavailable
+    }
+
+    func unlinkCodexSubscriptionAccount(
+        _ request: Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
         throw AppRuntimeError.unavailable
     }
 

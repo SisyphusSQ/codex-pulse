@@ -7,6 +7,7 @@ import (
 
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/dashboardsummary"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
@@ -632,6 +633,74 @@ func TestEncodeResponseMapsPendingAccountSnapshotWithoutIdentity(t *testing.T) {
 		confirmed.GetBinding().GetAccountScope() != scope ||
 		strings.Contains(confirmed.GetBinding().GetAccountScope(), "acct-") {
 		t.Fatalf("confirmed account snapshot leaked identity into scope: %#v", confirmed)
+	}
+}
+
+func TestEncodeResponseMapsCodexSubscriptionAccountWithoutPrivateScope(t *testing.T) {
+	t.Parallel()
+
+	plan := subscriptionaccounts.PlanPro20X
+	source := subscriptionaccounts.AutomaticSourceAccountSandwich
+	kind := subscriptionaccounts.DateKindNextRenewal
+	delta := 2
+	revision := int64(3)
+	email := "person@example.com"
+	date := "2099-12-31"
+	accountID := "11111111-1111-4111-8111-111111111111"
+	privateScope := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	snapshot := AccountSnapshot{
+		Subscription: &subscriptionaccounts.Account{
+			AccountID:           accountID,
+			DetectedAccountID:   &accountID,
+			DisplayEmail:        &email,
+			Current:             true,
+			Detected:            true,
+			AutomaticPlan:       &plan,
+			AutomaticPlanState:  subscriptionaccounts.AutomaticPlanKnown,
+			AutomaticPlanSource: &source,
+			ResolvedPlan:        &plan,
+			ResolvedPlanSource:  subscriptionaccounts.ValueSourceAutomatic,
+			MembershipDate:      &date,
+			DateKind:            &kind,
+			DateSource:          subscriptionaccounts.ValueSourceManual,
+			DateState:           subscriptionaccounts.DateStateFuture,
+			DayDelta:            &delta,
+			DetectedRevision:    &revision,
+		},
+	}
+	target := &corev1.AccountSnapshotResponse{}
+	if err := EncodeResponse(snapshot, target); err != nil {
+		t.Fatalf("EncodeResponse(subscription) error = %v", err)
+	}
+	got := target.GetSubscription()
+	if got == nil || got.GetAccountId() != accountID ||
+		got.GetAutomaticPlan() != corev1.CodexSubscriptionPlan_CODEX_SUBSCRIPTION_PLAN_PRO_20X ||
+		got.GetAutomaticPlanState() != corev1.CodexSubscriptionAutomaticPlanState_CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_KNOWN ||
+		got.GetDateState() != corev1.CodexSubscriptionDateState_CODEX_SUBSCRIPTION_DATE_STATE_FUTURE ||
+		got.GetDayDelta() != 2 {
+		t.Fatalf("subscription = %#v", got)
+	}
+	encoded, err := protojson.Marshal(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := string(encoded)
+	for _, leaked := range []string{"accountScope", "account_scope", privateScope, "acct-", "CODEX_SUBSCRIPTION_PLAN_UNSPECIFIED"} {
+		if strings.Contains(payload, leaked) {
+			t.Fatalf("subscription payload leaked %q: %s", leaked, payload)
+		}
+	}
+}
+
+func TestEncodeCodexSubscriptionAccountsRejectsUnspecifiedEnums(t *testing.T) {
+	t.Parallel()
+
+	_, err := encodeCodexSubscriptionAccounts(subscriptionaccounts.Snapshot{
+		Version:                 subscriptionaccounts.ContractVersion,
+		AutomaticDateCapability: "not-a-capability",
+	})
+	if err == nil || !errors.Is(err, ErrProtoMapping) {
+		t.Fatalf("encodeCodexSubscriptionAccounts() error = %v", err)
 	}
 }
 

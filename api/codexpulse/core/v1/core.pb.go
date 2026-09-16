@@ -125,6 +125,433 @@ func (CodexProTierState) EnumDescriptor() ([]byte, []int) {
 	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{1}
 }
 
+type CodexSubscriptionPlan int32
+
+const (
+	CodexSubscriptionPlan_CODEX_SUBSCRIPTION_PLAN_UNSPECIFIED CodexSubscriptionPlan = 0
+	CodexSubscriptionPlan_CODEX_SUBSCRIPTION_PLAN_FREE        CodexSubscriptionPlan = 1
+	CodexSubscriptionPlan_CODEX_SUBSCRIPTION_PLAN_GO          CodexSubscriptionPlan = 2
+	CodexSubscriptionPlan_CODEX_SUBSCRIPTION_PLAN_PLUS        CodexSubscriptionPlan = 3
+	CodexSubscriptionPlan_CODEX_SUBSCRIPTION_PLAN_PRO_5X      CodexSubscriptionPlan = 4
+	CodexSubscriptionPlan_CODEX_SUBSCRIPTION_PLAN_PRO_20X     CodexSubscriptionPlan = 5
+	CodexSubscriptionPlan_CODEX_SUBSCRIPTION_PLAN_TEAM        CodexSubscriptionPlan = 6
+	CodexSubscriptionPlan_CODEX_SUBSCRIPTION_PLAN_BUSINESS    CodexSubscriptionPlan = 7
+	CodexSubscriptionPlan_CODEX_SUBSCRIPTION_PLAN_ENTERPRISE  CodexSubscriptionPlan = 8
+	CodexSubscriptionPlan_CODEX_SUBSCRIPTION_PLAN_EDU         CodexSubscriptionPlan = 9
+)
+
+// Enum value maps for CodexSubscriptionPlan.
+var (
+	CodexSubscriptionPlan_name = map[int32]string{
+		0: "CODEX_SUBSCRIPTION_PLAN_UNSPECIFIED",
+		1: "CODEX_SUBSCRIPTION_PLAN_FREE",
+		2: "CODEX_SUBSCRIPTION_PLAN_GO",
+		3: "CODEX_SUBSCRIPTION_PLAN_PLUS",
+		4: "CODEX_SUBSCRIPTION_PLAN_PRO_5X",
+		5: "CODEX_SUBSCRIPTION_PLAN_PRO_20X",
+		6: "CODEX_SUBSCRIPTION_PLAN_TEAM",
+		7: "CODEX_SUBSCRIPTION_PLAN_BUSINESS",
+		8: "CODEX_SUBSCRIPTION_PLAN_ENTERPRISE",
+		9: "CODEX_SUBSCRIPTION_PLAN_EDU",
+	}
+	CodexSubscriptionPlan_value = map[string]int32{
+		"CODEX_SUBSCRIPTION_PLAN_UNSPECIFIED": 0,
+		"CODEX_SUBSCRIPTION_PLAN_FREE":        1,
+		"CODEX_SUBSCRIPTION_PLAN_GO":          2,
+		"CODEX_SUBSCRIPTION_PLAN_PLUS":        3,
+		"CODEX_SUBSCRIPTION_PLAN_PRO_5X":      4,
+		"CODEX_SUBSCRIPTION_PLAN_PRO_20X":     5,
+		"CODEX_SUBSCRIPTION_PLAN_TEAM":        6,
+		"CODEX_SUBSCRIPTION_PLAN_BUSINESS":    7,
+		"CODEX_SUBSCRIPTION_PLAN_ENTERPRISE":  8,
+		"CODEX_SUBSCRIPTION_PLAN_EDU":         9,
+	}
+)
+
+func (x CodexSubscriptionPlan) Enum() *CodexSubscriptionPlan {
+	p := new(CodexSubscriptionPlan)
+	*p = x
+	return p
+}
+
+func (x CodexSubscriptionPlan) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CodexSubscriptionPlan) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_codexpulse_core_v1_core_proto_enumTypes[2].Descriptor()
+}
+
+func (CodexSubscriptionPlan) Type() protoreflect.EnumType {
+	return &file_api_codexpulse_core_v1_core_proto_enumTypes[2]
+}
+
+func (x CodexSubscriptionPlan) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CodexSubscriptionPlan.Descriptor instead.
+func (CodexSubscriptionPlan) EnumDescriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{2}
+}
+
+type CodexSubscriptionAutomaticPlanState int32
+
+const (
+	CodexSubscriptionAutomaticPlanState_CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNSPECIFIED CodexSubscriptionAutomaticPlanState = 0
+	CodexSubscriptionAutomaticPlanState_CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNAVAILABLE CodexSubscriptionAutomaticPlanState = 1
+	CodexSubscriptionAutomaticPlanState_CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_KNOWN       CodexSubscriptionAutomaticPlanState = 2
+	CodexSubscriptionAutomaticPlanState_CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNKNOWN     CodexSubscriptionAutomaticPlanState = 3
+	CodexSubscriptionAutomaticPlanState_CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_CONFLICT    CodexSubscriptionAutomaticPlanState = 4
+)
+
+// Enum value maps for CodexSubscriptionAutomaticPlanState.
+var (
+	CodexSubscriptionAutomaticPlanState_name = map[int32]string{
+		0: "CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNSPECIFIED",
+		1: "CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNAVAILABLE",
+		2: "CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_KNOWN",
+		3: "CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNKNOWN",
+		4: "CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_CONFLICT",
+	}
+	CodexSubscriptionAutomaticPlanState_value = map[string]int32{
+		"CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNSPECIFIED": 0,
+		"CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNAVAILABLE": 1,
+		"CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_KNOWN":       2,
+		"CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNKNOWN":     3,
+		"CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_CONFLICT":    4,
+	}
+)
+
+func (x CodexSubscriptionAutomaticPlanState) Enum() *CodexSubscriptionAutomaticPlanState {
+	p := new(CodexSubscriptionAutomaticPlanState)
+	*p = x
+	return p
+}
+
+func (x CodexSubscriptionAutomaticPlanState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CodexSubscriptionAutomaticPlanState) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_codexpulse_core_v1_core_proto_enumTypes[3].Descriptor()
+}
+
+func (CodexSubscriptionAutomaticPlanState) Type() protoreflect.EnumType {
+	return &file_api_codexpulse_core_v1_core_proto_enumTypes[3]
+}
+
+func (x CodexSubscriptionAutomaticPlanState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CodexSubscriptionAutomaticPlanState.Descriptor instead.
+func (CodexSubscriptionAutomaticPlanState) EnumDescriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{3}
+}
+
+type CodexSubscriptionValueSource int32
+
+const (
+	CodexSubscriptionValueSource_CODEX_SUBSCRIPTION_VALUE_SOURCE_UNSPECIFIED CodexSubscriptionValueSource = 0
+	CodexSubscriptionValueSource_CODEX_SUBSCRIPTION_VALUE_SOURCE_UNAVAILABLE CodexSubscriptionValueSource = 1
+	CodexSubscriptionValueSource_CODEX_SUBSCRIPTION_VALUE_SOURCE_AUTOMATIC   CodexSubscriptionValueSource = 2
+	CodexSubscriptionValueSource_CODEX_SUBSCRIPTION_VALUE_SOURCE_MANUAL      CodexSubscriptionValueSource = 3
+)
+
+// Enum value maps for CodexSubscriptionValueSource.
+var (
+	CodexSubscriptionValueSource_name = map[int32]string{
+		0: "CODEX_SUBSCRIPTION_VALUE_SOURCE_UNSPECIFIED",
+		1: "CODEX_SUBSCRIPTION_VALUE_SOURCE_UNAVAILABLE",
+		2: "CODEX_SUBSCRIPTION_VALUE_SOURCE_AUTOMATIC",
+		3: "CODEX_SUBSCRIPTION_VALUE_SOURCE_MANUAL",
+	}
+	CodexSubscriptionValueSource_value = map[string]int32{
+		"CODEX_SUBSCRIPTION_VALUE_SOURCE_UNSPECIFIED": 0,
+		"CODEX_SUBSCRIPTION_VALUE_SOURCE_UNAVAILABLE": 1,
+		"CODEX_SUBSCRIPTION_VALUE_SOURCE_AUTOMATIC":   2,
+		"CODEX_SUBSCRIPTION_VALUE_SOURCE_MANUAL":      3,
+	}
+)
+
+func (x CodexSubscriptionValueSource) Enum() *CodexSubscriptionValueSource {
+	p := new(CodexSubscriptionValueSource)
+	*p = x
+	return p
+}
+
+func (x CodexSubscriptionValueSource) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CodexSubscriptionValueSource) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_codexpulse_core_v1_core_proto_enumTypes[4].Descriptor()
+}
+
+func (CodexSubscriptionValueSource) Type() protoreflect.EnumType {
+	return &file_api_codexpulse_core_v1_core_proto_enumTypes[4]
+}
+
+func (x CodexSubscriptionValueSource) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CodexSubscriptionValueSource.Descriptor instead.
+func (CodexSubscriptionValueSource) EnumDescriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{4}
+}
+
+type CodexSubscriptionDateKind int32
+
+const (
+	CodexSubscriptionDateKind_CODEX_SUBSCRIPTION_DATE_KIND_UNSPECIFIED CodexSubscriptionDateKind = 0
+	// membership_date contributes only its day component and recurs monthly.
+	CodexSubscriptionDateKind_CODEX_SUBSCRIPTION_DATE_KIND_NEXT_RENEWAL CodexSubscriptionDateKind = 1
+	// membership_date is an exact Gregorian civil date.
+	CodexSubscriptionDateKind_CODEX_SUBSCRIPTION_DATE_KIND_MEMBERSHIP_EXPIRY CodexSubscriptionDateKind = 2
+)
+
+// Enum value maps for CodexSubscriptionDateKind.
+var (
+	CodexSubscriptionDateKind_name = map[int32]string{
+		0: "CODEX_SUBSCRIPTION_DATE_KIND_UNSPECIFIED",
+		1: "CODEX_SUBSCRIPTION_DATE_KIND_NEXT_RENEWAL",
+		2: "CODEX_SUBSCRIPTION_DATE_KIND_MEMBERSHIP_EXPIRY",
+	}
+	CodexSubscriptionDateKind_value = map[string]int32{
+		"CODEX_SUBSCRIPTION_DATE_KIND_UNSPECIFIED":       0,
+		"CODEX_SUBSCRIPTION_DATE_KIND_NEXT_RENEWAL":      1,
+		"CODEX_SUBSCRIPTION_DATE_KIND_MEMBERSHIP_EXPIRY": 2,
+	}
+)
+
+func (x CodexSubscriptionDateKind) Enum() *CodexSubscriptionDateKind {
+	p := new(CodexSubscriptionDateKind)
+	*p = x
+	return p
+}
+
+func (x CodexSubscriptionDateKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CodexSubscriptionDateKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_codexpulse_core_v1_core_proto_enumTypes[5].Descriptor()
+}
+
+func (CodexSubscriptionDateKind) Type() protoreflect.EnumType {
+	return &file_api_codexpulse_core_v1_core_proto_enumTypes[5]
+}
+
+func (x CodexSubscriptionDateKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CodexSubscriptionDateKind.Descriptor instead.
+func (CodexSubscriptionDateKind) EnumDescriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{5}
+}
+
+type CodexSubscriptionDateState int32
+
+const (
+	CodexSubscriptionDateState_CODEX_SUBSCRIPTION_DATE_STATE_UNSPECIFIED  CodexSubscriptionDateState = 0
+	CodexSubscriptionDateState_CODEX_SUBSCRIPTION_DATE_STATE_UNAVAILABLE  CodexSubscriptionDateState = 1
+	CodexSubscriptionDateState_CODEX_SUBSCRIPTION_DATE_STATE_FUTURE       CodexSubscriptionDateState = 2
+	CodexSubscriptionDateState_CODEX_SUBSCRIPTION_DATE_STATE_TODAY        CodexSubscriptionDateState = 3
+	CodexSubscriptionDateState_CODEX_SUBSCRIPTION_DATE_STATE_NEEDS_UPDATE CodexSubscriptionDateState = 4
+)
+
+// Enum value maps for CodexSubscriptionDateState.
+var (
+	CodexSubscriptionDateState_name = map[int32]string{
+		0: "CODEX_SUBSCRIPTION_DATE_STATE_UNSPECIFIED",
+		1: "CODEX_SUBSCRIPTION_DATE_STATE_UNAVAILABLE",
+		2: "CODEX_SUBSCRIPTION_DATE_STATE_FUTURE",
+		3: "CODEX_SUBSCRIPTION_DATE_STATE_TODAY",
+		4: "CODEX_SUBSCRIPTION_DATE_STATE_NEEDS_UPDATE",
+	}
+	CodexSubscriptionDateState_value = map[string]int32{
+		"CODEX_SUBSCRIPTION_DATE_STATE_UNSPECIFIED":  0,
+		"CODEX_SUBSCRIPTION_DATE_STATE_UNAVAILABLE":  1,
+		"CODEX_SUBSCRIPTION_DATE_STATE_FUTURE":       2,
+		"CODEX_SUBSCRIPTION_DATE_STATE_TODAY":        3,
+		"CODEX_SUBSCRIPTION_DATE_STATE_NEEDS_UPDATE": 4,
+	}
+)
+
+func (x CodexSubscriptionDateState) Enum() *CodexSubscriptionDateState {
+	p := new(CodexSubscriptionDateState)
+	*p = x
+	return p
+}
+
+func (x CodexSubscriptionDateState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CodexSubscriptionDateState) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_codexpulse_core_v1_core_proto_enumTypes[6].Descriptor()
+}
+
+func (CodexSubscriptionDateState) Type() protoreflect.EnumType {
+	return &file_api_codexpulse_core_v1_core_proto_enumTypes[6]
+}
+
+func (x CodexSubscriptionDateState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CodexSubscriptionDateState.Descriptor instead.
+func (CodexSubscriptionDateState) EnumDescriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{6}
+}
+
+type CodexSubscriptionAutomaticSource int32
+
+const (
+	CodexSubscriptionAutomaticSource_CODEX_SUBSCRIPTION_AUTOMATIC_SOURCE_UNSPECIFIED      CodexSubscriptionAutomaticSource = 0
+	CodexSubscriptionAutomaticSource_CODEX_SUBSCRIPTION_AUTOMATIC_SOURCE_ACCOUNT_SANDWICH CodexSubscriptionAutomaticSource = 1
+)
+
+// Enum value maps for CodexSubscriptionAutomaticSource.
+var (
+	CodexSubscriptionAutomaticSource_name = map[int32]string{
+		0: "CODEX_SUBSCRIPTION_AUTOMATIC_SOURCE_UNSPECIFIED",
+		1: "CODEX_SUBSCRIPTION_AUTOMATIC_SOURCE_ACCOUNT_SANDWICH",
+	}
+	CodexSubscriptionAutomaticSource_value = map[string]int32{
+		"CODEX_SUBSCRIPTION_AUTOMATIC_SOURCE_UNSPECIFIED":      0,
+		"CODEX_SUBSCRIPTION_AUTOMATIC_SOURCE_ACCOUNT_SANDWICH": 1,
+	}
+)
+
+func (x CodexSubscriptionAutomaticSource) Enum() *CodexSubscriptionAutomaticSource {
+	p := new(CodexSubscriptionAutomaticSource)
+	*p = x
+	return p
+}
+
+func (x CodexSubscriptionAutomaticSource) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CodexSubscriptionAutomaticSource) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_codexpulse_core_v1_core_proto_enumTypes[7].Descriptor()
+}
+
+func (CodexSubscriptionAutomaticSource) Type() protoreflect.EnumType {
+	return &file_api_codexpulse_core_v1_core_proto_enumTypes[7]
+}
+
+func (x CodexSubscriptionAutomaticSource) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CodexSubscriptionAutomaticSource.Descriptor instead.
+func (CodexSubscriptionAutomaticSource) EnumDescriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{7}
+}
+
+type CodexSubscriptionAutomaticDateCapability int32
+
+const (
+	CodexSubscriptionAutomaticDateCapability_CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_UNSPECIFIED CodexSubscriptionAutomaticDateCapability = 0
+	CodexSubscriptionAutomaticDateCapability_CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_MANUAL_ONLY CodexSubscriptionAutomaticDateCapability = 1
+)
+
+// Enum value maps for CodexSubscriptionAutomaticDateCapability.
+var (
+	CodexSubscriptionAutomaticDateCapability_name = map[int32]string{
+		0: "CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_UNSPECIFIED",
+		1: "CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_MANUAL_ONLY",
+	}
+	CodexSubscriptionAutomaticDateCapability_value = map[string]int32{
+		"CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_UNSPECIFIED": 0,
+		"CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_MANUAL_ONLY": 1,
+	}
+)
+
+func (x CodexSubscriptionAutomaticDateCapability) Enum() *CodexSubscriptionAutomaticDateCapability {
+	p := new(CodexSubscriptionAutomaticDateCapability)
+	*p = x
+	return p
+}
+
+func (x CodexSubscriptionAutomaticDateCapability) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CodexSubscriptionAutomaticDateCapability) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_codexpulse_core_v1_core_proto_enumTypes[8].Descriptor()
+}
+
+func (CodexSubscriptionAutomaticDateCapability) Type() protoreflect.EnumType {
+	return &file_api_codexpulse_core_v1_core_proto_enumTypes[8]
+}
+
+func (x CodexSubscriptionAutomaticDateCapability) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CodexSubscriptionAutomaticDateCapability.Descriptor instead.
+func (CodexSubscriptionAutomaticDateCapability) EnumDescriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{8}
+}
+
+type CodexSubscriptionMutationResult int32
+
+const (
+	CodexSubscriptionMutationResult_CODEX_SUBSCRIPTION_MUTATION_RESULT_UNSPECIFIED CodexSubscriptionMutationResult = 0
+	CodexSubscriptionMutationResult_CODEX_SUBSCRIPTION_MUTATION_RESULT_APPLIED     CodexSubscriptionMutationResult = 1
+	CodexSubscriptionMutationResult_CODEX_SUBSCRIPTION_MUTATION_RESULT_NOOP        CodexSubscriptionMutationResult = 2
+	CodexSubscriptionMutationResult_CODEX_SUBSCRIPTION_MUTATION_RESULT_CONFLICT    CodexSubscriptionMutationResult = 3
+)
+
+// Enum value maps for CodexSubscriptionMutationResult.
+var (
+	CodexSubscriptionMutationResult_name = map[int32]string{
+		0: "CODEX_SUBSCRIPTION_MUTATION_RESULT_UNSPECIFIED",
+		1: "CODEX_SUBSCRIPTION_MUTATION_RESULT_APPLIED",
+		2: "CODEX_SUBSCRIPTION_MUTATION_RESULT_NOOP",
+		3: "CODEX_SUBSCRIPTION_MUTATION_RESULT_CONFLICT",
+	}
+	CodexSubscriptionMutationResult_value = map[string]int32{
+		"CODEX_SUBSCRIPTION_MUTATION_RESULT_UNSPECIFIED": 0,
+		"CODEX_SUBSCRIPTION_MUTATION_RESULT_APPLIED":     1,
+		"CODEX_SUBSCRIPTION_MUTATION_RESULT_NOOP":        2,
+		"CODEX_SUBSCRIPTION_MUTATION_RESULT_CONFLICT":    3,
+	}
+)
+
+func (x CodexSubscriptionMutationResult) Enum() *CodexSubscriptionMutationResult {
+	p := new(CodexSubscriptionMutationResult)
+	*p = x
+	return p
+}
+
+func (x CodexSubscriptionMutationResult) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CodexSubscriptionMutationResult) Descriptor() protoreflect.EnumDescriptor {
+	return file_api_codexpulse_core_v1_core_proto_enumTypes[9].Descriptor()
+}
+
+func (CodexSubscriptionMutationResult) Type() protoreflect.EnumType {
+	return &file_api_codexpulse_core_v1_core_proto_enumTypes[9]
+}
+
+func (x CodexSubscriptionMutationResult) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CodexSubscriptionMutationResult.Descriptor instead.
+func (CodexSubscriptionMutationResult) EnumDescriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{9}
+}
+
 type Empty struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -490,20 +917,21 @@ func (x *MethodInfo) GetKind() string {
 }
 
 type ContractsResponse struct {
-	state                   protoimpl.MessageState `protogen:"open.v1"`
-	Version                 string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
-	QueryVersion            string                 `protobuf:"bytes,2,opt,name=query_version,json=queryVersion,proto3" json:"query_version,omitempty"`
-	UsageCostVersion        string                 `protobuf:"bytes,3,opt,name=usage_cost_version,json=usageCostVersion,proto3" json:"usage_cost_version,omitempty"`
-	RuntimeInfoVersion      string                 `protobuf:"bytes,4,opt,name=runtime_info_version,json=runtimeInfoVersion,proto3" json:"runtime_info_version,omitempty"`
-	Methods                 []*MethodInfo          `protobuf:"bytes,5,rep,name=methods,proto3" json:"methods,omitempty"`
-	CommandMethods          []string               `protobuf:"bytes,6,rep,name=command_methods,json=commandMethods,proto3" json:"command_methods,omitempty"`
-	ErrorExample            *ErrorDetail           `protobuf:"bytes,7,opt,name=error_example,json=errorExample,proto3" json:"error_example,omitempty"`
-	PricingCatalogVersion   string                 `protobuf:"bytes,8,opt,name=pricing_catalog_version,json=pricingCatalogVersion,proto3" json:"pricing_catalog_version,omitempty"`
-	InvocationUsageVersion  string                 `protobuf:"bytes,9,opt,name=invocation_usage_version,json=invocationUsageVersion,proto3" json:"invocation_usage_version,omitempty"`
-	DashboardSummaryVersion string                 `protobuf:"bytes,10,opt,name=dashboard_summary_version,json=dashboardSummaryVersion,proto3" json:"dashboard_summary_version,omitempty"`
-	CodexProTierVersion     string                 `protobuf:"bytes,11,opt,name=codex_pro_tier_version,json=codexProTierVersion,proto3" json:"codex_pro_tier_version,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	state                            protoimpl.MessageState `protogen:"open.v1"`
+	Version                          string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	QueryVersion                     string                 `protobuf:"bytes,2,opt,name=query_version,json=queryVersion,proto3" json:"query_version,omitempty"`
+	UsageCostVersion                 string                 `protobuf:"bytes,3,opt,name=usage_cost_version,json=usageCostVersion,proto3" json:"usage_cost_version,omitempty"`
+	RuntimeInfoVersion               string                 `protobuf:"bytes,4,opt,name=runtime_info_version,json=runtimeInfoVersion,proto3" json:"runtime_info_version,omitempty"`
+	Methods                          []*MethodInfo          `protobuf:"bytes,5,rep,name=methods,proto3" json:"methods,omitempty"`
+	CommandMethods                   []string               `protobuf:"bytes,6,rep,name=command_methods,json=commandMethods,proto3" json:"command_methods,omitempty"`
+	ErrorExample                     *ErrorDetail           `protobuf:"bytes,7,opt,name=error_example,json=errorExample,proto3" json:"error_example,omitempty"`
+	PricingCatalogVersion            string                 `protobuf:"bytes,8,opt,name=pricing_catalog_version,json=pricingCatalogVersion,proto3" json:"pricing_catalog_version,omitempty"`
+	InvocationUsageVersion           string                 `protobuf:"bytes,9,opt,name=invocation_usage_version,json=invocationUsageVersion,proto3" json:"invocation_usage_version,omitempty"`
+	DashboardSummaryVersion          string                 `protobuf:"bytes,10,opt,name=dashboard_summary_version,json=dashboardSummaryVersion,proto3" json:"dashboard_summary_version,omitempty"`
+	CodexProTierVersion              string                 `protobuf:"bytes,11,opt,name=codex_pro_tier_version,json=codexProTierVersion,proto3" json:"codex_pro_tier_version,omitempty"`
+	CodexSubscriptionAccountsVersion string                 `protobuf:"bytes,12,opt,name=codex_subscription_accounts_version,json=codexSubscriptionAccountsVersion,proto3" json:"codex_subscription_accounts_version,omitempty"`
+	unknownFields                    protoimpl.UnknownFields
+	sizeCache                        protoimpl.SizeCache
 }
 
 func (x *ContractsResponse) Reset() {
@@ -609,6 +1037,13 @@ func (x *ContractsResponse) GetDashboardSummaryVersion() string {
 func (x *ContractsResponse) GetCodexProTierVersion() string {
 	if x != nil {
 		return x.CodexProTierVersion
+	}
+	return ""
+}
+
+func (x *ContractsResponse) GetCodexSubscriptionAccountsVersion() string {
+	if x != nil {
+		return x.CodexSubscriptionAccountsVersion
 	}
 	return ""
 }
@@ -12501,6 +12936,8 @@ func (x *ShutdownResponse) GetAccepted() bool {
 type AccountSnapshotRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Provider      *ProviderScope         `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
+	EvaluatedAtMs int64                  `protobuf:"varint,2,opt,name=evaluated_at_ms,json=evaluatedAtMs,proto3" json:"evaluated_at_ms,omitempty"`
+	TimeZone      string                 `protobuf:"bytes,3,opt,name=time_zone,json=timeZone,proto3" json:"time_zone,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12540,6 +12977,20 @@ func (x *AccountSnapshotRequest) GetProvider() *ProviderScope {
 		return x.Provider
 	}
 	return nil
+}
+
+func (x *AccountSnapshotRequest) GetEvaluatedAtMs() int64 {
+	if x != nil {
+		return x.EvaluatedAtMs
+	}
+	return 0
+}
+
+func (x *AccountSnapshotRequest) GetTimeZone() string {
+	if x != nil {
+		return x.TimeZone
+	}
+	return ""
 }
 
 type CodexAccountIdentity struct {
@@ -12739,10 +13190,11 @@ func (x *CodexProTierSnapshot) GetReason() string {
 }
 
 type AccountSnapshotResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Account       *CodexAccountIdentity  `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
-	Binding       *CodexAccountBinding   `protobuf:"bytes,2,opt,name=binding,proto3,oneof" json:"binding,omitempty"`
-	ProTier       *CodexProTierSnapshot  `protobuf:"bytes,3,opt,name=pro_tier,json=proTier,proto3,oneof" json:"pro_tier,omitempty"`
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Account       *CodexAccountIdentity     `protobuf:"bytes,1,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	Binding       *CodexAccountBinding      `protobuf:"bytes,2,opt,name=binding,proto3,oneof" json:"binding,omitempty"`
+	ProTier       *CodexProTierSnapshot     `protobuf:"bytes,3,opt,name=pro_tier,json=proTier,proto3,oneof" json:"pro_tier,omitempty"`
+	Subscription  *CodexSubscriptionAccount `protobuf:"bytes,4,opt,name=subscription,proto3,oneof" json:"subscription,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12798,6 +13250,923 @@ func (x *AccountSnapshotResponse) GetProTier() *CodexProTierSnapshot {
 	return nil
 }
 
+func (x *AccountSnapshotResponse) GetSubscription() *CodexSubscriptionAccount {
+	if x != nil {
+		return x.Subscription
+	}
+	return nil
+}
+
+type CodexSubscriptionAccount struct {
+	state                     protoimpl.MessageState              `protogen:"open.v1"`
+	AccountId                 string                              `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	DetectedAccountId         *string                             `protobuf:"bytes,2,opt,name=detected_account_id,json=detectedAccountId,proto3,oneof" json:"detected_account_id,omitempty"`
+	ManualEntryId             *string                             `protobuf:"bytes,3,opt,name=manual_entry_id,json=manualEntryId,proto3,oneof" json:"manual_entry_id,omitempty"`
+	Alias                     *string                             `protobuf:"bytes,4,opt,name=alias,proto3,oneof" json:"alias,omitempty"`
+	DisplayEmail              *string                             `protobuf:"bytes,5,opt,name=display_email,json=displayEmail,proto3,oneof" json:"display_email,omitempty"`
+	DetectedEmail             *string                             `protobuf:"bytes,6,opt,name=detected_email,json=detectedEmail,proto3,oneof" json:"detected_email,omitempty"`
+	ManualEmail               *string                             `protobuf:"bytes,7,opt,name=manual_email,json=manualEmail,proto3,oneof" json:"manual_email,omitempty"`
+	Current                   bool                                `protobuf:"varint,8,opt,name=current,proto3" json:"current,omitempty"`
+	Detected                  bool                                `protobuf:"varint,9,opt,name=detected,proto3" json:"detected,omitempty"`
+	HasManual                 bool                                `protobuf:"varint,10,opt,name=has_manual,json=hasManual,proto3" json:"has_manual,omitempty"`
+	Linked                    bool                                `protobuf:"varint,11,opt,name=linked,proto3" json:"linked,omitempty"`
+	DetectedEmailObservedAtMs *int64                              `protobuf:"varint,12,opt,name=detected_email_observed_at_ms,json=detectedEmailObservedAtMs,proto3,oneof" json:"detected_email_observed_at_ms,omitempty"`
+	AutomaticPlan             *CodexSubscriptionPlan              `protobuf:"varint,13,opt,name=automatic_plan,json=automaticPlan,proto3,enum=codexpulse.core.v1.CodexSubscriptionPlan,oneof" json:"automatic_plan,omitempty"`
+	AutomaticPlanState        CodexSubscriptionAutomaticPlanState `protobuf:"varint,14,opt,name=automatic_plan_state,json=automaticPlanState,proto3,enum=codexpulse.core.v1.CodexSubscriptionAutomaticPlanState" json:"automatic_plan_state,omitempty"`
+	AutomaticPlanSource       *CodexSubscriptionAutomaticSource   `protobuf:"varint,15,opt,name=automatic_plan_source,json=automaticPlanSource,proto3,enum=codexpulse.core.v1.CodexSubscriptionAutomaticSource,oneof" json:"automatic_plan_source,omitempty"`
+	AutomaticPlanObservedAtMs *int64                              `protobuf:"varint,16,opt,name=automatic_plan_observed_at_ms,json=automaticPlanObservedAtMs,proto3,oneof" json:"automatic_plan_observed_at_ms,omitempty"`
+	ManualPlan                *CodexSubscriptionPlan              `protobuf:"varint,17,opt,name=manual_plan,json=manualPlan,proto3,enum=codexpulse.core.v1.CodexSubscriptionPlan,oneof" json:"manual_plan,omitempty"`
+	ResolvedPlan              *CodexSubscriptionPlan              `protobuf:"varint,18,opt,name=resolved_plan,json=resolvedPlan,proto3,enum=codexpulse.core.v1.CodexSubscriptionPlan,oneof" json:"resolved_plan,omitempty"`
+	ResolvedPlanSource        CodexSubscriptionValueSource        `protobuf:"varint,19,opt,name=resolved_plan_source,json=resolvedPlanSource,proto3,enum=codexpulse.core.v1.CodexSubscriptionValueSource" json:"resolved_plan_source,omitempty"`
+	// NEXT_RENEWAL uses only DD as a monthly renewal day; MEMBERSHIP_EXPIRY uses YYYY-MM-DD.
+	MembershipDate   *string                      `protobuf:"bytes,20,opt,name=membership_date,json=membershipDate,proto3,oneof" json:"membership_date,omitempty"`
+	DateKind         *CodexSubscriptionDateKind   `protobuf:"varint,21,opt,name=date_kind,json=dateKind,proto3,enum=codexpulse.core.v1.CodexSubscriptionDateKind,oneof" json:"date_kind,omitempty"`
+	DateSource       CodexSubscriptionValueSource `protobuf:"varint,22,opt,name=date_source,json=dateSource,proto3,enum=codexpulse.core.v1.CodexSubscriptionValueSource" json:"date_source,omitempty"`
+	DateState        CodexSubscriptionDateState   `protobuf:"varint,23,opt,name=date_state,json=dateState,proto3,enum=codexpulse.core.v1.CodexSubscriptionDateState" json:"date_state,omitempty"`
+	DayDelta         *int32                       `protobuf:"varint,24,opt,name=day_delta,json=dayDelta,proto3,oneof" json:"day_delta,omitempty"`
+	DetectedRevision *int64                       `protobuf:"varint,25,opt,name=detected_revision,json=detectedRevision,proto3,oneof" json:"detected_revision,omitempty"`
+	ManualRevision   *int64                       `protobuf:"varint,26,opt,name=manual_revision,json=manualRevision,proto3,oneof" json:"manual_revision,omitempty"`
+	LinkRevision     *int64                       `protobuf:"varint,27,opt,name=link_revision,json=linkRevision,proto3,oneof" json:"link_revision,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *CodexSubscriptionAccount) Reset() {
+	*x = CodexSubscriptionAccount{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[168]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CodexSubscriptionAccount) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CodexSubscriptionAccount) ProtoMessage() {}
+
+func (x *CodexSubscriptionAccount) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[168]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CodexSubscriptionAccount.ProtoReflect.Descriptor instead.
+func (*CodexSubscriptionAccount) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{168}
+}
+
+func (x *CodexSubscriptionAccount) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionAccount) GetDetectedAccountId() string {
+	if x != nil && x.DetectedAccountId != nil {
+		return *x.DetectedAccountId
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionAccount) GetManualEntryId() string {
+	if x != nil && x.ManualEntryId != nil {
+		return *x.ManualEntryId
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionAccount) GetAlias() string {
+	if x != nil && x.Alias != nil {
+		return *x.Alias
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionAccount) GetDisplayEmail() string {
+	if x != nil && x.DisplayEmail != nil {
+		return *x.DisplayEmail
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionAccount) GetDetectedEmail() string {
+	if x != nil && x.DetectedEmail != nil {
+		return *x.DetectedEmail
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionAccount) GetManualEmail() string {
+	if x != nil && x.ManualEmail != nil {
+		return *x.ManualEmail
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionAccount) GetCurrent() bool {
+	if x != nil {
+		return x.Current
+	}
+	return false
+}
+
+func (x *CodexSubscriptionAccount) GetDetected() bool {
+	if x != nil {
+		return x.Detected
+	}
+	return false
+}
+
+func (x *CodexSubscriptionAccount) GetHasManual() bool {
+	if x != nil {
+		return x.HasManual
+	}
+	return false
+}
+
+func (x *CodexSubscriptionAccount) GetLinked() bool {
+	if x != nil {
+		return x.Linked
+	}
+	return false
+}
+
+func (x *CodexSubscriptionAccount) GetDetectedEmailObservedAtMs() int64 {
+	if x != nil && x.DetectedEmailObservedAtMs != nil {
+		return *x.DetectedEmailObservedAtMs
+	}
+	return 0
+}
+
+func (x *CodexSubscriptionAccount) GetAutomaticPlan() CodexSubscriptionPlan {
+	if x != nil && x.AutomaticPlan != nil {
+		return *x.AutomaticPlan
+	}
+	return CodexSubscriptionPlan_CODEX_SUBSCRIPTION_PLAN_UNSPECIFIED
+}
+
+func (x *CodexSubscriptionAccount) GetAutomaticPlanState() CodexSubscriptionAutomaticPlanState {
+	if x != nil {
+		return x.AutomaticPlanState
+	}
+	return CodexSubscriptionAutomaticPlanState_CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNSPECIFIED
+}
+
+func (x *CodexSubscriptionAccount) GetAutomaticPlanSource() CodexSubscriptionAutomaticSource {
+	if x != nil && x.AutomaticPlanSource != nil {
+		return *x.AutomaticPlanSource
+	}
+	return CodexSubscriptionAutomaticSource_CODEX_SUBSCRIPTION_AUTOMATIC_SOURCE_UNSPECIFIED
+}
+
+func (x *CodexSubscriptionAccount) GetAutomaticPlanObservedAtMs() int64 {
+	if x != nil && x.AutomaticPlanObservedAtMs != nil {
+		return *x.AutomaticPlanObservedAtMs
+	}
+	return 0
+}
+
+func (x *CodexSubscriptionAccount) GetManualPlan() CodexSubscriptionPlan {
+	if x != nil && x.ManualPlan != nil {
+		return *x.ManualPlan
+	}
+	return CodexSubscriptionPlan_CODEX_SUBSCRIPTION_PLAN_UNSPECIFIED
+}
+
+func (x *CodexSubscriptionAccount) GetResolvedPlan() CodexSubscriptionPlan {
+	if x != nil && x.ResolvedPlan != nil {
+		return *x.ResolvedPlan
+	}
+	return CodexSubscriptionPlan_CODEX_SUBSCRIPTION_PLAN_UNSPECIFIED
+}
+
+func (x *CodexSubscriptionAccount) GetResolvedPlanSource() CodexSubscriptionValueSource {
+	if x != nil {
+		return x.ResolvedPlanSource
+	}
+	return CodexSubscriptionValueSource_CODEX_SUBSCRIPTION_VALUE_SOURCE_UNSPECIFIED
+}
+
+func (x *CodexSubscriptionAccount) GetMembershipDate() string {
+	if x != nil && x.MembershipDate != nil {
+		return *x.MembershipDate
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionAccount) GetDateKind() CodexSubscriptionDateKind {
+	if x != nil && x.DateKind != nil {
+		return *x.DateKind
+	}
+	return CodexSubscriptionDateKind_CODEX_SUBSCRIPTION_DATE_KIND_UNSPECIFIED
+}
+
+func (x *CodexSubscriptionAccount) GetDateSource() CodexSubscriptionValueSource {
+	if x != nil {
+		return x.DateSource
+	}
+	return CodexSubscriptionValueSource_CODEX_SUBSCRIPTION_VALUE_SOURCE_UNSPECIFIED
+}
+
+func (x *CodexSubscriptionAccount) GetDateState() CodexSubscriptionDateState {
+	if x != nil {
+		return x.DateState
+	}
+	return CodexSubscriptionDateState_CODEX_SUBSCRIPTION_DATE_STATE_UNSPECIFIED
+}
+
+func (x *CodexSubscriptionAccount) GetDayDelta() int32 {
+	if x != nil && x.DayDelta != nil {
+		return *x.DayDelta
+	}
+	return 0
+}
+
+func (x *CodexSubscriptionAccount) GetDetectedRevision() int64 {
+	if x != nil && x.DetectedRevision != nil {
+		return *x.DetectedRevision
+	}
+	return 0
+}
+
+func (x *CodexSubscriptionAccount) GetManualRevision() int64 {
+	if x != nil && x.ManualRevision != nil {
+		return *x.ManualRevision
+	}
+	return 0
+}
+
+func (x *CodexSubscriptionAccount) GetLinkRevision() int64 {
+	if x != nil && x.LinkRevision != nil {
+		return *x.LinkRevision
+	}
+	return 0
+}
+
+type CodexSubscriptionLinkCandidate struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	DetectedAccountId string                 `protobuf:"bytes,1,opt,name=detected_account_id,json=detectedAccountId,proto3" json:"detected_account_id,omitempty"`
+	ManualEntryId     string                 `protobuf:"bytes,2,opt,name=manual_entry_id,json=manualEntryId,proto3" json:"manual_entry_id,omitempty"`
+	Reason            string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *CodexSubscriptionLinkCandidate) Reset() {
+	*x = CodexSubscriptionLinkCandidate{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[169]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CodexSubscriptionLinkCandidate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CodexSubscriptionLinkCandidate) ProtoMessage() {}
+
+func (x *CodexSubscriptionLinkCandidate) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[169]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CodexSubscriptionLinkCandidate.ProtoReflect.Descriptor instead.
+func (*CodexSubscriptionLinkCandidate) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{169}
+}
+
+func (x *CodexSubscriptionLinkCandidate) GetDetectedAccountId() string {
+	if x != nil {
+		return x.DetectedAccountId
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionLinkCandidate) GetManualEntryId() string {
+	if x != nil {
+		return x.ManualEntryId
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionLinkCandidate) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type CodexSubscriptionAccountsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EvaluatedAtMs int64                  `protobuf:"varint,1,opt,name=evaluated_at_ms,json=evaluatedAtMs,proto3" json:"evaluated_at_ms,omitempty"`
+	TimeZone      string                 `protobuf:"bytes,2,opt,name=time_zone,json=timeZone,proto3" json:"time_zone,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CodexSubscriptionAccountsRequest) Reset() {
+	*x = CodexSubscriptionAccountsRequest{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[170]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CodexSubscriptionAccountsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CodexSubscriptionAccountsRequest) ProtoMessage() {}
+
+func (x *CodexSubscriptionAccountsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[170]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CodexSubscriptionAccountsRequest.ProtoReflect.Descriptor instead.
+func (*CodexSubscriptionAccountsRequest) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{170}
+}
+
+func (x *CodexSubscriptionAccountsRequest) GetEvaluatedAtMs() int64 {
+	if x != nil {
+		return x.EvaluatedAtMs
+	}
+	return 0
+}
+
+func (x *CodexSubscriptionAccountsRequest) GetTimeZone() string {
+	if x != nil {
+		return x.TimeZone
+	}
+	return ""
+}
+
+type CodexSubscriptionAccountsResponse struct {
+	state                   protoimpl.MessageState                   `protogen:"open.v1"`
+	Version                 string                                   `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	EvaluatedAtMs           int64                                    `protobuf:"varint,2,opt,name=evaluated_at_ms,json=evaluatedAtMs,proto3" json:"evaluated_at_ms,omitempty"`
+	TimeZone                string                                   `protobuf:"bytes,3,opt,name=time_zone,json=timeZone,proto3" json:"time_zone,omitempty"`
+	AutomaticDateCapability CodexSubscriptionAutomaticDateCapability `protobuf:"varint,4,opt,name=automatic_date_capability,json=automaticDateCapability,proto3,enum=codexpulse.core.v1.CodexSubscriptionAutomaticDateCapability" json:"automatic_date_capability,omitempty"`
+	Accounts                []*CodexSubscriptionAccount              `protobuf:"bytes,5,rep,name=accounts,proto3" json:"accounts,omitempty"`
+	LinkCandidates          []*CodexSubscriptionLinkCandidate        `protobuf:"bytes,6,rep,name=link_candidates,json=linkCandidates,proto3" json:"link_candidates,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
+}
+
+func (x *CodexSubscriptionAccountsResponse) Reset() {
+	*x = CodexSubscriptionAccountsResponse{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[171]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CodexSubscriptionAccountsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CodexSubscriptionAccountsResponse) ProtoMessage() {}
+
+func (x *CodexSubscriptionAccountsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[171]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CodexSubscriptionAccountsResponse.ProtoReflect.Descriptor instead.
+func (*CodexSubscriptionAccountsResponse) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{171}
+}
+
+func (x *CodexSubscriptionAccountsResponse) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionAccountsResponse) GetEvaluatedAtMs() int64 {
+	if x != nil {
+		return x.EvaluatedAtMs
+	}
+	return 0
+}
+
+func (x *CodexSubscriptionAccountsResponse) GetTimeZone() string {
+	if x != nil {
+		return x.TimeZone
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionAccountsResponse) GetAutomaticDateCapability() CodexSubscriptionAutomaticDateCapability {
+	if x != nil {
+		return x.AutomaticDateCapability
+	}
+	return CodexSubscriptionAutomaticDateCapability_CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_UNSPECIFIED
+}
+
+func (x *CodexSubscriptionAccountsResponse) GetAccounts() []*CodexSubscriptionAccount {
+	if x != nil {
+		return x.Accounts
+	}
+	return nil
+}
+
+func (x *CodexSubscriptionAccountsResponse) GetLinkCandidates() []*CodexSubscriptionLinkCandidate {
+	if x != nil {
+		return x.LinkCandidates
+	}
+	return nil
+}
+
+type CodexSubscriptionManualFields struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Email *string                `protobuf:"bytes,1,opt,name=email,proto3,oneof" json:"email,omitempty"`
+	Alias *string                `protobuf:"bytes,2,opt,name=alias,proto3,oneof" json:"alias,omitempty"`
+	Plan  *CodexSubscriptionPlan `protobuf:"varint,3,opt,name=plan,proto3,enum=codexpulse.core.v1.CodexSubscriptionPlan,oneof" json:"plan,omitempty"`
+	// NEXT_RENEWAL uses only DD as a monthly renewal day; MEMBERSHIP_EXPIRY uses YYYY-MM-DD.
+	MembershipDate *string                    `protobuf:"bytes,4,opt,name=membership_date,json=membershipDate,proto3,oneof" json:"membership_date,omitempty"`
+	DateKind       *CodexSubscriptionDateKind `protobuf:"varint,5,opt,name=date_kind,json=dateKind,proto3,enum=codexpulse.core.v1.CodexSubscriptionDateKind,oneof" json:"date_kind,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CodexSubscriptionManualFields) Reset() {
+	*x = CodexSubscriptionManualFields{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[172]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CodexSubscriptionManualFields) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CodexSubscriptionManualFields) ProtoMessage() {}
+
+func (x *CodexSubscriptionManualFields) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[172]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CodexSubscriptionManualFields.ProtoReflect.Descriptor instead.
+func (*CodexSubscriptionManualFields) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{172}
+}
+
+func (x *CodexSubscriptionManualFields) GetEmail() string {
+	if x != nil && x.Email != nil {
+		return *x.Email
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionManualFields) GetAlias() string {
+	if x != nil && x.Alias != nil {
+		return *x.Alias
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionManualFields) GetPlan() CodexSubscriptionPlan {
+	if x != nil && x.Plan != nil {
+		return *x.Plan
+	}
+	return CodexSubscriptionPlan_CODEX_SUBSCRIPTION_PLAN_UNSPECIFIED
+}
+
+func (x *CodexSubscriptionManualFields) GetMembershipDate() string {
+	if x != nil && x.MembershipDate != nil {
+		return *x.MembershipDate
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionManualFields) GetDateKind() CodexSubscriptionDateKind {
+	if x != nil && x.DateKind != nil {
+		return *x.DateKind
+	}
+	return CodexSubscriptionDateKind_CODEX_SUBSCRIPTION_DATE_KIND_UNSPECIFIED
+}
+
+type CreateCodexSubscriptionAccountRequest struct {
+	state         protoimpl.MessageState         `protogen:"open.v1"`
+	ManualEntryId string                         `protobuf:"bytes,1,opt,name=manual_entry_id,json=manualEntryId,proto3" json:"manual_entry_id,omitempty"`
+	Manual        *CodexSubscriptionManualFields `protobuf:"bytes,2,opt,name=manual,proto3" json:"manual,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateCodexSubscriptionAccountRequest) Reset() {
+	*x = CreateCodexSubscriptionAccountRequest{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[173]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateCodexSubscriptionAccountRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateCodexSubscriptionAccountRequest) ProtoMessage() {}
+
+func (x *CreateCodexSubscriptionAccountRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[173]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateCodexSubscriptionAccountRequest.ProtoReflect.Descriptor instead.
+func (*CreateCodexSubscriptionAccountRequest) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{173}
+}
+
+func (x *CreateCodexSubscriptionAccountRequest) GetManualEntryId() string {
+	if x != nil {
+		return x.ManualEntryId
+	}
+	return ""
+}
+
+func (x *CreateCodexSubscriptionAccountRequest) GetManual() *CodexSubscriptionManualFields {
+	if x != nil {
+		return x.Manual
+	}
+	return nil
+}
+
+type UpdateCodexSubscriptionAccountRequest struct {
+	state                  protoimpl.MessageState         `protogen:"open.v1"`
+	AccountId              string                         `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	Manual                 *CodexSubscriptionManualFields `protobuf:"bytes,2,opt,name=manual,proto3" json:"manual,omitempty"`
+	NewManualEntryId       *string                        `protobuf:"bytes,3,opt,name=new_manual_entry_id,json=newManualEntryId,proto3,oneof" json:"new_manual_entry_id,omitempty"`
+	ExpectedManualRevision *int64                         `protobuf:"varint,4,opt,name=expected_manual_revision,json=expectedManualRevision,proto3,oneof" json:"expected_manual_revision,omitempty"`
+	ExpectedLinkRevision   *int64                         `protobuf:"varint,5,opt,name=expected_link_revision,json=expectedLinkRevision,proto3,oneof" json:"expected_link_revision,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *UpdateCodexSubscriptionAccountRequest) Reset() {
+	*x = UpdateCodexSubscriptionAccountRequest{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[174]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateCodexSubscriptionAccountRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateCodexSubscriptionAccountRequest) ProtoMessage() {}
+
+func (x *UpdateCodexSubscriptionAccountRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[174]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateCodexSubscriptionAccountRequest.ProtoReflect.Descriptor instead.
+func (*UpdateCodexSubscriptionAccountRequest) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{174}
+}
+
+func (x *UpdateCodexSubscriptionAccountRequest) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+func (x *UpdateCodexSubscriptionAccountRequest) GetManual() *CodexSubscriptionManualFields {
+	if x != nil {
+		return x.Manual
+	}
+	return nil
+}
+
+func (x *UpdateCodexSubscriptionAccountRequest) GetNewManualEntryId() string {
+	if x != nil && x.NewManualEntryId != nil {
+		return *x.NewManualEntryId
+	}
+	return ""
+}
+
+func (x *UpdateCodexSubscriptionAccountRequest) GetExpectedManualRevision() int64 {
+	if x != nil && x.ExpectedManualRevision != nil {
+		return *x.ExpectedManualRevision
+	}
+	return 0
+}
+
+func (x *UpdateCodexSubscriptionAccountRequest) GetExpectedLinkRevision() int64 {
+	if x != nil && x.ExpectedLinkRevision != nil {
+		return *x.ExpectedLinkRevision
+	}
+	return 0
+}
+
+type DeleteCodexSubscriptionAccountRequest struct {
+	state                    protoimpl.MessageState `protogen:"open.v1"`
+	AccountId                string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	ExpectedDetectedRevision *int64                 `protobuf:"varint,2,opt,name=expected_detected_revision,json=expectedDetectedRevision,proto3,oneof" json:"expected_detected_revision,omitempty"`
+	ExpectedManualRevision   *int64                 `protobuf:"varint,3,opt,name=expected_manual_revision,json=expectedManualRevision,proto3,oneof" json:"expected_manual_revision,omitempty"`
+	ExpectedLinkRevision     *int64                 `protobuf:"varint,4,opt,name=expected_link_revision,json=expectedLinkRevision,proto3,oneof" json:"expected_link_revision,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
+}
+
+func (x *DeleteCodexSubscriptionAccountRequest) Reset() {
+	*x = DeleteCodexSubscriptionAccountRequest{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[175]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteCodexSubscriptionAccountRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteCodexSubscriptionAccountRequest) ProtoMessage() {}
+
+func (x *DeleteCodexSubscriptionAccountRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[175]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteCodexSubscriptionAccountRequest.ProtoReflect.Descriptor instead.
+func (*DeleteCodexSubscriptionAccountRequest) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{175}
+}
+
+func (x *DeleteCodexSubscriptionAccountRequest) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+func (x *DeleteCodexSubscriptionAccountRequest) GetExpectedDetectedRevision() int64 {
+	if x != nil && x.ExpectedDetectedRevision != nil {
+		return *x.ExpectedDetectedRevision
+	}
+	return 0
+}
+
+func (x *DeleteCodexSubscriptionAccountRequest) GetExpectedManualRevision() int64 {
+	if x != nil && x.ExpectedManualRevision != nil {
+		return *x.ExpectedManualRevision
+	}
+	return 0
+}
+
+func (x *DeleteCodexSubscriptionAccountRequest) GetExpectedLinkRevision() int64 {
+	if x != nil && x.ExpectedLinkRevision != nil {
+		return *x.ExpectedLinkRevision
+	}
+	return 0
+}
+
+type LinkCodexSubscriptionAccountRequest struct {
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	DetectedAccountId      string                 `protobuf:"bytes,1,opt,name=detected_account_id,json=detectedAccountId,proto3" json:"detected_account_id,omitempty"`
+	ManualEntryId          string                 `protobuf:"bytes,2,opt,name=manual_entry_id,json=manualEntryId,proto3" json:"manual_entry_id,omitempty"`
+	ExpectedManualRevision int64                  `protobuf:"varint,3,opt,name=expected_manual_revision,json=expectedManualRevision,proto3" json:"expected_manual_revision,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *LinkCodexSubscriptionAccountRequest) Reset() {
+	*x = LinkCodexSubscriptionAccountRequest{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[176]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LinkCodexSubscriptionAccountRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LinkCodexSubscriptionAccountRequest) ProtoMessage() {}
+
+func (x *LinkCodexSubscriptionAccountRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[176]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LinkCodexSubscriptionAccountRequest.ProtoReflect.Descriptor instead.
+func (*LinkCodexSubscriptionAccountRequest) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{176}
+}
+
+func (x *LinkCodexSubscriptionAccountRequest) GetDetectedAccountId() string {
+	if x != nil {
+		return x.DetectedAccountId
+	}
+	return ""
+}
+
+func (x *LinkCodexSubscriptionAccountRequest) GetManualEntryId() string {
+	if x != nil {
+		return x.ManualEntryId
+	}
+	return ""
+}
+
+func (x *LinkCodexSubscriptionAccountRequest) GetExpectedManualRevision() int64 {
+	if x != nil {
+		return x.ExpectedManualRevision
+	}
+	return 0
+}
+
+type UnlinkCodexSubscriptionAccountRequest struct {
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	DetectedAccountId      string                 `protobuf:"bytes,1,opt,name=detected_account_id,json=detectedAccountId,proto3" json:"detected_account_id,omitempty"`
+	ManualEntryId          string                 `protobuf:"bytes,2,opt,name=manual_entry_id,json=manualEntryId,proto3" json:"manual_entry_id,omitempty"`
+	ExpectedManualRevision int64                  `protobuf:"varint,3,opt,name=expected_manual_revision,json=expectedManualRevision,proto3" json:"expected_manual_revision,omitempty"`
+	ExpectedLinkRevision   int64                  `protobuf:"varint,4,opt,name=expected_link_revision,json=expectedLinkRevision,proto3" json:"expected_link_revision,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *UnlinkCodexSubscriptionAccountRequest) Reset() {
+	*x = UnlinkCodexSubscriptionAccountRequest{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[177]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnlinkCodexSubscriptionAccountRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnlinkCodexSubscriptionAccountRequest) ProtoMessage() {}
+
+func (x *UnlinkCodexSubscriptionAccountRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[177]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnlinkCodexSubscriptionAccountRequest.ProtoReflect.Descriptor instead.
+func (*UnlinkCodexSubscriptionAccountRequest) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{177}
+}
+
+func (x *UnlinkCodexSubscriptionAccountRequest) GetDetectedAccountId() string {
+	if x != nil {
+		return x.DetectedAccountId
+	}
+	return ""
+}
+
+func (x *UnlinkCodexSubscriptionAccountRequest) GetManualEntryId() string {
+	if x != nil {
+		return x.ManualEntryId
+	}
+	return ""
+}
+
+func (x *UnlinkCodexSubscriptionAccountRequest) GetExpectedManualRevision() int64 {
+	if x != nil {
+		return x.ExpectedManualRevision
+	}
+	return 0
+}
+
+func (x *UnlinkCodexSubscriptionAccountRequest) GetExpectedLinkRevision() int64 {
+	if x != nil {
+		return x.ExpectedLinkRevision
+	}
+	return 0
+}
+
+type CodexSubscriptionMutationReceipt struct {
+	state         protoimpl.MessageState          `protogen:"open.v1"`
+	Result        CodexSubscriptionMutationResult `protobuf:"varint,1,opt,name=result,proto3,enum=codexpulse.core.v1.CodexSubscriptionMutationResult" json:"result,omitempty"`
+	Reason        *string                         `protobuf:"bytes,2,opt,name=reason,proto3,oneof" json:"reason,omitempty"`
+	Account       *CodexSubscriptionAccount       `protobuf:"bytes,3,opt,name=account,proto3,oneof" json:"account,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CodexSubscriptionMutationReceipt) Reset() {
+	*x = CodexSubscriptionMutationReceipt{}
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[178]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CodexSubscriptionMutationReceipt) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CodexSubscriptionMutationReceipt) ProtoMessage() {}
+
+func (x *CodexSubscriptionMutationReceipt) ProtoReflect() protoreflect.Message {
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[178]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CodexSubscriptionMutationReceipt.ProtoReflect.Descriptor instead.
+func (*CodexSubscriptionMutationReceipt) Descriptor() ([]byte, []int) {
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{178}
+}
+
+func (x *CodexSubscriptionMutationReceipt) GetResult() CodexSubscriptionMutationResult {
+	if x != nil {
+		return x.Result
+	}
+	return CodexSubscriptionMutationResult_CODEX_SUBSCRIPTION_MUTATION_RESULT_UNSPECIFIED
+}
+
+func (x *CodexSubscriptionMutationReceipt) GetReason() string {
+	if x != nil && x.Reason != nil {
+		return *x.Reason
+	}
+	return ""
+}
+
+func (x *CodexSubscriptionMutationReceipt) GetAccount() *CodexSubscriptionAccount {
+	if x != nil {
+		return x.Account
+	}
+	return nil
+}
+
 type APISubscriptionsCurrentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	EvaluatedAtMs int64                  `protobuf:"varint,1,opt,name=evaluated_at_ms,json=evaluatedAtMs,proto3" json:"evaluated_at_ms,omitempty"`
@@ -12807,7 +14176,7 @@ type APISubscriptionsCurrentRequest struct {
 
 func (x *APISubscriptionsCurrentRequest) Reset() {
 	*x = APISubscriptionsCurrentRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[168]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[179]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12819,7 +14188,7 @@ func (x *APISubscriptionsCurrentRequest) String() string {
 func (*APISubscriptionsCurrentRequest) ProtoMessage() {}
 
 func (x *APISubscriptionsCurrentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[168]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[179]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12832,7 +14201,7 @@ func (x *APISubscriptionsCurrentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use APISubscriptionsCurrentRequest.ProtoReflect.Descriptor instead.
 func (*APISubscriptionsCurrentRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{168}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{179}
 }
 
 func (x *APISubscriptionsCurrentRequest) GetEvaluatedAtMs() int64 {
@@ -12850,7 +14219,7 @@ type APICredentialStatusRequest struct {
 
 func (x *APICredentialStatusRequest) Reset() {
 	*x = APICredentialStatusRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[169]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[180]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12862,7 +14231,7 @@ func (x *APICredentialStatusRequest) String() string {
 func (*APICredentialStatusRequest) ProtoMessage() {}
 
 func (x *APICredentialStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[169]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[180]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12875,7 +14244,7 @@ func (x *APICredentialStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use APICredentialStatusRequest.ProtoReflect.Descriptor instead.
 func (*APICredentialStatusRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{169}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{180}
 }
 
 type APICredentialStatusResponse struct {
@@ -12888,7 +14257,7 @@ type APICredentialStatusResponse struct {
 
 func (x *APICredentialStatusResponse) Reset() {
 	*x = APICredentialStatusResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[170]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[181]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12900,7 +14269,7 @@ func (x *APICredentialStatusResponse) String() string {
 func (*APICredentialStatusResponse) ProtoMessage() {}
 
 func (x *APICredentialStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[170]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[181]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12913,7 +14282,7 @@ func (x *APICredentialStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use APICredentialStatusResponse.ProtoReflect.Descriptor instead.
 func (*APICredentialStatusResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{170}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{181}
 }
 
 func (x *APICredentialStatusResponse) GetDeepSeekConfigured() bool {
@@ -12944,7 +14313,7 @@ type UpdateAPICredentialRequest struct {
 
 func (x *UpdateAPICredentialRequest) Reset() {
 	*x = UpdateAPICredentialRequest{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[171]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[182]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12956,7 +14325,7 @@ func (x *UpdateAPICredentialRequest) String() string {
 func (*UpdateAPICredentialRequest) ProtoMessage() {}
 
 func (x *UpdateAPICredentialRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[171]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[182]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12969,7 +14338,7 @@ func (x *UpdateAPICredentialRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAPICredentialRequest.ProtoReflect.Descriptor instead.
 func (*UpdateAPICredentialRequest) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{171}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{182}
 }
 
 func (x *UpdateAPICredentialRequest) GetService() string {
@@ -13031,7 +14400,7 @@ type APISubscriptionSourceStatus struct {
 
 func (x *APISubscriptionSourceStatus) Reset() {
 	*x = APISubscriptionSourceStatus{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[172]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[183]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13043,7 +14412,7 @@ func (x *APISubscriptionSourceStatus) String() string {
 func (*APISubscriptionSourceStatus) ProtoMessage() {}
 
 func (x *APISubscriptionSourceStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[172]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[183]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13056,7 +14425,7 @@ func (x *APISubscriptionSourceStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use APISubscriptionSourceStatus.ProtoReflect.Descriptor instead.
 func (*APISubscriptionSourceStatus) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{172}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{183}
 }
 
 func (x *APISubscriptionSourceStatus) GetState() string {
@@ -13092,7 +14461,7 @@ type APISubscriptionCurrencyBalance struct {
 
 func (x *APISubscriptionCurrencyBalance) Reset() {
 	*x = APISubscriptionCurrencyBalance{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[173]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[184]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13104,7 +14473,7 @@ func (x *APISubscriptionCurrencyBalance) String() string {
 func (*APISubscriptionCurrencyBalance) ProtoMessage() {}
 
 func (x *APISubscriptionCurrencyBalance) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[173]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[184]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13117,7 +14486,7 @@ func (x *APISubscriptionCurrencyBalance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use APISubscriptionCurrencyBalance.ProtoReflect.Descriptor instead.
 func (*APISubscriptionCurrencyBalance) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{173}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{184}
 }
 
 func (x *APISubscriptionCurrencyBalance) GetCurrency() string {
@@ -13158,7 +14527,7 @@ type DeepSeekAPIBalance struct {
 
 func (x *DeepSeekAPIBalance) Reset() {
 	*x = DeepSeekAPIBalance{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[174]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[185]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13170,7 +14539,7 @@ func (x *DeepSeekAPIBalance) String() string {
 func (*DeepSeekAPIBalance) ProtoMessage() {}
 
 func (x *DeepSeekAPIBalance) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[174]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[185]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13183,7 +14552,7 @@ func (x *DeepSeekAPIBalance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeepSeekAPIBalance.ProtoReflect.Descriptor instead.
 func (*DeepSeekAPIBalance) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{174}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{185}
 }
 
 func (x *DeepSeekAPIBalance) GetIsAvailable() bool {
@@ -13217,7 +14586,7 @@ type APISubscriptionCurrencyBalanceChange struct {
 
 func (x *APISubscriptionCurrencyBalanceChange) Reset() {
 	*x = APISubscriptionCurrencyBalanceChange{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[175]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[186]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13229,7 +14598,7 @@ func (x *APISubscriptionCurrencyBalanceChange) String() string {
 func (*APISubscriptionCurrencyBalanceChange) ProtoMessage() {}
 
 func (x *APISubscriptionCurrencyBalanceChange) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[175]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[186]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13242,7 +14611,7 @@ func (x *APISubscriptionCurrencyBalanceChange) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use APISubscriptionCurrencyBalanceChange.ProtoReflect.Descriptor instead.
 func (*APISubscriptionCurrencyBalanceChange) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{175}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{186}
 }
 
 func (x *APISubscriptionCurrencyBalanceChange) GetCurrency() string {
@@ -13320,7 +14689,7 @@ type APISubscriptionBalanceTrendPoint struct {
 
 func (x *APISubscriptionBalanceTrendPoint) Reset() {
 	*x = APISubscriptionBalanceTrendPoint{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[176]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[187]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13332,7 +14701,7 @@ func (x *APISubscriptionBalanceTrendPoint) String() string {
 func (*APISubscriptionBalanceTrendPoint) ProtoMessage() {}
 
 func (x *APISubscriptionBalanceTrendPoint) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[176]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[187]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13345,7 +14714,7 @@ func (x *APISubscriptionBalanceTrendPoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use APISubscriptionBalanceTrendPoint.ProtoReflect.Descriptor instead.
 func (*APISubscriptionBalanceTrendPoint) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{176}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{187}
 }
 
 func (x *APISubscriptionBalanceTrendPoint) GetObservedAtMs() int64 {
@@ -13386,7 +14755,7 @@ type APISubscriptionCurrencyBalanceSeries struct {
 
 func (x *APISubscriptionCurrencyBalanceSeries) Reset() {
 	*x = APISubscriptionCurrencyBalanceSeries{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[177]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[188]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13398,7 +14767,7 @@ func (x *APISubscriptionCurrencyBalanceSeries) String() string {
 func (*APISubscriptionCurrencyBalanceSeries) ProtoMessage() {}
 
 func (x *APISubscriptionCurrencyBalanceSeries) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[177]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[188]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13411,7 +14780,7 @@ func (x *APISubscriptionCurrencyBalanceSeries) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use APISubscriptionCurrencyBalanceSeries.ProtoReflect.Descriptor instead.
 func (*APISubscriptionCurrencyBalanceSeries) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{177}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{188}
 }
 
 func (x *APISubscriptionCurrencyBalanceSeries) GetCurrency() string {
@@ -13441,7 +14810,7 @@ type APISubscriptionBalancePeriod struct {
 
 func (x *APISubscriptionBalancePeriod) Reset() {
 	*x = APISubscriptionBalancePeriod{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[178]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[189]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13453,7 +14822,7 @@ func (x *APISubscriptionBalancePeriod) String() string {
 func (*APISubscriptionBalancePeriod) ProtoMessage() {}
 
 func (x *APISubscriptionBalancePeriod) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[178]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[189]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13466,7 +14835,7 @@ func (x *APISubscriptionBalancePeriod) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use APISubscriptionBalancePeriod.ProtoReflect.Descriptor instead.
 func (*APISubscriptionBalancePeriod) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{178}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{189}
 }
 
 func (x *APISubscriptionBalancePeriod) GetKind() string {
@@ -13515,7 +14884,7 @@ type DeepSeekAPISubscriptionSnapshot struct {
 
 func (x *DeepSeekAPISubscriptionSnapshot) Reset() {
 	*x = DeepSeekAPISubscriptionSnapshot{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[179]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[190]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13527,7 +14896,7 @@ func (x *DeepSeekAPISubscriptionSnapshot) String() string {
 func (*DeepSeekAPISubscriptionSnapshot) ProtoMessage() {}
 
 func (x *DeepSeekAPISubscriptionSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[179]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[190]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13540,7 +14909,7 @@ func (x *DeepSeekAPISubscriptionSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeepSeekAPISubscriptionSnapshot.ProtoReflect.Descriptor instead.
 func (*DeepSeekAPISubscriptionSnapshot) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{179}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{190}
 }
 
 func (x *DeepSeekAPISubscriptionSnapshot) GetStatus() *APISubscriptionSourceStatus {
@@ -13577,7 +14946,7 @@ type OpenCodeGoQuotaWindow struct {
 
 func (x *OpenCodeGoQuotaWindow) Reset() {
 	*x = OpenCodeGoQuotaWindow{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[180]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[191]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13589,7 +14958,7 @@ func (x *OpenCodeGoQuotaWindow) String() string {
 func (*OpenCodeGoQuotaWindow) ProtoMessage() {}
 
 func (x *OpenCodeGoQuotaWindow) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[180]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[191]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13602,7 +14971,7 @@ func (x *OpenCodeGoQuotaWindow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenCodeGoQuotaWindow.ProtoReflect.Descriptor instead.
 func (*OpenCodeGoQuotaWindow) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{180}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{191}
 }
 
 func (x *OpenCodeGoQuotaWindow) GetKind() string {
@@ -13649,7 +15018,7 @@ type OpenCodeGoQuota struct {
 
 func (x *OpenCodeGoQuota) Reset() {
 	*x = OpenCodeGoQuota{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[181]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[192]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13661,7 +15030,7 @@ func (x *OpenCodeGoQuota) String() string {
 func (*OpenCodeGoQuota) ProtoMessage() {}
 
 func (x *OpenCodeGoQuota) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[181]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[192]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13674,7 +15043,7 @@ func (x *OpenCodeGoQuota) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenCodeGoQuota.ProtoReflect.Descriptor instead.
 func (*OpenCodeGoQuota) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{181}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{192}
 }
 
 func (x *OpenCodeGoQuota) GetWindows() []*OpenCodeGoQuotaWindow {
@@ -13694,7 +15063,7 @@ type OpenCodeGoSubscriptionSnapshot struct {
 
 func (x *OpenCodeGoSubscriptionSnapshot) Reset() {
 	*x = OpenCodeGoSubscriptionSnapshot{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[182]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[193]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13706,7 +15075,7 @@ func (x *OpenCodeGoSubscriptionSnapshot) String() string {
 func (*OpenCodeGoSubscriptionSnapshot) ProtoMessage() {}
 
 func (x *OpenCodeGoSubscriptionSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[182]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[193]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13719,7 +15088,7 @@ func (x *OpenCodeGoSubscriptionSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenCodeGoSubscriptionSnapshot.ProtoReflect.Descriptor instead.
 func (*OpenCodeGoSubscriptionSnapshot) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{182}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{193}
 }
 
 func (x *OpenCodeGoSubscriptionSnapshot) GetStatus() *APISubscriptionSourceStatus {
@@ -13748,7 +15117,7 @@ type DeepSeekDailyActivity struct {
 
 func (x *DeepSeekDailyActivity) Reset() {
 	*x = DeepSeekDailyActivity{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[183]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[194]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13760,7 +15129,7 @@ func (x *DeepSeekDailyActivity) String() string {
 func (*DeepSeekDailyActivity) ProtoMessage() {}
 
 func (x *DeepSeekDailyActivity) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[183]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[194]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13773,7 +15142,7 @@ func (x *DeepSeekDailyActivity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeepSeekDailyActivity.ProtoReflect.Descriptor instead.
 func (*DeepSeekDailyActivity) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{183}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{194}
 }
 
 func (x *DeepSeekDailyActivity) GetCurrency() string {
@@ -13816,7 +15185,7 @@ type OpenCodeGoFiveHourDailyActivity struct {
 
 func (x *OpenCodeGoFiveHourDailyActivity) Reset() {
 	*x = OpenCodeGoFiveHourDailyActivity{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[184]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[195]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13828,7 +15197,7 @@ func (x *OpenCodeGoFiveHourDailyActivity) String() string {
 func (*OpenCodeGoFiveHourDailyActivity) ProtoMessage() {}
 
 func (x *OpenCodeGoFiveHourDailyActivity) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[184]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[195]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13841,7 +15210,7 @@ func (x *OpenCodeGoFiveHourDailyActivity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenCodeGoFiveHourDailyActivity.ProtoReflect.Descriptor instead.
 func (*OpenCodeGoFiveHourDailyActivity) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{184}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{195}
 }
 
 func (x *OpenCodeGoFiveHourDailyActivity) GetMaxFiveHourUsedPercent() float64 {
@@ -13884,7 +15253,7 @@ type APISubscriptionActivityDay struct {
 
 func (x *APISubscriptionActivityDay) Reset() {
 	*x = APISubscriptionActivityDay{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[185]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[196]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13896,7 +15265,7 @@ func (x *APISubscriptionActivityDay) String() string {
 func (*APISubscriptionActivityDay) ProtoMessage() {}
 
 func (x *APISubscriptionActivityDay) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[185]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[196]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13909,7 +15278,7 @@ func (x *APISubscriptionActivityDay) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use APISubscriptionActivityDay.ProtoReflect.Descriptor instead.
 func (*APISubscriptionActivityDay) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{185}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{196}
 }
 
 func (x *APISubscriptionActivityDay) GetDateKey() string {
@@ -13950,7 +15319,7 @@ type APISubscriptionActivityCalendar struct {
 
 func (x *APISubscriptionActivityCalendar) Reset() {
 	*x = APISubscriptionActivityCalendar{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[186]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[197]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13962,7 +15331,7 @@ func (x *APISubscriptionActivityCalendar) String() string {
 func (*APISubscriptionActivityCalendar) ProtoMessage() {}
 
 func (x *APISubscriptionActivityCalendar) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[186]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[197]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13975,7 +15344,7 @@ func (x *APISubscriptionActivityCalendar) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use APISubscriptionActivityCalendar.ProtoReflect.Descriptor instead.
 func (*APISubscriptionActivityCalendar) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{186}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{197}
 }
 
 func (x *APISubscriptionActivityCalendar) GetReportingTimeZone() string {
@@ -14004,7 +15373,7 @@ type APISubscriptionsCurrentResponse struct {
 
 func (x *APISubscriptionsCurrentResponse) Reset() {
 	*x = APISubscriptionsCurrentResponse{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[187]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[198]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14016,7 +15385,7 @@ func (x *APISubscriptionsCurrentResponse) String() string {
 func (*APISubscriptionsCurrentResponse) ProtoMessage() {}
 
 func (x *APISubscriptionsCurrentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[187]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[198]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14029,7 +15398,7 @@ func (x *APISubscriptionsCurrentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use APISubscriptionsCurrentResponse.ProtoReflect.Descriptor instead.
 func (*APISubscriptionsCurrentResponse) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{187}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{198}
 }
 
 func (x *APISubscriptionsCurrentResponse) GetEvaluatedAtMs() int64 {
@@ -14072,7 +15441,7 @@ type CursorUsagePoolSummary struct {
 
 func (x *CursorUsagePoolSummary) Reset() {
 	*x = CursorUsagePoolSummary{}
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[188]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[199]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14084,7 +15453,7 @@ func (x *CursorUsagePoolSummary) String() string {
 func (*CursorUsagePoolSummary) ProtoMessage() {}
 
 func (x *CursorUsagePoolSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[188]
+	mi := &file_api_codexpulse_core_v1_core_proto_msgTypes[199]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14097,7 +15466,7 @@ func (x *CursorUsagePoolSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CursorUsagePoolSummary.ProtoReflect.Descriptor instead.
 func (*CursorUsagePoolSummary) Descriptor() ([]byte, []int) {
-	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{188}
+	return file_api_codexpulse_core_v1_core_proto_rawDescGZIP(), []int{199}
 }
 
 func (x *CursorUsagePoolSummary) GetPoolId() string {
@@ -14156,7 +15525,7 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\n" +
 	"MethodInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
-	"\x04kind\x18\x02 \x01(\tR\x04kind\"\xbe\x04\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\"\x8d\x05\n" +
 	"\x11ContractsResponse\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12#\n" +
 	"\rquery_version\x18\x02 \x01(\tR\fqueryVersion\x12,\n" +
@@ -14169,7 +15538,8 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x18invocation_usage_version\x18\t \x01(\tR\x16invocationUsageVersion\x12:\n" +
 	"\x19dashboard_summary_version\x18\n" +
 	" \x01(\tR\x17dashboardSummaryVersion\x123\n" +
-	"\x16codex_pro_tier_version\x18\v \x01(\tR\x13codexProTierVersion\"\x85\x01\n" +
+	"\x16codex_pro_tier_version\x18\v \x01(\tR\x13codexProTierVersion\x12M\n" +
+	"#codex_subscription_accounts_version\x18\f \x01(\tR codexSubscriptionAccountsVersion\"\x85\x01\n" +
 	"\vErrorDetail\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x1f\n" +
 	"\vmessage_key\x18\x02 \x01(\tR\n" +
@@ -15348,9 +16718,11 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x0fShutdownRequest\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\".\n" +
 	"\x10ShutdownResponse\x12\x1a\n" +
-	"\baccepted\x18\x01 \x01(\bR\baccepted\"W\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\"\x9c\x01\n" +
 	"\x16AccountSnapshotRequest\x12=\n" +
-	"\bprovider\x18\x01 \x01(\v2!.codexpulse.core.v1.ProviderScopeR\bprovider\"\x7f\n" +
+	"\bprovider\x18\x01 \x01(\v2!.codexpulse.core.v1.ProviderScopeR\bprovider\x12&\n" +
+	"\x0fevaluated_at_ms\x18\x02 \x01(\x03R\revaluatedAtMs\x12\x1b\n" +
+	"\ttime_zone\x18\x03 \x01(\tR\btimeZone\"\x7f\n" +
 	"\x14CodexAccountIdentity\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x19\n" +
 	"\x05email\x18\x02 \x01(\tH\x00R\x05email\x88\x01\x01\x12 \n" +
@@ -15370,16 +16742,137 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x05state\x18\x01 \x01(\x0e2%.codexpulse.core.v1.CodexProTierStateR\x05state\x129\n" +
 	"\x04tier\x18\x02 \x01(\x0e2 .codexpulse.core.v1.CodexProTierH\x00R\x04tier\x88\x01\x01\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reasonB\a\n" +
-	"\x05_tier\"\x99\x02\n" +
+	"\x05_tier\"\x81\x03\n" +
 	"\x17AccountSnapshotResponse\x12G\n" +
 	"\aaccount\x18\x01 \x01(\v2(.codexpulse.core.v1.CodexAccountIdentityH\x00R\aaccount\x88\x01\x01\x12F\n" +
 	"\abinding\x18\x02 \x01(\v2'.codexpulse.core.v1.CodexAccountBindingH\x01R\abinding\x88\x01\x01\x12H\n" +
-	"\bpro_tier\x18\x03 \x01(\v2(.codexpulse.core.v1.CodexProTierSnapshotH\x02R\aproTier\x88\x01\x01B\n" +
+	"\bpro_tier\x18\x03 \x01(\v2(.codexpulse.core.v1.CodexProTierSnapshotH\x02R\aproTier\x88\x01\x01\x12U\n" +
+	"\fsubscription\x18\x04 \x01(\v2,.codexpulse.core.v1.CodexSubscriptionAccountH\x03R\fsubscription\x88\x01\x01B\n" +
 	"\n" +
 	"\b_accountB\n" +
 	"\n" +
 	"\b_bindingB\v\n" +
-	"\t_pro_tier\"H\n" +
+	"\t_pro_tierB\x0f\n" +
+	"\r_subscription\"\xa2\x0f\n" +
+	"\x18CodexSubscriptionAccount\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\x123\n" +
+	"\x13detected_account_id\x18\x02 \x01(\tH\x00R\x11detectedAccountId\x88\x01\x01\x12+\n" +
+	"\x0fmanual_entry_id\x18\x03 \x01(\tH\x01R\rmanualEntryId\x88\x01\x01\x12\x19\n" +
+	"\x05alias\x18\x04 \x01(\tH\x02R\x05alias\x88\x01\x01\x12(\n" +
+	"\rdisplay_email\x18\x05 \x01(\tH\x03R\fdisplayEmail\x88\x01\x01\x12*\n" +
+	"\x0edetected_email\x18\x06 \x01(\tH\x04R\rdetectedEmail\x88\x01\x01\x12&\n" +
+	"\fmanual_email\x18\a \x01(\tH\x05R\vmanualEmail\x88\x01\x01\x12\x18\n" +
+	"\acurrent\x18\b \x01(\bR\acurrent\x12\x1a\n" +
+	"\bdetected\x18\t \x01(\bR\bdetected\x12\x1d\n" +
+	"\n" +
+	"has_manual\x18\n" +
+	" \x01(\bR\thasManual\x12\x16\n" +
+	"\x06linked\x18\v \x01(\bR\x06linked\x12E\n" +
+	"\x1ddetected_email_observed_at_ms\x18\f \x01(\x03H\x06R\x19detectedEmailObservedAtMs\x88\x01\x01\x12U\n" +
+	"\x0eautomatic_plan\x18\r \x01(\x0e2).codexpulse.core.v1.CodexSubscriptionPlanH\aR\rautomaticPlan\x88\x01\x01\x12i\n" +
+	"\x14automatic_plan_state\x18\x0e \x01(\x0e27.codexpulse.core.v1.CodexSubscriptionAutomaticPlanStateR\x12automaticPlanState\x12m\n" +
+	"\x15automatic_plan_source\x18\x0f \x01(\x0e24.codexpulse.core.v1.CodexSubscriptionAutomaticSourceH\bR\x13automaticPlanSource\x88\x01\x01\x12E\n" +
+	"\x1dautomatic_plan_observed_at_ms\x18\x10 \x01(\x03H\tR\x19automaticPlanObservedAtMs\x88\x01\x01\x12O\n" +
+	"\vmanual_plan\x18\x11 \x01(\x0e2).codexpulse.core.v1.CodexSubscriptionPlanH\n" +
+	"R\n" +
+	"manualPlan\x88\x01\x01\x12S\n" +
+	"\rresolved_plan\x18\x12 \x01(\x0e2).codexpulse.core.v1.CodexSubscriptionPlanH\vR\fresolvedPlan\x88\x01\x01\x12b\n" +
+	"\x14resolved_plan_source\x18\x13 \x01(\x0e20.codexpulse.core.v1.CodexSubscriptionValueSourceR\x12resolvedPlanSource\x12,\n" +
+	"\x0fmembership_date\x18\x14 \x01(\tH\fR\x0emembershipDate\x88\x01\x01\x12O\n" +
+	"\tdate_kind\x18\x15 \x01(\x0e2-.codexpulse.core.v1.CodexSubscriptionDateKindH\rR\bdateKind\x88\x01\x01\x12Q\n" +
+	"\vdate_source\x18\x16 \x01(\x0e20.codexpulse.core.v1.CodexSubscriptionValueSourceR\n" +
+	"dateSource\x12M\n" +
+	"\n" +
+	"date_state\x18\x17 \x01(\x0e2..codexpulse.core.v1.CodexSubscriptionDateStateR\tdateState\x12 \n" +
+	"\tday_delta\x18\x18 \x01(\x05H\x0eR\bdayDelta\x88\x01\x01\x120\n" +
+	"\x11detected_revision\x18\x19 \x01(\x03H\x0fR\x10detectedRevision\x88\x01\x01\x12,\n" +
+	"\x0fmanual_revision\x18\x1a \x01(\x03H\x10R\x0emanualRevision\x88\x01\x01\x12(\n" +
+	"\rlink_revision\x18\x1b \x01(\x03H\x11R\flinkRevision\x88\x01\x01B\x16\n" +
+	"\x14_detected_account_idB\x12\n" +
+	"\x10_manual_entry_idB\b\n" +
+	"\x06_aliasB\x10\n" +
+	"\x0e_display_emailB\x11\n" +
+	"\x0f_detected_emailB\x0f\n" +
+	"\r_manual_emailB \n" +
+	"\x1e_detected_email_observed_at_msB\x11\n" +
+	"\x0f_automatic_planB\x18\n" +
+	"\x16_automatic_plan_sourceB \n" +
+	"\x1e_automatic_plan_observed_at_msB\x0e\n" +
+	"\f_manual_planB\x10\n" +
+	"\x0e_resolved_planB\x12\n" +
+	"\x10_membership_dateB\f\n" +
+	"\n" +
+	"_date_kindB\f\n" +
+	"\n" +
+	"_day_deltaB\x14\n" +
+	"\x12_detected_revisionB\x12\n" +
+	"\x10_manual_revisionB\x10\n" +
+	"\x0e_link_revision\"\x90\x01\n" +
+	"\x1eCodexSubscriptionLinkCandidate\x12.\n" +
+	"\x13detected_account_id\x18\x01 \x01(\tR\x11detectedAccountId\x12&\n" +
+	"\x0fmanual_entry_id\x18\x02 \x01(\tR\rmanualEntryId\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"g\n" +
+	" CodexSubscriptionAccountsRequest\x12&\n" +
+	"\x0fevaluated_at_ms\x18\x01 \x01(\x03R\revaluatedAtMs\x12\x1b\n" +
+	"\ttime_zone\x18\x02 \x01(\tR\btimeZone\"\xa3\x03\n" +
+	"!CodexSubscriptionAccountsResponse\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\tR\aversion\x12&\n" +
+	"\x0fevaluated_at_ms\x18\x02 \x01(\x03R\revaluatedAtMs\x12\x1b\n" +
+	"\ttime_zone\x18\x03 \x01(\tR\btimeZone\x12x\n" +
+	"\x19automatic_date_capability\x18\x04 \x01(\x0e2<.codexpulse.core.v1.CodexSubscriptionAutomaticDateCapabilityR\x17automaticDateCapability\x12H\n" +
+	"\baccounts\x18\x05 \x03(\v2,.codexpulse.core.v1.CodexSubscriptionAccountR\baccounts\x12[\n" +
+	"\x0flink_candidates\x18\x06 \x03(\v22.codexpulse.core.v1.CodexSubscriptionLinkCandidateR\x0elinkCandidates\"\xd7\x02\n" +
+	"\x1dCodexSubscriptionManualFields\x12\x19\n" +
+	"\x05email\x18\x01 \x01(\tH\x00R\x05email\x88\x01\x01\x12\x19\n" +
+	"\x05alias\x18\x02 \x01(\tH\x01R\x05alias\x88\x01\x01\x12B\n" +
+	"\x04plan\x18\x03 \x01(\x0e2).codexpulse.core.v1.CodexSubscriptionPlanH\x02R\x04plan\x88\x01\x01\x12,\n" +
+	"\x0fmembership_date\x18\x04 \x01(\tH\x03R\x0emembershipDate\x88\x01\x01\x12O\n" +
+	"\tdate_kind\x18\x05 \x01(\x0e2-.codexpulse.core.v1.CodexSubscriptionDateKindH\x04R\bdateKind\x88\x01\x01B\b\n" +
+	"\x06_emailB\b\n" +
+	"\x06_aliasB\a\n" +
+	"\x05_planB\x12\n" +
+	"\x10_membership_dateB\f\n" +
+	"\n" +
+	"_date_kind\"\x9a\x01\n" +
+	"%CreateCodexSubscriptionAccountRequest\x12&\n" +
+	"\x0fmanual_entry_id\x18\x01 \x01(\tR\rmanualEntryId\x12I\n" +
+	"\x06manual\x18\x02 \x01(\v21.codexpulse.core.v1.CodexSubscriptionManualFieldsR\x06manual\"\x8f\x03\n" +
+	"%UpdateCodexSubscriptionAccountRequest\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\x12I\n" +
+	"\x06manual\x18\x02 \x01(\v21.codexpulse.core.v1.CodexSubscriptionManualFieldsR\x06manual\x122\n" +
+	"\x13new_manual_entry_id\x18\x03 \x01(\tH\x00R\x10newManualEntryId\x88\x01\x01\x12=\n" +
+	"\x18expected_manual_revision\x18\x04 \x01(\x03H\x01R\x16expectedManualRevision\x88\x01\x01\x129\n" +
+	"\x16expected_link_revision\x18\x05 \x01(\x03H\x02R\x14expectedLinkRevision\x88\x01\x01B\x16\n" +
+	"\x14_new_manual_entry_idB\x1b\n" +
+	"\x19_expected_manual_revisionB\x19\n" +
+	"\x17_expected_link_revision\"\xda\x02\n" +
+	"%DeleteCodexSubscriptionAccountRequest\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\x12A\n" +
+	"\x1aexpected_detected_revision\x18\x02 \x01(\x03H\x00R\x18expectedDetectedRevision\x88\x01\x01\x12=\n" +
+	"\x18expected_manual_revision\x18\x03 \x01(\x03H\x01R\x16expectedManualRevision\x88\x01\x01\x129\n" +
+	"\x16expected_link_revision\x18\x04 \x01(\x03H\x02R\x14expectedLinkRevision\x88\x01\x01B\x1d\n" +
+	"\x1b_expected_detected_revisionB\x1b\n" +
+	"\x19_expected_manual_revisionB\x19\n" +
+	"\x17_expected_link_revision\"\xb7\x01\n" +
+	"#LinkCodexSubscriptionAccountRequest\x12.\n" +
+	"\x13detected_account_id\x18\x01 \x01(\tR\x11detectedAccountId\x12&\n" +
+	"\x0fmanual_entry_id\x18\x02 \x01(\tR\rmanualEntryId\x128\n" +
+	"\x18expected_manual_revision\x18\x03 \x01(\x03R\x16expectedManualRevision\"\xef\x01\n" +
+	"%UnlinkCodexSubscriptionAccountRequest\x12.\n" +
+	"\x13detected_account_id\x18\x01 \x01(\tR\x11detectedAccountId\x12&\n" +
+	"\x0fmanual_entry_id\x18\x02 \x01(\tR\rmanualEntryId\x128\n" +
+	"\x18expected_manual_revision\x18\x03 \x01(\x03R\x16expectedManualRevision\x124\n" +
+	"\x16expected_link_revision\x18\x04 \x01(\x03R\x14expectedLinkRevision\"\xf0\x01\n" +
+	" CodexSubscriptionMutationReceipt\x12K\n" +
+	"\x06result\x18\x01 \x01(\x0e23.codexpulse.core.v1.CodexSubscriptionMutationResultR\x06result\x12\x1b\n" +
+	"\x06reason\x18\x02 \x01(\tH\x00R\x06reason\x88\x01\x01\x12K\n" +
+	"\aaccount\x18\x03 \x01(\v2,.codexpulse.core.v1.CodexSubscriptionAccountH\x01R\aaccount\x88\x01\x01B\t\n" +
+	"\a_reasonB\n" +
+	"\n" +
+	"\b_account\"H\n" +
 	"\x1eAPISubscriptionsCurrentRequest\x12&\n" +
 	"\x0fevaluated_at_ms\x18\x01 \x01(\x03R\revaluatedAtMs\"\x1c\n" +
 	"\x1aAPICredentialStatusRequest\"\x86\x01\n" +
@@ -15492,12 +16985,61 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x1aCODEX_PRO_TIER_STATE_KNOWN\x10\x01\x12$\n" +
 	" CODEX_PRO_TIER_STATE_PRO_UNKNOWN\x10\x02\x12!\n" +
 	"\x1dCODEX_PRO_TIER_STATE_CONFLICT\x10\x03\x12'\n" +
-	"#CODEX_PRO_TIER_STATE_NOT_APPLICABLE\x10\x042\xa3#\n" +
+	"#CODEX_PRO_TIER_STATE_NOT_APPLICABLE\x10\x04*\xfe\x02\n" +
+	"\x15CodexSubscriptionPlan\x12'\n" +
+	"#CODEX_SUBSCRIPTION_PLAN_UNSPECIFIED\x10\x00\x12 \n" +
+	"\x1cCODEX_SUBSCRIPTION_PLAN_FREE\x10\x01\x12\x1e\n" +
+	"\x1aCODEX_SUBSCRIPTION_PLAN_GO\x10\x02\x12 \n" +
+	"\x1cCODEX_SUBSCRIPTION_PLAN_PLUS\x10\x03\x12\"\n" +
+	"\x1eCODEX_SUBSCRIPTION_PLAN_PRO_5X\x10\x04\x12#\n" +
+	"\x1fCODEX_SUBSCRIPTION_PLAN_PRO_20X\x10\x05\x12 \n" +
+	"\x1cCODEX_SUBSCRIPTION_PLAN_TEAM\x10\x06\x12$\n" +
+	" CODEX_SUBSCRIPTION_PLAN_BUSINESS\x10\a\x12&\n" +
+	"\"CODEX_SUBSCRIPTION_PLAN_ENTERPRISE\x10\b\x12\x1f\n" +
+	"\x1bCODEX_SUBSCRIPTION_PLAN_EDU\x10\t*\xb5\x02\n" +
+	"#CodexSubscriptionAutomaticPlanState\x127\n" +
+	"3CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNSPECIFIED\x10\x00\x127\n" +
+	"3CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNAVAILABLE\x10\x01\x121\n" +
+	"-CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_KNOWN\x10\x02\x123\n" +
+	"/CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNKNOWN\x10\x03\x124\n" +
+	"0CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_CONFLICT\x10\x04*\xdb\x01\n" +
+	"\x1cCodexSubscriptionValueSource\x12/\n" +
+	"+CODEX_SUBSCRIPTION_VALUE_SOURCE_UNSPECIFIED\x10\x00\x12/\n" +
+	"+CODEX_SUBSCRIPTION_VALUE_SOURCE_UNAVAILABLE\x10\x01\x12-\n" +
+	")CODEX_SUBSCRIPTION_VALUE_SOURCE_AUTOMATIC\x10\x02\x12*\n" +
+	"&CODEX_SUBSCRIPTION_VALUE_SOURCE_MANUAL\x10\x03*\xac\x01\n" +
+	"\x19CodexSubscriptionDateKind\x12,\n" +
+	"(CODEX_SUBSCRIPTION_DATE_KIND_UNSPECIFIED\x10\x00\x12-\n" +
+	")CODEX_SUBSCRIPTION_DATE_KIND_NEXT_RENEWAL\x10\x01\x122\n" +
+	".CODEX_SUBSCRIPTION_DATE_KIND_MEMBERSHIP_EXPIRY\x10\x02*\xfd\x01\n" +
+	"\x1aCodexSubscriptionDateState\x12-\n" +
+	")CODEX_SUBSCRIPTION_DATE_STATE_UNSPECIFIED\x10\x00\x12-\n" +
+	")CODEX_SUBSCRIPTION_DATE_STATE_UNAVAILABLE\x10\x01\x12(\n" +
+	"$CODEX_SUBSCRIPTION_DATE_STATE_FUTURE\x10\x02\x12'\n" +
+	"#CODEX_SUBSCRIPTION_DATE_STATE_TODAY\x10\x03\x12.\n" +
+	"*CODEX_SUBSCRIPTION_DATE_STATE_NEEDS_UPDATE\x10\x04*\x91\x01\n" +
+	" CodexSubscriptionAutomaticSource\x123\n" +
+	"/CODEX_SUBSCRIPTION_AUTOMATIC_SOURCE_UNSPECIFIED\x10\x00\x128\n" +
+	"4CODEX_SUBSCRIPTION_AUTOMATIC_SOURCE_ACCOUNT_SANDWICH\x10\x01*\xa6\x01\n" +
+	"(CodexSubscriptionAutomaticDateCapability\x12<\n" +
+	"8CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_UNSPECIFIED\x10\x00\x12<\n" +
+	"8CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_MANUAL_ONLY\x10\x01*\xe3\x01\n" +
+	"\x1fCodexSubscriptionMutationResult\x122\n" +
+	".CODEX_SUBSCRIPTION_MUTATION_RESULT_UNSPECIFIED\x10\x00\x12.\n" +
+	"*CODEX_SUBSCRIPTION_MUTATION_RESULT_APPLIED\x10\x01\x12+\n" +
+	"'CODEX_SUBSCRIPTION_MUTATION_RESULT_NOOP\x10\x02\x12/\n" +
+	"+CODEX_SUBSCRIPTION_MUTATION_RESULT_CONFLICT\x10\x032\x92*\n" +
 	"\vCoreService\x12X\n" +
 	"\tHandshake\x12$.codexpulse.core.v1.HandshakeRequest\x1a%.codexpulse.core.v1.HandshakeResponse\x12X\n" +
 	"\tBootstrap\x12$.codexpulse.core.v1.BootstrapRequest\x1a%.codexpulse.core.v1.BootstrapResponse\x12X\n" +
 	"\tContracts\x12$.codexpulse.core.v1.ContractsRequest\x1a%.codexpulse.core.v1.ContractsResponse\x12j\n" +
-	"\x0fAccountSnapshot\x12*.codexpulse.core.v1.AccountSnapshotRequest\x1a+.codexpulse.core.v1.AccountSnapshotResponse\x12X\n" +
+	"\x0fAccountSnapshot\x12*.codexpulse.core.v1.AccountSnapshotRequest\x1a+.codexpulse.core.v1.AccountSnapshotResponse\x12\x8c\x01\n" +
+	"\x1dListCodexSubscriptionAccounts\x124.codexpulse.core.v1.CodexSubscriptionAccountsRequest\x1a5.codexpulse.core.v1.CodexSubscriptionAccountsResponse\x12\x91\x01\n" +
+	"\x1eCreateCodexSubscriptionAccount\x129.codexpulse.core.v1.CreateCodexSubscriptionAccountRequest\x1a4.codexpulse.core.v1.CodexSubscriptionMutationReceipt\x12\x91\x01\n" +
+	"\x1eUpdateCodexSubscriptionAccount\x129.codexpulse.core.v1.UpdateCodexSubscriptionAccountRequest\x1a4.codexpulse.core.v1.CodexSubscriptionMutationReceipt\x12\x91\x01\n" +
+	"\x1eDeleteCodexSubscriptionAccount\x129.codexpulse.core.v1.DeleteCodexSubscriptionAccountRequest\x1a4.codexpulse.core.v1.CodexSubscriptionMutationReceipt\x12\x8d\x01\n" +
+	"\x1cLinkCodexSubscriptionAccount\x127.codexpulse.core.v1.LinkCodexSubscriptionAccountRequest\x1a4.codexpulse.core.v1.CodexSubscriptionMutationReceipt\x12\x91\x01\n" +
+	"\x1eUnlinkCodexSubscriptionAccount\x129.codexpulse.core.v1.UnlinkCodexSubscriptionAccountRequest\x1a4.codexpulse.core.v1.CodexSubscriptionMutationReceipt\x12X\n" +
 	"\tUsageCost\x12$.codexpulse.core.v1.UsageCostRequest\x1a%.codexpulse.core.v1.UsageCostResponse\x12m\n" +
 	"\x10DashboardSummary\x12+.codexpulse.core.v1.DashboardSummaryRequest\x1a,.codexpulse.core.v1.DashboardSummaryResponse\x12j\n" +
 	"\x0fInvocationUsage\x12*.codexpulse.core.v1.InvocationUsageRequest\x1a+.codexpulse.core.v1.InvocationUsageResponse\x12|\n" +
@@ -15552,699 +17094,749 @@ func file_api_codexpulse_core_v1_core_proto_rawDescGZIP() []byte {
 	return file_api_codexpulse_core_v1_core_proto_rawDescData
 }
 
-var file_api_codexpulse_core_v1_core_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_api_codexpulse_core_v1_core_proto_msgTypes = make([]protoimpl.MessageInfo, 189)
+var file_api_codexpulse_core_v1_core_proto_enumTypes = make([]protoimpl.EnumInfo, 10)
+var file_api_codexpulse_core_v1_core_proto_msgTypes = make([]protoimpl.MessageInfo, 200)
 var file_api_codexpulse_core_v1_core_proto_goTypes = []any{
 	(CodexProTier)(0),                                // 0: codexpulse.core.v1.CodexProTier
 	(CodexProTierState)(0),                           // 1: codexpulse.core.v1.CodexProTierState
-	(*Empty)(nil),                                    // 2: codexpulse.core.v1.Empty
-	(*HandshakeRequest)(nil),                         // 3: codexpulse.core.v1.HandshakeRequest
-	(*HandshakeResponse)(nil),                        // 4: codexpulse.core.v1.HandshakeResponse
-	(*BootstrapRequest)(nil),                         // 5: codexpulse.core.v1.BootstrapRequest
-	(*BootstrapResponse)(nil),                        // 6: codexpulse.core.v1.BootstrapResponse
-	(*ContractsRequest)(nil),                         // 7: codexpulse.core.v1.ContractsRequest
-	(*MethodInfo)(nil),                               // 8: codexpulse.core.v1.MethodInfo
-	(*ContractsResponse)(nil),                        // 9: codexpulse.core.v1.ContractsResponse
-	(*ErrorDetail)(nil),                              // 10: codexpulse.core.v1.ErrorDetail
-	(*Issue)(nil),                                    // 11: codexpulse.core.v1.Issue
-	(*NumericValue)(nil),                             // 12: codexpulse.core.v1.NumericValue
-	(*PageInfo)(nil),                                 // 13: codexpulse.core.v1.PageInfo
-	(*ResponseMeta)(nil),                             // 14: codexpulse.core.v1.ResponseMeta
-	(*PageRequest)(nil),                              // 15: codexpulse.core.v1.PageRequest
-	(*SortTerm)(nil),                                 // 16: codexpulse.core.v1.SortTerm
-	(*FilterTerm)(nil),                               // 17: codexpulse.core.v1.FilterTerm
-	(*LocalDateRange)(nil),                           // 18: codexpulse.core.v1.LocalDateRange
-	(*UTCTimeRange)(nil),                             // 19: codexpulse.core.v1.UTCTimeRange
-	(*QueryRequest)(nil),                             // 20: codexpulse.core.v1.QueryRequest
-	(*ProviderScope)(nil),                            // 21: codexpulse.core.v1.ProviderScope
-	(*ProviderCoverage)(nil),                         // 22: codexpulse.core.v1.ProviderCoverage
-	(*ProviderContext)(nil),                          // 23: codexpulse.core.v1.ProviderContext
-	(*UsageCostRequest)(nil),                         // 24: codexpulse.core.v1.UsageCostRequest
-	(*ListSessionsRequest)(nil),                      // 25: codexpulse.core.v1.ListSessionsRequest
-	(*SessionDetailRequest)(nil),                     // 26: codexpulse.core.v1.SessionDetailRequest
-	(*ListProjectsRequest)(nil),                      // 27: codexpulse.core.v1.ListProjectsRequest
-	(*ProjectDetailRequest)(nil),                     // 28: codexpulse.core.v1.ProjectDetailRequest
-	(*AttributionValue)(nil),                         // 29: codexpulse.core.v1.AttributionValue
-	(*UsageTotals)(nil),                              // 30: codexpulse.core.v1.UsageTotals
-	(*ReasonCount)(nil),                              // 31: codexpulse.core.v1.ReasonCount
-	(*TrendPoint)(nil),                               // 32: codexpulse.core.v1.TrendPoint
-	(*UsageModelItem)(nil),                           // 33: codexpulse.core.v1.UsageModelItem
-	(*ActivityMetrics)(nil),                          // 34: codexpulse.core.v1.ActivityMetrics
-	(*ActivityTimelinePoint)(nil),                    // 35: codexpulse.core.v1.ActivityTimelinePoint
-	(*ActivityWeekdayHourPoint)(nil),                 // 36: codexpulse.core.v1.ActivityWeekdayHourPoint
-	(*ActivityDistribution)(nil),                     // 37: codexpulse.core.v1.ActivityDistribution
-	(*CursorBillingSummary)(nil),                     // 38: codexpulse.core.v1.CursorBillingSummary
-	(*UsageCostResponse)(nil),                        // 39: codexpulse.core.v1.UsageCostResponse
-	(*DashboardSummaryRequest)(nil),                  // 40: codexpulse.core.v1.DashboardSummaryRequest
-	(*DashboardSummaryCoverage)(nil),                 // 41: codexpulse.core.v1.DashboardSummaryCoverage
-	(*DashboardSummaryTotals)(nil),                   // 42: codexpulse.core.v1.DashboardSummaryTotals
-	(*DashboardSummaryProviderSlice)(nil),            // 43: codexpulse.core.v1.DashboardSummaryProviderSlice
-	(*DashboardSummaryActivityProviderCoverage)(nil), // 44: codexpulse.core.v1.DashboardSummaryActivityProviderCoverage
-	(*DashboardSummaryProviderShare)(nil),            // 45: codexpulse.core.v1.DashboardSummaryProviderShare
-	(*DashboardSummaryTrendPoint)(nil),               // 46: codexpulse.core.v1.DashboardSummaryTrendPoint
-	(*DashboardSummaryModelItem)(nil),                // 47: codexpulse.core.v1.DashboardSummaryModelItem
-	(*DashboardSummaryQuotaCard)(nil),                // 48: codexpulse.core.v1.DashboardSummaryQuotaCard
-	(*DashboardSummaryResponse)(nil),                 // 49: codexpulse.core.v1.DashboardSummaryResponse
-	(*InvocationUsageRequest)(nil),                   // 50: codexpulse.core.v1.InvocationUsageRequest
-	(*InvocationTotals)(nil),                         // 51: codexpulse.core.v1.InvocationTotals
-	(*InvocationTrendPoint)(nil),                     // 52: codexpulse.core.v1.InvocationTrendPoint
-	(*ToolUsageItem)(nil),                            // 53: codexpulse.core.v1.ToolUsageItem
-	(*SkillUsageItem)(nil),                           // 54: codexpulse.core.v1.SkillUsageItem
-	(*InvocationCoverage)(nil),                       // 55: codexpulse.core.v1.InvocationCoverage
-	(*InvocationUsageResponse)(nil),                  // 56: codexpulse.core.v1.InvocationUsageResponse
-	(*PricingCatalogCurrentRequest)(nil),             // 57: codexpulse.core.v1.PricingCatalogCurrentRequest
-	(*ModelReferencePrice)(nil),                      // 58: codexpulse.core.v1.ModelReferencePrice
-	(*PricingCatalogCurrentResponse)(nil),            // 59: codexpulse.core.v1.PricingCatalogCurrentResponse
-	(*SessionItem)(nil),                              // 60: codexpulse.core.v1.SessionItem
-	(*SessionListResponse)(nil),                      // 61: codexpulse.core.v1.SessionListResponse
-	(*SessionTurnItem)(nil),                          // 62: codexpulse.core.v1.SessionTurnItem
-	(*SessionDetailResponse)(nil),                    // 63: codexpulse.core.v1.SessionDetailResponse
-	(*ProjectDailyPoint)(nil),                        // 64: codexpulse.core.v1.ProjectDailyPoint
-	(*ProjectItem)(nil),                              // 65: codexpulse.core.v1.ProjectItem
-	(*ProjectSessionItem)(nil),                       // 66: codexpulse.core.v1.ProjectSessionItem
-	(*ProjectModelItem)(nil),                         // 67: codexpulse.core.v1.ProjectModelItem
-	(*ProjectListResponse)(nil),                      // 68: codexpulse.core.v1.ProjectListResponse
-	(*ProjectDetailResponse)(nil),                    // 69: codexpulse.core.v1.ProjectDetailResponse
-	(*QuotaCurrentRequest)(nil),                      // 70: codexpulse.core.v1.QuotaCurrentRequest
-	(*CurrentExplanation)(nil),                       // 71: codexpulse.core.v1.CurrentExplanation
-	(*CurrentWindow)(nil),                            // 72: codexpulse.core.v1.CurrentWindow
-	(*CurrentSource)(nil),                            // 73: codexpulse.core.v1.CurrentSource
-	(*CurrentNextReset)(nil),                         // 74: codexpulse.core.v1.CurrentNextReset
-	(*CurrentResetCreditItem)(nil),                   // 75: codexpulse.core.v1.CurrentResetCreditItem
-	(*CurrentResetCredits)(nil),                      // 76: codexpulse.core.v1.CurrentResetCredits
-	(*CurrentRefreshStatus)(nil),                     // 77: codexpulse.core.v1.CurrentRefreshStatus
-	(*CurrentRefresh)(nil),                           // 78: codexpulse.core.v1.CurrentRefresh
-	(*CurrentQuota)(nil),                             // 79: codexpulse.core.v1.CurrentQuota
-	(*QuotaCurrentResponse)(nil),                     // 80: codexpulse.core.v1.QuotaCurrentResponse
-	(*QuotaPaceRequest)(nil),                         // 81: codexpulse.core.v1.QuotaPaceRequest
-	(*QuotaPacePoint)(nil),                           // 82: codexpulse.core.v1.QuotaPacePoint
-	(*QuotaPaceCycle)(nil),                           // 83: codexpulse.core.v1.QuotaPaceCycle
-	(*QuotaPaceHistoryBandPoint)(nil),                // 84: codexpulse.core.v1.QuotaPaceHistoryBandPoint
-	(*QuotaPaceForecast)(nil),                        // 85: codexpulse.core.v1.QuotaPaceForecast
-	(*QuotaPaceWindow)(nil),                          // 86: codexpulse.core.v1.QuotaPaceWindow
-	(*CurrentQuotaPace)(nil),                         // 87: codexpulse.core.v1.CurrentQuotaPace
-	(*QuotaPaceResponse)(nil),                        // 88: codexpulse.core.v1.QuotaPaceResponse
-	(*QuotaRefreshRequest)(nil),                      // 89: codexpulse.core.v1.QuotaRefreshRequest
-	(*QuotaRefreshReceipt)(nil),                      // 90: codexpulse.core.v1.QuotaRefreshReceipt
-	(*ProviderRefreshRequest)(nil),                   // 91: codexpulse.core.v1.ProviderRefreshRequest
-	(*ProviderRefreshComponentResult)(nil),           // 92: codexpulse.core.v1.ProviderRefreshComponentResult
-	(*ProviderRefreshResult)(nil),                    // 93: codexpulse.core.v1.ProviderRefreshResult
-	(*ProviderRefreshReceipt)(nil),                   // 94: codexpulse.core.v1.ProviderRefreshReceipt
-	(*ListSourcesRequest)(nil),                       // 95: codexpulse.core.v1.ListSourcesRequest
-	(*SourceRequest)(nil),                            // 96: codexpulse.core.v1.SourceRequest
-	(*ListJobsRequest)(nil),                          // 97: codexpulse.core.v1.ListJobsRequest
-	(*JobRequest)(nil),                               // 98: codexpulse.core.v1.JobRequest
-	(*ListHealthRequest)(nil),                        // 99: codexpulse.core.v1.ListHealthRequest
-	(*HealthRequest)(nil),                            // 100: codexpulse.core.v1.HealthRequest
-	(*HealthProjectionRequest)(nil),                  // 101: codexpulse.core.v1.HealthProjectionRequest
-	(*DataHealthRequest)(nil),                        // 102: codexpulse.core.v1.DataHealthRequest
-	(*SettingsRequest)(nil),                          // 103: codexpulse.core.v1.SettingsRequest
-	(*RecoveryAction)(nil),                           // 104: codexpulse.core.v1.RecoveryAction
-	(*SourceItem)(nil),                               // 105: codexpulse.core.v1.SourceItem
-	(*SourceSummary)(nil),                            // 106: codexpulse.core.v1.SourceSummary
-	(*SourceListResponse)(nil),                       // 107: codexpulse.core.v1.SourceListResponse
-	(*SourceDetailResponse)(nil),                     // 108: codexpulse.core.v1.SourceDetailResponse
-	(*JobProgress)(nil),                              // 109: codexpulse.core.v1.JobProgress
-	(*JobItem)(nil),                                  // 110: codexpulse.core.v1.JobItem
-	(*JobSummary)(nil),                               // 111: codexpulse.core.v1.JobSummary
-	(*JobListResponse)(nil),                          // 112: codexpulse.core.v1.JobListResponse
-	(*JobDetailResponse)(nil),                        // 113: codexpulse.core.v1.JobDetailResponse
-	(*HealthItem)(nil),                               // 114: codexpulse.core.v1.HealthItem
-	(*HealthSummary)(nil),                            // 115: codexpulse.core.v1.HealthSummary
-	(*HealthListResponse)(nil),                       // 116: codexpulse.core.v1.HealthListResponse
-	(*HealthDetailResponse)(nil),                     // 117: codexpulse.core.v1.HealthDetailResponse
-	(*HealthComponentStatus)(nil),                    // 118: codexpulse.core.v1.HealthComponentStatus
-	(*HealthProjectionResponse)(nil),                 // 119: codexpulse.core.v1.HealthProjectionResponse
-	(*DataHealthWindow)(nil),                         // 120: codexpulse.core.v1.DataHealthWindow
-	(*DataHealthRuntimePoint)(nil),                   // 121: codexpulse.core.v1.DataHealthRuntimePoint
-	(*DataHealthScheduler)(nil),                      // 122: codexpulse.core.v1.DataHealthScheduler
-	(*DataHealthJobs)(nil),                           // 123: codexpulse.core.v1.DataHealthJobs
-	(*DataHealthSources)(nil),                        // 124: codexpulse.core.v1.DataHealthSources
-	(*DataHealthResponse)(nil),                       // 125: codexpulse.core.v1.DataHealthResponse
-	(*EditableField)(nil),                            // 126: codexpulse.core.v1.EditableField
-	(*SettingsHomeSnapshot)(nil),                     // 127: codexpulse.core.v1.SettingsHomeSnapshot
-	(*SettingsOnlineSnapshot)(nil),                   // 128: codexpulse.core.v1.SettingsOnlineSnapshot
-	(*SettingsRefreshSnapshot)(nil),                  // 129: codexpulse.core.v1.SettingsRefreshSnapshot
-	(*SettingsUpdateSnapshot)(nil),                   // 130: codexpulse.core.v1.SettingsUpdateSnapshot
-	(*SettingsUISnapshot)(nil),                       // 131: codexpulse.core.v1.SettingsUISnapshot
-	(*SettingsSnapshot)(nil),                         // 132: codexpulse.core.v1.SettingsSnapshot
-	(*SettingsResponse)(nil),                         // 133: codexpulse.core.v1.SettingsResponse
-	(*SettingsOnlineUpdate)(nil),                     // 134: codexpulse.core.v1.SettingsOnlineUpdate
-	(*SettingsRefreshUpdate)(nil),                    // 135: codexpulse.core.v1.SettingsRefreshUpdate
-	(*SettingsUpdatesUpdate)(nil),                    // 136: codexpulse.core.v1.SettingsUpdatesUpdate
-	(*SettingsUIUpdate)(nil),                         // 137: codexpulse.core.v1.SettingsUIUpdate
-	(*UpdateSettingsRequest)(nil),                    // 138: codexpulse.core.v1.UpdateSettingsRequest
-	(*SettingsUpdateReceipt)(nil),                    // 139: codexpulse.core.v1.SettingsUpdateReceipt
-	(*PlanHomeSwitchRequest)(nil),                    // 140: codexpulse.core.v1.PlanHomeSwitchRequest
-	(*HomeSwitchPlanReceipt)(nil),                    // 141: codexpulse.core.v1.HomeSwitchPlanReceipt
-	(*ConfirmHomeSwitchRequest)(nil),                 // 142: codexpulse.core.v1.ConfirmHomeSwitchRequest
-	(*RecoverHomeSwitchRequest)(nil),                 // 143: codexpulse.core.v1.RecoverHomeSwitchRequest
-	(*HomeSwitchReceipt)(nil),                        // 144: codexpulse.core.v1.HomeSwitchReceipt
-	(*RuntimeActionRequest)(nil),                     // 145: codexpulse.core.v1.RuntimeActionRequest
-	(*RuntimeActionReceipt)(nil),                     // 146: codexpulse.core.v1.RuntimeActionReceipt
-	(*AnalyzeSessionIndexRepairRequest)(nil),         // 147: codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
-	(*RepairDryRunReceipt)(nil),                      // 148: codexpulse.core.v1.RepairDryRunReceipt
-	(*LifecycleNotificationRequest)(nil),             // 149: codexpulse.core.v1.LifecycleNotificationRequest
-	(*LifecycleNotificationReceipt)(nil),             // 150: codexpulse.core.v1.LifecycleNotificationReceipt
-	(*MigrationRecoveryStateRequest)(nil),            // 151: codexpulse.core.v1.MigrationRecoveryStateRequest
-	(*MigrationRecoveryRetryRequest)(nil),            // 152: codexpulse.core.v1.MigrationRecoveryRetryRequest
-	(*MigrationRecoveryCancelRequest)(nil),           // 153: codexpulse.core.v1.MigrationRecoveryCancelRequest
-	(*MigrationRecoveryExitRequest)(nil),             // 154: codexpulse.core.v1.MigrationRecoveryExitRequest
-	(*MigrationRecoveryPrepareRequest)(nil),          // 155: codexpulse.core.v1.MigrationRecoveryPrepareRequest
-	(*MigrationRecoveryConfirmRequest)(nil),          // 156: codexpulse.core.v1.MigrationRecoveryConfirmRequest
-	(*MigrationBackupInfo)(nil),                      // 157: codexpulse.core.v1.MigrationBackupInfo
-	(*MigrationRecoverySnapshot)(nil),                // 158: codexpulse.core.v1.MigrationRecoverySnapshot
-	(*MigrationRecoveryReceipt)(nil),                 // 159: codexpulse.core.v1.MigrationRecoveryReceipt
-	(*MigrationRestoreConfirmation)(nil),             // 160: codexpulse.core.v1.MigrationRestoreConfirmation
-	(*SubscribeInvalidationsRequest)(nil),            // 161: codexpulse.core.v1.SubscribeInvalidationsRequest
-	(*QueryInvalidationEvent)(nil),                   // 162: codexpulse.core.v1.QueryInvalidationEvent
-	(*ShutdownRequest)(nil),                          // 163: codexpulse.core.v1.ShutdownRequest
-	(*ShutdownResponse)(nil),                         // 164: codexpulse.core.v1.ShutdownResponse
-	(*AccountSnapshotRequest)(nil),                   // 165: codexpulse.core.v1.AccountSnapshotRequest
-	(*CodexAccountIdentity)(nil),                     // 166: codexpulse.core.v1.CodexAccountIdentity
-	(*CodexAccountBinding)(nil),                      // 167: codexpulse.core.v1.CodexAccountBinding
-	(*CodexProTierSnapshot)(nil),                     // 168: codexpulse.core.v1.CodexProTierSnapshot
-	(*AccountSnapshotResponse)(nil),                  // 169: codexpulse.core.v1.AccountSnapshotResponse
-	(*APISubscriptionsCurrentRequest)(nil),           // 170: codexpulse.core.v1.APISubscriptionsCurrentRequest
-	(*APICredentialStatusRequest)(nil),               // 171: codexpulse.core.v1.APICredentialStatusRequest
-	(*APICredentialStatusResponse)(nil),              // 172: codexpulse.core.v1.APICredentialStatusResponse
-	(*UpdateAPICredentialRequest)(nil),               // 173: codexpulse.core.v1.UpdateAPICredentialRequest
-	(*APISubscriptionSourceStatus)(nil),              // 174: codexpulse.core.v1.APISubscriptionSourceStatus
-	(*APISubscriptionCurrencyBalance)(nil),           // 175: codexpulse.core.v1.APISubscriptionCurrencyBalance
-	(*DeepSeekAPIBalance)(nil),                       // 176: codexpulse.core.v1.DeepSeekAPIBalance
-	(*APISubscriptionCurrencyBalanceChange)(nil),     // 177: codexpulse.core.v1.APISubscriptionCurrencyBalanceChange
-	(*APISubscriptionBalanceTrendPoint)(nil),         // 178: codexpulse.core.v1.APISubscriptionBalanceTrendPoint
-	(*APISubscriptionCurrencyBalanceSeries)(nil),     // 179: codexpulse.core.v1.APISubscriptionCurrencyBalanceSeries
-	(*APISubscriptionBalancePeriod)(nil),             // 180: codexpulse.core.v1.APISubscriptionBalancePeriod
-	(*DeepSeekAPISubscriptionSnapshot)(nil),          // 181: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot
-	(*OpenCodeGoQuotaWindow)(nil),                    // 182: codexpulse.core.v1.OpenCodeGoQuotaWindow
-	(*OpenCodeGoQuota)(nil),                          // 183: codexpulse.core.v1.OpenCodeGoQuota
-	(*OpenCodeGoSubscriptionSnapshot)(nil),           // 184: codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot
-	(*DeepSeekDailyActivity)(nil),                    // 185: codexpulse.core.v1.DeepSeekDailyActivity
-	(*OpenCodeGoFiveHourDailyActivity)(nil),          // 186: codexpulse.core.v1.OpenCodeGoFiveHourDailyActivity
-	(*APISubscriptionActivityDay)(nil),               // 187: codexpulse.core.v1.APISubscriptionActivityDay
-	(*APISubscriptionActivityCalendar)(nil),          // 188: codexpulse.core.v1.APISubscriptionActivityCalendar
-	(*APISubscriptionsCurrentResponse)(nil),          // 189: codexpulse.core.v1.APISubscriptionsCurrentResponse
-	(*CursorUsagePoolSummary)(nil),                   // 190: codexpulse.core.v1.CursorUsagePoolSummary
+	(CodexSubscriptionPlan)(0),                       // 2: codexpulse.core.v1.CodexSubscriptionPlan
+	(CodexSubscriptionAutomaticPlanState)(0),         // 3: codexpulse.core.v1.CodexSubscriptionAutomaticPlanState
+	(CodexSubscriptionValueSource)(0),                // 4: codexpulse.core.v1.CodexSubscriptionValueSource
+	(CodexSubscriptionDateKind)(0),                   // 5: codexpulse.core.v1.CodexSubscriptionDateKind
+	(CodexSubscriptionDateState)(0),                  // 6: codexpulse.core.v1.CodexSubscriptionDateState
+	(CodexSubscriptionAutomaticSource)(0),            // 7: codexpulse.core.v1.CodexSubscriptionAutomaticSource
+	(CodexSubscriptionAutomaticDateCapability)(0),    // 8: codexpulse.core.v1.CodexSubscriptionAutomaticDateCapability
+	(CodexSubscriptionMutationResult)(0),             // 9: codexpulse.core.v1.CodexSubscriptionMutationResult
+	(*Empty)(nil),                                    // 10: codexpulse.core.v1.Empty
+	(*HandshakeRequest)(nil),                         // 11: codexpulse.core.v1.HandshakeRequest
+	(*HandshakeResponse)(nil),                        // 12: codexpulse.core.v1.HandshakeResponse
+	(*BootstrapRequest)(nil),                         // 13: codexpulse.core.v1.BootstrapRequest
+	(*BootstrapResponse)(nil),                        // 14: codexpulse.core.v1.BootstrapResponse
+	(*ContractsRequest)(nil),                         // 15: codexpulse.core.v1.ContractsRequest
+	(*MethodInfo)(nil),                               // 16: codexpulse.core.v1.MethodInfo
+	(*ContractsResponse)(nil),                        // 17: codexpulse.core.v1.ContractsResponse
+	(*ErrorDetail)(nil),                              // 18: codexpulse.core.v1.ErrorDetail
+	(*Issue)(nil),                                    // 19: codexpulse.core.v1.Issue
+	(*NumericValue)(nil),                             // 20: codexpulse.core.v1.NumericValue
+	(*PageInfo)(nil),                                 // 21: codexpulse.core.v1.PageInfo
+	(*ResponseMeta)(nil),                             // 22: codexpulse.core.v1.ResponseMeta
+	(*PageRequest)(nil),                              // 23: codexpulse.core.v1.PageRequest
+	(*SortTerm)(nil),                                 // 24: codexpulse.core.v1.SortTerm
+	(*FilterTerm)(nil),                               // 25: codexpulse.core.v1.FilterTerm
+	(*LocalDateRange)(nil),                           // 26: codexpulse.core.v1.LocalDateRange
+	(*UTCTimeRange)(nil),                             // 27: codexpulse.core.v1.UTCTimeRange
+	(*QueryRequest)(nil),                             // 28: codexpulse.core.v1.QueryRequest
+	(*ProviderScope)(nil),                            // 29: codexpulse.core.v1.ProviderScope
+	(*ProviderCoverage)(nil),                         // 30: codexpulse.core.v1.ProviderCoverage
+	(*ProviderContext)(nil),                          // 31: codexpulse.core.v1.ProviderContext
+	(*UsageCostRequest)(nil),                         // 32: codexpulse.core.v1.UsageCostRequest
+	(*ListSessionsRequest)(nil),                      // 33: codexpulse.core.v1.ListSessionsRequest
+	(*SessionDetailRequest)(nil),                     // 34: codexpulse.core.v1.SessionDetailRequest
+	(*ListProjectsRequest)(nil),                      // 35: codexpulse.core.v1.ListProjectsRequest
+	(*ProjectDetailRequest)(nil),                     // 36: codexpulse.core.v1.ProjectDetailRequest
+	(*AttributionValue)(nil),                         // 37: codexpulse.core.v1.AttributionValue
+	(*UsageTotals)(nil),                              // 38: codexpulse.core.v1.UsageTotals
+	(*ReasonCount)(nil),                              // 39: codexpulse.core.v1.ReasonCount
+	(*TrendPoint)(nil),                               // 40: codexpulse.core.v1.TrendPoint
+	(*UsageModelItem)(nil),                           // 41: codexpulse.core.v1.UsageModelItem
+	(*ActivityMetrics)(nil),                          // 42: codexpulse.core.v1.ActivityMetrics
+	(*ActivityTimelinePoint)(nil),                    // 43: codexpulse.core.v1.ActivityTimelinePoint
+	(*ActivityWeekdayHourPoint)(nil),                 // 44: codexpulse.core.v1.ActivityWeekdayHourPoint
+	(*ActivityDistribution)(nil),                     // 45: codexpulse.core.v1.ActivityDistribution
+	(*CursorBillingSummary)(nil),                     // 46: codexpulse.core.v1.CursorBillingSummary
+	(*UsageCostResponse)(nil),                        // 47: codexpulse.core.v1.UsageCostResponse
+	(*DashboardSummaryRequest)(nil),                  // 48: codexpulse.core.v1.DashboardSummaryRequest
+	(*DashboardSummaryCoverage)(nil),                 // 49: codexpulse.core.v1.DashboardSummaryCoverage
+	(*DashboardSummaryTotals)(nil),                   // 50: codexpulse.core.v1.DashboardSummaryTotals
+	(*DashboardSummaryProviderSlice)(nil),            // 51: codexpulse.core.v1.DashboardSummaryProviderSlice
+	(*DashboardSummaryActivityProviderCoverage)(nil), // 52: codexpulse.core.v1.DashboardSummaryActivityProviderCoverage
+	(*DashboardSummaryProviderShare)(nil),            // 53: codexpulse.core.v1.DashboardSummaryProviderShare
+	(*DashboardSummaryTrendPoint)(nil),               // 54: codexpulse.core.v1.DashboardSummaryTrendPoint
+	(*DashboardSummaryModelItem)(nil),                // 55: codexpulse.core.v1.DashboardSummaryModelItem
+	(*DashboardSummaryQuotaCard)(nil),                // 56: codexpulse.core.v1.DashboardSummaryQuotaCard
+	(*DashboardSummaryResponse)(nil),                 // 57: codexpulse.core.v1.DashboardSummaryResponse
+	(*InvocationUsageRequest)(nil),                   // 58: codexpulse.core.v1.InvocationUsageRequest
+	(*InvocationTotals)(nil),                         // 59: codexpulse.core.v1.InvocationTotals
+	(*InvocationTrendPoint)(nil),                     // 60: codexpulse.core.v1.InvocationTrendPoint
+	(*ToolUsageItem)(nil),                            // 61: codexpulse.core.v1.ToolUsageItem
+	(*SkillUsageItem)(nil),                           // 62: codexpulse.core.v1.SkillUsageItem
+	(*InvocationCoverage)(nil),                       // 63: codexpulse.core.v1.InvocationCoverage
+	(*InvocationUsageResponse)(nil),                  // 64: codexpulse.core.v1.InvocationUsageResponse
+	(*PricingCatalogCurrentRequest)(nil),             // 65: codexpulse.core.v1.PricingCatalogCurrentRequest
+	(*ModelReferencePrice)(nil),                      // 66: codexpulse.core.v1.ModelReferencePrice
+	(*PricingCatalogCurrentResponse)(nil),            // 67: codexpulse.core.v1.PricingCatalogCurrentResponse
+	(*SessionItem)(nil),                              // 68: codexpulse.core.v1.SessionItem
+	(*SessionListResponse)(nil),                      // 69: codexpulse.core.v1.SessionListResponse
+	(*SessionTurnItem)(nil),                          // 70: codexpulse.core.v1.SessionTurnItem
+	(*SessionDetailResponse)(nil),                    // 71: codexpulse.core.v1.SessionDetailResponse
+	(*ProjectDailyPoint)(nil),                        // 72: codexpulse.core.v1.ProjectDailyPoint
+	(*ProjectItem)(nil),                              // 73: codexpulse.core.v1.ProjectItem
+	(*ProjectSessionItem)(nil),                       // 74: codexpulse.core.v1.ProjectSessionItem
+	(*ProjectModelItem)(nil),                         // 75: codexpulse.core.v1.ProjectModelItem
+	(*ProjectListResponse)(nil),                      // 76: codexpulse.core.v1.ProjectListResponse
+	(*ProjectDetailResponse)(nil),                    // 77: codexpulse.core.v1.ProjectDetailResponse
+	(*QuotaCurrentRequest)(nil),                      // 78: codexpulse.core.v1.QuotaCurrentRequest
+	(*CurrentExplanation)(nil),                       // 79: codexpulse.core.v1.CurrentExplanation
+	(*CurrentWindow)(nil),                            // 80: codexpulse.core.v1.CurrentWindow
+	(*CurrentSource)(nil),                            // 81: codexpulse.core.v1.CurrentSource
+	(*CurrentNextReset)(nil),                         // 82: codexpulse.core.v1.CurrentNextReset
+	(*CurrentResetCreditItem)(nil),                   // 83: codexpulse.core.v1.CurrentResetCreditItem
+	(*CurrentResetCredits)(nil),                      // 84: codexpulse.core.v1.CurrentResetCredits
+	(*CurrentRefreshStatus)(nil),                     // 85: codexpulse.core.v1.CurrentRefreshStatus
+	(*CurrentRefresh)(nil),                           // 86: codexpulse.core.v1.CurrentRefresh
+	(*CurrentQuota)(nil),                             // 87: codexpulse.core.v1.CurrentQuota
+	(*QuotaCurrentResponse)(nil),                     // 88: codexpulse.core.v1.QuotaCurrentResponse
+	(*QuotaPaceRequest)(nil),                         // 89: codexpulse.core.v1.QuotaPaceRequest
+	(*QuotaPacePoint)(nil),                           // 90: codexpulse.core.v1.QuotaPacePoint
+	(*QuotaPaceCycle)(nil),                           // 91: codexpulse.core.v1.QuotaPaceCycle
+	(*QuotaPaceHistoryBandPoint)(nil),                // 92: codexpulse.core.v1.QuotaPaceHistoryBandPoint
+	(*QuotaPaceForecast)(nil),                        // 93: codexpulse.core.v1.QuotaPaceForecast
+	(*QuotaPaceWindow)(nil),                          // 94: codexpulse.core.v1.QuotaPaceWindow
+	(*CurrentQuotaPace)(nil),                         // 95: codexpulse.core.v1.CurrentQuotaPace
+	(*QuotaPaceResponse)(nil),                        // 96: codexpulse.core.v1.QuotaPaceResponse
+	(*QuotaRefreshRequest)(nil),                      // 97: codexpulse.core.v1.QuotaRefreshRequest
+	(*QuotaRefreshReceipt)(nil),                      // 98: codexpulse.core.v1.QuotaRefreshReceipt
+	(*ProviderRefreshRequest)(nil),                   // 99: codexpulse.core.v1.ProviderRefreshRequest
+	(*ProviderRefreshComponentResult)(nil),           // 100: codexpulse.core.v1.ProviderRefreshComponentResult
+	(*ProviderRefreshResult)(nil),                    // 101: codexpulse.core.v1.ProviderRefreshResult
+	(*ProviderRefreshReceipt)(nil),                   // 102: codexpulse.core.v1.ProviderRefreshReceipt
+	(*ListSourcesRequest)(nil),                       // 103: codexpulse.core.v1.ListSourcesRequest
+	(*SourceRequest)(nil),                            // 104: codexpulse.core.v1.SourceRequest
+	(*ListJobsRequest)(nil),                          // 105: codexpulse.core.v1.ListJobsRequest
+	(*JobRequest)(nil),                               // 106: codexpulse.core.v1.JobRequest
+	(*ListHealthRequest)(nil),                        // 107: codexpulse.core.v1.ListHealthRequest
+	(*HealthRequest)(nil),                            // 108: codexpulse.core.v1.HealthRequest
+	(*HealthProjectionRequest)(nil),                  // 109: codexpulse.core.v1.HealthProjectionRequest
+	(*DataHealthRequest)(nil),                        // 110: codexpulse.core.v1.DataHealthRequest
+	(*SettingsRequest)(nil),                          // 111: codexpulse.core.v1.SettingsRequest
+	(*RecoveryAction)(nil),                           // 112: codexpulse.core.v1.RecoveryAction
+	(*SourceItem)(nil),                               // 113: codexpulse.core.v1.SourceItem
+	(*SourceSummary)(nil),                            // 114: codexpulse.core.v1.SourceSummary
+	(*SourceListResponse)(nil),                       // 115: codexpulse.core.v1.SourceListResponse
+	(*SourceDetailResponse)(nil),                     // 116: codexpulse.core.v1.SourceDetailResponse
+	(*JobProgress)(nil),                              // 117: codexpulse.core.v1.JobProgress
+	(*JobItem)(nil),                                  // 118: codexpulse.core.v1.JobItem
+	(*JobSummary)(nil),                               // 119: codexpulse.core.v1.JobSummary
+	(*JobListResponse)(nil),                          // 120: codexpulse.core.v1.JobListResponse
+	(*JobDetailResponse)(nil),                        // 121: codexpulse.core.v1.JobDetailResponse
+	(*HealthItem)(nil),                               // 122: codexpulse.core.v1.HealthItem
+	(*HealthSummary)(nil),                            // 123: codexpulse.core.v1.HealthSummary
+	(*HealthListResponse)(nil),                       // 124: codexpulse.core.v1.HealthListResponse
+	(*HealthDetailResponse)(nil),                     // 125: codexpulse.core.v1.HealthDetailResponse
+	(*HealthComponentStatus)(nil),                    // 126: codexpulse.core.v1.HealthComponentStatus
+	(*HealthProjectionResponse)(nil),                 // 127: codexpulse.core.v1.HealthProjectionResponse
+	(*DataHealthWindow)(nil),                         // 128: codexpulse.core.v1.DataHealthWindow
+	(*DataHealthRuntimePoint)(nil),                   // 129: codexpulse.core.v1.DataHealthRuntimePoint
+	(*DataHealthScheduler)(nil),                      // 130: codexpulse.core.v1.DataHealthScheduler
+	(*DataHealthJobs)(nil),                           // 131: codexpulse.core.v1.DataHealthJobs
+	(*DataHealthSources)(nil),                        // 132: codexpulse.core.v1.DataHealthSources
+	(*DataHealthResponse)(nil),                       // 133: codexpulse.core.v1.DataHealthResponse
+	(*EditableField)(nil),                            // 134: codexpulse.core.v1.EditableField
+	(*SettingsHomeSnapshot)(nil),                     // 135: codexpulse.core.v1.SettingsHomeSnapshot
+	(*SettingsOnlineSnapshot)(nil),                   // 136: codexpulse.core.v1.SettingsOnlineSnapshot
+	(*SettingsRefreshSnapshot)(nil),                  // 137: codexpulse.core.v1.SettingsRefreshSnapshot
+	(*SettingsUpdateSnapshot)(nil),                   // 138: codexpulse.core.v1.SettingsUpdateSnapshot
+	(*SettingsUISnapshot)(nil),                       // 139: codexpulse.core.v1.SettingsUISnapshot
+	(*SettingsSnapshot)(nil),                         // 140: codexpulse.core.v1.SettingsSnapshot
+	(*SettingsResponse)(nil),                         // 141: codexpulse.core.v1.SettingsResponse
+	(*SettingsOnlineUpdate)(nil),                     // 142: codexpulse.core.v1.SettingsOnlineUpdate
+	(*SettingsRefreshUpdate)(nil),                    // 143: codexpulse.core.v1.SettingsRefreshUpdate
+	(*SettingsUpdatesUpdate)(nil),                    // 144: codexpulse.core.v1.SettingsUpdatesUpdate
+	(*SettingsUIUpdate)(nil),                         // 145: codexpulse.core.v1.SettingsUIUpdate
+	(*UpdateSettingsRequest)(nil),                    // 146: codexpulse.core.v1.UpdateSettingsRequest
+	(*SettingsUpdateReceipt)(nil),                    // 147: codexpulse.core.v1.SettingsUpdateReceipt
+	(*PlanHomeSwitchRequest)(nil),                    // 148: codexpulse.core.v1.PlanHomeSwitchRequest
+	(*HomeSwitchPlanReceipt)(nil),                    // 149: codexpulse.core.v1.HomeSwitchPlanReceipt
+	(*ConfirmHomeSwitchRequest)(nil),                 // 150: codexpulse.core.v1.ConfirmHomeSwitchRequest
+	(*RecoverHomeSwitchRequest)(nil),                 // 151: codexpulse.core.v1.RecoverHomeSwitchRequest
+	(*HomeSwitchReceipt)(nil),                        // 152: codexpulse.core.v1.HomeSwitchReceipt
+	(*RuntimeActionRequest)(nil),                     // 153: codexpulse.core.v1.RuntimeActionRequest
+	(*RuntimeActionReceipt)(nil),                     // 154: codexpulse.core.v1.RuntimeActionReceipt
+	(*AnalyzeSessionIndexRepairRequest)(nil),         // 155: codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
+	(*RepairDryRunReceipt)(nil),                      // 156: codexpulse.core.v1.RepairDryRunReceipt
+	(*LifecycleNotificationRequest)(nil),             // 157: codexpulse.core.v1.LifecycleNotificationRequest
+	(*LifecycleNotificationReceipt)(nil),             // 158: codexpulse.core.v1.LifecycleNotificationReceipt
+	(*MigrationRecoveryStateRequest)(nil),            // 159: codexpulse.core.v1.MigrationRecoveryStateRequest
+	(*MigrationRecoveryRetryRequest)(nil),            // 160: codexpulse.core.v1.MigrationRecoveryRetryRequest
+	(*MigrationRecoveryCancelRequest)(nil),           // 161: codexpulse.core.v1.MigrationRecoveryCancelRequest
+	(*MigrationRecoveryExitRequest)(nil),             // 162: codexpulse.core.v1.MigrationRecoveryExitRequest
+	(*MigrationRecoveryPrepareRequest)(nil),          // 163: codexpulse.core.v1.MigrationRecoveryPrepareRequest
+	(*MigrationRecoveryConfirmRequest)(nil),          // 164: codexpulse.core.v1.MigrationRecoveryConfirmRequest
+	(*MigrationBackupInfo)(nil),                      // 165: codexpulse.core.v1.MigrationBackupInfo
+	(*MigrationRecoverySnapshot)(nil),                // 166: codexpulse.core.v1.MigrationRecoverySnapshot
+	(*MigrationRecoveryReceipt)(nil),                 // 167: codexpulse.core.v1.MigrationRecoveryReceipt
+	(*MigrationRestoreConfirmation)(nil),             // 168: codexpulse.core.v1.MigrationRestoreConfirmation
+	(*SubscribeInvalidationsRequest)(nil),            // 169: codexpulse.core.v1.SubscribeInvalidationsRequest
+	(*QueryInvalidationEvent)(nil),                   // 170: codexpulse.core.v1.QueryInvalidationEvent
+	(*ShutdownRequest)(nil),                          // 171: codexpulse.core.v1.ShutdownRequest
+	(*ShutdownResponse)(nil),                         // 172: codexpulse.core.v1.ShutdownResponse
+	(*AccountSnapshotRequest)(nil),                   // 173: codexpulse.core.v1.AccountSnapshotRequest
+	(*CodexAccountIdentity)(nil),                     // 174: codexpulse.core.v1.CodexAccountIdentity
+	(*CodexAccountBinding)(nil),                      // 175: codexpulse.core.v1.CodexAccountBinding
+	(*CodexProTierSnapshot)(nil),                     // 176: codexpulse.core.v1.CodexProTierSnapshot
+	(*AccountSnapshotResponse)(nil),                  // 177: codexpulse.core.v1.AccountSnapshotResponse
+	(*CodexSubscriptionAccount)(nil),                 // 178: codexpulse.core.v1.CodexSubscriptionAccount
+	(*CodexSubscriptionLinkCandidate)(nil),           // 179: codexpulse.core.v1.CodexSubscriptionLinkCandidate
+	(*CodexSubscriptionAccountsRequest)(nil),         // 180: codexpulse.core.v1.CodexSubscriptionAccountsRequest
+	(*CodexSubscriptionAccountsResponse)(nil),        // 181: codexpulse.core.v1.CodexSubscriptionAccountsResponse
+	(*CodexSubscriptionManualFields)(nil),            // 182: codexpulse.core.v1.CodexSubscriptionManualFields
+	(*CreateCodexSubscriptionAccountRequest)(nil),    // 183: codexpulse.core.v1.CreateCodexSubscriptionAccountRequest
+	(*UpdateCodexSubscriptionAccountRequest)(nil),    // 184: codexpulse.core.v1.UpdateCodexSubscriptionAccountRequest
+	(*DeleteCodexSubscriptionAccountRequest)(nil),    // 185: codexpulse.core.v1.DeleteCodexSubscriptionAccountRequest
+	(*LinkCodexSubscriptionAccountRequest)(nil),      // 186: codexpulse.core.v1.LinkCodexSubscriptionAccountRequest
+	(*UnlinkCodexSubscriptionAccountRequest)(nil),    // 187: codexpulse.core.v1.UnlinkCodexSubscriptionAccountRequest
+	(*CodexSubscriptionMutationReceipt)(nil),         // 188: codexpulse.core.v1.CodexSubscriptionMutationReceipt
+	(*APISubscriptionsCurrentRequest)(nil),           // 189: codexpulse.core.v1.APISubscriptionsCurrentRequest
+	(*APICredentialStatusRequest)(nil),               // 190: codexpulse.core.v1.APICredentialStatusRequest
+	(*APICredentialStatusResponse)(nil),              // 191: codexpulse.core.v1.APICredentialStatusResponse
+	(*UpdateAPICredentialRequest)(nil),               // 192: codexpulse.core.v1.UpdateAPICredentialRequest
+	(*APISubscriptionSourceStatus)(nil),              // 193: codexpulse.core.v1.APISubscriptionSourceStatus
+	(*APISubscriptionCurrencyBalance)(nil),           // 194: codexpulse.core.v1.APISubscriptionCurrencyBalance
+	(*DeepSeekAPIBalance)(nil),                       // 195: codexpulse.core.v1.DeepSeekAPIBalance
+	(*APISubscriptionCurrencyBalanceChange)(nil),     // 196: codexpulse.core.v1.APISubscriptionCurrencyBalanceChange
+	(*APISubscriptionBalanceTrendPoint)(nil),         // 197: codexpulse.core.v1.APISubscriptionBalanceTrendPoint
+	(*APISubscriptionCurrencyBalanceSeries)(nil),     // 198: codexpulse.core.v1.APISubscriptionCurrencyBalanceSeries
+	(*APISubscriptionBalancePeriod)(nil),             // 199: codexpulse.core.v1.APISubscriptionBalancePeriod
+	(*DeepSeekAPISubscriptionSnapshot)(nil),          // 200: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot
+	(*OpenCodeGoQuotaWindow)(nil),                    // 201: codexpulse.core.v1.OpenCodeGoQuotaWindow
+	(*OpenCodeGoQuota)(nil),                          // 202: codexpulse.core.v1.OpenCodeGoQuota
+	(*OpenCodeGoSubscriptionSnapshot)(nil),           // 203: codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot
+	(*DeepSeekDailyActivity)(nil),                    // 204: codexpulse.core.v1.DeepSeekDailyActivity
+	(*OpenCodeGoFiveHourDailyActivity)(nil),          // 205: codexpulse.core.v1.OpenCodeGoFiveHourDailyActivity
+	(*APISubscriptionActivityDay)(nil),               // 206: codexpulse.core.v1.APISubscriptionActivityDay
+	(*APISubscriptionActivityCalendar)(nil),          // 207: codexpulse.core.v1.APISubscriptionActivityCalendar
+	(*APISubscriptionsCurrentResponse)(nil),          // 208: codexpulse.core.v1.APISubscriptionsCurrentResponse
+	(*CursorUsagePoolSummary)(nil),                   // 209: codexpulse.core.v1.CursorUsagePoolSummary
 }
 var file_api_codexpulse_core_v1_core_proto_depIdxs = []int32{
-	158, // 0: codexpulse.core.v1.BootstrapResponse.recovery:type_name -> codexpulse.core.v1.MigrationRecoverySnapshot
-	8,   // 1: codexpulse.core.v1.ContractsResponse.methods:type_name -> codexpulse.core.v1.MethodInfo
-	10,  // 2: codexpulse.core.v1.ContractsResponse.error_example:type_name -> codexpulse.core.v1.ErrorDetail
-	13,  // 3: codexpulse.core.v1.ResponseMeta.page:type_name -> codexpulse.core.v1.PageInfo
-	11,  // 4: codexpulse.core.v1.ResponseMeta.issues:type_name -> codexpulse.core.v1.Issue
-	15,  // 5: codexpulse.core.v1.QueryRequest.page:type_name -> codexpulse.core.v1.PageRequest
-	16,  // 6: codexpulse.core.v1.QueryRequest.sort:type_name -> codexpulse.core.v1.SortTerm
-	17,  // 7: codexpulse.core.v1.QueryRequest.filters:type_name -> codexpulse.core.v1.FilterTerm
-	18,  // 8: codexpulse.core.v1.QueryRequest.time_range:type_name -> codexpulse.core.v1.LocalDateRange
-	19,  // 9: codexpulse.core.v1.QueryRequest.exact_time_range:type_name -> codexpulse.core.v1.UTCTimeRange
-	21,  // 10: codexpulse.core.v1.QueryRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
-	22,  // 11: codexpulse.core.v1.ProviderContext.coverage:type_name -> codexpulse.core.v1.ProviderCoverage
-	18,  // 12: codexpulse.core.v1.UsageCostRequest.range:type_name -> codexpulse.core.v1.LocalDateRange
-	19,  // 13: codexpulse.core.v1.UsageCostRequest.exact_range:type_name -> codexpulse.core.v1.UTCTimeRange
-	21,  // 14: codexpulse.core.v1.UsageCostRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
-	20,  // 15: codexpulse.core.v1.ListSessionsRequest.query:type_name -> codexpulse.core.v1.QueryRequest
-	15,  // 16: codexpulse.core.v1.SessionDetailRequest.turn_page:type_name -> codexpulse.core.v1.PageRequest
-	21,  // 17: codexpulse.core.v1.SessionDetailRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
-	20,  // 18: codexpulse.core.v1.ListProjectsRequest.query:type_name -> codexpulse.core.v1.QueryRequest
-	18,  // 19: codexpulse.core.v1.ProjectDetailRequest.range:type_name -> codexpulse.core.v1.LocalDateRange
-	15,  // 20: codexpulse.core.v1.ProjectDetailRequest.session_page:type_name -> codexpulse.core.v1.PageRequest
-	15,  // 21: codexpulse.core.v1.ProjectDetailRequest.model_page:type_name -> codexpulse.core.v1.PageRequest
-	19,  // 22: codexpulse.core.v1.ProjectDetailRequest.exact_range:type_name -> codexpulse.core.v1.UTCTimeRange
-	21,  // 23: codexpulse.core.v1.ProjectDetailRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
-	12,  // 24: codexpulse.core.v1.UsageTotals.turn_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 25: codexpulse.core.v1.UsageTotals.input_tokens:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 26: codexpulse.core.v1.UsageTotals.cached_input_tokens:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 27: codexpulse.core.v1.UsageTotals.output_tokens:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 28: codexpulse.core.v1.UsageTotals.reasoning_tokens:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 29: codexpulse.core.v1.UsageTotals.total_tokens:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 30: codexpulse.core.v1.UsageTotals.estimated_usd_micros:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 31: codexpulse.core.v1.UsageTotals.priced_turn_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 32: codexpulse.core.v1.UsageTotals.unpriced_turn_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 33: codexpulse.core.v1.UsageTotals.first_activity_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 34: codexpulse.core.v1.UsageTotals.last_activity_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 35: codexpulse.core.v1.ReasonCount.count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 36: codexpulse.core.v1.TrendPoint.start_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 37: codexpulse.core.v1.TrendPoint.end_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	30,  // 38: codexpulse.core.v1.TrendPoint.totals:type_name -> codexpulse.core.v1.UsageTotals
-	29,  // 39: codexpulse.core.v1.UsageModelItem.model:type_name -> codexpulse.core.v1.AttributionValue
-	30,  // 40: codexpulse.core.v1.UsageModelItem.totals:type_name -> codexpulse.core.v1.UsageTotals
-	32,  // 41: codexpulse.core.v1.UsageModelItem.trend:type_name -> codexpulse.core.v1.TrendPoint
-	12,  // 42: codexpulse.core.v1.ActivityMetrics.total_tokens:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 43: codexpulse.core.v1.ActivityMetrics.session_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 44: codexpulse.core.v1.ActivityTimelinePoint.start_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 45: codexpulse.core.v1.ActivityTimelinePoint.end_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	34,  // 46: codexpulse.core.v1.ActivityTimelinePoint.metrics:type_name -> codexpulse.core.v1.ActivityMetrics
-	34,  // 47: codexpulse.core.v1.ActivityWeekdayHourPoint.metrics:type_name -> codexpulse.core.v1.ActivityMetrics
-	35,  // 48: codexpulse.core.v1.ActivityDistribution.timeline:type_name -> codexpulse.core.v1.ActivityTimelinePoint
-	36,  // 49: codexpulse.core.v1.ActivityDistribution.weekday_hours:type_name -> codexpulse.core.v1.ActivityWeekdayHourPoint
-	12,  // 50: codexpulse.core.v1.CursorBillingSummary.billing_cycle_start_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 51: codexpulse.core.v1.CursorBillingSummary.billing_cycle_end_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 52: codexpulse.core.v1.CursorBillingSummary.total_spend_usd_micros:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 53: codexpulse.core.v1.CursorBillingSummary.included_usd_micros:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 54: codexpulse.core.v1.CursorBillingSummary.bonus_usd_micros:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 55: codexpulse.core.v1.CursorBillingSummary.remaining_usd_micros:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 56: codexpulse.core.v1.CursorBillingSummary.limit_usd_micros:type_name -> codexpulse.core.v1.NumericValue
-	14,  // 57: codexpulse.core.v1.UsageCostResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	19,  // 58: codexpulse.core.v1.UsageCostResponse.range:type_name -> codexpulse.core.v1.UTCTimeRange
-	30,  // 59: codexpulse.core.v1.UsageCostResponse.totals:type_name -> codexpulse.core.v1.UsageTotals
-	32,  // 60: codexpulse.core.v1.UsageCostResponse.trend:type_name -> codexpulse.core.v1.TrendPoint
-	31,  // 61: codexpulse.core.v1.UsageCostResponse.unpriced_reasons:type_name -> codexpulse.core.v1.ReasonCount
-	33,  // 62: codexpulse.core.v1.UsageCostResponse.models:type_name -> codexpulse.core.v1.UsageModelItem
-	37,  // 63: codexpulse.core.v1.UsageCostResponse.activity_distribution:type_name -> codexpulse.core.v1.ActivityDistribution
-	23,  // 64: codexpulse.core.v1.UsageCostResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
-	12,  // 65: codexpulse.core.v1.UsageCostResponse.reported_usd_micros:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 66: codexpulse.core.v1.UsageCostResponse.data_as_of_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 67: codexpulse.core.v1.UsageCostResponse.cursor_token_fee_usd_micros:type_name -> codexpulse.core.v1.NumericValue
-	38,  // 68: codexpulse.core.v1.UsageCostResponse.cursor_billing:type_name -> codexpulse.core.v1.CursorBillingSummary
-	190, // 69: codexpulse.core.v1.UsageCostResponse.cursor_usage_pools:type_name -> codexpulse.core.v1.CursorUsagePoolSummary
-	18,  // 70: codexpulse.core.v1.DashboardSummaryRequest.range:type_name -> codexpulse.core.v1.LocalDateRange
-	19,  // 71: codexpulse.core.v1.DashboardSummaryRequest.exact_range:type_name -> codexpulse.core.v1.UTCTimeRange
-	18,  // 72: codexpulse.core.v1.DashboardSummaryRequest.activity_range:type_name -> codexpulse.core.v1.LocalDateRange
-	12,  // 73: codexpulse.core.v1.DashboardSummaryTotals.total_tokens:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 74: codexpulse.core.v1.DashboardSummaryTotals.estimated_usd_micros:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 75: codexpulse.core.v1.DashboardSummaryTotals.active_provider_count:type_name -> codexpulse.core.v1.NumericValue
-	23,  // 76: codexpulse.core.v1.DashboardSummaryProviderSlice.provider_context:type_name -> codexpulse.core.v1.ProviderContext
-	30,  // 77: codexpulse.core.v1.DashboardSummaryProviderSlice.totals:type_name -> codexpulse.core.v1.UsageTotals
-	32,  // 78: codexpulse.core.v1.DashboardSummaryProviderSlice.trend:type_name -> codexpulse.core.v1.TrendPoint
-	33,  // 79: codexpulse.core.v1.DashboardSummaryProviderSlice.models:type_name -> codexpulse.core.v1.UsageModelItem
-	12,  // 80: codexpulse.core.v1.DashboardSummaryProviderSlice.reported_usd_micros:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 81: codexpulse.core.v1.DashboardSummaryProviderSlice.data_as_of_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 82: codexpulse.core.v1.DashboardSummaryProviderShare.total_tokens:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 83: codexpulse.core.v1.DashboardSummaryProviderShare.estimated_usd_micros:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 84: codexpulse.core.v1.DashboardSummaryTrendPoint.start_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 85: codexpulse.core.v1.DashboardSummaryTrendPoint.end_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 86: codexpulse.core.v1.DashboardSummaryTrendPoint.total_tokens:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 87: codexpulse.core.v1.DashboardSummaryTrendPoint.estimated_usd_micros:type_name -> codexpulse.core.v1.NumericValue
-	45,  // 88: codexpulse.core.v1.DashboardSummaryTrendPoint.shares:type_name -> codexpulse.core.v1.DashboardSummaryProviderShare
-	29,  // 89: codexpulse.core.v1.DashboardSummaryModelItem.model:type_name -> codexpulse.core.v1.AttributionValue
-	30,  // 90: codexpulse.core.v1.DashboardSummaryModelItem.totals:type_name -> codexpulse.core.v1.UsageTotals
-	23,  // 91: codexpulse.core.v1.DashboardSummaryQuotaCard.provider_context:type_name -> codexpulse.core.v1.ProviderContext
-	14,  // 92: codexpulse.core.v1.DashboardSummaryQuotaCard.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	79,  // 93: codexpulse.core.v1.DashboardSummaryQuotaCard.current:type_name -> codexpulse.core.v1.CurrentQuota
-	14,  // 94: codexpulse.core.v1.DashboardSummaryResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	19,  // 95: codexpulse.core.v1.DashboardSummaryResponse.range:type_name -> codexpulse.core.v1.UTCTimeRange
-	41,  // 96: codexpulse.core.v1.DashboardSummaryResponse.coverage:type_name -> codexpulse.core.v1.DashboardSummaryCoverage
-	42,  // 97: codexpulse.core.v1.DashboardSummaryResponse.totals:type_name -> codexpulse.core.v1.DashboardSummaryTotals
-	43,  // 98: codexpulse.core.v1.DashboardSummaryResponse.providers:type_name -> codexpulse.core.v1.DashboardSummaryProviderSlice
-	46,  // 99: codexpulse.core.v1.DashboardSummaryResponse.trend:type_name -> codexpulse.core.v1.DashboardSummaryTrendPoint
-	45,  // 100: codexpulse.core.v1.DashboardSummaryResponse.distribution:type_name -> codexpulse.core.v1.DashboardSummaryProviderShare
-	47,  // 101: codexpulse.core.v1.DashboardSummaryResponse.models:type_name -> codexpulse.core.v1.DashboardSummaryModelItem
-	48,  // 102: codexpulse.core.v1.DashboardSummaryResponse.quotas:type_name -> codexpulse.core.v1.DashboardSummaryQuotaCard
-	19,  // 103: codexpulse.core.v1.DashboardSummaryResponse.activity_range:type_name -> codexpulse.core.v1.UTCTimeRange
-	46,  // 104: codexpulse.core.v1.DashboardSummaryResponse.activity:type_name -> codexpulse.core.v1.DashboardSummaryTrendPoint
-	44,  // 105: codexpulse.core.v1.DashboardSummaryResponse.activity_provider_coverage:type_name -> codexpulse.core.v1.DashboardSummaryActivityProviderCoverage
-	19,  // 106: codexpulse.core.v1.InvocationUsageRequest.range:type_name -> codexpulse.core.v1.UTCTimeRange
-	21,  // 107: codexpulse.core.v1.InvocationUsageRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
-	12,  // 108: codexpulse.core.v1.InvocationTotals.tool_call_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 109: codexpulse.core.v1.InvocationTotals.distinct_tool_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 110: codexpulse.core.v1.InvocationTotals.skill_activity_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 111: codexpulse.core.v1.InvocationTotals.distinct_skill_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 112: codexpulse.core.v1.InvocationTotals.tool_failure_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 113: codexpulse.core.v1.InvocationTotals.session_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 114: codexpulse.core.v1.InvocationTotals.ai_edit_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 115: codexpulse.core.v1.InvocationTrendPoint.start_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 116: codexpulse.core.v1.InvocationTrendPoint.end_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 117: codexpulse.core.v1.InvocationTrendPoint.tool_call_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 118: codexpulse.core.v1.InvocationTrendPoint.skill_activity_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 119: codexpulse.core.v1.ToolUsageItem.call_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 120: codexpulse.core.v1.ToolUsageItem.session_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 121: codexpulse.core.v1.ToolUsageItem.succeeded_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 122: codexpulse.core.v1.ToolUsageItem.failed_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 123: codexpulse.core.v1.ToolUsageItem.unknown_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 124: codexpulse.core.v1.ToolUsageItem.average_duration_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 125: codexpulse.core.v1.ToolUsageItem.last_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 126: codexpulse.core.v1.SkillUsageItem.activity_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 127: codexpulse.core.v1.SkillUsageItem.session_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 128: codexpulse.core.v1.SkillUsageItem.explicit_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 129: codexpulse.core.v1.SkillUsageItem.file_loaded_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 130: codexpulse.core.v1.SkillUsageItem.last_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 131: codexpulse.core.v1.InvocationCoverage.structured_event_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 132: codexpulse.core.v1.InvocationCoverage.detected_event_count:type_name -> codexpulse.core.v1.NumericValue
-	14,  // 133: codexpulse.core.v1.InvocationUsageResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	19,  // 134: codexpulse.core.v1.InvocationUsageResponse.range:type_name -> codexpulse.core.v1.UTCTimeRange
-	51,  // 135: codexpulse.core.v1.InvocationUsageResponse.totals:type_name -> codexpulse.core.v1.InvocationTotals
-	52,  // 136: codexpulse.core.v1.InvocationUsageResponse.trend:type_name -> codexpulse.core.v1.InvocationTrendPoint
-	53,  // 137: codexpulse.core.v1.InvocationUsageResponse.tools:type_name -> codexpulse.core.v1.ToolUsageItem
-	54,  // 138: codexpulse.core.v1.InvocationUsageResponse.skills:type_name -> codexpulse.core.v1.SkillUsageItem
-	55,  // 139: codexpulse.core.v1.InvocationUsageResponse.coverage:type_name -> codexpulse.core.v1.InvocationCoverage
-	23,  // 140: codexpulse.core.v1.InvocationUsageResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
-	21,  // 141: codexpulse.core.v1.PricingCatalogCurrentRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
-	12,  // 142: codexpulse.core.v1.ModelReferencePrice.input_micros:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 143: codexpulse.core.v1.ModelReferencePrice.cached_input_micros:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 144: codexpulse.core.v1.ModelReferencePrice.output_micros:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 145: codexpulse.core.v1.ModelReferencePrice.cache_write_micros:type_name -> codexpulse.core.v1.NumericValue
-	14,  // 146: codexpulse.core.v1.PricingCatalogCurrentResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	12,  // 147: codexpulse.core.v1.PricingCatalogCurrentResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 148: codexpulse.core.v1.PricingCatalogCurrentResponse.unit_tokens:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 149: codexpulse.core.v1.PricingCatalogCurrentResponse.effective_from_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 150: codexpulse.core.v1.PricingCatalogCurrentResponse.verified_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	58,  // 151: codexpulse.core.v1.PricingCatalogCurrentResponse.items:type_name -> codexpulse.core.v1.ModelReferencePrice
-	23,  // 152: codexpulse.core.v1.PricingCatalogCurrentResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
-	29,  // 153: codexpulse.core.v1.SessionItem.project:type_name -> codexpulse.core.v1.AttributionValue
-	29,  // 154: codexpulse.core.v1.SessionItem.model:type_name -> codexpulse.core.v1.AttributionValue
-	12,  // 155: codexpulse.core.v1.SessionItem.last_activity_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	30,  // 156: codexpulse.core.v1.SessionItem.totals:type_name -> codexpulse.core.v1.UsageTotals
-	14,  // 157: codexpulse.core.v1.SessionListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	60,  // 158: codexpulse.core.v1.SessionListResponse.items:type_name -> codexpulse.core.v1.SessionItem
-	12,  // 159: codexpulse.core.v1.SessionListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
-	30,  // 160: codexpulse.core.v1.SessionListResponse.matched_totals:type_name -> codexpulse.core.v1.UsageTotals
-	30,  // 161: codexpulse.core.v1.SessionListResponse.page_totals:type_name -> codexpulse.core.v1.UsageTotals
-	23,  // 162: codexpulse.core.v1.SessionListResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
-	29,  // 163: codexpulse.core.v1.SessionTurnItem.model:type_name -> codexpulse.core.v1.AttributionValue
-	12,  // 164: codexpulse.core.v1.SessionTurnItem.started_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 165: codexpulse.core.v1.SessionTurnItem.completed_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 166: codexpulse.core.v1.SessionTurnItem.observed_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	30,  // 167: codexpulse.core.v1.SessionTurnItem.totals:type_name -> codexpulse.core.v1.UsageTotals
-	14,  // 168: codexpulse.core.v1.SessionDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	31,  // 169: codexpulse.core.v1.SessionDetailResponse.unpriced_reasons:type_name -> codexpulse.core.v1.ReasonCount
-	60,  // 170: codexpulse.core.v1.SessionDetailResponse.item:type_name -> codexpulse.core.v1.SessionItem
-	13,  // 171: codexpulse.core.v1.SessionDetailResponse.turn_page:type_name -> codexpulse.core.v1.PageInfo
-	62,  // 172: codexpulse.core.v1.SessionDetailResponse.turns:type_name -> codexpulse.core.v1.SessionTurnItem
-	32,  // 173: codexpulse.core.v1.SessionDetailResponse.trend:type_name -> codexpulse.core.v1.TrendPoint
-	23,  // 174: codexpulse.core.v1.SessionDetailResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
-	33,  // 175: codexpulse.core.v1.SessionDetailResponse.models:type_name -> codexpulse.core.v1.UsageModelItem
-	12,  // 176: codexpulse.core.v1.ProjectDailyPoint.bucket_start_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	30,  // 177: codexpulse.core.v1.ProjectDailyPoint.totals:type_name -> codexpulse.core.v1.UsageTotals
-	29,  // 178: codexpulse.core.v1.ProjectItem.project:type_name -> codexpulse.core.v1.AttributionValue
-	12,  // 179: codexpulse.core.v1.ProjectItem.session_count:type_name -> codexpulse.core.v1.NumericValue
-	64,  // 180: codexpulse.core.v1.ProjectItem.trend:type_name -> codexpulse.core.v1.ProjectDailyPoint
-	30,  // 181: codexpulse.core.v1.ProjectItem.totals:type_name -> codexpulse.core.v1.UsageTotals
-	29,  // 182: codexpulse.core.v1.ProjectSessionItem.model:type_name -> codexpulse.core.v1.AttributionValue
-	12,  // 183: codexpulse.core.v1.ProjectSessionItem.last_activity_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	30,  // 184: codexpulse.core.v1.ProjectSessionItem.totals:type_name -> codexpulse.core.v1.UsageTotals
-	29,  // 185: codexpulse.core.v1.ProjectModelItem.model:type_name -> codexpulse.core.v1.AttributionValue
-	30,  // 186: codexpulse.core.v1.ProjectModelItem.totals:type_name -> codexpulse.core.v1.UsageTotals
-	14,  // 187: codexpulse.core.v1.ProjectListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	19,  // 188: codexpulse.core.v1.ProjectListResponse.range:type_name -> codexpulse.core.v1.UTCTimeRange
-	65,  // 189: codexpulse.core.v1.ProjectListResponse.items:type_name -> codexpulse.core.v1.ProjectItem
-	12,  // 190: codexpulse.core.v1.ProjectListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
-	30,  // 191: codexpulse.core.v1.ProjectListResponse.global_totals:type_name -> codexpulse.core.v1.UsageTotals
-	30,  // 192: codexpulse.core.v1.ProjectListResponse.matched_totals:type_name -> codexpulse.core.v1.UsageTotals
-	30,  // 193: codexpulse.core.v1.ProjectListResponse.page_totals:type_name -> codexpulse.core.v1.UsageTotals
-	23,  // 194: codexpulse.core.v1.ProjectListResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
-	14,  // 195: codexpulse.core.v1.ProjectDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	19,  // 196: codexpulse.core.v1.ProjectDetailResponse.range:type_name -> codexpulse.core.v1.UTCTimeRange
-	65,  // 197: codexpulse.core.v1.ProjectDetailResponse.item:type_name -> codexpulse.core.v1.ProjectItem
-	64,  // 198: codexpulse.core.v1.ProjectDetailResponse.daily:type_name -> codexpulse.core.v1.ProjectDailyPoint
-	13,  // 199: codexpulse.core.v1.ProjectDetailResponse.session_page:type_name -> codexpulse.core.v1.PageInfo
-	66,  // 200: codexpulse.core.v1.ProjectDetailResponse.sessions:type_name -> codexpulse.core.v1.ProjectSessionItem
-	13,  // 201: codexpulse.core.v1.ProjectDetailResponse.model_page:type_name -> codexpulse.core.v1.PageInfo
-	67,  // 202: codexpulse.core.v1.ProjectDetailResponse.models:type_name -> codexpulse.core.v1.ProjectModelItem
-	30,  // 203: codexpulse.core.v1.ProjectDetailResponse.global_totals:type_name -> codexpulse.core.v1.UsageTotals
-	23,  // 204: codexpulse.core.v1.ProjectDetailResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
-	21,  // 205: codexpulse.core.v1.QuotaCurrentRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
-	71,  // 206: codexpulse.core.v1.CurrentWindow.explanations:type_name -> codexpulse.core.v1.CurrentExplanation
-	75,  // 207: codexpulse.core.v1.CurrentResetCredits.items:type_name -> codexpulse.core.v1.CurrentResetCreditItem
-	77,  // 208: codexpulse.core.v1.CurrentRefresh.quota:type_name -> codexpulse.core.v1.CurrentRefreshStatus
-	77,  // 209: codexpulse.core.v1.CurrentRefresh.reset_credits:type_name -> codexpulse.core.v1.CurrentRefreshStatus
-	72,  // 210: codexpulse.core.v1.CurrentQuota.windows:type_name -> codexpulse.core.v1.CurrentWindow
-	73,  // 211: codexpulse.core.v1.CurrentQuota.sources:type_name -> codexpulse.core.v1.CurrentSource
-	74,  // 212: codexpulse.core.v1.CurrentQuota.next_reset:type_name -> codexpulse.core.v1.CurrentNextReset
-	76,  // 213: codexpulse.core.v1.CurrentQuota.reset_credits:type_name -> codexpulse.core.v1.CurrentResetCredits
-	78,  // 214: codexpulse.core.v1.CurrentQuota.refresh:type_name -> codexpulse.core.v1.CurrentRefresh
-	167, // 215: codexpulse.core.v1.CurrentQuota.binding:type_name -> codexpulse.core.v1.CodexAccountBinding
-	14,  // 216: codexpulse.core.v1.QuotaCurrentResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	79,  // 217: codexpulse.core.v1.QuotaCurrentResponse.current:type_name -> codexpulse.core.v1.CurrentQuota
-	23,  // 218: codexpulse.core.v1.QuotaCurrentResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
-	21,  // 219: codexpulse.core.v1.QuotaPaceRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
-	82,  // 220: codexpulse.core.v1.QuotaPaceCycle.points:type_name -> codexpulse.core.v1.QuotaPacePoint
-	85,  // 221: codexpulse.core.v1.QuotaPaceWindow.forecast:type_name -> codexpulse.core.v1.QuotaPaceForecast
-	82,  // 222: codexpulse.core.v1.QuotaPaceWindow.current_points:type_name -> codexpulse.core.v1.QuotaPacePoint
-	83,  // 223: codexpulse.core.v1.QuotaPaceWindow.previous_cycle:type_name -> codexpulse.core.v1.QuotaPaceCycle
-	83,  // 224: codexpulse.core.v1.QuotaPaceWindow.historical_cycles:type_name -> codexpulse.core.v1.QuotaPaceCycle
-	84,  // 225: codexpulse.core.v1.QuotaPaceWindow.history_band:type_name -> codexpulse.core.v1.QuotaPaceHistoryBandPoint
-	86,  // 226: codexpulse.core.v1.CurrentQuotaPace.windows:type_name -> codexpulse.core.v1.QuotaPaceWindow
-	167, // 227: codexpulse.core.v1.CurrentQuotaPace.binding:type_name -> codexpulse.core.v1.CodexAccountBinding
-	14,  // 228: codexpulse.core.v1.QuotaPaceResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	87,  // 229: codexpulse.core.v1.QuotaPaceResponse.pace:type_name -> codexpulse.core.v1.CurrentQuotaPace
-	23,  // 230: codexpulse.core.v1.QuotaPaceResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
-	21,  // 231: codexpulse.core.v1.QuotaRefreshRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
-	23,  // 232: codexpulse.core.v1.QuotaRefreshReceipt.provider_context:type_name -> codexpulse.core.v1.ProviderContext
-	92,  // 233: codexpulse.core.v1.ProviderRefreshResult.components:type_name -> codexpulse.core.v1.ProviderRefreshComponentResult
-	93,  // 234: codexpulse.core.v1.ProviderRefreshReceipt.providers:type_name -> codexpulse.core.v1.ProviderRefreshResult
-	20,  // 235: codexpulse.core.v1.ListSourcesRequest.query:type_name -> codexpulse.core.v1.QueryRequest
-	20,  // 236: codexpulse.core.v1.ListJobsRequest.query:type_name -> codexpulse.core.v1.QueryRequest
-	20,  // 237: codexpulse.core.v1.ListHealthRequest.query:type_name -> codexpulse.core.v1.QueryRequest
-	12,  // 238: codexpulse.core.v1.SourceItem.size_bytes:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 239: codexpulse.core.v1.SourceItem.parsed_bytes:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 240: codexpulse.core.v1.SourceItem.last_scanned_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 241: codexpulse.core.v1.SourceItem.last_attempt_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 242: codexpulse.core.v1.SourceItem.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 243: codexpulse.core.v1.SourceItem.next_due_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 244: codexpulse.core.v1.SourceItem.consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 245: codexpulse.core.v1.SourceItem.updated_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	104, // 246: codexpulse.core.v1.SourceItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
-	12,  // 247: codexpulse.core.v1.SourceItem.row_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 248: codexpulse.core.v1.SourceItem.schema_version:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 249: codexpulse.core.v1.SourceSummary.total:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 250: codexpulse.core.v1.SourceSummary.local_files:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 251: codexpulse.core.v1.SourceSummary.online_sources:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 252: codexpulse.core.v1.SourceSummary.attention:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 253: codexpulse.core.v1.SourceSummary.provider_sources:type_name -> codexpulse.core.v1.NumericValue
-	14,  // 254: codexpulse.core.v1.SourceListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	105, // 255: codexpulse.core.v1.SourceListResponse.items:type_name -> codexpulse.core.v1.SourceItem
-	12,  // 256: codexpulse.core.v1.SourceListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
-	106, // 257: codexpulse.core.v1.SourceListResponse.summary:type_name -> codexpulse.core.v1.SourceSummary
-	14,  // 258: codexpulse.core.v1.SourceDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	105, // 259: codexpulse.core.v1.SourceDetailResponse.item:type_name -> codexpulse.core.v1.SourceItem
-	12,  // 260: codexpulse.core.v1.JobProgress.current:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 261: codexpulse.core.v1.JobProgress.total:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 262: codexpulse.core.v1.JobItem.created_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 263: codexpulse.core.v1.JobItem.started_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 264: codexpulse.core.v1.JobItem.finished_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 265: codexpulse.core.v1.JobItem.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	109, // 266: codexpulse.core.v1.JobItem.progress:type_name -> codexpulse.core.v1.JobProgress
-	12,  // 267: codexpulse.core.v1.JobItem.failure_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 268: codexpulse.core.v1.JobItem.next_retry_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 269: codexpulse.core.v1.JobItem.updated_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	104, // 270: codexpulse.core.v1.JobItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
-	12,  // 271: codexpulse.core.v1.JobSummary.total:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 272: codexpulse.core.v1.JobSummary.queued:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 273: codexpulse.core.v1.JobSummary.running:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 274: codexpulse.core.v1.JobSummary.succeeded:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 275: codexpulse.core.v1.JobSummary.failed:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 276: codexpulse.core.v1.JobSummary.cancelled:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 277: codexpulse.core.v1.JobSummary.interrupted:type_name -> codexpulse.core.v1.NumericValue
-	14,  // 278: codexpulse.core.v1.JobListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	110, // 279: codexpulse.core.v1.JobListResponse.items:type_name -> codexpulse.core.v1.JobItem
-	12,  // 280: codexpulse.core.v1.JobListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
-	111, // 281: codexpulse.core.v1.JobListResponse.summary:type_name -> codexpulse.core.v1.JobSummary
-	14,  // 282: codexpulse.core.v1.JobDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	110, // 283: codexpulse.core.v1.JobDetailResponse.item:type_name -> codexpulse.core.v1.JobItem
-	12,  // 284: codexpulse.core.v1.HealthItem.first_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 285: codexpulse.core.v1.HealthItem.last_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 286: codexpulse.core.v1.HealthItem.resolved_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 287: codexpulse.core.v1.HealthItem.occurrence_count:type_name -> codexpulse.core.v1.NumericValue
-	104, // 288: codexpulse.core.v1.HealthItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
-	12,  // 289: codexpulse.core.v1.HealthSummary.total:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 290: codexpulse.core.v1.HealthSummary.active:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 291: codexpulse.core.v1.HealthSummary.resolved:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 292: codexpulse.core.v1.HealthSummary.info:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 293: codexpulse.core.v1.HealthSummary.warnings:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 294: codexpulse.core.v1.HealthSummary.errors:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 295: codexpulse.core.v1.HealthSummary.critical:type_name -> codexpulse.core.v1.NumericValue
-	14,  // 296: codexpulse.core.v1.HealthListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	114, // 297: codexpulse.core.v1.HealthListResponse.items:type_name -> codexpulse.core.v1.HealthItem
-	12,  // 298: codexpulse.core.v1.HealthListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
-	115, // 299: codexpulse.core.v1.HealthListResponse.summary:type_name -> codexpulse.core.v1.HealthSummary
-	14,  // 300: codexpulse.core.v1.HealthDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	114, // 301: codexpulse.core.v1.HealthDetailResponse.item:type_name -> codexpulse.core.v1.HealthItem
-	12,  // 302: codexpulse.core.v1.HealthProjectionResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	118, // 303: codexpulse.core.v1.HealthProjectionResponse.primary:type_name -> codexpulse.core.v1.HealthComponentStatus
-	118, // 304: codexpulse.core.v1.HealthProjectionResponse.components:type_name -> codexpulse.core.v1.HealthComponentStatus
-	12,  // 305: codexpulse.core.v1.DataHealthWindow.from_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 306: codexpulse.core.v1.DataHealthWindow.until_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 307: codexpulse.core.v1.DataHealthRuntimePoint.captured_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 308: codexpulse.core.v1.DataHealthRuntimePoint.rss_bytes:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 309: codexpulse.core.v1.DataHealthRuntimePoint.peak_rss_bytes:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 310: codexpulse.core.v1.DataHealthRuntimePoint.db_bytes:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 311: codexpulse.core.v1.DataHealthRuntimePoint.wal_bytes:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 312: codexpulse.core.v1.DataHealthRuntimePoint.disk_free_bytes:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 313: codexpulse.core.v1.DataHealthRuntimePoint.live_queue_depth:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 314: codexpulse.core.v1.DataHealthRuntimePoint.backfill_queue_depth:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 315: codexpulse.core.v1.DataHealthRuntimePoint.oldest_live_wait_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 316: codexpulse.core.v1.DataHealthRuntimePoint.oldest_backfill_wait_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 317: codexpulse.core.v1.DataHealthRuntimePoint.dropped_samples:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 318: codexpulse.core.v1.DataHealthScheduler.cycle_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 319: codexpulse.core.v1.DataHealthScheduler.completed_cycles:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 320: codexpulse.core.v1.DataHealthScheduler.yielded_cycles:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 321: codexpulse.core.v1.DataHealthScheduler.failed_cycles:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 322: codexpulse.core.v1.DataHealthScheduler.interrupted_cycles:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 323: codexpulse.core.v1.DataHealthScheduler.files_scanned:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 324: codexpulse.core.v1.DataHealthScheduler.bytes_read:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 325: codexpulse.core.v1.DataHealthScheduler.active_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 326: codexpulse.core.v1.DataHealthScheduler.max_cycle_active_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 327: codexpulse.core.v1.DataHealthScheduler.last_progress_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 328: codexpulse.core.v1.DataHealthScheduler.last_backfill_progress_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 329: codexpulse.core.v1.DataHealthJobs.queued:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 330: codexpulse.core.v1.DataHealthJobs.running:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 331: codexpulse.core.v1.DataHealthJobs.interrupted:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 332: codexpulse.core.v1.DataHealthJobs.succeeded:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 333: codexpulse.core.v1.DataHealthJobs.failed:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 334: codexpulse.core.v1.DataHealthJobs.cancelled:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 335: codexpulse.core.v1.DataHealthJobs.duration_count:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 336: codexpulse.core.v1.DataHealthJobs.duration_total_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 337: codexpulse.core.v1.DataHealthJobs.duration_max_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 338: codexpulse.core.v1.DataHealthSources.total:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 339: codexpulse.core.v1.DataHealthSources.unknown:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 340: codexpulse.core.v1.DataHealthSources.current:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 341: codexpulse.core.v1.DataHealthSources.stale:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 342: codexpulse.core.v1.DataHealthSources.unavailable:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 343: codexpulse.core.v1.DataHealthSources.consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 344: codexpulse.core.v1.DataHealthSources.max_consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 345: codexpulse.core.v1.DataHealthSources.attempts:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 346: codexpulse.core.v1.DataHealthSources.succeeded_attempts:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 347: codexpulse.core.v1.DataHealthSources.failed_attempts:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 348: codexpulse.core.v1.DataHealthSources.cancelled_attempts:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 349: codexpulse.core.v1.DataHealthSources.response_bytes:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 350: codexpulse.core.v1.DataHealthSources.last_attempt_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 351: codexpulse.core.v1.DataHealthSources.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 352: codexpulse.core.v1.DataHealthSources.next_retry_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	14,  // 353: codexpulse.core.v1.DataHealthResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	12,  // 354: codexpulse.core.v1.DataHealthResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	120, // 355: codexpulse.core.v1.DataHealthResponse.window:type_name -> codexpulse.core.v1.DataHealthWindow
-	121, // 356: codexpulse.core.v1.DataHealthResponse.runtime:type_name -> codexpulse.core.v1.DataHealthRuntimePoint
-	121, // 357: codexpulse.core.v1.DataHealthResponse.latest:type_name -> codexpulse.core.v1.DataHealthRuntimePoint
-	122, // 358: codexpulse.core.v1.DataHealthResponse.scheduler:type_name -> codexpulse.core.v1.DataHealthScheduler
-	123, // 359: codexpulse.core.v1.DataHealthResponse.jobs:type_name -> codexpulse.core.v1.DataHealthJobs
-	124, // 360: codexpulse.core.v1.DataHealthResponse.sources:type_name -> codexpulse.core.v1.DataHealthSources
-	110, // 361: codexpulse.core.v1.DataHealthResponse.current_jobs:type_name -> codexpulse.core.v1.JobItem
-	110, // 362: codexpulse.core.v1.DataHealthResponse.recent_jobs:type_name -> codexpulse.core.v1.JobItem
-	114, // 363: codexpulse.core.v1.DataHealthResponse.open_events:type_name -> codexpulse.core.v1.HealthItem
-	114, // 364: codexpulse.core.v1.DataHealthResponse.recent_events:type_name -> codexpulse.core.v1.HealthItem
-	12,  // 365: codexpulse.core.v1.SettingsUpdateSnapshot.snooze_until_ms:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 366: codexpulse.core.v1.SettingsUpdateSnapshot.last_check_at_ms:type_name -> codexpulse.core.v1.NumericValue
-	127, // 367: codexpulse.core.v1.SettingsSnapshot.home:type_name -> codexpulse.core.v1.SettingsHomeSnapshot
-	128, // 368: codexpulse.core.v1.SettingsSnapshot.online:type_name -> codexpulse.core.v1.SettingsOnlineSnapshot
-	129, // 369: codexpulse.core.v1.SettingsSnapshot.refresh:type_name -> codexpulse.core.v1.SettingsRefreshSnapshot
-	130, // 370: codexpulse.core.v1.SettingsSnapshot.updates:type_name -> codexpulse.core.v1.SettingsUpdateSnapshot
-	131, // 371: codexpulse.core.v1.SettingsSnapshot.ui:type_name -> codexpulse.core.v1.SettingsUISnapshot
-	14,  // 372: codexpulse.core.v1.SettingsResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
-	132, // 373: codexpulse.core.v1.SettingsResponse.snapshot:type_name -> codexpulse.core.v1.SettingsSnapshot
-	126, // 374: codexpulse.core.v1.SettingsResponse.editable_fields:type_name -> codexpulse.core.v1.EditableField
-	134, // 375: codexpulse.core.v1.UpdateSettingsRequest.online:type_name -> codexpulse.core.v1.SettingsOnlineUpdate
-	135, // 376: codexpulse.core.v1.UpdateSettingsRequest.refresh:type_name -> codexpulse.core.v1.SettingsRefreshUpdate
-	136, // 377: codexpulse.core.v1.UpdateSettingsRequest.updates:type_name -> codexpulse.core.v1.SettingsUpdatesUpdate
-	137, // 378: codexpulse.core.v1.UpdateSettingsRequest.ui:type_name -> codexpulse.core.v1.SettingsUIUpdate
-	157, // 379: codexpulse.core.v1.MigrationRecoverySnapshot.backups:type_name -> codexpulse.core.v1.MigrationBackupInfo
-	157, // 380: codexpulse.core.v1.MigrationRestoreConfirmation.backup:type_name -> codexpulse.core.v1.MigrationBackupInfo
-	21,  // 381: codexpulse.core.v1.AccountSnapshotRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
+	166, // 0: codexpulse.core.v1.BootstrapResponse.recovery:type_name -> codexpulse.core.v1.MigrationRecoverySnapshot
+	16,  // 1: codexpulse.core.v1.ContractsResponse.methods:type_name -> codexpulse.core.v1.MethodInfo
+	18,  // 2: codexpulse.core.v1.ContractsResponse.error_example:type_name -> codexpulse.core.v1.ErrorDetail
+	21,  // 3: codexpulse.core.v1.ResponseMeta.page:type_name -> codexpulse.core.v1.PageInfo
+	19,  // 4: codexpulse.core.v1.ResponseMeta.issues:type_name -> codexpulse.core.v1.Issue
+	23,  // 5: codexpulse.core.v1.QueryRequest.page:type_name -> codexpulse.core.v1.PageRequest
+	24,  // 6: codexpulse.core.v1.QueryRequest.sort:type_name -> codexpulse.core.v1.SortTerm
+	25,  // 7: codexpulse.core.v1.QueryRequest.filters:type_name -> codexpulse.core.v1.FilterTerm
+	26,  // 8: codexpulse.core.v1.QueryRequest.time_range:type_name -> codexpulse.core.v1.LocalDateRange
+	27,  // 9: codexpulse.core.v1.QueryRequest.exact_time_range:type_name -> codexpulse.core.v1.UTCTimeRange
+	29,  // 10: codexpulse.core.v1.QueryRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
+	30,  // 11: codexpulse.core.v1.ProviderContext.coverage:type_name -> codexpulse.core.v1.ProviderCoverage
+	26,  // 12: codexpulse.core.v1.UsageCostRequest.range:type_name -> codexpulse.core.v1.LocalDateRange
+	27,  // 13: codexpulse.core.v1.UsageCostRequest.exact_range:type_name -> codexpulse.core.v1.UTCTimeRange
+	29,  // 14: codexpulse.core.v1.UsageCostRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
+	28,  // 15: codexpulse.core.v1.ListSessionsRequest.query:type_name -> codexpulse.core.v1.QueryRequest
+	23,  // 16: codexpulse.core.v1.SessionDetailRequest.turn_page:type_name -> codexpulse.core.v1.PageRequest
+	29,  // 17: codexpulse.core.v1.SessionDetailRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
+	28,  // 18: codexpulse.core.v1.ListProjectsRequest.query:type_name -> codexpulse.core.v1.QueryRequest
+	26,  // 19: codexpulse.core.v1.ProjectDetailRequest.range:type_name -> codexpulse.core.v1.LocalDateRange
+	23,  // 20: codexpulse.core.v1.ProjectDetailRequest.session_page:type_name -> codexpulse.core.v1.PageRequest
+	23,  // 21: codexpulse.core.v1.ProjectDetailRequest.model_page:type_name -> codexpulse.core.v1.PageRequest
+	27,  // 22: codexpulse.core.v1.ProjectDetailRequest.exact_range:type_name -> codexpulse.core.v1.UTCTimeRange
+	29,  // 23: codexpulse.core.v1.ProjectDetailRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
+	20,  // 24: codexpulse.core.v1.UsageTotals.turn_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 25: codexpulse.core.v1.UsageTotals.input_tokens:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 26: codexpulse.core.v1.UsageTotals.cached_input_tokens:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 27: codexpulse.core.v1.UsageTotals.output_tokens:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 28: codexpulse.core.v1.UsageTotals.reasoning_tokens:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 29: codexpulse.core.v1.UsageTotals.total_tokens:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 30: codexpulse.core.v1.UsageTotals.estimated_usd_micros:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 31: codexpulse.core.v1.UsageTotals.priced_turn_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 32: codexpulse.core.v1.UsageTotals.unpriced_turn_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 33: codexpulse.core.v1.UsageTotals.first_activity_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 34: codexpulse.core.v1.UsageTotals.last_activity_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 35: codexpulse.core.v1.ReasonCount.count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 36: codexpulse.core.v1.TrendPoint.start_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 37: codexpulse.core.v1.TrendPoint.end_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	38,  // 38: codexpulse.core.v1.TrendPoint.totals:type_name -> codexpulse.core.v1.UsageTotals
+	37,  // 39: codexpulse.core.v1.UsageModelItem.model:type_name -> codexpulse.core.v1.AttributionValue
+	38,  // 40: codexpulse.core.v1.UsageModelItem.totals:type_name -> codexpulse.core.v1.UsageTotals
+	40,  // 41: codexpulse.core.v1.UsageModelItem.trend:type_name -> codexpulse.core.v1.TrendPoint
+	20,  // 42: codexpulse.core.v1.ActivityMetrics.total_tokens:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 43: codexpulse.core.v1.ActivityMetrics.session_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 44: codexpulse.core.v1.ActivityTimelinePoint.start_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 45: codexpulse.core.v1.ActivityTimelinePoint.end_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	42,  // 46: codexpulse.core.v1.ActivityTimelinePoint.metrics:type_name -> codexpulse.core.v1.ActivityMetrics
+	42,  // 47: codexpulse.core.v1.ActivityWeekdayHourPoint.metrics:type_name -> codexpulse.core.v1.ActivityMetrics
+	43,  // 48: codexpulse.core.v1.ActivityDistribution.timeline:type_name -> codexpulse.core.v1.ActivityTimelinePoint
+	44,  // 49: codexpulse.core.v1.ActivityDistribution.weekday_hours:type_name -> codexpulse.core.v1.ActivityWeekdayHourPoint
+	20,  // 50: codexpulse.core.v1.CursorBillingSummary.billing_cycle_start_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 51: codexpulse.core.v1.CursorBillingSummary.billing_cycle_end_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 52: codexpulse.core.v1.CursorBillingSummary.total_spend_usd_micros:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 53: codexpulse.core.v1.CursorBillingSummary.included_usd_micros:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 54: codexpulse.core.v1.CursorBillingSummary.bonus_usd_micros:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 55: codexpulse.core.v1.CursorBillingSummary.remaining_usd_micros:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 56: codexpulse.core.v1.CursorBillingSummary.limit_usd_micros:type_name -> codexpulse.core.v1.NumericValue
+	22,  // 57: codexpulse.core.v1.UsageCostResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	27,  // 58: codexpulse.core.v1.UsageCostResponse.range:type_name -> codexpulse.core.v1.UTCTimeRange
+	38,  // 59: codexpulse.core.v1.UsageCostResponse.totals:type_name -> codexpulse.core.v1.UsageTotals
+	40,  // 60: codexpulse.core.v1.UsageCostResponse.trend:type_name -> codexpulse.core.v1.TrendPoint
+	39,  // 61: codexpulse.core.v1.UsageCostResponse.unpriced_reasons:type_name -> codexpulse.core.v1.ReasonCount
+	41,  // 62: codexpulse.core.v1.UsageCostResponse.models:type_name -> codexpulse.core.v1.UsageModelItem
+	45,  // 63: codexpulse.core.v1.UsageCostResponse.activity_distribution:type_name -> codexpulse.core.v1.ActivityDistribution
+	31,  // 64: codexpulse.core.v1.UsageCostResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
+	20,  // 65: codexpulse.core.v1.UsageCostResponse.reported_usd_micros:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 66: codexpulse.core.v1.UsageCostResponse.data_as_of_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 67: codexpulse.core.v1.UsageCostResponse.cursor_token_fee_usd_micros:type_name -> codexpulse.core.v1.NumericValue
+	46,  // 68: codexpulse.core.v1.UsageCostResponse.cursor_billing:type_name -> codexpulse.core.v1.CursorBillingSummary
+	209, // 69: codexpulse.core.v1.UsageCostResponse.cursor_usage_pools:type_name -> codexpulse.core.v1.CursorUsagePoolSummary
+	26,  // 70: codexpulse.core.v1.DashboardSummaryRequest.range:type_name -> codexpulse.core.v1.LocalDateRange
+	27,  // 71: codexpulse.core.v1.DashboardSummaryRequest.exact_range:type_name -> codexpulse.core.v1.UTCTimeRange
+	26,  // 72: codexpulse.core.v1.DashboardSummaryRequest.activity_range:type_name -> codexpulse.core.v1.LocalDateRange
+	20,  // 73: codexpulse.core.v1.DashboardSummaryTotals.total_tokens:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 74: codexpulse.core.v1.DashboardSummaryTotals.estimated_usd_micros:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 75: codexpulse.core.v1.DashboardSummaryTotals.active_provider_count:type_name -> codexpulse.core.v1.NumericValue
+	31,  // 76: codexpulse.core.v1.DashboardSummaryProviderSlice.provider_context:type_name -> codexpulse.core.v1.ProviderContext
+	38,  // 77: codexpulse.core.v1.DashboardSummaryProviderSlice.totals:type_name -> codexpulse.core.v1.UsageTotals
+	40,  // 78: codexpulse.core.v1.DashboardSummaryProviderSlice.trend:type_name -> codexpulse.core.v1.TrendPoint
+	41,  // 79: codexpulse.core.v1.DashboardSummaryProviderSlice.models:type_name -> codexpulse.core.v1.UsageModelItem
+	20,  // 80: codexpulse.core.v1.DashboardSummaryProviderSlice.reported_usd_micros:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 81: codexpulse.core.v1.DashboardSummaryProviderSlice.data_as_of_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 82: codexpulse.core.v1.DashboardSummaryProviderShare.total_tokens:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 83: codexpulse.core.v1.DashboardSummaryProviderShare.estimated_usd_micros:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 84: codexpulse.core.v1.DashboardSummaryTrendPoint.start_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 85: codexpulse.core.v1.DashboardSummaryTrendPoint.end_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 86: codexpulse.core.v1.DashboardSummaryTrendPoint.total_tokens:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 87: codexpulse.core.v1.DashboardSummaryTrendPoint.estimated_usd_micros:type_name -> codexpulse.core.v1.NumericValue
+	53,  // 88: codexpulse.core.v1.DashboardSummaryTrendPoint.shares:type_name -> codexpulse.core.v1.DashboardSummaryProviderShare
+	37,  // 89: codexpulse.core.v1.DashboardSummaryModelItem.model:type_name -> codexpulse.core.v1.AttributionValue
+	38,  // 90: codexpulse.core.v1.DashboardSummaryModelItem.totals:type_name -> codexpulse.core.v1.UsageTotals
+	31,  // 91: codexpulse.core.v1.DashboardSummaryQuotaCard.provider_context:type_name -> codexpulse.core.v1.ProviderContext
+	22,  // 92: codexpulse.core.v1.DashboardSummaryQuotaCard.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	87,  // 93: codexpulse.core.v1.DashboardSummaryQuotaCard.current:type_name -> codexpulse.core.v1.CurrentQuota
+	22,  // 94: codexpulse.core.v1.DashboardSummaryResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	27,  // 95: codexpulse.core.v1.DashboardSummaryResponse.range:type_name -> codexpulse.core.v1.UTCTimeRange
+	49,  // 96: codexpulse.core.v1.DashboardSummaryResponse.coverage:type_name -> codexpulse.core.v1.DashboardSummaryCoverage
+	50,  // 97: codexpulse.core.v1.DashboardSummaryResponse.totals:type_name -> codexpulse.core.v1.DashboardSummaryTotals
+	51,  // 98: codexpulse.core.v1.DashboardSummaryResponse.providers:type_name -> codexpulse.core.v1.DashboardSummaryProviderSlice
+	54,  // 99: codexpulse.core.v1.DashboardSummaryResponse.trend:type_name -> codexpulse.core.v1.DashboardSummaryTrendPoint
+	53,  // 100: codexpulse.core.v1.DashboardSummaryResponse.distribution:type_name -> codexpulse.core.v1.DashboardSummaryProviderShare
+	55,  // 101: codexpulse.core.v1.DashboardSummaryResponse.models:type_name -> codexpulse.core.v1.DashboardSummaryModelItem
+	56,  // 102: codexpulse.core.v1.DashboardSummaryResponse.quotas:type_name -> codexpulse.core.v1.DashboardSummaryQuotaCard
+	27,  // 103: codexpulse.core.v1.DashboardSummaryResponse.activity_range:type_name -> codexpulse.core.v1.UTCTimeRange
+	54,  // 104: codexpulse.core.v1.DashboardSummaryResponse.activity:type_name -> codexpulse.core.v1.DashboardSummaryTrendPoint
+	52,  // 105: codexpulse.core.v1.DashboardSummaryResponse.activity_provider_coverage:type_name -> codexpulse.core.v1.DashboardSummaryActivityProviderCoverage
+	27,  // 106: codexpulse.core.v1.InvocationUsageRequest.range:type_name -> codexpulse.core.v1.UTCTimeRange
+	29,  // 107: codexpulse.core.v1.InvocationUsageRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
+	20,  // 108: codexpulse.core.v1.InvocationTotals.tool_call_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 109: codexpulse.core.v1.InvocationTotals.distinct_tool_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 110: codexpulse.core.v1.InvocationTotals.skill_activity_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 111: codexpulse.core.v1.InvocationTotals.distinct_skill_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 112: codexpulse.core.v1.InvocationTotals.tool_failure_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 113: codexpulse.core.v1.InvocationTotals.session_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 114: codexpulse.core.v1.InvocationTotals.ai_edit_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 115: codexpulse.core.v1.InvocationTrendPoint.start_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 116: codexpulse.core.v1.InvocationTrendPoint.end_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 117: codexpulse.core.v1.InvocationTrendPoint.tool_call_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 118: codexpulse.core.v1.InvocationTrendPoint.skill_activity_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 119: codexpulse.core.v1.ToolUsageItem.call_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 120: codexpulse.core.v1.ToolUsageItem.session_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 121: codexpulse.core.v1.ToolUsageItem.succeeded_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 122: codexpulse.core.v1.ToolUsageItem.failed_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 123: codexpulse.core.v1.ToolUsageItem.unknown_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 124: codexpulse.core.v1.ToolUsageItem.average_duration_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 125: codexpulse.core.v1.ToolUsageItem.last_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 126: codexpulse.core.v1.SkillUsageItem.activity_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 127: codexpulse.core.v1.SkillUsageItem.session_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 128: codexpulse.core.v1.SkillUsageItem.explicit_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 129: codexpulse.core.v1.SkillUsageItem.file_loaded_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 130: codexpulse.core.v1.SkillUsageItem.last_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 131: codexpulse.core.v1.InvocationCoverage.structured_event_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 132: codexpulse.core.v1.InvocationCoverage.detected_event_count:type_name -> codexpulse.core.v1.NumericValue
+	22,  // 133: codexpulse.core.v1.InvocationUsageResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	27,  // 134: codexpulse.core.v1.InvocationUsageResponse.range:type_name -> codexpulse.core.v1.UTCTimeRange
+	59,  // 135: codexpulse.core.v1.InvocationUsageResponse.totals:type_name -> codexpulse.core.v1.InvocationTotals
+	60,  // 136: codexpulse.core.v1.InvocationUsageResponse.trend:type_name -> codexpulse.core.v1.InvocationTrendPoint
+	61,  // 137: codexpulse.core.v1.InvocationUsageResponse.tools:type_name -> codexpulse.core.v1.ToolUsageItem
+	62,  // 138: codexpulse.core.v1.InvocationUsageResponse.skills:type_name -> codexpulse.core.v1.SkillUsageItem
+	63,  // 139: codexpulse.core.v1.InvocationUsageResponse.coverage:type_name -> codexpulse.core.v1.InvocationCoverage
+	31,  // 140: codexpulse.core.v1.InvocationUsageResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
+	29,  // 141: codexpulse.core.v1.PricingCatalogCurrentRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
+	20,  // 142: codexpulse.core.v1.ModelReferencePrice.input_micros:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 143: codexpulse.core.v1.ModelReferencePrice.cached_input_micros:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 144: codexpulse.core.v1.ModelReferencePrice.output_micros:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 145: codexpulse.core.v1.ModelReferencePrice.cache_write_micros:type_name -> codexpulse.core.v1.NumericValue
+	22,  // 146: codexpulse.core.v1.PricingCatalogCurrentResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	20,  // 147: codexpulse.core.v1.PricingCatalogCurrentResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 148: codexpulse.core.v1.PricingCatalogCurrentResponse.unit_tokens:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 149: codexpulse.core.v1.PricingCatalogCurrentResponse.effective_from_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 150: codexpulse.core.v1.PricingCatalogCurrentResponse.verified_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	66,  // 151: codexpulse.core.v1.PricingCatalogCurrentResponse.items:type_name -> codexpulse.core.v1.ModelReferencePrice
+	31,  // 152: codexpulse.core.v1.PricingCatalogCurrentResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
+	37,  // 153: codexpulse.core.v1.SessionItem.project:type_name -> codexpulse.core.v1.AttributionValue
+	37,  // 154: codexpulse.core.v1.SessionItem.model:type_name -> codexpulse.core.v1.AttributionValue
+	20,  // 155: codexpulse.core.v1.SessionItem.last_activity_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	38,  // 156: codexpulse.core.v1.SessionItem.totals:type_name -> codexpulse.core.v1.UsageTotals
+	22,  // 157: codexpulse.core.v1.SessionListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	68,  // 158: codexpulse.core.v1.SessionListResponse.items:type_name -> codexpulse.core.v1.SessionItem
+	20,  // 159: codexpulse.core.v1.SessionListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
+	38,  // 160: codexpulse.core.v1.SessionListResponse.matched_totals:type_name -> codexpulse.core.v1.UsageTotals
+	38,  // 161: codexpulse.core.v1.SessionListResponse.page_totals:type_name -> codexpulse.core.v1.UsageTotals
+	31,  // 162: codexpulse.core.v1.SessionListResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
+	37,  // 163: codexpulse.core.v1.SessionTurnItem.model:type_name -> codexpulse.core.v1.AttributionValue
+	20,  // 164: codexpulse.core.v1.SessionTurnItem.started_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 165: codexpulse.core.v1.SessionTurnItem.completed_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 166: codexpulse.core.v1.SessionTurnItem.observed_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	38,  // 167: codexpulse.core.v1.SessionTurnItem.totals:type_name -> codexpulse.core.v1.UsageTotals
+	22,  // 168: codexpulse.core.v1.SessionDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	39,  // 169: codexpulse.core.v1.SessionDetailResponse.unpriced_reasons:type_name -> codexpulse.core.v1.ReasonCount
+	68,  // 170: codexpulse.core.v1.SessionDetailResponse.item:type_name -> codexpulse.core.v1.SessionItem
+	21,  // 171: codexpulse.core.v1.SessionDetailResponse.turn_page:type_name -> codexpulse.core.v1.PageInfo
+	70,  // 172: codexpulse.core.v1.SessionDetailResponse.turns:type_name -> codexpulse.core.v1.SessionTurnItem
+	40,  // 173: codexpulse.core.v1.SessionDetailResponse.trend:type_name -> codexpulse.core.v1.TrendPoint
+	31,  // 174: codexpulse.core.v1.SessionDetailResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
+	41,  // 175: codexpulse.core.v1.SessionDetailResponse.models:type_name -> codexpulse.core.v1.UsageModelItem
+	20,  // 176: codexpulse.core.v1.ProjectDailyPoint.bucket_start_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	38,  // 177: codexpulse.core.v1.ProjectDailyPoint.totals:type_name -> codexpulse.core.v1.UsageTotals
+	37,  // 178: codexpulse.core.v1.ProjectItem.project:type_name -> codexpulse.core.v1.AttributionValue
+	20,  // 179: codexpulse.core.v1.ProjectItem.session_count:type_name -> codexpulse.core.v1.NumericValue
+	72,  // 180: codexpulse.core.v1.ProjectItem.trend:type_name -> codexpulse.core.v1.ProjectDailyPoint
+	38,  // 181: codexpulse.core.v1.ProjectItem.totals:type_name -> codexpulse.core.v1.UsageTotals
+	37,  // 182: codexpulse.core.v1.ProjectSessionItem.model:type_name -> codexpulse.core.v1.AttributionValue
+	20,  // 183: codexpulse.core.v1.ProjectSessionItem.last_activity_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	38,  // 184: codexpulse.core.v1.ProjectSessionItem.totals:type_name -> codexpulse.core.v1.UsageTotals
+	37,  // 185: codexpulse.core.v1.ProjectModelItem.model:type_name -> codexpulse.core.v1.AttributionValue
+	38,  // 186: codexpulse.core.v1.ProjectModelItem.totals:type_name -> codexpulse.core.v1.UsageTotals
+	22,  // 187: codexpulse.core.v1.ProjectListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	27,  // 188: codexpulse.core.v1.ProjectListResponse.range:type_name -> codexpulse.core.v1.UTCTimeRange
+	73,  // 189: codexpulse.core.v1.ProjectListResponse.items:type_name -> codexpulse.core.v1.ProjectItem
+	20,  // 190: codexpulse.core.v1.ProjectListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
+	38,  // 191: codexpulse.core.v1.ProjectListResponse.global_totals:type_name -> codexpulse.core.v1.UsageTotals
+	38,  // 192: codexpulse.core.v1.ProjectListResponse.matched_totals:type_name -> codexpulse.core.v1.UsageTotals
+	38,  // 193: codexpulse.core.v1.ProjectListResponse.page_totals:type_name -> codexpulse.core.v1.UsageTotals
+	31,  // 194: codexpulse.core.v1.ProjectListResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
+	22,  // 195: codexpulse.core.v1.ProjectDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	27,  // 196: codexpulse.core.v1.ProjectDetailResponse.range:type_name -> codexpulse.core.v1.UTCTimeRange
+	73,  // 197: codexpulse.core.v1.ProjectDetailResponse.item:type_name -> codexpulse.core.v1.ProjectItem
+	72,  // 198: codexpulse.core.v1.ProjectDetailResponse.daily:type_name -> codexpulse.core.v1.ProjectDailyPoint
+	21,  // 199: codexpulse.core.v1.ProjectDetailResponse.session_page:type_name -> codexpulse.core.v1.PageInfo
+	74,  // 200: codexpulse.core.v1.ProjectDetailResponse.sessions:type_name -> codexpulse.core.v1.ProjectSessionItem
+	21,  // 201: codexpulse.core.v1.ProjectDetailResponse.model_page:type_name -> codexpulse.core.v1.PageInfo
+	75,  // 202: codexpulse.core.v1.ProjectDetailResponse.models:type_name -> codexpulse.core.v1.ProjectModelItem
+	38,  // 203: codexpulse.core.v1.ProjectDetailResponse.global_totals:type_name -> codexpulse.core.v1.UsageTotals
+	31,  // 204: codexpulse.core.v1.ProjectDetailResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
+	29,  // 205: codexpulse.core.v1.QuotaCurrentRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
+	79,  // 206: codexpulse.core.v1.CurrentWindow.explanations:type_name -> codexpulse.core.v1.CurrentExplanation
+	83,  // 207: codexpulse.core.v1.CurrentResetCredits.items:type_name -> codexpulse.core.v1.CurrentResetCreditItem
+	85,  // 208: codexpulse.core.v1.CurrentRefresh.quota:type_name -> codexpulse.core.v1.CurrentRefreshStatus
+	85,  // 209: codexpulse.core.v1.CurrentRefresh.reset_credits:type_name -> codexpulse.core.v1.CurrentRefreshStatus
+	80,  // 210: codexpulse.core.v1.CurrentQuota.windows:type_name -> codexpulse.core.v1.CurrentWindow
+	81,  // 211: codexpulse.core.v1.CurrentQuota.sources:type_name -> codexpulse.core.v1.CurrentSource
+	82,  // 212: codexpulse.core.v1.CurrentQuota.next_reset:type_name -> codexpulse.core.v1.CurrentNextReset
+	84,  // 213: codexpulse.core.v1.CurrentQuota.reset_credits:type_name -> codexpulse.core.v1.CurrentResetCredits
+	86,  // 214: codexpulse.core.v1.CurrentQuota.refresh:type_name -> codexpulse.core.v1.CurrentRefresh
+	175, // 215: codexpulse.core.v1.CurrentQuota.binding:type_name -> codexpulse.core.v1.CodexAccountBinding
+	22,  // 216: codexpulse.core.v1.QuotaCurrentResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	87,  // 217: codexpulse.core.v1.QuotaCurrentResponse.current:type_name -> codexpulse.core.v1.CurrentQuota
+	31,  // 218: codexpulse.core.v1.QuotaCurrentResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
+	29,  // 219: codexpulse.core.v1.QuotaPaceRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
+	90,  // 220: codexpulse.core.v1.QuotaPaceCycle.points:type_name -> codexpulse.core.v1.QuotaPacePoint
+	93,  // 221: codexpulse.core.v1.QuotaPaceWindow.forecast:type_name -> codexpulse.core.v1.QuotaPaceForecast
+	90,  // 222: codexpulse.core.v1.QuotaPaceWindow.current_points:type_name -> codexpulse.core.v1.QuotaPacePoint
+	91,  // 223: codexpulse.core.v1.QuotaPaceWindow.previous_cycle:type_name -> codexpulse.core.v1.QuotaPaceCycle
+	91,  // 224: codexpulse.core.v1.QuotaPaceWindow.historical_cycles:type_name -> codexpulse.core.v1.QuotaPaceCycle
+	92,  // 225: codexpulse.core.v1.QuotaPaceWindow.history_band:type_name -> codexpulse.core.v1.QuotaPaceHistoryBandPoint
+	94,  // 226: codexpulse.core.v1.CurrentQuotaPace.windows:type_name -> codexpulse.core.v1.QuotaPaceWindow
+	175, // 227: codexpulse.core.v1.CurrentQuotaPace.binding:type_name -> codexpulse.core.v1.CodexAccountBinding
+	22,  // 228: codexpulse.core.v1.QuotaPaceResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	95,  // 229: codexpulse.core.v1.QuotaPaceResponse.pace:type_name -> codexpulse.core.v1.CurrentQuotaPace
+	31,  // 230: codexpulse.core.v1.QuotaPaceResponse.provider_context:type_name -> codexpulse.core.v1.ProviderContext
+	29,  // 231: codexpulse.core.v1.QuotaRefreshRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
+	31,  // 232: codexpulse.core.v1.QuotaRefreshReceipt.provider_context:type_name -> codexpulse.core.v1.ProviderContext
+	100, // 233: codexpulse.core.v1.ProviderRefreshResult.components:type_name -> codexpulse.core.v1.ProviderRefreshComponentResult
+	101, // 234: codexpulse.core.v1.ProviderRefreshReceipt.providers:type_name -> codexpulse.core.v1.ProviderRefreshResult
+	28,  // 235: codexpulse.core.v1.ListSourcesRequest.query:type_name -> codexpulse.core.v1.QueryRequest
+	28,  // 236: codexpulse.core.v1.ListJobsRequest.query:type_name -> codexpulse.core.v1.QueryRequest
+	28,  // 237: codexpulse.core.v1.ListHealthRequest.query:type_name -> codexpulse.core.v1.QueryRequest
+	20,  // 238: codexpulse.core.v1.SourceItem.size_bytes:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 239: codexpulse.core.v1.SourceItem.parsed_bytes:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 240: codexpulse.core.v1.SourceItem.last_scanned_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 241: codexpulse.core.v1.SourceItem.last_attempt_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 242: codexpulse.core.v1.SourceItem.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 243: codexpulse.core.v1.SourceItem.next_due_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 244: codexpulse.core.v1.SourceItem.consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 245: codexpulse.core.v1.SourceItem.updated_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	112, // 246: codexpulse.core.v1.SourceItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
+	20,  // 247: codexpulse.core.v1.SourceItem.row_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 248: codexpulse.core.v1.SourceItem.schema_version:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 249: codexpulse.core.v1.SourceSummary.total:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 250: codexpulse.core.v1.SourceSummary.local_files:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 251: codexpulse.core.v1.SourceSummary.online_sources:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 252: codexpulse.core.v1.SourceSummary.attention:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 253: codexpulse.core.v1.SourceSummary.provider_sources:type_name -> codexpulse.core.v1.NumericValue
+	22,  // 254: codexpulse.core.v1.SourceListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	113, // 255: codexpulse.core.v1.SourceListResponse.items:type_name -> codexpulse.core.v1.SourceItem
+	20,  // 256: codexpulse.core.v1.SourceListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
+	114, // 257: codexpulse.core.v1.SourceListResponse.summary:type_name -> codexpulse.core.v1.SourceSummary
+	22,  // 258: codexpulse.core.v1.SourceDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	113, // 259: codexpulse.core.v1.SourceDetailResponse.item:type_name -> codexpulse.core.v1.SourceItem
+	20,  // 260: codexpulse.core.v1.JobProgress.current:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 261: codexpulse.core.v1.JobProgress.total:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 262: codexpulse.core.v1.JobItem.created_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 263: codexpulse.core.v1.JobItem.started_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 264: codexpulse.core.v1.JobItem.finished_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 265: codexpulse.core.v1.JobItem.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	117, // 266: codexpulse.core.v1.JobItem.progress:type_name -> codexpulse.core.v1.JobProgress
+	20,  // 267: codexpulse.core.v1.JobItem.failure_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 268: codexpulse.core.v1.JobItem.next_retry_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 269: codexpulse.core.v1.JobItem.updated_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	112, // 270: codexpulse.core.v1.JobItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
+	20,  // 271: codexpulse.core.v1.JobSummary.total:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 272: codexpulse.core.v1.JobSummary.queued:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 273: codexpulse.core.v1.JobSummary.running:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 274: codexpulse.core.v1.JobSummary.succeeded:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 275: codexpulse.core.v1.JobSummary.failed:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 276: codexpulse.core.v1.JobSummary.cancelled:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 277: codexpulse.core.v1.JobSummary.interrupted:type_name -> codexpulse.core.v1.NumericValue
+	22,  // 278: codexpulse.core.v1.JobListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	118, // 279: codexpulse.core.v1.JobListResponse.items:type_name -> codexpulse.core.v1.JobItem
+	20,  // 280: codexpulse.core.v1.JobListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
+	119, // 281: codexpulse.core.v1.JobListResponse.summary:type_name -> codexpulse.core.v1.JobSummary
+	22,  // 282: codexpulse.core.v1.JobDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	118, // 283: codexpulse.core.v1.JobDetailResponse.item:type_name -> codexpulse.core.v1.JobItem
+	20,  // 284: codexpulse.core.v1.HealthItem.first_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 285: codexpulse.core.v1.HealthItem.last_seen_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 286: codexpulse.core.v1.HealthItem.resolved_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 287: codexpulse.core.v1.HealthItem.occurrence_count:type_name -> codexpulse.core.v1.NumericValue
+	112, // 288: codexpulse.core.v1.HealthItem.recovery_action:type_name -> codexpulse.core.v1.RecoveryAction
+	20,  // 289: codexpulse.core.v1.HealthSummary.total:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 290: codexpulse.core.v1.HealthSummary.active:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 291: codexpulse.core.v1.HealthSummary.resolved:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 292: codexpulse.core.v1.HealthSummary.info:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 293: codexpulse.core.v1.HealthSummary.warnings:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 294: codexpulse.core.v1.HealthSummary.errors:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 295: codexpulse.core.v1.HealthSummary.critical:type_name -> codexpulse.core.v1.NumericValue
+	22,  // 296: codexpulse.core.v1.HealthListResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	122, // 297: codexpulse.core.v1.HealthListResponse.items:type_name -> codexpulse.core.v1.HealthItem
+	20,  // 298: codexpulse.core.v1.HealthListResponse.matched_count:type_name -> codexpulse.core.v1.NumericValue
+	123, // 299: codexpulse.core.v1.HealthListResponse.summary:type_name -> codexpulse.core.v1.HealthSummary
+	22,  // 300: codexpulse.core.v1.HealthDetailResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	122, // 301: codexpulse.core.v1.HealthDetailResponse.item:type_name -> codexpulse.core.v1.HealthItem
+	20,  // 302: codexpulse.core.v1.HealthProjectionResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	126, // 303: codexpulse.core.v1.HealthProjectionResponse.primary:type_name -> codexpulse.core.v1.HealthComponentStatus
+	126, // 304: codexpulse.core.v1.HealthProjectionResponse.components:type_name -> codexpulse.core.v1.HealthComponentStatus
+	20,  // 305: codexpulse.core.v1.DataHealthWindow.from_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 306: codexpulse.core.v1.DataHealthWindow.until_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 307: codexpulse.core.v1.DataHealthRuntimePoint.captured_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 308: codexpulse.core.v1.DataHealthRuntimePoint.rss_bytes:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 309: codexpulse.core.v1.DataHealthRuntimePoint.peak_rss_bytes:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 310: codexpulse.core.v1.DataHealthRuntimePoint.db_bytes:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 311: codexpulse.core.v1.DataHealthRuntimePoint.wal_bytes:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 312: codexpulse.core.v1.DataHealthRuntimePoint.disk_free_bytes:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 313: codexpulse.core.v1.DataHealthRuntimePoint.live_queue_depth:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 314: codexpulse.core.v1.DataHealthRuntimePoint.backfill_queue_depth:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 315: codexpulse.core.v1.DataHealthRuntimePoint.oldest_live_wait_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 316: codexpulse.core.v1.DataHealthRuntimePoint.oldest_backfill_wait_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 317: codexpulse.core.v1.DataHealthRuntimePoint.dropped_samples:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 318: codexpulse.core.v1.DataHealthScheduler.cycle_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 319: codexpulse.core.v1.DataHealthScheduler.completed_cycles:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 320: codexpulse.core.v1.DataHealthScheduler.yielded_cycles:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 321: codexpulse.core.v1.DataHealthScheduler.failed_cycles:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 322: codexpulse.core.v1.DataHealthScheduler.interrupted_cycles:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 323: codexpulse.core.v1.DataHealthScheduler.files_scanned:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 324: codexpulse.core.v1.DataHealthScheduler.bytes_read:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 325: codexpulse.core.v1.DataHealthScheduler.active_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 326: codexpulse.core.v1.DataHealthScheduler.max_cycle_active_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 327: codexpulse.core.v1.DataHealthScheduler.last_progress_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 328: codexpulse.core.v1.DataHealthScheduler.last_backfill_progress_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 329: codexpulse.core.v1.DataHealthJobs.queued:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 330: codexpulse.core.v1.DataHealthJobs.running:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 331: codexpulse.core.v1.DataHealthJobs.interrupted:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 332: codexpulse.core.v1.DataHealthJobs.succeeded:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 333: codexpulse.core.v1.DataHealthJobs.failed:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 334: codexpulse.core.v1.DataHealthJobs.cancelled:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 335: codexpulse.core.v1.DataHealthJobs.duration_count:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 336: codexpulse.core.v1.DataHealthJobs.duration_total_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 337: codexpulse.core.v1.DataHealthJobs.duration_max_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 338: codexpulse.core.v1.DataHealthSources.total:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 339: codexpulse.core.v1.DataHealthSources.unknown:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 340: codexpulse.core.v1.DataHealthSources.current:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 341: codexpulse.core.v1.DataHealthSources.stale:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 342: codexpulse.core.v1.DataHealthSources.unavailable:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 343: codexpulse.core.v1.DataHealthSources.consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 344: codexpulse.core.v1.DataHealthSources.max_consecutive_failures:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 345: codexpulse.core.v1.DataHealthSources.attempts:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 346: codexpulse.core.v1.DataHealthSources.succeeded_attempts:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 347: codexpulse.core.v1.DataHealthSources.failed_attempts:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 348: codexpulse.core.v1.DataHealthSources.cancelled_attempts:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 349: codexpulse.core.v1.DataHealthSources.response_bytes:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 350: codexpulse.core.v1.DataHealthSources.last_attempt_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 351: codexpulse.core.v1.DataHealthSources.last_success_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 352: codexpulse.core.v1.DataHealthSources.next_retry_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	22,  // 353: codexpulse.core.v1.DataHealthResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	20,  // 354: codexpulse.core.v1.DataHealthResponse.evaluated_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	128, // 355: codexpulse.core.v1.DataHealthResponse.window:type_name -> codexpulse.core.v1.DataHealthWindow
+	129, // 356: codexpulse.core.v1.DataHealthResponse.runtime:type_name -> codexpulse.core.v1.DataHealthRuntimePoint
+	129, // 357: codexpulse.core.v1.DataHealthResponse.latest:type_name -> codexpulse.core.v1.DataHealthRuntimePoint
+	130, // 358: codexpulse.core.v1.DataHealthResponse.scheduler:type_name -> codexpulse.core.v1.DataHealthScheduler
+	131, // 359: codexpulse.core.v1.DataHealthResponse.jobs:type_name -> codexpulse.core.v1.DataHealthJobs
+	132, // 360: codexpulse.core.v1.DataHealthResponse.sources:type_name -> codexpulse.core.v1.DataHealthSources
+	118, // 361: codexpulse.core.v1.DataHealthResponse.current_jobs:type_name -> codexpulse.core.v1.JobItem
+	118, // 362: codexpulse.core.v1.DataHealthResponse.recent_jobs:type_name -> codexpulse.core.v1.JobItem
+	122, // 363: codexpulse.core.v1.DataHealthResponse.open_events:type_name -> codexpulse.core.v1.HealthItem
+	122, // 364: codexpulse.core.v1.DataHealthResponse.recent_events:type_name -> codexpulse.core.v1.HealthItem
+	20,  // 365: codexpulse.core.v1.SettingsUpdateSnapshot.snooze_until_ms:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 366: codexpulse.core.v1.SettingsUpdateSnapshot.last_check_at_ms:type_name -> codexpulse.core.v1.NumericValue
+	135, // 367: codexpulse.core.v1.SettingsSnapshot.home:type_name -> codexpulse.core.v1.SettingsHomeSnapshot
+	136, // 368: codexpulse.core.v1.SettingsSnapshot.online:type_name -> codexpulse.core.v1.SettingsOnlineSnapshot
+	137, // 369: codexpulse.core.v1.SettingsSnapshot.refresh:type_name -> codexpulse.core.v1.SettingsRefreshSnapshot
+	138, // 370: codexpulse.core.v1.SettingsSnapshot.updates:type_name -> codexpulse.core.v1.SettingsUpdateSnapshot
+	139, // 371: codexpulse.core.v1.SettingsSnapshot.ui:type_name -> codexpulse.core.v1.SettingsUISnapshot
+	22,  // 372: codexpulse.core.v1.SettingsResponse.meta:type_name -> codexpulse.core.v1.ResponseMeta
+	140, // 373: codexpulse.core.v1.SettingsResponse.snapshot:type_name -> codexpulse.core.v1.SettingsSnapshot
+	134, // 374: codexpulse.core.v1.SettingsResponse.editable_fields:type_name -> codexpulse.core.v1.EditableField
+	142, // 375: codexpulse.core.v1.UpdateSettingsRequest.online:type_name -> codexpulse.core.v1.SettingsOnlineUpdate
+	143, // 376: codexpulse.core.v1.UpdateSettingsRequest.refresh:type_name -> codexpulse.core.v1.SettingsRefreshUpdate
+	144, // 377: codexpulse.core.v1.UpdateSettingsRequest.updates:type_name -> codexpulse.core.v1.SettingsUpdatesUpdate
+	145, // 378: codexpulse.core.v1.UpdateSettingsRequest.ui:type_name -> codexpulse.core.v1.SettingsUIUpdate
+	165, // 379: codexpulse.core.v1.MigrationRecoverySnapshot.backups:type_name -> codexpulse.core.v1.MigrationBackupInfo
+	165, // 380: codexpulse.core.v1.MigrationRestoreConfirmation.backup:type_name -> codexpulse.core.v1.MigrationBackupInfo
+	29,  // 381: codexpulse.core.v1.AccountSnapshotRequest.provider:type_name -> codexpulse.core.v1.ProviderScope
 	1,   // 382: codexpulse.core.v1.CodexProTierSnapshot.state:type_name -> codexpulse.core.v1.CodexProTierState
 	0,   // 383: codexpulse.core.v1.CodexProTierSnapshot.tier:type_name -> codexpulse.core.v1.CodexProTier
-	166, // 384: codexpulse.core.v1.AccountSnapshotResponse.account:type_name -> codexpulse.core.v1.CodexAccountIdentity
-	167, // 385: codexpulse.core.v1.AccountSnapshotResponse.binding:type_name -> codexpulse.core.v1.CodexAccountBinding
-	168, // 386: codexpulse.core.v1.AccountSnapshotResponse.pro_tier:type_name -> codexpulse.core.v1.CodexProTierSnapshot
-	175, // 387: codexpulse.core.v1.DeepSeekAPIBalance.balances:type_name -> codexpulse.core.v1.APISubscriptionCurrencyBalance
-	178, // 388: codexpulse.core.v1.APISubscriptionCurrencyBalanceSeries.points:type_name -> codexpulse.core.v1.APISubscriptionBalanceTrendPoint
-	177, // 389: codexpulse.core.v1.APISubscriptionBalancePeriod.changes:type_name -> codexpulse.core.v1.APISubscriptionCurrencyBalanceChange
-	179, // 390: codexpulse.core.v1.APISubscriptionBalancePeriod.series:type_name -> codexpulse.core.v1.APISubscriptionCurrencyBalanceSeries
-	174, // 391: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot.status:type_name -> codexpulse.core.v1.APISubscriptionSourceStatus
-	176, // 392: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot.balance:type_name -> codexpulse.core.v1.DeepSeekAPIBalance
-	180, // 393: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot.periods:type_name -> codexpulse.core.v1.APISubscriptionBalancePeriod
-	182, // 394: codexpulse.core.v1.OpenCodeGoQuota.windows:type_name -> codexpulse.core.v1.OpenCodeGoQuotaWindow
-	174, // 395: codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot.status:type_name -> codexpulse.core.v1.APISubscriptionSourceStatus
-	183, // 396: codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot.quota:type_name -> codexpulse.core.v1.OpenCodeGoQuota
-	185, // 397: codexpulse.core.v1.APISubscriptionActivityDay.deep_seek:type_name -> codexpulse.core.v1.DeepSeekDailyActivity
-	186, // 398: codexpulse.core.v1.APISubscriptionActivityDay.open_code_go:type_name -> codexpulse.core.v1.OpenCodeGoFiveHourDailyActivity
-	187, // 399: codexpulse.core.v1.APISubscriptionActivityCalendar.days:type_name -> codexpulse.core.v1.APISubscriptionActivityDay
-	181, // 400: codexpulse.core.v1.APISubscriptionsCurrentResponse.deep_seek:type_name -> codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot
-	184, // 401: codexpulse.core.v1.APISubscriptionsCurrentResponse.open_code_go:type_name -> codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot
-	188, // 402: codexpulse.core.v1.APISubscriptionsCurrentResponse.activity_calendar:type_name -> codexpulse.core.v1.APISubscriptionActivityCalendar
-	30,  // 403: codexpulse.core.v1.CursorUsagePoolSummary.totals:type_name -> codexpulse.core.v1.UsageTotals
-	12,  // 404: codexpulse.core.v1.CursorUsagePoolSummary.reported_usd_micros:type_name -> codexpulse.core.v1.NumericValue
-	12,  // 405: codexpulse.core.v1.CursorUsagePoolSummary.cursor_token_fee_usd_micros:type_name -> codexpulse.core.v1.NumericValue
-	3,   // 406: codexpulse.core.v1.CoreService.Handshake:input_type -> codexpulse.core.v1.HandshakeRequest
-	5,   // 407: codexpulse.core.v1.CoreService.Bootstrap:input_type -> codexpulse.core.v1.BootstrapRequest
-	7,   // 408: codexpulse.core.v1.CoreService.Contracts:input_type -> codexpulse.core.v1.ContractsRequest
-	165, // 409: codexpulse.core.v1.CoreService.AccountSnapshot:input_type -> codexpulse.core.v1.AccountSnapshotRequest
-	24,  // 410: codexpulse.core.v1.CoreService.UsageCost:input_type -> codexpulse.core.v1.UsageCostRequest
-	40,  // 411: codexpulse.core.v1.CoreService.DashboardSummary:input_type -> codexpulse.core.v1.DashboardSummaryRequest
-	50,  // 412: codexpulse.core.v1.CoreService.InvocationUsage:input_type -> codexpulse.core.v1.InvocationUsageRequest
-	57,  // 413: codexpulse.core.v1.CoreService.PricingCatalogCurrent:input_type -> codexpulse.core.v1.PricingCatalogCurrentRequest
-	25,  // 414: codexpulse.core.v1.CoreService.ListSessions:input_type -> codexpulse.core.v1.ListSessionsRequest
-	26,  // 415: codexpulse.core.v1.CoreService.SessionDetail:input_type -> codexpulse.core.v1.SessionDetailRequest
-	27,  // 416: codexpulse.core.v1.CoreService.ListProjects:input_type -> codexpulse.core.v1.ListProjectsRequest
-	28,  // 417: codexpulse.core.v1.CoreService.ProjectDetail:input_type -> codexpulse.core.v1.ProjectDetailRequest
-	70,  // 418: codexpulse.core.v1.CoreService.QuotaCurrent:input_type -> codexpulse.core.v1.QuotaCurrentRequest
-	170, // 419: codexpulse.core.v1.CoreService.APISubscriptionsCurrent:input_type -> codexpulse.core.v1.APISubscriptionsCurrentRequest
-	171, // 420: codexpulse.core.v1.CoreService.APICredentialStatus:input_type -> codexpulse.core.v1.APICredentialStatusRequest
-	173, // 421: codexpulse.core.v1.CoreService.UpdateAPICredential:input_type -> codexpulse.core.v1.UpdateAPICredentialRequest
-	81,  // 422: codexpulse.core.v1.CoreService.QuotaPace:input_type -> codexpulse.core.v1.QuotaPaceRequest
-	89,  // 423: codexpulse.core.v1.CoreService.RequestQuotaRefresh:input_type -> codexpulse.core.v1.QuotaRefreshRequest
-	91,  // 424: codexpulse.core.v1.CoreService.RequestProviderRefresh:input_type -> codexpulse.core.v1.ProviderRefreshRequest
-	95,  // 425: codexpulse.core.v1.CoreService.ListSources:input_type -> codexpulse.core.v1.ListSourcesRequest
-	96,  // 426: codexpulse.core.v1.CoreService.Source:input_type -> codexpulse.core.v1.SourceRequest
-	97,  // 427: codexpulse.core.v1.CoreService.ListJobs:input_type -> codexpulse.core.v1.ListJobsRequest
-	98,  // 428: codexpulse.core.v1.CoreService.Job:input_type -> codexpulse.core.v1.JobRequest
-	99,  // 429: codexpulse.core.v1.CoreService.ListHealth:input_type -> codexpulse.core.v1.ListHealthRequest
-	100, // 430: codexpulse.core.v1.CoreService.Health:input_type -> codexpulse.core.v1.HealthRequest
-	101, // 431: codexpulse.core.v1.CoreService.HealthProjection:input_type -> codexpulse.core.v1.HealthProjectionRequest
-	102, // 432: codexpulse.core.v1.CoreService.DataHealth:input_type -> codexpulse.core.v1.DataHealthRequest
-	103, // 433: codexpulse.core.v1.CoreService.Settings:input_type -> codexpulse.core.v1.SettingsRequest
-	138, // 434: codexpulse.core.v1.CoreService.UpdateSettings:input_type -> codexpulse.core.v1.UpdateSettingsRequest
-	140, // 435: codexpulse.core.v1.CoreService.PlanHomeSwitch:input_type -> codexpulse.core.v1.PlanHomeSwitchRequest
-	142, // 436: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:input_type -> codexpulse.core.v1.ConfirmHomeSwitchRequest
-	143, // 437: codexpulse.core.v1.CoreService.RecoverHomeSwitch:input_type -> codexpulse.core.v1.RecoverHomeSwitchRequest
-	145, // 438: codexpulse.core.v1.CoreService.RunRuntimeAction:input_type -> codexpulse.core.v1.RuntimeActionRequest
-	147, // 439: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:input_type -> codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
-	149, // 440: codexpulse.core.v1.CoreService.NotifyLifecycle:input_type -> codexpulse.core.v1.LifecycleNotificationRequest
-	151, // 441: codexpulse.core.v1.CoreService.MigrationRecoveryState:input_type -> codexpulse.core.v1.MigrationRecoveryStateRequest
-	152, // 442: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:input_type -> codexpulse.core.v1.MigrationRecoveryRetryRequest
-	155, // 443: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:input_type -> codexpulse.core.v1.MigrationRecoveryPrepareRequest
-	156, // 444: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:input_type -> codexpulse.core.v1.MigrationRecoveryConfirmRequest
-	153, // 445: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:input_type -> codexpulse.core.v1.MigrationRecoveryCancelRequest
-	154, // 446: codexpulse.core.v1.CoreService.MigrationRecoveryExit:input_type -> codexpulse.core.v1.MigrationRecoveryExitRequest
-	161, // 447: codexpulse.core.v1.CoreService.SubscribeInvalidations:input_type -> codexpulse.core.v1.SubscribeInvalidationsRequest
-	163, // 448: codexpulse.core.v1.CoreService.Shutdown:input_type -> codexpulse.core.v1.ShutdownRequest
-	4,   // 449: codexpulse.core.v1.CoreService.Handshake:output_type -> codexpulse.core.v1.HandshakeResponse
-	6,   // 450: codexpulse.core.v1.CoreService.Bootstrap:output_type -> codexpulse.core.v1.BootstrapResponse
-	9,   // 451: codexpulse.core.v1.CoreService.Contracts:output_type -> codexpulse.core.v1.ContractsResponse
-	169, // 452: codexpulse.core.v1.CoreService.AccountSnapshot:output_type -> codexpulse.core.v1.AccountSnapshotResponse
-	39,  // 453: codexpulse.core.v1.CoreService.UsageCost:output_type -> codexpulse.core.v1.UsageCostResponse
-	49,  // 454: codexpulse.core.v1.CoreService.DashboardSummary:output_type -> codexpulse.core.v1.DashboardSummaryResponse
-	56,  // 455: codexpulse.core.v1.CoreService.InvocationUsage:output_type -> codexpulse.core.v1.InvocationUsageResponse
-	59,  // 456: codexpulse.core.v1.CoreService.PricingCatalogCurrent:output_type -> codexpulse.core.v1.PricingCatalogCurrentResponse
-	61,  // 457: codexpulse.core.v1.CoreService.ListSessions:output_type -> codexpulse.core.v1.SessionListResponse
-	63,  // 458: codexpulse.core.v1.CoreService.SessionDetail:output_type -> codexpulse.core.v1.SessionDetailResponse
-	68,  // 459: codexpulse.core.v1.CoreService.ListProjects:output_type -> codexpulse.core.v1.ProjectListResponse
-	69,  // 460: codexpulse.core.v1.CoreService.ProjectDetail:output_type -> codexpulse.core.v1.ProjectDetailResponse
-	80,  // 461: codexpulse.core.v1.CoreService.QuotaCurrent:output_type -> codexpulse.core.v1.QuotaCurrentResponse
-	189, // 462: codexpulse.core.v1.CoreService.APISubscriptionsCurrent:output_type -> codexpulse.core.v1.APISubscriptionsCurrentResponse
-	172, // 463: codexpulse.core.v1.CoreService.APICredentialStatus:output_type -> codexpulse.core.v1.APICredentialStatusResponse
-	172, // 464: codexpulse.core.v1.CoreService.UpdateAPICredential:output_type -> codexpulse.core.v1.APICredentialStatusResponse
-	88,  // 465: codexpulse.core.v1.CoreService.QuotaPace:output_type -> codexpulse.core.v1.QuotaPaceResponse
-	90,  // 466: codexpulse.core.v1.CoreService.RequestQuotaRefresh:output_type -> codexpulse.core.v1.QuotaRefreshReceipt
-	94,  // 467: codexpulse.core.v1.CoreService.RequestProviderRefresh:output_type -> codexpulse.core.v1.ProviderRefreshReceipt
-	107, // 468: codexpulse.core.v1.CoreService.ListSources:output_type -> codexpulse.core.v1.SourceListResponse
-	108, // 469: codexpulse.core.v1.CoreService.Source:output_type -> codexpulse.core.v1.SourceDetailResponse
-	112, // 470: codexpulse.core.v1.CoreService.ListJobs:output_type -> codexpulse.core.v1.JobListResponse
-	113, // 471: codexpulse.core.v1.CoreService.Job:output_type -> codexpulse.core.v1.JobDetailResponse
-	116, // 472: codexpulse.core.v1.CoreService.ListHealth:output_type -> codexpulse.core.v1.HealthListResponse
-	117, // 473: codexpulse.core.v1.CoreService.Health:output_type -> codexpulse.core.v1.HealthDetailResponse
-	119, // 474: codexpulse.core.v1.CoreService.HealthProjection:output_type -> codexpulse.core.v1.HealthProjectionResponse
-	125, // 475: codexpulse.core.v1.CoreService.DataHealth:output_type -> codexpulse.core.v1.DataHealthResponse
-	133, // 476: codexpulse.core.v1.CoreService.Settings:output_type -> codexpulse.core.v1.SettingsResponse
-	139, // 477: codexpulse.core.v1.CoreService.UpdateSettings:output_type -> codexpulse.core.v1.SettingsUpdateReceipt
-	141, // 478: codexpulse.core.v1.CoreService.PlanHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchPlanReceipt
-	144, // 479: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
-	144, // 480: codexpulse.core.v1.CoreService.RecoverHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
-	146, // 481: codexpulse.core.v1.CoreService.RunRuntimeAction:output_type -> codexpulse.core.v1.RuntimeActionReceipt
-	148, // 482: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:output_type -> codexpulse.core.v1.RepairDryRunReceipt
-	150, // 483: codexpulse.core.v1.CoreService.NotifyLifecycle:output_type -> codexpulse.core.v1.LifecycleNotificationReceipt
-	158, // 484: codexpulse.core.v1.CoreService.MigrationRecoveryState:output_type -> codexpulse.core.v1.MigrationRecoverySnapshot
-	159, // 485: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
-	160, // 486: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:output_type -> codexpulse.core.v1.MigrationRestoreConfirmation
-	159, // 487: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
-	2,   // 488: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:output_type -> codexpulse.core.v1.Empty
-	2,   // 489: codexpulse.core.v1.CoreService.MigrationRecoveryExit:output_type -> codexpulse.core.v1.Empty
-	162, // 490: codexpulse.core.v1.CoreService.SubscribeInvalidations:output_type -> codexpulse.core.v1.QueryInvalidationEvent
-	164, // 491: codexpulse.core.v1.CoreService.Shutdown:output_type -> codexpulse.core.v1.ShutdownResponse
-	449, // [449:492] is the sub-list for method output_type
-	406, // [406:449] is the sub-list for method input_type
-	406, // [406:406] is the sub-list for extension type_name
-	406, // [406:406] is the sub-list for extension extendee
-	0,   // [0:406] is the sub-list for field type_name
+	174, // 384: codexpulse.core.v1.AccountSnapshotResponse.account:type_name -> codexpulse.core.v1.CodexAccountIdentity
+	175, // 385: codexpulse.core.v1.AccountSnapshotResponse.binding:type_name -> codexpulse.core.v1.CodexAccountBinding
+	176, // 386: codexpulse.core.v1.AccountSnapshotResponse.pro_tier:type_name -> codexpulse.core.v1.CodexProTierSnapshot
+	178, // 387: codexpulse.core.v1.AccountSnapshotResponse.subscription:type_name -> codexpulse.core.v1.CodexSubscriptionAccount
+	2,   // 388: codexpulse.core.v1.CodexSubscriptionAccount.automatic_plan:type_name -> codexpulse.core.v1.CodexSubscriptionPlan
+	3,   // 389: codexpulse.core.v1.CodexSubscriptionAccount.automatic_plan_state:type_name -> codexpulse.core.v1.CodexSubscriptionAutomaticPlanState
+	7,   // 390: codexpulse.core.v1.CodexSubscriptionAccount.automatic_plan_source:type_name -> codexpulse.core.v1.CodexSubscriptionAutomaticSource
+	2,   // 391: codexpulse.core.v1.CodexSubscriptionAccount.manual_plan:type_name -> codexpulse.core.v1.CodexSubscriptionPlan
+	2,   // 392: codexpulse.core.v1.CodexSubscriptionAccount.resolved_plan:type_name -> codexpulse.core.v1.CodexSubscriptionPlan
+	4,   // 393: codexpulse.core.v1.CodexSubscriptionAccount.resolved_plan_source:type_name -> codexpulse.core.v1.CodexSubscriptionValueSource
+	5,   // 394: codexpulse.core.v1.CodexSubscriptionAccount.date_kind:type_name -> codexpulse.core.v1.CodexSubscriptionDateKind
+	4,   // 395: codexpulse.core.v1.CodexSubscriptionAccount.date_source:type_name -> codexpulse.core.v1.CodexSubscriptionValueSource
+	6,   // 396: codexpulse.core.v1.CodexSubscriptionAccount.date_state:type_name -> codexpulse.core.v1.CodexSubscriptionDateState
+	8,   // 397: codexpulse.core.v1.CodexSubscriptionAccountsResponse.automatic_date_capability:type_name -> codexpulse.core.v1.CodexSubscriptionAutomaticDateCapability
+	178, // 398: codexpulse.core.v1.CodexSubscriptionAccountsResponse.accounts:type_name -> codexpulse.core.v1.CodexSubscriptionAccount
+	179, // 399: codexpulse.core.v1.CodexSubscriptionAccountsResponse.link_candidates:type_name -> codexpulse.core.v1.CodexSubscriptionLinkCandidate
+	2,   // 400: codexpulse.core.v1.CodexSubscriptionManualFields.plan:type_name -> codexpulse.core.v1.CodexSubscriptionPlan
+	5,   // 401: codexpulse.core.v1.CodexSubscriptionManualFields.date_kind:type_name -> codexpulse.core.v1.CodexSubscriptionDateKind
+	182, // 402: codexpulse.core.v1.CreateCodexSubscriptionAccountRequest.manual:type_name -> codexpulse.core.v1.CodexSubscriptionManualFields
+	182, // 403: codexpulse.core.v1.UpdateCodexSubscriptionAccountRequest.manual:type_name -> codexpulse.core.v1.CodexSubscriptionManualFields
+	9,   // 404: codexpulse.core.v1.CodexSubscriptionMutationReceipt.result:type_name -> codexpulse.core.v1.CodexSubscriptionMutationResult
+	178, // 405: codexpulse.core.v1.CodexSubscriptionMutationReceipt.account:type_name -> codexpulse.core.v1.CodexSubscriptionAccount
+	194, // 406: codexpulse.core.v1.DeepSeekAPIBalance.balances:type_name -> codexpulse.core.v1.APISubscriptionCurrencyBalance
+	197, // 407: codexpulse.core.v1.APISubscriptionCurrencyBalanceSeries.points:type_name -> codexpulse.core.v1.APISubscriptionBalanceTrendPoint
+	196, // 408: codexpulse.core.v1.APISubscriptionBalancePeriod.changes:type_name -> codexpulse.core.v1.APISubscriptionCurrencyBalanceChange
+	198, // 409: codexpulse.core.v1.APISubscriptionBalancePeriod.series:type_name -> codexpulse.core.v1.APISubscriptionCurrencyBalanceSeries
+	193, // 410: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot.status:type_name -> codexpulse.core.v1.APISubscriptionSourceStatus
+	195, // 411: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot.balance:type_name -> codexpulse.core.v1.DeepSeekAPIBalance
+	199, // 412: codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot.periods:type_name -> codexpulse.core.v1.APISubscriptionBalancePeriod
+	201, // 413: codexpulse.core.v1.OpenCodeGoQuota.windows:type_name -> codexpulse.core.v1.OpenCodeGoQuotaWindow
+	193, // 414: codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot.status:type_name -> codexpulse.core.v1.APISubscriptionSourceStatus
+	202, // 415: codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot.quota:type_name -> codexpulse.core.v1.OpenCodeGoQuota
+	204, // 416: codexpulse.core.v1.APISubscriptionActivityDay.deep_seek:type_name -> codexpulse.core.v1.DeepSeekDailyActivity
+	205, // 417: codexpulse.core.v1.APISubscriptionActivityDay.open_code_go:type_name -> codexpulse.core.v1.OpenCodeGoFiveHourDailyActivity
+	206, // 418: codexpulse.core.v1.APISubscriptionActivityCalendar.days:type_name -> codexpulse.core.v1.APISubscriptionActivityDay
+	200, // 419: codexpulse.core.v1.APISubscriptionsCurrentResponse.deep_seek:type_name -> codexpulse.core.v1.DeepSeekAPISubscriptionSnapshot
+	203, // 420: codexpulse.core.v1.APISubscriptionsCurrentResponse.open_code_go:type_name -> codexpulse.core.v1.OpenCodeGoSubscriptionSnapshot
+	207, // 421: codexpulse.core.v1.APISubscriptionsCurrentResponse.activity_calendar:type_name -> codexpulse.core.v1.APISubscriptionActivityCalendar
+	38,  // 422: codexpulse.core.v1.CursorUsagePoolSummary.totals:type_name -> codexpulse.core.v1.UsageTotals
+	20,  // 423: codexpulse.core.v1.CursorUsagePoolSummary.reported_usd_micros:type_name -> codexpulse.core.v1.NumericValue
+	20,  // 424: codexpulse.core.v1.CursorUsagePoolSummary.cursor_token_fee_usd_micros:type_name -> codexpulse.core.v1.NumericValue
+	11,  // 425: codexpulse.core.v1.CoreService.Handshake:input_type -> codexpulse.core.v1.HandshakeRequest
+	13,  // 426: codexpulse.core.v1.CoreService.Bootstrap:input_type -> codexpulse.core.v1.BootstrapRequest
+	15,  // 427: codexpulse.core.v1.CoreService.Contracts:input_type -> codexpulse.core.v1.ContractsRequest
+	173, // 428: codexpulse.core.v1.CoreService.AccountSnapshot:input_type -> codexpulse.core.v1.AccountSnapshotRequest
+	180, // 429: codexpulse.core.v1.CoreService.ListCodexSubscriptionAccounts:input_type -> codexpulse.core.v1.CodexSubscriptionAccountsRequest
+	183, // 430: codexpulse.core.v1.CoreService.CreateCodexSubscriptionAccount:input_type -> codexpulse.core.v1.CreateCodexSubscriptionAccountRequest
+	184, // 431: codexpulse.core.v1.CoreService.UpdateCodexSubscriptionAccount:input_type -> codexpulse.core.v1.UpdateCodexSubscriptionAccountRequest
+	185, // 432: codexpulse.core.v1.CoreService.DeleteCodexSubscriptionAccount:input_type -> codexpulse.core.v1.DeleteCodexSubscriptionAccountRequest
+	186, // 433: codexpulse.core.v1.CoreService.LinkCodexSubscriptionAccount:input_type -> codexpulse.core.v1.LinkCodexSubscriptionAccountRequest
+	187, // 434: codexpulse.core.v1.CoreService.UnlinkCodexSubscriptionAccount:input_type -> codexpulse.core.v1.UnlinkCodexSubscriptionAccountRequest
+	32,  // 435: codexpulse.core.v1.CoreService.UsageCost:input_type -> codexpulse.core.v1.UsageCostRequest
+	48,  // 436: codexpulse.core.v1.CoreService.DashboardSummary:input_type -> codexpulse.core.v1.DashboardSummaryRequest
+	58,  // 437: codexpulse.core.v1.CoreService.InvocationUsage:input_type -> codexpulse.core.v1.InvocationUsageRequest
+	65,  // 438: codexpulse.core.v1.CoreService.PricingCatalogCurrent:input_type -> codexpulse.core.v1.PricingCatalogCurrentRequest
+	33,  // 439: codexpulse.core.v1.CoreService.ListSessions:input_type -> codexpulse.core.v1.ListSessionsRequest
+	34,  // 440: codexpulse.core.v1.CoreService.SessionDetail:input_type -> codexpulse.core.v1.SessionDetailRequest
+	35,  // 441: codexpulse.core.v1.CoreService.ListProjects:input_type -> codexpulse.core.v1.ListProjectsRequest
+	36,  // 442: codexpulse.core.v1.CoreService.ProjectDetail:input_type -> codexpulse.core.v1.ProjectDetailRequest
+	78,  // 443: codexpulse.core.v1.CoreService.QuotaCurrent:input_type -> codexpulse.core.v1.QuotaCurrentRequest
+	189, // 444: codexpulse.core.v1.CoreService.APISubscriptionsCurrent:input_type -> codexpulse.core.v1.APISubscriptionsCurrentRequest
+	190, // 445: codexpulse.core.v1.CoreService.APICredentialStatus:input_type -> codexpulse.core.v1.APICredentialStatusRequest
+	192, // 446: codexpulse.core.v1.CoreService.UpdateAPICredential:input_type -> codexpulse.core.v1.UpdateAPICredentialRequest
+	89,  // 447: codexpulse.core.v1.CoreService.QuotaPace:input_type -> codexpulse.core.v1.QuotaPaceRequest
+	97,  // 448: codexpulse.core.v1.CoreService.RequestQuotaRefresh:input_type -> codexpulse.core.v1.QuotaRefreshRequest
+	99,  // 449: codexpulse.core.v1.CoreService.RequestProviderRefresh:input_type -> codexpulse.core.v1.ProviderRefreshRequest
+	103, // 450: codexpulse.core.v1.CoreService.ListSources:input_type -> codexpulse.core.v1.ListSourcesRequest
+	104, // 451: codexpulse.core.v1.CoreService.Source:input_type -> codexpulse.core.v1.SourceRequest
+	105, // 452: codexpulse.core.v1.CoreService.ListJobs:input_type -> codexpulse.core.v1.ListJobsRequest
+	106, // 453: codexpulse.core.v1.CoreService.Job:input_type -> codexpulse.core.v1.JobRequest
+	107, // 454: codexpulse.core.v1.CoreService.ListHealth:input_type -> codexpulse.core.v1.ListHealthRequest
+	108, // 455: codexpulse.core.v1.CoreService.Health:input_type -> codexpulse.core.v1.HealthRequest
+	109, // 456: codexpulse.core.v1.CoreService.HealthProjection:input_type -> codexpulse.core.v1.HealthProjectionRequest
+	110, // 457: codexpulse.core.v1.CoreService.DataHealth:input_type -> codexpulse.core.v1.DataHealthRequest
+	111, // 458: codexpulse.core.v1.CoreService.Settings:input_type -> codexpulse.core.v1.SettingsRequest
+	146, // 459: codexpulse.core.v1.CoreService.UpdateSettings:input_type -> codexpulse.core.v1.UpdateSettingsRequest
+	148, // 460: codexpulse.core.v1.CoreService.PlanHomeSwitch:input_type -> codexpulse.core.v1.PlanHomeSwitchRequest
+	150, // 461: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:input_type -> codexpulse.core.v1.ConfirmHomeSwitchRequest
+	151, // 462: codexpulse.core.v1.CoreService.RecoverHomeSwitch:input_type -> codexpulse.core.v1.RecoverHomeSwitchRequest
+	153, // 463: codexpulse.core.v1.CoreService.RunRuntimeAction:input_type -> codexpulse.core.v1.RuntimeActionRequest
+	155, // 464: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:input_type -> codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
+	157, // 465: codexpulse.core.v1.CoreService.NotifyLifecycle:input_type -> codexpulse.core.v1.LifecycleNotificationRequest
+	159, // 466: codexpulse.core.v1.CoreService.MigrationRecoveryState:input_type -> codexpulse.core.v1.MigrationRecoveryStateRequest
+	160, // 467: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:input_type -> codexpulse.core.v1.MigrationRecoveryRetryRequest
+	163, // 468: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:input_type -> codexpulse.core.v1.MigrationRecoveryPrepareRequest
+	164, // 469: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:input_type -> codexpulse.core.v1.MigrationRecoveryConfirmRequest
+	161, // 470: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:input_type -> codexpulse.core.v1.MigrationRecoveryCancelRequest
+	162, // 471: codexpulse.core.v1.CoreService.MigrationRecoveryExit:input_type -> codexpulse.core.v1.MigrationRecoveryExitRequest
+	169, // 472: codexpulse.core.v1.CoreService.SubscribeInvalidations:input_type -> codexpulse.core.v1.SubscribeInvalidationsRequest
+	171, // 473: codexpulse.core.v1.CoreService.Shutdown:input_type -> codexpulse.core.v1.ShutdownRequest
+	12,  // 474: codexpulse.core.v1.CoreService.Handshake:output_type -> codexpulse.core.v1.HandshakeResponse
+	14,  // 475: codexpulse.core.v1.CoreService.Bootstrap:output_type -> codexpulse.core.v1.BootstrapResponse
+	17,  // 476: codexpulse.core.v1.CoreService.Contracts:output_type -> codexpulse.core.v1.ContractsResponse
+	177, // 477: codexpulse.core.v1.CoreService.AccountSnapshot:output_type -> codexpulse.core.v1.AccountSnapshotResponse
+	181, // 478: codexpulse.core.v1.CoreService.ListCodexSubscriptionAccounts:output_type -> codexpulse.core.v1.CodexSubscriptionAccountsResponse
+	188, // 479: codexpulse.core.v1.CoreService.CreateCodexSubscriptionAccount:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
+	188, // 480: codexpulse.core.v1.CoreService.UpdateCodexSubscriptionAccount:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
+	188, // 481: codexpulse.core.v1.CoreService.DeleteCodexSubscriptionAccount:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
+	188, // 482: codexpulse.core.v1.CoreService.LinkCodexSubscriptionAccount:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
+	188, // 483: codexpulse.core.v1.CoreService.UnlinkCodexSubscriptionAccount:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
+	47,  // 484: codexpulse.core.v1.CoreService.UsageCost:output_type -> codexpulse.core.v1.UsageCostResponse
+	57,  // 485: codexpulse.core.v1.CoreService.DashboardSummary:output_type -> codexpulse.core.v1.DashboardSummaryResponse
+	64,  // 486: codexpulse.core.v1.CoreService.InvocationUsage:output_type -> codexpulse.core.v1.InvocationUsageResponse
+	67,  // 487: codexpulse.core.v1.CoreService.PricingCatalogCurrent:output_type -> codexpulse.core.v1.PricingCatalogCurrentResponse
+	69,  // 488: codexpulse.core.v1.CoreService.ListSessions:output_type -> codexpulse.core.v1.SessionListResponse
+	71,  // 489: codexpulse.core.v1.CoreService.SessionDetail:output_type -> codexpulse.core.v1.SessionDetailResponse
+	76,  // 490: codexpulse.core.v1.CoreService.ListProjects:output_type -> codexpulse.core.v1.ProjectListResponse
+	77,  // 491: codexpulse.core.v1.CoreService.ProjectDetail:output_type -> codexpulse.core.v1.ProjectDetailResponse
+	88,  // 492: codexpulse.core.v1.CoreService.QuotaCurrent:output_type -> codexpulse.core.v1.QuotaCurrentResponse
+	208, // 493: codexpulse.core.v1.CoreService.APISubscriptionsCurrent:output_type -> codexpulse.core.v1.APISubscriptionsCurrentResponse
+	191, // 494: codexpulse.core.v1.CoreService.APICredentialStatus:output_type -> codexpulse.core.v1.APICredentialStatusResponse
+	191, // 495: codexpulse.core.v1.CoreService.UpdateAPICredential:output_type -> codexpulse.core.v1.APICredentialStatusResponse
+	96,  // 496: codexpulse.core.v1.CoreService.QuotaPace:output_type -> codexpulse.core.v1.QuotaPaceResponse
+	98,  // 497: codexpulse.core.v1.CoreService.RequestQuotaRefresh:output_type -> codexpulse.core.v1.QuotaRefreshReceipt
+	102, // 498: codexpulse.core.v1.CoreService.RequestProviderRefresh:output_type -> codexpulse.core.v1.ProviderRefreshReceipt
+	115, // 499: codexpulse.core.v1.CoreService.ListSources:output_type -> codexpulse.core.v1.SourceListResponse
+	116, // 500: codexpulse.core.v1.CoreService.Source:output_type -> codexpulse.core.v1.SourceDetailResponse
+	120, // 501: codexpulse.core.v1.CoreService.ListJobs:output_type -> codexpulse.core.v1.JobListResponse
+	121, // 502: codexpulse.core.v1.CoreService.Job:output_type -> codexpulse.core.v1.JobDetailResponse
+	124, // 503: codexpulse.core.v1.CoreService.ListHealth:output_type -> codexpulse.core.v1.HealthListResponse
+	125, // 504: codexpulse.core.v1.CoreService.Health:output_type -> codexpulse.core.v1.HealthDetailResponse
+	127, // 505: codexpulse.core.v1.CoreService.HealthProjection:output_type -> codexpulse.core.v1.HealthProjectionResponse
+	133, // 506: codexpulse.core.v1.CoreService.DataHealth:output_type -> codexpulse.core.v1.DataHealthResponse
+	141, // 507: codexpulse.core.v1.CoreService.Settings:output_type -> codexpulse.core.v1.SettingsResponse
+	147, // 508: codexpulse.core.v1.CoreService.UpdateSettings:output_type -> codexpulse.core.v1.SettingsUpdateReceipt
+	149, // 509: codexpulse.core.v1.CoreService.PlanHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchPlanReceipt
+	152, // 510: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
+	152, // 511: codexpulse.core.v1.CoreService.RecoverHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
+	154, // 512: codexpulse.core.v1.CoreService.RunRuntimeAction:output_type -> codexpulse.core.v1.RuntimeActionReceipt
+	156, // 513: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:output_type -> codexpulse.core.v1.RepairDryRunReceipt
+	158, // 514: codexpulse.core.v1.CoreService.NotifyLifecycle:output_type -> codexpulse.core.v1.LifecycleNotificationReceipt
+	166, // 515: codexpulse.core.v1.CoreService.MigrationRecoveryState:output_type -> codexpulse.core.v1.MigrationRecoverySnapshot
+	167, // 516: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
+	168, // 517: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:output_type -> codexpulse.core.v1.MigrationRestoreConfirmation
+	167, // 518: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
+	10,  // 519: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:output_type -> codexpulse.core.v1.Empty
+	10,  // 520: codexpulse.core.v1.CoreService.MigrationRecoveryExit:output_type -> codexpulse.core.v1.Empty
+	170, // 521: codexpulse.core.v1.CoreService.SubscribeInvalidations:output_type -> codexpulse.core.v1.QueryInvalidationEvent
+	172, // 522: codexpulse.core.v1.CoreService.Shutdown:output_type -> codexpulse.core.v1.ShutdownResponse
+	474, // [474:523] is the sub-list for method output_type
+	425, // [425:474] is the sub-list for method input_type
+	425, // [425:425] is the sub-list for extension type_name
+	425, // [425:425] is the sub-list for extension extendee
+	0,   // [0:425] is the sub-list for field type_name
 }
 
 func init() { file_api_codexpulse_core_v1_core_proto_init() }
@@ -16299,22 +17891,27 @@ func file_api_codexpulse_core_v1_core_proto_init() {
 	file_api_codexpulse_core_v1_core_proto_msgTypes[165].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[166].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[167].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[171].OneofWrappers = []any{
+	file_api_codexpulse_core_v1_core_proto_msgTypes[168].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[172].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[174].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[175].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[178].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[182].OneofWrappers = []any{
 		(*UpdateAPICredentialRequest_Secret)(nil),
 		(*UpdateAPICredentialRequest_Delete)(nil),
 	}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[172].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[178].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[179].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[182].OneofWrappers = []any{}
-	file_api_codexpulse_core_v1_core_proto_msgTypes[185].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[183].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[189].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[190].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[193].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[196].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_codexpulse_core_v1_core_proto_rawDesc), len(file_api_codexpulse_core_v1_core_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   189,
+			NumEnums:      10,
+			NumMessages:   200,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

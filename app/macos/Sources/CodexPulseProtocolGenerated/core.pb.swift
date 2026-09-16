@@ -109,6 +109,358 @@ public nonisolated enum Codexpulse_Core_V1_CodexProTierState: SwiftProtobuf.Enum
 
 }
 
+public nonisolated enum Codexpulse_Core_V1_CodexSubscriptionPlan: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case free // = 1
+  case go // = 2
+  case plus // = 3
+  case pro5X // = 4
+  case pro20X // = 5
+  case team // = 6
+  case business // = 7
+  case enterprise // = 8
+  case edu // = 9
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .free
+    case 2: self = .go
+    case 3: self = .plus
+    case 4: self = .pro5X
+    case 5: self = .pro20X
+    case 6: self = .team
+    case 7: self = .business
+    case 8: self = .enterprise
+    case 9: self = .edu
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .free: return 1
+    case .go: return 2
+    case .plus: return 3
+    case .pro5X: return 4
+    case .pro20X: return 5
+    case .team: return 6
+    case .business: return 7
+    case .enterprise: return 8
+    case .edu: return 9
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Codexpulse_Core_V1_CodexSubscriptionPlan] = [
+    .unspecified,
+    .free,
+    .go,
+    .plus,
+    .pro5X,
+    .pro20X,
+    .team,
+    .business,
+    .enterprise,
+    .edu,
+  ]
+
+}
+
+public nonisolated enum Codexpulse_Core_V1_CodexSubscriptionAutomaticPlanState: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case unavailable // = 1
+  case known // = 2
+  case unknown // = 3
+  case conflict // = 4
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .unavailable
+    case 2: self = .known
+    case 3: self = .unknown
+    case 4: self = .conflict
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .unavailable: return 1
+    case .known: return 2
+    case .unknown: return 3
+    case .conflict: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Codexpulse_Core_V1_CodexSubscriptionAutomaticPlanState] = [
+    .unspecified,
+    .unavailable,
+    .known,
+    .unknown,
+    .conflict,
+  ]
+
+}
+
+public nonisolated enum Codexpulse_Core_V1_CodexSubscriptionValueSource: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case unavailable // = 1
+  case automatic // = 2
+  case manual // = 3
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .unavailable
+    case 2: self = .automatic
+    case 3: self = .manual
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .unavailable: return 1
+    case .automatic: return 2
+    case .manual: return 3
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Codexpulse_Core_V1_CodexSubscriptionValueSource] = [
+    .unspecified,
+    .unavailable,
+    .automatic,
+    .manual,
+  ]
+
+}
+
+public nonisolated enum Codexpulse_Core_V1_CodexSubscriptionDateKind: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+
+  /// membership_date contributes only its day component and recurs monthly.
+  case nextRenewal // = 1
+
+  /// membership_date is an exact Gregorian civil date.
+  case membershipExpiry // = 2
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .nextRenewal
+    case 2: self = .membershipExpiry
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .nextRenewal: return 1
+    case .membershipExpiry: return 2
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Codexpulse_Core_V1_CodexSubscriptionDateKind] = [
+    .unspecified,
+    .nextRenewal,
+    .membershipExpiry,
+  ]
+
+}
+
+public nonisolated enum Codexpulse_Core_V1_CodexSubscriptionDateState: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case unavailable // = 1
+  case future // = 2
+  case today // = 3
+  case needsUpdate // = 4
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .unavailable
+    case 2: self = .future
+    case 3: self = .today
+    case 4: self = .needsUpdate
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .unavailable: return 1
+    case .future: return 2
+    case .today: return 3
+    case .needsUpdate: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Codexpulse_Core_V1_CodexSubscriptionDateState] = [
+    .unspecified,
+    .unavailable,
+    .future,
+    .today,
+    .needsUpdate,
+  ]
+
+}
+
+public nonisolated enum Codexpulse_Core_V1_CodexSubscriptionAutomaticSource: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case accountSandwich // = 1
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .accountSandwich
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .accountSandwich: return 1
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Codexpulse_Core_V1_CodexSubscriptionAutomaticSource] = [
+    .unspecified,
+    .accountSandwich,
+  ]
+
+}
+
+public nonisolated enum Codexpulse_Core_V1_CodexSubscriptionAutomaticDateCapability: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case manualOnly // = 1
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .manualOnly
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .manualOnly: return 1
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Codexpulse_Core_V1_CodexSubscriptionAutomaticDateCapability] = [
+    .unspecified,
+    .manualOnly,
+  ]
+
+}
+
+public nonisolated enum Codexpulse_Core_V1_CodexSubscriptionMutationResult: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case applied // = 1
+  case noop // = 2
+  case conflict // = 3
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .applied
+    case 2: self = .noop
+    case 3: self = .conflict
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .applied: return 1
+    case .noop: return 2
+    case .conflict: return 3
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Codexpulse_Core_V1_CodexSubscriptionMutationResult] = [
+    .unspecified,
+    .applied,
+    .noop,
+    .conflict,
+  ]
+
+}
+
 public nonisolated struct Codexpulse_Core_V1_Empty: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -249,6 +601,8 @@ public nonisolated struct Codexpulse_Core_V1_ContractsResponse: Sendable {
   public var dashboardSummaryVersion: String = String()
 
   public var codexProTierVersion: String = String()
+
+  public var codexSubscriptionAccountsVersion: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -7051,6 +7405,10 @@ public nonisolated struct Codexpulse_Core_V1_AccountSnapshotRequest: Sendable {
   /// Clears the value of `provider`. Subsequent reads from it will return its default value.
   public mutating func clearProvider() {self._provider = nil}
 
+  public var evaluatedAtMs: Int64 = 0
+
+  public var timeZone: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -7185,6 +7543,15 @@ public nonisolated struct Codexpulse_Core_V1_AccountSnapshotResponse: Sendable {
   /// Clears the value of `proTier`. Subsequent reads from it will return its default value.
   public mutating func clearProTier() {self._proTier = nil}
 
+  public var subscription: Codexpulse_Core_V1_CodexSubscriptionAccount {
+    get {_subscription ?? Codexpulse_Core_V1_CodexSubscriptionAccount()}
+    set {_subscription = newValue}
+  }
+  /// Returns true if `subscription` has been explicitly set.
+  public var hasSubscription: Bool {self._subscription != nil}
+  /// Clears the value of `subscription`. Subsequent reads from it will return its default value.
+  public mutating func clearSubscription() {self._subscription = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -7192,6 +7559,527 @@ public nonisolated struct Codexpulse_Core_V1_AccountSnapshotResponse: Sendable {
   fileprivate var _account: Codexpulse_Core_V1_CodexAccountIdentity? = nil
   fileprivate var _binding: Codexpulse_Core_V1_CodexAccountBinding? = nil
   fileprivate var _proTier: Codexpulse_Core_V1_CodexProTierSnapshot? = nil
+  fileprivate var _subscription: Codexpulse_Core_V1_CodexSubscriptionAccount? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_CodexSubscriptionAccount: @unchecked Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var accountID: String {
+    get {_storage._accountID}
+    set {_uniqueStorage()._accountID = newValue}
+  }
+
+  public var detectedAccountID: String {
+    get {_storage._detectedAccountID ?? String()}
+    set {_uniqueStorage()._detectedAccountID = newValue}
+  }
+  /// Returns true if `detectedAccountID` has been explicitly set.
+  public var hasDetectedAccountID: Bool {_storage._detectedAccountID != nil}
+  /// Clears the value of `detectedAccountID`. Subsequent reads from it will return its default value.
+  public mutating func clearDetectedAccountID() {_uniqueStorage()._detectedAccountID = nil}
+
+  public var manualEntryID: String {
+    get {_storage._manualEntryID ?? String()}
+    set {_uniqueStorage()._manualEntryID = newValue}
+  }
+  /// Returns true if `manualEntryID` has been explicitly set.
+  public var hasManualEntryID: Bool {_storage._manualEntryID != nil}
+  /// Clears the value of `manualEntryID`. Subsequent reads from it will return its default value.
+  public mutating func clearManualEntryID() {_uniqueStorage()._manualEntryID = nil}
+
+  public var alias: String {
+    get {_storage._alias ?? String()}
+    set {_uniqueStorage()._alias = newValue}
+  }
+  /// Returns true if `alias` has been explicitly set.
+  public var hasAlias: Bool {_storage._alias != nil}
+  /// Clears the value of `alias`. Subsequent reads from it will return its default value.
+  public mutating func clearAlias() {_uniqueStorage()._alias = nil}
+
+  public var displayEmail: String {
+    get {_storage._displayEmail ?? String()}
+    set {_uniqueStorage()._displayEmail = newValue}
+  }
+  /// Returns true if `displayEmail` has been explicitly set.
+  public var hasDisplayEmail: Bool {_storage._displayEmail != nil}
+  /// Clears the value of `displayEmail`. Subsequent reads from it will return its default value.
+  public mutating func clearDisplayEmail() {_uniqueStorage()._displayEmail = nil}
+
+  public var detectedEmail: String {
+    get {_storage._detectedEmail ?? String()}
+    set {_uniqueStorage()._detectedEmail = newValue}
+  }
+  /// Returns true if `detectedEmail` has been explicitly set.
+  public var hasDetectedEmail: Bool {_storage._detectedEmail != nil}
+  /// Clears the value of `detectedEmail`. Subsequent reads from it will return its default value.
+  public mutating func clearDetectedEmail() {_uniqueStorage()._detectedEmail = nil}
+
+  public var manualEmail: String {
+    get {_storage._manualEmail ?? String()}
+    set {_uniqueStorage()._manualEmail = newValue}
+  }
+  /// Returns true if `manualEmail` has been explicitly set.
+  public var hasManualEmail: Bool {_storage._manualEmail != nil}
+  /// Clears the value of `manualEmail`. Subsequent reads from it will return its default value.
+  public mutating func clearManualEmail() {_uniqueStorage()._manualEmail = nil}
+
+  public var current: Bool {
+    get {_storage._current}
+    set {_uniqueStorage()._current = newValue}
+  }
+
+  public var detected: Bool {
+    get {_storage._detected}
+    set {_uniqueStorage()._detected = newValue}
+  }
+
+  public var hasManual_p: Bool {
+    get {_storage._hasManual_p}
+    set {_uniqueStorage()._hasManual_p = newValue}
+  }
+
+  public var linked: Bool {
+    get {_storage._linked}
+    set {_uniqueStorage()._linked = newValue}
+  }
+
+  public var detectedEmailObservedAtMs: Int64 {
+    get {_storage._detectedEmailObservedAtMs ?? 0}
+    set {_uniqueStorage()._detectedEmailObservedAtMs = newValue}
+  }
+  /// Returns true if `detectedEmailObservedAtMs` has been explicitly set.
+  public var hasDetectedEmailObservedAtMs: Bool {_storage._detectedEmailObservedAtMs != nil}
+  /// Clears the value of `detectedEmailObservedAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearDetectedEmailObservedAtMs() {_uniqueStorage()._detectedEmailObservedAtMs = nil}
+
+  public var automaticPlan: Codexpulse_Core_V1_CodexSubscriptionPlan {
+    get {_storage._automaticPlan ?? .unspecified}
+    set {_uniqueStorage()._automaticPlan = newValue}
+  }
+  /// Returns true if `automaticPlan` has been explicitly set.
+  public var hasAutomaticPlan: Bool {_storage._automaticPlan != nil}
+  /// Clears the value of `automaticPlan`. Subsequent reads from it will return its default value.
+  public mutating func clearAutomaticPlan() {_uniqueStorage()._automaticPlan = nil}
+
+  public var automaticPlanState: Codexpulse_Core_V1_CodexSubscriptionAutomaticPlanState {
+    get {_storage._automaticPlanState}
+    set {_uniqueStorage()._automaticPlanState = newValue}
+  }
+
+  public var automaticPlanSource: Codexpulse_Core_V1_CodexSubscriptionAutomaticSource {
+    get {_storage._automaticPlanSource ?? .unspecified}
+    set {_uniqueStorage()._automaticPlanSource = newValue}
+  }
+  /// Returns true if `automaticPlanSource` has been explicitly set.
+  public var hasAutomaticPlanSource: Bool {_storage._automaticPlanSource != nil}
+  /// Clears the value of `automaticPlanSource`. Subsequent reads from it will return its default value.
+  public mutating func clearAutomaticPlanSource() {_uniqueStorage()._automaticPlanSource = nil}
+
+  public var automaticPlanObservedAtMs: Int64 {
+    get {_storage._automaticPlanObservedAtMs ?? 0}
+    set {_uniqueStorage()._automaticPlanObservedAtMs = newValue}
+  }
+  /// Returns true if `automaticPlanObservedAtMs` has been explicitly set.
+  public var hasAutomaticPlanObservedAtMs: Bool {_storage._automaticPlanObservedAtMs != nil}
+  /// Clears the value of `automaticPlanObservedAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearAutomaticPlanObservedAtMs() {_uniqueStorage()._automaticPlanObservedAtMs = nil}
+
+  public var manualPlan: Codexpulse_Core_V1_CodexSubscriptionPlan {
+    get {_storage._manualPlan ?? .unspecified}
+    set {_uniqueStorage()._manualPlan = newValue}
+  }
+  /// Returns true if `manualPlan` has been explicitly set.
+  public var hasManualPlan: Bool {_storage._manualPlan != nil}
+  /// Clears the value of `manualPlan`. Subsequent reads from it will return its default value.
+  public mutating func clearManualPlan() {_uniqueStorage()._manualPlan = nil}
+
+  public var resolvedPlan: Codexpulse_Core_V1_CodexSubscriptionPlan {
+    get {_storage._resolvedPlan ?? .unspecified}
+    set {_uniqueStorage()._resolvedPlan = newValue}
+  }
+  /// Returns true if `resolvedPlan` has been explicitly set.
+  public var hasResolvedPlan: Bool {_storage._resolvedPlan != nil}
+  /// Clears the value of `resolvedPlan`. Subsequent reads from it will return its default value.
+  public mutating func clearResolvedPlan() {_uniqueStorage()._resolvedPlan = nil}
+
+  public var resolvedPlanSource: Codexpulse_Core_V1_CodexSubscriptionValueSource {
+    get {_storage._resolvedPlanSource}
+    set {_uniqueStorage()._resolvedPlanSource = newValue}
+  }
+
+  /// NEXT_RENEWAL uses only DD as a monthly renewal day; MEMBERSHIP_EXPIRY uses YYYY-MM-DD.
+  public var membershipDate: String {
+    get {_storage._membershipDate ?? String()}
+    set {_uniqueStorage()._membershipDate = newValue}
+  }
+  /// Returns true if `membershipDate` has been explicitly set.
+  public var hasMembershipDate: Bool {_storage._membershipDate != nil}
+  /// Clears the value of `membershipDate`. Subsequent reads from it will return its default value.
+  public mutating func clearMembershipDate() {_uniqueStorage()._membershipDate = nil}
+
+  public var dateKind: Codexpulse_Core_V1_CodexSubscriptionDateKind {
+    get {_storage._dateKind ?? .unspecified}
+    set {_uniqueStorage()._dateKind = newValue}
+  }
+  /// Returns true if `dateKind` has been explicitly set.
+  public var hasDateKind: Bool {_storage._dateKind != nil}
+  /// Clears the value of `dateKind`. Subsequent reads from it will return its default value.
+  public mutating func clearDateKind() {_uniqueStorage()._dateKind = nil}
+
+  public var dateSource: Codexpulse_Core_V1_CodexSubscriptionValueSource {
+    get {_storage._dateSource}
+    set {_uniqueStorage()._dateSource = newValue}
+  }
+
+  public var dateState: Codexpulse_Core_V1_CodexSubscriptionDateState {
+    get {_storage._dateState}
+    set {_uniqueStorage()._dateState = newValue}
+  }
+
+  public var dayDelta: Int32 {
+    get {_storage._dayDelta ?? 0}
+    set {_uniqueStorage()._dayDelta = newValue}
+  }
+  /// Returns true if `dayDelta` has been explicitly set.
+  public var hasDayDelta: Bool {_storage._dayDelta != nil}
+  /// Clears the value of `dayDelta`. Subsequent reads from it will return its default value.
+  public mutating func clearDayDelta() {_uniqueStorage()._dayDelta = nil}
+
+  public var detectedRevision: Int64 {
+    get {_storage._detectedRevision ?? 0}
+    set {_uniqueStorage()._detectedRevision = newValue}
+  }
+  /// Returns true if `detectedRevision` has been explicitly set.
+  public var hasDetectedRevision: Bool {_storage._detectedRevision != nil}
+  /// Clears the value of `detectedRevision`. Subsequent reads from it will return its default value.
+  public mutating func clearDetectedRevision() {_uniqueStorage()._detectedRevision = nil}
+
+  public var manualRevision: Int64 {
+    get {_storage._manualRevision ?? 0}
+    set {_uniqueStorage()._manualRevision = newValue}
+  }
+  /// Returns true if `manualRevision` has been explicitly set.
+  public var hasManualRevision: Bool {_storage._manualRevision != nil}
+  /// Clears the value of `manualRevision`. Subsequent reads from it will return its default value.
+  public mutating func clearManualRevision() {_uniqueStorage()._manualRevision = nil}
+
+  public var linkRevision: Int64 {
+    get {_storage._linkRevision ?? 0}
+    set {_uniqueStorage()._linkRevision = newValue}
+  }
+  /// Returns true if `linkRevision` has been explicitly set.
+  public var hasLinkRevision: Bool {_storage._linkRevision != nil}
+  /// Clears the value of `linkRevision`. Subsequent reads from it will return its default value.
+  public mutating func clearLinkRevision() {_uniqueStorage()._linkRevision = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+public nonisolated struct Codexpulse_Core_V1_CodexSubscriptionLinkCandidate: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var detectedAccountID: String = String()
+
+  public var manualEntryID: String = String()
+
+  public var reason: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_CodexSubscriptionAccountsRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var evaluatedAtMs: Int64 = 0
+
+  public var timeZone: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_CodexSubscriptionAccountsResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var version: String = String()
+
+  public var evaluatedAtMs: Int64 = 0
+
+  public var timeZone: String = String()
+
+  public var automaticDateCapability: Codexpulse_Core_V1_CodexSubscriptionAutomaticDateCapability = .unspecified
+
+  public var accounts: [Codexpulse_Core_V1_CodexSubscriptionAccount] = []
+
+  public var linkCandidates: [Codexpulse_Core_V1_CodexSubscriptionLinkCandidate] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_CodexSubscriptionManualFields: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var email: String {
+    get {_email ?? String()}
+    set {_email = newValue}
+  }
+  /// Returns true if `email` has been explicitly set.
+  public var hasEmail: Bool {self._email != nil}
+  /// Clears the value of `email`. Subsequent reads from it will return its default value.
+  public mutating func clearEmail() {self._email = nil}
+
+  public var alias: String {
+    get {_alias ?? String()}
+    set {_alias = newValue}
+  }
+  /// Returns true if `alias` has been explicitly set.
+  public var hasAlias: Bool {self._alias != nil}
+  /// Clears the value of `alias`. Subsequent reads from it will return its default value.
+  public mutating func clearAlias() {self._alias = nil}
+
+  public var plan: Codexpulse_Core_V1_CodexSubscriptionPlan {
+    get {_plan ?? .unspecified}
+    set {_plan = newValue}
+  }
+  /// Returns true if `plan` has been explicitly set.
+  public var hasPlan: Bool {self._plan != nil}
+  /// Clears the value of `plan`. Subsequent reads from it will return its default value.
+  public mutating func clearPlan() {self._plan = nil}
+
+  /// NEXT_RENEWAL uses only DD as a monthly renewal day; MEMBERSHIP_EXPIRY uses YYYY-MM-DD.
+  public var membershipDate: String {
+    get {_membershipDate ?? String()}
+    set {_membershipDate = newValue}
+  }
+  /// Returns true if `membershipDate` has been explicitly set.
+  public var hasMembershipDate: Bool {self._membershipDate != nil}
+  /// Clears the value of `membershipDate`. Subsequent reads from it will return its default value.
+  public mutating func clearMembershipDate() {self._membershipDate = nil}
+
+  public var dateKind: Codexpulse_Core_V1_CodexSubscriptionDateKind {
+    get {_dateKind ?? .unspecified}
+    set {_dateKind = newValue}
+  }
+  /// Returns true if `dateKind` has been explicitly set.
+  public var hasDateKind: Bool {self._dateKind != nil}
+  /// Clears the value of `dateKind`. Subsequent reads from it will return its default value.
+  public mutating func clearDateKind() {self._dateKind = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _email: String? = nil
+  fileprivate var _alias: String? = nil
+  fileprivate var _plan: Codexpulse_Core_V1_CodexSubscriptionPlan? = nil
+  fileprivate var _membershipDate: String? = nil
+  fileprivate var _dateKind: Codexpulse_Core_V1_CodexSubscriptionDateKind? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var manualEntryID: String = String()
+
+  public var manual: Codexpulse_Core_V1_CodexSubscriptionManualFields {
+    get {_manual ?? Codexpulse_Core_V1_CodexSubscriptionManualFields()}
+    set {_manual = newValue}
+  }
+  /// Returns true if `manual` has been explicitly set.
+  public var hasManual: Bool {self._manual != nil}
+  /// Clears the value of `manual`. Subsequent reads from it will return its default value.
+  public mutating func clearManual() {self._manual = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _manual: Codexpulse_Core_V1_CodexSubscriptionManualFields? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var accountID: String = String()
+
+  public var manual: Codexpulse_Core_V1_CodexSubscriptionManualFields {
+    get {_manual ?? Codexpulse_Core_V1_CodexSubscriptionManualFields()}
+    set {_manual = newValue}
+  }
+  /// Returns true if `manual` has been explicitly set.
+  public var hasManual: Bool {self._manual != nil}
+  /// Clears the value of `manual`. Subsequent reads from it will return its default value.
+  public mutating func clearManual() {self._manual = nil}
+
+  public var newManualEntryID: String {
+    get {_newManualEntryID ?? String()}
+    set {_newManualEntryID = newValue}
+  }
+  /// Returns true if `newManualEntryID` has been explicitly set.
+  public var hasNewManualEntryID: Bool {self._newManualEntryID != nil}
+  /// Clears the value of `newManualEntryID`. Subsequent reads from it will return its default value.
+  public mutating func clearNewManualEntryID() {self._newManualEntryID = nil}
+
+  public var expectedManualRevision: Int64 {
+    get {_expectedManualRevision ?? 0}
+    set {_expectedManualRevision = newValue}
+  }
+  /// Returns true if `expectedManualRevision` has been explicitly set.
+  public var hasExpectedManualRevision: Bool {self._expectedManualRevision != nil}
+  /// Clears the value of `expectedManualRevision`. Subsequent reads from it will return its default value.
+  public mutating func clearExpectedManualRevision() {self._expectedManualRevision = nil}
+
+  public var expectedLinkRevision: Int64 {
+    get {_expectedLinkRevision ?? 0}
+    set {_expectedLinkRevision = newValue}
+  }
+  /// Returns true if `expectedLinkRevision` has been explicitly set.
+  public var hasExpectedLinkRevision: Bool {self._expectedLinkRevision != nil}
+  /// Clears the value of `expectedLinkRevision`. Subsequent reads from it will return its default value.
+  public mutating func clearExpectedLinkRevision() {self._expectedLinkRevision = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _manual: Codexpulse_Core_V1_CodexSubscriptionManualFields? = nil
+  fileprivate var _newManualEntryID: String? = nil
+  fileprivate var _expectedManualRevision: Int64? = nil
+  fileprivate var _expectedLinkRevision: Int64? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var accountID: String = String()
+
+  public var expectedDetectedRevision: Int64 {
+    get {_expectedDetectedRevision ?? 0}
+    set {_expectedDetectedRevision = newValue}
+  }
+  /// Returns true if `expectedDetectedRevision` has been explicitly set.
+  public var hasExpectedDetectedRevision: Bool {self._expectedDetectedRevision != nil}
+  /// Clears the value of `expectedDetectedRevision`. Subsequent reads from it will return its default value.
+  public mutating func clearExpectedDetectedRevision() {self._expectedDetectedRevision = nil}
+
+  public var expectedManualRevision: Int64 {
+    get {_expectedManualRevision ?? 0}
+    set {_expectedManualRevision = newValue}
+  }
+  /// Returns true if `expectedManualRevision` has been explicitly set.
+  public var hasExpectedManualRevision: Bool {self._expectedManualRevision != nil}
+  /// Clears the value of `expectedManualRevision`. Subsequent reads from it will return its default value.
+  public mutating func clearExpectedManualRevision() {self._expectedManualRevision = nil}
+
+  public var expectedLinkRevision: Int64 {
+    get {_expectedLinkRevision ?? 0}
+    set {_expectedLinkRevision = newValue}
+  }
+  /// Returns true if `expectedLinkRevision` has been explicitly set.
+  public var hasExpectedLinkRevision: Bool {self._expectedLinkRevision != nil}
+  /// Clears the value of `expectedLinkRevision`. Subsequent reads from it will return its default value.
+  public mutating func clearExpectedLinkRevision() {self._expectedLinkRevision = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _expectedDetectedRevision: Int64? = nil
+  fileprivate var _expectedManualRevision: Int64? = nil
+  fileprivate var _expectedLinkRevision: Int64? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var detectedAccountID: String = String()
+
+  public var manualEntryID: String = String()
+
+  public var expectedManualRevision: Int64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var detectedAccountID: String = String()
+
+  public var manualEntryID: String = String()
+
+  public var expectedManualRevision: Int64 = 0
+
+  public var expectedLinkRevision: Int64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_CodexSubscriptionMutationReceipt: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var result: Codexpulse_Core_V1_CodexSubscriptionMutationResult = .unspecified
+
+  public var reason: String {
+    get {_reason ?? String()}
+    set {_reason = newValue}
+  }
+  /// Returns true if `reason` has been explicitly set.
+  public var hasReason: Bool {self._reason != nil}
+  /// Clears the value of `reason`. Subsequent reads from it will return its default value.
+  public mutating func clearReason() {self._reason = nil}
+
+  public var account: Codexpulse_Core_V1_CodexSubscriptionAccount {
+    get {_account ?? Codexpulse_Core_V1_CodexSubscriptionAccount()}
+    set {_account = newValue}
+  }
+  /// Returns true if `account` has been explicitly set.
+  public var hasAccount: Bool {self._account != nil}
+  /// Clears the value of `account`. Subsequent reads from it will return its default value.
+  public mutating func clearAccount() {self._account = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _reason: String? = nil
+  fileprivate var _account: Codexpulse_Core_V1_CodexSubscriptionAccount? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_APISubscriptionsCurrentRequest: Sendable {
@@ -7691,6 +8579,38 @@ nonisolated extension Codexpulse_Core_V1_CodexProTierState: SwiftProtobuf._Proto
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CODEX_PRO_TIER_STATE_UNSPECIFIED\0\u{1}CODEX_PRO_TIER_STATE_KNOWN\0\u{1}CODEX_PRO_TIER_STATE_PRO_UNKNOWN\0\u{1}CODEX_PRO_TIER_STATE_CONFLICT\0\u{1}CODEX_PRO_TIER_STATE_NOT_APPLICABLE\0")
 }
 
+nonisolated extension Codexpulse_Core_V1_CodexSubscriptionPlan: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CODEX_SUBSCRIPTION_PLAN_UNSPECIFIED\0\u{1}CODEX_SUBSCRIPTION_PLAN_FREE\0\u{1}CODEX_SUBSCRIPTION_PLAN_GO\0\u{1}CODEX_SUBSCRIPTION_PLAN_PLUS\0\u{1}CODEX_SUBSCRIPTION_PLAN_PRO_5X\0\u{1}CODEX_SUBSCRIPTION_PLAN_PRO_20X\0\u{1}CODEX_SUBSCRIPTION_PLAN_TEAM\0\u{1}CODEX_SUBSCRIPTION_PLAN_BUSINESS\0\u{1}CODEX_SUBSCRIPTION_PLAN_ENTERPRISE\0\u{1}CODEX_SUBSCRIPTION_PLAN_EDU\0")
+}
+
+nonisolated extension Codexpulse_Core_V1_CodexSubscriptionAutomaticPlanState: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNSPECIFIED\0\u{1}CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNAVAILABLE\0\u{1}CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_KNOWN\0\u{1}CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_UNKNOWN\0\u{1}CODEX_SUBSCRIPTION_AUTOMATIC_PLAN_STATE_CONFLICT\0")
+}
+
+nonisolated extension Codexpulse_Core_V1_CodexSubscriptionValueSource: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CODEX_SUBSCRIPTION_VALUE_SOURCE_UNSPECIFIED\0\u{1}CODEX_SUBSCRIPTION_VALUE_SOURCE_UNAVAILABLE\0\u{1}CODEX_SUBSCRIPTION_VALUE_SOURCE_AUTOMATIC\0\u{1}CODEX_SUBSCRIPTION_VALUE_SOURCE_MANUAL\0")
+}
+
+nonisolated extension Codexpulse_Core_V1_CodexSubscriptionDateKind: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CODEX_SUBSCRIPTION_DATE_KIND_UNSPECIFIED\0\u{1}CODEX_SUBSCRIPTION_DATE_KIND_NEXT_RENEWAL\0\u{1}CODEX_SUBSCRIPTION_DATE_KIND_MEMBERSHIP_EXPIRY\0")
+}
+
+nonisolated extension Codexpulse_Core_V1_CodexSubscriptionDateState: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CODEX_SUBSCRIPTION_DATE_STATE_UNSPECIFIED\0\u{1}CODEX_SUBSCRIPTION_DATE_STATE_UNAVAILABLE\0\u{1}CODEX_SUBSCRIPTION_DATE_STATE_FUTURE\0\u{1}CODEX_SUBSCRIPTION_DATE_STATE_TODAY\0\u{1}CODEX_SUBSCRIPTION_DATE_STATE_NEEDS_UPDATE\0")
+}
+
+nonisolated extension Codexpulse_Core_V1_CodexSubscriptionAutomaticSource: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CODEX_SUBSCRIPTION_AUTOMATIC_SOURCE_UNSPECIFIED\0\u{1}CODEX_SUBSCRIPTION_AUTOMATIC_SOURCE_ACCOUNT_SANDWICH\0")
+}
+
+nonisolated extension Codexpulse_Core_V1_CodexSubscriptionAutomaticDateCapability: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_UNSPECIFIED\0\u{1}CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_MANUAL_ONLY\0")
+}
+
+nonisolated extension Codexpulse_Core_V1_CodexSubscriptionMutationResult: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CODEX_SUBSCRIPTION_MUTATION_RESULT_UNSPECIFIED\0\u{1}CODEX_SUBSCRIPTION_MUTATION_RESULT_APPLIED\0\u{1}CODEX_SUBSCRIPTION_MUTATION_RESULT_NOOP\0\u{1}CODEX_SUBSCRIPTION_MUTATION_RESULT_CONFLICT\0")
+}
+
 nonisolated extension Codexpulse_Core_V1_Empty: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Empty"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
@@ -7924,7 +8844,7 @@ nonisolated extension Codexpulse_Core_V1_MethodInfo: SwiftProtobuf.Message, Swif
 
 nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ContractsResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}query_version\0\u{3}usage_cost_version\0\u{3}runtime_info_version\0\u{1}methods\0\u{3}command_methods\0\u{3}error_example\0\u{3}pricing_catalog_version\0\u{3}invocation_usage_version\0\u{3}dashboard_summary_version\0\u{3}codex_pro_tier_version\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}query_version\0\u{3}usage_cost_version\0\u{3}runtime_info_version\0\u{1}methods\0\u{3}command_methods\0\u{3}error_example\0\u{3}pricing_catalog_version\0\u{3}invocation_usage_version\0\u{3}dashboard_summary_version\0\u{3}codex_pro_tier_version\0\u{3}codex_subscription_accounts_version\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -7943,6 +8863,7 @@ nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Messag
       case 9: try { try decoder.decodeSingularStringField(value: &self.invocationUsageVersion) }()
       case 10: try { try decoder.decodeSingularStringField(value: &self.dashboardSummaryVersion) }()
       case 11: try { try decoder.decodeSingularStringField(value: &self.codexProTierVersion) }()
+      case 12: try { try decoder.decodeSingularStringField(value: &self.codexSubscriptionAccountsVersion) }()
       default: break
       }
     }
@@ -7986,6 +8907,9 @@ nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Messag
     if !self.codexProTierVersion.isEmpty {
       try visitor.visitSingularStringField(value: self.codexProTierVersion, fieldNumber: 11)
     }
+    if !self.codexSubscriptionAccountsVersion.isEmpty {
+      try visitor.visitSingularStringField(value: self.codexSubscriptionAccountsVersion, fieldNumber: 12)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -8001,6 +8925,7 @@ nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Messag
     if lhs.invocationUsageVersion != rhs.invocationUsageVersion {return false}
     if lhs.dashboardSummaryVersion != rhs.dashboardSummaryVersion {return false}
     if lhs.codexProTierVersion != rhs.codexProTierVersion {return false}
+    if lhs.codexSubscriptionAccountsVersion != rhs.codexSubscriptionAccountsVersion {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -17933,7 +18858,7 @@ nonisolated extension Codexpulse_Core_V1_ShutdownResponse: SwiftProtobuf.Message
 
 nonisolated extension Codexpulse_Core_V1_AccountSnapshotRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AccountSnapshotRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}provider\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}provider\0\u{3}evaluated_at_ms\0\u{3}time_zone\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -17942,6 +18867,8 @@ nonisolated extension Codexpulse_Core_V1_AccountSnapshotRequest: SwiftProtobuf.M
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularMessageField(value: &self._provider) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.evaluatedAtMs) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.timeZone) }()
       default: break
       }
     }
@@ -17955,11 +18882,19 @@ nonisolated extension Codexpulse_Core_V1_AccountSnapshotRequest: SwiftProtobuf.M
     try { if let v = self._provider {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
     } }()
+    if self.evaluatedAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.evaluatedAtMs, fieldNumber: 2)
+    }
+    if !self.timeZone.isEmpty {
+      try visitor.visitSingularStringField(value: self.timeZone, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Codexpulse_Core_V1_AccountSnapshotRequest, rhs: Codexpulse_Core_V1_AccountSnapshotRequest) -> Bool {
     if lhs._provider != rhs._provider {return false}
+    if lhs.evaluatedAtMs != rhs.evaluatedAtMs {return false}
+    if lhs.timeZone != rhs.timeZone {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -18109,7 +19044,7 @@ nonisolated extension Codexpulse_Core_V1_CodexProTierSnapshot: SwiftProtobuf.Mes
 
 nonisolated extension Codexpulse_Core_V1_AccountSnapshotResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AccountSnapshotResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}account\0\u{1}binding\0\u{3}pro_tier\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}account\0\u{1}binding\0\u{3}pro_tier\0\u{1}subscription\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -18120,6 +19055,7 @@ nonisolated extension Codexpulse_Core_V1_AccountSnapshotResponse: SwiftProtobuf.
       case 1: try { try decoder.decodeSingularMessageField(value: &self._account) }()
       case 2: try { try decoder.decodeSingularMessageField(value: &self._binding) }()
       case 3: try { try decoder.decodeSingularMessageField(value: &self._proTier) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._subscription) }()
       default: break
       }
     }
@@ -18139,6 +19075,9 @@ nonisolated extension Codexpulse_Core_V1_AccountSnapshotResponse: SwiftProtobuf.
     try { if let v = self._proTier {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
     } }()
+    try { if let v = self._subscription {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -18146,6 +19085,714 @@ nonisolated extension Codexpulse_Core_V1_AccountSnapshotResponse: SwiftProtobuf.
     if lhs._account != rhs._account {return false}
     if lhs._binding != rhs._binding {return false}
     if lhs._proTier != rhs._proTier {return false}
+    if lhs._subscription != rhs._subscription {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_CodexSubscriptionAccount: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CodexSubscriptionAccount"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}account_id\0\u{3}detected_account_id\0\u{3}manual_entry_id\0\u{1}alias\0\u{3}display_email\0\u{3}detected_email\0\u{3}manual_email\0\u{1}current\0\u{1}detected\0\u{3}has_manual\0\u{1}linked\0\u{3}detected_email_observed_at_ms\0\u{3}automatic_plan\0\u{3}automatic_plan_state\0\u{3}automatic_plan_source\0\u{3}automatic_plan_observed_at_ms\0\u{3}manual_plan\0\u{3}resolved_plan\0\u{3}resolved_plan_source\0\u{3}membership_date\0\u{3}date_kind\0\u{3}date_source\0\u{3}date_state\0\u{3}day_delta\0\u{3}detected_revision\0\u{3}manual_revision\0\u{3}link_revision\0")
+
+  fileprivate class _StorageClass {
+    var _accountID: String = String()
+    var _detectedAccountID: String? = nil
+    var _manualEntryID: String? = nil
+    var _alias: String? = nil
+    var _displayEmail: String? = nil
+    var _detectedEmail: String? = nil
+    var _manualEmail: String? = nil
+    var _current: Bool = false
+    var _detected: Bool = false
+    var _hasManual_p: Bool = false
+    var _linked: Bool = false
+    var _detectedEmailObservedAtMs: Int64? = nil
+    var _automaticPlan: Codexpulse_Core_V1_CodexSubscriptionPlan? = nil
+    var _automaticPlanState: Codexpulse_Core_V1_CodexSubscriptionAutomaticPlanState = .unspecified
+    var _automaticPlanSource: Codexpulse_Core_V1_CodexSubscriptionAutomaticSource? = nil
+    var _automaticPlanObservedAtMs: Int64? = nil
+    var _manualPlan: Codexpulse_Core_V1_CodexSubscriptionPlan? = nil
+    var _resolvedPlan: Codexpulse_Core_V1_CodexSubscriptionPlan? = nil
+    var _resolvedPlanSource: Codexpulse_Core_V1_CodexSubscriptionValueSource = .unspecified
+    var _membershipDate: String? = nil
+    var _dateKind: Codexpulse_Core_V1_CodexSubscriptionDateKind? = nil
+    var _dateSource: Codexpulse_Core_V1_CodexSubscriptionValueSource = .unspecified
+    var _dateState: Codexpulse_Core_V1_CodexSubscriptionDateState = .unspecified
+    var _dayDelta: Int32? = nil
+    var _detectedRevision: Int64? = nil
+    var _manualRevision: Int64? = nil
+    var _linkRevision: Int64? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _accountID = source._accountID
+      _detectedAccountID = source._detectedAccountID
+      _manualEntryID = source._manualEntryID
+      _alias = source._alias
+      _displayEmail = source._displayEmail
+      _detectedEmail = source._detectedEmail
+      _manualEmail = source._manualEmail
+      _current = source._current
+      _detected = source._detected
+      _hasManual_p = source._hasManual_p
+      _linked = source._linked
+      _detectedEmailObservedAtMs = source._detectedEmailObservedAtMs
+      _automaticPlan = source._automaticPlan
+      _automaticPlanState = source._automaticPlanState
+      _automaticPlanSource = source._automaticPlanSource
+      _automaticPlanObservedAtMs = source._automaticPlanObservedAtMs
+      _manualPlan = source._manualPlan
+      _resolvedPlan = source._resolvedPlan
+      _resolvedPlanSource = source._resolvedPlanSource
+      _membershipDate = source._membershipDate
+      _dateKind = source._dateKind
+      _dateSource = source._dateSource
+      _dateState = source._dateState
+      _dayDelta = source._dayDelta
+      _detectedRevision = source._detectedRevision
+      _manualRevision = source._manualRevision
+      _linkRevision = source._linkRevision
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._accountID) }()
+        case 2: try { try decoder.decodeSingularStringField(value: &_storage._detectedAccountID) }()
+        case 3: try { try decoder.decodeSingularStringField(value: &_storage._manualEntryID) }()
+        case 4: try { try decoder.decodeSingularStringField(value: &_storage._alias) }()
+        case 5: try { try decoder.decodeSingularStringField(value: &_storage._displayEmail) }()
+        case 6: try { try decoder.decodeSingularStringField(value: &_storage._detectedEmail) }()
+        case 7: try { try decoder.decodeSingularStringField(value: &_storage._manualEmail) }()
+        case 8: try { try decoder.decodeSingularBoolField(value: &_storage._current) }()
+        case 9: try { try decoder.decodeSingularBoolField(value: &_storage._detected) }()
+        case 10: try { try decoder.decodeSingularBoolField(value: &_storage._hasManual_p) }()
+        case 11: try { try decoder.decodeSingularBoolField(value: &_storage._linked) }()
+        case 12: try { try decoder.decodeSingularInt64Field(value: &_storage._detectedEmailObservedAtMs) }()
+        case 13: try { try decoder.decodeSingularEnumField(value: &_storage._automaticPlan) }()
+        case 14: try { try decoder.decodeSingularEnumField(value: &_storage._automaticPlanState) }()
+        case 15: try { try decoder.decodeSingularEnumField(value: &_storage._automaticPlanSource) }()
+        case 16: try { try decoder.decodeSingularInt64Field(value: &_storage._automaticPlanObservedAtMs) }()
+        case 17: try { try decoder.decodeSingularEnumField(value: &_storage._manualPlan) }()
+        case 18: try { try decoder.decodeSingularEnumField(value: &_storage._resolvedPlan) }()
+        case 19: try { try decoder.decodeSingularEnumField(value: &_storage._resolvedPlanSource) }()
+        case 20: try { try decoder.decodeSingularStringField(value: &_storage._membershipDate) }()
+        case 21: try { try decoder.decodeSingularEnumField(value: &_storage._dateKind) }()
+        case 22: try { try decoder.decodeSingularEnumField(value: &_storage._dateSource) }()
+        case 23: try { try decoder.decodeSingularEnumField(value: &_storage._dateState) }()
+        case 24: try { try decoder.decodeSingularInt32Field(value: &_storage._dayDelta) }()
+        case 25: try { try decoder.decodeSingularInt64Field(value: &_storage._detectedRevision) }()
+        case 26: try { try decoder.decodeSingularInt64Field(value: &_storage._manualRevision) }()
+        case 27: try { try decoder.decodeSingularInt64Field(value: &_storage._linkRevision) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if !_storage._accountID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._accountID, fieldNumber: 1)
+      }
+      try { if let v = _storage._detectedAccountID {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 2)
+      } }()
+      try { if let v = _storage._manualEntryID {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 3)
+      } }()
+      try { if let v = _storage._alias {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 4)
+      } }()
+      try { if let v = _storage._displayEmail {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 5)
+      } }()
+      try { if let v = _storage._detectedEmail {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 6)
+      } }()
+      try { if let v = _storage._manualEmail {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 7)
+      } }()
+      if _storage._current != false {
+        try visitor.visitSingularBoolField(value: _storage._current, fieldNumber: 8)
+      }
+      if _storage._detected != false {
+        try visitor.visitSingularBoolField(value: _storage._detected, fieldNumber: 9)
+      }
+      if _storage._hasManual_p != false {
+        try visitor.visitSingularBoolField(value: _storage._hasManual_p, fieldNumber: 10)
+      }
+      if _storage._linked != false {
+        try visitor.visitSingularBoolField(value: _storage._linked, fieldNumber: 11)
+      }
+      try { if let v = _storage._detectedEmailObservedAtMs {
+        try visitor.visitSingularInt64Field(value: v, fieldNumber: 12)
+      } }()
+      try { if let v = _storage._automaticPlan {
+        try visitor.visitSingularEnumField(value: v, fieldNumber: 13)
+      } }()
+      if _storage._automaticPlanState != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._automaticPlanState, fieldNumber: 14)
+      }
+      try { if let v = _storage._automaticPlanSource {
+        try visitor.visitSingularEnumField(value: v, fieldNumber: 15)
+      } }()
+      try { if let v = _storage._automaticPlanObservedAtMs {
+        try visitor.visitSingularInt64Field(value: v, fieldNumber: 16)
+      } }()
+      try { if let v = _storage._manualPlan {
+        try visitor.visitSingularEnumField(value: v, fieldNumber: 17)
+      } }()
+      try { if let v = _storage._resolvedPlan {
+        try visitor.visitSingularEnumField(value: v, fieldNumber: 18)
+      } }()
+      if _storage._resolvedPlanSource != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._resolvedPlanSource, fieldNumber: 19)
+      }
+      try { if let v = _storage._membershipDate {
+        try visitor.visitSingularStringField(value: v, fieldNumber: 20)
+      } }()
+      try { if let v = _storage._dateKind {
+        try visitor.visitSingularEnumField(value: v, fieldNumber: 21)
+      } }()
+      if _storage._dateSource != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._dateSource, fieldNumber: 22)
+      }
+      if _storage._dateState != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._dateState, fieldNumber: 23)
+      }
+      try { if let v = _storage._dayDelta {
+        try visitor.visitSingularInt32Field(value: v, fieldNumber: 24)
+      } }()
+      try { if let v = _storage._detectedRevision {
+        try visitor.visitSingularInt64Field(value: v, fieldNumber: 25)
+      } }()
+      try { if let v = _storage._manualRevision {
+        try visitor.visitSingularInt64Field(value: v, fieldNumber: 26)
+      } }()
+      try { if let v = _storage._linkRevision {
+        try visitor.visitSingularInt64Field(value: v, fieldNumber: 27)
+      } }()
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_CodexSubscriptionAccount, rhs: Codexpulse_Core_V1_CodexSubscriptionAccount) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._accountID != rhs_storage._accountID {return false}
+        if _storage._detectedAccountID != rhs_storage._detectedAccountID {return false}
+        if _storage._manualEntryID != rhs_storage._manualEntryID {return false}
+        if _storage._alias != rhs_storage._alias {return false}
+        if _storage._displayEmail != rhs_storage._displayEmail {return false}
+        if _storage._detectedEmail != rhs_storage._detectedEmail {return false}
+        if _storage._manualEmail != rhs_storage._manualEmail {return false}
+        if _storage._current != rhs_storage._current {return false}
+        if _storage._detected != rhs_storage._detected {return false}
+        if _storage._hasManual_p != rhs_storage._hasManual_p {return false}
+        if _storage._linked != rhs_storage._linked {return false}
+        if _storage._detectedEmailObservedAtMs != rhs_storage._detectedEmailObservedAtMs {return false}
+        if _storage._automaticPlan != rhs_storage._automaticPlan {return false}
+        if _storage._automaticPlanState != rhs_storage._automaticPlanState {return false}
+        if _storage._automaticPlanSource != rhs_storage._automaticPlanSource {return false}
+        if _storage._automaticPlanObservedAtMs != rhs_storage._automaticPlanObservedAtMs {return false}
+        if _storage._manualPlan != rhs_storage._manualPlan {return false}
+        if _storage._resolvedPlan != rhs_storage._resolvedPlan {return false}
+        if _storage._resolvedPlanSource != rhs_storage._resolvedPlanSource {return false}
+        if _storage._membershipDate != rhs_storage._membershipDate {return false}
+        if _storage._dateKind != rhs_storage._dateKind {return false}
+        if _storage._dateSource != rhs_storage._dateSource {return false}
+        if _storage._dateState != rhs_storage._dateState {return false}
+        if _storage._dayDelta != rhs_storage._dayDelta {return false}
+        if _storage._detectedRevision != rhs_storage._detectedRevision {return false}
+        if _storage._manualRevision != rhs_storage._manualRevision {return false}
+        if _storage._linkRevision != rhs_storage._linkRevision {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_CodexSubscriptionLinkCandidate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CodexSubscriptionLinkCandidate"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}detected_account_id\0\u{3}manual_entry_id\0\u{1}reason\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.detectedAccountID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.manualEntryID) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.reason) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.detectedAccountID.isEmpty {
+      try visitor.visitSingularStringField(value: self.detectedAccountID, fieldNumber: 1)
+    }
+    if !self.manualEntryID.isEmpty {
+      try visitor.visitSingularStringField(value: self.manualEntryID, fieldNumber: 2)
+    }
+    if !self.reason.isEmpty {
+      try visitor.visitSingularStringField(value: self.reason, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_CodexSubscriptionLinkCandidate, rhs: Codexpulse_Core_V1_CodexSubscriptionLinkCandidate) -> Bool {
+    if lhs.detectedAccountID != rhs.detectedAccountID {return false}
+    if lhs.manualEntryID != rhs.manualEntryID {return false}
+    if lhs.reason != rhs.reason {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_CodexSubscriptionAccountsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CodexSubscriptionAccountsRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}evaluated_at_ms\0\u{3}time_zone\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt64Field(value: &self.evaluatedAtMs) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.timeZone) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.evaluatedAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.evaluatedAtMs, fieldNumber: 1)
+    }
+    if !self.timeZone.isEmpty {
+      try visitor.visitSingularStringField(value: self.timeZone, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_CodexSubscriptionAccountsRequest, rhs: Codexpulse_Core_V1_CodexSubscriptionAccountsRequest) -> Bool {
+    if lhs.evaluatedAtMs != rhs.evaluatedAtMs {return false}
+    if lhs.timeZone != rhs.timeZone {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_CodexSubscriptionAccountsResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CodexSubscriptionAccountsResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}evaluated_at_ms\0\u{3}time_zone\0\u{3}automatic_date_capability\0\u{1}accounts\0\u{3}link_candidates\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.version) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.evaluatedAtMs) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.timeZone) }()
+      case 4: try { try decoder.decodeSingularEnumField(value: &self.automaticDateCapability) }()
+      case 5: try { try decoder.decodeRepeatedMessageField(value: &self.accounts) }()
+      case 6: try { try decoder.decodeRepeatedMessageField(value: &self.linkCandidates) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.version.isEmpty {
+      try visitor.visitSingularStringField(value: self.version, fieldNumber: 1)
+    }
+    if self.evaluatedAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.evaluatedAtMs, fieldNumber: 2)
+    }
+    if !self.timeZone.isEmpty {
+      try visitor.visitSingularStringField(value: self.timeZone, fieldNumber: 3)
+    }
+    if self.automaticDateCapability != .unspecified {
+      try visitor.visitSingularEnumField(value: self.automaticDateCapability, fieldNumber: 4)
+    }
+    if !self.accounts.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.accounts, fieldNumber: 5)
+    }
+    if !self.linkCandidates.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.linkCandidates, fieldNumber: 6)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_CodexSubscriptionAccountsResponse, rhs: Codexpulse_Core_V1_CodexSubscriptionAccountsResponse) -> Bool {
+    if lhs.version != rhs.version {return false}
+    if lhs.evaluatedAtMs != rhs.evaluatedAtMs {return false}
+    if lhs.timeZone != rhs.timeZone {return false}
+    if lhs.automaticDateCapability != rhs.automaticDateCapability {return false}
+    if lhs.accounts != rhs.accounts {return false}
+    if lhs.linkCandidates != rhs.linkCandidates {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_CodexSubscriptionManualFields: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CodexSubscriptionManualFields"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}email\0\u{1}alias\0\u{1}plan\0\u{3}membership_date\0\u{3}date_kind\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self._email) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self._alias) }()
+      case 3: try { try decoder.decodeSingularEnumField(value: &self._plan) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self._membershipDate) }()
+      case 5: try { try decoder.decodeSingularEnumField(value: &self._dateKind) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._email {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 1)
+    } }()
+    try { if let v = self._alias {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._plan {
+      try visitor.visitSingularEnumField(value: v, fieldNumber: 3)
+    } }()
+    try { if let v = self._membershipDate {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 4)
+    } }()
+    try { if let v = self._dateKind {
+      try visitor.visitSingularEnumField(value: v, fieldNumber: 5)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_CodexSubscriptionManualFields, rhs: Codexpulse_Core_V1_CodexSubscriptionManualFields) -> Bool {
+    if lhs._email != rhs._email {return false}
+    if lhs._alias != rhs._alias {return false}
+    if lhs._plan != rhs._plan {return false}
+    if lhs._membershipDate != rhs._membershipDate {return false}
+    if lhs._dateKind != rhs._dateKind {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CreateCodexSubscriptionAccountRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}manual_entry_id\0\u{1}manual\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.manualEntryID) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._manual) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.manualEntryID.isEmpty {
+      try visitor.visitSingularStringField(value: self.manualEntryID, fieldNumber: 1)
+    }
+    try { if let v = self._manual {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest, rhs: Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest) -> Bool {
+    if lhs.manualEntryID != rhs.manualEntryID {return false}
+    if lhs._manual != rhs._manual {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".UpdateCodexSubscriptionAccountRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}account_id\0\u{1}manual\0\u{3}new_manual_entry_id\0\u{3}expected_manual_revision\0\u{3}expected_link_revision\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.accountID) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._manual) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self._newManualEntryID) }()
+      case 4: try { try decoder.decodeSingularInt64Field(value: &self._expectedManualRevision) }()
+      case 5: try { try decoder.decodeSingularInt64Field(value: &self._expectedLinkRevision) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.accountID.isEmpty {
+      try visitor.visitSingularStringField(value: self.accountID, fieldNumber: 1)
+    }
+    try { if let v = self._manual {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._newManualEntryID {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 3)
+    } }()
+    try { if let v = self._expectedManualRevision {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 4)
+    } }()
+    try { if let v = self._expectedLinkRevision {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 5)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest, rhs: Codexpulse_Core_V1_UpdateCodexSubscriptionAccountRequest) -> Bool {
+    if lhs.accountID != rhs.accountID {return false}
+    if lhs._manual != rhs._manual {return false}
+    if lhs._newManualEntryID != rhs._newManualEntryID {return false}
+    if lhs._expectedManualRevision != rhs._expectedManualRevision {return false}
+    if lhs._expectedLinkRevision != rhs._expectedLinkRevision {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".DeleteCodexSubscriptionAccountRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}account_id\0\u{3}expected_detected_revision\0\u{3}expected_manual_revision\0\u{3}expected_link_revision\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.accountID) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self._expectedDetectedRevision) }()
+      case 3: try { try decoder.decodeSingularInt64Field(value: &self._expectedManualRevision) }()
+      case 4: try { try decoder.decodeSingularInt64Field(value: &self._expectedLinkRevision) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.accountID.isEmpty {
+      try visitor.visitSingularStringField(value: self.accountID, fieldNumber: 1)
+    }
+    try { if let v = self._expectedDetectedRevision {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._expectedManualRevision {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 3)
+    } }()
+    try { if let v = self._expectedLinkRevision {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 4)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest, rhs: Codexpulse_Core_V1_DeleteCodexSubscriptionAccountRequest) -> Bool {
+    if lhs.accountID != rhs.accountID {return false}
+    if lhs._expectedDetectedRevision != rhs._expectedDetectedRevision {return false}
+    if lhs._expectedManualRevision != rhs._expectedManualRevision {return false}
+    if lhs._expectedLinkRevision != rhs._expectedLinkRevision {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".LinkCodexSubscriptionAccountRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}detected_account_id\0\u{3}manual_entry_id\0\u{3}expected_manual_revision\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.detectedAccountID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.manualEntryID) }()
+      case 3: try { try decoder.decodeSingularInt64Field(value: &self.expectedManualRevision) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.detectedAccountID.isEmpty {
+      try visitor.visitSingularStringField(value: self.detectedAccountID, fieldNumber: 1)
+    }
+    if !self.manualEntryID.isEmpty {
+      try visitor.visitSingularStringField(value: self.manualEntryID, fieldNumber: 2)
+    }
+    if self.expectedManualRevision != 0 {
+      try visitor.visitSingularInt64Field(value: self.expectedManualRevision, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest, rhs: Codexpulse_Core_V1_LinkCodexSubscriptionAccountRequest) -> Bool {
+    if lhs.detectedAccountID != rhs.detectedAccountID {return false}
+    if lhs.manualEntryID != rhs.manualEntryID {return false}
+    if lhs.expectedManualRevision != rhs.expectedManualRevision {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".UnlinkCodexSubscriptionAccountRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}detected_account_id\0\u{3}manual_entry_id\0\u{3}expected_manual_revision\0\u{3}expected_link_revision\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.detectedAccountID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.manualEntryID) }()
+      case 3: try { try decoder.decodeSingularInt64Field(value: &self.expectedManualRevision) }()
+      case 4: try { try decoder.decodeSingularInt64Field(value: &self.expectedLinkRevision) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.detectedAccountID.isEmpty {
+      try visitor.visitSingularStringField(value: self.detectedAccountID, fieldNumber: 1)
+    }
+    if !self.manualEntryID.isEmpty {
+      try visitor.visitSingularStringField(value: self.manualEntryID, fieldNumber: 2)
+    }
+    if self.expectedManualRevision != 0 {
+      try visitor.visitSingularInt64Field(value: self.expectedManualRevision, fieldNumber: 3)
+    }
+    if self.expectedLinkRevision != 0 {
+      try visitor.visitSingularInt64Field(value: self.expectedLinkRevision, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest, rhs: Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest) -> Bool {
+    if lhs.detectedAccountID != rhs.detectedAccountID {return false}
+    if lhs.manualEntryID != rhs.manualEntryID {return false}
+    if lhs.expectedManualRevision != rhs.expectedManualRevision {return false}
+    if lhs.expectedLinkRevision != rhs.expectedLinkRevision {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_CodexSubscriptionMutationReceipt: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CodexSubscriptionMutationReceipt"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}result\0\u{1}reason\0\u{1}account\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.result) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self._reason) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._account) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.result != .unspecified {
+      try visitor.visitSingularEnumField(value: self.result, fieldNumber: 1)
+    }
+    try { if let v = self._reason {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._account {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_CodexSubscriptionMutationReceipt, rhs: Codexpulse_Core_V1_CodexSubscriptionMutationReceipt) -> Bool {
+    if lhs.result != rhs.result {return false}
+    if lhs._reason != rhs._reason {return false}
+    if lhs._account != rhs._account {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

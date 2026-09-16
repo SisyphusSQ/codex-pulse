@@ -51,7 +51,8 @@ const (
 	applicationSchemaV30Version = 30
 	applicationSchemaV31Version = 31
 	applicationSchemaV32Version = 32
-	applicationSchemaVersion    = applicationSchemaV32Version
+	applicationSchemaV33Version = 33
+	applicationSchemaVersion    = applicationSchemaV33Version
 )
 
 var (
@@ -348,6 +349,12 @@ var applicationMigrations = []migrationDefinition{
 		name:     codexAccountBindingMigrationName,
 		checksum: applicationSchemaV32Checksum(),
 		apply:    migrateCodexAccountBindingForV32,
+	},
+	{
+		version:  applicationSchemaV33Version,
+		name:     codexSubscriptionAccountsMigrationName,
+		checksum: applicationSchemaV33Checksum(),
+		apply:    migrateCodexSubscriptionAccountsForV33,
 	},
 }
 
@@ -984,6 +991,7 @@ func verifyApplicationSchema(ctx context.Context, transaction *gorm.DB) error {
 		cursorDashboardQuotaSchemaObjects,
 		apiSubscriptionSchemaObjects,
 		apiSubscriptionQuotaSchemaObjects,
+		codexSubscriptionSchemaObjects,
 	} {
 		for _, object := range objects {
 			exists, err := storeschema.VerifyObject(ctx, transaction, object)
@@ -1501,6 +1509,19 @@ func applicationSchemaV32Checksum() string {
 		}
 	}
 	_, _ = fmt.Fprintln(hasher, "repair", "abandon-active-claims", "disable-default-schedules", "foreign_key_check")
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+func applicationSchemaV33Checksum() string {
+	hasher := sha256.New()
+	_, _ = fmt.Fprintln(hasher, applicationSchemaV33Version, codexSubscriptionAccountsMigrationName)
+	for _, object := range codexSubscriptionSchemaObjects {
+		_, _ = fmt.Fprintln(
+			hasher, object.ObjectType, object.Name,
+			strings.TrimSpace(storeschema.NormalizeSQL(storeschema.CanonicalSQL(object.Statement))),
+		)
+	}
+	_, _ = fmt.Fprintln(hasher, "backfill", "detected-accounts-from-scopes", "foreign_key_check")
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 

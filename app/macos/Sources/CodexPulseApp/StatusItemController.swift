@@ -1782,11 +1782,18 @@ private struct PopoverAccountCapsule: View {
     let isPrivacyHidden: Bool
 
     var body: some View {
-        HStack(spacing: 4) {
-            Text(summary?.planText ?? "--")
-            Text(summary?.emailText ?? "--")
-                .lineLimit(1)
-                .truncationMode(.middle)
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 4) {
+                Text(summary?.planText ?? "--")
+                Text(summary?.emailText ?? "--")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            if let secondary = summary?.secondaryText {
+                Text(secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
         }
         .opacity(isPrivacyHidden ? 0 : 1)
         .overlay {
@@ -1803,7 +1810,7 @@ private struct PopoverAccountCapsule: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             isPrivacyHidden
-                ? localizedCopy("截图中账号与套餐信息已隐藏")
+                ? localizedCopy("截图中账号、套餐与订阅日期信息已隐藏")
                 : summary?.accessibilityLabel ?? localizedCopy("正在读取 Codex 账户与套餐信息")
         )
         .accessibilityIdentifier("popover.account-summary")

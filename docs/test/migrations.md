@@ -6,9 +6,10 @@
 - 对应 Issue：TOO-249、TOO-250、TOO-253、TOO-254、TOO-255
 - 当前结论：`PASS`；Pure Go Store、v2 retention、v3 durable ingest、v4 attribution 与 v5 pricing/cost schema 均已按 append-only migration 合并并完成 main post-merge 验证。
 - 已验证：Pure Go GORM Store/Repository、fresh/legacy/v1/v2/v3/v4/current-v5 migration、v1～v5 checksum freeze、history drift/newer/divergence、全 pending rollback、modernc backup/restore、目录持久化发布、typed WriteUnit、durable ingest、attribution 与 pricing/cost STRICT/FK/index contract、默认应用 bootstrap、Pure Go race、全仓 test/vet/race、harness/project/version 与完整 `make verify`。
-- 后续要求：新增 migration 必须继续 append-only 并冻结各版本 checksum；不得重算 v1～v31 history。
-- 当前 application schema version 为 32；v32 名固定为 `codex-account-binding`。v32 checksum 冻结为 `0aedee7a707f37b27a1249886b260cad7cbe1da35ea4ad302b45f27c4d430f52`。v31 checksum 继续冻结为 `2ad86dfc7e17ca34217875545af500d9cd0607bfd4da36859f7b5e184757bc63`。
-- v32 重建 quota/reset/schedule/claim/attempt 的 FK closure，保留 legacy `account_scope='default'` 事实且不写入 `codex_account_binding`；迁移末尾执行 `PRAGMA foreign_key_check`。SQLite 只持久化 64 位 lowercase hex `account_scope`、binding state 与 generation，不保存原始 accountId、token、JWT 或真实邮箱。
+- 后续要求：新增 migration 必须继续 append-only 并冻结各版本 checksum；不得重算 v1～v32 history。
+- 当前 application schema version 为 33；v33 名固定为 `codex-subscription-accounts`。v33 checksum 冻结为 `2cb5ad03c0a51a480712df402bb962cbc0990c2826501f8abfcf6f47b8409518`。v32 checksum 继续冻结为 `0aedee7a707f37b27a1249886b260cad7cbe1da35ea4ad302b45f27c4d430f52`。v31 checksum 继续冻结为 `2ad86dfc7e17ca34217875545af500d9cd0607bfd4da36859f7b5e184757bc63`。
+- v33 在启动期 transaction 内创建 `codex_subscription_detected_accounts`、`codex_subscription_manual_entries`、`codex_subscription_links` 及 email/updated 辅助索引，并为既有 `codex_account_scopes` 回填公开 UUID detected row（`automatic_plan_state=unavailable`）。legacy `account_scope=default` 不在 scopes 表中，严禁回填。专用订阅表可以保存 detected/manual email；binding、quota、日志和 Proto 仍不得暴露 private scope、原始 accountId 或凭据。
+- v32 重建 quota/reset/schedule/claim/attempt 的 FK closure，保留 legacy `account_scope='default'` 事实且不写入 `codex_account_binding`；迁移末尾执行 `PRAGMA foreign_key_check`。SQLite binding 只持久化 64 位 lowercase hex `account_scope`、binding state 与 generation，不保存原始 accountId、token、JWT。
 
 ## 目标
 

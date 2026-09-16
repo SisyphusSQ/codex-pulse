@@ -49,11 +49,11 @@ Popover 不放复杂图表，也不显示来源冲突、网络失败或索引异
 
 Popover 顶部还固定提供三项快捷功能：
 
-1. 账户套餐 / 账号摘要：只复用当前 Overview 已有的展示级 Quota 聚合，显示隐私安全的“当前 Codex 账号”以及套餐/额度可用性；后端未提供套餐名称时如实显示“套餐信息未提供”，不得用 raw account scope、完整账号标识、token、路径或鉴权材料补齐。
+1. 账户套餐 / 账号摘要：Popover 只展示当前 confirmed Codex 账号。第一行是 resolved 套餐与邮箱；有手工日期时第二行显示每月续费日或会员到期日及剩余天数。每月续费经过当月日期后滚动到下个月，不进入 `needs_update`；会员到期才使用“已过 N 天 · 需要更新”。截图期间必须同时隐藏邮箱、备注、套餐、日期和剩余天数，完成或失败后恢复正常展示。成功时在同一个系统剪贴板 item 中写入「账号、套餐与订阅日期信息已隐藏」的 `.string` 与 `.png` 完整截图。不得用 raw account scope、完整账号标识、token、路径或鉴权材料补齐。
 2. 项目主页：固定打开 `https://github.com/SisyphusSQ/codex-pulse`。外跳只能由用户点击该原生按钮，或在按钮获得键盘焦点后使用 Return / Space 显式激活；打开 Popover、刷新或后台状态变化都不得自动触发，也不增加遥测或其它网络请求。
 3. 复制完整截图：直接捕获当前已经打开的 Popover 原生视图，顶栏和底栏各保留一次，中间滚动区按真实滚动位置分段捕获并拼接为完整长图；不得另建截图专用 SwiftUI 页面或从 DTO 重构另一套卡片。原生材质的透明区域按当前系统外观合成到窗口底色，保证图片粘贴到浅色或深色背景时仍可读。截图期间必须隐藏账号和套餐文字，完成或失败后恢复原滚动位置和正常展示状态。成功时在同一个系统剪贴板 item 中同时写入不含账号/套餐的 `.string` 隐私说明和 `.png` 完整截图。
 
-三项快捷按钮都必须进入整个 Popover 的原生键盘焦点顺序，支持 Return / Space 激活，并提供明确的无障碍标签。它们不得拦截 Tab 或建立只在三项按钮之间循环的私有焦点链：前向 Tab 必须能继续到 Reset Credits、设置和退出，Shift-Tab 必须能反向回到刷新和打开概览等已有控件。完整截图包含主 Popover 当前实际展示的额度、每日 Token、Reset Credits、已启用的成本/项目排行以及固定操作，不递归捕获 Reset Credits 或显示设置子页。截图渲染不可用、系统剪贴板写入失败或外部 URL 打开失败时必须显示用户可见错误；失败路径不得回退复制原始 Session、JSONL、完整账号标识、套餐、鉴权材料、日志或其它敏感数据，也不得在只写入其中一种剪贴板表示后宣称成功。
+三项快捷按钮都必须进入整个 Popover 的原生键盘焦点顺序，支持 Return / Space 激活，并提供明确的无障碍标签。它们不得拦截 Tab 或建立只在三项按钮之间循环的私有焦点链：前向 Tab 必须能继续到 Reset Credits、设置和退出，Shift-Tab 必须能反向回到刷新和打开概览等已有控件。完整截图包含主 Popover 当前实际展示的额度、每日 Token、Reset Credits、已启用的成本/项目排行以及固定操作，不递归捕获 Reset Credits 或显示设置子页。截图渲染不可用、系统剪贴板写入失败或外部 URL 打开失败时必须显示用户可见错误；失败路径不得回退复制原始 Session、JSONL、完整账号标识、套餐、会员日期、剩余天数、鉴权材料、日志或其它敏感数据，也不得在只写入其中一种剪贴板表示后宣称成功。
 
 打开 Popover 时，quota 上次成功超过 60 秒则异步刷新。有 last-known-good 时继续显示当前数值，不切换成空白 loading，也不增加不确定性说明。Reset credits 与 API 等价成本摘要整块可点击，分别进入配额和概览对应区域。
 
@@ -143,6 +143,7 @@ Pricing Catalog 本地版本化，每条记录包含 model、input/cached/output
 - `UsageCostRequest.include_activity_distribution=true` 时，Go 在同一查询范围内额外返回非空时间桶和稀疏的 ISO weekday（周一 1、周日 7）小时格。每个点同时包含 Token 总量和格内去重 Session 数；热力图跨日期合并相同星期小时，DST 回拨的两个真实小时在时间线中保持不同 instant，但在星期小时视图中归入同一墙钟小时。Swift 只有在时间线 Token、星期小时 Token 与响应 totals 能对账时，才把未返回格解释为真实零；否则保持 unknown。
 - active cost generation 暂不可见时，概览只从 final usage 做有界 token fallback：cost/pricing 保持 unknown，响应标记 `partial / rollup_missing`；查询路径不得触发 ledger rebuild。无事实但 active generation 正常存在时是 known-empty complete，真实 `0` 不显示成 `--`。
 - 原生“额度与用量”页独立加载当前参考价格目录，因此当前范围没有用量时仍可查看参考价格；目录默认直接显示为原生四列表格，按 exact model id 列出 `gpt-5.3` 及后续有效模型的输入、缓存输入和输出费率，不在模型用量行重复长价格文案。`gpt-5`、`gpt-5.1`、`gpt-5.2` 家族保留在 Go 的不可变 catalog 中供历史成本折算，但不进入当前参考价格表；无后缀 `gpt-5.6` 是 `gpt-5.6-sol` 的官方 alias，同样保留用于 exact 成本匹配，但为避免与 Sol 重复而不展示。`gpt-5.6-luna`、`gpt-5.6-sol`、`gpt-5.6-terra` 等后缀模型正常展示。Swift 仅将整数微美元换算为 `USD / 100 万 Token` 展示，unknown 显示“暂无”，不得重新定价。页面必须明确标注这是 OpenAI API Standard 基础文本参考价和 API 等价折算依据，不是 Codex 订阅账单；长上下文、cache-write、Batch、Flex、Fast mode（原 Priority）和区域处理差异不在当前 contract 中。
+- Codex“额度与用量”页头右侧展示紧凑的当前账号卡片，包含 resolved 套餐、邮箱以及可用的每月续费日或会员到期日；窄窗口时卡片换到标题下方。卡片只导航至 Settings 管理，不承担账号切换。账号快照必须与当前额度 binding 完全一致，切换账号、pending、signed-out 或 identity unavailable 时不得沿用旧账号事实。Cursor / Grok 页面不展示该 Codex 卡片。
 - Sessions 列表和详情只展示安全 title/project/model；轻量模式优先使用 Codex App Server `thread/list` 返回的 name，缺失时使用不可逆 Session ID fallback。常驻 Helper 每 30 秒刷新一次 metadata，并在 App 前台激活或系统唤醒时立即触发；相同 snapshot 不推进 metadata generation，标题变化原子发布后通过 index invalidation 到达 Swift。严格模式继续使用 `session_attributions`；active/idle 由是否存在未完成 Turn 判断。Session 详情趋势由 Go 按请求的 IANA timezone 检查完整会话用量覆盖的本地自然日：全部位于同一日时返回 `trend_granularity=hour` 和小时 bucket，只要跨越两个或更多本地日期就返回 `trend_granularity=day` 和每日 bucket；只有轻量 timed delta 或同一 active cost generation 的 final usage 可以生成趋势。DST 回拨的重复墙钟小时必须保留各自真实 instant/UTC offset，作为两个有序 bucket 返回。Swift 只消费 granularity、timezone、bucket 时间和 totals，不得用当前页面点数或本机日历自行猜测口径。两种模式都不返回 cwd、raw model、root path 或对话内容。列表支持最近活动、token、API 等价成本排序以及 project/model/activity/time filter，cursor 是不可解析的 keyset token。
 - Session 详情还返回按 `startedAt + turn identity` 稳定倒序、默认 20 / 最大 50 条的 content-free Turn usage/cost 时间线。每项只包含不可逆 timeline key、active/complete、安全 model attribution、时间、整数 usage、pricing status/version/reason；`completed_at_ms IS NULL` 已明确定义 active，unknown 只用于 usage/cost/time 数值，不伪造不可达的 lifecycle 状态。不得返回 raw Session/Turn ID、正文事件、tool、路径、offset 或 generation。下一页 cursor 由 process-key AEAD 认证加密并绑定当前 Session，native client 只可原样回传；完整首屏必须与 Session aggregate 精确对账，截断/后续页必须满足 aggregate 下界和 pricing evidence membership，page totals 不得覆盖整段 Session aggregate。
 - `/sessions` 的 UI 状态只把有限 activity/time/sort、精确 safe project/model、列表 cursor 与选中 Session 写入 URL；未知 key、重复值、空值和非法枚举会归一到安全默认。list cursor 不解析，筛选/排序变化清空 cursor 与 selection；Turn cursor 只存在于当前 detail 生命周期，切换 Session 或进程重启后失效，不进入 URL、Preferences 或 Web Storage。
@@ -161,6 +162,8 @@ Pricing Catalog 本地版本化，每条记录包含 model、input/cached/output
 ## Settings 与 Codex Home
 
 Settings 使用强类型 Preferences，不把空值或非法值静默折成默认值。v0.1 可配置在线 quota/reset credits、对应刷新周期、JSONL debounce、更新检查、UI 启动/概览范围和语言；语言支持 `system`、`zh-CN`、`en-US`，其中 `system` 按 macOS 首选语言自动解析。stable update channel 固定，自动下载保持关闭。保存使用 revision conflict 提示，不采用 last-writer-wins；切换恢复进行中时普通设置暂不可保存。
+
+Settings 顶部「Codex 账号与订阅」与全局 `settingsDraft` 分离：列表、创建、编辑、关联和取消关联立即走 receipt + authoritative List readback，不要求点「保存更改」。邮箱相同只产生候选，不自动合并。每月续费日或会员到期日当前仅支持手动维护。API 凭据区保持独立，不再与 Codex 订阅清单共用标题。详见 [Codex 账号与订阅](../codex-subscriptions/README.md)。
 
 普通首次启动且不存在 Preferences 时，Go Helper 自动选择
 `${CODEX_HOME:-$HOME/.codex}`。它先执行 metadata-only probe，再用相同

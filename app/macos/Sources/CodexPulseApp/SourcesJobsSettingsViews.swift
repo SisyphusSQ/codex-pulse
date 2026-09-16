@@ -446,6 +446,7 @@ struct SettingsView: View {
             .padding(.vertical, 16)
             Divider()
             Form {
+                CodexAccountsSettingsSection(model: model)
                 apiCredentialsSection
                 if model.settingsDraft != nil {
                     onlineSection(response)
@@ -476,7 +477,7 @@ struct SettingsView: View {
     }
 
     private var apiCredentialsSection: some View {
-        Section(localizedCopy("API 与订阅")) {
+        Section(localizedCopy("API 凭据")) {
             apiCredentialRow(
                 title: "DeepSeek API key",
                 service: .deepSeek,

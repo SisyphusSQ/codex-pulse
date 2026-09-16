@@ -10,6 +10,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptiontier"
 	healthmodel "github.com/SisyphusSQ/codex-pulse/internal/health"
 	"github.com/SisyphusSQ/codex-pulse/internal/lightindex"
@@ -23,7 +24,7 @@ import (
 )
 
 const (
-	ContractVersion = "core-rpc-v3"
+	ContractVersion = "core-rpc-v4"
 )
 
 var (
@@ -102,7 +103,7 @@ type ProviderRefreshReceipt struct {
 }
 
 type accountSnapshotQuery interface {
-	AccountSnapshot(context.Context, agentprovider.Scope) (AccountSnapshot, error)
+	AccountSnapshot(context.Context, AccountSnapshotQuery) (AccountSnapshot, error)
 }
 
 type apiSubscriptionsQuery interface {
@@ -142,6 +143,7 @@ type ServiceConfig struct {
 	AccountSnapshot      accountSnapshotQuery
 	APISubscriptions     apiSubscriptionsQuery
 	APICredentials       apiCredentialStore
+	CodexSubscriptions   CodexSubscriptionAccounts
 	QueryObserver        QueryObserver
 	SessionDeepIndex     sessionDeepIndexCommand
 }
@@ -169,6 +171,7 @@ type Service struct {
 	accountSnapshot      accountSnapshotQuery
 	apiSubscriptions     apiSubscriptionsQuery
 	apiCredentials       apiCredentialStore
+	codexSubscriptions   CodexSubscriptionAccounts
 	queryObserver        QueryObserver
 }
 
@@ -193,6 +196,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 		accountSnapshot:      config.AccountSnapshot,
 		apiSubscriptions:     config.APISubscriptions,
 		apiCredentials:       config.APICredentials,
+		codexSubscriptions:   config.CodexSubscriptions,
 	}, nil
 }
 
@@ -326,22 +330,29 @@ type MethodInfo struct {
 }
 
 type ContractInfo struct {
-	Version                 string                  `json:"version"`
-	QueryVersion            string                  `json:"queryVersion"`
-	UsageCostVersion        string                  `json:"usageCostVersion"`
-	InvocationUsageVersion  string                  `json:"invocationUsageVersion"`
-	PricingCatalogVersion   string                  `json:"pricingCatalogVersion"`
-	RuntimeInfoVersion      string                  `json:"runtimeInfoVersion"`
-	DashboardSummaryVersion string                  `json:"dashboardSummaryVersion"`
-	CodexProTierVersion     string                  `json:"codexProTierVersion"`
-	Methods                 []MethodInfo            `json:"methods"`
-	CommandMethods          []string                `json:"commandMethods"`
-	ErrorExample            basequery.ErrorEnvelope `json:"errorExample"`
+	Version                          string                  `json:"version"`
+	QueryVersion                     string                  `json:"queryVersion"`
+	UsageCostVersion                 string                  `json:"usageCostVersion"`
+	InvocationUsageVersion           string                  `json:"invocationUsageVersion"`
+	PricingCatalogVersion            string                  `json:"pricingCatalogVersion"`
+	RuntimeInfoVersion               string                  `json:"runtimeInfoVersion"`
+	DashboardSummaryVersion          string                  `json:"dashboardSummaryVersion"`
+	CodexProTierVersion              string                  `json:"codexProTierVersion"`
+	CodexSubscriptionAccountsVersion string                  `json:"codexSubscriptionAccountsVersion"`
+	Methods                          []MethodInfo            `json:"methods"`
+	CommandMethods                   []string                `json:"commandMethods"`
+	ErrorExample                     basequery.ErrorEnvelope `json:"errorExample"`
 }
 
 var methodAllowlist = []MethodInfo{
 	{Name: "Contracts", Kind: MethodQuery},
 	{Name: "AccountSnapshot", Kind: MethodQuery},
+	{Name: "ListCodexSubscriptionAccounts", Kind: MethodQuery},
+	{Name: "CreateCodexSubscriptionAccount", Kind: MethodCommand},
+	{Name: "UpdateCodexSubscriptionAccount", Kind: MethodCommand},
+	{Name: "LinkCodexSubscriptionAccount", Kind: MethodCommand},
+	{Name: "UnlinkCodexSubscriptionAccount", Kind: MethodCommand},
+	{Name: "DeleteCodexSubscriptionAccount", Kind: MethodCommand},
 	{Name: "APISubscriptionsCurrent", Kind: MethodQuery},
 	{Name: "APICredentialStatus", Kind: MethodQuery},
 	{Name: "UsageCost", Kind: MethodQuery},
@@ -379,16 +390,18 @@ func (service *Service) Contracts() ContractInfo {
 		errorExample, _ := basequery.ErrorEnvelopeFrom(ErrService)
 		return ContractInfo{
 			Version: ContractVersion, QueryVersion: basequery.ContractVersion,
-			UsageCostVersion:        usagecost.ContractVersion,
-			InvocationUsageVersion:  invocationusage.ContractVersion,
-			PricingCatalogVersion:   pricingcatalog.ContractVersion,
-			RuntimeInfoVersion:      runtimeinfo.ContractVersion,
-			DashboardSummaryVersion: dashboardsummary.ContractVersion,
-			CodexProTierVersion:     subscriptiontier.ContractVersion,
-			Methods:                 append([]MethodInfo(nil), methodAllowlist...),
+			UsageCostVersion:                 usagecost.ContractVersion,
+			InvocationUsageVersion:           invocationusage.ContractVersion,
+			PricingCatalogVersion:            pricingcatalog.ContractVersion,
+			RuntimeInfoVersion:               runtimeinfo.ContractVersion,
+			DashboardSummaryVersion:          dashboardsummary.ContractVersion,
+			CodexProTierVersion:              subscriptiontier.ContractVersion,
+			CodexSubscriptionAccountsVersion: subscriptionaccounts.ContractVersion,
+			Methods:                          append([]MethodInfo(nil), methodAllowlist...),
 			CommandMethods: []string{
 				"RequestQuotaRefresh", "RequestProviderRefresh", "UpdateAPICredential", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
 				"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
+				"CreateCodexSubscriptionAccount", "UpdateCodexSubscriptionAccount", "DeleteCodexSubscriptionAccount", "LinkCodexSubscriptionAccount", "UnlinkCodexSubscriptionAccount",
 			}, ErrorExample: errorExample,
 		}
 	})
@@ -401,23 +414,40 @@ type AccountIdentity struct {
 }
 
 type AccountSnapshot struct {
-	Account *AccountIdentity           `json:"account,omitempty"`
-	Binding *store.CodexAccountBinding `json:"binding,omitempty"`
-	ProTier *subscriptiontier.Snapshot `json:"proTier,omitempty"`
+	Account      *AccountIdentity              `json:"account,omitempty"`
+	Binding      *store.CodexAccountBinding    `json:"binding,omitempty"`
+	ProTier      *subscriptiontier.Snapshot    `json:"proTier,omitempty"`
+	Subscription *subscriptionaccounts.Account `json:"-"`
 }
 
-func (service *Service) AccountSnapshot(ctx context.Context, scope agentprovider.Scope) (AccountSnapshot, error) {
+func (service *Service) AccountSnapshot(ctx context.Context, query AccountSnapshotQuery) (AccountSnapshot, error) {
 	if service == nil {
 		return AccountSnapshot{}, newServiceFailure(ErrService)
 	}
+	provider, err := agentprovider.Normalize(query.Scope.Provider)
+	if err != nil {
+		return AccountSnapshot{}, newServiceFailure(basequery.NewValidationFailure("provider", err))
+	}
+	if provider == agentprovider.Codex {
+		if err := validateSubscriptionEvaluation(query.EvaluatedAtMS, query.TimeZone); err != nil {
+			return AccountSnapshot{}, newServiceFailure(err)
+		}
+	}
 	service.accountMu.RLock()
-	query := service.accountSnapshot
+	accountQuery := service.accountSnapshot
 	service.accountMu.RUnlock()
-	if query == nil {
+	if accountQuery == nil {
 		return AccountSnapshot{}, newServiceFailure(ErrService)
 	}
 	return serviceQueryCall(service, func() (AccountSnapshot, error) {
-		return query.AccountSnapshot(ctx, scope)
+		snapshot, err := accountQuery.AccountSnapshot(ctx, query)
+		if err != nil {
+			return AccountSnapshot{}, err
+		}
+		if provider != agentprovider.Codex {
+			snapshot.Subscription = nil
+		}
+		return snapshot, nil
 	})
 }
 

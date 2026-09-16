@@ -6,6 +6,7 @@
 - [Architecture](architecture/README.md)
 - [Agent Providers, Cursor and Grok](providers/README.md)
 - [API and Subscriptions](api-subscriptions/README.md)
+- [Codex Accounts and Subscriptions](codex-subscriptions/README.md)
 - [Native macOS Client and Go Helper Refactor](native-macos-client/README.md)
 - [Data Model and Indexing](data-model/README.md)
 - [Quota](quota/README.md)
