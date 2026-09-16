@@ -1,5 +1,8 @@
 ## Unreleased
 
+#### bugFix:
+1. [TOO-458] 修复 Codex 账户卡有界重试在异步闭包返回前释放自身 Task handle 导致的 `swift_task_dealloc` 闪退。
+
 ## v0.12.3 - 2026-09-16
 
 #### bugFix:
