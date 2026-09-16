@@ -187,7 +187,7 @@ public final class AppModel: ObservableObject {
     private var latestRuntimeState: CoreConnectionState = .idle
 	private var statusOverviewCache: [AgentProvider: OverviewPresentation] = [:]
 	private var statusOverviewResponses: [AgentProvider: OverviewResponses] = [:]
-	private var codexCardAccountRetryTask: Task<Void, Never>?
+	private let codexCardAccountRetryScheduler = CodexCardAccountRetryScheduler()
 	private var codexCardAccountEpoch: UInt64 = 0
 	private var codexCardAccountRetried = false
 	private var statusConsistencyRefreshKey: CodexAccountContextKey?
@@ -2019,8 +2019,7 @@ public final class AppModel: ObservableObject {
 
     private func cancelAllFeatureTasks() {
         cancelCodexSubscriptionDayBoundaryReload()
-        codexCardAccountRetryTask?.cancel()
-        codexCardAccountRetryTask = nil
+        codexCardAccountRetryScheduler.cancel()
         codexCardAccountEpoch &+= 1
         for key in featureTasks.keys {
             featureTasks[key]?.cancel()
@@ -2523,8 +2522,7 @@ public final class AppModel: ObservableObject {
         codexCardAccountSnapshot = account
         codexCardAccountIsLoading = false
         codexCardAccountRetried = false
-        codexCardAccountRetryTask?.cancel()
-        codexCardAccountRetryTask = nil
+        codexCardAccountRetryScheduler.cancel()
     }
 
     private func discardCodexCardAccount(matching key: CodexAccountContextKey) {
@@ -2535,8 +2533,7 @@ public final class AppModel: ObservableObject {
 
     private func invalidateCodexCardAccount() {
         codexCardAccountEpoch &+= 1
-        codexCardAccountRetryTask?.cancel()
-        codexCardAccountRetryTask = nil
+        codexCardAccountRetryScheduler.cancel()
         codexCardAccountRetried = false
         codexCardAccountSnapshot = nil
         codexCardAccountIsLoading = false
@@ -2547,14 +2544,12 @@ public final class AppModel: ObservableObject {
 
     private func scheduleCodexCardAccountRetry() {
         guard codexCardAccountSnapshot == nil,
-              !codexCardAccountRetried, codexCardAccountRetryTask == nil
+              !codexCardAccountRetried, !codexCardAccountRetryScheduler.isScheduled
         else { return }
         codexCardAccountRetried = true
         let epoch = codexCardAccountEpoch
-        codexCardAccountRetryTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1))
-            guard let self, !Task.isCancelled, epoch == codexCardAccountEpoch else { return }
-            codexCardAccountRetryTask = nil
+        codexCardAccountRetryScheduler.schedule(after: 1) { [weak self] in
+            guard let self, epoch == codexCardAccountEpoch else { return }
             loadCodexCardAccount()
         }
     }

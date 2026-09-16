@@ -6348,6 +6348,34 @@ private func testCodexSubscriptionDayBoundarySchedulerIsIdempotent() throws {
     )
 }
 
+@MainActor
+private final class CodexCardAccountRetryProbe {
+    var fired = false
+    var remainedScheduledDuringAction = false
+}
+
+@MainActor
+private func testCodexCardAccountRetrySchedulerRetainsOwnershipUntilActionReturns() async throws {
+    let scheduler = CodexCardAccountRetryScheduler()
+    let probe = CodexCardAccountRetryProbe()
+
+    try expect(
+        scheduler.schedule(after: 0.01) {
+            probe.remainedScheduledDuringAction = scheduler.isScheduled
+            probe.fired = true
+        },
+        "the first account-card retry must install a timer"
+    )
+    try await waitUntil("account-card retry fires") {
+        await MainActor.run { probe.fired }
+    }
+    try expect(
+        probe.remainedScheduledDuringAction,
+        "the retry scheduler must retain ownership until its action returns"
+    )
+    try expect(!scheduler.isScheduled, "the retry scheduler must release ownership after its action returns")
+}
+
 private func testCodexSubscriptionRowPresentationKeepsServerOrderAndUnknownPlaceholders() throws {
     let current = makeCodexSubscriptionAccount(
         id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -13226,6 +13254,7 @@ struct CodexPulseAppTestMain {
         try await testSettingsEditDuringRefreshIsPreserved()
         try testCodexSubscriptionCivilDateAndDayBoundaryHelpers()
         try testCodexSubscriptionDayBoundarySchedulerIsIdempotent()
+        try await testCodexCardAccountRetrySchedulerRetainsOwnershipUntilActionReturns()
         try testCodexSubscriptionRowPresentationKeepsServerOrderAndUnknownPlaceholders()
         try testCodexSubscriptionEditorCarriesDetectedFactsWithoutPersistingFallbacks()
         try testCodexAccountsSettingsSourceContract()
