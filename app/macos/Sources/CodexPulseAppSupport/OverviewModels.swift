@@ -2425,8 +2425,9 @@ public struct OverviewPresentation: Equatable, Sendable {
 	public let requestCount: DisplayMetric
 	public let todayRequestCount: DisplayMetric
 	public let providerCoverage: [ProviderCoveragePresentation]
-    public let account: CodexAccountPresentation
+	public let account: CodexAccountPresentation
     public let accountSnapshot: Codexpulse_Core_V1_AccountSnapshotResponse?
+    public let codexAccountContextKey: CodexAccountContextKey?
     public let quotaWindows: [QuotaWindowPresentation]
     public let quotaPaceWindows: [QuotaPaceWindowPresentation]
     public let resetCredits: ResetCreditsPresentation
@@ -2487,6 +2488,7 @@ public struct OverviewPresentation: Equatable, Sendable {
         let isWeeklyQuotaRange = requestedRange == .quotaWeek
         self.account = CodexAccountPresentation(responses.account)
         self.accountSnapshot = responses.account
+        self.codexAccountContextKey = responses.codexAccountContextKey
         self.quotaWindows = responses.quota.current.windows.map(QuotaWindowPresentation.init)
         self.quotaPaceWindows = responses.quotaPace.pace.windows.map {
             QuotaPaceWindowPresentation(

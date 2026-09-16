@@ -97,23 +97,11 @@ struct QuotaUsageView: View {
     }
 
     private var quotaAccountSummary: PopoverAccountSummaryPresentation? {
-        guard let quota = model.quotaState.value,
-              let snapshot = model.quotaAccountState.value
-        else { return nil }
-        return CodexQuotaAccountSummaryCopy.summary(quota: quota, snapshot: snapshot)
+        model.quotaAccountCardSummary
     }
 
     private var quotaAccountFallbackText: String {
-        if let snapshot = model.quotaAccountState.value {
-            let account = CodexAccountPresentation(snapshot)
-            if account.availability != .available {
-                return account.accessibilityLabel
-            }
-        }
-        if model.quotaAccountState.isLoading || model.quotaState.isLoading {
-            return model.localization.textValue("账号确认中")
-        }
-        return model.localization.textValue("Codex 账户与套餐信息暂不可用")
+        model.quotaAccountCardFallbackText
     }
 
     private var quotaSection: some View {
