@@ -186,7 +186,8 @@ public final class AppModel: ObservableObject {
 	private var statusOverviewCache: [AgentProvider: OverviewPresentation] = [:]
 	private var statusUsageCache:
 		[AgentProvider: Codexpulse_Core_V1_UsageCostResponse] = [:]
-    private var codexSubscriptionDayBoundaryTask: Task<Void, Never>?
+    private let codexSubscriptionDayBoundaryScheduler =
+        CodexSubscriptionDayBoundaryScheduler()
     private var codexSubscriptionSnapshotGeneration: UInt64 = 0
     private var timeZoneObserver: NSObjectProtocol?
     private var observedTimeZoneIdentifier = TimeZone.current.identifier
@@ -487,8 +488,7 @@ public final class AppModel: ObservableObject {
 
 	public func openMainWindowProvider(_ provider: AgentProvider) {
 		selectProvider(provider)
-		selectedFeature = .overview
-		persistSelectedFeature()
+		navigate(to: .overview)
 	}
 
     public func applyLocalePreference(_ rawValue: String) {
@@ -601,17 +601,16 @@ public final class AppModel: ObservableObject {
     }
 
     public func navigate(to feature: AppFeature) {
-		guard feature != .invocationUsage || selectedProvider?.supportsInvocationStatistics == true else {
-			selectedFeature = .overview
-			persistSelectedFeature()
-			return
-		}
-        if selectedFeature != feature {
+        let destination = feature == .invocationUsage &&
+            selectedProvider?.supportsInvocationStatistics != true
+            ? AppFeature.overview
+            : feature
+        if selectedFeature != destination {
             cancelCodexSubscriptionDayBoundaryReload()
         }
-        selectedFeature = feature
+		selectedFeature = destination
 		persistSelectedFeature()
-        load(feature)
+        load(destination)
     }
 
     public func selectDashboardRange(_ range: DateRangePreset) {
@@ -1826,7 +1825,6 @@ public final class AppModel: ObservableObject {
         guard selectedFeature == .settings ||
             (selectedFeature == .quotaUsage && selectedProvider == .codex)
         else { return }
-        cancelCodexSubscriptionDayBoundaryReload()
         let timeZone = TimeZone.current
         observedTimeZoneIdentifier = timeZone.identifier
         let now = Date()
@@ -1836,21 +1834,16 @@ public final class AppModel: ObservableObject {
             reloadCodexSubscriptionDateStateForSelectedFeature()
             return
         }
-        codexSubscriptionDayBoundaryTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: .seconds(delay))
-            } catch {
+        codexSubscriptionDayBoundaryScheduler.schedule(
+            at: next,
+            timeZoneIdentifier: timeZone.identifier
+        ) { [weak self] in
+            guard let self else { return }
+            if TimeZone.current.identifier != self.observedTimeZoneIdentifier {
+                self.handleSystemTimeZoneChange()
                 return
             }
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                guard let self else { return }
-                if TimeZone.current.identifier != self.observedTimeZoneIdentifier {
-                    self.handleSystemTimeZoneChange()
-                    return
-                }
-                self.reloadCodexSubscriptionDateStateForSelectedFeature()
-            }
+            self.reloadCodexSubscriptionDateStateForSelectedFeature()
         }
     }
 
@@ -1866,8 +1859,7 @@ public final class AppModel: ObservableObject {
     }
 
     private func cancelCodexSubscriptionDayBoundaryReload() {
-        codexSubscriptionDayBoundaryTask?.cancel()
-        codexSubscriptionDayBoundaryTask = nil
+        codexSubscriptionDayBoundaryScheduler.cancel()
     }
 
     private func startTimeZoneObservationIfNeeded() {

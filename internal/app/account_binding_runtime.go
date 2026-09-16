@@ -143,6 +143,10 @@ const (
 	identityReconcileSwitch
 )
 
+func isAccountBindingCallerCancellation(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
 func (runtime *accountBindingRuntime) reconcileIdentity(
 	ctx context.Context,
 	reason store.CodexAccountBindingReason,
@@ -186,6 +190,9 @@ func (runtime *accountBindingRuntime) reconcileIdentity(
 		return runtime.markUnavailable(ctx, nowMS, store.CodexAccountBindingReasonMissingAccountID)
 	}
 	if err != nil {
+		if isAccountBindingCallerCancellation(err) {
+			return err
+		}
 		if mode == identityReconcileProbe && current.State == store.CodexAccountBindingConfirmed {
 			return err
 		}
@@ -220,6 +227,9 @@ func (runtime *accountBindingRuntime) reconcileIdentity(
 		(mode == identityReconcileProbe && current.State != store.CodexAccountBindingConfirmed) {
 		secondScope, confirmErr := runtime.discoverScope(ctx)
 		if confirmErr != nil {
+			if isAccountBindingCallerCancellation(confirmErr) {
+				return confirmErr
+			}
 			return runtime.keepPending(ctx, nowMS, store.CodexAccountBindingReasonConfirmationFailed, confirmErr)
 		}
 		if secondScope != firstScope {

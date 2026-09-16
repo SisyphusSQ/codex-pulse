@@ -377,6 +377,62 @@ func TestAccountBindingProbeReadErrorKeepsConfirmed(t *testing.T) {
 	}
 }
 
+func TestAccountBindingCallerCancellationDoesNotPersistConfirmationFailure(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		failOn int
+		err    error
+	}{
+		{name: "first read canceled", failOn: 1, err: context.Canceled},
+		{name: "confirmation read canceled", failOn: 2, err: context.Canceled},
+		{name: "first read deadline", failOn: 1, err: context.DeadlineExceeded},
+		{name: "confirmation read deadline", failOn: 2, err: context.DeadlineExceeded},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			repository := openAccountBindingTestRepository(t)
+			key, _, _ := accountBindingTestScopes(t, repository)
+			if _, err := repository.MarkCodexAccountBindingPending(
+				t.Context(),
+				quotaRuntimeNowMS-1,
+				store.CodexAccountBindingReasonAccountChanged,
+			); err != nil {
+				t.Fatalf("MarkCodexAccountBindingPending() error = %v", err)
+			}
+			runtime := mustAccountBindingRuntime(
+				t,
+				repository,
+				key,
+				&accountBindingScriptedReader{
+					accountIDs: []string{"acct-test-a"},
+					err:        test.err,
+					failOn:     test.failOn,
+				},
+				&accountBindingTestQuota{},
+			)
+
+			err := runtime.Discover(t.Context(), store.CodexAccountBindingReasonStable)
+			if !errors.Is(err, test.err) {
+				t.Fatalf("Discover() error = %v, want %v", err, test.err)
+			}
+			binding, err := repository.CodexAccountBinding(t.Context())
+			if err != nil {
+				t.Fatalf("CodexAccountBinding() error = %v", err)
+			}
+			if binding.State != store.CodexAccountBindingPending ||
+				binding.Reason != store.CodexAccountBindingReasonAccountChanged {
+				t.Fatalf(
+					"binding after caller cancellation = %#v, want pending/account_changed",
+					binding,
+				)
+			}
+		})
+	}
+}
+
 func TestAccountBindingLoadDisplayRequiresMatchingSandwich(t *testing.T) {
 	t.Parallel()
 

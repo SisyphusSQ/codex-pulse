@@ -107,8 +107,11 @@ struct RootView: View {
         .id(model.localization.preference.rawValue)
         .environment(\.locale, model.localization.locale)
         .onChange(of: model.selectedFeature) { _, next in
-            model.load(next)
-            model.markFeatureRendered(next)
+            Task { @MainActor [weak model] in
+                await Task.yield()
+                guard model?.selectedFeature == next else { return }
+                model?.markFeatureRendered(next)
+            }
         }
     }
 
