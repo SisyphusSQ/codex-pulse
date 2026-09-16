@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	_ "modernc.org/sqlite"
 )
@@ -132,7 +133,9 @@ func (collector *Collector) RefreshIfDue(ctx context.Context) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return true, err
 	}
-	if err := collector.writer.ReplaceCursorSnapshot(ctx, snapshot.CursorSnapshot); err != nil {
+	if err := providercontrol.WriteWithCommit(ctx, func() error {
+		return collector.writer.ReplaceCursorSnapshot(ctx, snapshot.CursorSnapshot)
+	}); err != nil {
 		return true, fmt.Errorf("%w: persist snapshot: %w", ErrCollector, err)
 	}
 	collector.last = now

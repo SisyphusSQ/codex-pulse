@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -80,7 +81,9 @@ func (collector *Collector) RefreshIfDue(ctx context.Context) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return true, err
 	}
-	if err := collector.writer.ReplaceGrokSnapshot(ctx, snapshot); err != nil {
+	if err := providercontrol.WriteWithCommit(ctx, func() error {
+		return collector.writer.ReplaceGrokSnapshot(ctx, snapshot)
+	}); err != nil {
 		return true, fmt.Errorf("%w: persist snapshot: %w", ErrCollector, err)
 	}
 	collector.updatesCursors = cursors

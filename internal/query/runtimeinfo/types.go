@@ -310,6 +310,7 @@ type SettingsOnlineSnapshot struct {
 	ResetCreditsEnabled    bool `json:"resetCreditsEnabled"`
 	GrokQuotaEnabled       bool `json:"grokQuotaEnabled"`
 	GrokAutoRefreshEnabled bool `json:"grokAutoRefreshEnabled"`
+	CursorOnlineEnabled    bool `json:"cursorOnlineEnabled"`
 }
 
 type SettingsRefreshSnapshot struct {
@@ -335,15 +336,25 @@ type SettingsUISnapshot struct {
 	OverviewRange  string `json:"overviewRange"`
 }
 
+type SettingsProviderSnapshot struct {
+	Provider       string `json:"provider"`
+	Intent         string `json:"intent"`
+	DiscoveryState string `json:"discoveryState"`
+	EffectiveState string `json:"effectiveState"`
+	ReasonCode     string `json:"reasonCode"`
+	Generation     string `json:"generation"`
+}
+
 type SettingsSnapshot struct {
-	SchemaVersion       int                     `json:"schemaVersion"`
-	Revision            string                  `json:"revision"`
-	OnboardingCompleted bool                    `json:"onboardingCompleted"`
-	Home                SettingsHomeSnapshot    `json:"home"`
-	Online              SettingsOnlineSnapshot  `json:"online"`
-	Refresh             SettingsRefreshSnapshot `json:"refresh"`
-	Updates             SettingsUpdateSnapshot  `json:"updates"`
-	UI                  SettingsUISnapshot      `json:"ui"`
+	SchemaVersion       int                        `json:"schemaVersion"`
+	Revision            string                     `json:"revision"`
+	OnboardingCompleted bool                       `json:"onboardingCompleted"`
+	Home                SettingsHomeSnapshot       `json:"home"`
+	Online              SettingsOnlineSnapshot     `json:"online"`
+	Refresh             SettingsRefreshSnapshot    `json:"refresh"`
+	Updates             SettingsUpdateSnapshot     `json:"updates"`
+	UI                  SettingsUISnapshot         `json:"ui"`
+	Providers           []SettingsProviderSnapshot `json:"providers"`
 }
 
 type EditableValueType string

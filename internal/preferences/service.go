@@ -82,6 +82,7 @@ type Service struct {
 
 type SettingsUpdate struct {
 	ExpectedRevision uint64
+	Providers        ProviderPreferences
 	Online           OnlinePreferences
 	Refresh          RefreshPreferences
 	Updates          UpdatePreferences
@@ -155,6 +156,7 @@ func (service *Service) UpdateSettings(ctx context.Context, request SettingsUpda
 	}
 	next := cloneSnapshot(current)
 	next.Revision = revision
+	next.Providers = request.Providers
 	next.Online = request.Online
 	next.Refresh = request.Refresh
 	next.Updates = cloneUpdatePreferences(request.Updates)
@@ -212,7 +214,7 @@ func (service *Service) PlanSwitch(
 	if current.PendingSwitch != nil || current.PendingResume != nil {
 		return SwitchPlan{}, ErrSwitchRecovery
 	}
-	if current.CodexHome.Generation == math.MaxUint64 {
+	if current.CodexHome != nil && current.CodexHome.Generation == math.MaxUint64 {
 		return SwitchPlan{}, ErrInvalidPreferences
 	}
 	metadata, err := service.probe.Probe(ctx, targetPath)
@@ -232,13 +234,21 @@ func (service *Service) PlanSwitch(
 	if validateConfirmedSource(targetSource) != nil {
 		return SwitchPlan{}, ErrHomeUnavailable
 	}
-	if sameSourceIdentity(current.CodexHome.Source, targetSource) {
+	if current.CodexHome != nil && sameSourceIdentity(current.CodexHome.Source, targetSource) {
 		return SwitchPlan{}, ErrHomeAlreadyActive
 	}
 	id := switchPlanID(current, targetSource, strategy)
+	from := CodexHomePreferences{}
+	targetGeneration := uint64(1)
+	dataStoreKey := DefaultDataStoreKey
+	if current.CodexHome != nil {
+		from = *current.CodexHome
+		targetGeneration = current.CodexHome.Generation + 1
+		dataStoreKey = current.CodexHome.DataStoreKey
+	}
 	target := CodexHomePreferences{
-		Source: targetSource, Generation: current.CodexHome.Generation + 1,
-		DataStoreKey: current.CodexHome.DataStoreKey,
+		Source: targetSource, Generation: targetGeneration,
+		DataStoreKey: dataStoreKey,
 	}
 	if strategy == HomeSwitchIndependentDatabase {
 		target.DataStoreKey = detachedDataStoreKey(current.DetachedHomes, targetSource)
@@ -247,7 +257,7 @@ func (service *Service) PlanSwitch(
 		}
 	}
 	plan := SwitchPlan{
-		ID: id, SourceRevision: current.Revision, From: current.CodexHome,
+		ID: id, SourceRevision: current.Revision, From: from,
 		Target: target, Strategy: strategy, Impact: switchImpact(strategy),
 	}
 	service.lastPlan = &plan
@@ -282,11 +292,14 @@ func (service *Service) ConfirmSwitch(ctx context.Context, planID string) (Snaps
 	if current.PendingSwitch != nil || current.PendingResume != nil {
 		return cloneSnapshot(current), ErrSwitchRecovery
 	}
-	if current.Revision != plan.SourceRevision || current.CodexHome != plan.From {
-		if resolvedSwitchMatches(current, plan.Target, plan.ID, HomeSwitchCompleted) {
+	if current.Revision != plan.SourceRevision || !sameActiveHome(current.CodexHome, plan.From) {
+		if resolvedSwitchMatches(current, CodexHomePointer(plan.Target), plan.ID, HomeSwitchCompleted) {
 			return cloneSnapshot(current), nil
 		}
 		return cloneSnapshot(current), ErrSwitchPlanStale
+	}
+	if current.CodexHome == nil {
+		return service.confirmInitialHome(ctx, current, plan)
 	}
 	metadata, err := service.probe.Probe(ctx, plan.Target.Source.Path)
 	if err != nil {
@@ -311,7 +324,7 @@ func (service *Service) ConfirmSwitch(ctx context.Context, planID string) (Snaps
 			if reflect.DeepEqual(visible, current) {
 				return cloneSnapshot(visible), err
 			}
-			if resolvedSwitchMatches(visible, plan.Target, plan.ID, HomeSwitchCompleted) {
+			if resolvedSwitchMatches(visible, CodexHomePointer(plan.Target), plan.ID, HomeSwitchCompleted) {
 				return cloneSnapshot(visible), nil
 			}
 			return cloneSnapshot(visible), errors.Join(ErrSwitchRecovery, err)
@@ -351,6 +364,9 @@ func (service *Service) ConfirmSwitch(ctx context.Context, planID string) (Snaps
 		pending = visible
 	}
 
+	if pending.CodexHome == nil {
+		return cloneSnapshot(pending), ErrInvalidPreferences
+	}
 	request := BootstrapRequest{
 		SwitchID: plan.ID, Generation: pending.CodexHome.Generation,
 		Source: pending.CodexHome.Source, DataStoreKey: pending.CodexHome.DataStoreKey, Strategy: plan.Strategy,
@@ -415,7 +431,7 @@ func (service *Service) resumeGuardSnapshot(current Snapshot, plan SwitchPlan) (
 }
 
 func (service *Service) pendingSnapshot(current Snapshot, plan SwitchPlan) (Snapshot, error) {
-	if current.PendingResume == nil || current.PendingResume.SwitchID != plan.ID ||
+	if current.CodexHome == nil || current.PendingResume == nil || current.PendingResume.SwitchID != plan.ID ||
 		current.PendingResume.Generation != current.CodexHome.Generation ||
 		current.PendingResume.TargetGeneration != plan.Target.Generation ||
 		current.PendingResume.Strategy != plan.Strategy {
@@ -427,11 +443,11 @@ func (service *Service) pendingSnapshot(current Snapshot, plan SwitchPlan) (Snap
 	}
 	next := cloneSnapshot(current)
 	next.Revision = revision
-	next.CodexHome = plan.Target
+	next.CodexHome = CodexHomePointer(plan.Target)
 	next.PendingResume = nil
 	next.PendingSwitch = &HomeSwitchJournal{
 		SwitchID: plan.ID, AttemptID: current.PendingResume.AttemptID,
-		Previous: current.CodexHome, Target: plan.Target,
+		Previous: *current.CodexHome, Target: plan.Target,
 		Strategy: plan.Strategy, StartedAtMS: service.clock().UnixMilli(),
 	}
 	if err := validatePreferences(next); err != nil {
@@ -485,7 +501,7 @@ func (service *Service) rollbackPending(ctx context.Context, current Snapshot) (
 	}
 	next := cloneSnapshot(current)
 	next.Revision = revision
-	next.CodexHome = journal.Previous
+	next.CodexHome = CodexHomePointer(journal.Previous)
 	next.PendingSwitch = nil
 	next.PendingResume = &HomeResumeJournal{
 		SwitchID: journal.SwitchID, AttemptID: journal.AttemptID, Generation: journal.Previous.Generation,
@@ -557,7 +573,7 @@ func (service *Service) finalizePending(
 	}
 	next := cloneSnapshot(current)
 	next.Revision = revision
-	next.CodexHome = journal.Target
+	next.CodexHome = CodexHomePointer(journal.Target)
 	next.PendingSwitch = nil
 	if journal.Strategy == HomeSwitchIndependentDatabase {
 		next.DetachedHomes = detachedWithoutDataStore(next.DetachedHomes, journal.Target.DataStoreKey)
@@ -585,6 +601,7 @@ func (service *Service) persistResolution(ctx context.Context, current, next Sna
 		defer cancel()
 		readback, loadErr := service.store.LoadPreferences(recoveryCtx)
 		if loadErr == nil && reflect.DeepEqual(readback.DetachedHomes, next.DetachedHomes) &&
+			next.LastSwitch != nil &&
 			resolvedSwitchMatches(readback, next.CodexHome, next.LastSwitch.SwitchID, next.LastSwitch.Outcome) {
 			return cloneSnapshot(readback), nil
 		}
@@ -610,7 +627,7 @@ func (service *Service) readbackPending(ctx context.Context, want Snapshot) (Sna
 		return Snapshot{}, false, false
 	}
 	return value, value.PendingSwitch != nil && want.PendingSwitch != nil &&
-		*value.PendingSwitch == *want.PendingSwitch && value.CodexHome == want.CodexHome, true
+		*value.PendingSwitch == *want.PendingSwitch && sameCodexHomePointer(value.CodexHome, want.CodexHome), true
 }
 
 func (service *Service) recoveryContext(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -618,8 +635,9 @@ func (service *Service) recoveryContext(ctx context.Context) (context.Context, c
 }
 
 func settingsEqual(current Snapshot, request SettingsUpdate) bool {
-	return current.Online == request.Online && current.Refresh == request.Refresh &&
-		reflect.DeepEqual(current.Updates, request.Updates) && current.UI == request.UI
+	return current.Providers == request.Providers && current.Online == request.Online &&
+		current.Refresh == request.Refresh && reflect.DeepEqual(current.Updates, request.Updates) &&
+		current.UI == request.UI
 }
 
 func switchImpact(strategy HomeSwitchStrategy) SwitchImpact {
@@ -656,17 +674,19 @@ func detachedWithoutDataStore(values []CodexHomePreferences, dataStoreKey string
 
 func resolvedSwitchMatches(
 	value Snapshot,
-	home CodexHomePreferences,
+	home *CodexHomePreferences,
 	switchID string,
 	outcome HomeSwitchOutcome,
 ) bool {
-	return value.PendingSwitch == nil && value.PendingResume == nil && value.CodexHome == home && value.LastSwitch != nil &&
+	return value.PendingSwitch == nil && value.PendingResume == nil &&
+		sameCodexHomePointer(value.CodexHome, home) && value.LastSwitch != nil &&
 		value.LastSwitch.SwitchID == switchID && value.LastSwitch.Outcome == outcome
 }
 
 func resumeGuardMatches(value Snapshot, want *HomeResumeJournal) bool {
 	return want != nil && value.PendingSwitch == nil && value.PendingResume != nil &&
-		*value.PendingResume == *want && value.CodexHome.Generation == want.Generation
+		*value.PendingResume == *want && value.CodexHome != nil &&
+		value.CodexHome.Generation == want.Generation
 }
 
 func resumeCompletedMatches(value Snapshot, switchID string) bool {
@@ -685,8 +705,14 @@ func randomAttemptID() (string, error) {
 func switchPlanID(current Snapshot, target ConfirmedSource, strategy HomeSwitchStrategy) string {
 	hasher := sha256.New()
 	writeSwitchUint64(hasher, current.Revision)
-	writeSwitchUint64(hasher, current.CodexHome.Generation)
-	writeSwitchString(hasher, current.CodexHome.DataStoreKey)
+	var generation uint64
+	var dataStoreKey string
+	if current.CodexHome != nil {
+		generation = current.CodexHome.Generation
+		dataStoreKey = current.CodexHome.DataStoreKey
+	}
+	writeSwitchUint64(hasher, generation)
+	writeSwitchString(hasher, dataStoreKey)
 	writeSwitchString(hasher, target.Path)
 	writeSwitchString(hasher, target.DeviceID)
 	writeSwitchUint64(hasher, uint64(target.Inode))
@@ -716,21 +742,104 @@ func metadataMatchesSource(metadata logsource.HomeMetadata, source ConfirmedSour
 }
 
 func cloneSnapshot(value Snapshot) Snapshot {
+	value.CodexHome = CloneCodexHome(value.CodexHome)
 	value.Updates = cloneUpdatePreferences(value.Updates)
 	value.DetachedHomes = append([]CodexHomePreferences(nil), value.DetachedHomes...)
-	if value.PendingSwitch != nil {
-		journal := *value.PendingSwitch
-		value.PendingSwitch = &journal
-	}
-	if value.PendingResume != nil {
-		journal := *value.PendingResume
-		value.PendingResume = &journal
-	}
-	if value.LastSwitch != nil {
-		audit := *value.LastSwitch
-		value.LastSwitch = &audit
-	}
+	value.PendingSwitch = cloneHomeSwitchJournal(value.PendingSwitch)
+	value.PendingResume = cloneHomeResumeJournal(value.PendingResume)
+	value.LastSwitch = cloneHomeSwitchAudit(value.LastSwitch)
 	return value
+}
+
+func cloneHomeSwitchJournal(value *HomeSwitchJournal) *HomeSwitchJournal {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
+}
+
+func cloneHomeResumeJournal(value *HomeResumeJournal) *HomeResumeJournal {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
+}
+
+func cloneHomeSwitchAudit(value *HomeSwitchAudit) *HomeSwitchAudit {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
+}
+
+func sameActiveHome(active *CodexHomePreferences, from CodexHomePreferences) bool {
+	if active == nil {
+		return from == (CodexHomePreferences{})
+	}
+	return *active == from
+}
+
+func sameCodexHomePointer(left, right *CodexHomePreferences) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
+}
+
+func (service *Service) confirmInitialHome(
+	ctx context.Context,
+	current Snapshot,
+	plan SwitchPlan,
+) (Snapshot, error) {
+	if current.CodexHome != nil || plan.From != (CodexHomePreferences{}) || plan.Target.Generation != 1 {
+		return cloneSnapshot(current), ErrSwitchPlanStale
+	}
+	metadata, err := service.probe.Probe(ctx, plan.Target.Source.Path)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return Snapshot{}, err
+		}
+		return cloneSnapshot(current), ErrHomeUnavailable
+	}
+	if !metadataMatchesSource(metadata, plan.Target.Source) {
+		return cloneSnapshot(current), ErrSwitchPlanStale
+	}
+	revision, err := nextRevision(current.Revision)
+	if err != nil {
+		return cloneSnapshot(current), err
+	}
+	next := cloneSnapshot(current)
+	next.Revision = revision
+	next.CodexHome = CodexHomePointer(plan.Target)
+	next.LastSwitch = &HomeSwitchAudit{
+		SwitchID: plan.ID, FromGeneration: 0, ToGeneration: plan.Target.Generation,
+		Strategy: plan.Strategy, Outcome: HomeSwitchCompleted, FinishedAtMS: service.clock().UnixMilli(),
+	}
+	if err := validatePreferences(next); err != nil {
+		return cloneSnapshot(current), err
+	}
+	if err := service.store.CompareAndSwap(ctx, current.Revision, next); err != nil {
+		visible, loadErr := service.store.LoadPreferences(ctx)
+		if loadErr == nil && resolvedSwitchMatches(visible, next.CodexHome, plan.ID, HomeSwitchCompleted) {
+			return cloneSnapshot(visible), nil
+		}
+		if loadErr != nil {
+			return cloneSnapshot(current), errors.Join(err, loadErr)
+		}
+		return cloneSnapshot(visible), err
+	}
+	request := BootstrapRequest{
+		SwitchID: plan.ID, Generation: plan.Target.Generation,
+		Source: plan.Target.Source, DataStoreKey: plan.Target.DataStoreKey, Strategy: plan.Strategy,
+	}
+	if err := service.runtime.StartBootstrap(ctx, request); err != nil {
+		startErr := fmt.Errorf("start Home bootstrap generation %d: %w", request.Generation, err)
+		return cloneSnapshot(next), errors.Join(startErr)
+	}
+	return cloneSnapshot(next), nil
 }
 
 func cloneUpdatePreferences(value UpdatePreferences) UpdatePreferences {

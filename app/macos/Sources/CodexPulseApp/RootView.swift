@@ -20,23 +20,30 @@ struct RootView: View {
 					.accessibilityIdentifier("sidebar.dashboard-summary")
 				}
 				Section {
+                    if model.enabledProviders.isEmpty {
+                        Text("尚未启用客户端")
+                            .foregroundStyle(.secondary)
+                    } else {
 					Picker("客户端", selection: providerSelection) {
-						ForEach(AgentProvider.allCases) { provider in
-							Text(provider.title).tag(provider)
+						ForEach(model.enabledProviders) { provider in
+							Text(provider.title).tag(Optional(provider))
 						}
 					}
 					.labelsHidden()
 					.pickerStyle(.menu)
 					.frame(maxWidth: .infinity, alignment: .leading)
 					.accessibilityIdentifier("sidebar.provider-picker")
+                    }
 				} header: {
 					Text("客户端")
 				}
+                if !model.enabledProviders.isEmpty {
                 Section(localization.text("sidebar.section.usage")) {
 					ForEach(AppFeature.usageFeatures(for: model.selectedProvider)) { section in
                         Label(section.title(localization: localization), systemImage: section.symbol)
                             .tag(section)
                     }
+                }
                 }
                 Section(localization.text("sidebar.section.apiSubscriptions")) {
                     Label(
@@ -70,6 +77,7 @@ struct RootView: View {
                             !model.canRefreshOrRestart
                                 || model.isRefreshingAll
                                 || model.isRefreshing(model.selectedFeature)
+                                || (model.selectedFeature.requiresEnabledProvider && model.selectedProvider == nil)
                         )
                         .help(currentReloadHelp)
                         .accessibilityIdentifier("toolbar.refresh.current")
@@ -111,19 +119,31 @@ struct RootView: View {
         )
     }
 
-    private var providerSelection: Binding<AgentProvider> {
+    private var providerSelection: Binding<AgentProvider?> {
         Binding(
             get: { model.selectedProvider },
-            set: { provider in model.selectProvider(provider) }
+            set: { provider in
+                if let provider {
+                    model.selectProvider(provider)
+                }
+            }
         )
     }
 
     private var navigationTitle: String {
         let featureTitle = model.selectedFeature.title(localization: localization)
-        return model.selectedFeature == .apiSubscriptions
+        if model.selectedFeature == .apiSubscriptions
             || model.selectedFeature == .dashboardSummary
-            ? featureTitle
-            : "\(featureTitle) · \(model.selectedProvider.title)"
+            || model.selectedFeature == .settings
+            || model.selectedFeature == .localStatus
+            || model.selectedFeature == .sourcesJobs
+        {
+            return featureTitle
+        }
+        if let provider = model.selectedProvider {
+            return "\(featureTitle) · \(provider.title)"
+        }
+        return featureTitle
     }
 
     @ViewBuilder
@@ -175,6 +195,11 @@ struct RootView: View {
     @ViewBuilder
     private var featureContent: some View {
         Group {
+            if model.selectedFeature.requiresEnabledProvider, model.selectedProvider == nil {
+                NoEnabledProviderView {
+                    model.navigate(to: .settings)
+                }
+            } else {
             switch model.selectedFeature {
             case .dashboardSummary:
                 RuntimeAwarePage(model: model) { DashboardSummaryView(model: model) }
@@ -199,9 +224,26 @@ struct RootView: View {
                     SettingsView(model: model, loginItemSettings: loginItemSettings)
                 }
             }
+            }
         }
-        .id("\(model.selectedFeature.id):\(model.selectedProvider.rawValue)")
+        .id("\(model.selectedFeature.id):\(model.selectedProvider?.rawValue ?? "none")")
         .onAppear { model.markFeatureRendered(model.selectedFeature) }
+    }
+}
+
+struct NoEnabledProviderView: View {
+    let onOpenSettings: () -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("尚未启用客户端", systemImage: "switch.2")
+        } description: {
+            Text("打开设置后可以启用 Codex、Cursor 或 Grok。")
+        } actions: {
+            Button("打开设置") { onOpenSettings() }
+                .accessibilityIdentifier("empty-providers.open-settings")
+        }
+        .accessibilityIdentifier("empty-providers")
     }
 }
 
@@ -256,9 +298,9 @@ struct OverviewStateView: View {
 
     @ViewBuilder
     private func overviewContent(_ overview: OverviewPresentation) -> some View {
-        if model.selectedProvider == .cursor || model.selectedProvider == .grok {
+        if let provider = model.selectedProvider, provider == .cursor || provider == .grok {
             CursorOverviewContentView(
-                provider: model.selectedProvider,
+                provider: provider,
                 overview: overview,
 				selectedRange: model.overviewRange,
 				onSelectRange: model.selectOverviewRange,

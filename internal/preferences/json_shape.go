@@ -25,7 +25,7 @@ func validateLegacyJSONShape(content []byte) error {
 	return err
 }
 
-func validateCurrentJSONShape(content []byte) error {
+func validateV2JSONShape(content []byte) error {
 	if err := validateJSONDocument(content); err != nil {
 		return err
 	}
@@ -50,6 +50,59 @@ func validateCurrentJSONShape(content []byte) error {
 	); err != nil {
 		return err
 	}
+	return validateSharedPreferencesObjects(root)
+}
+
+func validateCurrentJSONShape(content []byte) error {
+	if err := validateJSONDocument(content); err != nil {
+		return err
+	}
+	root, err := decodeExactObject(content,
+		[]string{
+			"schema_version", "revision", "onboarding", "online", "refresh", "updates", "ui", "providers",
+		},
+		[]string{"codex_home", "detached_homes", "pending_switch", "pending_resume", "last_switch"},
+	)
+	if err != nil {
+		return err
+	}
+	if _, err := decodeObjectField(root, "onboarding", "version", "completed"); err != nil {
+		return err
+	}
+	if raw, exists := root["codex_home"]; exists {
+		if err := validateCodexHomeJSON(raw); err != nil {
+			return err
+		}
+	}
+	if _, err := decodeObjectFieldExact(root, "online",
+		[]string{
+			"quota_enabled", "reset_credits_enabled", "cursor_online_enabled",
+			"grok_quota_enabled", "grok_auto_refresh_enabled",
+		},
+		nil,
+	); err != nil {
+		return err
+	}
+	if err := validateProvidersJSON(root["providers"]); err != nil {
+		return err
+	}
+	return validateSharedPreferencesObjects(root)
+}
+
+func validateProvidersJSON(raw json.RawMessage) error {
+	providers, err := decodeRequiredObject(raw, "codex", "cursor", "grok")
+	if err != nil {
+		return err
+	}
+	for _, name := range []string{"codex", "cursor", "grok"} {
+		if _, err := decodeRequiredObject(providers[name], "intent"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateSharedPreferencesObjects(root map[string]json.RawMessage) error {
 	if _, err := decodeObjectField(root, "refresh",
 		"quota_interval_seconds", "reset_credits_interval_seconds", "reconcile_interval_seconds",
 		"jsonl_debounce_milliseconds",

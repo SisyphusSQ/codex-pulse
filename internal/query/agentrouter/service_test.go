@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
+	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
@@ -231,4 +233,143 @@ func (stub failingRoutingStub) ProjectDetail(context.Context, usagecost.ProjectD
 func (stub failingRoutingStub) InvocationUsage(context.Context, invocationusage.InvocationUsageRequest) (invocationusage.InvocationUsageResponse, error) {
 	stub.record("invocation")
 	return invocationusage.InvocationUsageResponse{}, stub.err
+}
+
+type staticProviderStates struct {
+	states map[string]providercontrol.Snapshot
+}
+
+func (states staticProviderStates) ProviderState(provider string) (providercontrol.Snapshot, error) {
+	snapshot, ok := states.states[provider]
+	if !ok {
+		return providercontrol.Snapshot{}, providercontrol.ErrInvalidProvider
+	}
+	return snapshot, nil
+}
+
+func (states staticProviderStates) EnabledProviders() []string {
+	enabled := make([]string, 0, 3)
+	for _, name := range []string{agentprovider.Codex, agentprovider.Cursor, agentprovider.Grok} {
+		if states.states[name].Effective == providercontrol.EffectiveEnabled {
+			enabled = append(enabled, name)
+		}
+	}
+	return enabled
+}
+
+func (states staticProviderStates) Generation() uint64 { return 1 }
+
+type routerPreferences struct {
+	snapshot preferences.Snapshot
+}
+
+func (reader routerPreferences) LoadPreferences(context.Context) (preferences.Snapshot, error) {
+	return reader.snapshot, nil
+}
+
+type blockingUsageStub struct {
+	routingStub
+	started chan struct{}
+}
+
+func (stub blockingUsageStub) UsageCost(
+	ctx context.Context,
+	_ usagecost.UsageCostRequest,
+) (usagecost.UsageCostResponse, error) {
+	close(stub.started)
+	<-ctx.Done()
+	return usagecost.UsageCostResponse{}, ctx.Err()
+}
+
+func TestRouterQueryParticipatesInDisableDrain(t *testing.T) {
+	t.Parallel()
+	providerPreferences := preferences.DefaultProviderPreferences()
+	controller, err := providercontrol.NewController(routerPreferences{snapshot: preferences.Snapshot{
+		Providers: providerPreferences,
+	}}, providercontrol.ProbeSet{
+		Codex: func(context.Context, *preferences.CodexHomePreferences) providercontrol.ProbeResult {
+			return providercontrol.ProbeResult{State: providercontrol.DiscoveryAvailable, ReasonCode: providercontrol.ReasonAvailable}
+		},
+		Cursor: func(context.Context) providercontrol.ProbeResult {
+			return providercontrol.ProbeResult{State: providercontrol.DiscoveryAvailable, ReasonCode: providercontrol.ReasonAvailable}
+		},
+		Grok: func(context.Context) providercontrol.ProbeResult {
+			return providercontrol.ProbeResult{State: providercontrol.DiscoveryAvailable, ReasonCode: providercontrol.ReasonAvailable}
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewController() error = %v", err)
+	}
+	if _, err := controller.RefreshDiscovery(context.Background(), "startup"); err != nil {
+		t.Fatalf("RefreshDiscovery() error = %v", err)
+	}
+	calls := []string{}
+	normal := routingStub{provider: agentprovider.Codex, calls: &calls}
+	blocking := blockingUsageStub{
+		routingStub: routingStub{provider: agentprovider.Cursor, calls: &calls},
+		started:     make(chan struct{}),
+	}
+	grok := routingStub{provider: agentprovider.Grok, calls: &calls}
+	service, err := New(normal, normal, blocking, blocking, grok, grok)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	service.BindStates(controller)
+	queryDone := make(chan error, 1)
+	go func() {
+		_, queryErr := service.UsageCost(context.Background(), usagecost.UsageCostRequest{
+			Provider: agentprovider.Scope{Provider: agentprovider.Cursor},
+		})
+		queryDone <- queryErr
+	}()
+	<-blocking.started
+	providerPreferences.Cursor.Intent = preferences.ProviderIntentDisabled
+	transition, err := controller.Apply(context.Background(), providerPreferences)
+	if err != nil || !transition.Applied {
+		t.Fatalf("Apply(disable) = %#v, %v", transition, err)
+	}
+	if queryErr := <-queryDone; !errors.Is(queryErr, context.Canceled) {
+		t.Fatalf("UsageCost(disabled during query) error = %v, want canceled", queryErr)
+	}
+}
+
+func TestRouterRejectsDisabledProviderWithoutCallingBackend(t *testing.T) {
+	t.Parallel()
+	calls := []string{}
+	codex := routingStub{provider: agentprovider.Codex, calls: &calls}
+	cursor := routingStub{provider: agentprovider.Cursor, calls: &calls}
+	grok := routingStub{provider: agentprovider.Grok, calls: &calls}
+	service, err := New(codex, codex, cursor, cursor, grok, grok)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	service.BindStates(staticProviderStates{states: map[string]providercontrol.Snapshot{
+		agentprovider.Codex: {
+			Provider: agentprovider.Codex, Effective: providercontrol.EffectiveEnabled,
+		},
+		agentprovider.Cursor: {
+			Provider: agentprovider.Cursor, Effective: providercontrol.EffectiveDisabled,
+		},
+		agentprovider.Grok: {
+			Provider: agentprovider.Grok, Effective: providercontrol.EffectiveEnabled,
+		},
+	}})
+	_, err = service.UsageCost(context.Background(), usagecost.UsageCostRequest{
+		Provider: agentprovider.Scope{Provider: agentprovider.Cursor},
+	})
+	if !errors.Is(err, basequery.ErrProviderDisabled) {
+		t.Fatalf("UsageCost(disabled) error = %v, want provider disabled", err)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("backend calls = %v, want none", calls)
+	}
+	usage, err := service.UsageCost(context.Background(), usagecost.UsageCostRequest{
+		Provider: agentprovider.Scope{Provider: agentprovider.Grok},
+	})
+	if err != nil || usage.ProviderContext.EffectiveProvider != agentprovider.Grok {
+		t.Fatalf("UsageCost(grok) = %#v, %v", usage, err)
+	}
+	if !reflect.DeepEqual(calls, []string{"grok:usage"}) {
+		t.Fatalf("backend calls = %v", calls)
+	}
 }

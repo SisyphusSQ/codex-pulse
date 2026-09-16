@@ -2,10 +2,12 @@ package grokprovider
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
@@ -14,6 +16,40 @@ import (
 
 type staticSnapshot struct {
 	snapshot store.GrokSnapshot
+}
+
+type rejectingProviderBeginner struct {
+	calls atomic.Int64
+}
+
+func (beginner *rejectingProviderBeginner) Begin(
+	context.Context,
+	string,
+) (providercontrol.Operation, error) {
+	beginner.calls.Add(1)
+	return nil, providercontrol.ErrDisabled
+}
+
+func TestRejectedBackgroundRefreshClearsSingleFlightFlag(t *testing.T) {
+	t.Parallel()
+	beginner := &rejectingProviderBeginner{}
+	service := &QueryService{beginner: beginner}
+	for attempt := int64(1); attempt <= 2; attempt++ {
+		service.scheduleLocalRefresh()
+		deadline := time.Now().Add(time.Second)
+		for time.Now().Before(deadline) {
+			service.refreshMu.Lock()
+			refreshing := service.localRefreshing
+			service.refreshMu.Unlock()
+			if beginner.calls.Load() >= attempt && !refreshing {
+				break
+			}
+			time.Sleep(time.Millisecond)
+		}
+		if beginner.calls.Load() != attempt {
+			t.Fatalf("Begin() calls after attempt %d = %d", attempt, beginner.calls.Load())
+		}
+	}
 }
 
 type quotaRefreshRecorder struct {

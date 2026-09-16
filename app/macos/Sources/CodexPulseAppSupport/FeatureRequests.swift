@@ -49,6 +49,10 @@ public enum AgentProvider: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    public var settingsIntentFieldKey: String {
+        "providers.\(rawValue).intent"
+    }
+
     var scope: Codexpulse_Core_V1_ProviderScope {
         var value = Codexpulse_Core_V1_ProviderScope()
         value.provider = rawValue

@@ -11,6 +11,7 @@ import (
 	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -32,9 +33,11 @@ func (runtime *applicationLifecycleRuntime) UpdateSettings(
 	}
 	update := preferences.SettingsUpdate{
 		ExpectedRevision: expectedRevision,
+		Providers:        requestProviders(request.Providers, current.Providers),
 		Online: preferences.OnlinePreferences{
 			QuotaEnabled:           request.Online.QuotaEnabled,
 			ResetCreditsEnabled:    request.Online.ResetCreditsEnabled,
+			CursorOnlineEnabled:    request.Online.CursorOnlineEnabled,
 			GrokQuotaEnabled:       request.Online.GrokQuotaEnabled,
 			GrokAutoRefreshEnabled: request.Online.GrokAutoRefreshEnabled,
 		},
@@ -230,6 +233,28 @@ func (runtime *applicationLifecycleRuntime) AnalyzeSessionIndexRepair(
 	}, nil
 }
 
+func requestProviders(
+	values []core.SettingsProviderUpdate,
+	fallback preferences.ProviderPreferences,
+) preferences.ProviderPreferences {
+	result := fallback
+	for _, item := range values {
+		intent, ok := providercontrol.IntentFromProto(item.Intent)
+		if !ok {
+			continue
+		}
+		switch item.Provider {
+		case "codex":
+			result.Codex.Intent = intent
+		case "cursor":
+			result.Cursor.Intent = intent
+		case "grok":
+			result.Grok.Intent = intent
+		}
+	}
+	return result
+}
+
 func redactedHomeSwitchReceipt(snapshot preferences.Snapshot) core.HomeSwitchReceipt {
 	result := core.HomeSwitchCompletedResult
 	if snapshot.PendingSwitch != nil || snapshot.PendingResume != nil {
@@ -237,9 +262,13 @@ func redactedHomeSwitchReceipt(snapshot preferences.Snapshot) core.HomeSwitchRec
 	} else if snapshot.LastSwitch != nil && snapshot.LastSwitch.Outcome == preferences.HomeSwitchRolledBack {
 		result = core.HomeSwitchRolledBackResult
 	}
+	generation := "0"
+	if snapshot.CodexHome != nil {
+		generation = strconv.FormatUint(snapshot.CodexHome.Generation, 10)
+	}
 	return core.HomeSwitchReceipt{
 		Revision:   strconv.FormatUint(snapshot.Revision, 10),
-		Generation: strconv.FormatUint(snapshot.CodexHome.Generation, 10), Result: result,
+		Generation: generation, Result: result,
 	}
 }
 
@@ -248,7 +277,8 @@ func publicRuntimeCommandFailure(err error) error {
 		return nil
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
-		errors.Is(err, basequery.ErrValidation) || errors.Is(err, basequery.ErrUnavailable) {
+		errors.Is(err, basequery.ErrValidation) || errors.Is(err, basequery.ErrUnavailable) ||
+		errors.Is(err, basequery.ErrProviderDisabled) {
 		return err
 	}
 	return basequery.NewUnavailableFailure(err)

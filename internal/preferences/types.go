@@ -1,11 +1,28 @@
 package preferences
 
-import "encoding/json"
-
 const (
-	CurrentPreferencesSchemaVersion = 2
+	preferencesSchemaV2             = 2
+	CurrentPreferencesSchemaVersion = 3
 	DefaultDataStoreKey             = "default"
 )
+
+type ProviderIntent string
+
+const (
+	ProviderIntentAuto     ProviderIntent = "auto"
+	ProviderIntentEnabled  ProviderIntent = "enabled"
+	ProviderIntentDisabled ProviderIntent = "disabled"
+)
+
+type ProviderPreference struct {
+	Intent ProviderIntent `json:"intent"`
+}
+
+type ProviderPreferences struct {
+	Codex  ProviderPreference `json:"codex"`
+	Cursor ProviderPreference `json:"cursor"`
+	Grok   ProviderPreference `json:"grok"`
+}
 
 type UpdateChannel string
 
@@ -64,34 +81,9 @@ type CodexHomePreferences struct {
 type OnlinePreferences struct {
 	QuotaEnabled           bool `json:"quota_enabled"`
 	ResetCreditsEnabled    bool `json:"reset_credits_enabled"`
+	CursorOnlineEnabled    bool `json:"cursor_online_enabled"`
 	GrokQuotaEnabled       bool `json:"grok_quota_enabled"`
 	GrokAutoRefreshEnabled bool `json:"grok_auto_refresh_enabled"`
-}
-
-func (value *OnlinePreferences) UnmarshalJSON(content []byte) error {
-	var raw struct {
-		QuotaEnabled           *bool `json:"quota_enabled"`
-		ResetCreditsEnabled    *bool `json:"reset_credits_enabled"`
-		GrokQuotaEnabled       *bool `json:"grok_quota_enabled"`
-		GrokAutoRefreshEnabled *bool `json:"grok_auto_refresh_enabled"`
-	}
-	if err := json.Unmarshal(content, &raw); err != nil {
-		return err
-	}
-	if raw.QuotaEnabled == nil || raw.ResetCreditsEnabled == nil {
-		return ErrInvalidPreferences
-	}
-	value.QuotaEnabled = *raw.QuotaEnabled
-	value.ResetCreditsEnabled = *raw.ResetCreditsEnabled
-	value.GrokQuotaEnabled = true
-	if raw.GrokQuotaEnabled != nil {
-		value.GrokQuotaEnabled = *raw.GrokQuotaEnabled
-	}
-	value.GrokAutoRefreshEnabled = true
-	if raw.GrokAutoRefreshEnabled != nil {
-		value.GrokAutoRefreshEnabled = *raw.GrokAutoRefreshEnabled
-	}
-	return nil
 }
 
 type RefreshPreferences struct {
@@ -149,11 +141,13 @@ type HomeSwitchAudit struct {
 }
 
 // Snapshot 是权威私有 preferences domain contract，与 SQLite model 和 RPC/UI DTO 隔离。
+// v3 允许省略 codex_home；JSON 解码拒绝显式 null。
 type Snapshot struct {
 	SchemaVersion int                    `json:"schema_version"`
 	Revision      uint64                 `json:"revision"`
 	Onboarding    OnboardingPreferences  `json:"onboarding"`
-	CodexHome     CodexHomePreferences   `json:"codex_home"`
+	CodexHome     *CodexHomePreferences  `json:"codex_home,omitempty"`
+	Providers     ProviderPreferences    `json:"providers"`
 	Online        OnlinePreferences      `json:"online"`
 	Refresh       RefreshPreferences     `json:"refresh"`
 	Updates       UpdatePreferences      `json:"updates"`
@@ -182,4 +176,32 @@ func DefaultUIPreferences() UIPreferences {
 	return UIPreferences{
 		Locale: LocaleSystem, LaunchBehavior: LaunchBehaviorTray, OverviewRange: OverviewRangeQuotaWeek,
 	}
+}
+
+func DefaultProviderPreferences() ProviderPreferences {
+	return ProviderPreferences{
+		Codex:  ProviderPreference{Intent: ProviderIntentAuto},
+		Cursor: ProviderPreference{Intent: ProviderIntentAuto},
+		Grok:   ProviderPreference{Intent: ProviderIntentAuto},
+	}
+}
+
+func DefaultOnlinePreferences() OnlinePreferences {
+	return OnlinePreferences{
+		QuotaEnabled: true, ResetCreditsEnabled: true, CursorOnlineEnabled: true,
+		GrokQuotaEnabled: true, GrokAutoRefreshEnabled: true,
+	}
+}
+
+func CloneCodexHome(value *CodexHomePreferences) *CodexHomePreferences {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
+}
+
+func CodexHomePointer(value CodexHomePreferences) *CodexHomePreferences {
+	copied := value
+	return &copied
 }

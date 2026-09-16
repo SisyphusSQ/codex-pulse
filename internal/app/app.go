@@ -13,6 +13,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/metrics"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -101,6 +102,15 @@ func openNormalRuntime(
 		_ = database.Close(context.Background())
 		return nil, fmt.Errorf("configure default Codex Home: %w", err)
 	}
+	controller, err := providercontrol.NewController(
+		preferenceStore,
+		providercontrol.DefaultProbes(preferenceStore, func() string { return config.DefaultCodexHome }),
+	)
+	if err != nil {
+		_ = metricsRuntime.Close(context.Background())
+		_ = database.Close(context.Background())
+		return nil, err
+	}
 	credentialStore, err := apisubscriptions.OpenSQLiteCredentialStore(
 		ctx,
 		apisubscriptions.SQLiteCredentialStoreConfig{Store: storesqlite.Config{
@@ -116,6 +126,7 @@ func openNormalRuntime(
 	}
 	composition, err := composeCoreGraph(
 		database, preferenceStore, metricsRuntime.Observer(), config.Broker, credentialStore, credentialStore,
+		controller,
 	)
 	if err != nil {
 		_ = credentialStore.Close(context.Background())
@@ -133,9 +144,10 @@ func openNormalRuntime(
 		_ = database.Close(context.Background())
 		return nil, err
 	}
-	lifecycleRuntime, err := startApplicationLifecycleRuntime(ctx, ApplicationLifecycleRuntimeConfig{
-		Database: database, Preferences: preferenceStore, LightMetadata: lightindex.LocalMetadataProvider{},
-		Invalidation: config.Broker,
+	controlRuntime, err := startApplicationControlRuntime(ctx, ApplicationControlRuntimeConfig{
+		Database: database, Preferences: preferenceStore, Controller: controller,
+		Invalidation: config.Broker, LightMetadata: lightindex.LocalMetadataProvider{},
+		DefaultCodexHome: config.DefaultCodexHome,
 	})
 	if err != nil {
 		_ = apiSamplingRuntime.Close(context.Background())
@@ -144,83 +156,82 @@ func openNormalRuntime(
 		_ = database.Close(context.Background())
 		return nil, err
 	}
-	if lifecycleRuntime != nil {
-		if composition.providerRefresh != nil {
-			lifecycleRuntime.SetGlobalRefresh(composition.providerRefresh)
-		}
-		err = core.BindDependencies(service, core.ServiceConfig{
-			QuotaRefresh: lifecycleRuntime, RuntimeControls: lifecycleRuntime, SessionDeepIndex: lifecycleRuntime,
-			AccountSnapshot: lifecycleRuntime,
-		})
-		if err != nil {
-			_ = lifecycleRuntime.Close(context.Background())
-			_ = apiSamplingRuntime.Close(context.Background())
-			_ = credentialStore.Close(context.Background())
-			_ = metricsRuntime.Close(context.Background())
-			_ = database.Close(context.Background())
-			return nil, err
-		}
+	if err := controlRuntime.syncCodexWorker(ctx); err != nil {
+		_ = controlRuntime.Close(context.Background())
+		_ = apiSamplingRuntime.Close(context.Background())
+		_ = credentialStore.Close(context.Background())
+		_ = metricsRuntime.Close(context.Background())
+		_ = database.Close(context.Background())
+		return nil, err
+	}
+	if composition.runtimeInfo != nil {
+		composition.runtimeInfo.BindProviderSources(controlRuntime)
+	}
+	if composition.providerRefresh != nil {
+		controlRuntime.SetGlobalRefresh(composition.providerRefresh)
+	}
+	err = core.BindDependencies(service, core.ServiceConfig{
+		QuotaRefresh: controlRuntime, RuntimeControls: controlRuntime, SessionDeepIndex: controlRuntime,
+		AccountSnapshot: controlRuntime,
+	})
+	if err != nil {
+		_ = controlRuntime.Close(context.Background())
+		_ = apiSamplingRuntime.Close(context.Background())
+		_ = credentialStore.Close(context.Background())
+		_ = metricsRuntime.Close(context.Background())
+		_ = database.Close(context.Background())
+		return nil, err
 	}
 	healthRuntime, err := startApplicationHealthRuntime(ctx, database)
 	if err != nil {
-		closeNormalPartial(lifecycleRuntime, apiSamplingRuntime, credentialStore, metricsRuntime, database)
+		closeNormalPartial(controlRuntime, apiSamplingRuntime, credentialStore, metricsRuntime, database)
 		return nil, err
 	}
 	if err := core.BindDependencies(service, core.ServiceConfig{HealthProjection: healthRuntime}); err != nil {
 		_ = healthRuntime.Close(context.Background())
-		closeNormalPartial(lifecycleRuntime, apiSamplingRuntime, credentialStore, metricsRuntime, database)
+		closeNormalPartial(controlRuntime, apiSamplingRuntime, credentialStore, metricsRuntime, database)
 		return nil, err
 	}
 	retentionRuntime, err := startApplicationRetentionRuntime(ctx, database)
 	if err != nil {
 		_ = healthRuntime.Close(context.Background())
-		closeNormalPartial(lifecycleRuntime, apiSamplingRuntime, credentialStore, metricsRuntime, database)
+		closeNormalPartial(controlRuntime, apiSamplingRuntime, credentialStore, metricsRuntime, database)
 		return nil, err
 	}
 
-	components := []shutdownComponent{}
-	if lifecycleRuntime != nil {
-		components = append(components, shutdownComponent{Name: "scheduler-admission", Close: lifecycleRuntime.BeginDrain})
+	components := []shutdownComponent{
+		{Name: "scheduler-admission", Close: controlRuntime.BeginDrain},
+		{Name: "api-subscription-sampling", Close: apiSamplingRuntime.Close},
+		{Name: "invalidation", Close: func(context.Context) error { config.Broker.Close(); return nil }},
+		{Name: "retention", Close: retentionRuntime.Close},
+		{Name: "health", Close: healthRuntime.Close},
+		{Name: "provider-control", Close: controlRuntime.Close},
+		{Name: "metrics", Close: metricsRuntime.Close},
+		{Name: "api-subscription-credentials", Close: credentialStore.Close},
+		{Name: "sqlite", Close: database.Close},
 	}
-	components = append(components,
-		shutdownComponent{Name: "api-subscription-sampling", Close: apiSamplingRuntime.Close},
-		shutdownComponent{Name: "invalidation", Close: func(context.Context) error { config.Broker.Close(); return nil }},
-		shutdownComponent{Name: "retention", Close: retentionRuntime.Close},
-		shutdownComponent{Name: "health", Close: healthRuntime.Close},
-	)
-	if lifecycleRuntime != nil {
-		components = append(components, shutdownComponent{Name: "lifecycle", Close: lifecycleRuntime.Close})
-	}
-	components = append(components,
-		shutdownComponent{Name: "metrics", Close: metricsRuntime.Close},
-		shutdownComponent{Name: "api-subscription-credentials", Close: credentialStore.Close},
-		shutdownComponent{Name: "sqlite", Close: database.Close},
-	)
 	shutdown, err := newApplicationShutdownCoordinator(components...)
 	if err != nil {
 		_ = retentionRuntime.Close(context.Background())
 		_ = healthRuntime.Close(context.Background())
-		closeNormalPartial(lifecycleRuntime, apiSamplingRuntime, credentialStore, metricsRuntime, database)
+		closeNormalPartial(controlRuntime, apiSamplingRuntime, credentialStore, metricsRuntime, database)
 		return nil, err
 	}
-	runtime := &Runtime{
+	return &Runtime{
 		service: service, broker: config.Broker, shutdown: shutdown, stop: make(chan string, 1),
-	}
-	if lifecycleRuntime != nil {
-		runtime.lifecycle = lifecycleRuntime.adapter
-	}
-	return runtime, nil
+		lifecycle: controlRuntime.adapter,
+	}, nil
 }
 
 func closeNormalPartial(
-	lifecycle *applicationLifecycleRuntime,
+	control *applicationControlRuntime,
 	apiSampling *apiSubscriptionSamplingRuntime,
 	credentialStore *apisubscriptions.SQLiteCredentialStore,
 	metricsRuntime *applicationMetricsRuntime,
 	database *storesqlite.Store,
 ) {
-	if lifecycle != nil {
-		_ = lifecycle.Close(context.Background())
+	if control != nil {
+		_ = control.Close(context.Background())
 	}
 	if apiSampling != nil {
 		_ = apiSampling.Close(context.Background())

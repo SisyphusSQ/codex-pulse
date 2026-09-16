@@ -24,9 +24,13 @@ func TestServiceUpdateSettingsValidatesCASAndExactReplay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadPreferences() error = %v", err)
 	}
+	online := base.Online
+	online.QuotaEnabled = false
+	online.ResetCreditsEnabled = true
 	request := SettingsUpdate{
 		ExpectedRevision: base.Revision,
-		Online:           OnlinePreferences{QuotaEnabled: false, ResetCreditsEnabled: true},
+		Providers:        base.Providers,
+		Online:           online,
 		Refresh: RefreshPreferences{
 			QuotaIntervalSeconds: 120, ResetCreditsIntervalSeconds: 3600,
 			ReconcileIntervalSeconds: 7200, JSONLDebounceMilliseconds: 3000,
@@ -45,7 +49,7 @@ func TestServiceUpdateSettingsValidatesCASAndExactReplay(t *testing.T) {
 	}
 	if updated.Revision != base.Revision+1 || updated.Online != request.Online ||
 		updated.Refresh != request.Refresh || updated.Updates != request.Updates || updated.UI != request.UI ||
-		updated.CodexHome != base.CodexHome || updated.PendingSwitch != nil {
+		!sameCodexHomePointer(updated.CodexHome, base.CodexHome) || updated.PendingSwitch != nil {
 		t.Fatalf("UpdateSettings() = %#v", updated)
 	}
 	replayed, err := service.UpdateSettings(context.Background(), request)
@@ -84,9 +88,13 @@ func TestServiceUpdateSettingsReadsBackCommittedDurabilityUnknownAfterCancellati
 		},
 	}
 	service := newPreferencesService(t, store, &fakeHomeProbe{}, &fakeHomeRuntime{})
+	online := base.Online
+	online.QuotaEnabled = false
+	online.ResetCreditsEnabled = true
 	request := SettingsUpdate{
 		ExpectedRevision: base.Revision,
-		Online:           OnlinePreferences{QuotaEnabled: false, ResetCreditsEnabled: true},
+		Providers:        base.Providers,
+		Online:           online,
 		Refresh:          base.Refresh,
 		Updates:          base.Updates,
 		UI:               base.UI,
@@ -165,9 +173,13 @@ func TestServiceUpdateSettingsDurabilityReadbackStates(t *testing.T) {
 				t.Fatalf("configure() error = %v", err)
 			}
 			service := newPreferencesService(t, store, &fakeHomeProbe{}, &fakeHomeRuntime{})
+			online := base.Online
+			online.QuotaEnabled = false
+			online.ResetCreditsEnabled = true
 			request := SettingsUpdate{
 				ExpectedRevision: base.Revision,
-				Online:           OnlinePreferences{QuotaEnabled: false, ResetCreditsEnabled: true},
+				Providers:        base.Providers,
+				Online:           online,
 				Refresh:          base.Refresh, Updates: base.Updates, UI: base.UI,
 			}
 			got, err := service.UpdateSettings(context.Background(), request)
@@ -256,7 +268,7 @@ func TestServiceSwitchDrainFailureLeavesOldSnapshot(t *testing.T) {
 		t.Fatalf("ConfirmSwitch(drain failure) error = %v, want drain error", err)
 	}
 	after, err := store.LoadPreferences(context.Background())
-	if err != nil || after.CodexHome != before.CodexHome || after.Online != before.Online ||
+	if err != nil || !sameCodexHomePointer(after.CodexHome, before.CodexHome) || after.Online != before.Online ||
 		after.Refresh != before.Refresh || after.Updates != before.Updates || after.UI != before.UI ||
 		after.PendingSwitch != nil || after.PendingResume != nil || after.LastSwitch == nil ||
 		after.LastSwitch.Outcome != HomeSwitchRolledBack {
@@ -995,7 +1007,7 @@ func TestServiceConcurrentSameTargetSwitchesHaveOneRuntimeOwner(t *testing.T) {
 		t.Fatalf("ConfirmSwitch(owner) = %#v, %v", confirmed.snapshot, confirmed.err)
 	}
 	idempotent, err := services[1].ConfirmSwitch(context.Background(), plans[1].ID)
-	if err != nil || idempotent.CodexHome != confirmed.snapshot.CodexHome {
+	if err != nil || !sameCodexHomePointer(idempotent.CodexHome, confirmed.snapshot.CodexHome) {
 		t.Fatalf("ConfirmSwitch(after owner complete) = %#v, %v", idempotent, err)
 	}
 	assertRuntimeCallCount(t, runtime, "drain:", 1)
@@ -1315,12 +1327,12 @@ func installPendingSwitch(t *testing.T, store *FileStore, strategy HomeSwitchStr
 	}
 	pending := HomeSwitchJournal{
 		SwitchID: "home-switch:pending", AttemptID: strings.Repeat("a", 32),
-		Previous: base.CodexHome, Target: target,
+		Previous: *base.CodexHome, Target: target,
 		Strategy: strategy, StartedAtMS: 1_720_000_100_000,
 	}
 	next := base
 	next.Revision++
-	next.CodexHome = target
+	next.CodexHome = CodexHomePointer(target)
 	next.PendingSwitch = &pending
 	if err := store.CompareAndSwap(context.Background(), base.Revision, next); err != nil {
 		t.Fatalf("CompareAndSwap(pending) error = %v", err)

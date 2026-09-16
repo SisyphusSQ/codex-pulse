@@ -253,14 +253,14 @@ func quotaRuntimePreferencesForHome(t testing.TB, home string) preferences.Snaps
 	if err != nil {
 		t.Fatalf("homeidentity.FromDescriptor(home) error = %v", err)
 	}
-	return preferences.Snapshot{CodexHome: preferences.CodexHomePreferences{
+	return preferences.Snapshot{CodexHome: preferences.CodexHomePointer(preferences.CodexHomePreferences{
 		Source: preferences.ConfirmedSource{
 			Path: filepath.Clean(canonicalHome), DeviceID: identity.DeviceID,
 			Inode:         identity.Inode,
 			ConfirmedAtMS: 1_784_000_000_000,
 		},
 		Generation: 1, DataStoreKey: preferences.DefaultDataStoreKey,
-	}}
+	})}
 }
 
 func withBoundQuotaRuntime(

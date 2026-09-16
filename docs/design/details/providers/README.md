@@ -4,9 +4,25 @@
 
 Codex Pulse 以一个明确的客户端上下文查询和展示数据。产品 UI 使用“客户端”；代码使用 `AgentProvider` / `ProviderScope`，避免与 OpenAI、Anthropic、Grok 等模型供应方混淆。当前客户端仍是 `codex`、`cursor` 和 `grok`，不引入 `AgentProvider.all`，也不让空 `ProviderScope` 承担汇总语义。另有专用跨客户端汇总 read model（`DashboardSummary`），只聚合可比总量、当前范围趋势、分布、模型 Top、各客户端额度状态和独立 365 天 Token 活动，不合并 Session / Project identity。Grok 在 UI 中的显示名固定为“Grok”，代码身份为 `grok`；它指 Grok Build TUI / CLI，不是 Cursor 或其它客户端里出现的 Grok 模型。
 
-这是一条窄而明确的扩展缝，不是通用插件框架：Codex 原有 parser、collector、quota 与 pricing 路径保持不变；Cursor 与 Grok 各自使用独立 collector、事实表和查询实现。Core RPC 的使用量、调用、Session、Project、Quota 与 Account 请求显式携带 Provider scope，响应回显 effective provider、source、capabilities 和 coverage。Overview、菜单栏和账号胶囊都按客户端路由；客户端页面不把 Codex、Cursor、Grok 的 account / quota / usage 合并，也不把 Cursor 内的 `grok-*` 模型用量并进 Grok 客户端。跨客户端汇总由 Helper 的 `DashboardSummary` 独立聚合，模型维度必须带客户端命名空间，Cursor Grok Bot、Cursor 内 `cursor-grok-*` 与独立 Grok 客户端保持三组身份。
+这是一条窄而明确的扩展缝，不是通用插件框架：Codex 原有 parser、collector、quota 与 pricing 路径保持不变；Cursor 与 Grok 各自使用独立 collector、事实表和查询实现。Core RPC 的使用量、调用、Session、Project、Quota 与 Account 请求显式携带 Provider scope，响应回显 effective provider、source、capabilities 和 coverage。Overview、菜单栏和账号胶囊都按客户端路由；客户端页面不把 Codex、Cursor、Grok 的 account / quota / usage 合并，也不把 Cursor 内的 `grok-*` 模型用量并进 Grok 客户端。跨客户端汇总由 Helper 的 `DashboardSummary` 独立聚合，模型维度必须带客户端命名空间，Cursor Grok Bot、Cursor 内 `cursor-grok-*` 与独立 Grok 客户端保持三组身份。Helper 是 Provider 启用状态和业务 gate 的唯一真相；Swift 只消费 Settings catalog，不得自行判断某个客户端是否可采集。
 
-空 `ProviderScope` 仍归一为 `codex`，以兼容旧请求；未知非空值必须失败，不得默认成 Codex 或 Cursor。Router、AccountSnapshot、PricingCatalog 和 Swift 展示必须显式三路分发，禁止 `if cursor else Codex` 把 Grok 漏进另一家客户端。
+## Provider 三层状态与关闭语义
+
+每个客户端固定三层状态：
+
+| 层 | 值 | 语义 |
+| --- | --- | --- |
+| `intent` | `auto` / `enabled` / `disabled` | 持久化用户意图；只有 Settings mutation 可以改变 |
+| `discovery` | `unchecked` / `available` / `missing` / `inaccessible` / `invalid` | metadata-only 探测结果 |
+| `effective` | `enabled` / `disabled` / `unavailable` / `disabling` | 当前是否允许进入业务链路 |
+
+`auto + available` 默认启用；显式 `disabled` 在 restart、wake、foreground、数据源重新出现和应用升级后都必须保持关闭。Discovery 只允许路径解析、`lstat/stat`、类型/权限和已存在安全探针读取的物理身份，不得打开 Session/JSONL 正文、Cursor SQLite 内容、Grok `auth.json`，也不得发网络请求或写源目录。Reason code 只使用 `available`、`not_found`、`permission_denied`、`unsafe_path`、`invalid_type`、`probe_failed`、`disabled`、`disabling`、`unchecked`。
+
+关闭顺序固定为：先拒绝新 admission，再取消 operation context，再 drain 已接纳任务。旧 generation 在 stable disabled 后不得发布 Store、cache 或 invalidation。当前页面不得把 disabled Provider 的历史快照冒充当前事实；历史仍保存在 Store。`DashboardSummary` 只聚合 effective enabled Provider；全部关闭时返回 complete known-empty，而不是 service unavailable。direct query 命中显式 disabled 返回稳定错误 `provider_disabled`（`retryable=false`）；unavailable 保持可恢复。全局手动刷新仍按 `codex → cursor → grok` 回执，disabled 项为 `skipped_disabled`。
+
+子开关从属于主开关：Codex 沿用 quota / reset credits；Cursor 新增 `cursor_online_enabled` 统一控制 Dashboard 月额度和 Grok Bot 在线请求，本地 snapshot 仍受 Cursor 主开关控制；Grok 沿用 quota / credential auto-refresh。主开关关闭期间不修改子开关持久值。Preferences schema 为 v3；无 Codex Home 时 `codex_home` 可省略，Onboarding.Completed 只表示 preferences 已初始化。握手为 `core-rpc-v5`，控制面为 `provider-control-v1`。application SQLite schema 保持 v33。
+
+空 `ProviderScope` 仍归一为 `codex`，以兼容旧请求；未知非空值必须失败，不得默认成 Codex 或 Cursor。Router、AccountSnapshot、PricingCatalog 和 Swift 展示必须显式三路分发，禁止 `if cursor else Codex` 把 Grok 漏进另一家客户端。关闭后的 Router 必须在调用后端前拒绝 disabled Provider。
 
 额度手动刷新沿用同一个 `RequestQuotaRefresh` RPC，并与额度查询一样携带 `ProviderScope`；回执必须回显 `ProviderContext.effective_provider`，Swift 只接受与发起请求时客户端一致的回执。空 scope 继续走 Codex durable quota coordinator；Cursor 与 Grok 只接受 `source=quota`，分别同步触发 Cursor Dashboard 月额度与 Grok billing credits collector，成功提交后失效对应只读快照并通知客户端重查。Cursor/Grok 不支持 `reset_credits`，不得把外部客户端刷新误送给 Codex。界面上 Codex 保留“刷新数据”菜单及额度/重置次数两项，Cursor 与 Grok 在同一位置显示直接“刷新额度”按钮。
 
@@ -166,7 +182,7 @@ Preferences 提供两个独立开关：`online.grok_quota_enabled` 控制 billin
 
 ## Swift 状态与竞态
 
-主窗口 `selectedProvider` 与菜单栏 `statusProvider` 独立持久化，并分别由下拉框选择；Popover 的下拉框位于原产品标题位置。主窗口切换客户端时清空详情、分页和错误状态，推进 request generation 并取消旧页面任务，但不取消或重载菜单栏任务；非 Overview 页面立即发起自己的 Provider 请求，不等待 Overview 聚合完成。主窗口按 `provider + range`、Popover 按 provider 保留进程内 last-success 展示缓存，切回已加载客户端时先呈现目标客户端缓存并后台刷新，绝不沿用另一客户端的数据；只有 provider 与 generation 都匹配的响应才能落入对应 presentation state。Popover 使用独立的 `statusOverviewState`，只请求当前界面会展示的额度、用量、今日摘要，以及 Codex / Grok 当前官方额度周期的已归类项目排行。Cursor 不展示项目排行，也不得为该区块增加状态首屏 RPC。Cursor 与 Grok 都不为未渲染的 invocation 区块增加首屏 RPC；Cursor 主窗口还必须隐藏调用统计入口、拒绝旧路由并跳过范围与今日两类 `InvocationUsage` 请求。切换和刷新都不改变主窗口客户端，“打开主窗口”也只负责打开现有页面。连续 invalidation 期间状态栏刷新保持 single-flight，避免重复取消和重启同一批请求。
+主窗口 `selectedProvider` 与菜单栏 `statusProvider` 都是 optional，并分别持久化。启动先读取 Settings 构建 Provider catalog，再决定 Overview；picker 只列出 effective enabled 客户端。当前选择被关闭或转为 unavailable 时取消对应 Swift 任务并按 Codex、Cursor、Grok 顺序 fallback。全部关闭时删除 active selection，停止 Provider 请求，展示“尚未启用客户端”，Settings、汇总和系统页仍可达；重新出现第一个 enabled Provider 时按固定顺序选中，不自动跳回更早的旧选择。状态栏无 Provider 时显示 `Codex Pulse --`，不得沿用最后一个客户端的额度或账号。主窗口按 `provider + range`、Popover 按 provider 保留进程内 last-success 展示缓存，切回已加载客户端时先呈现目标客户端缓存并后台刷新，绝不沿用另一客户端的数据；只有 provider 与 generation 都匹配的响应才能落入对应 presentation state。Popover 使用独立的 `statusOverviewState`，只请求当前界面会展示的额度、用量、今日摘要，以及 Codex / Grok 当前官方额度周期的已归类项目排行。Cursor 不展示项目排行，也不得为该区块增加状态首屏 RPC。Cursor 与 Grok 都不为未渲染的 invocation 区块增加首屏 RPC；Cursor 主窗口还必须隐藏调用统计入口、拒绝旧路由并跳过范围与今日两类 `InvocationUsage` 请求。切换和刷新都不改变主窗口客户端，“打开主窗口”也只负责打开现有页面。连续 invalidation 期间状态栏刷新保持 single-flight，避免重复取消和重启同一批请求。
 
 菜单栏在 Codex 下保持既有额度展示。Cursor 与 Grok 复用同一套图标和双行额度摘要：顶行是当前官方周期的剩余百分比；Grok 底行是同一周期内的累计 Token，Cursor 底行固定按 `Cursor Models · Other Models` 顺序显示为 `已用 A · B`。没有成功额度快照时顶行为 `--`，没有可靠 Token 时底行为 `已用 --`。有 last-known 时显示最后成功值，并在 Popover 标注数据截至时间。Grok 的周期标签必须来自 billing `currentPeriod`，不得固定写成“周剩”或“月剩”。Popover 复用账号/套餐胶囊、额度卡片与每日模型 Token 趋势卡片；Codex 与 Grok 展示同一官方额度周期内的已归类项目 Token 前五排行，周/月标题、行内周期和空态文案必须保持一致。Cursor 因 Dashboard 账号级用量无法完整关联本地项目，不展示项目排行或“本账期消费”卡。Grok 不展示 Reset Credits，也不把 prepaid 余额画成 Reset Credits。系统页可以同时观察所有客户端，但来源按 Codex / Cursor / Grok 分组，各客户端内部来源只在该分组展开。
 

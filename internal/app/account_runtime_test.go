@@ -460,7 +460,7 @@ func accountRuntimePreferences(
 	if err != nil {
 		t.Fatalf("homeidentity.FromDescriptor() error = %v", err)
 	}
-	return preferences.Snapshot{CodexHome: preferences.CodexHomePreferences{
+	return preferences.Snapshot{CodexHome: preferences.CodexHomePointer(preferences.CodexHomePreferences{
 		Source: preferences.ConfirmedSource{
 			Path:          canonicalHome,
 			DeviceID:      identity.DeviceID,
@@ -469,7 +469,7 @@ func accountRuntimePreferences(
 		},
 		Generation:   generation,
 		DataStoreKey: "synthetic",
-	}}
+	})}
 }
 
 func lifecycleAccountQuery(provider string) core.AccountSnapshotQuery {

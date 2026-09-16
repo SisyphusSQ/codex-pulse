@@ -16,16 +16,21 @@ var (
 func validatePreferences(snapshot Snapshot) error {
 	if snapshot.SchemaVersion != CurrentPreferencesSchemaVersion || snapshot.Revision == 0 ||
 		snapshot.Onboarding.Version != CurrentOnboardingVersion || !snapshot.Onboarding.Completed ||
-		validateConfirmedSource(snapshot.CodexHome.Source) != nil || snapshot.CodexHome.Generation == 0 ||
-		!validDataStoreKey(snapshot.CodexHome.DataStoreKey) || !validRefreshPreferences(snapshot.Refresh) ||
+		!validProviderPreferences(snapshot.Providers) || !validRefreshPreferences(snapshot.Refresh) ||
 		!validUpdatePreferences(snapshot.Updates) || !validUIPreferences(snapshot.UI) {
 		return ErrInvalidPreferences
 	}
-	if snapshot.PendingSwitch != nil && !validHomeSwitchJournal(*snapshot.PendingSwitch, snapshot.CodexHome) {
+	if snapshot.CodexHome != nil && validateCodexHome(*snapshot.CodexHome) != nil {
+		return ErrInvalidPreferences
+	}
+	if snapshot.CodexHome == nil && (snapshot.PendingSwitch != nil || snapshot.PendingResume != nil) {
+		return ErrInvalidPreferences
+	}
+	if snapshot.PendingSwitch != nil && !validHomeSwitchJournal(*snapshot.PendingSwitch, *snapshot.CodexHome) {
 		return ErrInvalidPreferences
 	}
 	if snapshot.PendingResume != nil &&
-		(snapshot.PendingSwitch != nil || !validHomeResumeJournal(*snapshot.PendingResume, snapshot.CodexHome)) {
+		(snapshot.PendingSwitch != nil || !validHomeResumeJournal(*snapshot.PendingResume, *snapshot.CodexHome)) {
 		return ErrInvalidPreferences
 	}
 	if !validDetachedHomes(snapshot.DetachedHomes, snapshot.CodexHome, snapshot.PendingSwitch) {
@@ -37,11 +42,24 @@ func validatePreferences(snapshot Snapshot) error {
 	return nil
 }
 
+func validProviderIntent(value ProviderIntent) bool {
+	return value == ProviderIntentAuto || value == ProviderIntentEnabled || value == ProviderIntentDisabled
+}
+
+func validProviderPreferences(value ProviderPreferences) bool {
+	return validProviderIntent(value.Codex.Intent) &&
+		validProviderIntent(value.Cursor.Intent) &&
+		validProviderIntent(value.Grok.Intent)
+}
+
 func validDetachedHomes(
 	values []CodexHomePreferences,
-	active CodexHomePreferences,
+	active *CodexHomePreferences,
 	pending *HomeSwitchJournal,
 ) bool {
+	if active == nil {
+		return len(values) == 0
+	}
 	if len(values) > 64 {
 		return false
 	}
@@ -161,7 +179,7 @@ func validHomeResumeJournal(value HomeResumeJournal, active CodexHomePreferences
 
 func validHomeSwitchAudit(value HomeSwitchAudit) bool {
 	if value.SwitchID == "" || len(value.SwitchID) > 128 || !validHomeSwitchStrategy(value.Strategy) ||
-		value.FromGeneration == 0 || value.ToGeneration != value.FromGeneration+1 || value.FinishedAtMS <= 0 {
+		value.ToGeneration != value.FromGeneration+1 || value.FinishedAtMS <= 0 {
 		return false
 	}
 	return value.Outcome == HomeSwitchCompleted || value.Outcome == HomeSwitchRolledBack

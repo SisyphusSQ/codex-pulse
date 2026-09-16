@@ -11,6 +11,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
@@ -45,6 +46,7 @@ type QueryService struct {
 	localRefreshing bool
 	refreshing      bool
 	onRefresh       func()
+	beginner        providercontrol.Beginner
 }
 
 type discardSnapshotWriter struct{}
@@ -109,35 +111,82 @@ func NewQueryService(collector *Collector, reader SnapshotReader, billing ...Ref
 	return service, nil
 }
 
+func (service *QueryService) BindBeginner(beginner providercontrol.Beginner) {
+	if service == nil {
+		return
+	}
+	service.beginner = beginner
+}
+
+func (service *QueryService) withOperation(
+	ctx context.Context,
+	timeout time.Duration,
+	fn func(context.Context) error,
+) error {
+	if service == nil {
+		return ErrCollector
+	}
+	if service.beginner == nil {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		if timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+		}
+		return fn(ctx)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	operation, err := service.beginner.Begin(ctx, agentprovider.Grok)
+	if err != nil {
+		return err
+	}
+	defer operation.Finish()
+	opCtx := operation.Context()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		opCtx, cancel = context.WithTimeout(opCtx, timeout)
+		defer cancel()
+	}
+	return fn(opCtx)
+}
+
 func (service *QueryService) Refresh(ctx context.Context) error {
 	if service == nil || service.collector == nil || service.reader == nil {
 		return ErrCollector
 	}
-	performed, err := service.collector.RefreshIfDue(ctx)
-	if err != nil {
-		return err
-	}
-	if performed {
-		service.invalidateSnapshot()
-	}
-	return nil
+	return service.withOperation(ctx, 0, func(opCtx context.Context) error {
+		performed, err := service.collector.RefreshIfDue(opCtx)
+		if err != nil {
+			return err
+		}
+		if performed {
+			service.invalidateSnapshot()
+		}
+		return nil
+	})
 }
 
 func (service *QueryService) RefreshQuota(ctx context.Context) error {
 	if service == nil || service.billing == nil || ctx == nil {
 		return ErrCollector
 	}
-	if err := service.billing.Refresh(ctx); err != nil {
-		return err
-	}
-	service.invalidateSnapshot()
-	service.refreshMu.Lock()
-	notifier := service.onRefresh
-	service.refreshMu.Unlock()
-	if notifier != nil {
-		notifier()
-	}
-	return nil
+	return service.withOperation(ctx, 0, func(opCtx context.Context) error {
+		if err := service.billing.Refresh(opCtx); err != nil {
+			return err
+		}
+		service.invalidateSnapshot()
+		service.refreshMu.Lock()
+		notifier := service.onRefresh
+		service.refreshMu.Unlock()
+		if notifier != nil {
+			notifier()
+		}
+		return nil
+	})
 }
 
 func (service *QueryService) SetRefreshNotifier(notifier func()) {
@@ -183,7 +232,10 @@ func (service *QueryService) loadSnapshot(ctx context.Context) (store.GrokSnapsh
 
 	snapshot, err := service.reader.GrokSnapshot(ctx)
 	if errors.Is(err, store.ErrNotFound) {
-		if refreshErr := service.collector.Refresh(ctx); refreshErr != nil {
+		refreshErr := service.withOperation(ctx, 0, func(opCtx context.Context) error {
+			return service.collector.Refresh(opCtx)
+		})
+		if refreshErr != nil {
 			return store.GrokSnapshot{}, refreshErr
 		}
 		snapshot, err = service.reader.GrokSnapshot(ctx)
@@ -215,9 +267,15 @@ func (service *QueryService) scheduleLocalRefresh() {
 	service.localRefreshing = true
 	service.refreshMu.Unlock()
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-		defer cancel()
-		performed, err := service.collector.RefreshIfDue(ctx)
+		performed := false
+		err := service.withOperation(context.Background(), time.Minute, func(ctx context.Context) error {
+			var err error
+			performed, err = service.collector.RefreshIfDue(ctx)
+			if performed {
+				performed = err == nil
+			}
+			return err
+		})
 		service.refreshMu.Lock()
 		service.localRefreshing = false
 		notifier := service.onRefresh
@@ -243,15 +301,16 @@ func (service *QueryService) scheduleBillingRefresh() {
 	service.refreshing = true
 	service.refreshMu.Unlock()
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
 		performed := true
-		var err error
-		if refresher, ok := service.billing.(conditionalRefresher); ok {
-			performed, err = refresher.RefreshIfDue(ctx)
-		} else {
-			err = service.billing.Refresh(ctx)
-		}
+		err := service.withOperation(context.Background(), 20*time.Second, func(ctx context.Context) error {
+			var err error
+			if refresher, ok := service.billing.(conditionalRefresher); ok {
+				performed, err = refresher.RefreshIfDue(ctx)
+			} else {
+				err = service.billing.Refresh(ctx)
+			}
+			return err
+		})
 		service.refreshMu.Lock()
 		service.refreshing = false
 		notifier := service.onRefresh

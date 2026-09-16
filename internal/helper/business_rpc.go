@@ -47,6 +47,7 @@ func (api *grpcAPI) Contracts(ctx context.Context, _ *corev1.ContractsRequest) (
 		DashboardSummaryVersion:          contract.DashboardSummaryVersion,
 		CodexProTierVersion:              contract.CodexProTierVersion,
 		CodexSubscriptionAccountsVersion: contract.CodexSubscriptionAccountsVersion,
+		ProviderControlVersion:           contract.ProviderControlVersion,
 		Methods:                          methods, CommandMethods: append([]string(nil), contract.CommandMethods...), ErrorExample: detail,
 	}, nil
 }
@@ -389,9 +390,11 @@ func (api *grpcAPI) UpdateSettings(
 	}
 	response, err := api.service.UpdateSettings(ctx, core.SettingsUpdateRequest{
 		ExpectedRevision: request.GetExpectedRevision(),
+		Providers:        mapSettingsProviderUpdates(request.GetProviders()),
 		Online: core.SettingsOnlineUpdate{
 			QuotaEnabled:           request.GetOnline().GetQuotaEnabled(),
 			ResetCreditsEnabled:    request.GetOnline().GetResetCreditsEnabled(),
+			CursorOnlineEnabled:    request.GetOnline().GetCursorOnlineEnabled(),
 			GrokQuotaEnabled:       request.GetOnline().GetGrokQuotaEnabled(),
 			GrokAutoRefreshEnabled: request.GetOnline().GetGrokAutoRefreshEnabled(),
 		},
@@ -565,6 +568,19 @@ func fromProtoInvocationUsageRequest(request *corev1.InvocationUsageRequest) inv
 		SourceClass: invocationusage.SourceClass(request.GetSourceClass()),
 		TopLimit:    int(request.GetTopLimit()),
 	}
+}
+
+func mapSettingsProviderUpdates(values []*corev1.SettingsProviderUpdate) []core.SettingsProviderUpdate {
+	mapped := make([]core.SettingsProviderUpdate, 0, len(values))
+	for _, value := range values {
+		if value == nil {
+			continue
+		}
+		mapped = append(mapped, core.SettingsProviderUpdate{
+			Provider: value.GetProvider(), Intent: value.GetIntent().String(),
+		})
+	}
+	return mapped
 }
 
 func coreServiceUnavailable() error {

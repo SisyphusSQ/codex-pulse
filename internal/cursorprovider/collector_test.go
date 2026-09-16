@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	_ "modernc.org/sqlite"
 )
@@ -424,4 +426,80 @@ func mustExec(t *testing.T, database *sql.DB, statement string, arguments ...any
 	if _, err := database.Exec(statement, arguments...); err != nil {
 		t.Fatalf("exec fixture statement: %v", err)
 	}
+}
+
+func TestCollectorRejectsStaleGenerationWriteAfterDisable(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	capture := &snapshotCapture{}
+	collector, err := NewCollector(capture, Config{
+		ProjectsRoot:         filepath.Join(root, "projects"),
+		StateDatabase:        filepath.Join(root, "state.vscdb"),
+		ConversationDatabase: filepath.Join(root, "conversation.db"),
+		AITrackingDatabase:   filepath.Join(root, "tracking.db"),
+		MinimumRefresh:       0,
+		Now:                  func() time.Time { return time.UnixMilli(4_000) },
+	})
+	if err != nil {
+		t.Fatalf("NewCollector() error = %v", err)
+	}
+	prefs := staticCollectorPreferences{snapshot: preferences.Snapshot{
+		SchemaVersion: preferences.CurrentPreferencesSchemaVersion,
+		Revision:      1,
+		Onboarding:    preferences.OnboardingPreferences{Version: preferences.CurrentOnboardingVersion, Completed: true},
+		Providers:     preferences.DefaultProviderPreferences(),
+		Online:        preferences.DefaultOnlinePreferences(),
+		Refresh:       preferences.DefaultRefreshPreferences(),
+		Updates:       preferences.DefaultUpdatePreferences(),
+		UI:            preferences.DefaultUIPreferences(),
+	}}
+	available := func(context.Context) providercontrol.ProbeResult {
+		return providercontrol.ProbeResult{
+			State: providercontrol.DiscoveryAvailable, ReasonCode: providercontrol.ReasonAvailable,
+		}
+	}
+	controller, err := providercontrol.NewController(prefs, providercontrol.ProbeSet{
+		Codex: func(context.Context, *preferences.CodexHomePreferences) providercontrol.ProbeResult {
+			return available(context.Background())
+		},
+		Cursor: available,
+		Grok:   available,
+	})
+	if err != nil {
+		t.Fatalf("NewController() error = %v", err)
+	}
+	if _, err := controller.RefreshDiscovery(context.Background(), "startup"); err != nil {
+		t.Fatalf("RefreshDiscovery() error = %v", err)
+	}
+	operation, err := controller.Begin(context.Background(), "cursor")
+	if err != nil {
+		t.Fatalf("Begin() error = %v", err)
+	}
+	refreshErr := make(chan error, 1)
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		refreshErr <- collector.Refresh(operation.Context())
+		operation.Finish()
+	}()
+	if _, err := controller.Apply(context.Background(), preferences.ProviderPreferences{
+		Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+		Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
+		Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+	}); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if err := <-refreshErr; err == nil {
+		t.Fatal("Refresh(stale generation) error = nil, want commit fence")
+	}
+	if capture.writes != 0 {
+		t.Fatalf("writes = %d, want 0 after disable", capture.writes)
+	}
+}
+
+type staticCollectorPreferences struct {
+	snapshot preferences.Snapshot
+}
+
+func (store staticCollectorPreferences) LoadPreferences(context.Context) (preferences.Snapshot, error) {
+	return store.snapshot, nil
 }

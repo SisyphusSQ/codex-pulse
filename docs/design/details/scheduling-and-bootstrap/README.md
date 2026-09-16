@@ -76,6 +76,12 @@ v0.1 只支持一个 Codex home。更换路径时，用户必须明确选择“�
 
 操作为“开始”“选择其他目录”“退出”，并在同页提供在线 quota 与 reset credits 两个默认开启的独立开关。本地索引确认和两个在线能力偏好是同一次用户决定中的独立字段，但首次确认必须作为一个版本化 preferences snapshot 原子发布：目录 `0700`、文件 `0600`；新建 private 目录后先 fsync 其 containing directory，再用同目录 private temp 完整写入并 fsync、以不覆盖方式发布，最后 fsync private 目录。相同 source identity 与开关的重复确认不重写；已有不同 Home 或开关的确认不能由 onboarding 静默覆盖，交给 Preferences/Home switch 协议处理。发布前失败保持未配置；若文件已经可见但目录 fsync/cleanup 失败，返回 `durability_unknown`，启动方必须用不继承原请求取消信号的有界 `Load` 读回，不能假定零写入后盲目重试。Confirm、Cancel 和 Resume 在进程内按同一状态锁线性化：提交点之后的 Cancel 不得把已经确认或 durability-unknown 的状态改写成 canceled；只有 post-commit readback 或后续 Resume 权威读回明确为未配置时，才清除 conservative persistence latch 并恢复 Detect/Cancel。
 
+## Preferences v3 与无 Codex Home 启动
+
+Preferences 当前 schema 为 v3。v1/v2 迁移保留原 Home、revision、online/refresh/update/UI 字段，三家 intent 默认为 `auto`，Cursor online 默认为 `true`。`Snapshot.CodexHome` 可省略但拒绝 JSON null。没有安全的默认 Codex Home 时仍发布 revision=1 的合法 v3 snapshot，`Onboarding.Completed` 只表示应用 preferences 已初始化。公共控制面（Settings、Cursor、Grok、health、dashboard、API subscriptions）与 Codex Home worker 解耦：无 Home 或 Codex effective disabled 时不启动 Codex worker，也不把整个 App 写成 recovery/unavailable。
+
+Provider Controller 在启动、system wake、application foreground、Settings read/refresh 和五分钟 scheduled tick 做 metadata-only discovery。显式 disabled Provider 仍可探测以展示“已发现 · 已关闭”，但不得进入业务采集。collector 写入必须持有当前 operation generation 的 commit lease；stable disabled 后旧 generation 不得提交。
+
 ## Preferences v2 与单 Home 切换
 
 首次确认直接写 current `schema_version=2` typed Preferences；已有 v1 flat onboarding snapshot 在私有跨实例锁内严格解码、原子迁移并读回校验。快照包含独立的 `revision`、onboarding、active `codex_home`、在线能力、刷新周期、更新和 UI 设置，以及可选的 `detached_homes`、`pending_resume`、`pending_switch` 和 `last_switch`。每层 JSON object 都按精确大小写 allowlist 解码；未知/未来 schema、duplicate key、大小写别名、缺失/null 字段、未知字段、非法枚举、越界周期、非绝对 clean path、宽权限文件或 symlink 均 fail closed，不用 `encoding/json` 的宽松匹配或“填默认值”掩盖损坏配置。migration 在 rename 前失败保留 v1 bytes；rename 已发生但 durability 响应不确定或原请求随后取消时，在独立有界 context 中读回并只接受完整 v2，不能笼统声称旧 bytes 仍权威。旧版 v2 若为默认 Home 且 `device_id` 仍是十进制 `st_dev`，启动时只在 canonical path 与 inode 都保持一致、无 Home switch journal 时通过 revision CAS 升级为稳定卷 UUID；Home generation、data-store key 与用户设置保持不变。轻量索引中的同一旧根身份在单个 SQLite writer transaction 中同步更新；路径、inode 或派生行身份不一致继续 fail closed。

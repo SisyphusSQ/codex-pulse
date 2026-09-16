@@ -7,6 +7,7 @@ import (
 
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -48,6 +49,7 @@ type Service struct {
 	runtime         RuntimeReader
 	preferences     PreferencesReader
 	providerSources ProviderSourceRefresher
+	providers       providercontrol.StateReader
 	sourceSpec      basequery.Specification
 	jobSpec         basequery.Specification
 	healthSpec      basequery.Specification
@@ -94,6 +96,20 @@ func NewService(dependencies Dependencies) (*Service, error) {
 		sourceSpec: sourceSpec, jobSpec: jobSpec,
 		healthSpec: healthSpec,
 	}, nil
+}
+
+func (service *Service) BindStates(reader providercontrol.StateReader) {
+	if service == nil {
+		return
+	}
+	service.providers = reader
+}
+
+func (service *Service) BindProviderSources(refresher ProviderSourceRefresher) {
+	if service == nil {
+		return
+	}
+	service.providerSources = refresher
 }
 
 func runtimeSpecification(

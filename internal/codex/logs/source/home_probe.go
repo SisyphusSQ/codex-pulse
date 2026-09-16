@@ -35,36 +35,24 @@ func NewHomeProbe() *HomeProbe {
 	return &HomeProbe{filesystem: osFileSystem{}}
 }
 
-func (probe *HomeProbe) Probe(ctx context.Context, home string) (HomeMetadata, error) {
-	if probe == nil || probe.filesystem == nil || !filepath.IsAbs(home) {
-		return HomeMetadata{}, ErrInvalidHome
-	}
-	if err := ctx.Err(); err != nil {
-		return HomeMetadata{}, err
-	}
-	home, observed, err := canonicalProbeHome(home)
-	if err != nil {
-		return HomeMetadata{}, err
-	}
-	confirmed, err := probe.filesystem.ConfirmRoot(home, false)
-	if err != nil {
-		return HomeMetadata{}, err
-	}
-	if !sameObservedRootIdentity(observed, confirmed) {
-		return HomeMetadata{}, ErrHomeChanged
-	}
-	root, err := probe.filesystem.OpenRoot(home, false)
+// ProbeIdentity verifies the physical identity of a Codex Home without walking
+// allowlisted source directories or inspecting any source file metadata.
+func (probe *HomeProbe) ProbeIdentity(ctx context.Context, home string) (HomeMetadata, error) {
+	metadata, root, err := probe.openRoot(ctx, home)
 	if err != nil {
 		return HomeMetadata{}, err
 	}
 	defer func() { _ = root.Close() }()
-	if !samePersistentRootIdentity(root.Identity(), confirmed) {
-		return HomeMetadata{}, ErrHomeChanged
-	}
+	return metadata, nil
+}
 
-	metadata := HomeMetadata{
-		Path: home, DeviceID: confirmed.deviceID, Inode: confirmed.inode,
+func (probe *HomeProbe) Probe(ctx context.Context, home string) (HomeMetadata, error) {
+	metadata, root, err := probe.openRoot(ctx, home)
+	if err != nil {
+		return HomeMetadata{}, err
 	}
+	defer func() { _ = root.Close() }()
+
 	metadata.SessionsDirectory, err = probe.scanJSONLDirectory(ctx, root, "sessions", &metadata)
 	if err != nil {
 		return HomeMetadata{}, err
@@ -87,6 +75,37 @@ func (probe *HomeProbe) Probe(ctx context.Context, home string) (HomeMetadata, e
 		return HomeMetadata{}, err
 	}
 	return metadata, nil
+}
+
+func (probe *HomeProbe) openRoot(ctx context.Context, home string) (HomeMetadata, scanRoot, error) {
+	if probe == nil || probe.filesystem == nil || !filepath.IsAbs(home) {
+		return HomeMetadata{}, nil, ErrInvalidHome
+	}
+	if err := ctx.Err(); err != nil {
+		return HomeMetadata{}, nil, err
+	}
+	home, observed, err := canonicalProbeHome(home)
+	if err != nil {
+		return HomeMetadata{}, nil, err
+	}
+	confirmed, err := probe.filesystem.ConfirmRoot(home, false)
+	if err != nil {
+		return HomeMetadata{}, nil, err
+	}
+	if !sameObservedRootIdentity(observed, confirmed) {
+		return HomeMetadata{}, nil, ErrHomeChanged
+	}
+	root, err := probe.filesystem.OpenRoot(home, false)
+	if err != nil {
+		return HomeMetadata{}, nil, err
+	}
+	if !samePersistentRootIdentity(root.Identity(), confirmed) {
+		_ = root.Close()
+		return HomeMetadata{}, nil, ErrHomeChanged
+	}
+	return HomeMetadata{
+		Path: home, DeviceID: confirmed.deviceID, Inode: confirmed.inode,
+	}, root, nil
 }
 
 func canonicalProbeHome(home string) (string, rootIdentity, error) {

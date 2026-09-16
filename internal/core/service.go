@@ -24,7 +24,8 @@ import (
 )
 
 const (
-	ContractVersion = "core-rpc-v4"
+	ContractVersion         = "core-rpc-v5"
+	ProviderControlVersion  = "provider-control-v1"
 )
 
 var (
@@ -339,6 +340,7 @@ type ContractInfo struct {
 	DashboardSummaryVersion          string                  `json:"dashboardSummaryVersion"`
 	CodexProTierVersion              string                  `json:"codexProTierVersion"`
 	CodexSubscriptionAccountsVersion string                  `json:"codexSubscriptionAccountsVersion"`
+	ProviderControlVersion           string                  `json:"providerControlVersion"`
 	Methods                          []MethodInfo            `json:"methods"`
 	CommandMethods                   []string                `json:"commandMethods"`
 	ErrorExample                     basequery.ErrorEnvelope `json:"errorExample"`
@@ -397,6 +399,7 @@ func (service *Service) Contracts() ContractInfo {
 			DashboardSummaryVersion:          dashboardsummary.ContractVersion,
 			CodexProTierVersion:              subscriptiontier.ContractVersion,
 			CodexSubscriptionAccountsVersion: subscriptionaccounts.ContractVersion,
+			ProviderControlVersion:           ProviderControlVersion,
 			Methods:                          append([]MethodInfo(nil), methodAllowlist...),
 			CommandMethods: []string{
 				"RequestQuotaRefresh", "RequestProviderRefresh", "UpdateAPICredential", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",

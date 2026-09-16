@@ -46,7 +46,14 @@ func TestQuotaCurrentAndSettingsReturnVersionedRedactedFacts(t *testing.T) {
 	if settings.Meta.Status != basequery.ResponseComplete || settings.Snapshot.Revision != "7" ||
 		settings.Snapshot.Home.Generation != "3" || !settings.Snapshot.Home.Configured ||
 		settings.Snapshot.Home.SwitchStatus != HomeSwitchPending ||
-		!settings.Snapshot.Online.GrokAutoRefreshEnabled || len(settings.EditableFields) < 10 {
+		!settings.Snapshot.Online.GrokAutoRefreshEnabled ||
+		!settings.Snapshot.Online.CursorOnlineEnabled ||
+		len(settings.Snapshot.Providers) != 3 ||
+		settings.Snapshot.Providers[0].Provider != "codex" ||
+		settings.Snapshot.Providers[0].Intent != "PROVIDER_INTENT_AUTO" ||
+		settings.Snapshot.Providers[1].Intent != "PROVIDER_INTENT_AUTO" ||
+		settings.Snapshot.Providers[2].Intent != "PROVIDER_INTENT_AUTO" ||
+		len(settings.EditableFields) < 10 {
 		t.Fatalf("Settings() = %#v", settings)
 	}
 	encoded, err := json.Marshal(settings)
@@ -64,6 +71,11 @@ func TestQuotaCurrentAndSettingsReturnVersionedRedactedFacts(t *testing.T) {
 	assertEditableField(t, settings.EditableFields, "refresh.quotaIntervalSeconds", true, int64Pointer(60), int64Pointer(1800))
 	assertEditableField(t, settings.EditableFields, "updates.channel", true, nil, nil)
 	assertEditableField(t, settings.EditableFields, "online.grokAutoRefreshEnabled", true, nil, nil)
+	assertEditableField(t, settings.EditableFields, "online.cursorOnlineEnabled", true, nil, nil)
+	assertEditableOptions(
+		t, settings.EditableFields, "providers.codex.intent",
+		[]string{"enabled", "disabled"},
+	)
 	assertEditableOptions(
 		t, settings.EditableFields, "updates.channel",
 		[]string{"stable", "prerelease"},
@@ -807,9 +819,10 @@ func validSensitivePreferences() preferences.Snapshot {
 		Onboarding: preferences.OnboardingPreferences{
 			Version: preferences.CurrentOnboardingVersion, Completed: true,
 		},
-		CodexHome: active,
+		CodexHome: preferences.CodexHomePointer(active),
+		Providers: preferences.DefaultProviderPreferences(),
 		Online: preferences.OnlinePreferences{
-			QuotaEnabled: true, ResetCreditsEnabled: true, GrokAutoRefreshEnabled: true,
+			QuotaEnabled: true, ResetCreditsEnabled: true, CursorOnlineEnabled: true, GrokAutoRefreshEnabled: true,
 		},
 		Refresh:       preferences.DefaultRefreshPreferences(),
 		Updates:       preferences.DefaultUpdatePreferences(),

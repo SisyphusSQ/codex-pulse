@@ -133,11 +133,43 @@ func (store *FileStore) Confirm(ctx context.Context, next OnboardingSnapshot) er
 	if err := validateSnapshot(next); err != nil {
 		return err
 	}
-	preferences, err := preferencesFromOnboarding(next)
+	value, err := preferencesFromOnboarding(next)
 	if err != nil {
 		return err
 	}
-	content, err := marshalPreferences(preferences)
+	err = store.InitializePreferences(ctx, value)
+	if err == nil || !errors.Is(err, ErrAlreadyConfirmed) {
+		return err
+	}
+	currentPreferences, _, loadErr := loadPreferencesFromPath(ctx, store.path)
+	current, viewErr := onboardingFromPreferences(currentPreferences)
+	if loadErr == nil && viewErr != nil {
+		loadErr = viewErr
+	}
+	if loadErr == nil && sameConfirmation(current, next) {
+		return nil
+	}
+	if loadErr != nil {
+		return errors.Join(ErrAlreadyConfirmed, loadErr)
+	}
+	return ErrAlreadyConfirmed
+}
+
+// InitializePreferences 只在文件不存在时发布完整 v3 snapshot；已有文件永不覆盖。
+func (store *FileStore) InitializePreferences(ctx context.Context, next Snapshot) error {
+	if store == nil {
+		return ErrUnsafePath
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if next.Revision != 1 {
+		return ErrInvalidPreferences
+	}
+	if err := validatePreferences(next); err != nil {
+		return err
+	}
+	content, err := marshalPreferences(next)
 	if err != nil {
 		return err
 	}
@@ -147,15 +179,12 @@ func (store *FileStore) Confirm(ctx context.Context, next OnboardingSnapshot) er
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	currentPreferences, _, err := loadPreferencesFromPath(ctx, store.path)
-	current, viewErr := onboardingFromPreferences(currentPreferences)
+	current, _, err := loadPreferencesFromPath(ctx, store.path)
 	switch {
-	case err == nil && viewErr == nil && sameConfirmation(current, next):
+	case err == nil && reflect.DeepEqual(current, next):
 		return nil
-	case err == nil && viewErr == nil:
-		return ErrAlreadyConfirmed
 	case err == nil:
-		return viewErr
+		return ErrAlreadyConfirmed
 	case !errors.Is(err, ErrNotConfigured):
 		return err
 	}
@@ -166,14 +195,8 @@ func (store *FileStore) Confirm(ctx context.Context, next OnboardingSnapshot) er
 	if !errors.Is(err, ErrAlreadyConfirmed) {
 		return err
 	}
-	// 本实例准备首次快照时，其他进程可能已经发布。精确相同的确认按幂等成功处理，
-	// 但绝不覆盖冲突来源。
-	currentPreferences, _, loadErr := loadPreferencesFromPath(ctx, store.path)
-	current, viewErr = onboardingFromPreferences(currentPreferences)
-	if loadErr == nil && viewErr != nil {
-		loadErr = viewErr
-	}
-	if loadErr == nil && sameConfirmation(current, next) {
+	current, _, loadErr := loadPreferencesFromPath(ctx, store.path)
+	if loadErr == nil && reflect.DeepEqual(current, next) {
 		return nil
 	}
 	if loadErr != nil {

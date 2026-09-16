@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -109,7 +110,12 @@ func (collector *BillingCollector) refreshClassified(
 	if err != nil {
 		result := classifyGrokBillingError(err)
 		if result.Remote || result.Attempted {
-			_ = collector.writer.RecordGrokBillingFailure(ctx, atMS, billingFailureCode(err))
+			if writeErr := providercontrol.WriteWithCommit(ctx, func() error {
+				return collector.writer.RecordGrokBillingFailure(ctx, atMS, billingFailureCode(err))
+			}); writeErr != nil {
+				result.Err = writeErr
+				return result
+			}
 			collector.last = now
 		}
 		return result
@@ -122,7 +128,9 @@ func (collector *BillingCollector) refreshClassified(
 		SubscriptionTier: credits.SubscriptionTier, IsUnifiedBilling: credits.IsUnifiedBilling,
 		QuotaObservations: grokBillingObservations(atMS, credits),
 	}
-	if err := collector.writer.CommitGrokBillingSnapshot(ctx, snapshot); err != nil {
+	if err := providercontrol.WriteWithCommit(ctx, func() error {
+		return collector.writer.CommitGrokBillingSnapshot(ctx, snapshot)
+	}); err != nil {
 		return BillingRefreshClass{Attempted: true, Remote: true, Err: err}
 	}
 	collector.last = now
@@ -158,7 +166,11 @@ func (collector *BillingCollector) refresh(ctx context.Context, minimumRefresh t
 	atMS := now.UnixMilli()
 	credits, err := collector.client.GetCredits(ctx)
 	if err != nil {
-		_ = collector.writer.RecordGrokBillingFailure(ctx, atMS, billingFailureCode(err))
+		if writeErr := providercontrol.WriteWithCommit(ctx, func() error {
+			return collector.writer.RecordGrokBillingFailure(ctx, atMS, billingFailureCode(err))
+		}); writeErr != nil {
+			return true, writeErr
+		}
 		collector.last = now
 		return true, err
 	}
@@ -170,7 +182,9 @@ func (collector *BillingCollector) refresh(ctx context.Context, minimumRefresh t
 		SubscriptionTier: credits.SubscriptionTier, IsUnifiedBilling: credits.IsUnifiedBilling,
 		QuotaObservations: grokBillingObservations(atMS, credits),
 	}
-	if err := collector.writer.CommitGrokBillingSnapshot(ctx, snapshot); err != nil {
+	if err := providercontrol.WriteWithCommit(ctx, func() error {
+		return collector.writer.CommitGrokBillingSnapshot(ctx, snapshot)
+	}); err != nil {
 		return true, err
 	}
 	collector.last = now

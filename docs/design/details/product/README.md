@@ -59,7 +59,7 @@ Popover 顶部还固定提供三项快捷功能：
 
 ### 汇总
 
-侧边栏客户端选择器上方提供独立“汇总”入口。它不是第四个客户端：选择器仍只含 Codex、Cursor、Grok。新用户默认进入汇总；已有 `selectedProvider` / `selectedFeature` 持久化状态按现有机制恢复，不得无条件覆盖。
+侧边栏客户端选择器上方提供独立“汇总”入口。它不是第四个客户端：选择器只含当前 effective enabled 的 Codex、Cursor、Grok。全部关闭时隐藏客户端专属导航，展示“尚未启用客户端”和“打开设置”；汇总仍显示 known-empty，Settings 始终可达。新用户默认进入汇总；已有仍 enabled 的 `selectedProvider` / `selectedFeature` 按现有机制恢复，失效选择按 Codex、Cursor、Grok 顺序 fallback。
 
 汇总使用与各客户端相同的 Today / 7D / 30D 本地日半开区间和 IANA timezone，由 Go Helper `DashboardSummary` 一次返回：
 

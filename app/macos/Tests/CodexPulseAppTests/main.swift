@@ -2860,11 +2860,11 @@ private func testSettingsExplainsAutomaticDefaultHome() throws {
     let source = try mainWindowSource("SourcesJobsSettingsViews.swift")
     try expect(
         source.contains(
-            "response.snapshot.home.configured ? \"已配置\" : \"默认 Codex Home 不可用\""),
-        "settings must explain why a first launch can remain unconfigured")
+            "response.snapshot.home.configured ? \"已配置\" : \"未配置 Codex Home\""),
+        "settings must distinguish an unconfigured Codex Home from a failed launch")
     try expect(
-        source.contains("首次启动会自动使用默认 Codex Home，无需手动确认。"),
-        "settings must describe automatic first-launch binding")
+        source.contains("没有 Codex Home 时，Cursor、Grok 和设置仍然可用。"),
+        "settings must keep Cursor, Grok, and Settings available without a Codex Home")
 }
 
 private enum FakeLoginItemServiceError: Error {
@@ -3709,6 +3709,7 @@ private actor FakeCore: AppCoreServing {
     private var invalidationDelay: Duration = .zero
     private var quotaRefreshDelay: Duration = .zero
     private var settingsResponses: [Codexpulse_Core_V1_SettingsResponse] = []
+    private var hasServedCatalogSettings = false
     private var pricingCatalogResponse = Codexpulse_Core_V1_PricingCatalogCurrentResponse()
     private var pricingCatalogCalls = 0
     private var settingsUpdateFailure = false
@@ -4268,7 +4269,16 @@ private actor FakeCore: AppCoreServing {
     ) async throws -> Codexpulse_Core_V1_SettingsResponse {
         calls.append("settings")
         if settingsReadDelay != .zero { try await sleepForTest(settingsReadDelay) }
-        guard !settingsResponses.isEmpty else { throw FakeFailure.unavailable }
+        if !hasServedCatalogSettings {
+            hasServedCatalogSettings = true
+            if let first = settingsResponses.first {
+                return first
+            }
+            return makeSettingsResponse(revision: "revision-1", quotaEnabled: true)
+        }
+        if settingsResponses.isEmpty {
+            return makeSettingsResponse(revision: "revision-1", quotaEnabled: true)
+        }
         if settingsResponses.count == 1 { return settingsResponses[0] }
         return settingsResponses.removeFirst()
     }
@@ -4797,14 +4807,45 @@ private func makeHealthDetail(
     return response
 }
 
-private func makeSettingsResponse(revision: String, quotaEnabled: Bool)
-    -> Codexpulse_Core_V1_SettingsResponse
+private func makeProviderSnapshot(
+    _ provider: AgentProvider,
+    intent: Codexpulse_Core_V1_ProviderIntent = .enabled,
+    discovery: Codexpulse_Core_V1_ProviderDiscoveryState = .available,
+    effective: Codexpulse_Core_V1_ProviderEffectiveState = .enabled,
+    reasonCode: String = "available",
+    generation: String = "1"
+) -> Codexpulse_Core_V1_SettingsProviderSnapshot {
+    var snapshot = Codexpulse_Core_V1_SettingsProviderSnapshot()
+    snapshot.provider = provider.rawValue
+    snapshot.intent = intent
+    snapshot.discoveryState = discovery
+    snapshot.effectiveState = effective
+    snapshot.reasonCode = reasonCode
+    snapshot.generation = generation
+    return snapshot
+}
+
+private func makeEditableField(_ key: String) -> Codexpulse_Core_V1_EditableField {
+    var field = Codexpulse_Core_V1_EditableField()
+    field.key = key
+    field.editable = true
+    return field
+}
+
+private func makeSettingsResponse(
+    revision: String,
+    quotaEnabled: Bool,
+    providers: [Codexpulse_Core_V1_SettingsProviderSnapshot]? = nil
+) -> Codexpulse_Core_V1_SettingsResponse
 {
     var response = Codexpulse_Core_V1_SettingsResponse()
     response.meta = completeMeta()
     response.snapshot.revision = revision
     response.snapshot.online.quotaEnabled = quotaEnabled
     response.snapshot.online.resetCreditsEnabled = true
+    response.snapshot.online.cursorOnlineEnabled = true
+    response.snapshot.online.grokQuotaEnabled = true
+    response.snapshot.online.grokAutoRefreshEnabled = true
     response.snapshot.refresh.quotaIntervalSeconds = 300
     response.snapshot.refresh.resetCreditsIntervalSeconds = 600
     response.snapshot.refresh.reconcileIntervalSeconds = 900
@@ -4813,10 +4854,21 @@ private func makeSettingsResponse(revision: String, quotaEnabled: Bool)
     response.snapshot.updates.checkIntervalSeconds = 3_600
     response.snapshot.ui.launchBehavior = "main_window"
     response.snapshot.ui.overviewRange = "7d"
-    var editable = Codexpulse_Core_V1_EditableField()
-    editable.key = "online.quotaEnabled"
-    editable.editable = true
-    response.editableFields = [editable]
+    response.snapshot.providers = providers ?? [
+        makeProviderSnapshot(.codex),
+        makeProviderSnapshot(.cursor),
+        makeProviderSnapshot(.grok),
+    ]
+    response.editableFields = [
+        makeEditableField("online.quotaEnabled"),
+        makeEditableField("online.resetCreditsEnabled"),
+        makeEditableField("online.cursorOnlineEnabled"),
+        makeEditableField("online.grokQuotaEnabled"),
+        makeEditableField("online.grokAutoRefreshEnabled"),
+        makeEditableField("providers.codex.intent"),
+        makeEditableField("providers.cursor.intent"),
+        makeEditableField("providers.grok.intent"),
+    ]
     return response
 }
 
@@ -6888,6 +6940,7 @@ private func testSettingsRevisionRequest() throws {
     response.snapshot.revision = "revision-1"
     response.snapshot.online.quotaEnabled = false
     response.snapshot.online.resetCreditsEnabled = true
+    response.snapshot.online.cursorOnlineEnabled = true
     response.snapshot.online.grokAutoRefreshEnabled = true
     response.snapshot.refresh.quotaIntervalSeconds = 300
     response.snapshot.refresh.resetCreditsIntervalSeconds = 600
@@ -6940,6 +6993,116 @@ private func testSettingsRevisionRequest() throws {
     try expect(
         request.ui.locale == "en-US",
         "editable locale must carry the user's explicit language selection")
+    try expect(
+        request.providers.map(\.provider) == ["codex", "cursor", "grok"],
+        "settings writes must send every provider exactly once")
+    try expect(
+        request.providers.map(\.intent) == [.auto, .auto, .auto],
+        "non-editable provider intents must preserve the authoritative auto default")
+    try expect(
+        request.online.cursorOnlineEnabled,
+        "non-editable Cursor online field must preserve authoritative truth")
+}
+
+private func testProviderCatalogResolvesEnabledSelection() throws {
+    let catalog = ProviderCatalog(
+        makeSettingsResponse(
+            revision: "revision-1",
+            quotaEnabled: true,
+            providers: [
+                makeProviderSnapshot(
+                    .codex,
+                    intent: .disabled,
+                    effective: .disabled,
+                    reasonCode: "disabled"
+                ),
+                makeProviderSnapshot(.cursor),
+                makeProviderSnapshot(
+                    .grok,
+                    intent: .disabled,
+                    effective: .disabled,
+                    reasonCode: "disabled"
+                ),
+            ]
+        )
+    )
+    try expect(catalog.enabledProviders == [.cursor], "only effective enabled providers are selectable")
+    try expect(
+        catalog.resolvedSelection(preferred: .codex) == .cursor,
+        "a disabled preferred provider must fall back in Codex, Cursor, Grok order")
+    try expect(
+        catalog.resolvedSelection(preferred: .cursor) == .cursor,
+        "an enabled preferred provider must be retained")
+}
+
+private func testProviderCatalogAllDisabledHasNoSelection() throws {
+    let catalog = ProviderCatalog(
+        makeSettingsResponse(
+            revision: "revision-1",
+            quotaEnabled: true,
+            providers: AgentProvider.allCases.map {
+                makeProviderSnapshot(
+                    $0,
+                    intent: .disabled,
+                    effective: .disabled,
+                    reasonCode: "disabled"
+                )
+            }
+        )
+    )
+    try expect(catalog.enabledProviders.isEmpty, "all-disabled catalog must expose no enabled providers")
+    try expect(
+        catalog.resolvedSelection(preferred: .codex) == nil,
+        "all-disabled catalog must clear the active selection")
+}
+
+private func testProviderMasterSwitchUsesDraftIntent() throws {
+    let catalog = ProviderCatalog(
+        makeSettingsResponse(
+            revision: "revision-1",
+            quotaEnabled: true,
+            providers: [makeProviderSnapshot(.codex, intent: .auto)]
+        )
+    )
+    guard let enabledState = catalog.state(for: .codex) else {
+        throw TestFailure.mismatch("Codex provider state missing")
+    }
+    try expect(
+        !SettingsDraft.masterSwitchOn(intent: .disabled, state: enabledState),
+        "an explicit disabled draft must turn off an enabled Provider toggle"
+    )
+    try expect(
+        SettingsDraft.masterSwitchOn(intent: .enabled, state: enabledState),
+        "an explicit enabled draft must turn on a Provider toggle"
+    )
+    try expect(
+        SettingsDraft.masterSwitchOn(intent: .auto, state: enabledState),
+        "auto intent must reflect effective availability"
+    )
+}
+
+private func testMainWindowAndPopoverUseEnabledProviderCatalog() throws {
+    let root = try mainWindowSource("RootView.swift")
+    let popover = try mainWindowSource("StatusItemController.swift")
+    let settings = try mainWindowSource("SourcesJobsSettingsViews.swift")
+    try expect(
+        root.contains("ForEach(model.enabledProviders)")
+            && root.contains("NoEnabledProviderView")
+            && root.contains("尚未启用客户端")
+            && root.contains("打开设置"),
+        "main window picker and empty state must consume the enabled catalog")
+    try expect(
+        popover.contains("ForEach(enabledProviders)")
+            && popover.contains("popover.empty-providers")
+            && popover.contains("尚未启用客户端"),
+        "popover picker and empty state must consume the enabled catalog")
+    try expect(
+        settings.contains("providerSection(.codex")
+            && settings.contains("providerSection(.cursor")
+            && settings.contains("providerSection(.grok")
+            && settings.contains("启用在线数据采集")
+            && !settings.contains("~/.grok/auth.json"),
+        "settings must group provider controls without exposing credential paths")
 }
 
 private func testAppLocalizationResolvesSystemAndFormatsBothLanguages() throws {
@@ -7330,6 +7493,94 @@ private func testAgentProviderScopesAndIndependentPersistence() async throws {
 			&& defaults.string(forKey: "CodexPulse.statusProvider") == AgentProvider.codex.rawValue,
         "smoke-only provider changes must not rewrite user preferences"
     )
+}
+
+private func testAppRuntimeLoadsCatalogBeforeOverview() async throws {
+    let supervisor = FakeSupervisor()
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let runtime = AppRuntime(supervisor: supervisor, clientFactory: { _ in core })
+    await runtime.start()
+    let calls = await core.recordedCalls()
+    guard let settings = calls.firstIndex(of: "settings"),
+          let usage = calls.firstIndex(of: "usage")
+    else {
+        throw TestFailure.mismatch("catalog and overview calls were not delivered")
+    }
+    try expect(settings < usage, "Provider catalog must load before any Overview query")
+    _ = await runtime.shutdown()
+}
+
+private func testDisabledProvidersSkipOverviewQueries() async throws {
+    let supervisor = FakeSupervisor()
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setSettingsResponses(
+        [
+            makeSettingsResponse(
+                revision: "revision-1",
+                quotaEnabled: true,
+                providers: AgentProvider.allCases.map {
+                    makeProviderSnapshot(
+                        $0,
+                        intent: .disabled,
+                        effective: .disabled,
+                        reasonCode: "disabled"
+                    )
+                }
+            )
+        ],
+        updateFailure: false
+    )
+    let runtime = AppRuntime(supervisor: supervisor, clientFactory: { _ in core })
+    await runtime.start()
+    let calls = await core.recordedCalls()
+    try expect(calls.contains("settings"), "startup must still read the provider catalog")
+    try expect(!calls.contains("usage"), "all-disabled providers must not issue Overview queries")
+    try expect(!calls.contains("quota"), "all-disabled providers must not issue quota queries")
+    _ = await runtime.shutdown()
+}
+
+@MainActor
+private func testAppModelClearsSelectionWhenAllProvidersDisabled() async throws {
+    let suiteName = "CodexPulseAppTests.AllDisabled.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("all-disabled defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setSettingsResponses(
+        [
+            makeSettingsResponse(
+                revision: "revision-1",
+                quotaEnabled: true,
+                providers: AgentProvider.allCases.map {
+                    makeProviderSnapshot(
+                        $0,
+                        intent: .disabled,
+                        effective: .disabled,
+                        reasonCode: "disabled"
+                    )
+                }
+            )
+        ],
+        updateFailure: false
+    )
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("all-disabled catalog applied") {
+        await MainActor.run { model.selectedProvider == nil && model.statusProvider == nil }
+    }
+    try expect(
+        model.enabledProviders.isEmpty
+            && defaults.object(forKey: "CodexPulse.selectedProvider") == nil
+            && defaults.object(forKey: "CodexPulse.statusProvider") == nil,
+        "all-disabled providers must clear the active selection and persisted preference"
+    )
+    _ = await model.shutdown()
 }
 
 @MainActor
@@ -12632,6 +12883,10 @@ struct CodexPulseAppTestMain {
         try testOverviewRangeResolutionDrivesEveryContentRequest()
         try testFeatureRequestsStateAndMerge()
         try testSettingsRevisionRequest()
+        try testProviderCatalogResolvesEnabledSelection()
+        try testProviderCatalogAllDisabledHasNoSelection()
+        try testProviderMasterSwitchUsesDraftIntent()
+        try testMainWindowAndPopoverUseEnabledProviderCatalog()
         try testAppLocalizationResolvesSystemAndFormatsBothLanguages()
         try testUpdateChannelsMapToSparkleAllowedChannels()
         try testSparkleBundleConfigurationRequiresHTTPSAndEd25519Key()
@@ -12643,6 +12898,9 @@ struct CodexPulseAppTestMain {
         try await testPricingCatalogLoadsWithoutUsageModels()
         try await testFeatureGenerationPreventsStaleOverwrite()
 		try await testAgentProviderScopesAndIndependentPersistence()
+        try await testAppRuntimeLoadsCatalogBeforeOverview()
+        try await testDisabledProvidersSkipOverviewQueries()
+        try await testAppModelClearsSelectionWhenAllProvidersDisabled()
 		try await testStatusProviderRejectsLateResponseFromPreviousSelection()
 		try await testPageProviderSwitchDoesNotReloadIndependentCursorStatus()
 		try await testCodexStatusRequestsRemainIndependentFromCursorPage()

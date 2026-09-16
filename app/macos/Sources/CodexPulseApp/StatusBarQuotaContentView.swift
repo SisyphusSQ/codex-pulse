@@ -9,13 +9,13 @@ final class StatusBarQuotaContentView: NSView {
     private var summary: StatusBarQuotaPresentation?
     private var fallbackText = "Codex Pulse --"
     private var style: StatusBarStyle = .ringSummary
-    private var provider: AgentProvider = .codex
+    private var provider: AgentProvider?
 
     var hasSummary: Bool { summary != nil }
 
     var preferredWidth: CGFloat {
         guard let summary else {
-            if provider.usesOfficialPeriodRing, let lines = cursorFallbackLines {
+            if provider?.usesOfficialPeriodRing == true, let lines = cursorFallbackLines {
                 let detailWidth = lines.reduce(CGFloat.zero) {
                     max($0, textWidth($1, font: $1 == lines.first ? primaryFont : secondaryFont))
                 }
@@ -35,7 +35,7 @@ final class StatusBarQuotaContentView: NSView {
         summary: StatusBarQuotaPresentation?,
         fallbackText: String,
         style: StatusBarStyle,
-        provider: AgentProvider
+        provider: AgentProvider?
     ) -> Bool {
         guard self.summary != summary || self.fallbackText != fallbackText || self.style != style
             || self.provider != provider
@@ -94,7 +94,7 @@ final class StatusBarQuotaContentView: NSView {
     }
 
     private func drawFallback() {
-        if provider.usesOfficialPeriodRing, let lines = cursorFallbackLines {
+        if provider?.usesOfficialPeriodRing == true, let lines = cursorFallbackLines {
             drawCursorFallback(lines)
             return
         }
