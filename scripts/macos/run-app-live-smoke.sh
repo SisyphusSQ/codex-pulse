@@ -111,6 +111,8 @@ printf '%s\n' "$smoke_summary" | grep -Eq \
 printf '%s\n' "$smoke_summary" | grep -Eq \
   'status_provider=cursor status_label=verified cursor_account=available cursor_popover=captured cursor_requests=known cursor_tokens=known cursor_reported_cost=known cursor_estimated_cost=(known|unknown) cursor_spending=known cursor_data_as_of=known cursor_dashboard=available' || \
   fail "Cursor Dashboard did not produce exact real-account usage metadata"
+printf '%s\n' "$smoke_summary" | grep -Eq 'codex_account_card=available' || \
+  fail "Codex popover account card did not resolve the real account"
 [ ! -S "$RUNTIME_DIR/core.sock" ] || fail "Helper socket remained after shutdown"
 MIGRATED_HOME=$(jq -er '.codex_home.source.path' "$RUNTIME_DIR/preferences.json") || fail "migrated Home is unavailable"
 MIGRATED_DEVICE=$(jq -er '.codex_home.source.device_id' "$RUNTIME_DIR/preferences.json") || fail "migrated Home device is unavailable"

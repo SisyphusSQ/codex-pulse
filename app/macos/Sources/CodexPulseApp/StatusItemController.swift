@@ -187,6 +187,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             guard !popover.isShown else { return }
             guard let button = statusItem.button else { return }
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            model.ensureStatusAccountCard()
             if NSApp.isActive {
                 popover.contentViewController?.view.window?.makeKey()
             }
@@ -585,6 +586,16 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 				+ "keyboard=tab+shift-tab+return+space "
 				+ "focus_escape=open-overview+refresh+reset-credits+settings+quit "
 				+ "clipboard=single_item_string+png"
+		if cursorProviderSmokeEnabled, model.statusProvider == .codex,
+			model.statusPresentation?.codexAccountContextKey != nil {
+			_ = await waitForNativeSmoke({
+				self.model.statusAccountCardSummary?.availability == .available
+			}, maximumAttempts: 2_500)
+		}
+		let codexAccountCard = model.statusProvider == .codex
+			&& model.statusAccountCardSummary?.availability == .available
+			? "available" : "unavailable"
+		summary += " codex_account_card=\(codexAccountCard)"
 		if cursorProviderSmokeEnabled {
 			closePopover()
 			guard await verifyCursorStatusProviderForSmoke() else {
@@ -898,7 +909,8 @@ private struct MenuBarPopoverView: View {
 				selectedProvider: model.statusProvider,
                 enabledProviders: model.enabledProviders,
 				onSelectProvider: model.selectStatusProvider,
-				accountSummary: model.statusPresentation?.popoverAccountSummary,
+				accountSummary: model.statusAccountCardSummary,
+                accountFallbackText: model.statusAccountCardFallbackText,
                 captureSource: captureSource,
                 isPrivacyHidden: captureSource.isPrivacyHidden,
                 screenshotFeedback: screenshotFeedback,
@@ -1701,6 +1713,7 @@ private struct PopoverHeader: View {
     let enabledProviders: [AgentProvider]
 	let onSelectProvider: (AgentProvider) -> Void
     let accountSummary: PopoverAccountSummaryPresentation?
+    let accountFallbackText: String
     let captureSource: PopoverCaptureSource
     let isPrivacyHidden: Bool
     let screenshotFeedback: PopoverScreenshotFeedback
@@ -1741,6 +1754,7 @@ private struct PopoverHeader: View {
                 if selectedProvider != nil {
 				PopoverAccountCapsule(
 					summary: accountSummary,
+					fallbackText: accountFallbackText,
 					captureSource: captureSource,
 					isPrivacyHidden: isPrivacyHidden
 				)
@@ -1807,16 +1821,21 @@ private struct PopoverHeader: View {
 
 private struct PopoverAccountCapsule: View {
     let summary: PopoverAccountSummaryPresentation?
+    let fallbackText: String
     let captureSource: PopoverCaptureSource
     let isPrivacyHidden: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 4) {
-                Text(summary?.planText ?? "--")
-                Text(summary?.emailText ?? "--")
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            if let summary, summary.availability == .available {
+                HStack(spacing: 4) {
+                    Text(summary.planText)
+                    Text(summary.emailText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            } else {
+                Text(summary?.accessibilityLabel ?? fallbackText)
             }
             if let secondary = summary?.secondaryText {
                 Text(secondary)
@@ -1840,7 +1859,7 @@ private struct PopoverAccountCapsule: View {
         .accessibilityLabel(
             isPrivacyHidden
                 ? localizedCopy("截图中账号、套餐与订阅日期信息已隐藏")
-                : summary?.accessibilityLabel ?? localizedCopy("正在读取 Codex 账户与套餐信息")
+                : summary?.accessibilityLabel ?? fallbackText
         )
         .accessibilityIdentifier("popover.account-summary")
         .background(

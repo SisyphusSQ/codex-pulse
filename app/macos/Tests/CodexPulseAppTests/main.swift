@@ -526,7 +526,7 @@ private func testQuotaUsageShowsResponsiveCurrentCodexAccountCard() throws {
     try expect(
         source.contains("ViewThatFits(in: .horizontal)")
             && source.contains("QuotaCurrentAccountCard")
-            && source.contains("CodexQuotaAccountSummaryCopy.summary")
+            && source.contains("model.quotaAccountCardSummary")
             && source.contains("model.selectedProvider == .codex")
             && source.contains("model.navigate(to: .settings)")
             && source.contains("quota.current-account")
@@ -536,8 +536,8 @@ private func testQuotaUsageShowsResponsiveCurrentCodexAccountCard() throws {
     try expect(
         appModel.contains("quotaAccountState")
             && appModel.contains("runtime.accountSnapshot(provider: provider)")
-            && !appModel.contains("CodexAccountContext.key(fromQuota:"),
-        "quota account loading must use its own bounded snapshot without duplicating identity rules"
+            && appModel.contains("CodexQuotaAccountSummaryCopy.summary"),
+        "quota account card must validate the shared snapshot against the current quota"
     )
 }
 
@@ -2273,7 +2273,7 @@ private func testUsageSidebarOrdersInvocationBeforeQuota() throws {
 private func testDashboardSummaryIsIndependentOfProviderSelector() async throws {
     let appModelSource = try appSupportSource("AppModel.swift")
     try expect(
-        appModelSource.contains(".statusOverview, .statusAccount, .dashboardSummary"),
+        appModelSource.contains(".statusOverview, .statusAccount, .codexCardAccount, .dashboardSummary"),
         "changing the provider must not cancel the provider-independent summary request"
     )
     let suiteName = "CodexPulseAppTests.DashboardSummaryNav.\(UUID().uuidString)"
@@ -9591,6 +9591,240 @@ private func testQuotaUsageLoadsAccountSnapshotAndClearsItForOtherProviders() as
     _ = await model.shutdown()
 }
 
+@MainActor
+private func testAccountCardsRecoverAfterReadFailureWithoutReloadingQuota() async throws {
+    let suiteName = "CodexPulseAppTests.AccountCardRecovery.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("account card recovery defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(
+            accountEmail: "current@example.com",
+            accountBindingScope: testCodexScopeA,
+            accountBindingGeneration: 1
+        )
+    )
+    await core.setAccountFailure(true)
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("account card initial failures and bounded retry", timeout: .seconds(5)) {
+        let completed = await core.recordedCompletedAccountCalls()
+        return await MainActor.run {
+            completed >= 3 && model.statusPresentation != nil
+        }
+    }
+    try expect(model.statusAccountCardSummary == nil, "failed account reads must not invent an identity")
+    let quotaCallsBefore = await core.recordedQuotaRequests().count
+    await core.setAccountFailure(false)
+    model.ensureStatusAccountCard()
+    try await waitUntil("account card recovers on reopen") {
+        await MainActor.run {
+            model.statusAccountCardSummary?.emailText == "current@example.com"
+        }
+    }
+    let quotaCallsAfter = await core.recordedQuotaRequests().count
+    try expect(
+        quotaCallsAfter == quotaCallsBefore,
+        "reopening the account card must recover identity without reloading quota"
+    )
+
+    await core.setAccountFailure(true)
+    model.loadQuotaAndUsage()
+    try await waitUntil("quota card reuses verified account") {
+        await MainActor.run {
+            model.quotaState.value != nil
+                && model.quotaAccountCardSummary?.emailText == "current@example.com"
+        }
+    }
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testAccountCardsDoNotShowPreviousIdentityAfterAccountInvalidation() async throws {
+    let suiteName = "CodexPulseAppTests.AccountCardSwitch.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("account card switch defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(
+            accountEmail: "a@example.com",
+            accountBindingScope: testCodexScopeA,
+            accountBindingGeneration: 1
+        )
+    )
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("A overview before loading quota page") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.navigate(to: .quotaUsage)
+    try await waitUntil("A is visible on both account cards") {
+        await MainActor.run {
+            model.statusAccountCardSummary?.emailText == "a@example.com"
+                && model.quotaAccountCardSummary?.emailText == "a@example.com"
+        }
+    }
+
+    await core.setResponses(makeResponses(
+        accountEmail: "b@example.com",
+        accountBindingScope: testCodexScopeB,
+        accountBindingGeneration: 2
+    ))
+    await core.publishOverviewInvalidations(count: 1, recovered: false, domain: "account")
+    try expect(
+        model.statusAccountCardSummary?.emailText != "a@example.com"
+            && model.quotaAccountCardSummary?.emailText != "a@example.com",
+        "account invalidation must immediately hide the previous identity"
+    )
+    try await waitUntil("B is visible on both account cards", timeout: .seconds(5)) {
+        await MainActor.run {
+            model.statusAccountCardSummary?.emailText == "b@example.com"
+                && model.quotaAccountCardSummary?.emailText == "b@example.com"
+        }
+    }
+
+    await core.setResponses(makeResponses(
+        accountEmail: "a@example.com",
+        accountBindingScope: testCodexScopeA,
+        accountBindingGeneration: 3
+    ))
+    await core.publishOverviewInvalidations(count: 1, recovered: false, domain: "account")
+    try expect(
+        model.statusAccountCardSummary?.emailText != "b@example.com"
+            && model.quotaAccountCardSummary?.emailText != "b@example.com",
+        "returning to A must hide B until the new binding generation is confirmed"
+    )
+    try await waitUntil("A generation 3 is visible on both account cards", timeout: .seconds(5)) {
+        await MainActor.run {
+            model.statusAccountCardSummary?.emailText == "a@example.com"
+                && model.quotaAccountCardSummary?.emailText == "a@example.com"
+        }
+    }
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testStatusAccountCardRecoversWhenQuotaInitiallyHasOldBinding() async throws {
+    let suiteName = "CodexPulseAppTests.AccountCardMismatch.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("account card mismatch defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(
+            accountEmail: "a@example.com",
+            accountBindingScope: testCodexScopeA,
+            accountBindingGeneration: 1
+        )
+    )
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("A status card before mismatch") {
+        await MainActor.run { model.statusAccountCardSummary?.emailText == "a@example.com" }
+    }
+    let callsBefore = await core.recordedCompletedAccountCalls()
+    var accountB = Codexpulse_Core_V1_AccountSnapshotResponse()
+    accountB.account.type = "chatgpt"
+    accountB.account.email = "b@example.com"
+    accountB.account.planType = "pro"
+    accountB.binding = makeCodexBinding(scope: testCodexScopeB, generation: 2)
+    await core.setAccountOverride(accountB)
+    await core.publishOverviewInvalidations(count: 1, recovered: false, domain: "account")
+    try expect(
+        model.statusAccountCardSummary?.emailText != "a@example.com",
+        "switching accounts must hide A even while quota still has A's binding"
+    )
+    try await waitUntil("mismatched status account read settles", timeout: .seconds(5)) {
+        let completed = await core.recordedCompletedAccountCalls()
+        return await MainActor.run {
+            completed >= callsBefore + 2 && !model.statusOverviewState.isLoading
+        }
+    }
+    try expect(model.statusAccountCardSummary == nil, "B identity must not appear beside A quota")
+
+    await core.setResponses(makeResponses(
+        accountEmail: "b@example.com",
+        accountBindingScope: testCodexScopeB,
+        accountBindingGeneration: 2
+    ))
+    await core.setAccountOverride(nil)
+    model.ensureStatusAccountCard()
+    try await waitUntil("B status card after quota catches up", timeout: .seconds(5)) {
+        await MainActor.run { model.statusAccountCardSummary?.emailText == "b@example.com" }
+    }
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testAccountCardRejectsDelayedOldSnapshotAfterSwitch() async throws {
+    let suiteName = "CodexPulseAppTests.AccountCardDelayedSnapshot.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("delayed account card defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(
+            accountEmail: "a@example.com",
+            accountBindingScope: testCodexScopeA,
+            accountBindingGeneration: 1
+        )
+    )
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("A card before delayed read") {
+        await MainActor.run { model.statusAccountCardSummary?.emailText == "a@example.com" }
+    }
+    let callsBefore = await core.recordedCalls().filter { $0 == "account" }.count
+    await core.setAccountDelay(.seconds(60))
+    model.refreshStatusProvider()
+    try await waitUntil("old account read has started") {
+        let calls = await core.recordedCalls().filter { $0 == "account" }.count
+        return calls > callsBefore
+    }
+
+    await core.setAccountDelay(.zero)
+    await core.setResponses(makeResponses(
+        accountEmail: "b@example.com",
+        accountBindingScope: testCodexScopeB,
+        accountBindingGeneration: 2
+    ))
+    await core.publishOverviewInvalidations(count: 1, recovered: false, domain: "account")
+    try expect(
+        model.statusAccountCardSummary?.emailText != "a@example.com",
+        "account invalidation must hide A while its old read remains in flight"
+    )
+    try await waitUntil("B card after delayed A is cancelled", timeout: .seconds(5)) {
+        await MainActor.run { model.statusAccountCardSummary?.emailText == "b@example.com" }
+    }
+    _ = await model.shutdown()
+}
+
 private let testCodexScopeA = String(repeating: "a", count: 64)
 private let testCodexScopeB = String(repeating: "b", count: 64)
 
@@ -12876,6 +13110,10 @@ struct CodexPulseAppTestMain {
         try await testAppRuntimeLoadsQuotaPaceWithOverview()
         try await testQuotaUsageFeatureReloadsQuotaPace()
         try await testQuotaUsageLoadsAccountSnapshotAndClearsItForOtherProviders()
+        try await testAccountCardsRecoverAfterReadFailureWithoutReloadingQuota()
+        try await testAccountCardsDoNotShowPreviousIdentityAfterAccountInvalidation()
+        try await testStatusAccountCardRecoversWhenQuotaInitiallyHasOldBinding()
+        try await testAccountCardRejectsDelayedOldSnapshotAfterSwitch()
         try testCodexAccountContextRejectsMismatchedQuotaAndAccount()
         try testCodexAccountContextDropsPreviousAccountWhenQuotaChanges()
         try testCodexAccountContextReplacesMismatchedPace()

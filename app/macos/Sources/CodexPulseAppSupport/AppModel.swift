@@ -65,7 +65,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
 }
 
 private enum FeatureTaskKey: Hashable {
-    case usage, statusOverview, statusAccount, invocationUsage, pricingCatalog, quota, quotaAccount, quotaPace, quotaRefresh, resetCreditsRefresh, dashboardSummary
+    case usage, statusOverview, statusAccount, codexCardAccount, invocationUsage, pricingCatalog, quota, quotaAccount, quotaPace, quotaRefresh, resetCreditsRefresh, dashboardSummary
     case apiSubscriptions, apiCredentialStatus, apiCredentialSave
     case runtimeAction
     case sessions, sessionDetail
@@ -127,6 +127,8 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var quotaState: FeatureLoadState<Codexpulse_Core_V1_QuotaCurrentResponse> = .idle
     @Published public private(set) var quotaAccountState:
         FeatureLoadState<Codexpulse_Core_V1_AccountSnapshotResponse> = .idle
+    @Published private var codexCardAccountSnapshot: Codexpulse_Core_V1_AccountSnapshotResponse?
+    @Published private var codexCardAccountIsLoading = false
     @Published public private(set) var quotaPaceState:
         FeatureLoadState<Codexpulse_Core_V1_QuotaPaceResponse> = .idle
     @Published public private(set) var apiSubscriptionsState:
@@ -184,6 +186,13 @@ public final class AppModel: ObservableObject {
     private var globalRefreshTask: Task<Void, Never>?
     private var latestRuntimeState: CoreConnectionState = .idle
 	private var statusOverviewCache: [AgentProvider: OverviewPresentation] = [:]
+	private var statusOverviewResponses: [AgentProvider: OverviewResponses] = [:]
+	private var codexCardAccountRetryTask: Task<Void, Never>?
+	private var codexCardAccountEpoch: UInt64 = 0
+	private var codexCardAccountRetried = false
+	private var statusConsistencyRefreshKey: CodexAccountContextKey?
+	private var quotaConsistencyRefreshKey: CodexAccountContextKey?
+	private var statusRefreshPendingAfterLoad = false
 	private var statusUsageCache:
 		[AgentProvider: Codexpulse_Core_V1_UsageCostResponse] = [:]
     private let codexSubscriptionDayBoundaryScheduler =
@@ -309,6 +318,7 @@ public final class AppModel: ObservableObject {
     private func assignStatusProvider(_ provider: AgentProvider?) {
         guard provider != statusProvider else { return }
         invalidateTasks([.statusOverview, .statusAccount])
+        statusRefreshPendingAfterLoad = false
         statusProvider = provider
         persistProvider(provider, key: Self.statusProviderKey)
         guard let provider else {
@@ -358,6 +368,63 @@ public final class AppModel: ObservableObject {
 	public var statusPresentation: OverviewPresentation? {
 		statusOverviewState.value
 	}
+
+    public var statusAccountCardSummary: PopoverAccountSummaryPresentation? {
+        guard let presentation = statusPresentation else { return nil }
+        guard statusProvider == .codex else { return presentation.popoverAccountSummary }
+        guard let key = presentation.codexAccountContextKey,
+              let snapshot = codexCardAccountSnapshot,
+              CodexAccountContext.key(fromAccount: snapshot) == key
+        else { return nil }
+        let summary = PopoverAccountSummaryPresentation(
+            account: CodexAccountPresentation(snapshot),
+            snapshot: snapshot
+        )
+        return summary.availability == .available ? summary : nil
+    }
+
+    public var statusAccountCardFallbackText: String {
+        guard statusProvider == .codex else {
+            return statusPresentation?.account.accessibilityLabel
+                ?? localization.textValue("正在读取 Codex 账户与套餐信息")
+        }
+        return codexCardFallbackText(quota: statusOverviewResponses[.codex]?.quota)
+    }
+
+    public var quotaAccountCardSummary: PopoverAccountSummaryPresentation? {
+        guard selectedProvider == .codex,
+              let quota = quotaState.value,
+              let snapshot = codexCardAccountSnapshot
+        else { return nil }
+        guard let summary = CodexQuotaAccountSummaryCopy.summary(quota: quota, snapshot: snapshot),
+              summary.availability == .available
+        else { return nil }
+        return summary
+    }
+
+    public var quotaAccountCardFallbackText: String {
+        codexCardFallbackText(quota: quotaState.value)
+    }
+
+    private func codexCardFallbackText(
+        quota: Codexpulse_Core_V1_QuotaCurrentResponse?
+    ) -> String {
+        if let quota, quota.current.hasBinding {
+            switch quota.current.binding.state {
+            case "pending": return localization.textValue("账号确认中")
+            case "signed_out": return localization.textValue("当前没有 Codex 账户信息")
+            default: break
+            }
+        }
+        if let account = quotaAccountState.value, account.hasBinding,
+           account.binding.state == "pending" {
+            return localization.textValue("账号确认中")
+        }
+        if codexCardAccountIsLoading || quotaAccountState.isLoading || statusOverviewState.isLoading {
+            return localization.textValue("账号确认中")
+        }
+        return localization.textValue("Codex 账户与套餐信息暂不可用")
+    }
 
     public var presentation: OverviewPresentation? {
         switch state {
@@ -1146,6 +1213,13 @@ public final class AppModel: ObservableObject {
                 meta: response.meta,
                 isEmpty: response.current.windows.isEmpty && response.current.sources.isEmpty
             )
+            if let self {
+                switch quotaAccountState {
+                case .ready(let account), .partial(let account, _):
+                    acceptCodexCardAccount(account, matching: response)
+                default: break
+                }
+            }
         } failure: { [weak self] error in
             self?.quotaState = failedLoadState(previous: previous, error: error)
         }
@@ -1175,16 +1249,33 @@ public final class AppModel: ObservableObject {
         }
         let previous = quotaAccountState.value
         quotaAccountState = .loading(previous: previous)
+        codexCardAccountIsLoading = true
         launch(
             .quotaAccount,
             operation: { [runtime] in try await runtime.accountSnapshot(provider: provider) }
         ) { [weak self] response in
             guard let self, selectedProvider == provider else { return }
             quotaAccountState = .ready(response)
+            codexCardAccountIsLoading = false
+            if let quota = quotaState.value, !quotaState.isLoading {
+                if CodexAccountContext.key(fromQuota: quota) == CodexAccountContext.key(fromAccount: response) {
+                    if !response.hasAccount { codexCardAccountSnapshot = nil }
+                    acceptCodexCardAccount(response, matching: quota)
+                    quotaConsistencyRefreshKey = nil
+                } else if let key = CodexAccountContext.key(fromQuota: quota),
+                          quotaConsistencyRefreshKey != key {
+                    discardCodexCardAccount(matching: key)
+                    quotaConsistencyRefreshKey = key
+                    loadQuota()
+                    scheduleCodexCardAccountRetry()
+                }
+            }
             scheduleCodexSubscriptionDayBoundaryReloadIfNeeded()
         } failure: { [weak self] error in
             guard let self, selectedProvider == provider else { return }
             quotaAccountState = failedLoadState(previous: previous, error: error)
+            codexCardAccountIsLoading = false
+            scheduleCodexCardAccountRetry()
         }
     }
 
@@ -1928,6 +2019,9 @@ public final class AppModel: ObservableObject {
 
     private func cancelAllFeatureTasks() {
         cancelCodexSubscriptionDayBoundaryReload()
+        codexCardAccountRetryTask?.cancel()
+        codexCardAccountRetryTask = nil
+        codexCardAccountEpoch &+= 1
         for key in featureTasks.keys {
             featureTasks[key]?.cancel()
             featureGenerations[key, default: 0] &+= 1
@@ -1938,7 +2032,7 @@ public final class AppModel: ObservableObject {
 
 	private func cancelPageFeatureTasks() {
 			let providerIndependentKeys: Set<FeatureTaskKey> = [
-				.statusOverview, .statusAccount, .dashboardSummary,
+				.statusOverview, .statusAccount, .codexCardAccount, .dashboardSummary,
                 .codexSubscriptionList, .codexSubscriptionMutate,
 			]
 			let keys = featureTasks.keys.filter { !providerIndependentKeys.contains($0) }
@@ -1967,6 +2061,19 @@ public final class AppModel: ObservableObject {
 
     private func receive(_ runtimeState: CoreConnectionState) {
         latestRuntimeState = runtimeState
+        switch runtimeState {
+        case .normal(let responses), .partial(let responses, _):
+            if responses.provider == .codex {
+                if let account = responses.account {
+                    if account.hasAccount {
+                        acceptCodexCardAccount(account, matching: responses.quota)
+                    } else {
+                        codexCardAccountSnapshot = nil
+                    }
+                }
+            }
+        default: break
+        }
         switch runtimeState {
         case .normal, .partial, .stale, .unavailable, .cancelled:
             finishOverviewRefresh()
@@ -2142,6 +2249,7 @@ public final class AppModel: ObservableObject {
             affected = [.sessions, .projects, .quotaUsage, .invocationUsage, .dashboardSummary]
 			refreshesStatus = true
         case "quota":
+            invalidateCodexCardAccount()
             invalidateTasks([.quota, .quotaAccount, .quotaPace, .dashboardSummary])
             quotaState = stale(quotaState, notice)
             quotaAccountState = stale(quotaAccountState, notice)
@@ -2172,6 +2280,7 @@ public final class AppModel: ObservableObject {
             affected = next
 			refreshesStatus = true
         case "account":
+            invalidateCodexCardAccount()
             invalidateTasks([.codexSubscriptionList, .quota, .quotaAccount, .quotaPace, .statusAccount])
             codexSubscriptionAccountsState = stale(codexSubscriptionAccountsState, notice)
             quotaAccountState = stale(quotaAccountState, notice)
@@ -2202,13 +2311,15 @@ public final class AppModel: ObservableObject {
 		if affected.contains(selectedFeature), !requiresCoreRestart {
 			reloadFeature(selectedFeature)
 		}
-		if refreshesStatus, !requiresCoreRestart {
-			if !statusOverviewState.isLoading {
-				invalidateTasks([.statusOverview, .statusAccount])
-				statusOverviewState = stale(statusOverviewState, notice)
-				loadStatusOverview()
+			if refreshesStatus, !requiresCoreRestart {
+				if !statusOverviewState.isLoading {
+					invalidateTasks([.statusOverview, .statusAccount])
+					statusOverviewState = stale(statusOverviewState, notice)
+					loadStatusOverview()
+				} else {
+					statusRefreshPendingAfterLoad = true
+				}
 			}
-		}
     }
 
     private func invalidateTasks(_ keys: Set<FeatureTaskKey>) {
@@ -2222,6 +2333,7 @@ public final class AppModel: ObservableObject {
     }
 
     private func resetFeatureState() {
+		invalidateCodexCardAccount()
 		statusOverviewState = .idle
 		statusUsageState = .idle
 		statusInvocationState = .idle
@@ -2305,10 +2417,16 @@ public final class AppModel: ObservableObject {
 				responses.provider == provider
 			else { return }
 			let presentation = OverviewPresentation(responses)
+			statusOverviewResponses[provider] = responses
 			statusOverviewCache[provider] = presentation
 			statusOverviewState = presentation.isPartial
 				? .partial(presentation, notices: presentation.notices)
 				: .ready(presentation)
+			if statusRefreshPendingAfterLoad {
+				statusRefreshPendingAfterLoad = false
+				loadStatusOverview()
+				return
+			}
 			loadStatusAccount(for: responses, provider: provider)
 			if provider.usesOfficialPeriodRing {
 				statusUsageCache[provider] = responses.usage
@@ -2323,6 +2441,11 @@ public final class AppModel: ObservableObject {
 		} failure: { [weak self] error in
 			guard let self, statusProvider == provider else { return }
 			statusOverviewState = failedLoadState(previous: previous, error: error)
+			if statusRefreshPendingAfterLoad {
+				statusRefreshPendingAfterLoad = false
+				loadStatusOverview()
+				return
+			}
 			if provider.usesOfficialPeriodRing {
 				statusUsageState = failedLoadState(previous: statusUsageState.value, error: error)
 			}
@@ -2330,23 +2453,176 @@ public final class AppModel: ObservableObject {
 	}
 
 	private func loadStatusAccount(for responses: OverviewResponses, provider: AgentProvider) {
+		if provider == .codex { codexCardAccountIsLoading = true }
 		launch(
 			.statusAccount,
 			operation: { [runtime] in try await runtime.accountSnapshot(provider: provider) }
 		) { [weak self] account in
 			guard let self, statusProvider == provider else { return }
+			if provider == .codex { codexCardAccountIsLoading = false }
 			let validated = CodexAccountContext.validatePublishedOverview(
 				responses.replacingAccount(account)
 			)
+			if provider == .codex {
+				if CodexAccountContext.key(fromQuota: responses.quota)
+					== CodexAccountContext.key(fromAccount: account) {
+					if !account.hasAccount { codexCardAccountSnapshot = nil }
+					acceptCodexCardAccount(account, matching: responses.quota)
+					statusConsistencyRefreshKey = nil
+				} else if let key = CodexAccountContext.key(fromQuota: responses.quota),
+					statusConsistencyRefreshKey != key {
+					discardCodexCardAccount(matching: key)
+					statusConsistencyRefreshKey = key
+					loadStatusOverview()
+					scheduleCodexCardAccountRetry()
+					return
+				}
+			}
 			let presentation = OverviewPresentation(validated.responses)
 			statusOverviewCache[provider] = presentation
 			statusOverviewState = presentation.isPartial
 				? .partial(presentation, notices: presentation.notices)
 				: .ready(presentation)
-		} failure: { _ in
-			// Account data is optional; retain the already-published status overview.
+		} failure: { [weak self] _ in
+			guard let self, statusProvider == provider else { return }
+			if provider == .codex {
+				codexCardAccountIsLoading = false
+				scheduleCodexCardAccountRetry()
+			}
 		}
 	}
+
+    public func ensureStatusAccountCard() {
+        guard statusProvider == .codex, statusPresentation != nil,
+              statusAccountCardSummary?.availability != .available,
+              featureTasks[.statusOverview] == nil,
+              featureTasks[.statusAccount] == nil
+        else { return }
+        if let accountKey = CodexAccountContext.key(fromAccount: codexCardAccountSnapshot),
+           accountKey != statusPresentation?.codexAccountContextKey {
+            loadStatusOverview()
+            return
+        }
+        if let key = statusPresentation?.codexAccountContextKey,
+           statusConsistencyRefreshKey == key {
+            statusConsistencyRefreshKey = nil
+            loadStatusOverview()
+            return
+        }
+        loadCodexCardAccount()
+    }
+
+    private func acceptCodexCardAccount(
+        _ account: Codexpulse_Core_V1_AccountSnapshotResponse,
+        matching quota: Codexpulse_Core_V1_QuotaCurrentResponse
+    ) {
+        guard account.hasAccount,
+              let key = CodexAccountContext.key(fromQuota: quota),
+              CodexAccountContext.key(fromAccount: account) == key
+        else { return }
+        codexCardAccountSnapshot = account
+        codexCardAccountIsLoading = false
+        codexCardAccountRetried = false
+        codexCardAccountRetryTask?.cancel()
+        codexCardAccountRetryTask = nil
+    }
+
+    private func discardCodexCardAccount(matching key: CodexAccountContextKey) {
+        if CodexAccountContext.key(fromAccount: codexCardAccountSnapshot) == key {
+            codexCardAccountSnapshot = nil
+        }
+    }
+
+    private func invalidateCodexCardAccount() {
+        codexCardAccountEpoch &+= 1
+        codexCardAccountRetryTask?.cancel()
+        codexCardAccountRetryTask = nil
+        codexCardAccountRetried = false
+        codexCardAccountSnapshot = nil
+        codexCardAccountIsLoading = false
+        statusConsistencyRefreshKey = nil
+        quotaConsistencyRefreshKey = nil
+        invalidateTasks([.codexCardAccount])
+    }
+
+    private func scheduleCodexCardAccountRetry() {
+        guard codexCardAccountSnapshot == nil,
+              !codexCardAccountRetried, codexCardAccountRetryTask == nil
+        else { return }
+        codexCardAccountRetried = true
+        let epoch = codexCardAccountEpoch
+        codexCardAccountRetryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard let self, !Task.isCancelled, epoch == codexCardAccountEpoch else { return }
+            codexCardAccountRetryTask = nil
+            loadCodexCardAccount()
+        }
+    }
+
+    private func loadCodexCardAccount() {
+        guard canRefreshOrRestart,
+              (statusProvider == .codex || selectedProvider == .codex),
+              featureTasks[.codexCardAccount] == nil,
+              featureTasks[.statusAccount] == nil,
+              featureTasks[.quotaAccount] == nil
+        else { return }
+        codexCardAccountIsLoading = true
+        launch(
+            .codexCardAccount,
+            operation: { [runtime] in try await runtime.accountSnapshot(provider: .codex) }
+        ) { [weak self] account in
+            guard let self else { return }
+            codexCardAccountIsLoading = false
+            let accountKey = CodexAccountContext.key(fromAccount: account)
+            var accepted = false
+            if statusProvider == .codex,
+               let responses = statusOverviewResponses[.codex],
+               accountKey != nil,
+               accountKey == CodexAccountContext.key(fromQuota: responses.quota) {
+                acceptCodexCardAccount(account, matching: responses.quota)
+                accepted = account.hasAccount
+            }
+            if selectedProvider == .codex,
+               let quota = quotaState.value,
+               accountKey != nil,
+               accountKey == CodexAccountContext.key(fromQuota: quota) {
+                acceptCodexCardAccount(account, matching: quota)
+                accepted = account.hasAccount
+                quotaAccountState = .ready(account)
+            }
+            switch state {
+            case .overview(let overview), .partial(let overview):
+                if overview.provider == .codex, accountKey != nil,
+                   accountKey == overview.codexAccountContextKey {
+                    // The main Overview has already validated this binding.
+                    codexCardAccountSnapshot = account
+                    accepted = account.hasAccount
+                }
+            default: break
+            }
+            if !accepted {
+                codexCardAccountSnapshot = nil
+            }
+            if statusProvider == .codex,
+               let quotaKey = statusOverviewResponses[.codex].flatMap({ CodexAccountContext.key(fromQuota: $0.quota) }),
+               quotaKey != accountKey,
+               statusConsistencyRefreshKey != quotaKey,
+               !statusOverviewState.isLoading {
+                statusConsistencyRefreshKey = quotaKey
+                loadStatusOverview()
+            }
+            if selectedProvider == .codex, selectedFeature == .quotaUsage,
+               let quotaKey = quotaState.value.flatMap(CodexAccountContext.key(fromQuota:)),
+               quotaKey != accountKey,
+               quotaConsistencyRefreshKey != quotaKey,
+               !quotaState.isLoading {
+                quotaConsistencyRefreshKey = quotaKey
+                loadQuota()
+            }
+        } failure: { [weak self] _ in
+            self?.codexCardAccountIsLoading = false
+        }
+    }
 
     private func beginPage(_ key: FeatureTaskKey, cursor: String?, reset: Bool) -> Bool {
         if reset {
@@ -2440,6 +2716,7 @@ public final class AppModel: ObservableObject {
     }
 
     private func markFeatureStatesStale(_ notice: AppNotice) {
+		invalidateCodexCardAccount()
 		statusOverviewState = stale(statusOverviewState, notice)
         dashboardSummaryState = stale(dashboardSummaryState, notice)
         usageState = stale(usageState, notice)
