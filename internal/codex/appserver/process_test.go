@@ -1,6 +1,7 @@
 package appserver
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,10 +11,16 @@ import (
 )
 
 // 测试 Finder 的最小 PATH 下仍会选择产品认可的绝对 Codex CLI 候选。（风险复现用例）
-func TestResolveCodexBinaryUsesAbsoluteFallbackWithMinimalPath(t *testing.T) {
+func TestResolveCodexBinaryUsesNodeBackedFallbackWithMinimalPath(t *testing.T) {
 	directory := t.TempDir()
 	binary := filepath.Join(directory, "codex")
-	writeCodexVersionScript(t, binary, "0.154.0", "exit 0")
+	writeNodeBackedCodex(t, binary, `
+if [ "$1" = "--version" ]; then
+  printf 'codex-cli 0.154.0\n'
+  exit 0
+fi
+exit 0
+`)
 	t.Setenv("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
 
 	got, err := resolveCodexBinary("", []string{binary})
@@ -22,6 +29,46 @@ func TestResolveCodexBinaryUsesAbsoluteFallbackWithMinimalPath(t *testing.T) {
 	}
 	if got != binary {
 		t.Fatalf("resolveCodexBinary() = %q, want %q", got, binary)
+	}
+}
+
+func TestWithInitializedLocalRPCRunsNodeBackedCodexWithMinimalPath(t *testing.T) {
+	directory := t.TempDir()
+	binary := filepath.Join(directory, "codex")
+	writeNodeBackedCodex(t, binary, `
+if [ "$1" = "--version" ]; then
+  printf 'codex-cli 0.154.0\n'
+  exit 0
+fi
+while IFS= read -r line; do
+  id="$(printf '%s\n' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')"
+  case "$line" in
+    *'"method":"initialize"'*)
+      printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id"
+      ;;
+  esac
+done
+`)
+	t.Setenv("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+	confirmedHome := t.TempDir()
+	wantHome, err := canonicalConfirmedHome(confirmedHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := withInitializedLocalRPC(
+		t.Context(),
+		confirmedHome,
+		ProcessOptions{CodexBinary: binary},
+		func(_ context.Context, _ *jsonLineRPC, canonicalHome string) (string, error) {
+			return canonicalHome, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("withInitializedLocalRPC() error = %v", err)
+	}
+	if got != wantHome {
+		t.Fatalf("withInitializedLocalRPC() = %q, want %q", got, wantHome)
 	}
 }
 
@@ -83,6 +130,23 @@ func writeCodexVersionScript(t *testing.T, path, version, body string) {
 		"  exit 0\n" +
 		"fi\n" +
 		body + "\n"
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeNodeBackedCodex(t *testing.T, path, body string) {
+	t.Helper()
+	directory := filepath.Dir(path)
+	node := filepath.Join(directory, "node")
+	if err := os.WriteFile(
+		node,
+		[]byte("#!/bin/sh\nscript=\"$1\"\nshift\nexec /bin/sh \"$script\" \"$@\"\n"),
+		0o700,
+	); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/usr/bin/env node\n" + body + "\n"
 	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}

@@ -1,5 +1,10 @@
 ## Unreleased
 
+## v0.12.2 - 2026-09-16
+
+#### bugFix:
+1. [TOO-457] 修复 macOS GUI 最小 PATH 下无法启动 Node-backed Codex CLI，确保真实 Codex Home 的账号识别与额度读取正常。
+
 ## v0.12.1 - 2026-09-16
 
 #### bugFix:
