@@ -101,13 +101,19 @@ func withInitializedLocalRPC[T any](
 	defer cancelProcess()
 	command := exec.CommandContext(processContext, binary, "app-server", "--listen", "stdio://")
 	processHome := canonicalHome
-	command.Env = isolatedCodexEnvironment(os.Environ(), processHome)
+	command.Env = codexRuntimeEnvironment(
+		isolatedCodexEnvironment(os.Environ(), processHome),
+		binary,
+	)
 	if options.homeBinding != nil {
 		processHome, err = options.homeBinding.attach(command)
 		if err != nil {
 			return result, err
 		}
-		command.Env = isolatedCodexEnvironment(command.Env, processHome)
+		command.Env = codexRuntimeEnvironment(
+			isolatedCodexEnvironment(command.Env, processHome),
+			binary,
+		)
 	}
 	stdin, err := command.StdinPipe()
 	if err != nil {
@@ -217,7 +223,9 @@ func resolveCodexBinary(explicit string, fallbacks []string) (string, error) {
 
 func inspectCodexBinary(path string) CodexBinaryInspection {
 	inspection := CodexBinaryInspection{Path: path, CapabilityState: CodexCapabilityUnavailable}
-	output, err := exec.Command(path, "--version").Output()
+	command := exec.Command(path, "--version")
+	command.Env = codexRuntimeEnvironment(os.Environ(), path)
+	output, err := command.Output()
 	if err != nil {
 		return inspection
 	}
@@ -308,4 +316,50 @@ func isolatedCodexEnvironment(environment []string, confirmedHome string) []stri
 		result = append(result, entry)
 	}
 	return append(result, "CODEX_HOME="+confirmedHome)
+}
+
+func codexRuntimeEnvironment(environment []string, binary string) []string {
+	return prependPathEntry(environment, filepath.Dir(binary))
+}
+
+func prependPathEntry(environment []string, directory string) []string {
+	directory = filepath.Clean(directory)
+	if directory == "." || directory == "" {
+		return append([]string(nil), environment...)
+	}
+	result := make([]string, 0, len(environment)+1)
+	pathFound := false
+	for _, entry := range environment {
+		if !strings.HasPrefix(entry, "PATH=") {
+			result = append(result, entry)
+			continue
+		}
+		if pathFound {
+			result = append(result, entry)
+			continue
+		}
+		pathValue := strings.TrimPrefix(entry, "PATH=")
+		if !pathListContains(pathValue, directory) {
+			if pathValue == "" {
+				pathValue = directory
+			} else {
+				pathValue = directory + string(os.PathListSeparator) + pathValue
+			}
+		}
+		result = append(result, "PATH="+pathValue)
+		pathFound = true
+	}
+	if !pathFound {
+		result = append(result, "PATH="+directory)
+	}
+	return result
+}
+
+func pathListContains(pathValue, directory string) bool {
+	for _, entry := range strings.Split(pathValue, string(os.PathListSeparator)) {
+		if entry == directory {
+			return true
+		}
+	}
+	return false
 }
