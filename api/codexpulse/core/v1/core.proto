@@ -102,6 +102,7 @@ message ContractsResponse {
   string dashboard_summary_version = 10;
   string codex_pro_tier_version = 11;
   string codex_subscription_accounts_version = 12;
+  string provider_control_version = 13;
 }
 
 // ErrorDetail 只承载稳定分类，不允许泄漏底层错误或请求值。
@@ -1117,6 +1118,44 @@ message EditableField {
   repeated string options = 6;
 }
 
+enum ProviderIntent {
+  PROVIDER_INTENT_UNSPECIFIED = 0;
+  PROVIDER_INTENT_AUTO = 1;
+  PROVIDER_INTENT_ENABLED = 2;
+  PROVIDER_INTENT_DISABLED = 3;
+}
+
+enum ProviderDiscoveryState {
+  PROVIDER_DISCOVERY_STATE_UNSPECIFIED = 0;
+  PROVIDER_DISCOVERY_STATE_UNCHECKED = 1;
+  PROVIDER_DISCOVERY_STATE_AVAILABLE = 2;
+  PROVIDER_DISCOVERY_STATE_MISSING = 3;
+  PROVIDER_DISCOVERY_STATE_INACCESSIBLE = 4;
+  PROVIDER_DISCOVERY_STATE_INVALID = 5;
+}
+
+enum ProviderEffectiveState {
+  PROVIDER_EFFECTIVE_STATE_UNSPECIFIED = 0;
+  PROVIDER_EFFECTIVE_STATE_ENABLED = 1;
+  PROVIDER_EFFECTIVE_STATE_DISABLED = 2;
+  PROVIDER_EFFECTIVE_STATE_UNAVAILABLE = 3;
+  PROVIDER_EFFECTIVE_STATE_DISABLING = 4;
+}
+
+message SettingsProviderSnapshot {
+  string provider = 1;
+  ProviderIntent intent = 2;
+  ProviderDiscoveryState discovery_state = 3;
+  ProviderEffectiveState effective_state = 4;
+  string reason_code = 5;
+  string generation = 6;
+}
+
+message SettingsProviderUpdate {
+  string provider = 1;
+  ProviderIntent intent = 2;
+}
+
 message SettingsHomeSnapshot {
   bool configured = 1;
   string generation = 2;
@@ -1129,6 +1168,7 @@ message SettingsOnlineSnapshot {
   bool reset_credits_enabled = 2;
   bool grok_quota_enabled = 3;
   bool grok_auto_refresh_enabled = 4;
+  bool cursor_online_enabled = 5;
 }
 
 message SettingsRefreshSnapshot {
@@ -1163,6 +1203,7 @@ message SettingsSnapshot {
   SettingsRefreshSnapshot refresh = 6;
   SettingsUpdateSnapshot updates = 7;
   SettingsUISnapshot ui = 8;
+  repeated SettingsProviderSnapshot providers = 9;
 }
 
 message SettingsResponse {
@@ -1176,6 +1217,7 @@ message SettingsOnlineUpdate {
   bool reset_credits_enabled = 2;
   bool grok_quota_enabled = 3;
   bool grok_auto_refresh_enabled = 4;
+  bool cursor_online_enabled = 5;
 }
 
 message SettingsRefreshUpdate {
@@ -1203,6 +1245,7 @@ message UpdateSettingsRequest {
   SettingsRefreshUpdate refresh = 3;
   SettingsUpdatesUpdate updates = 4;
   SettingsUIUpdate ui = 5;
+  repeated SettingsProviderUpdate providers = 6;
 }
 
 message SettingsUpdateReceipt {

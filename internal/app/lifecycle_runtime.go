@@ -86,6 +86,8 @@ type ApplicationLifecycleRuntimeConfig struct {
 	LightRefreshInterval time.Duration
 	quotaHooks           quotaRuntimeHooks
 	homeRuntime          preferences.HomeRuntime
+	PreferencesService   *preferences.Service
+	BindHomeRuntime      func(preferences.HomeRuntime)
 }
 
 type applicationLifecycleRuntime struct {
@@ -152,7 +154,13 @@ func startApplicationLifecycleRuntime(
 	if errors.Is(err, preferences.ErrNotConfigured) {
 		return nil, nil
 	}
-	if err != nil || snapshot.CodexHome.Generation > math.MaxInt64 {
+	if err != nil {
+		return nil, applicationLifecycleDependencyError(ctx, err)
+	}
+	if snapshot.CodexHome == nil {
+		return nil, nil
+	}
+	if snapshot.CodexHome.Generation > math.MaxInt64 {
 		return nil, applicationLifecycleDependencyError(ctx, err)
 	}
 	repository := store.NewRepository(config.Database)
@@ -192,7 +200,22 @@ func startApplicationLifecycleRuntime(
 	closeQuotaRuntime := func() { _ = quotaRuntime.Close(context.Background()) }
 	var preferencesService *preferences.Service
 	var quotaHomeRuntime *applicationQuotaHomeRuntime
-	if hasPreferencesStore {
+	if config.PreferencesService != nil {
+		preferencesService = config.PreferencesService
+		snapshot, err = preferencesService.RecoverSwitch(ctx)
+		if err != nil || snapshot.CodexHome == nil || snapshot.PendingSwitch != nil || snapshot.PendingResume != nil ||
+			snapshot.CodexHome.Generation > math.MaxInt64 {
+			closeQuotaRuntime()
+			return nil, applicationLifecycleDependencyError(ctx, err)
+		}
+		quotaHomeRuntime = &applicationQuotaHomeRuntime{
+			local: localHomeRuntime,
+			quota: quotaRuntime,
+		}
+		if config.BindHomeRuntime != nil {
+			config.BindHomeRuntime(quotaHomeRuntime)
+		}
+	} else if hasPreferencesStore {
 		quotaHomeRuntime = &applicationQuotaHomeRuntime{
 			local: localHomeRuntime,
 			quota: quotaRuntime,
@@ -206,7 +229,7 @@ func startApplicationLifecycleRuntime(
 			return nil, applicationLifecycleDependencyError(ctx, err)
 		}
 		snapshot, err = preferencesService.RecoverSwitch(ctx)
-		if err != nil || snapshot.PendingSwitch != nil || snapshot.PendingResume != nil ||
+		if err != nil || snapshot.CodexHome == nil || snapshot.PendingSwitch != nil || snapshot.PendingResume != nil ||
 			snapshot.CodexHome.Generation > math.MaxInt64 {
 			closeQuotaRuntime()
 			return nil, applicationLifecycleDependencyError(ctx, err)
@@ -396,7 +419,7 @@ func startApplicationLifecycleRuntime(
 			time.Now,
 			grokprovider.AuthReaderConfig{RefreshEnabled: func() bool {
 				current, loadErr := loader.LoadPreferences(context.Background())
-				return loadErr != nil || current.Online.GrokAutoRefreshEnabled
+				return loadErr == nil && current.Online.GrokAutoRefreshEnabled
 			}},
 		); authErr == nil {
 			runtime.grokAccountReader = grokAuth.ReadAccountSnapshot
@@ -451,9 +474,9 @@ func ensureApplicationBootstrap(
 	ctx context.Context,
 	repository *store.Repository,
 	runtime *bootstrap.Runtime,
-	home preferences.CodexHomePreferences,
+	home *preferences.CodexHomePreferences,
 ) error {
-	if ctx == nil || repository == nil || runtime == nil || home.Generation == 0 ||
+	if ctx == nil || repository == nil || runtime == nil || home == nil || home.Generation == 0 ||
 		home.Generation > math.MaxInt64 {
 		return ErrApplicationLifecycleRuntime
 	}
@@ -961,7 +984,7 @@ func (provider fileConfirmedHomeProvider) CurrentHome(ctx context.Context) (appL
 		return appLifecycle.ConfirmedHome{}, ErrApplicationLifecycleRuntime
 	}
 	snapshot, err := provider.loader.LoadPreferences(ctx)
-	if err != nil || snapshot.CodexHome.Generation > math.MaxInt64 {
+	if err != nil || snapshot.CodexHome == nil || snapshot.CodexHome.Generation > math.MaxInt64 {
 		return appLifecycle.ConfirmedHome{}, applicationLifecycleDependencyError(ctx, err)
 	}
 	return appLifecycle.ConfirmedHome{

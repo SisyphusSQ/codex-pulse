@@ -25,6 +25,144 @@ fileprivate nonisolated struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobu
   typealias Version = _2
 }
 
+public nonisolated enum Codexpulse_Core_V1_ProviderIntent: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case auto // = 1
+  case enabled // = 2
+  case disabled // = 3
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .auto
+    case 2: self = .enabled
+    case 3: self = .disabled
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .auto: return 1
+    case .enabled: return 2
+    case .disabled: return 3
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Codexpulse_Core_V1_ProviderIntent] = [
+    .unspecified,
+    .auto,
+    .enabled,
+    .disabled,
+  ]
+
+}
+
+public nonisolated enum Codexpulse_Core_V1_ProviderDiscoveryState: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case unchecked // = 1
+  case available // = 2
+  case missing // = 3
+  case inaccessible // = 4
+  case invalid // = 5
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .unchecked
+    case 2: self = .available
+    case 3: self = .missing
+    case 4: self = .inaccessible
+    case 5: self = .invalid
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .unchecked: return 1
+    case .available: return 2
+    case .missing: return 3
+    case .inaccessible: return 4
+    case .invalid: return 5
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Codexpulse_Core_V1_ProviderDiscoveryState] = [
+    .unspecified,
+    .unchecked,
+    .available,
+    .missing,
+    .inaccessible,
+    .invalid,
+  ]
+
+}
+
+public nonisolated enum Codexpulse_Core_V1_ProviderEffectiveState: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case enabled // = 1
+  case disabled // = 2
+  case unavailable // = 3
+  case disabling // = 4
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .enabled
+    case 2: self = .disabled
+    case 3: self = .unavailable
+    case 4: self = .disabling
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .enabled: return 1
+    case .disabled: return 2
+    case .unavailable: return 3
+    case .disabling: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Codexpulse_Core_V1_ProviderEffectiveState] = [
+    .unspecified,
+    .enabled,
+    .disabled,
+    .unavailable,
+    .disabling,
+  ]
+
+}
+
 public nonisolated enum Codexpulse_Core_V1_CodexProTier: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
   case unspecified // = 0
@@ -603,6 +741,8 @@ public nonisolated struct Codexpulse_Core_V1_ContractsResponse: Sendable {
   public var codexProTierVersion: String = String()
 
   public var codexSubscriptionAccountsVersion: String = String()
+
+  public var providerControlVersion: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -6662,6 +6802,42 @@ public nonisolated struct Codexpulse_Core_V1_EditableField: Sendable {
   fileprivate var _maximum: Int64? = nil
 }
 
+public nonisolated struct Codexpulse_Core_V1_SettingsProviderSnapshot: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var provider: String = String()
+
+  public var intent: Codexpulse_Core_V1_ProviderIntent = .unspecified
+
+  public var discoveryState: Codexpulse_Core_V1_ProviderDiscoveryState = .unspecified
+
+  public var effectiveState: Codexpulse_Core_V1_ProviderEffectiveState = .unspecified
+
+  public var reasonCode: String = String()
+
+  public var generation: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_SettingsProviderUpdate: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var provider: String = String()
+
+  public var intent: Codexpulse_Core_V1_ProviderIntent = .unspecified
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 public nonisolated struct Codexpulse_Core_V1_SettingsHomeSnapshot: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -6701,6 +6877,8 @@ public nonisolated struct Codexpulse_Core_V1_SettingsOnlineSnapshot: Sendable {
   public var grokQuotaEnabled: Bool = false
 
   public var grokAutoRefreshEnabled: Bool = false
+
+  public var cursorOnlineEnabled: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -6855,6 +7033,11 @@ public nonisolated struct Codexpulse_Core_V1_SettingsSnapshot: @unchecked Sendab
   /// Clears the value of `ui`. Subsequent reads from it will return its default value.
   public mutating func clearUi() {_uniqueStorage()._ui = nil}
 
+  public var providers: [Codexpulse_Core_V1_SettingsProviderSnapshot] {
+    get {_storage._providers}
+    set {_uniqueStorage()._providers = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -6907,6 +7090,8 @@ public nonisolated struct Codexpulse_Core_V1_SettingsOnlineUpdate: Sendable {
   public var grokQuotaEnabled: Bool = false
 
   public var grokAutoRefreshEnabled: Bool = false
+
+  public var cursorOnlineEnabled: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -6963,57 +7148,62 @@ public nonisolated struct Codexpulse_Core_V1_SettingsUIUpdate: Sendable {
   public init() {}
 }
 
-public nonisolated struct Codexpulse_Core_V1_UpdateSettingsRequest: Sendable {
+public nonisolated struct Codexpulse_Core_V1_UpdateSettingsRequest: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var expectedRevision: String = String()
+  public var expectedRevision: String {
+    get {_storage._expectedRevision}
+    set {_uniqueStorage()._expectedRevision = newValue}
+  }
 
   public var online: Codexpulse_Core_V1_SettingsOnlineUpdate {
-    get {_online ?? Codexpulse_Core_V1_SettingsOnlineUpdate()}
-    set {_online = newValue}
+    get {_storage._online ?? Codexpulse_Core_V1_SettingsOnlineUpdate()}
+    set {_uniqueStorage()._online = newValue}
   }
   /// Returns true if `online` has been explicitly set.
-  public var hasOnline: Bool {self._online != nil}
+  public var hasOnline: Bool {_storage._online != nil}
   /// Clears the value of `online`. Subsequent reads from it will return its default value.
-  public mutating func clearOnline() {self._online = nil}
+  public mutating func clearOnline() {_uniqueStorage()._online = nil}
 
   public var refresh: Codexpulse_Core_V1_SettingsRefreshUpdate {
-    get {_refresh ?? Codexpulse_Core_V1_SettingsRefreshUpdate()}
-    set {_refresh = newValue}
+    get {_storage._refresh ?? Codexpulse_Core_V1_SettingsRefreshUpdate()}
+    set {_uniqueStorage()._refresh = newValue}
   }
   /// Returns true if `refresh` has been explicitly set.
-  public var hasRefresh: Bool {self._refresh != nil}
+  public var hasRefresh: Bool {_storage._refresh != nil}
   /// Clears the value of `refresh`. Subsequent reads from it will return its default value.
-  public mutating func clearRefresh() {self._refresh = nil}
+  public mutating func clearRefresh() {_uniqueStorage()._refresh = nil}
 
   public var updates: Codexpulse_Core_V1_SettingsUpdatesUpdate {
-    get {_updates ?? Codexpulse_Core_V1_SettingsUpdatesUpdate()}
-    set {_updates = newValue}
+    get {_storage._updates ?? Codexpulse_Core_V1_SettingsUpdatesUpdate()}
+    set {_uniqueStorage()._updates = newValue}
   }
   /// Returns true if `updates` has been explicitly set.
-  public var hasUpdates: Bool {self._updates != nil}
+  public var hasUpdates: Bool {_storage._updates != nil}
   /// Clears the value of `updates`. Subsequent reads from it will return its default value.
-  public mutating func clearUpdates() {self._updates = nil}
+  public mutating func clearUpdates() {_uniqueStorage()._updates = nil}
 
   public var ui: Codexpulse_Core_V1_SettingsUIUpdate {
-    get {_ui ?? Codexpulse_Core_V1_SettingsUIUpdate()}
-    set {_ui = newValue}
+    get {_storage._ui ?? Codexpulse_Core_V1_SettingsUIUpdate()}
+    set {_uniqueStorage()._ui = newValue}
   }
   /// Returns true if `ui` has been explicitly set.
-  public var hasUi: Bool {self._ui != nil}
+  public var hasUi: Bool {_storage._ui != nil}
   /// Clears the value of `ui`. Subsequent reads from it will return its default value.
-  public mutating func clearUi() {self._ui = nil}
+  public mutating func clearUi() {_uniqueStorage()._ui = nil}
+
+  public var providers: [Codexpulse_Core_V1_SettingsProviderUpdate] {
+    get {_storage._providers}
+    set {_uniqueStorage()._providers = newValue}
+  }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
-  fileprivate var _online: Codexpulse_Core_V1_SettingsOnlineUpdate? = nil
-  fileprivate var _refresh: Codexpulse_Core_V1_SettingsRefreshUpdate? = nil
-  fileprivate var _updates: Codexpulse_Core_V1_SettingsUpdatesUpdate? = nil
-  fileprivate var _ui: Codexpulse_Core_V1_SettingsUIUpdate? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 public nonisolated struct Codexpulse_Core_V1_SettingsUpdateReceipt: Sendable {
@@ -8571,6 +8761,18 @@ public nonisolated struct Codexpulse_Core_V1_CursorUsagePoolSummary: Sendable {
 
 fileprivate nonisolated let _protobuf_package = "codexpulse.core.v1"
 
+nonisolated extension Codexpulse_Core_V1_ProviderIntent: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0PROVIDER_INTENT_UNSPECIFIED\0\u{1}PROVIDER_INTENT_AUTO\0\u{1}PROVIDER_INTENT_ENABLED\0\u{1}PROVIDER_INTENT_DISABLED\0")
+}
+
+nonisolated extension Codexpulse_Core_V1_ProviderDiscoveryState: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0PROVIDER_DISCOVERY_STATE_UNSPECIFIED\0\u{1}PROVIDER_DISCOVERY_STATE_UNCHECKED\0\u{1}PROVIDER_DISCOVERY_STATE_AVAILABLE\0\u{1}PROVIDER_DISCOVERY_STATE_MISSING\0\u{1}PROVIDER_DISCOVERY_STATE_INACCESSIBLE\0\u{1}PROVIDER_DISCOVERY_STATE_INVALID\0")
+}
+
+nonisolated extension Codexpulse_Core_V1_ProviderEffectiveState: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0PROVIDER_EFFECTIVE_STATE_UNSPECIFIED\0\u{1}PROVIDER_EFFECTIVE_STATE_ENABLED\0\u{1}PROVIDER_EFFECTIVE_STATE_DISABLED\0\u{1}PROVIDER_EFFECTIVE_STATE_UNAVAILABLE\0\u{1}PROVIDER_EFFECTIVE_STATE_DISABLING\0")
+}
+
 nonisolated extension Codexpulse_Core_V1_CodexProTier: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CODEX_PRO_TIER_UNSPECIFIED\0\u{1}CODEX_PRO_TIER_5X\0\u{1}CODEX_PRO_TIER_20X\0")
 }
@@ -8844,7 +9046,7 @@ nonisolated extension Codexpulse_Core_V1_MethodInfo: SwiftProtobuf.Message, Swif
 
 nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ContractsResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}query_version\0\u{3}usage_cost_version\0\u{3}runtime_info_version\0\u{1}methods\0\u{3}command_methods\0\u{3}error_example\0\u{3}pricing_catalog_version\0\u{3}invocation_usage_version\0\u{3}dashboard_summary_version\0\u{3}codex_pro_tier_version\0\u{3}codex_subscription_accounts_version\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}query_version\0\u{3}usage_cost_version\0\u{3}runtime_info_version\0\u{1}methods\0\u{3}command_methods\0\u{3}error_example\0\u{3}pricing_catalog_version\0\u{3}invocation_usage_version\0\u{3}dashboard_summary_version\0\u{3}codex_pro_tier_version\0\u{3}codex_subscription_accounts_version\0\u{3}provider_control_version\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -8864,6 +9066,7 @@ nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Messag
       case 10: try { try decoder.decodeSingularStringField(value: &self.dashboardSummaryVersion) }()
       case 11: try { try decoder.decodeSingularStringField(value: &self.codexProTierVersion) }()
       case 12: try { try decoder.decodeSingularStringField(value: &self.codexSubscriptionAccountsVersion) }()
+      case 13: try { try decoder.decodeSingularStringField(value: &self.providerControlVersion) }()
       default: break
       }
     }
@@ -8910,6 +9113,9 @@ nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Messag
     if !self.codexSubscriptionAccountsVersion.isEmpty {
       try visitor.visitSingularStringField(value: self.codexSubscriptionAccountsVersion, fieldNumber: 12)
     }
+    if !self.providerControlVersion.isEmpty {
+      try visitor.visitSingularStringField(value: self.providerControlVersion, fieldNumber: 13)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -8926,6 +9132,7 @@ nonisolated extension Codexpulse_Core_V1_ContractsResponse: SwiftProtobuf.Messag
     if lhs.dashboardSummaryVersion != rhs.dashboardSummaryVersion {return false}
     if lhs.codexProTierVersion != rhs.codexProTierVersion {return false}
     if lhs.codexSubscriptionAccountsVersion != rhs.codexSubscriptionAccountsVersion {return false}
+    if lhs.providerControlVersion != rhs.providerControlVersion {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -17349,6 +17556,96 @@ nonisolated extension Codexpulse_Core_V1_EditableField: SwiftProtobuf.Message, S
   }
 }
 
+nonisolated extension Codexpulse_Core_V1_SettingsProviderSnapshot: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SettingsProviderSnapshot"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}provider\0\u{1}intent\0\u{3}discovery_state\0\u{3}effective_state\0\u{3}reason_code\0\u{1}generation\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.provider) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.intent) }()
+      case 3: try { try decoder.decodeSingularEnumField(value: &self.discoveryState) }()
+      case 4: try { try decoder.decodeSingularEnumField(value: &self.effectiveState) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.reasonCode) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.generation) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.provider.isEmpty {
+      try visitor.visitSingularStringField(value: self.provider, fieldNumber: 1)
+    }
+    if self.intent != .unspecified {
+      try visitor.visitSingularEnumField(value: self.intent, fieldNumber: 2)
+    }
+    if self.discoveryState != .unspecified {
+      try visitor.visitSingularEnumField(value: self.discoveryState, fieldNumber: 3)
+    }
+    if self.effectiveState != .unspecified {
+      try visitor.visitSingularEnumField(value: self.effectiveState, fieldNumber: 4)
+    }
+    if !self.reasonCode.isEmpty {
+      try visitor.visitSingularStringField(value: self.reasonCode, fieldNumber: 5)
+    }
+    if !self.generation.isEmpty {
+      try visitor.visitSingularStringField(value: self.generation, fieldNumber: 6)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_SettingsProviderSnapshot, rhs: Codexpulse_Core_V1_SettingsProviderSnapshot) -> Bool {
+    if lhs.provider != rhs.provider {return false}
+    if lhs.intent != rhs.intent {return false}
+    if lhs.discoveryState != rhs.discoveryState {return false}
+    if lhs.effectiveState != rhs.effectiveState {return false}
+    if lhs.reasonCode != rhs.reasonCode {return false}
+    if lhs.generation != rhs.generation {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_SettingsProviderUpdate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SettingsProviderUpdate"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}provider\0\u{1}intent\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.provider) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.intent) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.provider.isEmpty {
+      try visitor.visitSingularStringField(value: self.provider, fieldNumber: 1)
+    }
+    if self.intent != .unspecified {
+      try visitor.visitSingularEnumField(value: self.intent, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_SettingsProviderUpdate, rhs: Codexpulse_Core_V1_SettingsProviderUpdate) -> Bool {
+    if lhs.provider != rhs.provider {return false}
+    if lhs.intent != rhs.intent {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 nonisolated extension Codexpulse_Core_V1_SettingsHomeSnapshot: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SettingsHomeSnapshot"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}configured\0\u{1}generation\0\u{3}switch_status\0\u{3}last_switch_outcome\0")
@@ -17400,7 +17697,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsHomeSnapshot: SwiftProtobuf.Mes
 
 nonisolated extension Codexpulse_Core_V1_SettingsOnlineSnapshot: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SettingsOnlineSnapshot"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}quota_enabled\0\u{3}reset_credits_enabled\0\u{3}grok_quota_enabled\0\u{3}grok_auto_refresh_enabled\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}quota_enabled\0\u{3}reset_credits_enabled\0\u{3}grok_quota_enabled\0\u{3}grok_auto_refresh_enabled\0\u{3}cursor_online_enabled\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -17412,6 +17709,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineSnapshot: SwiftProtobuf.M
       case 2: try { try decoder.decodeSingularBoolField(value: &self.resetCreditsEnabled) }()
       case 3: try { try decoder.decodeSingularBoolField(value: &self.grokQuotaEnabled) }()
       case 4: try { try decoder.decodeSingularBoolField(value: &self.grokAutoRefreshEnabled) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.cursorOnlineEnabled) }()
       default: break
       }
     }
@@ -17430,6 +17728,9 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineSnapshot: SwiftProtobuf.M
     if self.grokAutoRefreshEnabled != false {
       try visitor.visitSingularBoolField(value: self.grokAutoRefreshEnabled, fieldNumber: 4)
     }
+    if self.cursorOnlineEnabled != false {
+      try visitor.visitSingularBoolField(value: self.cursorOnlineEnabled, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -17438,6 +17739,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineSnapshot: SwiftProtobuf.M
     if lhs.resetCreditsEnabled != rhs.resetCreditsEnabled {return false}
     if lhs.grokQuotaEnabled != rhs.grokQuotaEnabled {return false}
     if lhs.grokAutoRefreshEnabled != rhs.grokAutoRefreshEnabled {return false}
+    if lhs.cursorOnlineEnabled != rhs.cursorOnlineEnabled {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -17594,7 +17896,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsUISnapshot: SwiftProtobuf.Messa
 
 nonisolated extension Codexpulse_Core_V1_SettingsSnapshot: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SettingsSnapshot"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}schema_version\0\u{1}revision\0\u{3}onboarding_completed\0\u{1}home\0\u{1}online\0\u{1}refresh\0\u{1}updates\0\u{1}ui\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}schema_version\0\u{1}revision\0\u{3}onboarding_completed\0\u{1}home\0\u{1}online\0\u{1}refresh\0\u{1}updates\0\u{1}ui\0\u{1}providers\0")
 
   fileprivate class _StorageClass {
     var _schemaVersion: Int32 = 0
@@ -17605,6 +17907,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsSnapshot: SwiftProtobuf.Message
     var _refresh: Codexpulse_Core_V1_SettingsRefreshSnapshot? = nil
     var _updates: Codexpulse_Core_V1_SettingsUpdateSnapshot? = nil
     var _ui: Codexpulse_Core_V1_SettingsUISnapshot? = nil
+    var _providers: [Codexpulse_Core_V1_SettingsProviderSnapshot] = []
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -17623,6 +17926,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsSnapshot: SwiftProtobuf.Message
       _refresh = source._refresh
       _updates = source._updates
       _ui = source._ui
+      _providers = source._providers
     }
   }
 
@@ -17649,6 +17953,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsSnapshot: SwiftProtobuf.Message
         case 6: try { try decoder.decodeSingularMessageField(value: &_storage._refresh) }()
         case 7: try { try decoder.decodeSingularMessageField(value: &_storage._updates) }()
         case 8: try { try decoder.decodeSingularMessageField(value: &_storage._ui) }()
+        case 9: try { try decoder.decodeRepeatedMessageField(value: &_storage._providers) }()
         default: break
         }
       }
@@ -17685,6 +17990,9 @@ nonisolated extension Codexpulse_Core_V1_SettingsSnapshot: SwiftProtobuf.Message
       try { if let v = _storage._ui {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 8)
       } }()
+      if !_storage._providers.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._providers, fieldNumber: 9)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -17702,6 +18010,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsSnapshot: SwiftProtobuf.Message
         if _storage._refresh != rhs_storage._refresh {return false}
         if _storage._updates != rhs_storage._updates {return false}
         if _storage._ui != rhs_storage._ui {return false}
+        if _storage._providers != rhs_storage._providers {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -17757,7 +18066,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsResponse: SwiftProtobuf.Message
 
 nonisolated extension Codexpulse_Core_V1_SettingsOnlineUpdate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SettingsOnlineUpdate"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}quota_enabled\0\u{3}reset_credits_enabled\0\u{3}grok_quota_enabled\0\u{3}grok_auto_refresh_enabled\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}quota_enabled\0\u{3}reset_credits_enabled\0\u{3}grok_quota_enabled\0\u{3}grok_auto_refresh_enabled\0\u{3}cursor_online_enabled\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -17769,6 +18078,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineUpdate: SwiftProtobuf.Mes
       case 2: try { try decoder.decodeSingularBoolField(value: &self.resetCreditsEnabled) }()
       case 3: try { try decoder.decodeSingularBoolField(value: &self.grokQuotaEnabled) }()
       case 4: try { try decoder.decodeSingularBoolField(value: &self.grokAutoRefreshEnabled) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.cursorOnlineEnabled) }()
       default: break
       }
     }
@@ -17787,6 +18097,9 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineUpdate: SwiftProtobuf.Mes
     if self.grokAutoRefreshEnabled != false {
       try visitor.visitSingularBoolField(value: self.grokAutoRefreshEnabled, fieldNumber: 4)
     }
+    if self.cursorOnlineEnabled != false {
+      try visitor.visitSingularBoolField(value: self.cursorOnlineEnabled, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -17795,6 +18108,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineUpdate: SwiftProtobuf.Mes
     if lhs.resetCreditsEnabled != rhs.resetCreditsEnabled {return false}
     if lhs.grokQuotaEnabled != rhs.grokQuotaEnabled {return false}
     if lhs.grokAutoRefreshEnabled != rhs.grokAutoRefreshEnabled {return false}
+    if lhs.cursorOnlineEnabled != rhs.cursorOnlineEnabled {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -17927,53 +18241,104 @@ nonisolated extension Codexpulse_Core_V1_SettingsUIUpdate: SwiftProtobuf.Message
 
 nonisolated extension Codexpulse_Core_V1_UpdateSettingsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".UpdateSettingsRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}expected_revision\0\u{1}online\0\u{1}refresh\0\u{1}updates\0\u{1}ui\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}expected_revision\0\u{1}online\0\u{1}refresh\0\u{1}updates\0\u{1}ui\0\u{1}providers\0")
+
+  fileprivate class _StorageClass {
+    var _expectedRevision: String = String()
+    var _online: Codexpulse_Core_V1_SettingsOnlineUpdate? = nil
+    var _refresh: Codexpulse_Core_V1_SettingsRefreshUpdate? = nil
+    var _updates: Codexpulse_Core_V1_SettingsUpdatesUpdate? = nil
+    var _ui: Codexpulse_Core_V1_SettingsUIUpdate? = nil
+    var _providers: [Codexpulse_Core_V1_SettingsProviderUpdate] = []
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _expectedRevision = source._expectedRevision
+      _online = source._online
+      _refresh = source._refresh
+      _updates = source._updates
+      _ui = source._ui
+      _providers = source._providers
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.expectedRevision) }()
-      case 2: try { try decoder.decodeSingularMessageField(value: &self._online) }()
-      case 3: try { try decoder.decodeSingularMessageField(value: &self._refresh) }()
-      case 4: try { try decoder.decodeSingularMessageField(value: &self._updates) }()
-      case 5: try { try decoder.decodeSingularMessageField(value: &self._ui) }()
-      default: break
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._expectedRevision) }()
+        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._online) }()
+        case 3: try { try decoder.decodeSingularMessageField(value: &_storage._refresh) }()
+        case 4: try { try decoder.decodeSingularMessageField(value: &_storage._updates) }()
+        case 5: try { try decoder.decodeSingularMessageField(value: &_storage._ui) }()
+        case 6: try { try decoder.decodeRepeatedMessageField(value: &_storage._providers) }()
+        default: break
+        }
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    // The use of inline closures is to circumvent an issue where the compiler
-    // allocates stack space for every if/case branch local when no optimizations
-    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-    // https://github.com/apple/swift-protobuf/issues/1182
-    if !self.expectedRevision.isEmpty {
-      try visitor.visitSingularStringField(value: self.expectedRevision, fieldNumber: 1)
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if !_storage._expectedRevision.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._expectedRevision, fieldNumber: 1)
+      }
+      try { if let v = _storage._online {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+      } }()
+      try { if let v = _storage._refresh {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+      } }()
+      try { if let v = _storage._updates {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+      } }()
+      try { if let v = _storage._ui {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+      } }()
+      if !_storage._providers.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._providers, fieldNumber: 6)
+      }
     }
-    try { if let v = self._online {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
-    } }()
-    try { if let v = self._refresh {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
-    } }()
-    try { if let v = self._updates {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
-    } }()
-    try { if let v = self._ui {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
-    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Codexpulse_Core_V1_UpdateSettingsRequest, rhs: Codexpulse_Core_V1_UpdateSettingsRequest) -> Bool {
-    if lhs.expectedRevision != rhs.expectedRevision {return false}
-    if lhs._online != rhs._online {return false}
-    if lhs._refresh != rhs._refresh {return false}
-    if lhs._updates != rhs._updates {return false}
-    if lhs._ui != rhs._ui {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._expectedRevision != rhs_storage._expectedRevision {return false}
+        if _storage._online != rhs_storage._online {return false}
+        if _storage._refresh != rhs_storage._refresh {return false}
+        if _storage._updates != rhs_storage._updates {return false}
+        if _storage._ui != rhs_storage._ui {return false}
+        if _storage._providers != rhs_storage._providers {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

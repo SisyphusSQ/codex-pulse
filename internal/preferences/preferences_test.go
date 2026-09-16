@@ -41,13 +41,16 @@ func TestFileStoreConfirmCreatesCurrentTypedPreferences(t *testing.T) {
 	if got.Onboarding.Version != CurrentOnboardingVersion || !got.Onboarding.Completed {
 		t.Fatalf("onboarding = %#v", got.Onboarding)
 	}
-	if got.CodexHome.Source != onboarding.CodexHome || got.CodexHome.Generation != 1 ||
+	if got.CodexHome == nil || got.CodexHome.Source != onboarding.CodexHome || got.CodexHome.Generation != 1 ||
 		got.CodexHome.DataStoreKey != DefaultDataStoreKey {
 		t.Fatalf("CodexHome = %#v, want source=%#v generation=1 data-store=%q",
 			got.CodexHome, onboarding.CodexHome, DefaultDataStoreKey)
 	}
+	if got.Providers != DefaultProviderPreferences() {
+		t.Fatalf("Providers = %#v", got.Providers)
+	}
 	if got.Online != (OnlinePreferences{
-		QuotaEnabled: true, ResetCreditsEnabled: false,
+		QuotaEnabled: true, ResetCreditsEnabled: false, CursorOnlineEnabled: true,
 		GrokQuotaEnabled: true, GrokAutoRefreshEnabled: true,
 	}) {
 		t.Fatalf("Online = %#v", got.Online)
@@ -75,9 +78,124 @@ func TestFileStoreConfirmCreatesCurrentTypedPreferences(t *testing.T) {
 	}
 }
 
-func TestCurrentPreferencesDefaultsMissingGrokAutoRefreshToEnabled(t *testing.T) {
+func TestV2PreferencesMigrateMissingGrokAutoRefreshToEnabled(t *testing.T) {
 	t.Parallel()
 	value, err := preferencesFromOnboarding(validSnapshot(filepath.Join(t.TempDir(), "current-home")))
+	if err != nil {
+		t.Fatalf("preferencesFromOnboarding() error = %v", err)
+	}
+	v2 := v2Snapshot{
+		SchemaVersion: preferencesSchemaV2, Revision: value.Revision, Onboarding: value.Onboarding,
+		CodexHome: *value.CodexHome, Online: v2OnlinePreferences{
+			QuotaEnabled: value.Online.QuotaEnabled, ResetCreditsEnabled: value.Online.ResetCreditsEnabled,
+		},
+		Refresh: value.Refresh, Updates: cloneUpdatePreferences(value.Updates), UI: value.UI,
+	}
+	content, err := json.Marshal(v2)
+	if err != nil {
+		t.Fatalf("json.Marshal(v2) error = %v", err)
+	}
+	decoded, migrated, err := decodePreferences(content)
+	if err != nil {
+		t.Fatalf("decodePreferences() error = %v", err)
+	}
+	if !migrated {
+		t.Fatal("v2 preferences did not report a schema migration")
+	}
+	if decoded.SchemaVersion != CurrentPreferencesSchemaVersion ||
+		decoded.Providers != DefaultProviderPreferences() ||
+		!decoded.Online.GrokAutoRefreshEnabled || !decoded.Online.CursorOnlineEnabled {
+		t.Fatalf("migrated = %#v", decoded)
+	}
+}
+
+func TestFileStoreInitializePreferencesWithoutCodexHome(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "private", "preferences.json")
+	store, err := NewFileStore(path)
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+	snapshot, err := NewV3Snapshot(nil, DefaultOnlinePreferences())
+	if err != nil {
+		t.Fatalf("NewV3Snapshot() error = %v", err)
+	}
+	if err := store.InitializePreferences(context.Background(), snapshot); err != nil {
+		t.Fatalf("InitializePreferences() error = %v", err)
+	}
+	got, err := store.LoadPreferences(context.Background())
+	if err != nil {
+		t.Fatalf("LoadPreferences() error = %v", err)
+	}
+	if got.Revision != 1 || got.SchemaVersion != CurrentPreferencesSchemaVersion || got.CodexHome != nil ||
+		got.Providers != DefaultProviderPreferences() || !got.Onboarding.Completed {
+		t.Fatalf("initialized = %#v", got)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("os.ReadFile() error = %v", err)
+	}
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(content, &root); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if _, exists := root["codex_home"]; exists {
+		t.Fatalf("omitted Home was persisted: %s", content)
+	}
+}
+
+func TestFileStoreMigratesV2AtomicallyKeepingExplicitSettings(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatalf("os.Chmod(root) error = %v", err)
+	}
+	path := filepath.Join(root, "preferences.json")
+	onboarding := validSnapshot(filepath.Join(t.TempDir(), "v2-home"))
+	current, err := preferencesFromOnboarding(onboarding)
+	if err != nil {
+		t.Fatalf("preferencesFromOnboarding() error = %v", err)
+	}
+	v2 := v2Snapshot{
+		SchemaVersion: preferencesSchemaV2, Revision: 4, Onboarding: current.Onboarding,
+		CodexHome: *current.CodexHome,
+		Online: v2OnlinePreferences{
+			QuotaEnabled: false, ResetCreditsEnabled: true,
+			GrokQuotaEnabled: boolPointer(false), GrokAutoRefreshEnabled: boolPointer(false),
+		},
+		Refresh: current.Refresh, Updates: cloneUpdatePreferences(current.Updates), UI: current.UI,
+	}
+	content, err := json.MarshalIndent(v2, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent() error = %v", err)
+	}
+	if err := os.WriteFile(path, append(content, '\n'), 0o600); err != nil {
+		t.Fatalf("os.WriteFile(v2) error = %v", err)
+	}
+	store, err := NewFileStore(path)
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+	migrated, err := store.LoadPreferences(context.Background())
+	if err != nil {
+		t.Fatalf("LoadPreferences(v2) error = %v", err)
+	}
+	if migrated.SchemaVersion != CurrentPreferencesSchemaVersion || migrated.Revision != 4 ||
+		migrated.CodexHome == nil || *migrated.CodexHome != v2.CodexHome ||
+		migrated.Providers != DefaultProviderPreferences() ||
+		migrated.Online.QuotaEnabled || !migrated.Online.ResetCreditsEnabled ||
+		migrated.Online.GrokQuotaEnabled || migrated.Online.GrokAutoRefreshEnabled ||
+		!migrated.Online.CursorOnlineEnabled {
+		t.Fatalf("migrated = %#v", migrated)
+	}
+}
+
+func TestDecodePreferencesRejectsExplicitNullCodexHomeAndUnknownProviderIntent(t *testing.T) {
+	t.Parallel()
+
+	value, err := preferencesFromOnboarding(validSnapshot(filepath.Join(t.TempDir(), "home")))
 	if err != nil {
 		t.Fatalf("preferencesFromOnboarding() error = %v", err)
 	}
@@ -85,26 +203,63 @@ func TestCurrentPreferencesDefaultsMissingGrokAutoRefreshToEnabled(t *testing.T)
 	if err != nil {
 		t.Fatalf("marshalPreferences() error = %v", err)
 	}
-	content = removeNestedJSONField(t, content, "online", "grok_auto_refresh_enabled")
-	decoded, migrated, err := decodePreferences(content)
+	tests := map[string][]byte{
+		"null home":        replaceJSONField(t, content, "codex_home", nil),
+		"unknown provider": replaceNestedJSONField(t, content, "providers", "claude", map[string]any{"intent": "auto"}),
+		"unknown intent": mutateNestedJSONField(t, content, "providers", func(object map[string]any) {
+			object["codex"] = map[string]any{"intent": "maybe"}
+		}),
+		"missing providers": removeJSONField(t, content, "providers"),
+	}
+	for name, encoded := range tests {
+		name, encoded := name, encoded
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, _, err := decodePreferences(encoded); !errors.Is(err, ErrInvalidPreferences) {
+				t.Fatalf("decodePreferences(%s) error = %v, want ErrInvalidPreferences", name, err)
+			}
+		})
+	}
+}
+
+func TestExplicitProviderIntentRoundTripSurvivesReload(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "private", "preferences.json")
+	store, err := NewFileStore(path)
 	if err != nil {
-		t.Fatalf("decodePreferences() error = %v", err)
+		t.Fatalf("NewFileStore() error = %v", err)
 	}
-	if migrated {
-		t.Fatal("current preferences unexpectedly reported a schema migration")
+	if err := store.Confirm(context.Background(), validSnapshot(filepath.Join(t.TempDir(), "home"))); err != nil {
+		t.Fatalf("Confirm() error = %v", err)
 	}
-	if !decoded.Online.GrokAutoRefreshEnabled {
-		t.Fatalf("GrokAutoRefreshEnabled = false, want true for an existing preferences file")
-	}
-	decoded.Online.GrokAutoRefreshEnabled = false
-	content, err = marshalPreferences(decoded)
+	current, err := store.LoadPreferences(context.Background())
 	if err != nil {
-		t.Fatalf("marshalPreferences(opt out) error = %v", err)
+		t.Fatalf("LoadPreferences() error = %v", err)
 	}
-	decoded, _, err = decodePreferences(content)
-	if err != nil || decoded.Online.GrokAutoRefreshEnabled {
-		t.Fatalf("explicit Grok auto-refresh opt-out = %#v, %v", decoded.Online, err)
+	updated := cloneSnapshot(current)
+	updated.Revision++
+	updated.Providers = ProviderPreferences{
+		Codex:  ProviderPreference{Intent: ProviderIntentDisabled},
+		Cursor: ProviderPreference{Intent: ProviderIntentEnabled},
+		Grok:   ProviderPreference{Intent: ProviderIntentAuto},
 	}
+	if err := store.CompareAndSwap(context.Background(), current.Revision, updated); err != nil {
+		t.Fatalf("CompareAndSwap() error = %v", err)
+	}
+	reopened, err := NewFileStore(path)
+	if err != nil {
+		t.Fatalf("NewFileStore(reopen) error = %v", err)
+	}
+	got, err := reopened.LoadPreferences(context.Background())
+	if err != nil || got.Providers != updated.Providers {
+		t.Fatalf("reload providers = %#v, %v, want %#v", got.Providers, err, updated.Providers)
+	}
+}
+
+func boolPointer(value bool) *bool {
+	copied := value
+	return &copied
 }
 
 func TestFileStoreMigratesLegacyV1AtomicallyAndIdempotently(t *testing.T) {
@@ -231,7 +386,7 @@ func TestValidatePreferencesRejectsInvalidTypedFields(t *testing.T) {
 		name, mutate := name, mutate
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			value := base
+			value := cloneSnapshot(base)
 			mutate(&value)
 			if err := validatePreferences(value); !errors.Is(err, ErrInvalidPreferences) {
 				t.Fatalf("validatePreferences(%s) error = %v, want ErrInvalidPreferences", name, err)
@@ -247,6 +402,7 @@ func TestMarshalPreferencesRejectsSnapshotOverFileLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("preferencesFromOnboarding() error = %v", err)
 	}
+	value = cloneSnapshot(value)
 	value.Updates.SkippedVersion = nil
 	value.CodexHome.Source.Path = string(filepath.Separator) + strings.Repeat("a", maximumPreferencesBytes)
 	if _, err := marshalPreferences(value); !errors.Is(err, ErrInvalidPreferences) {
@@ -259,7 +415,7 @@ func TestDecodePreferencesRejectsUnknownSchemaVersion(t *testing.T) {
 
 	for _, content := range []string{
 		`{"schema_version":0}`,
-		`{"schema_version":3}`,
+		`{"schema_version":4}`,
 	} {
 		if _, _, err := decodePreferences([]byte(content)); !errors.Is(err, ErrInvalidPreferences) {
 			t.Fatalf("decodePreferences(%s) error = %v, want ErrInvalidPreferences", content, err)
@@ -289,8 +445,8 @@ func TestDecodePreferencesRejectsDuplicateMissingAndNullRequiredFields(t *testin
 		"legacy case alias":   replaceJSONField(t, legacy, "Online_Quota_Enabled", false),
 		"legacy missing bool": removeJSONField(t, legacy, "online_quota_enabled"),
 		"legacy null bool":    replaceJSONField(t, legacy, "online_quota_enabled", nil),
-		"current duplicate": bytes.Replace(current, []byte(`"schema_version": 2,`),
-			[]byte(`"schema_version": 2, "schema_version": 2,`), 1),
+		"current duplicate": bytes.Replace(current, []byte(`"schema_version": 3,`),
+			[]byte(`"schema_version": 3, "schema_version": 3,`), 1),
 		"current root case alias": replaceJSONField(t, current, "Online", map[string]any{
 			"quota_enabled": true, "reset_credits_enabled": false,
 		}),

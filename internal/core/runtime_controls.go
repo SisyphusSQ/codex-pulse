@@ -5,7 +5,9 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 )
 
@@ -19,16 +21,23 @@ type runtimeControlCommand interface {
 }
 
 type SettingsUpdateRequest struct {
-	ExpectedRevision string                `json:"expectedRevision"`
-	Online           SettingsOnlineUpdate  `json:"online"`
-	Refresh          SettingsRefreshUpdate `json:"refresh"`
-	Updates          SettingsUpdatesUpdate `json:"updates"`
-	UI               SettingsUIUpdate      `json:"ui"`
+	ExpectedRevision string                   `json:"expectedRevision"`
+	Providers        []SettingsProviderUpdate `json:"providers"`
+	Online           SettingsOnlineUpdate     `json:"online"`
+	Refresh          SettingsRefreshUpdate    `json:"refresh"`
+	Updates          SettingsUpdatesUpdate    `json:"updates"`
+	UI               SettingsUIUpdate         `json:"ui"`
+}
+
+type SettingsProviderUpdate struct {
+	Provider string `json:"provider"`
+	Intent   string `json:"intent"`
 }
 
 type SettingsOnlineUpdate struct {
 	QuotaEnabled           bool `json:"quotaEnabled"`
 	ResetCreditsEnabled    bool `json:"resetCreditsEnabled"`
+	CursorOnlineEnabled    bool `json:"cursorOnlineEnabled"`
 	GrokQuotaEnabled       bool `json:"grokQuotaEnabled"`
 	GrokAutoRefreshEnabled bool `json:"grokAutoRefreshEnabled"`
 }
@@ -211,6 +220,7 @@ func (service *Service) runtimeControlsCommand() runtimeControlCommand {
 func validSettingsUpdateRequest(request SettingsUpdateRequest) bool {
 	revision, err := strconv.ParseUint(request.ExpectedRevision, 10, 64)
 	return err == nil && revision > 0 &&
+		validProviderUpdates(request.Providers) &&
 		request.Refresh.QuotaIntervalSeconds >= 60 && request.Refresh.QuotaIntervalSeconds <= 1800 &&
 		request.Refresh.ResetCreditsIntervalSeconds >= 60 && request.Refresh.ResetCreditsIntervalSeconds <= 86400 &&
 		request.Refresh.ReconcileIntervalSeconds >= 60 && request.Refresh.ReconcileIntervalSeconds <= 86400 &&
@@ -224,6 +234,24 @@ func validSettingsUpdateRequest(request SettingsUpdateRequest) bool {
 		(request.UI.OverviewRange == "quota_week" || request.UI.OverviewRange == "today" ||
 			request.UI.OverviewRange == "seven_days" ||
 			request.UI.OverviewRange == "thirty_days")
+}
+
+func validProviderUpdates(values []SettingsProviderUpdate) bool {
+	if len(values) != 3 {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, item := range values {
+		name := item.Provider
+		if (name != agentprovider.Codex && name != agentprovider.Cursor && name != agentprovider.Grok) || seen[name] {
+			return false
+		}
+		if _, ok := providercontrol.IntentFromProto(item.Intent); !ok {
+			return false
+		}
+		seen[name] = true
+	}
+	return seen[agentprovider.Codex] && seen[agentprovider.Cursor] && seen[agentprovider.Grok]
 }
 
 func validHomeSwitchStrategy(value HomeSwitchStrategy) bool {

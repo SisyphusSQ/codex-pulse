@@ -177,12 +177,33 @@ func SummarizeProvider(provider string, components []ComponentResult) ProviderRe
 }
 
 func UnavailableProvider(provider string, components ...string) ProviderResult {
+	return skippedProvider(provider, StatusSkippedUnavailable, ReasonUnavailable, components...)
+}
+
+func DisabledProvider(provider string, components ...string) ProviderResult {
+	return skippedProvider(provider, StatusSkippedDisabled, ReasonDisabled, components...)
+}
+
+func ComponentsFor(provider string) []string {
+	switch provider {
+	case agentprovider.Codex:
+		return []string{ComponentCodexLocal, ComponentCodexQuota, ComponentCodexResetCredits}
+	case agentprovider.Cursor:
+		return []string{ComponentCursorLocal, ComponentCursorDashboard, ComponentCursorGrokBot}
+	case agentprovider.Grok:
+		return []string{ComponentGrokLocal, ComponentGrokBilling}
+	default:
+		return nil
+	}
+}
+
+func skippedProvider(provider, status, reason string, components ...string) ProviderResult {
 	results := make([]ComponentResult, 0, len(components))
 	for _, component := range components {
 		results = append(results, ComponentResult{
 			Component:  component,
-			Status:     StatusSkippedUnavailable,
-			ReasonCode: ReasonUnavailable,
+			Status:     status,
+			ReasonCode: reason,
 		})
 	}
 	return SummarizeProvider(provider, results)

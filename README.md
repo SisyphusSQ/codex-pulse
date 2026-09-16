@@ -12,9 +12,10 @@ Codex Pulse is a local-first, native macOS app. It turns Codex and Cursor sessio
 
 ## Key features
 
-- **Menu bar:** Pin Codex quota or Cursor's exact daily request/token status without changing the provider selected in the main window.
+- **Menu bar:** Pin Codex quota, Cursor's exact usage, or Grok credits without changing the provider selected in the main window. If every client is disabled, the menu bar shows `Codex Pulse --`.
 - **Usage analytics:** Explore tokens, models, API-equivalent cost, and activity distribution across overview, session, and project pages.
-- **Provider context:** Switch the main window between Codex and Cursor; every query remains scoped to one provider and unsupported metrics stay explicitly unavailable.
+- **Provider controls:** Enable or disable Codex, Cursor, and Grok independently in Settings. Discovery is metadata-only. A disabled client stays off across restart, wake, and rediscovery. The main window and popover only list enabled clients; Settings stays reachable when none are enabled.
+- **Provider context:** Switch the main window among enabled Codex, Cursor, and Grok clients; every query remains scoped to one provider and unsupported metrics stay explicitly unavailable.
 - **Data status:** Inspect provider-grouped sources, local indexing, and background jobs to understand whether reported results are complete.
 - **Codex Pro tier:** The current ChatGPT account maps App Server `prolite` to `Pro 5×` and `pro` to `Pro 20×`. Missing, unsupported, or conflicting plan evidence stays `Pro · 档位未知`.
 - **Codex accounts:** Settings keeps detected and manual Codex accounts on this Mac, carries detected facts into the editor, and can delete local subscription records for non-current accounts. Email is only a link candidate. Membership dates are currently manual only. Popover screenshots hide email, alias, plan, date, and remaining days.
@@ -72,7 +73,7 @@ All indexing and analytics run locally. Cursor usage and spending can additional
 
 The original Codex and Cursor files remain managed by their applications. Codex Pulse stores only the allowlisted indexes, aggregates, lineage digests, and runtime state required by the product, and never modifies original session content.
 
-On first launch, the Go Helper performs a metadata-only safety probe of `${CODEX_HOME:-$HOME/.codex}` without reading session bodies, then stores a stable identity for that directory. If the directory does not exist or the probe fails, Codex Pulse remains unconfigured and does not start indexing. Changing Codex Home later still requires explicit confirmation in Settings.
+On first launch, the Go Helper initializes Preferences v3 even when Codex Home is missing. A metadata-only safety probe of `${CODEX_HOME:-$HOME/.codex}` runs without reading session bodies; a safe Home is stored as a stable identity. If the directory does not exist or the probe fails, Codex Pulse still starts: Settings, Cursor, and Grok remain available, while Codex indexing, quota, and account work stay unavailable until a Home is configured. Changing Codex Home later still requires explicit confirmation in Settings. Disabling a provider stops local collection, online requests, credential refresh, query-triggered refresh, and current summaries; history, progress, and sub-switch preferences are kept. The current handshake is `core-rpc-v5` with `provider-control-v1`.
 
 ## How it works
 

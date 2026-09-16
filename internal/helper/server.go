@@ -169,6 +169,8 @@ func grpcCode(code basequery.ErrorCode) codes.Code {
 		return codes.FailedPrecondition
 	case basequery.ErrorUnavailable:
 		return codes.Unavailable
+	case basequery.ErrorProviderDisabled:
+		return codes.FailedPrecondition
 	case basequery.ErrorCancelled:
 		return codes.Canceled
 	case basequery.ErrorDeadlineExceeded:
@@ -188,6 +190,8 @@ func grpcMessage(code basequery.ErrorCode) string {
 		return "query result is partial"
 	case basequery.ErrorUnavailable:
 		return "query result is unavailable"
+	case basequery.ErrorProviderDisabled:
+		return "provider is disabled"
 	case basequery.ErrorCancelled:
 		return "query request cancelled"
 	case basequery.ErrorDeadlineExceeded:

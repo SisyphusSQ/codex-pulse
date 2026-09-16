@@ -10,7 +10,7 @@ struct QuotaUsageView: View {
 		switch model.selectedProvider {
 		case .cursor: "Cursor 额度与用量"
 		case .grok: "Grok 额度与用量"
-		case .codex: "Codex 额度与用量"
+		case .codex, .none: "Codex 额度与用量"
 		}
 	}
 
@@ -18,7 +18,7 @@ struct QuotaUsageView: View {
 		switch model.selectedProvider {
 		case .cursor: "跟踪月度模型额度、Grok Bot 周额度、Token 趋势、费用明细和参考价格"
 		case .grok: "跟踪 credits 周期、Token 趋势、上报费用和 xAI 参考价"
-		case .codex: "跟踪当前账号额度、Token 趋势、API 折算成本和参考价格"
+		case .codex, .none: "跟踪当前账号额度、Token 趋势、API 折算成本和参考价格"
 		}
 	}
 
@@ -123,7 +123,7 @@ struct QuotaUsageView: View {
         ) {
             QuotaContentView(
                 response: $0,
-				provider: model.selectedProvider,
+				provider: model.selectedProvider ?? .codex,
                 paceState: model.quotaPaceState,
                 quotaRefreshState: model.quotaRefreshState,
                 resetCreditsRefreshState: model.resetCreditsRefreshState,
@@ -136,7 +136,7 @@ struct QuotaUsageView: View {
         FeatureStateView(
             state: model.usageState, emptyTitle: "当前范围暂无用量记录", emptySystemImage: "chart.xyaxis.line"
         ) {
-			UsageContentView(response: $0, preset: model.usageRange, provider: model.selectedProvider)
+			UsageContentView(response: $0, preset: model.usageRange, provider: model.selectedProvider ?? .codex)
         }
     }
 

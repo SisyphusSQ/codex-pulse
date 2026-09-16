@@ -17,6 +17,8 @@ var (
 	ErrPartial = errors.New("query result is partial")
 	// ErrUnavailable 表示当前无法读取权威事实。
 	ErrUnavailable = errors.New("query result is unavailable")
+	// ErrProviderDisabled 表示调用方请求了已显式关闭的 Provider。
+	ErrProviderDisabled = errors.New("provider is disabled")
 )
 
 // ErrorCode 是跨端有限错误分类。
@@ -27,6 +29,7 @@ const (
 	ErrorNotFound         ErrorCode = "not_found"
 	ErrorPartial          ErrorCode = "partial"
 	ErrorUnavailable      ErrorCode = "unavailable"
+	ErrorProviderDisabled ErrorCode = "provider_disabled"
 	ErrorCancelled        ErrorCode = "cancelled"
 	ErrorDeadlineExceeded ErrorCode = "deadline_exceeded"
 	ErrorInternal         ErrorCode = "internal"
@@ -112,6 +115,11 @@ func NewUnavailableFailure(cause error) error {
 	return &Failure{category: ErrUnavailable, cause: cause}
 }
 
+// NewProviderDisabledFailure 包装显式关闭的 Provider 查询。
+func NewProviderDisabledFailure(cause error) error {
+	return &Failure{category: ErrProviderDisabled, cause: cause}
+}
+
 // ErrorEnvelopeFrom 把内部 error chain 映射为 content-free 跨端错误。
 func ErrorEnvelopeFrom(err error) (ErrorEnvelope, bool) {
 	if err == nil {
@@ -143,6 +151,8 @@ func classifyErrorCode(err error) ErrorCode {
 		return ErrorPartial
 	case errors.Is(err, ErrUnavailable):
 		return ErrorUnavailable
+	case errors.Is(err, ErrProviderDisabled):
+		return ErrorProviderDisabled
 	default:
 		return ErrorInternal
 	}
@@ -161,6 +171,8 @@ func errorDetail(code ErrorCode) ErrorDetail {
 	case ErrorUnavailable:
 		detail.MessageKey = "query.error.unavailable"
 		detail.Retryable = true
+	case ErrorProviderDisabled:
+		detail.MessageKey = "query.error.providerDisabled"
 	case ErrorCancelled:
 		detail.MessageKey = "query.error.cancelled"
 	case ErrorDeadlineExceeded:

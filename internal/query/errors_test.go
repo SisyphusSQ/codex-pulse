@@ -24,6 +24,7 @@ func TestErrorEnvelopeFromMapsStableFailureClasses(t *testing.T) {
 		{name: "not found", err: NewNotFoundFailure(secretCause), code: ErrorNotFound, messageKey: "query.error.notFound"},
 		{name: "partial", err: NewPartialFailure(secretCause), code: ErrorPartial, messageKey: "query.error.partial", retryable: true},
 		{name: "unavailable", err: NewUnavailableFailure(secretCause), code: ErrorUnavailable, messageKey: "query.error.unavailable", retryable: true},
+		{name: "provider disabled", err: NewProviderDisabledFailure(secretCause), code: ErrorProviderDisabled, messageKey: "query.error.providerDisabled"},
 		{name: "cancelled", err: fmt.Errorf("wrapped cancellation: %w", context.Canceled), code: ErrorCancelled, messageKey: "query.error.cancelled"},
 		{name: "deadline", err: fmt.Errorf("wrapped deadline: %w", context.DeadlineExceeded), code: ErrorDeadlineExceeded, messageKey: "query.error.deadlineExceeded", retryable: true},
 		{name: "unknown internal", err: secretCause, code: ErrorInternal, messageKey: "query.error.internal"},

@@ -51,6 +51,9 @@ func (adapter *CursorAdapter) RefreshProvider(ctx context.Context, trigger strin
 }
 
 func classifyCursorOnline(value cursorprovider.OnlineRefreshClass) ComponentResult {
+	if value.Disabled {
+		return ComponentResult{Status: StatusSkippedDisabled, ReasonCode: ReasonDisabled}
+	}
 	if value.Err == nil && !value.Attempted {
 		if value.Remote {
 			return ComponentResult{Status: StatusFailed, ReasonCode: ReasonFailed, Attempted: true}

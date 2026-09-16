@@ -612,7 +612,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 		let originalProvider = model.statusProvider
 		model.selectStatusProvider(.cursor)
 		defer {
-			model.selectStatusProvider(originalProvider)
+            if let originalProvider {
+                model.selectStatusProvider(originalProvider)
+            }
 			updateStatusBarView()
 		}
 		guard await waitForNativeSmoke({
@@ -894,6 +896,7 @@ private struct MenuBarPopoverView: View {
         VStack(spacing: 0) {
             PopoverHeader(
 				selectedProvider: model.statusProvider,
+                enabledProviders: model.enabledProviders,
 				onSelectProvider: model.selectStatusProvider,
 				accountSummary: model.statusPresentation?.popoverAccountSummary,
                 captureSource: captureSource,
@@ -904,7 +907,7 @@ private struct MenuBarPopoverView: View {
                 focusedControl: $focusedControl,
 				onOpen: onOpenOverview,
 				onRefresh: model.refreshStatusProvider,
-				canRefresh: model.canRefreshOrRestart,
+				canRefresh: model.canRefreshOrRestart && model.statusProvider != nil,
 				isRefreshing: model.statusOverviewState.isLoading
             )
 
@@ -949,6 +952,19 @@ private struct MenuBarPopoverView: View {
 			} else {
 				statusLoadingContent
 			}
+        case .none:
+            VStack(spacing: 16) {
+                ContentUnavailableView {
+                    Label("尚未启用客户端", systemImage: "switch.2")
+                } description: {
+                    Text("打开设置后可以启用 Codex、Cursor 或 Grok。")
+                } actions: {
+                    Button("打开设置") { onOpenSettings() }
+                        .accessibilityIdentifier("popover.empty-providers.open-settings")
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 440)
+            .accessibilityIdentifier("popover.empty-providers")
 		}
 	}
 
@@ -1681,7 +1697,8 @@ private struct RefreshArrowSymbol: View {
 }
 
 private struct PopoverHeader: View {
-	let selectedProvider: AgentProvider
+	let selectedProvider: AgentProvider?
+    let enabledProviders: [AgentProvider]
 	let onSelectProvider: (AgentProvider) -> Void
     let accountSummary: PopoverAccountSummaryPresentation?
     let captureSource: PopoverCaptureSource
@@ -1698,12 +1715,21 @@ private struct PopoverHeader: View {
     var body: some View {
 		HStack(alignment: .top, spacing: 0) {
 			VStack(alignment: .leading, spacing: 6) {
+                if enabledProviders.isEmpty {
+                    Text("尚未启用客户端")
+                        .font(.headline)
+                        .accessibilityIdentifier("popover.provider-empty")
+                } else {
 				Picker("客户端", selection: Binding(
 					get: { selectedProvider },
-					set: { provider in onSelectProvider(provider) }
+					set: { provider in
+                        if let provider {
+                            onSelectProvider(provider)
+                        }
+                    }
 				)) {
-					ForEach(AgentProvider.allCases) { provider in
-						Text(provider.title).tag(provider)
+					ForEach(enabledProviders) { provider in
+						Text(provider.title).tag(Optional(provider))
 					}
 				}
 				.labelsHidden()
@@ -1711,11 +1737,14 @@ private struct PopoverHeader: View {
 				.controlSize(.small)
 				.fixedSize()
 				.accessibilityIdentifier("popover.provider-picker")
+                }
+                if selectedProvider != nil {
 				PopoverAccountCapsule(
 					summary: accountSummary,
 					captureSource: captureSource,
 					isPrivacyHidden: isPrivacyHidden
 				)
+                }
 			}
             Spacer(minLength: 12)
             HStack(spacing: 4) {

@@ -73,13 +73,14 @@ func TestGRPCServerAuthenticatesHandshakeAndNegotiatesContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Contracts() error = %v", err)
 	}
-	if contracts.Version != "core-rpc-v4" ||
+	if contracts.Version != "core-rpc-v5" ||
 		contracts.UsageCostVersion != "usage-cost-v2" ||
 		contracts.InvocationUsageVersion != "invocation-usage-v1" ||
 		contracts.PricingCatalogVersion != "pricing-catalog-v1" ||
 		contracts.DashboardSummaryVersion != "dashboard-summary-v2" ||
 		contracts.CodexProTierVersion != subscriptiontier.ContractVersion ||
-		contracts.CodexSubscriptionAccountsVersion != subscriptionaccounts.ContractVersion {
+		contracts.CodexSubscriptionAccountsVersion != subscriptionaccounts.ContractVersion ||
+		contracts.ProviderControlVersion != core.ProviderControlVersion {
 		t.Fatalf("Contracts() versions = %#v", contracts)
 	}
 }
@@ -520,6 +521,32 @@ func TestGRPCServerMapsBusinessResponseAndTypedError(t *testing.T) {
 	detail, ok := details[0].(*corev1.ErrorDetail)
 	if !ok || detail.Code != "validation" || detail.MessageKey == "" || detail.Field == nil || *detail.Field != "page.limit" {
 		t.Fatalf("validation detail = %#v", details[0])
+	}
+}
+
+func TestGRPCServerMapsProviderDisabledError(t *testing.T) {
+	t.Parallel()
+	usage := &helperUsageQueryStub{err: basequery.NewProviderDisabledFailure(nil)}
+	business, err := core.NewService(core.ServiceConfig{
+		UsageCost: usage, InvocationUsage: &helperInvocationQueryStub{},
+		PricingCatalog: helperPricingCatalogQueryStub{}, RuntimeInfo: helperRuntimeQueryStub{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, authorize := startConfiguredTestGRPCServer(t, func(config *ServerConfig) { config.Service = business })
+	_, err = client.ListSessions(authorize(t.Context()), &corev1.ListSessionsRequest{})
+	grpcStatus, ok := status.FromError(err)
+	if !ok || grpcStatus.Code() != codes.FailedPrecondition || grpcStatus.Message() != "provider is disabled" {
+		t.Fatalf("ListSessions(disabled) error = %v", err)
+	}
+	details := grpcStatus.Details()
+	if len(details) != 1 {
+		t.Fatalf("disabled details = %#v", details)
+	}
+	detail, ok := details[0].(*corev1.ErrorDetail)
+	if !ok || detail.Code != "provider_disabled" || detail.MessageKey != "query.error.providerDisabled" || detail.Retryable {
+		t.Fatalf("disabled detail = %#v", details[0])
 	}
 }
 

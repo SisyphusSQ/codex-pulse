@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -32,6 +33,7 @@ type DashboardSnapshotWriter interface {
 type DashboardCollectorConfig struct {
 	MinimumRefresh time.Duration
 	Now            func() time.Time
+	Enabled        func() bool
 }
 
 type DashboardCollector struct {
@@ -79,6 +81,9 @@ func (collector *DashboardCollector) refresh(
 	if collector == nil || ctx == nil {
 		return false, ErrDashboardProtocol
 	}
+	if collector.config.Enabled != nil && !collector.config.Enabled() {
+		return false, nil
+	}
 	collector.mu.Lock()
 	defer collector.mu.Unlock()
 	now := collector.config.Now()
@@ -110,11 +115,13 @@ func (collector *DashboardCollector) refresh(
 	if err := validateDashboardAggregate(events); err != nil {
 		return collector.handleFailure(ctx, atMS, err, reportFailure)
 	}
-	if err := collector.writer.CommitCursorDashboardSnapshot(ctx, store.CursorDashboardSnapshot{
-		Generation: atMS, CollectedAtMS: atMS,
-		WindowStartMS: current.BillingCycleStartMS, WindowEndMS: atMS,
-		BillingCycleEndMS: current.BillingCycleEndMS, PlanUsage: planUsage,
-		QuotaWindows: quotaWindows, Events: events,
+	if err := providercontrol.WriteWithCommit(ctx, func() error {
+		return collector.writer.CommitCursorDashboardSnapshot(ctx, store.CursorDashboardSnapshot{
+			Generation: atMS, CollectedAtMS: atMS,
+			WindowStartMS: current.BillingCycleStartMS, WindowEndMS: atMS,
+			BillingCycleEndMS: current.BillingCycleEndMS, PlanUsage: planUsage,
+			QuotaWindows: quotaWindows, Events: events,
+		})
 	}); err != nil {
 		return true, fmt.Errorf("%w: persist dashboard snapshot", ErrDashboardProtocol)
 	}
@@ -322,7 +329,9 @@ func (collector *DashboardCollector) recordFailure(ctx context.Context, atMS int
 	} else if errors.Is(cause, ErrDashboardProtocol) {
 		failureCode = "schema_incompatible"
 	}
-	if err := collector.writer.RecordCursorDashboardFailure(ctx, atMS, failureCode); err != nil {
+	if err := providercontrol.WriteWithCommit(ctx, func() error {
+		return collector.writer.RecordCursorDashboardFailure(ctx, atMS, failureCode)
+	}); err != nil {
 		return fmt.Errorf("%w: persist dashboard failure", ErrDashboardProtocol)
 	}
 	collector.last = collector.config.Now()

@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
@@ -39,6 +40,7 @@ type QuotaRouter struct {
 	codex  QuotaService
 	cursor ProviderQuotaService
 	grok   ProviderQuotaService
+	states providercontrol.StateReader
 }
 
 func NewQuota(codex QuotaService, cursor ProviderQuotaService, grok ProviderQuotaService) (*QuotaRouter, error) {
@@ -56,6 +58,11 @@ func (service *QuotaRouter) RefreshQuota(
 	if err != nil {
 		return agentprovider.Context{}, err
 	}
+	operationContext, finish, err := beginProviderOperation(ctx, service.states, provider)
+	if err != nil {
+		return agentprovider.Context{}, err
+	}
+	defer finish()
 	var backend ProviderQuotaService
 	switch provider {
 	case agentprovider.Cursor:
@@ -65,7 +72,7 @@ func (service *QuotaRouter) RefreshQuota(
 	default:
 		return agentprovider.Context{}, basequery.NewValidationFailure("provider", agentprovider.ErrInvalidProvider)
 	}
-	if err := backend.RefreshQuota(ctx); err != nil {
+	if err := backend.RefreshQuota(operationContext); err != nil {
 		return agentprovider.Context{}, err
 	}
 	return quotaProviderContext(provider, agentprovider.Context{}), nil
@@ -80,11 +87,16 @@ func (service *QuotaRouter) QuotaCurrent(
 	if err != nil {
 		return runtimeinfo.QuotaCurrentResponse{}, err
 	}
+	operationContext, finish, err := beginProviderOperation(ctx, service.states, provider)
+	if err != nil {
+		return runtimeinfo.QuotaCurrentResponse{}, err
+	}
+	defer finish()
 	backend, err := service.quotaBackend(provider)
 	if err != nil {
 		return runtimeinfo.QuotaCurrentResponse{}, err
 	}
-	response, err := backend.QuotaCurrent(ctx, evaluatedAtMS)
+	response, err := backend.QuotaCurrent(operationContext, evaluatedAtMS)
 	response.ProviderContext = quotaProviderContext(provider, response.ProviderContext)
 	return response, err
 }
@@ -98,11 +110,16 @@ func (service *QuotaRouter) QuotaPace(
 	if err != nil {
 		return runtimeinfo.QuotaPaceResponse{}, err
 	}
+	operationContext, finish, err := beginProviderOperation(ctx, service.states, provider)
+	if err != nil {
+		return runtimeinfo.QuotaPaceResponse{}, err
+	}
+	defer finish()
 	backend, err := service.quotaBackend(provider)
 	if err != nil {
 		return runtimeinfo.QuotaPaceResponse{}, err
 	}
-	response, err := backend.QuotaPace(ctx, evaluatedAtMS)
+	response, err := backend.QuotaPace(operationContext, evaluatedAtMS)
 	response.ProviderContext = quotaProviderContext(provider, response.ProviderContext)
 	return response, err
 }
@@ -143,6 +160,7 @@ type Service struct {
 	cursorInvocation InvocationService
 	grokUsage        UsageService
 	grokInvocation   InvocationService
+	states           providercontrol.StateReader
 }
 
 func New(
@@ -164,17 +182,88 @@ func New(
 	}, nil
 }
 
+func (service *Service) BindStates(reader providercontrol.StateReader) {
+	if service == nil {
+		return
+	}
+	service.states = reader
+}
+
+func (router *QuotaRouter) BindStates(reader providercontrol.StateReader) {
+	if router == nil {
+		return
+	}
+	router.states = reader
+}
+
+func admitProvider(reader providercontrol.StateReader, provider string) error {
+	if reader == nil {
+		return nil
+	}
+	snapshot, err := reader.ProviderState(provider)
+	if err != nil {
+		if errors.Is(err, providercontrol.ErrInvalidProvider) {
+			return basequery.NewValidationFailure("provider", err)
+		}
+		return basequery.NewUnavailableFailure(err)
+	}
+	switch {
+	case errors.Is(providercontrol.QueryFailure(snapshot), providercontrol.ErrDisabled):
+		return basequery.NewProviderDisabledFailure(nil)
+	case errors.Is(providercontrol.QueryFailure(snapshot), providercontrol.ErrUnavailable):
+		return basequery.NewUnavailableFailure(nil)
+	default:
+		return nil
+	}
+}
+
+func beginProviderOperation(
+	ctx context.Context,
+	reader providercontrol.StateReader,
+	provider string,
+) (context.Context, func(), error) {
+	if beginner, ok := reader.(providercontrol.Beginner); ok {
+		operation, err := beginner.Begin(ctx, provider)
+		if err != nil {
+			return nil, nil, providerOperationFailure(err)
+		}
+		return operation.Context(), operation.Finish, nil
+	}
+	if err := admitProvider(reader, provider); err != nil {
+		return nil, nil, err
+	}
+	return ctx, func() {}, nil
+}
+
+func providerOperationFailure(err error) error {
+	switch {
+	case errors.Is(err, providercontrol.ErrInvalidProvider):
+		return basequery.NewValidationFailure("provider", err)
+	case errors.Is(err, providercontrol.ErrDisabled):
+		return basequery.NewProviderDisabledFailure(nil)
+	case errors.Is(err, providercontrol.ErrUnavailable), errors.Is(err, providercontrol.ErrSealed):
+		return basequery.NewUnavailableFailure(err)
+	default:
+		return err
+	}
+}
+
 func (service *Service) UsageCost(ctx context.Context, request usagecost.UsageCostRequest) (usagecost.UsageCostResponse, error) {
 	provider, err := normalized(request.Provider)
 	if err != nil {
 		return usagecost.UsageCostResponse{}, err
 	}
 	request.Provider.Provider = provider
+	operationContext, finish, err := beginProviderOperation(ctx, service.states, provider)
+	if err != nil {
+		return usagecost.UsageCostResponse{}, err
+	}
+	defer finish()
 	backend, err := service.usageBackend(provider)
 	if err != nil {
 		return usagecost.UsageCostResponse{}, err
 	}
-	response, err := backend.UsageCost(ctx, request)
+	response, err := backend.UsageCost(operationContext, request)
 	if provider == agentprovider.Codex {
 		response.ProviderContext = agentprovider.CodexContext()
 	}
@@ -187,11 +276,16 @@ func (service *Service) ListSessions(ctx context.Context, request basequery.Requ
 		return usagecost.SessionListResponse{}, err
 	}
 	request.Provider.Provider = provider
+	operationContext, finish, err := beginProviderOperation(ctx, service.states, provider)
+	if err != nil {
+		return usagecost.SessionListResponse{}, err
+	}
+	defer finish()
 	backend, err := service.usageBackend(provider)
 	if err != nil {
 		return usagecost.SessionListResponse{}, err
 	}
-	response, err := backend.ListSessions(ctx, request)
+	response, err := backend.ListSessions(operationContext, request)
 	if provider == agentprovider.Codex {
 		response.ProviderContext = agentprovider.CodexContext()
 	}
@@ -204,11 +298,16 @@ func (service *Service) SessionDetail(ctx context.Context, request usagecost.Ses
 		return usagecost.SessionDetailResponse{}, err
 	}
 	request.Provider.Provider = provider
+	operationContext, finish, err := beginProviderOperation(ctx, service.states, provider)
+	if err != nil {
+		return usagecost.SessionDetailResponse{}, err
+	}
+	defer finish()
 	backend, err := service.usageBackend(provider)
 	if err != nil {
 		return usagecost.SessionDetailResponse{}, err
 	}
-	response, err := backend.SessionDetail(ctx, request)
+	response, err := backend.SessionDetail(operationContext, request)
 	if provider == agentprovider.Codex {
 		response.ProviderContext = agentprovider.CodexContext()
 	}
@@ -221,11 +320,16 @@ func (service *Service) ListProjects(ctx context.Context, request basequery.Requ
 		return usagecost.ProjectListResponse{}, err
 	}
 	request.Provider.Provider = provider
+	operationContext, finish, err := beginProviderOperation(ctx, service.states, provider)
+	if err != nil {
+		return usagecost.ProjectListResponse{}, err
+	}
+	defer finish()
 	backend, err := service.usageBackend(provider)
 	if err != nil {
 		return usagecost.ProjectListResponse{}, err
 	}
-	response, err := backend.ListProjects(ctx, request)
+	response, err := backend.ListProjects(operationContext, request)
 	if provider == agentprovider.Codex {
 		response.ProviderContext = agentprovider.CodexContext()
 	}
@@ -238,11 +342,16 @@ func (service *Service) ProjectDetail(ctx context.Context, request usagecost.Pro
 		return usagecost.ProjectDetailResponse{}, err
 	}
 	request.Provider.Provider = provider
+	operationContext, finish, err := beginProviderOperation(ctx, service.states, provider)
+	if err != nil {
+		return usagecost.ProjectDetailResponse{}, err
+	}
+	defer finish()
 	backend, err := service.usageBackend(provider)
 	if err != nil {
 		return usagecost.ProjectDetailResponse{}, err
 	}
-	response, err := backend.ProjectDetail(ctx, request)
+	response, err := backend.ProjectDetail(operationContext, request)
 	if provider == agentprovider.Codex {
 		response.ProviderContext = agentprovider.CodexContext()
 	}
@@ -255,11 +364,16 @@ func (service *Service) InvocationUsage(ctx context.Context, request invocationu
 		return invocationusage.InvocationUsageResponse{}, err
 	}
 	request.Provider.Provider = provider
+	operationContext, finish, err := beginProviderOperation(ctx, service.states, provider)
+	if err != nil {
+		return invocationusage.InvocationUsageResponse{}, err
+	}
+	defer finish()
 	backend, err := service.invocationBackend(provider)
 	if err != nil {
 		return invocationusage.InvocationUsageResponse{}, err
 	}
-	response, err := backend.InvocationUsage(ctx, request)
+	response, err := backend.InvocationUsage(operationContext, request)
 	if provider == agentprovider.Codex {
 		response.ProviderContext = agentprovider.CodexContext()
 	}

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -46,14 +45,16 @@ func TestEnsureDefaultCodexHomeConfiguredConfirmsSafeCandidate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Probe() error = %v", err)
 	}
-	if !snapshot.Onboarding.Completed ||
+	if !snapshot.Onboarding.Completed || snapshot.CodexHome == nil ||
 		snapshot.CodexHome.Source.Path != metadata.Path ||
 		snapshot.CodexHome.Source.DeviceID != metadata.DeviceID ||
 		snapshot.CodexHome.Source.Inode != metadata.Inode {
 		t.Fatalf("persisted Home = %#v, want physical identity %#v", snapshot.CodexHome, metadata)
 	}
-	if !snapshot.Online.QuotaEnabled || !snapshot.Online.ResetCreditsEnabled {
-		t.Fatalf("online defaults = %#v, want both enabled", snapshot.Online)
+	if snapshot.Providers != preferences.DefaultProviderPreferences() ||
+		!snapshot.Online.QuotaEnabled || !snapshot.Online.ResetCreditsEnabled ||
+		!snapshot.Online.CursorOnlineEnabled {
+		t.Fatalf("defaults = providers %#v online %#v", snapshot.Providers, snapshot.Online)
 	}
 }
 
@@ -208,7 +209,7 @@ func TestEnsureDefaultCodexHomeConfiguredRejectsUnprovenLegacyIdentity(t *testin
 	}
 }
 
-func TestEnsureDefaultCodexHomeConfiguredLeavesMissingCandidateUnconfigured(t *testing.T) {
+func TestEnsureDefaultCodexHomeConfiguredInitializesPreferencesWithoutHome(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -225,11 +226,16 @@ func TestEnsureDefaultCodexHomeConfiguredLeavesMissingCandidateUnconfigured(t *t
 	if err != nil {
 		t.Fatalf("ensureDefaultCodexHomeConfigured() error = %v", err)
 	}
-	if result != (defaultCodexHomeResult{}) {
-		t.Fatal("ensureDefaultCodexHomeConfigured() configured a missing candidate")
+	if result.Configured || result.IdentityMigrated {
+		t.Fatalf("result = %#v, want uninitialized Home", result)
 	}
-	if _, err := store.LoadPreferences(ctx); !errors.Is(err, preferences.ErrNotConfigured) {
-		t.Fatalf("LoadPreferences() error = %v, want ErrNotConfigured", err)
+	snapshot, err := store.LoadPreferences(ctx)
+	if err != nil {
+		t.Fatalf("LoadPreferences() error = %v", err)
+	}
+	if snapshot.SchemaVersion != preferences.CurrentPreferencesSchemaVersion || snapshot.Revision != 1 ||
+		snapshot.CodexHome != nil || snapshot.Providers != preferences.DefaultProviderPreferences() {
+		t.Fatalf("snapshot = %#v, want revision=1 v3 without Home", snapshot)
 	}
 }
 

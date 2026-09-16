@@ -47,11 +47,21 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
         }
     }
 
-	public static func usageFeatures(for provider: AgentProvider) -> [AppFeature] {
+	public static func usageFeatures(for provider: AgentProvider?) -> [AppFeature] {
+        guard let provider else { return [] }
 		let features: [AppFeature] = [.overview, .sessions, .projects, .invocationUsage, .quotaUsage]
 		guard !provider.supportsInvocationStatistics else { return features }
 		return features.filter { $0 != .invocationUsage }
 	}
+
+    public var requiresEnabledProvider: Bool {
+        switch self {
+        case .overview, .sessions, .projects, .quotaUsage, .invocationUsage:
+            true
+        case .apiSubscriptions, .localStatus, .sourcesJobs, .settings, .dashboardSummary:
+            false
+        }
+    }
 }
 
 private enum FeatureTaskKey: Hashable {
@@ -86,8 +96,9 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var isGlobalRefreshing = false
     @Published public private(set) var globalRefreshPresentation: ProviderRefreshPresentation?
     @Published public var selectedFeature: AppFeature = .dashboardSummary
-	@Published public private(set) var selectedProvider: AgentProvider = .codex
-	@Published public private(set) var statusProvider: AgentProvider = .codex
+	@Published public private(set) var selectedProvider: AgentProvider?
+	@Published public private(set) var statusProvider: AgentProvider?
+    @Published public private(set) var providerCatalog: ProviderCatalog = .empty
     @Published public private(set) var renderedFeatures: Set<AppFeature> = []
 
     @Published public var sessionOptions = SessionQueryOptions()
@@ -251,7 +262,75 @@ public final class AppModel: ObservableObject {
 		providerDefaults.set(selectedFeature.rawValue, forKey: Self.selectedFeatureKey)
 	}
 
+    private var runtimeAcceptsProviderQueries: Bool {
+        switch latestRuntimeState {
+        case .normal, .partial, .stale:
+            true
+        default:
+            false
+        }
+    }
+
+    private func persistProvider(_ provider: AgentProvider?, key: String) {
+        guard persistsProviderSelection else { return }
+        if let provider {
+            providerDefaults.set(provider.rawValue, forKey: key)
+        } else {
+            providerDefaults.removeObject(forKey: key)
+        }
+    }
+
+    private func assignMainProvider(_ provider: AgentProvider?) {
+        let previous = selectedProvider
+        selectedProvider = provider
+        persistProvider(provider, key: Self.selectedProviderKey)
+        if let provider {
+            if provider == .cursor, sessionOptions.sortField == "estimatedCost" {
+                sessionOptions.sortField = "lastActivityAt"
+            }
+            if provider == .cursor, projectOptions.sortField == "estimatedCost" {
+                projectOptions.sortField = "lastActivityAt"
+            }
+            if !provider.supportsInvocationStatistics, selectedFeature == .invocationUsage {
+                selectedFeature = .overview
+                persistSelectedFeature()
+            }
+            overviewRange = provider.defaultOverviewRange
+        }
+        guard previous != provider else { return }
+        overviewRefreshGeneration &+= 1
+        overviewRefreshTask?.cancel()
+        overviewRefreshTask = nil
+        cancelPageFeatureTasks()
+        resetProviderFeatureState()
+    }
+
+    private func assignStatusProvider(_ provider: AgentProvider?) {
+        guard provider != statusProvider else { return }
+        invalidateTasks([.statusOverview, .statusAccount])
+        statusProvider = provider
+        persistProvider(provider, key: Self.statusProviderKey)
+        guard let provider else {
+            statusOverviewState = .idle
+            statusUsageState = .idle
+            statusInvocationState = .idle
+            return
+        }
+        statusOverviewState = .loading(previous: statusOverviewCache[provider])
+        statusUsageState = provider.usesOfficialPeriodRing
+            ? .loading(previous: statusUsageCache[provider])
+            : .idle
+        statusInvocationState = .idle
+    }
+
+    public var enabledProviders: [AgentProvider] {
+        providerCatalog.enabledProviders
+    }
+
     public var statusItemTitle: String {
+        guard let statusProvider else {
+            return "Codex Pulse --"
+        }
 		if statusProvider == .cursor {
 			return "月剩 -- · 已用 --"
 		}
@@ -345,7 +424,9 @@ public final class AppModel: ObservableObject {
             await runtime.setInvalidationSink { [weak self] domain in
                 await self?.receiveInvalidation(domain: domain)
             }
-			await runtime.selectProvider(self.selectedProvider)
+            await runtime.setCatalogSink { [weak self] catalog in
+                await self?.applyProviderCatalog(catalog)
+            }
             await runtime.start()
             if self.observesUpdatePolicy {
                 self.loadSettings()
@@ -356,27 +437,11 @@ public final class AppModel: ObservableObject {
     }
 
 	public func selectProvider(_ provider: AgentProvider) {
+        if !providerCatalog.states.isEmpty, !enabledProviders.contains(provider) {
+            return
+        }
 		guard provider != selectedProvider else { return }
-		selectedProvider = provider
-		if persistsProviderSelection {
-			providerDefaults.set(provider.rawValue, forKey: Self.selectedProviderKey)
-		}
-		if provider == .cursor, sessionOptions.sortField == "estimatedCost" {
-			sessionOptions.sortField = "lastActivityAt"
-		}
-		if provider == .cursor, projectOptions.sortField == "estimatedCost" {
-			projectOptions.sortField = "lastActivityAt"
-		}
-		if !provider.supportsInvocationStatistics, selectedFeature == .invocationUsage {
-			selectedFeature = .overview
-			persistSelectedFeature()
-		}
-		overviewRange = provider.defaultOverviewRange
-		overviewRefreshGeneration &+= 1
-		overviewRefreshTask?.cancel()
-		overviewRefreshTask = nil
-		cancelPageFeatureTasks()
-		resetProviderFeatureState()
+        assignMainProvider(provider)
 		if selectedFeature == .overview {
 			state = .loading(localization.textValue("正在切换客户端…"))
 		} else {
@@ -389,19 +454,30 @@ public final class AppModel: ObservableObject {
 	}
 
 	public func selectStatusProvider(_ provider: AgentProvider) {
+        if !providerCatalog.states.isEmpty, !enabledProviders.contains(provider) {
+            return
+        }
 		guard provider != statusProvider else { return }
-		invalidateTasks([.statusOverview, .statusAccount])
-		statusProvider = provider
-		if persistsProviderSelection {
-			providerDefaults.set(provider.rawValue, forKey: Self.statusProviderKey)
-		}
-		statusOverviewState = .loading(previous: statusOverviewCache[provider])
-		statusUsageState = provider.usesOfficialPeriodRing
-			? .loading(previous: statusUsageCache[provider])
-			: .idle
-		statusInvocationState = .idle
+        assignStatusProvider(provider)
 		loadStatusOverview()
 	}
+
+    @discardableResult
+    public func applyProviderCatalog(_ catalog: ProviderCatalog) -> AgentProvider? {
+        providerCatalog = catalog
+        let resolved = catalog.resolvedSelection(preferred: selectedProvider)
+        let resolvedStatus = catalog.resolvedSelection(preferred: statusProvider)
+        if resolved != selectedProvider {
+            assignMainProvider(resolved)
+        }
+        if resolvedStatus != statusProvider {
+            assignStatusProvider(resolvedStatus)
+            if runtimeAcceptsProviderQueries, resolvedStatus != nil {
+                loadStatusOverview()
+            }
+        }
+        return resolved
+    }
 
 	public func refreshStatusProvider() {
 		runGlobalManualRefresh { [weak self] in
@@ -485,6 +561,9 @@ public final class AppModel: ObservableObject {
         }
         selectedFeature = feature
         guard canRefreshOrRestart else { return }
+        if feature.requiresEnabledProvider, selectedProvider == nil {
+            return
+        }
         switch feature {
         case .overview: break
         case .sessions:
@@ -522,7 +601,7 @@ public final class AppModel: ObservableObject {
     }
 
     public func navigate(to feature: AppFeature) {
-		guard feature != .invocationUsage || selectedProvider.supportsInvocationStatistics else {
+		guard feature != .invocationUsage || selectedProvider?.supportsInvocationStatistics == true else {
 			selectedFeature = .overview
 			persistSelectedFeature()
 			return
@@ -572,7 +651,7 @@ public final class AppModel: ObservableObject {
     }
 
     public func navigateToInvocationUsageFromOverview() {
-		guard selectedProvider.supportsInvocationStatistics else { return }
+		guard selectedProvider?.supportsInvocationStatistics == true else { return }
         let contextChanged = invocationRange != overviewRange || invocationSourceClass != "all"
         invocationRange = overviewRange
         invocationSourceClass = "all"
@@ -604,7 +683,7 @@ public final class AppModel: ObservableObject {
             self.loadProjects(reset: true)
             self.loadQuotaAndUsage()
             self.loadAPISubscriptions()
-            if self.selectedProvider.supportsInvocationStatistics {
+            if self.selectedProvider?.supportsInvocationStatistics == true {
                 self.loadInvocationUsage()
             }
             self.loadLocalStatus()
@@ -736,6 +815,7 @@ public final class AppModel: ObservableObject {
     }
 
     public func loadSessions(reset: Bool) {
+        guard let provider = selectedProvider else { return }
         let previous = sessionsState.value
         let cursor = reset ? nil : previous?.meta.page.nextCursor
         guard reset || (previous.map { pageHasMore($0.meta) } == true) else { return }
@@ -744,7 +824,6 @@ public final class AppModel: ObservableObject {
             return
         }
         sessionsState = .loading(previous: previous)
-		let provider = selectedProvider
 		let request = FeatureRequestFactory.sessions(options: sessionOptions, provider: provider, cursor: cursor)
         launch(.sessions, operation: { [runtime] in try await runtime.listSessions(request) }) { [weak self] response in
 			guard let self, response.providerContext.effectiveProvider == provider.rawValue else { return }
@@ -777,7 +856,7 @@ public final class AppModel: ObservableObject {
             return
         }
         sessionDetailState = .loading(previous: previous)
-		let provider = selectedProvider
+		guard let provider = selectedProvider else { return }
 		let request = FeatureRequestFactory.sessionDetail(sessionID: sessionID, provider: provider, turnCursor: cursor)
         launch(.sessionDetail, operation: { [runtime] in try await runtime.sessionDetail(request) }) { [weak self] response in
 			guard let self, selectedSessionID == sessionID,
@@ -800,6 +879,7 @@ public final class AppModel: ObservableObject {
     }
 
     public func loadProjects(reset: Bool) {
+        guard let provider = selectedProvider else { return }
         let previous = projectsState.value
         let cursor = reset ? nil : previous?.meta.page.nextCursor
         guard reset || (previous.map { pageHasMore($0.meta) } == true) else { return }
@@ -808,7 +888,6 @@ public final class AppModel: ObservableObject {
             return
         }
         projectsState = .loading(previous: previous)
-		let provider = selectedProvider
 		let request = FeatureRequestFactory.projects(options: projectOptions, provider: provider, cursor: cursor)
         launch(.projects, operation: { [runtime] in try await runtime.listProjects(request) }) { [weak self] response in
 			guard let self, response.providerContext.effectiveProvider == provider.rawValue else { return }
@@ -859,15 +938,15 @@ public final class AppModel: ObservableObject {
             }
         }
         projectDetailState = .loading(previous: previous)
+        guard let provider = selectedProvider else { return }
         let request = FeatureRequestFactory.projectDetail(
             dimensionKey: dimensionKey,
             range: projectOptions.range,
-			provider: selectedProvider,
+			provider: provider,
             exactRange: projectOptions.exactRange,
             sessionCursor: sessionCursor,
             modelCursor: modelCursor
         )
-		let provider = selectedProvider
 		launch(.projectDetail, operation: { [runtime] in try await runtime.projectDetail(request) }) { [weak self] response in
 			guard let self, selectedProjectKey == dimensionKey,
 				response.providerContext.effectiveProvider == provider.rawValue else { return }
@@ -902,9 +981,9 @@ public final class AppModel: ObservableObject {
     }
 
     public func loadUsage() {
+        guard let provider = selectedProvider else { return }
         let previous = usageState.value
         usageState = .loading(previous: previous)
-		let provider = selectedProvider
 		let request = FeatureRequestFactory.usage(range: usageRange, provider: provider)
         launch(.usage, operation: { [runtime] in try await runtime.usageCost(request) }) { [weak self] response in
 			guard response.providerContext.effectiveProvider == provider.rawValue else { return }
@@ -993,7 +1072,7 @@ public final class AppModel: ObservableObject {
     }
 
     public func loadInvocationUsage() {
-		guard selectedProvider.supportsInvocationStatistics else {
+		guard let provider = selectedProvider, provider.supportsInvocationStatistics else {
 			invocationUsageState = .idle
 			return
 		}
@@ -1005,10 +1084,9 @@ public final class AppModel: ObservableObject {
         let request = FeatureRequestFactory.invocationUsage(
             range: invocationRange,
             sourceClass: invocationSourceClass,
-			provider: selectedProvider,
+			provider: provider,
             quotaCycleRange: quotaCycleRange
         )
-		let provider = selectedProvider
 		launch(
             .invocationUsage,
             operation: { [runtime] in try await runtime.invocationUsage(request) }
@@ -1038,9 +1116,9 @@ public final class AppModel: ObservableObject {
     }
 
     public func loadPricingCatalog() {
+        guard let provider = selectedProvider else { return }
         let previous = pricingCatalogState.value
         pricingCatalogState = .loading(previous: previous)
-		let provider = selectedProvider
 		let request = FeatureRequestFactory.pricingCatalog(provider: provider)
         launch(
             .pricingCatalog,
@@ -1058,9 +1136,9 @@ public final class AppModel: ObservableObject {
     }
 
     public func loadQuota(now: Date = Date()) {
+        guard let provider = selectedProvider else { return }
         let previous = quotaState.value
         quotaState = .loading(previous: previous)
-		let provider = selectedProvider
 		let request = FeatureRequestFactory.quota(provider: provider, now: now)
         launch(.quota, operation: { [runtime] in try await runtime.quotaCurrent(request) }) { [weak self] response in
 			guard response.providerContext.effectiveProvider == provider.rawValue else { return }
@@ -1075,9 +1153,9 @@ public final class AppModel: ObservableObject {
     }
 
     public func loadQuotaPace(now: Date = Date()) {
+        guard let provider = selectedProvider else { return }
         let previous = quotaPaceState.value
         quotaPaceState = .loading(previous: previous)
-		let provider = selectedProvider
 		let request = FeatureRequestFactory.quotaPace(provider: provider, now: now)
         launch(.quotaPace, operation: { [runtime] in try await runtime.quotaPace(request) }) { [weak self] response in
 			guard response.providerContext.effectiveProvider == provider.rawValue else { return }
@@ -1092,13 +1170,12 @@ public final class AppModel: ObservableObject {
     }
 
     public func loadQuotaAccount() {
-        guard selectedProvider == .codex else {
+        guard let provider = selectedProvider, provider == .codex else {
             quotaAccountState = .idle
             return
         }
         let previous = quotaAccountState.value
         quotaAccountState = .loading(previous: previous)
-        let provider = selectedProvider
         launch(
             .quotaAccount,
             operation: { [runtime] in try await runtime.accountSnapshot(provider: provider) }
@@ -1116,7 +1193,7 @@ public final class AppModel: ObservableObject {
         guard let taskKey = refreshTaskKey(source: source) else { return }
         guard canRefreshOrRestart else { return }
         if isRefreshRunning(source: source) { return }
-		let provider = selectedProvider
+		guard let provider = selectedProvider else { return }
 		guard source == "quota" || provider.supportsResetCredits else { return }
         setRefreshState(.running, source: source)
         launch(taskKey, operation: { [runtime] in
@@ -1373,6 +1450,7 @@ public final class AppModel: ObservableObject {
         launch(.settings, operation: { [runtime] in try await runtime.settings() }) { [weak self] response in
             guard let self else { return }
             settingsState = loadState(value: response, meta: response.meta, isEmpty: false)
+            _ = applyProviderCatalog(ProviderCatalog(response))
             let editedDuringLoad = settingsDraft != draftAtStart
             let preservedDraft = editedDuringLoad ? settingsDraft : (hadUnsavedChanges ? draftAtStart : nil)
             let effectiveDraft = preservedDraft ?? SettingsDraft(response)
@@ -1413,11 +1491,13 @@ public final class AppModel: ObservableObject {
                 let pendingDraft = settingsDraft.flatMap { $0 == draft ? nil : $0 }
                 guard readback.snapshot.revision == receipt.revision else {
                     settingsState = loadState(value: readback, meta: readback.meta, isEmpty: false)
+                    _ = applyProviderCatalog(ProviderCatalog(readback))
                     settingsDraft = pendingDraft ?? draft
                     settingsSaveState = .conflict
                     return
                 }
                 settingsState = loadState(value: readback, meta: readback.meta, isEmpty: false)
+                _ = applyProviderCatalog(ProviderCatalog(readback))
                 switch receipt.result {
                 case "applied":
                     let effectiveDraft = pendingDraft ?? SettingsDraft(readback)
@@ -1446,6 +1526,7 @@ public final class AppModel: ObservableObject {
                 finishTask(.settingsSave)
                 if let readback, readback.snapshot.revision != expectedRevision {
                     settingsState = loadState(value: readback, meta: readback.meta, isEmpty: false)
+                    _ = applyProviderCatalog(ProviderCatalog(readback))
                     let pendingDraft = settingsDraft.flatMap { $0 == draft ? nil : $0 }
                     settingsDraft = pendingDraft ?? draft
                     applyLocalePreference((pendingDraft ?? SettingsDraft(readback)).locale)
@@ -2089,10 +2170,15 @@ public final class AppModel: ObservableObject {
             affected = [.localStatus, .sourcesJobs]
 			refreshesStatus = false
         case "settings":
-            invalidateTasks([.settings])
+            invalidateTasks([.settings, .dashboardSummary])
             settingsState = stale(settingsState, notice)
-            affected = [.settings]
-			refreshesStatus = false
+            dashboardSummaryState = stale(dashboardSummaryState, notice)
+            var next: Set<AppFeature> = [.settings, .dashboardSummary]
+            if selectedFeature.requiresEnabledProvider {
+                next.insert(selectedFeature)
+            }
+            affected = next
+			refreshesStatus = true
         case "account":
             invalidateTasks([.codexSubscriptionList, .quota, .quotaAccount, .quotaPace, .statusAccount])
             codexSubscriptionAccountsState = stale(codexSubscriptionAccountsState, notice)
@@ -2205,7 +2291,12 @@ public final class AppModel: ObservableObject {
 	}
 
 	private func loadStatusOverview() {
-		let provider = statusProvider
+		guard let provider = statusProvider else {
+            statusOverviewState = .idle
+            statusUsageState = .idle
+            statusInvocationState = .idle
+            return
+        }
 		let previous = statusOverviewState.value
 		invalidateTasks([.statusAccount])
 		statusOverviewState = .loading(previous: previous)

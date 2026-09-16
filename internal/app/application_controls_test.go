@@ -12,8 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -39,8 +41,10 @@ func TestApplicationControlsUpdateSettingsPreservesReadOnlyPreferences(t *testin
 
 	receipt, err := runtime.UpdateSettings(context.Background(), core.SettingsUpdateRequest{
 		ExpectedRevision: strconv.FormatUint(current.Revision, 10),
+		Providers:        providerUpdatesFrom(current),
 		Online: core.SettingsOnlineUpdate{
-			QuotaEnabled: true, ResetCreditsEnabled: true,
+			QuotaEnabled: true, ResetCreditsEnabled: true, CursorOnlineEnabled: true,
+			GrokQuotaEnabled: true, GrokAutoRefreshEnabled: true,
 		},
 		Refresh: core.SettingsRefreshUpdate{
 			QuotaIntervalSeconds: 600, ResetCreditsIntervalSeconds: 3600,
@@ -350,9 +354,13 @@ func closeApplicationControlsTestRuntime(
 func settingsRequestFromSnapshot(snapshot preferences.Snapshot) core.SettingsUpdateRequest {
 	return core.SettingsUpdateRequest{
 		ExpectedRevision: strconv.FormatUint(snapshot.Revision, 10),
+		Providers:        providerUpdatesFrom(snapshot),
 		Online: core.SettingsOnlineUpdate{
-			QuotaEnabled:        !snapshot.Online.QuotaEnabled,
-			ResetCreditsEnabled: snapshot.Online.ResetCreditsEnabled,
+			QuotaEnabled:           !snapshot.Online.QuotaEnabled,
+			ResetCreditsEnabled:    snapshot.Online.ResetCreditsEnabled,
+			CursorOnlineEnabled:    snapshot.Online.CursorOnlineEnabled,
+			GrokQuotaEnabled:       snapshot.Online.GrokQuotaEnabled,
+			GrokAutoRefreshEnabled: snapshot.Online.GrokAutoRefreshEnabled,
 		},
 		Refresh: core.SettingsRefreshUpdate{
 			QuotaIntervalSeconds:        snapshot.Refresh.QuotaIntervalSeconds,
@@ -370,6 +378,14 @@ func settingsRequestFromSnapshot(snapshot preferences.Snapshot) core.SettingsUpd
 			LaunchBehavior: string(snapshot.UI.LaunchBehavior),
 			OverviewRange:  string(snapshot.UI.OverviewRange),
 		},
+	}
+}
+
+func providerUpdatesFrom(snapshot preferences.Snapshot) []core.SettingsProviderUpdate {
+	return []core.SettingsProviderUpdate{
+		{Provider: agentprovider.Codex, Intent: providercontrol.ProtoIntent(snapshot.Providers.Codex.Intent)},
+		{Provider: agentprovider.Cursor, Intent: providercontrol.ProtoIntent(snapshot.Providers.Cursor.Intent)},
+		{Provider: agentprovider.Grok, Intent: providercontrol.ProtoIntent(snapshot.Providers.Grok.Intent)},
 	}
 }
 

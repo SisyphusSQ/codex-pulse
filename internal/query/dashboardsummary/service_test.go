@@ -10,6 +10,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
@@ -782,6 +783,150 @@ func knownTotals(tokens, cost int64) usagecost.UsageTotals {
 		UnpricedTurnCount:  must(basequery.KnownNumeric(0, basequery.NumericCount)),
 		FirstActivityAtMS:  must(basequery.KnownNumeric(1_751_328_000_000, basequery.NumericMilliseconds)),
 		LastActivityAtMS:   must(basequery.KnownNumeric(1_751_400_000_000, basequery.NumericMilliseconds)),
+	}
+}
+
+type summaryStates struct {
+	enabled []string
+	gen     uint64
+}
+
+func (states *summaryStates) ProviderState(string) (providercontrol.Snapshot, error) {
+	return providercontrol.Snapshot{}, providercontrol.ErrInvalidProvider
+}
+
+func (states *summaryStates) EnabledProviders() []string {
+	return append([]string(nil), states.enabled...)
+}
+
+func (states *summaryStates) Generation() uint64 { return states.gen }
+
+func TestDashboardSummaryExcludesDisabledProviderHistory(t *testing.T) {
+	t.Parallel()
+	usage := &usageStub{responses: map[string]usagecost.UsageCostResponse{
+		agentprovider.Codex:  completeUsage("codex", "gpt-5", 100, 10, "2026-07-01"),
+		agentprovider.Cursor: completeUsage("cursor", "composer", 40, 4, "2026-07-01"),
+		agentprovider.Grok:   completeUsage("grok", "grok-4", 20, 2, "2026-07-01"),
+	}}
+	quota := &quotaStub{responses: map[string]runtimeinfo.QuotaCurrentResponse{
+		agentprovider.Codex:  completeQuota("codex", "codex"),
+		agentprovider.Cursor: completeQuota("cursor", "cursor.models"),
+		agentprovider.Grok:   completeQuota("grok", "grok.credits"),
+	}}
+	service := newSummaryService(t, usage, quota)
+	service.BindStates(&summaryStates{enabled: []string{agentprovider.Codex, agentprovider.Grok}, gen: 3})
+	response, err := service.DashboardSummary(context.Background(), summaryRequest())
+	if err != nil {
+		t.Fatalf("DashboardSummary() error = %v", err)
+	}
+	if response.Coverage.KnownProviderCount != 2 ||
+		numericValue(response.Totals.TotalTokens) != 120 ||
+		len(response.Providers) != 2 ||
+		response.Providers[0].Provider != agentprovider.Codex ||
+		response.Providers[1].Provider != agentprovider.Grok {
+		t.Fatalf("enabled-only summary = %#v", response)
+	}
+}
+
+func TestDashboardSummaryAllDisabledReturnsKnownEmpty(t *testing.T) {
+	t.Parallel()
+	usage := &usageStub{responses: map[string]usagecost.UsageCostResponse{
+		agentprovider.Codex: completeUsage("codex", "gpt-5", 100, 10, "2026-07-01"),
+	}}
+	quota := &quotaStub{responses: map[string]runtimeinfo.QuotaCurrentResponse{
+		agentprovider.Codex: completeQuota("codex", "codex"),
+	}}
+	service := newSummaryService(t, usage, quota)
+	service.BindStates(&summaryStates{enabled: nil, gen: 9})
+	response, err := service.DashboardSummary(context.Background(), summaryRequest())
+	if err != nil {
+		t.Fatalf("DashboardSummary() error = %v", err)
+	}
+	if response.Meta.Status != basequery.ResponseComplete ||
+		response.Coverage.OverallState != CoverageEmpty ||
+		response.Coverage.KnownProviderCount != 0 ||
+		numericValue(response.Totals.TotalTokens) != 0 ||
+		numericValue(response.Totals.ActiveProviderCount) != 0 ||
+		len(response.Providers) != 0 {
+		t.Fatalf("all-disabled summary = %#v", response)
+	}
+}
+
+func TestDashboardSummaryCacheKeyIncludesControlGeneration(t *testing.T) {
+	t.Parallel()
+	usage := &usageStub{responses: map[string]usagecost.UsageCostResponse{
+		agentprovider.Codex: completeUsage("codex", "gpt-5", 100, 10, "2026-07-01"),
+	}}
+	quota := &quotaStub{responses: map[string]runtimeinfo.QuotaCurrentResponse{
+		agentprovider.Codex: completeQuota("codex", "codex"),
+	}}
+	service := newSummaryService(t, usage, quota)
+	states := &summaryStates{enabled: []string{agentprovider.Codex}, gen: 1}
+	service.BindStates(states)
+	first, err := service.DashboardSummary(context.Background(), summaryRequest())
+	if err != nil {
+		t.Fatalf("first summary error = %v", err)
+	}
+	usage.responses[agentprovider.Codex] = completeUsage("codex", "gpt-5", 250, 25, "2026-07-01")
+	cached, err := service.DashboardSummary(context.Background(), summaryRequest())
+	if err != nil {
+		t.Fatalf("cached summary error = %v", err)
+	}
+	if numericValue(cached.Totals.TotalTokens) != numericValue(first.Totals.TotalTokens) {
+		t.Fatalf("same generation must reuse cache: first=%#v cached=%#v", first.Totals, cached.Totals)
+	}
+	states.gen = 2
+	refreshed, err := service.DashboardSummary(context.Background(), summaryRequest())
+	if err != nil {
+		t.Fatalf("generation-bumped summary error = %v", err)
+	}
+	if numericValue(refreshed.Totals.TotalTokens) != 250 {
+		t.Fatalf("control generation change must miss cache: %#v", refreshed.Totals)
+	}
+}
+
+type changingSummaryStates struct {
+	generation atomic.Uint64
+}
+
+func (states *changingSummaryStates) ProviderState(string) (providercontrol.Snapshot, error) {
+	return providercontrol.Snapshot{}, providercontrol.ErrInvalidProvider
+}
+
+func (states *changingSummaryStates) EnabledProviders() []string {
+	return []string{agentprovider.Codex}
+}
+
+func (states *changingSummaryStates) Generation() uint64 { return states.generation.Load() }
+
+type generationChangingUsage struct {
+	states   *changingSummaryStates
+	once     sync.Once
+	response usagecost.UsageCostResponse
+}
+
+func (usage *generationChangingUsage) UsageCost(
+	context.Context,
+	usagecost.UsageCostRequest,
+) (usagecost.UsageCostResponse, error) {
+	usage.once.Do(func() { usage.states.generation.Add(1) })
+	return usage.response, nil
+}
+
+func TestDashboardSummaryRejectsProviderGenerationChangeDuringAggregation(t *testing.T) {
+	t.Parallel()
+	states := &changingSummaryStates{}
+	states.generation.Store(1)
+	usage := &generationChangingUsage{
+		states: states, response: completeUsage("codex", "gpt-5", 100, 10, "2026-07-01"),
+	}
+	quota := &quotaStub{responses: map[string]runtimeinfo.QuotaCurrentResponse{
+		agentprovider.Codex: completeQuota("codex", "codex"),
+	}}
+	service := newSummaryService(t, usage, quota)
+	service.BindStates(states)
+	if _, err := service.DashboardSummary(context.Background(), summaryRequest()); !errors.Is(err, basequery.ErrUnavailable) {
+		t.Fatalf("DashboardSummary(generation change) error = %v, want unavailable", err)
 	}
 }
 

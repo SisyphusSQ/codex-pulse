@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -14,6 +15,7 @@ import (
 type OnlineRefreshClass struct {
 	Attempted bool
 	Remote    bool
+	Disabled  bool
 	Err       error
 }
 
@@ -34,6 +36,9 @@ func (collector *DashboardCollector) refreshClassified(
 ) OnlineRefreshClass {
 	if collector == nil || ctx == nil {
 		return OnlineRefreshClass{Err: ErrDashboardProtocol}
+	}
+	if collector.config.Enabled != nil && !collector.config.Enabled() {
+		return OnlineRefreshClass{Disabled: true}
 	}
 	collector.mu.Lock()
 	defer collector.mu.Unlock()
@@ -65,11 +70,13 @@ func (collector *DashboardCollector) refreshClassified(
 	if err := validateDashboardAggregate(events); err != nil {
 		return collector.finishClassified(ctx, atMS, classifyCursorOnlineError(err))
 	}
-	if err := collector.writer.CommitCursorDashboardSnapshot(ctx, store.CursorDashboardSnapshot{
-		Generation: atMS, CollectedAtMS: atMS,
-		WindowStartMS: current.BillingCycleStartMS, WindowEndMS: atMS,
-		BillingCycleEndMS: current.BillingCycleEndMS, PlanUsage: planUsage,
-		QuotaWindows: quotaWindows, Events: events,
+	if err := providercontrol.WriteWithCommit(ctx, func() error {
+		return collector.writer.CommitCursorDashboardSnapshot(ctx, store.CursorDashboardSnapshot{
+			Generation: atMS, CollectedAtMS: atMS,
+			WindowStartMS: current.BillingCycleStartMS, WindowEndMS: atMS,
+			BillingCycleEndMS: current.BillingCycleEndMS, PlanUsage: planUsage,
+			QuotaWindows: quotaWindows, Events: events,
+		})
 	}); err != nil {
 		return OnlineRefreshClass{
 			Attempted: true, Remote: true,
@@ -97,6 +104,9 @@ func (collector *DashboardCollector) finishClassified(
 func (collector *GrokBotCollector) RefreshClassified(ctx context.Context, interactive bool) OnlineRefreshClass {
 	if collector == nil || ctx == nil {
 		return OnlineRefreshClass{Err: ErrDashboardProtocol}
+	}
+	if collector.config.Enabled != nil && !collector.config.Enabled() {
+		return OnlineRefreshClass{Disabled: true}
 	}
 	minimum := collector.config.MinimumRefresh
 	if interactive {
@@ -127,7 +137,9 @@ func (collector *GrokBotCollector) RefreshClassified(ctx context.Context, intera
 		}
 		commit.UsedPercent = status.UsagePercent
 	}
-	if err := collector.writer.CommitCursorGrokBotObservation(ctx, commit); err != nil {
+	if err := providercontrol.WriteWithCommit(ctx, func() error {
+		return collector.writer.CommitCursorGrokBotObservation(ctx, commit)
+	}); err != nil {
 		return OnlineRefreshClass{
 			Attempted: true, Remote: true,
 			Err: fmt.Errorf("%w: persist grok bot observation", ErrDashboardProtocol),

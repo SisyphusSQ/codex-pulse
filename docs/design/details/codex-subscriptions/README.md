@@ -32,7 +32,7 @@ List / Create / Update / Delete / Link / Unlink 只读写 SQLite，不启动 App
 
 ## Core
 
-精确握手为 `core-rpc-v4`。`Contracts.codex_subscription_accounts_version=codex-subscription-accounts-v1`。`codex_pro_tier_version` 保持 v1。invalidation 仍为 `query-invalidation-v3`；账号资料变化使用既有 `account` domain。
+精确握手为 `core-rpc-v5`。`Contracts.codex_subscription_accounts_version=codex-subscription-accounts-v1`。`codex_pro_tier_version` 保持 v1。invalidation 仍为 `query-invalidation-v3`；账号资料变化使用既有 `account` domain。Provider 启停见 [Agent Providers](../providers/README.md)。
 
 新增 query `ListCodexSubscriptionAccounts` 与 command `Create/Update/Delete/Link/UnlinkCodexSubscriptionAccount`。`AccountSnapshotRequest` additive `evaluated_at_ms` / `time_zone`；Codex 响应 additive `subscription`。非 Codex provider 的 `subscription` 必须 absent。
 

@@ -847,6 +847,7 @@ func TestApplicationLifecycleRuntimeCommitsSettingsBeforeQuotaReconcile(t *testi
 	invalidation.reset()
 	committed, err := runtime.UpdateQuotaSettings(context.Background(), preferences.SettingsUpdate{
 		ExpectedRevision: current.Revision,
+		Providers:        current.Providers,
 		Online:           preferences.OnlinePreferences{},
 		Refresh:          current.Refresh,
 		Updates:          current.Updates,
@@ -923,6 +924,7 @@ func TestApplicationLifecycleRuntimeReturnsCommittedSettingsOnReconcileFailure(t
 	invalidation.reset()
 	committed, err := runtime.UpdateQuotaSettings(context.Background(), preferences.SettingsUpdate{
 		ExpectedRevision: current.Revision,
+		Providers:        current.Providers,
 		Online: preferences.OnlinePreferences{
 			QuotaEnabled: true,
 		},
@@ -995,6 +997,7 @@ func TestApplicationLifecycleRuntimeBeginDrainSealsAdmissionAndDrainsSettingsUpd
 	go func() {
 		_, updateErr := runtime.UpdateQuotaSettings(context.Background(), preferences.SettingsUpdate{
 			ExpectedRevision: current.Revision,
+			Providers:        current.Providers,
 			Online: preferences.OnlinePreferences{
 				QuotaEnabled: true,
 			},
@@ -1100,6 +1103,7 @@ func TestApplicationLifecycleRuntimeSettingsAndHomeConfirmDoNotDeadlock(t *testi
 	go func() {
 		_, settingsErr := runtime.UpdateQuotaSettings(context.Background(), preferences.SettingsUpdate{
 			ExpectedRevision: current.Revision,
+			Providers:        current.Providers,
 			Online: preferences.OnlinePreferences{
 				QuotaEnabled: true,
 			},
@@ -1754,20 +1758,20 @@ func installQuotaRuntimePendingSwitch(
 	if err != nil {
 		t.Fatalf("LoadPreferences(before pending switch) error = %v", err)
 	}
-	target := quotaRuntimePreferencesForHome(t, targetHome).CodexHome
+	target := *quotaRuntimePreferencesForHome(t, targetHome).CodexHome
 	target.Generation = current.CodexHome.Generation + 1
 	target.DataStoreKey = current.CodexHome.DataStoreKey
 	pending := preferences.HomeSwitchJournal{
 		SwitchID:    "home-switch:quota-runtime-pending-switch",
 		AttemptID:   strings.Repeat("c", 32),
-		Previous:    current.CodexHome,
+		Previous:    *current.CodexHome,
 		Target:      target,
 		Strategy:    preferences.HomeSwitchClearAndRebuild,
 		StartedAtMS: quotaRuntimeNowMS,
 	}
 	next := current
 	next.Revision++
-	next.CodexHome = target
+	next.CodexHome = preferences.CodexHomePointer(target)
 	next.PendingSwitch = &pending
 	if err := preferenceStore.CompareAndSwap(context.Background(), current.Revision, next); err != nil {
 		t.Fatalf("CompareAndSwap(pending switch) error = %v", err)

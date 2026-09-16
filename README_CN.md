@@ -12,10 +12,11 @@ Codex Pulse 是一款 local-first 的原生 macOS 应用：把 Codex 分散在�
 
 ## 主要功能
 
-- **菜单栏**：查看额度、重置时间和健康提醒。
+- **菜单栏**：固定 Codex 额度、Cursor 精确用量或 Grok credits，且不改变主窗口当前客户端。全部关闭时显示 `Codex Pulse --`。
 - **用量分析**：在概览、会话和项目页面查看 Token、模型、API 等价成本与活动分布。
+- **客户端开关**：在设置中独立启用或关闭 Codex、Cursor、Grok。发现只做 metadata-only 探测；显式关闭后重启、唤醒和数据源重新出现都不会自动重开。主窗口与 Popover 只列出已启用客户端；全部关闭时仍可进入设置。
 - **Codex 账号**：设置页可管理本机识别账号与手动记录；识别值会带入编辑器，非当前账号可删除本地订阅记录。邮箱只用于关联候选，每月续费日或会员到期日当前仅支持手动维护。Popover 截图会隐藏邮箱、备注、套餐、日期和剩余天数。
-- **数据状态**：查看额度来源、本机索引和后台任务的状态，了解统计结果是否完整。
+- **数据状态**：查看按客户端分组的数据来源、本机索引和后台任务的状态，了解统计结果是否完整。
 
 ## 功能概览
 
@@ -66,7 +67,7 @@ Codex Pulse 是一款 local-first 的原生 macOS 应用：把 Codex 分散在�
 
 Codex 原始文件仍由 Codex 自己管理。Codex Pulse 只保存产品功能所需的索引、统计和运行状态，不修改原始 Session 内容。
 
-首次启动时，Go Helper 会对 `${CODEX_HOME:-$HOME/.codex}` 做不读取会话正文的 metadata-only 安全探测，并保存稳定身份；目录不存在或探测失败时保持未配置、不开始索引。之后更换 Codex Home 仍需在设置中显式确认。
+首次启动时，Go Helper 会初始化 Preferences v3，即使没有 Codex Home。会对 `${CODEX_HOME:-$HOME/.codex}` 做不读取会话正文的 metadata-only 安全探测；安全 Home 会保存稳定身份。目录不存在或探测失败时，应用仍可启动：设置、Cursor 和 Grok 继续可用，Codex 索引、额度和账号在配置 Home 前保持不可用。之后更换 Codex Home 仍需在设置中显式确认。关闭某个客户端会停止本地采集、在线请求、凭据续期、查询触发刷新和当前汇总；历史、进度和子开关偏好保留。当前握手为 `core-rpc-v5`，Provider 控制面为 `provider-control-v1`。
 
 ## 工作原理
 

@@ -174,6 +174,7 @@ public struct PrimaryPagesSmokeError: Error, Equatable, Sendable {
 public struct SettingsDraft: Equatable, Sendable {
     public var quotaEnabled: Bool
     public var resetCreditsEnabled: Bool
+    public var cursorOnlineEnabled: Bool
     public var grokQuotaEnabled: Bool
     public var grokAutoRefreshEnabled: Bool
     public var quotaIntervalSeconds: Int64
@@ -186,11 +187,15 @@ public struct SettingsDraft: Equatable, Sendable {
     public var locale: String
     public var launchBehavior: String
     public var overviewRange: String
+    public var codexIntent: Codexpulse_Core_V1_ProviderIntent
+    public var cursorIntent: Codexpulse_Core_V1_ProviderIntent
+    public var grokIntent: Codexpulse_Core_V1_ProviderIntent
 
     public init(_ response: Codexpulse_Core_V1_SettingsResponse) {
         let snapshot = response.snapshot
         quotaEnabled = snapshot.online.quotaEnabled
         resetCreditsEnabled = snapshot.online.resetCreditsEnabled
+        cursorOnlineEnabled = snapshot.online.cursorOnlineEnabled
         grokQuotaEnabled = snapshot.online.grokQuotaEnabled
         grokAutoRefreshEnabled = snapshot.online.grokAutoRefreshEnabled
         quotaIntervalSeconds = snapshot.refresh.quotaIntervalSeconds
@@ -203,6 +208,10 @@ public struct SettingsDraft: Equatable, Sendable {
         locale = snapshot.ui.locale
         launchBehavior = snapshot.ui.launchBehavior
         overviewRange = snapshot.ui.overviewRange
+        let catalog = ProviderCatalog(response)
+        codexIntent = catalog.state(for: .codex)?.intent ?? .auto
+        cursorIntent = catalog.state(for: .cursor)?.intent ?? .auto
+        grokIntent = catalog.state(for: .grok)?.intent ?? .auto
     }
 
     public func makeRequest(
@@ -217,6 +226,8 @@ public struct SettingsDraft: Equatable, Sendable {
         online.quotaEnabled = editable.contains("online.quotaEnabled") ? quotaEnabled : current.quotaEnabled
         online.resetCreditsEnabled = editable.contains("online.resetCreditsEnabled")
             ? resetCreditsEnabled : current.resetCreditsEnabled
+        online.cursorOnlineEnabled = editable.contains("online.cursorOnlineEnabled")
+            ? cursorOnlineEnabled : current.cursorOnlineEnabled
         online.grokQuotaEnabled = editable.contains("online.grokQuotaEnabled")
             ? grokQuotaEnabled : current.grokQuotaEnabled
         online.grokAutoRefreshEnabled = editable.contains("online.grokAutoRefreshEnabled")
@@ -248,7 +259,64 @@ public struct SettingsDraft: Equatable, Sendable {
         ui.launchBehavior = editable.contains("ui.launchBehavior") ? launchBehavior : current.launchBehavior
         ui.overviewRange = editable.contains("ui.overviewRange") ? overviewRange : current.overviewRange
         request.ui = ui
+
+        request.providers = [
+            providerUpdate(
+                provider: .codex,
+                intent: editable.contains("providers.codex.intent") ? codexIntent : current.codexIntent
+            ),
+            providerUpdate(
+                provider: .cursor,
+                intent: editable.contains("providers.cursor.intent") ? cursorIntent : current.cursorIntent
+            ),
+            providerUpdate(
+                provider: .grok,
+                intent: editable.contains("providers.grok.intent") ? grokIntent : current.grokIntent
+            ),
+        ]
         return request
+    }
+
+    public static func masterSwitchOn(
+        intent: Codexpulse_Core_V1_ProviderIntent,
+        state: ProviderRuntimeState
+    ) -> Bool {
+        switch intent {
+        case .enabled:
+            return true
+        case .disabled:
+            return false
+        case .auto:
+            return state.effective == .enabled || state.effective == .disabling
+        default:
+            return false
+        }
+    }
+
+    public func intent(for provider: AgentProvider) -> Codexpulse_Core_V1_ProviderIntent {
+        switch provider {
+        case .codex: codexIntent
+        case .cursor: cursorIntent
+        case .grok: grokIntent
+        }
+    }
+
+    public mutating func setIntent(_ intent: Codexpulse_Core_V1_ProviderIntent, for provider: AgentProvider) {
+        switch provider {
+        case .codex: codexIntent = intent
+        case .cursor: cursorIntent = intent
+        case .grok: grokIntent = intent
+        }
+    }
+
+    private func providerUpdate(
+        provider: AgentProvider,
+        intent: Codexpulse_Core_V1_ProviderIntent
+    ) -> Codexpulse_Core_V1_SettingsProviderUpdate {
+        var update = Codexpulse_Core_V1_SettingsProviderUpdate()
+        update.provider = provider.rawValue
+        update.intent = intent
+        return update
     }
 }
 

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -22,6 +23,7 @@ type GrokBotSnapshotWriter interface {
 type GrokBotCollectorConfig struct {
 	MinimumRefresh time.Duration
 	Now            func() time.Time
+	Enabled        func() bool
 }
 
 type GrokBotCollector struct {
@@ -48,6 +50,9 @@ func (collector *GrokBotCollector) RefreshIfDue(ctx context.Context) (bool, erro
 	if collector == nil || ctx == nil {
 		return false, ErrDashboardProtocol
 	}
+	if collector.config.Enabled != nil && !collector.config.Enabled() {
+		return false, nil
+	}
 	collector.mu.Lock()
 	defer collector.mu.Unlock()
 	now := collector.config.Now()
@@ -73,7 +78,9 @@ func (collector *GrokBotCollector) RefreshIfDue(ctx context.Context) (bool, erro
 		}
 		commit.UsedPercent = status.UsagePercent
 	}
-	if err := collector.writer.CommitCursorGrokBotObservation(ctx, commit); err != nil {
+	if err := providercontrol.WriteWithCommit(ctx, func() error {
+		return collector.writer.CommitCursorGrokBotObservation(ctx, commit)
+	}); err != nil {
 		return true, fmt.Errorf("%w: persist grok bot observation", ErrDashboardProtocol)
 	}
 	collector.last = now
@@ -88,7 +95,9 @@ func (collector *GrokBotCollector) recordFailure(ctx context.Context, atMS int64
 	} else if errors.Is(cause, ErrDashboardProtocol) {
 		failureCode = "schema_incompatible"
 	}
-	if err := collector.writer.RecordCursorGrokBotFailure(ctx, atMS, failureCode); err != nil {
+	if err := providercontrol.WriteWithCommit(ctx, func() error {
+		return collector.writer.RecordCursorGrokBotFailure(ctx, atMS, failureCode)
+	}); err != nil {
 		return fmt.Errorf("%w: persist grok bot failure", ErrDashboardProtocol)
 	}
 	collector.last = collector.config.Now()

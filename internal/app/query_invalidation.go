@@ -28,9 +28,7 @@ func (notifier *dashboardAwareInvalidation) Notify(
 		switch domain {
 		case core.InvalidationIndex:
 			notifier.summary.InvalidateUsage()
-		case core.InvalidationQuota:
-			// Cursor Dashboard refreshes both quota and usage/cost facts while
-			// publishing the shared quota invalidation domain.
+		case core.InvalidationQuota, core.InvalidationSettings:
 			notifier.summary.InvalidateUsageAndQuota()
 		}
 	}

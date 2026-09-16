@@ -214,6 +214,7 @@ public enum AppUpdateInstallPreparation: Equatable, Sendable {
 public actor AppRuntime {
     public typealias StateSink = @Sendable (CoreConnectionState) async -> Void
     public typealias InvalidationSink = @Sendable (_ domain: String) async -> Void
+    public typealias CatalogSink = @Sendable (ProviderCatalog) async -> AgentProvider?
     public typealias ClientFactory = @Sendable (RunningHelper) throws -> any AppCoreServing
     public typealias ProcessMonitorFactory = @Sendable (
         _ processID: Int32,
@@ -228,6 +229,7 @@ public actor AppRuntime {
     private let processMonitorFactory: ProcessMonitorFactory?
     private var stateSink: StateSink = { _ in }
     private var invalidationSink: InvalidationSink = { _ in }
+    private var catalogSink: CatalogSink = { catalog in catalog.enabledProviders.first }
     private var client: (any AppCoreServing)?
     private var streamController: InvalidationStreamController?
     private var helperProcessMonitor: (any HelperProcessMonitoring)?
@@ -239,7 +241,7 @@ public actor AppRuntime {
 	private var overviewCache: [OverviewCacheKey: OverviewResponses] = [:]
 	private var lastOverviewContext: [AgentProvider: CodexAccountContextKey?] = [:]
 	private var overviewRange: DateRangePreset = .quotaWeek
-	private var selectedProvider: AgentProvider = .codex
+	private var selectedProvider: AgentProvider?
     private var runtimeGeneration: UInt64 = 0
     private var refreshGeneration: UInt64 = 0
     private var refreshAdmissionGeneration: UInt64?
@@ -300,6 +302,10 @@ public actor AppRuntime {
         invalidationSink = sink
     }
 
+    public func setCatalogSink(_ sink: @escaping CatalogSink) {
+        catalogSink = sink
+    }
+
     public func start() async {
         guard client == nil, !startInFlight, !shuttingDown else {
             await emit(.unavailable(AppNotice(
@@ -341,7 +347,10 @@ public actor AppRuntime {
             switch BootstrapState(bootstrap) {
             case .normal:
                 readyForOverview = true
-                requestInitialOverviewRefresh()
+                try await activateProviderCatalog(client: connectedClient, generation: generation)
+                if selectedProvider != nil {
+                    requestInitialOverviewRefresh()
+                }
                 if systemIsSleeping {
                     await suspendWithoutStream(client: connectedClient, generation: generation)
                     return
@@ -382,17 +391,36 @@ public actor AppRuntime {
         await refresh(showLoading: false)
     }
 
-	public func selectProvider(_ provider: AgentProvider) async {
+	public func selectProvider(_ provider: AgentProvider?) async {
+        await applySelectedProvider(provider, refreshIfReady: true)
+	}
+
+    private func activateProviderCatalog(
+        client: any AppCoreServing,
+        generation: UInt64
+    ) async throws {
+        let settings = try await client.settings(retryPolicy: .transportDefault)
+        guard generation == runtimeGeneration else { throw CancellationError() }
+        let chosen = await catalogSink(ProviderCatalog(settings))
+        guard generation == runtimeGeneration else { throw CancellationError() }
+        await applySelectedProvider(chosen, refreshIfReady: false)
+    }
+
+    private func applySelectedProvider(_ provider: AgentProvider?, refreshIfReady: Bool) async {
 		guard provider != selectedProvider else { return }
 		selectedProvider = provider
-		overviewRange = provider.defaultOverviewRange
 		refreshGeneration &+= 1
 		refreshAdmissionGeneration = nil
 		invalidationRefreshPending = false
 		abandonRefreshTask()
 		cancelAccountRefresh()
+		guard let provider else {
+			lastResponses = nil
+			return
+		}
+		overviewRange = provider.defaultOverviewRange
 		lastResponses = overviewCache[overviewCacheKey(provider: provider, range: overviewRange)]
-		if readyForOverview {
+		if refreshIfReady, readyForOverview {
 			if let lastResponses {
 				await publishOverview(lastResponses)
 			}
@@ -1266,7 +1294,10 @@ public actor AppRuntime {
                 await emit(.recovery(snapshot))
             case .normal:
                 readyForOverview = true
-                requestInitialOverviewRefresh()
+                try await activateProviderCatalog(client: client, generation: generation)
+                if selectedProvider != nil {
+                    requestInitialOverviewRefresh()
+                }
                 if systemIsSleeping {
                     await suspendWithoutStream(client: client, generation: generation)
                     return
@@ -1324,6 +1355,7 @@ public actor AppRuntime {
 
     private func refresh(showLoading: Bool) async {
         guard readyForOverview, !systemIsSleeping, !shuttingDown, let client else { return }
+        guard let provider = selectedProvider else { return }
         if let refreshTask {
             _ = try? await refreshTask.value
             return
@@ -1348,7 +1380,6 @@ public actor AppRuntime {
             }
             return
         }
-		let provider = selectedProvider
 		let requests = OverviewRequestSet.make(provider: provider)
         let requestedRange = overviewRange
         let previousAccount = lastResponses?.account
@@ -1567,14 +1598,14 @@ public actor AppRuntime {
             let responses = try await task.value
 			guard generation == refreshGeneration, refreshTaskGeneration == generation, !shuttingDown,
 				responses.provider == selectedProvider,
-				responses.usage.providerContext.effectiveProvider == selectedProvider.rawValue,
-				responses.sessions.providerContext.effectiveProvider == selectedProvider.rawValue,
-				responses.projects.providerContext.effectiveProvider == selectedProvider.rawValue,
-				responses.invocationUsage.providerContext.effectiveProvider == selectedProvider.rawValue,
-				responses.todayUsage.providerContext.effectiveProvider == selectedProvider.rawValue,
-				responses.todayInvocationUsage.providerContext.effectiveProvider == selectedProvider.rawValue,
-				responses.quota.providerContext.effectiveProvider == selectedProvider.rawValue,
-				responses.quotaPace.providerContext.effectiveProvider == selectedProvider.rawValue
+				responses.usage.providerContext.effectiveProvider == selectedProvider?.rawValue,
+				responses.sessions.providerContext.effectiveProvider == selectedProvider?.rawValue,
+				responses.projects.providerContext.effectiveProvider == selectedProvider?.rawValue,
+				responses.invocationUsage.providerContext.effectiveProvider == selectedProvider?.rawValue,
+				responses.todayUsage.providerContext.effectiveProvider == selectedProvider?.rawValue,
+				responses.todayInvocationUsage.providerContext.effectiveProvider == selectedProvider?.rawValue,
+				responses.quota.providerContext.effectiveProvider == selectedProvider?.rawValue,
+				responses.quotaPace.providerContext.effectiveProvider == selectedProvider?.rawValue
 			else { throw AppRuntimeError.providerMismatch }
             clearOwnedRefreshTask(generation)
             await publishOverview(responses)
@@ -1585,7 +1616,7 @@ public actor AppRuntime {
             // so it cannot delay the primary Overview publication above.
 			startAccountRefresh(
 				client: client,
-				provider: selectedProvider,
+				provider: provider,
 				runtimeGeneration: runtimeGeneration,
 				overviewGeneration: generation
 			)
@@ -1830,9 +1861,27 @@ public actor AppRuntime {
     }
 
     private func handleInvalidation(domain: String) async {
+        let previousSelection = selectedProvider
+        if domain == "settings" {
+            guard let client else { return }
+            do {
+                try await activateProviderCatalog(client: client, generation: runtimeGeneration)
+            } catch {
+                return
+            }
+        }
         await invalidationSink(domain)
         guard !systemIsSleeping else { return }
-        guard domain != "settings" else { return }
+        if domain == "settings" {
+            if selectedProvider != previousSelection, selectedProvider != nil, readyForOverview {
+                if refreshTask != nil {
+                    invalidationRefreshPending = true
+                    return
+                }
+                await refresh(showLoading: lastResponses == nil)
+            }
+            return
+        }
         if domain == "account" {
             cancelAccountRefresh()
             overviewCache = overviewCache.filter { $0.key.provider != .codex }

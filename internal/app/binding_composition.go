@@ -6,15 +6,16 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/cursorprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/grokprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	"github.com/SisyphusSQ/codex-pulse/internal/providerrefresh"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/agentrouter"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/dashboardsummary"
@@ -31,6 +32,7 @@ type coreComposition struct {
 	service          *core.Service
 	apiSubscriptions *apisubscriptions.Service
 	providerRefresh  *providerrefresh.Orchestrator
+	runtimeInfo      *runtimeinfo.Service
 }
 
 func composeCoreGraph(
@@ -40,6 +42,7 @@ func composeCoreGraph(
 	invalidation queryInvalidationNotifier,
 	apiKeys apisubscriptions.APIKeyProvider,
 	apiCredentials *apisubscriptions.SQLiteCredentialStore,
+	controller *providercontrol.Controller,
 ) (*coreComposition, error) {
 	if database == nil || preferenceStore == nil {
 		return nil, core.ErrService
@@ -80,7 +83,13 @@ func composeCoreGraph(
 	cursorDashboardCollector, err := cursorprovider.NewDashboardCollector(
 		cursorDashboardClient,
 		repository,
-		cursorprovider.DashboardCollectorConfig{MinimumRefresh: 5 * time.Minute, Now: time.Now},
+		cursorprovider.DashboardCollectorConfig{
+			MinimumRefresh: 5 * time.Minute, Now: time.Now,
+			Enabled: func() bool {
+				snapshot, loadErr := preferenceStore.LoadPreferences(context.Background())
+				return loadErr == nil && snapshot.Online.CursorOnlineEnabled
+			},
+		},
 	)
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
@@ -88,7 +97,13 @@ func composeCoreGraph(
 	cursorGrokBotCollector, err := cursorprovider.NewGrokBotCollector(
 		cursorDashboardClient,
 		repository,
-		cursorprovider.GrokBotCollectorConfig{MinimumRefresh: 5 * time.Minute, Now: time.Now},
+		cursorprovider.GrokBotCollectorConfig{
+			MinimumRefresh: 5 * time.Minute, Now: time.Now,
+			Enabled: func() bool {
+				snapshot, loadErr := preferenceStore.LoadPreferences(context.Background())
+				return loadErr == nil && snapshot.Online.CursorOnlineEnabled
+			},
+		},
 	)
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
@@ -98,15 +113,24 @@ func composeCoreGraph(
 		return nil, errors.Join(core.ErrService, err)
 	}
 	cursorService.SetGrokBotRefresher(cursorGrokBotCollector)
-	grokService, err := composeGrokQueryService(repository, preferenceStore)
+	if controller != nil {
+		cursorService.BindBeginner(controller)
+	}
+	grokService, err := composeGrokQueryService(repository, preferenceStore, controller)
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
+	}
+	if controller != nil {
+		grokService.BindBeginner(controller)
 	}
 	providerRouter, err := agentrouter.New(
 		usageService, invocationService, cursorService, cursorService, grokService, grokService,
 	)
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
+	}
+	if controller != nil {
+		providerRouter.BindStates(controller)
 	}
 	pricingService, err := pricingcatalog.NewService(repository, time.Now)
 	if err != nil {
@@ -122,13 +146,22 @@ func composeCoreGraph(
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
+	if controller != nil {
+		runtimeService.BindStates(controller)
+	}
 	quotaRouter, err := agentrouter.NewQuota(runtimeService, cursorService, grokService)
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
+	if controller != nil {
+		quotaRouter.BindStates(controller)
+	}
 	summaryService, err := dashboardsummary.New(providerRouter, quotaRouter, time.Now)
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
+	}
+	if controller != nil {
+		summaryService.BindStates(controller)
 	}
 	awareInvalidation.summary = summaryService
 	cursorService.SetRefreshNotifier(func() {
@@ -162,6 +195,7 @@ func composeCoreGraph(
 	orchestrator, err := providerrefresh.New(providerrefresh.Config{
 		Cursor:       providerrefresh.NewCursorAdapter(cursorService, time.Now),
 		Grok:         providerrefresh.NewGrokAdapter(grokService, time.Now),
+		Controller:   controller,
 		Invalidation: invalidationAdapter{notifier: invalidation},
 		Now:          time.Now,
 	})
@@ -182,7 +216,8 @@ func composeCoreGraph(
 		return nil, err
 	}
 	return &coreComposition{
-		service: service, apiSubscriptions: apiSubscriptions, providerRefresh: orchestrator,
+		service: service, apiSubscriptions: apiSubscriptions,
+		providerRefresh: orchestrator, runtimeInfo: runtimeService,
 	}, nil
 }
 
@@ -253,6 +288,7 @@ func (emptyAPIKeyProvider) APIKey(string) ([]byte, bool) { return nil, false }
 func composeGrokQueryService(
 	repository *store.Repository,
 	preferenceStore *preferences.FileStore,
+	controller *providercontrol.Controller,
 ) (*grokprovider.QueryService, error) {
 	disabled, err := grokprovider.NewDisabledQueryService()
 	if err != nil {
@@ -266,15 +302,13 @@ func composeGrokQueryService(
 	if err != nil {
 		return disabled, nil
 	}
-	var lastKnownAutoRefresh atomic.Bool
-	lastKnownAutoRefresh.Store(true)
 	auth, err := grokprovider.NewAuthReader(config.AuthPath, time.Now, grokprovider.AuthReaderConfig{
 		RefreshEnabled: func() bool {
-			snapshot, loadErr := preferenceStore.LoadPreferences(context.Background())
-			if loadErr == nil {
-				lastKnownAutoRefresh.Store(snapshot.Online.GrokAutoRefreshEnabled)
+			if admitProviderControl(controller, agentprovider.Grok) != nil {
+				return false
 			}
-			return lastKnownAutoRefresh.Load()
+			snapshot, loadErr := preferenceStore.LoadPreferences(context.Background())
+			return loadErr == nil && snapshot.Online.GrokAutoRefreshEnabled
 		},
 	})
 	if err != nil {
@@ -301,11 +335,11 @@ func composeGrokQueryService(
 			MinimumRefresh: 5 * time.Minute,
 			Now:            time.Now,
 			Enabled: func() bool {
-				snapshot, loadErr := preferenceStore.LoadPreferences(context.Background())
-				if loadErr != nil {
-					return true
+				if admitProviderControl(controller, agentprovider.Grok) != nil {
+					return false
 				}
-				return snapshot.Online.GrokQuotaEnabled
+				snapshot, loadErr := preferenceStore.LoadPreferences(context.Background())
+				return loadErr == nil && snapshot.Online.GrokQuotaEnabled
 			},
 		},
 	)

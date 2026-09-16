@@ -2,11 +2,13 @@ package providerrefresh
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 )
 
@@ -28,6 +30,7 @@ type Config struct {
 	Codex        CodexRefresher
 	Cursor       CursorRefresher
 	Grok         GrokRefresher
+	Controller   *providercontrol.Controller
 	Invalidation InvalidationNotifier
 	Now          func() time.Time
 }
@@ -36,6 +39,7 @@ type Orchestrator struct {
 	codex        CodexRefresher
 	cursor       CursorRefresher
 	grok         GrokRefresher
+	controller   *providercontrol.Controller
 	invalidation InvalidationNotifier
 	now          func() time.Time
 
@@ -60,7 +64,7 @@ func New(config Config) (*Orchestrator, error) {
 	}
 	return &Orchestrator{
 		codex: config.Codex, cursor: config.Cursor, grok: config.Grok,
-		invalidation: config.Invalidation, now: now,
+		controller: config.Controller, invalidation: config.Invalidation, now: now,
 	}, nil
 }
 
@@ -70,9 +74,7 @@ func (orchestrator *Orchestrator) BindCodex(refresher CodexRefresher) {
 	}
 	orchestrator.codexMu.Lock()
 	defer orchestrator.codexMu.Unlock()
-	if orchestrator.codex == nil {
-		orchestrator.codex = refresher
-	}
+	orchestrator.codex = refresher
 }
 
 func (orchestrator *Orchestrator) Refresh(ctx context.Context, trigger string) (Receipt, error) {
@@ -126,7 +128,9 @@ func (orchestrator *Orchestrator) execute(ctx context.Context, trigger string) (
 	if err := ctx.Err(); err != nil {
 		return Receipt{}, err
 	}
-	orchestrator.notifyOnce(ctx, providers)
+	if orchestrator.controller == nil {
+		orchestrator.notifyOnce(ctx, providers)
+	}
 	return Receipt{Trigger: trigger, Providers: providers}, nil
 }
 
@@ -134,34 +138,60 @@ func (orchestrator *Orchestrator) refreshOne(ctx context.Context, provider, trig
 	if ctx.Err() != nil {
 		return cancelledProvider(provider)
 	}
+	if orchestrator.controller != nil {
+		operation, err := orchestrator.controller.Begin(ctx, provider)
+		if err != nil {
+			if errors.Is(err, providercontrol.ErrDisabled) {
+				return DisabledProvider(provider, ComponentsFor(provider)...)
+			}
+			return UnavailableProvider(provider, ComponentsFor(provider)...)
+		}
+		defer operation.Finish()
+		result := orchestrator.refreshAdapter(operation.Context(), provider, trigger)
+		if !providerRefreshed(result) {
+			return result
+		}
+		finish, commitErr := operation.BeginCommit()
+		if commitErr != nil {
+			return DisabledProvider(provider, ComponentsFor(provider)...)
+		}
+		defer finish()
+		orchestrator.notifyOnce(operation.Context(), []ProviderResult{result})
+		return result
+	}
+	return orchestrator.refreshAdapter(ctx, provider, trigger)
+}
+
+func (orchestrator *Orchestrator) refreshAdapter(ctx context.Context, provider, trigger string) ProviderResult {
 	switch provider {
 	case agentprovider.Codex:
 		orchestrator.codexMu.Lock()
 		refresher := orchestrator.codex
 		orchestrator.codexMu.Unlock()
 		if refresher == nil {
-			return UnavailableProvider(
-				agentprovider.Codex,
-				ComponentCodexLocal, ComponentCodexQuota, ComponentCodexResetCredits,
-			)
+			return UnavailableProvider(agentprovider.Codex, ComponentsFor(agentprovider.Codex)...)
 		}
 		return refresher.RefreshProvider(ctx, trigger)
 	case agentprovider.Cursor:
 		if orchestrator.cursor == nil {
-			return UnavailableProvider(
-				agentprovider.Cursor,
-				ComponentCursorLocal, ComponentCursorDashboard, ComponentCursorGrokBot,
-			)
+			return UnavailableProvider(agentprovider.Cursor, ComponentsFor(agentprovider.Cursor)...)
 		}
 		return orchestrator.cursor.RefreshProvider(ctx, trigger)
 	default:
 		if orchestrator.grok == nil {
-			return UnavailableProvider(
-				agentprovider.Grok, ComponentGrokLocal, ComponentGrokBilling,
-			)
+			return UnavailableProvider(agentprovider.Grok, ComponentsFor(agentprovider.Grok)...)
 		}
 		return orchestrator.grok.RefreshProvider(ctx, trigger)
 	}
+}
+
+func providerRefreshed(result ProviderResult) bool {
+	for _, component := range result.Components {
+		if component.Status == StatusRefreshed {
+			return true
+		}
+	}
+	return false
 }
 
 func (orchestrator *Orchestrator) notifyOnce(ctx context.Context, providers []ProviderResult) {

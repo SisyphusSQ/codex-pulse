@@ -6,7 +6,9 @@ import (
 	"regexp"
 	"strconv"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 )
 
@@ -20,11 +22,16 @@ func (service *Service) Settings(ctx context.Context) (SettingsResponse, error) 
 	if err != nil {
 		return SettingsResponse{}, err
 	}
+	if service.providerSources != nil {
+		if err := service.providerSources.Refresh(ctx); err != nil {
+			return SettingsResponse{}, runtimeReadFailure(err)
+		}
+	}
 	snapshot, err := service.preferences.LoadPreferences(ctx)
 	if err != nil {
 		return SettingsResponse{}, runtimeReadFailure(err)
 	}
-	mapped, err := mapSettings(snapshot)
+	mapped, err := mapSettings(snapshot, service.providers)
 	if err != nil {
 		return SettingsResponse{}, basequery.NewUnavailableFailure(err)
 	}
@@ -37,10 +44,10 @@ func (service *Service) Settings(ctx context.Context) (SettingsResponse, error) 
 	}, nil
 }
 
-func mapSettings(snapshot preferences.Snapshot) (SettingsSnapshot, error) {
+func mapSettings(snapshot preferences.Snapshot, providers providercontrol.StateReader) (SettingsSnapshot, error) {
 	if snapshot.SchemaVersion != preferences.CurrentPreferencesSchemaVersion || snapshot.Revision == 0 ||
 		snapshot.Onboarding.Version != preferences.CurrentOnboardingVersion || !snapshot.Onboarding.Completed ||
-		snapshot.CodexHome.Generation == 0 || !validSettingsRefresh(snapshot.Refresh) ||
+		(snapshot.CodexHome != nil && snapshot.CodexHome.Generation == 0) || !validSettingsRefresh(snapshot.Refresh) ||
 		!validSettingsUpdates(snapshot.Updates) || !validSettingsUI(snapshot.UI) {
 		return SettingsSnapshot{}, errors.New("preferences snapshot is invalid")
 	}
@@ -71,18 +78,28 @@ func mapSettings(snapshot preferences.Snapshot) (SettingsSnapshot, error) {
 		}
 		lastOutcome = &value
 	}
+	home := SettingsHomeSnapshot{
+		Configured: false, Generation: "0", SwitchStatus: HomeSwitchStable, LastSwitchOutcome: lastOutcome,
+	}
+	if snapshot.CodexHome != nil {
+		home = SettingsHomeSnapshot{
+			Configured: true, Generation: strconv.FormatUint(snapshot.CodexHome.Generation, 10),
+			SwitchStatus: switchStatus, LastSwitchOutcome: lastOutcome,
+		}
+	} else {
+		home.SwitchStatus = switchStatus
+		home.LastSwitchOutcome = lastOutcome
+	}
 	return SettingsSnapshot{
 		SchemaVersion: snapshot.SchemaVersion, Revision: strconv.FormatUint(snapshot.Revision, 10),
 		OnboardingCompleted: snapshot.Onboarding.Completed,
-		Home: SettingsHomeSnapshot{
-			Configured: true, Generation: strconv.FormatUint(snapshot.CodexHome.Generation, 10),
-			SwitchStatus: switchStatus, LastSwitchOutcome: lastOutcome,
-		},
+		Home:                home,
 		Online: SettingsOnlineSnapshot{
 			QuotaEnabled:           snapshot.Online.QuotaEnabled,
 			ResetCreditsEnabled:    snapshot.Online.ResetCreditsEnabled,
 			GrokQuotaEnabled:       snapshot.Online.GrokQuotaEnabled,
 			GrokAutoRefreshEnabled: snapshot.Online.GrokAutoRefreshEnabled,
+			CursorOnlineEnabled:    snapshot.Online.CursorOnlineEnabled,
 		},
 		Refresh: SettingsRefreshSnapshot{
 			QuotaIntervalSeconds:        snapshot.Refresh.QuotaIntervalSeconds,
@@ -102,7 +119,50 @@ func mapSettings(snapshot preferences.Snapshot) (SettingsSnapshot, error) {
 			Locale: snapshot.UI.Locale, LaunchBehavior: string(snapshot.UI.LaunchBehavior),
 			OverviewRange: string(snapshot.UI.OverviewRange),
 		},
+		Providers: mapProviderSettings(snapshot, providers),
 	}, nil
+}
+
+func mapProviderSettings(snapshot preferences.Snapshot, providers providercontrol.StateReader) []SettingsProviderSnapshot {
+	if lister, ok := providers.(interface {
+		Snapshots() []providercontrol.Snapshot
+	}); ok {
+		states := lister.Snapshots()
+		mapped := make([]SettingsProviderSnapshot, 0, len(states))
+		for _, state := range states {
+			mapped = append(mapped, SettingsProviderSnapshot{
+				Provider:       state.Provider,
+				Intent:         providercontrol.ProtoIntent(state.Intent),
+				DiscoveryState: providercontrol.ProtoDiscovery(state.Discovery),
+				EffectiveState: providercontrol.ProtoEffective(state.Effective),
+				ReasonCode:     state.ReasonCode,
+				Generation:     strconv.FormatUint(state.Generation, 10),
+			})
+		}
+		if len(mapped) == 3 {
+			return mapped
+		}
+	}
+	return []SettingsProviderSnapshot{
+		syntheticProviderSettings(agentprovider.Codex, snapshot.Providers.Codex.Intent),
+		syntheticProviderSettings(agentprovider.Cursor, snapshot.Providers.Cursor.Intent),
+		syntheticProviderSettings(agentprovider.Grok, snapshot.Providers.Grok.Intent),
+	}
+}
+
+func syntheticProviderSettings(provider string, intent preferences.ProviderIntent) SettingsProviderSnapshot {
+	effective := providercontrol.EffectiveUnavailable
+	reason := providercontrol.ReasonUnchecked
+	if intent == preferences.ProviderIntentDisabled {
+		effective = providercontrol.EffectiveDisabled
+		reason = providercontrol.ReasonDisabled
+	}
+	return SettingsProviderSnapshot{
+		Provider: provider, Intent: providercontrol.ProtoIntent(intent),
+		DiscoveryState: providercontrol.ProtoDiscovery(providercontrol.DiscoveryUnchecked),
+		EffectiveState: providercontrol.ProtoEffective(effective),
+		ReasonCode:     reason, Generation: "0",
+	}
 }
 
 func validSettingsRefresh(value preferences.RefreshPreferences) bool {
@@ -138,8 +198,12 @@ func settingsEditableFields() []EditableField {
 	return []EditableField{
 		booleanField("online.quotaEnabled", true),
 		booleanField("online.resetCreditsEnabled", true),
+		booleanField("online.cursorOnlineEnabled", true),
 		booleanField("online.grokQuotaEnabled", true),
 		booleanField("online.grokAutoRefreshEnabled", true),
+		enumField("providers.codex.intent", true, []string{"enabled", "disabled"}),
+		enumField("providers.cursor.intent", true, []string{"enabled", "disabled"}),
+		enumField("providers.grok.intent", true, []string{"enabled", "disabled"}),
 		integerField("refresh.quotaIntervalSeconds", true, 60, 1800),
 		integerField("refresh.resetCreditsIntervalSeconds", true, 60, 86400),
 		integerField("refresh.reconcileIntervalSeconds", true, 60, 86400),

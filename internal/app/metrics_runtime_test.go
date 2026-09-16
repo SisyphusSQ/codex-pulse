@@ -33,7 +33,7 @@ func TestApplicationMetricsRuntimeComposesPersistsAndCloses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileStore() error = %v", err)
 	}
-	composition, err := composeCoreGraph(database, preferenceStore, runtime.Observer(), nil, nil, nil)
+	composition, err := composeCoreGraph(database, preferenceStore, runtime.Observer(), nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("composeCoreGraph() error = %v", err)
 	}

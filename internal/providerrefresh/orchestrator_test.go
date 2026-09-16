@@ -13,6 +13,8 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/cursorprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/grokprovider"
+	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 )
 
 type stubProvider struct {
@@ -182,6 +184,34 @@ func TestOrchestratorMergesOverlappingRefresh(t *testing.T) {
 	}
 }
 
+func TestBindCodexReplacesStoppedWorkerAdapter(t *testing.T) {
+	t.Parallel()
+	first := &stubProvider{result: ProviderResult{
+		Provider: agentprovider.Codex, Status: StatusRefreshed,
+		Components: []ComponentResult{{Component: ComponentCodexLocal, Status: StatusRefreshed}},
+	}}
+	second := &stubProvider{result: ProviderResult{
+		Provider: agentprovider.Codex, Status: StatusRefreshed,
+		Components: []ComponentResult{{Component: ComponentCodexLocal, Status: StatusRefreshed}},
+	}}
+	orchestrator, err := New(Config{
+		Codex:  first,
+		Cursor: &stubProvider{result: UnavailableProvider(agentprovider.Cursor, ComponentCursorLocal)},
+		Grok:   &stubProvider{result: UnavailableProvider(agentprovider.Grok, ComponentGrokLocal)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	orchestrator.BindCodex(second)
+	if _, err := orchestrator.Refresh(context.Background(), TriggerManual); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+	if first.calls.Load() != 0 || second.calls.Load() != 1 {
+		t.Fatalf("Codex adapters first=%d second=%d, want replacement only",
+			first.calls.Load(), second.calls.Load())
+	}
+}
+
 func TestOrchestratorCoalescesInvalidation(t *testing.T) {
 	t.Parallel()
 	invalidation := &recordingInvalidation{}
@@ -304,5 +334,83 @@ func TestInvalidTriggerReturnsValidation(t *testing.T) {
 	}
 	if _, err := orchestrator.Refresh(context.Background(), "all"); err == nil {
 		t.Fatal("unknown trigger must fail closed")
+	}
+}
+
+type orchestratorPreferences struct {
+	snapshot preferences.Snapshot
+}
+
+func (store orchestratorPreferences) LoadPreferences(context.Context) (preferences.Snapshot, error) {
+	return store.snapshot, nil
+}
+
+func availableProbe(_ context.Context) providercontrol.ProbeResult {
+	return providercontrol.ProbeResult{
+		State: providercontrol.DiscoveryAvailable, ReasonCode: providercontrol.ReasonAvailable,
+	}
+}
+
+func TestOrchestratorSkipsDisabledProviderWithoutCallingAdapter(t *testing.T) {
+	t.Parallel()
+	cursor := &stubProvider{result: ProviderResult{
+		Provider: agentprovider.Cursor, Status: StatusRefreshed,
+		Components: []ComponentResult{{Component: ComponentCursorLocal, Status: StatusRefreshed, Attempted: true}},
+	}}
+	grok := &stubProvider{result: ProviderResult{
+		Provider: agentprovider.Grok, Status: StatusRefreshed,
+		Components: []ComponentResult{{Component: ComponentGrokLocal, Status: StatusRefreshed, Attempted: true}},
+	}}
+	codex := &stubProvider{result: ProviderResult{
+		Provider: agentprovider.Codex, Status: StatusRefreshed,
+		Components: []ComponentResult{{Component: ComponentCodexLocal, Status: StatusRefreshed, Attempted: true}},
+	}}
+	prefs := orchestratorPreferences{snapshot: preferences.Snapshot{
+		SchemaVersion: preferences.CurrentPreferencesSchemaVersion,
+		Revision:      1,
+		Onboarding:    preferences.OnboardingPreferences{Version: preferences.CurrentOnboardingVersion, Completed: true},
+		Providers: preferences.ProviderPreferences{
+			Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+			Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
+			Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+		},
+		Online:  preferences.DefaultOnlinePreferences(),
+		Refresh: preferences.DefaultRefreshPreferences(),
+		Updates: preferences.DefaultUpdatePreferences(),
+		UI:      preferences.DefaultUIPreferences(),
+	}}
+	controller, err := providercontrol.NewController(prefs, providercontrol.ProbeSet{
+		Codex: func(context.Context, *preferences.CodexHomePreferences) providercontrol.ProbeResult {
+			return availableProbe(context.Background())
+		},
+		Cursor: availableProbe,
+		Grok:   availableProbe,
+	})
+	if err != nil {
+		t.Fatalf("NewController() error = %v", err)
+	}
+	if _, err := controller.RefreshDiscovery(context.Background(), TriggerStartup); err != nil {
+		t.Fatalf("RefreshDiscovery() error = %v", err)
+	}
+	orchestrator, err := New(Config{
+		Codex: codex, Cursor: cursor, Grok: grok, Controller: controller,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := orchestrator.Refresh(context.Background(), TriggerManual)
+	if err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+	if cursor.calls.Load() != 0 {
+		t.Fatalf("disabled cursor adapter calls = %d, want 0", cursor.calls.Load())
+	}
+	if grok.calls.Load() != 1 || codex.calls.Load() != 1 {
+		t.Fatalf("sibling adapter calls cursor=%d grok=%d codex=%d", cursor.calls.Load(), grok.calls.Load(), codex.calls.Load())
+	}
+	if len(receipt.Providers) != 3 ||
+		receipt.Providers[1].Provider != agentprovider.Cursor ||
+		receipt.Providers[1].Status != StatusSkippedDisabled {
+		t.Fatalf("receipt = %#v", receipt)
 	}
 }

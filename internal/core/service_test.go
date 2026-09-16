@@ -12,6 +12,8 @@ import (
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptiontier"
+	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/invocationusage"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/pricingcatalog"
@@ -19,6 +21,25 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
+
+func TestValidProviderUpdatesRequiresExactProviderSet(t *testing.T) {
+	t.Parallel()
+	valid := []SettingsProviderUpdate{
+		{Provider: agentprovider.Codex, Intent: providercontrol.ProtoIntent(preferences.ProviderIntentAuto)},
+		{Provider: agentprovider.Cursor, Intent: providercontrol.ProtoIntent(preferences.ProviderIntentEnabled)},
+		{Provider: agentprovider.Grok, Intent: providercontrol.ProtoIntent(preferences.ProviderIntentDisabled)},
+	}
+	if !validProviderUpdates(valid) {
+		t.Fatal("validProviderUpdates(valid) = false")
+	}
+	for _, invalidProvider := range []string{"", " Codex ", "unknown"} {
+		invalid := append([]SettingsProviderUpdate(nil), valid...)
+		invalid[0].Provider = invalidProvider
+		if validProviderUpdates(invalid) {
+			t.Fatalf("validProviderUpdates(provider=%q) = true", invalidProvider)
+		}
+	}
+}
 
 // 测试 Service 只暴露 Go Helper 的业务方法，不继续携带 updater 平台职责。
 func TestServiceExposesExactBusinessSurface(t *testing.T) {
@@ -326,13 +347,14 @@ func TestServiceContractsExposeUniqueCommandMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	contract := service.Contracts()
-	if contract.Version != "core-rpc-v4" ||
+	if contract.Version != "core-rpc-v5" ||
 		contract.UsageCostVersion != "usage-cost-v2" ||
 		contract.InvocationUsageVersion != "invocation-usage-v1" ||
 		contract.PricingCatalogVersion != "pricing-catalog-v1" ||
 		contract.DashboardSummaryVersion != "dashboard-summary-v2" ||
 		contract.CodexProTierVersion != subscriptiontier.ContractVersion ||
-		contract.CodexSubscriptionAccountsVersion != subscriptionaccounts.ContractVersion {
+		contract.CodexSubscriptionAccountsVersion != subscriptionaccounts.ContractVersion ||
+		contract.ProviderControlVersion != ProviderControlVersion {
 		t.Fatalf("Contracts() versions = %#v", contract)
 	}
 	commandsFromMethods := make([]string, 0)

@@ -730,3 +730,54 @@ func TestEncodeResponseOmitsResetCreditExpiresAtWhenUnknown(t *testing.T) {
 		t.Fatalf("reset credit item = %#v, want absent expires_at_ms", items)
 	}
 }
+
+func TestEncodeSettingsProviderEnumsUseProtoNames(t *testing.T) {
+	t.Parallel()
+	meta, err := basequery.NewResponseMeta(basequery.ResponseComplete, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unknownMS, err := basequery.UnknownNumeric(basequery.NumericMilliseconds, basequery.UnknownNotApplicable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := &corev1.SettingsResponse{}
+	if err := EncodeResponse(runtimeinfo.SettingsResponse{
+		Meta: meta,
+		Snapshot: runtimeinfo.SettingsSnapshot{
+			SchemaVersion: 3, Revision: "1", OnboardingCompleted: true,
+			Home:   runtimeinfo.SettingsHomeSnapshot{Configured: false, Generation: "0", SwitchStatus: "stable"},
+			Online: runtimeinfo.SettingsOnlineSnapshot{CursorOnlineEnabled: true},
+			Updates: runtimeinfo.SettingsUpdateSnapshot{
+				Channel: "stable", SnoozeUntilMS: unknownMS, LastCheckAtMS: unknownMS,
+			},
+			UI: runtimeinfo.SettingsUISnapshot{Locale: "system", LaunchBehavior: "tray", OverviewRange: "today"},
+			Providers: []runtimeinfo.SettingsProviderSnapshot{{
+				Provider: "codex", Intent: "PROVIDER_INTENT_AUTO",
+				DiscoveryState: "PROVIDER_DISCOVERY_STATE_AVAILABLE",
+				EffectiveState: "PROVIDER_EFFECTIVE_STATE_ENABLED",
+				ReasonCode:     "available", Generation: "1",
+			}, {
+				Provider: "cursor", Intent: "PROVIDER_INTENT_DISABLED",
+				DiscoveryState: "PROVIDER_DISCOVERY_STATE_AVAILABLE",
+				EffectiveState: "PROVIDER_EFFECTIVE_STATE_DISABLED",
+				ReasonCode:     "disabled", Generation: "4",
+			}, {
+				Provider: "grok", Intent: "PROVIDER_INTENT_ENABLED",
+				DiscoveryState: "PROVIDER_DISCOVERY_STATE_MISSING",
+				EffectiveState: "PROVIDER_EFFECTIVE_STATE_UNAVAILABLE",
+				ReasonCode:     "not_found", Generation: "2",
+			}},
+		},
+	}, target); err != nil {
+		t.Fatalf("EncodeResponse(settings providers) error = %v", err)
+	}
+	providers := target.GetSnapshot().GetProviders()
+	if len(providers) != 3 ||
+		providers[0].GetIntent() != corev1.ProviderIntent_PROVIDER_INTENT_AUTO ||
+		providers[1].GetIntent() != corev1.ProviderIntent_PROVIDER_INTENT_DISABLED ||
+		providers[2].GetEffectiveState() != corev1.ProviderEffectiveState_PROVIDER_EFFECTIVE_STATE_UNAVAILABLE ||
+		!target.GetSnapshot().GetOnline().GetCursorOnlineEnabled() {
+		t.Fatalf("encoded settings = %#v", target.GetSnapshot())
+	}
+}

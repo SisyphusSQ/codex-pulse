@@ -118,6 +118,31 @@ func TestHomeProbeTreatsMissingAllowlistedEntriesAsEmpty(t *testing.T) {
 	}
 }
 
+func TestHomeProbeIdentityDoesNotWalkSourceDirectories(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	if err := os.Mkdir(filepath.Join(home, "sessions"), 0o700); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+	if err := os.Symlink(filepath.Join(home, "missing"), filepath.Join(home, "sessions", "unsafe.jsonl")); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+	metadata, err := NewHomeProbe().ProbeIdentity(context.Background(), home)
+	if err != nil {
+		t.Fatalf("ProbeIdentity() error = %v", err)
+	}
+	canonicalHome, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		t.Fatalf("EvalSymlinks() error = %v", err)
+	}
+	if metadata.Path != filepath.Clean(canonicalHome) || metadata.DeviceID == "" || metadata.Inode <= 0 {
+		t.Fatalf("ProbeIdentity() = %#v", metadata)
+	}
+	if metadata.SessionsDirectory || metadata.JSONLFiles != 0 || metadata.JSONLBytes != 0 {
+		t.Fatalf("ProbeIdentity() walked source metadata: %#v", metadata)
+	}
+}
+
 func TestHomeProbeRejectsUnsafeAndUnsupportedEntries(t *testing.T) {
 	t.Parallel()
 

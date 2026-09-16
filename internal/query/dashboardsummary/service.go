@@ -10,6 +10,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
@@ -35,6 +36,7 @@ type usageCacheKey struct {
 	startAtMS       int64
 	endAtMS         int64
 	tokenTotalsOnly bool
+	control         uint64
 }
 
 type cachedUsage struct {
@@ -44,14 +46,16 @@ type cachedUsage struct {
 
 type cachedQuota struct {
 	generation uint64
+	control    uint64
 	evaluated  int64
 	response   runtimeinfo.QuotaCurrentResponse
 }
 
 type Service struct {
-	usage UsageQuery
-	quota QuotaQuery
-	now   func() time.Time
+	usage     UsageQuery
+	quota     QuotaQuery
+	now       func() time.Time
+	providers providercontrol.StateReader
 
 	mu         sync.Mutex
 	usageGen   uint64
@@ -72,6 +76,13 @@ func New(usage UsageQuery, quota QuotaQuery, now func() time.Time) (*Service, er
 		usageCache: make(map[usageCacheKey]cachedUsage),
 		quotaCache: make(map[string]cachedQuota),
 	}, nil
+}
+
+func (service *Service) BindStates(reader providercontrol.StateReader) {
+	if service == nil {
+		return
+	}
+	service.providers = reader
 }
 
 func (service *Service) InvalidateUsage() {
@@ -128,10 +139,19 @@ func (service *Service) DashboardSummary(ctx context.Context, request Request) (
 		return Response{}, basequery.NewValidationFailure("evaluatedAtMS", nil)
 	}
 
+	providers := summaryProviders
+	var controlGen uint64
+	if service.providers != nil {
+		providers = append([]string(nil), service.providers.EnabledProviders()...)
+		controlGen = service.providers.Generation()
+	}
 	usageGen, quotaGen := service.generations()
-	fetched := make([]providerFetch, len(summaryProviders))
+	if len(providers) == 0 {
+		return knownEmptySummary(*rangeValue, *activityRange, usageGen, quotaGen)
+	}
+	fetched := make([]providerFetch, len(providers))
 	var wait sync.WaitGroup
-	for index, provider := range summaryProviders {
+	for index, provider := range providers {
 		wait.Add(1)
 		go func(index int, provider string) {
 			defer wait.Done()
@@ -145,6 +165,7 @@ func (service *Service) DashboardSummary(ctx context.Context, request Request) (
 				},
 				*rangeValue,
 				usageGen,
+				controlGen,
 			)
 			fetched[index].activity, fetched[index].activityErr = service.loadUsage(
 				ctx,
@@ -155,9 +176,10 @@ func (service *Service) DashboardSummary(ctx context.Context, request Request) (
 				},
 				*activityRange,
 				usageGen,
+				controlGen,
 			)
 			fetched[index].quota, fetched[index].quotaErr = service.loadQuota(
-				ctx, provider, evaluatedAt, quotaGen,
+				ctx, provider, evaluatedAt, quotaGen, controlGen,
 			)
 		}(index, provider)
 	}
@@ -165,7 +187,49 @@ func (service *Service) DashboardSummary(ctx context.Context, request Request) (
 	if err := ctx.Err(); err != nil {
 		return Response{}, err
 	}
+	if service.providers != nil && service.providers.Generation() != controlGen {
+		return Response{}, basequery.NewUnavailableFailure(nil)
+	}
 	return assembleSummary(*rangeValue, *activityRange, usageGen, quotaGen, fetched)
+}
+
+func knownEmptySummary(
+	rangeValue basequery.UTCTimeRange,
+	activityRange basequery.UTCTimeRange,
+	usageGen uint64,
+	quotaGen uint64,
+) (Response, error) {
+	tokens, err := basequery.KnownNumeric(0, basequery.NumericTokens)
+	if err != nil {
+		return Response{}, err
+	}
+	cost, err := basequery.KnownNumeric(0, basequery.NumericMicroUSD)
+	if err != nil {
+		return Response{}, err
+	}
+	count, err := basequery.KnownNumeric(0, basequery.NumericCount)
+	if err != nil {
+		return Response{}, err
+	}
+	meta, err := basequery.NewResponseMeta(basequery.ResponseComplete, nil, nil)
+	if err != nil {
+		return Response{}, err
+	}
+	meta.Version = ContractVersion
+	return Response{
+		Meta: meta, Range: rangeValue, ReportingTimeZone: rangeValue.TimeZone,
+		Coverage: Coverage{
+			TokenState: CoverageEmpty, CostState: CoverageEmpty, OverallState: CoverageEmpty,
+		},
+		Totals: Totals{
+			TotalTokens: tokens, EstimatedUSDMicros: cost, ActiveProviderCount: count,
+		},
+		Providers: []ProviderSlice{}, Trend: []TrendPoint{}, Distribution: []ProviderShare{},
+		Models: []ModelItem{}, Quotas: []QuotaCard{},
+		UsageGeneration: usageGen, QuotaGeneration: quotaGen,
+		ActivityRange: activityRange, ActivityCoverageState: CoverageEmpty,
+		Activity: []TrendPoint{}, ActivityProviderCoverage: []ActivityProviderCoverage{},
+	}, nil
 }
 
 type providerFetch struct {
@@ -189,9 +253,11 @@ func (service *Service) loadUsage(
 	request usagecost.UsageCostRequest,
 	expectedRange basequery.UTCTimeRange,
 	generation uint64,
+	controlGen uint64,
 ) (usagecost.UsageCostResponse, error) {
 	provider := request.Provider.Provider
 	key := usageKey(request)
+	key.control = controlGen
 	if cached, ok := service.lookupUsage(key, generation); ok {
 		return cached, nil
 	}
@@ -211,8 +277,9 @@ func (service *Service) loadQuota(
 	provider string,
 	evaluatedAt int64,
 	generation uint64,
+	controlGen uint64,
 ) (runtimeinfo.QuotaCurrentResponse, error) {
-	if cached, ok := service.lookupQuota(provider, evaluatedAt, generation); ok {
+	if cached, ok := service.lookupQuota(provider, evaluatedAt, generation, controlGen); ok {
 		return cached, nil
 	}
 	response, err := service.quota.QuotaCurrent(ctx, agentprovider.Scope{Provider: provider}, evaluatedAt)
@@ -222,7 +289,7 @@ func (service *Service) loadQuota(
 	if err := validateQuotaResponse(provider, response); err != nil {
 		return runtimeinfo.QuotaCurrentResponse{}, err
 	}
-	service.storeQuota(provider, evaluatedAt, generation, response)
+	service.storeQuota(provider, evaluatedAt, generation, controlGen, response)
 	return response, nil
 }
 
@@ -252,11 +319,12 @@ func (service *Service) lookupQuota(
 	provider string,
 	evaluatedAt int64,
 	generation uint64,
+	controlGen uint64,
 ) (runtimeinfo.QuotaCurrentResponse, bool) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	cached, ok := service.quotaCache[provider]
-	if !ok || cached.generation != generation || cached.evaluated != evaluatedAt {
+	if !ok || cached.generation != generation || cached.control != controlGen || cached.evaluated != evaluatedAt {
 		return runtimeinfo.QuotaCurrentResponse{}, false
 	}
 	return cached.response, true
@@ -266,6 +334,7 @@ func (service *Service) storeQuota(
 	provider string,
 	evaluatedAt int64,
 	generation uint64,
+	controlGen uint64,
 	response runtimeinfo.QuotaCurrentResponse,
 ) {
 	service.mu.Lock()
@@ -277,7 +346,7 @@ func (service *Service) storeQuota(
 		return
 	}
 	service.quotaCache[provider] = cachedQuota{
-		generation: generation, evaluated: evaluatedAt, response: response,
+		generation: generation, control: controlGen, evaluated: evaluatedAt, response: response,
 	}
 }
 

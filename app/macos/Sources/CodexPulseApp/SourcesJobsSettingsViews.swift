@@ -449,7 +449,9 @@ struct SettingsView: View {
                 CodexAccountsSettingsSection(model: model)
                 apiCredentialsSection
                 if model.settingsDraft != nil {
-                    onlineSection(response)
+                    providerSection(.codex, response: response)
+                    providerSection(.cursor, response: response)
+                    providerSection(.grok, response: response)
                     refreshSection(response)
                     updatesSection(response)
                     uiSection(response)
@@ -459,14 +461,14 @@ struct SettingsView: View {
                     LabeledContent(
                         "配置状态",
                         value: localizedCopy(
-                            response.snapshot.home.configured ? "已配置" : "默认 Codex Home 不可用"
+                            response.snapshot.home.configured ? "已配置" : "未配置 Codex Home"
                         )
                     )
                     LabeledContent("当前状态", value: ProductCopy.status(response.snapshot.home.switchStatus))
-                    Text("首次启动会自动使用默认 Codex Home，无需手动确认。")
+                    Text("没有 Codex Home 时，Cursor、Grok 和设置仍然可用。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("Codex Pulse 只读取本机 Codex 数据。")
+                    Text("Codex Pulse 只读取本机已启用客户端的数据。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -549,20 +551,83 @@ struct SettingsView: View {
         return false
     }
 
-    private func onlineSection(_ response: Codexpulse_Core_V1_SettingsResponse) -> some View {
-        Section("数据更新") {
-            Toggle("启用额度采集", isOn: draftBinding(\.quotaEnabled))
-                .disabled(!editable("online.quotaEnabled", response) || settingsAreBusy)
-            Toggle("启用重置额度采集", isOn: draftBinding(\.resetCreditsEnabled))
-                .disabled(!editable("online.resetCreditsEnabled", response) || settingsAreBusy)
-            Toggle("启用 Grok 额度采集", isOn: draftBinding(\.grokQuotaEnabled))
-                .disabled(!editable("online.grokQuotaEnabled", response) || settingsAreBusy)
-            Toggle("自动续期 Grok 登录凭据", isOn: draftBinding(\.grokAutoRefreshEnabled))
-                .disabled(!editable("online.grokAutoRefreshEnabled", response) || settingsAreBusy)
-            Text("临近到期时安全更新本机 ~/.grok/auth.json；关闭后不会改写 Grok 凭据。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private func providerSection(
+        _ provider: AgentProvider,
+        response: Codexpulse_Core_V1_SettingsResponse
+    ) -> some View {
+        let state = ProviderCatalog(response).state(for: provider)
+        let subSwitchesEnabled = state?.effective == .enabled
+        return Section(provider.title) {
+            Toggle(providerMasterTitle(provider), isOn: providerMasterBinding(provider))
+                .disabled(!editable(provider.settingsIntentFieldKey, response) || settingsAreBusy)
+                .accessibilityIdentifier("settings.provider.\(provider.rawValue).master")
+            if let state {
+                Text(ProviderStatusCopy.statusLabel(state))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("settings.provider.\(provider.rawValue).status")
+            }
+            switch provider {
+            case .codex:
+                Toggle("启用额度采集", isOn: draftBinding(\.quotaEnabled))
+                    .disabled(!subSwitchesEnabled || !editable("online.quotaEnabled", response) || settingsAreBusy)
+                Toggle("启用重置额度采集", isOn: draftBinding(\.resetCreditsEnabled))
+                    .disabled(
+                        !subSwitchesEnabled || !editable("online.resetCreditsEnabled", response) || settingsAreBusy
+                    )
+            case .cursor:
+                Toggle("启用在线数据采集", isOn: draftBinding(\.cursorOnlineEnabled))
+                    .disabled(
+                        !subSwitchesEnabled
+                            || !editable("online.cursorOnlineEnabled", response)
+                            || settingsAreBusy
+                    )
+                Text("控制 Cursor Dashboard 月额度和 Grok Bot 在线请求；本地快照仍由 Cursor 主开关管理。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .grok:
+                Toggle("启用 Grok 额度采集", isOn: draftBinding(\.grokQuotaEnabled))
+                    .disabled(
+                        !subSwitchesEnabled || !editable("online.grokQuotaEnabled", response) || settingsAreBusy
+                    )
+                Toggle("自动续期 Grok 登录凭据", isOn: draftBinding(\.grokAutoRefreshEnabled))
+                    .disabled(
+                        !subSwitchesEnabled
+                            || !editable("online.grokAutoRefreshEnabled", response)
+                            || settingsAreBusy
+                    )
+                Text("临近到期时安全更新本机 Grok 登录凭据；关闭后不会改写凭据。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
+    }
+
+    private func providerMasterTitle(_ provider: AgentProvider) -> String {
+        switch provider {
+        case .codex: "启用 Codex"
+        case .cursor: "启用 Cursor"
+        case .grok: "启用 Grok"
+        }
+    }
+
+    private func providerMasterBinding(_ provider: AgentProvider) -> Binding<Bool> {
+        Binding(
+            get: {
+                model.settingsDraft.flatMap { draft in
+                    let catalog = model.settingsState.value.map(ProviderCatalog.init)
+                    if let state = catalog?.state(for: provider) {
+                        return SettingsDraft.masterSwitchOn(intent: draft.intent(for: provider), state: state)
+                    }
+                    return draft.intent(for: provider) != .disabled
+                } ?? false
+            },
+            set: { enabled in
+                guard var draft = model.settingsDraft else { return }
+                draft.setIntent(enabled ? .enabled : .disabled, for: provider)
+                model.settingsDraft = draft
+            }
+        )
     }
 
     private func refreshSection(_ response: Codexpulse_Core_V1_SettingsResponse) -> some View {
