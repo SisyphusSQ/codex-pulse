@@ -81,6 +81,21 @@ public struct OverviewResponses: Sendable {
         replacing(account: account, quotaPace: quotaPace)
     }
 
+    func replacingQuota(
+        _ quota: Codexpulse_Core_V1_QuotaCurrentResponse,
+        pace: Codexpulse_Core_V1_QuotaPaceResponse
+    ) -> OverviewResponses {
+        OverviewResponses(
+            provider: provider, usage: usage, quota: quota, quotaPace: pace,
+            account: account, sessions: sessions, projects: projects, health: health,
+            rangeResolution: rangeResolution, todayUsage: todayUsage,
+            weeklyUsage: weeklyUsage, tokenActivityUsage: tokenActivityUsage,
+            invocationUsage: invocationUsage, todayInvocationUsage: todayInvocationUsage,
+            weeklyProjects: weeklyProjects, weeklyProjectRange: weeklyProjectRange,
+            additionalNotices: additionalNotices
+        )
+    }
+
     private func replacing(
         account: Codexpulse_Core_V1_AccountSnapshotResponse?,
         quotaPace: Codexpulse_Core_V1_QuotaPaceResponse

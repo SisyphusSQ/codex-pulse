@@ -5092,7 +5092,7 @@ private func testInvalidationRefreshesActivePage() async throws {
     }
     let calls = await core.recordedCalls()
     try expect(
-        calls.contains(where: { $0 == "stream:index,quota,account,health,settings" }),
+        calls.contains(where: { $0 == "stream:index,quota,quota_codex,quota_cursor,quota_grok,account,health,settings" }),
         "invalidation stream must subscribe to account, settings, and data domains"
     )
     _ = await model.shutdown()
@@ -5766,17 +5766,25 @@ private func testIndexInvalidationReusesMatchingCodexAccount() async throws {
     try await waitUntil("confirmed quota page account card") {
         await MainActor.run {
             model.quotaAccountCardSummary?.availability == .available
+                && model.quotaAccountState.value != nil
+                && !model.quotaAccountState.isLoading
         }
     }
     let initialAccounts = await core.recordedAccountSnapshotRequests().count
     let initialUsage = await core.recordedUsageRequests().count
+    let initialQuota = await core.recordedQuotaRequests().count
     try await waitUntil("index invalidation refreshes both overviews") {
         await core.recordedUsageRequests().count >= initialUsage + 2
     }
     let refreshedAccounts = await core.recordedAccountSnapshotRequests().count
+    let refreshedQuota = await core.recordedQuotaRequests().count
     try expect(
         refreshedAccounts == initialAccounts,
         "index-only refresh account calls = \(refreshedAccounts), initial = \(initialAccounts)"
+    )
+    try expect(
+        refreshedQuota == initialQuota + 2,
+        "index-only refresh must read the main and status quotas without reloading the quota page"
     )
     try expect(
         model.presentation?.account.availability == .available
@@ -9699,6 +9707,106 @@ private func testQuotaUsageLoadsAccountSnapshotAndClearsItForOtherProviders() as
 }
 
 @MainActor
+private func testQuotaInvalidationsStayWithinTheirProvider() async throws {
+    let suiteName = "CodexPulseAppTests.QuotaInvalidation.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("quota invalidation defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(accountBindingScope: testCodexScopeA)
+    )
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }),
+        providerDefaults: defaults
+    )
+    model.start()
+    try await waitUntil("initial Codex overview") {
+        await MainActor.run { model.presentation?.account.availability == .available }
+    }
+    model.navigate(to: .quotaUsage)
+    try await waitUntil("initial Codex quota and usage") {
+        await MainActor.run {
+            model.quotaState.value != nil && model.usageState.value != nil
+                && model.quotaAccountState.value != nil
+        }
+    }
+    try await waitUntil("initial reference prices") {
+        await core.recordedPricingCatalogCalls() > 0
+    }
+    let initialQuotas = await core.recordedQuotaRequests().count
+    let initialAccounts = await core.recordedAccountSnapshotRequests().count
+    let initialPrices = await core.recordedPricingCatalogCalls()
+    await core.publishOverviewInvalidations(count: 1, recovered: false, domain: "quota_cursor")
+    let quotasAfterCursor = await core.recordedQuotaRequests().count
+    let accountsAfterCursor = await core.recordedAccountSnapshotRequests().count
+    try expect(quotasAfterCursor == initialQuotas,
+        "Cursor quota must not reload the selected Codex quota")
+    try expect(accountsAfterCursor == initialAccounts,
+        "Cursor quota must not request a Codex account snapshot")
+    await core.publishOverviewInvalidations(count: 1, recovered: false, domain: "quota_codex")
+    try await waitUntil("Codex quota refreshes") {
+        await core.recordedQuotaRequests().count > initialQuotas
+    }
+    let pricesAfterCodex = await core.recordedPricingCatalogCalls()
+    try expect(pricesAfterCodex == initialPrices,
+        "online quota refresh must not reload the unrelated price catalog")
+    _ = await model.shutdown()
+}
+
+private func testCodexQuotaInvalidationKeepsUnrelatedOverviewSections() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    let recorder = StateRecorder()
+    await runtime.setStateSink { state in await recorder.append(state) }
+    await runtime.start()
+    try await waitUntil("initial quota overview") {
+        await recorder.snapshot().contains("normal")
+    }
+    await runtime.refresh(range: .today)
+    let usageBefore = await core.recordedUsageRequests().count
+    let quotaBefore = await core.recordedQuotaRequests().count
+    await core.publishOverviewInvalidations(count: 1, recovered: false, domain: "quota_codex")
+    let usageAfter = await core.recordedUsageRequests().count
+    let quotaAfter = await core.recordedQuotaRequests().count
+    try expect(quotaAfter == quotaBefore + 1,
+        "Codex quota invalidation must refresh the selected Overview quota")
+    try expect(usageAfter == usageBefore,
+        "Codex quota invalidation must keep the already loaded usage section")
+    _ = await runtime.shutdown()
+}
+
+@MainActor
+private func testQuotaIndexRefreshKeepsPreviousUsageWithoutInitialSpinner() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let model = AppModel(runtime: AppRuntime(
+        supervisor: FakeSupervisor(), clientFactory: { _ in core }
+    ))
+    model.start()
+    try await waitUntil("initial quota overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.navigate(to: .quotaUsage)
+    try await waitUntil("initial quota usage") {
+        await MainActor.run { model.usageState.value != nil && !model.usageState.isLoading }
+    }
+    await core.setOverviewDelay(.milliseconds(250))
+    let publishing = Task {
+        await core.publishOverviewInvalidations(count: 1, recovered: false, domain: "index")
+    }
+    try await waitUntil("background usage read") {
+        await MainActor.run { model.usageState.isLoading }
+    }
+    try expect(model.usageState.value != nil && !model.usageState.isLoadingWithoutValue,
+        "background index refresh must retain visible usage without initial loading feedback")
+    await publishing.value
+    _ = await model.shutdown()
+}
+
+@MainActor
 private func testAccountCardsRecoverAfterReadFailureWithoutReloadingQuota() async throws {
     let suiteName = "CodexPulseAppTests.AccountCardRecovery.\(UUID().uuidString)"
     guard let defaults = UserDefaults(suiteName: suiteName) else {
@@ -13225,6 +13333,9 @@ struct CodexPulseAppTestMain {
         try await testAppRuntimeLoadsQuotaPaceWithOverview()
         try await testQuotaUsageFeatureReloadsQuotaPace()
         try await testQuotaUsageLoadsAccountSnapshotAndClearsItForOtherProviders()
+        try await testQuotaInvalidationsStayWithinTheirProvider()
+        try await testCodexQuotaInvalidationKeepsUnrelatedOverviewSections()
+        try await testQuotaIndexRefreshKeepsPreviousUsageWithoutInitialSpinner()
         try await testAccountCardsRecoverAfterReadFailureWithoutReloadingQuota()
         try await testAccountCardsDoNotShowPreviousIdentityAfterAccountInvalidation()
         try await testStatusAccountCardRecoversWhenQuotaInitiallyHasOldBinding()

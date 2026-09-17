@@ -30,6 +30,8 @@ HMAC-SHA256(安装级随机密钥, domain-separated accountId) → 64 位 lowerc
 
 `account/read` 的邮箱和套餐只能通过同一 App Server 会话夹读：`account/rateLimits/read → account/read → account/rateLimits/read`。前后账号 scope 一致且匹配当前 binding generation 时才允许发布。Swift 首次组装 Overview 也要校验同一 context key，禁止先发布“B 额度 + previousAccount A”。quota、pace、account 的 server context 不一致时，账号和不匹配的在线部分降为 unknown，并安排一致性刷新。
 
+账号展示夹读按当前 Codex 在线 quota 来源的最后成功时间去重：第一次需要展示、binding 失效或额度成功刷新后才重新确认；本地 index、页面切换、其他 Provider 的额度刷新和同一成功周期内的多次查询复用已确认 display。quota 请求本身仍用前后账号 ID 与 binding generation fence 验证；账号夹读失败不得回退为旧账号。`quota_codex`、`quota_cursor`、`quota_grok` 只失效对应 Provider 的可见额度，通用 `quota` 用于跨 Provider 状态变更。主概览的后台发布不触发当前功能页整体重载；额度页已显示数据时，后台查询保持旧值可见，只有首载或明确手动刷新显示加载反馈。
+
 套餐档位与额度窗口是不同概念。5×/20× 只来自夹读一致的明确 `planType`，不得用 remaining percent、Token、window_minutes、resets_at_ms 或 Reset Credits 推断。配额页继续只解释额度窗口。
 
 账号切换保留现有 Home generation fence。锁顺序是：Home generation drain → account transition → quota admission → repository 写事务。A→B→A 恢复 A 的历史观察时间戳，但使用新的 binding generation。Cursor、Grok、API Subscription 的现有逻辑不得被 Codex binding 改动影响。

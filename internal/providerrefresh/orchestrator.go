@@ -205,6 +205,11 @@ func (orchestrator *Orchestrator) notifyOnce(ctx context.Context, providers []Pr
 			if component.Status != StatusRefreshed {
 				continue
 			}
+			// The Codex quota coordinator publishes after its durable commit.
+			if provider.Provider == agentprovider.Codex &&
+				(component.Component == ComponentCodexQuota || component.Component == ComponentCodexResetCredits) {
+				continue
+			}
 			domain := domainFor(provider.Provider, component.Component)
 			if _, exists := seen[domain]; exists {
 				continue
@@ -220,9 +225,12 @@ func (orchestrator *Orchestrator) notifyOnce(ctx context.Context, providers []Pr
 
 func domainFor(_, component string) core.InvalidationDomain {
 	switch component {
-	case ComponentCodexQuota, ComponentCodexResetCredits, ComponentCursorDashboard,
-		ComponentCursorGrokBot, ComponentGrokBilling:
-		return core.InvalidationQuota
+	case ComponentCodexQuota, ComponentCodexResetCredits:
+		return core.InvalidationQuotaCodex
+	case ComponentCursorDashboard, ComponentCursorGrokBot:
+		return core.InvalidationQuotaCursor
+	case ComponentGrokBilling:
+		return core.InvalidationQuotaGrok
 	default:
 		return core.InvalidationIndex
 	}

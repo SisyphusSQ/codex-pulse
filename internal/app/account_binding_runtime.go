@@ -25,6 +25,7 @@ type activeCodexAccount struct {
 type accountDisplayCache struct {
 	Scope                    string
 	Generation               int64
+	QuotaSuccessAtMS         int64
 	Type                     string
 	Email                    *string
 	PlanType                 *string
@@ -326,6 +327,43 @@ func (runtime *accountBindingRuntime) LoadDisplay(ctx context.Context) (*account
 	return display, nil
 }
 
+// ConfirmedDisplay reuses the display until this account's online quota source
+// records another successful refresh. A new quota cycle then confirms identity
+// and profile once, while unrelated reads only use the fenced cache.
+func (runtime *accountBindingRuntime) ConfirmedDisplay(ctx context.Context) (*accountDisplayCache, error) {
+	if runtime == nil || ctx == nil {
+		return nil, ErrAccountBindingRuntime
+	}
+	active := runtime.Active()
+	if active == nil {
+		return runtime.ProbeAndLoadDisplay(ctx)
+	}
+	lastSuccess, err := runtime.quotaSuccessAtMS(ctx, active.Scope)
+	if err != nil {
+		return nil, err
+	}
+	if cached := runtime.Display(); cached != nil &&
+		cached.Scope == active.Scope && cached.Generation == active.Generation &&
+		cached.QuotaSuccessAtMS == lastSuccess {
+		return cached, nil
+	}
+	return runtime.ProbeAndLoadDisplay(ctx)
+}
+
+func (runtime *accountBindingRuntime) quotaSuccessAtMS(ctx context.Context, scope string) (int64, error) {
+	state, err := runtime.repository.SourceState(ctx, store.QuotaSourceInstanceAppServer(scope))
+	if errors.Is(err, store.ErrNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if state.LastSuccessAtMS == nil {
+		return 0, nil
+	}
+	return *state.LastSuccessAtMS, nil
+}
+
 // ProbeAndLoadDisplay uses one App Server account sandwich for both identity
 // confirmation and display. The before/after account IDs still fence every
 // field against the confirmed binding before anything reaches the UI.
@@ -501,6 +539,12 @@ func (runtime *accountBindingRuntime) refreshDisplayFromSandwich(
 		display.Email = cloneOptionalString(sandwich.Account.Email)
 		display.PlanType = cloneOptionalString(sandwich.Account.PlanType)
 	}
+	quotaSuccessAtMS, err := runtime.quotaSuccessAtMS(ctx, active.Scope)
+	if err != nil {
+		runtime.clearDisplay()
+		return nil, err
+	}
+	display.QuotaSuccessAtMS = quotaSuccessAtMS
 	runtime.setDisplay(display)
 	if profileChanged {
 		notifyQueryInvalidation(runtime.invalidation, ctx, core.InvalidationAccount)

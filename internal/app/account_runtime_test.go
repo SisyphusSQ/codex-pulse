@@ -76,13 +76,35 @@ func TestConfirmedApplicationAccountUsesBindingDisplay(t *testing.T) {
 	}
 
 	plan = "pro"
+	unchanged, err := runtime.AccountSnapshot(context.Background(), lifecycleAccountQuery(agentprovider.Codex))
+	if err != nil || unchanged.ProTier == nil || unchanged.ProTier.Tier == nil ||
+		*unchanged.ProTier.Tier != subscriptiontier.Tier5X || sandwichCalls != 1 {
+		t.Fatalf("cached AccountSnapshot = %#v, %v; sandwich calls = %d", unchanged, err, sandwichCalls)
+	}
+	refreshAt := quotaRuntimeNowMS + 1_000
+	scope := *snapshot.Binding.AccountScope
+	if err := repository.UpsertSourceState(context.Background(), store.SourceState{
+		SourceInstanceID: store.QuotaSourceInstanceAppServer(scope),
+		SourceType:       store.QuotaSourceTypeAppServerRateLimits,
+		ScopeKey:         scope,
+		LastAttemptAtMS:  &refreshAt,
+		LastSuccessAtMS:  &refreshAt,
+		FreshnessState:   store.SourceFreshnessCurrent,
+		UpdatedAtMS:      refreshAt,
+	}); err != nil {
+		t.Fatalf("UpsertSourceState(quota refreshed) error = %v", err)
+	}
 	refreshed, err := runtime.AccountSnapshot(context.Background(), lifecycleAccountQuery(agentprovider.Codex))
 	if err != nil || refreshed.ProTier == nil || refreshed.ProTier.Tier == nil ||
 		*refreshed.ProTier.Tier != subscriptiontier.Tier20X {
 		t.Fatalf("AccountSnapshot(refreshed tier) = %#v, %v", refreshed, err)
 	}
+	_, err = runtime.AccountSnapshot(context.Background(), lifecycleAccountQuery(agentprovider.Codex))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got := reader.calls.Load(); got != 1 || sandwichCalls != 2 {
-		t.Fatalf("account probes = rate-limits:%d sandwich:%d, want startup-only/one per snapshot", got, sandwichCalls)
+		t.Fatalf("account probes = rate-limits:%d sandwich:%d, want startup-only/one per quota cycle", got, sandwichCalls)
 	}
 }
 

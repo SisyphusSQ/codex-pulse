@@ -6,18 +6,21 @@ import (
 	"sync"
 )
 
-const InvalidationContractVersion = "query-invalidation-v3"
+const InvalidationContractVersion = "query-invalidation-v4"
 
 var ErrInvalidation = errors.New("core invalidation is invalid")
 
 type InvalidationDomain string
 
 const (
-	InvalidationIndex    InvalidationDomain = "index"
-	InvalidationQuota    InvalidationDomain = "quota"
-	InvalidationAccount  InvalidationDomain = "account"
-	InvalidationHealth   InvalidationDomain = "health"
-	InvalidationSettings InvalidationDomain = "settings"
+	InvalidationIndex       InvalidationDomain = "index"
+	InvalidationQuota       InvalidationDomain = "quota"
+	InvalidationQuotaCodex  InvalidationDomain = "quota_codex"
+	InvalidationQuotaCursor InvalidationDomain = "quota_cursor"
+	InvalidationQuotaGrok   InvalidationDomain = "quota_grok"
+	InvalidationAccount     InvalidationDomain = "account"
+	InvalidationHealth      InvalidationDomain = "health"
+	InvalidationSettings    InvalidationDomain = "settings"
 )
 
 type InvalidationEvent struct {
@@ -191,7 +194,8 @@ func (subscriber *invalidationSubscriber) accepts(domain InvalidationDomain) boo
 
 func validInvalidationDomain(domain InvalidationDomain) bool {
 	switch domain {
-	case InvalidationIndex, InvalidationQuota, InvalidationAccount, InvalidationHealth, InvalidationSettings:
+	case InvalidationIndex, InvalidationQuota, InvalidationQuotaCodex, InvalidationQuotaCursor,
+		InvalidationQuotaGrok, InvalidationAccount, InvalidationHealth, InvalidationSettings:
 		return true
 	default:
 		return false

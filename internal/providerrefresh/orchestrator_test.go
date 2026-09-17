@@ -241,8 +241,10 @@ func TestOrchestratorCoalescesInvalidation(t *testing.T) {
 	}
 	invalidation.mu.Lock()
 	defer invalidation.mu.Unlock()
-	if len(invalidation.domains) != 2 {
-		t.Fatalf("invalidations = %#v, want coalesced index+quota", invalidation.domains)
+	if len(invalidation.domains) != 2 ||
+		invalidation.domains[0] != core.InvalidationIndex ||
+		invalidation.domains[1] != core.InvalidationQuotaCursor {
+		t.Fatalf("invalidations = %#v, want index+quota_cursor", invalidation.domains)
 	}
 }
 
