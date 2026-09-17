@@ -28,7 +28,8 @@ func (notifier *dashboardAwareInvalidation) Notify(
 		switch domain {
 		case core.InvalidationIndex:
 			notifier.summary.InvalidateUsage()
-		case core.InvalidationQuota, core.InvalidationSettings:
+		case core.InvalidationQuota, core.InvalidationQuotaCodex, core.InvalidationQuotaCursor,
+			core.InvalidationQuotaGrok, core.InvalidationSettings:
 			notifier.summary.InvalidateUsageAndQuota()
 		}
 	}

@@ -212,8 +212,10 @@ contract 不兼容时必须 fail closed，由客户端展示稳定的“核心�
 `codex-subscription-accounts-v1`。Go Helper 根据夹读得到的一致 `planType` 映射 `prolite → Pro 5×`、
 `pro → Pro 20×`，并把同一证据写入订阅列表的自动套餐；Swift 只消费类型化
 `AccountSnapshot.pro_tier` 与 `subscription`，不得重复套餐优先级或 day-delta 算法。
-旧 App 与新 Helper、新 App 与旧 Helper 都必须在精确版本握手中拒绝。invalidation 仍为
-`query-invalidation-v3`。Settings 列表状态不得混入全局 `settingsDraft`；mutation receipt
+旧 App 与新 Helper、新 App 与旧 Helper 都必须在精确版本握手中拒绝。invalidation 为
+`query-invalidation-v4`，Codex、Cursor、Grok 的额度提交分别发布 `quota_codex`、
+`quota_cursor`、`quota_grok`；跨 Provider 的配置和身份变化仍可使用通用 `quota`。
+Settings 列表状态不得混入全局 `settingsDraft`；mutation receipt
 后必须 authoritative List readback。Popover 截图与剪贴板须同时隐藏邮箱、备注、套餐、日期和剩余天数。
 
 调用统计使用 `Contracts.invocation_usage_version=invocation-usage-v1`。该版本冻结

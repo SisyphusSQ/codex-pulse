@@ -1098,7 +1098,7 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 		binding = &copied
 	}
 	if runtime.quota != nil && runtime.quota.account != nil {
-		display, err := runtime.quota.account.ProbeAndLoadDisplay(ctx)
+		display, err := runtime.quota.account.ConfirmedDisplay(ctx)
 		if err != nil && !errors.Is(err, store.ErrCodexAccountBindingChanged) {
 			return core.AccountSnapshot{}, err
 		}

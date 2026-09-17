@@ -25,6 +25,11 @@ public enum FeatureLoadState<Value: Sendable>: Sendable {
         return false
     }
 
+    public var isLoadingWithoutValue: Bool {
+        if case .loading(previous: nil) = self { return true }
+        return false
+    }
+
     public var shouldReloadOnNavigation: Bool {
         switch self {
         case .idle, .stale, .unavailable, .cancelled: true

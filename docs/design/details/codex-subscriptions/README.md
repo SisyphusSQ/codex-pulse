@@ -32,11 +32,11 @@ List / Create / Update / Delete / Link / Unlink 只读写 SQLite，不启动 App
 
 ## Core
 
-精确握手为 `core-rpc-v5`。`Contracts.codex_subscription_accounts_version=codex-subscription-accounts-v1`。`codex_pro_tier_version` 保持 v1。invalidation 仍为 `query-invalidation-v3`；账号资料变化使用既有 `account` domain。Provider 启停见 [Agent Providers](../providers/README.md)。
+精确握手为 `core-rpc-v5`。`Contracts.codex_subscription_accounts_version=codex-subscription-accounts-v1`。`codex_pro_tier_version` 保持 v1。invalidation 为 `query-invalidation-v4`；Codex 在线额度刷新使用 `quota_codex`，账号资料变化使用 `account`。Provider 启停见 [Agent Providers](../providers/README.md)。
 
 新增 query `ListCodexSubscriptionAccounts` 与 command `Create/Update/Delete/Link/UnlinkCodexSubscriptionAccount`。`AccountSnapshotRequest` additive `evaluated_at_ms` / `time_zone`；Codex 响应 additive `subscription`。非 Codex provider 的 `subscription` 必须 absent。
 
-Codex `AccountSnapshot` 在一次 App Server 夹读中同时完成 binding 身份确认与邮箱/套餐读取；并发中的相同读取共享一次夹读，首个调用取消后仍存活的请求自行重试。返回前重新读取 binding，并要求 display 的 scope/generation 精确匹配。Swift 对仅由本地索引变化触发的概览刷新复用匹配当前额度 binding 的已确认账号，保留正在进行的账号读取；额度页的同类刷新只重载本地用量，不重新读取在线额度和账号。quota/account 变化、手动刷新及 scope/generation 错配继续重新确认。
+Codex `AccountSnapshot` 首次读取、binding 未确认或当前账号的在线额度来源成功刷新后，用一次 App Server 夹读同时完成 binding 身份确认与邮箱/套餐读取；同一额度成功周期的重复查询复用已夹读的内存 display，并发中的相同读取共享一次夹读。失败不伪造已确认资料。每次返回前重新读取 binding，并要求 display 的 scope/generation 精确匹配。Swift 对仅由本地索引变化触发的概览刷新复用匹配当前额度 binding 的已确认账号；无可复用账号时不因每次 index 通知自动重试，额度页的同类刷新只重载本地用量。账号切换、Home 切换和手动额度刷新成功后仍按当前 binding 重新校验；scope/generation 错配隐藏旧账号事实。
 
 mutation receipt 为 `applied` / `noop` / `conflict`。Swift 在 receipt 后必须做 authoritative List readback，不得 optimistic success。conflict 保留编辑草稿。
 

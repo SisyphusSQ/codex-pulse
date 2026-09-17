@@ -142,11 +142,11 @@ func TestInvalidationBrokerUnsubscribeReleasesContextObserver(t *testing.T) {
 	}
 }
 
-func TestInvalidationBrokerAcceptsAccountDomainAndV3Version(t *testing.T) {
+func TestInvalidationBrokerAcceptsAccountAndProviderQuotaDomains(t *testing.T) {
 	t.Parallel()
 
-	if InvalidationContractVersion != "query-invalidation-v3" {
-		t.Fatalf("InvalidationContractVersion = %q, want query-invalidation-v3", InvalidationContractVersion)
+	if InvalidationContractVersion != "query-invalidation-v4" {
+		t.Fatalf("InvalidationContractVersion = %q, want query-invalidation-v4", InvalidationContractVersion)
 	}
 	broker, err := NewInvalidationBroker(2)
 	if err != nil {

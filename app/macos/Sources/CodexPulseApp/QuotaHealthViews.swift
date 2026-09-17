@@ -40,9 +40,11 @@ struct QuotaUsageView: View {
                     .frame(width: 150)
                     .onChange(of: model.usageRange) { _, _ in model.loadUsage() }
                     Spacer()
-                    if model.quotaState.isLoading || model.quotaPaceState.isLoading ||
-                        model.usageState.isLoading ||
-                        model.pricingCatalogState.isLoading
+                    if model.isGlobalRefreshing ||
+                        model.quotaState.isLoadingWithoutValue ||
+                        model.quotaPaceState.isLoadingWithoutValue ||
+                        model.usageState.isLoadingWithoutValue ||
+                        model.pricingCatalogState.isLoadingWithoutValue
                     {
                         ProgressView().controlSize(.small)
                     }

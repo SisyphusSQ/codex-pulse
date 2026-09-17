@@ -147,7 +147,7 @@ func startApplicationQuotaRuntime(
 		ResetCreditsFetcher: wrapAccountMismatchFetcher(scheduler.AdaptResetCreditsFetchService(resetCreditsService), mismatch),
 		Clock:               config.Clock,
 		RefreshCommitted: func(ctx context.Context, _ quotaonline.RefreshSource) {
-			notifyQueryInvalidation(config.invalidation, ctx, core.InvalidationQuota)
+			notifyQueryInvalidation(config.invalidation, ctx, core.InvalidationQuotaCodex)
 		},
 	})
 	if err != nil {

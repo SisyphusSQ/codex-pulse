@@ -256,6 +256,7 @@ public actor AppRuntime {
     private var readyForOverview = false
     private var activeRefreshPending = false
     private var invalidationRefreshPending = false
+    private var invalidationRefreshPendingOnlyIndex = false
     private var didScheduleConsistencyRefresh = false
     private var scheduledConsistencyQuotaKey: CodexAccountContextKey?
     private var initialOverviewRefreshState: InitialOverviewRefreshState = .idle
@@ -1628,7 +1629,14 @@ public actor AppRuntime {
 			let reusableAccount = reuseAccountOnIndex && provider == .codex
 				&& responses.account?.hasAccount == true && accountKey != nil
 				&& accountKey == CodexAccountContext.key(fromQuota: responses.quota)
-			if !reusableAccount && !(reuseAccountOnIndex && provider == .codex && accountRefreshTask != nil) {
+			let previousAccountKey = CodexAccountContext.key(fromAccount: previousAccount)
+			let currentQuotaKey = CodexAccountContext.key(fromQuota: responses.quota)
+			let bindingChangedOnIndex = reuseAccountOnIndex && provider == .codex
+				&& previousAccountKey != nil && currentQuotaKey != nil
+				&& previousAccountKey != currentQuotaKey
+			if !reusableAccount &&
+				(!reuseAccountOnIndex || provider != .codex || bindingChangedOnIndex) &&
+				!(reuseAccountOnIndex && accountRefreshTask != nil && !bindingChangedOnIndex) {
 				startAccountRefresh(
 					client: client,
 					provider: provider,
@@ -1725,7 +1733,7 @@ public actor AppRuntime {
         didScheduleConsistencyRefresh = true
         scheduledConsistencyQuotaKey = quotaKey
         if refreshTask != nil {
-            invalidationRefreshPending = true
+            markInvalidationRefreshPending()
             return
         }
         invalidationRefreshPending = false
@@ -1753,7 +1761,7 @@ public actor AppRuntime {
     private func publishOverview(_ responses: OverviewResponses) async {
         let validated = CodexAccountContext.validatePublishedOverview(responses)
         if validated.needsConsistencyRefresh {
-            invalidationRefreshPending = true
+            markInvalidationRefreshPending()
         } else {
             didScheduleConsistencyRefresh = false
             scheduledConsistencyQuotaKey = nil
@@ -1793,7 +1801,7 @@ public actor AppRuntime {
         streamHasReachedReady = false
         suppressNextStreamReadyRefresh = false
         let controller = InvalidationStreamController(
-            domains: ["index", "quota", "account", "health", "settings"],
+            domains: ["index", "quota", "quota_codex", "quota_cursor", "quota_grok", "account", "health", "settings"],
             consumeInvalidations: { domains, afterSequence, onReady, onEvent in
                 try await client.consumeInvalidations(
                     domains: domains,
@@ -1861,13 +1869,13 @@ public actor AppRuntime {
             requestInitialOverviewRefresh()
             return
         case .inFlight:
-            invalidationRefreshPending = true
+            markInvalidationRefreshPending()
             return
         case .completed:
             break
         }
         if refreshTask != nil {
-            invalidationRefreshPending = true
+            markInvalidationRefreshPending()
             return
         }
         await refresh(showLoading: false)
@@ -1875,6 +1883,27 @@ public actor AppRuntime {
 
     private func handleInvalidation(domain: String) async {
         let previousSelection = selectedProvider
+        let quotaProvider: AgentProvider? = switch domain {
+        case "quota_codex": .codex
+        case "quota_cursor": .cursor
+        case "quota_grok": .grok
+        default: nil
+        }
+        if domain == "account" {
+            cancelAccountRefresh()
+            overviewCache = overviewCache.filter { $0.key.provider != .codex }
+            lastOverviewContext[.codex] = nil
+            didScheduleConsistencyRefresh = false
+            scheduledConsistencyQuotaKey = nil
+            if selectedProvider == .codex {
+                refreshGeneration &+= 1
+                refreshAdmissionGeneration = nil
+                if let refreshTask {
+                    refreshTask.cancel()
+                    markInvalidationRefreshPending()
+                }
+            }
+        }
         if domain == "settings" {
             guard let client else { return }
             do {
@@ -1885,10 +1914,11 @@ public actor AppRuntime {
         }
         await invalidationSink(domain)
         guard !systemIsSleeping else { return }
+        if let quotaProvider, selectedProvider != quotaProvider { return }
         if domain == "settings" {
             if selectedProvider != previousSelection, selectedProvider != nil, readyForOverview {
                 if refreshTask != nil {
-                    invalidationRefreshPending = true
+                    markInvalidationRefreshPending()
                     return
                 }
                 await refresh(showLoading: lastResponses == nil)
@@ -1896,29 +1926,64 @@ public actor AppRuntime {
             return
         }
         if domain == "account" {
-            cancelAccountRefresh()
-            overviewCache = overviewCache.filter { $0.key.provider != .codex }
-            lastOverviewContext[.codex] = nil
-            didScheduleConsistencyRefresh = false
-            scheduledConsistencyQuotaKey = nil
             guard selectedProvider == .codex else { return }
-            refreshGeneration &+= 1
-            refreshAdmissionGeneration = nil
-            if let refreshTask {
-                refreshTask.cancel()
-                invalidationRefreshPending = true
+            if refreshTask != nil {
+                markInvalidationRefreshPending()
                 return
             }
         }
         if refreshTask != nil {
-            invalidationRefreshPending = true
+            markInvalidationRefreshPending(reuseAccountOnIndex: domain == "index")
             return
         }
         if domain == "health", lastResponses != nil {
             await refreshOverviewHealth()
             return
         }
+        if quotaProvider != nil, lastResponses != nil,
+           overviewRange != .quotaWeek, overviewRange != .quotaMonth {
+            await refreshOverviewQuota()
+            return
+        }
         await refresh(showLoading: false, reuseAccountOnIndex: domain == "index")
+    }
+
+    private func refreshOverviewQuota() async {
+        guard readyForOverview, !shuttingDown, let client,
+              let provider = selectedProvider, let responses = lastResponses
+        else { return }
+        let admittedRuntime = runtimeGeneration
+        let admittedRefresh = refreshGeneration
+        let requests = OverviewRequestSet.make(provider: provider)
+        async let quotaResult = captureOverviewSection {
+            try await client.quotaCurrent(requests.quota, retryPolicy: .transportDefault)
+        }
+        async let paceResult = captureOverviewSection {
+            try await client.quotaPace(requests.quotaPace, retryPolicy: .transportDefault)
+        }
+        let (quota, pace) = await (quotaResult, paceResult)
+        guard admittedRuntime == runtimeGeneration,
+              admittedRefresh == refreshGeneration,
+              !systemIsSleeping, !shuttingDown, selectedProvider == provider
+        else { return }
+        guard case .value(let quotaResponse) = quota,
+              case .value(let paceResponse) = pace,
+              quotaResponse.providerContext.effectiveProvider == provider.rawValue,
+              paceResponse.providerContext.effectiveProvider == provider.rawValue
+        else {
+            if let notice = quota.notice ?? pace.notice { await emitRefreshFailure(notice) }
+            return
+        }
+        let currentResponses = lastResponses ?? responses
+        await publishOverview(currentResponses.replacingQuota(quotaResponse, pace: paceResponse))
+        if provider == .codex {
+            startAccountRefresh(
+                client: client, provider: provider,
+                runtimeGeneration: runtimeGeneration,
+                overviewGeneration: refreshGeneration
+            )
+        }
+        await drainPendingInvalidationRefresh()
     }
 
     // Health/job notifications do not change usage, project rankings or the annual activity.
@@ -1945,9 +2010,18 @@ public actor AppRuntime {
 
     private func drainPendingInvalidationRefresh() async {
         guard invalidationRefreshPending else { return }
+        let reuseAccountOnIndex = invalidationRefreshPendingOnlyIndex
         invalidationRefreshPending = false
+        invalidationRefreshPendingOnlyIndex = false
         guard readyForOverview, !systemIsSleeping, !shuttingDown, client != nil else { return }
-        await refresh(showLoading: false)
+        await refresh(showLoading: false, reuseAccountOnIndex: reuseAccountOnIndex)
+    }
+
+    private func markInvalidationRefreshPending(reuseAccountOnIndex: Bool = false) {
+        invalidationRefreshPendingOnlyIndex = invalidationRefreshPending
+            ? invalidationRefreshPendingOnlyIndex && reuseAccountOnIndex
+            : reuseAccountOnIndex
+        invalidationRefreshPending = true
     }
 
     private func requestInitialOverviewRefresh() {

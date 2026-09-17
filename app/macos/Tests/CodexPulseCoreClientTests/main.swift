@@ -504,7 +504,7 @@ struct ContractTestMain {
         )
         try expect(
             CodexPulseTransportContract.invalidationVersion,
-            "query-invalidation-v3",
+            "query-invalidation-v4",
             "invalidation contract version"
         )
         guard CodexPulseTransportContract.clientServiceConfig.methodConfig.count == 1,
