@@ -36,6 +36,8 @@ List / Create / Update / Delete / Link / Unlink 只读写 SQLite，不启动 App
 
 新增 query `ListCodexSubscriptionAccounts` 与 command `Create/Update/Delete/Link/UnlinkCodexSubscriptionAccount`。`AccountSnapshotRequest` additive `evaluated_at_ms` / `time_zone`；Codex 响应 additive `subscription`。非 Codex provider 的 `subscription` 必须 absent。
 
+Codex `AccountSnapshot` 在一次 App Server 夹读中同时完成 binding 身份确认与邮箱/套餐读取；并发中的相同读取共享一次夹读，首个调用取消后仍存活的请求自行重试。返回前重新读取 binding，并要求 display 的 scope/generation 精确匹配。Swift 对仅由本地索引变化触发的概览刷新复用匹配当前额度 binding 的已确认账号，保留正在进行的账号读取；额度页的同类刷新只重载本地用量，不重新读取在线额度和账号。quota/account 变化、手动刷新及 scope/generation 错配继续重新确认。
+
 mutation receipt 为 `applied` / `noop` / `conflict`。Swift 在 receipt 后必须做 authoritative List readback，不得 optimistic success。conflict 保留编辑草稿。
 
 ## 隐私

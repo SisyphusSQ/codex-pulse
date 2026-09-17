@@ -35,6 +35,26 @@ func TestInvalidationBrokerFiltersDomainsAndSequencesEvents(t *testing.T) {
 	}
 }
 
+func TestInvalidationBrokerObserverReceivesPublishedEvent(t *testing.T) {
+	broker, err := NewInvalidationBroker(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(broker.Close)
+	var observed []InvalidationEvent
+	if err := broker.SetObserver(func(event InvalidationEvent) {
+		observed = append(observed, event)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := broker.Notify(t.Context(), InvalidationIndex); err != nil {
+		t.Fatal(err)
+	}
+	if len(observed) != 1 || observed[0].Domain != InvalidationIndex || observed[0].Sequence != 1 {
+		t.Fatalf("observed events = %#v", observed)
+	}
+}
+
 // 测试 InvalidationBroker 在慢消费者队列满时合并到最新 hint，不阻塞业务调用。
 func TestInvalidationBrokerCoalescesSlowSubscriber(t *testing.T) {
 	broker, err := NewInvalidationBroker(1)

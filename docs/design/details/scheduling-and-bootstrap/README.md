@@ -22,6 +22,14 @@
 | 应用更新 | 默认每小时、最低优先级 | 设置页或菜单手动检查 |
 | Session index repair | 不自动 | 仅显式 dry-run |
 
+轻量索引的常驻 worker 对后台 Token 追平另采用协作切片：默认每片最多读取 4 MiB 或运行约 50 ms，片间让出 150 ms；前台/唤醒 trigger 将当前追平提升为每片 16 MiB / 200 ms 且不人为等待。每片在完整行和 SQLite 批次提交边界让出，持久 checkpoint 保证下一片及重启后继续；极长单行允许一次受既有 64 MiB 行上限约束的越片读取。切片内复用已确认 Home 的目录句柄核对未变化文件，结束时再次确认当前路径仍指向同一物理 Home；真正读取正文时 SnapshotReader 继续重新打开并核对文件快照。metadata 的 30 秒周期和前台/唤醒触发在片间优先处理，长文件追平不阻塞标题更新。
+
+后台持续追平时，Token 切片每次仍提交 durable checkpoint，但 index invalidation 最多每 30 秒发布一次；未通知的变化在下一次到期切片或本轮追平结束时发布。metadata 真实变化、前台触发及追平结束立即通知，保证标题更新和交互刷新不等待后台通知窗口。这样避免每个短切片都触发 Swift 概览的多路 RPC 重取。
+
+每轮开始在同一 SQLite read snapshot 中一次读取 Session metadata 与 active/pending Token scan head；metadata 有真实变化时仅更新变化的 Session、插入新增、删除移除记录，并原子推进全局 generation。未变化行保留上次变化时的行 generation，避免整表写入和 WAL 放大；完全相同的 App Server snapshot 不推进全局 generation，也不产生仅由 metadata 引起的 index invalidation。可选的 `CODEX_PULSE_LIGHT_INDEX_PROFILE=1` 只记录阶段耗时、Session/批次数和读取字节，以及短生命周期 App Server 子进程的 CPU 时间，不记录路径、ID 或 JSONL 内容。
+
+可选的 `CODEX_PULSE_QUERY_PROFILE=1` 在 Helper 数据目录生成权限 `0600` 的 `query-profile.log`，仅记录已鉴权 unary RPC 的方法、耗时、状态码及 index/quota/account 等失效域、序号与发布函数名；不记录请求、响应、账号、Session 或路径。该开关供本机耗电归因使用，关闭时不创建日志文件。
+
 Quota 网络失败使用 5、10、20、30 分钟带 jitter 退避；手动刷新绕过普通退避但不绕过 60 秒 durable 最小间隔、未来 Retry-After 或结果校验。服务端 Retry-After 作为独立 fence 保存在 source state 中，即使更长的本地退避让 schedule reason 显示为 `network_backoff`，manual 也必须等 server fence 到期；foreground 与 wake 不越过仍生效的普通错误退避。startup、crash recovery 与 Settings reconcile 恢复已持久的错误 due，不以当前重启时钟重新计算并向后推；原 due 已过才立即抓取，schedule 与 source-state 两个 Retry-After fence 始终取较晚者。系统从休眠恢复后，只立即刷新 stale 来源。reset 到达后在 `reset + 3 秒`尝试一次，失败继续退避，不推断已经重置。
 
 ## 任务优先级和预算

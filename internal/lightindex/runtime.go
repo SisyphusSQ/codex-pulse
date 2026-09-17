@@ -18,14 +18,94 @@ import (
 )
 
 const (
-	defaultScanBatchBytes  int64 = 8 << 20
-	maxSessionScanAttempts       = 8
+	defaultScanBatchBytes         int64 = 8 << 20
+	defaultScanSliceBytes         int64 = 4 << 20
+	interactiveScanSliceBytes     int64 = 16 << 20
+	backgroundScanSliceTime             = 50 * time.Millisecond
+	backgroundScanYield                 = 150 * time.Millisecond
+	interactiveScanSliceTime            = 200 * time.Millisecond
+	backgroundIndexNoticeInterval       = 30 * time.Second
+	maxSessionScanAttempts              = 8
 )
 
 var errTokenScanLineTooLong = errors.New("token scan line exceeds maximum")
+var errScanSliceExhausted = errors.New("light token scan slice exhausted")
+
+type scanSliceBudget struct {
+	remaining     int64
+	deadline      time.Time
+	unchanged     int
+	bytesRead     int64
+	batches       int
+	readDuration  time.Duration
+	writeDuration time.Duration
+}
+
+func (budget *scanSliceBudget) exhausted() bool {
+	return budget != nil && (budget.remaining <= 0 || !time.Now().Before(budget.deadline))
+}
+
+type scanContinuation struct {
+	sessions     []storelight.LightSessionScanSnapshot
+	index        int
+	retryCurrent bool
+	loaded       bool
+}
+
+type indexNoticeGate struct {
+	last    time.Time
+	pending bool
+}
+
+func (gate *indexNoticeGate) publish(
+	now time.Time,
+	changed bool,
+	metadataChanged bool,
+	interactive bool,
+	complete bool,
+	notify func(),
+) {
+	gate.pending = gate.pending || changed || metadataChanged
+	if !gate.pending {
+		return
+	}
+	if metadataChanged || interactive || complete || gate.last.IsZero() ||
+		now.Sub(gate.last) >= backgroundIndexNoticeInterval {
+		notify()
+		gate.last = now
+		gate.pending = false
+	}
+}
+
+func (continuation *scanContinuation) reset() {
+	*continuation = scanContinuation{}
+}
 
 type MetadataProvider interface {
 	List(context.Context, string) (appserver.ThreadList, error)
+}
+
+// RefreshObservation contains only aggregate timing and work counts. It never
+// includes Session IDs, paths, source content, or App Server responses.
+type RefreshObservation struct {
+	Phase         string
+	Duration      time.Duration
+	FetchDuration time.Duration
+	StoreDuration time.Duration
+	ReadDuration  time.Duration
+	WriteDuration time.Duration
+	Sessions      int
+	Unchanged     int
+	BytesRead     int64
+	Batches       int
+	Interactive   bool
+	Complete      bool
+	Failed        bool
+}
+
+type rolloutInspector interface {
+	Inspect(context.Context, string, *logsource.Snapshot) (logsource.Snapshot, error)
+	Unchanged(context.Context, string, logsource.Snapshot) (bool, error)
 }
 
 type RuntimeConfig struct {
@@ -33,6 +113,7 @@ type RuntimeConfig struct {
 	DeepRepository    *store.Repository
 	Metadata          MetadataProvider
 	ScanBatchBytes    int64
+	ScanSliceBytes    int64
 	RefreshInterval   time.Duration
 	Clock             func() time.Time
 	BeforeTokenScan   func(context.Context) error
@@ -40,6 +121,7 @@ type RuntimeConfig struct {
 	BatchCommitted    func(storelight.LightTokenScan)
 	RefreshCommitted  func()
 	RefreshFailed     func(error)
+	ObserveRefresh    func(RefreshObservation)
 }
 
 type Runtime struct {
@@ -47,6 +129,7 @@ type Runtime struct {
 	deepRepository    *store.Repository
 	metadata          MetadataProvider
 	scanBatchBytes    int64
+	scanSliceBytes    int64
 	refreshInterval   time.Duration
 	clock             func() time.Time
 	beforeTokenScan   func(context.Context) error
@@ -54,6 +137,7 @@ type Runtime struct {
 	batchCommitted    func(storelight.LightTokenScan)
 	refreshCommitted  func()
 	refreshFailed     func(error)
+	observeRefresh    func(RefreshObservation)
 	deepMu            sync.Mutex
 }
 
@@ -73,16 +157,24 @@ func NewRuntime(config RuntimeConfig) (*Runtime, error) {
 	if batchBytes <= 0 {
 		batchBytes = defaultScanBatchBytes
 	}
+	sliceBytes := config.ScanSliceBytes
+	if sliceBytes <= 0 {
+		sliceBytes = defaultScanSliceBytes
+	}
+	if sliceBytes <= logsource.PrefixLimitBytes {
+		return nil, errors.New("invalid lightweight index scan slice")
+	}
 	clock := config.Clock
 	if clock == nil {
 		clock = time.Now
 	}
 	return &Runtime{
 		repository: config.Repository, deepRepository: config.DeepRepository,
-		metadata: config.Metadata, scanBatchBytes: batchBytes,
+		metadata: config.Metadata, scanBatchBytes: batchBytes, scanSliceBytes: sliceBytes,
 		refreshInterval: config.RefreshInterval, clock: clock, beforeTokenScan: config.BeforeTokenScan,
 		metadataCommitted: config.MetadataCommitted, batchCommitted: config.BatchCommitted,
 		refreshCommitted: config.RefreshCommitted, refreshFailed: config.RefreshFailed,
+		observeRefresh: config.ObserveRefresh,
 	}, nil
 }
 
@@ -90,8 +182,11 @@ func (runtime *Runtime) Start(ctx context.Context, home storelight.LightHomeIden
 	if !runtime.validStart(ctx, home) {
 		return nil, errors.New("invalid lightweight index start")
 	}
+	started := time.Now()
 	metadata, err := runtime.metadata.List(ctx, home.Path)
+	fetched := time.Since(started)
 	if err != nil {
+		runtime.observe(RefreshObservation{Phase: "metadata", Duration: fetched, FetchDuration: fetched, Failed: true})
 		if ctx.Err() != nil || fatalRefreshError(err) {
 			return nil, err
 		}
@@ -99,6 +194,10 @@ func (runtime *Runtime) Start(ctx context.Context, home storelight.LightHomeIden
 		return runtime.startWorker(ctx, home, false), nil
 	}
 	metadataChanged, err := runtime.reconcileMetadata(ctx, home, metadata)
+	runtime.observe(RefreshObservation{
+		Phase: "metadata", Duration: time.Since(started), FetchDuration: fetched,
+		StoreDuration: time.Since(started) - fetched, Sessions: len(metadata.Threads), Failed: err != nil,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -132,11 +231,25 @@ func (runtime *Runtime) refreshMetadata(
 	ctx context.Context,
 	home storelight.LightHomeIdentity,
 ) (bool, error) {
+	started := time.Now()
 	metadata, err := runtime.metadata.List(ctx, home.Path)
+	fetched := time.Since(started)
 	if err != nil {
+		runtime.observe(RefreshObservation{Phase: "metadata", Duration: fetched, FetchDuration: fetched, Failed: true})
 		return false, err
 	}
-	return runtime.reconcileMetadata(ctx, home, metadata)
+	changed, err := runtime.reconcileMetadata(ctx, home, metadata)
+	runtime.observe(RefreshObservation{
+		Phase: "metadata", Duration: time.Since(started), FetchDuration: fetched,
+		StoreDuration: time.Since(started) - fetched, Sessions: len(metadata.Threads), Failed: err != nil,
+	})
+	return changed, err
+}
+
+func (runtime *Runtime) observe(observation RefreshObservation) {
+	if runtime.observeRefresh != nil {
+		runtime.observeRefresh(observation)
+	}
 }
 
 func (runtime *Runtime) reconcileMetadata(
@@ -227,29 +340,24 @@ func (runtime *Runtime) run(
 	initialMetadataChanged bool,
 	trigger <-chan struct{},
 ) error {
-	published, err := runtime.scanAll(ctx, home)
-	if initialMetadataChanged && !published {
-		runtime.notifyRefreshCommitted()
-	}
-	if err != nil {
-		if runtime.refreshInterval <= 0 || ctx.Err() != nil || fatalRefreshError(err) {
-			return err
-		}
-		runtime.notifyRefreshFailed(err)
-	}
 	if runtime.refreshInterval <= 0 {
-		return nil
+		published, err := runtime.scanAll(ctx, home)
+		if initialMetadataChanged && !published {
+			runtime.notifyRefreshCommitted()
+		}
+		return err
 	}
 	ticker := time.NewTicker(runtime.refreshInterval)
 	defer ticker.Stop()
+	continuation := scanContinuation{}
+	metadataChanged := initialMetadataChanged
+	interactive := false
+	var notices indexNoticeGate
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-		case <-trigger:
-		}
-		if err := runtime.refreshOnce(ctx, home); err != nil {
+		published, complete, err := runtime.scanBudgetedSlice(ctx, home, &continuation, interactive)
+		notices.publish(runtime.clock(), published, metadataChanged, interactive, complete || err != nil, runtime.notifyRefreshCommitted)
+		metadataChanged = false
+		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -257,20 +365,72 @@ func (runtime *Runtime) run(
 			if fatalRefreshError(err) {
 				return err
 			}
+			continuation.reset()
+			complete = true
+		}
+		if complete {
+			interactive = false
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-ticker.C:
+				case <-trigger:
+					interactive = true
+				}
+				changed, refreshErr := runtime.refreshMetadata(ctx, home)
+				if refreshErr != nil {
+					if ctx.Err() != nil {
+						return ctx.Err()
+					}
+					runtime.notifyRefreshFailed(refreshErr)
+					if fatalRefreshError(refreshErr) {
+						return refreshErr
+					}
+					continue
+				}
+				metadataChanged = changed
+				continuation.reset()
+				break
+			}
+			continue
+		}
+		if interactive {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-ticker.C:
+			case <-trigger:
+			default:
+				continue
+			}
+		} else {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-ticker.C:
+			case <-trigger:
+				interactive = true
+			case <-time.After(backgroundScanYield):
+				continue
+			}
+		}
+		changed, refreshErr := runtime.refreshMetadata(ctx, home)
+		if refreshErr != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			runtime.notifyRefreshFailed(refreshErr)
+			if fatalRefreshError(refreshErr) {
+				return refreshErr
+			}
+		} else {
+			metadataChanged = changed
+			if changed {
+				continuation.reset()
+			}
 		}
 	}
-}
-
-func (runtime *Runtime) refreshOnce(ctx context.Context, home storelight.LightHomeIdentity) error {
-	metadataChanged, err := runtime.refreshMetadata(ctx, home)
-	if err != nil {
-		return err
-	}
-	published, scanErr := runtime.scanAll(ctx, home)
-	if metadataChanged && !published {
-		runtime.notifyRefreshCommitted()
-	}
-	return scanErr
 }
 
 func fatalRefreshError(err error) bool {
@@ -367,12 +527,13 @@ func (runtime *Runtime) scanAll(
 	if err != nil {
 		return false, err
 	}
-	sessions, err := runtime.repository.ListLightSessions(ctx)
+	sessions, err := runtime.repository.ListLightSessionScans(ctx)
 	if err != nil {
 		return false, err
 	}
 	published := false
-	for _, session := range sessions {
+	for _, current := range sessions {
+		session := current.Session
 		if err := ctx.Err(); err != nil {
 			if published {
 				runtime.notifyRefreshCommitted()
@@ -382,7 +543,7 @@ func (runtime *Runtime) scanAll(
 		if session.RolloutPath == nil {
 			continue
 		}
-		sessionPublished, err := runtime.scanSession(ctx, home, session, discoverer, reader)
+		sessionPublished, err := runtime.scanSession(ctx, home, current, discoverer, reader, nil, true)
 		published = published || sessionPublished
 		if err != nil {
 			if recoverableSessionScanError(err) {
@@ -400,16 +561,120 @@ func (runtime *Runtime) scanAll(
 	return published, nil
 }
 
+// scanBudgetedSlice returns at a file or committed chunk boundary. The cursor
+// stays in memory while checkpoints stay durable, so a long catch-up cannot
+// delay the next 30-second metadata refresh.
+func (runtime *Runtime) scanBudgetedSlice(
+	ctx context.Context,
+	home storelight.LightHomeIdentity,
+	continuation *scanContinuation,
+	interactive bool,
+) (published bool, complete bool, scanErr error) {
+	started := time.Now()
+	observation := RefreshObservation{Phase: "scan", Interactive: interactive}
+	var budget *scanSliceBudget
+	defer func() {
+		observation.Duration = time.Since(started)
+		observation.Complete = complete
+		observation.Failed = scanErr != nil
+		if budget != nil {
+			observation.Unchanged = budget.unchanged
+			observation.BytesRead = budget.bytesRead
+			observation.Batches = budget.batches
+			observation.ReadDuration = budget.readDuration
+			observation.WriteDuration = budget.writeDuration
+		}
+		runtime.observe(observation)
+	}()
+	if runtime.beforeTokenScan != nil {
+		if err := runtime.beforeTokenScan(ctx); err != nil {
+			return false, false, err
+		}
+	}
+	if !continuation.loaded {
+		loadStarted := time.Now()
+		sessions, err := runtime.repository.ListLightSessionScans(ctx)
+		observation.StoreDuration = time.Since(loadStarted)
+		if err != nil {
+			return false, false, err
+		}
+		continuation.sessions = sessions
+		continuation.loaded = true
+	}
+	discoverer, err := logsource.NewConfirmedDiscoverer(home.Path, home.DeviceID, home.Inode)
+	if err != nil {
+		return false, false, err
+	}
+	inspector, err := discoverer.OpenBatchInspector()
+	if err != nil {
+		return false, false, err
+	}
+	defer func() {
+		if err := inspector.VerifyHome(); err != nil {
+			scanErr = errors.Join(scanErr, err)
+		}
+		if err := inspector.Close(); err != nil {
+			scanErr = errors.Join(scanErr, err)
+		}
+	}()
+	reader, err := logsource.NewConfirmedSnapshotReader(
+		home.Path, home.DeviceID, home.Inode, DefaultTokenScanChunkBytes,
+	)
+	if err != nil {
+		return false, false, err
+	}
+	sliceBytes := runtime.scanSliceBytes
+	sliceTime := backgroundScanSliceTime
+	if interactive {
+		sliceBytes = interactiveScanSliceBytes
+		sliceTime = interactiveScanSliceTime
+	}
+	budget = &scanSliceBudget{remaining: sliceBytes, deadline: time.Now().Add(sliceTime)}
+	for continuation.index < len(continuation.sessions) {
+		if err := ctx.Err(); err != nil {
+			return published, false, err
+		}
+		if budget.exhausted() {
+			return published, false, nil
+		}
+		current := continuation.sessions[continuation.index]
+		observation.Sessions++
+		if current.Session.RolloutPath != nil {
+			sessionPublished, scanErr := runtime.scanSession(
+				ctx, home, current, inspector, reader, budget, !continuation.retryCurrent,
+			)
+			published = published || sessionPublished
+			if errors.Is(scanErr, errScanSliceExhausted) {
+				continuation.retryCurrent = true
+				return published, false, nil
+			}
+			if scanErr != nil && !recoverableSessionScanError(scanErr) {
+				return published, false, scanErr
+			}
+		}
+		continuation.index++
+		continuation.retryCurrent = false
+	}
+	continuation.reset()
+	return published, true, nil
+}
+
 func (runtime *Runtime) scanSession(
 	ctx context.Context,
 	home storelight.LightHomeIdentity,
-	session storelight.LightSessionMetadata,
-	discoverer *logsource.Discoverer,
+	current storelight.LightSessionScanSnapshot,
+	discoverer rolloutInspector,
 	reader *logsource.SnapshotReader,
+	budget *scanSliceBudget,
+	useCached bool,
 ) (bool, error) {
 	var lastErr error
 	for attempt := 0; attempt < maxSessionScanAttempts; attempt++ {
-		published, err := runtime.scanSessionOnce(ctx, home, session, discoverer, reader)
+		var cached *storelight.LightSessionScanSnapshot
+		if attempt == 0 && useCached {
+			cached = &current
+		}
+		published, err := runtime.scanSessionOnce(ctx, home, current.Session, discoverer, reader, cached, budget)
 		if err == nil {
 			return published, nil
 		}
@@ -425,18 +690,40 @@ func (runtime *Runtime) scanSessionOnce(
 	ctx context.Context,
 	home storelight.LightHomeIdentity,
 	session storelight.LightSessionMetadata,
-	discoverer *logsource.Discoverer,
+	discoverer rolloutInspector,
 	reader *logsource.SnapshotReader,
+	cached *storelight.LightSessionScanSnapshot,
+	budget *scanSliceBudget,
 ) (bool, error) {
-	pending, pendingErr := runtime.repository.PendingLightTokenScan(ctx, session.SessionID)
+	var pending storelight.LightTokenScan
+	var pendingErr error
+	if cached != nil {
+		pendingErr = storelight.ErrNotFound
+		if cached.Pending != nil {
+			pending = *cached.Pending
+			pendingErr = nil
+		}
+	} else {
+		pending, pendingErr = runtime.repository.PendingLightTokenScan(ctx, session.SessionID)
+	}
 	if pendingErr == nil {
-		return runtime.scanExistingPending(ctx, home, session, pending, discoverer, reader)
+		return runtime.scanExistingPending(ctx, home, session, pending, discoverer, reader, budget)
 	}
 	if !errors.Is(pendingErr, storelight.ErrNotFound) {
 		return false, pendingErr
 	}
 
-	active, activeErr := runtime.repository.ActiveLightTokenScan(ctx, session.SessionID)
+	var active storelight.LightTokenScan
+	var activeErr error
+	if cached != nil {
+		activeErr = storelight.ErrNotFound
+		if cached.Active != nil {
+			active = *cached.Active
+			activeErr = nil
+		}
+	} else {
+		active, activeErr = runtime.repository.ActiveLightTokenScan(ctx, session.SessionID)
+	}
 	var previous *logsource.Snapshot
 	if activeErr == nil {
 		value := snapshotFromStoredScan(active)
@@ -447,6 +734,9 @@ func (runtime *Runtime) scanSessionOnce(
 				return false, err
 			}
 			if unchanged {
+				if budget != nil {
+					budget.unchanged++
+				}
 				return false, nil
 			}
 		}
@@ -480,7 +770,7 @@ func (runtime *Runtime) scanSessionOnce(
 			if err != nil || pending.Generation != generation {
 				return false, errors.Join(storelight.ErrLightTokenConflict, err)
 			}
-			return runtime.scanPending(ctx, pending, current, reader)
+			return runtime.scanPending(ctx, pending, current, reader, budget)
 		case RefreshDefer:
 			return false, storelight.ErrLightHomeFence
 		}
@@ -495,7 +785,7 @@ func (runtime *Runtime) scanSessionOnce(
 	if err != nil || pending.Generation != generation {
 		return false, errors.Join(storelight.ErrLightTokenConflict, err)
 	}
-	return runtime.scanPending(ctx, pending, current, reader)
+	return runtime.scanPending(ctx, pending, current, reader, budget)
 }
 
 func (runtime *Runtime) scanExistingPending(
@@ -503,8 +793,9 @@ func (runtime *Runtime) scanExistingPending(
 	home storelight.LightHomeIdentity,
 	session storelight.LightSessionMetadata,
 	pending storelight.LightTokenScan,
-	discoverer *logsource.Discoverer,
+	discoverer rolloutInspector,
 	reader *logsource.SnapshotReader,
+	budget *scanSliceBudget,
 ) (bool, error) {
 	previous := snapshotFromStoredScan(pending)
 	inspectPrevious := &previous
@@ -521,7 +812,7 @@ func (runtime *Runtime) scanExistingPending(
 	)
 	switch decision.Kind {
 	case RefreshReuse:
-		return runtime.scanPending(ctx, pending, current, reader)
+		return runtime.scanPending(ctx, pending, current, reader, budget)
 	case RefreshAppend:
 		if pendingNeedsIdentityUpdate(pending, identity) {
 			if err := runtime.repository.UpdateLightTokenPendingIdentity(
@@ -534,7 +825,7 @@ func (runtime *Runtime) scanExistingPending(
 				return false, errors.Join(storelight.ErrLightTokenConflict, err)
 			}
 		}
-		return runtime.scanPending(ctx, pending, current, reader)
+		return runtime.scanPending(ctx, pending, current, reader, budget)
 	case RefreshDefer:
 		return false, storelight.ErrLightHomeFence
 	case RefreshRebuild:
@@ -548,7 +839,7 @@ func (runtime *Runtime) scanExistingPending(
 		if err != nil || pending.Generation != generation {
 			return false, errors.Join(storelight.ErrLightTokenConflict, err)
 		}
-		return runtime.scanPending(ctx, pending, current, reader)
+		return runtime.scanPending(ctx, pending, current, reader, budget)
 	default:
 		return false, storelight.ErrLightTokenConflict
 	}
@@ -565,20 +856,37 @@ func (runtime *Runtime) scanPending(
 	pending storelight.LightTokenScan,
 	snapshot logsource.Snapshot,
 	reader *logsource.SnapshotReader,
+	slice *scanSliceBudget,
 ) (bool, error) {
-	budget := runtime.scanBatchBytes
+	batchBytes := runtime.scanBatchBytes
 	minimumBudget := snapshot.Fingerprint.PrefixBytes + 1
-	if budget < minimumBudget {
-		budget = minimumBudget
+	if batchBytes < minimumBudget {
+		batchBytes = minimumBudget
 	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return false, err
 		}
+		if slice != nil {
+			if slice.exhausted() || slice.remaining < minimumBudget {
+				return false, errScanSliceExhausted
+			}
+			if batchBytes > slice.remaining {
+				batchBytes = slice.remaining
+			}
+		}
 		startOffset := pending.Checkpoint.DurableOffset
-		scanResult, readResult, err := scanSnapshotBatch(ctx, reader, snapshot, pending, budget)
+		readStarted := time.Now()
+		scanResult, readResult, err := scanSnapshotBatch(ctx, reader, snapshot, pending, batchBytes)
+		if slice != nil {
+			slice.readDuration += time.Since(readStarted)
+			slice.bytesRead += readResult.BytesRead
+		}
 		if err != nil {
 			return false, err
+		}
+		if slice != nil {
+			slice.remaining -= readResult.BytesRead
 		}
 		checkpoint := storelight.LightTokenCheckpoint{
 			DurableOffset: scanResult.DurableOffset,
@@ -609,7 +917,13 @@ func (runtime *Runtime) scanPending(
 			InvocationDeltas: invocationDeltasToStore(scanResult.InvocationDeltas),
 			UpdatedAtMS:      runtime.clock().UnixMilli(),
 		}
-		if err := runtime.repository.CommitLightTokenBatch(ctx, batch); err != nil {
+		writeStarted := time.Now()
+		err = runtime.repository.CommitLightTokenBatch(ctx, batch)
+		if slice != nil {
+			slice.writeDuration += time.Since(writeStarted)
+			slice.batches++
+		}
+		if err != nil {
 			return false, err
 		}
 		if checkpoint.Complete {
@@ -630,13 +944,22 @@ func (runtime *Runtime) scanPending(
 			return false, nil
 		}
 		if pending.Checkpoint.DurableOffset == startOffset {
-			if budget >= int64(DefaultTokenScanMaxLine)+snapshot.Fingerprint.PrefixBytes {
+			if batchBytes >= int64(DefaultTokenScanMaxLine)+snapshot.Fingerprint.PrefixBytes {
 				return false, errTokenScanLineTooLong
 			}
-			budget *= 2
-			if limit := int64(DefaultTokenScanMaxLine) + snapshot.Fingerprint.PrefixBytes; budget > limit {
-				budget = limit
+			batchBytes *= 2
+			if limit := int64(DefaultTokenScanMaxLine) + snapshot.Fingerprint.PrefixBytes; batchBytes > limit {
+				batchBytes = limit
 			}
+			if slice != nil && slice.remaining < batchBytes {
+				// A single JSONL line can exceed the normal slice size. It must
+				// either advance once or hit the scanner's explicit line limit.
+				slice.remaining = batchBytes
+			}
+			continue
+		}
+		if slice.exhausted() {
+			return false, errScanSliceExhausted
 		}
 	}
 }

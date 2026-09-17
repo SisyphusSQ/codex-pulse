@@ -1353,7 +1353,7 @@ public actor AppRuntime {
         return outcome
     }
 
-    private func refresh(showLoading: Bool) async {
+    private func refresh(showLoading: Bool, reuseAccountOnIndex: Bool = false) async {
         guard readyForOverview, !systemIsSleeping, !shuttingDown, let client else { return }
         guard let provider = selectedProvider else { return }
         if let refreshTask {
@@ -1361,7 +1361,9 @@ public actor AppRuntime {
             return
         }
         guard refreshAdmissionGeneration == nil else { return }
-        cancelAccountRefresh()
+        if !(reuseAccountOnIndex && accountRefreshTask != nil) {
+            cancelAccountRefresh()
+        }
         refreshGeneration &+= 1
         let generation = refreshGeneration
         let admittedRuntimeGeneration = runtimeGeneration
@@ -1595,7 +1597,15 @@ public actor AppRuntime {
         refreshTaskGeneration = generation
         refreshAdmissionGeneration = nil
         do {
-            let responses = try await task.value
+			var responses = try await task.value
+			if reuseAccountOnIndex, provider == .codex, responses.account == nil,
+				let currentAccount = lastResponses?.account,
+				let reused = CodexAccountContext.reusableAccount(
+					provider: provider, quota: responses.quota, previousAccount: currentAccount
+				)
+			{
+				responses = responses.replacingAccount(reused)
+			}
 			guard generation == refreshGeneration, refreshTaskGeneration == generation, !shuttingDown,
 				responses.provider == selectedProvider,
 				responses.usage.providerContext.effectiveProvider == selectedProvider?.rawValue,
@@ -1614,12 +1624,18 @@ public actor AppRuntime {
             guard generation == refreshGeneration, !shuttingDown else { return }
             // Account data is optional and has its own bounded RPC/task lifecycle,
             // so it cannot delay the primary Overview publication above.
-			startAccountRefresh(
-				client: client,
-				provider: provider,
-				runtimeGeneration: runtimeGeneration,
-				overviewGeneration: generation
-			)
+			let accountKey = CodexAccountContext.key(fromAccount: responses.account)
+			let reusableAccount = reuseAccountOnIndex && provider == .codex
+				&& responses.account?.hasAccount == true && accountKey != nil
+				&& accountKey == CodexAccountContext.key(fromQuota: responses.quota)
+			if !reusableAccount && !(reuseAccountOnIndex && provider == .codex && accountRefreshTask != nil) {
+				startAccountRefresh(
+					client: client,
+					provider: provider,
+					runtimeGeneration: runtimeGeneration,
+					overviewGeneration: generation
+				)
+			}
         } catch is CancellationError {
             if generation != refreshGeneration {
                 clearOwnedRefreshTask(generation)
@@ -1663,15 +1679,13 @@ public actor AppRuntime {
                 await self?.finishAccountRefresh(
                     response,
                     generation: generation,
-                    runtimeGeneration: runtimeGeneration,
-                    overviewGeneration: overviewGeneration
+                    runtimeGeneration: runtimeGeneration
                 )
             } catch {
                 await self?.finishAccountRefresh(
                     nil,
                     generation: generation,
-                    runtimeGeneration: runtimeGeneration,
-                    overviewGeneration: overviewGeneration
+                    runtimeGeneration: runtimeGeneration
                 )
             }
         }
@@ -1680,14 +1694,13 @@ public actor AppRuntime {
     private func finishAccountRefresh(
         _ response: Codexpulse_Core_V1_AccountSnapshotResponse?,
         generation: UInt64,
-        runtimeGeneration: UInt64,
-        overviewGeneration: UInt64
+        runtimeGeneration: UInt64
     ) async {
         guard generation == accountRefreshGeneration,
               runtimeGeneration == self.runtimeGeneration,
-              overviewGeneration == refreshGeneration,
               !shuttingDown,
-              readyForOverview
+              readyForOverview,
+			  lastResponses?.provider == selectedProvider
         else { return }
         accountRefreshTask = nil
         guard let response, let responses = lastResponses else { return }
@@ -1905,7 +1918,7 @@ public actor AppRuntime {
             await refreshOverviewHealth()
             return
         }
-        await refresh(showLoading: false)
+        await refresh(showLoading: false, reuseAccountOnIndex: domain == "index")
     }
 
     // Health/job notifications do not change usage, project rankings or the annual activity.

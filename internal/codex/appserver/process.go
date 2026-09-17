@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ErrCodexBinaryUnavailable 表示当前环境没有可执行的 Codex CLI。
@@ -39,6 +40,8 @@ type ProcessOptions struct {
 	Version     string
 	// BeforeStart 在 pipe 就绪后、command.Start 前执行调用方代际检查。
 	BeforeStart func(context.Context) error
+	// OnExit receives only process CPU counters after the App Server exits.
+	OnExit      func(user, system time.Duration)
 	homeBinding processHomeBinding
 	// afterBeforeStartForTest 确定性覆盖最后校验返回到 Start 之间的竞态窗口。
 	afterBeforeStartForTest func() error
@@ -150,6 +153,9 @@ func withInitializedLocalRPC[T any](
 		cancelProcess()
 		_ = stdin.Close()
 		<-done
+		if options.OnExit != nil && command.ProcessState != nil {
+			options.OnExit(command.ProcessState.UserTime(), command.ProcessState.SystemTime())
+		}
 	}()
 
 	rpc := newJSONLineRPC(stdin, stdout)

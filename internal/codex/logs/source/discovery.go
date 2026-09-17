@@ -18,6 +18,64 @@ type Discoverer struct {
 	filesystem   fileSystem
 }
 
+// BatchInspector reuses one confirmed Home descriptor for metadata-only checks
+// within a bounded refresh slice. Content reads still reopen and verify the
+// exact source snapshot through SnapshotReader.
+type BatchInspector struct {
+	discoverer *Discoverer
+	root       scanRoot
+}
+
+func (discoverer *Discoverer) OpenBatchInspector() (*BatchInspector, error) {
+	if discoverer == nil || discoverer.filesystem == nil {
+		return nil, ErrInvalidHome
+	}
+	root, err := discoverer.filesystem.OpenRoot(discoverer.home, true)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrHomeChanged, err)
+	}
+	if !samePersistentRootIdentity(root.Identity(), discoverer.rootIdentity) {
+		_ = root.Close()
+		return nil, ErrHomeChanged
+	}
+	return &BatchInspector{discoverer: discoverer, root: root}, nil
+}
+
+func (batch *BatchInspector) Inspect(ctx context.Context, absolutePath string, previous *Snapshot) (Snapshot, error) {
+	if batch == nil || batch.root == nil {
+		return Snapshot{}, ErrInvalidHome
+	}
+	return batch.discoverer.Inspect(ctx, absolutePath, previous)
+}
+
+func (batch *BatchInspector) Unchanged(ctx context.Context, absolutePath string, previous Snapshot) (bool, error) {
+	if batch == nil || batch.root == nil || ctx == nil {
+		return false, ErrInvalidHome
+	}
+	return batch.discoverer.unchangedWithRoot(ctx, absolutePath, previous, batch.root)
+}
+
+// VerifyHome catches a path replacement while the batch held the original fd.
+func (batch *BatchInspector) VerifyHome() error {
+	if batch == nil || batch.root == nil {
+		return ErrInvalidHome
+	}
+	identity, err := batch.discoverer.filesystem.ConfirmRoot(batch.discoverer.home, true)
+	if err != nil || !samePersistentRootIdentity(identity, batch.discoverer.rootIdentity) {
+		return ErrHomeChanged
+	}
+	return nil
+}
+
+func (batch *BatchInspector) Close() error {
+	if batch == nil || batch.root == nil {
+		return nil
+	}
+	err := batch.root.Close()
+	batch.root = nil
+	return err
+}
+
 func NewDiscoverer(home string) (*Discoverer, error) {
 	return newDiscovererWithIdentity(home, osFileSystem{}, nil)
 }
@@ -126,6 +184,23 @@ func (discoverer *Discoverer) Unchanged(
 	if discoverer == nil || discoverer.filesystem == nil || ctx == nil {
 		return false, ErrInvalidHome
 	}
+	root, err := discoverer.filesystem.OpenRoot(discoverer.home, true)
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", ErrHomeChanged, err)
+	}
+	defer func() { _ = root.Close() }()
+	if !samePersistentRootIdentity(root.Identity(), discoverer.rootIdentity) {
+		return false, ErrHomeChanged
+	}
+	return discoverer.unchangedWithRoot(ctx, absolutePath, previous, root)
+}
+
+func (discoverer *Discoverer) unchangedWithRoot(
+	ctx context.Context,
+	absolutePath string,
+	previous Snapshot,
+	root scanRoot,
+) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -137,14 +212,6 @@ func (discoverer *Discoverer) Unchanged(
 	relativePath, err := filepath.Rel(discoverer.home, absolutePath)
 	if err != nil || filepath.IsAbs(relativePath) {
 		return false, ErrUnsafeSource
-	}
-	root, err := discoverer.filesystem.OpenRoot(discoverer.home, true)
-	if err != nil {
-		return false, fmt.Errorf("%w: %v", ErrHomeChanged, err)
-	}
-	defer func() { _ = root.Close() }()
-	if !samePersistentRootIdentity(root.Identity(), discoverer.rootIdentity) {
-		return false, ErrHomeChanged
 	}
 	metadata, err := root.Metadata(relativePath)
 	if err != nil {
