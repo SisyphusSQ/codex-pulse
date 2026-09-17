@@ -5746,6 +5746,85 @@ private func testIndexInvalidationRefreshesStatusWhileApplicationIsInactive() as
 }
 
 @MainActor
+private func testIndexInvalidationReusesMatchingCodexAccount() async throws {
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(accountBindingScope: testCodexScopeA)
+    )
+    await core.setInvalidation(domain: "index", delay: .seconds(2))
+    let model = AppModel(runtime: AppRuntime(
+        supervisor: FakeSupervisor(), clientFactory: { _ in core }
+    ))
+    model.start()
+    try await waitUntil("initial confirmed overview accounts") {
+        await MainActor.run {
+            model.presentation?.account.availability == .available
+                && model.statusPresentation?.account.availability == .available
+        }
+    }
+    model.navigate(to: .quotaUsage)
+    try await waitUntil("confirmed quota page account card") {
+        await MainActor.run {
+            model.quotaAccountCardSummary?.availability == .available
+        }
+    }
+    let initialAccounts = await core.recordedAccountSnapshotRequests().count
+    let initialUsage = await core.recordedUsageRequests().count
+    try await waitUntil("index invalidation refreshes both overviews") {
+        await core.recordedUsageRequests().count >= initialUsage + 2
+    }
+    let refreshedAccounts = await core.recordedAccountSnapshotRequests().count
+    try expect(
+        refreshedAccounts == initialAccounts,
+        "index-only refresh account calls = \(refreshedAccounts), initial = \(initialAccounts)"
+    )
+    try expect(
+        model.presentation?.account.availability == .available
+            && model.statusPresentation?.account.availability == .available
+            && model.quotaAccountCardSummary?.availability == .available,
+        "reused account must remain available in both overviews and the quota card"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testIndexInvalidationRequeriesChangedCodexAccount() async throws {
+    let core = FakeCore(
+        bootstrap: makeNormalBootstrap(),
+        responses: makeResponses(accountBindingScope: testCodexScopeA)
+    )
+    await core.setInvalidation(domain: "index", delay: .seconds(1))
+    let model = AppModel(runtime: AppRuntime(
+        supervisor: FakeSupervisor(), clientFactory: { _ in core }
+    ))
+    model.start()
+    try await waitUntil("initial A account") {
+        await MainActor.run {
+            model.presentation?.account.availability == .available
+                && model.statusPresentation?.account.availability == .available
+        }
+    }
+    let initialAccounts = await core.recordedAccountSnapshotRequests().count
+    await core.setResponses(makeResponses(
+        accountEmail: "b@example.com",
+        accountBindingScope: testCodexScopeB,
+        accountBindingGeneration: 2
+    ))
+    try await waitUntil("index invalidation loads B account") {
+        await MainActor.run {
+            model.presentation?.account.emailText == "b@example.com"
+                && model.statusPresentation?.account.emailText == "b@example.com"
+        }
+    }
+    let changedAccounts = await core.recordedAccountSnapshotRequests().count
+    try expect(
+        changedAccounts > initialAccounts,
+        "a changed binding must query the new account instead of reusing A"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
 private func testRepeatedCursorStopsPagination() async throws {
     let suiteName = "CodexPulseAppTests.RepeatedCursor.\(UUID().uuidString)"
     guard let defaults = UserDefaults(suiteName: suiteName) else {
@@ -10352,12 +10431,20 @@ private func testAppRuntimeKeepsAccountReadOptionalAndRetainsLastSuccess() async
         hangingModel.statusPresentation?.account.availability == .unavailable,
         "a hanging account/read must not delay the independent status overview"
     )
+    try await waitUntil("initial hanging account reads started") {
+        await hangingCore.recordedAccountSnapshotRequests().count >= 2
+    }
+    let initialHangingAccountCalls = await hangingCore.recordedAccountSnapshotRequests().count
     try await waitUntil("hanging account/read invalidation Overview") {
         let usageCalls = await hangingCore.recordedUsageRequests().count
-        let accountCalls = await hangingCore.recordedCalls().filter { $0 == "account" }.count
         let isRefreshing = await MainActor.run { hangingModel.isOverviewRefreshing }
-        return usageCalls >= 2 && accountCalls >= 2 && !isRefreshing
+        return usageCalls >= 2 && !isRefreshing
     }
+    let accountCallsAfterIndex = await hangingCore.recordedAccountSnapshotRequests().count
+    try expect(
+        accountCallsAfterIndex == initialHangingAccountCalls,
+        "index invalidation must keep the original account confirmation read in flight"
+    )
     hangingModel.refreshOrRestart()
     try await waitUntil("hanging account/read manual Overview") {
         let usageCalls = await hangingCore.recordedUsageRequests().count
@@ -13239,6 +13326,8 @@ struct CodexPulseAppTestMain {
         try await testRefreshAllRetriesEveryUnavailableSelectedDetail()
         try await testRefreshAllReportsGlobalProgressUntilEveryReadCompletes()
         try await testIndexInvalidationRefreshesStatusWhileApplicationIsInactive()
+        try await testIndexInvalidationReusesMatchingCodexAccount()
+        try await testIndexInvalidationRequeriesChangedCodexAccount()
         try await testRepeatedCursorStopsPagination()
         try await testTransientCursorFailureCanRetry()
         try await testGlobalRefreshMapsThreeProviderReceipt()

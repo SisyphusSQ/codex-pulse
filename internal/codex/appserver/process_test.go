@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // 测试 Finder 的最小 PATH 下仍会选择产品认可的绝对 Codex CLI 候选。（风险复现用例）
@@ -56,10 +57,16 @@ done
 		t.Fatal(err)
 	}
 
+	observedExit := false
 	got, err := withInitializedLocalRPC(
 		t.Context(),
 		confirmedHome,
-		ProcessOptions{CodexBinary: binary},
+		ProcessOptions{CodexBinary: binary, OnExit: func(user, system time.Duration) {
+			observedExit = true
+			if user < 0 || system < 0 {
+				t.Errorf("negative App Server CPU counters: %s / %s", user, system)
+			}
+		}},
 		func(_ context.Context, _ *jsonLineRPC, canonicalHome string) (string, error) {
 			return canonicalHome, nil
 		},
@@ -69,6 +76,9 @@ done
 	}
 	if got != wantHome {
 		t.Fatalf("withInitializedLocalRPC() = %q, want %q", got, wantHome)
+	}
+	if !observedExit {
+		t.Fatal("App Server process exit was not observed")
 	}
 }
 

@@ -113,6 +113,38 @@ func TestConfirmedDiscovererUnchangedUsesExactFileMetadata(t *testing.T) {
 	}
 }
 
+func TestBatchInspectorRejectsHomeReplacementBeforePublishingSlice(t *testing.T) {
+	t.Parallel()
+
+	home, discoverer := confirmedInspectFixture(t)
+	path := filepath.Join(home, "sessions", "unchanged.jsonl")
+	if err := os.WriteFile(path, []byte("first\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := discoverer.Inspect(context.Background(), path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, err := discoverer.OpenBatchInspector()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = batch.Close() }()
+	if unchanged, err := batch.Unchanged(context.Background(), path, previous); err != nil || !unchanged {
+		t.Fatalf("batch unchanged = %t, %v", unchanged, err)
+	}
+	oldHome := home + "-moved"
+	if err := os.Rename(home, oldHome); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := batch.VerifyHome(); !errors.Is(err, ErrHomeChanged) {
+		t.Fatalf("replacement check = %v, want Home changed", err)
+	}
+}
+
 func confirmedInspectFixture(t *testing.T) (string, *Discoverer) {
 	t.Helper()
 	home := t.TempDir()

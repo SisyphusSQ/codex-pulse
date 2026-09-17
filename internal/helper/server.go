@@ -3,6 +3,7 @@ package helper
 import (
 	"context"
 	"errors"
+	"time"
 
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
@@ -25,6 +26,7 @@ type ServerConfig struct {
 	Recovery      core.MigrationRecoveryService
 	Lifecycle     LifecycleNotifier
 	Shutdown      ShutdownRequester
+	ObserveRPC    func(method string, duration time.Duration, code codes.Code)
 }
 
 type LifecycleNotifier interface {
@@ -49,8 +51,12 @@ func NewGRPCServer(config ServerConfig) (*grpc.Server, error) {
 	if config.Authenticator == nil || config.HelperVersion == "" {
 		return nil, ErrGRPCServer
 	}
+	unaryInterceptors := []grpc.UnaryServerInterceptor{unaryAuthentication(config.Authenticator)}
+	if config.ObserveRPC != nil {
+		unaryInterceptors = append(unaryInterceptors, unaryRPCObservation(config.ObserveRPC))
+	}
 	server := grpc.NewServer(
-		grpc.ChainUnaryInterceptor(unaryAuthentication(config.Authenticator)),
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
 		grpc.ChainStreamInterceptor(streamAuthentication(config.Authenticator)),
 		grpc.MaxRecvMsgSize(maximumRPCMessageBytes),
 		grpc.MaxSendMsgSize(maximumRPCMessageBytes),
@@ -64,6 +70,20 @@ func NewGRPCServer(config ServerConfig) (*grpc.Server, error) {
 		shutdown:      config.Shutdown,
 	})
 	return server, nil
+}
+
+func unaryRPCObservation(observe func(string, time.Duration, codes.Code)) grpc.UnaryServerInterceptor {
+	return func(
+		ctx context.Context,
+		request any,
+		info *grpc.UnaryServerInfo,
+		handler grpc.UnaryHandler,
+	) (any, error) {
+		started := time.Now()
+		response, err := handler(ctx, request)
+		observe(info.FullMethod, time.Since(started), status.Code(err))
+		return response, err
+	}
 }
 
 func (api *grpcAPI) ListSessions(

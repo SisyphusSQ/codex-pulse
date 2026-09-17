@@ -32,6 +32,12 @@ type accountDisplayCache struct {
 	AfterRateLimitPlanTypes  []string
 }
 
+type accountDisplayFlight struct {
+	done    chan struct{}
+	display *accountDisplayCache
+	err     error
+}
+
 type quotaAccountPublisher interface {
 	SealAndDrain(context.Context) error
 	PublishBinding(context.Context, quotaonline.AccountBindingFence) error
@@ -52,6 +58,8 @@ type accountBindingRuntime struct {
 	active  *activeCodexAccount
 	display *accountDisplayCache
 	closed  bool
+	probeMu sync.Mutex
+	probe   *accountDisplayFlight
 }
 
 func newAccountBindingRuntime(
@@ -100,7 +108,14 @@ func (runtime *accountBindingRuntime) Display() *accountDisplayCache {
 	if runtime.display == nil {
 		return nil
 	}
-	copy := *runtime.display
+	return cloneAccountDisplay(runtime.display)
+}
+
+func cloneAccountDisplay(display *accountDisplayCache) *accountDisplayCache {
+	if display == nil {
+		return nil
+	}
+	copy := *display
 	if copy.Email != nil {
 		email := *copy.Email
 		copy.Email = &email
@@ -160,7 +175,15 @@ func (runtime *accountBindingRuntime) reconcileIdentity(
 		return err
 	}
 	defer finish()
+	return runtime.reconcileIdentityLocked(ctx, reason, mode, runtime.discoverScope)
+}
 
+func (runtime *accountBindingRuntime) reconcileIdentityLocked(
+	ctx context.Context,
+	reason store.CodexAccountBindingReason,
+	mode identityReconcileMode,
+	probe func(context.Context) (string, error),
+) error {
 	nowMS := runtime.clock().UnixMilli()
 	current, err := runtime.repository.CodexAccountBinding(ctx)
 	if err != nil {
@@ -184,7 +207,7 @@ func (runtime *accountBindingRuntime) reconcileIdentity(
 		}
 	}
 
-	firstScope, err := runtime.discoverScope(ctx)
+	firstScope, err := probe(ctx)
 	if errors.Is(err, accountbinding.ErrAccountIdentityUnavailable) ||
 		errors.Is(err, appserver.ErrAccountIdentityUnavailable) {
 		return runtime.markUnavailable(ctx, nowMS, store.CodexAccountBindingReasonMissingAccountID)
@@ -225,7 +248,7 @@ func (runtime *accountBindingRuntime) reconcileIdentity(
 
 	if mode == identityReconcileSwitch ||
 		(mode == identityReconcileProbe && current.State != store.CodexAccountBindingConfirmed) {
-		secondScope, confirmErr := runtime.discoverScope(ctx)
+		secondScope, confirmErr := probe(ctx)
 		if confirmErr != nil {
 			if isAccountBindingCallerCancellation(confirmErr) {
 				return confirmErr
@@ -303,6 +326,95 @@ func (runtime *accountBindingRuntime) LoadDisplay(ctx context.Context) (*account
 	return display, nil
 }
 
+// ProbeAndLoadDisplay uses one App Server account sandwich for both identity
+// confirmation and display. The before/after account IDs still fence every
+// field against the confirmed binding before anything reaches the UI.
+func (runtime *accountBindingRuntime) ProbeAndLoadDisplay(ctx context.Context) (*accountDisplayCache, error) {
+	if runtime == nil || ctx == nil {
+		return nil, ErrAccountBindingRuntime
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		runtime.probeMu.Lock()
+		if flight := runtime.probe; flight != nil {
+			runtime.probeMu.Unlock()
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-flight.done:
+				if isAccountBindingCallerCancellation(flight.err) {
+					continue
+				}
+				return cloneAccountDisplay(flight.display), flight.err
+			}
+		}
+		flight := &accountDisplayFlight{done: make(chan struct{})}
+		runtime.probe = flight
+		runtime.probeMu.Unlock()
+		display, err := runtime.probeAndLoadDisplay(ctx)
+		runtime.probeMu.Lock()
+		flight.display = cloneAccountDisplay(display)
+		flight.err = err
+		runtime.probe = nil
+		close(flight.done)
+		runtime.probeMu.Unlock()
+		return display, err
+	}
+}
+
+func (runtime *accountBindingRuntime) probeAndLoadDisplay(ctx context.Context) (*accountDisplayCache, error) {
+	finish, err := runtime.beginTransition(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer finish()
+	if runtime.sandwich == nil {
+		if err := runtime.reconcileIdentityLocked(ctx, store.CodexAccountBindingReasonStable, identityReconcileProbe, runtime.discoverScope); err != nil {
+			return nil, err
+		}
+		return runtime.LoadDisplay(ctx)
+	}
+	sandwich, err := runtime.sandwich(ctx)
+	if err != nil {
+		if isAccountBindingCallerCancellation(err) {
+			return nil, err
+		}
+		if probeErr := runtime.reconcileIdentityLocked(ctx, store.CodexAccountBindingReasonStable, identityReconcileProbe, runtime.discoverScope); probeErr != nil {
+			return nil, probeErr
+		}
+		return runtime.LoadDisplay(ctx)
+	}
+	beforeID := append([]byte(nil), sandwich.BeforeID...)
+	afterID := append([]byte(nil), sandwich.AfterID...)
+	beforeScope, beforeErr := accountbinding.DeriveScope(runtime.scopeKey, beforeID)
+	afterScope, afterErr := accountbinding.DeriveScope(runtime.scopeKey, afterID)
+	clearAccountID(beforeID)
+	clearAccountID(afterID)
+	clearAccountID(sandwich.BeforeID)
+	clearAccountID(sandwich.AfterID)
+	probeCount := 0
+	probe := func(probeCtx context.Context) (string, error) {
+		if err := probeCtx.Err(); err != nil {
+			return "", err
+		}
+		probeCount++
+		if probeCount == 1 {
+			return beforeScope, beforeErr
+		}
+		return afterScope, afterErr
+	}
+	if err := runtime.reconcileIdentityLocked(ctx, store.CodexAccountBindingReasonStable, identityReconcileProbe, probe); err != nil {
+		return nil, err
+	}
+	active := runtime.Active()
+	if active == nil {
+		return nil, nil
+	}
+	return runtime.refreshDisplayFromSandwich(ctx, *active, sandwich, beforeScope, afterScope, beforeErr, afterErr)
+}
+
 func (runtime *accountBindingRuntime) discoverScope(ctx context.Context) (string, error) {
 	snapshot, err := runtime.reader.Read(ctx, true)
 	if err != nil {
@@ -329,6 +441,18 @@ func (runtime *accountBindingRuntime) refreshDisplay(
 	afterScope, afterErr := accountbinding.DeriveScope(runtime.scopeKey, append([]byte(nil), sandwich.AfterID...))
 	clearAccountID(sandwich.BeforeID)
 	clearAccountID(sandwich.AfterID)
+	return runtime.refreshDisplayFromSandwich(ctx, active, sandwich, beforeScope, afterScope, beforeErr, afterErr)
+}
+
+func (runtime *accountBindingRuntime) refreshDisplayFromSandwich(
+	ctx context.Context,
+	active activeCodexAccount,
+	sandwich appserver.AccountSandwich,
+	beforeScope string,
+	afterScope string,
+	beforeErr error,
+	afterErr error,
+) (*accountDisplayCache, error) {
 	current, bindErr := runtime.repository.CodexAccountBinding(ctx)
 	if bindErr != nil {
 		runtime.clearDisplay()

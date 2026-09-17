@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
@@ -30,6 +31,40 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 )
+
+func TestGRPCServerObservesOnlyAuthenticatedUnaryRequests(t *testing.T) {
+	type observation struct {
+		method   string
+		duration time.Duration
+		code     codes.Code
+	}
+	observed := make(chan observation, 2)
+	client, authorize := startConfiguredTestGRPCServer(t, func(config *ServerConfig) {
+		config.ObserveRPC = func(method string, duration time.Duration, code codes.Code) {
+			observed <- observation{method: method, duration: duration, code: code}
+		}
+	})
+	request := &corev1.HandshakeRequest{ClientName: "swift-tests", ContractVersion: core.ContractVersion}
+	if _, err := client.Handshake(t.Context(), request); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("unauthenticated Handshake error = %v", err)
+	}
+	if _, err := client.Handshake(authorize(t.Context()), request); err != nil {
+		t.Fatalf("authenticated Handshake error = %v", err)
+	}
+	select {
+	case event := <-observed:
+		if event.method != corev1.CoreService_Handshake_FullMethodName || event.code != codes.OK || event.duration < 0 {
+			t.Fatalf("observed RPC = %#v", event)
+		}
+	default:
+		t.Fatal("authenticated RPC was not observed")
+	}
+	select {
+	case event := <-observed:
+		t.Fatalf("unexpected observed RPC = %#v", event)
+	default:
+	}
+}
 
 // 测试 gRPC server 对所有 unary 调用执行鉴权，并协商精确 contract。
 func TestGRPCServerAuthenticatesHandshakeAndNegotiatesContract(t *testing.T) {

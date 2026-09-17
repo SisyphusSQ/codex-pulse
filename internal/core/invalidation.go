@@ -41,6 +41,7 @@ type InvalidationBroker struct {
 	sequence    uint64
 	nextID      uint64
 	subscribers map[uint64]*invalidationSubscriber
+	observer    func(InvalidationEvent)
 	closed      bool
 }
 
@@ -51,6 +52,21 @@ func NewInvalidationBroker(capacity int) (*InvalidationBroker, error) {
 	return &InvalidationBroker{
 		capacity: capacity, subscribers: make(map[uint64]*invalidationSubscriber),
 	}, nil
+}
+
+// SetObserver records content-free invalidation events for opt-in runtime
+// profiling. It does not change subscription delivery or event sequencing.
+func (broker *InvalidationBroker) SetObserver(observer func(InvalidationEvent)) error {
+	if broker == nil {
+		return ErrInvalidation
+	}
+	broker.mu.Lock()
+	defer broker.mu.Unlock()
+	if broker.closed {
+		return ErrInvalidation
+	}
+	broker.observer = observer
+	return nil
 }
 
 func (broker *InvalidationBroker) Subscribe(
@@ -114,8 +130,8 @@ func (broker *InvalidationBroker) Notify(ctx context.Context, domain Invalidatio
 		return err
 	}
 	broker.mu.Lock()
-	defer broker.mu.Unlock()
 	if broker.closed {
+		broker.mu.Unlock()
 		return ErrInvalidation
 	}
 	broker.sequence++
@@ -139,6 +155,11 @@ func (broker *InvalidationBroker) Notify(ctx context.Context, domain Invalidatio
 			default:
 			}
 		}
+	}
+	observer := broker.observer
+	broker.mu.Unlock()
+	if observer != nil {
+		observer(event)
 	}
 	return nil
 }

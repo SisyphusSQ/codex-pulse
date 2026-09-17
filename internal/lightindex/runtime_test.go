@@ -938,6 +938,32 @@ func TestRuntimeStartRecoversAfterInitialMetadataFailure(t *testing.T) {
 	}
 }
 
+func TestIndexNoticeGateKeepsBackgroundFreshAndFlushesFinalChange(t *testing.T) {
+	var gate indexNoticeGate
+	now := time.Unix(1_700_000_000, 0)
+	notifications := 0
+	notify := func() { notifications++ }
+	gate.publish(now, true, false, false, false, notify)
+	gate.publish(now.Add(5*time.Second), true, false, false, false, notify)
+	if notifications != 1 {
+		t.Fatalf("background slices emitted %d notifications before interval, want 1", notifications)
+	}
+	gate.publish(now.Add(30*time.Second), false, false, false, false, notify)
+	if notifications != 2 {
+		t.Fatalf("pending background change emitted %d notifications after interval, want 2", notifications)
+	}
+	gate.publish(now.Add(32*time.Second), true, false, false, false, notify)
+	gate.publish(now.Add(33*time.Second), false, false, false, true, notify)
+	if notifications != 3 {
+		t.Fatalf("completed scan emitted %d notifications, want 3", notifications)
+	}
+	gate.publish(now.Add(34*time.Second), false, true, false, false, notify)
+	gate.publish(now.Add(35*time.Second), true, false, true, false, notify)
+	if notifications != 5 {
+		t.Fatalf("metadata and interactive changes emitted %d notifications, want 5", notifications)
+	}
+}
+
 func TestRuntimeContinuesPendingScanWhenFileGrows(t *testing.T) {
 	t.Parallel()
 
@@ -1024,6 +1050,174 @@ func TestRuntimeContinuesPendingScanWhenFileGrows(t *testing.T) {
 	daily, err := repository.LightSessionTokenDaily(context.Background(), "pending-grow")
 	if err != nil || len(daily) != 2 {
 		t.Fatalf("daily after cross-day append = %#v, %v", daily, err)
+	}
+}
+
+func TestRuntimeBudgetedScanYieldsForMetadataAndResumesCheckpoint(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	homePath := t.TempDir()
+	rollout := filepath.Join(homePath, "sessions", "budgeted.jsonl")
+	if err := os.MkdirAll(filepath.Dir(rollout), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var content strings.Builder
+	for index := int64(1); index <= 80; index++ {
+		content.WriteString(tokenLine("2026-07-19T01:00:00Z", index*10, index, index*2, index))
+		content.WriteByte('\n')
+	}
+	if err := os.WriteFile(rollout, []byte(content.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	homeMetadata, err := logsource.NewHomeProbe().Probe(ctx, homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalRollout, err := filepath.EvalSymlinks(rollout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, deepRepository, repository := openLightRuntimeRepository(t)
+	title := "原始标题"
+	var titleMu sync.Mutex
+	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+		titleMu.Lock()
+		currentTitle := title
+		titleMu.Unlock()
+		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
+			SessionID: "budgeted", Name: &currentTitle, CWD: "/workspace", RolloutPath: &canonicalRollout,
+			CreatedAtMS: 100, UpdatedAtMS: 200,
+		}}}, nil
+	})
+	batches := make(chan storelight.LightTokenScan, 128)
+	metadataCommits := make(chan struct{}, 4)
+	runtime, err := NewRuntime(RuntimeConfig{
+		Repository: repository, DeepRepository: deepRepository, Metadata: provider,
+		ScanBatchBytes: 4_600, ScanSliceBytes: 4_600, RefreshInterval: time.Hour,
+		BatchCommitted: func(scan storelight.LightTokenScan) {
+			select {
+			case batches <- scan:
+			default:
+			}
+		},
+		MetadataCommitted: func() { metadataCommits <- struct{}{} },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := runtime.Start(ctx, storelight.LightHomeIdentity{
+		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		cancel()
+		_ = run.Wait(context.Background())
+	}()
+	waitLightRuntimeSignal(t, metadataCommits, "initial metadata")
+	first := waitLightRuntimeSignal(t, batches, "first token slice")
+	if first.Checkpoint.DurableOffset <= 0 || first.Checkpoint.DurableOffset >= first.Identity.SizeBytes || first.Checkpoint.Complete {
+		t.Fatalf("first slice was not bounded: %#v", first)
+	}
+	titleMu.Lock()
+	title = "更新标题"
+	titleMu.Unlock()
+	if !run.Trigger() {
+		t.Fatal("run rejected metadata trigger")
+	}
+	waitLightRuntimeSignal(t, metadataCommits, "metadata during catch-up")
+	deadline := time.After(8 * time.Second)
+	for {
+		active, activeErr := repository.ActiveLightTokenScan(context.Background(), "budgeted")
+		if activeErr == nil {
+			if active.Generation != first.Generation || active.Checkpoint.InputTokens != 800 ||
+				active.Checkpoint.DurableOffset != active.Identity.SizeBytes {
+				t.Fatalf("resumed scan = %#v", active)
+			}
+			break
+		}
+		if !errors.Is(activeErr, storelight.ErrNotFound) {
+			t.Fatal(activeErr)
+		}
+		select {
+		case <-deadline:
+			t.Fatal("budgeted scan did not finish")
+		case <-time.After(25 * time.Millisecond):
+		}
+	}
+	sessions, err := repository.ListLightSessions(context.Background())
+	if err != nil || len(sessions) != 1 || sessions[0].ThreadName == nil || *sessions[0].ThreadName != "更新标题" {
+		t.Fatalf("metadata = %#v, %v", sessions, err)
+	}
+}
+
+func TestRuntimeBudgetedScanCompletesLineLargerThanSlice(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	homePath := t.TempDir()
+	rollout := filepath.Join(homePath, "sessions", "long-line.jsonl")
+	if err := os.MkdirAll(filepath.Dir(rollout), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	line := strings.TrimSuffix(tokenLine("2026-07-19T01:00:00Z", 10, 1, 2, 1), "}") +
+		`,"padding":"` + strings.Repeat("x", 8_000) + `"}` + "\n"
+	if err := os.WriteFile(rollout, []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	homeMetadata, err := logsource.NewHomeProbe().Probe(ctx, homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalRollout, err := filepath.EvalSymlinks(rollout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, repository := openLightRuntimeRepository(t)
+	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
+			SessionID: "long-line", CWD: "/workspace", RolloutPath: &canonicalRollout,
+			CreatedAtMS: 100, UpdatedAtMS: 200,
+		}}}, nil
+	})
+	runtime, err := NewRuntime(RuntimeConfig{
+		Repository: repository, Metadata: provider, ScanSliceBytes: 4_600, RefreshInterval: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := runtime.Start(ctx, storelight.LightHomeIdentity{
+		Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		cancel()
+		_ = run.Wait(context.Background())
+	}()
+	deadline := time.After(5 * time.Second)
+	for {
+		active, activeErr := repository.ActiveLightTokenScan(context.Background(), "long-line")
+		if activeErr == nil {
+			if !active.Checkpoint.Complete || active.Checkpoint.InputTokens != 10 ||
+				active.Checkpoint.DurableOffset != active.Identity.SizeBytes {
+				t.Fatalf("large-line scan = %#v", active)
+			}
+			return
+		}
+		if !errors.Is(activeErr, storelight.ErrNotFound) {
+			t.Fatal(activeErr)
+		}
+		select {
+		case <-deadline:
+			t.Fatal("large JSONL line did not finish within the scanner limit")
+		case <-time.After(25 * time.Millisecond):
+		}
 	}
 }
 

@@ -1,6 +1,6 @@
 # 轻量会话与 Token 索引验证
 
-## 结论
+## 2026-07-19 原始验收结论
 
 - 日期：2026-07-19（Asia/Shanghai）
 - 结果：`PASS`
@@ -11,6 +11,59 @@
 正常启动已改为 metadata-first 两阶段路径：Codex App Server `thread/list` 先提供真实标题、cwd、时间和 rollout path；首屏开放后，utility 后台任务才扫描 Token。首次路径不再运行 full-history bootstrap，不生成 Turn、历史 quota receipt、parser diagnostic 或 source generation staged facts。
 
 Token scanner 以 64KiB 分块读取，只有包含精确字节串 `"token_count"` 或 `"turn_context"` 的行才做 JSON decode。parser v2 从 `turn_context.model` 提取最长 128 bytes 的安全 normalized key/source，并把当前模型 checkpoint 与每个 timed token delta 一起持久化；raw/非法 model 不落库。每个 rollout 保存 Home/file identity、size、mtime、parser version、prefix proof 和完整行 offset；无变化复用、同文件追加扫描、截断/替换/parser bump 重建均有自动化测试。Turn timeline 保留为打开单会话详情时的按需严格深索引；它复用原 parser 与 checkpoint/generation fence、跳过历史 quota facts，并通过 lifecycle drain fence 支持取消和退出恢复。
+
+## 2026-09-17 常驻 Helper 耗电排查与优化
+
+- 对象：`TOO-459`。安装版在真实 Home、约 2,090 个 Session 的一次先期观察中，389.7 秒累计 85.8 CPU 秒，存在约 11 秒 / 21 CPU 秒的尖峰。这是 Helper 进程 CPU 时间，不是电池功率或包含 Codex App Server 子进程的整机能耗。
+- 源码诊断：每 30 秒 metadata refresh 会启动短生命周期 App Server 并读取完整 `thread/list`；旧 Token 核对路径对每个 Session 分别查询 pending/active scan 且每次确认文件都重开 Home root。旧 metadata 发布在任一字段变化时重写整个 `light_sessions` snapshot；增长文件可在一个 worker 周期中循环读到 EOF。这些是通过源码定位的固定成本，具体占比必须以分阶段测量确认。
+- 当前改动：同一 SQLite read snapshot 批量获取 metadata 与 scan head；metadata 差量写入；后台按 4 MiB / 50 ms 切片、片间 150 ms 让出，前台触发提升至 16 MiB / 200 ms 并立即续跑；每片复用安全 Home root，结尾重新验证 Home 路径，正文读取继续验证原始 snapshot。Token 进度仍在每批事务中持久化，不把未完成 generation 激活为完整用量。
+- 观测入口：设置 `CODEX_PULSE_LIGHT_INDEX_PROFILE=1` 后，Helper 仅记录 `metadata`、`scan` 的阶段耗时、数量、读取字节、是否完成，以及 App Server 子进程的 user/system CPU 时间。原始 Session 标题、路径、JSONL、认证信息不进入日志；关闭该环境变量即不产生日志。
+- 真实 Home 测量方法：使用同一物理 Home、一个 mode `0700` 私有 runtime 和正在运行的应用 SQLite 一致性备份；只读 Home 源文件，派生写入仅发生在临时 runtime。用 macOS `proc_pid_rusage` 和进程 CPU 计数观测稳态 CPU、package idle wakeups 与磁盘读写，按周期阶段日志解释尖峰。安装版与无 UI 的开发版并行比较只作为指示性证据；收益另在同样无 UI 客户端的短时 A/B 中复核。所有原始证据留在被忽略的 `.artifacts/`，文档只写聚合数字。
+- 回归入口：聚焦运行 `internal/codex/appserver`、`internal/codex/logs/source`、`internal/store`、`internal/lightindex` 的对应测试，覆盖 App Server 子进程计数、Home 替换、metadata 差量、批量 scan head、后台切片/前台 trigger 与 durable checkpoint。应用层只编译/运行受影响路径，不把这些 synthetic fixture 当成真实 Home 验收。
+
+无 UI 对照使用 `main@3ce95d3` 和当前开发分支的 Go Helper，按相同顺序启动，恢复同一份 2,092 Session 的 SQLite 快照与 preferences，每次预热 30 秒、采样 120 秒。两次均确认真实 Home path/inode、2,092 个 active、0 pending、正常退出与 socket 清理。
+
+| 指标，120 秒 | 主线 | 开发分支 | 读数解释 |
+| --- | ---: | ---: | --- |
+| Helper CPU 时间 | 4.317 秒 | 1.869 秒 | 下降约 57%，仅覆盖 Helper |
+| package idle wakeups | 25 | 34 | 短样本增加 9 次，需看更长对照 |
+| interrupt wakeups | 79,166 | 23,050 | 下降约 71% |
+| 物理磁盘读取 | 10,567,680 B | 7,143,424 B | 受系统缓存与活跃 Home 写入影响 |
+| 物理磁盘写入 | 6,336,512 B | 0 B | 受 checkpoint 时序与系统缓存影响，不能外推为长期零写入 |
+| 结束时常驻内存 | 136,429,568 B | 133,070,848 B | 单点读数 |
+
+随后将两版放在各自 mode `0700` 私有 runtime、相同 SQLite 快照与同一真实 Home 上并行运行，预热 30 秒、采样 600.4 秒，每 5 秒计算一次 CPU 峰值。结束时两版都读回相同的 2,091 个 Session，全部 active、0 pending，Home path/inode 未漂移、socket 均已清理。运行中的 Codex Home 可以变化，并行进程也会竞争系统缓存；这组数是相同时间窗的本机对照，不是电池功率或 UI 完整产品对照。
+
+| 指标，600.4 秒 | 主线 | 开发分支 | 变化 |
+| --- | ---: | ---: | ---: |
+| Helper CPU 时间 | 37.453 秒 | 25.224 秒 | 下降约 33% |
+| 平均 CPU，占单核 | 6.24% | 4.20% | 下降 2.04 个百分点 |
+| 最大 5 秒 CPU，占单核 | 128.16% | 121.38% | 下降 6.78 个百分点，尖峰仍存在 |
+| package idle wakeups | 648 | 541 | 下降约 17% |
+| interrupt wakeups | 636,037 | 333,715 | 下降约 48% |
+| 物理磁盘读取 | 761,094,144 B | 868,352,000 B | 增加约 14%，仍需排查缓存/切片读取 |
+| 物理磁盘写入 | 222,502,912 B | 191,737,856 B | 下降约 14%，不能直接等同 SSD 写放大 |
+| 结束时常驻内存 | 153,157,632 B | 144,162,816 B | 单点读数 |
+
+另一次 10 分钟并行观察中，无 UI 开发 Helper 的预热后 CPU 为 16.86 秒，安装版带 Swift UI 的 Helper 同期为 69.58 秒；客户端查询负载不同，不能用该 76% 差值声称纯代码收益。安装版最近 5 分钟 `app_runtime_samples` 记录 240 次查询、约 157 秒累计查询耗时，这提示还要单独测 Swift 状态菜单和页面查询。上述试验没有测电池放电功率，也没有把 Codex App Server 子进程并入 Helper CPU。
+
+另对开发分支开启阶段采样运行 70 秒：App Server 子进程启动 4 次，合计 user+system CPU 约 0.107 秒；4 次 metadata 阶段墙钟累计 1.228 秒，24 个 Token 切片墙钟累计 1.368 秒。此观察支持把短期优化重点放在每轮 Session 核对和数据库访问，不能把 App Server 的墙钟等待解释为相同数量的 CPU 或电池耗电。`app_runtime_samples` 的查询总时长也不提供按 RPC/页面归因，因此当前没有依据跳过 Swift 的 index 更新。
+
+完整原生 App 的稳态采样确认 App 与 Helper 都绑定真实 Home、同一个 mode `0700` 临时 runtime，数据库由安装版当前 SQLite 的一致性备份生成，preferences 物理 Home identity 与进程环境/参数均匹配。第一轮预热 30 秒、采样 242.4 秒：Swift App 3.506 CPU 秒、33 次 package idle wakeups；Helper 15.832 CPU 秒、87 次 package idle wakeups，读取约 321 MB、写入约 71 MB。Helper 占两进程 CPU 约 82%，但样本不含整机功率和可能存在的子进程。
+
+为按方法归因，新增可选 `CODEX_PULSE_QUERY_PROFILE=1`，在 Helper 私有数据目录写 mode `0600` 的 `query-profile.log`，只含 RPC 方法/耗时/状态与 invalidation 域/序号。Helper 由原生 App 拉起时标准日志未接入采样输出，因此专用文件是本次可靠入口。第二轮同样预热 30 秒、采样 182.0 秒：Swift App 11.425 CPU 秒、Helper 63.320 CPU 秒；期间有 index 24 次、quota 6 次、account 2 次 invalidation，成功 `UsageCost` 110 次、`ListProjects` 81 次，`AccountSnapshot` 70 次被取消、11 次成功、2 次内部错误。`AccountSnapshot` 的累计墙钟约 211 秒包含并发、等待和取消，不能解释为 211 CPU 秒。两轮真实 Home 持续变化，CPU 与磁盘读写差异很大，因此不把它们当作严格 A/B；RPC 数量证实后台 index 通知能放大概览重取。
+
+针对该放大，后台 Token 切片继续逐批 durable 提交，但持续追平期间把 index 通知合并为至多每 30 秒一次，追平结束时补发最后一次；metadata 变化、前台触发即时发布。通知门控的聚焦测试与 `-race` PASS，覆盖到期、尾次、metadata 和交互通知。通知门控后的另一轮整 App 采样 181.7 秒：index 14 次、quota 6 次、account 2 次；成功 `UsageCost` 70 次、`ListProjects` 52 次，`AccountSnapshot` 44 次取消、9 次成功；Swift App 6.677 CPU 秒、Helper 29.530 CPU 秒。真实 Home 与 UI 事件负载继续变化，不能与上轮 CPU 数值直接做因果对照。
+
+截图所示“当前账号 / 账号确认中”还暴露两条慢路径：旧 `AccountSnapshot` 先用一轮 App Server rate-limits 确认 binding，再为展示资料新起一轮包含两次 rate-limits 的夹读；索引通知重取概览和额度页时，Swift 会取消并重新发起账号任务，额度页甚至整页重载在线额度和账号。现在 Go 在同一夹读中同时确认身份与读取展示，重叠的账号 RPC 共享这次读取；首个请求取消时，其他仍有效请求重新发起，且返回前按当前 binding 的 scope/generation 再次校验。Swift 对 index-only 概览刷新保留正在进行的账号请求，并只复用与新额度 binding 完全一致的已确认账号；额度页只重载本地用量。quota/account 变化和手动刷新仍重新确认。
+
+合并夹读后、并发合并前的真实 Home 整 App 采样 182.0 秒：Swift App 1.881 CPU 秒、Helper 12.588 CPU 秒；index 10 次、quota 4 次、account 2 次；成功 `UsageCost` 47 次、`ListProjects` 35 次、`AccountSnapshot` 12 次成功/6 次取消。最初一条成功账号 RPC 为 2.358 秒，重叠账号请求仍出现 4–5 秒等待，因此继续加入并发合并。上述样本不是锁定相同负载的 A/B；不能把 CPU 差额全部归于账号改动。
+
+并发合并后、额度页精确失效前的 121.6 秒样本中，index 11 次、账号 RPC 11 次成功/8 次取消，Helper 8.970 CPU 秒、Swift App 1.402 CPU 秒。按 RPC 与 invalidation 时间线追查发现，额度页在每次 index 通知后重载 `QuotaCurrent`、`QuotaPace`、价格目录与 `AccountSnapshot`，令当前账号卡反复进入“确认中”；这正是截图场景。把 index 处理改为仅重载本地 `UsageCost` 后，再用同一真实 Home 与私有 runtime 流程采样 121.6 秒：index 9 次，账号 RPC 9 次成功/0 次取消，且初始化和 quota 通知过后，连续 4 次 30 秒 index 通知均未触发账号 RPC。`QuotaCurrent` 从上轮 36 次到 22 次，`PricingCatalogCurrent` 从 12 次到 3 次，Swift App 为 0.709 CPU 秒、Helper 为 7.282 CPU 秒；Helper package idle wakeups 为 5 次，上轮为 55 次。两段样本的活跃 Home 写入、系统缓存和 index 次数不完全相同，次数变化可证实失效范围收窄，CPU/wakeups 差异只作为指示性证据。最终样本 App 与 Helper 的真实 Home 进程环境/参数、mode `0700` 私有 runtime 均已核对，App/Helper 正常退出。
+
+剩余的整 App 能耗归因：在固定电源、屏幕、真实 Home 负载及相同窗口操作条件下对主线和开发分支做整 App 配对采样，记录 App、Helper、App Server 子进程的 CPU、wakeups 与能耗读数；同时核对标题/Token 新鲜度、前台/唤醒即时触发和账号切换隔离。在此之前 CPU 秒数与 wakeups 只能作为代理指标，不换算节电瓦数。
+
+本轮聚焦回归：受影响的 App Server、source、Store、lightindex 测试及 App 包编译 PASS；`go test ./internal/lightindex -count=1`、`go test ./internal/app -count=1`、`swift run --package-path app/macos codex-pulse-app-tests` PASS；lightindex worker、Store 差量/scan head、账号并发合并与取消重试的 `-race` 聚焦用例 PASS；单行大于后台切片预算时仍能在既有行上限内完成的用例 PASS；`git diff --check` PASS。未运行全仓长测。临时开发 App bundle 的真实 Home smoke 两次 PASS：主要页面、用量/成本、账号卡片和退出清理均通过，smoke 自身标记 `lifecycle=not_executed`。第二次运行只读采样确认 App 与 Helper 进程环境的 `CODEX_HOME`、`CODEX_PULSE_APP_RUNTIME`，App 的 runtime 参数、Helper 的数据库/偏好/socket 参数，以及结束后的 preferences 物理 Home identity 全部匹配；没有在提交证据中保存原始环境或参数内容。
 
 ## 2026-09-03 跨日 Token 与 counter epoch
 

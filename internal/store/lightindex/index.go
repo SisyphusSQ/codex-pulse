@@ -51,6 +51,14 @@ type LightIndexState struct {
 	UpdatedAtMS           int64
 }
 
+// LightSessionScanSnapshot groups the current metadata and token scan heads
+// from one read transaction for a lightweight refresh cycle.
+type LightSessionScanSnapshot struct {
+	Session LightSessionMetadata
+	Active  *LightTokenScan
+	Pending *LightTokenScan
+}
+
 type lightIndexStateModel struct {
 	StateID               int    `gorm:"column:state_id;primaryKey"`
 	HomePath              string `gorm:"column:home_path"`
@@ -205,6 +213,7 @@ func (repository *Repository) replaceLightMetadata(
 	changed := false
 	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		var state lightIndexStateModel
+		var existing map[string]lightSessionModel
 		result := transaction.WithContext(ctx).Where("state_id = 1").Take(&state)
 		switch {
 		case result.Error == nil:
@@ -228,11 +237,12 @@ func (repository *Repository) replaceLightMetadata(
 					return invalidRecord("light metadata generation must advance")
 				}
 				if detectNoop {
-					matches, err := lightMetadataSnapshotMatches(ctx, transaction, state, snapshot)
+					var err error
+					existing, err = loadLightSessionMetadata(ctx, transaction)
 					if err != nil {
 						return err
 					}
-					if matches {
+					if lightMetadataSnapshotMatches(existing, snapshot) {
 						return nil
 					}
 				}
@@ -251,6 +261,11 @@ func (repository *Repository) replaceLightMetadata(
 		changed = true
 
 		for _, session := range snapshot.Sessions {
+			if persisted, ok := existing[session.SessionID]; ok && lightSessionMetadataMatches(persisted, session) {
+				delete(existing, session.SessionID)
+				continue
+			}
+			delete(existing, session.SessionID)
 			model := lightSessionModel{
 				SessionID: session.SessionID, ThreadName: session.ThreadName, CWD: session.CWD,
 				RolloutPath: session.RolloutPath, CreatedAtMS: session.CreatedAtMS, UpdatedAtMS: session.UpdatedAtMS,
@@ -267,9 +282,20 @@ func (repository *Repository) replaceLightMetadata(
 				return err
 			}
 		}
-		if err := transaction.WithContext(ctx).Where("metadata_generation <> ?", snapshot.Generation).
-			Delete(&lightSessionModel{}).Error; err != nil {
-			return err
+		if detectNoop && existing != nil {
+			// The global generation advances atomically, while unchanged rows keep
+			// their last-changed generation and avoid a periodic WAL rewrite.
+			for sessionID := range existing {
+				if err := transaction.WithContext(ctx).Where("session_id = ?", sessionID).
+					Delete(&lightSessionModel{}).Error; err != nil {
+					return err
+				}
+			}
+		} else {
+			if err := transaction.WithContext(ctx).Where("metadata_generation <> ?", snapshot.Generation).
+				Delete(&lightSessionModel{}).Error; err != nil {
+				return err
+			}
 		}
 		state.MetadataGeneration = snapshot.Generation
 		state.MetadataReadyAtMS = &snapshot.ReadyAtMS
@@ -279,36 +305,38 @@ func (repository *Repository) replaceLightMetadata(
 	return changed, err
 }
 
-func lightMetadataSnapshotMatches(
-	ctx context.Context,
-	transaction *gorm.DB,
-	state lightIndexStateModel,
-	snapshot LightMetadataSnapshot,
-) (bool, error) {
+func loadLightSessionMetadata(ctx context.Context, transaction *gorm.DB) (map[string]lightSessionModel, error) {
 	var current []lightSessionModel
-	if err := transaction.WithContext(ctx).Order("session_id").Find(&current).Error; err != nil {
-		return false, err
+	if err := transaction.WithContext(ctx).Find(&current).Error; err != nil {
+		return nil, err
 	}
-	if len(current) != len(snapshot.Sessions) {
-		return false, nil
-	}
-	byID := make(map[string]LightSessionMetadata, len(snapshot.Sessions))
-	for _, session := range snapshot.Sessions {
+	byID := make(map[string]lightSessionModel, len(current))
+	for _, session := range current {
 		byID[session.SessionID] = session
 	}
-	for _, persisted := range current {
-		candidate, ok := byID[persisted.SessionID]
-		if !ok || persisted.MetadataGeneration != state.MetadataGeneration ||
-			!equalLightString(persisted.ThreadName, candidate.ThreadName) ||
-			persisted.CWD != candidate.CWD ||
-			!equalLightString(persisted.RolloutPath, candidate.RolloutPath) ||
-			persisted.CreatedAtMS != candidate.CreatedAtMS ||
-			persisted.UpdatedAtMS != candidate.UpdatedAtMS ||
-			!equalLightInt64(persisted.RecencyAtMS, candidate.RecencyAtMS) {
-			return false, nil
+	return byID, nil
+}
+
+func lightMetadataSnapshotMatches(current map[string]lightSessionModel, snapshot LightMetadataSnapshot) bool {
+	if len(current) != len(snapshot.Sessions) {
+		return false
+	}
+	for _, session := range snapshot.Sessions {
+		persisted, ok := current[session.SessionID]
+		if !ok || !lightSessionMetadataMatches(persisted, session) {
+			return false
 		}
 	}
-	return true, nil
+	return true
+}
+
+func lightSessionMetadataMatches(persisted lightSessionModel, candidate LightSessionMetadata) bool {
+	return equalLightString(persisted.ThreadName, candidate.ThreadName) &&
+		persisted.CWD == candidate.CWD &&
+		equalLightString(persisted.RolloutPath, candidate.RolloutPath) &&
+		persisted.CreatedAtMS == candidate.CreatedAtMS &&
+		persisted.UpdatedAtMS == candidate.UpdatedAtMS &&
+		equalLightInt64(persisted.RecencyAtMS, candidate.RecencyAtMS)
 }
 
 func equalLightString(left, right *string) bool {
@@ -357,6 +385,57 @@ func (repository *Repository) ListLightSessions(ctx context.Context) ([]LightSes
 	output := make([]LightSessionMetadata, 0, len(models))
 	for _, model := range models {
 		output = append(output, lightSessionFromModel(model))
+	}
+	return output, nil
+}
+
+// ListLightSessionScans avoids two point queries per session in every refresh.
+// The read transaction keeps session generations and their scan heads aligned.
+func (repository *Repository) ListLightSessionScans(ctx context.Context) ([]LightSessionScanSnapshot, error) {
+	if repository == nil || repository.database == nil {
+		return nil, ErrInvalidRepository
+	}
+	var sessions []lightSessionModel
+	var scans []lightTokenScanModel
+	err := repository.database.ViewSnapshot(ctx, func(ctx context.Context, connection *gorm.DB) error {
+		if err := connection.WithContext(ctx).Order("updated_at_ms DESC, session_id").Find(&sessions).Error; err != nil {
+			return err
+		}
+		return connection.WithContext(ctx).Table("light_token_scans AS scans").
+			Select("scans.*").
+			Joins("JOIN light_sessions AS sessions ON sessions.session_id = scans.session_id AND (sessions.active_token_generation = scans.generation OR sessions.pending_token_generation = scans.generation)").
+			Find(&scans).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	output := make([]LightSessionScanSnapshot, 0, len(sessions))
+	byID := make(map[string]int, len(sessions))
+	for _, session := range sessions {
+		byID[session.SessionID] = len(output)
+		output = append(output, LightSessionScanSnapshot{Session: lightSessionFromModel(session)})
+	}
+	for _, model := range scans {
+		position, ok := byID[model.SessionID]
+		if !ok {
+			return nil, ErrLightTokenConflict
+		}
+		scan := lightTokenScanFromModel(model)
+		session := &output[position]
+		switch {
+		case session.Session.PendingGeneration != nil && scan.Generation == *session.Session.PendingGeneration:
+			session.Pending = &scan
+		case session.Session.ActiveGeneration == scan.Generation:
+			session.Active = &scan
+		default:
+			return nil, ErrLightTokenConflict
+		}
+	}
+	for _, session := range output {
+		if session.Session.PendingGeneration != nil && session.Pending == nil ||
+			session.Session.ActiveGeneration > 0 && session.Active == nil {
+			return nil, ErrLightTokenConflict
+		}
 	}
 	return output, nil
 }

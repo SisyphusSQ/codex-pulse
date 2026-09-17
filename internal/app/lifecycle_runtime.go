@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"errors"
+	"log"
 	"math"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -243,9 +245,21 @@ func startApplicationLifecycleRuntime(
 		if refreshInterval == 0 {
 			refreshInterval = defaultApplicationLightRefreshInterval
 		}
+		var observeRefresh func(lightindex.RefreshObservation)
+		if os.Getenv("CODEX_PULSE_LIGHT_INDEX_PROFILE") == "1" {
+			observeRefresh = func(observation lightindex.RefreshObservation) {
+				log.Printf(
+					"light_index phase=%s duration_ms=%d fetch_ms=%d store_ms=%d read_ms=%d write_ms=%d sessions=%d unchanged=%d bytes_read=%d batches=%d interactive=%t complete=%t failed=%t",
+					observation.Phase, observation.Duration.Milliseconds(), observation.FetchDuration.Milliseconds(),
+					observation.StoreDuration.Milliseconds(), observation.ReadDuration.Milliseconds(), observation.WriteDuration.Milliseconds(),
+					observation.Sessions, observation.Unchanged, observation.BytesRead, observation.Batches, observation.Interactive,
+					observation.Complete, observation.Failed,
+				)
+			}
+		}
 		lightRuntime, err = lightindex.NewRuntime(lightindex.RuntimeConfig{
 			Repository: lightRepository, DeepRepository: repository,
-			Metadata: config.LightMetadata, RefreshInterval: refreshInterval,
+			Metadata: config.LightMetadata, RefreshInterval: refreshInterval, ObserveRefresh: observeRefresh,
 			RefreshCommitted: func() {
 				notifyQueryInvalidation(config.Invalidation, context.Background(), core.InvalidationIndex)
 			},
@@ -1084,8 +1098,8 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 		binding = &copied
 	}
 	if runtime.quota != nil && runtime.quota.account != nil {
-		if err := runtime.quota.account.Discover(ctx, store.CodexAccountBindingReasonStable); err != nil &&
-			!errors.Is(err, store.ErrCodexAccountBindingChanged) {
+		display, err := runtime.quota.account.ProbeAndLoadDisplay(ctx)
+		if err != nil && !errors.Is(err, store.ErrCodexAccountBindingChanged) {
 			return core.AccountSnapshot{}, err
 		}
 		if runtime.repository != nil {
@@ -1099,7 +1113,6 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 		if binding != nil && binding.State != store.CodexAccountBindingConfirmed {
 			return core.AccountSnapshot{Binding: binding}, nil
 		}
-		display, err := runtime.quota.account.LoadDisplay(ctx)
 		if errors.Is(err, store.ErrCodexAccountBindingChanged) {
 			runtime.quota.account.clearDisplay()
 			latest, bindErr := runtime.repository.CodexAccountBinding(ctx)
@@ -1112,7 +1125,9 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 		if err != nil {
 			return core.AccountSnapshot{}, err
 		}
-		if display == nil {
+		if display == nil || binding == nil || binding.State != store.CodexAccountBindingConfirmed ||
+			binding.AccountScope == nil || *binding.AccountScope != display.Scope ||
+			binding.BindingGeneration != display.Generation {
 			return core.AccountSnapshot{Binding: binding}, nil
 		}
 		tier := subscriptiontier.Resolve(subscriptiontier.Evidence{

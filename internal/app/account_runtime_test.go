@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,14 +30,17 @@ func TestConfirmedApplicationAccountUsesBindingDisplay(t *testing.T) {
 	key, _, _ := accountBindingTestScopes(t, repository)
 	email := "person@example.com"
 	plan := "prolite"
+	reader := &accountBindingScriptedReader{accountIDs: []string{"acct-test-a"}}
+	sandwichCalls := 0
 	account, err := newAccountBindingRuntime(
 		repository,
-		&accountBindingScriptedReader{accountIDs: []string{"acct-test-a"}},
+		reader,
 		key,
 		func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
 		&accountBindingTestQuota{},
 		nil,
 		func(context.Context) (appserver.AccountSandwich, error) {
+			sandwichCalls++
 			return appserver.AccountSandwich{
 				BeforeID:                 appserver.SensitiveAccountID("acct-test-a"),
 				AfterID:                  appserver.SensitiveAccountID("acct-test-a"),
@@ -77,6 +81,9 @@ func TestConfirmedApplicationAccountUsesBindingDisplay(t *testing.T) {
 		*refreshed.ProTier.Tier != subscriptiontier.Tier20X {
 		t.Fatalf("AccountSnapshot(refreshed tier) = %#v, %v", refreshed, err)
 	}
+	if got := reader.calls.Load(); got != 1 || sandwichCalls != 2 {
+		t.Fatalf("account probes = rate-limits:%d sandwich:%d, want startup-only/one per snapshot", got, sandwichCalls)
+	}
 }
 
 func TestConfirmedAccountSnapshotProbesAndTransitionsToNewAccount(t *testing.T) {
@@ -87,17 +94,19 @@ func TestConfirmedAccountSnapshotProbesAndTransitionsToNewAccount(t *testing.T) 
 	key, _, scopeB := accountBindingTestScopes(t, repository)
 	email := "b@example.com"
 	plan := "pro"
+	reader := &accountBindingScriptedReader{accountIDs: []string{
+		"acct-test-a", "acct-test-b", "acct-test-b",
+	}}
+	sandwichCalls := 0
 	account, err := newAccountBindingRuntime(
 		repository,
-		&accountBindingScriptedReader{accountIDs: []string{
-			"acct-test-a",
-			"acct-test-b", "acct-test-b",
-		}},
+		reader,
 		key,
 		func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
 		&accountBindingTestQuota{},
 		nil,
 		func(context.Context) (appserver.AccountSandwich, error) {
+			sandwichCalls++
 			return appserver.AccountSandwich{
 				BeforeID:                 appserver.SensitiveAccountID("acct-test-b"),
 				AfterID:                  appserver.SensitiveAccountID("acct-test-b"),
@@ -124,6 +133,175 @@ func TestConfirmedAccountSnapshotProbesAndTransitionsToNewAccount(t *testing.T) 
 		snapshot.ProTier == nil || snapshot.ProTier.Tier == nil ||
 		*snapshot.ProTier.Tier != subscriptiontier.Tier20X {
 		t.Fatalf("AccountSnapshot(B) = %#v, %v", snapshot, err)
+	}
+	if got := reader.calls.Load(); got != 1 || sandwichCalls != 1 {
+		t.Fatalf("B confirmation probes = rate-limits:%d sandwich:%d, want startup-only/one", got, sandwichCalls)
+	}
+}
+
+func TestAccountSnapshotConfirmsPendingBindingWithOneSandwich(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	repository := openAccountBindingTestRepository(t)
+	key, _, scopeB := accountBindingTestScopes(t, repository)
+	if _, err := repository.MarkCodexAccountBindingPending(ctx, quotaRuntimeNowMS, store.CodexAccountBindingReasonAccountChanged); err != nil {
+		t.Fatal(err)
+	}
+	reader := &accountBindingScriptedReader{accountIDs: []string{"acct-test-b"}}
+	sandwichCalls := 0
+	email := "b@example.com"
+	account, err := newAccountBindingRuntime(
+		repository, reader, key,
+		func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+		&accountBindingTestQuota{}, nil,
+		func(context.Context) (appserver.AccountSandwich, error) {
+			sandwichCalls++
+			return appserver.AccountSandwich{
+				BeforeID: appserver.SensitiveAccountID("acct-test-b"),
+				AfterID:  appserver.SensitiveAccountID("acct-test-b"),
+				Account:  &appserver.AccountSnapshot{Type: "chatgpt", Email: &email},
+			}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &applicationLifecycleRuntime{repository: repository, quota: &applicationQuotaRuntime{account: account}}
+	snapshot, err := runtime.AccountSnapshot(ctx, lifecycleAccountQuery(agentprovider.Codex))
+	if err != nil || snapshot.Binding == nil || snapshot.Binding.State != store.CodexAccountBindingConfirmed ||
+		snapshot.Binding.AccountScope == nil || *snapshot.Binding.AccountScope != scopeB ||
+		snapshot.Account == nil || snapshot.Account.Email == nil || *snapshot.Account.Email != email {
+		t.Fatalf("confirmed pending snapshot = %#v, %v", snapshot, err)
+	}
+	if got := reader.calls.Load(); got != 0 || sandwichCalls != 1 {
+		t.Fatalf("pending confirmation probes = rate-limits:%d sandwich:%d, want 0/1", got, sandwichCalls)
+	}
+}
+
+func TestConcurrentAccountSnapshotsShareAccountSandwich(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	repository := openAccountBindingTestRepository(t)
+	key, _, scope := accountBindingTestScopes(t, repository)
+	reader := &accountBindingScriptedReader{accountIDs: []string{"acct-test-b"}}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	email := "b@example.com"
+	account, err := newAccountBindingRuntime(
+		repository, reader, key,
+		func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+		&accountBindingTestQuota{}, nil,
+		func(context.Context) (appserver.AccountSandwich, error) {
+			if calls.Add(1) == 1 {
+				close(started)
+				<-release
+			}
+			return appserver.AccountSandwich{
+				BeforeID: appserver.SensitiveAccountID("acct-test-b"),
+				AfterID:  appserver.SensitiveAccountID("acct-test-b"),
+				Account:  &appserver.AccountSnapshot{Type: "chatgpt", Email: &email},
+			}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &applicationLifecycleRuntime{repository: repository, quota: &applicationQuotaRuntime{account: account}}
+	type result struct {
+		snapshot core.AccountSnapshot
+		err      error
+	}
+	first := make(chan result, 1)
+	second := make(chan result, 1)
+	go func() {
+		snapshot, err := runtime.AccountSnapshot(ctx, lifecycleAccountQuery(agentprovider.Codex))
+		first <- result{snapshot, err}
+	}()
+	<-started
+	go func() {
+		snapshot, err := runtime.AccountSnapshot(ctx, lifecycleAccountQuery(agentprovider.Codex))
+		second <- result{snapshot, err}
+	}()
+	select {
+	case <-second:
+		t.Fatal("second account query returned before the shared read completed")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	for _, done := range []<-chan result{first, second} {
+		got := <-done
+		if got.err != nil || got.snapshot.Binding == nil || got.snapshot.Binding.AccountScope == nil ||
+			*got.snapshot.Binding.AccountScope != scope || got.snapshot.Account == nil ||
+			got.snapshot.Account.Email == nil || *got.snapshot.Account.Email != email {
+			t.Fatalf("shared AccountSnapshot() = %#v, %v", got.snapshot, got.err)
+		}
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("account sandwich calls = %d, want 1", got)
+	}
+}
+
+func TestAccountSnapshotRetriesWhenSharedCallerIsCanceled(t *testing.T) {
+	t.Parallel()
+	repository := openAccountBindingTestRepository(t)
+	key, _, _ := accountBindingTestScopes(t, repository)
+	reader := &accountBindingScriptedReader{accountIDs: []string{"acct-test-b"}}
+	started := make(chan struct{})
+	var calls atomic.Int32
+	email := "b@example.com"
+	account, err := newAccountBindingRuntime(
+		repository, reader, key,
+		func() time.Time { return time.UnixMilli(quotaRuntimeNowMS).UTC() },
+		&accountBindingTestQuota{}, nil,
+		func(ctx context.Context) (appserver.AccountSandwich, error) {
+			if calls.Add(1) == 1 {
+				close(started)
+				<-ctx.Done()
+				return appserver.AccountSandwich{}, ctx.Err()
+			}
+			return appserver.AccountSandwich{
+				BeforeID: appserver.SensitiveAccountID("acct-test-b"),
+				AfterID:  appserver.SensitiveAccountID("acct-test-b"),
+				Account:  &appserver.AccountSnapshot{Type: "chatgpt", Email: &email},
+			}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &applicationLifecycleRuntime{repository: repository, quota: &applicationQuotaRuntime{account: account}}
+	firstCtx, cancelFirst := context.WithCancel(t.Context())
+	defer cancelFirst()
+	first := make(chan error, 1)
+	second := make(chan error, 1)
+	go func() {
+		_, err := runtime.AccountSnapshot(firstCtx, lifecycleAccountQuery(agentprovider.Codex))
+		first <- err
+	}()
+	<-started
+	go func() {
+		snapshot, err := runtime.AccountSnapshot(t.Context(), lifecycleAccountQuery(agentprovider.Codex))
+		if err == nil && (snapshot.Account == nil || snapshot.Account.Email == nil ||
+			*snapshot.Account.Email != email) {
+			err = errors.New("retry did not return the current account")
+		}
+		second <- err
+	}()
+	select {
+	case <-second:
+		t.Fatal("second account query returned before the first was canceled")
+	case <-time.After(50 * time.Millisecond):
+	}
+	cancelFirst()
+	if err := <-first; !errors.Is(err, context.Canceled) {
+		t.Fatalf("first account query error = %v, want canceled", err)
+	}
+	if err := <-second; err != nil {
+		t.Fatalf("second account query error = %v", err)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("account sandwich calls = %d, want 2", got)
 	}
 }
 

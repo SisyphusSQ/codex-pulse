@@ -4,14 +4,19 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net"
 	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/app"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 )
 
 const (
@@ -58,6 +63,26 @@ func Run(ctx context.Context, config RuntimeConfig) error {
 	if err != nil {
 		return errors.Join(ErrRuntime, err)
 	}
+	var observeRPC func(string, time.Duration, codes.Code)
+	if os.Getenv("CODEX_PULSE_QUERY_PROFILE") == "1" {
+		profilePath := filepath.Join(filepath.Dir(config.DatabasePath), "query-profile.log")
+		profileFile, err := os.OpenFile(profilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+		if err != nil {
+			broker.Close()
+			return errors.Join(ErrRuntime, err)
+		}
+		defer profileFile.Close()
+		profileLogger := log.New(profileFile, "", log.LstdFlags)
+		if err := broker.SetObserver(func(event core.InvalidationEvent) {
+			profileLogger.Printf("query_profile phase=invalidation domain=%s sequence=%d origin=%s", event.Domain, event.Sequence, invalidationOrigin())
+		}); err != nil {
+			broker.Close()
+			return errors.Join(ErrRuntime, err)
+		}
+		observeRPC = func(method string, duration time.Duration, code codes.Code) {
+			profileLogger.Printf("query_profile phase=rpc method=%s duration_us=%d code=%s", method, duration.Microseconds(), code)
+		}
+	}
 	application, err := app.Open(ctx, applicationConfig(config, broker))
 	if err != nil {
 		broker.Close()
@@ -72,7 +97,7 @@ func Run(ctx context.Context, config RuntimeConfig) error {
 	server, err := NewGRPCServer(ServerConfig{
 		Authenticator: authenticator, HelperVersion: config.HelperVersion,
 		Service: application.Service(), Broker: application.Broker(), Recovery: application.Recovery(),
-		Lifecycle: application, Shutdown: application,
+		Lifecycle: application, Shutdown: application, ObserveRPC: observeRPC,
 	})
 	if err != nil {
 		_ = listener.Close()
@@ -107,6 +132,21 @@ func Run(ctx context.Context, config RuntimeConfig) error {
 		stopCause = nil
 	}
 	return errors.Join(stopCause, closeErr)
+}
+
+func invalidationOrigin() string {
+	var pcs [16]uintptr
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs[:])])
+	for {
+		frame, more := frames.Next()
+		if name, ok := strings.CutPrefix(frame.Function, "github.com/SisyphusSQ/codex-pulse/internal/app."); ok &&
+			name != "notifyQueryInvalidation" && !strings.Contains(name, "dashboardAwareInvalidation") {
+			return name
+		}
+		if !more {
+			return "other"
+		}
+	}
 }
 
 func applicationConfig(

@@ -2308,13 +2308,17 @@ public final class AppModel: ObservableObject {
             return
         }
 		if affected.contains(selectedFeature), !requiresCoreRestart {
-			reloadFeature(selectedFeature)
+			if domain == "index", selectedFeature == .quotaUsage {
+				loadUsage()
+			} else {
+				reloadFeature(selectedFeature)
+			}
 		}
 			if refreshesStatus, !requiresCoreRestart {
 				if !statusOverviewState.isLoading {
-					invalidateTasks([.statusOverview, .statusAccount])
+					invalidateTasks(domain == "index" ? [.statusOverview] : [.statusOverview, .statusAccount])
 					statusOverviewState = stale(statusOverviewState, notice)
-					loadStatusOverview()
+					loadStatusOverview(reuseAccountOnIndex: domain == "index")
 				} else {
 					statusRefreshPendingAfterLoad = true
 				}
@@ -2393,7 +2397,7 @@ public final class AppModel: ObservableObject {
 		consumedCursors.removeAll()
 	}
 
-	private func loadStatusOverview() {
+	private func loadStatusOverview(reuseAccountOnIndex: Bool = false) {
 		guard let provider = statusProvider else {
             statusOverviewState = .idle
             statusUsageState = .idle
@@ -2401,7 +2405,9 @@ public final class AppModel: ObservableObject {
             return
         }
 		let previous = statusOverviewState.value
-		invalidateTasks([.statusAccount])
+		if !(reuseAccountOnIndex && featureTasks[.statusAccount] != nil) {
+			invalidateTasks([.statusAccount])
+		}
 		statusOverviewState = .loading(previous: previous)
 		if provider.usesOfficialPeriodRing {
 			statusUsageState = .loading(previous: statusUsageState.value)
@@ -2426,7 +2432,24 @@ public final class AppModel: ObservableObject {
 				loadStatusOverview()
 				return
 			}
-			loadStatusAccount(for: responses, provider: provider)
+			let accountKey = CodexAccountContext.key(fromAccount: codexCardAccountSnapshot)
+			if reuseAccountOnIndex, provider == .codex,
+				let accountKey,
+				accountKey == CodexAccountContext.key(fromQuota: responses.quota),
+				let account = codexCardAccountSnapshot
+			{
+				let validated = CodexAccountContext.validatePublishedOverview(
+					responses.replacingAccount(account)
+				)
+				let cached = OverviewPresentation(validated.responses)
+				statusOverviewCache[provider] = cached
+				statusOverviewState = cached.isPartial
+					? .partial(cached, notices: cached.notices)
+					: .ready(cached)
+				codexCardAccountIsLoading = false
+			} else if !(reuseAccountOnIndex && featureTasks[.statusAccount] != nil) {
+				loadStatusAccount(for: responses, provider: provider)
+			}
 			if provider.usesOfficialPeriodRing {
 				statusUsageCache[provider] = responses.usage
 				statusUsageState = loadState(
@@ -2458,6 +2481,7 @@ public final class AppModel: ObservableObject {
 			operation: { [runtime] in try await runtime.accountSnapshot(provider: provider) }
 		) { [weak self] account in
 			guard let self, statusProvider == provider else { return }
+			let responses = statusOverviewResponses[provider] ?? responses
 			if provider == .codex { codexCardAccountIsLoading = false }
 			let validated = CodexAccountContext.validatePublishedOverview(
 				responses.replacingAccount(account)

@@ -54,6 +54,34 @@ func TestReplaceLightMetadataPublishesOneGenerationAndRemovesStaleSessions(t *te
 	}
 }
 
+func TestListLightSessionScansReturnsConsistentPendingAndActiveHeads(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	repository := lightIndexRepositoryFixture(t)
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(ctx, "one", identity, "parser-v1", 2_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshots, err := repository.ListLightSessionScans(ctx)
+	if err != nil || len(snapshots) != 1 || snapshots[0].Active != nil || snapshots[0].Pending == nil ||
+		snapshots[0].Pending.Generation != generation {
+		t.Fatalf("pending snapshot = %#v, %v", snapshots, err)
+	}
+	if err := repository.CommitLightTokenBatch(ctx, storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 2_100, Activate: true,
+		Checkpoint: storelight.LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snapshots, err = repository.ListLightSessionScans(ctx)
+	if err != nil || len(snapshots) != 1 || snapshots[0].Pending != nil || snapshots[0].Active == nil ||
+		snapshots[0].Active.Generation != generation {
+		t.Fatalf("active snapshot = %#v, %v", snapshots, err)
+	}
+}
+
 func TestReplaceLightMetadataRejectsHomeGenerationConflictAtomically(t *testing.T) {
 	t.Parallel()
 
