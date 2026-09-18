@@ -3708,6 +3708,7 @@ private actor FakeCore: AppCoreServing {
     private var invalidationDomain: String?
     private var invalidationDelay: Duration = .zero
     private var quotaRefreshDelay: Duration = .zero
+    private var quotaRefreshFetched = true
     private var settingsResponses: [Codexpulse_Core_V1_SettingsResponse] = []
     private var hasServedCatalogSettings = false
     private var pricingCatalogResponse = Codexpulse_Core_V1_PricingCatalogCurrentResponse()
@@ -3794,6 +3795,7 @@ private actor FakeCore: AppCoreServing {
         invalidationDelay = delay
     }
     func setQuotaRefreshDelay(_ value: Duration) { quotaRefreshDelay = value }
+    func setQuotaRefreshFetched(_ value: Bool) { quotaRefreshFetched = value }
     func setSettingsReadDelay(_ value: Duration) { settingsReadDelay = value }
     func setSettingsUpdateDelay(_ value: Duration) { settingsUpdateDelay = value }
     func setSettingsResponses(_ values: [Codexpulse_Core_V1_SettingsResponse], updateFailure: Bool) {
@@ -4239,7 +4241,8 @@ private actor FakeCore: AppCoreServing {
         if quotaRefreshDelay != .zero { try await sleepForTest(quotaRefreshDelay) }
         var receipt = Codexpulse_Core_V1_QuotaRefreshReceipt()
         receipt.source = request.source
-        receipt.reason = "accepted"
+        receipt.reason = quotaRefreshFetched ? "manual" : "normal_interval"
+        receipt.fetched = quotaRefreshFetched
 		receipt.providerContext.effectiveProvider = request.provider.provider
         return receipt
     }
@@ -6133,11 +6136,49 @@ private func testQuotaMutationCarriesSelectedProviderAndSwitchClearsState() asyn
 	}
 	model.selectProvider(.grok)
 	try expect(model.quotaRefreshState == .idle, "provider switch must clear the previous refresh state")
-	try await Task.sleep(for: .milliseconds(250))
-	try expect(model.quotaRefreshState == .idle, "late Cursor receipt must not overwrite Grok state")
+	model.requestQuotaRefresh(source: "quota")
+	try await waitUntil("Grok refresh result") {
+		await MainActor.run {
+			if case .succeeded = model.quotaRefreshState { return true }
+			return false
+		}
+	}
+	try await Task.sleep(for: .milliseconds(100))
+	model.selectProvider(.cursor)
+	try await waitUntil("Cursor refresh result after returning") {
+		await MainActor.run {
+			if case .succeeded = model.quotaRefreshState { return true }
+			return false
+		}
+	}
 	let calls = await core.recordedCalls().filter { $0 == "quota_refresh:cursor:quota" }
 	try expect(calls.count == 1, "quota mutation must carry the selected Cursor provider")
+	let providerCalls = await core.recordedCalls()
+	try expect(providerCalls.contains("quota_refresh:grok:quota"), "Grok refresh must run without cancelling Cursor")
 	_ = await model.shutdown()
+}
+
+@MainActor
+private func testQuotaRefreshSkippedReceiptIsNotShownAsStarted() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setQuotaRefreshFetched(false)
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+    model.start()
+    try await waitUntil("quota skipped overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.requestQuotaRefresh(source: "quota")
+    try await waitUntil("quota skipped receipt") {
+        await MainActor.run {
+            if case .skipped = model.quotaRefreshState { return true }
+            return false
+        }
+    }
+    if case .skipped(let message) = model.quotaRefreshState {
+        try expect(message.contains("本次未更新"), "skipped receipt must report no fetch")
+    }
+    _ = await model.shutdown()
 }
 
 @MainActor
@@ -13101,7 +13142,7 @@ private final class ProcessExitHarness: @unchecked Sendable {
     }
 }
 
-private func testHelperExitBecomesStale() async throws {
+private func testHelperExitAutomaticallyReconnects() async throws {
     let supervisor = FakeSupervisor()
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
     let recorder = StateRecorder()
@@ -13116,17 +13157,22 @@ private func testHelperExitBecomesStale() async throws {
     await runtime.setStateSink { state in await recorder.append(state) }
     await runtime.start()
     exit.triggerExit()
-    try await waitUntil("Helper exit state") {
+    try await waitUntil("automatic Helper recovery") {
+        let counts = await supervisor.counts()
+        let phases = await recorder.snapshot()
+        return counts.0 == 2 && phases.last == "normal"
+    }
+    let phases = await recorder.snapshot()
+    try expect(phases.contains("stale"), "Helper exit must surface stale data while reconnecting")
+    let recoveredCounts = await supervisor.counts()
+    try expect(recoveredCounts == (2, 1), "Helper exit recovery must start one fresh Helper")
+    exit.triggerExit()
+    try await waitUntil("second Helper exit") {
         await recorder.snapshot().last == "stale"
     }
-    let counts = await supervisor.counts()
-    try expect(counts.1 == 1, "Helper exit must stop the supervised process")
-    await runtime.restart()
-    try await waitUntil("Helper exit recovery") {
-        await recorder.snapshot().last == "normal"
-    }
-    let recoveredCounts = await supervisor.counts()
-    try expect(recoveredCounts.0 == 2, "Helper exit recovery must start a fresh Helper")
+    try await sleepForTest(.milliseconds(650))
+    let finalCounts = await supervisor.counts()
+    try expect(finalCounts == (2, 2), "automatic recovery must stop after one failed retry")
     _ = await runtime.shutdown()
 }
 
@@ -13448,6 +13494,7 @@ struct CodexPulseAppTestMain {
         try await testInvalidationDoesNotRequestGlobalRefresh()
         try await testQuotaMutationIsSingleFlight()
 		try await testQuotaMutationCarriesSelectedProviderAndSwitchClearsState()
+        try await testQuotaRefreshSkippedReceiptIsNotShownAsStarted()
         try await testLifecycleInvalidationPreservesMutation()
         try await testSettingsConflictPreservesDraft()
         try await testSettingsEditDuringSaveIsPreserved()
@@ -13490,7 +13537,7 @@ struct CodexPulseAppTestMain {
         try await testCancelledRefreshCannotOverwriteReplacement()
         try await testPendingActiveWaitsForBootstrap()
         try await testSleepDuringStartupDefersOverviewUntilWake()
-        try await testHelperExitBecomesStale()
+        try await testHelperExitAutomaticallyReconnects()
         try await testHelperExitCannotBecomeFeatureCancelled()
         try await testShutdownDeadlineForcesHelperStop()
         print("CodexPulseApp deterministic tests passed")

@@ -4926,6 +4926,8 @@ public nonisolated struct Codexpulse_Core_V1_QuotaRefreshReceipt: Sendable {
   /// Clears the value of `providerContext`. Subsequent reads from it will return its default value.
   public mutating func clearProviderContext() {self._providerContext = nil}
 
+  public var fetched: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -14894,7 +14896,7 @@ nonisolated extension Codexpulse_Core_V1_QuotaRefreshRequest: SwiftProtobuf.Mess
 
 nonisolated extension Codexpulse_Core_V1_QuotaRefreshReceipt: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".QuotaRefreshReceipt"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}source\0\u{3}next_due_at_ms\0\u{1}reason\0\u{3}last_manual_at_ms\0\u{3}provider_context\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}source\0\u{3}next_due_at_ms\0\u{1}reason\0\u{3}last_manual_at_ms\0\u{3}provider_context\0\u{1}fetched\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -14907,6 +14909,7 @@ nonisolated extension Codexpulse_Core_V1_QuotaRefreshReceipt: SwiftProtobuf.Mess
       case 3: try { try decoder.decodeSingularStringField(value: &self.reason) }()
       case 4: try { try decoder.decodeSingularInt64Field(value: &self._lastManualAtMs) }()
       case 5: try { try decoder.decodeSingularMessageField(value: &self._providerContext) }()
+      case 6: try { try decoder.decodeSingularBoolField(value: &self.fetched) }()
       default: break
       }
     }
@@ -14932,6 +14935,9 @@ nonisolated extension Codexpulse_Core_V1_QuotaRefreshReceipt: SwiftProtobuf.Mess
     try { if let v = self._providerContext {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
     } }()
+    if self.fetched != false {
+      try visitor.visitSingularBoolField(value: self.fetched, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -14941,6 +14947,7 @@ nonisolated extension Codexpulse_Core_V1_QuotaRefreshReceipt: SwiftProtobuf.Mess
     if lhs.reason != rhs.reason {return false}
     if lhs._lastManualAtMs != rhs._lastManualAtMs {return false}
     if lhs._providerContext != rhs._providerContext {return false}
+    if lhs.fetched != rhs.fetched {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

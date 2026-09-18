@@ -258,6 +258,14 @@ private struct QuotaContentView: View {
 			if provider.supportsResetCredits {
 				refreshStatus(title: "重置次数", state: resetCreditsRefreshState)
 			}
+            if let failedSource = response.current.sources.first(where: {
+                $0.hasFailureCode && $0.hasLastAttemptAtMs &&
+                    (!$0.hasLastSuccessAtMs || $0.lastAttemptAtMs > $0.lastSuccessAtMs)
+            }) {
+                Label("最近一次额度更新失败：\(failureText(failedSource.failureCode))。当前显示上次成功更新的数据。", systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], spacing: 12) {
                 ForEach(Array(displayWindows.enumerated()), id: \.offset) { _, window in
                     let presentation = QuotaWindowPresentation(window)
@@ -297,6 +305,10 @@ private struct QuotaContentView: View {
                             .accessibilityIdentifier(
                                 "quota.window.reset-time.\(presentation.id)"
                             )
+                        KeyValueRow(key: "数据状态", value: freshnessText(window.freshness))
+                        if window.hasLastSuccessAtMs {
+                            KeyValueRow(key: "最近成功更新", value: timestampText(window.lastSuccessAtMs))
+                        }
                         if let message = presentation.unknownMessage {
                             Text(message)
                                 .font(.caption)
@@ -344,6 +356,24 @@ private struct QuotaContentView: View {
 		provider.usesOfficialPeriodRing ? "已使用" : "剩余"
 	}
 
+    private func freshnessText(_ freshness: String) -> String {
+        switch freshness {
+        case "fresh", "current": "最新数据"
+        case "stale": "上次更新的数据（更新延迟）"
+        default: ProductCopy.status(freshness)
+        }
+    }
+
+    private func failureText(_ code: String) -> String {
+        switch code {
+        case "timeout": "请求超时"
+        case "network_unavailable": "网络不可用"
+        case "auth_required": "需要重新登录"
+        case "http_429": "请求过于频繁"
+        default: "数据来源暂时不可用"
+        }
+    }
+
     private var isRefreshing: Bool {
         if case .running = quotaRefreshState { return true }
         if case .running = resetCreditsRefreshState { return true }
@@ -358,9 +388,12 @@ private struct QuotaContentView: View {
         case .running:
             Label("正在更新\(title)…", systemImage: "arrow.clockwise")
                 .font(.caption).foregroundStyle(.secondary)
-        case .succeeded:
-            Label("\(title)更新已开始", systemImage: "checkmark.circle")
+        case .succeeded(let message):
+            Label(message, systemImage: "checkmark.circle")
                 .font(.caption).foregroundStyle(.green)
+        case .skipped(let message):
+            Label(message, systemImage: "clock")
+                .font(.caption).foregroundStyle(.secondary)
         case .unavailable:
             Label("\(title)暂时无法更新", systemImage: "exclamationmark.triangle")
                 .font(.caption).foregroundStyle(.orange)
@@ -963,6 +996,9 @@ private struct RuntimeControlPanel: View {
             case .succeeded:
                 Label("操作已完成", systemImage: "checkmark.circle")
                     .font(.caption).foregroundStyle(.green)
+            case .skipped:
+                Label("操作未执行", systemImage: "clock")
+                    .font(.caption).foregroundStyle(.secondary)
             case .unavailable:
                 Label("操作暂时不可用", systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(.orange)
@@ -1022,7 +1058,10 @@ private struct HealthEventsView: View {
             List(response.items, id: \.eventID, selection: $selected) { item in
                 HStack {
                     VStack(alignment: .leading) {
-                        Text(ProductCopy.eventName(item.code)).font(.headline)
+                        Text(ProductCopy.eventName(
+                            item.eventID == "light-index-token-scan-failed" ? item.eventID : item.code
+                        ))
+                        .font(.headline)
                         Text(ProductCopy.component(item.component)).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()

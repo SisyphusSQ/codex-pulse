@@ -234,6 +234,7 @@ public enum ProductCopy {
         case "source_stale": "数据来源需要更新"
         case "index_incomplete": "部分会话尚未整理"
         case "scheduler_failed": "数据更新未完成"
+        case "light-index-token-scan-failed": "Token 用量采集失败"
         case "quota_unavailable": "额度暂时无法获取"
         default: "本机数据提醒"
         }

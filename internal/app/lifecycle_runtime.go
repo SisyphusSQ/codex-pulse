@@ -245,9 +245,11 @@ func startApplicationLifecycleRuntime(
 		if refreshInterval == 0 {
 			refreshInterval = defaultApplicationLightRefreshInterval
 		}
-		var observeRefresh func(lightindex.RefreshObservation)
+		healthObserver := lightIndexHealthObserver{repository: repository}
+		observeRefresh := healthObserver.observed
 		if os.Getenv("CODEX_PULSE_LIGHT_INDEX_PROFILE") == "1" {
 			observeRefresh = func(observation lightindex.RefreshObservation) {
+				healthObserver.observed(observation)
 				log.Printf(
 					"light_index phase=%s duration_ms=%d fetch_ms=%d store_ms=%d read_ms=%d write_ms=%d sessions=%d unchanged=%d bytes_read=%d batches=%d interactive=%t complete=%t failed=%t",
 					observation.Phase, observation.Duration.Milliseconds(), observation.FetchDuration.Milliseconds(),
@@ -260,6 +262,7 @@ func startApplicationLifecycleRuntime(
 		lightRuntime, err = lightindex.NewRuntime(lightindex.RuntimeConfig{
 			Repository: lightRepository, DeepRepository: repository,
 			Metadata: config.LightMetadata, RefreshInterval: refreshInterval, ObserveRefresh: observeRefresh,
+			RefreshFailed: healthObserver.failed,
 			RefreshCommitted: func() {
 				notifyQueryInvalidation(config.Invalidation, context.Background(), core.InvalidationIndex)
 			},
@@ -621,15 +624,23 @@ func (runtime *applicationLifecycleRuntime) RequestQuotaRefresh(
 	ctx context.Context,
 	source quotaonline.RefreshSource,
 ) (store.SourceRefreshSchedule, error) {
+	schedule, _, err := runtime.RequestQuotaRefreshResult(ctx, source)
+	return schedule, err
+}
+
+func (runtime *applicationLifecycleRuntime) RequestQuotaRefreshResult(
+	ctx context.Context,
+	source quotaonline.RefreshSource,
+) (store.SourceRefreshSchedule, bool, error) {
 	if runtime == nil || runtime.quota == nil || ctx == nil {
-		return store.SourceRefreshSchedule{}, ErrApplicationLifecycleRuntime
+		return store.SourceRefreshSchedule{}, false, ErrApplicationLifecycleRuntime
 	}
 	operationContext, finish, err := runtime.beginControlAdmission(ctx)
 	if err != nil {
-		return store.SourceRefreshSchedule{}, err
+		return store.SourceRefreshSchedule{}, false, err
 	}
 	defer finish()
-	return runtime.quota.RequestRefresh(operationContext, source, store.RefreshTriggerManual)
+	return runtime.quota.RequestRefreshResult(operationContext, source, store.RefreshTriggerManual)
 }
 
 func (runtime *applicationLifecycleRuntime) PlanQuotaHomeSwitch(

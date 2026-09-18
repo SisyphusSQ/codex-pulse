@@ -51,7 +51,29 @@ public enum ActionState: Equatable, Sendable {
     case idle
     case running
     case succeeded(String)
+    case skipped(String)
     case unavailable(AppNotice)
+}
+
+public enum QuotaRefreshFeedback {
+    public static func skippedText(title: String, reason: String, nextDueAtMS: Int64?) -> String {
+        let explanation: String = switch reason {
+        case "normal_interval", "low_remaining", "near_reset", "reset_grace": "尚未到刷新时间"
+        case "retry_after": "服务端要求稍后重试"
+        case "network_backoff": "正在等待重试"
+        case "disabled", "inactive_account": "当前来源未启用"
+        case "schema_incompatible": "当前来源暂不可刷新"
+        default: "本次未执行抓取"
+        }
+        var result = "\(title)本次未更新：\(explanation)"
+        if let nextDueAtMS, nextDueAtMS > 0 {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .short
+            formatter.timeStyle = .short
+            result += "；下次可于 \(formatter.string(from: Date(timeIntervalSince1970: Double(nextDueAtMS) / 1_000))) 重试"
+        }
+        return result
+    }
 }
 
 public enum RuntimeControlAction: String, CaseIterable, Equatable, Sendable {

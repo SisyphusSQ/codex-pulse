@@ -83,6 +83,7 @@
 "本机数据需要修复" = "Local data needs repair";
 "数据来源需要更新" = "Data source needs an update";
 "数据更新未完成" = "Data update did not complete";
+"Token 用量采集失败" = "Token usage collection failed";
 "本机数据正在使用中" = "Local data is in use";
 "本机数据当前只读" = "Local data is read-only";
 "本机数据暂时不可用" = "Local data is temporarily unavailable";

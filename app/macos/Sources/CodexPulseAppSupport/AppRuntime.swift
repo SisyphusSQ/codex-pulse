@@ -1,6 +1,7 @@
 import CodexPulseCoreClient
 import CodexPulseProtocolGenerated
 import Foundation
+import OSLog
 
 private enum ShutdownRequestResult: Equatable, Sendable {
     case accepted
@@ -212,6 +213,7 @@ public enum AppUpdateInstallPreparation: Equatable, Sendable {
 }
 
 public actor AppRuntime {
+    private static let helperLogger = Logger(subsystem: "com.sisyphus.codexpulse", category: "helper-lifecycle")
     public typealias StateSink = @Sendable (CoreConnectionState) async -> Void
     public typealias InvalidationSink = @Sendable (_ domain: String) async -> Void
     public typealias CatalogSink = @Sendable (ProviderCatalog) async -> AgentProvider?
@@ -248,6 +250,7 @@ public actor AppRuntime {
     private var accountRefreshGeneration: UInt64 = 0
     private var startInFlight = false
     private var shuttingDown = false
+    private var automaticReconnectAttempts = 0
     private var applicationIsActive = true
     private var systemIsSleeping = false
     private var sleepTransitionInFlight = false
@@ -1326,6 +1329,7 @@ public actor AppRuntime {
 
     public func restart() async {
         guard !startInFlight, !shuttingDown else { return }
+        automaticReconnectAttempts = 0
         runtimeGeneration &+= 1
         _ = await stopCurrentCore(reason: "client_restart")
         await start()
@@ -2132,6 +2136,11 @@ public actor AppRuntime {
         code: String
     ) async {
         guard generation == runtimeGeneration, !shuttingDown else { return }
+        let exitStatus = code == "helper_exited"
+            ? try? await supervisor.waitForExit(timeout: .seconds(1))
+            : nil
+        guard generation == runtimeGeneration, !shuttingDown else { return }
+        Self.helperLogger.error("helper runtime failure code=\(code, privacy: .public) exit_status=\(exitStatus ?? -1)")
         runtimeGeneration &+= 1
         let failureGeneration = runtimeGeneration
         readyForOverview = false
@@ -2162,8 +2171,14 @@ public actor AppRuntime {
         await emitRefreshFailure(AppNotice(
             code: code,
             messageKey: "app.error.core_unavailable",
-            retryable: true
+            retryable: true,
+            detail: exitStatus.map { "本地服务意外退出（状态码 \($0)）" }
         ))
+        guard !startInFlight, !systemIsSleeping, automaticReconnectAttempts == 0 else { return }
+        automaticReconnectAttempts = 1
+        try? await Task.sleep(for: .milliseconds(500))
+        guard failureGeneration == runtimeGeneration, !shuttingDown, !startInFlight else { return }
+        await start()
     }
 
     private func emitRefreshFailure(_ error: any Error) async {

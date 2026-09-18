@@ -523,19 +523,27 @@ func (runtime *applicationControlRuntime) RequestQuotaRefresh(
 	ctx context.Context,
 	source quotaonline.RefreshSource,
 ) (store.SourceRefreshSchedule, error) {
+	schedule, _, err := runtime.RequestQuotaRefreshResult(ctx, source)
+	return schedule, err
+}
+
+func (runtime *applicationControlRuntime) RequestQuotaRefreshResult(
+	ctx context.Context,
+	source quotaonline.RefreshSource,
+) (store.SourceRefreshSchedule, bool, error) {
 	if runtime == nil {
-		return store.SourceRefreshSchedule{}, basequery.NewUnavailableFailure(ErrApplicationLifecycleRuntime)
+		return store.SourceRefreshSchedule{}, false, basequery.NewUnavailableFailure(ErrApplicationLifecycleRuntime)
 	}
 	operation, err := beginProviderControlOperation(runtime.controller, ctx, agentprovider.Codex)
 	if err != nil {
-		return store.SourceRefreshSchedule{}, err
+		return store.SourceRefreshSchedule{}, false, err
 	}
 	defer operation.Finish()
 	worker := runtime.currentWorker()
 	if worker == nil {
-		return store.SourceRefreshSchedule{}, basequery.NewUnavailableFailure(ErrApplicationLifecycleRuntime)
+		return store.SourceRefreshSchedule{}, false, basequery.NewUnavailableFailure(ErrApplicationLifecycleRuntime)
 	}
-	return worker.RequestQuotaRefresh(operation.Context(), source)
+	return worker.RequestQuotaRefreshResult(operation.Context(), source)
 }
 
 func (runtime *applicationControlRuntime) DeepIndexSession(

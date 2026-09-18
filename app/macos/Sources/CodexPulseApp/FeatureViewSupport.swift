@@ -60,11 +60,21 @@ struct RuntimeAwarePage<Content: View>: View {
     @ViewBuilder
     private var runtimeBanner: some View {
         switch model.state {
-        case .partial, .stale:
+        case .partial:
             EmptyView()
+        case .stale(_, let notice):
+            HStack {
+                Label(notice.detail ?? "本地数据连接已中断", systemImage: "bolt.slash")
+                    .foregroundStyle(.orange)
+                Spacer()
+                if notice.retryable { Button("重新连接") { model.restartCore() } }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 8)
+            .background(Color.orange.opacity(0.08))
         case .unavailable(let notice):
             HStack {
-                Label("本地数据暂时不可用", systemImage: "bolt.slash")
+                Label(notice.detail ?? "本地数据暂时不可用", systemImage: "bolt.slash")
                     .foregroundStyle(.red)
                 Spacer()
                 if notice.retryable { Button("重新连接") { model.restartCore() } }

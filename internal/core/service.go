@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	ContractVersion         = "core-rpc-v5"
-	ProviderControlVersion  = "provider-control-v1"
+	ContractVersion        = "core-rpc-v5"
+	ProviderControlVersion = "provider-control-v1"
 )
 
 var (
@@ -72,7 +72,7 @@ type agentQuotaQuery interface {
 }
 
 type quotaRefreshCommand interface {
-	RequestQuotaRefresh(context.Context, quotaonline.RefreshSource) (store.SourceRefreshSchedule, error)
+	RequestQuotaRefreshResult(context.Context, quotaonline.RefreshSource) (store.SourceRefreshSchedule, bool, error)
 }
 
 type providerQuotaRefreshCommand interface {
@@ -539,6 +539,7 @@ type QuotaRefreshReceipt struct {
 	Reason          store.SourceRefreshReason `json:"reason"`
 	LastManualAtMS  *int64                    `json:"lastManualAtMs"`
 	ProviderContext agentprovider.Context     `json:"providerContext"`
+	Fetched         bool                      `json:"fetched"`
 }
 
 func (service *Service) RequestQuotaRefresh(
@@ -577,7 +578,7 @@ func (service *Service) RequestQuotaRefresh(
 				return QuotaRefreshReceipt{}, err
 			}
 			return QuotaRefreshReceipt{
-				Source: source, Reason: store.RefreshReasonManual, ProviderContext: providerContext,
+				Source: source, Reason: store.RefreshReasonManual, ProviderContext: providerContext, Fetched: true,
 			}, nil
 		})
 	}
@@ -589,7 +590,7 @@ func (service *Service) RequestQuotaRefresh(
 		return QuotaRefreshReceipt{}, newServiceFailure(ErrService)
 	}
 	return serviceCall(func() (QuotaRefreshReceipt, error) {
-		schedule, err := command.RequestQuotaRefresh(ctx, source)
+		schedule, fetched, err := command.RequestQuotaRefreshResult(ctx, source)
 		if err != nil {
 			return QuotaRefreshReceipt{}, err
 		}
@@ -597,6 +598,7 @@ func (service *Service) RequestQuotaRefresh(
 			Source: source, NextDueAtMS: cloneInt64(schedule.NextDueAtMS),
 			Reason: schedule.Reason, LastManualAtMS: cloneInt64(schedule.LastManualAtMS),
 			ProviderContext: agentprovider.CodexContext(),
+			Fetched:         fetched,
 		}, nil
 	})
 }

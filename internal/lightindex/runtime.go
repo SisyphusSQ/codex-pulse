@@ -46,10 +46,10 @@ func (budget *scanSliceBudget) exhausted() bool {
 }
 
 type scanContinuation struct {
-	sessions     []storelight.LightSessionScanSnapshot
-	index        int
-	retryCurrent bool
-	loaded       bool
+	sessions []storelight.LightSessionScanSnapshot
+	index    int
+	loaded   bool
+	deferred bool
 }
 
 type indexNoticeGate struct {
@@ -426,9 +426,10 @@ func (runtime *Runtime) run(
 			}
 		} else {
 			metadataChanged = changed
-			if changed {
-				continuation.reset()
-			}
+			// Metadata changes are published immediately, but a scan pass must
+			// keep its cursor. An active thread can change on every slice; resetting
+			// here permanently starves sessions later in the recency-ordered list.
+			// The next completed pass loads the latest session snapshot.
 		}
 	}
 }
@@ -641,11 +642,15 @@ func (runtime *Runtime) scanBudgetedSlice(
 		observation.Sessions++
 		if current.Session.RolloutPath != nil {
 			sessionPublished, scanErr := runtime.scanSession(
-				ctx, home, current, inspector, reader, budget, !continuation.retryCurrent,
+				ctx, home, current, inspector, reader, budget, true,
 			)
 			published = published || sessionPublished
 			if errors.Is(scanErr, errScanSliceExhausted) {
-				continuation.retryCurrent = true
+				// The checkpoint is durable. Give the next session its turn even
+				// when this rollout is large or keeps growing; revisit it on the
+				// next pass with a fresh snapshot.
+				continuation.index++
+				continuation.deferred = true
 				return published, false, nil
 			}
 			if scanErr != nil && !recoverableSessionScanError(scanErr) {
@@ -653,10 +658,10 @@ func (runtime *Runtime) scanBudgetedSlice(
 			}
 		}
 		continuation.index++
-		continuation.retryCurrent = false
 	}
+	deferred := continuation.deferred
 	continuation.reset()
-	return published, true, nil
+	return published, !deferred, nil
 }
 
 func (runtime *Runtime) scanSession(

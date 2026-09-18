@@ -286,7 +286,7 @@ struct OverviewStateView: View {
             ContentUnavailableView {
                 Label("本地数据暂时不可用", systemImage: "bolt.slash")
             } description: {
-                Text(notice.retryable ? "可以重试连接。" : "当前版本无法读取这些数据，请更新 App。")
+                Text(notice.detail ?? (notice.retryable ? "可以重试连接。" : "当前版本无法读取这些数据，请更新 App。"))
             } actions: {
                 if notice.retryable { Button("重试") { model.restartCore() } }
             }
