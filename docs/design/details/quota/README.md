@@ -34,6 +34,8 @@ HMAC-SHA256(安装级随机密钥, domain-separated accountId) → 64 位 lowerc
 
 套餐档位与额度窗口是不同概念。5×/20× 只来自夹读一致的明确 `planType`，不得用 remaining percent、Token、window_minutes、resets_at_ms 或 Reset Credits 推断。配额页继续只解释额度窗口。
 
+已下线的 GPT-5.3-Codex-Spark 专属限额 `codex_spark` / `codex_bengalfox` 不再进入当前 Codex Quota、Pace 或下一次 reset 调度。过滤仅按 `limit_id`，不按 `limit_name`，因为通用 `codex` 桶也可能带同名展示字段。原始 observation、可重建投影和历史 Session/Token 用量继续保留；读取当前窗口时仍校验这些投影的完整性，不把下线误当成数据库事实删除。Cursor / Grok 的独立额度不受影响。
+
 账号切换保留现有 Home generation fence。锁顺序是：Home generation drain → account transition → quota admission → repository 写事务。A→B→A 恢复 A 的历史观察时间戳，但使用新的 binding generation。Cursor、Grok、API Subscription 的现有逻辑不得被 Codex binding 改动影响。
 
 账号切换隔离的 live runbook 见 [`docs/test/codex-account-switching.md`](../../../test/codex-account-switching.md)。
