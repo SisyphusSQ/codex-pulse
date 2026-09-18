@@ -94,6 +94,9 @@ func (repository *Repository) QuotaCurrentSnapshot(
 				if err != nil {
 					return err
 				}
+				if retiredCodexQuotaLimit(key.limitID) {
+					continue
+				}
 				observations, err := quotaQueryWindowObservations(ctx, transaction, key)
 				if err != nil {
 					return err

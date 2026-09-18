@@ -305,6 +305,9 @@ func (repository *Repository) ListQuotaCurrent(
 				if err != nil {
 					return err
 				}
+				if retiredCodexQuotaLimit(key.limitID) {
+					continue
+				}
 				currents = append(currents, dynamicallyDegradeQuotaCurrent(projection.Current, evaluatedAtMS))
 			}
 			return nil

@@ -86,6 +86,80 @@ func TestQuotaCurrentSnapshotReadsVerifiedQueryFacts(t *testing.T) {
 	}
 }
 
+func TestRetiredSparkLimitsStayHistoricalButLeaveCurrentQueries(t *testing.T) {
+	t.Parallel()
+
+	repository := openRuntimeRepository(t)
+	const nowMS = int64(1_784_300_000_000)
+	repository.quotaNow = func() time.Time { return time.UnixMilli(nowMS) }
+	_, scope, generation := confirmSyntheticCodexAccount(t, repository, "acct-test-a", nowMS)
+	record := appServerQuotaFetchRecordWithUsage("spark-retirement", scope, generation, nowMS, 40, 12)
+	// A display name is not an identity: the general bucket must remain visible.
+	sparkName := "GPT-5.3-Codex-Spark"
+	for index := range record.Observations {
+		record.Observations[index].LimitName = &sparkName
+	}
+	var retiredIDs []string
+	for _, limitID := range []string{"codex_spark", "codex_bengalfox"} {
+		for _, observation := range record.Observations[:2] {
+			observation.ObservationID += "-" + limitID
+			observation.LimitID = &limitID
+			record.Observations = append(record.Observations, observation)
+			retiredIDs = append(retiredIDs, observation.ObservationID)
+		}
+	}
+	if err := repository.RecordQuotaFetch(context.Background(), record); err != nil {
+		t.Fatalf("RecordQuotaFetch() error = %v", err)
+	}
+
+	assertActive := func() {
+		t.Helper()
+		snapshot, err := repository.QuotaCurrentSnapshot(context.Background(), QuotaAccountScopeDefault, nowMS+1)
+		if err != nil {
+			t.Fatalf("QuotaCurrentSnapshot() error = %v", err)
+		}
+		if len(snapshot.Windows) != 2 {
+			t.Fatalf("snapshot windows = %#v, want only general primary and secondary", snapshot.Windows)
+		}
+		for _, window := range snapshot.Windows {
+			if window.Current.LimitID != "codex" {
+				t.Fatalf("snapshot contains retired window: %#v", window.Current)
+			}
+		}
+		currents, err := repository.ListQuotaCurrent(context.Background(), scope, nowMS+1)
+		if err != nil {
+			t.Fatalf("ListQuotaCurrent() error = %v", err)
+		}
+		if len(currents) != 2 || currents[0].LimitID != "codex" || currents[1].LimitID != "codex" {
+			t.Fatalf("scheduler currents = %#v, want only general windows", currents)
+		}
+	}
+	assertActive()
+	for _, observationID := range retiredIDs {
+		if _, err := repository.QuotaObservation(context.Background(), observationID); err != nil {
+			t.Fatalf("retired QuotaObservation(%s) error = %v", observationID, err)
+		}
+	}
+	// A later complete response without Spark must not be required to make the
+	// already-retired windows disappear, nor erase their historical facts.
+	if err := repository.RecordQuotaFetch(context.Background(),
+		appServerQuotaFetchRecordWithUsage("after-spark-retirement", scope, generation, nowMS+1, 43, 14),
+	); err != nil {
+		t.Fatalf("RecordQuotaFetch(later) error = %v", err)
+	}
+	assertActive()
+	if err := repository.database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
+		return transaction.WithContext(ctx).Where(
+			"account_scope = ? AND window_kind = ? AND limit_id = ?", scope, QuotaWindowPrimary, "codex_spark",
+		).Delete(&quotaCurrentModel{}).Error
+	}); err != nil {
+		t.Fatalf("delete retired projection fixture: %v", err)
+	}
+	if _, err := repository.QuotaCurrentSnapshot(context.Background(), QuotaAccountScopeDefault, nowMS+1); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("QuotaCurrentSnapshot(missing retired projection) error = %v, want ErrNotFound", err)
+	}
+}
+
 func TestQuotaCurrentSnapshotUsesOneSQLiteReadSnapshot(t *testing.T) {
 	t.Parallel()
 
