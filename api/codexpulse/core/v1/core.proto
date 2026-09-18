@@ -834,6 +834,7 @@ message QuotaRefreshReceipt {
   string reason = 3;
   optional int64 last_manual_at_ms = 4;
   ProviderContext provider_context = 5;
+  bool fetched = 6;
 }
 
 // ProviderRefreshRequest 是 Helper 聚合的全局刷新命令，不复用 QuotaRefreshRequest.provider。

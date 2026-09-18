@@ -268,16 +268,37 @@ public struct AppNotice: Equatable, Sendable {
     public let code: String
     public let messageKey: String
     public let retryable: Bool
+    public let detail: String?
 
-    public init(code: String, messageKey: String, retryable: Bool) {
+    public init(code: String, messageKey: String, retryable: Bool, detail: String? = nil) {
         self.code = code
         self.messageKey = messageKey
         self.retryable = retryable
+        self.detail = detail
     }
 
     public static func from(_ error: any Error) -> Self {
         if error is CancellationError {
             return Self(code: "cancelled", messageKey: "app.error.cancelled", retryable: true)
+        }
+        if let helper = error as? HelperSupervisorError {
+            switch helper {
+            case .socketTimeout:
+                return Self(code: "helper_socket_timeout", messageKey: "app.error.core_unavailable", retryable: true,
+                    detail: "本地服务启动时等待连接超时")
+            case .helperExited(let status):
+                return Self(code: "helper_exited", messageKey: "app.error.core_unavailable", retryable: true,
+                    detail: "本地服务在启动时退出（状态码 \(status)）")
+            case .runtimeDirectory:
+                return Self(code: "helper_runtime_directory", messageKey: "app.error.core_unavailable", retryable: true,
+                    detail: "本地服务运行目录无法安全使用，请检查目录权限")
+            case .spawn(let code):
+                return Self(code: "helper_spawn_failed", messageKey: "app.error.core_unavailable", retryable: true,
+                    detail: "本地服务启动失败（系统码 \(code)）")
+            default:
+                return Self(code: "helper_start_failed", messageKey: "app.error.core_unavailable", retryable: true,
+                    detail: "本地服务启动失败")
+            }
         }
         if let detail = CoreErrorDetail.decode(from: error) {
             return Self(code: detail.code, messageKey: detail.messageKey, retryable: detail.retryable)

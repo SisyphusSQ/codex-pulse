@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import OSLog
 
 public enum HelperSupervisorError: Error, Equatable, Sendable {
     case alreadyRunning
@@ -43,6 +44,7 @@ public enum HelperStopMode: Sendable {
 }
 
 public actor HelperSupervisor {
+    private static let logger = Logger(subsystem: "com.sisyphus.codexpulse", category: "helper-startup")
     public struct Configuration: Sendable {
         public let executablePath: String
         public let runtimeDirectory: String
@@ -51,7 +53,7 @@ public actor HelperSupervisor {
         public init(
             executablePath: String,
             runtimeDirectory: String,
-            startupTimeout: Duration = .seconds(10)
+            startupTimeout: Duration = .seconds(30)
         ) {
             self.executablePath = executablePath
             self.runtimeDirectory = runtimeDirectory
@@ -79,6 +81,7 @@ public actor HelperSupervisor {
     }
 
     public func start() async throws -> RunningHelper {
+        let started = ContinuousClock().now
         guard processID == nil else { throw HelperSupervisorError.alreadyRunning }
         guard FileManager.default.isExecutableFile(atPath: configuration.executablePath) else {
             throw HelperSupervisorError.invalidExecutable
@@ -121,6 +124,7 @@ public actor HelperSupervisor {
             processID = childPID
             authWriteDescriptor = writeDescriptor
             parentOwnsWriteDescriptor = false
+            Self.logger.info("helper startup stage=spawned")
             try writeStartupToken(token, to: writeDescriptor)
             try await waitForSocket(
                 paths.socket,
@@ -132,6 +136,8 @@ public actor HelperSupervisor {
             guard self.processID == childPID, launchGeneration == generation else {
                 throw HelperSupervisorError.launchCancelled
             }
+            let elapsed = started.duration(to: ContinuousClock().now)
+            Self.logger.info("helper startup stage=socket_ready duration=\(String(describing: elapsed), privacy: .public)")
             return RunningHelper(
                 processID: childPID,
                 socketPath: paths.socket,
@@ -140,6 +146,8 @@ public actor HelperSupervisor {
                 bearerToken: token
             )
         } catch {
+            let diagnostic = String(describing: error as? HelperSupervisorError)
+            Self.logger.error("helper startup stage=failed cause=\(diagnostic, privacy: .public)")
             if parentOwnsReadDescriptor { Darwin.close(readDescriptor) }
             if parentOwnsWriteDescriptor {
                 Darwin.close(writeDescriptor)
@@ -366,6 +374,7 @@ public actor HelperSupervisor {
             let result = Darwin.waitpid(expectedProcessID, &status, WNOHANG)
             if result == expectedProcessID {
                 let exitStatus = Self.exitStatus(status)
+                Self.logger.error("helper startup stage=exited status=\(exitStatus)")
                 if processID == expectedProcessID {
                     self.processID = nil
                     closeAuthPipe()
@@ -376,6 +385,7 @@ public actor HelperSupervisor {
             if result == -1 { throw HelperSupervisorError.wait(errno) }
             try await Task.sleep(nanoseconds: 20_000_000)
         }
+        Self.logger.error("helper startup stage=socket_timeout")
         throw HelperSupervisorError.socketTimeout
     }
 

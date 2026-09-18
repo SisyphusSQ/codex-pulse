@@ -1053,6 +1053,80 @@ func TestRuntimeContinuesPendingScanWhenFileGrows(t *testing.T) {
 	}
 }
 
+func TestRuntimeDoesNotStarveOlderSessionDuringChangingMetadata(t *testing.T) {
+	t.Parallel()
+
+	homePath := t.TempDir()
+	bigPath := filepath.Join(homePath, "sessions", "newer.jsonl")
+	olderPath := filepath.Join(homePath, "sessions", "older.jsonl")
+	if err := os.MkdirAll(filepath.Dir(bigPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bigPath, []byte(strings.Repeat("noncandidate\n", 100_000)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(olderPath, []byte(tokenLine("2026-07-19T01:00:00Z", 100, 20, 10, 2)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bigPath, err := filepath.EvalSymlinks(bigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	olderPath, err = filepath.EvalSymlinks(olderPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, err := logsource.NewHomeProbe().Probe(context.Background(), homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, deepRepository, repository := openLightRuntimeRepository(t)
+	var revision int64
+	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+		revision++
+		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{
+			{SessionID: "newer", CWD: "/workspace", RolloutPath: &bigPath, CreatedAtMS: 100, UpdatedAtMS: 10_000 + revision},
+			{SessionID: "older", CWD: "/workspace", RolloutPath: &olderPath, CreatedAtMS: 100, UpdatedAtMS: 200},
+		}}, nil
+	})
+	olderCommitted := make(chan struct{}, 1)
+	runtime, err := NewRuntime(RuntimeConfig{
+		Repository: repository, DeepRepository: deepRepository, Metadata: provider,
+		RefreshInterval: time.Second, ScanBatchBytes: 8 << 10, ScanSliceBytes: 8 << 10,
+		BatchCommitted: func(scan storelight.LightTokenScan) {
+			if scan.SessionID == "older" && scan.State == "active" {
+				select {
+				case olderCommitted <- struct{}{}:
+				default:
+				}
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := runtime.Start(context.Background(), storelight.LightHomeIdentity{
+		Path: home.Path, DeviceID: home.DeviceID, Inode: home.Inode,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { run.Cancel(); _ = run.Wait(context.Background()) }()
+	select {
+	case <-olderCommitted:
+	case <-time.After(3 * time.Second):
+		sessions, readErr := repository.ListLightSessionScans(context.Background())
+		for _, session := range sessions {
+			t.Logf("session=%s state=%s active=%v pending=%v", session.Session.SessionID, session.Session.ScanState, session.Active != nil, session.Pending != nil)
+		}
+		t.Fatalf("older session was starved by a large newer rollout and changing metadata: %v", readErr)
+	}
+	usage, err := repository.LightSessionTokenUsage(context.Background(), "older")
+	if err != nil || usage.InputTokens != 100 || !usage.Complete {
+		t.Fatalf("older session usage = %#v, %v", usage, err)
+	}
+}
+
 func TestRuntimeBudgetedScanYieldsForMetadataAndResumesCheckpoint(t *testing.T) {
 	t.Parallel()
 

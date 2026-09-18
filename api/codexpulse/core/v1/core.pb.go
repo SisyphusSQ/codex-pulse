@@ -7963,6 +7963,7 @@ type QuotaRefreshReceipt struct {
 	Reason          string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
 	LastManualAtMs  *int64                 `protobuf:"varint,4,opt,name=last_manual_at_ms,json=lastManualAtMs,proto3,oneof" json:"last_manual_at_ms,omitempty"`
 	ProviderContext *ProviderContext       `protobuf:"bytes,5,opt,name=provider_context,json=providerContext,proto3" json:"provider_context,omitempty"`
+	Fetched         bool                   `protobuf:"varint,6,opt,name=fetched,proto3" json:"fetched,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -8030,6 +8031,13 @@ func (x *QuotaRefreshReceipt) GetProviderContext() *ProviderContext {
 		return x.ProviderContext
 	}
 	return nil
+}
+
+func (x *QuotaRefreshReceipt) GetFetched() bool {
+	if x != nil {
+		return x.Fetched
+	}
+	return false
 }
 
 // ProviderRefreshRequest 是 Helper 聚合的全局刷新命令，不复用 QuotaRefreshRequest.provider。
@@ -16604,13 +16612,14 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x10provider_context\x18\x03 \x01(\v2#.codexpulse.core.v1.ProviderContextR\x0fproviderContext\"l\n" +
 	"\x13QuotaRefreshRequest\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12=\n" +
-	"\bprovider\x18\x02 \x01(\v2!.codexpulse.core.v1.ProviderScopeR\bprovider\"\x98\x02\n" +
+	"\bprovider\x18\x02 \x01(\v2!.codexpulse.core.v1.ProviderScopeR\bprovider\"\xb2\x02\n" +
 	"\x13QuotaRefreshReceipt\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12(\n" +
 	"\x0enext_due_at_ms\x18\x02 \x01(\x03H\x00R\vnextDueAtMs\x88\x01\x01\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\x12.\n" +
 	"\x11last_manual_at_ms\x18\x04 \x01(\x03H\x01R\x0elastManualAtMs\x88\x01\x01\x12N\n" +
-	"\x10provider_context\x18\x05 \x01(\v2#.codexpulse.core.v1.ProviderContextR\x0fproviderContextB\x11\n" +
+	"\x10provider_context\x18\x05 \x01(\v2#.codexpulse.core.v1.ProviderContextR\x0fproviderContext\x12\x18\n" +
+	"\afetched\x18\x06 \x01(\bR\afetchedB\x11\n" +
 	"\x0f_next_due_at_msB\x14\n" +
 	"\x12_last_manual_at_ms\"2\n" +
 	"\x16ProviderRefreshRequest\x12\x18\n" +

@@ -229,7 +229,7 @@ func TestServiceRoutesQuotaRefreshByProvider(t *testing.T) {
 	nextDueAtMS := int64(456)
 	codex := &quotaRefreshCommandStub{schedule: store.SourceRefreshSchedule{
 		NextDueAtMS: &nextDueAtMS, Reason: store.RefreshReasonManual,
-	}}
+	}, fetched: true}
 	providers := &providerQuotaRefreshStub{}
 	service, err := NewService(ServiceConfig{
 		UsageCost: &usageQueryStub{}, InvocationUsage: &invocationUsageQueryStub{},
@@ -244,7 +244,7 @@ func TestServiceRoutesQuotaRefreshByProvider(t *testing.T) {
 		context.Background(), agentprovider.Scope{Provider: agentprovider.Cursor}, quotaonline.RefreshSourceQuota,
 	)
 	if err != nil || cursorReceipt.ProviderContext.EffectiveProvider != agentprovider.Cursor ||
-		cursorReceipt.Reason != store.RefreshReasonManual || providers.scope.Provider != agentprovider.Cursor {
+		cursorReceipt.Reason != store.RefreshReasonManual || !cursorReceipt.Fetched || providers.scope.Provider != agentprovider.Cursor {
 		t.Fatalf("Cursor RequestQuotaRefresh() = %#v, scope %#v, %v", cursorReceipt, providers.scope, err)
 	}
 	if codex.calls != 0 {
@@ -255,8 +255,17 @@ func TestServiceRoutesQuotaRefreshByProvider(t *testing.T) {
 		context.Background(), agentprovider.Scope{}, quotaonline.RefreshSourceResetCredits,
 	)
 	if err != nil || codexReceipt.ProviderContext.EffectiveProvider != agentprovider.Codex ||
-		codexReceipt.NextDueAtMS == nil || *codexReceipt.NextDueAtMS != nextDueAtMS || codex.calls != 1 {
+		codexReceipt.NextDueAtMS == nil || *codexReceipt.NextDueAtMS != nextDueAtMS || !codexReceipt.Fetched || codex.calls != 1 {
 		t.Fatalf("default RequestQuotaRefresh() = %#v, calls %d, %v", codexReceipt, codex.calls, err)
+	}
+	codex.fetched = false
+	codex.schedule.Reason = store.RefreshReasonNormalInterval
+	skipped, err := service.RequestQuotaRefresh(
+		context.Background(), agentprovider.Scope{}, quotaonline.RefreshSourceQuota,
+	)
+	if err != nil || skipped.Fetched || skipped.Reason != store.RefreshReasonNormalInterval ||
+		skipped.NextDueAtMS == nil || *skipped.NextDueAtMS != nextDueAtMS {
+		t.Fatalf("skipped RequestQuotaRefresh() = %#v, %v", skipped, err)
 	}
 
 	if _, err := service.RequestQuotaRefresh(
@@ -481,15 +490,16 @@ type accountSnapshotQueryStub struct {
 
 type quotaRefreshCommandStub struct {
 	schedule store.SourceRefreshSchedule
+	fetched  bool
 	calls    int
 }
 
-func (stub *quotaRefreshCommandStub) RequestQuotaRefresh(
+func (stub *quotaRefreshCommandStub) RequestQuotaRefreshResult(
 	context.Context,
 	quotaonline.RefreshSource,
-) (store.SourceRefreshSchedule, error) {
+) (store.SourceRefreshSchedule, bool, error) {
 	stub.calls++
-	return stub.schedule, nil
+	return stub.schedule, stub.fetched, nil
 }
 
 type providerQuotaRefreshStub struct {

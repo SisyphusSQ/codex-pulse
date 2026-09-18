@@ -406,6 +406,9 @@ struct RuntimeActionControl: View {
         case .succeeded:
             Label("操作已完成", systemImage: "checkmark.circle")
                 .font(.caption).foregroundStyle(.green)
+        case .skipped:
+            Label("操作未执行", systemImage: "clock")
+                .font(.caption).foregroundStyle(.secondary)
         case .unavailable:
             Label("操作暂时不可用", systemImage: "exclamationmark.triangle")
                 .font(.caption).foregroundStyle(.orange)
@@ -539,6 +542,8 @@ struct SettingsView: View {
             Label(localizedCopy(result == "deleted" ? "密钥已删除" : "密钥已保存"), systemImage: "checkmark.circle")
                 .font(.caption)
                 .foregroundStyle(.green)
+        case .skipped:
+            EmptyView()
         case .unavailable:
             Label(localizedCopy("密钥更新失败"), systemImage: "exclamationmark.triangle")
                 .font(.caption)

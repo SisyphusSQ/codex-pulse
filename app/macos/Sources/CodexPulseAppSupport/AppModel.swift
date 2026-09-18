@@ -65,7 +65,8 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
 }
 
 private enum FeatureTaskKey: Hashable {
-    case usage, statusOverview, statusAccount, codexCardAccount, invocationUsage, pricingCatalog, quota, quotaAccount, quotaPace, quotaRefresh, resetCreditsRefresh, dashboardSummary
+    case usage, statusOverview, statusAccount, codexCardAccount, invocationUsage, pricingCatalog, quota, quotaAccount, quotaPace, dashboardSummary
+    case quotaRefresh(AgentProvider), resetCreditsRefresh(AgentProvider)
     case apiSubscriptions, apiCredentialStatus, apiCredentialSave
     case runtimeAction
     case sessions, sessionDetail
@@ -139,6 +140,8 @@ public final class AppModel: ObservableObject {
     @Published public var openCodeGoAPIKeyDraft = ""
     @Published public private(set) var quotaRefreshState: ActionState = .idle
     @Published public private(set) var resetCreditsRefreshState: ActionState = .idle
+    private var quotaRefreshStates: [AgentProvider: ActionState] = [:]
+    private var resetCreditsRefreshStates: [AgentProvider: ActionState] = [:]
     @Published public private(set) var runtimeActionState: ActionState = .idle
     @Published public private(set) var sessionsState: FeatureLoadState<Codexpulse_Core_V1_SessionListResponse> = .idle
     @Published public private(set) var sessionDetailState: FeatureLoadState<Codexpulse_Core_V1_SessionDetailResponse> = .idle
@@ -316,6 +319,8 @@ public final class AppModel: ObservableObject {
         overviewRefreshTask = nil
         cancelPageFeatureTasks()
         resetProviderFeatureState()
+        quotaRefreshState = provider.flatMap { quotaRefreshStates[$0] } ?? .idle
+        resetCreditsRefreshState = provider.flatMap { resetCreditsRefreshStates[$0] } ?? .idle
     }
 
     private func assignStatusProvider(_ provider: AgentProvider?) {
@@ -1285,12 +1290,12 @@ public final class AppModel: ObservableObject {
     }
 
     public func requestQuotaRefresh(source: String) {
-        guard let taskKey = refreshTaskKey(source: source) else { return }
         guard canRefreshOrRestart else { return }
-        if isRefreshRunning(source: source) { return }
 		guard let provider = selectedProvider else { return }
 		guard source == "quota" || provider.supportsResetCredits else { return }
-        setRefreshState(.running, source: source)
+        guard let taskKey = refreshTaskKey(source: source, provider: provider) else { return }
+        if isRefreshRunning(source: source, provider: provider) { return }
+        setRefreshState(.running, source: source, provider: provider)
         launch(taskKey, operation: { [runtime] in
 			let receipt = try await runtime.requestQuotaRefresh(source: source, provider: provider)
 			guard receipt.providerContext.effectiveProvider == provider.rawValue else {
@@ -1299,8 +1304,15 @@ public final class AppModel: ObservableObject {
 			return receipt
         }) { [weak self] receipt in
             guard let self else { return }
-			guard selectedProvider == provider else { return }
-            setRefreshState(.succeeded(receipt.reason), source: source)
+            let title = source == "quota" ? "额度" : "重置次数"
+            let result: ActionState = receipt.fetched
+                ? .succeeded("\(title)已更新")
+                : .skipped(QuotaRefreshFeedback.skippedText(
+                    title: title, reason: receipt.reason,
+                    nextDueAtMS: receipt.hasNextDueAtMs ? receipt.nextDueAtMs : nil
+                ))
+            setRefreshState(result, source: source, provider: provider)
+            guard selectedProvider == provider else { return }
             let now = Date()
             loadQuota(now: now)
             loadQuotaPace(now: now)
@@ -1308,34 +1320,38 @@ public final class AppModel: ObservableObject {
                 loadQuotaAccount()
             }
         } failure: { [weak self] error in
-            self?.setRefreshState(.unavailable(AppNotice.from(error)), source: source)
+            self?.setRefreshState(.unavailable(AppNotice.from(error)), source: source, provider: provider)
         }
     }
 
-    private func refreshTaskKey(source: String) -> FeatureTaskKey? {
+    private func refreshTaskKey(source: String, provider: AgentProvider) -> FeatureTaskKey? {
         switch source {
-        case "quota": .quotaRefresh
-        case "reset_credits": .resetCreditsRefresh
+        case "quota": .quotaRefresh(provider)
+        case "reset_credits": .resetCreditsRefresh(provider)
         default: nil
         }
     }
 
-    private func isRefreshRunning(source: String) -> Bool {
+    private func isRefreshRunning(source: String, provider: AgentProvider) -> Bool {
         switch source {
         case "quota":
-            if case .running = quotaRefreshState { return true }
+            if case .running = quotaRefreshStates[provider] { return true }
         case "reset_credits":
-            if case .running = resetCreditsRefreshState { return true }
+            if case .running = resetCreditsRefreshStates[provider] { return true }
         default:
             break
         }
         return false
     }
 
-    private func setRefreshState(_ state: ActionState, source: String) {
+    private func setRefreshState(_ state: ActionState, source: String, provider: AgentProvider) {
         switch source {
-        case "quota": quotaRefreshState = state
-        case "reset_credits": resetCreditsRefreshState = state
+        case "quota":
+            quotaRefreshStates[provider] = state
+            if selectedProvider == provider { quotaRefreshState = state }
+        case "reset_credits":
+            resetCreditsRefreshStates[provider] = state
+            if selectedProvider == provider { resetCreditsRefreshState = state }
         default: break
         }
     }
@@ -2041,7 +2057,7 @@ public final class AppModel: ObservableObject {
 				.statusOverview, .statusAccount, .codexCardAccount, .dashboardSummary,
                 .codexSubscriptionList, .codexSubscriptionMutate,
 			]
-			let keys = featureTasks.keys.filter { !providerIndependentKeys.contains($0) }
+			let keys = featureTasks.keys.filter { !providerIndependentKeys.contains($0) && $0.isRead }
 		for key in keys {
 			featureTasks[key]?.cancel()
 			featureTasks[key] = nil
@@ -2052,11 +2068,7 @@ public final class AppModel: ObservableObject {
 	}
 
     private func cancelFeatureReadTasks() {
-        let mutationKeys: Set<FeatureTaskKey> = [
-            .quotaRefresh, .resetCreditsRefresh, .runtimeAction, .settingsSave, .apiCredentialSave,
-            .codexSubscriptionMutate,
-        ]
-        let keys = featureTasks.keys.filter { !mutationKeys.contains($0) }
+        let keys = featureTasks.keys.filter(\.isRead)
         for key in keys {
             featureTasks[key]?.cancel()
             featureTasks[key] = nil
@@ -2226,8 +2238,18 @@ public final class AppModel: ObservableObject {
     }
 
     private func markMutationsUncertain(_ notice: AppNotice) {
-        if case .running = quotaRefreshState { quotaRefreshState = .unavailable(notice) }
-        if case .running = resetCreditsRefreshState { resetCreditsRefreshState = .unavailable(notice) }
+        for provider in quotaRefreshStates.keys {
+            if case .running = quotaRefreshStates[provider] {
+                quotaRefreshStates[provider] = .unavailable(notice)
+            }
+        }
+        for provider in resetCreditsRefreshStates.keys {
+            if case .running = resetCreditsRefreshStates[provider] {
+                resetCreditsRefreshStates[provider] = .unavailable(notice)
+            }
+        }
+        quotaRefreshState = selectedProvider.flatMap { quotaRefreshStates[$0] } ?? .idle
+        resetCreditsRefreshState = selectedProvider.flatMap { resetCreditsRefreshStates[$0] } ?? .idle
         if case .running = runtimeActionState { runtimeActionState = .unavailable(notice) }
         if case .saving = settingsSaveState { settingsSaveState = .unavailable(notice) }
         if case .running = apiCredentialActionState { apiCredentialActionState = .unavailable(notice) }
