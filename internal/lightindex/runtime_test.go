@@ -448,6 +448,96 @@ func TestRuntimeResumesCommittedOffsetAfterCancellation(t *testing.T) {
 	}
 }
 
+func TestRuntimeResumesInPlaceAppendAfterCancellation(t *testing.T) {
+	t.Parallel()
+
+	homePath := t.TempDir()
+	rollout := filepath.Join(homePath, "sessions", "append-resume.jsonl")
+	if err := os.MkdirAll(filepath.Dir(rollout), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rollout, []byte(tokenLine("2026-07-19T01:00:00Z", 100, 0, 0, 0)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	home, err := logsource.NewHomeProbe().Probe(context.Background(), homePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := filepath.EvalSymlinks(rollout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, deepRepository, repository := openLightRuntimeRepository(t)
+	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
+			SessionID: "append-resume", CWD: "/workspace", RolloutPath: &path, CreatedAtMS: 100, UpdatedAtMS: 200,
+		}}}, nil
+	})
+	start := func(ctx context.Context, committed func(storelight.LightTokenScan)) *Run {
+		t.Helper()
+		runtime, err := NewRuntime(RuntimeConfig{
+			Repository: repository, DeepRepository: deepRepository, Metadata: provider,
+			ScanBatchBytes: 4_600, BatchCommitted: committed,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		run, err := runtime.Start(ctx, storelight.LightHomeIdentity{
+			Path: home.Path, DeviceID: home.DeviceID, Inode: home.Inode,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return run
+	}
+	if err := start(context.Background(), nil).Wait(context.Background()); err != nil {
+		t.Fatalf("Wait(initial) error = %v", err)
+	}
+	file, err := os.OpenFile(rollout, os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var appended strings.Builder
+	for index := int64(1); index <= 120; index++ {
+		appended.WriteString(tokenLine("2026-07-19T01:00:00Z", 100+index*10, 0, 0, 0))
+		appended.WriteByte('\n')
+	}
+	if _, err := file.WriteString(appended.String()); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	appendCtx, cancelAppend := context.WithCancel(context.Background())
+	defer cancelAppend()
+	if err := start(appendCtx, func(storelight.LightTokenScan) { cancelAppend() }).Wait(context.Background()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Wait(partial append) error = %v, want canceled", err)
+	}
+	pending, err := repository.PendingLightTokenScan(context.Background(), "append-resume")
+	if err != nil || pending.Checkpoint.DurableOffset <= 0 || pending.Checkpoint.DurableOffset >= pending.Identity.SizeBytes {
+		t.Fatalf("pending append = %#v, %v", pending, err)
+	}
+	active, err := repository.ActiveLightTokenScan(context.Background(), "append-resume")
+	if err != nil || active.Generation != pending.Generation {
+		t.Fatalf("active append = %#v, %v", active, err)
+	}
+	if err := start(context.Background(), nil).Wait(context.Background()); err != nil {
+		t.Fatalf("Wait(resumed append) error = %v", err)
+	}
+	usage, err := repository.LightSessionTokenUsage(context.Background(), "append-resume")
+	if err != nil || usage.InputTokens != 1_300 || !usage.Complete {
+		t.Fatalf("resumed append usage = %#v, %v", usage, err)
+	}
+	if err := start(context.Background(), nil).Wait(context.Background()); err != nil {
+		t.Fatalf("Wait(repeated refresh) error = %v", err)
+	}
+	usage, err = repository.LightSessionTokenUsage(context.Background(), "append-resume")
+	if err != nil || usage.InputTokens != 1_300 {
+		t.Fatalf("repeated refresh usage = %#v, %v", usage, err)
+	}
+}
+
 func TestRuntimeCoalescesPublishedSessionsIntoOneRefreshNotification(t *testing.T) {
 	t.Parallel()
 

@@ -80,6 +80,33 @@ func TestListLightSessionScansReturnsConsistentPendingAndActiveHeads(t *testing.
 		snapshots[0].Active.Generation != generation {
 		t.Fatalf("active snapshot = %#v, %v", snapshots, err)
 	}
+	grown := identity
+	grown.SizeBytes += 1_024
+	grown.MTimeNS++
+	grown.FingerprintSHA256 = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	if _, err := repository.StartLightTokenAppend(ctx, "one", grown, "parser-v1", 3_000); err != nil {
+		t.Fatal(err)
+	}
+	snapshots, err = repository.ListLightSessionScans(ctx)
+	if err != nil || len(snapshots) != 1 || snapshots[0].Pending == nil || snapshots[0].Active == nil ||
+		snapshots[0].Pending.Generation != generation || snapshots[0].Active.Generation != generation {
+		t.Fatalf("same-generation append snapshot = %#v, %v", snapshots, err)
+	}
+	if err := repository.CommitLightTokenBatch(ctx, storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: 3_100, Activate: true,
+		Checkpoint: storelight.LightTokenCheckpoint{DurableOffset: grown.SizeBytes, Complete: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	nextGeneration, err := repository.StartLightTokenRebuild(ctx, "one", grown, "parser-v2", 4_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshots, err = repository.ListLightSessionScans(ctx)
+	if err != nil || len(snapshots) != 1 || snapshots[0].Pending == nil || snapshots[0].Active == nil ||
+		snapshots[0].Pending.Generation != nextGeneration || snapshots[0].Active.Generation != generation {
+		t.Fatalf("distinct-generation rebuild snapshot = %#v, %v", snapshots, err)
+	}
 }
 
 func TestReplaceLightMetadataRejectsHomeGenerationConflictAtomically(t *testing.T) {
