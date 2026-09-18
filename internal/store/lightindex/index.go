@@ -422,13 +422,17 @@ func (repository *Repository) ListLightSessionScans(ctx context.Context) ([]Ligh
 		}
 		scan := lightTokenScanFromModel(model)
 		session := &output[position]
-		switch {
-		case session.Session.PendingGeneration != nil && scan.Generation == *session.Session.PendingGeneration:
-			session.Pending = &scan
-		case session.Session.ActiveGeneration == scan.Generation:
-			session.Active = &scan
-		default:
+		pending := session.Session.PendingGeneration != nil && scan.Generation == *session.Session.PendingGeneration
+		active := session.Session.ActiveGeneration == scan.Generation
+		if !pending && !active {
 			return nil, ErrLightTokenConflict
+		}
+		// An in-place append keeps the active generation visible while it is pending.
+		if pending {
+			session.Pending = &scan
+		}
+		if active {
+			session.Active = &scan
 		}
 	}
 	for _, session := range output {
