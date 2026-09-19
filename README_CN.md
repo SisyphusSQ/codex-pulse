@@ -67,7 +67,7 @@ Codex Pulse 是一款 local-first 的原生 macOS 应用：把 Codex 分散在�
 
 Codex 原始文件仍由 Codex 自己管理。Codex Pulse 只保存产品功能所需的索引、统计和运行状态，不修改原始 Session 内容。
 
-首次启动时，Go Helper 会初始化 Preferences v3，即使没有 Codex Home。会对 `${CODEX_HOME:-$HOME/.codex}` 做不读取会话正文的 metadata-only 安全探测；安全 Home 会保存稳定身份。目录不存在或探测失败时，应用仍可启动：设置、Cursor 和 Grok 继续可用，Codex 索引、额度和账号在配置 Home 前保持不可用。之后更换 Codex Home 仍需在设置中显式确认。关闭某个客户端会停止本地采集、在线请求、凭据续期、查询触发刷新和当前汇总；历史、进度和子开关偏好保留。当前握手为 `core-rpc-v5`，Provider 控制面为 `provider-control-v1`。
+首次启动时，Go Helper 会初始化 Preferences v3，即使没有 Codex Home。会对 `${CODEX_HOME:-$HOME/.codex}` 做不读取会话正文的 metadata-only 安全探测；安全 Home 会保存稳定身份。目录不存在或探测失败时，应用仍可启动：设置、Cursor 和 Grok 继续可用，Codex 索引、额度和账号在配置 Home 前保持不可用。之后更换 Codex Home 仍需在设置中显式确认。关闭某个客户端会停止本地采集、在线请求、凭据续期、查询触发刷新和当前汇总；历史、进度和子开关偏好保留。设置中会预览旧版本未归属的本机配额历史，只有用户确认后才会将它用于当前账号的历史曲线，且可撤销。当前握手为 `core-rpc-v6`，Provider 控制面为 `provider-control-v1`。
 
 ## 工作原理
 

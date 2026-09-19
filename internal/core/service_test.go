@@ -51,9 +51,9 @@ func TestServiceExposesExactBusinessSurface(t *testing.T) {
 	sort.Strings(got)
 	want := []string{
 		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "ConfirmHomeSwitch", "Contracts", "CreateCodexSubscriptionAccount", "DashboardSummary", "DataHealth", "Health",
-		"HealthProjection", "InvocationUsage", "Job", "LinkCodexSubscriptionAccount", "ListCodexSubscriptionAccounts", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
+		"HealthProjection", "InvocationUsage", "Job", "LinkCodexSubscriptionAccount", "LinkLegacyQuotaHistory", "ListCodexSubscriptionAccounts", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
 		"PlanHomeSwitch", "PricingCatalogCurrent", "ProjectDetail", "QuotaCurrent", "QuotaPace", "RecoverHomeSwitch", "RequestProviderRefresh", "RequestQuotaRefresh",
-		"RunRuntimeAction", "SessionDetail", "Settings", "Source", "UnlinkCodexSubscriptionAccount", "DeleteCodexSubscriptionAccount", "UpdateAPICredential", "UpdateCodexSubscriptionAccount", "UpdateSettings", "UsageCost",
+		"RunRuntimeAction", "SessionDetail", "Settings", "Source", "UnlinkCodexSubscriptionAccount", "UnlinkLegacyQuotaHistory", "DeleteCodexSubscriptionAccount", "UpdateAPICredential", "UpdateCodexSubscriptionAccount", "UpdateSettings", "UsageCost",
 	}
 	sort.Strings(want)
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
@@ -356,7 +356,7 @@ func TestServiceContractsExposeUniqueCommandMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	contract := service.Contracts()
-	if contract.Version != "core-rpc-v5" ||
+	if contract.Version != "core-rpc-v6" ||
 		contract.UsageCostVersion != "usage-cost-v2" ||
 		contract.InvocationUsageVersion != "invocation-usage-v1" ||
 		contract.PricingCatalogVersion != "pricing-catalog-v1" ||

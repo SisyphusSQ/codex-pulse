@@ -639,6 +639,18 @@ public actor AppRuntime {
         try await performMutation { try await $0.unlinkCodexSubscriptionAccount(request) }
     }
 
+    public func linkLegacyQuotaHistory(
+        _ request: Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        try await performMutation { try await $0.linkLegacyQuotaHistory(request) }
+    }
+
+    public func unlinkLegacyQuotaHistory(
+        _ request: Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        try await performMutation { try await $0.unlinkLegacyQuotaHistory(request) }
+    }
+
     private static func makeAccountSnapshotRequest(
         provider: AgentProvider,
         now: Date = Date(),

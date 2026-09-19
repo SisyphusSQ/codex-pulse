@@ -42,6 +42,14 @@ public protocol AppCoreServing: Sendable {
         _ request: Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest
     ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
 
+    func linkLegacyQuotaHistory(
+        _ request: Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
+
+    func unlinkLegacyQuotaHistory(
+        _ request: Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
+
     func usageCost(
         _ request: Codexpulse_Core_V1_UsageCostRequest,
         retryPolicy: ReadRetryPolicy
@@ -257,6 +265,18 @@ public extension AppCoreServing {
 
     func unlinkCodexSubscriptionAccount(
         _ request: Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        throw AppRuntimeError.unavailable
+    }
+
+    func linkLegacyQuotaHistory(
+        _ request: Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        throw AppRuntimeError.unavailable
+    }
+
+    func unlinkLegacyQuotaHistory(
+        _ request: Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest
     ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
         throw AppRuntimeError.unavailable
     }

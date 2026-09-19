@@ -54,6 +54,8 @@ func TestServiceOmitsSubscriptionForNonCodexProviders(t *testing.T) {
 
 func TestServiceListCodexSubscriptionAccountsDelegatesAndEncodes(t *testing.T) {
 	plan := subscriptionaccounts.PlanPlus
+	firstHistoryAtMS := int64(1_721_700_000_000)
+	lastHistoryAtMS := int64(1_758_000_000_000)
 	accounts := &codexSubscriptionAccountsStub{snapshot: subscriptionaccounts.Snapshot{
 		Version:                 subscriptionaccounts.ContractVersion,
 		EvaluatedAtMS:           1_700_000_000_000,
@@ -67,6 +69,14 @@ func TestServiceListCodexSubscriptionAccountsDelegatesAndEncodes(t *testing.T) {
 			DateSource:         subscriptionaccounts.ValueSourceUnavailable,
 			DateState:          subscriptionaccounts.DateStateUnavailable,
 			HasManual:          true,
+			LegacyQuotaHistory: &subscriptionaccounts.LegacyQuotaHistory{
+				State:               subscriptionaccounts.LegacyQuotaHistoryAvailable,
+				ObservationCount:    11401,
+				CycleCount:          8,
+				FirstObservedAtMS:   &firstHistoryAtMS,
+				LastObservedAtMS:    &lastHistoryAtMS,
+				AssociationRevision: nil,
+			},
 		}},
 	}}
 	service, err := NewService(ServiceConfig{
@@ -81,7 +91,11 @@ func TestServiceListCodexSubscriptionAccountsDelegatesAndEncodes(t *testing.T) {
 	if err != nil || accounts.listCalls != 1 || got.TimeZone != "Asia/Shanghai" ||
 		got.AutomaticDateCapability != "CODEX_SUBSCRIPTION_AUTOMATIC_DATE_CAPABILITY_MANUAL_ONLY" ||
 		len(got.Accounts) != 1 || got.Accounts[0].ResolvedPlan == nil ||
-		*got.Accounts[0].ResolvedPlan != "CODEX_SUBSCRIPTION_PLAN_PLUS" {
+		*got.Accounts[0].ResolvedPlan != "CODEX_SUBSCRIPTION_PLAN_PLUS" ||
+		got.Accounts[0].LegacyQuotaHistory == nil ||
+		got.Accounts[0].LegacyQuotaHistory.State != "CODEX_LEGACY_QUOTA_HISTORY_STATE_AVAILABLE" ||
+		got.Accounts[0].LegacyQuotaHistory.ObservationCount != 11401 ||
+		got.Accounts[0].LegacyQuotaHistory.CycleCount != 8 {
 		t.Fatalf("ListCodexSubscriptionAccounts() = %#v, err=%v, calls=%d", got, err, accounts.listCalls)
 	}
 }
@@ -160,15 +174,60 @@ func TestServiceDeleteCodexSubscriptionAccountValidatesAndDelegates(t *testing.T
 	}
 }
 
+func TestServiceLinkLegacyQuotaHistoryDelegatesExplicitConfirmation(t *testing.T) {
+	accounts := &codexSubscriptionAccountsStub{
+		legacyMutation: store.LegacyQuotaHistoryMutation{
+			Result: store.LegacyQuotaHistoryMutationApplied,
+		},
+	}
+	service, err := NewService(ServiceConfig{
+		UsageCost: &usageQueryStub{}, InvocationUsage: &invocationUsageQueryStub{}, PricingCatalog: pricingCatalogQueryStub{},
+		RuntimeInfo:        runtimeQueryStub{},
+		CodexSubscriptions: accounts,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := service.LinkLegacyQuotaHistory(context.Background(), LegacyQuotaHistoryLinkRequest{
+		DetectedAccountID:        "22222222-2222-4222-8222-222222222222",
+		ExpectedDetectedRevision: 7,
+	})
+	if err != nil || accounts.legacyLinkCalls != 1 ||
+		accounts.legacyLink.DetectedAccountID != "22222222-2222-4222-8222-222222222222" ||
+		accounts.legacyLink.ExpectedDetectedRevision != 7 ||
+		got.Result != "CODEX_SUBSCRIPTION_MUTATION_RESULT_APPLIED" {
+		t.Fatalf("LinkLegacyQuotaHistory() = %#v, err=%v, stub=%#v", got, err, accounts)
+	}
+}
+
 type codexSubscriptionAccountsStub struct {
-	snapshot    subscriptionaccounts.Snapshot
-	listCalls   int
-	createCalls int
-	create      CodexSubscriptionCreateRequest
-	deleteCalls int
-	delete      subscriptionaccounts.DeleteRequest
-	mutation    CodexSubscriptionMutation
-	mutationErr error
+	snapshot        subscriptionaccounts.Snapshot
+	listCalls       int
+	createCalls     int
+	create          CodexSubscriptionCreateRequest
+	deleteCalls     int
+	delete          subscriptionaccounts.DeleteRequest
+	mutation        CodexSubscriptionMutation
+	legacyMutation  store.LegacyQuotaHistoryMutation
+	legacyLink      LegacyQuotaHistoryLinkRequest
+	legacyLinkCalls int
+	mutationErr     error
+}
+
+func (stub *codexSubscriptionAccountsStub) LinkLegacyQuotaHistory(
+	_ context.Context,
+	request LegacyQuotaHistoryLinkRequest,
+) (store.LegacyQuotaHistoryMutation, error) {
+	stub.legacyLinkCalls++
+	stub.legacyLink = request
+	return stub.legacyMutation, stub.mutationErr
+}
+
+func (stub *codexSubscriptionAccountsStub) UnlinkLegacyQuotaHistory(
+	context.Context,
+	LegacyQuotaHistoryUnlinkRequest,
+) (store.LegacyQuotaHistoryMutation, error) {
+	return stub.legacyMutation, stub.mutationErr
 }
 
 func (stub *codexSubscriptionAccountsStub) ListCodexSubscriptionAccounts(

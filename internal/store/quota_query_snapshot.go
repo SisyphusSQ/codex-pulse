@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"reflect"
 
 	"gorm.io/gorm"
@@ -13,9 +14,12 @@ import (
 // immutable observations and evidence that explain it. Callers must not join
 // independently committed reader results into an official current response.
 type QuotaCurrentWindowSnapshot struct {
-	Current      QuotaCurrent
-	Observations []QuotaObservation
-	Evidence     []QuotaArbitrationEvidence
+	Current                       QuotaCurrent
+	Observations                  []QuotaObservation
+	Evidence                      []QuotaArbitrationEvidence
+	AssociatedHistoryScope        *string
+	AssociatedHistoryObservations []QuotaObservation
+	AssociatedHistoryEvidence     []QuotaArbitrationEvidence
 }
 
 // QuotaCurrentSnapshot is the read-only fact boundary for the M5 quota query.
@@ -69,6 +73,10 @@ func (repository *Repository) QuotaCurrentSnapshot(
 				return invalidRecord("quota current snapshot input is invalid")
 			}
 			snapshot.AccountScope = scope
+			associatedHistoryScope, err := quotaAssociatedHistoryScope(ctx, transaction, scope)
+			if err != nil {
+				return err
+			}
 			observationKeys, err := quotaQueryProjectionKeys(
 				ctx, transaction, &quotaObservationModel{}, scope, "limit_id IS NOT NULL",
 			)
@@ -101,10 +109,27 @@ func (repository *Repository) QuotaCurrentSnapshot(
 				if err != nil {
 					return err
 				}
+				var associatedObservations []QuotaObservation
+				var associatedEvidence []QuotaArbitrationEvidence
+				if associatedHistoryScope != nil {
+					historyKey := key
+					historyKey.accountScope = *associatedHistoryScope
+					associatedObservations, err = quotaQueryWindowObservations(ctx, transaction, historyKey)
+					if err != nil {
+						return err
+					}
+					associatedEvidence, err = quotaQueryWindowEvidence(ctx, transaction, historyKey)
+					if err != nil {
+						return err
+					}
+				}
 				snapshot.Windows = append(snapshot.Windows, QuotaCurrentWindowSnapshot{
-					Current:      dynamicallyDegradeQuotaCurrent(projection.Current, evaluatedAtMS),
-					Observations: observations,
-					Evidence:     projection.Evidence,
+					Current:                       dynamicallyDegradeQuotaCurrent(projection.Current, evaluatedAtMS),
+					Observations:                  observations,
+					Evidence:                      projection.Evidence,
+					AssociatedHistoryScope:        cloneQuotaString(associatedHistoryScope),
+					AssociatedHistoryObservations: associatedObservations,
+					AssociatedHistoryEvidence:     associatedEvidence,
 				})
 			}
 
@@ -150,6 +175,29 @@ func (repository *Repository) QuotaCurrentSnapshot(
 		})
 	})
 	return snapshot, err
+}
+
+func quotaAssociatedHistoryScope(
+	ctx context.Context,
+	database *gorm.DB,
+	accountScope string,
+) (*string, error) {
+	var model quotaHistoryAssociationModel
+	err := database.WithContext(ctx).
+		Where("account_scope = ?", accountScope).
+		Take(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if model.LegacyAccountScope != QuotaAccountScopeDefault ||
+		model.AccountScope != accountScope || model.Revision <= 0 ||
+		model.LinkedAtMS < 0 || model.UpdatedAtMS < model.LinkedAtMS {
+		return nil, invalidRecord("stored quota history association is invalid")
+	}
+	return cloneQuotaString(&model.LegacyAccountScope), nil
 }
 
 func quotaQueryProjectionKeys(
@@ -205,6 +253,29 @@ func quotaQueryWindowObservations(
 		observations = append(observations, observation)
 	}
 	return observations, nil
+}
+
+func quotaQueryWindowEvidence(
+	ctx context.Context,
+	database *gorm.DB,
+	key quotaProjectionKey,
+) ([]QuotaArbitrationEvidence, error) {
+	var models []quotaArbitrationEvidenceModel
+	if err := database.WithContext(ctx).Where(
+		"account_scope = ? AND window_kind = ? AND limit_id = ?",
+		key.accountScope, string(key.windowKind), key.limitID,
+	).Order("observation_id").Find(&models).Error; err != nil {
+		return nil, err
+	}
+	evidence := make([]QuotaArbitrationEvidence, 0, len(models))
+	for _, model := range models {
+		item, err := quotaEvidenceFromModel(model)
+		if err != nil {
+			return nil, err
+		}
+		evidence = append(evidence, item)
+	}
+	return evidence, nil
 }
 
 func cloneQuotaQuerySourceState(value SourceState) *SourceState {

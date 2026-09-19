@@ -303,6 +303,9 @@ public struct CodexSubscriptionAccountRowPresentation: Equatable, Sendable {
     public let canUnlink: Bool
     public let unlinkNeedsEmail: Bool
     public let canDelete: Bool
+    public let legacyQuotaHistoryText: String?
+    public let canRestoreLegacyQuotaHistory: Bool
+    public let canRevokeLegacyQuotaHistory: Bool
 
     public init(
         _ account: Codexpulse_Core_V1_CodexSubscriptionAccount,
@@ -350,6 +353,38 @@ public struct CodexSubscriptionAccountRowPresentation: Equatable, Sendable {
         unlinkNeedsEmail = canUnlink && (!account.hasManualEmail
             || account.manualEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         canDelete = !account.current
+        if account.hasLegacyQuotaHistory {
+            let history = account.legacyQuotaHistory
+            let coverage = localization.format(
+                "%@ 条观测 · %@ 个周期",
+                localization.number(history.observationCount),
+                localization.number(history.cycleCount)
+            )
+            switch history.state {
+            case .available:
+                legacyQuotaHistoryText = localization.format("检测到 %@", coverage)
+            case .linked:
+                legacyQuotaHistoryText = localization.format("已恢复 %@", coverage)
+            case .linkedElsewhere:
+                legacyQuotaHistoryText = localization.textValue("历史曲线已关联到其他账号")
+            case .unavailable, .unspecified, .UNRECOGNIZED:
+                legacyQuotaHistoryText = nil
+            }
+            canRestoreLegacyQuotaHistory = history.state == .available
+                && account.current
+                && account.detected
+                && account.hasDetectedAccountID
+                && account.hasDetectedRevision
+            canRevokeLegacyQuotaHistory = history.state == .linked
+                && account.detected
+                && account.hasDetectedAccountID
+                && account.hasDetectedRevision
+                && history.hasAssociationRevision
+        } else {
+            legacyQuotaHistoryText = nil
+            canRestoreLegacyQuotaHistory = false
+            canRevokeLegacyQuotaHistory = false
+        }
     }
 }
 
@@ -433,6 +468,8 @@ public enum CodexSubscriptionDateCopy {
             localization.textValue("请关闭后重新打开编辑")
         case "current_account":
             localization.textValue("该账号已成为当前账号，不能删除")
+        case "current_account_changed":
+            localization.textValue("当前账号已变化，请重新确认")
         default:
             localization.textValue("保存未完成，请确认后再试")
         }
@@ -440,6 +477,19 @@ public enum CodexSubscriptionDateCopy {
 }
 
 public enum CodexSubscriptionReadback {
+    public static func containsLegacyQuotaHistory(
+        _ response: Codexpulse_Core_V1_CodexSubscriptionAccountsResponse,
+        detectedAccountID: String,
+        state: Codexpulse_Core_V1_CodexLegacyQuotaHistoryState
+    ) -> Bool {
+        response.accounts.contains { account in
+            account.hasDetectedAccountID
+                && account.detectedAccountID == detectedAccountID
+                && account.hasLegacyQuotaHistory
+                && account.legacyQuotaHistory.state == state
+        }
+    }
+
     public static func excludesAccount(
         _ response: Codexpulse_Core_V1_CodexSubscriptionAccountsResponse,
         accountID: String

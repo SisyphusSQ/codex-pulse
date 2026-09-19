@@ -150,6 +150,32 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
                 type: .unary
             )
         }
+        /// Namespace for "LinkLegacyQuotaHistory" metadata.
+        public enum LinkLegacyQuotaHistory: Sendable {
+            /// Request type for "LinkLegacyQuotaHistory".
+            public typealias Input = Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest
+            /// Response type for "LinkLegacyQuotaHistory".
+            public typealias Output = Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
+            /// Descriptor for "LinkLegacyQuotaHistory".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "LinkLegacyQuotaHistory",
+                type: .unary
+            )
+        }
+        /// Namespace for "UnlinkLegacyQuotaHistory" metadata.
+        public enum UnlinkLegacyQuotaHistory: Sendable {
+            /// Request type for "UnlinkLegacyQuotaHistory".
+            public typealias Input = Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest
+            /// Response type for "UnlinkLegacyQuotaHistory".
+            public typealias Output = Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
+            /// Descriptor for "UnlinkLegacyQuotaHistory".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "UnlinkLegacyQuotaHistory",
+                type: .unary
+            )
+        }
         /// Namespace for "UsageCost" metadata.
         public enum UsageCost: Sendable {
             /// Request type for "UsageCost".
@@ -669,6 +695,8 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
             DeleteCodexSubscriptionAccount.descriptor,
             LinkCodexSubscriptionAccount.descriptor,
             UnlinkCodexSubscriptionAccount.descriptor,
+            LinkLegacyQuotaHistory.descriptor,
+            UnlinkLegacyQuotaHistory.descriptor,
             UsageCost.descriptor,
             DashboardSummary.descriptor,
             InvocationUsage.descriptor,
@@ -916,6 +944,44 @@ extension Codexpulse_Core_V1_CoreService {
         func unlinkCodexSubscriptionAccount<Result>(
             request: GRPCCore.ClientRequest<Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest>,
             serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "LinkLegacyQuotaHistory" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionMutationReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func linkLegacyQuotaHistory<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "UnlinkLegacyQuotaHistory" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionMutationReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func unlinkLegacyQuotaHistory<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest>,
             deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result
@@ -1976,6 +2042,66 @@ extension Codexpulse_Core_V1_CoreService {
             try await self.client.unary(
                 request: request,
                 descriptor: Codexpulse_Core_V1_CoreService.Method.UnlinkCodexSubscriptionAccount.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "LinkLegacyQuotaHistory" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionMutationReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func linkLegacyQuotaHistory<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.LinkLegacyQuotaHistory.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "UnlinkLegacyQuotaHistory" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexSubscriptionMutationReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func unlinkLegacyQuotaHistory<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.UnlinkLegacyQuotaHistory.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -3406,6 +3532,56 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
         )
     }
 
+    /// Call the "LinkLegacyQuotaHistory" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func linkLegacyQuotaHistory<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.linkLegacyQuotaHistory(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "UnlinkLegacyQuotaHistory" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func unlinkLegacyQuotaHistory<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.unlinkLegacyQuotaHistory(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "UsageCost" method.
     ///
     /// - Parameters:
@@ -4667,6 +4843,64 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
             metadata: metadata
         )
         return try await self.unlinkCodexSubscriptionAccount(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "LinkLegacyQuotaHistory" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func linkLegacyQuotaHistory<Result>(
+        _ message: Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.linkLegacyQuotaHistory(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "UnlinkLegacyQuotaHistory" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func unlinkLegacyQuotaHistory<Result>(
+        _ message: Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionMutationReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.unlinkLegacyQuotaHistory(
             request: request,
             options: options,
             onResponse: handleResponse

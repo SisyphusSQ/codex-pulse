@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -1288,5 +1290,131 @@ func TestPaceQueryAccountSwitchABARestoresOriginalHistory(t *testing.T) {
 	if len(restored.Windows[0].CurrentPoints) == 0 ||
 		restored.Windows[0].CurrentPoints[len(restored.Windows[0].CurrentPoints)-1].UsedPercent != 40 {
 		t.Fatalf("restored A pace points = %#v", restored.Windows[0].CurrentPoints)
+	}
+}
+
+func TestPaceQueryUsesExplicitLegacyHistoryAssociationReversibly(t *testing.T) {
+	t.Parallel()
+
+	database, repository, service := newCurrentQueryTestRuntime(t)
+	const durationMS = int64(7 * 24 * 60 * 60 * 1_000)
+	evaluatedAtMS := time.Now().UnixMilli()
+	currentResetAtMS := evaluatedAtMS + 4*24*60*60*1_000
+	previousResetAtMS := currentResetAtMS - durationMS
+	previousStartAtMS := previousResetAtMS - durationMS
+	recordPaceQueryWhamWeekly(t, repository, "legacy-previous-start", previousStartAtMS+durationMS/20, 5, previousResetAtMS)
+	recordPaceQueryWhamWeekly(t, repository, "legacy-previous-end", previousResetAtMS-durationMS/20, 92, previousResetAtMS)
+	recordPaceQueryWhamWeekly(t, repository, "legacy-current", evaluatedAtMS-24*60*60*1_000, 80, currentResetAtMS)
+
+	scopeA, _ := confirmCurrentQueryAccount(t, repository, "acct-test-a", evaluatedAtMS-1)
+	recordPaceQueryAppServerWeekly(t, repository, "active-a", evaluatedAtMS, 84, currentResetAtMS)
+	before, err := service.Pace(context.Background(), evaluatedAtMS)
+	if err != nil || len(before.Windows) != 1 || len(before.Windows[0].CurrentPoints) != 1 ||
+		before.Windows[0].PreviousCycle != nil {
+		t.Fatalf("Pace(before association) = %#v, %v", before, err)
+	}
+
+	if err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
+		return transaction.WithContext(ctx).Exec(`
+INSERT INTO codex_quota_history_associations
+  (legacy_account_scope, account_scope, revision, linked_at_ms, updated_at_ms)
+VALUES ('default', ?, 1, ?, ?)
+`, scopeA, evaluatedAtMS, evaluatedAtMS).Error
+	}); err != nil {
+		t.Fatalf("seed quota history association: %v", err)
+	}
+
+	linked, err := service.Pace(context.Background(), evaluatedAtMS)
+	if err != nil || len(linked.Windows) != 1 {
+		t.Fatalf("Pace(linked) = %#v, %v", linked, err)
+	}
+	window := linked.Windows[0]
+	if len(window.CurrentPoints) != 2 || window.CurrentPoints[0].UsedPercent != 80 ||
+		window.CurrentPoints[1].UsedPercent != 84 {
+		t.Fatalf("linked current points = %#v, want legacy 80 then active 84", window.CurrentPoints)
+	}
+	if window.PreviousCycle == nil || !window.PreviousCycle.Complete ||
+		len(window.PreviousCycle.Points) != 2 || window.HistoryCycleCount != 1 {
+		t.Fatalf("linked previous/history = previous %#v history %#v", window.PreviousCycle, window.HistoricalCycles)
+	}
+	if window.Forecast.EvidenceCount > 1 {
+		t.Fatalf("linked history contaminated forecast evidence: %#v", window.Forecast)
+	}
+
+	scopeB, _ := confirmCurrentQueryAccount(t, repository, "acct-test-b", evaluatedAtMS+1)
+	recordPaceQueryAppServerWeekly(t, repository, "active-b", evaluatedAtMS+1, 30, currentResetAtMS)
+	activeB, err := service.Pace(context.Background(), evaluatedAtMS+1)
+	if err != nil || activeB.AccountScope != scopeB || len(activeB.Windows) != 1 ||
+		len(activeB.Windows[0].CurrentPoints) != 1 || activeB.Windows[0].PreviousCycle != nil {
+		t.Fatalf("Pace(B) leaked A legacy history = %#v, %v", activeB, err)
+	}
+
+	confirmCurrentQueryAccount(t, repository, "acct-test-a", evaluatedAtMS+2)
+	if err := database.Write(context.Background(), func(ctx context.Context, transaction *gorm.DB) error {
+		return transaction.WithContext(ctx).
+			Where("legacy_account_scope = ?", store.QuotaAccountScopeDefault).
+			Delete(&quotaHistoryAssociationTestModel{}).Error
+	}); err != nil {
+		t.Fatalf("remove quota history association: %v", err)
+	}
+	revoked, err := service.Pace(context.Background(), evaluatedAtMS+2)
+	if err != nil || len(revoked.Windows) != 1 || revoked.Windows[0].PreviousCycle != nil {
+		t.Fatalf("Pace(after revoke) = %#v, %v", revoked, err)
+	}
+	for _, point := range revoked.Windows[0].CurrentPoints {
+		if point.LinkedHistory {
+			t.Fatalf("Pace(after revoke) kept linked history point = %#v", point)
+		}
+	}
+}
+
+type quotaHistoryAssociationTestModel struct {
+	LegacyAccountScope string `gorm:"column:legacy_account_scope;primaryKey"`
+}
+
+func (quotaHistoryAssociationTestModel) TableName() string {
+	return "codex_quota_history_associations"
+}
+
+func recordPaceQueryWhamWeekly(
+	t *testing.T,
+	repository *store.Repository,
+	requestID string,
+	observedAtMS int64,
+	usedPercent float64,
+	resetAtMS int64,
+) {
+	t.Helper()
+	limitID := "codex"
+	request := requestID
+	plan := "pro"
+	status := int64(200)
+	digest := store.SHA256DigestOf([]byte("synthetic legacy weekly quota response " + requestID))
+	if err := repository.RecordQuotaFetch(context.Background(), store.QuotaFetchRecord{
+		SourceInstanceID: store.QuotaSourceInstanceWhamDefault,
+		SourceType:       store.QuotaSourceTypeWham,
+		ScopeKey:         store.QuotaAccountScopeDefault,
+		Attempt: store.SourceAttempt{
+			RequestID: requestID, SourceInstanceID: store.QuotaSourceInstanceWhamDefault,
+			StartedAtMS: observedAtMS, FinishedAtMS: observedAtMS,
+			Outcome: store.SourceAttemptSucceeded, HTTPStatus: &status, PayloadSHA256: &digest,
+			AttemptCount: 1, ResponseBytes: 256,
+		},
+		Observations: []store.QuotaObservationSample{{
+			ObservationID: "legacy-" + requestID,
+			AccountScope:  store.QuotaAccountScopeDefault,
+			Source:        store.QuotaSourceWham,
+			LimitID:       &limitID,
+			WindowKind:    store.QuotaWindowPrimary,
+			UsedPercent:   usedPercent,
+			WindowMinutes: 7 * 24 * 60,
+			ResetsAtMS:    resetAtMS,
+			PlanType:      &plan,
+			ObservedAtMS:  observedAtMS,
+			Validity:      store.QuotaValidityAccepted,
+			RequestID:     &request,
+		}},
+	}); err != nil {
+		t.Fatalf("RecordQuotaFetch(%s) error = %v", requestID, err)
 	}
 }

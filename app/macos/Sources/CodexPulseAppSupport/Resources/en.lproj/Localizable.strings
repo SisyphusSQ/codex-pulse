@@ -918,6 +918,7 @@
 "将删除此账号的本地订阅记录及关联的手工补充；以后再次登录时可能重新出现" = "This removes the local subscription record and linked manual details. It may reappear after you sign in again.";
 "将删除此账号的本地手工记录，此操作无法撤销" = "This permanently removes the local manual account record.";
 "该账号已成为当前账号，不能删除" = "This account is now current and cannot be deleted.";
+"当前账号已变化，请重新确认" = "The current account changed. Confirm again.";
 "尚未启用客户端" = "No clients enabled";
 "打开设置后可以启用 Codex、Cursor 或 Grok。" = "Open Settings to enable Codex, Cursor, or Grok.";
 "打开设置" = "Open Settings";
@@ -944,3 +945,13 @@
 "没有 Codex Home 时，Cursor、Grok 和设置仍然可用。" = "Cursor, Grok, and Settings stay available when Codex Home is not configured.";
 "未配置 Codex Home" = "Codex Home is not configured";
 "Codex Pulse 只读取本机已启用客户端的数据。" = "Codex Pulse only reads data from enabled local clients.";
+"%@ 条观测 · %@ 个周期" = "%@ observations · %@ cycles";
+"检测到 %@" = "Found %@";
+"已恢复 %@" = "Restored %@";
+"历史曲线已关联到其他账号" = "Historical curves are linked to another account";
+"恢复历史配额曲线？" = "Restore historical quota curves?";
+"恢复历史曲线" = "Restore history";
+"只会将本机旧版本保存的观测用于历史曲线和基线，不会修改当前配额、刷新状态或原始观测；可随时撤销。" = "This only uses observations saved by earlier versions for historical curves and baselines. It does not change current quota, refresh status, or raw observations, and can be revoked at any time.";
+"停止使用这段历史？" = "Stop using this history?";
+"停止使用历史" = "Stop using history";
+"只会取消曲线关联，本机原始观测不会被删除，之后仍可重新恢复。" = "This only removes the curve association. Raw local observations are not deleted and can be restored again later.";

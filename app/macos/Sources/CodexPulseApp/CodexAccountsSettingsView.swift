@@ -8,6 +8,8 @@ struct CodexAccountsSettingsSection: View {
     @State private var pendingLink: CodexSubscriptionLinkPrompt?
     @State private var pendingUnlink: Codexpulse_Core_V1_CodexSubscriptionAccount?
     @State private var pendingDelete: Codexpulse_Core_V1_CodexSubscriptionAccount?
+    @State private var pendingLegacyHistoryLink: Codexpulse_Core_V1_CodexSubscriptionAccount?
+    @State private var pendingLegacyHistoryUnlink: Codexpulse_Core_V1_CodexSubscriptionAccount?
     @State private var unlinkNeedsEmail = false
 
     var body: some View {
@@ -99,6 +101,42 @@ struct CodexAccountsSettingsSection: View {
         } message: {
             Text(deleteConfirmationMessage)
         }
+        .confirmationDialog(
+            localizedCopy("恢复历史配额曲线？"),
+            isPresented: Binding(
+                get: { pendingLegacyHistoryLink != nil },
+                set: { if !$0 { pendingLegacyHistoryLink = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(localizedCopy("恢复历史曲线")) {
+                if let account = pendingLegacyHistoryLink {
+                    model.linkLegacyQuotaHistory(account)
+                }
+                pendingLegacyHistoryLink = nil
+            }
+            Button(localizedCopy("取消"), role: .cancel) { pendingLegacyHistoryLink = nil }
+        } message: {
+            Text(localizedCopy("只会将本机旧版本保存的观测用于历史曲线和基线，不会修改当前配额、刷新状态或原始观测；可随时撤销。"))
+        }
+        .confirmationDialog(
+            localizedCopy("停止使用这段历史？"),
+            isPresented: Binding(
+                get: { pendingLegacyHistoryUnlink != nil },
+                set: { if !$0 { pendingLegacyHistoryUnlink = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(localizedCopy("停止使用历史"), role: .destructive) {
+                if let account = pendingLegacyHistoryUnlink {
+                    model.unlinkLegacyQuotaHistory(account)
+                }
+                pendingLegacyHistoryUnlink = nil
+            }
+            Button(localizedCopy("取消"), role: .cancel) { pendingLegacyHistoryUnlink = nil }
+        } message: {
+            Text(localizedCopy("只会取消曲线关联，本机原始观测不会被删除，之后仍可重新恢复。"))
+        }
         .alert(
             localizedCopy("取消关联前需要补全邮箱"),
             isPresented: $unlinkNeedsEmail
@@ -184,6 +222,12 @@ struct CodexAccountsSettingsSection: View {
                         },
                         onDelete: {
                             pendingDelete = account
+                        },
+                        onRestoreLegacyQuotaHistory: {
+                            pendingLegacyHistoryLink = account
+                        },
+                        onRevokeLegacyQuotaHistory: {
+                            pendingLegacyHistoryUnlink = account
                         }
                     )
                 }
@@ -255,6 +299,8 @@ private struct CodexSubscriptionAccountRow: View {
     let onLink: (Codexpulse_Core_V1_CodexSubscriptionLinkCandidate) -> Void
     let onUnlink: () -> Void
     let onDelete: () -> Void
+    let onRestoreLegacyQuotaHistory: () -> Void
+    let onRevokeLegacyQuotaHistory: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -301,6 +347,32 @@ private struct CodexSubscriptionAccountRow: View {
                         .accessibilityIdentifier("settings.codex-accounts.unlink.\(presentation.account.accountID)")
                 }
             }
+            if let historyText = presentation.legacyQuotaHistoryText {
+                HStack(spacing: 8) {
+                    Label(historyText, systemImage: "clock.arrow.circlepath")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if presentation.canRestoreLegacyQuotaHistory {
+                        Button(localizedCopy("恢复历史曲线")) {
+                            onRestoreLegacyQuotaHistory()
+                        }
+                        .disabled(isRunning)
+                        .accessibilityIdentifier(
+                            "settings.codex-accounts.legacy-history.restore.\(presentation.account.accountID)"
+                        )
+                    }
+                    if presentation.canRevokeLegacyQuotaHistory {
+                        Button(localizedCopy("停止使用历史")) {
+                            onRevokeLegacyQuotaHistory()
+                        }
+                        .disabled(isRunning)
+                        .accessibilityIdentifier(
+                            "settings.codex-accounts.legacy-history.revoke.\(presentation.account.accountID)"
+                        )
+                    }
+                }
+            }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
@@ -322,6 +394,7 @@ private struct CodexSubscriptionAccountRow: View {
             localization.format("%@ %@", localization.textValue("套餐"), presentation.planText),
             localization.format("%@ %@", localization.textValue("会员日期"), presentation.dateText),
             localization.format("%@ %@", localization.textValue("剩余天数"), presentation.remainingText),
+            presentation.legacyQuotaHistoryText ?? "",
             badges,
         ].filter { !$0.isEmpty }.joined(separator: "，")
     }

@@ -599,6 +599,52 @@ public nonisolated enum Codexpulse_Core_V1_CodexSubscriptionMutationResult: Swif
 
 }
 
+public nonisolated enum Codexpulse_Core_V1_CodexLegacyQuotaHistoryState: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case unavailable // = 1
+  case available // = 2
+  case linked // = 3
+  case linkedElsewhere // = 4
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .unavailable
+    case 2: self = .available
+    case 3: self = .linked
+    case 4: self = .linkedElsewhere
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .unavailable: return 1
+    case .available: return 2
+    case .linked: return 3
+    case .linkedElsewhere: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Codexpulse_Core_V1_CodexLegacyQuotaHistoryState] = [
+    .unspecified,
+    .unavailable,
+    .available,
+    .linked,
+    .linkedElsewhere,
+  ]
+
+}
+
 public nonisolated struct Codexpulse_Core_V1_Empty: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -4536,6 +4582,8 @@ public nonisolated struct Codexpulse_Core_V1_QuotaPacePoint: Sendable {
 
   public var remainingPercent: Double = 0
 
+  public var linkedHistory: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -7754,6 +7802,53 @@ public nonisolated struct Codexpulse_Core_V1_AccountSnapshotResponse: Sendable {
   fileprivate var _subscription: Codexpulse_Core_V1_CodexSubscriptionAccount? = nil
 }
 
+public nonisolated struct Codexpulse_Core_V1_CodexLegacyQuotaHistory: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var state: Codexpulse_Core_V1_CodexLegacyQuotaHistoryState = .unspecified
+
+  public var observationCount: Int64 = 0
+
+  public var cycleCount: Int64 = 0
+
+  public var firstObservedAtMs: Int64 {
+    get {_firstObservedAtMs ?? 0}
+    set {_firstObservedAtMs = newValue}
+  }
+  /// Returns true if `firstObservedAtMs` has been explicitly set.
+  public var hasFirstObservedAtMs: Bool {self._firstObservedAtMs != nil}
+  /// Clears the value of `firstObservedAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearFirstObservedAtMs() {self._firstObservedAtMs = nil}
+
+  public var lastObservedAtMs: Int64 {
+    get {_lastObservedAtMs ?? 0}
+    set {_lastObservedAtMs = newValue}
+  }
+  /// Returns true if `lastObservedAtMs` has been explicitly set.
+  public var hasLastObservedAtMs: Bool {self._lastObservedAtMs != nil}
+  /// Clears the value of `lastObservedAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearLastObservedAtMs() {self._lastObservedAtMs = nil}
+
+  public var associationRevision: Int64 {
+    get {_associationRevision ?? 0}
+    set {_associationRevision = newValue}
+  }
+  /// Returns true if `associationRevision` has been explicitly set.
+  public var hasAssociationRevision: Bool {self._associationRevision != nil}
+  /// Clears the value of `associationRevision`. Subsequent reads from it will return its default value.
+  public mutating func clearAssociationRevision() {self._associationRevision = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _firstObservedAtMs: Int64? = nil
+  fileprivate var _lastObservedAtMs: Int64? = nil
+  fileprivate var _associationRevision: Int64? = nil
+}
+
 public nonisolated struct Codexpulse_Core_V1_CodexSubscriptionAccount: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -7966,6 +8061,15 @@ public nonisolated struct Codexpulse_Core_V1_CodexSubscriptionAccount: @unchecke
   public var hasLinkRevision: Bool {_storage._linkRevision != nil}
   /// Clears the value of `linkRevision`. Subsequent reads from it will return its default value.
   public mutating func clearLinkRevision() {_uniqueStorage()._linkRevision = nil}
+
+  public var legacyQuotaHistory: Codexpulse_Core_V1_CodexLegacyQuotaHistory {
+    get {_storage._legacyQuotaHistory ?? Codexpulse_Core_V1_CodexLegacyQuotaHistory()}
+    set {_uniqueStorage()._legacyQuotaHistory = newValue}
+  }
+  /// Returns true if `legacyQuotaHistory` has been explicitly set.
+  public var hasLegacyQuotaHistory: Bool {_storage._legacyQuotaHistory != nil}
+  /// Clears the value of `legacyQuotaHistory`. Subsequent reads from it will return its default value.
+  public mutating func clearLegacyQuotaHistory() {_uniqueStorage()._legacyQuotaHistory = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -8235,6 +8339,36 @@ public nonisolated struct Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountReque
   public var expectedManualRevision: Int64 = 0
 
   public var expectedLinkRevision: Int64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var detectedAccountID: String = String()
+
+  public var expectedDetectedRevision: Int64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var detectedAccountID: String = String()
+
+  public var expectedDetectedRevision: Int64 = 0
+
+  public var expectedAssociationRevision: Int64 = 0
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -8813,6 +8947,10 @@ nonisolated extension Codexpulse_Core_V1_CodexSubscriptionAutomaticDateCapabilit
 
 nonisolated extension Codexpulse_Core_V1_CodexSubscriptionMutationResult: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CODEX_SUBSCRIPTION_MUTATION_RESULT_UNSPECIFIED\0\u{1}CODEX_SUBSCRIPTION_MUTATION_RESULT_APPLIED\0\u{1}CODEX_SUBSCRIPTION_MUTATION_RESULT_NOOP\0\u{1}CODEX_SUBSCRIPTION_MUTATION_RESULT_CONFLICT\0")
+}
+
+nonisolated extension Codexpulse_Core_V1_CodexLegacyQuotaHistoryState: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0CODEX_LEGACY_QUOTA_HISTORY_STATE_UNSPECIFIED\0\u{1}CODEX_LEGACY_QUOTA_HISTORY_STATE_UNAVAILABLE\0\u{1}CODEX_LEGACY_QUOTA_HISTORY_STATE_AVAILABLE\0\u{1}CODEX_LEGACY_QUOTA_HISTORY_STATE_LINKED\0\u{1}CODEX_LEGACY_QUOTA_HISTORY_STATE_LINKED_ELSEWHERE\0")
 }
 
 nonisolated extension Codexpulse_Core_V1_Empty: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
@@ -14309,7 +14447,7 @@ nonisolated extension Codexpulse_Core_V1_QuotaPaceRequest: SwiftProtobuf.Message
 
 nonisolated extension Codexpulse_Core_V1_QuotaPacePoint: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".QuotaPacePoint"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}observed_at_ms\0\u{3}elapsed_percent\0\u{3}used_percent\0\u{3}remaining_percent\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}observed_at_ms\0\u{3}elapsed_percent\0\u{3}used_percent\0\u{3}remaining_percent\0\u{3}linked_history\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -14321,6 +14459,7 @@ nonisolated extension Codexpulse_Core_V1_QuotaPacePoint: SwiftProtobuf.Message, 
       case 2: try { try decoder.decodeSingularDoubleField(value: &self.elapsedPercent) }()
       case 3: try { try decoder.decodeSingularDoubleField(value: &self.usedPercent) }()
       case 4: try { try decoder.decodeSingularDoubleField(value: &self.remainingPercent) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.linkedHistory) }()
       default: break
       }
     }
@@ -14339,6 +14478,9 @@ nonisolated extension Codexpulse_Core_V1_QuotaPacePoint: SwiftProtobuf.Message, 
     if self.remainingPercent.bitPattern != 0 {
       try visitor.visitSingularDoubleField(value: self.remainingPercent, fieldNumber: 4)
     }
+    if self.linkedHistory != false {
+      try visitor.visitSingularBoolField(value: self.linkedHistory, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -14347,6 +14489,7 @@ nonisolated extension Codexpulse_Core_V1_QuotaPacePoint: SwiftProtobuf.Message, 
     if lhs.elapsedPercent != rhs.elapsedPercent {return false}
     if lhs.usedPercent != rhs.usedPercent {return false}
     if lhs.remainingPercent != rhs.remainingPercent {return false}
+    if lhs.linkedHistory != rhs.linkedHistory {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -19463,9 +19606,68 @@ nonisolated extension Codexpulse_Core_V1_AccountSnapshotResponse: SwiftProtobuf.
   }
 }
 
+nonisolated extension Codexpulse_Core_V1_CodexLegacyQuotaHistory: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CodexLegacyQuotaHistory"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}state\0\u{3}observation_count\0\u{3}cycle_count\0\u{3}first_observed_at_ms\0\u{3}last_observed_at_ms\0\u{3}association_revision\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.state) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.observationCount) }()
+      case 3: try { try decoder.decodeSingularInt64Field(value: &self.cycleCount) }()
+      case 4: try { try decoder.decodeSingularInt64Field(value: &self._firstObservedAtMs) }()
+      case 5: try { try decoder.decodeSingularInt64Field(value: &self._lastObservedAtMs) }()
+      case 6: try { try decoder.decodeSingularInt64Field(value: &self._associationRevision) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.state != .unspecified {
+      try visitor.visitSingularEnumField(value: self.state, fieldNumber: 1)
+    }
+    if self.observationCount != 0 {
+      try visitor.visitSingularInt64Field(value: self.observationCount, fieldNumber: 2)
+    }
+    if self.cycleCount != 0 {
+      try visitor.visitSingularInt64Field(value: self.cycleCount, fieldNumber: 3)
+    }
+    try { if let v = self._firstObservedAtMs {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 4)
+    } }()
+    try { if let v = self._lastObservedAtMs {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 5)
+    } }()
+    try { if let v = self._associationRevision {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 6)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_CodexLegacyQuotaHistory, rhs: Codexpulse_Core_V1_CodexLegacyQuotaHistory) -> Bool {
+    if lhs.state != rhs.state {return false}
+    if lhs.observationCount != rhs.observationCount {return false}
+    if lhs.cycleCount != rhs.cycleCount {return false}
+    if lhs._firstObservedAtMs != rhs._firstObservedAtMs {return false}
+    if lhs._lastObservedAtMs != rhs._lastObservedAtMs {return false}
+    if lhs._associationRevision != rhs._associationRevision {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 nonisolated extension Codexpulse_Core_V1_CodexSubscriptionAccount: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CodexSubscriptionAccount"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}account_id\0\u{3}detected_account_id\0\u{3}manual_entry_id\0\u{1}alias\0\u{3}display_email\0\u{3}detected_email\0\u{3}manual_email\0\u{1}current\0\u{1}detected\0\u{3}has_manual\0\u{1}linked\0\u{3}detected_email_observed_at_ms\0\u{3}automatic_plan\0\u{3}automatic_plan_state\0\u{3}automatic_plan_source\0\u{3}automatic_plan_observed_at_ms\0\u{3}manual_plan\0\u{3}resolved_plan\0\u{3}resolved_plan_source\0\u{3}membership_date\0\u{3}date_kind\0\u{3}date_source\0\u{3}date_state\0\u{3}day_delta\0\u{3}detected_revision\0\u{3}manual_revision\0\u{3}link_revision\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}account_id\0\u{3}detected_account_id\0\u{3}manual_entry_id\0\u{1}alias\0\u{3}display_email\0\u{3}detected_email\0\u{3}manual_email\0\u{1}current\0\u{1}detected\0\u{3}has_manual\0\u{1}linked\0\u{3}detected_email_observed_at_ms\0\u{3}automatic_plan\0\u{3}automatic_plan_state\0\u{3}automatic_plan_source\0\u{3}automatic_plan_observed_at_ms\0\u{3}manual_plan\0\u{3}resolved_plan\0\u{3}resolved_plan_source\0\u{3}membership_date\0\u{3}date_kind\0\u{3}date_source\0\u{3}date_state\0\u{3}day_delta\0\u{3}detected_revision\0\u{3}manual_revision\0\u{3}link_revision\0\u{3}legacy_quota_history\0")
 
   fileprivate class _StorageClass {
     var _accountID: String = String()
@@ -19495,6 +19697,7 @@ nonisolated extension Codexpulse_Core_V1_CodexSubscriptionAccount: SwiftProtobuf
     var _detectedRevision: Int64? = nil
     var _manualRevision: Int64? = nil
     var _linkRevision: Int64? = nil
+    var _legacyQuotaHistory: Codexpulse_Core_V1_CodexLegacyQuotaHistory? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -19532,6 +19735,7 @@ nonisolated extension Codexpulse_Core_V1_CodexSubscriptionAccount: SwiftProtobuf
       _detectedRevision = source._detectedRevision
       _manualRevision = source._manualRevision
       _linkRevision = source._linkRevision
+      _legacyQuotaHistory = source._legacyQuotaHistory
     }
   }
 
@@ -19577,6 +19781,7 @@ nonisolated extension Codexpulse_Core_V1_CodexSubscriptionAccount: SwiftProtobuf
         case 25: try { try decoder.decodeSingularInt64Field(value: &_storage._detectedRevision) }()
         case 26: try { try decoder.decodeSingularInt64Field(value: &_storage._manualRevision) }()
         case 27: try { try decoder.decodeSingularInt64Field(value: &_storage._linkRevision) }()
+        case 28: try { try decoder.decodeSingularMessageField(value: &_storage._legacyQuotaHistory) }()
         default: break
         }
       }
@@ -19670,6 +19875,9 @@ nonisolated extension Codexpulse_Core_V1_CodexSubscriptionAccount: SwiftProtobuf
       try { if let v = _storage._linkRevision {
         try visitor.visitSingularInt64Field(value: v, fieldNumber: 27)
       } }()
+      try { if let v = _storage._legacyQuotaHistory {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 28)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -19706,6 +19914,7 @@ nonisolated extension Codexpulse_Core_V1_CodexSubscriptionAccount: SwiftProtobuf
         if _storage._detectedRevision != rhs_storage._detectedRevision {return false}
         if _storage._manualRevision != rhs_storage._manualRevision {return false}
         if _storage._linkRevision != rhs_storage._linkRevision {return false}
+        if _storage._legacyQuotaHistory != rhs_storage._legacyQuotaHistory {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -20121,6 +20330,81 @@ nonisolated extension Codexpulse_Core_V1_UnlinkCodexSubscriptionAccountRequest: 
     if lhs.manualEntryID != rhs.manualEntryID {return false}
     if lhs.expectedManualRevision != rhs.expectedManualRevision {return false}
     if lhs.expectedLinkRevision != rhs.expectedLinkRevision {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".LinkLegacyQuotaHistoryRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}detected_account_id\0\u{3}expected_detected_revision\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.detectedAccountID) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.expectedDetectedRevision) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.detectedAccountID.isEmpty {
+      try visitor.visitSingularStringField(value: self.detectedAccountID, fieldNumber: 1)
+    }
+    if self.expectedDetectedRevision != 0 {
+      try visitor.visitSingularInt64Field(value: self.expectedDetectedRevision, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest, rhs: Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest) -> Bool {
+    if lhs.detectedAccountID != rhs.detectedAccountID {return false}
+    if lhs.expectedDetectedRevision != rhs.expectedDetectedRevision {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".UnlinkLegacyQuotaHistoryRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}detected_account_id\0\u{3}expected_detected_revision\0\u{3}expected_association_revision\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.detectedAccountID) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.expectedDetectedRevision) }()
+      case 3: try { try decoder.decodeSingularInt64Field(value: &self.expectedAssociationRevision) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.detectedAccountID.isEmpty {
+      try visitor.visitSingularStringField(value: self.detectedAccountID, fieldNumber: 1)
+    }
+    if self.expectedDetectedRevision != 0 {
+      try visitor.visitSingularInt64Field(value: self.expectedDetectedRevision, fieldNumber: 2)
+    }
+    if self.expectedAssociationRevision != 0 {
+      try visitor.visitSingularInt64Field(value: self.expectedAssociationRevision, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest, rhs: Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest) -> Bool {
+    if lhs.detectedAccountID != rhs.detectedAccountID {return false}
+    if lhs.expectedDetectedRevision != rhs.expectedDetectedRevision {return false}
+    if lhs.expectedAssociationRevision != rhs.expectedAssociationRevision {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

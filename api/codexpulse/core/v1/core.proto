@@ -16,6 +16,8 @@ service CoreService {
   rpc DeleteCodexSubscriptionAccount(DeleteCodexSubscriptionAccountRequest) returns (CodexSubscriptionMutationReceipt);
   rpc LinkCodexSubscriptionAccount(LinkCodexSubscriptionAccountRequest) returns (CodexSubscriptionMutationReceipt);
   rpc UnlinkCodexSubscriptionAccount(UnlinkCodexSubscriptionAccountRequest) returns (CodexSubscriptionMutationReceipt);
+  rpc LinkLegacyQuotaHistory(LinkLegacyQuotaHistoryRequest) returns (CodexSubscriptionMutationReceipt);
+  rpc UnlinkLegacyQuotaHistory(UnlinkLegacyQuotaHistoryRequest) returns (CodexSubscriptionMutationReceipt);
   rpc UsageCost(UsageCostRequest) returns (UsageCostResponse);
   rpc DashboardSummary(DashboardSummaryRequest) returns (DashboardSummaryResponse);
   rpc InvocationUsage(InvocationUsageRequest) returns (InvocationUsageResponse);
@@ -758,6 +760,7 @@ message QuotaPacePoint {
   double elapsed_percent = 2;
   double used_percent = 3;
   double remaining_percent = 4;
+  bool linked_history = 5;
 }
 
 message QuotaPaceCycle {
@@ -1465,6 +1468,23 @@ enum CodexSubscriptionMutationResult {
   CODEX_SUBSCRIPTION_MUTATION_RESULT_CONFLICT = 3;
 }
 
+enum CodexLegacyQuotaHistoryState {
+  CODEX_LEGACY_QUOTA_HISTORY_STATE_UNSPECIFIED = 0;
+  CODEX_LEGACY_QUOTA_HISTORY_STATE_UNAVAILABLE = 1;
+  CODEX_LEGACY_QUOTA_HISTORY_STATE_AVAILABLE = 2;
+  CODEX_LEGACY_QUOTA_HISTORY_STATE_LINKED = 3;
+  CODEX_LEGACY_QUOTA_HISTORY_STATE_LINKED_ELSEWHERE = 4;
+}
+
+message CodexLegacyQuotaHistory {
+  CodexLegacyQuotaHistoryState state = 1;
+  int64 observation_count = 2;
+  int64 cycle_count = 3;
+  optional int64 first_observed_at_ms = 4;
+  optional int64 last_observed_at_ms = 5;
+  optional int64 association_revision = 6;
+}
+
 message CodexSubscriptionAccount {
   string account_id = 1;
   optional string detected_account_id = 2;
@@ -1494,6 +1514,7 @@ message CodexSubscriptionAccount {
   optional int64 detected_revision = 25;
   optional int64 manual_revision = 26;
   optional int64 link_revision = 27;
+  optional CodexLegacyQuotaHistory legacy_quota_history = 28;
 }
 
 message CodexSubscriptionLinkCandidate {
@@ -1556,6 +1577,17 @@ message UnlinkCodexSubscriptionAccountRequest {
   string manual_entry_id = 2;
   int64 expected_manual_revision = 3;
   int64 expected_link_revision = 4;
+}
+
+message LinkLegacyQuotaHistoryRequest {
+  string detected_account_id = 1;
+  int64 expected_detected_revision = 2;
+}
+
+message UnlinkLegacyQuotaHistoryRequest {
+  string detected_account_id = 1;
+  int64 expected_detected_revision = 2;
+  int64 expected_association_revision = 3;
 }
 
 message CodexSubscriptionMutationReceipt {

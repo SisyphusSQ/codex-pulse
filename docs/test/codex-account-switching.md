@@ -2,7 +2,7 @@
 
 本 runbook 验证：在单个已确认 Codex Home 内顺序切换 ChatGPT 账号时，当前在线额度、Reset Credits 和账号展示严格隔离；本地 Session、Token、项目、趋势和成本继续按 Home 聚合。
 
-对应计划：`docs/superpowers/plans/2026-09-14-too-442-account-binding.md`。对应 Issue：TOO-442。
+对应计划：`docs/superpowers/plans/2026-09-14-too-442-account-binding.md`。对应 Issue：TOO-442；legacy 历史恢复见 TOO-463。
 
 ## 当前验证结果
 
@@ -23,7 +23,7 @@
 - 本次结论：`INCOMPLETE`
 - 影响范围：私有 runtime、SQLite、preferences、App Server housekeeping（仅 live 步骤）
 - 清理结果：
-- 敏感信息处理：不记录 token、原始 `accountId`、Reset Credit 原始 ID 或原始 JSONL。v33 专用订阅表可以保存 detected/manual email；binding、quota、日志、Proto private identity 和原始证据仍不得泄露邮箱或 raw account ID。提交物不得包含真实邮箱。
+- 敏感信息处理：不记录 token、原始 `accountId`、Reset Credit 原始 ID 或原始 JSONL。v33 专用订阅表可以保存 detected/manual email；v34 只保存可撤销关联与 generation。binding、quota、日志、Proto private identity 和原始证据仍不得泄露邮箱或 raw account ID。提交物不得包含真实邮箱。
 
 ### 当前步骤状态
 
@@ -46,9 +46,29 @@
 - 当前 confirmed `(account_scope, binding_generation)` 是在线额度、Reset Credits、账号邮箱/套餐的唯一展示边界。
 - 新账号第一次确认或刷新失败时显示 unknown/pending，不复用旧账号额度，不伪造 `0%` 或 `100%`。
 - A→B→A 恢复 A 的历史观察时间戳，但使用新的 binding generation。
-- legacy `account_scope=default` 保持 unassigned。
+- legacy `account_scope=default` 默认保持 unassigned；不自动归给首个账号。
 - 本地 Session / Token / 项目 / 趋势 / 成本仍按当前 Codex Home 聚合。
 - Cursor、Grok、API Subscription 不受 Codex binding 改动影响。
+
+## TOO-463 legacy 历史恢复验收
+
+TOO-463 不改变 TOO-442 的默认隔离：只有用户在 Settings 对当前 confirmed account 显式确认后，才建立可撤销 association。验收时必须覆盖：
+
+1. 关联前先显示 legacy accepted observation 数、cycle 数与时间范围，不显示原始 scope、accountId 或凭据。
+2. 非当前账号不能发起恢复；已关联到 A 时，B 只显示“已关联到其他账号”。
+3. 确认后 Pace 显示恢复的历史曲线和基线；图表继续使用本周期、上一周期和历史带的既有表达，不额外叠加恢复历史原始散点或独立图例，关联状态由账号设置中的“已恢复”展示。同一时间点有当前 scope 观测时，当前 scope 胜出。
+4. 关联历史不改变 QuotaCurrent、freshness、forecast evidence、reset 计划或 Reset Credits。
+5. 撤销后曲线立即不再使用 legacy history；`quota_observations` 行数和内容不变，之后可重新恢复。旧 association revision 不得撤销新关联。
+6. 至少覆盖 A 恢复 → 撤销 → B 恢复、B 不可见 A 关联历史，以及 App mutation receipt 后 authoritative List readback。
+
+聚焦自动化入口：
+
+```bash
+go test ./internal/store ./internal/codex/quota ./internal/core ./internal/helper ./internal/app -count=1
+swift run --package-path app/macos codex-pulse-app-tests
+```
+
+Swift 命令仍受本机 toolchain 和既有时区敏感用例影响；必须记录真实 PASS/FAIL，不得用构建成功代替测试通过。
 
 ## 执行副作用
 

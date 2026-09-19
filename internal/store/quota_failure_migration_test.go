@@ -21,8 +21,8 @@ func TestApplicationSchemaV10ChecksumIsFrozen(t *testing.T) {
 func TestApplicationSchemaV10AddsTypedSourceFailureMetrics(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV33Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 33", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV34Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 34", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	if err := NewRepository(database).EnsureApplicationSchema(context.Background()); err != nil {

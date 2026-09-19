@@ -24,34 +24,49 @@ type CodexSubscriptionMutationReceipt struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+type LegacyQuotaHistoryMutationReceipt struct {
+	Result string  `json:"result"`
+	Reason *string `json:"reason,omitempty"`
+}
+
 type codexSubscriptionAccountWire struct {
-	AccountID                 string  `json:"accountId"`
-	DetectedAccountID         *string `json:"detectedAccountId,omitempty"`
-	ManualEntryID             *string `json:"manualEntryId,omitempty"`
-	Alias                     *string `json:"alias,omitempty"`
-	DisplayEmail              *string `json:"displayEmail,omitempty"`
-	DetectedEmail             *string `json:"detectedEmail,omitempty"`
-	ManualEmail               *string `json:"manualEmail,omitempty"`
-	Current                   bool    `json:"current"`
-	Detected                  bool    `json:"detected"`
-	HasManual                 bool    `json:"hasManual"`
-	Linked                    bool    `json:"linked"`
-	DetectedEmailObservedAtMS *int64  `json:"detectedEmailObservedAtMs,omitempty"`
-	AutomaticPlan             *string `json:"automaticPlan,omitempty"`
-	AutomaticPlanState        string  `json:"automaticPlanState"`
-	AutomaticPlanSource       *string `json:"automaticPlanSource,omitempty"`
-	AutomaticPlanObservedAtMS *int64  `json:"automaticPlanObservedAtMs,omitempty"`
-	ManualPlan                *string `json:"manualPlan,omitempty"`
-	ResolvedPlan              *string `json:"resolvedPlan,omitempty"`
-	ResolvedPlanSource        string  `json:"resolvedPlanSource"`
-	MembershipDate            *string `json:"membershipDate,omitempty"`
-	DateKind                  *string `json:"dateKind,omitempty"`
-	DateSource                string  `json:"dateSource"`
-	DateState                 string  `json:"dateState"`
-	DayDelta                  *int32  `json:"dayDelta,omitempty"`
-	DetectedRevision          *int64  `json:"detectedRevision,omitempty"`
-	ManualRevision            *int64  `json:"manualRevision,omitempty"`
-	LinkRevision              *int64  `json:"linkRevision,omitempty"`
+	AccountID                 string                  `json:"accountId"`
+	DetectedAccountID         *string                 `json:"detectedAccountId,omitempty"`
+	ManualEntryID             *string                 `json:"manualEntryId,omitempty"`
+	Alias                     *string                 `json:"alias,omitempty"`
+	DisplayEmail              *string                 `json:"displayEmail,omitempty"`
+	DetectedEmail             *string                 `json:"detectedEmail,omitempty"`
+	ManualEmail               *string                 `json:"manualEmail,omitempty"`
+	Current                   bool                    `json:"current"`
+	Detected                  bool                    `json:"detected"`
+	HasManual                 bool                    `json:"hasManual"`
+	Linked                    bool                    `json:"linked"`
+	DetectedEmailObservedAtMS *int64                  `json:"detectedEmailObservedAtMs,omitempty"`
+	AutomaticPlan             *string                 `json:"automaticPlan,omitempty"`
+	AutomaticPlanState        string                  `json:"automaticPlanState"`
+	AutomaticPlanSource       *string                 `json:"automaticPlanSource,omitempty"`
+	AutomaticPlanObservedAtMS *int64                  `json:"automaticPlanObservedAtMs,omitempty"`
+	ManualPlan                *string                 `json:"manualPlan,omitempty"`
+	ResolvedPlan              *string                 `json:"resolvedPlan,omitempty"`
+	ResolvedPlanSource        string                  `json:"resolvedPlanSource"`
+	MembershipDate            *string                 `json:"membershipDate,omitempty"`
+	DateKind                  *string                 `json:"dateKind,omitempty"`
+	DateSource                string                  `json:"dateSource"`
+	DateState                 string                  `json:"dateState"`
+	DayDelta                  *int32                  `json:"dayDelta,omitempty"`
+	DetectedRevision          *int64                  `json:"detectedRevision,omitempty"`
+	ManualRevision            *int64                  `json:"manualRevision,omitempty"`
+	LinkRevision              *int64                  `json:"linkRevision,omitempty"`
+	LegacyQuotaHistory        *legacyQuotaHistoryWire `json:"legacyQuotaHistory,omitempty"`
+}
+
+type legacyQuotaHistoryWire struct {
+	State               string `json:"state"`
+	ObservationCount    int64  `json:"observationCount"`
+	CycleCount          int64  `json:"cycleCount"`
+	FirstObservedAtMS   *int64 `json:"firstObservedAtMs,omitempty"`
+	LastObservedAtMS    *int64 `json:"lastObservedAtMs,omitempty"`
+	AssociationRevision *int64 `json:"associationRevision,omitempty"`
 }
 
 type codexSubscriptionLinkCandidateWire struct {
@@ -184,6 +199,10 @@ func encodeCodexSubscriptionAccount(account subscriptionaccounts.Account) (*code
 		}
 		dateKind = &encoded
 	}
+	legacyHistory, err := encodeLegacyQuotaHistory(account.LegacyQuotaHistory)
+	if err != nil {
+		return nil, err
+	}
 	return &codexSubscriptionAccountWire{
 		AccountID:                 account.AccountID,
 		DetectedAccountID:         account.DetectedAccountID,
@@ -212,6 +231,29 @@ func encodeCodexSubscriptionAccount(account subscriptionaccounts.Account) (*code
 		DetectedRevision:          account.DetectedRevision,
 		ManualRevision:            account.ManualRevision,
 		LinkRevision:              account.LinkRevision,
+		LegacyQuotaHistory:        legacyHistory,
+	}, nil
+}
+
+func encodeLegacyQuotaHistory(
+	status *subscriptionaccounts.LegacyQuotaHistory,
+) (*legacyQuotaHistoryWire, error) {
+	if status == nil {
+		return nil, nil
+	}
+	if status.ObservationCount < 0 || status.CycleCount < 0 {
+		return nil, fmt.Errorf("%w: invalid legacy quota history coverage", ErrProtoMapping)
+	}
+	state, err := requiredSubscriptionEnum(
+		"CODEX_LEGACY_QUOTA_HISTORY_STATE_", string(status.State),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &legacyQuotaHistoryWire{
+		State: state, ObservationCount: status.ObservationCount, CycleCount: status.CycleCount,
+		FirstObservedAtMS: status.FirstObservedAtMS, LastObservedAtMS: status.LastObservedAtMS,
+		AssociationRevision: status.AssociationRevision,
 	}, nil
 }
 
@@ -225,6 +267,28 @@ func encodeCodexSubscriptionMutation(mutation CodexSubscriptionMutation) (CodexS
 		return CodexSubscriptionMutationReceipt{}, err
 	}
 	return CodexSubscriptionMutationReceipt{Result: result, Reason: reason}, nil
+}
+
+func encodeLegacyQuotaHistoryMutation(
+	mutation store.LegacyQuotaHistoryMutation,
+) (LegacyQuotaHistoryMutationReceipt, error) {
+	result, err := encodeSubscriptionMutationResult(string(mutation.Result))
+	if err != nil {
+		return LegacyQuotaHistoryMutationReceipt{}, err
+	}
+	if mutation.Reason != nil {
+		switch *mutation.Reason {
+		case store.LegacyQuotaHistoryReasonRevisionChanged,
+			store.LegacyQuotaHistoryReasonAlreadyLinked,
+			store.LegacyQuotaHistoryReasonCurrentAccountChanged,
+			store.LegacyQuotaHistoryReasonLinkTargetChanged:
+		default:
+			return LegacyQuotaHistoryMutationReceipt{}, fmt.Errorf(
+				"%w: unsupported legacy quota history mutation reason", ErrProtoMapping,
+			)
+		}
+	}
+	return LegacyQuotaHistoryMutationReceipt{Result: result, Reason: mutation.Reason}, nil
 }
 
 func encodeSubscriptionMutationResult(result string) (string, error) {
@@ -306,6 +370,12 @@ var subscriptionEnumValues = map[string]map[string]struct{}{
 	"CODEX_SUBSCRIPTION_MUTATION_RESULT_": enumValues(
 		subscriptionaccounts.MutationApplied, subscriptionaccounts.MutationNoop,
 		subscriptionaccounts.MutationConflict,
+	),
+	"CODEX_LEGACY_QUOTA_HISTORY_STATE_": enumValues(
+		subscriptionaccounts.LegacyQuotaHistoryUnavailable,
+		subscriptionaccounts.LegacyQuotaHistoryAvailable,
+		subscriptionaccounts.LegacyQuotaHistoryLinked,
+		subscriptionaccounts.LegacyQuotaHistoryLinkedElsewhere,
 	),
 }
 

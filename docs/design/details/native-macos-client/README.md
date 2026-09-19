@@ -204,12 +204,12 @@ contract 不兼容时必须 fail closed，由客户端展示稳定的“核心�
 `SessionDetailResponse.daily` 的 wire field 11 与名称永久 reserved；新
 `trend`/`trend_granularity` 使用 field 12/13。
 
-当前 Helper 与 Swift App 的精确握手版本为 `core-rpc-v5`。`Contracts.provider_control_version`
+当前 Helper 与 Swift App 的精确握手版本为 `core-rpc-v6`。`Contracts.provider_control_version`
 为 `provider-control-v1`。Settings snapshot 携带三家 Provider 的 intent/discovery/effective
 以及 Cursor `cursor_online_enabled`。DTO 不得包含真实路径、凭据或底层错误正文。
 `Contracts.codex_pro_tier_version`
 为 `codex-pro-tier-v1`，`Contracts.codex_subscription_accounts_version` 为
-`codex-subscription-accounts-v1`。Go Helper 根据夹读得到的一致 `planType` 映射 `prolite → Pro 5×`、
+`codex-subscription-accounts-v2`。v2 在账号列表中暴露可撤销的 legacy quota history 关联状态，并新增 Link/Unlink command。Go Helper 根据夹读得到的一致 `planType` 映射 `prolite → Pro 5×`、
 `pro → Pro 20×`，并把同一证据写入订阅列表的自动套餐；Swift 只消费类型化
 `AccountSnapshot.pro_tier` 与 `subscription`，不得重复套餐优先级或 day-delta 算法。
 旧 App 与新 Helper、新 App 与旧 Helper 都必须在精确版本握手中拒绝。invalidation 为

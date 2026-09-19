@@ -29,6 +29,8 @@ const (
 	CoreService_DeleteCodexSubscriptionAccount_FullMethodName = "/codexpulse.core.v1.CoreService/DeleteCodexSubscriptionAccount"
 	CoreService_LinkCodexSubscriptionAccount_FullMethodName   = "/codexpulse.core.v1.CoreService/LinkCodexSubscriptionAccount"
 	CoreService_UnlinkCodexSubscriptionAccount_FullMethodName = "/codexpulse.core.v1.CoreService/UnlinkCodexSubscriptionAccount"
+	CoreService_LinkLegacyQuotaHistory_FullMethodName         = "/codexpulse.core.v1.CoreService/LinkLegacyQuotaHistory"
+	CoreService_UnlinkLegacyQuotaHistory_FullMethodName       = "/codexpulse.core.v1.CoreService/UnlinkLegacyQuotaHistory"
 	CoreService_UsageCost_FullMethodName                      = "/codexpulse.core.v1.CoreService/UsageCost"
 	CoreService_DashboardSummary_FullMethodName               = "/codexpulse.core.v1.CoreService/DashboardSummary"
 	CoreService_InvocationUsage_FullMethodName                = "/codexpulse.core.v1.CoreService/InvocationUsage"
@@ -86,6 +88,8 @@ type CoreServiceClient interface {
 	DeleteCodexSubscriptionAccount(ctx context.Context, in *DeleteCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error)
 	LinkCodexSubscriptionAccount(ctx context.Context, in *LinkCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error)
 	UnlinkCodexSubscriptionAccount(ctx context.Context, in *UnlinkCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error)
+	LinkLegacyQuotaHistory(ctx context.Context, in *LinkLegacyQuotaHistoryRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error)
+	UnlinkLegacyQuotaHistory(ctx context.Context, in *UnlinkLegacyQuotaHistoryRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error)
 	UsageCost(ctx context.Context, in *UsageCostRequest, opts ...grpc.CallOption) (*UsageCostResponse, error)
 	DashboardSummary(ctx context.Context, in *DashboardSummaryRequest, opts ...grpc.CallOption) (*DashboardSummaryResponse, error)
 	InvocationUsage(ctx context.Context, in *InvocationUsageRequest, opts ...grpc.CallOption) (*InvocationUsageResponse, error)
@@ -229,6 +233,26 @@ func (c *coreServiceClient) UnlinkCodexSubscriptionAccount(ctx context.Context, 
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CodexSubscriptionMutationReceipt)
 	err := c.cc.Invoke(ctx, CoreService_UnlinkCodexSubscriptionAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) LinkLegacyQuotaHistory(ctx context.Context, in *LinkLegacyQuotaHistoryRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CodexSubscriptionMutationReceipt)
+	err := c.cc.Invoke(ctx, CoreService_LinkLegacyQuotaHistory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) UnlinkLegacyQuotaHistory(ctx context.Context, in *UnlinkLegacyQuotaHistoryRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CodexSubscriptionMutationReceipt)
+	err := c.cc.Invoke(ctx, CoreService_UnlinkLegacyQuotaHistory_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -650,6 +674,8 @@ type CoreServiceServer interface {
 	DeleteCodexSubscriptionAccount(context.Context, *DeleteCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error)
 	LinkCodexSubscriptionAccount(context.Context, *LinkCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error)
 	UnlinkCodexSubscriptionAccount(context.Context, *UnlinkCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error)
+	LinkLegacyQuotaHistory(context.Context, *LinkLegacyQuotaHistoryRequest) (*CodexSubscriptionMutationReceipt, error)
+	UnlinkLegacyQuotaHistory(context.Context, *UnlinkLegacyQuotaHistoryRequest) (*CodexSubscriptionMutationReceipt, error)
 	UsageCost(context.Context, *UsageCostRequest) (*UsageCostResponse, error)
 	DashboardSummary(context.Context, *DashboardSummaryRequest) (*DashboardSummaryResponse, error)
 	InvocationUsage(context.Context, *InvocationUsageRequest) (*InvocationUsageResponse, error)
@@ -728,6 +754,12 @@ func (UnimplementedCoreServiceServer) LinkCodexSubscriptionAccount(context.Conte
 }
 func (UnimplementedCoreServiceServer) UnlinkCodexSubscriptionAccount(context.Context, *UnlinkCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error) {
 	return nil, status.Error(codes.Unimplemented, "method UnlinkCodexSubscriptionAccount not implemented")
+}
+func (UnimplementedCoreServiceServer) LinkLegacyQuotaHistory(context.Context, *LinkLegacyQuotaHistoryRequest) (*CodexSubscriptionMutationReceipt, error) {
+	return nil, status.Error(codes.Unimplemented, "method LinkLegacyQuotaHistory not implemented")
+}
+func (UnimplementedCoreServiceServer) UnlinkLegacyQuotaHistory(context.Context, *UnlinkLegacyQuotaHistoryRequest) (*CodexSubscriptionMutationReceipt, error) {
+	return nil, status.Error(codes.Unimplemented, "method UnlinkLegacyQuotaHistory not implemented")
 }
 func (UnimplementedCoreServiceServer) UsageCost(context.Context, *UsageCostRequest) (*UsageCostResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UsageCost not implemented")
@@ -1043,6 +1075,42 @@ func _CoreService_UnlinkCodexSubscriptionAccount_Handler(srv interface{}, ctx co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CoreServiceServer).UnlinkCodexSubscriptionAccount(ctx, req.(*UnlinkCodexSubscriptionAccountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_LinkLegacyQuotaHistory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LinkLegacyQuotaHistoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).LinkLegacyQuotaHistory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_LinkLegacyQuotaHistory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).LinkLegacyQuotaHistory(ctx, req.(*LinkLegacyQuotaHistoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_UnlinkLegacyQuotaHistory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UnlinkLegacyQuotaHistoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).UnlinkLegacyQuotaHistory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_UnlinkLegacyQuotaHistory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).UnlinkLegacyQuotaHistory(ctx, req.(*UnlinkLegacyQuotaHistoryRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1788,6 +1856,14 @@ var CoreService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UnlinkCodexSubscriptionAccount",
 			Handler:    _CoreService_UnlinkCodexSubscriptionAccount_Handler,
+		},
+		{
+			MethodName: "LinkLegacyQuotaHistory",
+			Handler:    _CoreService_LinkLegacyQuotaHistory_Handler,
+		},
+		{
+			MethodName: "UnlinkLegacyQuotaHistory",
+			Handler:    _CoreService_UnlinkLegacyQuotaHistory_Handler,
 		},
 		{
 			MethodName: "UsageCost",

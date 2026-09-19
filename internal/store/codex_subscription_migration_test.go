@@ -12,16 +12,16 @@ import (
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
-func TestCodexSubscriptionMigrationFreshDatabaseIsV33(t *testing.T) {
+func TestCurrentSchemaIncludesCodexSubscriptionMigrationV33(t *testing.T) {
 	t.Parallel()
-	if applicationSchemaVersion != applicationSchemaV33Version {
-		t.Fatalf("applicationSchemaVersion = %d, want 33", applicationSchemaVersion)
+	if applicationSchemaVersion != applicationSchemaV34Version {
+		t.Fatalf("applicationSchemaVersion = %d, want 34", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	if err := NewRepository(database).EnsureApplicationSchema(t.Context()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 33, 33)
+	assertMigrationVersionAndHistory(t, database, 34, 34)
 	assertCodexSubscriptionSchemaContract(t, database)
 	if count := scalarCount(t, database, `SELECT COUNT(*) FROM codex_subscription_detected_accounts`); count != 0 {
 		t.Fatalf("fresh detected rows = %d, want 0", count)
@@ -54,17 +54,17 @@ func TestCodexSubscriptionMigrationUpgradesV32AndBackfillsScopes(t *testing.T) {
 		_ context.Context, fromVersion int, targetVersion int, _ func(storesqlite.BackupProgress),
 	) (string, error) {
 		backupVersions = [2]int{fromVersion, targetVersion}
-		return "/tmp/application-v32-before-v33.db", nil
+		return "/tmp/application-v32-before-v34.db", nil
 	}
 	report, err := runner.run(t.Context())
 	if err != nil {
-		t.Fatalf("run(v32->v33) error = %v", err)
+		t.Fatalf("run(v32->v34) error = %v", err)
 	}
-	if report.FromVersion != 32 || report.TargetVersion != 33 ||
-		!equalInts(report.AppliedVersions, []int{33}) || backupVersions != [2]int{32, 33} {
+	if report.FromVersion != 32 || report.TargetVersion != 34 ||
+		!equalInts(report.AppliedVersions, []int{33, 34}) || backupVersions != [2]int{32, 34} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 33, 33)
+	assertMigrationVersionAndHistory(t, database, 34, 34)
 	assertCodexSubscriptionSchemaContract(t, database)
 	if count := scalarCount(t, database, `SELECT COUNT(*) FROM codex_subscription_detected_accounts`); count != 2 {
 		t.Fatalf("backfilled detected rows = %d, want 2", count)
@@ -121,17 +121,17 @@ func TestCodexSubscriptionMigrationRollsBackAtomically(t *testing.T) {
 	}
 }
 
-func TestCodexSubscriptionMigrationReopenKeepsSchemaVersion33(t *testing.T) {
+func TestCodexSubscriptionMigrationReopenKeepsCurrentSchemaVersion(t *testing.T) {
 	t.Parallel()
 	database := openTestDatabase(t)
 	if err := NewRepository(database).EnsureApplicationSchema(t.Context()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 33, 33)
+	assertMigrationVersionAndHistory(t, database, 34, 34)
 	if err := NewRepository(database).EnsureApplicationSchema(t.Context()); err != nil {
 		t.Fatalf("EnsureApplicationSchema(reopen) error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 33, 33)
+	assertMigrationVersionAndHistory(t, database, 34, 34)
 	assertCodexSubscriptionSchemaContract(t, database)
 }
 

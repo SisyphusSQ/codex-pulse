@@ -111,6 +111,35 @@ func (api *grpcAPI) UnlinkCodexSubscriptionAccount(
 	return encodeRPC(response, &corev1.CodexSubscriptionMutationReceipt{}, err)
 }
 
+func (api *grpcAPI) LinkLegacyQuotaHistory(
+	ctx context.Context,
+	request *corev1.LinkLegacyQuotaHistoryRequest,
+) (*corev1.CodexSubscriptionMutationReceipt, error) {
+	if api == nil || api.service == nil {
+		return nil, coreServiceUnavailable()
+	}
+	response, err := api.service.LinkLegacyQuotaHistory(ctx, core.LegacyQuotaHistoryLinkRequest{
+		DetectedAccountID:        request.GetDetectedAccountId(),
+		ExpectedDetectedRevision: request.GetExpectedDetectedRevision(),
+	})
+	return encodeRPC(response, &corev1.CodexSubscriptionMutationReceipt{}, err)
+}
+
+func (api *grpcAPI) UnlinkLegacyQuotaHistory(
+	ctx context.Context,
+	request *corev1.UnlinkLegacyQuotaHistoryRequest,
+) (*corev1.CodexSubscriptionMutationReceipt, error) {
+	if api == nil || api.service == nil {
+		return nil, coreServiceUnavailable()
+	}
+	response, err := api.service.UnlinkLegacyQuotaHistory(ctx, core.LegacyQuotaHistoryUnlinkRequest{
+		DetectedAccountID:           request.GetDetectedAccountId(),
+		ExpectedDetectedRevision:    request.GetExpectedDetectedRevision(),
+		ExpectedAssociationRevision: request.GetExpectedAssociationRevision(),
+	})
+	return encodeRPC(response, &corev1.CodexSubscriptionMutationReceipt{}, err)
+}
+
 func fromProtoManualFields(fields *corev1.CodexSubscriptionManualFields) (subscriptionaccounts.ManualFields, error) {
 	if fields == nil {
 		return subscriptionaccounts.ManualFields{}, basequery.NewValidationFailure("manual", nil)

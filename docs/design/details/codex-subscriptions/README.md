@@ -1,6 +1,6 @@
 # Codex 账号与订阅
 
-本页冻结 TOO-447 的产品、身份、存储、来源、日期、Core 和隐私合同。实现以 `api/codexpulse/core/v1/core.proto` 与 SQLite application schema v33 为准。
+本页冻结 TOO-447 的账号订阅合同，并纳入 TOO-463 的 legacy 配额历史显式关联。实现以 `api/codexpulse/core/v1/core.proto` 与 SQLite application schema v34 为准。
 
 ## 产品边界
 
@@ -18,7 +18,9 @@ Settings 顶部「Codex 账号与订阅」列出当前 Codex Home 内已识别�
 
 ## 存储
 
-application schema v33，migration 名 `codex-subscription-accounts`。三张专用表保存 detected accounts、manual entries 和显式 links。专用表可以持久化 detected/manual email；binding、quota、日志、Proto private identity 与原始证据仍不得泄露邮箱或 raw account ID。
+application schema v33（`codex-subscription-accounts`）的三张专用表保存 detected accounts、manual entries 和显式 links。v34（`codex-quota-history-association`）只增加 legacy history 关联与单调 generation：不搬迁、不改写、不删除 `account_scope=default` 的 observation。专用订阅表可以持久化 detected/manual email；binding、quota、日志、Proto private identity 与原始证据仍不得泄露邮箱或 raw account ID。
+
+List 为每个 detected account 返回 legacy history 状态和脱敏覆盖量。只有当前 confirmed account 且 revision 匹配时才允许 Link；同一段 legacy history 同时只能关联一个账号。Unlink 使用 detected revision 与 association generation 双重 CAS，撤销后原始观测仍在，可再次恢复。
 
 List / Create / Update / Delete / Link / Unlink 只读写 SQLite，不启动 App Server，不采集非当前账号。Delete 必须在同一事务内复核 current binding 与各行 revision；当前账号拒绝删除。自动 profile 写入必须在同一 SQLite transaction 内核对当前 `(account_scope, binding_generation)`。
 
@@ -32,9 +34,9 @@ List / Create / Update / Delete / Link / Unlink 只读写 SQLite，不启动 App
 
 ## Core
 
-精确握手为 `core-rpc-v5`。`Contracts.codex_subscription_accounts_version=codex-subscription-accounts-v1`。`codex_pro_tier_version` 保持 v1。invalidation 为 `query-invalidation-v4`；Codex 在线额度刷新使用 `quota_codex`，账号资料变化使用 `account`。Provider 启停见 [Agent Providers](../providers/README.md)。
+精确握手为 `core-rpc-v6`。`Contracts.codex_subscription_accounts_version=codex-subscription-accounts-v2`。`codex_pro_tier_version` 保持 v1。invalidation 为 `query-invalidation-v4`；Codex 在线额度刷新使用 `quota_codex`，账号资料变化使用 `account`。legacy history Link/Unlink 同时失效 `account` 与 `quota`。Provider 启停见 [Agent Providers](../providers/README.md)。
 
-新增 query `ListCodexSubscriptionAccounts` 与 command `Create/Update/Delete/Link/UnlinkCodexSubscriptionAccount`。`AccountSnapshotRequest` additive `evaluated_at_ms` / `time_zone`；Codex 响应 additive `subscription`。非 Codex provider 的 `subscription` 必须 absent。
+账号 query 为 `ListCodexSubscriptionAccounts`，订阅 command 为 `Create/Update/Delete/Link/UnlinkCodexSubscriptionAccount`，历史 command 为 `Link/UnlinkLegacyQuotaHistory`。`AccountSnapshotRequest` additive `evaluated_at_ms` / `time_zone`；Codex 响应 additive `subscription`。非 Codex provider 的 `subscription` 必须 absent。
 
 Codex `AccountSnapshot` 首次读取、binding 未确认或当前账号的在线额度来源成功刷新后，用一次 App Server 夹读同时完成 binding 身份确认与邮箱/套餐读取；同一额度成功周期的重复查询复用已夹读的内存 display，并发中的相同读取共享一次夹读。失败不伪造已确认资料。每次返回前重新读取 binding，并要求 display 的 scope/generation 精确匹配。Swift 对仅由本地索引变化触发的概览刷新复用匹配当前额度 binding 的已确认账号；无可复用账号时不因每次 index 通知自动重试，额度页的同类刷新只重载本地用量。账号切换、Home 切换和手动额度刷新成功后仍按当前 binding 重新校验；scope/generation 错配隐藏旧账号事实。
 

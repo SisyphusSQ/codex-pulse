@@ -20,7 +20,7 @@ Codex Pulse 以一个明确的客户端上下文查询和展示数据。产品 U
 
 关闭顺序固定为：先拒绝新 admission，再取消 operation context，再 drain 已接纳任务。旧 generation 在 stable disabled 后不得发布 Store、cache 或 invalidation。当前页面不得把 disabled Provider 的历史快照冒充当前事实；历史仍保存在 Store。`DashboardSummary` 只聚合 effective enabled Provider；全部关闭时返回 complete known-empty，而不是 service unavailable。direct query 命中显式 disabled 返回稳定错误 `provider_disabled`（`retryable=false`）；unavailable 保持可恢复。全局手动刷新仍按 `codex → cursor → grok` 回执，disabled 项为 `skipped_disabled`。
 
-子开关从属于主开关：Codex 沿用 quota / reset credits；Cursor 新增 `cursor_online_enabled` 统一控制 Dashboard 月额度和 Grok Bot 在线请求，本地 snapshot 仍受 Cursor 主开关控制；Grok 沿用 quota / credential auto-refresh。主开关关闭期间不修改子开关持久值。Preferences schema 为 v3；无 Codex Home 时 `codex_home` 可省略，Onboarding.Completed 只表示 preferences 已初始化。握手为 `core-rpc-v5`，控制面为 `provider-control-v1`。application SQLite schema 保持 v33。
+子开关从属于主开关：Codex 沿用 quota / reset credits；Cursor 新增 `cursor_online_enabled` 统一控制 Dashboard 月额度和 Grok Bot 在线请求，本地 snapshot 仍受 Cursor 主开关控制；Grok 沿用 quota / credential auto-refresh。主开关关闭期间不修改子开关持久值。Preferences schema 为 v3；无 Codex Home 时 `codex_home` 可省略，Onboarding.Completed 只表示 preferences 已初始化。握手为 `core-rpc-v6`，控制面为 `provider-control-v1`。application SQLite schema 为 v34。
 
 空 `ProviderScope` 仍归一为 `codex`，以兼容旧请求；未知非空值必须失败，不得默认成 Codex 或 Cursor。Router、AccountSnapshot、PricingCatalog 和 Swift 展示必须显式三路分发，禁止 `if cursor else Codex` 把 Grok 漏进另一家客户端。关闭后的 Router 必须在调用后端前拒绝 disabled Provider。
 
