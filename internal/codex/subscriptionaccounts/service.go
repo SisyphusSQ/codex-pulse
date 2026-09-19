@@ -61,6 +61,30 @@ func Project(records Records, evaluatedAtMS int64, timeZone string) (Snapshot, e
 	}, nil
 }
 
+func AttachLegacyQuotaHistory(
+	snapshot *Snapshot,
+	byAccountScope map[string]LegacyQuotaHistory,
+) {
+	if snapshot == nil {
+		return
+	}
+	for index := range snapshot.Accounts {
+		account := &snapshot.Accounts[index]
+		if !account.Detected || account.accountScope == "" {
+			continue
+		}
+		status, found := byAccountScope[account.accountScope]
+		if !found {
+			continue
+		}
+		copied := status
+		copied.FirstObservedAtMS = clonePointer(status.FirstObservedAtMS)
+		copied.LastObservedAtMS = clonePointer(status.LastObservedAtMS)
+		copied.AssociationRevision = clonePointer(status.AssociationRevision)
+		account.LegacyQuotaHistory = &copied
+	}
+}
+
 func CurrentAccount(
 	records Records,
 	fence AccountFence,

@@ -24,6 +24,17 @@ type CodexSubscriptionUnlinkRequest = subscriptionaccounts.UnlinkRequest
 
 type CodexSubscriptionMutation = subscriptionaccounts.Mutation
 
+type LegacyQuotaHistoryLinkRequest struct {
+	DetectedAccountID        string
+	ExpectedDetectedRevision int64
+}
+
+type LegacyQuotaHistoryUnlinkRequest struct {
+	DetectedAccountID           string
+	ExpectedDetectedRevision    int64
+	ExpectedAssociationRevision int64
+}
+
 type CodexSubscriptionAccounts interface {
 	ListCodexSubscriptionAccounts(context.Context, int64, string) (subscriptionaccounts.Snapshot, error)
 	CreateCodexSubscriptionAccount(context.Context, CodexSubscriptionCreateRequest) (CodexSubscriptionMutation, error)
@@ -31,6 +42,69 @@ type CodexSubscriptionAccounts interface {
 	DeleteCodexSubscriptionAccount(context.Context, CodexSubscriptionDeleteRequest) (CodexSubscriptionMutation, error)
 	LinkCodexSubscriptionAccount(context.Context, CodexSubscriptionLinkRequest) (CodexSubscriptionMutation, error)
 	UnlinkCodexSubscriptionAccount(context.Context, CodexSubscriptionUnlinkRequest) (CodexSubscriptionMutation, error)
+	LinkLegacyQuotaHistory(context.Context, LegacyQuotaHistoryLinkRequest) (store.LegacyQuotaHistoryMutation, error)
+	UnlinkLegacyQuotaHistory(context.Context, LegacyQuotaHistoryUnlinkRequest) (store.LegacyQuotaHistoryMutation, error)
+}
+
+func (service *Service) LinkLegacyQuotaHistory(
+	ctx context.Context,
+	request LegacyQuotaHistoryLinkRequest,
+) (LegacyQuotaHistoryMutationReceipt, error) {
+	if service == nil || service.codexSubscriptions == nil {
+		return LegacyQuotaHistoryMutationReceipt{}, newServiceFailure(ErrService)
+	}
+	if _, err := subscriptionaccounts.ParsePublicID(request.DetectedAccountID); err != nil {
+		return LegacyQuotaHistoryMutationReceipt{}, newServiceFailure(
+			basequery.NewValidationFailure("detectedAccountId", err),
+		)
+	}
+	if err := subscriptionaccounts.ParseRevision(request.ExpectedDetectedRevision); err != nil {
+		return LegacyQuotaHistoryMutationReceipt{}, newServiceFailure(
+			basequery.NewValidationFailure("expectedDetectedRevision", err),
+		)
+	}
+	return service.legacyQuotaHistoryMutation(func() (store.LegacyQuotaHistoryMutation, error) {
+		return service.codexSubscriptions.LinkLegacyQuotaHistory(ctx, request)
+	})
+}
+
+func (service *Service) UnlinkLegacyQuotaHistory(
+	ctx context.Context,
+	request LegacyQuotaHistoryUnlinkRequest,
+) (LegacyQuotaHistoryMutationReceipt, error) {
+	if service == nil || service.codexSubscriptions == nil {
+		return LegacyQuotaHistoryMutationReceipt{}, newServiceFailure(ErrService)
+	}
+	if _, err := subscriptionaccounts.ParsePublicID(request.DetectedAccountID); err != nil {
+		return LegacyQuotaHistoryMutationReceipt{}, newServiceFailure(
+			basequery.NewValidationFailure("detectedAccountId", err),
+		)
+	}
+	for field, revision := range map[string]int64{
+		"expectedDetectedRevision":    request.ExpectedDetectedRevision,
+		"expectedAssociationRevision": request.ExpectedAssociationRevision,
+	} {
+		if err := subscriptionaccounts.ParseRevision(revision); err != nil {
+			return LegacyQuotaHistoryMutationReceipt{}, newServiceFailure(
+				basequery.NewValidationFailure(field, err),
+			)
+		}
+	}
+	return service.legacyQuotaHistoryMutation(func() (store.LegacyQuotaHistoryMutation, error) {
+		return service.codexSubscriptions.UnlinkLegacyQuotaHistory(ctx, request)
+	})
+}
+
+func (service *Service) legacyQuotaHistoryMutation(
+	operation func() (store.LegacyQuotaHistoryMutation, error),
+) (LegacyQuotaHistoryMutationReceipt, error) {
+	return serviceQueryCall(service, func() (LegacyQuotaHistoryMutationReceipt, error) {
+		mutation, err := operation()
+		if err != nil {
+			return LegacyQuotaHistoryMutationReceipt{}, mapCodexSubscriptionError(err)
+		}
+		return encodeLegacyQuotaHistoryMutation(mutation)
+	})
 }
 
 func (service *Service) ListCodexSubscriptionAccounts(

@@ -4119,6 +4119,22 @@ private actor FakeCore: AppCoreServing {
         return subscriptionMutationReceipt
     }
 
+    func linkLegacyQuotaHistory(
+        _ request: Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        calls.append("legacy_quota_history_link:\(request.detectedAccountID)")
+        if subscriptionMutationFails { throw FakeFailure.unavailable }
+        return subscriptionMutationReceipt
+    }
+
+    func unlinkLegacyQuotaHistory(
+        _ request: Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        calls.append("legacy_quota_history_unlink:\(request.detectedAccountID)")
+        if subscriptionMutationFails { throw FakeFailure.unavailable }
+        return subscriptionMutationReceipt
+    }
+
     func listSessions(
         _ request: Codexpulse_Core_V1_ListSessionsRequest,
         retryPolicy: ReadRetryPolicy
@@ -6388,7 +6404,7 @@ private func makeCodexSubscriptionListResponse(
     candidates: [Codexpulse_Core_V1_CodexSubscriptionLinkCandidate] = []
 ) -> Codexpulse_Core_V1_CodexSubscriptionAccountsResponse {
     var response = Codexpulse_Core_V1_CodexSubscriptionAccountsResponse()
-    response.version = "codex-subscription-accounts-v1"
+    response.version = "codex-subscription-accounts-v2"
     response.evaluatedAtMs = 1_784_000_000_000
     response.timeZone = "Asia/Shanghai"
     response.automaticDateCapability = .manualOnly
@@ -6622,6 +6638,11 @@ private func testCodexAccountsSettingsSourceContract() throws {
             && source.contains("let detected = accounts.first")
             && source.contains("确认删除账号")
             && source.contains("settings.codex-accounts.delete.")
+            && source.contains("恢复历史配额曲线？")
+            && source.contains("model.linkLegacyQuotaHistory(account)")
+            && source.contains("model.unlinkLegacyQuotaHistory(account)")
+            && source.contains("不会修改当前配额、刷新状态或原始观测")
+            && source.contains("本机原始观测不会被删除")
             && source.contains("case .idle, .running, .applied, .noop:")
             && !source.contains("Label(localizedCopy(\"已保存\")")
             && !source.contains("Label(localizedCopy(\"正在保存…\")")
@@ -6719,6 +6740,77 @@ private func testCodexSubscriptionMutationRequiresAuthoritativeReadback() async 
         calls.filter { $0.hasPrefix("codex_subscription_create:") }.count == 1
             && calls.filter { $0 == "codex_subscription_list" }.count >= 2,
         "create must be followed by a list readback"
+    )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testLegacyQuotaHistoryMutationRequiresAuthoritativeReadback() async throws {
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    await core.setSettingsResponses(
+        [makeSettingsResponse(revision: "revision-1", quotaEnabled: false)],
+        updateFailure: false
+    )
+    var available = makeCodexSubscriptionAccount(
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        email: "current@example.com"
+    )
+    available.detectedAccountID = available.accountID
+    available.detected = true
+    available.current = true
+    available.detectedRevision = 7
+    available.legacyQuotaHistory.state = .available
+    available.legacyQuotaHistory.observationCount = 11_401
+    available.legacyQuotaHistory.cycleCount = 8
+    var linked = available
+    linked.legacyQuotaHistory.state = .linked
+    linked.legacyQuotaHistory.associationRevision = 3
+    await core.setCodexSubscriptionListPlans([
+        CodexSubscriptionListPlan(
+            response: makeCodexSubscriptionListResponse(accounts: [available])
+        ),
+        CodexSubscriptionListPlan(
+            response: makeCodexSubscriptionListResponse(accounts: [linked])
+        ),
+        CodexSubscriptionListPlan(
+            response: makeCodexSubscriptionListResponse(accounts: [available])
+        ),
+    ])
+    await core.setCodexSubscriptionMutation(result: .applied)
+    let model = AppModel(
+        runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
+    model.start()
+    try await waitUntil("legacy history mutation overview") {
+        await MainActor.run { model.presentation != nil }
+    }
+    model.navigate(to: .settings)
+    try await waitUntil("legacy history available") {
+        await MainActor.run {
+            model.codexSubscriptionAccountsState.value?.accounts.first?
+                .legacyQuotaHistory.state == .available
+        }
+    }
+
+    model.linkLegacyQuotaHistory(available)
+    try await waitUntil("legacy history linked readback") {
+        await MainActor.run {
+            model.codexSubscriptionAccountsState.value?.accounts.first?
+                .legacyQuotaHistory.state == .linked
+        }
+    }
+    model.unlinkLegacyQuotaHistory(linked)
+    try await waitUntil("legacy history unlinked readback") {
+        await MainActor.run {
+            model.codexSubscriptionAccountsState.value?.accounts.first?
+                .legacyQuotaHistory.state == .available
+        }
+    }
+    let calls = await core.recordedCalls()
+    try expect(
+        calls.contains("legacy_quota_history_link:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+            && calls.contains("legacy_quota_history_unlink:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+            && calls.filter { $0 == "codex_subscription_list" }.count == 3,
+        "legacy history link and unlink must each require an authoritative account-list readback"
     )
     _ = await model.shutdown()
 }
@@ -10828,6 +10920,9 @@ private func testQuotaWindowPresentationUsesActualDuration() throws {
 }
 
 private func testQuotaPacePresentationExplainsPaceForecastAndEvidence() throws {
+    let previousLocalization = AppLocalizationRegistry.shared.current
+    defer { AppLocalizationRegistry.shared.update(previousLocalization) }
+    AppLocalizationRegistry.shared.update(.chineseSimplified)
     var window = Codexpulse_Core_V1_QuotaPaceWindow()
     window.windowKind = "secondary"
     window.limitID = "codex"
@@ -10848,6 +10943,7 @@ private func testQuotaPacePresentationExplainsPaceForecastAndEvidence() throws {
     currentFirst.observedAtMs = 1_000
     currentFirst.elapsedPercent = 20
     currentFirst.remainingPercent = 39
+    currentFirst.linkedHistory = true
     var currentDecrease = Codexpulse_Core_V1_QuotaPacePoint()
     currentDecrease.observedAtMs = 2_000
     currentDecrease.elapsedPercent = 30
@@ -10866,7 +10962,7 @@ private func testQuotaPacePresentationExplainsPaceForecastAndEvidence() throws {
     let presentation = QuotaPaceWindowPresentation(window, evaluatedAtMS: 0)
     try expect(
         presentation.paceText == "用量快于周期进度 19%",
-        "quota pace must compare usage with elapsed time"
+        "quota pace must compare usage with elapsed time, got \(presentation.paceText)"
     )
     try expect(
         presentation.paceDeltaMetricText == "+19%",
@@ -10890,10 +10986,12 @@ private func testQuotaPacePresentationExplainsPaceForecastAndEvidence() throws {
             && presentation.currentPoints[0].isCycleStart
             && presentation.currentPoints[0].elapsedPercent == 0
             && presentation.currentPoints[0].remainingPercent == 100
+            && !presentation.currentPoints[0].linkedHistory
             && presentation.currentPoints[1].series == "current"
+            && presentation.currentPoints[1].linkedHistory
             && presentation.currentPoints[1].remainingPercent == 39
             && presentation.currentPoints[2].remainingPercent == 45,
-        "current quota pace must prepend the full-cycle anchor and preserve upward jumps"
+        "current quota pace must preserve linked-history origin without marking its synthetic anchor"
     )
     try expect(
         presentation.previousPoints.count == 3
@@ -10931,6 +11029,70 @@ private func testQuotaPacePresentationAnchorsSingleUsedObservationAtCycleStart()
             && presentation.currentPoints[1].elapsedPercent == 43
             && presentation.currentPoints[1].remainingPercent == 56,
         "a used snapshot must retain the cycle-start anchor before its real observation point"
+    )
+}
+
+private func testQuotaPacePresentationPreservesLinkedHistoryOrigin() throws {
+    var window = Codexpulse_Core_V1_QuotaPaceWindow()
+    window.windowKind = "secondary"
+    window.limitID = "codex"
+    var point = Codexpulse_Core_V1_QuotaPacePoint()
+    point.observedAtMs = 3_000
+    point.elapsedPercent = 43
+    point.remainingPercent = 56
+    point.linkedHistory = true
+    window.currentPoints = [point]
+
+    let presentation = QuotaPaceWindowPresentation(window, evaluatedAtMS: 3_000)
+    try expect(
+        presentation.currentPoints.count == 2
+            && !presentation.currentPoints[0].linkedHistory
+            && presentation.currentPoints[1].linkedHistory,
+        "quota pace must preserve restored-history origin without marking its synthetic anchor"
+    )
+}
+
+private func testCodexAccountRowPresentsLegacyQuotaHistoryActions() throws {
+    let previousLocalization = AppLocalizationRegistry.shared.current
+    defer { AppLocalizationRegistry.shared.update(previousLocalization) }
+    AppLocalizationRegistry.shared.update(.chineseSimplified)
+    var account = Codexpulse_Core_V1_CodexSubscriptionAccount()
+    account.accountID = "22222222-2222-4222-8222-222222222222"
+    account.detectedAccountID = account.accountID
+    account.detected = true
+    account.current = true
+    account.detectedRevision = 7
+    account.legacyQuotaHistory.state = .available
+    account.legacyQuotaHistory.observationCount = 11_401
+    account.legacyQuotaHistory.cycleCount = 8
+
+    let available = CodexSubscriptionAccountRowPresentation(account)
+    try expect(
+        available.canRestoreLegacyQuotaHistory
+            && !available.canRevokeLegacyQuotaHistory
+            && available.legacyQuotaHistoryText == "检测到 11,401 条观测 · 8 个周期",
+        "the current detected account must preview legacy quota history before confirmation"
+    )
+
+    account.legacyQuotaHistory.state = .linked
+    account.legacyQuotaHistory.associationRevision = 1
+    let linked = CodexSubscriptionAccountRowPresentation(account)
+    try expect(
+        !linked.canRestoreLegacyQuotaHistory
+            && linked.canRevokeLegacyQuotaHistory
+            && linked.legacyQuotaHistoryText == "已恢复 11,401 条观测 · 8 个周期",
+        "a linked history must expose an explicit reversible action"
+    )
+
+    account.current = false
+    account.legacyQuotaHistory.state = .linkedElsewhere
+    account.legacyQuotaHistory.clearAssociationRevision()
+    let blocked = CodexSubscriptionAccountRowPresentation(account)
+    try expect(
+        !blocked.canRestoreLegacyQuotaHistory
+            && !blocked.canRevokeLegacyQuotaHistory
+            && blocked.legacyQuotaHistoryText == "历史曲线已关联到其他账号",
+        "an account must not be allowed to claim history already owned elsewhere"
     )
 }
 
@@ -11016,9 +11178,12 @@ private func testQuotaPaceChartOnlyColorsSeriesEndpoints() throws {
 
     try expect(
         pointMarkCount == 2
+            && !source.contains("linkedHistoryPoints")
+            && !source.contains("已恢复历史进度")
+            && !source.contains("橙色观测来自已恢复的本机历史")
             && source.contains("if let point = presentation.previousPoints.last")
             && source.contains("if let point = presentation.currentPoints.last"),
-        "quota pace must color only the current and previous series endpoints"
+        "quota pace must keep restored history out of the visual point layer"
     )
     try expect(
         explicitSeriesCount == 2,
@@ -13244,6 +13409,11 @@ private func testShutdownDeadlineForcesHelperStop() async throws {
 @main
 struct CodexPulseAppTestMain {
     static func main() async throws {
+        try testCodexAccountRowPresentsLegacyQuotaHistoryActions()
+        try testCodexAccountsSettingsSourceContract()
+        try testQuotaPacePresentationPreservesLinkedHistoryOrigin()
+        try testQuotaPaceChartOnlyColorsSeriesEndpoints()
+        try await testLegacyQuotaHistoryMutationRequiresAuthoritativeReadback()
         try testPrimaryPagesSmokeSummaryIncludesProjectDetailEvidence()
         try testMainWindowCopyDoesNotExposeImplementationLanguage()
         try testInvocationUsageRequestUsesExactBoundedRange()
@@ -13413,7 +13583,6 @@ struct CodexPulseAppTestMain {
         try testQuotaPaceWindowPickerUsesIntrinsicWidthOnDedicatedRow()
         try testQuotaPaceWindowPickerNeverExceedsDedicatedRowWidth()
         try testQuotaPaceXAxisKeepsBoundaryLabelsWithoutBoundaryGridLines()
-        try testQuotaPaceChartOnlyColorsSeriesEndpoints()
         try testEnglishQuotaPaceComparisonPreservesArgumentTypesWhenWordOrderChanges()
         try testQuotaPaceForecastUsesCoarseRelativeUnitsAndHonestFallbacks()
         try testQuotaForecastPresentationIsUsedByOverviewAndStatusPopover()
@@ -13504,7 +13673,6 @@ struct CodexPulseAppTestMain {
         try await testCodexCardAccountRetrySchedulerRetainsOwnershipUntilActionReturns()
         try testCodexSubscriptionRowPresentationKeepsServerOrderAndUnknownPlaceholders()
         try testCodexSubscriptionEditorCarriesDetectedFactsWithoutPersistingFallbacks()
-        try testCodexAccountsSettingsSourceContract()
         try await testAccountSnapshotSendsEvaluationContext()
         try await testCodexSubscriptionMutationRequiresAuthoritativeReadback()
         try await testCodexSubscriptionDeleteRequiresAuthoritativeAbsenceReadback()

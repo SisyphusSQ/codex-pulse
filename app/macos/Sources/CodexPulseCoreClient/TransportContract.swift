@@ -2,7 +2,7 @@ import CodexPulseProtocolGenerated
 import GRPCCore
 
 public enum CodexPulseTransportContract {
-    public static let version = "core-rpc-v5"
+    public static let version = "core-rpc-v6"
     public static let transport = "grpc+unix"
     public static let invalidationVersion = "query-invalidation-v4"
     public static let maximumMessageBytes = 16 * 1024 * 1024

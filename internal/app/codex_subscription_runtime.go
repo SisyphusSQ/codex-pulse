@@ -45,7 +45,65 @@ func (runtime *codexSubscriptionRuntime) ListCodexSubscriptionAccounts(
 	if err != nil {
 		return subscriptionaccounts.Snapshot{}, err
 	}
-	return subscriptionaccounts.Project(records, evaluatedAtMS, timeZone)
+	snapshot, err := subscriptionaccounts.Project(records, evaluatedAtMS, timeZone)
+	if err != nil {
+		return subscriptionaccounts.Snapshot{}, err
+	}
+	historyByScope := make(map[string]subscriptionaccounts.LegacyQuotaHistory, len(records.Detected))
+	for _, account := range records.Detected {
+		status, err := runtime.repository.LegacyQuotaHistoryStatus(ctx, account.AccountScope)
+		if err != nil {
+			return subscriptionaccounts.Snapshot{}, err
+		}
+		historyByScope[account.AccountScope] = subscriptionaccounts.LegacyQuotaHistory{
+			State:               subscriptionaccounts.LegacyQuotaHistoryState(status.State),
+			ObservationCount:    status.ObservationCount,
+			CycleCount:          status.CycleCount,
+			FirstObservedAtMS:   cloneAppInt64(status.FirstObservedAtMS),
+			LastObservedAtMS:    cloneAppInt64(status.LastObservedAtMS),
+			AssociationRevision: cloneAppInt64(status.AssociationRevision),
+		}
+	}
+	subscriptionaccounts.AttachLegacyQuotaHistory(&snapshot, historyByScope)
+	return snapshot, nil
+}
+
+func (runtime *codexSubscriptionRuntime) LinkLegacyQuotaHistory(
+	ctx context.Context,
+	request core.LegacyQuotaHistoryLinkRequest,
+) (store.LegacyQuotaHistoryMutation, error) {
+	if runtime == nil || runtime.repository == nil {
+		return store.LegacyQuotaHistoryMutation{}, store.ErrInvalidRepository
+	}
+	mutation, err := runtime.repository.LinkLegacyQuotaHistory(ctx, store.LegacyQuotaHistoryLinkRequest{
+		DetectedAccountID:        request.DetectedAccountID,
+		ExpectedDetectedRevision: request.ExpectedDetectedRevision,
+		NowMS:                    runtime.clock().UnixMilli(),
+	})
+	if err != nil {
+		return store.LegacyQuotaHistoryMutation{}, err
+	}
+	runtime.notifyLegacyHistoryApplied(ctx, mutation.Result)
+	return mutation, nil
+}
+
+func (runtime *codexSubscriptionRuntime) UnlinkLegacyQuotaHistory(
+	ctx context.Context,
+	request core.LegacyQuotaHistoryUnlinkRequest,
+) (store.LegacyQuotaHistoryMutation, error) {
+	if runtime == nil || runtime.repository == nil {
+		return store.LegacyQuotaHistoryMutation{}, store.ErrInvalidRepository
+	}
+	mutation, err := runtime.repository.UnlinkLegacyQuotaHistory(ctx, store.LegacyQuotaHistoryUnlinkRequest{
+		DetectedAccountID:           request.DetectedAccountID,
+		ExpectedDetectedRevision:    request.ExpectedDetectedRevision,
+		ExpectedAssociationRevision: request.ExpectedAssociationRevision,
+	})
+	if err != nil {
+		return store.LegacyQuotaHistoryMutation{}, err
+	}
+	runtime.notifyLegacyHistoryApplied(ctx, mutation.Result)
+	return mutation, nil
 }
 
 func (runtime *codexSubscriptionRuntime) CreateCodexSubscriptionAccount(
@@ -117,4 +175,23 @@ func (runtime *codexSubscriptionRuntime) notifyApplied(ctx context.Context, resu
 		return
 	}
 	notifyQueryInvalidation(runtime.invalidation, ctx, core.InvalidationAccount)
+}
+
+func (runtime *codexSubscriptionRuntime) notifyLegacyHistoryApplied(
+	ctx context.Context,
+	result store.LegacyQuotaHistoryMutationResult,
+) {
+	if result != store.LegacyQuotaHistoryMutationApplied {
+		return
+	}
+	notifyQueryInvalidation(runtime.invalidation, ctx, core.InvalidationAccount)
+	notifyQueryInvalidation(runtime.invalidation, ctx, core.InvalidationQuota)
+}
+
+func cloneAppInt64(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
 }

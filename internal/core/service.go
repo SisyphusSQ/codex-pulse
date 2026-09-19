@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	ContractVersion        = "core-rpc-v5"
+	ContractVersion        = "core-rpc-v6"
 	ProviderControlVersion = "provider-control-v1"
 )
 
@@ -354,6 +354,8 @@ var methodAllowlist = []MethodInfo{
 	{Name: "UpdateCodexSubscriptionAccount", Kind: MethodCommand},
 	{Name: "LinkCodexSubscriptionAccount", Kind: MethodCommand},
 	{Name: "UnlinkCodexSubscriptionAccount", Kind: MethodCommand},
+	{Name: "LinkLegacyQuotaHistory", Kind: MethodCommand},
+	{Name: "UnlinkLegacyQuotaHistory", Kind: MethodCommand},
 	{Name: "DeleteCodexSubscriptionAccount", Kind: MethodCommand},
 	{Name: "APISubscriptionsCurrent", Kind: MethodQuery},
 	{Name: "APICredentialStatus", Kind: MethodQuery},
@@ -405,6 +407,7 @@ func (service *Service) Contracts() ContractInfo {
 				"RequestQuotaRefresh", "RequestProviderRefresh", "UpdateAPICredential", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
 				"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
 				"CreateCodexSubscriptionAccount", "UpdateCodexSubscriptionAccount", "DeleteCodexSubscriptionAccount", "LinkCodexSubscriptionAccount", "UnlinkCodexSubscriptionAccount",
+				"LinkLegacyQuotaHistory", "UnlinkLegacyQuotaHistory",
 			}, ErrorExample: errorExample,
 		}
 	})

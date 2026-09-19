@@ -34,6 +34,8 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 		"codex_account_binding",
 		"codex_account_scope_key",
 		"codex_account_scopes",
+		"codex_quota_history_association_generations",
+		"codex_quota_history_associations",
 		"codex_subscription_detected_accounts",
 		"codex_subscription_links",
 		"codex_subscription_manual_entries",
@@ -374,6 +376,12 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 			"singleton_id", "state", "account_scope", "last_confirmed_scope",
 			"binding_generation", "observed_at_ms", "reason",
 		},
+		"codex_quota_history_association_generations": {
+			"legacy_account_scope", "revision", "updated_at_ms",
+		},
+		"codex_quota_history_associations": {
+			"legacy_account_scope", "account_scope", "revision", "linked_at_ms", "updated_at_ms",
+		},
 		"codex_subscription_detected_accounts": {
 			"account_scope", "detected_account_id", "detected_email", "email_match_key",
 			"detected_email_observed_at_ms", "automatic_plan", "automatic_plan_state",
@@ -392,6 +400,7 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"bootstrap_plan_items.job_id->bootstrap_jobs.job_id/CASCADE",
 		"codex_account_binding.account_scope->codex_account_scopes.account_scope/RESTRICT",
 		"codex_account_binding.last_confirmed_scope->codex_account_scopes.account_scope/RESTRICT",
+		"codex_quota_history_associations.account_scope->codex_account_scopes.account_scope/RESTRICT",
 		"codex_subscription_detected_accounts.account_scope->codex_account_scopes.account_scope/RESTRICT",
 		"codex_subscription_links.account_scope->codex_subscription_detected_accounts.account_scope/RESTRICT",
 		"codex_subscription_links.manual_entry_id->codex_subscription_manual_entries.manual_entry_id/RESTRICT",

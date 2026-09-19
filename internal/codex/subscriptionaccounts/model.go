@@ -1,6 +1,6 @@
 package subscriptionaccounts
 
-const ContractVersion = "codex-subscription-accounts-v1"
+const ContractVersion = "codex-subscription-accounts-v2"
 
 type Plan string
 
@@ -135,6 +135,24 @@ type Link struct {
 	UpdatedAtMS   int64
 }
 
+type LegacyQuotaHistoryState string
+
+const (
+	LegacyQuotaHistoryUnavailable     LegacyQuotaHistoryState = "unavailable"
+	LegacyQuotaHistoryAvailable       LegacyQuotaHistoryState = "available"
+	LegacyQuotaHistoryLinked          LegacyQuotaHistoryState = "linked"
+	LegacyQuotaHistoryLinkedElsewhere LegacyQuotaHistoryState = "linked_elsewhere"
+)
+
+type LegacyQuotaHistory struct {
+	State               LegacyQuotaHistoryState
+	ObservationCount    int64
+	CycleCount          int64
+	FirstObservedAtMS   *int64
+	LastObservedAtMS    *int64
+	AssociationRevision *int64
+}
+
 type Records struct {
 	Binding  Binding
 	Detected []DetectedAccount
@@ -188,6 +206,7 @@ type Account struct {
 	DetectedRevision          *int64
 	ManualRevision            *int64
 	LinkRevision              *int64
+	LegacyQuotaHistory        *LegacyQuotaHistory
 	accountScope              string
 }
 

@@ -60,6 +60,7 @@ public struct QuotaPaceChartPoint: Equatable, Identifiable, Sendable {
     public let elapsedPercent: Double
     public let remainingPercent: Double
     public let isCycleStart: Bool
+    public let linkedHistory: Bool
 
     init(series: String, point: Codexpulse_Core_V1_QuotaPacePoint) {
         self.id = "\(series):\(point.observedAtMs)"
@@ -67,6 +68,7 @@ public struct QuotaPaceChartPoint: Equatable, Identifiable, Sendable {
         self.elapsedPercent = point.elapsedPercent
         self.remainingPercent = point.remainingPercent
         self.isCycleStart = false
+        self.linkedHistory = point.linkedHistory
     }
 
     init(cycleStartFor series: String) {
@@ -75,6 +77,7 @@ public struct QuotaPaceChartPoint: Equatable, Identifiable, Sendable {
         self.elapsedPercent = 0
         self.remainingPercent = 100
         self.isCycleStart = true
+        self.linkedHistory = false
     }
 }
 

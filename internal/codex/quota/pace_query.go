@@ -62,6 +62,7 @@ type PacePoint struct {
 	ElapsedPercent   float64 `json:"elapsedPercent"`
 	UsedPercent      float64 `json:"usedPercent"`
 	RemainingPercent float64 `json:"remainingPercent"`
+	LinkedHistory    bool    `json:"linkedHistory"`
 }
 
 type PaceCycle struct {
@@ -226,9 +227,17 @@ func buildPaceWindow(
 	window.ElapsedPercent = &elapsedPercent
 	window.PaceDeltaPP = &paceDeltaPP
 	observations := paceObservationsAllowedByArbitration(facts.Observations, facts.Evidence)
-	window.CurrentPoints = currentPacePoints(current, observations)
-	window.PreviousCycle, window.HistoricalCycles = historicalPaceCycles(
-		current, observations,
+	associated := paceObservationsAllowedByArbitration(
+		facts.AssociatedHistoryObservations, facts.AssociatedHistoryEvidence,
+	)
+	historyObservations := append(append([]store.QuotaObservation(nil), observations...), associated...)
+	associatedScope := ""
+	if facts.AssociatedHistoryScope != nil {
+		associatedScope = *facts.AssociatedHistoryScope
+	}
+	window.CurrentPoints = currentPacePointsWithHistory(current, historyObservations, associatedScope)
+	window.PreviousCycle, window.HistoricalCycles = historicalPaceCyclesWithHistory(
+		current, historyObservations, associatedScope,
 	)
 	window.HistoryCycleCount = int64(len(window.HistoricalCycles))
 	if window.PreviousCycle != nil {
@@ -289,6 +298,14 @@ func currentPacePoints(
 	current store.QuotaCurrent,
 	observations []store.QuotaObservation,
 ) []PacePoint {
+	return currentPacePointsWithHistory(current, observations, "")
+}
+
+func currentPacePointsWithHistory(
+	current store.QuotaCurrent,
+	observations []store.QuotaObservation,
+	associatedHistoryScope string,
+) []PacePoint {
 	if current.SelectedSource == nil || current.EffectiveUsedPercent == nil ||
 		current.WindowMinutes == nil || current.ResetsAtMS == nil ||
 		*current.WindowMinutes <= 0 ||
@@ -304,7 +321,7 @@ func currentPacePoints(
 		return []PacePoint{}
 	}
 	cycle, valid := buildPaceCycle(
-		current, observations, *current.ResetsAtMS, *current.SelectedSource,
+		current, observations, *current.ResetsAtMS, *current.SelectedSource, associatedHistoryScope,
 	)
 	points := make([]PacePoint, 0, len(cycle.Points)+1)
 	if valid {
@@ -334,12 +351,20 @@ func historicalPaceCycles(
 	current store.QuotaCurrent,
 	observations []store.QuotaObservation,
 ) (*PaceCycle, []PaceCycle) {
+	return historicalPaceCyclesWithHistory(current, observations, "")
+}
+
+func historicalPaceCyclesWithHistory(
+	current store.QuotaCurrent,
+	observations []store.QuotaObservation,
+	associatedHistoryScope string,
+) (*PaceCycle, []PaceCycle) {
 	if current.WindowMinutes == nil || current.ResetsAtMS == nil {
 		return nil, []PaceCycle{}
 	}
 	eligible := make([]store.QuotaObservation, 0, len(observations))
 	for _, observation := range observations {
-		if !paceObservationMatchesWindow(current, observation) ||
+		if !paceObservationMatchesWindowWithHistory(current, observation, associatedHistoryScope) ||
 			observation.ResetsAtMS >= *current.ResetsAtMS ||
 			store.QuotaResetsEquivalentForWindow(
 				observation.Source,
@@ -378,7 +403,7 @@ func historicalPaceCycles(
 	var previous *PaceCycle
 	complete := make([]PaceCycle, 0, 4)
 	for _, group := range groups {
-		source, found := selectPaceCycleSource(group.observations)
+		source, found := selectPaceCycleSourceForScope(group.observations, current.AccountScope)
 		if !found {
 			continue
 		}
@@ -387,6 +412,7 @@ func historicalPaceCycles(
 			group.observations,
 			group.generation,
 			source,
+			associatedHistoryScope,
 		)
 		if !valid {
 			continue
@@ -409,14 +435,23 @@ func paceObservationMatchesWindow(
 	current store.QuotaCurrent,
 	observation store.QuotaObservation,
 ) bool {
+	return paceObservationMatchesWindowWithHistory(current, observation, "")
+}
+
+func paceObservationMatchesWindowWithHistory(
+	current store.QuotaCurrent,
+	observation store.QuotaObservation,
+	associatedHistoryScope string,
+) bool {
 	durationMatches := current.WindowMinutes != nil && observation.WindowMinutes == *current.WindowMinutes
 	if (observation.Source == store.QuotaSourceCursorDashboard ||
 		observation.Source == store.QuotaSourceCursorDashboardGrokBot ||
 		observation.Source == store.QuotaSourceGrokBilling) && observation.WindowMinutes > 0 {
 		durationMatches = current.SelectedSource != nil && *current.SelectedSource == observation.Source
 	}
-	return durationMatches &&
-		observation.AccountScope == current.AccountScope &&
+	scopeMatches := observation.AccountScope == current.AccountScope ||
+		associatedHistoryScope != "" && observation.AccountScope == associatedHistoryScope
+	return durationMatches && scopeMatches &&
 		observation.WindowKind == current.WindowKind &&
 		observation.LimitID != nil &&
 		*observation.LimitID == current.LimitID &&
@@ -426,13 +461,32 @@ func paceObservationMatchesWindow(
 func selectPaceCycleSource(
 	observations []store.QuotaObservation,
 ) (store.QuotaSource, bool) {
+	return selectPaceCycleSourceForScope(observations, "")
+}
+
+func selectPaceCycleSourceForScope(
+	observations []store.QuotaObservation,
+	preferredScope string,
+) (store.QuotaSource, bool) {
 	type sourceTerminal struct {
 		source       store.QuotaSource
 		observedAtMS int64
 		usedPercent  float64
 	}
 	terminals := make(map[store.QuotaSource]sourceTerminal)
+	preferredFound := false
+	if preferredScope != "" {
+		for _, observation := range observations {
+			if observation.AccountScope == preferredScope {
+				preferredFound = true
+				break
+			}
+		}
+	}
 	for _, observation := range observations {
+		if preferredFound && observation.AccountScope != preferredScope {
+			continue
+		}
 		terminal, found := terminals[observation.Source]
 		if !found || observation.LastObservedAtMS > terminal.observedAtMS ||
 			observation.LastObservedAtMS == terminal.observedAtMS &&
@@ -464,6 +518,7 @@ func buildPaceCycle(
 	observations []store.QuotaObservation,
 	generation int64,
 	source store.QuotaSource,
+	associatedHistoryScope string,
 ) (PaceCycle, bool) {
 	if current.WindowMinutes == nil || *current.WindowMinutes <= 0 {
 		return PaceCycle{}, false
@@ -485,10 +540,18 @@ func buildPaceCycle(
 		return PaceCycle{}, false
 	}
 	windowStartAtMS := generation - durationMS
-	pointsByTime := make(map[int64]float64)
+	type pointCandidate struct {
+		usedPercent   float64
+		linkedHistory bool
+		priority      int
+	}
+	pointsByTime := make(map[int64]pointCandidate)
 	for _, observation := range observations {
-		if !paceObservationMatchesWindow(current, observation) ||
-			observation.Source != source ||
+		linkedHistory := associatedHistoryScope != "" &&
+			observation.AccountScope == associatedHistoryScope &&
+			observation.AccountScope != current.AccountScope
+		if !paceObservationMatchesWindowWithHistory(current, observation, associatedHistoryScope) ||
+			observation.Source != source && !linkedHistory ||
 			!store.QuotaResetsEquivalentForWindow(
 				source,
 				observation.WindowMinutes,
@@ -502,8 +565,15 @@ func buildPaceCycle(
 			continue
 		}
 		for _, atMS := range []int64{observation.FirstObservedAtMS, observation.LastObservedAtMS} {
-			if previous, found := pointsByTime[atMS]; !found || observation.UsedPercent > previous {
-				pointsByTime[atMS] = observation.UsedPercent
+			priority := 1
+			if linkedHistory {
+				priority = 0
+			}
+			if previous, found := pointsByTime[atMS]; !found || priority > previous.priority ||
+				priority == previous.priority && observation.UsedPercent > previous.usedPercent {
+				pointsByTime[atMS] = pointCandidate{
+					usedPercent: observation.UsedPercent, linkedHistory: linkedHistory, priority: priority,
+				}
 			}
 		}
 	}
@@ -514,11 +584,13 @@ func buildPaceCycle(
 	sort.Slice(times, func(left, right int) bool { return times[left] < times[right] })
 	points := make([]PacePoint, 0, len(times))
 	for _, atMS := range times {
-		usedPercent := pointsByTime[atMS]
+		candidate := pointsByTime[atMS]
+		usedPercent := candidate.usedPercent
 		elapsedPercent := float64(atMS-windowStartAtMS) / float64(durationMS) * 100
 		points = append(points, PacePoint{
 			ObservedAtMS: atMS, ElapsedPercent: elapsedPercent,
 			UsedPercent: usedPercent, RemainingPercent: 100 - usedPercent,
+			LinkedHistory: candidate.linkedHistory,
 		})
 	}
 	if len(points) == 0 {
@@ -558,7 +630,9 @@ func compactPacePoints(points []PacePoint) []PacePoint {
 		current := points[index]
 		next := points[index+1]
 		if current.UsedPercent != previous.UsedPercent ||
-			current.UsedPercent != next.UsedPercent {
+			current.UsedPercent != next.UsedPercent ||
+			current.LinkedHistory != previous.LinkedHistory ||
+			current.LinkedHistory != next.LinkedHistory {
 			result = append(result, current)
 		}
 	}

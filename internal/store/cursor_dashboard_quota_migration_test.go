@@ -44,8 +44,8 @@ func TestApplicationMigrationV26AddsCursorQuotaHistoryWithoutLosingDashboardSnap
 	if err != nil {
 		t.Fatalf("run(v26) error = %v", err)
 	}
-	if report.FromVersion != 25 || report.TargetVersion != 33 ||
-		!equalInts(report.AppliedVersions, []int{26, 27, 28, 29, 30, 31, 32, 33}) || backupVersions != [2]int{25, 33} {
+	if report.FromVersion != 25 || report.TargetVersion != 34 ||
+		!equalInts(report.AppliedVersions, []int{26, 27, 28, 29, 30, 31, 32, 33, 34}) || backupVersions != [2]int{25, 34} {
 		t.Fatalf("run(v27) report = %#v backup=%v", report, backupVersions)
 	}
 
@@ -115,8 +115,8 @@ func TestApplicationMigrationV30AllowsGrokBotQuotaWithoutRewritingMonthlyHistory
 	if err != nil {
 		t.Fatalf("run(v30) error = %v", err)
 	}
-	if report.FromVersion != 29 || report.TargetVersion != 33 ||
-		!equalInts(report.AppliedVersions, []int{30, 31, 32, 33}) || backupVersions != [2]int{29, 33} {
+	if report.FromVersion != 29 || report.TargetVersion != 34 ||
+		!equalInts(report.AppliedVersions, []int{30, 31, 32, 33, 34}) || backupVersions != [2]int{29, 34} {
 		t.Fatalf("run(v30) report = %#v backup=%v", report, backupVersions)
 	}
 

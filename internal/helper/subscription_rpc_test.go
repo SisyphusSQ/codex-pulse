@@ -8,6 +8,7 @@ import (
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
+	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -32,7 +33,8 @@ func TestGRPCServerMapsCodexSubscriptionListCreateAndDelete(t *testing.T) {
 				HasManual:          true,
 			}},
 		},
-		mutation: core.CodexSubscriptionMutation{Result: string(subscriptionaccounts.MutationApplied)},
+		mutation:       core.CodexSubscriptionMutation{Result: string(subscriptionaccounts.MutationApplied)},
+		legacyMutation: store.LegacyQuotaHistoryMutation{Result: store.LegacyQuotaHistoryMutationApplied},
 	}
 	business, err := core.NewService(core.ServiceConfig{
 		UsageCost: &helperUsageQueryStub{}, InvocationUsage: &helperInvocationQueryStub{},
@@ -85,6 +87,19 @@ func TestGRPCServerMapsCodexSubscriptionListCreateAndDelete(t *testing.T) {
 		accounts.delete.ExpectedManualRevision == nil || *accounts.delete.ExpectedManualRevision != 3 ||
 		accounts.delete.ExpectedLinkRevision == nil || *accounts.delete.ExpectedLinkRevision != 4 {
 		t.Fatalf("DeleteCodexSubscriptionAccount() = %#v, %v, stub=%#v", deleted, err, accounts.delete)
+	}
+
+	linkedHistory, err := client.LinkLegacyQuotaHistory(
+		authorize(t.Context()),
+		&corev1.LinkLegacyQuotaHistoryRequest{
+			DetectedAccountId:        "44444444-4444-4444-8444-444444444444",
+			ExpectedDetectedRevision: 2,
+		},
+	)
+	if err != nil || linkedHistory.GetResult() != corev1.CodexSubscriptionMutationResult_CODEX_SUBSCRIPTION_MUTATION_RESULT_APPLIED ||
+		accounts.legacyLink.DetectedAccountID != "44444444-4444-4444-8444-444444444444" ||
+		accounts.legacyLink.ExpectedDetectedRevision != 2 {
+		t.Fatalf("LinkLegacyQuotaHistory() = %#v, %v, stub=%#v", linkedHistory, err, accounts.legacyLink)
 	}
 }
 
@@ -162,10 +177,27 @@ func TestGRPCServerKeepsCodexSubscriptionConflictContentFree(t *testing.T) {
 }
 
 type helperCodexSubscriptionStub struct {
-	snapshot subscriptionaccounts.Snapshot
-	create   core.CodexSubscriptionCreateRequest
-	delete   core.CodexSubscriptionDeleteRequest
-	mutation core.CodexSubscriptionMutation
+	snapshot       subscriptionaccounts.Snapshot
+	create         core.CodexSubscriptionCreateRequest
+	delete         core.CodexSubscriptionDeleteRequest
+	mutation       core.CodexSubscriptionMutation
+	legacyMutation store.LegacyQuotaHistoryMutation
+	legacyLink     core.LegacyQuotaHistoryLinkRequest
+}
+
+func (stub *helperCodexSubscriptionStub) LinkLegacyQuotaHistory(
+	_ context.Context,
+	request core.LegacyQuotaHistoryLinkRequest,
+) (store.LegacyQuotaHistoryMutation, error) {
+	stub.legacyLink = request
+	return stub.legacyMutation, nil
+}
+
+func (stub *helperCodexSubscriptionStub) UnlinkLegacyQuotaHistory(
+	context.Context,
+	core.LegacyQuotaHistoryUnlinkRequest,
+) (store.LegacyQuotaHistoryMutation, error) {
+	return stub.legacyMutation, nil
 }
 
 func (stub *helperCodexSubscriptionStub) ListCodexSubscriptionAccounts(

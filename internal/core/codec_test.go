@@ -179,7 +179,7 @@ func TestEncodeResponsePreservesQuotaPacePresenceAndHistory(t *testing.T) {
 				},
 				CurrentPoints: []quotaquery.PacePoint{{
 					ObservedAtMS: 2_520_000, ElapsedPercent: 42,
-					UsedPercent: 0, RemainingPercent: 100,
+					UsedPercent: 0, RemainingPercent: 100, LinkedHistory: true,
 				}},
 				HistoricalCycles: []quotaquery.PaceCycle{{
 					WindowGeneration: 1, Complete: true,
@@ -208,7 +208,8 @@ func TestEncodeResponsePreservesQuotaPacePresenceAndHistory(t *testing.T) {
 		window.RemainingPercent == nil || window.GetRemainingPercent() != 100 ||
 		window.Forecast == nil || window.Forecast.ExhaustAtMs == nil ||
 		window.Forecast.GetLeadBeforeResetMs() != leadBeforeResetMS ||
-		len(window.CurrentPoints) != 1 || len(window.HistoricalCycles) != 1 ||
+		len(window.CurrentPoints) != 1 || !window.CurrentPoints[0].LinkedHistory ||
+		len(window.HistoricalCycles) != 1 ||
 		len(window.HistoryBand) != 1 ||
 		window.PreviousRemainingAtElapsed == nil ||
 		window.HistoryMedianRemainingAtElapsed == nil {

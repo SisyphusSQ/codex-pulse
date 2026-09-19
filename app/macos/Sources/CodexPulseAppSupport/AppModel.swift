@@ -1827,6 +1827,63 @@ public final class AppModel: ObservableObject {
         )
     }
 
+    public func linkLegacyQuotaHistory(
+        _ account: Codexpulse_Core_V1_CodexSubscriptionAccount
+    ) {
+        guard account.current,
+              account.detected,
+              account.hasDetectedAccountID,
+              account.hasDetectedRevision,
+              account.hasLegacyQuotaHistory,
+              account.legacyQuotaHistory.state == .available
+        else { return }
+        var request = Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest()
+        request.detectedAccountID = account.detectedAccountID
+        request.expectedDetectedRevision = account.detectedRevision
+        let preparedRequest = request
+        mutateCodexSubscription(
+            expectedReadback: {
+                CodexSubscriptionReadback.containsLegacyQuotaHistory(
+                    $0,
+                    detectedAccountID: preparedRequest.detectedAccountID,
+                    state: .linked
+                )
+            },
+            operation: { [runtime] in
+                try await runtime.linkLegacyQuotaHistory(preparedRequest)
+            }
+        )
+    }
+
+    public func unlinkLegacyQuotaHistory(
+        _ account: Codexpulse_Core_V1_CodexSubscriptionAccount
+    ) {
+        guard account.detected,
+              account.hasDetectedAccountID,
+              account.hasDetectedRevision,
+              account.hasLegacyQuotaHistory,
+              account.legacyQuotaHistory.state == .linked,
+              account.legacyQuotaHistory.hasAssociationRevision
+        else { return }
+        var request = Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest()
+        request.detectedAccountID = account.detectedAccountID
+        request.expectedDetectedRevision = account.detectedRevision
+        request.expectedAssociationRevision = account.legacyQuotaHistory.associationRevision
+        let preparedRequest = request
+        mutateCodexSubscription(
+            expectedReadback: {
+                CodexSubscriptionReadback.containsLegacyQuotaHistory(
+                    $0,
+                    detectedAccountID: preparedRequest.detectedAccountID,
+                    state: .available
+                )
+            },
+            operation: { [runtime] in
+                try await runtime.unlinkLegacyQuotaHistory(preparedRequest)
+            }
+        )
+    }
+
     public func handleSystemTimeZoneChange() {
         let identifier = TimeZone.current.identifier
         observedTimeZoneIdentifier = identifier

@@ -124,6 +124,18 @@ public actor CoreClient {
         try await service.unlinkCodexSubscriptionAccount(request, metadata: metadata)
     }
 
+    public func linkLegacyQuotaHistory(
+        _ request: Codexpulse_Core_V1_LinkLegacyQuotaHistoryRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        try await service.linkLegacyQuotaHistory(request, metadata: metadata)
+    }
+
+    public func unlinkLegacyQuotaHistory(
+        _ request: Codexpulse_Core_V1_UnlinkLegacyQuotaHistoryRequest
+    ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {
+        try await service.unlinkLegacyQuotaHistory(request, metadata: metadata)
+    }
+
     public func usageCost(
         _ request: Codexpulse_Core_V1_UsageCostRequest,
         retryPolicy: ReadRetryPolicy = .transportDefault
