@@ -24,6 +24,8 @@ const (
 	CoreService_Contracts_FullMethodName                      = "/codexpulse.core.v1.CoreService/Contracts"
 	CoreService_AccountSnapshot_FullMethodName                = "/codexpulse.core.v1.CoreService/AccountSnapshot"
 	CoreService_ListCodexSubscriptionAccounts_FullMethodName  = "/codexpulse.core.v1.CoreService/ListCodexSubscriptionAccounts"
+	CoreService_ListCodexAccountQuotas_FullMethodName         = "/codexpulse.core.v1.CoreService/ListCodexAccountQuotas"
+	CoreService_ClearCodexAccountQuotaHistory_FullMethodName  = "/codexpulse.core.v1.CoreService/ClearCodexAccountQuotaHistory"
 	CoreService_CreateCodexSubscriptionAccount_FullMethodName = "/codexpulse.core.v1.CoreService/CreateCodexSubscriptionAccount"
 	CoreService_UpdateCodexSubscriptionAccount_FullMethodName = "/codexpulse.core.v1.CoreService/UpdateCodexSubscriptionAccount"
 	CoreService_DeleteCodexSubscriptionAccount_FullMethodName = "/codexpulse.core.v1.CoreService/DeleteCodexSubscriptionAccount"
@@ -83,6 +85,8 @@ type CoreServiceClient interface {
 	Contracts(ctx context.Context, in *ContractsRequest, opts ...grpc.CallOption) (*ContractsResponse, error)
 	AccountSnapshot(ctx context.Context, in *AccountSnapshotRequest, opts ...grpc.CallOption) (*AccountSnapshotResponse, error)
 	ListCodexSubscriptionAccounts(ctx context.Context, in *CodexSubscriptionAccountsRequest, opts ...grpc.CallOption) (*CodexSubscriptionAccountsResponse, error)
+	ListCodexAccountQuotas(ctx context.Context, in *CodexAccountQuotasRequest, opts ...grpc.CallOption) (*CodexAccountQuotasResponse, error)
+	ClearCodexAccountQuotaHistory(ctx context.Context, in *ClearCodexAccountQuotaHistoryRequest, opts ...grpc.CallOption) (*CodexAccountQuotaHistoryClearReceipt, error)
 	CreateCodexSubscriptionAccount(ctx context.Context, in *CreateCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error)
 	UpdateCodexSubscriptionAccount(ctx context.Context, in *UpdateCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error)
 	DeleteCodexSubscriptionAccount(ctx context.Context, in *DeleteCodexSubscriptionAccountRequest, opts ...grpc.CallOption) (*CodexSubscriptionMutationReceipt, error)
@@ -183,6 +187,26 @@ func (c *coreServiceClient) ListCodexSubscriptionAccounts(ctx context.Context, i
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CodexSubscriptionAccountsResponse)
 	err := c.cc.Invoke(ctx, CoreService_ListCodexSubscriptionAccounts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) ListCodexAccountQuotas(ctx context.Context, in *CodexAccountQuotasRequest, opts ...grpc.CallOption) (*CodexAccountQuotasResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CodexAccountQuotasResponse)
+	err := c.cc.Invoke(ctx, CoreService_ListCodexAccountQuotas_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) ClearCodexAccountQuotaHistory(ctx context.Context, in *ClearCodexAccountQuotaHistoryRequest, opts ...grpc.CallOption) (*CodexAccountQuotaHistoryClearReceipt, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CodexAccountQuotaHistoryClearReceipt)
+	err := c.cc.Invoke(ctx, CoreService_ClearCodexAccountQuotaHistory_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -669,6 +693,8 @@ type CoreServiceServer interface {
 	Contracts(context.Context, *ContractsRequest) (*ContractsResponse, error)
 	AccountSnapshot(context.Context, *AccountSnapshotRequest) (*AccountSnapshotResponse, error)
 	ListCodexSubscriptionAccounts(context.Context, *CodexSubscriptionAccountsRequest) (*CodexSubscriptionAccountsResponse, error)
+	ListCodexAccountQuotas(context.Context, *CodexAccountQuotasRequest) (*CodexAccountQuotasResponse, error)
+	ClearCodexAccountQuotaHistory(context.Context, *ClearCodexAccountQuotaHistoryRequest) (*CodexAccountQuotaHistoryClearReceipt, error)
 	CreateCodexSubscriptionAccount(context.Context, *CreateCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error)
 	UpdateCodexSubscriptionAccount(context.Context, *UpdateCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error)
 	DeleteCodexSubscriptionAccount(context.Context, *DeleteCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error)
@@ -739,6 +765,12 @@ func (UnimplementedCoreServiceServer) AccountSnapshot(context.Context, *AccountS
 }
 func (UnimplementedCoreServiceServer) ListCodexSubscriptionAccounts(context.Context, *CodexSubscriptionAccountsRequest) (*CodexSubscriptionAccountsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListCodexSubscriptionAccounts not implemented")
+}
+func (UnimplementedCoreServiceServer) ListCodexAccountQuotas(context.Context, *CodexAccountQuotasRequest) (*CodexAccountQuotasResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCodexAccountQuotas not implemented")
+}
+func (UnimplementedCoreServiceServer) ClearCodexAccountQuotaHistory(context.Context, *ClearCodexAccountQuotaHistoryRequest) (*CodexAccountQuotaHistoryClearReceipt, error) {
+	return nil, status.Error(codes.Unimplemented, "method ClearCodexAccountQuotaHistory not implemented")
 }
 func (UnimplementedCoreServiceServer) CreateCodexSubscriptionAccount(context.Context, *CreateCodexSubscriptionAccountRequest) (*CodexSubscriptionMutationReceipt, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateCodexSubscriptionAccount not implemented")
@@ -985,6 +1017,42 @@ func _CoreService_ListCodexSubscriptionAccounts_Handler(srv interface{}, ctx con
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CoreServiceServer).ListCodexSubscriptionAccounts(ctx, req.(*CodexSubscriptionAccountsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_ListCodexAccountQuotas_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CodexAccountQuotasRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).ListCodexAccountQuotas(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_ListCodexAccountQuotas_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).ListCodexAccountQuotas(ctx, req.(*CodexAccountQuotasRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_ClearCodexAccountQuotaHistory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClearCodexAccountQuotaHistoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).ClearCodexAccountQuotaHistory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_ClearCodexAccountQuotaHistory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).ClearCodexAccountQuotaHistory(ctx, req.(*ClearCodexAccountQuotaHistoryRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1836,6 +1904,14 @@ var CoreService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListCodexSubscriptionAccounts",
 			Handler:    _CoreService_ListCodexSubscriptionAccounts_Handler,
+		},
+		{
+			MethodName: "ListCodexAccountQuotas",
+			Handler:    _CoreService_ListCodexAccountQuotas_Handler,
+		},
+		{
+			MethodName: "ClearCodexAccountQuotaHistory",
+			Handler:    _CoreService_ClearCodexAccountQuotaHistory_Handler,
 		},
 		{
 			MethodName: "CreateCodexSubscriptionAccount",

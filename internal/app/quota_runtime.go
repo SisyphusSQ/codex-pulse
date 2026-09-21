@@ -185,6 +185,7 @@ func startApplicationQuotaRuntime(
 		rootCancel()
 		return nil, applicationQuotaDependencyError(ctx, err)
 	}
+	account.preferences = config.Preferences
 	runtime.account = account
 	mismatch.runtime = account
 	if binding.BindingGeneration > 0 {

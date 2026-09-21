@@ -9,6 +9,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/accountquota"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptiontier"
@@ -24,7 +25,7 @@ import (
 )
 
 const (
-	ContractVersion        = "core-rpc-v6"
+	ContractVersion        = "core-rpc-v7"
 	ProviderControlVersion = "provider-control-v1"
 )
 
@@ -145,6 +146,7 @@ type ServiceConfig struct {
 	APISubscriptions     apiSubscriptionsQuery
 	APICredentials       apiCredentialStore
 	CodexSubscriptions   CodexSubscriptionAccounts
+	CodexAccountQuotas   CodexAccountQuotas
 	QueryObserver        QueryObserver
 	SessionDeepIndex     sessionDeepIndexCommand
 }
@@ -173,6 +175,7 @@ type Service struct {
 	apiSubscriptions     apiSubscriptionsQuery
 	apiCredentials       apiCredentialStore
 	codexSubscriptions   CodexSubscriptionAccounts
+	codexAccountQuotas   CodexAccountQuotas
 	queryObserver        QueryObserver
 }
 
@@ -198,6 +201,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 		apiSubscriptions:     config.APISubscriptions,
 		apiCredentials:       config.APICredentials,
 		codexSubscriptions:   config.CodexSubscriptions,
+		codexAccountQuotas:   config.CodexAccountQuotas,
 	}, nil
 }
 
@@ -340,6 +344,7 @@ type ContractInfo struct {
 	DashboardSummaryVersion          string                  `json:"dashboardSummaryVersion"`
 	CodexProTierVersion              string                  `json:"codexProTierVersion"`
 	CodexSubscriptionAccountsVersion string                  `json:"codexSubscriptionAccountsVersion"`
+	CodexAccountQuotasVersion        string                  `json:"codexAccountQuotasVersion"`
 	ProviderControlVersion           string                  `json:"providerControlVersion"`
 	Methods                          []MethodInfo            `json:"methods"`
 	CommandMethods                   []string                `json:"commandMethods"`
@@ -350,6 +355,8 @@ var methodAllowlist = []MethodInfo{
 	{Name: "Contracts", Kind: MethodQuery},
 	{Name: "AccountSnapshot", Kind: MethodQuery},
 	{Name: "ListCodexSubscriptionAccounts", Kind: MethodQuery},
+	{Name: "ListCodexAccountQuotas", Kind: MethodQuery},
+	{Name: "ClearCodexAccountQuotaHistory", Kind: MethodCommand},
 	{Name: "CreateCodexSubscriptionAccount", Kind: MethodCommand},
 	{Name: "UpdateCodexSubscriptionAccount", Kind: MethodCommand},
 	{Name: "LinkCodexSubscriptionAccount", Kind: MethodCommand},
@@ -401,13 +408,14 @@ func (service *Service) Contracts() ContractInfo {
 			DashboardSummaryVersion:          dashboardsummary.ContractVersion,
 			CodexProTierVersion:              subscriptiontier.ContractVersion,
 			CodexSubscriptionAccountsVersion: subscriptionaccounts.ContractVersion,
+			CodexAccountQuotasVersion:        accountquota.ContractVersion,
 			ProviderControlVersion:           ProviderControlVersion,
 			Methods:                          append([]MethodInfo(nil), methodAllowlist...),
 			CommandMethods: []string{
 				"RequestQuotaRefresh", "RequestProviderRefresh", "UpdateAPICredential", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
 				"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
 				"CreateCodexSubscriptionAccount", "UpdateCodexSubscriptionAccount", "DeleteCodexSubscriptionAccount", "LinkCodexSubscriptionAccount", "UnlinkCodexSubscriptionAccount",
-				"LinkLegacyQuotaHistory", "UnlinkLegacyQuotaHistory",
+				"LinkLegacyQuotaHistory", "UnlinkLegacyQuotaHistory", "ClearCodexAccountQuotaHistory",
 			}, ErrorExample: errorExample,
 		}
 	})

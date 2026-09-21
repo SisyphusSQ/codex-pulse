@@ -9,6 +9,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/apisubscriptions"
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/accountquota"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptiontier"
@@ -50,8 +51,8 @@ func TestServiceExposesExactBusinessSurface(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
-		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "ConfirmHomeSwitch", "Contracts", "CreateCodexSubscriptionAccount", "DashboardSummary", "DataHealth", "Health",
-		"HealthProjection", "InvocationUsage", "Job", "LinkCodexSubscriptionAccount", "LinkLegacyQuotaHistory", "ListCodexSubscriptionAccounts", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
+		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "ClearCodexAccountQuotaHistory", "ConfirmHomeSwitch", "Contracts", "CreateCodexSubscriptionAccount", "DashboardSummary", "DataHealth", "Health",
+		"HealthProjection", "InvocationUsage", "Job", "LinkCodexSubscriptionAccount", "LinkLegacyQuotaHistory", "ListCodexAccountQuotas", "ListCodexSubscriptionAccounts", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
 		"PlanHomeSwitch", "PricingCatalogCurrent", "ProjectDetail", "QuotaCurrent", "QuotaPace", "RecoverHomeSwitch", "RequestProviderRefresh", "RequestQuotaRefresh",
 		"RunRuntimeAction", "SessionDetail", "Settings", "Source", "UnlinkCodexSubscriptionAccount", "UnlinkLegacyQuotaHistory", "DeleteCodexSubscriptionAccount", "UpdateAPICredential", "UpdateCodexSubscriptionAccount", "UpdateSettings", "UsageCost",
 	}
@@ -356,13 +357,14 @@ func TestServiceContractsExposeUniqueCommandMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	contract := service.Contracts()
-	if contract.Version != "core-rpc-v6" ||
+	if contract.Version != "core-rpc-v7" ||
 		contract.UsageCostVersion != "usage-cost-v2" ||
 		contract.InvocationUsageVersion != "invocation-usage-v1" ||
 		contract.PricingCatalogVersion != "pricing-catalog-v1" ||
 		contract.DashboardSummaryVersion != "dashboard-summary-v2" ||
 		contract.CodexProTierVersion != subscriptiontier.ContractVersion ||
 		contract.CodexSubscriptionAccountsVersion != subscriptionaccounts.ContractVersion ||
+		contract.CodexAccountQuotasVersion != accountquota.ContractVersion ||
 		contract.ProviderControlVersion != ProviderControlVersion {
 		t.Fatalf("Contracts() versions = %#v", contract)
 	}

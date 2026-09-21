@@ -214,6 +214,8 @@ struct RootView: View {
                 RuntimeAwarePage(model: model) { ProjectsView(model: model) }
             case .quotaUsage:
                 RuntimeAwarePage(model: model) { QuotaUsageView(model: model) }
+            case .accountQuotas:
+                RuntimeAwarePage(model: model) { CodexAccountQuotasView(model: model) }
             case .invocationUsage:
                 RuntimeAwarePage(model: model) { InvocationUsageView(model: model) }
             case .apiSubscriptions:

@@ -849,6 +849,7 @@ func TestApplicationLifecycleRuntimeCommitsSettingsBeforeQuotaReconcile(t *testi
 		ExpectedRevision: current.Revision,
 		Providers:        current.Providers,
 		Online:           preferences.OnlinePreferences{},
+		CodexAccounts:    current.CodexAccounts,
 		Refresh:          current.Refresh,
 		Updates:          current.Updates,
 		UI:               current.UI,
@@ -928,9 +929,10 @@ func TestApplicationLifecycleRuntimeReturnsCommittedSettingsOnReconcileFailure(t
 		Online: preferences.OnlinePreferences{
 			QuotaEnabled: true,
 		},
-		Refresh: current.Refresh,
-		Updates: current.Updates,
-		UI:      current.UI,
+		CodexAccounts: current.CodexAccounts,
+		Refresh:       current.Refresh,
+		Updates:       current.Updates,
+		UI:            current.UI,
 	})
 	if !errors.Is(err, ErrApplicationPreferencesPostCommit) || !errors.Is(err, reconcileFailure) {
 		t.Fatalf("UpdateQuotaSettings() error = %v", err)
@@ -1001,9 +1003,10 @@ func TestApplicationLifecycleRuntimeBeginDrainSealsAdmissionAndDrainsSettingsUpd
 			Online: preferences.OnlinePreferences{
 				QuotaEnabled: true,
 			},
-			Refresh: current.Refresh,
-			Updates: current.Updates,
-			UI:      current.UI,
+			CodexAccounts: current.CodexAccounts,
+			Refresh:       current.Refresh,
+			Updates:       current.Updates,
+			UI:            current.UI,
 		})
 		updateDone <- updateErr
 	}()
@@ -1107,9 +1110,10 @@ func TestApplicationLifecycleRuntimeSettingsAndHomeConfirmDoNotDeadlock(t *testi
 			Online: preferences.OnlinePreferences{
 				QuotaEnabled: true,
 			},
-			Refresh: current.Refresh,
-			Updates: current.Updates,
-			UI:      current.UI,
+			CodexAccounts: current.CodexAccounts,
+			Refresh:       current.Refresh,
+			Updates:       current.Updates,
+			UI:            current.UI,
 		})
 		settingsDone <- settingsErr
 	}()

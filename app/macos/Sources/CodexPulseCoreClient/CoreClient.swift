@@ -94,6 +94,26 @@ public actor CoreClient {
         }
     }
 
+    public func listCodexAccountQuotas(
+        _ request: Codexpulse_Core_V1_CodexAccountQuotasRequest,
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_CodexAccountQuotasResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.listCodexAccountQuotas(request, metadata: metadata)
+        }
+    }
+
+    public func clearCodexAccountQuotaHistory()
+        async throws -> Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt
+    {
+        try await service.clearCodexAccountQuotaHistory(
+            Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest(),
+            metadata: metadata
+        )
+    }
+
     public func createCodexSubscriptionAccount(
         _ request: Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest
     ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {

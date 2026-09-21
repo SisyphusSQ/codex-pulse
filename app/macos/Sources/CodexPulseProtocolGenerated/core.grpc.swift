@@ -85,6 +85,32 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
                 type: .unary
             )
         }
+        /// Namespace for "ListCodexAccountQuotas" metadata.
+        public enum ListCodexAccountQuotas: Sendable {
+            /// Request type for "ListCodexAccountQuotas".
+            public typealias Input = Codexpulse_Core_V1_CodexAccountQuotasRequest
+            /// Response type for "ListCodexAccountQuotas".
+            public typealias Output = Codexpulse_Core_V1_CodexAccountQuotasResponse
+            /// Descriptor for "ListCodexAccountQuotas".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "ListCodexAccountQuotas",
+                type: .unary
+            )
+        }
+        /// Namespace for "ClearCodexAccountQuotaHistory" metadata.
+        public enum ClearCodexAccountQuotaHistory: Sendable {
+            /// Request type for "ClearCodexAccountQuotaHistory".
+            public typealias Input = Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest
+            /// Response type for "ClearCodexAccountQuotaHistory".
+            public typealias Output = Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt
+            /// Descriptor for "ClearCodexAccountQuotaHistory".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "ClearCodexAccountQuotaHistory",
+                type: .unary
+            )
+        }
         /// Namespace for "CreateCodexSubscriptionAccount" metadata.
         public enum CreateCodexSubscriptionAccount: Sendable {
             /// Request type for "CreateCodexSubscriptionAccount".
@@ -690,6 +716,8 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
             Contracts.descriptor,
             AccountSnapshot.descriptor,
             ListCodexSubscriptionAccounts.descriptor,
+            ListCodexAccountQuotas.descriptor,
+            ClearCodexAccountQuotaHistory.descriptor,
             CreateCodexSubscriptionAccount.descriptor,
             UpdateCodexSubscriptionAccount.descriptor,
             DeleteCodexSubscriptionAccount.descriptor,
@@ -852,6 +880,44 @@ extension Codexpulse_Core_V1_CoreService {
             deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexSubscriptionAccountsResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexSubscriptionAccountsResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "ListCodexAccountQuotas" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_CodexAccountQuotasRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_CodexAccountQuotasRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexAccountQuotasResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func listCodexAccountQuotas<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_CodexAccountQuotasRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_CodexAccountQuotasRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexAccountQuotasResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexAccountQuotasResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "ClearCodexAccountQuotaHistory" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func clearCodexAccountQuotaHistory<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt>) async throws -> Result
         ) async throws -> Result where Result: Sendable
 
         /// Call the "CreateCodexSubscriptionAccount" method.
@@ -1892,6 +1958,66 @@ extension Codexpulse_Core_V1_CoreService {
             try await self.client.unary(
                 request: request,
                 descriptor: Codexpulse_Core_V1_CoreService.Method.ListCodexSubscriptionAccounts.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "ListCodexAccountQuotas" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_CodexAccountQuotasRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_CodexAccountQuotasRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexAccountQuotasResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func listCodexAccountQuotas<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_CodexAccountQuotasRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_CodexAccountQuotasRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexAccountQuotasResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexAccountQuotasResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.ListCodexAccountQuotas.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
+        /// Call the "ClearCodexAccountQuotaHistory" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func clearCodexAccountQuotaHistory<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.ClearCodexAccountQuotaHistory.descriptor,
                 serializer: serializer,
                 deserializer: deserializer,
                 options: options,
@@ -3407,6 +3533,56 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
         )
     }
 
+    /// Call the "ListCodexAccountQuotas" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_CodexAccountQuotasRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func listCodexAccountQuotas<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_CodexAccountQuotasRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexAccountQuotasResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.listCodexAccountQuotas(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_CodexAccountQuotasRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_CodexAccountQuotasResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "ClearCodexAccountQuotaHistory" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func clearCodexAccountQuotaHistory<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.clearCodexAccountQuotaHistory(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
     /// Call the "CreateCodexSubscriptionAccount" method.
     ///
     /// - Parameters:
@@ -4698,6 +4874,64 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
             metadata: metadata
         )
         return try await self.listCodexSubscriptionAccounts(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "ListCodexAccountQuotas" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func listCodexAccountQuotas<Result>(
+        _ message: Codexpulse_Core_V1_CodexAccountQuotasRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexAccountQuotasResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_CodexAccountQuotasRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.listCodexAccountQuotas(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "ClearCodexAccountQuotaHistory" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func clearCodexAccountQuotaHistory<Result>(
+        _ message: Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.clearCodexAccountQuotaHistory(
             request: request,
             options: options,
             onResponse: handleResponse

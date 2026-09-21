@@ -84,6 +84,7 @@ type SettingsUpdate struct {
 	ExpectedRevision uint64
 	Providers        ProviderPreferences
 	Online           OnlinePreferences
+	CodexAccounts    CodexAccountPreferences
 	Refresh          RefreshPreferences
 	Updates          UpdatePreferences
 	UI               UIPreferences
@@ -158,6 +159,7 @@ func (service *Service) UpdateSettings(ctx context.Context, request SettingsUpda
 	next.Revision = revision
 	next.Providers = request.Providers
 	next.Online = request.Online
+	next.CodexAccounts = request.CodexAccounts
 	next.Refresh = request.Refresh
 	next.Updates = cloneUpdatePreferences(request.Updates)
 	next.UI = request.UI
@@ -636,6 +638,7 @@ func (service *Service) recoveryContext(ctx context.Context) (context.Context, c
 
 func settingsEqual(current Snapshot, request SettingsUpdate) bool {
 	return current.Providers == request.Providers && current.Online == request.Online &&
+		current.CodexAccounts == request.CodexAccounts &&
 		current.Refresh == request.Refresh && reflect.DeepEqual(current.Updates, request.Updates) &&
 		current.UI == request.UI
 }

@@ -22,3 +22,20 @@ type CodexSubscriptionManualUpdate = subscriptionaccounts.UpdateRequest
 type CodexSubscriptionDeleteRequest = subscriptionaccounts.DeleteRequest
 type CodexSubscriptionLinkRequest = subscriptionaccounts.LinkRequest
 type CodexSubscriptionUnlinkRequest = subscriptionaccounts.UnlinkRequest
+
+type CodexDetectedAccountQuotaRecord struct {
+	DetectedAccountID string
+	Windows           []QuotaCurrent
+}
+
+type CodexAccountQuotaRecords struct {
+	Subscriptions CodexSubscriptionRecords
+	Accounts      []CodexDetectedAccountQuotaRecord
+}
+
+type CodexAccountQuotaPurgeResult struct {
+	AccountCount       int64
+	WindowCount        int64
+	ObservationCount   int64
+	ResetSnapshotCount int64
+}

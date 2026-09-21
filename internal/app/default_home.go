@@ -53,7 +53,7 @@ func ensureDefaultCodexHomeConfigured(
 	if err != nil {
 		return defaultCodexHomeResult{}, err
 	}
-	snapshot, err := preferences.NewV3Snapshot(home, preferences.DefaultOnlinePreferences())
+	snapshot, err := preferences.NewCurrentSnapshot(home, preferences.DefaultOnlinePreferences())
 	if err != nil {
 		return defaultCodexHomeResult{}, err
 	}

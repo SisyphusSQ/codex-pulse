@@ -101,6 +101,9 @@ func mapSettings(snapshot preferences.Snapshot, providers providercontrol.StateR
 			GrokAutoRefreshEnabled: snapshot.Online.GrokAutoRefreshEnabled,
 			CursorOnlineEnabled:    snapshot.Online.CursorOnlineEnabled,
 		},
+		CodexAccounts: SettingsCodexAccountsSnapshot{
+			RetainQuotaHistory: snapshot.CodexAccounts.RetainQuotaHistory,
+		},
 		Refresh: SettingsRefreshSnapshot{
 			QuotaIntervalSeconds:        snapshot.Refresh.QuotaIntervalSeconds,
 			ResetCreditsIntervalSeconds: snapshot.Refresh.ResetCreditsIntervalSeconds,
@@ -201,6 +204,7 @@ func settingsEditableFields() []EditableField {
 		booleanField("online.cursorOnlineEnabled", true),
 		booleanField("online.grokQuotaEnabled", true),
 		booleanField("online.grokAutoRefreshEnabled", true),
+		booleanField("codexAccounts.retainQuotaHistory", true),
 		enumField("providers.codex.intent", true, []string{"enabled", "disabled"}),
 		enumField("providers.cursor.intent", true, []string{"enabled", "disabled"}),
 		enumField("providers.grok.intent", true, []string{"enabled", "disabled"}),

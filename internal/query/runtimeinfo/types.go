@@ -313,6 +313,10 @@ type SettingsOnlineSnapshot struct {
 	CursorOnlineEnabled    bool `json:"cursorOnlineEnabled"`
 }
 
+type SettingsCodexAccountsSnapshot struct {
+	RetainQuotaHistory bool `json:"retainQuotaHistory"`
+}
+
 type SettingsRefreshSnapshot struct {
 	QuotaIntervalSeconds        int64 `json:"quotaIntervalSeconds"`
 	ResetCreditsIntervalSeconds int64 `json:"resetCreditsIntervalSeconds"`
@@ -346,15 +350,16 @@ type SettingsProviderSnapshot struct {
 }
 
 type SettingsSnapshot struct {
-	SchemaVersion       int                        `json:"schemaVersion"`
-	Revision            string                     `json:"revision"`
-	OnboardingCompleted bool                       `json:"onboardingCompleted"`
-	Home                SettingsHomeSnapshot       `json:"home"`
-	Online              SettingsOnlineSnapshot     `json:"online"`
-	Refresh             SettingsRefreshSnapshot    `json:"refresh"`
-	Updates             SettingsUpdateSnapshot     `json:"updates"`
-	UI                  SettingsUISnapshot         `json:"ui"`
-	Providers           []SettingsProviderSnapshot `json:"providers"`
+	SchemaVersion       int                           `json:"schemaVersion"`
+	Revision            string                        `json:"revision"`
+	OnboardingCompleted bool                          `json:"onboardingCompleted"`
+	Home                SettingsHomeSnapshot          `json:"home"`
+	Online              SettingsOnlineSnapshot        `json:"online"`
+	CodexAccounts       SettingsCodexAccountsSnapshot `json:"codexAccounts"`
+	Refresh             SettingsRefreshSnapshot       `json:"refresh"`
+	Updates             SettingsUpdateSnapshot        `json:"updates"`
+	UI                  SettingsUISnapshot            `json:"ui"`
+	Providers           []SettingsProviderSnapshot    `json:"providers"`
 }
 
 type EditableValueType string

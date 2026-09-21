@@ -92,6 +92,18 @@ func (repository *Repository) ConfirmCodexAccountBinding(
 	observedAtMS int64,
 	reason CodexAccountBindingReason,
 ) (CodexAccountBinding, bool, error) {
+	return repository.ConfirmCodexAccountBindingWithRetention(
+		ctx, accountScope, observedAtMS, reason, true,
+	)
+}
+
+func (repository *Repository) ConfirmCodexAccountBindingWithRetention(
+	ctx context.Context,
+	accountScope string,
+	observedAtMS int64,
+	reason CodexAccountBindingReason,
+	retainPreviousQuota bool,
+) (CodexAccountBinding, bool, error) {
 	if repository == nil || repository.database == nil {
 		return CodexAccountBinding{}, false, ErrInvalidRepository
 	}
@@ -113,6 +125,13 @@ func (repository *Repository) ConfirmCodexAccountBinding(
 		}
 		if err := ensureDetectedCodexSubscriptionAccount(ctx, transaction, accountScope); err != nil {
 			return err
+		}
+		if !retainPreviousQuota && reason != CodexAccountBindingReasonStartup &&
+			current.LastConfirmedScope != nil &&
+			*current.LastConfirmedScope != accountScope {
+			if _, err := purgeCodexAccountQuotaFacts(ctx, transaction, *current.LastConfirmedScope); err != nil {
+				return err
+			}
 		}
 		generation, err := confirmCodexAccountBindingGeneration(current, accountScope)
 		if err != nil {

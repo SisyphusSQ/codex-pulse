@@ -2,7 +2,8 @@ package preferences
 
 const (
 	preferencesSchemaV2             = 2
-	CurrentPreferencesSchemaVersion = 3
+	preferencesSchemaV3             = 3
+	CurrentPreferencesSchemaVersion = 4
 	DefaultDataStoreKey             = "default"
 )
 
@@ -86,6 +87,10 @@ type OnlinePreferences struct {
 	GrokAutoRefreshEnabled bool `json:"grok_auto_refresh_enabled"`
 }
 
+type CodexAccountPreferences struct {
+	RetainQuotaHistory bool `json:"retain_quota_history"`
+}
+
 type RefreshPreferences struct {
 	QuotaIntervalSeconds        int64 `json:"quota_interval_seconds"`
 	ResetCreditsIntervalSeconds int64 `json:"reset_credits_interval_seconds"`
@@ -141,21 +146,22 @@ type HomeSwitchAudit struct {
 }
 
 // Snapshot 是权威私有 preferences domain contract，与 SQLite model 和 RPC/UI DTO 隔离。
-// v3 允许省略 codex_home；JSON 解码拒绝显式 null。
+// v4 允许省略 codex_home；JSON 解码拒绝显式 null。
 type Snapshot struct {
-	SchemaVersion int                    `json:"schema_version"`
-	Revision      uint64                 `json:"revision"`
-	Onboarding    OnboardingPreferences  `json:"onboarding"`
-	CodexHome     *CodexHomePreferences  `json:"codex_home,omitempty"`
-	Providers     ProviderPreferences    `json:"providers"`
-	Online        OnlinePreferences      `json:"online"`
-	Refresh       RefreshPreferences     `json:"refresh"`
-	Updates       UpdatePreferences      `json:"updates"`
-	UI            UIPreferences          `json:"ui"`
-	DetachedHomes []CodexHomePreferences `json:"detached_homes,omitempty"`
-	PendingSwitch *HomeSwitchJournal     `json:"pending_switch,omitempty"`
-	PendingResume *HomeResumeJournal     `json:"pending_resume,omitempty"`
-	LastSwitch    *HomeSwitchAudit       `json:"last_switch,omitempty"`
+	SchemaVersion int                     `json:"schema_version"`
+	Revision      uint64                  `json:"revision"`
+	Onboarding    OnboardingPreferences   `json:"onboarding"`
+	CodexHome     *CodexHomePreferences   `json:"codex_home,omitempty"`
+	Providers     ProviderPreferences     `json:"providers"`
+	Online        OnlinePreferences       `json:"online"`
+	CodexAccounts CodexAccountPreferences `json:"codex_accounts"`
+	Refresh       RefreshPreferences      `json:"refresh"`
+	Updates       UpdatePreferences       `json:"updates"`
+	UI            UIPreferences           `json:"ui"`
+	DetachedHomes []CodexHomePreferences  `json:"detached_homes,omitempty"`
+	PendingSwitch *HomeSwitchJournal      `json:"pending_switch,omitempty"`
+	PendingResume *HomeResumeJournal      `json:"pending_resume,omitempty"`
+	LastSwitch    *HomeSwitchAudit        `json:"last_switch,omitempty"`
 }
 
 func DefaultRefreshPreferences() RefreshPreferences {
@@ -191,6 +197,10 @@ func DefaultOnlinePreferences() OnlinePreferences {
 		QuotaEnabled: true, ResetCreditsEnabled: true, CursorOnlineEnabled: true,
 		GrokQuotaEnabled: true, GrokAutoRefreshEnabled: true,
 	}
+}
+
+func DefaultCodexAccountPreferences() CodexAccountPreferences {
+	return CodexAccountPreferences{RetainQuotaHistory: true}
 }
 
 func CloneCodexHome(value *CodexHomePreferences) *CodexHomePreferences {

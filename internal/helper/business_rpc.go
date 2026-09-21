@@ -398,6 +398,9 @@ func (api *grpcAPI) UpdateSettings(
 			GrokQuotaEnabled:       request.GetOnline().GetGrokQuotaEnabled(),
 			GrokAutoRefreshEnabled: request.GetOnline().GetGrokAutoRefreshEnabled(),
 		},
+		CodexAccounts: core.SettingsCodexAccountsUpdate{
+			RetainQuotaHistory: request.GetCodexAccounts().GetRetainQuotaHistory(),
+		},
 		Refresh: core.SettingsRefreshUpdate{
 			QuotaIntervalSeconds:        request.GetRefresh().GetQuotaIntervalSeconds(),
 			ResetCreditsIntervalSeconds: request.GetRefresh().GetResetCreditsIntervalSeconds(),

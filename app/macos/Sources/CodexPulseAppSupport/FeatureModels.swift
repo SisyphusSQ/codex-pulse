@@ -214,6 +214,7 @@ public struct SettingsDraft: Equatable, Sendable {
     public var locale: String
     public var launchBehavior: String
     public var overviewRange: String
+    public var retainCodexAccountQuotaHistory: Bool
     public var codexIntent: Codexpulse_Core_V1_ProviderIntent
     public var cursorIntent: Codexpulse_Core_V1_ProviderIntent
     public var grokIntent: Codexpulse_Core_V1_ProviderIntent
@@ -235,6 +236,7 @@ public struct SettingsDraft: Equatable, Sendable {
         locale = snapshot.ui.locale
         launchBehavior = snapshot.ui.launchBehavior
         overviewRange = snapshot.ui.overviewRange
+        retainCodexAccountQuotaHistory = snapshot.codexAccounts.retainQuotaHistory
         let catalog = ProviderCatalog(response)
         codexIntent = catalog.state(for: .codex)?.intent ?? .auto
         cursorIntent = catalog.state(for: .cursor)?.intent ?? .auto
@@ -286,6 +288,11 @@ public struct SettingsDraft: Equatable, Sendable {
         ui.launchBehavior = editable.contains("ui.launchBehavior") ? launchBehavior : current.launchBehavior
         ui.overviewRange = editable.contains("ui.overviewRange") ? overviewRange : current.overviewRange
         request.ui = ui
+
+        var codexAccounts = Codexpulse_Core_V1_SettingsCodexAccountsUpdate()
+        codexAccounts.retainQuotaHistory = editable.contains("codexAccounts.retainQuotaHistory")
+            ? retainCodexAccountQuotaHistory : current.retainCodexAccountQuotaHistory
+        request.codexAccounts = codexAccounts
 
         request.providers = [
             providerUpdate(

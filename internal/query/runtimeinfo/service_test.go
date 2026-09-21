@@ -48,6 +48,7 @@ func TestQuotaCurrentAndSettingsReturnVersionedRedactedFacts(t *testing.T) {
 		settings.Snapshot.Home.SwitchStatus != HomeSwitchPending ||
 		!settings.Snapshot.Online.GrokAutoRefreshEnabled ||
 		!settings.Snapshot.Online.CursorOnlineEnabled ||
+		!settings.Snapshot.CodexAccounts.RetainQuotaHistory ||
 		len(settings.Snapshot.Providers) != 3 ||
 		settings.Snapshot.Providers[0].Provider != "codex" ||
 		settings.Snapshot.Providers[0].Intent != "PROVIDER_INTENT_AUTO" ||
@@ -72,6 +73,7 @@ func TestQuotaCurrentAndSettingsReturnVersionedRedactedFacts(t *testing.T) {
 	assertEditableField(t, settings.EditableFields, "updates.channel", true, nil, nil)
 	assertEditableField(t, settings.EditableFields, "online.grokAutoRefreshEnabled", true, nil, nil)
 	assertEditableField(t, settings.EditableFields, "online.cursorOnlineEnabled", true, nil, nil)
+	assertEditableField(t, settings.EditableFields, "codexAccounts.retainQuotaHistory", true, nil, nil)
 	assertEditableOptions(
 		t, settings.EditableFields, "providers.codex.intent",
 		[]string{"enabled", "disabled"},
@@ -824,6 +826,7 @@ func validSensitivePreferences() preferences.Snapshot {
 		Online: preferences.OnlinePreferences{
 			QuotaEnabled: true, ResetCreditsEnabled: true, CursorOnlineEnabled: true, GrokAutoRefreshEnabled: true,
 		},
+		CodexAccounts: preferences.DefaultCodexAccountPreferences(),
 		Refresh:       preferences.DefaultRefreshPreferences(),
 		Updates:       preferences.DefaultUpdatePreferences(),
 		UI:            preferences.DefaultUIPreferences(),

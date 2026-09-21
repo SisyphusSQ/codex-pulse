@@ -346,6 +346,9 @@ func (runtime *applicationControlRuntime) UpdateSettings(
 			GrokQuotaEnabled:       request.Online.GrokQuotaEnabled,
 			GrokAutoRefreshEnabled: request.Online.GrokAutoRefreshEnabled,
 		},
+		CodexAccounts: preferences.CodexAccountPreferences{
+			RetainQuotaHistory: request.CodexAccounts.RetainQuotaHistory,
+		},
 		Refresh: preferences.RefreshPreferences{
 			QuotaIntervalSeconds:        request.Refresh.QuotaIntervalSeconds,
 			ResetCreditsIntervalSeconds: request.Refresh.ResetCreditsIntervalSeconds,

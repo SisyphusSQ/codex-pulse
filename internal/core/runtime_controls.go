@@ -21,12 +21,13 @@ type runtimeControlCommand interface {
 }
 
 type SettingsUpdateRequest struct {
-	ExpectedRevision string                   `json:"expectedRevision"`
-	Providers        []SettingsProviderUpdate `json:"providers"`
-	Online           SettingsOnlineUpdate     `json:"online"`
-	Refresh          SettingsRefreshUpdate    `json:"refresh"`
-	Updates          SettingsUpdatesUpdate    `json:"updates"`
-	UI               SettingsUIUpdate         `json:"ui"`
+	ExpectedRevision string                      `json:"expectedRevision"`
+	Providers        []SettingsProviderUpdate    `json:"providers"`
+	Online           SettingsOnlineUpdate        `json:"online"`
+	CodexAccounts    SettingsCodexAccountsUpdate `json:"codexAccounts"`
+	Refresh          SettingsRefreshUpdate       `json:"refresh"`
+	Updates          SettingsUpdatesUpdate       `json:"updates"`
+	UI               SettingsUIUpdate            `json:"ui"`
 }
 
 type SettingsProviderUpdate struct {
@@ -40,6 +41,10 @@ type SettingsOnlineUpdate struct {
 	CursorOnlineEnabled    bool `json:"cursorOnlineEnabled"`
 	GrokQuotaEnabled       bool `json:"grokQuotaEnabled"`
 	GrokAutoRefreshEnabled bool `json:"grokAutoRefreshEnabled"`
+}
+
+type SettingsCodexAccountsUpdate struct {
+	RetainQuotaHistory bool `json:"retainQuotaHistory"`
 }
 
 type SettingsRefreshUpdate struct {

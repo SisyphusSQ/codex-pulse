@@ -49,6 +49,9 @@ func TestFileStoreConfirmCreatesCurrentTypedPreferences(t *testing.T) {
 	if got.Providers != DefaultProviderPreferences() {
 		t.Fatalf("Providers = %#v", got.Providers)
 	}
+	if got.CodexAccounts != DefaultCodexAccountPreferences() {
+		t.Fatalf("CodexAccounts = %#v", got.CodexAccounts)
+	}
 	if got.Online != (OnlinePreferences{
 		QuotaEnabled: true, ResetCreditsEnabled: false, CursorOnlineEnabled: true,
 		GrokQuotaEnabled: true, GrokAutoRefreshEnabled: true,
@@ -104,8 +107,40 @@ func TestV2PreferencesMigrateMissingGrokAutoRefreshToEnabled(t *testing.T) {
 	}
 	if decoded.SchemaVersion != CurrentPreferencesSchemaVersion ||
 		decoded.Providers != DefaultProviderPreferences() ||
+		decoded.CodexAccounts != DefaultCodexAccountPreferences() ||
 		!decoded.Online.GrokAutoRefreshEnabled || !decoded.Online.CursorOnlineEnabled {
 		t.Fatalf("migrated = %#v", decoded)
+	}
+}
+
+func TestV3PreferencesMigrateQuotaHistoryRetentionToEnabled(t *testing.T) {
+	t.Parallel()
+	value, err := preferencesFromOnboarding(validSnapshot(filepath.Join(t.TempDir(), "current-home")))
+	if err != nil {
+		t.Fatalf("preferencesFromOnboarding() error = %v", err)
+	}
+	v3 := v3Snapshot{
+		SchemaVersion: preferencesSchemaV3,
+		Revision:      value.Revision,
+		Onboarding:    value.Onboarding,
+		CodexHome:     CloneCodexHome(value.CodexHome),
+		Providers:     value.Providers,
+		Online:        value.Online,
+		Refresh:       value.Refresh,
+		Updates:       cloneUpdatePreferences(value.Updates),
+		UI:            value.UI,
+	}
+	content, err := json.Marshal(v3)
+	if err != nil {
+		t.Fatalf("json.Marshal(v3) error = %v", err)
+	}
+	decoded, migrated, err := decodePreferences(content)
+	if err != nil {
+		t.Fatalf("decodePreferences() error = %v", err)
+	}
+	if !migrated || decoded.SchemaVersion != CurrentPreferencesSchemaVersion ||
+		decoded.CodexAccounts != DefaultCodexAccountPreferences() {
+		t.Fatalf("migrated = %#v, didMigrate = %t", decoded, migrated)
 	}
 }
 
@@ -117,9 +152,9 @@ func TestFileStoreInitializePreferencesWithoutCodexHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileStore() error = %v", err)
 	}
-	snapshot, err := NewV3Snapshot(nil, DefaultOnlinePreferences())
+	snapshot, err := NewCurrentSnapshot(nil, DefaultOnlinePreferences())
 	if err != nil {
-		t.Fatalf("NewV3Snapshot() error = %v", err)
+		t.Fatalf("NewCurrentSnapshot() error = %v", err)
 	}
 	if err := store.InitializePreferences(context.Background(), snapshot); err != nil {
 		t.Fatalf("InitializePreferences() error = %v", err)
@@ -445,8 +480,8 @@ func TestDecodePreferencesRejectsDuplicateMissingAndNullRequiredFields(t *testin
 		"legacy case alias":   replaceJSONField(t, legacy, "Online_Quota_Enabled", false),
 		"legacy missing bool": removeJSONField(t, legacy, "online_quota_enabled"),
 		"legacy null bool":    replaceJSONField(t, legacy, "online_quota_enabled", nil),
-		"current duplicate": bytes.Replace(current, []byte(`"schema_version": 3,`),
-			[]byte(`"schema_version": 3, "schema_version": 3,`), 1),
+		"current duplicate": bytes.Replace(current, []byte(`"schema_version": 4,`),
+			[]byte(`"schema_version": 4, "schema_version": 4,`), 1),
 		"current root case alias": replaceJSONField(t, current, "Online", map[string]any{
 			"quota_enabled": true, "reset_credits_enabled": false,
 		}),

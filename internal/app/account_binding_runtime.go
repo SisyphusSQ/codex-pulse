@@ -52,6 +52,7 @@ type accountBindingRuntime struct {
 	quota        quotaAccountPublisher
 	invalidation queryInvalidationNotifier
 	sandwich     func(context.Context) (appserver.AccountSandwich, error)
+	preferences  confirmedPreferencesLoader
 
 	transition chan struct{}
 
@@ -262,7 +263,17 @@ func (runtime *accountBindingRuntime) reconcileIdentityLocked(
 		firstScope = secondScope
 	}
 
-	binding, _, err := runtime.repository.ConfirmCodexAccountBinding(ctx, firstScope, nowMS, reason)
+	retainPreviousQuota := true
+	if mode != identityReconcileStartup && runtime.preferences != nil {
+		preferencesSnapshot, loadErr := runtime.preferences.LoadPreferences(ctx)
+		if loadErr != nil {
+			return loadErr
+		}
+		retainPreviousQuota = preferencesSnapshot.CodexAccounts.RetainQuotaHistory
+	}
+	binding, _, err := runtime.repository.ConfirmCodexAccountBindingWithRetention(
+		ctx, firstScope, nowMS, reason, retainPreviousQuota,
+	)
 	if err != nil || binding.AccountScope == nil {
 		return err
 	}
