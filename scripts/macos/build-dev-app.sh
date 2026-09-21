@@ -48,10 +48,34 @@ case "$APP_DIR" in
     ;;
 esac
 
-swift build --package-path "$REPO_ROOT/app/macos" --configuration "$BUILD_CONFIGURATION" --product codex-pulse-app
+SWIFT_DEVELOPER_DIR=${DEVELOPER_DIR:-$(xcode-select -p 2>/dev/null || true)}
+[ -n "$SWIFT_DEVELOPER_DIR" ] || {
+  echo "unable to resolve the active Xcode developer directory" >&2
+  exit 1
+}
+SWIFT_SDK_PATH=$(DEVELOPER_DIR="$SWIFT_DEVELOPER_DIR" xcrun --sdk macosx --show-sdk-path)
+SWIFT_SDK_VERSION=$(DEVELOPER_DIR="$SWIFT_DEVELOPER_DIR" xcrun --sdk macosx --show-sdk-version)
+SWIFT_MINIMUM_TARGET=$(plutil -extract LSMinimumSystemVersion raw "$SCRIPT_DIR/Info.plist")
+SWIFT_SCRATCH_PATH="$REPO_ROOT/build/dev/swift-build-macos-$SWIFT_SDK_VERSION"
+SWIFT_BUILD_ARGUMENTS=(
+  --package-path "$REPO_ROOT/app/macos"
+  --scratch-path "$SWIFT_SCRATCH_PATH"
+  --configuration "$BUILD_CONFIGURATION"
+  -Xlinker -platform_version
+  -Xlinker macos
+  -Xlinker "$SWIFT_MINIMUM_TARGET"
+  -Xlinker "$SWIFT_SDK_VERSION"
+)
+DEVELOPER_DIR="$SWIFT_DEVELOPER_DIR" SDKROOT="$SWIFT_SDK_PATH" \
+  xcrun --sdk macosx swift build \
+  "${SWIFT_BUILD_ARGUMENTS[@]}" \
+  --product codex-pulse-app
 make -C "$REPO_ROOT" verify-helper
 
-SWIFT_BIN_DIR=$(swift build --package-path "$REPO_ROOT/app/macos" --configuration "$BUILD_CONFIGURATION" --show-bin-path)
+SWIFT_BIN_DIR=$(DEVELOPER_DIR="$SWIFT_DEVELOPER_DIR" SDKROOT="$SWIFT_SDK_PATH" \
+  xcrun --sdk macosx swift build \
+  "${SWIFT_BUILD_ARGUMENTS[@]}" \
+  --show-bin-path)
 APP_EXECUTABLE="$SWIFT_BIN_DIR/codex-pulse-app"
 SPARKLE_FRAMEWORK="$SWIFT_BIN_DIR/Sparkle.framework"
 LOCALIZATION_BUNDLE=$(find "$SWIFT_BIN_DIR" -maxdepth 1 -type d -name '*CodexPulseAppSupport*.bundle' -print -quit)
@@ -59,11 +83,19 @@ HELPER_EXECUTABLE="$REPO_ROOT/bin/codex-pulse"
 APP_ICON_SOURCE="$REPO_ROOT/app/macos/Resources/AppIcon/CodexPulse.icon"
 APP_ICONSET="$REPO_ROOT/app/macos/Resources/AppIcon/CodexPulse.iconset"
 [ -x "$APP_EXECUTABLE" ] || { echo "Swift app executable is missing" >&2; exit 1; }
+[ "$(DEVELOPER_DIR="$SWIFT_DEVELOPER_DIR" xcrun vtool -show-build "$APP_EXECUTABLE" | awk '$1 == "sdk" { print $2; exit }')" = "$SWIFT_SDK_VERSION" ] || {
+  echo "Swift app executable was not linked against the active macOS SDK $SWIFT_SDK_VERSION" >&2
+  exit 1
+}
 [ -d "$SPARKLE_FRAMEWORK" ] || { echo "Sparkle framework is missing" >&2; exit 1; }
 [ -n "$LOCALIZATION_BUNDLE" ] && [ -d "$LOCALIZATION_BUNDLE" ] || {
   echo "App localization resource bundle is missing" >&2
   exit 1
 }
+LOCALIZATION_ROOT="$LOCALIZATION_BUNDLE"
+if [ -d "$LOCALIZATION_BUNDLE/Contents/Resources" ]; then
+  LOCALIZATION_ROOT="$LOCALIZATION_BUNDLE/Contents/Resources"
+fi
 [ -x "$HELPER_EXECUTABLE" ] || { echo "Go Helper executable is missing" >&2; exit 1; }
 [ -f "$APP_ICON_SOURCE/icon.json" ] || { echo "Codex Pulse Icon Composer source is missing" >&2; exit 1; }
 [ -d "$APP_ICONSET" ] || { echo "Codex Pulse AppIcon iconset is missing" >&2; exit 1; }
@@ -85,13 +117,15 @@ cp "$APP_EXECUTABLE" "$APP_DIR/Contents/MacOS/Codex Pulse"
 cp "$HELPER_EXECUTABLE" "$APP_DIR/Contents/Helpers/codex-pulse"
 ditto "$SPARKLE_FRAMEWORK" "$APP_DIR/Contents/Frameworks/Sparkle.framework"
 iconutil -c icns "$APP_ICONSET" -o "$APP_DIR/Contents/Resources/CodexPulse.icns"
-for localization_directory in en.lproj zh-hans.lproj; do
-  [ -d "$LOCALIZATION_BUNDLE/$localization_directory" ] || {
-    echo "App localization directory is missing: $localization_directory" >&2
+for localization_mapping in en.lproj:en.lproj zh-Hans.lproj:zh-hans.lproj; do
+  localization_source=${localization_mapping%%:*}
+  localization_destination=${localization_mapping#*:}
+  [ -d "$LOCALIZATION_ROOT/$localization_source" ] || {
+    echo "App localization directory is missing: $localization_source" >&2
     exit 1
   }
-  ditto "$LOCALIZATION_BUNDLE/$localization_directory" \
-    "$APP_DIR/Contents/Resources/$localization_directory"
+  ditto "$LOCALIZATION_ROOT/$localization_source" \
+    "$APP_DIR/Contents/Resources/$localization_destination"
 done
 
 ICON_PIPELINE=icns-fallback
@@ -100,8 +134,7 @@ if [ -n "${CODEX_PULSE_XCODE_DEVELOPER_DIR:-}" ]; then
   XCODE_CANDIDATES=("$CODEX_PULSE_XCODE_DEVELOPER_DIR")
 else
   XCODE_CANDIDATES=(
-    "${DEVELOPER_DIR:-}"
-    "$(xcode-select -p 2>/dev/null || true)"
+    "$SWIFT_DEVELOPER_DIR"
     "/Applications/Xcode.app/Contents/Developer"
   )
 fi

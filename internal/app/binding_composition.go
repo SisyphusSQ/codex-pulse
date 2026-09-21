@@ -202,6 +202,10 @@ func composeCoreGraph(
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
 	}
+	accountQuotas, err := newCodexAccountQuotaRuntime(repository, invalidation)
+	if err != nil {
+		return nil, errors.Join(core.ErrService, err)
+	}
 	service, err := core.NewService(core.ServiceConfig{
 		UsageCost: providerRouter, InvocationUsage: providerRouter, DashboardSummary: summaryService,
 		PricingCatalog: pricingService,
@@ -211,6 +215,7 @@ func composeCoreGraph(
 		APISubscriptions:   apiSubscriptions,
 		APICredentials:     apiCredentials,
 		CodexSubscriptions: newCodexSubscriptionRuntime(repository, invalidation),
+		CodexAccountQuotas: accountQuotas,
 	})
 	if err != nil {
 		return nil, err

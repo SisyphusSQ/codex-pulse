@@ -609,6 +609,26 @@ public actor AppRuntime {
         }
     }
 
+    public func listCodexAccountQuotas(
+        now: Date = Date(),
+        timeZone: TimeZone = .current
+    ) async throws -> Codexpulse_Core_V1_CodexAccountQuotasResponse {
+        var request = Codexpulse_Core_V1_CodexAccountQuotasRequest()
+        let eval = CodexSubscriptionEvaluationContext.current(now: now, timeZone: timeZone)
+        request.evaluatedAtMs = eval.evaluatedAtMs
+        request.timeZone = eval.timeZone
+        let preparedRequest = request
+        return try await performRead {
+            try await $0.listCodexAccountQuotas(preparedRequest, retryPolicy: .transportDefault)
+        }
+    }
+
+    public func clearCodexAccountQuotaHistory()
+        async throws -> Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt
+    {
+        try await performMutation { try await $0.clearCodexAccountQuotaHistory() }
+    }
+
     public func createCodexSubscriptionAccount(
         _ request: Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest
     ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt {

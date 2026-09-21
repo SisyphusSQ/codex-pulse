@@ -53,7 +53,7 @@ func validateV2JSONShape(content []byte) error {
 	return validateSharedPreferencesObjects(root)
 }
 
-func validateCurrentJSONShape(content []byte) error {
+func validateV3JSONShape(content []byte) error {
 	if err := validateJSONDocument(content); err != nil {
 		return err
 	}
@@ -81,6 +81,46 @@ func validateCurrentJSONShape(content []byte) error {
 		},
 		nil,
 	); err != nil {
+		return err
+	}
+	if err := validateProvidersJSON(root["providers"]); err != nil {
+		return err
+	}
+	return validateSharedPreferencesObjects(root)
+}
+
+func validateCurrentJSONShape(content []byte) error {
+	if err := validateJSONDocument(content); err != nil {
+		return err
+	}
+	root, err := decodeExactObject(content,
+		[]string{
+			"schema_version", "revision", "onboarding", "online", "refresh", "updates", "ui", "providers",
+			"codex_accounts",
+		},
+		[]string{"codex_home", "detached_homes", "pending_switch", "pending_resume", "last_switch"},
+	)
+	if err != nil {
+		return err
+	}
+	if _, err := decodeObjectField(root, "onboarding", "version", "completed"); err != nil {
+		return err
+	}
+	if raw, exists := root["codex_home"]; exists {
+		if err := validateCodexHomeJSON(raw); err != nil {
+			return err
+		}
+	}
+	if _, err := decodeObjectFieldExact(root, "online",
+		[]string{
+			"quota_enabled", "reset_credits_enabled", "cursor_online_enabled",
+			"grok_quota_enabled", "grok_auto_refresh_enabled",
+		},
+		nil,
+	); err != nil {
+		return err
+	}
+	if _, err := decodeObjectField(root, "codex_accounts", "retain_quota_history"); err != nil {
 		return err
 	}
 	if err := validateProvidersJSON(root["providers"]); err != nil {

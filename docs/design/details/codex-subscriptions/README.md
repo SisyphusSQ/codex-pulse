@@ -6,6 +6,8 @@
 
 Settings 顶部「Codex 账号与订阅」列出当前 Codex Home 内已识别与手动记录的账号。Popover 与 Codex「额度与用量」页头只展示当前 confirmed 账号的 resolved 套餐、邮箱和手动维护的每月续费日或会员到期日；额度页卡片点击后进入 Settings 管理，不提供虚假的账号切换能力。页头快照必须与当前额度的 binding scope 和 generation 一致，错配时隐藏旧账号事实并显示确认中或不可用。Cursor / Grok 页面保持既有展示，不消费 Codex 订阅列表。Home 聚合用量、成本、项目归因口径不变。
 
+独立「账号额度」页复用本页账号身份，只列 detected 账号。当前账号和有额度快照的历史账号必须使用完全相同的紧凑账号组，并在左对齐的约 300–340pt 自适应网格中展示；账号摘要沿用中性账号卡视觉，每个额度窗口直接沿用「额度与用量」的 `SectionCard` 视觉，并按实际 `window_minutes` 动态展示真实存在的窗口，不保留固定短周期/周周期空位。当前账号区的刷新入口只刷新当前账号；历史账号固定只读，绝不启动 App Server、读取凭据或尝试登录旧账号。没有额度事实的非当前 detected 账号不进入此页。
+
 每月续费日与会员到期日本期固定为 manual-only。不得把 token expiry、quota `resetsAt` 或 Reset Credit `expiresAt` 映射成会员日期。官方 App Server 若日后提供稳定会员日期字段，需另开合同，不得 silently 改写本期语义。
 
 ## 身份
@@ -34,9 +36,11 @@ List / Create / Update / Delete / Link / Unlink 只读写 SQLite，不启动 App
 
 ## Core
 
-精确握手为 `core-rpc-v6`。`Contracts.codex_subscription_accounts_version=codex-subscription-accounts-v2`。`codex_pro_tier_version` 保持 v1。invalidation 为 `query-invalidation-v4`；Codex 在线额度刷新使用 `quota_codex`，账号资料变化使用 `account`。legacy history Link/Unlink 同时失效 `account` 与 `quota`。Provider 启停见 [Agent Providers](../providers/README.md)。
+精确握手为 `core-rpc-v7`。`Contracts.codex_subscription_accounts_version=codex-subscription-accounts-v2`，`codex_account_quotas_version=codex-account-quotas-v1`。`codex_pro_tier_version` 保持 v1。invalidation 为 `query-invalidation-v4`；Codex 在线额度刷新使用 `quota_codex`，账号资料变化使用 `account`。legacy history Link/Unlink 同时失效 `account` 与 `quota`。Provider 启停见 [Agent Providers](../providers/README.md)。
 
 账号 query 为 `ListCodexSubscriptionAccounts`，订阅 command 为 `Create/Update/Delete/Link/UnlinkCodexSubscriptionAccount`，历史 command 为 `Link/UnlinkLegacyQuotaHistory`。`AccountSnapshotRequest` additive `evaluated_at_ms` / `time_zone`；Codex 响应 additive `subscription`。非 Codex provider 的 `subscription` 必须 absent。
+
+多账号额度 query 为 `ListCodexAccountQuotas`：账号元数据和每个 detected scope 的已验证 `quota_current` 必须来自同一个 SQLite read snapshot，响应不暴露 `account_scope`。`ClearCodexAccountQuotaHistory` 只删除非当前 scope 的 quota observation/current/evidence 与 Reset Credits snapshot，不删除账号订阅、Session、Token、项目或费用事实。
 
 Codex `AccountSnapshot` 首次读取、binding 未确认或当前账号的在线额度来源成功刷新后，用一次 App Server 夹读同时完成 binding 身份确认与邮箱/套餐读取；同一额度成功周期的重复查询复用已夹读的内存 display，并发中的相同读取共享一次夹读。失败不伪造已确认资料。每次返回前重新读取 binding，并要求 display 的 scope/generation 精确匹配。Swift 对仅由本地索引变化触发的概览刷新复用匹配当前额度 binding 的已确认账号；无可复用账号时不因每次 index 通知自动重试，额度页的同类刷新只重载本地用量。账号切换、Home 切换和手动额度刷新成功后仍按当前 binding 重新校验；scope/generation 错配隐藏旧账号事实。
 

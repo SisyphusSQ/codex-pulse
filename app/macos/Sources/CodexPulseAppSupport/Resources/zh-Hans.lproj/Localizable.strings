@@ -8,6 +8,7 @@
 "feature.sessions" = "会话";
 "feature.projects" = "项目";
 "feature.quotaUsage" = "额度与用量";
+"feature.accountQuotas" = "账号额度";
 "feature.invocationUsage" = "调用统计";
 "feature.apiSubscriptions" = "API 与订阅";
 "feature.localStatus" = "本机状态";

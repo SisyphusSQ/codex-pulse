@@ -192,6 +192,7 @@
 "feature.sessions" = "Sessions";
 "feature.projects" = "Projects";
 "feature.quotaUsage" = "Quota & usage";
+"feature.accountQuotas" = "Account quotas";
 "feature.invocationUsage" = "Invocation usage";
 "feature.apiSubscriptions" = "APIs & subscriptions";
 "feature.localStatus" = "Local status";

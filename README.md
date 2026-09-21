@@ -18,14 +18,14 @@ Codex Pulse is a local-first, native macOS app. It turns Codex and Cursor sessio
 - **Provider context:** Switch the main window among enabled Codex, Cursor, and Grok clients; every query remains scoped to one provider and unsupported metrics stay explicitly unavailable.
 - **Data status:** Inspect provider-grouped sources, local indexing, and background jobs to understand whether reported results are complete.
 - **Codex Pro tier:** The current ChatGPT account maps App Server `prolite` to `Pro 5×` and `pro` to `Pro 20×`. Missing, unsupported, or conflicting plan evidence stays `Pro · 档位未知`.
-- **Codex accounts:** Settings keeps detected and manual Codex accounts on this Mac, carries detected facts into the editor, and can delete local subscription records for non-current accounts. Email is only a link candidate. Membership dates are currently manual only. Popover screenshots hide email, alias, plan, date, and remaining days.
+- **Codex accounts:** Settings keeps detected and manual Codex accounts on this Mac. A separate Account Quotas page gives the current and retained historical ChatGPT accounts the same compact account-card visual, then renders only the quota windows actually returned for each account. Every window is labeled from its real duration and shows its last verified percentage, reset time, state, and collection time. Historical cards are read-only. Settings controls whether future confirmed account switches retain the previous quota snapshot and provides an explicit cleanup action; this never changes Home-level sessions, tokens, projects, or cost attribution.
 
 ## Feature overview
 
 | Area | What you can see |
 | --- | --- |
 | Menu bar | Remaining quota, cumulative tokens, reset times, and health alerts |
-| Overview, sessions, and projects | Trends and heatmaps, model and cost breakdowns, high-usage sessions, and project-linked sessions |
+| Overview, sessions, projects, and account quotas | Trends and heatmaps, model and cost breakdowns, project-linked sessions, and the last retained quota snapshot for each observed ChatGPT account |
 | Status and settings | Quota periods and sources, indexing progress and freshness, background jobs, local storage, and settings |
 
 The main window includes overview, session, project, and quota pages. Runtime diagnostics, data sources, and settings live in the System section. Use the menu bar for current status and the main window for usage details and data health.
@@ -73,7 +73,7 @@ All indexing and analytics run locally. Cursor usage and spending can additional
 
 The original Codex and Cursor files remain managed by their applications. Codex Pulse stores only the allowlisted indexes, aggregates, lineage digests, and runtime state required by the product, and never modifies original session content.
 
-On first launch, the Go Helper initializes Preferences v3 even when Codex Home is missing. A metadata-only safety probe of `${CODEX_HOME:-$HOME/.codex}` runs without reading session bodies; a safe Home is stored as a stable identity. If the directory does not exist or the probe fails, Codex Pulse still starts: Settings, Cursor, and Grok remain available, while Codex indexing, quota, and account work stay unavailable until a Home is configured. Changing Codex Home later still requires explicit confirmation in Settings. Disabling a provider stops local collection, online requests, credential refresh, query-triggered refresh, and current summaries; history, progress, and sub-switch preferences are kept. Settings previews legacy unassigned local quota history and uses it for the current account's historical charts only after explicit, reversible confirmation. The current handshake is `core-rpc-v6` with `provider-control-v1`.
+On first launch, the Go Helper initializes Preferences v4 even when Codex Home is missing. A metadata-only safety probe of `${CODEX_HOME:-$HOME/.codex}` runs without reading session bodies; a safe Home is stored as a stable identity. If the directory does not exist or the probe fails, Codex Pulse still starts: Settings, Cursor, and Grok remain available, while Codex indexing, quota, and account work stay unavailable until a Home is configured. Changing Codex Home later still requires explicit confirmation in Settings. Disabling a provider stops local collection, online requests, credential refresh, query-triggered refresh, and current summaries; history, progress, and sub-switch preferences are kept. Settings previews legacy unassigned local quota history and uses it for the current account's historical charts only after explicit, reversible confirmation. The current handshake is `core-rpc-v7` with `provider-control-v1`.
 
 ## How it works
 

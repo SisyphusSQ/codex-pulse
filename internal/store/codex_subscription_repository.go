@@ -18,44 +18,57 @@ func (repository *Repository) ListCodexSubscriptionRecords(
 	}
 	var records CodexSubscriptionRecords
 	err := repository.database.View(ctx, func(ctx context.Context, connection *gorm.DB) error {
-		binding, err := loadStoredCodexAccountBinding(ctx, connection)
-		if err != nil {
+		return connection.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
+			loaded, err := readCodexSubscriptionRecords(ctx, transaction)
+			if err == nil {
+				records = loaded
+			}
 			return err
-		}
-		var detected []codexSubscriptionDetectedAccountModel
-		if err := connection.WithContext(ctx).Order("detected_account_id").Find(&detected).Error; err != nil {
-			return err
-		}
-		var manuals []codexSubscriptionManualEntryModel
-		if err := connection.WithContext(ctx).Order("updated_at_ms DESC, manual_entry_id").Find(&manuals).Error; err != nil {
-			return err
-		}
-		var links []codexSubscriptionLinkModel
-		if err := connection.WithContext(ctx).Order("account_scope").Find(&links).Error; err != nil {
-			return err
-		}
-		records = CodexSubscriptionRecords{
-			Binding: subscriptionaccounts.Binding{
-				State:             subscriptionaccounts.BindingState(binding.State),
-				AccountScope:      cloneQuotaString(binding.AccountScope),
-				BindingGeneration: binding.BindingGeneration,
-			},
-			Detected: make([]subscriptionaccounts.DetectedAccount, 0, len(detected)),
-			Manual:   make([]subscriptionaccounts.ManualEntry, 0, len(manuals)),
-			Links:    make([]subscriptionaccounts.Link, 0, len(links)),
-		}
-		for _, model := range detected {
-			records.Detected = append(records.Detected, detectedAccountFromModel(model))
-		}
-		for _, model := range manuals {
-			records.Manual = append(records.Manual, manualEntryFromModel(model))
-		}
-		for _, model := range links {
-			records.Links = append(records.Links, linkFromModel(model))
-		}
-		return nil
+		})
 	})
 	return records, err
+}
+
+func readCodexSubscriptionRecords(
+	ctx context.Context,
+	database *gorm.DB,
+) (CodexSubscriptionRecords, error) {
+	binding, err := loadStoredCodexAccountBinding(ctx, database)
+	if err != nil {
+		return CodexSubscriptionRecords{}, err
+	}
+	var detected []codexSubscriptionDetectedAccountModel
+	if err := database.WithContext(ctx).Order("detected_account_id").Find(&detected).Error; err != nil {
+		return CodexSubscriptionRecords{}, err
+	}
+	var manuals []codexSubscriptionManualEntryModel
+	if err := database.WithContext(ctx).Order("updated_at_ms DESC, manual_entry_id").Find(&manuals).Error; err != nil {
+		return CodexSubscriptionRecords{}, err
+	}
+	var links []codexSubscriptionLinkModel
+	if err := database.WithContext(ctx).Order("account_scope").Find(&links).Error; err != nil {
+		return CodexSubscriptionRecords{}, err
+	}
+	records := CodexSubscriptionRecords{
+		Binding: subscriptionaccounts.Binding{
+			State:             subscriptionaccounts.BindingState(binding.State),
+			AccountScope:      cloneQuotaString(binding.AccountScope),
+			BindingGeneration: binding.BindingGeneration,
+		},
+		Detected: make([]subscriptionaccounts.DetectedAccount, 0, len(detected)),
+		Manual:   make([]subscriptionaccounts.ManualEntry, 0, len(manuals)),
+		Links:    make([]subscriptionaccounts.Link, 0, len(links)),
+	}
+	for _, model := range detected {
+		records.Detected = append(records.Detected, detectedAccountFromModel(model))
+	}
+	for _, model := range manuals {
+		records.Manual = append(records.Manual, manualEntryFromModel(model))
+	}
+	for _, model := range links {
+		records.Links = append(records.Links, linkFromModel(model))
+	}
+	return records, nil
 }
 
 func (repository *Repository) RecordDetectedCodexSubscriptionProfile(

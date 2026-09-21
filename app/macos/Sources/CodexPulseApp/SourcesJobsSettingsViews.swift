@@ -419,12 +419,25 @@ struct RuntimeActionControl: View {
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var loginItemSettings: LoginItemSettingsModel
+    @State private var showsQuotaHistoryClearConfirmation = false
 
     var body: some View {
         FeatureStateView(state: model.settingsState, emptyTitle: "设置不可用", emptySystemImage: "gearshape") { response in
             settingsContent(response)
         }
         .onAppear { loginItemSettings.refreshStatus() }
+        .confirmationDialog(
+            "清除历史账号额度记录？",
+            isPresented: $showsQuotaHistoryClearConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("清除历史记录", role: .destructive) {
+                model.clearCodexAccountQuotaHistory()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("只会删除非当前账号的额度快照；当前账号、本地 Sessions、Tokens、项目和费用数据不会受影响。")
+        }
         .accessibilityIdentifier("page.settings")
     }
 
@@ -556,6 +569,29 @@ struct SettingsView: View {
         return false
     }
 
+    private var quotaHistoryClearIsRunning: Bool {
+        if case .running = model.codexAccountQuotaClearState { return true }
+        return false
+    }
+
+    @ViewBuilder
+    private var quotaHistoryClearStatus: some View {
+        switch model.codexAccountQuotaClearState {
+        case .idle:
+            EmptyView()
+        case .running:
+            ProgressView().controlSize(.small)
+        case .succeeded(let message), .skipped(let message):
+            Text(localizedCopy(message))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .unavailable:
+            Label("清除失败，请重试", systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        }
+    }
+
     private func providerSection(
         _ provider: AgentProvider,
         response: Codexpulse_Core_V1_SettingsResponse
@@ -580,6 +616,25 @@ struct SettingsView: View {
                     .disabled(
                         !subSwitchesEnabled || !editable("online.resetCreditsEnabled", response) || settingsAreBusy
                     )
+                Toggle(
+                    "保留切换后的账号额度记录",
+                    isOn: draftBinding(\.retainCodexAccountQuotaHistory)
+                )
+                .disabled(
+                    !editable("codexAccounts.retainQuotaHistory", response) || settingsAreBusy
+                )
+                .accessibilityIdentifier("settings.codex-accounts.retain-quota-history")
+                Text("关闭后，仅在下次确认切换到另一个 ChatGPT 账号时清除旧账号额度；不会改变 Sessions、Tokens、项目或费用归属。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Button("清除已有历史账号额度记录", role: .destructive) {
+                        showsQuotaHistoryClearConfirmation = true
+                    }
+                    .disabled(settingsAreBusy || quotaHistoryClearIsRunning)
+                    .accessibilityIdentifier("settings.codex-accounts.clear-quota-history")
+                    quotaHistoryClearStatus
+                }
             case .cursor:
                 Toggle("启用在线数据采集", isOn: draftBinding(\.cursorOnlineEnabled))
                     .disabled(

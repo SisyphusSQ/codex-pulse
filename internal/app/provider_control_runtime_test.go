@@ -23,7 +23,7 @@ func TestApplicationControlRuntimeStartsWithoutCodexHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileStore() error = %v", err)
 	}
-	snapshot, err := preferences.NewV3Snapshot(nil, preferences.DefaultOnlinePreferences())
+	snapshot, err := preferences.NewCurrentSnapshot(nil, preferences.DefaultOnlinePreferences())
 	if err != nil {
 		t.Fatalf("NewV3Snapshot() error = %v", err)
 	}
@@ -67,7 +67,7 @@ func TestApplicationControlRuntimeDisablesProviderAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileStore() error = %v", err)
 	}
-	snapshot, err := preferences.NewV3Snapshot(nil, preferences.DefaultOnlinePreferences())
+	snapshot, err := preferences.NewCurrentSnapshot(nil, preferences.DefaultOnlinePreferences())
 	if err != nil {
 		t.Fatalf("NewV3Snapshot() error = %v", err)
 	}
@@ -141,7 +141,7 @@ func TestProviderDisableCancelsAndDrainsAccountRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileStore() error = %v", err)
 	}
-	snapshot, err := preferences.NewV3Snapshot(nil, preferences.DefaultOnlinePreferences())
+	snapshot, err := preferences.NewCurrentSnapshot(nil, preferences.DefaultOnlinePreferences())
 	if err != nil {
 		t.Fatalf("NewV3Snapshot() error = %v", err)
 	}

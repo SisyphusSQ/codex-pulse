@@ -34,21 +34,38 @@ func newInitializedSnapshot(home *CodexHomePreferences, online OnlinePreferences
 		Onboarding: OnboardingPreferences{
 			Version: CurrentOnboardingVersion, Completed: true,
 		},
-		CodexHome: CloneCodexHome(home),
-		Providers: DefaultProviderPreferences(),
-		Online:    online,
-		Refresh:   DefaultRefreshPreferences(),
-		Updates:   DefaultUpdatePreferences(),
-		UI:        DefaultUIPreferences(),
+		CodexHome:     CloneCodexHome(home),
+		Providers:     DefaultProviderPreferences(),
+		Online:        online,
+		CodexAccounts: DefaultCodexAccountPreferences(),
+		Refresh:       DefaultRefreshPreferences(),
+		Updates:       DefaultUpdatePreferences(),
+		UI:            DefaultUIPreferences(),
 	}
 }
 
-func NewV3Snapshot(home *CodexHomePreferences, online OnlinePreferences) (Snapshot, error) {
+func NewCurrentSnapshot(home *CodexHomePreferences, online OnlinePreferences) (Snapshot, error) {
 	value := newInitializedSnapshot(home, online)
 	if err := validatePreferences(value); err != nil {
 		return Snapshot{}, err
 	}
 	return value, nil
+}
+
+type v3Snapshot struct {
+	SchemaVersion int                    `json:"schema_version"`
+	Revision      uint64                 `json:"revision"`
+	Onboarding    OnboardingPreferences  `json:"onboarding"`
+	CodexHome     *CodexHomePreferences  `json:"codex_home,omitempty"`
+	Providers     ProviderPreferences    `json:"providers"`
+	Online        OnlinePreferences      `json:"online"`
+	Refresh       RefreshPreferences     `json:"refresh"`
+	Updates       UpdatePreferences      `json:"updates"`
+	UI            UIPreferences          `json:"ui"`
+	DetachedHomes []CodexHomePreferences `json:"detached_homes,omitempty"`
+	PendingSwitch *HomeSwitchJournal     `json:"pending_switch,omitempty"`
+	PendingResume *HomeResumeJournal     `json:"pending_resume,omitempty"`
+	LastSwitch    *HomeSwitchAudit       `json:"last_switch,omitempty"`
 }
 
 func onboardingFromPreferences(value Snapshot) (OnboardingSnapshot, error) {
@@ -113,12 +130,66 @@ func decodePreferences(content []byte) (Snapshot, bool, error) {
 		}
 		migrated, err := migrateV2ToV3(legacy)
 		return migrated, true, err
+	case preferencesSchemaV3:
+		legacy, err := decodeV3Preferences(content)
+		if err != nil {
+			return Snapshot{}, false, err
+		}
+		migrated, err := migrateV3ToV4(legacy)
+		return migrated, true, err
 	case CurrentPreferencesSchemaVersion:
 		current, err := decodeCurrentPreferences(content)
 		return current, false, err
 	default:
 		return Snapshot{}, false, fmt.Errorf("%w: unsupported schema version", ErrInvalidPreferences)
 	}
+}
+
+func decodeV3Preferences(content []byte) (v3Snapshot, error) {
+	if err := validateV3JSONShape(content); err != nil {
+		return v3Snapshot{}, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.DisallowUnknownFields()
+	var value v3Snapshot
+	if err := decoder.Decode(&value); err != nil {
+		return v3Snapshot{}, fmt.Errorf("%w: malformed JSON", ErrInvalidPreferences)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return v3Snapshot{}, fmt.Errorf("%w: trailing JSON", ErrInvalidPreferences)
+	}
+	current := Snapshot{
+		SchemaVersion: CurrentPreferencesSchemaVersion,
+		Revision:      value.Revision, Onboarding: value.Onboarding, CodexHome: CloneCodexHome(value.CodexHome),
+		Providers: value.Providers, Online: value.Online, CodexAccounts: DefaultCodexAccountPreferences(),
+		Refresh: value.Refresh, Updates: cloneUpdatePreferences(value.Updates), UI: value.UI,
+		DetachedHomes: append([]CodexHomePreferences(nil), value.DetachedHomes...),
+		PendingSwitch: cloneHomeSwitchJournal(value.PendingSwitch),
+		PendingResume: cloneHomeResumeJournal(value.PendingResume),
+		LastSwitch:    cloneHomeSwitchAudit(value.LastSwitch),
+	}
+	if value.SchemaVersion != preferencesSchemaV3 || validatePreferences(current) != nil {
+		return v3Snapshot{}, ErrInvalidPreferences
+	}
+	return value, nil
+}
+
+func migrateV3ToV4(value v3Snapshot) (Snapshot, error) {
+	migrated := Snapshot{
+		SchemaVersion: CurrentPreferencesSchemaVersion,
+		Revision:      value.Revision, Onboarding: value.Onboarding, CodexHome: CloneCodexHome(value.CodexHome),
+		Providers: value.Providers, Online: value.Online, CodexAccounts: DefaultCodexAccountPreferences(),
+		Refresh: value.Refresh, Updates: cloneUpdatePreferences(value.Updates), UI: value.UI,
+		DetachedHomes: append([]CodexHomePreferences(nil), value.DetachedHomes...),
+		PendingSwitch: cloneHomeSwitchJournal(value.PendingSwitch),
+		PendingResume: cloneHomeResumeJournal(value.PendingResume),
+		LastSwitch:    cloneHomeSwitchAudit(value.LastSwitch),
+	}
+	if err := validatePreferences(migrated); err != nil {
+		return Snapshot{}, err
+	}
+	return migrated, nil
 }
 
 func decodeV2Preferences(content []byte) (v2Snapshot, error) {
@@ -179,6 +250,7 @@ func migrateV2ToV3(value v2Snapshot) (Snapshot, error) {
 		CodexHome:     CodexHomePointer(value.CodexHome),
 		Providers:     DefaultProviderPreferences(),
 		Online:        online,
+		CodexAccounts: DefaultCodexAccountPreferences(),
 		Refresh:       value.Refresh,
 		Updates:       cloneUpdatePreferences(value.Updates),
 		UI:            value.UI,

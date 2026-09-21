@@ -4,9 +4,9 @@
 
 ## 状态与合同
 
-- Preferences schema：v3。v1/v2 迁移后三家 intent 为 `auto`，Cursor online 为 `true`。
+- Preferences schema：v4。v1/v2/v3 迁移后三家 intent 为 `auto`，Cursor online 与 Codex 账号额度历史保留均为 `true`。
 - 三层状态：`intent`（auto/enabled/disabled）、`discovery`（unchecked/available/missing/inaccessible/invalid）、`effective`（enabled/disabled/unavailable/disabling）。
-- 握手：`core-rpc-v6`；控制面：`provider-control-v1`。application SQLite schema 为 v34。
+- 握手：`core-rpc-v7`；控制面：`provider-control-v1`。application SQLite schema 为 v34。
 - Helper 是启用状态和业务 gate 的唯一真相。Swift 只消费 Settings catalog。
 
 ## 聚焦自动化（synthetic / empty Home）

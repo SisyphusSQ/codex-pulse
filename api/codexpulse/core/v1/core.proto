@@ -11,6 +11,8 @@ service CoreService {
   rpc Contracts(ContractsRequest) returns (ContractsResponse);
   rpc AccountSnapshot(AccountSnapshotRequest) returns (AccountSnapshotResponse);
   rpc ListCodexSubscriptionAccounts(CodexSubscriptionAccountsRequest) returns (CodexSubscriptionAccountsResponse);
+  rpc ListCodexAccountQuotas(CodexAccountQuotasRequest) returns (CodexAccountQuotasResponse);
+  rpc ClearCodexAccountQuotaHistory(ClearCodexAccountQuotaHistoryRequest) returns (CodexAccountQuotaHistoryClearReceipt);
   rpc CreateCodexSubscriptionAccount(CreateCodexSubscriptionAccountRequest) returns (CodexSubscriptionMutationReceipt);
   rpc UpdateCodexSubscriptionAccount(UpdateCodexSubscriptionAccountRequest) returns (CodexSubscriptionMutationReceipt);
   rpc DeleteCodexSubscriptionAccount(DeleteCodexSubscriptionAccountRequest) returns (CodexSubscriptionMutationReceipt);
@@ -105,6 +107,7 @@ message ContractsResponse {
   string codex_pro_tier_version = 11;
   string codex_subscription_accounts_version = 12;
   string provider_control_version = 13;
+  string codex_account_quotas_version = 14;
 }
 
 // ErrorDetail 只承载稳定分类，不允许泄漏底层错误或请求值。
@@ -1175,6 +1178,10 @@ message SettingsOnlineSnapshot {
   bool cursor_online_enabled = 5;
 }
 
+message SettingsCodexAccountsSnapshot {
+  bool retain_quota_history = 1;
+}
+
 message SettingsRefreshSnapshot {
   int64 quota_interval_seconds = 1;
   int64 reset_credits_interval_seconds = 2;
@@ -1208,6 +1215,7 @@ message SettingsSnapshot {
   SettingsUpdateSnapshot updates = 7;
   SettingsUISnapshot ui = 8;
   repeated SettingsProviderSnapshot providers = 9;
+  SettingsCodexAccountsSnapshot codex_accounts = 10;
 }
 
 message SettingsResponse {
@@ -1222,6 +1230,10 @@ message SettingsOnlineUpdate {
   bool grok_quota_enabled = 3;
   bool grok_auto_refresh_enabled = 4;
   bool cursor_online_enabled = 5;
+}
+
+message SettingsCodexAccountsUpdate {
+  bool retain_quota_history = 1;
 }
 
 message SettingsRefreshUpdate {
@@ -1250,6 +1262,7 @@ message UpdateSettingsRequest {
   SettingsUpdatesUpdate updates = 4;
   SettingsUIUpdate ui = 5;
   repeated SettingsProviderUpdate providers = 6;
+  SettingsCodexAccountsUpdate codex_accounts = 7;
 }
 
 message SettingsUpdateReceipt {
@@ -1535,6 +1548,46 @@ message CodexSubscriptionAccountsResponse {
   CodexSubscriptionAutomaticDateCapability automatic_date_capability = 4;
   repeated CodexSubscriptionAccount accounts = 5;
   repeated CodexSubscriptionLinkCandidate link_candidates = 6;
+}
+
+message CodexAccountQuotasRequest {
+  int64 evaluated_at_ms = 1;
+  string time_zone = 2;
+}
+
+message CodexAccountQuotaWindow {
+  string window_kind = 1;
+  string limit_id = 2;
+  optional double used_percent = 3;
+  optional double remaining_percent = 4;
+  optional int64 window_minutes = 5;
+  optional int64 resets_at_ms = 6;
+  optional int64 last_collected_at_ms = 7;
+  string freshness = 8;
+  string conflict = 9;
+}
+
+message CodexAccountQuota {
+  CodexSubscriptionAccount account = 1;
+  repeated CodexAccountQuotaWindow windows = 2;
+  optional int64 last_collected_at_ms = 3;
+}
+
+message CodexAccountQuotasResponse {
+  ResponseMeta meta = 1;
+  string version = 2;
+  int64 evaluated_at_ms = 3;
+  string time_zone = 4;
+  repeated CodexAccountQuota accounts = 5;
+}
+
+message ClearCodexAccountQuotaHistoryRequest {}
+
+message CodexAccountQuotaHistoryClearReceipt {
+  int64 account_count = 1;
+  int64 window_count = 2;
+  int64 observation_count = 3;
+  int64 reset_snapshot_count = 4;
 }
 
 message CodexSubscriptionManualFields {

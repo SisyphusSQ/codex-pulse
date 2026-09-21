@@ -42,6 +42,14 @@ TOO-463 为这段 unassigned history 提供显式、可撤销的曲线关联。S
 
 账号切换保留现有 Home generation fence。锁顺序是：Home generation drain → account transition → quota admission → repository 写事务。A→B→A 恢复 A 的历史观察时间戳，但使用新的 binding generation。Cursor、Grok、API Subscription 的现有逻辑不得被 Codex binding 改动影响。
 
+### 多账号最后额度快照（TOO-465）
+
+Codex 主窗口新增独立「账号额度」页，不把额度历史塞进 Settings。Helper 在一个 SQLite read snapshot 中组合 detected 账号元数据与各账号已经通过 projection/evidence 校验的 `quota_current`；当前账号排在最前，非当前账号只有存在保留额度事实时才展示。当前与历史账号使用同一个紧凑账号组，并在左对齐的自适应网格中以约 300–340pt 宽度展示；账号摘要沿用中性账号卡视觉，每个额度窗口直接使用现有 `SectionCard` 视觉。窗口标题由 `limit_id + window_minutes` 派生，按实际时长排序，不得把 `primary / secondary` 固定解释成短周期或周周期，也不得为缺失周期补 `--` 占位卡。同一 `limit_id + window_minutes` 的重复候选按可信度合并。每个窗口展示最后验证的剩余百分比、reset、数据状态与采集时间；百分比未知时不绘制 0% 进度条。reset 已经过期时显示“已结束”，历史卡只显示绝对 reset 时间、不显示倒计时，也不发起任何旧账号请求；当前账号区的刷新入口只刷新当前账号。
+
+Preferences v4 增加 `codex_accounts.retain_quota_history`，默认开启。它只影响以后完成确认的 A→B 切换：开启时保留 A 的非敏感额度事实，关闭时在确认 B 的同一 SQLite 写事务内清除 A 的 quota observation/current/evidence 与 Reset Credits snapshot。`pending`、`signed_out`、`identity_unavailable`、探测失败、同账号确认和启动恢复均不得触发清除。已经保留的更早历史不会因切换开关立即删除；Settings 提供单独确认的“清除已有历史账号额度记录”，且始终保留当前账号事实。
+
+该能力不建立账号级 Session、Token、项目、趋势或费用归因；这些指标继续按 Codex Home 聚合。清除额度历史也不得删除订阅账号记录、source schedule/attempt 的运行证据、legacy `account_scope=default` 或任何 Home 级数据。Proto 只返回公开账号 UUID 与允许展示的账号资料，绝不返回 HMAC `account_scope`、raw ChatGPT account ID 或凭据。
+
 账号切换隔离的 live runbook 见 [`docs/test/codex-account-switching.md`](../../../test/codex-account-switching.md)。
 
 ## v0.1 来源（历史）

@@ -84,9 +84,9 @@ v0.1 只支持一个 Codex home。更换路径时，用户必须明确选择“�
 
 操作为“开始”“选择其他目录”“退出”，并在同页提供在线 quota 与 reset credits 两个默认开启的独立开关。本地索引确认和两个在线能力偏好是同一次用户决定中的独立字段，但首次确认必须作为一个版本化 preferences snapshot 原子发布：目录 `0700`、文件 `0600`；新建 private 目录后先 fsync 其 containing directory，再用同目录 private temp 完整写入并 fsync、以不覆盖方式发布，最后 fsync private 目录。相同 source identity 与开关的重复确认不重写；已有不同 Home 或开关的确认不能由 onboarding 静默覆盖，交给 Preferences/Home switch 协议处理。发布前失败保持未配置；若文件已经可见但目录 fsync/cleanup 失败，返回 `durability_unknown`，启动方必须用不继承原请求取消信号的有界 `Load` 读回，不能假定零写入后盲目重试。Confirm、Cancel 和 Resume 在进程内按同一状态锁线性化：提交点之后的 Cancel 不得把已经确认或 durability-unknown 的状态改写成 canceled；只有 post-commit readback 或后续 Resume 权威读回明确为未配置时，才清除 conservative persistence latch 并恢复 Detect/Cancel。
 
-## Preferences v3 与无 Codex Home 启动
+## Preferences v4 与无 Codex Home 启动
 
-Preferences 当前 schema 为 v3。v1/v2 迁移保留原 Home、revision、online/refresh/update/UI 字段，三家 intent 默认为 `auto`，Cursor online 默认为 `true`。`Snapshot.CodexHome` 可省略但拒绝 JSON null。没有安全的默认 Codex Home 时仍发布 revision=1 的合法 v3 snapshot，`Onboarding.Completed` 只表示应用 preferences 已初始化。公共控制面（Settings、Cursor、Grok、health、dashboard、API subscriptions）与 Codex Home worker 解耦：无 Home 或 Codex effective disabled 时不启动 Codex worker，也不把整个 App 写成 recovery/unavailable。
+Preferences 当前 schema 为 v4。v1/v2/v3 迁移保留原 Home、revision、online/refresh/update/UI 字段，三家 intent 默认为 `auto`，Cursor online 与 Codex 账号额度历史保留均默认为 `true`。`Snapshot.CodexHome` 可省略但拒绝 JSON null。没有安全的默认 Codex Home 时仍发布 revision=1 的合法 v4 snapshot，`Onboarding.Completed` 只表示应用 preferences 已初始化。公共控制面（Settings、Cursor、Grok、health、dashboard、API subscriptions）与 Codex Home worker 解耦：无 Home 或 Codex effective disabled 时不启动 Codex worker，也不把整个 App 写成 recovery/unavailable。
 
 Provider Controller 在启动、system wake、application foreground、Settings read/refresh 和五分钟 scheduled tick 做 metadata-only discovery。显式 disabled Provider 仍可探测以展示“已发现 · 已关闭”，但不得进入业务采集。collector 写入必须持有当前 operation generation 的 commit lease；stable disabled 后旧 generation 不得提交。
 

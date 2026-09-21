@@ -680,32 +680,73 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
     public let resetRemainingMS: Int64?
 
     public init(_ window: Codexpulse_Core_V1_CurrentWindow) {
-        let localization = AppLocalizationRegistry.shared.current
-        self.id = "\(window.windowKind):\(window.limitID)"
-        self.limitID = window.limitID
-        self.limitName = window.hasLimitName ? window.limitName : nil
-        let quotaName = Self.quotaName(
-            limitID: window.limitID, limitName: limitName, localization: localization
+        self.init(
+            windowKind: window.windowKind,
+            limitID: window.limitID,
+            limitName: window.hasLimitName ? window.limitName : nil,
+            usedPercent: window.hasUsedPercent ? window.usedPercent : nil,
+            remainingPercent: window.hasRemainingPercent ? window.remainingPercent : nil,
+            freshness: window.freshness,
+            unknownReason: window.hasUnknownReason ? window.unknownReason : nil,
+            windowMinutes: window.hasWindowMinutes ? window.windowMinutes : nil,
+            resetsAtMS: window.hasResetsAtMs ? window.resetsAtMs : nil,
+            resetRemainingMS: window.hasResetRemainingMs ? window.resetRemainingMs : nil
         )
-        if Self.isCursorGrokBotLimit(window.limitID) {
+    }
+
+    public init(_ window: Codexpulse_Core_V1_CodexAccountQuotaWindow) {
+        self.init(
+            windowKind: window.windowKind,
+            limitID: window.limitID,
+            limitName: nil,
+            usedPercent: window.hasUsedPercent ? window.usedPercent : nil,
+            remainingPercent: window.hasRemainingPercent ? window.remainingPercent : nil,
+            freshness: window.freshness,
+            unknownReason: nil,
+            windowMinutes: window.hasWindowMinutes ? window.windowMinutes : nil,
+            resetsAtMS: window.hasResetsAtMs ? window.resetsAtMs : nil,
+            resetRemainingMS: nil
+        )
+    }
+
+    private init(
+        windowKind: String,
+        limitID: String,
+        limitName: String?,
+        usedPercent: Double?,
+        remainingPercent: Double?,
+        freshness: String,
+        unknownReason: String?,
+        windowMinutes: Int64?,
+        resetsAtMS: Int64?,
+        resetRemainingMS: Int64?
+    ) {
+        let localization = AppLocalizationRegistry.shared.current
+        self.id = "\(windowKind):\(limitID)"
+        self.limitID = limitID
+        self.limitName = limitName
+        let quotaName = Self.quotaName(
+            limitID: limitID, limitName: limitName, localization: localization
+        )
+        if Self.isCursorGrokBotLimit(limitID) {
             self.title = "\(quotaName) · \(localization.textValue("周额度"))"
-        } else if Self.isCursorMonthlyLimit(window.limitID) {
+        } else if Self.isCursorMonthlyLimit(limitID) {
 			self.title = "\(quotaName) · \(localization.textValue("月额度"))"
 		} else if let duration = Self.durationTitle(
-            windowMinutes: window.hasWindowMinutes ? window.windowMinutes : nil,
+            windowMinutes: windowMinutes,
             localization: localization
         ) {
             self.title = "\(quotaName) · \(duration)"
         } else {
             self.title = quotaName
         }
-		self.usedPercent = window.hasUsedPercent ? window.usedPercent : nil
-        self.remainingPercent = window.hasRemainingPercent ? window.remainingPercent : nil
-        self.freshness = window.freshness
-        self.unknownReason = window.hasUnknownReason ? window.unknownReason : nil
-        self.windowMinutes = window.hasWindowMinutes ? window.windowMinutes : nil
-        self.resetsAtMS = window.hasResetsAtMs ? window.resetsAtMs : nil
-        self.resetRemainingMS = window.hasResetRemainingMs ? window.resetRemainingMs : nil
+		self.usedPercent = usedPercent
+        self.remainingPercent = remainingPercent
+        self.freshness = freshness
+        self.unknownReason = unknownReason
+        self.windowMinutes = windowMinutes
+        self.resetsAtMS = resetsAtMS
+        self.resetRemainingMS = resetRemainingMS
     }
 
     public var unknownMessage: String? {

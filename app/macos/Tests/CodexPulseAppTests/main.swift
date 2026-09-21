@@ -6659,6 +6659,119 @@ private func testCodexAccountsSettingsSourceContract() throws {
     )
 }
 
+private func testCodexAccountQuotaPageUsesOneRowForCurrentAndHistory() throws {
+    let source = try mainWindowSource("CodexAccountQuotasView.swift")
+    let accountCard = try mainWindowSource("CodexAccountQuotaCard.swift")
+    let settings = try mainWindowSource("SourcesJobsSettingsViews.swift")
+    try expect(
+        source.contains("CodexAccountQuotaCard(")
+            && source.contains("title: \"以前使用过的账号\"")
+            && source.contains("GridItem(.adaptive(minimum: 300, maximum: 340)")
+            && source.contains("Label(\"刷新当前账号\", systemImage: \"arrow.clockwise\")")
+            && !source.contains("ScrollView([.vertical, .horizontal])")
+            && !source.contains("短周期剩余")
+            && !source.contains("周额度剩余")
+            && accountCard.contains("Text(account.current ? \"当前账号\" : \"历史快照\")")
+            && accountCard.contains("CodexAccountQuotaWindowDisplayResolver.displayWindows")
+            && accountCard.contains(".frame(maxWidth: 340, alignment: .leading)")
+            && accountCard.contains("SectionCard(title: presentation.title)")
+            && accountCard.contains(".stroke(.primary.opacity(0.08), lineWidth: 1)")
+            && !accountCard.contains("Color.accentColor.opacity(0.28)")
+            && accountCard.contains("KeyValueRow(key: \"重置时间\"")
+            && accountCard.contains("ProgressView(value: progress.fraction)"),
+        "current and historical ChatGPT accounts must share compact adaptive account cards"
+    )
+    try expect(
+        settings.contains("保留切换后的账号额度记录")
+            && settings.contains("清除已有历史账号额度记录")
+            && settings.contains("codexAccounts.retainQuotaHistory")
+            && settings.contains("Sessions、Tokens、项目或费用归属"),
+        "Settings must expose only the future retention policy and explicit history cleanup boundary"
+    )
+}
+
+private func testCodexAccountQuotaWindowCardsUseActualWindows() throws {
+    func window(
+        kind: String,
+        limitID: String = "codex",
+        minutes: Int64? = nil,
+        remaining: Double? = 50,
+        freshness: String = "fresh",
+        collectedAtMS: Int64 = 2_000
+    ) -> Codexpulse_Core_V1_CodexAccountQuotaWindow {
+        var value = Codexpulse_Core_V1_CodexAccountQuotaWindow()
+        value.windowKind = kind
+        value.limitID = limitID
+        if let minutes { value.windowMinutes = minutes }
+        if let remaining { value.remainingPercent = remaining }
+        value.freshness = freshness
+        value.lastCollectedAtMs = collectedAtMS
+        return value
+    }
+
+    let sevenDayPrimary = window(kind: "primary", minutes: 7 * 24 * 60)
+    let weeklyOnly = CodexAccountQuotaWindowDisplayResolver.displayWindows([sevenDayPrimary])
+    let weeklyPresentation = QuotaWindowPresentation(weeklyOnly[0])
+    try expect(
+        weeklyOnly.count == 1 && weeklyOnly[0].windowMinutes == 10_080
+            && weeklyPresentation.windowMinutes == 10_080,
+        "a lone seven-day primary window must render as one actual-duration card"
+    )
+
+    let fiveHourPrimary = window(kind: "primary", minutes: 5 * 60)
+    let sevenDaySecondary = window(kind: "secondary", minutes: 7 * 24 * 60)
+    let bothPeriods = CodexAccountQuotaWindowDisplayResolver.displayWindows([
+        fiveHourPrimary, sevenDaySecondary,
+    ])
+    try expect(
+        bothPeriods.map(\.windowMinutes) == [300, 10_080],
+        "every distinct actual duration must remain visible in ascending order"
+    )
+
+    let modelSpecificWeekly = window(
+        kind: "secondary", limitID: "codex_spark", minutes: 7 * 24 * 60
+    )
+    let multipleLimits = CodexAccountQuotaWindowDisplayResolver.displayWindows([
+        modelSpecificWeekly, fiveHourPrimary,
+    ])
+    try expect(
+        multipleLimits.map(\.limitID) == ["codex", "codex_spark"],
+        "general and active model-specific limits must remain separate actual cards"
+    )
+
+    let staleDuplicate = window(
+        kind: "secondary", minutes: 7 * 24 * 60,
+        remaining: 30, freshness: "stale", collectedAtMS: 1_000
+    )
+    let freshDuplicate = window(
+        kind: "primary", minutes: 7 * 24 * 60,
+        remaining: 65, freshness: "fresh", collectedAtMS: 3_000
+    )
+    let deduplicated = CodexAccountQuotaWindowDisplayResolver.displayWindows([
+        staleDuplicate, freshDuplicate,
+    ])
+    try expect(
+        deduplicated.count == 1 && deduplicated[0].remainingPercent == 65,
+        "the more trustworthy equivalent window must win without duplicating the card"
+    )
+
+    var historicalWindow = sevenDayPrimary
+    historicalWindow.resetsAtMs = 900
+    let history = CodexAccountQuotaWindowCardPresentation(
+        historicalWindow,
+        current: false,
+        evaluatedAtMS: 1_000,
+        timeZoneIdentifier: "Asia/Shanghai",
+        localization: .chineseSimplified
+    )
+    try expect(
+        history.metricTitle == "最后记录剩余"
+            && history.resetRemainingText == nil
+            && history.resetTimeText.contains("已结束"),
+        "historical snapshots must show absolute ended state without a live countdown"
+    )
+}
+
 @MainActor
 private func testAccountSnapshotSendsEvaluationContext() async throws {
     let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
@@ -7235,6 +7348,7 @@ private func testSettingsRevisionRequest() throws {
     response.snapshot.online.resetCreditsEnabled = true
     response.snapshot.online.cursorOnlineEnabled = true
     response.snapshot.online.grokAutoRefreshEnabled = true
+    response.snapshot.codexAccounts.retainQuotaHistory = true
     response.snapshot.refresh.quotaIntervalSeconds = 300
     response.snapshot.refresh.resetCreditsIntervalSeconds = 600
     response.snapshot.refresh.reconcileIntervalSeconds = 900
@@ -7259,7 +7373,13 @@ private func testSettingsRevisionRequest() throws {
     var grokAutoRefreshEditable = Codexpulse_Core_V1_EditableField()
     grokAutoRefreshEditable.key = "online.grokAutoRefreshEnabled"
     grokAutoRefreshEditable.editable = true
-    response.editableFields = [editable, updateChannelEditable, localeEditable, grokAutoRefreshEditable]
+    var quotaHistoryEditable = Codexpulse_Core_V1_EditableField()
+    quotaHistoryEditable.key = "codexAccounts.retainQuotaHistory"
+    quotaHistoryEditable.editable = true
+    response.editableFields = [
+        editable, updateChannelEditable, localeEditable, grokAutoRefreshEditable,
+        quotaHistoryEditable,
+    ]
 
     var draft = SettingsDraft(response)
     draft.quotaEnabled = true
@@ -7268,6 +7388,7 @@ private func testSettingsRevisionRequest() throws {
     draft.quotaIntervalSeconds = 1
     draft.updateChannel = "prerelease"
     draft.locale = "en-US"
+    draft.retainCodexAccountQuotaHistory = false
     let request = draft.makeRequest(authoritative: response)
     try expect(
         request.expectedRevision == "revision-1", "settings write must carry authoritative revision")
@@ -7295,6 +7416,9 @@ private func testSettingsRevisionRequest() throws {
     try expect(
         request.online.cursorOnlineEnabled,
         "non-editable Cursor online field must preserve authoritative truth")
+    try expect(
+        !request.codexAccounts.retainQuotaHistory,
+        "editable account quota retention must carry the user's future-switch policy")
 }
 
 private func testProviderCatalogResolvesEnabledSelection() throws {
@@ -13411,6 +13535,8 @@ struct CodexPulseAppTestMain {
     static func main() async throws {
         try testCodexAccountRowPresentsLegacyQuotaHistoryActions()
         try testCodexAccountsSettingsSourceContract()
+        try testCodexAccountQuotaPageUsesOneRowForCurrentAndHistory()
+        try testCodexAccountQuotaWindowCardsUseActualWindows()
         try testQuotaPacePresentationPreservesLinkedHistoryOrigin()
         try testQuotaPaceChartOnlyColorsSeriesEndpoints()
         try await testLegacyQuotaHistoryMutationRequiresAuthoritativeReadback()

@@ -8,6 +8,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
     case projects
     case invocationUsage
     case quotaUsage
+    case accountQuotas
     case apiSubscriptions
     case localStatus
     case sourcesJobs
@@ -22,6 +23,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .sessions: "feature.sessions"
         case .projects: "feature.projects"
         case .quotaUsage: "feature.quotaUsage"
+        case .accountQuotas: "feature.accountQuotas"
         case .invocationUsage: "feature.invocationUsage"
         case .apiSubscriptions: "feature.apiSubscriptions"
         case .localStatus: "feature.localStatus"
@@ -38,6 +40,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .sessions: "text.bubble"
         case .projects: "folder"
         case .quotaUsage: "chart.xyaxis.line"
+        case .accountQuotas: "person.2.crop.square.stack"
         case .invocationUsage: "wrench.and.screwdriver"
         case .apiSubscriptions: "creditcard.and.123"
         case .localStatus: "heart.text.square"
@@ -49,14 +52,15 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
 
 	public static func usageFeatures(for provider: AgentProvider?) -> [AppFeature] {
         guard let provider else { return [] }
-		let features: [AppFeature] = [.overview, .sessions, .projects, .invocationUsage, .quotaUsage]
+		var features: [AppFeature] = [.overview, .sessions, .projects, .invocationUsage, .quotaUsage]
+		if provider == .codex { features.append(.accountQuotas) }
 		guard !provider.supportsInvocationStatistics else { return features }
 		return features.filter { $0 != .invocationUsage }
 	}
 
     public var requiresEnabledProvider: Bool {
         switch self {
-        case .overview, .sessions, .projects, .quotaUsage, .invocationUsage:
+        case .overview, .sessions, .projects, .quotaUsage, .accountQuotas, .invocationUsage:
             true
         case .apiSubscriptions, .localStatus, .sourcesJobs, .settings, .dashboardSummary:
             false
@@ -65,7 +69,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
 }
 
 private enum FeatureTaskKey: Hashable {
-    case usage, statusOverview, statusAccount, codexCardAccount, invocationUsage, pricingCatalog, quota, quotaAccount, quotaPace, dashboardSummary
+    case usage, statusOverview, statusAccount, codexCardAccount, invocationUsage, pricingCatalog, quota, quotaAccount, quotaPace, accountQuotas, dashboardSummary
     case quotaRefresh(AgentProvider), resetCreditsRefresh(AgentProvider)
     case apiSubscriptions, apiCredentialStatus, apiCredentialSave
     case runtimeAction
@@ -76,11 +80,12 @@ private enum FeatureTaskKey: Hashable {
     case healthProjection, dataHealth, healthList, healthDetail
     case settings, settingsSave
     case codexSubscriptionList, codexSubscriptionMutate
+    case codexAccountQuotaClear
 
     var isRead: Bool {
         switch self {
         case .quotaRefresh, .resetCreditsRefresh, .runtimeAction, .settingsSave, .apiCredentialSave,
-            .codexSubscriptionMutate:
+            .codexSubscriptionMutate, .codexAccountQuotaClear:
             false
         default:
             true
@@ -132,6 +137,9 @@ public final class AppModel: ObservableObject {
     @Published private var codexCardAccountIsLoading = false
     @Published public private(set) var quotaPaceState:
         FeatureLoadState<Codexpulse_Core_V1_QuotaPaceResponse> = .idle
+    @Published public private(set) var codexAccountQuotasState:
+        FeatureLoadState<Codexpulse_Core_V1_CodexAccountQuotasResponse> = .idle
+    @Published public private(set) var codexAccountQuotaClearState: ActionState = .idle
     @Published public private(set) var apiSubscriptionsState:
         FeatureLoadState<Codexpulse_Core_V1_APISubscriptionsCurrentResponse> = .idle
     @Published public private(set) var apiCredentialStatus: APISubscriptionCredentialStatus?
@@ -310,6 +318,10 @@ public final class AppModel: ObservableObject {
                 selectedFeature = .overview
                 persistSelectedFeature()
             }
+			if provider != .codex, selectedFeature == .accountQuotas {
+				selectedFeature = .overview
+				persistSelectedFeature()
+			}
             overviewRange = provider.defaultOverviewRange
         }
         guard previous != provider else { return }
@@ -473,6 +485,8 @@ public final class AppModel: ObservableObject {
         case .quotaUsage:
             quotaState.isLoading || quotaPaceState.isLoading ||
                 usageState.isLoading || pricingCatalogState.isLoading
+        case .accountQuotas:
+            codexAccountQuotasState.isLoading
         case .apiSubscriptions:
             apiSubscriptionsState.isLoading
         case .invocationUsage:
@@ -621,6 +635,7 @@ public final class AppModel: ObservableObject {
         case .sessions: loadSessions(reset: true)
         case .projects: loadProjects(reset: true)
         case .quotaUsage: loadQuotaAndUsage()
+        case .accountQuotas: loadCodexAccountQuotas()
         case .apiSubscriptions: loadAPISubscriptions()
         case .invocationUsage: loadInvocationUsage()
         case .localStatus: loadLocalStatus()
@@ -654,6 +669,8 @@ public final class AppModel: ObservableObject {
             {
                 loadQuotaAndUsage()
             }
+        case .accountQuotas:
+			if codexAccountQuotasState.shouldReloadOnNavigation { loadCodexAccountQuotas() }
         case .apiSubscriptions:
             if apiSubscriptionsState.shouldReloadOnNavigation { loadAPISubscriptions() }
         case .invocationUsage:
@@ -677,10 +694,14 @@ public final class AppModel: ObservableObject {
     }
 
     public func navigate(to feature: AppFeature) {
-        let destination = feature == .invocationUsage &&
-            selectedProvider?.supportsInvocationStatistics != true
-            ? AppFeature.overview
-            : feature
+        let destination = if feature == .invocationUsage &&
+            selectedProvider?.supportsInvocationStatistics != true {
+            AppFeature.overview
+        } else if feature == .accountQuotas && selectedProvider != .codex {
+            AppFeature.overview
+        } else {
+            feature
+        }
         if selectedFeature != destination {
             cancelCodexSubscriptionDayBoundaryReload()
         }
@@ -757,6 +778,9 @@ public final class AppModel: ObservableObject {
             self.loadSessions(reset: true)
             self.loadProjects(reset: true)
             self.loadQuotaAndUsage()
+            if self.selectedProvider == .codex {
+                self.loadCodexAccountQuotas()
+            }
             self.loadAPISubscriptions()
             if self.selectedProvider?.supportsInvocationStatistics == true {
                 self.loadInvocationUsage()
@@ -804,7 +828,8 @@ public final class AppModel: ObservableObject {
             {
                 loadJobDetail(jobID: selectedJobID)
             }
-        case .overview, .quotaUsage, .invocationUsage, .apiSubscriptions, .settings, .dashboardSummary:
+        case .overview, .quotaUsage, .accountQuotas, .invocationUsage, .apiSubscriptions,
+            .settings, .dashboardSummary:
             break
         }
     }
@@ -1052,8 +1077,49 @@ public final class AppModel: ObservableObject {
             loadQuotaAccount()
         } else {
             quotaAccountState = .idle
-        }
-    }
+		}
+	}
+
+	public func loadCodexAccountQuotas(now: Date = Date()) {
+		guard selectedProvider == .codex else {
+			codexAccountQuotasState = .idle
+			return
+		}
+		let previous = codexAccountQuotasState.value
+		codexAccountQuotasState = .loading(previous: previous)
+		launch(
+			.accountQuotas,
+			operation: { [runtime] in try await runtime.listCodexAccountQuotas(now: now) }
+		) { [weak self] response in
+			self?.codexAccountQuotasState = loadState(
+				value: response,
+				meta: response.meta,
+				isEmpty: response.accounts.isEmpty
+			)
+		} failure: { [weak self] error in
+			self?.codexAccountQuotasState = failedLoadState(previous: previous, error: error)
+		}
+	}
+
+	public func clearCodexAccountQuotaHistory() {
+		guard canRefreshOrRestart else { return }
+		if case .running = codexAccountQuotaClearState { return }
+		codexAccountQuotaClearState = .running
+		launch(
+			.codexAccountQuotaClear,
+			operation: { [runtime] in try await runtime.clearCodexAccountQuotaHistory() }
+		) { [weak self] receipt in
+			guard let self else { return }
+			codexAccountQuotaClearState = .succeeded(
+				receipt.accountCount == 0
+					? "没有可清理的历史记录"
+					: "已清理 \(receipt.accountCount) 个账号的历史记录"
+			)
+			loadCodexAccountQuotas()
+		} failure: { [weak self] error in
+			self?.codexAccountQuotaClearState = .unavailable(AppNotice.from(error))
+		}
+	}
 
     public func loadUsage() {
         guard let provider = selectedProvider else { return }
@@ -1318,6 +1384,7 @@ public final class AppModel: ObservableObject {
             loadQuotaPace(now: now)
             if provider == .codex {
                 loadQuotaAccount()
+				if selectedFeature == .accountQuotas { loadCodexAccountQuotas(now: now) }
             }
         } failure: { [weak self] error in
             self?.setRefreshState(.unavailable(AppNotice.from(error)), source: source, provider: provider)
@@ -1893,6 +1960,8 @@ public final class AppModel: ObservableObject {
             loadCodexSubscriptionAccounts()
         case .quotaUsage where selectedProvider == .codex:
             loadQuotaAccount()
+        case .accountQuotas where selectedProvider == .codex:
+            loadCodexAccountQuotas()
         default:
             break
         }
@@ -2022,6 +2091,8 @@ public final class AppModel: ObservableObject {
             loadCodexSubscriptionAccounts()
         case .quotaUsage where selectedProvider == .codex:
             loadQuotaAccount()
+        case .accountQuotas where selectedProvider == .codex:
+            loadCodexAccountQuotas()
         default:
             cancelCodexSubscriptionDayBoundaryReload()
         }
@@ -2347,6 +2418,7 @@ public final class AppModel: ObservableObject {
             default: nil
             }
             let refreshesSelectedQuota = sourceProvider == nil || selectedProvider == sourceProvider
+            let refreshesCodexAccountQuotas = sourceProvider == nil || sourceProvider == .codex
             if domain == "quota" { invalidateCodexCardAccount() }
             if refreshesSelectedQuota {
                 invalidateTasks([.quota, .quotaAccount, .quotaPace])
@@ -2354,9 +2426,16 @@ public final class AppModel: ObservableObject {
                 quotaAccountState = stale(quotaAccountState, notice)
                 quotaPaceState = stale(quotaPaceState, notice)
             }
+            if refreshesCodexAccountQuotas {
+                invalidateTasks([.accountQuotas])
+                codexAccountQuotasState = stale(codexAccountQuotasState, notice)
+            }
             invalidateTasks([.dashboardSummary])
             dashboardSummaryState = stale(dashboardSummaryState, notice)
-            affected = refreshesSelectedQuota ? [.quotaUsage, .dashboardSummary] : [.dashboardSummary]
+			var next: Set<AppFeature> = [.dashboardSummary]
+			if refreshesSelectedQuota { next.insert(.quotaUsage) }
+			if refreshesCodexAccountQuotas { next.insert(.accountQuotas) }
+			affected = next
 			refreshesStatus = sourceProvider == nil || statusProvider == sourceProvider
         case "health":
             invalidateTasks([.healthProjection, .dataHealth, .healthList, .healthDetail, .sources, .sourceDetail, .jobs, .jobDetail])
@@ -2382,8 +2461,9 @@ public final class AppModel: ObservableObject {
 			refreshesStatus = true
         case "account":
             invalidateCodexCardAccount()
-            invalidateTasks([.codexSubscriptionList, .quota, .quotaAccount, .quotaPace, .statusAccount])
+            invalidateTasks([.codexSubscriptionList, .accountQuotas, .quota, .quotaAccount, .quotaPace, .statusAccount])
             codexSubscriptionAccountsState = stale(codexSubscriptionAccountsState, notice)
+			codexAccountQuotasState = stale(codexAccountQuotasState, notice)
             quotaAccountState = stale(quotaAccountState, notice)
             if selectedProvider == .codex {
                 quotaState = stale(quotaState, notice)
@@ -2398,6 +2478,10 @@ public final class AppModel: ObservableObject {
                 loadQuota(now: now)
                 loadQuotaPace(now: now)
                 loadQuotaAccount()
+			} else if selectedFeature == .accountQuotas, selectedProvider == .codex,
+				!requiresCoreRestart
+			{
+				loadCodexAccountQuotas()
             }
             affected = []
 			refreshesStatus = true
@@ -2457,6 +2541,8 @@ public final class AppModel: ObservableObject {
         quotaState = .idle
         quotaAccountState = .idle
         quotaPaceState = .idle
+        codexAccountQuotasState = .idle
+        codexAccountQuotaClearState = .idle
         apiSubscriptionsState = .idle
         apiCredentialStatus = nil
         apiCredentialActionState = .idle
@@ -2496,6 +2582,7 @@ public final class AppModel: ObservableObject {
 		quotaState = .idle
 		quotaAccountState = .idle
 		quotaPaceState = .idle
+		codexAccountQuotasState = .idle
 		quotaRefreshState = .idle
 		resetCreditsRefreshState = .idle
 		sessionsState = .idle
@@ -2863,6 +2950,7 @@ public final class AppModel: ObservableObject {
         quotaState = stale(quotaState, notice)
         quotaAccountState = stale(quotaAccountState, notice)
         quotaPaceState = stale(quotaPaceState, notice)
+        codexAccountQuotasState = stale(codexAccountQuotasState, notice)
         apiSubscriptionsState = stale(apiSubscriptionsState, notice)
         sessionsState = stale(sessionsState, notice)
         sessionDetailState = stale(sessionDetailState, notice)

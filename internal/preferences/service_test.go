@@ -31,6 +31,7 @@ func TestServiceUpdateSettingsValidatesCASAndExactReplay(t *testing.T) {
 		ExpectedRevision: base.Revision,
 		Providers:        base.Providers,
 		Online:           online,
+		CodexAccounts:    CodexAccountPreferences{RetainQuotaHistory: false},
 		Refresh: RefreshPreferences{
 			QuotaIntervalSeconds: 120, ResetCreditsIntervalSeconds: 3600,
 			ReconcileIntervalSeconds: 7200, JSONLDebounceMilliseconds: 3000,
@@ -48,6 +49,7 @@ func TestServiceUpdateSettingsValidatesCASAndExactReplay(t *testing.T) {
 		t.Fatalf("UpdateSettings() error = %v", err)
 	}
 	if updated.Revision != base.Revision+1 || updated.Online != request.Online ||
+		updated.CodexAccounts != request.CodexAccounts ||
 		updated.Refresh != request.Refresh || updated.Updates != request.Updates || updated.UI != request.UI ||
 		!sameCodexHomePointer(updated.CodexHome, base.CodexHome) || updated.PendingSwitch != nil {
 		t.Fatalf("UpdateSettings() = %#v", updated)
@@ -95,6 +97,7 @@ func TestServiceUpdateSettingsReadsBackCommittedDurabilityUnknownAfterCancellati
 		ExpectedRevision: base.Revision,
 		Providers:        base.Providers,
 		Online:           online,
+		CodexAccounts:    base.CodexAccounts,
 		Refresh:          base.Refresh,
 		Updates:          base.Updates,
 		UI:               base.UI,
@@ -180,6 +183,7 @@ func TestServiceUpdateSettingsDurabilityReadbackStates(t *testing.T) {
 				ExpectedRevision: base.Revision,
 				Providers:        base.Providers,
 				Online:           online,
+				CodexAccounts:    base.CodexAccounts,
 				Refresh:          base.Refresh, Updates: base.Updates, UI: base.UI,
 			}
 			got, err := service.UpdateSettings(context.Background(), request)

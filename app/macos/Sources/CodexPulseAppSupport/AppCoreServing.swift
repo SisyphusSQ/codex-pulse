@@ -22,6 +22,14 @@ public protocol AppCoreServing: Sendable {
         retryPolicy: ReadRetryPolicy
     ) async throws -> Codexpulse_Core_V1_CodexSubscriptionAccountsResponse
 
+    func listCodexAccountQuotas(
+        _ request: Codexpulse_Core_V1_CodexAccountQuotasRequest,
+        retryPolicy: ReadRetryPolicy
+    ) async throws -> Codexpulse_Core_V1_CodexAccountQuotasResponse
+
+    func clearCodexAccountQuotaHistory()
+        async throws -> Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt
+
     func createCodexSubscriptionAccount(
         _ request: Codexpulse_Core_V1_CreateCodexSubscriptionAccountRequest
     ) async throws -> Codexpulse_Core_V1_CodexSubscriptionMutationReceipt
@@ -191,6 +199,19 @@ public protocol AppCoreServing: Sendable {
 }
 
 public extension AppCoreServing {
+	func listCodexAccountQuotas(
+		_ request: Codexpulse_Core_V1_CodexAccountQuotasRequest,
+		retryPolicy: ReadRetryPolicy
+	) async throws -> Codexpulse_Core_V1_CodexAccountQuotasResponse {
+		throw AppRuntimeError.unavailable
+	}
+
+	func clearCodexAccountQuotaHistory()
+		async throws -> Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt
+	{
+		throw AppRuntimeError.unavailable
+	}
+
 	func apiCredentialStatus(
 		_ request: Codexpulse_Core_V1_APICredentialStatusRequest,
 		retryPolicy: ReadRetryPolicy

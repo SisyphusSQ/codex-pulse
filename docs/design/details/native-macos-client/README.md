@@ -204,12 +204,13 @@ contract 不兼容时必须 fail closed，由客户端展示稳定的“核心�
 `SessionDetailResponse.daily` 的 wire field 11 与名称永久 reserved；新
 `trend`/`trend_granularity` 使用 field 12/13。
 
-当前 Helper 与 Swift App 的精确握手版本为 `core-rpc-v6`。`Contracts.provider_control_version`
+当前 Helper 与 Swift App 的精确握手版本为 `core-rpc-v7`。`Contracts.provider_control_version`
 为 `provider-control-v1`。Settings snapshot 携带三家 Provider 的 intent/discovery/effective
 以及 Cursor `cursor_online_enabled`。DTO 不得包含真实路径、凭据或底层错误正文。
 `Contracts.codex_pro_tier_version`
 为 `codex-pro-tier-v1`，`Contracts.codex_subscription_accounts_version` 为
-`codex-subscription-accounts-v2`。v2 在账号列表中暴露可撤销的 legacy quota history 关联状态，并新增 Link/Unlink command。Go Helper 根据夹读得到的一致 `planType` 映射 `prolite → Pro 5×`、
+`codex-subscription-accounts-v2`，`Contracts.codex_account_quotas_version` 为
+`codex-account-quotas-v1`。后者为独立账号额度页提供当前账号与历史账号的一致账号卡模型，以及每个真实额度窗口最后验证的剩余百分比、实际周期、重置时间、状态和采集时间；Swift 按 `limit_id + window_minutes` 合并等价窗口，复用「额度与用量」卡片视觉，不从 `primary / secondary` 猜短周期或周周期。历史卡只读，不触发在线请求。订阅 v2 在账号列表中暴露可撤销的 legacy quota history 关联状态，并新增 Link/Unlink command。Go Helper 根据夹读得到的一致 `planType` 映射 `prolite → Pro 5×`、
 `pro → Pro 20×`，并把同一证据写入订阅列表的自动套餐；Swift 只消费类型化
 `AccountSnapshot.pro_tier` 与 `subscription`，不得重复套餐优先级或 day-delta 算法。
 旧 App 与新 Helper、新 App 与旧 Helper 都必须在精确版本握手中拒绝。invalidation 为
