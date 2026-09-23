@@ -1,5 +1,10 @@
 ## Unreleased
 
+## v0.14.0 - 2026-09-23
+
+#### bugFix:
+1. [TOO-468] 修复图形界面启动时 Codex CLI/Node 路径不可用及版本号限制导致账号识别失败；改为按 App Server 实际能力校验，并优先尝试 Codex App 内置 CLI。
+
 ## v0.13.1 - 2026-09-23
 
 #### feature:
