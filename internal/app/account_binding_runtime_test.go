@@ -17,6 +17,16 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
+func TestAccountBindingProbeFailureReason(t *testing.T) {
+	t.Parallel()
+	if got := accountBindingProbeFailureReason(appserver.ErrCapabilityUnavailable); got != store.CodexAccountBindingReasonUnsupportedAppServer {
+		t.Fatalf("method unavailable reason = %q", got)
+	}
+	if got := accountBindingProbeFailureReason(appserver.ErrNodeRuntimeUnavailable); got != store.CodexAccountBindingReasonConfirmationFailed {
+		t.Fatalf("Node unavailable reason = %q", got)
+	}
+}
+
 func TestAccountBindingSealsAndDrainsABeforePublishingB(t *testing.T) {
 	t.Parallel()
 

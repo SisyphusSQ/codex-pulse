@@ -16,6 +16,7 @@ const (
 )
 
 var ErrCapabilityUnavailable = errors.New("App Server capability unavailable")
+var ErrProtocolIncompatible = errors.New("App Server protocol incompatible")
 
 type RPCError struct {
 	Code int64
@@ -82,22 +83,22 @@ func (rpc *jsonLineRPC) Call(ctx context.Context, method string, params any, res
 		}
 		var response rpcResponse
 		if err := json.Unmarshal(rpc.reader.Bytes(), &response); err != nil {
-			return errors.New("decode App Server RPC response")
+			return ErrProtocolIncompatible
 		}
 		if response.ID == nil {
 			continue
 		}
 		if *response.ID != requestID {
-			return errors.New("App Server RPC response id mismatch")
+			return ErrProtocolIncompatible
 		}
 		if response.Error != nil {
 			return RPCError{Code: response.Error.Code}
 		}
 		if len(response.Result) == 0 {
-			return errors.New("App Server RPC response missing result")
+			return ErrProtocolIncompatible
 		}
 		if err := json.Unmarshal(response.Result, result); err != nil {
-			return errors.New("decode App Server RPC result")
+			return ErrProtocolIncompatible
 		}
 		return nil
 	}

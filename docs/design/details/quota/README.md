@@ -10,7 +10,7 @@ Codex Runway 实际运行中观察到：网络不佳时，5 小时和周窗口�
 
 Codex 在线额度和 Reset Credits 只能通过 Codex App Server 公开接口 `account/rateLimits/read` 获取。产品实现不得直连私有 WHAM endpoint，也不得自己读取 Codex access token、JWT、`auth.json` 内容或 Keychain credential。
 
-最低能力基线是包含 `account/rateLimits/read.accountId` 的稳定 Codex CLI；当前验证版本是 `0.154.0`。GUI resolver 必须能找到 `$HOME/.local/bin/codex`，并读回最终 binary path、version 和 capability state。旧版或缺 `accountId` 能力时 fail closed，不能 fallback 到旧 WHAM 实现。
+最低能力基线是实际 App Server 会话可完成 `initialize` 和 `account/rateLimits/read`，且返回可验证的 `accountId` 与额度结构；CLI 版本、稳定版或预发布版标签只作诊断信息，不设版本号门槛。GUI resolver 优先尝试 Codex App 内置 CLI，方法或额度结构不兼容时在同一个 confirmed Home 下尝试独立 CLI；`accountId` 缺失时不跨候选寻找其他登录态。npm 包装脚本的 `node` 可从 GUI `PATH`、常见 Node 安装位置或显式绝对路径覆盖中发现。若全部候选不可用，保持账号和在线额度 unknown，不 fallback 到旧 WHAM 实现。运行时缺失进入可恢复的 unavailable/backoff；真实方法或响应不兼容仍 fail closed，并在下次启动或手动刷新时重新探测。
 
 App Server 返回的原始 `accountId` 只短暂存在于内存。SQLite 只保存：
 
@@ -51,6 +51,7 @@ Preferences v4 增加 `codex_accounts.retain_quota_history`，默认开启。它
 该能力不建立账号级 Session、Token、项目、趋势或费用归因；这些指标继续按 Codex Home 聚合。清除额度历史也不得删除订阅账号记录、source schedule/attempt 的运行证据、legacy `account_scope=default` 或任何 Home 级数据。Proto 只返回公开账号 UUID 与允许展示的账号资料，绝不返回 HMAC `account_scope`、raw ChatGPT account ID 或凭据。
 
 账号切换隔离的 live runbook 见 [`docs/test/codex-account-switching.md`](../../../test/codex-account-switching.md)。
+CLI 与 Node 路径、版本无关能力验证见 [`docs/test/codex-cli-compatibility.md`](../../../test/codex-cli-compatibility.md)。
 
 ## v0.1 来源（历史）
 

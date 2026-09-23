@@ -81,7 +81,7 @@ Swift 命令仍受本机 toolchain 和既有时区敏感用例影响；必须记
 
 1. 当前工作目录：`/Users/suqing/Coding/golang/00_self/codex-pulse`
 2. 当前分支：`suqing/too-442-account-binding`
-3. 活跃 Codex CLI 应满足稳定能力基线（含 `account/rateLimits/read.accountId`）。当前验证版本 0.154.0。GUI resolver 必须能找到 `$HOME/.local/bin/codex`，不得硬编码用户名或绝对路径。
+3. 活跃 Codex CLI 应实际支持 `account/rateLimits/read.accountId`；版本号和预发布标记不作为能力判断。GUI resolver 优先尝试 Codex App 内置 CLI，再尝试独立 CLI；Node 包装脚本应在 Finder 的精简 `PATH` 下找到可用 Node，不能把真实用户路径硬编码进产品。
 4. 用户已授权本仓库本地 App 使用真实 Codex Home；每次执行脚本前仍须说明会读 Session/JSONL。
 5. Live A-B-A 需要两个真实 ChatGPT 账号。只有一个账号时整条 live 标记 `NOT_RUN`。
 

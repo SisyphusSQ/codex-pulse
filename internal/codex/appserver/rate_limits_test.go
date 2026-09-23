@@ -269,7 +269,7 @@ done
 	}
 	inspection, inspectErr := InspectCodexBinary(binary)
 	if inspectErr != nil || inspection.Path != binary || inspection.Version != "0.154.0" ||
-		inspection.CapabilityState != CodexCapabilityAccountRateLimits {
+		inspection.CapabilityState != CodexCapabilityUnverified {
 		t.Fatalf("InspectCodexBinary() = %#v, %v", inspection, inspectErr)
 	}
 	assertNoSensitiveLeak(t, log)
@@ -376,6 +376,16 @@ func TestRPCErrorMethodNotFoundIsCapabilityUnavailable(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "account/rateLimits/read is not available") {
 		t.Fatalf("RPC error leaked server message: %v", err)
+	}
+}
+
+func TestRPCMalformedResponseIsProtocolIncompatible(t *testing.T) {
+	t.Parallel()
+	rpc := newJSONLineRPC(nopWriteCloser{io.Discard}, strings.NewReader("not-json\n"))
+	var result json.RawMessage
+	err := rpc.Call(context.Background(), "account/rateLimits/read", accountRateLimitsReadParams{}, &result)
+	if !errors.Is(err, ErrProtocolIncompatible) {
+		t.Fatalf("malformed response error = %v", err)
 	}
 }
 
