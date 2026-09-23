@@ -181,6 +181,32 @@ func TestClientClassifiesCancelAndCapabilityFailures(t *testing.T) {
 	}
 }
 
+func TestClassifyAppServerLocalRuntimeFailureStaysRetryable(t *testing.T) {
+	t.Parallel()
+	for _, err := range []error{
+		appserver.ErrNodeRuntimeUnavailable,
+		appserver.ErrCodexBinaryUnavailable,
+		appserver.ErrCodexLaunchFailed,
+		errors.Join(appserver.ErrCapabilityUnavailable, appserver.ErrNodeRuntimeUnavailable),
+	} {
+		code := classifyAppServerError(context.Background(), err)
+		if code != store.SourceFailureNetworkUnavailable || !retryableAppServerFailure(code) {
+			t.Fatalf("classifyAppServerError(%v) = %q", err, code)
+		}
+	}
+}
+
+func TestClientDoesNotImmediatelyRetryMissingLocalRuntime(t *testing.T) {
+	t.Parallel()
+	key := testScopeKey(0x16)
+	reader := &scriptedRateLimitsReader{errs: []error{appserver.ErrNodeRuntimeUnavailable}}
+	client := mustQuotaClient(t, key, reader)
+	result, err := client.Fetch(context.Background(), testBoundRequest(t, key, "acct-test-a", "missing-node"))
+	if err != nil || result.Failure == nil || result.Failure.Code != store.SourceFailureNetworkUnavailable || reader.calls != 1 {
+		t.Fatalf("missing runtime result = %#v, err=%v, calls=%d", result, err, reader.calls)
+	}
+}
+
 func TestResetCreditsClientPreservesNullCreditsAndNullableExpiry(t *testing.T) {
 	t.Parallel()
 

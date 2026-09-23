@@ -6,13 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 )
 
 // 测试 Finder 的最小 PATH 下仍会选择产品认可的绝对 Codex CLI 候选。（风险复现用例）
-func TestResolveCodexBinaryUsesNodeBackedFallbackWithMinimalPath(t *testing.T) {
+func TestResolveCodexInvocationsUsesNodeBackedFallbackWithMinimalPath(t *testing.T) {
 	directory := t.TempDir()
 	binary := filepath.Join(directory, "codex")
 	writeNodeBackedCodex(t, binary, `
@@ -24,12 +25,12 @@ exit 0
 `)
 	t.Setenv("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
 
-	got, err := resolveCodexBinary("", []string{binary})
+	got, err := resolveCodexInvocations(ProcessOptions{}, []string{binary})
 	if err != nil {
-		t.Fatalf("resolveCodexBinary() error = %v", err)
+		t.Fatalf("resolveCodexInvocations() error = %v", err)
 	}
-	if got != binary {
-		t.Fatalf("resolveCodexBinary() = %q, want %q", got, binary)
+	if len(got) == 0 || got[0].binary != binary {
+		t.Fatalf("resolveCodexInvocations() = %#v, want %q first", got, binary)
 	}
 }
 
@@ -82,7 +83,142 @@ done
 	}
 }
 
-func TestResolveCodexBinaryPrefersStableLocalOverAlphaAndOldPATH(t *testing.T) {
+func TestNodeBackedCodexFindsNVMNodeOutsideCLIDirectory(t *testing.T) {
+	home := t.TempDir()
+	nodeDirectory := filepath.Join(home, ".nvm", "versions", "node", "v22.1.0", "bin")
+	cliDirectory := filepath.Join(home, ".local", "bin")
+	for _, directory := range []string{nodeDirectory, cliDirectory} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	node := filepath.Join(nodeDirectory, "node")
+	if err := os.WriteFile(node, []byte("#!/bin/sh\nscript=\"$1\"\nshift\nexec /bin/sh \"$script\" \"$@\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(cliDirectory, "codex")
+	writeNodeBackedCodexScript(t, binary, `
+if [ "$1" = "--version" ]; then
+  printf 'codex-cli 0.150.1\n'
+  exit 0
+fi
+while IFS= read -r line; do
+  id="$(printf '%s\n' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')"
+  case "$line" in
+    *'"method":"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
+    *'"method":"account/rateLimits/read"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"accountId":"acct-test-nvm","rateLimits":{"primary":{"usedPercent":7,"windowDurationMins":300,"resetsAt":1784008800}}}}\n' "$id" ;;
+  esac
+done`)
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+	snapshot, err := ReadLocalAccountRateLimits(
+		t.Context(), confirmedAccountTestHome(t, t.TempDir(), 1), ProcessOptions{CodexBinary: binary}, true,
+	)
+	if err != nil || string(snapshot.AccountID) != "acct-test-nvm" {
+		t.Fatalf("NVM Node outside CLI dir: snapshot=%#v, err=%v", snapshot, err)
+	}
+	badDirectory := filepath.Join(home, "bad-node")
+	if err := os.MkdirAll(badDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(badDirectory, "node"), []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", badDirectory+":/usr/bin:/bin:/usr/sbin:/sbin")
+	snapshot, err = ReadLocalAccountRateLimits(
+		t.Context(), confirmedAccountTestHome(t, t.TempDir(), 1), ProcessOptions{CodexBinary: binary}, true,
+	)
+	if err != nil || string(snapshot.AccountID) != "acct-test-nvm" {
+		t.Fatalf("fallback from broken Node: snapshot=%#v, err=%v", snapshot, err)
+	}
+	customRuntime := filepath.Join(home, "custom-node-runtime")
+	if err := os.WriteFile(customRuntime, []byte("#!/bin/sh\nscript=\"$1\"\nshift\nexec /bin/sh \"$script\" \"$@\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_PULSE_NODE_BINARY", customRuntime)
+	snapshot, err = ReadLocalAccountRateLimits(
+		t.Context(), confirmedAccountTestHome(t, t.TempDir(), 1), ProcessOptions{CodexBinary: binary}, true,
+	)
+	if err != nil || string(snapshot.AccountID) != "acct-test-nvm" {
+		t.Fatalf("custom Node executable: snapshot=%#v, err=%v", snapshot, err)
+	}
+}
+
+func TestNodeBackedCodexMissingConfiguredNodeIsDistinct(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "codex")
+	writeNodeBackedCodexScript(t, binary, "exit 0")
+	_, err := resolveCodexInvocations(ProcessOptions{
+		CodexBinary: binary,
+		NodeBinary:  filepath.Join(t.TempDir(), "missing-node"),
+	}, nil)
+	if !errors.Is(err, ErrNodeRuntimeUnavailable) || strings.Contains(err.Error(), binary) {
+		t.Fatalf("missing Node error = %v", err)
+	}
+}
+
+func TestAppCLIUnsupportedMethodFallsBackToUnversionedWorkingCLI(t *testing.T) {
+	directory := t.TempDir()
+	appBinary := filepath.Join(directory, "app-codex")
+	localBinary := filepath.Join(directory, "local-codex")
+	writeCodexVersionScript(t, appBinary, "0.155.0-alpha.9.2", `
+while IFS= read -r line; do
+  id="$(printf '%s\n' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')"
+  case "$line" in
+    *'"method":"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
+    *'"method":"account/rateLimits/read"'*) printf '{"jsonrpc":"2.0","id":%s,"error":{"code":-32601,"message":"unavailable"}}\n' "$id" ;;
+  esac
+done`)
+	writeCodexVersionScript(t, localBinary, "next", `
+while IFS= read -r line; do
+  id="$(printf '%s\n' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')"
+  case "$line" in
+    *'"method":"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
+    *'"method":"account/rateLimits/read"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"accountId":"acct-test-fallback","rateLimits":{"primary":{"usedPercent":5,"windowDurationMins":300,"resetsAt":1784008800}}}}\n' "$id" ;;
+  esac
+done`)
+	t.Setenv("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+	snapshot, err := withInitializedLocalRPC(t.Context(), t.TempDir(), ProcessOptions{
+		codexCandidatesForTest: []string{appBinary, localBinary},
+	}, func(ctx context.Context, rpc *jsonLineRPC, _ string) (AccountRateLimitsSnapshot, error) {
+		return readAccountRateLimits(ctx, rpc, true)
+	})
+	if err != nil || string(snapshot.AccountID) != "acct-test-fallback" {
+		t.Fatalf("fallback read = %#v, %v", snapshot, err)
+	}
+}
+
+func TestMissingAppAccountIdentityDoesNotFallBackToAnotherCLI(t *testing.T) {
+	directory := t.TempDir()
+	appBinary := filepath.Join(directory, "app-codex")
+	localBinary := filepath.Join(directory, "local-codex")
+	writeCodexVersionScript(t, appBinary, "0.155.0-alpha.9.2", `
+while IFS= read -r line; do
+  id="$(printf '%s\n' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')"
+  case "$line" in
+    *'"method":"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
+    *'"method":"account/rateLimits/read"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"accountId":null,"rateLimits":{"primary":{"usedPercent":5,"windowDurationMins":300,"resetsAt":1784008800}}}}\n' "$id" ;;
+  esac
+done`)
+	writeCodexVersionScript(t, localBinary, "0.156.0", `
+while IFS= read -r line; do
+  id="$(printf '%s\n' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')"
+  case "$line" in
+    *'"method":"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
+    *'"method":"account/rateLimits/read"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"accountId":"acct-stale-local","rateLimits":{"primary":{"usedPercent":5,"windowDurationMins":300,"resetsAt":1784008800}}}}\n' "$id" ;;
+  esac
+done`)
+	t.Setenv("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+	snapshot, err := withInitializedLocalRPC(t.Context(), t.TempDir(), ProcessOptions{
+		codexCandidatesForTest: []string{appBinary, localBinary},
+	}, func(ctx context.Context, rpc *jsonLineRPC, _ string) (AccountRateLimitsSnapshot, error) {
+		return readAccountRateLimits(ctx, rpc, true)
+	})
+	if !errors.Is(err, ErrAccountIdentityUnavailable) || len(snapshot.AccountID) != 0 {
+		t.Fatalf("missing App identity should fail closed: snapshot=%#v, err=%v", snapshot, err)
+	}
+}
+
+func TestResolveCodexInvocationsKeepsCandidateOrderWithoutVersionGate(t *testing.T) {
 	directory := t.TempDir()
 	pathDir := filepath.Join(directory, "path")
 	localDir := filepath.Join(directory, "local-bin")
@@ -104,31 +240,28 @@ func TestResolveCodexBinaryPrefersStableLocalOverAlphaAndOldPATH(t *testing.T) {
 	writeCodexVersionScript(t, alphaApp, "0.154.0-alpha.6.2", "exit 0")
 	t.Setenv("PATH", pathDir)
 
-	got, err := resolveCodexBinary("", []string{stableLocal, alphaApp})
+	got, err := resolveCodexInvocations(ProcessOptions{}, []string{alphaApp, stableLocal})
 	if err != nil {
-		t.Fatalf("resolveCodexBinary() error = %v", err)
+		t.Fatalf("resolveCodexInvocations() error = %v", err)
 	}
-	if got != stableLocal {
-		t.Fatalf("resolveCodexBinary() = %q, want stable %q", got, stableLocal)
+	if len(got) == 0 || got[0].binary != alphaApp {
+		t.Fatalf("resolveCodexInvocations() = %#v, want app %q first", got, alphaApp)
 	}
-	inspection, inspectErr := InspectCodexBinary(got)
-	if inspectErr != nil || inspection.Version != "0.154.0" ||
-		inspection.CapabilityState != CodexCapabilityAccountRateLimits {
-		t.Fatalf("InspectCodexBinary(%q) = %#v, %v", got, inspection, inspectErr)
+	inspection, inspectErr := InspectCodexBinary(got[0].binary)
+	if inspectErr != nil || inspection.Version != "0.154.0-alpha.6.2" ||
+		inspection.CapabilityState != CodexCapabilityUnverified {
+		t.Fatalf("InspectCodexBinary(%q) = %#v, %v", got[0].binary, inspection, inspectErr)
 	}
 }
 
-func TestResolveCodexBinaryRejectsAlphaExplicitBinary(t *testing.T) {
+func TestResolveCodexInvocationsAcceptsAlphaExplicitBinary(t *testing.T) {
 	directory := t.TempDir()
 	alpha := filepath.Join(directory, "codex")
 	writeCodexVersionScript(t, alpha, "0.154.0-alpha.6.2", "exit 0")
 
-	got, err := resolveCodexBinary(alpha, nil)
-	if !errors.Is(err, ErrCapabilityUnavailable) || got != "" {
-		t.Fatalf("resolveCodexBinary(alpha) = %q, %v", got, err)
-	}
-	if strings.Contains(err.Error(), directory) || strings.Contains(err.Error(), "alpha") {
-		t.Fatalf("capability error leaked binary details: %v", err)
+	got, err := resolveCodexInvocations(ProcessOptions{CodexBinary: alpha}, nil)
+	if err != nil || len(got) != 1 || got[0].binary != alpha {
+		t.Fatalf("resolveCodexInvocations(alpha) = %#v, %v", got, err)
 	}
 }
 
@@ -156,13 +289,18 @@ func writeNodeBackedCodex(t *testing.T, path, body string) {
 	); err != nil {
 		t.Fatal(err)
 	}
+	writeNodeBackedCodexScript(t, path, body)
+}
+
+func writeNodeBackedCodexScript(t *testing.T, path, body string) {
+	t.Helper()
 	script := "#!/usr/bin/env node\n" + body + "\n"
 	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestDefaultCodexBinaryCandidatesPutLocalBinFirst(t *testing.T) {
+func TestDefaultCodexBinaryCandidatesPreferApp(t *testing.T) {
 	t.Parallel()
 
 	home, err := os.UserHomeDir()
@@ -170,9 +308,12 @@ func TestDefaultCodexBinaryCandidatesPutLocalBinFirst(t *testing.T) {
 		t.Fatalf("os.UserHomeDir() error = %v", err)
 	}
 	candidates := defaultCodexBinaryCandidates()
-	want := filepath.Join(home, ".local", "bin", "codex")
+	want := "/Applications/ChatGPT.app/Contents/Resources/codex"
 	if len(candidates) == 0 || candidates[0] != want {
 		t.Fatalf("defaultCodexBinaryCandidates()[0] = %#v, want %q first", candidates, want)
+	}
+	if !slices.Contains(candidates, filepath.Join(home, ".local", "bin", "codex")) {
+		t.Fatalf("local CLI candidate missing: %#v", candidates)
 	}
 }
 

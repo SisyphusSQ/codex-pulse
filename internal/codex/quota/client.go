@@ -120,7 +120,8 @@ func (client *Client) readBoundSnapshot(
 				return appserver.AccountRateLimitsSnapshot{}, store.ErrCodexAccountBindingChanged
 			}
 			code := classifyAppServerError(ctx, err)
-			if code == store.SourceFailureCancelled || !retryableAppServerFailure(code) ||
+			if code == store.SourceFailureCancelled || localCodexRuntimeUnavailable(err) ||
+				!retryableAppServerFailure(code) ||
 				nextAttempt == client.maxAttempts {
 				*result = client.finish(*result, code)
 				return appserver.AccountRateLimitsSnapshot{}, nil
@@ -217,7 +218,13 @@ func classifyAppServerError(ctx context.Context, err error) store.SourceFailureC
 	if ctx != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
 		return store.SourceFailureTimeout
 	}
+	// The current persisted failure vocabulary has no local-runtime code. Use the
+	// retryable unavailable state so installing Node or updating the App can recover.
+	if localCodexRuntimeUnavailable(err) {
+		return store.SourceFailureNetworkUnavailable
+	}
 	if errors.Is(err, appserver.ErrCapabilityUnavailable) ||
+		errors.Is(err, appserver.ErrProtocolIncompatible) ||
 		errors.Is(err, appserver.ErrRateLimitsSchemaIncompatible) {
 		return store.SourceFailureSchemaIncompatible
 	}
@@ -226,6 +233,12 @@ func classifyAppServerError(ctx context.Context, err error) store.SourceFailureC
 		return store.SourceFailureServerError
 	}
 	return store.SourceFailureNetworkUnavailable
+}
+
+func localCodexRuntimeUnavailable(err error) bool {
+	return errors.Is(err, appserver.ErrNodeRuntimeUnavailable) ||
+		errors.Is(err, appserver.ErrCodexBinaryUnavailable) ||
+		errors.Is(err, appserver.ErrCodexLaunchFailed)
 }
 
 func retryableAppServerFailure(code store.SourceFailureCode) bool {

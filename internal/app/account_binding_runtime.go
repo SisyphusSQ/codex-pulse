@@ -164,6 +164,20 @@ func isAccountBindingCallerCancellation(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
+func accountBindingProbeFailureReason(err error) store.CodexAccountBindingReason {
+	if errors.Is(err, appserver.ErrNodeRuntimeUnavailable) ||
+		errors.Is(err, appserver.ErrCodexBinaryUnavailable) ||
+		errors.Is(err, appserver.ErrCodexLaunchFailed) {
+		return store.CodexAccountBindingReasonConfirmationFailed
+	}
+	if errors.Is(err, appserver.ErrCapabilityUnavailable) ||
+		errors.Is(err, appserver.ErrProtocolIncompatible) ||
+		errors.Is(err, appserver.ErrRateLimitsSchemaIncompatible) {
+		return store.CodexAccountBindingReasonUnsupportedAppServer
+	}
+	return store.CodexAccountBindingReasonConfirmationFailed
+}
+
 func (runtime *accountBindingRuntime) reconcileIdentity(
 	ctx context.Context,
 	reason store.CodexAccountBindingReason,
@@ -221,7 +235,7 @@ func (runtime *accountBindingRuntime) reconcileIdentityLocked(
 		if mode == identityReconcileProbe && current.State == store.CodexAccountBindingConfirmed {
 			return err
 		}
-		return runtime.keepPending(ctx, nowMS, store.CodexAccountBindingReasonConfirmationFailed, err)
+		return runtime.keepPending(ctx, nowMS, accountBindingProbeFailureReason(err), err)
 	}
 
 	if mode == identityReconcileProbe && current.State == store.CodexAccountBindingConfirmed &&
@@ -255,7 +269,7 @@ func (runtime *accountBindingRuntime) reconcileIdentityLocked(
 			if isAccountBindingCallerCancellation(confirmErr) {
 				return confirmErr
 			}
-			return runtime.keepPending(ctx, nowMS, store.CodexAccountBindingReasonConfirmationFailed, confirmErr)
+			return runtime.keepPending(ctx, nowMS, accountBindingProbeFailureReason(confirmErr), confirmErr)
 		}
 		if secondScope != firstScope {
 			return runtime.keepPending(ctx, nowMS, store.CodexAccountBindingReasonConfirmationFailed, nil)

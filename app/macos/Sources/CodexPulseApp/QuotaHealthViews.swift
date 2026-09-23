@@ -367,9 +367,10 @@ private struct QuotaContentView: View {
     private func failureText(_ code: String) -> String {
         switch code {
         case "timeout": "请求超时"
-        case "network_unavailable": "网络不可用"
+        case "network_unavailable": provider == .codex ? "Codex CLI、Node 或网络暂不可用" : "网络不可用"
         case "auth_required": "需要重新登录"
         case "http_429": "请求过于频繁"
+        case "schema_incompatible": provider == .codex ? "Codex App Server 接口暂不兼容" : "数据格式暂不兼容"
         default: "数据来源暂时不可用"
         }
     }
