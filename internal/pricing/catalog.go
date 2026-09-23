@@ -17,6 +17,8 @@ const (
 	builtinPricing20260731VerifiedAtMS  = int64(1_785_464_448_000)
 	builtinPricing20260903EffectiveAtMS = int64(1_788_393_600_000)
 	builtinPricing20260905VerifiedAtMS  = int64(1_788_573_994_000)
+	builtinPricing20260922EffectiveAtMS = int64(1_790_035_200_000)
+	builtinPricing20260923VerifiedAtMS  = int64(1_790_123_508_000)
 )
 
 type builtinModelRate struct {
@@ -126,6 +128,28 @@ func BuiltinOpenAI20260905() CatalogVersion {
 	return catalog
 }
 
+// BuiltinOpenAI20260922 从 Sol 和 Luna 的发布日期（UTC 日界）增补 Standard
+// 短上下文参考价格；发布日期只提供日粒度估算边界。
+func BuiltinOpenAI20260922() CatalogVersion {
+	catalog := BuiltinOpenAI20260905()
+	catalog.PricingVersion = "openai-api-2026-09-22"
+	catalog.EffectiveFromMS = builtinPricing20260922EffectiveAtMS
+	catalog.CreatedAtMS = builtinPricing20260923VerifiedAtMS
+	catalog.VerifiedAtMS = builtinPricing20260923VerifiedAtMS
+	for _, rate := range []builtinModelRate{
+		{model: "gpt-6-sol", input: 2_000_000, cached: 200_000, output: 10_000_000},
+		{model: "gpt-6-luna", input: 100_000, cached: 10_000, output: 500_000},
+	} {
+		input, cached, output := rate.input, rate.cached, rate.output
+		catalog.Models = append(catalog.Models, ModelPrice{
+			MatchKind: ModelMatchExact, ModelPattern: rate.model, Priority: 100,
+			InputMicrosPerMillion: &input, CachedInputMicrosPerMillion: &cached,
+			OutputMicrosPerMillion: &output,
+		})
+	}
+	return catalog
+}
+
 // BuiltinOpenAICatalog 返回按生效时间升序排列的完整内置价格历史。
 func BuiltinOpenAICatalog() []CatalogVersion {
 	return []CatalogVersion{
@@ -135,6 +159,7 @@ func BuiltinOpenAICatalog() []CatalogVersion {
 		BuiltinOpenAI20260731(),
 		BuiltinOpenAI20260903(),
 		BuiltinOpenAI20260905(),
+		BuiltinOpenAI20260922(),
 	}
 }
 

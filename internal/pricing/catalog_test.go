@@ -77,7 +77,7 @@ func TestBuiltinOpenAI20260722AddsGPT54MiniWithoutMutatingPriorCatalog(t *testin
 		t.Fatalf("gpt-5.4-mini catalog entry = %#v", mini)
 	}
 	versions := BuiltinOpenAICatalog()
-	if len(versions) != 6 || versions[0].PricingVersion != "openai-api-2026-07-14" ||
+	if len(versions) != 7 || versions[0].PricingVersion != "openai-api-2026-07-14" ||
 		versions[1].PricingVersion != "openai-api-2026-07-22" ||
 		versions[2].PricingVersion != "openai-api-2026-07-29" ||
 		versions[3].PricingVersion != "openai-api-2026-07-31" ||
@@ -107,8 +107,8 @@ func TestBuiltinOpenAICatalogApplies20260731PriceCutsWithoutMutatingHistory(t *t
 	t.Parallel()
 
 	versions := BuiltinOpenAICatalog()
-	if len(versions) != 6 {
-		t.Fatalf("BuiltinOpenAICatalog() versions = %d, want 6", len(versions))
+	if len(versions) != 7 {
+		t.Fatalf("BuiltinOpenAICatalog() versions = %d, want 7", len(versions))
 	}
 	current := versions[3]
 	if current.PricingVersion != "openai-api-2026-07-31" ||
@@ -202,5 +202,30 @@ func TestAstraCatalogPreservesHistoryAndSolVerificationBoundary(t *testing.T) {
 	*current.Models[0].InputMicrosPerMillion = 0
 	if *BuiltinOpenAI20260905().Models[0].InputMicrosPerMillion == 0 {
 		t.Fatal("mutable template leaked")
+	}
+}
+
+func TestGPT6SolLunaCatalogAddsExactRatesWithoutChangingHistory(t *testing.T) {
+	t.Parallel()
+	versions := BuiltinOpenAICatalog()
+	current, previous := versions[6], versions[5]
+	if current.PricingVersion != "openai-api-2026-09-22" ||
+		current.EffectiveFromMS != 1_790_035_200_000 ||
+		current.VerifiedAtMS != 1_790_123_508_000 {
+		t.Fatalf("GPT-6 catalog metadata = %#v", current)
+	}
+	want := map[string][3]int64{
+		"gpt-6-sol":  {2_000_000, 200_000, 10_000_000},
+		"gpt-6-luna": {100_000, 10_000, 500_000},
+	}
+	if got := selectedCatalogRates(t, current, "gpt-6-sol", "gpt-6-luna"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("GPT-6 rates = %#v, want %#v", got, want)
+	}
+	if len(previous.Models)+2 != len(current.Models) ||
+		!reflect.DeepEqual(previous.Models, current.Models[:len(previous.Models)]) {
+		t.Fatal("GPT-6 addition changed previous rates")
+	}
+	if got := selectedCatalogRates(t, previous, "gpt-6-sol", "gpt-6-luna"); len(got) != 0 {
+		t.Fatalf("previous catalog unexpectedly prices GPT-6: %#v", got)
 	}
 }

@@ -101,7 +101,7 @@ func TestCurrentReturnsCursorPublishedReferenceCatalog(t *testing.T) {
 	t.Parallel()
 
 	reader := &readerStub{err: errors.New("Codex catalog must not be read")}
-	service, err := NewService(reader, func() time.Time { return time.UnixMilli(1_786_838_400_000) })
+	service, err := NewService(reader, func() time.Time { return time.UnixMilli(pricing.CursorPricingVerifiedAtMS) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestCurrentReturnsCursorPublishedReferenceCatalog(t *testing.T) {
 	}
 	if reader.source != "" || got.ProviderContext.EffectiveProvider != agentprovider.Cursor ||
 		got.Source != SourceCursorDocs || got.PricingVersion != pricing.CursorPricingVersion ||
-		got.SourceURL == nil || *got.SourceURL != pricing.CursorPricingSourceURL || len(got.Items) != 15 {
+		got.SourceURL == nil || *got.SourceURL != pricing.CursorPricingSourceURL || len(got.Items) < 45 {
 		t.Fatalf("Current(cursor) = %#v, reader = %#v", got, reader)
 	}
 
@@ -130,6 +130,57 @@ func TestCurrentReturnsCursorPublishedReferenceCatalog(t *testing.T) {
 	sonnet := items["Claude Sonnet 5"]
 	if sonnet.CacheWriteMicros.Value == nil || *sonnet.CacheWriteMicros.Value != 2_500_000 {
 		t.Fatalf("Claude Sonnet 5 cache write = %#v", sonnet.CacheWriteMicros)
+	}
+	for model, want := range map[string][4]int64{
+		"Grok 4.7":             {2_000_000, -1, 500_000, 6_000_000},
+		"Grok 4.7 500k (Fast)": {6_000_000, -1, 1_500_000, 18_000_000},
+		"Claude Fable 5.1":     {10_000_000, 12_500_000, 250_000, 50_000_000},
+		"Claude Opus 5.5":      {4_000_000, 5_000_000, 200_000, 20_000_000},
+		"Gemini 3.8 Flash":     {750_000, -1, 75_000, 3_500_000},
+		"Muse Spark 1.3":       {1_250_000, -1, 150_000, 4_250_000},
+		"GPT-5.6 Sol":          {4_000_000, 5_000_000, 400_000, 20_000_000},
+		"Grok 4.5 (Fast)":      {4_000_000, -1, 1_000_000, 18_000_000},
+	} {
+		item, ok := items[model]
+		if !ok || item.InputMicros.Value == nil || *item.InputMicros.Value != want[0] ||
+			item.CachedInputMicros.Value == nil || *item.CachedInputMicros.Value != want[2] ||
+			item.OutputMicros.Value == nil || *item.OutputMicros.Value != want[3] {
+			t.Fatalf("%s rate = %#v, want %#v", model, item, want)
+		}
+		if want[1] < 0 && item.CacheWriteMicros.Value != nil ||
+			want[1] >= 0 && (item.CacheWriteMicros.Value == nil || *item.CacheWriteMicros.Value != want[1]) {
+			t.Fatalf("%s cache write = %#v, want %d", model, item.CacheWriteMicros, want[1])
+		}
+	}
+}
+
+func TestCurrentReturnsGrokShortAndLongReferenceTiers(t *testing.T) {
+	t.Parallel()
+	service, err := NewService(&readerStub{err: errors.New("Codex catalog must not be read")},
+		func() time.Time { return time.UnixMilli(pricing.GrokPricingVerifiedAtMS) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := service.Current(context.Background(), agentprovider.Scope{Provider: agentprovider.Grok})
+	if err != nil || got.PricingVersion != pricing.GrokPricingVersion || len(got.Items) != 18 {
+		t.Fatalf("Current(grok) = %#v, %v", got, err)
+	}
+	items := make(map[string]ModelReferencePrice, len(got.Items))
+	for _, item := range got.Items {
+		items[item.ModelID] = item
+	}
+	for id, want := range map[string][3]int64{
+		"grok-4.7":                             {2_000_000, 500_000, 6_000_000},
+		"grok-4.7 (long context ≥200k)":        {4_000_000, 1_000_000, 12_000_000},
+		"grok-4.7 (Fast) (long context ≥200k)": {6_000_000, 1_500_000, 18_000_000},
+		"grok-build-0.1":                       {1_000_000, 200_000, 2_000_000},
+	} {
+		item, ok := items[id]
+		if !ok || item.InputMicros.Value == nil || *item.InputMicros.Value != want[0] ||
+			item.CachedInputMicros.Value == nil || *item.CachedInputMicros.Value != want[1] ||
+			item.OutputMicros.Value == nil || *item.OutputMicros.Value != want[2] {
+			t.Fatalf("%s = %#v, want %#v", id, item, want)
+		}
 	}
 }
 
