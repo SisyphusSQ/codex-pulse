@@ -152,6 +152,10 @@ LOCALIZATION_BUNDLE=$(find "$SWIFT_BIN_DIR" -maxdepth 1 -type d -name '*CodexPul
 [ -x "$APP_EXECUTABLE" ] || fail "Swift release executable is missing"
 [ -d "$SPARKLE_FRAMEWORK" ] || fail "Sparkle framework is missing"
 [ -n "$LOCALIZATION_BUNDLE" ] && [ -d "$LOCALIZATION_BUNDLE" ] || fail "App localization resource bundle is missing"
+LOCALIZATION_RESOURCES="$LOCALIZATION_BUNDLE"
+if [ -d "$LOCALIZATION_BUNDLE/Contents/Resources/en.lproj" ]; then
+  LOCALIZATION_RESOURCES="$LOCALIZATION_BUNDLE/Contents/Resources"
+fi
 
 (
   cd "$REPO_ROOT"
@@ -192,10 +196,10 @@ iconutil \
 chmod 0755 \
   "$APP_DIR/Contents/MacOS/Codex Pulse" \
   "$APP_DIR/Contents/Helpers/codex-pulse"
-for localization_directory in en.lproj zh-hans.lproj; do
-  [ -d "$LOCALIZATION_BUNDLE/$localization_directory" ] || \
+for localization_directory in en.lproj zh-Hans.lproj; do
+  [ -d "$LOCALIZATION_RESOURCES/$localization_directory" ] || \
     fail "App localization directory is missing: $localization_directory"
-  ditto "$LOCALIZATION_BUNDLE/$localization_directory" \
+  ditto "$LOCALIZATION_RESOURCES/$localization_directory" \
     "$APP_DIR/Contents/Resources/$localization_directory"
 done
 
