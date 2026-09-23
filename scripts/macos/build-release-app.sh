@@ -73,9 +73,17 @@ done
 [ "$(uname -s)" = "Darwin" ] || fail "release build requires macOS"
 [ "$(uname -m)" = "arm64" ] || fail "release build requires an Apple Silicon host"
 
-for tool in swift go plutil iconutil lipo otool vtool strip codesign ditto hdiutil unzip shasum strings python3; do
+for tool in swift xcode-select xcrun go plutil iconutil lipo otool vtool strip codesign ditto hdiutil unzip shasum strings python3; do
   command -v "$tool" >/dev/null 2>&1 || fail "required tool is unavailable: $tool"
 done
+
+SWIFT_DEVELOPER_DIR=${DEVELOPER_DIR:-$(xcode-select -p 2>/dev/null || true)}
+[ -n "$SWIFT_DEVELOPER_DIR" ] || fail "unable to resolve the active Xcode developer directory"
+SWIFT_SDK_PATH=$(DEVELOPER_DIR="$SWIFT_DEVELOPER_DIR" xcrun --sdk macosx --show-sdk-path) ||
+  fail "unable to resolve the active macOS SDK path"
+SWIFT_SDK_VERSION=$(DEVELOPER_DIR="$SWIFT_DEVELOPER_DIR" xcrun --sdk macosx --show-sdk-version) ||
+  fail "unable to resolve the active macOS SDK version"
+SWIFT_MINIMUM_TARGET=$(plutil -extract LSMinimumSystemVersion raw "$SCRIPT_DIR/Info.plist")
 
 SPARKLE_PUBLIC_ED_KEY=$(tr -d '\r\n' <"$SPARKLE_PUBLIC_KEY_FILE")
 python3 - "$SPARKLE_PUBLIC_ED_KEY" "$SPARKLE_FEED_URL" <<'PY' ||
@@ -129,21 +137,33 @@ SWIFT_RELEASE_ARGUMENTS=(
   --package-path "$REPO_ROOT/app/macos"
   --scratch-path "$BUILD_ROOT/swift-build"
   --configuration release
+  -Xlinker -platform_version
+  -Xlinker macos
+  -Xlinker "$SWIFT_MINIMUM_TARGET"
+  -Xlinker "$SWIFT_SDK_VERSION"
   -Xswiftc -gline-tables-only
   -Xcc "-ffile-prefix-map=$REPO_ROOT=."
   -Xcc "-fmacro-prefix-map=$REPO_ROOT=."
 )
 
+swift_release() {
+  DEVELOPER_DIR="$SWIFT_DEVELOPER_DIR" SDKROOT="$SWIFT_SDK_PATH" \
+    xcrun --sdk macosx swift "$@"
+}
+
+printf 'release SDK: developer_dir=%s sdk=%s version=%s minimum=%s\n' \
+  "$SWIFT_DEVELOPER_DIR" "$SWIFT_SDK_PATH" "$SWIFT_SDK_VERSION" "$SWIFT_MINIMUM_TARGET"
+
 if [ "$RUN_APP_TESTS" = true ]; then
-  swift run \
+  swift_release run \
     "${SWIFT_RELEASE_ARGUMENTS[@]}" \
     codex-pulse-app-tests
 fi
-swift build \
+swift_release build \
   "${SWIFT_RELEASE_ARGUMENTS[@]}" \
   --product codex-pulse-app
 
-SWIFT_BIN_DIR=$(swift build \
+SWIFT_BIN_DIR=$(swift_release build \
   "${SWIFT_RELEASE_ARGUMENTS[@]}" \
   --show-bin-path)
 APP_EXECUTABLE="$SWIFT_BIN_DIR/codex-pulse-app"
@@ -152,6 +172,9 @@ LOCALIZATION_BUNDLE=$(find "$SWIFT_BIN_DIR" -maxdepth 1 -type d -name '*CodexPul
 [ -x "$APP_EXECUTABLE" ] || fail "Swift release executable is missing"
 [ -d "$SPARKLE_FRAMEWORK" ] || fail "Sparkle framework is missing"
 [ -n "$LOCALIZATION_BUNDLE" ] && [ -d "$LOCALIZATION_BUNDLE" ] || fail "App localization resource bundle is missing"
+APP_SDK_VERSION=$(vtool -show-build "$APP_EXECUTABLE" | awk '$1 == "sdk" { print $2; exit }')
+[ "$APP_SDK_VERSION" = "$SWIFT_SDK_VERSION" ] ||
+  fail "Swift release executable SDK $APP_SDK_VERSION does not match selected SDK $SWIFT_SDK_VERSION"
 LOCALIZATION_RESOURCES="$LOCALIZATION_BUNDLE"
 if [ -d "$LOCALIZATION_BUNDLE/Contents/Resources/en.lproj" ]; then
   LOCALIZATION_RESOURCES="$LOCALIZATION_BUNDLE/Contents/Resources"
@@ -238,9 +261,13 @@ codesign --verify --deep --strict --verbose=2 \
 otool -l "$APP_DIR/Contents/MacOS/Codex Pulse" |
   grep -Fq '@executable_path/../Frameworks' ||
   fail "Swift executable is missing the standard Frameworks rpath"
-vtool -show-build "$APP_DIR/Contents/MacOS/Codex Pulse" |
-  grep -Eq 'minos[[:space:]]+15(\.0)*' ||
-  fail "Swift executable minimum macOS version is not 15"
+APP_BUILD_VERSION=$(vtool -show-build "$APP_DIR/Contents/MacOS/Codex Pulse")
+APP_MINIMUM_TARGET=$(awk '$1 == "minos" { print $2; exit }' <<<"$APP_BUILD_VERSION")
+APP_SDK_VERSION=$(awk '$1 == "sdk" { print $2; exit }' <<<"$APP_BUILD_VERSION")
+[ "$APP_MINIMUM_TARGET" = "$SWIFT_MINIMUM_TARGET" ] ||
+  fail "Swift executable minimum macOS version $APP_MINIMUM_TARGET does not match bundle minimum $SWIFT_MINIMUM_TARGET"
+[ "$APP_SDK_VERSION" = "$SWIFT_SDK_VERSION" ] ||
+  fail "Swift executable SDK $APP_SDK_VERSION does not match selected SDK $SWIFT_SDK_VERSION"
 awk -v expected="$VERSION" '
   $0 == expected { found = 1 }
   END { exit !found }
@@ -287,6 +314,9 @@ cmp \
   fail "extracted bundle metadata changed"
 [ "$(lipo -archs "$EXTRACT_DIR/Codex Pulse.app/Contents/MacOS/Codex Pulse")" = "arm64" ] ||
   fail "extracted App architecture readback failed"
+EXTRACTED_SDK_VERSION=$(vtool -show-build "$EXTRACT_DIR/Codex Pulse.app/Contents/MacOS/Codex Pulse" | awk '$1 == "sdk" { print $2; exit }')
+[ "$EXTRACTED_SDK_VERSION" = "$SWIFT_SDK_VERSION" ] ||
+  fail "extracted App SDK $EXTRACTED_SDK_VERSION does not match selected SDK $SWIFT_SDK_VERSION"
 [ "$(lipo -archs "$EXTRACT_DIR/Codex Pulse.app/Contents/Helpers/codex-pulse")" = "arm64" ] ||
   fail "extracted Helper architecture readback failed"
 [ -x "$EXTRACT_DIR/Codex Pulse.app/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle" ] ||
@@ -312,6 +342,7 @@ printf '%s  %s\n%s  %s\n' \
 
 printf '%s\n' \
   "release app assembled: tag=$TAG build=$BUILD_NUMBER arch=arm64 minos=15.0 sparkle_updater=yes adhoc_signed=yes developer_id=no notarized=no app_tests=$RUN_APP_TESTS" \
+  "release SDK readback: selected=$SWIFT_SDK_VERSION app=$APP_SDK_VERSION zip=$EXTRACTED_SDK_VERSION" \
   "release update asset: $ARCHIVE_PATH" \
   "release install asset: $DMG_PATH" \
   "release ZIP sha256: $ZIP_DIGEST" \
