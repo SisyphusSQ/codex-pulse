@@ -69,7 +69,7 @@ func totalsForUsageEvents(events []store.GrokUsageEvent) (usagecost.UsageTotals,
 		if event.ModelKey != nil {
 			model = *event.ModelKey
 		}
-		if value, ok := pricing.EstimateGrokUsageCost(model, event.InputTokens, event.CachedReadTokens, event.CacheCreationTokens, event.OutputTokens); ok {
+		if value, ok := pricing.EstimateGrokUsageCostAt(model, event.OccurredAtMS, event.InputTokens, event.CachedReadTokens, event.CacheCreationTokens, event.OutputTokens); ok {
 			estimated += value
 			priced++
 		} else {
@@ -112,7 +112,7 @@ func unpricedCount(events []store.GrokUsageEvent) int64 {
 		if event.ModelKey != nil {
 			model = *event.ModelKey
 		}
-		if _, ok := pricing.EstimateGrokUsageCost(model, event.InputTokens, event.CachedReadTokens, event.CacheCreationTokens, event.OutputTokens); !ok {
+		if _, ok := pricing.EstimateGrokUsageCostAt(model, event.OccurredAtMS, event.InputTokens, event.CachedReadTokens, event.CacheCreationTokens, event.OutputTokens); !ok {
 			count++
 		}
 	}
@@ -893,7 +893,7 @@ func hasEstimatedCost(events []store.GrokUsageEvent) bool {
 		if event.ModelKey != nil {
 			model = *event.ModelKey
 		}
-		if _, ok := pricing.EstimateGrokUsageCost(model, event.InputTokens, event.CachedReadTokens, event.CacheCreationTokens, event.OutputTokens); ok {
+		if _, ok := pricing.EstimateGrokUsageCostAt(model, event.OccurredAtMS, event.InputTokens, event.CachedReadTokens, event.CacheCreationTokens, event.OutputTokens); ok {
 			return true
 		}
 	}

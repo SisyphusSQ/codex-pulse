@@ -79,7 +79,8 @@ func cursorDashboardEventPrice(
 	if event.ModelKey == nil {
 		return pricing.CostReasonMissingModel, pricing.CursorModelRate{}
 	}
-	rate, ok := pricing.CursorRateForModel(*event.ModelKey, event.OccurredAtMS)
+	rate, ok := pricing.CursorRateForUsage(*event.ModelKey, event.OccurredAtMS,
+		event.InputTokens, event.CacheWriteTokens, event.CacheReadTokens)
 	if !ok {
 		return pricing.CostReasonModelNotListed, pricing.CursorModelRate{}
 	}

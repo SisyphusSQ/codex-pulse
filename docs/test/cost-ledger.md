@@ -75,6 +75,16 @@
 - Go typed repository 在 App 退出后回读其派生库：物理 Home 身份匹配，三条 Astra/Sol exact 价格匹配，真实 Astra 用量为正且估算成本为已知正数。App/Helper 退出且 UDS 清理。
 - Cursor/Grok 的真实数据与 Dashboard 不在本卡验收范围；用独立空目录隔离。系统睡眠/唤醒 lifecycle、远端 CI、合并、正式签名/公证与发版未执行。这里只保存脱敏结论，原始证据在 ignored `.artifacts/too-419/`。
 
+### 2026-09-23 TOO-467 跨客户端参考价格
+
+Codex 追加不可变完整目录 `openai-api-2026-09-22`：以 GPT-6 Sol/Luna 发布日的 UTC 日界 `2026-09-22T00:00:00Z` 为本地估算生效边界，`2026-09-23T00:31:48Z` 核验 [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing) 与 [API Changelog](https://developers.openai.com/api/docs/changelog)。发布日只提供日粒度边界，不代表精确开放时刻。Standard 短上下文每百万 token 的 input/cached/output：`gpt-6-sol` 为 `$2/$0.20/$10`，`gpt-6-luna` 为 `$0.10/$0.01/$0.50`。旧版本与其他模型费率不变；`gpt-6` 和相似后缀仍无价。长上下文、cache-write、区域和 Fast 等不属于现有 Codex 成本契约。
+
+Cursor 当前参考目录 `cursor-docs-2026-09-23` 按 [Cursor Models & Pricing](https://cursor.com/docs/models-and-pricing) 的首页及“显示更多模型”全部可见行核对，补 Grok 4.7 四档、Claude Fable 5.1、Claude Opus 5.5 与其 [Fast mode](https://cursor.com/docs/models/claude-opus-5-5)、Gemini 3.8 Flash、Muse Spark 1.3，以及折叠列表的 Claude/Gemini/GPT/GLM/Kimi 型号；修正 Grok 4.5 Fast 的 output 为 `$18`、GPT-5.6 Sol 为 `$4/$5/$0.4/$20`（input/cache write/cache read/output）。旧版 `cursor-docs-2026-08-16` 费率用于核验时刻之前的已有型号事件；Grok 4.7 自公开发布日 UTC 日界可匹配，其他新列出的型号从本次核验时刻才估算，不猜测更早价格。价目表的 `-` cache write 是未知，不是零。Cursor Grok 4.7 的 500k 档按单条 Dashboard 事件的 prompt token 总量是否超过 256k 判定，Fast 档要求 model key 明确标识；Auto、区域加价、Cursor Token Rate 和订阅用量池仍按原有边界单独处理。
+
+Grok 当前参考目录 `xai-docs-2026-09-23` 对照 [xAI Pricing](https://docs.x.ai/developers/pricing)，列出 Grok 4.7、Grok Build 0.1、现行 Grok 4.6/4.5/4.3/4.20 的短档与 `≥200k` 长档，并列出仅在 Grok Build 与 Cursor 可用的 Grok 4.7 Fast。长档行只用于展示；Grok Build 的 `modelUsage` 是聚合 token，无法证明每次 prompt 的档位，聚合 input 达到 200k 时保持 estimated unknown。Fast 只在事件明确给出 Fast model key 时估算，动态 `grok-build` 别名不猜底层费率。完整 `costUsdTicks` 仍作为 reported cost 独立呈现。按 [xAI 旧型号迁移说明](https://docs.x.ai/developers/migration/may-15-retirement)，旧 `grok-code-fast-1` 与 `grok-4-0709` 别名重定向后不继续套用其原价。
+
+本次开发期聚焦验证覆盖现价、历史价、精确键、边界及已有 Codex token 升级补算；完整 `make verify`、真实 Home UI 验收、CI、签名与发布未在本条记录中宣称完成。
+
 ## 固定公式与 unknown 语义
 
 ```text

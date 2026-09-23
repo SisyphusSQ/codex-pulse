@@ -199,6 +199,8 @@ Pricing Catalog 以 `(source, currency, effective_from_ms)` 形成不可变时�
 
 成本与 daily rollup 只以 `turn_attributions.project_id/model_key` 作为归一化维度入口，并保留 unknown/conflict/invalid 的未归因语义；不得直接把 `turns.cwd`、`turns.model` 或 basename 当作聚合键。known identity 使用 stable ID/key：同一日内 provenance 演进不拆分 identity，confidence 取最保守值，source/reason 不一致标记为 `mixed`，display 不一致则回退 stable identity；该合并与输入顺序无关。unknown dimension key 只由固定 confidence/source/reason 组成。raw model 仅留在本机事实层用于审计与规则重算，不进入 cost typed readback。
 
+2026-09-23（TOO-467）再追加 `openai-api-2026-09-22` 完整目录，从 Sol/Luna 发布日 UTC 日界 `2026-09-22T00:00:00Z`（`1790035200000`）增加 `gpt-6-sol` 的 `$2/$0.20/$10` 与 `gpt-6-luna` 的 `$0.10/$0.01/$0.50` Standard 短上下文 input/cached/output；官方核验时刻 `2026-09-23T00:31:48Z`（`1790123508000`）。旧版本不变，升级后已有 timed delta 可按生效时间补算，无需重扫 JSONL。未知的 `gpt-6` alias 和相似键仍保持 unpriced；长上下文、cache-write、regional 与 Fast 不由该目录估算。Cursor 和 Grok 使用各自独立的静态参考目录与事件时间规则，详见 [cost-ledger runbook](../../../test/cost-ledger.md)。
+
 ## Quota
 
 - `quota_observations(observation_id, account_scope, source, limit_id, window_kind, used_percent, window_minutes, resets_at_ms, plan_type, validity, rejection_reason, first_observed_at_ms, last_observed_at_ms, sample_count, request_id, session_id, source_file_id, first_source_generation, first_source_offset, source_generation, source_offset, limit_name)`

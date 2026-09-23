@@ -43,3 +43,19 @@ func TestCursorStaticPricingAppliesGrok46LaunchDiscountByEventTime(t *testing.T)
 		t.Fatalf("discounted Grok 4.6 estimate = %d, %t; want 1000000, true", estimated, ok)
 	}
 }
+
+func TestCursorDashboardGrok47EstimatesFromPromptLength(t *testing.T) {
+	t.Parallel()
+	model := "grok-4.7-500k"
+	events := []store.CursorDashboardUsageEvent{{
+		OccurrenceCount: 1, OccurredAtMS: time.Date(2026, 9, 23, 1, 0, 0, 0, time.UTC).UnixMilli(),
+		ModelKey: &model, TokenBased: true, InputTokens: 100_000, OutputTokens: 100_000,
+	}}
+	if got, _, ok := estimateCursorDashboardCost(events); !ok || got != 800_000 {
+		t.Fatalf("short prompt on 500k selection = %d, %t", got, ok)
+	}
+	events[0].InputTokens = 300_000
+	if got, _, ok := estimateCursorDashboardCost(events); !ok || got != 2_400_000 {
+		t.Fatalf("long prompt on 500k selection = %d, %t", got, ok)
+	}
+}

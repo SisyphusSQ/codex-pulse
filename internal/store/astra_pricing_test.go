@@ -113,3 +113,92 @@ func TestAstraAndSolExactPricingEffectiveBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestGPT6LunaCatalogUpgradePricesExistingTokensWithoutRescan(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repository := lightIndexRepositoryFixture(t)
+	versions := pricing.BuiltinOpenAICatalog()
+	for _, version := range versions[:6] {
+		if err := repository.AddPricingVersion(ctx, version); err != nil {
+			t.Fatal(err)
+		}
+	}
+	model := "gpt-6-luna"
+	at := pricing.BuiltinOpenAI20260922().EffectiveFromMS
+	identity := lightRolloutFixture()
+	generation, err := repository.StartLightTokenRebuild(ctx, "one", identity, "parser-v2", 2_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CommitLightTokenBatch(ctx, storelight.LightTokenBatch{
+		SessionID: "one", Generation: generation, UpdatedAtMS: at + 1, Activate: true,
+		Checkpoint: storelight.LightTokenCheckpoint{
+			DurableOffset: identity.SizeBytes, Complete: true,
+			InputTokens: 1_000_000, CachedInputTokens: 200_000, OutputTokens: 100_000, ReasoningTokens: 50_000,
+			CurrentModelKey: &model, CurrentModelSource: attribution.SourceModelCanonical,
+		},
+		TimedDeltas: []storelight.LightTokenTimedDelta{{
+			SourceOffset: 4_000, ObservedAtMS: at, ModelKey: &model, ModelSource: attribution.SourceModelCanonical,
+			InputTokens: 1_000_000, CachedInputTokens: 200_000, OutputTokens: 100_000, ReasoningTokens: 50_000,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	filter := AnalyticsRange{ReportingTimezone: "UTC", StartAtMS: at, EndAtMS: at + 86_400_000}
+	before, err := repository.UsageCostRange(ctx, filter)
+	if err != nil || len(before.Models) != 1 || before.Models[0].EstimatedUSDMicros != nil {
+		t.Fatalf("before upgrade = %#v, %v", before, err)
+	}
+	scanBefore, err := repository.ActiveLightTokenScan(ctx, "one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.AddPricingVersion(ctx, versions[6]); err != nil {
+		t.Fatal(err)
+	}
+	after, err := repository.UsageCostRange(ctx, filter)
+	if err != nil || len(after.Models) != 1 || after.Models[0].EstimatedUSDMicros == nil ||
+		*after.Models[0].EstimatedUSDMicros != 157_000 ||
+		after.Models[0].ModelDisplayName == nil || *after.Models[0].ModelDisplayName != "GPT-6 Luna" {
+		t.Fatalf("Luna after upgrade = %#v, %v", after, err)
+	}
+	scanAfter, err := repository.ActiveLightTokenScan(ctx, "one")
+	if err != nil || !reflect.DeepEqual(scanBefore, scanAfter) {
+		t.Fatal("catalog upgrade changed token checkpoint")
+	}
+}
+
+func TestGPT6SolLunaExactPriceBoundaries(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repository := openRuntimeRepository(t)
+	for _, version := range pricing.BuiltinOpenAICatalog() {
+		if err := repository.AddPricingVersion(ctx, version); err != nil {
+			t.Fatal(err)
+		}
+	}
+	at := pricing.BuiltinOpenAI20260922().EffectiveFromMS
+	for _, tc := range []struct {
+		model     string
+		at, input int64
+	}{
+		{"gpt-6-sol", at - 1, -1},
+		{"gpt-6-luna", at - 1, -1},
+		{"gpt-6-sol", at, 2_000_000},
+		{"gpt-6-luna", at, 100_000},
+		{"gpt-6", at, -1},
+		{"gpt-6-sol-future", at, -1},
+	} {
+		got, err := repository.PricingForModelAt(ctx, "openai-api", "USD", tc.model, tc.at)
+		if tc.input < 0 {
+			if !errors.Is(err, ErrNotFound) {
+				t.Fatalf("%s at %d must be unpriced: %#v %v", tc.model, tc.at, got, err)
+			}
+			continue
+		}
+		if err != nil || got.Matched.InputMicrosPerMillion == nil || *got.Matched.InputMicrosPerMillion != tc.input {
+			t.Fatalf("%s at %d = %#v, %v", tc.model, tc.at, got, err)
+		}
+	}
+}

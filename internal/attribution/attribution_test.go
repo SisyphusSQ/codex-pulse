@@ -28,6 +28,16 @@ func TestNormalizeModelCanonicalAliasesAndUnsafeValues(t *testing.T) {
 			source: SourceModelAlias, reason: ReasonObserved,
 		},
 		{
+			name: "gpt-6 sol", raw: "gpt-6-sol", key: "gpt-6-sol",
+			display: "GPT-6 Sol", confidence: ConfidenceHigh,
+			source: SourceModelCanonical, reason: ReasonObserved,
+		},
+		{
+			name: "gpt-6 luna alias", raw: "OpenAI/GPT-6-Luna", key: "gpt-6-luna",
+			display: "GPT-6 Luna", confidence: ConfidenceHigh,
+			source: SourceModelAlias, reason: ReasonObserved,
+		},
+		{
 			name: "canonical", raw: "gpt-5.2-codex", key: "gpt-5.2-codex",
 			display: "GPT-5.2 Codex", confidence: ConfidenceHigh,
 			source: SourceModelCanonical, reason: ReasonObserved,
