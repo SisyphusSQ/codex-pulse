@@ -106,6 +106,7 @@
 "%lld%%" = "%lld%%";
 "%lld%% 剩余" = "%lld%% 剩余";
 "OpenAI API Standard 基础文本参考价 · %@ / 100 万 Token" = "OpenAI API Standard 基础文本参考价 · %@ / 100 万 Token";
+"仅用于 API 等价折算，不是 Codex 订阅账单。按 Standard 基础文本估算，缓存写入费用未计入；长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理等可能适用不同费率。" = "仅用于 API 等价折算，不是 Codex 订阅账单。按 Standard 基础文本估算，缓存写入费用未计入；长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理等可能适用不同费率。";
 "，显示上次可信额度" = "，显示上次可信额度";
 "，新额度数据异常，显示上次可信额度" = "，新额度数据异常，显示上次可信额度";
 "，额度数据可信度不可用" = "，额度数据可信度不可用";

@@ -77,7 +77,7 @@ func TestBuiltinOpenAI20260722AddsGPT54MiniWithoutMutatingPriorCatalog(t *testin
 		t.Fatalf("gpt-5.4-mini catalog entry = %#v", mini)
 	}
 	versions := BuiltinOpenAICatalog()
-	if len(versions) != 7 || versions[0].PricingVersion != "openai-api-2026-07-14" ||
+	if len(versions) != 8 || versions[0].PricingVersion != "openai-api-2026-07-14" ||
 		versions[1].PricingVersion != "openai-api-2026-07-22" ||
 		versions[2].PricingVersion != "openai-api-2026-07-29" ||
 		versions[3].PricingVersion != "openai-api-2026-07-31" ||
@@ -107,8 +107,8 @@ func TestBuiltinOpenAICatalogApplies20260731PriceCutsWithoutMutatingHistory(t *t
 	t.Parallel()
 
 	versions := BuiltinOpenAICatalog()
-	if len(versions) != 7 {
-		t.Fatalf("BuiltinOpenAICatalog() versions = %d, want 7", len(versions))
+	if len(versions) != 8 {
+		t.Fatalf("BuiltinOpenAICatalog() versions = %d, want 8", len(versions))
 	}
 	current := versions[3]
 	if current.PricingVersion != "openai-api-2026-07-31" ||

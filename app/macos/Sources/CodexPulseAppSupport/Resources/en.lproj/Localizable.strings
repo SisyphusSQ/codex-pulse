@@ -267,7 +267,7 @@
 "产生新的会话后，趋势会显示在这里。" = "The trend will appear here after new sessions are recorded.";
 "仅检查" = "Check only";
 "仅活动中" = "Active only";
-"仅用于 API 等价折算，不是 Codex 订阅账单。长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理等可能适用不同费率。" = "For API-equivalent estimates only, not a Codex subscription bill. Long context, Batch, Flex, Fast mode (formerly Priority), and regional processing may use different rates.";
+"仅用于 API 等价折算，不是 Codex 订阅账单。按 Standard 基础文本估算，缓存写入费用未计入；长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理等可能适用不同费率。" = "For API-equivalent estimates only, not a Codex subscription bill. Estimates use Standard base text rates and exclude cache-write charges; long context, Batch, Flex, Fast mode (formerly Priority), and regional processing may use different rates.";
 "仪表弧" = "Gauge arc";
 "任务" = "Jobs";
 "任务进度" = "Job progress";

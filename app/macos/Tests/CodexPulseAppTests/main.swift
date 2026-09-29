@@ -481,6 +481,13 @@ private func testReferencePriceFormattingPreservesPrecisionAndUnknown() throws {
         "gpt-5.1-codex-max",
         "gpt-5.2-codex",
         "gpt-5.2-codex-max",
+        "gpt-5.3",
+        "gpt-5.3-codex",
+        "gpt-5.3-codex-spark",
+        "gpt-5.4",
+        "gpt-5.4-mini",
+        "GPT-5.4-MINI",
+        "gpt-5.5",
         "gpt-5.6",
     ] {
         try expect(
@@ -489,13 +496,14 @@ private func testReferencePriceFormattingPreservesPrecisionAndUnknown() throws {
         )
     }
     for visibleModel in [
-        "gpt-5.3-codex",
-        "gpt-5.4",
         "gpt-5.6-luna",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.10-codex",
         "gpt-6-astra",
+        "gpt-6-sol",
+        "gpt-6-luna",
+        "gpt-6.1-sol",
     ] {
         try expect(
             ReferencePriceFormatter.shouldDisplay(modelID: visibleModel),
@@ -515,8 +523,16 @@ private func testQuotaUsageShowsIndependentReferencePriceCatalogAndBillingBounda
             && !source.contains("DisclosureGroup")
             && !source.contains("当前 API 参考价（每 100 万 Token）")
             && source.contains("仅用于 API 等价折算，不是 Codex 订阅账单。")
+            && source.contains("缓存写入费用未计入")
             && source.contains("长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理"),
         "quota usage page must expose the independent catalog and its billing boundary"
+    )
+    let notice = "仅用于 API 等价折算，不是 Codex 订阅账单。按 Standard 基础文本估算，缓存写入费用未计入；长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理等可能适用不同费率。"
+    let english = AppLocalization(preference: .englishUS).textValue(notice)
+    try expect(
+        english.contains("Standard base text rates") && english.contains("exclude cache-write charges")
+            && AppLocalization(preference: .chineseSimplified).textValue(notice) == notice,
+        "reference pricing boundary must be complete in both languages"
     )
 }
 
@@ -13533,6 +13549,12 @@ private func testShutdownDeadlineForcesHelperStop() async throws {
 @main
 struct CodexPulseAppTestMain {
     static func main() async throws {
+        if CommandLine.arguments.contains("--pricing-only") {
+            try testReferencePriceFormattingPreservesPrecisionAndUnknown()
+            try testQuotaUsageShowsIndependentReferencePriceCatalogAndBillingBoundary()
+            print("CodexPulseApp pricing tests passed")
+            return
+        }
         try testCodexAccountRowPresentsLegacyQuotaHistoryActions()
         try testCodexAccountsSettingsSourceContract()
         try testCodexAccountQuotaPageUsesOneRowForCurrentAndHistory()

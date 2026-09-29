@@ -201,6 +201,8 @@ Pricing Catalog 以 `(source, currency, effective_from_ms)` 形成不可变时�
 
 2026-09-23（TOO-467）再追加 `openai-api-2026-09-22` 完整目录，从 Sol/Luna 发布日 UTC 日界 `2026-09-22T00:00:00Z`（`1790035200000`）增加 `gpt-6-sol` 的 `$2/$0.20/$10` 与 `gpt-6-luna` 的 `$0.10/$0.01/$0.50` Standard 短上下文 input/cached/output；官方核验时刻 `2026-09-23T00:31:48Z`（`1790123508000`）。旧版本不变，升级后已有 timed delta 可按生效时间补算，无需重扫 JSONL。未知的 `gpt-6` alias 和相似键仍保持 unpriced；长上下文、cache-write、regional 与 Fast 不由该目录估算。Cursor 和 Grok 使用各自独立的静态参考目录与事件时间规则，详见 [cost-ledger runbook](../../../test/cost-ledger.md)。
 
+2026-09-30（TOO-471）追加第八版 `openai-api-2026-09-29`，从 GPT-6.1 Sol [官方发布日](https://deploymentsafety.openai.com/gpt-6-1-sol/respecting-auto-review) UTC 日界 `2026-09-29T00:00:00Z`（`1790640000000`）新增 exact key `gpt-6.1-sol` 的 Standard 基础文本 input/cached/output `$2/$0.10/$10`。核验时刻为 `2026-09-30T06:40:21+08:00`（`2026-09-29T22:40:21Z`，`1790721621000`），来源为 [官方模型页](https://developers.openai.com/api/docs/models/gpt-6.1-sol) 与通用价格页；日粒度生效边界不声称精确开放时间。旧七版、其他模型及其来源 metadata 不变；`gpt-6.1`、日期后缀和相似 key 不猜价。查询时按原始 timed delta 的时间补算并解析 `GPT-6.1 Sol` 显示名，无需 schema/parser version 升级或重扫。缓存写入、超过 272K 单次输入的长上下文、Fast/Batch/Flex/区域计费仍不进入基础估算，也不能从聚合 Token 或 context-window 容量推断调用档位。
+
 ## Quota
 
 - `quota_observations(observation_id, account_scope, source, limit_id, window_kind, used_percent, window_minutes, resets_at_ms, plan_type, validity, rejection_reason, first_observed_at_ms, last_observed_at_ms, sample_count, request_id, session_id, source_file_id, first_source_generation, first_source_offset, source_generation, source_offset, limit_name)`
