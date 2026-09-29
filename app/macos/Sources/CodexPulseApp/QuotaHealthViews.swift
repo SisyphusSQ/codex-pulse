@@ -789,7 +789,7 @@ private struct PricingCatalogView: View {
 		case .grok:
 			return "来自 xAI 官方定价页的固定版本参考价。reported cost 与 estimated cost 分开展示，不进入 Codex 或 Cursor catalog。"
 		case .codex:
-			return "仅用于 API 等价折算，不是 Codex 订阅账单。长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理等可能适用不同费率。"
+			return "仅用于 API 等价折算，不是 Codex 订阅账单。按 Standard 基础文本估算，缓存写入费用未计入；长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理等可能适用不同费率。"
 		}
 	}
 

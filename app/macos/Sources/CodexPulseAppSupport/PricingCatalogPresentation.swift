@@ -2,7 +2,9 @@ import CodexPulseProtocolGenerated
 import Foundation
 
 public enum ReferencePriceFormatter {
-    private static let hiddenModelFamilies = ["gpt-5", "gpt-5.1", "gpt-5.2"]
+    private static let hiddenModelFamilies = [
+        "gpt-5", "gpt-5.1", "gpt-5.2", "gpt-5.3", "gpt-5.4", "gpt-5.5",
+    ]
     private static let hiddenModelIDs = ["gpt-5.6"]
 
     public static func shouldDisplay(modelID: String) -> Bool {

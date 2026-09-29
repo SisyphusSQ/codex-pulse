@@ -19,6 +19,8 @@ const (
 	builtinPricing20260905VerifiedAtMS  = int64(1_788_573_994_000)
 	builtinPricing20260922EffectiveAtMS = int64(1_790_035_200_000)
 	builtinPricing20260923VerifiedAtMS  = int64(1_790_123_508_000)
+	builtinPricing20260929EffectiveAtMS = int64(1_790_640_000_000)
+	builtinPricing20260930VerifiedAtMS  = int64(1_790_721_621_000)
 )
 
 type builtinModelRate struct {
@@ -150,6 +152,23 @@ func BuiltinOpenAI20260922() CatalogVersion {
 	return catalog
 }
 
+// BuiltinOpenAI20260929 从 GPT-6.1 Sol 发布日（UTC 日界）增补 Standard
+// 基础文本参考价；日粒度边界不代表精确开放时刻，旧目录保持不可变。
+func BuiltinOpenAI20260929() CatalogVersion {
+	catalog := BuiltinOpenAI20260922()
+	catalog.PricingVersion = "openai-api-2026-09-29"
+	catalog.EffectiveFromMS = builtinPricing20260929EffectiveAtMS
+	catalog.CreatedAtMS = builtinPricing20260930VerifiedAtMS
+	catalog.VerifiedAtMS = builtinPricing20260930VerifiedAtMS
+	catalog.Models = append(catalog.Models, ModelPrice{
+		MatchKind: ModelMatchExact, ModelPattern: "gpt-6.1-sol", Priority: 100,
+		InputMicrosPerMillion:       new(int64(2_000_000)),
+		CachedInputMicrosPerMillion: new(int64(100_000)),
+		OutputMicrosPerMillion:      new(int64(10_000_000)),
+	})
+	return catalog
+}
+
 // BuiltinOpenAICatalog 返回按生效时间升序排列的完整内置价格历史。
 func BuiltinOpenAICatalog() []CatalogVersion {
 	return []CatalogVersion{
@@ -160,6 +179,7 @@ func BuiltinOpenAICatalog() []CatalogVersion {
 		BuiltinOpenAI20260903(),
 		BuiltinOpenAI20260905(),
 		BuiltinOpenAI20260922(),
+		BuiltinOpenAI20260929(),
 	}
 }
 

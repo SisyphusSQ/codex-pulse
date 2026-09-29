@@ -47,10 +47,13 @@
 | `gpt-5.6-terra` | 2,000,000 | 200,000 | 12,000,000 | [GPT-5.6 Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra) |
 | `gpt-5.6-luna` | 200,000 | 20,000 | 1,200,000 | [GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) |
 | `gpt-6-astra` | 10,000,000 | 1,000,000 | 50,000,000 | [GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra) |
+| `gpt-6-sol` | 2,000,000 | 200,000 | 10,000,000 | [GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol) |
+| `gpt-6-luna` | 100,000 | 10,000 | 500,000 | [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) |
+| `gpt-6.1-sol` | 2,000,000 | 100,000 | 10,000,000 | [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) |
 
 初始和当前目录 source URL 为 [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing)，`2026-07-22` 增补版本对 `gpt-5.4-mini` 保留其官方 model page 来源。`gpt-5.2-codex-max`、`gpt-5.3-codex-spark`、Pro、日期 snapshot 和其它未逐项确认的 key 保持 `unpriced/model_not_listed`；不借 prefix/default 或相似名字猜价。长上下文、regional、cache-write、Batch/Flex/Fast mode 倍率不在当前 JSONL 事实 contract 中，也不参与估算。
 
-`PricingCatalogCurrent` 只读查询与历史 `UsageCost` pricing evidence 分离，返回当前 exact-only 完整目录、基础计价口径、单位和来源。原生“额度与用量”页在无用量时仍默认显示四列价格表，只展示 `gpt-5.3` 及后续有效模型，不在模型用量行重复价格；`gpt-5`、`gpt-5.1`、`gpt-5.2` 家族不展示，无后缀 `gpt-5.6` 作为 `gpt-5.6-sol` 的官方 alias 也为避免重复而隐藏，但这些 exact 规则继续保留在 catalog 中供历史成本折算；带 `luna` / `sol` / `terra` 后缀的 `gpt-5.6` 模型正常展示。unknown 保持“暂无”，真实零仍是 `$0.00`。这组数值仅用于 API 等价折算，不代表 Codex 订阅账单。
+`PricingCatalogCurrent` 只读查询与历史 `UsageCost` pricing evidence 分离，返回当前 exact-only 完整目录、基础计价口径、单位和来源。原生“额度与用量”页在无用量时仍默认显示四列价格表，只展示 `gpt-5.6` 及后续有效模型，不在模型用量行重复价格；`gpt-5` 至 `gpt-5.5` 家族（含 `gpt-5.4-mini`）不展示，无后缀 `gpt-5.6` 作为 `gpt-5.6-sol` 的官方 alias 也为避免重复而隐藏，但这些 exact 规则继续保留在 catalog 中供历史成本折算；带 `luna` / `sol` / `terra` 后缀的 `gpt-5.6` 模型正常展示。unknown 保持“暂无”，真实零仍是 `$0.00`。这组数值仅用于 API 等价折算，不代表 Codex 订阅账单。
 
 所有金额只是公开 API 单价下的本地等价估算，不代表 OpenAI/Codex 实际账单、订阅配额或应付款。
 
@@ -84,6 +87,22 @@ Cursor 当前参考目录 `cursor-docs-2026-09-23` 按 [Cursor Models & Pricing]
 Grok 当前参考目录 `xai-docs-2026-09-23` 对照 [xAI Pricing](https://docs.x.ai/developers/pricing)，列出 Grok 4.7、Grok Build 0.1、现行 Grok 4.6/4.5/4.3/4.20 的短档与 `≥200k` 长档，并列出仅在 Grok Build 与 Cursor 可用的 Grok 4.7 Fast。长档行只用于展示；Grok Build 的 `modelUsage` 是聚合 token，无法证明每次 prompt 的档位，聚合 input 达到 200k 时保持 estimated unknown。Fast 只在事件明确给出 Fast model key 时估算，动态 `grok-build` 别名不猜底层费率。完整 `costUsdTicks` 仍作为 reported cost 独立呈现。按 [xAI 旧型号迁移说明](https://docs.x.ai/developers/migration/may-15-retirement)，旧 `grok-code-fast-1` 与 `grok-4-0709` 别名重定向后不继续套用其原价。
 
 本次开发期聚焦验证覆盖现价、历史价、精确键、边界及已有 Codex token 升级补算；完整 `make verify`、真实 Home UI 验收、CI、签名与发布未在本条记录中宣称完成。
+
+### 2026-09-30 TOO-471 GPT-6.1 Sol 适配
+
+追加第八版不可变目录 `openai-api-2026-09-29`，新增 `gpt-6.1-sol` 的 Standard 基础文本 `$2/$0.10/$10`（input/cached/output，每百万 Token）。生效边界为 [官方发布日](https://deploymentsafety.openai.com/gpt-6-1-sol/respecting-auto-review) UTC 日界 `2026-09-29T00:00:00Z`（`1790640000000`），只提供日粒度本地估算；核验时刻为 `2026-09-30T06:40:21+08:00`（`2026-09-29T22:40:21Z`，`1790721621000`）。价格证据见 [官方模型页](https://developers.openai.com/api/docs/models/gpt-6.1-sol)，目录来源继续使用通用官方价格页。旧七版、旧型号费率和 metadata 保持不变；无后缀 `gpt-6.1` 与未核实 snapshot 继续无价。
+
+按本卡用户 review 补充，当前 Codex 参考价表隐藏 GPT-5.3 至 GPT-5.5 家族（含 5.4 mini），只改变展示，历史目录及成本折算继续保留。
+
+2026-09-30 用户在真实 Home development App 中确认新模型价格、用量展示及旧型号隐藏符合预期，并明确授权交付当前分支。原生页面读回确认参考价表仅保留七个可见型号，GPT-6.1 Sol 名称、正 Token 与 API 折算成本可见；退出 dev App 后其进程及私有 Socket 已清理。交付收尾按约定未重复执行测试，沿用下列开发期证据。
+
+Go 增补 `GPT-6.1 Sol` 名称，轻量查询从已存模型 key 生成展示名，已有 timed delta 追加目录后可获得费用，不改变 Token/offset/generation/checkpoint，不重扫 JSONL。成本说明的中英文版本明确缓存写入费用未计入；官方缓存写入 `$2.50`、超过 272K 单次输入及 Fast/Batch/Flex/区域差异不在当前估算范围，不用聚合 input 或 context-window 容量推断调用档位。max/ultra 及动态 limitId 沿用现有解析和额度 contract。
+
+聚焦验收入口：`TestGPT61SolCatalogPreservesHistoryAndIndependentCopies`、`TestGPT61SolExactPricingBoundaries`、`TestGPT61SolCatalogUpgradePricesExistingTokensWithoutRescan`、`TestTokenScannerRestoresGPT61SolAndSwitchesModels`、`TestCurrentReturnsGPT61SolStandardPrices` 及 Swift App executable tests。升级 fixture 的 1M input（200k cached）、100k output、50k reasoning 应得到 `$3.12`，Session/项目/模型一致且 checkpoint 不变；生效前 1ms 无价，6 Sol 的 `$0.20` 缓存价格不变。
+
+2026-09-30 开发期验证：pricing/attribution/pricingcatalog 包测试、TokenScanner 聚焦回归及 Store 的 GPT-6/Astra/6.1 价格聚焦测试通过；`swift run --package-path app/macos codex-pulse-app-tests --pricing-only` 通过。Swift App 整套 executable tests 在既有 `testWeeklyOverviewTrendUsesDailyAxisAndRangeCopy` 的日期文案断言失败，未修改的 main 基线测试在同一环境复现，因此不宣称 Swift 整套通过。
+
+Codex 定向真实 Home UI smoke 通过：新建 `0700` 私有 runtime，preferences canonical path/device/inode、App/Helper 的 CODEX_HOME 环境及 Helper 参数匹配，`primary_pages=loaded`、`usage_cost=known`、`project_detail_cost=known`、`unavailable=none`、`ui_pages=11`、`shutdown=clean`。App 退出后只读确认派生库安装八版 catalog，6.1 exact 三类价格正确且已索引真实 6.1 正 Token 用量；鉴权 token 继续走继承 pipe，Socket 清理完成。本次 smoke 的 `codex_account_card=unavailable`，未把它描述为账号卡验收通过；未执行账号切换、系统睡眠/唤醒或 Cursor/Grok 专项验收。真实原始输出不提交，仅在 ignored `.artifacts/too-471/` 保存脱敏摘要。完整长测、CI、正式签名、公证与发布未执行。
 
 ## 固定公式与 unknown 语义
 
