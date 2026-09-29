@@ -235,14 +235,6 @@ private struct QuotaPaceWindowView: View {
 
             Chart {
                 ForEach(presentation.historyBand) { point in
-                    AreaMark(
-                        x: .value("周期进度", point.elapsedPercent),
-                        yStart: .value("历史下界", point.minimumRemaining),
-                        yEnd: .value("历史上界", point.maximumRemaining)
-                    )
-                    .foregroundStyle(Color.purple.opacity(0.10))
-                }
-                ForEach(presentation.historyBand) { point in
                     LineMark(
                         x: .value("周期进度", point.elapsedPercent),
                         y: .value("历史中位数", point.medianRemaining)
