@@ -2,6 +2,7 @@ package gormv2
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net"
@@ -166,6 +167,18 @@ func (e *Engine) DB(ctx context.Context) *gorm.DB {
 
 // Transaction 只支持本数据库事务，不支持嵌套或跨数据库事务。
 func (e *Engine) Transaction(ctx context.Context, fn func(context.Context) error) error {
+	return e.transaction(ctx, fn, nil)
+}
+
+// ReadSnapshot 不依赖 MySQL 的部署默认隔离级别；SQLite 的同一读事务保留快照。
+func (e *Engine) ReadSnapshot(ctx context.Context, fn func(context.Context) error) error {
+	var options *sql.TxOptions
+	if e.gorm != nil && e.gorm.Dialector.Name() == "mysql" {
+		options = &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true}
+	}
+	return e.transaction(ctx, fn, options)
+}
+func (e *Engine) transaction(ctx context.Context, fn func(context.Context) error, options *sql.TxOptions) error {
 	if ctx.Value(transactionKey{}) != nil {
 		return errors.New("nested or cross-database transaction is unsupported")
 	}
@@ -180,5 +193,5 @@ func (e *Engine) Transaction(ctx context.Context, fn func(context.Context) error
 			return err
 		}
 		return ctx.Err()
-	})
+	}, options)
 }

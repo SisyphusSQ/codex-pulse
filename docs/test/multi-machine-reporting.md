@@ -7,6 +7,7 @@
 ```sh
 # 仓库根目录：本机同步与字段契约
  go test ./internal/reporting ./internal/core ./internal/helper ./api/codexpulse/core/v1 ./api/codexpulse/reporting/v1
+ go test ./internal/pricing
  go test ./internal/store -run '^TestReporting' -count=1
  go test ./internal/app -run '^TestOptionalReporting' -count=1
  swift build --package-path app/macos --target CodexPulseCoreClient
@@ -27,6 +28,8 @@
 - Pass：CoreService RPC 白名单与生成 Swift protocol、CoreClient 编译；原生同步配置 UI 尚由设备配置执行卡继续实现。
 
 - Pass：显式项目关联/解除、来源名称更新保留管理关系、中心事务接收、HTTP/实际 TLS 上报、相同请求原确认、batch/来源 revision 冲突、三来源复制/并发/增长/价格修订、部分修订保留、完整纠正与陈旧副本、来源 tombstone、整批回滚、Cursor 跨账期/复制、账号 scope 隔离/晚到确认/legacy 不提升、Credits 和 used 小数精度；网络身份/未知及重复字段/预算/撤销/自身进度权限。
+
+- Pass：范围与独立年度热力图、DST 自然日、跨来源真实设备筛选、全量搜索/排序/分页与项目关联详情、NULL/零/无时间事实、超过 int64 的十进制汇总、历史价格和缓存分解、Cursor 范围舍入/reported charge、会话原生舍入口径、工具/技能白名单与无模型推断；管理查询匿名/collector 拒绝、参数预算及快照隔离装配（sqlmock 验证事务装配，真实 MySQL 隔离行为尚未验证）。
 
 以上为开发场景通过，不表示整个产品或 Master 已验收。后续各功能增量需补充其受影响验证。
 

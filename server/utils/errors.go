@@ -11,6 +11,7 @@ var (
 	ErrInternalServerError = errors.New("internal server error")
 	ErrNotFound            = errors.New("not found")
 	ErrConflict            = errors.New("resource already exists")
+	ErrRequestBudget       = errors.New("request budget exceeded")
 	ErrBadParamInput       = errors.New("invalid request parameters")
 )
 
@@ -26,6 +27,8 @@ func GetStatusCode(err error) int {
 		return http.StatusForbidden
 	case errors.Is(err, ErrBadParamInput):
 		return http.StatusBadRequest
+	case errors.Is(err, ErrRequestBudget):
+		return http.StatusRequestEntityTooLarge
 	case errors.Is(err, ErrInternalServerError):
 		return http.StatusInternalServerError
 	case errors.Is(err, ErrNotFound):

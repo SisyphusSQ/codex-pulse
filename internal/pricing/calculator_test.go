@@ -3,6 +3,7 @@ package pricing
 import (
 	"errors"
 	"math"
+	"math/big"
 	"testing"
 )
 
@@ -157,3 +158,17 @@ func equalOptionalInt64(left, right *int64) bool {
 }
 
 func pointer[T any](value T) *T { return &value }
+
+func TestCalculateExactDoesNotOverflowOrMutateInput(t *testing.T) {
+	huge := new(big.Int)
+	huge.SetString("18446744073709551614", 10)
+	zero := new(big.Int)
+	rate := int64(1000000)
+	result, err := CalculateExact(ExactUsage{InputTokens: huge, CachedInputTokens: zero, OutputTokens: zero, ReasoningTokens: zero}, Rates{InputMicrosPerMillion: &rate})
+	if err != nil || result.EstimatedUSDMicros == nil || result.EstimatedUSDMicros.String() != huge.String() {
+		t.Fatal("exact overflow", err)
+	}
+	if huge.String() != "18446744073709551614" || zero.Sign() != 0 {
+		t.Fatal("mutated caller usage")
+	}
+}

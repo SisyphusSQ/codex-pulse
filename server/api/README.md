@@ -20,3 +20,14 @@
 账号关系只由本机同一 confirmed context 提供；邮箱不唯一，HMAC-only 历史保留待关联。Quota 不上传本地 window_generation，中心依据真实窗口/reset/时间建立周期；Reset Credits 不含 raw credit ID 或响应。传输凭据只在 Header/Cookie，不进入统计 DTO。批次只在事务提交后确认，重试相同批次返回原确认。
 
 仲裁、历史定价证据、纠正与来源预算的具体规则见 [共享上报协议](../../api/codexpulse/reporting/v1/README.md)。接收层以已鉴权 collector 为来源 owner，浏览器管理凭证不能上报或读取 collector-only 的同步进度。账号/额度/credits 先存储白名单事实与确认关系，中央周期/节奏由对应服务计算。
+
+## 管理端统计查询
+
+统计 API 的字段和口径见 [统计查询](statistics.md)，由已授权浏览器 Cookie 访问：
+
+- `GET /api/v1/statistics/summary`：范围 KPI、Provider/模型/执行归属、自然日趋势、365 日热力图、星期/小时及工具/技能分布。
+- `GET /api/v1/sessions`、`GET /api/v1/sessions/:id`：服务端搜索/排序/分页、原始会话身份与采集来源、范围用量、趋势及工具统计。
+- `GET /api/v1/projects`、`GET /api/v1/projects/:id`：显式项目关联组、成员、范围统计及会话分页。
+- `GET /api/v1/devices/status`：采集设备最后接收、各 Provider 采集截至、覆盖边界、队列、版本和有限状态，不返回授权摘要。
+
+所有查询均默认鉴权；collector Bearer 不能读取这些中心数据。

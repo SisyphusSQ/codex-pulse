@@ -118,3 +118,33 @@ func TestTransactionRejectsForeignEngineContext(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestReadSnapshotUsesOneConnection(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	gdb, err := gorm.Open(mysql.New(mysql.Config{Conn: db, SkipInitializeWithVersion: true}), &gorm.Config{DisableAutomaticPing: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := &Engine{gorm: gdb}
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT count").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(7))
+	mock.ExpectCommit()
+	err = engine.ReadSnapshot(t.Context(), func(ctx context.Context) error {
+		var count int64
+		err := engine.DB(ctx).Raw("SELECT count FROM snapshot_record").Scan(&count).Error
+		if count != 7 {
+			t.Fatal("snapshot result lost")
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

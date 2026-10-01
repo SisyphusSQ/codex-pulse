@@ -15,6 +15,7 @@ HTTP/HTTPS 共用统一配对、凭证摘要、用途和撤销体系，无 Basic
 
 - [总体设计与任务入口](../docs/design/details/multi-machine-reporting/README.md)
 - [网络协议](api/README.md)
+- [统计查询与覆盖口径](api/statistics.md)
 - [配置](docs/design/details/runtime/configuration.md)
 - [SQL 结构与验证边界](docs/sqls/schema/README.md)
 
