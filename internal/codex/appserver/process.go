@@ -1,6 +1,7 @@
 package appserver
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/diagnostics"
 )
 
 // ErrCodexBinaryUnavailable 表示当前环境没有可执行的 Codex CLI。
@@ -95,7 +98,11 @@ func withInitializedLocalRPC[T any](
 	}
 	invocations, discoveryErr := resolveCodexInvocations(options, candidates)
 	if len(invocations) == 0 {
-		return result, discoveryErr
+		reason := "cli_unavailable"
+		if errors.Is(discoveryErr, ErrNodeRuntimeUnavailable) {
+			reason = "node_unavailable"
+		}
+		return result, diagnostics.Wrap(discoveryErr, "cli_resolve", reason)
 	}
 	var lastCompatibilityErr error
 	for _, invocation := range invocations {
@@ -148,6 +155,7 @@ func withInitializedLocalRPCInvocation[T any](
 	processContext, cancelProcess := context.WithCancel(ctx)
 	defer cancelProcess()
 	command := codexCommand(processContext, invocation, "app-server", "--listen", "stdio://")
+	command.WaitDelay = 2 * time.Second
 	processHome := canonicalHome
 	var err error
 	command.Env = codexRuntimeEnvironment(
@@ -173,7 +181,8 @@ func withInitializedLocalRPCInvocation[T any](
 		_ = stdin.Close()
 		return result, errors.New("open App Server stdout")
 	}
-	command.Stderr = io.Discard
+	stderr := new(boundedDiagnosticStderr)
+	command.Stderr = stderr
 	if options.BeforeStart != nil {
 		if err := options.BeforeStart(processContext); err != nil {
 			_ = stdin.Close()
@@ -191,21 +200,45 @@ func withInitializedLocalRPCInvocation[T any](
 	if err := command.Start(); err != nil {
 		_ = stdin.Close()
 		_ = stdout.Close()
-		return result, ErrCodexLaunchFailed
+		return result, diagnostics.Wrap(ErrCodexLaunchFailed, "cli_launch", "launch_failed")
 	}
+	diagnostics.Emit(ctx, diagnostics.Event{Stage: "cli_launch", Outcome: "started"})
 	done := make(chan error, 1)
 	go func() { done <- command.Wait() }()
 	defer func() {
+		var waitErr error
+		var exited bool
+		select {
+		case waitErr = <-done:
+			exited = true
+		default:
+		}
 		cancelProcess()
 		_ = stdin.Close()
-		<-done
+		_ = stdout.Close()
+		if !exited {
+			waitErr = <-done
+		}
+		if exited && waitErr != nil && command.ProcessState != nil && ctx.Err() == nil {
+			diagnostics.Emit(ctx, diagnostics.Event{Stage: "cli_launch", Outcome: "failed", Reason: "unexpected_eof", ExitCode: new(command.ProcessState.ExitCode())})
+		}
+		if command.ProcessState != nil {
+			diagnostics.Emit(ctx, diagnostics.Event{Stage: "cli_launch", Outcome: "stopped", ExitCode: new(command.ProcessState.ExitCode())})
+		}
+		if returnErr != nil && ctx.Err() == nil {
+			if reason := stderr.reason(); reason != "" {
+				diagnostics.Emit(ctx, diagnostics.Event{Stage: "stderr_hint", Outcome: "failed", Reason: reason})
+			}
+		}
 		if options.OnExit != nil && command.ProcessState != nil {
 			options.OnExit(command.ProcessState.UserTime(), command.ProcessState.SystemTime())
 		}
 	}()
 
 	rpc := newJSONLineRPC(stdin, stdout)
-	var initializeResult struct{}
+	var initializeResult struct {
+		UserAgent string `json:"userAgent"`
+	}
 	if err := rpc.Call(ctx, "initialize", struct {
 		ClientInfo struct {
 			Name    string `json:"name"`
@@ -217,12 +250,45 @@ func withInitializedLocalRPCInvocation[T any](
 		Title   string `json:"title"`
 		Version string `json:"version"`
 	}{Name: clientName, Title: "Codex Pulse", Version: version}}, &initializeResult); err != nil {
-		return result, err
+		return result, diagnostics.Wrap(err, "initialize", "rpc_error")
+	}
+	if match := codexCLIVersionPattern.FindStringSubmatch(initializeResult.UserAgent); len(match) >= 4 {
+		diagnostics.Emit(ctx, diagnostics.Event{Stage: "initialize", Outcome: "succeeded", CodexVersion: strings.Join(match[1:4], ".")})
 	}
 	if err := rpc.Notify(ctx, "initialized", struct{}{}); err != nil {
 		return result, err
 	}
 	return operation(ctx, rpc, canonicalHome)
+}
+
+// stderr 只在短生命周期内保留至多 64 KiB，退出后仅输出固定提示分类。
+// 不记录服务器正文；提示不是 HTTP 状态的确证，不改变 RPC 错误语义。
+type boundedDiagnosticStderr struct{ content bytes.Buffer }
+
+func (writer *boundedDiagnosticStderr) Write(content []byte) (int, error) {
+	n := len(content)
+	if remaining := (64 << 10) - writer.content.Len(); remaining > 0 {
+		_, _ = writer.content.Write(content[:min(n, remaining)])
+	}
+	return n, nil
+}
+func (writer *boundedDiagnosticStderr) reason() string {
+	value := strings.ToLower(writer.content.String())
+	for _, hint := range []struct {
+		markers []string
+		reason  string
+	}{
+		{[]string{"http 429", "status 429", "429 too many requests"}, "http_429"},
+		{[]string{"http 401", "status 401", "401 unauthorized"}, "auth_required"},
+		{[]string{"timed out", "timeout"}, "timeout"},
+	} {
+		for _, marker := range hint.markers {
+			if strings.Contains(value, marker) {
+				return hint.reason
+			}
+		}
+	}
+	return ""
 }
 
 func InspectCodexBinary(path string) (CodexBinaryInspection, error) {

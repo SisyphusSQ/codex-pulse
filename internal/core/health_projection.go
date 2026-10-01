@@ -3,7 +3,9 @@ package core
 import (
 	"errors"
 	"reflect"
+	"slices"
 
+	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	healthmodel "github.com/SisyphusSQ/codex-pulse/internal/health"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 )
@@ -36,6 +38,34 @@ type HealthComponentStatus struct {
 	Impact         string                `json:"impact"`
 	Protection     string                `json:"protection"`
 	RecoveryAction string                `json:"recoveryAction"`
+}
+
+// 在已有健康快照上组合直接读取的后台生命周期，不能从旧 attempt 的成功状态猜测 worker 仍在运行。
+func healthWithQuotaRuntime(value healthmodel.Projection, status quotaonline.RefreshRuntimeStatus) healthmodel.Projection {
+	if !value.HasValue || (status.State != "blocked" && status.State != "recoverable") {
+		return value
+	}
+	value.Result.Components = slices.Clone(value.Result.Components)
+	for index, component := range value.Result.Components {
+		if component.Component == healthmodel.ComponentOnlineQuota && healthProjectionLevelRank(component.Level) <= healthProjectionLevelRank(healthmodel.LevelDegraded) {
+			component.Level = healthmodel.LevelDegraded
+			component.Evidence = healthmodel.EvidenceKnown
+			component.Reason = healthmodel.ReasonSourceUnavailable
+			component.Impact = healthmodel.ImpactOnlineQuotaUnavailable
+			component.Protection = healthmodel.ProtectionAutoRetryStopped
+			component.RecoveryAction = healthmodel.RecoveryNone
+			value.Result.Components[index] = component
+		}
+	}
+	value.Result.Level = healthmodel.LevelHealthy
+	value.Result.Primary = nil
+	for _, component := range value.Result.Components {
+		if healthProjectionLevelRank(component.Level) > healthProjectionLevelRank(value.Result.Level) {
+			value.Result.Level = component.Level
+			value.Result.Primary = new(component)
+		}
+	}
+	return value
 }
 
 type HealthProjectionResponse struct {

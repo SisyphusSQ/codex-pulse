@@ -148,8 +148,18 @@ type CurrentResetCreditItem struct {
 }
 
 type CurrentRefresh struct {
-	Quota        CurrentRefreshStatus `json:"quota"`
-	ResetCredits CurrentRefreshStatus `json:"resetCredits"`
+	Quota        CurrentRefreshStatus  `json:"quota"`
+	ResetCredits CurrentRefreshStatus  `json:"resetCredits"`
+	Runtime      *RefreshRuntimeStatus `json:"runtime,omitempty"`
+}
+
+// RefreshRuntimeStatus 只描述后台生命周期，不携带账号标识、原始错误或日志路径。
+type RefreshRuntimeStatus struct {
+	State              string `json:"state"`
+	FailureStage       string `json:"failureStage,omitempty"`
+	FailureReason      string `json:"failureReason,omitempty"`
+	LastFailureAtMS    *int64 `json:"lastFailureAtMs,omitempty"`
+	DiagnosticsDropped uint64 `json:"diagnosticsDropped,omitzero"`
 }
 
 type CurrentRefreshStatus struct {

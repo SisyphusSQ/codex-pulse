@@ -2506,6 +2506,7 @@ public struct OverviewPresentation: Equatable, Sendable {
     public let accountSnapshot: Codexpulse_Core_V1_AccountSnapshotResponse?
     public let codexAccountContextKey: CodexAccountContextKey?
     public let quotaWindows: [QuotaWindowPresentation]
+	public let quotaRefreshNotice: String?
     public let quotaPaceWindows: [QuotaPaceWindowPresentation]
     public let resetCredits: ResetCreditsPresentation
     public let evaluatedAtMS: Int64
@@ -2567,6 +2568,7 @@ public struct OverviewPresentation: Equatable, Sendable {
         self.accountSnapshot = responses.account
         self.codexAccountContextKey = responses.codexAccountContextKey
         self.quotaWindows = responses.quota.current.windows.map(QuotaWindowPresentation.init)
+		self.quotaRefreshNotice = QuotaRefreshPresentation.notice(responses.quota.current.refresh)
         self.quotaPaceWindows = responses.quotaPace.pace.windows.map {
             QuotaPaceWindowPresentation(
                 $0,

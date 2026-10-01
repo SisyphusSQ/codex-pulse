@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/diagnostics"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -67,7 +68,15 @@ func (service *Service) FetchBound(ctx context.Context, request BoundRefreshRequ
 	record := quotaFetchRecord(request, result)
 	recordContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), service.recordTimeout)
 	defer cancel()
-	return result, service.recorder.RecordQuotaFetch(recordContext, record)
+	started := time.Now()
+	err = service.recorder.RecordQuotaFetch(recordContext, record)
+	if err != nil {
+		err = diagnostics.Wrap(err, "persist_attempt", DiagnosticReason(err))
+		diagnostics.Emit(ctx, diagnostics.FromError(err, "persist_attempt", DiagnosticReason(err)))
+	} else {
+		diagnostics.Emit(ctx, diagnostics.Event{Stage: "persist_attempt", Outcome: "succeeded", DurationMS: time.Since(started).Milliseconds()})
+	}
+	return result, err
 }
 
 func quotaFetchRecord(request BoundRefreshRequest, result Result) store.QuotaFetchRecord {

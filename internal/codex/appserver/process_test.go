@@ -12,6 +12,33 @@ import (
 	"time"
 )
 
+func TestAppServerSilentInitializeCancelsAndReapsProcess(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "codex")
+	writeCodexVersionScript(t, binary, "0.154.0", `while IFS= read -r line; do :; done`)
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	exited := false
+	_, err := withInitializedLocalRPC(ctx, t.TempDir(), ProcessOptions{CodexBinary: binary, OnExit: func(time.Duration, time.Duration) { exited = true }}, func(context.Context, *jsonLineRPC, string) (bool, error) {
+		t.Error("silent initialize admitted operation")
+		return false, nil
+	})
+	if !errors.Is(err, context.DeadlineExceeded) || !exited || time.Since(started) > 3*time.Second {
+		t.Fatalf("deadline/reap: error=%v exited=%v elapsed=%v", err, exited, time.Since(started))
+	}
+}
+
+func TestAppServerStderrHintIsBoundedAndNeverReturnsBody(t *testing.T) {
+	writer := new(boundedDiagnosticStderr)
+	body := []byte("secret-marker HTTP 429 token=private" + strings.Repeat("x", 128<<10))
+	if n, err := writer.Write(body); err != nil || n != len(body) {
+		t.Fatal("stderr write failed")
+	}
+	if writer.content.Len() != 64<<10 || writer.reason() != "http_429" {
+		t.Fatal("stderr hint unbounded or unclassified")
+	}
+}
+
 // 测试 Finder 的最小 PATH 下仍会选择产品认可的绝对 Codex CLI 候选。（风险复现用例）
 func TestResolveCodexInvocationsUsesNodeBackedFallbackWithMinimalPath(t *testing.T) {
 	directory := t.TempDir()

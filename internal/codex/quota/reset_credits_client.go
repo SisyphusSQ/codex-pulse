@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
+	"github.com/SisyphusSQ/codex-pulse/internal/diagnostics"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -59,10 +60,11 @@ func (client *ResetCreditsClient) Fetch(ctx context.Context, request BoundRefres
 		return result, nil
 	}
 	finishedAtMS := client.base.finishedAtMS(result.StartedAtMS)
-	decoded, ok := snapshotFromAppServerResetCredits(snapshot, request, finishedAtMS)
+	decoded, reason := snapshotFromAppServerResetCredits(snapshot, request, finishedAtMS)
 	result.FinishedAtMS = finishedAtMS
-	if !ok {
+	if reason != "" {
 		result.Failure = &Failure{Code: store.SourceFailureSchemaIncompatible}
+		diagnostics.Emit(ctx, diagnostics.Event{Stage: "reset_snapshot", Outcome: "failed", Reason: reason})
 		return result, nil
 	}
 	result.Snapshot = &decoded
@@ -82,13 +84,13 @@ func snapshotFromAppServerResetCredits(
 	snapshot appserver.AccountRateLimitsSnapshot,
 	request BoundRefreshRequest,
 	observedAtMS int64,
-) (store.ResetCreditsSnapshot, bool) {
+) (store.ResetCreditsSnapshot, string) {
 	if snapshot.RateLimitResetCredits == nil {
-		return store.ResetCreditsSnapshot{}, false
+		return store.ResetCreditsSnapshot{}, "missing_credits"
 	}
 	summary := snapshot.RateLimitResetCredits
 	if summary.AvailableCount < 0 || summary.AvailableCount > storeMaxResetCreditsAvailableCount() {
-		return store.ResetCreditsSnapshot{}, false
+		return store.ResetCreditsSnapshot{}, "invalid_credit_count"
 	}
 	decoded := store.ResetCreditsSnapshot{
 		RequestID: request.RequestID, AccountScope: request.Binding.AccountScope,
@@ -96,20 +98,26 @@ func snapshotFromAppServerResetCredits(
 	}
 	if summary.Credits == nil {
 		decoded.DetailsStatus = store.ResetCreditDetailsUnavailable
+		if summary.AvailableCount == 0 {
+			decoded.DetailsStatus = store.ResetCreditDetailsComplete
+		}
 	} else {
 		if len(summary.Credits) > 100 {
-			return store.ResetCreditsSnapshot{}, false
+			return store.ResetCreditsSnapshot{}, "invalid_credit_fields"
 		}
 		credits := make([]store.ResetCredit, 0, len(summary.Credits))
 		seen := make(map[string]struct{}, len(summary.Credits))
 		for _, credit := range summary.Credits {
 			item, ok := storeResetCreditFromAppServer(credit)
 			if !ok {
-				return store.ResetCreditsSnapshot{}, false
+				return store.ResetCreditsSnapshot{}, "invalid_credit_fields"
+			}
+			if item.Status == store.ResetCreditAvailable && item.ExpiresAtMS != nil && *item.ExpiresAtMS <= observedAtMS {
+				return store.ResetCreditsSnapshot{}, "expired_available_credit"
 			}
 			digest := item.CreditIDHash.String()
 			if _, duplicate := seen[digest]; duplicate {
-				return store.ResetCreditsSnapshot{}, false
+				return store.ResetCreditsSnapshot{}, "invalid_credit_fields"
 			}
 			seen[digest] = struct{}{}
 			credits = append(credits, item)
@@ -135,7 +143,11 @@ func snapshotFromAppServerResetCredits(
 		request.Binding.AccountScope, request.Binding.BindingGeneration, request.RequestID, observedAtMS,
 	)
 	decoded.SnapshotID = "reset-credits-app-server-" + store.SHA256DigestOf([]byte(identity)).String()
-	return decoded, true
+	// 外部数据违反库存约束时记录来源失败，不能把它升级成 Store 不变量故障。
+	if err := store.ValidateResetCreditsSnapshot(decoded); err != nil {
+		return store.ResetCreditsSnapshot{}, "invalid_credit_fields"
+	}
+	return decoded, ""
 }
 
 func storeResetCreditFromAppServer(credit appserver.RateLimitResetCredit) (store.ResetCredit, bool) {

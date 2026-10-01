@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/diagnostics"
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 )
 
@@ -94,11 +95,11 @@ type rateLimitResetCreditsWire struct {
 }
 
 type accountRateLimitsReadResult struct {
-	AccountID             *string                           `json:"accountId"`
-	RateLimits            *rateLimitSnapshotWire            `json:"rateLimits"`
-	RateLimitsByLimitID   *map[string]rateLimitSnapshotWire `json:"rateLimitsByLimitId"`
-	RateLimitResetCredits *rateLimitResetCreditsWire        `json:"rateLimitResetCredits"`
-	OrdinaryUsageAllowed  *bool                             `json:"ordinaryUsageAllowed"`
+	AccountID             *string         `json:"accountId"`
+	RateLimits            json.RawMessage `json:"rateLimits"`
+	RateLimitsByLimitID   json.RawMessage `json:"rateLimitsByLimitId"`
+	RateLimitResetCredits json.RawMessage `json:"rateLimitResetCredits"`
+	OrdinaryUsageAllowed  *bool           `json:"ordinaryUsageAllowed"`
 }
 
 func ReadLocalAccountRateLimits(
@@ -156,33 +157,61 @@ func readAccountRateLimits(
 	); err != nil {
 		return AccountRateLimitsSnapshot{}, err
 	}
-	return NormalizeAccountRateLimits(result)
+	return normalizeAccountRateLimits(result, excludeResetCreditDetails, !excludeResetCreditDetails)
 }
 
 func NormalizeAccountRateLimits(raw []byte) (AccountRateLimitsSnapshot, error) {
+	return normalizeAccountRateLimits(raw, true, true)
+}
+
+// 每类 reader 只验证其消费的字段；账号身份仍是共同的强制边界。
+func normalizeAccountRateLimits(raw []byte, readQuota, readCredits bool) (result AccountRateLimitsSnapshot, returnErr error) {
+	defer func() {
+		if returnErr != nil {
+			stage, reason := "quota_decode", "invalid_quota_fields"
+			if !readQuota {
+				stage, reason = "reset_decode", "invalid_reset_fields"
+			}
+			if errors.Is(returnErr, ErrAccountIdentityUnavailable) {
+				reason = "account_identity_unavailable"
+			}
+			returnErr = diagnostics.Wrap(returnErr, stage, reason)
+		}
+	}()
 	if len(bytes.TrimSpace(raw)) == 0 || !json.Valid(raw) {
 		return AccountRateLimitsSnapshot{}, ErrRateLimitsSchemaIncompatible
 	}
 	var wire accountRateLimitsReadResult
-	if err := json.Unmarshal(raw, &wire); err != nil || wire.RateLimits == nil {
+	if err := json.Unmarshal(raw, &wire); err != nil {
 		return AccountRateLimitsSnapshot{}, ErrRateLimitsSchemaIncompatible
 	}
 	accountID, err := normalizeSensitiveAccountID(wire.AccountID)
 	if err != nil {
 		return AccountRateLimitsSnapshot{}, err
 	}
-	rateLimits, err := normalizeRateLimitSnapshot(*wire.RateLimits, "")
-	if err != nil {
-		return AccountRateLimitsSnapshot{}, err
-	}
 	snapshot := AccountRateLimitsSnapshot{
 		AccountID:            accountID,
-		RateLimits:           rateLimits,
 		OrdinaryUsageAllowed: cloneOptionalBool(wire.OrdinaryUsageAllowed),
 	}
-	if wire.RateLimitsByLimitID != nil {
-		snapshot.RateLimitsByLimitID = make(map[string]RateLimitSnapshot, len(*wire.RateLimitsByLimitID))
-		for key, bucket := range *wire.RateLimitsByLimitID {
+	if readQuota {
+		var rateLimits *rateLimitSnapshotWire
+		if err := json.Unmarshal(wire.RateLimits, &rateLimits); err != nil || rateLimits == nil {
+			return AccountRateLimitsSnapshot{}, ErrRateLimitsSchemaIncompatible
+		}
+		snapshot.RateLimits, err = normalizeRateLimitSnapshot(*rateLimits, "")
+		if err != nil {
+			return AccountRateLimitsSnapshot{}, err
+		}
+		var buckets map[string]rateLimitSnapshotWire
+		if len(wire.RateLimitsByLimitID) != 0 {
+			if err := json.Unmarshal(wire.RateLimitsByLimitID, &buckets); err != nil {
+				return AccountRateLimitsSnapshot{}, ErrRateLimitsSchemaIncompatible
+			}
+		}
+		if buckets != nil {
+			snapshot.RateLimitsByLimitID = make(map[string]RateLimitSnapshot, len(buckets))
+		}
+		for key, bucket := range buckets {
 			if !validRateLimitIdentity(key) {
 				return AccountRateLimitsSnapshot{}, ErrRateLimitsSchemaIncompatible
 			}
@@ -193,11 +222,18 @@ func NormalizeAccountRateLimits(raw []byte) (AccountRateLimitsSnapshot, error) {
 			snapshot.RateLimitsByLimitID[key] = normalized
 		}
 	}
-	credits, err := normalizeRateLimitResetCredits(wire.RateLimitResetCredits)
-	if err != nil {
-		return AccountRateLimitsSnapshot{}, err
+	if readCredits {
+		var credits *rateLimitResetCreditsWire
+		if len(wire.RateLimitResetCredits) != 0 {
+			if err := json.Unmarshal(wire.RateLimitResetCredits, &credits); err != nil {
+				return AccountRateLimitsSnapshot{}, ErrRateLimitsSchemaIncompatible
+			}
+		}
+		snapshot.RateLimitResetCredits, err = normalizeRateLimitResetCredits(credits)
+		if err != nil {
+			return AccountRateLimitsSnapshot{}, err
+		}
 	}
-	snapshot.RateLimitResetCredits = credits
 	return snapshot, nil
 }
 

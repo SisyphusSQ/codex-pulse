@@ -255,6 +255,12 @@ private struct QuotaContentView: View {
 				}
             }
 			refreshStatus(title: "额度", state: quotaRefreshState)
+			if let notice = QuotaRefreshPresentation.notice(response.current.refresh, localization: localization) {
+				Label(notice, systemImage: "exclamationmark.triangle")
+					.font(.caption)
+					.foregroundStyle(.orange)
+					.accessibilityIdentifier("quota.refresh.runtime")
+			}
 			if provider.supportsResetCredits {
 				refreshStatus(title: "重置次数", state: resetCreditsRefreshState)
 			}

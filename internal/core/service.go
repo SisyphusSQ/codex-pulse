@@ -76,6 +76,10 @@ type quotaRefreshCommand interface {
 	RequestQuotaRefreshResult(context.Context, quotaonline.RefreshSource) (store.SourceRefreshSchedule, bool, error)
 }
 
+type quotaRefreshStatusReader interface {
+	QuotaRefreshStatus() quotaonline.RefreshRuntimeStatus
+}
+
 type providerQuotaRefreshCommand interface {
 	RefreshQuota(context.Context, agentprovider.Scope) (agentprovider.Context, error)
 }
@@ -762,8 +766,19 @@ func (service *Service) QuotaCurrent(
 		return runtimeinfo.QuotaCurrentResponse{}, newServiceFailure(ErrService)
 	}
 	return serviceQueryCall(service, func() (runtimeinfo.QuotaCurrentResponse, error) {
+		decorate := func(response runtimeinfo.QuotaCurrentResponse, err error) (runtimeinfo.QuotaCurrentResponse, error) {
+			if err == nil && response.ProviderContext.EffectiveProvider == agentprovider.Codex {
+				service.quotaMu.RLock()
+				reader, _ := service.quotaRefresh.(quotaRefreshStatusReader)
+				service.quotaMu.RUnlock()
+				if reader != nil {
+					response.Current.Refresh.Runtime = new(reader.QuotaRefreshStatus())
+				}
+			}
+			return response, err
+		}
 		if service.quotaInfo != nil {
-			return service.quotaInfo.QuotaCurrent(ctx, scope, evaluatedAtMS)
+			return decorate(service.quotaInfo.QuotaCurrent(ctx, scope, evaluatedAtMS))
 		}
 		provider, err := agentprovider.Normalize(scope.Provider)
 		if err != nil || provider != agentprovider.Codex {
@@ -771,7 +786,7 @@ func (service *Service) QuotaCurrent(
 		}
 		response, err := service.runtimeInfo.QuotaCurrent(ctx, evaluatedAtMS)
 		response.ProviderContext = agentprovider.CodexContext()
-		return response, err
+		return decorate(response, err)
 	})
 }
 
@@ -886,7 +901,14 @@ func (service *Service) HealthProjection(ctx context.Context) (HealthProjectionR
 		if err := ctx.Err(); err != nil {
 			return HealthProjectionResponse{}, err
 		}
-		return mapHealthProjection(query.Projection())
+		projection := query.Projection()
+		service.quotaMu.RLock()
+		reader, _ := service.quotaRefresh.(quotaRefreshStatusReader)
+		service.quotaMu.RUnlock()
+		if reader != nil {
+			projection = healthWithQuotaRuntime(projection, reader.QuotaRefreshStatus())
+		}
+		return mapHealthProjection(projection)
 	})
 }
 

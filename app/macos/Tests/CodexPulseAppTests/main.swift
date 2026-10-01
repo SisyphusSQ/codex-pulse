@@ -2268,7 +2268,7 @@ private func testSidebarSettingsUsesSystemRowSpacing() throws {
 private func testUsageSidebarOrdersInvocationBeforeQuota() throws {
     try expect(
         AppFeature.usageFeatures(for: .codex)
-            == [.overview, .sessions, .projects, .invocationUsage, .quotaUsage],
+            == [.overview, .sessions, .projects, .invocationUsage, .quotaUsage, .accountQuotas],
         "usage sidebar must place invocation statistics immediately before quota usage"
     )
 	try expect(
@@ -11835,7 +11835,7 @@ private func testStatusBarQuotaPresentationUsesOnlyMatchingPeriodUsage() throws 
     try expect(matching.remainingText == "周剩 0%", "status bar must preserve confirmed zero remaining")
     try expect(
         matching.usageText == "已用 7.9亿",
-        "status bar must retain the compact total-only text"
+        "status bar must retain the compact total-only text; got \(matching.usageText)"
     )
     try expect(
         matching.accessibilityLabel.contains("已用 7.9亿 Token")
@@ -13546,6 +13546,23 @@ private func testShutdownDeadlineForcesHelperStop() async throws {
     try expect(started.duration(to: clock.now) < .seconds(1), "Shutdown deadline must stay bounded")
 }
 
+private func testQuotaRefreshFailurePresentation() throws {
+    try expect(AppLocalization.chineseSimplified.text("status.used") == "已用 %@", "Chinese resource bundle must resolve its case-preserved directory")
+    var refresh = Codexpulse_Core_V1_CurrentRefresh()
+    try expect(QuotaRefreshPresentation.notice(refresh) == nil, "Missing runtime must remain backward compatible")
+    refresh.runtime.state = "recoverable"
+    refresh.runtime.failureReason = "timeout"
+    let recoverable = QuotaRefreshPresentation.notice(refresh, localization: .chineseSimplified) ?? ""
+    try expect(recoverable.contains("刷新额度") && recoverable.contains("请求超时"), "Transient stop must offer manual recovery")
+    refresh.runtime.state = "blocked"
+    refresh.runtime.failureReason = "store_corrupt"
+    let blocked = QuotaRefreshPresentation.notice(refresh, localization: .chineseSimplified) ?? ""
+    try expect(blocked.contains("检查本地数据") && !blocked.contains("恢复。"), "Permanent protection must not offer unsafe recovery")
+    refresh.runtime.state = "running"
+    refresh.runtime.diagnosticsDropped = 1
+    try expect(QuotaRefreshPresentation.notice(refresh, localization: .englishUS)?.contains("diagnostics") == true, "Diagnostic loss must be visible and localized")
+}
+
 @main
 struct CodexPulseAppTestMain {
     static func main() async throws {
@@ -13554,12 +13571,23 @@ struct CodexPulseAppTestMain {
             print("CodexPulseApp TPS presentation tests passed")
             return
         }
+        if CommandLine.arguments.contains("--quota-refresh-only") {
+            try testQuotaRefreshFailurePresentation()
+            try testStatusBarQuotaPresentationUsesOnlyMatchingPeriodUsage()
+            try testStatusBarQuotaDataStateSeparatesRemainingColorFromTrust()
+            try testStatusBarQuotaPresentationDescribesLastKnownGoodState()
+            try testCodexAccountQuotaWindowCardsUseActualWindows()
+            try await testAppRuntimeFirstOverviewPublishDropsPreviousAccountOnBQuota()
+            print("CodexPulseApp quota refresh tests passed")
+            return
+        }
         if CommandLine.arguments.contains("--pricing-only") {
             try testReferencePriceFormattingPreservesPrecisionAndUnknown()
             try testQuotaUsageShowsIndependentReferencePriceCatalogAndBillingBoundary()
             print("CodexPulseApp pricing tests passed")
             return
         }
+        try testQuotaRefreshFailurePresentation()
         try testCodexAccountRowPresentsLegacyQuotaHistoryActions()
         try testCodexAccountsSettingsSourceContract()
         try testCodexAccountQuotaPageUsesOneRowForCurrentAndHistory()

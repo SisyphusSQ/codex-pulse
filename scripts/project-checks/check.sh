@@ -110,7 +110,10 @@ require_pattern app/macos/Sources/CodexPulseApp/RootView.swift \
 
 [ ! -e "$REPO_ROOT/frontend/package.json" ] || fail ARCH-001 AGENTS.md "frontend manifest returned"
 for removed in internal/updater internal/platform/tray internal/singleinstance build cmd/trayprobe cmd/traystatusprobe; do
-  if [ -d "$REPO_ROOT/$removed" ] && find "$REPO_ROOT/$removed" -type f \( -name '*.go' -o -name '*.sh' -o -name '*.yml' -o -name '*.yaml' \) -print -quit | grep -q .; then
+  # build/dev 是标准原生开发包和 SwiftPM 缓存，不是已移除的 Wails 桌面源码。
+  if [ -d "$REPO_ROOT/$removed" ] && find "$REPO_ROOT/$removed" \
+    -path "$REPO_ROOT/build/dev" -prune -o \
+    -type f \( -name '*.go' -o -name '*.sh' -o -name '*.yml' -o -name '*.yaml' \) -print -quit | grep -q .; then
     fail ARCH-001 AGENTS.md "removed desktop source returned: $removed"
   fi
 done
@@ -206,7 +209,8 @@ require_pattern app/macos/Sources/CodexPulseAppSupport/FeatureModels.swift 'expe
 require_pattern app/macos/Sources/CodexPulseAppSupport/FeatureRequests.swift 'min\(max\(limit, 1\), 100\)' SWIFT-003 api/codexpulse/core/v1/core.proto
 require_pattern app/macos/Sources/CodexPulseCoreClient/CoreClient.swift 'service.runRuntimeAction' SWIFT-003 api/codexpulse/core/v1/core.proto
 require_pattern app/macos/Sources/CodexPulseAppSupport/HelperProcessMonitor.swift 'DispatchSource.makeProcessSource' SWIFT-002 docs/design/details/native-macos-client/README.md
-require_pattern internal/codex/appserver/process.go 'command.Env = isolatedCodexEnvironment' DATA-001 docs/design/details/native-macos-client/README.md
+require_pattern internal/codex/appserver/process.go 'command.Env = codexRuntimeEnvironment\(' DATA-001 docs/design/details/native-macos-client/README.md
+require_pattern internal/codex/appserver/process.go 'isolatedCodexEnvironment\(os.Environ\(\), processHome\)' DATA-001 docs/design/details/native-macos-client/README.md
 require_pattern scripts/macos/build-dev-app.sh 'Contents/Helpers' SWIFT-002 docs/design/details/native-macos-client/README.md
 require_pattern scripts/macos/run-app-smoke.sh '--ui-smoke' SWIFT-002 docs/test/native-app-shell-overview.md
 require_pattern scripts/macos/run-app-smoke.sh '--skip-cursor-provider-smoke' SWIFT-002 docs/test/native-app-shell-overview.md
@@ -220,7 +224,7 @@ require_pattern scripts/macos/run-app-live-smoke.sh 'CODEX_PULSE_APP_RUNTIME' SW
 require_pattern scripts/macos/run-app-live-smoke.sh 'confirmed Home is not the real Codex Home' SWIFT-004 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'standard_housekeeping=allowed' SWIFT-004 docs/test/native-primary-pages.md
 require_pattern scripts/macos/run-app-live-smoke.sh 'primary_pages=loaded' SWIFT-004 docs/test/native-primary-pages.md
-require_pattern scripts/macos/run-app-live-smoke.sh 'dashboard_providers=3 .*api_subscriptions=[^ ]+ .*unavailable=none ui_pages=10' SWIFT-004 docs/test/native-primary-pages.md
+require_pattern scripts/macos/run-app-live-smoke.sh 'dashboard_providers=3 .*api_subscriptions=[^ ]+ .*unavailable=none ui_pages=11' SWIFT-004 docs/test/native-primary-pages.md
 if grep -Eq 'mktemp -d' "$REPO_ROOT/scripts/macos/run-app-live-smoke.sh"; then
   fail SWIFT-004 AGENTS.md "real Home live smoke must reuse an existing runtime"
 fi
