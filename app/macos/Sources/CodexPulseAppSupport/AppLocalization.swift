@@ -80,7 +80,7 @@ public struct AppLocalization: Equatable, Sendable {
     public var locale: Locale { Locale(identifier: language.localeIdentifier) }
 
     public var bundleLanguageName: String {
-        language == .englishUS ? "en" : "zh-hans"
+        language == .englishUS ? "en" : "zh-Hans"
     }
 
     public func text(_ key: String) -> String {

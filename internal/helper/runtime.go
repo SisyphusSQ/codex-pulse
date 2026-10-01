@@ -14,6 +14,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/app"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
+	"github.com/SisyphusSQ/codex-pulse/internal/diagnostics"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -58,6 +59,12 @@ func Run(ctx context.Context, config RuntimeConfig) error {
 	authenticator, parentEOF, err := readAuthPipe(authPipe)
 	if err != nil {
 		return err
+	}
+	if logger, err := diagnostics.Open(filepath.Dir(config.SocketPath), config.HelperVersion); err == nil {
+		defer logger.Close()
+		ctx = diagnostics.WithLogger(ctx, logger)
+	} else {
+		log.Print("codex-pulse refresh_diagnostics_unavailable")
 	}
 	broker, err := core.NewInvalidationBroker(defaultInvalidationCapacity)
 	if err != nil {

@@ -4,7 +4,7 @@
 
 这不是长期监控系统，而是帮助用户判断最近是否正常：后台索引是否推进、Tracker 是否占用过多资源、live queue 是否被 backfill 堵住、某来源为什么失败以及何时重试。
 
-所有资源和故障明细只覆盖最近 24 小时。
+资源和常规故障明细覆盖最近 24 小时；TOO-474 的未恢复刷新故障摘要保留至该来源恢复。
 
 ## 指标
 
@@ -129,3 +129,12 @@ v0.1 不提供诊断包或其他用户数据导出。后续若重新评估，只
 - Popover 不承担健康解释；原始资源指标与故障原因只进入 Data Health。
 - history backfill 进度留在本机状态 Banner。
 - 本机状态健康入口承担“最近 24 小时是否正常”的统一入口。
+
+
+## 刷新诊断（TOO-474）
+
+Helper 在既有 mode 0700 的 runtime 下建立 mode 0700 的 `logs/`，日志文件为 0600，并拒绝非普通文件、软/硬链接和宽权限文件。`refresh.jsonl` 及三份轮转各最多 5 MiB，启动与后续写入时执行 24 小时保留/轮转；`refresh-faults.json` 只为 quota/reset_credits/runtime 三种来源保存首次、最新有限事件和事件计数，来源完成成功刷新或 runtime 恢复后收口。它独立于 SQLite，所以存储写失败仍可留证。
+
+事件只含 Helper/可识别的 CLI 版本、时间、不可逆 request 关联摘要、来源/trigger/stage/outcome/reason、耗时、尝试次数、RPC 数字 code、进程退出 code 与 next due。CLI stderr 在内存最多暂存 64 KiB，只提取有限 `stderr_hint`；不保存正文，也不把提示当成可信 HTTP 状态。`server_error` 是现有来源分类，不代表已证实的 HTTP 500。
+
+禁止记录 accountId、Reset Credit 原始 ID、邮箱、凭据、HTTP header、响应/error/panic 正文、真实 Home 路径或 Session 内容。日志写失败只累计 `diagnostics_dropped` 并在产品提示，不升级为刷新业务错误。HealthProjection 消费直接的 worker 生命周期，不解析日志或用旧成功 attempt 猜测 worker 存活。

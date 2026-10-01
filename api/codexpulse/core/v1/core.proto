@@ -733,6 +733,15 @@ message CurrentRefreshStatus {
 message CurrentRefresh {
   CurrentRefreshStatus quota = 1;
   CurrentRefreshStatus reset_credits = 2;
+  optional CurrentRefreshRuntime runtime = 3;
+}
+
+message CurrentRefreshRuntime {
+  string state = 1;
+  optional string failure_stage = 2;
+  optional string failure_reason = 3;
+  optional int64 last_failure_at_ms = 4;
+  uint64 diagnostics_dropped = 5;
 }
 
 message CurrentQuota {

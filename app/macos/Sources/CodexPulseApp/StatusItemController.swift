@@ -163,7 +163,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             provider: model.statusProvider
         )
         statusItem.length = statusBarView.preferredWidth
-        let summaryLabel = summary?.accessibilityLabel ?? title
+        let summaryLabel = (summary?.accessibilityLabel ?? title)
+            + (model.statusPresentation?.quotaRefreshNotice.map { " · " + $0 } ?? "")
         statusItem.button?.toolTip = "Codex Pulse · \(summaryLabel)"
         statusItem.button?.setAccessibilityLabel("Codex Pulse · \(summaryLabel)")
     }
@@ -1131,6 +1132,12 @@ private struct MenuBarPopoverView: View {
                 systemImage: "gauge.with.dots.needle.67percent",
                 localization: model.localization
             )
+            if let notice = overview.quotaRefreshNotice {
+                Label(notice, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("popover.quota.refresh-status")
+            }
             if overview.quotaWindows.isEmpty {
                 PulseCard { Text("尚未取得可信额度数据").foregroundStyle(.secondary) }
             } else {

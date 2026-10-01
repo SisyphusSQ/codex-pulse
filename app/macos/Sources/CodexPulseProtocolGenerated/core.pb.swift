@@ -4442,35 +4442,88 @@ public nonisolated struct Codexpulse_Core_V1_CurrentRefreshStatus: Sendable {
   fileprivate var _unknownReason: String? = nil
 }
 
-public nonisolated struct Codexpulse_Core_V1_CurrentRefresh: Sendable {
+public nonisolated struct Codexpulse_Core_V1_CurrentRefresh: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   public var quota: Codexpulse_Core_V1_CurrentRefreshStatus {
-    get {_quota ?? Codexpulse_Core_V1_CurrentRefreshStatus()}
-    set {_quota = newValue}
+    get {_storage._quota ?? Codexpulse_Core_V1_CurrentRefreshStatus()}
+    set {_uniqueStorage()._quota = newValue}
   }
   /// Returns true if `quota` has been explicitly set.
-  public var hasQuota: Bool {self._quota != nil}
+  public var hasQuota: Bool {_storage._quota != nil}
   /// Clears the value of `quota`. Subsequent reads from it will return its default value.
-  public mutating func clearQuota() {self._quota = nil}
+  public mutating func clearQuota() {_uniqueStorage()._quota = nil}
 
   public var resetCredits: Codexpulse_Core_V1_CurrentRefreshStatus {
-    get {_resetCredits ?? Codexpulse_Core_V1_CurrentRefreshStatus()}
-    set {_resetCredits = newValue}
+    get {_storage._resetCredits ?? Codexpulse_Core_V1_CurrentRefreshStatus()}
+    set {_uniqueStorage()._resetCredits = newValue}
   }
   /// Returns true if `resetCredits` has been explicitly set.
-  public var hasResetCredits: Bool {self._resetCredits != nil}
+  public var hasResetCredits: Bool {_storage._resetCredits != nil}
   /// Clears the value of `resetCredits`. Subsequent reads from it will return its default value.
-  public mutating func clearResetCredits() {self._resetCredits = nil}
+  public mutating func clearResetCredits() {_uniqueStorage()._resetCredits = nil}
+
+  public var runtime: Codexpulse_Core_V1_CurrentRefreshRuntime {
+    get {_storage._runtime ?? Codexpulse_Core_V1_CurrentRefreshRuntime()}
+    set {_uniqueStorage()._runtime = newValue}
+  }
+  /// Returns true if `runtime` has been explicitly set.
+  public var hasRuntime: Bool {_storage._runtime != nil}
+  /// Clears the value of `runtime`. Subsequent reads from it will return its default value.
+  public mutating func clearRuntime() {_uniqueStorage()._runtime = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
-  fileprivate var _quota: Codexpulse_Core_V1_CurrentRefreshStatus? = nil
-  fileprivate var _resetCredits: Codexpulse_Core_V1_CurrentRefreshStatus? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+public nonisolated struct Codexpulse_Core_V1_CurrentRefreshRuntime: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var state: String = String()
+
+  public var failureStage: String {
+    get {_failureStage ?? String()}
+    set {_failureStage = newValue}
+  }
+  /// Returns true if `failureStage` has been explicitly set.
+  public var hasFailureStage: Bool {self._failureStage != nil}
+  /// Clears the value of `failureStage`. Subsequent reads from it will return its default value.
+  public mutating func clearFailureStage() {self._failureStage = nil}
+
+  public var failureReason: String {
+    get {_failureReason ?? String()}
+    set {_failureReason = newValue}
+  }
+  /// Returns true if `failureReason` has been explicitly set.
+  public var hasFailureReason: Bool {self._failureReason != nil}
+  /// Clears the value of `failureReason`. Subsequent reads from it will return its default value.
+  public mutating func clearFailureReason() {self._failureReason = nil}
+
+  public var lastFailureAtMs: Int64 {
+    get {_lastFailureAtMs ?? 0}
+    set {_lastFailureAtMs = newValue}
+  }
+  /// Returns true if `lastFailureAtMs` has been explicitly set.
+  public var hasLastFailureAtMs: Bool {self._lastFailureAtMs != nil}
+  /// Clears the value of `lastFailureAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearLastFailureAtMs() {self._lastFailureAtMs = nil}
+
+  public var diagnosticsDropped: UInt64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _failureStage: String? = nil
+  fileprivate var _failureReason: String? = nil
+  fileprivate var _lastFailureAtMs: Int64? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_CurrentQuota: @unchecked Sendable {
@@ -14522,7 +14575,91 @@ nonisolated extension Codexpulse_Core_V1_CurrentRefreshStatus: SwiftProtobuf.Mes
 
 nonisolated extension Codexpulse_Core_V1_CurrentRefresh: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CurrentRefresh"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}quota\0\u{3}reset_credits\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}quota\0\u{3}reset_credits\0\u{1}runtime\0")
+
+  fileprivate class _StorageClass {
+    var _quota: Codexpulse_Core_V1_CurrentRefreshStatus? = nil
+    var _resetCredits: Codexpulse_Core_V1_CurrentRefreshStatus? = nil
+    var _runtime: Codexpulse_Core_V1_CurrentRefreshRuntime? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _quota = source._quota
+      _resetCredits = source._resetCredits
+      _runtime = source._runtime
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularMessageField(value: &_storage._quota) }()
+        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._resetCredits) }()
+        case 3: try { try decoder.decodeSingularMessageField(value: &_storage._runtime) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      try { if let v = _storage._quota {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+      } }()
+      try { if let v = _storage._resetCredits {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+      } }()
+      try { if let v = _storage._runtime {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+      } }()
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_CurrentRefresh, rhs: Codexpulse_Core_V1_CurrentRefresh) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._quota != rhs_storage._quota {return false}
+        if _storage._resetCredits != rhs_storage._resetCredits {return false}
+        if _storage._runtime != rhs_storage._runtime {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_CurrentRefreshRuntime: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CurrentRefreshRuntime"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}state\0\u{3}failure_stage\0\u{3}failure_reason\0\u{3}last_failure_at_ms\0\u{3}diagnostics_dropped\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -14530,8 +14667,11 @@ nonisolated extension Codexpulse_Core_V1_CurrentRefresh: SwiftProtobuf.Message, 
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularMessageField(value: &self._quota) }()
-      case 2: try { try decoder.decodeSingularMessageField(value: &self._resetCredits) }()
+      case 1: try { try decoder.decodeSingularStringField(value: &self.state) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self._failureStage) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self._failureReason) }()
+      case 4: try { try decoder.decodeSingularInt64Field(value: &self._lastFailureAtMs) }()
+      case 5: try { try decoder.decodeSingularUInt64Field(value: &self.diagnosticsDropped) }()
       default: break
       }
     }
@@ -14542,18 +14682,30 @@ nonisolated extension Codexpulse_Core_V1_CurrentRefresh: SwiftProtobuf.Message, 
     // allocates stack space for every if/case branch local when no optimizations
     // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
     // https://github.com/apple/swift-protobuf/issues/1182
-    try { if let v = self._quota {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    if !self.state.isEmpty {
+      try visitor.visitSingularStringField(value: self.state, fieldNumber: 1)
+    }
+    try { if let v = self._failureStage {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 2)
     } }()
-    try { if let v = self._resetCredits {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    try { if let v = self._failureReason {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 3)
     } }()
+    try { if let v = self._lastFailureAtMs {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 4)
+    } }()
+    if self.diagnosticsDropped != 0 {
+      try visitor.visitSingularUInt64Field(value: self.diagnosticsDropped, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
-  public static func ==(lhs: Codexpulse_Core_V1_CurrentRefresh, rhs: Codexpulse_Core_V1_CurrentRefresh) -> Bool {
-    if lhs._quota != rhs._quota {return false}
-    if lhs._resetCredits != rhs._resetCredits {return false}
+  public static func ==(lhs: Codexpulse_Core_V1_CurrentRefreshRuntime, rhs: Codexpulse_Core_V1_CurrentRefreshRuntime) -> Bool {
+    if lhs.state != rhs.state {return false}
+    if lhs._failureStage != rhs._failureStage {return false}
+    if lhs._failureReason != rhs._failureReason {return false}
+    if lhs._lastFailureAtMs != rhs._lastFailureAtMs {return false}
+    if lhs.diagnosticsDropped != rhs.diagnosticsDropped {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

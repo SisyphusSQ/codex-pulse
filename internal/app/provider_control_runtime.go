@@ -117,6 +117,14 @@ type applicationControlRuntime struct {
 
 const providerDiscoveryInterval = 5 * time.Minute
 
+func (runtime *applicationControlRuntime) QuotaRefreshStatus() quotaonline.RefreshRuntimeStatus {
+	worker := runtime.currentWorker()
+	if worker == nil || worker.quota == nil {
+		return quotaonline.RefreshRuntimeStatus{State: "stopped"}
+	}
+	return worker.quota.QuotaRefreshStatus()
+}
+
 func startApplicationControlRuntime(
 	ctx context.Context,
 	config ApplicationControlRuntimeConfig,
