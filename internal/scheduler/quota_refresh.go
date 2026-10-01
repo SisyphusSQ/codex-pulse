@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
+	"github.com/SisyphusSQ/codex-pulse/internal/diagnostics"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
@@ -388,6 +389,17 @@ func (coordinator *QuotaRefreshCoordinator) RequestRefreshResult(
 			return completed, true, err
 		}
 	}
+	if execErr == nil && trigger == store.RefreshTriggerManual {
+		readCtx, cancelRead := context.WithTimeout(context.WithoutCancel(ctx), coordinator.completionTimeout)
+		defer cancelRead()
+		attempt, readErr := coordinator.repository.SourceAttempt(readCtx, requestID)
+		if readErr != nil {
+			return completed, true, readErr
+		}
+		if attempt.Outcome == store.SourceAttemptFailed {
+			return completed, true, ErrQuotaRefreshSourceFailed
+		}
+	}
 	return completed, true, execErr
 }
 
@@ -493,15 +505,18 @@ func (coordinator *QuotaRefreshCoordinator) recoverExpiredClaimsLocked(
 			return nil, ErrInvalidQuotaRefreshCoordinator
 		}
 		claimID := *claimed.ActiveClaimID
+		diagnosticCtx := diagnostics.WithRequest(ctx, claimID, string(descriptor.source), "recovery")
+		diagnostics.Emit(diagnosticCtx, diagnostics.Event{Stage: "recover_claim", Outcome: "started", Reason: "claim_recovery"})
 		attempt, attemptErr := coordinator.repository.SourceAttempt(ctx, claimID)
 		switch {
 		case attemptErr == nil:
 			if attempt.SourceInstanceID != claimed.SourceInstanceID {
 				return nil, ErrInvalidQuotaRefreshCoordinator
 			}
-			if _, err := coordinator.completeRecordedClaim(ctx, snapshot, descriptor, claimed, claimID); err != nil {
+			if _, err := coordinator.completeRecordedClaim(diagnosticCtx, snapshot, descriptor, claimed, claimID); err != nil {
 				return nil, err
 			}
+			diagnostics.Emit(diagnosticCtx, diagnostics.Event{Stage: "recover_claim", Outcome: "recovered", Reason: "claim_recovery"})
 		case errors.Is(attemptErr, store.ErrNotFound):
 			recovered, released, err := coordinator.repository.ReleaseExpiredSourceRefreshClaim(ctx, store.SourceRefreshClaimRecovery{
 				SourceInstanceID: claimed.SourceInstanceID, ClaimID: claimID,
@@ -518,12 +533,14 @@ func (coordinator *QuotaRefreshCoordinator) recoverExpiredClaimsLocked(
 					}
 					return nil, ErrInvalidQuotaRefreshCoordinator
 				}
-				if _, err := coordinator.completeRecordedClaim(ctx, snapshot, descriptor, recovered, claimID); err != nil {
+				if _, err := coordinator.completeRecordedClaim(diagnosticCtx, snapshot, descriptor, recovered, claimID); err != nil {
 					return nil, err
 				}
+				diagnostics.Emit(diagnosticCtx, diagnostics.Event{Stage: "recover_claim", Outcome: "recovered", Reason: "claim_recovery"})
 				continue
 			}
 			unrecorded[claimed.SourceInstanceID] = struct{}{}
+			diagnostics.Emit(diagnosticCtx, diagnostics.Event{Stage: "recover_claim", Outcome: "recovered", Reason: "claim_recovery"})
 		default:
 			return nil, attemptErr
 		}
@@ -538,12 +555,20 @@ func (coordinator *QuotaRefreshCoordinator) executeClaim(
 	claimed store.SourceRefreshSchedule,
 	requestID string,
 ) (store.SourceRefreshSchedule, error) {
+	trigger := "scheduled"
+	if claimed.ActiveTrigger != nil {
+		trigger = string(*claimed.ActiveTrigger)
+	}
+	ctx = diagnostics.WithRequest(ctx, requestID, string(descriptor.source), trigger)
+	started := time.Now()
+	diagnostics.Emit(ctx, diagnostics.Event{Stage: "refresh", Outcome: "started"})
 	if err := descriptor.fetcher.Fetch(ctx, quotaonline.BoundRefreshRequest{
 		RequestID: requestID,
 		Binding: quotaonline.AccountBindingFence{
 			AccountScope: descriptor.scopeKey, BindingGeneration: descriptor.bindingGeneration,
 		},
 	}); err != nil {
+		diagnostics.Emit(ctx, diagnostics.FromError(err, "persist_attempt", quotaonline.DiagnosticReason(err)))
 		if errors.Is(err, store.ErrCodexAccountBindingChanged) {
 			abandoned, abandonErr := coordinator.repository.AbandonSourceRefreshClaim(ctx, store.SourceRefreshClaimRecovery{
 				SourceInstanceID: descriptor.sourceInstanceID, ClaimID: requestID,
@@ -556,7 +581,36 @@ func (coordinator *QuotaRefreshCoordinator) executeClaim(
 		// decides the next request.
 		return claimed, err
 	}
-	return coordinator.completeRecordedClaim(ctx, snapshot, descriptor, claimed, requestID)
+	completed, err := coordinator.completeRecordedClaim(ctx, snapshot, descriptor, claimed, requestID)
+	if err != nil {
+		err = diagnostics.Wrap(err, "complete_claim", quotaonline.DiagnosticReason(err))
+		diagnostics.Emit(ctx, diagnostics.FromError(err, "complete_claim", quotaonline.DiagnosticReason(err)))
+		return completed, err
+	}
+	diagnostics.Emit(ctx, diagnostics.Event{Stage: "complete_claim", Outcome: "succeeded"})
+	readCtx, cancelRead := context.WithTimeout(context.WithoutCancel(ctx), coordinator.completionTimeout)
+	defer cancelRead()
+	attempt, readErr := coordinator.repository.SourceAttempt(readCtx, requestID)
+	if readErr != nil {
+		return completed, readErr
+	}
+	event := diagnostics.Event{Stage: "refresh", Outcome: string(attempt.Outcome), DurationMS: time.Since(started).Milliseconds(), NextDueAtMS: completed.NextDueAtMS}
+	if attempt.FailureCode != nil {
+		event.Reason = string(*attempt.FailureCode)
+	}
+	diagnostics.Emit(ctx, event)
+	return completed, nil
+}
+
+// ErrQuotaRefreshSourceFailed 表示请求已实际执行，但来源未成功更新；不能反馈“已更新”。
+var ErrQuotaRefreshSourceFailed = errors.New("quota refresh source failed")
+
+// CanRecoverQuotaRefreshError 仅允许已知的暂态退出重新启动，不绕过存储或内部约束保护。
+func CanRecoverQuotaRefreshError(err error) bool {
+	if isPermanentQuotaRefreshCycleError(err) || errors.Is(err, ErrSchedulerCronPanic) {
+		return false
+	}
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, storesqlite.ErrBusy) || errors.Is(err, storesqlite.ErrIO) || errors.Is(err, storesqlite.ErrQueueFull)
 }
 
 func (coordinator *QuotaRefreshCoordinator) completeRecordedClaim(

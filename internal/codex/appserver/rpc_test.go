@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestJSONLineRPCCallSkipsNotificationsAndMatchesResponseID(t *testing.T) {
@@ -65,6 +66,26 @@ func TestJSONLineRPCCancellationBeforeWrite(t *testing.T) {
 
 type nopWriteCloser struct {
 	io.Writer
+}
+
+func TestJSONLineRPCCancellationInterruptsSilentPipe(t *testing.T) {
+	t.Parallel()
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	rpc := newJSONLineRPC(nopWriteCloser{io.Discard}, reader)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { var result threadListResult; done <- rpc.Call(ctx, "thread/list", threadListParams{}, &result) }()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("cancellation=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("RPC remained blocked after deadline")
+	}
 }
 
 func (nopWriteCloser) Close() error { return nil }

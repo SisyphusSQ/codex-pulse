@@ -41,6 +41,8 @@ Query --> Store["SQLite"]
 
 ## Contract 真相
 
+会话 TPS 沿现有 `SessionItem` / `SessionTurnItem` / `SessionDetailResponse` 追加 optional `ThroughputStats` 与有界 `ThroughputTurn`，不新增 RPC。Go Helper 从同一 active-generation snapshot 计算生命周期平均和覆盖；Swift 只格式化定点数，缺少新字段显示不可用。持久化、计算与验证见 [Data Model](../data-model/README.md) 和 [TPS Runbook](../../../test/session-throughput.md)。
+
 `api/codexpulse/core/v1/core.proto` 是 Swift/Go 唯一跨进程 contract。`make verify-proto` 在临时目录用固定 generator 版本重生成并比较，禁止手改生成文件。Updater、Window、Tray 和 Popover 明确不属于 `CoreService`。
 
 ## 多机中心服务扩展（实施中）

@@ -1,5 +1,7 @@
 # Session Turn Usage/Cost 时间线 Runbook
 
+TOO-492 为原生会话详情增加独立的有界最近轮次 TPS；匹配到相同安全身份和起始时间时，既有 cost timeline 可附带指标。完整 Session TPS 不由当前 Turn 页累计，验收见 [会话活跃期间平均 TPS](session-throughput.md)。下文为 TOO-307 当时的验收记录，历史 Wails/full gate 不作为当前 Swift App 的执行要求。
+
 ## 当前验证结果
 
 - Issue：TOO-307

@@ -10,6 +10,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
+	"github.com/SisyphusSQ/codex-pulse/internal/diagnostics"
 	"github.com/SisyphusSQ/codex-pulse/internal/providerrefresh"
 	"github.com/SisyphusSQ/codex-pulse/internal/scheduler"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -52,11 +53,14 @@ type applicationQuotaRuntime struct {
 	generation        uint64
 	accepting         bool
 	closed            bool
+	systemSuspended   bool
 	generationContext context.Context
 	generationCancel  context.CancelFunc
 	runnerDone        chan struct{}
 	runnerErr         error
 	runtimeErr        error
+	lastFailureAtMS   *int64
+	recoveryPending   bool
 	inflight          int
 	inflightDone      chan struct{}
 	transition        chan struct{}
@@ -65,6 +69,9 @@ type applicationQuotaRuntime struct {
 	resetCreditsService *quotaonline.ResetCreditsService
 	account             *accountBindingRuntime
 	mismatch            *accountBindingHolder
+	invalidation        queryInvalidationNotifier
+	freshnessWake       chan struct{}
+	freshnessDone       chan struct{}
 
 	closeOnce sync.Once
 	closeDone chan struct{}
@@ -140,6 +147,7 @@ func startApplicationQuotaRuntime(
 	mismatch := &accountBindingHolder{}
 	quotaService.SetBinding(binding)
 	resetCreditsService.SetBinding(binding)
+	var runtime *applicationQuotaRuntime
 	coordinator, err := scheduler.NewQuotaRefreshCoordinator(scheduler.QuotaRefreshCoordinatorConfig{
 		Repository:          config.Repository,
 		Preferences:         config.Preferences,
@@ -148,6 +156,9 @@ func startApplicationQuotaRuntime(
 		Clock:               config.Clock,
 		RefreshCommitted: func(ctx context.Context, _ quotaonline.RefreshSource) {
 			notifyQueryInvalidation(config.invalidation, ctx, core.InvalidationQuotaCodex)
+			if runtime != nil {
+				runtime.refreshCommitted()
+			}
 		},
 	})
 	if err != nil {
@@ -158,13 +169,15 @@ func startApplicationQuotaRuntime(
 		return nil, applicationQuotaDependencyError(ctx, err)
 	}
 	rootContext, rootCancel := context.WithCancel(ctx)
-	runtime := &applicationQuotaRuntime{
+	runtime = &applicationQuotaRuntime{
 		coordinator: coordinator, runner: runner, preferences: config.Preferences,
 		reconcilePreferences: coordinator.ReconcilePreferences,
 		rootContext:          rootContext, rootCancel: rootCancel, hooks: config.hooks,
 		quotaService: quotaService, resetCreditsService: resetCreditsService, mismatch: mismatch,
+		invalidation: config.invalidation,
 		inflightDone: closedQuotaRuntimeSignal(), closeDone: make(chan struct{}),
-		transition: make(chan struct{}, 1),
+		transition:    make(chan struct{}, 1),
+		freshnessWake: make(chan struct{}, 1), freshnessDone: make(chan struct{}),
 	}
 	account, err := newAccountBindingRuntime(
 		config.Repository, reader, storedKey, config.Clock, runtime, config.invalidation,
@@ -202,6 +215,7 @@ func startApplicationQuotaRuntime(
 	} else {
 		runtime.startRunnerLocked(snapshot.CodexHome.Generation)
 	}
+	go runtime.observeFreshness(config.Repository, config.Clock)
 	return runtime, nil
 }
 
@@ -256,6 +270,15 @@ func (runtime *applicationQuotaRuntime) RequestRefreshResult(
 	source quotaonline.RefreshSource,
 	trigger store.SourceRefreshTrigger,
 ) (store.SourceRefreshSchedule, bool, error) {
+	if runtime == nil || ctx == nil {
+		return store.SourceRefreshSchedule{}, false, ErrApplicationQuotaRuntime
+	}
+	ctx = diagnostics.InheritLogger(ctx, runtime.rootContext)
+	if trigger == store.RefreshTriggerManual {
+		if err := runtime.recoverStoppedRunner(ctx); err != nil {
+			return store.SourceRefreshSchedule{}, false, err
+		}
+	}
 	if runtime != nil && runtime.account != nil && runtime.account.Active() == nil {
 		if err := runtime.discoverAccount(ctx, store.CodexAccountBindingReasonStable); err != nil &&
 			!errors.Is(err, store.ErrCodexAccountBindingChanged) {
@@ -313,7 +336,7 @@ func (runtime *applicationQuotaRuntime) beginAdmission(
 	afterAdmissionContext := runtime.hooks.afterAdmissionContext
 	runtime.mu.Unlock()
 
-	operationContext, cancel := context.WithCancel(ctx)
+	operationContext, cancel := context.WithCancel(diagnostics.InheritLogger(ctx, runtime.rootContext))
 	stopGenerationCancel := context.AfterFunc(generationContext, cancel)
 	var finishOnce sync.Once
 	finish := func() {
@@ -355,6 +378,9 @@ func (runtime *applicationQuotaRuntime) suspend(ctx context.Context) error {
 	if runtime == nil || ctx == nil {
 		return ErrApplicationQuotaRuntime
 	}
+	runtime.mu.Lock()
+	runtime.systemSuspended = true
+	runtime.mu.Unlock()
 	return runtime.drainGeneration(ctx, 0)
 }
 
@@ -410,6 +436,10 @@ func (runtime *applicationQuotaRuntime) ResumeGeneration(ctx context.Context, ge
 		runtime.mu.Unlock()
 		return ErrApplicationQuotaRuntime
 	}
+	if runtime.generation == generation && runtime.runnerErr != nil && !scheduler.CanRecoverQuotaRefreshError(runtime.runnerErr) {
+		runtime.mu.Unlock()
+		return ErrApplicationQuotaRuntime
+	}
 	if runtime.accepting {
 		if runtime.generation == generation {
 			runtime.mu.Unlock()
@@ -446,6 +476,10 @@ func (runtime *applicationQuotaRuntime) ResumeGeneration(ctx context.Context, ge
 		}
 		return ErrApplicationQuotaRuntime
 	}
+	if scheduler.CanRecoverQuotaRefreshError(runtime.runnerErr) {
+		runtime.runtimeErr = nil
+		runtime.recoveryPending = true
+	}
 	runtime.startRunnerLocked(generation)
 	return nil
 }
@@ -455,6 +489,7 @@ func (runtime *applicationQuotaRuntime) startRunnerLocked(generation uint64) {
 	runnerDone := make(chan struct{})
 	runtime.generation = generation
 	runtime.accepting = true
+	runtime.systemSuspended = false
 	runtime.generationContext = generationContext
 	runtime.generationCancel = generationCancel
 	runtime.runnerDone = runnerDone
@@ -463,6 +498,7 @@ func (runtime *applicationQuotaRuntime) startRunnerLocked(generation uint64) {
 }
 
 func (runtime *applicationQuotaRuntime) runRunner(ctx context.Context, done chan struct{}) {
+	diagnostics.Emit(ctx, diagnostics.Event{Stage: "runner", Outcome: "started"})
 	var err error
 	if runtime.hooks.runRunner != nil {
 		err = runtime.hooks.runRunner(ctx)
@@ -479,12 +515,66 @@ func (runtime *applicationQuotaRuntime) runRunner(ctx context.Context, done chan
 			runtime.accepting = false
 			runtime.generationCancel()
 			runtime.runtimeErr = errors.Join(runtime.runtimeErr, err)
+			runtime.lastFailureAtMS = new(time.Now().UnixMilli())
 		} else if ctx.Err() != nil {
 			runtime.accepting = false
 		}
 	}
-	close(done)
 	runtime.mu.Unlock()
+	if err != nil {
+		diagnostics.Emit(ctx, diagnostics.FromError(err, "runner", quotaonline.DiagnosticReason(err)))
+	} else {
+		diagnostics.Emit(ctx, diagnostics.Event{Stage: "runner", Outcome: "stopped"})
+	}
+	notifyQueryInvalidation(runtime.invalidation, context.WithoutCancel(ctx), core.InvalidationQuotaCodex)
+	notifyQueryInvalidation(runtime.invalidation, context.WithoutCancel(ctx), core.InvalidationHealth)
+	close(done)
+}
+
+func (runtime *applicationQuotaRuntime) recoverStoppedRunner(ctx context.Context) error {
+	if runtime == nil || ctx == nil {
+		return ErrApplicationQuotaRuntime
+	}
+	runtime.mu.Lock()
+	err := runtime.runnerErr
+	generation := runtime.generation
+	closed := runtime.closed
+	suspended := runtime.systemSuspended
+	runtime.mu.Unlock()
+	if err == nil {
+		return nil
+	}
+	if closed || suspended || !scheduler.CanRecoverQuotaRefreshError(err) {
+		return ErrApplicationQuotaRuntime
+	}
+	if err := runtime.ResumeGeneration(ctx, generation); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (runtime *applicationQuotaRuntime) QuotaRefreshStatus() quotaonline.RefreshRuntimeStatus {
+	if runtime == nil {
+		return quotaonline.RefreshRuntimeStatus{State: "stopped"}
+	}
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	status := quotaonline.RefreshRuntimeStatus{State: "paused", DiagnosticsDropped: diagnostics.DroppedInContext(runtime.rootContext)}
+	if runtime.closed {
+		status.State = "stopped"
+	} else if runtime.runnerErr != nil {
+		status.State = "blocked"
+		if scheduler.CanRecoverQuotaRefreshError(runtime.runnerErr) {
+			status.State = "recoverable"
+		}
+		event := diagnostics.FromError(runtime.runnerErr, "runner", quotaonline.DiagnosticReason(runtime.runnerErr))
+		status.FailureStage = event.Stage
+		status.FailureReason = event.Reason
+		status.LastFailureAtMS = runtime.lastFailureAtMS
+	} else if runtime.accepting {
+		status.State = "running"
+	}
+	return status
 }
 
 func (runtime *applicationQuotaRuntime) sealForClose() (chan struct{}, chan struct{}, func()) {
@@ -524,6 +614,9 @@ func (runtime *applicationQuotaRuntime) beginGenerationTransition(
 func (runtime *applicationQuotaRuntime) shutdown(runnerDone, inflightDone chan struct{}) {
 	<-runnerDone
 	<-inflightDone
+	if runtime.freshnessDone != nil {
+		<-runtime.freshnessDone
+	}
 	runtime.mu.Lock()
 	runtime.closeErr = runtime.runtimeErr
 	runtime.mu.Unlock()

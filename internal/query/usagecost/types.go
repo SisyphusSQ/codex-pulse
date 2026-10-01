@@ -142,6 +142,7 @@ type AttributionValue struct {
 }
 
 type SessionItem struct {
+	Throughput      *ThroughputStats       `json:"throughput,omitempty"`
 	SessionID       string                 `json:"sessionId"`
 	DisplayTitle    string                 `json:"displayTitle"`
 	TitleConfidence string                 `json:"titleConfidence"`
@@ -192,6 +193,7 @@ const (
 
 // SessionTurnItem 是content-free turn usage/cost时间线条目。
 type SessionTurnItem struct {
+	Throughput     *ThroughputStats         `json:"throughput,omitempty"`
 	TimelineKey    string                   `json:"timelineKey"`
 	State          SessionTurnState         `json:"state"`
 	Model          AttributionValue         `json:"model"`
@@ -205,6 +207,7 @@ type SessionTurnItem struct {
 }
 
 type SessionDetailResponse struct {
+	ThroughputTurns   []ThroughputTurn       `json:"throughputTurns,omitempty"`
 	ProviderContext   agentprovider.Context  `json:"providerContext"`
 	Meta              basequery.ResponseMeta `json:"meta"`
 	PricingSource     *string                `json:"pricingSource"`

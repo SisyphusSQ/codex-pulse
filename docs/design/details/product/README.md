@@ -161,6 +161,16 @@ Pricing Catalog 本地版本化，每条记录包含 model、input/cached/output
 - 原生 Popover 固定展示“本周项目 Token 排行”，按当前通用周额度的精确 UTC 周期和 `totalTokens DESC` 取前 5 个已归类项目。该请求独立于主 Overview 的范围选择，unknown confidence 的未归类用量在分页前排除；“其他”不显示、不占名次，但仍保留在主 Overview 与全局 totals 的对账口径中。周额度范围缺失时必须局部显示不可用，不能回退成自然周或最近 7 天后继续称为“本周额度”。
 - 所有 count/token/微美元保持整数和 unknown reason；只要存在未定价 Turn，即使已定价小计非空，相关 Session/Project 响应也必须是 partial。priced turn 必须至少关联一个 pricing version，未定价原因计数之和必须严格等于 unpriced turn count，否则 fail closed 为 unavailable。金额仍是 API 等价估算，不接入或对账云账单。
 
+### 会话活跃期间平均 TPS（TOO-492）
+
+Codex 会话列表显示平均 TPS；详情在使用概览后显示 TPS、参与统计的输出 Token、活跃时长、参与/排除/未结束轮数及时间来源。可展开最近轮次 TPS，默认 20 / 最大 50 条；该列表独立于既有用量/成本时间线，整段平均值不随轮次分页或会话筛选范围重算。
+
+平均输出 TPS = 已知已结束轮次的 `output_tokens` 增量之和 / 这些轮次活跃区间并集的秒数。仅计输出，不叠加 input、cached input 或已包含在 output 中的 reasoning；不对单轮 TPS 做算术平均。思考、工具执行及轮内等待属于活跃时长，用户在两轮之间的空闲不计入，因此此指标是端到端输出效率。优先使用日志 `duration_ms`，其次毫秒起止时间，最后秒级时间；时间证据冲突、零时长或无法可靠归因时排除。
+
+已结束、已中断但有完整事实的轮次可参与；未结束轮次不以 `now-start` 补时长。缺失用量、日志缺口、并行轮次归因不明或重建尚未追平时显示已知子集和覆盖度；无法计算显示 `--`，有证据的零输出显示 `0.00 TPS`。显式标记 `forked_from_id` 的会话可能携带父历史，当前显示“会话包含继承历史，无法确认独立 TPS”。旧 parser generation 等待后台受控补齐；Cursor/Grok 目前没有可用的同口径事实，显示暂不支持。
+
+Go Helper 负责计算与整数毫 TPS，Swift 只格式化展示；API 折算成本的既有计费口径保持独立。详细持久化及契约见 [Data Model](../data-model/README.md)，验证入口见 [会话 TPS Runbook](../../../test/session-throughput.md)。
+
 ## Settings 与 Codex Home
 
 Settings 使用强类型 Preferences，不把空值或非法值静默折成默认值。v0.1 可配置在线 quota/reset credits、对应刷新周期、JSONL debounce、更新检查、UI 启动/概览范围和语言；语言支持 `system`、`zh-CN`、`en-US`，其中 `system` 按 macOS 首选语言自动解析。stable update channel 固定，自动下载保持关闭。保存使用 revision conflict 提示，不采用 last-writer-wins；切换恢复进行中时普通设置暂不可保存。

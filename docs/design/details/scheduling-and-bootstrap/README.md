@@ -228,3 +228,12 @@ TOO-251 交付纯 snapshot/reconcile，TOO-253 交付逐 source generation/check
 独立 Preferences v2 保存 confirmed Home physical identity、active Home generation/data-store key、两个在线能力、刷新/更新/UI 设置和切换恢复信息；新安装的两个在线能力默认值为 `true`，迁移保留已有显式值。首次没有 Preferences 时，Helper 对 `${CODEX_HOME:-$HOME/.codex}` 做 metadata-only probe 和 path/device/inode 二次校验后自动原子确认；候选缺失、不安全或变化时保持未配置。`initial_index_started_at` 只有在后续 bootstrap 真正启动时才由后续任务状态记录，onboarding 和 Preferences 不提前伪造。之后每次启动先 `LoadPreferences`；存在 pending journal 时先按 durable runtime status 恢复，否则用 metadata-only probe 复核保存的 canonical path/device/inode。source replacement 不授予 indexing。事实、进度和逐文件游标仍以 SQLite 为准。
 
 首次启动验收：无网络/无 auth 可完成本地初始化；主窗口不等待全量历史；部分数据明确标注；退出可续传；live append 不被 backfill 饿死；坏文件不阻塞全局；重建数据库和更换 home 必须显式确认。
+
+
+## 在线刷新停止与恢复（TOO-474）
+
+来源响应错误先由 quota/reset client 归类并持久化 attempt，共用 runner 继续处理另一来源。阻塞 RPC 的取消实际关闭 pipe 并回收子进程。录入/claim completion 的内部错误保留 claim 供既有 lease/CAS/fence 恢复，日志同时保留操作边界；正常失败不新建调度器或跳过手动间隔、Retry-After 与账号/Home generation 校验。
+
+已知暂态 runner 退出可由手动“刷新额度”重新启动同一 generation；重新读取权威 preferences 并等待旧 worker/inflight 全部退出。永久 Store、内部不变量和 panic 仍停止，不循环重启。系统休眠期间禁止手动恢复；wake 使用既有生命周期恢复入口。同一 generation 的普通 Resume 也不能绕过永久故障保护。
+
+freshness 时间边界通知由 Helper root context 独立拥有，只使查询失效，不发上游请求；它与关闭流程一同 drain。详见 [刷新可靠性 runbook](../../../test/quota-refresh-reliability.md)。

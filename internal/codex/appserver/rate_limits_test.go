@@ -25,6 +25,26 @@ func TestSensitiveAccountIDHasNoStringerOrJSONMarshaler(t *testing.T) {
 	}
 }
 
+func TestReadAccountRateLimitsIsolatesUnusedResponseFields(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		name    string
+		exclude bool
+		raw     string
+	}{
+		{"quota ignores invalid credits", true, `{"accountId":"acct-test-a","rateLimits":{"primary":{"usedPercent":12,"windowDurationMins":300,"resetsAt":1784008800}},"rateLimitResetCredits":{"availableCount":"private-invalid-value"}}`},
+		{"credits ignore invalid quota", false, `{"accountId":"acct-test-a","rateLimits":{"primary":{"usedPercent":"private-invalid-value"}},"rateLimitResetCredits":{"availableCount":3,"credits":null}}`},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			rpc := newJSONLineRPC(nopWriteCloser{io.Discard}, strings.NewReader(`{"jsonrpc":"2.0","id":1,"result":`+testCase.raw+"}\n"))
+			snapshot, err := readAccountRateLimits(t.Context(), rpc, testCase.exclude)
+			if err != nil || string(snapshot.AccountID) != "acct-test-a" {
+				t.Fatalf("unrelated field rejected read: error=%v", err)
+			}
+		})
+	}
+}
+
 func TestNormalizeAccountRateLimitsFromV0154Fixture(t *testing.T) {
 	t.Parallel()
 
@@ -253,8 +273,7 @@ done
 	if err != nil {
 		t.Fatalf("ReadLocalAccountRateLimits() error = %v", err)
 	}
-	if string(snapshot.AccountID) != "acct-test-a" || snapshot.RateLimitResetCredits == nil ||
-		snapshot.RateLimitResetCredits.Credits != nil {
+	if string(snapshot.AccountID) != "acct-test-a" || snapshot.RateLimitResetCredits != nil {
 		t.Fatalf("ReadLocalAccountRateLimits() = %#v", snapshot)
 	}
 	content, err := os.ReadFile(logPath)

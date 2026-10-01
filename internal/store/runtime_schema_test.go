@@ -63,6 +63,7 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 		"light_token_daily",
 		"light_token_scans",
 		"light_token_timed",
+		"light_turn_events",
 		"live_scan_jobs",
 		"model_prices",
 		"model_usage_daily",
@@ -263,6 +264,9 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 			"session_id", "generation", "source_offset", "observed_at_ms", "input_tokens",
 			"cached_input_tokens", "output_tokens", "reasoning_tokens", "model_key", "model_source",
 		},
+		"light_turn_events": {
+			"session_id", "generation", "source_offset", "kind", "turn_id", "at_ms", "time_source", "started_at_ms", "duration_ms", "output_delta", "output_observed",
+		},
 		"live_scan_jobs": {
 			"job_id", "request_id", "home_generation", "home_path", "home_device_id", "home_inode",
 			"action_kind", "previous_source_file_id", "previous_source_kind", "previous_path",
@@ -417,6 +421,8 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"light_token_scans.session_id->light_sessions.session_id/CASCADE",
 		"light_token_timed.generation->light_token_scans.generation/CASCADE",
 		"light_token_timed.session_id->light_token_scans.session_id/CASCADE",
+		"light_turn_events.generation->light_token_scans.generation/CASCADE",
+		"light_turn_events.session_id->light_token_scans.session_id/CASCADE",
 		"live_scan_jobs.job_id->job_runs.job_id/CASCADE",
 		"model_prices.pricing_version->pricing_versions.pricing_version/CASCADE",
 		"quota_arbitration_evidence.account_scope->quota_current.account_scope/CASCADE",

@@ -1,5 +1,7 @@
 # 轻量会话与 Token 索引验证
 
+TOO-492 在现有轻量扫描 generation 上追加内容无关的轮次 TPS 事实，parser 升级为 `codex-token-model-invocation-throughput-v5`、schema 追加 v35。事务、受控重建及 TPS 专项验证见 [会话活跃期间平均 TPS](session-throughput.md)；下文历史结果保留原执行时口径。
+
 ## 2026-07-19 原始验收结论
 
 - 日期：2026-07-19（Asia/Shanghai）

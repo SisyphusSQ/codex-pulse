@@ -526,6 +526,28 @@ message SessionItem {
   string activity = 8;
   NumericValue last_activity_at_ms = 9;
   UsageTotals totals = 10;
+  ThroughputStats throughput = 11;
+}
+
+message ThroughputStats {
+  NumericValue average_output_milli_tps = 1;
+  NumericValue output_tokens = 2;
+  NumericValue active_duration_ms = 3;
+  NumericValue included_turns = 4;
+  NumericValue excluded_turns = 5;
+  NumericValue open_turns = 6;
+  NumericValue unattributed_events = 7;
+  string status = 8;
+  string reason = 9;
+  string duration_source = 10;
+  string basis = 11;
+}
+
+message ThroughputTurn {
+  string timeline_key = 1;
+  NumericValue started_at_ms = 2;
+  NumericValue completed_at_ms = 3;
+  ThroughputStats throughput = 4;
 }
 
 message SessionListResponse {
@@ -551,6 +573,7 @@ message SessionTurnItem {
   string pricing_status = 8;
   optional string pricing_version = 9;
   optional string unpriced_reason = 10;
+  ThroughputStats throughput = 11;
 }
 
 message SessionDetailResponse {
@@ -570,6 +593,7 @@ message SessionDetailResponse {
   string trend_granularity = 13;
   ProviderContext provider_context = 14;
   repeated UsageModelItem models = 15;
+  repeated ThroughputTurn throughput_turns = 16;
 }
 
 message ProjectDailyPoint {
@@ -737,6 +761,15 @@ message CurrentRefreshStatus {
 message CurrentRefresh {
   CurrentRefreshStatus quota = 1;
   CurrentRefreshStatus reset_credits = 2;
+  optional CurrentRefreshRuntime runtime = 3;
+}
+
+message CurrentRefreshRuntime {
+  string state = 1;
+  optional string failure_stage = 2;
+  optional string failure_reason = 3;
+  optional int64 last_failure_at_ms = 4;
+  uint64 diagnostics_dropped = 5;
 }
 
 message CurrentQuota {

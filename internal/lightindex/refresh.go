@@ -1,6 +1,8 @@
 package lightindex
 
-const TokenParserVersion = "codex-token-model-invocation-v4"
+import "github.com/SisyphusSQ/codex-pulse/internal/throughput"
+
+const TokenParserVersion = throughput.ParserVersion
 
 type HomeIdentity struct {
 	Path     string

@@ -295,3 +295,16 @@ Wham credential仍只由 memory credential provider在单次 request lease中提
 - 进程退出、请求取消或 claim 过期后都能从 durable schedule 恢复，且不会产生重叠请求。
 
 可复用的 synthetic-only 验证入口见 [`docs/test/window-generation-observation.md`](../../../test/window-generation-observation.md)。
+
+
+## 刷新可靠性与界面状态（TOO-474）
+
+`account/rateLimits/read` 的 quota 请求只解码 quota 字段，Reset Credits 请求只解码库存字段；共同的 `accountId` 和 RPC 协议仍严格校验。`credits:null` 保留为缺失明细，数量为 0 时可确认为空库存，非零时标记明细不可用；clone 不把 nil 改成已知空数组。过期但仍标记 available 的项、数量/明细约束冲突等在 client 形成 `schema_incompatible` 来源失败，保留最后成功库存，不进入 writer。Store 的内部约束、账号 fence 和事务校验继续生效。
+
+RPC deadline 会关闭当前会话的读写 pipe；子进程使用 context 取消并等待回收，清理最多额外等待 2 秒。默认请求/退避共享 47 秒预算（15 秒 × 最多 3 次 + 2 秒），不增加无限重试。常规失败继续沿用已有持久退避与 claim CAS；手动请求已执行但来源失败时返回失败，不能误报“已更新”。
+
+刷新器停止时发布 `CurrentRefresh.runtime`，只含 running/paused/stopped/recoverable/blocked、有限失败阶段/原因、失败时间与诊断丢失计数；不携带 scope、路径或原始错误。手动刷新只对 deadline/busy/IO/队列满等已知暂态退出恢复同一 Home generation；sleep、关闭与永久 Store/内部约束故障不允许这条恢复入口绕过保护。确认新 Home 的既有恢复协议不变。新 worker 完成 durable claim 后记录 runtime recovered。
+
+一个由 Helper root context 拥有的独立观察任务，根据已校验 `FreshUntilMS + 1`、reset 和库存到期时间触发 `quota_codex` 失效；提交新记录时重新安排。它只读现有 Store，不调用上游、不改仲裁、不依赖刷新 worker 存活；关闭先取消并等待退出。菜单栏与页面通过同一查询重算 freshness，保留最后可信百分比并解释停止原因。健康查询把实时 worker 停止组合到 online_quota degraded，保留其他组件和更高优先级的存储保护。
+
+诊断和验收入口见 [刷新可靠性 runbook](../../../test/quota-refresh-reliability.md)。

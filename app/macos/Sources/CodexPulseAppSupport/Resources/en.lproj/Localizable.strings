@@ -1,4 +1,30 @@
 "正常" = "Normal";
+"平均 TPS" = "Average TPS";
+"会话包含继承历史，无法确认独立 TPS" = "Inherited history prevents an independent TPS measurement";
+"活跃期间平均 TPS" = "Average TPS while active";
+"参与统计的输出" = "Included output tokens";
+"参与统计的活跃时长" = "Included active time";
+"无法关联的用量事件" = "Unattributed usage events";
+"已结束轮次平均" = "Closed-turn average";
+"已知轮次平均" = "Known-turn average";
+"此来源暂不支持 TPS" = "TPS is not supported for this source";
+"TPS 数据待补齐" = "TPS history is being indexed";
+"索引尚未追平，当前为已知轮次平均。" = "Indexing is incomplete; showing the known-turn average.";
+"当前轮待结束" = "Current turn has not ended";
+"尚无可计算的已结束轮次" = "No measurable closed turns yet";
+"部分轮次未结束或缺少统计事实。" = "Some turns are open or have missing facts.";
+"轮次缺少有效输出或时长" = "Output or duration facts are missing";
+"统计数值超出支持范围" = "Statistics exceed the supported numeric range";
+"轮次记录超出支持范围" = "Turn records exceed the supported range";
+"日志提供的毫秒耗时" = "Reported millisecond duration";
+"日志起止时间差" = "Log timestamp duration";
+"秒级起止时间差" = "Second-resolution duration";
+"混合时间来源" = "Mixed timing sources";
+"统计会话生命周期内已结束轮次，包含思考、工具执行和等待，排除轮次之间的空闲。" = "Includes closed turns over the session lifetime, including reasoning, tools and waits. Idle time between turns is excluded.";
+"最近轮次 TPS" = "Recent turn TPS";
+"仅展示最近轮次；会话平均值使用全部已知轮次。" = "Only recent turns are shown; the session average uses all known turns.";
+"%.3f 秒" = "%.3f s";
+"%@ 轮参与 · %@ 轮排除 · %@ 轮未结束" = "%@ included · %@ excluded · %@ open turns";
 "已完成" = "Completed";
 "进行中" = "In progress";
 "等待中" = "Pending";
@@ -956,3 +982,17 @@
 "停止使用这段历史？" = "Stop using this history?";
 "停止使用历史" = "Stop using history";
 "只会取消曲线关联，本机原始观测不会被删除，之后仍可重新恢复。" = "This only removes the curve association. Raw local observations are not deleted and can be restored again later.";
+
+"额度刷新已停止，可点击“刷新额度”恢复。" = "Quota refresh stopped. Click “Refresh quota” to recover.";
+
+"额度刷新已停止，请检查本地数据后重启应用。" = "Quota refresh stopped. Check local data, then restart the app.";
+
+"本地数据忙碌" = "Local data is busy";
+
+"本地数据不可写" = "Local data is not writable";
+
+"本地数据需要检查" = "Local data needs inspection";
+
+"后台刷新异常" = "Background refresh failed";
+
+"刷新诊断写入受限，部分错误记录未保存。" = "Refresh diagnostics could not be written; some errors were not saved.";

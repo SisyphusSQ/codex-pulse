@@ -15,8 +15,8 @@ func TestResetCreditsClientFetchesTypedReadOnlySnapshot(t *testing.T) {
 	key := testScopeKey(0x41)
 	request := testBoundRequest(t, key, "acct-test-a", "reset-client-success")
 	granted := int64(1_783_000_000)
-	expiresA := int64(1_783_010_800)
-	expiresB := int64(1_783_014_400)
+	expiresA := int64(1_784_010_800)
+	expiresB := int64(1_784_014_400)
 	expiresC := int64(1_784_000_000)
 	snapshot := testRateLimitsSnapshot("acct-test-a", 1, 1, &appserver.RateLimitResetCreditsSummary{
 		AvailableCount: 2,

@@ -920,6 +920,7 @@ func (runtime *Runtime) scanPending(
 			DailyDeltas: dailyDeltasToStore(scanResult.DailyDeltas), Activate: checkpoint.Complete,
 			TimedDeltas:      timedDeltasToStore(scanResult.TokenDeltas),
 			InvocationDeltas: invocationDeltasToStore(scanResult.InvocationDeltas),
+			TurnEvents:       scanResult.TurnEvents,
 			UpdatedAtMS:      runtime.clock().UnixMilli(),
 		}
 		writeStarted := time.Now()
