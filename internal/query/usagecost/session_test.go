@@ -115,6 +115,7 @@ func TestListSessionsValidatesMapsAndRoundTripsOpaqueCursor(t *testing.T) {
 		t.Fatalf("ListSessions() response = %#v", response)
 	}
 	assertKnownNumeric(t, response.Items[0].Totals.TotalTokens, 30, basequery.NumericTokens)
+	assertKnownNumeric(t, *response.Items[0].CacheHitRate, 0, basequery.NumericBasisPoints)
 	assertKnownNumeric(t, response.Items[0].Totals.EstimatedUSDMicros, 100, basequery.NumericMicroUSD)
 	encoded, _ := json.Marshal(response)
 	if strings.Contains(string(encoded), "private-session-generation") || strings.Contains(string(encoded), "cwd") {
@@ -216,6 +217,7 @@ func TestListSessionsMissingLedgerReturnsPartialUnknownTotals(t *testing.T) {
 	}
 	assertUnknownNumeric(t, response.Items[0].Totals.TurnCount, basequery.UnknownUnavailable)
 	assertUnknownNumeric(t, response.Items[0].Totals.TotalTokens, basequery.UnknownUnavailable)
+	assertUnknownNumeric(t, *response.Items[0].CacheHitRate, basequery.UnknownUnavailable)
 	assertUnknownNumeric(t, response.Items[0].Totals.EstimatedUSDMicros, basequery.UnknownUnavailable)
 }
 
@@ -245,6 +247,7 @@ func TestListSessionsLightIndexReturnsKnownTokensAndUnknownTurnCost(t *testing.T
 		t.Fatalf("response = %#v", response)
 	}
 	assertKnownNumeric(t, response.Items[0].Totals.InputTokens, input, basequery.NumericTokens)
+	assertKnownNumeric(t, *response.Items[0].CacheHitRate, 2_000, basequery.NumericBasisPoints)
 	assertKnownNumeric(t, response.Items[0].Totals.TotalTokens, total, basequery.NumericTokens)
 	assertUnknownNumeric(t, response.Items[0].Totals.TurnCount, basequery.UnknownUnavailable)
 	assertUnknownNumeric(t, response.Items[0].Totals.EstimatedUSDMicros, basequery.UnknownNotComputed)
@@ -576,6 +579,7 @@ func TestSessionDetailMapsBoundedTurnPageAndRoundTripsOpaqueCursor(t *testing.T)
 		t.Fatalf("first SessionDetail() trend = %#v", first)
 	}
 	assertKnownNumeric(t, first.Trend[0].Totals.TotalTokens, 30, basequery.NumericTokens)
+	assertKnownNumeric(t, *first.Item.CacheHitRate, 0, basequery.NumericBasisPoints)
 	mapped := first.Turns[0]
 	if mapped.TimelineKey == "" || strings.Contains(mapped.TimelineKey, turn.TurnID) ||
 		mapped.State != SessionTurnComplete || mapped.Model.DisplayName == nil ||
@@ -594,13 +598,14 @@ func TestSessionDetailMapsBoundedTurnPageAndRoundTripsOpaqueCursor(t *testing.T)
 		t.Fatalf("SessionDetail leaked raw turn identity: %s", encoded)
 	}
 
-	_, err = service.SessionDetail(context.Background(), SessionDetailRequest{
+	second, err := service.SessionDetail(t.Context(), SessionDetailRequest{
 		SessionID: "session-safe", ReportingTimezone: pointerToString("UTC"),
 		TurnPage: basequery.PageRequest{Limit: 1, Cursor: first.TurnPage.NextCursor},
 	})
 	if err != nil {
 		t.Fatalf("SessionDetail(second turn page) error = %v", err)
 	}
+	assertKnownNumeric(t, *second.Item.CacheHitRate, 0, basequery.NumericBasisPoints)
 	if len(filters) != 2 || filters[1].TurnCursor == nil ||
 		filters[1].TurnCursor.SessionID != "session-safe" ||
 		filters[1].TurnCursor.TurnID != turn.TurnID ||

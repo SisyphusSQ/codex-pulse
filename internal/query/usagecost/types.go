@@ -142,17 +142,18 @@ type AttributionValue struct {
 }
 
 type SessionItem struct {
-	Throughput      *ThroughputStats       `json:"throughput,omitempty"`
-	SessionID       string                 `json:"sessionId"`
-	DisplayTitle    string                 `json:"displayTitle"`
-	TitleConfidence string                 `json:"titleConfidence"`
-	TitleSource     string                 `json:"titleSource"`
-	TitleReason     string                 `json:"titleReason"`
-	Project         AttributionValue       `json:"project"`
-	Model           AttributionValue       `json:"model"`
-	Activity        string                 `json:"activity"`
-	LastActivityAt  basequery.NumericValue `json:"lastActivityAtMs"`
-	Totals          UsageTotals            `json:"totals"`
+	CacheHitRate    *basequery.NumericValue `json:"cacheHitRate,omitempty"`
+	Throughput      *ThroughputStats        `json:"throughput,omitempty"`
+	SessionID       string                  `json:"sessionId"`
+	DisplayTitle    string                  `json:"displayTitle"`
+	TitleConfidence string                  `json:"titleConfidence"`
+	TitleSource     string                  `json:"titleSource"`
+	TitleReason     string                  `json:"titleReason"`
+	Project         AttributionValue        `json:"project"`
+	Model           AttributionValue        `json:"model"`
+	Activity        string                  `json:"activity"`
+	LastActivityAt  basequery.NumericValue  `json:"lastActivityAtMs"`
+	Totals          UsageTotals             `json:"totals"`
 }
 
 type SessionListResponse struct {

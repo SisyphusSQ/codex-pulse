@@ -376,6 +376,12 @@ private struct SessionRow: View {
             }
             .font(.caption)
             .accessibilityIdentifier("session.tps.\(item.sessionID)")
+            HStack(spacing: 6) {
+                Text(localizedCopy("缓存命中率"))
+                Text(cacheHitRate.rateText).monospacedDigit()
+            }
+            .font(.caption)
+            .accessibilityIdentifier("session.cache-hit-rate.\(item.sessionID)")
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
@@ -385,12 +391,20 @@ private struct SessionRow: View {
     private var throughput: SessionThroughputPresentation {
         SessionThroughputPresentation(item.hasThroughput ? item.throughput : nil)
     }
+
+    private var cacheHitRate: SessionCacheHitRatePresentation {
+        SessionCacheHitRatePresentation(item.hasCacheHitRate ? item.cacheHitRate : nil)
+    }
 }
 
 private struct SessionDetailView: View {
     let response: Codexpulse_Core_V1_SessionDetailResponse
     let isLoading: Bool
     let loadMore: () -> Void
+
+    private var cacheHitRate: SessionCacheHitRatePresentation {
+        SessionCacheHitRatePresentation(response.item.hasCacheHitRate ? response.item.cacheHitRate : nil)
+    }
 
     var body: some View {
         ScrollView {
@@ -406,6 +420,18 @@ private struct SessionDetailView: View {
                     KeyValueRow(key: "模型", value: attributionText(response.item.model))
                     KeyValueRow(key: "状态", value: ProductCopy.status(response.item.activity))
                     TokenBreakdownView(tokens: TokenBreakdownPresentation(response.item.totals))
+                    KeyValueRow(
+                        key: "缓存命中率",
+                        value: cacheHitRate.rateText
+                    )
+                    .accessibilityLabel(localizedCopy("缓存命中率"))
+                    .accessibilityValue(cacheHitRate.rateText)
+                    .accessibilityIdentifier("session.detail.cache-hit-rate")
+                    if response.providerContext.effectiveProvider == AgentProvider.codex.rawValue {
+                        Text(localizedCopy("缓存输入 Token ÷ 全部输入 Token；按当前已索引的会话累计用量计算。"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
 					if response.providerContext.effectiveProvider != AgentProvider.cursor.rawValue ||
 						response.item.totals.estimatedUsdMicros.hasValue {
 						KeyValueRow(
