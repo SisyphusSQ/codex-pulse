@@ -42,3 +42,11 @@ Query --> Store["SQLite"]
 ## Contract 真相
 
 `api/codexpulse/core/v1/core.proto` 是 Swift/Go 唯一跨进程 contract。`make verify-proto` 在临时目录用固定 generator 版本重生成并比较，禁止手改生成文件。Updater、Window、Tray 和 Popover 明确不属于 `CoreService`。
+
+## 多机中心服务扩展（方案已整理，尚未实施）
+
+[多机汇总、中心服务与 Web 看板](../multi-machine-reporting/README.md) 描述未来可选的结构化上报与集中查询，不代表当前已开放网络服务。现有本机 UDS、pipe token 与 Go 业务真相边界仍按本页执行；中心采用独立数据库及网络 contract，不将本机控制 RPC 开放到网络。
+
+中心采用 Go Web Starter v2、MySQL 和独立 Go module，前端 AntD 放在 `server/web/`，不增加 `backend/` 层。HTTPS 与私网 HTTP 共用设备码配对和凭证权限体系，不另接 Tailscale SSO。现有本机业务与网络中心各自装配运行时，不共享数据库。
+
+已确认保留 App 托管 Helper：退出 App 后停止采集和上报，下次打开增量补采并恢复待发送队列；未观测的配额历史保留缺口。实施按 3 个 Master、14 张 Execution 组织，中心开发阶段暂用 SQLite，同时实现 MySQL 支持，真实 MySQL 整体联调待环境提供后进行。

@@ -4,6 +4,7 @@
 
 - [Product](product/README.md)
 - [Architecture](architecture/README.md)
+- [多机汇总、中心服务与 Web 看板（最终整理方案，尚未实施）](multi-machine-reporting/README.md)
 - [Agent Providers, Cursor and Grok](providers/README.md)
 - [API and Subscriptions](api-subscriptions/README.md)
 - [Codex Accounts and Subscriptions](codex-subscriptions/README.md)

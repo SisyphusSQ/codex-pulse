@@ -1,0 +1,15 @@
+.git
+.github
+.idea
+.vscode
+bin
+logs
+*.log
+*.out
+*.test
+.agents
+.env
+.env.*
+!.env.example
+config/*local*
+config/*test*

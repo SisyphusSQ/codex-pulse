@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.1"
+          cache: true
+      - run: go mod download
+      - run: make verify lint vuln
+      - run: make -j2 build-all
+
+  isolated-containers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.1"
+          cache: true
+      - name: 准备临时凭据
+        shell: bash
+        run: |
+          for name in APP_KEY_AK_ACCESSKEY APP_KEY_AK_SECRETKEY MYSQL_PASSWORD; do
+            value=$(openssl rand -hex 24)
+            echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
+          done
+      - name: 容器启动、探针和鉴权
+        shell: bash
+        run: |
+          docker compose -p starter-ci up --build --wait --wait-timeout 120 -d app
+          curl --fail --silent http://127.0.0.1:18080/health
+          curl --fail --silent http://127.0.0.1:18080/ready
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18080/metrics)" = 401
+          curl --fail --silent -H "access_key: $APP_KEY_AK_ACCESSKEY" -H "secret_key: $APP_KEY_AK_SECRETKEY" http://127.0.0.1:18080/metrics > /dev/null
+
+      - name: 隔离组件读写和事务
+        shell: bash
+        run: |
+          docker compose -p starter-ci --profile mysql up --wait --wait-timeout 120 -d mysql
+          export APP_TEST_INTEGRATION=1 APP_TEST_CONFIG="$PWD/config/config.yml"
+
+          export APP_DATABASE_ENABLED=true APP_DATABASE_HOST=127.0.0.1 APP_DATABASE_PORT=13306 APP_DATABASE_USERNAME=app APP_DATABASE_PASSWORD="$MYSQL_PASSWORD"
+
+
+
+          make integration
+
+      - name: 清理本次容器与数据卷
+        if: always()
+        run: docker compose -p starter-ci --profile '*' down --volumes --remove-orphans

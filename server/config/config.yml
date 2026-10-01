@@ -1,0 +1,58 @@
+---
+debug: true
+contextTimeout: 10s
+
+server:
+    metrics: true
+    readinessTimeout: 2s
+    address: "127.0.0.1:8080"
+    readHeaderTimeout: 5s
+    readTimeout: 15s
+    writeTimeout: 15s
+    idleTimeout: 60s
+    shutdownTimeout: 10s
+    maxBodyBytes: 1048576
+    corsOrigins:
+        - "http://localhost:3000"
+database:
+    enabled: false
+    driver: "sqlite"
+    host: "127.0.0.1"
+    port: 3306
+    database: "test"
+    username: "root"
+    password: ""
+    maxIdleConns: 20
+    maxOpenConns: 100
+    connMaxLifetime: 5m
+    charset: "utf8mb4"
+    timeZone: "UTC"
+    name: "pulse_center"
+    path: ".runtime/pulse.sqlite"
+    tls: "true"
+
+
+
+
+
+log:
+    output: "stdout"
+    fileName: "logs/server.log"
+    logLevel: 0
+    maxSizeMB: 20
+    maxBackupCount: 30
+    maxKeepDays: 7
+
+key:
+    type: "none"
+    basic:
+        user: ""
+        password: ""
+    ak:
+        accessKey: ""
+        secretKey: ""
+    jwt:
+        namespace: "server"
+        secret: ""
+        expire: 2h
+        issuer: "server"
