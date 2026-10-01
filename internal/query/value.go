@@ -19,6 +19,7 @@ const (
 	NumericCount        NumericUnit = "count"
 	NumericBytes        NumericUnit = "bytes"
 	NumericMilliseconds NumericUnit = "milliseconds"
+	NumericMilliTPS     NumericUnit = "milli_tokens_per_second"
 )
 
 // UnknownReason 区分从未加载、不适用、暂不可用和尚未计算。
@@ -153,7 +154,7 @@ func parseLocalDate(value string, location *time.Location) (time.Time, error) {
 
 func validNumericUnit(value NumericUnit) bool {
 	switch value {
-	case NumericTokens, NumericMicroUSD, NumericCount, NumericBytes, NumericMilliseconds:
+	case NumericTokens, NumericMicroUSD, NumericCount, NumericBytes, NumericMilliseconds, NumericMilliTPS:
 		return true
 	default:
 		return false

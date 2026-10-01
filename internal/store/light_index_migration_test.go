@@ -15,7 +15,7 @@ import (
 func TestApplicationSchemaVersionIncludesLightUsageSummaryIndex(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV34Version {
+	if applicationSchemaVersion != applicationSchemaV35Version {
 		t.Fatalf("applicationSchemaVersion = %d, want 34", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
@@ -36,11 +36,11 @@ func TestApplicationSchemaVersionIncludesLightUsageSummaryIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run(v16->v21) error = %v", err)
 	}
-	if report.FromVersion != 16 || report.TargetVersion != 34 ||
-		!equalInts(report.AppliedVersions, []int{17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34}) || backupVersions != [2]int{16, 34} {
+	if report.FromVersion != 16 || report.TargetVersion != applicationSchemaV35Version ||
+		!equalInts(report.AppliedVersions, []int{17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35}) || backupVersions != [2]int{16, applicationSchemaV35Version} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 34, 34)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaV35Version, applicationSchemaV35Version)
 	if err := database.View(t.Context(), func(_ context.Context, connection *gorm.DB) error {
 		for _, column := range lightModelMigrationColumns {
 			if !connection.Migrator().HasColumn(column.model, column.column) {
@@ -224,11 +224,11 @@ func TestApplicationSchemaV31AddsLightTokenCounterCheckpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run(v30->v31) error = %v", err)
 	}
-	if report.FromVersion != 30 || report.TargetVersion != 34 ||
-		!equalInts(report.AppliedVersions, []int{31, 32, 33, 34}) || backupVersions != [2]int{30, 34} {
+	if report.FromVersion != 30 || report.TargetVersion != applicationSchemaV35Version ||
+		!equalInts(report.AppliedVersions, []int{31, 32, 33, 34, 35}) || backupVersions != [2]int{30, applicationSchemaV35Version} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 34, 34)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaV35Version, applicationSchemaV35Version)
 
 	repository := storelight.NewRepository(database)
 	pending, err := repository.PendingLightTokenScan(t.Context(), "pending-one")

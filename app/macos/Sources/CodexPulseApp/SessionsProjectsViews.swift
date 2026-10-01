@@ -367,10 +367,23 @@ private struct SessionRow: View {
             .font(.caption2)
             .foregroundStyle(.secondary)
             TokenBreakdownView(tokens: TokenBreakdownPresentation(item.totals), style: .compact)
+            HStack(spacing: 6) {
+                Text(localizedCopy("平均 TPS"))
+                Text(throughput.rateText).monospacedDigit()
+                if item.hasThroughput && item.throughput.status == "partial" {
+                    Text(throughput.statusText).foregroundStyle(.secondary)
+                }
+            }
+            .font(.caption)
+            .accessibilityIdentifier("session.tps.\(item.sessionID)")
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("session.\(item.sessionID)")
+    }
+
+    private var throughput: SessionThroughputPresentation {
+        SessionThroughputPresentation(item.hasThroughput ? item.throughput : nil)
     }
 }
 
@@ -401,6 +414,7 @@ private struct SessionDetailView: View {
 						)
 					}
                 }
+				SessionThroughputCard(response: response)
 				if !response.models.isEmpty {
 					SectionCard(title: "模型用量") {
 						ForEach(Array(response.models.enumerated()), id: \.element.dimensionKey) { index, model in
@@ -453,6 +467,10 @@ private struct SessionDetailView: View {
                                     tokens: TokenBreakdownPresentation(turn.totals),
                                     style: .compact
                                 )
+                                if turn.hasThroughput {
+                                    Text(SessionThroughputPresentation(turn.throughput).rateText)
+                                        .font(.caption).monospacedDigit()
+                                }
                                 if turn.hasUnpricedReason {
                                     Text("部分用量暂未折算")
                                         .font(.caption)
@@ -479,6 +497,62 @@ private struct SessionDetailView: View {
             granularity: response.trendGranularity,
             reportingTimeZone: response.reportingTimeZone
         )
+    }
+}
+
+private struct SessionThroughputCard: View {
+    let response: Codexpulse_Core_V1_SessionDetailResponse
+
+    private var presentation: SessionThroughputPresentation {
+        SessionThroughputPresentation(response.item.hasThroughput ? response.item.throughput : nil)
+    }
+
+    var body: some View {
+        SectionCard(title: "活跃期间平均 TPS") {
+            HStack(alignment: .firstTextBaseline) {
+                Text(presentation.rateText).font(.title2.weight(.semibold)).monospacedDigit()
+                Spacer()
+                Text(presentation.statusText).font(.caption).foregroundStyle(.secondary)
+            }
+            .accessibilityIdentifier("session.detail.tps.value")
+            if response.item.hasThroughput {
+                KeyValueRow(key: "参与统计的输出", value: numericText(response.item.throughput.outputTokens))
+                KeyValueRow(key: "参与统计的活跃时长", value: presentation.durationText)
+                Text(presentation.coverageText).font(.caption).foregroundStyle(.secondary)
+                if !presentation.durationSourceText.isEmpty {
+                    Text(presentation.durationSourceText).font(.caption2).foregroundStyle(.secondary)
+                }
+                if response.item.throughput.unattributedEvents.hasValue && response.item.throughput.unattributedEvents.value > 0 {
+                    KeyValueRow(key: "无法关联的用量事件", value: numericText(response.item.throughput.unattributedEvents))
+                }
+            }
+            if !presentation.reasonText.isEmpty {
+                Text(presentation.reasonText).font(.caption).foregroundStyle(.secondary)
+            }
+            Text(localizedCopy("统计会话生命周期内已结束轮次，包含思考、工具执行和等待，排除轮次之间的空闲。"))
+                .font(.caption).foregroundStyle(.secondary)
+            if !response.throughputTurns.isEmpty {
+                DisclosureGroup(localizedCopy("最近轮次 TPS")) {
+                    Text(localizedCopy("仅展示最近轮次；会话平均值使用全部已知轮次。"))
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(response.throughputTurns, id: \.timelineKey) { turn in
+                        let item = SessionThroughputPresentation(turn.hasThroughput ? turn.throughput : nil)
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Text(timestampText(turn.startedAtMs)).foregroundStyle(.secondary)
+                                Spacer()
+                                Text(item.rateText).monospacedDigit()
+                            }
+                            Text(item.durationText).foregroundStyle(.secondary)
+                            if !item.reasonText.isEmpty { Text(item.reasonText).foregroundStyle(.secondary) }
+                        }
+                        .font(.caption)
+                        Divider()
+                    }
+                }
+            }
+        }
+        .accessibilityIdentifier("session.detail.tps")
     }
 }
 

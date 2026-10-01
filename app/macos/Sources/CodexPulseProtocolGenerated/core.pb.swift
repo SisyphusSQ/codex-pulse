@@ -3142,11 +3142,158 @@ public nonisolated struct Codexpulse_Core_V1_SessionItem: @unchecked Sendable {
   /// Clears the value of `totals`. Subsequent reads from it will return its default value.
   public mutating func clearTotals() {_uniqueStorage()._totals = nil}
 
+  public var throughput: Codexpulse_Core_V1_ThroughputStats {
+    get {_storage._throughput ?? Codexpulse_Core_V1_ThroughputStats()}
+    set {_uniqueStorage()._throughput = newValue}
+  }
+  /// Returns true if `throughput` has been explicitly set.
+  public var hasThroughput: Bool {_storage._throughput != nil}
+  /// Clears the value of `throughput`. Subsequent reads from it will return its default value.
+  public mutating func clearThroughput() {_uniqueStorage()._throughput = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+public nonisolated struct Codexpulse_Core_V1_ThroughputStats: @unchecked Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var averageOutputMilliTps: Codexpulse_Core_V1_NumericValue {
+    get {_storage._averageOutputMilliTps ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._averageOutputMilliTps = newValue}
+  }
+  /// Returns true if `averageOutputMilliTps` has been explicitly set.
+  public var hasAverageOutputMilliTps: Bool {_storage._averageOutputMilliTps != nil}
+  /// Clears the value of `averageOutputMilliTps`. Subsequent reads from it will return its default value.
+  public mutating func clearAverageOutputMilliTps() {_uniqueStorage()._averageOutputMilliTps = nil}
+
+  public var outputTokens: Codexpulse_Core_V1_NumericValue {
+    get {_storage._outputTokens ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._outputTokens = newValue}
+  }
+  /// Returns true if `outputTokens` has been explicitly set.
+  public var hasOutputTokens: Bool {_storage._outputTokens != nil}
+  /// Clears the value of `outputTokens`. Subsequent reads from it will return its default value.
+  public mutating func clearOutputTokens() {_uniqueStorage()._outputTokens = nil}
+
+  public var activeDurationMs: Codexpulse_Core_V1_NumericValue {
+    get {_storage._activeDurationMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._activeDurationMs = newValue}
+  }
+  /// Returns true if `activeDurationMs` has been explicitly set.
+  public var hasActiveDurationMs: Bool {_storage._activeDurationMs != nil}
+  /// Clears the value of `activeDurationMs`. Subsequent reads from it will return its default value.
+  public mutating func clearActiveDurationMs() {_uniqueStorage()._activeDurationMs = nil}
+
+  public var includedTurns: Codexpulse_Core_V1_NumericValue {
+    get {_storage._includedTurns ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._includedTurns = newValue}
+  }
+  /// Returns true if `includedTurns` has been explicitly set.
+  public var hasIncludedTurns: Bool {_storage._includedTurns != nil}
+  /// Clears the value of `includedTurns`. Subsequent reads from it will return its default value.
+  public mutating func clearIncludedTurns() {_uniqueStorage()._includedTurns = nil}
+
+  public var excludedTurns: Codexpulse_Core_V1_NumericValue {
+    get {_storage._excludedTurns ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._excludedTurns = newValue}
+  }
+  /// Returns true if `excludedTurns` has been explicitly set.
+  public var hasExcludedTurns: Bool {_storage._excludedTurns != nil}
+  /// Clears the value of `excludedTurns`. Subsequent reads from it will return its default value.
+  public mutating func clearExcludedTurns() {_uniqueStorage()._excludedTurns = nil}
+
+  public var openTurns: Codexpulse_Core_V1_NumericValue {
+    get {_storage._openTurns ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._openTurns = newValue}
+  }
+  /// Returns true if `openTurns` has been explicitly set.
+  public var hasOpenTurns: Bool {_storage._openTurns != nil}
+  /// Clears the value of `openTurns`. Subsequent reads from it will return its default value.
+  public mutating func clearOpenTurns() {_uniqueStorage()._openTurns = nil}
+
+  public var unattributedEvents: Codexpulse_Core_V1_NumericValue {
+    get {_storage._unattributedEvents ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._unattributedEvents = newValue}
+  }
+  /// Returns true if `unattributedEvents` has been explicitly set.
+  public var hasUnattributedEvents: Bool {_storage._unattributedEvents != nil}
+  /// Clears the value of `unattributedEvents`. Subsequent reads from it will return its default value.
+  public mutating func clearUnattributedEvents() {_uniqueStorage()._unattributedEvents = nil}
+
+  public var status: String {
+    get {_storage._status}
+    set {_uniqueStorage()._status = newValue}
+  }
+
+  public var reason: String {
+    get {_storage._reason}
+    set {_uniqueStorage()._reason = newValue}
+  }
+
+  public var durationSource: String {
+    get {_storage._durationSource}
+    set {_uniqueStorage()._durationSource = newValue}
+  }
+
+  public var basis: String {
+    get {_storage._basis}
+    set {_uniqueStorage()._basis = newValue}
+  }
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+public nonisolated struct Codexpulse_Core_V1_ThroughputTurn: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var timelineKey: String = String()
+
+  public var startedAtMs: Codexpulse_Core_V1_NumericValue {
+    get {_startedAtMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_startedAtMs = newValue}
+  }
+  /// Returns true if `startedAtMs` has been explicitly set.
+  public var hasStartedAtMs: Bool {self._startedAtMs != nil}
+  /// Clears the value of `startedAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearStartedAtMs() {self._startedAtMs = nil}
+
+  public var completedAtMs: Codexpulse_Core_V1_NumericValue {
+    get {_completedAtMs ?? Codexpulse_Core_V1_NumericValue()}
+    set {_completedAtMs = newValue}
+  }
+  /// Returns true if `completedAtMs` has been explicitly set.
+  public var hasCompletedAtMs: Bool {self._completedAtMs != nil}
+  /// Clears the value of `completedAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearCompletedAtMs() {self._completedAtMs = nil}
+
+  public var throughput: Codexpulse_Core_V1_ThroughputStats {
+    get {_throughput ?? Codexpulse_Core_V1_ThroughputStats()}
+    set {_throughput = newValue}
+  }
+  /// Returns true if `throughput` has been explicitly set.
+  public var hasThroughput: Bool {self._throughput != nil}
+  /// Clears the value of `throughput`. Subsequent reads from it will return its default value.
+  public mutating func clearThroughput() {self._throughput = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _startedAtMs: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _completedAtMs: Codexpulse_Core_V1_NumericValue? = nil
+  fileprivate var _throughput: Codexpulse_Core_V1_ThroughputStats? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_SessionListResponse: @unchecked Sendable {
@@ -3321,6 +3468,15 @@ public nonisolated struct Codexpulse_Core_V1_SessionTurnItem: @unchecked Sendabl
   /// Clears the value of `unpricedReason`. Subsequent reads from it will return its default value.
   public mutating func clearUnpricedReason() {_uniqueStorage()._unpricedReason = nil}
 
+  public var throughput: Codexpulse_Core_V1_ThroughputStats {
+    get {_storage._throughput ?? Codexpulse_Core_V1_ThroughputStats()}
+    set {_uniqueStorage()._throughput = newValue}
+  }
+  /// Returns true if `throughput` has been explicitly set.
+  public var hasThroughput: Bool {_storage._throughput != nil}
+  /// Clears the value of `throughput`. Subsequent reads from it will return its default value.
+  public mutating func clearThroughput() {_uniqueStorage()._throughput = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -3429,6 +3585,11 @@ public nonisolated struct Codexpulse_Core_V1_SessionDetailResponse: @unchecked S
   public var models: [Codexpulse_Core_V1_UsageModelItem] {
     get {_storage._models}
     set {_uniqueStorage()._models = newValue}
+  }
+
+  public var throughputTurns: [Codexpulse_Core_V1_ThroughputTurn] {
+    get {_storage._throughputTurns}
+    set {_uniqueStorage()._throughputTurns = newValue}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -12838,7 +12999,7 @@ nonisolated extension Codexpulse_Core_V1_PricingCatalogCurrentResponse: SwiftPro
 
 nonisolated extension Codexpulse_Core_V1_SessionItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SessionItem"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}display_title\0\u{3}title_confidence\0\u{3}title_source\0\u{3}title_reason\0\u{1}project\0\u{1}model\0\u{1}activity\0\u{3}last_activity_at_ms\0\u{1}totals\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}display_title\0\u{3}title_confidence\0\u{3}title_source\0\u{3}title_reason\0\u{1}project\0\u{1}model\0\u{1}activity\0\u{3}last_activity_at_ms\0\u{1}totals\0\u{1}throughput\0")
 
   fileprivate class _StorageClass {
     var _sessionID: String = String()
@@ -12851,6 +13012,7 @@ nonisolated extension Codexpulse_Core_V1_SessionItem: SwiftProtobuf.Message, Swi
     var _activity: String = String()
     var _lastActivityAtMs: Codexpulse_Core_V1_NumericValue? = nil
     var _totals: Codexpulse_Core_V1_UsageTotals? = nil
+    var _throughput: Codexpulse_Core_V1_ThroughputStats? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -12871,6 +13033,7 @@ nonisolated extension Codexpulse_Core_V1_SessionItem: SwiftProtobuf.Message, Swi
       _activity = source._activity
       _lastActivityAtMs = source._lastActivityAtMs
       _totals = source._totals
+      _throughput = source._throughput
     }
   }
 
@@ -12899,6 +13062,7 @@ nonisolated extension Codexpulse_Core_V1_SessionItem: SwiftProtobuf.Message, Swi
         case 8: try { try decoder.decodeSingularStringField(value: &_storage._activity) }()
         case 9: try { try decoder.decodeSingularMessageField(value: &_storage._lastActivityAtMs) }()
         case 10: try { try decoder.decodeSingularMessageField(value: &_storage._totals) }()
+        case 11: try { try decoder.decodeSingularMessageField(value: &_storage._throughput) }()
         default: break
         }
       }
@@ -12941,6 +13105,9 @@ nonisolated extension Codexpulse_Core_V1_SessionItem: SwiftProtobuf.Message, Swi
       try { if let v = _storage._totals {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 10)
       } }()
+      try { if let v = _storage._throughput {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 11)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -12960,10 +13127,200 @@ nonisolated extension Codexpulse_Core_V1_SessionItem: SwiftProtobuf.Message, Swi
         if _storage._activity != rhs_storage._activity {return false}
         if _storage._lastActivityAtMs != rhs_storage._lastActivityAtMs {return false}
         if _storage._totals != rhs_storage._totals {return false}
+        if _storage._throughput != rhs_storage._throughput {return false}
         return true
       }
       if !storagesAreEqual {return false}
     }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ThroughputStats: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ThroughputStats"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}average_output_milli_tps\0\u{3}output_tokens\0\u{3}active_duration_ms\0\u{3}included_turns\0\u{3}excluded_turns\0\u{3}open_turns\0\u{3}unattributed_events\0\u{1}status\0\u{1}reason\0\u{3}duration_source\0\u{1}basis\0")
+
+  fileprivate class _StorageClass {
+    var _averageOutputMilliTps: Codexpulse_Core_V1_NumericValue? = nil
+    var _outputTokens: Codexpulse_Core_V1_NumericValue? = nil
+    var _activeDurationMs: Codexpulse_Core_V1_NumericValue? = nil
+    var _includedTurns: Codexpulse_Core_V1_NumericValue? = nil
+    var _excludedTurns: Codexpulse_Core_V1_NumericValue? = nil
+    var _openTurns: Codexpulse_Core_V1_NumericValue? = nil
+    var _unattributedEvents: Codexpulse_Core_V1_NumericValue? = nil
+    var _status: String = String()
+    var _reason: String = String()
+    var _durationSource: String = String()
+    var _basis: String = String()
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _averageOutputMilliTps = source._averageOutputMilliTps
+      _outputTokens = source._outputTokens
+      _activeDurationMs = source._activeDurationMs
+      _includedTurns = source._includedTurns
+      _excludedTurns = source._excludedTurns
+      _openTurns = source._openTurns
+      _unattributedEvents = source._unattributedEvents
+      _status = source._status
+      _reason = source._reason
+      _durationSource = source._durationSource
+      _basis = source._basis
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularMessageField(value: &_storage._averageOutputMilliTps) }()
+        case 2: try { try decoder.decodeSingularMessageField(value: &_storage._outputTokens) }()
+        case 3: try { try decoder.decodeSingularMessageField(value: &_storage._activeDurationMs) }()
+        case 4: try { try decoder.decodeSingularMessageField(value: &_storage._includedTurns) }()
+        case 5: try { try decoder.decodeSingularMessageField(value: &_storage._excludedTurns) }()
+        case 6: try { try decoder.decodeSingularMessageField(value: &_storage._openTurns) }()
+        case 7: try { try decoder.decodeSingularMessageField(value: &_storage._unattributedEvents) }()
+        case 8: try { try decoder.decodeSingularStringField(value: &_storage._status) }()
+        case 9: try { try decoder.decodeSingularStringField(value: &_storage._reason) }()
+        case 10: try { try decoder.decodeSingularStringField(value: &_storage._durationSource) }()
+        case 11: try { try decoder.decodeSingularStringField(value: &_storage._basis) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      try { if let v = _storage._averageOutputMilliTps {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+      } }()
+      try { if let v = _storage._outputTokens {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+      } }()
+      try { if let v = _storage._activeDurationMs {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+      } }()
+      try { if let v = _storage._includedTurns {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+      } }()
+      try { if let v = _storage._excludedTurns {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+      } }()
+      try { if let v = _storage._openTurns {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+      } }()
+      try { if let v = _storage._unattributedEvents {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 7)
+      } }()
+      if !_storage._status.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._status, fieldNumber: 8)
+      }
+      if !_storage._reason.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._reason, fieldNumber: 9)
+      }
+      if !_storage._durationSource.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._durationSource, fieldNumber: 10)
+      }
+      if !_storage._basis.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._basis, fieldNumber: 11)
+      }
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ThroughputStats, rhs: Codexpulse_Core_V1_ThroughputStats) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._averageOutputMilliTps != rhs_storage._averageOutputMilliTps {return false}
+        if _storage._outputTokens != rhs_storage._outputTokens {return false}
+        if _storage._activeDurationMs != rhs_storage._activeDurationMs {return false}
+        if _storage._includedTurns != rhs_storage._includedTurns {return false}
+        if _storage._excludedTurns != rhs_storage._excludedTurns {return false}
+        if _storage._openTurns != rhs_storage._openTurns {return false}
+        if _storage._unattributedEvents != rhs_storage._unattributedEvents {return false}
+        if _storage._status != rhs_storage._status {return false}
+        if _storage._reason != rhs_storage._reason {return false}
+        if _storage._durationSource != rhs_storage._durationSource {return false}
+        if _storage._basis != rhs_storage._basis {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ThroughputTurn: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ThroughputTurn"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}timeline_key\0\u{3}started_at_ms\0\u{3}completed_at_ms\0\u{1}throughput\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.timelineKey) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._startedAtMs) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._completedAtMs) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._throughput) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.timelineKey.isEmpty {
+      try visitor.visitSingularStringField(value: self.timelineKey, fieldNumber: 1)
+    }
+    try { if let v = self._startedAtMs {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try { if let v = self._completedAtMs {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try { if let v = self._throughput {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ThroughputTurn, rhs: Codexpulse_Core_V1_ThroughputTurn) -> Bool {
+    if lhs.timelineKey != rhs.timelineKey {return false}
+    if lhs._startedAtMs != rhs._startedAtMs {return false}
+    if lhs._completedAtMs != rhs._completedAtMs {return false}
+    if lhs._throughput != rhs._throughput {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -13097,7 +13454,7 @@ nonisolated extension Codexpulse_Core_V1_SessionListResponse: SwiftProtobuf.Mess
 
 nonisolated extension Codexpulse_Core_V1_SessionTurnItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SessionTurnItem"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}timeline_key\0\u{1}state\0\u{1}model\0\u{3}started_at_ms\0\u{3}completed_at_ms\0\u{3}observed_at_ms\0\u{1}totals\0\u{3}pricing_status\0\u{3}pricing_version\0\u{3}unpriced_reason\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}timeline_key\0\u{1}state\0\u{1}model\0\u{3}started_at_ms\0\u{3}completed_at_ms\0\u{3}observed_at_ms\0\u{1}totals\0\u{3}pricing_status\0\u{3}pricing_version\0\u{3}unpriced_reason\0\u{1}throughput\0")
 
   fileprivate class _StorageClass {
     var _timelineKey: String = String()
@@ -13110,6 +13467,7 @@ nonisolated extension Codexpulse_Core_V1_SessionTurnItem: SwiftProtobuf.Message,
     var _pricingStatus: String = String()
     var _pricingVersion: String? = nil
     var _unpricedReason: String? = nil
+    var _throughput: Codexpulse_Core_V1_ThroughputStats? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -13130,6 +13488,7 @@ nonisolated extension Codexpulse_Core_V1_SessionTurnItem: SwiftProtobuf.Message,
       _pricingStatus = source._pricingStatus
       _pricingVersion = source._pricingVersion
       _unpricedReason = source._unpricedReason
+      _throughput = source._throughput
     }
   }
 
@@ -13158,6 +13517,7 @@ nonisolated extension Codexpulse_Core_V1_SessionTurnItem: SwiftProtobuf.Message,
         case 8: try { try decoder.decodeSingularStringField(value: &_storage._pricingStatus) }()
         case 9: try { try decoder.decodeSingularStringField(value: &_storage._pricingVersion) }()
         case 10: try { try decoder.decodeSingularStringField(value: &_storage._unpricedReason) }()
+        case 11: try { try decoder.decodeSingularMessageField(value: &_storage._throughput) }()
         default: break
         }
       }
@@ -13200,6 +13560,9 @@ nonisolated extension Codexpulse_Core_V1_SessionTurnItem: SwiftProtobuf.Message,
       try { if let v = _storage._unpricedReason {
         try visitor.visitSingularStringField(value: v, fieldNumber: 10)
       } }()
+      try { if let v = _storage._throughput {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 11)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -13219,6 +13582,7 @@ nonisolated extension Codexpulse_Core_V1_SessionTurnItem: SwiftProtobuf.Message,
         if _storage._pricingStatus != rhs_storage._pricingStatus {return false}
         if _storage._pricingVersion != rhs_storage._pricingVersion {return false}
         if _storage._unpricedReason != rhs_storage._unpricedReason {return false}
+        if _storage._throughput != rhs_storage._throughput {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -13230,7 +13594,7 @@ nonisolated extension Codexpulse_Core_V1_SessionTurnItem: SwiftProtobuf.Message,
 
 nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SessionDetailResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{3}unpriced_reasons\0\u{1}item\0\u{3}turn_page\0\u{1}turns\0\u{3}degraded_reason\0\u{3}reporting_time_zone\0\u{2}\u{2}trend\0\u{3}trend_granularity\0\u{3}provider_context\0\u{1}models\0\u{b}daily\0\u{c}\u{b}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}meta\0\u{3}pricing_source\0\u{1}currency\0\u{3}pricing_versions\0\u{3}unpriced_reasons\0\u{1}item\0\u{3}turn_page\0\u{1}turns\0\u{3}degraded_reason\0\u{3}reporting_time_zone\0\u{2}\u{2}trend\0\u{3}trend_granularity\0\u{3}provider_context\0\u{1}models\0\u{3}throughput_turns\0\u{b}daily\0\u{c}\u{b}\u{1}")
 
   fileprivate class _StorageClass {
     var _meta: Codexpulse_Core_V1_ResponseMeta? = nil
@@ -13247,6 +13611,7 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Me
     var _trendGranularity: String = String()
     var _providerContext: Codexpulse_Core_V1_ProviderContext? = nil
     var _models: [Codexpulse_Core_V1_UsageModelItem] = []
+    var _throughputTurns: [Codexpulse_Core_V1_ThroughputTurn] = []
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -13271,6 +13636,7 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Me
       _trendGranularity = source._trendGranularity
       _providerContext = source._providerContext
       _models = source._models
+      _throughputTurns = source._throughputTurns
     }
   }
 
@@ -13303,6 +13669,7 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Me
         case 13: try { try decoder.decodeSingularStringField(value: &_storage._trendGranularity) }()
         case 14: try { try decoder.decodeSingularMessageField(value: &_storage._providerContext) }()
         case 15: try { try decoder.decodeRepeatedMessageField(value: &_storage._models) }()
+        case 16: try { try decoder.decodeRepeatedMessageField(value: &_storage._throughputTurns) }()
         default: break
         }
       }
@@ -13357,6 +13724,9 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Me
       if !_storage._models.isEmpty {
         try visitor.visitRepeatedMessageField(value: _storage._models, fieldNumber: 15)
       }
+      if !_storage._throughputTurns.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._throughputTurns, fieldNumber: 16)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -13380,6 +13750,7 @@ nonisolated extension Codexpulse_Core_V1_SessionDetailResponse: SwiftProtobuf.Me
         if _storage._trendGranularity != rhs_storage._trendGranularity {return false}
         if _storage._providerContext != rhs_storage._providerContext {return false}
         if _storage._models != rhs_storage._models {return false}
+        if _storage._throughputTurns != rhs_storage._throughputTurns {return false}
         return true
       }
       if !storagesAreEqual {return false}

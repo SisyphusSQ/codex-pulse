@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
+	"github.com/SisyphusSQ/codex-pulse/internal/throughput"
 )
 
 var ErrLightTokenConflict = errors.New("light token generation conflict")
@@ -76,6 +77,7 @@ type LightTokenBatch struct {
 	DailyDeltas      []LightTokenDailyDelta
 	TimedDeltas      []LightTokenTimedDelta
 	InvocationDeltas []LightInvocationDelta
+	TurnEvents       []throughput.Event
 	Activate         bool
 	UpdatedAtMS      int64
 }
@@ -630,6 +632,9 @@ func (repository *Repository) CommitLightTokenBatch(ctx context.Context, batch L
 				return ErrLightTokenConflict
 			}
 		}
+		if err := commitTurnEvents(transaction.WithContext(ctx), batch); err != nil {
+			return err
+		}
 		if err := reconcileStoredLightTimedTotals(
 			ctx,
 			transaction,
@@ -962,16 +967,27 @@ func validateLightTokenBatch(batch LightTokenBatch) error {
 			return invalidRecord("invalid light token daily delta")
 		}
 	}
+	outputByOffset := make(map[int64]int64, len(batch.TimedDeltas))
 	for _, delta := range batch.TimedDeltas {
 		if delta.SourceOffset <= 0 || delta.SourceOffset > checkpoint.DurableOffset || delta.ObservedAtMS < 0 ||
 			delta.InputTokens < 0 || delta.CachedInputTokens < 0 || delta.OutputTokens < 0 || delta.ReasoningTokens < 0 ||
 			!validLightModelAttribution(delta.ModelKey, delta.ModelSource) {
 			return invalidRecord("invalid light token timed delta")
 		}
+		outputByOffset[delta.SourceOffset] = delta.OutputTokens
 	}
 	for _, delta := range batch.InvocationDeltas {
 		if !validLightInvocationDelta(delta, checkpoint.DurableOffset) {
 			return invalidRecord("invalid light invocation delta")
+		}
+	}
+	for _, event := range batch.TurnEvents {
+		if err := validateTurnEvent(event, checkpoint.DurableOffset); err != nil {
+			return err
+		}
+		if event.Kind == "usage" && event.OutputDelta != nil &&
+			(!event.OutputObserved || *event.OutputDelta != outputByOffset[event.Offset]) {
+			return invalidRecord("throughput output differs from token delta")
 		}
 	}
 	return nil

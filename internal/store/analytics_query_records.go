@@ -5,6 +5,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
+	"github.com/SisyphusSQ/codex-pulse/internal/throughput"
 )
 
 var ErrAnalyticsUnavailable = errors.New("analytics rollup is unavailable")
@@ -163,6 +164,7 @@ type SessionTurnCostAnalytics struct {
 
 // SessionTurnAnalyticsRecord 是content-free turn timeline read model。
 type SessionTurnAnalyticsRecord struct {
+	Throughput    *throughput.Stats
 	TurnID        string
 	Model         ModelAttribution
 	StartedAtMS   int64
@@ -174,6 +176,7 @@ type SessionTurnAnalyticsRecord struct {
 // SessionAnalyticsRecord 只包含安全 attribution 和聚合数字；canonical cwd、
 // raw model 与本机路径不会进入该 read model。
 type SessionAnalyticsRecord struct {
+	Throughput       *throughput.Stats
 	SessionID        string
 	DisplayTitle     string
 	TitleConfidence  attribution.Confidence
@@ -199,6 +202,7 @@ type SessionAnalyticsPage struct {
 }
 
 type SessionAnalyticsSnapshot struct {
+	ThroughputTurns   []throughput.Turn
 	Mode              AnalyticsReadMode
 	Generation        *CostRollupGeneration
 	PricingSource     string

@@ -53,7 +53,8 @@ const (
 	applicationSchemaV32Version = 32
 	applicationSchemaV33Version = 33
 	applicationSchemaV34Version = 34
-	applicationSchemaVersion    = applicationSchemaV34Version
+	applicationSchemaV35Version = 35
+	applicationSchemaVersion    = applicationSchemaV35Version
 )
 
 var (
@@ -362,6 +363,14 @@ var applicationMigrations = []migrationDefinition{
 		name:     quotaHistoryAssociationMigrationName,
 		checksum: applicationSchemaV34Checksum(),
 		apply:    migrateQuotaHistoryAssociationForV34,
+	},
+	{
+		version:  applicationSchemaV35Version,
+		name:     "lightweight-session-throughput",
+		checksum: applicationSchemaV35Checksum(),
+		apply: func(ctx context.Context, transaction *gorm.DB) error {
+			return storeschema.EnsureObjects(ctx, transaction, storelight.ThroughputSchemaObjects())
+		},
 	},
 }
 

@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
+	"github.com/SisyphusSQ/codex-pulse/internal/jsonshape"
+	"github.com/SisyphusSQ/codex-pulse/internal/throughput"
 )
 
 const (
@@ -134,6 +136,7 @@ type ScanResult struct {
 	DailyDeltas      []DailyTokenDelta
 	TokenDeltas      []TimedTokenDelta
 	InvocationDeltas []InvocationDelta
+	TurnEvents       []throughput.Event
 	Diagnostics      []ScanDiagnostic
 }
 
@@ -196,6 +199,7 @@ func (scanner *TokenScanner) Scan(ctx context.Context, reader io.Reader, seed Sc
 				line := pending[:newline]
 				result.LinesSeen++
 				if len(line) > scanner.maxLine {
+					result.TurnEvents = append(result.TurnEvents, throughput.Event{Offset: lineEnd, Kind: "gap"})
 					result.Diagnostics = append(result.Diagnostics, ScanDiagnostic{
 						Code: "candidate_line_too_long", StartOffset: lineStart, EndOffset: lineEnd,
 					})
@@ -240,6 +244,7 @@ func (scanner *TokenScanner) processLine(
 		Payload   json.RawMessage `json:"payload"`
 	}
 	if err := json.Unmarshal(line, &envelope); err != nil {
+		result.TurnEvents = append(result.TurnEvents, throughput.Event{Offset: endOffset, Kind: "gap"})
 		result.Diagnostics = append(result.Diagnostics, ScanDiagnostic{
 			Code: "candidate_bad_json", StartOffset: startOffset, EndOffset: endOffset,
 		})
@@ -260,6 +265,15 @@ func (scanner *TokenScanner) processLine(
 		result.State.CurrentModelSource = decision.Source
 		return
 	}
+	if envelope.Type == "session_meta" {
+		var meta struct {
+			ForkedFrom json.RawMessage `json:"forked_from_id"`
+		}
+		if json.Unmarshal(envelope.Payload, &meta) == nil && len(meta.ForkedFrom) > 0 && string(meta.ForkedFrom) != "null" {
+			result.TurnEvents = append(result.TurnEvents, throughput.Event{Kind: "inherited", Offset: endOffset})
+		}
+		return
+	}
 	if envelope.Type == "response_item" {
 		scanner.processResponseItem(envelope.Timestamp, envelope.Payload, startOffset, endOffset, result)
 		return
@@ -267,13 +281,28 @@ func (scanner *TokenScanner) processLine(
 	if envelope.Type != "event_msg" {
 		return
 	}
+	if bytes.Contains(line, tokenCountNeedle) || bytes.Contains(line, []byte(`"task_started"`)) || bytes.Contains(line, []byte(`"turn_started"`)) || bytes.Contains(line, []byte(`"task_complete"`)) || bytes.Contains(line, []byte(`"turn_complete"`)) || bytes.Contains(line, []byte(`"turn_aborted"`)) {
+		if jsonshape.ValidateDocument(line) != nil {
+			result.TurnEvents = append(result.TurnEvents, throughput.Event{Offset: endOffset, Kind: "gap"})
+			result.Diagnostics = append(result.Diagnostics, ScanDiagnostic{Code: "candidate_invalid_payload", StartOffset: startOffset, EndOffset: endOffset})
+			return
+		}
+	}
+	if event, handled := decodeThroughputLifecycle(envelope.Timestamp, envelope.Payload, endOffset); handled {
+		result.TurnEvents = append(result.TurnEvents, event)
+		return
+	}
 
 	var payload struct {
 		Type       string          `json:"type"`
+		TurnID     *string         `json:"turn_id"`
 		DurationMS *int64          `json:"duration_ms"`
 		Invocation json.RawMessage `json:"invocation"`
 		Result     json.RawMessage `json:"result"`
 		Info       *struct {
+			Last *struct {
+				Output *int64 `json:"output_tokens"`
+			} `json:"last_token_usage"`
 			Total *struct {
 				Input       *int64 `json:"input_tokens"`
 				CachedInput *int64 `json:"cached_input_tokens"`
@@ -283,11 +312,10 @@ func (scanner *TokenScanner) processLine(
 		} `json:"info"`
 	}
 	if err := json.Unmarshal(envelope.Payload, &payload); err != nil {
-		if err != nil {
-			result.Diagnostics = append(result.Diagnostics, ScanDiagnostic{
-				Code: "candidate_invalid_payload", StartOffset: startOffset, EndOffset: endOffset,
-			})
-		}
+		result.TurnEvents = append(result.TurnEvents, throughput.Event{Offset: endOffset, Kind: "gap"})
+		result.Diagnostics = append(result.Diagnostics, ScanDiagnostic{
+			Code: "candidate_invalid_payload", StartOffset: startOffset, EndOffset: endOffset,
+		})
 		return
 	}
 	if payload.Type != "token_count" {
@@ -299,6 +327,7 @@ func (scanner *TokenScanner) processLine(
 	}
 	observedAt, err := time.Parse(time.RFC3339Nano, envelope.Timestamp)
 	if err != nil {
+		result.TurnEvents = append(result.TurnEvents, throughput.Event{Offset: endOffset, Kind: "gap"})
 		result.Diagnostics = append(result.Diagnostics, ScanDiagnostic{
 			Code: "candidate_invalid_timestamp", StartOffset: startOffset, EndOffset: endOffset,
 		})
@@ -308,13 +337,32 @@ func (scanner *TokenScanner) processLine(
 		payload.Info.Total.Input, payload.Info.Total.CachedInput, payload.Info.Total.Output, payload.Info.Total.Reasoning,
 	)
 	if !ok {
+		result.TurnEvents = append(result.TurnEvents, throughput.Event{Offset: endOffset, Kind: "gap"})
 		result.Diagnostics = append(result.Diagnostics, ScanDiagnostic{
 			Code: "candidate_invalid_counter", StartOffset: startOffset, EndOffset: endOffset,
 		})
 		return
 	}
 
+	previous, epoch := result.State.LastRaw, result.State.CounterEpoch
 	delta := applySessionCounterDelta(&result.State, current)
+	var outputDelta *int64
+	if current.Output.Present {
+		if previous.Output.Present && epoch == result.State.CounterEpoch ||
+			current.Output.Value == 0 || payload.Info.Last != nil && payload.Info.Last.Output != nil && *payload.Info.Last.Output == current.Output.Value {
+			value := delta.Output
+			outputDelta = &value
+		}
+	}
+	turnID := safeThroughputID(payload.TurnID)
+	at := observedAt.UnixMilli()
+	usageEvent := throughput.Event{
+		Offset: endOffset, Kind: "usage", TurnID: turnID, AtMS: &at, TimeSource: "log_timestamp", OutputDelta: outputDelta, OutputObserved: current.Output.Present,
+	}
+	if payload.TurnID != nil && turnID == nil || at < 0 || at > throughput.MaxInteger || outputDelta != nil && *outputDelta > throughput.MaxInteger {
+		usageEvent = throughput.Event{Offset: endOffset, Kind: "gap"}
+	}
+	result.TurnEvents = append(result.TurnEvents, usageEvent)
 	result.TokenEvents++
 	if delta == (TokenTotals{}) {
 		return
@@ -335,6 +383,8 @@ func (scanner *TokenScanner) processLine(
 
 func candidateLine(line []byte) bool {
 	for _, needle := range [][]byte{
+		[]byte(`"session_meta"`),
+		[]byte(`"task_started"`), []byte(`"turn_started"`), []byte(`"task_complete"`), []byte(`"turn_complete"`), []byte(`"turn_aborted"`),
 		tokenCountNeedle, turnContextNeedle, functionCallNeedle, customToolCallNeedle,
 		mcpToolCallEndNeedle, webSearchEndNeedle, imageGenerationNeedle,
 		explicitSkillNeedle, skillFileNeedle,
