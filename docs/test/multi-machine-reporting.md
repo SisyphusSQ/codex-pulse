@@ -36,6 +36,8 @@
 
 以上为开发场景通过，不表示整个产品或 Master 已验收。后续各功能增量需补充其受影响验证。
 
+- Pass：Web 框架 8 个行为测试、类型/构建、AntD lint 和锁定依赖审计；同源 Cookie/内存 CSRF、配对/恢复/退出、撤销清缓存、旧请求晚到丢弃、网络/协议错误、名称默认转义、不持久凭据。真实浏览器使用环回 HTTP/隔离 SQLite/合成码验证配对、刷新恢复、退出后刷新仍未授权和 390px 窄屏，截图在忽略的 `.artifacts/multi-machine/web/`。业务看板和静态交付继续由其他执行卡实现。
+
 - Pass：中心节奏与本机同范围四点耗尽时刻/提前量对账、legacy 历史基线不参与预测、稀疏/陈旧/冲突预测不可用、下降曲线与原观测端点保留、512 点预测预算不删完整曲线、未知窗口的明确 forecast，以及管理端权限/参数拒绝；使用 `go test ./internal/codex/quota -run '^(TestComputePace|TestBuildPace|TestForecastPace|TestPace)' -count=1` 和 server quota/http/architecture/app-cmd 聚焦验证。
 
 - Pass：中心配额三来源复制不累加、reset 漂移/真实换代、合法下降/迟到、同邮箱不同账号、同时刻冲突、过期 LKG/无可信倒计时、关联历史不刷新当前；未关联/空库不猜身份。Credits 多机库存不相加、到期与 reset 区分、失败保留原库存/原时间。HTTP 匿名/collector 拒绝、严格参数与预算；Fx/业务子包装配通过。

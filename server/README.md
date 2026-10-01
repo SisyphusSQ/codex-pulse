@@ -11,6 +11,8 @@ bin/codex-pulse-server http
 
 默认配置使用私有 `.runtime/pulse.sqlite` 和环回 HTTP。`db init` 显式建表并读回，正常启动只检查结构；`db bootstrap` 在受信任终端显示 10 分钟有效、一次性管理员码，不在网络提供匿名管理员签发。Web 使用该码建立浏览器授权，管理员再签发采集设备码。
 
+前端位于 [web/](web/README.md)，使用 React/TypeScript/Vite/AntD/ECharts。开发请求同源经 Vite 转发，明确允许 localhost/127.0.0.1:5173；Cookie/CSRF、撤销和错误语义沿用统一鉴权。
+
 HTTP/HTTPS 共用统一配对、凭证摘要、用途和撤销体系，无 Basic、AK 或 JWT 第二套登录。浏览器使用入口绑定的 HttpOnly/SameSite Cookie 和 CSRF；HTTPS Cookie 额外 Secure。采集设备用独立 Bearer，仅允许自己的上报/同步状态。上报 DTO 不携带 Agent 凭据或原始内容。
 
 - [总体设计与任务入口](../docs/design/details/multi-machine-reporting/README.md)

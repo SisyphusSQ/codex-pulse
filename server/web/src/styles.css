@@ -1,0 +1,26 @@
+:root { color: #182221; background: #f6f7f9; font-synthesis: none; text-rendering: optimizeLegibility; }
+body { margin: 0; min-width: 320px; }
+.app-layout { min-height: 100vh; }
+.app-header { height: auto; padding: 0 max(24px, calc((100vw - 1248px) / 2)); background: #fff; border-bottom: 1px solid #e7e9ec; line-height: normal; }
+.header-top { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { color: #182221; font-size: 20px; font-weight: 650; display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.brand-mark { color: #137b59; font-size: 34px; line-height: 1; }
+.brand-subtitle { font-size: 12px; color: #74807d; border-left: 1px solid #d9dfe0; padding-left: 12px; margin-left: 4px; font-weight: 400; }
+.header-account { display: flex; gap: 12px; align-items: center; }
+.app-header .ant-menu { border-bottom: 0; background: transparent; }
+.app-content { width: min(100%, 1296px); padding: 28px 24px; margin: 0 auto; }
+.app-footer { text-align: center; color: #74807d; font-size: 12px; }
+.loading-state { min-height: 240px; display: flex; align-items: center; justify-content: center; gap: 12px; color: #74807d; }
+.sign-in { min-height: 100vh; width: min(100%, 1040px); margin: auto; padding: 64px 32px; display: grid; grid-template-columns: 1.1fr 1fr; gap: 64px; align-content: center; align-items: center; }
+.sign-in-intro h1.ant-typography { font-size: clamp(28px, 4vw, 42px); line-height: 1.4; letter-spacing: -.8px; margin-top: 24px; }
+.eyebrow { color: #137b59; font-size: 12px; font-weight: 600; letter-spacing: 1.5px; }
+.sign-in-card { width: 100%; }
+.sign-in-note { margin-top: 20px; font-size: 12px; margin-bottom: 0 !important; }
+.form-alert { margin-bottom: 20px; }
+@media (max-width: 720px) {
+  .app-header { padding: 0 16px; }
+  .header-top { min-height: 64px; }
+  .brand-subtitle, .header-account > .ant-typography { display: none; }
+  .app-content { padding: 20px 16px; }
+  .sign-in { grid-template-columns: 1fr; gap: 24px; padding: 40px 24px; }
+}
