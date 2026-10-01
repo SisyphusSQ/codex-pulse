@@ -18,6 +18,5 @@ var versionCmd = &cobra.Command{
 		fmt.Println(color.CyanString("Go Version: "), vars.GoVersion)
 		fmt.Println(color.CyanString("Build Time: "), vars.BuildTime)
 		fmt.Println(color.CyanString("Git Commit: "), vars.GitCommit)
-		fmt.Println(color.CyanString("Git Remote: "), vars.GitRemote)
 	},
 }

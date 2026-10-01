@@ -164,3 +164,7 @@ Start with these documents for more detail:
 ## License
 
 [MIT](LICENSE)
+
+## 多机汇总中心
+
+可选的 Go Server 与 React/AntD Web 位于 [server/](server/README.md)，同源构建运行和 SQLite/MySQL 备份入口见 [运行说明](server/docs/test/operations.md)。原生 App 仍为本地采集与 UI，设置中配对、选择历史范围并显式启用上报；退出停止，下次增量补采。中心仅接收白名单元数据、统计、配额和 TPS，不接收原始记录或 Agent 凭据。MySQL 实际整体联调与三机正式验收仍待后续环境。

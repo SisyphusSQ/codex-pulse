@@ -1,0 +1,22 @@
+# 示例：安装前由操作者准备非 root 用户、目录与私有配置；不采集本机 Agent。
+[Unit]
+Description=Codex Pulse 汇总中心
+After=network.target
+[Service]
+Type=simple
+User=codex-pulse
+Group=codex-pulse
+WorkingDirectory=/opt/codex-pulse/center
+UMask=0077
+EnvironmentFile=/etc/codex-pulse/server.env
+ExecStart=/opt/codex-pulse/center/codex-pulse-server --config /etc/codex-pulse/server.yml http
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/codex-pulse
+[Install]
+WantedBy=multi-user.target

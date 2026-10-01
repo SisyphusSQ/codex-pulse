@@ -104,3 +104,15 @@ Swift --reporting-only 通过，覆盖默认关闭、显式 HTTP、短暂码清�
 Web 3 场景通过：管理码权限确认、内存码撤销且 DOM 清除、过期/缺失来源不伪造、失败撤销保留客户端/错误、恶意名称普通文本、各表单独立标签与改名 CSRF；最新 typecheck/AntD lint/build 通过。真实隔离浏览器签发合成采集码→撤销未用码、改名/读回/恢复原名、桌面和 390px 可用。发现并修复关闭 Modal 留码 DOM 与两个 Form 字段 ID 重复。
 
 真实 Home Development App 本机界面读回：未配对，上报/HTTP 关闭、间隔 60 秒、队列 0、未配对操作禁用；App/Helper 环境均匹配真实 Home、prefs canonical path/inode 与 0700 runtime、Helper 参数/UDS正确；正常退出二者进程和 UDS 消失。未启用真实资料上报。原始证据仅本机 ignored artifacts；提交摘要无真实账号/路径/日志/码。三机真实上报、MySQL、CI、生产部署/签名/公证/发布 Not Run，正式验收留 Master。
+
+## 运行交付开发证据（TOO-491，2026-10-02）
+
+Pass：Server 同源壳/hashed assets GET/HEAD，业务 API 继续授权，隐藏文件/map/逃逸符号链接被拒绝；缺失静态产物拒绝启动；版本白名单仅管理员可读。SQLite 一致备份、schema/integrity/hash 检查、原子恢复到新路径、拒绝覆盖/损坏备份，恢复后旧授权与未用码失效而事实/receipts/reset/原观测时间保持。聚焦 http/app-cmd/config 与 Starter 架构检查通过，部署示例严格配置解码通过，MySQL 脚本 bash 语法通过。
+
+独立 Server/Web 及 package-center 构建通过；Web typecheck、AntD lint、4 个浏览器会话场景通过。保留模块独立 Go 版本；Rolldown 分块后无旧大包告警。实际环回 HTTP 打包 Server 直接托管 SPA，同源配对后读回 57,922,841 Token/14 会话、额度/历史/节奏图表和中心协议版本；浏览器不依赖 Vite。证据 packaged-pace.png 为合成资料。
+
+对运行中合成 SQLite 中心执行在线 CLI 备份、恢复到新库及 db check。离线只读对账 13 张事实/收据/结构表逐行相等：14 会话、42 来源、302 用量、61 配额观测、9 receipts；恢复库有效客户端和未消费码均为 0。比较原证据仅 ignored backups/restore-comparison.json；未上传或提交个人记录。
+
+交付同域构建打包、HTTPS/显式 Tailnet HTTP、非 root 常驻、结构检查与升级/回滚、保留/撤销/删除区别、SQLite/MySQL 备份恢复和 Master 联调 runbook。容器模板按 monorepo/统一配对更新，未构建或启动 Docker。真实 MySQL、三机上报验收、HTTPS 生产代理、CI、签名/公证/发布 Not Run，留 Master。用户提供 MySQL 后按 runbook 整体验证，SQLite Pass 不替代它。
+
+交付自查：本次新增接口经过统一管理员鉴权，静态根受限且无任意 API 放行，SQL 参数化/固定语句，恢复拒绝覆盖且撤销旧授权；未在代码/模板/日志/产物环境写入 Agent 凭据或原始内容。

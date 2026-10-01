@@ -3,29 +3,27 @@ debug: false
 contextTimeout: 10s
 
 server:
-    metrics: true
+    metrics: false
     readinessTimeout: 2s
-    address: ":8080"
+    address: "127.0.0.1:8080"
     readHeaderTimeout: 5s
     readTimeout: 15s
     writeTimeout: 15s
     idleTimeout: 60s
     shutdownTimeout: 10s
     maxBodyBytes: 8388608
-    corsOrigins:
-        - "https://pulse.example.com"
-    origins:
-        - "https://pulse.example.com"
+    corsOrigins: []
+    origins: ["https://pulse.example.com"]
     allowHTTP: false
-    trustedProxies: []
-    webDirectory: "/app/web"
+    trustedProxies: ["127.0.0.1/32"]
+    webDirectory: "/opt/codex-pulse/center/web"
 database:
     enabled: true
     driver: "mysql"
-    host: "mysql"
+    host: "mysql.example.internal"
     port: 3306
     database: "pulse_center"
-    username: "app"
+    username: "pulse_app"
     password: ""
     maxIdleConns: 20
     maxOpenConns: 100
@@ -33,7 +31,7 @@ database:
     charset: "utf8mb4"
     timeZone: "UTC"
     name: "pulse_center"
-    path: "/var/lib/pulse/pulse.sqlite"
+    path: "/var/lib/codex-pulse/center.sqlite"
     tls: "true"
 
 
@@ -41,8 +39,8 @@ database:
 
 
 log:
-    output: "stdout"
-    fileName: "logs/server.log"
+    output: "file"
+    fileName: "/var/lib/codex-pulse/logs/server.log"
     logLevel: 0
     maxSizeMB: 20
     maxBackupCount: 30

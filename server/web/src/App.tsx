@@ -6,6 +6,7 @@ import { ApiError } from './api/client';
 import { SessionProvider, useSession } from './auth/SessionProvider';
 import { SignIn } from './auth/SignIn';
 import { ErrorState, LoadingState } from './components/QueryState';
+import { RuntimeInfo } from './components/RuntimeInfo';
 
 const Overview=lazy(()=>import('./pages/Overview'));
 const Projects=lazy(()=>import('./pages/Projects'));
@@ -56,7 +57,7 @@ function Shell() {
         <Route path="*" element={<Result status="404" title="页面不存在" extra={<Button onClick={() => navigate('/')}>返回总览</Button>} />} />
       </Routes></Suspense>
     </Layout.Content>
-    <Layout.Footer className="app-footer">Codex Pulse · 本地采集，自主汇总</Layout.Footer>
+    <Layout.Footer className="app-footer">Codex Pulse · 本地采集，自主汇总<RuntimeInfo /></Layout.Footer>
   </Layout>;
 }
 

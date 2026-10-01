@@ -67,3 +67,16 @@ func TestOccupiedPortFailsApplicationStartup(t *testing.T) {
 		t.Fatal("occupied listener was reported as started")
 	}
 }
+
+func TestMissingWebDirectoryFailsBeforeListening(t *testing.T) {
+	cfg := runtimeConfig(t)
+	cfg.Server.WebDirectory = t.TempDir()
+	app := fx.New(fx.NopLogger, inject(cfg))
+	if err := app.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Start(t.Context()); err == nil {
+		_ = app.Stop(t.Context())
+		t.Fatal("missing Web was accepted")
+	}
+}

@@ -1,13 +1,7 @@
-# 隔离集成验证
+# 隔离数据库集成与正式验收
 
-普通 make test 不连接数据库、Redis 或外部 SDK。集成测试只在 APP_TEST_INTEGRATION=1 时读取指定配置，目标必须是本次创建的隔离实例。
+`make integration` 只有 `APP_TEST_INTEGRATION=1` 才读取 `APP_TEST_CONFIG=/绝对路径/isolated.yml`。目标必须是专用隔离数据库，先用同一配置执行 `db init` / `db check`，WebDirectory 留空或准备完整静态构建。该入口检查 /ready、真实连接、创建唯一探针表、事务回滚、原值更新匹配行与关闭/清理；不连接 Redis/Mongo、不生成 JWT。
 
-1. 使用独立 Compose project name 启动所选组件，例如 `docker compose -p starter-check --profile mysql --profile redis up -d mysql redis`。
-2. 用不提交的配置文件指向这些容器；只开启实际需要的组件，设置自己的临时凭据。
-3. 设置 APP_TEST_INTEGRATION=1 和 APP_TEST_CONFIG=/绝对路径/test.yml，执行 make integration。
-4. MySQL 创建独立测试表并验证事务回滚、原值更新和清理；MongoDB/Redis 覆盖连接、真实读写及资源关闭；生成 JWT 时同时验证 Redis 令牌生效与撤销。
-5. 结束后运行 `docker compose -p starter-check down -v`，仅清理本次 project 的容器与卷。
+当前 SQLite 开发证据与 MySQL/三机正式验收区分，整体步骤见 [运行说明](operations.md)。可选 Compose 只有明确开启的 mysql profile，使用独立 project name 和私有密码；不自动启动、启用 CI 或清理已有环境。只有本次明确创建的可丢弃测试库/卷才能在验收后清理，不能用 `down -v` 清理已有业务数据。
 
-未启动容器、未运行 integration 或未提供环境时必须记为 Not Run，不能用普通单测代替。飞书发送及业务环境访问不属于默认集成测试。
-
-生成工程的 CI 使用临时随机凭据，执行非 root 镜像启动、探针与鉴权检查，以及已包含数据库/Redis 的隔离联调，最终清理本次 Compose project。CI 配置存在不代表已执行成功，应以实际运行记录为准。
+当前没有 MySQL 环境：真实 MySQL、容器与三机整体结果 Not Run；测试配置必须使用合成资料，原始证据只留 ignored artifacts。构建或配置存在不代表 CI、部署或正式验收通过。

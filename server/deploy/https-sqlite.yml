@@ -1,9 +1,9 @@
 ---
-debug: true
+debug: false
 contextTimeout: 10s
 
 server:
-    metrics: true
+    metrics: false
     readinessTimeout: 2s
     address: "127.0.0.1:8080"
     readHeaderTimeout: 5s
@@ -12,16 +12,11 @@ server:
     idleTimeout: 60s
     shutdownTimeout: 10s
     maxBodyBytes: 8388608
-    corsOrigins:
-        - "http://localhost:5173"
-        - "http://127.0.0.1:5173"
-    origins:
-        - "http://127.0.0.1:8080"
-        - "http://localhost:5173"
-        - "http://127.0.0.1:5173"
-    allowHTTP: true
-    trustedProxies: []
-    webDirectory: "" # API-only; make run-center explicitly selects the built Web
+    corsOrigins: []
+    origins: ["https://pulse.example.com"]
+    allowHTTP: false
+    trustedProxies: ["127.0.0.1/32"]
+    webDirectory: "/opt/codex-pulse/center/web"
 database:
     enabled: true
     driver: "sqlite"
@@ -36,7 +31,7 @@ database:
     charset: "utf8mb4"
     timeZone: "UTC"
     name: "pulse_center"
-    path: ".runtime/pulse.sqlite"
+    path: "/var/lib/codex-pulse/center.sqlite"
     tls: "true"
 
 
@@ -44,8 +39,8 @@ database:
 
 
 log:
-    output: "stdout"
-    fileName: "logs/server.log"
+    output: "file"
+    fileName: "/var/lib/codex-pulse/logs/server.log"
     logLevel: 0
     maxSizeMB: 20
     maxBackupCount: 30

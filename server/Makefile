@@ -4,14 +4,13 @@ BUILD_DIR ?= bin
 GO ?= go
 CGO_ENABLED ?= 0
 PLATFORMS := windows-amd64 windows-arm64 darwin-amd64 darwin-arm64 linux-amd64 linux-arm64
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+VERSION ?= dev-$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)$(shell test -z "$$(git status --porcelain 2>/dev/null)" || echo -dirty)
 
 BUILD_FLAGS  = -X '$(VARS_PKG).AppName=$(BINARY_NAME)'
 BUILD_FLAGS += -X '$(VARS_PKG).AppVersion=$(VERSION)'
 BUILD_FLAGS += -X '$(VARS_PKG).GoVersion=$(shell $(GO) env GOVERSION)'
 BUILD_FLAGS += -X '$(VARS_PKG).BuildTime=$(shell date +"%Y-%m-%d %H:%M:%S")'
 BUILD_FLAGS += -X '$(VARS_PKG).GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)'
-BUILD_FLAGS += -X '$(VARS_PKG).GitRemote=$(shell git config --get remote.origin.url 2>/dev/null || echo unknown)'
 
 LDFLAGS = -ldflags="$(BUILD_FLAGS)"
 
@@ -96,3 +95,26 @@ $(addprefix build-,$(PLATFORMS)): build-%:
 
 $(addprefix release-,$(PLATFORMS)): release-%:
 	$(call build_platform,-trimpath)
+
+# 前后端可独立构建；中心打包不运行测试、数据库初始化或发布。
+NPM ?= npm
+CONFIG ?= $(CURDIR)/config/config.yml
+PACKAGE_DIR ?= $(BUILD_DIR)/center
+.PHONY: web-install web-build build-center run-center package-center
+web-install:
+	cd web && $(NPM) ci
+web-build:
+	cd web && $(NPM) run build
+build-center: build web-build
+run-center:
+	APP_SERVER_WEBDIRECTORY="$(CURDIR)/web/dist" $(BUILD_DIR)/$(BINARY_NAME) --config "$(CONFIG)" http
+package-center: build-center
+	mkdir -p $(BUILD_DIR)
+	mkdir "$(PACKAGE_DIR)"
+	mkdir -p "$(PACKAGE_DIR)/web"
+	cp $(BUILD_DIR)/$(BINARY_NAME) $(PACKAGE_DIR)/$(BINARY_NAME)
+	cp -R web/dist/. $(PACKAGE_DIR)/web/
+	mkdir -p $(PACKAGE_DIR)/deploy $(PACKAGE_DIR)/scripts
+	cp -R deploy/. $(PACKAGE_DIR)/deploy/
+	cp scripts/mysql-backup.sh $(PACKAGE_DIR)/scripts/mysql-backup.sh
+	cp docs/test/operations.md $(PACKAGE_DIR)/OPERATIONS.md

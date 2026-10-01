@@ -94,7 +94,7 @@ func (e *EchoMiddleware) Auth(next echo.HandlerFunc) echo.HandlerFunc {
 			return next(c)
 		}
 		// 公开静态壳仅提供登录界面，业务 API 永远通过统一授权。
-		if request.Method == http.MethodGet && (c.Path() == "/" || c.Path() == "/assets/*") {
+		if (request.Method == http.MethodGet || request.Method == http.MethodHead) && (c.Path() == "/" || c.Path() == "/assets/*") {
 			return next(c)
 		}
 		origin, err := RequestOrigin(request, e.config)

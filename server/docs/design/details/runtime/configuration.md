@@ -9,7 +9,7 @@ Viper 严格解码，未知字段拒绝启动。环境变量以 `APP_` 开头，
 | server.allowHTTP | 显式私网 HTTP 开关；不会因 HTTPS 失败降级，也不豁免鉴权 |
 | server.trustedProxies | 仅可信 TLS 终止代理的精确 CIDR，默认空。普通 forwarded header 不影响入口身份 |
 | server.corsOrigins | 精确跨域 Origin 白名单。官方 Web 使用同域 API；开发代理保留原始 Host（changeOrigin:false） |
-| server.webDirectory | Web 构建静态资源目录，无业务秘密 |
+| server.webDirectory | 空为 API-only；完整 Web 构建目录启用同域壳/hashed assets，无业务秘密；缺失拒绝启动 |
 | server.maxBodyBytes | 当前上报请求上限 8 MiB；配对/管理请求另限 4 KiB，超预算明确拒绝 |
 | database.enabled | 中心 HTTP 与 db CLI 要求数据库开启 |
 | database.driver / path | sqlite 开发 dialect；父目录 0700、文件 0600，独立于本机库 |

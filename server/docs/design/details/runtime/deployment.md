@@ -1,13 +1,11 @@
-# 部署
+# 中心部署入口
 
-Docker 使用多阶段构建、非 root 用户和固定 Go 版本。构建前执行 go mod tidy 生成 go.sum；镜像内不包含本机配置、运行日志或 .agents 的真实状态文件。
+正式命令、SQLite/MySQL 备份恢复、HTTPS/私网 HTTP、保留与回滚统一见 [运行说明](../../../test/operations.md)。统一设备码认证，无 AK / Basic 第二套体系。
 
-容器配置默认 AK 认证，必须提供自己的凭据。Compose 仅供本机联调，业务部署需要明确网络、秘密注入、资源限制和镜像发布目标。
+推荐直接使用 `make package-center` 的同源二进制/Web 产物，非 root 常驻示例在 `deploy/`。不自动安装系统服务、不自动初始化结构、不执行发布。
 
-- liveness：GET /health。
-- readiness：GET /ready；仅返回通用 503，不暴露依赖地址或凭据。
-- metrics：GET /metrics，沿用业务鉴权；Prometheus 抓取端需配置凭据，或在受控网关独立管理访问。
-- 日志：默认 stdout JSON；request_id、method、route、status、duration 支持关联。
-- SIGINT/SIGTERM：先停止接流量并等待请求结束，再按 Fx 逆序停止任务和连接；超过关闭期限返回失败并强制关闭 HTTP 连接。
+可选容器从 monorepo 根作为 build context，先在 `server/` 执行 `make web-build`，再在仓库根执行 `docker build -f server/Dockerfile -t codex-pulse-center:local .`；根 `.dockerignore` 排除运行数据、日志、私有 env 和 node_modules。多阶段固定 Go/Alpine 构建，非 root 运行，包含同源 Web；运行时挂载私有配置或提供实际数据库秘密/入口/可信代理。HTTPS 经受信任代理终止，示例不默认开放匿名 API。
 
-新建环境先准备数据库及当前业务所需的表结构，再启用对应组件并启动服务。
+`server/compose.yml` 仅是明确启用的可选 MySQL 开发服务，端口环回；密码必须来自私有环境。当前无 Docker/MySQL 实际运行证据，不能用这些模板声称容器或 MySQL 验收通过，不会安装或启动它们。
+
+`/health` 仅存活，`/ready` 数据库就绪；`/metrics` 管理授权保护。日志和 SIGINT/SIGTERM 沿用 Fx 生命周期，详细边界见运行说明。

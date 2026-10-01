@@ -3,10 +3,10 @@
 由 Go Web Starter v2.0.0 生成，Go 1.27.1、Echo v5、Uber Fx。目标数据库为 MySQL；当前以独立 SQLite 开发验证，不装配本机 App 采集运行时。前端位于 `web/`。业务目录已手工同步 Starter v2.0.1 规范，最初生成来源保留为 v2.0.0。
 
 ```sh
-make build
+make build-center
 bin/codex-pulse-server db init
 bin/codex-pulse-server db bootstrap
-bin/codex-pulse-server http
+make run-center
 ```
 
 默认配置使用私有 `.runtime/pulse.sqlite` 和环回 HTTP。`db init` 显式建表并读回，正常启动只检查结构；`db bootstrap` 在受信任终端显示 10 分钟有效、一次性管理员码，不在网络提供匿名管理员签发。Web 使用该码建立浏览器授权，管理员再签发采集设备码。
@@ -19,6 +19,7 @@ HTTP/HTTPS 共用统一配对、凭证摘要、用途和撤销体系，无 Basic
 - [网络协议](api/README.md)
 - [统计查询与覆盖口径](api/statistics.md)
 - [业务子包与 DO 组织](docs/design/architecture/packages.md)
+- [构建、常驻与备份恢复](docs/test/operations.md)
 - [配置](docs/design/details/runtime/configuration.md)
 - [SQL 结构与验证边界](docs/sqls/schema/README.md)
 

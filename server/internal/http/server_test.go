@@ -37,7 +37,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
 )
 
-func testServer(t *testing.T, origin string) (*apphttp.Server, *access_srv.Access) {
+func testServer(t *testing.T, origin string, customize ...func(*config.Config)) (*apphttp.Server, *access_srv.Access) {
 	t.Helper()
 	cfg, err := config.Load("../../config/config.yml")
 	if err != nil {
@@ -46,6 +46,9 @@ func testServer(t *testing.T, origin string) (*apphttp.Server, *access_srv.Acces
 	cfg.Server.Address = "127.0.0.1:0"
 	cfg.Server.Origins = []string{origin}
 	cfg.Database.Path = filepath.Join(t.TempDir(), "private", "center.sqlite")
+	for _, apply := range customize {
+		apply(&cfg)
+	}
 	if err := log.New(cfg); err != nil {
 		t.Fatal(err)
 	}

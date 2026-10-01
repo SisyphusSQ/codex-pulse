@@ -47,6 +47,7 @@ func databaseCommand() *cobra.Command {
 			return err
 		})
 	}})
+	command.AddCommand(backupCommands()...)
 	return command
 }
 
@@ -56,6 +57,10 @@ func withDatabase(ctx context.Context, action func(context.Context, *gormv2.Engi
 	if err != nil {
 		return err
 	}
+	return withConfiguredDatabase(ctx, cfg, action)
+}
+
+func withConfiguredDatabase(ctx context.Context, cfg config.Config, action func(context.Context, *gormv2.Engine) error) (err error) {
 	if !cfg.Database.Enabled {
 		return fmt.Errorf("enable center database before using db commands")
 	}

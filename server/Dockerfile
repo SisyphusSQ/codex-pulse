@@ -1,10 +1,12 @@
 FROM golang:1.27.1-alpine3.24 AS builder
 
 WORKDIR /src
+# 从 monorepo 根构建，保留 server 的 replace .. 模块关系。
 COPY go.mod go.sum ./
-RUN go mod download
-
-COPY . .
+COPY api ./api
+COPY internal ./internal
+COPY server ./server
+WORKDIR /src/server
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/codex-pulse-server ./app/main.go
 
 FROM alpine:3.24.1
@@ -16,7 +18,9 @@ RUN apk add --no-cache ca-certificates tzdata \
 
 WORKDIR /app
 COPY --from=builder /out/codex-pulse-server /app/codex-pulse-server
-COPY --from=builder /src/config/config_docker.yml /app/config/config.yml
+COPY --from=builder /src/server/config/config_docker.yml /app/config/config.yml
+# 构建前在 server 执行 make web-build；缺少完整产物时明确失败。
+COPY --from=builder /src/server/web/dist /app/web
 
 USER app
 EXPOSE 8080

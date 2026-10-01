@@ -29,6 +29,7 @@ type Server struct {
 	Echo   *echo.Echo
 	HTTP   *stdhttp.Server
 	health *health.Registry
+	web    *webFiles
 }
 
 var Module = fx.Options(fx.Provide(NewServer, func(s *Server) *echo.Echo { return s.Echo }))
@@ -55,10 +56,26 @@ func NewServer(lifecycle fx.Lifecycle, cfg config.Config, registry *health.Regis
 	})
 	server := &stdhttp.Server{Addr: cfg.Server.Address, Handler: e, ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout, ReadTimeout: cfg.Server.ReadTimeout, WriteTimeout: cfg.Server.WriteTimeout, IdleTimeout: cfg.Server.IdleTimeout}
 	s := &Server{Echo: e, HTTP: server, health: registry}
+	if cfg.Server.WebDirectory != "" {
+		e.GET("/", s.webIndex)
+		e.HEAD("/", s.webIndex)
+		e.GET("/assets/*", s.webAsset)
+		e.HEAD("/assets/*", s.webAsset)
+	}
 	lifecycle.Append(fx.Hook{
 		OnStart: func(context.Context) error {
+			if cfg.Server.WebDirectory != "" {
+				var err error
+				s.web, err = openWeb(cfg.Server.WebDirectory)
+				if err != nil {
+					return err
+				}
+			}
 			listener, err := net.Listen("tcp", cfg.Server.Address)
 			if err != nil {
+				if s.web != nil {
+					s.web.close()
+				}
 				return err
 			}
 			registry.SetReady(true)
@@ -72,6 +89,9 @@ func NewServer(lifecycle fx.Lifecycle, cfg config.Config, registry *health.Regis
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
+			if s.web != nil {
+				defer s.web.close()
+			}
 			registry.SetReady(false)
 			if err := server.Shutdown(ctx); err != nil {
 				_ = server.Close()
