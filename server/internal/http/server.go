@@ -15,12 +15,16 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/server/config"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/health"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/service"
 
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/vo"
 )
 
 // Server 由 Fx 按依赖顺序启动，并在退出时停止接受业务请求。
-type Dependencies struct{ fx.In }
+type Dependencies struct {
+	fx.In
+	Access *service.Access `optional:"true"`
+}
 
 type Server struct {
 	Echo   *echo.Echo
@@ -32,7 +36,7 @@ var Module = fx.Options(fx.Provide(NewServer, func(s *Server) *echo.Echo { retur
 
 func NewServer(lifecycle fx.Lifecycle, cfg config.Config, registry *health.Registry, shutdown fx.Shutdowner, deps Dependencies) *Server {
 	e := echo.New()
-	m := InitMiddleware(cfg)
+	m := InitMiddleware(cfg, deps.Access)
 	e.HTTPErrorHandler = m.ErrorHandler
 	if cfg.Server.Metrics {
 		metrics := prometheus.NewRegistry()
@@ -40,7 +44,7 @@ func NewServer(lifecycle fx.Lifecycle, cfg config.Config, registry *health.Regis
 		e.GET("/metrics", prom.NewHandlerWithConfig(prom.HandlerConfig{Gatherer: metrics}))
 	}
 	// Metrics 在最外层观察已完成的响应，包含鉴权拒绝和业务错误。
-	e.Use(m.Logger, m.Recover, m.CORS, middleware.BodyLimit(cfg.Server.MaxBodyBytes), m.Auth)
+	e.Use(m.Logger, m.Recover, m.Deadline, m.CORS, middleware.BodyLimit(cfg.Server.MaxBodyBytes), m.Auth)
 	e.GET("/health", func(c *echo.Context) error { return vo.CommSuccResp(c, map[string]string{"status": "alive"}) })
 	e.GET("/ready", func(c *echo.Context) error {
 		ctx, cancel := context.WithTimeout(c.Request().Context(), cfg.Server.ReadinessTimeout)

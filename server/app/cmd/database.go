@@ -8,6 +8,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/server/config"
 	gormv2 "github.com/SisyphusSQ/codex-pulse/server/internal/lib/gorm"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/repository"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/service"
 	"github.com/spf13/cobra"
 	"go.uber.org/fx"
 )
@@ -31,6 +32,19 @@ func databaseCommand() *cobra.Command {
 			})
 		}})
 	}
+	command.AddCommand(&cobra.Command{Use: "bootstrap", Short: "生成短期首次管理员码（只在受信任终端显示）", RunE: func(cmd *cobra.Command, _ []string) error {
+		return withDatabase(cmd.Context(), func(ctx context.Context, engine *gormv2.Engine) error {
+			if err := repository.NewSchema(engine).Check(ctx); err != nil {
+				return err
+			}
+			code, err := service.NewAccess(repository.NewAccess(engine)).Bootstrap(ctx)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s (expires %s)\n", code.Code, time.UnixMilli(code.ExpiresAtMS).UTC().Format(time.RFC3339))
+			return err
+		})
+	}})
 	return command
 }
 

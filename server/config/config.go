@@ -18,7 +18,6 @@ type (
 		Server         Server        `mapstructure:"server"`
 		Database       Database      `mapstructure:"database"`
 		Log            Log           `mapstructure:"log"`
-		Key            Key           `mapstructure:"key"`
 	}
 
 	Server struct {
@@ -32,6 +31,10 @@ type (
 		ShutdownTimeout   time.Duration `mapstructure:"shutdownTimeout"`
 		MaxBodyBytes      int64         `mapstructure:"maxBodyBytes"`
 		CORSOrigins       []string      `mapstructure:"corsOrigins"`
+		Origins           []string      `mapstructure:"origins"`
+		AllowHTTP         bool          `mapstructure:"allowHTTP"`
+		TrustedProxies    []string      `mapstructure:"trustedProxies"`
+		WebDirectory      string        `mapstructure:"webDirectory"`
 	}
 	Database struct {
 		Enabled         bool          `mapstructure:"enabled"`
@@ -58,30 +61,6 @@ type (
 		MaxSizeMb      int           `mapstructure:"maxSizeMB"`
 		MaxBackupCount int           `mapstructure:"maxBackupCount"`
 		MaxKeepDays    int           `mapstructure:"maxKeepDays"`
-	}
-
-	Key struct {
-		Type  string    `mapstructure:"type"`
-		Basic BasicAuth `mapstructure:"basic"`
-		AK    AKAuth    `mapstructure:"ak"`
-		JWT   JWTConfig `mapstructure:"jwt"`
-	}
-
-	BasicAuth struct {
-		User     string `mapstructure:"user"`
-		Password string `mapstructure:"password"`
-	}
-
-	AKAuth struct {
-		AccessKey string `mapstructure:"accessKey"`
-		SecretKey string `mapstructure:"secretKey"`
-	}
-
-	JWTConfig struct {
-		Namespace string        `mapstructure:"namespace"`
-		Secret    string        `mapstructure:"secret"`
-		Expire    time.Duration `mapstructure:"expire"`
-		Issuer    string        `mapstructure:"issuer"`
 	}
 
 	Cron struct {
@@ -163,16 +142,10 @@ func bindEnvironment(v *viper.Viper) error {
 		"server.shutdownTimeout",
 		"server.maxBodyBytes",
 		"server.corsOrigins",
-		"key.type",
-		"key.basic.user",
-		"key.basic.password",
-		"key.ak.accessKey",
-		"key.ak.secretKey",
-		"key.jwt.namespace",
-		"key.jwt.secret",
-		"key.jwt.expire",
-		"key.jwt.issuer",
-
+		"server.origins",
+		"server.allowHTTP",
+		"server.trustedProxies",
+		"server.webDirectory",
 		"log.output",
 		"log.fileName",
 		"log.logLevel",
@@ -250,24 +223,31 @@ func (c Config) Validate() error {
 		}
 	}
 
-	switch c.Key.Type {
-	case "none":
+	if len(c.Server.Origins) == 0 {
+		return fmt.Errorf("server.origins requires explicit entry origins")
+	}
+	for _, origin := range c.Server.Origins {
+		u, err := url.Parse(origin)
+		if err != nil || len(origin) > 255 || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || (u.Scheme != "http" && u.Scheme != "https") || strings.ContainsAny(u.Host, "*?,\\") {
+			return fmt.Errorf("server.origins requires exact HTTP(S) origins")
+		}
+		if u.Scheme == "http" && !c.Server.AllowHTTP {
+			return fmt.Errorf("HTTP origin requires explicit server.allowHTTP")
+		}
+	}
+	if c.Server.AllowHTTP {
 		host, _, _ := net.SplitHostPort(c.Server.Address)
 		ip := net.ParseIP(host)
-		if !c.Debug || ip == nil || !ip.IsLoopback() {
-			return fmt.Errorf("key.type none requires debug and a loopback listener")
+		_, tailnet, _ := net.ParseCIDR("100.64.0.0/10")
+		if ip == nil || !(ip.IsLoopback() || ip.IsPrivate() || tailnet.Contains(ip)) {
+			return fmt.Errorf("private HTTP requires a concrete loopback, LAN or Tailnet listen address")
 		}
-	case "basic":
-		if c.Key.Basic.User == "" || c.Key.Basic.Password == "" {
-			return fmt.Errorf("basic authentication requires user and password")
-		}
-	case "key":
-		if c.Key.AK.AccessKey == "" || c.Key.AK.SecretKey == "" {
-			return fmt.Errorf("key authentication requires accessKey and secretKey")
-		}
-
-	default:
-		return fmt.Errorf("unsupported key.type %q", c.Key.Type)
 	}
+	for _, proxy := range c.Server.TrustedProxies {
+		if _, _, err := net.ParseCIDR(proxy); err != nil {
+			return fmt.Errorf("trusted proxy requires an explicit CIDR")
+		}
+	}
+
 	return nil
 }

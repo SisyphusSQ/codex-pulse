@@ -17,6 +17,7 @@ func runtimeConfig(t *testing.T) config.Config {
 		t.Fatal(err)
 	}
 	cfg.Server.Address = "127.0.0.1:0"
+	cfg.Database.Enabled = false
 	cfg.ContextTimeout = time.Second
 	if err := log.New(cfg); err != nil {
 		t.Fatal(err)

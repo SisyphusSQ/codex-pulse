@@ -16,26 +16,21 @@ func TestLoadDefaultConfig(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsIncompleteJWT(t *testing.T) {
+func TestHTTPRequiresExplicitPrivateBinding(t *testing.T) {
 	cfg, err := Load("config.yml")
 	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatal(err)
 	}
-	cfg.Key.Type = "jwt"
-	cfg.Key.JWT.Secret = "short"
-	if err = cfg.Validate(); err == nil {
-		t.Fatal("Validate() expected JWT error, got nil")
+	cfg.Server.Address = "0.0.0.0:8080"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("public HTTP binding accepted")
 	}
-}
-
-func TestValidateRejectsUnauthenticatedNonDebugMode(t *testing.T) {
-	cfg, err := Load("config.yml")
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+	cfg.Server.Address = "100.100.100.100:8080"
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
 	}
-	cfg.Debug = false
-	cfg.Key.Type = "none"
-	if err = cfg.Validate(); err == nil {
-		t.Fatal("Validate() accepted key.type none outside debug mode")
+	cfg.Server.AllowHTTP = false
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("HTTP origin accepted without explicit mode")
 	}
 }

@@ -1,31 +1,50 @@
 package http
 
 import (
-	"crypto/subtle"
+	"context"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 	"uuid"
 
 	"github.com/SisyphusSQ/codex-pulse/server/config"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/models/dto"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/vo"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/requestinfo"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/service"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 )
 
-type EchoMiddleware struct{ config config.Config }
+type EchoMiddleware struct {
+	config  config.Config
+	access  *service.Access
+	pairing *pairingLimiter
+}
 
 var validRequestID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 
-func InitMiddleware(cfg config.Config) *EchoMiddleware { return &EchoMiddleware{config: cfg} }
+func InitMiddleware(cfg config.Config, access *service.Access) *EchoMiddleware {
+	return &EchoMiddleware{config: cfg, access: access, pairing: newPairingLimiter()}
+}
 func (e *EchoMiddleware) CORS(next echo.HandlerFunc) echo.HandlerFunc {
-	return middleware.CORSWithConfig(middleware.CORSConfig{AllowOrigins: e.config.Server.CORSOrigins, AllowHeaders: []string{"Content-Type", "Authorization", "access_key", "secret_key", "X-Request-ID"}, ExposeHeaders: []string{"X-Request-ID"}})(next)
+	return middleware.CORSWithConfig(middleware.CORSConfig{AllowOrigins: e.config.Server.CORSOrigins, AllowHeaders: []string{"Content-Type", "Authorization", "X-Pulse-CSRF", "X-Request-ID"}, AllowCredentials: true, ExposeHeaders: []string{"X-Request-ID"}})(next)
 }
 func (e *EchoMiddleware) Recover(next echo.HandlerFunc) echo.HandlerFunc {
 	return middleware.Recover()(next)
+}
+
+// Deadline 给一次完整请求共享截止时间，数据库/事务不能逐次延长整体预算。
+func (e *EchoMiddleware) Deadline(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c *echo.Context) error {
+		ctx, cancel := context.WithTimeout(c.Request().Context(), e.config.ContextTimeout)
+		defer cancel()
+		c.SetRequest(c.Request().WithContext(ctx))
+		return next(c)
+	}
 }
 func (e *EchoMiddleware) Logger(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c *echo.Context) error {
@@ -49,31 +68,78 @@ func (e *EchoMiddleware) Logger(next echo.HandlerFunc) echo.HandlerFunc {
 		return nil
 	}
 }
+
+const principalKey = "pulse.principal"
+
+func Principal(c *echo.Context) dto.Principal {
+	principal, _ := c.Get(principalKey).(dto.Principal)
+	return principal
+}
+
+func SessionCookieName(origin string) string {
+	if strings.HasPrefix(origin, "https://") {
+		return "__Host-pulse_session"
+	}
+	return "pulse_session"
+}
+
 func (e *EchoMiddleware) Auth(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c *echo.Context) error {
-		if e.isPublicURI(c.Request().URL.Path) {
+		request := c.Request()
+		c.Response().Header().Set("X-Content-Type-Options", "nosniff")
+		c.Response().Header().Set("Cache-Control", "no-store")
+		c.Response().Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
+		if (request.Method == http.MethodGet || request.Method == http.MethodHead) && (request.URL.Path == "/health" || request.URL.Path == "/ready") {
 			return next(c)
 		}
-		switch e.config.Key.Type {
-		case "none":
-			return next(c) // Config.Validate 限制为 loopback debug。
-		case "basic":
-			user, password, ok := c.Request().BasicAuth()
-			if ok && equal(user, e.config.Key.Basic.User) && equal(password, e.config.Key.Basic.Password) {
-				return next(c)
-			}
-		case "key":
-			if equal(c.Request().Header.Get("access_key"), e.config.Key.AK.AccessKey) && equal(c.Request().Header.Get("secret_key"), e.config.Key.AK.SecretKey) {
-				return next(c)
-			}
-
+		// 公开静态壳仅提供登录界面，业务 API 永远通过统一授权。
+		if request.Method == http.MethodGet && (c.Path() == "/" || c.Path() == "/assets/*") {
+			return next(c)
 		}
-		return utils.ErrUnauthorized
+		origin, err := RequestOrigin(request, e.config)
+		if err != nil {
+			return err
+		}
+		if request.Method == http.MethodPost && request.URL.Path == "/api/v1/pair" {
+			if !e.pairing.Allow(request.RemoteAddr, time.Now()) {
+				return echo.NewHTTPError(http.StatusTooManyRequests, http.StatusText(http.StatusTooManyRequests))
+			}
+			return next(c)
+		}
+		if e.access == nil {
+			return utils.ErrUnauthorized
+		}
+		mutation := request.Method != http.MethodGet && request.Method != http.MethodHead && request.Method != http.MethodOptions
+		var principal dto.Principal
+		if header := request.Header.Get("Authorization"); header != "" {
+			credential, ok := strings.CutPrefix(header, "Bearer ")
+			if !ok {
+				return utils.ErrUnauthorized
+			}
+			principal, err = e.access.Authenticate(request.Context(), credential, "", "", false, mutation)
+			if err != nil {
+				return err
+			}
+			allowed := (request.Method == http.MethodPost && request.URL.Path == "/api/v1/batches") || (request.Method == http.MethodGet && request.URL.Path == "/api/v1/sync")
+			if !allowed {
+				return utils.ErrForbidden
+			}
+		} else {
+			cookie, cookieErr := request.Cookie(SessionCookieName(origin))
+			if cookieErr != nil {
+				return utils.ErrUnauthorized
+			}
+			if mutation && request.Header.Get("Origin") != origin {
+				return utils.ErrForbidden
+			}
+			principal, err = e.access.Authenticate(request.Context(), cookie.Value, origin, request.Header.Get("X-Pulse-CSRF"), true, mutation)
+			if err != nil {
+				return err
+			}
+		}
+		c.Set(principalKey, principal)
+		return next(c)
 	}
-}
-func equal(a, b string) bool { return b != "" && subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1 }
-func (e *EchoMiddleware) isPublicURI(path string) bool {
-	return path == "/health" || path == "/ready"
 }
 
 func (e *EchoMiddleware) ErrorHandler(c *echo.Context, err error) {

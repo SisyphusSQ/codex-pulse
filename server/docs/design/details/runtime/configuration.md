@@ -1,23 +1,23 @@
-# 配置
+# 中心配置
 
-使用独立 Viper 实例和严格解码，未知字段及错误类型导致启动失败。duration 使用 `5s`、`2h` 等字符串。环境变量以 APP_ 开头，点替换为下划线，如 `APP_SERVER_ADDRESS`、`APP_DATABASE_ENABLED`。
+Viper 严格解码，未知字段拒绝启动。环境变量以 `APP_` 开头，将点换成下划线，例如 `APP_DATABASE_PATH`、`APP_SERVER_ADDRESS`；duration 使用 `5s`、`2h`。
 
-| 配置 | 含义 |
-|---|---|
-| debug | 是否开发模式，不改变生产鉴权要求 |
-| contextTimeout | 启动和业务调用的默认截止时间 |
-| server.address | host:port；无鉴权只允许环回 IP |
-| server.readinessTimeout | 就绪检查总超时 |
-| server.metrics | 是否注册 `/metrics`，与查询客户端独立 |
-| server.corsOrigins | 精确 Origin 列表，不接受通配符 |
-| log.output | stdout、file 或 both；默认 JSON 标准输出 |
-| log.fileName / rotation limits | 文件日志及轮转，stdout 时不创建文件 |
-| key.type | none / basic / key，以及生成时选入的 jwt |
-| database/mongodb/redis/lark/prometheus.enabled | 启用相应组件；未生成的组件配置会被严格解码拒绝 |
-| cron.on | 开启调度器；默认 false |
+| 配置 | 语义 |
+| --- | --- |
+| server.address | 明确的 host:port。HTTP 模式必须绑定具体环回、LAN 或 Tailnet IP，拒绝无范围的公网监听 |
+| server.origins | 精确中心入口 Origin，不带路径/查询/通配。可同时配置 HTTPS 与显式私网 HTTP |
+| server.allowHTTP | 显式私网 HTTP 开关；不会因 HTTPS 失败降级，也不豁免鉴权 |
+| server.trustedProxies | 仅可信 TLS 终止代理的精确 CIDR，默认空。普通 forwarded header 不影响入口身份 |
+| server.corsOrigins | 精确跨域 Origin 白名单。官方 Web 使用同域 API；开发代理保留原始 Host（changeOrigin:false） |
+| server.webDirectory | Web 构建静态资源目录，无业务秘密 |
+| server.maxBodyBytes | 当前上报请求上限 8 MiB；配对/管理请求另限 4 KiB，超预算明确拒绝 |
+| database.enabled | 中心 HTTP 与 db CLI 要求数据库开启 |
+| database.driver / path | sqlite 开发 dialect；父目录 0700、文件 0600，独立于本机库 |
+| database.host / username / password / database | mysql 配置；秘密通过受保护环境或配置提供，仓库样例为空 |
+| database.tls | mysql 明确 true 或 false；true 校验证书，false 只用于已确认私有数据库链路，不自动降级 |
+| contextTimeout / server timeouts | 启动、数据库 I/O 与 HTTP 的有界等待 |
+| log.output / rotation limits | 有限结构化日志，不写 payload、凭据、账号资料或完整 DSN |
 
-本次生成包含：MySQL=true，MongoDB=false，Redis=false，cron=false，Lark=false，Prometheus query=false，JWT=false，examples=false。
+没有 key.type/basic/AK/JWT 登录配置。统一设备码有效 10 分钟、仅消费一次，浏览器会话有效 14 天；设备凭证在撤销前持续有效。服务端只保存摘要，HTTP/HTTPS 权限相同。HTTPS 采用 __Host-pulse_session Cookie，私网 HTTP 采用 pulse_session；会话绑定入口，不跨协议自动共享。
 
-已包含但未启用的组件不要求连接信息、不建立连接、不参与就绪检查。已启用且必需的数据库或 Redis 连接失败时启动失败。
-
-生产使用 config_docker.yml 或单独维护的配置；默认 AK 凭据为空，必须由部署方提供。禁止在仓库中保存真实密钥。
+首次运行顺序为 db init → 受控 db bootstrap → HTTP → 浏览器输入码 → 管理端签发设备码。首次码只在受信任终端显示；不要把终端截图、配对码或秘密放入提交证据。当前 config_docker.yml 是需要填入实际代理/数据库环境的部署样例，未进行生产部署或 MySQL 整体联调。

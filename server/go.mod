@@ -4,6 +4,7 @@ go 1.27.1
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/SisyphusSQ/codex-pulse v0.0.0-00010101000000-000000000000
 	github.com/fatih/color v1.19.0
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/labstack/echo-contrib/v5 v5.0.1
@@ -61,3 +62,5 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.53.0 // indirect
 )
+
+replace github.com/SisyphusSQ/codex-pulse => ../

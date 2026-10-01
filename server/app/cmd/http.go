@@ -37,6 +37,9 @@ func initHTTP(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	if !c.Database.Enabled {
+		return fmt.Errorf("center database must be enabled")
+	}
 	if err = log.New(c); err != nil {
 		return err
 	}

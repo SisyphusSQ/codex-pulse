@@ -6,7 +6,8 @@ import (
 )
 
 func Module(cfg config.Config) fx.Option {
-	options := []fx.Option{fx.Provide()}
-
-	return fx.Options(options...)
+	if !cfg.Database.Enabled {
+		return fx.Options()
+	}
+	return fx.Provide(NewAccess)
 }
