@@ -17,10 +17,15 @@ type Exporter struct {
 	repository  *store.Repository
 	preferences Preferences
 	state       *State
+	identities  AccountIdentitySource
 }
 
-func NewExporter(repository *store.Repository, prefs Preferences, state *State) *Exporter {
-	return &Exporter{repository: repository, preferences: prefs, state: state}
+func NewExporter(repository *store.Repository, prefs Preferences, state *State, identities ...AccountIdentitySource) *Exporter {
+	e := &Exporter{repository: repository, preferences: prefs, state: state}
+	if len(identities) > 0 {
+		e.identities = identities[0]
+	}
+	return e
 }
 func (e *Exporter) source(ctx context.Context, provider string, start int64) (store.ReportingSource, error) {
 	prefs, err := e.preferences.LoadPreferences(ctx)

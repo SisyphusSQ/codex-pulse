@@ -385,6 +385,55 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 			return false, ErrUnavailable
 		}
 	}
+
+	for _, provider := range []string{"codex", "cursor", "grok"} {
+		partition, err := r.source.FactsPartition(ctx, provider)
+		if errors.Is(err, store.ErrReportingSource) {
+			missing = true
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		cursor, err := r.state.cursor(ctx, cfg.partition(), "quota:"+provider, partition)
+		if err != nil {
+			return false, ErrUnavailable
+		}
+		if cursor.NextDueAtMS > now {
+			continue
+		}
+		page, err := r.source.Facts(ctx, provider, cursor.After, cfg.HistoryStartAtMS)
+		if errors.Is(err, store.ErrReportingSource) {
+			missing = true
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		if page.Partition != partition {
+			missing = true
+			continue
+		}
+		changed, err := r.state.EnqueueFactGroups(ctx, cfg.partition(), page.Groups)
+		if err != nil {
+			return false, err
+		}
+		again = again || changed
+
+		if page.Done {
+			cursor.After = ""
+			cursor.NextDueAtMS = now + cfg.IntervalSeconds*1000
+		} else {
+			if page.Next == "" || page.Next == cursor.After {
+				return false, ErrProtocol
+			}
+			cursor.After = page.Next
+			again = true
+		}
+		if err := r.state.saveCursor(ctx, cursor); err != nil {
+			return false, ErrUnavailable
+		}
+	}
 	if missing {
 		cfg.State = "partial"
 	}

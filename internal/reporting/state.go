@@ -61,11 +61,13 @@ func OpenState(ctx context.Context, path string) (*State, error) {
 			if err := tx.Raw("SELECT version FROM reporting_schema WHERE id=1").Scan(&version).Error; err != nil {
 				return err
 			}
-			if version != 1 {
+			if version != 1 && version != 2 {
 				return ErrUnavailable
 			}
 		}
 		for _, sql := range []string{
+			`CREATE TABLE IF NOT EXISTS reporting_account_identities(provider TEXT NOT NULL,local_scope TEXT NOT NULL,account_id TEXT NOT NULL,email TEXT,plan TEXT,confirmed_at_ms INTEGER NOT NULL,collected_at_ms INTEGER NOT NULL,PRIMARY KEY(provider,local_scope)) STRICT`,
+			`CREATE TABLE IF NOT EXISTS reporting_facts_checkpoints(partition TEXT NOT NULL,source_key TEXT NOT NULL,digest TEXT NOT NULL,PRIMARY KEY(partition,source_key)) STRICT`,
 			`CREATE TABLE IF NOT EXISTS reporting_schema (id INTEGER PRIMARY KEY CHECK(id=1), version INTEGER NOT NULL, salt BLOB NOT NULL CHECK(length(salt)=32)) STRICT`,
 			`CREATE TABLE IF NOT EXISTS reporting_settings (id INTEGER PRIMARY KEY CHECK(id=1),endpoint TEXT NOT NULL,client_id TEXT NOT NULL,credential TEXT NOT NULL,enabled INTEGER NOT NULL,allow_http INTEGER NOT NULL,interval_seconds INTEGER NOT NULL,history_start_at_ms INTEGER NOT NULL,state TEXT NOT NULL,last_attempt_at_ms INTEGER,last_success_at_ms INTEGER) STRICT`,
 			`CREATE TABLE IF NOT EXISTS reporting_outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT,partition TEXT NOT NULL,batch_id TEXT NOT NULL UNIQUE,source_key TEXT NOT NULL,revision INTEGER NOT NULL,body BLOB NOT NULL) STRICT`,
@@ -94,8 +96,13 @@ func OpenState(ctx context.Context, path string) (*State, error) {
 		} else if result.Error != nil {
 			return result.Error
 		}
-		if schema.Version != 1 || len(schema.Salt) != 32 {
+		if (schema.Version != 1 && schema.Version != 2) || len(schema.Salt) != 32 {
 			return ErrUnavailable
+		}
+		if schema.Version == 1 {
+			if err := tx.Exec("UPDATE reporting_schema SET version=2 WHERE id=1 AND version=1").Error; err != nil {
+				return err
+			}
 		}
 		state.salt = append([]byte(nil), schema.Salt...)
 		var count int64
@@ -279,6 +286,9 @@ func (s *State) clearPending(ctx context.Context, partition string) error {
 		if err := tx.Where("partition = ?", partition).Delete(&queued{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("partition = ?", partition).Delete(&factsCheckpoint{}).Error; err != nil {
+			return err
+		}
 		// Keep revision monotonic, but force fresh export after the explicit discard.
 		return tx.Model(&checkpoint{}).Where("partition = ?", partition).Update("digest", "").Error
 	})
@@ -324,7 +334,13 @@ func reportingQueueKey(s reportingv1.SessionSnapshot) string {
 func (s *State) hasExport(ctx context.Context, partition string) (present bool, err error) {
 	var count int64
 	err = s.db.View(ctx, func(_ context.Context, db *gorm.DB) error {
-		return db.Model(&checkpoint{}).Where("partition = ?", partition).Count(&count).Error
+		if err := db.Model(&checkpoint{}).Where("partition = ?", partition).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return nil
+		}
+		return db.Model(&factsCheckpoint{}).Where("partition = ?", partition).Count(&count).Error
 	})
 	return count > 0, err
 }
@@ -353,4 +369,196 @@ func (s *State) EnqueueFacts(ctx context.Context, partition string, batch report
 		}
 		return db.Create(&queued{Partition: partition, BatchID: batch.ID, Body: body}).Error
 	})
+}
+
+// EnqueueCheckedFacts 只在允许字段发生变化时入队；确认丢失仍重发原批次。
+func (s *State) EnqueueCheckedFacts(ctx context.Context, partition, key string, batch reportingv1.Batch) (changed bool, err error) {
+	if !boundedFactsKey(key) || len(batch.Sessions) != 0 {
+		return false, ErrProtocol
+	}
+	batch.Version = reportingv1.Version
+	batch.ID = "00000000-0000-0000-0000-000000000000"
+	if batch.Validate() != nil {
+		return false, ErrProtocol
+	}
+	bytes, err := json.Marshal(batch)
+	if err != nil {
+		return false, ErrProtocol
+	}
+	sum := sha256.Sum256(bytes)
+	digest := hex.EncodeToString(sum[:])
+	batch.ID = uuid.NewString()
+	body, err := json.Marshal(batch)
+	if err != nil {
+		return false, ErrProtocol
+	}
+	if len(body) > reportingv1.MaxBodyBytes {
+		return false, ErrQueueFull
+	}
+	err = s.db.Write(ctx, func(_ context.Context, db *gorm.DB) error {
+		var previous factsCheckpoint
+		result := db.Where("partition = ? AND source_key = ?", partition, key).Take(&previous)
+		if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return result.Error
+		}
+		if previous.Digest == digest {
+			return nil
+		}
+		var budget struct{ Count, Bytes int64 }
+		if err := db.Model(&queued{}).Select("COUNT(*) AS count,COALESCE(SUM(length(body)),0) AS bytes").Scan(&budget).Error; err != nil {
+			return err
+		}
+		if budget.Count >= QueueBatchBudget || budget.Bytes+int64(len(body)) > QueueByteBudget {
+			return ErrQueueFull
+		}
+		if err := db.Create(&queued{Partition: partition, BatchID: batch.ID, Body: body}).Error; err != nil {
+			return err
+		}
+		if err := db.Save(&factsCheckpoint{Partition: partition, SourceKey: key, Digest: digest}).Error; err != nil {
+			return err
+		}
+		changed = true
+		return nil
+	})
+	return
+}
+
+// EnqueueFactGroups 将有变化的事实装成有界批次。正文与所有 checkpoint 一次提交，
+// 避免历史补传逐条上报的生产速度超过上传速度，也避免半页成功推进游标。
+func (s *State) EnqueueFactGroups(ctx context.Context, partition string, groups []FactsGroup) (changed bool, err error) {
+	if len(groups) > 1000 {
+		return false, ErrQueueFull
+	}
+	err = s.db.Write(ctx, func(_ context.Context, db *gorm.DB) error {
+		checkpoints := []factsCheckpoint{}
+		batches := []reportingv1.Batch{}
+		current := reportingv1.Batch{Version: 1, ID: "00000000-0000-0000-0000-000000000000"}
+		seen := map[string]string{}
+		for _, group := range groups {
+			if !boundedFactsKey(group.Key) || len(group.Batch.Sessions) != 0 {
+				return ErrProtocol
+			}
+			batch := group.Batch
+			batch.Version = 1
+			batch.ID = "00000000-0000-0000-0000-000000000000"
+			if batch.Validate() != nil {
+				return ErrProtocol
+			}
+			body, err := json.Marshal(batch)
+			if err != nil {
+				return ErrProtocol
+			}
+			sum := sha256.Sum256(body)
+			digest := hex.EncodeToString(sum[:])
+			if earlier, ok := seen[group.Key]; ok {
+				if earlier != digest {
+					return ErrProtocol
+				}
+				continue
+			}
+			seen[group.Key] = digest
+			var previous factsCheckpoint
+			result := db.Where("partition = ? AND source_key = ?", partition, group.Key).Take(&previous)
+			if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+				return result.Error
+			}
+			if previous.Digest == digest {
+				continue
+			}
+			candidate := mergeFactBatch(current, batch)
+			encoded, err := json.Marshal(candidate)
+			if err != nil {
+				return ErrProtocol
+			}
+			if candidate.Validate() != nil || len(encoded) > reportingv1.MaxBodyBytes {
+				if len(current.Accounts)+len(current.Bindings)+len(current.Quotas)+len(current.Credits)+len(current.Status) == 0 {
+					return ErrQueueFull
+				}
+				batches = append(batches, current)
+				current = batch
+			} else {
+				current = candidate
+			}
+			checkpoints = append(checkpoints, factsCheckpoint{Partition: partition, SourceKey: group.Key, Digest: digest})
+		}
+		if len(checkpoints) == 0 {
+			return nil
+		}
+		if len(current.Accounts)+len(current.Bindings)+len(current.Quotas)+len(current.Credits)+len(current.Status) > 0 {
+			batches = append(batches, current)
+		}
+		rows := make([]queued, 0, len(batches))
+		totalBytes := int64(0)
+		for _, batch := range batches {
+			batch.ID = uuid.NewString()
+			body, err := json.Marshal(batch)
+			if err != nil {
+				return ErrProtocol
+			}
+			if len(body) > reportingv1.MaxBodyBytes {
+				return ErrQueueFull
+			}
+			rows = append(rows, queued{Partition: partition, BatchID: batch.ID, Body: body})
+			totalBytes += int64(len(body))
+		}
+		var budget struct{ Count, Bytes int64 }
+		if err := db.Model(&queued{}).Select("COUNT(*) AS count,COALESCE(SUM(length(body)),0) AS bytes").Scan(&budget).Error; err != nil {
+			return err
+		}
+		if budget.Count+int64(len(rows)) > QueueBatchBudget || budget.Bytes+totalBytes > QueueByteBudget {
+			return ErrQueueFull
+		}
+		if err := db.CreateInBatches(rows, 32).Error; err != nil {
+			return err
+		}
+		if err := db.Save(&checkpoints).Error; err != nil {
+			return err
+		}
+		changed = true
+		return nil
+	})
+	return
+}
+func mergeFactBatch(a, b reportingv1.Batch) reportingv1.Batch {
+	a.Accounts = append([]reportingv1.Account(nil), a.Accounts...)
+	a.Bindings = append([]reportingv1.AccountBinding(nil), a.Bindings...)
+	a.Quotas = append(append([]reportingv1.QuotaObservation(nil), a.Quotas...), b.Quotas...)
+	a.Credits = append(append([]reportingv1.ResetCredits(nil), a.Credits...), b.Credits...)
+	a.Status = append(append([]reportingv1.DeviceStatus(nil), a.Status...), b.Status...)
+	for _, account := range b.Accounts {
+		found := false
+		for i, old := range a.Accounts {
+			if old.Provider == account.Provider && old.ID == account.ID {
+				if old.CollectedAtMS <= account.CollectedAtMS {
+					a.Accounts[i] = account
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			a.Accounts = append(a.Accounts, account)
+		}
+	}
+	for _, binding := range b.Bindings {
+		found := false
+		for i, old := range a.Bindings {
+			if old.Provider == binding.Provider && old.LocalScope == binding.LocalScope {
+				if old.AccountID != binding.AccountID {
+					a.Bindings = append(a.Bindings, binding)
+					found = true
+					break
+				}
+				if old.ConfirmedAtMS <= binding.ConfirmedAtMS {
+					a.Bindings[i] = binding
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			a.Bindings = append(a.Bindings, binding)
+		}
+	}
+	return a
 }

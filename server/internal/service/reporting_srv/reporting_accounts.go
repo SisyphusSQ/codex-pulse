@@ -75,12 +75,16 @@ func (s *Reporting) acceptAccountFacts(ctx context.Context, p access_dto.Princip
 		}
 	}
 	for _, q := range batch.Quotas {
-		accountKey, err := s.resolveAccount(ctx, p, q.Provider, q.LocalScope, q.AccountID, q.HistoryOrigin)
+		proofScope := q.LocalScope
+		if q.AssociationScope != nil {
+			proofScope = *q.AssociationScope
+		}
+		accountKey, err := s.resolveAccount(ctx, p, q.Provider, proofScope, q.AccountID, q.HistoryOrigin)
 		if err != nil {
 			return err
 		}
 		id := reportingv1.Key(p.ID, q.Provider, q.ID)
-		row := reporting_do.QuotaObservation{ID: id, ClientID: p.ID, Provider: q.Provider, AccountKey: accountKey, LocalScope: q.LocalScope, ObservationID: q.ID, LimitID: q.LimitID, WindowKind: q.WindowKind, WindowMinutes: q.WindowMinutes, ResetsAtMS: q.ResetsAtMS, ObservedAtMS: q.ObservedAtMS, UsedPercent: normalizedPercent(q.UsedPercent), Validity: q.Validity, Source: q.Source, HistoryOrigin: q.HistoryOrigin, ReceivedAtMS: received}
+		row := reporting_do.QuotaObservation{AssociationScope: q.AssociationScope, WindowStartAtMS: q.WindowStartAtMS, ID: id, ClientID: p.ID, Provider: q.Provider, AccountKey: accountKey, LocalScope: q.LocalScope, ObservationID: q.ID, LimitID: q.LimitID, WindowKind: q.WindowKind, WindowMinutes: q.WindowMinutes, ResetsAtMS: q.ResetsAtMS, ObservedAtMS: q.ObservedAtMS, UsedPercent: normalizedPercent(q.UsedPercent), Validity: q.Validity, Source: q.Source, HistoryOrigin: q.HistoryOrigin, ReceivedAtMS: received}
 		if accountKey != nil && row.HistoryOrigin == "pending_association" {
 			row.HistoryOrigin = "confirmed"
 		}
@@ -92,6 +96,8 @@ func (s *Reporting) acceptAccountFacts(ctx context.Context, p access_dto.Princip
 			before, after := previous, row
 			before.AccountKey = nil
 			after.AccountKey = nil
+			before.AssociationScope = nil
+			after.AssociationScope = nil
 			before.HistoryOrigin = ""
 			after.HistoryOrigin = ""
 			before.ReceivedAtMS = 0
@@ -119,7 +125,11 @@ func (s *Reporting) acceptAccountFacts(ctx context.Context, p access_dto.Princip
 			return err
 		}
 		id := reportingv1.Key(p.ID, c.Provider, c.ID)
-		row := reporting_do.ResetCredits{ID: id, ClientID: p.ID, Provider: c.Provider, AccountKey: accountKey, LocalScope: c.LocalScope, ObservedAtMS: c.ObservedAtMS, Inventory: c.Inventory, Status: c.Status, NextResetAtMS: c.NextResetAtMS}
+		schedule, err := json.Marshal(c.ExpirySchedule)
+		if err != nil {
+			return err
+		}
+		row := reporting_do.ResetCredits{DetailsStatus: c.DetailsStatus, ExpirySchedule: string(schedule), NextExpiresAtMS: c.NextExpiresAtMS, ID: id, ClientID: p.ID, Provider: c.Provider, AccountKey: accountKey, LocalScope: c.LocalScope, ObservedAtMS: c.ObservedAtMS, Inventory: c.Inventory, Status: c.Status, NextResetAtMS: c.NextResetAtMS}
 		previous, err := s.repository.Credits(ctx, id)
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err

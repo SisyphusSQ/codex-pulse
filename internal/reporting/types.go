@@ -54,6 +54,8 @@ type ExportPage struct {
 	Authority bool
 }
 type Source interface {
+	FactsPartition(context.Context, string) (string, error)
+	Facts(context.Context, string, string, int64) (ExportFactsPage, error)
 	Page(context.Context, string, string, int64) (ExportPage, error)
 	Partition(context.Context, string) (string, error)
 	Status(context.Context, string, int64) (reportingv1.DeviceStatus, error)

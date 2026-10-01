@@ -276,6 +276,57 @@ func TestReportingCreditsPendingBindingAndSixDigitPercent(t *testing.T) {
 	}
 }
 
+func TestLegacyQuotaLinkUnlinkAndCreditsPreserveOriginalFacts(t *testing.T) {
+	s, db, clients := reportingFixture(t)
+	ctx := t.Context()
+	binding := reportingv1.AccountBinding{Provider: "codex", LocalScope: "proof-a", AccountID: "raw-a", ConfirmedAtMS: 2000}
+	send := func(client access_dto.Principal, b reportingv1.Batch) error {
+		b.Version, b.ID = 1, uuid.New().String()
+		_, err := s.Accept(ctx, client, b)
+		return err
+	}
+	if err := send(clients[1], reportingv1.Batch{Bindings: []reportingv1.AccountBinding{binding}}); err != nil {
+		t.Fatal(err)
+	}
+	q := reportingv1.QuotaObservation{Provider: "codex", ID: "legacy-link", LocalScope: "default", AssociationScope: new("proof-a"), AccountID: new("raw-a"), LimitID: "codex", WindowKind: "primary", WindowMinutes: new(int64(300)), ResetsAtMS: new(int64(18000000)), ObservedAtMS: 1000, UsedPercent: new(0.0), Validity: "accepted", Source: "legacy_wham", HistoryOrigin: "linked_history"}
+	if err := send(clients[0], reportingv1.Batch{Quotas: []reportingv1.QuotaObservation{q}}); !errors.Is(err, utils.ErrBadParamInput) {
+		t.Fatal("other device proof accepted", err)
+	}
+	if err := send(clients[0], reportingv1.Batch{Bindings: []reportingv1.AccountBinding{binding}, Quotas: []reportingv1.QuotaObservation{q}}); err != nil {
+		t.Fatal(err)
+	}
+	var row reporting_do.QuotaObservation
+	if err := db.Where("observation_id = ?", q.ID).Take(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	firstReceipt := row.ReceivedAtMS
+	if row.AccountKey == nil || row.ObservedAtMS != 1000 || row.LocalScope != "default" {
+		t.Fatal("link changed original fact")
+	}
+	q.AccountID, q.AssociationScope, q.HistoryOrigin = nil, nil, "legacy_unassigned"
+	if err := send(clients[0], reportingv1.Batch{Quotas: []reportingv1.QuotaObservation{q}}); err != nil {
+		t.Fatal(err)
+	}
+	row = reporting_do.QuotaObservation{}
+	if err := db.Where("observation_id = ?", q.ID).Take(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.AccountKey != nil || row.ReceivedAtMS != firstReceipt {
+		t.Fatal("unlink did not preserve receipt/history")
+	}
+	c := reportingv1.ResetCredits{Provider: "codex", ID: "expiry-fact", LocalScope: "proof-a", AccountID: new("raw-a"), ObservedAtMS: 1000, Inventory: new(int64(2)), Status: "accepted", DetailsStatus: "complete", NextExpiresAtMS: new(int64(5000)), ExpirySchedule: []reportingv1.CreditExpiry{{ExpiresAtMS: new(int64(5000)), Count: 2}}}
+	if err := send(clients[0], reportingv1.Batch{Credits: []reportingv1.ResetCredits{c}}); err != nil {
+		t.Fatal(err)
+	}
+	var credits reporting_do.ResetCredits
+	if err := db.Where("id = ?", reportingv1.Key(clients[0].ID, "codex", c.ID)).Take(&credits).Error; err != nil {
+		t.Fatal(err)
+	}
+	if credits.NextResetAtMS != nil || credits.NextExpiresAtMS == nil || *credits.NextExpiresAtMS != 5000 || credits.DetailsStatus != "complete" || credits.ObservedAtMS != 1000 {
+		t.Fatal("expiry became reset/current time")
+	}
+}
+
 func TestReportingProjectAssociationIsExplicitAuthorizedAndReversible(t *testing.T) {
 	s, db, clients := reportingFixture(t)
 	snap := centerfixture.Snapshot()

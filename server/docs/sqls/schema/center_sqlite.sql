@@ -156,6 +156,8 @@ CREATE TABLE IF NOT EXISTS pulse_quota_observations (
     limit_id TEXT NOT NULL,
     window_kind TEXT NOT NULL,
     window_minutes INTEGER,
+    window_start_at_ms INTEGER,
+    association_scope TEXT,
     resets_at_ms INTEGER,
     observed_at_ms INTEGER NOT NULL,
     used_percent REAL,
@@ -181,6 +183,9 @@ CREATE TABLE IF NOT EXISTS pulse_reset_credits (
     inventory INTEGER,
     status TEXT NOT NULL,
     next_reset_at_ms INTEGER,
+    next_expires_at_ms INTEGER,
+    details_status TEXT NOT NULL,
+    expiry_schedule TEXT NOT NULL,
 PRIMARY KEY (id)
 );
 

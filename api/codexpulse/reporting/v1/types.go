@@ -86,31 +86,40 @@ type AccountBinding struct {
 
 // QuotaObservation 可以缺少账号关系，此时保留待关联历史。
 type QuotaObservation struct {
-	Provider      string   `json:"provider"`
-	ID            string   `json:"id"`
-	AccountID     *string  `json:"account_id"`
-	LocalScope    string   `json:"local_scope"`
-	LimitID       string   `json:"limit_id"`
-	WindowKind    string   `json:"window_kind"`
-	WindowMinutes *int64   `json:"window_minutes"`
-	ResetsAtMS    *int64   `json:"resets_at_ms"`
-	ObservedAtMS  int64    `json:"observed_at_ms"`
-	UsedPercent   *float64 `json:"used_percent"`
-	Validity      string   `json:"validity"`
-	Source        string   `json:"source"`
-	HistoryOrigin string   `json:"history_origin"`
+	AssociationScope *string  `json:"association_scope,omitempty"`
+	WindowStartAtMS  *int64   `json:"window_start_at_ms,omitempty"`
+	Provider         string   `json:"provider"`
+	ID               string   `json:"id"`
+	AccountID        *string  `json:"account_id"`
+	LocalScope       string   `json:"local_scope"`
+	LimitID          string   `json:"limit_id"`
+	WindowKind       string   `json:"window_kind"`
+	WindowMinutes    *int64   `json:"window_minutes"`
+	ResetsAtMS       *int64   `json:"resets_at_ms"`
+	ObservedAtMS     int64    `json:"observed_at_ms"`
+	UsedPercent      *float64 `json:"used_percent"`
+	Validity         string   `json:"validity"`
+	Source           string   `json:"source"`
+	HistoryOrigin    string   `json:"history_origin"`
 }
 
 // ResetCredits 不包含原始 credit ID、消费凭据或响应。
+type CreditExpiry struct {
+	ExpiresAtMS *int64 `json:"expires_at_ms"`
+	Count       int64  `json:"count,string"`
+}
 type ResetCredits struct {
-	Provider      string  `json:"provider"`
-	ID            string  `json:"id"`
-	AccountID     *string `json:"account_id"`
-	LocalScope    string  `json:"local_scope"`
-	ObservedAtMS  int64   `json:"observed_at_ms"`
-	Inventory     *int64  `json:"inventory,string"`
-	Status        string  `json:"status"`
-	NextResetAtMS *int64  `json:"next_reset_at_ms"`
+	DetailsStatus   string         `json:"details_status,omitempty"`
+	ExpirySchedule  []CreditExpiry `json:"expiry_schedule,omitempty"`
+	NextExpiresAtMS *int64         `json:"next_expires_at_ms,omitempty"`
+	Provider        string         `json:"provider"`
+	ID              string         `json:"id"`
+	AccountID       *string        `json:"account_id"`
+	LocalScope      string         `json:"local_scope"`
+	ObservedAtMS    int64          `json:"observed_at_ms"`
+	Inventory       *int64         `json:"inventory,string"`
+	Status          string         `json:"status"`
+	NextResetAtMS   *int64         `json:"next_reset_at_ms"`
 }
 
 // DeviceStatus 的新鲜度与覆盖独立于在线状态，不接收 raw error。

@@ -205,7 +205,7 @@ func openNormalRuntime(
 	reportingRuntime := &reporting.Runtime{}
 	reportingState, reportingErr := reporting.OpenState(ctx, filepath.Join(filepath.Dir(database.Config().Path), "reporting.db"))
 	if reportingErr == nil {
-		reportingRuntime = reporting.StartWithVersion(reportingState, reporting.NewExporter(factstore.NewRepository(database), preferenceStore, reportingState), config.HelperVersion)
+		reportingRuntime = reporting.StartWithVersion(reportingState, reporting.NewExporter(factstore.NewRepository(database), preferenceStore, reportingState, controlRuntime), config.HelperVersion)
 	}
 	if err := core.BindDependencies(service, core.ServiceConfig{Reporting: reportingRuntime}); err != nil {
 		_ = reportingRuntime.Close(context.Background())

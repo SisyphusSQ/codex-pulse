@@ -119,6 +119,19 @@ func (b Batch) Validate() error {
 		if !provider(q.Provider) || !identifier(q.ID, 128) || !optionalID(q.AccountID, 255) || !identifier(q.LocalScope, 128) || !identifier(q.LimitID, 128) || !identifier(q.WindowKind, 64) || !timestamp(q.ObservedAtMS) || !optionalTimestamp(q.ResetsAtMS) || !slices.Contains([]string{"accepted", "suspicious", "rejected", "unknown"}, q.Validity) || !slices.Contains([]string{"app_server", "local_jsonl", "legacy_wham", "cursor_dashboard", "grok_billing"}, q.Source) || !slices.Contains([]string{"confirmed", "pending_association", "legacy_unassigned", "linked_history"}, q.HistoryOrigin) {
 			return ErrInvalid
 		}
+		if !optionalID(q.AssociationScope, 128) || !optionalTimestamp(q.WindowStartAtMS) {
+			return ErrInvalid
+		}
+		if q.WindowStartAtMS != nil && q.ResetsAtMS != nil && *q.WindowStartAtMS >= *q.ResetsAtMS {
+			return ErrInvalid
+		}
+		if q.HistoryOrigin == "linked_history" {
+			if q.Provider != "codex" || q.LocalScope != "default" || q.AssociationScope == nil || *q.AssociationScope == "default" {
+				return ErrInvalid
+			}
+		} else if q.AssociationScope != nil {
+			return ErrInvalid
+		}
 		if q.WindowMinutes != nil && (*q.WindowMinutes <= 0 || *q.WindowMinutes > 5256000) {
 			return ErrInvalid
 		}
@@ -136,6 +149,28 @@ func (b Batch) Validate() error {
 			return ErrInvalid
 		}
 		creditsSeen[key] = true
+		if !slices.Contains([]string{"", "complete", "partial", "unavailable"}, c.DetailsStatus) || !optionalTimestamp(c.NextExpiresAtMS) || len(c.ExpirySchedule) > 100 {
+			return ErrInvalid
+		}
+		expiryCount := int64(0)
+		seenExpiry := map[int64]bool{}
+		for _, e := range c.ExpirySchedule {
+			if !optionalTimestamp(e.ExpiresAtMS) || e.Count <= 0 || e.Count > 1000000 {
+				return ErrInvalid
+			}
+			key := int64(-1)
+			if e.ExpiresAtMS != nil {
+				key = *e.ExpiresAtMS
+			}
+			if seenExpiry[key] {
+				return ErrInvalid
+			}
+			seenExpiry[key] = true
+			expiryCount += e.Count
+		}
+		if c.DetailsStatus == "complete" && (c.Inventory == nil || expiryCount != *c.Inventory) {
+			return ErrInvalid
+		}
 		if !provider(c.Provider) || !identifier(c.ID, 128) || !optionalID(c.AccountID, 255) || !identifier(c.LocalScope, 128) || !timestamp(c.ObservedAtMS) || !counter(c.Inventory) || !optionalTimestamp(c.NextResetAtMS) || !slices.Contains([]string{"fresh", "stale", "unknown", "unavailable", "accepted"}, c.Status) {
 			return ErrInvalid
 		}

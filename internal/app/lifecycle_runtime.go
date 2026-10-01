@@ -29,6 +29,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/liveindex"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/providerrefresh"
+	"github.com/SisyphusSQ/codex-pulse/internal/reporting"
 	"github.com/SisyphusSQ/codex-pulse/internal/scheduler"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
@@ -1350,3 +1351,11 @@ func applicationLifecycleDependencyError(ctx context.Context, err error) error {
 
 var _ appLifecycle.ConfirmedHomeProvider = fileConfirmedHomeProvider{}
 var _ preferences.HomeRuntime = (*applicationQuotaHomeRuntime)(nil)
+
+// ReportingAccountIdentities 复用已运行账号 owner；不会调用 account/read 或额度接口。
+func (runtime *applicationLifecycleRuntime) ReportingAccountIdentities(ctx context.Context) ([]reporting.AccountIdentity, error) {
+	if runtime.quota == nil || runtime.quota.account == nil {
+		return []reporting.AccountIdentity{}, nil
+	}
+	return runtime.quota.account.ReportingAccountIdentities(ctx)
+}

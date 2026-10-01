@@ -22,6 +22,18 @@ Invocation 仅包含工具/技能名、真实时间、结果与允许的 duratio
 
 设备覆盖与真实采集截至时间独立于接收时间；没有事实时保留 NULL。Version 是 Helper 版本。在线心跳不代表全历史完整。
 
+### 账号与配额导出
+
+Codex 原始账号 ID 仅从既有 `account/rateLimits/read` 的 typed 结果取得，经过原有前后账号一致、Home/generation fence 后记住 scope 与 ID 的关系；邮箱/套餐沿用同一已确认账号资料。上报不会另外查询配额，也不解析 auth.json/JWT。关系保存在私有 `reporting.db`，不进入 Swift、偏好或日志。账号 A 切至 B 时保留 A 的已确认关系和不可变旧队列，历史逐条按原 scope 关联；Session/Token 不被当前账号接管。
+
+Cursor/Grok 当前受支持配额链路没有可验证的原始账号关系，保持设备来源下的待关联观测；不从邮箱或认证文件推断身份。Grok 旧库只有当前快照时导出其真实观测，与历史使用相同事实键，不补造关闭期间历史。
+
+`observed_at_ms` 保留原始观测时间。Codex 合并样本只导出实际保存的首末端点；Cursor/Grok 保留实际 `window_start_at_ms`、时长和 reset，generation 只用于本机分页。`linked_history` 限于 Codex 原始 default 历史；`association_scope` 指向本机已经确认的 scope，中心验证同一 collector 的关系。解除显式关联更新归属，保持原事实、观测时间与首次 receipt；linked history 不升级为当前额度或 freshness。
+
+Reset Credits 上传库存、详情状态、按到期时间汇总的 `expiry_schedule` 和 `next_expires_at_ms`；不含 raw credit ID、请求 ID、响应或 source file。到期时间与 `next_reset_at_ms` 分开，没有已知 reset 时保持 NULL；完整详情的可用数量必须与库存对账。
+
+账号资料与事实各自计算 checkpoint，整页变更在同一事务中打包入队。分区包含 Home、已确认关系和显式历史关联 revision；前后分区不一致则不推进游标。同步库 schema 2 显式升级 schema 1，保留盐、revision、游标、凭证及原队列。
+
 ## 预算
 
 每请求最多 8 MiB；最多 32 个 Session 快照、32 个账号/关联、1,000 个配额观测、100 个 Reset Credits 记录、3 个 Provider 状态。每快照最多 20,000 条用量与调用事实之和。时间限制在 JavaScript 安全整数范围，Token/金额使用十进制字符串保留 int64 精度和 NULL/零差异。未知字段、重复字段与非法枚举由接收端拒绝，错误不回显内容。

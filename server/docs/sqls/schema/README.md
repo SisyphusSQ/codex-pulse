@@ -12,3 +12,5 @@
 SQLite 只证明开发测试结果，真实 MySQL 连接、DDL、锁、排序和备份恢复尚未验证；后续按整体联调 runbook 在 Master 记录。
 
 结构 v1 尚未正式发布。当前开发迭代新增来源仲裁/调用统计/账号关联，并保留 nullable 的会话与贡献时间、缓存写入、历史费率和舍入口径。每次结构定义变化后 checksum 改变，旧的开发中心库会拒绝启动；使用新的隔离测试库，不覆盖本机应用库。未来已发布结构只通过显式升级流程演进，不重写发布版本。
+
+配额事实保存原始 local_scope、显式 association_scope 与实际 window_start_at_ms。Credits 保存有限库存、详情状态、按到期时间合并的 JSON 分布及 next_expires_at_ms；不含 raw credit ID，未知 next_reset_at_ms 保持 NULL。到期不被解释成 reset。

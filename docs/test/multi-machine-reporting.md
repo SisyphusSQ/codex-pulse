@@ -36,6 +36,10 @@
 
 以上为开发场景通过，不表示整个产品或 Master 已验收。后续各功能增量需补充其受影响验证。
 
+- 配额导出聚焦入口：`go test ./internal/store -run '^TestReportingQuota' -count=1`、`go test ./internal/reporting ./api/codexpulse/reporting/v1`、`go test ./internal/app -run '^(TestAccountBinding|TestOptionalReporting)' -count=1`，以及 server 的 `go test ./internal/service/reporting_srv ./internal/repository/mysql/reporting_repo ./internal/architecture`。
+- Pass：Codex 同一 confirmed context 的原始账号映射和 A→B 隔离；未知历史不推断账号；私有同步库 schema 1→2 保留队列/盐；整页原子打包、重启和容量失败不推进事实 checkpoint。
+- Pass：实际观测首末时间、Cursor 真实周期历史、Grok 旧库当前快照、真实零、Credits 原始库存/详情/到期分布与 reset 分开；payload 不含原始 credit/request/file ID 或本地 generation。中心 linked history 验证自身 scope，拒绝其他设备证明，解除后保留原观测/receipt。
+
 ## 本机恢复观察
 
 同步库位于应用私有 runtime 的 `reporting.db`，父目录 0700、数据库/WAL/SHM 0600。它包含 Pulse 自有设备凭证、安装级分区盐、白名单持久队列、来源 revision 与确认进度；不与 App 主库或中心库共享 schema。不得将其上传到 Issue 或提交 Git。

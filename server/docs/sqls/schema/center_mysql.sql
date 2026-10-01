@@ -149,6 +149,8 @@ CREATE TABLE IF NOT EXISTS pulse_quota_observations (
     limit_id VARCHAR(128) COLLATE utf8mb4_bin NOT NULL COMMENT '原始安全limit标识',
     window_kind VARCHAR(64) COLLATE utf8mb4_bin NOT NULL COMMENT '来源窗口种类',
     window_minutes BIGINT NULL COMMENT '实际窗口分钟，NULL为未知',
+    window_start_at_ms BIGINT NULL COMMENT '来源明确的真实窗口起点UTC毫秒，NULL为未知',
+    association_scope VARCHAR(128) COLLATE utf8mb4_bin NULL COMMENT '显式Legacy关联证明的本机scope，不改写原始scope',
     resets_at_ms BIGINT NULL COMMENT '真实reset UTC毫秒',
     observed_at_ms BIGINT NOT NULL COMMENT '原始观测UTC毫秒',
     used_percent DECIMAL(9,6) NULL COMMENT '已用比例0到100，NULL为未知',
@@ -172,6 +174,9 @@ CREATE TABLE IF NOT EXISTS pulse_reset_credits (
     inventory BIGINT NULL COMMENT '可验证库存，NULL为未知',
     status VARCHAR(32) NOT NULL COMMENT '有限可信状态码',
     next_reset_at_ms BIGINT NULL COMMENT '来源明确的下次重置UTC毫秒',
+    next_expires_at_ms BIGINT NULL COMMENT '库存明确的最近到期UTC毫秒，与配额reset分离',
+    details_status VARCHAR(32) NOT NULL COMMENT '库存到期证据complete、partial或unavailable',
+    expiry_schedule LONGTEXT NOT NULL COMMENT '按到期时间聚合的库存数量JSON，不含credit标识',
 PRIMARY KEY (id),
 KEY idx_credits_account (account_key, observed_at_ms)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='允许的Reset Credits库存状态快照';

@@ -228,3 +228,93 @@ func TestHistoryRangeCannotImplicitlyRemoveCenterHistory(t *testing.T) {
 		t.Fatal("rejected range change deleted queue")
 	}
 }
+
+func (f *fakeSource) FactsPartition(context.Context, string) (string, error) {
+	return "quota-partition", nil
+}
+func (f *fakeSource) Facts(context.Context, string, string, int64) (ExportFactsPage, error) {
+	return ExportFactsPage{Partition: "quota-partition", Done: true}, nil
+}
+
+type quotaSyncSource struct {
+	fakeSource
+	account atomic.Value
+}
+
+func (s *quotaSyncSource) Page(context.Context, string, string, int64) (ExportPage, error) {
+	return ExportPage{}, store.ErrReportingSource
+}
+func (s *quotaSyncSource) FactsPartition(context.Context, string) (string, error) {
+	return s.account.Load().(string), nil
+}
+func (s *quotaSyncSource) Facts(_ context.Context, provider, _ string, _ int64) (ExportFactsPage, error) {
+	raw := s.account.Load().(string)
+	page := ExportFactsPage{Partition: raw, Done: true}
+	if provider != "codex" {
+		return page, nil
+	}
+	q := reportingv1.QuotaObservation{Provider: provider, ID: "quota-" + raw, LocalScope: "scope-" + raw, AccountID: new(raw), LimitID: "codex", WindowKind: "primary", ObservedAtMS: 1000, UsedPercent: new(0.0), WindowMinutes: new(int64(300)), ResetsAtMS: new(int64(18000000)), Source: "app_server", Validity: "accepted", HistoryOrigin: "confirmed"}
+	page.Groups = []FactsGroup{{Key: reportingv1.Key(raw), Batch: reportingv1.Batch{Accounts: []reportingv1.Account{{Provider: provider, ID: raw, CollectedAtMS: 1000}}, Bindings: []reportingv1.AccountBinding{{Provider: provider, LocalScope: q.LocalScope, AccountID: raw, ConfirmedAtMS: 1000}}, Quotas: []reportingv1.QuotaObservation{q}}}}
+	return page, nil
+}
+func TestQuotaSyncLostReceiptKeepsAAfterAccountSwitchToB(t *testing.T) {
+	state, _ := testState(t)
+	source := &quotaSyncSource{}
+	source.account.Store("raw-a")
+	var mu sync.Mutex
+	bodies := map[string][]string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == "/api/v1/pair" {
+			testPairResponse(w)
+			return
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		var batch reportingv1.Batch
+		if err := json.Unmarshal(body, &batch); err != nil {
+			t.Error(err)
+			return
+		}
+		first := false
+		if len(batch.Quotas) > 0 {
+			raw := *batch.Quotas[0].AccountID
+			mu.Lock()
+			bodies[raw] = append(bodies[raw], string(body))
+			first = raw == "raw-a" && len(bodies[raw]) == 1
+			mu.Unlock()
+		}
+		if first {
+			source.account.Store("raw-b")
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			_ = conn.Close()
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 200, "data": reportingv1.Receipt{Version: 1, BatchID: batch.ID, ReceivedAtMS: 3000}})
+	}))
+	defer server.Close()
+	runtime := Start(state, source)
+	defer runtime.Close(context.Background())
+	if _, err := runtime.Pair(t.Context(), PairRequest{Endpoint: server.URL, AllowHTTP: true, Code: "AAAA-BBBB-CCCC-DDDD"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.Configure(t.Context(), ConfigureRequest{Enabled: true, IntervalSeconds: 60}); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, runtime, func(s Status) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(bodies["raw-a"]) >= 2 && len(bodies["raw-b"]) >= 1 && s.PendingBatches == 0
+	})
+	mu.Lock()
+	defer mu.Unlock()
+	if bodies["raw-a"][0] != bodies["raw-a"][1] {
+		t.Fatal("old A queue was rewritten after switch")
+	}
+}

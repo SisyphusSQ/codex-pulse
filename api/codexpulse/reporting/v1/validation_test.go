@@ -87,3 +87,31 @@ func TestReportingMetadataDuplicatesAreRejected(t *testing.T) {
 		t.Fatal("duplicate provider statuses accepted")
 	}
 }
+
+func TestQuotaAssociationAndCreditsExpiryContract(t *testing.T) {
+	q := QuotaObservation{Provider: "codex", ID: "legacy", LocalScope: "default", AssociationScope: new("scope-a"), AccountID: new("raw-a"), LimitID: "codex", WindowKind: "primary", WindowMinutes: new(int64(300)), ResetsAtMS: new(int64(18000001)), ObservedAtMS: 1000, UsedPercent: new(0.0), Validity: "accepted", Source: "legacy_wham", HistoryOrigin: "linked_history"}
+	c := ResetCredits{Provider: "codex", ID: "credits", LocalScope: "scope-a", ObservedAtMS: 1000, Inventory: new(int64(2)), Status: "accepted", DetailsStatus: "complete", NextExpiresAtMS: new(int64(2000)), ExpirySchedule: []CreditExpiry{{Count: 1}, {ExpiresAtMS: new(int64(2000)), Count: 1}}}
+	b := Batch{Version: Version, ID: "00000000-0000-0000-0000-000000000001", Quotas: []QuotaObservation{q}, Credits: []ResetCredits{c}}
+	if err := b.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	b.Quotas[0].AssociationScope = nil
+	if !errors.Is(b.Validate(), ErrInvalid) {
+		t.Fatal("linked history without proof accepted")
+	}
+	b.Quotas[0] = q
+	b.Quotas[0].HistoryOrigin = "confirmed"
+	if !errors.Is(b.Validate(), ErrInvalid) {
+		t.Fatal("ordinary fact carried legacy association")
+	}
+	b.Quotas[0] = q
+	b.Credits[0].ExpirySchedule = append(b.Credits[0].ExpirySchedule, CreditExpiry{Count: 1})
+	if !errors.Is(b.Validate(), ErrInvalid) {
+		t.Fatal("duplicate expiry bucket accepted")
+	}
+	b.Credits[0] = c
+	b.Credits[0].Inventory = new(int64(3))
+	if !errors.Is(b.Validate(), ErrInvalid) {
+		t.Fatal("complete inventory does not reconcile")
+	}
+}
