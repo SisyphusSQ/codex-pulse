@@ -86,3 +86,11 @@ Pass：原生 61 轮完整并集与查询对账、加权/空闲排除、50 最�
 Web TPS 3 场景与 Records 2 场景共 5/5，通过 typecheck、AntD lint；Helper/Server 构建通过。真实隔离 HTTP 浏览器：合成 16,327 output / 730,364 ms 在列表/详情均 22.36 TPS；61 轮整体 1.84，20→50 截断与 30→7 日筛选不改平均；390px 可读。截图 .artifacts/multi-machine/web/tps-reference.jpg、tps-mobile.jpg 为合成资料。
 
 复用现有 source/canonical JSON，无新增 DDL；均值用纯 Go 重算。真实 Home 原生 App、三机、MySQL、CI 与发布未运行，不构成 Master Pass。
+
+## 额度 Web 开发证据（TOO-489，2026-10-02）
+
+Pass：4 个聚焦行为场景覆盖真实零/未知、陈旧过期无倒计时、刷新失败保留原值/原时间、同邮箱原始账号独立、Provider/设备/账号 query、稀疏预测、精确 Credits 与到期/reset 分离、名称普通文本转义、下降采样与原端点/无插值。typecheck、AntD lint 与 Web 构建通过；chunk 警告由 TOO-491 继续处理。
+
+真实环回 HTTP/隔离 SQLite 浏览器读回：原账号陈旧 45% 保留且无倒计时/预测；追加同邮箱另一账号后保持独立，主/次窗口 70%/20%，主窗口中心预测提前 15 分钟耗尽，次窗口实际采样不足，两个首尾覆盖历史周期/上一周期可切换。三份副本的 Credits 观测库存 3、已到期 1、可用 2，不相加，next expiry/reset 日期独立。quota/pace 各自评估时间、21/36 条来源证据与去重采样分开显示。390px 可读，截图 .artifacts/multi-machine/web/quota-pace.jpg、quota-mobile.jpg。
+
+所有账号/历史/机器均为合成资料，未读取真实 Home；MySQL、三机正式验收、CI 和生产部署/发布 Not Run。

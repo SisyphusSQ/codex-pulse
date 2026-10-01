@@ -10,6 +10,7 @@ import { ErrorState, LoadingState } from './components/QueryState';
 const Overview=lazy(()=>import('./pages/Overview'));
 const Projects=lazy(()=>import('./pages/Projects'));
 const Sessions=lazy(()=>import('./pages/Sessions'));
+const Quota=lazy(()=>import('./pages/Quota'));
 
 export function createQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: false, refetchOnWindowFocus: true, gcTime: 300_000 }, mutations: { retry: false } } });
@@ -49,6 +50,7 @@ function Shell() {
         <Route path="/" element={<Overview />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/sessions" element={<Sessions />} />
+        <Route path="/quota" element={<Quota />} />
         <Route path="*" element={<Result status="404" title="页面不存在" extra={<Button onClick={() => navigate('/')}>返回总览</Button>} />} />
       </Routes></Suspense>
     </Layout.Content>

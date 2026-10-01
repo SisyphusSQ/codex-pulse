@@ -39,6 +39,7 @@ body { margin: 0; min-width: 320px; }
 .totals-line { padding:16px 20px; background:#fff; border:1px solid #e7e9ec; border-radius:8px; color:#647570; }.totals-line strong { color:#182221; }
 .record-link { padding:0; height:auto; white-space:normal; text-align:left; }.record-id { color:#74807d; font-size:11px; overflow-wrap:anywhere; }
 .metadata-list { display:grid; grid-template-columns:150px minmax(0,1fr); gap:10px; }.metadata-list dt { color:#74807d; }.metadata-list dd { margin:0; overflow-wrap:anywhere; }
+.quota-card { height:100%; }.quota-numbers { display:flex; gap:40px; margin:24px 0; }.quota-numbers strong { display:block; font-size:32px; font-variant-numeric:tabular-nums; }.quota-account-filter { flex:1.8; min-width:260px; }.quota-window-select { width:100%; }.account-identity { overflow-wrap:anywhere; }
 @media (max-width: 720px) {
   .app-header { padding: 0 16px; }
   .header-top { min-height: 64px; }
