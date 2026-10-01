@@ -92,6 +92,12 @@ func (b Batch) Validate() error {
 		if !validThroughput(snapshot) {
 			return ErrInvalid
 		}
+		if snapshot.CacheUsage != nil && snapshot.CacheUsage.Version != 1 {
+			return ErrVersion
+		}
+		if !validCacheUsage(snapshot) {
+			return ErrInvalid
+		}
 	}
 	accountsSeen := make(map[string]bool)
 	for _, account := range b.Accounts {

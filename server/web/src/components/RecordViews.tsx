@@ -9,6 +9,8 @@ import { CoverageNotice } from './CoverageNotice';
 import { ErrorState, LoadingState } from './QueryState';
 import { ThroughputCell, ThroughputPanel } from './Throughput';
 
+import { CacheHitRateCell, CacheHitRateDetail } from './CacheHitRate';
+
 const Chart=lazy(()=>import('./Chart'));
 export function TotalsLine({ totals }: { totals:Totals }) {return <div className="totals-line"><span>当前筛选范围 · 已收到 Token <strong>{integer(totals.total_tokens)}</strong></span><span>API 等价成本 <strong>{dollars(totals.cost_micro_usd)}</strong>{totals.cost_status==='partial'?'（已知小计）':''}</span><span>会话 {integer(totals.sessions)}</span></div>;}
 export function RecordTrend({ rows }: { rows:Day[] }){
@@ -21,6 +23,7 @@ export function SessionTable({ rows,page,loading,zone,onPage,onOpen }: { rows:Se
   {title:'Provider',dataIndex:'provider',render:(p:string)=>providerNames[p]??p},
   {title:'项目',dataIndex:'project_name'},
   {title:'Token',align:'right',render:(_,r)=>integer(r.totals.total_tokens)},
+  {title:'缓存命中率',align:'right',render:(_,r)=><CacheHitRateCell value={r.cache_hit_rate} />},
   {title:'生命周期平均 TPS',render:(_,r)=><ThroughputCell value={r.throughput} />},
   {title:'API 等价成本',align:'right',render:(_,r)=><span>{dollars(r.totals.cost_micro_usd)}{r.totals.cost_status==='partial'?'（小计）':''}</span>},
   {title:'最近活动',render:(_,r)=>dateTime(r.last_active_at_ms,zone)},
@@ -35,6 +38,7 @@ export function SessionPanel({ id,filter,onClose }: { id:string;filter:StatsFilt
   <Typography.Title level={3}>{data.session.title||'未命名会话'}</Typography.Title><dl className="metadata-list"><dt>原始 Session ID</dt><dd>{data.session.session_id??'未关联会话'}</dd><dt>Provider / 项目</dt><dd>{providerNames[data.session.provider]??data.session.provider} · {data.session.project_name}</dd><dt>创建 / 最近活动</dt><dd>{dateTime(data.session.created_at_ms,filter.time_zone)} / {dateTime(data.session.last_active_at_ms,filter.time_zone)}</dd><dt>采集截至</dt><dd>{dateTime(data.session.collected_at_ms,filter.time_zone)}</dd></dl>
   {data.session.conflict&&<Tag color="red">来源存在冲突，统计采用服务端已接受事实</Tag>}
   <TotalsLine totals={data.session.totals} /><CoverageNotice coverage={data.coverage} zone={filter.time_zone} /><RecordTrend rows={data.trend} />
+  <CacheHitRateDetail value={data.session.cache_hit_rate} />
   <ThroughputPanel value={data.session.throughput} turns={data.throughput_turns} zone={filter.time_zone} onLimit={setTurnLimit} sourceName={data.session.sources.find(s=>s.client_id===data.session.throughput?.source_client_id)?.client_name} />
   <Typography.Title level={4}>采集来源</Typography.Title><Table size="small" rowKey="id" dataSource={data.session.sources} pagination={false} scroll={{x:640}} columns={[{title:'设备',dataIndex:'client_name'},{title:'采集截至',render:(_,r)=>dateTime(r.collected_at_ms,filter.time_zone)},{title:'来源 / 修订',render:(_,r)=>`${r.source_kind} / ${r.revision}`},{title:'状态',render:(_,r)=>r.deleted?'已停止提供':r.complete?'快照完整':'部分快照'}]} />
   <Typography.Title level={4}>工具与技能</Typography.Title><Table size="small" rowKey="key" pagination={{pageSize:10,showSizeChanger:false}} dataSource={[...data.tools.map(r=>({...r,key:`tool:${r.key}`,kind:'工具'})),...data.skills.map(r=>({...r,key:`skill:${r.key}`,kind:'技能'}))]} columns={[{title:'类型',dataIndex:'kind'},{title:'名称',dataIndex:'name'},{title:'调用次数',render:(_,r)=>integer(r.totals.invocations)}]} />

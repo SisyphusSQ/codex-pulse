@@ -116,3 +116,7 @@ Pass：Server 同源壳/hashed assets GET/HEAD，业务 API 继续授权，隐�
 交付同域构建打包、HTTPS/显式 Tailnet HTTP、非 root 常驻、结构检查与升级/回滚、保留/撤销/删除区别、SQLite/MySQL 备份恢复和 Master 联调 runbook。容器模板按 monorepo/统一配对更新，未构建或启动 Docker。真实 MySQL、三机上报验收、HTTPS 生产代理、CI、签名/公证/发布 Not Run，留 Master。用户提供 MySQL 后按 runbook 整体验证，SQLite Pass 不替代它。
 
 交付自查：本次新增接口经过统一管理员鉴权，静态根受限且无任意 API 放行，SQL 参数化/固定语句，恢复拒绝覆盖且撤销旧授权；未在代码/模板/日志/产物环境写入 Agent 凭据或原始内容。
+
+## 缓存命中率开发证据（TOO-509，2026-10-02）
+
+聚焦 Go contract、store 与本机 native Rollup 对账、持久队列重启/指标修订/删除、原生 mapper、中心 statistics 测试通过。覆盖整段输入与缓存、受限历史不泄漏、日期范围只命中部分贡献仍保留生命周期比例、三份副本/来源筛选、定价独立、零/全命中/缺失/非法/半值/大整数。Web 两个格式及缺失状态测试与 typecheck 通过。开发测试使用合成事实与隔离 SQLite，无 MySQL 或三机正式验收结论；整体 Web 浏览器证据与新版布局另在 TOO-510 记录。

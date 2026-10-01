@@ -59,3 +59,9 @@ used_percent 在两种数据库中统一保存到小数点后 6 位，MySQL 使�
 Codex light_index 快照可选 throughput version 1 / basis closed_turn_lifetime_output。整体输出与活跃并集来自完整生命周期；最近最多 50 轮只供展示，不决定整体均值。只传哈希轮次键，不传 raw Turn ID/offset/generation/内容。输出不能大于本来源安全贡献输出之和，最多 50,000 轮，历史裁剪仅返回 history_filtered 未知状态。TPS-only 变化产生新 revision 与持久批次；tombstone 不带指标。
 
 严格验证 nullable/零、有限原因、预算；未来 capsule version 426。保存在既有 source/canonical payload，中心复用 Go 计算及仲裁。先升级 Server 后升级 App，旧 Server 未知字段 400 会暂停并保留队列；旧客户端无 capsule 显示未上报。
+
+## 生命周期缓存输入 capsule
+
+Codex light_index 可选 cache_usage version=1 / basis=lifetime_cached_input，仅含整段 input_tokens/cached_input_tokens 的 nullable 十进制计数和有限缺失原因。已知计数与全部安全贡献对账；历史起点非零仅返回 history_filtered，不附范围外总量。无活动统计返回 rollup_missing。缓存大于输入保留计数，由中心显示不可用，不破坏其他事实。
+
+capsule-only 变化产生持久新 revision，重启续传相同正文；metadata fence 和 tombstone 均去掉指标。未知版本 426，未知字段 400，旧 Server 拒绝时队列保留。先升级中心，再升级 App；旧 App 未上报保持未知。参见 [设计](../../../../docs/design/details/multi-machine-reporting/cache-hit-rate.md)。

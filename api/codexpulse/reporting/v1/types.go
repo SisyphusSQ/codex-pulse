@@ -20,6 +20,7 @@ type Batch struct {
 
 // SessionSnapshot 是同一来源的完整替换快照，revision 跨进程重启单调递增。
 type SessionSnapshot struct {
+	CacheUsage       *CacheUsageCapsule `json:"cache_usage,omitempty"`
 	Throughput       *ThroughputCapsule `json:"throughput,omitempty"`
 	Provider         string             `json:"provider"`
 	HomeID           string             `json:"home_id"`

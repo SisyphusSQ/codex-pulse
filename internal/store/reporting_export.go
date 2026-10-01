@@ -106,11 +106,17 @@ func exportReportingCodex(db *gorm.DB, source ReportingSource, after string, pag
 			InputTokens, CachedInputTokens, OutputTokens, ReasoningTokens int64
 			UpdatedAtMS                                                   int64
 		}
+		s.CacheUsage = &reportingv1.CacheUsageCapsule{Version: 1, Basis: "lifetime_cached_input", Reason: "rollup_missing"}
 		if row.ActiveTokenGeneration > 0 {
 			if err := db.Table("light_token_scans").Select("complete,input_tokens,cached_input_tokens,output_tokens,reasoning_tokens,updated_at_ms").Where("session_id = ? AND generation = ? AND state = 'active'", row.SessionID, row.ActiveTokenGeneration).Take(&scan).Error; err != nil {
 				return err
 			}
 			s.Complete = s.Complete && scan.Complete
+			s.CacheUsage.Reason = ""
+			s.CacheUsage.InputTokens, s.CacheUsage.CachedInputTokens = new(scan.InputTokens), new(scan.CachedInputTokens)
+			if scan.InputTokens < 0 || scan.CachedInputTokens < 0 {
+				s.CacheUsage.InputTokens, s.CacheUsage.CachedInputTokens, s.CacheUsage.Reason = nil, nil, "unavailable"
+			}
 			s.CollectedAtMS = max(s.CollectedAtMS, scan.UpdatedAtMS)
 			var timed []struct {
 				ObservedAtMS                                                  int64
@@ -181,6 +187,9 @@ func exportReportingCodex(db *gorm.DB, source ReportingSource, after string, pag
 			return err
 		}
 		s.Contributions = reportingRange(s.Contributions, source.StartAtMS)
+		if source.StartAtMS > 0 {
+			s.CacheUsage.InputTokens, s.CacheUsage.CachedInputTokens, s.CacheUsage.Reason = nil, nil, "history_filtered"
+		}
 		if len(s.Contributions) > reportingv1.MaxContributions {
 			return ErrReportingBudget
 		}

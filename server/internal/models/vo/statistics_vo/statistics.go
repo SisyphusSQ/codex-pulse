@@ -74,6 +74,7 @@ type StatisticsPage struct {
 	Total int64 `json:"total"`
 }
 type StatisticsSession struct {
+	CacheHitRate   *CacheHitRateView  `json:"cache_hit_rate"`
 	Throughput     *ThroughputView    `json:"throughput"`
 	ID             string             `json:"id"`
 	Provider       string             `json:"provider"`

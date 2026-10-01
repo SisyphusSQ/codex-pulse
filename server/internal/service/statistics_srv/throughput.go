@@ -104,6 +104,7 @@ func (s *Statistics) attachThroughput(ctx context.Context, q statistics_dto.Stat
 			decision := reporting_srv.DecideSnapshot(sources[item.ID], nil)
 			chosen, owner = decision.Source.Snapshot, decision.Source.ClientID
 		}
+		item.CacheHitRate = cacheHitRateView(chosen, owner, item.Provider, sources[item.ID])
 		capsule := chosen.Throughput
 		if capsule == nil {
 			continue
