@@ -238,7 +238,7 @@ func SchemaObjectsThroughV19() []storeschema.Object {
 func CurrentSchemaObjects() []storeschema.Object {
 	objects := append(SchemaObjectsThroughV19(), InvocationSchemaObjects()...)
 	objects = append(objects, UsageSummarySchemaObjects()...)
-	return SchemaObjectsThroughV31(objects)
+	return append(SchemaObjectsThroughV31(objects), ThroughputSchemaObjects()...)
 }
 
 // SchemaObjectsThroughV31 为 light_token_scans 追加 v31 原始 counter checkpoint 列。

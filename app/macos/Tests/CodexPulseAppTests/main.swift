@@ -13549,6 +13549,11 @@ private func testShutdownDeadlineForcesHelperStop() async throws {
 @main
 struct CodexPulseAppTestMain {
     static func main() async throws {
+        if CommandLine.arguments.contains("--tps-only") {
+            try testSessionThroughputPresentation()
+            print("CodexPulseApp TPS presentation tests passed")
+            return
+        }
         if CommandLine.arguments.contains("--pricing-only") {
             try testReferencePriceFormattingPreservesPrecisionAndUnknown()
             try testQuotaUsageShowsIndependentReferencePriceCatalogAndBillingBoundary()
@@ -13587,6 +13592,7 @@ struct CodexPulseAppTestMain {
         try testUsageChartStacksModelsWithLocalizedHoverDetails()
         try testUsageTrendChartPresentationAdaptsRangeAndDensity()
         try testSessionTrendPresentationAdaptsGranularityAndReportingTimezone()
+        try testSessionThroughputPresentation()
         try testSessionAndProjectDetailsShareResponsiveThirdWidthSplit()
         try await testFeatureRefreshRetainsNativeContentIdentity()
         try testEveryTokenChartUsesLocalizedAxisAndAccessibilityUnits()
@@ -13857,5 +13863,31 @@ struct CodexPulseAppTestMain {
         try await testHelperExitCannotBecomeFeatureCancelled()
         try await testShutdownDeadlineForcesHelperStop()
         print("CodexPulseApp deterministic tests passed")
+    }
+}
+
+private func testSessionThroughputPresentation() throws {
+    var stats = Codexpulse_Core_V1_ThroughputStats()
+    stats.status = "partial"
+    stats.reason = "incomplete_coverage"
+    stats.averageOutputMilliTps.unit = "milli_tokens_per_second"
+    stats.averageOutputMilliTps.value = 18_182
+    stats.activeDurationMs.unit = "milliseconds"
+    stats.activeDurationMs.value = 110_000
+    stats.includedTurns.value = 2
+    stats.excludedTurns.value = 1
+    stats.openTurns.value = 1
+    let known = SessionThroughputPresentation(stats, localization: .englishUS)
+    guard known.rateText == "18.18 TPS", known.coverageText.contains("2"),
+          known.statusText == "Known-turn average" else {
+        throw TestFailure.mismatch("TPS formatting or coverage is incorrect")
+    }
+    stats.averageOutputMilliTps.value = 0
+    guard SessionThroughputPresentation(stats).rateText == "0.00 TPS" else {
+        throw TestFailure.mismatch("Observed zero TPS must remain visible")
+    }
+    stats.averageOutputMilliTps.clearValue()
+    guard SessionThroughputPresentation(stats).rateText == "--", SessionThroughputPresentation(nil).rateText == "--" else {
+        throw TestFailure.mismatch("Missing TPS cannot be displayed as zero")
     }
 }

@@ -14,14 +14,14 @@ import (
 
 func TestCurrentSchemaIncludesCodexSubscriptionMigrationV33(t *testing.T) {
 	t.Parallel()
-	if applicationSchemaVersion != applicationSchemaV34Version {
+	if applicationSchemaVersion != applicationSchemaV35Version {
 		t.Fatalf("applicationSchemaVersion = %d, want 34", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
 	if err := NewRepository(database).EnsureApplicationSchema(t.Context()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 34, 34)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaV35Version, applicationSchemaV35Version)
 	assertCodexSubscriptionSchemaContract(t, database)
 	if count := scalarCount(t, database, `SELECT COUNT(*) FROM codex_subscription_detected_accounts`); count != 0 {
 		t.Fatalf("fresh detected rows = %d, want 0", count)
@@ -60,11 +60,11 @@ func TestCodexSubscriptionMigrationUpgradesV32AndBackfillsScopes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run(v32->v34) error = %v", err)
 	}
-	if report.FromVersion != 32 || report.TargetVersion != 34 ||
-		!equalInts(report.AppliedVersions, []int{33, 34}) || backupVersions != [2]int{32, 34} {
+	if report.FromVersion != 32 || report.TargetVersion != applicationSchemaV35Version ||
+		!equalInts(report.AppliedVersions, []int{33, 34, 35}) || backupVersions != [2]int{32, applicationSchemaV35Version} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 34, 34)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaV35Version, applicationSchemaV35Version)
 	assertCodexSubscriptionSchemaContract(t, database)
 	if count := scalarCount(t, database, `SELECT COUNT(*) FROM codex_subscription_detected_accounts`); count != 2 {
 		t.Fatalf("backfilled detected rows = %d, want 2", count)
@@ -127,11 +127,11 @@ func TestCodexSubscriptionMigrationReopenKeepsCurrentSchemaVersion(t *testing.T)
 	if err := NewRepository(database).EnsureApplicationSchema(t.Context()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 34, 34)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaV35Version, applicationSchemaV35Version)
 	if err := NewRepository(database).EnsureApplicationSchema(t.Context()); err != nil {
 		t.Fatalf("EnsureApplicationSchema(reopen) error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 34, 34)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaV35Version, applicationSchemaV35Version)
 	assertCodexSubscriptionSchemaContract(t, database)
 }
 

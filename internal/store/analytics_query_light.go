@@ -143,6 +143,9 @@ func listLightSessionAnalytics(
 	if hasMore {
 		records = records[:filter.Limit]
 	}
+	if _, err := attachLightThroughput(database, records); err != nil {
+		return SessionAnalyticsPage{}, true, err
+	}
 	page.Records = records
 	pageTotals := lightTotalsForRecords(records, pricingEvidence.incompleteSessions)
 	page.PageTotals = &pageTotals
@@ -186,6 +189,10 @@ func lightSessionAnalytics(
 		return SessionAnalyticsSnapshot{}, true, err
 	}
 	records := []SessionAnalyticsRecord{lightSessionRecord(projection, projectResolver)}
+	throughputBySession, err := attachLightThroughput(database, records)
+	if err != nil {
+		return SessionAnalyticsSnapshot{}, true, err
+	}
 	pricingEvidence, err := attachLightSessionPricing(database, SessionAnalyticsFilter{}, records)
 	if err != nil {
 		return SessionAnalyticsSnapshot{}, true, err
@@ -193,6 +200,19 @@ func lightSessionAnalytics(
 	turns, nextCursor, err := loadSessionTurnAnalytics(database, filter, nil)
 	if err != nil {
 		return SessionAnalyticsSnapshot{}, true, err
+	}
+	throughputTurns := throughputBySession[filter.SessionID]
+	for index := range turns {
+		for _, item := range throughputTurns {
+			if item.ID == turns[index].TurnID && item.StartedAtMS != nil && absThroughputTime(*item.StartedAtMS-turns[index].StartedAtMS) <= 1000 {
+				value := item.Stats
+				turns[index].Throughput = &value
+				break
+			}
+		}
+	}
+	if len(throughputTurns) > filter.TurnLimit {
+		throughputTurns = throughputTurns[:filter.TurnLimit]
 	}
 	reportingTimezone := "UTC"
 	if filter.ReportingTimezone != nil {
@@ -209,12 +229,20 @@ func lightSessionAnalytics(
 		return SessionAnalyticsSnapshot{}, true, err
 	}
 	return SessionAnalyticsSnapshot{
-		Mode: AnalyticsReadLightIndex, Record: records[0],
+		ThroughputTurns: throughputTurns,
+		Mode:            AnalyticsReadLightIndex, Record: records[0],
 		PricingSource: pricingEvidence.source, Currency: pricingEvidence.currency,
 		ReportingTimezone: reportingTimezone, Daily: daily,
 		Turns: turns, NextTurnCursor: nextCursor, PricingVersions: pricingEvidence.versions,
 		UnpricedReasons: make([]CostReasonCount, 0),
 	}, true, nil
+}
+
+func absThroughputTime(value int64) int64 {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 func loadLightSessionDaily(

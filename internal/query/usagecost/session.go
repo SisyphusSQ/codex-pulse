@@ -342,6 +342,10 @@ func mapSessionDetailResponse(
 		},
 		Turns: turns,
 	}
+	response.ThroughputTurns, err = mapThroughputTurns(snapshot.ThroughputTurns)
+	if err != nil {
+		return SessionDetailResponse{}, err
+	}
 	if pricingSource != "" {
 		response.PricingSource = cloneString(pricingSource)
 		response.Currency = cloneString(currency)
@@ -669,7 +673,12 @@ func mapSessionTurn(
 		totals.UnpricedTurnCount, _ = basequery.UnknownNumeric(basequery.NumericCount, costReason)
 		partial = true
 	}
+	throughputValue, err := mapThroughput(record.Throughput)
+	if err != nil {
+		return SessionTurnItem{}, false, err
+	}
 	return SessionTurnItem{
+		Throughput:  throughputValue,
 		TimelineKey: sessionTurnTimelineKey(record.TurnID), State: state,
 		Model: AttributionValue{
 			ID:          cloneStringPointer(record.Model.ModelKey),
@@ -913,8 +922,13 @@ func mapSessionItem(
 	if err != nil {
 		return SessionItem{}, err
 	}
+	throughputValue, err := mapThroughput(record.Throughput)
+	if err != nil {
+		return SessionItem{}, err
+	}
 	return SessionItem{
-		SessionID: record.SessionID, DisplayTitle: record.DisplayTitle,
+		Throughput: throughputValue,
+		SessionID:  record.SessionID, DisplayTitle: record.DisplayTitle,
 		TitleConfidence: string(record.TitleConfidence), TitleSource: string(record.TitleSource),
 		TitleReason: string(record.TitleReason), Activity: string(record.Activity),
 		Project: AttributionValue{

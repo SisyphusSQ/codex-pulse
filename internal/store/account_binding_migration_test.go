@@ -14,7 +14,7 @@ import (
 func TestAccountBindingMigrationPreservesLegacyDefaultAndSealsOldClaims(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV34Version {
+	if applicationSchemaVersion != applicationSchemaV35Version {
 		t.Fatalf("applicationSchemaVersion = %d, want 34", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
@@ -34,11 +34,11 @@ func TestAccountBindingMigrationPreservesLegacyDefaultAndSealsOldClaims(t *testi
 	if err != nil {
 		t.Fatalf("run(v31->v32) error = %v", err)
 	}
-	if report.FromVersion != 31 || report.TargetVersion != 34 ||
-		!equalInts(report.AppliedVersions, []int{32, 33, 34}) || backupVersions != [2]int{31, 34} {
+	if report.FromVersion != 31 || report.TargetVersion != applicationSchemaV35Version ||
+		!equalInts(report.AppliedVersions, []int{32, 33, 34, 35}) || backupVersions != [2]int{31, applicationSchemaV35Version} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, 34, 34)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaV35Version, applicationSchemaV35Version)
 	assertLegacyDefaultQuotaPreserved(t, database, before)
 	assertAccountBindingSchemaContract(t, database)
 	if count := scalarCount(t, database, `SELECT COUNT(*) FROM codex_account_binding`); count != 0 {
@@ -103,11 +103,11 @@ func TestAccountBindingMigrationReopenKeepsCurrentSchemaVersion(t *testing.T) {
 	if err := NewRepository(database).EnsureApplicationSchema(t.Context()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 34, 34)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaV35Version, applicationSchemaV35Version)
 	if err := NewRepository(database).EnsureApplicationSchema(t.Context()); err != nil {
 		t.Fatalf("EnsureApplicationSchema(reopen) error = %v", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 34, 34)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaV35Version, applicationSchemaV35Version)
 	assertAccountBindingSchemaContract(t, database)
 }
 
