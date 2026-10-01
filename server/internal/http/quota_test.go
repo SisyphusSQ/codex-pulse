@@ -37,4 +37,16 @@ func TestQuotaHTTPAuthBoundsAndEmptyUnknown(t *testing.T) {
 	if len(body.Data.Windows) != 0 || len(body.Data.Credits) != 0 || body.Data.Coverage != "observed_only" {
 		t.Fatal("empty center fabricated data")
 	}
+	if response := request(server, http.MethodGet, origin, "/api/v1/quotas/pace", "", nil, false); response.Code != 401 {
+		t.Fatal("anonymous pace")
+	}
+	if response := reportingRequest(server, origin, http.MethodGet, "/api/v1/quotas/pace", "", collector); response.Code != 403 {
+		t.Fatal("collector pace")
+	}
+	if response := request(server, http.MethodGet, origin, "/api/v1/quotas/pace?provider=evil", "", &administrator, false); response.Code != 400 {
+		t.Fatal("invalid pace query")
+	}
+	if response := request(server, http.MethodGet, origin, "/api/v1/quotas/pace", "", &administrator, false); response.Code != 200 {
+		t.Fatal("admin pace", response.Code)
+	}
 }

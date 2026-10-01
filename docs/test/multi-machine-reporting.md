@@ -36,6 +36,8 @@
 
 以上为开发场景通过，不表示整个产品或 Master 已验收。后续各功能增量需补充其受影响验证。
 
+- Pass：中心节奏与本机同范围四点耗尽时刻/提前量对账、legacy 历史基线不参与预测、稀疏/陈旧/冲突预测不可用、下降曲线与原观测端点保留、512 点预测预算不删完整曲线、未知窗口的明确 forecast，以及管理端权限/参数拒绝；使用 `go test ./internal/codex/quota -run '^(TestComputePace|TestBuildPace|TestForecastPace|TestPace)' -count=1` 和 server quota/http/architecture/app-cmd 聚焦验证。
+
 - Pass：中心配额三来源复制不累加、reset 漂移/真实换代、合法下降/迟到、同邮箱不同账号、同时刻冲突、过期 LKG/无可信倒计时、关联历史不刷新当前；未关联/空库不猜身份。Credits 多机库存不相加、到期与 reset 区分、失败保留原库存/原时间。HTTP 匿名/collector 拒绝、严格参数与预算；Fx/业务子包装配通过。
 
 - 配额导出聚焦入口：`go test ./internal/store -run '^TestReportingQuota' -count=1`、`go test ./internal/reporting ./api/codexpulse/reporting/v1`、`go test ./internal/app -run '^(TestAccountBinding|TestOptionalReporting)' -count=1`，以及 server 的 `go test ./internal/service/reporting_srv ./internal/repository/mysql/reporting_repo ./internal/architecture`。

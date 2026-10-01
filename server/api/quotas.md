@@ -15,3 +15,15 @@
 一次读取的所有表共用只读 snapshot。最多 100,000 条 quota、100,000 条 Credits、10,000 个账号/客户端；超出返回 413，建议使用账号、Provider、来源筛选，不截断后伪装成功。两种数据库沿用同一 read adapter；真实 MySQL 运行尚待环境。
 
 实现与验证入口：[中心配额设计](../docs/design/details/quota/README.md)、[开发验证](../../docs/test/multi-machine-reporting.md)。
+
+## 节奏
+
+`GET /api/v1/quotas/pace` 使用相同浏览器授权、筛选、预算和只读快照。返回 `evaluated_at_ms`、账号、`windows` 与 `coverage=observed_only`；窗口含同一可信 current、时间进度/偏差、本周期实际采样、上一周期、至多四个首尾覆盖的历史周期、5% 进度网格上的历史区间及耗尽预测。
+
+中心调用纯 Go `quota.ComputePaceWindow`，与本机使用同一个曲线压缩、阶梯基线、中位区间与 recent Theil-Sen 算法；前端只展示结果。本周期曲线仅返回实际 `observed_at_ms`，不把本机显示延伸到现在的端点当成新采样。平台首末点和下降保留；基线网格是计算结果，不能冒充观测。
+
+预测 `state=unavailable|on_track|at_risk|exhausted`，`method=none|recent_theil_sen`；缺少窗口、身份未确认、陈旧、冲突、稀疏、平台、无效证据及预算分别给有限 `unknown_reason`。at_risk 才提供耗尽时刻与距 reset 提前量。真实数据未采集的时段仍为缺口；没有耗尽时刻不能用前端公式猜一个。
+
+复用现行证据要求：至少三条实际观测，跨度至少 30 分钟；lookback 是窗口时长的四分之一，限定在 30 分钟至 24 小时。同一时刻重复副本去重，已关联历史不参与预测/当前 freshness。Theil-Sen 至多 512 个唯一时间点，超出返回 `evidence_budget` 并保留完整曲线，避免二次组合耗尽资源。
+
+历史 `complete` 表示该周期实际首末采样覆盖前 10% 与后 10%，并不声明中间每个时刻都有观测或完整历史上传。没有满足条件的历史基线保持 NULL/空数组；legacy 仅用于允许的曲线、上一周期与基线，不提升当前可信性。
