@@ -46,3 +46,9 @@ Provider 构成和执行设备构成的 Token/成本与范围 totals 对账。�
 不能给无时间事实伪造日期；它们不进入有明确起止的 KPI/趋势，而由 `untimed_facts` 提示。`collected_at_ms` 与中心 receipt 分开；超过 15 分钟或无采集证据标 stale，任一已知 Provider 的旧状态不能被其他 Provider 新心跳掩盖。撤销设备仍保留合法历史。热力图空格、局部已知零和未采集状态由前端按 coverage 分开展示。
 
 工具/技能仅返回白名单名称和计数，不返回参数、命令、结果或正文。API 不返回来源 payload、凭证摘要、Cookie、完整路径、原始 JSONL 或原始错误。数据库查询参数化，排序在服务端枚举选择，不拼接动态 SQL。
+
+## 生命周期 TPS
+
+会话列表/项目会话/详情的 throughput 使用 nullable 十进制字符串；average_output_milli_tps 的 average_unit=milli_tokens_per_second，active_duration_ms 的 duration_unit=milliseconds。basis=closed_turn_lifetime_output，均值不随日期/模型/分页变化。source_client_id 指向接受统计的采集来源；同贡献完整证据不一致显示 partial/source_conflict，不累加副本。旧客户端 not_reported、其他 Provider unsupported_provider 保持未知。
+
+详情 throughput_limit=1..50 默认 20；throughput_turns 返回 items/nullable total/limit/truncated，最近项只含安全哈希键、起止与指标，不从子集重算平均。在统计同一只读事务中仅查询返回会话页，来源数和 payload 预算保持。无需新增 DDL。MySQL 实机尚未验证。

@@ -203,6 +203,7 @@ func (s *State) Enqueue(ctx context.Context, partition, sweep string, value repo
 		}
 		metadata := value
 		metadata.Contributions = nil
+		metadata.Throughput = nil
 		metadata.Invocations = nil
 		bytes, err := json.Marshal(metadata)
 		if err != nil {
@@ -272,6 +273,7 @@ func (s *State) removed(ctx context.Context, partition, provider, homeID, sweep 
 				snap.Deleted = true
 				snap.Contributions = []reportingv1.Contribution{}
 				snap.Invocations = nil
+				snap.Throughput = nil
 				out = append(out, snap)
 			}
 		}

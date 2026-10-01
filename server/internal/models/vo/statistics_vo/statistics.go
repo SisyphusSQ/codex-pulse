@@ -74,6 +74,7 @@ type StatisticsPage struct {
 	Total int64 `json:"total"`
 }
 type StatisticsSession struct {
+	Throughput     *ThroughputView    `json:"throughput"`
 	ID             string             `json:"id"`
 	Provider       string             `json:"provider"`
 	SessionID      *string            `json:"session_id"`
@@ -109,12 +110,13 @@ type StatisticsSessions struct {
 	Coverage StatisticsCoverage  `json:"coverage"`
 }
 type StatisticsSessionDetail struct {
-	Session  StatisticsSession  `json:"session"`
-	Range    StatisticsRange    `json:"range"`
-	Trend    []StatisticsDay    `json:"trend"`
-	Tools    []StatisticsSlice  `json:"tools"`
-	Skills   []StatisticsSlice  `json:"skills"`
-	Coverage StatisticsCoverage `json:"coverage"`
+	ThroughputTurns ThroughputTurnsView `json:"throughput_turns"`
+	Session         StatisticsSession   `json:"session"`
+	Range           StatisticsRange     `json:"range"`
+	Trend           []StatisticsDay     `json:"trend"`
+	Tools           []StatisticsSlice   `json:"tools"`
+	Skills          []StatisticsSlice   `json:"skills"`
+	Coverage        StatisticsCoverage  `json:"coverage"`
 }
 type StatisticsProject struct {
 	ID             string           `json:"id"`

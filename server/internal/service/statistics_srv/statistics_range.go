@@ -100,6 +100,13 @@ func ParseStatisticsQuery(values url.Values, now time.Time) (q statistics_dto.St
 	}
 	q.Page = 1
 	q.Limit = 25
+	q.ThroughputLimit = 20
+	if text := values.Get("throughput_limit"); text != "" {
+		q.ThroughputLimit, err = strconv.Atoi(text)
+		if err != nil || q.ThroughputLimit < 1 || q.ThroughputLimit > 50 {
+			return q, utils.ErrBadParamInput
+		}
+	}
 	for name, target := range map[string]*int{"page": &q.Page, "limit": &q.Limit} {
 		if text := values.Get(name); text != "" {
 			value, err := strconv.Atoi(text)

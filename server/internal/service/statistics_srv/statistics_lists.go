@@ -114,7 +114,8 @@ func (s *Statistics) Sessions(ctx context.Context, p access_dto.Principal, q sta
 		}
 		result = read.sessionList()
 		result.Coverage = read.coverage(s.now())
-		return nil
+		_, err = s.attachThroughput(ctx, q, result.Items, read.metadata, false)
+		return err
 	})
 	return
 }
@@ -136,6 +137,12 @@ func (s *Statistics) Session(ctx context.Context, p access_dto.Principal, q stat
 			return utils.ErrNotFound
 		}
 		result = statistics_vo.StatisticsSessionDetail{Session: read.sessionView(m), Range: statisticsRange(q), Trend: read.trend(), Tools: statisticsSlices(read.tools, true), Skills: statisticsSlices(read.skills, true), Coverage: read.coverage(s.now())}
+		items := []statistics_vo.StatisticsSession{result.Session}
+		result.ThroughputTurns, err = s.attachThroughput(ctx, q, items, read.metadata, true)
+		if err != nil {
+			return err
+		}
+		result.Session = items[0]
 		return nil
 	})
 	return
@@ -245,6 +252,9 @@ func (s *Statistics) Project(ctx context.Context, p access_dto.Principal, q stat
 		}
 		sessions := read.sessionList()
 		sessions.Coverage = read.coverage(s.now())
+		if _, err := s.attachThroughput(ctx, q, sessions.Items, read.metadata, false); err != nil {
+			return err
+		}
 		summary := read.summary(s.now())
 		result = statistics_vo.StatisticsProjectDetail{Project: items[0], Sessions: sessions, Trend: summary.Trend, Models: summary.Models}
 		return nil

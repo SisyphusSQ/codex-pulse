@@ -20,23 +20,24 @@ type Batch struct {
 
 // SessionSnapshot 是同一来源的完整替换快照，revision 跨进程重启单调递增。
 type SessionSnapshot struct {
-	Provider         string         `json:"provider"`
-	HomeID           string         `json:"home_id"`
-	SessionID        string         `json:"session_id"`
-	Revision         int64          `json:"revision"`
-	CollectedAtMS    int64          `json:"collected_at_ms"`
-	Title            string         `json:"title"`
-	ProjectID        string         `json:"project_id"`
-	ProjectName      string         `json:"project_name"`
-	CreatedAtMS      *int64         `json:"created_at_ms"`
-	LastActiveAtMS   *int64         `json:"last_active_at_ms"`
-	Complete         bool           `json:"complete"`
-	Deleted          bool           `json:"deleted"`
-	SourceKind       string         `json:"source_kind"`
-	SessionKind      string         `json:"session_kind"`
-	HistoryStartAtMS int64          `json:"history_start_at_ms"`
-	Contributions    []Contribution `json:"contributions"`
-	Invocations      []Invocation   `json:"invocations,omitempty"`
+	Throughput       *ThroughputCapsule `json:"throughput,omitempty"`
+	Provider         string             `json:"provider"`
+	HomeID           string             `json:"home_id"`
+	SessionID        string             `json:"session_id"`
+	Revision         int64              `json:"revision"`
+	CollectedAtMS    int64              `json:"collected_at_ms"`
+	Title            string             `json:"title"`
+	ProjectID        string             `json:"project_id"`
+	ProjectName      string             `json:"project_name"`
+	CreatedAtMS      *int64             `json:"created_at_ms"`
+	LastActiveAtMS   *int64             `json:"last_active_at_ms"`
+	Complete         bool               `json:"complete"`
+	Deleted          bool               `json:"deleted"`
+	SourceKind       string             `json:"source_kind"`
+	SessionKind      string             `json:"session_kind"`
+	HistoryStartAtMS int64              `json:"history_start_at_ms"`
+	Contributions    []Contribution     `json:"contributions"`
+	Invocations      []Invocation       `json:"invocations,omitempty"`
 }
 
 // Contribution 保留来源 Token 口径；大整数用十进制字符串，避免浏览器精度损失。

@@ -78,3 +78,11 @@ HTTP 必须在 App 显式允许，连接目标仅限环回/LAN/Tailscale 地址�
 开发聚焦证据：Web 11 个行为测试、typecheck 与 AntD lint 通过；statistics `TestStatistics` 聚焦组及新增明确零/未知历史测试通过。初次 GUI 发现无事实日被补零，已修复 Server 日/星期小时结果保留 NULL，明确零事实不变，并在真实隔离 API 图表读回。Web build 通过，有 500kB chunk 警告，构建拆分在 TOO-491 衔接；没有以提高警告阈值掩盖。
 
 截图保存在 ignored `.artifacts/multi-machine/web/overview-desktop.jpg` 与 `overview-mobile.jpg`，只包含合成数据。原始浏览器/中心凭证不提交；测试库使用合成配对码，不用于真实账号资料。CI、真实三机、真实 Home、MySQL 与正式发布均 Not Run，未据此完成 Master 验收。
+
+## TPS 开发证据（TOO-507）
+
+Pass：原生 61 轮完整并集与查询对账、加权/空闲排除、50 最近/61 总覆盖、待重建/继承/未知/真零、历史起点不泄露旧生命周期；TPS-only revision、持久重启原 body 与 tombstone；严格输出对账/预算/版本 426/raw Turn member 400；中心三份复制只计一次、日期范围与整体分离、来源选择/冲突、collector 查询拒绝。root store/reporting/contract 与 Server statistics/http 聚焦测试通过。
+
+Web TPS 3 场景与 Records 2 场景共 5/5，通过 typecheck、AntD lint；Helper/Server 构建通过。真实隔离 HTTP 浏览器：合成 16,327 output / 730,364 ms 在列表/详情均 22.36 TPS；61 轮整体 1.84，20→50 截断与 30→7 日筛选不改平均；390px 可读。截图 .artifacts/multi-machine/web/tps-reference.jpg、tps-mobile.jpg 为合成资料。
+
+复用现有 source/canonical JSON，无新增 DDL；均值用纯 Go 重算。真实 Home 原生 App、三机、MySQL、CI 与发布未运行，不构成 Master Pass。

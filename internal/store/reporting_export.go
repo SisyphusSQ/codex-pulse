@@ -177,6 +177,9 @@ func exportReportingCodex(db *gorm.DB, source ReportingSource, after string, pag
 			}
 		}
 		assignReportingIDs(&s)
+		if err := exportReportingThroughput(db, source, &s); err != nil {
+			return err
+		}
 		s.Contributions = reportingRange(s.Contributions, source.StartAtMS)
 		if len(s.Contributions) > reportingv1.MaxContributions {
 			return ErrReportingBudget

@@ -86,6 +86,12 @@ func (b Batch) Validate() error {
 				return ErrInvalid
 			}
 		}
+		if snapshot.Throughput != nil && snapshot.Throughput.Version != 1 {
+			return ErrVersion
+		}
+		if !validThroughput(snapshot) {
+			return ErrInvalid
+		}
 	}
 	accountsSeen := make(map[string]bool)
 	for _, account := range b.Accounts {

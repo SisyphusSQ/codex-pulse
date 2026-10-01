@@ -20,6 +20,7 @@ export function dollars(value: string | null | undefined): string {
 }
 export function dateTime(value: number | null | undefined, zone='Asia/Shanghai'): string {
   if (value === null || value === undefined) return '尚无观测';
+  if (Number.isNaN(new Date(value).getTime())) return '时间超出显示范围';
   return new Intl.DateTimeFormat('zh-CN',{ dateStyle:'medium',timeStyle:'short',timeZone:zone }).format(value);
 }
 // 浮点数只用于坐标，标签与 tooltip 仍读原始十进制字符串。
