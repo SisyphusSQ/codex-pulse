@@ -74,3 +74,16 @@ func TestRejectsInvalidFactsVersionsAndDuplicateContributions(t *testing.T) {
 		t.Fatal("negative token accepted")
 	}
 }
+
+func TestReportingMetadataDuplicatesAreRejected(t *testing.T) {
+	batch := validBatch()
+	batch.Accounts = []Account{{Provider: "codex", ID: "same", CollectedAtMS: 1}, {Provider: "codex", ID: "same", CollectedAtMS: 2}}
+	if !errors.Is(batch.Validate(), ErrInvalid) {
+		t.Fatal("duplicate accounts accepted")
+	}
+	batch = validBatch()
+	batch.Status = []DeviceStatus{{Provider: "codex", Status: "ready"}, {Provider: "codex", Status: "partial"}}
+	if !errors.Is(batch.Validate(), ErrInvalid) {
+		t.Fatal("duplicate provider statuses accepted")
+	}
+}

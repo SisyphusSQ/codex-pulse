@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS pulse_session_sources (
     id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '设备来源会话键摘要',
     session_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'Provider与原始会话ID组合摘要',
     client_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '已鉴权来源设备ID',
+    home_id VARCHAR(128) COLLATE utf8mb4_bin NOT NULL COMMENT '来源分区HMAC，不是全局账号',
+    source_kind VARCHAR(32) COLLATE utf8mb4_bin NOT NULL COMMENT '结构化来源，决定同Provider权威口径',
     revision BIGINT NOT NULL COMMENT '来源单调快照修订',
     collected_at_ms BIGINT NOT NULL COMMENT '原始采集UTC毫秒',
     digest CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '快照允许字段SHA256',
@@ -81,12 +83,17 @@ CREATE TABLE IF NOT EXISTS pulse_sessions (
     session_id VARCHAR(255) COLLATE utf8mb4_bin NOT NULL COMMENT '原始Session ID，区分大小写',
     title VARCHAR(512) NOT NULL COMMENT '允许的会话标题',
     project_id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '选定来源项目键',
+    source_kind VARCHAR(32) COLLATE utf8mb4_bin NOT NULL COMMENT '选定的结构化来源',
+    session_kind VARCHAR(32) COLLATE utf8mb4_bin NOT NULL COMMENT 'session或unassigned_usage，不冒充原始会话',
+    history_start_at_ms BIGINT NOT NULL COMMENT '首次允许補传起点UTC毫秒',
     canonical_source_id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '选定的可比较结构化快照来源',
-    created_at_ms BIGINT NOT NULL COMMENT '来源会话创建UTC毫秒',
-    last_active_at_ms BIGINT NOT NULL COMMENT '来源会话最后活动UTC毫秒',
+    created_at_ms BIGINT NULL COMMENT '来源会话创建UTC毫秒',
+    last_active_at_ms BIGINT NULL COMMENT '来源会话最后活动UTC毫秒',
+    canonical_revision BIGINT NOT NULL COMMENT '选定来源快照修订',
     collected_at_ms BIGINT NOT NULL COMMENT '选定快照采集UTC毫秒',
     complete BIGINT NOT NULL COMMENT '完整覆盖为1，部分为0',
     conflict BIGINT NOT NULL COMMENT '不可比较来源冲突为1',
+    correction_fence BIGINT NOT NULL COMMENT '已接受来源的完整历史修订阻止陈旧副本恢复旧贡献',
     deleted BIGINT NOT NULL COMMENT '所有来源已删除为1',
 PRIMARY KEY (id),
 KEY idx_sessions_activity (last_active_at_ms, id),
@@ -98,16 +105,22 @@ CREATE TABLE IF NOT EXISTS pulse_usage (
     session_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '所属中心会话键',
     contribution_id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '独立于设备与本地generation的贡献键',
     position BIGINT NOT NULL COMMENT '会话结构化贡献顺序',
-    observed_at_ms BIGINT NOT NULL COMMENT '来源贡献UTC毫秒',
+    observed_at_ms BIGINT NULL COMMENT '来源贡献UTC毫秒',
     model VARCHAR(128) COLLATE utf8mb4_bin NULL COMMENT '规范模型标识，NULL为未知',
     input_tokens BIGINT NULL COMMENT '输入Token，NULL为未知，缓存可能为子集',
     cached_tokens BIGINT NULL COMMENT '缓存输入Token',
+    cache_write_tokens BIGINT NULL COMMENT '独立缓存写入Token',
     output_tokens BIGINT NULL COMMENT '输出Token',
     reasoning_tokens BIGINT NULL COMMENT '推理Token，是否计入输出遵守Provider语义',
     total_tokens BIGINT NULL COMMENT '按Provider口径的总Token',
     cost_micro_usd BIGINT NULL COMMENT '历史API等价成本整数微美元',
     reported_charge_micro_usd BIGINT NULL COMMENT '来源明确的实际收费整数微美元',
     pricing_version VARCHAR(128) NULL COMMENT '不可变价格证据版本，NULL为未定价',
+    pricing_mode VARCHAR(32) NOT NULL COMMENT '历史成本舍入口径',
+    input_price BIGINT NULL COMMENT '输入微美元每百万Token',
+    cached_price BIGINT NULL COMMENT '缓存读取微美元每百万Token',
+    cache_write_price BIGINT NULL COMMENT '缓存写入微美元每百万Token',
+    output_price BIGINT NULL COMMENT '输出微美元每百万Token',
     cost_status VARCHAR(32) NOT NULL COMMENT 'known、partial或unpriced',
 PRIMARY KEY (session_key, contribution_id),
 UNIQUE KEY unq_usage_position (session_key, position),
@@ -152,6 +165,7 @@ KEY idx_quota_pending (client_id, local_scope, observed_at_ms)
 CREATE TABLE IF NOT EXISTS pulse_reset_credits (
     id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '设备与库存观测身份摘要',
     client_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '来源采集设备ID',
+    provider VARCHAR(32) COLLATE utf8mb4_bin NOT NULL COMMENT 'Agent Provider',
     account_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL COMMENT '已确认中心账号键',
     local_scope VARCHAR(128) NOT NULL COMMENT '本地历史归属scope',
     observed_at_ms BIGINT NOT NULL COMMENT '原始采集UTC毫秒',
@@ -175,3 +189,35 @@ CREATE TABLE IF NOT EXISTS pulse_device_status (
     received_at_ms BIGINT NOT NULL COMMENT '中心接收UTC毫秒',
 PRIMARY KEY (client_id, provider)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='设备各Provider采集覆盖和同步状态';
+
+-- 保留已接受的白名单快照，部分修订不能抹去可信历史
+CREATE TABLE IF NOT EXISTS pulse_session_canonical (
+    session_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '所属中心会话键',
+    payload LONGTEXT NOT NULL COMMENT '白名单合并快照，独立于高频元数据查询',
+PRIMARY KEY (session_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='保留已接受的白名单快照，部分修订不能抹去可信历史';
+
+-- 中心去重工具与技能统计，不含参数输出
+CREATE TABLE IF NOT EXISTS pulse_invocations (
+    session_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '所属中心会话键',
+    invocation_id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '独立于设备与文件位置的调用键',
+    observed_at_ms BIGINT NOT NULL COMMENT '真实调用UTC毫秒',
+    kind VARCHAR(16) COLLATE utf8mb4_bin NOT NULL COMMENT 'tool或skill',
+    tool_name VARCHAR(128) COLLATE utf8mb4_bin NOT NULL COMMENT '安全工具或技能标识',
+    outcome VARCHAR(16) NOT NULL COMMENT 'succeeded、failed或unknown',
+    duration_ms BIGINT NULL COMMENT '来源明确的耗时毫秒',
+PRIMARY KEY (session_key, invocation_id),
+KEY idx_invocations_time (observed_at_ms, session_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='中心去重工具与技能统计，不含参数输出';
+
+-- 同一采集设备确认的本地scope与真实账号关联
+CREATE TABLE IF NOT EXISTS pulse_account_bindings (
+    id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '设备Provider与本地scope组合摘要',
+    client_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '已鉴权来源客户端',
+    provider VARCHAR(32) COLLATE utf8mb4_bin NOT NULL COMMENT 'Agent Provider',
+    local_scope VARCHAR(128) NOT NULL COMMENT '本地不可逆账号scope',
+    account_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '受确认的中心账号键',
+    confirmed_at_ms BIGINT NOT NULL COMMENT '同一确认上下文采集UTC毫秒',
+PRIMARY KEY (id),
+KEY idx_bindings_account (account_key, client_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='同一采集设备确认的本地scope与真实账号关联';

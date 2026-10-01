@@ -68,6 +68,8 @@ CREATE TABLE IF NOT EXISTS pulse_session_sources (
     id TEXT NOT NULL,
     session_key TEXT NOT NULL,
     client_id TEXT NOT NULL,
+    home_id TEXT NOT NULL,
+    source_kind TEXT NOT NULL,
     revision INTEGER NOT NULL,
     collected_at_ms INTEGER NOT NULL,
     digest TEXT NOT NULL,
@@ -84,12 +86,17 @@ CREATE TABLE IF NOT EXISTS pulse_sessions (
     session_id TEXT NOT NULL,
     title TEXT NOT NULL,
     project_id TEXT NOT NULL,
+    source_kind TEXT NOT NULL,
+    session_kind TEXT NOT NULL,
+    history_start_at_ms INTEGER NOT NULL,
     canonical_source_id TEXT NOT NULL,
-    created_at_ms INTEGER NOT NULL,
-    last_active_at_ms INTEGER NOT NULL,
+    created_at_ms INTEGER,
+    last_active_at_ms INTEGER,
+    canonical_revision INTEGER NOT NULL,
     collected_at_ms INTEGER NOT NULL,
     complete INTEGER NOT NULL,
     conflict INTEGER NOT NULL,
+    correction_fence INTEGER NOT NULL,
     deleted INTEGER NOT NULL,
 PRIMARY KEY (id)
 );
@@ -103,16 +110,22 @@ CREATE TABLE IF NOT EXISTS pulse_usage (
     session_key TEXT NOT NULL,
     contribution_id TEXT NOT NULL,
     position INTEGER NOT NULL,
-    observed_at_ms INTEGER NOT NULL,
+    observed_at_ms INTEGER,
     model TEXT,
     input_tokens INTEGER,
     cached_tokens INTEGER,
+    cache_write_tokens INTEGER,
     output_tokens INTEGER,
     reasoning_tokens INTEGER,
     total_tokens INTEGER,
     cost_micro_usd INTEGER,
     reported_charge_micro_usd INTEGER,
     pricing_version TEXT,
+    pricing_mode TEXT NOT NULL,
+    input_price INTEGER,
+    cached_price INTEGER,
+    cache_write_price INTEGER,
+    output_price INTEGER,
     cost_status TEXT NOT NULL,
 PRIMARY KEY (session_key, contribution_id)
 );
@@ -161,6 +174,7 @@ CREATE INDEX IF NOT EXISTS idx_quota_pending ON pulse_quota_observations (client
 CREATE TABLE IF NOT EXISTS pulse_reset_credits (
     id TEXT NOT NULL,
     client_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
     account_key TEXT,
     local_scope TEXT NOT NULL,
     observed_at_ms INTEGER NOT NULL,
@@ -185,3 +199,35 @@ CREATE TABLE IF NOT EXISTS pulse_device_status (
     received_at_ms INTEGER NOT NULL,
 PRIMARY KEY (client_id, provider)
 );
+
+-- 保留已接受的白名单快照，部分修订不能抹去可信历史
+CREATE TABLE IF NOT EXISTS pulse_session_canonical (
+    session_key TEXT NOT NULL,
+    payload TEXT NOT NULL,
+PRIMARY KEY (session_key)
+);
+
+-- 中心去重工具与技能统计，不含参数输出
+CREATE TABLE IF NOT EXISTS pulse_invocations (
+    session_key TEXT NOT NULL,
+    invocation_id TEXT NOT NULL,
+    observed_at_ms INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    duration_ms INTEGER,
+PRIMARY KEY (session_key, invocation_id)
+);
+CREATE INDEX IF NOT EXISTS idx_invocations_time ON pulse_invocations (observed_at_ms, session_key);
+
+-- 同一采集设备确认的本地scope与真实账号关联
+CREATE TABLE IF NOT EXISTS pulse_account_bindings (
+    id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    local_scope TEXT NOT NULL,
+    account_key TEXT NOT NULL,
+    confirmed_at_ms INTEGER NOT NULL,
+PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_bindings_account ON pulse_account_bindings (account_key, client_id);

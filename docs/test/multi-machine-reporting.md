@@ -26,6 +26,8 @@
 - Pass：Codex reasoning/缓存增量/价格证据、索引重建稳定身份、工具统计白名单、路径不出 payload；Cursor 重复次数、缓存读写、reported/estimated 区分、未关联会话及账期切换 fence。
 - Pass：CoreService RPC 白名单与生成 Swift protocol、CoreClient 编译；原生同步配置 UI 尚由设备配置执行卡继续实现。
 
+- Pass：显式项目关联/解除、来源名称更新保留管理关系、中心事务接收、HTTP/实际 TLS 上报、相同请求原确认、batch/来源 revision 冲突、三来源复制/并发/增长/价格修订、部分修订保留、完整纠正与陈旧副本、来源 tombstone、整批回滚、Cursor 跨账期/复制、账号 scope 隔离/晚到确认/legacy 不提升、Credits 和 used 小数精度；网络身份/未知及重复字段/预算/撤销/自身进度权限。
+
 以上为开发场景通过，不表示整个产品或 Master 已验收。后续各功能增量需补充其受影响验证。
 
 ## 本机恢复观察

@@ -11,5 +11,5 @@ func Module(cfg config.Config) fx.Option {
 	if !cfg.Database.Enabled {
 		return fx.Options()
 	}
-	return fx.Options(fx.Provide(NewAccess), fx.Invoke(func(access *Access, e *echo.Echo) { access.Register(e) }))
+	return fx.Options(fx.Provide(NewAccess, NewReporting), fx.Invoke(func(access *Access, reporting *Reporting, e *echo.Echo) { access.Register(e); reporting.Register(e) }))
 }

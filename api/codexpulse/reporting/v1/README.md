@@ -27,3 +27,17 @@ Invocation 仅包含工具/技能名、真实时间、结果与允许的 duratio
 每请求最多 8 MiB；最多 32 个 Session 快照、32 个账号/关联、1,000 个配额观测、100 个 Reset Credits 记录、3 个 Provider 状态。每快照最多 20,000 条用量与调用事实之和。时间限制在 JavaScript 安全整数范围，Token/金额使用十进制字符串保留 int64 精度和 NULL/零差异。未知字段、重复字段与非法枚举由接收端拒绝，错误不回显内容。
 
 本协议首次发布前仍与实现同时演进，当前版本没有已发布的跨版本兼容承诺；正式发布后改动须设计升级与版本拒绝语义。
+
+## 中心接收与来源仲裁
+
+采集客户端、Batch 标记、来源更新和中心投影在一个事务内提交。重复 batch ID 的同一语义正文返回原接收时间，不同正文返回 409。来源的同 revision、不同内容拒绝；过旧 revision 只做幂等确认，不覆盖当前事实。
+
+中心重算 Contribution/Invocation ID，不信任客户端随意指定的贡献身份。每会话保留最多 128 个来源分区、合计 64 MiB 白名单快照；合并投影最多 200,000 条事实/64 MiB，超预算整批拒绝。跨设备锁定会话 owner，按固定 session key 顺序取锁，MySQL 来源读取使用当前 locking read；账号 owner 同样按全局账号键排序，避免交叉更新。
+
+可比较的包含关系选择覆盖更完整的事实集合；相同贡献不会相加。不可比较来源保留已接受集合并标记冲突。部分修订不能擦掉已接受事实；已接受来源的完整新修订可以纠正/移除自身贡献，建立中心 correction fence，陈旧副本不会恢复旧贡献。之后其他来源的差异持续显示冲突，直到事实一致；不会从更大的数量猜正确答案。被删除的所有来源将会话标记 deleted，历史证据不物理删除。
+
+Cursor Dashboard 的同设备多个账期合并为历史集合，不与 cursor_local 再次相加；另一个设备复制账期只增加 provenance。原始 Session 无法确定时仍保持 unassigned_usage。
+
+账号键来自 Provider + 原始 ID，邮箱不承担唯一关系。AccountBinding 只证明同设备/Provider/local scope 的关系；同 scope 不能改绑不同账号，其他设备同名 scope 不能关联本机历史。HMAC-only 观测在对应确认关系到达后可关联，原始时间不刷新；legacy_unassigned 不自动升级。传入的 AccountID 必须与该 scope 的已确认关系一致，整个 Home 的 Session/Token 没有账号字段。
+
+used_percent 在两种数据库中统一保存到小数点后 6 位，MySQL 使用 DECIMAL(9,6)，SQLite 入库前同样规范化；它仍表达来源 used 语义，不是多机合计。其他精确 Token/微美元整数不舍弃精度。

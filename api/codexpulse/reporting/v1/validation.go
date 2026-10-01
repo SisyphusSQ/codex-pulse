@@ -87,17 +87,35 @@ func (b Batch) Validate() error {
 			}
 		}
 	}
+	accountsSeen := make(map[string]bool)
 	for _, account := range b.Accounts {
+		key := Key(account.Provider, account.ID)
+		if accountsSeen[key] {
+			return ErrInvalid
+		}
+		accountsSeen[key] = true
 		if !provider(account.Provider) || !identifier(account.ID, 255) || !optionalText(account.Email, 255) || !optionalText(account.Plan, 128) || !timestamp(account.CollectedAtMS) {
 			return ErrInvalid
 		}
 	}
+	bindingsSeen := make(map[string]bool)
 	for _, binding := range b.Bindings {
+		key := Key(binding.Provider, binding.LocalScope)
+		if bindingsSeen[key] {
+			return ErrInvalid
+		}
+		bindingsSeen[key] = true
 		if !provider(binding.Provider) || !identifier(binding.LocalScope, 128) || !identifier(binding.AccountID, 255) || !timestamp(binding.ConfirmedAtMS) {
 			return ErrInvalid
 		}
 	}
+	quotasSeen := make(map[string]bool)
 	for _, q := range b.Quotas {
+		key := Key(q.Provider, q.ID)
+		if quotasSeen[key] {
+			return ErrInvalid
+		}
+		quotasSeen[key] = true
 		if !provider(q.Provider) || !identifier(q.ID, 128) || !optionalID(q.AccountID, 255) || !identifier(q.LocalScope, 128) || !identifier(q.LimitID, 128) || !identifier(q.WindowKind, 64) || !timestamp(q.ObservedAtMS) || !optionalTimestamp(q.ResetsAtMS) || !slices.Contains([]string{"accepted", "suspicious", "rejected", "unknown"}, q.Validity) || !slices.Contains([]string{"app_server", "local_jsonl", "legacy_wham", "cursor_dashboard", "grok_billing"}, q.Source) || !slices.Contains([]string{"confirmed", "pending_association", "legacy_unassigned", "linked_history"}, q.HistoryOrigin) {
 			return ErrInvalid
 		}
@@ -111,7 +129,13 @@ func (b Batch) Validate() error {
 			return ErrInvalid
 		}
 	}
+	creditsSeen := make(map[string]bool)
 	for _, c := range b.Credits {
+		key := Key(c.Provider, c.ID)
+		if creditsSeen[key] {
+			return ErrInvalid
+		}
+		creditsSeen[key] = true
 		if !provider(c.Provider) || !identifier(c.ID, 128) || !optionalID(c.AccountID, 255) || !identifier(c.LocalScope, 128) || !timestamp(c.ObservedAtMS) || !counter(c.Inventory) || !optionalTimestamp(c.NextResetAtMS) || !slices.Contains([]string{"fresh", "stale", "unknown", "unavailable", "accepted"}, c.Status) {
 			return ErrInvalid
 		}

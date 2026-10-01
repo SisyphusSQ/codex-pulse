@@ -41,13 +41,15 @@ func testServer(t *testing.T, origin string) (*apphttp.Server, *service.Access) 
 	t.Cleanup(func() { _ = log.Sync() })
 	var server *apphttp.Server
 	var access *service.Access
-	app := fx.New(fx.NopLogger, fx.Supply(cfg), fx.Provide(gormv2.New, repository.NewAccess, service.NewAccess, health.New, apphttp.NewServer), fx.Invoke(func(lifecycle fx.Lifecycle, engine *gormv2.Engine) {
+	var reporting *service.Reporting
+	app := fx.New(fx.NopLogger, fx.Supply(cfg), fx.Provide(gormv2.New, repository.NewAccess, repository.NewReporting, service.NewAccess, service.NewReporting, health.New, apphttp.NewServer), fx.Invoke(func(lifecycle fx.Lifecycle, engine *gormv2.Engine) {
 		lifecycle.Append(fx.Hook{OnStart: func(ctx context.Context) error { return repository.NewSchema(engine).Init(ctx) }})
-	}), fx.Populate(&server, &access))
+	}), fx.Populate(&server, &access, &reporting))
 	if err := app.Err(); err != nil {
 		t.Fatal(err)
 	}
 	controller.NewAccess(access, cfg).Register(server.Echo)
+	controller.NewReporting(reporting).Register(server.Echo)
 	if err := app.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
