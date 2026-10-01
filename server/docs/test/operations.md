@@ -97,3 +97,7 @@ bin/codex-pulse-server --config /private/mysql-restored-server.yml db check
 Execution 只记录开发证据，Master TOO-475/476/477 承接正式验收。SQLite 确定性检查使用 synthetic/empty Home，Web 证据使用合成账号与记录。按三个实际主机分别绑定真实 Home + 0700 runtime，读回物理身份；验证配对开关、上传/重试/幂等、重复来源、网络断开/撤销/超预算、退出停止/重启补采、账号隔离、NULL/零/reset/节奏和 TPS 生命周期对账。真实 Home 运行不得上传超白名单内容。
 
 记录逐项 Pass / Fail / Blocked / Not Run，不用构建替代三机、真实 MySQL、HTTPS 代理部署或 CI。生产部署、签名、公证与发布在本阶段未执行，不启用已关闭 CI。开发证据见根仓 `docs/test/multi-machine-reporting.md` 及本目录运行交付摘要。
+
+## Web 静态资源目录更新
+
+Server 通过受限目录句柄托管同源构建资源，运行中不要直接在该目录执行 Vite build 或替换 assets 子目录。构建到新的版本目录后，用新的 server.webDirectory 启动或重启 Server；保留上一份二进制与完整 Web 目录用于回滚。开发时若重建了当前预览目录，也需要重启隔离预览 Server，再刷新页面。单独刷新浏览器不能重新绑定被构建替换的目录。

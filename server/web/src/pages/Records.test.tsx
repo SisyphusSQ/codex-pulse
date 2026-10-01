@@ -35,6 +35,7 @@ describe('server records and explicit project relationship',()=>{
   expect(fetcher.mock.calls.some(([p])=>new URL(String(p),'http://localhost').searchParams.get('page')==='2')).toBe(true);
   await user.click(screen.getByRole('button',{name:unsafe}));await screen.findByRole('heading',{name:unsafe});
   expect(document.querySelector('img[src="x"]')).toBeNull();expect(screen.getAllByText('raw-two').length).toBe(2);
+  await user.click(screen.getByRole('button',{name:'关闭详情'}));
   await user.type(screen.getByRole('textbox',{name:'搜索标题、Session ID 或项目名'}),'raw-one');await user.click(screen.getByRole('button',{name:'应用搜索'}));
   await waitFor(()=>expect(fetcher.mock.calls.some(([p])=>{const u=new URL(String(p),'http://localhost');return u.pathname==='/api/v1/sessions'&&u.searchParams.get('search')==='raw-one'&&u.searchParams.get('page')==='1';})).toBe(true));
   expect(screen.queryByRole('heading',{name:unsafe})).not.toBeInTheDocument();
@@ -55,4 +56,18 @@ describe('server records and explicit project relationship',()=>{
   const mutation=fetcher.mock.calls.find(([p])=>p==='/api/v1/projects/associate');expect(JSON.parse(String(mutation?.[1]?.body))).toEqual({project_ids:['a'.repeat(64),'b'.repeat(64)],target_id:'a'.repeat(64)});
   expect(screen.getByText('关联所选项目').closest('button')).toBeDisabled();
  });
+ it('keeps the TPS tab selected after changing the recent-turn request and preserves lifecycle cache rate',async()=>{
+  fetcher.mockImplementation(async path=>{
+   const url=new URL(String(path),'http://localhost');
+   if(url.pathname==='/api/v1/devices/status')return success([]);
+   if(url.pathname==='/api/v1/sessions/one')return success({session:{...session('one','生命周期会话'),cache_hit_rate:{basis_points:'9000',input_tokens:'1000',cached_input_tokens:'900',unit:'basis_points',basis:'lifetime_cached_input',status:'complete',reason:'',source_client_id:null,conflict:false},throughput:{average_output_milli_tps:'22355',output_tokens:'16327',active_duration_ms:'730364',included_turns:'61',excluded_turns:'0',open_turns:'0',unattributed_events:'0',status:'complete',reason:'',duration_source:'duration_ms',basis:'closed_turn_lifetime_output',average_unit:'milli_tokens_per_second',duration_unit:'milliseconds',source_client_id:null,conflict:false}},range:summary.range,trend:[],tools:[],skills:[],coverage:partialCoverage,throughput_turns:{items:[],total:'61',limit:Number(url.searchParams.get('throughput_limit')),truncated:true}});
+   return success(records([session('one','生命周期会话')],1,1));
+  });
+  render(<QueryClientProvider client={createQueryClient()}><Sessions /></QueryClientProvider>);
+  const user=userEvent.setup();await user.click(await screen.findByRole('button',{name:'生命周期会话'}));await screen.findByText('90.0%');await user.click(screen.getByRole('tab',{name:'输出 TPS'}));await user.click(screen.getByRole('combobox',{name:'最近 TPS 轮次条数'}));await user.click(await screen.findByText('最近 50 条',{selector:'.ant-select-item-option-content'}));
+  await waitFor(()=>expect(fetcher.mock.calls.some(([p])=>new URL(String(p),'http://localhost').searchParams.get('throughput_limit')==='50')).toBe(true));
+  await waitFor(()=>expect(screen.getByRole('tab',{name:'输出 TPS'})).toHaveAttribute('aria-selected','true'));expect(screen.getByLabelText('average-output-tps')).toHaveTextContent(/22\.36\s*TPS/);
+  await user.click(screen.getByRole('tab',{name:'用量与缓存'}));expect(screen.getByText('90.0%')).toBeInTheDocument();
+ });
+
 });

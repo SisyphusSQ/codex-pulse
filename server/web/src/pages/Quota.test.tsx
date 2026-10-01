@@ -17,8 +17,9 @@ function mount(){render(<QueryClientProvider client={createQueryClient()}><Quota
 describe('quota facts and pace',()=>{
  it('preserves observed zero, sparse forecast and exact credits with separate reset/expiry',async()=>{
   fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success(paceFixture()):success(quotaFixture()));
-  mount();expect((await screen.findAllByText('0%')).length).toBeGreaterThan(0);await screen.findByText('实际采样数量或跨度不足');expect(screen.getByText('9,007,199,254,740,993')).toBeInTheDocument();
-  expect(screen.getByText('正值代表使用快于均匀节奏')).toBeInTheDocument();expect(screen.getByText('10.00 个百分点')).toBeInTheDocument();
+  mount();expect((await screen.findAllByText('0%')).length).toBeGreaterThan(0);await screen.findByText('实际采样数量或跨度不足');
+  expect(screen.getByText('正值代表使用快于均匀节奏')).toBeInTheDocument();expect(screen.getByLabelText('节奏偏差（百分点）')).toHaveTextContent('10.00');
+  await userEvent.setup().click(screen.getByRole('tab',{name:'Reset Credits (1)'}));expect(screen.getByText('9,007,199,254,740,993')).toBeInTheDocument();
   const credit=screen.getByText('Reset Credits').closest('.ant-card')!;expect(within(credit as HTMLElement).getByText('下一次 reset')).toBeInTheDocument();expect(within(credit as HTMLElement).getAllByText('未知').length).toBeGreaterThan(0);
  });
  it('shows expired last value without countdown, keeps original times after failed refresh, and escapes account metadata',async()=>{

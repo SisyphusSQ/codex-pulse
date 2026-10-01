@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Card, Form, Input, Modal, Select, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Drawer, Form, Input, Modal, Select, Table, Tabs, Tag, Typography } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../api/client';
 import { getClients, issuePairing, renameClient, revokeClient, revokePairing, type Client, type Pairing } from '../api/access';
@@ -18,6 +18,7 @@ export default function Devices(){
  const devices=useQuery({queryKey:['devices','status'],queryFn:({signal})=>getDevices(signal),refetchInterval:30_000});
  const [form]=Form.useForm<{name:string;purpose:Client['purpose']}>();
  const [renameForm]=Form.useForm<{name:string}>();
+ const [pairFormOpen,setPairFormOpen]=useState(false);
  const [pairing,setPairing]=useState<Pairing|null>(null);
  const [adminRequest,setAdminRequest]=useState<{name:string;purpose:Client['purpose']}|null>(null);
  const [revoking,setRevoking]=useState<Client|null>(null);
@@ -34,7 +35,7 @@ export default function Devices(){
  async function invalidate(){await Promise.all([queryClient.invalidateQueries({queryKey:['clients']}),queryClient.invalidateQueries({queryKey:['devices']}),queryClient.invalidateQueries({queryKey:['quotas']}),queryClient.invalidateQueries({queryKey:['statistics']})]);}
  async function issue(value:{name:string;purpose:Client['purpose']}){
   setBusy(true);setError(undefined);setPairing(null);
-  try{const code=await issuePairing(value.purpose,value.name.trim());setNow(Date.now());setPairing(code);form.resetFields();setAdminRequest(null);}catch(cause){setError(failMessage(cause));}finally{setBusy(false);}
+  try{const code=await issuePairing(value.purpose,value.name.trim());setNow(Date.now());setPairing(code);form.resetFields();setAdminRequest(null);setPairFormOpen(false);}catch(cause){setError(failMessage(cause));}finally{setBusy(false);}
  }
  function submit(value:{name:string;purpose:Client['purpose']}){if(value.purpose==='admin')setAdminRequest(value);else void issue(value);}
  async function cancelCode(){
@@ -49,21 +50,25 @@ export default function Devices(){
   if(!renaming)return;setBusy(true);setError(undefined);
   try{await renameClient(renaming.id,name.trim());const self=renaming.id===session?.client_id;setRenaming(null);await invalidate();if(self)reloadSession();}catch(cause){setError(failMessage(cause));}finally{setBusy(false);}
  }
- return <section><div className="page-heading"><div><span className="eyebrow">DEVICES & ACCESS</span><Typography.Title level={2}>设备与授权</Typography.Title><Typography.Paragraph type="secondary">为每台 App 和管理浏览器单独配对，查看采集进度与撤销授权。</Typography.Paragraph></div><Button onClick={()=>void refresh()} loading={query.isFetching||devices.isFetching} aria-label="刷新设备">刷新</Button></div>
+ return <section><div className="page-heading"><div><Typography.Title level={3}>设备与授权</Typography.Title><Typography.Paragraph type="secondary">管理采集 App、浏览器授权与上报状态。</Typography.Paragraph></div><div className="header-account"><Button onClick={()=>void refresh()} loading={query.isFetching||devices.isFetching} aria-label="刷新设备">刷新</Button><Button type="primary" onClick={()=>setPairFormOpen(true)}>添加设备或浏览器</Button></div></div>
  {error&&<Alert type="error" showIcon className="form-alert" title={error} />}
- <Card title="签发一次性配对码"><Form name="issue-client" form={form} layout="vertical" initialValues={{purpose:'collector'}} onFinish={submit} disabled={busy} autoComplete="off">
- <div className="chart-grid"><Form.Item name="name" label="设备或浏览器名称" rules={[{required:true,whitespace:true,message:'请填写名称。'},{max:128,message:'名称最多 128 个字符。'}]}><Input maxLength={128} autoComplete="off" placeholder="例如：工作 Mac" /></Form.Item><Form.Item name="purpose" label="授权用途"><Select aria-label="配对码用途" options={[{value:'collector',label:'采集 App：仅上报与读取自身确认'},{value:'admin',label:'管理浏览器：查看中心数据与管理授权'}]} /></Form.Item></div>
- <Button type="primary" htmlType="submit" loading={busy}>签发配对码</Button><Typography.Paragraph type="secondary" className="sign-in-note">10 分钟有效、只可消费一次，用途固定。采集码不能登录管理页面；配对后 App 仍需要明确启用同步。HTTPS 与显式私网 HTTP 共用此流程。</Typography.Paragraph></Form></Card>
- {query.isPending?<LoadingState />:query.error&&!query.data?<ErrorState error={query.error} retry={()=>void refresh()} />:query.data&&<Card title="客户端授权" className="section-card">
+
+ <Tabs items={[
+ {key:'clients',label:'客户端授权',children:<> {query.isPending?<LoadingState />:query.error&&!query.data?<ErrorState error={query.error} retry={()=>void refresh()} />:query.data&&<Card title="授权客户端" className="table-card">
  {query.error&&<Alert type="warning" showIcon title="刷新失败，保留上次授权列表" description={query.error.message} />}
  <Table<Client> rowKey="id" size="small" dataSource={query.data} pagination={{pageSize:10,showSizeChanger:false}} scroll={{x:1040}} columns={[{title:'名称',render:(_,c)=><><strong>{c.name}</strong>{c.id===session?.client_id&&<Tag>当前浏览器</Tag>}<div className="record-id">{c.id}</div></>},{title:'用途',render:(_,c)=>c.purpose==='admin'?'管理浏览器':'采集 App'},{title:'授权状态',render:(_,c)=>c.revoked_at_ms?<Tag>已撤销</Tag>:c.expires_at_ms!=null&&c.expires_at_ms<=now?<Tag>已过期</Tag>:<Tag color="green">有效</Tag>},{title:'创建 / 到期',render:(_,c)=><>{dateTime(c.created_at_ms)}<div className="metric-note">{c.expires_at_ms==null?'设备凭证至撤销前有效':dateTime(c.expires_at_ms)}</div></>},{title:'最后接收',render:(_,c)=>dateTime(c.last_received_at_ms)},{title:'操作',render:(_,c)=><><Button type="link" disabled={busy} onClick={()=>{renameForm.setFieldsValue({name:c.name});setRenaming(c);}}>改名</Button><Button type="link" danger disabled={busy||c.revoked_at_ms!=null} onClick={()=>setRevoking(c)}>撤销</Button></>}]} />
- <Typography.Paragraph type="secondary">撤销停止后续接入，不删除历史事实。关闭本机同步保留本机队列；清理队列是单独的本机操作，均不能替代撤销。</Typography.Paragraph></Card>}
- <Card title="采集设备上报状态" className="section-card">
+ <Typography.Paragraph type="secondary">撤销停止后续接入，不删除历史事实。关闭本机同步保留本机队列；清理队列是单独的本机操作，均不能替代撤销。</Typography.Paragraph></Card>}</>},
+ {key:'status',label:'上报状态',children:<>
+ <Card title="采集设备上报状态" className="table-card">
  {devices.isPending?<LoadingState />:devices.error&&!devices.data?<ErrorState error={devices.error} retry={()=>void devices.refetch()} />:<>
  {devices.error&&<Alert type="warning" title="设备状态刷新失败，保留上次读取" description={devices.error.message} />}
  {(devices.data??[]).length?<Table rowKey={r=>`${r.id}:${r.provider}`} size="small" dataSource={(devices.data??[]).flatMap(d=>d.providers.length?d.providers.map(p=>({...p,id:d.id,name:d.name,revoked:d.revoked_at_ms,last_received:d.last_received_at_ms})):[{id:d.id,name:d.name,provider:'',version:'',collected_at_ms:null,coverage_start_ms:null,coverage_end_ms:null,pending_batches:0,status:'unknown',received_at_ms:0,stale:true,revoked:d.revoked_at_ms,last_received:d.last_received_at_ms}])} pagination={{pageSize:10,showSizeChanger:false}} scroll={{x:1260}} columns={[{title:'机器 / Provider',render:(_,r)=><>{r.name}<div className="metric-note">{providerNames[r.provider]??'尚无 Provider 状态'}{r.revoked?' · 已撤销':''}</div></>},{title:'版本',render:(_,r)=>r.version||'未上报'},{title:'原采集截至',render:(_,r)=>dateTime(r.collected_at_ms)},{title:'中心最后接收',render:(_,r)=>dateTime(r.last_received)},{title:'覆盖边界',render:(_,r)=><>{dateTime(r.coverage_start_ms)}<div>→ {dateTime(r.coverage_end_ms)}</div></>},{title:'待发送批次',render:(_,r)=>r.provider?integer(r.pending_batches):'未知'},{title:'来源状态',render:(_,r)=><>{deviceStates[r.status]??'未知'}<div className="metric-note">{r.stale?'采集证据陈旧':'有近期采集证据'}</div></>}]} />:<EmptyState description="尚无采集设备。请签发采集码，在 App 的多机中心设置中配对并启用。" />}
  <Typography.Paragraph type="secondary">来源索引就绪及接收成功不代表完整历史上传，也不证明机器在线；关闭 App 后停止采集与上报，下次启动增量补采。此处仅显示上次收到的有限状态。</Typography.Paragraph></>}
- </Card>
+ </Card></>},
+ ]} />
+ <Drawer open={pairFormOpen} title="签发一次性配对码" size={520} styles={{wrapper:{maxWidth:'100vw'}}} onClose={()=>!busy&&setPairFormOpen(false)}><Form name="issue-client" form={form} layout="vertical" initialValues={{purpose:'collector'}} onFinish={submit} disabled={busy} autoComplete="off">
+ <div className="chart-grid"><Form.Item name="name" label="设备或浏览器名称" rules={[{required:true,whitespace:true,message:'请填写名称。'},{max:128,message:'名称最多 128 个字符。'}]}><Input maxLength={128} autoComplete="off" placeholder="例如：工作 Mac" /></Form.Item><Form.Item name="purpose" label="授权用途"><Select aria-label="配对码用途" options={[{value:'collector',label:'采集 App：仅上报与读取自身确认'},{value:'admin',label:'管理浏览器：查看中心数据与管理授权'}]} /></Form.Item></div>
+ <Button type="primary" htmlType="submit" loading={busy}>签发配对码</Button><Typography.Paragraph type="secondary" className="sign-in-note">10 分钟有效、只可消费一次，用途固定。采集码不能登录管理页面；配对后 App 仍需要明确启用同步。HTTPS 与显式私网 HTTP 共用此流程。</Typography.Paragraph></Form></Drawer>
  <Modal open={adminRequest!==null} title="签发管理浏览器码？" okText="确认签发管理码" cancelText="取消" confirmLoading={busy} onOk={()=>adminRequest&&void issue(adminRequest)} onCancel={()=>!busy&&setAdminRequest(null)}><Typography.Paragraph>使用这张码的浏览器可以读取账号、会话和所有统计，签发配对码及撤销客户端。名称：{adminRequest?.name}。</Typography.Paragraph></Modal>
  {pairing&&<Modal open title={pairing?.purpose==='admin'?'管理浏览器配对码':'采集 App 配对码'} footer={<><Button disabled={busy} onClick={()=>setPairing(null)}>仅关闭显示</Button><Button danger loading={busy} disabled={!pairing?.code} onClick={()=>void cancelCode()}>撤销未用码</Button></>} onCancel={()=>!busy&&setPairing(null)}><Typography.Paragraph>请将码输入对应客户端，勿发到公开渠道。只在当前页面内存显示。</Typography.Paragraph><div className="pairing-code">{pairing?.code||'配对码已到期'}</div><Typography.Paragraph type="secondary">到期：{dateTime(pairing?.expires_at_ms)} · 剩余 {duration(pairing?pairing.expires_at_ms-now:null)}。关闭显示不会撤销尚未使用的码；撤销未用码成功后立即失效。</Typography.Paragraph>{error&&<Alert type="error" title={error} />}</Modal>}
  <Modal open={revoking!==null} title="撤销客户端授权？" okText="确认撤销" cancelText="取消" confirmLoading={busy} onOk={()=>void revoke()} onCancel={()=>!busy&&setRevoking(null)}><Typography.Paragraph>撤销 {revoking?.name} 后，客户端无法继续接入，历史仍保留；恢复需要新码重新配对。{revoking?.id===session?.client_id?'这会退出当前管理浏览器。':''}</Typography.Paragraph></Modal>

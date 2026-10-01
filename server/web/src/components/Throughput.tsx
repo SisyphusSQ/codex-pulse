@@ -1,4 +1,4 @@
-import { Alert, Card, Select, Table, Tag, Typography } from 'antd';
+import { Alert, Card, Select, Statistic, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ThroughputStats, ThroughputTurns } from '../api/records';
 import { dateTime, integer } from '../format';
 
@@ -6,10 +6,10 @@ export const throughputReasons:Record<string,string>={not_reported:'来源尚未
 const durationSources:Record<string,string>={duration_ms:'日志毫秒耗时',log_timestamp:'毫秒起止时间',source_seconds:'秒级起止时间',mixed:'混合时间证据'};
 export function tps(value:string|null|undefined):string{if(value==null)return '--';const hundredths=(BigInt(value)+5n)/10n;return `${integer((hundredths/100n).toString())}.${(hundredths%100n).toString().padStart(2,'0')}`;}
 export function activeDuration(value:string|null|undefined):string{if(value==null)return '未知';const n=BigInt(value);return `${integer((n/1000n).toString())}.${(n%1000n).toString().padStart(3,'0')} 秒`;}
-export function ThroughputCell({value}:{value?:ThroughputStats|null}){return <div><strong>{tps(value?.average_output_milli_tps)}{value?.average_output_milli_tps!=null?' TPS':''}</strong>{value?.status==='partial'&&<Tag color={value.conflict?'red':'gold'}>部分数据</Tag>}{value?.reason&&<div className="metric-note">{throughputReasons[value.reason]??'指标暂不可用'}</div>}</div>;}
+export function ThroughputCell({value}:{value?:ThroughputStats|null}){return <Tooltip title={value?.reason?throughputReasons[value.reason]??'指标暂不可用':'整个会话活跃期间的平均输出速度'}><span className="numeric"><strong>{tps(value?.average_output_milli_tps)}{value?.average_output_milli_tps!=null?' TPS':''}</strong>{value?.status==='partial'&&<Tag color={value.conflict?'red':'gold'}>部分数据</Tag>}</span></Tooltip>;}
 export function ThroughputPanel({value,turns,zone,sourceName,onLimit}:{value?:ThroughputStats|null;turns?:ThroughputTurns;zone:string;sourceName?:string;onLimit(limit:number):void}){
  return <Card title="会话活跃期间平均输出 TPS" className="section-card"><Typography.Paragraph type="secondary">整个会话的已结束轮次输出量 / 活跃区间并集秒数。轮间空闲不计入，轮内思考、工具与等待计入；日期、模型筛选及下方轮次条数不改变这个生命周期平均值。</Typography.Paragraph>
- <div className="metric-grid"><div><div className="metric-label">平均输出 TPS</div><div className="metric-value"><ThroughputCell value={value} /></div></div><div><div className="metric-label">参与统计的输出 Token</div><div className="metric-value">{integer(value?.output_tokens)}</div></div><div><div className="metric-label">活跃时长</div><div className="metric-value">{activeDuration(value?.active_duration_ms)}</div></div></div>
+ <div className="metric-grid"><div><div className="metric-label">平均输出 TPS</div><Statistic aria-label="average-output-tps" value={tps(value?.average_output_milli_tps)} suffix={value?.average_output_milli_tps!=null?'TPS':undefined} />{value?.status==='partial'&&<Tag color={value.conflict?'red':'gold'}>部分数据</Tag>}{value?.reason&&<div className="metric-note">{throughputReasons[value.reason]??'指标暂不可用'}</div>}</div><div><div className="metric-label">参与统计的输出 Token</div><Statistic value={integer(value?.output_tokens)} /></div><div><div className="metric-label">活跃时长</div><Statistic value={activeDuration(value?.active_duration_ms)} /></div></div>
  <Typography.Paragraph type="secondary">参与 {integer(value?.included_turns)} 轮 · 排除 {integer(value?.excluded_turns)} 轮 · 未结束 {integer(value?.open_turns)} 轮 · 无归属事件 {integer(value?.unattributed_events)} · {durationSources[value?.duration_source??'']??'暂无时间证据'}{sourceName?` · 采集来源：${sourceName}`:''}</Typography.Paragraph>
  {value?.conflict&&<Alert type="warning" showIcon title="来源 TPS 证据不一致" description="当前保留已接受来源的统计和轮次摘要。可按采集来源筛选核对，不能把各设备平均相加。" />}
  {value?.status==='unavailable'&&<Alert type="info" showIcon title={throughputReasons[value.reason]??'TPS 暂不可用'} />}

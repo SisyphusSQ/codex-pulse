@@ -11,7 +11,7 @@ describe('lifetime throughput presentation',()=>{
  });
  it('keeps lifetime mean separate from recent truncation and shows partial/source conflict',()=>{
   render(<ThroughputPanel value={{...measured,status:'partial',reason:'source_conflict',conflict:true}} turns={{items:[],total:'61',limit:20,truncated:true}} zone="UTC" onLimit={()=>{}} sourceName="合成来源" />);
-  expect(screen.getByText('22.36 TPS')).toBeInTheDocument();expect(screen.getByText('来源 TPS 证据不一致')).toBeInTheDocument();expect(screen.getByText(/整体平均使用完整指标/)).toBeInTheDocument();expect(screen.getByText(/61/)).toBeInTheDocument();expect(screen.getByText(/采集来源：合成来源/)).toBeInTheDocument();
+  expect(screen.getByLabelText('average-output-tps')).toHaveTextContent(/22\.36\s*TPS/);expect(screen.getByText('来源 TPS 证据不一致')).toBeInTheDocument();expect(screen.getByText(/整体平均使用完整指标/)).toBeInTheDocument();expect(screen.getByText(/61/)).toBeInTheDocument();expect(screen.getByText(/采集来源：合成来源/)).toBeInTheDocument();
  });
  it('does not invent zero coverage for pending indexing or inherited history',()=>{
   render(<ThroughputPanel value={{...measured,average_output_milli_tps:null,output_tokens:null,active_duration_ms:null,included_turns:null,excluded_turns:null,open_turns:null,unattributed_events:null,status:'unavailable',reason:'inherited_history'}} zone="UTC" onLimit={()=>{}} />);

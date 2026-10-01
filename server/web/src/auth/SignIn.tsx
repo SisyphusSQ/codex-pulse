@@ -20,12 +20,8 @@ export function SignIn() {
   }
 
   return <main className="sign-in">
-    <div className="sign-in-intro">
-      <div className="eyebrow">CODEX PULSE · 多机中心</div>
-      <Typography.Title>让每台机器的用量，<br />汇到同一个视野。</Typography.Title>
-      <Typography.Paragraph type="secondary">统计、项目、会话与账号额度，在这里集中查看。采集由本机 App 管理，上报由你开启。</Typography.Paragraph>
-    </div>
-    <Card className="sign-in-card" title="授权此浏览器">
+    <div className="sign-in-intro"><Typography.Title level={2}>Codex Pulse</Typography.Title><Typography.Text type="secondary">多机统计中心</Typography.Text></div>
+    <Card className="sign-in-card" title="浏览器授权">
       <Typography.Paragraph type="secondary">输入管理员签发的浏览器配对码，完成一次性授权。</Typography.Paragraph>
       {error && <Alert type="error" title={error} showIcon className="form-alert" />}
       <Form form={form} layout="vertical" onFinish={submit} autoComplete="off" disabled={busy}>

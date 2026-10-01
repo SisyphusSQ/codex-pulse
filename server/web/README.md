@@ -21,7 +21,7 @@ npm run lint:antd
 npm run build
 ```
 
-按开发风险选择验证，提交推送收尾不重复测试。dist/node_modules/.vite 不提交，静态托管与运行产物由运行交付卡完成。
+按开发风险选择验证，提交推送收尾不重复测试。dist/node_modules/.vite 不提交；Server 同源托管 Web，版本目录更新须按运行说明重启服务。
 
 2026-10-01：8 个授权/client UI 测试、类型、构建、AntD lint 通过；所有锁定依赖来自 registry.npmjs.org，审计未报告漏洞。环回 HTTP/隔离 SQLite/合成一次性码的真实浏览器配对、刷新恢复、退出撤销和 390px 窄屏通过；没有读取 Codex Home 或个人/Agent 凭据。三机真实 Home、MySQL、完整看板未验收，业务页面由其余 Execution 卡继续接入。
 # 用量总览
@@ -55,3 +55,11 @@ Credits 分开显示观测库存、中心确认可用库存、详情完整性、
 管理页签发用途固定、10 分钟/一次性码；管理用途先确认完整权限。码只在当前弹窗内存，不进入缓存、存储、URL、日志；关闭即时卸载，过期清空，未用码可通过管理员 CSRF 接口撤销，已消费 409 指引核对客户端。客户端列表可改名/撤销，撤销保留历史；撤销当前浏览器调用正常 logout。Form 使用各自 name，保证标签和字段 ID 唯一。
 
 来源状态显示版本、实际采集、最后接收、覆盖边界及积压；索引就绪、收到新批次不代表完整覆盖或机器在线。没有 Provider 状态保持未知；刷新失败保留旧结果并提示。设备/配额/统计查询在管理关系变化后失效重读。
+
+## v0.14.5 缓存命中率与新版工作台
+
+会话列表、项目内会话和详情显示整段已索引缓存输入 / 全部输入。万分比来自 Server 的共享 Go 算法，Web 只精确格式化一位小数；日期、模型、分页或最近 TPS 轮次不重新计算。0.0%、100.0% 和零输入未知分开，旧设备、受限历史、其他 Provider 和部分/冲突证据保留原因。
+
+页面采用 AntD 6.6.5 官方 Layout/Menu/Breadcrumb、Table、Drawer、Tabs、Descriptions、Collapse、Progress 与 Statistic。统一浅色侧栏、紧凑指标和筛选区，窄屏导航抽屉；项目/会话详情保持列表上下文，额度窗口列表与所选详情并列，Credits 与来源证据分标签，设备签发码使用独立抽屉。去掉英文眉题、营销口号、装饰符号和重复卡片。次要解释可展开，关键错误、未知和陈旧状态保持可见。
+
+详细方案见 [Web 重构](../../docs/design/details/multi-machine-reporting/web-redesign.md)；开发证据与正式验收边界见 [多机 runbook](../../docs/test/multi-machine-reporting.md)。

@@ -1,54 +1,76 @@
-:root { color: #182221; background: #f6f7f9; font-synthesis: none; text-rendering: optimizeLegibility; }
+:root { font-synthesis: none; text-rendering: optimizeLegibility; }
 body { margin: 0; min-width: 320px; }
 .app-layout { min-height: 100vh; }
-.app-header { height: auto; padding: 0 max(24px, calc((100vw - 1248px) / 2)); background: #fff; border-bottom: 1px solid #e7e9ec; line-height: normal; }
-.header-top { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.brand { color: #182221; font-size: 20px; font-weight: 650; display: flex; align-items: center; gap: 10px; white-space: nowrap; }
-.brand-mark { color: #137b59; font-size: 34px; line-height: 1; }
-.brand-subtitle { font-size: 12px; color: #74807d; border-left: 1px solid #d9dfe0; padding-left: 12px; margin-left: 4px; font-weight: 400; }
-.header-account { display: flex; gap: 12px; align-items: center; }
-.app-header .ant-menu { border-bottom: 0; background: transparent; }
-.app-content { width: min(100%, 1296px); padding: 28px 24px; margin: 0 auto; }
-.app-footer { text-align: center; color: #74807d; font-size: 12px; }
-.loading-state { min-height: 240px; display: flex; align-items: center; justify-content: center; gap: 12px; color: #74807d; }
-.sign-in { min-height: 100vh; width: min(100%, 1040px); margin: auto; padding: 64px 32px; display: grid; grid-template-columns: 1.1fr 1fr; gap: 64px; align-content: center; align-items: center; }
-.sign-in-intro h1.ant-typography { font-size: clamp(28px, 4vw, 42px); line-height: 1.4; letter-spacing: -.8px; margin-top: 24px; }
-.eyebrow { color: #137b59; font-size: 12px; font-weight: 600; letter-spacing: 1.5px; }
-.sign-in-card { width: 100%; }
-.sign-in-note { margin-top: 20px; font-size: 12px; margin-bottom: 0 !important; }
-.form-alert { margin-bottom: 20px; }
-.page-heading { display:flex; gap:24px; align-items:center; justify-content:space-between; margin-bottom:20px; }
-.page-heading h2.ant-typography { margin:8px 0; }
-.stats-filters { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin:20px 0; }
-.filter-control { display:flex; flex-direction:column; gap:6px; min-width:160px; flex:1; }
-.range-control { min-width:280px; flex:1.6; }
-.filter-control label { font-size:12px; color:#647570; }
-.filter-error { flex-basis:100%; color:#a34d1b; }
-.metric-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
-.metric-label { color:#647570; font-size:13px; }
-.metric-value { font-size:clamp(22px,2.6vw,34px); font-weight:600; margin:14px 0; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
-.metric-value span { font-size:20px; color:#647570; }
-.metric-note { color:#74807d; font-size:12px; }
-.section-card { margin-top:20px; }
-.chart-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
-.coverage-notice { margin-top:16px; }
-.coverage-meta,.coverage-counts { display:flex; flex-wrap:wrap; gap:10px; color:#74807d; font-size:12px; margin:10px 0; }
-.heatmap-scroll { overflow-x:auto; }.heatmap-inner { min-width:720px; }
-.list-filters,.association-bar,.totals-line { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:16px 0; }
-.list-filters .ant-input { flex:1; min-width:200px; }.list-filters .ant-select { min-width:130px; }
-.totals-line { padding:16px 20px; background:#fff; border:1px solid #e7e9ec; border-radius:8px; color:#647570; }.totals-line strong { color:#182221; }
-.record-link { padding:0; height:auto; white-space:normal; text-align:left; }.record-id { color:#74807d; font-size:11px; overflow-wrap:anywhere; }
-.metadata-list { display:grid; grid-template-columns:150px minmax(0,1fr); gap:10px; }.metadata-list dt { color:#74807d; }.metadata-list dd { margin:0; overflow-wrap:anywhere; }
-.quota-card { height:100%; }.quota-numbers { display:flex; gap:40px; margin:24px 0; }.quota-numbers strong { display:block; font-size:32px; font-variant-numeric:tabular-nums; }.quota-account-filter { flex:1.8; min-width:260px; }.quota-window-select { width:100%; }.account-identity { overflow-wrap:anywhere; }
-.pairing-code { font-family:ui-monospace,monospace; font-size:24px; letter-spacing:2px; padding:20px 0; overflow-wrap:anywhere; }
-@media (max-width: 720px) {
-  .app-header { padding: 0 16px; }
-  .header-top { min-height: 64px; }
-  .brand-subtitle, .header-account > .ant-typography { display: none; }
-  .app-content { padding: 20px 16px; }
-  .sign-in { grid-template-columns: 1fr; gap: 24px; padding: 40px 24px; }
-  .page-heading { align-items:flex-start; flex-direction:column; gap:10px; }
-  .metric-grid,.chart-grid { grid-template-columns:1fr; }
-  .filter-control { min-width:140px; }.stats-filters .range-control { flex-basis:100%; min-width:100%; }
-  .metadata-list { grid-template-columns:1fr; gap:6px; }.metadata-list dd { margin-bottom:10px; }
+.app-sidebar { border-right: 1px solid var(--ant-color-border-secondary); position: sticky !important; top: 0; height: 100vh; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 20px 24px 8px; color: var(--ant-color-text); font-size: 18px; font-weight: 600; white-space: nowrap; }
+.brand .anticon { color: var(--ant-color-primary); font-size: 22px; }
+.sidebar-caption { color: var(--ant-color-text-tertiary); font-size: 12px; padding: 0 24px 24px; }
+.app-sidebar .ant-menu { border-inline-end: 0 !important; }
+.sidebar-bottom { position: absolute; bottom: 24px; padding: 0 24px; font-size: 12px; }
+.app-workspace { min-width: 0; }
+.app-header { padding: 0 28px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--ant-color-border-secondary); line-height: normal; }
+.header-location,.header-account { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.account-name { max-width: 200px; }
+.app-content { width: 100%; max-width: 1664px; padding: 28px; margin: 0 auto; }
+.app-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 16px 28px; font-size: 12px; color: var(--ant-color-text-tertiary); }
+.loading-state { min-height: 240px; display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--ant-color-text-secondary); }
+.sign-in { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; width: min(420px, 100%); padding: 32px 20px; margin: auto; gap: 24px; }
+.sign-in-intro { text-align: center; }
+.sign-in-intro h2.ant-typography { margin: 0 0 8px; }
+.sign-in-note { margin-top: 16px; font-size: 12px; margin-bottom: 0 !important; }
+.form-alert { margin-bottom: 16px; }
+.page-heading { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.page-heading h3.ant-typography { margin: 0 0 8px; }
+.page-heading .ant-typography { margin-bottom: 0; }
+.stats-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 16px; margin: 0 0 16px; background: var(--ant-color-bg-container); border: 1px solid var(--ant-color-border-secondary); border-radius: var(--ant-border-radius-lg); }
+.filter-control { display: flex; flex-direction: column; gap: 6px; min-width: 140px; flex: 1; }
+.range-control { min-width: 272px; flex: 1.6; }
+.filter-control label { font-size: 12px; color: var(--ant-color-text-secondary); }
+.filter-error { flex-basis: 100%; color: var(--ant-color-warning-text); }
+.metric-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 20px; }
+.metric-grid .ant-statistic-content,.metric-value { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.metric-label { color: var(--ant-color-text-secondary); font-size: 13px; }
+.metric-value { font-size: 24px; font-weight: 600; margin: 8px 0; }
+.metric-value span { font-size: 16px; color: var(--ant-color-text-secondary); }
+.metric-note { color: var(--ant-color-text-tertiary); font-size: 12px; line-height: 1.6; }
+.kpi-panel .metric-grid > div + div { border-left: 1px solid var(--ant-color-border-secondary); padding-left: 24px; }
+.section-card { margin-top: 20px; }
+.chart-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; }
+.dashboard-main { display: grid; grid-template-columns: minmax(0,1.55fr) minmax(0,1fr); gap: 20px; margin-top: 20px; }
+.dashboard-main > .ant-card { min-width: 0; }
+.coverage-notice { margin: 12px 0 0; }
+.coverage-summary { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; color: var(--ant-color-text-tertiary); font-size: 12px; }
+.coverage-notice .ant-collapse-header { padding: 8px 0 !important; }
+.coverage-notice .ant-collapse-content-box { padding: 0 0 8px !important; }
+.coverage-counts { display: flex; flex-wrap: wrap; gap: 16px; color: var(--ant-color-text-secondary); font-size: 12px; }
+.heatmap-scroll { overflow-x: auto; }.heatmap-inner { min-width: 720px; }
+.list-filters,.association-bar,.totals-line { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 12px 0; }
+.list-filters .ant-input { flex: 1; min-width: 180px; }.list-filters .ant-select { min-width: 120px; }
+.totals-line { gap: 24px; padding: 12px 0; color: var(--ant-color-text-secondary); font-size: 13px; }.totals-line strong { color: var(--ant-color-text); }
+.table-card > .ant-card-body { padding: 0; }
+.record-link { padding: 0; height: auto; white-space: normal; text-align: left; }.record-id { color: var(--ant-color-text-tertiary); font-size: 11px; overflow-wrap: anywhere; }
+.numeric { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.metadata-list { display: grid; grid-template-columns: 136px minmax(0,1fr); gap: 10px; font-size: 13px; }.metadata-list dt { color: var(--ant-color-text-tertiary); }.metadata-list dd { margin: 0; overflow-wrap: anywhere; }
+.account-identity { overflow-wrap: anywhere; }.quota-account-filter { flex: 1.8; min-width: 240px; }
+.quota-workspace { display: grid; grid-template-columns: minmax(280px,1fr) minmax(0,2.2fr); gap: 20px; margin-top: 16px; align-items: start; }
+.quota-selection .ant-card-body { padding: 0; }.quota-selection .ant-table-row { cursor: pointer; }.quota-selection .selected-window td { background: var(--ant-color-primary-bg) !important; }
+.quota-detail .section-card { margin-top: 16px; }.quota-detail .ant-card { border: 0; }.quota-detail .ant-card-body { padding: 0; }.quota-detail .ant-card-head { padding: 0; }
+.quota-numbers { display: flex; gap: 32px; margin: 16px 0; }.quota-numbers strong { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+.quota-numbers .ant-progress { width: 100%; }.quota-numbers > div { flex: 1; }
+.quota-window-select { width: 100%; }.quota-card .ant-descriptions { margin-top: 16px; }
+.cache-hit-detail { margin: 16px 0; padding: 16px; background: var(--ant-color-fill-quaternary); border-radius: var(--ant-border-radius-lg); }
+.cache-hit-detail .ant-typography { margin-bottom: 0; }
+.pairing-code { font-family: ui-monospace,monospace; font-size: 24px; letter-spacing: 2px; padding: 20px 0; overflow-wrap: anywhere; }
+@media (max-width: 1100px) { .dashboard-main,.quota-workspace { grid-template-columns: 1fr; } }
+@media (max-width: 767px) {
+  .app-header { padding: 0 12px; gap: 8px; }.header-location { gap: 4px; }.header-location .ant-breadcrumb { font-size: 12px; }.account-name { display: none; }
+  .app-content { padding: 20px 16px; }.app-footer { padding: 16px; }.page-heading { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .metric-grid { grid-template-columns: 1fr; gap: 16px; }.kpi-panel .metric-grid > div + div { border-left: 0; border-top: 1px solid var(--ant-color-border-secondary); padding: 16px 0 0; }
+  .chart-grid { grid-template-columns: 1fr; }.filter-control { min-width: 120px; }.stats-filters .range-control { flex-basis: 100%; min-width: 100%; }.stats-filters .range-control .ant-picker { width: 100%; }
+  .metadata-list { grid-template-columns: 1fr; gap: 6px; }.metadata-list dd { margin-bottom: 10px; }.totals-line { gap: 8px 16px; }.metric-value { font-size: 22px; }
+  .ant-drawer-body { padding: 20px 16px !important; }.quota-numbers { gap: 16px; }.quota-workspace { gap: 16px; }
 }
+
+.quota-detail > .ant-card-body { padding: 20px; }
+.quota-detail > .ant-card-head { padding: 0 20px; }
+.table-card > .ant-card-body > .ant-typography { margin: 16px 20px; }

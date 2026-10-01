@@ -7,4 +7,4 @@ import './styles.css';
 import { createQueryClient, PulseApp } from './App';
 
 const queryClient = createQueryClient();
-createRoot(document.getElementById('root')!).render(<StrictMode><ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: '#137b59', colorInfo: '#137b59', fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif', borderRadius: 8, colorBgLayout: '#f6f7f9' } }}><PulseApp queryClient={queryClient} /></ConfigProvider></StrictMode>);
+createRoot(document.getElementById('root')!).render(<StrictMode><ConfigProvider locale={zhCN} theme={{ cssVar: {key: 'pulse'}, token: { fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif' }, components: { Layout: { headerBg: '#ffffff', siderBg: '#ffffff', headerHeight: 56 }, Statistic: { contentFontSize: 26 } } }}><PulseApp queryClient={queryClient} /></ConfigProvider></StrictMode>);

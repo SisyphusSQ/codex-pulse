@@ -21,15 +21,15 @@ describe('device management',()=>{
  });
  it('keeps pairing code only in transient UI, protects admin issue with confirmation, and revokes unused code using CSRF',async()=>{
   fetcher.mockImplementation(async(path,options)=>String(path).endsWith('/pairings')?success({code:'SYNTHETIC-PAIR-CODE',purpose:JSON.parse(String(options?.body)).purpose,expires_at_ms:Date.now()+600000}):base(path));mount();
-  const user=userEvent.setup();await screen.findByText('客户端授权');await user.type(screen.getByRole('textbox',{name:'设备或浏览器名称'}),'第二管理浏览器');await user.click(screen.getByRole('combobox',{name:'配对码用途'}));await user.click(await screen.findByText('管理浏览器：查看中心数据与管理授权',{selector:'.ant-select-item-option-content'}));await user.click(screen.getByRole('button',{name:'签发配对码'}));
+  const user=userEvent.setup();await screen.findByText('客户端授权');await user.click(screen.getByRole('button',{name:'添加设备或浏览器'}));await user.type(screen.getByRole('textbox',{name:'设备或浏览器名称'}),'第二管理浏览器');await user.click(screen.getByRole('combobox',{name:'配对码用途'}));await user.click(await screen.findByText('管理浏览器：查看中心数据与管理授权',{selector:'.ant-select-item-option-content'}));await user.click(screen.getByRole('button',{name:'签发配对码'}));
   await screen.findByText('签发管理浏览器码？');expect(fetcher.mock.calls.some(([p])=>String(p).endsWith('/pairings'))).toBe(false);
   await user.click(screen.getByRole('button',{name:'确认签发管理码'}));await screen.findByText('SYNTHETIC-PAIR-CODE');expect(window.localStorage.length).toBe(0);expect(window.sessionStorage.length).toBe(0);
   await user.click(screen.getByRole('button',{name:'撤销未用码'}));await waitFor(()=>expect(screen.queryByText('SYNTHETIC-PAIR-CODE')).not.toBeInTheDocument());
   const call=fetcher.mock.calls.find(([p])=>String(p).endsWith('/pairings/revoke'))!;expect(JSON.parse(String(call[1]?.body))).toEqual({code:'SYNTHETIC-PAIR-CODE'});expect((call[1]?.headers as Record<string,string>)['X-Pulse-CSRF']).toBe('synthetic-csrf');
  });
  it('escapes names, treats never-reported provider as unknown, and keeps failed revocation visible without deleting history',async()=>{
-  fetcher.mockImplementation(async(path)=>String(path).endsWith('/device-one/revoke')?new Response('',{status:503}):base(path));mount();await screen.findByText('客户端授权');expect(document.querySelector('img[src="x"]')).toBeNull();expect(await screen.findByText('尚无 Provider 状态')).toBeInTheDocument();
-  const user=userEvent.setup();await user.click(screen.getByRole('button',{name:/^撤销$/}));const modal=await screen.findByRole('dialog');expect(within(modal).getByText(/历史仍保留/)).toBeInTheDocument();
+  fetcher.mockImplementation(async(path)=>String(path).endsWith('/device-one/revoke')?new Response('',{status:503}):base(path));mount();await screen.findByText('客户端授权');expect(document.querySelector('img[src="x"]')).toBeNull();const user=userEvent.setup();await user.click(screen.getByRole('tab',{name:'上报状态'}));expect(await screen.findByText('尚无 Provider 状态')).toBeInTheDocument();await user.click(screen.getByRole('tab',{name:'客户端授权'}));
+  await user.click(screen.getByRole('button',{name:/^撤销$/}));const modal=await screen.findByRole('dialog');expect(within(modal).getByText(/历史仍保留/)).toBeInTheDocument();
   expect(fetcher.mock.calls.some(([p])=>String(p).endsWith('/revoke'))).toBe(false);await user.click(within(modal).getByRole('button',{name:'确认撤销'}));await screen.findByText('中心暂时不可用，请检查服务状态后重试。');expect(screen.getAllByText(client.name).length).toBeGreaterThan(0);expect(screen.getByRole('dialog')).toBeInTheDocument();
  });
 });
