@@ -31,3 +31,7 @@
 - `GET /api/v1/devices/status`：采集设备最后接收、各 Provider 采集截至、覆盖边界、队列、版本和有限状态，不返回授权摘要。
 
 所有查询均默认鉴权；collector Bearer 不能读取这些中心数据。
+
+## 中心配额
+
+`GET /api/v1/quotas` 返回账号、可信当前值、来源证据、中央周期和 Credits 到期投影。身份、漂移、过期与预算详见 [配额 API](quotas.md)。

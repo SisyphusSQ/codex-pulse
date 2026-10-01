@@ -15,6 +15,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/server/config"
 	access_controller "github.com/SisyphusSQ/codex-pulse/server/internal/controller/access_controller"
+	quota_controller "github.com/SisyphusSQ/codex-pulse/server/internal/controller/quota_controller"
 	reporting_controller "github.com/SisyphusSQ/codex-pulse/server/internal/controller/reporting_controller"
 	statistics_controller "github.com/SisyphusSQ/codex-pulse/server/internal/controller/statistics_controller"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/health"
@@ -25,10 +26,12 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/vo"
 	access_vo "github.com/SisyphusSQ/codex-pulse/server/internal/models/vo/access_vo"
 	access_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/access_repo"
+	quota_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/quota_repo"
 	reporting_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/reporting_repo"
 	schema_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/schema_repo"
 	statistics_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/statistics_repo"
 	access_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/access_srv"
+	quota_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/quota_srv"
 	reporting_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/reporting_srv"
 	statistics_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/statistics_srv"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
@@ -51,15 +54,17 @@ func testServer(t *testing.T, origin string) (*apphttp.Server, *access_srv.Acces
 	var access *access_srv.Access
 	var reporting *reporting_srv.Reporting
 	var statistics *statistics_srv.Statistics
-	app := fx.New(fx.NopLogger, fx.Supply(cfg), fx.Provide(gormv2.New, access_repo.NewAccess, reporting_repo.NewReporting, statistics_repo.NewStatistics, statistics_srv.NewStatistics, access_srv.NewAccess, reporting_srv.NewReporting, health.New, apphttp.NewServer), fx.Invoke(func(lifecycle fx.Lifecycle, engine *gormv2.Engine) {
+	var quota *quota_srv.Quota
+	app := fx.New(fx.NopLogger, fx.Supply(cfg), fx.Provide(quota_repo.NewQuota, quota_srv.NewQuota, gormv2.New, access_repo.NewAccess, reporting_repo.NewReporting, statistics_repo.NewStatistics, statistics_srv.NewStatistics, access_srv.NewAccess, reporting_srv.NewReporting, health.New, apphttp.NewServer), fx.Invoke(func(lifecycle fx.Lifecycle, engine *gormv2.Engine) {
 		lifecycle.Append(fx.Hook{OnStart: func(ctx context.Context) error { return schema_repo.NewSchema(engine).Init(ctx) }})
-	}), fx.Populate(&server, &access, &reporting, &statistics))
+	}), fx.Populate(&server, &access, &reporting, &statistics, &quota))
 	if err := app.Err(); err != nil {
 		t.Fatal(err)
 	}
 	access_controller.NewAccess(access, cfg).Register(server.Echo)
 	reporting_controller.NewReporting(reporting).Register(server.Echo)
 	statistics_controller.NewStatistics(statistics).Register(server.Echo)
+	quota_controller.NewQuota(quota).Register(server.Echo)
 	if err := app.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}

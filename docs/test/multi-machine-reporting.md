@@ -36,6 +36,8 @@
 
 以上为开发场景通过，不表示整个产品或 Master 已验收。后续各功能增量需补充其受影响验证。
 
+- Pass：中心配额三来源复制不累加、reset 漂移/真实换代、合法下降/迟到、同邮箱不同账号、同时刻冲突、过期 LKG/无可信倒计时、关联历史不刷新当前；未关联/空库不猜身份。Credits 多机库存不相加、到期与 reset 区分、失败保留原库存/原时间。HTTP 匿名/collector 拒绝、严格参数与预算；Fx/业务子包装配通过。
+
 - 配额导出聚焦入口：`go test ./internal/store -run '^TestReportingQuota' -count=1`、`go test ./internal/reporting ./api/codexpulse/reporting/v1`、`go test ./internal/app -run '^(TestAccountBinding|TestOptionalReporting)' -count=1`，以及 server 的 `go test ./internal/service/reporting_srv ./internal/repository/mysql/reporting_repo ./internal/architecture`。
 - Pass：Codex 同一 confirmed context 的原始账号映射和 A→B 隔离；未知历史不推断账号；私有同步库 schema 1→2 保留队列/盐；整页原子打包、重启和容量失败不推进事实 checkpoint。
 - Pass：实际观测首末时间、Cursor 真实周期历史、Grok 旧库当前快照、真实零、Credits 原始库存/详情/到期分布与 reset 分开；payload 不含原始 credit/request/file ID 或本地 generation。中心 linked history 验证自身 scope，拒绝其他设备证明，解除后保留原观测/receipt。
