@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
-	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"testing"
 
 	"gorm.io/gorm"
 
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 

@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	"gorm.io/gorm"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 )
 
 // SourceFile 返回当前 source file snapshot。

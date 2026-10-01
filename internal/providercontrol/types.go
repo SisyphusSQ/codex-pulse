@@ -15,11 +15,11 @@ const (
 type DiscoveryState string
 
 const (
-	DiscoveryUnchecked     DiscoveryState = "unchecked"
-	DiscoveryAvailable     DiscoveryState = "available"
-	DiscoveryMissing       DiscoveryState = "missing"
-	DiscoveryInaccessible  DiscoveryState = "inaccessible"
-	DiscoveryInvalid       DiscoveryState = "invalid"
+	DiscoveryUnchecked    DiscoveryState = "unchecked"
+	DiscoveryAvailable    DiscoveryState = "available"
+	DiscoveryMissing      DiscoveryState = "missing"
+	DiscoveryInaccessible DiscoveryState = "inaccessible"
+	DiscoveryInvalid      DiscoveryState = "invalid"
 )
 
 type EffectiveState string
@@ -32,16 +32,16 @@ const (
 )
 
 const (
-	ReasonAvailable         = "available"
-	ReasonNotFound          = "not_found"
-	ReasonPermissionDenied  = "permission_denied"
-	ReasonUnsafePath        = "unsafe_path"
-	ReasonInvalidType       = "invalid_type"
-	ReasonProbeFailed       = "probe_failed"
-	ReasonDisabled          = "disabled"
-	ReasonDisabling         = "disabling"
-	ReasonUnchecked         = "unchecked"
-	ReasonIntentEnabled     = "enabled"
+	ReasonAvailable        = "available"
+	ReasonNotFound         = "not_found"
+	ReasonPermissionDenied = "permission_denied"
+	ReasonUnsafePath       = "unsafe_path"
+	ReasonInvalidType      = "invalid_type"
+	ReasonProbeFailed      = "probe_failed"
+	ReasonDisabled         = "disabled"
+	ReasonDisabling        = "disabling"
+	ReasonUnchecked        = "unchecked"
+	ReasonIntentEnabled    = "enabled"
 )
 
 var (

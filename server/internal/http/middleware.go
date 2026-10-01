@@ -8,6 +8,9 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
+
 	"github.com/SisyphusSQ/codex-pulse/server/config"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/dto"
@@ -15,8 +18,6 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/server/internal/requestinfo"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/service"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
-	"github.com/labstack/echo/v5"
-	"github.com/labstack/echo/v5/middleware"
 )
 
 type EchoMiddleware struct {

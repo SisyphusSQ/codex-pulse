@@ -3,8 +3,9 @@ package store
 import (
 	"context"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	"gorm.io/gorm"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 )
 
 // ObserveHealthEvent 按 fingerprint 合并递增观测，并在新观测到达时重开已解决事件。

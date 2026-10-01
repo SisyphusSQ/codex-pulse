@@ -8,9 +8,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/process"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
 var ErrProbe = errors.New("runtime metrics probe")

@@ -5,11 +5,12 @@ package store
 import (
 	"context"
 	"fmt"
-	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
-	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"strconv"
 
 	"gorm.io/gorm"
+
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 )
 
 // These values are accepted only by binaries explicitly built with the

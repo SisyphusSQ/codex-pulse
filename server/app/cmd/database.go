@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/spf13/cobra"
+	"go.uber.org/fx"
+
 	"github.com/SisyphusSQ/codex-pulse/server/config"
 	gormv2 "github.com/SisyphusSQ/codex-pulse/server/internal/lib/gorm"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/repository"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/service"
-	"github.com/spf13/cobra"
-	"go.uber.org/fx"
 )
 
 func databaseCommand() *cobra.Command {

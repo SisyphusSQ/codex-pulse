@@ -8,6 +8,10 @@ export RUN_ID
 
 APP_VERSION ?= 0.0.0-dev
 
+.PHONY: format-go-imports
+format-go-imports:
+	go run ./scripts/go-imports --write .
+
 verify-architecture:
 	bash scripts/project-checks/check.sh
 

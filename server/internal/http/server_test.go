@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/labstack/echo/v5"
+	"go.uber.org/fx"
+
 	"github.com/SisyphusSQ/codex-pulse/server/config"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/controller"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/health"
@@ -21,8 +24,6 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/server/internal/repository"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/service"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
-	"github.com/labstack/echo/v5"
-	"go.uber.org/fx"
 )
 
 func testServer(t *testing.T, origin string) (*apphttp.Server, *service.Access) {

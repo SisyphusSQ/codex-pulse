@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"sort"
 	"strings"
 	"testing"
 
 	"gorm.io/gorm"
 
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 

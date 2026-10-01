@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"google.golang.org/protobuf/encoding/protojson"
+
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
@@ -13,7 +15,6 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // 测试 encodeResponse 在 partial 响应中保留真实零和 unknown presence。

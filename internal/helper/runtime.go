@@ -12,11 +12,12 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+
 	"github.com/SisyphusSQ/codex-pulse/internal/app"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 )
 
 const (

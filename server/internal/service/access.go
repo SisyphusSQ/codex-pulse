@@ -15,12 +15,13 @@ import (
 	"unicode/utf8"
 	"uuid"
 
+	"gorm.io/gorm"
+
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/do"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/dto"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/vo"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/repository"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
-	"gorm.io/gorm"
 )
 
 const pairingLifetime = 10 * time.Minute

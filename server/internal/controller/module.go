@@ -1,9 +1,10 @@
 package controller
 
 import (
-	"github.com/SisyphusSQ/codex-pulse/server/config"
 	"github.com/labstack/echo/v5"
 	"go.uber.org/fx"
+
+	"github.com/SisyphusSQ/codex-pulse/server/config"
 )
 
 func Module(cfg config.Config) fx.Option {

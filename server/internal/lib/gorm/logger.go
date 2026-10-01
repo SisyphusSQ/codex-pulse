@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
-	"gorm.io/gorm/logger"
 	"time"
+
+	"gorm.io/gorm/logger"
+
+	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
 )
 
 // queryLogger 关联请求，只记录时长/行数/错误类型，不记录 SQL 参数或凭据。

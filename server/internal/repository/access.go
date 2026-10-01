@@ -3,9 +3,10 @@ package repository
 import (
 	"context"
 
+	"gorm.io/gorm/clause"
+
 	gormv2 "github.com/SisyphusSQ/codex-pulse/server/internal/lib/gorm"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/do"
-	"gorm.io/gorm/clause"
 )
 
 type Access struct{ engine *gormv2.Engine }

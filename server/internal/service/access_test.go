@@ -9,13 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/fx"
+
 	"github.com/SisyphusSQ/codex-pulse/server/config"
 	gormv2 "github.com/SisyphusSQ/codex-pulse/server/internal/lib/gorm"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/do"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/dto"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/repository"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
-	"go.uber.org/fx"
 )
 
 func accessFixture(t *testing.T) (*Access, *gormv2.Engine) {

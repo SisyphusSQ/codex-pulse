@@ -1,9 +1,9 @@
 package libs
 
 import (
-	"github.com/SisyphusSQ/codex-pulse/server/config"
 	"go.uber.org/fx"
 
+	"github.com/SisyphusSQ/codex-pulse/server/config"
 	gormv2 "github.com/SisyphusSQ/codex-pulse/server/internal/lib/gorm"
 )
 

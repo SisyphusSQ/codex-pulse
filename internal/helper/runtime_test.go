@@ -9,11 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/unix"
+	"google.golang.org/grpc/metadata"
+
 	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
-	"golang.org/x/sys/unix"
-	"google.golang.org/grpc/metadata"
 )
 
 type readSizeRecorder struct {

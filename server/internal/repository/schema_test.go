@@ -7,10 +7,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"go.uber.org/fx"
+
 	"github.com/SisyphusSQ/codex-pulse/server/config"
 	gormv2 "github.com/SisyphusSQ/codex-pulse/server/internal/lib/gorm"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/do"
-	"go.uber.org/fx"
 )
 
 func openTestDatabase(t *testing.T, path string) (*Schema, *gormv2.Engine, *fx.App) {

@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"context"
-	"github.com/SisyphusSQ/codex-pulse/server/config"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
-	"go.uber.org/fx"
 	"net"
 	"testing"
 	"time"
+
+	"go.uber.org/fx"
+
+	"github.com/SisyphusSQ/codex-pulse/server/config"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
 )
 
 func runtimeConfig(t *testing.T) config.Config {

@@ -15,9 +15,8 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/server/config"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/health"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/service"
-
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/vo"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/service"
 )
 
 // Server 由 Fx 按依赖顺序启动，并在退出时停止接受业务请求。

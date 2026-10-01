@@ -7,8 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"gorm.io/gorm"
+
+	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 var safeIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

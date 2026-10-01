@@ -21,6 +21,7 @@ Codex Pulse 是 local-first 的 Codex 使用量、额度、Session、项目归�
 - 复杂或高风险改动仍应先明确目标、范围、失败语义和验证入口，但不要求固定模板。
 - 修改目录前读取就近的 `AGENTS.md`；更细目录规则优先。
 - PR 标题和正文默认使用中文，代码标识、命令和必要错误原文可保留英文。
+- Go import 按标准库、第三方依赖、当前仓库包分组，组间空行；使用 `make format-go-imports`，Proto 生成入口保持同一规则。
 
 ## 真实 Codex Home 默认环境
 

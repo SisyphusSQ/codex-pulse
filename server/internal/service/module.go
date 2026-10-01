@@ -1,8 +1,9 @@
 package service
 
 import (
-	"github.com/SisyphusSQ/codex-pulse/server/config"
 	"go.uber.org/fx"
+
+	"github.com/SisyphusSQ/codex-pulse/server/config"
 )
 
 func Module(cfg config.Config) fx.Option {

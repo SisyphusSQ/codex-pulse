@@ -3,8 +3,9 @@ package health
 import (
 	"context"
 	"fmt"
-	"go.uber.org/fx"
 	"sync/atomic"
+
+	"go.uber.org/fx"
 )
 
 // Check 只检查当前启用且提供请求服务必需的组件。

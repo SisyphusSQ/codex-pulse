@@ -14,12 +14,12 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/SisyphusSQ/codex-pulse/server/config"
-	apphttp "github.com/SisyphusSQ/codex-pulse/server/internal/http"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
 	"go.uber.org/fx"
 
+	"github.com/SisyphusSQ/codex-pulse/server/config"
+	apphttp "github.com/SisyphusSQ/codex-pulse/server/internal/http"
 	gormv2 "github.com/SisyphusSQ/codex-pulse/server/internal/lib/gorm"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
 )
 
 type integrationDependencies struct {

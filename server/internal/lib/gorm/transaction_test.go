@@ -3,10 +3,11 @@ package gormv2
 import (
 	"context"
 	"errors"
+	"testing"
+
 	"github.com/DATA-DOG/go-sqlmock"
 	mysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"testing"
 )
 
 func TestTransactionSharesConnectionAndCommits(t *testing.T) {

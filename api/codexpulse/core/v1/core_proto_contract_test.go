@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	"google.golang.org/protobuf/reflect/protoreflect"
+
+	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 )
 
 // 测试 CoreService contract 在迁移场景下暴露完整业务面，并排除桌面平台职责。

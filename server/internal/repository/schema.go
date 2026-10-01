@@ -7,10 +7,11 @@ import (
 	"slices"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/SisyphusSQ/codex-pulse/server/docs/sqls/schema"
 	gormv2 "github.com/SisyphusSQ/codex-pulse/server/internal/lib/gorm"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/do"
-	"gorm.io/gorm"
 )
 
 var ErrSchemaMissing = errors.New("center schema is missing: run explicit db init")

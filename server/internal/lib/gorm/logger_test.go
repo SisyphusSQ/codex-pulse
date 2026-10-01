@@ -2,14 +2,16 @@ package gormv2
 
 import (
 	"errors"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/requestinfo"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
-	"gorm.io/gorm/logger"
 	"strings"
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
+	"gorm.io/gorm/logger"
+
+	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/requestinfo"
 )
 
 func TestDatabaseLogCarriesRequestIDWithoutSQLValues(t *testing.T) {

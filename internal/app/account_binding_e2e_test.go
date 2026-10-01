@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
+	"gorm.io/gorm"
+
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/accountbinding"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
@@ -20,8 +23,6 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
-	"google.golang.org/protobuf/encoding/protojson"
-	"gorm.io/gorm"
 )
 
 const (

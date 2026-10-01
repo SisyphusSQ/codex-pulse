@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"reflect"
 
-	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+
+	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 )
 
 var (
