@@ -317,14 +317,14 @@ func (o *statisticsRead) coverage(now time.Time) statistics_vo.StatisticsCoverag
 }
 func (o *statisticsRead) trend() []statistics_vo.StatisticsDay {
 	out := make([]statistics_vo.StatisticsDay, 0)
-	known := len(o.providerSeen) > 0
 	for day := statisticsDay(o.q.StartAtMS, o.q.Location); day.UnixMilli() < o.q.EndAtMS; day = day.AddDate(0, 0, 1) {
 		key := day.Format(time.DateOnly)
 		g := o.days[key]
 		if g == nil {
 			g = newStatisticsAggregate()
 		}
-		totals, _ := g.finish(known)
+		// 收到其他日期的事实或 Provider 状态不能证明本日已观测为零。
+		totals, _ := g.finish(false)
 		out = append(out, statistics_vo.StatisticsDay{Date: key, StartAtMS: day.UnixMilli(), Totals: totals})
 	}
 	return out
@@ -356,7 +356,7 @@ func (o *statisticsRead) summary(now time.Time) statistics_vo.StatisticsSummary 
 			if g == nil {
 				g = newStatisticsAggregate()
 			}
-			t, _ := g.finish(len(o.providerSeen) > 0)
+			t, _ := g.finish(false)
 			hours = append(hours, statistics_vo.StatisticsHour{Weekday: weekday, Hour: hour, Tokens: t.TotalTokens, Sessions: t.Sessions})
 		}
 	}

@@ -1,11 +1,13 @@
-import { useState } from 'react';
-import { Alert, Button, Card, Layout, Menu, Result, Typography } from 'antd';
+import { lazy, Suspense, useState } from 'react';
+import { Alert, Button, Layout, Menu, Result, Typography } from 'antd';
 import { HashRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { api, ApiError } from './api/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ApiError } from './api/client';
 import { SessionProvider, useSession } from './auth/SessionProvider';
 import { SignIn } from './auth/SignIn';
-import { EmptyState, ErrorState, LoadingState } from './components/QueryState';
+import { ErrorState, LoadingState } from './components/QueryState';
+
+const Overview=lazy(()=>import('./pages/Overview'));
 
 export function createQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: false, refetchOnWindowFocus: true, gcTime: 300_000 }, mutations: { retry: false } } });
@@ -41,22 +43,13 @@ function Shell() {
     </Layout.Header>
     <Layout.Content className="app-content">
       {error && <Alert type="error" title={error} showIcon className="form-alert" />}
-      <Routes>
-        <Route path="/" element={<CenterHome />} />
+      <Suspense fallback={<LoadingState />}><Routes>
+        <Route path="/" element={<Overview />} />
         <Route path="*" element={<Result status="404" title="页面不存在" extra={<Button onClick={() => navigate('/')}>返回总览</Button>} />} />
-      </Routes>
+      </Routes></Suspense>
     </Layout.Content>
     <Layout.Footer className="app-footer">Codex Pulse · 本地采集，自主汇总</Layout.Footer>
   </Layout>;
-}
-
-type Devices = { id: string; name: string }[];
-function CenterHome() {
-  const query = useQuery({ queryKey: ['devices', 'status'], queryFn: ({ signal }) => api.get<Devices>('/api/v1/devices/status', {}, signal) });
-  if (query.isPending) return <LoadingState />;
-  if (query.error) return <ErrorState error={query.error} retry={() => void query.refetch()} />;
-  if (!Array.isArray(query.data)) return <ErrorState error={new ApiError(502)} retry={() => void query.refetch()} />;
-  return <section><Typography.Title level={2}>多机用量中心</Typography.Title><Typography.Paragraph type="secondary">查看来自各台机器的统计和账号额度。</Typography.Paragraph><Card title="采集设备">{query.data.length ? <Typography.Paragraph>已接入 {query.data.length} 台采集设备。</Typography.Paragraph> : <EmptyState description="尚未收到采集设备的数据。配对设备并开启上报后，记录会显示在这里。" />}</Card></section>;
 }
 
 function SessionGate() {

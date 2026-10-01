@@ -25,7 +25,7 @@ describe('browser authorization', () => {
     const user = userEvent.setup();
     await user.type(code, 'AAAA-BBBB-CCCC-DDDD');
     await user.click(screen.getByRole('button', { name: '配对并进入' }));
-    await screen.findByText('尚未收到采集设备的数据。配对设备并开启上报后，记录会显示在这里。');
+    await screen.findByRole('button', { name: '退出授权' });
     expect(screen.getByText(syntheticSession.name)).toBeInTheDocument();
     expect(document.querySelector('script')).toBeNull();
     expect(fetcher.mock.calls.filter(([path]) => path === '/api/v1/pair')).toHaveLength(1);

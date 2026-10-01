@@ -80,7 +80,7 @@ func TestStatisticsGlobalDedupAndActualCollectorScope(t *testing.T) {
 	if global.Totals.CostMicroUSD != nil || global.Coverage.UnpricedFacts != 2 || global.Coverage.State != "partial" {
 		t.Fatal("unpriced or absent coverage disguised")
 	}
-	if global.HeatmapRange == global.Range || len(global.Heatmap) != 365 || *global.Heatmap[0].Totals.TotalTokens != "0" {
+	if global.HeatmapRange == global.Range || len(global.Heatmap) != 365 || global.Heatmap[0].Totals.TotalTokens != nil {
 		t.Fatal("annual/current range mixed")
 	}
 	q.ClientID = clients[0].ID
@@ -275,6 +275,23 @@ func TestStatisticsDSTNaturalDaysAndInputBounds(t *testing.T) {
 	for _, v := range []url.Values{{"time_zone": {"Local"}}, {"start_at_ms": {"1"}}, {"start_at_ms": {"1"}, "end_at_ms": {"1"}}, {"start_at_ms": {"-1"}, "end_at_ms": {"100"}}, {"limit": {"101"}}, {"page": {"0"}}, {"provider": {"injected"}}, {"sort": {"tokens;drop table"}}, {"client_id": {"other"}}, {"project_id": {"wrong"}}, {"search": {strings.Repeat("a", 257)}}} {
 		if _, err := ParseStatisticsQuery(v, time.Now()); !errors.Is(err, utils.ErrBadParamInput) {
 			t.Fatal("bad query accepted", v)
+		}
+	}
+}
+
+func TestStatisticsObservedZeroDayDoesNotFillUnobservedHistory(t *testing.T) {
+	stats, reporting, admin, clients := statisticsFixture(t)
+	snapshot := centerfixture.Snapshot()
+	snapshot.Contributions = []reportingv1.Contribution{centerfixture.Contribution(0, 1000)}
+	centerfixture.SendSnapshot(t, reporting, clients[0], snapshot)
+	result, err := stats.Summary(t.Context(), admin, statisticsTestQuery(t, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decimal(t, result.Trend[0].Totals.TotalTokens, "0")
+	for _, day := range result.Heatmap {
+		if day.Totals.TotalTokens != nil {
+			t.Fatal("unobserved year became known zero")
 		}
 	}
 }

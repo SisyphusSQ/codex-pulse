@@ -63,3 +63,10 @@ HTTP 必须在 App 显式允许，连接目标仅限环回/LAN/Tailscale 地址�
 - Not Run：生产部署、签名、公证和正式发布。
 
 实际运行前说明将读取 Session/JSONL、写入各机私有 runtime、主 SQLite/偏好及 App Server housekeeping；保持真实 CODEX_HOME 的物理身份读回，三台机器分别取证。完整日志、凭据、正文和本机路径只留受保护且忽略的本机 artifacts，提交摘要使用更窄白名单。
+# Web 总览开发证据（TOO-487，2026-10-01）
+
+使用独立 SQLite 中心与 loopback Go Server/Vite，无真实 Codex Home。经既有服务接收路径导入三份相同合成副本，12 个中心会话；浏览器真实配对并通过 HTTP 查询。全局 57,905,904 Token / $24.011668，Codex 筛选 9,650,968 / $4.001938；选择单一采集来源仍为本来源真实数值，未把三份副本累计。趋势/构成切换成本与折线，年度热力图和 KPI 范围分开；390px 布局可用。
+
+开发聚焦证据：Web 11 个行为测试、typecheck 与 AntD lint 通过；statistics `TestStatistics` 聚焦组及新增明确零/未知历史测试通过。初次 GUI 发现无事实日被补零，已修复 Server 日/星期小时结果保留 NULL，明确零事实不变，并在真实隔离 API 图表读回。Web build 通过，有 500kB chunk 警告，构建拆分在 TOO-491 衔接；没有以提高警告阈值掩盖。
+
+截图保存在 ignored `.artifacts/multi-machine/web/overview-desktop.jpg` 与 `overview-mobile.jpg`，只包含合成数据。原始浏览器/中心凭证不提交；测试库使用合成配对码，不用于真实账号资料。CI、真实三机、真实 Home、MySQL 与正式发布均 Not Run，未据此完成 Master 验收。
