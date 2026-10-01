@@ -208,3 +208,56 @@ func (s *Access) Revoke(ctx context.Context, principal access_dto.Principal, id 
 	}
 	return nil
 }
+
+// RevokePairing 以尚未消费的码撤销配对；码只在受保护 body 中传递，不放 URL。
+func (s *Access) RevokePairing(ctx context.Context, principal access_dto.Principal, code string) error {
+	if err := RequireAdmin(principal); err != nil {
+		return err
+	}
+	code = strings.ReplaceAll(strings.ToUpper(strings.TrimSpace(code)), "-", "")
+	if len(code) != 16 {
+		return utils.ErrBadParamInput
+	}
+	return s.repository.Transaction(ctx, func(ctx context.Context) error {
+		pairing, err := s.repository.Pairing(ctx, digest(code))
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return utils.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if pairing.ConsumedAtMS != nil {
+			return utils.ErrConflict
+		}
+		now := s.now().UnixMilli()
+		if pairing.ExpiresAtMS <= now {
+			return nil // 已过期的码已经不可用。
+		}
+		consumed, err := s.repository.Consume(ctx, pairing.CodeHash, now)
+		if err != nil {
+			return err
+		}
+		if !consumed {
+			return utils.ErrConflict
+		}
+		return nil
+	})
+}
+
+func (s *Access) Rename(ctx context.Context, principal access_dto.Principal, id, name string) error {
+	if err := RequireAdmin(principal); err != nil {
+		return err
+	}
+	name = strings.TrimSpace(name)
+	if len(id) != 36 || utf8.RuneCountInString(name) < 1 || utf8.RuneCountInString(name) > 128 {
+		return utils.ErrBadParamInput
+	}
+	found, err := s.repository.Rename(ctx, id, name)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return utils.ErrNotFound
+	}
+	return nil
+}

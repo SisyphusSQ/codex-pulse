@@ -463,6 +463,7 @@ struct SettingsView: View {
             Divider()
             Form {
                 CodexAccountsSettingsSection(model: model)
+                ReportingSettingsSection(settings: model.reportingSettings)
                 apiCredentialsSection
                 if model.settingsDraft != nil {
                     providerSection(.codex, response: response)

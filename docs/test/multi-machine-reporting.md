@@ -94,3 +94,13 @@ Pass：4 个聚焦行为场景覆盖真实零/未知、陈旧过期无倒计时�
 真实环回 HTTP/隔离 SQLite 浏览器读回：原账号陈旧 45% 保留且无倒计时/预测；追加同邮箱另一账号后保持独立，主/次窗口 70%/20%，主窗口中心预测提前 15 分钟耗尽，次窗口实际采样不足，两个首尾覆盖历史周期/上一周期可切换。三份副本的 Credits 观测库存 3、已到期 1、可用 2，不相加，next expiry/reset 日期独立。quota/pace 各自评估时间、21/36 条来源证据与去重采样分开显示。390px 可读，截图 .artifacts/multi-machine/web/quota-pace.jpg、quota-mobile.jpg。
 
 所有账号/历史/机器均为合成资料，未读取真实 Home；MySQL、三机正式验收、CI 和生产部署/发布 Not Run。
+
+## 设备与原生设置开发证据（TOO-490，2026-10-02）
+
+Pass：Server 新增未用码撤销/消费冲突、改名字段白名单/权限/CSRF、名称长度、重复名称更新和凭证/用途保持；真实 CoreService 经私有 UDS 配对、启用、增量上报到真实 HTTP/SQLite 中心并读回确认，管理端撤销后进入 reconnect_required/保留未确认队列，关闭 Native Runtime 后停止发送。测试全部使用空 synthetic Home/独立库；RPC 有整体超时，所有临时材料不进入证据。server/http/architecture/access-srv/app-cmd 聚焦检查通过。
+
+Swift --reporting-only 通过，覆盖默认关闭、显式 HTTP、短暂码清空/失败不重试、历史起点及清理时关闭/保留实际范围、旧读回丢弃、失败不会被后台读取抹掉与 stop 清码。Swift App 和独立 Development bundle 构建通过。新增测试复用根模块已锁定的 gRPC/Native 依赖，由 server/go.mod/go.sum 记录。
+
+Web 3 场景通过：管理码权限确认、内存码撤销且 DOM 清除、过期/缺失来源不伪造、失败撤销保留客户端/错误、恶意名称普通文本、各表单独立标签与改名 CSRF；最新 typecheck/AntD lint/build 通过。真实隔离浏览器签发合成采集码→撤销未用码、改名/读回/恢复原名、桌面和 390px 可用。发现并修复关闭 Modal 留码 DOM 与两个 Form 字段 ID 重复。
+
+真实 Home Development App 本机界面读回：未配对，上报/HTTP 关闭、间隔 60 秒、队列 0、未配对操作禁用；App/Helper 环境均匹配真实 Home、prefs canonical path/inode 与 0700 runtime、Helper 参数/UDS正确；正常退出二者进程和 UDS 消失。未启用真实资料上报。原始证据仅本机 ignored artifacts；提交摘要无真实账号/路径/日志/码。三机真实上报、MySQL、CI、生产部署/签名/公证/发布 Not Run，正式验收留 Master。

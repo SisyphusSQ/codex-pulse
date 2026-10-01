@@ -10,6 +10,14 @@ type CreatePairingRequest struct {
 	Name    string `json:"name"`
 }
 
+type RevokePairingRequest struct {
+	Code string `json:"code"`
+}
+
+type RenameClientRequest struct {
+	Name string `json:"name"`
+}
+
 // PairingView 仅在受保护的签发响应中显示一次配对材料。
 type PairingView struct {
 	Code        string `json:"code"`

@@ -30,7 +30,9 @@ func (a *Access) Register(e *echo.Echo) {
 	e.GET("/api/v1/session", a.Session)
 	e.POST("/api/v1/logout", a.Logout)
 	e.POST("/api/v1/pairings", a.Issue)
+	e.POST("/api/v1/pairings/revoke", a.RevokePairing)
 	e.GET("/api/v1/clients", a.Clients)
+	e.POST("/api/v1/clients/:id/rename", a.Rename)
 	e.POST("/api/v1/clients/:id/revoke", a.Revoke)
 }
 
@@ -98,6 +100,28 @@ func (a *Access) Clients(c *echo.Context) error {
 }
 func (a *Access) Revoke(c *echo.Context) error {
 	if err := a.service.Revoke(c.Request().Context(), apphttp.Principal(c), c.Param("id")); err != nil {
+		return err
+	}
+	return vo.CommSuccResp(c, vo.MutationView{Applied: true})
+}
+
+func (a *Access) RevokePairing(c *echo.Context) error {
+	var request access_vo.RevokePairingRequest
+	if err := apphttp.DecodeJSON(c, &request, 4096); err != nil {
+		return err
+	}
+	if err := a.service.RevokePairing(c.Request().Context(), apphttp.Principal(c), request.Code); err != nil {
+		return err
+	}
+	return vo.CommSuccResp(c, vo.MutationView{Applied: true})
+}
+
+func (a *Access) Rename(c *echo.Context) error {
+	var request access_vo.RenameClientRequest
+	if err := apphttp.DecodeJSON(c, &request, 4096); err != nil {
+		return err
+	}
+	if err := a.service.Rename(c.Request().Context(), apphttp.Principal(c), c.Param("id"), request.Name); err != nil {
 		return err
 	}
 	return vo.CommSuccResp(c, vo.MutationView{Applied: true})

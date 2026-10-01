@@ -37,3 +37,11 @@
 `GET /api/v1/quotas` 返回账号、可信当前值、来源证据、中央周期和 Credits 到期投影。身份、漂移、过期与预算详见 [配额 API](quotas.md)。
 
 `GET /api/v1/quotas/pace` 返回本周期、上一周期、历史基线与预测；复用本机纯 Go 计算，未观测数据及不可用预测保持明确原因。
+
+## 授权管理与原生设置
+
+管理员 POST /api/v1/clients/:id/rename 的 body 仅允许 name（trim 后 1–128 字符），只更新显示名，不改变用途或凭证。GET /clients 最多 1,000 条，超出返回 413，不静默截断。POST /api/v1/pairings/revoke 仅允许 body.code，撤销未消费码；码不进入 URL/日志，已消费返回 409，应在客户端列表核对并撤销对应授权。与所有浏览器写接口一样要求入口匹配和 CSRF，collector 无管理权限。无需新增表或迁移。
+
+Web 配对码只在弹窗内存显示；关闭/撤销即时卸载，过期清空码，浏览器管理码签发前明确权限确认。关闭显示不等于撤销未用码。撤销客户端保留事实；当前浏览器撤销沿用 logout 清 Cookie/会话缓存。
+
+原生设置经既有 ReportingStatus/PairReporting/ConfigureReporting/SyncReportingNow RPC 操作 Helper；独立保存同步设置，默认关闭，配对成功仍关闭。短暂码操作开始即清空，配对/写入无自动重试；在途旧状态读回不能覆盖新配对。Helper 保存自身凭证，Swift 无设备凭证/原始数据/SQLite 访问。历史起点开始后固定；清理当前中心队列明确确认并关闭同步，其他中心队列和中心历史保留。退出 App 关闭所有者，下次启动增量补采。

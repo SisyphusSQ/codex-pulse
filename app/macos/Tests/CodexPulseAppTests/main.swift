@@ -13566,6 +13566,11 @@ private func testQuotaRefreshFailurePresentation() throws {
 @main
 struct CodexPulseAppTestMain {
     static func main() async throws {
+        if CommandLine.arguments.contains("--reporting-only") {
+            try await testReportingSettingsSafetyAndLateRead()
+            print("CodexPulseApp reporting settings tests passed")
+            return
+        }
         if CommandLine.arguments.contains("--tps-only") {
             try testSessionThroughputPresentation()
             print("CodexPulseApp TPS presentation tests passed")

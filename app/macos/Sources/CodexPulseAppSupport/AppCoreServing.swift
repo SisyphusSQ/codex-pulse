@@ -2,6 +2,10 @@ import CodexPulseCoreClient
 import CodexPulseProtocolGenerated
 
 public protocol AppCoreServing: Sendable {
+    func reportingStatus(retryPolicy: ReadRetryPolicy) async throws -> Codexpulse_Core_V1_ReportingStatusResponse
+    func pairReporting(_ request: Codexpulse_Core_V1_PairReportingRequest) async throws -> Codexpulse_Core_V1_ReportingStatusResponse
+    func configureReporting(_ request: Codexpulse_Core_V1_ConfigureReportingRequest) async throws -> Codexpulse_Core_V1_ReportingStatusResponse
+    func syncReportingNow() async throws -> Codexpulse_Core_V1_ReportingStatusResponse
     func handshake(
         clientName: String,
         clientVersion: String,
@@ -199,6 +203,18 @@ public protocol AppCoreServing: Sendable {
 }
 
 public extension AppCoreServing {
+    func reportingStatus(retryPolicy: ReadRetryPolicy) async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        throw AppRuntimeError.unavailable
+    }
+    func pairReporting(_ request: Codexpulse_Core_V1_PairReportingRequest) async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        throw AppRuntimeError.unavailable
+    }
+    func configureReporting(_ request: Codexpulse_Core_V1_ConfigureReportingRequest) async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        throw AppRuntimeError.unavailable
+    }
+    func syncReportingNow() async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        throw AppRuntimeError.unavailable
+    }
 	func listCodexAccountQuotas(
 		_ request: Codexpulse_Core_V1_CodexAccountQuotasRequest,
 		retryPolicy: ReadRetryPolicy

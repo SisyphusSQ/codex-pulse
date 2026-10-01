@@ -7,6 +7,7 @@ import (
 
 	gormv2 "github.com/SisyphusSQ/codex-pulse/server/internal/lib/gorm"
 	access_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/access_do"
+	"github.com/SisyphusSQ/codex-pulse/server/utils"
 )
 
 type Access struct{ engine *gormv2.Engine }
@@ -38,8 +39,22 @@ func (r *Access) ClientBySecret(ctx context.Context, hash string) (access_do.Cli
 }
 func (r *Access) Clients(ctx context.Context) ([]access_do.Client, error) {
 	var clients []access_do.Client
-	err := r.engine.DB(ctx).Order("created_at_ms DESC, id").Limit(1000).Find(&clients).Error
+	err := r.engine.DB(ctx).Order("created_at_ms DESC, id").Limit(1001).Find(&clients).Error
+	if len(clients) > 1000 {
+		return nil, utils.ErrRequestBudget
+	}
 	return clients, err
+}
+
+func (r *Access) Rename(ctx context.Context, id, name string) (bool, error) {
+	result := r.engine.DB(ctx).Model(&access_do.Client{}).Where("id = ?", id).Update("name", name)
+	if result.Error != nil || result.RowsAffected > 0 {
+		return result.RowsAffected > 0, result.Error
+	}
+	// MySQL 相同名称可报告零变更；不能将已存在的客户端误报为不存在。
+	var count int64
+	err := r.engine.DB(ctx).Model(&access_do.Client{}).Where("id = ?", id).Count(&count).Error
+	return count == 1, err
 }
 func (r *Access) Revoke(ctx context.Context, id string, now int64) (bool, error) {
 	result := r.engine.DB(ctx).Model(&access_do.Client{}).Where("id = ?", id).Update("revoked_at_ms", now)
