@@ -109,7 +109,7 @@ func TestGRPCServerAuthenticatesHandshakeAndNegotiatesContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Contracts() error = %v", err)
 	}
-	if contracts.Version != "core-rpc-v7" ||
+	if contracts.Version != "core-rpc-v8" ||
 		contracts.UsageCostVersion != "usage-cost-v2" ||
 		contracts.InvocationUsageVersion != "invocation-usage-v1" ||
 		contracts.PricingCatalogVersion != "pricing-catalog-v1" ||
@@ -474,6 +474,7 @@ func TestGRPCAPIImplementsEveryFrozenRPC(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
+		"ReportingStatus", "PairReporting", "ConfigureReporting", "SyncReportingNow",
 		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ClearCodexAccountQuotaHistory", "ConfirmHomeSwitch", "Contracts", "CreateCodexSubscriptionAccount", "DashboardSummary", "DataHealth", "DeleteCodexSubscriptionAccount",
 		"Handshake", "Health", "HealthProjection", "InvocationUsage", "Job", "LinkCodexSubscriptionAccount", "LinkLegacyQuotaHistory", "ListCodexAccountQuotas", "ListCodexSubscriptionAccounts", "ListHealth", "ListJobs", "ListProjects",
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",

@@ -405,6 +405,36 @@ public actor CoreClient {
         }
     }
 
+    public func reportingStatus(
+        retryPolicy: ReadRetryPolicy = .transportDefault
+    ) async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        let service = service
+        let metadata = metadata
+        return try await retryPolicy.execute {
+            try await service.reportingStatus(Codexpulse_Core_V1_Empty(), metadata: metadata)
+        }
+    }
+
+    // One-time pairing is deliberately not retried: an interrupted response may
+    // have consumed the code. The user can revoke/re-pair through the center.
+    public func pairReporting(
+        _ request: Codexpulse_Core_V1_PairReportingRequest
+    ) async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        var options = CallOptions.defaults
+        options.timeout = .seconds(20)
+        return try await service.pairReporting(request, metadata: metadata, options: options)
+    }
+
+    public func configureReporting(
+        _ request: Codexpulse_Core_V1_ConfigureReportingRequest
+    ) async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        try await service.configureReporting(request, metadata: metadata)
+    }
+
+    public func syncReportingNow() async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        try await service.syncReportingNow(Codexpulse_Core_V1_Empty(), metadata: metadata)
+    }
+
     public func settings(
         retryPolicy: ReadRetryPolicy = .transportDefault
     ) async throws -> Codexpulse_Core_V1_SettingsResponse {

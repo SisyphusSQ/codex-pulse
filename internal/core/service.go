@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	ContractVersion        = "core-rpc-v7"
+	ContractVersion        = "core-rpc-v8"
 	ProviderControlVersion = "provider-control-v1"
 )
 
@@ -131,6 +131,7 @@ type QueryObserver interface {
 }
 
 type ServiceConfig struct {
+	Reporting            reportingControl
 	UsageCost            usageCostQuery
 	InvocationUsage      invocationUsageQuery
 	DashboardSummary     dashboardSummaryQuery
@@ -153,6 +154,8 @@ type ServiceConfig struct {
 
 // Service 是 Go Helper 唯一的业务 facade；未导出依赖阻止 Store、文件系统和凭据原语进入 RPC surface。
 type Service struct {
+	reportingMu          sync.RWMutex
+	reporting            reportingControl
 	usageCost            usageCostQuery
 	invocationUsage      invocationUsageQuery
 	dashboardSummary     dashboardSummaryQuery
@@ -184,6 +187,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 		return nil, ErrService
 	}
 	return &Service{
+		reporting:            config.Reporting,
 		usageCost:            config.UsageCost,
 		invocationUsage:      config.InvocationUsage,
 		dashboardSummary:     config.DashboardSummary,
@@ -276,6 +280,11 @@ func BindDependencies(service *Service, config ServiceConfig) error {
 	if service == nil {
 		return ErrService
 	}
+	if config.Reporting != nil {
+		if err := service.bindReporting(config.Reporting); err != nil {
+			return err
+		}
+	}
 	if config.QuotaRefresh != nil {
 		if err := service.bindQuotaRefresh(config.QuotaRefresh); err != nil {
 			return err
@@ -352,6 +361,10 @@ type ContractInfo struct {
 }
 
 var methodAllowlist = []MethodInfo{
+	{Name: "ReportingStatus", Kind: MethodQuery},
+	{Name: "PairReporting", Kind: MethodCommand},
+	{Name: "ConfigureReporting", Kind: MethodCommand},
+	{Name: "SyncReportingNow", Kind: MethodCommand},
 	{Name: "Contracts", Kind: MethodQuery},
 	{Name: "AccountSnapshot", Kind: MethodQuery},
 	{Name: "ListCodexSubscriptionAccounts", Kind: MethodQuery},
@@ -412,6 +425,7 @@ func (service *Service) Contracts() ContractInfo {
 			ProviderControlVersion:           ProviderControlVersion,
 			Methods:                          append([]MethodInfo(nil), methodAllowlist...),
 			CommandMethods: []string{
+				"PairReporting", "ConfigureReporting", "SyncReportingNow",
 				"RequestQuotaRefresh", "RequestProviderRefresh", "UpdateAPICredential", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
 				"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
 				"CreateCodexSubscriptionAccount", "UpdateCodexSubscriptionAccount", "DeleteCodexSubscriptionAccount", "LinkCodexSubscriptionAccount", "UnlinkCodexSubscriptionAccount",

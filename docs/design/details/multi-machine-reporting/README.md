@@ -331,6 +331,12 @@ M1 的协议与身份边界确定后，M2 和 M3 可按依赖推进；M3 的最�
 
 实施时同步本文、现行产品/架构/数据模型/配额/Provider 文档、网络 contract、本机设置、中心配置、构建发布入口与测试 runbook。AGENTS.md 和 README 中关于仅本机、唯一 contract 与无中心同步的现行描述，需要按最终范围明确演进，不能只新增服务而留下冲突规则。
 
+## 已落实的本机同步边界
+
+`internal/reporting` 使用独立私有 `reporting.db` 保存 Pulse 自有凭证、不可变队列、来源 revision、确认与分页进度；默认关闭。`ReportingStatus / PairReporting / ConfigureReporting / SyncReportingNow` 经本机 CoreService 接入，Swift 不接收凭证。App shutdown 先取消并 join 同步 owner，随后关闭本机采集与数据库。配对与设置 UI 由设备配置执行卡衔接。
+
+结构化 Session 与调用统计从已有一致只读 SQLite 快照导出，不重新读 JSONL/auth 文件；Codex 使用物理 Home fence，Cursor Dashboard 使用账期来源分区，未知账号不归属 Home 用量。网络身份、预算和历史定价见 [上报 contract](../../../../api/codexpulse/reporting/v1/README.md)，开发入口与证据见 [多机测试 runbook](../../../test/multi-machine-reporting.md)。中心事实接收/合并、配额/节奏与 Web 仍按各执行卡继续实施，这些本机证据不是完整 Master 验收。
+
 ## Master 验收条件与验证入口
 
 以下均为未来 Master 验收条件，分别归入上述 M1、M2、M3 。本次文档编写未运行功能测试，没有三机或部署验收证据；验收记录使用 Pass / Fail / Blocked / Not Run，Execution Done 不等于 Master Pass：

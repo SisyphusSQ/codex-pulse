@@ -20,19 +20,23 @@ type Batch struct {
 
 // SessionSnapshot 是同一来源的完整替换快照，revision 跨进程重启单调递增。
 type SessionSnapshot struct {
-	Provider       string         `json:"provider"`
-	HomeID         string         `json:"home_id"`
-	SessionID      string         `json:"session_id"`
-	Revision       int64          `json:"revision"`
-	CollectedAtMS  int64          `json:"collected_at_ms"`
-	Title          string         `json:"title"`
-	ProjectID      string         `json:"project_id"`
-	ProjectName    string         `json:"project_name"`
-	CreatedAtMS    *int64         `json:"created_at_ms"`
-	LastActiveAtMS *int64         `json:"last_active_at_ms"`
-	Complete       bool           `json:"complete"`
-	Deleted        bool           `json:"deleted"`
-	Contributions  []Contribution `json:"contributions"`
+	Provider         string         `json:"provider"`
+	HomeID           string         `json:"home_id"`
+	SessionID        string         `json:"session_id"`
+	Revision         int64          `json:"revision"`
+	CollectedAtMS    int64          `json:"collected_at_ms"`
+	Title            string         `json:"title"`
+	ProjectID        string         `json:"project_id"`
+	ProjectName      string         `json:"project_name"`
+	CreatedAtMS      *int64         `json:"created_at_ms"`
+	LastActiveAtMS   *int64         `json:"last_active_at_ms"`
+	Complete         bool           `json:"complete"`
+	Deleted          bool           `json:"deleted"`
+	SourceKind       string         `json:"source_kind"`
+	SessionKind      string         `json:"session_kind"`
+	HistoryStartAtMS int64          `json:"history_start_at_ms"`
+	Contributions    []Contribution `json:"contributions"`
+	Invocations      []Invocation   `json:"invocations,omitempty"`
 }
 
 // Contribution 保留来源 Token 口径；大整数用十进制字符串，避免浏览器精度损失。
@@ -42,6 +46,7 @@ type Contribution struct {
 	Model                  *string `json:"model"`
 	InputTokens            *int64  `json:"input_tokens,string"`
 	CachedTokens           *int64  `json:"cached_tokens,string"`
+	CacheWriteTokens       *int64  `json:"cache_write_tokens,string"`
 	OutputTokens           *int64  `json:"output_tokens,string"`
 	ReasoningTokens        *int64  `json:"reasoning_tokens,string"`
 	TotalTokens            *int64  `json:"total_tokens,string"`
@@ -49,6 +54,17 @@ type Contribution struct {
 	ReportedChargeMicroUSD *int64  `json:"reported_charge_micro_usd,string"`
 	PricingVersion         *string `json:"pricing_version"`
 	CostStatus             string  `json:"cost_status"`
+	PricingMode            string  `json:"pricing_mode"`
+	Rates                  *Rates  `json:"rates,omitempty"`
+}
+
+// Rates 是历史价格证据。Codex 按模型/价格版本汇总后舍入，Cursor 在查询范围内
+// 对所有可定价事件求和后舍入；不能用各事件舍入后的金额代替原有口径。
+type Rates struct {
+	InputMicroUSD      *int64 `json:"input_micro_usd,string"`
+	CachedMicroUSD     *int64 `json:"cached_micro_usd,string"`
+	CacheWriteMicroUSD *int64 `json:"cache_write_micro_usd,string"`
+	OutputMicroUSD     *int64 `json:"output_micro_usd,string"`
 }
 
 // Account 只接受受支持公开来源的 confirmed 身份，不根据邮箱合并。
@@ -123,4 +139,14 @@ type CollectorPairResponse struct {
 	ClientID        string `json:"client_id"`
 	Credential      string `json:"credential"`
 	ProtocolVersion int    `json:"protocol_version"`
+}
+
+// Invocation 是工具/技能结构化统计，不包含参数、输出或任何原始内容。
+type Invocation struct {
+	ID           string `json:"id"`
+	ObservedAtMS int64  `json:"observed_at_ms"`
+	Kind         string `json:"kind"`
+	Name         string `json:"name"`
+	Outcome      string `json:"outcome"`
+	DurationMS   *int64 `json:"duration_ms"`
 }

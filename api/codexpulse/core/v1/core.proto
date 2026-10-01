@@ -43,6 +43,10 @@ service CoreService {
   rpc Health(HealthRequest) returns (HealthDetailResponse);
   rpc HealthProjection(HealthProjectionRequest) returns (HealthProjectionResponse);
   rpc DataHealth(DataHealthRequest) returns (DataHealthResponse);
+  rpc ReportingStatus(Empty) returns (ReportingStatusResponse);
+  rpc PairReporting(PairReportingRequest) returns (ReportingStatusResponse);
+  rpc ConfigureReporting(ConfigureReportingRequest) returns (ReportingStatusResponse);
+  rpc SyncReportingNow(Empty) returns (ReportingStatusResponse);
   rpc Settings(SettingsRequest) returns (SettingsResponse);
   rpc UpdateSettings(UpdateSettingsRequest) returns (SettingsUpdateReceipt);
   rpc PlanHomeSwitch(PlanHomeSwitchRequest) returns (HomeSwitchPlanReceipt);
@@ -1779,4 +1783,32 @@ message CursorUsagePoolSummary {
   UsageTotals totals = 2;
   NumericValue reported_usd_micros = 3;
   NumericValue cursor_token_fee_usd_micros = 4;
+}
+
+// Optional center reporting stays inside the parent-owned Helper. Pulse credentials
+// are never returned to Swift; only a transient pairing code crosses the local UDS.
+message PairReportingRequest {
+  string endpoint = 1;
+  bool allow_http = 2;
+  string code = 3;
+}
+message ConfigureReportingRequest {
+  bool enabled = 1;
+  int64 interval_seconds = 2;
+  int64 history_start_at_ms = 3;
+  bool clear_pending = 4;
+}
+message ReportingStatusResponse {
+  string endpoint = 1;
+  string client_id = 2;
+  bool enabled = 3;
+  bool allow_http = 4;
+  int64 interval_seconds = 5;
+  int64 history_start_at_ms = 6;
+  string state = 7;
+  int64 pending_batches = 8;
+  int64 pending_bytes = 9;
+  int64 retained_batches = 10;
+  optional int64 last_attempt_at_ms = 11;
+  optional int64 last_success_at_ms = 12;
 }

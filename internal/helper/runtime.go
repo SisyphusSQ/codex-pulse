@@ -155,6 +155,7 @@ func applicationConfig(
 	broker *core.InvalidationBroker,
 ) app.Config {
 	return app.Config{
+		HelperVersion:    config.HelperVersion,
 		Broker:           broker,
 		Store:            storesqlite.Config{Path: config.DatabasePath},
 		PreferencesPath:  config.PreferencesPath,

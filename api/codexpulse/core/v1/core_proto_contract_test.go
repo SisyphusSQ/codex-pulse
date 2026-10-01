@@ -27,6 +27,8 @@ func TestCoreProtoExposesExactRPCSurface(t *testing.T) {
 	sort.Strings(got)
 	want := []string{
 		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "CreateCodexSubscriptionAccount", "DataHealth",
+		"ReportingStatus", "PairReporting", "ConfigureReporting", "SyncReportingNow",
+		"ListCodexAccountQuotas", "ClearCodexAccountQuotaHistory", "LinkLegacyQuotaHistory", "UnlinkLegacyQuotaHistory",
 		"DashboardSummary", "DeleteCodexSubscriptionAccount",
 		"Handshake", "Health", "HealthProjection", "InvocationUsage", "Job", "LinkCodexSubscriptionAccount", "ListCodexSubscriptionAccounts", "ListHealth", "ListJobs", "ListProjects",
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",
