@@ -65,6 +65,14 @@ HTTP 必须在 App 显式允许，连接目标仅限环回/LAN/Tailscale 地址�
 实际运行前说明将读取 Session/JSONL、写入各机私有 runtime、主 SQLite/偏好及 App Server housekeeping；保持真实 CODEX_HOME 的物理身份读回，三台机器分别取证。完整日志、凭据、正文和本机路径只留受保护且忽略的本机 artifacts，提交摘要使用更窄白名单。
 # Web 总览开发证据（TOO-487，2026-10-01）
 
+## 项目和会话开发证据（TOO-488）
+
+服务端搜索/排序/分页、范围 totals、项目/模型/会话下钻和关联/解除接入。新增 2 个 Web 行为场景通过：跨页查询与搜索重置页码、范围 totals 保持、恶意标题普通文本与 raw Session ID 下钻；跨页保留成员、明确确认、CSRF 请求和成功清空选择。测试发现 AntD 表格卸载导致内部选中对象缺失，已改用页面保存的已选及当前页对象解析 keys。最新 typecheck、AntD lint 通过。
+
+项目详情补齐 `models` 字段，与项目和分页会话同一读快照返回，避免并发更新期间拼接两次 API 的模型贡献；Go 聚焦项目关联/分页/模型对账通过。真实隔离 Server 浏览器验证：18 个独立同名项目；关联两个后变 17 个、目标 2 个成员及合并用量，范围 57,905,904 Token 保持；解除恢复 18 个。每页 10 条切第二页，范围 totals 及总条数保持。项目模型、会话及三份采集来源下钻可读，复用 API 普通文本转义。
+
+`.artifacts/multi-machine/web/project-session.jpg`、`project-models.jpg` 为合成 UI 证据。仅隔离 SQLite/真实 HTTP 开发证明；真实 Home/三机/MySQL/CI/正式发布 Not Run。TPS 新增适配由 TOO-507 接续，不把当前会话页描述为 TPS 已完成。
+
 使用独立 SQLite 中心与 loopback Go Server/Vite，无真实 Codex Home。经既有服务接收路径导入三份相同合成副本，12 个中心会话；浏览器真实配对并通过 HTTP 查询。全局 57,905,904 Token / $24.011668，Codex 筛选 9,650,968 / $4.001938；选择单一采集来源仍为本来源真实数值，未把三份副本累计。趋势/构成切换成本与折线，年度热力图和 KPI 范围分开；390px 布局可用。
 
 开发聚焦证据：Web 11 个行为测试、typecheck 与 AntD lint 通过；statistics `TestStatistics` 聚焦组及新增明确零/未知历史测试通过。初次 GUI 发现无事实日被补零，已修复 Server 日/星期小时结果保留 NULL，明确零事实不变，并在真实隔离 API 图表读回。Web build 通过，有 500kB chunk 警告，构建拆分在 TOO-491 衔接；没有以提高警告阈值掩盖。

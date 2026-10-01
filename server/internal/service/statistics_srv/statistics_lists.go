@@ -245,7 +245,8 @@ func (s *Statistics) Project(ctx context.Context, p access_dto.Principal, q stat
 		}
 		sessions := read.sessionList()
 		sessions.Coverage = read.coverage(s.now())
-		result = statistics_vo.StatisticsProjectDetail{Project: items[0], Sessions: sessions, Trend: read.trend()}
+		summary := read.summary(s.now())
+		result = statistics_vo.StatisticsProjectDetail{Project: items[0], Sessions: sessions, Trend: summary.Trend, Models: summary.Models}
 		return nil
 	})
 	return

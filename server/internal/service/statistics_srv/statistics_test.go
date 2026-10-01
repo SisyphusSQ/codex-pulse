@@ -183,6 +183,10 @@ func TestStatisticsFullRangeSearchPaginationModelAndProjectAssociation(t *testin
 		t.Fatal("project association detail incomplete")
 	}
 	decimal(t, project.Project.Totals.TotalTokens, "600")
+	if len(project.Models) != 1 || project.Models[0].Name != "model-a" {
+		t.Fatal("project models missing from the same read snapshot")
+	}
+	decimal(t, project.Models[0].Totals.TotalTokens, "600")
 	detail, err := stats.Session(t.Context(), admin, q, project.Sessions.Items[0].ID)
 	if err != nil || detail.Session.SessionID == nil {
 		t.Fatal("session drilldown failed", err)

@@ -32,8 +32,9 @@ export interface Device {
 export interface StatsFilter {
   start_date: string; end_date_exclusive: string; time_zone: string;
   provider: string; client_id: string;
+  project_id?: string; model?: string; search?: string;
 }
-export function statsParams(filter: StatsFilter): Record<string, string> { return { ...filter }; }
+export function statsParams(filter: StatsFilter): Record<string, string> { return Object.fromEntries(Object.entries(filter).filter(([,value])=>typeof value==='string')); }
 
 export async function getSummary(filter: StatsFilter, signal?: AbortSignal): Promise<Summary> {
   const value = await api.get<unknown>('/api/v1/statistics/summary', statsParams(filter), signal);

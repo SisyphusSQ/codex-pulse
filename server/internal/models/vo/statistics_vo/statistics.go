@@ -136,6 +136,7 @@ type StatisticsProjectDetail struct {
 	Project  StatisticsProject  `json:"project"`
 	Sessions StatisticsSessions `json:"sessions"`
 	Trend    []StatisticsDay    `json:"trend"`
+	Models   []StatisticsSlice  `json:"models"`
 }
 
 // Device 状态来自最后采集时间，收到批次不能冒充采集完整或仍然在线。

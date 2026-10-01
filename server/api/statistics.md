@@ -23,6 +23,8 @@
 
 会话/项目 URL 的 `:id` 使用中心 ID。未关联 Cursor 用量的 `session_kind=unassigned_usage`，`session_id=null`；不能把合成分组键冒充原始会话。已知会话返回用户允许的标题和原始 Session ID。项目名称相同不会合并，`members` 是显式关联的中心项目成员。项目成员列表保留无当前活动的历史项目，范围 totals 为当前已收到事实。
 
+项目详情的 `project/sessions/trend/models` 在同一只读快照中生成；`models` 为整个项目筛选范围的构成（含明确舍入差额），不随 `sessions.page` 截断，也不通过第二次浏览器请求拼接不同快照。会话详情保留全部采集来源、原始身份、趋势、工具/技能与 coverage，不返回正文或路径。
+
 `summary.heatmap_range` 固定为截至当前自然日的连续 365 个自然日，使用同样的 Provider、模型、项目、设备和搜索筛选，但不使用 KPI 的日期范围；`heatmap_coverage` 与当前 `coverage` 独立。没有本日/星期小时事实的格子保留 nullable 计数，不能因其他日期有事实或 Provider ready 而补成零；明确零计数事实仍返回 `"0"`。自然日以 AddDate 推进，DST 的一天可能为 23 或 25 小时。`weekday_hours.weekday` 以 Sunday=0，hour 为 0–23。
 
 ## 数值、成本与舍入
