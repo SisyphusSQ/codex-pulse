@@ -13,7 +13,8 @@
  swift build --package-path app/macos --target CodexPulseCoreClient
 
 # server/：结构、鉴权、HTTP 运行装配
- go test ./config ./internal/lib/gorm ./internal/repository ./internal/service ./internal/http ./internal/controller ./app/cmd
+ go test ./internal/architecture
+ go test ./config ./internal/lib/gorm ./internal/repository/... ./internal/service/... ./internal/http ./internal/controller/... ./app/cmd
 ```
 
 开发中按受影响范围选择命令，提交收尾不重复执行测试。本地不主动运行全仓 race/verify 长测。
@@ -30,6 +31,8 @@
 - Pass：显式项目关联/解除、来源名称更新保留管理关系、中心事务接收、HTTP/实际 TLS 上报、相同请求原确认、batch/来源 revision 冲突、三来源复制/并发/增长/价格修订、部分修订保留、完整纠正与陈旧副本、来源 tombstone、整批回滚、Cursor 跨账期/复制、账号 scope 隔离/晚到确认/legacy 不提升、Credits 和 used 小数精度；网络身份/未知及重复字段/预算/撤销/自身进度权限。
 
 - Pass：范围与独立年度热力图、DST 自然日、跨来源真实设备筛选、全量搜索/排序/分页与项目关联详情、NULL/零/无时间事实、超过 int64 的十进制汇总、历史价格和缓存分解、Cursor 范围舍入/reported charge、会话原生舍入口径、工具/技能白名单与无模型推断；管理查询匿名/collector 拒绝、参数预算及快照隔离装配（sqlmock 验证事务装配，真实 MySQL 隔离行为尚未验证）。
+
+- Pass：Starter v2.0.1 业务子包迁移、15 张表各自独立 DO、模型/装配依赖方向、Fx/CLI 装配、认证、接收仲裁和统计接口；当前工作树和不含配额在做改动的独立结构提交快照均通过 `go test ./internal/architecture ./internal/service/... ./internal/repository/... ./internal/http ./internal/controller/... ./internal/lib/gorm ./app/cmd`。
 
 以上为开发场景通过，不表示整个产品或 Master 已验收。后续各功能增量需补充其受影响验证。
 

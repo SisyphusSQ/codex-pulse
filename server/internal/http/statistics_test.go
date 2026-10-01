@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/SisyphusSQ/codex-pulse/server/internal/models/vo"
+	statistics_vo "github.com/SisyphusSQ/codex-pulse/server/internal/models/vo/statistics_vo"
 )
 
 func TestStatisticsHTTPDefaultAuthQueryValidationAndDecimalStrings(t *testing.T) {
@@ -34,7 +34,7 @@ func TestStatisticsHTTPDefaultAuthQueryValidationAndDecimalStrings(t *testing.T)
 	}
 	response := request(server, http.MethodGet, origin, "/api/v1/statistics/summary", "", &administrator, false)
 	var body struct {
-		Data vo.StatisticsSummary `json:"data"`
+		Data statistics_vo.StatisticsSummary `json:"data"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)

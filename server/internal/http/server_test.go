@@ -14,19 +14,27 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/SisyphusSQ/codex-pulse/server/config"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/controller"
+	access_controller "github.com/SisyphusSQ/codex-pulse/server/internal/controller/access_controller"
+	reporting_controller "github.com/SisyphusSQ/codex-pulse/server/internal/controller/reporting_controller"
+	statistics_controller "github.com/SisyphusSQ/codex-pulse/server/internal/controller/statistics_controller"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/health"
 	apphttp "github.com/SisyphusSQ/codex-pulse/server/internal/http"
 	gormv2 "github.com/SisyphusSQ/codex-pulse/server/internal/lib/gorm"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/models/dto"
+	access_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/access_dto"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/vo"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/repository"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/service"
+	access_vo "github.com/SisyphusSQ/codex-pulse/server/internal/models/vo/access_vo"
+	access_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/access_repo"
+	reporting_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/reporting_repo"
+	schema_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/schema_repo"
+	statistics_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/statistics_repo"
+	access_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/access_srv"
+	reporting_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/reporting_srv"
+	statistics_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/statistics_srv"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
 )
 
-func testServer(t *testing.T, origin string) (*apphttp.Server, *service.Access) {
+func testServer(t *testing.T, origin string) (*apphttp.Server, *access_srv.Access) {
 	t.Helper()
 	cfg, err := config.Load("../../config/config.yml")
 	if err != nil {
@@ -40,18 +48,18 @@ func testServer(t *testing.T, origin string) (*apphttp.Server, *service.Access) 
 	}
 	t.Cleanup(func() { _ = log.Sync() })
 	var server *apphttp.Server
-	var access *service.Access
-	var reporting *service.Reporting
-	var statistics *service.Statistics
-	app := fx.New(fx.NopLogger, fx.Supply(cfg), fx.Provide(gormv2.New, repository.NewAccess, repository.NewReporting, repository.NewStatistics, service.NewStatistics, service.NewAccess, service.NewReporting, health.New, apphttp.NewServer), fx.Invoke(func(lifecycle fx.Lifecycle, engine *gormv2.Engine) {
-		lifecycle.Append(fx.Hook{OnStart: func(ctx context.Context) error { return repository.NewSchema(engine).Init(ctx) }})
+	var access *access_srv.Access
+	var reporting *reporting_srv.Reporting
+	var statistics *statistics_srv.Statistics
+	app := fx.New(fx.NopLogger, fx.Supply(cfg), fx.Provide(gormv2.New, access_repo.NewAccess, reporting_repo.NewReporting, statistics_repo.NewStatistics, statistics_srv.NewStatistics, access_srv.NewAccess, reporting_srv.NewReporting, health.New, apphttp.NewServer), fx.Invoke(func(lifecycle fx.Lifecycle, engine *gormv2.Engine) {
+		lifecycle.Append(fx.Hook{OnStart: func(ctx context.Context) error { return schema_repo.NewSchema(engine).Init(ctx) }})
 	}), fx.Populate(&server, &access, &reporting, &statistics))
 	if err := app.Err(); err != nil {
 		t.Fatal(err)
 	}
-	controller.NewAccess(access, cfg).Register(server.Echo)
-	controller.NewReporting(reporting).Register(server.Echo)
-	controller.NewStatistics(statistics).Register(server.Echo)
+	access_controller.NewAccess(access, cfg).Register(server.Echo)
+	reporting_controller.NewReporting(reporting).Register(server.Echo)
+	statistics_controller.NewStatistics(statistics).Register(server.Echo)
 	if err := app.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +71,7 @@ func testServer(t *testing.T, origin string) (*apphttp.Server, *service.Access) 
 	return server, access
 }
 
-func admin(t *testing.T, access *service.Access, origin string) dto.PairedClient {
+func admin(t *testing.T, access *access_srv.Access, origin string) access_dto.PairedClient {
 	t.Helper()
 	code, err := access.Bootstrap(t.Context())
 	if err != nil {
@@ -76,7 +84,7 @@ func admin(t *testing.T, access *service.Access, origin string) dto.PairedClient
 	return paired
 }
 
-func request(server *apphttp.Server, method, origin, path, body string, paired *dto.PairedClient, csrf bool) *httptest.ResponseRecorder {
+func request(server *apphttp.Server, method, origin, path, body string, paired *access_dto.PairedClient, csrf bool) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, origin+path, strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("X-Request-ID", "request-123")
@@ -128,7 +136,7 @@ func TestUnifiedPairingCSRFRevocationAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, err := json.Marshal(vo.PairRequest{Code: code.Code, Mode: "browser"})
+	payload, err := json.Marshal(access_vo.PairRequest{Code: code.Code, Mode: "browser"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +161,7 @@ func TestUnifiedPairingCSRFRevocationAndPermissions(t *testing.T) {
 	if request(s, http.MethodPost, origin, "/api/v1/pairings", `{"purpose":"collector","name":"设备","role":"admin"}`, &paired, true).Code != 400 {
 		t.Fatal("unknown role accepted")
 	}
-	collectorCode, err := access.Issue(t.Context(), paired.Principal, dto.PurposeCollector, "设备")
+	collectorCode, err := access.Issue(t.Context(), paired.Principal, access_dto.PurposeCollector, "设备")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +232,7 @@ func TestHTTPSUsesSamePairingAndSecureSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, err := json.Marshal(vo.PairRequest{Code: code.Code, Mode: "browser"})
+	payload, err := json.Marshal(access_vo.PairRequest{Code: code.Code, Mode: "browser"})
 	if err != nil {
 		t.Fatal(err)
 	}

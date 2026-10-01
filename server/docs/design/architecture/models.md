@@ -4,9 +4,11 @@
 
 | 类型 | 位置与命名 | 责任 | 禁止 |
 |---|---|---|---|
-| DO | do/mysql/<domain>、do/mongo/<domain>；如 User | 表、集合、字段映射及持久化元数据 | 直接作为 HTTP 响应或携带连接对象 |
-| DTO | dto/<domain>.go 或 dto/<domain>/；如 CreatePaymentCommand、ProviderResult | 跨服务、命令、事件及外部系统请求/结果 | 依赖 Echo、service 或数据库标签 |
-| VO | vo/<domain>.go 或 vo/<domain>/；如 CreateUserReq、UserView、UserListResp | HTTP 请求、格式校验和稳定对外响应 | 泄露 DO、密码哈希、内部 SDK 结果或存储标签 |
+| DO | `do/mysql/<domain>_do/`、`do/mongo/<domain>_do/`；如 User | 表、集合、字段映射及持久化元数据 | 直接作为 HTTP 响应或携带连接对象 |
+| DTO | `dto/<domain>_dto/`；如 CreatePaymentCommand、ProviderResult | 跨服务、命令、事件及外部系统请求/结果 | 依赖 Echo、service 或数据库标签 |
+| VO | `vo/<domain>_vo/`；如 CreateUserReq、UserView、UserListResp | HTTP 请求、格式校验和稳定对外响应 | 泄露 DO、密码哈希、内部 SDK 结果或存储标签 |
+
+业务模型必须进入业务子包，不能以一个业务一个根目录文件代替分包；VO 根包只保留明确的 HTTP 公共能力。MySQL DO 在业务子包内一表一文件，TableName() 和列映射与对应表 DO 同文件，禁止多表合并进 models.go/schema.go。完整目录、共享类型例外与迁移规则见 [业务子包约定](packages.md)。
 
 VO 包含 HTTP 请求和响应，这是本工程及既有示例的约定。不要把 HTTP 请求迁到 DTO 只为套用另一套术语。请求复杂、需要多个入口调用同一应用服务时，由 controller 将 VO 转成语义清晰的 DTO。
 

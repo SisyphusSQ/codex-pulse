@@ -16,13 +16,13 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/server/internal/health"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/vo"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/service"
+	access_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/access_srv"
 )
 
 // Server 由 Fx 按依赖顺序启动，并在退出时停止接受业务请求。
 type Dependencies struct {
 	fx.In
-	Access *service.Access `optional:"true"`
+	Access *access_srv.Access `optional:"true"`
 }
 
 type Server struct {

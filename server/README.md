@@ -1,6 +1,6 @@
 # Codex Pulse 中心服务
 
-由 Go Web Starter v2.0.0 生成，Go 1.27.1、Echo v5、Uber Fx。目标数据库为 MySQL；当前以独立 SQLite 开发验证，不装配本机 App 采集运行时。前端位于 `web/`。
+由 Go Web Starter v2.0.0 生成，Go 1.27.1、Echo v5、Uber Fx。目标数据库为 MySQL；当前以独立 SQLite 开发验证，不装配本机 App 采集运行时。前端位于 `web/`。业务目录已手工同步 Starter v2.0.1 规范，最初生成来源保留为 v2.0.0。
 
 ```sh
 make build
@@ -16,6 +16,7 @@ HTTP/HTTPS 共用统一配对、凭证摘要、用途和撤销体系，无 Basic
 - [总体设计与任务入口](../docs/design/details/multi-machine-reporting/README.md)
 - [网络协议](api/README.md)
 - [统计查询与覆盖口径](api/statistics.md)
+- [业务子包与 DO 组织](docs/design/architecture/packages.md)
 - [配置](docs/design/details/runtime/configuration.md)
 - [SQL 结构与验证边界](docs/sqls/schema/README.md)
 

@@ -10,14 +10,14 @@ import (
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
 	apphttp "github.com/SisyphusSQ/codex-pulse/server/internal/http"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/models/dto"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/models/vo"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/service"
+	access_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/access_dto"
+	reporting_vo "github.com/SisyphusSQ/codex-pulse/server/internal/models/vo/reporting_vo"
+	access_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/access_srv"
 )
 
-func reportingCollector(t *testing.T, access *service.Access, administrator dto.Principal, name string) dto.PairedClient {
+func reportingCollector(t *testing.T, access *access_srv.Access, administrator access_dto.Principal, name string) access_dto.PairedClient {
 	t.Helper()
-	code, err := access.Issue(t.Context(), administrator, dto.PurposeCollector, name)
+	code, err := access.Issue(t.Context(), administrator, access_dto.PurposeCollector, name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func reportingCollector(t *testing.T, access *service.Access, administrator dto.
 	}
 	return paired
 }
-func reportingRequest(server *apphttp.Server, origin, method, path, body string, p dto.PairedClient) *httptest.ResponseRecorder {
+func reportingRequest(server *apphttp.Server, origin, method, path, body string, p access_dto.PairedClient) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, origin+path, strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Authorization", "Bearer "+p.Credential)
@@ -64,7 +64,7 @@ func TestReportingHTTPReceiptsPermissionsBudgetsAndClientScope(t *testing.T) {
 	}
 	own := reportingRequest(server, origin, http.MethodGet, "/api/v1/sync?client_id="+a.Principal.ID, "", b)
 	var view struct {
-		Data vo.SyncView `json:"data"`
+		Data reporting_vo.SyncView `json:"data"`
 	}
 	if own.Code != 200 || json.Unmarshal(own.Body.Bytes(), &view) != nil || view.Data.Batches != 0 || view.Data.LastReceivedAtMS != nil {
 		t.Fatal("collector read another client progress")

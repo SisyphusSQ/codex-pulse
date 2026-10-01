@@ -1,7 +1,5 @@
-# VO：HTTP 边界对象
+# VO
 
-沿用本仓既有约定：HTTP 请求与响应均放 VO。请求使用 <Action><Resource>Req，响应使用 <Resource>Resp、<Resource>View 或明确的列表类型。
+业务模型按 [目录规范](../../../docs/design/architecture/packages.md) 分域；具体责任见 [模型约定](../../../docs/design/architecture/models.md)。
 
-请求实现 Validate() error 并由 controller 调用 BindAndValidate；service 保留业务规则与资源授权。Response 和响应 helper 为统一出口，VO 不包含 gorm/bson 标签或密码哈希。
-
-规则见 [模型分层](../../../docs/design/architecture/models.md)。
+具体模型进入 <domain>_vo 子包，不在根包平铺或通过根包别名汇总。

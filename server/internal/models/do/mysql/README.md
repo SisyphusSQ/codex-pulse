@@ -1,3 +1,5 @@
-# MySQL 模型
+# MySQL DO
 
-按业务域建立包，类型包含明确的列映射和 TableName()。表结构与 docs/sqls/schema 的完整 SQL 保持一致，发布归档遵守 docs/sqls/README.md。见 [模型分层](../../../../docs/design/architecture/models.md)。
+目标数据库的业务表模型位于 `<domain>_do` 子包，一表一文件。每个文件保留表 DO、TableName() 与列映射；关联表同样独立，不建立汇集多表的 models.go。
+
+当前 SQLite 开发验证使用同一模型和参数化 repository，mysql 目录不改变存储策略，也不代表 MySQL 已验收。

@@ -10,8 +10,9 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/server/config"
 	gormv2 "github.com/SisyphusSQ/codex-pulse/server/internal/lib/gorm"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/repository"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/service"
+	access_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/access_repo"
+	schema_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/schema_repo"
+	access_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/access_srv"
 )
 
 func databaseCommand() *cobra.Command {
@@ -19,7 +20,7 @@ func databaseCommand() *cobra.Command {
 	for _, action := range []string{"init", "check"} {
 		command.AddCommand(&cobra.Command{Use: action, RunE: func(cmd *cobra.Command, _ []string) error {
 			return withDatabase(cmd.Context(), func(ctx context.Context, engine *gormv2.Engine) error {
-				s := repository.NewSchema(engine)
+				s := schema_repo.NewSchema(engine)
 				var err error
 				if action == "init" {
 					err = s.Init(ctx)
@@ -35,10 +36,10 @@ func databaseCommand() *cobra.Command {
 	}
 	command.AddCommand(&cobra.Command{Use: "bootstrap", Short: "生成短期首次管理员码（只在受信任终端显示）", RunE: func(cmd *cobra.Command, _ []string) error {
 		return withDatabase(cmd.Context(), func(ctx context.Context, engine *gormv2.Engine) error {
-			if err := repository.NewSchema(engine).Check(ctx); err != nil {
+			if err := schema_repo.NewSchema(engine).Check(ctx); err != nil {
 				return err
 			}
-			code, err := service.NewAccess(repository.NewAccess(engine)).Bootstrap(ctx)
+			code, err := access_srv.NewAccess(access_repo.NewAccess(engine)).Bootstrap(ctx)
 			if err != nil {
 				return err
 			}

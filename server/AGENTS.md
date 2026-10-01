@@ -4,7 +4,7 @@
 
 - Go 1.27.1；Echo v5；依赖注入及生命周期统一用 Uber Fx。
 - 入口：app/main.go、app/cmd；HTTP 与中间件在 internal/http。
-- controller 处理 HTTP；service 编排业务；repository 访问数据；模型放 internal/models/do、dto、vo。
+- controller、service、repository 和 DO/DTO/VO 按业务域分子包；各层根包只装配，VO 根包仅保留明确公共能力。MySQL DO 一表一文件，现有标签和 TableName() 与 DO 同文件。
 - service 不直接处理 Echo 或持久化连接。DO 不作为业务响应；事务在 service 边界发起，repository 使用 Engine.DB(ctx)。
 - build：make build；release：make release（只构建，不测试、不发布）。
 - test：make test；格式检查/静态检查：make verify；格式改写：make fmt。
@@ -15,7 +15,7 @@
 
 ## 开发前必读
 
-1. docs/design/architecture/README.md：分层与 Fx 生命周期。
+1. docs/design/architecture/README.md 和 packages.md：分层、业务子包与 Fx 生命周期。
 2. docs/design/architecture/models.md：DO / DTO / VO 和转换责任。
 3. docs/design/details/development/code-style.md：命名、类型、错误、日志、context、测试。
 4. docs/design/details/development/add-module.md：新增业务步骤；受影响主题的 details 文档。
@@ -43,3 +43,12 @@ README 负责使用说明，docs 负责可复用说明；测试 runbook 放 docs
 ## SQL 文件规范
 
 新增持久化模型或交付 SQL 前阅读 docs/sqls/README.md。当前完整结构放 docs/sqls/schema，待发布 SQL 放 docs/sqls/unreleased，真实发布时归档到 docs/sqls/releases/vX.Y.Z。无实际业务 SQL 时只保留说明，不生成 examples DDL、种子数据、空 SQL 或虚构版本目录；已发布文件不可改写。归档不等于数据库已经执行，执行证据单独记录。
+
+## Starter v2.0.1 目录规范
+
+手工同步 v2.0.1 的 packages/models/code-style/add-module 与各层 AGENTS；不重新生成已存在的 server。`.starter.json` 仍记录最初 v2.0.0 的生成来源，不能改写为重新生成的假记录。
+
+- access：客户端、配对、凭证与权限；reporting：接收事实、仲裁及项目关联；statistics：只读汇总与检索；schema：受控结构初始化/检查。
+- 业务实现进入 `<domain>_controller`、`<domain>_srv`、`repository/mysql/<domain>_repo`、`models/do/mysql/<domain>_do`、`models/dto/<domain>_dto`、`models/vo/<domain>_vo`。
+- statistics 没有自有持久表，不创建空 DO 子包。MySQL 目录表示目标数据库；现有 SQLite 开发验证仍使用同一 Engine 和 DO，不复制业务或改换存储策略。
+- HTTP 严格 JSON 解码在 internal/http；跨域只复用有真实调用方的访问权限和事实仲裁入口，不让子包反向导入装配根包。

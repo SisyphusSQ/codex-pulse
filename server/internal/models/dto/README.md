@@ -1,7 +1,5 @@
-# DTO：传输与跨层对象
+# DTO
 
-按业务域或外部系统组织文件，例如 payment.go、lark.go。DTO 用于应用服务输入、命令、事件、外部 SDK 的请求和结果；单纯 HTTP 请求沿用本仓 VO 约定。
+业务模型按 [目录规范](../../../docs/design/architecture/packages.md) 分域；具体责任见 [模型约定](../../../docs/design/architecture/models.md)。
 
-禁止把带 json/form/validate 标签的跨层结构体藏在 service 中，或用匿名结构体绕过模型分层。DTO 不依赖 service/controller，也不携带数据库连接、Echo context 或持久化标签。
-
-规则见 [模型分层](../../../docs/design/architecture/models.md)。
+具体模型进入 <domain>_dto 子包，不在根包平铺或通过根包别名汇总。

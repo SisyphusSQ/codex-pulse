@@ -13,22 +13,22 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/server/config"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/models/dto"
+	access_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/access_dto"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/vo"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/requestinfo"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/service"
+	access_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/access_srv"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
 )
 
 type EchoMiddleware struct {
 	config  config.Config
-	access  *service.Access
+	access  *access_srv.Access
 	pairing *pairingLimiter
 }
 
 var validRequestID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 
-func InitMiddleware(cfg config.Config, access *service.Access) *EchoMiddleware {
+func InitMiddleware(cfg config.Config, access *access_srv.Access) *EchoMiddleware {
 	return &EchoMiddleware{config: cfg, access: access, pairing: newPairingLimiter()}
 }
 func (e *EchoMiddleware) CORS(next echo.HandlerFunc) echo.HandlerFunc {
@@ -72,8 +72,8 @@ func (e *EchoMiddleware) Logger(next echo.HandlerFunc) echo.HandlerFunc {
 
 const principalKey = "pulse.principal"
 
-func Principal(c *echo.Context) dto.Principal {
-	principal, _ := c.Get(principalKey).(dto.Principal)
+func Principal(c *echo.Context) access_dto.Principal {
+	principal, _ := c.Get(principalKey).(access_dto.Principal)
 	return principal
 }
 
@@ -111,7 +111,7 @@ func (e *EchoMiddleware) Auth(next echo.HandlerFunc) echo.HandlerFunc {
 			return utils.ErrUnauthorized
 		}
 		mutation := request.Method != http.MethodGet && request.Method != http.MethodHead && request.Method != http.MethodOptions
-		var principal dto.Principal
+		var principal access_dto.Principal
 		if header := request.Header.Get("Authorization"); header != "" {
 			credential, ok := strings.CutPrefix(header, "Bearer ")
 			if !ok {
