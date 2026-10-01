@@ -14,6 +14,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/bootstrap"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
+	"github.com/SisyphusSQ/codex-pulse/internal/diagnostics"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
@@ -565,6 +566,97 @@ func TestApplicationQuotaRuntimeFatalRunnerCancelsAdmittedOperation(t *testing.T
 	if err := database.Close(context.Background()); err != nil {
 		t.Fatalf("database.Close() error = %v", err)
 	}
+}
+
+func TestApplicationQuotaRuntimeManualRecoversTransientRunnerExit(t *testing.T) {
+	t.Parallel()
+	database, repository := openQuotaRuntimeStore(t)
+	defer database.Close(context.Background())
+	home := writeSyntheticAuthHome(t, "synthetic-recovery-token")
+	loader := &quotaRuntimePreferencesLoader{snapshot: enabledQuotaRuntimePreferences(t, home)}
+	var runs atomic.Int32
+	logRoot := t.TempDir()
+	_ = os.Chmod(logRoot, 0o700)
+	logger, err := diagnostics.Open(logRoot, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer logger.Close()
+	runtime, err := startApplicationQuotaRuntime(diagnostics.WithLogger(t.Context(), logger), withBoundQuotaRuntime(t, repository, ApplicationQuotaRuntimeConfig{
+		Repository: repository, Preferences: loader, Reader: newQuotaRuntimeSuccessReader(nil), Clock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS) },
+		hooks: quotaRuntimeHooks{runRunner: func(ctx context.Context) error {
+			if runs.Add(1) == 1 {
+				return context.DeadlineExceeded
+			}
+			<-ctx.Done()
+			return ctx.Err()
+		}},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-runtime.runnerDone:
+	case <-time.After(time.Second):
+		t.Fatal("runner did not exit")
+	}
+	_, fetched, err := runtime.RequestRefreshResult(t.Context(), quotaonline.RefreshSourceQuota, store.RefreshTriggerManual)
+	if err != nil || !fetched {
+		t.Fatalf("manual recovery fetched=%v error=%v", fetched, err)
+	}
+	content, logErr := os.ReadFile(filepath.Join(logRoot, "logs", "refresh.jsonl"))
+	if logErr != nil || !strings.Contains(string(content), `"trigger":"manual"`) || len(logger.Faults()) != 0 {
+		t.Fatalf("manual diagnostics missing or recovery unresolved: error=%v faults=%v", logErr, logger.Faults())
+	}
+	if err := runtime.Close(context.Background()); err != nil {
+		t.Fatalf("resolved transient exit affected shutdown: %v", err)
+	}
+}
+
+func TestApplicationQuotaRuntimeManualDoesNotRecoverWhileSleeping(t *testing.T) {
+	database, repository := openQuotaRuntimeStore(t)
+	defer database.Close(context.Background())
+	home := writeSyntheticAuthHome(t, "synthetic-sleep-token")
+	loader := &quotaRuntimePreferencesLoader{snapshot: enabledQuotaRuntimePreferences(t, home)}
+	var runs atomic.Int32
+	runtime, err := startApplicationQuotaRuntime(t.Context(), withBoundQuotaRuntime(t, repository, ApplicationQuotaRuntimeConfig{Repository: repository, Preferences: loader, Reader: newQuotaRuntimeSuccessReader(nil), hooks: quotaRuntimeHooks{runRunner: func(context.Context) error { runs.Add(1); return context.DeadlineExceeded }}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-runtime.runnerDone
+	_ = runtime.suspend(t.Context())
+	if _, _, err := runtime.RequestRefreshResult(t.Context(), quotaonline.RefreshSourceQuota, store.RefreshTriggerManual); err == nil || runs.Load() != 1 {
+		t.Fatal("manual recovery bypassed sleep")
+	}
+	_ = runtime.Close(context.Background())
+}
+
+func TestApplicationQuotaRuntimeManualDoesNotRecoverStoreCorruption(t *testing.T) {
+	t.Parallel()
+	database, repository := openQuotaRuntimeStore(t)
+	defer database.Close(context.Background())
+	home := writeSyntheticAuthHome(t, "synthetic-corrupt-token")
+	loader := &quotaRuntimePreferencesLoader{snapshot: enabledQuotaRuntimePreferences(t, home)}
+	var runs atomic.Int32
+	runtime, err := startApplicationQuotaRuntime(t.Context(), withBoundQuotaRuntime(t, repository, ApplicationQuotaRuntimeConfig{
+		Repository: repository, Preferences: loader, Reader: newQuotaRuntimeSuccessReader(nil), Clock: func() time.Time { return time.UnixMilli(quotaRuntimeNowMS) },
+		hooks: quotaRuntimeHooks{runRunner: func(context.Context) error { runs.Add(1); return storesqlite.ErrCorrupt }},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-runtime.runnerDone:
+	case <-time.After(time.Second):
+		t.Fatal("runner did not exit")
+	}
+	if _, _, err := runtime.RequestRefreshResult(t.Context(), quotaonline.RefreshSourceQuota, store.RefreshTriggerManual); err == nil || runs.Load() != 1 {
+		t.Fatalf("corruption recovery error=%v runs=%d", err, runs.Load())
+	}
+	if err := runtime.ResumeGeneration(t.Context(), runtime.generation); err == nil {
+		t.Fatal("same-generation resume bypassed permanent protection")
+	}
+	_ = runtime.Close(context.Background())
 }
 
 func TestApplicationLifecycleRuntimeComposesQuotaControlHooksAndForeground(t *testing.T) {

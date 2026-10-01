@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/diagnostics"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -71,7 +72,15 @@ func (service *ResetCreditsService) FetchBound(ctx context.Context, request Boun
 	record := resetCreditsFetchRecord(request, result)
 	recordContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), service.recordTimeout)
 	defer cancel()
-	return result, service.recorder.RecordResetCreditsFetch(recordContext, record)
+	started := time.Now()
+	err = service.recorder.RecordResetCreditsFetch(recordContext, record)
+	if err != nil {
+		err = diagnostics.Wrap(err, "persist_attempt", DiagnosticReason(err))
+		diagnostics.Emit(ctx, diagnostics.FromError(err, "persist_attempt", DiagnosticReason(err)))
+	} else {
+		diagnostics.Emit(ctx, diagnostics.Event{Stage: "persist_attempt", Outcome: "succeeded", DurationMS: time.Since(started).Milliseconds()})
+	}
+	return result, err
 }
 
 func resetCreditsFetchRecord(request BoundRefreshRequest, result ResetCreditsResult) store.ResetCreditsFetchRecord {
@@ -112,7 +121,9 @@ func storeResetCreditsSnapshotClone(value *store.ResetCreditsSnapshot) *store.Re
 		return nil
 	}
 	cloned := *value
-	cloned.Credits = make([]store.ResetCredit, len(value.Credits))
+	if value.Credits != nil {
+		cloned.Credits = make([]store.ResetCredit, len(value.Credits))
+	}
 	for index, credit := range value.Credits {
 		cloned.Credits[index] = credit
 		if credit.ExpiresAtMS != nil {

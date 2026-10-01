@@ -8,6 +8,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/accountbinding"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
+	"github.com/SisyphusSQ/codex-pulse/internal/diagnostics"
 	"github.com/SisyphusSQ/codex-pulse/internal/retry"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -96,6 +97,7 @@ func (client *Client) Fetch(ctx context.Context, request BoundRefreshRequest) (R
 	result.PayloadSHA256 = &digest
 	result.FinishedAtMS = finishedAtMS
 	if partial || len(observations) == 0 {
+		diagnostics.Emit(ctx, diagnostics.Event{Stage: "quota_decode", Outcome: "failed", Reason: "invalid_quota_fields"})
 		result.Failure = &Failure{Code: store.SourceFailureSchemaIncompatible}
 		if len(observations) == 0 {
 			result.Observations = nil
@@ -109,13 +111,22 @@ func (client *Client) readBoundSnapshot(
 	request BoundRefreshRequest,
 	result *Result,
 ) (appserver.AccountRateLimitsSnapshot, error) {
+	// 三次请求和退避共用总预算，不能被候选 CLI 或清理阶段无限延长。
+	ctx, cancelBudget := context.WithTimeout(ctx, client.timeout*time.Duration(client.maxAttempts)+2*time.Second)
+	defer cancelBudget()
 	var seenScope string
 	for nextAttempt := 1; nextAttempt <= client.maxAttempts; nextAttempt++ {
+		started := time.Now()
+		diagnostics.Emit(ctx, diagnostics.Event{Stage: "refresh", Outcome: "started", Attempt: nextAttempt})
 		requestContext, cancel := context.WithTimeout(ctx, client.timeout)
 		snapshot, err := client.reader.Read(requestContext, client.excludeResetCreditDetails)
 		cancel()
 		result.AttemptCount++
 		if err != nil {
+			event := diagnostics.FromError(err, "refresh", string(classifyAppServerError(ctx, err)))
+			event.Attempt = nextAttempt
+			event.DurationMS = time.Since(started).Milliseconds()
+			diagnostics.Emit(ctx, event)
 			if errors.Is(err, appserver.ErrAccountIdentityUnavailable) {
 				return appserver.AccountRateLimitsSnapshot{}, store.ErrCodexAccountBindingChanged
 			}
@@ -151,6 +162,7 @@ func (client *Client) readBoundSnapshot(
 			return appserver.AccountRateLimitsSnapshot{}, store.ErrCodexAccountBindingChanged
 		}
 		if scope != request.Binding.AccountScope {
+			diagnostics.Emit(ctx, diagnostics.Event{Stage: "refresh", Outcome: "failed", Reason: "account_identity_unavailable", Attempt: nextAttempt})
 			return appserver.AccountRateLimitsSnapshot{}, store.ErrCodexAccountBindingChanged
 		}
 		seenScope = scope
@@ -228,8 +240,7 @@ func classifyAppServerError(ctx context.Context, err error) store.SourceFailureC
 		errors.Is(err, appserver.ErrRateLimitsSchemaIncompatible) {
 		return store.SourceFailureSchemaIncompatible
 	}
-	var rpc appserver.RPCError
-	if errors.As(err, &rpc) {
+	if _, ok := errors.AsType[appserver.RPCError](err); ok {
 		return store.SourceFailureServerError
 	}
 	return store.SourceFailureNetworkUnavailable

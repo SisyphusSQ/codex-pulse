@@ -956,3 +956,17 @@
 "停止使用这段历史？" = "Stop using this history?";
 "停止使用历史" = "Stop using history";
 "只会取消曲线关联，本机原始观测不会被删除，之后仍可重新恢复。" = "This only removes the curve association. Raw local observations are not deleted and can be restored again later.";
+
+"额度刷新已停止，可点击“刷新额度”恢复。" = "Quota refresh stopped. Click “Refresh quota” to recover.";
+
+"额度刷新已停止，请检查本地数据后重启应用。" = "Quota refresh stopped. Check local data, then restart the app.";
+
+"本地数据忙碌" = "Local data is busy";
+
+"本地数据不可写" = "Local data is not writable";
+
+"本地数据需要检查" = "Local data needs inspection";
+
+"后台刷新异常" = "Background refresh failed";
+
+"刷新诊断写入受限，部分错误记录未保存。" = "Refresh diagnostics could not be written; some errors were not saved.";

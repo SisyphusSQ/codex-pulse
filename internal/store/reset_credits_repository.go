@@ -228,6 +228,11 @@ func validateResetCreditsFetchRecord(record ResetCreditsFetchRecord) error {
 	return validateResetCreditsSnapshot(*record.Snapshot)
 }
 
+// ValidateResetCreditsSnapshot 复用 writer 的库存约束，供 client 在持久化前拒绝异常外部响应。
+func ValidateResetCreditsSnapshot(snapshot ResetCreditsSnapshot) error {
+	return validateResetCreditsSnapshot(snapshot)
+}
+
 func validateResetCreditsSnapshot(snapshot ResetCreditsSnapshot) error {
 	if snapshot.SnapshotID == "" || len(snapshot.SnapshotID) > 512 || snapshot.RequestID == "" ||
 		len(snapshot.RequestID) > 512 || !validCodexAccountScope(snapshot.AccountScope) ||
