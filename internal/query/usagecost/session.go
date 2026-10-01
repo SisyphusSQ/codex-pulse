@@ -926,9 +926,14 @@ func mapSessionItem(
 	if err != nil {
 		return SessionItem{}, err
 	}
+	cacheHitRate, err := mapCacheHitRate(totals)
+	if err != nil {
+		return SessionItem{}, err
+	}
 	return SessionItem{
-		Throughput: throughputValue,
-		SessionID:  record.SessionID, DisplayTitle: record.DisplayTitle,
+		CacheHitRate: &cacheHitRate,
+		Throughput:   throughputValue,
+		SessionID:    record.SessionID, DisplayTitle: record.DisplayTitle,
 		TitleConfidence: string(record.TitleConfidence), TitleSource: string(record.TitleSource),
 		TitleReason: string(record.TitleReason), Activity: string(record.Activity),
 		Project: AttributionValue{

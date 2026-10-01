@@ -14,6 +14,7 @@ Codex Pulse is a local-first, native macOS app. It turns Codex and Cursor sessio
 
 - **Menu bar:** Pin Codex quota, Cursor's exact usage, or Grok credits without changing the provider selected in the main window. If every client is disabled, the menu bar shows `Codex Pulse --`.
 - **Usage analytics:** Explore tokens, models, API-equivalent cost, and activity distribution across overview, session, and project pages.
+- **Session cache hit rate:** See cached input as a percentage of all input tokens in Codex session lists and details. Missing or invalid counters stay unavailable.
 - **Provider controls:** Enable or disable Codex, Cursor, and Grok independently in Settings. Discovery is metadata-only. A disabled client stays off across restart, wake, and rediscovery. The main window and popover only list enabled clients; Settings stays reachable when none are enabled.
 - **Provider context:** Switch the main window among enabled Codex, Cursor, and Grok clients; every query remains scoped to one provider and unsupported metrics stay explicitly unavailable.
 - **Data status:** Inspect provider-grouped sources, local indexing, and background jobs to understand whether reported results are complete.

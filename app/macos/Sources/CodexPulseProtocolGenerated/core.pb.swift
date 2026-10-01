@@ -3151,6 +3151,17 @@ public nonisolated struct Codexpulse_Core_V1_SessionItem: @unchecked Sendable {
   /// Clears the value of `throughput`. Subsequent reads from it will return its default value.
   public mutating func clearThroughput() {_uniqueStorage()._throughput = nil}
 
+  /// Codex lifetime cached_input_tokens / input_tokens; 100 basis points = 1%.
+  /// Absent for providers whose input buckets do not share this definition.
+  public var cacheHitRate: Codexpulse_Core_V1_NumericValue {
+    get {_storage._cacheHitRate ?? Codexpulse_Core_V1_NumericValue()}
+    set {_uniqueStorage()._cacheHitRate = newValue}
+  }
+  /// Returns true if `cacheHitRate` has been explicitly set.
+  public var hasCacheHitRate: Bool {_storage._cacheHitRate != nil}
+  /// Clears the value of `cacheHitRate`. Subsequent reads from it will return its default value.
+  public mutating func clearCacheHitRate() {_uniqueStorage()._cacheHitRate = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -13086,7 +13097,7 @@ nonisolated extension Codexpulse_Core_V1_PricingCatalogCurrentResponse: SwiftPro
 
 nonisolated extension Codexpulse_Core_V1_SessionItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SessionItem"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}display_title\0\u{3}title_confidence\0\u{3}title_source\0\u{3}title_reason\0\u{1}project\0\u{1}model\0\u{1}activity\0\u{3}last_activity_at_ms\0\u{1}totals\0\u{1}throughput\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{3}display_title\0\u{3}title_confidence\0\u{3}title_source\0\u{3}title_reason\0\u{1}project\0\u{1}model\0\u{1}activity\0\u{3}last_activity_at_ms\0\u{1}totals\0\u{1}throughput\0\u{3}cache_hit_rate\0")
 
   fileprivate class _StorageClass {
     var _sessionID: String = String()
@@ -13100,6 +13111,7 @@ nonisolated extension Codexpulse_Core_V1_SessionItem: SwiftProtobuf.Message, Swi
     var _lastActivityAtMs: Codexpulse_Core_V1_NumericValue? = nil
     var _totals: Codexpulse_Core_V1_UsageTotals? = nil
     var _throughput: Codexpulse_Core_V1_ThroughputStats? = nil
+    var _cacheHitRate: Codexpulse_Core_V1_NumericValue? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -13121,6 +13133,7 @@ nonisolated extension Codexpulse_Core_V1_SessionItem: SwiftProtobuf.Message, Swi
       _lastActivityAtMs = source._lastActivityAtMs
       _totals = source._totals
       _throughput = source._throughput
+      _cacheHitRate = source._cacheHitRate
     }
   }
 
@@ -13150,6 +13163,7 @@ nonisolated extension Codexpulse_Core_V1_SessionItem: SwiftProtobuf.Message, Swi
         case 9: try { try decoder.decodeSingularMessageField(value: &_storage._lastActivityAtMs) }()
         case 10: try { try decoder.decodeSingularMessageField(value: &_storage._totals) }()
         case 11: try { try decoder.decodeSingularMessageField(value: &_storage._throughput) }()
+        case 12: try { try decoder.decodeSingularMessageField(value: &_storage._cacheHitRate) }()
         default: break
         }
       }
@@ -13195,6 +13209,9 @@ nonisolated extension Codexpulse_Core_V1_SessionItem: SwiftProtobuf.Message, Swi
       try { if let v = _storage._throughput {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 11)
       } }()
+      try { if let v = _storage._cacheHitRate {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 12)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -13215,6 +13232,7 @@ nonisolated extension Codexpulse_Core_V1_SessionItem: SwiftProtobuf.Message, Swi
         if _storage._lastActivityAtMs != rhs_storage._lastActivityAtMs {return false}
         if _storage._totals != rhs_storage._totals {return false}
         if _storage._throughput != rhs_storage._throughput {return false}
+        if _storage._cacheHitRate != rhs_storage._cacheHitRate {return false}
         return true
       }
       if !storagesAreEqual {return false}

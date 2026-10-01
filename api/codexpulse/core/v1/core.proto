@@ -527,6 +527,9 @@ message SessionItem {
   NumericValue last_activity_at_ms = 9;
   UsageTotals totals = 10;
   ThroughputStats throughput = 11;
+  // Codex lifetime cached_input_tokens / input_tokens; 100 basis points = 1%.
+  // Absent for providers whose input buckets do not share this definition.
+  NumericValue cache_hit_rate = 12;
 }
 
 message ThroughputStats {

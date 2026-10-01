@@ -13571,6 +13571,11 @@ struct CodexPulseAppTestMain {
             print("CodexPulseApp reporting settings tests passed")
             return
         }
+        if CommandLine.arguments.contains("--cache-hit-rate-only") {
+            try testSessionCacheHitRatePresentation()
+            print("CodexPulseApp cache hit rate presentation tests passed")
+            return
+        }
         if CommandLine.arguments.contains("--tps-only") {
             try testSessionThroughputPresentation()
             print("CodexPulseApp TPS presentation tests passed")
@@ -13627,6 +13632,7 @@ struct CodexPulseAppTestMain {
         try testSessionTrendPresentationAdaptsGranularityAndReportingTimezone()
         try testSessionThroughputPresentation()
         try testSessionAndProjectDetailsShareResponsiveThirdWidthSplit()
+        try testSessionCacheHitRatePresentation()
         try await testFeatureRefreshRetainsNativeContentIdentity()
         try testEveryTokenChartUsesLocalizedAxisAndAccessibilityUnits()
         try testEveryTokenSurfaceUsesInputOutputBreakdown()
@@ -13897,6 +13903,37 @@ struct CodexPulseAppTestMain {
         try await testShutdownDeadlineForcesHelperStop()
         print("CodexPulseApp deterministic tests passed")
     }
+}
+
+private func testSessionCacheHitRatePresentation() throws {
+    for localization in [AppLocalization.englishUS, .chineseSimplified] {
+        for (value, expected) in [(Int64(0), "0.0%"), (Int64(2_000), "20.0%"), (Int64(9_126), "91.3%"), (Int64(10_000), "100.0%")] {
+            var rate = Codexpulse_Core_V1_NumericValue()
+            rate.unit = "basis_points"
+            rate.value = value
+            try expect(
+                SessionCacheHitRatePresentation(rate, localization: localization).rateText == expected,
+                "Cache hit rate must format the Helper value, including real zero and full hits"
+            )
+        }
+    }
+    var rate = Codexpulse_Core_V1_NumericValue()
+    rate.unit = "basis_points"
+    rate.unknownReason = "not_applicable"
+    try expect(SessionCacheHitRatePresentation(rate).rateText == "--", "Zero input is unavailable, not zero hits")
+    rate.value = 0
+    try expect(SessionCacheHitRatePresentation(rate).rateText == "--", "Contradictory presence must fail closed")
+    rate.clearUnknownReason()
+    rate.unit = "tokens"
+    try expect(SessionCacheHitRatePresentation(rate).rateText == "--", "Token counts must not be formatted as rates")
+    rate.unit = "basis_points"
+    for value in [Int64(-1), Int64(10_001)] {
+        rate.value = value
+        try expect(SessionCacheHitRatePresentation(rate).rateText == "--", "Invalid ratios must not be clamped")
+    }
+    try expect(SessionCacheHitRatePresentation(nil).rateText == "--", "Unsupported providers and older Helpers keep missing rates")
+    try expect(AppLocalization.englishUS.text("缓存命中率") == "Cache hit rate", "English cache label must be localized")
+    try expect(AppLocalization.chineseSimplified.text("缓存命中率") == "缓存命中率", "Chinese cache label must be localized")
 }
 
 private func testSessionThroughputPresentation() throws {
