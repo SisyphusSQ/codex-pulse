@@ -159,6 +159,12 @@ Pricing Catalog 本地版本化，每条记录包含 model、input/cached/output
 - 原生 Popover 固定展示“本周项目 Token 排行”，按当前通用周额度的精确 UTC 周期和 `totalTokens DESC` 取前 5 个已归类项目。该请求独立于主 Overview 的范围选择，unknown confidence 的未归类用量在分页前排除；“其他”不显示、不占名次，但仍保留在主 Overview 与全局 totals 的对账口径中。周额度范围缺失时必须局部显示不可用，不能回退成自然周或最近 7 天后继续称为“本周额度”。
 - 所有 count/token/微美元保持整数和 unknown reason；只要存在未定价 Turn，即使已定价小计非空，相关 Session/Project 响应也必须是 partial。priced turn 必须至少关联一个 pricing version，未定价原因计数之和必须严格等于 unpriced turn count，否则 fail closed 为 unavailable。金额仍是 API 等价估算，不接入或对账云账单。
 
+### 会话缓存命中率（TOO-508）
+
+Codex 会话列表及详情「使用概览」显示缓存命中率：会话累计 `cached_input_tokens / input_tokens × 100%`。缓存输入已包含在 input 中，不再次加入分母，也不对各轮百分比求平均。复用整段会话已有总量，列表时间筛选及详情轮次分页不改变比例；索引尚未追平时沿用页面部分数据提示，口径说明明确为当前已索引的会话累计用量。
+
+Go Helper 以整数 `basis_points`（100 = 1%，10000 = 100%）四舍五入计算，Swift 只做单位换算及中英文一位小数展示。输入大于零且缓存为零显示 `0.0%`，全部输入命中显示 `100.0%`；输入为零显示 `-- / not_applicable`，缺失字段保留未知原因，缓存大于输入或非法事实显示 `-- / unavailable`，不 clamp、不改写其他 Token。此比例独立于模型是否可定价。Cursor 的输入桶定义不同，当前 Cursor/Grok 没有此字段时显示 `--`，不套用 Codex 公式。详见 [缓存命中率验证](../../../test/session-cache-hit-rate.md)。
+
 ### 会话活跃期间平均 TPS（TOO-492）
 
 Codex 会话列表显示平均 TPS；详情在使用概览后显示 TPS、参与统计的输出 Token、活跃时长、参与/排除/未结束轮数及时间来源。可展开最近轮次 TPS，默认 20 / 最大 50 条；该列表独立于既有用量/成本时间线，整段平均值不随轮次分页或会话筛选范围重算。

@@ -137,6 +137,7 @@ func TestNumericValueRejectsUnsafeOrInconsistentState(t *testing.T) {
 		{name: "unknown without reason", value: NumericValue{Unit: NumericTokens}, field: "numeric.unknownReason"},
 		{name: "known with reason", value: NumericValue{Value: int64Pointer(0), Unit: NumericTokens, UnknownReason: unknownReasonPointer(UnknownUnavailable)}, field: "numeric.unknownReason"},
 		{name: "invalid unit", value: NumericValue{Value: int64Pointer(1), Unit: "float"}, field: "numeric.unit"},
+		{name: "percentage exceeds one hundred", value: NumericValue{Value: new(int64(10_001)), Unit: NumericBasisPoints}, field: "numeric.value"},
 		{name: "invalid reason", value: NumericValue{Unit: NumericCount, UnknownReason: unknownReasonPointer("missing")}, field: "numeric.unknownReason"},
 	}
 

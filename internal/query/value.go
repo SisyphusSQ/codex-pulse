@@ -20,6 +20,7 @@ const (
 	NumericBytes        NumericUnit = "bytes"
 	NumericMilliseconds NumericUnit = "milliseconds"
 	NumericMilliTPS     NumericUnit = "milli_tokens_per_second"
+	NumericBasisPoints  NumericUnit = "basis_points"
 )
 
 // UnknownReason 区分从未加载、不适用、暂不可用和尚未计算。
@@ -64,6 +65,9 @@ func (numeric NumericValue) Validate() error {
 	}
 	if numeric.Value != nil {
 		if *numeric.Value < 0 || *numeric.Value > JavaScriptMaxSafeInteger {
+			return validationFailure("numeric.value")
+		}
+		if numeric.Unit == NumericBasisPoints && *numeric.Value > 10_000 {
 			return validationFailure("numeric.value")
 		}
 		if numeric.UnknownReason != nil {
@@ -154,7 +158,7 @@ func parseLocalDate(value string, location *time.Location) (time.Time, error) {
 
 func validNumericUnit(value NumericUnit) bool {
 	switch value {
-	case NumericTokens, NumericMicroUSD, NumericCount, NumericBytes, NumericMilliseconds, NumericMilliTPS:
+	case NumericTokens, NumericMicroUSD, NumericCount, NumericBytes, NumericMilliseconds, NumericMilliTPS, NumericBasisPoints:
 		return true
 	default:
 		return false

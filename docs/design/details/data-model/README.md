@@ -203,6 +203,12 @@ Pricing Catalog 以 `(source, currency, effective_from_ms)` 形成不可变时�
 
 2026-09-30（TOO-471）追加第八版 `openai-api-2026-09-29`，从 GPT-6.1 Sol [官方发布日](https://deploymentsafety.openai.com/gpt-6-1-sol/respecting-auto-review) UTC 日界 `2026-09-29T00:00:00Z`（`1790640000000`）新增 exact key `gpt-6.1-sol` 的 Standard 基础文本 input/cached/output `$2/$0.10/$10`。核验时刻为 `2026-09-30T06:40:21+08:00`（`2026-09-29T22:40:21Z`，`1790721621000`），来源为 [官方模型页](https://developers.openai.com/api/docs/models/gpt-6.1-sol) 与通用价格页；日粒度生效边界不声称精确开放时间。旧七版、其他模型及其来源 metadata 不变；`gpt-6.1`、日期后缀和相似 key 不猜价。查询时按原始 timed delta 的时间补算并解析 `GPT-6.1 Sol` 显示名，无需 schema/parser version 升级或重扫。缓存写入、超过 272K 单次输入的长上下文、Fast/Batch/Flex/区域计费仍不进入基础估算，也不能从聚合 Token 或 context-window 容量推断调用档位。
 
+## 会话缓存命中率（TOO-508）
+
+`SessionItem.cache_hit_rate` 是查询派生的 `NumericValue`，不新增数据库字段或 parser generation。轻量索引与 active rollup 共享 Session mapper，用同一只读快照返回的整段会话 `UsageTotals.input_tokens` / `cached_input_tokens` 计算；fallback 的未知总量继续返回未知比例，不从 Turn 页旁路聚合。仅 Codex mapper 设置此字段，其他 Provider 保持 absent。
+
+单位 `basis_points` 固定在 0..10000 范围；`cached × 10000 / input` 用精确整数 round-half-up，避免合法大 Token 乘法溢出。`input = 0` 为 `not_applicable`，缺失字段沿用已有 unknown reason，`cached > input` 为局部 `unavailable`。该派生指标不依赖价格目录，不影响既有 Token、成本或 TPS。Proto 追加 SessionItem field 12，Go/Swift bindings 使用正式生成器同步，旧 Helper absent 字段仍显示 `--`。
+
 ## Quota
 
 - `quota_observations(observation_id, account_scope, source, limit_id, window_kind, used_percent, window_minutes, resets_at_ms, plan_type, validity, rejection_reason, first_observed_at_ms, last_observed_at_ms, sample_count, request_id, session_id, source_file_id, first_source_generation, first_source_offset, source_generation, source_offset, limit_name)`
