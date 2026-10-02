@@ -21,7 +21,8 @@ describe('overview facts',()=>{
     await screen.findByText('Token 总量');const user=userEvent.setup();
     await user.click(screen.getByText('7天',{selector:'.ant-segmented-item-label'}));
     await waitFor(()=>expect(fetcher.mock.calls.some(([path])=>{const u=new URL(String(path),'http://localhost');return u.pathname.endsWith('/summary')&&dayjs(u.searchParams.get('end_date_exclusive')).diff(dayjs(u.searchParams.get('start_date')),'day')===7;})).toBe(true));
-    await user.click(screen.getByText('自定义',{selector:'.ant-segmented-item-label'}));
+    await user.click(screen.getByRole('button',{name:'自定义'}));
+    await user.click(await screen.findByPlaceholderText(/Start date|开始日期/));
     // JSDOM has no layout for popup placement; Chrome verifies the visible calendar.
     expect(await screen.findByText('最近 90 天')).toBeInTheDocument();
     expect(document.querySelectorAll('.ant-picker-panel')).toHaveLength(2);

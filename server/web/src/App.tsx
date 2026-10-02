@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { Alert, Button, Drawer, Grid, Layout, Menu, Result, Typography } from 'antd';
-import { AppstoreOutlined, BarChartOutlined, DesktopOutlined, DollarOutlined, FolderOutlined, MenuOutlined, TeamOutlined } from '@ant-design/icons';
+import { Alert, Breadcrumb, Button, Drawer, Grid, Layout, Menu, Result, Typography } from 'antd';
+import { BarChartOutlined, DatabaseOutlined, DesktopOutlined, DollarOutlined, FolderOutlined, LineChartOutlined, MenuOutlined, MessageOutlined, TeamOutlined } from '@ant-design/icons';
 import { HashRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiError } from './api/client';
@@ -22,12 +22,12 @@ export function createQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: false, refetchOnWindowFocus: true, gcTime: 300_000 }, mutations: { retry: false } } });
 }
 const navigation = [
-  { key: 'usage', label: '用量', icon: <BarChartOutlined />, children: [
-    {key:'/',label:'概览'}, {key:'/usage/models',label:'模型'}, {key:'/usage/sources',label:'采集来源'},
-  ] },
+  { key: '/', label: '用量概览', icon: <BarChartOutlined /> },
+  { key: '/usage/models', label: '模型分析', icon: <LineChartOutlined /> },
+  { key: '/usage/sources', label: '采集来源', icon: <DatabaseOutlined /> },
   { key: '/quota', label: '账号', icon: <TeamOutlined /> },
   { key: '/projects', label: '项目', icon: <FolderOutlined /> },
-  { key: '/sessions', label: '会话', icon: <AppstoreOutlined /> },
+  { key: '/sessions', label: '会话', icon: <MessageOutlined /> },
   { key: '/pricing', label: '价目表', icon: <DollarOutlined /> },
   { key: '/devices', label: '设备与授权', icon: <DesktopOutlined /> },
 ];
@@ -41,8 +41,8 @@ function Shell() {
   const screens = Grid.useBreakpoint();
   const mobile = !screens.md;
   const [error, setError] = useState<string>();
-  const selected = location.pathname.startsWith('/usage/') ? location.pathname : navigation.find((item) => item.key !== 'usage' && location.pathname.startsWith(item.key))?.key ?? '/';
-  const title = selected === '/' ? '用量 · 概览' : selected === '/usage/models' ? '用量 · 模型' : selected === '/usage/sources' ? '用量 · 采集来源' : navigation.find(item=>item.key===selected)?.label;
+  const selected = navigation.find(item => item.key !== '/' && location.pathname.startsWith(item.key))?.key ?? '/';
+  const title = navigation.find(item=>item.key===selected)?.label;
 
   useEffect(()=>{window.scrollTo(0,0);},[location.pathname]);
 
@@ -52,16 +52,17 @@ function Shell() {
     finally { setBusy(false); }
   }
 
-  const menu = <nav aria-label="主导航"><Menu mode="inline" inlineIndent={20} defaultOpenKeys={['usage']} selectedKeys={[selected]} items={navigation} onClick={({ key }) => {navigate(key);setMenuOpen(false);}} /></nav>;
+  const menu = <nav aria-label="主导航"><Menu mode="inline" selectedKeys={[selected]} items={navigation} onClick={({ key }) => {navigate(key);setMenuOpen(false);}} /></nav>;
   const brand = <a className="brand" href="#/" aria-label="Codex Pulse 首页"><BarChartOutlined /> <span>Codex Pulse</span></a>;
   return <Layout className="app-layout">
-    {!mobile && <Layout.Sider width={216} theme="light" className="app-sidebar">{brand}<div className="sidebar-caption">多机统计中心</div>{menu}<div className="sidebar-bottom"><Typography.Text type="secondary">App 采集 · 中心汇总</Typography.Text></div></Layout.Sider>}
+    {!mobile && <Layout.Sider width={208} theme="light" className="app-sidebar">{brand}<div className="sidebar-caption">多机用量中心</div>{menu}<div className="sidebar-bottom"><Typography.Text type="secondary">App 采集 · 中心汇总</Typography.Text></div></Layout.Sider>}
     <Layout className="app-workspace">
       <Layout.Header className="app-header">
-        <div className="header-location">{mobile && <Button type="text" icon={<MenuOutlined />} aria-label="打开导航" onClick={()=>setMenuOpen(true)} />}<Typography.Title level={3}>{title}</Typography.Title></div>
+        <div className="header-location">{mobile && <Button type="text" icon={<MenuOutlined />} aria-label="打开导航" onClick={()=>setMenuOpen(true)} />}<Breadcrumb items={[{title:'用量中心'},{title}]} /></div>
         <div className="header-account"><Typography.Text className="account-name" ellipsis>{session?.name}</Typography.Text><Button type="text" aria-label="退出授权" aria-busy={busy} onClick={leave} loading={busy}>退出授权</Button></div>
       </Layout.Header>
       <Layout.Content className="app-content">
+        <div className="workspace-heading"><h1>{title}</h1></div>
         {error && <Alert type="error" title={error} showIcon className="form-alert" />}
         <Suspense fallback={<LoadingState />}><Routes>
           <Route path="/" element={<Overview />} />

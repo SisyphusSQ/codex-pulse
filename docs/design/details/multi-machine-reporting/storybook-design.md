@@ -1,6 +1,6 @@
 # 全站 Storybook 交互设计稿
 
-2026-10-03，Execution [TOO-517](https://linear.app/sisyphus-sq/issue/TOO-517)，上游产品与正式验收仍为 [TOO-477](https://linear.app/sisyphus-sq/issue/TOO-477)。这是当前设计评审入口，不代表业务页面已替换。
+2026-10-03，Execution [TOO-517](https://linear.app/sisyphus-sq/issue/TOO-517)，上游产品与正式验收仍为 [TOO-477](https://linear.app/sisyphus-sq/issue/TOO-477)。用户已于2026-10-03批准本版设计，正式业务接入由 TOO-519/520/521/522 执行，整体验收仍在 TOO-477。设计样本不作为真实统计证据。
 
 ## 目标与范围
 

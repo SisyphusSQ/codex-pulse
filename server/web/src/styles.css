@@ -227,3 +227,18 @@ button.activity-cell:hover,button.activity-cell:focus-visible { outline: 2px sol
 @media(max-width:600px){.subscription-fields,.quota-window-overview{grid-template-columns:minmax(0,1fr)}.subscription-header{align-items:flex-start}.catalog-toolbar .ant-select{width:100%}.usage-kpis{grid-template-columns:minmax(0,1fr)}.subscription-editor{padding:12px}.subscription-panel .association-bar{flex-wrap:wrap}}
 
 .quota-detail .quota-window-summary{border:1px solid #e8e8e8;border-radius:8px}.quota-detail .quota-window-summary .ant-card-body{padding:12px}.quota-detail .quota-window-summary.selected-window{border-color:#1677ff;background:#f7faff}.quota-window-summary .record-link{white-space:normal;height:auto;text-align:left}
+
+/* 已批准 Storybook 的正式工作台布局；业务入口不引用设计样本。 */
+.app-layout,.app-workspace{background:#f5f7fa}
+.app-layout *{box-sizing:border-box}
+.app-sidebar{border-color:#e8edf3}
+.brand{padding:24px 22px 6px}.sidebar-caption{padding:0 22px 26px}
+.app-sidebar .ant-menu{padding:0 8px}.app-sidebar .ant-menu-item{margin:3px 0;width:100%}
+.app-header{padding:0 28px}.app-content{padding:24px 28px}
+.workspace-heading{margin-bottom:18px}.workspace-heading h1{margin:0;font-size:23px;font-weight:650;line-height:1.4;letter-spacing:-.4px}
+.stats-toolbar-wrap{margin-bottom:18px}.stats-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.provider-select{min-width:136px}.toolbar-popover{width:min(320px,calc(100vw - 56px));padding-top:4px}.toolbar-popover .ant-picker{width:100%}
+.active-filters{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:12px;color:#798596;margin-top:10px}.active-filters .ant-tag{margin:0}
+.activity-weekday{height:100%;display:flex;align-items:center}
+@media(max-width:1150px){.app-content{padding:20px}.app-header{padding:0 20px}}
+@media(max-width:600px){.app-content{padding:18px 14px}.app-header{padding:0 12px}.app-header .ant-breadcrumb{font-size:12px}.workspace-heading h1{font-size:21px}.stats-toolbar{flex-direction:column;align-items:flex-start;gap:10px}.stats-toolbar>.ant-space:last-child{column-gap:6px!important;row-gap:6px!important}.stats-toolbar .ant-btn{padding-inline:9px}.stats-toolbar .ant-segmented-item-label{padding-inline:7px}}
