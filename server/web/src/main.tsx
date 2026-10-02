@@ -5,6 +5,7 @@ import zhCN from 'antd/locale/zh_CN';
 import 'antd/dist/reset.css';
 import './styles.css';
 import { createQueryClient, PulseApp } from './App';
+import { pulseTheme } from './theme';
 
 const queryClient = createQueryClient();
-createRoot(document.getElementById('root')!).render(<StrictMode><ConfigProvider locale={zhCN} theme={{ cssVar: {key: 'pulse'}, token: { fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif' }, components: { Layout: { headerBg: '#ffffff', siderBg: '#ffffff', headerHeight: 56 }, Statistic: { contentFontSize: 26 } } }}><PulseApp queryClient={queryClient} /></ConfigProvider></StrictMode>);
+createRoot(document.getElementById('root')!).render(<StrictMode><ConfigProvider locale={zhCN} theme={pulseTheme}><PulseApp queryClient={queryClient} /></ConfigProvider></StrictMode>);

@@ -25,6 +25,10 @@ describe('aligned annual activity',()=>{
     expect(calendar.cells.map(cell=>cell.intensity)).toEqual(['unknown','none',...Array(6).fill('level-1'),...Array(2).fill('level-2'),'level-3','level-4']);
     expect(activityCalendar([]).cells).toEqual([]);
   });
+  it('labels the first partial month when there is room without colliding with the next month',()=>{
+    const days=Array.from({length:40},(_,index)=>day(dayjs.utc('2025-10-03').add(index,'day').format('YYYY-MM-DD'),null));
+    expect(activityCalendar(days).months[0]).toEqual({key:'2025-10',title:'10月',column:2});
+  });
   it('exposes exact day values with a single keyboard entry and moves by weeks',async()=>{
     const days=Array.from({length:10},(_,index)=>day(dayjs.utc('2026-10-01').add(index,'day').format('YYYY-MM-DD'),index===0?null:index===1?'0':'9007199254740993'));
     render(<ActivityHeatmap days={days} />);

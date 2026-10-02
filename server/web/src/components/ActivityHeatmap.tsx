@@ -25,6 +25,7 @@ export function activityCalendar(days: Day[]) {
   });
   const weeks = cells.at(-1)!.column - 1;
   const months = cells.filter(cell => cell.day.date.endsWith('-01')).map(cell => ({ key: cell.day.date.slice(0,7), title: `${Number(cell.day.date.slice(5,7))}月`, column: cell.column }));
+  if (!days[0].date.endsWith('-01') && (!months.length || months[0].column >= 4)) months.unshift({key:days[0].date.slice(0,7),title:`${Number(days[0].date.slice(5,7))}月`,column:2});
   return { cells, months, weeks };
 }
 
@@ -32,20 +33,9 @@ export function ActivityHeatmap({ days }: { days: Day[] }) {
   const calendar = useMemo(() => activityCalendar(days), [days]);
   const [selected, setSelected] = useState<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
-  const [cellSize, setCellSize] = useState(14);
+  const cellSize = 14;
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const lastDate = days.at(-1)?.date;
-  useEffect(() => {
-    const element = scroll.current;
-    if (!element || !calendar.weeks) return;
-    const update = () => {
-      setCellSize(Math.max(14, Math.floor((element.clientWidth - 18 - calendar.weeks * 3) / calendar.weeks)));
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [calendar.weeks]);
   useEffect(() => {
     const element = scroll.current;
     if (element) element.scrollLeft = element.scrollWidth - element.clientWidth;

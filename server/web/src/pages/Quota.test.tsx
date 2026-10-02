@@ -6,7 +6,7 @@ import { createQueryClient } from '../App';
 import { api } from '../api/client';
 import { quotaFixture, paceFixture } from '../test/quotaFixture';
 import { paceChartOption } from '../components/QuotaViews';
-import Quota from './Quota';
+import Quota,{legacyUsageTarget} from './Quota';
 import {MemoryRouter} from 'react-router-dom';
 
 vi.mock('../components/Chart',()=>({default:({label}:{label:string})=><div role="img" aria-label={label} />}));
@@ -26,7 +26,7 @@ describe('quota facts and pace',()=>{
  it('shows expired last value without countdown, keeps original times after failed refresh, and escapes account metadata',async()=>{
   const quota=quotaFixture();quota.windows[0].current={...quota.windows[0].current,used_percent:50,remaining_percent:50,freshness:'expired_unknown',reason:'expired_unknown',reset_remaining_ms:null};quota.accounts[0].email='<img src=x onerror=alert(1)>';
   fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success(paceFixture()):success(quota));mount();
-  await screen.findByText('额度窗口与来源详情');await userEvent.setup().click(screen.getByText('额度窗口与来源详情'));await screen.findByText('未提供可信倒计时');expect(screen.getByText('reset 已过，等待新观测 · 窗口 300 分钟')).toBeInTheDocument();expect(document.querySelector('img[src="x"]')).toBeNull();
+  await screen.findByText('当前未知');expect(document.querySelector('.quota-window-summary .ant-progress')).toBeNull();expect(screen.getByText(/上次剩余 50%/)).toBeInTheDocument();await screen.findByText('额度窗口与来源详情');await userEvent.setup().click(screen.getByText('额度窗口与来源详情'));await screen.findByText('未提供可信倒计时');expect(screen.getByText('reset 已过，等待新观测 · 窗口 300 分钟')).toBeInTheDocument();expect(document.querySelector('img[src="x"]')).toBeNull();
   fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):new Response('',{status:503}));await userEvent.setup().click(screen.getByRole('button',{name:'刷新额度'}));
   await screen.findByText('额度刷新失败，保留上次读取的数据与原时间');expect(document.querySelectorAll('.quota-numbers strong')[0]?.textContent).toBe('50%');expect(screen.getByText('未提供可信倒计时')).toBeInTheDocument();
  });
@@ -62,4 +62,8 @@ describe('quota facts and pace',()=>{
   await userEvent.setup().click(screen.getByRole('button',{name:'查看待关联观测'}));await userEvent.setup().click(screen.getByText('Reset Credits 库存与到期明细 (1)'));detail=document.querySelector('.quota-detail') as HTMLElement;
   expect(within(detail).getByText('以下观测各自展示，不视为同一账号，也不按邮箱或采集设备推断归属。')).toBeInTheDocument();expect(within(detail).getByText('7',{selector:'.metric-value'})).toBeInTheDocument();expect(within(detail).queryByText('原始账号 ID：raw-account-two')).not.toBeInTheDocument();
  });
+});
+
+it('preserves provider, model and version parameters when migrating the legacy usage link',()=>{
+ expect(legacyUsageTarget(new URLSearchParams('view=usage&provider=codex&model=gpt-6.1-sol&version=old'))).toBe('/usage/models?provider=codex&model=gpt-6.1-sol&version=old');
 });

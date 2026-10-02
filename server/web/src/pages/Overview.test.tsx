@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { createQueryClient } from '../App';
 import { api } from '../api/client';
 import { summaryFixture } from '../test/statisticsFixture';
-import { dollars, integer } from '../format';
+import { dayjs, dollars, integer } from '../format';
 import Overview from './Overview';
 
 vi.mock('../components/Chart',()=>({default:({label}:{label:string})=><div role="img" aria-label={label} />}));
@@ -15,6 +15,17 @@ const success=(data:unknown)=>new Response(JSON.stringify({code:200,data}));
 beforeEach(()=>{api.setSession({client_id:'synthetic-browser',name:'测试浏览器',purpose:'admin',csrf:'synthetic-csrf',expires_at_ms:null});fetcher.mockReset();vi.stubGlobal('fetch',fetcher);});
 afterEach(()=>vi.unstubAllGlobals());
 describe('overview facts',()=>{
+  it('requests the seven-day range and opens a real date picker for custom dates',async()=>{
+    fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):success(summaryFixture()));
+    render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
+    await screen.findByText('Token 总量');const user=userEvent.setup();
+    await user.click(screen.getByText('7天',{selector:'.ant-segmented-item-label'}));
+    await waitFor(()=>expect(fetcher.mock.calls.some(([path])=>{const u=new URL(String(path),'http://localhost');return u.pathname.endsWith('/summary')&&dayjs(u.searchParams.get('end_date_exclusive')).diff(dayjs(u.searchParams.get('start_date')),'day')===7;})).toBe(true));
+    await user.click(screen.getByText('自定义',{selector:'.ant-segmented-item-label'}));
+    // JSDOM has no layout for popup placement; Chrome verifies the visible calendar.
+    expect(await screen.findByText('最近 90 天')).toBeInTheDocument();
+    expect(document.querySelectorAll('.ant-picker-panel')).toHaveLength(2);
+  });
   it('keeps exact generic counts and displays USD with two decimal places',()=>{
     expect(integer('9007199254740993')).toBe('9,007,199,254,740,993');
     expect(integer(null)).toBe('未知');expect(integer('0')).toBe('0');
@@ -26,7 +37,7 @@ describe('overview facts',()=>{
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
     expect((await screen.findAllByText('90071992.5亿')).length).toBeGreaterThan(0);
     expect(screen.getByText('已知金额小计，含未定价记录 · 不是实际账单')).toBeInTheDocument();
-    expect(screen.getByText('采集证据陈旧')).toBeInTheDocument();expect(await screen.findByText('年度覆盖未确认 · 近期采集')).toBeInTheDocument();
+    expect(screen.getByRole('button',{name:/采集证据陈旧/})).toBeInTheDocument();expect(await screen.findByText('年度覆盖未确认 · 近期采集')).toBeInTheDocument();
     const user=userEvent.setup();await user.click(screen.getByRole('combobox',{name:'Provider'}));
     await user.click(await screen.findByText('Cursor',{selector:'.ant-select-item-option-content'}));
     await waitFor(()=>expect(fetcher.mock.calls.some(([path])=>new URL(String(path),'http://localhost').searchParams.get('provider')==='cursor')).toBe(true));
@@ -41,7 +52,7 @@ describe('overview facts',()=>{
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
     await screen.findByText('数据未能读取');expect(screen.queryByText('Token 总量')).not.toBeInTheDocument();
   });
-  it('places annual activity before trend and uses independent Server annual metrics',async()=>{
+  it('places current trend before compact annual activity and uses independent Server annual metrics',async()=>{
     const fixture=summaryFixture();
     fixture.heatmap_activity={total_tokens:'999999999999999999',peak_daily_tokens:'100000',active_days:'15',current_streak_days:null,longest_streak_days:'4',observed_days:22,unknown_days:343};
     fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):success(fixture));
@@ -51,8 +62,8 @@ describe('overview facts',()=>{
     expect(screen.getByText('当前连续天数').parentElement).toHaveTextContent('未知');
     expect(screen.getByRole('link',{name:'查看账号额度与节奏'})).toHaveAttribute('href','/quota');
     await screen.findByRole('img',{name:'按自然日的用量趋势'});
-    const activity=screen.getByText('Token 活动').closest('.ant-card')!;
-    const trend=screen.getByText('用量趋势').closest('.ant-card')!;
-    expect(activity.compareDocumentPosition(trend)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const activity=screen.getByText('全年活动').closest('.ant-card')!;
+    const trend=screen.getByText('每日用量趋势').closest('.ant-card')!;
+    expect(trend.compareDocumentPosition(activity)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

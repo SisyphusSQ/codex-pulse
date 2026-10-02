@@ -3,8 +3,7 @@ import { Alert, Button, Card, Collapse, Progress, Select, Table, Tabs, Typograph
 import { useQuery } from '@tanstack/react-query';
 import { getPace, getQuotas, type QuotaAccount, type QuotaCredits, type QuotaFilter, type QuotaResponse, type QuotaWindow } from '../api/quotas';
 import { getDevices } from '../api/statistics';
-import { Link,useSearchParams } from 'react-router-dom';
-import Usage from './Usage';
+import { Link,Navigate,useSearchParams } from 'react-router-dom';
 import {SubscriptionPanel} from '../components/SubscriptionPanel';
 import {integer} from '../format';
 import {percent} from '../components/QuotaViews';
@@ -25,7 +24,7 @@ function accountGroups(data:QuotaResponse):AccountGroup[]{
  return [...groups.values()];
 }
 
-function QuotaAccounts(){
+export function QuotaAccounts(){
  const [filter,setFilter]=useState<QuotaFilter>({provider:'',client_id:'',account_key:''});
  const [selectedAccount,setSelectedAccount]=useState('');
  const [selectedKey,setSelectedKey]=useState('');
@@ -62,8 +61,8 @@ function QuotaAccounts(){
   {group.account&&group.accountKey&&<SubscriptionPanel accountKey={group.accountKey} provider={group.provider} />}
   <div className="quota-window-overview">{group.windows.map(w=><Card key={w.key} size="small" className={w.key===selected?.key?'quota-window-summary selected-window':'quota-window-summary'}>
    <Button type="link" className="record-link" aria-pressed={w.key===selected?.key} onClick={()=>{setSelectedKey(w.key);setDetailTab('pace');}}>{w.limit_id} · {w.window_minutes==null?'窗口时长未知':w.window_minutes%1440===0?`${w.window_minutes/1440} 天`:w.window_minutes%60===0?`${w.window_minutes/60} 小时`:`${w.window_minutes} 分钟`}</Button>
-   <div className="quota-summary-value">{w.current.freshness==='fresh'&&!w.current.conflict?'剩余':'上次剩余'} {percent(w.current.remaining_percent)}</div>
-   {w.current.remaining_percent!==null&&<Progress percent={w.current.remaining_percent} showInfo={false} size="small" />}
+   <div className="quota-summary-value">{w.current.freshness==='fresh'&&!w.current.conflict&&w.current.remaining_percent!==null?`剩余 ${percent(w.current.remaining_percent)}`:'当前未知'}</div>
+   {w.current.freshness==='fresh'&&!w.current.conflict&&w.current.remaining_percent!==null?<Progress percent={w.current.remaining_percent} showInfo={false} size="small" />:<div className="metric-note">上次剩余 {percent(w.current.remaining_percent)} · 原观测 {dateTime(w.current.observed_at_ms)}</div>}
    <div className="metric-note">已用 <span>{percent(w.current.used_percent)}</span> · reset {dateTime(w.current.resets_at_ms)}</div>
    <div className="metric-note">{w.current.freshness==='fresh'?'新鲜观测':w.current.freshness.startsWith('expired')?'reset已过，当前额度未知':'观测陈旧或未知'}{w.current.conflict?' · 来源冲突':''}{group.accountKey===null?` · ${w.observations[0]?.client_name??'来源未知'}`:''}</div>
   </Card>)}</div>
@@ -88,9 +87,12 @@ function QuotaAccounts(){
  </section>;
 }
 
+export function legacyUsageTarget(params:URLSearchParams) {
+ const next=new URLSearchParams(params);next.delete('view');
+ return `/usage/models${next.size?`?${next.toString()}`:''}`;
+}
 export default function Quota(){
- const [params,setParams]=useSearchParams();const tab=params.get('view')==='usage'?'usage':'quota';
- return <section><div className="page-heading"><div><Typography.Title level={3}>额度与用量</Typography.Title><Typography.Paragraph type="secondary">账号额度、订阅日期与节奏，以及独立的历史用量和API成本。</Typography.Paragraph></div><Link to="/pricing">模型与订阅价目表</Link></div>
- <Tabs activeKey={tab} onChange={view=>setParams(previous=>{const next=new URLSearchParams(previous);next.set('view',view);return next;})} items={[{key:'quota',label:'额度与节奏',children:<QuotaAccounts />},{key:'usage',label:'用量与成本',children:<Usage />}]} />
- </section>;
+ const [params]=useSearchParams();
+ if(params.get('view')==='usage')return <Navigate to={legacyUsageTarget(params)} replace />;
+ return <section className="accounts-page"><div className="page-heading"><Typography.Paragraph type="secondary">按账号查看额度、订阅和节奏。</Typography.Paragraph><Link to="/pricing">模型与订阅价目表</Link></div><QuotaAccounts /></section>;
 }
