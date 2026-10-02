@@ -18,10 +18,11 @@ function mount(){render(<QueryClientProvider client={createQueryClient()}><Memor
 describe('quota facts and pace',()=>{
  it('preserves observed zero, sparse forecast and exact credits with separate reset/expiry',async()=>{
   fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success(paceFixture()):success(quotaFixture()));
-  mount();expect((await screen.findAllByText('0%')).length).toBeGreaterThan(0);await userEvent.setup().click(screen.getByText('Reset Credits 库存与到期明细 (1)'));await screen.findByText('实际采样数量或跨度不足');
+  mount();expect((await screen.findAllByText('0%')).length).toBeGreaterThan(0);await userEvent.setup().click(screen.getByRole('button',{name:'节奏评估说明'}));await screen.findByText('实际采样数量或跨度不足');
+  await userEvent.setup().click(screen.getByText('库存来源与到期明细'));
   expect(screen.getByText('正值代表使用快于均匀节奏')).toBeInTheDocument();expect(screen.getByLabelText('节奏偏差（百分点）')).toHaveTextContent('10.00');
   expect(screen.queryByRole('tab',{name:'Reset Credits (1)'})).not.toBeInTheDocument();expect(screen.getByText('9,007,199,254,740,993')).toBeInTheDocument();
-  const credit=screen.getByText('Reset Credits').closest('.ant-card')!;expect(within(credit as HTMLElement).getByText('下一次 reset')).toBeInTheDocument();expect(within(credit as HTMLElement).getAllByText('未知').length).toBeGreaterThan(0);
+  const credit=screen.getByText('Reset Credits').closest('.credits-section')!;expect(within(credit as HTMLElement).getByText('下一次 reset')).toBeInTheDocument();expect(within(credit as HTMLElement).getAllByText('未知').length).toBeGreaterThan(0);
  });
  it('shows expired last value without countdown, keeps original times after failed refresh, and escapes account metadata',async()=>{
   const quota=quotaFixture();quota.windows[0].current={...quota.windows[0].current,used_percent:50,remaining_percent:50,freshness:'expired_unknown',reason:'expired_unknown',reset_remaining_ms:null};quota.accounts[0].email='<img src=x onerror=alert(1)>';
@@ -34,12 +35,13 @@ describe('quota facts and pace',()=>{
   fetcher.mockImplementation(async(path)=>{const u=new URL(String(path),'http://localhost');if(u.pathname.endsWith('/devices/status'))return success([{id:'machine-one',name:'合成采集机',providers:[],revoked_at_ms:null,last_received_at_ms:null}]);if(u.pathname.endsWith('/pace'))return success(paceFixture());const data=quotaFixture();if(u.searchParams.get('account_key')==='account-two'){data.accounts=data.accounts.filter(a=>a.key==='account-two');data.windows=[];data.credits=[];}return success(data);});
   mount();await screen.findAllByText('0%');const user=userEvent.setup();await user.click(screen.getByRole('combobox',{name:'额度账号'}));await user.click(await screen.findByText('Codex · same@example.invalid · raw-account-two',{selector:'.ant-select-item-option-content'}));
   await screen.findByText('当前账号暂无已收到的额度窗口。');expect(screen.getByText('当前账号暂无已收到的 Reset Credits，库存保持未知。')).toBeInTheDocument();await waitFor(()=>expect(fetcher.mock.calls.some(([p])=>new URL(String(p),'http://localhost').searchParams.get('account_key')==='account-two')).toBe(true));
-  await user.click(screen.getByRole('combobox',{name:'额度采集来源'}));await user.click(await screen.findByText('合成采集机',{selector:'.ant-select-item-option-content'}));await waitFor(()=>expect(fetcher.mock.calls.some(([p])=>new URL(String(p),'http://localhost').searchParams.get('client_id')==='machine-one')).toBe(true));
+  await user.click(screen.getByRole('button',{name:'筛选'}));await user.click(screen.getByRole('combobox',{name:'额度采集来源'}));await user.click(await screen.findByText('合成采集机',{selector:'.ant-select-item-option-content'}));await waitFor(()=>expect(fetcher.mock.calls.some(([p])=>new URL(String(p),'http://localhost').searchParams.get('client_id')==='machine-one')).toBe(true));
   await user.click(screen.getByRole('combobox',{name:'额度 Provider'}));await user.click(await screen.findByText('Cursor',{selector:'.ant-select-item-option-content'}));await waitFor(()=>expect(fetcher.mock.calls.some(([p])=>new URL(String(p),'http://localhost').searchParams.get('provider')==='cursor')).toBe(true));
  });
  it('keeps a descending real sample, original endpoints, and no interpolated point across collection gaps',()=>{
-  const w=paceFixture().windows[0];const option=paceChartOption(w);const series=option.series as {data:{value:number[];observedAt:number}[];lineStyle:{opacity?:number}}[];
-  expect(series[0].data).toHaveLength(2);expect(series[0].data.map(p=>p.value[1])).toEqual([20,30]);expect(series[0].data.map(p=>p.observedAt)).toEqual(w.current_points.map(p=>p.observed_at_ms));expect(series[0].lineStyle.opacity).toBe(0);
+  const w=paceFixture().windows[0];const option=paceChartOption(w);const series=option.series as {data:{value:number[];observedAt:number}[];lineStyle:{width:number};showSymbol:boolean;connectNulls:boolean}[];
+  expect(series[0].data).toHaveLength(2);expect(series[0].data.map(p=>p.value[1])).toEqual([20,30]);expect(series[0].data.map(p=>p.observedAt)).toEqual(w.current_points.map(p=>p.observed_at_ms));expect(series[0].lineStyle.width).toBe(2.5);expect(series[0].showSymbol).toBe(false);expect(series[0].connectNulls).toBe(true);
+  w.current={...w.current,freshness:'stale'};expect((paceChartOption(w).series as {data:unknown[]}[])[0].data).toEqual([]);
  });
 
  it('keeps windows, resets and credits inside one selected raw-ID account even when emails match',async()=>{
@@ -47,19 +49,19 @@ describe('quota facts and pace',()=>{
   data.windows.push({...data.windows[0],key:'window-two',account_key:'account-two',current:{...data.windows[0].current,used_percent:25,remaining_percent:75}});
   data.credits.push({...data.credits[0],key:'credit-two',account_key:'account-two',observed_inventory:'3',available_inventory:'2'});
   fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success(paceFixture()):success(data));
-  mount();await screen.findByText('Reset Credits 库存与到期明细 (1)');await userEvent.setup().click(screen.getByText('Reset Credits 库存与到期明细 (1)'));await screen.findByText('9,007,199,254,740,993');
+  mount();await screen.findByText('Reset Credits');await screen.findByText('9,007,199,254,740,993');
   const user=userEvent.setup();await user.click(screen.getByRole('button',{name:'查看账号 Codex same@example.invalid raw-account-two'}));
-  await user.click(screen.getByText('Reset Credits 库存与到期明细 (1)'));const detail=document.querySelector('.quota-detail') as HTMLElement;
+  const detail=document.querySelector('.quota-detail') as HTMLElement;
   expect(within(detail).getByText('原始账号 ID：raw-account-two')).toBeInTheDocument();expect(within(detail).getByText('25%')).toBeInTheDocument();expect(within(detail).getByText('3',{selector:'.metric-value'})).toBeInTheDocument();expect(within(detail).queryByText('9,007,199,254,740,993')).not.toBeInTheDocument();
-  await user.click(screen.getByRole('button',{name:'查看账号 Codex same@example.invalid raw-account-one'}));await user.click(screen.getByText('Reset Credits 库存与到期明细 (1)'));expect(within(document.querySelector('.quota-detail') as HTMLElement).getByText('0%')).toBeInTheDocument();expect(screen.getByText('9,007,199,254,740,993')).toBeInTheDocument();
+  await user.click(screen.getByRole('button',{name:'查看账号 Codex same@example.invalid raw-account-one'}));expect(within(document.querySelector('.quota-detail') as HTMLElement).getAllByText('0%').length).toBeGreaterThan(0);expect(screen.getByText('9,007,199,254,740,993')).toBeInTheDocument();
  });
 
  it('shows a credits-only account and keeps unassigned observations outside confirmed accounts',async()=>{
   const data=quotaFixture();data.windows=[];data.credits=[{...data.credits[0],account_key:'account-two',observed_inventory:'0',available_inventory:'0'},{...data.credits[0],key:'pending-credit',account_key:null,observed_inventory:'7',available_inventory:null,freshness:'unassigned'}];
   fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success({...paceFixture(),windows:[]}):success(data));
   mount();await screen.findByText('当前账号暂无已收到的额度窗口。');
-  await userEvent.setup().click(screen.getByText('Reset Credits 库存与到期明细 (1)'));let detail=document.querySelector('.quota-detail') as HTMLElement;expect(within(detail).getByText('原始账号 ID：raw-account-two')).toBeInTheDocument();expect(within(detail).getAllByText('0',{selector:'.metric-value'})).toHaveLength(2);expect(within(detail).queryByText('7',{selector:'.metric-value'})).not.toBeInTheDocument();
-  await userEvent.setup().click(screen.getByRole('button',{name:'查看待关联观测'}));await userEvent.setup().click(screen.getByText('Reset Credits 库存与到期明细 (1)'));detail=document.querySelector('.quota-detail') as HTMLElement;
+  let detail=document.querySelector('.quota-detail') as HTMLElement;expect(within(detail).getByText('原始账号 ID：raw-account-two')).toBeInTheDocument();expect(within(detail).getAllByText('0',{selector:'.metric-value'})).toHaveLength(2);expect(within(detail).queryByText('7',{selector:'.metric-value'})).not.toBeInTheDocument();
+  await userEvent.setup().click(screen.getByRole('button',{name:'查看待关联观测'}));detail=document.querySelector('.quota-detail') as HTMLElement;
   expect(within(detail).getByText('以下观测各自展示，不视为同一账号，也不按邮箱或采集设备推断归属。')).toBeInTheDocument();expect(within(detail).getByText('7',{selector:'.metric-value'})).toBeInTheDocument();expect(within(detail).queryByText('原始账号 ID：raw-account-two')).not.toBeInTheDocument();
  });
 });

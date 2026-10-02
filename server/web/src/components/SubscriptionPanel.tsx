@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {Alert,Button,DatePicker,Descriptions,Form,Input,InputNumber,Select,Typography} from 'antd';
+import {Alert,Button,DatePicker,Descriptions,Form,Input,InputNumber,Modal,Select,Typography} from 'antd';
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
 import {Link} from 'react-router-dom';
 import type {Dayjs} from 'dayjs';
@@ -39,6 +39,6 @@ export function SubscriptionPanel({accountKey,provider}:{accountKey:string;provi
  <div className="subscription-header"><Typography.Text strong>{v.alias||'账号订阅'}</Typography.Text><div><Link to={`/pricing?provider=${encodeURIComponent(provider)}`}>参考价目</Link> · <Button type="link" size="small" onClick={()=>{setEditing(!editing);setSaved(false);}}>{editing?'收起编辑':'编辑订阅'}</Button></div></div>
  <Descriptions size="small" column={{xs:1,md:2}} items={[{key:'plan',label:'套餐',children:<>{v.resolved_plan??'未知'}{v.manual_plan&&<Typography.Text type="secondary">（手动；识别值 {v.automatic_plan??'未知'}）</Typography.Text>}</>},{key:'date',label:v.date_kind==='membership_expiry'?'会员到期':v.date_kind==='monthly_renewal'?`每月${v.renewal_day}日续费`:'订阅日期',children:dateText}]} />
  {saved&&<Alert type="success" title="订阅设置已保存到中心" className="form-alert" />}
- {editing&&<Editor key={`${v.account_key}:${v.revision}`} value={v} onSaved={next=>{cache.setQueryData(['subscription',accountKey],next);setEditing(false);setSaved(true);}} onReload={()=>void reload()} />}
+ {editing&&<Modal open title="编辑账号订阅" footer={null} onCancel={()=>void reload()}><Editor key={`${v.account_key}:${v.revision}`} value={v} onSaved={next=>{cache.setQueryData(['subscription',accountKey],next);setEditing(false);setSaved(true);}} onReload={()=>void reload()} /></Modal>}
  </div>;
 }
