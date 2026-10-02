@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Alert, Button, Card, Form, Input, Typography } from 'antd';
+import { SafetyCertificateOutlined } from '@ant-design/icons';
 import { ApiError } from '../api/client';
 import { useSession } from './SessionProvider';
 
@@ -20,7 +21,7 @@ export function SignIn() {
   }
 
   return <main className="sign-in">
-    <div className="sign-in-intro"><Typography.Title level={2}>Codex Pulse</Typography.Title><Typography.Text type="secondary">多机统计中心</Typography.Text></div>
+    <div className="sign-in-intro"><SafetyCertificateOutlined /><Typography.Title level={2}>Codex Pulse</Typography.Title></div>
     <Card className="sign-in-card" title="浏览器授权">
       <Typography.Paragraph type="secondary">输入管理员签发的浏览器配对码，完成一次性授权。</Typography.Paragraph>
       {error && <Alert type="error" title={error} showIcon className="form-alert" />}

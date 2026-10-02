@@ -21,12 +21,13 @@ const metricValue = (row: Slice, metric: Metric): Decimal => metric === 'tokens'
 const metricLabel = (value: Decimal, metric: Metric) => metric === 'tokens' ? tokens(value) : dollars(value);
 const metricCoordinate = (value: Decimal, metric: Metric) => value === null ? null : Number(value) / (metric === 'cost' ? 1_000_000 : 1);
 const tooltip = { renderMode: 'richText' as const, confine: true };
-const palette = ['#2678f5', '#214c8e', '#79b5fa', '#597fad', '#89a1be', '#4864a8', '#95c6e9', '#b4c8df'];
-const providerColors: Record<string, string> = { codex: '#214c8e', cursor: '#2678f5', grok: '#79b5fa' };
+const palette = ['#2678f5', '#3e9e82', '#8a70cf', '#d3a34b', '#6b8aad', '#c0779b'];
+const providerColors: Record<string, string> = { codex: '#2678f5', cursor: '#3e9e82', grok: '#d3a34b' };
 
 function SliceTable({ rows }: { rows: Slice[] }) {
   return <Table<Slice> size="small" rowKey="key" dataSource={rows} pagination={rows.length > 8 ? { pageSize: 8, showSizeChanger: false } : false} scroll={{ x: 420 }} columns={[
     { title: '名称', dataIndex: 'name', render: (name: string) => providerNames[name] ?? name },
+    { title:'会话',align:'right',render:(_,row)=>integer(row.totals.sessions) },
     { title: 'Token', align: 'right', render: (_, row) => tokens(row.totals.total_tokens) },
     { title: 'API 等价成本', align: 'right', render: (_, row) => <div><span className="numeric">{dollars(row.totals.cost_micro_usd)}</span>{row.totals.cost_status === 'partial' && <Tooltip trigger={['hover','focus']} title="已知金额小计，含未定价记录"><InfoCircleOutlined tabIndex={0} aria-label="已知小计" className="partial-cost-icon" /></Tooltip>}</div> },
   ]} />;
@@ -40,7 +41,7 @@ function Distribution({ rows, title }: { rows: Slice[]; title: string }) {
     const value = metricValue(row, metric);
     return value !== null && BigInt(value) > 0n;
   }), [rows, metric]);
-  const color = (row: Slice, index: number) => providerColors[row.key] ?? palette[index % palette.length];
+  const color = (row: Slice, index: number) => row.name==='unknown'?'#95a2b4':providerColors[row.key] ?? palette[index % palette.length];
   const option = useMemo<EChartsCoreOption>(() => ({
     tooltip: { ...tooltip, trigger: 'item', formatter: (params: unknown) => {
       const row = slices[(params as { dataIndex: number }).dataIndex];
@@ -67,6 +68,7 @@ function Distribution({ rows, title }: { rows: Slice[]; title: string }) {
 export default function Overview() {
   const [filter, setFilter] = useState(initialFilter);
   const [metric, setMetric] = useState<Metric>('tokens');
+  const [calls,setCalls]=useState<'tools'|'skills'>('tools');
   const [breakdown,setBreakdown]=useState<'providers'|'models'>('providers');
   const [chosen, setChosen] = useState<string[]|null>(null);
   const usage = useQuery({queryKey:['usage',filter],queryFn:({signal})=>getUsage(filter,signal)});
@@ -102,7 +104,7 @@ export default function Overview() {
       </div></Card>
 
       <Suspense fallback={<LoadingState label="正在加载图表…" />}>
-        <Card className="section-card overview-trend" title={<div className="trend-title"><span>每日用量趋势</span><div className="overview-quality"><Popover trigger="click" placement="bottomLeft" content={<div className="evidence-popover"><CoverageNotice coverage={data.coverage} zone={filter.time_zone} /></div>}><Button type="text" size="small" icon={<InfoCircleOutlined />}>{data.coverage.state==='unknown'?'暂无已知用量':'覆盖未确认'} · {data.coverage.stale?'采集证据陈旧':'有近期采集证据'} · 截至 {data.coverage.collected_at_ms===null?'尚无观测':dayjs(data.coverage.collected_at_ms).tz(filter.time_zone).format('MM-DD HH:mm')}</Button></Popover></div></div>} extra={<div className="overview-chart-controls">
+        <Card className="section-card overview-trend" title={<div className="trend-title"><span>模型用量趋势</span><div className="overview-quality"><Popover trigger="click" placement="bottomLeft" content={<div className="evidence-popover"><CoverageNotice coverage={data.coverage} zone={filter.time_zone} /></div>}><Button type="text" size="small" icon={<InfoCircleOutlined />}>{data.coverage.state==='unknown'?'暂无已知用量':'覆盖未确认'} · {data.coverage.stale?'采集证据陈旧':'有近期采集证据'} · 截至 {data.coverage.collected_at_ms===null?'尚无观测':dayjs(data.coverage.collected_at_ms).tz(filter.time_zone).format('MM-DD HH:mm')}</Button></Popover></div></div>} extra={<div className="overview-chart-controls">
           <Segmented aria-label="图表指标" size="small" options={metricOptions} value={metric} onChange={value => setMetric(value as Metric)} />
         </div>}>
           <Select aria-label="概览趋势模型" className="usage-model-selector" mode="multiple" maxCount={12} maxTagCount="responsive" value={selection} onChange={setChosen} options={available.map(r=>({value:`${r.provider}:${r.model}`,label:`${providerNames[r.provider]??r.provider} · ${r.model==='unknown'?'模型未归因':r.model}`}))} placeholder="选择趋势模型" />
@@ -126,7 +128,7 @@ export default function Overview() {
         <div className="overview-breakdowns">
           <Distribution rows={data.providers} title="平台分布" />
           <Distribution rows={data.models} title="模型分布" />
-          <Card title="工具与技能"><Typography.Paragraph type="secondary">已收到的调用次数</Typography.Paragraph><Table size="small" rowKey="key" dataSource={[...data.tools.map(row => ({ ...row, key: `tool:${row.key}`, kind: '工具' })), ...data.skills.map(row => ({ ...row, key: `skill:${row.key}`, kind: '技能' }))]} pagination={{ pageSize: 8, showSizeChanger: false }} scroll={{ x: 340 }} columns={[{ title: '类型', dataIndex: 'kind' }, { title: '名称', dataIndex: 'name' }, { title: '调用次数', align: 'right', render: (_, row) => integer(row.totals.invocations) }]} /></Card>
+          <Card title="工具与技能" extra={<Segmented size="small" aria-label="调用类型" value={calls} options={[{value:'tools',label:'工具'},{value:'skills',label:'技能'}]} onChange={value=>setCalls(value as 'tools'|'skills')} />}><Table size="small" rowKey="key" dataSource={data[calls]} pagination={data[calls].length>8?{pageSize:8,showSizeChanger:false}:false} scroll={{x:340}} columns={[{title:'名称',dataIndex:'name'},{title:'已收到调用次数',align:'right',render:(_,row)=>integer(row.totals.invocations)}]} /></Card>
         </div>
         <div className="overview-links"><Link to="/quota">查看账号额度与节奏</Link><Link to="/projects">项目明细</Link><Link to="/sessions">会话明细</Link></div>
       </Suspense>

@@ -66,7 +66,7 @@ describe('overview facts',()=>{
     expect(screen.getByRole('link',{name:'查看账号额度与节奏'})).toHaveAttribute('href','/quota');
     await screen.findByRole('img',{name:'按自然日的用量趋势'});
     const activity=screen.getByText('全年活动').closest('.ant-card')!;
-    const trend=screen.getByText('每日用量趋势').closest('.ant-card')!;
+    const trend=screen.getByText('模型用量趋势').closest('.ant-card')!;
     const summary=screen.getByText('Token 总量').closest('.summary-band')!;
     expect(activity.compareDocumentPosition(summary)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(activity.compareDocumentPosition(trend)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

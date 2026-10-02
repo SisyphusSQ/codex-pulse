@@ -40,6 +40,10 @@ describe('server records and explicit project relationship',()=>{
   await user.type(screen.getByRole('textbox',{name:'搜索标题、Session ID 或项目名'}),'raw-one');await user.click(screen.getByRole('button',{name:'应用搜索'}));
   await waitFor(()=>expect(fetcher.mock.calls.some(([p])=>{const u=new URL(String(p),'http://localhost');return u.pathname==='/api/v1/sessions'&&u.searchParams.get('search')==='raw-one'&&u.searchParams.get('page')==='1';})).toBe(true));
   expect(screen.queryByRole('heading',{name:unsafe})).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button',{name:'清除全部'}));
+  await waitFor(()=>expect(screen.getByRole('textbox',{name:'搜索标题、Session ID 或项目名'})).toHaveValue(''));
+  // 初始范围已有新鲜缓存，清除后应回到原列表，不要求重复HTTP。
+  expect(await screen.findByRole('button',{name:'第一页会话'})).toBeInTheDocument();
  });
  it('preserves selections across pages, requires explicit review, sends members and CSRF, clears selection after successful association',async()=>{
   fetcher.mockImplementation(async(path,options)=>{

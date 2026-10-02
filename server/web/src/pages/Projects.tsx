@@ -4,7 +4,7 @@ import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { associateProjects, getProject, getProjects, type ListFilter, type ProjectRecord } from '../api/records';
 import { CoverageNotice } from '../components/CoverageNotice';
-import { initialListFilter, ListFilters, sameRecordScope } from '../components/ListFilters';
+import { initialListFilter, ListFilters, RecordSearchControls, sameRecordScope } from '../components/ListFilters';
 import { EmptyState, ErrorState, LoadingState } from '../components/QueryState';
 import { RecordTrend, SessionPanel, SessionTable, TotalsLine } from '../components/RecordViews';
 import { RecordWorkspace } from '../components/RecordWorkspace';
@@ -36,11 +36,11 @@ export default function Projects(){
  const mutation=useMutation({mutationFn:()=>associateProjects(ids,operation==='link'?target:''),onSuccess:async()=>{setOperation(undefined);setSelected([]);setDetail(undefined);await Promise.all([client.invalidateQueries({queryKey:['projects']}),client.invalidateQueries({queryKey:['sessions']}),client.invalidateQueries({queryKey:['statistics']})]);}});
  function change(v:ListFilter){setFilter(v);if(!sameRecordScope(v,filter)){setDetail(undefined);setSelected([]);}}
  function open(mode:'link'|'unlink'){mutation.reset();setTarget(selected[0]?.members[0]??'');setOperation(mode);}
- return <section><div className="page-heading"><div><Typography.Title level={3}>项目</Typography.Title><Typography.Paragraph type="secondary">按来源保留项目身份；跨机器项目可显式关联。</Typography.Paragraph></div></div><ListFilters value={filter} onChange={change} refresh={()=>void query.refetch()} busy={query.isFetching} />
+ return <section><ListFilters value={filter} onChange={change} refresh={()=>void query.refetch()} busy={query.isFetching} />
  <div className="association-bar"><span>已选 {selected.length} 个项目组 / {ids.length} 个成员</span><Button disabled={selected.length<2||ids.length>100} onClick={()=>open('link')}>关联所选项目</Button><Button disabled={!ids.length||ids.length>100} onClick={()=>open('unlink')}>解除所选关联</Button>{ids.length>100&&<span role="status">一次最多选择 100 个项目成员</span>}</div>
  {query.data&&<TotalsLine totals={query.data.totals} />}
  <RecordWorkspace selectedId={detail} listLabel="项目列表" detailLabel="项目详情" list={<>
- <div className="record-list-heading">项目记录{query.data?` · 共 ${integer(query.data.page.total)} 个`:''}</div>
+ <RecordSearchControls value={filter} onChange={change} /><div className="record-list-heading">项目记录{query.data?` · 共 ${integer(query.data.page.total)} 个`:''}</div>
  {query.isPending?<LoadingState />:query.error?<ErrorState error={query.error} retry={()=>void query.refetch()} />:query.data&&<><Table<ProjectRecord> size="small" rowKey="id" dataSource={query.data.items} loading={query.isFetching} rowClassName={r=>r.id===detail?'selected-record':''} rowSelection={{selectedRowKeys:selected.map(r=>r.id),preserveSelectedRowKeys:true,getCheckboxProps:r=>({'aria-label':`选择项目 ${r.name} ${r.id.slice(0,12)}`}),getTitleCheckboxProps:()=>({'aria-label':'选择本页项目'}),onChange:keys=>{const known=new Map([...selected,...query.data.items].map(r=>[r.id,r]));setSelected(keys.map(key=>known.get(String(key))).filter((r):r is ProjectRecord=>r!==undefined));}}} pagination={{current:query.data.page.page,pageSize:query.data.page.limit,total:query.data.page.total,showSizeChanger:true,pageSizeOptions:[10,25,50,100],simple:true,size:'small',onChange:(page,limit)=>change({...filter,page,limit})}} columns={[
   {key:'project',title:'项目',render:(_,r)=><div className="record-list-row"><Button type="link" className="record-link" aria-pressed={r.id===detail} onClick={()=>setDetail(r.id)}>{r.name||'未命名项目'}</Button><div className="record-id">{r.id.slice(0,12)} · {r.members.length} 个成员</div><div className="record-row-metrics"><span>{tokens(r.totals.total_tokens)} Token</span><span>{dollars(r.totals.cost_micro_usd)}{r.totals.cost_status==='partial'?'（小计）':''}</span><span>{integer(r.totals.sessions)} 个会话</span></div><div className="metric-note">{dateTime(r.last_active_at_ms,filter.time_zone)} · {r.conflict?'来源冲突':'已收到事实'}</div></div>},
  ]} /><CoverageNotice coverage={query.data.coverage} zone={filter.time_zone} /></>}

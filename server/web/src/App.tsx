@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Alert, Breadcrumb, Button, Drawer, Grid, Layout, Menu, Result, Typography } from 'antd';
 import { BarChartOutlined, DatabaseOutlined, DesktopOutlined, DollarOutlined, FolderOutlined, LineChartOutlined, MenuOutlined, MessageOutlined, TeamOutlined } from '@ant-design/icons';
-import { HashRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { HashRouter, Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiError } from './api/client';
 import { SessionProvider, useSession } from './auth/SessionProvider';
@@ -62,7 +62,7 @@ function Shell() {
         <div className="header-account"><Typography.Text className="account-name" ellipsis>{session?.name}</Typography.Text><Button type="text" aria-label="退出授权" aria-busy={busy} onClick={leave} loading={busy}>退出授权</Button></div>
       </Layout.Header>
       <Layout.Content className="app-content">
-        <div className="workspace-heading"><h1>{title}</h1></div>
+        <div className="workspace-heading"><h1>{title}</h1>{selected==='/'&&<Link to="/quota">查看账号额度与节奏</Link>}{selected==='/quota'&&<Link to="/pricing">模型与订阅价目表</Link>}</div>
         {error && <Alert type="error" title={error} showIcon className="form-alert" />}
         <Suspense fallback={<LoadingState />}><Routes>
           <Route path="/" element={<Overview />} />

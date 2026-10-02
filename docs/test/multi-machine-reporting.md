@@ -208,3 +208,17 @@ Pass：390px九页、分屏详情与最终完整概览/节奏/陈旧账号检查
 Not Run：真实API对账、原生App/真实Home、三机/MySQL/生产/CI。设计数据与价格为固定代表样本；编辑、关联、配对与撤销只改变当前组件内存，不是业务持久化证据。没有为可逆图稿新增镜像实现单测；提交推送收尾不重复测试。
 
 安全自查：无业务接口/权限改变，独立Vite无API代理，设计业务数据不持久化，无真实凭据/原始内容，React和richText输出保持文本。正式验收仍归Master，用户设计审核与业务实施待后续。
+
+## 已批准全站设计接入正式Web（TOO-519–522，2026-10-03）
+
+用户批准Storybook后已完成八个工作台页面及独立配对表单适配。业务继续读取真实中心API，设计样本不进入业务入口；18085托管新版，6007保留独立设计。概览保留置顶365日热力图、完整统计/分布/工具/来源与模型折线；紧凑筛选、账号内Credits/订阅、Mac节奏层级、记录分屏、完整价目与真实设备授权均已落地。范围缓存字段为兼容可选查询能力，不修改上报协议/数据库或会话生命周期口径。
+
+开发Pass：44个不同Web场景分批通过（Overview5、Usage2、SourceTable1、ActivityHeatmap4、Quota7、SubscriptionPanel2、Records5、Pricing2、Devices3、CacheHitRate2、Throughput3、授权/client8）；后续仅复跑受影响场景，最终视觉细节四文件15场景、记录五场景通过。最终TypeScript、全src AntD lint 0问题、业务构建通过。Go statistics_srv聚焦Usage/RangeCache/CacheHit测试通过，含7类范围边界、大整数精度、来源去重、生命周期独立、NULL/真零/未知/权限；Go import格式化无额外改变。未把初轮失败输出当Pass，提交推送阶段不重复测试。
+
+真实loopback HTTP/原合成SQLite Pass：概览5792.6万/$24.01/18和365日保留；Codex范围/模型缓存25.0%及63.3%、会话生命周期90.0%读自实际Server，混合/其他平台未知。陈旧窗口主值未知、当前曲线不画、预测暂停且原因可查，历史/理想线保留；Credits中心可用未知、原观测库存3和原时间可查，到期与reset分开。订阅备注真实修改、重载读回并恢复原备注，day31/套餐/时区保持；修订号仅在合成库增加。同邮箱账号隔离、桌面记录分屏和手机返回、搜索清除、价目/来源展开有操作证据。
+
+八页桌面1487×1058和390×844检查：documentWidth分别1472/375，无整页横向溢出，日历/宽表局部滚动。首次自定义双月popup将窄屏撑至717，已改为上下月和内部滚动，最终popup宽320、document375。单桶曲线补小marker、模型配色/来源行/明细会话列/工具技能切换修正后有最终截图与受影响验证。浏览器最终console error/warning为空；临时视口已恢复。完整批准稿对照和五类视觉面见根`design-qa.md`；原始证据仅ignored `.artifacts/multi-machine/web-approved-20261003/`。
+
+安全自查Pass（diff范围）：既有admin授权、Cookie/Origin/CSRF、collector隔离、参数化查询与预算、修订CAS、React文本/richText及官方HTTPS来源限制保持。缓存比值由Go完整计数计算，未知不伪装成零；未新增原始内容/秘密上报、日志或匿名接口。使用原浏览器授权，没有新签发管理凭证。
+
+Not Run：本轮匿名配对界面单独浏览器验证、真实MySQL/升级并发/备份恢复、三台Mac真实上报、原生App/真实Home、CI、Docker、生产HTTPS/部署/发布。签发码/撤销真实客户端未再执行，沿用授权/client行为测试；SQLite开发证明不替代上述验收。四张Execution均指派用户、同一原milestone、归Master TOO-477；整体验收及后续MySQL复测仍在Master。

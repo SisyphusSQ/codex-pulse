@@ -24,6 +24,8 @@
 
 用量不接受account_key筛选，不将Home历史挂到当前账号；日期是事实发生时间，来源筛选仍读取自身快照。新HTTP查询不扫描JSONL、不启动本机采集、不改变TPS或缓存命中率生命周期口径。
 
+用量响应及每个模型可选返回`cache_hit_rate`：`basis=range_cached_input`，万分比与完整input/cached十进制字符串、未知原因一并返回。仅Codex支持；范围中所有已接受桶的两项计数完整、input大于0且0≤cached≤input时，由共享Go大整数算法计算，先汇总再求比例。任一计数未知则整段未知，不用已知小计推算整段；零输入、非法计数、其他平台和混合平台分别保留原因。真实cached=0返回0，cached=input返回10000。该字段为加法兼容查询能力，旧中心缺字段时Web显示未知；会话`lifetime_cached_input`继续使用整段已索引口径，日期/模型筛选不会重算它。无上传协议或数据库结构变更。
+
 ## 数据库升级
 
 结构v2在v1基础上只增加pulse_account_settings。HTTP启动只检查。先备份并停写，执行 `db upgrade`：只接受已核对v1摘要，创建新表、检查所有字段，最后CAS提交v2摘要。SQLite事务升级；MySQL DDL隐式提交，失败须检查实际结构后重入，不声称DDL事务回滚。当前MySQL实机执行Not Run。

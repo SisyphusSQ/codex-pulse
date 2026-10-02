@@ -41,7 +41,7 @@ describe('quota facts and pace',()=>{
  it('keeps a descending real sample, original endpoints, and no interpolated point across collection gaps',()=>{
   const w=paceFixture().windows[0];const option=paceChartOption(w);const series=option.series as {data:{value:number[];observedAt:number}[];lineStyle:{width:number};showSymbol:boolean;connectNulls:boolean}[];
   expect(series[0].data).toHaveLength(2);expect(series[0].data.map(p=>p.value[1])).toEqual([20,30]);expect(series[0].data.map(p=>p.observedAt)).toEqual(w.current_points.map(p=>p.observed_at_ms));expect(series[0].lineStyle.width).toBe(2.5);expect(series[0].showSymbol).toBe(false);expect(series[0].connectNulls).toBe(true);
-  w.current={...w.current,freshness:'stale'};expect((paceChartOption(w).series as {data:unknown[]}[])[0].data).toEqual([]);
+  w.current={...w.current,freshness:'stale'};expect((paceChartOption(w).series as {name:string}[]).some(s=>s.name==='本周期')).toBe(false);
  });
 
  it('keeps windows, resets and credits inside one selected raw-ID account even when emails match',async()=>{

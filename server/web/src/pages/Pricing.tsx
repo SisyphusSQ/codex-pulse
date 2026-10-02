@@ -1,11 +1,12 @@
 import {useState} from 'react';
-import {Alert,Card,Collapse,Descriptions,Input,Select,Table,Tabs,Tag,Typography} from 'antd';
+import {Alert,Button,Card,Collapse,Descriptions,Input,Select,Segmented,Table,Tabs,Tag,Typography} from 'antd';
+import {ReloadOutlined} from '@ant-design/icons';
 import {useQuery} from '@tanstack/react-query';
 import {Link,useSearchParams} from 'react-router-dom';
 import {getUsage} from '../api/usage';
 import {initialFilter} from '../components/StatsFilters';
 import {getCatalog,referenceAmount,sourceLink} from '../api/catalog';
-import type {ModelPrice,PlanPrice} from '../api/catalog';
+import type {ModelPrice} from '../api/catalog';
 import {dayjs,dateTime,providerNames} from '../format';
 import {ErrorState,LoadingState} from '../components/QueryState';
 
@@ -15,26 +16,27 @@ export default function Pricing(){
  const [search,setSearch]=useState(params.get('model')??'');
  const [evidence,setEvidence]=useState(params.get('version')?'all':'current');
  const [version,setVersion]=useState(params.get('version')??'');
+ const [catalog,setCatalog]=useState('all');
  const [currency,setCurrency]=useState('USD');
  const query=useQuery({queryKey:['catalog'],queryFn:({signal})=>getCatalog(signal)});
  const data=query.data;
  const [recentRange]=useState(initialFilter);
  const usage=useQuery({queryKey:['usage',recentRange],queryFn:({signal})=>getUsage(recentRange,signal)});
  const used=new Set(usage.data?.models.map(r=>`${r.provider}:${r.model}`)??[]);
- const models=(data?.models??[]).filter(r=>(!provider||r.provider===provider)&&(!currency||r.currency===currency)&&(!version||r.version===version)&&(evidence==='all'||r.evidence===evidence||evidence==='current'&&r.evidence==='observed')&&r.model.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>Number(used.has(`${b.provider}:${b.model}`))-Number(used.has(`${a.provider}:${a.model}`))||a.model.localeCompare(b.model));
+ const models=(data?.models??[]).filter(r=>(catalog==='all'||used.has(`${r.provider}:${r.model}`))&&(!provider||r.provider===provider)&&(!currency||r.currency===currency)&&(!version||r.version===version)&&(evidence==='all'||r.evidence===evidence||evidence==='current'&&r.evidence==='observed')&&r.model.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>Number(used.has(`${b.provider}:${b.model}`))-Number(used.has(`${a.provider}:${a.model}`))||a.model.localeCompare(b.model));
  const plans=(data?.plans??[]).filter(r=>!provider||r.provider===provider);
  const source=(url:string)=>{const href=sourceLink(url);return href?<a href={href} target="_blank" rel="noopener noreferrer">官方来源</a>:<Typography.Text type="secondary">无公开来源</Typography.Text>;};
  const compare=(key:'input_price'|'cached_price'|'cache_write_price'|'output_price')=>(a:ModelPrice,b:ModelPrice)=>a[key]===null?b[key]===null?0:1:b[key]===null?-1:Number(a[key])-Number(b[key]);
- return <section><div className="page-heading"><div><Typography.Title level={3}>价目表</Typography.Title><Typography.Paragraph type="secondary">模型参考价格、订阅套餐与额度规则，覆盖三个平台。</Typography.Paragraph></div></div>
- <div className="catalog-toolbar"><div className="filter-control"><label className="metric-note">计费平台</label><Select aria-label="价目平台" value={provider} onChange={v=>{setProvider(v);setVersion('');}} options={[{value:'',label:'全部平台'},...Object.entries(providerNames).map(([value,label])=>({value,label}))]} /></div></div>
+ return <section><div className="stats-toolbar-wrap"><div className="stats-toolbar"><Select className="provider-select" aria-label="价目平台" value={provider} onChange={v=>{setProvider(v);setVersion('');}} options={[{value:'',label:'全部平台'},...Object.entries(providerNames).map(([value,label])=>({value,label}))]} /><Button icon={<ReloadOutlined />} aria-label="刷新价目" loading={query.isFetching||usage.isFetching} onClick={()=>{void query.refetch();void usage.refetch();}} /></div></div>
  {query.isPending?<LoadingState />:query.error&&!data?<ErrorState error={query.error} retry={()=>void query.refetch()} />:data&&<>
  {query.error&&<Alert type="warning" title="更新失败，保留上次价格目录" description={query.error.message} />}
  <Tabs items={[{key:'models',label:'模型价格',children:<>
- <div className="catalog-toolbar"><Input.Search aria-label="搜索模型价格" placeholder="搜索模型" value={search} onChange={e=>setSearch(e.target.value)} allowClear style={{maxWidth:320}} />
+ <div className="catalog-toolbar"><Segmented aria-label="使用目录" value={catalog} onChange={v=>setCatalog(String(v))} options={[{value:'used',label:'近30天已使用'},{value:'all',label:'完整目录'}]} /><Input.Search aria-label="搜索模型价格" placeholder="搜索模型" value={search} onChange={e=>setSearch(e.target.value)} allowClear style={{maxWidth:320}} />
  <Select aria-label="价格目录范围" value={evidence} onChange={v=>{setEvidence(v);setVersion('');}} options={[{value:'current',label:'公开参考与未定价模型'},{value:'historical',label:'历史计价证据'},{value:'all',label:'全部目录'}]} />
  <Select aria-label="价格版本" value={version} onChange={setVersion} showSearch={{optionFilterProp:'label'}} options={[{value:'',label:'全部价格版本'},...[...new Set(data.models.filter(r=>!provider||r.provider===provider).map(r=>r.version).filter(Boolean))].map(value=>({value,label:value}))]} />
  <Select aria-label="价格单位" value={currency} onChange={setCurrency} options={[{value:'',label:'全部计价单位'},{value:'USD',label:'美元参考价'},{value:'credits',label:'Codex Credits'}]} />
  </div>
+ {usage.error&&<Alert type="warning" title="已使用模型读取失败，目录仍可查，无法确认使用情况" description={usage.error.message} />}
  <div className="metric-note catalog-note">{usage.data?'近30天已使用模型优先 · ':''}模式与计价单位分别列出 · 参考价不改写历史成本</div>
  <Card className="catalog-table"><Table<ModelPrice> rowKey="key" size="small" dataSource={models} pagination={{pageSize:25,showSizeChanger:true,showTotal:n=>`共 ${n} 条参考价格`}} scroll={{x:1120}} expandable={{expandedRowRender:r=><Descriptions size="small" column={{xs:1,md:2}} items={[{key:'version',label:'价格版本',children:r.version||'未定价'},{key:'verified',label:'核对日期',children:r.verified_at_ms?dayjs(r.verified_at_ms).utc().format('YYYY-MM-DD'):'尚未核对'},{key:'effective',label:'生效边界',children:r.effective_from_ms===null?'公开页面未提供精确生效时间':dateTime(r.effective_from_ms)},{key:'basis',label:'适用说明',children:r.notes||'按该模型官方规则使用'},{key:'source',label:'价格来源',children:source(r.source_url)}]} />}} columns={[
  {title:'模型 / 计费条件',width:280,render:(_,r)=><><Typography.Text strong>{r.model}</Typography.Text><div className="metric-note">{r.mode}</div></>},
@@ -45,13 +47,8 @@ export default function Pricing(){
  {title:'用量',width:90,render:(_,r)=><Link to={`/usage/models?provider=${encodeURIComponent(r.provider)}&model=${encodeURIComponent(r.model)}`}>查看用量</Link>},
  ]} /></Card>
  </>},{key:'plans',label:'订阅与额度',children:<>
- <Alert type="info" showIcon title="套餐价格和使用规则仅作参考" description="实际账号的剩余额度、reset和Credits来自采集事实；订阅价格不推算固定Token数量。未公开价格保持未知。" className="form-alert" />
- <Card><Table<PlanPrice> rowKey="key" size="small" dataSource={plans} pagination={false} scroll={{x:960}} columns={[
- {title:'平台 / 套餐',width:170,render:(_,r)=><><Typography.Text strong>{r.name}</Typography.Text><div className="metric-note">{providerNames[r.provider]??r.provider}</div></>},
- {title:'参考价格',width:150,render:(_,r)=><><Typography.Text>{referenceAmount(r.price,r.currency)}</Typography.Text><div className="metric-note">{r.cycle}</div></>},
- {title:'包含额度与规则',dataIndex:'allowance',width:300},{title:'reset规则',dataIndex:'reset_rule',width:230},
- {title:'来源',width:90,render:(_,r)=>source(r.source_url)},
- ]} expandable={{expandedRowRender:r=><Descriptions size="small" items={[{key:'region',label:'地区与购买渠道',children:r.region},{key:'date',label:'核对日期',children:dayjs(r.verified_at_ms).utc().format('YYYY-MM-DD')}]} />}} /></Card>
+ <div className="metric-note catalog-note">套餐仅作参考；实际额度与reset来自观测，订阅价格不推算固定Token。</div>
+ <div className="plan-grid">{plans.map(r=><Card key={r.key} title={r.name} extra={<Tag>{providerNames[r.provider]??r.provider}</Tag>}><strong className="plan-price">{referenceAmount(r.price,r.currency)}</strong><div className="metric-note">{r.cycle}</div><Descriptions size="small" column={1} items={[{key:'allowance',label:'包含额度',children:r.allowance},{key:'reset',label:'reset规则',children:r.reset_rule},{key:'region',label:'地区与渠道',children:r.region},{key:'date',label:'核对日期',children:dayjs(r.verified_at_ms).utc().format('YYYY-MM-DD')},{key:'source',label:'价格来源',children:source(r.source_url)}]} /></Card>)}</div>
  </>}]} />
  <Collapse ghost size="small" items={[{key:'basis',label:'参考价格与实际费用的关系',children:<Typography.Paragraph type="secondary">Codex：API基础文本等价估算与订阅Credits分别计价。Cursor：文档价目估算与Dashboard上报费用分开，reported charge已含适用的Cursor Token Rate，不重复相加。Grok：xAI参考价估算与完整reported cost分开。图片、视频和语音保留各自计费单位。</Typography.Paragraph>}]} />
  </>}

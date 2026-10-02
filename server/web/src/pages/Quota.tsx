@@ -3,7 +3,8 @@ import { Alert, Button, Card, Collapse, Progress, Select, Tabs, Typography } fro
 import { useQuery } from '@tanstack/react-query';
 import { getPace, getQuotas, type QuotaAccount, type QuotaCredits, type QuotaFilter, type QuotaResponse, type QuotaWindow } from '../api/quotas';
 import { getDevices } from '../api/statistics';
-import { Link,Navigate,useSearchParams } from 'react-router-dom';
+import { Navigate,useSearchParams } from 'react-router-dom';
+import {EvidenceIcon} from '../components/EvidenceIcon';
 import {SubscriptionPanel} from '../components/SubscriptionPanel';
 import {ObservationFilters} from '../components/ObservationFilters';
 import {percent} from '../components/QuotaViews';
@@ -46,10 +47,9 @@ export function QuotaAccounts(){
  return <section>
  <ObservationFilters value={filter} providerLabel="额度 Provider" sourceLabel="额度采集来源" refreshLabel="刷新额度" onChange={scope=>change({...filter,...scope,account_key:''})} refresh={refresh} busy={busy} extra={<Select className="quota-account-filter" aria-label="额度账号" value={filter.account_key} loading={catalog.isPending} showSearch={{optionFilterProp:'label'}} onChange={account_key=>change({...filter,account_key})} options={[{value:'',label:'全部账号（含待关联）'},...(catalog.data?.accounts??[]).map(a=>({value:a.key,label:`${providerNames[a.provider]??a.provider} · ${a.email??'邮箱未提供'} · ${a.raw_id}`}))]} />} />
  {(catalog.error||devices.error)&&<Alert showIcon type="warning" className="form-alert" title="筛选选项读取失败，可刷新重试" />}
- <div className="metric-note quota-refresh-note">每30秒读取中心快照 · 不触发远端刷新 · App关闭期间的采样缺口保留</div>
  {query.isPending?<LoadingState />:query.error&&!data?<ErrorState error={query.error} retry={refresh} />:data&&<>
  {query.error&&<Alert showIcon type="warning" className="form-alert" title="额度刷新失败，保留上次读取的数据与原时间" description={query.error.message} />}
- <Typography.Paragraph type="secondary">额度评估：{dateTime(data.evaluated_at_ms)} · 仅已观测事实{data.windows.length?` · ${data.windows.length} 个窗口`:''}</Typography.Paragraph>
+ <div className="quota-snapshot-note"><span>中心评估 {dateTime(data.evaluated_at_ms)}</span><EvidenceIcon label="中心快照说明"><p>每30秒读取中心快照，不触发远端刷新。App关闭期间的采样缺口保留；仅已观测事实，当前收到 {data.windows.length} 个窗口。</p></EvidenceIcon></div>
  {!groups.length?<EmptyState description="尚无已收到的额度或 Credits。请启用设备上报；未确认账号不根据邮箱推断归属。" />:<div className="quota-workspace">
  <Card title="账号" className="quota-selection">{groups.map(a=><button type="button" className={`account-item ${a.key===group?.key?'selected':''}`} key={a.key} aria-pressed={a.key===group?.key} onClick={()=>{setSelectedAccount(a.key);setSelectedKey('');setDetailTab('pace');}} aria-label={a.accountKey===null?'查看待关联观测':`查看账号 ${providerNames[a.provider]??a.provider} ${a.account?.email??'邮箱未提供'} ${a.account?.raw_id??a.accountKey}`}><span className="account-provider">{a.accountKey===null?'待关联观测':providerNames[a.provider]??a.provider}</span><strong>{a.account?.email??(a.accountKey===null?'尚未确认账号':'账号信息未取得')}</strong><span>{a.account?.plan??'套餐未知'} · {a.windows.length} 个额度窗口</span><small>{a.account?.raw_id??a.accountKey??'尚未确认账号 ID'}</small></button>)}</Card>
  {group&&<Card key={group.key} className="quota-detail">
@@ -89,5 +89,5 @@ export function legacyUsageTarget(params:URLSearchParams) {
 export default function Quota(){
  const [params]=useSearchParams();
  if(params.get('view')==='usage')return <Navigate to={legacyUsageTarget(params)} replace />;
- return <section className="accounts-page"><div className="page-heading"><Link to="/pricing">模型与订阅价目表</Link></div><QuotaAccounts /></section>;
+ return <section className="accounts-page"><QuotaAccounts /></section>;
 }

@@ -1,6 +1,6 @@
 # 全站 Storybook 交互设计稿
 
-2026-10-03，Execution [TOO-517](https://linear.app/sisyphus-sq/issue/TOO-517)，上游产品与正式验收仍为 [TOO-477](https://linear.app/sisyphus-sq/issue/TOO-477)。用户已于2026-10-03批准本版设计，正式业务接入由 TOO-519/520/521/522 执行，整体验收仍在 TOO-477。设计样本不作为真实统计证据。
+2026-10-03，Execution [TOO-517](https://linear.app/sisyphus-sq/issue/TOO-517)，上游产品与正式验收仍为 [TOO-477](https://linear.app/sisyphus-sq/issue/TOO-477)。用户已于2026-10-03批准本版设计；TOO-519/520/521/522 已将设计接入正式业务前端并完成聚焦开发验证，整体验收仍在 TOO-477。设计样本不作为真实统计证据。
 
 ## 目标与范围
 
@@ -42,7 +42,7 @@
 
 独立Vite配置不继承业务工程`/api`代理。依赖为锁定的Storybook 10.6.1、React/Vite adapter和Docs addon，与现有React19/Vite8兼容。样式统一使用`ds-`命名空间；业务入口不导入`src/design`，正式Web静态产物不包含设计稿。
 
-不改变Server/SQL/上传协议/鉴权、原生App生命周期或生产运行配置。当前18085业务预览保持原构建；6007是本机设计预览。设计审核通过后再按正式契约实施；MySQL、三机、生产与Master验收不在本卡证明范围。
+TOO-517 的独立设计阶段不改变Server/SQL/上传协议/鉴权、原生App生命周期或生产运行配置。设计批准后，正式 Web 已按真实中心契约实现相同信息层级；18085 托管新版业务构建并复用原合成SQLite和已有浏览器授权，6007仍为独立设计预览。业务入口继续不导入设计样本。正式接入另补充Codex范围/模型缓存命中率的可选查询字段，共享Go算法并保留生命周期口径；不迁移数据库。开发对照、异常语义及验证记录见根`design-qa.md`与[多机runbook](../../../test/multi-machine-reporting.md)。MySQL、三机、生产与Master验收不在本卡证明范围。
 
 ## 启动与检查
 
