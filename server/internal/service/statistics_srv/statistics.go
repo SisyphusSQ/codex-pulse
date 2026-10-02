@@ -8,6 +8,7 @@ import (
 	"time"
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	access_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/access_do"
 	reporting_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/reporting_do"
 	access_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/access_dto"
@@ -41,10 +42,22 @@ type statisticsRead struct {
 	providers, models, days, sessions, tools, skills, hours, projectGroups map[string]*statisticsAggregate
 	providerSeen                                                           map[string]bool
 	collected                                                              *int64
+	modelDays                                                              map[string]*statisticsAggregate
+	modelTotals                                                            map[string]*statisticsAggregate
+	cursorPools                                                            map[string]*statisticsAggregate
+	modelTrendExceeded                                                     bool
 }
 
 func (s *Statistics) read(ctx context.Context, q statistics_dto.StatisticsQuery) (*statisticsRead, error) {
+	return s.readWithModelTrend(ctx, q, false)
+}
+func (s *Statistics) readWithModelTrend(ctx context.Context, q statistics_dto.StatisticsQuery, include bool) (*statisticsRead, error) {
 	out := &statisticsRead{q: q, projects: map[string]reporting_do.Project{}, metadata: map[string]reporting_do.Session{}, sources: map[string][]statistics_vo.StatisticsSource{}, clients: map[string]access_do.Client{}, total: newStatisticsAggregate(), providers: map[string]*statisticsAggregate{}, models: map[string]*statisticsAggregate{}, days: map[string]*statisticsAggregate{}, sessions: map[string]*statisticsAggregate{}, tools: map[string]*statisticsAggregate{}, skills: map[string]*statisticsAggregate{}, hours: map[string]*statisticsAggregate{}, projectGroups: map[string]*statisticsAggregate{}, providerSeen: map[string]bool{}}
+	if include {
+		out.modelDays = map[string]*statisticsAggregate{}
+		out.modelTotals = map[string]*statisticsAggregate{}
+		out.cursorPools = map[string]*statisticsAggregate{}
+	}
 	projects, err := s.repository.Projects(ctx)
 	if err != nil {
 		return nil, err
@@ -125,6 +138,9 @@ func (s *Statistics) read(ctx context.Context, q statistics_dto.StatisticsQuery)
 				return utils.ErrRequestBudget
 			}
 			out.usage(usageFromContribution(key, c))
+			if out.modelTrendExceeded {
+				return utils.ErrRequestBudget
+			}
 		}
 		for _, i := range chosen.Invocations {
 			factRows++
@@ -179,6 +195,9 @@ func (s *Statistics) read(ctx context.Context, q statistics_dto.StatisticsQuery)
 				return utils.ErrRequestBudget
 			}
 			out.usage(row)
+			if out.modelTrendExceeded {
+				return utils.ErrRequestBudget
+			}
 			return nil
 		}); err != nil {
 			return nil, err
@@ -243,6 +262,20 @@ func (o *statisticsRead) usage(row reporting_do.Usage) {
 	}
 	o.providerSeen[m.Provider] = true
 	day := statisticsDay(at, o.q.Location).Format(time.DateOnly)
+	if o.modelDays != nil {
+		model := valueString(row.Model, "unknown")
+		key := strings.Join([]string{m.Provider, model, day}, "\x00")
+		if _, exists := o.modelDays[key]; !exists && len(o.modelDays) >= 20000 {
+			o.modelTrendExceeded = true
+			return
+		}
+		aggregateFor(o.modelDays, key).usage(row, o.q.Location, m.Provider)
+		aggregateFor(o.modelTotals, m.Provider+"\x00"+model).usage(row, o.q.Location, m.Provider)
+		if m.Provider == "cursor" {
+			aggregateFor(o.cursorPools, pricing.CursorUsagePoolForModel(model, at)).usage(row, o.q.Location, m.Provider)
+		}
+	}
+
 	local := time.UnixMilli(at).In(o.q.Location)
 	hour := local.Format("Mon-15")
 	for _, g := range []*statisticsAggregate{o.total, sessionAggregate(o.sessions, row.SessionKey), aggregateFor(o.providers, m.Provider), aggregateFor(o.models, valueString(row.Model, "unknown")), aggregateFor(o.days, day), aggregateFor(o.hours, hour), aggregateFor(o.projectGroups, o.projects[m.ProjectID].GroupID)} {

@@ -13,6 +13,7 @@ const Overview=lazy(()=>import('./pages/Overview'));
 const Projects=lazy(()=>import('./pages/Projects'));
 const Sessions=lazy(()=>import('./pages/Sessions'));
 const Quota=lazy(()=>import('./pages/Quota'));
+const Pricing=lazy(()=>import('./pages/Pricing'));
 const Devices=lazy(()=>import('./pages/Devices'));
 
 export function createQueryClient() {
@@ -22,7 +23,8 @@ const navigation = [
   { key: '/', label: '用量总览', icon: <BarChartOutlined /> },
   { key: '/projects', label: '项目', icon: <FolderOutlined /> },
   { key: '/sessions', label: '会话', icon: <AppstoreOutlined /> },
-  { key: '/quota', label: '额度与节奏', icon: <FieldTimeOutlined /> },
+  { key: '/quota', label: '额度与用量', icon: <FieldTimeOutlined /> },
+  { key: '/pricing', label: '价目表', icon: <BarChartOutlined /> },
   { key: '/devices', label: '设备与授权', icon: <DesktopOutlined /> },
 ];
 
@@ -61,6 +63,7 @@ function Shell() {
           <Route path="/projects" element={<Projects />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/quota" element={<Quota />} />
+          <Route path="/pricing" element={<Pricing />} />
           <Route path="/devices" element={<Devices />} />
           <Route path="*" element={<Result status="404" title="页面不存在" extra={<Button onClick={() => navigate('/')}>返回总览</Button>} />} />
         </Routes></Suspense>

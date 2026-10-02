@@ -1,4 +1,4 @@
--- Codex Pulse 中心结构 v1，MySQL 8.x（utf8mb4）或 SQLite 3.35+。
+-- Codex Pulse 中心结构 v2，MySQL 8.x（utf8mb4）或 SQLite 3.35+。
 -- 仅通过显式 db init 初始化；CREATE IF NOT EXISTS 可重入，结构摘要最后提交。
 -- 不自动迁移，不删除历史；MySQL DDL 不假设事务回滚，失败后检查实际结构再重入。
 -- 时间保存UTC整数毫秒，金额保存整数微美元；NULL区别于零。
@@ -236,3 +236,19 @@ CREATE TABLE IF NOT EXISTS pulse_account_bindings (
 PRIMARY KEY (id)
 );
 CREATE INDEX IF NOT EXISTS idx_bindings_account ON pulse_account_bindings (account_key, client_id);
+
+-- 中心手动账号订阅设置，不修改设备事实。
+CREATE TABLE IF NOT EXISTS pulse_account_settings (
+    account_key TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    alias TEXT,
+    manual_plan TEXT,
+    date_kind TEXT NOT NULL,
+    renewal_day INTEGER,
+    membership_date TEXT,
+    time_zone TEXT NOT NULL,
+    updated_at_ms INTEGER NOT NULL,
+PRIMARY KEY (account_key),
+CHECK (revision > 0),
+CHECK ((date_kind = '' AND renewal_day IS NULL AND membership_date IS NULL) OR (date_kind = 'monthly_renewal' AND renewal_day IS NOT NULL AND renewal_day BETWEEN 1 AND 31 AND membership_date IS NULL) OR (date_kind = 'membership_expiry' AND renewal_day IS NULL AND membership_date IS NOT NULL))
+);

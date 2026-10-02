@@ -20,8 +20,8 @@ export const duration=(ms:number|null|undefined)=>{
  return `${days?`${days} 天 `:''}${hours} 小时 ${minutes} 分 ${seconds%60} 秒`;
 };
 export function QuotaStatus({state,conflict}:{state:string;conflict:boolean}){return <><Tag color={state==='fresh'&&!conflict?'green':'gold'}>{freshness[state]??'状态未知'}</Tag>{conflict&&<Tag color="red">来源冲突</Tag>}</>;}
-export function AccountIdentity({account,provider}:{account?:QuotaAccount;provider:string}){
- return <div className="account-identity"><Tag>{providerNames[provider]??provider}</Tag><strong>{account?.email??(account?'邮箱未提供':'账号待关联')}</strong><div className="record-id">原始账号 ID：{account?.raw_id??'尚未确认'}</div><div className="metric-note">套餐：{account?.plan??'未知'}{account?` · 资料采集：${dateTime(account.collected_at_ms)}`:''}</div></div>;
+export function AccountIdentity({account,provider,showDetails=true}:{account?:QuotaAccount;provider:string;showDetails?:boolean}){
+ return <div className="account-identity"><Tag>{providerNames[provider]??provider}</Tag><strong>{account?.email??(account?'邮箱未提供':'账号待关联')}</strong><div className="record-id">原始账号 ID：{account?.raw_id??'尚未确认'}</div>{showDetails&&<div className="metric-note">套餐：{account?.plan??'未知'}{account?` · 资料采集：${dateTime(account.collected_at_ms)}`:''}</div>}</div>;
 }
 export function QuotaWindowCard({window,account,devices,onSelect,showAccount=true}:{window:QuotaWindow;account?:QuotaAccount;devices:Device[];onSelect():void;showAccount?:boolean}){
  const c=window.current;

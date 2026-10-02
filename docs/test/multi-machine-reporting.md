@@ -154,3 +154,20 @@ Pass：Quota/Records 两个受影响 Web 测试文件共 11 个行为场景通�
 截图、测试/构建输出仅在忽略目录 `.artifacts/multi-machine/web/account-split-*`，包含 `account-split-projects.jpg`、`account-split-sessions.jpg`、`account-split-quota.jpg`、`account-split-session-mobile.jpg`。本轮仅 Web 呈现与状态调整，复用现有账号键、Server 查询与仲裁；没有 DDL、上报协议、Agent 凭据、原始内容或本机采集变更。真实 Home、三机、MySQL、生产/CI未运行，不作为本轮验收结论。提交推送收尾不重复测试。
 
 自查：业务事实由 Go 查询快照计算，Web 只格式化与绘制；NULL、已知小计与观测缺口保留，未知边界不冒充连续天数。复用管理员权限、白名单及 React/文本图表转义，无新匿名路由、外部请求或秘密记录。MySQL/三机/生产验收与 CI Not Run；提交推送收尾不重复测试。
+
+
+## 模型价目、用量成本与订阅设置开发证据（TOO-513，2026-10-02）
+
+实现说明见[设计明细](../design/details/multi-machine-reporting/pricing-usage-subscriptions.md)与[中心接口](../../server/api/catalog-subscriptions.md)。本轮新增 catalog/subscription 域、模型日桶查询、账号设置表及显式 v1→v2 升级；本机采集、原始数据和认证文件不参与本轮开发预览。
+
+Pass：订阅保存/清除、首次插入冲突与旧修订冲突、同邮箱账号隔离、设备资料更新不覆盖手动值、非法日期/时区/字段组合、每月31日短月/闰月/滚动与IANA自然日；目录当前/历史/未知模型、重复费率投影与官方证据空值；用量三来源去重、真实模型日桶和历史费率保持。Codex样本输入1,000,000、缓存500,000、输出100,000、独立reasoning10,000，历史费率2/0.1/10 USD每百万，得到1,110,000 Token及$2.15。匿名401/collector403、写入CSRF403、更新200/修订冲突409/未知秘密字段400通过实际HTTP装配验证。Starter业务包/每表一个DO的架构检查通过。
+
+Pass：Web新增/受影响5个测试文件17个行为场景，后续额度与价目调整的2个文件8个场景通过；覆盖设置提交修订与CSRF、失败/冲突、模型文本转义、危险来源链接拒绝、估算与上报费用/部分金额区分、真实日桶与未知日期、既有额度/项目会话行为。类型检查、AntD lint与最终前后端构建通过。JSDOM pseudo-element getComputedStyle提示属于测试环境限制，视觉布局另外在浏览器检查；提交推送收尾不重复执行测试。
+
+Pass：独立SQLite预览库升级前备份，显式v1→v2后旧15张表计数保持，18个会话仍在；启动检查不会代替升级，未知摘要拒绝。真实loopback Go Server托管最终Web。浏览器保存合成账号备注、手动套餐和每月31日续费，读回2026-10-31/29天及revision=1，刷新仍在；同邮箱另一个原始账号仍为自动套餐、未设置日期，窗口与Credits独立。全局用量5792.6万/$24.01保持，模型成本趋势切换与价目来源/版本展开可操作。
+
+目录含296条公开参考费率及24条订阅套餐资料，另含本机历史和已上报结构化费率、未定价模型。公开目录核对日期为2026-10-02，不伪造精确生效时间；参考目录不覆盖历史成本。390px额度、用量、价目页面documentWidth=375，无页面横向溢出，宽表在容器内滚动；临时视口已恢复。截图仅保存于忽略目录`.artifacts/multi-machine/catalog-usage/`，包括quota-desktop.png、usage-preview.png、quota-mobile.png、usage-mobile.png、pricing-mobile.png，均为合成资料。
+
+Not Run：真实MySQL升级/并发/事务/备份恢复、三台Mac真实上报与订阅同步、CI、生产HTTPS/部署/发布。中心设置没有Mac双向同步；不执行续费或扣款。正式环境验收由Master承接，SQLite开发证明不替代它们。
+
+安全自查：新增接口复用admin权限、精确Origin与CSRF；白名单字段/正文预算、SQL参数化/修订CAS、React转义/官方HTTPS来源链接、模型与日桶预算已核对。未新增服务端网页抓取、匿名写入、秘密日志或原始JSONL/正文上报。

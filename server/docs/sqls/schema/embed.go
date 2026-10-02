@@ -10,7 +10,7 @@ import (
 )
 
 // Version 只在已交付结构发生有意升级时递增。
-const Version int64 = 1
+const Version int64 = 2
 
 //go:embed center_mysql.sql center_sqlite.sql
 var files embed.FS

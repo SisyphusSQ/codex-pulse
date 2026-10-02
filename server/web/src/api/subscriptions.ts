@@ -1,0 +1,6 @@
+import {api,ApiError} from './client';
+export interface Subscription {account_key:string;revision:string;alias:string|null;automatic_plan:string|null;manual_plan:string|null;resolved_plan:string|null;date_kind:''|'monthly_renewal'|'membership_expiry';renewal_day:number|null;membership_date:string|null;next_date:string|null;day_delta:number|null;date_state:string;time_zone:string;updated_at_ms:number|null}
+export interface SubscriptionUpdate {expected_revision:string;alias:string|null;manual_plan:string|null;date_kind:Subscription['date_kind'];renewal_day:number|null;membership_date:string|null;time_zone:string}
+function read(v:Subscription){if(!v||typeof v.account_key!=='string'||typeof v.revision!=='string'||!/^\d+$/.test(v.revision)||typeof v.time_zone!=='string'||typeof v.date_state!=='string')throw new ApiError(502);return v;}
+export async function getSubscription(key:string,signal?:AbortSignal){return read(await api.get<Subscription>(`/api/v1/accounts/${encodeURIComponent(key)}/subscription`,{},signal));}
+export async function saveSubscription(key:string,body:SubscriptionUpdate){return read(await api.request<Subscription>(`/api/v1/accounts/${encodeURIComponent(key)}/subscription`,{body}));}

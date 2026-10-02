@@ -1,4 +1,4 @@
--- Codex Pulse 中心结构 v1，MySQL 8.x（utf8mb4）或 SQLite 3.35+。
+-- Codex Pulse 中心结构 v2，MySQL 8.x（utf8mb4）或 SQLite 3.35+。
 -- 仅通过显式 db init 初始化；CREATE IF NOT EXISTS 可重入，结构摘要最后提交。
 -- 不自动迁移，不删除历史；MySQL DDL 不假设事务回滚，失败后检查实际结构再重入。
 -- 时间保存UTC整数毫秒，金额保存整数微美元；NULL区别于零。
@@ -226,3 +226,19 @@ CREATE TABLE IF NOT EXISTS pulse_account_bindings (
 PRIMARY KEY (id),
 KEY idx_bindings_account (account_key, client_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='同一采集设备确认的本地scope与真实账号关联';
+
+-- 中心手动账号订阅设置；与设备采集事实分离，不按邮箱归并。
+CREATE TABLE IF NOT EXISTS pulse_account_settings (
+    account_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '确认账号中心键',
+    revision BIGINT NOT NULL COMMENT '乐观修订号',
+    alias VARCHAR(128) NULL COMMENT '手动账号备注',
+    manual_plan VARCHAR(64) NULL COMMENT '手动套餐覆盖',
+    date_kind VARCHAR(32) NOT NULL COMMENT '月续费或完整到期日；空为未设置',
+    renewal_day INT NULL COMMENT '每月续费日1至31',
+    membership_date VARCHAR(10) NULL COMMENT '完整会员到期日YYYY-MM-DD',
+    time_zone VARCHAR(64) NOT NULL COMMENT 'IANA日期计算时区',
+    updated_at_ms BIGINT NOT NULL COMMENT '中心修改UTC毫秒',
+PRIMARY KEY (account_key),
+CONSTRAINT chk_settings_revision CHECK (revision > 0),
+CONSTRAINT chk_settings_date CHECK ((date_kind = '' AND renewal_day IS NULL AND membership_date IS NULL) OR (date_kind = 'monthly_renewal' AND renewal_day IS NOT NULL AND renewal_day BETWEEN 1 AND 31 AND membership_date IS NULL) OR (date_kind = 'membership_expiry' AND renewal_day IS NULL AND membership_date IS NOT NULL))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='中心手动订阅设置';

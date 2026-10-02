@@ -189,11 +189,18 @@ func (g *statisticsAggregate) finish(knownEmpty bool) (statistics_vo.StatisticsT
 			status = "partial"
 		}
 	}
+	reportedStatus := "unknown"
+	if g.reported.seen {
+		reportedStatus = "known"
+		if g.reported.missing {
+			reportedStatus = "partial"
+		}
+	}
 	basis := "codex_day_model_version;cursor_range_sum;event_cost_sum"
 	if g.codexRange {
 		basis = "codex_model_version;cursor_range_sum;event_cost_sum"
 	}
-	return statistics_vo.StatisticsTotals{CostBasis: basis, PricingVersions: versions, CostStatus: status, InputTokens: g.input.text(knownEmpty && len(g.sessions) == 0), CachedTokens: g.cached.text(knownEmpty && len(g.sessions) == 0), CacheWriteTokens: g.write.text(knownEmpty && len(g.sessions) == 0), OutputTokens: g.output.text(knownEmpty && len(g.sessions) == 0), ReasoningTokens: g.reasoning.text(knownEmpty && len(g.sessions) == 0), TotalTokens: g.tokens.text(knownEmpty && len(g.sessions) == 0), CostMicroUSD: amount, ReportedChargeMicroUSD: g.reported.text(false), Sessions: int64(len(g.sessions)), Invocations: g.invocations}, unpriced
+	return statistics_vo.StatisticsTotals{ReportedChargeStatus: reportedStatus, CostBasis: basis, PricingVersions: versions, CostStatus: status, InputTokens: g.input.text(knownEmpty && len(g.sessions) == 0), CachedTokens: g.cached.text(knownEmpty && len(g.sessions) == 0), CacheWriteTokens: g.write.text(knownEmpty && len(g.sessions) == 0), OutputTokens: g.output.text(knownEmpty && len(g.sessions) == 0), ReasoningTokens: g.reasoning.text(knownEmpty && len(g.sessions) == 0), TotalTokens: g.tokens.text(knownEmpty && len(g.sessions) == 0), CostMicroUSD: amount, ReportedChargeMicroUSD: g.reported.text(false), Sessions: int64(len(g.sessions)), Invocations: g.invocations}, unpriced
 }
 func statisticsSlices(groups map[string]*statisticsAggregate, known bool) []statistics_vo.StatisticsSlice {
 	out := make([]statistics_vo.StatisticsSlice, 0, len(groups))

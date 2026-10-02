@@ -17,13 +17,15 @@ import (
 
 func databaseCommand() *cobra.Command {
 	command := &cobra.Command{Use: "db", Short: "显式初始化或检查中心结构"}
-	for _, action := range []string{"init", "check"} {
+	for _, action := range []string{"init", "check", "upgrade"} {
 		command.AddCommand(&cobra.Command{Use: action, RunE: func(cmd *cobra.Command, _ []string) error {
 			return withDatabase(cmd.Context(), func(ctx context.Context, engine *gormv2.Engine) error {
 				s := schema_repo.NewSchema(engine)
 				var err error
 				if action == "init" {
 					err = s.Init(ctx)
+				} else if action == "upgrade" {
+					err = s.Upgrade(ctx)
 				} else {
 					err = s.Check(ctx)
 				}

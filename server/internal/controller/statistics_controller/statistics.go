@@ -18,6 +18,7 @@ func NewStatistics(service *statistics_srv.Statistics) *Statistics {
 }
 func (s *Statistics) Register(e *echo.Echo) {
 	e.GET("/api/v1/statistics/summary", s.Summary)
+	e.GET("/api/v1/statistics/usage", s.Usage)
 	e.GET("/api/v1/sessions", s.Sessions)
 	e.GET("/api/v1/sessions/:id", s.Session)
 	e.GET("/api/v1/projects", s.Projects)
@@ -84,6 +85,18 @@ func (s *Statistics) Project(c *echo.Context) error {
 }
 func (s *Statistics) Devices(c *echo.Context) error {
 	out, err := s.service.Devices(c.Request().Context(), apphttp.Principal(c))
+	if err != nil {
+		return err
+	}
+	return vo.CommSuccResp(c, out)
+}
+
+func (s *Statistics) Usage(c *echo.Context) error {
+	q, err := statisticsQuery(c)
+	if err != nil {
+		return err
+	}
+	out, err := s.service.Usage(c.Request().Context(), apphttp.Principal(c), q)
 	if err != nil {
 		return err
 	}

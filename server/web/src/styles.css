@@ -163,3 +163,27 @@ button.activity-cell:hover,button.activity-cell:focus-visible { outline: 2px sol
 .quota-detail > .ant-card-body { padding: 20px; }
 .quota-detail > .ant-card-head { padding: 0 20px; }
 .table-card > .ant-card-body > .ant-typography { margin: 16px 20px; }
+
+/* 价目、用量和账号订阅保持紧凑的信息层级。 */
+.catalog-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0}
+.catalog-toolbar .ant-select{min-width:180px;max-width:100%}
+.catalog-note{margin:12px 0}.catalog-table{margin-top:12px}
+.usage-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+.usage-model-selector{width:100%;margin-bottom:10px}
+.subscription-panel{padding:4px 0 18px;border-bottom:1px solid #f0f0f0;margin-bottom:16px}
+.subscription-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
+.subscription-editor{margin-top:16px;padding:16px;background:#fafafa;border-radius:8px}
+.subscription-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}
+.subscription-fields .ant-picker,.subscription-fields .ant-input-number{width:100%}
+.quota-window-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0}
+.quota-window-summary .quota-summary-value{font-size:22px;font-weight:600;margin:8px 0}
+.quota-credits-overview{display:grid;gap:8px;margin-bottom:16px}
+.quota-credit-summary{display:flex;flex-wrap:wrap;gap:6px 20px;padding:10px 12px;background:#fafafa;border-radius:6px;font-size:12px;color:#595959}
+.quota-credit-summary strong{color:#262626}
+.quota-refresh-note{margin-bottom:12px}
+.quota-details{margin-top:16px}
+.usage-page,.catalog-table,.quota-detail{min-width:0}
+@media(max-width:1100px){.usage-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.subscription-fields,.quota-window-overview{grid-template-columns:minmax(0,1fr)}.subscription-header{align-items:flex-start}.catalog-toolbar .ant-select{width:100%}.usage-kpis{grid-template-columns:minmax(0,1fr)}.subscription-editor{padding:12px}.subscription-panel .association-bar{flex-wrap:wrap}}
+
+.quota-detail .quota-window-summary{border:1px solid #e8e8e8;border-radius:8px}.quota-detail .quota-window-summary .ant-card-body{padding:12px}.quota-detail .quota-window-summary.selected-window{border-color:#1677ff;background:#f7faff}.quota-window-summary .record-link{white-space:normal;height:auto;text-align:left}

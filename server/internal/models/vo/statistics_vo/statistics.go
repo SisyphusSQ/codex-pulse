@@ -4,6 +4,7 @@ package statistics_vo
 type StatisticsTotals struct {
 	CostBasis              string   `json:"cost_basis"`
 	PricingVersions        []string `json:"pricing_versions"`
+	ReportedChargeStatus   string   `json:"reported_charge_status"`
 	CostStatus             string   `json:"cost_status"`
 	InputTokens            *string  `json:"input_tokens"`
 	CachedTokens           *string  `json:"cached_tokens"`

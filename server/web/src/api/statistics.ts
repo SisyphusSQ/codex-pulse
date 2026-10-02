@@ -2,7 +2,7 @@ import { api, ApiError } from './client';
 
 export type Decimal = string | null;
 export interface Totals {
-  cost_basis: string; pricing_versions: string[]; cost_status: string;
+  reported_charge_status?:'known'|'partial'|'unknown'; cost_basis: string; pricing_versions: string[]; cost_status: string;
   input_tokens: Decimal; cached_tokens: Decimal; cache_write_tokens: Decimal;
   output_tokens: Decimal; reasoning_tokens: Decimal; total_tokens: Decimal;
   cost_micro_usd: Decimal; reported_charge_micro_usd: Decimal;

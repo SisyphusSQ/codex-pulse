@@ -67,3 +67,9 @@ Credits 显示观测库存、中心确认可用库存、详情完整性、原观
 页面采用 AntD 6.6.5 官方 Layout/Menu/Breadcrumb、Table、Splitter、Tabs、Descriptions、Collapse、Progress 与 Statistic。统一浅色侧栏、紧凑指标和筛选区，窄屏导航抽屉；项目/会话使用常驻左右分屏，额度以账号组织窗口和 Credits，节奏与来源证据在账号内切换；设备签发码使用独立抽屉。去掉英文眉题、营销口号、装饰符号和重复卡片。次要解释可展开，关键错误、未知和陈旧状态保持可见。
 
 详细方案见 [Web 重构](../../docs/design/details/multi-machine-reporting/web-redesign.md)；开发证据与正式验收边界见 [多机 runbook](../../docs/test/multi-machine-reporting.md)。
+
+## 价目表与额度用量
+
+价目表覆盖Codex/ChatGPT、Cursor、Grok，分别展示当前公开参考、本机历史快照与已观测未定价模型，并提供订阅套餐参考。费用与Token显示精度沿用Mac，计算继续由Go执行。额度与用量分为账号额度/节奏和独立用量/成本两个页签；用量有真实模型日趋势、Token分解、估算与上报金额。
+
+账号订阅设置由中心保存，支持备注、手动套餐、每月续费日/完整到期日和IANA时区；不会修改平台reset或扣款，不与Mac双向同步。修订冲突保留表单并要求重新读取。升级到中心结构v2前按Server运行说明备份并显式db upgrade；HTTP启动不自动改表。

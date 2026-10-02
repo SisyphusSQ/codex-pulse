@@ -49,3 +49,5 @@ Web 配对码只在弹窗内存显示；关闭/撤销即时卸载，过期清空
 ## 中心版本
 
 管理浏览器 GET `/api/v1/version` 返回 version、commit、built_at、reporting_protocol、throughput_capsule 和 schema。需要管理员授权，collector 不可读取；不返回环境、数据库、路径或仓库 URL。正常启动仅检查结构，初始化/备份/恢复通过受控 db CLI，详见 [运行说明](../docs/test/operations.md)。
+
+- [模型价目、订阅设置与用量成本](catalog-subscriptions.md)
