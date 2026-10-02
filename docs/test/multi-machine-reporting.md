@@ -195,3 +195,16 @@ Pass：Overview与ActivityHeatmap两文件9场景通过，包括新的活动→�
 Chrome真实loopback HTTP、原合成SQLite：1280×914方格14.828px，日历963px，容器clientWidth/scrollWidth同为969px；默认1971×914方格24.469px，日历1474px，容器同为1480px，正方形并填满。活动/摘要/趋势依次约y=122/431/562，365格齐全。390×844方格14px、局部横向滚动可通过End访问2026-10-02，星期固定；documentWidth375px无页面横向溢出。摘要5792.6万/$24.01/18保持，console error为空，视口已恢复。
 
 QA见根design-qa.md，截图与日志仅在ignored `.artifacts/multi-machine/heatmap-top-20261002/`，旧原图底部/固定方格规则已明确被本轮要求覆盖。安全自查：仅Web布局，复用管理授权与文本转义，无新接口、外部请求、凭据或原始内容记录。未读真实Home，MySQL/三机/生产/CI仍Not Run，正式验收留Master；提交推送阶段不重复测试。
+
+
+## 全站Storybook设计稿（TOO-517，2026-10-03）
+
+本轮仅独立合成设计，正式业务页面未替换；范围与公开参考见[设计稿说明](../design/details/multi-machine-reporting/storybook-design.md)。入口`npm --prefix server/web run storybook`，127.0.0.1:6007，无需Server/数据库。
+
+Pass：九页/八个关键状态/五个公共组件共22个可查看条目；聚焦类型、AntD lint（0问题）、最终Storybook静态构建通过，新增依赖后的原Web构建通过。实际Chrome检查范围/年度浮层、模型/成本、订阅保存取消/账号隔离、Credits说明、项目会话分屏返回、设备改名/模拟配对及三平台套餐；最新节奏按Mac四指标/四线/推算与对比组织，明细展开与上一周期键盘切换读回。密集记录隐藏圆点，普通采样实线跨缺口连接已知两端，NULL观测不转为事实。
+
+Pass：390px九页、分屏详情与最终完整概览/节奏/陈旧账号检查，无全页横向溢出，日历与宽表局部滚动。首轮账号Grid溢出、工具条换行、星期背景与重复React key已修复；story热更新期间瞬态错误保留记录，稳定后最新检查无新console error。完整迭代/五类视觉面在根design-qa.md，截图和构建日志只在ignored`.artifacts/multi-machine/storybook-20261003/`。
+
+Not Run：真实API对账、原生App/真实Home、三机/MySQL/生产/CI。设计数据与价格为固定代表样本；编辑、关联、配对与撤销只改变当前组件内存，不是业务持久化证据。没有为可逆图稿新增镜像实现单测；提交推送收尾不重复测试。
+
+安全自查：无业务接口/权限改变，独立Vite无API代理，设计业务数据不持久化，无真实凭据/原始内容，React和richText输出保持文本。正式验收仍归Master，用户设计审核与业务实施待后续。

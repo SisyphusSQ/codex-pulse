@@ -2,6 +2,8 @@
 
 React 19 / TypeScript 7 / Vite 8 / AntD 6 / ECharts 6。依赖固定在 package.json 与 package-lock.json，Node 要求 >=22.22.2；标准安装使用 npm ci。React Router HashRouter 的深链接只请求静态壳，数据走同源 v1 API。
 
+独立设计评审入口：`npm --prefix server/web run storybook`（仓库根目录），只监听`http://127.0.0.1:6007/`。含全部9页、8个关键状态与5个公共组件；无需Server/数据库，所有资料和操作均为合成内存预览。它不替换下述业务页面；详见[全站设计稿](../../docs/design/details/multi-machine-reporting/storybook-design.md)。静态构建用`npm run build-storybook -- --output-dir ../../.artifacts/storybook`，默认`storybook-static`也已忽略。
+
 ```sh
 cd server/web
 npm ci --ignore-scripts
