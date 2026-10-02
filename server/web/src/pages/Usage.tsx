@@ -2,24 +2,18 @@ import {lazy,Suspense,useMemo,useState} from 'react';
 import {Alert,Card,Collapse,Descriptions,Select,Segmented,Statistic,Table,Typography} from 'antd';
 import {useQuery} from '@tanstack/react-query';
 import {Link,useSearchParams} from 'react-router-dom';
-import type {EChartsCoreOption} from 'echarts/core';
 import {getUsage} from '../api/usage';
-import type {Usage,UsageModel} from '../api/usage';
+import type {UsageModel} from '../api/usage';
 import type {Totals} from '../api/statistics';
-import {tokens,dollars,integer,providerNames,tokenAxis,dollarAxis} from '../format';
+import {tokens,dollars,integer,providerNames} from '../format';
 import {initialFilter,StatsFilters} from '../components/StatsFilters';
 import {CoverageNotice} from '../components/CoverageNotice';
 import {EmptyState,ErrorState,LoadingState} from '../components/QueryState';
+import {usageChartOption} from '../components/ModelTrend';
+export {usageChartOption} from '../components/ModelTrend';
 const Chart=lazy(()=>import('../components/Chart'));
 type Metric='tokens'|'cost';
 const key=(r:{provider:string;model:string})=>`${r.provider}:${r.model}`;
-export function usageChartOption(data:Usage,metric:Metric,selection:string[]):EChartsCoreOption{
- const buckets=new Map(data.model_days.map(r=>[`${key(r)}:${r.date}`,r.totals]));
- const sorted=data.models.filter(r=>selection.includes(key(r)));
- return {color:['#214c8e','#2678f5','#79b5fa','#597fad','#89a1be','#4864a8'],tooltip:{renderMode:'richText',confine:true,trigger:'axis',formatter:(params:unknown)=>{const ps=params as {seriesName:string;dataIndex:number;value:number|null}[];const day=data.trend[ps[0]?.dataIndex];if(!day)return '';return `${day.date}\n${ps.map(p=>{const model=sorted.find(r=>`${providerNames[r.provider]} · ${r.model}`===p.seriesName);const t=model?buckets.get(`${key(model)}:${day.date}`):undefined;return `${p.seriesName}：${metric==='tokens'?tokens(t?.total_tokens??null):dollars(t?.cost_micro_usd??null)}`;}).join('\n')}`;}},
- legend:{type:'scroll',top:0},grid:{left:12,right:12,top:65,bottom:24,containLabel:true},xAxis:{type:'category',data:data.trend.map(r=>r.date),axisLabel:{formatter:(v:string)=>v.slice(5)}},yAxis:{type:'value',name:metric==='tokens'?'Token':'USD',axisLabel:{formatter:metric==='tokens'?tokenAxis:dollarAxis},splitLine:{lineStyle:{color:'#edf1f6'}}},
- series:sorted.map(r=>({name:`${providerNames[r.provider]} · ${r.model}`,type:'bar',stack:'usage',barMaxWidth:32,data:data.trend.map(day=>{const t=buckets.get(`${key(r)}:${day.date}`);const value=metric==='tokens'?t?.total_tokens:t?.cost_micro_usd;return value==null?null:Number(value)/(metric==='cost'?1_000_000:1);})}))};
-}
 function estimatedLabel(provider:string){return provider==='codex'?'API 折算成本':provider==='cursor'?'文档价目估算':provider==='grok'?'xAI 参考价估算':'参考价估算合计';}
 function totalDetails(t:Totals){return [{key:'input',label:'输入 Token',children:tokens(t.input_tokens)},{key:'cached',label:'缓存读取 Token',children:tokens(t.cached_tokens)},{key:'write',label:'缓存写入 Token',children:tokens(t.cache_write_tokens)},{key:'output',label:'输出 Token',children:tokens(t.output_tokens)},{key:'reasoning',label:'独立 reasoning Token',children:tokens(t.reasoning_tokens)},{key:'version',label:'历史价格版本',children:t.pricing_versions.length?t.pricing_versions.join('、'):'未提供价格证据'}];}
 export default function Usage(){
@@ -42,7 +36,7 @@ export default function Usage(){
  <Card title="按模型的用量趋势" className="section-card" extra={<Segmented aria-label="用量趋势指标" value={metric} onChange={v=>setMetric(v as Metric)} options={[{label:'Token',value:'tokens'},{label:'估算成本',value:'cost'}]} />}>
  <Select className="usage-model-selector" aria-label="趋势模型" mode="multiple" maxCount={12} maxTagCount="responsive" value={selection} onChange={setChosen} options={available.map(r=>({value:key(r),label:`${providerNames[r.provider]} · ${r.model}`}))} placeholder="选择趋势模型" />
 
- {available.length&&selection.length?<Suspense fallback={<LoadingState label="正在加载模型趋势…" />}><Chart option={option} height={300} label="按模型堆叠的真实用量趋势" /></Suspense>:<EmptyState description="当前筛选范围暂无模型用量。" />}
+ {available.length&&selection.length?<Suspense fallback={<LoadingState label="正在加载模型趋势…" />}><Chart option={option} height={300} label="按模型的真实用量折线" /></Suspense>:<EmptyState description="当前筛选范围暂无模型用量。" />}
  <div className="metric-note">最多12个模型 · 实际日桶 · 未知日期留空</div>
  </Card>
  <Card size="small" className="section-card"><Descriptions size="small" column={{xs:1,md:3}} items={totalDetails(data.totals).slice(0,5)} /></Card>

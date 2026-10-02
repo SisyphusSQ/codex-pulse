@@ -1,16 +1,18 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { Alert, Button, Card, Collapse, Popover, Segmented, Statistic, Table, Tooltip, Typography, theme } from 'antd';
+import { Alert, Button, Card, Collapse, Popover, Select, Segmented, Statistic, Table, Tooltip, Typography, theme } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import type { EChartsCoreOption } from 'echarts/core';
 import { getDevices, getSummary, type Decimal, type Slice } from '../api/statistics';
+import { getUsage } from '../api/usage';
+import { usageChartOption } from '../components/ModelTrend';
 import { SourceTable } from '../components/SourceTable';
 import { ActivityHeatmap } from '../components/ActivityHeatmap';
 import { CoverageNotice } from '../components/CoverageNotice';
 import { initialFilter, StatsFilters } from '../components/StatsFilters';
 import { EmptyState, ErrorState, LoadingState } from '../components/QueryState';
-import { dayjs, dollarAxis, dollars, integer, tokenAxis, tokens, providerNames } from '../format';
+import { dayjs, dollars, integer, tokens, providerNames } from '../format';
 
 const Chart = lazy(() => import('../components/Chart'));
 type Metric = 'tokens' | 'cost';
@@ -66,26 +68,17 @@ export default function Overview() {
   const [filter, setFilter] = useState(initialFilter);
   const [metric, setMetric] = useState<Metric>('tokens');
   const [breakdown,setBreakdown]=useState<'providers'|'models'>('providers');
-  const [trendType, setTrendType] = useState<'bar' | 'line'>('bar');
+  const [chosen, setChosen] = useState<string[]|null>(null);
+  const usage = useQuery({queryKey:['usage',filter],queryFn:({signal})=>getUsage(filter,signal)});
+  const available=usage.data?.models??[];
+  const selection=chosen?.filter(k=>available.some(r=>`${r.provider}:${r.model}`===k))??available.slice(0,12).map(r=>`${r.provider}:${r.model}`);
   const query = useQuery({ queryKey: ['statistics', 'summary', filter], queryFn: ({ signal }) => getSummary(filter, signal) });
   const data = query.data;
   const sources=useQuery({queryKey:['devices','status'],queryFn:({signal})=>getDevices(signal)});
   const devices=(sources.data??[]).filter(d=>!filter.client_id||d.id===filter.client_id).map(d=>({...d,providers:d.providers.filter(p=>!filter.provider||p.provider===filter.provider)}));
-  const trend = useMemo<EChartsCoreOption>(() => ({
-    tooltip: { ...tooltip, trigger: 'axis', formatter: (params: unknown) => {
-      const point = (params as { dataIndex: number }[])[0];
-      const row = data?.trend[point?.dataIndex];
-      return row ? `${row.date}\n${metricLabel(metric === 'tokens' ? row.totals.total_tokens : row.totals.cost_micro_usd, metric)}` : '';
-    } },
-    grid: { left: 8, right: 12, top: 28, bottom: 24, containLabel: true },
-    xAxis: { type: 'category', data: data?.trend.map(row => row.date) ?? [], axisLine: { show: false }, axisTick: { show: false }, axisLabel: { formatter: (value: string) => value.slice(5) } },
-    yAxis: { type: 'value', name: metric === 'cost' ? 'USD' : 'Token', axisLabel: { formatter: metric === 'cost' ? dollarAxis : tokenAxis }, splitLine: { lineStyle: { color: '#edf1f6' } } },
-    series: [{ type: trendType, name: metric === 'tokens' ? 'Token' : 'USD', barMaxWidth: 32,
-      data: data?.trend.map(row => metricCoordinate(metric === 'tokens' ? row.totals.total_tokens : row.totals.cost_micro_usd, metric)) ?? [],
-      itemStyle: { color: '#2678f5', borderRadius: [3, 3, 0, 0] }, connectNulls: false }],
-  }), [data, metric, trendType]);
+  const trend=useMemo(()=>usage.data?usageChartOption(usage.data,metric,selection):{},[usage.data,metric,selection.join('\x00')]);
   return <section className="overview-page">
-    <StatsFilters value={filter} onChange={setFilter} refresh={() => void query.refetch()} busy={query.isFetching} />
+    <StatsFilters value={filter} onChange={v=>{setFilter(v);setChosen(null);}} refresh={() => {void query.refetch();void usage.refetch();}} busy={query.isFetching||usage.isFetching} />
     {query.isPending ? <LoadingState /> : query.error && !data ? <ErrorState error={query.error} retry={() => void query.refetch()} /> : data && <>
       {query.error && <Alert type="warning" showIcon title="刷新失败，以下保留上次读取的数据" description={query.error.message} className="form-alert" />}
       <Card className="overview-activity" title="全年活动" extra={<div className="annual-actions"><span className="metric-note">{data.heatmap_coverage.state==='unknown'?'年度用量未知':'年度覆盖未确认'} · {data.heatmap_coverage.stale?'采集陈旧':'近期采集'}</span><Popover trigger="click" placement="bottomRight" content={<div className="evidence-popover">
@@ -111,9 +104,13 @@ export default function Overview() {
       <Suspense fallback={<LoadingState label="正在加载图表…" />}>
         <Card className="section-card overview-trend" title={<div className="trend-title"><span>每日用量趋势</span><div className="overview-quality"><Popover trigger="click" placement="bottomLeft" content={<div className="evidence-popover"><CoverageNotice coverage={data.coverage} zone={filter.time_zone} /></div>}><Button type="text" size="small" icon={<InfoCircleOutlined />}>{data.coverage.state==='unknown'?'暂无已知用量':'覆盖未确认'} · {data.coverage.stale?'采集证据陈旧':'有近期采集证据'} · 截至 {data.coverage.collected_at_ms===null?'尚无观测':dayjs(data.coverage.collected_at_ms).tz(filter.time_zone).format('MM-DD HH:mm')}</Button></Popover></div></div>} extra={<div className="overview-chart-controls">
           <Segmented aria-label="图表指标" size="small" options={metricOptions} value={metric} onChange={value => setMetric(value as Metric)} />
-          <Segmented aria-label="趋势图形式" size="small" options={[{ label: '柱状', value: 'bar' }, { label: '折线', value: 'line' }]} value={trendType} onChange={value => setTrendType(value as 'bar' | 'line')} />
         </div>}>
-          <Chart option={trend} label="按自然日的用量趋势" height={216} />
+          <Select aria-label="概览趋势模型" className="usage-model-selector" mode="multiple" maxCount={12} maxTagCount="responsive" value={selection} onChange={setChosen} options={available.map(r=>({value:`${r.provider}:${r.model}`,label:`${providerNames[r.provider]??r.provider} · ${r.model==='unknown'?'模型未归因':r.model}`}))} placeholder="选择趋势模型" />
+          {usage.isPending?<LoadingState label="正在读取模型日桶…" />:usage.error&&!usage.data?<ErrorState error={usage.error} retry={()=>void usage.refetch()} />:<>
+          {usage.error&&<Alert type="warning" title="模型趋势更新失败，保留上次读取的数据" description={usage.error.message} />}
+          {selection.length?<Chart option={trend} label="按自然日的用量趋势" height={280} />:<EmptyState description="当前范围尚无已收到的模型日桶。" />}
+          </>}
+          <div className="metric-note">按具体模型的真实日桶 · 最多12个模型 · 未知日期留空</div>
           {metric === 'cost' && data.trend_cost_rounding_delta_micro_usd !== '0' && <Typography.Text type="secondary">趋势与范围的舍入差额：{data.trend_cost_rounding_delta_micro_usd!==null&&BigInt(data.trend_cost_rounding_delta_micro_usd)>-10_000n&&BigInt(data.trend_cost_rounding_delta_micro_usd)<10_000n?'不足 $0.01':dollars(data.trend_cost_rounding_delta_micro_usd)}</Typography.Text>}
         </Card>
         <div className="overview-support">
@@ -126,11 +123,11 @@ export default function Overview() {
             </>}
           </Card>
         </div>
-        <Collapse ghost className="overview-analysis" items={[{key:'analysis',label:'构成、工具与技能',children:<div className="overview-breakdowns">
+        <div className="overview-breakdowns">
           <Distribution rows={data.providers} title="平台分布" />
           <Distribution rows={data.models} title="模型分布" />
           <Card title="工具与技能"><Typography.Paragraph type="secondary">已收到的调用次数</Typography.Paragraph><Table size="small" rowKey="key" dataSource={[...data.tools.map(row => ({ ...row, key: `tool:${row.key}`, kind: '工具' })), ...data.skills.map(row => ({ ...row, key: `skill:${row.key}`, kind: '技能' }))]} pagination={{ pageSize: 8, showSizeChanger: false }} scroll={{ x: 340 }} columns={[{ title: '类型', dataIndex: 'kind' }, { title: '名称', dataIndex: 'name' }, { title: '调用次数', align: 'right', render: (_, row) => integer(row.totals.invocations) }]} /></Card>
-        </div>}]} />
+        </div>
         <div className="overview-links"><Link to="/quota">查看账号额度与节奏</Link><Link to="/projects">项目明细</Link><Link to="/sessions">会话明细</Link></div>
       </Suspense>
     </>}

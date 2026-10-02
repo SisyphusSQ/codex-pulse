@@ -7,16 +7,18 @@ import { createQueryClient } from '../App';
 import { api } from '../api/client';
 import { summaryFixture } from '../test/statisticsFixture';
 import { dayjs, dollars, integer } from '../format';
+import type {Summary} from '../api/statistics';
 import Overview from './Overview';
 
 vi.mock('../components/Chart',()=>({default:({label}:{label:string})=><div role="img" aria-label={label} />}));
 const fetcher=vi.fn<typeof fetch>();
+const usageFrom=(s:Summary)=>({...s,models:[{provider:'codex',model:'gpt-6.1-sol',totals:s.totals}],model_days:[{provider:'codex',model:'gpt-6.1-sol',date:s.trend[0].date,totals:s.totals}],cursor_pools:[],model_cost_rounding_delta_micro_usd:'0'});
 const success=(data:unknown)=>new Response(JSON.stringify({code:200,data}));
 beforeEach(()=>{api.setSession({client_id:'synthetic-browser',name:'测试浏览器',purpose:'admin',csrf:'synthetic-csrf',expires_at_ms:null});fetcher.mockReset();vi.stubGlobal('fetch',fetcher);});
 afterEach(()=>vi.unstubAllGlobals());
 describe('overview facts',()=>{
   it('requests the seven-day range and opens a real date picker for custom dates',async()=>{
-    fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):success(summaryFixture()));
+    fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):success(String(path).includes('/usage')?usageFrom(summaryFixture()):summaryFixture()));
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
     await screen.findByText('Token 总量');const user=userEvent.setup();
     await user.click(screen.getByText('7天',{selector:'.ant-segmented-item-label'}));
@@ -34,7 +36,7 @@ describe('overview facts',()=>{
     expect(dollars('123456789')).toBe('$123.46');expect(dollars(null)).toBe('未知');
   });
   it('uses Server totals and separate annual coverage, sends date/provider filters, and retains cached data on refresh failure',async()=>{
-    fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):success(summaryFixture()));
+    fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):success(String(path).includes('/usage')?usageFrom(summaryFixture()):summaryFixture()));
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
     expect((await screen.findAllByText('90071992.5亿')).length).toBeGreaterThan(0);
     expect(screen.getByText('已知金额小计，含未定价记录 · 不是实际账单')).toBeInTheDocument();
@@ -56,7 +58,7 @@ describe('overview facts',()=>{
   it('places annual activity above summary and trend while keeping independent Server annual metrics',async()=>{
     const fixture=summaryFixture();
     fixture.heatmap_activity={total_tokens:'999999999999999999',peak_daily_tokens:'100000',active_days:'15',current_streak_days:null,longest_streak_days:'4',observed_days:22,unknown_days:343};
-    fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):success(fixture));
+    fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):success(String(path).includes('/usage')?usageFrom(fixture):fixture));
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
     await userEvent.setup().click(await screen.findByRole('button',{name:/年度活动统计/}));
     expect(await screen.findByText('10000000000亿',{selector:'strong'})).toBeInTheDocument();
